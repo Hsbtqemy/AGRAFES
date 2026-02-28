@@ -1,0 +1,24 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Default capability set for Concordancier",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "shell:allow-spawn",
+    "shell:allow-kill",
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [
+        {
+          "name": "binaries/multicorpus",
+          "sidecar": true
+        }
+      ]
+    },
+    "fs:default",
+    "dialog:default",
+    "dialog:allow-open",
+    "core:path:default"
+  ]
+}
