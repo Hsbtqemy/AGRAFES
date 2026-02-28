@@ -13,6 +13,18 @@ jobs:
   build-macos-windows:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
+    env:
+      MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+      MACOS_CERT_P12_PASSWORD: ${{ secrets.MACOS_CERT_P12_PASSWORD }}
+      MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+      APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+      APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+      APPLE_API_KEY_P8_B64: ${{ secrets.APPLE_API_KEY_P8_B64 }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      WIN_SIGN_CERT_PFX_BASE64: ${{ secrets.WIN_SIGN_CERT_PFX_BASE64 }}
+      WIN_SIGN_CERT_PASSWORD: ${{ secrets.WIN_SIGN_CERT_PASSWORD }}
     strategy:
       fail-fast: false
       matrix:
@@ -37,10 +49,7 @@ jobs:
         run: python scripts/build_sidecar.py --preset tauri --format "${{ matrix.format }}"
 
       - name: Import macOS signing certificate (if configured)
-        if: ${{ matrix.os == 'macos-latest' && secrets.MACOS_CERT_P12_BASE64 != '' && secrets.MACOS_CERT_P12_PASSWORD != '' }}
-        env:
-          MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
-          MACOS_CERT_P12_PASSWORD: ${{ secrets.MACOS_CERT_P12_PASSWORD }}
+        if: ${{ matrix.os == 'macos-latest' && env.MACOS_CERT_P12_BASE64 != '' && env.MACOS_CERT_P12_PASSWORD != '' }}
         run: |
           KEYCHAIN_PATH="$RUNNER_TEMP/agrafes-signing.keychain-db"
           security create-keychain -p "" "$KEYCHAIN_PATH"
@@ -57,14 +66,6 @@ jobs:
 
       - name: Sign + notarize sidecar on macOS (if configured)
         if: ${{ matrix.os == 'macos-latest' }}
-        env:
-          MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
-          APPLE_API_KEY_P8_B64: ${{ secrets.APPLE_API_KEY_P8_B64 }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           BIN_PATH="$(python -c 'import json;from pathlib import Path;print(json.loads(Path(\"tauri/src-tauri/binaries/sidecar-manifest.json\").read_text(encoding=\"utf-8\"))[\"executable_path\"])')"
           bash scripts/macos_sign_and_notarize_sidecar.sh --binary "$BIN_PATH" --allow-unsigned
@@ -72,9 +73,6 @@ jobs:
       - name: Sign sidecar on Windows (if configured)
         if: ${{ matrix.os == 'windows-latest' }}
         shell: pwsh
-        env:
-          WIN_SIGN_CERT_PFX_BASE64: ${{ secrets.WIN_SIGN_CERT_PFX_BASE64 }}
-          WIN_SIGN_CERT_PASSWORD: ${{ secrets.WIN_SIGN_CERT_PASSWORD }}
         run: |
           $manifest = Get-Content "tauri/src-tauri/binaries/sidecar-manifest.json" | ConvertFrom-Json
           ./scripts/windows_sign_sidecar.ps1 -FilePath $manifest.executable_path -SkipIfMissing
