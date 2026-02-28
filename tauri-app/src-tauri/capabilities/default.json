@@ -17,6 +17,7 @@
       ]
     },
     "fs:default",
+    "fs:scope-app-recursive",
     "dialog:default",
     "dialog:allow-open",
     "core:path:default"
