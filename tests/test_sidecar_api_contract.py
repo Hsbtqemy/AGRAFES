@@ -50,7 +50,7 @@ def _wait_health(base_url: str, tries: int = 50) -> None:
 
     for _ in range(tries):
         code, payload = _http_json("GET", f"{base_url}/health")
-        if code == 200 and payload.get("status") == "ok":
+        if code == 200 and payload.get("status") == "ok" and payload.get("ok") is True:
             return
         time.sleep(0.05)
     raise RuntimeError("Sidecar not ready")
@@ -93,14 +93,17 @@ def test_contract_payload_builders() -> None:
     )
 
     ok = success_payload({"count": 1})
+    assert ok["ok"] is True
     assert ok["status"] == "ok"
     assert ok["api_version"] == API_VERSION
     assert ok["count"] == 1
 
     err = error_payload("bad input", code=ERR_BAD_REQUEST)
+    assert err["ok"] is False
     assert err["status"] == "error"
     assert err["api_version"] == API_VERSION
-    assert err["error"] == "bad input"
+    assert err["error"]["message"] == "bad input"
+    assert err["error"]["type"] == ERR_BAD_REQUEST
     assert err["error_code"] == ERR_BAD_REQUEST
 
 
@@ -110,17 +113,29 @@ def test_openapi_spec_has_core_routes() -> None:
     spec = openapi_spec()
     assert spec["openapi"] == "3.0.3"
     assert spec["info"]["version"] == API_VERSION
-    for route in ("/health", "/openapi.json", "/query", "/index", "/curate", "/validate-meta", "/segment"):
+    for route in (
+        "/health",
+        "/openapi.json",
+        "/query",
+        "/index",
+        "/import",
+        "/shutdown",
+        "/curate",
+        "/validate-meta",
+        "/segment",
+    ):
         assert route in spec["paths"]
 
 
 def test_health_includes_api_version(sidecar_base_url: str) -> None:
-    from multicorpus_engine.sidecar_contract import API_VERSION
-
     code, payload = _http_json("GET", f"{sidecar_base_url}/health")
     assert code == 200
+    assert payload["ok"] is True
     assert payload["status"] == "ok"
-    assert payload["api_version"] == API_VERSION
+    assert "api_version" in payload
+    assert "version" in payload
+    assert isinstance(payload["pid"], int)
+    assert isinstance(payload["started_at"], str)
 
 
 def test_openapi_endpoint_contract(sidecar_base_url: str) -> None:
@@ -135,7 +150,9 @@ def test_unknown_route_returns_not_found_code(sidecar_base_url: str) -> None:
 
     code, payload = _http_json("GET", f"{sidecar_base_url}/does-not-exist")
     assert code == 404
+    assert payload["ok"] is False
     assert payload["status"] == "error"
+    assert payload["error"]["type"] == ERR_NOT_FOUND
     assert payload["error_code"] == ERR_NOT_FOUND
 
 
@@ -144,7 +161,9 @@ def test_invalid_json_returns_bad_request(sidecar_base_url: str) -> None:
 
     code, payload = _http_invalid_json(f"{sidecar_base_url}/query")
     assert code == 400
+    assert payload["ok"] is False
     assert payload["status"] == "error"
+    assert payload["error"]["type"] == ERR_BAD_REQUEST
     assert payload["error_code"] == ERR_BAD_REQUEST
 
 
@@ -155,7 +174,9 @@ def test_query_success_contract(sidecar_base_url: str) -> None:
         {"q": "needle", "mode": "segment"},
     )
     assert code == 200
+    assert payload["ok"] is True
     assert payload["status"] == "ok"
+    assert isinstance(payload["run_id"], str)
     assert isinstance(payload["count"], int)
     assert isinstance(payload["hits"], list)
     assert payload["count"] >= 1
@@ -166,6 +187,7 @@ def test_segment_missing_doc_id_is_bad_request(sidecar_base_url: str) -> None:
 
     code, payload = _http_json("POST", f"{sidecar_base_url}/segment", {})
     assert code == 400
+    assert payload["ok"] is False
     assert payload["status"] == "error"
     assert payload["error_code"] == ERR_BAD_REQUEST
 
@@ -173,6 +195,7 @@ def test_segment_missing_doc_id_is_bad_request(sidecar_base_url: str) -> None:
 def test_validate_meta_keeps_contract_shape(sidecar_base_url: str) -> None:
     code, payload = _http_json("POST", f"{sidecar_base_url}/validate-meta", {})
     assert code == 200
+    assert payload["ok"] is True
     assert payload["status"] in ("ok", "warnings")
     assert "docs_validated" in payload
     assert isinstance(payload["results"], list)

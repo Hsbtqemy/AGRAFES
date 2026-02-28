@@ -1,0 +1,156 @@
+name: macos-sign-notarize
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_fixture_app:
+        description: "Build/sign/notarize tauri-fixture .app (representative app)"
+        required: false
+        type: boolean
+        default: false
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  sidecar:
+    runs-on: macos-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install project with packaging extra
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[packaging]"
+
+      - name: Build sidecar (onefile)
+        run: python scripts/build_sidecar.py --preset tauri --format onefile
+
+      - name: Import signing certificate (if configured)
+        if: ${{ secrets.MACOS_CERT_P12_BASE64 != '' && secrets.MACOS_CERT_P12_PASSWORD != '' }}
+        env:
+          MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          MACOS_CERT_P12_PASSWORD: ${{ secrets.MACOS_CERT_P12_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/agrafes-signing.keychain-db"
+          security create-keychain -p "" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
+          python -c 'import base64,os;from pathlib import Path;Path(os.environ["RUNNER_TEMP"]).joinpath("signing_cert.p12").write_bytes(base64.b64decode(os.environ["MACOS_CERT_P12_BASE64"]))'
+          security import "$RUNNER_TEMP/signing_cert.p12" \
+            -k "$KEYCHAIN_PATH" \
+            -P "$MACOS_CERT_P12_PASSWORD" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" "$KEYCHAIN_PATH"
+
+      - name: Sign + notarize sidecar (if configured)
+        env:
+          MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          APPLE_API_KEY_P8_B64: ${{ secrets.APPLE_API_KEY_P8_B64 }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          BIN_PATH="$(python -c 'import json;from pathlib import Path;print(json.loads(Path(\"tauri/src-tauri/binaries/sidecar-manifest.json\").read_text(encoding=\"utf-8\"))[\"executable_path\"])')"
+          bash scripts/macos_sign_and_notarize_sidecar.sh --binary "$BIN_PATH" --allow-unsigned
+
+      - name: Upload sidecar artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-sidecar-onefile
+          path: |
+            tauri/src-tauri/binaries/multicorpus-*
+            tauri/src-tauri/binaries/sidecar-manifest.json
+
+  tauri-fixture-app:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_fixture_app == true }}
+    runs-on: macos-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install project with packaging extra
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[packaging]"
+
+      - name: Build sidecar for fixture
+        run: python scripts/build_sidecar.py --preset fixture --format onefile
+
+      - name: Install fixture dependencies
+        run: npm --prefix tauri-fixture install
+
+      - name: Build tauri-fixture app (best effort)
+        continue-on-error: true
+        run: npm --prefix tauri-fixture exec tauri build
+
+      - name: Import signing certificate (if configured)
+        if: ${{ secrets.MACOS_CERT_P12_BASE64 != '' && secrets.MACOS_CERT_P12_PASSWORD != '' }}
+        env:
+          MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          MACOS_CERT_P12_PASSWORD: ${{ secrets.MACOS_CERT_P12_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/agrafes-signing.keychain-db"
+          security create-keychain -p "" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
+          python -c 'import base64,os;from pathlib import Path;Path(os.environ["RUNNER_TEMP"]).joinpath("signing_cert.p12").write_bytes(base64.b64decode(os.environ["MACOS_CERT_P12_BASE64"]))'
+          security import "$RUNNER_TEMP/signing_cert.p12" \
+            -k "$KEYCHAIN_PATH" \
+            -P "$MACOS_CERT_P12_PASSWORD" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" "$KEYCHAIN_PATH"
+
+      - name: Sign + notarize fixture app (if configured)
+        env:
+          MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          APPLE_API_KEY_P8_B64: ${{ secrets.APPLE_API_KEY_P8_B64 }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          bash scripts/macos_sign_and_notarize_tauri_fixture.sh --allow-missing-app --allow-unsigned
+          APP_PATH="$(ls -1 tauri-fixture/src-tauri/target/release/bundle/macos/*.app 2>/dev/null | head -n 1 || true)"
+          if [ -n "$APP_PATH" ]; then
+            ditto -c -k --keepParent "$APP_PATH" "$RUNNER_TEMP/tauri-fixture-app.zip"
+          fi
+
+      - name: Upload fixture app artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-tauri-fixture-app
+          if-no-files-found: ignore
+          path: |
+            tauri-fixture/src-tauri/target/release/bundle/macos/*.app
+            ${{ runner.temp }}/tauri-fixture-app.zip

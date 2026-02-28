@@ -1,0 +1,30 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "agrafes-tauri-fixture",
+  "version": "0.1.0",
+  "identifier": "com.agrafes.tauri.fixture",
+  "build": {
+    "beforeDevCommand": "",
+    "beforeBuildCommand": "",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "AGRAFES Tauri Fixture",
+        "width": 800,
+        "height": 600,
+        "resizable": false
+      }
+    ],
+    "security": {
+      "capabilities": ["default"]
+    }
+  },
+  "bundle": {
+    "active": false,
+    "targets": "all",
+    "externalBin": ["binaries/multicorpus"]
+  }
+}

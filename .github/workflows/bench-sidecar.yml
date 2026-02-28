@@ -1,0 +1,90 @@
+name: bench-sidecar
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+  schedule:
+    - cron: "15 2 * * *"
+
+jobs:
+  bench:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install project with packaging extra
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[packaging]"
+
+      - name: Build onefile sidecar
+        run: python scripts/build_sidecar.py --out build/dist-bench/onefile --format onefile
+
+      - name: Build onedir sidecar
+        run: python scripts/build_sidecar.py --out build/dist-bench/onedir --format onedir
+
+      - name: Clean previous bench result files
+        run: |
+          python -c 'from pathlib import Path; d=Path("bench/results"); d.mkdir(parents=True, exist_ok=True); [p.unlink() for p in d.glob("*.json")]'
+
+      - name: Run persistent sidecar benchmark
+        run: |
+          python scripts/bench_sidecar_startup.py \
+            --bin-dir build/dist-bench/onefile \
+            --bin-dir build/dist-bench/onedir \
+            --mode persistent \
+            --runs 3 \
+            --query-runs 10
+
+      - name: Upload bench artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-results-${{ matrix.os }}
+          path: |
+            bench/results/*.json
+
+  aggregate:
+    needs: bench
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Download all bench artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: bench/collected
+
+      - name: Aggregate benchmark summary
+        run: python scripts/aggregate_bench_results.py --input bench/collected --output docs/BENCHMARKS.md
+
+      - name: Upload benchmark summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-summary
+          path: |
+            docs/BENCHMARKS.md

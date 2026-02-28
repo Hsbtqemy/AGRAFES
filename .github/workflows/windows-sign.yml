@@ -1,0 +1,46 @@
+name: windows-sign
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  sign-sidecar:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install project with packaging extra
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[packaging]"
+
+      - name: Build sidecar (onefile)
+        run: python scripts/build_sidecar.py --preset tauri --format onefile
+
+      - name: Sign sidecar executable (if configured)
+        shell: pwsh
+        env:
+          WIN_SIGN_CERT_PFX_BASE64: ${{ secrets.WIN_SIGN_CERT_PFX_BASE64 }}
+          WIN_SIGN_CERT_PASSWORD: ${{ secrets.WIN_SIGN_CERT_PASSWORD }}
+        run: |
+          $manifest = Get-Content "tauri/src-tauri/binaries/sidecar-manifest.json" | ConvertFrom-Json
+          ./scripts/windows_sign_sidecar.ps1 -FilePath $manifest.executable_path -SkipIfMissing
+
+      - name: Upload sidecar artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-sidecar-onefile
+          path: |
+            tauri/src-tauri/binaries/multicorpus-*
+            tauri/src-tauri/binaries/sidecar-manifest.json

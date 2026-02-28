@@ -1,0 +1,37 @@
+name: linux-manylinux-sidecar
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-manylinux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        format: [onefile, onedir]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build sidecar in manylinux container
+        run: bash scripts/linux_manylinux_build_sidecar.sh --format "${{ matrix.format }}" --out tauri/src-tauri/binaries
+
+      - name: Verify executable starts (--help)
+        run: |
+          EXE_PATH="$(python -c 'import json;from pathlib import Path;print(json.loads(Path(\"tauri/src-tauri/binaries/sidecar-manifest.json\").read_text(encoding=\"utf-8\"))[\"executable_path\"])')"
+          chmod +x "$EXE_PATH"
+          "$EXE_PATH" --help >/dev/null
+
+      - name: Upload manylinux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-manylinux-${{ matrix.format }}
+          path: |
+            tauri/src-tauri/binaries/multicorpus-*
+            tauri/src-tauri/binaries/sidecar-manifest.json

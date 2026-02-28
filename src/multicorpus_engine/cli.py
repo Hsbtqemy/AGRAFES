@@ -11,6 +11,8 @@ Subcommands:
   curate        Apply regex curation rules to text_norm.
   segment       Resegment a document's line units into sentence-level units.
   serve         Start the sidecar HTTP API server.
+  status        Inspect sidecar state from DB-side portfile.
+  shutdown      Stop a running sidecar discovered from DB portfile.
 
 Each command outputs a JSON summary to stdout and writes a run log file.
 Non-zero exit code on error, with {"error": "..."} JSON on stdout.
@@ -23,7 +25,12 @@ import argparse
 import json
 import sys
 import traceback
+from datetime import datetime, timezone
 from pathlib import Path
+
+
+def _created_at() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _ok(data: dict) -> None:
@@ -36,8 +43,16 @@ def _err(data: dict, code: int = 1) -> None:
     payload = dict(data)
     payload["status"] = "error"
     payload.setdefault("error", "Unknown error")
+    payload.setdefault("created_at", _created_at())
     print(json.dumps(payload, ensure_ascii=False, indent=2))
     sys.exit(code)
+
+
+class _JsonArgumentParser(argparse.ArgumentParser):
+    """ArgumentParser that preserves CLI JSON contract on parse failures."""
+
+    def error(self, message: str) -> None:  # type: ignore[override]
+        _err({"error": f"Invalid arguments: {message}"}, code=1)
 
 
 # ---------------------------------------------------------------------------
@@ -702,30 +717,77 @@ def cmd_segment(args: argparse.Namespace) -> None:
 # ---------------------------------------------------------------------------
 
 def cmd_serve(args: argparse.Namespace) -> None:
-    """Start the sidecar HTTP API server (blocks until Ctrl-C)."""
+    """Start the sidecar HTTP API server (or report already-running state)."""
     from .db.connection import get_connection
     from .db.migrations import apply_migrations
     from .runs import create_run, setup_run_logger, update_run_stats, utcnow_iso
-    from .sidecar import CorpusServer
+    from .sidecar import CorpusServer, inspect_sidecar_state, resolve_token_mode
 
     db_path = Path(args.db)
     host = getattr(args, "host", "127.0.0.1")
     port = getattr(args, "port", 8765)
+    token_mode = getattr(args, "token", "auto")
 
     conn = get_connection(db_path)
     apply_migrations(conn)
 
-    run_id = create_run(conn, "serve", {"host": host, "port": port})
+    run_id = create_run(conn, "serve", {"host": host, "port": port, "token": token_mode})
     log, log_path = setup_run_logger(db_path, run_id)
 
     server = None
     try:
-        server = CorpusServer(db_path=db_path, host=host, port=port)
+        state = inspect_sidecar_state(db_path)
+        if state.get("state") == "running":
+            update_run_stats(conn, run_id, {
+                "status": "already_running",
+                "host": state.get("host"),
+                "port": state.get("port"),
+                "pid": state.get("pid"),
+                "started_at": state.get("started_at"),
+                "portfile": state.get("portfile"),
+                "token_required": bool(state.get("token_required", False)),
+            })
+            log.info(
+                "Sidecar already running for db=%s at %s:%s",
+                db_path,
+                state.get("host"),
+                state.get("port"),
+            )
+            _ok({
+                "run_id": run_id,
+                "status": "already_running",
+                "host": state.get("host"),
+                "port": state.get("port"),
+                "pid": state.get("pid"),
+                "started_at": state.get("started_at"),
+                "portfile": state.get("portfile"),
+                "token_required": bool(state.get("token_required", False)),
+                "log": str(log_path),
+                "created_at": utcnow_iso(),
+            })
+            return
+
+        if state.get("state") == "stale":
+            stale_portfile = Path(str(state.get("portfile")))
+            if stale_portfile.exists():
+                stale_portfile.unlink()
+            log.info(
+                "Removed stale sidecar portfile: %s (reason=%s)",
+                stale_portfile,
+                state.get("reason"),
+            )
+
+        token = resolve_token_mode(token_mode)
+        server = CorpusServer(db_path=db_path, host=host, port=port, token=token)
         server.start()
         update_run_stats(conn, run_id, {
             "status": "listening",
             "host": host,
             "port": server.actual_port,
+            "pid": server.pid,
+            "started_at": server.started_at,
+            "portfile": str(server.portfile_path),
+            "token_required": bool(server.token),
         })
         log.info("Sidecar listening on %s:%d", host, server.actual_port)
         _ok({
@@ -733,15 +795,19 @@ def cmd_serve(args: argparse.Namespace) -> None:
             "status": "listening",
             "host": host,
             "port": server.actual_port,
+            "pid": server.pid,
+            "started_at": server.started_at,
+            "portfile": str(server.portfile_path),
+            "token_required": bool(server.token),
             "log": str(log_path),
             "created_at": utcnow_iso(),
         })
         sys.stdout.flush()
-
-        import threading
-        threading.Event().wait()
+        server.join()
     except KeyboardInterrupt:
         log.info("Sidecar shutdown requested")
+        if server is not None:
+            server.shutdown()
     except Exception as exc:
         log.error("Serve failed: %s\n%s", exc, traceback.format_exc())
         _err({"run_id": run_id, "error": str(exc), "created_at": utcnow_iso()})
@@ -751,12 +817,112 @@ def cmd_serve(args: argparse.Namespace) -> None:
         conn.close()
 
 
+def cmd_status(args: argparse.Namespace) -> None:
+    """Inspect sidecar lifecycle state for a DB (running/stale/missing)."""
+    from .runs import utcnow_iso
+    from .sidecar import inspect_sidecar_state
+
+    db_path = Path(args.db)
+    state = inspect_sidecar_state(db_path)
+    _ok({
+        "status": "ok",
+        "state": state.get("state"),
+        "host": state.get("host"),
+        "port": state.get("port"),
+        "pid": state.get("pid"),
+        "started_at": state.get("started_at"),
+        "portfile": state.get("portfile"),
+        "token_required": bool(state.get("token_required", False)),
+        "reason": state.get("reason"),
+        "pid_alive": state.get("pid_alive"),
+        "health_ok": state.get("health_ok"),
+        "created_at": utcnow_iso(),
+    })
+
+
+def cmd_shutdown(args: argparse.Namespace) -> None:
+    """Shutdown a running sidecar process discovered via DB-side portfile."""
+    import urllib.error
+    import urllib.request
+
+    from .sidecar import inspect_sidecar_state
+    from .runs import utcnow_iso
+
+    db_path = Path(args.db)
+    state = inspect_sidecar_state(db_path)
+    if state.get("state") == "missing":
+        _err({
+            "error": f"Sidecar portfile not found: {state.get('portfile')}",
+            "state": "missing",
+            "created_at": utcnow_iso(),
+        })
+
+    if state.get("state") == "stale":
+        _err({
+            "error": "Sidecar is not running (stale portfile detected)",
+            "state": "stale",
+            "portfile": state.get("portfile"),
+            "reason": state.get("reason"),
+            "created_at": utcnow_iso(),
+        })
+
+    host = state.get("host", "127.0.0.1")
+    port = state.get("port")
+    if not isinstance(port, int):
+        _err({
+            "error": f"Invalid sidecar port in state: {port!r}",
+            "created_at": utcnow_iso(),
+        })
+
+    headers = {"Content-Type": "application/json; charset=utf-8"}
+    token = state.get("token")
+    if isinstance(token, str) and token:
+        headers["X-Agrafes-Token"] = token
+
+    url = f"http://{host}:{port}/shutdown"
+    payload = b"{}"
+    req = urllib.request.Request(
+        url,
+        method="POST",
+        data=payload,
+        headers=headers,
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=5.0) as resp:
+            body = resp.read().decode("utf-8")
+            reply = json.loads(body)
+            _ok({
+                "status": "ok",
+                "host": host,
+                "port": port,
+                "portfile": state.get("portfile"),
+                "reply": reply,
+                "created_at": utcnow_iso(),
+            })
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8")
+        _err({
+            "error": f"Shutdown HTTP error {exc.code}",
+            "host": host,
+            "port": port,
+            "response": body,
+            "created_at": utcnow_iso(),
+        })
+    except Exception as exc:
+        _err({
+            "error": str(exc),
+            "host": host,
+            "port": port,
+            "created_at": utcnow_iso(),
+        })
+
+
 # ---------------------------------------------------------------------------
 # Parser
 # ---------------------------------------------------------------------------
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+    parser = _JsonArgumentParser(
         prog="multicorpus",
         description="multicorpus_engine — multilingual corpus explorer (Tauri-ready CLI)",
     )
@@ -966,15 +1132,41 @@ def build_parser() -> argparse.ArgumentParser:
         "--port", type=int, default=8765,
         help="Port to listen on (default: 8765; use 0 for OS-assigned)",
     )
+    p_serve.add_argument(
+        "--token",
+        default="auto",
+        help="Local auth token mode: auto|off|<token> (default: auto)",
+    )
     p_serve.set_defaults(func=cmd_serve)
+
+    # status
+    p_status = sub.add_parser(
+        "status",
+        help="Inspect running sidecar state via DB-side portfile",
+    )
+    p_status.add_argument("--db", required=True)
+    p_status.set_defaults(func=cmd_status)
+
+    # shutdown
+    p_shutdown = sub.add_parser(
+        "shutdown",
+        help="Shutdown running sidecar discovered via DB-side portfile",
+    )
+    p_shutdown.add_argument("--db", required=True)
+    p_shutdown.set_defaults(func=cmd_shutdown)
 
     return parser
 
 
 def main() -> None:
     parser = build_parser()
-    args = parser.parse_args()
-    args.func(args)
+    try:
+        args = parser.parse_args()
+        args.func(args)
+    except SystemExit:
+        raise
+    except Exception as exc:
+        _err({"error": str(exc)}, code=1)
 
 
 if __name__ == "__main__":

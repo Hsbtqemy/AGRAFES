@@ -11,11 +11,18 @@ from __future__ import annotations
 
 import re
 import sqlite3
+import sys
 from pathlib import Path
 
 
 # Default migrations directory: repo_root/migrations/
-_MIGRATIONS_DIR = Path(__file__).parent.parent.parent.parent / "migrations"
+_REPO_MIGRATIONS_DIR = Path(__file__).parent.parent.parent.parent / "migrations"
+
+if getattr(sys, "_MEIPASS", None):
+    # PyInstaller onefile extraction root.
+    _MIGRATIONS_DIR = Path(sys._MEIPASS) / "migrations"  # type: ignore[attr-defined]
+else:
+    _MIGRATIONS_DIR = _REPO_MIGRATIONS_DIR
 
 
 def _find_migrations(migrations_dir: Path) -> list[tuple[int, Path]]:

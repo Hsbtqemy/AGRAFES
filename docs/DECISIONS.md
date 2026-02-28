@@ -354,9 +354,201 @@ Frontend integration fails when commands emit mixed logs/text and inconsistent J
 **Decision**
 - CLI emits exactly one JSON object on stdout per invocation.
 - Success payloads include `status` (`ok`, `warnings`, or command-specific non-error status such as `listening`).
-- Error payloads include `status="error"` and `error` message, with exit code `1`.
+- Error payloads include `status="error"`, `error`, and `created_at`, with exit code `1`.
+- Parser/validation failures from `argparse` (missing args, invalid choices, unknown subcommand) must use the same JSON error envelope and must not emit usage text to stderr.
 - Human-readable diagnostics stay in run log files.
 
 **Consequences**
 - Tauri can treat stdout as strict machine I/O.
-- Contract regressions become testable via subprocess smoke tests.
+- Contract regressions become testable via subprocess smoke tests (success path + parse-failure path).
+
+---
+
+## ADR-020 — Sidecar binary packaging via PyInstaller (onefile)
+
+**Date:** 2026-02-28
+**Status:** Accepted
+
+**Context**
+Tauri desktop packaging requires platform-specific sidecar binaries, while the
+core engine must remain UI-independent and CLI-contract stable.
+
+**Decision**
+- Use PyInstaller in `onefile` mode to package the CLI as a sidecar binary.
+- Add a stable packaging entrypoint `scripts/sidecar_entry.py` that only calls
+  `multicorpus_engine.cli.main`.
+- Build with `scripts/build_sidecar.py`, output to
+  canonical app path `tauri/src-tauri/binaries/` and optional fixture path
+  `tauri-fixture/src-tauri/binaries/` via presets.
+- Bundle SQL migrations inside the PyInstaller artifact and resolve migration
+  directory from `sys._MEIPASS` when running in bundled mode.
+- Binary naming convention:
+  - macOS/Linux: `multicorpus-<target_triple>`
+  - Windows: `multicorpus-<target_triple>.exe`
+- Target triple resolution:
+  1. `rustc --print host-tuple` when available.
+  2. deterministic fallback mapping by OS/arch.
+- Write `sidecar-manifest.json` with:
+  `name`, `target_triple`, `version`, `sha256`, `build_time`.
+- Keep packaging dependency isolated in optional extra
+  `[project.optional-dependencies].packaging` (`pyinstaller` only).
+
+**Consequences**
+- Local macOS packaging and CI matrix packaging become reproducible.
+- Runtime/core dependencies stay minimal for non-packaging users.
+- Signing/notarization and advanced binary hardening remain explicit backlog items.
+
+---
+
+## ADR-021 — Tauri E2E fixture strategy + onefile baseline
+
+**Date:** 2026-02-28
+**Status:** Accepted
+
+**Context**
+We need cross-platform end-to-end confidence that Tauri sidecar execution
+respects the CLI JSON contract, without requiring a full UI test harness.
+We also need an explicit baseline for onefile packaging tradeoffs.
+
+**Decision**
+- Add a minimal headless fixture under `tauri-fixture/` (no product UI).
+- Validate E2E by running the sidecar CLI directly from fixture smoke script:
+  - `init-project` success JSON + `rc=0`
+  - `query` success JSON + `rc=0`
+  - invalid-arg error JSON + `rc=1`
+  - stderr must remain empty in fixture checks
+- Add workflow `.github/workflows/tauri-e2e-fixture.yml`:
+  - build sidecar artifacts in matrix (`macos`, `ubuntu`, `windows`)
+  - run fixture smoke in matrix using downloaded artifacts
+- Keep PyInstaller `onefile` as current baseline.
+- Add startup/size benchmark script `scripts/bench_sidecar_startup.py` to gather
+  data for future onefile vs onedir evaluation.
+
+**Consequences**
+- We get reproducible, UI-independent integration checks on all target OSes.
+- GUI runner constraints do not block contract validation in CI.
+- Onefile remains default until measured evidence justifies switching to onedir.
+
+---
+
+## ADR-022 — Persistent sidecar HTTP for UX (serve once, query many)
+
+**Date:** 2026-02-28
+**Status:** Accepted
+
+**Context**
+PyInstaller onefile cold-start cost is noticeable for one-shot CLI invocations
+in interactive desktop UX. Tauri integration needs a low-latency multi-request path.
+
+**Decision**
+- Standardize a persistent sidecar process started with:
+  - `multicorpus serve --db ... --host 127.0.0.1 --port 0|NNNN`
+- Provide minimum HTTP endpoints for persistent workflows:
+  - `GET /health`
+  - `POST /import`
+  - `POST /index`
+  - `POST /query`
+  - `POST /shutdown`
+- Keep strict JSON envelope with `ok` + `status` and structured errors.
+- Write sidecar discovery file next to DB:
+  - `.agrafes_sidecar.json` containing `host/port/pid/started_at/db_path`.
+- Implement graceful shutdown path:
+  - `/shutdown` stops server, closes DB, removes portfile.
+- Keep CLI one-shot path as fallback compatibility mode.
+
+**Consequences**
+- Tauri can start sidecar once and reuse HTTP calls for responsive UX.
+- Persistent lifecycle (restart/crash/stale portfile/security policy) becomes a
+  first-class operational concern and remains tracked in backlog.
+
+---
+
+## ADR-023 — Restart policy + optional localhost token
+
+**Date:** 2026-02-28
+**Status:** Accepted
+
+**Context**
+Persistent sidecar mode needs deterministic startup behavior in the presence of
+stale portfiles, and a lightweight localhost guard without introducing heavy
+web dependencies.
+
+**Decision**
+- Startup policy for `multicorpus serve`:
+  - inspect existing `.agrafes_sidecar.json` using PID + `/health` probe
+  - if PID alive and `/health` is OK, return `status="already_running"` and do
+    not launch a second process
+  - otherwise treat portfile as stale, remove it, and start a fresh sidecar
+- Add `multicorpus status --db ...` for state discovery:
+  - `running`, `stale`, or `missing`
+- Add optional token mode for localhost write endpoints:
+  - `serve --token auto|off|<value>` (`auto` default)
+  - token is persisted in portfile when active
+  - require `X-Agrafes-Token` for `/import`, `/index`, `/shutdown`
+  - return `401` with `UNAUTHORIZED` on missing/invalid token
+
+**Consequences**
+- Sidecar lifecycle is deterministic and easier to integrate from Tauri.
+- Default persistent mode is safer on localhost without breaking compatibility:
+  `--token off` preserves previous open behavior.
+- Advanced auth (scoped tokens, rotation, ACL) remains explicit backlog.
+
+---
+
+## ADR-024 — Distribution pipeline with conditional signing/notarization
+
+**Date:** 2026-02-28
+**Status:** Accepted
+
+**Context**
+Desktop distribution needs OS-specific signing/notarization, but CI must remain
+usable without privileged credentials in forks and early setup stages.
+
+**Decision**
+- Add dedicated distribution scripts:
+  - macOS sidecar sign/notarize
+  - macOS representative Tauri app sign/notarize
+  - Windows sidecar signing
+  - Linux manylinux sidecar build
+- Add CI workflows for macOS, Windows, Linux distribution lanes.
+- Gate signing/notarization by presence of GitHub Secrets.
+- If secrets are missing:
+  - keep build green
+  - publish unsigned artifacts
+  - emit explicit warnings
+- Keep release workflow on `v*` tags with artifact aggregation and publication.
+
+**Consequences**
+- Distribution can start immediately, with incremental hardening as secrets are
+  provisioned.
+- Security-sensitive operations stay out of repository content.
+- CI behavior is deterministic across signed/unsigned modes.
+
+---
+
+## ADR-025 — Sidecar packaging format default (onefile vs onedir)
+
+**Date:** 2026-02-28
+**Status:** Pending
+
+**Context**
+`onefile` improves distribution simplicity but can increase cold-start. `onedir`
+can reduce launch overhead at the cost of larger artifact sets and packaging
+complexity.
+
+**Decision**
+- Extend build tooling to support both `--format onefile|onedir`.
+- Extend benchmark tooling to capture startup latency and size metrics for both.
+- Add CI matrix benchmark workflow (`.github/workflows/bench-sidecar.yml`) and
+  aggregation script (`scripts/aggregate_bench_results.py`) to produce
+  `docs/BENCHMARKS.md`.
+- Keep default build format as `onefile` for compatibility with existing CI and
+  Tauri fixture flow until multi-OS benchmark data is collected.
+- Revisit and finalize after benchmark results are gathered on macOS/Windows/Linux.
+
+**Consequences**
+- We can make a data-driven default-format decision instead of intuition.
+- Current integration remains stable while comparative evidence is collected.
+- Current benchmark summary is tracked in `docs/BENCHMARKS.md`.
+- As of 2026-02-28, dataset is still incomplete (missing Linux/Windows matrix
+  measurements), so ADR remains Pending per policy.

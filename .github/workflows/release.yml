@@ -1,0 +1,142 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos-windows:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+        format: [onefile, onedir]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install project with packaging extra
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[packaging]"
+
+      - name: Build sidecar
+        run: python scripts/build_sidecar.py --preset tauri --format "${{ matrix.format }}"
+
+      - name: Import macOS signing certificate (if configured)
+        if: ${{ matrix.os == 'macos-latest' && secrets.MACOS_CERT_P12_BASE64 != '' && secrets.MACOS_CERT_P12_PASSWORD != '' }}
+        env:
+          MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          MACOS_CERT_P12_PASSWORD: ${{ secrets.MACOS_CERT_P12_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/agrafes-signing.keychain-db"
+          security create-keychain -p "" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
+          python -c 'import base64,os;from pathlib import Path;Path(os.environ["RUNNER_TEMP"]).joinpath("signing_cert.p12").write_bytes(base64.b64decode(os.environ["MACOS_CERT_P12_BASE64"]))'
+          security import "$RUNNER_TEMP/signing_cert.p12" \
+            -k "$KEYCHAIN_PATH" \
+            -P "$MACOS_CERT_P12_PASSWORD" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" "$KEYCHAIN_PATH"
+
+      - name: Sign + notarize sidecar on macOS (if configured)
+        if: ${{ matrix.os == 'macos-latest' }}
+        env:
+          MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          APPLE_API_KEY_P8_B64: ${{ secrets.APPLE_API_KEY_P8_B64 }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          BIN_PATH="$(python -c 'import json;from pathlib import Path;print(json.loads(Path(\"tauri/src-tauri/binaries/sidecar-manifest.json\").read_text(encoding=\"utf-8\"))[\"executable_path\"])')"
+          bash scripts/macos_sign_and_notarize_sidecar.sh --binary "$BIN_PATH" --allow-unsigned
+
+      - name: Sign sidecar on Windows (if configured)
+        if: ${{ matrix.os == 'windows-latest' }}
+        shell: pwsh
+        env:
+          WIN_SIGN_CERT_PFX_BASE64: ${{ secrets.WIN_SIGN_CERT_PFX_BASE64 }}
+          WIN_SIGN_CERT_PASSWORD: ${{ secrets.WIN_SIGN_CERT_PASSWORD }}
+        run: |
+          $manifest = Get-Content "tauri/src-tauri/binaries/sidecar-manifest.json" | ConvertFrom-Json
+          ./scripts/windows_sign_sidecar.ps1 -FilePath $manifest.executable_path -SkipIfMissing
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.os }}-${{ matrix.format }}
+          path: |
+            tauri/src-tauri/binaries/multicorpus-*
+            tauri/src-tauri/binaries/sidecar-manifest.json
+
+  build-linux-manylinux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        format: [onefile, onedir]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build sidecar in manylinux container
+        run: bash scripts/linux_manylinux_build_sidecar.sh --format "${{ matrix.format }}" --out tauri/src-tauri/binaries
+
+      - name: Verify executable starts (--help)
+        run: |
+          EXE_PATH="$(python -c 'import json;from pathlib import Path;print(json.loads(Path(\"tauri/src-tauri/binaries/sidecar-manifest.json\").read_text(encoding=\"utf-8\"))[\"executable_path\"])')"
+          chmod +x "$EXE_PATH"
+          "$EXE_PATH" --help >/dev/null
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-linux-manylinux-${{ matrix.format }}
+          path: |
+            tauri/src-tauri/binaries/multicorpus-*
+            tauri/src-tauri/binaries/sidecar-manifest.json
+
+  publish-release:
+    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    needs:
+      - build-macos-windows
+      - build-linux-manylinux
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release-artifacts/**/*
+          body_path: CHANGELOG.md
+          fail_on_unmatched_files: false

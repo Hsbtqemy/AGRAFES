@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "multicorpus-engine"
-version = "0.6.0"
+version = "0.6.1"
 description = "UI-independent Python core engine for multilingual corpus import/index/query (Tauri-ready)"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -21,6 +21,9 @@ txt = [
 dev = [
     "pytest>=7.4",
     "pytest-cov>=4.1",
+]
+packaging = [
+    "pyinstaller>=6.0",
 ]
 
 [project.scripts]

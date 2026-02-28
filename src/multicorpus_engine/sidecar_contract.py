@@ -12,19 +12,22 @@ from __future__ import annotations
 from typing import Any
 
 
-API_VERSION = "1.0.0"
+API_VERSION = "1.1.0"
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
 ERR_NOT_FOUND = "NOT_FOUND"
 ERR_VALIDATION = "VALIDATION_ERROR"
+ERR_UNAUTHORIZED = "UNAUTHORIZED"
 ERR_INTERNAL = "INTERNAL_ERROR"
 
 
 def success_payload(data: dict[str, Any] | None = None, *, status: str = "ok") -> dict[str, Any]:
     """Build a successful sidecar response payload."""
     payload: dict[str, Any] = {
+        "ok": True,
         "api_version": API_VERSION,
+        "version": API_VERSION,
         "status": status,
     }
     if data:
@@ -39,10 +42,20 @@ def error_payload(
     details: Any | None = None,
 ) -> dict[str, Any]:
     """Build a standardized sidecar error payload."""
+    err_obj: dict[str, Any] = {
+        "type": code,
+        "message": message,
+    }
+    if details is not None:
+        err_obj["details"] = details
+
     payload: dict[str, Any] = {
+        "ok": False,
         "api_version": API_VERSION,
+        "version": API_VERSION,
         "status": "error",
-        "error": message,
+        "error": err_obj,
+        "error_message": message,
         "error_code": code,
     }
     if details is not None:
@@ -57,7 +70,7 @@ def openapi_spec() -> dict[str, Any]:
         "info": {
             "title": "multicorpus_engine sidecar API",
             "version": API_VERSION,
-            "description": "Localhost HTTP API for corpus query/index/curation/validation/segmentation.",
+            "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
         },
         "servers": [{"url": "http://127.0.0.1:8765"}],
         "paths": {
@@ -139,6 +152,61 @@ def openapi_spec() -> dict[str, Any]:
                             "content": {
                                 "application/json": {
                                     "schema": {"$ref": "#/components/schemas/IndexResponse"},
+                                }
+                            },
+                        },
+                        "401": {
+                            "description": "Unauthorized (missing/invalid token)",
+                            "content": {
+                                "application/json": {
+                                    "schema": {"$ref": "#/components/schemas/ErrorResponse"},
+                                }
+                            },
+                        },
+                        "500": {
+                            "description": "Internal error",
+                            "content": {
+                                "application/json": {
+                                    "schema": {"$ref": "#/components/schemas/ErrorResponse"},
+                                }
+                            },
+                        },
+                    },
+                }
+            },
+            "/import": {
+                "post": {
+                    "summary": "Import a document into corpus DB",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/ImportRequest"},
+                            }
+                        },
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Import result",
+                            "content": {
+                                "application/json": {
+                                    "schema": {"$ref": "#/components/schemas/ImportResponse"},
+                                }
+                            },
+                        },
+                        "400": {
+                            "description": "Bad request",
+                            "content": {
+                                "application/json": {
+                                    "schema": {"$ref": "#/components/schemas/ErrorResponse"},
+                                }
+                            },
+                        },
+                        "401": {
+                            "description": "Unauthorized (missing/invalid token)",
+                            "content": {
+                                "application/json": {
+                                    "schema": {"$ref": "#/components/schemas/ErrorResponse"},
                                 }
                             },
                         },
@@ -262,6 +330,37 @@ def openapi_spec() -> dict[str, Any]:
                     },
                 }
             },
+            "/shutdown": {
+                "post": {
+                    "summary": "Gracefully stop sidecar process",
+                    "responses": {
+                        "200": {
+                            "description": "Shutdown accepted",
+                            "content": {
+                                "application/json": {
+                                    "schema": {"$ref": "#/components/schemas/ShutdownResponse"},
+                                }
+                            },
+                        },
+                        "401": {
+                            "description": "Unauthorized (missing/invalid token)",
+                            "content": {
+                                "application/json": {
+                                    "schema": {"$ref": "#/components/schemas/ErrorResponse"},
+                                }
+                            },
+                        },
+                        "500": {
+                            "description": "Internal error",
+                            "content": {
+                                "application/json": {
+                                    "schema": {"$ref": "#/components/schemas/ErrorResponse"},
+                                }
+                            },
+                        },
+                    },
+                }
+            },
             "/jobs": {
                 "get": {
                     "summary": "List async jobs",
@@ -342,9 +441,11 @@ def openapi_spec() -> dict[str, Any]:
             "schemas": {
                 "BaseResponse": {
                     "type": "object",
-                    "required": ["api_version", "status"],
+                    "required": ["ok", "api_version", "version", "status"],
                     "properties": {
+                        "ok": {"type": "boolean"},
                         "api_version": {"type": "string"},
+                        "version": {"type": "string"},
                         "status": {"type": "string"},
                     },
                     "additionalProperties": True,
@@ -356,7 +457,16 @@ def openapi_spec() -> dict[str, Any]:
                             "type": "object",
                             "required": ["error", "error_code"],
                             "properties": {
-                                "error": {"type": "string"},
+                                "error": {
+                                    "type": "object",
+                                    "required": ["type", "message"],
+                                    "properties": {
+                                        "type": {"type": "string"},
+                                        "message": {"type": "string"},
+                                        "details": {},
+                                    },
+                                },
+                                "error_message": {"type": "string"},
                                 "error_code": {"type": "string"},
                                 "error_details": {},
                             },
@@ -366,6 +476,17 @@ def openapi_spec() -> dict[str, Any]:
                 "HealthResponse": {
                     "allOf": [
                         {"$ref": "#/components/schemas/BaseResponse"},
+                        {
+                            "type": "object",
+                            "required": ["version", "pid", "started_at"],
+                            "properties": {
+                                "pid": {"type": "integer"},
+                                "started_at": {"type": "string"},
+                                "host": {"type": "string"},
+                                "port": {"type": "integer"},
+                                "portfile": {"type": "string"},
+                            },
+                        },
                     ]
                 },
                 "QueryRequest": {
@@ -389,8 +510,9 @@ def openapi_spec() -> dict[str, Any]:
                         {"$ref": "#/components/schemas/BaseResponse"},
                         {
                             "type": "object",
-                            "required": ["count", "hits"],
+                            "required": ["run_id", "count", "hits"],
                             "properties": {
+                                "run_id": {"type": "string"},
                                 "count": {"type": "integer"},
                                 "hits": {"type": "array", "items": {"type": "object"}},
                             },
@@ -402,8 +524,42 @@ def openapi_spec() -> dict[str, Any]:
                         {"$ref": "#/components/schemas/BaseResponse"},
                         {
                             "type": "object",
-                            "required": ["units_indexed"],
-                            "properties": {"units_indexed": {"type": "integer"}},
+                            "required": ["run_id", "units_indexed"],
+                            "properties": {
+                                "run_id": {"type": "string"},
+                                "units_indexed": {"type": "integer"},
+                            },
+                        },
+                    ]
+                },
+                "ImportRequest": {
+                    "type": "object",
+                    "required": ["mode", "path"],
+                    "properties": {
+                        "mode": {
+                            "type": "string",
+                            "enum": ["docx_numbered_lines", "txt_numbered_lines", "docx_paragraphs", "tei"],
+                        },
+                        "path": {"type": "string"},
+                        "language": {"type": "string"},
+                        "title": {"type": "string"},
+                        "doc_role": {"type": "string"},
+                        "resource_type": {"type": "string"},
+                        "tei_unit": {"type": "string", "enum": ["p", "s"]},
+                    },
+                    "additionalProperties": False,
+                },
+                "ImportResponse": {
+                    "allOf": [
+                        {"$ref": "#/components/schemas/BaseResponse"},
+                        {
+                            "type": "object",
+                            "required": ["run_id", "mode", "doc_id"],
+                            "properties": {
+                                "run_id": {"type": "string"},
+                                "mode": {"type": "string"},
+                                "doc_id": {"type": "integer"},
+                            },
                         },
                     ]
                 },
@@ -470,6 +626,19 @@ def openapi_spec() -> dict[str, Any]:
                                 "units_input": {"type": "integer"},
                                 "units_output": {"type": "integer"},
                                 "warnings": {"type": "array", "items": {"type": "string"}},
+                            },
+                        },
+                    ]
+                },
+                "ShutdownResponse": {
+                    "allOf": [
+                        {"$ref": "#/components/schemas/BaseResponse"},
+                        {
+                            "type": "object",
+                            "required": ["shutting_down"],
+                            "properties": {
+                                "shutting_down": {"type": "boolean"},
+                                "message": {"type": "string"},
                             },
                         },
                     ]

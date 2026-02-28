@@ -30,7 +30,7 @@ def _http_json(method: str, url: str, payload: dict | None = None) -> tuple[int,
 def _wait_health(base_url: str, tries: int = 50) -> None:
     for _ in range(tries):
         code, payload = _http_json("GET", f"{base_url}/health")
-        if code == 200 and payload.get("status") == "ok":
+        if code == 200 and payload.get("status") == "ok" and payload.get("ok") is True:
             return
         time.sleep(0.05)
     raise RuntimeError("Sidecar not ready")
@@ -83,6 +83,7 @@ def test_submit_index_job_and_poll_done(sidecar_job_env: dict) -> None:
         {"kind": "index", "params": {}},
     )
     assert code == 202
+    assert payload["ok"] is True
     assert payload["status"] == "accepted"
     job_id = payload["job"]["job_id"]
 
@@ -114,6 +115,7 @@ def test_submit_unsupported_job_kind_is_validation_error(sidecar_job_env: dict) 
         {"kind": "import", "params": {}},
     )
     assert code == 400
+    assert payload["ok"] is False
     assert payload["status"] == "error"
     assert payload["error_code"] == "VALIDATION_ERROR"
 
@@ -125,6 +127,7 @@ def test_segment_job_requires_doc_id_at_submit(sidecar_job_env: dict) -> None:
         {"kind": "segment", "params": {}},
     )
     assert code == 400
+    assert payload["ok"] is False
     assert payload["status"] == "error"
     assert payload["error_code"] == "VALIDATION_ERROR"
 
@@ -136,6 +139,7 @@ def test_segment_job_runs_and_returns_report(sidecar_job_env: dict) -> None:
         {"kind": "segment", "params": {"doc_id": sidecar_job_env["doc_id"], "lang": "fr"}},
     )
     assert code == 202
+    assert payload["ok"] is True
     job_id = payload["job"]["job_id"]
 
     job = _wait_job_done(sidecar_job_env["base_url"], job_id)
@@ -150,6 +154,6 @@ def test_unknown_job_id_returns_not_found(sidecar_job_env: dict) -> None:
         f"{sidecar_job_env['base_url']}/jobs/00000000-0000-0000-0000-000000000000",
     )
     assert code == 404
+    assert payload["ok"] is False
     assert payload["status"] == "error"
     assert payload["error_code"] == "NOT_FOUND"
-

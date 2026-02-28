@@ -8,6 +8,8 @@ __pycache__/
 .eggs/
 dist/
 build/
+*.spec
+build/sidecar_pyinstaller/
 
 # pytest
 .pytest_cache/
@@ -31,3 +33,12 @@ Thumbs.db
 
 # Project DBs (optional: uncomment if you don't want to track test DBs)
 # *.db
+
+# Sidecar generated binaries/manifests
+tauri/src-tauri/binaries/multicorpus-*
+tauri/src-tauri/binaries/sidecar-manifest.json
+tauri-fixture/src-tauri/binaries/multicorpus-*
+tauri-fixture/src-tauri/binaries/sidecar-manifest.json
+
+# Local benchmark outputs
+bench/results/

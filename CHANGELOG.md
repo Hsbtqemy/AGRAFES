@@ -5,6 +5,122 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased] — 2026-02-28 — Sidecar hardening (packaging + persistent UX)
+
+### Added
+
+- Stable packaging entrypoint for sidecar builds:
+  - `scripts/sidecar_entry.py`
+- PyInstaller-based sidecar builder:
+  - `scripts/build_sidecar.py`
+  - target triple detection via `rustc --print host-tuple` with OS/arch fallback map
+  - output naming: `multicorpus-<target_triple>[.exe]`
+  - manifest output: `tauri/src-tauri/binaries/sidecar-manifest.json`
+- Tauri wrapper scaffold (no UI implementation):
+  - `tauri/README.md`
+  - `tauri/src-tauri/binaries/.gitkeep`
+- CI matrix for sidecar artifacts:
+  - `.github/workflows/build-sidecar.yml` (macOS, Linux, Windows)
+- Tauri integration fixture scaffold (no UI):
+  - `tauri-fixture/` (Tauri v2 structure + sidecar config/capabilities snippets)
+  - `tauri-fixture/scripts/fixture_smoke.mjs` (headless sidecar JSON contract smoke)
+  - `tauri-fixture/src/sidecar_runner.ts` (plugin-shell sidecar call example)
+- Cross-platform fixture workflow:
+  - `.github/workflows/tauri-e2e-fixture.yml`
+- Sidecar hardening benchmark hook:
+  - `scripts/bench_sidecar_startup.py` (startup latency + binary size)
+- Persistent sidecar HTTP flow:
+  - `/health`, `/import`, `/index`, `/query`, `/shutdown`
+  - sidecar discovery file `.agrafes_sidecar.json`
+  - fixture persistent scenario in `tauri-fixture/scripts/fixture_smoke.mjs`
+  - new tests: `tests/test_sidecar_persistent.py`
+- Sidecar hardening (restart + auth):
+  - `multicorpus status --db ...` command
+  - optional token mode for `serve`: `--token auto|off|<value>`
+  - new tests: `tests/test_sidecar_token_optional.py`
+- Distribution tooling:
+  - `scripts/macos_sign_and_notarize_sidecar.sh`
+  - `scripts/macos_sign_and_notarize_tauri_fixture.sh`
+  - `scripts/windows_sign_sidecar.ps1`
+  - `scripts/linux_manylinux_build_sidecar.sh`
+  - `docker/manylinux/Dockerfile`
+  - `docs/DISTRIBUTION.md`
+- New CI workflows:
+  - `.github/workflows/macos-sign-notarize.yml`
+  - `.github/workflows/windows-sign.yml`
+  - `.github/workflows/linux-manylinux-sidecar.yml`
+  - `.github/workflows/release.yml`
+  - `.github/workflows/bench-sidecar.yml`
+- Benchmark aggregation tooling:
+  - `scripts/aggregate_bench_results.py`
+  - `docs/BENCHMARKS.md`
+
+### Changed
+
+- Added optional packaging dependency group:
+  - `pyproject.toml` -> `[project.optional-dependencies].packaging = ["pyinstaller>=6.0"]`
+- Integration and planning docs updated for sidecar packaging flow and remaining release-hardening tasks.
+- Tauri integration docs now include copy/paste snippets for:
+  - `bundle.externalBin`
+  - plugin-shell sidecar execution
+  - naming convention `multicorpus-<target_triple>[.exe]`
+- Onefile packaging now embeds `migrations/` data and runtime migration lookup
+  supports PyInstaller bundle mode (`sys._MEIPASS`) for functional `init-project`
+  execution in packaged sidecar E2E.
+- Sidecar API envelope now exposes `ok` and structured error object; contract
+  version bumped to `1.1.0`.
+- Benchmark script extended with persistent metrics:
+  - time-to-ready (`serve` -> `/health`)
+  - repeated `/query` latency
+- `serve` startup now enforces stale-portfile recovery policy:
+  - returns `status="already_running"` when existing PID + `/health` is valid
+  - removes stale `.agrafes_sidecar.json` before starting a new process
+- Token-protected write endpoints when token is active:
+  - `/import`, `/index`, `/shutdown` require `X-Agrafes-Token`
+  - unauthorized responses use HTTP `401` + `UNAUTHORIZED`
+- Tauri fixture smoke now reads sidecar token from portfile and sends auth header for write endpoints.
+- Sidecar builder now supports output presets:
+  - `python scripts/build_sidecar.py --preset tauri|fixture`
+- Path/docs cleanup:
+  - canonical binaries path clarified as `tauri/src-tauri/binaries/`
+  - fixture path clarified as `tauri-fixture/src-tauri/binaries/`
+- Sidecar builder now supports:
+  - `--format onefile|onedir`
+  - enriched manifest fields (`format`, `artifact_path`, `executable_path`, sizes)
+- Bench script now supports:
+  - onefile/onedir comparative runs
+  - token-aware persistent benchmark flow
+  - per-target output naming under `bench/results/<date>_<os>_<arch>_<format>.json`
+  - version/target metadata in per-target JSON payload
+- Added initial benchmark artifact:
+  - `bench/results/20260228_compare_darwin.json`
+  - `bench/results/20260228_macos_aarch64_onefile.json`
+  - `bench/results/20260228_macos_aarch64_onedir.json`
+- Added benchmark summary page:
+  - `docs/BENCHMARKS.md` (current status: insufficient multi-OS data, ADR-025 pending)
+
+## [0.6.1] — 2026-02-28 — Stabilisation (contrat CLI + cohérence docs)
+
+### Changed
+
+- CLI contract hardened for parser failures (`argparse`):
+  - invalid/missing args and unknown subcommands now return one JSON error object on stdout
+  - exit code normalized to `1` (no `argparse` exit code `2` leak)
+  - error payloads now include `created_at` by default
+- Added subprocess contract regression tests:
+  - `tests/test_cli_contract.py` (success smoke flow + parse-failure envelope)
+- Documentation synchronized with implemented behavior:
+  - `docs/ROADMAP.md` (real state + priorities)
+  - `docs/BACKLOG.md` (reprioritized open items; CLI hardening moved to stable)
+  - `docs/DECISIONS.md` (ADR-019 clarified for `argparse` failures)
+  - `docs/INTEGRATION_TAURI.md` (explicit parser-failure contract)
+  - `docs/SIDECAR_API_CONTRACT.md` (implementation status clarified)
+
+### Tests
+
+- Full test suite remains green after stabilization updates.
+- CLI smoke flow validated on temporary DB with generated DOCX fixture.
+
 ## [0.6.0] — 2026-02-28 — Stabilisation & cohérence post-implémentation
 
 ### Added
