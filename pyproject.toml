@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "multicorpus-engine"
+version = "0.6.0"
+description = "UI-independent Python core engine for multilingual corpus import/index/query (Tauri-ready)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+keywords = ["corpus", "concordancer", "kwic", "nlp", "linguistics"]
+dependencies = [
+    "python-docx>=1.1.0",
+]
+
+[project.optional-dependencies]
+txt = [
+    "charset-normalizer>=3.0",  # optional: better TXT encoding detection (ADR-011)
+]
+dev = [
+    "pytest>=7.4",
+    "pytest-cov>=4.1",
+]
+
+[project.scripts]
+multicorpus = "multicorpus_engine.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-dir]
+"" = "src"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v"
