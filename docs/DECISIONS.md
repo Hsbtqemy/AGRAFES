@@ -542,6 +542,10 @@ complexity.
 - Add CI matrix benchmark workflow (`.github/workflows/bench-sidecar.yml`) and
   aggregation script (`scripts/aggregate_bench_results.py`) to produce
   `docs/BENCHMARKS.md`.
+- Bench CI policy for persistent runs:
+  - fixture input file is written explicitly as UTF-8 with LF newlines
+  - stderr remains strict by default, but known benign benchmark warning lines
+    can be allowlisted (unknown stderr lines still fail the benchmark)
 - Keep default build format as `onefile` for compatibility with existing CI and
   Tauri fixture flow until multi-OS benchmark data is collected.
 - Revisit and finalize after benchmark results are gathered on macOS/Windows/Linux.

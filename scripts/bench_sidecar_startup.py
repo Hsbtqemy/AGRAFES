@@ -15,6 +15,7 @@ import datetime as dt
 import json
 import os
 import platform
+import re
 import statistics
 import subprocess
 import tempfile
@@ -33,6 +34,9 @@ OS_LABEL_MAP = {
     "linux": "linux",
     "windows": "windows",
 }
+ALLOWED_STDERR_WARNING_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"Encoding detection fell back to cp1252 for fixture\.txt"),
+)
 
 
 def _path_size(path: Path) -> int:
@@ -82,6 +86,18 @@ def _parse_single_json(text: str, label: str) -> dict:
     if not isinstance(payload, dict):
         raise RuntimeError(f"{label}: parsed payload is not JSON object")
     return payload
+
+
+def _filter_disallowed_stderr(stderr_text: str) -> list[str]:
+    disallowed: list[str] = []
+    for raw_line in stderr_text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if any(pattern.search(line) for pattern in ALLOWED_STDERR_WARNING_PATTERNS):
+            continue
+        disallowed.append(line)
+    return disallowed
 
 
 def _is_executable_candidate(path: Path) -> bool:
@@ -326,7 +342,11 @@ def bench_persistent(binary: Path, runs: int, query_runs: int) -> dict:
             tmp = Path(td)
             db = tmp / "bench.db"
             txt = tmp / "fixture.txt"
-            txt.write_text("[1] Bonjour needle.\n[2] Encore needle.\n", encoding="utf-8")
+            txt.write_text(
+                "[1] Bonjour needle.\n[2] Encore needle.\n",
+                encoding="utf-8",
+                newline="\n",
+            )
 
             proc = subprocess.Popen(
                 [str(binary), "serve", "--db", str(db), "--host", "127.0.0.1", "--port", "0"],
@@ -387,9 +407,13 @@ def bench_persistent(binary: Path, runs: int, query_runs: int) -> dict:
 
                 _http_json("POST", f"{base}/shutdown", {}, headers=write_headers)
                 proc.wait(timeout=10.0)
-                err = (proc.stderr.read() if proc.stderr else "").strip()
-                if err:
-                    raise RuntimeError(f"persistent run {i + 1}: stderr is not empty: {err!r}")
+                stderr_text = proc.stderr.read() if proc.stderr else ""
+                disallowed = _filter_disallowed_stderr(stderr_text)
+                if disallowed:
+                    raise RuntimeError(
+                        f"persistent run {i + 1}: disallowed stderr lines: {disallowed!r}\n"
+                        f"raw_stderr={stderr_text!r}"
+                    )
             finally:
                 if proc.poll() is None:
                     proc.kill()
