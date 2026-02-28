@@ -119,6 +119,13 @@ sur macOS, `%APPDATA%\com.agrafes.concordancier\corpus.db` sur Windows).
 | **Ouvrir DB** | Changer de corpus via file dialog |
 | **Indicateur statut** | starting / ready / error avec message |
 
+## Utiliser une DB préparée (tauri-prep)
+
+1. Dans `tauri-prep`, finaliser les étapes import/index/align.
+2. Copier le chemin de la DB depuis l’écran **Projet**.
+3. Dans `tauri-app`, cliquer **Open DB…** et ouvrir cette même DB.
+4. Si nécessaire, relancer un index puis activer la vue Alignés.
+
 ---
 
 ## 5 — Build de production
