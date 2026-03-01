@@ -5,6 +5,69 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased — V4.4] — 2026-03-01 — Sprint 3.3: Release hardening (no-secrets CI)
+
+### Added
+
+- `.github/workflows/ci.yml`: main CI workflow (push + PR to main); 3 jobs:
+  - `test`: pytest -q + openapi contract freeze diff check + snapshot consistency validation
+  - `build-ts`: npm ci + build tauri-prep + tauri-app + JS unit tests (node)
+  - `build-sidecar-check`: Linux binary build + --help + manifest JSON verification
+- `docs/RELEASE_CHECKLIST.md`: release runbook — pre-release checks, binary validation,
+  signing procedures (macOS/Windows/Linux), release gate, TODO secrets section
+- `docs/DISTRIBUTION.md`: Linux glibc floor table (manylinux2014=glibc≥2.17, manylinux_2_28=future)
+
+### Changed
+
+- `docs/BACKLOG.md`: Linux portability baseline → done (Sprint 3.3); CI cache → deferred
+
+---
+
+## [Unreleased — V4.3] — 2026-03-01 — Sprint 2.4: Concordancier virtualised hits list
+
+### Added
+
+- `tauri-app/src/app.ts`: two-layer virtual list for hits:
+  - CSS layer: `content-visibility: auto; contain-intrinsic-size: auto 160px;` on `.result-card`
+    (browser-native virtualization; skips layout/paint for off-screen cards)
+  - JS DOM cap: `VIRT_DOM_CAP = 150`; `renderResults()` keeps at most 150 cards in DOM;
+    `.virt-top-info` banner when older hits are omitted
+- `.virt-top-info` CSS class for the "▲ N résultats précédents non affichés" banner
+
+### Changed
+
+- `state.hits` retains full accumulated list; IntersectionObserver + "Charger plus" unchanged
+- `tauri-app` bundle: 42.79 kB → 43.44 kB
+
+---
+
+## [Unreleased — V4.2] — 2026-03-01 — Sprint 1.5: Collision resolver (api+ui)
+
+### Added
+
+- **Sidecar** `POST /align/collisions` (read-only, no token):
+  - Input: `{pivot_doc_id, target_doc_id, limit?, offset?}`
+  - Output: `{total_collisions, collisions: [CollisionGroup], has_more, next_offset}`
+  - CollisionGroup: `{pivot_unit_id, pivot_external_id, pivot_text, links: [CollisionLink]}`
+- **Sidecar** `POST /align/collisions/resolve` (write, token required):
+  - Input: `{actions: [{action: "keep"|"delete"|"reject"|"unreviewed", link_id}]}`
+  - "keep" → accepted, "reject" → rejected, "unreviewed" → NULL, "delete" → DELETE row
+  - Output: `{applied, deleted, errors}`; partial failures tolerated
+- `sidecar_contract.py`: `CONTRACT_VERSION = "1.3.0"`, `API_VERSION = "1.3.0"`
+  New schemas: AlignCollisionsRequest, CollisionLink, CollisionGroup, CollisionResolveAction, CollisionResolveRequest
+- `tests/test_sidecar_v15.py`: 19 new contract tests (auth, validation, response shape, resolve actions)
+- `tests/snapshots/openapi_paths.json`: 2 new entries (34 total)
+- `docs/SIDECAR_API_CONTRACT.md`: both endpoints listed and documented with examples
+- `tauri-prep/src/lib/sidecarClient.ts`: CollisionGroup/Link/ResolveAction interfaces + listCollisions() + resolveCollisions()
+- `tauri-prep/src/screens/ActionsScreen.ts` V1.5: "Collisions d'alignement" card —
+  collision table per group, per-link ✓ Garder / ❌ Rejeter / 🗑 / "Tout supprimer" batch; toast + auto-refresh
+
+### Changed
+
+- Test count: 248 → 267
+
+---
+
 ## [Unreleased — V4.1] — 2026-03-01 — Concordancier V1.0 Sprint 2.1: IntersectionObserver auto-scroll
 
 ### Added

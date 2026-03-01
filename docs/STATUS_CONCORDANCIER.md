@@ -1,6 +1,6 @@
 # Status — Concordancier (tauri-app) V0 → V1
 
-**Last updated:** 2026-03-01 (V1.0: virtualisation auto-scroll Sprint 2.1)
+**Last updated:** 2026-03-01 (V1.1: query builder guards + parallel KWIC + virtualised hits)
 
 ---
 
@@ -33,16 +33,34 @@
 - [x] "Charger plus" button retained as manual fallback
 - [x] Sentinel hidden when no more pages (prevents spurious triggers)
 
+### V1.1 — Query builder + Parallel KWIC (Sprints 2.2/2.3)
+
+- [x] Filter drawer: language/doc_role/resource_type dropdowns from `GET /documents`
+- [x] Query builder: "✏ Requête" button → modes simple/phrase/and/or/near; `buildFtsQuery(raw)` → FTS5
+- [x] Safety guards: `isSimpleInput(raw)` bypasses transformation if AND/OR/NOT/NEAR/" detected
+  NEAR guard: requires ≥2 tokens; phrase: escapes internal `"` → `'`; `#builder-warn` div (4s)
+- [x] JS tests: `tauri-app/scripts/test_buildFtsQuery.mjs` (26 tests, node-only)
+- [x] Parallel KWIC: "Parallèle" toggle (visible only when Alignés=ON)
+  `renderParallelHit()`: 2-column grid (pivot left, aligned right); collapse >5 → "Voir plus"
+
+### V2.4 — Virtualised Hits List (Sprint 2.4)
+
+- [x] CSS layer: `content-visibility: auto; contain-intrinsic-size: auto 160px;` on `.result-card`
+  Browser-native virtualization: skips layout/paint for off-screen cards, zero JS cost
+- [x] JS DOM cap: `VIRT_DOM_CAP = 150` — `renderResults()` keeps at most 150 cards in DOM
+  When `hits.length > cap`, a `.virt-top-info` banner shows "▲ N résultats précédents non affichés"
+  `state.hits` retains full list; IntersectionObserver + "Charger plus" unchanged
+
 ## Confirmed green
 
-- [x] npm build: green (tauri-app bundle ~34 kB)
+- [x] npm build: green (tauri-app bundle ~43 kB)
+- [x] JS unit tests: 26/26 passing (`node tauri-app/scripts/test_buildFtsQuery.mjs`)
 
 ## Next tasks (V1.x)
 
-1. Metadata panel (doc-level info: title, language, role, resource_type, unit count)
-2. Advanced search UI (phrase, AND/OR, NEAR, wildcard)
-3. Parallel KWIC "clean" (stack pivot + aligned in KWIC mode)
-4. Corpus demo dataset (bundled fixture for first-run onboarding)
+1. Concordancier V1: metadata panel (doc title/lang/role/resource_type/units side panel)
+2. Concordancier V1: demo corpus (bundled small multilingual corpus on first run)
+3. Concordancier V1: accessible keyboard navigation + ARIA labels
 
 ---
 

@@ -131,17 +131,35 @@
 - [x] `tauri-prep/src/screens/ActionsScreen.ts` — "Qualité alignement" card: pivot/cible selects + stats grid + orphan samples collapse + log line
 - [x] `tauri-prep/src/app.ts` — `.quality-stats-grid` + `.quality-stat` + `.quality-value` CSS
 
+### V1.2–V1.4 (Sprints 1.2/1.3/1.4 — completed in previous session)
+
+- [x] V1.2: `/align/audit` include_explain + status enum + text badges
+- [x] V1.3: `/align/links/batch_update` + batch bar in ActionsScreen
+- [x] V1.4: `/align/retarget_candidates` + Retarget modal in ActionsScreen
+
+### V1.5 (Sprint 1.5 — Collision Resolver)
+
+- [x] `POST /align/collisions` (read, no token): paginated collision groups
+  `{total_collisions, collisions: [CollisionGroup], has_more, next_offset}`
+- [x] `POST /align/collisions/resolve` (write, token): batch keep/delete/reject/unreviewed
+  partial failures tolerated; `{applied, deleted, errors}`
+- [x] `CONTRACT_VERSION = "1.3.0"`, `API_VERSION = "1.3.0"`
+- [x] 19 new tests in `tests/test_sidecar_v15.py`
+- [x] `sidecarClient.ts`: CollisionGroup/Link/ResolveAction interfaces + listCollisions() + resolveCollisions()
+- [x] `ActionsScreen.ts` V1.5: "Collisions d'alignement" card — collision table per group,
+  per-link ✓ Garder / ❌ Rejeter / 🗑 / "Tout supprimer" batch; toast + auto-refresh
+
 ## Confirmed green
 
-- [x] pytest: **217 tests passing**, 0 failures
-- [x] npm build: green (tauri-prep bundle ~99 kB, tauri-app ~34 kB)
+- [x] pytest: **267 tests passing**, 0 failures
+- [x] npm build: green (tauri-prep bundle ~113 kB, tauri-app ~43 kB)
 
 ## Next tasks (V1.x)
 
-1. Sprint 1.2 — Align explainability feature trace in audit table
-2. Sprint 1.3 — Batch correction in audit (multi-select accept/reject/delete)
-3. Sprint 2.2 — Advanced search UI (phrase, AND/OR, NEAR)
-4. Sprint 2.3 — Parallel KWIC clean (pivot + aligned stack)
+1. Prep V1: include_explain toggle in audit UI (backend ready at V1.2)
+2. Concordancier V1: metadata panel (doc title/lang/role/resource_type/units side panel)
+3. Concordancier V1: demo corpus (bundled small multilingual corpus on first run)
+4. Sidecar release hardening: notarization, Windows signing, production certs setup
 
 ---
 
@@ -160,3 +178,5 @@
 | After V0.9 (segmentation fixtures/bench + pack case-insensitivity) | +5 → 208 (confirmed) |
 | After V0.10 (align runs linkage + run export filter) | +0 → 208 (confirmed) |
 | After V1.1 (Sprint 1.1 — /align/quality + UI quality panel) | +9 → 217 (confirmed) |
+| After V1.2–V1.4 (explain, batch, retarget) | +31 → 248 (confirmed) |
+| After V1.5 (Sprint 1.5 — collision resolver) | +19 → 267 (confirmed) |

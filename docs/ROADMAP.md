@@ -1,6 +1,6 @@
 # Roadmap — multicorpus_engine
 
-Last updated: 2026-03-01 (V1.1 Sprint 1.1: align quality metrics + V1.0 Sprint 2.1: virtualisation)
+Last updated: 2026-03-01 (Sprints 1.5/2.4/3.3: collision resolver, virtual list, CI hardening)
 
 ## Current state (implemented)
 
@@ -62,21 +62,25 @@ Last updated: 2026-03-01 (V1.1 Sprint 1.1: align quality metrics + V1.0 Sprint 2
   - V0.8.1: align explainability UI polish — dedicated panel in Actions (sources, similarity stats, sample links) + "Copier diagnostic JSON".
   - V0.9: segmentation quality fixtures + benchmark harness (`bench/fixtures/segmentation_quality_cases.json`, `scripts/bench_segmentation_quality.py`, `docs/SEGMENTATION_BENCHMARKS.md`).
   - V0.10: align explainability linked to persisted runs (`run_id` on `/align` + align jobs), exportable via run report filter in `tauri-prep` Exports.
-  - **V1.1 (Sprint 1.1)**: `POST /align/quality` — alignment quality metrics endpoint (coverage%, orphans, collisions, status_counts, sample orphan units); quality panel in ActionsScreen (stats grid + orphan details). CONTRACT_VERSION=1.1.0. 9 new tests → 217 total.
-- **Concordancier V1.0 (Sprint 2.1)**: IntersectionObserver sentinel in results area — automatic load-more when scrolling near bottom; guards against duplicate fetches (`loadingMore`/`hasMore`). Manual "Charger plus" button retained as fallback.
+  - **V1.1 (Sprint 1.1)**: `POST /align/quality` — alignment quality metrics. CONTRACT_VERSION=1.1.0. 9 new tests → 217 total.
+  - **V1.2 (Sprint 1.2)**: `/align/audit` include_explain + status enum + text badges.
+  - **V1.3 (Sprint 1.3)**: `/align/links/batch_update` — multi-select accept/reject/delete in ActionsScreen.
+  - **V1.4 (Sprint 1.4)**: `/align/retarget_candidates` (read, no token) + retarget modal in ActionsScreen. CONTRACT_VERSION=1.2.0. 11 tests → 248 total.
+  - **V1.5 (Sprint 1.5)**: `/align/collisions` + `/align/collisions/resolve` — collision resolver. CONTRACT_VERSION=1.3.0. 19 tests → 267 total. ActionsScreen V1.5 collision card.
+- **Concordancier V1.0 (Sprint 2.1)**: IntersectionObserver sentinel — auto load-more on scroll.
+- **Concordancier V1.1 (Sprints 2.2/2.3)**: Query builder (phrase/and/or/near) + FTS safety guards + parallel KWIC 2-column layout.
+- **Concordancier V2.4 (Sprint 2.4)**: Virtualised hits list — CSS content-visibility + JS DOM cap (VIRT_DOM_CAP=150).
+- **Sprint 3.3**: CI workflow (`.github/workflows/ci.yml`) + RELEASE_CHECKLIST.md + glibc floor doc.
 - Keep CLI contract stable and test-gated (single stdout JSON object, success/error envelope).
 - Keep sidecar optional and non-blocking for CLI-first workflows.
 - Maintain deterministic, lightweight regression tests (no heavy corpus fixtures).
 
 ## Next
 
-- **Sprint 1.2**: Align explainability feature trace in audit table (`include_explain` flag + `POST /align/explain` or inline in audit).
-- **Sprint 1.3**: Batch correction in audit (multi-select accept/reject/delete + `POST /align/links/batch_update`).
-- **Sprint 2.2**: Advanced search UI (phrase, AND/OR, NEAR, wildcard filter by doc/lang/role).
-- **Sprint 2.3**: Parallel KWIC "clean" (pivot + aligned stack in KWIC mode, collapse by lang/doc).
-- Concordancier V1: corpus metadata panel, multi-doc import batch, document list view.
-- Sidecar release hardening: macOS notarization, Windows signing, provenance pipeline.
-- Linux compatibility baseline: glibc floor and packaging policy documentation.
+- Concordancier V1: corpus metadata panel (title/lang/role/resource_type/unit count side panel).
+- Concordancier V1: demo corpus (bundled small multilingual fixture for first-run onboarding).
+- Prep V1: include_explain toggle in audit UI (backend ready at V1.2).
+- Sidecar release hardening: macOS notarization, Windows signing with production certs.
 - Localhost security policy for sidecar HTTP (token rotation/scope/threat model).
 - Performance: FTS benchmarks and documented tuning profile (WAL, batch sizes, vacuum/analyze cadence).
 
