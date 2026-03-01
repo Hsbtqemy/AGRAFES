@@ -1,6 +1,6 @@
 # Roadmap — multicorpus_engine
 
-Last updated: 2026-03-01 (Sprints 1.5/2.4/3.3: collision resolver, virtual list, CI hardening)
+Last updated: 2026-03-01 (Shell App V0.2: DB badge + switch + persistence + deep-link + wrappers)
 
 ## Current state (implemented)
 
@@ -71,6 +71,12 @@ Last updated: 2026-03-01 (Sprints 1.5/2.4/3.3: collision resolver, virtual list,
 - **Concordancier V1.1 (Sprints 2.2/2.3)**: Query builder (phrase/and/or/near) + FTS safety guards + parallel KWIC 2-column layout.
 - **Concordancier V2.4 (Sprint 2.4)**: Virtualised hits list — CSS content-visibility + JS DOM cap (VIRT_DOM_CAP=150).
 - **Sprint 3.3**: CI workflow (`.github/workflows/ci.yml`) + RELEASE_CHECKLIST.md + glibc floor doc.
+- **Shell App V0 (tauri-shell/)**: unified Tauri 2.0 shell embedding both Prep + Concordancier;
+  state-based router (home/prep/concordancier), lazy dynamic imports, shared sidecar connection;
+  `build-shell` CI job; deprecation notices in standalone apps. Port 1422, id `com.agrafes.shell`.
+- **Shell App V0.2 (tauri-shell/)**: DB state unique (badge + switch + re-mount), persistance localStorage
+  (last_mode + last_db_path), deep-link boot (#hash / ?mode=), module wrappers mount/dispose
+  (`explorerModule.ts`, `constituerModule.ts`), `ShellContext` interface, toast notifications.
 - Keep CLI contract stable and test-gated (single stdout JSON object, success/error envelope).
 - Keep sidecar optional and non-blocking for CLI-first workflows.
 - Maintain deterministic, lightweight regression tests (no heavy corpus fixtures).

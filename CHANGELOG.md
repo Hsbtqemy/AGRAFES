@@ -5,6 +5,83 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased — V4.7] — 2026-03-01 — Shell App V0.2: DB badge + switch + persistence + deep-link + wrappers
+
+### Added
+
+- `tauri-shell/src/shell.ts` (V0.2):
+  - DB state unique: `_currentDbPath` as single source of truth; `_dbListeners` for change notifications
+  - Header DB zone (right side): `DB: <basename>` badge (monospace) + "Changer…" button
+  - "Changer…" → Tauri `dialog.open()` with SQLite filter (.db / .sqlite / .sqlite3)
+  - On DB change: updates badge, persists, notifies listeners, re-mounts active module, shows toast
+  - Persistence via `localStorage["agrafes.lastMode"]` + `localStorage["agrafes.lastDbPath"]`; restored at boot
+  - Deep-link boot: `location.hash` (#explorer/#constituer/#home) or `?mode=` query param overrides saved mode
+  - Animated toast notification: "DB active: \<basename\>" shown 3 s with fade-out
+  - Brand click (→ home) no longer resets DB path
+  - Module navigation delegates to wrappers (`explorerModule.mount/dispose`, `constituerModule.mount/dispose`)
+- `tauri-shell/src/context.ts` (new): `ShellContext` interface (`getDbPath`, `onDbChange`)
+- `tauri-shell/src/modules/explorerModule.ts` (new): mount/dispose wrapper for Concordancier
+  - Calls `setCurrentDbPath()` (tauri-app) before `initApp()` to inject shell-selected DB
+- `tauri-shell/src/modules/constituerModule.ts` (new): mount/dispose wrapper for Prep
+  - Calls `setCurrentDbPath()` (tauri-prep) before `new App().init()` to inject shell-selected DB
+
+### Changed
+
+- `tauri-prep/src/lib/db.ts`: `getOrCreateDefaultDbPath()` now checks `_currentDbPath` first (mirrors tauri-app behaviour) — backward-compatible; standalone Prep usage unaffected
+- `docs/STATUS_TAURI_SHELL.md`: updated to V0.2 with full architecture, deep-link docs, lifecycle detail, limitations
+
+---
+
+## [Unreleased — V4.6] — 2026-03-01 — Shell App V0.1: home + header tabs + accent + lifecycle
+
+### Added
+
+- `tauri-shell/src/shell.ts` (rewrite V0.1):
+  - Permanent fixed header (44px): brand "AGRAFES" (click → home) + two tabs "Explorer ⌘1" / "Constituer ⌘2"
+  - `Mode = "home" | "explorer" | "constituer"` state machine
+  - Accent system: `body[data-mode]` → `--accent` + `--accent-header-bg` CSS variables
+    - `explorer`: blue (#2c5f9e / #1e4a80 header)
+    - `constituer`: teal-green (#1a7f4e / #145a38 header)
+    - `home`: neutral dark header (#1a1a2e)
+  - Home cards: "🔍 Explorer AGRAFES" (bleu) + "📝 Constituer son corpus" (vert), hover accent border
+  - Keyboard shortcuts: Cmd/Ctrl+1 → Explorer, Cmd/Ctrl+2 → Constituer, Cmd/Ctrl+0 → Home
+  - Lifecycle cleanup:
+    - `_currentDispose` function called before every navigation
+    - `_freshContainer()` replaces `#app` with a clean `div#app` to break lingering DOM listeners
+    - Animated loading dots spinner during module import
+- `tauri-shell/index.html`: `#shell-header` fixed 44px + `#app { padding-top: 44px }`
+- `tauri-app/src/app.ts`: `export function disposeApp(): void` (disconnects `_scrollObserver`)
+- `tauri-prep/src/app.ts`: `App.dispose(): void` (calls `this._jobCenter.setConn(null)` → stops polling)
+
+### Changed
+
+- Shell nav button replaced by permanent header with two mode tabs
+- `docs/STATUS_TAURI_SHELL.md` updated with V0.1 architecture, lifecycle detail, child module changes
+
+---
+
+## [Unreleased — V4.5] — 2026-03-01 — Shell App V0: unified Tauri shell
+
+### Added
+
+- `tauri-shell/` — unified Tauri 2.0 app embedding both Prep and Concordancier:
+  - `index.html` + `src/main.ts` + `src/shell.ts`: state-based router (`home | prep | concordancier`)
+  - Shell nav bar (`#shell-nav`) with `← Accueil` button outside `#app` for cross-module navigation
+  - Home screen: two cards (📝 Préparer, 🔍 Explorer) with hover animation
+  - Dynamic `import()` on navigate — lazy module loading, no code loaded at startup
+  - Shared sidecar: both modules use same module-level `sidecarClient.ts` instance → single connection
+  - `src-tauri/`: Tauri v2 config (`com.agrafes.shell`, 1200×760, port 1422), sidecar build.rs
+  - Option A architecture: shell imports directly from `tauri-prep/src/` and `tauri-app/src/` — no duplication
+- `.github/workflows/ci.yml`: `build-shell` job — installs all three app deps, builds shell bundle
+- `docs/STATUS_TAURI_SHELL.md`: architecture doc, navigation flow, V0 limitations, roadmap
+
+### Changed
+
+- `tauri-app/src/main.ts`: deprecation notice pointing to `tauri-shell/`
+- `tauri-prep/src/main.ts`: deprecation notice pointing to `tauri-shell/`
+
+---
+
 ## [Unreleased — V4.4] — 2026-03-01 — Sprint 3.3: Release hardening (no-secrets CI)
 
 ### Added

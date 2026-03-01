@@ -8,6 +8,7 @@ import { mkdir, exists } from "@tauri-apps/plugin-fs";
 let _currentDbPath: string | null = null;
 
 export async function getOrCreateDefaultDbPath(): Promise<string> {
+  if (_currentDbPath) return _currentDbPath;
   const dataDir = await appDataDir();
   const dirExists = await exists(dataDir);
   if (!dirExists) {
