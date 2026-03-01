@@ -15,6 +15,7 @@ import type {
   AlignQualityResponse,
   RetargetCandidate,
   CollisionGroup,
+  ExportRunReportOptions,
 } from "../lib/sidecarClient.ts";
 import {
   listDocuments,
@@ -34,8 +35,10 @@ import {
   validateMeta,
   rebuildIndex,
   enqueueJob,
+  exportRunReport,
   SidecarError,
 } from "../lib/sidecarClient.ts";
+import { save as dialogSave } from "@tauri-apps/plugin-dialog";
 import type { JobCenter } from "../components/JobCenter.ts";
 
 // ─── Curation presets ─────────────────────────────────────────────────────────
@@ -79,6 +82,22 @@ interface AlignExplainabilityEntry {
   debug?: AlignDebugPayload;
 }
 
+// ─── Project Presets (shared type) ───────────────────────────────────────────
+
+export interface ProjectPreset {
+  id: string;
+  name: string;
+  description?: string;
+  languages: string[];
+  pivot_language?: string;
+  segmentation_lang?: string;
+  segmentation_pack?: string;
+  curation_preset?: string;
+  alignment_strategy?: string;
+  similarity_threshold?: number;
+  created_at: number;
+}
+
 // ─── ActionsScreen ────────────────────────────────────────────────────────────
 
 export class ActionsScreen {
@@ -94,6 +113,7 @@ export class ActionsScreen {
   private _auditLimit = 30;
   private _auditHasMore = false;
   private _auditLinks: AlignLinkRecord[] = [];
+  private _auditIncludeExplain = false;
   private _alignExplainability: AlignExplainabilityEntry[] = [];
   private _alignRunId: string | null = null;
 
@@ -103,6 +123,12 @@ export class ActionsScreen {
   private _collGroups: CollisionGroup[] = [];
   private _collHasMore = false;
   private _collTotalCount = 0;
+
+  // Workflow state
+  private _wfStep = 0;
+  private _wfRoot: HTMLElement | null = null;
+  private static readonly LS_WF_RUN_ID = "agrafes.prep.workflow.run_id";
+  private static readonly LS_WF_STEP = "agrafes.prep.workflow.step";
 
   // Log + busy
   private _logEl!: HTMLElement;
@@ -114,6 +140,91 @@ export class ActionsScreen {
 
     root.innerHTML = `
       <h2 class="screen-title">Actions corpus</h2>
+
+      <!-- ═══ WORKFLOW ALIGNEMENT GUIDÉ ═══ -->
+      <section class="card workflow-section" id="wf-section" style="border:2px solid var(--accent,#1a7f4e)">
+        <h3 style="margin-bottom:0.75rem">🔄 Workflow Alignement guidé
+          <span style="font-size:0.75rem;font-weight:400;color:#6c757d;margin-left:0.5rem">
+            Suivez les 5 étapes dans l'ordre
+          </span>
+        </h3>
+
+        <div id="wf-steps" style="display:flex;flex-direction:column;gap:0;border:1px solid #e9ecef;border-radius:6px;overflow:hidden">
+
+          <!-- Étape 1 : Alignement -->
+          <div class="wf-step" id="wf-step-0" style="border-bottom:1px solid #e9ecef">
+            <div class="wf-step-header" id="wf-hdr-0" style="display:flex;align-items:center;gap:10px;padding:10px 16px;cursor:pointer;background:#f8f9fa;transition:background 0.12s">
+              <span class="wf-num" id="wf-num-0" style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.85rem;font-weight:700;background:#e9ecef;color:#495057;flex-shrink:0">1</span>
+              <span style="font-weight:600;flex:1">Alignement</span>
+              <span class="wf-status" id="wf-st-0" style="font-size:0.78rem;color:#6c757d"></span>
+              <span class="wf-toggle" id="wf-tog-0" style="font-size:0.8rem;color:#6c757d">▼</span>
+            </div>
+            <div class="wf-body" id="wf-body-0" style="padding:12px 16px;border-top:1px solid #e9ecef;display:none">
+              <p style="font-size:0.84rem;color:#6c757d;margin:0 0 8px">Configurez et lancez un alignement ci-dessous. Le run_id sera mémorisé automatiquement.</p>
+              <div style="font-size:0.83rem;margin-bottom:8px">Dernier run : <code id="wf-run-id-display">(aucun)</code></div>
+              <button id="wf-goto-align" class="btn btn-primary" style="font-size:0.82rem">Aller à la section Alignement ↓</button>
+            </div>
+          </div>
+
+          <!-- Étape 2 : Qualité -->
+          <div class="wf-step" id="wf-step-1" style="border-bottom:1px solid #e9ecef">
+            <div class="wf-step-header" id="wf-hdr-1" style="display:flex;align-items:center;gap:10px;padding:10px 16px;cursor:pointer;background:#f8f9fa;transition:background 0.12s">
+              <span class="wf-num" id="wf-num-1" style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.85rem;font-weight:700;background:#e9ecef;color:#495057;flex-shrink:0">2</span>
+              <span style="font-weight:600;flex:1">Qualité</span>
+              <span class="wf-status" id="wf-st-1" style="font-size:0.78rem;color:#6c757d"></span>
+              <span class="wf-toggle" id="wf-tog-1" style="font-size:0.8rem;color:#6c757d">▼</span>
+            </div>
+            <div class="wf-body" id="wf-body-1" style="padding:12px 16px;border-top:1px solid #e9ecef;display:none">
+              <p style="font-size:0.84rem;color:#6c757d;margin:0 0 8px">Vérification de la couverture et des métriques qualité de l'alignement actif.</p>
+              <div id="wf-quality-result" style="margin-bottom:8px"></div>
+              <button id="wf-quality-btn" class="btn btn-secondary" disabled style="font-size:0.82rem">Lancer la vérification qualité</button>
+            </div>
+          </div>
+
+          <!-- Étape 3 : Collisions -->
+          <div class="wf-step" id="wf-step-2" style="border-bottom:1px solid #e9ecef">
+            <div class="wf-step-header" id="wf-hdr-2" style="display:flex;align-items:center;gap:10px;padding:10px 16px;cursor:pointer;background:#f8f9fa;transition:background 0.12s">
+              <span class="wf-num" id="wf-num-2" style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.85rem;font-weight:700;background:#e9ecef;color:#495057;flex-shrink:0">3</span>
+              <span style="font-weight:600;flex:1">Collisions</span>
+              <span class="wf-status" id="wf-st-2" style="font-size:0.78rem;color:#6c757d"></span>
+              <span class="wf-toggle" id="wf-tog-2" style="font-size:0.8rem;color:#6c757d">▼</span>
+            </div>
+            <div class="wf-body" id="wf-body-2" style="padding:12px 16px;border-top:1px solid #e9ecef;display:none">
+              <p style="font-size:0.84rem;color:#6c757d;margin:0 0 8px">Détecter et résoudre les unités assignées à plusieurs cibles.</p>
+              <button id="wf-coll-btn" class="btn btn-secondary" disabled style="font-size:0.82rem">Ouvrir la section Collisions ↓</button>
+            </div>
+          </div>
+
+          <!-- Étape 4 : Audit & Retarget -->
+          <div class="wf-step" id="wf-step-3" style="border-bottom:1px solid #e9ecef">
+            <div class="wf-step-header" id="wf-hdr-3" style="display:flex;align-items:center;gap:10px;padding:10px 16px;cursor:pointer;background:#f8f9fa;transition:background 0.12s">
+              <span class="wf-num" id="wf-num-3" style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.85rem;font-weight:700;background:#e9ecef;color:#495057;flex-shrink:0">4</span>
+              <span style="font-weight:600;flex:1">Audit &amp; Retarget</span>
+              <span class="wf-status" id="wf-st-3" style="font-size:0.78rem;color:#6c757d"></span>
+              <span class="wf-toggle" id="wf-tog-3" style="font-size:0.8rem;color:#6c757d">▼</span>
+            </div>
+            <div class="wf-body" id="wf-body-3" style="padding:12px 16px;border-top:1px solid #e9ecef;display:none">
+              <p style="font-size:0.84rem;color:#6c757d;margin:0 0 8px">Révision manuelle des liens, retarget des orphelins, include_explain toggle.</p>
+              <button id="wf-audit-btn" class="btn btn-secondary" disabled style="font-size:0.82rem">Ouvrir la section Audit ↓</button>
+            </div>
+          </div>
+
+          <!-- Étape 5 : Rapport -->
+          <div class="wf-step" id="wf-step-4">
+            <div class="wf-step-header" id="wf-hdr-4" style="display:flex;align-items:center;gap:10px;padding:10px 16px;cursor:pointer;background:#f8f9fa;transition:background 0.12s">
+              <span class="wf-num" id="wf-num-4" style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.85rem;font-weight:700;background:#e9ecef;color:#495057;flex-shrink:0">5</span>
+              <span style="font-weight:600;flex:1">Rapport</span>
+              <span class="wf-status" id="wf-st-4" style="font-size:0.78rem;color:#6c757d"></span>
+              <span class="wf-toggle" id="wf-tog-4" style="font-size:0.8rem;color:#6c757d">▼</span>
+            </div>
+            <div class="wf-body" id="wf-body-4" style="padding:12px 16px;border-top:1px solid #e9ecef;display:none">
+              <p style="font-size:0.84rem;color:#6c757d;margin:0 0 8px">Exporter le rapport HTML ou JSONL du run actif.</p>
+              <button id="wf-report-btn" class="btn btn-secondary" disabled style="font-size:0.82rem">Ouvrir la section Rapport ↓</button>
+            </div>
+          </div>
+
+        </div><!-- /wf-steps -->
+      </section>
 
       <!-- Documents -->
       <section class="card">
@@ -256,8 +367,12 @@ export class ActionsScreen {
               </select>
             </label>
           </div>
-          <div class="btn-row" style="margin-top:0.4rem">
+          <div class="btn-row" style="margin-top:0.4rem; gap:0.75rem; align-items:center">
             <button id="act-audit-load-btn" class="btn btn-secondary btn-sm">Charger les liens</button>
+            <label style="display:flex; align-items:center; gap:0.3rem; font-size:0.82rem; cursor:pointer">
+              <input id="act-audit-explain-toggle" type="checkbox" />
+              Expliquer (include_explain)
+            </label>
           </div>
           <div id="act-audit-table-wrap" style="margin-top:0.5rem; overflow-x:auto"></div>
           <div id="act-audit-batch-bar" class="audit-batch-bar" style="display:none">
@@ -333,6 +448,29 @@ export class ActionsScreen {
         </div>
       </section>
 
+      <!-- ═══ Rapport de runs ═══ -->
+      <section class="card">
+        <h3>Rapport de runs <span class="badge-preview">export</span></h3>
+        <p class="hint">Exporter l'historique des runs (import, alignement, curation…) en HTML ou JSONL.</p>
+        <div class="form-row">
+          <label>Format :
+            <select id="act-report-fmt">
+              <option value="html">HTML</option>
+              <option value="jsonl">JSONL</option>
+            </select>
+          </label>
+          <label style="flex:1">Run ID (optionnel) :
+            <input id="act-report-run-id" type="text"
+              placeholder="laisser vide = tous les runs"
+              style="width:100%;max-width:340px" />
+          </label>
+        </div>
+        <div class="btn-row" style="margin-top:0.5rem">
+          <button id="act-report-btn" class="btn btn-secondary" disabled>Enregistrer le rapport…</button>
+        </div>
+        <div id="act-report-result" style="display:none; margin-top:0.5rem; font-size:0.85rem"></div>
+      </section>
+
       <div id="act-busy" class="busy-overlay" style="display:none">
         <div class="busy-spinner">⏳ Opération en cours…</div>
       </div>
@@ -382,6 +520,17 @@ export class ActionsScreen {
       this._loadAuditPage(root, false);
     });
     root.querySelector("#act-audit-more-btn")!.addEventListener("click", () => this._loadAuditPage(root, true));
+    (root.querySelector("#act-audit-explain-toggle") as HTMLInputElement)
+      .addEventListener("change", (e) => {
+        this._auditIncludeExplain = (e.target as HTMLInputElement).checked;
+        if (this._auditLinks.length > 0) {
+          // Reload current page with updated flag
+          this._auditOffset = 0;
+          this._auditLinks = [];
+          this._renderAuditTable(root);
+          void this._loadAuditPage(root, false);
+        }
+      });
 
     // Batch action bar
     root.querySelector("#act-audit-batch-accept")!.addEventListener("click", () =>
@@ -408,6 +557,13 @@ export class ActionsScreen {
     root.querySelector("#act-meta-btn")!.addEventListener("click", () => this._runValidateMeta());
     root.querySelector("#act-index-btn")!.addEventListener("click", () => this._runIndex());
 
+    // Run report export
+    root.querySelector("#act-report-btn")!.addEventListener("click", () => void this._runExportReport());
+
+    // ── Workflow ──────────────────────────────────────────────────
+    this._wfRoot = root;
+    this._initWorkflow(root);
+
     return root;
   }
 
@@ -417,12 +573,41 @@ export class ActionsScreen {
     this._alignExplainability = [];
     this._alignRunId = null;
     this._setButtonsEnabled(false);
-    if (conn) this._loadDocs();
+    if (conn) {
+      this._loadDocs();
+      // Restore workflow run_id from localStorage
+      const savedRunId = localStorage.getItem(ActionsScreen.LS_WF_RUN_ID);
+      if (savedRunId) {
+        this._alignRunId = savedRunId;
+        this._wfSyncRunId();
+      }
+      this._wfEnableButtons(true);
+    } else {
+      this._wfEnableButtons(false);
+    }
   }
 
   setJobCenter(jc: JobCenter, showToast: (msg: string, isError?: boolean) => void): void {
     this._jobCenter = jc;
     this._showToast = showToast;
+  }
+
+  /** Apply a project preset to the current form fields (non-destructive). */
+  applyPreset(preset: ProjectPreset): void {
+    const root = this._wfRoot;
+    if (!root) return;
+    const setVal = (sel: string, val: string | undefined): void => {
+      if (!val) return;
+      const el = root.querySelector<HTMLInputElement | HTMLSelectElement>(sel);
+      if (el) { el.value = val; el.dispatchEvent(new Event("change")); }
+    };
+    setVal("#act-seg-lang", preset.segmentation_lang);
+    setVal("#act-seg-pack", preset.segmentation_pack);
+    setVal("#act-preset-sel", preset.curation_preset);
+    setVal("#act-align-strategy", preset.alignment_strategy);
+    if (preset.similarity_threshold !== undefined) {
+      setVal("#act-sim-threshold", String(preset.similarity_threshold));
+    }
   }
 
   // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -442,7 +627,8 @@ export class ActionsScreen {
 
   private _setButtonsEnabled(on: boolean): void {
     ["act-preview-btn", "act-curate-btn", "act-seg-btn", "act-align-btn",
-     "act-meta-btn", "act-index-btn", "act-quality-btn", "act-coll-load-btn"].forEach(id => {
+     "act-meta-btn", "act-index-btn", "act-quality-btn", "act-coll-load-btn",
+     "act-report-btn"].forEach(id => {
       const el = document.querySelector(`#${id}`) as HTMLButtonElement | null;
       if (el) el.disabled = !on;
     });
@@ -731,6 +917,15 @@ export class ActionsScreen {
           } | undefined)?.reports ?? [];
           const runId = (done.result as { run_id?: string } | undefined)?.run_id;
           this._alignRunId = typeof runId === "string" && runId ? runId : null;
+          // Persist run_id for workflow
+          if (this._alignRunId) {
+            try { localStorage.setItem(ActionsScreen.LS_WF_RUN_ID, this._alignRunId); } catch { /* ignore */ }
+          }
+          // Pre-fill run report field
+          const reportInput = document.querySelector<HTMLInputElement>("#act-report-run-id");
+          if (reportInput && this._alignRunId) reportInput.value = this._alignRunId;
+          // Sync workflow display
+          this._wfSyncRunId();
           this._alignExplainability = reports.map((r) => ({
             target_doc_id: r.target_doc_id,
             links_created: r.links_created,
@@ -908,6 +1103,7 @@ export class ActionsScreen {
       target_doc_id: targetId,
       limit: this._auditLimit,
       offset: this._auditOffset,
+      include_explain: this._auditIncludeExplain,
     };
     const extIdVal = extIdInput?.value.trim();
     if (extIdVal) opts.external_id = parseInt(extIdVal);
@@ -942,6 +1138,7 @@ export class ActionsScreen {
       return;
     }
 
+    const showExplain = this._auditIncludeExplain;
     const table = document.createElement("table");
     table.className = "meta-table audit-table";
     table.innerHTML = `
@@ -951,6 +1148,7 @@ export class ActionsScreen {
         <th>Pivot (texte)</th>
         <th>Cible (texte)</th>
         <th>Statut</th>
+        ${showExplain ? "<th>Expliquer</th>" : ""}
         <th>Actions</th>
       </tr></thead>
     `;
@@ -962,12 +1160,29 @@ export class ActionsScreen {
         : link.status === "rejected"
         ? `<span class="status-badge status-error">❌ Rejeté</span>`
         : `<span class="status-badge status-unknown">🔵 Non révisé</span>`;
+
+      let explainCell = "";
+      if (showExplain) {
+        if (link.explain) {
+          const notes = (link.explain.notes ?? []).map(n => `<li>${_escHtml(n)}</li>`).join("");
+          explainCell = `<td>
+            <details>
+              <summary style="cursor:pointer;font-size:0.78rem;color:var(--brand)">${_escHtml(link.explain.strategy)}</summary>
+              ${notes ? `<ul style="margin:0.25rem 0 0 1rem;font-size:0.78rem;padding:0">${notes}</ul>` : ""}
+            </details>
+          </td>`;
+        } else {
+          explainCell = `<td style="color:var(--text-muted);font-size:0.8rem">—</td>`;
+        }
+      }
+
       tr.innerHTML = `
         <td><input type="checkbox" class="audit-row-cb" data-id="${link.link_id}"/></td>
         <td style="white-space:nowrap">${link.external_id ?? "—"}</td>
         <td class="audit-text">${_escHtml(String(link.pivot_text ?? ""))}</td>
         <td class="audit-text">${_escHtml(String(link.target_text ?? ""))}</td>
         <td style="white-space:nowrap">${statusBadge}</td>
+        ${explainCell}
         <td style="white-space:nowrap">
           <button class="btn btn-sm btn-secondary audit-accept-btn" data-id="${link.link_id}" title="Accepter">✓</button>
           <button class="btn btn-sm btn-danger audit-reject-btn" data-id="${link.link_id}" title="Rejeter">✗</button>
@@ -1375,6 +1590,192 @@ export class ActionsScreen {
     } catch (err) {
       this._log(`Erreur résolution collision : ${err instanceof SidecarError ? err.message : String(err)}`, true);
       this._showToast?.("✗ Erreur résolution collision", true);
+    }
+  }
+
+  // ─── Workflow ─────────────────────────────────────────────────────────────
+
+  private _initWorkflow(root: HTMLElement): void {
+    // Restore persisted step
+    const savedStep = parseInt(localStorage.getItem(ActionsScreen.LS_WF_STEP) ?? "0", 10);
+    this._wfStep = isNaN(savedStep) ? 0 : Math.min(savedStep, 4);
+
+    // Wire step headers (accordion toggle)
+    for (let i = 0; i < 5; i++) {
+      const hdr = root.querySelector(`#wf-hdr-${i}`) as HTMLElement | null;
+      if (!hdr) continue;
+      const idx = i;
+      hdr.addEventListener("click", () => this._wfToggleStep(idx));
+      hdr.addEventListener("mouseenter", () => { hdr.style.background = "#edf2f7"; });
+      hdr.addEventListener("mouseleave", () => {
+        hdr.style.background = this._wfStep === idx ? "#d1fae5" : "#f8f9fa";
+      });
+    }
+
+    // Wire CTA buttons
+    root.querySelector("#wf-goto-align")?.addEventListener("click", () => {
+      root.querySelector("#act-align-btn")?.scrollIntoView({ behavior: "smooth" });
+    });
+    root.querySelector("#wf-quality-btn")?.addEventListener("click", () => void this._runWfQuality(root));
+    root.querySelector("#wf-coll-btn")?.addEventListener("click", () => {
+      const btn = root.querySelector<HTMLButtonElement>("#act-coll-load-btn");
+      btn?.scrollIntoView({ behavior: "smooth" });
+      setTimeout(() => btn?.click(), 400);
+    });
+    root.querySelector("#wf-audit-btn")?.addEventListener("click", () => {
+      const btn = root.querySelector<HTMLButtonElement>("#act-audit-load-btn");
+      btn?.scrollIntoView({ behavior: "smooth" });
+      setTimeout(() => btn?.click(), 400);
+    });
+    root.querySelector("#wf-report-btn")?.addEventListener("click", () => {
+      root.querySelector("#act-report-btn")?.scrollIntoView({ behavior: "smooth" });
+    });
+
+    // Open current step + sync run_id display
+    this._wfToggleStep(this._wfStep);
+    this._wfSyncRunId();
+  }
+
+  private _wfToggleStep(idx: number): void {
+    const root = this._wfRoot;
+    if (!root) return;
+    for (let i = 0; i < 5; i++) {
+      const body = root.querySelector<HTMLElement>(`#wf-body-${i}`);
+      const hdr = root.querySelector<HTMLElement>(`#wf-hdr-${i}`);
+      const tog = root.querySelector<HTMLElement>(`#wf-tog-${i}`);
+      if (!body || !hdr || !tog) continue;
+      const isActive = i === idx;
+      body.style.display = isActive ? "" : "none";
+      hdr.style.background = isActive ? "#d1fae5" : "#f8f9fa";
+      tog.textContent = isActive ? "▲" : "▼";
+      // Active step number: green
+      const num = root.querySelector<HTMLElement>(`#wf-num-${i}`);
+      if (num) {
+        num.style.background = isActive ? "var(--accent,#1a7f4e)" : "#e9ecef";
+        num.style.color = isActive ? "#fff" : "#495057";
+      }
+    }
+    this._wfStep = idx;
+    try { localStorage.setItem(ActionsScreen.LS_WF_STEP, String(idx)); } catch { /* ignore */ }
+  }
+
+  private _wfSyncRunId(): void {
+    const root = this._wfRoot;
+    if (!root) return;
+    const display = root.querySelector<HTMLElement>("#wf-run-id-display");
+    if (display) {
+      display.textContent = this._alignRunId ?? "(aucun)";
+    }
+    // Also mark step 1 as done if run_id known
+    const st0 = root.querySelector<HTMLElement>("#wf-st-0");
+    if (st0) st0.textContent = this._alignRunId ? "✓ run " + this._alignRunId.slice(0, 8) + "…" : "";
+    // Sync run_id in report section
+    const reportInput = root.querySelector<HTMLInputElement>("#act-report-run-id");
+    if (reportInput && this._alignRunId) reportInput.value = this._alignRunId;
+  }
+
+  private _wfEnableButtons(on: boolean): void {
+    const root = this._wfRoot;
+    if (!root) return;
+    ["wf-quality-btn", "wf-coll-btn", "wf-audit-btn", "wf-report-btn"].forEach(id => {
+      const btn = root.querySelector<HTMLButtonElement>(`#${id}`);
+      if (btn) btn.disabled = !on;
+    });
+  }
+
+  private async _runWfQuality(root: HTMLElement): Promise<void> {
+    if (!this._conn) return;
+    // Use the first available pivot/target from docs
+    const pivotSel = root.querySelector<HTMLSelectElement>("#act-quality-pivot");
+    const targetSel = root.querySelector<HTMLSelectElement>("#act-quality-target");
+    if (!pivotSel?.value || !targetSel?.value) {
+      const wfResult = root.querySelector<HTMLElement>("#wf-quality-result");
+      if (wfResult) {
+        wfResult.innerHTML = `<span style="font-size:0.82rem;color:#856404">⚠ Sélectionnez d'abord un doc pivot et cible dans la section Qualité ci-dessous.</span>`;
+      }
+      root.querySelector("#act-quality-btn")?.scrollIntoView({ behavior: "smooth" });
+      return;
+    }
+
+    const btn = root.querySelector<HTMLButtonElement>("#wf-quality-btn")!;
+    btn.disabled = true;
+    btn.textContent = "Calcul…";
+
+    const pivot = parseInt(pivotSel.value);
+    const target = parseInt(targetSel.value);
+
+    try {
+      const { alignQuality } = await import("../lib/sidecarClient.ts");
+      const res = await alignQuality(this._conn, pivot, target);
+      const s = res.stats;
+      const wfResult = root.querySelector<HTMLElement>("#wf-quality-result");
+      if (wfResult) {
+        const okClass = (v: number, good: number) => v >= good ? "color:#1a7f4e;font-weight:600" : "color:#c0392b;font-weight:600";
+        wfResult.innerHTML = `
+          <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:0.82rem;margin-bottom:6px">
+            <span>Couverture : <b style="${okClass(s.coverage_pct, 80)}">${s.coverage_pct}%</b></span>
+            <span>Liens : <b>${s.total_links}</b></span>
+            <span>Orphelins pivot : <b style="${okClass(s.orphan_pivot_count === 0 ? 1 : 0, 1)}">${s.orphan_pivot_count}</b></span>
+            <span>Collisions : <b style="${okClass(s.collision_count === 0 ? 1 : 0, 1)}">${s.collision_count}</b></span>
+          </div>`;
+      }
+      // Mark step 2 as done
+      const st1 = root.querySelector<HTMLElement>("#wf-st-1");
+      if (st1) st1.textContent = `✓ cov. ${s.coverage_pct}%`;
+      this._log(`✓ Qualité: couv. ${s.coverage_pct}%, collisions ${s.collision_count}`);
+    } catch (err) {
+      this._log(`✗ Qualité workflow: ${err instanceof SidecarError ? err.message : String(err)}`, true);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Lancer la vérification qualité";
+    }
+  }
+
+  // ─── Run report export ────────────────────────────────────────────────────
+
+  private async _runExportReport(): Promise<void> {
+    if (!this._conn) return;
+    const fmt = (document.querySelector<HTMLSelectElement>("#act-report-fmt"))?.value as "html" | "jsonl" || "html";
+    const runIdRaw = (document.querySelector<HTMLInputElement>("#act-report-run-id"))?.value.trim();
+    const ext = fmt === "html" ? "html" : "jsonl";
+    const defaultName = runIdRaw ? `run_${runIdRaw.slice(0, 8)}.${ext}` : `runs_report.${ext}`;
+
+    let outPath: string | null;
+    try {
+      outPath = await dialogSave({
+        title: "Enregistrer le rapport de runs",
+        defaultPath: defaultName,
+        filters: [{ name: fmt.toUpperCase(), extensions: [ext] }],
+      });
+    } catch {
+      return;
+    }
+    if (!outPath) return;
+
+    const resultEl = document.querySelector<HTMLElement>("#act-report-result");
+    const btn = document.querySelector<HTMLButtonElement>("#act-report-btn")!;
+    btn.disabled = true;
+    btn.textContent = "Export en cours\u2026";
+
+    try {
+      const opts: ExportRunReportOptions = { out_path: outPath, format: fmt };
+      if (runIdRaw) opts.run_id = runIdRaw;
+      const res = await exportRunReport(this._conn, opts);
+
+      if (resultEl) {
+        resultEl.style.display = "";
+        resultEl.innerHTML =
+          `<span class="stat-ok">✓ ${res.runs_exported} run(s) export\u00e9(s) \u2192 ` +
+          `<code>${_escHtml(res.out_path)}</code></span>`;
+      }
+      this._log(`✓ Rapport export\u00e9 : ${res.runs_exported} run(s) \u2192 ${res.out_path}`);
+      this._showToast?.(`✓ Rapport export\u00e9 (${res.runs_exported} run(s))`);
+    } catch (err) {
+      this._log(`✗ Export rapport : ${err instanceof SidecarError ? err.message : String(err)}`, true);
+      this._showToast?.("✗ Erreur export rapport", true);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Enregistrer le rapport\u2026";
     }
   }
 
