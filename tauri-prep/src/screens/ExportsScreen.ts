@@ -110,8 +110,12 @@ export class ExportsScreen {
             <select id="pkg-tei-profile" style="padding:3px 8px;border:1px solid #dee2e6;border-radius:4px;margin-left:0.4rem">
               <option value="generic">Generic</option>
               <option value="parcolab_like">ParCoLab-like (enrichi)</option>
+              <option value="parcolab_strict">ParCoLab strict (expert)</option>
             </select>
           </label>
+        </div>
+        <div id="pkg-strict-notice" style="display:none;margin-top:0.35rem;font-size:0.78rem;color:#b8590a;background:#fff3cd;border-radius:4px;padding:0.3rem 0.6rem">
+          ⚠ Profil strict : peut bloquer l'export si des métadonnées sont incomplètes (title, language, date). Recommande la politique QA Strict.
         </div>
         <div class="btn-row" style="margin-top:0.6rem">
           <button id="pkg-export-btn" class="btn btn-success btn-sm" disabled>Choisir fichier et exporter package…</button>
@@ -206,6 +210,12 @@ export class ExportsScreen {
     root.querySelector("#align-csv-btn")!.addEventListener("click", () => this._runAlignCsvExport());
     root.querySelector("#report-export-btn")!.addEventListener("click", () => this._runRunReportExport());
     root.querySelector("#qa-report-btn")!.addEventListener("click", () => this._runQaReportExport());
+
+    // Show/hide strict notice when TEI profile changes
+    root.querySelector("#pkg-tei-profile")?.addEventListener("change", (e) => {
+      const notice = root.querySelector<HTMLElement>("#pkg-strict-notice");
+      if (notice) notice.style.display = (e.target as HTMLSelectElement).value === "parcolab_strict" ? "block" : "none";
+    });
 
     this._refreshDocs();
     return root;

@@ -61,3 +61,13 @@
 | ParCoLab | `parcolab_like` | Requires `publisher`, `pubPlace`, `date`, `author` in meta_json |
 | Generic TEI P5 | `generic` | Any TEI-aware reader |
 | TEI Lite | `generic` | Subset compatibility |
+
+## V1.6.2 additions
+
+| Element | parcolab_strict |
+|---|---|
+| `<encodingDesc><appInfo>` | ✓ (agrafes/parcolab_strict) |
+| `<teiHeader>` (all parcolab_like fields) | ✓ |
+| Severity escalation (title/lang/date) | ✓ → error |
+| `language_ori` for translations | required → error |
+| `manifest.validation_summary` | ✓ (all profiles via export_tei_package) |

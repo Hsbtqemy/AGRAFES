@@ -127,6 +127,19 @@ def export_tei_package(
 
     db_info = _get_db_info(conn)
 
+    # Build validation summary from all warnings
+    validation_summary = {
+        "total_warnings": len(all_warnings),
+        "by_severity": {
+            "error": sum(1 for w in all_warnings if w.get("severity") == "error"),
+            "warning": sum(1 for w in all_warnings if w.get("severity") not in ("error",)),
+        },
+        "by_type": {},
+    }
+    for w in all_warnings:
+        wtype = w.get("type", "unknown")
+        validation_summary["by_type"][wtype] = validation_summary["by_type"].get(wtype, 0) + 1
+
     # Build manifest (FAIR-enriched)
     manifest = {
         "created_at": created_at,
@@ -141,6 +154,7 @@ def export_tei_package(
             "status_filter": status_filter,
             "tei_profile": tei_profile,
         },
+        "validation_summary": validation_summary,
         **db_info,
         "documents": [
             {

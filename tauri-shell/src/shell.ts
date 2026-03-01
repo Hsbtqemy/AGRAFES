@@ -1225,7 +1225,7 @@ async function _renderPublicationWizard(container: HTMLElement): Promise<void> {
               <select id="wiz-tei-profile" style="padding:3px 6px;border:1px solid #dde1e8;border-radius:4px">
               <option value="generic" ${state.teiProfile === "generic" ? "selected" : ""}>Generic</option>
               <option value="parcolab_like" ${state.teiProfile === "parcolab_like" ? "selected" : ""}>ParCoLab-like (enrichi)</option>
-              <option value="parcolab_strict" ${state.teiProfile === "parcolab_strict" ? "selected" : ""}>ParCoLab strict (expert)</option>
+              <option value="parcolab_strict" ${state.teiProfile === "parcolab_strict" ? "selected" : ""}>ParCoLab strict (expert) ⚠</option>
               </select>
             </label>
             <label style="display:flex;align-items:center;gap:0.5rem">
@@ -1256,6 +1256,10 @@ async function _renderPublicationWizard(container: HTMLElement): Promise<void> {
           : profileVal === "parcolab_strict" ? "parcolab_strict" : "generic";
         const policyVal = (body.querySelector<HTMLSelectElement>("#wiz-qa-policy")?.value) ?? "lenient";
         state.qaPolicy = policyVal === "strict" ? "strict" : "lenient";
+        // Suggest strict policy if parcolab_strict profile chosen
+        if (state.teiProfile === "parcolab_strict" && state.qaPolicy !== "strict") {
+          _showToast("Conseil : le profil ParCoLab strict recommande la politique QA Strict pour bloquer à l'export si métadonnées incomplètes.", 6000);
+        }
         state.step = 4;
         void render();
       });

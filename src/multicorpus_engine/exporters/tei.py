@@ -246,6 +246,83 @@ def _build_parcolab_header(
                          "severity": "warning", "profile": "parcolab_like"})
 
 
+def _apply_strict_validation(
+    header: ET.Element,
+    profile: ET.Element,
+    doc: sqlite3.Row,
+    meta: dict,
+    doc_id: int,
+    warnings: list[dict],
+) -> None:
+    """Add encodingDesc and escalate missing fields to severity='error' for parcolab_strict.
+
+    Fields escalated to error (not just warning):
+    - title (must be non-empty)
+    - language (must be non-empty)
+    - date (must be present in meta_json)
+    - language_ori required if doc_role starts with 'translation'
+    """
+    # encodingDesc: declare the profile used
+    enc_desc = ET.SubElement(header, "encodingDesc")
+    app_info = ET.SubElement(enc_desc, "appInfo")
+    app = ET.SubElement(app_info, "application", {"ident": "agrafes", "version": "parcolab_strict"})
+    ET.SubElement(app, "label").text = "AGRAFES — ParCoLab strict TEI export"
+
+    # Escalate missing title to error
+    title_val = strip_xml10_invalid(doc["title"] or "")
+    if not title_val.strip():
+        # Update existing warning or add new one with severity=error
+        _escalate_or_add_warning(warnings, "title", doc_id, "parcolab_strict")
+
+    # Escalate missing language to error
+    lang_val = strip_xml10_invalid(doc["language"] or "")
+    if not lang_val.strip():
+        _escalate_or_add_warning(warnings, "language", doc_id, "parcolab_strict")
+
+    # Date: escalate to error if missing
+    date_val = str(meta.get("date", "") or meta.get("year", "") or "").strip()
+    if not date_val:
+        _escalate_or_add_warning(warnings, "date", doc_id, "parcolab_strict")
+
+    # language_ori required if doc_role suggests translation
+    try:
+        doc_role = (doc["doc_role"] or "").lower()
+    except (IndexError, KeyError):
+        doc_role = ""
+    if "translation" in doc_role or doc_role == "target":
+        lang_ori = (meta.get("language_ori") or meta.get("language_original") or "").strip()
+        if not lang_ori:
+            warnings.append({
+                "type": "tei_missing_field",
+                "field": "language_ori",
+                "doc_id": doc_id,
+                "severity": "error",
+                "profile": "parcolab_strict",
+                "message": "language_ori required when doc_role indicates a translation",
+            })
+
+
+def _escalate_or_add_warning(
+    warnings: list[dict],
+    field: str,
+    doc_id: int,
+    profile: str,
+) -> None:
+    """Escalate an existing warning for `field` to severity='error', or add new one."""
+    for w in warnings:
+        if w.get("field") == field and w.get("doc_id") == doc_id:
+            w["severity"] = "error"
+            w["profile"] = profile
+            return
+    warnings.append({
+        "type": "tei_missing_field",
+        "field": field,
+        "doc_id": doc_id,
+        "severity": "error",
+        "profile": profile,
+    })
+
+
 def export_tei(
     conn: sqlite3.Connection,
     doc_id: int,
@@ -338,13 +415,16 @@ def export_tei(
             kw_rt = ET.SubElement(terms2, "term", {"type": "resource_type"})
             kw_rt.text = resource_type
 
-    # ParCoLab-like profile: enrich header with bibliographic metadata
-    if tei_profile == "parcolab_like":
+    # ParCoLab-like or parcolab_strict profile: enrich header
+    if tei_profile in ("parcolab_like", "parcolab_strict"):
         try:
             meta: dict = _json.loads(doc["meta_json"] or "{}") if doc["meta_json"] else {}
         except (_json.JSONDecodeError, TypeError):
             meta = {}
         _build_parcolab_header(header, file_desc, profile, doc, meta, doc_id, warnings)
+
+        if tei_profile == "parcolab_strict":
+            _apply_strict_validation(header, profile, doc, meta, doc_id, warnings)
 
     # listRelation from doc_relations — always emitted when relations exist
     relations = _get_doc_relations(conn, doc_id)

@@ -90,3 +90,41 @@ The `tei_profile` parameter is additive and backward-compatible:
 - Default value `"generic"` preserves all existing behavior
 - No `CONTRACT_VERSION` bump required (parameter added as optional)
 - Stored in `manifest.json` under `export_options.tei_profile` for reproducibility
+
+## Profil `parcolab_strict` (expert, V1.6.2)
+
+Profil le plus strict, destiné aux plateformes exigeant un en-tête TEI complet et validé.
+
+### Comportement vs `parcolab_like`
+
+| Feature | parcolab_like | parcolab_strict |
+|---|---|---|
+| Enrichissement header | ✓ | ✓ (identique) |
+| `<encodingDesc>` | ✗ | ✓ (avec `<appInfo>`) |
+| Missing title | warning | **error** |
+| Missing language | warning | **error** |
+| Missing date | warning | **error** |
+| Missing language_ori (translation) | — | **error** |
+| manifest.validation_summary | — | ✓ (via export_tei_package) |
+
+### Champs escaladés à `severity="error"`
+
+- `title` : doit être non vide
+- `language` : doit être non vide
+- `date` : doit être présent dans `meta_json` (keys: `date` ou `year`)
+- `language_ori` : requis si `doc_role` contient "translation" ou vaut "target"
+
+### Intégration QA
+
+Quand la **politique QA est "strict"**, les `meta_error` bloquent la gate.
+Combiné avec `parcolab_strict`, tout champ manquant bloque la publication.
+
+### Recommandation UI
+
+Le dropdown "Profil TEI" affiche une notice ⚠ et suggère d'activer la politique QA Strict.
+
+### Exemple
+
+```bash
+multicorpus export-tei-package --db corpus.db --out pkg.zip --tei-profile parcolab_strict
+```
