@@ -3,6 +3,57 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [V1.6.2] — 2026-03-01 — TEI parcolab_strict profile + manifest validation summary
+
+### Added
+- `tei_profile="parcolab_strict"` in `exporters/tei.py`: `<encodingDesc>` + severity escalation (title/lang/date → error, language_ori for translations)
+- `manifest.json` now includes `validation_summary` (`total_warnings`, `by_severity`, `by_type`) for all profiles via `export_tei_package`
+- `_apply_strict_validation()` + `_escalate_or_add_warning()` helpers in `tei.py`
+- UI: "ParCoLab strict (expert)" option in ExportsScreen dropdown + warning notice; wizard step 3 policy suggestion toast
+- 10 new tests (`tests/test_tei_profile_strict.py`) — 340 total
+
+### Files
+`src/multicorpus_engine/exporters/tei.py`, `tei_package.py`, `tauri-prep/src/screens/ExportsScreen.ts`, `tauri-shell/src/shell.ts`, `docs/TEI_PROFILE.md`, `docs/TEI_COMPAT_MATRIX.md`
+
+---
+
+## [V1.6.1] — 2026-03-01 — Onboarding Demo Guided Tour (Shell)
+
+### Added
+- Guided Tour panel (3 steps) in Shell Home, visible when demo corpus is installed
+- Progress state in `localStorage["agrafes.onboarding.demo.step"]` (0..3)
+- "Réinitialiser le guide" button
+- Step 1: Explorer + prefill "prince" via `sessionStorage["agrafes.explorer.prefill"]`
+- Step 2: Constituer + toast hint → Exports → Rapport QA
+- Step 3: Publication Wizard
+- Explorer welcome hint: transient tooltip when search bar is pre-filled
+- CSS: `.shell-guide-*` component styles
+
+### Files
+`tauri-shell/src/shell.ts`, `tauri-shell/src/modules/explorerModule.ts`, `docs/STATUS_TAURI_SHELL.md`
+
+---
+
+## [V1.6.0] — 2026-03-01 — QA Strict Policy (lenient/strict)
+
+### Added
+- `POLICY_RULES` table in `qa_report.py`: 7 rules with lenient/strict escalation levels
+- `generate_qa_report(policy='lenient'|'strict')`: backward-compatible (default=lenient)
+  - Strict escalates: `import_warning`, `meta_warning`, `align_collision`, `relation_issue` → blocking
+  - New summary fields: `align_collisions`, `relation_issues`
+  - New output fields: `policy_used` (top-level + in `gates`)
+- `write_qa_report(policy=)` forwarded; HTML renderer shows policy label
+- CLI: `multicorpus qa-report --policy lenient|strict`
+- Sidecar job `qa_report`: accepts `params.policy` (additive, no contract bump); result includes `policy_used`
+- ExportsScreen (tauri-prep): "Mode strict" checkbox + policy badge in gate banner
+- Wizard step 3 (tauri-shell): "Politique QA" dropdown with tooltip
+- 10 new tests (`tests/test_qa_policy.py`) — 330 total
+
+### Files
+`src/multicorpus_engine/qa_report.py`, `cli.py`, `sidecar.py`, `tauri-prep/src/screens/ExportsScreen.ts`, `tauri-shell/src/shell.ts`
+
+---
+
 ---
 
 ## [Unreleased — V1.5.2] — 2026-03-01 — TEI Export Profile Preset (ParCoLab-like)

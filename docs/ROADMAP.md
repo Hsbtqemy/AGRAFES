@@ -131,3 +131,6 @@ Last updated: 2026-03-01 (Shell App V0.3: metadata panel + demo onboarding + inc
 | V1.5.0 | Shell: Publication Wizard (5 steps) + Global Presets store | Done |
 | V1.5.1 | Engine: Corpus QA report JSON/HTML + job kind + ExportsScreen gate UI | Done |
 | V1.5.2 | TEI: export profile preset (parcolab_like) + UI selector (prep + wizard) | Done |
+| V1.6.0 | QA: Strict policy (lenient/strict) + gates UI (prep + wizard) | Done |
+| V1.6.1 | Shell: Onboarding Demo guided tour (3 steps + Explorer welcome hint) | Done |
+| V1.6.2 | TEI: parcolab_strict profile (opt-in) + manifest validation_summary | Done |
