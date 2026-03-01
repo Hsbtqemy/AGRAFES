@@ -672,6 +672,7 @@ const LS_PRESETS_GLOBAL    = "agrafes.presets.global";
 const LS_PRESETS_PREP      = "agrafes.prep.presets"; // source for migration
 const LS_ONBOARDING_STEP   = "agrafes.onboarding.demo.step";  // 0..3
 const LS_DB_RECENT         = "agrafes.db.recent";             // MruEntry[]
+const LS_CRASH_MARKER      = "agrafes.session.crash_marker";  // ISO timestamp if crashed
 
 const MRU_MAX = 10;
 
@@ -698,6 +699,149 @@ function _makeContext(): ShellContext {
 }
 
 // ─── Persistence ──────────────────────────────────────────────────────────────
+
+// ─── Session Logger (local-only, no telemetry) ────────────────────────────────
+
+interface LogEntry {
+  ts: string;
+  level: "info" | "warn" | "error";
+  cat: string;
+  msg: string;
+  detail?: string;
+}
+
+const _sessionLog: LogEntry[] = [];
+const _SESSION_LOG_MAX = 500;
+
+function _shellLog(level: LogEntry["level"], cat: string, msg: string, detail?: string): void {
+  const entry: LogEntry = {
+    ts: new Date().toISOString(),
+    level,
+    cat,
+    msg,
+    detail,
+  };
+  _sessionLog.push(entry);
+  if (_sessionLog.length > _SESSION_LOG_MAX) _sessionLog.shift();
+  // Console output for debug builds — never send to network
+  if (level === "error") console.error(`[AGRAFES:${cat}] ${msg}`, detail ?? "");
+  else if (level === "warn") console.warn(`[AGRAFES:${cat}] ${msg}`, detail ?? "");
+}
+
+function _formatLog(): string {
+  const header = [
+    "=== AGRAFES Shell Session Log ===",
+    `Generated: ${new Date().toISOString()}`,
+    `App version: ${typeof APP_VERSION !== "undefined" ? APP_VERSION : "?"}`,
+    `Platform: ${navigator.platform}`,
+    `UserAgent: ${navigator.userAgent}`,
+    `DB active: ${_currentDbPath ?? "(none)"}`,
+    `Last mode: ${_currentMode}`,
+    "=".repeat(40),
+    "",
+  ].join("\n");
+
+  const entries = _sessionLog.map(e =>
+    `[${e.ts}] [${e.level.toUpperCase()}] [${e.cat}] ${e.msg}${e.detail ? "\n  " + e.detail : ""}`
+  ).join("\n");
+
+  return header + entries;
+}
+
+// ── Crash marker ──────────────────────────────────────────────────────────────
+
+function _writeCrashMarker(): void {
+  try { localStorage.setItem(LS_CRASH_MARKER, new Date().toISOString()); } catch { /* */ }
+}
+
+function _clearCrashMarker(): void {
+  try { localStorage.removeItem(LS_CRASH_MARKER); } catch { /* */ }
+}
+
+function _readCrashMarker(): string | null {
+  try { return localStorage.getItem(LS_CRASH_MARKER); } catch { return null; }
+}
+
+// ── Error capture ─────────────────────────────────────────────────────────────
+
+function _installErrorCapture(): void {
+  window.onerror = (msg, src, line, col, err) => {
+    _shellLog("error", "uncaught", String(msg), `${src}:${line}:${col} — ${err?.stack ?? ""}`);
+    return false; // Don't suppress default behavior
+  };
+
+  window.addEventListener("unhandledrejection", (e) => {
+    const reason = e.reason instanceof Error
+      ? e.reason.message + "\n" + (e.reason.stack ?? "")
+      : String(e.reason);
+    _shellLog("error", "unhandledrejection", "Unhandled promise rejection", reason);
+  });
+}
+
+// ── Log export bundle ─────────────────────────────────────────────────────────
+
+async function _exportLogBundle(): Promise<void> {
+  _shellLog("info", "log_export", "User requested log bundle export");
+
+  try {
+    // Build a plain-text bundle (no zip needed — keeps scope minimal)
+    const logText = _formatLog();
+
+    const { save } = await import("@tauri-apps/plugin-dialog");
+    const outPath = await save({
+      title: "Enregistrer les logs AGRAFES",
+      defaultPath: `agrafes-logs-${new Date().toISOString().slice(0, 10)}.txt`,
+      filters: [{ name: "Texte", extensions: ["txt"] }],
+    });
+    if (!outPath) return;
+
+    // Write via Tauri FS API (scoped to user-chosen path only)
+    const { writeTextFile } = await import("@tauri-apps/plugin-fs");
+    await writeTextFile(outPath, logText);
+    _showToast(`Logs exportés → ${_pathLabel(outPath)}`, 4000);
+    _shellLog("info", "log_export", `Logs written to ${outPath}`);
+  } catch (err) {
+    _showToast(`Erreur export logs : ${String(err)}`, 5000);
+    _shellLog("error", "log_export", "Export failed", String(err));
+  }
+}
+
+// ── Crash recovery banner ─────────────────────────────────────────────────────
+
+function _showCrashRecoveryBanner(crashTs: string): void {
+  const banner = document.createElement("div");
+  banner.id = "shell-crash-banner";
+  banner.style.cssText = [
+    "position:fixed;top:0;left:0;right:0;z-index:99998",
+    "background:#c0392b;color:#fff;padding:0.5rem 1rem",
+    "display:flex;align-items:center;gap:0.75rem;font-size:0.84rem",
+    "box-shadow:0 2px 8px rgba(0,0,0,0.25)",
+  ].join(";");
+
+  const date = new Date(crashTs);
+  const dateStr = Number.isNaN(date.getTime()) ? crashTs : date.toLocaleString();
+
+  banner.innerHTML = `
+    <span style="font-size:1.1rem">⚠</span>
+    <span><strong>AGRAFES s'est fermé de façon inattendue</strong> (${_esc(dateStr)})</span>
+    <button id="crash-export-logs" style="margin-left:auto;background:#fff;color:#c0392b;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;font-weight:600;font-size:0.79rem">
+      Exporter logs…
+    </button>
+    <button id="crash-dismiss" style="background:none;border:1px solid rgba(255,255,255,0.5);border-radius:4px;padding:4px 10px;color:#fff;cursor:pointer;font-size:0.79rem">
+      Ignorer
+    </button>
+  `;
+
+  banner.querySelector("#crash-export-logs")!.addEventListener("click", () => {
+    void _exportLogBundle();
+  });
+  banner.querySelector("#crash-dismiss")!.addEventListener("click", () => {
+    banner.remove();
+  });
+
+  document.body.prepend(banner);
+  _shellLog("warn", "crash_recovery", `Crash detected from previous session: ${crashTs}`);
+}
 
 // ─── MRU (Most Recently Used) DB list ────────────────────────────────────────
 
@@ -851,6 +995,8 @@ async function _switchDb(path: string): Promise<void> {
   if (dbBtn) { dbBtn.disabled = true; dbBtn.textContent = "Chargement…"; }
   tabs.forEach(t => t.disabled = true);
 
+  _shellLog("info", "db_switch", `Switching DB: ${_pathLabel(path)}`);
+
   _currentDbPath = path;
   _persist();
   _addToMru(path);
@@ -860,10 +1006,14 @@ async function _switchDb(path: string): Promise<void> {
   try {
     await _initDb(path);
     _showToast(`DB active : ${_pathLabel(path)}`);
+    _shellLog("info", "db_switch", `DB ready: ${_pathLabel(path)}`);
     // Remount active module so it uses the new DB
     if (_currentMode !== "home") {
       await _setMode(_currentMode);
     }
+  } catch (err) {
+    _shellLog("error", "db_switch", `DB init failed: ${_pathLabel(path)}`, String(err));
+    throw err;
   } finally {
     if (dbBtn) { dbBtn.disabled = false; dbBtn.textContent = "DB \u25be"; }
     tabs.forEach(t => t.disabled = false);
@@ -903,11 +1053,20 @@ function _resolveDeepLink(): Mode | null {
 // ─── Entry point ─────────────────────────────────────────────────────────────
 
 export async function initShell(): Promise<void> {
+  // ── Crash detection + error capture (before anything else) ──────────────────
+  _installErrorCapture();
+
+  const previousCrash = _readCrashMarker();
+  _writeCrashMarker(); // write now; cleared on clean shutdown
+
   _injectCSS();
 
-  // Restore persisted state
+  _shellLog("info", "boot", `AGRAFES Shell v${APP_VERSION} starting`);
+
+  // ── Restore persisted state ──────────────────────────────────────────────────
   const { mode: savedMode, dbPath: savedDb } = _loadPersisted();
   _currentDbPath = savedDb;
+  if (savedDb) _shellLog("info", "boot", `Restored DB: ${_pathLabel(savedDb)}`);
 
   // Deep-link overrides saved mode
   const deepLink = _resolveDeepLink();
@@ -919,6 +1078,20 @@ export async function initShell(): Promise<void> {
   document.addEventListener("click", _closeDbMenu);
   document.body.dataset.mode = startMode;
   await _setMode(startMode);
+
+  // ── Show crash recovery banner if previous session crashed ───────────────────
+  if (previousCrash) {
+    // Small delay so the main UI renders first
+    setTimeout(() => _showCrashRecoveryBanner(previousCrash), 500);
+  }
+
+  // ── Clean shutdown handler ───────────────────────────────────────────────────
+  window.addEventListener("beforeunload", () => {
+    _shellLog("info", "shutdown", "Clean shutdown");
+    _clearCrashMarker();
+  });
+
+  _shellLog("info", "boot", `Started in mode: ${startMode}`);
 }
 
 // ─── CSS ──────────────────────────────────────────────────────────────────────
@@ -936,7 +1109,7 @@ function _injectCSS(): void {
 // ─── About dialog ─────────────────────────────────────────────────────────────
 
 // Static version info (embedded at build time)
-const APP_VERSION = "1.7.2";
+const APP_VERSION = "1.8.2";
 const ENGINE_VERSION_DISPLAY = "0.6.1";
 const CONTRACT_VERSION_DISPLAY = "1.4.0";
 const TEI_PROFILES = ["generic", "parcolab_like", "parcolab_strict"];
@@ -967,11 +1140,19 @@ function _openAboutDialog(): void {
       <div style="margin-top:1rem;font-size:0.75rem;color:#adb5bd">
         Docs : RELEASE_CHECKLIST.md · TEI_PROFILE.md · STATUS_TAURI_SHELL.md
       </div>
+      <div style="margin-top:0.85rem;border-top:1px solid #eee;padding-top:0.85rem;display:flex;gap:0.5rem;justify-content:flex-end">
+        <button id="shell-about-export-logs" style="font-size:0.78rem;padding:4px 12px;border:1px solid #adb5bd;border-radius:4px;background:#f8f9fa;cursor:pointer;color:#495057">
+          📋 Exporter logs…
+        </button>
+      </div>
     </div>
   `;
 
   modal.addEventListener("click", (e) => { if (e.target === modal) modal.remove(); });
   modal.querySelector("#shell-about-close")!.addEventListener("click", () => modal.remove());
+  modal.querySelector("#shell-about-export-logs")!.addEventListener("click", () => {
+    void _exportLogBundle();
+  });
   document.body.appendChild(modal);
   // Close on Escape
   const onKey = (e: KeyboardEvent): void => { if (e.key === "Escape") { modal.remove(); document.removeEventListener("keydown", onKey); } };
@@ -1208,7 +1389,9 @@ async function _initDb(dbPath: string): Promise<void> {
     const { ensureRunning } = await import("../../tauri-app/src/lib/sidecarClient.ts");
     await ensureRunning(dbPath);
     _showToast("DB initialis\u00e9e \u2713", 3000);
+    _shellLog("info", "sidecar", `Sidecar healthy for DB: ${_pathLabel(dbPath)}`);
   } catch (err) {
+    _shellLog("error", "sidecar", `Sidecar health failure for DB: ${_pathLabel(dbPath)}`, String(err));
     _showInitError(dbPath, String(err));
   } finally {
     if (btn) { btn.textContent = "DB \u25be"; btn.disabled = false; }
@@ -1293,6 +1476,8 @@ async function _onChangeDb(defaultPath?: string): Promise<void> {
 async function _setMode(mode: Mode): Promise<void> {
   if (_navigating) return;
   _navigating = true;
+
+  _shellLog("info", "navigation", `Navigate: ${_currentMode} → ${mode}`);
 
   _currentMode = mode;
   document.body.dataset.mode = mode;
@@ -1749,6 +1934,9 @@ async function _renderPublicationWizard(container: HTMLElement): Promise<void> {
           const job = await enqueueJob(conn, "export_tei_package", params);
           state.jobId = job.job_id;
           statusEl.textContent = `Job ${job.job_id} en cours…`;
+          _shellLog("info", "publish_wizard", `TEI package job submitted: ${job.job_id}`, JSON.stringify({
+            profile: state.teiProfile, policy: state.qaPolicy, docs: state.docIds?.length ?? "all"
+          }));
 
           // Poll until done
           const poll = async (): Promise<void> => {
@@ -1756,10 +1944,12 @@ async function _renderPublicationWizard(container: HTMLElement): Promise<void> {
             if (rec.status === "done") {
               state.result = rec.result as Record<string, unknown>;
               state.step = 5;
+              _shellLog("info", "publish_wizard", `Job ${job.job_id} completed`, JSON.stringify(state.result));
               await render();
             } else if (rec.status === "error" || rec.status === "canceled") {
               state.error = (rec as unknown as { error?: string }).error ?? rec.status;
               statusEl.innerHTML = `<span style="color:#c0392b">Erreur: ${_esc(state.error ?? "")}</span>`;
+              _shellLog("error", "publish_wizard", `Job ${job.job_id} failed`, state.error ?? rec.status);
               launchBtn.disabled = false;
             } else {
               statusEl.textContent = `Job ${state.jobId} — statut: ${rec.status}…`;
@@ -1770,6 +1960,7 @@ async function _renderPublicationWizard(container: HTMLElement): Promise<void> {
         } catch (e) {
           state.error = String(e);
           statusEl.innerHTML = `<span style="color:#c0392b">Erreur: ${_esc(String(e))}</span>`;
+          _shellLog("error", "publish_wizard", "Wizard launch error", String(e));
           launchBtn.disabled = false;
         }
       });

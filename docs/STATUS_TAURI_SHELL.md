@@ -511,3 +511,43 @@ Panneau modal listant tous les raccourcis :
 
 - Raccourci `⌘+3` ajouté pour "Publier"
 - Raccourci `⌘+O` pour ouvrir DB, `⌘+Maj+N` pour créer
+
+## V1.8.2 — Local crash logging + log export bundle
+
+**Fichiers modifiés :** `tauri-shell/src/shell.ts`
+
+### Session Logger (no telemetry, local only)
+
+- `LogEntry` : `{ts, level:"info"|"warn"|"error", cat, msg, detail?}`
+- Buffer circulaire en mémoire `_sessionLog[]` (max 500 entrées, FIFO)
+- `_shellLog(level, cat, msg, detail?)` : console log + buffer
+- `_formatLog()` : header (version, platform, UA, DB, mode) + entries
+
+**Events loggés :**
+- `boot` : démarrage, DB restaurée, mode initial
+- `navigation` : chaque `_setMode()`
+- `db_switch` : début et fin de switch DB
+- `sidecar` : health check OK ou failure
+- `publish_wizard` : job soumis, job terminé, job échoué
+- `log_export` : demande et résultat d'export
+- `crash_recovery` : crash détecté
+- `shutdown` : fermeture propre
+
+### Crash marker (localStorage)
+
+- `localStorage["agrafes.session.crash_marker"]` = ISO timestamp
+- Écrit au démarrage (`_writeCrashMarker`)
+- Effacé au `beforeunload` propre (`_clearCrashMarker`)
+- Si présent au boot suivant → bandeau rouge "s'est fermé de façon inattendue"
+
+### Crash recovery banner
+
+- Bandeau rouge fixé en haut de page avec : date du crash + bouton "Exporter logs…" + bouton "Ignorer"
+- Affiché 500ms après le rendu principal
+
+### Export logs
+
+- Bouton "📋 Exporter logs…" dans l'About dialog
+- `dialogSave` → choix du chemin → `writeTextFile` (scoped au chemin utilisateur)
+- Sortie : fichier `.txt` avec header + toutes les entrées du buffer
+- Aucune donnée réseau — local uniquement
