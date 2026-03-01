@@ -220,3 +220,46 @@ PRESET_OUT["shell"] = Path("tauri-shell/src-tauri/binaries")
 
 Les binaires produits sont **non signés** (no-secrets CI).
 Pour la signature, voir la section "Signing" ci-dessous.
+
+---
+
+## Signing/Notarization — Tauri Shell (optionnel)
+
+### macOS — `.github/workflows/macos-sign-shell.yml`
+
+**Secrets requis (tous optionnels — skip gracieux si absent) :**
+
+| Secret | Description |
+|---|---|
+| `MACOS_CERT_P12_BASE64` | Certificat Developer ID Application (base64) |
+| `MACOS_CERT_P12_PASSWORD` | Mot de passe du certificat |
+| `MACOS_SIGN_IDENTITY` | Identité de signature (ex: `"Developer ID Application: ACME (TEAMID)"`) |
+| `APPLE_API_KEY_ID` | App Store Connect API key ID (pour notarization) |
+| `APPLE_API_ISSUER_ID` | API issuer ID |
+| `APPLE_API_KEY_P8_B64` | Fichier .p8 encodé base64 |
+| `APPLE_TEAM_ID` | Team ID Apple Developer |
+
+**Déclenchement :**
+- `workflow_run` après `Tauri Shell — Build (unsigned)` (tag push)
+- `workflow_dispatch` avec choix de l'artifact
+
+**Étapes :** keychain → codesign --deep --options runtime → notarytool submit/wait → stapler → création DMG signé
+
+### Windows — `.github/workflows/windows-sign-shell.yml`
+
+**Secrets requis :**
+
+| Secret | Description |
+|---|---|
+| `WIN_SIGN_CERT_PFX_BASE64` | Certificat PFX encodé base64 |
+| `WIN_SIGN_CERT_PASSWORD` | Mot de passe PFX |
+| `WIN_SIGN_TIMESTAMP_URL` | Serveur timestamp (optionnel, défaut: DigiCert) |
+
+**Étapes :** decode PFX → `signtool sign /fd sha256` pour chaque `.exe`/`.msi`
+
+### Fallback mode
+
+Si les secrets ne sont pas configurés :
+- Le job `check_secrets` détecte l'absence
+- Exit 0 (succès) avec message "No signing secrets"
+- Les binaires non signés du workflow principal restent disponibles

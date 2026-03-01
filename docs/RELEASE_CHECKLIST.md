@@ -161,3 +161,27 @@ python scripts/build_sidecar.py --preset shell --format onefile   # macOS
 npm --prefix tauri-shell ci
 npm --prefix tauri-shell run tauri build
 ```
+
+---
+
+## Signing (V1.8.1)
+
+### macOS
+
+- [ ] Secrets GitHub configurés : `MACOS_CERT_P12_BASE64`, `MACOS_CERT_P12_PASSWORD`, `MACOS_SIGN_IDENTITY`
+- [ ] Secrets notarization : `APPLE_API_KEY_ID`, `APPLE_API_ISSUER_ID`, `APPLE_API_KEY_P8_B64`, `APPLE_TEAM_ID`
+- [ ] Workflow `macos-sign-shell.yml` vert (ou skip gracieux si secrets absents)
+- [ ] `codesign --verify --deep --strict <app>` passe
+- [ ] `xcrun notarytool info <submission-id>` = Accepted
+- [ ] DMG signé + agrafé uploadé
+
+### Windows
+
+- [ ] Secrets GitHub configurés : `WIN_SIGN_CERT_PFX_BASE64`, `WIN_SIGN_CERT_PASSWORD`
+- [ ] Workflow `windows-sign-shell.yml` vert (ou skip gracieux)
+- [ ] `.exe` / `.msi` signés
+
+### Mode sans secrets
+
+Les workflows s'exécutent avec `exit 0` si les secrets sont absents — aucun échec en CI.
+Les binaires non signés (Sprint 1) restent utilisables.

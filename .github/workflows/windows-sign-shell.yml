@@ -1,0 +1,125 @@
+name: Windows — Sign Shell
+
+# Signs the Tauri Shell executable/MSI for Windows.
+# Entirely secrets-gated — skips gracefully if secrets not set.
+#
+# Required secrets (all optional):
+#   WIN_SIGN_CERT_PFX_BASE64    PFX certificate (base64-encoded)
+#   WIN_SIGN_CERT_PASSWORD      PFX password
+#   WIN_SIGN_TIMESTAMP_URL      Timestamp server URL (optional, defaults to DigiCert)
+
+on:
+  workflow_dispatch:
+    inputs:
+      unsigned_artifact:
+        description: "Name of unsigned artifact from tauri-shell-build workflow"
+        required: false
+        default: "tauri-shell-unsigned-windows"
+
+  workflow_run:
+    workflows: ["Tauri Shell — Build (unsigned)"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: write
+
+env:
+  WIN_SIGN_CERT_PFX_BASE64: ${{ secrets.WIN_SIGN_CERT_PFX_BASE64 }}
+  WIN_SIGN_CERT_PASSWORD: ${{ secrets.WIN_SIGN_CERT_PASSWORD }}
+  WIN_SIGN_TIMESTAMP_URL: ${{ secrets.WIN_SIGN_TIMESTAMP_URL || 'http://timestamp.digicert.com' }}
+
+jobs:
+  sign-windows-shell:
+    name: Sign Windows Shell
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check signing secrets availability
+        id: check_secrets
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrEmpty($env:WIN_SIGN_CERT_PFX_BASE64) -or
+              [string]::IsNullOrEmpty($env:WIN_SIGN_CERT_PASSWORD)) {
+            Write-Host "⚠ Windows signing secrets not configured — skipping"
+            echo "has_signing=false" >> $env:GITHUB_OUTPUT
+          } else {
+            Write-Host "✅ Windows signing secrets available"
+            echo "has_signing=true" >> $env:GITHUB_OUTPUT
+          }
+
+      - name: Exit early if no signing secrets
+        if: steps.check_secrets.outputs.has_signing == 'false'
+        shell: pwsh
+        run: |
+          Write-Host "No signing secrets — unsigned artifact is sufficient."
+          exit 0
+
+      - name: Checkout
+        if: steps.check_secrets.outputs.has_signing == 'true'
+        uses: actions/checkout@v4
+
+      - name: Download unsigned Shell artifact
+        if: steps.check_secrets.outputs.has_signing == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ github.event.inputs.unsigned_artifact || 'tauri-shell-unsigned-windows' }}
+          path: unsigned-shell
+
+      - name: Decode PFX certificate
+        if: steps.check_secrets.outputs.has_signing == 'true'
+        shell: pwsh
+        run: |
+          $certBytes = [Convert]::FromBase64String($env:WIN_SIGN_CERT_PFX_BASE64)
+          $certPath = "$env:RUNNER_TEMP\shell-signing.pfx"
+          [IO.File]::WriteAllBytes($certPath, $certBytes)
+          echo "CERT_PATH=$certPath" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Sign Shell executable(s)
+        if: steps.check_secrets.outputs.has_signing == 'true'
+        shell: pwsh
+        run: |
+          # Use scripts/windows_sign_sidecar.ps1 as reference pattern
+          # Find signtool
+          $signtool = Get-ChildItem -Recurse "C:\Program Files (x86)\Windows Kits" `
+            -Filter signtool.exe -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -notmatch "arm" } |
+            Select-Object -First 1 -ExpandProperty FullName
+
+          if (-not $signtool) {
+            Write-Warning "signtool.exe not found — trying venv or PATH"
+            $signtool = "signtool"
+          }
+
+          $filesToSign = Get-ChildItem -Path unsigned-shell -Recurse `
+            -Include "*.exe","*.msi" -ErrorAction SilentlyContinue
+
+          if ($filesToSign.Count -eq 0) {
+            Write-Host "No .exe or .msi found in artifact"
+            exit 0
+          }
+
+          foreach ($file in $filesToSign) {
+            Write-Host "Signing: $($file.FullName)"
+            & $signtool sign `
+              /fd sha256 `
+              /p "$env:WIN_SIGN_CERT_PASSWORD" `
+              /f "$env:CERT_PATH" `
+              /t $env:WIN_SIGN_TIMESTAMP_URL `
+              "$($file.FullName)"
+            if ($LASTEXITCODE -ne 0) {
+              Write-Warning "signtool failed for $($file.Name) (exit $LASTEXITCODE), continuing"
+            } else {
+              Write-Host "✅ Signed: $($file.Name)"
+            }
+          }
+
+      - name: Upload signed artifacts
+        if: steps.check_secrets.outputs.has_signing == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: tauri-shell-signed-windows
+          path: unsigned-shell/
+          retention-days: 30
+          if-no-files-found: warn

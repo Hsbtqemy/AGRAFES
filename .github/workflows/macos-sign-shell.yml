@@ -1,0 +1,181 @@
+name: macOS — Sign & Notarize Shell
+
+# This workflow signs and notarizes the Tauri Shell app bundle for macOS.
+# It is ENTIRELY secrets-gated: if no signing secrets are configured,
+# the workflow exits gracefully without error (no failure).
+#
+# Required secrets (all optional — skip if not set):
+#   MACOS_CERT_P12_BASE64       Developer ID Application certificate (base64)
+#   MACOS_CERT_P12_PASSWORD     Certificate password
+#   MACOS_SIGN_IDENTITY         Signing identity (e.g. "Developer ID Application: …")
+#   APPLE_API_KEY_ID            App Store Connect API key ID
+#   APPLE_API_ISSUER_ID         App Store Connect API issuer ID
+#   APPLE_API_KEY_P8_B64        API key content (base64-encoded .p8)
+#   APPLE_TEAM_ID               Apple Developer Team ID
+
+on:
+  workflow_dispatch:
+    inputs:
+      unsigned_artifact:
+        description: "Name of unsigned artifact from tauri-shell-build workflow"
+        required: false
+        default: "tauri-shell-unsigned-macos"
+      upload_release:
+        description: "Upload signed artifact to latest release"
+        required: false
+        default: "false"
+        type: choice
+        options: ["false", "true"]
+  workflow_run:
+    workflows: ["Tauri Shell — Build (unsigned)"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: write
+
+env:
+  MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+  MACOS_CERT_P12_PASSWORD: ${{ secrets.MACOS_CERT_P12_PASSWORD }}
+  MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+  APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+  APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+  APPLE_API_KEY_P8_B64: ${{ secrets.APPLE_API_KEY_P8_B64 }}
+  APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+jobs:
+  sign-macos-shell:
+    name: Sign + Notarize macOS Shell
+    runs-on: macos-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Check signing secrets availability
+        id: check_secrets
+        run: |
+          if [ -z "$MACOS_CERT_P12_BASE64" ] || [ -z "$MACOS_CERT_P12_PASSWORD" ] || [ -z "$MACOS_SIGN_IDENTITY" ]; then
+            echo "⚠ macOS signing secrets not configured — skipping signing"
+            echo "has_signing=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "✅ macOS signing secrets available"
+            echo "has_signing=true" >> "$GITHUB_OUTPUT"
+          fi
+          if [ -z "$APPLE_API_KEY_ID" ] || [ -z "$APPLE_API_ISSUER_ID" ] || [ -z "$APPLE_API_KEY_P8_B64" ]; then
+            echo "⚠ notarization secrets not configured — will sign but not notarize"
+            echo "has_notarize=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "✅ Notarization secrets available"
+            echo "has_notarize=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Exit early if no signing secrets
+        if: steps.check_secrets.outputs.has_signing == 'false'
+        run: |
+          echo "No signing secrets — nothing to do. Build unsigned artifact is sufficient."
+          exit 0
+
+      # From here on: only runs if has_signing == 'true'
+      - name: Checkout
+        if: steps.check_secrets.outputs.has_signing == 'true'
+        uses: actions/checkout@v4
+
+      - name: Download unsigned Shell artifact
+        if: steps.check_secrets.outputs.has_signing == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ github.event.inputs.unsigned_artifact || 'tauri-shell-unsigned-macos' }}
+          path: unsigned-shell
+
+      - name: Set up signing keychain
+        if: steps.check_secrets.outputs.has_signing == 'true'
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/shell-signing.keychain-db"
+          security create-keychain -p "" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
+          python3 -c '
+          import base64, os
+          from pathlib import Path
+          Path(os.environ["RUNNER_TEMP"] + "/signing_cert.p12").write_bytes(
+              base64.b64decode(os.environ["MACOS_CERT_P12_BASE64"])
+          )'
+          security import "$RUNNER_TEMP/signing_cert.p12" \
+            -k "$KEYCHAIN_PATH" \
+            -P "$MACOS_CERT_P12_PASSWORD" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" "$KEYCHAIN_PATH"
+
+      - name: Sign .app bundle
+        if: steps.check_secrets.outputs.has_signing == 'true'
+        run: |
+          APP_PATH=$(find unsigned-shell -name "*.app" -maxdepth 2 | head -1)
+          if [ -z "$APP_PATH" ]; then
+            echo "No .app found in artifact, looking for raw binary"
+            APP_PATH=$(find unsigned-shell -name "AGRAFESShell" -o -name "agrafes-shell" | head -1)
+          fi
+          echo "Signing: $APP_PATH"
+          codesign \
+            --sign "$MACOS_SIGN_IDENTITY" \
+            --force \
+            --deep \
+            --options runtime \
+            --entitlements tauri-shell/src-tauri/entitlements.plist 2>/dev/null || \
+          codesign \
+            --sign "$MACOS_SIGN_IDENTITY" \
+            --force \
+            --deep \
+            --options runtime \
+            "$APP_PATH"
+          codesign --verify --deep --strict "$APP_PATH" && echo "✅ Code signature valid"
+
+      - name: Notarize .app bundle
+        if: >-
+          steps.check_secrets.outputs.has_signing == 'true' &&
+          steps.check_secrets.outputs.has_notarize == 'true'
+        run: |
+          # Write API key
+          mkdir -p ~/.private_keys
+          python3 -c '
+          import base64, os
+          from pathlib import Path
+          key_id = os.environ["APPLE_API_KEY_ID"]
+          Path(f"{Path.home()}/.private_keys/AuthKey_{key_id}.p8").write_bytes(
+              base64.b64decode(os.environ["APPLE_API_KEY_P8_B64"])
+          )'
+
+          APP_PATH=$(find unsigned-shell -name "*.app" -maxdepth 2 | head -1)
+          # Create a zip for notarization
+          ditto -c -k --keepParent "$APP_PATH" /tmp/shell-notarize.zip
+
+          xcrun notarytool submit /tmp/shell-notarize.zip \
+            --key ~/.private_keys/AuthKey_${{ env.APPLE_API_KEY_ID }}.p8 \
+            --key-id "$APPLE_API_KEY_ID" \
+            --issuer "$APPLE_API_ISSUER_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait --timeout 25m
+
+          xcrun stapler staple "$APP_PATH" && echo "✅ Stapled"
+
+      - name: Create signed DMG
+        if: steps.check_secrets.outputs.has_signing == 'true'
+        run: |
+          APP_PATH=$(find unsigned-shell -name "*.app" -maxdepth 2 | head -1)
+          APP_NAME=$(basename "$APP_PATH" .app)
+          DMG_NAME="${APP_NAME}-signed.dmg"
+          hdiutil create -volname "$APP_NAME" -srcfolder "$APP_PATH" \
+            -ov -format UDZO "$DMG_NAME"
+          codesign --sign "$MACOS_SIGN_IDENTITY" "$DMG_NAME" 2>/dev/null || true
+          echo "DMG_NAME=$DMG_NAME" >> "$GITHUB_ENV"
+
+      - name: Upload signed artifacts
+        if: steps.check_secrets.outputs.has_signing == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: tauri-shell-signed-macos
+          path: |
+            *-signed.dmg
+            unsigned-shell/*.app
+          retention-days: 30
+          if-no-files-found: warn
