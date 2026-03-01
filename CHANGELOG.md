@@ -5,6 +5,73 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased — V5.2] — 2026-03-01 — AGRAFES V1.2 : Presets + TEI enrichi + Help/guardrails
+
+### Added
+- **Constituer V1.2: Presets de projet** — Interface complète de gestion des presets (`localStorage["agrafes.prep.presets"]`) avec modal "📋 Presets" dans la topbar. Seed : "FR↔EN par défaut" + "DE↔FR". CRUD complet : créer, modifier (modal), dupliquer, supprimer. Import/Export JSON via Tauri dialog. Application d'un preset : `ActionsScreen.applyPreset()` remplit non-destructivement `#act-seg-lang`, `#act-seg-pack`, `#act-preset-sel`, `#act-align-strategy`, `#act-sim-threshold`. (`tauri-prep/src/app.ts`, `tauri-prep/src/screens/ActionsScreen.ts`)
+- **Constituer V1.2: Export TEI enrichi** — Option `include_structure` (checkbox) dans ExportsScreen pour inclure les `<head>` des unités structurelles. Option `relation_type` (translation_of / excerpt_of / none) affichée dans le récap. Bannière récap après export (count, dossier, options). (`tauri-prep/src/screens/ExportsScreen.ts`)
+- **Explorer V1.2: Help/guardrails** — Bouton "?" près du builder → popover avec 7 exemples FTS5 (mot simple, phrase exacte, AND/OR, wildcard, NEAR, NOT) et boutons "Copier" pour remplir la barre de recherche. Section guardrails expliquant le mode pass-through, la contrainte NEAR, l'échappement des guillemets. (`tauri-app/src/app.ts`)
+- **Explorer V1.2: Pinned history** — Historique enrichi : `HistoryItem.pinned?: boolean`, jusqu'à 3 favoris épinglés (⭐/☆ toggle). Favoris affichés en premier (surbrillance ambrée + label "Favoris"). "Vider" conserve les favoris, "Tout effacer" supprime tout. (`tauri-app/src/app.ts`)
+
+### Changed (backend — CONTRACT_VERSION 1.3.1)
+- **`POST /export/tei`** : nouveau paramètre optionnel `include_structure` (bool, default false) — passe le flag au `export_tei()` Python existant. Rétrocompatible. (`src/multicorpus_engine/sidecar.py`, `sidecar_contract.py`, `docs/openapi.json`, `docs/SIDECAR_API_CONTRACT.md`)
+- `tauri-prep/src/lib/sidecarClient.ts` : `ExportTeiOptions` + champ `include_structure?: boolean`
+
+## [Unreleased — V5.1] — 2026-03-01 — Explorer V1.1 + Constituer V1.1 + CI Smoke
+
+### Added
+- **Explorer V1.1: Export enrichi 4 formats** — `_toJsonlSimple`, `_toJsonlParallel`, `_toCsvFlat`, `_toCsvLong`. Menu "⬇ Export" avec 4 options. Fichier par défaut avec date + mode. Mini récap après export (nb_hits · nb_aligned · KB). (`tauri-app/src/app.ts`)
+- **Constituer V1.1: Create/Open DB dans Prep** — Boutons "Ouvrir…" et "Créer…" dans la topbar de la Prep. Flow "Ouvrir…" : `dialogOpen` → `setCurrentDbPath` → reconnect. Flow "Créer…" : `dialogSave` → `setCurrentDbPath` → `ensureRunning` (init sidecar + migrations) → toast/erreur. Bannière d'erreur retry. (`tauri-prep/src/app.ts`)
+- **CI Smoke workflow** — `.github/workflows/smoke.yml` : 3 jobs sans secrets (ubuntu + macos matrix) : sidecar smoke, frontend builds, python tests
+- **Script smoke Python** — `scripts/ci_smoke_sidecar.py` : crée temp DB → start sidecar → import fixture → index → query "needle" → assert → shutdown. Exit 0/1.
+- **RELEASE_CHECKLIST.md** — `docs/RELEASE_CHECKLIST.md` : checklist pré-release avec gates CI, binary build, Tauri build, post-release.
+
+### Changed
+- `tauri-app/src/app.ts` : remplace `_hitsToJsonl`/`_hitsToCsv` par 4 fonctions spécialisées + `ExportFormat` type + `_exportHits` refactorisé
+- `tauri-prep/src/app.ts` : import `dialogOpen`, `dialogSave` ; méthodes `_dbBadge`, `_onOpenDb`, `_onCreateDb`, `_showPrepInitError` ; topbar modifié avec boutons DB ; CSS `.topbar-db-btn`, `.prep-init-error`
+
+## [Unreleased — V5.0] — 2026-03-01 — Shell V0.5 + Explorer V1 + Constituer V1
+
+### Added
+- **Shell V0.5: Create DB init immédiat** — `_onCreateDb()` appelle `_initDb()` (import dynamique de `ensureRunning`) pour démarrer le sidecar + migrations SQLite immédiatement. Bannière d'erreur (`#shell-init-error`) avec "Réessayer" / "Choisir un autre fichier…" / Fermer. Escape ferme menu + bannière. (`tauri-shell/src/shell.ts`)
+- **Explorer V1: Search history** — `localStorage["agrafes.explorer.history"]` (max 10 items) — stocke `raw/fts/mode/filters/aligned/parallel`. Bouton "🕘 Hist." → dropdown listant les recherches ; click restore + relance ; bouton "Vider". (`tauri-app/src/app.ts`)
+- **Explorer V1: Export hits** — bouton "⬇ Export" → menu JSONL/CSV → `dialogSave` + `writeTextFile`. (`tauri-app/src/app.ts`)
+- **Constituer V1: Workflow alignement guidé** — section 5 étapes en accordéon : Alignement → Qualité (inline) → Collisions → Audit → Rapport. `run_id` persisté dans `localStorage`. (`tauri-prep/src/screens/ActionsScreen.ts`)
+- Capabilities `dialog:allow-save` + `fs:allow-write-text-file` dans `tauri-app/src-tauri/capabilities/default.json` et `tauri-shell`
+
+### Changed
+- `tauri-shell/src/shell.ts` : `_initDb()`, `_showInitError()`, `_clearInitError()`, Escape handler, `_escHtml()`
+- `tauri-app/src/app.ts` : import `saveDialog`, `writeTextFile` ; history helpers ; export helpers ; CSS history/export ; `doSearch` sauvegarde dans l'historique
+- `tauri-prep/src/screens/ActionsScreen.ts` : workflow section HTML, `_initWorkflow()`, `_wfToggleStep()`, `_wfSyncRunId()`, `_wfEnableButtons()`, `_runWfQuality()` ; localStorage `LS_WF_RUN_ID`/`LS_WF_STEP`
+
+## [Unreleased — V4.9] — 2026-03-01 — Shell App V0.4
+
+### Added
+- **Shell: Créer DB** — bouton "Changer…" remplacé par "DB ▾" (dropdown : Ouvrir… / Créer…). "Créer…" ouvre un `dialogSave`, set le chemin, le sidecar initialise le schéma SQLite au premier accès. (`tauri-shell/src/shell.ts`)
+- **Shell capabilities** — `dialog:allow-save` dans `tauri-shell/src-tauri/capabilities/default.json`
+- **Explorer: Preview FTS** — barre sous la toolbar montrant la requête FTS effective (`buildFtsQuery(raw)`) en temps réel à chaque frappe. (`tauri-app/src/app.ts`)
+- **Explorer: Chips de filtres** — zone dynamique affichant les filtres actifs (langue, rôle, type, doc_id) sous le drawer, chaque chip avec × pour effacer. (`tauri-app/src/app.ts`)
+- **Explorer: Bouton Réinitialiser** — efface query + tous filtres + mode builder en un clic. (`tauri-app/src/app.ts`)
+- **Constituer: Export rapport de runs** — section "Rapport de runs" dans ActionsScreen : choix format HTML/JSONL + run_id optionnel (pré-rempli après alignement) + `dialogSave` + appel `POST /export/run_report`. (`tauri-prep/src/screens/ActionsScreen.ts`)
+- **Prep capabilities** — `dialog:allow-save` dans `tauri-prep/src-tauri/capabilities/default.json`
+
+### Changed
+- `tauri-shell/src/shell.ts` : import `save as dialogSave`, menu CSS dropdown, `_onCreateDb()`, `_toggleDbMenu()`, `_closeDbMenu()`
+- `tauri-app/src/app.ts` : `_renderChips()`, `_updateFtsPreview()`, reset button handler, CSS `.fts-preview-bar`, `.chips-bar`, `.chip`
+- `tauri-prep/src/screens/ActionsScreen.ts` : import `exportRunReport`, `ExportRunReportOptions`, `save as dialogSave`; méthode `_runExportReport()`
+
+## [Unreleased — V4.8] — 2026-03-01 — Shell App V0.3
+
+### Added
+- **Explorer**: panneau métadonnées des hits — bouton ⓘ sur chaque résultat ouvre un drawer droit avec doc_id, unit_id, external_id, doc_role, resource_type, unit_count. Boutons "Copier doc_id" / "Copier unit_id". Fermeture Esc + backdrop + bouton. (`tauri-app/src/app.ts`)
+- **Shell Home**: section onboarding corpus démo — DB SQLite pré-générée (Le Prince FR/EN, 5 unités alignées). Boutons "Installer…" (copie AppData) et "Ouvrir Explorer". (`tauri-shell/public/demo/agrafes_demo.db`, `tauri-shell/src/shell.ts`)
+- **Constituer Audit**: toggle "Expliquer (include_explain)" dans la table d'audit — column supplémentaire avec `<details>` montrant strategy + notes par lien. (`tauri-prep/src/screens/ActionsScreen.ts`)
+- Script `scripts/create_demo_db.py` pour régénérer la démo DB
+- Capability `fs:scope-appdata-recursive` dans `tauri-shell/src-tauri/capabilities/default.json`
+
+### Changed
+- `tauri-app/src/app.ts`: `loadDocsForFilters` peuple un `_docsById` Map pour enrichir le panneau métadonnées
+
 ## [Unreleased — V4.7] — 2026-03-01 — Shell App V0.2: DB badge + switch + persistence + deep-link + wrappers
 
 ### Added
