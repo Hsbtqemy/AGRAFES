@@ -34,9 +34,8 @@ OS_LABEL_MAP = {
     "linux": "linux",
     "windows": "windows",
 }
-ALLOWED_STDERR_WARNING_PATTERNS: tuple[re.Pattern[str], ...] = (
-    re.compile(r"Encoding detection fell back to cp1252 for fixture\.txt"),
-)
+# Stderr must be empty (encoding warnings moved to run stats/logs).
+ALLOWED_STDERR_WARNING_PATTERNS: tuple[re.Pattern[str], ...] = ()
 
 
 def _path_size(path: Path) -> int:

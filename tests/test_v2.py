@@ -117,6 +117,38 @@ def test_txt_import_file_not_found(db_conn: sqlite3.Connection) -> None:
         import_txt_numbered_lines(conn=db_conn, path="/nonexistent/path.txt", language="fr")
 
 
+def test_txt_import_encoding_fallback_in_stats(
+    db_conn: sqlite3.Connection,
+    tmp_path: Path,
+) -> None:
+    """When encoding detection falls back to cp1252/latin-1, warning is in report.warnings (stats_json), not stderr."""
+    import unittest.mock as mock
+
+    from multicorpus_engine.importers.txt import import_txt_numbered_lines
+
+    path = _write_txt(tmp_path / "fixture.txt", ["[1] hello encoding fallback"])
+    with mock.patch(
+        "multicorpus_engine.importers.txt._detect_encoding",
+        return_value=("cp1252", "cp1252-fallback"),
+    ):
+        report = import_txt_numbered_lines(
+            conn=db_conn, path=path, language="fr", title="Fallback test"
+        )
+
+    encoding_warnings = [
+        w for w in report.warnings if isinstance(w, dict) and w.get("type") == "encoding_fallback"
+    ]
+    assert len(encoding_warnings) == 1
+    assert encoding_warnings[0]["chosen"] == "cp1252"
+    assert "fixture.txt" in encoding_warnings[0]["path"]
+
+    stats = report.to_dict()
+    assert "warnings" in stats
+    assert any(
+        isinstance(w, dict) and w.get("type") == "encoding_fallback" for w in stats["warnings"]
+    )
+
+
 # ===========================================================================
 # DOCX paragraphs importer
 # ===========================================================================

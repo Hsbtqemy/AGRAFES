@@ -21,9 +21,11 @@ txt = [
 dev = [
     "pytest>=7.4",
     "pytest-cov>=4.1",
+    "charset-normalizer>=3.0",  # CI: avoid encoding fallback to cp1252 on UTF-8 fixtures
 ]
 packaging = [
     "pyinstaller>=6.0",
+    "charset-normalizer>=3.0",  # embed for sidecar binary TXT import
 ]
 
 [project.scripts]

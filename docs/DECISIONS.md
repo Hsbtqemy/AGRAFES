@@ -213,6 +213,7 @@ TXT files arrive in mixed encodings.
 
 **Consequences**
 - Good default interoperability with deterministic fallback behavior.
+- Encoding fallback (cp1252/latin-1) is not written to stderr: it is logged only to the run log (CLI) when `run_logger` is provided, and added to import run `stats_json.warnings` as `{"type": "encoding_fallback", "path": "...", "chosen": "cp1252"}` so that CLI/sidecar stderr stays empty (contract hardening).
 
 ---
 

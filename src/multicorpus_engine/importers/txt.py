@@ -98,9 +98,13 @@ def import_txt_numbered_lines(
     source_hash = hashlib.sha256(raw_bytes).hexdigest()
     encoding, enc_method = _detect_encoding(raw_bytes)
 
+    # Encoding fallback: do not use module logger (would go to stderr in sidecar).
+    # Only run_logger (CLI run log file) and structured stats_json.
     if enc_method in ("cp1252-fallback", "latin-1-fallback"):
-        msg = f"Encoding detection fell back to {encoding} for {path.name}"
-        log.warning(msg)
+        if run_logger is not None:
+            run_logger.warning(
+                "Encoding detection fell back to %s for %s", encoding, path.name
+            )
 
     text = raw_bytes.decode(encoding, errors="replace")
     log.info("Decoded %s as %s (method=%s)", path.name, encoding, enc_method)
@@ -183,6 +187,11 @@ def import_txt_numbered_lines(
         holes=holes,
         non_monotonic=non_monotonic,
     )
+
+    if enc_method in ("cp1252-fallback", "latin-1-fallback"):
+        report.warnings.append(
+            {"type": "encoding_fallback", "path": str(path), "chosen": encoding}
+        )
 
     if duplicates:
         msg = f"Duplicate external_id(s) found: {duplicates}"
