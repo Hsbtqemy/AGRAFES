@@ -696,10 +696,12 @@ def cmd_qa_report(args: argparse.Namespace) -> None:
         output_path=Path(args.out),
         fmt=args.fmt,
         doc_ids=args.doc_ids,
+        policy=getattr(args, "policy", "lenient"),
     )
     _ok({
         "status": "ok",
         "gate_status": report["gates"]["status"],
+        "policy_used": report.get("policy_used", "lenient"),
         "blocking": report["gates"]["blocking"],
         "warnings": report["gates"]["warnings"],
         "summary": report["summary"],
@@ -1202,6 +1204,8 @@ def build_parser() -> argparse.ArgumentParser:
                       help="Output format: json (default) or html")
     p_qa.add_argument("--doc-id", dest="doc_ids", type=int, nargs="*", default=None,
                       help="Restrict to specific doc_ids (default: all)")
+    p_qa.add_argument("--policy", dest="policy", choices=["lenient", "strict"], default="lenient",
+                      help="Gate policy: lenient (default) or strict")
     p_qa.set_defaults(func=cmd_qa_report)
 
     # curate

@@ -197,21 +197,69 @@ def _check_alignment_pairs(conn: sqlite3.Connection) -> list[dict]:
 
 # ── Report assembly ───────────────────────────────────────────────────────────
 
+# ── Policy definitions ────────────────────────────────────────────────────────
+
+#: Policy rule table: maps (dimension, condition) → (lenient_level, strict_level)
+#: Levels: "ok" < "warning" < "blocking"
+POLICY_RULES: dict[str, dict[str, str]] = {
+    # Key: rule name
+    # Value: {lenient: gate_level, strict: gate_level}
+    "import_error":      {"lenient": "blocking", "strict": "blocking"},
+    "import_warning":    {"lenient": "warning",  "strict": "blocking"},   # ← strict escalates
+    "meta_error":        {"lenient": "blocking", "strict": "blocking"},
+    "meta_warning":      {"lenient": "warning",  "strict": "blocking"},   # ← strict escalates
+    "align_error":       {"lenient": "blocking", "strict": "blocking"},
+    "align_collision":   {"lenient": "warning",  "strict": "blocking"},   # ← strict: collisions block
+    "relation_issue":    {"lenient": "warning",  "strict": "blocking"},   # ← strict: dangling relations block
+}
+
+VALID_POLICIES = ("lenient", "strict")
+
+
+def _apply_policy(
+    rule: str,
+    count: int,
+    policy: str,
+    blocking: list[str],
+    warnings_gate: list[str],
+    msg: str,
+) -> None:
+    """Apply a single policy rule: escalate or stay at warning level."""
+    if count == 0:
+        return
+    level = POLICY_RULES.get(rule, {}).get(policy, "warning")
+    if level == "blocking":
+        blocking.append(msg)
+    else:
+        warnings_gate.append(msg)
+
+
 def generate_qa_report(
     conn: sqlite3.Connection,
     doc_ids: Optional[list[int]] = None,
+    policy: str = "lenient",
 ) -> dict:
     """Generate a QA report for the corpus or a subset of documents.
 
+    Args:
+        conn: SQLite connection.
+        doc_ids: Subset of doc_ids (None = all).
+        policy: Gate policy. "lenient" (default) keeps collisions/meta-warnings
+                as warnings. "strict" escalates them to blocking for publication.
+
     Returns:
         Structured dict with:
-        - summary: {total_docs, docs_ok, docs_warning, docs_error, align_pairs_checked}
+        - policy_used: str — the policy applied
+        - summary: counts per dimension and severity
         - import_integrity: list of per-doc checks
         - metadata_readiness: list of per-doc checks
         - alignment_qa: list of per-pair checks
-        - gates: {blocking, warnings} — for UI traffic-light display
+        - gates: {status, blocking, warnings, policy_used}
     """
     import datetime
+
+    if policy not in VALID_POLICIES:
+        policy = "lenient"
 
     if doc_ids is None:
         doc_ids = [
@@ -233,24 +281,29 @@ def generate_qa_report(
 
     align_warning = sum(1 for a in align_checks if a["severity"] == "warning")
     align_error = sum(1 for a in align_checks if a["severity"] == "error")
+    align_collisions = sum(a.get("collisions", 0) for a in align_checks)
+    relation_issues = sum(
+        len(c.get("relation_issues", [])) for c in meta_checks
+    )
 
-    # Gate categories
+    # Gate categories — apply policy rules
     blocking: list[str] = []
     warnings_gate: list[str] = []
 
-    if docs_error > 0:
-        blocking.append(f"{docs_error} document(s) with import integrity errors")
-    if meta_error > 0:
-        blocking.append(f"{meta_error} document(s) missing required metadata (title/language)")
-    if align_error > 0:
-        blocking.append(f"{align_error} alignment pair(s) with <50% coverage")
-
-    if docs_warning > 0:
-        warnings_gate.append(f"{docs_warning} document(s) with import warnings (holes/duplicates)")
-    if meta_warning > 0:
-        warnings_gate.append(f"{meta_warning} document(s) with optional metadata missing")
-    if align_warning > 0:
-        warnings_gate.append(f"{align_warning} alignment pair(s) with collisions")
+    _apply_policy("import_error", docs_error, policy, blocking, warnings_gate,
+                  f"{docs_error} document(s) with import integrity errors")
+    _apply_policy("import_warning", docs_warning, policy, blocking, warnings_gate,
+                  f"{docs_warning} document(s) with import warnings (holes/duplicates)")
+    _apply_policy("meta_error", meta_error, policy, blocking, warnings_gate,
+                  f"{meta_error} document(s) missing required metadata (title/language)")
+    _apply_policy("meta_warning", meta_warning, policy, blocking, warnings_gate,
+                  f"{meta_warning} document(s) with optional metadata missing")
+    _apply_policy("align_error", align_error, policy, blocking, warnings_gate,
+                  f"{align_error} alignment pair(s) with <50% coverage")
+    _apply_policy("align_collision", align_collisions, policy, blocking, warnings_gate,
+                  f"{align_collisions} alignment collision(s) detected")
+    _apply_policy("relation_issue", relation_issues, policy, blocking, warnings_gate,
+                  f"{relation_issues} dangling relation target(s)")
 
     gate_status = "ok" if not blocking and not warnings_gate else (
         "blocking" if blocking else "warning"
@@ -259,6 +312,7 @@ def generate_qa_report(
     return {
         "generated_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "doc_count": len(doc_ids),
+        "policy_used": policy,
         "summary": {
             "import_ok": docs_ok,
             "import_warning": docs_warning,
@@ -269,11 +323,14 @@ def generate_qa_report(
             "align_pairs_checked": len(align_checks),
             "align_warning": align_warning,
             "align_error": align_error,
+            "align_collisions": align_collisions,
+            "relation_issues": relation_issues,
         },
         "gates": {
             "status": gate_status,
             "blocking": blocking,
             "warnings": warnings_gate,
+            "policy_used": policy,
         },
         "import_integrity": import_checks,
         "metadata_readiness": meta_checks,
@@ -294,6 +351,8 @@ def render_qa_report_html(report: dict) -> str:
 
     gates = report.get("gates", {})
     gate_status = gates.get("status", "ok")
+    policy_used = report.get("policy_used", gates.get("policy_used", "lenient"))
+    policy_label = {"lenient": "Lenient (défaut)", "strict": "Strict (expert)"}.get(policy_used, policy_used)
     gate_color = {"ok": "#1a7f4e", "warning": "#b8590a", "blocking": "#c0392b"}.get(gate_status, "#6c757d")
     gate_bg = {"ok": "#d1fae5", "warning": "#fff3cd", "blocking": "#fde8e8"}.get(gate_status, "#f8f9fa")
     gate_icon = {"ok": "🟢", "warning": "🟡", "blocking": "🔴"}.get(gate_status, "⚪")
@@ -365,7 +424,7 @@ def render_qa_report_html(report: dict) -> str:
 </head>
 <body>
 <h1>📋 Rapport QA Corpus — AGRAFES</h1>
-<p style="color:#6c757d;font-size:0.85rem">Généré: {report.get('generated_at','')} · {report.get('doc_count',0)} document(s)</p>
+<p style="color:#6c757d;font-size:0.85rem">Généré: {report.get('generated_at','')} · {report.get('doc_count',0)} document(s) · Politique: <strong>{policy_label}</strong></p>
 
 <div class="gate-banner" style="border-color:{gate_color};color:{gate_color}">
   <span style="font-size:1.5rem">{gate_icon}</span>
@@ -414,6 +473,7 @@ def write_qa_report(
     output_path: str | Path,
     fmt: str = "json",
     doc_ids: Optional[list[int]] = None,
+    policy: str = "lenient",
 ) -> dict:
     """Generate and write a QA report to a file.
 
@@ -422,6 +482,7 @@ def write_qa_report(
         output_path: Destination file path.
         fmt: "json" or "html".
         doc_ids: Subset of doc_ids (None = all).
+        policy: "lenient" (default) or "strict".
 
     Returns:
         The report dict.
@@ -431,7 +492,7 @@ def write_qa_report(
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    report = generate_qa_report(conn, doc_ids=doc_ids)
+    report = generate_qa_report(conn, doc_ids=doc_ids, policy=policy)
 
     if fmt == "html":
         output_path.write_text(render_qa_report_html(report), encoding="utf-8")

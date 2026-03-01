@@ -998,7 +998,8 @@ interface WizardState {
   includeStructure: boolean;
   includeAlignment: boolean;
   statusFilter: string[];
-  teiProfile: "generic" | "parcolab_like";
+  teiProfile: "generic" | "parcolab_like" | "parcolab_strict";
+  qaPolicy: "lenient" | "strict";
   step: WizardStep;
   jobId: string | null;
   result: Record<string, unknown> | null;
@@ -1023,6 +1024,7 @@ async function _renderPublicationWizard(container: HTMLElement): Promise<void> {
     includeAlignment: false,
     statusFilter: ["accepted"],
     teiProfile: "generic",
+    qaPolicy: "lenient",
     step: 1,
     jobId: null,
     result: null,
@@ -1139,9 +1141,18 @@ async function _renderPublicationWizard(container: HTMLElement): Promise<void> {
             <label style="display:flex;align-items:center;gap:0.5rem">
               Profil TEI:
               <select id="wiz-tei-profile" style="padding:3px 6px;border:1px solid #dde1e8;border-radius:4px">
-              <option value="generic" ${state.teiProfile !== "parcolab_like" ? "selected" : ""}>Generic</option>
+              <option value="generic" ${state.teiProfile === "generic" ? "selected" : ""}>Generic</option>
               <option value="parcolab_like" ${state.teiProfile === "parcolab_like" ? "selected" : ""}>ParCoLab-like (enrichi)</option>
+              <option value="parcolab_strict" ${state.teiProfile === "parcolab_strict" ? "selected" : ""}>ParCoLab strict (expert)</option>
               </select>
+            </label>
+            <label style="display:flex;align-items:center;gap:0.5rem">
+              Politique QA:
+              <select id="wiz-qa-policy" style="padding:3px 6px;border:1px solid #dde1e8;border-radius:4px">
+                <option value="lenient" ${state.qaPolicy === "lenient" ? "selected" : ""}>Lenient (défaut)</option>
+                <option value="strict" ${state.qaPolicy === "strict" ? "selected" : ""}>Strict (expert)</option>
+              </select>
+              <span title="Lenient: seules les erreurs critiques bloquent. Strict: collisions, trous et métadonnées optionnelles manquantes bloquent aussi." style="color:#6c757d;cursor:help;font-size:0.9rem">ⓘ</span>
             </label>
           </div>
           <div style="margin-top:1.25rem;display:flex;justify-content:space-between">
@@ -1159,7 +1170,10 @@ async function _renderPublicationWizard(container: HTMLElement): Promise<void> {
           : ["all"];
         const profileSel = body.querySelector<HTMLSelectElement>("#wiz-tei-profile");
         const profileVal = profileSel?.value ?? "generic";
-        state.teiProfile = profileVal === "parcolab_like" ? "parcolab_like" : "generic";
+        state.teiProfile = profileVal === "parcolab_like" ? "parcolab_like"
+          : profileVal === "parcolab_strict" ? "parcolab_strict" : "generic";
+        const policyVal = (body.querySelector<HTMLSelectElement>("#wiz-qa-policy")?.value) ?? "lenient";
+        state.qaPolicy = policyVal === "strict" ? "strict" : "lenient";
         state.step = 4;
         void render();
       });
@@ -1176,7 +1190,8 @@ async function _renderPublicationWizard(container: HTMLElement): Promise<void> {
             <b>Structure:</b> ${state.includeStructure ? "oui" : "non"} &nbsp;
             <b>Alignements:</b> ${state.includeAlignment ? "oui" : "non"} &nbsp;
             <b>Statut:</b> ${state.statusFilter.join(", ")} &nbsp;
-            <b>Profil TEI:</b> ${state.teiProfile === "parcolab_like" ? "ParCoLab-like" : "Generic"}
+            <b>Profil TEI:</b> ${state.teiProfile === "parcolab_like" ? "ParCoLab-like" : state.teiProfile === "parcolab_strict" ? "ParCoLab strict" : "Generic"} &nbsp;
+            <b>Politique QA:</b> ${state.qaPolicy === "strict" ? "Strict" : "Lenient"}
           </div>
           <div id="wiz-export-status" style="margin-bottom:1rem;font-size:0.84rem;color:#6c757d">
             Cliquez "Choisir fichier et lancer" pour démarrer.

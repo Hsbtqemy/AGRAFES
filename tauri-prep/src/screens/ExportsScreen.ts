@@ -176,6 +176,11 @@ export class ExportsScreen {
               <option value="html">HTML</option>
             </select>
           </label>
+          <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.84rem;cursor:pointer;align-self:flex-end">
+            <input type="checkbox" id="qa-strict-mode">
+            Mode strict
+            <span title="En mode strict, les avertissements (collisions, trous d'import, métadonnées optionnelles, relations) deviennent bloquants." style="color:#6c757d;cursor:help">ⓘ</span>
+          </label>
           <div style="align-self:flex-end">
             <button id="qa-report-btn" class="btn btn-primary btn-sm" disabled>Choisir fichier et exporter rapport QA…</button>
           </div>
@@ -476,6 +481,8 @@ export class ExportsScreen {
     const btn = this._root.querySelector<HTMLButtonElement>("#qa-report-btn")!;
     const banner = this._root.querySelector<HTMLElement>("#qa-gate-banner")!;
     const fmt = (this._root.querySelector<HTMLSelectElement>("#qa-report-fmt")!).value as "json" | "html";
+    const strictMode = (this._root.querySelector<HTMLInputElement>("#qa-strict-mode")?.checked) ?? false;
+    const qaPolicy = strictMode ? "strict" : "lenient";
     const ext = fmt === "html" ? "html" : "json";
 
     const outPath = await save({
@@ -487,7 +494,7 @@ export class ExportsScreen {
 
     btn.disabled = true;
     banner.style.display = "none";
-    this._log(`Rapport QA: génération en cours (format ${fmt})…`);
+    this._log(`Rapport QA: génération en cours (format ${fmt}, politique: ${qaPolicy})…`);
 
     try {
       if (!this._conn) return;
@@ -495,6 +502,7 @@ export class ExportsScreen {
       const job = await enqueueJob(conn, "qa_report", {
         out_path: outPath,
         format: fmt,
+        policy: qaPolicy,
       });
       this._log(`Job QA ${job.job_id} soumis, attente…`);
 
@@ -515,9 +523,10 @@ export class ExportsScreen {
           const gateIcon = gate === "ok" ? "🟢" : gate === "blocking" ? "🔴" : "🟡";
           const issues = [...blocking, ...warnings];
           banner.style.cssText = `display:block;background:${gateBg};border:1px solid ${gateColor};border-radius:4px;padding:0.4rem 0.75rem;font-size:0.83rem;color:${gateColor}`;
-          banner.innerHTML = `${gateIcon} <strong>${gate === "ok" ? "Prêt pour publication" : gate === "blocking" ? "Bloquant" : "Avertissements"}</strong>`
+          const policyBadge = `<span style="font-size:0.72rem;background:rgba(0,0,0,0.08);border-radius:3px;padding:1px 5px;margin-left:0.4rem">${qaPolicy === "strict" ? "Strict" : "Lenient"}</span>`;
+          banner.innerHTML = `${gateIcon} <strong>${gate === "ok" ? "Prêt pour publication" : gate === "blocking" ? "Bloquant" : "Avertissements"}</strong>${policyBadge}`
             + (issues.length ? `<ul style="margin:0.3rem 0 0 1rem">${issues.map(i => `<li>${i}</li>`).join("")}</ul>` : "");
-          this._log(`Rapport QA exporté → ${outPath} (gate: ${gate})`);
+          this._log(`Rapport QA exporté → ${outPath} (gate: ${gate}, politique: ${qaPolicy})`);
           btn.disabled = false;
         } else if (rec.status === "error" || rec.status === "canceled") {
           this._log(`Erreur rapport QA: ${rec.error ?? rec.status}`, true);

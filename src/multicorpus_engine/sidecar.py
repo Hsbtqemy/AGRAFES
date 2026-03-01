@@ -2593,6 +2593,7 @@ class CorpusServer:
 
             qa_fmt = params.get("format", "json")
             qa_doc_ids = params.get("doc_ids")
+            qa_policy = params.get("policy", "lenient")
 
             progress_cb(10, "Generating QA report")
             with lock:
@@ -2601,10 +2602,12 @@ class CorpusServer:
                     output_path=_Path(out_path_str),
                     fmt=qa_fmt,
                     doc_ids=qa_doc_ids,
+                    policy=qa_policy,
                 )
             progress_cb(100, "QA report generated")
             return {
                 "gate_status": qa_result["gates"]["status"],
+                "policy_used": qa_result.get("policy_used", qa_policy),
                 "blocking": qa_result["gates"]["blocking"],
                 "warnings": qa_result["gates"]["warnings"],
                 "summary": qa_result["summary"],
