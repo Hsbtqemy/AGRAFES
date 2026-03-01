@@ -289,6 +289,61 @@ const SHELL_CSS = `
   .shell-card h2 { font-size: 1.05rem; font-weight: 600; margin: 0 0 0.4rem; color: #1a1a2e; }
   .shell-card p { font-size: 0.82rem; color: #6c757d; margin: 0; line-height: 1.4; }
 
+  /* ── MRU DB list ───────────────────────────────────────────── */
+  .shell-mru-heading {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #adb5bd;
+    padding: 0.3rem 0.85rem 0.1rem;
+  }
+  .shell-mru-row {
+    display: flex;
+    align-items: center;
+    gap: 0;
+  }
+  .shell-mru-row.missing .shell-mru-name { color: #adb5bd; }
+  .shell-mru-name {
+    flex: 1;
+    text-align: left;
+    background: none;
+    border: none;
+    padding: 0.4rem 0.85rem;
+    font-size: 0.8rem;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 160px;
+    color: #1a1a2e;
+  }
+  .shell-mru-name:hover { background: #f0f4ff; }
+  .shell-mru-missing-badge {
+    font-size: 0.65rem;
+    background: #e9ecef;
+    color: #6c757d;
+    border-radius: 3px;
+    padding: 1px 4px;
+    margin-left: 4px;
+  }
+  .shell-mru-actions {
+    display: flex;
+    gap: 0;
+    padding-right: 4px;
+  }
+  .shell-mru-action {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 0.78rem;
+    padding: 0.25rem 0.3rem;
+    color: #6c757d;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .shell-mru-row:hover .shell-mru-action { opacity: 1; }
+  .shell-mru-action:hover { color: #1a1a2e; }
+
   /* ── Guided tour ───────────────────────────────────────────── */
   .shell-guide-section {
     margin-top: 1.5rem;
@@ -518,6 +573,9 @@ const LS_DB                = "agrafes.lastDbPath";
 const LS_PRESETS_GLOBAL    = "agrafes.presets.global";
 const LS_PRESETS_PREP      = "agrafes.prep.presets"; // source for migration
 const LS_ONBOARDING_STEP   = "agrafes.onboarding.demo.step";  // 0..3
+const LS_DB_RECENT         = "agrafes.db.recent";             // MruEntry[]
+
+const MRU_MAX = 10;
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -542,6 +600,177 @@ function _makeContext(): ShellContext {
 }
 
 // ─── Persistence ──────────────────────────────────────────────────────────────
+
+// ─── MRU (Most Recently Used) DB list ────────────────────────────────────────
+
+interface MruEntry {
+  path: string;
+  label: string;            // basename
+  last_opened_at: string;   // ISO timestamp
+  pinned?: boolean;
+  missing?: boolean;        // set after async file-existence check
+}
+
+function _loadMru(): MruEntry[] {
+  try {
+    return JSON.parse(localStorage.getItem(LS_DB_RECENT) ?? "[]") as MruEntry[];
+  } catch { return []; }
+}
+
+function _saveMru(list: MruEntry[]): void {
+  try { localStorage.setItem(LS_DB_RECENT, JSON.stringify(list)); } catch { /* */ }
+}
+
+function _pathLabel(p: string): string {
+  return p.replace(/\\/g, "/").split("/").pop() ?? p;
+}
+
+function _addToMru(path: string): void {
+  const label = _pathLabel(path);
+  const now = new Date().toISOString();
+  let list = _loadMru().filter(e => e.path !== path);
+  list.unshift({ path, label, last_opened_at: now });
+  if (list.length > MRU_MAX) list = list.slice(0, MRU_MAX);
+  _saveMru(list);
+}
+
+function _removeFromMru(path: string): void {
+  _saveMru(_loadMru().filter(e => e.path !== path));
+}
+
+function _togglePinMru(path: string): void {
+  const list = _loadMru().map(e => e.path === path ? { ...e, pinned: !e.pinned } : e);
+  _saveMru(list);
+}
+
+/** Async: mark entries as missing if file does not exist (best-effort via fetch/open). */
+async function _checkMruPaths(): Promise<void> {
+  const { exists } = await import("@tauri-apps/plugin-fs").catch(() => ({ exists: null }));
+  if (!exists) return;
+  const list = _loadMru();
+  let changed = false;
+  for (const entry of list) {
+    try {
+      const ok = await exists(entry.path);
+      if (entry.missing !== !ok) { entry.missing = !ok; changed = true; }
+    } catch { entry.missing = false; }
+  }
+  if (changed) { _saveMru(list); _rebuildMruMenu(); }
+}
+
+/** Rebuild only the MRU section inside the DB menu (without full header rebuild). */
+function _rebuildMruMenu(): void {
+  const menu = document.getElementById("shell-db-menu");
+  if (!menu) return;
+  const section = menu.querySelector(".shell-mru-section");
+  if (section) section.replaceWith(_buildMruSection());
+}
+
+function _buildMruSection(): HTMLElement {
+  const list = _loadMru();
+  if (list.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "shell-mru-section";
+    return empty;
+  }
+
+  const section = document.createElement("div");
+  section.className = "shell-mru-section";
+
+  const sep = document.createElement("div");
+  sep.className = "shell-db-menu-sep";
+  section.appendChild(sep);
+
+  const heading = document.createElement("div");
+  heading.className = "shell-mru-heading";
+  heading.textContent = "Récents";
+  section.appendChild(heading);
+
+  // Pinned first, then by last_opened_at desc
+  const sorted = [...list].sort((a, b) => {
+    if (a.pinned && !b.pinned) return -1;
+    if (!a.pinned && b.pinned) return 1;
+    return b.last_opened_at.localeCompare(a.last_opened_at);
+  });
+
+  for (const entry of sorted) {
+    const row = document.createElement("div");
+    row.className = `shell-mru-row${entry.missing ? " missing" : ""}`;
+
+    const nameBtn = document.createElement("button");
+    nameBtn.className = "shell-mru-name";
+    nameBtn.title = entry.path;
+    nameBtn.innerHTML = `${entry.pinned ? "📌 " : ""}${_esc(entry.label)}${entry.missing ? ' <span class="shell-mru-missing-badge">introuvable</span>' : ""}`;
+    nameBtn.addEventListener("click", () => {
+      _closeDbMenu();
+      if (entry.missing) {
+        // Re-select via dialog
+        void _onChangeDb(entry.path);
+      } else {
+        void _switchDb(entry.path);
+      }
+    });
+    row.appendChild(nameBtn);
+
+    const actions = document.createElement("div");
+    actions.className = "shell-mru-actions";
+
+    const pinBtn = document.createElement("button");
+    pinBtn.className = "shell-mru-action";
+    pinBtn.title = entry.pinned ? "Désépingler" : "Épingler";
+    pinBtn.textContent = entry.pinned ? "📌" : "📍";
+    pinBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      _togglePinMru(entry.path);
+      _rebuildMruMenu();
+    });
+    actions.appendChild(pinBtn);
+
+    const delBtn = document.createElement("button");
+    delBtn.className = "shell-mru-action";
+    delBtn.title = "Retirer des récents";
+    delBtn.textContent = "✕";
+    delBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      _removeFromMru(entry.path);
+      _rebuildMruMenu();
+    });
+    actions.appendChild(delBtn);
+
+    row.appendChild(actions);
+    section.appendChild(row);
+  }
+  return section;
+}
+
+/** Switch to a different DB with loading state + module remount. */
+async function _switchDb(path: string): Promise<void> {
+  if (path === _currentDbPath) { _closeDbMenu(); return; }
+
+  // Disable nav during switch
+  const dbBtn = document.getElementById("shell-db-btn") as HTMLButtonElement | null;
+  const tabs = document.querySelectorAll<HTMLButtonElement>(".shell-tab");
+  if (dbBtn) { dbBtn.disabled = true; dbBtn.textContent = "Chargement…"; }
+  tabs.forEach(t => t.disabled = true);
+
+  _currentDbPath = path;
+  _persist();
+  _addToMru(path);
+  _updateDbBadge();
+  _dbListeners.forEach(cb => cb(_currentDbPath));
+
+  try {
+    await _initDb(path);
+    _showToast(`DB active : ${_pathLabel(path)}`);
+    // Remount active module so it uses the new DB
+    if (_currentMode !== "home") {
+      await _setMode(_currentMode);
+    }
+  } finally {
+    if (dbBtn) { dbBtn.disabled = false; dbBtn.textContent = "DB \u25be"; }
+    tabs.forEach(t => t.disabled = false);
+  }
+}
 
 function _loadPersisted(): { mode: Mode; dbPath: string | null } {
   const raw = localStorage.getItem(LS_MODE);
@@ -673,8 +902,15 @@ function _buildHeader(): void {
   menu.appendChild(itemOpen);
   menu.appendChild(sep);
   menu.appendChild(itemCreate);
+
+  // MRU section (appended to menu, rebuilt async)
+  menu.appendChild(_buildMruSection());
+
   menuWrap.appendChild(menu);
   dbZone.appendChild(menuWrap);
+
+  // Async: check if MRU paths still exist
+  void _checkMruPaths();
 
   header.appendChild(dbZone);
 }
@@ -742,6 +978,7 @@ async function _onCreateDb(): Promise<void> {
 
   _currentDbPath = savePath;
   _persist();
+  _addToMru(savePath);
   _updateDbBadge();
   _dbListeners.forEach(cb => cb(_currentDbPath));
   _closeDbMenu();
@@ -827,13 +1064,14 @@ function _clearInitError(): void {
   document.getElementById("shell-init-error")?.remove();
 }
 
-async function _onChangeDb(): Promise<void> {
+async function _onChangeDb(defaultPath?: string): Promise<void> {
   let picked: string | string[] | null;
   try {
     picked = await dialogOpen({
       title: "Ouvrir une base de données SQLite",
       filters: [{ name: "SQLite", extensions: ["db", "sqlite", "sqlite3"] }],
       multiple: false,
+      defaultPath: defaultPath,
     });
   } catch (err) {
     console.warn("[shell] dialog cancelled or failed:", err);
@@ -841,23 +1079,9 @@ async function _onChangeDb(): Promise<void> {
   }
 
   const newPath = Array.isArray(picked) ? picked[0] : picked;
-  if (!newPath || newPath === _currentDbPath) return;
+  if (!newPath) return;
 
-  _currentDbPath = newPath;
-  _persist();
-  _updateDbBadge();
-
-  // Notify module listeners (e.g. future in-module reactions)
-  _dbListeners.forEach(cb => cb(_currentDbPath));
-
-  // Show toast
-  const parts = newPath.replace(/\\/g, "/").split("/");
-  _showToast(`DB active\u00a0: ${parts[parts.length - 1]}`);
-
-  // If a module is currently mounted, re-mount it with the new DB
-  if (_currentMode !== "home") {
-    await _setMode(_currentMode);
-  }
+  await _switchDb(newPath);
 }
 
 // ─── Router / lifecycle ───────────────────────────────────────────────────────
@@ -1425,6 +1649,7 @@ async function _renderGuidedTour(container: HTMLElement): Promise<void> {
       action: async () => {
         _currentDbPath = demoPath;
         _persist();
+        _addToMru(demoPath);
         _updateDbBadge();
         _dbListeners.forEach(cb => cb(_currentDbPath));
         // Store a prefill hint for Explorer welcome hint
@@ -1438,6 +1663,7 @@ async function _renderGuidedTour(container: HTMLElement): Promise<void> {
       action: async () => {
         _currentDbPath = demoPath;
         _persist();
+        _addToMru(demoPath);
         _updateDbBadge();
         _dbListeners.forEach(cb => cb(_currentDbPath));
         _setOnboardingStep(2);
@@ -1452,6 +1678,7 @@ async function _renderGuidedTour(container: HTMLElement): Promise<void> {
       action: async () => {
         _currentDbPath = demoPath;
         _persist();
+        _addToMru(demoPath);
         _updateDbBadge();
         _dbListeners.forEach(cb => cb(_currentDbPath));
         _setOnboardingStep(3);
@@ -1603,6 +1830,7 @@ async function _initDemoSection(
     const demoPath = await _getDemoDbPath();
     _currentDbPath = demoPath;
     _persist();
+    _addToMru(demoPath);
     _updateDbBadge();
     _dbListeners.forEach(cb => cb(_currentDbPath));
     _showToast("DB active\u00a0: corpus d\u00e9mo");

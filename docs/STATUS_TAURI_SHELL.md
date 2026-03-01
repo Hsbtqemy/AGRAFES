@@ -444,3 +444,35 @@ npm --prefix tauri-shell run tauri dev
 #### Welcome hint (Explorer)
 - Si `sessionStorage["agrafes.explorer.prefill"]` est défini après montage : pré-remplit l'input de recherche + affiche un tooltip bleu transitoire (8s ou au premier Enter)
 - Flag supprimé immédiatement après affichage (one-shot)
+
+## V1.7.1 — Multi-DB MRU list + pin + missing-DB recovery
+
+**Fichiers modifiés :** `tauri-shell/src/shell.ts`
+
+### MRU (Most Recently Used) list
+
+- Persisted in `localStorage["agrafes.db.recent"]` : array of `MruEntry` (path, label, last_opened_at, pinned?)
+- Maximum 10 entries, deduplication on insert
+- **Functions:** `_loadMru`, `_saveMru`, `_addToMru`, `_removeFromMru`, `_togglePinMru`
+
+### UI — DB dropdown enrichi
+
+- Ouvrir… / Créer… (unchanged)
+- **Section "Récents"** : liste triée (pinned en haut, puis par date desc)
+  - Clic = `_switchDb(path)` ou `_onChangeDb(path)` si introuvable
+  - 📌 / 📍 : épingler/désépingler (action icon apparaît au hover)
+  - ✕ : retirer de la liste
+  - Badge "introuvable" (gris) si le fichier n'existe plus
+
+### DB switching hardening (`_switchDb`)
+
+- Désactive le bouton DB + onglets pendant le switch (état "Chargement…")
+- Appelle `_initDb(path)` + remount du module actif si non-Home
+- Ajoute au MRU + persiste + notifie les listeners
+- `_onChangeDb(defaultPath?)` : ouvre dialog, délègue à `_switchDb`
+
+### Async file-existence check (`_checkMruPaths`)
+
+- Import dynamique `@tauri-apps/plugin-fs` pour vérifier si les paths existent
+- Marque les entrées `missing: true` → badge gris + re-sélection forcée via dialog
+- Rebuild la section MRU sans reconstruire tout le header
