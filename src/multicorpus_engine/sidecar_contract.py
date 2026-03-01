@@ -12,8 +12,9 @@ from __future__ import annotations
 from typing import Any
 
 
-API_VERSION = "1.3.1"
-CONTRACT_VERSION = "1.3.1"  # semantic versioning for the sidecar API contract
+API_VERSION = "1.4.0"
+CONTRACT_VERSION = "1.4.0"  # semantic versioning for the sidecar API contract
+# 1.4.0: added export_tei_package job kind (Sprint 4 — Publication ZIP)
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
@@ -1486,6 +1487,7 @@ def openapi_spec() -> dict[str, Any]:
                             "enum": [
                                 "index", "curate", "validate-meta", "segment",
                                 "import", "align", "export_tei", "export_align_csv", "export_run_report",
+                                "export_tei_package",
                             ],
                         },
                         "params": {"type": "object", "additionalProperties": True},

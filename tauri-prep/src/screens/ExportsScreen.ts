@@ -30,6 +30,7 @@ export class ExportsScreen {
   private _root!: HTMLElement;
   private _logEl!: HTMLElement;
   private _docSelEl!: HTMLSelectElement;
+  private _pkgDocSelEl!: HTMLSelectElement;
   private _pivotSelEl!: HTMLSelectElement;
   private _targetSelEl!: HTMLSelectElement;
 
@@ -79,6 +80,32 @@ export class ExportsScreen {
         <div id="tei-recap" style="display:none;font-size:0.83rem;margin-top:0.4rem;padding:0.4rem 0.6rem;background:#f0fff4;border-radius:4px;border:1px solid #c6efce;color:#1a7f4e"></div>
         <div class="btn-row" style="margin-top:0.6rem">
           <button id="tei-export-btn" class="btn btn-primary btn-sm" disabled>Choisir dossier et exporter…</button>
+        </div>
+      </div>
+
+      <!-- Publication Package Export -->
+      <div class="card">
+        <h3>Package publication <span class="badge-preview">ZIP</span></h3>
+        <p class="hint">Génère un fichier ZIP contenant les TEI, un manifeste JSON, les checksums SHA-256 et un README. Idéal pour l'archivage et la diffusion.</p>
+        <div class="form-row">
+          <label>Portée (documents)
+            <select id="pkg-doc-sel" multiple style="height:90px;min-width:220px">
+              <option value="__all__" selected>— Tous les documents —</option>
+            </select>
+          </label>
+          <div style="display:flex;flex-direction:column;gap:0.5rem;align-self:flex-start;padding-top:1.2rem">
+            <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.84rem;cursor:pointer">
+              <input id="pkg-include-structure" type="checkbox" />
+              Inclure unités structurelles (<code>&lt;head&gt;</code>)
+            </label>
+            <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.84rem;cursor:pointer">
+              <input id="pkg-include-alignment" type="checkbox" />
+              Inclure alignements acceptés (<code>&lt;linkGrp&gt;</code>)
+            </label>
+          </div>
+        </div>
+        <div class="btn-row" style="margin-top:0.6rem">
+          <button id="pkg-export-btn" class="btn btn-success btn-sm" disabled>Choisir fichier et exporter package…</button>
         </div>
       </div>
 
@@ -138,10 +165,12 @@ export class ExportsScreen {
 
     this._logEl = root.querySelector("#export-log")!;
     this._docSelEl = root.querySelector<HTMLSelectElement>("#tei-doc-sel")!;
+    this._pkgDocSelEl = root.querySelector<HTMLSelectElement>("#pkg-doc-sel")!;
     this._pivotSelEl = root.querySelector<HTMLSelectElement>("#align-csv-pivot")!;
     this._targetSelEl = root.querySelector<HTMLSelectElement>("#align-csv-target")!;
 
     root.querySelector("#tei-export-btn")!.addEventListener("click", () => this._runTeiExport());
+    root.querySelector("#pkg-export-btn")!.addEventListener("click", () => this._runPackageExport());
     root.querySelector("#align-csv-btn")!.addEventListener("click", () => this._runAlignCsvExport());
     root.querySelector("#report-export-btn")!.addEventListener("click", () => this._runRunReportExport());
 
@@ -152,7 +181,7 @@ export class ExportsScreen {
   // ── Doc refresh ─────────────────────────────────────────────────────────────
 
   private async _refreshDocs(): Promise<void> {
-    const teiBtns = this._root.querySelectorAll<HTMLButtonElement>("#tei-export-btn, #align-csv-btn, #report-export-btn");
+    const teiBtns = this._root.querySelectorAll<HTMLButtonElement>("#tei-export-btn, #pkg-export-btn, #align-csv-btn, #report-export-btn");
     if (!this._conn) {
       teiBtns.forEach(b => b.disabled = true);
       return;
@@ -162,7 +191,7 @@ export class ExportsScreen {
     } catch {
       this._docs = [];
     }
-    teiBtns.forEach(b => b.disabled = false);
+    teiBtns.forEach(b => (b.disabled = false));
     this._renderDocOptions();
   }
 
@@ -179,6 +208,20 @@ export class ExportsScreen {
       opt.value = String(d.doc_id);
       opt.textContent = `#${d.doc_id} ${d.title} (${d.language})`;
       this._docSelEl.appendChild(opt);
+    }
+
+    // Package multi-select
+    const allOptionPkg = document.createElement("option");
+    allOptionPkg.value = "__all__";
+    allOptionPkg.textContent = "— Tous les documents —";
+    allOptionPkg.selected = true;
+    this._pkgDocSelEl.innerHTML = "";
+    this._pkgDocSelEl.appendChild(allOptionPkg);
+    for (const d of this._docs) {
+      const opt = document.createElement("option");
+      opt.value = String(d.doc_id);
+      opt.textContent = `#${d.doc_id} ${d.title} (${d.language})`;
+      this._pkgDocSelEl.appendChild(opt);
     }
 
     // Align CSV pivot/target selects
@@ -253,6 +296,63 @@ export class ExportsScreen {
       });
     } catch (err) {
       this._log(`Erreur export TEI: ${err instanceof SidecarError ? err.message : String(err)}`, true);
+      btn.disabled = false;
+    }
+  }
+
+  // ── Publication Package Export ───────────────────────────────────────────────
+
+  private async _runPackageExport(): Promise<void> {
+    if (!this._conn) return;
+
+    const selected = Array.from(this._pkgDocSelEl.selectedOptions).map(o => o.value);
+    const doc_ids: number[] | undefined = selected.includes("__all__")
+      ? undefined
+      : selected.map(Number);
+
+    const includeStructure = (this._root.querySelector<HTMLInputElement>("#pkg-include-structure")?.checked) ?? false;
+    const includeAlignment = (this._root.querySelector<HTMLInputElement>("#pkg-include-alignment")?.checked) ?? false;
+
+    const outPath = await save({
+      title: "Enregistrer le package de publication",
+      defaultPath: `agrafes_publication_${new Date().toISOString().slice(0, 10)}.zip`,
+      filters: [{ name: "ZIP", extensions: ["zip"] }],
+    });
+    if (!outPath) return;
+
+    const btn = this._root.querySelector<HTMLButtonElement>("#pkg-export-btn")!;
+    btn.disabled = true;
+
+    const nbDocs = doc_ids ? doc_ids.length : this._docs.length;
+    this._log(`Package publication → ${outPath} (${nbDocs} doc(s))…`);
+
+    const params: Record<string, unknown> = {
+      out_path: outPath,
+      include_structure: includeStructure,
+      include_alignment: includeAlignment,
+    };
+    if (doc_ids) params.doc_ids = doc_ids;
+
+    try {
+      const job = await enqueueJob(this._conn, "export_tei_package", params);
+      this._jobCenter?.trackJob(job.job_id, `Package publication → ${outPath}`, (done) => {
+        if (done.status === "done") {
+          const r = done.result as { doc_count?: number; zip_path?: string; warnings?: unknown[] } | undefined;
+          const count = r?.doc_count ?? 0;
+          const warns = r?.warnings ?? [];
+          this._log(`✓ Package créé : ${count} doc(s) → ${r?.zip_path ?? outPath}`);
+          if (warns.length > 0) {
+            this._log(`  ⚠ ${warns.length} avertissement(s) — voir manifest.json`);
+          }
+          this._showToast?.(`✓ Package : ${count} doc(s) exporté(s)`);
+        } else {
+          this._log(`Erreur package: ${done.error ?? done.status}`, true);
+          this._showToast?.("✗ Erreur package publication", true);
+        }
+        btn.disabled = false;
+      });
+    } catch (err) {
+      this._log(`Erreur package: ${err instanceof SidecarError ? err.message : String(err)}`, true);
       btn.disabled = false;
     }
   }

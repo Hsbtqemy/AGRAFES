@@ -1160,7 +1160,8 @@
               "align",
               "export_tei",
               "export_align_csv",
-              "export_run_report"
+              "export_run_report",
+              "export_tei_package"
             ],
             "type": "string"
           },
@@ -1571,7 +1572,7 @@
   "info": {
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
-    "version": "1.3.1",
+    "version": "1.4.0",
     "x-contract-version": "1.3.1"
   },
   "openapi": "3.0.3",
@@ -1721,7 +1722,7 @@
             "ApiKeyAuth": []
           }
         ],
-        "summary": "Batch-resolve collision links (keep/delete/reject/unreviewed) \u2014 token required"
+        "summary": "Batch-resolve collision links (keep/delete/reject/unreviewed) — token required"
       }
     },
     "/align/link/delete": {
