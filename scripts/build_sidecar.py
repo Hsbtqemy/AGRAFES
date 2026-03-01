@@ -29,6 +29,7 @@ ENTRYPOINT = REPO_ROOT / "scripts" / "sidecar_entry.py"
 PRESET_OUT = {
     "tauri": Path("tauri/src-tauri/binaries"),
     "fixture": Path("tauri-fixture/src-tauri/binaries"),
+    "shell": Path("tauri-shell/src-tauri/binaries"),
 }
 DEFAULT_FORMAT_BY_OS = {
     "darwin": "onefile",

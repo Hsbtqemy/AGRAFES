@@ -179,3 +179,44 @@ bash scripts/linux_manylinux_build_sidecar.sh --format onedir --out tauri/src-ta
 - Decision details and benchmark basis:
   - `docs/DECISIONS.md` (ADR-025)
   - `docs/BENCHMARKS.md`
+
+---
+
+## CI builds — Tauri Shell (unsigned)
+
+**Workflow :** `.github/workflows/tauri-shell-build.yml`
+
+### Déclenchement
+
+- Push d'un tag `v*` → build + attach to GitHub Release
+- `workflow_dispatch` (manuel, avec ref optionnel)
+
+### Matrix
+
+| OS | Sidecar format | Artifact |
+|---|---|---|
+| macos-latest | onefile | `.app` / `.dmg` |
+| ubuntu-latest | onedir | `.AppImage` / `.deb` |
+| windows-latest | onedir | `.exe` / `.msi` |
+
+### Étapes
+
+1. Checkout + Node 20 + Rust stable + Python 3.11
+2. Linux: apt deps (libwebkit2gtk-4.1, libgtk-3, librsvg2…)
+3. `pip install -e ".[packaging]"` + `build_sidecar.py --preset shell`
+4. `npm --prefix tauri-shell ci` + `npm run tauri build`
+5. Collect: `*.app`, `*.dmg`, `*.AppImage`, `*.deb`, `*.exe`, `*.msi` + sidecar-manifest.json
+6. Upload artifact `tauri-shell-unsigned-{macos,linux,windows}` (30 jours retention)
+7. Sur tag: attach to GitHub Release via `softprops/action-gh-release`
+
+### Preset sidecar "shell"
+
+Ajouté dans `scripts/build_sidecar.py`:
+```python
+PRESET_OUT["shell"] = Path("tauri-shell/src-tauri/binaries")
+```
+
+### Binaires non signés
+
+Les binaires produits sont **non signés** (no-secrets CI).
+Pour la signature, voir la section "Signing" ci-dessous.

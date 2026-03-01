@@ -131,3 +131,33 @@ python scripts/release_gate.py --skip-demo    # skip demo DB gates
 `.github/workflows/release-gate.yml` — matrix macos-latest + ubuntu-latest, no secrets.
 Déclenché sur push vers `main`/`release/**` et PRs.
 Artifacts uploadés : `release_gate.json`, `release_gate.log`.
+
+---
+
+## Unsigned binaries on tag (V1.8.0)
+
+### Déclenchement
+
+```bash
+git tag v1.8.0 && git push origin v1.8.0
+```
+
+Le workflow `tauri-shell-build.yml` se déclenche automatiquement et produit :
+- `tauri-shell-unsigned-macos` : `.app` + `.dmg` (unsigned)
+- `tauri-shell-unsigned-linux` : `.AppImage` + `.deb`
+- `tauri-shell-unsigned-windows` : `.exe` / `.msi`
+
+### Vérification
+
+- [ ] GitHub Actions : tous les matrix jobs verts
+- [ ] Artifacts disponibles dans la release GitHub
+- [ ] sidecar-manifest.json inclus dans chaque artifact
+- [ ] Binaires non signés — warning attendu sur macOS (Gatekeeper) ; accepter via clic droit → Ouvrir
+
+### Build local Shell (best effort)
+
+```bash
+python scripts/build_sidecar.py --preset shell --format onefile   # macOS
+npm --prefix tauri-shell ci
+npm --prefix tauri-shell run tauri build
+```
