@@ -54,16 +54,31 @@ export class ExportsScreen {
       <!-- TEI Export -->
       <div class="card">
         <h3>Export TEI <span class="badge-preview">XML</span></h3>
-        <p class="hint">Exporte un ou plusieurs documents au format TEI "analyse" (UTF-8).</p>
+        <p class="hint">Exporte un ou plusieurs documents au format TEI "analyse" (UTF-8). Un fichier XML par document.</p>
         <div class="form-row">
-          <label>Documents
+          <label>Portée (documents)
             <select id="tei-doc-sel" multiple style="height:90px;min-width:220px">
               <option value="__all__" selected>— Tous les documents —</option>
             </select>
           </label>
-          <div style="align-self:flex-end">
-            <button id="tei-export-btn" class="btn btn-primary btn-sm" disabled>Choisir dossier et exporter…</button>
+          <div style="display:flex;flex-direction:column;gap:0.5rem;align-self:flex-start;padding-top:1.2rem">
+            <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.84rem;cursor:pointer">
+              <input id="tei-include-structure" type="checkbox" />
+              Inclure unités structurelles (<code>&lt;head&gt;</code>)
+            </label>
+            <label style="display:flex;flex-direction:column;gap:0.2rem;font-size:0.84rem">
+              Relation inter-documents
+              <select id="tei-relation-type" style="padding:0.2rem 0.4rem;border:1px solid #dee2e6;border-radius:4px">
+                <option value="none">Aucune</option>
+                <option value="translation_of">translation_of</option>
+                <option value="excerpt_of">excerpt_of</option>
+              </select>
+            </label>
           </div>
+        </div>
+        <div id="tei-recap" style="display:none;font-size:0.83rem;margin-top:0.4rem;padding:0.4rem 0.6rem;background:#f0fff4;border-radius:4px;border:1px solid #c6efce;color:#1a7f4e"></div>
+        <div class="btn-row" style="margin-top:0.6rem">
+          <button id="tei-export-btn" class="btn btn-primary btn-sm" disabled>Choisir dossier et exporter…</button>
         </div>
       </div>
 
@@ -198,22 +213,38 @@ export class ExportsScreen {
       ? undefined
       : selected.map(Number);
 
+    const includeStructure = (this._root.querySelector<HTMLInputElement>("#tei-include-structure")?.checked) ?? false;
+    const relationType = (this._root.querySelector<HTMLSelectElement>("#tei-relation-type")?.value) ?? "none";
+
     const outDir = await open({ directory: true, title: "Choisir le dossier de sortie TEI" });
     if (!outDir || typeof outDir !== "string") return;
 
     const btn = this._root.querySelector<HTMLButtonElement>("#tei-export-btn")!;
+    const recapEl = this._root.querySelector<HTMLElement>("#tei-recap");
+    if (recapEl) recapEl.style.display = "none";
     btn.disabled = true;
-    this._log(`Export TEI vers ${outDir} (job asynchrone)…`);
-    const params: Record<string, unknown> = { out_dir: outDir };
+
+    const nbDocs = doc_ids ? doc_ids.length : this._docs.length;
+    this._log(`Export TEI vers ${outDir} (${nbDocs} doc(s), include_structure=${includeStructure})…`);
+
+    const params: Record<string, unknown> = { out_dir: outDir, include_structure: includeStructure };
     if (doc_ids) params.doc_ids = doc_ids;
+
     try {
       const job = await enqueueJob(this._conn, "export_tei", params);
       this._jobCenter?.trackJob(job.job_id, `Export TEI → ${outDir}`, (done) => {
         if (done.status === "done") {
           const r = done.result as { count?: number; files_created?: string[] } | undefined;
-          this._log(`✓ ${r?.count ?? "?"} fichier(s) TEI créé(s) dans ${outDir}`);
+          const count = r?.count ?? 0;
+          this._log(`✓ ${count} fichier(s) TEI créé(s) dans ${outDir}`);
           for (const f of r?.files_created ?? []) this._log(`  • ${f}`);
-          this._showToast?.(`✓ Export TEI : ${r?.count ?? "?"} fichier(s)`);
+          this._showToast?.(`✓ Export TEI : ${count} fichier(s)`);
+          if (recapEl) {
+            const relPart = relationType !== "none" ? ` · relation: ${relationType}` : "";
+            const structPart = includeStructure ? " · structure incluse" : "";
+            recapEl.textContent = `✓ ${count} fichier(s) TEI exporté(s) → ${outDir}${structPart}${relPart}`;
+            recapEl.style.display = "block";
+          }
         } else {
           this._log(`Erreur export TEI: ${done.error ?? done.status}`, true);
           this._showToast?.("✗ Erreur export TEI", true);

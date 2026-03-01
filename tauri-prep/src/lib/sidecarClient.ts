@@ -228,6 +228,8 @@ export interface DocRelationSetOptions {
 export interface ExportTeiOptions {
   out_dir: string;
   doc_ids?: number[];
+  /** Emit <head> elements for structure units in addition to body units. Default false. */
+  include_structure?: boolean;
 }
 
 export interface ExportTeiResponse {

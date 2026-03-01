@@ -12,8 +12,8 @@ from __future__ import annotations
 from typing import Any
 
 
-API_VERSION = "1.3.0"
-CONTRACT_VERSION = "1.3.0"  # semantic versioning for the sidecar API contract
+API_VERSION = "1.3.1"
+CONTRACT_VERSION = "1.3.1"  # semantic versioning for the sidecar API contract
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
@@ -1332,6 +1332,11 @@ def openapi_spec() -> dict[str, Any]:
                     "properties": {
                         "doc_ids": {"type": "array", "items": {"type": "integer"}, "nullable": True},
                         "out_dir": {"type": "string"},
+                        "include_structure": {
+                            "type": "boolean",
+                            "default": False,
+                            "description": "Emit <head> elements for structure units in addition to body units.",
+                        },
                     },
                 },
                 "ExportAlignCsvRequest": {

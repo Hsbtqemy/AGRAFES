@@ -1651,6 +1651,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             self._send_error("out_dir is required", code=ERR_BAD_REQUEST, http_status=400)
             return
         doc_ids = body.get("doc_ids")  # list or None (None = all)
+        include_structure: bool = bool(body.get("include_structure", False))
         with self._lock():
             if doc_ids is None:
                 all_ids = [r[0] for r in self._conn().execute("SELECT doc_id FROM documents ORDER BY doc_id")]
@@ -1662,7 +1663,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         for doc_id in all_ids:
             out_path = out_dir_path / f"doc_{doc_id}.tei.xml"
             try:
-                export_tei(self._conn(), doc_id=doc_id, output_path=out_path)
+                export_tei(self._conn(), doc_id=doc_id, output_path=out_path, include_structure=include_structure)
                 files_created.append(str(out_path))
             except Exception as exc:
                 logger.warning("TEI export failed for doc_id=%s: %s", doc_id, exc)

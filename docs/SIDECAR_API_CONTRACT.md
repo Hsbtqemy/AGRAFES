@@ -166,6 +166,9 @@ When `multicorpus serve` starts and a portfile already exists:
 - `POST /doc_relations/set`
 - `POST /doc_relations/delete`
 - `POST /export/tei`
+  - body: `{ out_dir, doc_ids?: int[], include_structure?: bool }` (token required)
+  - `include_structure` (default `false`): if `true`, emits `<head>` elements for structure units
+  - CONTRACT_VERSION 1.3.1: added `include_structure` optional boolean field (backward-compatible)
 - `POST /export/align_csv`
 - `POST /export/run_report`
 - `POST /validate-meta`
@@ -207,7 +210,7 @@ Supported `kind` values and required `params`:
 - `align` — `params.pivot_doc_id` + `params.target_doc_ids` required; optional: `strategy`, `sim_threshold`, `debug_align`, `run_id`
   - `strategy`: `external_id|position|similarity|external_id_then_position`
   - job result includes `run_id`; this run can be exported via `export_run_report` with `params.run_id`
-- `export_tei` — `params.out_dir` required; optional: `params.doc_ids`
+- `export_tei` — `params.out_dir` required; optional: `params.doc_ids`, `params.include_structure` (bool, default false)
 - `export_align_csv` — `params.out_path` required; optional: `pivot_doc_id`, `target_doc_id`, `delimiter`
 - `export_run_report` — `params.out_path` required; optional: `run_id`, `format` (`jsonl`|`html`)
 
