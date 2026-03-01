@@ -134,3 +134,6 @@ Last updated: 2026-03-01 (Shell App V0.3: metadata panel + demo onboarding + inc
 | V1.6.0 | QA: Strict policy (lenient/strict) + gates UI (prep + wizard) | Done |
 | V1.6.1 | Shell: Onboarding Demo guided tour (3 steps + Explorer welcome hint) | Done |
 | V1.6.2 | TEI: parcolab_strict profile (opt-in) + manifest validation_summary | Done |
+| V1.7.0 | CI: automated release gate (pytest + FTS + builds + demo QA + TEI validate) | Done |
+| V1.7.1 | Shell: MRU DB list + pin + missing-DB recovery + _switchDb hardening | Done |
+| V1.7.2 | Shell: About dialog + shortcuts panel + wording harmonization | Done |

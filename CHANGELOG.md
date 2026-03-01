@@ -3,6 +3,54 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [V1.7.2] — 2026-03-01 — UX polish (About dialog, shortcuts, wording)
+
+### Added
+- `_openAboutDialog()`: modal with app/engine/contract versions, active DB, TEI profiles
+- `_openShortcutsPanel()`: modal keyboard shortcuts table (platform-aware ⌘/Ctrl)
+- New shortcuts: `⌘+3` Publier, `⌘+O` Ouvrir DB, `⌘+Shift+N` Créer DB, `⌘+/` aide, `⌘+?` About
+- CSS: `.shell-about-*`, `.shell-shortcuts-*`
+### Changed
+- ExportsScreen (tauri-prep): "Mode strict" → "Politique QA : Strict" + tooltip harmonized
+- Log messages unified: "politique QA: Strict / Lenient"
+
+### Files
+`tauri-shell/src/shell.ts`, `tauri-prep/src/screens/ExportsScreen.ts`, `docs/STATUS_TAURI_SHELL.md`
+
+---
+
+## [V1.7.1] — 2026-03-01 — Multi-DB MRU list + pin + missing-DB recovery
+
+### Added
+- `localStorage["agrafes.db.recent"]`: `MruEntry[]` (max 10, pinned, last_opened_at, missing)
+- `_loadMru / _saveMru / _addToMru / _removeFromMru / _togglePinMru`
+- `_checkMruPaths()`: async file-existence check (tauri-apps/plugin-fs), marks missing entries
+- `_buildMruSection()`: sorted list (pinned first, then by date) injected into DB dropdown
+- `_rebuildMruMenu()`: partial DOM refresh without full header rebuild
+- DB dropdown "Récents" section: click, pin, remove, missing badge
+- `_switchDb(path)`: hardened DB switch with loading state, tab disable, module remount
+
+### Files
+`tauri-shell/src/shell.ts`, `docs/STATUS_TAURI_SHELL.md`
+
+---
+
+## [V1.7.0] — 2026-03-01 — Release gate (no-secrets CI) + local script
+
+### Added
+- `scripts/release_gate.py`: 4-stage gate (pytest, FTS, npm builds ×3, demo-DB gates)
+  Output: JSON-only stdout, logs to `build/release_gate.log`
+  Flags: `--skip-builds`, `--skip-demo`, `--log-file`
+- Parser helpers: `parse_pytest_summary`, `parse_fts_summary`, `parse_npm_build_summary`
+- `.github/workflows/release-gate.yml`: matrix macos+ubuntu, no secrets, artifacts upload
+- `docs/RELEASE_CHECKLIST.md`: "Automated Release Gate" section
+- 12 new tests (`tests/test_release_gate.py`) — 352 total
+
+### Files
+`scripts/release_gate.py`, `tests/test_release_gate.py`, `.github/workflows/release-gate.yml`, `docs/RELEASE_CHECKLIST.md`
+
+---
+
 ## [V1.6.2] — 2026-03-01 — TEI parcolab_strict profile + manifest validation summary
 
 ### Added
