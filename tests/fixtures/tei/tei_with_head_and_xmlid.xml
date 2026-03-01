@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xmlns="http://www.tei-c.org/ns/1.0" xml:lang="en">
+  <teiHeader>
+    <fileDesc>
+      <titleStmt>
+        <title>Text with head elements and xml:id</title>
+      </titleStmt>
+      <publicationStmt>
+        <p>AGRAFES test fixture</p>
+      </publicationStmt>
+      <sourceDesc>
+        <p>Demo corpus with structure</p>
+      </sourceDesc>
+    </fileDesc>
+    <profileDesc>
+      <langUsage>
+        <language ident="en">English</language>
+      </langUsage>
+    </profileDesc>
+  </teiHeader>
+  <text>
+    <body>
+      <div>
+        <head>Chapter One</head>
+        <p xml:id="p1">The prince ruled over a distant island.</p>
+        <p xml:id="p2">Each morning he watched the sea.</p>
+      </div>
+      <div>
+        <head>Chapter Two</head>
+        <p xml:id="p3">One day a ship appeared on the horizon.</p>
+        <p xml:id="p4">He ordered his men to prepare the harbour.</p>
+      </div>
+    </body>
+  </text>
+</TEI>

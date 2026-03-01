@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xmlns="http://www.tei-c.org/ns/1.0" xml:lang="fr">
+  <teiHeader>
+    <fileDesc>
+      <titleStmt>
+        <title>Texte simple (div/p/s)</title>
+      </titleStmt>
+      <publicationStmt>
+        <p>Fixture de test AGRAFES</p>
+      </publicationStmt>
+      <sourceDesc>
+        <p>Corpus de démonstration</p>
+      </sourceDesc>
+    </fileDesc>
+    <profileDesc>
+      <langUsage>
+        <language ident="fr">Français</language>
+      </langUsage>
+    </profileDesc>
+  </teiHeader>
+  <text>
+    <body>
+      <div>
+        <p xml:id="p1">Le prince régnait sur une île lointaine.</p>
+        <p xml:id="p2">Chaque matin, il observait la mer.</p>
+        <p xml:id="p3">Un jour, un navire apparut à l'horizon.</p>
+      </div>
+    </body>
+  </text>
+</TEI>
