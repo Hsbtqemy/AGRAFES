@@ -674,6 +674,42 @@ def cmd_validate_meta(args: argparse.Namespace) -> None:
 
 
 # ---------------------------------------------------------------------------
+# qa-report
+# ---------------------------------------------------------------------------
+
+def cmd_qa_report(args: argparse.Namespace) -> None:
+    """Generate a corpus QA report."""
+    from .db.connection import get_connection
+    from .db.migrations import apply_migrations
+    from .qa_report import write_qa_report
+    from .runs import utcnow_iso
+
+    db_path = Path(args.db)
+    if not db_path.exists():
+        _err({"error": f"DB not found: {db_path}", "created_at": utcnow_iso()})
+
+    conn = get_connection(db_path)
+    apply_migrations(conn)
+
+    report = write_qa_report(
+        conn=conn,
+        output_path=Path(args.out),
+        fmt=args.fmt,
+        doc_ids=args.doc_ids,
+    )
+    _ok({
+        "status": "ok",
+        "gate_status": report["gates"]["status"],
+        "blocking": report["gates"]["blocking"],
+        "warnings": report["gates"]["warnings"],
+        "summary": report["summary"],
+        "out": args.out,
+        "format": args.fmt,
+        "created_at": utcnow_iso(),
+    })
+
+
+# ---------------------------------------------------------------------------
 # validate-tei
 # ---------------------------------------------------------------------------
 
@@ -1157,6 +1193,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_vtei_group.add_argument("--path", help="Path to a TEI .xml file")
     p_vtei_group.add_argument("--zip", dest="zip_path", help="Path to a publication package .zip")
     p_vtei.set_defaults(func=cmd_validate_tei)
+
+    # qa-report
+    p_qa = sub.add_parser("qa-report", help="Generate a corpus QA report (import integrity, alignment, metadata)")
+    p_qa.add_argument("--db", required=True, help="Path to the corpus SQLite database")
+    p_qa.add_argument("--out", required=True, dest="out", help="Output file path (.json or .html)")
+    p_qa.add_argument("--format", dest="fmt", choices=["json", "html"], default="json",
+                      help="Output format: json (default) or html")
+    p_qa.add_argument("--doc-id", dest="doc_ids", type=int, nargs="*", default=None,
+                      help="Restrict to specific doc_ids (default: all)")
+    p_qa.set_defaults(func=cmd_qa_report)
 
     # curate
     p_curate = sub.add_parser(

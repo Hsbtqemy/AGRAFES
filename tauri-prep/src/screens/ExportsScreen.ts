@@ -14,6 +14,7 @@ import {
   exportAlignCsv,
   exportRunReport,
   enqueueJob,
+  getJob,
   type DocumentRecord,
   SidecarError,
 } from "../lib/sidecarClient.ts";
@@ -156,6 +157,24 @@ export class ExportsScreen {
         </div>
       </div>
 
+      <!-- QA Report Export -->
+      <div class="card">
+        <h3>Rapport QA corpus <span class="badge-preview">JSON/HTML</span></h3>
+        <p class="hint">Génère un rapport de qualité : intégrité des identifiants, unités vides, couverture des alignements, collisions et préparation TEI (métadonnées). Consultez le rapport avant publication.</p>
+        <div class="form-row">
+          <label>Format
+            <select id="qa-report-fmt">
+              <option value="json">JSON</option>
+              <option value="html">HTML</option>
+            </select>
+          </label>
+          <div style="align-self:flex-end">
+            <button id="qa-report-btn" class="btn btn-primary btn-sm" disabled>Choisir fichier et exporter rapport QA…</button>
+          </div>
+        </div>
+        <div id="qa-gate-banner" style="display:none;margin-top:0.5rem;padding:0.4rem 0.75rem;border-radius:4px;font-size:0.83rem"></div>
+      </div>
+
       <!-- Log -->
       <div class="card">
         <h3>Journal</h3>
@@ -173,6 +192,7 @@ export class ExportsScreen {
     root.querySelector("#pkg-export-btn")!.addEventListener("click", () => this._runPackageExport());
     root.querySelector("#align-csv-btn")!.addEventListener("click", () => this._runAlignCsvExport());
     root.querySelector("#report-export-btn")!.addEventListener("click", () => this._runRunReportExport());
+    root.querySelector("#qa-report-btn")!.addEventListener("click", () => this._runQaReportExport());
 
     this._refreshDocs();
     return root;
@@ -181,7 +201,7 @@ export class ExportsScreen {
   // ── Doc refresh ─────────────────────────────────────────────────────────────
 
   private async _refreshDocs(): Promise<void> {
-    const teiBtns = this._root.querySelectorAll<HTMLButtonElement>("#tei-export-btn, #pkg-export-btn, #align-csv-btn, #report-export-btn");
+    const teiBtns = this._root.querySelectorAll<HTMLButtonElement>("#tei-export-btn, #pkg-export-btn, #align-csv-btn, #report-export-btn, #qa-report-btn");
     if (!this._conn) {
       teiBtns.forEach(b => b.disabled = true);
       return;
@@ -436,6 +456,69 @@ export class ExportsScreen {
       });
     } catch (err) {
       this._log(`Erreur export rapport: ${err instanceof SidecarError ? err.message : String(err)}`, true);
+      btn.disabled = false;
+    }
+  }
+
+  // ── QA Report ────────────────────────────────────────────────────────────────
+
+  private async _runQaReportExport(): Promise<void> {
+    const btn = this._root.querySelector<HTMLButtonElement>("#qa-report-btn")!;
+    const banner = this._root.querySelector<HTMLElement>("#qa-gate-banner")!;
+    const fmt = (this._root.querySelector<HTMLSelectElement>("#qa-report-fmt")!).value as "json" | "html";
+    const ext = fmt === "html" ? "html" : "json";
+
+    const outPath = await save({
+      title: "Enregistrer le rapport QA",
+      defaultPath: `agrafes_qa_report.${ext}`,
+      filters: [{ name: ext.toUpperCase(), extensions: [ext] }],
+    });
+    if (!outPath) return;
+
+    btn.disabled = true;
+    banner.style.display = "none";
+    this._log(`Rapport QA: génération en cours (format ${fmt})…`);
+
+    try {
+      if (!this._conn) return;
+      const conn = this._conn;
+      const job = await enqueueJob(conn, "qa_report", {
+        out_path: outPath,
+        format: fmt,
+      });
+      this._log(`Job QA ${job.job_id} soumis, attente…`);
+
+      // Poll
+      const poll = async (): Promise<void> => {
+        const rec = await getJob(conn, job.job_id) as unknown as {
+          status: string;
+          result?: { gate_status: string; blocking: string[]; warnings: string[] };
+          error?: string;
+        };
+
+        if (rec.status === "done" && rec.result) {
+          const gate = rec.result.gate_status;
+          const blocking = rec.result.blocking ?? [];
+          const warnings = rec.result.warnings ?? [];
+          const gateColor = gate === "ok" ? "#1a7f4e" : gate === "blocking" ? "#c0392b" : "#b8590a";
+          const gateBg = gate === "ok" ? "#d1fae5" : gate === "blocking" ? "#fde8e8" : "#fff3cd";
+          const gateIcon = gate === "ok" ? "🟢" : gate === "blocking" ? "🔴" : "🟡";
+          const issues = [...blocking, ...warnings];
+          banner.style.cssText = `display:block;background:${gateBg};border:1px solid ${gateColor};border-radius:4px;padding:0.4rem 0.75rem;font-size:0.83rem;color:${gateColor}`;
+          banner.innerHTML = `${gateIcon} <strong>${gate === "ok" ? "Prêt pour publication" : gate === "blocking" ? "Bloquant" : "Avertissements"}</strong>`
+            + (issues.length ? `<ul style="margin:0.3rem 0 0 1rem">${issues.map(i => `<li>${i}</li>`).join("")}</ul>` : "");
+          this._log(`Rapport QA exporté → ${outPath} (gate: ${gate})`);
+          btn.disabled = false;
+        } else if (rec.status === "error" || rec.status === "canceled") {
+          this._log(`Erreur rapport QA: ${rec.error ?? rec.status}`, true);
+          btn.disabled = false;
+        } else {
+          setTimeout(() => void poll(), 1000);
+        }
+      };
+      setTimeout(() => void poll(), 500);
+    } catch (err) {
+      this._log(`Erreur rapport QA: ${err instanceof SidecarError ? err.message : String(err)}`, true);
       btn.disabled = false;
     }
   }

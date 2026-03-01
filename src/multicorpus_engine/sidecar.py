@@ -583,7 +583,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         supported = {
             "index", "curate", "validate-meta", "segment",
             "import", "align", "export_tei", "export_align_csv", "export_run_report",
-            "export_tei_package",
+            "export_tei_package", "qa_report",
         }
         if kind not in supported:
             self._send_error(
@@ -680,7 +680,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         if kind in ("export_tei",) and not params.get("out_dir"):
             self._send_error("export_tei job requires params.out_dir", code=ERR_VALIDATION, http_status=400)
             return
-        if kind in ("export_align_csv", "export_run_report", "export_tei_package") and not params.get("out_path"):
+        if kind in ("export_align_csv", "export_run_report", "export_tei_package", "qa_report") and not params.get("out_path"):
             self._send_error(f"{kind} job requires params.out_path", code=ERR_VALIDATION, http_status=400)
             return
 
@@ -2579,6 +2579,35 @@ class CorpusServer:
                 progress_cb(pct, f"Exported {i + 1}/{len(doc_ids)}")
             progress_cb(100, "TEI export completed")
             return {"files_created": files_created, "count": len(files_created)}
+
+        if kind == "qa_report":
+            from pathlib import Path as _Path
+            from multicorpus_engine.qa_report import write_qa_report
+
+            out_path_str = params.get("out_path")
+            if not out_path_str:
+                raise ValueError("qa_report job requires params.out_path")
+
+            qa_fmt = params.get("format", "json")
+            qa_doc_ids = params.get("doc_ids")
+
+            progress_cb(10, "Generating QA report")
+            with lock:
+                qa_result = write_qa_report(
+                    conn=conn,
+                    output_path=_Path(out_path_str),
+                    fmt=qa_fmt,
+                    doc_ids=qa_doc_ids,
+                )
+            progress_cb(100, "QA report generated")
+            return {
+                "gate_status": qa_result["gates"]["status"],
+                "blocking": qa_result["gates"]["blocking"],
+                "warnings": qa_result["gates"]["warnings"],
+                "summary": qa_result["summary"],
+                "out_path": out_path_str,
+                "format": qa_fmt,
+            }
 
         if kind == "export_tei_package":
             from pathlib import Path as _Path
