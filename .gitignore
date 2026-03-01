@@ -48,12 +48,16 @@ bench/results/
 # Tauri / Node
 tauri-app/node_modules/
 tauri-prep/node_modules/
+tauri-shell/node_modules/
 tauri-app/src-tauri/target/
 tauri-prep/src-tauri/target/
+tauri-shell/src-tauri/target/
 tauri-app/dist/
 tauri-prep/dist/
+tauri-shell/dist/
 tauri-app/src-tauri/binaries/
 tauri-prep/src-tauri/binaries/
+tauri-shell/src-tauri/binaries/
 tauri-app/binaries/
 bundle
 externalBin
