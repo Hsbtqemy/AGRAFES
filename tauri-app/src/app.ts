@@ -19,9 +19,11 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import {
   type Conn,
   type QueryHit,
+  type DocumentRecord,
   SidecarError,
   ensureRunning,
   importFile,
+  listDocuments,
   query,
   rebuildIndex,
   resetConnection,
@@ -43,16 +45,19 @@ interface AppState {
   dbPath: string | null;
   conn: Conn | null;
   hits: QueryHit[];
+  docs: DocumentRecord[];
   isSearching: boolean;
   isImporting: boolean;
   isIndexing: boolean;
   showFilters: boolean;
+  showBuilder: boolean;
   // query params
   mode: "segment" | "kwic";
   window: number;
   filterLang: string;
   filterRole: string;
   filterDocId: string;
+  filterResourceType: string;
   showAligned: boolean;
   expandedAlignedUnitIds: Set<number>;
   currentQuery: string;
@@ -61,6 +66,11 @@ interface AppState {
   hasMore: boolean;
   loadingMore: boolean;
   total: number | null;
+  // query builder
+  builderMode: "simple" | "phrase" | "and" | "or" | "near";
+  nearN: number;
+  // parallel KWIC (V2.3)
+  showParallel: boolean;
 }
 
 const ALIGNED_LIMIT_DEFAULT = 20;
@@ -73,15 +83,18 @@ const state: AppState = {
   dbPath: null,
   conn: null,
   hits: [],
+  docs: [],
   isSearching: false,
   isImporting: false,
   isIndexing: false,
   showFilters: false,
+  showBuilder: false,
   mode: "segment",
   window: 10,
   filterLang: "",
   filterRole: "",
   filterDocId: "",
+  filterResourceType: "",
   showAligned: false,
   expandedAlignedUnitIds: new Set<number>(),
   currentQuery: "",
@@ -90,6 +103,9 @@ const state: AppState = {
   hasMore: false,
   loadingMore: false,
   total: null,
+  builderMode: "simple",
+  nearN: 5,
+  showParallel: false,
 };
 
 // ─── CSS ─────────────────────────────────────────────────────────────────────
@@ -289,8 +305,22 @@ body {
   padding: 10px 14px;
   box-shadow: var(--shadow);
   transition: border-color .15s;
+  /* CSS virtual list: browser skips layout/paint for off-screen cards */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 160px;
 }
 .result-card:hover { border-color: var(--brand); }
+
+.virt-top-info {
+  padding: 6px 10px;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+  background: var(--surface-alt, #f8f8f8);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 4px;
+}
 
 .result-meta {
   font-size: 11px;
@@ -452,6 +482,57 @@ body {
   vertical-align: middle;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ─── Query builder panel (V2.2) ─── */
+.builder-panel {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 8px 16px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+.builder-panel.hidden { display: none; }
+.builder-group { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.builder-group label { color: var(--text-muted); white-space: nowrap; }
+.builder-radio { display: flex; gap: 4px; }
+.builder-radio label {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 7px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  white-space: nowrap;
+  user-select: none;
+}
+.builder-radio label:has(input:checked) {
+  background: var(--brand);
+  color: #fff;
+  border-color: var(--brand);
+}
+.builder-radio input[type=radio] { display: none; }
+.near-n-ctrl { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-muted); }
+.near-n-ctrl input { width: 44px; padding: 2px 5px; border: 1px solid var(--border); border-radius: 4px; font-size: 11px; }
+.filter-select { padding: 4px 6px; border: 1px solid var(--border); border-radius: 4px; font-size: 12px; outline: none; }
+.filter-select:focus { border-color: var(--brand); }
+.builder-warn { font-size: 11px; color: var(--warning, #d97706); background: #fffbeb; border: 1px solid #fde68a; border-radius: 4px; padding: 3px 8px; margin-top: 4px; }
+
+/* ─── Parallel KWIC (V2.3) ─── */
+.parallel-card { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; margin-bottom: 8px; }
+.parallel-pivot { background: var(--surface); padding: 8px 10px; border-right: 1px solid var(--border); }
+.parallel-aligned { background: var(--surface2); padding: 8px 10px; }
+.parallel-pivot .result-meta,
+.parallel-aligned .parallel-lang-header { font-size: 11px; color: var(--text-muted); margin-bottom: 4px; }
+.parallel-aligned-group { margin-bottom: 6px; }
+.parallel-aligned-group:last-child { margin-bottom: 0; }
+.parallel-lang-header { font-size: 11px; font-weight: 600; color: var(--text-muted); margin-bottom: 2px; }
+.parallel-line { font-size: 13px; line-height: 1.45; }
+.parallel-more-btn { font-size: 11px; color: var(--brand); cursor: pointer; background: none; border: none; padding: 0; }
 `;
 
 // ─── DOM helpers ──────────────────────────────────────────────────────────────
@@ -528,7 +609,97 @@ function renderAlignedBlock(hit: QueryHit): HTMLElement {
   return block;
 }
 
+// ─── Sprint 2.3 — Parallel KWIC ──────────────────────────────────────────────
+
+const PARALLEL_COLLAPSE_N = 5;
+
+/** Maximum number of hit cards to keep in DOM at any time (JS-layer virtual list). */
+const VIRT_DOM_CAP = 150;
+
+/**
+ * Render a hit in parallel two-column layout:
+ * left = pivot (hit), right = aligned segments grouped by language+doc.
+ */
+function renderParallelHit(hit: QueryHit, mode: "segment" | "kwic"): HTMLElement {
+  const card = elt("div", { class: "parallel-card" });
+
+  // ── Pivot column ──
+  const pivotCol = elt("div", { class: "parallel-pivot" });
+  const meta = elt("div", { class: "result-meta" });
+  const titleSpan = elt("span", { class: "doc-title" }, hit.title || "");
+  meta.appendChild(titleSpan);
+  if (hit.language) meta.appendChild(document.createTextNode(` · ${hit.language}`));
+  if (hit.external_id != null) meta.appendChild(document.createTextNode(` · §${hit.external_id}`));
+  pivotCol.appendChild(meta);
+
+  if (mode === "kwic" && hit.left !== undefined) {
+    const row = elt("div", { class: "kwic-row" });
+    row.appendChild(elt("span", { class: "kwic-left" }, hit.left ?? ""));
+    row.appendChild(elt("span", { class: "kwic-match" }, hit.match ?? ""));
+    row.appendChild(elt("span", { class: "kwic-right" }, hit.right ?? ""));
+    pivotCol.appendChild(row);
+  } else {
+    const textDiv = elt("div", { class: "result-text" });
+    const raw = hit.text ?? hit.text_norm ?? "";
+    textDiv.innerHTML = escapeHtml(raw)
+      .replace(/&lt;&lt;(.*?)&gt;&gt;/g, '<span class="highlight">$1</span>');
+    pivotCol.appendChild(textDiv);
+  }
+  card.appendChild(pivotCol);
+
+  // ── Aligned column ──
+  const alignedCol = elt("div", { class: "parallel-aligned" });
+  const aligned = Array.isArray(hit.aligned) ? hit.aligned : [];
+
+  if (aligned.length === 0) {
+    alignedCol.appendChild(elt("div", { class: "aligned-empty" }, "Aucun alignement"));
+  } else {
+    const groups = new Map<string, typeof aligned>();
+    for (const item of aligned) {
+      const key = `${item.language ?? "und"}|${item.doc_id}|${item.title ?? ""}`;
+      const cur = groups.get(key);
+      if (cur) cur.push(item); else groups.set(key, [item]);
+    }
+    for (const [key, items] of groups.entries()) {
+      const [lang, , title] = key.split("|");
+      const grp = elt("div", { class: "parallel-aligned-group" });
+      grp.appendChild(elt("div", { class: "parallel-lang-header" }, `${lang} · ${title || "(sans titre)"}`));
+      const visible = items.slice(0, PARALLEL_COLLAPSE_N);
+      const hidden = items.slice(PARALLEL_COLLAPSE_N);
+      for (const item of visible) {
+        const row = elt("div", { class: "parallel-line" });
+        if (item.external_id != null) row.appendChild(elt("span", { class: "aligned-ref" }, `[${item.external_id}] `));
+        row.appendChild(document.createTextNode(item.text ?? item.text_norm ?? ""));
+        grp.appendChild(row);
+      }
+      if (hidden.length > 0) {
+        const moreWrap = elt("div", {});
+        const moreBtn = elt("button", { class: "parallel-more-btn" }, `Voir ${hidden.length} de plus…`) as HTMLButtonElement;
+        moreBtn.addEventListener("click", () => {
+          for (const item of hidden) {
+            const row = elt("div", { class: "parallel-line" });
+            if (item.external_id != null) row.appendChild(elt("span", { class: "aligned-ref" }, `[${item.external_id}] `));
+            row.appendChild(document.createTextNode(item.text ?? item.text_norm ?? ""));
+            grp.insertBefore(row, moreWrap);
+          }
+          moreWrap.remove();
+        });
+        moreWrap.appendChild(moreBtn);
+        grp.appendChild(moreWrap);
+      }
+      alignedCol.appendChild(grp);
+    }
+  }
+  card.appendChild(alignedCol);
+  return card;
+}
+
 function renderHit(hit: QueryHit, mode: "segment" | "kwic", showAligned: boolean): HTMLElement {
+  // Parallel mode: show aligned content always visible alongside pivot
+  if (showAligned && state.showParallel) {
+    return renderParallelHit(hit, mode);
+  }
+
   const card = elt("div", { class: "result-card" });
 
   const meta = elt("div", { class: "result-meta" });
@@ -600,7 +771,17 @@ function renderResults(): void {
   }
   area.appendChild(header);
 
-  for (const hit of hits) {
+  // JS-layer virtual list: cap DOM nodes at VIRT_DOM_CAP to prevent layout thrash
+  // on large result sets. Oldest hits are omitted from DOM (still in state.hits).
+  const hiddenCount = Math.max(0, hits.length - VIRT_DOM_CAP);
+  if (hiddenCount > 0) {
+    const info = elt("div", { class: "virt-top-info" });
+    info.textContent = `▲ ${hiddenCount} résultat${hiddenCount > 1 ? "s" : ""} précédent${hiddenCount > 1 ? "s" : ""} non affiché${hiddenCount > 1 ? "s" : ""} (${hits.length} chargé${hits.length > 1 ? "s" : ""} au total)`;
+    area.appendChild(info);
+  }
+  const visibleHits = hiddenCount > 0 ? hits.slice(hiddenCount) : hits;
+
+  for (const hit of visibleHits) {
     area.appendChild(renderHit(hit, mode, showAligned));
   }
 
@@ -678,6 +859,101 @@ function updateStatus(): void {
   }
 }
 
+// ─── Query builder ───────────────────────────────────────────────────────────
+
+/**
+ * Detect if raw input already looks like an FTS5 expression (operators/quotes present).
+ * When true, skip builder transformation and pass through as-is.
+ */
+export function isSimpleInput(raw: string): boolean {
+  return /\b(AND|OR|NOT|NEAR)\b|"/.test(raw.trim());
+}
+
+/** Show a transient warning below the builder panel. */
+function _showBuilderWarn(msg: string): void {
+  const el = document.getElementById("builder-warn");
+  if (!el) return;
+  el.textContent = msg;
+  el.style.display = "block";
+  setTimeout(() => { el.style.display = "none"; el.textContent = ""; }, 4000);
+}
+
+/**
+ * Build a FTS5 query string from raw input + builder mode.
+ * - simple: pass through as-is
+ * - phrase: wrap in double quotes (escapes internal quotes to single-quote)
+ * - and:    join tokens with AND
+ * - or:     join tokens with OR
+ * - near:   NEAR(t1 t2 …, N) — requires ≥2 tokens
+ *
+ * Safety: if raw already contains FTS operators/quotes, bypass transformation.
+ */
+export function buildFtsQuery(raw: string): string {
+  const trimmed = raw.trim();
+  const mode = state.builderMode;
+  if (mode === "simple") return trimmed;
+
+  // Guard: if input already looks like a hand-crafted FTS query, skip transformation
+  if (isSimpleInput(trimmed)) {
+    _showBuilderWarn("Requête FTS détectée — transformation annulée (mode simple forcé).");
+    return trimmed;
+  }
+
+  const tokens = trimmed.split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return "";
+
+  if (mode === "phrase") {
+    // Escape any internal double-quotes to avoid malformed FTS phrase
+    const escaped = trimmed.replace(/"/g, "'");
+    return `"${escaped}"`;
+  }
+  if (mode === "and") return tokens.join(" AND ");
+  if (mode === "or") return tokens.join(" OR ");
+  if (mode === "near") {
+    if (tokens.length < 2) {
+      _showBuilderWarn("NEAR requiert au moins 2 mots. Requête passée telle quelle.");
+      return tokens[0] ?? "";
+    }
+    return `NEAR(${tokens.join(" ")}, ${state.nearN})`;
+  }
+  return trimmed;
+}
+
+/** Load documents into state.docs and populate filter dropdowns. */
+async function loadDocsForFilters(): Promise<void> {
+  if (!state.conn) return;
+  try {
+    state.docs = await listDocuments(state.conn);
+    _populateFilterDropdowns();
+  } catch {
+    // non-critical — filters stay free-text
+  }
+}
+
+function _populateFilterDropdowns(): void {
+  const langs = [...new Set(state.docs.map(d => d.language).filter(Boolean))].sort();
+  const roles = [...new Set(state.docs.map(d => d.doc_role).filter((r): r is string => r != null))].sort();
+  const resTypes = [...new Set(state.docs.map(d => d.resource_type).filter((r): r is string => r != null))].sort();
+
+  _fillSelect("filter-lang-sel", langs, state.filterLang);
+  _fillSelect("filter-role-sel", roles, state.filterRole);
+  _fillSelect("filter-restype-sel", resTypes, state.filterResourceType);
+}
+
+function _fillSelect(id: string, values: string[], currentVal: string): void {
+  const sel = document.getElementById(id) as HTMLSelectElement | null;
+  if (!sel) return;
+  const prev = sel.value || currentVal;
+  sel.innerHTML = `<option value="">Tous</option>`;
+  for (const v of values) {
+    const opt = document.createElement("option");
+    opt.value = v;
+    opt.textContent = v;
+    if (v === prev) opt.selected = true;
+    sel.appendChild(opt);
+  }
+}
+
 // ─── Import modal ─────────────────────────────────────────────────────────────
 
 function showImportModal(): void {
@@ -691,8 +967,8 @@ function hideImportModal(): void {
 
 // ─── Main logic ───────────────────────────────────────────────────────────────
 
-async function doSearch(q: string): Promise<void> {
-  state.currentQuery = q.trim();
+async function doSearch(rawQ: string): Promise<void> {
+  state.currentQuery = buildFtsQuery(rawQ);
   state.pageLimit = state.showAligned ? PAGE_LIMIT_ALIGNED : PAGE_LIMIT_DEFAULT;
   state.nextOffset = null;
   state.hasMore = false;
@@ -734,6 +1010,7 @@ async function fetchQueryPage(append: boolean): Promise<void> {
       window: state.window,
       language: state.filterLang || undefined,
       doc_role: state.filterRole || undefined,
+      resource_type: state.filterResourceType || undefined,
       doc_id: state.filterDocId ? parseInt(state.filterDocId, 10) : undefined,
       includeAligned: state.showAligned,
       alignedLimit: state.showAligned ? ALIGNED_LIMIT_DEFAULT : undefined,
@@ -887,6 +1164,8 @@ function showReadyState(): void {
   const empty = elt("div", { class: "empty-state" });
   empty.innerHTML = `<div class="icon">📖</div><h3>Sidecar prêt</h3><p>Tapez un terme dans la barre de recherche pour interroger le corpus.</p>`;
   area.appendChild(empty);
+  // Populate filter dropdowns from document list
+  void loadDocsForFilters();
 }
 
 // ─── Build DOM ────────────────────────────────────────────────────────────────
@@ -934,6 +1213,13 @@ function buildUI(container: HTMLElement): void {
   ) as HTMLButtonElement;
   toolbar.appendChild(alignedToggleBtn);
 
+  const parallelToggleBtn = elt(
+    "button",
+    { class: "btn btn-secondary", id: "parallel-toggle-btn", type: "button", style: "display:none" },
+    "Parallèle: off"
+  ) as HTMLButtonElement;
+  toolbar.appendChild(parallelToggleBtn);
+
   // Window slider (hidden by default)
   const windowCtrl = elt("div", { class: "window-control", id: "window-ctrl", style: "display:none" });
   windowCtrl.appendChild(document.createTextNode("Fenêtre "));
@@ -943,30 +1229,89 @@ function buildUI(container: HTMLElement): void {
   windowCtrl.appendChild(windowValue);
   toolbar.appendChild(windowCtrl);
 
-  // Filter + Import + OpenDB buttons
+  // Filter + Builder + Import + OpenDB buttons
   const filterBtn = elt("button", { class: "btn btn-ghost", id: "filter-btn" }, "⚙ Filtres");
+  const builderBtn = elt("button", { class: "btn btn-ghost", id: "builder-btn" }, "✏ Requête");
   const importBtn = elt("button", { class: "btn btn-ghost", id: "import-btn" }, "⬆ Importer…");
   const openDbBtn = elt("button", { class: "btn btn-ghost", id: "open-db-btn" }, "📂 Ouvrir DB…");
   toolbar.appendChild(filterBtn);
+  toolbar.appendChild(builderBtn);
   toolbar.appendChild(importBtn);
   toolbar.appendChild(openDbBtn);
 
-  // ── Filter drawer ──
+  // ── Filter drawer (dropdowns from /documents) ──
   const filterDrawer = elt("div", { class: "filter-drawer hidden", id: "filter-drawer" });
+
   const fg1 = elt("div", { class: "filter-group" });
   fg1.appendChild(elt("label", {}, "Langue"));
-  fg1.appendChild(elt("input", { type: "text", class: "filter-input", id: "filter-lang", placeholder: "fr, en…" }));
+  const langSel = elt("select", { class: "filter-select", id: "filter-lang-sel" }) as HTMLSelectElement;
+  langSel.innerHTML = `<option value="">Tous</option>`;
+  fg1.appendChild(langSel);
+
   const fg2 = elt("div", { class: "filter-group" });
   fg2.appendChild(elt("label", {}, "Rôle"));
-  fg2.appendChild(elt("input", { type: "text", class: "filter-input", id: "filter-role", placeholder: "original…" }));
+  const roleSel = elt("select", { class: "filter-select", id: "filter-role-sel" }) as HTMLSelectElement;
+  roleSel.innerHTML = `<option value="">Tous</option>`;
+  fg2.appendChild(roleSel);
+
+  const fg2b = elt("div", { class: "filter-group" });
+  fg2b.appendChild(elt("label", {}, "Type ressource"));
+  const restypeSel = elt("select", { class: "filter-select", id: "filter-restype-sel" }) as HTMLSelectElement;
+  restypeSel.innerHTML = `<option value="">Tous</option>`;
+  fg2b.appendChild(restypeSel);
+
   const fg3 = elt("div", { class: "filter-group" });
   fg3.appendChild(elt("label", {}, "Doc ID"));
   fg3.appendChild(elt("input", { type: "number", class: "filter-input", id: "filter-docid", placeholder: "1" }));
+
   const clearBtn = elt("span", { class: "filter-clear", id: "filter-clear" }, "Effacer tout");
   filterDrawer.appendChild(fg1);
   filterDrawer.appendChild(fg2);
+  filterDrawer.appendChild(fg2b);
   filterDrawer.appendChild(fg3);
   filterDrawer.appendChild(clearBtn);
+
+  // ── Query builder panel ──
+  const builderPanel = elt("div", { class: "builder-panel hidden", id: "builder-panel" });
+
+  // Mode radio
+  const modeGrp = elt("div", { class: "builder-group" });
+  modeGrp.appendChild(elt("label", {}, "Mode :"));
+  const radioWrap = elt("div", { class: "builder-radio" });
+  for (const [val, lbl] of [
+    ["simple", "Simple"],
+    ["phrase", "Expression exacte"],
+    ["and", "ET (AND)"],
+    ["or", "OU (OR)"],
+    ["near", "NEAR"],
+  ] as const) {
+    const lbEl = document.createElement("label");
+    const inp = elt("input", { type: "radio", name: "builder-mode", value: val }) as HTMLInputElement;
+    if (val === "simple") inp.checked = true;
+    inp.addEventListener("change", () => {
+      state.builderMode = val;
+      (document.getElementById("near-n-ctrl") as HTMLElement).style.display = val === "near" ? "flex" : "none";
+    });
+    lbEl.appendChild(inp);
+    lbEl.appendChild(document.createTextNode(lbl));
+    radioWrap.appendChild(lbEl);
+  }
+  modeGrp.appendChild(radioWrap);
+  builderPanel.appendChild(modeGrp);
+
+  // NEAR N control
+  const nearCtrl = elt("div", { class: "near-n-ctrl", id: "near-n-ctrl", style: "display:none" });
+  nearCtrl.appendChild(document.createTextNode("N ="));
+  const nearInput = elt("input", { type: "number", min: "1", max: "50", value: "5", id: "near-n-input" }) as HTMLInputElement;
+  nearInput.addEventListener("input", () => {
+    state.nearN = Math.max(1, parseInt(nearInput.value, 10) || 5);
+  });
+  nearCtrl.appendChild(nearInput);
+  builderPanel.appendChild(nearCtrl);
+
+  // Builder warning (shown on bypass or NEAR<2)
+  const builderWarn = elt("div", { id: "builder-warn", class: "builder-warn", style: "display:none" });
+  builderPanel.appendChild(builderWarn);
 
   // ── Results area ──
   const resultsArea = elt("div", { class: "results-area", id: "results-area" });
@@ -1036,6 +1381,7 @@ function buildUI(container: HTMLElement): void {
   container.appendChild(topbar);
   container.appendChild(toolbar);
   container.appendChild(filterDrawer);
+  container.appendChild(builderPanel);
   container.appendChild(resultsArea);
   container.appendChild(statusbar);
   container.appendChild(importModal);
@@ -1071,12 +1417,22 @@ function buildUI(container: HTMLElement): void {
     windowValue.textContent = rangeInput.value;
   });
 
+  const refreshParallelToggle = (): void => {
+    parallelToggleBtn.textContent = state.showParallel ? "Parallèle: on" : "Parallèle: off";
+    parallelToggleBtn.classList.toggle("active", state.showParallel);
+    // Only visible when aligned mode is active
+    parallelToggleBtn.style.display = state.showAligned ? "" : "none";
+  };
+  refreshParallelToggle();
+
   alignedToggleBtn.addEventListener("click", () => {
     state.showAligned = !state.showAligned;
     if (!state.showAligned) {
       state.expandedAlignedUnitIds.clear();
+      state.showParallel = false;
     }
     refreshAlignedToggle();
+    refreshParallelToggle();
     const q = searchInput.value.trim();
     if (q) {
       void doSearch(q);
@@ -1085,18 +1441,28 @@ function buildUI(container: HTMLElement): void {
     }
   });
 
+  parallelToggleBtn.addEventListener("click", () => {
+    state.showParallel = !state.showParallel;
+    refreshParallelToggle();
+    renderResults();
+  });
+
   filterBtn.addEventListener("click", () => {
     state.showFilters = !state.showFilters;
     filterDrawer.classList.toggle("hidden", !state.showFilters);
     filterBtn.classList.toggle("active", state.showFilters);
   });
 
-  (document.getElementById("filter-lang")! as HTMLInputElement).addEventListener("input", (e) => {
-    state.filterLang = (e.target as HTMLInputElement).value.trim();
+  builderBtn.addEventListener("click", () => {
+    state.showBuilder = !state.showBuilder;
+    builderPanel.classList.toggle("hidden", !state.showBuilder);
+    builderBtn.classList.toggle("active", state.showBuilder);
   });
-  (document.getElementById("filter-role")! as HTMLInputElement).addEventListener("input", (e) => {
-    state.filterRole = (e.target as HTMLInputElement).value.trim();
-  });
+
+  langSel.addEventListener("change", () => { state.filterLang = langSel.value; });
+  roleSel.addEventListener("change", () => { state.filterRole = roleSel.value; });
+  restypeSel.addEventListener("change", () => { state.filterResourceType = restypeSel.value; });
+
   (document.getElementById("filter-docid")! as HTMLInputElement).addEventListener("input", (e) => {
     state.filterDocId = (e.target as HTMLInputElement).value.trim();
   });
@@ -1104,8 +1470,10 @@ function buildUI(container: HTMLElement): void {
     state.filterLang = "";
     state.filterRole = "";
     state.filterDocId = "";
-    (document.getElementById("filter-lang") as HTMLInputElement).value = "";
-    (document.getElementById("filter-role") as HTMLInputElement).value = "";
+    state.filterResourceType = "";
+    langSel.value = "";
+    roleSel.value = "";
+    restypeSel.value = "";
     (document.getElementById("filter-docid") as HTMLInputElement).value = "";
   });
 
