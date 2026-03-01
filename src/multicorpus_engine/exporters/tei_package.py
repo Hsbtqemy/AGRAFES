@@ -60,6 +60,7 @@ def export_tei_package(
     include_structure: bool = False,
     include_alignment: bool = False,
     status_filter: Optional[list[str]] = None,
+    tei_profile: str = "generic",
 ) -> dict:
     """Export a publication package ZIP.
 
@@ -105,6 +106,7 @@ def export_tei_package(
                 include_structure=include_structure,
                 include_alignment=include_alignment,
                 status_filter=status_filter,
+                tei_profile=tei_profile,
             )
             all_warnings.extend(warns)
             tei_content = tmp_path_obj.read_bytes()
@@ -137,6 +139,7 @@ def export_tei_package(
             "include_structure": include_structure,
             "include_alignment": include_alignment,
             "status_filter": status_filter,
+            "tei_profile": tei_profile,
         },
         **db_info,
         "documents": [

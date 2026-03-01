@@ -105,6 +105,14 @@ export class ExportsScreen {
             </label>
           </div>
         </div>
+        <div class="form-row" style="margin-top:0.5rem">
+          <label style="font-size:0.84rem">Profil TEI
+            <select id="pkg-tei-profile" style="padding:3px 8px;border:1px solid #dee2e6;border-radius:4px;margin-left:0.4rem">
+              <option value="generic">Generic</option>
+              <option value="parcolab_like">ParCoLab-like (enrichi)</option>
+            </select>
+          </label>
+        </div>
         <div class="btn-row" style="margin-top:0.6rem">
           <button id="pkg-export-btn" class="btn btn-success btn-sm" disabled>Choisir fichier et exporter package…</button>
         </div>
@@ -332,6 +340,7 @@ export class ExportsScreen {
 
     const includeStructure = (this._root.querySelector<HTMLInputElement>("#pkg-include-structure")?.checked) ?? false;
     const includeAlignment = (this._root.querySelector<HTMLInputElement>("#pkg-include-alignment")?.checked) ?? false;
+    const teiProfile = (this._root.querySelector<HTMLSelectElement>("#pkg-tei-profile")?.value) ?? "generic";
 
     const outPath = await save({
       title: "Enregistrer le package de publication",
@@ -350,6 +359,7 @@ export class ExportsScreen {
       out_path: outPath,
       include_structure: includeStructure,
       include_alignment: includeAlignment,
+      tei_profile: teiProfile,
     };
     if (doc_ids) params.doc_ids = doc_ids;
 

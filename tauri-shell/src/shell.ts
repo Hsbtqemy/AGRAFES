@@ -998,6 +998,7 @@ interface WizardState {
   includeStructure: boolean;
   includeAlignment: boolean;
   statusFilter: string[];
+  teiProfile: "generic" | "parcolab_like";
   step: WizardStep;
   jobId: string | null;
   result: Record<string, unknown> | null;
@@ -1021,6 +1022,7 @@ async function _renderPublicationWizard(container: HTMLElement): Promise<void> {
     includeStructure: false,
     includeAlignment: false,
     statusFilter: ["accepted"],
+    teiProfile: "generic",
     step: 1,
     jobId: null,
     result: null,
@@ -1134,6 +1136,13 @@ async function _renderPublicationWizard(container: HTMLElement): Promise<void> {
                 <option value="all">tous</option>
               </select>
             </label>
+            <label style="display:flex;align-items:center;gap:0.5rem">
+              Profil TEI:
+              <select id="wiz-tei-profile" style="padding:3px 6px;border:1px solid #dde1e8;border-radius:4px">
+              <option value="generic" ${state.teiProfile !== "parcolab_like" ? "selected" : ""}>Generic</option>
+              <option value="parcolab_like" ${state.teiProfile === "parcolab_like" ? "selected" : ""}>ParCoLab-like (enrichi)</option>
+              </select>
+            </label>
           </div>
           <div style="margin-top:1.25rem;display:flex;justify-content:space-between">
             <button id="wiz-back3" class="wiz-btn-sec">← Retour</button>
@@ -1148,6 +1157,9 @@ async function _renderPublicationWizard(container: HTMLElement): Promise<void> {
         state.statusFilter = sf === "accepted" ? ["accepted"]
           : sf === "accepted_unreviewed" ? ["accepted", "unreviewed"]
           : ["all"];
+        const profileSel = body.querySelector<HTMLSelectElement>("#wiz-tei-profile");
+        const profileVal = profileSel?.value ?? "generic";
+        state.teiProfile = profileVal === "parcolab_like" ? "parcolab_like" : "generic";
         state.step = 4;
         void render();
       });
@@ -1163,7 +1175,8 @@ async function _renderPublicationWizard(container: HTMLElement): Promise<void> {
             <b>Portée:</b> ${_esc(docLabel)}<br>
             <b>Structure:</b> ${state.includeStructure ? "oui" : "non"} &nbsp;
             <b>Alignements:</b> ${state.includeAlignment ? "oui" : "non"} &nbsp;
-            <b>Statut:</b> ${state.statusFilter.join(", ")}
+            <b>Statut:</b> ${state.statusFilter.join(", ")} &nbsp;
+            <b>Profil TEI:</b> ${state.teiProfile === "parcolab_like" ? "ParCoLab-like" : "Generic"}
           </div>
           <div id="wiz-export-status" style="margin-bottom:1rem;font-size:0.84rem;color:#6c757d">
             Cliquez "Choisir fichier et lancer" pour démarrer.
@@ -1200,6 +1213,7 @@ async function _renderPublicationWizard(container: HTMLElement): Promise<void> {
             include_structure: state.includeStructure,
             include_alignment: state.includeAlignment,
             status_filter: state.statusFilter,
+            tei_profile: state.teiProfile,
           };
           if (state.docIds !== null) params.doc_ids = state.docIds;
 

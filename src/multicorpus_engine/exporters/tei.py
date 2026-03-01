@@ -126,6 +126,126 @@ def _get_doc_relations(
         return []
 
 
+def _build_parcolab_header(
+    header: ET.Element,
+    file_desc: ET.Element,
+    profile: ET.Element,
+    doc: sqlite3.Row,
+    meta: dict,
+    doc_id: int,
+    warnings: list[dict],
+) -> None:
+    """Enrich teiHeader for ParCoLab-like export profile.
+
+    Adds:
+    - titleStmt: title, subtitle, author(s), translator(s)
+    - publicationStmt: publisher, pubPlace, date (from meta_json or defaults)
+    - profileDesc/langUsage: pivot + original language if available
+    - profileDesc/textClass: domain, genre as keywords
+    - profileDesc/listRelation: derivation, doc_role relation
+    """
+    title_stmt = file_desc.find("titleStmt")
+    if title_stmt is None:
+        title_stmt = ET.SubElement(file_desc, "titleStmt")
+
+    title_el = title_stmt.find("title")
+    if title_el is None:
+        title_el = ET.SubElement(title_stmt, "title")
+    title_el.text = strip_xml10_invalid(doc["title"] or f"Document {doc_id}")
+
+    subtitle = meta.get("subtitle", "")
+    if subtitle:
+        sub_el = ET.SubElement(title_stmt, "title", {"type": "sub"})
+        sub_el.text = strip_xml10_invalid(subtitle)
+
+    # Authors
+    authors = meta.get("author") or meta.get("authors") or ""
+    if isinstance(authors, str):
+        authors = [a.strip() for a in authors.split(";") if a.strip()]
+    elif isinstance(authors, list):
+        authors = [str(a) for a in authors]
+    for author in authors:
+        ET.SubElement(title_stmt, "author").text = strip_xml10_invalid(author)
+
+    # Translators
+    translators = meta.get("translator") or meta.get("translators") or ""
+    if isinstance(translators, str):
+        translators = [t.strip() for t in translators.split(";") if t.strip()]
+    elif isinstance(translators, list):
+        translators = [str(t) for t in translators]
+    for trans in translators:
+        resp = ET.SubElement(title_stmt, "respStmt")
+        ET.SubElement(resp, "resp").text = "Traduction"
+        ET.SubElement(resp, "name").text = strip_xml10_invalid(trans)
+
+    # Required: at least warn if no author
+    if not authors:
+        warnings.append({"type": "tei_missing_field", "field": "author", "doc_id": doc_id,
+                         "severity": "warning", "profile": "parcolab_like"})
+
+    # publicationStmt
+    pub_stmt = file_desc.find("publicationStmt")
+    if pub_stmt is not None:
+        # Remove generic <p> text
+        for p in list(pub_stmt.findall("p")):
+            pub_stmt.remove(p)
+
+    publisher = meta.get("publisher", "")
+    if publisher:
+        ET.SubElement(pub_stmt, "publisher").text = strip_xml10_invalid(publisher)
+    else:
+        warnings.append({"type": "tei_missing_field", "field": "publisher", "doc_id": doc_id,
+                         "severity": "warning", "profile": "parcolab_like"})
+
+    pub_place = meta.get("pubPlace", "") or meta.get("pub_place", "")
+    if pub_place:
+        ET.SubElement(pub_stmt, "pubPlace").text = strip_xml10_invalid(pub_place)
+    else:
+        warnings.append({"type": "tei_missing_field", "field": "pubPlace", "doc_id": doc_id,
+                         "severity": "warning", "profile": "parcolab_like"})
+
+    date_val = meta.get("date", "") or meta.get("year", "")
+    date_str = str(date_val).strip() if date_val else ""
+    if date_str:
+        ET.SubElement(pub_stmt, "date").text = strip_xml10_invalid(date_str)
+    else:
+        warnings.append({"type": "tei_missing_field", "field": "date", "doc_id": doc_id,
+                         "severity": "warning", "profile": "parcolab_like"})
+
+    # language_ori (original language, if different from doc language)
+    lang_ori = meta.get("language_ori", "") or meta.get("language_original", "")
+    if lang_ori:
+        lang_usage = profile.find("langUsage")
+        if lang_usage is None:
+            lang_usage = ET.SubElement(profile, "langUsage")
+        ori_el = ET.SubElement(lang_usage, "language", {"ident": strip_xml10_invalid(lang_ori)})
+        ori_el.text = strip_xml10_invalid(lang_ori)
+
+    # textClass: domain, genre, derivation
+    domain = meta.get("domain", "")
+    genre = meta.get("genre", "")
+    try:
+        _doc_role = doc["doc_role"] or ""
+    except (IndexError, KeyError):
+        _doc_role = ""
+    derivation = meta.get("derivation", "") or _doc_role or ""
+
+    text_class = ET.SubElement(profile, "textClass")
+    kws = ET.SubElement(text_class, "keywords")
+    if domain:
+        kw = ET.SubElement(kws, "term", {"type": "domain"})
+        kw.text = strip_xml10_invalid(domain)
+    if genre:
+        kw2 = ET.SubElement(kws, "term", {"type": "genre"})
+        kw2.text = strip_xml10_invalid(genre)
+    if derivation:
+        kw3 = ET.SubElement(kws, "term", {"type": "derivation"})
+        kw3.text = strip_xml10_invalid(derivation)
+    if not domain and not genre:
+        warnings.append({"type": "tei_missing_field", "field": "domain/genre", "doc_id": doc_id,
+                         "severity": "warning", "profile": "parcolab_like"})
+
+
 def export_tei(
     conn: sqlite3.Connection,
     doc_id: int,
@@ -135,6 +255,7 @@ def export_tei(
     target_doc_id: Optional[int] = None,
     status_filter: Optional[list[str]] = None,
     enrich_header: bool = False,
+    tei_profile: str = "generic",
 ) -> tuple[Path, list[dict]]:
     """Export a document as TEI XML.
 
@@ -149,6 +270,9 @@ def export_tei(
                        Default ["accepted"]. Use ["all"] for no filter.
         enrich_header: If True, add textClass (doc_role, resource_type) and
                        listRelation from doc_relations.
+        tei_profile: Export profile: "generic" (default) or "parcolab_like".
+                     "parcolab_like" enriches teiHeader with publisher, pubPlace,
+                     date, author, translator, domain, genre from meta_json.
 
     Returns:
         Tuple of (resolved_output_path, warnings_list).
@@ -213,6 +337,14 @@ def export_tei(
             terms2 = ET.SubElement(text_class, "keywords")
             kw_rt = ET.SubElement(terms2, "term", {"type": "resource_type"})
             kw_rt.text = resource_type
+
+    # ParCoLab-like profile: enrich header with bibliographic metadata
+    if tei_profile == "parcolab_like":
+        try:
+            meta: dict = _json.loads(doc["meta_json"] or "{}") if doc["meta_json"] else {}
+        except (_json.JSONDecodeError, TypeError):
+            meta = {}
+        _build_parcolab_header(header, file_desc, profile, doc, meta, doc_id, warnings)
 
     # listRelation from doc_relations — always emitted when relations exist
     relations = _get_doc_relations(conn, doc_id)

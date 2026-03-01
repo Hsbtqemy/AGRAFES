@@ -1653,6 +1653,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             return
         doc_ids = body.get("doc_ids")  # list or None (None = all)
         include_structure: bool = bool(body.get("include_structure", False))
+        tei_profile_direct: str = body.get("tei_profile", "generic")
         with self._lock():
             if doc_ids is None:
                 all_ids = [r[0] for r in self._conn().execute("SELECT doc_id FROM documents ORDER BY doc_id")]
@@ -1664,7 +1665,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         for doc_id in all_ids:
             out_path = out_dir_path / f"doc_{doc_id}.tei.xml"
             try:
-                _out, _warns = export_tei(self._conn(), doc_id=doc_id, output_path=out_path, include_structure=include_structure)
+                _out, _warns = export_tei(self._conn(), doc_id=doc_id, output_path=out_path,
+                                           include_structure=include_structure, tei_profile=tei_profile_direct)
                 files_created.append(str(_out))
             except Exception as exc:
                 logger.warning("TEI export failed for doc_id=%s: %s", doc_id, exc)
@@ -2568,12 +2570,13 @@ class CorpusServer:
                     rows = conn.execute("SELECT doc_id FROM documents ORDER BY doc_id").fetchall()
                     doc_ids = [r[0] for r in rows]
 
+            tei_profile_job: str = params.get("tei_profile", "generic")
             files_created: list[str] = []
             progress_cb(5, "Exporting TEI")
             for i, doc_id in enumerate(doc_ids):
                 dest = out_path / f"doc_{doc_id}.xml"
                 with lock:
-                    _out2, _w2 = export_tei(conn, doc_id=int(doc_id), output_path=dest)
+                    _out2, _w2 = export_tei(conn, doc_id=int(doc_id), output_path=dest, tei_profile=tei_profile_job)
                 files_created.append(str(_out2))
                 pct = 5 + int(90 * (i + 1) / max(len(doc_ids), 1))
                 progress_cb(pct, f"Exported {i + 1}/{len(doc_ids)}")
@@ -2621,6 +2624,7 @@ class CorpusServer:
             include_structure_pkg: bool = bool(params.get("include_structure", False))
             include_alignment_pkg: bool = bool(params.get("include_alignment", False))
             status_filter_pkg = params.get("status_filter") or ["accepted"]
+            tei_profile_pkg: str = params.get("tei_profile", "generic")
 
             progress_cb(5, "Building TEI publication package")
             with lock:
@@ -2631,6 +2635,7 @@ class CorpusServer:
                     include_structure=include_structure_pkg,
                     include_alignment=include_alignment_pkg,
                     status_filter=status_filter_pkg,
+                    tei_profile=tei_profile_pkg,
                 )
             progress_cb(100, "TEI package created")
             return result_pkg
