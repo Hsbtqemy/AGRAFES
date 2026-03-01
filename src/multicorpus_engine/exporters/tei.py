@@ -261,10 +261,10 @@ def export_tei(
             for link_row in links_data:
                 p_uid = link_row["pivot_unit_id"] if "pivot_unit_id" in link_row.keys() else link_row[1]
                 t_uid = link_row["target_unit_id"] if "target_unit_id" in link_row.keys() else link_row[2]
-                link_el = ET.SubElement(linkgrp, "link", {
-                    "target": f"#u{p_uid} #u{t_uid}",
-                })
-                _ = link_el
+                tgt_doc = link_row["target_doc_id"] if "target_doc_id" in link_row.keys() else link_row[5]
+                # pivot ref: internal (#uN); target ref: cross-document URI (TEI P5)
+                target_ref = f"#u{p_uid} doc_{tgt_doc}.tei.xml#u{t_uid}"
+                ET.SubElement(linkgrp, "link", {"target": target_ref})
 
     # ── Serialize with UTF-8 declaration ──────────────────────────────────────
     output_path.parent.mkdir(parents=True, exist_ok=True)

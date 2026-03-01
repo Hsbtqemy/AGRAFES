@@ -228,8 +228,10 @@ def test_tei_export_with_alignment_linkgrp(db_conn: sqlite3.Connection, tmp_path
         assert target_attr, "<link target> missing"
         parts = target_attr.split()
         assert len(parts) == 2, f"<link target> must have 2 values: {target_attr!r}"
+        # Pivot ref: internal fragment (#uN)
         assert parts[0].startswith("#u"), f"pivot ref must start with '#u': {parts[0]!r}"
-        assert parts[1].startswith("#u"), f"target ref must start with '#u': {parts[1]!r}"
+        # Target ref: cross-document URI (doc_N.tei.xml#uM) — TEI P5 cross-doc form
+        assert ".tei.xml#u" in parts[1], f"target ref must be a cross-doc URI (*.tei.xml#uN): {parts[1]!r}"
 
 
 def test_tei_export_alignment_status_filter(db_conn: sqlite3.Connection, tmp_path: Path) -> None:

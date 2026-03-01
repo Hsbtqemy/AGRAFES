@@ -674,6 +674,44 @@ def cmd_validate_meta(args: argparse.Namespace) -> None:
 
 
 # ---------------------------------------------------------------------------
+# validate-tei
+# ---------------------------------------------------------------------------
+
+def cmd_validate_tei(args: argparse.Namespace) -> None:
+    """Validate a TEI XML file or publication package ZIP for xml:id referential integrity."""
+    from .utils.tei_validate import validate_tei_ids, validate_tei_package
+    from .runs import utcnow_iso
+    import json as _json
+
+    if getattr(args, "path", None):
+        path = Path(args.path)
+        if not path.exists():
+            _err({"error": f"File not found: {path}", "created_at": utcnow_iso()})
+        errors = validate_tei_ids(path)
+        _ok({
+            "status": "ok" if not errors else "errors",
+            "path": str(path),
+            "error_count": len(errors),
+            "errors": errors,
+            "created_at": utcnow_iso(),
+        })
+    else:
+        zip_path = Path(args.zip_path)
+        if not zip_path.exists():
+            _err({"error": f"ZIP not found: {zip_path}", "created_at": utcnow_iso()})
+        results = validate_tei_package(zip_path)
+        total_errors = sum(len(v) for v in results.values())
+        _ok({
+            "status": "ok" if total_errors == 0 else "errors",
+            "zip_path": str(zip_path),
+            "files_checked": len(results),
+            "total_errors": total_errors,
+            "results": results,
+            "created_at": utcnow_iso(),
+        })
+
+
+# ---------------------------------------------------------------------------
 # segment
 # ---------------------------------------------------------------------------
 
@@ -1112,6 +1150,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_val.add_argument("--doc-id", dest="doc_id", type=int, default=None,
                        help="Validate a single document (default: all)")
     p_val.set_defaults(func=cmd_validate_meta)
+
+    # validate-tei
+    p_vtei = sub.add_parser("validate-tei", help="Validate TEI XML file or publication package ZIP for xml:id integrity")
+    p_vtei_group = p_vtei.add_mutually_exclusive_group(required=True)
+    p_vtei_group.add_argument("--path", help="Path to a TEI .xml file")
+    p_vtei_group.add_argument("--zip", dest="zip_path", help="Path to a publication package .zip")
+    p_vtei.set_defaults(func=cmd_validate_tei)
 
     # curate
     p_curate = sub.add_parser(
