@@ -476,3 +476,38 @@ npm --prefix tauri-shell run tauri dev
 - Import dynamique `@tauri-apps/plugin-fs` pour vérifier si les paths existent
 - Marque les entrées `missing: true` → badge gris + re-sélection forcée via dialog
 - Rebuild la section MRU sans reconstruire tout le header
+
+## V1.7.2 — UX polish (naming, About dialog, shortcuts)
+
+**Fichiers modifiés :** `tauri-shell/src/shell.ts`, `tauri-prep/src/screens/ExportsScreen.ts`
+
+### Harmonisation des termes
+
+- "Mode strict" → **"Politique QA : Strict"** partout (Prep ExportsScreen + Shell wizard)
+- Logs : affichage cohérent "politique QA: Strict / Lenient"
+
+### About dialog (shell header — bouton "ⓘ")
+
+- App version, Engine version, Contract version, DB active
+- Profils TEI supportés (generic · parcolab_like · parcolab_strict)
+- Référence aux fichiers de documentation
+- Fermeture : clic backdrop, bouton ✕, Echap
+- Raccourci : `⌘+?`
+
+### Shortcuts panel (shell header — bouton "⌨")
+
+Panneau modal listant tous les raccourcis :
+
+| Raccourci | Action |
+|---|---|
+| ⌘/Ctrl+1 | Explorer |
+| ⌘/Ctrl+2 | Constituer |
+| ⌘/Ctrl+3 | Publier |
+| ⌘/Ctrl+0 | Accueil |
+| Echap | Fermer modal/menu |
+| ⌘/Ctrl+O | Ouvrir une DB |
+| ⌘/Ctrl+Maj+N | Créer une DB |
+| ⌘/Ctrl+/ | Afficher l'aide raccourcis |
+
+- Raccourci `⌘+3` ajouté pour "Publier"
+- Raccourci `⌘+O` pour ouvrir DB, `⌘+Maj+N` pour créer

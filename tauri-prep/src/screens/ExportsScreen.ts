@@ -182,8 +182,8 @@ export class ExportsScreen {
           </label>
           <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.84rem;cursor:pointer;align-self:flex-end">
             <input type="checkbox" id="qa-strict-mode">
-            Mode strict
-            <span title="En mode strict, les avertissements (collisions, trous d'import, métadonnées optionnelles, relations) deviennent bloquants." style="color:#6c757d;cursor:help">ⓘ</span>
+            Politique QA : Strict
+            <span title="Politique QA Strict : les avertissements (collisions, trous d'import, métadonnées optionnelles manquantes, relations) deviennent bloquants — recommandé avant publication TEI." style="color:#6c757d;cursor:help">ⓘ</span>
           </label>
           <div style="align-self:flex-end">
             <button id="qa-report-btn" class="btn btn-primary btn-sm" disabled>Choisir fichier et exporter rapport QA…</button>
@@ -504,7 +504,7 @@ export class ExportsScreen {
 
     btn.disabled = true;
     banner.style.display = "none";
-    this._log(`Rapport QA: génération en cours (format ${fmt}, politique: ${qaPolicy})…`);
+    this._log(`Rapport QA: génération (format: ${fmt}, politique QA: ${qaPolicy === "strict" ? "Strict" : "Lenient"})…`);
 
     try {
       if (!this._conn) return;

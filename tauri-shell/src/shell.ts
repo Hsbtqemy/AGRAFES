@@ -425,6 +425,104 @@ const SHELL_CSS = `
   }
   .shell-guide-reset:hover { color: #475569; }
 
+  /* ── About + Shortcuts ──────────────────────────────────────── */
+  .shell-about-btn, .shell-shortcuts-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 0.8rem;
+    color: #6c757d;
+    padding: 4px 8px;
+    border-radius: 4px;
+    transition: background 0.15s, color 0.15s;
+    white-space: nowrap;
+  }
+  .shell-about-btn:hover, .shell-shortcuts-btn:hover {
+    background: rgba(255,255,255,0.15);
+    color: #fff;
+  }
+  .shell-about-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0,0,0,0.45);
+  }
+  .shell-about-box {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+    padding: 2rem 2.5rem;
+    min-width: 340px;
+    max-width: 480px;
+    position: relative;
+  }
+  .shell-about-title {
+    font-size: 1.3rem;
+    font-weight: 800;
+    color: #1a1a2e;
+    margin: 0 0 0.25rem;
+    letter-spacing: -0.5px;
+  }
+  .shell-about-tagline {
+    color: #6c757d;
+    font-size: 0.83rem;
+    margin: 0 0 1.25rem;
+  }
+  .shell-about-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+  }
+  .shell-about-table td { padding: 0.25rem 0.4rem; }
+  .shell-about-table td:first-child { color: #6c757d; min-width: 120px; }
+  .shell-about-table td:last-child { font-weight: 600; font-family: monospace; }
+  .shell-about-profiles {
+    margin-top: 0.75rem;
+    font-size: 0.78rem;
+    color: #6c757d;
+  }
+  .shell-about-close {
+    position: absolute;
+    top: 0.8rem;
+    right: 1rem;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 1.3rem;
+    color: #adb5bd;
+  }
+  .shell-about-close:hover { color: #1a1a2e; }
+  .shell-shortcuts-box {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+    padding: 1.75rem 2.25rem;
+    min-width: 320px;
+    max-width: 440px;
+    position: relative;
+  }
+  .shell-shortcuts-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.83rem;
+  }
+  .shell-shortcuts-table tr { border-bottom: 1px solid #f0f0f0; }
+  .shell-shortcuts-table tr:last-child { border-bottom: none; }
+  .shell-shortcuts-table td { padding: 0.3rem 0.4rem; }
+  .shell-shortcuts-table td:first-child {
+    font-family: monospace;
+    background: #f4f5f7;
+    border-radius: 4px;
+    padding: 2px 8px;
+    white-space: nowrap;
+    color: #1a1a2e;
+    font-weight: 600;
+  }
+  .shell-shortcuts-table td:last-child { color: #495057; padding-left: 1rem; }
+
   /* ── Presets button in header ───────────────────────────────── */
   .shell-presets-btn {
     background: none;
@@ -835,6 +933,94 @@ function _injectCSS(): void {
 
 // ─── Header ───────────────────────────────────────────────────────────────────
 
+// ─── About dialog ─────────────────────────────────────────────────────────────
+
+// Static version info (embedded at build time)
+const APP_VERSION = "1.7.2";
+const ENGINE_VERSION_DISPLAY = "0.6.1";
+const CONTRACT_VERSION_DISPLAY = "1.4.0";
+const TEI_PROFILES = ["generic", "parcolab_like", "parcolab_strict"];
+
+function _openAboutDialog(): void {
+  const existing = document.getElementById("shell-about-modal");
+  if (existing) { existing.remove(); return; }
+
+  const dbName = _currentDbPath ? _pathLabel(_currentDbPath) : "(aucune)";
+
+  const modal = document.createElement("div");
+  modal.id = "shell-about-modal";
+  modal.className = "shell-about-modal";
+  modal.innerHTML = `
+    <div class="shell-about-box" role="dialog" aria-modal="true" aria-label="À propos d'AGRAFES">
+      <button class="shell-about-close" id="shell-about-close" aria-label="Fermer">✕</button>
+      <div class="shell-about-title">AGRAFES</div>
+      <div class="shell-about-tagline">Atelier de Gestion et de Recherche en Alignement de Corpus</div>
+      <table class="shell-about-table">
+        <tr><td>App version</td><td>v${APP_VERSION}</td></tr>
+        <tr><td>Engine version</td><td>${ENGINE_VERSION_DISPLAY}</td></tr>
+        <tr><td>Contract version</td><td>${CONTRACT_VERSION_DISPLAY}</td></tr>
+        <tr><td>DB active</td><td>${_esc(dbName)}</td></tr>
+      </table>
+      <div class="shell-about-profiles">
+        Profils TEI supportés : ${TEI_PROFILES.map(p => `<code style="background:#f4f5f7;border-radius:3px;padding:0 4px">${p}</code>`).join(" · ")}
+      </div>
+      <div style="margin-top:1rem;font-size:0.75rem;color:#adb5bd">
+        Docs : RELEASE_CHECKLIST.md · TEI_PROFILE.md · STATUS_TAURI_SHELL.md
+      </div>
+    </div>
+  `;
+
+  modal.addEventListener("click", (e) => { if (e.target === modal) modal.remove(); });
+  modal.querySelector("#shell-about-close")!.addEventListener("click", () => modal.remove());
+  document.body.appendChild(modal);
+  // Close on Escape
+  const onKey = (e: KeyboardEvent): void => { if (e.key === "Escape") { modal.remove(); document.removeEventListener("keydown", onKey); } };
+  document.addEventListener("keydown", onKey);
+}
+
+// ─── Shortcuts panel ──────────────────────────────────────────────────────────
+
+function _openShortcutsPanel(): void {
+  const existing = document.getElementById("shell-shortcuts-modal");
+  if (existing) { existing.remove(); return; }
+
+  const isMac = navigator.platform?.startsWith("Mac") ?? false;
+  const mod = isMac ? "⌘" : "Ctrl";
+
+  const shortcuts = [
+    [`${mod}+1`, "Explorer"],
+    [`${mod}+2`, "Constituer"],
+    [`${mod}+3`, "Publier"],
+    [`${mod}+0`, "Accueil"],
+    ["Echap", "Fermer modal / menu"],
+    [`${mod}+O`, "Ouvrir une base de données…"],
+    [`${mod}+Maj+N`, "Créer une nouvelle base de données…"],
+    [`${mod}+/`, "Afficher cette aide"],
+  ];
+
+  const modal = document.createElement("div");
+  modal.id = "shell-shortcuts-modal";
+  modal.className = "shell-about-modal";
+  modal.innerHTML = `
+    <div class="shell-shortcuts-box" role="dialog" aria-modal="true" aria-label="Raccourcis clavier">
+      <button class="shell-about-close" id="shell-shortcuts-close" aria-label="Fermer">✕</button>
+      <div class="shell-about-title" style="font-size:1.05rem;margin-bottom:1rem">⌨ Raccourcis clavier</div>
+      <table class="shell-shortcuts-table">
+        ${shortcuts.map(([k, d]) => `<tr><td>${_esc(k)}</td><td>${_esc(d)}</td></tr>`).join("")}
+      </table>
+      <div style="margin-top:0.85rem;font-size:0.75rem;color:#adb5bd">
+        Les raccourcis numériques fonctionnent également sans modificateur depuis l'accueil.
+      </div>
+    </div>
+  `;
+
+  modal.addEventListener("click", (e) => { if (e.target === modal) modal.remove(); });
+  modal.querySelector("#shell-shortcuts-close")!.addEventListener("click", () => modal.remove());
+  document.body.appendChild(modal);
+  const onKey = (e: KeyboardEvent): void => { if (e.key === "Escape") { modal.remove(); document.removeEventListener("keydown", onKey); } };
+  document.addEventListener("keydown", onKey);
+}
+
 function _buildHeader(): void {
   const header = document.getElementById("shell-header")!;
   header.innerHTML = "";
@@ -860,6 +1046,24 @@ function _buildHeader(): void {
   presetsBtn.title = "Gérer les presets globaux (langues, alignement, curation)";
   presetsBtn.addEventListener("click", () => _openPresetsModal());
   tabs.appendChild(presetsBtn);
+
+  // Shortcuts button
+  const shortcutsBtn = document.createElement("button");
+  shortcutsBtn.className = "shell-shortcuts-btn";
+  shortcutsBtn.textContent = "⌨";
+  shortcutsBtn.title = "Raccourcis clavier";
+  shortcutsBtn.setAttribute("aria-label", "Afficher les raccourcis clavier");
+  shortcutsBtn.addEventListener("click", () => _openShortcutsPanel());
+  tabs.appendChild(shortcutsBtn);
+
+  // About button
+  const aboutBtn = document.createElement("button");
+  aboutBtn.className = "shell-about-btn";
+  aboutBtn.textContent = "ⓘ";
+  aboutBtn.title = "À propos d'AGRAFES";
+  aboutBtn.setAttribute("aria-label", "À propos d'AGRAFES");
+  aboutBtn.addEventListener("click", () => _openAboutDialog());
+  tabs.appendChild(aboutBtn);
 
   // DB zone (right-aligned via margin-left:auto in CSS)
   const dbZone = document.createElement("div");
@@ -1881,6 +2085,11 @@ function _installKeyboardShortcuts(): void {
     if (!mod) return;
     if (e.key === "1") { e.preventDefault(); void _setMode("explorer"); }
     else if (e.key === "2") { e.preventDefault(); void _setMode("constituer"); }
+    else if (e.key === "3") { e.preventDefault(); void _setMode("publish"); }
     else if (e.key === "0") { e.preventDefault(); void _setMode("home"); }
+    else if (e.key === "o" || e.key === "O") { e.preventDefault(); void _onChangeDb(); }
+    else if ((e.key === "n" || e.key === "N") && e.shiftKey) { e.preventDefault(); void _onCreateDb(); }
+    else if (e.key === "/") { e.preventDefault(); _openShortcutsPanel(); }
+    else if (e.key === "?") { e.preventDefault(); _openAboutDialog(); }
   });
 }
