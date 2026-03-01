@@ -52,13 +52,16 @@ function _maybeShowWelcomeHint(container: HTMLElement): void {
       hint.textContent = `💡 Astuce : la barre de recherche est pré-remplie avec « ${prefill} ». Appuyez Entrée pour chercher.`;
       document.body.appendChild(hint);
       // Auto-remove after first search or 8 seconds
-      const remove = (): void => {
+      const onKeydown = (e: KeyboardEvent): void => {
+        if (e.key === "Enter") removeHint();
+      };
+      const removeHint = (): void => {
         hint.style.opacity = "0";
         setTimeout(() => hint.remove(), 450);
-        input.removeEventListener("keydown", remove);
+        input.removeEventListener("keydown", onKeydown);
       };
-      input.addEventListener("keydown", (e) => { if (e.key === "Enter") remove(); });
-      setTimeout(remove, 8000);
+      input.addEventListener("keydown", onKeydown);
+      setTimeout(removeHint, 8000);
     } else if (attempts > 0) {
       setTimeout(() => tryFill(attempts - 1), 300);
     }
