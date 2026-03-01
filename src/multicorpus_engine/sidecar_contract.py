@@ -12,15 +12,17 @@ from __future__ import annotations
 from typing import Any
 
 
-API_VERSION = "1.4.0"
-CONTRACT_VERSION = "1.4.0"  # semantic versioning for the sidecar API contract
+API_VERSION = "1.4.1"
+CONTRACT_VERSION = "1.4.1"  # semantic versioning for the sidecar API contract
 # 1.4.0: added export_tei_package job kind (Sprint 4 — Publication ZIP)
+# 1.4.1: ERR_CONFLICT (409) for duplicate run_id; token protection on /align, /curate, /segment
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
 ERR_NOT_FOUND = "NOT_FOUND"
 ERR_VALIDATION = "VALIDATION_ERROR"
 ERR_UNAUTHORIZED = "UNAUTHORIZED"
+ERR_CONFLICT = "CONFLICT"
 ERR_INTERNAL = "INTERNAL_ERROR"
 
 
@@ -1083,7 +1085,15 @@ def openapi_spec() -> dict[str, Any]:
                             "enum": ["external_id", "position", "similarity", "external_id_then_position"],
                             "default": "external_id",
                         },
-                        "relation_type": {"type": "string", "default": "translation"},
+                        "relation_type": {
+                            "type": "string",
+                            "default": "translation",
+                            "description": (
+                                "Stored in run params for traceability. "
+                                "Not yet applied functionally to alignment_links — "
+                                "tracked as known drift (ADR-009, v1.4.1)."
+                            ),
+                        },
                         "sim_threshold": {"type": "number", "minimum": 0.0, "maximum": 1.0, "default": 0.8},
                         "debug_align": {"type": "boolean", "default": False},
                         "run_id": {"type": "string"},

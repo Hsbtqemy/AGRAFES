@@ -1,1714 +1,823 @@
 {
-  "components": {
-    "schemas": {
-      "AlignAuditRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "external_id": {
-            "type": "integer"
-          },
-          "include_explain": {
-            "default": false,
-            "description": "Attach explain object to each link (strategy + notes). Default false (no-op).",
-            "type": "boolean"
-          },
-          "limit": {
-            "default": 50,
-            "maximum": 200,
-            "minimum": 1,
-            "type": "integer"
-          },
-          "offset": {
-            "default": 0,
-            "minimum": 0,
-            "type": "integer"
-          },
-          "pivot_doc_id": {
-            "type": "integer"
-          },
-          "status": {
-            "enum": [
-              "accepted",
-              "rejected",
-              "unreviewed"
-            ],
-            "nullable": true,
-            "type": "string"
-          },
-          "target_doc_id": {
-            "type": "integer"
-          }
-        },
-        "required": [
-          "pivot_doc_id",
-          "target_doc_id"
-        ],
-        "type": "object"
-      },
-      "AlignAuditResponse": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/BaseResponse"
-          },
-          {
-            "properties": {
-              "has_more": {
-                "type": "boolean"
-              },
-              "limit": {
-                "type": "integer"
-              },
-              "links": {
-                "items": {
-                  "$ref": "#/components/schemas/AlignLinkRecord"
-                },
-                "type": "array"
-              },
-              "next_offset": {
-                "nullable": true,
-                "type": "integer"
-              },
-              "offset": {
-                "type": "integer"
-              },
-              "pivot_doc_id": {
-                "type": "integer"
-              },
-              "stats": {
-                "properties": {
-                  "links_returned": {
-                    "type": "integer"
-                  }
-                },
-                "type": "object"
-              },
-              "target_doc_id": {
-                "type": "integer"
-              }
-            },
-            "required": [
-              "pivot_doc_id",
-              "target_doc_id",
-              "limit",
-              "offset",
-              "has_more",
-              "next_offset",
-              "stats",
-              "links"
-            ],
-            "type": "object"
-          }
-        ]
-      },
-      "AlignBatchAction": {
-        "properties": {
-          "action": {
-            "enum": [
-              "set_status",
-              "delete"
-            ],
-            "type": "string"
-          },
-          "link_id": {
-            "type": "integer"
-          },
-          "status": {
-            "enum": [
-              "accepted",
-              "rejected"
-            ],
-            "nullable": true,
-            "type": "string"
-          }
-        },
-        "required": [
-          "action",
-          "link_id"
-        ],
-        "type": "object"
-      },
-      "AlignCollisionsRequest": {
-        "properties": {
-          "limit": {
-            "default": 20,
-            "maximum": 100,
-            "minimum": 1,
-            "type": "integer"
-          },
-          "offset": {
-            "default": 0,
-            "minimum": 0,
-            "type": "integer"
-          },
-          "pivot_doc_id": {
-            "type": "integer"
-          },
-          "target_doc_id": {
-            "type": "integer"
-          }
-        },
-        "required": [
-          "pivot_doc_id",
-          "target_doc_id"
-        ],
-        "type": "object"
-      },
-      "AlignLinkDeleteRequest": {
-        "properties": {
-          "link_id": {
-            "type": "integer"
-          }
-        },
-        "required": [
-          "link_id"
-        ],
-        "type": "object"
-      },
-      "AlignLinkRecord": {
-        "additionalProperties": false,
-        "properties": {
-          "explain": {
-            "description": "Present when include_explain=true.",
-            "nullable": true,
-            "properties": {
-              "notes": {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              "strategy": {
-                "type": "string"
-              }
-            },
-            "type": "object"
-          },
-          "external_id": {
-            "nullable": true,
-            "type": "integer"
-          },
-          "link_id": {
-            "type": "integer"
-          },
-          "pivot_text": {
-            "type": "string"
-          },
-          "pivot_unit_id": {
-            "type": "integer"
-          },
-          "status": {
-            "enum": [
-              "accepted",
-              "rejected"
-            ],
-            "nullable": true,
-            "type": "string"
-          },
-          "target_text": {
-            "type": "string"
-          },
-          "target_unit_id": {
-            "type": "integer"
-          }
-        },
-        "required": [
-          "link_id",
-          "pivot_unit_id",
-          "target_unit_id",
-          "pivot_text",
-          "target_text"
-        ],
-        "type": "object"
-      },
-      "AlignLinkRetargetRequest": {
-        "properties": {
-          "link_id": {
-            "type": "integer"
-          },
-          "new_target_unit_id": {
-            "type": "integer"
-          }
-        },
-        "required": [
-          "link_id",
-          "new_target_unit_id"
-        ],
-        "type": "object"
-      },
-      "AlignLinkUpdateStatusRequest": {
-        "properties": {
-          "link_id": {
-            "type": "integer"
-          },
-          "status": {
-            "enum": [
-              "accepted",
-              "rejected"
-            ],
-            "nullable": true,
-            "type": "string"
-          }
-        },
-        "required": [
-          "link_id",
-          "status"
-        ],
-        "type": "object"
-      },
-      "AlignLinksBatchUpdateRequest": {
-        "properties": {
-          "actions": {
-            "items": {
-              "$ref": "#/components/schemas/AlignBatchAction"
-            },
-            "minItems": 1,
-            "type": "array"
-          }
-        },
-        "required": [
-          "actions"
-        ],
-        "type": "object"
-      },
-      "AlignQualityRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "pivot_doc_id": {
-            "type": "integer"
-          },
-          "run_id": {
-            "nullable": true,
-            "type": "string"
-          },
-          "target_doc_id": {
-            "type": "integer"
-          }
-        },
-        "required": [
-          "pivot_doc_id",
-          "target_doc_id"
-        ],
-        "type": "object"
-      },
-      "AlignQualityResponse": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/BaseResponse"
-          },
-          {
-            "properties": {
-              "pivot_doc_id": {
-                "type": "integer"
-              },
-              "run_id": {
-                "nullable": true,
-                "type": "string"
-              },
-              "sample_orphan_pivot": {
-                "items": {
-                  "type": "object"
-                },
-                "type": "array"
-              },
-              "sample_orphan_target": {
-                "items": {
-                  "type": "object"
-                },
-                "type": "array"
-              },
-              "stats": {
-                "properties": {
-                  "collision_count": {
-                    "type": "integer"
-                  },
-                  "coverage_pct": {
-                    "type": "number"
-                  },
-                  "covered_pivot_units": {
-                    "type": "integer"
-                  },
-                  "covered_target_units": {
-                    "type": "integer"
-                  },
-                  "orphan_pivot_count": {
-                    "type": "integer"
-                  },
-                  "orphan_target_count": {
-                    "type": "integer"
-                  },
-                  "status_counts": {
-                    "properties": {
-                      "accepted": {
-                        "type": "integer"
-                      },
-                      "rejected": {
-                        "type": "integer"
-                      },
-                      "unreviewed": {
-                        "type": "integer"
-                      }
-                    },
-                    "type": "object"
-                  },
-                  "total_links": {
-                    "type": "integer"
-                  },
-                  "total_pivot_units": {
-                    "type": "integer"
-                  },
-                  "total_target_units": {
-                    "type": "integer"
-                  }
-                },
-                "required": [
-                  "total_pivot_units",
-                  "total_target_units",
-                  "total_links",
-                  "covered_pivot_units",
-                  "covered_target_units",
-                  "coverage_pct",
-                  "orphan_pivot_count",
-                  "orphan_target_count",
-                  "collision_count",
-                  "status_counts"
-                ],
-                "type": "object"
-              },
-              "target_doc_id": {
-                "type": "integer"
-              }
-            },
-            "required": [
-              "pivot_doc_id",
-              "target_doc_id",
-              "stats"
-            ],
-            "type": "object"
-          }
-        ]
-      },
-      "AlignRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "debug_align": {
-            "default": false,
-            "type": "boolean"
-          },
-          "pivot_doc_id": {
-            "type": "integer"
-          },
-          "relation_type": {
-            "default": "translation",
-            "type": "string"
-          },
-          "run_id": {
-            "type": "string"
-          },
-          "sim_threshold": {
-            "default": 0.8,
-            "maximum": 1.0,
-            "minimum": 0.0,
-            "type": "number"
-          },
-          "strategy": {
-            "default": "external_id",
-            "enum": [
-              "external_id",
-              "position",
-              "similarity",
-              "external_id_then_position"
-            ],
-            "type": "string"
-          },
-          "target_doc_ids": {
-            "items": {
-              "type": "integer"
-            },
-            "minItems": 1,
-            "type": "array"
-          }
-        },
-        "required": [
-          "pivot_doc_id",
-          "target_doc_ids"
-        ],
-        "type": "object"
-      },
-      "AlignResponse": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/BaseResponse"
-          },
-          {
-            "properties": {
-              "debug_align": {
-                "type": "boolean"
-              },
-              "pivot_doc_id": {
-                "type": "integer"
-              },
-              "reports": {
-                "items": {
-                  "type": "object"
-                },
-                "type": "array"
-              },
-              "run_id": {
-                "type": "string"
-              },
-              "strategy": {
-                "type": "string"
-              },
-              "total_links_created": {
-                "type": "integer"
-              }
-            },
-            "required": [
-              "run_id",
-              "strategy",
-              "pivot_doc_id",
-              "reports"
-            ],
-            "type": "object"
-          }
-        ]
-      },
-      "BaseResponse": {
-        "additionalProperties": true,
-        "properties": {
-          "api_version": {
-            "type": "string"
-          },
-          "ok": {
-            "type": "boolean"
-          },
-          "status": {
-            "type": "string"
-          },
-          "version": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "ok",
-          "api_version",
-          "version",
-          "status"
-        ],
-        "type": "object"
-      },
-      "CollisionGroup": {
-        "properties": {
-          "links": {
-            "items": {
-              "$ref": "#/components/schemas/CollisionLink"
-            },
-            "type": "array"
-          },
-          "pivot_external_id": {
-            "nullable": true,
-            "type": "integer"
-          },
-          "pivot_text": {
-            "type": "string"
-          },
-          "pivot_unit_id": {
-            "type": "integer"
-          }
-        },
-        "required": [
-          "pivot_unit_id",
-          "pivot_text",
-          "links"
-        ],
-        "type": "object"
-      },
-      "CollisionLink": {
-        "properties": {
-          "link_id": {
-            "type": "integer"
-          },
-          "status": {
-            "enum": [
-              "accepted",
-              "rejected"
-            ],
-            "nullable": true,
-            "type": "string"
-          },
-          "target_external_id": {
-            "nullable": true,
-            "type": "integer"
-          },
-          "target_text": {
-            "type": "string"
-          },
-          "target_unit_id": {
-            "type": "integer"
-          }
-        },
-        "required": [
-          "link_id",
-          "target_unit_id",
-          "target_text"
-        ],
-        "type": "object"
-      },
-      "CollisionResolveAction": {
-        "properties": {
-          "action": {
-            "enum": [
-              "keep",
-              "delete",
-              "reject",
-              "unreviewed"
-            ],
-            "type": "string"
-          },
-          "link_id": {
-            "type": "integer"
-          }
-        },
-        "required": [
-          "action",
-          "link_id"
-        ],
-        "type": "object"
-      },
-      "CollisionResolveRequest": {
-        "properties": {
-          "actions": {
-            "items": {
-              "$ref": "#/components/schemas/CollisionResolveAction"
-            },
-            "minItems": 1,
-            "type": "array"
-          }
-        },
-        "required": [
-          "actions"
-        ],
-        "type": "object"
-      },
-      "CuratePreviewExample": {
-        "additionalProperties": false,
-        "properties": {
-          "after": {
-            "type": "string"
-          },
-          "before": {
-            "type": "string"
-          },
-          "external_id": {
-            "nullable": true,
-            "type": "integer"
-          },
-          "unit_id": {
-            "type": "integer"
-          }
-        },
-        "required": [
-          "unit_id",
-          "before",
-          "after"
-        ],
-        "type": "object"
-      },
-      "CuratePreviewRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "doc_id": {
-            "type": "integer"
-          },
-          "limit_examples": {
-            "default": 10,
-            "maximum": 50,
-            "minimum": 1,
-            "type": "integer"
-          },
-          "rules": {
-            "items": {
-              "type": "object"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "doc_id",
-          "rules"
-        ],
-        "type": "object"
-      },
-      "CuratePreviewResponse": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/BaseResponse"
-          },
-          {
-            "properties": {
-              "doc_id": {
-                "type": "integer"
-              },
-              "examples": {
-                "items": {
-                  "$ref": "#/components/schemas/CuratePreviewExample"
-                },
-                "type": "array"
-              },
-              "fts_stale": {
-                "type": "boolean"
-              },
-              "stats": {
-                "properties": {
-                  "replacements_total": {
-                    "type": "integer"
-                  },
-                  "units_changed": {
-                    "type": "integer"
-                  },
-                  "units_total": {
-                    "type": "integer"
-                  }
-                },
-                "required": [
-                  "units_total",
-                  "units_changed",
-                  "replacements_total"
-                ],
-                "type": "object"
-              }
-            },
-            "required": [
-              "doc_id",
-              "stats",
-              "examples"
-            ],
-            "type": "object"
-          }
-        ]
-      },
-      "CurateRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "doc_id": {
-            "type": "integer"
-          },
-          "rules": {
-            "items": {
-              "type": "object"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "rules"
-        ],
-        "type": "object"
-      },
-      "CurateResponse": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/BaseResponse"
-          },
-          {
-            "properties": {
-              "docs_curated": {
-                "type": "integer"
-              },
-              "fts_stale": {
-                "type": "boolean"
-              },
-              "results": {
-                "items": {
-                  "type": "object"
-                },
-                "type": "array"
-              },
-              "units_modified": {
-                "type": "integer"
-              }
-            },
-            "required": [
-              "docs_curated",
-              "units_modified",
-              "fts_stale",
-              "results"
-            ],
-            "type": "object"
-          }
-        ]
-      },
-      "DocRelationRecord": {
-        "properties": {
-          "created_at": {
-            "type": "string"
-          },
-          "doc_id": {
-            "type": "integer"
-          },
-          "id": {
-            "type": "integer"
-          },
-          "note": {
-            "nullable": true,
-            "type": "string"
-          },
-          "relation_type": {
-            "type": "string"
-          },
-          "target_doc_id": {
-            "type": "integer"
-          }
-        },
-        "type": "object"
-      },
-      "DocRelationSetRequest": {
-        "properties": {
-          "doc_id": {
-            "type": "integer"
-          },
-          "note": {
-            "nullable": true,
-            "type": "string"
-          },
-          "relation_type": {
-            "type": "string"
-          },
-          "target_doc_id": {
-            "type": "integer"
-          }
-        },
-        "required": [
-          "doc_id",
-          "relation_type",
-          "target_doc_id"
-        ],
-        "type": "object"
-      },
-      "DocumentBulkUpdateRequest": {
-        "properties": {
-          "updates": {
-            "items": {
-              "$ref": "#/components/schemas/DocumentUpdateRequest"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "updates"
-        ],
-        "type": "object"
-      },
-      "DocumentRecord": {
-        "additionalProperties": false,
-        "properties": {
-          "doc_id": {
-            "type": "integer"
-          },
-          "doc_role": {
-            "nullable": true,
-            "type": "string"
-          },
-          "language": {
-            "type": "string"
-          },
-          "resource_type": {
-            "nullable": true,
-            "type": "string"
-          },
-          "title": {
-            "type": "string"
-          },
-          "unit_count": {
-            "type": "integer"
-          }
-        },
-        "required": [
-          "doc_id",
-          "title",
-          "language",
-          "unit_count"
-        ],
-        "type": "object"
-      },
-      "DocumentUpdateRequest": {
-        "properties": {
-          "doc_id": {
-            "type": "integer"
-          },
-          "doc_role": {
-            "type": "string"
-          },
-          "language": {
-            "type": "string"
-          },
-          "resource_type": {
-            "type": "string"
-          },
-          "title": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "doc_id"
-        ],
-        "type": "object"
-      },
-      "DocumentsResponse": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/BaseResponse"
-          },
-          {
-            "properties": {
-              "count": {
-                "type": "integer"
-              },
-              "documents": {
-                "items": {
-                  "$ref": "#/components/schemas/DocumentRecord"
-                },
-                "type": "array"
-              }
-            },
-            "required": [
-              "documents",
-              "count"
-            ],
-            "type": "object"
-          }
-        ]
-      },
-      "ErrorResponse": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/BaseResponse"
-          },
-          {
-            "properties": {
-              "error": {
-                "properties": {
-                  "details": {},
-                  "message": {
-                    "type": "string"
-                  },
-                  "type": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "type",
-                  "message"
-                ],
-                "type": "object"
-              },
-              "error_code": {
-                "type": "string"
-              },
-              "error_details": {},
-              "error_message": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "error",
-              "error_code"
-            ],
-            "type": "object"
-          }
-        ]
-      },
-      "ExportAlignCsvRequest": {
-        "properties": {
-          "delimiter": {
-            "default": ",",
-            "type": "string"
-          },
-          "out_path": {
-            "type": "string"
-          },
-          "pivot_doc_id": {
-            "nullable": true,
-            "type": "integer"
-          },
-          "target_doc_id": {
-            "nullable": true,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "out_path"
-        ],
-        "type": "object"
-      },
-      "ExportRunReportRequest": {
-        "properties": {
-          "format": {
-            "default": "jsonl",
-            "enum": [
-              "jsonl",
-              "html"
-            ],
-            "type": "string"
-          },
-          "out_path": {
-            "type": "string"
-          },
-          "run_id": {
-            "nullable": true,
-            "type": "string"
-          }
-        },
-        "required": [
-          "out_path"
-        ],
-        "type": "object"
-      },
-      "ExportTeiRequest": {
-        "properties": {
-          "doc_ids": {
-            "items": {
-              "type": "integer"
-            },
-            "nullable": true,
-            "type": "array"
-          },
-          "out_dir": {
-            "type": "string"
-          },
-          "include_structure": {
-            "type": "boolean",
-            "default": false,
-            "description": "Emit <head> elements for structure units in addition to body units."
-          }
-        },
-        "required": [
-          "out_dir"
-        ],
-        "type": "object"
-      },
-      "HealthResponse": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/BaseResponse"
-          },
-          {
-            "properties": {
-              "host": {
-                "type": "string"
-              },
-              "pid": {
-                "type": "integer"
-              },
-              "port": {
-                "type": "integer"
-              },
-              "portfile": {
-                "type": "string"
-              },
-              "started_at": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "version",
-              "pid",
-              "started_at"
-            ],
-            "type": "object"
-          }
-        ]
-      },
-      "ImportRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "doc_role": {
-            "type": "string"
-          },
-          "language": {
-            "type": "string"
-          },
-          "mode": {
-            "enum": [
-              "docx_numbered_lines",
-              "txt_numbered_lines",
-              "docx_paragraphs",
-              "tei"
-            ],
-            "type": "string"
-          },
-          "path": {
-            "type": "string"
-          },
-          "resource_type": {
-            "type": "string"
-          },
-          "tei_unit": {
-            "enum": [
-              "p",
-              "s"
-            ],
-            "type": "string"
-          },
-          "title": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "mode",
-          "path"
-        ],
-        "type": "object"
-      },
-      "ImportResponse": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/BaseResponse"
-          },
-          {
-            "properties": {
-              "doc_id": {
-                "type": "integer"
-              },
-              "mode": {
-                "type": "string"
-              },
-              "run_id": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "run_id",
-              "mode",
-              "doc_id"
-            ],
-            "type": "object"
-          }
-        ]
-      },
-      "IndexResponse": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/BaseResponse"
-          },
-          {
-            "properties": {
-              "run_id": {
-                "type": "string"
-              },
-              "units_indexed": {
-                "type": "integer"
-              }
-            },
-            "required": [
-              "run_id",
-              "units_indexed"
-            ],
-            "type": "object"
-          }
-        ]
-      },
-      "JobAcceptedResponse": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/BaseResponse"
-          },
-          {
-            "properties": {
-              "job": {
-                "$ref": "#/components/schemas/JobRecord"
-              }
-            },
-            "required": [
-              "job"
-            ],
-            "type": "object"
-          }
-        ]
-      },
-      "JobCancelResponse": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/BaseResponse"
-          },
-          {
-            "properties": {
-              "job_id": {
-                "type": "string"
-              },
-              "status": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "job_id",
-              "status"
-            ],
-            "type": "object"
-          }
-        ]
-      },
-      "JobEnqueueRequest": {
-        "properties": {
-          "kind": {
-            "enum": [
-              "index",
-              "curate",
-              "validate-meta",
-              "segment",
-              "import",
-              "align",
-              "export_tei",
-              "export_align_csv",
-              "export_run_report",
-              "export_tei_package"
-            ],
-            "type": "string"
-          },
-          "params": {
-            "additionalProperties": true,
-            "type": "object"
-          }
-        },
-        "required": [
-          "kind"
-        ],
-        "type": "object"
-      },
-      "JobRecord": {
-        "additionalProperties": false,
-        "properties": {
-          "created_at": {
-            "type": "string"
-          },
-          "error": {
-            "type": "string"
-          },
-          "error_code": {
-            "type": "string"
-          },
-          "finished_at": {
-            "type": "string"
-          },
-          "job_id": {
-            "type": "string"
-          },
-          "kind": {
-            "type": "string"
-          },
-          "params": {
-            "type": "object"
-          },
-          "progress_message": {
-            "type": "string"
-          },
-          "progress_pct": {
-            "maximum": 100,
-            "minimum": 0,
-            "type": "integer"
-          },
-          "result": {
-            "type": "object"
-          },
-          "started_at": {
-            "type": "string"
-          },
-          "status": {
-            "enum": [
-              "queued",
-              "running",
-              "done",
-              "error"
-            ],
-            "type": "string"
-          }
-        },
-        "required": [
-          "job_id",
-          "kind",
-          "status",
-          "progress_pct",
-          "created_at"
-        ],
-        "type": "object"
-      },
-      "JobSubmitRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "kind": {
-            "enum": [
-              "index",
-              "curate",
-              "validate-meta",
-              "segment"
-            ],
-            "type": "string"
-          },
-          "params": {
-            "type": "object"
-          }
-        },
-        "required": [
-          "kind"
-        ],
-        "type": "object"
-      },
-      "JobsListResponse": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/BaseResponse"
-          },
-          {
-            "properties": {
-              "jobs": {
-                "items": {
-                  "$ref": "#/components/schemas/JobRecord"
-                },
-                "type": "array"
-              }
-            },
-            "required": [
-              "jobs"
-            ],
-            "type": "object"
-          }
-        ]
-      },
-      "QueryRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "aligned_limit": {
-            "default": 20,
-            "minimum": 1,
-            "nullable": true,
-            "type": "integer"
-          },
-          "all_occurrences": {
-            "default": false,
-            "type": "boolean"
-          },
-          "doc_id": {
-            "type": "integer"
-          },
-          "doc_role": {
-            "type": "string"
-          },
-          "include_aligned": {
-            "default": false,
-            "type": "boolean"
-          },
-          "language": {
-            "type": "string"
-          },
-          "limit": {
-            "default": 50,
-            "maximum": 200,
-            "minimum": 1,
-            "type": "integer"
-          },
-          "mode": {
-            "default": "segment",
-            "enum": [
-              "segment",
-              "kwic"
-            ],
-            "type": "string"
-          },
-          "offset": {
-            "default": 0,
-            "minimum": 0,
-            "type": "integer"
-          },
-          "q": {
-            "type": "string"
-          },
-          "resource_type": {
-            "type": "string"
-          },
-          "window": {
-            "default": 10,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "q"
-        ],
-        "type": "object"
-      },
-      "QueryResponse": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/BaseResponse"
-          },
-          {
-            "properties": {
-              "count": {
-                "type": "integer"
-              },
-              "has_more": {
-                "type": "boolean"
-              },
-              "hits": {
-                "items": {
-                  "type": "object"
-                },
-                "type": "array"
-              },
-              "limit": {
-                "type": "integer"
-              },
-              "next_offset": {
-                "nullable": true,
-                "type": "integer"
-              },
-              "offset": {
-                "type": "integer"
-              },
-              "run_id": {
-                "type": "string"
-              },
-              "total": {
-                "nullable": true,
-                "type": "integer"
-              }
-            },
-            "required": [
-              "run_id",
-              "count",
-              "hits",
-              "limit",
-              "offset",
-              "next_offset",
-              "has_more",
-              "total"
-            ],
-            "type": "object"
-          }
-        ]
-      },
-      "RetargetCandidate": {
-        "properties": {
-          "external_id": {
-            "nullable": true,
-            "type": "integer"
-          },
-          "reason": {
-            "type": "string"
-          },
-          "score": {
-            "type": "number"
-          },
-          "target_text": {
-            "type": "string"
-          },
-          "target_unit_id": {
-            "type": "integer"
-          }
-        },
-        "required": [
-          "target_unit_id",
-          "target_text",
-          "score",
-          "reason"
-        ],
-        "type": "object"
-      },
-      "RetargetCandidatesRequest": {
-        "properties": {
-          "limit": {
-            "default": 10,
-            "maximum": 50,
-            "minimum": 1,
-            "type": "integer"
-          },
-          "pivot_unit_id": {
-            "type": "integer"
-          },
-          "target_doc_id": {
-            "type": "integer"
-          },
-          "window": {
-            "default": 5,
-            "maximum": 20,
-            "minimum": 1,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "pivot_unit_id",
-          "target_doc_id"
-        ],
-        "type": "object"
-      },
-      "SegmentRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "doc_id": {
-            "type": "integer"
-          },
-          "lang": {
-            "default": "und",
-            "type": "string"
-          },
-          "pack": {
-            "default": "auto",
-            "enum": [
-              "auto",
-              "default",
-              "fr_strict",
-              "en_strict"
-            ],
-            "type": "string"
-          }
-        },
-        "required": [
-          "doc_id"
-        ],
-        "type": "object"
-      },
-      "SegmentResponse": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/BaseResponse"
-          },
-          {
-            "properties": {
-              "doc_id": {
-                "type": "integer"
-              },
-              "fts_stale": {
-                "type": "boolean"
-              },
-              "segment_pack": {
-                "enum": [
-                  "default",
-                  "fr_strict",
-                  "en_strict"
-                ],
-                "type": "string"
-              },
-              "units_input": {
-                "type": "integer"
-              },
-              "units_output": {
-                "type": "integer"
-              },
-              "warnings": {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              }
-            },
-            "required": [
-              "fts_stale",
-              "doc_id",
-              "units_input",
-              "units_output",
-              "segment_pack",
-              "warnings"
-            ],
-            "type": "object"
-          }
-        ]
-      },
-      "ShutdownResponse": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/BaseResponse"
-          },
-          {
-            "properties": {
-              "message": {
-                "type": "string"
-              },
-              "shutting_down": {
-                "type": "boolean"
-              }
-            },
-            "required": [
-              "shutting_down"
-            ],
-            "type": "object"
-          }
-        ]
-      },
-      "ValidateMetaRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "doc_id": {
-            "type": "integer"
-          }
-        },
-        "type": "object"
-      },
-      "ValidateMetaResponse": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/BaseResponse"
-          },
-          {
-            "properties": {
-              "docs_validated": {
-                "type": "integer"
-              },
-              "results": {
-                "items": {
-                  "type": "object"
-                },
-                "type": "array"
-              }
-            },
-            "required": [
-              "docs_validated",
-              "results"
-            ],
-            "type": "object"
-          }
-        ]
-      }
-    }
-  },
-  "info": {
-    "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
-    "title": "multicorpus_engine sidecar API",
-    "version": "1.4.0",
-    "x-contract-version": "1.3.1"
-  },
   "openapi": "3.0.3",
+  "info": {
+    "title": "multicorpus_engine sidecar API",
+    "version": "1.4.1",
+    "x-contract-version": "1.4.1",
+    "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.)."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:8765"
+    }
+  ],
   "paths": {
-    "/align": {
+    "/health": {
+      "get": {
+        "summary": "Health check",
+        "responses": {
+          "200": {
+            "description": "Server is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi.json": {
+      "get": {
+        "summary": "OpenAPI contract",
+        "responses": {
+          "200": {
+            "description": "OpenAPI specification document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/query": {
       "post": {
+        "summary": "Run query",
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AlignRequest"
+                "$ref": "#/components/schemas/QueryRequest"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
+            "description": "Query result",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AlignResponse"
+                  "$ref": "#/components/schemas/QueryResponse"
                 }
               }
-            },
-            "description": "Alignment reports"
+            }
           },
           "400": {
+            "description": "Bad request",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
-            },
-            "description": "Bad request"
+            }
           },
           "500": {
+            "description": "Internal error",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
-            },
-            "description": "Internal error"
+            }
+          }
+        }
+      }
+    },
+    "/index": {
+      "post": {
+        "summary": "Rebuild FTS index",
+        "responses": {
+          "200": {
+            "description": "Index rebuilt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IndexResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized (missing/invalid token)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/import": {
+      "post": {
+        "summary": "Import a document into corpus DB",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportRequest"
+              }
+            }
           }
         },
-        "summary": "Align documents by external_id, position, or similarity"
+        "responses": {
+          "200": {
+            "description": "Import result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized (missing/invalid token)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/curate": {
+      "post": {
+        "summary": "Apply curation rules",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CurateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Curation applied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurateResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/validate-meta": {
+      "post": {
+        "summary": "Validate metadata",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ValidateMetaRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Validation report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidateMetaResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/segment": {
+      "post": {
+        "summary": "Resegment document",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SegmentRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Segmentation report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SegmentResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/curate/preview": {
+      "post": {
+        "summary": "Preview curation rules without writing to DB (dry-run)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CuratePreviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Preview result with stats and examples",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CuratePreviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/align/audit": {
       "post": {
+        "summary": "Paginated read-only audit of alignment links for a pivot/target pair",
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/AlignAuditRequest"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
+            "description": "Alignment link audit page",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AlignAuditResponse"
                 }
               }
-            },
-            "description": "Alignment link audit page"
+            }
           },
           "400": {
+            "description": "Bad request",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
-            },
-            "description": "Bad request"
+            }
           },
           "500": {
+            "description": "Internal error",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
-            },
-            "description": "Internal error"
+            }
           }
-        },
-        "summary": "Paginated read-only audit of alignment links for a pivot/target pair"
+        }
       }
     },
-    "/align/collisions": {
+    "/align/quality": {
       "post": {
+        "summary": "Read-only alignment quality metrics for a pivot/target pair",
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AlignCollisionsRequest"
+                "$ref": "#/components/schemas/AlignQualityRequest"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
-            "description": "Paginated collision groups"
+            "description": "Alignment quality report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlignQualityResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/documents": {
+      "get": {
+        "summary": "List all documents in corpus",
+        "responses": {
+          "200": {
+            "description": "Document list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentsResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/align": {
+      "post": {
+        "summary": "Align documents by external_id, position, or similarity",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlignRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Alignment reports",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlignResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/shutdown": {
+      "post": {
+        "summary": "Gracefully stop sidecar process",
+        "responses": {
+          "200": {
+            "description": "Shutdown accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShutdownResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized (missing/invalid token)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/jobs": {
+      "get": {
+        "summary": "List async jobs",
+        "responses": {
+          "200": {
+            "description": "Job list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobsListResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Submit async job",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JobSubmitRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted job",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobAcceptedResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/jobs/{job_id}": {
+      "get": {
+        "summary": "Get async job status",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Job status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobAcceptedResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Job not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/jobs/enqueue": {
+      "post": {
+        "summary": "Enqueue an async job (token required; supports all kinds including import/align/exports)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JobEnqueueRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Job accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobAcceptedResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/jobs/{job_id}/cancel": {
+      "post": {
+        "summary": "Cancel a queued or running job (best-effort; idempotent)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Job canceled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobCancelResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Job not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/documents/update": {
+      "post": {
+        "summary": "Update document metadata",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DocumentUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated"
           },
           "400": {
             "description": "Bad request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Not found"
           }
-        },
-        "summary": "List pivot units with multiple alignment links to the same target doc (collisions)"
+        }
       }
     },
-    "/align/collisions/resolve": {
+    "/documents/bulk_update": {
       "post": {
+        "summary": "Bulk update document metadata",
+        "security": [
+          {
+            "token": []
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CollisionResolveRequest"
+                "$ref": "#/components/schemas/DocumentBulkUpdateRequest"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
-            "description": "Batch result"
+            "description": "Updated"
           },
           "400": {
             "description": "Bad request"
@@ -1716,26 +825,88 @@
           "401": {
             "description": "Unauthorized"
           }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "summary": "Batch-resolve collision links (keep/delete/reject/unreviewed) — token required"
+        }
       }
     },
-    "/align/link/delete": {
+    "/doc_relations": {
+      "get": {
+        "summary": "List doc_relations for a document",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Relations"
+          },
+          "400": {
+            "description": "Bad request"
+          }
+        }
+      }
+    },
+    "/doc_relations/set": {
       "post": {
+        "summary": "Upsert a doc_relation",
+        "security": [
+          {
+            "token": []
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AlignLinkDeleteRequest"
+                "$ref": "#/components/schemas/DocRelationSetRequest"
               }
             }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created or updated"
           },
-          "required": true
+          "400": {
+            "description": "Bad request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/doc_relations/delete": {
+      "post": {
+        "summary": "Delete a doc_relation by id",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "id"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
         },
         "responses": {
           "200": {
@@ -1747,26 +918,184 @@
           "401": {
             "description": "Unauthorized"
           }
-        },
+        }
+      }
+    },
+    "/export/tei": {
+      "post": {
+        "summary": "Export documents as TEI XML",
         "security": [
           {
             "token": []
           }
         ],
-        "summary": "Delete an alignment link"
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportTeiRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Files created"
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/export/align_csv": {
+      "post": {
+        "summary": "Export alignment links as CSV/TSV",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportAlignCsvRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "File written"
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/export/run_report": {
+      "post": {
+        "summary": "Export run history as JSONL or HTML",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportRunReportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Report written"
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/align/link/update_status": {
+      "post": {
+        "summary": "Update status of an alignment link",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlignLinkUpdateStatusRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated"
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      }
+    },
+    "/align/link/delete": {
+      "post": {
+        "summary": "Delete an alignment link",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlignLinkDeleteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
       }
     },
     "/align/link/retarget": {
       "post": {
+        "summary": "Change target unit of an alignment link",
+        "security": [
+          {
+            "token": []
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/AlignLinkRetargetRequest"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -1781,60 +1110,26 @@
           "404": {
             "description": "Not found"
           }
-        },
-        "security": [
-          {
-            "token": []
-          }
-        ],
-        "summary": "Change target unit of an alignment link"
-      }
-    },
-    "/align/link/update_status": {
-      "post": {
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AlignLinkUpdateStatusRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Updated"
-          },
-          "400": {
-            "description": "Bad request"
-          },
-          "401": {
-            "description": "Unauthorized"
-          },
-          "404": {
-            "description": "Not found"
-          }
-        },
-        "security": [
-          {
-            "token": []
-          }
-        ],
-        "summary": "Update status of an alignment link"
+        }
       }
     },
     "/align/links/batch_update": {
       "post": {
+        "summary": "Apply a batch of set_status/delete operations on alignment links",
+        "security": [
+          {
+            "token": []
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/AlignLinksBatchUpdateRequest"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -1846,73 +1141,21 @@
           "401": {
             "description": "Unauthorized"
           }
-        },
-        "security": [
-          {
-            "token": []
-          }
-        ],
-        "summary": "Apply a batch of set_status/delete operations on alignment links"
-      }
-    },
-    "/align/quality": {
-      "post": {
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AlignQualityRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AlignQualityResponse"
-                }
-              }
-            },
-            "description": "Alignment quality report"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Bad request"
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Internal error"
-          }
-        },
-        "summary": "Read-only alignment quality metrics for a pivot/target pair"
+        }
       }
     },
     "/align/retarget_candidates": {
       "post": {
+        "summary": "Suggest candidate target units for retargeting an alignment link",
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/RetargetCandidatesRequest"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -1924,150 +1167,53 @@
           "404": {
             "description": "Not found"
           }
-        },
-        "summary": "Suggest candidate target units for retargeting an alignment link"
+        }
       }
     },
-    "/curate": {
+    "/align/collisions": {
       "post": {
+        "summary": "List pivot units with multiple alignment links to the same target doc (collisions)",
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CurateRequest"
+                "$ref": "#/components/schemas/AlignCollisionsRequest"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CurateResponse"
-                }
-              }
-            },
-            "description": "Curation applied"
+            "description": "Paginated collision groups"
           },
           "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
             "description": "Bad request"
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Internal error"
           }
-        },
-        "summary": "Apply curation rules"
+        }
       }
     },
-    "/curate/preview": {
+    "/align/collisions/resolve": {
       "post": {
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CuratePreviewRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CuratePreviewResponse"
-                }
-              }
-            },
-            "description": "Preview result with stats and examples"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Bad request"
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Internal error"
-          }
-        },
-        "summary": "Preview curation rules without writing to DB (dry-run)"
-      }
-    },
-    "/doc_relations": {
-      "get": {
-        "parameters": [
+        "summary": "Batch-resolve collision links (keep/delete/reject/unreviewed) — token required",
+        "security": [
           {
-            "in": "query",
-            "name": "doc_id",
-            "required": true,
-            "schema": {
-              "type": "integer"
-            }
+            "ApiKeyAuth": []
           }
         ],
-        "responses": {
-          "200": {
-            "description": "Relations"
-          },
-          "400": {
-            "description": "Bad request"
-          }
-        },
-        "summary": "List doc_relations for a document"
-      }
-    },
-    "/doc_relations/delete": {
-      "post": {
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "properties": {
-                  "id": {
-                    "type": "integer"
-                  }
-                },
-                "required": [
-                  "id"
-                ],
-                "type": "object"
+                "$ref": "#/components/schemas/CollisionResolveRequest"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
-            "description": "Deleted"
+            "description": "Batch result"
           },
           "400": {
             "description": "Bad request"
@@ -2075,724 +1221,1579 @@
           "401": {
             "description": "Unauthorized"
           }
-        },
-        "security": [
-          {
-            "token": []
-          }
-        ],
-        "summary": "Delete a doc_relation by id"
-      }
-    },
-    "/doc_relations/set": {
-      "post": {
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DocRelationSetRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Created or updated"
-          },
-          "400": {
-            "description": "Bad request"
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "token": []
-          }
-        ],
-        "summary": "Upsert a doc_relation"
-      }
-    },
-    "/documents": {
-      "get": {
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DocumentsResponse"
-                }
-              }
-            },
-            "description": "Document list"
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Internal error"
-          }
-        },
-        "summary": "List all documents in corpus"
-      }
-    },
-    "/documents/bulk_update": {
-      "post": {
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DocumentBulkUpdateRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Updated"
-          },
-          "400": {
-            "description": "Bad request"
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "token": []
-          }
-        ],
-        "summary": "Bulk update document metadata"
-      }
-    },
-    "/documents/update": {
-      "post": {
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DocumentUpdateRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Updated"
-          },
-          "400": {
-            "description": "Bad request"
-          },
-          "401": {
-            "description": "Unauthorized"
-          },
-          "404": {
-            "description": "Not found"
-          }
-        },
-        "security": [
-          {
-            "token": []
-          }
-        ],
-        "summary": "Update document metadata"
-      }
-    },
-    "/export/align_csv": {
-      "post": {
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ExportAlignCsvRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "File written"
-          },
-          "400": {
-            "description": "Bad request"
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "token": []
-          }
-        ],
-        "summary": "Export alignment links as CSV/TSV"
-      }
-    },
-    "/export/run_report": {
-      "post": {
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ExportRunReportRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Report written"
-          },
-          "400": {
-            "description": "Bad request"
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "token": []
-          }
-        ],
-        "summary": "Export run history as JSONL or HTML"
-      }
-    },
-    "/export/tei": {
-      "post": {
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ExportTeiRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Files created"
-          },
-          "400": {
-            "description": "Bad request"
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "token": []
-          }
-        ],
-        "summary": "Export documents as TEI XML"
-      }
-    },
-    "/health": {
-      "get": {
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HealthResponse"
-                }
-              }
-            },
-            "description": "Server is healthy"
-          }
-        },
-        "summary": "Health check"
-      }
-    },
-    "/import": {
-      "post": {
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ImportRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ImportResponse"
-                }
-              }
-            },
-            "description": "Import result"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Bad request"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Unauthorized (missing/invalid token)"
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Internal error"
-          }
-        },
-        "summary": "Import a document into corpus DB"
-      }
-    },
-    "/index": {
-      "post": {
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/IndexResponse"
-                }
-              }
-            },
-            "description": "Index rebuilt"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Unauthorized (missing/invalid token)"
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Internal error"
-          }
-        },
-        "summary": "Rebuild FTS index"
-      }
-    },
-    "/jobs": {
-      "get": {
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/JobsListResponse"
-                }
-              }
-            },
-            "description": "Job list"
-          }
-        },
-        "summary": "List async jobs"
-      },
-      "post": {
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/JobSubmitRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "202": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/JobAcceptedResponse"
-                }
-              }
-            },
-            "description": "Accepted job"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Bad request"
-          }
-        },
-        "summary": "Submit async job"
-      }
-    },
-    "/jobs/enqueue": {
-      "post": {
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/JobEnqueueRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "202": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/JobAcceptedResponse"
-                }
-              }
-            },
-            "description": "Job accepted"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Bad request"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "token": []
-          }
-        ],
-        "summary": "Enqueue an async job (token required; supports all kinds including import/align/exports)"
-      }
-    },
-    "/jobs/{job_id}": {
-      "get": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "job_id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/JobAcceptedResponse"
-                }
-              }
-            },
-            "description": "Job status"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Job not found"
-          }
-        },
-        "summary": "Get async job status"
-      }
-    },
-    "/jobs/{job_id}/cancel": {
-      "post": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "job_id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/JobCancelResponse"
-                }
-              }
-            },
-            "description": "Job canceled"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Job not found"
-          }
-        },
-        "security": [
-          {
-            "token": []
-          }
-        ],
-        "summary": "Cancel a queued or running job (best-effort; idempotent)"
-      }
-    },
-    "/openapi.json": {
-      "get": {
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            },
-            "description": "OpenAPI specification document"
-          }
-        },
-        "summary": "OpenAPI contract"
-      }
-    },
-    "/query": {
-      "post": {
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/QueryRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/QueryResponse"
-                }
-              }
-            },
-            "description": "Query result"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Bad request"
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Internal error"
-          }
-        },
-        "summary": "Run query"
-      }
-    },
-    "/segment": {
-      "post": {
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SegmentRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SegmentResponse"
-                }
-              }
-            },
-            "description": "Segmentation report"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Bad request"
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Internal error"
-          }
-        },
-        "summary": "Resegment document"
-      }
-    },
-    "/shutdown": {
-      "post": {
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ShutdownResponse"
-                }
-              }
-            },
-            "description": "Shutdown accepted"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Unauthorized (missing/invalid token)"
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Internal error"
-          }
-        },
-        "summary": "Gracefully stop sidecar process"
-      }
-    },
-    "/validate-meta": {
-      "post": {
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ValidateMetaRequest"
-              }
-            }
-          },
-          "required": false
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ValidateMetaResponse"
-                }
-              }
-            },
-            "description": "Validation report"
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Internal error"
-          }
-        },
-        "summary": "Validate metadata"
+        }
       }
     }
   },
-  "servers": [
-    {
-      "url": "http://127.0.0.1:8765"
+  "components": {
+    "schemas": {
+      "BaseResponse": {
+        "type": "object",
+        "required": [
+          "ok",
+          "api_version",
+          "version",
+          "status"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "api_version": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      },
+      "ErrorResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BaseResponse"
+          },
+          {
+            "type": "object",
+            "required": [
+              "error",
+              "error_code"
+            ],
+            "properties": {
+              "error": {
+                "type": "object",
+                "required": [
+                  "type",
+                  "message"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "details": {}
+                }
+              },
+              "error_message": {
+                "type": "string"
+              },
+              "error_code": {
+                "type": "string"
+              },
+              "error_details": {}
+            }
+          }
+        ]
+      },
+      "HealthResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BaseResponse"
+          },
+          {
+            "type": "object",
+            "required": [
+              "version",
+              "pid",
+              "started_at"
+            ],
+            "properties": {
+              "pid": {
+                "type": "integer"
+              },
+              "started_at": {
+                "type": "string"
+              },
+              "host": {
+                "type": "string"
+              },
+              "port": {
+                "type": "integer"
+              },
+              "portfile": {
+                "type": "string"
+              }
+            }
+          }
+        ]
+      },
+      "QueryRequest": {
+        "type": "object",
+        "required": [
+          "q"
+        ],
+        "properties": {
+          "q": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "segment",
+              "kwic"
+            ],
+            "default": "segment"
+          },
+          "window": {
+            "type": "integer",
+            "default": 10
+          },
+          "language": {
+            "type": "string"
+          },
+          "doc_id": {
+            "type": "integer"
+          },
+          "resource_type": {
+            "type": "string"
+          },
+          "doc_role": {
+            "type": "string"
+          },
+          "include_aligned": {
+            "type": "boolean",
+            "default": false
+          },
+          "aligned_limit": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 20,
+            "nullable": true
+          },
+          "all_occurrences": {
+            "type": "boolean",
+            "default": false
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200,
+            "default": 50
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "QueryResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BaseResponse"
+          },
+          {
+            "type": "object",
+            "required": [
+              "run_id",
+              "count",
+              "hits",
+              "limit",
+              "offset",
+              "next_offset",
+              "has_more",
+              "total"
+            ],
+            "properties": {
+              "run_id": {
+                "type": "string"
+              },
+              "count": {
+                "type": "integer"
+              },
+              "hits": {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              },
+              "limit": {
+                "type": "integer"
+              },
+              "offset": {
+                "type": "integer"
+              },
+              "next_offset": {
+                "type": "integer",
+                "nullable": true
+              },
+              "has_more": {
+                "type": "boolean"
+              },
+              "total": {
+                "type": "integer",
+                "nullable": true
+              }
+            }
+          }
+        ]
+      },
+      "IndexResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BaseResponse"
+          },
+          {
+            "type": "object",
+            "required": [
+              "run_id",
+              "units_indexed"
+            ],
+            "properties": {
+              "run_id": {
+                "type": "string"
+              },
+              "units_indexed": {
+                "type": "integer"
+              }
+            }
+          }
+        ]
+      },
+      "ImportRequest": {
+        "type": "object",
+        "required": [
+          "mode",
+          "path"
+        ],
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "docx_numbered_lines",
+              "txt_numbered_lines",
+              "docx_paragraphs",
+              "tei"
+            ]
+          },
+          "path": {
+            "type": "string"
+          },
+          "language": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "doc_role": {
+            "type": "string"
+          },
+          "resource_type": {
+            "type": "string"
+          },
+          "tei_unit": {
+            "type": "string",
+            "enum": [
+              "p",
+              "s"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "ImportResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BaseResponse"
+          },
+          {
+            "type": "object",
+            "required": [
+              "run_id",
+              "mode",
+              "doc_id"
+            ],
+            "properties": {
+              "run_id": {
+                "type": "string"
+              },
+              "mode": {
+                "type": "string"
+              },
+              "doc_id": {
+                "type": "integer"
+              }
+            }
+          }
+        ]
+      },
+      "CurateRequest": {
+        "type": "object",
+        "required": [
+          "rules"
+        ],
+        "properties": {
+          "rules": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "doc_id": {
+            "type": "integer"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CurateResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BaseResponse"
+          },
+          {
+            "type": "object",
+            "required": [
+              "docs_curated",
+              "units_modified",
+              "fts_stale",
+              "results"
+            ],
+            "properties": {
+              "docs_curated": {
+                "type": "integer"
+              },
+              "units_modified": {
+                "type": "integer"
+              },
+              "fts_stale": {
+                "type": "boolean"
+              },
+              "results": {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "ValidateMetaRequest": {
+        "type": "object",
+        "properties": {
+          "doc_id": {
+            "type": "integer"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ValidateMetaResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BaseResponse"
+          },
+          {
+            "type": "object",
+            "required": [
+              "docs_validated",
+              "results"
+            ],
+            "properties": {
+              "docs_validated": {
+                "type": "integer"
+              },
+              "results": {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "SegmentRequest": {
+        "type": "object",
+        "required": [
+          "doc_id"
+        ],
+        "properties": {
+          "doc_id": {
+            "type": "integer"
+          },
+          "lang": {
+            "type": "string",
+            "default": "und"
+          },
+          "pack": {
+            "type": "string",
+            "default": "auto",
+            "enum": [
+              "auto",
+              "default",
+              "fr_strict",
+              "en_strict"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "SegmentResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BaseResponse"
+          },
+          {
+            "type": "object",
+            "required": [
+              "fts_stale",
+              "doc_id",
+              "units_input",
+              "units_output",
+              "segment_pack",
+              "warnings"
+            ],
+            "properties": {
+              "fts_stale": {
+                "type": "boolean"
+              },
+              "doc_id": {
+                "type": "integer"
+              },
+              "units_input": {
+                "type": "integer"
+              },
+              "units_output": {
+                "type": "integer"
+              },
+              "segment_pack": {
+                "type": "string",
+                "enum": [
+                  "default",
+                  "fr_strict",
+                  "en_strict"
+                ]
+              },
+              "warnings": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "ShutdownResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BaseResponse"
+          },
+          {
+            "type": "object",
+            "required": [
+              "shutting_down"
+            ],
+            "properties": {
+              "shutting_down": {
+                "type": "boolean"
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          }
+        ]
+      },
+      "JobRecord": {
+        "type": "object",
+        "required": [
+          "job_id",
+          "kind",
+          "status",
+          "progress_pct",
+          "created_at"
+        ],
+        "properties": {
+          "job_id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "done",
+              "error"
+            ]
+          },
+          "progress_pct": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "progress_message": {
+            "type": "string"
+          },
+          "params": {
+            "type": "object"
+          },
+          "result": {
+            "type": "object"
+          },
+          "error": {
+            "type": "string"
+          },
+          "error_code": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "started_at": {
+            "type": "string"
+          },
+          "finished_at": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "JobSubmitRequest": {
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "index",
+              "curate",
+              "validate-meta",
+              "segment"
+            ]
+          },
+          "params": {
+            "type": "object"
+          }
+        },
+        "additionalProperties": false
+      },
+      "JobAcceptedResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BaseResponse"
+          },
+          {
+            "type": "object",
+            "required": [
+              "job"
+            ],
+            "properties": {
+              "job": {
+                "$ref": "#/components/schemas/JobRecord"
+              }
+            }
+          }
+        ]
+      },
+      "JobsListResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BaseResponse"
+          },
+          {
+            "type": "object",
+            "required": [
+              "jobs"
+            ],
+            "properties": {
+              "jobs": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/JobRecord"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "DocumentRecord": {
+        "type": "object",
+        "required": [
+          "doc_id",
+          "title",
+          "language",
+          "unit_count"
+        ],
+        "properties": {
+          "doc_id": {
+            "type": "integer"
+          },
+          "title": {
+            "type": "string"
+          },
+          "language": {
+            "type": "string"
+          },
+          "doc_role": {
+            "type": "string",
+            "nullable": true
+          },
+          "resource_type": {
+            "type": "string",
+            "nullable": true
+          },
+          "unit_count": {
+            "type": "integer"
+          }
+        },
+        "additionalProperties": false
+      },
+      "DocumentsResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BaseResponse"
+          },
+          {
+            "type": "object",
+            "required": [
+              "documents",
+              "count"
+            ],
+            "properties": {
+              "documents": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/DocumentRecord"
+                }
+              },
+              "count": {
+                "type": "integer"
+              }
+            }
+          }
+        ]
+      },
+      "AlignRequest": {
+        "type": "object",
+        "required": [
+          "pivot_doc_id",
+          "target_doc_ids"
+        ],
+        "properties": {
+          "pivot_doc_id": {
+            "type": "integer"
+          },
+          "target_doc_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "minItems": 1
+          },
+          "strategy": {
+            "type": "string",
+            "enum": [
+              "external_id",
+              "position",
+              "similarity",
+              "external_id_then_position"
+            ],
+            "default": "external_id"
+          },
+          "relation_type": {
+            "type": "string",
+            "default": "translation",
+            "description": "Stored in run params for traceability. Not yet applied functionally to alignment_links — tracked as known drift (ADR-009, v1.4.1)."
+          },
+          "sim_threshold": {
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 1.0,
+            "default": 0.8
+          },
+          "debug_align": {
+            "type": "boolean",
+            "default": false
+          },
+          "run_id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "AlignResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BaseResponse"
+          },
+          {
+            "type": "object",
+            "required": [
+              "run_id",
+              "strategy",
+              "pivot_doc_id",
+              "reports"
+            ],
+            "properties": {
+              "run_id": {
+                "type": "string"
+              },
+              "strategy": {
+                "type": "string"
+              },
+              "pivot_doc_id": {
+                "type": "integer"
+              },
+              "debug_align": {
+                "type": "boolean"
+              },
+              "total_links_created": {
+                "type": "integer"
+              },
+              "reports": {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "CuratePreviewRequest": {
+        "type": "object",
+        "required": [
+          "doc_id",
+          "rules"
+        ],
+        "properties": {
+          "doc_id": {
+            "type": "integer"
+          },
+          "rules": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "limit_examples": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50,
+            "default": 10
+          }
+        },
+        "additionalProperties": false
+      },
+      "CuratePreviewExample": {
+        "type": "object",
+        "required": [
+          "unit_id",
+          "before",
+          "after"
+        ],
+        "properties": {
+          "unit_id": {
+            "type": "integer"
+          },
+          "external_id": {
+            "type": "integer",
+            "nullable": true
+          },
+          "before": {
+            "type": "string"
+          },
+          "after": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CuratePreviewResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BaseResponse"
+          },
+          {
+            "type": "object",
+            "required": [
+              "doc_id",
+              "stats",
+              "examples"
+            ],
+            "properties": {
+              "doc_id": {
+                "type": "integer"
+              },
+              "stats": {
+                "type": "object",
+                "required": [
+                  "units_total",
+                  "units_changed",
+                  "replacements_total"
+                ],
+                "properties": {
+                  "units_total": {
+                    "type": "integer"
+                  },
+                  "units_changed": {
+                    "type": "integer"
+                  },
+                  "replacements_total": {
+                    "type": "integer"
+                  }
+                }
+              },
+              "examples": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CuratePreviewExample"
+                }
+              },
+              "fts_stale": {
+                "type": "boolean"
+              }
+            }
+          }
+        ]
+      },
+      "AlignQualityRequest": {
+        "type": "object",
+        "required": [
+          "pivot_doc_id",
+          "target_doc_id"
+        ],
+        "properties": {
+          "pivot_doc_id": {
+            "type": "integer"
+          },
+          "target_doc_id": {
+            "type": "integer"
+          },
+          "run_id": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "AlignQualityResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BaseResponse"
+          },
+          {
+            "type": "object",
+            "required": [
+              "pivot_doc_id",
+              "target_doc_id",
+              "stats"
+            ],
+            "properties": {
+              "pivot_doc_id": {
+                "type": "integer"
+              },
+              "target_doc_id": {
+                "type": "integer"
+              },
+              "run_id": {
+                "type": "string",
+                "nullable": true
+              },
+              "stats": {
+                "type": "object",
+                "required": [
+                  "total_pivot_units",
+                  "total_target_units",
+                  "total_links",
+                  "covered_pivot_units",
+                  "covered_target_units",
+                  "coverage_pct",
+                  "orphan_pivot_count",
+                  "orphan_target_count",
+                  "collision_count",
+                  "status_counts"
+                ],
+                "properties": {
+                  "total_pivot_units": {
+                    "type": "integer"
+                  },
+                  "total_target_units": {
+                    "type": "integer"
+                  },
+                  "total_links": {
+                    "type": "integer"
+                  },
+                  "covered_pivot_units": {
+                    "type": "integer"
+                  },
+                  "covered_target_units": {
+                    "type": "integer"
+                  },
+                  "coverage_pct": {
+                    "type": "number"
+                  },
+                  "orphan_pivot_count": {
+                    "type": "integer"
+                  },
+                  "orphan_target_count": {
+                    "type": "integer"
+                  },
+                  "collision_count": {
+                    "type": "integer"
+                  },
+                  "status_counts": {
+                    "type": "object",
+                    "properties": {
+                      "unreviewed": {
+                        "type": "integer"
+                      },
+                      "accepted": {
+                        "type": "integer"
+                      },
+                      "rejected": {
+                        "type": "integer"
+                      }
+                    }
+                  }
+                }
+              },
+              "sample_orphan_pivot": {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              },
+              "sample_orphan_target": {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "AlignAuditRequest": {
+        "type": "object",
+        "required": [
+          "pivot_doc_id",
+          "target_doc_id"
+        ],
+        "properties": {
+          "pivot_doc_id": {
+            "type": "integer"
+          },
+          "target_doc_id": {
+            "type": "integer"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200,
+            "default": 50
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 0
+          },
+          "external_id": {
+            "type": "integer"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "rejected",
+              "unreviewed"
+            ],
+            "nullable": true
+          },
+          "include_explain": {
+            "type": "boolean",
+            "default": false,
+            "description": "Attach explain object to each link (strategy + notes). Default false (no-op)."
+          }
+        },
+        "additionalProperties": false
+      },
+      "AlignLinkRecord": {
+        "type": "object",
+        "required": [
+          "link_id",
+          "pivot_unit_id",
+          "target_unit_id",
+          "pivot_text",
+          "target_text"
+        ],
+        "properties": {
+          "link_id": {
+            "type": "integer"
+          },
+          "external_id": {
+            "type": "integer",
+            "nullable": true
+          },
+          "pivot_unit_id": {
+            "type": "integer"
+          },
+          "target_unit_id": {
+            "type": "integer"
+          },
+          "pivot_text": {
+            "type": "string"
+          },
+          "target_text": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "accepted",
+              "rejected"
+            ]
+          },
+          "explain": {
+            "type": "object",
+            "nullable": true,
+            "description": "Present when include_explain=true.",
+            "properties": {
+              "strategy": {
+                "type": "string"
+              },
+              "notes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "AlignAuditResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BaseResponse"
+          },
+          {
+            "type": "object",
+            "required": [
+              "pivot_doc_id",
+              "target_doc_id",
+              "limit",
+              "offset",
+              "has_more",
+              "next_offset",
+              "stats",
+              "links"
+            ],
+            "properties": {
+              "pivot_doc_id": {
+                "type": "integer"
+              },
+              "target_doc_id": {
+                "type": "integer"
+              },
+              "limit": {
+                "type": "integer"
+              },
+              "offset": {
+                "type": "integer"
+              },
+              "has_more": {
+                "type": "boolean"
+              },
+              "next_offset": {
+                "type": "integer",
+                "nullable": true
+              },
+              "stats": {
+                "type": "object",
+                "properties": {
+                  "links_returned": {
+                    "type": "integer"
+                  }
+                }
+              },
+              "links": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AlignLinkRecord"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "DocumentUpdateRequest": {
+        "type": "object",
+        "required": [
+          "doc_id"
+        ],
+        "properties": {
+          "doc_id": {
+            "type": "integer"
+          },
+          "title": {
+            "type": "string"
+          },
+          "language": {
+            "type": "string"
+          },
+          "doc_role": {
+            "type": "string"
+          },
+          "resource_type": {
+            "type": "string"
+          }
+        }
+      },
+      "DocumentBulkUpdateRequest": {
+        "type": "object",
+        "required": [
+          "updates"
+        ],
+        "properties": {
+          "updates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DocumentUpdateRequest"
+            }
+          }
+        }
+      },
+      "DocRelationRecord": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "doc_id": {
+            "type": "integer"
+          },
+          "relation_type": {
+            "type": "string"
+          },
+          "target_doc_id": {
+            "type": "integer"
+          },
+          "note": {
+            "type": "string",
+            "nullable": true
+          },
+          "created_at": {
+            "type": "string"
+          }
+        }
+      },
+      "DocRelationSetRequest": {
+        "type": "object",
+        "required": [
+          "doc_id",
+          "relation_type",
+          "target_doc_id"
+        ],
+        "properties": {
+          "doc_id": {
+            "type": "integer"
+          },
+          "relation_type": {
+            "type": "string"
+          },
+          "target_doc_id": {
+            "type": "integer"
+          },
+          "note": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "ExportTeiRequest": {
+        "type": "object",
+        "required": [
+          "out_dir"
+        ],
+        "properties": {
+          "doc_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "nullable": true
+          },
+          "out_dir": {
+            "type": "string"
+          },
+          "include_structure": {
+            "type": "boolean",
+            "default": false,
+            "description": "Emit <head> elements for structure units in addition to body units."
+          }
+        }
+      },
+      "ExportAlignCsvRequest": {
+        "type": "object",
+        "required": [
+          "out_path"
+        ],
+        "properties": {
+          "pivot_doc_id": {
+            "type": "integer",
+            "nullable": true
+          },
+          "target_doc_id": {
+            "type": "integer",
+            "nullable": true
+          },
+          "out_path": {
+            "type": "string"
+          },
+          "delimiter": {
+            "type": "string",
+            "default": ","
+          }
+        }
+      },
+      "ExportRunReportRequest": {
+        "type": "object",
+        "required": [
+          "out_path"
+        ],
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "out_path": {
+            "type": "string"
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "jsonl",
+              "html"
+            ],
+            "default": "jsonl"
+          }
+        }
+      },
+      "AlignLinkUpdateStatusRequest": {
+        "type": "object",
+        "required": [
+          "link_id",
+          "status"
+        ],
+        "properties": {
+          "link_id": {
+            "type": "integer"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "rejected"
+            ],
+            "nullable": true
+          }
+        }
+      },
+      "AlignLinkDeleteRequest": {
+        "type": "object",
+        "required": [
+          "link_id"
+        ],
+        "properties": {
+          "link_id": {
+            "type": "integer"
+          }
+        }
+      },
+      "AlignLinkRetargetRequest": {
+        "type": "object",
+        "required": [
+          "link_id",
+          "new_target_unit_id"
+        ],
+        "properties": {
+          "link_id": {
+            "type": "integer"
+          },
+          "new_target_unit_id": {
+            "type": "integer"
+          }
+        }
+      },
+      "AlignBatchAction": {
+        "type": "object",
+        "required": [
+          "action",
+          "link_id"
+        ],
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "set_status",
+              "delete"
+            ]
+          },
+          "link_id": {
+            "type": "integer"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "rejected"
+            ],
+            "nullable": true
+          }
+        }
+      },
+      "AlignLinksBatchUpdateRequest": {
+        "type": "object",
+        "required": [
+          "actions"
+        ],
+        "properties": {
+          "actions": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "#/components/schemas/AlignBatchAction"
+            }
+          }
+        }
+      },
+      "RetargetCandidatesRequest": {
+        "type": "object",
+        "required": [
+          "pivot_unit_id",
+          "target_doc_id"
+        ],
+        "properties": {
+          "pivot_unit_id": {
+            "type": "integer"
+          },
+          "target_doc_id": {
+            "type": "integer"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50,
+            "default": 10
+          },
+          "window": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20,
+            "default": 5
+          }
+        }
+      },
+      "RetargetCandidate": {
+        "type": "object",
+        "required": [
+          "target_unit_id",
+          "target_text",
+          "score",
+          "reason"
+        ],
+        "properties": {
+          "target_unit_id": {
+            "type": "integer"
+          },
+          "external_id": {
+            "type": "integer",
+            "nullable": true
+          },
+          "target_text": {
+            "type": "string"
+          },
+          "score": {
+            "type": "number"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      },
+      "AlignCollisionsRequest": {
+        "type": "object",
+        "required": [
+          "pivot_doc_id",
+          "target_doc_id"
+        ],
+        "properties": {
+          "pivot_doc_id": {
+            "type": "integer"
+          },
+          "target_doc_id": {
+            "type": "integer"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 20
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 0
+          }
+        }
+      },
+      "CollisionLink": {
+        "type": "object",
+        "required": [
+          "link_id",
+          "target_unit_id",
+          "target_text"
+        ],
+        "properties": {
+          "link_id": {
+            "type": "integer"
+          },
+          "target_unit_id": {
+            "type": "integer"
+          },
+          "target_external_id": {
+            "type": "integer",
+            "nullable": true
+          },
+          "target_text": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "accepted",
+              "rejected"
+            ]
+          }
+        }
+      },
+      "CollisionGroup": {
+        "type": "object",
+        "required": [
+          "pivot_unit_id",
+          "pivot_text",
+          "links"
+        ],
+        "properties": {
+          "pivot_unit_id": {
+            "type": "integer"
+          },
+          "pivot_external_id": {
+            "type": "integer",
+            "nullable": true
+          },
+          "pivot_text": {
+            "type": "string"
+          },
+          "links": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CollisionLink"
+            }
+          }
+        }
+      },
+      "CollisionResolveAction": {
+        "type": "object",
+        "required": [
+          "action",
+          "link_id"
+        ],
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "keep",
+              "delete",
+              "reject",
+              "unreviewed"
+            ]
+          },
+          "link_id": {
+            "type": "integer"
+          }
+        }
+      },
+      "CollisionResolveRequest": {
+        "type": "object",
+        "required": [
+          "actions"
+        ],
+        "properties": {
+          "actions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CollisionResolveAction"
+            },
+            "minItems": 1
+          }
+        }
+      },
+      "JobEnqueueRequest": {
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "index",
+              "curate",
+              "validate-meta",
+              "segment",
+              "import",
+              "align",
+              "export_tei",
+              "export_align_csv",
+              "export_run_report",
+              "export_tei_package"
+            ]
+          },
+          "params": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      },
+      "JobCancelResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BaseResponse"
+          },
+          {
+            "type": "object",
+            "required": [
+              "job_id",
+              "status"
+            ],
+            "properties": {
+              "job_id": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              }
+            }
+          }
+        ]
+      }
     }
-  ]
+  }
 }

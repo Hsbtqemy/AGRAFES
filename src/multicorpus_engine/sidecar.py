@@ -44,6 +44,7 @@ from urllib.parse import urlparse
 
 from .sidecar_contract import (
     ERR_BAD_REQUEST,
+    ERR_CONFLICT,
     ERR_INTERNAL,
     ERR_NOT_FOUND,
     ERR_UNAUTHORIZED,
@@ -272,9 +273,18 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         return True
 
     def _create_run(self, kind: str, params: dict, run_id: str | None = None) -> str:
-        from multicorpus_engine.runs import create_run
+        from multicorpus_engine.runs import RunIdConflictError, create_run
 
         return create_run(self._conn(), kind, params, run_id=run_id)
+
+    def _send_run_id_conflict(self, run_id: str) -> None:
+        """Send HTTP 409 for a duplicate client-supplied run_id."""
+        self._send_error(
+            f"run_id already exists: {run_id!r}",
+            code=ERR_CONFLICT,
+            http_status=409,
+            details={"run_id": run_id},
+        )
 
     def _update_run_stats(self, run_id: str, stats: dict) -> None:
         from multicorpus_engine.runs import update_run_stats
@@ -324,13 +334,22 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             path = urlparse(self.path).path
 
             _write_paths = {
+                # Core mutators
                 "/index", "/import", "/shutdown",
+                # Document / relation writes
                 "/documents/update", "/documents/bulk_update",
                 "/doc_relations/set", "/doc_relations/delete",
+                # Exports (write to disk)
                 "/export/tei", "/export/align_csv", "/export/run_report",
+                # Alignment writes (previously unprotected — fixed in 1.4.1)
+                "/align",
                 "/align/link/update_status", "/align/link/delete", "/align/link/retarget",
                 "/align/links/batch_update",
                 "/align/collisions/resolve",
+                # Other DB-mutating operations (fixed in 1.4.1)
+                "/curate",
+                "/segment",
+                # Async jobs
                 "/jobs/enqueue",
             }
             # /jobs/<uuid>/cancel is also a write path (token required)
@@ -1466,57 +1485,64 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             "debug_align": debug_align,
         }
         if "relation_type" in body and body.get("relation_type") is not None:
+            # Stored for traceability in run params; not yet applied to alignment_links
+            # (known contract/behaviour drift — ADR-009, tracked for v1.5+).
             run_params["relation_type"] = body.get("relation_type")
         if strategy == "similarity":
             run_params["sim_threshold"] = threshold
 
-        with self._lock():
-            run_id = self._create_run("align", run_params, run_id=requested_run_id)
-            if strategy == "position":
-                reports = align_by_position(
-                    self._conn(),
-                    pivot_doc_id=pivot_doc_id,
-                    target_doc_ids=target_doc_ids,
-                    run_id=run_id,
-                    debug=debug_align,
+        from multicorpus_engine.runs import RunIdConflictError
+        try:
+            with self._lock():
+                run_id = self._create_run("align", run_params, run_id=requested_run_id)
+                if strategy == "position":
+                    reports = align_by_position(
+                        self._conn(),
+                        pivot_doc_id=pivot_doc_id,
+                        target_doc_ids=target_doc_ids,
+                        run_id=run_id,
+                        debug=debug_align,
+                    )
+                elif strategy == "similarity":
+                    reports = align_by_similarity(
+                        self._conn(),
+                        pivot_doc_id=pivot_doc_id,
+                        target_doc_ids=target_doc_ids,
+                        run_id=run_id,
+                        threshold=threshold,
+                        debug=debug_align,
+                    )
+                elif strategy == "external_id_then_position":
+                    reports = align_by_external_id_then_position(
+                        self._conn(),
+                        pivot_doc_id=pivot_doc_id,
+                        target_doc_ids=target_doc_ids,
+                        run_id=run_id,
+                        debug=debug_align,
+                    )
+                else:
+                    reports = align_by_external_id(
+                        self._conn(),
+                        pivot_doc_id=pivot_doc_id,
+                        target_doc_ids=target_doc_ids,
+                        run_id=run_id,
+                        debug=debug_align,
+                    )
+                total_links = sum(r.links_created for r in reports)
+                self._update_run_stats(
+                    run_id,
+                    {
+                        "strategy": strategy,
+                        "pivot_doc_id": pivot_doc_id,
+                        "target_doc_ids": target_doc_ids,
+                        "debug_align": debug_align,
+                        "total_links_created": total_links,
+                        "pairs": [r.to_dict() for r in reports],
+                    },
                 )
-            elif strategy == "similarity":
-                reports = align_by_similarity(
-                    self._conn(),
-                    pivot_doc_id=pivot_doc_id,
-                    target_doc_ids=target_doc_ids,
-                    run_id=run_id,
-                    threshold=threshold,
-                    debug=debug_align,
-                )
-            elif strategy == "external_id_then_position":
-                reports = align_by_external_id_then_position(
-                    self._conn(),
-                    pivot_doc_id=pivot_doc_id,
-                    target_doc_ids=target_doc_ids,
-                    run_id=run_id,
-                    debug=debug_align,
-                )
-            else:
-                reports = align_by_external_id(
-                    self._conn(),
-                    pivot_doc_id=pivot_doc_id,
-                    target_doc_ids=target_doc_ids,
-                    run_id=run_id,
-                    debug=debug_align,
-                )
-            total_links = sum(r.links_created for r in reports)
-            self._update_run_stats(
-                run_id,
-                {
-                    "strategy": strategy,
-                    "pivot_doc_id": pivot_doc_id,
-                    "target_doc_ids": target_doc_ids,
-                    "debug_align": debug_align,
-                    "total_links_created": total_links,
-                    "pairs": [r.to_dict() for r in reports],
-                },
-            )
+        except RunIdConflictError as exc:
+            self._send_run_id_conflict(exc.run_id)
+            return
 
         self._send_json(success_payload({
             "run_id": run_id,
@@ -2463,7 +2489,7 @@ class CorpusServer:
                 align_by_position,
                 align_by_similarity,
             )
-            from multicorpus_engine.runs import create_run, update_run_stats
+            from multicorpus_engine.runs import RunIdConflictError, create_run, update_run_stats
 
             pivot_doc_id = params.get("pivot_doc_id")
             target_doc_ids = params.get("target_doc_ids", [])
@@ -2493,7 +2519,13 @@ class CorpusServer:
                 }
                 if strategy == "similarity":
                     run_params["sim_threshold"] = float(params.get("sim_threshold", 0.8))
-                created_run_id = create_run(conn, "align", run_params, run_id=run_id_param)
+                try:
+                    created_run_id = create_run(conn, "align", run_params, run_id=run_id_param)
+                except RunIdConflictError as exc:
+                    raise ValueError(
+                        f"run_id already exists: {exc.run_id!r}. "
+                        "Supply a unique run_id or omit it to auto-generate one."
+                    ) from exc
                 if strategy == "position":
                     reports = align_by_position(
                         conn,

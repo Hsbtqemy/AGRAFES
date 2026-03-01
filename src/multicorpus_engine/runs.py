@@ -16,6 +16,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
+class RunIdConflictError(Exception):
+    """Raised when a client-supplied run_id already exists in the runs table."""
+
+    def __init__(self, run_id: str) -> None:
+        super().__init__(f"run_id already exists: {run_id!r}")
+        self.run_id = run_id
+
+
 def new_run_id() -> str:
     return str(uuid.uuid4())
 
@@ -30,18 +38,31 @@ def create_run(
     params: dict,
     run_id: str | None = None,
 ) -> str:
-    """Insert a new run record and return the run_id."""
-    run_id = (run_id or "").strip() or new_run_id()
+    """Insert a new run record and return the run_id.
+
+    If *run_id* is supplied by the caller and already exists, raises
+    ``RunIdConflictError`` (mapped to HTTP 409 by the sidecar).  When no
+    *run_id* is provided a fresh UUID is generated and conflicts are impossible.
+    """
+    effective_run_id = (run_id or "").strip() or new_run_id()
     created_at = utcnow_iso()
-    conn.execute(
-        """
-        INSERT INTO runs (run_id, kind, params_json, stats_json, created_at)
-        VALUES (?, ?, ?, NULL, ?)
-        """,
-        (run_id, kind, json.dumps(params, ensure_ascii=False), created_at),
-    )
-    conn.commit()
-    return run_id
+    try:
+        conn.execute(
+            """
+            INSERT INTO runs (run_id, kind, params_json, stats_json, created_at)
+            VALUES (?, ?, ?, NULL, ?)
+            """,
+            (effective_run_id, kind, json.dumps(params, ensure_ascii=False), created_at),
+        )
+        conn.commit()
+    except sqlite3.IntegrityError as exc:
+        # Only re-raise as RunIdConflictError when the caller supplied the id;
+        # a UUID collision on auto-generated ids is astronomically unlikely but
+        # would surface as a plain IntegrityError if it ever happened.
+        if run_id and "UNIQUE constraint failed: runs.run_id" in str(exc):
+            raise RunIdConflictError(effective_run_id) from exc
+        raise
+    return effective_run_id
 
 
 def update_run_stats(

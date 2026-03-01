@@ -151,7 +151,7 @@
 
 ## Confirmed green
 
-- [x] pytest: **267 tests passing**, 0 failures
+- [x] pytest: **352 tests passing**, 0 failures (2026-03-01; includes hardening fixes v1.4.1)
 - [x] npm build: green (tauri-prep bundle ~113 kB, tauri-app ~43 kB)
 
 ## Next tasks (V1.x)
