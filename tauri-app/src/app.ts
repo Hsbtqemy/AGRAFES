@@ -15,10 +15,12 @@
  *  - Status indicator: starting / ready / error.
  */
 
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { writeTextFile } from "@tauri-apps/plugin-fs";
 import {
   type Conn,
   type QueryHit,
+  type AlignedUnit,
   type DocumentRecord,
   SidecarError,
   ensureRunning,
@@ -34,6 +36,153 @@ import {
   getCurrentDbPath,
   setCurrentDbPath,
 } from "./lib/db";
+
+// ─── Search history (localStorage) ───────────────────────────────────────────
+
+const LS_HISTORY = "agrafes.explorer.history";
+const MAX_HISTORY = 10;
+
+interface HistoryItem {
+  ts: number;
+  raw: string;
+  fts: string;
+  mode: string;
+  filters: { lang: string; role: string; resourceType: string; docId: string };
+  aligned: boolean;
+  parallel: boolean;
+  pinned?: boolean;
+}
+
+function _saveToHistory(raw: string, fts: string): void {
+  if (!raw.trim()) return;
+  const item: HistoryItem = {
+    ts: Date.now(),
+    raw,
+    fts,
+    mode: state.builderMode,
+    filters: {
+      lang: state.filterLang,
+      role: state.filterRole,
+      resourceType: state.filterResourceType,
+      docId: state.filterDocId,
+    },
+    aligned: state.showAligned,
+    parallel: state.showParallel,
+    pinned: false,
+  };
+  // Remove same query (non-pinned) but keep pinned duplicates
+  const hist = _loadHistory().filter(h => h.pinned || !(h.raw === raw && h.fts === fts));
+  hist.unshift(item);
+  // Keep up to MAX_HISTORY non-pinned + all pinned (max 3 pinned)
+  const pinned = hist.filter(h => h.pinned).slice(0, 3);
+  const unpinned = hist.filter(h => !h.pinned).slice(0, MAX_HISTORY);
+  try { localStorage.setItem(LS_HISTORY, JSON.stringify([...pinned, ...unpinned])); } catch { /* ignore */ }
+}
+
+function _loadHistory(): HistoryItem[] {
+  try { return JSON.parse(localStorage.getItem(LS_HISTORY) ?? "[]") as HistoryItem[]; }
+  catch { return []; }
+}
+
+function _clearHistory(): void {
+  // Keep pinned items on "Vider"
+  const pinned = _loadHistory().filter(h => h.pinned);
+  try { localStorage.setItem(LS_HISTORY, JSON.stringify(pinned)); } catch { /* ignore */ }
+}
+
+function _clearAllHistory(): void {
+  localStorage.removeItem(LS_HISTORY);
+}
+
+function _togglePin(raw: string, fts: string): void {
+  const hist = _loadHistory();
+  const idx = hist.findIndex(h => h.raw === raw && h.fts === fts);
+  if (idx === -1) return;
+  hist[idx].pinned = !hist[idx].pinned;
+  const pinned = hist.filter(h => h.pinned).slice(0, 3);
+  const unpinned = hist.filter(h => !h.pinned).slice(0, MAX_HISTORY);
+  try { localStorage.setItem(LS_HISTORY, JSON.stringify([...pinned, ...unpinned])); } catch { /* ignore */ }
+}
+
+// ─── Export hits helpers ──────────────────────────────────────────────────────
+
+function _escCsv(val: string | number | null | undefined): string {
+  const s = val == null ? "" : String(val);
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
+type ExportFormat = "jsonl-simple" | "jsonl-parallel" | "csv-flat" | "csv-long";
+
+function _toJsonlSimple(hits: QueryHit[]): string {
+  return hits.map(h => JSON.stringify(h)).join("\n");
+}
+
+function _toJsonlParallel(hits: QueryHit[]): string {
+  return hits.map(h => JSON.stringify({
+    pivot: {
+      doc_id: h.doc_id, title: h.title, language: h.language,
+      unit_id: h.unit_id, external_id: h.external_id,
+      text: h.text, left: h.left, match: h.match, right: h.right,
+    },
+    aligned: (h.aligned ?? []).map(a => ({
+      doc_id: a.doc_id, title: a.title, language: a.language,
+      unit_id: a.unit_id, external_id: a.external_id,
+      text: a.text ?? a.text_norm,
+    })),
+  })).join("\n");
+}
+
+function _toCsvFlat(hits: QueryHit[]): string {
+  const maxAl = hits.reduce((m, h) => Math.max(m, (h.aligned ?? []).length), 0);
+  const header = ["doc_id", "title", "language", "unit_id", "external_id",
+    "text", "left", "match", "right"];
+  for (let i = 1; i <= maxAl; i++) {
+    header.push(`al${i}_lang`, `al${i}_title`, `al${i}_unit_id`, `al${i}_ext_id`, `al${i}_text`);
+  }
+  const rows = hits.map(h => {
+    const r: (string | number | null)[] = [
+      h.doc_id, h.title, h.language, h.unit_id, h.external_id ?? "",
+      h.text ?? "", h.left ?? "", h.match ?? "", h.right ?? "",
+    ];
+    const al = h.aligned ?? [];
+    for (let i = 0; i < maxAl; i++) {
+      const a = al[i];
+      r.push(a?.language ?? "", a?.title ?? "", a?.unit_id ?? "", a?.external_id ?? "",
+        a?.text ?? (a as AlignedUnit | undefined)?.text_norm ?? "");
+    }
+    return r.map(v => _escCsv(v)).join(",");
+  });
+  return [header.join(","), ...rows].join("\r\n");
+}
+
+function _toCsvLong(hits: QueryHit[]): string {
+  const header = [
+    "pivot_doc_id", "pivot_title", "pivot_lang", "pivot_unit_id", "pivot_ext_id",
+    "pivot_text", "pivot_left", "pivot_match", "pivot_right",
+    "al_doc_id", "al_title", "al_lang", "al_unit_id", "al_ext_id", "al_text",
+  ];
+  const rows: string[] = [];
+  for (const h of hits) {
+    const pCells: (string | number | null)[] = [
+      h.doc_id, h.title, h.language, h.unit_id, h.external_id ?? "",
+      h.text ?? "", h.left ?? "", h.match ?? "", h.right ?? "",
+    ];
+    const al = h.aligned ?? [];
+    if (al.length === 0) {
+      rows.push([...pCells, "", "", "", "", "", ""].map(v => _escCsv(v)).join(","));
+    } else {
+      for (const a of al) {
+        rows.push([
+          ...pCells,
+          a.doc_id, a.title, a.language, a.unit_id, a.external_id ?? "",
+          a.text ?? (a as AlignedUnit).text_norm ?? "",
+        ].map(v => _escCsv(v)).join(","));
+      }
+    }
+  }
+  return [header.join(","), ...rows].join("\r\n");
+}
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -522,6 +671,206 @@ body {
 .filter-select:focus { border-color: var(--brand); }
 .builder-warn { font-size: 11px; color: var(--warning, #d97706); background: #fffbeb; border: 1px solid #fde68a; border-radius: 4px; padding: 3px 8px; margin-top: 4px; }
 
+/* ─── History dropdown + Export menu (V1) ────────────────────── */
+.hist-wrap, .export-wrap {
+  position: relative;
+  display: inline-flex;
+}
+.hist-panel, .export-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  background: #fff;
+  border: 1px solid rgba(0,0,0,0.12);
+  border-radius: 6px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.16);
+  z-index: 9000;
+  display: none;
+  min-width: 300px;
+}
+.hist-panel.open, .export-menu.open { display: block; }
+.export-menu { min-width: 140px; }
+.hist-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px 6px;
+  border-bottom: 1px solid #e9ecef;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #495057;
+}
+.hist-list {
+  max-height: 320px;
+  overflow-y: auto;
+}
+.hist-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid #f0f2f5;
+  transition: background 0.12s;
+}
+.hist-item:hover { background: #f8f9fa; }
+.hist-item-text { flex: 1; min-width: 0; }
+.hist-item-fts { font-size: 0.82rem; font-family: ui-monospace, monospace; color: var(--brand); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hist-item-meta { font-size: 0.75rem; color: #6c757d; margin-top: 2px; }
+.hist-item-time { font-size: 0.72rem; color: #adb5bd; flex-shrink: 0; margin-top: 2px; }
+.hist-empty { padding: 14px 12px; font-size: 0.83rem; color: #6c757d; text-align: center; }
+.hist-item-pinned { background: #fff8e1 !important; border-left: 3px solid #f59e0b; }
+.hist-item-pinned:hover { background: #fff3cd !important; }
+.hist-pin-btn {
+  background: none; border: none; cursor: pointer; font-size: 0.85rem; padding: 0 3px;
+  opacity: 0.4; transition: opacity 0.12s; flex-shrink: 0;
+}
+.hist-pin-btn:hover { opacity: 1; }
+.hist-pin-btn.pinned { opacity: 1; }
+.hist-divider { font-size: 0.7rem; color: #adb5bd; padding: 4px 12px 2px; text-transform: uppercase; letter-spacing: 0.04em; }
+
+/* ─── Help popover (Sprint 3) ─────────────────────────────────── */
+.help-wrap { position: relative; display: inline-flex; }
+.help-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  background: #fff;
+  border: 1px solid rgba(0,0,0,0.12);
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.16);
+  z-index: 9000;
+  display: none;
+  min-width: 360px;
+  max-width: 420px;
+  padding: 0;
+  font-size: 0.82rem;
+}
+.help-popover.open { display: block; }
+.help-popover-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 12px 6px; border-bottom: 1px solid #e9ecef;
+  font-size: 0.84rem; font-weight: 600; color: #495057;
+}
+.help-popover-body { padding: 10px 12px; max-height: 360px; overflow-y: auto; }
+.help-section { margin-bottom: 10px; }
+.help-section-title { font-weight: 600; font-size: 0.79rem; color: #6c757d; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.04em; }
+.help-ex {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 0; border-bottom: 1px solid #f0f2f5;
+}
+.help-ex:last-child { border-bottom: none; }
+.help-ex-code { font-family: ui-monospace,monospace; font-size: 0.8rem; color: var(--brand); flex: 1; }
+.help-ex-desc { font-size: 0.77rem; color: #6c757d; flex: 1; }
+.help-ex-copy {
+  background: none; border: 1px solid #dee2e6; border-radius: 3px;
+  font-size: 0.72rem; padding: 1px 6px; cursor: pointer; white-space: nowrap; flex-shrink: 0;
+  transition: background 0.1s;
+}
+.help-ex-copy:hover { background: #f0f2f5; }
+.help-passthrough-note {
+  font-size: 0.79rem; color: #6c757d; background: #f8f9fa; border-radius: 4px;
+  padding: 6px 10px; margin-top: 6px; border: 1px solid #dee2e6;
+}
+.export-menu-item {
+  display: block;
+  width: 100%;
+  padding: 9px 16px;
+  background: none;
+  border: none;
+  text-align: left;
+  font-size: 0.83rem;
+  cursor: pointer;
+  color: #1a1a2e;
+  transition: background 0.12s;
+  white-space: nowrap;
+}
+.export-menu-item:hover { background: #f0f2f5; }
+
+/* ─── FTS preview bar + chips bar (V0.4) ─────────────────────── */
+.fts-preview-bar {
+  background: #f8f9fa;
+  border-bottom: 1px solid var(--border);
+  padding: 4px 16px;
+  font-size: 11px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.fts-preview-label { white-space: nowrap; font-weight: 600; }
+.fts-preview-code {
+  font-family: ui-monospace, monospace;
+  color: var(--brand);
+  word-break: break-all;
+}
+.chips-bar {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 5px 16px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: #dbeafe;
+  color: #1e4a80;
+  border-radius: 20px;
+  padding: 2px 6px 2px 10px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.chip-remove {
+  background: none;
+  border: none;
+  color: #1e4a80;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+  display: flex;
+  align-items: center;
+}
+.chip-remove:hover { color: #c0392b; }
+
+/* ─── Metadata side panel (V1) ─────────────────────────────── */
+.meta-backdrop {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.18); z-index: 200;
+  display: none; cursor: default;
+}
+.meta-backdrop.open { display: block; }
+.meta-panel {
+  position: fixed; top: 0; right: 0; width: 340px; max-width: 95vw; height: 100vh;
+  background: var(--surface); border-left: 1px solid var(--border);
+  box-shadow: -2px 0 16px rgba(0,0,0,0.14);
+  display: flex; flex-direction: column; z-index: 201;
+  transform: translateX(110%); transition: transform 0.22s ease;
+}
+.meta-panel.open { transform: translateX(0); }
+.meta-panel-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px; border-bottom: 1px solid var(--border);
+  background: var(--surface2); flex-shrink: 0;
+}
+.meta-panel-head h4 { margin: 0; font-size: 13px; }
+.meta-body { flex: 1; overflow-y: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+.meta-foot { display: flex; gap: 6px; padding: 10px 14px; border-top: 1px solid var(--border); flex-shrink: 0; flex-wrap: wrap; }
+.meta-field { display: flex; flex-direction: column; gap: 1px; }
+.meta-lbl { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+.meta-val { font-size: 13px; color: var(--text); word-break: break-word; font-family: ui-monospace, monospace; }
+.meta-val.is-text { font-family: inherit; }
+.hit-meta-btn {
+  border: none; background: none; color: var(--text-muted); font-size: 13px;
+  cursor: pointer; padding: 0 4px; line-height: 1; flex-shrink: 0; margin-left: 4px;
+}
+.hit-meta-btn:hover { color: var(--brand); }
+
 /* ─── Parallel KWIC (V2.3) ─── */
 .parallel-card { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; margin-bottom: 8px; }
 .parallel-pivot { background: var(--surface); padding: 8px 10px; border-right: 1px solid var(--border); }
@@ -630,6 +979,9 @@ function renderParallelHit(hit: QueryHit, mode: "segment" | "kwic"): HTMLElement
   meta.appendChild(titleSpan);
   if (hit.language) meta.appendChild(document.createTextNode(` · ${hit.language}`));
   if (hit.external_id != null) meta.appendChild(document.createTextNode(` · §${hit.external_id}`));
+  const pMetaBtn = elt("button", { class: "hit-meta-btn", title: "Métadonnées du document", type: "button" }, "ⓘ");
+  pMetaBtn.addEventListener("click", (e) => { e.stopPropagation(); _openMetaPanel(hit); });
+  meta.appendChild(pMetaBtn);
   pivotCol.appendChild(meta);
 
   if (mode === "kwic" && hit.left !== undefined) {
@@ -707,6 +1059,9 @@ function renderHit(hit: QueryHit, mode: "segment" | "kwic", showAligned: boolean
   meta.appendChild(titleSpan);
   if (hit.language) meta.appendChild(document.createTextNode(` · ${hit.language}`));
   if (hit.external_id != null) meta.appendChild(document.createTextNode(` · §${hit.external_id}`));
+  const metaBtn = elt("button", { class: "hit-meta-btn", title: "Métadonnées du document", type: "button" }, "ⓘ");
+  metaBtn.addEventListener("click", (e) => { e.stopPropagation(); _openMetaPanel(hit); });
+  meta.appendChild(metaBtn);
   card.appendChild(meta);
 
   if (mode === "kwic" && hit.left !== undefined) {
@@ -746,6 +1101,201 @@ function renderHit(hit: QueryHit, mode: "segment" | "kwic", showAligned: boolean
   }
 
   return card;
+}
+
+function _renderHistPanel(panel: HTMLElement, searchInput: HTMLInputElement): void {
+  panel.innerHTML = "";
+
+  const header = elt("div", { class: "hist-panel-header" });
+  header.appendChild(document.createTextNode("Historique des recherches"));
+  const headerBtns = elt("div", { style: "display:flex;gap:4px" });
+  const clearBtn = elt("button", { class: "btn btn-ghost", style: "font-size:0.75rem;padding:2px 8px" }, "Vider");
+  clearBtn.title = "Effacer l'historique (garde les favoris ⭐)";
+  clearBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    _clearHistory();
+    _renderHistPanel(panel, searchInput);
+  });
+  const clearAllBtn = elt("button", { class: "btn btn-ghost", style: "font-size:0.75rem;padding:2px 8px" }, "Tout effacer");
+  clearAllBtn.title = "Effacer tout l'historique y compris les favoris";
+  clearAllBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    _clearAllHistory();
+    _renderHistPanel(panel, searchInput);
+  });
+  headerBtns.appendChild(clearBtn);
+  headerBtns.appendChild(clearAllBtn);
+  header.appendChild(headerBtns);
+  panel.appendChild(header);
+
+  const hist = _loadHistory();
+  const pinned = hist.filter(h => h.pinned);
+  const unpinned = hist.filter(h => !h.pinned);
+  const list = elt("div", { class: "hist-list" });
+
+  if (hist.length === 0) {
+    list.appendChild(elt("div", { class: "hist-empty" }, "Aucune recherche enregistrée"));
+  } else {
+    const renderItem = (item: HistoryItem): void => {
+      const row = elt("div", { class: "hist-item" + (item.pinned ? " hist-item-pinned" : "") });
+
+      // Pin button
+      const pinBtn = elt("button", {
+        class: "hist-pin-btn" + (item.pinned ? " pinned" : ""),
+        title: item.pinned ? "Désépingler" : "Épingler comme favori",
+        type: "button",
+      }, item.pinned ? "⭐" : "☆") as HTMLButtonElement;
+      pinBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        _togglePin(item.raw, item.fts);
+        _renderHistPanel(panel, searchInput);
+      });
+
+      const textDiv = elt("div", { class: "hist-item-text" });
+      textDiv.appendChild(elt("div", { class: "hist-item-fts" }, item.fts || item.raw));
+      const chips: string[] = [];
+      if (item.filters.lang) chips.push(`lang:${item.filters.lang}`);
+      if (item.filters.role) chips.push(`rôle:${item.filters.role}`);
+      if (item.filters.resourceType) chips.push(`type:${item.filters.resourceType}`);
+      if (item.aligned) chips.push("alignés");
+      textDiv.appendChild(elt("div", { class: "hist-item-meta" }, chips.join(" · ") || "\u00a0"));
+      const timeEl = elt("div", { class: "hist-item-time" }, _relTime(item.ts));
+
+      row.appendChild(pinBtn);
+      row.appendChild(textDiv);
+      row.appendChild(timeEl);
+
+      row.addEventListener("click", (e) => {
+        if ((e.target as HTMLElement).closest(".hist-pin-btn")) return;
+        panel.classList.remove("open");
+        searchInput.value = item.raw;
+        state.filterLang = item.filters.lang;
+        state.filterRole = item.filters.role;
+        state.filterResourceType = item.filters.resourceType;
+        state.filterDocId = item.filters.docId;
+        state.showAligned = item.aligned;
+        state.showParallel = item.parallel;
+        state.builderMode = item.mode as typeof state.builderMode;
+        _updateFtsPreview(item.raw);
+        _renderChips();
+        void doSearch(item.raw);
+      });
+      list.appendChild(row);
+    };
+
+    if (pinned.length > 0) {
+      list.appendChild(elt("div", { class: "hist-divider" }, "⭐ Favoris"));
+      for (const item of pinned) renderItem(item);
+    }
+    if (unpinned.length > 0) {
+      if (pinned.length > 0) list.appendChild(elt("div", { class: "hist-divider" }, "Récents"));
+      for (const item of unpinned) renderItem(item);
+    }
+  }
+  panel.appendChild(list);
+}
+
+function _relTime(ts: number): string {
+  const diff = Date.now() - ts;
+  if (diff < 60_000) return "< 1 min";
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} min`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} h`;
+  return `${Math.floor(diff / 86_400_000)} j`;
+}
+
+async function _exportHits(format: ExportFormat): Promise<void> {
+  if (state.hits.length === 0) return;
+
+  const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  const modeStr = state.showAligned ? (state.showParallel ? "parallel" : "aligned") : "simple";
+
+  let content: string;
+  let ext: string;
+  let label: string;
+
+  switch (format) {
+    case "jsonl-simple":
+      content = _toJsonlSimple(state.hits); ext = "jsonl"; label = "simple"; break;
+    case "jsonl-parallel":
+      content = _toJsonlParallel(state.hits); ext = "jsonl"; label = "parallel"; break;
+    case "csv-flat":
+      content = _toCsvFlat(state.hits); ext = "csv"; label = "flat"; break;
+    case "csv-long":
+      content = _toCsvLong(state.hits); ext = "csv"; label = "long"; break;
+  }
+
+  let outPath: string | null;
+  try {
+    outPath = await saveDialog({
+      title: "Exporter les résultats",
+      defaultPath: `agrafes_export_${modeStr}_${label}_${dateStr}.${ext}`,
+      filters: [{ name: ext.toUpperCase(), extensions: [ext] }],
+    });
+  } catch { return; }
+  if (!outPath) return;
+
+  try {
+    await writeTextFile(outPath, content);
+    const bytes = new TextEncoder().encode(content).length;
+    const nbAligned = state.hits.reduce((s, h) => s + (h.aligned?.length ?? 0), 0);
+    const statusEl = document.getElementById("status-msg");
+    if (statusEl) {
+      const prev = statusEl.textContent;
+      const recap = `✓ ${state.hits.length} hit(s)${nbAligned > 0 ? ` · ${nbAligned} aligned` : ""} · ${(bytes / 1024).toFixed(1)} KB → ${outPath.split(/[/\\]/).pop()}`;
+      statusEl.textContent = recap;
+      setTimeout(() => { if (statusEl.textContent?.startsWith("✓")) statusEl.textContent = prev; }, 5000);
+    }
+  } catch (err) {
+    console.error("[export] error:", err);
+  }
+}
+
+function _renderChips(): void {
+  const bar = document.getElementById("chips-bar");
+  if (!bar) return;
+  bar.innerHTML = "";
+
+  const add = (label: string, value: string, clear: () => void): void => {
+    const chip = elt("div", { class: "chip" });
+    chip.appendChild(document.createTextNode(`${label}: ${value}`));
+    const removeBtn = elt("button", { class: "chip-remove", title: "Supprimer ce filtre", type: "button" }, "\u00d7") as HTMLButtonElement;
+    removeBtn.addEventListener("click", () => { clear(); _renderChips(); });
+    chip.appendChild(removeBtn);
+    bar.appendChild(chip);
+  };
+
+  if (state.filterLang) add("Langue", state.filterLang, () => {
+    state.filterLang = "";
+    const s = document.getElementById("filter-lang-sel") as HTMLSelectElement | null;
+    if (s) s.value = "";
+  });
+  if (state.filterRole) add("Rôle", state.filterRole, () => {
+    state.filterRole = "";
+    const s = document.getElementById("filter-role-sel") as HTMLSelectElement | null;
+    if (s) s.value = "";
+  });
+  if (state.filterResourceType) add("Type", state.filterResourceType, () => {
+    state.filterResourceType = "";
+    const s = document.getElementById("filter-restype-sel") as HTMLSelectElement | null;
+    if (s) s.value = "";
+  });
+  if (state.filterDocId) add("Doc ID", state.filterDocId, () => {
+    state.filterDocId = "";
+    const inp = document.getElementById("filter-docid") as HTMLInputElement | null;
+    if (inp) inp.value = "";
+  });
+
+  bar.style.display = bar.children.length > 0 ? "" : "none";
+}
+
+function _updateFtsPreview(raw: string): void {
+  const bar = document.getElementById("fts-preview-bar");
+  const code = document.getElementById("fts-preview-code");
+  if (!bar || !code) return;
+  const trimmed = raw.trim();
+  if (!trimmed) { bar.style.display = "none"; return; }
+  code.textContent = buildFtsQuery(trimmed);
+  bar.style.display = "";
 }
 
 function renderResults(): void {
@@ -815,6 +1365,9 @@ function renderResults(): void {
 // ─── IntersectionObserver (auto-scroll load-more) ─────────────────────────────
 
 let _scrollObserver: IntersectionObserver | null = null;
+
+/** Fast doc lookup for meta panel (populated when docs are loaded). */
+const _docsById: Map<number, DocumentRecord> = new Map();
 
 function _reobserveSentinel(): void {
   if (_scrollObserver) {
@@ -919,11 +1472,13 @@ export function buildFtsQuery(raw: string): string {
   return trimmed;
 }
 
-/** Load documents into state.docs and populate filter dropdowns. */
+/** Load documents into state.docs, populate filter dropdowns, and rebuild _docsById. */
 async function loadDocsForFilters(): Promise<void> {
   if (!state.conn) return;
   try {
     state.docs = await listDocuments(state.conn);
+    _docsById.clear();
+    for (const doc of state.docs) _docsById.set(doc.doc_id, doc);
     _populateFilterDropdowns();
   } catch {
     // non-critical — filters stay free-text
@@ -968,7 +1523,8 @@ function hideImportModal(): void {
 // ─── Main logic ───────────────────────────────────────────────────────────────
 
 async function doSearch(rawQ: string): Promise<void> {
-  state.currentQuery = buildFtsQuery(rawQ);
+  const fts = buildFtsQuery(rawQ);
+  state.currentQuery = fts;
   state.pageLimit = state.showAligned ? PAGE_LIMIT_ALIGNED : PAGE_LIMIT_DEFAULT;
   state.nextOffset = null;
   state.hasMore = false;
@@ -980,6 +1536,8 @@ async function doSearch(rawQ: string): Promise<void> {
     renderResults();
     return;
   }
+  // Save to history before fetching
+  if (rawQ.trim()) _saveToHistory(rawQ, fts);
   await fetchQueryPage(false);
 }
 
@@ -1229,15 +1787,113 @@ function buildUI(container: HTMLElement): void {
   windowCtrl.appendChild(windowValue);
   toolbar.appendChild(windowCtrl);
 
-  // Filter + Builder + Import + OpenDB buttons
+  // Filter + Builder + Help + Import + OpenDB + Reset buttons
   const filterBtn = elt("button", { class: "btn btn-ghost", id: "filter-btn" }, "⚙ Filtres");
   const builderBtn = elt("button", { class: "btn btn-ghost", id: "builder-btn" }, "✏ Requête");
+
+  // Help popover ("?")
+  const helpWrap = elt("div", { class: "help-wrap" });
+  const helpBtn = elt("button", {
+    class: "btn btn-ghost",
+    id: "help-btn",
+    title: "Aide sur la syntaxe FTS5",
+    style: "padding:4px 8px;font-size:0.85rem",
+  }, "?");
+  const helpPopover = elt("div", { class: "help-popover", id: "help-popover" });
+  helpPopover.innerHTML = `
+    <div class="help-popover-head">
+      Aide — Syntaxe FTS5
+      <button id="help-close-btn" style="background:none;border:none;cursor:pointer;font-size:0.9rem;color:#6c757d">\u2715</button>
+    </div>
+    <div class="help-popover-body">
+      <div class="help-section">
+        <div class="help-section-title">Exemples de requêtes</div>
+        <div class="help-ex">
+          <span class="help-ex-code">liberté</span>
+          <span class="help-ex-desc">Mot simple</span>
+          <button class="help-ex-copy" data-q="liberté">Copier</button>
+        </div>
+        <div class="help-ex">
+          <span class="help-ex-code">"liberté égalité"</span>
+          <span class="help-ex-desc">Expression exacte</span>
+          <button class="help-ex-copy" data-q='"liberté égalité"'>Copier</button>
+        </div>
+        <div class="help-ex">
+          <span class="help-ex-code">liberté AND fraternité</span>
+          <span class="help-ex-desc">Les deux mots</span>
+          <button class="help-ex-copy" data-q="liberté AND fraternité">Copier</button>
+        </div>
+        <div class="help-ex">
+          <span class="help-ex-code">liberté OR égalité</span>
+          <span class="help-ex-desc">Au moins un des mots</span>
+          <button class="help-ex-copy" data-q="liberté OR égalité">Copier</button>
+        </div>
+        <div class="help-ex">
+          <span class="help-ex-code">libr*</span>
+          <span class="help-ex-desc">Préfixe (wildcard)</span>
+          <button class="help-ex-copy" data-q="libr*">Copier</button>
+        </div>
+        <div class="help-ex">
+          <span class="help-ex-code">NEAR(liberté fraternité, 10)</span>
+          <span class="help-ex-desc">Deux mots proches (≤10 tokens)</span>
+          <button class="help-ex-copy" data-q="NEAR(liberté fraternité, 10)">Copier</button>
+        </div>
+        <div class="help-ex">
+          <span class="help-ex-code">NOT liberté</span>
+          <span class="help-ex-desc">Exclusion</span>
+          <button class="help-ex-copy" data-q="NOT liberté">Copier</button>
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-title">Guardrails</div>
+        <div class="help-passthrough-note">
+          <strong>Mode pass-through :</strong> si votre requête contient déjà <code>AND</code>, <code>OR</code>, <code>NOT</code>, <code>NEAR</code> ou des guillemets, le builder ne la transforme pas — elle est envoyée telle quelle au moteur FTS5.
+        </div>
+        <div class="help-passthrough-note" style="margin-top:4px">
+          <strong>NEAR :</strong> requiert au moins 2 mots. Avec 1 seul mot, la requête est passée sans transformation.
+        </div>
+        <div class="help-passthrough-note" style="margin-top:4px">
+          <strong>Guillemets internes :</strong> en mode "Expression exacte", les guillemets internes sont automatiquement convertis en apostrophes pour éviter les erreurs FTS5.
+        </div>
+      </div>
+    </div>
+  `;
+  helpWrap.appendChild(helpBtn);
+  helpWrap.appendChild(helpPopover);
   const importBtn = elt("button", { class: "btn btn-ghost", id: "import-btn" }, "⬆ Importer…");
   const openDbBtn = elt("button", { class: "btn btn-ghost", id: "open-db-btn" }, "📂 Ouvrir DB…");
+  const resetBtn = elt("button", { class: "btn btn-ghost", id: "reset-btn", title: "Effacer la recherche et tous les filtres" }, "✕ Réinitialiser");
+
+  // History dropdown
+  const histWrap = elt("div", { class: "hist-wrap" });
+  const histBtn = elt("button", { class: "btn btn-ghost", id: "hist-btn", title: "Historique des recherches" }, "\uD83D\uDD52 Hist.");
+  const histPanel = elt("div", { class: "hist-panel", id: "hist-panel" });
+  histWrap.appendChild(histBtn);
+  histWrap.appendChild(histPanel);
+
+  // Export dropdown
+  const exportWrap = elt("div", { class: "export-wrap" });
+  const exportBtn = elt("button", { class: "btn btn-ghost", id: "export-btn", title: "Exporter les résultats chargés" }, "\u2B07 Export");
+  const exportMenu = elt("div", { class: "export-menu", id: "export-menu" });
+  const exportJsonlSimpleBtn  = elt("button", { class: "export-menu-item" }, "JSONL — simple");
+  const exportJsonlParallelBtn = elt("button", { class: "export-menu-item" }, "JSONL — parallèle (pivot+aligned)");
+  const exportCsvFlatBtn = elt("button", { class: "export-menu-item" }, "CSV — plat (N colonnes aligned)");
+  const exportCsvLongBtn = elt("button", { class: "export-menu-item" }, "CSV — long (1 ligne/aligned) \u2605");
+  exportMenu.appendChild(exportJsonlSimpleBtn);
+  exportMenu.appendChild(exportJsonlParallelBtn);
+  exportMenu.appendChild(exportCsvFlatBtn);
+  exportMenu.appendChild(exportCsvLongBtn);
+  exportWrap.appendChild(exportBtn);
+  exportWrap.appendChild(exportMenu);
+
   toolbar.appendChild(filterBtn);
   toolbar.appendChild(builderBtn);
+  toolbar.appendChild(helpWrap);
   toolbar.appendChild(importBtn);
   toolbar.appendChild(openDbBtn);
+  toolbar.appendChild(resetBtn);
+  toolbar.appendChild(histWrap);
+  toolbar.appendChild(exportWrap);
 
   // ── Filter drawer (dropdowns from /documents) ──
   const filterDrawer = elt("div", { class: "filter-drawer hidden", id: "filter-drawer" });
@@ -1377,14 +2033,39 @@ function buildUI(container: HTMLElement): void {
   modal.appendChild(modalActions);
   importModal.appendChild(modal);
 
+  // ── Metadata side panel (position:fixed, inside container) ──
+  const metaBackdrop = elt("div", { class: "meta-backdrop", id: "meta-backdrop" });
+  const metaPanel = elt("div", { class: "meta-panel", id: "meta-panel" });
+  const metaPanelHead = elt("div", { class: "meta-panel-head" });
+  metaPanelHead.appendChild(elt("h4", {}, "Métadonnées"));
+  const metaCloseX = elt("button", { class: "btn btn-secondary", style: "padding:2px 8px;font-size:12px", type: "button" }, "✕") as HTMLButtonElement;
+  metaPanelHead.appendChild(metaCloseX);
+  const metaBody = elt("div", { class: "meta-body", id: "meta-body" });
+  const metaFoot = elt("div", { class: "meta-foot", id: "meta-foot" });
+  metaPanel.appendChild(metaPanelHead);
+  metaPanel.appendChild(metaBody);
+  metaPanel.appendChild(metaFoot);
+
+  // ── FTS preview bar ──
+  const ftsPreviewBar = elt("div", { class: "fts-preview-bar", id: "fts-preview-bar", style: "display:none" });
+  ftsPreviewBar.appendChild(elt("span", { class: "fts-preview-label" }, "FTS\u00a0:"));
+  ftsPreviewBar.appendChild(elt("code", { class: "fts-preview-code", id: "fts-preview-code" }));
+
+  // ── Chips bar ──
+  const chipsBar = elt("div", { class: "chips-bar", id: "chips-bar", style: "display:none" });
+
   // ── Assemble ──
   container.appendChild(topbar);
   container.appendChild(toolbar);
+  container.appendChild(ftsPreviewBar);
   container.appendChild(filterDrawer);
+  container.appendChild(chipsBar);
   container.appendChild(builderPanel);
   container.appendChild(resultsArea);
   container.appendChild(statusbar);
   container.appendChild(importModal);
+  container.appendChild(metaBackdrop);
+  container.appendChild(metaPanel);
 
   // ── Event listeners ──
 
@@ -1397,6 +2078,7 @@ function buildUI(container: HTMLElement): void {
   searchInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") void doSearch(searchInput.value);
   });
+  searchInput.addEventListener("input", () => _updateFtsPreview(searchInput.value));
   searchBtn.addEventListener("click", () => void doSearch(searchInput.value));
 
   segBtn.addEventListener("click", () => {
@@ -1459,12 +2141,13 @@ function buildUI(container: HTMLElement): void {
     builderBtn.classList.toggle("active", state.showBuilder);
   });
 
-  langSel.addEventListener("change", () => { state.filterLang = langSel.value; });
-  roleSel.addEventListener("change", () => { state.filterRole = roleSel.value; });
-  restypeSel.addEventListener("change", () => { state.filterResourceType = restypeSel.value; });
+  langSel.addEventListener("change", () => { state.filterLang = langSel.value; _renderChips(); });
+  roleSel.addEventListener("change", () => { state.filterRole = roleSel.value; _renderChips(); });
+  restypeSel.addEventListener("change", () => { state.filterResourceType = restypeSel.value; _renderChips(); });
 
   (document.getElementById("filter-docid")! as HTMLInputElement).addEventListener("input", (e) => {
     state.filterDocId = (e.target as HTMLInputElement).value.trim();
+    _renderChips();
   });
   document.getElementById("filter-clear")!.addEventListener("click", () => {
     state.filterLang = "";
@@ -1475,6 +2158,99 @@ function buildUI(container: HTMLElement): void {
     roleSel.value = "";
     restypeSel.value = "";
     (document.getElementById("filter-docid") as HTMLInputElement).value = "";
+    _renderChips();
+  });
+
+  // ── History ──────────────────────────────────────────────────
+  const closeAllPanels = (): void => {
+    histPanel.classList.remove("open");
+    exportMenu.classList.remove("open");
+    helpPopover.classList.remove("open");
+  };
+
+  histBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    exportMenu.classList.remove("open");
+    helpPopover.classList.remove("open");
+    histPanel.classList.toggle("open");
+    if (histPanel.classList.contains("open")) _renderHistPanel(histPanel, searchInput);
+  });
+
+  // ── Help popover ──────────────────────────────────────────────
+  helpBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    histPanel.classList.remove("open");
+    exportMenu.classList.remove("open");
+    helpPopover.classList.toggle("open");
+  });
+
+  helpPopover.querySelector("#help-close-btn")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    helpPopover.classList.remove("open");
+  });
+
+  // "Copier l'exemple" → fill search bar
+  helpPopover.querySelectorAll<HTMLButtonElement>(".help-ex-copy").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const q = btn.getAttribute("data-q") ?? "";
+      searchInput.value = q;
+      _updateFtsPreview(q);
+      helpPopover.classList.remove("open");
+      searchInput.focus();
+    });
+  });
+
+  document.addEventListener("click", closeAllPanels);
+
+  // ── Export ────────────────────────────────────────────────────
+  exportBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    histPanel.classList.remove("open");
+    exportMenu.classList.toggle("open");
+  });
+
+  exportJsonlSimpleBtn.addEventListener("click", () => {
+    exportMenu.classList.remove("open"); void _exportHits("jsonl-simple");
+  });
+  exportJsonlParallelBtn.addEventListener("click", () => {
+    exportMenu.classList.remove("open"); void _exportHits("jsonl-parallel");
+  });
+  exportCsvFlatBtn.addEventListener("click", () => {
+    exportMenu.classList.remove("open"); void _exportHits("csv-flat");
+  });
+  exportCsvLongBtn.addEventListener("click", () => {
+    exportMenu.classList.remove("open"); void _exportHits("csv-long");
+  });
+
+  resetBtn.addEventListener("click", () => {
+    // Clear search
+    searchInput.value = "";
+    state.currentQuery = "";
+    state.hits = [];
+    state.total = null;
+    state.hasMore = false;
+    state.loadingMore = false;
+    state.nextOffset = null;
+    state.expandedAlignedUnitIds.clear();
+    // Clear filters
+    state.filterLang = "";
+    state.filterRole = "";
+    state.filterDocId = "";
+    state.filterResourceType = "";
+    langSel.value = "";
+    roleSel.value = "";
+    restypeSel.value = "";
+    (document.getElementById("filter-docid") as HTMLInputElement).value = "";
+    // Reset builder
+    state.builderMode = "simple";
+    const simpleRadio = document.querySelector<HTMLInputElement>("input[name='builder-mode'][value='simple']");
+    if (simpleRadio) simpleRadio.checked = true;
+    (document.getElementById("near-n-ctrl") as HTMLElement | null)?.style.setProperty("display", "none");
+    // Update UI
+    _updateFtsPreview("");
+    _renderChips();
+    renderResults();
   });
 
   importBtn.addEventListener("click", () => {
@@ -1502,6 +2278,12 @@ function buildUI(container: HTMLElement): void {
     }
   });
 
+  metaCloseX.addEventListener("click", _closeMetaPanel);
+  metaBackdrop.addEventListener("click", _closeMetaPanel);
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") _closeMetaPanel();
+  });
+
   confirmBtn.addEventListener("click", () => {
     const filePath = (document.getElementById("import-path-input") as HTMLInputElement).value.trim();
     const mode = (document.getElementById("import-mode-select") as HTMLSelectElement).value;
@@ -1515,6 +2297,54 @@ function buildUI(container: HTMLElement): void {
     document.getElementById("import-modal-error")!.innerHTML = "";
     void doImport(filePath, mode, lang, title);
   });
+}
+
+// ─── Metadata panel ───────────────────────────────────────────────────────────
+
+function _openMetaPanel(hit: QueryHit): void {
+  const panel = document.getElementById("meta-panel");
+  const backdrop = document.getElementById("meta-backdrop");
+  const body = document.getElementById("meta-body");
+  const foot = document.getElementById("meta-foot");
+  if (!panel || !backdrop || !body || !foot) return;
+
+  const doc = _docsById.get(hit.doc_id);
+
+  const field = (label: string, value: string, mono = true): HTMLElement => {
+    const f = elt("div", { class: "meta-field" });
+    f.appendChild(elt("span", { class: "meta-lbl" }, label));
+    f.appendChild(elt("span", { class: `meta-val${mono ? "" : " is-text"}` }, value || "—"));
+    return f;
+  };
+
+  body.innerHTML = "";
+  body.appendChild(field("Titre", hit.title, false));
+  body.appendChild(field("Langue", hit.language));
+  body.appendChild(field("doc_id", String(hit.doc_id)));
+  body.appendChild(field("unit_id", String(hit.unit_id)));
+  body.appendChild(field("external_id", hit.external_id != null ? String(hit.external_id) : "—"));
+  body.appendChild(field("Rôle (doc_role)", doc?.doc_role ?? "—"));
+  body.appendChild(field("Type de ressource", doc?.resource_type ?? "—"));
+  body.appendChild(field("Unités dans le corpus", doc ? String(doc.unit_count) : "—"));
+
+  foot.innerHTML = "";
+  const copyDocId = elt("button", { class: "btn btn-secondary", type: "button" }, "Copier doc_id") as HTMLButtonElement;
+  copyDocId.addEventListener("click", () => { void navigator.clipboard?.writeText(String(hit.doc_id)); });
+  const copyUnitId = elt("button", { class: "btn btn-secondary", type: "button" }, "Copier unit_id") as HTMLButtonElement;
+  copyUnitId.addEventListener("click", () => { void navigator.clipboard?.writeText(String(hit.unit_id)); });
+  const closeBtn = elt("button", { class: "btn btn-ghost", type: "button" }, "Fermer") as HTMLButtonElement;
+  closeBtn.addEventListener("click", _closeMetaPanel);
+  foot.appendChild(copyDocId);
+  foot.appendChild(copyUnitId);
+  foot.appendChild(closeBtn);
+
+  panel.classList.add("open");
+  backdrop.classList.add("open");
+}
+
+function _closeMetaPanel(): void {
+  document.getElementById("meta-panel")?.classList.remove("open");
+  document.getElementById("meta-backdrop")?.classList.remove("open");
 }
 
 // ─── Entrypoint ───────────────────────────────────────────────────────────────
@@ -1533,6 +2363,12 @@ export async function initApp(container: HTMLElement): Promise<void> {
     (document.getElementById("search-btn") as HTMLButtonElement).disabled = false;
     searchInput?.focus();
   }
+}
+
+/** Disconnect the IntersectionObserver and clear module-level resources. Called by tauri-shell on unmount. */
+export function disposeApp(): void {
+  _scrollObserver?.disconnect();
+  _scrollObserver = null;
 }
 
 // Helper to focus search input after init
