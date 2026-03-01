@@ -44,7 +44,8 @@ if [ "$FORMAT" = "onefile" ]; then
   chmod +x "$DEST"
   echo "==> Copied $SRC -> $DEST"
 else
-  SRC_DIR="$SRC_ROOT/multicorpus-$TARGET_TRIPLE"
+  # build_sidecar.py places onedir at <out_dir>/multicorpus-<triple>-onedir
+  SRC_DIR="$SRC_ROOT/multicorpus-$TARGET_TRIPLE-onedir"
   DEST_DIR="$BINARIES_DIR/multicorpus-$TARGET_TRIPLE"
   if [ ! -d "$SRC_DIR" ]; then
     echo "ERROR: expected onedir bundle at $SRC_DIR" >&2

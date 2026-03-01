@@ -54,7 +54,7 @@ export class MetadataScreen {
     this._root = root;
 
     root.innerHTML = `
-      <h2 class="screen-title">Métadonnées</h2>
+      <h2 class="screen-title">Documents</h2>
 
       <!-- Bulk edit + Validate bar -->
       <div class="card">

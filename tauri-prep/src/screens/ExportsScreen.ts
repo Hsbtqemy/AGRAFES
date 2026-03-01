@@ -51,7 +51,7 @@ export class ExportsScreen {
     this._root = root;
 
     root.innerHTML = `
-      <h2 class="screen-title">Exports</h2>
+      <h2 class="screen-title">Exporter</h2>
 
       <!-- TEI Export -->
       <div class="card">

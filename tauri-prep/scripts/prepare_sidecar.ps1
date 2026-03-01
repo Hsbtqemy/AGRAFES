@@ -24,7 +24,9 @@ Write-Host "==> Target triple: $targetTriple"
 
 New-Item -ItemType Directory -Force -Path $binariesDir | Out-Null
 
-$srcDir = Join-Path $repoRoot "dist\multicorpus"
+# build_sidecar.py --preset tauri writes to tauri/src-tauri/binaries/; onedir = multicorpus-<triple>-onedir
+$srcRoot = Join-Path $repoRoot "tauri\src-tauri\binaries"
+$srcDir = Join-Path $srcRoot "multicorpus-$targetTriple-onedir"
 $destDir = Join-Path $binariesDir "multicorpus-$targetTriple"
 
 if (-not (Test-Path $srcDir)) {

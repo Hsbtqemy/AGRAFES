@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AGRAFES</title>
+    <style>
+      *, *::before, *::after { box-sizing: border-box; }
+      body { margin: 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f0f2f5; color: #1a1a2e; }
+      /* Fixed shell header — always 44px tall, always on top */
+      #shell-header { position: fixed; top: 0; left: 0; right: 0; height: 44px; z-index: 9999; }
+      /* App content pushed below the header */
+      #app { padding-top: 44px; min-height: 100vh; }
+    </style>
+  </head>
+  <body>
+    <div id="shell-header"></div>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

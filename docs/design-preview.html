@@ -1,0 +1,872 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AGRAFES — Aperçu design (DESIGN.md)</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+
+    :root {
+      /* Palette */
+      --bg: #f0f2f5;
+      --surface: #ffffff;
+      --surface-2: #f8f9fa;
+      --text: #1a1a2e;
+      --text-muted: #6c757d;
+      --border: #dde1e8;
+      --ok: #1a7f4e;
+      --warn: #e6a817;
+      --err: #c0392b;
+      /* Accents (mode par défaut = home) */
+      --accent: #6c7cff;
+      --accent-header-bg: #1a1a2e;
+      /* Espacements */
+      --sp-1: 4px;
+      --sp-2: 8px;
+      --sp-3: 12px;
+      --sp-4: 16px;
+      --sp-5: 20px;
+      --sp-6: 24px;
+      --sp-8: 32px;
+      /* Rayons */
+      --r-1: 6px;
+      --r-2: 10px;
+      --r-3: 12px;
+      /* Typo */
+      --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+      --fs-0: 11px;
+      --fs-1: 12px;
+      --fs-2: 14px;
+      --fs-3: 16px;
+      --fs-4: 18px;
+      --fs-5: 1.25rem;
+      /* Ombres */
+      --shadow-card: 0 2px 8px rgba(0,0,0,0.08);
+      --shadow-modal: 0 8px 32px rgba(0,0,0,0.18);
+      /* Hauteurs fixes (design) */
+      --header-h: 44px;
+      --topbar-h: 48px;
+      /* Largeur max contenu (layout de référence) — proche du plein écran pour éviter grosses marges */
+      --content-max: min(100%, 1600px);
+    }
+
+    body[data-mode="explorer"] {
+      --accent: #2c5f9e;
+      --accent-header-bg: #1e4a80;
+    }
+    body[data-mode="constituer"] {
+      --accent: #0f766e;
+      --accent-header-bg: #0c4a46;
+    }
+    body[data-mode="home"] {
+      --accent: #1a1a2e;
+      --accent-header-bg: #1a1a2e;
+    }
+    body[data-mode="publish"] {
+      --accent: #9c8b6e;
+      --accent-header-bg: #6b5d4a;
+    }
+
+    body {
+      margin: 0;
+      font-family: var(--font-sans);
+      font-size: var(--fs-2);
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    /* ─── Header ───────────────────────────────────────────────────────── */
+    .shell-header {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: var(--header-h);
+      z-index: 9999;
+      background: var(--accent-header-bg);
+      display: flex;
+      align-items: center;
+      padding: 0;
+      gap: 0;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.18);
+      transition: background 0.22s;
+    }
+
+    .shell-brand {
+      font-size: var(--fs-3);
+      font-weight: 700;
+      color: #fff;
+      cursor: pointer;
+      padding: 0 var(--sp-4);
+      height: var(--header-h);
+      display: flex;
+      align-items: center;
+      border-right: 1px solid rgba(255,255,255,0.15);
+      margin-right: var(--sp-1);
+    }
+    .shell-brand:hover { background: rgba(255,255,255,0.08); }
+
+    .shell-nav {
+      display: flex;
+      height: var(--header-h);
+      gap: 0;
+      padding: 0 var(--sp-3);
+      border-right: 1px solid rgba(255,255,255,0.12);
+    }
+    .shell-tab {
+      background: none;
+      border: none;
+      border-bottom: 3px solid transparent;
+      color: rgba(255,255,255,0.7);
+      font-size: var(--fs-2);
+      font-weight: 500;
+      padding: 0 var(--sp-3);
+      height: 100%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+    }
+    .shell-tab:hover { color: #fff; background: rgba(255,255,255,0.08); }
+    .shell-tab.active { color: #fff; font-weight: 700; border-bottom-color: rgba(255,255,255,0.9); background: rgba(255,255,255,0.12); }
+
+    .shell-utils {
+      display: flex;
+      height: var(--header-h);
+      gap: 0;
+      padding: 0 var(--sp-2);
+      margin-left: var(--sp-4);
+      border-left: 1px solid rgba(255,255,255,0.12);
+    }
+    .shell-util {
+      background: none;
+      border: none;
+      color: rgba(255,255,255,0.7);
+      font-size: var(--fs-1);
+      padding: 0 var(--sp-2);
+      height: 100%;
+      cursor: pointer;
+      border-radius: var(--r-1);
+    }
+    .shell-util:hover { background: rgba(255,255,255,0.1); color: #fff; }
+
+    .shell-db {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: var(--sp-2);
+      padding: 0 var(--sp-3);
+      height: var(--header-h);
+      border-left: 1px solid rgba(255,255,255,0.12);
+    }
+    .shell-db-badge {
+      font-size: var(--fs-0);
+      color: rgba(255,255,255,0.65);
+      font-family: ui-monospace, monospace;
+      max-width: calc(var(--sp-8) * 5.625);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .shell-db-btn {
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: var(--r-1);
+      color: rgba(255,255,255,0.9);
+      font-size: var(--fs-0);
+      padding: var(--sp-1) var(--sp-2);
+      cursor: pointer;
+    }
+    .shell-db-btn:hover { background: rgba(255,255,255,0.18); }
+
+    /* ─── Main ───────────────────────────────────────────────────────────── */
+    .main {
+      padding-top: var(--header-h);
+      min-height: calc(100vh - var(--header-h));
+      display: flex;
+      flex-direction: column;
+      padding: var(--sp-2) 0 0 0;
+    }
+    .preview-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      width: 100%;
+    }
+
+    .page-title { font-size: var(--fs-5); font-weight: 700; margin: 0 0 var(--sp-1); color: var(--text); letter-spacing: -0.5px; }
+    .page-subtitle { font-size: var(--fs-3); color: var(--text-muted); margin: 0 0 var(--sp-6); }
+
+    .cards { display: flex; gap: var(--sp-6); flex-wrap: wrap; justify-content: center; margin-bottom: var(--sp-8); }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r-2);
+      box-shadow: var(--shadow-card);
+      padding: var(--sp-6);
+      min-width: calc(var(--sp-8) * 7);
+      max-width: calc(var(--sp-8) * 7.5);
+      cursor: pointer;
+      transition: box-shadow 0.18s, transform 0.12s, border-color 0.18s;
+      text-align: center;
+    }
+    .card:hover { transform: translateY(-2px); }
+    .card.card-explorer:hover { box-shadow: 0 6px 20px rgba(44,95,158,0.22); border-color: #2c5f9e; }
+    .card.card-constituer:hover { box-shadow: 0 6px 20px rgba(14,118,110,0.22); border-color: #0f766e; }
+    .card.card-publish:hover { box-shadow: 0 6px 20px rgba(107,93,74,0.25); border-color: #9c8b6e; }
+    .card-icon { font-size: var(--fs-4); margin-bottom: var(--sp-2); }
+    .card .badge { margin-bottom: var(--sp-3); }
+    .card h2 { font-size: var(--fs-3); font-weight: 600; margin: 0 0 var(--sp-2); color: var(--text); }
+    .card p { font-size: var(--fs-1); color: var(--text-muted); margin: 0; line-height: 1.4; }
+
+    /* Badge */
+    .badge {
+      display: inline-block;
+      font-size: var(--fs-0);
+      font-weight: 600;
+      padding: var(--sp-1) var(--sp-2);
+      border-radius: 20px;
+    }
+    .badge-explorer { background: #dbeafe; color: #1e4a80; }
+    .badge-constituer { background: #d1fae5; color: #145a38; }
+    .badge-publish { background: #e8e0d5; color: #6b5d4a; }
+
+    /* ─── Composants (zone démo) ───────────────────────────────────────── */
+    .demo-section { max-width: calc(var(--sp-8) * 20); margin: 0 auto var(--sp-8); }
+    .demo-section h3 { font-size: var(--fs-4); margin: 0 0 var(--sp-4); color: var(--text); }
+    .demo-row { display: flex; gap: var(--sp-4); flex-wrap: wrap; align-items: center; margin-bottom: var(--sp-4); }
+
+    .btn {
+      padding: var(--sp-2) var(--sp-3);
+      border: 1.5px solid transparent;
+      border-radius: var(--r-1);
+      font-size: var(--fs-1);
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.15s;
+    }
+    .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .btn-primary:hover { filter: brightness(1.1); }
+    .btn-secondary { background: var(--surface-2); color: var(--text); border-color: var(--border); }
+    .btn-secondary:hover { background: var(--border); }
+    .btn-ghost { background: transparent; color: var(--text-muted); border-color: var(--border); }
+    .btn-ghost:hover { background: var(--surface-2); color: var(--text); }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--sp-1);
+      background: #dbeafe;
+      color: #1e4a80;
+      border-radius: 20px;
+      padding: var(--sp-1) var(--sp-2);
+      font-size: var(--fs-0);
+    }
+    .chip-remove { background: none; border: none; color: inherit; cursor: pointer; font-size: var(--fs-2); line-height: 1; padding: 0 var(--sp-1); }
+    .chip-remove:hover { color: var(--err); }
+
+    /* Modal */
+    .modal-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.45);
+      align-items: center;
+      justify-content: center;
+      z-index: 10000;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal-box {
+      background: var(--surface);
+      border-radius: var(--r-3);
+      box-shadow: var(--shadow-modal);
+      padding: var(--sp-6);
+      min-width: calc(var(--sp-8) * 10);
+      max-width: 90vw;
+    }
+    .modal-box h3 { margin: 0 0 var(--sp-4); font-size: var(--fs-4); }
+    .modal-box p { margin: 0 0 var(--sp-4); color: var(--text-muted); font-size: var(--fs-2); }
+    .modal-box .btn-row { display: flex; gap: var(--sp-2); justify-content: flex-end; }
+
+    /* Mode selector (couleur du header) */
+    .mode-select { margin-bottom: var(--sp-2); font-size: var(--fs-1); color: var(--text-muted); padding: 0 var(--sp-4); flex-shrink: 0; }
+    .mode-select label { margin-right: var(--sp-3); }
+    .mode-select input { margin-right: var(--sp-1); }
+
+    /* Onglets de preview (Explorer | Constituer) */
+    .preview-tabs { display: flex; gap: 0; margin-bottom: var(--sp-2); border-bottom: 1px solid var(--border); flex-shrink: 0; padding: 0 var(--sp-4); }
+    .preview-tabs button {
+      padding: var(--sp-2) var(--sp-4);
+      font-size: var(--fs-2);
+      font-family: inherit;
+      background: none;
+      border: none;
+      border-bottom: 3px solid transparent;
+      cursor: pointer;
+      color: var(--text-muted);
+    }
+    .preview-tabs button:hover { color: var(--text); }
+    .preview-tabs button.active { font-weight: 600; color: var(--accent); border-bottom-color: var(--accent); }
+    .preview-view { display: none; min-height: 0; }
+    .preview-view.active {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+      width: 100%;
+    }
+    .preview-view > .explorer-wrap,
+    .preview-view > .constituer-wrap,
+    .preview-view > .publish-wrap {
+      flex: 1;
+      width: 100%;
+      min-height: 0;
+      border-radius: 0;
+      overflow: hidden;
+      box-shadow: none;
+      border: none;
+    }
+
+    /* Contenu intérieur (largeur max, marges réduites) */
+    .content-inner {
+      width: 100%;
+      max-width: var(--content-max);
+      margin-left: auto;
+      margin-right: auto;
+      padding-left: var(--sp-3);
+      padding-right: var(--sp-3);
+    }
+
+    /* ─── Vue Explorer (mock) ──────────────────────────────────────────── */
+    .explorer-wrap { display: flex; flex-direction: column; min-height: 0; }
+    .explorer-topbar {
+      background: var(--accent);
+      color: #fff;
+      padding: 0;
+      height: var(--topbar-h);
+      display: flex;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .explorer-topbar .content-inner {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-3);
+      width: 100%;
+    }
+    .explorer-topbar h2 { font-size: var(--fs-3); font-weight: 700; margin: 0; flex: 1; }
+    .explorer-topbar .db-badge { font-size: var(--fs-0); background: rgba(255,255,255,0.2); padding: var(--sp-1) var(--sp-2); border-radius: var(--r-3); }
+    .explorer-topbar .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); flex-shrink: 0; }
+    .explorer-toolbar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: var(--sp-2) 0;
+      display: flex;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .explorer-toolbar .content-inner {
+      display: flex;
+      gap: var(--sp-2);
+      align-items: center;
+      flex-wrap: wrap;
+      padding-top: var(--sp-2);
+      padding-bottom: var(--sp-2);
+    }
+    .explorer-toolbar .search-input {
+      flex: 1;
+      min-width: calc(var(--sp-8) * 6.25);
+      padding: var(--sp-2) var(--sp-3);
+      border: 1.5px solid var(--border);
+      border-radius: var(--r-1);
+      font-size: var(--fs-2);
+      font-family: inherit;
+    }
+    .explorer-results {
+      flex: 1;
+      overflow-y: auto;
+      padding: var(--sp-4) 0;
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .explorer-results .content-inner {
+      width: 100%;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+    .result-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r-1);
+      padding: var(--sp-3) var(--sp-4);
+      margin-bottom: var(--sp-2);
+      font-size: var(--fs-2);
+      box-shadow: var(--shadow-card);
+    }
+    .result-card .meta { font-size: var(--fs-0); color: var(--text-muted); margin-bottom: var(--sp-1); }
+    .result-card .text { line-height: 1.5; }
+    .result-card .match { background: #fff3cd; color: #664d03; padding: 0 var(--sp-1); border-radius: var(--r-1); }
+    .explorer-statusbar {
+      padding: var(--sp-1) 0;
+      font-size: var(--fs-0);
+      color: var(--text-muted);
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .explorer-statusbar .content-inner {
+      padding-top: var(--sp-1);
+      padding-bottom: var(--sp-1);
+    }
+
+    /* ─── Vue Constituer (mock) ────────────────────────────────────────── */
+    .constituer-wrap { display: flex; flex-direction: column; min-height: 0; }
+    .prep-topbar {
+      background: var(--accent);
+      color: #fff;
+      padding: 0;
+      height: var(--topbar-h);
+      display: flex;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    .prep-topbar .title { font-size: var(--fs-3); font-weight: 700; flex: 1; margin: 0; }
+    .prep-topbar .db-path { font-size: var(--fs-0); opacity: 0.85; font-family: ui-monospace, monospace; max-width: calc(var(--sp-8) * 7); overflow: hidden; text-overflow: ellipsis; }
+    .prep-topbar .btn { padding: var(--sp-1) var(--sp-2); font-size: var(--fs-0); border-radius: var(--r-1); border: 1px solid rgba(255,255,255,0.3); background: rgba(255,255,255,0.15); color: #fff; cursor: pointer; font-family: inherit; }
+    .prep-topbar .btn:hover { background: rgba(255,255,255,0.25); }
+    .prep-topbar .content-inner { display: flex; align-items: center; gap: var(--sp-3); width: 100%; }
+    .prep-tabbar { display: flex; justify-content: center; gap: 0; border-bottom: 1px solid var(--border); background: var(--surface); flex-shrink: 0; }
+    .prep-tabbar .content-inner { display: flex; gap: 0; width: 100%; max-width: var(--content-max); padding: 0 var(--sp-4); }
+    .prep-tabbar button { padding: var(--sp-2) var(--sp-4); font-size: var(--fs-1); font-family: inherit; background: none; border: none; border-bottom: 3px solid transparent; cursor: pointer; color: var(--text-muted); }
+    .prep-tabbar button:hover { color: var(--text); }
+    .prep-tabbar button.active { font-weight: 600; color: var(--accent); border-bottom-color: var(--accent); }
+    .prep-content { padding: var(--sp-6) 0; background: var(--bg); flex: 1; display: flex; flex-direction: column; align-items: center; min-height: 0; overflow: auto; }
+    .prep-content .content-inner { width: 100%; text-align: left; }
+    .prep-content .screen-title { font-size: var(--fs-4); font-weight: 600; margin: 0 0 var(--sp-4); }
+    .prep-content .card { padding: var(--sp-4); margin-bottom: var(--sp-4); }
+    .prep-content .form-row { display: flex; gap: var(--sp-4); margin-bottom: var(--sp-3); flex-wrap: wrap; }
+    .prep-content .form-row label { display: flex; flex-direction: column; gap: var(--sp-1); font-size: var(--fs-1); color: var(--text-muted); }
+    .prep-content .form-row input, .prep-content .form-row select { padding: var(--sp-2); border: 1px solid var(--border); border-radius: var(--r-1); font-size: var(--fs-2); font-family: inherit; }
+    .prep-screen { display: none; width: 100%; }
+    .prep-screen.active { display: block; }
+    .prep-screen .screen-title { font-size: var(--fs-4); font-weight: 600; margin: 0 0 var(--sp-4); }
+    .prep-screen .btn-row { display: flex; gap: var(--sp-2); margin-top: var(--sp-3); flex-wrap: wrap; }
+    /* Import : liste fichiers + options */
+    .prep-file-list { list-style: none; margin: 0 0 var(--sp-4); padding: 0; border: 1px solid var(--border); border-radius: var(--r-2); background: var(--surface); }
+    .prep-file-list li { padding: var(--sp-2) var(--sp-3); border-bottom: 1px solid var(--border); font-size: var(--fs-2); display: flex; align-items: center; justify-content: space-between; }
+    .prep-file-list li:last-child { border-bottom: none; }
+    .prep-file-list .file-name { font-family: ui-monospace, monospace; font-size: var(--fs-1); }
+    .prep-file-list .file-meta { font-size: var(--fs-0); color: var(--text-muted); }
+    /* Actions : sous-sections */
+    .prep-actions-grid { display: grid; gap: var(--sp-4); margin-bottom: var(--sp-4); }
+    .prep-action-block { padding: var(--sp-4); background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-2); }
+    .prep-action-block h3 { font-size: var(--fs-3); font-weight: 600; margin: 0 0 var(--sp-2); }
+    .prep-action-block p { font-size: var(--fs-2); color: var(--text-muted); margin: 0 0 var(--sp-2); }
+    /* Métadonnées : liste + panneau */
+    .prep-meta-layout { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-4); margin-bottom: var(--sp-4); }
+    @media (max-width: 640px) { .prep-meta-layout { grid-template-columns: 1fr; } }
+    .prep-doc-list { border: 1px solid var(--border); border-radius: var(--r-2); background: var(--surface); padding: var(--sp-2); }
+    .prep-doc-list .doc-item { padding: var(--sp-2) var(--sp-3); border-radius: var(--r-1); cursor: pointer; font-size: var(--fs-2); }
+    .prep-doc-list .doc-item:hover { background: var(--surface-2); }
+    .prep-doc-list .doc-item.active { background: var(--surface-2); font-weight: 600; }
+    .prep-meta-panel { padding: var(--sp-4); border: 1px solid var(--border); border-radius: var(--r-2); background: var(--surface); }
+    .prep-meta-panel h3 { font-size: var(--fs-3); margin: 0 0 var(--sp-3); }
+    /* Exports : options + lancement */
+    .prep-export-options { display: flex; flex-direction: column; gap: var(--sp-3); margin-bottom: var(--sp-4); }
+    .prep-export-option { display: flex; align-items: center; justify-content: space-between; padding: var(--sp-3); border: 1px solid var(--border); border-radius: var(--r-2); background: var(--surface); }
+    .prep-export-option label { font-size: var(--fs-2); font-weight: 500; }
+    .prep-log { font-size: var(--fs-0); font-family: ui-monospace, monospace; background: var(--surface-2); padding: var(--sp-2); border-radius: var(--r-1); color: var(--text-muted); margin-top: var(--sp-4); max-height: 120px; overflow-y: auto; }
+
+    /* ─── Vue Publier (mock Assistant) ───────────────────────────────────── */
+    .publish-wrap { display: flex; flex-direction: column; min-height: 0; }
+    .publish-topbar {
+      background: var(--accent);
+      color: #fff;
+      padding: 0;
+      height: var(--topbar-h);
+      display: flex;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    .publish-topbar { justify-content: center; }
+    .publish-topbar .content-inner { display: flex; align-items: center; width: 100%; }
+    .publish-topbar .title { font-size: var(--fs-3); font-weight: 700; margin: 0; }
+    .publish-progress {
+      display: flex;
+      justify-content: center;
+      gap: 0;
+      padding: var(--sp-3) 0;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .publish-progress .content-inner {
+      display: flex;
+      gap: 0;
+      width: 100%;
+    }
+    .publish-progress .content-inner .step { flex: 1; min-width: 0; }
+    .publish-progress .content-inner .step {
+      height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      margin: 0 var(--sp-1);
+    }
+    .publish-progress .content-inner .step:first-child { margin-left: 0; }
+    .publish-progress .content-inner .step:last-child { margin-right: 0; }
+    .publish-progress .content-inner .step.done { background: var(--accent); opacity: 0.85; }
+    .publish-progress .content-inner .step.current { background: var(--accent); }
+    .publish-body { padding: var(--sp-6) 0; background: var(--bg); flex: 1; display: flex; flex-direction: column; align-items: center; }
+    .publish-body .content-inner { width: 100%; text-align: left; }
+    .publish-body .screen-title { font-size: var(--fs-4); font-weight: 600; margin: 0 0 var(--sp-4); }
+    .publish-body .btn-row { display: flex; gap: var(--sp-2); margin-top: var(--sp-4); justify-content: flex-start; }
+
+    /* Dropdown (menu DB / Support) */
+    .dropdown-wrap { position: relative; display: inline-block; }
+    .dropdown-menu {
+      display: none;
+      position: absolute;
+      top: 100%;
+      right: 0;
+      margin-top: var(--sp-1);
+      min-width: calc(var(--sp-8) * 5);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r-2);
+      box-shadow: var(--shadow-modal);
+      padding: var(--sp-1);
+      z-index: 1000;
+    }
+    .dropdown-menu.open { display: block; }
+    .dropdown-item {
+      display: block;
+      width: 100%;
+      padding: var(--sp-2) var(--sp-3);
+      border: none;
+      background: none;
+      border-radius: var(--r-1);
+      font-size: var(--fs-2);
+      font-family: inherit;
+      color: var(--text);
+      text-align: left;
+      cursor: pointer;
+    }
+    .dropdown-item:hover { background: var(--surface-2); }
+    .dropdown-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .dropdown-sep { height: 1px; background: var(--border); margin: var(--sp-1) 0; }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      bottom: var(--sp-6);
+      left: 50%;
+      transform: translateX(-50%);
+      padding: var(--sp-2) var(--sp-4);
+      background: var(--text);
+      color: #fff;
+      font-size: var(--fs-1);
+      border-radius: var(--r-2);
+      box-shadow: var(--shadow-modal);
+      z-index: 10001;
+      max-width: 90vw;
+    }
+    .toast.success { background: var(--ok); }
+    .toast.err { background: var(--err); }
+
+    /* Accessibilité */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+      .card:hover { transform: none; }
+    }
+  </style>
+</head>
+<body data-mode="explorer">
+  <!-- Header shell -->
+  <header class="shell-header" role="banner">
+    <span class="shell-brand" aria-label="Retour accueil">AGRAFES</span>
+    <nav class="shell-nav" aria-label="Navigation principale">
+      <button type="button" class="shell-tab active" data-mode="explorer">Explorer</button>
+      <button type="button" class="shell-tab" data-mode="constituer">Constituer</button>
+    </nav>
+    <div class="shell-utils">
+      <button type="button" class="shell-util" title="Presets">⚙ Presets</button>
+      <button type="button" class="shell-util" title="Raccourcis">⌨</button>
+      <button type="button" class="shell-util" title="À propos">ⓘ</button>
+      <button type="button" class="shell-util" title="Support">?</button>
+    </div>
+    <div class="shell-db dropdown-wrap">
+      <span class="shell-db-badge" title="Aucune base">DB: (aucune)</span>
+      <button type="button" class="shell-db-btn" id="db-dropdown-btn" aria-expanded="false" aria-haspopup="true" aria-controls="db-menu">DB ▾</button>
+      <div class="dropdown-menu" id="db-menu" role="menu" aria-label="Menu base de données">
+        <button type="button" class="dropdown-item" role="menuitem">Ouvrir…</button>
+        <button type="button" class="dropdown-item" role="menuitem">Créer…</button>
+        <span class="dropdown-sep" aria-hidden="true"></span>
+        <span style="padding: var(--sp-1) var(--sp-3); font-size: var(--fs-0); color: var(--text-muted);">Récents</span>
+        <button type="button" class="dropdown-item" role="menuitem">corpus_demo.db</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="main">
+    <div class="preview-container">
+    <p class="mode-select">
+      <strong>Couleur du header :</strong>
+      <label><input type="radio" name="mode" value="home" /> Home</label>
+      <label><input type="radio" name="mode" value="explorer" checked /> Explorer</label>
+      <label><input type="radio" name="mode" value="constituer" /> Constituer</label>
+      <label><input type="radio" name="mode" value="publish" /> Publier</label>
+    </p>
+
+    <div class="preview-tabs" role="tablist">
+      <button type="button" role="tab" aria-selected="true" id="tab-explorer" aria-controls="view-explorer">Aperçu Explorer</button>
+      <button type="button" role="tab" aria-selected="false" id="tab-constituer" aria-controls="view-constituer">Aperçu Constituer</button>
+      <button type="button" role="tab" aria-selected="false" id="tab-publish" aria-controls="view-publish">Aperçu Publier</button>
+    </div>
+
+    <!-- Vue Explorer (mock Concordancier) -->
+    <div id="view-explorer" class="preview-view active" role="tabpanel" aria-labelledby="tab-explorer">
+      <div class="explorer-wrap">
+        <div class="explorer-topbar">
+          <div class="content-inner">
+            <h2>Concordancier</h2>
+            <span class="db-badge">corpus_demo.db</span>
+            <span class="status-dot" title="Sidecar prêt"></span>
+          </div>
+        </div>
+        <div class="explorer-toolbar">
+          <div class="content-inner">
+            <input type="text" class="search-input" placeholder="Rechercher dans le corpus (FTS5)…" value="liberté" />
+            <button type="button" class="btn btn-primary">Chercher</button>
+            <button type="button" class="btn btn-secondary">Segment</button>
+            <button type="button" class="btn btn-secondary">KWIC</button>
+            <button type="button" class="btn btn-ghost">⚙ Filtres</button>
+            <span class="chip">Langue: fr <button type="button" class="chip-remove" aria-label="Retirer">×</button></span>
+          </div>
+        </div>
+        <div class="explorer-results">
+          <div class="content-inner">
+          <p style="font-size: var(--fs-1); color: var(--text-muted); margin: 0 0 var(--sp-3);">3 résultats / 12</p>
+          <div class="result-card">
+            <div class="meta">Le Prince · fr · §1.2</div>
+            <div class="text">… la <span class="match">liberté</span> des peuples …</div>
+          </div>
+          <div class="result-card">
+            <div class="meta">Le Prince · fr · §3.1</div>
+            <div class="text">… perdre sa <span class="match">liberté</span> pour garder …</div>
+          </div>
+          <div class="result-card">
+            <div class="meta">Discours · fr · §2</div>
+            <div class="text">… <span class="match">liberté</span>, égalité, fraternité …</div>
+          </div>
+          <button type="button" class="btn btn-secondary" style="margin-top: var(--sp-2);">Charger plus</button>
+          </div>
+        </div>
+        <div class="explorer-statusbar"><div class="content-inner">DB : …/corpus_demo.db · sidecar ready</div></div>
+      </div>
+    </div>
+
+    <!-- Vue Constituer (mock Prep) -->
+    <div id="view-constituer" class="preview-view" role="tabpanel" aria-labelledby="tab-constituer">
+      <div class="constituer-wrap">
+        <div class="prep-topbar">
+          <div class="content-inner">
+            <span class="title">Constituer</span>
+            <span class="db-path">corpus_demo.db</span>
+            <button type="button" class="btn">Ouvrir…</button>
+            <button type="button" class="btn">Créer…</button>
+            <button type="button" class="btn">📋 Presets</button>
+          </div>
+        </div>
+        <div class="prep-tabbar">
+          <div class="content-inner">
+            <button type="button" class="prep-tab active" data-prep-screen="import">Importer</button>
+            <button type="button" class="prep-tab" data-prep-screen="documents">Documents</button>
+            <button type="button" class="prep-tab" data-prep-screen="actions">Actions</button>
+            <button type="button" class="prep-tab" data-prep-screen="exporter">Exporter</button>
+          </div>
+        </div>
+        <div class="prep-content">
+          <!-- Écrans Constituer -->
+          <div class="content-inner">
+          <!-- Écran Importer -->
+          <div id="prep-screen-import" class="prep-screen active">
+            <h2 class="screen-title">Importer</h2>
+            <div class="form-row" style="margin-bottom: var(--sp-4);">
+              <label>Fichiers à importer <button type="button" class="btn btn-secondary">Parcourir…</button></label>
+            </div>
+            <ul class="prep-file-list">
+              <li><span class="file-name">le_prince_fr.xml</span> <span class="file-meta">TEI · fr</span></li>
+              <li><span class="file-name">discours_fr.xml</span> <span class="file-meta">TEI · fr</span></li>
+            </ul>
+            <div class="card" style="margin-bottom: var(--sp-4);">
+              <div class="form-row"><label>Langue <select><option>fr</option><option>en</option></select></label></div>
+              <div class="form-row"><label>Mode <select><option>Segment</option><option>KWIC</option></select></label></div>
+            </div>
+            <div class="btn-row"><button type="button" class="btn btn-primary">Lancer l’import</button></div>
+          </div>
+          <!-- Écran Actions -->
+          <div id="prep-screen-actions" class="prep-screen">
+            <h2 class="screen-title">Actions corpus</h2>
+            <div class="prep-actions-grid">
+              <div class="prep-action-block">
+                <h3>Curation</h3>
+                <p>Reciblage, fusion, suppression de segments.</p>
+                <button type="button" class="btn btn-secondary">Ouvrir</button>
+              </div>
+              <div class="prep-action-block">
+                <h3>Segmentation</h3>
+                <p>Découpage et alignement des unités.</p>
+                <button type="button" class="btn btn-secondary">Ouvrir</button>
+              </div>
+              <div class="prep-action-block">
+                <h3>Qualité</h3>
+                <p>Rapport QA, détection de collisions.</p>
+                <button type="button" class="btn btn-secondary">Ouvrir</button>
+              </div>
+            </div>
+          </div>
+          <!-- Écran Documents -->
+          <div id="prep-screen-documents" class="prep-screen">
+            <h2 class="screen-title">Documents</h2>
+            <div class="prep-meta-layout">
+              <div class="prep-doc-list">
+                <div class="doc-item active">Le Prince (fr)</div>
+                <div class="doc-item">Discours (fr)</div>
+              </div>
+              <div class="prep-meta-panel">
+                <h3>Document sélectionné</h3>
+                <div class="form-row"><label>Titre <input type="text" value="Le Prince" /></label></div>
+                <div class="form-row"><label>Langue <input type="text" value="fr" /></label></div>
+                <div class="form-row"><label>Identifiant <input type="text" value="le_prince_fr" readonly /></label></div>
+                <div class="btn-row"><button type="button" class="btn btn-primary">Enregistrer</button></div>
+              </div>
+            </div>
+          </div>
+          <!-- Écran Exporter -->
+          <div id="prep-screen-exporter" class="prep-screen">
+            <h2 class="screen-title">Exporter</h2>
+            <div class="prep-export-options">
+              <div class="prep-export-option">
+                <label>Rapport QA</label>
+                <button type="button" class="btn btn-secondary">Générer</button>
+              </div>
+              <div class="prep-export-option">
+                <label>Package TEI</label>
+                <button type="button" class="btn btn-secondary">Exporter</button>
+              </div>
+            </div>
+            <div class="form-row"><label>Documents à inclure <select><option>Tous</option></select></label></div>
+            <div class="btn-row"><button type="button" class="btn btn-primary">Lancer l’export</button></div>
+            <pre class="prep-log">[Log] Aucune tâche récente.</pre>
+          </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Vue Publier (mock Assistant) -->
+    <div id="view-publish" class="preview-view" role="tabpanel" aria-labelledby="tab-publish">
+      <div class="publish-wrap">
+        <div class="publish-topbar">
+          <div class="content-inner">
+            <span class="title">Assistant de publication</span>
+          </div>
+        </div>
+        <div class="publish-progress" aria-label="Étapes">
+          <div class="content-inner">
+            <span class="step done" title="DB"></span>
+            <span class="step done" title="Documents"></span>
+            <span class="step current" title="Options"></span>
+            <span class="step" title="Exporter"></span>
+            <span class="step" title="Résumé"></span>
+          </div>
+        </div>
+        <div class="publish-body">
+          <div class="content-inner">
+          <h2 class="screen-title">Options TEI / Qualité</h2>
+          <div class="card">
+            <p style="margin: 0; font-size: var(--fs-2); color: var(--text-muted);">Options d’export et de rapport QA. Aperçu des composants (carte, boutons) avec les tokens du design.</p>
+          </div>
+          <div class="btn-row">
+            <button type="button" class="btn btn-secondary">Retour</button>
+            <button type="button" class="btn btn-primary">Suivant</button>
+          </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    </div>
+  </main>
+
+  <!-- Modal exemple -->
+  <div class="modal-overlay" id="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal-box">
+      <h3 id="modal-title">À propos de cet aperçu</h3>
+      <p>Ce HTML applique les tokens et composants décrits dans <strong>docs/DESIGN.md</strong> (palette, espacements, typo, rayons, header, cartes, boutons, chips, modal, dropdown, toast). Les mockups servent de référence pour <strong>les couleurs</strong> et pour <strong>le layout</strong> : contenu centré, largeur limitée (<code>--content-max</code>), boîtes avec bords et ombre. Changez le mode pour la couleur du header ; cliquez sur « DB ▾ » pour le menu.</p>
+      <div class="btn-row">
+        <button type="button" class="btn btn-secondary" id="close-modal">Fermer</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast success" id="toast-demo" role="status" aria-live="polite" style="display: none;">DB active : corpus_demo.db</div>
+
+  <script>
+    document.querySelectorAll('input[name="mode"]').forEach(function(radio) {
+      radio.addEventListener('change', function() {
+        document.body.dataset.mode = this.value;
+      });
+    });
+    function switchPreviewTab(activeId) {
+      document.querySelectorAll('.preview-view').forEach(function(v) { v.classList.remove('active'); });
+      document.querySelectorAll('.preview-tabs button').forEach(function(b) {
+        b.classList.remove('active');
+        b.setAttribute('aria-selected', b.id === 'tab-' + activeId ? 'true' : 'false');
+      });
+      document.querySelectorAll('input[name="mode"]').forEach(function(r) {
+        r.checked = r.value === activeId;
+      });
+      var panel = document.getElementById('view-' + activeId);
+      var tab = document.getElementById('tab-' + activeId);
+      if (panel) panel.classList.add('active');
+      if (tab) {
+        tab.classList.add('active');
+        tab.setAttribute('aria-selected', 'true');
+      }
+      document.body.dataset.mode = activeId;
+    }
+    document.getElementById('tab-explorer').addEventListener('click', function() { switchPreviewTab('explorer'); });
+    document.getElementById('tab-constituer').addEventListener('click', function() { switchPreviewTab('constituer'); });
+    document.getElementById('tab-publish').addEventListener('click', function() { switchPreviewTab('publish'); });
+    document.querySelectorAll('.prep-tab').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var screen = this.getAttribute('data-prep-screen');
+        if (!screen) return;
+        document.querySelectorAll('.prep-tabbar .prep-tab').forEach(function(b) { b.classList.remove('active'); });
+        document.querySelectorAll('.prep-screen').forEach(function(s) { s.classList.remove('active'); });
+        this.classList.add('active');
+        var panel = document.getElementById('prep-screen-' + screen);
+        if (panel) panel.classList.add('active');
+      });
+    });
+    var dbBtn = document.getElementById('db-dropdown-btn');
+    var dbMenu = document.getElementById('db-menu');
+    if (dbBtn && dbMenu) {
+      dbBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        var open = dbMenu.classList.toggle('open');
+        dbBtn.setAttribute('aria-expanded', open);
+      });
+      document.addEventListener('click', function() {
+        dbMenu.classList.remove('open');
+        dbBtn.setAttribute('aria-expanded', 'false');
+      });
+    }
+  </script>
+</body>
+</html>

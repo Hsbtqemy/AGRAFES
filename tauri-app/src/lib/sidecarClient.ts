@@ -93,6 +93,15 @@ export interface IndexResponse {
   units_indexed: number;
 }
 
+export interface DocumentRecord {
+  doc_id: number;
+  title: string;
+  language: string;
+  doc_role: string | null;
+  resource_type: string | null;
+  unit_count: number;
+}
+
 // ─── Connection handle ────────────────────────────────────────────────────────
 
 export interface Conn {
@@ -380,6 +389,11 @@ export async function importFile(
 
 export async function rebuildIndex(conn: Conn): Promise<IndexResponse> {
   return conn.post("/index", {}) as Promise<IndexResponse>;
+}
+
+export async function listDocuments(conn: Conn): Promise<DocumentRecord[]> {
+  const res = (await conn.get("/documents")) as { documents: DocumentRecord[] };
+  return res.documents;
 }
 
 export async function shutdownSidecar(conn: Conn): Promise<void> {

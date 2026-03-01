@@ -10,7 +10,6 @@ import { ensureRunning, SidecarError } from "./lib/sidecarClient.ts";
 import { getCurrentDbPath, setCurrentDbPath, getOrCreateDefaultDbPath } from "./lib/db.ts";
 import { open as dialogOpen, save as dialogSave } from "@tauri-apps/plugin-dialog";
 import { writeTextFile, readTextFile } from "@tauri-apps/plugin-fs";
-import { ProjectScreen } from "./screens/ProjectScreen.ts";
 import { ImportScreen } from "./screens/ImportScreen.ts";
 import { ActionsScreen, type ProjectPreset } from "./screens/ActionsScreen.ts";
 import { MetadataScreen } from "./screens/MetadataScreen.ts";
@@ -337,14 +336,13 @@ const CSS = `
 
 // ─── App ──────────────────────────────────────────────────────────────────────
 
-const TABS = ["project", "import", "actions", "metadata", "exports"] as const;
+const TABS = ["import", "documents", "actions", "exporter"] as const;
 type TabId = typeof TABS[number];
 
 export class App {
   private _conn: Conn | null = null;
-  private _activeTab: TabId = "project";
+  private _activeTab: TabId = "import";
 
-  private _project!: ProjectScreen;
   private _import!: ImportScreen;
   private _actions!: ActionsScreen;
   private _metadata!: MetadataScreen;
@@ -371,7 +369,6 @@ export class App {
     }
 
     this._buildUI();
-    this._project.setConn(this._conn);
     this._import.setConn(this._conn);
     this._actions.setConn(this._conn);
     this._metadata.setConn(this._conn);
@@ -391,7 +388,7 @@ export class App {
 
     const titleEl = document.createElement("span");
     titleEl.className = "topbar-title";
-    titleEl.textContent = "Concordancier Prep";
+    titleEl.textContent = "Constituer";
 
     const dbPathEl = document.createElement("span");
     dbPathEl.id = "topbar-dbpath";
@@ -429,11 +426,10 @@ export class App {
     const tabbar = document.createElement("div");
     tabbar.className = "tabbar";
     const LABELS: Record<TabId, string> = {
-      project: "Projet",
-      import: "Import",
+      import: "Importer",
+      documents: "Documents",
       actions: "Actions",
-      metadata: "Métadonnées",
-      exports: "Exports",
+      exporter: "Exporter",
     };
     for (const tab of TABS) {
       const btn = document.createElement("button");
@@ -453,20 +449,16 @@ export class App {
     this._jobCenter = new JobCenter();
     root.appendChild(this._jobCenter.render());
 
-    this._project = new ProjectScreen((event, dbPath) => {
-      if (event === "db-changed") this._onDbChanged(dbPath);
-    });
     this._import = new ImportScreen();
     this._actions = new ActionsScreen();
     this._metadata = new MetadataScreen();
     this._exports = new ExportsScreen();
 
     const screenMap: Record<TabId, () => HTMLElement> = {
-      project: () => this._project.render(),
       import: () => this._import.render(),
+      documents: () => this._metadata.render(),
       actions: () => this._actions.render(),
-      metadata: () => this._metadata.render(),
-      exports: () => this._exports.render(),
+      exporter: () => this._exports.render(),
     };
 
     for (const tab of TABS) {

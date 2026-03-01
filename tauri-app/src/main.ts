@@ -1,3 +1,5 @@
+// NOTE: This standalone app is being superseded by tauri-shell/ which embeds
+// both Concordancier and Prep in a single unified shell. See docs/STATUS_TAURI_SHELL.md
 import { initApp } from "./app";
 
 const container = document.getElementById("app");

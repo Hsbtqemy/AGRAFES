@@ -38,7 +38,7 @@ export class ImportScreen {
     root.className = "screen import-screen";
 
     root.innerHTML = `
-      <h2 class="screen-title">Import &amp; Index</h2>
+      <h2 class="screen-title">Importer</h2>
 
       <section class="card">
         <h3>Fichiers à importer</h3>

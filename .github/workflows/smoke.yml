@@ -1,0 +1,106 @@
+name: Smoke tests (no secrets)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Cancel in-progress runs for the same ref
+concurrency:
+  group: smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── 1. Sidecar smoke (Python integration) ───────────────────────────────────
+  sidecar-smoke:
+    name: Sidecar smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install multicorpus_engine (dev)
+        run: pip install -e ".[dev]"
+
+      - name: Run sidecar smoke test
+        run: python scripts/ci_smoke_sidecar.py --timeout 60
+
+      - name: Upload smoke logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-logs-${{ matrix.os }}
+          path: /tmp/agrafes_smoke_*
+          retention-days: 3
+
+  # ── 2. Frontend builds (no Rust / no secrets) ───────────────────────────────
+  frontend-builds:
+    name: Frontend builds
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: |
+            tauri-app/package-lock.json
+            tauri-prep/package-lock.json
+            tauri-shell/package-lock.json
+
+      - name: Install deps (tauri-app)
+        run: npm --prefix tauri-app ci
+
+      - name: Build tauri-app
+        run: npm --prefix tauri-app run build
+
+      - name: Install deps (tauri-prep)
+        run: npm --prefix tauri-prep ci
+
+      - name: Build tauri-prep
+        run: npm --prefix tauri-prep run build
+
+      - name: Install deps (tauri-shell)
+        run: npm --prefix tauri-shell ci
+
+      - name: Build tauri-shell
+        run: npm --prefix tauri-shell run build
+
+      - name: Run FTS query unit tests
+        run: node tauri-app/scripts/test_buildFtsQuery.mjs
+
+  # ── 3. Python unit tests (mirrors ci.yml, duplicated here for smoke gate) ───
+  python-tests:
+    name: Python tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install project (dev)
+        run: pip install -e ".[dev]"
+
+      - name: Run pytest
+        run: pytest -q
