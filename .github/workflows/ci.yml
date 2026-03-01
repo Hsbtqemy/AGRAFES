@@ -103,6 +103,30 @@ jobs:
       - name: Run JS unit tests (buildFtsQuery)
         run: node tauri-app/scripts/test_buildFtsQuery.mjs
 
+  # ── Shell app TypeScript build ──────────────────────────────────────────────
+  build-shell:
+    name: TypeScript shell build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install tauri-prep deps (required by shell imports)
+        run: npm --prefix tauri-prep ci
+
+      - name: Install tauri-app deps (required by shell imports)
+        run: npm --prefix tauri-app ci
+
+      - name: Install tauri-shell deps
+        run: npm --prefix tauri-shell ci
+
+      - name: Build tauri-shell
+        run: npm --prefix tauri-shell run build
+
   # ── Sidecar binary build sanity check ─────────────────────────────────────
   build-sidecar-check:
     name: Sidecar binary build (Linux sanity)
@@ -121,25 +145,44 @@ jobs:
       - name: Build sidecar binary
         run: python scripts/build_sidecar.py --out /tmp/sidecar-ci-check
 
-      - name: Verify binary exists and responds to --help
-        run: |
-          BIN=$(ls /tmp/sidecar-ci-check/multicorpus-*)
-          echo "Binary: $BIN"
-          "$BIN" --help
-
-      - name: Verify manifest JSON
+      - name: Verify manifest JSON and locate executable
         run: |
           python - <<'EOF'
           import json, pathlib, sys
-          manifest = pathlib.Path("/tmp/sidecar-ci-check/sidecar-manifest.json")
-          if not manifest.exists():
+          manifest_path = pathlib.Path("/tmp/sidecar-ci-check/sidecar-manifest.json")
+          if not manifest_path.exists():
               print("ERROR: sidecar-manifest.json not found")
               sys.exit(1)
-          data = json.loads(manifest.read_text())
-          required = ["name", "target_triple", "version", "format", "sha256"]
+          data = json.loads(manifest_path.read_text())
+          required = ["name", "target_triple", "version", "format", "sha256", "executable_path"]
           missing = [k for k in required if k not in data]
           if missing:
               print(f"ERROR: manifest missing keys: {missing}")
               sys.exit(1)
+          exe = pathlib.Path(data["executable_path"])
+          if not exe.exists():
+              print(f"ERROR: executable_path does not exist: {exe}")
+              sys.exit(1)
           print(f"OK: manifest valid — {data['name']} v{data['version']} ({data['format']}, {data['target_triple']})")
+          print(f"OK: executable_path exists: {exe}")
+          # Write the path to a file for the next step
+          pathlib.Path("/tmp/sidecar-exe-path").write_text(str(exe))
           EOF
+
+      - name: Verify binary responds to --help (onefile and onedir safe)
+        run: |
+          # Read the executable path resolved from the manifest (onefile or onedir inner exe)
+          EXE_PATH=$(cat /tmp/sidecar-exe-path)
+          echo "Executable: $EXE_PATH"
+          if [ -f "$EXE_PATH" ]; then
+            "$EXE_PATH" --help
+          elif [ -d "$EXE_PATH" ]; then
+            # onedir: find the inner executable
+            INNER="$EXE_PATH/$(basename "$EXE_PATH")"
+            [ -f "$INNER" ] || INNER="$EXE_PATH/multicorpus"
+            echo "onedir inner exe: $INNER"
+            "$INNER" --help
+          else
+            echo "ERROR: executable does not exist at $EXE_PATH"
+            exit 1
+          fi
