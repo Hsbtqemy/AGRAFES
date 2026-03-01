@@ -1,6 +1,6 @@
 # Backlog — multicorpus_engine
 
-Last updated: 2026-03-01 (tauri-prep V0.10: align explainability linked runs/export)
+Last updated: 2026-03-01 (Sprints 1.5/2.4/3.3: collision resolver, virtual list, CI hardening)
 
 ## Priority backlog (realistic, post-implementation)
 
@@ -19,7 +19,7 @@ Last updated: 2026-03-01 (tauri-prep V0.10: align explainability linked runs/exp
 | P1 | Concordancier V1 — metadata panel | Users need doc-level metadata at a glance | Side panel: title, language, role, resource_type, unit count | todo |
 | P1 | Concordancier V1 — corpus démo | New users need a working sample | Bundled small multilingual demo corpus on first run | todo |
 | P2 | Concordancier V1 — aligned view quality | V0.1 exists; needs richer control and readability | Group/sort aligned lines by language/doc and add compact expand/collapse presets | todo |
-| P2 | Concordancier V1 — advanced search (regex/NEAR) | Power users need FTS5 proximity | UI for NEAR(t1 t2, N) and raw FTS5 passthrough | todo |
+| P2 | Concordancier V1 — advanced search (regex/NEAR) | Power users need FTS5 proximity | UI for NEAR(t1 t2, N) and raw FTS5 passthrough | done |
 | P2 | Deep link between Tauri apps (`open-db` URI) | Current flow relies on copy/paste path between `tauri-prep` and `tauri-app` | Define and implement a URI/app-link contract so Prep can open Concordancier on a DB directly | todo |
 | P1 | macOS sidecar signing + notarization hardening | Base scripts/workflow exist; production rollout still needs credential ops and release validation | Signed/notarized artifacts validated on tag pipeline with real cert identity and Gatekeeper checks | in_progress |
 | P1 | Windows sidecar code signing hardening | Script/workflow stubs exist; production cert flow not yet exercised | Signed `.exe` artifacts verified in CI with operational cert management process | in_progress |
@@ -27,8 +27,8 @@ Last updated: 2026-03-01 (tauri-prep V0.10: align explainability linked runs/exp
 | P1 | Sidecar lifecycle and resilience | Sidecar contract exists; runtime behavior needs production guardrails | Extended integration tests for restart/recovery and process supervision recommendations for desktop wrapper | todo |
 | P1 | Tauri fixture expansion to GUI-capable runners | Headless smoke exists; full app-run coverage is still partial | Add optional GUI-capable runner lane that executes `tauri run`/`tauri build` smoke with sidecar | todo |
 | P2 | Sidecar localhost security posture | Optional token is implemented, but policy is still minimal | Explicit threat model, token rotation/expiry policy, and wrapper guidance for secure defaults | in_progress |
-| P2 | Linux portability baseline (glibc/manylinux policy) | manylinux build scaffold exists; support floor must be validated empirically | Documented glibc support floor + compatibility smoke matrix on older distros | in_progress |
-| P2 | CI cache strategy for PyInstaller builds | Matrix builds can be slow/costly | Cached dependency/build layers with measurable time reduction | todo |
+| P2 | Linux portability baseline (glibc/manylinux policy) | manylinux build scaffold exists; support floor must be validated empirically | Documented glibc support floor + compatibility smoke matrix on older distros | **done** (Sprint 3.3: glibc floor table in DISTRIBUTION.md) |
+| P2 | CI cache strategy for PyInstaller builds | Matrix builds can be slow/costly | Cached dependency/build layers with measurable time reduction | todo (deferred post-3.3) |
 | P2 | Sidecar binary size optimization | Onefile convenience increases binary size | Track size budget and apply PyInstaller/payload optimizations with before/after report | todo |
 | P2 | Tauri release icons (icns/ico) | Dev currently uses PNG-only placeholders to unblock `tauri dev`; release packages need platform-native icons | Generate and validate real `icon.icns` + `icon.ico` assets before release packaging | todo |
 | P2 | FTS performance profile | Large corpora will stress rebuild workflow | Bench report on representative datasets + documented recommended SQLite pragmas | in_progress |

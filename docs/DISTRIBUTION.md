@@ -156,6 +156,20 @@ bash scripts/linux_manylinux_build_sidecar.sh --format onedir --out tauri/src-ta
   - executable `--help`
 - Additional compatibility checks (`ldd`, distro matrix) remain backlog.
 
+## Linux glibc floor
+
+| Build method | Base image | Min glibc | Min compatible OS |
+|---|---|---|---|
+| `manylinux2014` (default CI) | `manylinux2014_x86_64` | 2.17 | Ubuntu 20.04, RHEL 7+, Debian 10 |
+| `manylinux_2_28` (future) | `manylinux_2_28_x86_64` | 2.28 | Ubuntu 20.04+, RHEL 8+, Debian 11 |
+| Direct host build | Host OS | Host glibc | Dev machines only |
+
+**Policy (Sprint 3.3):**
+- Production binaries use `manylinux2014` (glibc ≥ 2.17) via `linux_manylinux_build_sidecar.sh`.
+- The manylinux2014 image guarantees compatibility with all major enterprise Linux distros
+  that are still in active support as of 2026.
+- aarch64 Linux builds are not yet production-ready (backlog: add `manylinux2014_aarch64` lane).
+
 ## Format default status
 
 - ADR-025 is decided with `per_os` mapping:

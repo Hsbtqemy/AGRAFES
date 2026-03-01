@@ -1,0 +1,145 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ── Python tests + contract freeze check ───────────────────────────────────
+  test:
+    name: Python tests & contract freeze
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install project (dev extras)
+        run: pip install -e ".[dev]"
+
+      - name: Run pytest
+        run: pytest -q
+
+      - name: Regenerate OpenAPI spec
+        run: python scripts/export_openapi.py
+
+      - name: Check contract freeze (committed openapi.json must match generated)
+        run: |
+          python - <<'EOF'
+          import json, sys, pathlib
+          from multicorpus_engine.sidecar_contract import openapi_spec
+
+          generated = json.dumps(openapi_spec(), indent=2, sort_keys=True, ensure_ascii=False)
+          committed = pathlib.Path("docs/openapi.json").read_text(encoding="utf-8")
+          if generated.strip() != committed.strip():
+              print("ERROR: docs/openapi.json is out of date.")
+              print("Run: python scripts/export_openapi.py  and commit the result.")
+              sys.exit(1)
+          print("OK: docs/openapi.json matches generated spec.")
+          EOF
+
+      - name: Check snapshot consistency
+        run: |
+          python - <<'EOF'
+          import json, sys, pathlib
+          from multicorpus_engine.sidecar_contract import openapi_spec
+
+          spec = openapi_spec()
+          generated_paths = sorted(
+              f"{method.upper()} {path}"
+              for path, methods in spec["paths"].items()
+              for method in methods
+          )
+          snapshot_file = pathlib.Path("tests/snapshots/openapi_paths.json")
+          snapshot = json.loads(snapshot_file.read_text(encoding="utf-8"))
+
+          removed = [p for p in snapshot if p not in generated_paths]
+          if removed:
+              print(f"ERROR: {len(removed)} endpoint(s) removed from API (contract freeze violation):")
+              for p in removed:
+                  print(f"  - {p}")
+              sys.exit(1)
+
+          new_paths = [p for p in generated_paths if p not in snapshot]
+          if new_paths:
+              print(f"WARNING: {len(new_paths)} new endpoint(s) not yet in snapshot:")
+              for p in new_paths:
+                  print(f"  + {p}")
+              print("Run: python scripts/export_openapi.py  and commit the updated snapshot.")
+              sys.exit(1)
+
+          print(f"OK: snapshot consistent ({len(snapshot)} paths).")
+          EOF
+
+  # ── TypeScript builds ───────────────────────────────────────────────────────
+  build-ts:
+    name: TypeScript builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install tauri-prep deps
+        run: npm --prefix tauri-prep ci
+
+      - name: Build tauri-prep
+        run: npm --prefix tauri-prep run build
+
+      - name: Install tauri-app deps
+        run: npm --prefix tauri-app ci
+
+      - name: Build tauri-app
+        run: npm --prefix tauri-app run build
+
+      - name: Run JS unit tests (buildFtsQuery)
+        run: node tauri-app/scripts/test_buildFtsQuery.mjs
+
+  # ── Sidecar binary build sanity check ─────────────────────────────────────
+  build-sidecar-check:
+    name: Sidecar binary build (Linux sanity)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install project + packaging extras
+        run: pip install -e ".[packaging]"
+
+      - name: Build sidecar binary
+        run: python scripts/build_sidecar.py --out /tmp/sidecar-ci-check
+
+      - name: Verify binary exists and responds to --help
+        run: |
+          BIN=$(ls /tmp/sidecar-ci-check/multicorpus-*)
+          echo "Binary: $BIN"
+          "$BIN" --help
+
+      - name: Verify manifest JSON
+        run: |
+          python - <<'EOF'
+          import json, pathlib, sys
+          manifest = pathlib.Path("/tmp/sidecar-ci-check/sidecar-manifest.json")
+          if not manifest.exists():
+              print("ERROR: sidecar-manifest.json not found")
+              sys.exit(1)
+          data = json.loads(manifest.read_text())
+          required = ["name", "target_triple", "version", "format", "sha256"]
+          missing = [k for k in required if k not in data]
+          if missing:
+              print(f"ERROR: manifest missing keys: {missing}")
+              sys.exit(1)
+          print(f"OK: manifest valid — {data['name']} v{data['version']} ({data['format']}, {data['target_triple']})")
+          EOF
