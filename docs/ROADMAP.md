@@ -137,3 +137,6 @@ Last updated: 2026-03-01 (Shell App V0.3: metadata panel + demo onboarding + inc
 | V1.7.0 | CI: automated release gate (pytest + FTS + builds + demo QA + TEI validate) | Done |
 | V1.7.1 | Shell: MRU DB list + pin + missing-DB recovery + _switchDb hardening | Done |
 | V1.7.2 | Shell: About dialog + shortcuts panel + wording harmonization | Done |
+| V1.8.0 | CI: Tauri Shell build workflow (unsigned, matrix mac/linux/win) | Done |
+| V1.8.1 | CI: Signing/notarization workflows (macOS + Windows, secrets-gated) | Done |
+| V1.8.2 | Shell: local crash logging + log export bundle (no telemetry) | Done |

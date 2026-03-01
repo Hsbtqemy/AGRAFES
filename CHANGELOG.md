@@ -3,6 +3,53 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [V1.8.2] — 2026-03-01 — Crash recovery + local log export
+
+### Added
+- Session logger: `_shellLog()` + circular buffer (500 entries), categories: boot/navigation/db_switch/sidecar/publish_wizard/log_export/crash_recovery/shutdown
+- Crash marker via `localStorage["agrafes.session.crash_marker"]` (write at boot, clear on clean shutdown)
+- `_showCrashRecoveryBanner()`: red top banner with datetime + export/dismiss buttons
+- `_exportLogBundle()`: `dialogSave` → `writeTextFile` (scoped) — no telemetry
+- "📋 Exporter logs…" button in About dialog
+- `_installErrorCapture()`: `window.onerror` + `unhandledrejection` → log buffer
+### Changed
+- `APP_VERSION` → 1.8.2
+- `initShell()`: crash detection, crash marker, error capture, boot logs, beforeunload handler
+- `_setMode()`, `_switchDb()`, `_initDb()`, wizard job events: log to buffer
+
+### Files
+`tauri-shell/src/shell.ts`, `docs/STATUS_TAURI_SHELL.md`
+
+---
+
+## [V1.8.1] — 2026-03-01 — Signing/Notarization workflows (secrets-gated)
+
+### Added
+- `.github/workflows/macos-sign-shell.yml`: check_secrets step (graceful exit 0) → keychain → codesign → notarytool → stapler → DMG
+- `.github/workflows/windows-sign-shell.yml`: check_secrets step → PFX decode → signtool /fd sha256 for *.exe/*.msi
+- Both workflows: triggered by `workflow_run` (after unsigned build) or `workflow_dispatch`
+- Secrets documentation: `docs/DISTRIBUTION.md` signing section + `docs/RELEASE_CHECKLIST.md` signing checklist
+
+### Files
+`.github/workflows/macos-sign-shell.yml`, `.github/workflows/windows-sign-shell.yml`, `docs/DISTRIBUTION.md`, `docs/RELEASE_CHECKLIST.md`
+
+---
+
+## [V1.8.0] — 2026-03-01 — CI Tauri Shell build (unsigned)
+
+### Added
+- `scripts/build_sidecar.py`: "shell" preset → `tauri-shell/src-tauri/binaries`
+- `.github/workflows/tauri-shell-build.yml`: matrix macos/linux/windows, unsigned build
+  Steps: checkout + node 20 + rust stable + python 3.11 + sidecar + npm ci + tauri build
+  Artifacts: `tauri-shell-unsigned-{macos,linux,windows}` (30d); attach to GitHub Release on tag
+- `docs/DISTRIBUTION.md`: "CI builds Shell unsigned" section
+- `docs/RELEASE_CHECKLIST.md`: "Unsigned binaries on tag" section
+
+### Files
+`scripts/build_sidecar.py`, `.github/workflows/tauri-shell-build.yml`, `docs/DISTRIBUTION.md`, `docs/RELEASE_CHECKLIST.md`
+
+---
+
 ## [V1.7.2] — 2026-03-01 — UX polish (About dialog, shortcuts, wording)
 
 ### Added
