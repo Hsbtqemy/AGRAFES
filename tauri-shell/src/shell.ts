@@ -425,6 +425,128 @@ const SHELL_CSS = `
   }
   .shell-guide-reset:hover { color: #475569; }
 
+  /* ── Support menu ──────────────────────────────────────────── */
+  .shell-support-wrap {
+    position: relative;
+    display: inline-flex;
+  }
+  .shell-support-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 0.8rem;
+    color: #6c757d;
+    padding: 4px 8px;
+    border-radius: 4px;
+    transition: background 0.15s, color 0.15s;
+    white-space: nowrap;
+  }
+  .shell-support-btn:hover {
+    background: rgba(255,255,255,0.15);
+    color: #fff;
+  }
+  .shell-support-menu {
+    display: none;
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+    z-index: 2000;
+    min-width: 200px;
+    padding: 4px 0;
+  }
+  .shell-support-menu.open { display: block; }
+  .shell-support-menu-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    padding: 0.42rem 1rem;
+    font-size: 0.82rem;
+    cursor: pointer;
+    color: #1a1a2e;
+    white-space: nowrap;
+  }
+  .shell-support-menu-item:hover { background: #f0f4ff; }
+  .shell-support-menu-sep {
+    height: 1px;
+    background: #eee;
+    margin: 3px 0;
+  }
+  /* ── Diagnostics modal ──────────────────────────────────────── */
+  .shell-diag-box {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+    padding: 0;
+    min-width: 520px;
+    max-width: 680px;
+    max-height: 82vh;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    overflow: hidden;
+  }
+  .shell-diag-header {
+    padding: 1rem 1.25rem 0.75rem;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+  .shell-diag-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #1a1a2e;
+    flex: 1;
+  }
+  .shell-diag-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1rem 1.25rem;
+    font-size: 0.78rem;
+    font-family: monospace;
+    white-space: pre;
+    color: #2d3748;
+    background: #f8fafc;
+    line-height: 1.55;
+  }
+  .shell-diag-footer {
+    padding: 0.75rem 1.25rem;
+    border-top: 1px solid #eee;
+    display: flex;
+    gap: 0.5rem;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
+  .shell-diag-btn {
+    font-size: 0.8rem;
+    padding: 5px 14px;
+    border-radius: 5px;
+    cursor: pointer;
+    border: 1px solid #adb5bd;
+    background: #f8f9fa;
+    color: #495057;
+    transition: background 0.15s;
+  }
+  .shell-diag-btn:hover { background: #e9ecef; }
+  .shell-diag-btn-primary {
+    background: #2563eb;
+    color: #fff;
+    border-color: #2563eb;
+  }
+  .shell-diag-btn-primary:hover { background: #1d4ed8; }
+  .shell-diag-loading {
+    padding: 2rem;
+    text-align: center;
+    color: #6c757d;
+    font-size: 0.84rem;
+  }
+
   /* ── About + Shortcuts ──────────────────────────────────────── */
   .shell-about-btn, .shell-shortcuts-btn {
     background: none;
@@ -1074,8 +1196,9 @@ export async function initShell(): Promise<void> {
 
   _buildHeader();
   _installKeyboardShortcuts();
-  // Close DB menu when clicking outside
+  // Close DB menu and support menu when clicking outside
   document.addEventListener("click", _closeDbMenu);
+  document.addEventListener("click", _closeSupportMenu);
   document.body.dataset.mode = startMode;
   await _setMode(startMode);
 
@@ -1105,6 +1228,124 @@ function _injectCSS(): void {
 }
 
 // ─── Header ───────────────────────────────────────────────────────────────────
+
+// ─── Support menu ─────────────────────────────────────────────────────────────
+
+function _toggleSupportMenu(): void {
+  document.getElementById("shell-support-menu")?.classList.toggle("open");
+}
+
+function _closeSupportMenu(): void {
+  document.getElementById("shell-support-menu")?.classList.remove("open");
+}
+
+// ─── Diagnostics modal ────────────────────────────────────────────────────────
+
+function _openDiagnosticsModal(): void {
+  const existing = document.getElementById("shell-diag-modal");
+  if (existing) { existing.remove(); return; }
+
+  const modal = document.createElement("div");
+  modal.id = "shell-diag-modal";
+  modal.className = "shell-about-modal"; // reuse overlay style
+  modal.innerHTML = `
+    <div class="shell-diag-box" role="dialog" aria-modal="true" aria-label="Diagnostic système">
+      <div class="shell-diag-header">
+        <span class="shell-diag-title">🔍 Diagnostic système</span>
+        <button class="shell-about-close" id="shell-diag-close" aria-label="Fermer">✕</button>
+      </div>
+      <div class="shell-diag-body shell-diag-loading" id="shell-diag-body">
+        Collecte des informations…
+      </div>
+      <div class="shell-diag-footer" id="shell-diag-footer" style="display:none">
+        <button class="shell-diag-btn" id="shell-diag-copy">📋 Copier</button>
+        <button class="shell-diag-btn shell-diag-btn-primary" id="shell-diag-export">💾 Exporter…</button>
+        <button class="shell-diag-btn" id="shell-diag-close2">Fermer</button>
+      </div>
+    </div>
+  `;
+
+  modal.addEventListener("click", (e) => { if (e.target === modal) modal.remove(); });
+  modal.querySelector("#shell-diag-close")!.addEventListener("click", () => modal.remove());
+  modal.querySelector("#shell-diag-close2")!.addEventListener("click", () => modal.remove());
+  document.body.appendChild(modal);
+
+  const bodyEl = modal.querySelector<HTMLElement>("#shell-diag-body")!;
+  const footerEl = modal.querySelector<HTMLElement>("#shell-diag-footer")!;
+  let _lastDiagText = "";
+
+  // Close on Escape
+  const onKey = (e: KeyboardEvent): void => {
+    if (e.key === "Escape") { modal.remove(); document.removeEventListener("keydown", onKey); }
+  };
+  document.addEventListener("keydown", onKey);
+
+  // Collect async
+  void (async () => {
+    try {
+      const { collectDiagnostics, formatDiagnosticsText } = await import("./diagnostics.ts");
+      const diag = await collectDiagnostics({
+        currentDbPath: _currentDbPath,
+        sessionLog: _sessionLog,
+        logTailLines: 50,
+      });
+      _lastDiagText = formatDiagnosticsText(diag);
+      bodyEl.className = "shell-diag-body";
+      bodyEl.textContent = _lastDiagText;
+      footerEl.style.display = "";
+    } catch (err) {
+      bodyEl.className = "shell-diag-body";
+      bodyEl.textContent = `Erreur lors de la collecte :\n${String(err)}`;
+      footerEl.style.display = "";
+      _shellLog("error", "diagnostics", "Diagnostics collection failed", String(err));
+    }
+  })();
+
+  // Copy button
+  modal.querySelector("#shell-diag-copy")!.addEventListener("click", async () => {
+    if (!_lastDiagText) return;
+    try {
+      await navigator.clipboard.writeText(_lastDiagText);
+      _showToast("Diagnostic copié dans le presse-papiers", 2500);
+    } catch {
+      // Fallback: select all in pre
+      const range = document.createRange();
+      range.selectNodeContents(bodyEl);
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(range);
+      _showToast("Sélectionnez puis copiez (Ctrl/⌘+C)", 3000);
+    }
+    _shellLog("info", "diagnostics", "Diagnostic text copied to clipboard");
+  });
+
+  // Export button
+  modal.querySelector("#shell-diag-export")!.addEventListener("click", () => {
+    if (!_lastDiagText) return;
+    void _exportDiagnosticFile(_lastDiagText);
+  });
+}
+
+async function _exportDiagnosticFile(text: string): Promise<void> {
+  _shellLog("info", "diagnostics", "User requested diagnostic export");
+  try {
+    const { save } = await import("@tauri-apps/plugin-dialog");
+    const outPath = await save({
+      title: "Enregistrer le diagnostic AGRAFES",
+      defaultPath: `agrafes-diagnostic-${new Date().toISOString().slice(0, 10)}.txt`,
+      filters: [{ name: "Texte", extensions: ["txt"] }],
+    });
+    if (!outPath) return;
+
+    const { writeTextFile } = await import("@tauri-apps/plugin-fs");
+    await writeTextFile(outPath, text);
+    _showToast(`Diagnostic exporté → ${_pathLabel(outPath)}`, 4000);
+    _shellLog("info", "diagnostics", `Diagnostic written to ${outPath}`);
+  } catch (err) {
+    _showToast(`Erreur export diagnostic : ${String(err)}`, 5000);
+    _shellLog("error", "diagnostics", "Diagnostic export failed", String(err));
+  }
+}
 
 // ─── About dialog ─────────────────────────────────────────────────────────────
 
@@ -1245,6 +1486,43 @@ function _buildHeader(): void {
   aboutBtn.setAttribute("aria-label", "À propos d'AGRAFES");
   aboutBtn.addEventListener("click", () => _openAboutDialog());
   tabs.appendChild(aboutBtn);
+
+  // Support menu ("?" dropdown)
+  const supportWrap = document.createElement("div");
+  supportWrap.className = "shell-support-wrap";
+
+  const supportBtn = document.createElement("button");
+  supportBtn.className = "shell-support-btn";
+  supportBtn.id = "shell-support-btn";
+  supportBtn.textContent = "?";
+  supportBtn.title = "Aide & Support";
+  supportBtn.setAttribute("aria-label", "Aide & Support");
+  supportBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    _toggleSupportMenu();
+  });
+  supportWrap.appendChild(supportBtn);
+
+  const supportMenu = document.createElement("div");
+  supportMenu.className = "shell-support-menu";
+  supportMenu.id = "shell-support-menu";
+
+  const _mkSupportItem = (label: string, action: () => void): HTMLButtonElement => {
+    const btn = document.createElement("button");
+    btn.className = "shell-support-menu-item";
+    btn.textContent = label;
+    btn.addEventListener("click", () => { _closeSupportMenu(); action(); });
+    return btn;
+  };
+
+  supportMenu.appendChild(_mkSupportItem("🔍 Diagnostic système…", () => _openDiagnosticsModal()));
+  supportMenu.appendChild(_mkSupportItem("📋 Exporter logs…", () => void _exportLogBundle()));
+  supportMenu.appendChild((() => { const s = document.createElement("div"); s.className = "shell-support-menu-sep"; return s; })());
+  supportMenu.appendChild(_mkSupportItem("ⓘ À propos d'AGRAFES…", () => _openAboutDialog()));
+  supportMenu.appendChild(_mkSupportItem("⌨ Raccourcis clavier…", () => _openShortcutsPanel()));
+
+  supportWrap.appendChild(supportMenu);
+  tabs.appendChild(supportWrap);
 
   // DB zone (right-aligned via margin-left:auto in CSS)
   const dbZone = document.createElement("div");
