@@ -1,11 +1,11 @@
 <#
 .SYNOPSIS
-    Build the multicorpus sidecar and copy it into tauri-app/src-tauri/binaries/
-    for Windows (onedir format, per ADR-025).
+    Build the multicorpus sidecar for tauri-app (Windows).
 
 .DESCRIPTION
-    Calls scripts/build_sidecar.py with --format onedir --preset tauri, then
-    copies the resulting directory into tauri-app/src-tauri/binaries/.
+    Calls scripts/build_sidecar.py with the specified preset, then reads
+    sidecar-manifest.json to locate the actual executable — works with both
+    onefile and onedir outputs, without relying on target-triple heuristics.
 
 .PARAMETER Preset
     Build preset passed to build_sidecar.py (default: tauri)
@@ -20,31 +20,54 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# Repo root = two levels up from this script
-$RepoRoot = (Resolve-Path "$PSScriptRoot\..\.." ).Path
-$BinDir   = Join-Path $RepoRoot "tauri-app\src-tauri\binaries"
+$ScriptDir  = Split-Path -Parent $MyInvocation.MyCommand.Path
+$RepoRoot   = (Resolve-Path (Join-Path $ScriptDir ".." "..")).Path
 $BuildScript = Join-Path $RepoRoot "scripts\build_sidecar.py"
 
-Write-Host "==> Building sidecar (format=onedir, preset=$Preset) on Windows"
-python $BuildScript --format onedir --preset $Preset
+Write-Host "==> Building sidecar (preset=$Preset) ..."
+python $BuildScript --preset $Preset
 
-# Detect target triple
-$TargetTriple = (rustc --print host-tuple 2>$null).Trim()
-if (-not $TargetTriple) { $TargetTriple = "x86_64-pc-windows-msvc" }
-Write-Host "==> Target triple: $TargetTriple"
-
-$SrcDir  = Join-Path $RepoRoot "tauri\src-tauri\binaries\multicorpus-$TargetTriple"
-$DestDir = Join-Path $BinDir   "multicorpus-$TargetTriple"
-
-if (-not (Test-Path $SrcDir)) {
-    Write-Error "Expected onedir at $SrcDir"
+# ── Read manifest ──────────────────────────────────────────────────────────────
+$PresetMap = @{
+    "tauri"   = "tauri\src-tauri\binaries"
+    "fixture" = "tauri-fixture\src-tauri\binaries"
+    "shell"   = "tauri-shell\src-tauri\binaries"
+}
+if (-not $PresetMap.ContainsKey($Preset)) {
+    Write-Error "Unknown preset: $Preset"
     exit 1
 }
 
-if (Test-Path $DestDir) {
-    Remove-Item -Recurse -Force $DestDir
+$ManifestPath = Join-Path $RepoRoot $PresetMap[$Preset] "sidecar-manifest.json"
+if (-not (Test-Path $ManifestPath)) {
+    Write-Error "Manifest not found at: $ManifestPath"
+    exit 1
 }
 
-Copy-Item -Recurse $SrcDir $DestDir
-Write-Host "==> Copied onedir to $DestDir"
-Write-Host "==> Done. Sidecar ready in tauri-app/src-tauri/binaries/"
+$Manifest    = Get-Content $ManifestPath -Raw | ConvertFrom-Json
+$ExePath     = $Manifest.executable_path
+
+Write-Host "==> Manifest executable_path: $ExePath"
+
+# ── Verify the executable exists ──────────────────────────────────────────────
+if (Test-Path $ExePath -PathType Leaf) {
+    Write-Host "==> ✓ Sidecar binary (onefile): $ExePath"
+} elseif (Test-Path $ExePath -PathType Container) {
+    # onedir: find inner executable (same basename or "multicorpus.exe")
+    $BaseName  = Split-Path $ExePath -Leaf
+    $InnerExe  = Join-Path $ExePath "$BaseName.exe"
+    if (-not (Test-Path $InnerExe -PathType Leaf)) {
+        $InnerExe = Join-Path $ExePath "multicorpus.exe"
+    }
+    if (Test-Path $InnerExe -PathType Leaf) {
+        Write-Host "==> ✓ Sidecar binary (onedir): $InnerExe"
+    } else {
+        Write-Error "onedir present at $ExePath but inner executable not found"
+        exit 1
+    }
+} else {
+    Write-Error "executable_path does not exist: $ExePath"
+    exit 1
+}
+
+Write-Host "==> Done. Sidecar ready."

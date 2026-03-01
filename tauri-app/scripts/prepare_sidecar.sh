@@ -1,72 +1,84 @@
 #!/usr/bin/env bash
-# prepare_sidecar.sh — Build the multicorpus sidecar and copy it into
-# tauri-app/src-tauri/binaries/ following ADR-025 (macOS=onefile,
-# Linux=onedir, Windows=onedir).
+# prepare_sidecar.sh — Build the multicorpus sidecar for tauri-app.
 #
-# Usage (from repo root):
+# Reads sidecar-manifest.json (written by build_sidecar.py) to locate the
+# executable — works with both onefile (macOS) and onedir (Linux/Windows)
+# outputs, regardless of target-triple or filename heuristics.
+#
+# Usage (from repo root OR from tauri-app/):
 #   bash tauri-app/scripts/prepare_sidecar.sh [--preset tauri]
 #
-# The script calls scripts/build_sidecar.py (existing build tool) with the
-# correct format for the current OS, then copies/links the output into the
-# Tauri binaries directory expected by tauri.conf.json (externalBin).
-#
-# Output layout expected by Tauri:
-#   macOS/Linux onefile:
-#     src-tauri/binaries/multicorpus-<target-triple>
-#   Windows onedir:
-#     src-tauri/binaries/multicorpus-<target-triple>/  (directory)
-#   (Tauri bundles the onedir directory when externalBin is a directory)
-#
 # Prerequisites:
-#   pip install -e ".[packaging]"   (PyInstaller)
-#   rustc --print host-tuple        (for target triple detection)
-#
+#   pip install -e ".[packaging]"   (PyInstaller + project)
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-BINARIES_DIR="$REPO_ROOT/tauri-app/src-tauri/binaries"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 BUILD_SCRIPT="$REPO_ROOT/scripts/build_sidecar.py"
 
-OS_NAME="$(uname -s)"
+PRESET="tauri"
+for arg in "$@"; do
+  case "$arg" in
+    --preset=*) PRESET="${arg#--preset=}" ;;
+    --preset)   shift; PRESET="$1" ;;
+  esac
+done
 
-# Determine format per ADR-025
-if [[ "$OS_NAME" == "Darwin" ]]; then
-  FORMAT="onefile"
-else
-  FORMAT="onedir"
+echo "==> Building sidecar (preset=$PRESET) …"
+python "$BUILD_SCRIPT" --preset "$PRESET"
+
+# ── Read manifest ──────────────────────────────────────────────────────────────
+# build_sidecar.py writes sidecar-manifest.json into the preset's out directory.
+# We locate it by asking Python for the preset's out path.
+MANIFEST=$(python - <<EOF
+import json, sys, pathlib
+sys.path.insert(0, "$REPO_ROOT/scripts")
+# build_sidecar defines PRESET_OUT; we re-derive the manifest path here.
+preset = "$PRESET"
+presets = {
+    "tauri":   "tauri/src-tauri/binaries",
+    "fixture": "tauri-fixture/src-tauri/binaries",
+    "shell":   "tauri-shell/src-tauri/binaries",
+}
+out_rel = presets.get(preset)
+if not out_rel:
+    print(f"ERROR: unknown preset {preset!r}", file=sys.stderr)
+    sys.exit(1)
+manifest_path = pathlib.Path("$REPO_ROOT") / out_rel / "sidecar-manifest.json"
+if not manifest_path.exists():
+    print(f"ERROR: manifest not found at {manifest_path}", file=sys.stderr)
+    sys.exit(1)
+m = json.loads(manifest_path.read_text())
+print(m["executable_path"])
+EOF
+)
+
+if [[ -z "$MANIFEST" ]]; then
+  echo "ERROR: could not read executable_path from manifest" >&2
+  exit 1
 fi
 
-PRESET="${1:-tauri}"
+echo "==> Manifest executable_path: $MANIFEST"
 
-echo "==> Building sidecar (format=$FORMAT, preset=$PRESET) on $OS_NAME"
-python "$BUILD_SCRIPT" --format "$FORMAT" --preset "$PRESET"
-
-# Detect target triple for naming
-TARGET_TRIPLE="$(rustc --print host-tuple 2>/dev/null || echo "unknown")"
-echo "==> Target triple: $TARGET_TRIPLE"
-
-SRC_BINARY="$REPO_ROOT/tauri/src-tauri/binaries/multicorpus-$TARGET_TRIPLE"
-
-if [[ "$FORMAT" == "onefile" ]]; then
-  if [[ ! -f "$SRC_BINARY" ]]; then
-    echo "ERROR: Expected onefile binary at $SRC_BINARY" >&2
+# ── Verify the executable exists ──────────────────────────────────────────────
+if [[ -f "$MANIFEST" ]]; then
+  echo "==> ✓ Sidecar binary (onefile): $MANIFEST"
+elif [[ -d "$MANIFEST" ]]; then
+  # onedir: the directory itself is the artifact; find the inner executable
+  INNER_EXE="$MANIFEST/$(basename "$MANIFEST")"
+  if [[ ! -f "$INNER_EXE" ]]; then
+    # Fallback: look for any executable named "multicorpus" in the dir
+    INNER_EXE="$MANIFEST/multicorpus"
+  fi
+  if [[ -f "$INNER_EXE" ]]; then
+    echo "==> ✓ Sidecar binary (onedir): $INNER_EXE"
+  else
+    echo "ERROR: onedir present at $MANIFEST but could not find inner executable" >&2
     exit 1
   fi
-  cp -v "$SRC_BINARY" "$BINARIES_DIR/multicorpus-$TARGET_TRIPLE"
-  chmod +x "$BINARIES_DIR/multicorpus-$TARGET_TRIPLE"
-  echo "==> Copied onefile binary to $BINARIES_DIR/multicorpus-$TARGET_TRIPLE"
 else
-  # onedir: copy whole directory
-  SRC_DIR="${SRC_BINARY}"
-  if [[ ! -d "$SRC_DIR" ]]; then
-    echo "ERROR: Expected onedir directory at $SRC_DIR" >&2
-    exit 1
-  fi
-  DEST_DIR="$BINARIES_DIR/multicorpus-$TARGET_TRIPLE"
-  rm -rf "$DEST_DIR"
-  cp -rv "$SRC_DIR" "$DEST_DIR"
-  chmod +x "$DEST_DIR/multicorpus"
-  echo "==> Copied onedir to $DEST_DIR"
+  echo "ERROR: executable_path does not exist: $MANIFEST" >&2
+  exit 1
 fi
 
-echo "==> Done. Sidecar ready in tauri-app/src-tauri/binaries/"
+echo "==> Done. Sidecar ready."
