@@ -16,7 +16,9 @@
  *   #app           padding-top:44px — module mount point; replaced on each navigation
  */
 
-import { open as dialogOpen } from "@tauri-apps/plugin-dialog";
+import { open as dialogOpen, save as dialogSave } from "@tauri-apps/plugin-dialog";
+import { exists, writeFile, mkdir } from "@tauri-apps/plugin-fs";
+import { appDataDir } from "@tauri-apps/api/path";
 import type { ShellContext } from "./context.ts";
 
 // ─── CSS ─────────────────────────────────────────────────────────────────────
@@ -137,6 +139,73 @@ const SHELL_CSS = `
     border-color: rgba(255,255,255,0.35);
   }
 
+  /* ── DB action dropdown menu ────────────────────────────────── */
+  .shell-db-menu-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+  .shell-db-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    background: #fff;
+    border: 1px solid rgba(0,0,0,0.12);
+    border-radius: 6px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.20);
+    min-width: 150px;
+    z-index: 9999;
+    overflow: hidden;
+    display: none;
+  }
+  .shell-db-menu.open { display: block; }
+  .shell-db-menu-item {
+    display: block;
+    width: 100%;
+    padding: 9px 16px;
+    background: none;
+    border: none;
+    text-align: left;
+    font-size: 0.83rem;
+    cursor: pointer;
+    color: #1a1a2e;
+    white-space: nowrap;
+    transition: background 0.12s;
+  }
+  .shell-db-menu-item:hover { background: #f0f2f5; }
+  .shell-db-menu-sep { height: 1px; background: #e9ecef; margin: 2px 0; }
+
+  /* ── DB init error banner (V0.5) ────────────────────────────── */
+  .shell-init-error {
+    position: fixed;
+    top: 44px;
+    left: 0;
+    right: 0;
+    background: #fff3cd;
+    border-bottom: 2px solid #e6a817;
+    z-index: 9990;
+    padding: 8px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    font-size: 0.84rem;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+  }
+  .shell-init-error-icon { font-size: 1.1rem; color: #856404; flex-shrink: 0; }
+  .shell-init-error-msg { font-weight: 600; color: #856404; flex-shrink: 0; }
+  .shell-init-error-detail {
+    font-family: ui-monospace, monospace;
+    font-size: 0.78rem;
+    color: #555;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 500px;
+  }
+  .shell-init-error-btns { display: flex; gap: 6px; margin-left: auto; flex-shrink: 0; }
+
   /* ── Home screen ───────────────────────────────────────────── */
   .shell-home-wrap {
     display: flex;
@@ -208,9 +277,34 @@ const SHELL_CSS = `
     background: #d1fae5;
     color: #145a38;
   }
+  .shell-card-publish:hover {
+    box-shadow: 0 6px 20px rgba(130,80,20,0.22);
+    border-color: #7c4a00;
+  }
+  .shell-card-badge-publish {
+    background: #fff3cd;
+    color: #7c4a00;
+  }
   .shell-card-icon { font-size: 2.2rem; margin-bottom: 0.4rem; }
   .shell-card h2 { font-size: 1.05rem; font-weight: 600; margin: 0 0 0.4rem; color: #1a1a2e; }
   .shell-card p { font-size: 0.82rem; color: #6c757d; margin: 0; line-height: 1.4; }
+
+  /* ── Presets button in header ───────────────────────────────── */
+  .shell-presets-btn {
+    background: none;
+    border: 1px solid rgba(255,255,255,0.25);
+    color: rgba(255,255,255,0.7);
+    font-size: 0.78rem;
+    padding: 3px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    white-space: nowrap;
+  }
+  .shell-presets-btn:hover {
+    background: rgba(255,255,255,0.12);
+    color: #fff;
+  }
 
   /* ── Loading indicator ─────────────────────────────────────── */
   .shell-loading {
@@ -235,6 +329,54 @@ const SHELL_CSS = `
     40%           { opacity: 1;    transform: scale(1.15); }
   }
 
+  /* ── Home demo section ─────────────────────────────────────── */
+  .shell-demo-section {
+    margin-top: 2rem;
+    text-align: center;
+  }
+  .shell-demo-hint {
+    font-size: 0.82rem;
+    color: #6c757d;
+    margin: 0 0 0.75rem;
+  }
+  .shell-demo-card {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.75rem;
+    background: #fff;
+    border: 1px solid #dde1e8;
+    border-radius: 8px;
+    padding: 0.75rem 1.25rem;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    font-size: 0.88rem;
+    color: #1a1a2e;
+  }
+  .shell-demo-icon { font-size: 1.4rem; }
+  .shell-demo-label { font-weight: 500; }
+  .shell-demo-btns { display: flex; gap: 0.4rem; margin-left: 0.5rem; }
+  .shell-demo-btn {
+    font-size: 0.78rem;
+    padding: 4px 10px;
+    border-radius: 5px;
+    border: 1px solid;
+    cursor: pointer;
+    transition: background 0.15s;
+    white-space: nowrap;
+  }
+  .shell-demo-btn-install {
+    background: #f0f2f5;
+    border-color: #adb5bd;
+    color: #495057;
+  }
+  .shell-demo-btn-install:hover { background: #e2e6ea; }
+  .shell-demo-btn-install:disabled { opacity: 0.55; cursor: not-allowed; }
+  .shell-demo-btn-open {
+    background: #2c5f9e;
+    border-color: #2c5f9e;
+    color: #fff;
+  }
+  .shell-demo-btn-open:hover { background: #1e4a80; border-color: #1e4a80; }
+
   /* ── Toast ─────────────────────────────────────────────────── */
   .shell-toast {
     position: fixed;
@@ -258,14 +400,46 @@ const SHELL_CSS = `
   }
 `;
 
+// ─── Demo corpus ──────────────────────────────────────────────────────────────
+
+const DEMO_FILENAME  = "agrafes_demo.db";
+const DEMO_ASSET_URL = "/demo/agrafes_demo.db"; // served from tauri-shell/public/
+
+async function _getDemoDbPath(): Promise<string> {
+  const dir = await appDataDir();
+  const sep = dir.includes("/") ? "/" : "\\";
+  return `${dir}${sep}${DEMO_FILENAME}`;
+}
+
+async function _isDemoInstalled(): Promise<boolean> {
+  try {
+    const p = await _getDemoDbPath();
+    return await exists(p);
+  } catch {
+    return false;
+  }
+}
+
+async function _installDemo(): Promise<void> {
+  const demoPath = await _getDemoDbPath();
+  const dir = await appDataDir();
+  if (!(await exists(dir))) await mkdir(dir, { recursive: true });
+  const resp = await window.fetch(DEMO_ASSET_URL);
+  if (!resp.ok) throw new Error(`Impossible de charger la démo (${resp.status})`);
+  const bytes = new Uint8Array(await resp.arrayBuffer());
+  await writeFile(demoPath, bytes);
+}
+
 // ─── Storage keys ─────────────────────────────────────────────────────────────
 
-const LS_MODE  = "agrafes.lastMode";
-const LS_DB    = "agrafes.lastDbPath";
+const LS_MODE           = "agrafes.lastMode";
+const LS_DB             = "agrafes.lastDbPath";
+const LS_PRESETS_GLOBAL = "agrafes.presets.global";
+const LS_PRESETS_PREP   = "agrafes.prep.presets"; // source for migration
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
-type Mode = "home" | "explorer" | "constituer";
+type Mode = "home" | "explorer" | "constituer" | "publish";
 
 let _currentMode: Mode = "home";
 let _currentDbPath: string | null = null;
@@ -289,7 +463,7 @@ function _makeContext(): ShellContext {
 
 function _loadPersisted(): { mode: Mode; dbPath: string | null } {
   const raw = localStorage.getItem(LS_MODE);
-  const mode: Mode = (raw === "explorer" || raw === "constituer" || raw === "home")
+  const mode: Mode = (raw === "explorer" || raw === "constituer" || raw === "home" || raw === "publish")
     ? raw
     : "home";
   const dbPath = localStorage.getItem(LS_DB) ?? null;
@@ -307,12 +481,12 @@ function _persist(): void {
 function _resolveDeepLink(): Mode | null {
   // Check location.hash: #explorer, #constituer, #home
   const hash = location.hash.replace(/^#/, "").trim().toLowerCase();
-  if (hash === "explorer" || hash === "constituer" || hash === "home") return hash as Mode;
+  if (hash === "explorer" || hash === "constituer" || hash === "home" || hash === "publish") return hash as Mode;
 
   // Check ?mode= query param
   const params = new URLSearchParams(location.search);
   const q = (params.get("mode") ?? "").trim().toLowerCase();
-  if (q === "explorer" || q === "constituer" || q === "home") return q as Mode;
+  if (q === "explorer" || q === "constituer" || q === "home" || q === "publish") return q as Mode;
 
   return null;
 }
@@ -332,6 +506,8 @@ export async function initShell(): Promise<void> {
 
   _buildHeader();
   _installKeyboardShortcuts();
+  // Close DB menu when clicking outside
+  document.addEventListener("click", _closeDbMenu);
   document.body.dataset.mode = startMode;
   await _setMode(startMode);
 }
@@ -366,6 +542,14 @@ function _buildHeader(): void {
   tabs.appendChild(_makeTab("Constituer", "⌘2", "constituer"));
   header.appendChild(tabs);
 
+  // Presets button
+  const presetsBtn = document.createElement("button");
+  presetsBtn.className = "shell-presets-btn";
+  presetsBtn.textContent = "⚙ Presets";
+  presetsBtn.title = "Gérer les presets globaux (langues, alignement, curation)";
+  presetsBtn.addEventListener("click", () => _openPresetsModal());
+  tabs.appendChild(presetsBtn);
+
   // DB zone (right-aligned via margin-left:auto in CSS)
   const dbZone = document.createElement("div");
   dbZone.className = "shell-db-zone";
@@ -376,12 +560,39 @@ function _buildHeader(): void {
   badge.textContent = _dbBadgeText();
   dbZone.appendChild(badge);
 
-  const btn = document.createElement("button");
-  btn.id = "shell-db-btn";
-  btn.className = "shell-db-btn";
-  btn.textContent = "Changer\u2026";
-  btn.addEventListener("click", () => { void _onChangeDb(); });
-  dbZone.appendChild(btn);
+  // Dropdown menu: Ouvrir… / Créer…
+  const menuWrap = document.createElement("div");
+  menuWrap.className = "shell-db-menu-wrap";
+
+  const menuTrigger = document.createElement("button");
+  menuTrigger.id = "shell-db-btn";
+  menuTrigger.className = "shell-db-btn";
+  menuTrigger.textContent = "DB \u25be";
+  menuTrigger.addEventListener("click", (e) => { e.stopPropagation(); _toggleDbMenu(); });
+  menuWrap.appendChild(menuTrigger);
+
+  const menu = document.createElement("div");
+  menu.id = "shell-db-menu";
+  menu.className = "shell-db-menu";
+
+  const itemOpen = document.createElement("button");
+  itemOpen.className = "shell-db-menu-item";
+  itemOpen.textContent = "Ouvrir\u2026";
+  itemOpen.addEventListener("click", () => { _closeDbMenu(); void _onChangeDb(); });
+
+  const sep = document.createElement("div");
+  sep.className = "shell-db-menu-sep";
+
+  const itemCreate = document.createElement("button");
+  itemCreate.className = "shell-db-menu-item";
+  itemCreate.textContent = "Cr\u00e9er\u2026";
+  itemCreate.addEventListener("click", () => { _closeDbMenu(); void _onCreateDb(); });
+
+  menu.appendChild(itemOpen);
+  menu.appendChild(sep);
+  menu.appendChild(itemCreate);
+  menuWrap.appendChild(menu);
+  dbZone.appendChild(menuWrap);
 
   header.appendChild(dbZone);
 }
@@ -413,7 +624,126 @@ function _updateDbBadge(): void {
   if (badge) badge.textContent = _dbBadgeText();
 }
 
-// ─── DB change ────────────────────────────────────────────────────────────────
+// ─── Utilities ────────────────────────────────────────────────────────────────
+
+function _escHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// ─── DB menu helpers ──────────────────────────────────────────────────────────
+
+function _toggleDbMenu(): void {
+  document.getElementById("shell-db-menu")?.classList.toggle("open");
+}
+
+function _closeDbMenu(): void {
+  document.getElementById("shell-db-menu")?.classList.remove("open");
+}
+
+// ─── DB change / create ───────────────────────────────────────────────────────
+
+async function _onCreateDb(): Promise<void> {
+  let savePath: string | null;
+  try {
+    savePath = await dialogSave({
+      title: "Créer une nouvelle base de données AGRAFES",
+      filters: [{ name: "SQLite", extensions: ["db"] }],
+      defaultPath: "nouveau_corpus.db",
+    });
+  } catch {
+    return;
+  }
+  if (!savePath) return;
+
+  // Ensure .db extension
+  if (!/\.(db|sqlite|sqlite3)$/i.test(savePath)) savePath += ".db";
+
+  _currentDbPath = savePath;
+  _persist();
+  _updateDbBadge();
+  _dbListeners.forEach(cb => cb(_currentDbPath));
+  _closeDbMenu();
+
+  // Immediate sidecar init (starts sidecar + applies migrations)
+  await _initDb(savePath);
+
+  // Re-mount if module active so module uses the new DB
+  if (_currentMode !== "home") {
+    await _setMode(_currentMode);
+  }
+}
+
+// ─── DB immediate init ────────────────────────────────────────────────────────
+
+async function _initDb(dbPath: string): Promise<void> {
+  const btn = document.getElementById("shell-db-btn") as HTMLButtonElement | null;
+  if (btn) { btn.textContent = "Initialisation\u2026"; btn.disabled = true; }
+  _clearInitError();
+
+  try {
+    // Dynamic import keeps sidecar logic in the explorer chunk (lazy-loaded)
+    const { ensureRunning } = await import("../../tauri-app/src/lib/sidecarClient.ts");
+    await ensureRunning(dbPath);
+    _showToast("DB initialis\u00e9e \u2713", 3000);
+  } catch (err) {
+    _showInitError(dbPath, String(err));
+  } finally {
+    if (btn) { btn.textContent = "DB \u25be"; btn.disabled = false; }
+  }
+}
+
+function _showInitError(dbPath: string, errorMsg: string): void {
+  _clearInitError();
+
+  const banner = document.createElement("div");
+  banner.id = "shell-init-error";
+  banner.className = "shell-init-error";
+
+  const icon = document.createElement("span");
+  icon.className = "shell-init-error-icon";
+  icon.textContent = "\u26a0";
+
+  const msg = document.createElement("span");
+  msg.className = "shell-init-error-msg";
+  msg.textContent = "Impossible d\u2019initialiser la DB";
+
+  const detail = document.createElement("code");
+  detail.className = "shell-init-error-detail";
+  detail.textContent = errorMsg;
+
+  const btns = document.createElement("div");
+  btns.className = "shell-init-error-btns";
+
+  const retryBtn = document.createElement("button");
+  retryBtn.className = "shell-db-btn";
+  retryBtn.textContent = "R\u00e9essayer";
+  retryBtn.addEventListener("click", () => { _clearInitError(); void _initDb(dbPath); });
+
+  const changeBtn = document.createElement("button");
+  changeBtn.className = "shell-db-btn";
+  changeBtn.textContent = "Choisir un autre fichier\u2026";
+  changeBtn.addEventListener("click", () => { _clearInitError(); void _onCreateDb(); });
+
+  const dismissBtn = document.createElement("button");
+  dismissBtn.className = "shell-db-btn";
+  dismissBtn.textContent = "\u2715";
+  dismissBtn.title = "Fermer";
+  dismissBtn.addEventListener("click", _clearInitError);
+
+  btns.appendChild(retryBtn);
+  btns.appendChild(changeBtn);
+  btns.appendChild(dismissBtn);
+
+  banner.appendChild(icon);
+  banner.appendChild(msg);
+  banner.appendChild(detail);
+  banner.appendChild(btns);
+  document.body.appendChild(banner);
+}
+
+function _clearInitError(): void {
+  document.getElementById("shell-init-error")?.remove();
+}
 
 async function _onChangeDb(): Promise<void> {
   let picked: string | string[] | null;
@@ -477,6 +807,9 @@ async function _setMode(mode: Mode): Promise<void> {
       const fresh = _freshContainer();
       await mod.mount(fresh, ctx);
       _currentDispose = () => mod.dispose();
+    } else if (mode === "publish") {
+      const fresh = _freshContainer();
+      await _renderPublicationWizard(fresh);
     } else {
       const mod = await import("./modules/constituerModule.ts");
       _freshContainer(); // swap out spinner; prep finds #app by id
@@ -503,6 +836,455 @@ function _freshContainer(): HTMLElement {
   return fresh;
 }
 
+// ─── Global Presets Store ─────────────────────────────────────────────────────
+
+interface GlobalPreset {
+  id: string;
+  name: string;
+  description?: string;
+  languages?: string[];
+  pivot_language?: string;
+  alignment_strategy?: string;
+  curation_preset?: string;
+  created_at: number;
+}
+
+function _loadGlobalPresets(): GlobalPreset[] {
+  try {
+    const raw = localStorage.getItem(LS_PRESETS_GLOBAL);
+    return raw ? (JSON.parse(raw) as GlobalPreset[]) : [];
+  } catch { return []; }
+}
+
+function _saveGlobalPresets(presets: GlobalPreset[]): void {
+  try { localStorage.setItem(LS_PRESETS_GLOBAL, JSON.stringify(presets)); } catch { /* */ }
+}
+
+/** Migrate presets from tauri-prep's store into global store (additive, no overwrite). */
+function _migratePresetsFromPrep(): number {
+  try {
+    const raw = localStorage.getItem(LS_PRESETS_PREP);
+    if (!raw) return 0;
+    const prepPresets = JSON.parse(raw) as GlobalPreset[];
+    const existing = _loadGlobalPresets();
+    const existingIds = new Set(existing.map(p => p.id));
+    const toAdd = prepPresets.filter(p => !existingIds.has(p.id));
+    if (toAdd.length === 0) return 0;
+    _saveGlobalPresets([...existing, ...toAdd]);
+    return toAdd.length;
+  } catch { return 0; }
+}
+
+function _openPresetsModal(): void {
+  const existing = document.getElementById("shell-presets-overlay");
+  if (existing) { existing.remove(); return; }
+
+  const overlay = document.createElement("div");
+  overlay.id = "shell-presets-overlay";
+  overlay.style.cssText = [
+    "position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:50000",
+    "display:flex;align-items:center;justify-content:center",
+  ].join(";");
+
+  const modal = document.createElement("div");
+  modal.style.cssText = [
+    "background:#fff;border-radius:10px;width:540px;max-width:95vw;max-height:80vh",
+    "display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,0.22)",
+  ].join(";");
+
+  const _refresh = (): void => {
+    const presets = _loadGlobalPresets();
+    listEl.innerHTML = presets.length === 0
+      ? `<p style="color:#6c757d;font-size:0.85rem;padding:0.5rem 0">Aucun preset global. Créez-en dans Constituer (tab Actions) puis migrez ici.</p>`
+      : presets.map(p => `
+          <div class="shell-preset-row" data-id="${p.id}" style="display:flex;align-items:center;gap:0.5rem;padding:0.4rem 0;border-bottom:1px solid #eee;font-size:0.83rem">
+            <div style="flex:1">
+              <span style="font-weight:600">${_esc(p.name)}</span>
+              ${p.description ? `<span style="color:#6c757d;margin-left:0.4rem">${_esc(p.description)}</span>` : ""}
+              <div style="font-size:0.75rem;color:#adb5bd">
+                ${p.languages?.join(", ") ?? ""}${p.alignment_strategy ? ` · ${p.alignment_strategy}` : ""}
+              </div>
+            </div>
+            <button class="shell-preset-del" data-id="${p.id}" style="border:none;background:none;color:#c0392b;cursor:pointer;font-size:0.95rem;padding:2px 5px" title="Supprimer">✕</button>
+          </div>
+        `).join("");
+    listEl.querySelectorAll(".shell-preset-del").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        const id = (e.currentTarget as HTMLElement).dataset.id!;
+        const updated = _loadGlobalPresets().filter(p => p.id !== id);
+        _saveGlobalPresets(updated);
+        _refresh();
+      });
+    });
+  };
+
+  modal.innerHTML = `
+    <div style="display:flex;align-items:center;padding:1rem 1.2rem;border-bottom:1px solid #eee">
+      <h3 style="margin:0;font-size:1rem;font-weight:700;flex:1">Presets globaux</h3>
+      <button id="shell-presets-close" style="border:none;background:none;cursor:pointer;font-size:1.2rem;color:#6c757d">✕</button>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:0.75rem 1.2rem">
+      <div id="shell-preset-list"></div>
+    </div>
+    <div style="padding:0.75rem 1.2rem;border-top:1px solid #eee;display:flex;gap:0.5rem;flex-wrap:wrap">
+      <button id="shell-presets-migrate" style="font-size:0.8rem;padding:5px 10px;border:1px solid #adb5bd;border-radius:5px;background:#f8f9fa;cursor:pointer">
+        ↓ Migrer depuis Constituer
+      </button>
+      <button id="shell-presets-export" style="font-size:0.8rem;padding:5px 10px;border:1px solid #adb5bd;border-radius:5px;background:#f8f9fa;cursor:pointer">
+        ↑ Exporter JSON
+      </button>
+      <label id="shell-presets-import-label" style="font-size:0.8rem;padding:5px 10px;border:1px solid #adb5bd;border-radius:5px;background:#f8f9fa;cursor:pointer">
+        ↓ Importer JSON
+        <input id="shell-presets-import-file" type="file" accept=".json" style="display:none">
+      </label>
+    </div>
+  `;
+
+  const listEl = modal.querySelector<HTMLElement>("#shell-preset-list")!;
+  _refresh();
+
+  modal.querySelector("#shell-presets-close")!.addEventListener("click", () => overlay.remove());
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+
+  modal.querySelector("#shell-presets-migrate")!.addEventListener("click", () => {
+    const n = _migratePresetsFromPrep();
+    _showToast(n > 0 ? `${n} preset(s) migré(s) depuis Constituer` : "Aucun nouveau preset à migrer");
+    _refresh();
+  });
+
+  modal.querySelector("#shell-presets-export")!.addEventListener("click", () => {
+    const presets = _loadGlobalPresets();
+    const blob = new Blob([JSON.stringify(presets, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `agrafes_presets_${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+  });
+
+  modal.querySelector("#shell-presets-import-file")!.addEventListener("change", (e) => {
+    const file = (e.target as HTMLInputElement).files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const imported = JSON.parse(reader.result as string) as GlobalPreset[];
+        const existing = _loadGlobalPresets();
+        const existingIds = new Set(existing.map(p => p.id));
+        const toAdd = imported.filter(p => p.id && p.name && !existingIds.has(p.id));
+        _saveGlobalPresets([...existing, ...toAdd]);
+        _showToast(`${toAdd.length} preset(s) importé(s)`);
+        _refresh();
+      } catch { _showToast("Fichier JSON invalide", 3000); }
+    };
+    reader.readAsText(file);
+  });
+
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+}
+
+function _esc(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+// ─── Publication Wizard ───────────────────────────────────────────────────────
+
+type WizardStep = 1 | 2 | 3 | 4 | 5;
+
+interface WizardState {
+  dbPath: string;
+  docIds: number[] | null;       // null = all docs
+  docs: Array<{ doc_id: number; title: string; language: string }>;
+  includeStructure: boolean;
+  includeAlignment: boolean;
+  statusFilter: string[];
+  step: WizardStep;
+  jobId: string | null;
+  result: Record<string, unknown> | null;
+  error: string | null;
+}
+
+async function _renderPublicationWizard(container: HTMLElement): Promise<void> {
+  if (!_currentDbPath) {
+    container.innerHTML = `
+      <div style="padding:2rem;text-align:center;color:#c0392b">
+        <p>Aucune base de données sélectionnée.</p>
+        <button onclick="history.back()" style="padding:6px 14px;border-radius:5px;border:1px solid #adb5bd;background:#f8f9fa;cursor:pointer;margin-top:1rem">← Retour</button>
+      </div>`;
+    return;
+  }
+
+  const state: WizardState = {
+    dbPath: _currentDbPath,
+    docIds: null,
+    docs: [],
+    includeStructure: false,
+    includeAlignment: false,
+    statusFilter: ["accepted"],
+    step: 1,
+    jobId: null,
+    result: null,
+    error: null,
+  };
+
+  const wrap = document.createElement("div");
+  wrap.style.cssText = "max-width:700px;margin:2rem auto;padding:0 1rem;font-family:inherit";
+
+  // Progress bar
+  const renderProgress = (step: WizardStep): string => {
+    const steps = ["DB", "Documents", "Options", "Exporter", "Résumé"];
+    return `<div style="display:flex;gap:0;margin-bottom:1.5rem;border-radius:6px;overflow:hidden;border:1px solid #dde1e8">
+      ${steps.map((s, i) => {
+        const n = (i + 1) as WizardStep;
+        const active = n === step;
+        const done = n < step;
+        const bg = done ? "#1a7f4e" : active ? "#2c5f9e" : "#f8f9fa";
+        const color = (done || active) ? "#fff" : "#6c757d";
+        return `<div style="flex:1;padding:0.5rem;text-align:center;background:${bg};color:${color};font-size:0.78rem;font-weight:${active ? 700 : 400};border-right:1px solid #dde1e8">${done ? "✓ " : ""}${s}</div>`;
+      }).join("")}
+    </div>`;
+  };
+
+  const render = async (): Promise<void> => {
+    wrap.innerHTML = `
+      <h2 style="font-size:1.3rem;font-weight:700;margin:0 0 1rem;color:#1a1a2e">
+        📦 Assistant de publication
+      </h2>
+      ${renderProgress(state.step)}
+      <div id="wizard-body"></div>
+    `;
+
+    const body = wrap.querySelector<HTMLElement>("#wizard-body")!;
+
+    if (state.step === 1) {
+      body.innerHTML = `
+        <div style="background:#fff;border-radius:8px;border:1px solid #dde1e8;padding:1.5rem">
+          <h3 style="margin:0 0 1rem;font-size:1rem">Base de données</h3>
+          <p style="background:#f0fff4;border:1px solid #c6efce;border-radius:5px;padding:0.6rem 0.9rem;font-size:0.85rem;color:#1a7f4e;font-family:ui-monospace,monospace;word-break:break-all">
+            ✓ ${_esc(state.dbPath)}
+          </p>
+          <div style="margin-top:1rem;display:flex;justify-content:flex-end">
+            <button id="wiz-next1" class="wiz-btn-primary">Suivant → Documents</button>
+          </div>
+        </div>`;
+      body.querySelector("#wiz-next1")!.addEventListener("click", async () => {
+        state.step = 2;
+        // Load docs
+        try {
+          const { ensureRunning, listDocuments } = await import("../../tauri-app/src/lib/sidecarClient.ts");
+          const conn = await ensureRunning(state.dbPath);
+          state.docs = (await listDocuments(conn)) as WizardState["docs"];
+        } catch (e) {
+          state.error = String(e);
+        }
+        await render();
+      });
+
+    } else if (state.step === 2) {
+      const allOpt = `<option value="__all__" selected>— Tous les documents (${state.docs.length}) —</option>`;
+      const docOpts = state.docs.map(d =>
+        `<option value="${d.doc_id}">#${d.doc_id} ${_esc(d.title)} (${_esc(d.language)})</option>`
+      ).join("");
+      body.innerHTML = `
+        <div style="background:#fff;border-radius:8px;border:1px solid #dde1e8;padding:1.5rem">
+          <h3 style="margin:0 0 0.75rem;font-size:1rem">Sélection des documents</h3>
+          ${state.error ? `<p style="color:#c0392b;font-size:0.83rem">${_esc(state.error)}</p>` : ""}
+          <label style="font-size:0.84rem">Documents à inclure
+            <select id="wiz-doc-sel" multiple style="display:block;width:100%;height:140px;margin-top:0.3rem;border:1px solid #dde1e8;border-radius:5px;padding:0.3rem">
+              ${allOpt}${docOpts}
+            </select>
+          </label>
+          <p style="font-size:0.77rem;color:#6c757d;margin-top:0.3rem">Ctrl+clic pour sélection multiple. Laisser "Tous" pour exporter l'ensemble.</p>
+          <div style="margin-top:1rem;display:flex;justify-content:space-between">
+            <button id="wiz-back2" class="wiz-btn-sec">← Retour</button>
+            <button id="wiz-next2" class="wiz-btn-primary">Suivant → Options</button>
+          </div>
+        </div>`;
+      body.querySelector("#wiz-back2")!.addEventListener("click", () => { state.step = 1; void render(); });
+      body.querySelector("#wiz-next2")!.addEventListener("click", () => {
+        const sel = body.querySelector<HTMLSelectElement>("#wiz-doc-sel")!;
+        const vals = Array.from(sel.selectedOptions).map(o => o.value);
+        state.docIds = vals.includes("__all__") ? null : vals.map(Number);
+        state.step = 3;
+        void render();
+      });
+
+    } else if (state.step === 3) {
+      const docLabel = state.docIds === null
+        ? `Tous (${state.docs.length}) documents`
+        : `${state.docIds.length} document(s) sélectionné(s)`;
+      body.innerHTML = `
+        <div style="background:#fff;border-radius:8px;border:1px solid #dde1e8;padding:1.5rem">
+          <h3 style="margin:0 0 0.75rem;font-size:1rem">Options d'export</h3>
+          <p style="font-size:0.82rem;color:#6c757d;margin:0 0 1rem">Portée: <strong>${_esc(docLabel)}</strong></p>
+          <div style="display:flex;flex-direction:column;gap:0.6rem;font-size:0.84rem">
+            <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer">
+              <input type="checkbox" id="wiz-include-struct" ${state.includeStructure ? "checked" : ""}>
+              Inclure les unités structurelles (<code>&lt;head&gt;</code>) dans le TEI
+            </label>
+            <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer">
+              <input type="checkbox" id="wiz-include-align" ${state.includeAlignment ? "checked" : ""}>
+              Inclure les alignements (<code>&lt;linkGrp&gt;</code>)
+            </label>
+            <label style="display:flex;align-items:center;gap:0.5rem">
+              Filtre de statut des alignements:
+              <select id="wiz-status-filter" style="padding:3px 6px;border:1px solid #dde1e8;border-radius:4px">
+                <option value="accepted" ${state.statusFilter.includes("accepted") && state.statusFilter.length === 1 ? "selected" : ""}>accepted seulement</option>
+                <option value="accepted_unreviewed" ${state.statusFilter.length > 1 ? "selected" : ""}>accepted + non-révisés</option>
+                <option value="all">tous</option>
+              </select>
+            </label>
+          </div>
+          <div style="margin-top:1.25rem;display:flex;justify-content:space-between">
+            <button id="wiz-back3" class="wiz-btn-sec">← Retour</button>
+            <button id="wiz-next3" class="wiz-btn-primary">Suivant → Exporter</button>
+          </div>
+        </div>`;
+      body.querySelector("#wiz-back3")!.addEventListener("click", () => { state.step = 2; void render(); });
+      body.querySelector("#wiz-next3")!.addEventListener("click", () => {
+        state.includeStructure = (body.querySelector<HTMLInputElement>("#wiz-include-struct")!).checked;
+        state.includeAlignment = (body.querySelector<HTMLInputElement>("#wiz-include-align")!).checked;
+        const sf = (body.querySelector<HTMLSelectElement>("#wiz-status-filter")!).value;
+        state.statusFilter = sf === "accepted" ? ["accepted"]
+          : sf === "accepted_unreviewed" ? ["accepted", "unreviewed"]
+          : ["all"];
+        state.step = 4;
+        void render();
+      });
+
+    } else if (state.step === 4) {
+      const docLabel = state.docIds === null
+        ? `Tous (${state.docs.length}) documents`
+        : `${state.docIds.length} document(s)`;
+      body.innerHTML = `
+        <div style="background:#fff;border-radius:8px;border:1px solid #dde1e8;padding:1.5rem">
+          <h3 style="margin:0 0 0.75rem;font-size:1rem">Export du package</h3>
+          <div style="font-size:0.83rem;color:#495057;margin-bottom:1rem;line-height:1.6">
+            <b>Portée:</b> ${_esc(docLabel)}<br>
+            <b>Structure:</b> ${state.includeStructure ? "oui" : "non"} &nbsp;
+            <b>Alignements:</b> ${state.includeAlignment ? "oui" : "non"} &nbsp;
+            <b>Statut:</b> ${state.statusFilter.join(", ")}
+          </div>
+          <div id="wiz-export-status" style="margin-bottom:1rem;font-size:0.84rem;color:#6c757d">
+            Cliquez "Choisir fichier et lancer" pour démarrer.
+          </div>
+          <div style="display:flex;justify-content:space-between">
+            <button id="wiz-back4" class="wiz-btn-sec">← Retour</button>
+            <button id="wiz-launch" class="wiz-btn-primary">Choisir fichier et lancer…</button>
+          </div>
+        </div>`;
+
+      body.querySelector("#wiz-back4")!.addEventListener("click", () => { state.step = 3; void render(); });
+      body.querySelector("#wiz-launch")!.addEventListener("click", async () => {
+        const statusEl = body.querySelector<HTMLElement>("#wiz-export-status")!;
+        const launchBtn = body.querySelector<HTMLButtonElement>("#wiz-launch")!;
+        launchBtn.disabled = true;
+
+        // File save dialog
+        const { save } = await import("@tauri-apps/plugin-dialog");
+        const outPath = await save({
+          title: "Enregistrer le package de publication",
+          defaultPath: `agrafes_publication_${new Date().toISOString().slice(0, 10)}.zip`,
+          filters: [{ name: "ZIP", extensions: ["zip"] }],
+        });
+        if (!outPath) { launchBtn.disabled = false; return; }
+
+        statusEl.textContent = "Envoi du job au sidecar…";
+        try {
+          const { ensureRunning } = await import("../../tauri-app/src/lib/sidecarClient.ts");
+          const { enqueueJob, getJob } = await import("../../tauri-prep/src/lib/sidecarClient.ts");
+          const conn = await ensureRunning(state.dbPath);
+
+          const params: Record<string, unknown> = {
+            out_path: outPath,
+            include_structure: state.includeStructure,
+            include_alignment: state.includeAlignment,
+            status_filter: state.statusFilter,
+          };
+          if (state.docIds !== null) params.doc_ids = state.docIds;
+
+          const job = await enqueueJob(conn, "export_tei_package", params);
+          state.jobId = job.job_id;
+          statusEl.textContent = `Job ${job.job_id} en cours…`;
+
+          // Poll until done
+          const poll = async (): Promise<void> => {
+            const rec = await getJob(conn, state.jobId!);
+            if (rec.status === "done") {
+              state.result = rec.result as Record<string, unknown>;
+              state.step = 5;
+              await render();
+            } else if (rec.status === "error" || rec.status === "canceled") {
+              state.error = (rec as unknown as { error?: string }).error ?? rec.status;
+              statusEl.innerHTML = `<span style="color:#c0392b">Erreur: ${_esc(state.error ?? "")}</span>`;
+              launchBtn.disabled = false;
+            } else {
+              statusEl.textContent = `Job ${state.jobId} — statut: ${rec.status}…`;
+              setTimeout(() => void poll(), 1200);
+            }
+          };
+          setTimeout(() => void poll(), 800);
+        } catch (e) {
+          state.error = String(e);
+          statusEl.innerHTML = `<span style="color:#c0392b">Erreur: ${_esc(String(e))}</span>`;
+          launchBtn.disabled = false;
+        }
+      });
+
+    } else if (state.step === 5) {
+      const zipPath = (state.result?.zip_path as string | undefined) ?? "";
+      const docCount = (state.result?.doc_count as number | undefined) ?? 0;
+      const warns = (state.result?.warnings as unknown[] | undefined) ?? [];
+      body.innerHTML = `
+        <div style="background:#f0fff4;border:1px solid #c6efce;border-radius:8px;padding:1.5rem">
+          <h3 style="margin:0 0 0.75rem;font-size:1rem;color:#1a7f4e">✓ Package créé</h3>
+          <p style="font-size:0.84rem;margin:0 0 0.5rem"><b>${docCount}</b> document(s) exporté(s)</p>
+          <p style="font-size:0.78rem;font-family:ui-monospace,monospace;background:#fff;border:1px solid #c6efce;border-radius:4px;padding:0.4rem 0.6rem;word-break:break-all;margin:0 0 0.75rem">${_esc(zipPath)}</p>
+          ${warns.length > 0 ? `<p style="font-size:0.82rem;color:#b8590a">⚠ ${warns.length} avertissement(s) — voir manifest.json dans le ZIP.</p>` : ""}
+          <button id="wiz-copy-path" style="font-size:0.8rem;padding:4px 10px;border:1px solid #adb5bd;border-radius:4px;background:#fff;cursor:pointer;margin-right:0.5rem">
+            📋 Copier le chemin
+          </button>
+          <button id="wiz-restart" class="wiz-btn-sec">Nouvelle publication</button>
+          <button id="wiz-home" class="wiz-btn-primary" style="margin-left:0.5rem">← Accueil</button>
+        </div>`;
+      body.querySelector("#wiz-copy-path")!.addEventListener("click", () => {
+        navigator.clipboard?.writeText(zipPath).catch(() => {});
+        _showToast("Chemin copié");
+      });
+      body.querySelector("#wiz-restart")!.addEventListener("click", () => {
+        state.step = 1; state.result = null; state.error = null;
+        state.jobId = null; state.docIds = null;
+        void render();
+      });
+      body.querySelector("#wiz-home")!.addEventListener("click", () => void _setMode("home"));
+    }
+
+    // Inject wizard CSS once
+    if (!document.getElementById("wiz-css")) {
+      const s = document.createElement("style");
+      s.id = "wiz-css";
+      s.textContent = `
+        .wiz-btn-primary {
+          background:#2c5f9e;color:#fff;border:none;border-radius:5px;
+          padding:7px 18px;font-size:0.84rem;font-weight:600;cursor:pointer;
+          transition:background 0.15s;
+        }
+        .wiz-btn-primary:hover { background:#1e4a80; }
+        .wiz-btn-primary:disabled { opacity:0.55;cursor:not-allowed; }
+        .wiz-btn-sec {
+          background:#f8f9fa;color:#495057;border:1px solid #adb5bd;border-radius:5px;
+          padding:7px 18px;font-size:0.84rem;cursor:pointer;transition:background 0.15s;
+        }
+        .wiz-btn-sec:hover { background:#e2e6ea; }
+      `;
+      document.head.appendChild(s);
+    }
+  };
+
+  container.appendChild(wrap);
+  await render();
+}
+
 // ─── Home screen ──────────────────────────────────────────────────────────────
 
 function _renderHome(container: HTMLElement): void {
@@ -524,6 +1306,23 @@ function _renderHome(container: HTMLElement): void {
         <h2>Constituer son corpus</h2>
         <p>Importer, aligner, corriger et exporter vos corpus.</p>
       </div>
+      <div class="shell-card shell-card-publish" id="shell-btn-publish">
+        <div class="shell-card-icon">&#128230;</div>
+        <span class="shell-card-badge shell-card-badge-publish">Publier</span>
+        <h2>Publier un package</h2>
+        <p>Exporter un ZIP TEI avec manifest et checksums en 5&nbsp;&eacute;tapes guid&eacute;es.</p>
+      </div>
+    </div>
+    <div class="shell-demo-section">
+      <p class="shell-demo-hint">Ou essayez avec un corpus pr&eacute;install&eacute;&nbsp;:</p>
+      <div class="shell-demo-card">
+        <span class="shell-demo-icon">&#127981;</span>
+        <span class="shell-demo-label">Corpus d&eacute;mo (Machiavel FR/EN, 10 unit&eacute;s)</span>
+        <div class="shell-demo-btns">
+          <button class="shell-demo-btn shell-demo-btn-install" id="shell-demo-install-btn">Installer&hellip;</button>
+          <button class="shell-demo-btn shell-demo-btn-open" id="shell-demo-open-btn" style="display:none">Ouvrir Explorer</button>
+        </div>
+      </div>
     </div>
   `;
   container.appendChild(wrap);
@@ -532,6 +1331,52 @@ function _renderHome(container: HTMLElement): void {
     .addEventListener("click", () => _setMode("explorer"));
   wrap.querySelector("#shell-btn-constituer")!
     .addEventListener("click", () => _setMode("constituer"));
+  wrap.querySelector("#shell-btn-publish")!
+    .addEventListener("click", () => _setMode("publish"));
+
+  // Async: check demo status + wire buttons
+  void _initDemoSection(
+    wrap.querySelector("#shell-demo-install-btn") as HTMLButtonElement,
+    wrap.querySelector("#shell-demo-open-btn") as HTMLButtonElement,
+  );
+}
+
+async function _initDemoSection(
+  installBtn: HTMLButtonElement,
+  openBtn: HTMLButtonElement,
+): Promise<void> {
+  // Check if already installed
+  const installed = await _isDemoInstalled();
+  if (installed) {
+    installBtn.style.display = "none";
+    openBtn.style.display = "";
+  }
+
+  installBtn.addEventListener("click", async () => {
+    installBtn.disabled = true;
+    installBtn.textContent = "Installation\u2026";
+    try {
+      await _installDemo();
+      installBtn.style.display = "none";
+      openBtn.style.display = "";
+      _showToast("D\u00e9mo install\u00e9e avec succ\u00e8s");
+    } catch (err) {
+      installBtn.disabled = false;
+      installBtn.textContent = "Installer\u2026";
+      _showToast(`Erreur installation : ${String(err)}`, 4000);
+      console.error("[shell] demo install error:", err);
+    }
+  });
+
+  openBtn.addEventListener("click", async () => {
+    const demoPath = await _getDemoDbPath();
+    _currentDbPath = demoPath;
+    _persist();
+    _updateDbBadge();
+    _dbListeners.forEach(cb => cb(_currentDbPath));
+    _showToast("DB active\u00a0: corpus d\u00e9mo");
+    await _setMode("explorer");
+  });
 }
 
 // ─── Loading indicator ────────────────────────────────────────────────────────
@@ -568,6 +1413,11 @@ function _showToast(msg: string, durationMs = 3000): void {
 
 function _installKeyboardShortcuts(): void {
   document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      _closeDbMenu();
+      _clearInitError();
+      return;
+    }
     const mod = e.metaKey || e.ctrlKey;
     if (!mod) return;
     if (e.key === "1") { e.preventDefault(); void _setMode("explorer"); }

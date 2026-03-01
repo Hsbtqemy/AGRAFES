@@ -396,3 +396,31 @@ npm --prefix tauri-shell run tauri dev
 - V1.3: CSS style deduplication (style-id guards to avoid style accumulation)
 - V1.4: Optional multi-window via Tauri create_window
 - V2.0: Full migration — deprecate standalone tauri-app/ and tauri-prep/
+
+## V1.5.0 — Publication Wizard + Global Presets
+
+### Sprint 1 — Publication Wizard + Global Presets
+
+**Fichiers modifiés :** `tauri-shell/src/shell.ts`
+
+#### A) Global Presets Store
+- Nouveau localStorage key `agrafes.presets.global` (type `GlobalPreset[]`)
+- `_loadGlobalPresets()` / `_saveGlobalPresets()` — lecture/écriture sans stderr
+- `_migratePresetsFromPrep()` — migration additive depuis `agrafes.prep.presets` (pas d'écrasement)
+- `_openPresetsModal()` — modal presets avec :
+  - Liste + bouton supprimer par preset
+  - Bouton "Migrer depuis Constituer" (migration à la demande)
+  - Export JSON (download)
+  - Import JSON (FileReader)
+- Bouton "⚙ Presets" ajouté dans le header (à droite des tabs)
+
+#### B) Publication Wizard (mode "publish")
+- Nouveau mode `"publish"` dans le type `Mode`
+- Carte "Publier" ajoutée dans Home screen (badge ambre, icône 📦)
+- Wizard 5 étapes (renderProgress + WizardState) :
+  1. **DB** — confirmation DB active
+  2. **Documents** — `<select multiple>` peuplé depuis `listDocuments(conn)`
+  3. **Options** — include_structure, include_alignment, status_filter
+  4. **Exporter** — `save()` dialog → `enqueueJob("export_tei_package")` → polling `getJob()` (~1.2s)
+  5. **Résumé** — doc_count, zip_path, warnings count, "Copier le chemin" + "Retour accueil"
+- Zero backend change (utilise job `export_tei_package` existant, CONTRACT_VERSION inchangé)
