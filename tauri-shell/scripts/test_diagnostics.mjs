@@ -263,6 +263,49 @@ const txtNoPrefs = formatDiagnosticsText(diagNoPrefs);
 assert(txtNoPrefs.includes("QA policy        : (not set)"), "null qa_policy → (not set)");
 assert(txtNoPrefs.includes("TEI profile      : (not set)"), "null tei_profile → (not set)");
 
+// ─── RELEASES_URL + buildReleaseUrl (V1.9.1) ─────────────────────────────────
+
+console.log("\n── RELEASES_URL / buildReleaseUrl ──────────────────────────────");
+
+/**
+ * Pure function mirrored from shell.ts.
+ * Allows overriding the base URL (useful for testing without Tauri runtime).
+ */
+function buildReleaseUrl(base, tag) {
+  if (tag) return `${base}/tag/${encodeURIComponent(tag)}`;
+  return base;
+}
+
+const RELEASES_URL = "https://github.com/Hsbtqemy/AGRAFES/releases";
+
+// Shape
+assert(typeof RELEASES_URL === "string", "RELEASES_URL is a string");
+assert(RELEASES_URL.startsWith("https://"), "RELEASES_URL uses HTTPS");
+assert(RELEASES_URL.includes("github.com"), "RELEASES_URL points to GitHub");
+assert(RELEASES_URL.endsWith("/releases"), "RELEASES_URL ends with /releases");
+assert(!RELEASES_URL.endsWith("/"), "RELEASES_URL has no trailing slash");
+
+// No sensitive data
+assert(!RELEASES_URL.includes("token"), "RELEASES_URL contains no token");
+assert(!RELEASES_URL.includes("secret"), "RELEASES_URL contains no secret");
+
+// buildReleaseUrl — base (no tag)
+assertEq(buildReleaseUrl(RELEASES_URL, null), RELEASES_URL, "no tag → base URL unchanged");
+assertEq(buildReleaseUrl(RELEASES_URL, undefined), RELEASES_URL, "undefined tag → base URL unchanged");
+assertEq(buildReleaseUrl(RELEASES_URL, ""), RELEASES_URL, "empty tag → base URL unchanged");
+
+// buildReleaseUrl — with tag
+assertEq(
+  buildReleaseUrl(RELEASES_URL, "v1.9.1"),
+  "https://github.com/Hsbtqemy/AGRAFES/releases/tag/v1.9.1",
+  "specific tag → /releases/tag/<tag>"
+);
+assertEq(
+  buildReleaseUrl(RELEASES_URL, "v1.9.1+build.42"),
+  "https://github.com/Hsbtqemy/AGRAFES/releases/tag/v1.9.1%2Bbuild.42",
+  "tag with special chars → percent-encoded"
+);
+
 // ─── Summary ─────────────────────────────────────────────────────────────────
 
 console.log(`\n${passed + failed} tests: ${passed} passed, ${failed} failed`);

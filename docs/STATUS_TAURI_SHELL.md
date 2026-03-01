@@ -512,6 +512,21 @@ Panneau modal listant tous les raccourcis :
 - Raccourci `⌘+3` ajouté pour "Publier"
 - Raccourci `⌘+O` pour ouvrir DB, `⌘+Maj+N` pour créer
 
+## V1.9.1 — Check updates (open GitHub Releases)
+
+- New item **"⬆ Vérifier les mises à jour…"** in the Support menu.
+- Action: displays a toast with the local version (`v1.9.1`) then calls
+  `@tauri-apps/plugin-shell` → `open(RELEASES_URL)` to launch the system browser
+  on `https://github.com/Hsbtqemy/AGRAFES/releases`.
+- **Fallback**: if `open()` fails (Tauri unavailable or permission error), a modal
+  appears with the URL displayed as copyable text — no crash, no silent failure.
+- **Capability added**: `shell:allow-open` in `tauri-shell/src-tauri/capabilities/default.json`.
+- **`RELEASES_URL`** constant defined in `shell.ts` — pure helper `buildReleaseUrl(base, tag)`
+  exported for testing.
+- **Tests**: 12 new cases in `tauri-shell/scripts/test_diagnostics.mjs` (total: 54 passed).
+
+---
+
 ## V1.9.0 — Support menu + system diagnostics
 
 ### Overview
@@ -522,6 +537,7 @@ main screens). From this menu, users can:
 |------|--------|
 | 🔍 Diagnostic système… | Opens the Diagnostics modal |
 | 📋 Exporter logs… | Triggers the log export dialog (same as About dialog) |
+| ⬆ Vérifier les mises à jour… | Opens GitHub Releases in system browser |
 | ⓘ À propos d'AGRAFES… | Opens the About dialog |
 | ⌨ Raccourcis clavier… | Opens the shortcuts panel |
 

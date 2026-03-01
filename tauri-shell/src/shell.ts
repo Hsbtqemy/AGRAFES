@@ -1350,10 +1350,69 @@ async function _exportDiagnosticFile(text: string): Promise<void> {
 // ─── About dialog ─────────────────────────────────────────────────────────────
 
 // Static version info (embedded at build time)
-const APP_VERSION = "1.8.2";
+const APP_VERSION = "1.9.1";
 const ENGINE_VERSION_DISPLAY = "0.6.1";
 const CONTRACT_VERSION_DISPLAY = "1.4.0";
 const TEI_PROFILES = ["generic", "parcolab_like", "parcolab_strict"];
+const RELEASES_URL = "https://github.com/Hsbtqemy/AGRAFES/releases";
+
+async function _checkUpdates(): Promise<void> {
+  _shellLog("info", "updates", `Check updates requested (current: v${APP_VERSION})`);
+  _showToast(`Ouverture des Releases… (version locale : v${APP_VERSION})`, 3500);
+  try {
+    const { open } = await import("@tauri-apps/plugin-shell");
+    await open(RELEASES_URL);
+  } catch (err) {
+    _shellLog("error", "updates", "Failed to open releases page", String(err));
+    _showUpdatesErrorModal(RELEASES_URL);
+  }
+}
+
+function _showUpdatesErrorModal(url: string): void {
+  const existing = document.getElementById("shell-updates-modal");
+  if (existing) { existing.remove(); return; }
+
+  const modal = document.createElement("div");
+  modal.id = "shell-updates-modal";
+  modal.className = "shell-about-modal";
+  modal.innerHTML = `
+    <div class="shell-diag-box" role="dialog" aria-modal="true" style="min-width:360px;max-width:500px">
+      <div class="shell-diag-header">
+        <span class="shell-diag-title">⬆ Mises à jour</span>
+        <button class="shell-about-close" id="shell-upd-close" aria-label="Fermer">✕</button>
+      </div>
+      <div style="padding:1rem 1.25rem;font-size:0.84rem;color:#2d3748">
+        <p>Impossible d'ouvrir le navigateur automatiquement.</p>
+        <p style="margin-top:0.5rem">Rendez-vous sur :</p>
+        <div style="background:#f0f4ff;border-radius:6px;padding:0.5rem 0.75rem;margin-top:0.5rem;
+                    font-family:monospace;font-size:0.78rem;word-break:break-all;user-select:all">
+          ${url}
+        </div>
+        <p style="margin-top:0.5rem;color:#6c757d;font-size:0.76rem">
+          Version locale installée : v${APP_VERSION}
+        </p>
+      </div>
+      <div class="shell-diag-footer">
+        <button class="shell-diag-btn" id="shell-upd-copy">📋 Copier le lien</button>
+        <button class="shell-diag-btn" id="shell-upd-close2">Fermer</button>
+      </div>
+    </div>
+  `;
+  modal.addEventListener("click", (e) => { if (e.target === modal) modal.remove(); });
+  modal.querySelector("#shell-upd-close")!.addEventListener("click", () => modal.remove());
+  modal.querySelector("#shell-upd-close2")!.addEventListener("click", () => modal.remove());
+  modal.querySelector("#shell-upd-copy")!.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(url);
+      _showToast("Lien copié !", 2000);
+    } catch { /* ignore */ }
+  });
+  const onKey = (e: KeyboardEvent): void => {
+    if (e.key === "Escape") { modal.remove(); document.removeEventListener("keydown", onKey); }
+  };
+  document.addEventListener("keydown", onKey);
+  document.body.appendChild(modal);
+}
 
 function _openAboutDialog(): void {
   const existing = document.getElementById("shell-about-modal");
@@ -1517,6 +1576,7 @@ function _buildHeader(): void {
 
   supportMenu.appendChild(_mkSupportItem("🔍 Diagnostic système…", () => _openDiagnosticsModal()));
   supportMenu.appendChild(_mkSupportItem("📋 Exporter logs…", () => void _exportLogBundle()));
+  supportMenu.appendChild(_mkSupportItem("⬆ Vérifier les mises à jour…", () => void _checkUpdates()));
   supportMenu.appendChild((() => { const s = document.createElement("div"); s.className = "shell-support-menu-sep"; return s; })());
   supportMenu.appendChild(_mkSupportItem("ⓘ À propos d'AGRAFES…", () => _openAboutDialog()));
   supportMenu.appendChild(_mkSupportItem("⌨ Raccourcis clavier…", () => _openShortcutsPanel()));

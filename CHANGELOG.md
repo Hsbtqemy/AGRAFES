@@ -5,6 +5,31 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [V1.9.1] — 2026-03-01
+
+### Added
+
+**tauri-shell — Check updates (open GitHub Releases)**
+
+- **"⬆ Vérifier les mises à jour…"** item in the Support "?" menu
+- `_checkUpdates()` — shows toast with local version then calls `open(RELEASES_URL)` via `@tauri-apps/plugin-shell`
+- `_showUpdatesErrorModal()` — fallback modal (copyable URL) if `open()` throws
+- `RELEASES_URL = "https://github.com/Hsbtqemy/AGRAFES/releases"` constant in `shell.ts`
+- `shell:allow-open` added to `tauri-shell/src-tauri/capabilities/default.json`
+- 12 new unit tests in `tauri-shell/scripts/test_diagnostics.mjs` (total: 54 tests)
+
+### Changed
+- `APP_VERSION` bumped to `1.9.1` in `shell.ts`
+- `docs/STATUS_TAURI_SHELL.md` — V1.9.1 section + updated Support menu table
+
+### Invariants
+- Zero telemetry — URL only opened in system browser, no data sent
+- Fallback modal on failure — no silent errors
+- `pytest -q`: 352 passed | FTS: 26/26 | `release_gate.py`: 5/5
+- `node tauri-shell/scripts/test_diagnostics.mjs`: 54/54
+
+---
+
 ## [V1.9.0] — 2026-03-01
 
 ### Added
