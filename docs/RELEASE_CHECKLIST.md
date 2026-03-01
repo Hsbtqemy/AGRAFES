@@ -99,3 +99,35 @@ python scripts/ci_smoke_sidecar.py --timeout 60
 2. **Métadonnées TEI** : `title`, `language` obligatoires ; `doc_role`, `resource_type` optionnels mais recommandés
 3. **Alignements** : couverture pivot/cible en %, orphelins, collisions (1 pivot → N cibles)
 4. **Relations** : `target_doc_id` des doc_relations doit exister en base
+
+---
+
+## V1.7.0 — Automated Release Gate
+
+### Local commande
+
+```bash
+python scripts/release_gate.py
+# JSON résultat sur stdout, logs dans build/release_gate.log
+# Skips optionnels:
+python scripts/release_gate.py --skip-builds  # skip npm builds
+python scripts/release_gate.py --skip-demo    # skip demo DB gates
+```
+
+### Ce que le gate exécute
+
+| Étape | Description | Réussite si |
+|---|---|---|
+| 1. pytest | Suite complète en mode quiet | 0 failed, 0 errors |
+| 2. FTS tests | `node tauri-app/scripts/test_buildFtsQuery.mjs` | 0 failed |
+| 3. npm builds | shell, app, prep | `✓ built in` présent, no ERROR |
+| 4a. Demo DB | Create/verify `agrafes_demo.db` | DB créée |
+| 4b. QA strict | `write_qa_report(policy='strict')` sur démo | gate_status ≠ blocking |
+| 4c. TEI export | `export_tei_package(tei_profile='parcolab_strict')` | no exception |
+| 4d. TEI validate | `validate_tei_package(zip)` | 0 errors |
+
+### CI workflow
+
+`.github/workflows/release-gate.yml` — matrix macos-latest + ubuntu-latest, no secrets.
+Déclenché sur push vers `main`/`release/**` et PRs.
+Artifacts uploadés : `release_gate.json`, `release_gate.log`.
