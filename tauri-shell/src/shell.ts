@@ -289,6 +289,87 @@ const SHELL_CSS = `
   .shell-card h2 { font-size: 1.05rem; font-weight: 600; margin: 0 0 0.4rem; color: #1a1a2e; }
   .shell-card p { font-size: 0.82rem; color: #6c757d; margin: 0; line-height: 1.4; }
 
+  /* ── Guided tour ───────────────────────────────────────────── */
+  .shell-guide-section {
+    margin-top: 1.5rem;
+    width: 100%;
+    max-width: 600px;
+  }
+  .shell-guide-card {
+    background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+    border: 1px solid #7dd3fc;
+    border-radius: 10px;
+    padding: 1.25rem 1.5rem;
+    box-shadow: 0 2px 8px rgba(14,165,233,0.1);
+  }
+  .shell-guide-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #0369a1;
+    margin: 0 0 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .shell-guide-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .shell-guide-step {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-size: 0.83rem;
+  }
+  .shell-guide-step-num {
+    min-width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.72rem;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+  .shell-guide-step-num.done { background: #1a7f4e; color: #fff; }
+  .shell-guide-step-num.active { background: #0369a1; color: #fff; }
+  .shell-guide-step-num.pending { background: #e2e8f0; color: #64748b; }
+  .shell-guide-step-label { flex: 1; color: #1a1a2e; }
+  .shell-guide-step-label.done { text-decoration: line-through; color: #6c757d; }
+  .shell-guide-step-btn {
+    font-size: 0.75rem;
+    padding: 3px 10px;
+    border-radius: 4px;
+    border: 1px solid #0369a1;
+    background: #0369a1;
+    color: #fff;
+    cursor: pointer;
+    transition: background 0.15s;
+    white-space: nowrap;
+  }
+  .shell-guide-step-btn:hover { background: #0284c7; }
+  .shell-guide-step-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .shell-guide-footer {
+    margin-top: 0.75rem;
+    font-size: 0.75rem;
+    color: #64748b;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .shell-guide-reset {
+    font-size: 0.72rem;
+    background: none;
+    border: none;
+    color: #94a3b8;
+    cursor: pointer;
+    text-decoration: underline;
+    padding: 0;
+  }
+  .shell-guide-reset:hover { color: #475569; }
+
   /* ── Presets button in header ───────────────────────────────── */
   .shell-presets-btn {
     background: none;
@@ -432,10 +513,11 @@ async function _installDemo(): Promise<void> {
 
 // ─── Storage keys ─────────────────────────────────────────────────────────────
 
-const LS_MODE           = "agrafes.lastMode";
-const LS_DB             = "agrafes.lastDbPath";
-const LS_PRESETS_GLOBAL = "agrafes.presets.global";
-const LS_PRESETS_PREP   = "agrafes.prep.presets"; // source for migration
+const LS_MODE              = "agrafes.lastMode";
+const LS_DB                = "agrafes.lastDbPath";
+const LS_PRESETS_GLOBAL    = "agrafes.presets.global";
+const LS_PRESETS_PREP      = "agrafes.prep.presets"; // source for migration
+const LS_ONBOARDING_STEP   = "agrafes.onboarding.demo.step";  // 0..3
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -1314,6 +1396,116 @@ async function _renderPublicationWizard(container: HTMLElement): Promise<void> {
   await render();
 }
 
+// ─── Onboarding Guided Tour ────────────────────────────────────────────────────
+
+function _getOnboardingStep(): number {
+  try { return parseInt(localStorage.getItem(LS_ONBOARDING_STEP) ?? "0", 10) || 0; } catch { return 0; }
+}
+
+function _setOnboardingStep(n: number): void {
+  try { localStorage.setItem(LS_ONBOARDING_STEP, String(n)); } catch { /* */ }
+}
+
+function _resetOnboarding(): void {
+  try { localStorage.removeItem(LS_ONBOARDING_STEP); } catch { /* */ }
+}
+
+/** Render the guided tour panel into `container` (async — needs demo db path). */
+async function _renderGuidedTour(container: HTMLElement): Promise<void> {
+  const demoPath = await _getDemoDbPath();
+  const step = _getOnboardingStep();
+
+  const STEPS = [
+    {
+      label: "Ouvrir Explorer et chercher «&nbsp;prince&nbsp;»",
+      action: async () => {
+        _currentDbPath = demoPath;
+        _persist();
+        _updateDbBadge();
+        _dbListeners.forEach(cb => cb(_currentDbPath));
+        // Store a prefill hint for Explorer welcome hint
+        try { sessionStorage.setItem("agrafes.explorer.prefill", "prince"); } catch { /* */ }
+        _setOnboardingStep(1);
+        await _setMode("explorer");
+      },
+    },
+    {
+      label: "Générer un rapport QA (politique lenient)",
+      action: async () => {
+        _currentDbPath = demoPath;
+        _persist();
+        _updateDbBadge();
+        _dbListeners.forEach(cb => cb(_currentDbPath));
+        _setOnboardingStep(2);
+        await _setMode("constituer");
+        // After constituer mounts, user navigates to Exports themselves
+        // We show a toast hint
+        _showToast("Allez dans l'onglet «\u00a0Exports\u00a0» → Rapport QA pour continuer", 5000);
+      },
+    },
+    {
+      label: "Exporter un package publication (TEI generic)",
+      action: async () => {
+        _currentDbPath = demoPath;
+        _persist();
+        _updateDbBadge();
+        _dbListeners.forEach(cb => cb(_currentDbPath));
+        _setOnboardingStep(3);
+        await _setMode("publish");
+      },
+    },
+  ];
+
+  const guideSection = document.createElement("div");
+  guideSection.className = "shell-guide-section";
+
+  const allDone = step >= STEPS.length;
+
+  guideSection.innerHTML = `
+    <div class="shell-guide-card">
+      <div class="shell-guide-title">🎯 Guide rapide — ${allDone ? "Terminé !" : `Étape ${Math.min(step + 1, STEPS.length)} / ${STEPS.length}`}</div>
+      <div class="shell-guide-steps">
+        ${STEPS.map((s, i) => {
+          const done = i < step;
+          const active = i === step && !allDone;
+          const pending = i > step;
+          const numClass = done ? "done" : active ? "active" : "pending";
+          const labelClass = done ? "done" : "";
+          return `
+            <div class="shell-guide-step">
+              <div class="shell-guide-step-num ${numClass}">${done ? "✓" : i + 1}</div>
+              <span class="shell-guide-step-label ${labelClass}">${s.label}</span>
+              ${active ? `<button class="shell-guide-step-btn" data-step="${i}" id="guide-step-btn-${i}">Lancer →</button>` : ""}
+            </div>`;
+        }).join("")}
+      </div>
+      <div class="shell-guide-footer">
+        <span>${allDone ? "🎉 Vous avez terminé le guide rapide !" : "Cliquez «\u00a0Lancer\u00a0» sur l\u2019étape courante."}</span>
+        <button class="shell-guide-reset" id="guide-reset-btn">Réinitialiser le guide</button>
+      </div>
+    </div>
+  `;
+
+  // Wire step buttons
+  STEPS.forEach((s, i) => {
+    const btn = guideSection.querySelector<HTMLButtonElement>(`#guide-step-btn-${i}`);
+    if (btn) {
+      btn.addEventListener("click", () => {
+        btn.disabled = true;
+        void s.action();
+      });
+    }
+  });
+
+  guideSection.querySelector("#guide-reset-btn")!.addEventListener("click", () => {
+    _resetOnboarding();
+    // Re-render home
+    void _setMode("home");
+  });
+
+  container.appendChild(guideSection);
+}
+
 // ─── Home screen ──────────────────────────────────────────────────────────────
 
 function _renderHome(container: HTMLElement): void {
@@ -1353,6 +1545,7 @@ function _renderHome(container: HTMLElement): void {
         </div>
       </div>
     </div>
+    <div id="shell-guide-anchor"></div>
   `;
   container.appendChild(wrap);
 
@@ -1363,22 +1556,25 @@ function _renderHome(container: HTMLElement): void {
   wrap.querySelector("#shell-btn-publish")!
     .addEventListener("click", () => _setMode("publish"));
 
-  // Async: check demo status + wire buttons
+  // Async: check demo status + wire buttons + guided tour
   void _initDemoSection(
     wrap.querySelector("#shell-demo-install-btn") as HTMLButtonElement,
     wrap.querySelector("#shell-demo-open-btn") as HTMLButtonElement,
+    wrap.querySelector("#shell-guide-anchor") as HTMLElement,
   );
 }
 
 async function _initDemoSection(
   installBtn: HTMLButtonElement,
   openBtn: HTMLButtonElement,
+  guideAnchor: HTMLElement,
 ): Promise<void> {
   // Check if already installed
   const installed = await _isDemoInstalled();
   if (installed) {
     installBtn.style.display = "none";
     openBtn.style.display = "";
+    await _renderGuidedTour(guideAnchor);
   }
 
   installBtn.addEventListener("click", async () => {
@@ -1389,6 +1585,8 @@ async function _initDemoSection(
       installBtn.style.display = "none";
       openBtn.style.display = "";
       _showToast("D\u00e9mo install\u00e9e avec succ\u00e8s");
+      // Show guide tour after fresh install
+      await _renderGuidedTour(guideAnchor);
     } catch (err) {
       installBtn.disabled = false;
       installBtn.textContent = "Installer\u2026";

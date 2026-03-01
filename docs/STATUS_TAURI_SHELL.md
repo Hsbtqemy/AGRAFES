@@ -424,3 +424,23 @@ npm --prefix tauri-shell run tauri dev
   4. **Exporter** — `save()` dialog → `enqueueJob("export_tei_package")` → polling `getJob()` (~1.2s)
   5. **Résumé** — doc_count, zip_path, warnings count, "Copier le chemin" + "Retour accueil"
 - Zero backend change (utilise job `export_tei_package` existant, CONTRACT_VERSION inchangé)
+
+## V1.6.1 — Onboarding Demo Guided Tour
+
+### Guided Tour (3 steps)
+
+**Fichiers modifiés :** `tauri-shell/src/shell.ts`, `tauri-shell/src/modules/explorerModule.ts`
+
+#### Fonctionnement
+- Le guide rapide apparaît dans la Home Screen **uniquement si le corpus démo est installé**
+- Persistance : `localStorage["agrafes.onboarding.demo.step"]` (0..3)
+- Bouton "Réinitialiser le guide" pour recommencer
+
+#### 3 étapes guidées
+1. **Explorer "prince"** — Active la démo DB, navigue vers Explorer, pré-remplit la barre de recherche via `sessionStorage["agrafes.explorer.prefill"]`
+2. **Rapport QA** — Active la démo DB, navigue vers Constituer + toast "Allez dans Exports → Rapport QA"
+3. **Package publication** — Active la démo DB, navigue vers le wizard Publier
+
+#### Welcome hint (Explorer)
+- Si `sessionStorage["agrafes.explorer.prefill"]` est défini après montage : pré-remplit l'input de recherche + affiche un tooltip bleu transitoire (8s ou au premier Enter)
+- Flag supprimé immédiatement après affichage (one-shot)
