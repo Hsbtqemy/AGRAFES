@@ -1,6 +1,6 @@
 # Distribution Guide — AGRAFES Sidecar + Tauri Fixture
 
-Last updated: 2026-02-28
+Last updated: 2026-02-28 (ADR-025 decided)
 
 ## Goals
 
@@ -35,10 +35,16 @@ Manifest:
 
 ```bash
 pip install -e ".[packaging]"
+python scripts/build_sidecar.py --preset tauri
 python scripts/build_sidecar.py --preset tauri --format onefile
 python scripts/build_sidecar.py --preset tauri --format onedir
-python scripts/build_sidecar.py --preset fixture --format onefile
+python scripts/build_sidecar.py --preset fixture
 ```
+
+Default format mapping (when `--format` is omitted):
+- macOS (`darwin`): `onefile`
+- Linux (`linux`): `onedir`
+- Windows (`windows`): `onedir`
 
 ### Benchmark sidecar formats
 
@@ -88,13 +94,14 @@ $env:WIN_SIGN_CERT_PASSWORD = "<PFX_PASSWORD>"
 ### Linux manylinux build
 
 ```bash
-bash scripts/linux_manylinux_build_sidecar.sh --format onefile --out tauri/src-tauri/binaries
+bash scripts/linux_manylinux_build_sidecar.sh --format onedir --out tauri/src-tauri/binaries
 ```
 
 ## CI workflows
 
 - `.github/workflows/build-sidecar.yml`
-  - cross-platform sidecar build (onefile)
+  - cross-platform sidecar build (explicit per-OS format)
+  - macOS=`onefile`, Linux=`onedir`, Windows=`onedir`
 - `.github/workflows/tauri-e2e-fixture.yml`
   - headless persistent sidecar smoke per OS
 - `.github/workflows/bench-sidecar.yml`
@@ -108,7 +115,7 @@ bash scripts/linux_manylinux_build_sidecar.sh --format onefile --out tauri/src-t
 - `.github/workflows/windows-sign.yml`
   - sidecar signing on windows (conditional by secrets)
 - `.github/workflows/linux-manylinux-sidecar.yml`
-  - manylinux2014 sidecar build + `--help` verification
+  - manylinux2014 sidecar build (`onedir`) + `--help` verification
 - `.github/workflows/release.yml`
   - multi-OS build (+ conditional signing/notarization)
   - upload artifacts
@@ -151,7 +158,10 @@ bash scripts/linux_manylinux_build_sidecar.sh --format onefile --out tauri/src-t
 
 ## Format default status
 
-- Current operational default remains `onefile`.
-- Final onefile vs onedir decision is tracked in:
+- ADR-025 is decided with `per_os` mapping:
+  - macOS -> `onefile`
+  - Linux -> `onedir`
+  - Windows -> `onedir`
+- Decision details and benchmark basis:
   - `docs/DECISIONS.md` (ADR-025)
   - `docs/BENCHMARKS.md`

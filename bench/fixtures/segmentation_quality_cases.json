@@ -1,0 +1,102 @@
+[
+  {
+    "case_id": "fr_chap_anchor",
+    "lang": "fr",
+    "text": "Voir chap. Introduction. Suite.",
+    "gold_sentences": [
+      "Voir chap. Introduction.",
+      "Suite."
+    ],
+    "note": "chap. ne doit pas déclencher une coupure en fr_strict."
+  },
+  {
+    "case_id": "fr_etc_anchor",
+    "lang": "fr",
+    "text": "Etc. Détails complémentaires. Conclusion.",
+    "gold_sentences": [
+      "Etc. Détails complémentaires.",
+      "Conclusion."
+    ],
+    "note": "etc. protégé en fr_strict."
+  },
+  {
+    "case_id": "fr_env_anchor",
+    "lang": "fr",
+    "text": "Env. Paris est calme. Fin.",
+    "gold_sentences": [
+      "Env. Paris est calme.",
+      "Fin."
+    ],
+    "note": "env. protégé en fr_strict."
+  },
+  {
+    "case_id": "fr_decimal",
+    "lang": "fr",
+    "text": "La valeur 3.14 est stable. Fin.",
+    "gold_sentences": [
+      "La valeur 3.14 est stable.",
+      "Fin."
+    ],
+    "note": "les nombres décimaux ne doivent pas casser la phrase."
+  },
+  {
+    "case_id": "fr_neutral",
+    "lang": "fr",
+    "text": "Première phrase. Deuxième phrase.",
+    "gold_sentences": [
+      "Première phrase.",
+      "Deuxième phrase."
+    ],
+    "note": "cas neutre."
+  },
+  {
+    "case_id": "en_approx_anchor",
+    "lang": "en",
+    "text": "Approx. Values are listed. End.",
+    "gold_sentences": [
+      "Approx. Values are listed.",
+      "End."
+    ],
+    "note": "approx. protégé en en_strict."
+  },
+  {
+    "case_id": "en_dept_anchor",
+    "lang": "en",
+    "text": "Dept. Meetings continue. End.",
+    "gold_sentences": [
+      "Dept. Meetings continue.",
+      "End."
+    ],
+    "note": "dept. protégé en en_strict."
+  },
+  {
+    "case_id": "en_misc_anchor",
+    "lang": "en",
+    "text": "Misc. Notes follow. End.",
+    "gold_sentences": [
+      "Misc. Notes follow.",
+      "End."
+    ],
+    "note": "misc. protégé en en_strict."
+  },
+  {
+    "case_id": "en_decimal",
+    "lang": "en",
+    "text": "The value is 2.5 today. Next sentence.",
+    "gold_sentences": [
+      "The value is 2.5 today.",
+      "Next sentence."
+    ],
+    "note": "decimal protection baseline."
+  },
+  {
+    "case_id": "en_neutral",
+    "lang": "en",
+    "text": "First sentence. Second sentence.",
+    "gold_sentences": [
+      "First sentence.",
+      "Second sentence."
+    ],
+    "note": "neutral baseline."
+  }
+]

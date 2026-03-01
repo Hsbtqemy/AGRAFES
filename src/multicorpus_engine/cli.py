@@ -349,6 +349,7 @@ def cmd_align(args: argparse.Namespace) -> None:
     from .runs import create_run, setup_run_logger, update_run_stats, utcnow_iso
     from .aligner import (
         align_by_external_id,
+        align_by_external_id_then_position,
         align_by_position,
         align_by_similarity,
         add_doc_relation,
@@ -370,6 +371,7 @@ def cmd_align(args: argparse.Namespace) -> None:
         "target_doc_ids": target_ids,
         "relation_type": getattr(args, "relation_type", None),
         "strategy": strategy,
+        "debug_align": bool(getattr(args, "debug_align", False)),
     }
     run_id = create_run(conn, "align", params)
     log, log_path = setup_run_logger(db_path, run_id)
@@ -381,6 +383,7 @@ def cmd_align(args: argparse.Namespace) -> None:
                 pivot_doc_id=args.pivot_doc_id,
                 target_doc_ids=target_ids,
                 run_id=run_id,
+                debug=bool(getattr(args, "debug_align", False)),
                 run_logger=log,
             )
         elif strategy == "similarity":
@@ -390,6 +393,16 @@ def cmd_align(args: argparse.Namespace) -> None:
                 target_doc_ids=target_ids,
                 run_id=run_id,
                 threshold=sim_threshold,
+                debug=bool(getattr(args, "debug_align", False)),
+                run_logger=log,
+            )
+        elif strategy == "external_id_then_position":
+            reports = align_by_external_id_then_position(
+                conn=conn,
+                pivot_doc_id=args.pivot_doc_id,
+                target_doc_ids=target_ids,
+                run_id=run_id,
+                debug=bool(getattr(args, "debug_align", False)),
                 run_logger=log,
             )
         else:
@@ -398,6 +411,7 @@ def cmd_align(args: argparse.Namespace) -> None:
                 pivot_doc_id=args.pivot_doc_id,
                 target_doc_ids=target_ids,
                 run_id=run_id,
+                debug=bool(getattr(args, "debug_align", False)),
                 run_logger=log,
             )
 
@@ -682,6 +696,7 @@ def cmd_segment(args: argparse.Namespace) -> None:
     params = {
         "doc_id": args.doc_id,
         "lang": getattr(args, "lang", "und"),
+        "pack": getattr(args, "pack", "auto"),
     }
     run_id = create_run(conn, "segment", params)
     log, log_path = setup_run_logger(db_path, run_id)
@@ -691,6 +706,7 @@ def cmd_segment(args: argparse.Namespace) -> None:
             conn=conn,
             doc_id=args.doc_id,
             lang=getattr(args, "lang", "und"),
+            pack=getattr(args, "pack", "auto"),
             run_logger=log,
         )
         stats = report.to_dict()
@@ -1038,11 +1054,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_align.add_argument(
         "--strategy",
         dest="strategy",
-        choices=["external_id", "position", "similarity"],
+        choices=["external_id", "position", "similarity", "external_id_then_position"],
         default="external_id",
         help=(
             "Alignment strategy: 'external_id' (default), 'position' (monotone),"
-            " or 'similarity' (edit-distance greedy)"
+            " 'similarity' (edit-distance greedy), or"
+            " 'external_id_then_position' (hybrid fallback)"
         ),
     )
     p_align.add_argument(
@@ -1051,6 +1068,13 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=0.8,
         help="Minimum similarity score [0..1] for 'similarity' strategy (default: 0.8)",
+    )
+    p_align.add_argument(
+        "--debug-align",
+        dest="debug_align",
+        action="store_true",
+        default=False,
+        help="Include optional per-strategy explainability payload in alignment reports",
     )
     p_align.set_defaults(func=cmd_align)
 
@@ -1115,6 +1139,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_segment.add_argument(
         "--lang", default="und",
         help="ISO language code for segmentation rules (default: und)",
+    )
+    p_segment.add_argument(
+        "--pack",
+        default="auto",
+        help="Segmentation quality pack: auto|default|fr_strict|en_strict (default: auto)",
     )
     p_segment.set_defaults(func=cmd_segment)
 

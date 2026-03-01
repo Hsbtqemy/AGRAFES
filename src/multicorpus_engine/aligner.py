@@ -1,4 +1,4 @@
-"""Alignment engine — align_by_external_id.
+"""Alignment engine — external_id / position / similarity strategies.
 
 Creates unit-level 1-1 links between a pivot document and one or more target
 documents, matching on shared external_id values.
@@ -13,7 +13,7 @@ import json
 import logging
 import sqlite3
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +40,7 @@ class AlignmentReport:
     duplicates_target: list[int] = field(default_factory=list)   # dup ext_id in target
 
     warnings: list[str] = field(default_factory=list)
+    debug: dict[str, Any] | None = None
 
     @property
     def coverage_pct(self) -> float:
@@ -48,7 +49,7 @@ class AlignmentReport:
         return round(self.links_created / self.pivot_line_count * 100, 2)
 
     def to_dict(self) -> dict:
-        return {
+        payload = {
             "pivot_doc_id": self.pivot_doc_id,
             "target_doc_id": self.target_doc_id,
             "pivot_title": self.pivot_title,
@@ -56,6 +57,7 @@ class AlignmentReport:
             "pivot_line_count": self.pivot_line_count,
             "target_line_count": self.target_line_count,
             "links_created": self.links_created,
+            "links_skipped": max(self.pivot_line_count - self.links_created, 0),
             "coverage_pct": self.coverage_pct,
             "matched": self.matched,
             "missing_in_target": self.missing_in_target,
@@ -64,6 +66,9 @@ class AlignmentReport:
             "duplicates_target": self.duplicates_target,
             "warnings": self.warnings,
         }
+        if self.debug is not None:
+            payload["debug"] = self.debug
+        return payload
 
 
 def _load_doc_lines(
@@ -96,6 +101,19 @@ def _load_doc_lines(
     return ext_map, duplicates
 
 
+def _load_doc_line_rows(conn: sqlite3.Connection, doc_id: int) -> list[sqlite3.Row]:
+    """Load all line units for a doc with unit_id, n, external_id."""
+    return conn.execute(
+        """
+        SELECT unit_id, n, external_id
+        FROM units
+        WHERE doc_id = ? AND unit_type = 'line'
+        ORDER BY n
+        """,
+        (doc_id,),
+    ).fetchall()
+
+
 def _get_doc_title(conn: sqlite3.Connection, doc_id: int) -> str:
     row = conn.execute(
         "SELECT title FROM documents WHERE doc_id = ?", (doc_id,)
@@ -108,6 +126,7 @@ def align_pair(
     pivot_doc_id: int,
     target_doc_id: int,
     run_id: str,
+    debug: bool = False,
     run_logger: Optional[logging.Logger] = None,
 ) -> AlignmentReport:
     """Align a single (pivot, target) document pair by external_id.
@@ -176,10 +195,20 @@ def align_pair(
     # Create alignment links for matched external_ids
     # When duplicates exist on either side, use the first unit_id (lowest n)
     links: list[tuple] = []
+    sample_links: list[dict[str, Any]] = []
     for eid in common:
         pivot_uid = pivot_map[eid][0]
         target_uid = target_map[eid][0]
         links.append((run_id, pivot_uid, target_uid, eid, pivot_doc_id, target_doc_id, utcnow))
+        if debug and len(sample_links) < 20:
+            sample_links.append(
+                {
+                    "phase": "external_id",
+                    "pivot_unit_id": pivot_uid,
+                    "target_unit_id": target_uid,
+                    "external_id": eid,
+                }
+            )
 
     conn.executemany(
         """
@@ -193,6 +222,12 @@ def align_pair(
     conn.commit()
 
     report.links_created = len(links)
+    if debug:
+        report.debug = {
+            "strategy": "external_id",
+            "link_sources": {"external_id": len(links)},
+            "sample_links": sample_links,
+        }
     log.info(
         "Alignment complete: %d links created (%.1f%% coverage)",
         report.links_created,
@@ -206,6 +241,7 @@ def align_by_external_id(
     pivot_doc_id: int,
     target_doc_ids: list[int],
     run_id: str,
+    debug: bool = False,
     run_logger: Optional[logging.Logger] = None,
 ) -> list[AlignmentReport]:
     """Align pivot document against one or more target documents.
@@ -219,6 +255,193 @@ def align_by_external_id(
             pivot_doc_id=pivot_doc_id,
             target_doc_id=target_doc_id,
             run_id=run_id,
+            debug=debug,
+            run_logger=run_logger,
+        )
+        reports.append(report)
+    return reports
+
+
+def align_pair_external_id_then_position(
+    conn: sqlite3.Connection,
+    pivot_doc_id: int,
+    target_doc_id: int,
+    run_id: str,
+    debug: bool = False,
+    run_logger: Optional[logging.Logger] = None,
+) -> AlignmentReport:
+    """Align by external_id first, then fill remaining lines by shared position n."""
+    log = run_logger or logger
+    utcnow = __import__("datetime").datetime.now(
+        __import__("datetime").timezone.utc
+    ).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    pivot_title = _get_doc_title(conn, pivot_doc_id)
+    target_title = _get_doc_title(conn, target_doc_id)
+
+    log.info(
+        "Aligning by external_id_then_position: pivot=%d (%s) -> target=%d (%s)",
+        pivot_doc_id,
+        pivot_title,
+        target_doc_id,
+        target_title,
+    )
+
+    pivot_rows = _load_doc_line_rows(conn, pivot_doc_id)
+    target_rows = _load_doc_line_rows(conn, target_doc_id)
+
+    pivot_ext_map: dict[int, list[int]] = {}
+    target_ext_map: dict[int, list[int]] = {}
+    for row in pivot_rows:
+        eid = row["external_id"]
+        if eid is not None:
+            pivot_ext_map.setdefault(eid, []).append(row["unit_id"])
+    for row in target_rows:
+        eid = row["external_id"]
+        if eid is not None:
+            target_ext_map.setdefault(eid, []).append(row["unit_id"])
+
+    pivot_dups = sorted(eid for eid, vals in pivot_ext_map.items() if len(vals) > 1)
+    target_dups = sorted(eid for eid, vals in target_ext_map.items() if len(vals) > 1)
+    pivot_ext_ids = set(pivot_ext_map.keys())
+    target_ext_ids = set(target_ext_map.keys())
+    common_ext = sorted(pivot_ext_ids & target_ext_ids)
+
+    report = AlignmentReport(
+        pivot_doc_id=pivot_doc_id,
+        target_doc_id=target_doc_id,
+        pivot_title=pivot_title,
+        target_title=target_title,
+        pivot_line_count=len(pivot_rows),
+        target_line_count=len(target_rows),
+        matched=common_ext,
+        missing_in_target=sorted(pivot_ext_ids - target_ext_ids),
+        missing_in_pivot=sorted(target_ext_ids - pivot_ext_ids),
+        duplicates_pivot=pivot_dups,
+        duplicates_target=target_dups,
+    )
+
+    if pivot_dups:
+        msg = f"Duplicate external_id(s) in pivot doc {pivot_doc_id}: {pivot_dups}"
+        report.warnings.append(msg)
+        log.warning(msg)
+    if target_dups:
+        msg = f"Duplicate external_id(s) in target doc {target_doc_id}: {target_dups}"
+        report.warnings.append(msg)
+        log.warning(msg)
+    if report.missing_in_target:
+        msg = f"{len(report.missing_in_target)} external_id(s) in pivot missing from target"
+        report.warnings.append(msg)
+        log.warning(msg)
+    if report.missing_in_pivot:
+        msg = f"{len(report.missing_in_pivot)} external_id(s) in target missing from pivot"
+        report.warnings.append(msg)
+        log.warning(msg)
+
+    used_pivot: set[int] = set()
+    used_target: set[int] = set()
+    links: list[tuple] = []
+    sample_links: list[dict[str, Any]] = []
+    external_id_links = 0
+
+    # Phase 1: explicit anchor links.
+    for eid in common_ext:
+        pivot_uid = pivot_ext_map[eid][0]
+        target_uid = target_ext_map[eid][0]
+        used_pivot.add(pivot_uid)
+        used_target.add(target_uid)
+        links.append((run_id, pivot_uid, target_uid, eid, pivot_doc_id, target_doc_id, utcnow))
+        external_id_links += 1
+        if debug and len(sample_links) < 20:
+            sample_links.append(
+                {
+                    "phase": "external_id",
+                    "pivot_unit_id": pivot_uid,
+                    "target_unit_id": target_uid,
+                    "external_id": eid,
+                }
+            )
+
+    # Phase 2: monotone position fallback for remaining lines.
+    pivot_remaining = {
+        row["n"]: row["unit_id"]
+        for row in pivot_rows
+        if row["unit_id"] not in used_pivot
+    }
+    target_remaining = {
+        row["n"]: row["unit_id"]
+        for row in target_rows
+        if row["unit_id"] not in used_target
+    }
+    common_pos = sorted(set(pivot_remaining.keys()) & set(target_remaining.keys()))
+    position_links = 0
+    for n in common_pos:
+        pivot_uid = pivot_remaining[n]
+        target_uid = target_remaining[n]
+        links.append((run_id, pivot_uid, target_uid, n, pivot_doc_id, target_doc_id, utcnow))
+        position_links += 1
+        if debug and len(sample_links) < 20:
+            sample_links.append(
+                {
+                    "phase": "position",
+                    "pivot_unit_id": pivot_uid,
+                    "target_unit_id": target_uid,
+                    "position": n,
+                }
+            )
+
+    if links:
+        conn.executemany(
+            """
+            INSERT INTO alignment_links
+                (run_id, pivot_unit_id, target_unit_id, external_id,
+                 pivot_doc_id, target_doc_id, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            links,
+        )
+        conn.commit()
+
+    if common_pos:
+        msg = f"Position fallback created {len(common_pos)} link(s)"
+        report.warnings.append(msg)
+        log.info(msg)
+
+    report.links_created = len(links)
+    if debug:
+        report.debug = {
+            "strategy": "external_id_then_position",
+            "link_sources": {
+                "external_id": external_id_links,
+                "position": position_links,
+            },
+            "sample_links": sample_links,
+        }
+    log.info(
+        "Hybrid alignment complete: %d links created (%.1f%% coverage)",
+        report.links_created,
+        report.coverage_pct,
+    )
+    return report
+
+
+def align_by_external_id_then_position(
+    conn: sqlite3.Connection,
+    pivot_doc_id: int,
+    target_doc_ids: list[int],
+    run_id: str,
+    debug: bool = False,
+    run_logger: Optional[logging.Logger] = None,
+) -> list[AlignmentReport]:
+    """Align pivot against targets with external_id first, then position fallback."""
+    reports: list[AlignmentReport] = []
+    for target_doc_id in target_doc_ids:
+        report = align_pair_external_id_then_position(
+            conn=conn,
+            pivot_doc_id=pivot_doc_id,
+            target_doc_id=target_doc_id,
+            run_id=run_id,
+            debug=debug,
             run_logger=run_logger,
         )
         reports.append(report)
@@ -250,6 +473,7 @@ def align_pair_by_position(
     pivot_doc_id: int,
     target_doc_id: int,
     run_id: str,
+    debug: bool = False,
     run_logger: Optional[logging.Logger] = None,
 ) -> AlignmentReport:
     """Align a single (pivot, target) pair by paragraph position (n).
@@ -302,10 +526,20 @@ def align_pair_by_position(
         log.warning(msg)
 
     links: list[tuple] = []
+    sample_links: list[dict[str, Any]] = []
     for n in common:
         pivot_uid = pivot_pos[n]
         target_uid = target_pos[n]
         links.append((run_id, pivot_uid, target_uid, n, pivot_doc_id, target_doc_id, utcnow))
+        if debug and len(sample_links) < 20:
+            sample_links.append(
+                {
+                    "phase": "position",
+                    "pivot_unit_id": pivot_uid,
+                    "target_unit_id": target_uid,
+                    "position": n,
+                }
+            )
 
     conn.executemany(
         """
@@ -319,6 +553,12 @@ def align_pair_by_position(
     conn.commit()
 
     report.links_created = len(links)
+    if debug:
+        report.debug = {
+            "strategy": "position",
+            "link_sources": {"position": len(links)},
+            "sample_links": sample_links,
+        }
     log.info(
         "Position alignment complete: %d links created (%.1f%% coverage)",
         report.links_created, report.coverage_pct,
@@ -331,6 +571,7 @@ def align_by_position(
     pivot_doc_id: int,
     target_doc_ids: list[int],
     run_id: str,
+    debug: bool = False,
     run_logger: Optional[logging.Logger] = None,
 ) -> list[AlignmentReport]:
     """Align pivot document against targets by paragraph position (n).
@@ -344,6 +585,7 @@ def align_by_position(
             pivot_doc_id=pivot_doc_id,
             target_doc_id=target_doc_id,
             run_id=run_id,
+            debug=debug,
             run_logger=run_logger,
         )
         reports.append(report)
@@ -386,6 +628,7 @@ def align_pair_by_similarity(
     target_doc_id: int,
     run_id: str,
     threshold: float = 0.8,
+    debug: bool = False,
     run_logger: Optional[logging.Logger] = None,
 ) -> AlignmentReport:
     """Align a (pivot, target) pair using character-level edit-distance similarity.
@@ -413,7 +656,7 @@ def align_pair_by_similarity(
     )
 
     pivot_rows = conn.execute(
-        "SELECT unit_id, text_norm FROM units WHERE doc_id = ? AND unit_type = 'line' ORDER BY n",
+        "SELECT unit_id, n, text_norm FROM units WHERE doc_id = ? AND unit_type = 'line' ORDER BY n",
         (pivot_doc_id,),
     ).fetchall()
 
@@ -433,6 +676,8 @@ def align_pair_by_similarity(
 
     used_target: set[int] = set()
     links: list[tuple] = []
+    sample_links: list[dict[str, Any]] = []
+    matched_scores: list[float] = []
 
     for p_row in pivot_rows:
         p_uid = p_row["unit_id"]
@@ -453,9 +698,19 @@ def align_pair_by_similarity(
         if best_t_uid is not None and best_score >= threshold:
             used_target.add(best_t_uid)
             links.append(
-                (run_id, p_uid, best_t_uid, None, pivot_doc_id, target_doc_id, utcnow)
+                (run_id, p_uid, best_t_uid, p_row["n"], pivot_doc_id, target_doc_id, utcnow)
             )
             report.matched.append(p_uid)
+            matched_scores.append(best_score)
+            if debug and len(sample_links) < 20:
+                sample_links.append(
+                    {
+                        "phase": "similarity",
+                        "pivot_unit_id": p_uid,
+                        "target_unit_id": best_t_uid,
+                        "score": round(best_score, 4),
+                    }
+                )
         else:
             report.missing_in_target.append(p_uid)
 
@@ -479,6 +734,26 @@ def align_pair_by_similarity(
         )
         report.warnings.append(msg)
         log.warning(msg)
+    if debug:
+        if matched_scores:
+            score_min = min(matched_scores)
+            score_max = max(matched_scores)
+            score_mean = sum(matched_scores) / len(matched_scores)
+            similarity_stats: dict[str, Any] = {
+                "matched_count": len(matched_scores),
+                "score_min": round(score_min, 4),
+                "score_max": round(score_max, 4),
+                "score_mean": round(score_mean, 4),
+            }
+        else:
+            similarity_stats = {"matched_count": 0}
+        report.debug = {
+            "strategy": "similarity",
+            "threshold": threshold,
+            "link_sources": {"similarity": len(links)},
+            "similarity_stats": similarity_stats,
+            "sample_links": sample_links,
+        }
 
     log.info(
         "Similarity alignment complete: %d links created (%.1f%% coverage)",
@@ -494,6 +769,7 @@ def align_by_similarity(
     target_doc_ids: list[int],
     run_id: str,
     threshold: float = 0.8,
+    debug: bool = False,
     run_logger: Optional[logging.Logger] = None,
 ) -> list[AlignmentReport]:
     """Align pivot against one or more targets using edit-distance similarity.
@@ -508,6 +784,7 @@ def align_by_similarity(
             target_doc_id=target_doc_id,
             run_id=run_id,
             threshold=threshold,
+            debug=debug,
             run_logger=run_logger,
         )
         reports.append(report)

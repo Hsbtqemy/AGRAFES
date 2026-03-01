@@ -204,6 +204,56 @@ def test_align_multiple_targets(
     assert total_links == 4  # 2 + 2
 
 
+def test_align_external_id_then_position_fallback(
+    db_conn: sqlite3.Connection,
+    bilingual_corpus: dict,
+) -> None:
+    """Hybrid strategy should add position fallback links after anchor matching."""
+    from multicorpus_engine.aligner import align_by_external_id_then_position
+
+    reports = align_by_external_id_then_position(
+        conn=db_conn,
+        pivot_doc_id=bilingual_corpus["fr_doc_id"],
+        target_doc_ids=[bilingual_corpus["en_doc_id"]],
+        run_id="test-run-hybrid-001",
+    )
+
+    assert len(reports) == 1
+    report = reports[0]
+    # external_id matches: 1,2,3 and position fallback for n=4
+    assert report.links_created == 4
+    assert report.pivot_line_count == 4
+    assert report.coverage_pct == 100.0
+    assert any("Position fallback created" in w for w in report.warnings)
+
+    rows = db_conn.execute("SELECT COUNT(*) FROM alignment_links").fetchone()[0]
+    assert rows == 4
+
+
+def test_align_similarity_debug_payload(
+    db_conn: sqlite3.Connection,
+    bilingual_corpus: dict,
+) -> None:
+    """Debug mode should include similarity stats and link source counts."""
+    from multicorpus_engine.aligner import align_by_similarity
+
+    reports = align_by_similarity(
+        conn=db_conn,
+        pivot_doc_id=bilingual_corpus["fr_doc_id"],
+        target_doc_ids=[bilingual_corpus["en_doc_id"]],
+        run_id="test-run-sim-debug-001",
+        threshold=0.1,
+        debug=True,
+    )
+    report = reports[0]
+    data = report.to_dict()
+    assert "debug" in data
+    debug = data["debug"]
+    assert debug["strategy"] == "similarity"
+    assert "link_sources" in debug
+    assert "similarity_stats" in debug
+
+
 def test_query_include_aligned(
     db_conn: sqlite3.Connection,
     bilingual_corpus: dict,

@@ -12,7 +12,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, ubuntu-latest, windows-latest]
+        include:
+          - os: macos-latest
+            format: onefile
+          - os: ubuntu-latest
+            format: onedir
+          - os: windows-latest
+            format: onedir
 
     steps:
       - name: Checkout
@@ -28,13 +34,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[packaging]"
 
-      - name: Build sidecar binary (onefile)
-        run: python scripts/build_sidecar.py --preset tauri --format onefile
+      - name: Build sidecar binary
+        run: python scripts/build_sidecar.py --preset tauri --format "${{ matrix.format }}"
 
       - name: Upload sidecar artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: sidecar-${{ matrix.os }}
+          name: sidecar-${{ matrix.os }}-${{ matrix.format }}
           path: |
             tauri/src-tauri/binaries/multicorpus-*
             tauri/src-tauri/binaries/sidecar-manifest.json

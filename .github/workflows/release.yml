@@ -28,8 +28,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
-        format: [onefile, onedir]
+        include:
+          - os: macos-latest
+            format: onefile
+          - os: windows-latest
+            format: onedir
 
     steps:
       - name: Checkout
@@ -88,17 +91,13 @@ jobs:
   build-linux-manylinux:
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix:
-        format: [onefile, onedir]
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Build sidecar in manylinux container
-        run: bash scripts/linux_manylinux_build_sidecar.sh --format "${{ matrix.format }}" --out tauri/src-tauri/binaries
+        run: bash scripts/linux_manylinux_build_sidecar.sh --format onedir --out tauri/src-tauri/binaries
 
       - name: Verify executable starts (--help)
         run: |
@@ -109,7 +108,7 @@ jobs:
       - name: Upload release artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: release-linux-manylinux-${{ matrix.format }}
+          name: release-linux-manylinux-onedir
           path: |
             tauri/src-tauri/binaries/multicorpus-*
             tauri/src-tauri/binaries/sidecar-manifest.json

@@ -60,17 +60,20 @@ async function loadTokenFromPortfile(started: JsonObject): Promise<string | null
 }
 
 export async function runPersistentSidecarFlow(dbPath: string): Promise<JsonObject> {
-  const command = Command.sidecar("binaries/multicorpus", [
-    "serve",
-    "--db",
-    dbPath,
-    "--host",
-    "127.0.0.1",
-    "--port",
-    "0",
-  ]);
-
-  const child = await command.spawn();
+  let child;
+  try {
+    child = await Command.sidecar("binaries/multicorpus", [
+      "serve",
+      "--db",
+      dbPath,
+      "--host",
+      "127.0.0.1",
+      "--port",
+      "0",
+    ]).spawn();
+  } catch (err) {
+    throw new Error(`failed to spawn sidecar: ${String(err)}`);
+  }
 
   const started = await readFirstJsonFromStream((onData) => {
     child.stdout.on("data", (line) => onData(line));

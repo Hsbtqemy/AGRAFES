@@ -18,7 +18,7 @@ from __future__ import annotations
 import logging
 import re
 import sqlite3
-from typing import Optional
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -152,14 +152,14 @@ def _all_kwic_windows(
 def _fetch_aligned_units(
     conn: sqlite3.Connection,
     unit_id: int,
+    aligned_limit: Optional[int] = None,
 ) -> list[dict]:
     """Return all units aligned to the given pivot unit_id.
 
     Looks up alignment_links where pivot_unit_id = unit_id,
     returns target unit data (text_norm, language, title, external_id).
     """
-    rows = conn.execute(
-        """
+    sql = """
         SELECT
             al.target_unit_id,
             al.external_id,
@@ -173,9 +173,13 @@ def _fetch_aligned_units(
         JOIN documents d ON d.doc_id = u.doc_id
         WHERE al.pivot_unit_id = ?
         ORDER BY d.language, al.target_doc_id
-        """,
-        (unit_id,),
-    ).fetchall()
+    """
+    params: list[object] = [unit_id]
+    if aligned_limit is not None:
+        sql += "\nLIMIT ?"
+        params.append(aligned_limit)
+
+    rows = conn.execute(sql, params).fetchall()
 
     return [
         {
@@ -184,13 +188,87 @@ def _fetch_aligned_units(
             "external_id": row["external_id"],
             "language": row["language"],
             "title": row["title"],
+            "text": row["text_norm"],
             "text_norm": row["text_norm"],
         }
         for row in rows
     ]
 
 
-def run_query(
+def _build_hits(
+    conn: sqlite3.Connection,
+    rows: list[sqlite3.Row],
+    *,
+    q: str,
+    mode: str,
+    window: int,
+    include_aligned: bool,
+    aligned_limit: Optional[int],
+    all_occurrences: bool,
+) -> list[dict[str, Any]]:
+    hits: list[dict[str, Any]] = []
+    for row in rows:
+        unit_id = row["unit_id"]
+        d_id = row["doc_id"]
+        ext_id = row["external_id"]
+        text_norm = row["text_norm"]
+        lang = row["language"]
+        title = row["title"]
+
+        if mode == "segment":
+            hit: dict[str, Any] = {
+                "doc_id": d_id,
+                "unit_id": unit_id,
+                "external_id": ext_id,
+                "language": lang,
+                "title": title,
+                "text": _highlight_segment(text_norm, q),
+                "text_norm": text_norm,
+            }
+            if include_aligned:
+                hit["aligned"] = _fetch_aligned_units(
+                    conn,
+                    unit_id,
+                    aligned_limit=aligned_limit,
+                )
+            hits.append(hit)
+            logger.debug("Hit: unit_id=%d ext_id=%s", unit_id, ext_id)
+            continue
+
+        if mode == "kwic":
+            if all_occurrences:
+                occurrences = _all_kwic_windows(text_norm, q, window)
+            else:
+                occurrences = [_kwic_windows(text_norm, q, window)]
+
+            for left, match, right in occurrences:
+                occ_hit: dict[str, Any] = {
+                    "doc_id": d_id,
+                    "unit_id": unit_id,
+                    "external_id": ext_id,
+                    "language": lang,
+                    "title": title,
+                    "left": left,
+                    "match": match,
+                    "right": right,
+                    "text_norm": text_norm,
+                }
+                if include_aligned:
+                    occ_hit["aligned"] = _fetch_aligned_units(
+                        conn,
+                        unit_id,
+                        aligned_limit=aligned_limit,
+                    )
+                hits.append(occ_hit)
+                logger.debug("Hit (occurrence): unit_id=%d match=%r", unit_id, match)
+            continue
+
+        raise ValueError(f"Unknown query mode: {mode!r}. Expected 'segment' or 'kwic'.")
+
+    return hits
+
+
+def run_query_page(
     conn: sqlite3.Connection,
     q: str,
     mode: str = "segment",
@@ -200,31 +278,38 @@ def run_query(
     resource_type: Optional[str] = None,
     doc_role: Optional[str] = None,
     include_aligned: bool = False,
+    aligned_limit: Optional[int] = None,
     all_occurrences: bool = False,
-) -> list[dict]:
-    """Run an FTS query and return a list of hit dicts.
+    limit: Optional[int] = None,
+    offset: int = 0,
+) -> dict[str, Any]:
+    """Run an FTS query and return a paginated payload.
 
-    Args:
-        conn: SQLite connection.
-        q: Query string (FTS5 syntax).
-        mode: 'segment' or 'kwic'.
-        window: Number of tokens for KWIC context (each side).
-        language: Filter by document language.
-        doc_id: Filter by specific document.
-        resource_type: Filter by resource_type.
-        doc_role: Filter by doc_role.
-        include_aligned: If True, attach aligned units from other docs to each hit.
-        all_occurrences: KWIC only. If True, return one hit per match occurrence
-            instead of one hit per unit (ADR-006 extension).
-
-    Returns:
-        List of hit dicts shaped per docs/INTEGRATION_TAURI.md.
+    Pagination strategy:
+    - If ``limit`` is provided, fetch ``limit + 1`` rows to compute ``has_more``
+      without an extra count query.
+    - ``total`` is intentionally ``None`` in V0.2 to avoid expensive COUNT(*) on
+      larger corpora.
     """
+    if offset < 0:
+        raise ValueError("offset must be >= 0")
+    if limit is not None and limit <= 0:
+        raise ValueError("limit must be >= 1 when provided")
+    if aligned_limit is not None and aligned_limit <= 0:
+        raise ValueError("aligned_limit must be >= 1 when provided")
+
     if not q.strip():
-        return []
+        return {
+            "hits": [],
+            "limit": limit,
+            "offset": offset,
+            "next_offset": None,
+            "has_more": False,
+            "total": None,
+        }
 
     filters: list[str] = ["u.unit_type = 'line'"]
-    params: list = [q]
+    params: list[Any] = [q]
 
     if language:
         filters.append("d.language = ?")
@@ -240,8 +325,7 @@ def run_query(
         params.append(doc_role)
 
     where_clause = " AND ".join(filters)
-
-    sql = f"""
+    base_sql = f"""
         SELECT
             u.unit_id,
             u.doc_id,
@@ -258,64 +342,98 @@ def run_query(
         ORDER BY u.doc_id, u.n
     """
 
-    logger.debug("Query SQL: %s | params: %s", sql, params)
+    sql = base_sql
+    query_params: list[Any] = list(params)
+    if limit is not None:
+        sql += "\nLIMIT ? OFFSET ?"
+        query_params.extend([limit + 1, offset])
+    elif offset > 0:
+        sql += "\nLIMIT -1 OFFSET ?"
+        query_params.append(offset)
+
+    logger.debug("Query SQL: %s | params: %s", sql, query_params)
 
     try:
-        rows = conn.execute(sql, params).fetchall()
+        rows = conn.execute(sql, query_params).fetchall()
     except sqlite3.OperationalError as exc:
         logger.error("FTS query error: %s", exc)
         raise
 
-    hits: list[dict] = []
-    for row in rows:
-        unit_id = row["unit_id"]
-        d_id = row["doc_id"]
-        ext_id = row["external_id"]
-        text_norm = row["text_norm"]
-        lang = row["language"]
-        title = row["title"]
+    has_more = False
+    next_offset: int | None = None
+    page_rows = rows
+    if limit is not None and len(rows) > limit:
+        page_rows = rows[:limit]
+        has_more = True
+        next_offset = offset + limit
 
-        if mode == "segment":
-            hit = {
-                "doc_id": d_id,
-                "unit_id": unit_id,
-                "external_id": ext_id,
-                "language": lang,
-                "title": title,
-                "text": _highlight_segment(text_norm, q),
-                "text_norm": text_norm,
-            }
-        elif mode == "kwic":
-            if all_occurrences:
-                occurrences = _all_kwic_windows(text_norm, q, window)
-            else:
-                occurrences = [_kwic_windows(text_norm, q, window)]
+    hits = _build_hits(
+        conn,
+        page_rows,
+        q=q,
+        mode=mode,
+        window=window,
+        include_aligned=include_aligned,
+        aligned_limit=aligned_limit,
+        all_occurrences=all_occurrences,
+    )
 
-            for left, match, right in occurrences:
-                occ_hit = {
-                    "doc_id": d_id,
-                    "unit_id": unit_id,
-                    "external_id": ext_id,
-                    "language": lang,
-                    "title": title,
-                    "left": left,
-                    "match": match,
-                    "right": right,
-                    "text_norm": text_norm,
-                }
-                if include_aligned:
-                    occ_hit["aligned"] = _fetch_aligned_units(conn, unit_id)
-                hits.append(occ_hit)
-                logger.debug("Hit (occurrence): unit_id=%d match=%r", unit_id, match)
-            continue  # already appended; skip the generic append below
-        else:
-            raise ValueError(f"Unknown query mode: {mode!r}. Expected 'segment' or 'kwic'.")
+    logger.info("Query %r mode=%s returned %d hits (offset=%d, limit=%s)", q, mode, len(hits), offset, limit)
+    return {
+        "hits": hits,
+        "limit": limit,
+        "offset": offset,
+        "next_offset": next_offset,
+        "has_more": has_more,
+        "total": None,
+    }
 
-        if include_aligned:
-            hit["aligned"] = _fetch_aligned_units(conn, unit_id)
 
-        hits.append(hit)
-        logger.debug("Hit: unit_id=%d ext_id=%s", unit_id, ext_id)
+def run_query(
+    conn: sqlite3.Connection,
+    q: str,
+    mode: str = "segment",
+    window: int = 10,
+    language: Optional[str] = None,
+    doc_id: Optional[int] = None,
+    resource_type: Optional[str] = None,
+    doc_role: Optional[str] = None,
+    include_aligned: bool = False,
+    aligned_limit: Optional[int] = None,
+    all_occurrences: bool = False,
+) -> list[dict]:
+    """Run an FTS query and return a list of hit dicts.
 
-    logger.info("Query %r mode=%s returned %d hits", q, mode, len(hits))
-    return hits
+    Args:
+        conn: SQLite connection.
+        q: Query string (FTS5 syntax).
+        mode: 'segment' or 'kwic'.
+        window: Number of tokens for KWIC context (each side).
+        language: Filter by document language.
+        doc_id: Filter by specific document.
+        resource_type: Filter by resource_type.
+        doc_role: Filter by doc_role.
+        include_aligned: If True, attach aligned units from other docs to each hit.
+        aligned_limit: Optional per-hit cap for attached aligned units.
+        all_occurrences: KWIC only. If True, return one hit per match occurrence
+            instead of one hit per unit (ADR-006 extension).
+
+    Returns:
+        List of hit dicts shaped per docs/INTEGRATION_TAURI.md.
+    """
+    page = run_query_page(
+        conn=conn,
+        q=q,
+        mode=mode,
+        window=window,
+        language=language,
+        doc_id=doc_id,
+        resource_type=resource_type,
+        doc_role=doc_role,
+        include_aligned=include_aligned,
+        aligned_limit=aligned_limit,
+        all_occurrences=all_occurrences,
+        limit=None,
+        offset=0,
+    )
+    return page["hits"]

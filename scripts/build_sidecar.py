@@ -30,6 +30,11 @@ PRESET_OUT = {
     "tauri": Path("tauri/src-tauri/binaries"),
     "fixture": Path("tauri-fixture/src-tauri/binaries"),
 }
+DEFAULT_FORMAT_BY_OS = {
+    "darwin": "onefile",
+    "linux": "onedir",
+    "windows": "onedir",
+}
 
 
 def _run(cmd: list[str], *, cwd: Path | None = None) -> str:
@@ -92,6 +97,21 @@ def detect_target_triple() -> str:
     )
 
 
+def _target_os_key(target_triple: str) -> str:
+    if "apple-darwin" in target_triple:
+        return "darwin"
+    if "linux" in target_triple:
+        return "linux"
+    if "windows" in target_triple:
+        return "windows"
+    return platform.system().lower()
+
+
+def default_format_for_target(target_triple: str) -> str:
+    os_key = _target_os_key(target_triple)
+    return DEFAULT_FORMAT_BY_OS.get(os_key, "onefile")
+
+
 def _project_version() -> str:
     pyproject = REPO_ROOT / "pyproject.toml"
     if not pyproject.exists():
@@ -148,14 +168,17 @@ def build_sidecar(
     out_dir: Path,
     base_name: str = "multicorpus",
     clean: bool = True,
-    package_format: str = "onefile",
+    package_format: str | None = None,
 ) -> dict:
     if not ENTRYPOINT.exists():
         raise FileNotFoundError(f"Missing entrypoint script: {ENTRYPOINT}")
+
+    target_triple = detect_target_triple()
+    if package_format is None:
+        package_format = default_format_for_target(target_triple)
     if package_format not in {"onefile", "onedir"}:
         raise ValueError(f"Unsupported package format: {package_format!r}")
 
-    target_triple = detect_target_triple()
     is_windows = target_triple.endswith("windows-msvc")
 
     build_root = REPO_ROOT / "build" / "sidecar_pyinstaller"
@@ -275,8 +298,11 @@ def parse_args() -> argparse.Namespace:
         "--format",
         dest="package_format",
         choices=["onefile", "onedir"],
-        default="onefile",
-        help="PyInstaller output format (default: onefile).",
+        default=None,
+        help=(
+            "PyInstaller output format. "
+            "Default when omitted: darwin=onefile, linux=onedir, windows=onedir."
+        ),
     )
     parser.add_argument(
         "--no-clean",

@@ -57,7 +57,7 @@ Bundles are in `tauri-prep/src-tauri/target/release/bundle/`.
 |--------|---------|
 | **Projet** | Open or create a corpus DB, view sidecar status (port/PID), shutdown sidecar |
 | **Import** | Multi-file import with mode/language/title per file, 2-concurrent batch, FTS rebuild |
-| **Actions** | Curate (regex rules), Segment (per-doc), Align (pivot+targets, 3 strategies), Validate metadata |
+| **Actions** | Curate (regex rules), Segment (per-doc + pack `auto/default/fr_strict/en_strict`), Align (pivot+targets, 4 strategies incl. `external_id_then_position` + optional debug explainability), Validate metadata |
 
 ## Workflow recommandé (Prep → Concordancier)
 

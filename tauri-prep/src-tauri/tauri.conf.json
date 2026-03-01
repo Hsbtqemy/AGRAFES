@@ -1,0 +1,38 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "ConcordancierPrep",
+  "version": "0.1.0",
+  "identifier": "com.agrafes.concordancier-prep",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:1421"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Concordancier Prep — AGRAFES",
+        "width": 1000,
+        "height": 700,
+        "minWidth": 700,
+        "minHeight": 480,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "capabilities": ["default"]
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "externalBin": ["multicorpus"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png"
+    ]
+  }
+}

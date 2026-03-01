@@ -1,6 +1,6 @@
 # Integration Guide — Tauri + multicorpus_engine
 
-Last updated: 2026-02-28 (persistent sidecar restart/token hardening)
+Last updated: 2026-02-28 (tauri-prep V0.8.1: align explainability panel)
 
 ## Integration modes
 
@@ -15,8 +15,8 @@ CLI usage must remain functional even when sidecar is not used.
 
 ## Sidecar binary packaging (Tauri external binaries)
 
-This repository now provides a packaging path for shipping the Python CLI as a
-Tauri sidecar binary using PyInstaller (`onefile` mode).
+This repository provides a packaging path for shipping the Python CLI as a
+Tauri sidecar binary using PyInstaller (`onefile` and `onedir`).
 
 - Build entrypoint: `scripts/sidecar_entry.py`
 - Builder script: `scripts/build_sidecar.py`
@@ -24,8 +24,12 @@ Tauri sidecar binary using PyInstaller (`onefile` mode).
 - Fixture directory: `tauri-fixture/src-tauri/binaries/`
 - Manifest: `<out>/sidecar-manifest.json`
 - Build formats:
-  - `--format onefile` (default)
-  - `--format onedir` (benchmark/decision track)
+  - `--format onefile`
+  - `--format onedir`
+- Default format mapping when `--format` is omitted (ADR-025, `per_os`):
+  - macOS (`darwin`): `onefile`
+  - Linux (`linux`): `onedir`
+  - Windows (`windows`): `onedir`
 
 Naming convention for produced binaries:
 
@@ -41,9 +45,14 @@ Example local build:
 
 ```bash
 pip install -e ".[packaging]"
-python scripts/build_sidecar.py --preset tauri --format onefile
-python scripts/build_sidecar.py --preset fixture --format onefile
+python scripts/build_sidecar.py --preset tauri
+python scripts/build_sidecar.py --preset fixture
 ```
+
+Layout impact by format:
+- `onefile`: one executable `multicorpus-<target_triple>[.exe]`
+- `onedir`: one directory `multicorpus-<target_triple>-onedir/` containing
+  the executable `multicorpus-<target_triple>[.exe]`
 
 ## CI artifacts (Windows/Linux/macOS)
 
@@ -53,10 +62,14 @@ Workflow: `.github/workflows/build-sidecar.yml`
   - manual (`workflow_dispatch`)
   - pushed tags matching `v*`
 - Matrix runners: `macos-latest`, `ubuntu-latest`, `windows-latest`
+- Explicit format mapping:
+  - `macos-latest` -> `onefile`
+  - `ubuntu-latest` -> `onedir`
+  - `windows-latest` -> `onedir`
 - Uploaded artifact names:
-  - `sidecar-macos-latest`
-  - `sidecar-ubuntu-latest`
-  - `sidecar-windows-latest`
+  - `sidecar-macos-latest-onefile`
+  - `sidecar-ubuntu-latest-onedir`
+  - `sidecar-windows-latest-onedir`
 
 Each artifact contains:
 - `multicorpus-<target_triple>[.exe]`
@@ -85,6 +98,22 @@ Smoke flow (persistent):
 5. `POST /import` then `POST /index` with `X-Agrafes-Token` when token is active.
 6. `POST /query`.
 7. `POST /shutdown` with `X-Agrafes-Token` when token is active.
+
+Parallel/aligned view (UI V0.1):
+- UI can call `/query` with `include_aligned=true` to attach aligned units under each hit.
+- Optional safety cap for payload fan-out: `aligned_limit` (sidecar default `20`).
+- Recommended UX pattern:
+  - one query request (no N-per-hit requests),
+  - optional client-side hit render cap when aligned mode is active.
+
+Pagination (UI V0.2, recommended):
+- Send `limit` and `offset` in `/query` request body.
+- Read `has_more` and `next_offset` from response to implement `Load more`.
+- Default policy:
+  - regular search: `limit=50`
+  - aligned mode enabled: `limit=20`
+- Keep one `/query` request per page (including aligned enrichment) to avoid N+1 HTTP calls.
+- Current sidecar policy returns `total=null` (no global COUNT query by default).
 
 CI workflow:
 - `.github/workflows/tauri-e2e-fixture.yml`
@@ -133,11 +162,11 @@ In current implementation, stderr stays empty for contract failures and should n
 - `import --db ... --mode docx_numbered_lines|txt_numbered_lines|docx_paragraphs|tei ...`
 - `index --db ...`
 - `query --db ... --q ... --mode segment|kwic [--output path --output-format jsonl|csv|tsv|html]`
-- `align --db ... --pivot-doc-id ... --target-doc-id ... [--strategy external_id|position|similarity]`
+- `align --db ... --pivot-doc-id ... --target-doc-id ... [--strategy external_id|position|similarity|external_id_then_position] [--debug-align]`
 - `export --db ... --format tei|csv|tsv|jsonl|html --output ...`
 - `validate-meta --db ...`
 - `curate --db ... --rules rules.json [--doc-id ...]`
-- `segment --db ... --doc-id ... [--lang ...]`
+- `segment --db ... --doc-id ... [--lang ...] [--pack auto|default|fr_strict|en_strict]`
 - `serve --db ... [--host ... --port ... --token auto|off|<value>]`
 - `status --db ...`
 - `shutdown --db ...`
@@ -208,10 +237,10 @@ Current measured dimensions:
 Release hardening status:
 - Distribution scripts/workflows now exist for macOS signing/notarization,
   Windows signing, and Linux manylinux builds.
+- ADR-025 format decision is finalized (per OS).
 - Final operational rollout remains pending:
   - provisioning production signing credentials and notarization keys
   - validating manylinux compatibility floor beyond CI baseline
-  - finalizing onefile vs onedir default from multi-OS benchmark data
 
 Distribution workflows and secrets are documented in:
 - `docs/DISTRIBUTION.md`
@@ -224,22 +253,102 @@ Distribution workflows and secrets are documented in:
 When enabled via `multicorpus serve`:
 - `GET /health`
 - `GET /openapi.json`
+- `GET /documents` — list all docs with unit_count
 - `POST /query`
 - `POST /index`
 - `POST /import`
 - `POST /shutdown`
 - `POST /curate`
+- `POST /curate/preview` — dry-run preview, no write, no token required (V0.3)
+- `POST /align` (`strategy`: `external_id|position|similarity|external_id_then_position`)
+  - optional `debug_align: true` to get per-report explainability payload (`report.debug`)
+  - response includes `run_id` (persisted in `runs`) and `total_links_created`
+- `POST /align/audit` — paginated read-only link audit; optional status filter (V0.3/V0.4)
+- `POST /align/link/update_status` — set link status accepted/rejected/null (token required, V0.4)
+- `POST /align/link/delete` — permanently delete a link (token required, V0.4)
+- `POST /align/link/retarget` — change target unit of a link (token required, V0.4)
+- `GET /doc_relations?doc_id=N` — list doc-level relations (no token, V0.4)
+- `POST /documents/update` — update one doc's metadata (token required, V0.4)
+- `POST /documents/bulk_update` — bulk update docs (token required, V0.4)
+- `POST /doc_relations/set` — upsert a doc_relation (token required, V0.4)
+- `POST /doc_relations/delete` — delete a doc_relation (token required, V0.4)
+- `POST /export/tei` — export TEI XML to server-side dir (token required, V0.4)
+- `POST /export/align_csv` — export alignment links as CSV/TSV (token required, V0.4)
+- `POST /export/run_report` — export run history as JSONL or HTML (token required, V0.4)
 - `POST /validate-meta`
 - `POST /segment`
-- `GET /jobs`
+- `GET /jobs` — list jobs; supports `?status=`, `?limit=`, `?offset=`; returns pagination fields (V0.5)
 - `POST /jobs`
 - `GET /jobs/{job_id}`
+- `POST /jobs/enqueue` — async job enqueue for long ops (token required, V0.5); 9 kinds: index, curate, validate-meta, segment, import, align, export_tei, export_align_csv, export_run_report
+- `POST /jobs/{job_id}/cancel` — cancel queued/running job, idempotent for terminal states (token required, V0.5)
+
+#### tauri-prep V0.3 usage
+
+`tauri-prep` uses both V0.3 endpoints:
+- `/curate/preview`: preset selector (Espaces, Apostrophes, Ponctuation, Personnalisé) → stats banner (units_changed/total, replacements) + before/after diff table with word-level highlighting.
+- `/align/audit`: auto-loads after an alignment run; paginated table (ext_id, pivot text, target text); "Load more" for subsequent pages.
+
+#### tauri-prep V0.4 usage
+
+`tauri-prep` adds three new screens and extends the Actions audit panel:
+
+**MetadataScreen** (`Métadonnées` tab):
+- Fetches doc list via `GET /documents`; click doc to select.
+- Edit panel: title, language, doc_role, resource_type → `POST /documents/update`.
+- Relations panel: lists relations (`GET /doc_relations`), add form → `POST /doc_relations/set`, delete button → `POST /doc_relations/delete`.
+- Bulk edit bar: apply doc_role/resource_type to all docs → `POST /documents/bulk_update`.
+- Validate button → `POST /validate-meta`; displays warnings in log pane.
+
+**ExportsScreen** (`Exports` tab):
+- TEI export: multi-select docs + directory picker (`open({ directory: true })`) → `POST /export/tei`.
+- Alignment CSV export: pivot/target selects + CSV or TSV format + file save dialog → `POST /export/align_csv`.
+- Run report: JSONL or HTML format + file save dialog → `POST /export/run_report`.
+
+**ActionsScreen audit panel extensions** (V0.4C):
+- Status filter select: all / unreviewed / accepted / rejected — passed as `status` field in `/align/audit` request.
+- Per-row action buttons: ✓ Accept → `POST /align/link/update_status`; ✗ Reject → same; 🗑 Delete → `POST /align/link/delete`.
+- In-memory status update after each action (no re-fetch needed).
+
+#### tauri-prep V0.5 usage — Job Center + async enqueue
+
+All long-running operations now use `POST /jobs/enqueue` instead of the equivalent sync endpoint.
+The `JobCenter` component polls `GET /jobs/{id}` every 500ms and displays:
+- A progress bar strip (active jobs, percentage, message, "Annuler" button)
+- A recent jobs list (last 5 finished: done ✓ / error ✗ / canceled ↩)
+- A toast notification on completion or error (auto-fades after 3s)
+
+**ImportScreen** — import + index rebuild:
+- `POST /jobs/enqueue` `{kind: "import", params: {mode, path, language, title}}` per file
+- `POST /jobs/enqueue` `{kind: "index"}` for index rebuild
+
+**ActionsScreen** — curate, segment, align, validate-meta, index:
+- `POST /jobs/enqueue` `{kind: "curate", params: {rules, doc_id?}}`
+- `POST /jobs/enqueue` `{kind: "segment", params: {doc_id, lang, pack?}}`
+- `POST /jobs/enqueue` `{kind: "align", params: {pivot_doc_id, target_doc_ids, strategy, sim_threshold?, debug_align?}}`
+  - recommended fallback mode for prep workflows: `strategy="external_id_then_position"`
+  - with `debug_align=true`, UI renders a dedicated explainability panel (sources, similarity stats, sample links)
+    and allows copying diagnostic JSON for offline troubleshooting.
+  - align job result now includes `run_id`, so explainability can be tied to a single persisted run.
+- `POST /jobs/enqueue` `{kind: "validate-meta", params: {doc_id?}}`
+- `POST /jobs/enqueue` `{kind: "index"}`
+
+**ExportsScreen** — TEI, CSV, run report:
+- `POST /jobs/enqueue` `{kind: "export_tei", params: {out_dir, doc_ids?}}`
+- `POST /jobs/enqueue` `{kind: "export_align_csv", params: {out_path, pivot_doc_id?, target_doc_id?, delimiter?}}`
+- `POST /jobs/enqueue` `{kind: "export_run_report", params: {out_path, format, run_id?}}`
+  - `run_id` filter can export one specific align run/debug payload.
+
+Cancel: `JobCenter` cancel button calls `POST /jobs/{job_id}/cancel` (token required).
 
 Payload envelope, error codes, and OpenAPI details are defined in:
 - `docs/SIDECAR_API_CONTRACT.md`
+- `docs/openapi.json` (generated snapshot, 28 paths)
 
 Token note:
-- With `--token auto` (default), send `X-Agrafes-Token` for `/import`, `/index`, `/shutdown`.
+- With `--token auto` (default), send `X-Agrafes-Token` for all write endpoints.
+- Read endpoints (`/health`, `/query`, `/align/audit`, `/curate/preview`, `/doc_relations`, `/openapi.json`) do not require token.
+- `POST /jobs/enqueue` and `POST /jobs/{id}/cancel` require token.
 - `multicorpus status --db ...` can be used by wrappers to detect `running|stale|missing`.
 
 ## Run logs

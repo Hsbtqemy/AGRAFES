@@ -11,7 +11,8 @@
       "allow": [
         {
           "name": "binaries/multicorpus",
-          "sidecar": true
+          "sidecar": true,
+          "args": true
         }
       ]
     }

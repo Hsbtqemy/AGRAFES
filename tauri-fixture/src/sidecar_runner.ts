@@ -13,12 +13,17 @@ function parseSingleJson(stdout: string): Record<string, unknown> {
 }
 
 export async function runSidecarInitProject(dbPath: string): Promise<Record<string, unknown>> {
-  const command = Command.sidecar("binaries/multicorpus", [
-    "init-project",
-    "--db",
-    dbPath,
-  ]);
-  const result = await command.execute();
+  let result;
+  try {
+    const command = Command.sidecar("binaries/multicorpus", [
+      "init-project",
+      "--db",
+      dbPath,
+    ]);
+    result = await command.execute();
+  } catch (err) {
+    throw new Error(`failed to execute sidecar: ${String(err)}`);
+  }
   if (result.stderr.trim() !== "") {
     throw new Error(`stderr must stay empty, got: ${result.stderr}`);
   }

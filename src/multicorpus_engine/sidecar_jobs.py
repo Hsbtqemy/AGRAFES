@@ -96,9 +96,30 @@ class JobManager:
             if message is not None:
                 job.progress_message = message
 
+    def cancel(self, job_id: str) -> str | None:
+        """Cancel a job. Queued → immediately canceled; running → best-effort (marks canceled).
+
+        Returns the new status string, or None if job_id not found.
+        Already-terminal statuses (done/error/canceled) return current status (idempotent).
+        """
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job is None:
+                return None
+            if job.status in ("done", "error", "canceled"):
+                return job.status
+            job.status = "canceled"
+            job.finished_at = _utcnow()
+            if not job.progress_message:
+                job.progress_message = "Canceled"
+            return "canceled"
+
     def _run_job(self, job_id: str, runner: JobRunner) -> None:
         with self._lock:
             job = self._jobs[job_id]
+            # If already canceled (e.g. cancel called before thread started)
+            if job.status == "canceled":
+                return
             job.status = "running"
             job.started_at = _utcnow()
             job.progress_pct = 1
@@ -111,6 +132,8 @@ class JobManager:
             result = runner(job_id, job.kind, job.params, progress_cb)
             with self._lock:
                 job = self._jobs[job_id]
+                if job.status == "canceled":
+                    return  # don't overwrite a cancel that arrived during execution
                 job.status = "done"
                 job.progress_pct = 100
                 if job.progress_message is None:
@@ -120,6 +143,8 @@ class JobManager:
         except Exception as exc:
             with self._lock:
                 job = self._jobs[job_id]
+                if job.status == "canceled":
+                    return
                 job.status = "error"
                 job.error = str(exc)
                 job.error_code = "INTERNAL_ERROR"

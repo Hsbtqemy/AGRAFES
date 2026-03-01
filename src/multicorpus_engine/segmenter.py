@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 # Pattern that matches tokens that should NOT be treated as sentence ends.
-_ABBREV_RE = re.compile(
+_BASE_ABBREV_PATTERN = (
     r"\b(?:M|Mme|Mmes|Dr|Prof|St|Sgt|Cdt|Lt|Cpt|Mlle|Mlles|No|Nos|Mr|Mrs|Ms)\."
     r"|\b(?:Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\."
     r"|\b(?:p|pp|vol|ed|eds|fig|tab|art|sect|cf|vs|ibid|loc|op|cit)\."
@@ -37,12 +37,56 @@ _ABBREV_RE = re.compile(
 _SPLIT_RE = re.compile(r"(?<=[.!?])\s+(?=[A-ZÀ-Ÿ\"\u2018\u2019\u201C\u201D(])")
 
 
+_PACK_EXTRA_ABBREVIATIONS: dict[str, tuple[str, ...]] = {
+    "default": (),
+    # Keeps common French abbreviations from triggering sentence breaks.
+    "fr_strict": ("ann", "chap", "env", "etc", "par"),
+    # Keeps common English abbreviations from triggering sentence breaks.
+    "en_strict": ("approx", "dept", "misc", "chap"),
+}
+
+
+def _compile_abbrev_regex(pack: str) -> re.Pattern:
+    extras = _PACK_EXTRA_ABBREVIATIONS.get(pack)
+    if extras is None:
+        raise ValueError(f"Unknown segmentation pack: {pack!r}")
+    if not extras:
+        return re.compile(_BASE_ABBREV_PATTERN, flags=re.IGNORECASE)
+    escaped = "|".join(re.escape(token) for token in extras)
+    pattern = f"{_BASE_ABBREV_PATTERN}|\\b(?:{escaped})\\."
+    return re.compile(pattern, flags=re.IGNORECASE)
+
+
+_ABBREV_RE_BY_PACK: dict[str, re.Pattern] = {
+    name: _compile_abbrev_regex(name) for name in _PACK_EXTRA_ABBREVIATIONS
+}
+
+
+def resolve_segment_pack(pack: str | None, lang: str = "und") -> str:
+    """Resolve a user-facing pack name to an internal segmentation pack key."""
+    raw_pack = (pack or "").strip().lower()
+    if not raw_pack or raw_pack == "auto":
+        norm_lang = (lang or "und").strip().lower()
+        if norm_lang.startswith("fr"):
+            return "fr_strict"
+        if norm_lang.startswith("en"):
+            return "en_strict"
+        return "default"
+    if raw_pack not in _ABBREV_RE_BY_PACK:
+        supported = ", ".join(sorted(_ABBREV_RE_BY_PACK))
+        raise ValueError(
+            f"Unknown segmentation pack: {raw_pack!r}. "
+            f"Use auto or one of: {supported}"
+        )
+    return raw_pack
+
+
 # ---------------------------------------------------------------------------
 # Public helpers
 # ---------------------------------------------------------------------------
 
 
-def segment_text(text: str, lang: str = "und") -> list[str]:
+def segment_text(text: str, lang: str = "und", pack: str | None = None) -> list[str]:
     """Split *text* into sentence strings using rule-based regex.
 
     Strategy:
@@ -57,10 +101,14 @@ def segment_text(text: str, lang: str = "und") -> list[str]:
 
     Args:
         text: Text to segment (already normalized, e.g. text_norm).
-        lang: ISO language code (reserved for future language-specific rules).
+        lang: ISO language code.
+        pack: Optional quality pack ("auto", "default", "fr_strict", "en_strict").
     """
     if not text or not text.strip():
         return [text] if text else []
+
+    resolved_pack = resolve_segment_pack(pack, lang)
+    abbrev_re = _ABBREV_RE_BY_PACK[resolved_pack]
 
     # Step 1: protect abbreviations
     counter = 0
@@ -73,7 +121,7 @@ def segment_text(text: str, lang: str = "und") -> list[str]:
         counter += 1
         return ph
 
-    protected = _ABBREV_RE.sub(_protect, text)
+    protected = abbrev_re.sub(_protect, text)
 
     # Step 2: split on sentence boundaries
     raw_sentences = _SPLIT_RE.split(protected)
@@ -103,6 +151,7 @@ class SegmentationReport:
     doc_id: int
     units_input: int    # Line units before segmentation
     units_output: int   # Sentence-level units after segmentation
+    segment_pack: str
     warnings: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
@@ -110,6 +159,7 @@ class SegmentationReport:
             "doc_id": self.doc_id,
             "units_input": self.units_input,
             "units_output": self.units_output,
+            "segment_pack": self.segment_pack,
             "warnings": self.warnings,
         }
 
@@ -123,6 +173,7 @@ def resegment_document(
     conn: sqlite3.Connection,
     doc_id: int,
     lang: str = "und",
+    pack: str | None = None,
     run_logger: Optional[logging.Logger] = None,
 ) -> SegmentationReport:
     """Replace line units in *doc_id* with sentence-segmented units.
@@ -141,6 +192,7 @@ def resegment_document(
     Returns SegmentationReport with unit counts.
     """
     log = run_logger or logger
+    resolved_pack = resolve_segment_pack(pack, lang)
 
     rows = conn.execute(
         "SELECT unit_id, n, text_raw, text_norm FROM units"
@@ -154,6 +206,7 @@ def resegment_document(
             doc_id=doc_id,
             units_input=0,
             units_output=0,
+            segment_pack=resolved_pack,
             warnings=[f"No line units found for doc_id={doc_id}"],
         )
 
@@ -163,7 +216,7 @@ def resegment_document(
 
     for row in rows:
         text_norm = row["text_norm"] or ""
-        sentences = segment_text(text_norm, lang)
+        sentences = segment_text(text_norm, lang=lang, pack=resolved_pack)
         for sent in sentences:
             new_units.append((doc_id, "line", global_n, None, sent, sent, None))
             global_n += 1
@@ -198,5 +251,6 @@ def resegment_document(
         doc_id=doc_id,
         units_input=len(rows),
         units_output=len(new_units),
+        segment_pack=resolved_pack,
         warnings=[warn] if deleted_links > 0 else [],
     )

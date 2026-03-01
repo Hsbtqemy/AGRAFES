@@ -28,9 +28,10 @@ def create_run(
     conn: sqlite3.Connection,
     kind: str,
     params: dict,
+    run_id: str | None = None,
 ) -> str:
     """Insert a new run record and return the run_id."""
-    run_id = new_run_id()
+    run_id = (run_id or "").strip() or new_run_id()
     created_at = utcnow_iso()
     conn.execute(
         """

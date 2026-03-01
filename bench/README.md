@@ -55,3 +55,27 @@ PYTHONPATH=src python bench/run_sidecar_bench.py \
 
 Sidecar benchmark outputs are written under `bench/runs_sidecar/<timestamp>/`
 with the same files: `report.json`, `samples.csv`, `aggregates.csv`.
+
+## Segmentation quality fixtures (FR/EN)
+
+Run the quality fixture benchmark for segmentation packs:
+
+```bash
+PYTHONPATH=src python scripts/bench_segmentation_quality.py
+```
+
+Inputs:
+- `bench/fixtures/segmentation_quality_cases.json`
+
+Outputs:
+- JSON report in `bench/results/segmentation_quality_YYYYMMDD.json`
+- Markdown summary in `docs/SEGMENTATION_BENCHMARKS.md`
+
+You can override packs and paths:
+
+```bash
+PYTHONPATH=src python scripts/bench_segmentation_quality.py \
+  --packs auto,default,fr_strict,en_strict \
+  --output bench/results/segmentation_quality_custom.json \
+  --markdown docs/SEGMENTATION_BENCHMARKS.md
+```

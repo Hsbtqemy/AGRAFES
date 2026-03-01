@@ -66,6 +66,18 @@ function resolveSidecarBinary() {
       if (fs.existsSync(expectedPath)) {
         return expectedPath;
       }
+      const onedirDir = path.join(sidecarDir, `multicorpus-${triple}-onedir`);
+      const onedirExe = path.join(onedirDir, expectedName);
+      if (fs.existsSync(onedirExe)) {
+        return onedirExe;
+      }
+      const onedirFallbackExe = path.join(
+        onedirDir,
+        process.platform === "win32" ? "multicorpus.exe" : "multicorpus",
+      );
+      if (fs.existsSync(onedirFallbackExe)) {
+        return onedirFallbackExe;
+      }
     }
   }
 
@@ -81,10 +93,31 @@ function resolveSidecarBinary() {
   });
 
   const fallback = preferred || files[0];
-  if (!fallback) {
-    fail("No sidecar binary found in directory", { sidecarDir });
+  if (fallback) {
+    return path.join(sidecarDir, fallback);
   }
-  return path.join(sidecarDir, fallback);
+
+  const dirs = fs.readdirSync(sidecarDir).filter((f) => {
+    if (!f.startsWith("multicorpus-")) return false;
+    return fs.statSync(path.join(sidecarDir, f)).isDirectory();
+  });
+  for (const dir of dirs) {
+    const bundleDir = path.join(sidecarDir, dir);
+    const candidates = [
+      path.join(bundleDir, process.platform === "win32" ? "multicorpus.exe" : "multicorpus"),
+    ];
+    if (dir.endsWith("-onedir")) {
+      const stem = dir.slice(0, -"-onedir".length);
+      const renamed = process.platform === "win32" ? `${stem}.exe` : stem;
+      candidates.unshift(path.join(bundleDir, renamed));
+    }
+    for (const candidate of candidates) {
+      if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+        return candidate;
+      }
+    }
+  }
+  fail("No sidecar binary found in directory", { sidecarDir });
 }
 
 function runOneShotStep(binaryPath, label, args, expectedRc) {

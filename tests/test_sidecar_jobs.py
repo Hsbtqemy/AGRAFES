@@ -148,6 +148,21 @@ def test_segment_job_runs_and_returns_report(sidecar_job_env: dict) -> None:
     assert job["result"]["fts_stale"] is True
 
 
+def test_segment_job_accepts_pack(sidecar_job_env: dict) -> None:
+    code, payload = _http_json(
+        "POST",
+        f"{sidecar_job_env['base_url']}/jobs",
+        {"kind": "segment", "params": {"doc_id": sidecar_job_env["doc_id"], "lang": "fr", "pack": "fr_strict"}},
+    )
+    assert code == 202
+    assert payload["ok"] is True
+    job_id = payload["job"]["job_id"]
+
+    job = _wait_job_done(sidecar_job_env["base_url"], job_id)
+    assert job["status"] == "done"
+    assert job["result"]["segment_pack"] == "fr_strict"
+
+
 def test_unknown_job_id_returns_not_found(sidecar_job_env: dict) -> None:
     code, payload = _http_json(
         "GET",

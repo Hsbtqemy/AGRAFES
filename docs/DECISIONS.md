@@ -529,7 +529,7 @@ usable without privileged credentials in forks and early setup stages.
 ## ADR-025 — Sidecar packaging format default (onefile vs onedir)
 
 **Date:** 2026-02-28
-**Status:** Pending
+**Status:** Decided
 
 **Context**
 `onefile` improves distribution simplicity but can increase cold-start. `onedir`
@@ -546,13 +546,161 @@ complexity.
   - fixture input file is written explicitly as UTF-8 with LF newlines
   - stderr remains strict by default, but known benign benchmark warning lines
     can be allowlisted (unknown stderr lines still fail the benchmark)
-- Keep default build format as `onefile` for compatibility with existing CI and
-  Tauri fixture flow until multi-OS benchmark data is collected.
-- Revisit and finalize after benchmark results are gathered on macOS/Windows/Linux.
+- Final decision scope: `per_os`.
+- Default mapping when `--format` is omitted:
+  - `darwin` -> `onefile`
+  - `linux` -> `onedir`
+  - `windows` -> `onedir`
+- CI workflows use explicit per-OS `--format` flags to avoid ambiguity.
+
+Benchmark basis (from `docs/BENCHMARKS.md`):
+
+| OS | Choice | Startup gain of onedir vs onefile | Size growth (onedir / onefile) | Rationale |
+|----|--------|-----------------------------------:|---------------------------------:|-----------|
+| macOS | onefile | +64.2% | 3.79x | Startup gain is strong, but size exceeds accepted 2.5x threshold. |
+| Linux | onedir | +70.9% | 2.28x | Startup gain exceeds threshold and size growth stays within limit. |
+| Windows | onedir | +73.0% | 2.07x | Startup gain exceeds threshold and size growth stays within limit. |
 
 **Consequences**
-- We can make a data-driven default-format decision instead of intuition.
-- Current integration remains stable while comparative evidence is collected.
-- Current benchmark summary is tracked in `docs/BENCHMARKS.md`.
-- As of 2026-02-28, dataset is still incomplete (missing Linux/Windows matrix
-  measurements), so ADR remains Pending per policy.
+- Sidecar build defaults now depend on OS when `--format` is not provided.
+- Linux/Windows release lanes publish `onedir` sidecars by default.
+- macOS release and fixture lanes keep `onefile` by default.
+- Tauri integration must support both artifact layouts:
+  - `onefile`: single executable
+  - `onedir`: directory bundle with renamed executable inside
+- Current benchmark summary remains tracked in `docs/BENCHMARKS.md`.
+
+---
+
+## ADR-026 — Segmentation quality packs (V0 scaffold)
+
+**Date:** 2026-02-28
+**Status:** Accepted
+
+**Context**
+`tauri-prep` needed a first V1 step to select language-aware segmentation behavior
+without introducing heavy NLP dependencies or breaking existing workflows.
+
+**Decision**
+- Add an optional segmentation `pack` parameter across CLI/sidecar/job paths.
+- Supported values:
+  - `auto` (default): resolves from `lang` (`fr* -> fr_strict`, `en* -> en_strict`, else `default`)
+  - `default`, `fr_strict`, `en_strict`
+- Expose the selected pack in segmentation responses as `segment_pack`.
+- Add a pack selector in `tauri-prep` Actions screen and forward it to `/jobs/enqueue` segment requests.
+
+**Consequences**
+- Backward compatibility is preserved (no `pack` still works via default `auto`).
+- Segmentation quality can now be tuned per workflow before adding richer fixtures/metrics.
+- Further pack refinement remains in backlog (evaluation fixtures + measurable quality targets).
+
+---
+
+## ADR-027 — Hybrid alignment strategy (`external_id_then_position`)
+
+**Date:** 2026-02-28
+**Status:** Accepted
+
+**Context**
+Some corpora are partially anchored: many lines share `external_id`, but some
+rows are missing or drifted. Pure `external_id` leaves avoidable gaps; pure
+`position` can over-link when anchors exist.
+
+**Decision**
+- Add strategy `external_id_then_position`:
+  1. align by `external_id` first (anchor-first behavior preserved)
+  2. align remaining unmatched rows by shared position `n`
+- Expose strategy in CLI, sidecar `/align`, and async jobs (`/jobs/enqueue`).
+- Keep response shape backward-compatible and include `links_skipped` in reports.
+
+**Consequences**
+- Better default recall on partially anchored corpora without abandoning anchors.
+- UI (`tauri-prep`) can offer a practical fallback strategy with a single toggle.
+- Rich explainability UI/scoring visualization remains backlog (debug payload hook exists via ADR-028).
+
+---
+
+## ADR-028 — Optional align explainability payload (`debug_align`)
+
+**Date:** 2026-02-28
+**Status:** Accepted
+
+**Context**
+Advanced alignment strategies are harder to trust without visibility on which
+phase produced links (anchor, position fallback, similarity).
+
+**Decision**
+- Add optional flag `debug_align` (default `false`) to:
+  - CLI `align`
+  - sidecar `POST /align`
+  - sidecar align jobs (`POST /jobs/enqueue`, kind `align`)
+- When enabled, each report may include `debug` payload with:
+  - strategy id
+  - per-phase link source counts
+  - optional sample links
+  - similarity stats where relevant (min/max/mean)
+- Keep default responses unchanged when `debug_align=false`.
+
+**Consequences**
+- Backward compatibility is preserved.
+- Tauri prep can surface diagnostics on-demand without additional queries.
+- Explainability UI is now available in `tauri-prep` Actions (dedicated panel + JSON copy);
+  export/report integration remains backlog.
+
+---
+
+## ADR-029 — Segmentation quality benchmark protocol (FR/EN fixtures)
+
+**Date:** 2026-03-01
+**Status:** Accepted
+
+**Context**
+`pack` support (`auto/default/fr_strict/en_strict`) was available, but quality
+evaluation stayed manual and non-repeatable. We needed a lightweight, deterministic
+way to compare packs and detect regressions.
+
+**Decision**
+- Add a small FR/EN fixture dataset:
+  - `bench/fixtures/segmentation_quality_cases.json`
+- Add a benchmark script:
+  - `scripts/bench_segmentation_quality.py`
+  - computes:
+    - sentence exact-match rate
+    - boundary precision / recall / F1
+  - writes:
+    - JSON artifact in `bench/results/`
+    - Markdown summary in `docs/SEGMENTATION_BENCHMARKS.md`
+- Define abbreviation matching as case-insensitive in segmentation packs,
+  so sentence-initial abbreviations (e.g. `Approx.` / `Etc.`) are treated
+  consistently.
+
+**Consequences**
+- Segmentation quality can be tracked with reproducible metrics in CI/local runs.
+- `auto` pack behavior becomes measurable against strict and default baselines.
+- Future pack changes should update fixture coverage and benchmark summary.
+
+---
+
+## ADR-030 — Align explainability must be linked to persisted runs
+
+**Date:** 2026-03-01
+**Status:** Accepted
+
+**Context**
+Explainability payloads (`debug_align`) were available in align responses, but
+tracking/exporting them was fragile because sidecar align operations were not
+consistently persisted in the `runs` table.
+
+**Decision**
+- `POST /align` now always returns `run_id` and persists an `align` run:
+  - `params_json` includes strategy/pivot/targets/debug flag
+  - `stats_json` includes `total_links_created` and full `pairs` reports
+- Async align jobs (`POST /jobs/enqueue`, kind `align`) now return `run_id` and
+  persist the same run stats.
+- `tauri-prep` Actions explainability payload now carries the `run_id`.
+- `tauri-prep` Exports run-report workflow supports optional `run_id` filter.
+
+**Consequences**
+- Explainability traces are exportable and reproducible via run history.
+- Existing clients remain compatible (new fields are additive).
+- Auditing/debug workflows can reference one stable identifier (`run_id`) end-to-end.
