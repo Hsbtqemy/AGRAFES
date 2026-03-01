@@ -583,6 +583,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         supported = {
             "index", "curate", "validate-meta", "segment",
             "import", "align", "export_tei", "export_align_csv", "export_run_report",
+            "export_tei_package",
         }
         if kind not in supported:
             self._send_error(
@@ -679,7 +680,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         if kind in ("export_tei",) and not params.get("out_dir"):
             self._send_error("export_tei job requires params.out_dir", code=ERR_VALIDATION, http_status=400)
             return
-        if kind in ("export_align_csv", "export_run_report") and not params.get("out_path"):
+        if kind in ("export_align_csv", "export_run_report", "export_tei_package") and not params.get("out_path"):
             self._send_error(f"{kind} job requires params.out_path", code=ERR_VALIDATION, http_status=400)
             return
 
@@ -1663,8 +1664,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         for doc_id in all_ids:
             out_path = out_dir_path / f"doc_{doc_id}.tei.xml"
             try:
-                export_tei(self._conn(), doc_id=doc_id, output_path=out_path, include_structure=include_structure)
-                files_created.append(str(out_path))
+                _out, _warns = export_tei(self._conn(), doc_id=doc_id, output_path=out_path, include_structure=include_structure)
+                files_created.append(str(_out))
             except Exception as exc:
                 logger.warning("TEI export failed for doc_id=%s: %s", doc_id, exc)
         self._send_json(success_payload({"files_created": files_created, "count": len(files_created)}))
@@ -2572,12 +2573,38 @@ class CorpusServer:
             for i, doc_id in enumerate(doc_ids):
                 dest = out_path / f"doc_{doc_id}.xml"
                 with lock:
-                    export_tei(conn, doc_id=int(doc_id), output_path=dest)
-                files_created.append(str(dest))
+                    _out2, _w2 = export_tei(conn, doc_id=int(doc_id), output_path=dest)
+                files_created.append(str(_out2))
                 pct = 5 + int(90 * (i + 1) / max(len(doc_ids), 1))
                 progress_cb(pct, f"Exported {i + 1}/{len(doc_ids)}")
             progress_cb(100, "TEI export completed")
             return {"files_created": files_created, "count": len(files_created)}
+
+        if kind == "export_tei_package":
+            from pathlib import Path as _Path
+            from multicorpus_engine.exporters.tei_package import export_tei_package
+
+            out_path_str = params.get("out_path")
+            if not out_path_str:
+                raise ValueError("export_tei_package job requires params.out_path")
+
+            doc_ids_pkg = params.get("doc_ids")
+            include_structure_pkg: bool = bool(params.get("include_structure", False))
+            include_alignment_pkg: bool = bool(params.get("include_alignment", False))
+            status_filter_pkg = params.get("status_filter") or ["accepted"]
+
+            progress_cb(5, "Building TEI publication package")
+            with lock:
+                result_pkg = export_tei_package(
+                    conn=conn,
+                    output_path=_Path(out_path_str),
+                    doc_ids=doc_ids_pkg,
+                    include_structure=include_structure_pkg,
+                    include_alignment=include_alignment_pkg,
+                    status_filter=status_filter_pkg,
+                )
+            progress_cb(100, "TEI package created")
+            return result_pkg
 
         if kind == "export_align_csv":
             import csv as _csv

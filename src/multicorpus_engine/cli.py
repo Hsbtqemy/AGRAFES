@@ -480,14 +480,17 @@ def cmd_export(args: argparse.Namespace) -> None:
             if args.doc_id is None:
                 _err({"run_id": run_id, "error": "--doc-id is required for TEI export", "created_at": utcnow_iso()})
             params["doc_id"] = args.doc_id
-            result_path = export_tei(
+            result_path, tei_warnings = export_tei(
                 conn=conn,
                 doc_id=args.doc_id,
                 output_path=output,
                 include_structure=getattr(args, "include_structure", False),
             )
             log.info("TEI export: %s", result_path)
-            update_run_stats(conn, run_id, {"doc_id": args.doc_id, "output": str(result_path)})
+            if tei_warnings:
+                for w in tei_warnings:
+                    log.warning("TEI export warning: %s", w)
+            update_run_stats(conn, run_id, {"doc_id": args.doc_id, "output": str(result_path), "warnings": tei_warnings})
             _ok({
                 "run_id": run_id,
                 "status": "ok",

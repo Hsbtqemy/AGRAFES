@@ -2,11 +2,25 @@
 
 Produces a well-formed, UTF-8 encoded TEI XML file from a document's units.
 All text is XML-escaped. Characters invalid in XML 1.0 are stripped.
-See docs/DECISIONS.md ADR-009.
+See docs/DECISIONS.md ADR-009 and docs/TEI_PROFILE.md.
+
+Supported options:
+- include_structure: bool (default False) — emit <head> for structure units
+- include_alignment: bool (default False) — emit <linkGrp> with alignment links
+- target_doc_id: int | None — restrict alignment links to this target doc
+- status_filter: list[str] (default ["accepted"]) — which link statuses to include
+  ("accepted", "unreviewed", "rejected", "all")
+- enrich_header: bool (default False) — add textClass (doc_role, resource_type)
+  and listRelation from doc_relations table
+
+Returns:
+- Path to the output file (always)
+- warnings list (may be empty) — structured dicts for missing/invalid fields
 """
 
 from __future__ import annotations
 
+import json as _json
 import re
 import sqlite3
 import xml.etree.ElementTree as ET
@@ -15,10 +29,11 @@ from typing import Optional
 
 
 # Characters invalid in XML 1.0 (as a compiled pattern to strip)
-# Allowed: #x9 (TAB), #xA (LF), #xD (CR), #x20-#xD7FF, #xE000-#xFFFD, #x10000-#x10FFFF
 _XML10_INVALID = re.compile(
     r"[^\x09\x0A\x0D\x20-\uD7FF\uE000-\uFFFD\U00010000-\U0010FFFF]"
 )
+
+_STATUS_NULL_ALIASES = {"unreviewed", "null", None}
 
 
 def strip_xml10_invalid(text: str) -> str:
@@ -29,8 +44,6 @@ def strip_xml10_invalid(text: str) -> str:
 def xml_escape(text: str) -> str:
     """Escape XML special characters and strip XML 1.0 invalid chars."""
     text = strip_xml10_invalid(text)
-    # xml.etree handles escaping automatically; this function is exposed
-    # as a standalone utility for callers that build XML manually.
     text = text.replace("&", "&amp;")
     text = text.replace("<", "&lt;")
     text = text.replace(">", "&gt;")
@@ -60,12 +73,69 @@ def _get_units(conn: sqlite3.Connection, doc_id: int) -> list[sqlite3.Row]:
     ).fetchall()
 
 
+def _get_alignment_links(
+    conn: sqlite3.Connection,
+    pivot_doc_id: int,
+    target_doc_id: Optional[int],
+    status_filter: list[str],
+) -> list[sqlite3.Row]:
+    """Return alignment links from pivot_doc_id optionally restricted to target_doc_id."""
+    where_clauses = ["al.pivot_doc_id = ?"]
+    params: list = [pivot_doc_id]
+
+    if target_doc_id is not None:
+        where_clauses.append("al.target_doc_id = ?")
+        params.append(target_doc_id)
+
+    # Status filter
+    if "all" not in status_filter:
+        status_conditions = []
+        for s in status_filter:
+            if s in ("unreviewed", "null"):
+                status_conditions.append("al.status IS NULL")
+            else:
+                status_conditions.append("al.status = ?")
+                params.append(s)
+        if status_conditions:
+            where_clauses.append(f"({' OR '.join(status_conditions)})")
+
+    where = " AND ".join(where_clauses)
+    return conn.execute(
+        f"""
+        SELECT al.link_id, al.pivot_unit_id, al.target_unit_id, al.external_id,
+               al.pivot_doc_id, al.target_doc_id, al.status
+        FROM alignment_links al
+        WHERE {where}
+        ORDER BY al.external_id
+        """,
+        params,
+    ).fetchall()
+
+
+def _get_doc_relations(
+    conn: sqlite3.Connection,
+    doc_id: int,
+) -> list[sqlite3.Row]:
+    """Return doc_relations for this document."""
+    try:
+        return conn.execute(
+            "SELECT id, doc_id, relation_type, target_doc_id, note, created_at FROM doc_relations WHERE doc_id = ?",
+            (doc_id,),
+        ).fetchall()
+    except Exception:
+        return []
+
+
 def export_tei(
     conn: sqlite3.Connection,
     doc_id: int,
     output_path: str | Path,
     include_structure: bool = False,
-) -> Path:
+    include_alignment: bool = False,
+    target_doc_id: Optional[int] = None,
+    status_filter: Optional[list[str]] = None,
+    enrich_header: bool = False,
+) -> tuple[Path, list[dict]]:
     """Export a document as TEI XML.
 
     Args:
@@ -73,19 +143,38 @@ def export_tei(
         doc_id: Document to export.
         output_path: Destination file path (.xml).
         include_structure: If True, also emit <head> elements for structure units.
-                           Default False (only line units in body).
+        include_alignment: If True, emit <linkGrp> with alignment links.
+        target_doc_id: If given, restrict alignment links to this target doc.
+        status_filter: List of statuses to include in alignment export.
+                       Default ["accepted"]. Use ["all"] for no filter.
+        enrich_header: If True, add textClass (doc_role, resource_type) and
+                       listRelation from doc_relations.
 
     Returns:
-        The resolved output path.
+        Tuple of (resolved_output_path, warnings_list).
+        warnings_list contains dicts like {"type": "tei_missing_field", "field": ..., "doc_id": ...}.
     """
+    if status_filter is None:
+        status_filter = ["accepted"]
+
     output_path = Path(output_path)
     doc = _get_document(conn, doc_id)
     units = _get_units(conn, doc_id)
+
+    warnings: list[dict] = []
 
     title = strip_xml10_invalid(doc["title"] or "")
     language = strip_xml10_invalid(doc["language"] or "")
     source_path = strip_xml10_invalid(doc["source_path"] or "")
     created_at = strip_xml10_invalid(doc["created_at"] or "")
+    doc_role = strip_xml10_invalid(doc["doc_role"] or "")
+    resource_type_raw = doc["resource_type"]
+    resource_type = strip_xml10_invalid(resource_type_raw or "") if resource_type_raw else ""
+
+    if not title:
+        warnings.append({"type": "tei_missing_field", "field": "title", "doc_id": doc_id})
+    if not language:
+        warnings.append({"type": "tei_missing_field", "field": "language", "doc_id": doc_id})
 
     # Build XML using ElementTree so escaping is automatic
     ET.register_namespace("", "http://www.tei-c.org/ns/1.0")
@@ -98,7 +187,7 @@ def export_tei(
 
     title_stmt = ET.SubElement(file_desc, "titleStmt")
     title_el = ET.SubElement(title_stmt, "title")
-    title_el.text = title
+    title_el.text = title or f"Document {doc_id}"
 
     pub_stmt = ET.SubElement(file_desc, "publicationStmt")
     pub_p = ET.SubElement(pub_stmt, "p")
@@ -110,8 +199,33 @@ def export_tei(
 
     profile = ET.SubElement(header, "profileDesc")
     lang_usage = ET.SubElement(profile, "langUsage")
-    lang_el = ET.SubElement(lang_usage, "language", {"ident": language})
-    lang_el.text = language
+    lang_el = ET.SubElement(lang_usage, "language", {"ident": language or "und"})
+    lang_el.text = language or "und"
+
+    if enrich_header:
+        # textClass with doc_role and resource_type
+        text_class = ET.SubElement(profile, "textClass")
+        if doc_role and doc_role != "standalone":
+            terms = ET.SubElement(text_class, "keywords")
+            kw_doc_role = ET.SubElement(terms, "term", {"type": "doc_role"})
+            kw_doc_role.text = doc_role
+        if resource_type:
+            terms2 = ET.SubElement(text_class, "keywords")
+            kw_rt = ET.SubElement(terms2, "term", {"type": "resource_type"})
+            kw_rt.text = resource_type
+
+    # listRelation from doc_relations — always emitted when relations exist
+    relations = _get_doc_relations(conn, doc_id)
+    if relations:
+        list_rel = ET.SubElement(profile, "listRelation")
+        for rel in relations:
+            rel_type = rel["relation_type"] if "relation_type" in rel.keys() else rel[2]
+            tgt_doc_id_rel = rel["target_doc_id"] if "target_doc_id" in rel.keys() else rel[3]
+            ET.SubElement(list_rel, "relation", {
+                "type": rel_type,
+                "active": "#this",
+                "passive": f"#doc_{tgt_doc_id_rel}",
+            })
 
     # ── text / body ────────────────────────────────────────────────────────────
     text_el = ET.SubElement(tei, "text")
@@ -136,6 +250,22 @@ def export_tei(
             head = ET.SubElement(div, "head", {"xml:id": f"s{unit_id}"})
             head.text = text_norm
 
+    # ── Alignment linkGrp (Sprint 2) ───────────────────────────────────────────
+    if include_alignment:
+        links_data = _get_alignment_links(conn, doc_id, target_doc_id, status_filter)
+        if links_data:
+            linkgrp_attrs: dict[str, str] = {"type": "alignment"}
+            if target_doc_id is not None:
+                linkgrp_attrs["corresp"] = f"doc_{target_doc_id}.tei.xml"
+            linkgrp = ET.SubElement(text_el, "linkGrp", linkgrp_attrs)
+            for link_row in links_data:
+                p_uid = link_row["pivot_unit_id"] if "pivot_unit_id" in link_row.keys() else link_row[1]
+                t_uid = link_row["target_unit_id"] if "target_unit_id" in link_row.keys() else link_row[2]
+                link_el = ET.SubElement(linkgrp, "link", {
+                    "target": f"#u{p_uid} #u{t_uid}",
+                })
+                _ = link_el
+
     # ── Serialize with UTF-8 declaration ──────────────────────────────────────
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -147,4 +277,4 @@ def export_tei(
         tree.write(f, encoding="unicode", xml_declaration=False)
         f.write("\n")
 
-    return output_path
+    return output_path, warnings
