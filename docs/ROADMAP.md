@@ -1,6 +1,6 @@
 # Roadmap — multicorpus_engine
 
-Last updated: 2026-03-01 (Shell App V0.2: DB badge + switch + persistence + deep-link + wrappers)
+Last updated: 2026-03-01 (Shell App V0.3: metadata panel + demo onboarding + include_explain toggle)
 
 ## Current state (implemented)
 
@@ -75,6 +75,7 @@ Last updated: 2026-03-01 (Shell App V0.2: DB badge + switch + persistence + deep
   state-based router (home/prep/concordancier), lazy dynamic imports, shared sidecar connection;
   `build-shell` CI job; deprecation notices in standalone apps. Port 1422, id `com.agrafes.shell`.
 - **Shell App V0.2 (tauri-shell/)**: DB state unique (badge + switch + re-mount), persistance localStorage
+- **Shell App V0.3 (tauri-shell/)**: panneau métadonnées hits (Explorer), démo corpus FR/EN bundlée (first-run), toggle include_explain dans audit (Prep)
   (last_mode + last_db_path), deep-link boot (#hash / ?mode=), module wrappers mount/dispose
   (`explorerModule.ts`, `constituerModule.ts`), `ShellContext` interface, toast notifications.
 - Keep CLI contract stable and test-gated (single stdout JSON object, success/error envelope).
@@ -127,3 +128,6 @@ Last updated: 2026-03-01 (Shell App V0.2: DB badge + switch + persistence + deep
 | V3.11 | Concordancier Prep V0.10 (align explainability linked to persisted runs + export filter) | Done |
 | V4.0 | Concordancier Prep V1.1 Sprint 1.1 (`POST /align/quality` + quality panel UI) | Done |
 | V4.1 | Concordancier V1.0 Sprint 2.1 (IntersectionObserver auto-scroll sentinel) | Done |
+| V1.5.0 | Shell: Publication Wizard (5 steps) + Global Presets store | Done |
+| V1.5.1 | Engine: Corpus QA report JSON/HTML + job kind + ExportsScreen gate UI | Done |
+| V1.5.2 | TEI: export profile preset (parcolab_like) + UI selector (prep + wizard) | Done |

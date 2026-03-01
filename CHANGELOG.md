@@ -5,6 +5,50 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased — V1.5.2] — 2026-03-01 — TEI Export Profile Preset (ParCoLab-like)
+
+### Added
+- **`tei_profile` parameter** in `export_tei()` / `export_tei_package()` — additive, default `"generic"` (no change to existing behavior)
+- **`parcolab_like` profile**: enriches `teiHeader` from `meta_json`: subtitle, author(s), translator(s) → `respStmt`, publisher, pubPlace, date, language_ori, domain, genre, derivation
+- Warnings emitted for missing parcolab fields (type=`tei_missing_field`, severity=`warning`, profile=`parcolab_like`)
+- `manifest.json` stores `export_options.tei_profile` for reproducibility
+- Sidecar: `tei_profile` propagated in `export_tei` (job + endpoint) and `export_tei_package` job (additive)
+- **UI ExportsScreen**: "Profil TEI" dropdown (Generic / ParCoLab-like) in publication package card
+- **UI Publication Wizard**: "Profil TEI" dropdown in step 3 (Options) + recap in step 4
+- **Docs**: `docs/TEI_PROFILE.md` (profile descriptions, meta_json mapping) + `docs/TEI_COMPAT_MATRIX.md` (element support matrix)
+- 10 new tests (320 total): profile backward-compat, all parcolab fields, warnings, manifest
+
+## [Unreleased — V1.5.1] — 2026-03-01 — Corpus QA Report + Gates UI
+
+### Added
+- **`multicorpus_engine/qa_report.py`** — Corpus QA report generator:
+  - `generate_qa_report()`: 4 dimensions: import integrity (holes/dup/empty units), metadata readiness (title/language + relation sanity), alignment QA (coverage %, orphans, collisions), gate status: ok/warning/blocking
+  - `render_qa_report_html()`: self-contained HTML with traffic-light banner, tables, color-coded severity badges
+  - `write_qa_report()`: write JSON or HTML, return report dict
+- **CLI**: `multicorpus qa-report --db ... --out ... --format json|html [--doc-id ...]`
+- **Sidecar**: new job kind `qa_report` (additive, no CONTRACT_VERSION bump): params `out_path`, `format`, `doc_ids`; result `{gate_status, blocking, warnings, summary, out_path}`
+- **UI ExportsScreen**: new card "Rapport QA corpus" — format select + button → enqueues job → polls → shows gate banner (🟢/🟡/🔴) + log messages
+- **Docs**: `docs/RELEASE_CHECKLIST.md` — QA gate section (what to check, field list)
+- 11 new tests (310 total): holes/dup/empty detection, coverage/orphan/collision, metadata, gate status, HTML headings, JSON schema, file write
+
+## [Unreleased — V1.5.0] — 2026-03-01 — Publication Wizard + Global Presets (Shell)
+
+### Added
+- **Publication Wizard** — New mode `"publish"` in `tauri-shell`. 5-step guided workflow:
+  1. Confirm active DB
+  2. Multi-select documents (`listDocuments` via sidecar)
+  3. Export options (structure, alignment, status_filter, TEI profile)
+  4. Save dialog → `enqueueJob("export_tei_package")` → polling
+  5. Summary (doc_count, zip_path, warnings count, copy path button)
+- Home screen: new "Publier" card (amber badge, 📦 icon)
+- **Global Presets Store** — `localStorage["agrafes.presets.global"]` in shell:
+  - `_loadGlobalPresets()` / `_saveGlobalPresets()` — zero stderr
+  - `_migratePresetsFromPrep()` — additive migration from `agrafes.prep.presets`
+  - `_openPresetsModal()` — modal: list + delete + export JSON + import JSON + migrate button
+  - "⚙ Presets" button added to shell header tabs area
+- Helper `_esc()` for safe HTML escaping in shell scope
+- Zero backend changes (reuses `export_tei_package` job and `CONTRACT_VERSION` unchanged)
+
 ## [Unreleased — V5.2] — 2026-03-01 — AGRAFES V1.2 : Presets + TEI enrichi + Help/guardrails
 
 ### Added
