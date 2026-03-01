@@ -157,6 +157,10 @@ When `multicorpus serve` starts and a portfile already exists:
 - `POST /align/link/update_status`
 - `POST /align/link/delete`
 - `POST /align/link/retarget`
+- `POST /align/links/batch_update`
+- `POST /align/retarget_candidates`
+- `POST /align/collisions`
+- `POST /align/collisions/resolve`
 - `POST /documents/update`
 - `POST /documents/bulk_update`
 - `POST /doc_relations/set`
@@ -360,6 +364,119 @@ Fields:
 - `orphan_target_count` = target units with no incoming link
 - `collision_count` = pivot units appearing in more than one link for this pair
 - `sample_orphan_pivot` / `sample_orphan_target` — up to 5 examples each
+
+### POST /align/links/batch_update (V1.3 — token required)
+
+Apply a batch of `set_status` or `delete` operations on alignment links in a single request.
+Partial errors are tolerated — valid actions are applied and errors are reported in the response.
+
+Request:
+```json
+{
+  "actions": [
+    { "action": "set_status", "link_id": 10, "status": "accepted" },
+    { "action": "set_status", "link_id": 11, "status": "rejected" },
+    { "action": "set_status", "link_id": 12, "status": null },
+    { "action": "delete", "link_id": 13 }
+  ]
+}
+```
+- `action`: `"set_status"` or `"delete"`
+- `link_id`: integer (required for all actions)
+- `status`: `"accepted"`, `"rejected"`, or `null` (unreviewed) — required for `set_status`
+
+Response:
+```json
+{ "ok": true, "status": "ok", "applied": 3, "deleted": 1, "errors": [] }
+```
+- `applied` — number of `set_status` operations that succeeded
+- `deleted` — number of `delete` operations that succeeded
+- `errors` — array of `{ index, link_id, error }` for individual failures (not found, invalid action, etc.)
+
+### POST /align/retarget_candidates (V1.4 — read-only, no token)
+
+Return candidate target units for retargeting an alignment link.
+Uses two heuristics in priority order: exact external_id match (score=1.0),
+then ±window neighbours from the current anchor (score=1/(1+Δ)).
+
+Request:
+```json
+{ "pivot_unit_id": 3, "target_doc_id": 2, "limit": 10, "window": 5 }
+```
+- `limit`: max candidates returned (1–50, default 10)
+- `window`: neighbour search range around anchor (1–20, default 5)
+
+Response:
+```json
+{
+  "ok": true, "status": "ok",
+  "pivot": { "unit_id": 3, "external_id": 3, "text": "Trois." },
+  "candidates": [
+    { "target_unit_id": 8, "external_id": 3, "target_text": "Three.", "score": 1.0, "reason": "external_id_match" },
+    { "target_unit_id": 7, "external_id": 2, "target_text": "Two.",   "score": 0.5,  "reason": "neighbor (Δ1)" }
+  ]
+}
+```
+- Returns 404 if `pivot_unit_id` does not exist.
+
+### POST /align/collisions (V1.5 — read-only, no token)
+
+List pivot units with more than one alignment link to the same target document (collisions),
+paginated. Useful for detecting and then resolving many-to-one alignment issues.
+
+Request:
+```json
+{ "pivot_doc_id": 1, "target_doc_id": 2, "limit": 20, "offset": 0 }
+```
+
+Response:
+```json
+{
+  "ok": true, "status": "ok",
+  "total_collisions": 2,
+  "collisions": [
+    {
+      "pivot_unit_id": 5, "pivot_external_id": 5, "pivot_text": "Cinq.",
+      "links": [
+        { "link_id": 10, "target_unit_id": 5, "target_external_id": 5, "target_text": "Five.", "status": null },
+        { "link_id": 11, "target_unit_id": 6, "target_external_id": 6, "target_text": "Six.",  "status": null }
+      ]
+    }
+  ],
+  "has_more": false,
+  "next_offset": 1
+}
+```
+- `total_collisions` — count of pivot units with >1 links to target doc
+- `limit` max 100, default 20
+- Returns empty list (not 404) if docs exist but have no collisions
+
+### POST /align/collisions/resolve (V1.5 — write, token required)
+
+Batch-resolve collision links. Each action targets a specific `link_id`.
+
+Request:
+```json
+{
+  "actions": [
+    { "action": "keep",       "link_id": 10 },
+    { "action": "delete",     "link_id": 11 },
+    { "action": "reject",     "link_id": 12 },
+    { "action": "unreviewed", "link_id": 13 }
+  ]
+}
+```
+- `keep` → set status = "accepted"
+- `delete` → DELETE the alignment_links row
+- `reject` → set status = "rejected"
+- `unreviewed` → set status = NULL
+
+Response:
+```json
+{ "ok": true, "applied": 2, "deleted": 1, "errors": [] }
+```
+- Partial failures tolerated: failed items go to `errors: [{ index, link_id, error }]`
+- Non-existent link_ids are reported as errors, not 404
 
 ## Shutdown semantics
 

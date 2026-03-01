@@ -329,6 +329,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 "/doc_relations/set", "/doc_relations/delete",
                 "/export/tei", "/export/align_csv", "/export/run_report",
                 "/align/link/update_status", "/align/link/delete", "/align/link/retarget",
+                "/align/links/batch_update",
+                "/align/collisions/resolve",
                 "/jobs/enqueue",
             }
             # /jobs/<uuid>/cancel is also a write path (token required)
@@ -360,6 +362,14 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 self._handle_align_link_delete(body)
             elif path == "/align/link/retarget":
                 self._handle_align_link_retarget(body)
+            elif path == "/align/links/batch_update":
+                self._handle_align_links_batch_update(body)
+            elif path == "/align/retarget_candidates":
+                self._handle_align_retarget_candidates(body)
+            elif path == "/align/collisions":
+                self._handle_align_collisions(body)
+            elif path == "/align/collisions/resolve":
+                self._handle_align_collisions_resolve(body)
             elif path == "/validate-meta":
                 self._handle_validate_meta(body)
             elif path == "/segment":
@@ -987,6 +997,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 
     def _handle_align_audit(self, body: dict) -> None:
         """Read-only audit of alignment_links for a pivot↔target pair."""
+        import json as _json
+
         pivot_doc_id = body.get("pivot_doc_id")
         target_doc_id = body.get("target_doc_id")
         if pivot_doc_id is None or target_doc_id is None:
@@ -1012,6 +1024,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 
         external_id_filter = body.get("external_id")
         status_filter = body.get("status")  # None = all, 'accepted', 'rejected', 'unreviewed'
+        include_explain = bool(body.get("include_explain", False))
 
         base_where = "al.pivot_doc_id = ? AND al.target_doc_id = ?"
         params: list = [pivot_doc_id, target_doc_id]
@@ -1024,11 +1037,12 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             base_where += " AND al.status = ?"
             params.append(status_filter)
 
-        rows = self._conn().execute(
+        conn = self._conn()
+        rows = conn.execute(
             f"""
             SELECT al.link_id, al.external_id, al.pivot_unit_id, al.target_unit_id,
                    pu.text_norm AS pivot_text, tu.text_norm AS target_text,
-                   al.status
+                   al.status, al.run_id
             FROM alignment_links al
             JOIN units pu ON pu.unit_id = al.pivot_unit_id
             JOIN units tu ON tu.unit_id = al.target_unit_id
@@ -1043,8 +1057,54 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         page = rows[:limit]
         next_offset = offset + limit if has_more else None
 
-        links = [
-            {
+        # ── Batch-load run strategies for explain enrichment ─────────────────
+        run_strategy: dict[str, str] = {}
+        run_strategy_src: dict[str, str] = {}
+        if include_explain:
+            run_ids = list({r[7] for r in page if r[7] is not None})
+            if run_ids:
+                placeholders = ",".join("?" * len(run_ids))
+                run_rows = conn.execute(
+                    f"SELECT run_id, stats_json, params_json FROM runs WHERE run_id IN ({placeholders})",
+                    run_ids,
+                ).fetchall()
+                for rr in run_rows:
+                    try:
+                        # params_json is PRIMARY — always set at run creation time
+                        params_j = _json.loads(rr[2]) if rr[2] else {}
+                        strategy = params_j.get("strategy")
+                        src = "params_json"
+                        if not strategy:
+                            # Fallback: stats_json (populated after run completes)
+                            stats = _json.loads(rr[1]) if rr[1] else {}
+                            strategy = stats.get("strategy")
+                            src = "stats_json"
+                        run_strategy[rr[0]] = strategy or "unknown"
+                        run_strategy_src[rr[0]] = src if strategy else "unknown"
+                    except Exception:
+                        run_strategy[rr[0]] = "unknown"
+                        run_strategy_src[rr[0]] = "unknown"
+
+        def _make_explain(row_run_id: str | None, ext_id) -> dict | None:
+            if not include_explain:
+                return None
+            strategy = run_strategy.get(row_run_id, "unknown") if row_run_id else "unknown"
+            src = run_strategy_src.get(row_run_id, "unknown") if row_run_id else "unknown"
+            notes: list[str] = []
+            if strategy in ("external_id", "external_id_then_position") and ext_id is not None:
+                notes.append(f"linked via external_id={ext_id}")
+            elif strategy == "position":
+                notes.append("linked by ordinal position")
+            elif strategy == "similarity":
+                notes.append("linked by text similarity")
+            if row_run_id:
+                notes.append(f"run_id={row_run_id}")
+            notes.append(f"strategy source: {src}")
+            return {"strategy": strategy, "notes": notes}
+
+        links = []
+        for r in page:
+            link: dict = {
                 "link_id": r[0],
                 "external_id": r[1],
                 "pivot_unit_id": r[2],
@@ -1053,8 +1113,10 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 "target_text": r[5],
                 "status": r[6],
             }
-            for r in page
-        ]
+            explain = _make_explain(r[7], r[1])
+            if explain is not None:
+                link["explain"] = explain
+            links.append(link)
 
         self._send_json(success_payload({
             "pivot_doc_id": pivot_doc_id,
@@ -1758,6 +1820,342 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             self._send_error(f"link_id={link_id} not found", code=ERR_NOT_FOUND, http_status=404)
             return
         self._send_json(success_payload({"link_id": link_id, "new_target_unit_id": new_target_unit_id, "updated": 1}))
+
+    # ------------------------------------------------------------------
+    # V1.3 — Batch alignment link operations
+    # ------------------------------------------------------------------
+
+    def _handle_align_links_batch_update(self, body: dict) -> None:
+        """Apply a batch of set_status / delete operations on alignment_links (token required)."""
+        actions = body.get("actions")
+        if not isinstance(actions, list) or len(actions) == 0:
+            self._send_error(
+                "'actions' must be a non-empty array",
+                code=ERR_BAD_REQUEST,
+                http_status=400,
+            )
+            return
+
+        valid_action_types = {"set_status", "delete"}
+        valid_statuses = {None, "accepted", "rejected"}
+
+        applied = 0
+        deleted = 0
+        errors: list[dict] = []
+
+        with self._lock():
+            conn = self._conn()
+            for i, act in enumerate(actions):
+                action_type = act.get("action")
+                link_id = act.get("link_id")
+
+                if action_type not in valid_action_types:
+                    errors.append({"index": i, "link_id": link_id, "error": f"unknown action '{action_type}'"})
+                    continue
+                if not isinstance(link_id, int):
+                    errors.append({"index": i, "link_id": link_id, "error": "link_id must be an integer"})
+                    continue
+
+                if action_type == "set_status":
+                    status = act.get("status")  # None, 'accepted', 'rejected'
+                    if status not in valid_statuses:
+                        errors.append({"index": i, "link_id": link_id, "error": f"invalid status '{status}'"})
+                        continue
+                    cur = conn.execute(
+                        "UPDATE alignment_links SET status = ? WHERE link_id = ?",
+                        (status, link_id),
+                    )
+                    if cur.rowcount == 0:
+                        errors.append({"index": i, "link_id": link_id, "error": "not found"})
+                    else:
+                        applied += 1
+
+                elif action_type == "delete":
+                    cur = conn.execute(
+                        "DELETE FROM alignment_links WHERE link_id = ?",
+                        (link_id,),
+                    )
+                    deleted += cur.rowcount
+
+            conn.commit()
+
+        self._send_json(success_payload({
+            "applied": applied,
+            "deleted": deleted,
+            "errors": errors,
+        }))
+
+    # ------------------------------------------------------------------
+    # V1.4 — Retarget candidates (read-only, no token)
+    # ------------------------------------------------------------------
+
+    def _handle_align_retarget_candidates(self, body: dict) -> None:
+        """Suggest candidate target units for retargeting an alignment link.
+
+        Heuristic (in priority order):
+        1. external_id match between pivot and target units → score=1.0
+        2. Neighbours ±window from anchor (current target or pivot ext_id) → score 1/(1+Δ)
+        """
+        import json as _json
+
+        pivot_unit_id = body.get("pivot_unit_id")
+        target_doc_id = body.get("target_doc_id")
+        if not isinstance(pivot_unit_id, int) or not isinstance(target_doc_id, int):
+            self._send_error(
+                "pivot_unit_id and target_doc_id must be integers",
+                code=ERR_BAD_REQUEST,
+                http_status=400,
+            )
+            return
+        try:
+            limit = max(1, min(int(body.get("limit", 10)), 50))
+            window = max(1, min(int(body.get("window", 5)), 20))
+        except (ValueError, TypeError):
+            self._send_error("limit and window must be positive integers", code=ERR_BAD_REQUEST, http_status=400)
+            return
+
+        conn = self._conn()
+
+        # Get pivot unit info
+        pivot_row = conn.execute(
+            "SELECT unit_id, external_id, text_norm FROM units WHERE unit_id = ?",
+            (pivot_unit_id,),
+        ).fetchone()
+        if pivot_row is None:
+            self._send_error(
+                f"pivot_unit_id={pivot_unit_id} not found",
+                code=ERR_NOT_FOUND,
+                http_status=404,
+            )
+            return
+
+        pivot_ext_id: int | None = pivot_row[1]
+
+        # Find existing link to use as anchor in target doc
+        current_link = conn.execute(
+            "SELECT al.target_unit_id, u.external_id "
+            "FROM alignment_links al JOIN units u ON u.unit_id = al.target_unit_id "
+            "WHERE al.pivot_unit_id = ? AND al.target_doc_id = ? LIMIT 1",
+            (pivot_unit_id, target_doc_id),
+        ).fetchone()
+        anchor_ext_id: int | None = current_link[1] if current_link else pivot_ext_id
+
+        # All target units ordered by external_id (or unit_id fallback)
+        target_units = conn.execute(
+            "SELECT unit_id, external_id, text_norm FROM units "
+            "WHERE doc_id = ? ORDER BY COALESCE(external_id, unit_id)",
+            (target_doc_id,),
+        ).fetchall()
+
+        candidates: list[dict] = []
+        for u in target_units:
+            u_uid, u_ext, u_text = u
+            score: float | None = None
+            reason: str = ""
+
+            if u_ext is not None and pivot_ext_id is not None and u_ext == pivot_ext_id:
+                score = 1.0
+                reason = "external_id_match"
+            elif anchor_ext_id is not None and u_ext is not None:
+                dist = abs(u_ext - anchor_ext_id)
+                if dist <= window:
+                    score = round(1.0 / (1 + dist), 4)
+                    reason = f"neighbor (\u0394{dist})"
+
+            if score is not None:
+                candidates.append({
+                    "target_unit_id": u_uid,
+                    "external_id": u_ext,
+                    "target_text": u_text or "",
+                    "score": score,
+                    "reason": reason,
+                })
+
+        candidates.sort(key=lambda c: (-c["score"], c["target_unit_id"]))
+        candidates = candidates[:limit]
+
+        self._send_json(success_payload({
+            "pivot": {
+                "unit_id": pivot_unit_id,
+                "external_id": pivot_ext_id,
+                "text": pivot_row[2] or "",
+            },
+            "candidates": candidates,
+        }))
+
+    # ------------------------------------------------------------------
+    # V1.5 — Collision resolver (read + write)
+    # ------------------------------------------------------------------
+
+    def _handle_align_collisions(self, body: dict) -> None:
+        """List pivot units with multiple links to the same target doc (collisions).
+
+        Endpoint: POST /align/collisions  (read-only, no token)
+        Request:  { pivot_doc_id, target_doc_id, limit?, offset? }
+        Response: { total_collisions, collisions: [CollisionGroup], has_more, next_offset }
+        """
+        pivot_doc_id = body.get("pivot_doc_id")
+        target_doc_id = body.get("target_doc_id")
+        if not isinstance(pivot_doc_id, int) or not isinstance(target_doc_id, int):
+            self._send_error(
+                "pivot_doc_id and target_doc_id must be integers",
+                code=ERR_BAD_REQUEST,
+                http_status=400,
+            )
+            return
+        try:
+            limit = max(1, min(int(body.get("limit", 20)), 100))
+            offset = max(0, int(body.get("offset", 0)))
+        except (ValueError, TypeError):
+            self._send_error("limit and offset must be non-negative integers", code=ERR_BAD_REQUEST, http_status=400)
+            return
+
+        conn = self._conn()
+
+        # Count total collision pivot_unit_ids (for pagination meta)
+        total_row = conn.execute(
+            """
+            SELECT COUNT(*) FROM (
+                SELECT pivot_unit_id
+                FROM alignment_links
+                WHERE pivot_doc_id = ? AND target_doc_id = ?
+                GROUP BY pivot_unit_id
+                HAVING COUNT(*) > 1
+            )
+            """,
+            (pivot_doc_id, target_doc_id),
+        ).fetchone()
+        total_collisions: int = total_row[0] if total_row else 0
+
+        # Fetch collision pivot_unit_ids for this page
+        collision_pivot_rows = conn.execute(
+            """
+            SELECT pivot_unit_id
+            FROM alignment_links
+            WHERE pivot_doc_id = ? AND target_doc_id = ?
+            GROUP BY pivot_unit_id
+            HAVING COUNT(*) > 1
+            ORDER BY pivot_unit_id
+            LIMIT ? OFFSET ?
+            """,
+            (pivot_doc_id, target_doc_id, limit + 1, offset),
+        ).fetchall()
+
+        has_more = len(collision_pivot_rows) > limit
+        collision_pivot_rows = collision_pivot_rows[:limit]
+        next_offset = offset + len(collision_pivot_rows) if has_more else offset + len(collision_pivot_rows)
+
+        collisions: list[dict] = []
+        for (pivot_unit_id,) in collision_pivot_rows:
+            # Fetch pivot unit info
+            pivot_row = conn.execute(
+                "SELECT external_id, text_norm FROM units WHERE unit_id = ?",
+                (pivot_unit_id,),
+            ).fetchone()
+            pivot_ext = pivot_row[0] if pivot_row else None
+            pivot_text = (pivot_row[1] or "") if pivot_row else ""
+
+            # Fetch all links for this pivot in the target doc
+            link_rows = conn.execute(
+                """
+                SELECT al.link_id, al.target_unit_id, u.external_id, u.text_norm, al.status
+                FROM alignment_links al
+                JOIN units u ON u.unit_id = al.target_unit_id
+                WHERE al.pivot_unit_id = ? AND al.target_doc_id = ?
+                ORDER BY al.link_id
+                """,
+                (pivot_unit_id, target_doc_id),
+            ).fetchall()
+
+            links = [
+                {
+                    "link_id": lr[0],
+                    "target_unit_id": lr[1],
+                    "target_external_id": lr[2],
+                    "target_text": lr[3] or "",
+                    "status": lr[4],
+                }
+                for lr in link_rows
+            ]
+            collisions.append({
+                "pivot_unit_id": pivot_unit_id,
+                "pivot_external_id": pivot_ext,
+                "pivot_text": pivot_text,
+                "links": links,
+            })
+
+        self._send_json(success_payload({
+            "total_collisions": total_collisions,
+            "collisions": collisions,
+            "has_more": has_more,
+            "next_offset": next_offset,
+        }))
+
+    def _handle_align_collisions_resolve(self, body: dict) -> None:
+        """Batch-resolve collision links: keep, delete, reject, or mark unreviewed.
+
+        Endpoint: POST /align/collisions/resolve  (write, token required)
+        Request:  { actions: [{ action: "keep"|"delete"|"reject"|"unreviewed", link_id }] }
+          keep       → status = "accepted"
+          reject     → status = "rejected"
+          unreviewed → status = NULL
+          delete     → DELETE row
+        Response: { applied, deleted, errors }
+        """
+        actions = body.get("actions")
+        if not isinstance(actions, list) or len(actions) == 0:
+            self._send_error(
+                "'actions' must be a non-empty array",
+                code=ERR_BAD_REQUEST,
+                http_status=400,
+            )
+            return
+
+        valid_action_types = {"keep", "delete", "reject", "unreviewed"}
+        # Map resolve actions to status values
+        _action_to_status = {"keep": "accepted", "reject": "rejected", "unreviewed": None}
+
+        applied = 0
+        deleted = 0
+        errors: list[dict] = []
+
+        with self._lock():
+            conn = self._conn()
+            for i, act in enumerate(actions):
+                action_type = act.get("action")
+                link_id = act.get("link_id")
+
+                if action_type not in valid_action_types:
+                    errors.append({"index": i, "link_id": link_id, "error": f"unknown action '{action_type}'"})
+                    continue
+                if not isinstance(link_id, int):
+                    errors.append({"index": i, "link_id": link_id, "error": "link_id must be an integer"})
+                    continue
+
+                if action_type == "delete":
+                    cur = conn.execute(
+                        "DELETE FROM alignment_links WHERE link_id = ?",
+                        (link_id,),
+                    )
+                    deleted += cur.rowcount
+                else:
+                    status = _action_to_status[action_type]
+                    cur = conn.execute(
+                        "UPDATE alignment_links SET status = ? WHERE link_id = ?",
+                        (status, link_id),
+                    )
+                    if cur.rowcount == 0:
+                        errors.append({"index": i, "link_id": link_id, "error": "not found"})
+                    else:
+                        applied += 1
+
+            conn.commit()
+
+        self._send_json(success_payload({
+            "applied": applied,
+            "deleted": deleted,
+            "errors": errors,
+        }))
 
     def _handle_shutdown(self) -> None:
         self._send_json(success_payload({

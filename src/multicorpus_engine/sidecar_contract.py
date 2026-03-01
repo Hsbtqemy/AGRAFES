@@ -12,8 +12,8 @@ from __future__ import annotations
 from typing import Any
 
 
-API_VERSION = "1.1.0"
-CONTRACT_VERSION = "1.1.0"  # semantic versioning for the sidecar API contract
+API_VERSION = "1.3.0"
+CONTRACT_VERSION = "1.3.0"  # semantic versioning for the sidecar API contract
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
@@ -690,6 +690,54 @@ def openapi_spec() -> dict[str, Any]:
                     "responses": {"200": {"description": "Retargeted"}, "400": {"description": "Bad request"}, "401": {"description": "Unauthorized"}, "404": {"description": "Not found"}},
                 }
             },
+            # ── V1.3 — Batch align link operations ───────────────────────────
+            "/align/links/batch_update": {
+                "post": {
+                    "summary": "Apply a batch of set_status/delete operations on alignment links",
+                    "security": [{"token": []}],
+                    "requestBody": {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AlignLinksBatchUpdateRequest"}}}},
+                    "responses": {
+                        "200": {"description": "Batch result"},
+                        "400": {"description": "Bad request"},
+                        "401": {"description": "Unauthorized"},
+                    },
+                }
+            },
+            # ── V1.4 — Retarget candidates (read-only) ───────────────────────
+            "/align/retarget_candidates": {
+                "post": {
+                    "summary": "Suggest candidate target units for retargeting an alignment link",
+                    "requestBody": {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RetargetCandidatesRequest"}}}},
+                    "responses": {
+                        "200": {"description": "Pivot info + candidates list"},
+                        "400": {"description": "Bad request"},
+                        "404": {"description": "Not found"},
+                    },
+                }
+            },
+            # ── V1.5 — Collision resolver ─────────────────────────────────────
+            "/align/collisions": {
+                "post": {
+                    "summary": "List pivot units with multiple alignment links to the same target doc (collisions)",
+                    "requestBody": {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AlignCollisionsRequest"}}}},
+                    "responses": {
+                        "200": {"description": "Paginated collision groups"},
+                        "400": {"description": "Bad request"},
+                    },
+                }
+            },
+            "/align/collisions/resolve": {
+                "post": {
+                    "summary": "Batch-resolve collision links (keep/delete/reject/unreviewed) — token required",
+                    "security": [{"ApiKeyAuth": []}],
+                    "requestBody": {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CollisionResolveRequest"}}}},
+                    "responses": {
+                        "200": {"description": "Batch result"},
+                        "400": {"description": "Bad request"},
+                        "401": {"description": "Unauthorized"},
+                    },
+                }
+            },
         },
         "components": {
             "schemas": {
@@ -1168,6 +1216,16 @@ def openapi_spec() -> dict[str, Any]:
                         "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50},
                         "offset": {"type": "integer", "minimum": 0, "default": 0},
                         "external_id": {"type": "integer"},
+                        "status": {
+                            "type": "string",
+                            "enum": ["accepted", "rejected", "unreviewed"],
+                            "nullable": True,
+                        },
+                        "include_explain": {
+                            "type": "boolean",
+                            "default": False,
+                            "description": "Attach explain object to each link (strategy + notes). Default false (no-op).",
+                        },
                     },
                     "additionalProperties": False,
                 },
@@ -1181,6 +1239,16 @@ def openapi_spec() -> dict[str, Any]:
                         "target_unit_id": {"type": "integer"},
                         "pivot_text": {"type": "string"},
                         "target_text": {"type": "string"},
+                        "status": {"type": "string", "nullable": True, "enum": ["accepted", "rejected"]},
+                        "explain": {
+                            "type": "object",
+                            "nullable": True,
+                            "description": "Present when include_explain=true.",
+                            "properties": {
+                                "strategy": {"type": "string"},
+                                "notes": {"type": "array", "items": {"type": "string"}},
+                            },
+                        },
                     },
                     "additionalProperties": False,
                 },
@@ -1307,6 +1375,100 @@ def openapi_spec() -> dict[str, Any]:
                     "properties": {
                         "link_id": {"type": "integer"},
                         "new_target_unit_id": {"type": "integer"},
+                    },
+                },
+                # ── V1.3 — Batch align link operations ──────────────────────
+                "AlignBatchAction": {
+                    "type": "object",
+                    "required": ["action", "link_id"],
+                    "properties": {
+                        "action": {"type": "string", "enum": ["set_status", "delete"]},
+                        "link_id": {"type": "integer"},
+                        "status": {"type": "string", "enum": ["accepted", "rejected"], "nullable": True},
+                    },
+                },
+                "AlignLinksBatchUpdateRequest": {
+                    "type": "object",
+                    "required": ["actions"],
+                    "properties": {
+                        "actions": {
+                            "type": "array",
+                            "minItems": 1,
+                            "items": {"$ref": "#/components/schemas/AlignBatchAction"},
+                        },
+                    },
+                },
+                # ── V1.4 — Retarget candidates ───────────────────────────────
+                "RetargetCandidatesRequest": {
+                    "type": "object",
+                    "required": ["pivot_unit_id", "target_doc_id"],
+                    "properties": {
+                        "pivot_unit_id": {"type": "integer"},
+                        "target_doc_id": {"type": "integer"},
+                        "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 10},
+                        "window": {"type": "integer", "minimum": 1, "maximum": 20, "default": 5},
+                    },
+                },
+                "RetargetCandidate": {
+                    "type": "object",
+                    "required": ["target_unit_id", "target_text", "score", "reason"],
+                    "properties": {
+                        "target_unit_id": {"type": "integer"},
+                        "external_id": {"type": "integer", "nullable": True},
+                        "target_text": {"type": "string"},
+                        "score": {"type": "number"},
+                        "reason": {"type": "string"},
+                    },
+                },
+                # ── V1.5 — Collision resolver ─────────────────────────────────
+                "AlignCollisionsRequest": {
+                    "type": "object",
+                    "required": ["pivot_doc_id", "target_doc_id"],
+                    "properties": {
+                        "pivot_doc_id": {"type": "integer"},
+                        "target_doc_id": {"type": "integer"},
+                        "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20},
+                        "offset": {"type": "integer", "minimum": 0, "default": 0},
+                    },
+                },
+                "CollisionLink": {
+                    "type": "object",
+                    "required": ["link_id", "target_unit_id", "target_text"],
+                    "properties": {
+                        "link_id": {"type": "integer"},
+                        "target_unit_id": {"type": "integer"},
+                        "target_external_id": {"type": "integer", "nullable": True},
+                        "target_text": {"type": "string"},
+                        "status": {"type": "string", "nullable": True, "enum": ["accepted", "rejected"]},
+                    },
+                },
+                "CollisionGroup": {
+                    "type": "object",
+                    "required": ["pivot_unit_id", "pivot_text", "links"],
+                    "properties": {
+                        "pivot_unit_id": {"type": "integer"},
+                        "pivot_external_id": {"type": "integer", "nullable": True},
+                        "pivot_text": {"type": "string"},
+                        "links": {"type": "array", "items": {"$ref": "#/components/schemas/CollisionLink"}},
+                    },
+                },
+                "CollisionResolveAction": {
+                    "type": "object",
+                    "required": ["action", "link_id"],
+                    "properties": {
+                        "action": {"type": "string", "enum": ["keep", "delete", "reject", "unreviewed"]},
+                        "link_id": {"type": "integer"},
+                    },
+                },
+                "CollisionResolveRequest": {
+                    "type": "object",
+                    "required": ["actions"],
+                    "properties": {
+                        "actions": {
+                            "type": "array",
+                            "items": {"$ref": "#/components/schemas/CollisionResolveAction"},
+                            "minItems": 1,
+                        },
                     },
                 },
                 # ── V0.5 — Job enqueue + cancel ──────────────────────────────

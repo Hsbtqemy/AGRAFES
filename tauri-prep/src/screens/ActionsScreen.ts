@@ -10,8 +10,11 @@ import type {
   CurateRule,
   CuratePreviewExample,
   AlignLinkRecord,
+  AlignBatchAction,
   AlignDebugPayload,
   AlignQualityResponse,
+  RetargetCandidate,
+  CollisionGroup,
 } from "../lib/sidecarClient.ts";
 import {
   listDocuments,
@@ -24,6 +27,10 @@ import {
   updateAlignLinkStatus,
   deleteAlignLink,
   retargetAlignLink,
+  batchUpdateAlignLinks,
+  retargetCandidates,
+  listCollisions,
+  resolveCollisions,
   validateMeta,
   rebuildIndex,
   enqueueJob,
@@ -89,6 +96,13 @@ export class ActionsScreen {
   private _auditLinks: AlignLinkRecord[] = [];
   private _alignExplainability: AlignExplainabilityEntry[] = [];
   private _alignRunId: string | null = null;
+
+  // V1.5 — Collision state
+  private _collOffset = 0;
+  private _collLimit = 20;
+  private _collGroups: CollisionGroup[] = [];
+  private _collHasMore = false;
+  private _collTotalCount = 0;
 
   // Log + busy
   private _logEl!: HTMLElement;
@@ -246,6 +260,13 @@ export class ActionsScreen {
             <button id="act-audit-load-btn" class="btn btn-secondary btn-sm">Charger les liens</button>
           </div>
           <div id="act-audit-table-wrap" style="margin-top:0.5rem; overflow-x:auto"></div>
+          <div id="act-audit-batch-bar" class="audit-batch-bar" style="display:none">
+            <span id="act-audit-sel-count" class="audit-sel-count">0 sélectionné(s)</span>
+            <button id="act-audit-batch-accept" class="btn btn-sm btn-secondary">✓ Accepter</button>
+            <button id="act-audit-batch-reject" class="btn btn-sm btn-secondary">✗ Rejeter</button>
+            <button id="act-audit-batch-unreviewed" class="btn btn-sm btn-secondary">? Non révisé</button>
+            <button id="act-audit-batch-delete" class="btn btn-sm btn-danger">🗑 Supprimer</button>
+          </div>
           <div class="btn-row" style="margin-top:0.4rem">
             <button id="act-audit-more-btn" class="btn btn-secondary btn-sm" style="display:none">Charger plus</button>
           </div>
@@ -268,6 +289,27 @@ export class ActionsScreen {
           </div>
         </div>
         <div id="act-quality-result" style="display:none; margin-top:0.75rem"></div>
+      </section>
+
+      <!-- ═══ FEATURE 4: Collision resolver (V1.5) ═══ -->
+      <section class="card" id="act-collision-card">
+        <h3>Collisions d'alignement <span class="badge-preview">résolution</span></h3>
+        <p class="hint">Un pivot ayant plusieurs liens vers le même document cible est une collision. Résolvez-les ici.</p>
+        <div class="form-row">
+          <label>Pivot
+            <select id="act-coll-pivot"><option value="">— choisir —</option></select>
+          </label>
+          <label>Cible
+            <select id="act-coll-target"><option value="">— choisir —</option></select>
+          </label>
+          <div style="align-self:flex-end">
+            <button id="act-coll-load-btn" class="btn btn-secondary btn-sm" disabled>Charger les collisions</button>
+          </div>
+        </div>
+        <div id="act-coll-result" style="display:none; margin-top:0.75rem"></div>
+        <div id="act-coll-more-wrap" style="display:none; margin-top:0.5rem; text-align:center">
+          <button id="act-coll-more-btn" class="btn btn-sm btn-secondary">Charger plus</button>
+        </div>
       </section>
 
       <!-- Validate meta -->
@@ -341,8 +383,26 @@ export class ActionsScreen {
     });
     root.querySelector("#act-audit-more-btn")!.addEventListener("click", () => this._loadAuditPage(root, true));
 
+    // Batch action bar
+    root.querySelector("#act-audit-batch-accept")!.addEventListener("click", () =>
+      this._runBatchAction(root, "set_status", "accepted"));
+    root.querySelector("#act-audit-batch-reject")!.addEventListener("click", () =>
+      this._runBatchAction(root, "set_status", "rejected"));
+    root.querySelector("#act-audit-batch-unreviewed")!.addEventListener("click", () =>
+      this._runBatchAction(root, "set_status", null));
+    root.querySelector("#act-audit-batch-delete")!.addEventListener("click", () =>
+      this._runBatchAction(root, "delete", null));
+
     // Quality metrics
     root.querySelector("#act-quality-btn")!.addEventListener("click", () => this._runAlignQuality(root));
+
+    // Collision resolver (V1.5)
+    root.querySelector("#act-coll-load-btn")!.addEventListener("click", () => {
+      this._collOffset = 0;
+      this._collGroups = [];
+      this._loadCollisionsPage(root, false);
+    });
+    root.querySelector("#act-coll-more-btn")!.addEventListener("click", () => this._loadCollisionsPage(root, true));
 
     // Validate meta + index
     root.querySelector("#act-meta-btn")!.addEventListener("click", () => this._runValidateMeta());
@@ -382,7 +442,7 @@ export class ActionsScreen {
 
   private _setButtonsEnabled(on: boolean): void {
     ["act-preview-btn", "act-curate-btn", "act-seg-btn", "act-align-btn",
-     "act-meta-btn", "act-index-btn", "act-quality-btn"].forEach(id => {
+     "act-meta-btn", "act-index-btn", "act-quality-btn", "act-coll-load-btn"].forEach(id => {
       const el = document.querySelector(`#${id}`) as HTMLButtonElement | null;
       if (el) el.disabled = !on;
     });
@@ -406,7 +466,8 @@ export class ActionsScreen {
   private _populateSelects(): void {
     const allDocSelects = ["act-curate-doc", "act-seg-doc", "act-align-pivot",
       "act-align-targets", "act-meta-doc", "act-audit-pivot", "act-audit-target",
-      "act-quality-pivot", "act-quality-target"];
+      "act-quality-pivot", "act-quality-target",
+      "act-coll-pivot", "act-coll-target"];
     allDocSelects.forEach(id => {
       const sel = document.querySelector(`#${id}`) as HTMLSelectElement | null;
       if (!sel) return;
@@ -872,10 +933,12 @@ export class ActionsScreen {
   private _renderAuditTable(root: HTMLElement): void {
     const wrap = root.querySelector("#act-audit-table-wrap")!;
     const moreBtn = root.querySelector("#act-audit-more-btn") as HTMLElement;
+    const batchBar = root.querySelector("#act-audit-batch-bar") as HTMLElement | null;
 
     if (this._auditLinks.length === 0) {
       wrap.innerHTML = '<p class="empty-hint">Aucun lien. Lancez un alignement ou chargez les liens.</p>';
       if (moreBtn) moreBtn.style.display = "none";
+      if (batchBar) batchBar.style.display = "none";
       return;
     }
 
@@ -883,6 +946,7 @@ export class ActionsScreen {
     table.className = "meta-table audit-table";
     table.innerHTML = `
       <thead><tr>
+        <th><input type="checkbox" id="act-audit-sel-all" title="Tout sélectionner"/></th>
         <th>ext_id</th>
         <th>Pivot (texte)</th>
         <th>Cible (texte)</th>
@@ -894,11 +958,12 @@ export class ActionsScreen {
     for (const link of this._auditLinks) {
       const tr = document.createElement("tr");
       const statusBadge = link.status === "accepted"
-        ? `<span class="status-badge status-ok">✓</span>`
+        ? `<span class="status-badge status-ok">✅ Accepté</span>`
         : link.status === "rejected"
-        ? `<span class="status-badge status-error">✗</span>`
-        : `<span class="status-badge status-unknown">?</span>`;
+        ? `<span class="status-badge status-error">❌ Rejeté</span>`
+        : `<span class="status-badge status-unknown">🔵 Non révisé</span>`;
       tr.innerHTML = `
+        <td><input type="checkbox" class="audit-row-cb" data-id="${link.link_id}"/></td>
         <td style="white-space:nowrap">${link.external_id ?? "—"}</td>
         <td class="audit-text">${_escHtml(String(link.pivot_text ?? ""))}</td>
         <td class="audit-text">${_escHtml(String(link.target_text ?? ""))}</td>
@@ -906,6 +971,7 @@ export class ActionsScreen {
         <td style="white-space:nowrap">
           <button class="btn btn-sm btn-secondary audit-accept-btn" data-id="${link.link_id}" title="Accepter">✓</button>
           <button class="btn btn-sm btn-danger audit-reject-btn" data-id="${link.link_id}" title="Rejeter">✗</button>
+          <button class="btn btn-sm btn-secondary audit-retarget-btn" data-id="${link.link_id}" data-pivot="${link.pivot_unit_id}" title="Reciblaer">⇄</button>
           <button class="btn btn-sm btn-danger audit-del-btn" data-id="${link.link_id}" title="Supprimer">🗑</button>
         </td>
       `;
@@ -926,8 +992,164 @@ export class ActionsScreen {
     wrap.querySelectorAll<HTMLButtonElement>(".audit-del-btn").forEach(btn => {
       btn.addEventListener("click", () => self._deleteLinkFromAudit(Number(btn.dataset.id), root));
     });
+    wrap.querySelectorAll<HTMLButtonElement>(".audit-retarget-btn").forEach(btn => {
+      btn.addEventListener("click", () =>
+        self._openRetargetModal(Number(btn.dataset.id), Number(btn.dataset.pivot), root)
+      );
+    });
+
+    // Select-all checkbox
+    const selAllCb = table.querySelector<HTMLInputElement>("#act-audit-sel-all");
+    const updateBatchBar = () => {
+      const checked = wrap.querySelectorAll<HTMLInputElement>(".audit-row-cb:checked");
+      const countEl = root.querySelector<HTMLElement>("#act-audit-sel-count");
+      if (countEl) countEl.textContent = `${checked.length} sélectionné(s)`;
+      if (batchBar) batchBar.style.display = checked.length > 0 ? "flex" : "none";
+    };
+    if (selAllCb) {
+      selAllCb.addEventListener("change", () => {
+        wrap.querySelectorAll<HTMLInputElement>(".audit-row-cb").forEach(cb => {
+          cb.checked = selAllCb.checked;
+        });
+        updateBatchBar();
+      });
+    }
+    wrap.querySelectorAll<HTMLInputElement>(".audit-row-cb").forEach(cb => {
+      cb.addEventListener("change", updateBatchBar);
+    });
 
     if (moreBtn) moreBtn.style.display = this._auditHasMore ? "" : "none";
+    if (batchBar) batchBar.style.display = "none"; // hidden until selection
+  }
+
+  // ─── V1.3 — Batch audit actions ────────────────────────────────────────────
+
+  private _getSelectedLinkIds(root: HTMLElement): number[] {
+    return Array.from(root.querySelectorAll<HTMLInputElement>(".audit-row-cb:checked"))
+      .map(cb => Number(cb.dataset.id))
+      .filter(id => Number.isFinite(id));
+  }
+
+  private async _runBatchAction(
+    root: HTMLElement,
+    action: "set_status" | "delete",
+    status: "accepted" | "rejected" | null
+  ): Promise<void> {
+    if (!this._conn) return;
+    const ids = this._getSelectedLinkIds(root);
+    if (ids.length === 0) return;
+
+    if (action === "delete") {
+      if (!confirm(`Supprimer ${ids.length} lien(s) sélectionné(s) ? Cette action est irréversible.`)) return;
+    }
+
+    const actions: AlignBatchAction[] = ids.map(id =>
+      action === "delete" ? { action: "delete", link_id: id } : { action: "set_status", link_id: id, status }
+    );
+
+    try {
+      const res = await batchUpdateAlignLinks(this._conn, actions);
+      if (action === "delete") {
+        this._auditLinks = this._auditLinks.filter(l => !ids.includes(l.link_id));
+        this._log(`✓ ${res.deleted} lien(s) supprimé(s) en lot.`);
+        this._showToast?.(`✓ ${res.deleted} lien(s) supprimé(s)`);
+      } else {
+        for (const l of this._auditLinks) {
+          if (ids.includes(l.link_id)) l.status = status;
+        }
+        const label = status === "accepted" ? "accepté(s)" : status === "rejected" ? "rejeté(s)" : "réinitialisé(s)";
+        this._log(`✓ ${res.applied} lien(s) ${label} en lot.${res.errors.length > 0 ? ` (${res.errors.length} erreur(s))` : ""}`);
+        this._showToast?.(`✓ ${res.applied} lien(s) ${label}`);
+      }
+      this._renderAuditTable(root);
+    } catch (err) {
+      this._log(`✗ Opération lot : ${err instanceof SidecarError ? err.message : String(err)}`, true);
+      this._showToast?.("✗ Erreur opération lot", true);
+    }
+  }
+
+  // ─── V1.4 — Retarget modal ─────────────────────────────────────────────────
+
+  private async _openRetargetModal(linkId: number, pivotUnitId: number, root: HTMLElement): Promise<void> {
+    if (!this._conn) return;
+    const link = this._auditLinks.find(l => l.link_id === linkId);
+    if (!link) return;
+
+    // Determine target_doc_id from stored audit context
+    const targetDocId = this._auditTargetId;
+    if (!targetDocId) return;
+
+    // Fetch candidates
+    let candidates: RetargetCandidate[] = [];
+    try {
+      const res = await retargetCandidates(this._conn, { pivot_unit_id: pivotUnitId, target_doc_id: targetDocId, limit: 10 });
+      candidates = res.candidates;
+    } catch (err) {
+      this._log(`✗ Candidats retarget : ${err instanceof SidecarError ? err.message : String(err)}`, true);
+      return;
+    }
+
+    // Build modal
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:9999";
+
+    const modal = document.createElement("div");
+    modal.style.cssText = "background:#fff;border-radius:8px;padding:1.2rem 1.4rem;min-width:340px;max-width:520px;max-height:80vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.18)";
+    modal.innerHTML = `<h3 style="margin:0 0 .7rem">Reciblaer le lien #${linkId}</h3>
+      <p style="font-size:.83rem;color:#666;margin:0 0 .7rem">Pivot : <em>${_escHtml(String(link.pivot_text ?? ""))}</em></p>
+      <p style="font-size:.83rem;color:#666;margin:0 0 .8rem">Actuel : <em>${_escHtml(String(link.target_text ?? ""))}</em></p>
+      <div id="retarget-cands"></div>
+      <div style="display:flex;gap:.5rem;margin-top:1rem;justify-content:flex-end">
+        <button class="btn btn-secondary" id="retarget-cancel-btn">Annuler</button>
+        <button class="btn btn-primary" id="retarget-apply-btn">Appliquer</button>
+      </div>`;
+
+    const candsDiv = modal.querySelector<HTMLElement>("#retarget-cands")!;
+    if (candidates.length === 0) {
+      candsDiv.innerHTML = `<p style="color:#888;font-size:.85rem">Aucun candidat trouvé.</p>`;
+    } else {
+      for (const c of candidates) {
+        const label = document.createElement("label");
+        label.style.cssText = "display:flex;align-items:flex-start;gap:.4rem;padding:.3rem .25rem;border-bottom:1px solid #eee;cursor:pointer;font-size:.88rem";
+        const radio = document.createElement("input");
+        radio.type = "radio";
+        radio.name = "retarget-cand";
+        radio.value = String(c.target_unit_id);
+        radio.style.marginTop = "2px";
+        label.appendChild(radio);
+        label.appendChild(document.createTextNode(
+          `[${c.external_id ?? "—"}] ${c.target_text} — score ${c.score.toFixed(2)} (${c.reason})`
+        ));
+        candsDiv.appendChild(label);
+      }
+    }
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    const close = () => document.body.removeChild(overlay);
+
+    modal.querySelector("#retarget-cancel-btn")!.addEventListener("click", close);
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+
+    modal.querySelector("#retarget-apply-btn")!.addEventListener("click", async () => {
+      const chosen = modal.querySelector<HTMLInputElement>("input[name='retarget-cand']:checked");
+      if (!chosen) { alert("Sélectionnez un candidat."); return; }
+      const newTargetUnitId = Number(chosen.value);
+      try {
+        await retargetAlignLink(this._conn!, { link_id: linkId, new_target_unit_id: newTargetUnitId });
+        // Update in-memory
+        const cand = candidates.find(c => c.target_unit_id === newTargetUnitId);
+        if (link && cand) link.target_text = cand.target_text;
+        this._renderAuditTable(root);
+        this._log(`✓ Lien #${linkId} reciblé → unité ${newTargetUnitId}.`);
+        this._showToast?.(`✓ Lien #${linkId} reciblé`);
+        close();
+      } catch (err) {
+        this._log(`✗ Retarget : ${err instanceof SidecarError ? err.message : String(err)}`, true);
+      }
+    });
   }
 
   // ─── Align quality metrics ─────────────────────────────────────────────────
@@ -1011,6 +1233,148 @@ export class ActionsScreen {
     } finally {
       btn.disabled = false;
       btn.textContent = "Calculer métriques";
+    }
+  }
+
+  // ─── Collision resolver (V1.5) ────────────────────────────────────────────
+
+  private async _loadCollisionsPage(root: HTMLElement, append: boolean): Promise<void> {
+    if (!this._conn) return;
+    const pivotSel = root.querySelector<HTMLSelectElement>("#act-coll-pivot");
+    const targetSel = root.querySelector<HTMLSelectElement>("#act-coll-target");
+    const pivotId = parseInt(pivotSel?.value ?? "");
+    const targetId = parseInt(targetSel?.value ?? "");
+    if (!pivotId || !targetId) {
+      this._showToast?.("Sélectionnez un pivot et une cible.", true);
+      return;
+    }
+    if (!append) {
+      this._collOffset = 0;
+      this._collGroups = [];
+    }
+    try {
+      const res = await listCollisions(this._conn, {
+        pivot_doc_id: pivotId,
+        target_doc_id: targetId,
+        limit: this._collLimit,
+        offset: this._collOffset,
+      });
+      this._collTotalCount = res.total_collisions;
+      this._collGroups = append ? [...this._collGroups, ...res.collisions] : res.collisions;
+      this._collHasMore = res.has_more;
+      this._collOffset = res.next_offset;
+      this._renderCollisionTable(root, targetId);
+      this._log(`Collisions : ${this._collTotalCount} groupe(s) trouvé(s).`);
+    } catch (err) {
+      this._log(`Erreur collisions : ${err instanceof SidecarError ? err.message : String(err)}`, true);
+      this._showToast?.("✗ Erreur chargement collisions", true);
+    }
+  }
+
+  private _renderCollisionTable(root: HTMLElement, targetDocId: number): void {
+    const resultEl = root.querySelector<HTMLElement>("#act-coll-result");
+    const moreWrap = root.querySelector<HTMLElement>("#act-coll-more-wrap");
+    if (!resultEl) return;
+    resultEl.style.display = "";
+
+    if (this._collGroups.length === 0) {
+      resultEl.innerHTML = `<p class="hint">✓ Aucune collision détectée.</p>`;
+      if (moreWrap) moreWrap.style.display = "none";
+      return;
+    }
+
+    const header = `<p style="margin-bottom:0.5rem;font-size:0.88rem;color:var(--text-muted)">
+      ${this._collTotalCount} groupe(s) de collision — ${this._collGroups.length} affiché(s)</p>`;
+
+    const groupHtml = this._collGroups.map((g) => {
+      const linksHtml = g.links.map((lnk) => {
+        const badge = lnk.status === "accepted"
+          ? `<span class="status-badge status-ok">✅ Accepté</span>`
+          : lnk.status === "rejected"
+          ? `<span class="status-badge status-error">❌ Rejeté</span>`
+          : `<span class="status-badge status-unknown">🔵 Non révisé</span>`;
+        return `<tr>
+          <td class="audit-cell-text">${lnk.target_text}</td>
+          <td>[§${lnk.target_external_id ?? "?"}]</td>
+          <td>${badge}</td>
+          <td class="audit-cell-actions">
+            <button class="btn btn-sm btn-primary coll-keep-btn" data-link="${lnk.link_id}" data-group="${g.pivot_unit_id}" title="Garder — marquer accepté">✓ Garder</button>
+            <button class="btn btn-sm btn-secondary coll-reject-btn" data-link="${lnk.link_id}" title="Rejeter">❌ Rejeter</button>
+            <button class="btn btn-sm btn-danger coll-delete-btn" data-link="${lnk.link_id}" data-group="${g.pivot_unit_id}" data-target="${targetDocId}" title="Supprimer ce lien">🗑</button>
+          </td>
+        </tr>`;
+      }).join("");
+
+      return `<div class="collision-group" style="margin-bottom:1rem; border:1px solid var(--border); border-radius:6px; overflow:hidden">
+        <div class="collision-pivot-header" style="background:var(--surface-alt,#f5f5f5); padding:0.4rem 0.75rem; font-size:0.85rem; font-weight:600">
+          [§${g.pivot_external_id ?? "?"}] ${g.pivot_text}
+          <button class="btn btn-sm btn-danger coll-delete-others-btn" data-group="${g.pivot_unit_id}" data-target="${targetDocId}"
+            style="float:right; font-size:0.75rem" title="Supprimer tous les liens de ce groupe">🗑 Tout supprimer</button>
+        </div>
+        <table class="meta-table" style="margin:0; width:100%">
+          <thead><tr><th>Texte cible</th><th>Ext. id</th><th>Statut</th><th>Actions</th></tr></thead>
+          <tbody>${linksHtml}</tbody>
+        </table>
+      </div>`;
+    }).join("");
+
+    resultEl.innerHTML = header + groupHtml;
+    if (moreWrap) moreWrap.style.display = this._collHasMore ? "" : "none";
+
+    // Wire per-link actions
+    const self = this;
+    resultEl.querySelectorAll<HTMLButtonElement>(".coll-keep-btn").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const linkId = parseInt(btn.dataset.link!);
+        await self._resolveCollision([{ action: "keep", link_id: linkId }], root, parseInt(btn.dataset.group!), targetDocId);
+      });
+    });
+    resultEl.querySelectorAll<HTMLButtonElement>(".coll-reject-btn").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const linkId = parseInt(btn.dataset.link!);
+        await self._resolveCollision([{ action: "reject", link_id: linkId }], root, null, targetDocId);
+      });
+    });
+    resultEl.querySelectorAll<HTMLButtonElement>(".coll-delete-btn").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const linkId = parseInt(btn.dataset.link!);
+        const pivotUid = parseInt(btn.dataset.group!);
+        await self._resolveCollision([{ action: "delete", link_id: linkId }], root, pivotUid, targetDocId);
+      });
+    });
+    resultEl.querySelectorAll<HTMLButtonElement>(".coll-delete-others-btn").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const pivotUid = parseInt(btn.dataset.group!);
+        const targetDoc = parseInt(btn.dataset.target!);
+        const group = self._collGroups.find(g => g.pivot_unit_id === pivotUid);
+        if (!group) return;
+        const actions = group.links.map(lnk => ({ action: "delete" as const, link_id: lnk.link_id }));
+        await self._resolveCollision(actions, root, pivotUid, targetDoc);
+      });
+    });
+  }
+
+  private async _resolveCollision(
+    actions: Array<{ action: "keep" | "delete" | "reject" | "unreviewed"; link_id: number }>,
+    root: HTMLElement,
+    pivotUnitId: number | null,
+    targetDocId: number,
+  ): Promise<void> {
+    if (!this._conn) return;
+    try {
+      const res = await resolveCollisions(this._conn, actions);
+      if (res.errors.length > 0) {
+        this._showToast?.(`⚠ ${res.errors.length} erreur(s)`, true);
+      } else {
+        this._showToast?.(`✓ Résolution appliquée (${res.applied} modif., ${res.deleted} suppr.)`);
+      }
+      // Reload collision list to reflect changes
+      this._collOffset = 0;
+      this._collGroups = [];
+      await this._loadCollisionsPage(root, false);
+    } catch (err) {
+      this._log(`Erreur résolution collision : ${err instanceof SidecarError ? err.message : String(err)}`, true);
+      this._showToast?.("✗ Erreur résolution collision", true);
     }
   }
 

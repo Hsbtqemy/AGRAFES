@@ -162,6 +162,11 @@ export interface CuratePreviewResponse {
 
 // ─── Align Audit types ────────────────────────────────────────────────────────
 
+export interface AlignExplain {
+  strategy: string;
+  notes: string[];
+}
+
 export interface AlignAuditOptions {
   pivot_doc_id: number;
   target_doc_id: number;
@@ -169,6 +174,8 @@ export interface AlignAuditOptions {
   offset?: number;
   external_id?: number;
   status?: "accepted" | "rejected" | "unreviewed";
+  /** V1.2: attach explain object (strategy + notes) to each link */
+  include_explain?: boolean;
 }
 
 export interface AlignLinkRecord {
@@ -179,6 +186,8 @@ export interface AlignLinkRecord {
   pivot_text: string;
   target_text: string;
   status: "accepted" | "rejected" | null;
+  /** Present when include_explain=true */
+  explain?: AlignExplain;
 }
 
 // ─── V0.4A — Metadata types ───────────────────────────────────────────────────
@@ -638,6 +647,15 @@ export async function retargetAlignLink(conn: Conn, opts: AlignLinkRetargetOptio
   return conn.post("/align/link/retarget", opts) as Promise<{ link_id: number; new_target_unit_id: number; updated: number }>;
 }
 
+// ─── V1.3 — Batch align link update ──────────────────────────────────────────
+
+export async function batchUpdateAlignLinks(
+  conn: Conn,
+  actions: AlignBatchAction[]
+): Promise<AlignBatchUpdateResponse> {
+  return conn.post("/align/links/batch_update", { actions }) as Promise<AlignBatchUpdateResponse>;
+}
+
 // ─── V0.5 — Job enqueue / cancel / list ──────────────────────────────────────
 
 export async function enqueueJob(
@@ -670,6 +688,22 @@ export async function listJobs(
     total: number;
     has_more: boolean;
   }>;
+}
+
+// ─── V1.3 — Batch align link operations ──────────────────────────────────────
+
+export interface AlignBatchAction {
+  action: "set_status" | "delete";
+  link_id: number;
+  /** Required for set_status; null resets to unreviewed */
+  status?: "accepted" | "rejected" | null;
+}
+
+export interface AlignBatchUpdateResponse {
+  ok: boolean;
+  applied: number;
+  deleted: number;
+  errors: Array<{ index: number; link_id: number | null; error: string }>;
 }
 
 // ─── V1.1 — Align quality ─────────────────────────────────────────────────────
@@ -711,6 +745,93 @@ export async function alignQuality(
   const body: Record<string, unknown> = { pivot_doc_id, target_doc_id };
   if (run_id) body.run_id = run_id;
   return conn.post("/align/quality", body) as Promise<AlignQualityResponse>;
+}
+
+// ─── V1.4 — Retarget candidates ───────────────────────────────────────────────
+
+export interface RetargetCandidate {
+  target_unit_id: number;
+  external_id: number | null;
+  target_text: string;
+  score: number;
+  reason: string;
+}
+
+export interface RetargetCandidatesOptions {
+  pivot_unit_id: number;
+  target_doc_id: number;
+  limit?: number;
+  window?: number;
+}
+
+export interface RetargetCandidatesResponse {
+  pivot: { unit_id: number; external_id: number | null; text: string };
+  candidates: RetargetCandidate[];
+}
+
+export async function retargetCandidates(
+  conn: Conn,
+  opts: RetargetCandidatesOptions
+): Promise<RetargetCandidatesResponse> {
+  return conn.post("/align/retarget_candidates", opts) as Promise<RetargetCandidatesResponse>;
+}
+
+// ── V1.5 — Collision resolver ────────────────────────────────────────────────
+
+export interface CollisionLink {
+  link_id: number;
+  target_unit_id: number;
+  target_external_id: number | null;
+  target_text: string;
+  status: string | null;
+}
+
+export interface CollisionGroup {
+  pivot_unit_id: number;
+  pivot_external_id: number | null;
+  pivot_text: string;
+  links: CollisionLink[];
+}
+
+export interface ListCollisionsOptions {
+  pivot_doc_id: number;
+  target_doc_id: number;
+  limit?: number;
+  offset?: number;
+}
+
+export interface ListCollisionsResponse {
+  ok: boolean;
+  total_collisions: number;
+  collisions: CollisionGroup[];
+  has_more: boolean;
+  next_offset: number;
+}
+
+export interface CollisionResolveAction {
+  action: "keep" | "delete" | "reject" | "unreviewed";
+  link_id: number;
+}
+
+export interface CollisionResolveResponse {
+  ok: boolean;
+  applied: number;
+  deleted: number;
+  errors: Array<{ index: number; link_id: number; error: string }>;
+}
+
+export async function listCollisions(
+  conn: Conn,
+  opts: ListCollisionsOptions
+): Promise<ListCollisionsResponse> {
+  return conn.post("/align/collisions", opts) as Promise<ListCollisionsResponse>;
+}
+
+export async function resolveCollisions(
+  conn: Conn,
+  actions: CollisionResolveAction[]
+): Promise<CollisionResolveResponse> {
+  return conn.post("/align/collisions/resolve", { actions }) as Promise<CollisionResolveResponse>;
 }
 
 export async function shutdownSidecar(conn: Conn): Promise<void> {
