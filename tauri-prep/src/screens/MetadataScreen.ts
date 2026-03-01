@@ -208,22 +208,32 @@ export class MetadataScreen {
         <button id="save-doc-btn" class="btn btn-primary btn-sm">Enregistrer</button>
       </div>
 
-      <h4 style="font-size:0.88rem;font-weight:600;margin:0.5rem 0">Relations documentaires</h4>
+      <h4 style="font-size:0.88rem;font-weight:600;margin:0.5rem 0 0.3rem">Relations documentaires</h4>
+      <p style="font-size:0.78rem;color:var(--color-muted);margin:0 0 0.5rem">
+        Définissez comment ce document est lié à un autre (traduction, extrait…).
+        Ces relations apparaîtront dans le <code>&lt;teiHeader&gt;</code> à l'export.
+      </p>
       <div class="form-row" style="align-items:flex-end">
-        <label>Type
-          <select id="rel-type">
+        <label>Type de relation
+          <select id="rel-type" style="min-width:140px">
             ${RELATION_TYPES.map(t => `<option value="${t}">${t}</option>`).join("")}
           </select>
         </label>
-        <label>Doc cible (id)
-          <input id="rel-target" type="number" min="1" placeholder="doc_id" style="max-width:80px">
+        <label style="flex:2">Document cible
+          <select id="rel-target-sel" style="min-width:200px">
+            <option value="">— sélectionner —</option>
+            ${this._docs
+              .filter(d => d.doc_id !== doc.doc_id)
+              .map(d => `<option value="${d.doc_id}">#${d.doc_id} ${this._esc(d.title)} (${this._esc(d.language)})</option>`)
+              .join("")}
+          </select>
         </label>
         <label>Note
-          <input id="rel-note" type="text" placeholder="optionnel" style="max-width:160px">
+          <input id="rel-note" type="text" placeholder="optionnel" style="max-width:130px">
         </label>
-        <button id="add-rel-btn" class="btn btn-secondary btn-sm">Ajouter</button>
+        <button id="add-rel-btn" class="btn btn-secondary btn-sm" style="align-self:flex-end">＋ Ajouter</button>
       </div>
-      <div id="relations-list"></div>
+      <div id="relations-list" style="margin-top:0.4rem"></div>
     `;
 
     this._renderRelationsList();
@@ -236,16 +246,28 @@ export class MetadataScreen {
     const container = this._editPanelEl.querySelector<HTMLElement>("#relations-list");
     if (!container) return;
     if (this._relations.length === 0) {
-      container.innerHTML = `<p class="empty-hint" style="margin-top:0.5rem">Aucune relation.</p>`;
+      container.innerHTML = `<p class="empty-hint" style="margin-top:0.5rem;font-size:0.82rem">Aucune relation définie.</p>`;
       return;
     }
     container.innerHTML = "";
     for (const rel of this._relations) {
+      const targetDoc = this._docs.find(d => d.doc_id === rel.target_doc_id);
+      const targetLabel = targetDoc
+        ? `#${targetDoc.doc_id} ${this._esc(targetDoc.title)} (${this._esc(targetDoc.language)})`
+        : `doc #${rel.target_doc_id}`;
+
       const row = document.createElement("div");
-      row.style.cssText = "display:flex;align-items:center;gap:0.5rem;font-size:0.82rem;padding:0.2rem 0;border-bottom:1px solid var(--color-border)";
+      row.style.cssText = [
+        "display:flex;align-items:center;gap:0.6rem;font-size:0.82rem",
+        "padding:0.3rem 0.5rem;border-radius:4px;background:#f8f9fa",
+        "border:1px solid var(--color-border);margin-bottom:0.3rem",
+      ].join(";");
       row.innerHTML = `
-        <span style="flex:1">${this._esc(rel.relation_type)} → doc #${rel.target_doc_id}${rel.note ? ` <em>(${this._esc(rel.note)})</em>` : ""}</span>
-        <button class="btn btn-danger btn-sm del-rel-btn" data-id="${rel.id}">✕</button>
+        <span style="font-weight:600;color:#4a6fa5;white-space:nowrap">${this._esc(rel.relation_type)}</span>
+        <span style="color:var(--color-muted)">→</span>
+        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${targetLabel}</span>
+        ${rel.note ? `<span style="font-style:italic;color:var(--color-muted);font-size:0.78rem">${this._esc(rel.note)}</span>` : ""}
+        <button class="btn btn-danger btn-sm del-rel-btn" data-id="${rel.id}" title="Supprimer cette relation">✕</button>
       `;
       row.querySelector(".del-rel-btn")!.addEventListener("click", () => this._deleteRelation(rel.id));
       container.appendChild(row);
@@ -286,11 +308,16 @@ export class MetadataScreen {
   private async _addRelation(): Promise<void> {
     if (!this._conn || !this._selectedDoc) return;
     const rel_type = (this._editPanelEl.querySelector<HTMLSelectElement>("#rel-type")!).value;
-    const target_str = (this._editPanelEl.querySelector<HTMLInputElement>("#rel-target")!).value.trim();
+    const target_sel = this._editPanelEl.querySelector<HTMLSelectElement>("#rel-target-sel");
+    const target_str = target_sel?.value?.trim() ?? "";
     const note = (this._editPanelEl.querySelector<HTMLInputElement>("#rel-note")!).value.trim() || undefined;
     const target_doc_id = parseInt(target_str);
     if (!target_str || isNaN(target_doc_id)) {
-      this._log("Doc cible (id) invalide.", true);
+      this._log("Sélectionnez un document cible.", true);
+      return;
+    }
+    if (target_doc_id === this._selectedDoc.doc_id) {
+      this._log("Un document ne peut pas être sa propre cible.", true);
       return;
     }
     try {
