@@ -153,14 +153,32 @@ Hash takes precedence over `?mode=`. Both override `localStorage.lastMode`.
 3. **Deep-link hash persistence**: the hash is consumed at boot but not cleared from the URL,
    so hard-refreshing the page will re-apply the deep-link override.
 
-## Dev
+## Dev bootstrap (local)
+
+To run `npm run tauri dev` locally, you need the sidecar binary in
+`tauri-shell/src-tauri/binaries/`. Follow these 4 steps:
 
 ```bash
-cd tauri-shell
-npm install
-npm run dev        # Vite dev server on http://localhost:1422
-npm run build      # TypeScript + Vite production build
-npm run tauri dev  # Full Tauri dev (requires Rust toolchain + sidecar binary)
+# 1. Install project + PyInstaller packaging extras (once per env)
+pip install -e ".[packaging]"
+
+# 2. Build the sidecar binary (macOS: onefile; Linux/Windows: onedir)
+#    Reads sidecar-manifest.json to confirm the executable_path.
+bash tauri-shell/scripts/prepare_sidecar.sh        # macOS / Linux
+# .\tauri-shell\scripts\prepare_sidecar.ps1        # Windows PowerShell
+
+# 3. Install npm dependencies
+npm --prefix tauri-shell install
+
+# 4. Run Tauri dev (requires Rust toolchain: rustup + cargo)
+npm --prefix tauri-shell run tauri dev
+```
+
+Other useful commands:
+
+```bash
+npm --prefix tauri-shell run dev    # Vite-only dev server (no Tauri, no binary needed)
+npm --prefix tauri-shell run build  # TypeScript + Vite production build (CI mode)
 ```
 
 ## CI
