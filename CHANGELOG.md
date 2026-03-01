@@ -3,6 +3,34 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+---
+
+## [V1.9.0] — 2026-03-01
+
+### Added
+
+**tauri-shell — Support menu + System Diagnostics**
+
+- **Menu "?" (header)** — dropdown giving access to: Diagnostic système, Exporter logs, À propos, Raccourcis. No additions to main application screens.
+- **`tauri-shell/src/diagnostics.ts`** (new file) — local-only diagnostic module:
+  - `collectDiagnostics()` — async collector (sidecar health, DB size, MRU stats, prefs, env, log tail)
+  - `formatDiagnosticsText()` — pure function producing Markdown-like text report
+  - `redactPath()` — keeps only last 2 path segments (no sensitive paths in export)
+- **`_openDiagnosticsModal()`** — resizable modal in `shell.ts` with Copy + Export actions
+- **`_exportDiagnosticFile()`** — `dialogSave` + `writeTextFile` (user-scoped, no write-all)
+- **`tauri-shell/scripts/test_diagnostics.mjs`** — 42 standalone Node.js unit tests for pure functions
+
+### Changed
+- `docs/STATUS_TAURI_SHELL.md` — V1.9.0 section (Support menu + diagnostics architecture)
+- `docs/RELEASE_CHECKLIST.md` — V1.9.0 checklist + bug-report triage procedure
+
+### Invariants
+- Zero telemetry, zero network (sidecar probe is localhost-only)
+- No write-all Tauri permissions
+- No full paths in exported files (redactPath enforced throughout)
+- `pytest -q`: 352 passed | FTS: 26/26 | `release_gate.py`: 5/5
+- `node tauri-shell/scripts/test_diagnostics.mjs`: 42/42
+
 ## [V1.8.2] — 2026-03-01 — Crash recovery + local log export
 
 ### Added

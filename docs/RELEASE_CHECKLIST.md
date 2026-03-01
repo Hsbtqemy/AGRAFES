@@ -185,3 +185,21 @@ npm --prefix tauri-shell run tauri build
 
 Les workflows s'exécutent avec `exit 0` si les secrets sont absents — aucun échec en CI.
 Les binaires non signés (Sprint 1) restent utilisables.
+
+---
+
+## V1.9.0 — Support menu + diagnostics
+
+### Pre-release
+- [ ] `npm --prefix tauri-shell run build` vert
+- [ ] `node tauri-shell/scripts/test_diagnostics.mjs` 42 tests verts
+- [ ] Modal diagnostic s'ouvre depuis le menu "?" dans le header Shell
+- [ ] Bouton "Exporter…" produit un fichier `.txt` lisible (aucun chemin sensible en clair)
+- [ ] Bouton "Copier" copie le texte dans le presse-papiers
+- [ ] Menu "?" se ferme au clic extérieur et sur Escape
+
+### Quand un utilisateur signale un bug
+1. Demander : **Menu "?" → Diagnostic système… → Exporter…** → joindre `agrafes-diagnostic-YYYY-MM-DD.txt`
+2. Demander : **Menu "?" → Exporter logs…** → joindre `agrafes-logs-YYYY-MM-DD.txt`
+3. Les deux fichiers ne contiennent aucun chemin utilisateur complet (redaction automatique).
+4. Vérifier dans le fichier diagnostic : section `Sidecar` (running? port?), section `Collection Errors`.

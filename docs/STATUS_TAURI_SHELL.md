@@ -1,6 +1,6 @@
 # Status: AGRAFES Shell (tauri-shell/)
 
-**Current version:** V1.2 (2026-03-01)
+**Current version:** V1.9.0 (2026-03-01)
 
 ## What it is
 
@@ -511,6 +511,53 @@ Panneau modal listant tous les raccourcis :
 
 - Raccourci `⌘+3` ajouté pour "Publier"
 - Raccourci `⌘+O` pour ouvrir DB, `⌘+Maj+N` pour créer
+
+## V1.9.0 — Support menu + system diagnostics
+
+### Overview
+A "?" button in the Shell header opens a dropdown **Support menu** (no UI additions to
+main screens). From this menu, users can:
+
+| Item | Action |
+|------|--------|
+| 🔍 Diagnostic système… | Opens the Diagnostics modal |
+| 📋 Exporter logs… | Triggers the log export dialog (same as About dialog) |
+| ⓘ À propos d'AGRAFES… | Opens the About dialog |
+| ⌨ Raccourcis clavier… | Opens the shortcuts panel |
+
+### Diagnostics modal
+Opens a resizable modal displaying a live system diagnostic report.
+
+**Collected data (all local, no network)**:
+- Versions: app, engine, contract, TEI profiles (hardcoded list)
+- Sidecar state: probes `agrafes.sidecar.port` from localStorage → `GET /health`
+  (gracefully shows "not running" if port absent or fetch fails)
+- Environment: platform, locale, window size, Tauri runtime availability, user-agent
+- Database: active DB basename (last 2 path segments only — no full paths),
+  file size via `@tauri-apps/plugin-fs stat` (null if unavailable),
+  MRU count, pinned count
+- Preferences: last QA policy, last TEI profile, onboarding step, global presets count
+- Session log tail: last 50 log entries (message only, no detail with potential paths)
+
+**Actions**:
+- `📋 Copier` — copies formatted text to clipboard (`navigator.clipboard`, select-all fallback)
+- `💾 Exporter…` — `dialogSave` → `writeTextFile` (user-scoped path, no write-all permission)
+- `Fermer` / `Escape` / backdrop click — dismiss
+
+### Files
+| File | Role |
+|------|------|
+| `tauri-shell/src/diagnostics.ts` | New module — `collectDiagnostics()`, `formatDiagnosticsText()`, `redactPath()` |
+| `tauri-shell/src/shell.ts` | Support menu, `_openDiagnosticsModal()`, `_exportDiagnosticFile()` |
+| `tauri-shell/scripts/test_diagnostics.mjs` | 42 Node.js unit tests for pure functions |
+
+### Security invariants
+- No network calls (sidecar probe is localhost-only, 2.5 s timeout)
+- No full path disclosure (redactPath keeps last 2 segments)
+- No write-all Tauri permissions (export writes only to user-chosen path)
+- Zero telemetry
+
+---
 
 ## V1.8.2 — Local crash logging + log export bundle
 
