@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Constituer — Hub onglets (V-next)</title>
+    <style>
+      :root {
+        --bg: #f0f2f5;
+        --card: #fff;
+        --line: #dde1e8;
+        --text: #1a1a2e;
+        --muted: #6c757d;
+        --accent: #0f766e;
+        --accent-soft: #e8f5f3;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+      }
+      .top {
+        height: 54px;
+        background: linear-gradient(135deg, #0c4a46, #0f766e);
+        color: #fff;
+        border-bottom: 1px solid #0c4a46;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 0 14px;
+      }
+      .top strong { letter-spacing: .02em; }
+      .db {
+        margin-left: auto;
+        font-size: 12px;
+        border: 1px solid rgba(255,255,255,.34);
+        border-radius: 999px;
+        padding: 4px 10px;
+        background: rgba(255,255,255,.13);
+      }
+      .proto-nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 8px 14px;
+        border-bottom: 1px solid var(--line);
+        background: #fff;
+      }
+      .proto-nav a {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 5px 10px;
+        font-size: 12px;
+        color: var(--muted);
+        text-decoration: none;
+        background: #f8f9fa;
+      }
+      .proto-nav a.active {
+        color: #0c4a46;
+        border-color: #9fd3cc;
+        background: #e8f5f3;
+        font-weight: 700;
+      }
+      main {
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 14px;
+      }
+      .hero {
+        border: 1px solid var(--line);
+        background: var(--card);
+        border-radius: 12px;
+        padding: 14px;
+        margin-bottom: 12px;
+      }
+      .hero h1 {
+        margin: 0;
+        font-size: 20px;
+      }
+      .hero p {
+        margin: 7px 0 0;
+        color: var(--muted);
+        font-size: 14px;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(260px, 1fr));
+        gap: 10px;
+      }
+      .card {
+        border: 1px solid var(--line);
+        background: var(--card);
+        border-radius: 12px;
+        padding: 12px;
+        text-decoration: none;
+        color: inherit;
+        display: block;
+      }
+      .card:hover {
+        border-color: #9fd3cc;
+        box-shadow: 0 8px 20px rgba(12, 74, 70, 0.10);
+      }
+      .kicker {
+        margin: 0 0 6px;
+        font-size: 11px;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+        color: var(--accent);
+        font-weight: 700;
+      }
+      .card h2 {
+        margin: 0 0 4px;
+        font-size: 18px;
+      }
+      .card p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+      .note {
+        margin-top: 10px;
+        border: 1px dashed #9fd3cc;
+        background: #f3f9f8;
+        color: #0c4a46;
+        border-radius: 10px;
+        padding: 10px;
+        font-size: 12px;
+      }
+      @media (max-width: 760px) {
+        .grid { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="top">
+      <strong>Constituer</strong>
+      <span>Préparation corpus</span>
+      <span class="db">DB: corpus_himyc_2026.db</span>
+    </header>
+    <nav class="proto-nav" aria-label="Navigation maquettes">
+      <a href="./index.html">Index</a>
+      <a href="./board-vnext.html">Board</a>
+      <a href="./shell-vnext.html">Home</a>
+      <a href="./explorer-vnext.html">Explorer</a>
+      <a class="active" href="./prep-vnext.html">Constituer</a>
+      <a href="./publish-vnext.html">Publier</a>
+    </nav>
+
+    <main>
+      <section class="hero">
+        <h1>Constituer — pages par onglet</h1>
+        <p>
+          Navigation réorganisée: 4 onglets réels + un hub dédié pour comparer les variantes
+          Curation sans encombrer l’entrée principale.
+        </p>
+      </section>
+
+      <section class="grid">
+        <a class="card" href="./prep-import-vnext.html">
+          <div class="kicker">Onglet</div>
+          <h2>Importer</h2>
+          <p>Batch d'import, file de documents, options, index FTS et jobs.</p>
+        </a>
+        <a class="card" href="./prep-documents-vnext.html">
+          <div class="kicker">Onglet</div>
+          <h2>Documents</h2>
+          <p>Liste, édition métadonnées, relations inter-documents, validation.</p>
+        </a>
+        <a class="card" href="./prep-actions-vnext.html">
+          <div class="kicker">Onglet</div>
+          <h2>Actions</h2>
+          <p>Curation, segmentation, alignement, audit/collisions et workflow qualité.</p>
+        </a>
+        <a class="card" href="./prep-curation-hub-vnext.html">
+          <div class="kicker">Hub variantes</div>
+          <h2>Curation — vue organisée</h2>
+          <p>Entrée unique pour choisir entre revue fine, chercher/remplacer, texte continu, focus preview.</p>
+        </a>
+        <a class="card" href="./prep-actions-longtext-vnext.html">
+          <div class="kicker">Variante</div>
+          <h2>Actions — grand texte</h2>
+          <p>Preview document complet (~16k), brut vs segmenté, minimap de vérification.</p>
+        </a>
+        <a class="card" href="./prep-segmentation-vo-vnext.html">
+          <div class="kicker">Variante</div>
+          <h2>Segmentation pilotée VO</h2>
+          <p>Batch multilingue (7 docs), projection sur VO, split/merge/orphans par langue.</p>
+        </a>
+        <a class="card" href="./prep-segmentation-translation-vo-vnext.html">
+          <div class="kicker">Variante</div>
+          <h2>Segmentation traduction vs VO</h2>
+          <p>Vue centree ecarts traduction vs VO (match/split/merge/manquant/extra) avec actions de correction.</p>
+        </a>
+        <a class="card" href="./prep-segmentation-translation-vo-native-layout-vnext.html">
+          <div class="kicker">Variante</div>
+          <h2>Segmentation traduction (layout natif)</h2>
+          <p>Meme structure que la segmentation native: reglages a gauche, preview centrale, couche VO additionnelle.</p>
+        </a>
+        <a class="card" href="./prep-exporter-vnext.html">
+          <div class="kicker">Onglet</div>
+          <h2>Exporter</h2>
+          <p>Rapport QA, export TEI/package et suivi des runs export.</p>
+        </a>
+      </section>
+
+      <div class="note">
+        Conseil revue: suivre ce chemin dans l’ordre:
+        Importer → Documents → Actions → Hub Curation → Segmentation VO → Exporter.
+      </div>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,1896 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Constituer — Segmentation traduction (layout natif + couche VO)</title>
+    <style>
+      :root {
+        --bg: #f0f2f5;
+        --card: #fff;
+        --line: #dde1e8;
+        --text: #1a1a2e;
+        --muted: #6c757d;
+        --accent: #0f766e;
+        --accent-soft: #e8f5f3;
+        --ok: #1a7f4e;
+        --warn: #e6a817;
+        --bad: #c0392b;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; font-family: "SF Pro Text", "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); }
+      .top {
+        height: 54px;
+        background: linear-gradient(135deg, #0c4a46, #0f766e);
+        color: #fff;
+        border-bottom: 1px solid #0c4a46;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 0 14px;
+      }
+      .top strong { letter-spacing: .02em; }
+      .db {
+        margin-left: auto;
+        font-size: 12px;
+        border: 1px solid rgba(255,255,255,.34);
+        border-radius: 999px;
+        padding: 4px 10px;
+        background: rgba(255,255,255,.13);
+      }
+      .proto-nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 8px 14px;
+        border-bottom: 1px solid var(--line);
+        background: #fff;
+      }
+      .proto-nav a {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 5px 10px;
+        font-size: 12px;
+        color: var(--muted);
+        text-decoration: none;
+        background: #f8f9fa;
+      }
+      .proto-nav a.active {
+        color: #0c4a46;
+        border-color: #9fd3cc;
+        background: #e8f5f3;
+        font-weight: 700;
+      }
+      .shell {
+        display: grid;
+        grid-template-columns: 230px 1fr;
+        min-height: calc(100vh - 54px);
+      }
+      .nav {
+        border-right: 1px solid var(--line);
+        background: #f8f9fa;
+        padding: 12px;
+      }
+      .nav h2 {
+        margin: 0 0 10px;
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: .07em;
+        color: var(--muted);
+      }
+      .tab {
+        width: 100%;
+        text-align: left;
+        border: 1px solid transparent;
+        border-radius: 8px;
+        padding: 10px;
+        background: transparent;
+        color: var(--text);
+        font-size: 14px;
+        margin-bottom: 6px;
+        display: block;
+        text-decoration: none;
+      }
+      .tab.active {
+        background: var(--accent-soft);
+        border-color: #9fd3cc;
+        color: #0c4a46;
+        font-weight: 700;
+      }
+      .tree {
+        margin: -2px 0 8px 8px;
+        padding-left: 10px;
+        border-left: 2px solid #cfe8e3;
+        display: grid;
+        gap: 4px;
+      }
+      .tree a {
+        display: block;
+        text-decoration: none;
+        font-size: 12px;
+        color: var(--muted);
+        border: 1px solid transparent;
+        border-radius: 7px;
+        padding: 6px 8px;
+      }
+      .tree a.active {
+        background: #f0faf8;
+        border-color: #9fd3cc;
+        color: #0c4a46;
+        font-weight: 700;
+      }
+
+      .content {
+        padding: 14px;
+        display: grid;
+        gap: 12px;
+        align-content: start;
+      }
+      .card {
+        border: 1px solid var(--line);
+        background: var(--card);
+        border-radius: 12px;
+        overflow: hidden;
+      }
+      .head-card {
+        padding: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      .head-card h1 { margin: 0; font-size: 18px; }
+      .head-card p { margin: 5px 0 0; color: var(--muted); font-size: 13px; }
+      .head-tools {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .head-link {
+        border: 1px solid #b7c8df;
+        background: #eaf1fb;
+        color: #1e4a80;
+        border-radius: 999px;
+        padding: 4px 9px;
+        font-size: 12px;
+        text-decoration: none;
+        font-weight: 600;
+      }
+      .pill {
+        display: inline-block;
+        border: 1px solid #9fd3cc;
+        background: #e8f5f3;
+        color: #0c4a46;
+        border-radius: 999px;
+        font-size: 11px;
+        padding: 3px 8px;
+      }
+      .card-head {
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--line);
+        background: #f8f9fa;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .card-head h3 { margin: 0; font-size: 14px; }
+      .card-body { padding: 12px; }
+      .card-head-right {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin-left: auto;
+        flex: 0 0 auto;
+      }
+      .card-collapse-btn {
+        border: 1px solid #cfd8e6;
+        border-radius: 7px;
+        background: #fff;
+        color: #4c5a73;
+        width: 22px;
+        height: 22px;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+      }
+      .card-caret {
+        display: inline-block;
+        font-size: 12px;
+        line-height: 1;
+        transition: transform .16s ease;
+      }
+      .collapsible-card.collapsed .card-caret { transform: rotate(-90deg); }
+      .collapsible-card.collapsed .card-body { display: none; }
+      .row { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: 8px; }
+      .f {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 8px;
+        font-size: 13px;
+        background: #fff;
+      }
+      .btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+      .btn {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #f8f9fa;
+        padding: 8px 10px;
+        font-size: 13px;
+        font-weight: 600;
+      }
+      .btn.pri {
+        border-color: #0f766e;
+        background: #0f766e;
+        color: #fff;
+      }
+      .btn.alt {
+        border-color: #b7c8df;
+        background: #eaf1fb;
+        color: #1e4a80;
+      }
+      .muted { font-size: 12px; color: var(--muted); }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+      th, td {
+        border: 1px solid var(--line);
+        padding: 7px 8px;
+        text-align: left;
+        vertical-align: top;
+      }
+      th { background: #f8f9fa; }
+
+      .chip {
+        display: inline-block;
+        border-radius: 999px;
+        font-size: 11px;
+        padding: 2px 7px;
+        border: 1px solid var(--line);
+        background: #f8f9fa;
+        color: var(--muted);
+      }
+      .chip.vo { border-color: #9fd3cc; background: #e8f5f3; color: #0c4a46; }
+      .chip.ok { border-color: #b6dbc5; background: #edf8f1; color: var(--ok); }
+      .chip.warn { border-color: #edd89e; background: #fffaf0; color: #9b6a00; }
+      .chip.bad { border-color: #efc2c2; background: #fff3f3; color: var(--bad); }
+      .doc-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .seg-settings {
+        display: grid;
+        gap: 10px;
+      }
+      .seg-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+      .seg-box {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fff;
+        padding: 9px 10px;
+        font-size: 13px;
+      }
+      .seg-box strong {
+        display: block;
+        margin-bottom: 6px;
+        color: #2d3548;
+        font-size: 12px;
+      }
+      .seg-options {
+        display: grid;
+        gap: 6px;
+      }
+      .seg-options label {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 12px;
+        color: #2d3548;
+      }
+      .seg-delims {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(60px, 1fr));
+        gap: 6px;
+      }
+      .seg-delim-item {
+        border: 1px dashed #cfd8e6;
+        border-radius: 8px;
+        padding: 6px 7px;
+        background: #fbfcfe;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+      }
+      .seg-summary {
+        border: 1px solid #b7c8df;
+        border-radius: 8px;
+        background: #eaf1fb;
+        color: #1e4a80;
+        padding: 8px 10px;
+        font-size: 12px;
+        font-weight: 600;
+      }
+      .marker-input-row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 6px;
+      }
+      .marker-input {
+        border: 1px solid #c7d3e7;
+        border-radius: 8px;
+        background: #fff;
+        color: var(--text);
+        padding: 7px 8px;
+        font-size: 13px;
+        font-family: inherit;
+      }
+      .marker-list {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .marker-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border: 1px solid #b7c8df;
+        border-radius: 999px;
+        background: #eef4ff;
+        color: #1e4a80;
+        font-size: 11px;
+        padding: 3px 8px;
+      }
+      .marker-remove {
+        border: 0;
+        background: transparent;
+        color: #3a4e74;
+        font-size: 12px;
+        line-height: 1;
+        cursor: pointer;
+        padding: 0;
+      }
+      .marker-empty {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .seg-workbench {
+        display: grid;
+        grid-template-columns: 320px 1fr;
+        gap: 10px;
+        align-items: stretch;
+      }
+      .seg-side {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fbfcfe;
+        padding: 10px;
+      }
+      .seg-main {
+        min-width: 0;
+        display: grid;
+        grid-template-rows: auto 1fr;
+        gap: 8px;
+        min-height: 0;
+        overflow: hidden;
+      }
+      .batch-summary {
+        display: grid;
+        gap: 8px;
+      }
+      .batch-strip {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .batch-list {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fff;
+        padding: 9px 10px;
+        display: grid;
+        gap: 6px;
+        font-size: 13px;
+      }
+      .batch-line {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 8px;
+        align-items: center;
+        border-top: 1px solid #eef2f7;
+        padding-top: 6px;
+      }
+      .batch-line:first-child {
+        border-top: 0;
+        padding-top: 0;
+      }
+      .batch-meta {
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .split {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+      .pane {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        overflow: hidden;
+      }
+      .pane-head {
+        padding: 8px 10px;
+        font-size: 12px;
+        color: var(--muted);
+        border-bottom: 1px solid var(--line);
+        background: #f8f9fa;
+      }
+      .pane-head.toggle-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .seg-cut-toggle {
+        border: 1px solid #b7c8df;
+        border-radius: 999px;
+        background: #eaf1fb;
+        color: #1e4a80;
+        font-size: 12px;
+        font-weight: 700;
+        padding: 5px 10px;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .seg-cut-toggle.on {
+        border-color: #2c5f9e;
+        background: #2c5f9e;
+        color: #fff;
+      }
+      .pane-cut-hint {
+        border-bottom: 1px solid #dde6f2;
+        background: #f6f9ff;
+        color: #3c567f;
+        font-size: 11px;
+        padding: 6px 10px;
+      }
+      .pane-body {
+        padding: 8px 10px;
+        background: #fff;
+        font-size: 13px;
+        line-height: 1.45;
+      }
+      .seg-row {
+        display: grid;
+        grid-template-columns: 68px 1fr auto;
+        gap: 8px;
+        padding: 5px 0;
+        border-top: 1px solid #eef2f7;
+      }
+      .seg-row:first-child { border-top: 0; }
+      .sid { color: #8a93a3; font-variant-numeric: tabular-nums; }
+      .seg-row .txt mark { background: #fff0c2; border-radius: 3px; padding: 0 2px; }
+      .seg-row .txt.seg-clickable {
+        cursor: text;
+      }
+      .seg-row .txt.seg-clickable:hover {
+        background: #f8fbff;
+        border-radius: 4px;
+      }
+      .seg-row.target-split .txt {
+        background: #eef6ff;
+        border-radius: 4px;
+      }
+      .seg-row-actions {
+        display: inline-flex;
+        gap: 4px;
+        align-items: center;
+      }
+      .seg-action-btn {
+        border: 1px solid #cfd8e6;
+        border-radius: 999px;
+        background: #fff;
+        color: #4c5a73;
+        font-size: 11px;
+        line-height: 1;
+        padding: 4px 7px;
+        cursor: pointer;
+      }
+      .seg-action-btn.add {
+        border-color: #9fd3cc;
+        background: #e8f5f3;
+        color: #0c4a46;
+      }
+      .seg-action-btn.remove {
+        border-color: #edd89e;
+        background: #fffaf0;
+        color: #9b6a00;
+      }
+      .seg-action-btn.place {
+        border-color: #b7c8df;
+        background: #eaf1fb;
+        color: #1e4a80;
+      }
+      .seg-action-btn.place.on {
+        border-color: #2c5f9e;
+        background: #2c5f9e;
+        color: #fff;
+      }
+      .live-note {
+        font-size: 12px;
+        color: #0c4a46;
+        border: 1px dashed #9fd3cc;
+        border-radius: 8px;
+        background: #f3f9f8;
+        padding: 7px 8px;
+      }
+      .preview-controls {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 0;
+        min-height: 0;
+      }
+      .preview-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr 44px;
+        gap: 8px;
+        min-height: 0;
+        height: 100%;
+        align-items: stretch;
+        overflow: hidden;
+      }
+      .preview-grid > .pane {
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+      }
+      .preview-grid > .pane .doc-scroll {
+        flex: 1;
+        min-height: 0;
+        max-height: none;
+      }
+      .preview-grid > .minimap {
+        min-height: 0;
+        height: 100%;
+      }
+      .doc-scroll {
+        min-height: 340px;
+        max-height: 420px;
+        overflow: auto;
+        padding: 8px 10px;
+        background: #fff;
+        font-size: 13px;
+        line-height: 1.48;
+      }
+      .doc-scroll p { margin: 0 0 8px; }
+      .minimap {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #f8f9fa;
+        position: relative;
+        overflow: hidden;
+        min-height: 340px;
+      }
+      .mm-track {
+        position: absolute;
+        inset: 6px;
+        border-radius: 6px;
+        background: linear-gradient(to bottom, #edf2f8, #f7f9fc);
+      }
+      .mm-zone {
+        position: absolute;
+        left: 8px;
+        right: 8px;
+        height: 19%;
+        top: 24%;
+        border: 1px solid #b7c8df;
+        border-radius: 4px;
+        background: rgba(234, 241, 251, 0.75);
+      }
+      .mm-mark {
+        position: absolute;
+        left: 10px;
+        right: 10px;
+        height: 3px;
+        border-radius: 2px;
+      }
+      .mm-mark.warn { background: var(--warn); }
+      .mm-mark.seg { background: var(--accent); }
+      .mm-mark.hit { background: #2c5f9e; }
+
+      .foot-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
+      .semantic-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+      .semantic-legend {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: #fff;
+        padding: 3px 8px;
+        font-size: 11px;
+        color: #4c5a73;
+      }
+      .swatch {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        display: inline-block;
+      }
+      .swatch.crit { background: #d15353; }
+      .swatch.warn { background: #e6a817; }
+      .swatch.info { background: #2c5f9e; }
+      .swatch.neutral { background: #9aa5b5; }
+      .semantic-layout {
+        display: grid;
+        grid-template-columns: 300px 1fr;
+        gap: 10px;
+      }
+      .semantic-queue {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fbfcfe;
+        padding: 10px;
+        display: grid;
+        gap: 8px;
+        align-content: start;
+      }
+      .semantic-queue h4 {
+        margin: 0;
+        font-size: 13px;
+      }
+      .semantic-nav {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .semantic-item {
+        border: 1px solid #dbe3ef;
+        border-radius: 8px;
+        background: #fff;
+        padding: 8px;
+        font-size: 12px;
+        display: grid;
+        gap: 4px;
+        cursor: pointer;
+      }
+      .semantic-item.active {
+        border-color: #9ec4ec;
+        background: #f1f7ff;
+      }
+      .semantic-item:focus-visible {
+        outline: 2px solid #2c5f9e;
+        outline-offset: 1px;
+      }
+      .semantic-item .sidline {
+        display: inline-flex;
+        gap: 6px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .semantic-item p {
+        margin: 0;
+        color: #2d3548;
+      }
+      .semantic-main {
+        display: grid;
+        gap: 8px;
+      }
+      .semantic-note {
+        border: 1px dashed #b7c8df;
+        border-radius: 8px;
+        background: #f8fbff;
+        color: #3f5678;
+        padding: 8px 10px;
+        font-size: 12px;
+      }
+      .semantic-actions {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fbfcfe;
+        padding: 10px;
+        display: grid;
+        gap: 8px;
+      }
+      .semantic-action-group {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        border-top: 1px solid #e8edf5;
+        padding-top: 8px;
+      }
+      .semantic-action-group:first-child {
+        border-top: 0;
+        padding-top: 0;
+      }
+      .semantic-action-label {
+        min-width: 84px;
+        font-size: 11px;
+        letter-spacing: .06em;
+        text-transform: uppercase;
+        color: #6c7a92;
+        font-weight: 700;
+      }
+      .semantic-action-group .btn {
+        padding: 7px 10px;
+      }
+      .semantic-scroll {
+        max-height: 320px;
+        overflow: auto;
+      }
+      .sem-hl {
+        border-radius: 3px;
+        padding: 0 2px;
+      }
+      .sem-hl-shift { background: #fff0c2; }
+      .sem-hl-loss { background: #ffd8d8; }
+      .sem-hl-number { background: #dbeafe; }
+      .sem-hl-register { background: #d9f2ec; }
+      .row-reason {
+        color: #637085;
+        font-size: 11px;
+        margin-top: 3px;
+      }
+      .seg-row.sem-focus {
+        background: #f2f8ff;
+        border-radius: 6px;
+      }
+
+      @media (max-width: 1180px) {
+        .row { grid-template-columns: 1fr 1fr; }
+        .split { grid-template-columns: 1fr; }
+        .preview-grid { grid-template-columns: 1fr; }
+        .minimap { min-height: 120px; }
+        .seg-grid { grid-template-columns: 1fr; }
+        .seg-workbench { grid-template-columns: 1fr; }
+        .semantic-layout { grid-template-columns: 1fr; }
+      }
+      @media (max-width: 980px) {
+        .shell { grid-template-columns: 1fr; }
+        .nav { border-right: 0; border-bottom: 1px solid var(--line); }
+      }
+      @media (max-width: 640px) {
+        .row { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="top">
+      <strong>Constituer</strong>
+      <span>Préparation corpus</span>
+      <span class="db">DB: corpus_himyc_2026.db</span>
+    </header>
+
+    <nav class="proto-nav" aria-label="Navigation maquettes">
+      <a href="./index.html">Index</a>
+      <a href="./board-vnext.html">Board</a>
+      <a href="./shell-vnext.html">Home</a>
+      <a href="./explorer-vnext.html">Explorer</a>
+      <a class="active" href="./prep-vnext.html">Constituer</a>
+      <a href="./publish-vnext.html">Publier</a>
+    </nav>
+
+    <div class="shell">
+      <aside class="nav">
+        <h2>Sections</h2>
+        <a class="tab" href="./prep-import-vnext.html">Importer</a>
+        <a class="tab" href="./prep-documents-vnext.html">Documents</a>
+        <a class="tab active" href="./prep-actions-vnext.html">Actions</a>
+        <div class="tree" aria-label="Sous-sections Actions">
+          <a href="./prep-curation-hub-vnext.html">Curation (hub)</a>
+          <a class="active" href="#">Segmentation traduction (meme layout)</a>
+          <a href="#">Alignement</a>
+          <a href="#">Audit</a>
+          <a href="#">Collisions</a>
+        </div>
+        <a class="tab" href="./prep-exporter-vnext.html">Exporter</a>
+      </aside>
+
+      <main class="content">
+        <section class="card head-card">
+          <div>
+            <h1>Segmentation traduction (layout natif) + couche VO</h1>
+            <p>Meme organisation visuelle que la segmentation native: reglages a gauche, preview centrale, ajustements manuels. La couche VO ajoute seulement ancrage et ecarts.</p>
+          </div>
+          <div class="head-tools">
+            <span class="pill">workflow recommandé avant alignement</span>
+            <a class="head-link" href="./prep-curation-hub-vnext.html">Retour curation</a>
+            <a class="head-link" href="./prep-segmentation-translation-vo-vnext.html">Variante traduction actuelle</a>
+            <a class="head-link" href="./prep-actions-longtext-vnext.html">Scénario grand texte</a>
+          </div>
+        </section>
+
+        <section class="card collapsible-card">
+          <div class="card-head">
+            <h3>Référence VO</h3>
+            <div class="card-head-right">
+              <span class="muted">pivot global</span>
+              <button class="card-collapse-btn" type="button" aria-expanded="true" aria-controls="panel-vo-ref" title="Replier/Ouvrir le panneau">
+                <span class="card-caret" aria-hidden="true">▾</span>
+              </button>
+            </div>
+          </div>
+          <div class="card-body" id="panel-vo-ref">
+            <div class="row">
+              <div class="f">Document VO: <strong>doc#1 — fr</strong></div>
+              <div class="f">Pack VO: <strong>fr_strict</strong></div>
+              <div class="f">Segments VO estimés: <strong>164</strong></div>
+              <div class="f">Statut VO: <span class="chip ok">prévisualisé</span></div>
+            </div>
+            <div class="btns">
+              <button class="btn">Changer VO</button>
+              <button class="btn alt">Prévisualiser VO</button>
+              <button class="btn pri">Valider VO comme référence</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="card collapsible-card">
+          <div class="card-head">
+            <h3>Batch multilingue — projection sur VO</h3>
+            <div class="card-head-right">
+              <span class="muted">7 documents</span>
+              <button class="card-collapse-btn" type="button" aria-expanded="true" aria-controls="panel-batch-projection" title="Replier/Ouvrir le panneau">
+                <span class="card-caret" aria-hidden="true">▾</span>
+              </button>
+            </div>
+          </div>
+          <div class="card-body" id="panel-batch-projection">
+            <div class="batch-summary">
+              <div class="batch-strip">
+                <span class="chip ok">OK: 3 docs</span>
+                <span class="chip warn">à revoir: 3 docs</span>
+                <span class="chip bad">critique: 1 doc</span>
+                <span class="chip">langues: fr/en/de/es/ro/el/sv</span>
+              </div>
+              <div class="batch-list">
+                <div class="batch-line">
+                  <div>
+                    <strong>Doc critique</strong>
+                    <div class="batch-meta">doc#6 (el) · projection 87% · split/merge/orphans: 17/10/6</div>
+                  </div>
+                  <button class="btn">Ouvrir revue doc</button>
+                </div>
+                <div class="batch-line">
+                  <div>
+                    <strong>Top priorités</strong>
+                    <div class="batch-meta">doc#3 (de), doc#4 (es), doc#5 (ro)</div>
+                  </div>
+                  <button class="btn alt">Voir matrice détaillée</button>
+                </div>
+              </div>
+              <div class="note">
+                Le détail batch complet est déplacé dans une vue dédiée (matrice) pour garder cette page centrée sur la règle de segmentation + preview.
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="card collapsible-card">
+          <div class="card-head">
+            <h3>Previsualisation segmentation — doc traduction selectionne</h3>
+            <div class="card-head-right">
+              <span class="muted">doc#3 (de), texte brut continu + proposition alignee VO</span>
+              <button class="card-collapse-btn" type="button" aria-expanded="true" aria-controls="panel-seg-preview" title="Replier/Ouvrir le panneau">
+                <span class="card-caret" aria-hidden="true">▾</span>
+              </button>
+            </div>
+          </div>
+          <div class="card-body" id="panel-seg-preview">
+            <div class="seg-workbench">
+              <aside class="seg-side">
+                <div class="seg-settings">
+                  <div class="seg-box">
+                    <strong>Preset global</strong>
+                    <div class="seg-options">
+                      <label><input type="radio" name="seg-preset" value="strict" checked /> Phrase stricte (<code>. ? !</code>)</label>
+                      <label><input type="radio" name="seg-preset" value="extended" /> Phrase étendue (<code>. ? ! ; :</code>)</label>
+                      <label><input type="radio" name="seg-preset" value="custom" /> Personnalisé</label>
+                    </div>
+                  </div>
+                  <div class="seg-box">
+                    <strong>Séparateurs actifs</strong>
+                    <div class="seg-delims">
+                      <label class="seg-delim-item"><input class="seg-delim" data-char="." type="checkbox" checked /> <code>.</code></label>
+                      <label class="seg-delim-item"><input class="seg-delim" data-char="?" type="checkbox" checked /> <code>?</code></label>
+                      <label class="seg-delim-item"><input class="seg-delim" data-char="!" type="checkbox" checked /> <code>!</code></label>
+                      <label class="seg-delim-item"><input class="seg-delim" data-char="/" type="checkbox" /> <code>/</code></label>
+                      <label class="seg-delim-item"><input class="seg-delim" data-char=";" type="checkbox" /> <code>;</code></label>
+                      <label class="seg-delim-item"><input class="seg-delim" data-char=":" type="checkbox" /> <code>:</code></label>
+                    </div>
+                  </div>
+                  <div class="seg-box">
+                    <strong>Marqueurs personnalisés (signalement)</strong>
+                    <div class="marker-input-row">
+                      <input id="seg-marker-input" class="marker-input" type="text" placeholder="Ex: /// , § , [SEG?]" />
+                      <button id="seg-marker-add" class="btn alt" type="button">Ajouter</button>
+                    </div>
+                    <div id="seg-marker-list" class="marker-list" style="margin-top:8px"></div>
+                    <div id="seg-marker-summary" class="batch-meta" style="margin-top:6px">Aucun marqueur personnalisé actif.</div>
+                  </div>
+                  <div class="seg-box">
+                    <strong>Protections / exceptions</strong>
+                    <div class="seg-options">
+                      <label><input type="checkbox" checked /> Protéger abréviations (ex: etc., M., Dr.)</label>
+                      <label><input type="checkbox" checked /> Protéger nombres et dates</label>
+                      <label><input type="checkbox" /> Protéger citations longues</label>
+                    </div>
+                  </div>
+                  <div class="seg-box">
+                    <strong>Portée</strong>
+                    <div class="seg-options">
+                      <label><input type="radio" name="seg-scope" checked /> VO + projection batch</label>
+                      <label><input type="radio" name="seg-scope" /> VO seulement (simulation)</label>
+                      <label><input type="radio" name="seg-scope" /> Document sélectionné uniquement</label>
+                    </div>
+                  </div>
+                  <div id="seg-summary" class="seg-summary">Coupures actives: <code>. ? !</code> · désactivés: <code>/ ; :</code></div>
+                  <div class="live-note">Aperçu live: chaque case modifie immédiatement la proposition segmentée. Mode avancé disponible: placer une coupure directement au clic/caret dans le texte de droite.</div>
+                  <div class="btns">
+                    <button class="btn">Réinitialiser preset</button>
+                    <button class="btn alt">Prévisualiser</button>
+                    <button class="btn pri">Appliquer ces règles</button>
+                  </div>
+                </div>
+              </aside>
+              <div class="seg-main">
+                <div class="preview-controls">
+              <span class="chip">document complet (~16k)</span>
+              <span class="chip vo">mode traduction + ancrage VO</span>
+              <span class="chip">synchronisation scroll</span>
+              <span id="seg-zones-chip" class="chip warn">zones sensibles: 6</span>
+              <span id="seg-stats-chip" class="chip">split: 12 · merge: 8 · orphans: 4</span>
+              <span id="seg-active-chip" class="chip">coupures: . ? !</span>
+              <span id="seg-marker-chip" class="chip">marqueurs: 0</span>
+              <span id="seg-manual-chip" class="chip">retouches manuelles: +0 / -0</span>
+              <button class="btn">Aller au prochain écart</button>
+              <button class="btn alt">Valider cette zone</button>
+                </div>
+                <div class="preview-grid">
+              <section class="pane">
+                <div class="pane-head">Texte brut traduction (continu, avant segmentation)</div>
+                <div class="doc-scroll">
+                  <p>Die Redaktion hat den vollständigen Absatz beibehalten, ohne harte Trennung; dadurch bleiben Einschübe, Verweise und Zitate in einem langen Fluss, was die spätere Kontrolle der Schnittpunkte erschwert.</p>
+                  <p>Im zweiten Abschnitt folgen Nebensätze mit verketteter Interpunktion; der Leser soll erkennen, ob die vorgeschlagene Zerlegung die argumentative Struktur bewahrt oder ungewollt aufteilt.</p>
+                  <p>Die Passage enthält außerdem Datumsangaben, abgekürzte Titel und parenthetische Präzisierungen, die bei einer simplen Regeltrennung häufig zu Fehlgrenzen führen.</p>
+                  <p>Ein weiterer Absatz verdichtet mehrere Aussagen, die im Französischen auf zwei Sätze verteilt sind, im Deutschen jedoch in einer längeren Periode zusammenlaufen.</p>
+                  <p>Diese Konstellation ist typisch für Übersetzungen mit stilistischer Kompression und muss vor dem Alignment sichtbar geprüft werden, statt blind verarbeitet zu werden.</p>
+                  <p>In der Folge wird explizit beschrieben, dass einzelne Formulierungen zwar semantisch äquivalent sind, aber nicht dieselbe Satzgrenze besitzen, was Split/Merge-Effekte erzeugt.</p>
+                  <p>Die Kontrolle benötigt daher einen zusammenhängenden Blick auf größere Textzonen, nicht nur auf isolierte Trefferzeilen.</p>
+                  <p>Weitere Abschnitte wiederholen dieses Muster mit minimaler Variation, um den Langtext-Fall in der Vorschau realistisch zu simulieren.</p>
+                  <p>Die Redaktion hat den vollständigen Absatz beibehalten, ohne harte Trennung; dadurch bleiben Einschübe, Verweise und Zitate in einem langen Fluss, was die spätere Kontrolle der Schnittpunkte erschwert.</p>
+                  <p>Im zweiten Abschnitt folgen Nebensätze mit verketteter Interpunktion; der Leser soll erkennen, ob die vorgeschlagene Zerlegung die argumentative Struktur bewahrt oder ungewollt aufteilt.</p>
+                  <p>Die Passage enthält außerdem Datumsangaben, abgekürzte Titel und parenthetische Präzisierungen, die bei einer simplen Regeltrennung häufig zu Fehlgrenzen führen.</p>
+                  <p>Ein weiterer Absatz verdichtet mehrere Aussagen, die im Französischen auf zwei Sätze verteilt sind, im Deutschen jedoch in einer längeren Periode zusammenlaufen.</p>
+                  <p>Diese Konstellation ist typisch für Übersetzungen mit stilistischer Kompression und muss vor dem Alignment sichtbar geprüft werden, statt blind verarbeitet zu werden.</p>
+                  <p>In der Folge wird explizit beschrieben, dass einzelne Formulierungen zwar semantisch äquivalent sind, aber nicht dieselbe Satzgrenze besitzen, was Split/Merge-Effekte erzeugt.</p>
+                  <p>Die Kontrolle benötigt daher einen zusammenhängenden Blick auf größere Textzonen, nicht nur auf isolierte Trefferzeilen.</p>
+                </div>
+              </section>
+              <section class="pane">
+                <div class="pane-head toggle-row">
+                  <span>Proposition segmentee (meme UX natif + ancre VO)</span>
+                  <button id="seg-place-cut-btn" class="seg-cut-toggle" type="button">Placer une coupure: OFF</button>
+                </div>
+                <div id="seg-place-cut-hint" class="pane-cut-hint">Mode OFF: utilise + / - ou active le toggle pour couper au clic dans le texte.</div>
+                <div id="seg-proposal-list" class="doc-scroll">
+                </div>
+              </section>
+              <aside class="minimap" aria-label="Minimap document">
+                <div class="mm-track"></div>
+                <div class="mm-zone" title="zone visible"></div>
+                <div class="mm-mark seg" style="top: 10%;"></div>
+                <div class="mm-mark hit" style="top: 32%;"></div>
+                <div class="mm-mark warn" style="top: 47%;"></div>
+                <div class="mm-mark seg" style="top: 65%;"></div>
+                <div class="mm-mark warn" style="top: 82%;"></div>
+              </aside>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="card collapsible-card collapsed">
+          <div class="card-head">
+            <h3>Inspection comparative (VO vs traduction)</h3>
+            <div class="card-head-right">
+              <span class="muted">focus doc#3 (de)</span>
+              <button class="card-collapse-btn" type="button" aria-expanded="false" aria-controls="panel-inspection-comparative" title="Replier/Ouvrir le panneau">
+                <span class="card-caret" aria-hidden="true">▾</span>
+              </button>
+            </div>
+          </div>
+          <div class="card-body" id="panel-inspection-comparative">
+            <div class="semantic-toolbar">
+              <span class="chip">ecarts detectes: 12</span>
+              <span class="chip warn">critiques: 2</span>
+              <span class="chip">a revoir: 6</span>
+              <span class="chip ok">resolus: 4</span>
+              <span class="chip">scroll synchronise: ON</span>
+              <span class="semantic-legend"><span class="swatch crit"></span> perte de sens</span>
+              <span class="semantic-legend"><span class="swatch warn"></span> deplacement logique</span>
+              <span class="semantic-legend"><span class="swatch info"></span> nombre/date/entite</span>
+              <span class="semantic-legend"><span class="swatch neutral"></span> variation stylistique</span>
+            </div>
+
+            <div class="semantic-layout">
+              <aside class="semantic-queue">
+                <h4>File d'ecarts semantiques</h4>
+                <div class="semantic-nav">
+                  <button id="sem-prev" class="btn" type="button">Precedent</button>
+                  <button id="sem-next" class="btn" type="button">Suivant</button>
+                  <button class="btn alt" type="button">Filtre: critiques</button>
+                </div>
+                <div class="semantic-item active" data-sem-key="s0045" tabindex="0" role="button" aria-label="Ecart S0045">
+                  <div class="sidline">
+                    <code>S0045 ~ S0044-45</code>
+                    <span class="chip warn">priorite haute</span>
+                  </div>
+                  <p>Deplacement logique: la causalite VO est absorbee dans une fusion DE.</p>
+                  <span class="row-reason">Pourquoi surligne: risque de glissement argumentatif avant alignement.</span>
+                </div>
+                <div class="semantic-item" data-sem-key="s0042" tabindex="0" role="button" aria-label="Ecart S0042">
+                  <div class="sidline">
+                    <code>S0042 ~ S0042a/b</code>
+                    <span class="chip">priorite moyenne</span>
+                  </div>
+                  <p>Split correct mais reprise pronominale fragile entre les deux sous-segments.</p>
+                  <span class="row-reason">Pourquoi surligne: coherence referentielle potentiellement rompue.</span>
+                </div>
+                <div class="semantic-item" data-sem-key="s0046" tabindex="0" role="button" aria-label="Ecart S0046">
+                  <div class="sidline">
+                    <code>S0046</code>
+                    <span class="chip">entites</span>
+                  </div>
+                  <p>Variation de precision sur titres/abreviations, verifier impact terminologique.</p>
+                  <span class="row-reason">Pourquoi surligne: controle terminologie sensible.</span>
+                </div>
+                <div class="semantic-item" data-sem-key="s0049" tabindex="0" role="button" aria-label="Ecart S0049">
+                  <div class="sidline">
+                    <code>S0049</code>
+                    <span class="chip ok">mineur</span>
+                  </div>
+                  <p>Difference de registre sans perte de contenu informatif.</p>
+                  <span class="row-reason">Pourquoi surligne: harmonisation style possible, non bloquant.</span>
+                </div>
+              </aside>
+
+              <div class="semantic-main">
+                <div class="split">
+                  <div class="pane">
+                    <div class="pane-head">VO (fr) — segments S0041..S0050 (extrait long)</div>
+                    <div class="pane-body semantic-scroll" data-semantic-sync="vo">
+                      <div class="seg-row" data-sem-key="s0042">
+                        <span class="sid">S0042</span>
+                        <span class="txt">Incises, references et dates restent dans une periode longue pour la verification.</span>
+                        <span class="seg-row-actions"><span class="chip">reference</span></span>
+                      </div>
+                      <div class="seg-row" data-sem-key="s0045">
+                        <span class="sid">S0045</span>
+                        <span class="txt"><span class="sem-hl sem-hl-shift">Un decoupage aveugle par ponctuation peut deplacer la logique de la VO.</span></span>
+                        <span class="seg-row-actions"><span class="chip warn">deplacement logique</span></span>
+                      </div>
+                      <div class="seg-row" data-sem-key="s0046">
+                        <span class="sid">S0046</span>
+                        <span class="txt"><span class="sem-hl sem-hl-number">Nombres, abreviations et titres</span> augmentent le risque de faux points de coupure.</span>
+                        <span class="seg-row-actions"><span class="chip">entites sensibles</span></span>
+                      </div>
+                      <div class="seg-row" data-sem-key="s0049">
+                        <span class="sid">S0049</span>
+                        <span class="txt">Le cas long verifie la stabilite du scroll, du focus et du contexte.</span>
+                        <span class="seg-row-actions"><span class="chip ok">mineur</span></span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="pane">
+                    <div class="pane-head">DE projete — ecarts detectes (split/merge)</div>
+                    <div class="pane-body semantic-scroll" data-semantic-sync="de">
+                      <div class="seg-row" data-sem-key="s0042">
+                        <span class="sid">S0042a</span>
+                        <span class="txt">Einschuebe, Verweise und Datumsangaben bleiben in einer langen Periode.</span>
+                        <span class="seg-row-actions"><span class="chip">split</span></span>
+                      </div>
+                      <div class="seg-row" data-sem-key="s0042">
+                        <span class="sid">S0042b</span>
+                        <span class="txt"><span class="sem-hl sem-hl-loss">So gehen semantische Bindungen bei der Pruefung nicht verloren.</span></span>
+                        <span class="seg-row-actions"><span class="chip warn">reprise a verifier</span></span>
+                      </div>
+                      <div class="seg-row" data-sem-key="s0045">
+                        <span class="sid">S0044-45</span>
+                        <span class="txt">Im zweiten Teil verdichtet sich die Argumentation; <span class="sem-hl sem-hl-shift">blinde Satzzeichen-Trennung verschiebt die VO-Logik.</span></span>
+                        <span class="seg-row-actions"><span class="chip warn">merge a risque</span></span>
+                      </div>
+                      <div class="seg-row" data-sem-key="s0046">
+                        <span class="sid">S0046</span>
+                        <span class="txt"><span class="sem-hl sem-hl-number">Zahlenfolgen, Titelkuerzel und Parenthesen</span> erzeugen mehrere Grenzfaelle.</span>
+                        <span class="seg-row-actions"><span class="chip">terminologie</span></span>
+                      </div>
+                      <div class="seg-row" data-sem-key="s0049">
+                        <span class="sid">S0049a/b</span>
+                        <span class="txt"><span class="sem-hl sem-hl-register">Bei 15k+ Zeichen prueft die UI Scroll und Fokus-Stabilitaet; Kontext bleibt erhalten.</span></span>
+                        <span class="seg-row-actions"><span class="chip ok">style</span></span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div id="sem-active-note" class="semantic-note">
+                  Ecart actif: <strong>S0045 ~ S0044-45</strong>.<br />
+                  Raison: la fusion DE compresse deux etapes argumentatives VO. Action attendue: verifier si la causalite reste lisible apres segmentation cible.
+                </div>
+                <div class="semantic-actions">
+                  <div class="semantic-action-group">
+                    <span class="semantic-action-label">Decision</span>
+                    <button class="btn pri" type="button">Valider tel quel</button>
+                    <button class="btn alt" type="button">Marquer a revoir</button>
+                  </div>
+                  <div class="semantic-action-group">
+                    <span class="semantic-action-label">Edition</span>
+                    <button class="btn" type="button">Scinder</button>
+                    <button class="btn" type="button">Fusionner</button>
+                  </div>
+                  <div class="semantic-action-group">
+                    <span class="semantic-action-label">Exception</span>
+                    <button class="btn alt" type="button">Creer une exception</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="card collapsible-card">
+          <div class="card-head">
+            <h3>Décision batch</h3>
+            <div class="card-head-right">
+              <span class="muted">avant alignement</span>
+              <button class="card-collapse-btn" type="button" aria-expanded="true" aria-controls="panel-batch-decision" title="Replier/Ouvrir le panneau">
+                <span class="card-caret" aria-hidden="true">▾</span>
+              </button>
+            </div>
+          </div>
+          <div class="card-body" id="panel-batch-decision">
+            <div class="row">
+              <div class="f">Docs OK: <strong>3 / 7</strong></div>
+              <div class="f">Docs en profil standard: <strong>4 / 7</strong></div>
+              <div class="f">Docs critiques: <strong>1 / 7</strong></div>
+              <div class="f">Prêt pour alignement: <strong>partiel</strong></div>
+            </div>
+            <div class="btns foot-actions">
+              <button class="btn">Exporter rapport segmentation</button>
+              <button class="btn alt">Appliquer batch (sauf critiques)</button>
+              <button class="btn pri">Appliquer batch + préparer alignement</button>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script>
+      (function () {
+        var collapseButtons = Array.from(document.querySelectorAll(".card-collapse-btn"));
+        var segDelims = Array.from(document.querySelectorAll(".seg-delim"));
+        var segPresetRadios = Array.from(document.querySelectorAll('input[name="seg-preset"]'));
+        var segSummary = document.getElementById("seg-summary");
+        var segActiveChip = document.getElementById("seg-active-chip");
+        var segZonesChip = document.getElementById("seg-zones-chip");
+        var segStatsChip = document.getElementById("seg-stats-chip");
+        var segMarkerChip = document.getElementById("seg-marker-chip");
+        var segManualChip = document.getElementById("seg-manual-chip");
+        var segPlaceCutBtn = document.getElementById("seg-place-cut-btn");
+        var segPlaceCutHint = document.getElementById("seg-place-cut-hint");
+        var segProposalList = document.getElementById("seg-proposal-list");
+        var segMarkerInput = document.getElementById("seg-marker-input");
+        var segMarkerAddBtn = document.getElementById("seg-marker-add");
+        var segMarkerList = document.getElementById("seg-marker-list");
+        var segMarkerSummary = document.getElementById("seg-marker-summary");
+        var semanticScrollPanes = Array.from(document.querySelectorAll("#panel-inspection-comparative .semantic-scroll"));
+        var semanticItems = Array.from(document.querySelectorAll("#panel-inspection-comparative .semantic-item[data-sem-key]"));
+        var semPrevBtn = document.getElementById("sem-prev");
+        var semNextBtn = document.getElementById("sem-next");
+        var semActiveNote = document.getElementById("sem-active-note");
+        var semanticActiveIndex = semanticItems.findIndex(function (item) { return item.classList.contains("active"); });
+        var customMarkers = [];
+        var currentSegRows = [];
+        var manualAddCuts = 0;
+        var manualRemoveCuts = 0;
+        var baseStats = { split: 12, merge: 8, orphans: 4, zones: 6 };
+        var isPlaceCutMode = false;
+        if (semanticActiveIndex < 0) semanticActiveIndex = 0;
+
+        var strictRows = [
+          { id: "S0041", text: "Die Redaktion hat den vollständigen Absatz beibehalten, ohne harte Trennung; dadurch bleiben Einschübe, Verweise und Zitate in einem langen Fluss, was die spätere Kontrolle der Schnittpunkte erschwert." },
+          { id: "S0042", text: "Im zweiten Abschnitt folgen Nebensätze mit verketteter Interpunktion; der Leser soll erkennen, ob die vorgeschlagene Zerlegung die argumentative Struktur bewahrt oder ungewollt aufteilt." },
+          { id: "S0043", text: "Die Passage enthält Datumsangaben, abgekürzte Titel und parenthetische Präzisierungen, die bei einfacher Regeltrennung häufig zu Fehlgrenzen führen." },
+          { id: "S0044", text: "Ein weiterer Absatz verdichtet mehrere Aussagen, die im Französischen auf zwei Sätze verteilt sind." },
+          { id: "S0045", text: "Im Deutschen laufen sie in einer längeren Periode zusammen." },
+          { id: "S0046", text: "Diese Konstellation ist typisch für Übersetzungen mit stilistischer Kompression und muss vor dem Alignment sichtbar geprüft werden." },
+          { id: "S0047", text: "Split/Merge-Effekte bleiben markiert und steuerbar." }
+        ];
+
+        var extendedRows = [
+          { id: "S0041", text: "Die Redaktion hat den vollständigen Absatz beibehalten, ohne harte Trennung;" },
+          { id: "S0042a", text: "<mark>Dadurch bleiben Einschübe, Verweise und Zitate in einem langen Fluss.</mark>" },
+          { id: "S0042b", text: "Dies erschwert die spätere Kontrolle der Schnittpunkte." },
+          { id: "S0043", text: "Im zweiten Abschnitt folgen Nebensätze mit verketteter Interpunktion;" },
+          { id: "S0044", text: "Der Leser soll erkennen, ob die vorgeschlagene Zerlegung die argumentative Struktur bewahrt." },
+          { id: "S0045", text: "Oder ob sie ungewollt aufteilt." },
+          { id: "S0046", text: "Die Passage enthält Datumsangaben, abgekürzte Titel und parenthetische Präzisierungen." },
+          { id: "S0047-48", text: "<mark>Bei einfacher Regeltrennung entstehen hier Fehlgrenzen.</mark>" },
+          { id: "S0049", text: "Ein weiterer Absatz verdichtet mehrere Aussagen." },
+          { id: "S0050", text: "Im Französischen sind diese auf zwei Sätze verteilt." },
+          { id: "S0051", text: "Im Deutschen laufen sie in einer längeren Periode zusammen." },
+          { id: "S0052a", text: "Diese Konstellation ist typisch für Übersetzungen mit stilistischer Kompression." },
+          { id: "S0052b", text: "Sie muss vor dem Alignment sichtbar geprüft werden." },
+          { id: "S0053-54", text: "<mark>Split/Merge-Effekte bleiben markiert und steuerbar.</mark>" }
+        ];
+
+        function buildSegmentationRows(activeChars, markers) {
+          var rows = (activeChars.indexOf(";") !== -1 || activeChars.indexOf(":") !== -1 ? extendedRows : strictRows)
+            .map(function (row) {
+              return { kind: "segment", sourceId: row.id, text: row.text };
+            });
+
+          if (activeChars.indexOf("/") !== -1) {
+            rows = rows.flatMap(function (row) {
+              if (row.sourceId === "S0053-54") {
+                return [
+                  { kind: "segment", sourceId: "S0053a", text: "<mark>Split-Effekte bleiben markiert.</mark>" },
+                  { kind: "segment", sourceId: "S0053b", text: "<mark>Merge-Effekte bleiben steuerbar.</mark>" }
+                ];
+              }
+              if (row.sourceId === "S0047") {
+                return [
+                  { kind: "segment", sourceId: "S0047a", text: "Split-Effekte bleiben markiert." },
+                  { kind: "segment", sourceId: "S0047b", text: "Merge-Effekte bleiben steuerbar." }
+                ];
+              }
+              return [row];
+            });
+          }
+
+          if (markers && markers.length) {
+            markers.forEach(function (marker) {
+              var safeMarker = escapeHtml(marker);
+              rows.push({
+                kind: "marker",
+                text: '<mark>Signal marqueur « ' + safeMarker + ' »: possible segmentation à vérifier.</mark>'
+              });
+            });
+          }
+          return rows;
+        }
+
+        function renderSegmentationRows(rows) {
+          if (!segProposalList) return;
+          var segmentCounter = 0;
+          var markerCounter = 0;
+          segProposalList.innerHTML = rows
+            .map(function (row, index) {
+              var sid = "";
+              var actions = "";
+              var rowClass = "seg-row";
+              var txtClass = "txt";
+              if (row.kind === "marker") {
+                markerCounter += 1;
+                sid = "M" + String(markerCounter).padStart(3, "0");
+                actions = '<span class="batch-meta">signal</span>';
+              } else {
+                segmentCounter += 1;
+                sid = "S" + String(segmentCounter).padStart(4, "0");
+                txtClass += " seg-clickable";
+                if (isPlaceCutMode) rowClass += " target-split";
+                actions =
+                  '<button class="seg-action-btn add" type="button" data-action="add" data-index="' + index + '">+ coupure</button>' +
+                  '<button class="seg-action-btn remove" type="button" data-action="remove" data-index="' + index + '">- coupure</button>';
+              }
+              return (
+                '<div class="' + rowClass + '" data-index="' + index + '">' +
+                '<span class="sid">' + sid + '</span>' +
+                '<span class="' + txtClass + '">' + row.text + '</span>' +
+                '<span class="seg-row-actions">' +
+                actions +
+                "</span>" +
+                "</div>"
+              );
+            })
+            .join("");
+        }
+
+        function syncButton(button) {
+          var card = button.closest(".collapsible-card");
+          if (!card) return;
+          var collapsed = card.classList.contains("collapsed");
+          button.setAttribute("aria-expanded", collapsed ? "false" : "true");
+          button.setAttribute("aria-label", collapsed ? "Ouvrir le panneau" : "Replier le panneau");
+        }
+
+        collapseButtons.forEach(function (button) {
+          syncButton(button);
+          button.addEventListener("click", function () {
+            var card = button.closest(".collapsible-card");
+            if (!card) return;
+            card.classList.toggle("collapsed");
+            syncButton(button);
+            requestSegWorkbenchSync();
+          });
+        });
+
+        function bindSemanticScrollSync(nodes) {
+          if (!Array.isArray(nodes) || nodes.length < 2) return;
+          var isSyncing = false;
+
+          nodes.forEach(function (node) {
+            node.addEventListener(
+              "scroll",
+              function () {
+                if (isSyncing) return;
+                isSyncing = true;
+
+                var maxSource = Math.max(1, node.scrollHeight - node.clientHeight);
+                var ratio = node.scrollTop / maxSource;
+
+                nodes.forEach(function (other) {
+                  if (other === node) return;
+                  var maxOther = Math.max(1, other.scrollHeight - other.clientHeight);
+                  other.scrollTop = Math.round(ratio * maxOther);
+                });
+
+                window.requestAnimationFrame(function () {
+                  isSyncing = false;
+                });
+              },
+              { passive: true }
+            );
+          });
+        }
+
+        function syncSegWorkbenchPreviewHeight() {
+          var stacked = window.matchMedia("(max-width: 1180px)").matches;
+          var workbenches = Array.from(document.querySelectorAll(".seg-workbench"));
+
+          workbenches.forEach(function (workbench) {
+            var side = workbench.querySelector(".seg-side");
+            var main = workbench.querySelector(".seg-main");
+            var controls = workbench.querySelector(".preview-controls");
+            var grid = workbench.querySelector(".preview-grid");
+            if (!(main instanceof HTMLElement) || !(grid instanceof HTMLElement)) return;
+
+            main.style.height = "";
+            grid.style.height = "";
+            if (stacked || !(side instanceof HTMLElement)) return;
+
+            var sideHeight = Math.round(side.getBoundingClientRect().height);
+            if (sideHeight <= 0) return;
+
+            var controlsHeight = controls instanceof HTMLElement ? controls.getBoundingClientRect().height : 0;
+            var controlsMargins = 0;
+            if (controls instanceof HTMLElement) {
+              var controlsStyles = window.getComputedStyle(controls);
+              controlsMargins =
+                (parseFloat(controlsStyles.marginTop) || 0) +
+                (parseFloat(controlsStyles.marginBottom) || 0);
+            }
+            var mainStyles = window.getComputedStyle(main);
+            var rowGap = parseFloat(mainStyles.rowGap) || parseFloat(mainStyles.gap) || 0;
+            var gridHeight = Math.max(0, Math.floor(sideHeight - controlsHeight - controlsMargins - rowGap));
+
+            main.style.height = sideHeight + "px";
+            grid.style.height = gridHeight + "px";
+          });
+        }
+
+        var segSyncRaf = 0;
+        function requestSegWorkbenchSync() {
+          if (segSyncRaf) window.cancelAnimationFrame(segSyncRaf);
+          segSyncRaf = window.requestAnimationFrame(function () {
+            segSyncRaf = 0;
+            syncSegWorkbenchPreviewHeight();
+          });
+        }
+
+        function clearSemanticFocusRows() {
+          var focusedRows = document.querySelectorAll("#panel-inspection-comparative .seg-row.sem-focus");
+          focusedRows.forEach(function (row) {
+            row.classList.remove("sem-focus");
+          });
+        }
+
+        function markSemanticRows(key) {
+          clearSemanticFocusRows();
+          if (!key) return;
+          var rows = document.querySelectorAll('#panel-inspection-comparative .seg-row[data-sem-key="' + key + '"]');
+          rows.forEach(function (row) {
+            row.classList.add("sem-focus");
+          });
+        }
+
+        function scrollSemanticPaneToKey(pane, key) {
+          if (!pane || !key) return;
+          var row = pane.querySelector('.seg-row[data-sem-key="' + key + '"]');
+          if (!(row instanceof HTMLElement)) return;
+          var targetTop = Math.max(0, row.offsetTop - Math.round(pane.clientHeight * 0.18));
+          pane.scrollTo({ top: targetTop, behavior: "smooth" });
+        }
+
+        function activateSemanticItem(index, options) {
+          if (!semanticItems.length) return;
+          var len = semanticItems.length;
+          var wrapped = ((index % len) + len) % len;
+          semanticActiveIndex = wrapped;
+
+          semanticItems.forEach(function (item, idx) {
+            item.classList.toggle("active", idx === wrapped);
+          });
+
+          var activeItem = semanticItems[wrapped];
+          var key = activeItem.getAttribute("data-sem-key") || "";
+          var shouldScroll = !options || options.scroll !== false;
+          var shouldFocusItem = !options || options.focusItem !== false;
+          var labelNode = activeItem.querySelector("code");
+          var reasonNode = activeItem.querySelector("p");
+          var whyNode = activeItem.querySelector(".row-reason");
+          var labelText = labelNode ? labelNode.textContent : key.toUpperCase();
+          var reasonText = reasonNode ? reasonNode.textContent : "";
+          var whyText = whyNode ? whyNode.textContent.replace(/^Pourquoi surligne:\s*/i, "") : "";
+
+          markSemanticRows(key);
+          if (shouldScroll) {
+            semanticScrollPanes.forEach(function (pane) {
+              scrollSemanticPaneToKey(pane, key);
+            });
+          }
+          if (semActiveNote) {
+            semActiveNote.innerHTML =
+              'Ecart actif: <strong>' + escapeHtml(labelText || "") + "</strong>.<br />" +
+              "Raison: " + escapeHtml(reasonText || "") +
+              (whyText ? " Detail: " + escapeHtml(whyText) : "");
+          }
+          if (shouldFocusItem) {
+            activeItem.focus();
+          }
+        }
+
+        function getCheckedChars() {
+          return segDelims
+            .filter(function (cb) { return cb.checked; })
+            .map(function (cb) { return cb.getAttribute("data-char") || ""; })
+            .filter(Boolean);
+        }
+
+        function setDelimiter(char, checked) {
+          var node = segDelims.find(function (cb) { return cb.getAttribute("data-char") === char; });
+          if (!node) return;
+          node.checked = checked;
+        }
+
+        function applyPreset(value) {
+          if (value === "strict") {
+            setDelimiter(".", true);
+            setDelimiter("?", true);
+            setDelimiter("!", true);
+            setDelimiter("/", false);
+            setDelimiter(";", false);
+            setDelimiter(":", false);
+          } else if (value === "extended") {
+            setDelimiter(".", true);
+            setDelimiter("?", true);
+            setDelimiter("!", true);
+            setDelimiter("/", true);
+            setDelimiter(";", true);
+            setDelimiter(":", true);
+          }
+        }
+
+        function selectPreset(value) {
+          segPresetRadios.forEach(function (radio) {
+            radio.checked = radio.value === value;
+          });
+        }
+
+        function sanitizeMarker(value) {
+          var text = (value || "").trim();
+          if (!text) return "";
+          if (text.length > 20) text = text.slice(0, 20);
+          return text;
+        }
+
+        function escapeHtml(value) {
+          return String(value)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/\"/g, "&quot;")
+            .replace(/'/g, "&#39;");
+        }
+
+        function renderMarkerList() {
+          if (!segMarkerList || !segMarkerSummary) return;
+          if (customMarkers.length === 0) {
+            segMarkerList.innerHTML = '<span class="marker-empty">Aucun marqueur.</span>';
+            segMarkerSummary.textContent = "Aucun marqueur personnalisé actif.";
+            return;
+          }
+          segMarkerList.innerHTML = customMarkers
+            .map(function (marker, index) {
+              var safe = escapeHtml(marker);
+              return (
+                '<span class="marker-chip">' +
+                "<code>" + safe + "</code>" +
+                '<button class="marker-remove" type="button" data-index="' + index + '" aria-label="Retirer le marqueur">×</button>' +
+                "</span>"
+              );
+            })
+            .join("");
+          segMarkerSummary.textContent = customMarkers.length + " marqueur(s) personnalisé(s) actif(s).";
+        }
+
+        function addCustomMarker(rawValue) {
+          var marker = sanitizeMarker(rawValue);
+          if (!marker) return;
+          if (customMarkers.indexOf(marker) !== -1) return;
+          customMarkers.push(marker);
+          renderMarkerList();
+          updateSegmentationSummary();
+        }
+
+        function stripTags(value) {
+          return String(value).replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
+        }
+
+        function computeSplitWordIndex(plainText, activeChars) {
+          var words = plainText.split(/\s+/).filter(Boolean);
+          if (words.length < 6) return -1;
+
+          var preferred = activeChars.filter(function (char) {
+            return [".", "?", "!", ";", ":", "/"].indexOf(char) !== -1;
+          });
+          var midpoint = Math.floor(plainText.length / 2);
+          var bestCharIndex = -1;
+          var bestDistance = Number.POSITIVE_INFINITY;
+
+          preferred.forEach(function (char) {
+            var idx = plainText.indexOf(char);
+            while (idx !== -1) {
+              var distance = Math.abs(idx - midpoint);
+              if (distance < bestDistance) {
+                bestDistance = distance;
+                bestCharIndex = idx;
+              }
+              idx = plainText.indexOf(char, idx + 1);
+            }
+          });
+
+          if (bestCharIndex === -1) {
+            return Math.floor(words.length / 2);
+          }
+
+          var left = plainText.slice(0, bestCharIndex + 1).trim();
+          var cutWordIndex = left ? left.split(/\s+/).filter(Boolean).length : Math.floor(words.length / 2);
+          return Math.max(2, Math.min(words.length - 2, cutWordIndex));
+        }
+
+        function updateManualChip() {
+          if (!segManualChip) return;
+          segManualChip.textContent = "retouches manuelles: +" + manualAddCuts + " / -" + manualRemoveCuts;
+        }
+
+        function updatePlaceCutButton() {
+          if (!segPlaceCutBtn) return;
+          var isOn = !!isPlaceCutMode;
+          segPlaceCutBtn.classList.toggle("on", isOn);
+          segPlaceCutBtn.textContent = "Placer une coupure: " + (isOn ? "ON" : "OFF");
+          if (segPlaceCutHint) {
+            segPlaceCutHint.textContent = isOn
+              ? "Mode ON: clique dans un segment pour poser une coupure à l'endroit du curseur."
+              : "Mode OFF: utilise + / - ou active le toggle pour couper au clic dans le texte.";
+          }
+        }
+
+        function refreshManualDerivedChips() {
+          var split = Math.max(1, baseStats.split + manualAddCuts - manualRemoveCuts);
+          var merge = Math.max(0, baseStats.merge + manualRemoveCuts);
+          var orphans = Math.max(0, baseStats.orphans + Math.max(0, manualAddCuts - manualRemoveCuts));
+          var zones = Math.max(0, baseStats.zones + manualAddCuts + manualRemoveCuts);
+          if (segStatsChip) {
+            segStatsChip.textContent = "split: " + split + " · merge: " + merge + " · orphans: " + orphans;
+          }
+          if (segZonesChip) {
+            segZonesChip.textContent = "zones sensibles: " + zones;
+          }
+          updateManualChip();
+        }
+
+        function applyManualSplitByIndex(index, activeChars) {
+          if (index < 0 || index >= currentSegRows.length) return false;
+          var row = currentSegRows[index];
+          if (!row || row.kind !== "segment") return false;
+          var plainText = stripTags(row.text);
+          var words = plainText.split(/\s+/).filter(Boolean);
+          if (words.length < 6) return false;
+          var cutAt = computeSplitWordIndex(plainText, activeChars);
+          if (cutAt < 2 || cutAt >= words.length) return false;
+          return applySplitAtWordBoundary(index, cutAt, words);
+        }
+
+        function applySplitAtWordBoundary(index, cutAt, words) {
+          if (!Number.isInteger(cutAt)) return false;
+          if (!Array.isArray(words) || words.length < 6) return false;
+          if (cutAt < 2 || cutAt >= words.length) return false;
+          var first = escapeHtml(words.slice(0, cutAt).join(" "));
+          var second = escapeHtml(words.slice(cutAt).join(" "));
+          currentSegRows.splice(
+            index,
+            1,
+            { kind: "segment", text: first },
+            { kind: "segment", text: second }
+          );
+          manualAddCuts += 1;
+          return true;
+        }
+
+        function applyManualSplitAtCharOffset(index, charOffset) {
+          if (index < 0 || index >= currentSegRows.length) return false;
+          var row = currentSegRows[index];
+          if (!row || row.kind !== "segment") return false;
+          var plainText = stripTags(row.text);
+          if (!plainText || plainText.length < 12) return false;
+          var words = plainText.split(/\s+/).filter(Boolean);
+          if (words.length < 6) return false;
+          var safeOffset = Math.max(1, Math.min(plainText.length - 1, charOffset));
+          var prefix = plainText.slice(0, safeOffset);
+          var cutAt = prefix.split(/\s+/).filter(Boolean).length;
+          return applySplitAtWordBoundary(index, cutAt, words);
+        }
+
+        function getCaretOffsetFromPoint(event, element) {
+          if (!element) return -1;
+          var x = event.clientX;
+          var y = event.clientY;
+          var range = null;
+
+          if (document.caretRangeFromPoint) {
+            range = document.caretRangeFromPoint(x, y);
+          } else if (document.caretPositionFromPoint) {
+            var pos = document.caretPositionFromPoint(x, y);
+            if (pos) {
+              range = document.createRange();
+              range.setStart(pos.offsetNode, pos.offset);
+              range.collapse(true);
+            }
+          }
+          if (!range || !range.startContainer) return -1;
+          if (!element.contains(range.startContainer)) return -1;
+
+          var measure = document.createRange();
+          measure.selectNodeContents(element);
+          measure.setEnd(range.startContainer, range.startOffset);
+          return measure.toString().length;
+        }
+
+        function applyManualMergeByIndex(index) {
+          if (index < 0 || index >= currentSegRows.length - 1) return false;
+          var current = currentSegRows[index];
+          var next = currentSegRows[index + 1];
+          if (!current || !next) return false;
+          if (current.kind !== "segment" || next.kind !== "segment") return false;
+          var mergedText = escapeHtml(stripTags(current.text) + " " + stripTags(next.text));
+          currentSegRows.splice(index, 2, {
+            kind: "segment",
+            text: mergedText
+          });
+          manualRemoveCuts += 1;
+          return true;
+        }
+
+        function updateSegmentationSummary() {
+          var checked = getCheckedChars();
+          var all = [".", "?", "!", "/", ";", ":"];
+          var inactive = all.filter(function (char) { return checked.indexOf(char) === -1; });
+          var activeText = checked.length ? checked.join(" ") : "(aucun)";
+          var inactiveText = inactive.length ? inactive.join(" ") : "aucun";
+
+          if (segSummary) {
+            segSummary.innerHTML =
+              "Coupures actives: <code>" + activeText + "</code> · désactivés: <code>" + inactiveText + "</code> · marqueurs: <code>" + customMarkers.length + "</code>";
+          }
+          if (segActiveChip) {
+            segActiveChip.textContent = "coupures: " + activeText;
+          }
+          if (segMarkerChip) {
+            segMarkerChip.textContent = "marqueurs: " + customMarkers.length;
+          }
+
+          var split = 12;
+          var merge = 8;
+          var orphans = 4;
+          var zones = 6 + customMarkers.length;
+          if (checked.indexOf("/") !== -1) split += 1;
+          if (checked.indexOf(";") !== -1) {
+            split += 4;
+            merge += 2;
+            orphans += 1;
+          }
+          if (checked.indexOf(":") !== -1) {
+            split += 3;
+            merge += 1;
+            orphans += 1;
+          }
+          if (customMarkers.length > 0) {
+            split += customMarkers.length;
+          }
+          baseStats = { split: split, merge: merge, orphans: orphans, zones: zones };
+          manualAddCuts = 0;
+          manualRemoveCuts = 0;
+          refreshManualDerivedChips();
+          currentSegRows = buildSegmentationRows(checked, customMarkers);
+          renderSegmentationRows(currentSegRows);
+          requestSegWorkbenchSync();
+        }
+
+        segPresetRadios.forEach(function (radio) {
+          radio.addEventListener("change", function () {
+            if (!radio.checked) return;
+            applyPreset(radio.value);
+            updateSegmentationSummary();
+          });
+        });
+
+        segDelims.forEach(function (checkbox) {
+          checkbox.addEventListener("change", function () {
+            selectPreset("custom");
+            updateSegmentationSummary();
+          });
+        });
+
+        if (segMarkerAddBtn) {
+          segMarkerAddBtn.addEventListener("click", function () {
+            if (!segMarkerInput) return;
+            addCustomMarker(segMarkerInput.value);
+            segMarkerInput.value = "";
+            segMarkerInput.focus();
+          });
+        }
+
+        if (segMarkerInput) {
+          segMarkerInput.addEventListener("keydown", function (event) {
+            if (event.key !== "Enter") return;
+            event.preventDefault();
+            addCustomMarker(segMarkerInput.value);
+            segMarkerInput.value = "";
+          });
+        }
+
+        if (segMarkerList) {
+          segMarkerList.addEventListener("click", function (event) {
+            var target = event.target;
+            if (!(target instanceof HTMLElement)) return;
+            if (!target.classList.contains("marker-remove")) return;
+            var markerIndex = Number(target.getAttribute("data-index"));
+            if (!Number.isInteger(markerIndex) || markerIndex < 0 || markerIndex >= customMarkers.length) return;
+            customMarkers.splice(markerIndex, 1);
+            renderMarkerList();
+            updateSegmentationSummary();
+          });
+        }
+
+        if (segPlaceCutBtn) {
+          segPlaceCutBtn.addEventListener("click", function () {
+            isPlaceCutMode = !isPlaceCutMode;
+            updatePlaceCutButton();
+            renderSegmentationRows(currentSegRows);
+          });
+        }
+
+        if (segProposalList) {
+          segProposalList.addEventListener("click", function (event) {
+            var target = event.target;
+            if (!(target instanceof HTMLElement)) return;
+            var actionButton = target.closest(".seg-action-btn");
+            if (actionButton instanceof HTMLElement) {
+              var action = actionButton.getAttribute("data-action");
+              var actionIndex = Number(actionButton.getAttribute("data-index"));
+              if (!action || !Number.isInteger(actionIndex)) return;
+
+              var changedByAction = false;
+              if (action === "add") changedByAction = applyManualSplitByIndex(actionIndex, getCheckedChars());
+              if (action === "remove") changedByAction = applyManualMergeByIndex(actionIndex);
+              if (!changedByAction) return;
+
+              renderSegmentationRows(currentSegRows);
+              refreshManualDerivedChips();
+              return;
+            }
+
+            if (!isPlaceCutMode) return;
+            var txt = target.closest(".seg-clickable");
+            if (!(txt instanceof HTMLElement)) return;
+            var row = txt.closest(".seg-row");
+            if (!(row instanceof HTMLElement)) return;
+            var rowIndex = Number(row.getAttribute("data-index"));
+            if (!Number.isInteger(rowIndex)) return;
+            var caretOffset = getCaretOffsetFromPoint(event, txt);
+            if (caretOffset < 0) return;
+            var changedByCaret = applyManualSplitAtCharOffset(rowIndex, caretOffset);
+            if (!changedByCaret) return;
+
+            renderSegmentationRows(currentSegRows);
+            refreshManualDerivedChips();
+          });
+        }
+
+        if (semanticItems.length) {
+          semanticItems.forEach(function (item, idx) {
+            item.addEventListener("click", function () {
+              activateSemanticItem(idx, { scroll: true, focusItem: false });
+            });
+            item.addEventListener("keydown", function (event) {
+              if (event.key !== "Enter" && event.key !== " ") return;
+              event.preventDefault();
+              activateSemanticItem(idx, { scroll: true, focusItem: true });
+            });
+          });
+        }
+
+        if (semPrevBtn) {
+          semPrevBtn.addEventListener("click", function () {
+            activateSemanticItem(semanticActiveIndex - 1, { scroll: true, focusItem: true });
+          });
+        }
+
+        if (semNextBtn) {
+          semNextBtn.addEventListener("click", function () {
+            activateSemanticItem(semanticActiveIndex + 1, { scroll: true, focusItem: true });
+          });
+        }
+
+        bindSemanticScrollSync(semanticScrollPanes);
+        activateSemanticItem(semanticActiveIndex, { scroll: false, focusItem: false });
+        renderMarkerList();
+        updatePlaceCutButton();
+        updateSegmentationSummary();
+        requestSegWorkbenchSync();
+        window.addEventListener("resize", requestSegWorkbenchSync);
+        window.addEventListener("load", requestSegWorkbenchSync);
+
+        if ("ResizeObserver" in window) {
+          var segResizeObserver = new ResizeObserver(function () {
+            requestSegWorkbenchSync();
+          });
+          var segObservedNodes = Array.from(
+            document.querySelectorAll(".seg-workbench .seg-side, .seg-workbench .preview-controls, .seg-workbench .seg-main")
+          );
+          segObservedNodes.forEach(function (node) {
+            segResizeObserver.observe(node);
+          });
+        }
+      })();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,622 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Constituer - Segmentation traduction pilotee VO (V-next)</title>
+    <style>
+      :root {
+        --bg: #f0f2f5;
+        --card: #fff;
+        --line: #dde1e8;
+        --text: #1a1a2e;
+        --muted: #6c757d;
+        --accent: #0f766e;
+        --accent-soft: #e8f5f3;
+        --ok: #1a7f4e;
+        --warn: #e6a817;
+        --bad: #c0392b;
+        --info: #2c5f9e;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+      }
+      .top {
+        height: 54px;
+        background: linear-gradient(135deg, #0c4a46, #0f766e);
+        color: #fff;
+        border-bottom: 1px solid #0c4a46;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 0 14px;
+      }
+      .top strong { letter-spacing: .02em; }
+      .db {
+        margin-left: auto;
+        font-size: 12px;
+        border: 1px solid rgba(255,255,255,.34);
+        border-radius: 999px;
+        padding: 4px 10px;
+        background: rgba(255,255,255,.13);
+      }
+      .proto-nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 8px 14px;
+        border-bottom: 1px solid var(--line);
+        background: #fff;
+      }
+      .proto-nav a {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 5px 10px;
+        font-size: 12px;
+        color: var(--muted);
+        text-decoration: none;
+        background: #f8f9fa;
+      }
+      .proto-nav a.active {
+        color: #0c4a46;
+        border-color: #9fd3cc;
+        background: #e8f5f3;
+        font-weight: 700;
+      }
+      .shell {
+        display: grid;
+        grid-template-columns: 230px 1fr;
+        min-height: calc(100vh - 54px);
+      }
+      .nav {
+        border-right: 1px solid var(--line);
+        background: #f8f9fa;
+        padding: 12px;
+      }
+      .nav h2 {
+        margin: 0 0 10px;
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: .07em;
+        color: var(--muted);
+      }
+      .tab {
+        width: 100%;
+        text-align: left;
+        border: 1px solid transparent;
+        border-radius: 8px;
+        padding: 10px;
+        background: transparent;
+        color: var(--text);
+        font-size: 14px;
+        margin-bottom: 6px;
+        display: block;
+        text-decoration: none;
+      }
+      .tab.active {
+        background: var(--accent-soft);
+        border-color: #9fd3cc;
+        color: #0c4a46;
+        font-weight: 700;
+      }
+      .tree {
+        margin: -2px 0 8px 8px;
+        padding-left: 10px;
+        border-left: 2px solid #cfe8e3;
+        display: grid;
+        gap: 4px;
+      }
+      .tree a {
+        display: block;
+        text-decoration: none;
+        font-size: 12px;
+        color: var(--muted);
+        border: 1px solid transparent;
+        border-radius: 7px;
+        padding: 6px 8px;
+      }
+      .tree a.active {
+        background: #f0faf8;
+        border-color: #9fd3cc;
+        color: #0c4a46;
+        font-weight: 700;
+      }
+      .content {
+        padding: 14px;
+        display: grid;
+        gap: 12px;
+        align-content: start;
+      }
+      .card {
+        border: 1px solid var(--line);
+        background: var(--card);
+        border-radius: 12px;
+        overflow: hidden;
+      }
+      .head-card {
+        padding: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      .head-card h1 { margin: 0; font-size: 18px; }
+      .head-card p { margin: 5px 0 0; color: var(--muted); font-size: 13px; }
+      .head-tools {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .pill {
+        display: inline-block;
+        border: 1px solid #9fd3cc;
+        background: #e8f5f3;
+        color: #0c4a46;
+        border-radius: 999px;
+        font-size: 11px;
+        padding: 3px 8px;
+      }
+      .pill.lock {
+        border-color: #b7c8df;
+        background: #eaf1fb;
+        color: #1e4a80;
+      }
+      .head-link {
+        border: 1px solid #b7c8df;
+        background: #eaf1fb;
+        color: #1e4a80;
+        border-radius: 999px;
+        padding: 4px 9px;
+        font-size: 12px;
+        text-decoration: none;
+        font-weight: 600;
+      }
+      .card-head {
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--line);
+        background: #f8f9fa;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .card-head h3 { margin: 0; font-size: 14px; }
+      .card-body { padding: 12px; }
+      .row {
+        display: grid;
+        grid-template-columns: repeat(6, minmax(110px, 1fr));
+        gap: 8px;
+      }
+      .f {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 8px;
+        background: #fff;
+        font-size: 13px;
+      }
+      .f strong {
+        display: block;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .chip {
+        display: inline-block;
+        border-radius: 999px;
+        font-size: 11px;
+        padding: 2px 7px;
+        border: 1px solid var(--line);
+        background: #f8f9fa;
+        color: var(--muted);
+      }
+      .chip.ok { border-color: #b6dbc5; background: #edf8f1; color: var(--ok); }
+      .chip.warn { border-color: #edd89e; background: #fffaf0; color: #9b6a00; }
+      .chip.bad { border-color: #efc2c2; background: #fff3f3; color: var(--bad); }
+      .chip.info { border-color: #b7c8df; background: #eaf1fb; color: var(--info); }
+      .btns {
+        margin-top: 8px;
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .btn {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #f8f9fa;
+        padding: 8px 10px;
+        font-size: 13px;
+        font-weight: 600;
+      }
+      .btn.alt {
+        border-color: #b7c8df;
+        background: #eaf1fb;
+        color: #1e4a80;
+      }
+      .btn.pri {
+        border-color: #0f766e;
+        background: #0f766e;
+        color: #fff;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+      th, td {
+        border: 1px solid var(--line);
+        padding: 8px;
+        text-align: left;
+        vertical-align: top;
+      }
+      th { background: #f8f9fa; }
+      .status { white-space: nowrap; }
+      .map-layout {
+        display: grid;
+        grid-template-columns: 1.25fr 1fr;
+        gap: 10px;
+      }
+      .pane {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        overflow: hidden;
+      }
+      .pane-head {
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--line);
+        background: #f8f9fa;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .pane-body {
+        padding: 9px 10px;
+        background: #fff;
+        font-size: 13px;
+        line-height: 1.5;
+      }
+      .raw-scroll {
+        max-height: 460px;
+        overflow: auto;
+        border: 1px solid #eef2f7;
+        border-radius: 8px;
+        padding: 10px;
+        background: #fcfdff;
+      }
+      .raw-scroll p { margin: 0 0 9px; }
+      .raw-mark {
+        background: #fff0c2;
+        border-radius: 3px;
+        padding: 0 2px;
+      }
+      .cand-list {
+        display: grid;
+        gap: 6px;
+        max-height: 460px;
+        overflow: auto;
+        padding-right: 2px;
+      }
+      .cand-item {
+        border: 1px solid #e2e8f3;
+        border-radius: 8px;
+        background: #fff;
+        padding: 7px 8px;
+        font-size: 13px;
+      }
+      .cand-item .meta {
+        margin-bottom: 4px;
+        font-size: 11px;
+        color: #5a6886;
+      }
+      .seg-row {
+        display: grid;
+        grid-template-columns: 68px 1fr auto;
+        gap: 8px;
+        border-top: 1px solid #eef2f7;
+        padding: 6px 0;
+      }
+      .seg-row:first-child { border-top: 0; }
+      .sid { color: #8a93a3; font-variant-numeric: tabular-nums; }
+      .act {
+        display: inline-flex;
+        gap: 4px;
+        flex-wrap: wrap;
+      }
+      .mini {
+        border: 1px solid #cfd8e6;
+        border-radius: 999px;
+        padding: 2px 7px;
+        font-size: 11px;
+        background: #fff;
+      }
+      .mini.add { border-color: #9fd3cc; background: #e8f5f3; color: #0c4a46; }
+      .mini.merge { border-color: #edd89e; background: #fffaf0; color: #9b6a00; }
+      .mini.link { border-color: #b7c8df; background: #eaf1fb; color: #1e4a80; }
+      .note {
+        margin-top: 8px;
+        border: 1px dashed #b7c8df;
+        background: #f8fbff;
+        color: #3f5678;
+        border-radius: 8px;
+        padding: 8px 10px;
+        font-size: 12px;
+      }
+      @media (max-width: 1180px) {
+        .row { grid-template-columns: repeat(3, minmax(120px, 1fr)); }
+        .map-layout { grid-template-columns: 1fr; }
+      }
+      @media (max-width: 980px) {
+        .shell { grid-template-columns: 1fr; }
+        .nav { border-right: 0; border-bottom: 1px solid var(--line); }
+      }
+      @media (max-width: 640px) {
+        .row { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="top">
+      <strong>Constituer</strong>
+      <span>Segmentation traduction pilotee VO</span>
+      <span class="db">DB: corpus_himyc_2026.db</span>
+    </header>
+
+    <nav class="proto-nav" aria-label="Navigation maquettes">
+      <a href="./index.html">Index</a>
+      <a href="./board-vnext.html">Board</a>
+      <a href="./shell-vnext.html">Home</a>
+      <a href="./explorer-vnext.html">Explorer</a>
+      <a class="active" href="./prep-vnext.html">Constituer</a>
+      <a href="./publish-vnext.html">Publier</a>
+    </nav>
+
+    <div class="shell">
+      <aside class="nav">
+        <h2>Sections</h2>
+        <a class="tab" href="./prep-import-vnext.html">Importer</a>
+        <a class="tab" href="./prep-documents-vnext.html">Documents</a>
+        <a class="tab active" href="./prep-actions-vnext.html">Actions</a>
+        <div class="tree" aria-label="Sous-sections Actions">
+          <a href="./prep-curation-hub-vnext.html">Curation (hub)</a>
+          <a class="active" href="./prep-segmentation-translation-vo-vnext.html">Segmentation traduction (VO)</a>
+          <a href="#">Alignement</a>
+          <a href="#">Audit</a>
+          <a href="#">Collisions</a>
+        </div>
+        <a class="tab" href="./prep-exporter-vnext.html">Exporter</a>
+      </aside>
+
+      <main class="content">
+        <section class="card head-card">
+          <div>
+            <h1>Segmentation traduction pilotee par VO</h1>
+            <p>Mode de travail: on part du texte brut traduction, on projette une segmentation candidate depuis la VO, puis on ajuste les ecarts.</p>
+          </div>
+          <div class="head-tools">
+            <span class="pill">Mode pilote VO: ON</span>
+            <span class="pill lock">VO verrouillee</span>
+            <a class="head-link" href="./prep-segmentation-vo-vnext.html">Retour segmentation standard</a>
+            <a class="head-link" href="./prep-segmentation-translation-vo-native-layout-vnext.html">Variante layout natif</a>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-head"><h3>Etat global (vs VO)</h3><span class="chip info">doc cible: doc#3 (de)</span></div>
+          <div class="card-body">
+            <div class="row">
+              <div class="f"><strong>Match 1:1</strong>132</div>
+              <div class="f"><strong>Split</strong>14</div>
+              <div class="f"><strong>Merge</strong>9</div>
+              <div class="f"><strong>Manquants</strong>3</div>
+              <div class="f"><strong>Extras</strong>2</div>
+              <div class="f"><strong>Exceptions</strong>2</div>
+            </div>
+            <div class="btns">
+              <button class="btn">Aller au prochain ecart</button>
+              <button class="btn alt">Filtrer: ecarts uniquement</button>
+              <button class="btn pri">Appliquer corrections traduction</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-head"><h3>Projection initiale (brut traduction -> grille VO)</h3><span class="chip info">etape 1 · input long (~16 200 caracteres)</span></div>
+          <div class="card-body map-layout">
+            <section class="pane">
+              <div class="pane-head">Traduction brute (non segmentee)</div>
+              <div class="pane-body">
+                <div class="raw-scroll">
+                  <p>Die Redaktion hat den vollstandigen Abschnitt bewusst als Fliesstext belassen; dadurch bleiben Einschube, Verweise, Datumsangaben und mehrfach verschachtelte Nebensatze in einer sehr langen Periode, die fuer die spaetere Segmentierung sichtbar bleiben muss, damit keine semantisch tragenden Bindungen verloren gehen, besonders dann, wenn nachfolgende Satze auf Pronomen oder argumentative Konnektoren zurueckverweisen, die in kuerzeren Ausschnitten isoliert missverstanden werden konnten.</p>
+                  <p>Im zweiten Teil wird die Argumentation dichter und kombiniert juristische Formeln, rhetorische Wiederholungen, editoriale Einschuebe in Klammern, uneinheitliche Interpunktion sowie feine Abweichungen zwischen unterschiedlichen Ausgaben; wenn hier blind an Satzzeichen getrennt wird, entstehen schnell Bruchstellen, die zwar technisch sauber aussehen, aber den Bezug zur VO-Struktur verschieben, weshalb der Operator zuerst eine Projektion benoetigt, bevor er lokale Korrekturen setzt.</p>
+                  <p>Die Passage enthaelt ausserdem mehrere Zahlenfolgen, Titelabkuerzungen und Referenzen auf fruehere Artikel, dazu lange Relativsaetze mit Doppelpunkt und Semikolon; diese Mischung ist typisch fuer historische Uebersetzungen mit dichter Kompression und fuehrt dazu, dass eine automatische Regel je nach aktivem Separator zu viele oder zu wenige Segmente erzeugen kann, was sich unmittelbar in Split-, Merge- und Orphan-Indikatoren niederschlaegt.</p>
+                  <p>Bei grossen Eingaben arbeitet der Nutzer in der Regel iterativ: zuerst Rohimport pruefen, dann Projektion VO anwenden, danach nur die problematischen Zonen nachziehen, etwa dort, wo ein deutscher Abschnitt zwei VO-Segmente zusammenzieht oder umgekehrt ein einziger VO-Satz in der Uebersetzung auf drei Teilsaetze verteilt ist; entscheidend ist, dass dieser Prozess transparent bleibt und die Ursache jedes Eingriffs nachvollziehbar dokumentiert wird.</p>
+                  <p>In der Praxis koennen an Stellen mit langen Parenthesen oder Einschueben manuelle Marker gesetzt werden, zum Beispiel <span class="raw-mark">[SEG?]</span> oder <span class="raw-mark">///</span>, um eine moegliche Trennstelle fuer die naechste Vorschau zu markieren; wichtig ist dabei, dass Marker nur Hinweise sind und nicht automatisch als finale Grenze gelten, solange sie nicht im Mapping gegen die VO bestaetigt wurden.</p>
+                  <p>Weiter hinten folgen nochmals sehr lange Abschnitte mit stilistisch aehnlicher Struktur, die bewusst als Lasttest dienen: viele Kommata, seltene Terminologie, direkte und indirekte Rede in einem Absatz, dazu Wechsel zwischen narrativer und normativer Sprache; genau diese Konstellation zeigt, ob die Oberflaeche auch bei 15k+ Zeichen stabil bleibt, ob Scroll, Fokus und Kontext erhalten bleiben und ob der Nutzer den roten Faden zwischen Rohtext und vorgeschlagener Segmentliste nicht verliert.</p>
+                  <p>Schliesslich wiederholt sich ein Teil des Musters mit geringer Variation, damit man erkennt, wie konsistent die Projektion reagiert, wenn sich nur wenige Token aendern, die Satzlogik aber gleich bleibt; wenn die UI dann ploetzlich andere Trennungen erzeugt, ist das ein Signal fuer fragile Regeln, weshalb diese Beispielseite bewusst lang und redundant gehalten ist, um genau solche Inkonsistenzen frueh sichtbar zu machen.</p>
+                  <p>Der letzte Absatz fasst den Zweck zusammen: Die Segmentierung im Uebersetzungsmodus ist kein Selbstzweck, sondern Vorbereitung fuer belastbares Alignment; deshalb muessen Eingriffe am Rohtext, an vorgeschlagenen Segmenten und am VO-Mapping gemeinsam sichtbar bleiben, damit die Entscheidung \"akzeptieren, splitten, mergen oder Ausnahme setzen\" immer im Kontext getroffen wird und nicht losgeloest von der Referenzstruktur.</p>
+                </div>
+                <div class="note">Ici, le texte traduction est continu: aucune segmentation n'est encore definitive.</div>
+              </div>
+            </section>
+            <section class="pane">
+              <div class="pane-head">Proposition segmentee alignee VO (candidate)</div>
+              <div class="pane-body">
+                <div class="cand-list">
+                  <div class="cand-item">
+                    <div class="meta">ancre VO: S0041 · statut: candidate</div>
+                    Die Redaktion hat den vollstandigen Abschnitt bewusst als Fliesstext belassen.
+                  </div>
+                  <div class="cand-item">
+                    <div class="meta">ancre VO: S0042 · statut: candidate split</div>
+                    Dadurch bleiben Einschuebe, Verweise und Datumsangaben in einer langen Periode.
+                  </div>
+                  <div class="cand-item">
+                    <div class="meta">ancre VO: S0042 · statut: candidate split</div>
+                    Mehrfach verschachtelte Nebensaetze muessen fuer die spaetere Kontrolle erhalten bleiben.
+                  </div>
+                  <div class="cand-item">
+                    <div class="meta">ancre VO: S0043 · statut: candidate</div>
+                    Im zweiten Teil verdichtet sich die Argumentation mit editorischen Einschueben und variabler Interpunktion.
+                  </div>
+                  <div class="cand-item">
+                    <div class="meta">ancre VO: S0044 · statut: candidate</div>
+                    Bei blindem Trennen an Satzzeichen entstehen Bruchstellen, die die VO-Logik verschieben.
+                  </div>
+                  <div class="cand-item">
+                    <div class="meta">ancre VO: S0045 · statut: candidate merge</div>
+                    Zahlenfolgen, Titelabkuerzungen und Referenzen sind im selben Absatz gebuendelt.
+                  </div>
+                  <div class="cand-item">
+                    <div class="meta">ancre VO: S0046 · statut: candidate split</div>
+                    Semikolon und Doppelpunkt erzeugen mehrere moegliche Trennpunkte.
+                  </div>
+                  <div class="cand-item">
+                    <div class="meta">ancre VO: S0047 · statut: candidate</div>
+                    Der Operator arbeitet iterativ: Projektion, Sichtpruefung, lokale Korrekturen.
+                  </div>
+                  <div class="cand-item">
+                    <div class="meta">ancre VO: S0048 · statut: candidate</div>
+                    Marker wie [SEG?] oder /// signalisieren nur eine Hypothese, keine finale Grenze.
+                  </div>
+                  <div class="cand-item">
+                    <div class="meta">ancre VO: S0049 · statut: candidate split</div>
+                    Lange Parenthesen und Terminologie-Wechsel werden in der Vorschau gesondert markiert.
+                  </div>
+                  <div class="cand-item">
+                    <div class="meta">ancre VO: S0050 · statut: candidate</div>
+                    Die Seite bleibt absichtlich redundant, um Konsistenz bei grosser Eingabe zu testen.
+                  </div>
+                  <div class="cand-item">
+                    <div class="meta">ancre VO: S0051 · statut: candidate</div>
+                    Ziel bleibt ein stabiles Mapping fuer das spaetere Alignment, nicht nur eine formale Trennung.
+                  </div>
+                </div>
+                <div class="btns">
+                  <button class="btn alt">Rejeter projection</button>
+                  <button class="btn">Recalculer projection</button>
+                  <button class="btn pri">Accepter base candidate</button>
+                </div>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-head"><h3>Matrice de projection VO -> traduction</h3><span class="chip warn">ecarts 28</span></div>
+          <div class="card-body">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID VO</th>
+                  <th>Segment VO (lecture)</th>
+                  <th>Segment traduction (editable)</th>
+                  <th>Statut</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>S0041</code></td>
+                  <td>La liberte est un droit naturel.</td>
+                  <td>Die Freiheit ist ein naturliches Recht. <span class="chip info">candidate</span></td>
+                  <td class="status"><span class="chip ok">Match</span></td>
+                  <td>
+                    <span class="mini">Verifier</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td><code>S0042</code></td>
+                  <td>Nul ne peut en etre prive arbitrairement.</td>
+                  <td>Niemand darf willkurlich beraubt werden. Dies gilt unabhangig vom Stand.</td>
+                  <td class="status"><span class="chip warn">Split</span></td>
+                  <td>
+                    <span class="mini add">Scinder</span>
+                    <span class="mini link">Lier a S0042a/S0042b</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td><code>S0044 + S0045</code></td>
+                  <td>Les abus doivent etre sanctionnes. La souverainete reside dans la nation.</td>
+                  <td>Missbrauch ist zu ahnden, die Souveranitat liegt in der Nation.</td>
+                  <td class="status"><span class="chip warn">Merge</span></td>
+                  <td>
+                    <span class="mini merge">Fusionner</span>
+                    <span class="mini link">Conserver exception</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td><code>S0046</code></td>
+                  <td>Aucun corps n'en peut exercer l'autorite.</td>
+                  <td><em>Segment manquant</em></td>
+                  <td class="status"><span class="chip bad">Manquant</span></td>
+                  <td>
+                    <span class="mini add">Ajouter segment</span>
+                    <span class="mini">Reporter</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td><code>Extra-02</code></td>
+                  <td><em>Aucun segment VO associe</em></td>
+                  <td>Diese parenthese existe uniquement dans cette traduction.</td>
+                  <td class="status"><span class="chip info">Extra</span></td>
+                  <td>
+                    <span class="mini link">Lier manuellement</span>
+                    <span class="mini">Marquer exception</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="note">Cette matrice intervient apres la projection initiale: elle sert a valider/corriger le mapping, pas a segmenter a partir de rien.</div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-head"><h3>Revue detaillee sur ecart selectionne</h3><span class="chip warn">focus: S0042</span></div>
+          <div class="card-body map-layout">
+            <section class="pane">
+              <div class="pane-head">VO verrouillee (reference)</div>
+              <div class="pane-body">
+                <div class="seg-row">
+                  <span class="sid">S0042</span>
+                  <span>Nul ne peut en etre prive arbitrairement.</span>
+                  <span></span>
+                </div>
+                <div class="seg-row">
+                  <span class="sid">Regle</span>
+                  <span>1 segment VO attendu -> 1 ou 2 segments traduction selon ecart.</span>
+                  <span></span>
+                </div>
+              </div>
+            </section>
+
+            <section class="pane">
+              <div class="pane-head">Traduction projetee (edition controlee)</div>
+              <div class="pane-body">
+                <div class="seg-row">
+                  <span class="sid">T0042a</span>
+                  <span>Niemand darf willkurlich beraubt werden.</span>
+                  <span class="act"><span class="mini add">+ coupure</span><span class="mini merge">- coupure</span></span>
+                </div>
+                <div class="seg-row">
+                  <span class="sid">T0042b</span>
+                  <span>Dies gilt unabhangig vom Stand.</span>
+                  <span class="act"><span class="mini link">Lier VO</span></span>
+                </div>
+                <div class="btns">
+                  <button class="btn alt">Accepter split local</button>
+                  <button class="btn">Revenir 1:1</button>
+                  <button class="btn pri">Valider cet ecart</button>
+                </div>
+              </div>
+            </section>
+          </div>
+          <div class="card-body" style="padding-top:0">
+            <div class="note">Message UX cle: cette retouche agit sur la traduction uniquement. La VO reste intacte. L'alignement utilisera ensuite ce mapping valide.</div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>
