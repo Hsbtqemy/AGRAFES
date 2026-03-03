@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Prototype visuel AGRAFES: Constituer — Hub Curation (V-next)."
+    />
+    <link rel="icon" href="./favicon.ico" />
+    <title>Constituer — Hub Curation (V-next)</title>
+    <style>
+      :root {
+        --bg: #f0f2f5;
+        --card: #fff;
+        --line: #dde1e8;
+        --text: #1a1a2e;
+        --muted: #4f5d6d;
+        --accent: #0f766e;
+        --accent-soft: #e8f5f3;
+        --link-bg: #eaf1fb;
+        --link-line: #b7c8df;
+        --link-text: #1e4a80;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+      }
+      .top {
+        height: 54px;
+        background: linear-gradient(135deg, #0c4a46, #0f766e);
+        color: #fff;
+        border-bottom: 1px solid #0c4a46;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 0 14px;
+      }
+      .top strong { letter-spacing: .02em; }
+      .db {
+        margin-left: auto;
+        font-size: 12px;
+        border: 1px solid rgba(255,255,255,.34);
+        border-radius: 999px;
+        padding: 4px 10px;
+        background: rgba(255,255,255,.13);
+      }
+      .proto-nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 8px 14px;
+        border-bottom: 1px solid var(--line);
+        background: #fff;
+      }
+      .proto-nav a {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 7px 12px;
+        font-size: 13px;
+        color: var(--muted);
+        text-decoration: none;
+        background: #f8f9fa;
+      }
+      .proto-nav a.active {
+        color: #0c4a46;
+        border-color: #9fd3cc;
+        background: var(--accent-soft);
+        font-weight: 700;
+      }
+      main {
+        max-width: 1080px;
+        margin: 0 auto;
+        padding: 14px;
+        display: grid;
+        gap: 12px;
+      }
+      .hero,
+      .card,
+      .flow {
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--card);
+      }
+      .hero {
+        padding: 14px;
+      }
+      .hero h1 {
+        margin: 0;
+        font-size: 22px;
+      }
+      .hero p {
+        margin: 8px 0 0;
+        color: var(--muted);
+        font-size: 14px;
+        max-width: 78ch;
+      }
+      .hero-tools {
+        margin-top: 10px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .link-pill {
+        border: 1px solid var(--link-line);
+        border-radius: 999px;
+        background: var(--link-bg);
+        color: var(--link-text);
+        padding: 7px 12px;
+        font-size: 13px;
+        text-decoration: none;
+        font-weight: 600;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 10px;
+      }
+      .card {
+        padding: 12px;
+      }
+      .kicker {
+        margin: 0 0 6px;
+        font-size: 11px;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+        color: var(--accent);
+        font-weight: 700;
+      }
+      .card h2 {
+        margin: 0;
+        font-size: 17px;
+      }
+      .card p {
+        margin: 6px 0 0;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+      .row {
+        margin-top: 10px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .action {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #f8f9fa;
+        color: var(--text);
+        font-size: 12px;
+        padding: 7px 9px;
+        text-decoration: none;
+        font-weight: 600;
+      }
+      .action.primary {
+        border-color: #0f766e;
+        background: #0f766e;
+        color: #fff;
+      }
+      .flow {
+        padding: 12px;
+      }
+      .flow h3 {
+        margin: 0 0 8px;
+        font-size: 15px;
+      }
+      .steps {
+        margin: 0;
+        padding-left: 20px;
+        color: var(--text);
+        font-size: 13px;
+        line-height: 1.55;
+      }
+      .steps li + li {
+        margin-top: 3px;
+      }
+      .note {
+        font-size: 12px;
+        color: #0c4a46;
+        border: 1px dashed #9fd3cc;
+        border-radius: 10px;
+        background: #f3f9f8;
+        padding: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <header class="top">
+      <strong>Constituer</strong>
+      <span>Hub curation</span>
+      <span class="db">DB: corpus_himyc_2026.db</span>
+    </header>
+
+    <nav class="proto-nav" aria-label="Navigation maquettes">
+      <a href="./index.html">Index</a>
+      <a href="./board-vnext.html">Board</a>
+      <a href="./shell-vnext.html">Home</a>
+      <a href="./explorer-vnext.html">Explorer</a>
+      <a class="active" href="./prep-vnext.html">Constituer</a>
+      <a href="./publish-vnext.html">Publier</a>
+    </nav>
+
+    <main>
+      <section class="hero">
+        <h1>Hub Curation — point d’entrée unique</h1>
+        <p>
+          Navigation simplifiée: les variantes curation sont regroupées ici, avec un parcours recommandé.
+          Tu peux comparer les écrans sans multiplier les allers-retours entre toutes les pages du hub principal.
+        </p>
+        <div class="hero-tools">
+          <a class="link-pill" href="./prep-actions-vnext.html">Retour Actions</a>
+          <a class="link-pill" href="./prep-segmentation-vo-vnext.html">Aller vers Segmentation VO</a>
+          <a class="link-pill" href="./prep-actions-longtext-vnext.html">Scénario grand texte</a>
+        </div>
+      </section>
+
+      <section class="grid">
+        <article class="card">
+          <p class="kicker">Recommandé</p>
+          <h2>Revue fine (V0 prioritaire)</h2>
+          <p>
+            Cas principal: cases rapides + validation occurrence par occurrence + édition contrôlée.
+          </p>
+          <div class="row">
+            <a class="action primary" href="./prep-curation-review-fine-vnext.html">Ouvrir revue fine</a>
+          </div>
+        </article>
+
+        <article class="card">
+          <p class="kicker">Manuel</p>
+          <h2>Chercher / Remplacer</h2>
+          <p>
+            Mode orienté utilisateur pour appliquer des règles explicites et retoucher le texte en direct.
+          </p>
+          <div class="row">
+            <a class="action" href="./prep-curation-findreplace-vnext.html">Ouvrir chercher/remplacer</a>
+          </div>
+        </article>
+
+        <article class="card">
+          <p class="kicker">Long document</p>
+          <h2>Texte continu éditable</h2>
+          <p>
+            Vision brut vs proposition sur un document long non segmenté, avec aperçu continu.
+          </p>
+          <div class="row">
+            <a class="action" href="./prep-curation-continuous-edit-vnext.html">Ouvrir texte continu</a>
+          </div>
+        </article>
+
+        <article class="card">
+          <p class="kicker">Lecture</p>
+          <h2>Focus preview</h2>
+          <p>
+            Version allégée: preview centrale dominante et tiroir qualité repliable.
+          </p>
+          <div class="row">
+            <a class="action" href="./prep-curation-focus-vnext.html">Ouvrir focus preview</a>
+          </div>
+        </article>
+
+        <article class="card">
+          <p class="kicker">Legacy</p>
+          <h2>Preview 3 colonnes</h2>
+          <p>
+            Ancienne variante complète (paramètres + preview + diagnostics) conservée pour comparaison.
+          </p>
+          <div class="row">
+            <a class="action" href="./prep-curation-preview-vnext.html">Ouvrir variante legacy</a>
+          </div>
+        </article>
+      </section>
+
+      <section class="flow">
+        <h3>Parcours conseillé (revue visuelle)</h3>
+        <ol class="steps">
+          <li>Commencer sur <strong>Revue fine</strong> pour valider l’ergonomie cible V0.</li>
+          <li>Comparer avec <strong>Chercher/Remplacer</strong> pour les cas manuels avancés.</li>
+          <li>Passer à <strong>Segmentation VO</strong> pour vérifier la transition vers l’alignement.</li>
+        </ol>
+      </section>
+
+      <div class="note">
+        Objectif: réduire la charge cognitive en centralisant les variantes. Le hub principal "Constituer" reste orienté onglets métier.
+      </div>
+    </main>
+  </body>
+</html>

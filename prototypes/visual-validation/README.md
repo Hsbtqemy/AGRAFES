@@ -32,6 +32,7 @@ Or open files directly in a browser:
 - `prep-segmentation-vo-vnext.html`
 - `prep-segmentation-translation-vo-vnext.html`
 - `prep-segmentation-translation-vo-native-layout-vnext.html`
+- `prep-segmentation-translation-focus-vnext.html`
 - `prep-exporter-vnext.html`
 - `publish-vnext.html`
 

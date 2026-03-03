@@ -1,0 +1,556 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Prototype visuel AGRAFES: Constituer — Actions + Preview persistante (V-next)."
+    />
+    <link rel="icon" href="./favicon.ico" />
+    <title>Constituer — Actions + Preview persistante (V-next)</title>
+    <style>
+      :root {
+        --bg: #f0f2f5;
+        --card: #fff;
+        --line: #dde1e8;
+        --text: #1a1a2e;
+        --muted: #4f5d6d;
+        --accent: #0f766e;
+        --accent-soft: #e8f5f3;
+        --explorer: #2c5f9e;
+        --warn: #e6a817;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+      }
+      .top {
+        height: 54px;
+        background: linear-gradient(135deg, #0c4a46, #0f766e);
+        color: #fff;
+        border-bottom: 1px solid #0c4a46;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 0 14px;
+      }
+      .top strong { letter-spacing: .02em; }
+      .db {
+        margin-left: auto;
+        font-size: 12px;
+        border: 1px solid rgba(255,255,255,.34);
+        border-radius: 999px;
+        padding: 4px 10px;
+        background: rgba(255,255,255,.13);
+      }
+      .proto-nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 8px 14px;
+        border-bottom: 1px solid var(--line);
+        background: #fff;
+      }
+      .proto-nav a {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 7px 12px;
+        font-size: 13px;
+        color: var(--muted);
+        text-decoration: none;
+        background: #f8f9fa;
+      }
+      .proto-nav a.active {
+        color: #0c4a46;
+        border-color: #9fd3cc;
+        background: #e8f5f3;
+        font-weight: 700;
+      }
+
+      .shell {
+        display: grid;
+        grid-template-columns: 230px 1fr;
+        min-height: calc(100vh - 54px);
+      }
+      .nav {
+        border-right: 1px solid var(--line);
+        background: #f8f9fa;
+        padding: 12px;
+      }
+      .nav h2 {
+        margin: 0 0 10px;
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: .07em;
+        color: var(--muted);
+      }
+      .tab {
+        width: 100%;
+        text-align: left;
+        border: 1px solid transparent;
+        border-radius: 8px;
+        padding: 10px;
+        background: transparent;
+        color: var(--text);
+        font-size: 14px;
+        margin-bottom: 6px;
+        display: block;
+        text-decoration: none;
+      }
+      .tab.active {
+        background: var(--accent-soft);
+        border-color: #9fd3cc;
+        color: #0c4a46;
+        font-weight: 700;
+      }
+      .tree {
+        margin: -2px 0 8px 8px;
+        padding-left: 10px;
+        border-left: 2px solid #cfe8e3;
+        display: grid;
+        gap: 4px;
+      }
+      .tree a {
+        display: block;
+        text-decoration: none;
+        font-size: 12px;
+        color: var(--muted);
+        border: 1px solid transparent;
+        border-radius: 7px;
+        padding: 6px 8px;
+      }
+      .tree a.active {
+        background: #f0faf8;
+        border-color: #9fd3cc;
+        color: #0c4a46;
+        font-weight: 700;
+      }
+      .tree a:hover {
+        border-color: #cfe8e3;
+        background: #f6fbfa;
+      }
+
+      .content {
+        padding: 14px;
+        display: grid;
+        gap: 12px;
+        align-content: start;
+      }
+
+      .head-card,
+      .workspace,
+      .card {
+        border: 1px solid var(--line);
+        background: var(--card);
+        border-radius: 12px;
+      }
+
+      .head-card {
+        padding: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      .head-card h1 {
+        margin: 0;
+        font-size: 18px;
+      }
+      .head-card p {
+        margin: 5px 0 0;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .pill {
+        display: inline-block;
+        border: 1px solid #9fd3cc;
+        background: #e8f5f3;
+        color: #0c4a46;
+        border-radius: 999px;
+        font-size: 11px;
+        padding: 3px 8px;
+      }
+      .head-tools {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .head-link {
+        border: 1px solid #b7c8df;
+        background: #eaf1fb;
+        color: #1e4a80;
+        border-radius: 999px;
+        padding: 4px 9px;
+        font-size: 12px;
+        text-decoration: none;
+        font-weight: 600;
+      }
+
+      .workspace {
+        padding: 12px;
+        display: grid;
+        grid-template-columns: 1.4fr 1fr;
+        gap: 12px;
+      }
+
+      .left-col,
+      .right-col {
+        min-width: 0;
+        display: grid;
+        gap: 10px;
+        align-content: start;
+      }
+
+      .card { overflow: hidden; }
+      .card-head {
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--line);
+        background: #f8f9fa;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .card-head h2 {
+        margin: 0;
+        font-size: 14px;
+      }
+      .card-body { padding: 12px; }
+
+      .row {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(120px, 1fr));
+        gap: 8px;
+      }
+      .f {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 8px;
+        font-size: 13px;
+        background: #fff;
+      }
+
+      .btns {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-top: 8px;
+      }
+      .btn {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #f8f9fa;
+        padding: 8px 10px;
+        font-size: 13px;
+        font-weight: 600;
+      }
+      .btn.pri {
+        border-color: #0f766e;
+        background: #0f766e;
+        color: #fff;
+      }
+      .btn.alt {
+        border-color: #b7c8df;
+        background: #eaf1fb;
+        color: #1e4a80;
+      }
+
+      .preview {
+        position: sticky;
+        top: 12px;
+        max-height: calc(100vh - 95px);
+        display: grid;
+        grid-template-rows: auto auto 1fr auto;
+      }
+
+      .preview-tools {
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--line);
+        background: #fff;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        align-items: center;
+      }
+      .chip {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 3px 8px;
+        font-size: 11px;
+        background: #f8f9fa;
+        color: var(--muted);
+      }
+      .chip.active {
+        border-color: #9fd3cc;
+        background: #e8f5f3;
+        color: #0c4a46;
+        font-weight: 700;
+      }
+
+      .preview-tabs {
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--line);
+        background: #fff;
+        display: flex;
+        gap: 6px;
+      }
+      .ptab {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #f8f9fa;
+        color: var(--muted);
+        padding: 6px 8px;
+        font-size: 12px;
+      }
+      .ptab.active {
+        border-color: #b7c8df;
+        background: #eaf1fb;
+        color: #1e4a80;
+        font-weight: 700;
+      }
+
+      .preview-body {
+        padding: 10px;
+        background: #fff;
+        overflow: auto;
+        display: grid;
+        gap: 10px;
+      }
+
+      .pane {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        overflow: hidden;
+      }
+      .pane-head {
+        padding: 8px 10px;
+        font-size: 12px;
+        color: var(--muted);
+        border-bottom: 1px solid var(--line);
+        background: #f8f9fa;
+      }
+      .pane-body {
+        padding: 8px 10px;
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      .diff {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+      }
+      .diff .col + .col {
+        border-left: 1px solid var(--line);
+        background: #fcfdff;
+      }
+      .col .label {
+        display: block;
+        font-size: 11px;
+        color: var(--muted);
+        margin-bottom: 4px;
+      }
+      .after-edit {
+        width: 100%;
+        min-height: 68px;
+        border: 1px solid #b7c8df;
+        border-radius: 8px;
+        background: #f8fbff;
+        padding: 7px 8px;
+        font-size: 13px;
+        line-height: 1.4;
+        color: var(--text);
+      }
+
+      .aligned-item {
+        border-top: 1px solid var(--line);
+        padding: 8px 0;
+        font-size: 13px;
+      }
+      .aligned-item:first-child { border-top: 0; }
+      .aligned-item .meta {
+        font-size: 11px;
+        color: var(--muted);
+        margin-bottom: 3px;
+      }
+
+      .preview-foot {
+        border-top: 1px solid var(--line);
+        background: #f8f9fa;
+        padding: 8px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .hint {
+        font-size: 12px;
+        color: #9b6a00;
+        background: #fffaf0;
+        border: 1px solid #edd89e;
+        border-radius: 8px;
+        padding: 8px 10px;
+      }
+
+      @media (max-width: 1180px) {
+        .workspace { grid-template-columns: 1fr; }
+        .preview { position: static; max-height: none; }
+      }
+      @media (max-width: 860px) {
+        .row { grid-template-columns: 1fr; }
+        .diff { grid-template-columns: 1fr; }
+        .diff .col + .col { border-left: 0; border-top: 1px solid var(--line); }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="top">
+      <strong>Constituer</strong>
+      <span>Préparation corpus</span>
+      <span class="db">DB: corpus_himyc_2026.db</span>
+    </header>
+
+    <nav class="proto-nav" aria-label="Navigation maquettes">
+      <a href="./index.html">Index</a>
+      <a href="./board-vnext.html">Board</a>
+      <a href="./shell-vnext.html">Home</a>
+      <a href="./explorer-vnext.html">Explorer</a>
+      <a class="active" href="./prep-vnext.html">Constituer</a>
+      <a href="./publish-vnext.html">Publier</a>
+    </nav>
+
+    <div class="shell">
+      <aside class="nav">
+        <h2>Sections</h2>
+        <a class="tab" href="./prep-import-vnext.html">Importer</a>
+        <a class="tab" href="./prep-documents-vnext.html">Documents</a>
+        <a class="tab active" href="./prep-actions-vnext.html">Actions</a>
+        <div class="tree" aria-label="Sous-sections Actions">
+          <a class="active" href="./prep-curation-hub-vnext.html">Curation (hub)</a>
+          <a href="./prep-segmentation-vo-vnext.html">Segmentation</a>
+          <a href="#">Alignement</a>
+          <a href="#">Audit</a>
+          <a href="#">Collisions</a>
+        </div>
+        <a class="tab" href="./prep-exporter-vnext.html">Exporter</a>
+      </aside>
+
+      <main class="content">
+        <section class="head-card">
+          <div>
+            <h1>Actions — vue synthèse</h1>
+            <p>
+              Cette page sert d’aperçu des actions. Les variantes détaillées de Curation sont centralisées
+              dans un hub unique.
+            </p>
+          </div>
+          <div class="head-tools">
+            <span class="pill">Mode "édition contrôlée"</span>
+            <a class="head-link" href="./prep-curation-hub-vnext.html">Ouvrir hub curation</a>
+            <a class="head-link" href="./prep-segmentation-vo-vnext.html">Voir segmentation VO</a>
+            <a class="head-link" href="./prep-actions-longtext-vnext.html">Voir scénario grand texte</a>
+          </div>
+        </section>
+
+        <section class="workspace">
+          <div class="left-col">
+            <article class="card">
+              <div class="card-head"><h2>Curation — paramètres</h2><span style="font-size:12px;color: var(--muted)">doc: 1 (fr)</span></div>
+              <div class="card-body">
+                <div class="row">
+                  <div class="f">Preset: <strong>spaces</strong></div>
+                  <div class="f">Portée: <strong>lignes sélectionnées</strong></div>
+                  <div class="f">Aperçu auto: <strong>ON</strong></div>
+                </div>
+                <div class="btns">
+                  <button class="btn">Réinitialiser</button>
+                  <button class="btn alt">Prévisualiser maintenant</button>
+                  <button class="btn pri">Appliquer au document</button>
+                </div>
+              </div>
+            </article>
+
+            <article class="card">
+              <div class="card-head"><h2>Sélection locale</h2><span style="font-size:12px;color: var(--muted)">3 segments ciblés</span></div>
+              <div class="card-body">
+                <div class="row">
+                  <div class="f">Doc#1 [42] — actif</div>
+                  <div class="f">Doc#1 [43] — actif</div>
+                  <div class="f">Doc#1 [58] — actif</div>
+                </div>
+                <div class="btns">
+                  <button class="btn">Suivant changement (J)</button>
+                  <button class="btn">Précédent (K)</button>
+                  <button class="btn pri">Appliquer sélection</button>
+                </div>
+              </div>
+            </article>
+          </div>
+
+          <aside class="right-col">
+            <article class="card preview">
+              <div class="card-head"><h2>Preview persistante</h2><span style="font-size:12px;color: var(--muted)">doc#1 [42]</span></div>
+
+              <div class="preview-tools">
+                <span class="chip active">text_norm</span>
+                <span class="chip">text_raw</span>
+                <span class="chip">display</span>
+                <span class="chip">lignes modifiées uniquement</span>
+                <span class="chip">contexte ±2</span>
+              </div>
+
+              <div class="preview-tabs">
+                <button class="ptab">Texte</button>
+                <button class="ptab active">Diff avant/après</button>
+                <button class="ptab">Alignés</button>
+              </div>
+
+              <div class="preview-body">
+                <section class="pane">
+                  <div class="pane-head">Diff local éditable</div>
+                  <div class="pane-body diff">
+                    <div class="col" style="padding:0 8px 8px 0">
+                      <span class="label">Avant (DB)</span>
+                      <div>La liberté  est un droit naturel ¤ et imprescriptible.</div>
+                    </div>
+                    <div class="col" style="padding:0 0 8px 8px">
+                      <span class="label">Après (proposition modifiable)</span>
+                      <textarea class="after-edit" aria-label="Texte corrigé éditable">La liberté est un droit naturel et imprescriptible.</textarea>
+                    </div>
+                  </div>
+                </section>
+
+                <section class="pane">
+                  <div class="pane-head">Alignés liés au segment (aperçu)</div>
+                  <div class="pane-body">
+                    <div class="aligned-item">
+                      <div class="meta">en · Speech 1793 · [42] · status=accepted</div>
+                      <div>Freedom is a natural and inalienable right.</div>
+                    </div>
+                    <div class="aligned-item">
+                      <div class="meta">de · Rede 1793 · [41] · status=pending</div>
+                      <div>Die Freiheit ist ein natürliches und unveräußerliches Recht.</div>
+                    </div>
+                  </div>
+                </section>
+
+                <div class="hint">
+                  Édition contrôlée: la modification n’est persistée qu’après action explicite.
+                </div>
+              </div>
+
+              <div class="preview-foot">
+                <button class="btn">Annuler modif locale</button>
+                <button class="btn alt">Appliquer ce changement</button>
+                <button class="btn pri">Appliquer + passer au suivant</button>
+              </div>
+            </article>
+          </aside>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

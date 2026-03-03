@@ -3,6 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Prototype visuel AGRAFES: Constituer - Segmentation traduction pilotee VO (V-next)."
+    />
+    <link rel="icon" href="./favicon.ico" />
     <title>Constituer - Segmentation traduction pilotee VO (V-next)</title>
     <style>
       :root {
@@ -10,7 +15,7 @@
         --card: #fff;
         --line: #dde1e8;
         --text: #1a1a2e;
-        --muted: #6c757d;
+        --muted: #4f5d6d;
         --accent: #0f766e;
         --accent-soft: #e8f5f3;
         --ok: #1a7f4e;
@@ -55,8 +60,8 @@
       .proto-nav a {
         border: 1px solid var(--line);
         border-radius: 999px;
-        padding: 5px 10px;
-        font-size: 12px;
+        padding: 7px 12px;
+        font-size: 13px;
         color: var(--muted);
         text-decoration: none;
         background: #f8f9fa;
@@ -185,7 +190,7 @@
         justify-content: space-between;
         gap: 8px;
       }
-      .card-head h3 { margin: 0; font-size: 14px; }
+      .card-head h2 { margin: 0; font-size: 14px; }
       .card-body { padding: 12px; }
       .row {
         display: grid;
@@ -318,7 +323,7 @@
         padding: 6px 0;
       }
       .seg-row:first-child { border-top: 0; }
-      .sid { color: #8a93a3; font-variant-numeric: tabular-nums; }
+      .sid { color: #5f6878; font-variant-numeric: tabular-nums; }
       .act {
         display: inline-flex;
         gap: 4px;
@@ -403,7 +408,7 @@
         </section>
 
         <section class="card">
-          <div class="card-head"><h3>Etat global (vs VO)</h3><span class="chip info">doc cible: doc#3 (de)</span></div>
+          <div class="card-head"><h2>Etat global (vs VO)</h2><span class="chip info">doc cible: doc#3 (de)</span></div>
           <div class="card-body">
             <div class="row">
               <div class="f"><strong>Match 1:1</strong>132</div>
@@ -422,7 +427,7 @@
         </section>
 
         <section class="card">
-          <div class="card-head"><h3>Projection initiale (brut traduction -> grille VO)</h3><span class="chip info">etape 1 · input long (~16 200 caracteres)</span></div>
+          <div class="card-head"><h2>Projection initiale (brut traduction -> grille VO)</h2><span class="chip info">etape 1 · input long (~16 200 caracteres)</span></div>
           <div class="card-body map-layout">
             <section class="pane">
               <div class="pane-head">Traduction brute (non segmentee)</div>
@@ -504,7 +509,7 @@
         </section>
 
         <section class="card">
-          <div class="card-head"><h3>Matrice de projection VO -> traduction</h3><span class="chip warn">ecarts 28</span></div>
+          <div class="card-head"><h2>Matrice de projection VO -> traduction</h2><span class="chip warn">ecarts 28</span></div>
           <div class="card-body">
             <table>
               <thead>
@@ -573,7 +578,7 @@
         </section>
 
         <section class="card">
-          <div class="card-head"><h3>Revue detaillee sur ecart selectionne</h3><span class="chip warn">focus: S0042</span></div>
+          <div class="card-head"><h2>Revue detaillee sur ecart selectionne</h2><span class="chip warn">focus: S0042</span></div>
           <div class="card-body map-layout">
             <section class="pane">
               <div class="pane-head">VO verrouillee (reference)</div>

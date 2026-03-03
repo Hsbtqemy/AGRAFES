@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Prototype visuel AGRAFES: Explorer — V-next Prototype."
+    />
+    <link rel="icon" href="./favicon.ico" />
+    <title>Explorer — V-next Prototype</title>
+    <style>
+      :root {
+        --bg: #f0f2f5;
+        --card: #fff;
+        --line: #dde1e8;
+        --text: #1a1a2e;
+        --muted: #4f5d6d;
+        --brand: #2c5f9e;
+        --mark: #fff0c2;
+        --ok: #1a7f4e;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+      }
+      .top {
+        border-bottom: 1px solid #1e4a80;
+        background: linear-gradient(135deg, #1e4a80, #2c5f9e);
+        color: #fff;
+        padding: 10px 14px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .title { font-weight: 700; letter-spacing: .02em; }
+      .status {
+        margin-left: auto;
+        font-size: 12px;
+        border: 1px solid rgba(255,255,255,.35);
+        background: rgba(255,255,255,.13);
+        border-radius: 999px;
+        padding: 4px 10px;
+      }
+      .proto-nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 8px 14px;
+        border-bottom: 1px solid var(--line);
+        background: #fff;
+      }
+      .proto-nav a {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 7px 12px;
+        font-size: 13px;
+        color: var(--muted);
+        text-decoration: none;
+        background: #f8f9fa;
+      }
+      .proto-nav a.active {
+        color: #1e4a80;
+        border-color: #b7c8df;
+        background: #eaf1fb;
+        font-weight: 700;
+      }
+      .panel {
+        margin: 12px 14px 0;
+        border: 1px solid var(--line);
+        background: var(--card);
+        border-radius: 12px;
+        overflow: hidden;
+      }
+      .primary {
+        padding: 12px;
+        display: grid;
+        grid-template-columns: 1fr auto auto auto;
+        gap: 8px;
+        align-items: center;
+        border-bottom: 1px solid var(--line);
+      }
+      input[type="text"], select {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 9px 10px;
+        font-size: 14px;
+        background: #fff;
+      }
+      .btn {
+        border: 1px solid var(--line);
+        background: #f8f9fa;
+        color: var(--text);
+        border-radius: 8px;
+        padding: 8px 10px;
+        font-size: 13px;
+        font-weight: 600;
+      }
+      .btn.primary { background: var(--brand); color: #fff; border-color: var(--brand); }
+      .btn.active { background: #eaf1fb; border-color: #b7c8df; color: #1e4a80; }
+      .secondary {
+        padding: 10px 12px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .secondary .group {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 8px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #f8f9fa;
+      }
+      .layout {
+        margin: 12px 14px 16px;
+        display: grid;
+        grid-template-columns: 1fr 320px;
+        gap: 12px;
+      }
+      .results {
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--card);
+        overflow: hidden;
+      }
+      .results-head {
+        position: sticky;
+        top: 0;
+        z-index: 3;
+        background: #f8f9fa;
+        border-bottom: 1px solid var(--line);
+        padding: 8px 12px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .hits {
+        max-height: calc(100vh - 250px);
+        overflow: auto;
+        padding: 10px;
+        display: grid;
+        gap: 10px;
+      }
+      .hit {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fff;
+        overflow: hidden;
+      }
+      .hit-head {
+        padding: 7px 9px;
+        font-size: 12px;
+        color: var(--muted);
+        border-bottom: 1px solid #dee2e6;
+      }
+      .parallel {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+      }
+      .col {
+        padding: 9px;
+      }
+      .col + .col {
+        border-left: 1px solid #dee2e6;
+        background: #f8f9fa;
+      }
+      .line {
+        font-size: 13px;
+        line-height: 1.45;
+      }
+      mark {
+        background: var(--mark);
+        padding: 1px 2px;
+        border-radius: 3px;
+      }
+      .aside {
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--card);
+        padding: 12px;
+        display: grid;
+        gap: 10px;
+        align-content: start;
+      }
+      .box {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 9px;
+        background: #f8f9fa;
+      }
+      .box h3 {
+        margin: 0 0 6px;
+        font-size: 13px;
+      }
+      .meta {
+        margin: 0;
+        font-size: 12px;
+        color: var(--muted);
+        line-height: 1.45;
+      }
+      .load-more {
+        margin-top: 2px;
+        text-align: center;
+      }
+      .load-more .btn {
+        background: #eaf1fb;
+        border-color: #b7c8df;
+        color: #1e4a80;
+      }
+      .hint {
+        font-size: 12px;
+        color: var(--ok);
+      }
+      @media (max-width: 1080px) {
+        .layout { grid-template-columns: 1fr; }
+      }
+      @media (max-width: 780px) {
+        .primary { grid-template-columns: 1fr 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="top">
+      <div class="title">Explorer — Concordancier</div>
+      <div class="status">DB: corpus_himyc_2026.db · sidecar ready</div>
+    </div>
+    <nav class="proto-nav" aria-label="Navigation maquettes">
+      <a href="./index.html">Index</a>
+      <a href="./board-vnext.html">Board</a>
+      <a href="./shell-vnext.html">Home</a>
+      <a class="active" href="./explorer-vnext.html">Explorer</a>
+      <a href="./prep-vnext.html">Constituer</a>
+      <a href="./publish-vnext.html">Publier</a>
+    </nav>
+
+    <section class="panel">
+      <div class="primary">
+        <input type="text" value="liberté fraternité" aria-label="Requête de recherche" />
+        <button class="btn primary">Chercher</button>
+        <button class="btn active">Segment</button>
+        <button class="btn">KWIC</button>
+      </div>
+      <div class="secondary">
+        <div class="group">
+          <span style="font-size:12px;color: var(--muted)">Alignés</span>
+          <button class="btn active">ON</button>
+          <span style="font-size:12px;color: var(--muted)">Parallèle</span>
+          <button class="btn active">ON</button>
+        </div>
+        <div class="group">
+          <span style="font-size:12px;color: var(--muted)">Langue</span>
+          <select aria-label="Filtre langue"><option>fr</option><option>en</option></select>
+          <span style="font-size:12px;color: var(--muted)">Rôle</span>
+          <select aria-label="Filtre rôle"><option>Tous</option></select>
+        </div>
+        <div class="group">
+          <button class="btn">Historique</button>
+          <button class="btn">Exporter</button>
+          <button class="btn">Aide FTS</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="layout">
+      <div class="results">
+        <div class="results-head">
+          <span>48 résultats chargés / 210 total</span>
+          <span>Vue parallèle active · page 1</span>
+        </div>
+        <div class="hits">
+          <article class="hit">
+            <div class="hit-head">doc 12 · fr · §42 · Déclaration 1793</div>
+            <div class="parallel">
+              <div class="col">
+                <div class="line">
+                  La <mark>liberté</mark> est un droit naturel et imprescriptible.
+                </div>
+              </div>
+              <div class="col">
+                <div class="line">Freedom is a natural and inalienable right.</div>
+              </div>
+            </div>
+          </article>
+          <article class="hit">
+            <div class="hit-head">doc 18 · fr · §73 · Discours</div>
+            <div class="parallel">
+              <div class="col">
+                <div class="line">
+                  Sans <mark>fraternité</mark>, la liberté se vide de sa promesse.
+                </div>
+              </div>
+              <div class="col">
+                <div class="line">Without fraternity, liberty loses its promise.</div>
+              </div>
+            </div>
+          </article>
+          <div class="load-more">
+            <button class="btn">Charger plus</button>
+          </div>
+        </div>
+      </div>
+
+      <aside class="aside">
+        <div class="box">
+          <h3>Contexte recherche</h3>
+          <p class="meta">Requête FTS: <code>liberté AND fraternité</code></p>
+          <p class="meta">Mode: segment · alignés ON · parallèle ON</p>
+          <p class="meta">Limite/page: 20 (aligned-safe)</p>
+        </div>
+        <div class="box">
+          <h3>Actions rapides</h3>
+          <p class="meta">• Ouvrir métadonnées document</p>
+          <p class="meta">• Épingler cette requête</p>
+          <p class="meta">• Export CSV long</p>
+        </div>
+        <div class="box">
+          <h3>Note UX</h3>
+          <p class="hint">
+            Proposition: distinguer clairement barre primaire (search) et barre secondaire (outils)
+            pour réduire la surcharge cognitive.
+          </p>
+        </div>
+      </aside>
+    </section>
+  </body>
+</html>

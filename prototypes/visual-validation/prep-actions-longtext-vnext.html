@@ -1,0 +1,757 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Prototype visuel AGRAFES: Constituer — Actions (grand texte, preview segmentation)."
+    />
+    <link rel="icon" href="./favicon.ico" />
+    <title>Constituer — Actions (grand texte, preview segmentation)</title>
+    <style>
+      :root {
+        --bg: #f0f2f5;
+        --card: #fff;
+        --line: #dde1e8;
+        --text: #1a1a2e;
+        --muted: #4f5d6d;
+        --accent: #0f766e;
+        --accent-soft: #e8f5f3;
+        --explorer: #2c5f9e;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; font-family: "SF Pro Text", "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); }
+
+      .top {
+        height: 54px;
+        background: linear-gradient(135deg, #0c4a46, #0f766e);
+        color: #fff;
+        border-bottom: 1px solid #0c4a46;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 0 14px;
+      }
+      .top strong { letter-spacing: .02em; }
+      .db {
+        margin-left: auto;
+        font-size: 12px;
+        border: 1px solid rgba(255,255,255,.34);
+        border-radius: 999px;
+        padding: 4px 10px;
+        background: rgba(255,255,255,.13);
+      }
+
+      .proto-nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 8px 14px;
+        border-bottom: 1px solid var(--line);
+        background: #fff;
+      }
+      .proto-nav a {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 7px 12px;
+        font-size: 13px;
+        color: var(--muted);
+        text-decoration: none;
+        background: #f8f9fa;
+      }
+      .proto-nav a.active {
+        color: #0c4a46;
+        border-color: #9fd3cc;
+        background: #e8f5f3;
+        font-weight: 700;
+      }
+
+      .shell {
+        display: grid;
+        grid-template-columns: 230px 1fr;
+        min-height: calc(100vh - 54px);
+      }
+      .nav {
+        border-right: 1px solid var(--line);
+        background: #f8f9fa;
+        padding: 12px;
+      }
+      .nav h2 {
+        margin: 0 0 10px;
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: .07em;
+        color: var(--muted);
+      }
+      .tab {
+        width: 100%;
+        text-align: left;
+        border: 1px solid transparent;
+        border-radius: 8px;
+        padding: 10px;
+        background: transparent;
+        color: var(--text);
+        font-size: 14px;
+        margin-bottom: 6px;
+        display: block;
+        text-decoration: none;
+      }
+      .tab.active {
+        background: var(--accent-soft);
+        border-color: #9fd3cc;
+        color: #0c4a46;
+        font-weight: 700;
+      }
+      .tree {
+        margin: -2px 0 8px 8px;
+        padding-left: 10px;
+        border-left: 2px solid #cfe8e3;
+        display: grid;
+        gap: 4px;
+      }
+      .tree a {
+        display: block;
+        text-decoration: none;
+        font-size: 12px;
+        color: var(--muted);
+        border: 1px solid transparent;
+        border-radius: 7px;
+        padding: 6px 8px;
+      }
+      .tree a.active {
+        background: #f0faf8;
+        border-color: #9fd3cc;
+        color: #0c4a46;
+        font-weight: 700;
+      }
+
+      .content {
+        padding: 14px;
+        display: grid;
+        gap: 12px;
+        align-content: start;
+      }
+      .card {
+        border: 1px solid var(--line);
+        background: var(--card);
+        border-radius: 12px;
+      }
+      .head-card {
+        padding: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      .head-card h1 { margin: 0; font-size: 18px; }
+      .head-card p { margin: 5px 0 0; color: var(--muted); font-size: 13px; }
+      .pill {
+        display: inline-block;
+        border: 1px solid #9fd3cc;
+        background: #e8f5f3;
+        color: #0c4a46;
+        border-radius: 999px;
+        font-size: 11px;
+        padding: 3px 8px;
+      }
+
+      .workspace {
+        border: 1px solid var(--line);
+        background: #fff;
+        border-radius: 12px;
+        padding: 12px;
+        display: grid;
+        grid-template-columns: 360px 1fr;
+        gap: 12px;
+      }
+      .left-col,
+      .right-col { min-width: 0; display: grid; gap: 10px; align-content: start; }
+
+      .card-head {
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--line);
+        background: #f8f9fa;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .card-head h2 { margin: 0; font-size: 14px; }
+      .card-body { padding: 12px; }
+
+      .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+      .f {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 8px;
+        font-size: 13px;
+        background: #fff;
+      }
+      .btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+      .btn {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #f8f9fa;
+        padding: 8px 10px;
+        font-size: 13px;
+        font-weight: 600;
+      }
+      .btn.pri {
+        border-color: #0f766e;
+        background: #0f766e;
+        color: #fff;
+      }
+      .btn.alt {
+        border-color: #b7c8df;
+        background: #eaf1fb;
+        color: #1e4a80;
+      }
+      .muted { font-size: 12px; color: var(--muted); }
+
+      .preview {
+        position: sticky;
+        top: 12px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        overflow: hidden;
+        display: grid;
+        grid-template-rows: auto auto 1fr auto;
+        max-height: calc(100vh - 100px);
+      }
+      .preview-tools,
+      .preview-tabs {
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--line);
+        background: #fff;
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      .chip {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 3px 8px;
+        font-size: 11px;
+        background: #f8f9fa;
+        color: var(--muted);
+      }
+      .chip.active {
+        border-color: #9fd3cc;
+        background: #e8f5f3;
+        color: #0c4a46;
+        font-weight: 700;
+      }
+      .ptab {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #f8f9fa;
+        color: var(--muted);
+        padding: 6px 8px;
+        font-size: 12px;
+      }
+      .ptab.active {
+        border-color: #b7c8df;
+        background: #eaf1fb;
+        color: #1e4a80;
+        font-weight: 700;
+      }
+
+      .preview-body {
+        display: grid;
+        grid-template-columns: 1fr 1fr 42px;
+        gap: 8px;
+        padding: 10px;
+        background: #fff;
+        overflow: hidden;
+      }
+
+      .pane {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        overflow: hidden;
+        display: grid;
+        grid-template-rows: auto 1fr;
+        min-height: 460px;
+      }
+      .pane-head {
+        padding: 8px 10px;
+        font-size: 12px;
+        color: var(--muted);
+        border-bottom: 1px solid var(--line);
+        background: #f8f9fa;
+      }
+      .doc-scroll {
+        overflow: auto;
+        padding: 8px 10px;
+        font-size: 13px;
+        line-height: 1.5;
+        background: #fff;
+      }
+      .doc-scroll p { margin: 0 0 8px; }
+      .ln {
+        display: inline-block;
+        min-width: 58px;
+        color: #5f6878;
+        font-variant-numeric: tabular-nums;
+      }
+      .seg-line {
+        display: grid;
+        grid-template-columns: 58px 1fr;
+        gap: 8px;
+        padding: 4px 0;
+        border-top: 1px solid #eef2f7;
+      }
+      .seg-line:first-child { border-top: 0; }
+      .sid {
+        color: #5f6878;
+        font-variant-numeric: tabular-nums;
+      }
+      .seg-line .txt mark {
+        background: #fff0c2;
+        border-radius: 3px;
+        padding: 0 2px;
+      }
+
+      .minimap {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #f8f9fa;
+        position: relative;
+        overflow: hidden;
+      }
+      .mm-track {
+        position: absolute;
+        inset: 6px;
+        border-radius: 6px;
+        background: linear-gradient(to bottom, #edf2f8, #f7f9fc);
+      }
+      .mm-zone {
+        position: absolute;
+        left: 8px;
+        right: 8px;
+        height: 18%;
+        top: 20%;
+        border: 1px solid #b7c8df;
+        border-radius: 4px;
+        background: rgba(234, 241, 251, 0.75);
+      }
+      .mm-mark {
+        position: absolute;
+        left: 10px;
+        right: 10px;
+        height: 3px;
+        border-radius: 2px;
+      }
+      .mm-mark.warn { background: #e6a817; }
+      .mm-mark.seg { background: #0f766e; }
+      .mm-mark.hit { background: #2c5f9e; }
+
+      .preview-foot {
+        border-top: 1px solid var(--line);
+        background: #f8f9fa;
+        padding: 8px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      @media (max-width: 1320px) {
+        .workspace { grid-template-columns: 1fr; }
+        .preview { position: static; max-height: none; }
+      }
+      @media (max-width: 980px) {
+        .preview-body { grid-template-columns: 1fr; }
+        .pane { min-height: 320px; }
+        .minimap { min-height: 120px; }
+      }
+      @media (max-width: 540px) {
+        .row { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="top">
+      <strong>Constituer</strong>
+      <span>Préparation corpus</span>
+      <span class="db">DB: corpus_himyc_2026.db</span>
+    </header>
+
+    <nav class="proto-nav" aria-label="Navigation maquettes">
+      <a href="./index.html">Index</a>
+      <a href="./board-vnext.html">Board</a>
+      <a href="./shell-vnext.html">Home</a>
+      <a href="./explorer-vnext.html">Explorer</a>
+      <a class="active" href="./prep-vnext.html">Constituer</a>
+      <a href="./publish-vnext.html">Publier</a>
+    </nav>
+
+    <div class="shell">
+      <aside class="nav">
+        <h2>Sections</h2>
+        <a class="tab" href="./prep-import-vnext.html">Importer</a>
+        <a class="tab" href="./prep-documents-vnext.html">Documents</a>
+        <a class="tab active" href="./prep-actions-vnext.html">Actions</a>
+        <div class="tree" aria-label="Sous-sections Actions">
+          <a href="#">Curation</a>
+          <a class="active" href="#">Segmentation</a>
+          <a href="#">Alignement</a>
+          <a href="#">Audit</a>
+          <a href="#">Collisions</a>
+        </div>
+        <a class="tab" href="./prep-exporter-vnext.html">Exporter</a>
+      </aside>
+
+      <main class="content">
+        <section class="card head-card">
+          <div>
+            <h1>Segmentation sur grand texte (exemple ~16k)</h1>
+            <p>Prévisualisation globale avant application: brut vs segmenté, avec minimap et contrôle de couverture.</p>
+          </div>
+          <span class="pill">document non modifié</span>
+        </section>
+
+        <section class="workspace">
+          <div class="left-col">
+            <article class="card">
+              <div class="card-head"><h2>Paramètres segmentation</h2><span class="muted">doc#1 · fr</span></div>
+              <div class="card-body">
+                <div class="row">
+                  <div class="f">Pack: <strong>fr_strict</strong></div>
+                  <div class="f">Aperçu: <strong>document complet</strong></div>
+                  <div class="f">Fenêtre: <strong>synchro scroll</strong></div>
+                  <div class="f">Caractères: <strong>16 284</strong></div>
+                </div>
+                <div class="btns">
+                  <button class="btn">Revenir pack auto</button>
+                  <button class="btn alt">Prévisualiser segmentation</button>
+                  <button class="btn pri">Appliquer segmentation</button>
+                </div>
+              </div>
+            </article>
+
+            <article class="card">
+              <div class="card-head"><h2>Résumé vérification</h2><span class="muted">avant application</span></div>
+              <div class="card-body">
+                <div class="row">
+                  <div class="f">Paragraphes source: <strong>18</strong></div>
+                  <div class="f">Segments proposés: <strong>162</strong></div>
+                  <div class="f">Segments suspects: <strong>4</strong></div>
+                  <div class="f">Lignes > 300 chars: <strong>2</strong></div>
+                </div>
+                <div class="btns">
+                  <button class="btn">Aller aux segments suspects</button>
+                  <button class="btn">Exporter diff segmentation</button>
+                </div>
+              </div>
+            </article>
+          </div>
+
+          <aside class="right-col">
+            <article class="preview">
+              <div class="card-head"><h2>Preview persistante — document complet</h2><span class="muted">scroll synchronisé</span></div>
+
+              <div class="preview-tools">
+                <span class="chip active">text_norm</span>
+                <span class="chip">text_raw</span>
+                <span class="chip">surligner coupures</span>
+                <span class="chip">suspects uniquement</span>
+                <span class="chip">recherche dans document</span>
+              </div>
+
+              <div class="preview-tabs">
+                <button class="ptab">Brut (non segmenté)</button>
+                <button class="ptab active">Prévisualisation segmentation</button>
+                <button class="ptab">Diff global</button>
+              </div>
+
+              <div class="preview-body">
+                <section class="pane">
+                  <div class="pane-head">Document brut — 16 284 caractères</div>
+                  <div class="doc-scroll" id="raw-doc">
+                    <p><span class="ln">[0001]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0002]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0003]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0004]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0005]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0006]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0007]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0008]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0009]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0010]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0011]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0012]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0013]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0014]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0015]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0016]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0017]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0018]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0019]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0020]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0021]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0022]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0023]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0024]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0025]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0026]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0027]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0028]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0029]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0030]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0031]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0032]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0033]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0034]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0035]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0036]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0037]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0038]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0039]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0040]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0041]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0042]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0043]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0044]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0045]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0046]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0047]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0048]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0049]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0050]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0051]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0052]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0053]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0054]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0055]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0056]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0057]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0058]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0059]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0060]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0061]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0062]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0063]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0064]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0065]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0066]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0067]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0068]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0069]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0070]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0071]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0072]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0073]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0074]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0075]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0076]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0077]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0078]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0079]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0080]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0081]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0082]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0083]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0084]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0085]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0086]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0087]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0088]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0089]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0090]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0091]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                    <p><span class="ln">[0092]</span>Dans ce passage de travail, le texte reste continu et non segmente ; il melange ponctuation forte, citations, incises et sequences longues afin de tester la stabilite des regles de coupure. Le lecteur doit pouvoir verifier facilement si la proposition de segmentation preserve le sens, la cadence du paragraphe, et les unites argumentatives sans introduire de rupture artificielle.</p>
+                  </div>
+                </section>
+
+                <section class="pane">
+                  <div class="pane-head">Segmentation proposee — 162 segments</div>
+                  <div class="doc-scroll" id="seg-doc">
+                    <div class="seg-line"><span class="sid">S0001</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0002</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0003</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0004</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0005</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0006</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0007</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0008</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0009</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0010</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0011</span><span class="txt">La proposition garde une phrase complete puis isole une incise pour clarifier la lecture et faciliter l alignement inter-documents.</span></div>
+                    <div class="seg-line"><span class="sid">S0012</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0013</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0014</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0015</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0016</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0017</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0018</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0019</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0020</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0021</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0022</span><span class="txt">La proposition garde une phrase complete puis isole une incise pour clarifier la lecture et faciliter l alignement inter-documents.</span></div>
+                    <div class="seg-line"><span class="sid">S0023</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0024</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0025</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0026</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0027</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0028</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0029</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0030</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0031</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0032</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0033</span><span class="txt">La proposition garde une phrase complete puis isole une incise pour clarifier la lecture et faciliter l alignement inter-documents.</span></div>
+                    <div class="seg-line"><span class="sid">S0034</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0035</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0036</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0037</span><span class="txt"><mark>Segment suspect</mark>: verification manuelle conseillee, coupure proche d une citation et d une parenthese longue.</span></div>
+                    <div class="seg-line"><span class="sid">S0038</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0039</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0040</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0041</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0042</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0043</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0044</span><span class="txt">La proposition garde une phrase complete puis isole une incise pour clarifier la lecture et faciliter l alignement inter-documents.</span></div>
+                    <div class="seg-line"><span class="sid">S0045</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0046</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0047</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0048</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0049</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0050</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0051</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0052</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0053</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0054</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0055</span><span class="txt">La proposition garde une phrase complete puis isole une incise pour clarifier la lecture et faciliter l alignement inter-documents.</span></div>
+                    <div class="seg-line"><span class="sid">S0056</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0057</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0058</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0059</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0060</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0061</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0062</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0063</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0064</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0065</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0066</span><span class="txt">La proposition garde une phrase complete puis isole une incise pour clarifier la lecture et faciliter l alignement inter-documents.</span></div>
+                    <div class="seg-line"><span class="sid">S0067</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0068</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0069</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0070</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0071</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0072</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0073</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0074</span><span class="txt"><mark>Segment suspect</mark>: verification manuelle conseillee, coupure proche d une citation et d une parenthese longue.</span></div>
+                    <div class="seg-line"><span class="sid">S0075</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0076</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0077</span><span class="txt">La proposition garde une phrase complete puis isole une incise pour clarifier la lecture et faciliter l alignement inter-documents.</span></div>
+                    <div class="seg-line"><span class="sid">S0078</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0079</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0080</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0081</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0082</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0083</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0084</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0085</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0086</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0087</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0088</span><span class="txt">La proposition garde une phrase complete puis isole une incise pour clarifier la lecture et faciliter l alignement inter-documents.</span></div>
+                    <div class="seg-line"><span class="sid">S0089</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0090</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0091</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0092</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0093</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0094</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0095</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0096</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0097</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0098</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0099</span><span class="txt">La proposition garde une phrase complete puis isole une incise pour clarifier la lecture et faciliter l alignement inter-documents.</span></div>
+                    <div class="seg-line"><span class="sid">S0100</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0101</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0102</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0103</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0104</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0105</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0106</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0107</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0108</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0109</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0110</span><span class="txt">La proposition garde une phrase complete puis isole une incise pour clarifier la lecture et faciliter l alignement inter-documents.</span></div>
+                    <div class="seg-line"><span class="sid">S0111</span><span class="txt"><mark>Segment suspect</mark>: verification manuelle conseillee, coupure proche d une citation et d une parenthese longue.</span></div>
+                    <div class="seg-line"><span class="sid">S0112</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0113</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0114</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0115</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0116</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0117</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0118</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0119</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0120</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0121</span><span class="txt">La proposition garde une phrase complete puis isole une incise pour clarifier la lecture et faciliter l alignement inter-documents.</span></div>
+                    <div class="seg-line"><span class="sid">S0122</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0123</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0124</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0125</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0126</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0127</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0128</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0129</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0130</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0131</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0132</span><span class="txt">La proposition garde une phrase complete puis isole une incise pour clarifier la lecture et faciliter l alignement inter-documents.</span></div>
+                    <div class="seg-line"><span class="sid">S0133</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0134</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0135</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0136</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0137</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0138</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0139</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0140</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0141</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0142</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0143</span><span class="txt">La proposition garde une phrase complete puis isole une incise pour clarifier la lecture et faciliter l alignement inter-documents.</span></div>
+                    <div class="seg-line"><span class="sid">S0144</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0145</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0146</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0147</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0148</span><span class="txt"><mark>Segment suspect</mark>: verification manuelle conseillee, coupure proche d une citation et d une parenthese longue.</span></div>
+                    <div class="seg-line"><span class="sid">S0149</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0150</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0151</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0152</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0153</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0154</span><span class="txt">La proposition garde une phrase complete puis isole une incise pour clarifier la lecture et faciliter l alignement inter-documents.</span></div>
+                    <div class="seg-line"><span class="sid">S0155</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0156</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0157</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0158</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0159</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0160</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0161</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                    <div class="seg-line"><span class="sid">S0162</span><span class="txt">La segmentation decoupe le flux en unite courte, stable et controlable, sans perdre la relation logique avec les lignes voisines.</span></div>
+                  </div>
+                </section>
+
+                <aside class="minimap" aria-label="Minimap document">
+                  <div class="mm-track"></div>
+                  <div class="mm-zone" title="zone visible"></div>
+                  <div class="mm-mark seg" style="top: 12%;"></div>
+                  <div class="mm-mark hit" style="top: 28%;"></div>
+                  <div class="mm-mark warn" style="top: 41%;"></div>
+                  <div class="mm-mark seg" style="top: 59%;"></div>
+                  <div class="mm-mark warn" style="top: 76%;"></div>
+                </aside>
+              </div>
+
+              <div class="preview-foot">
+                <button class="btn">Aller au prochain suspect</button>
+                <button class="btn alt">Valider cette zone</button>
+                <button class="btn pri">Appliquer segmentation (doc complet)</button>
+              </div>
+            </article>
+          </aside>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

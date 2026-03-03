@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Prototype visuel AGRAFES: Constituer — Exporter (V-next)."
+    />
+    <link rel="icon" href="./favicon.ico" />
+    <title>Constituer — Exporter (V-next)</title>
+    <style>
+      :root {
+        --bg: #f0f2f5;
+        --card: #fff;
+        --line: #dde1e8;
+        --text: #1a1a2e;
+        --muted: #4f5d6d;
+        --accent: #0f766e;
+        --accent-soft: #e8f5f3;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; font-family: "SF Pro Text", "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); }
+      .top { height: 54px; background: linear-gradient(135deg, #0c4a46, #0f766e); color: #fff; border-bottom: 1px solid #0c4a46; display: flex; align-items: center; gap: 10px; padding: 0 14px; }
+      .top strong { letter-spacing: .02em; }
+      .db { margin-left: auto; font-size: 12px; border: 1px solid rgba(255,255,255,.34); border-radius: 999px; padding: 4px 10px; background: rgba(255,255,255,.13); }
+      .proto-nav { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 14px; border-bottom: 1px solid var(--line); background: #fff; }
+      .proto-nav a { border: 1px solid var(--line); border-radius: 999px; padding: 5px 10px; font-size: 12px; color: var(--muted); text-decoration: none; background: #f8f9fa; }
+      .proto-nav a.active { color: #0c4a46; border-color: #9fd3cc; background: #e8f5f3; font-weight: 700; }
+      .shell { display: grid; grid-template-columns: 230px 1fr; min-height: calc(100vh - 54px); }
+      .nav { border-right: 1px solid var(--line); background: #f8f9fa; padding: 12px; }
+      .nav h2 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
+      .tab { width: 100%; text-align: left; border: 1px solid transparent; border-radius: 8px; padding: 10px; background: transparent; color: var(--text); font-size: 14px; margin-bottom: 6px; display: block; text-decoration: none; }
+      .tab.active { background: var(--accent-soft); border-color: #9fd3cc; color: #0c4a46; font-weight: 700; }
+      .content { padding: 14px; display: grid; gap: 12px; align-content: start; }
+      .card { border: 1px solid var(--line); background: var(--card); border-radius: 12px; overflow: hidden; }
+      .card-head { background: #f8f9fa; border-bottom: 1px solid var(--line); padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; }
+      .card-head h3 { margin: 0; font-size: 15px; }
+      .body { padding: 12px; }
+      .row { display: grid; grid-template-columns: repeat(3, minmax(140px, 1fr)); gap: 8px; }
+      .f { border: 1px solid var(--line); border-radius: 8px; padding: 8px; font-size: 13px; background: #fff; }
+      .btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+      .btn { border: 1px solid var(--line); border-radius: 8px; background: #f8f9fa; padding: 8px 10px; font-size: 13px; font-weight: 600; }
+      .btn.pri { border-color: #0f766e; background: #0f766e; color: #fff; }
+      .log { background: #1a1a2e; color: #d9e5ff; border-radius: 8px; padding: 10px; font-size: 12px; line-height: 1.45; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+      .muted { color: var(--muted); font-size: 12px; }
+      .pill { display: inline-block; border: 1px solid #9fd3cc; background: #e8f5f3; color: #0c4a46; border-radius: 999px; padding: 2px 8px; font-size: 11px; }
+      @media (max-width: 1100px) { .shell { grid-template-columns: 1fr; } .nav { border-right: 0; border-bottom: 1px solid var(--line); } }
+      @media (max-width: 860px) { .row { grid-template-columns: 1fr; } }
+    </style>
+  </head>
+  <body>
+    <header class="top">
+      <strong>Constituer</strong>
+      <span>Préparation corpus</span>
+      <span class="db">DB: corpus_himyc_2026.db</span>
+    </header>
+    <nav class="proto-nav" aria-label="Navigation maquettes">
+      <a href="./index.html">Index</a>
+      <a href="./board-vnext.html">Board</a>
+      <a href="./shell-vnext.html">Home</a>
+      <a href="./explorer-vnext.html">Explorer</a>
+      <a class="active" href="./prep-vnext.html">Constituer</a>
+      <a href="./publish-vnext.html">Publier</a>
+    </nav>
+
+    <div class="shell">
+      <aside class="nav">
+        <h2>Sections</h2>
+        <a class="tab" href="./prep-import-vnext.html">Importer</a>
+        <a class="tab" href="./prep-documents-vnext.html">Documents</a>
+        <a class="tab" href="./prep-actions-vnext.html">Actions</a>
+        <a class="tab active" href="./prep-exporter-vnext.html">Exporter</a>
+      </aside>
+
+      <main class="content">
+        <section class="card">
+          <div class="card-head"><h3>Rapport QA</h3><span class="pill">strict</span></div>
+          <div class="body">
+            <div class="row">
+              <div class="f">Erreurs bloquantes: <strong>0</strong></div>
+              <div class="f">Warnings: <strong>3</strong></div>
+              <div class="f">Docs validés: <strong>12 / 12</strong></div>
+            </div>
+            <div class="btns">
+              <button class="btn">Prévisualiser rapport</button>
+              <button class="btn pri">Exporter rapport QA</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-head"><h3>Export package TEI</h3><span class="muted">profil parcolab_like</span></div>
+          <div class="body">
+            <div class="row">
+              <div class="f">Format: <strong>zip</strong></div>
+              <div class="f">Profil TEI: <strong>parcolab_like</strong></div>
+              <div class="f">Sortie: <strong>/exports/himyc_2026.zip</strong></div>
+            </div>
+            <div class="btns">
+              <button class="btn">Choisir destination…</button>
+              <button class="btn pri">Exporter package</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-head"><h3>Historique des runs</h3><span class="muted">derniers exports</span></div>
+          <div class="body">
+            <div class="log">2026-03-02T10:42:11Z  run_84c9  export_tei_package  OK  -> himyc_2026.zip\n2026-03-02T09:58:00Z  run_84a1  export_run_report   OK  -> qa_report.html\n2026-03-02T09:16:44Z  run_8388  validate_meta       OK  (0 errors)</div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

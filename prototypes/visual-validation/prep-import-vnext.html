@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Prototype visuel AGRAFES: Constituer — Importer (V-next)."
+    />
+    <link rel="icon" href="./favicon.ico" />
+    <title>Constituer — Importer (V-next)</title>
+    <style>
+      :root {
+        --bg: #f0f2f5;
+        --card: #fff;
+        --line: #dde1e8;
+        --text: #1a1a2e;
+        --muted: #4f5d6d;
+        --accent: #0f766e;
+        --accent-soft: #e8f5f3;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; font-family: "SF Pro Text", "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); }
+      .top { height: 54px; background: linear-gradient(135deg, #0c4a46, #0f766e); color: #fff; border-bottom: 1px solid #0c4a46; display: flex; align-items: center; gap: 10px; padding: 0 14px; }
+      .top strong { letter-spacing: .02em; }
+      .db { margin-left: auto; font-size: 12px; border: 1px solid rgba(255,255,255,.34); border-radius: 999px; padding: 4px 10px; background: rgba(255,255,255,.13); }
+      .proto-nav { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 14px; border-bottom: 1px solid var(--line); background: #fff; }
+      .proto-nav a { border: 1px solid var(--line); border-radius: 999px; padding: 5px 10px; font-size: 12px; color: var(--muted); text-decoration: none; background: #f8f9fa; }
+      .proto-nav a.active { color: #0c4a46; border-color: #9fd3cc; background: #e8f5f3; font-weight: 700; }
+      .shell { display: grid; grid-template-columns: 230px 1fr; min-height: calc(100vh - 54px); }
+      .nav { border-right: 1px solid var(--line); background: #f8f9fa; padding: 12px; }
+      .nav h2 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
+      .tab { width: 100%; text-align: left; border: 1px solid transparent; border-radius: 8px; padding: 10px; background: transparent; color: var(--text); font-size: 14px; margin-bottom: 6px; display: block; text-decoration: none; }
+      .tab.active { background: var(--accent-soft); border-color: #9fd3cc; color: #0c4a46; font-weight: 700; }
+      .content { padding: 14px; display: grid; gap: 12px; align-content: start; }
+      .card { border: 1px solid var(--line); background: var(--card); border-radius: 12px; overflow: hidden; }
+      .card-head { background: #f8f9fa; border-bottom: 1px solid var(--line); padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; }
+      .card-head h3 { margin: 0; font-size: 15px; }
+      .body { padding: 12px; }
+      .row { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: 8px; }
+      .f { border: 1px solid var(--line); border-radius: 8px; padding: 8px; font-size: 13px; background: #fff; }
+      .btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+      .btn { border: 1px solid var(--line); border-radius: 8px; background: #f8f9fa; padding: 8px 10px; font-size: 13px; font-weight: 600; }
+      .btn.pri { border-color: #0f766e; background: #0f766e; color: #fff; }
+      .job { font-size: 12px; color: #0c4a46; background: #e8f5f3; border: 1px solid #9fd3cc; border-radius: 8px; padding: 8px 10px; }
+      .list { display: grid; gap: 8px; }
+      .item { border: 1px solid var(--line); border-radius: 8px; padding: 8px; background: #fff; font-size: 13px; display: flex; justify-content: space-between; gap: 8px; }
+      .muted { color: var(--muted); font-size: 12px; }
+      @media (max-width: 1100px) { .shell { grid-template-columns: 1fr; } .nav { border-right: 0; border-bottom: 1px solid var(--line); } }
+      @media (max-width: 860px) { .row { grid-template-columns: 1fr 1fr; } }
+      @media (max-width: 540px) { .row { grid-template-columns: 1fr; } }
+    </style>
+  </head>
+  <body>
+    <header class="top">
+      <strong>Constituer</strong>
+      <span>Préparation corpus</span>
+      <span class="db">DB: corpus_himyc_2026.db</span>
+    </header>
+    <nav class="proto-nav" aria-label="Navigation maquettes">
+      <a href="./index.html">Index</a>
+      <a href="./board-vnext.html">Board</a>
+      <a href="./shell-vnext.html">Home</a>
+      <a href="./explorer-vnext.html">Explorer</a>
+      <a class="active" href="./prep-vnext.html">Constituer</a>
+      <a href="./publish-vnext.html">Publier</a>
+    </nav>
+
+    <div class="shell">
+      <aside class="nav">
+        <h2>Sections</h2>
+        <a class="tab active" href="./prep-import-vnext.html">Importer</a>
+        <a class="tab" href="./prep-documents-vnext.html">Documents</a>
+        <a class="tab" href="./prep-actions-vnext.html">Actions</a>
+        <a class="tab" href="./prep-exporter-vnext.html">Exporter</a>
+      </aside>
+
+      <main class="content">
+        <section class="card">
+          <div class="card-head">
+            <h3>Batch import</h3>
+            <span class="muted">3 fichiers en file</span>
+          </div>
+          <div class="body">
+            <div class="row">
+              <div class="f">Format: <strong>docx_numbered_lines</strong></div>
+              <div class="f">Langue défaut: <strong>fr</strong></div>
+              <div class="f">Rôle défaut: <strong>source</strong></div>
+              <div class="f">External IDs: <strong>strict</strong></div>
+            </div>
+            <div class="btns">
+              <button class="btn">Ajouter fichiers…</button>
+              <button class="btn">Prévisualiser mapping</button>
+              <button class="btn pri">Importer tout</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-head"><h3>File d’import</h3><span class="muted">2 en cours, 1 en attente</span></div>
+          <div class="body list">
+            <div class="item"><span>discours_1793_fr.docx</span><span class="muted">importing 72%</span></div>
+            <div class="item"><span>speech_1793_en.docx</span><span class="muted">importing 41%</span></div>
+            <div class="item"><span>notes_appendix.txt</span><span class="muted">pending</span></div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-head"><h3>Indexation FTS</h3><span class="muted">après import</span></div>
+          <div class="body">
+            <div class="btns">
+              <button class="btn">Vérifier état index</button>
+              <button class="btn pri">Rebuild index</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-head"><h3>Job Center</h3><span class="muted">2 actifs</span></div>
+          <div class="body">
+            <div class="job">Import: discours_1793_fr.docx — 72%</div>
+            <div class="job" style="margin-top:8px">Import: speech_1793_en.docx — 41%</div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>
