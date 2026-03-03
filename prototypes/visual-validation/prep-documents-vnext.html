@@ -5,10 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="Prototype visuel AGRAFES: Constituer — Documents (V-next)."
+      content="Prototype visuel AGRAFES: Constituer — Documents interactif (table, édition, mini preview)."
     />
     <link rel="icon" href="./favicon.ico" />
-    <title>Constituer — Documents (V-next)</title>
+    <title>Constituer — Documents (interactif V-next)</title>
     <style>
       :root {
         --bg: #f0f2f5;
@@ -18,35 +18,413 @@
         --muted: #4f5d6d;
         --accent: #0f766e;
         --accent-soft: #e8f5f3;
+        --blue-soft: #eaf1fb;
+        --blue-line: #b7c8df;
+        --warn-soft: #fff7e6;
+        --warn-line: #edd89e;
       }
       * { box-sizing: border-box; }
-      body { margin: 0; font-family: "SF Pro Text", "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); }
-      .top { height: 54px; background: linear-gradient(135deg, #0c4a46, #0f766e); color: #fff; border-bottom: 1px solid #0c4a46; display: flex; align-items: center; gap: 10px; padding: 0 14px; }
+      body {
+        margin: 0;
+        font-family: "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+      }
+      .top {
+        height: 54px;
+        background: linear-gradient(135deg, #0c4a46, #0f766e);
+        color: #fff;
+        border-bottom: 1px solid #0c4a46;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 0 14px;
+      }
       .top strong { letter-spacing: .02em; }
-      .db { margin-left: auto; font-size: 12px; border: 1px solid rgba(255,255,255,.34); border-radius: 999px; padding: 4px 10px; background: rgba(255,255,255,.13); }
-      .proto-nav { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 14px; border-bottom: 1px solid var(--line); background: #fff; }
-      .proto-nav a { border: 1px solid var(--line); border-radius: 999px; padding: 5px 10px; font-size: 12px; color: var(--muted); text-decoration: none; background: #f8f9fa; }
-      .proto-nav a.active { color: #0c4a46; border-color: #9fd3cc; background: #e8f5f3; font-weight: 700; }
-      .shell { display: grid; grid-template-columns: 230px 1fr; min-height: calc(100vh - 54px); }
-      .nav { border-right: 1px solid var(--line); background: #f8f9fa; padding: 12px; }
-      .nav h2 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
-      .tab { width: 100%; text-align: left; border: 1px solid transparent; border-radius: 8px; padding: 10px; background: transparent; color: var(--text); font-size: 14px; margin-bottom: 6px; display: block; text-decoration: none; }
-      .tab.active { background: var(--accent-soft); border-color: #9fd3cc; color: #0c4a46; font-weight: 700; }
-      .content { padding: 14px; display: grid; gap: 12px; align-content: start; }
-      .card { border: 1px solid var(--line); background: var(--card); border-radius: 12px; overflow: hidden; }
-      .card-head { background: #f8f9fa; border-bottom: 1px solid var(--line); padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; }
-      .card-head h3 { margin: 0; font-size: 15px; }
+      .db {
+        margin-left: auto;
+        font-size: 12px;
+        border: 1px solid rgba(255,255,255,.34);
+        border-radius: 999px;
+        padding: 4px 10px;
+        background: rgba(255,255,255,.13);
+      }
+      .proto-nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 8px 14px;
+        border-bottom: 1px solid var(--line);
+        background: #fff;
+      }
+      .proto-nav a {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 7px 12px;
+        font-size: 13px;
+        color: var(--muted);
+        text-decoration: none;
+        background: #f8f9fa;
+      }
+      .proto-nav a.active {
+        color: #0c4a46;
+        border-color: #9fd3cc;
+        background: #e8f5f3;
+        font-weight: 700;
+      }
+      .shell {
+        display: grid;
+        grid-template-columns: 230px 1fr;
+        min-height: calc(100vh - 54px);
+      }
+      .nav {
+        border-right: 1px solid var(--line);
+        background: #f8f9fa;
+        padding: 12px;
+      }
+      .nav h2 {
+        margin: 0 0 10px;
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: .07em;
+        color: var(--muted);
+      }
+      .tab {
+        width: 100%;
+        text-align: left;
+        border: 1px solid transparent;
+        border-radius: 8px;
+        padding: 10px;
+        background: transparent;
+        color: var(--text);
+        font-size: 14px;
+        margin-bottom: 6px;
+        display: block;
+        text-decoration: none;
+      }
+      .tab.active {
+        background: var(--accent-soft);
+        border-color: #9fd3cc;
+        color: #0c4a46;
+        font-weight: 700;
+      }
+      .tree {
+        margin: -2px 0 8px 8px;
+        padding-left: 10px;
+        border-left: 2px solid #cfe8e3;
+        display: grid;
+        gap: 4px;
+      }
+      .tree a {
+        display: block;
+        text-decoration: none;
+        font-size: 12px;
+        color: var(--muted);
+        border: 1px solid transparent;
+        border-radius: 7px;
+        padding: 6px 8px;
+      }
+      .tree a.active {
+        background: #f0faf8;
+        border-color: #9fd3cc;
+        color: #0c4a46;
+        font-weight: 700;
+      }
+      .tree a:hover {
+        border-color: #cfe8e3;
+        background: #f6fbfa;
+      }
+      .tree-wrap {
+        margin: -2px 0 8px;
+      }
+      .tree-summary {
+        list-style: none;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border: 1px solid #cfe8e3;
+        border-radius: 8px;
+        padding: 7px 8px;
+        font-size: 12px;
+        font-weight: 700;
+        color: #0c4a46;
+        background: #edf7f5;
+      }
+      .tree-summary::-webkit-details-marker {
+        display: none;
+      }
+      .tree-caret {
+        font-size: 11px;
+        color: var(--muted);
+        transition: transform .16s ease;
+      }
+      .tree-wrap[open] .tree-caret {
+        transform: rotate(180deg);
+      }
+
+      .content {
+        padding: 14px;
+        display: grid;
+        gap: 12px;
+        align-content: start;
+      }
+      .card {
+        border: 1px solid var(--line);
+        background: var(--card);
+        border-radius: 12px;
+        overflow: hidden;
+      }
+      .head-card {
+        padding: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      .head-card h1 { margin: 0; font-size: 20px; }
+      .head-card p { margin: 5px 0 0; font-size: 13px; color: var(--muted); }
+      .head-right {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
+      .head-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .backup-status {
+        border: 1px solid var(--blue-line);
+        border-radius: 999px;
+        background: var(--blue-soft);
+        color: #1e4a80;
+        font-size: 11px;
+        font-weight: 700;
+        padding: 4px 8px;
+      }
+      .backup-status.ok {
+        border-color: #9fd3cc;
+        background: #e8f5f3;
+        color: #0c4a46;
+      }
+      .kpis {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .kpi {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: #f8f9fa;
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 700;
+        padding: 4px 8px;
+      }
+      .kpi.ok { border-color: #9fd3cc; background: #e8f5f3; color: #0c4a46; }
+      .kpi.warn { border-color: var(--warn-line); background: var(--warn-soft); color: #8d6200; }
+
+      .workspace {
+        display: grid;
+        grid-template-columns: minmax(540px, 1fr) minmax(360px, .9fr);
+        gap: 12px;
+        align-items: start;
+      }
+      .card-head {
+        background: #f8f9fa;
+        border-bottom: 1px solid var(--line);
+        padding: 10px 12px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .card-head h2 {
+        margin: 0;
+        font-size: 14px;
+      }
       .body { padding: 12px; }
-      .btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
-      .btn { border: 1px solid var(--line); border-radius: 8px; background: #f8f9fa; padding: 8px 10px; font-size: 13px; font-weight: 600; }
+      .tool-row {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 10px;
+      }
+      .tool-row input,
+      .tool-row select,
+      .field input,
+      .field select {
+        border: 1px solid #c7d3e7;
+        border-radius: 8px;
+        background: #fff;
+        color: var(--text);
+        padding: 7px 8px;
+        font-size: 13px;
+        font-family: inherit;
+      }
+      .tool-row input { flex: 1 1 220px; }
+      .btn {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #f8f9fa;
+        padding: 8px 10px;
+        font-size: 13px;
+        font-weight: 600;
+      }
       .btn.pri { border-color: #0f766e; background: #0f766e; color: #fff; }
-      table { width: 100%; border-collapse: collapse; font-size: 13px; }
-      th, td { border: 1px solid var(--line); padding: 7px 8px; text-align: left; }
+      .btn.alt { border-color: var(--blue-line); background: var(--blue-soft); color: #1e4a80; }
+      .btns { display: flex; gap: 8px; flex-wrap: wrap; }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+      th, td {
+        border: 1px solid var(--line);
+        padding: 7px 8px;
+        text-align: left;
+        vertical-align: top;
+      }
       th { background: #f8f9fa; }
-      .muted { color: var(--muted); font-size: 12px; }
-      .chip { display: inline-block; border: 1px solid #9fd3cc; background: #e8f5f3; color: #0c4a46; border-radius: 999px; padding: 2px 8px; font-size: 11px; }
-      .cols { display: grid; grid-template-columns: 1.4fr 1fr; gap: 10px; }
-      @media (max-width: 1100px) { .shell { grid-template-columns: 1fr; } .nav { border-right: 0; border-bottom: 1px solid var(--line); } .cols { grid-template-columns: 1fr; } }
+      tr.doc-row { cursor: pointer; }
+      tr.doc-row:hover { background: #f8fbff; }
+      tr.doc-row.active {
+        background: #edf7f5;
+        outline: 2px solid #b8ddd7;
+        outline-offset: -2px;
+      }
+      .col-check { width: 34px; text-align: center; }
+      input[type="checkbox"] { width: 16px; height: 16px; margin: 0; }
+
+      .chip {
+        display: inline-block;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 2px 8px;
+        font-size: 11px;
+        background: #f8f9fa;
+        color: var(--muted);
+      }
+      .chip.ok { border-color: #9fd3cc; background: #e8f5f3; color: #0c4a46; }
+      .chip.warn { border-color: var(--warn-line); background: var(--warn-soft); color: #8d6200; }
+      .chip.bad { border-color: #efc2c2; background: #fff3f3; color: #a83f3f; }
+
+      .batch-bar {
+        margin-top: 10px;
+        border: 1px solid var(--blue-line);
+        border-radius: 10px;
+        background: #f7fbff;
+        padding: 8px;
+        display: none;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .batch-bar.active { display: flex; }
+      .batch-meta { font-size: 12px; color: #34507a; }
+
+      .field-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+      .field {
+        display: grid;
+        gap: 4px;
+        font-size: 12px;
+        color: #2d3548;
+        font-weight: 600;
+      }
+      .field.full { grid-column: 1 / -1; }
+
+      .panel-note {
+        border: 1px dashed #b7c8df;
+        background: #f8fbff;
+        border-radius: 9px;
+        padding: 8px;
+        font-size: 12px;
+        color: #3f5678;
+        margin-top: 10px;
+      }
+
+      .preview-tabs {
+        display: flex;
+        gap: 6px;
+        margin-top: 10px;
+      }
+      .ptab {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #f8f9fa;
+        color: var(--muted);
+        padding: 6px 8px;
+        font-size: 12px;
+      }
+      .ptab.active {
+        border-color: #9fd3cc;
+        background: #e8f5f3;
+        color: #0c4a46;
+        font-weight: 700;
+      }
+      .preview-box {
+        margin-top: 8px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fff;
+        padding: 10px;
+        max-height: 220px;
+        overflow: auto;
+      }
+      .preview-box p {
+        margin: 0 0 8px;
+        font-size: 12px;
+        line-height: 1.45;
+      }
+      .preview-box p:last-child { margin-bottom: 0; }
+      .mono {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 11px;
+        color: #304260;
+      }
+
+      .collapsible-card > summary.card-head {
+        list-style: none;
+        cursor: pointer;
+      }
+      .collapsible-card > summary.card-head::-webkit-details-marker { display: none; }
+      .caret { font-size: 11px; color: var(--muted); transition: transform .16s ease; }
+      .collapsible-card[open] .caret { transform: rotate(180deg); }
+
+      .diag { border: 1px solid var(--line); border-radius: 8px; padding: 8px; background: #fff; font-size: 12px; margin-bottom: 8px; }
+      .diag.warn { border-color: var(--warn-line); background: var(--warn-soft); }
+      .log {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #0d1320;
+        color: #d8e3f5;
+        padding: 9px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 11px;
+        line-height: 1.4;
+        max-height: 140px;
+        overflow: auto;
+      }
+      .log .ok { color: #a8e0c9; }
+      .log .warn { color: #f7d990; }
+
+      @media (max-width: 1140px) {
+        .shell { grid-template-columns: 1fr; }
+        .nav { border-right: 0; border-bottom: 1px solid var(--line); }
+        .workspace { grid-template-columns: 1fr; }
+      }
+      @media (max-width: 700px) {
+        .field-grid { grid-template-columns: 1fr; }
+      }
     </style>
   </head>
   <body>
@@ -55,6 +433,7 @@
       <span>Préparation corpus</span>
       <span class="db">DB: corpus_himyc_2026.db</span>
     </header>
+
     <nav class="proto-nav" aria-label="Navigation maquettes">
       <a href="./index.html">Index</a>
       <a href="./board-vnext.html">Board</a>
@@ -70,56 +449,518 @@
         <a class="tab" href="./prep-import-vnext.html">Importer</a>
         <a class="tab active" href="./prep-documents-vnext.html">Documents</a>
         <a class="tab" href="./prep-actions-vnext.html">Actions</a>
+        <details class="tree-wrap actions-tree" data-actions-tree data-default-open="false">
+          <summary class="tree-summary">Actions disponibles <span class="tree-caret" aria-hidden="true">▾</span></summary>
+          <div class="tree" aria-label="Actions disponibles">
+          <a href="./prep-curation-hub-vnext.html">Curation (hub)</a>
+          <a href="./prep-segmentation-vo-vnext.html">Segmentation</a>
+          <a href="./prep-alignement-vnext.html">Alignement</a>
+          <a href="./prep-actions-vnext.html#audit">Audit</a>
+          <a href="./prep-actions-vnext.html#collisions">Collisions</a>
+        </div>
+        </details>
         <a class="tab" href="./prep-exporter-vnext.html">Exporter</a>
       </aside>
 
       <main class="content">
-        <section class="card">
-          <div class="card-head"><h3>Documents du corpus</h3><span class="muted">12 documents</span></div>
-          <div class="body">
-            <table>
-              <thead><tr><th>ID</th><th>Titre</th><th>Langue</th><th>Rôle</th><th>Unités</th></tr></thead>
-              <tbody>
-                <tr><td>1</td><td>Discours 1793 (FR)</td><td>fr</td><td><span class="chip">source</span></td><td>1,284</td></tr>
-                <tr><td>2</td><td>Speech 1793 (EN)</td><td>en</td><td><span class="chip">target</span></td><td>1,255</td></tr>
-                <tr><td>3</td><td>Annexes (FR)</td><td>fr</td><td><span class="chip">reference</span></td><td>321</td></tr>
-              </tbody>
-            </table>
+        <section class="card head-card">
+          <div>
+            <h1>Documents — édition ciblée + contrôle contenu</h1>
+            <p>Sélection dans la table, édition à droite, mini preview pour vérifier le texte avant de poursuivre.</p>
+          </div>
+          <div class="head-right">
+            <div class="head-actions">
+              <button id="backupBtn" class="btn alt" type="button">Sauvegarder la DB</button>
+              <span id="backupStatus" class="backup-status">Aucune sauvegarde récente</span>
+            </div>
+            <div class="kpis">
+              <span class="kpi">12 docs</span>
+              <span class="kpi ok">9 complets</span>
+              <span class="kpi warn">3 à compléter</span>
+              <span class="kpi warn">1 incohérence import</span>
+            </div>
           </div>
         </section>
 
-        <section class="cols">
+        <section class="workspace">
           <article class="card">
-            <div class="card-head"><h3>Édition métadonnées</h3><span class="muted">doc_id=2</span></div>
+            <div class="card-head">
+              <h2>Table principale</h2>
+              <span class="chip">cliquer une ligne pour éditer</span>
+            </div>
             <div class="body">
-              <table>
-                <tbody>
-                  <tr><th>Titre</th><td>Speech 1793 (EN)</td></tr>
-                  <tr><th>Langue</th><td>en</td></tr>
-                  <tr><th>doc_role</th><td>target</td></tr>
-                  <tr><th>resource_type</th><td>speech</td></tr>
-                </tbody>
+              <div class="tool-row">
+                <input id="docSearch" type="text" placeholder="Rechercher titre/langue/role" aria-label="Recherche document" />
+                <select id="statusFilter" aria-label="Filtre statut">
+                  <option value="all">Tous statuts</option>
+                  <option value="ok">Complet</option>
+                  <option value="todo">À compléter</option>
+                </select>
+                <button class="btn">Réinitialiser filtres</button>
+              </div>
+
+              <table aria-label="Documents du corpus">
+                <thead>
+                  <tr>
+                    <th class="col-check"><input id="selectAll" type="checkbox" aria-label="Sélectionner tout" /></th>
+                    <th>ID</th>
+                    <th>Titre</th>
+                    <th>Langue</th>
+                    <th>Rôle</th>
+                    <th>Statut</th>
+                    <th>Problèmes</th>
+                  </tr>
+                </thead>
+                <tbody id="docsBody"></tbody>
               </table>
-              <div class="btns">
-                <button class="btn">Annuler</button>
-                <button class="btn pri">Enregistrer</button>
+
+              <div id="batchBar" class="batch-bar" aria-live="polite">
+                <div id="batchMeta" class="batch-meta">0 document sélectionné</div>
+                <div class="btns">
+                  <button class="btn">Définir langue</button>
+                  <button class="btn">Définir rôle</button>
+                  <button class="btn alt">Marquer complet</button>
+                </div>
               </div>
             </div>
           </article>
 
           <article class="card">
-            <div class="card-head"><h3>Relations + validation</h3><span class="muted">cohérence</span></div>
+            <div class="card-head">
+              <h2 id="panelTitle">Document sélectionné</h2>
+              <span id="panelBadge" class="chip ok">doc#1</span>
+            </div>
             <div class="body">
-              <p class="muted">Relation active: doc#1 <strong>translates</strong> doc#2</p>
-              <div class="btns">
-                <button class="btn">Ajouter relation</button>
-                <button class="btn">Bulk update rôle</button>
-                <button class="btn pri">Valider métadonnées</button>
+              <div id="singlePanel">
+                <div class="field-grid">
+                  <label class="field full">Titre
+                    <input id="fieldTitle" type="text" />
+                  </label>
+                  <label class="field">Langue
+                    <select id="fieldLang">
+                      <option>fr</option>
+                      <option>en</option>
+                      <option>de</option>
+                      <option>es</option>
+                      <option>ro</option>
+                      <option>el</option>
+                      <option>sv</option>
+                    </select>
+                  </label>
+                  <label class="field">Rôle
+                    <select id="fieldRole">
+                      <option>source (VO)</option>
+                      <option>traduction</option>
+                      <option>annexe / support</option>
+                    </select>
+                  </label>
+                  <label class="field">Type (suggestions + libre)
+                    <input id="fieldType" type="text" list="resourceTypeOptions" />
+                    <datalist id="resourceTypeOptions">
+                      <option value="littérature"></option>
+                      <option value="article"></option>
+                      <option value="discours"></option>
+                      <option value="essai"></option>
+                      <option value="notes"></option>
+                    </datalist>
+                  </label>
+                  <label class="field">Relation VO
+                    <select id="fieldLink">
+                      <option>Aucune</option>
+                      <option>VO: doc#1</option>
+                      <option>VO: doc#4</option>
+                    </select>
+                  </label>
+                </div>
+
+                <div class="btns" style="margin-top:10px">
+                  <button class="btn">Annuler</button>
+                  <button class="btn pri">Enregistrer</button>
+                  <button class="btn alt">Document suivant</button>
+                </div>
+
+                <div class="preview-tabs" aria-label="Prévisualisation document">
+                  <button id="tabPreview" class="ptab active" type="button">Aperçu</button>
+                  <button id="tabSource" class="ptab" type="button">Source</button>
+                </div>
+
+                <div id="previewPane" class="preview-box" aria-label="Mini preview contenu"></div>
+                <div id="sourcePane" class="preview-box mono" aria-label="Source fichier" style="display:none"></div>
+
+                <div class="btns" style="margin-top:10px">
+                  <button class="btn alt">Ouvrir dans Actions</button>
+                  <button class="btn">Ouvrir source</button>
+                </div>
+
+                <div class="panel-note">
+                  Astuce: l'aperçu permet de vérifier rapidement le contenu avant segmentation/curation.
+                </div>
+              </div>
+
+              <div id="multiPanel" style="display:none">
+                <div class="panel-note">
+                  Mode multi-sélection actif. Les champs documentaires individuels sont masqués.
+                  Utilise les actions en lot sous la table pour appliquer des changements groupés.
+                </div>
               </div>
             </div>
           </article>
         </section>
+
+        <details class="card collapsible-card">
+          <summary class="card-head">
+            <h2>Détails techniques import (optionnel)</h2>
+            <span class="caret" aria-hidden="true">▾</span>
+          </summary>
+          <div class="body">
+            <div class="diag">
+              <strong>Routage</strong><br />
+              3 fichiers routés vers doc#1/doc#2/doc#3.
+            </div>
+            <div class="diag warn">
+              <strong>Alerte import</strong><br />
+              <code>appendix_notes.txt</code> détecté en cp1252, vérifier caractères accentués.
+            </div>
+            <div class="diag">
+              <strong>Unicode policy</strong><br />
+              NFC + NBSP/NNBSP -> espace dans <code>text_norm</code>.
+            </div>
+            <div class="log" aria-label="Logs import">
+              <div>[10:42:11] <span class="ok">OK</span> scan sources: 3 fichiers détectés</div>
+              <div>[10:42:13] <span class="ok">OK</span> parse docx_numbered_lines: 1 284 unités</div>
+              <div>[10:42:14] <span class="warn">WARN</span> encoding fallback cp1252: appendix_notes.txt</div>
+              <div>[10:42:18] <span class="ok">OK</span> preflight diagnostics complete</div>
+            </div>
+          </div>
+        </details>
       </main>
     </div>
+
+    <script>
+      (function () {
+        var docs = [
+          {
+            id: 1,
+            title: "Discours 1793 (FR)",
+            lang: "fr",
+            role: "source (VO)",
+            status: "ok",
+            statusLabel: "Complet",
+            issues: "Aucun",
+            type: "discours",
+            link: "Aucune",
+            preview: [
+              "[0001] Dans ce passage de travail, le texte reste continu et non segmenté ; il mélange ponctuation forte.",
+              "[0002] La ligne présente des espaces doubles et une ponctuation fragile : elle reproduit des artefacts.",
+              "[0003] Le texte contient aussi des caractères invisibles et des transitions abruptes."
+            ],
+            sourcePath: "/data/corpus/discours_1793_fr.docx"
+          },
+          {
+            id: 2,
+            title: "Speech 1793 (EN)",
+            lang: "en",
+            role: "traduction",
+            status: "ok",
+            statusLabel: "Complet",
+            issues: "Aucun",
+            type: "discours",
+            link: "VO: doc#1",
+            preview: [
+              "[0001] In this working passage, the text remains continuous and unsegmented; punctuation is dense.",
+              "[0002] The line contains double spaces and fragile punctuation: import artifacts are still visible.",
+              "[0003] Invisible characters may remain and should be normalized before segmentation."
+            ],
+            sourcePath: "/data/corpus/speech_1793_en.docx"
+          },
+          {
+            id: 3,
+            title: "Annexes (FR)",
+            lang: "fr",
+            role: "annexe / support",
+            status: "todo",
+            statusLabel: "À compléter",
+            issues: "Encodage + rôle à valider",
+            type: "notes",
+            link: "Aucune",
+            preview: [
+              "[0001] Notes d'édition importées depuis TXT.",
+              "[0002] Certains caractères typographiques nécessitent une vérification manuelle.",
+              "[0003] Ce document restera non indexé s'il est maintenu en rôle annexe/support."
+            ],
+            sourcePath: "/data/corpus/appendix_notes.txt"
+          },
+          {
+            id: 4,
+            title: "Traduction DE",
+            lang: "de",
+            role: "traduction",
+            status: "todo",
+            statusLabel: "À compléter",
+            issues: "Relation VO manquante",
+            type: "littérature",
+            link: "Aucune",
+            preview: [
+              "[0001] Deutsche Übersetzung, noch ohne VO-Verknüpfung.",
+              "[0002] Segmentierung muss auf VO-Projektion abgestimmt werden.",
+              "[0003] Prüfen Sie Metadaten vor dem Alignment."
+            ],
+            sourcePath: "/data/corpus/trad_de.docx"
+          },
+          {
+            id: 5,
+            title: "Traduction ES",
+            lang: "es",
+            role: "traduction",
+            status: "ok",
+            statusLabel: "Complet",
+            issues: "Aucun",
+            type: "article",
+            link: "VO: doc#1",
+            preview: [
+              "[0001] Traducción española validada para alineamiento.",
+              "[0002] La puntuación y los espacios fueron normalizados.",
+              "[0003] Lista para pasar al módulo de acciones."
+            ],
+            sourcePath: "/data/corpus/trad_es.docx"
+          }
+        ];
+
+        var docsBody = document.getElementById("docsBody");
+        var selectedId = 1;
+        var selectedSet = new Set();
+
+        var panelTitle = document.getElementById("panelTitle");
+        var panelBadge = document.getElementById("panelBadge");
+        var singlePanel = document.getElementById("singlePanel");
+        var multiPanel = document.getElementById("multiPanel");
+
+        var fieldTitle = document.getElementById("fieldTitle");
+        var fieldLang = document.getElementById("fieldLang");
+        var fieldRole = document.getElementById("fieldRole");
+        var fieldType = document.getElementById("fieldType");
+        var fieldLink = document.getElementById("fieldLink");
+
+        var previewPane = document.getElementById("previewPane");
+        var sourcePane = document.getElementById("sourcePane");
+        var tabPreview = document.getElementById("tabPreview");
+        var tabSource = document.getElementById("tabSource");
+
+        var selectAll = document.getElementById("selectAll");
+        var batchBar = document.getElementById("batchBar");
+        var batchMeta = document.getElementById("batchMeta");
+        var docSearch = document.getElementById("docSearch");
+        var statusFilter = document.getElementById("statusFilter");
+        var backupBtn = document.getElementById("backupBtn");
+        var backupStatus = document.getElementById("backupStatus");
+
+        function statusChip(doc) {
+          if (doc.status === "ok") {
+            return '<span class="chip ok">' + doc.statusLabel + "</span>";
+          }
+          return '<span class="chip warn">' + doc.statusLabel + "</span>";
+        }
+
+        function issueChip(doc) {
+          if (doc.issues === "Aucun") {
+            return '<span class="chip ok">Aucun</span>';
+          }
+          return '<span class="chip warn">' + escapeHtml(doc.issues) + "</span>";
+        }
+
+        function escapeHtml(value) {
+          return String(value)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/\"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+        }
+
+        function filteredDocs() {
+          var term = docSearch.value.trim().toLowerCase();
+          var status = statusFilter.value;
+          return docs.filter(function (doc) {
+            if (status !== "all" && doc.status !== status) return false;
+            if (!term) return true;
+            var blob = (doc.title + " " + doc.lang + " " + doc.role).toLowerCase();
+            return blob.includes(term);
+          });
+        }
+
+        function renderTable() {
+          var list = filteredDocs();
+          docsBody.innerHTML = list
+            .map(function (doc) {
+              var checked = selectedSet.has(doc.id) ? " checked" : "";
+              var active = doc.id === selectedId ? " active" : "";
+              return (
+                '<tr class="doc-row' + active + '" data-id="' + doc.id + '">' +
+                '<td class="col-check"><input class="doc-check" type="checkbox" data-id="' + doc.id + '" aria-label="Sélectionner doc ' + doc.id + '"' + checked + ' /></td>' +
+                "<td>" + doc.id + "</td>" +
+                "<td>" + escapeHtml(doc.title) + "</td>" +
+                "<td>" + escapeHtml(doc.lang) + "</td>" +
+                "<td>" + escapeHtml(doc.role) + "</td>" +
+                "<td>" + statusChip(doc) + "</td>" +
+                "<td>" + issueChip(doc) + "</td>" +
+                "</tr>"
+              );
+            })
+            .join("");
+
+          var visibleIds = new Set(list.map(function (d) { return d.id; }));
+          var selectedVisible = Array.from(selectedSet).filter(function (id) {
+            return visibleIds.has(id);
+          });
+          selectAll.checked = list.length > 0 && selectedVisible.length === list.length;
+        }
+
+        function renderPanel() {
+          if (selectedSet.size > 1) {
+            singlePanel.style.display = "none";
+            multiPanel.style.display = "block";
+            panelTitle.textContent = "Mode multi-sélection";
+            panelBadge.textContent = selectedSet.size + " docs";
+            panelBadge.className = "chip warn";
+          } else {
+            singlePanel.style.display = "block";
+            multiPanel.style.display = "none";
+            var doc = docs.find(function (d) { return d.id === selectedId; }) || docs[0];
+            if (!doc) return;
+            panelTitle.textContent = "Document sélectionné";
+            panelBadge.textContent = "doc#" + doc.id;
+            panelBadge.className = doc.status === "ok" ? "chip ok" : "chip warn";
+
+            fieldTitle.value = doc.title;
+            fieldLang.value = doc.lang;
+            fieldRole.value = doc.role;
+            fieldType.value = doc.type;
+            fieldLink.value = doc.link;
+
+            previewPane.innerHTML = doc.preview
+              .map(function (line) { return "<p>" + escapeHtml(line) + "</p>"; })
+              .join("");
+            sourcePane.innerHTML =
+              "<div>Source: " + escapeHtml(doc.sourcePath) + "</div>" +
+              "<div>\n-- aperçu brut simplifié --\n</div>" +
+              doc.preview
+                .map(function (line) { return "<div>" + escapeHtml(line) + "</div>"; })
+                .join("");
+          }
+        }
+
+        function renderBatch() {
+          if (selectedSet.size > 1) {
+            batchBar.classList.add("active");
+            batchMeta.textContent = selectedSet.size + " documents sélectionnés";
+          } else if (selectedSet.size === 1) {
+            batchBar.classList.remove("active");
+            batchMeta.textContent = "1 document sélectionné";
+          } else {
+            batchBar.classList.remove("active");
+            batchMeta.textContent = "0 document sélectionné";
+          }
+        }
+
+        function sync() {
+          renderTable();
+          renderPanel();
+          renderBatch();
+        }
+
+        docsBody.addEventListener("click", function (event) {
+          var checkbox = event.target.closest(".doc-check");
+          if (checkbox) {
+            var id = Number(checkbox.getAttribute("data-id"));
+            if (checkbox.checked) selectedSet.add(id);
+            else selectedSet.delete(id);
+            if (selectedSet.size === 1) selectedId = id;
+            sync();
+            return;
+          }
+
+          var row = event.target.closest("tr.doc-row");
+          if (!row) return;
+          var id = Number(row.getAttribute("data-id"));
+          selectedId = id;
+          if (selectedSet.size <= 1) {
+            selectedSet.clear();
+            selectedSet.add(id);
+          }
+          sync();
+        });
+
+        selectAll.addEventListener("change", function () {
+          var list = filteredDocs();
+          if (selectAll.checked) {
+            list.forEach(function (doc) { selectedSet.add(doc.id); });
+            if (list[0]) selectedId = list[0].id;
+          } else {
+            list.forEach(function (doc) { selectedSet.delete(doc.id); });
+            if (selectedSet.size === 0 && docs[0]) {
+              selectedId = docs[0].id;
+              selectedSet.add(selectedId);
+            }
+          }
+          sync();
+        });
+
+        docSearch.addEventListener("input", sync);
+        statusFilter.addEventListener("change", sync);
+
+        tabPreview.addEventListener("click", function () {
+          tabPreview.classList.add("active");
+          tabSource.classList.remove("active");
+          previewPane.style.display = "block";
+          sourcePane.style.display = "none";
+        });
+
+        tabSource.addEventListener("click", function () {
+          tabSource.classList.add("active");
+          tabPreview.classList.remove("active");
+          sourcePane.style.display = "block";
+          previewPane.style.display = "none";
+        });
+
+        backupBtn.addEventListener("click", function () {
+          backupBtn.disabled = true;
+          backupBtn.textContent = "Sauvegarde en cours...";
+          window.setTimeout(function () {
+            var now = new Date();
+            var hh = String(now.getHours()).padStart(2, "0");
+            var mm = String(now.getMinutes()).padStart(2, "0");
+            var ss = String(now.getSeconds()).padStart(2, "0");
+            backupStatus.textContent =
+              "Dernière sauvegarde: " + hh + ":" + mm + ":" + ss + " (.db.bak)";
+            backupStatus.classList.add("ok");
+            backupBtn.disabled = false;
+            backupBtn.textContent = "Sauvegarder la DB";
+          }, 650);
+        });
+
+        selectedSet.add(selectedId);
+        sync();
+      })();
+    </script>
+  <script>
+  (function () {
+    var tree = document.querySelector("[data-actions-tree]");
+    if (!tree) return;
+    var key = "agrafes.prep.actionsTreeOpen";
+    try {
+      var saved = window.localStorage.getItem(key);
+      if (saved === "1" || saved === "0") {
+        tree.open = saved === "1";
+      } else {
+        tree.open = tree.getAttribute("data-default-open") === "true";
+      }
+      tree.addEventListener("toggle", function () {
+        window.localStorage.setItem(key, tree.open ? "1" : "0");
+      });
+    } catch (_err) {
+      tree.open = tree.getAttribute("data-default-open") === "true";
+    }
+  })();
+</script>
   </body>
 </html>

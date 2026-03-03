@@ -808,13 +808,16 @@
         <a class="tab" href="./prep-import-vnext.html">Importer</a>
         <a class="tab" href="./prep-documents-vnext.html">Documents</a>
         <a class="tab active" href="./prep-actions-vnext.html">Actions</a>
-        <div class="tree" aria-label="Sous-sections Actions">
+        <details class="tree-wrap actions-tree" data-actions-tree data-default-open="true">
+          <summary class="tree-summary">Actions disponibles <span class="tree-caret" aria-hidden="true">▾</span></summary>
+          <div class="tree" aria-label="Actions disponibles">
           <a href="./prep-curation-hub-vnext.html">Curation (hub)</a>
           <a class="active" href="#">Segmentation (pilotée VO)</a>
-          <a href="#">Alignement</a>
+          <a href="./prep-alignement-vnext.html">Alignement</a>
           <a href="#">Audit</a>
           <a href="#">Collisions</a>
         </div>
+        </details>
         <a class="tab" href="./prep-exporter-vnext.html">Exporter</a>
       </aside>
       <aside class="left-rail" aria-label="Rouvrir sections">
@@ -1761,5 +1764,25 @@
         }
       })();
     </script>
+  <script>
+  (function () {
+    var tree = document.querySelector("[data-actions-tree]");
+    if (!tree) return;
+    var key = "agrafes.prep.actionsTreeOpen";
+    try {
+      var saved = window.localStorage.getItem(key);
+      if (saved === "1" || saved === "0") {
+        tree.open = saved === "1";
+      } else {
+        tree.open = tree.getAttribute("data-default-open") === "true";
+      }
+      tree.addEventListener("toggle", function () {
+        window.localStorage.setItem(key, tree.open ? "1" : "0");
+      });
+    } catch (_err) {
+      tree.open = tree.getAttribute("data-default-open") === "true";
+    }
+  })();
+</script>
   </body>
 </html>

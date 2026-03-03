@@ -133,6 +133,34 @@
         border-color: #cfe8e3;
         background: #f6fbfa;
       }
+      .tree-wrap {
+        margin: -2px 0 8px;
+      }
+      .tree-summary {
+        list-style: none;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border: 1px solid #cfe8e3;
+        border-radius: 8px;
+        padding: 7px 8px;
+        font-size: 12px;
+        font-weight: 700;
+        color: #0c4a46;
+        background: #edf7f5;
+      }
+      .tree-summary::-webkit-details-marker {
+        display: none;
+      }
+      .tree-caret {
+        font-size: 11px;
+        color: var(--muted);
+        transition: transform .16s ease;
+      }
+      .tree-wrap[open] .tree-caret {
+        transform: rotate(180deg);
+      }
 
       .content {
         padding: 14px;
@@ -428,13 +456,16 @@
         <a class="tab" href="./prep-import-vnext.html">Importer</a>
         <a class="tab" href="./prep-documents-vnext.html">Documents</a>
         <a class="tab active" href="./prep-actions-vnext.html">Actions</a>
-        <div class="tree" aria-label="Sous-sections Actions">
+        <details class="tree-wrap actions-tree" data-actions-tree data-default-open="true">
+          <summary class="tree-summary">Actions disponibles <span class="tree-caret" aria-hidden="true">▾</span></summary>
+          <div class="tree" aria-label="Actions disponibles">
           <a class="active" href="./prep-curation-hub-vnext.html">Curation (hub)</a>
           <a href="./prep-segmentation-vo-vnext.html">Segmentation</a>
-          <a href="#">Alignement</a>
+          <a href="./prep-alignement-vnext.html">Alignement</a>
           <a href="#">Audit</a>
           <a href="#">Collisions</a>
         </div>
+        </details>
         <a class="tab" href="./prep-exporter-vnext.html">Exporter</a>
       </aside>
 
@@ -451,6 +482,7 @@
             <span class="pill">Mode "édition contrôlée"</span>
             <a class="head-link" href="./prep-curation-hub-vnext.html">Ouvrir hub curation</a>
             <a class="head-link" href="./prep-segmentation-vo-vnext.html">Voir segmentation VO</a>
+            <a class="head-link" href="./prep-alignement-vnext.html">Voir alignement</a>
             <a class="head-link" href="./prep-actions-longtext-vnext.html">Voir scénario grand texte</a>
           </div>
         </section>
@@ -552,5 +584,25 @@
         </section>
       </main>
     </div>
+  <script>
+  (function () {
+    var tree = document.querySelector("[data-actions-tree]");
+    if (!tree) return;
+    var key = "agrafes.prep.actionsTreeOpen";
+    try {
+      var saved = window.localStorage.getItem(key);
+      if (saved === "1" || saved === "0") {
+        tree.open = saved === "1";
+      } else {
+        tree.open = tree.getAttribute("data-default-open") === "true";
+      }
+      tree.addEventListener("toggle", function () {
+        window.localStorage.setItem(key, tree.open ? "1" : "0");
+      });
+    } catch (_err) {
+      tree.open = tree.getAttribute("data-default-open") === "true";
+    }
+  })();
+</script>
   </body>
 </html>

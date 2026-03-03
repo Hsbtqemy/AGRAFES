@@ -1,0 +1,725 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Prototype visuel AGRAFES: Constituer — Alignement (V-next)."
+    />
+    <link rel="icon" href="./favicon.ico" />
+    <title>Constituer — Alignement (V-next)</title>
+    <style>
+      :root {
+        --bg: #f0f2f5;
+        --card: #fff;
+        --line: #dde1e8;
+        --text: #1a1a2e;
+        --muted: #4f5d6d;
+        --accent: #0f766e;
+        --accent-soft: #e8f5f3;
+        --link-bg: #eaf1fb;
+        --link-line: #b7c8df;
+        --link-text: #1e4a80;
+        --warn-soft: #fff7e6;
+        --warn-line: #edd89e;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+      }
+      .top {
+        height: 54px;
+        background: linear-gradient(135deg, #0c4a46, #0f766e);
+        color: #fff;
+        border-bottom: 1px solid #0c4a46;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 0 14px;
+      }
+      .top strong { letter-spacing: .02em; }
+      .db {
+        margin-left: auto;
+        font-size: 12px;
+        border: 1px solid rgba(255,255,255,.34);
+        border-radius: 999px;
+        padding: 4px 10px;
+        background: rgba(255,255,255,.13);
+      }
+
+      .proto-nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 8px 14px;
+        border-bottom: 1px solid var(--line);
+        background: #fff;
+      }
+      .proto-nav a {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 7px 12px;
+        font-size: 13px;
+        color: var(--muted);
+        text-decoration: none;
+        background: #f8f9fa;
+      }
+      .proto-nav a.active {
+        color: #0c4a46;
+        border-color: #9fd3cc;
+        background: #e8f5f3;
+        font-weight: 700;
+      }
+
+      .shell {
+        display: grid;
+        grid-template-columns: 230px 1fr;
+        min-height: calc(100vh - 54px);
+      }
+      .nav {
+        border-right: 1px solid var(--line);
+        background: #f8f9fa;
+        padding: 12px;
+      }
+      .nav h2 {
+        margin: 0 0 10px;
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: .07em;
+        color: var(--muted);
+      }
+      .tab {
+        width: 100%;
+        text-align: left;
+        border: 1px solid transparent;
+        border-radius: 8px;
+        padding: 10px;
+        background: transparent;
+        color: var(--text);
+        font-size: 14px;
+        margin-bottom: 6px;
+        display: block;
+        text-decoration: none;
+      }
+      .tab.active {
+        background: var(--accent-soft);
+        border-color: #9fd3cc;
+        color: #0c4a46;
+        font-weight: 700;
+      }
+      .tree {
+        margin: -2px 0 8px 8px;
+        padding-left: 10px;
+        border-left: 2px solid #cfe8e3;
+        display: grid;
+        gap: 4px;
+      }
+      .tree a {
+        display: block;
+        text-decoration: none;
+        font-size: 12px;
+        color: var(--muted);
+        border: 1px solid transparent;
+        border-radius: 7px;
+        padding: 6px 8px;
+      }
+      .tree a.active {
+        background: #f0faf8;
+        border-color: #9fd3cc;
+        color: #0c4a46;
+        font-weight: 700;
+      }
+      .tree a:hover {
+        border-color: #cfe8e3;
+        background: #f6fbfa;
+      }
+      .tree-wrap {
+        margin: -2px 0 8px;
+      }
+      .tree-summary {
+        list-style: none;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border: 1px solid #cfe8e3;
+        border-radius: 8px;
+        padding: 7px 8px;
+        font-size: 12px;
+        font-weight: 700;
+        color: #0c4a46;
+        background: #edf7f5;
+      }
+      .tree-summary::-webkit-details-marker {
+        display: none;
+      }
+      .tree-caret {
+        font-size: 11px;
+        color: var(--muted);
+        transition: transform .16s ease;
+      }
+      .tree-wrap[open] .tree-caret {
+        transform: rotate(180deg);
+      }
+
+      .content {
+        padding: 14px;
+        display: grid;
+        gap: 12px;
+        align-content: start;
+      }
+      .card {
+        border: 1px solid var(--line);
+        background: var(--card);
+        border-radius: 12px;
+        overflow: hidden;
+      }
+      .head-card {
+        padding: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      .head-card h1 { margin: 0; font-size: 20px; }
+      .head-card p { margin: 5px 0 0; font-size: 13px; color: var(--muted); }
+      .head-tools {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      .pill {
+        border: 1px solid #9fd3cc;
+        background: #e8f5f3;
+        color: #0c4a46;
+        border-radius: 999px;
+        font-size: 11px;
+        padding: 3px 8px;
+        font-weight: 700;
+      }
+      .head-link {
+        border: 1px solid var(--link-line);
+        background: var(--link-bg);
+        color: var(--link-text);
+        border-radius: 999px;
+        padding: 4px 9px;
+        font-size: 12px;
+        text-decoration: none;
+        font-weight: 600;
+      }
+
+      .workspace {
+        display: grid;
+        grid-template-columns: minmax(330px, .95fr) minmax(520px, 1.4fr);
+        gap: 12px;
+        align-items: start;
+      }
+      .col {
+        min-width: 0;
+        display: grid;
+        gap: 10px;
+      }
+
+      .card-head {
+        background: #f8f9fa;
+        border-bottom: 1px solid var(--line);
+        padding: 10px 12px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .card-head h2 {
+        margin: 0;
+        font-size: 14px;
+      }
+      .body {
+        padding: 12px;
+        display: grid;
+        gap: 10px;
+      }
+      .row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+      .f {
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        background: #fff;
+        padding: 8px;
+        font-size: 12px;
+      }
+      .f strong {
+        display: block;
+        margin-bottom: 4px;
+        color: #2b3246;
+      }
+      .f select,
+      .f input {
+        width: 100%;
+        border: 1px solid #c7d3e7;
+        border-radius: 8px;
+        background: #fff;
+        color: var(--text);
+        padding: 7px 8px;
+        font-size: 13px;
+        font-family: inherit;
+      }
+      .f.full { grid-column: 1 / -1; }
+
+      .doc-list {
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        padding: 8px;
+        background: #fff;
+        display: grid;
+        gap: 6px;
+      }
+      .doc-list label {
+        display: flex;
+        gap: 7px;
+        align-items: center;
+        font-size: 13px;
+      }
+      .target-row {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fafbfc;
+        padding: 7px 8px;
+      }
+      .target-main {
+        display: flex;
+        gap: 7px;
+        align-items: center;
+      }
+      .target-meta {
+        margin-left: 25px;
+        margin-top: 4px;
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .mini-chip {
+        display: inline-block;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 2px 7px;
+        font-size: 10px;
+        font-weight: 700;
+      }
+      .mini-chip.ok {
+        border-color: #9fd3cc;
+        background: #e8f5f3;
+        color: #0c4a46;
+      }
+      .mini-chip.warn {
+        border-color: var(--warn-line);
+        background: var(--warn-soft);
+        color: #8d6200;
+      }
+      .mini-chip.bad {
+        border-color: #efc2c2;
+        background: #fff3f3;
+        color: #a83f3f;
+      }
+
+      .btns {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .btn {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #f8f9fa;
+        color: var(--text);
+        padding: 8px 10px;
+        font-size: 13px;
+        font-weight: 600;
+      }
+      .btn.pri {
+        border-color: #0f766e;
+        background: #0f766e;
+        color: #fff;
+      }
+      .btn.alt {
+        border-color: var(--link-line);
+        background: var(--link-bg);
+        color: var(--link-text);
+      }
+
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(100px, 1fr));
+        gap: 8px;
+      }
+      .stat {
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        background: #fff;
+        padding: 9px;
+      }
+      .stat .label {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: .06em;
+        color: var(--muted);
+      }
+      .stat .value {
+        margin-top: 4px;
+        font-size: 17px;
+        font-weight: 700;
+        color: #1f2a44;
+      }
+
+      .toolbar {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      .chip {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: #f8f9fa;
+        color: var(--muted);
+        padding: 5px 9px;
+        font-size: 12px;
+        font-weight: 600;
+      }
+      .chip.active {
+        border-color: #9fd3cc;
+        background: #e8f5f3;
+        color: #0c4a46;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+      }
+      th, td {
+        border: 1px solid var(--line);
+        padding: 7px 8px;
+        text-align: left;
+        vertical-align: top;
+      }
+      th { background: #f8f9fa; }
+      .status {
+        display: inline-block;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 2px 8px;
+        font-size: 11px;
+        font-weight: 700;
+      }
+      .status.ok {
+        border-color: #9fd3cc;
+        background: #e8f5f3;
+        color: #0c4a46;
+      }
+      .status.warn {
+        border-color: var(--warn-line);
+        background: var(--warn-soft);
+        color: #8d6200;
+      }
+      .status.bad {
+        border-color: #efc2c2;
+        background: #fff3f3;
+        color: #a83f3f;
+      }
+
+      .diag {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 8px;
+        background: #fff;
+        font-size: 12px;
+      }
+      .diag strong {
+        display: block;
+        margin-bottom: 3px;
+      }
+      .diag.warn {
+        border-color: var(--warn-line);
+        background: var(--warn-soft);
+      }
+
+      .note {
+        border: 1px dashed #b7c8df;
+        background: #f8fbff;
+        color: #3f5678;
+        border-radius: 9px;
+        padding: 8px;
+        font-size: 12px;
+      }
+
+      @media (max-width: 1140px) {
+        .shell { grid-template-columns: 1fr; }
+        .nav { border-right: 0; border-bottom: 1px solid var(--line); }
+        .workspace { grid-template-columns: 1fr; }
+      }
+      @media (max-width: 760px) {
+        .row,
+        .stats { grid-template-columns: 1fr 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="top">
+      <strong>Constituer</strong>
+      <span>Préparation corpus</span>
+      <span class="db">DB: corpus_himyc_2026.db</span>
+    </header>
+
+    <nav class="proto-nav" aria-label="Navigation maquettes">
+      <a href="./index.html">Index</a>
+      <a href="./board-vnext.html">Board</a>
+      <a href="./shell-vnext.html">Home</a>
+      <a href="./explorer-vnext.html">Explorer</a>
+      <a class="active" href="./prep-vnext.html">Constituer</a>
+      <a href="./publish-vnext.html">Publier</a>
+    </nav>
+
+    <div class="shell">
+      <aside class="nav">
+        <h2>Sections</h2>
+        <a class="tab" href="./prep-import-vnext.html">Importer</a>
+        <a class="tab" href="./prep-documents-vnext.html">Documents</a>
+        <a class="tab active" href="./prep-actions-vnext.html">Actions</a>
+        <details class="tree-wrap actions-tree" data-actions-tree data-default-open="true">
+          <summary class="tree-summary">Actions disponibles <span class="tree-caret" aria-hidden="true">▾</span></summary>
+          <div class="tree" aria-label="Actions disponibles">
+            <a href="./prep-curation-hub-vnext.html">Curation (hub)</a>
+            <a href="./prep-segmentation-vo-vnext.html">Segmentation</a>
+            <a class="active" href="./prep-alignement-vnext.html">Alignement</a>
+            <a href="./prep-actions-vnext.html#audit">Audit</a>
+            <a href="./prep-actions-vnext.html#collisions">Collisions</a>
+          </div>
+        </details>
+        <a class="tab" href="./prep-exporter-vnext.html">Exporter</a>
+      </aside>
+
+      <main class="content">
+        <section class="card head-card">
+          <div>
+            <h1>Alignement — pilotage simple + contrôle rapide</h1>
+            <p>
+              Configuration à gauche, aperçu des paires au centre, indicateurs de qualité visibles en continu.
+            </p>
+          </div>
+          <div class="head-tools">
+            <span class="pill">mode comparaison VO</span>
+            <a class="head-link" href="./prep-segmentation-vo-vnext.html">Retour Segmentation</a>
+            <a class="head-link" href="./prep-actions-vnext.html#audit">Ouvrir Audit</a>
+          </div>
+        </section>
+
+        <section class="workspace">
+          <div class="col">
+            <article class="card">
+              <div class="card-head">
+                <h2>Paramètres d'alignement</h2>
+                <span class="pill">document courant</span>
+              </div>
+              <div class="body">
+                <div class="row">
+                  <div class="f">
+                    <strong>Document pivot (VO)</strong>
+                    <select>
+                      <option selected>doc#1 — Discours 1793 (fr)</option>
+                      <option>doc#4 — Traité 1801 (fr)</option>
+                    </select>
+                  </div>
+                  <div class="f">
+                    <strong>Stratégie</strong>
+                    <select id="strategySelect">
+                      <option value="hybrid" selected>Auto (ancres puis position)</option>
+                      <option value="external">Ancres uniquement</option>
+                      <option value="position">Position uniquement</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="f full">
+                  <strong>Alignement ciblé (documents à traiter)</strong>
+                  <div class="doc-list">
+                    <div class="target-row">
+                      <label class="target-main"><input type="checkbox" checked /> Anglais — Speech 1793 <span class="mini-chip ok">prêt</span></label>
+                      <div class="target-meta">doc#2 · segmentation OK · relation VO définie</div>
+                    </div>
+                    <div class="target-row">
+                      <label class="target-main"><input type="checkbox" checked /> Espagnol — Traducción 1793 <span class="mini-chip ok">prêt</span></label>
+                      <div class="target-meta">doc#5 · segmentation OK · relation VO définie</div>
+                    </div>
+                    <div class="target-row">
+                      <label class="target-main"><input type="checkbox" checked /> Allemand — Übersetzung 1793 <span class="mini-chip warn">à vérifier</span></label>
+                      <div class="target-meta">doc#6 · 3 segments longs détectés avant alignement</div>
+                    </div>
+                    <div class="target-row">
+                      <label class="target-main"><input type="checkbox" /> Roumain — Traducere 1793 <span class="mini-chip bad">non prêt</span></label>
+                      <div class="target-meta">doc#8 · segmentation incomplète (12 coupures manquantes)</div>
+                    </div>
+                  </div>
+                  <div class="note" style="margin-top:8px">
+                    Les documents « non prêts » restent décochés par défaut pour éviter des faux alignements.
+                  </div>
+                </div>
+
+                <div class="row">
+                  <div class="f">
+                    <strong>Portée</strong>
+                    <select>
+                      <option selected>Document sélectionné</option>
+                      <option>VO + traductions cochées</option>
+                    </select>
+                  </div>
+                  <div class="f">
+                    <strong>Sortie attendue</strong>
+                    <select>
+                      <option selected>Proposition + validation manuelle</option>
+                      <option>Application immédiate</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="btns">
+                  <button class="btn">Réinitialiser</button>
+                  <button class="btn alt">Prévisualiser alignement</button>
+                  <button class="btn pri">Lancer alignement</button>
+                </div>
+
+                <div id="strategyHint" class="note">
+                  Auto: tente les ancres (numérotation) puis comble les trous par position.
+                </div>
+              </div>
+            </article>
+
+            <article class="card">
+              <div class="card-head"><h2>Qualité rapide</h2><span class="pill">après preview</span></div>
+              <div class="body">
+                <div class="stats" id="statsBox">
+                  <div class="stat"><div class="label">Couverture</div><div class="value" data-stat="coverage">92%</div></div>
+                  <div class="stat"><div class="label">Orphelins</div><div class="value" data-stat="orphans">11</div></div>
+                  <div class="stat"><div class="label">Collisions</div><div class="value" data-stat="collisions">4</div></div>
+                  <div class="stat"><div class="label">A revoir</div><div class="value" data-stat="review">8</div></div>
+                </div>
+                <div class="diag warn">
+                  <strong>Point d'attention</strong>
+                  3 segments VO longs produisent des splits en EN/DE. Vérifier avant validation globale.
+                </div>
+              </div>
+            </article>
+          </div>
+
+          <div class="col">
+            <article class="card">
+              <div class="card-head">
+                <h2>Aperçu des paires alignées</h2>
+                <span class="pill">page 1/3</span>
+              </div>
+              <div class="body">
+                <div class="toolbar">
+                  <span class="chip active">Tous</span>
+                  <span class="chip">OK</span>
+                  <span class="chip">A revoir</span>
+                  <span class="chip">Orphelins</span>
+                  <button class="btn" style="margin-left:auto">Charger plus</button>
+                </div>
+
+                <table aria-label="Paires alignées">
+                  <thead>
+                    <tr>
+                      <th>Segment VO</th>
+                      <th>Traduction</th>
+                      <th>Langue</th>
+                      <th>Statut</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>[0041] Le passage conserve une ponctuation forte ; la cadence reste longue.</td>
+                      <td>[0041] The passage keeps strong punctuation; rhythm remains long.</td>
+                      <td>EN</td>
+                      <td><span class="status ok">OK</span></td>
+                    </tr>
+                    <tr>
+                      <td>[0042] La proposition suivante introduit deux idées dans la même phrase.</td>
+                      <td>[0042a] Der folgende Satz trägt zwei Ideen...<br />[0042b] ...und verlangt eine manuelle Prüfung.</td>
+                      <td>DE</td>
+                      <td><span class="status warn">A revoir</span></td>
+                    </tr>
+                    <tr>
+                      <td>[0043] Le texte mentionne une citation avec ponctuation mixte.</td>
+                      <td>—</td>
+                      <td>RO</td>
+                      <td><span class="status bad">Orphelin</span></td>
+                    </tr>
+                    <tr>
+                      <td>[0044] Les transitions sont courtes et s'alignent bien sur la VO.</td>
+                      <td>[0044] Las transiciones son breves y se alinean bien con el original.</td>
+                      <td>ES</td>
+                      <td><span class="status ok">OK</span></td>
+                    </tr>
+                  </tbody>
+                </table>
+
+                <div class="btns">
+                  <button class="btn alt">Ouvrir audit détaillé</button>
+                  <button class="btn">Marquer sélection à revoir</button>
+                  <button class="btn pri">Valider ces alignements</button>
+                </div>
+              </div>
+            </article>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script>
+      (function () {
+        var tree = document.querySelector("[data-actions-tree]");
+        if (tree) {
+          var key = "agrafes.prep.actionsTreeOpen";
+          try {
+            var saved = window.localStorage.getItem(key);
+            if (saved === "1" || saved === "0") {
+              tree.open = saved === "1";
+            } else {
+              tree.open = tree.getAttribute("data-default-open") === "true";
+            }
+            tree.addEventListener("toggle", function () {
+              window.localStorage.setItem(key, tree.open ? "1" : "0");
+            });
+          } catch (_err) {
+            tree.open = tree.getAttribute("data-default-open") === "true";
+          }
+        }
+
+        var strategySelect = document.getElementById("strategySelect");
+        var strategyHint = document.getElementById("strategyHint");
+        var stats = {
+          hybrid: { coverage: "92%", orphans: "11", collisions: "4", review: "8", hint: "Auto: tente les ancres (numérotation) puis comble les trous par position." },
+          external: { coverage: "79%", orphans: "26", collisions: "2", review: "15", hint: "Ancres uniquement: plus strict, mais laisse plus d'orphelins si la numérotation diverge." },
+          position: { coverage: "95%", orphans: "6", collisions: "9", review: "13", hint: "Position uniquement: couvre plus, mais augmente les cas à vérifier (risque de faux positifs)." }
+        };
+
+        if (strategySelect && strategyHint) {
+          strategySelect.addEventListener("change", function () {
+            var mode = stats[strategySelect.value] || stats.hybrid;
+            strategyHint.textContent = mode.hint;
+            document.querySelector('[data-stat="coverage"]').textContent = mode.coverage;
+            document.querySelector('[data-stat="orphans"]').textContent = mode.orphans;
+            document.querySelector('[data-stat="collisions"]').textContent = mode.collisions;
+            document.querySelector('[data-stat="review"]').textContent = mode.review;
+          });
+        }
+      })();
+    </script>
+  </body>
+</html>

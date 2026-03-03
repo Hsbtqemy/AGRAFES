@@ -32,6 +32,38 @@
       .nav h2 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
       .tab { width: 100%; text-align: left; border: 1px solid transparent; border-radius: 8px; padding: 10px; background: transparent; color: var(--text); font-size: 14px; margin-bottom: 6px; display: block; text-decoration: none; }
       .tab.active { background: var(--accent-soft); border-color: #9fd3cc; color: #0c4a46; font-weight: 700; }
+      .tree { margin: -2px 0 8px 8px; padding-left: 10px; border-left: 2px solid #cfe8e3; display: grid; gap: 4px; }
+      .tree a { display: block; text-decoration: none; font-size: 12px; color: var(--muted); border: 1px solid transparent; border-radius: 7px; padding: 6px 8px; }
+      .tree a.active { background: #f0faf8; border-color: #9fd3cc; color: #0c4a46; font-weight: 700; }
+      .tree a:hover { border-color: #cfe8e3; background: #f6fbfa; }
+      .tree-wrap {
+        margin: -2px 0 8px;
+      }
+      .tree-summary {
+        list-style: none;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border: 1px solid #cfe8e3;
+        border-radius: 8px;
+        padding: 7px 8px;
+        font-size: 12px;
+        font-weight: 700;
+        color: #0c4a46;
+        background: #edf7f5;
+      }
+      .tree-summary::-webkit-details-marker {
+        display: none;
+      }
+      .tree-caret {
+        font-size: 11px;
+        color: var(--muted);
+        transition: transform .16s ease;
+      }
+      .tree-wrap[open] .tree-caret {
+        transform: rotate(180deg);
+      }
       .content { padding: 14px; display: grid; gap: 12px; align-content: start; }
       .card { border: 1px solid var(--line); background: var(--card); border-radius: 12px; overflow: hidden; }
       .card-head { background: #f8f9fa; border-bottom: 1px solid var(--line); padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; }
@@ -70,6 +102,16 @@
         <a class="tab" href="./prep-import-vnext.html">Importer</a>
         <a class="tab" href="./prep-documents-vnext.html">Documents</a>
         <a class="tab" href="./prep-actions-vnext.html">Actions</a>
+        <details class="tree-wrap actions-tree" data-actions-tree data-default-open="false">
+          <summary class="tree-summary">Actions disponibles <span class="tree-caret" aria-hidden="true">▾</span></summary>
+          <div class="tree" aria-label="Actions disponibles">
+            <a href="./prep-curation-hub-vnext.html">Curation (hub)</a>
+            <a href="./prep-segmentation-vo-vnext.html">Segmentation</a>
+            <a href="./prep-alignement-vnext.html">Alignement</a>
+            <a href="./prep-actions-vnext.html#audit">Audit</a>
+            <a href="./prep-actions-vnext.html#collisions">Collisions</a>
+          </div>
+        </details>
         <a class="tab active" href="./prep-exporter-vnext.html">Exporter</a>
       </aside>
 
@@ -112,5 +154,25 @@
         </section>
       </main>
     </div>
+  <script>
+  (function () {
+    var tree = document.querySelector("[data-actions-tree]");
+    if (!tree) return;
+    var key = "agrafes.prep.actionsTreeOpen";
+    try {
+      var saved = window.localStorage.getItem(key);
+      if (saved === "1" || saved === "0") {
+        tree.open = saved === "1";
+      } else {
+        tree.open = tree.getAttribute("data-default-open") === "true";
+      }
+      tree.addEventListener("toggle", function () {
+        window.localStorage.setItem(key, tree.open ? "1" : "0");
+      });
+    } catch (_err) {
+      tree.open = tree.getAttribute("data-default-open") === "true";
+    }
+  })();
+</script>
   </body>
 </html>
