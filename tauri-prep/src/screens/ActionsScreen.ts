@@ -141,6 +141,7 @@ export class ActionsScreen {
   private _hasPendingPreview = false;
   private _lastErrorMsg: string | null = null;
   private _lastAuditEmpty = false;
+  private _previewDebounceHandle: number | null = null;
 
   render(): HTMLElement {
     const root = document.createElement("div");
@@ -150,7 +151,7 @@ export class ActionsScreen {
       <h2 class="screen-title">Actions corpus</h2>
 
       <!-- ═══ WORKFLOW ALIGNEMENT GUIDÉ ═══ -->
-      <section class="card workflow-section" id="wf-section" style="border:2px solid var(--accent,#1a7f4e)">
+      <section class="card workflow-section" id="wf-section" data-collapsible="true" data-collapsed-default="true" style="border:2px solid var(--accent,#1a7f4e)">
         <h3 style="margin-bottom:0.75rem">🔄 Workflow Alignement guidé
           <span style="font-size:0.75rem;font-weight:400;color:#6c757d;margin-left:0.5rem">
             Suivez les 5 étapes dans l'ordre
@@ -235,7 +236,7 @@ export class ActionsScreen {
       </section>
 
       <!-- Runtime UX state -->
-      <section class="card">
+      <section class="card" data-collapsible="true" data-collapsed-default="true">
         <h3>État de session</h3>
         <div id="act-state-banner" class="runtime-state state-info" aria-live="polite">
           En attente de connexion sidecar…
@@ -243,7 +244,7 @@ export class ActionsScreen {
       </section>
 
       <!-- Documents -->
-      <section class="card">
+      <section class="card" data-collapsible="true" data-collapsed-default="true">
         <h3>Documents du corpus</h3>
         <div class="btn-row">
           <button id="act-reload-docs" class="btn btn-secondary">Rafraîchir</button>
@@ -254,6 +255,7 @@ export class ActionsScreen {
       <!-- ═══ FEATURE 1: Curation Preview Diff ═══ -->
       <section class="card" id="act-curate-card">
         <h3>Curation <span class="badge-preview">avec prévisualisation</span></h3>
+        <p class="hint">Prévisualisation active: la comparaison se met à jour automatiquement lors des changements de preset/document.</p>
 
         <div class="form-row">
           <label>Preset :
@@ -276,7 +278,7 @@ export class ActionsScreen {
         </div>
 
         <div class="btn-row" style="margin-top:0.75rem">
-          <button id="act-preview-btn" class="btn btn-secondary" disabled>Prévisualiser</button>
+          <button id="act-preview-btn" class="btn btn-secondary" disabled>Recalculer preview</button>
           <button id="act-curate-btn" class="btn btn-warning" disabled>Appliquer</button>
         </div>
 
@@ -304,10 +306,10 @@ export class ActionsScreen {
           </label>
           <label>Pack :
             <select id="act-seg-pack">
-              <option value="auto">auto (recommandé)</option>
-              <option value="fr_strict">fr_strict</option>
-              <option value="en_strict">en_strict</option>
-              <option value="default">default</option>
+              <option value="auto">Auto multicorpus (recommandé)</option>
+              <option value="fr_strict">Français strict</option>
+              <option value="en_strict">Anglais strict</option>
+              <option value="default">Standard</option>
             </select>
           </label>
         </div>
@@ -415,7 +417,7 @@ export class ActionsScreen {
       </section>
 
       <!-- ═══ FEATURE 3: Align Quality Metrics ═══ -->
-      <section class="card">
+      <section class="card" data-collapsible="true" data-collapsed-default="true">
         <h3>Qualité alignement <span class="badge-preview">métriques</span></h3>
         <p class="hint">Calculer les métriques de couverture et d'orphelins pour une paire pivot↔cible.</p>
         <div class="form-row">
@@ -433,7 +435,7 @@ export class ActionsScreen {
       </section>
 
       <!-- ═══ FEATURE 4: Collision resolver (V1.5) ═══ -->
-      <section class="card" id="act-collision-card">
+      <section class="card" id="act-collision-card" data-collapsible="true" data-collapsed-default="true">
         <h3>Collisions d'alignement <span class="badge-preview">résolution</span></h3>
         <p class="hint">Un pivot ayant plusieurs liens vers le même document cible est une collision. Résolvez-les ici.</p>
         <div class="form-row">
@@ -454,7 +456,7 @@ export class ActionsScreen {
       </section>
 
       <!-- Validate meta -->
-      <section class="card">
+      <section class="card" data-collapsible="true" data-collapsed-default="true">
         <h3>Validation métadonnées</h3>
         <div class="form-row">
           <label>Document :
@@ -467,7 +469,7 @@ export class ActionsScreen {
       </section>
 
       <!-- FTS index -->
-      <section class="card">
+      <section class="card" data-collapsible="true" data-collapsed-default="true">
         <h3>Index FTS</h3>
         <div class="btn-row">
           <button id="act-index-btn" class="btn btn-secondary" disabled>Reconstruire l'index</button>
@@ -475,7 +477,7 @@ export class ActionsScreen {
       </section>
 
       <!-- ═══ Rapport de runs ═══ -->
-      <section class="card">
+      <section class="card" data-collapsible="true" data-collapsed-default="true">
         <h3>Rapport de runs <span class="badge-preview">export</span></h3>
         <p class="hint">Exporter l'historique des runs (import, alignement, curation…) en HTML ou JSONL.</p>
         <div class="form-row">
@@ -520,7 +522,10 @@ export class ActionsScreen {
       const v = (e.target as HTMLSelectElement).value;
       (root.querySelector("#act-custom-rules-wrap") as HTMLElement).style.display =
         v === "custom" ? "" : "none";
+      this._schedulePreview(true);
     });
+    root.querySelector("#act-curate-doc")!.addEventListener("change", () => this._schedulePreview(true));
+    root.querySelector("#act-curate-rules")!.addEventListener("input", () => this._schedulePreview(true));
 
     // Curate
     root.querySelector("#act-preview-btn")!.addEventListener("click", () => this._runPreview());
@@ -601,6 +606,7 @@ export class ActionsScreen {
     // ── Workflow ──────────────────────────────────────────────────
     this._wfRoot = root;
     this._initWorkflow(root);
+    this._initSectionAccordions(root);
 
     return root;
   }
@@ -731,6 +737,70 @@ export class ActionsScreen {
     });
   }
 
+  private _schedulePreview(silent = false): void {
+    if (!this._conn || this._isBusy) return;
+    if (this._previewDebounceHandle !== null) {
+      window.clearTimeout(this._previewDebounceHandle);
+    }
+    this._previewDebounceHandle = window.setTimeout(() => {
+      this._previewDebounceHandle = null;
+      void this._runPreview(silent);
+    }, 260);
+  }
+
+  private _initSectionAccordions(root: HTMLElement): void {
+    const sections = Array.from(root.querySelectorAll<HTMLElement>("section.card[data-collapsible='true']"));
+    for (const section of sections) {
+      const heading = section.querySelector<HTMLElement>(":scope > h3");
+      if (!heading) continue;
+      if (heading.querySelector(".acc-toggle")) continue;
+
+      const body = document.createElement("div");
+      body.className = "acc-body";
+      let node = heading.nextSibling;
+      while (node) {
+        const next = node.nextSibling;
+        body.appendChild(node);
+        node = next;
+      }
+      section.appendChild(body);
+
+      heading.classList.add("acc-head");
+      heading.tabIndex = 0;
+      heading.setAttribute("role", "button");
+
+      const toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.className = "acc-toggle";
+      toggle.setAttribute("aria-label", "Ouvrir ou fermer");
+      toggle.innerHTML = `<span class="acc-caret">▾</span>`;
+      heading.appendChild(toggle);
+
+      const applyState = (collapsed: boolean) => {
+        section.classList.toggle("is-collapsed", collapsed);
+        heading.setAttribute("aria-expanded", String(!collapsed));
+      };
+
+      const initialCollapsed = section.dataset.collapsedDefault === "true";
+      applyState(initialCollapsed);
+
+      const toggleCollapsed = () => applyState(!section.classList.contains("is-collapsed"));
+      heading.addEventListener("click", (evt) => {
+        if ((evt.target as HTMLElement).closest(".acc-toggle")) return;
+        toggleCollapsed();
+      });
+      heading.addEventListener("keydown", (evt) => {
+        if (evt.key !== "Enter" && evt.key !== " ") return;
+        evt.preventDefault();
+        toggleCollapsed();
+      });
+      toggle.addEventListener("click", (evt) => {
+        evt.stopPropagation();
+        toggleCollapsed();
+      });
+    }
+  }
+
   private _currentRules(): CurateRule[] {
     const preset = (document.querySelector("#act-preset-sel") as HTMLSelectElement)?.value ?? "spaces";
     if (preset === "custom") {
@@ -807,16 +877,16 @@ export class ActionsScreen {
 
   // ─── Feature 1: Curation Preview ─────────────────────────────────────────
 
-  private async _runPreview(): Promise<void> {
+  private async _runPreview(silent = false): Promise<void> {
     if (!this._conn) return;
     const docId = this._currentCurateDocId();
     if (docId === undefined) {
-      this._log("Sélectionnez un document pour la prévisualisation.", true);
+      if (!silent) this._log("Sélectionnez un document pour la prévisualisation.", true);
       return;
     }
     const rules = this._currentRules();
     if (rules.length === 0) {
-      this._log("Aucune règle de curation configurée.", true);
+      if (!silent) this._log("Aucune règle de curation configurée.", true);
       return;
     }
 
@@ -849,7 +919,9 @@ export class ActionsScreen {
       this._log(`Prévisualisation : ${changed}/${total} unités → ${reps} remplacements.`);
     } catch (err) {
       this._hasPendingPreview = false;
-      this._log(`✗ Prévisualisation : ${err instanceof SidecarError ? err.message : String(err)}`, true);
+      if (!silent) {
+        this._log(`✗ Prévisualisation : ${err instanceof SidecarError ? err.message : String(err)}`, true);
+      }
     }
     this._setBusy(false);
     this._refreshRuntimeState();
