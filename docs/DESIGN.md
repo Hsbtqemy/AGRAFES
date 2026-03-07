@@ -2,6 +2,10 @@
 
 Document de référence pour le design de l’application AGRAFES (shell + modules Explorer, Constituer, Publier). À utiliser avant toute évolution visuelle ou refonte de disposition.
 
+Note d'état runtime (2026-03): le shell expose actuellement deux onglets principaux (`Explorer`, `Constituer`). `Publier` reste un module de design/workflow (carte d'entrée + direction produit), sans onglet shell actif à ce stade.
+
+Last updated: 2026-03-06
+
 L’analyse détaillée du design actuel (padding, onglets, scroll, inventaire des zones) est dans **DESIGN_ANALYSIS.md**.
 
 ---
@@ -146,6 +150,80 @@ Les états (hover, active, disabled, focus) et les variantes (taille, danger) se
 ## 10. Références
 
 - **DESIGN_ANALYSIS.md** : analyse du design actuel (padding, onglets, sidecar, scroll, inventaire des zones), problèmes identifiés et pistes.
+- **UX_FLOW_PREP.md** : règles de navigation et branchements UX pour `tauri-prep` (document courant vs batch, fin de flux).
 - **Shell** : `tauri-shell/src/shell.ts` (CSS et structure du header, home, modals).
 - **Explorer** : `tauri-app/src/app.ts` (topbar, toolbar, results, statusbar).
 - **Constituer** : `tauri-prep/src/app.ts` (topbar, tabbar, écrans).
+
+---
+
+## 11. Directives spécifiques Prep (vNext maquettes)
+
+Ces règles complètent les sections précédentes et servent de base pour passer des maquettes à l'implémentation.
+
+### 11.1 Architecture visuelle Prep
+
+- Étapes Prep de référence (workflow): `Projet`, `Import`, `Documents`, `Actions`, `Exports`.
+- Tabbar runtime actuelle (`tauri-prep`): `Importer`, `Documents`, `Actions`, `Exporter`.
+- Les opérations `Projet` (ouvrir/créer DB, état sidecar, handoff) sont portées par la topbar et l'écran d'entrée, pas par un onglet dédié.
+- Le panneau `Sections` dans `Actions` reste visible, repliable, et stable entre sous-vues.
+- Les sous-vues principales restent orientées tâche: `Curation`, `Segmentation`, `Alignement`.
+- `Audit avancé` est une destination secondaire (action explicite depuis Alignement), pas une section dominante permanente.
+
+### 11.2 Curation (orientation "preview centrale")
+
+- La zone centrale est dédiée à la vérification continue (`texte brut` vs `proposition`).
+- Les options de normalisation simples sont actionnables en cases à cocher, avec prévisualisation immédiate.
+- Les outils avancés (rechercher/remplacer, options fines) restent repliés par défaut.
+- Le langage UI évite les termes techniques ambigus (`fallback`, jargon interne).
+
+### 11.3 Segmentation (parité natif/traduction)
+
+- La segmentation traduction conserve la même logique de lecture que la segmentation native (repères visuels identiques).
+- Le panneau paramètres est à gauche; la preview segmentée est centrale.
+- Les actions manuelles (`Couper`, `Fusionner`, `Délier`) sont regroupées dans le flux principal de correction.
+- Le bouton primaire `Valider ce document` reste lisible et séparé des actions batch.
+
+### 11.4 Alignement (run + revue + correction)
+
+- Vue cible: setup run compact + liste alignée exploitable + focus correction sur segment actif.
+- Les signaux de qualité ne reposent pas uniquement sur la couleur (badge + icône + libellé).
+- Les actions structurelles affichent une confirmation explicite.
+- Un contrôle `Recalcul global` existe et reste distinct des retouches locales.
+- État d'implémentation actuel: `tauri-prep` conserve encore un mode "workflow guidé + audit intégré" dans `Actions`; les maquettes vNext servent de cible de simplification.
+
+### 11.5 Exports (V2 UX)
+
+- La sélection des documents et la configuration de sortie vivent dans le même flux visuel.
+- La "source des données" (étape workflow) et le "type/format de sortie" restent des choix séparés.
+- Formulation recommandée pour éviter l'ambiguïté:
+  - `Jeu de données à exporter` (curation/segmentation/alignement/publication),
+  - puis `Produit de sortie` (tableau/texte/package),
+  - puis `Format fichier` (CSV/TSV/ZIP TEI, etc.).
+- Les options TEI (profil + contenu package) sont intégrées dans le même panneau Export (pas de bloc séparé).
+- L'historique des runs est replié par défaut pour ne pas détourner l'attention de l'action d'export.
+- Les formats non encore implémentés sont visibles comme tels (pas de faux positifs UX).
+- État actuel runtime: export “texte lisible” branché en `TXT` + `DOCX`; garder `XLSX` et `DOC` legacy marqués “à implémenter”.
+
+### 11.6 Règles transverses UX
+
+- État de sauvegarde toujours explicite (`non enregistré`, `enregistré`, `erreur`).
+- Garde de sortie en cas de modifications non enregistrées.
+- Focus clavier et activation au header des panneaux repliables.
+- Le libellé des actions est orienté utilisateur final, pas moteur interne.
+
+---
+
+## 12. Gates avant implémentation UI finale (Prep)
+
+Avant câblage final, vérifier la checklist de fermeture dans `docs/UX_FLOW_PREP.md` section:
+`Checklist de verrouillage (design -> implementation)`.
+
+Points bloquants à fermer:
+
+1. `Definition Done` explicite par onglet.
+2. Frontière Alignement vs Audit validée.
+3. Politique de sauvegarde / sortie / erreurs validée.
+4. Politique de recalcul global vs retouches manuelles validée.
+5. Contrat Export V2 (réel vs backlog) validé.
+6. Validation bout-en-bout sur corpus réaliste effectuée.

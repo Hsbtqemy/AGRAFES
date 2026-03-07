@@ -1,6 +1,6 @@
 # Roadmap — multicorpus_engine
 
-Last updated: 2026-03-01 (Shell App V0.3: metadata panel + demo onboarding + include_explain toggle)
+Last updated: 2026-03-06 (Prep UX checklist closure + docs sync)
 
 ## Current state (implemented)
 
@@ -55,7 +55,7 @@ Last updated: 2026-03-01 (Shell App V0.3: metadata panel + demo onboarding + inc
   - V0.3: curation preview (dry-run diff + stats banner) + align audit (paginated link table).
   - V0.4: metadata panel (per-doc edit + bulk edit + relations + validate), exports (TEI/CSV/run report), align manual correction (accept/reject/delete/retarget per link). 162 tests passing.
   - V0.5: Job Center panel (async enqueue for all long ops) + contract freeze (OpenAPI snapshot + docs sync tests). 189 tests passing.
-  - V0.6: “Open in Concordancier” helpers in Project screen (copy DB path, short modal instructions, fallback manual copy field).
+  - V0.6: “Open in Concordancier” helpers in topbar flow (copy/URI handoff, short instructions, fallback manual open).
   - V0.6.1: segmentation quality pack selector in Actions screen (`auto`, `default`, `fr_strict`, `en_strict`) wired to sidecar `/segment` + job enqueue.
   - V0.7: align strategy `external_id_then_position` (hybrid fallback) wired in sidecar + jobs + Actions screen.
   - V0.8: align explainability option (`debug_align`) for `/align` and align jobs; Actions screen logs per-strategy debug sources/stats.
@@ -67,6 +67,12 @@ Last updated: 2026-03-01 (Shell App V0.3: metadata panel + demo onboarding + inc
   - **V1.3 (Sprint 1.3)**: `/align/links/batch_update` — multi-select accept/reject/delete in ActionsScreen.
   - **V1.4 (Sprint 1.4)**: `/align/retarget_candidates` (read, no token) + retarget modal in ActionsScreen. CONTRACT_VERSION=1.2.0. 11 tests → 248 total.
   - **V1.5 (Sprint 1.5)**: `/align/collisions` + `/align/collisions/resolve` — collision resolver. CONTRACT_VERSION=1.3.0. 19 tests → 267 total. ActionsScreen V1.5 collision card.
+  - **V1.6 (UX finalization hook)**: persisted document workflow status for Prep (`draft|review|validated`) via migration 005 + `/documents` and `/documents/update` extensions.
+  - `tauri-prep` Documents tab now exposes the workflow state directly (badge in doc list + status selector + quick action "Valider ce document").
+  - `tauri-prep` Actions tab now includes a persisted "Après validation" routing choice (`Documents` / `Document suivant` / `Rester sur place`) for segmentation finalization.
+  - `tauri-prep` Documents tab now includes `Sauvegarder la DB` (sidecar `POST /db/backup`, timestamped `.db.bak` output + status/log feedback).
+  - `tauri-prep` Exporter now exposes a unified V2 flow card (`jeu de données → produit → format`) with dynamic options and one launch action, including readable text exports (`TXT`/`DOCX`).
+- Deep-link handoff implemented from `tauri-prep` to unified shell: `agrafes-shell://open-db?mode=explorer&path=...` (startup + runtime listener, fallback manual open).
 - **Concordancier V1.0 (Sprint 2.1)**: IntersectionObserver sentinel — auto load-more on scroll.
 - **Concordancier V1.1 (Sprints 2.2/2.3)**: Query builder (phrase/and/or/near) + FTS safety guards + parallel KWIC 2-column layout.
 - **Concordancier V2.4 (Sprint 2.4)**: Virtualised hits list — CSS content-visibility + JS DOM cap (VIRT_DOM_CAP=150).
@@ -86,7 +92,6 @@ Last updated: 2026-03-01 (Shell App V0.3: metadata panel + demo onboarding + inc
 
 - Concordancier V1: corpus metadata panel (title/lang/role/resource_type/unit count side panel).
 - Concordancier V1: demo corpus (bundled small multilingual fixture for first-run onboarding).
-- Prep V1: include_explain toggle in audit UI (backend ready at V1.2).
 - Sidecar release hardening: macOS notarization, Windows signing with production certs.
 - Localhost security policy for sidecar HTTP (token rotation/scope/threat model).
 - Performance: FTS benchmarks and documented tuning profile (WAL, batch sizes, vacuum/analyze cadence).

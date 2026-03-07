@@ -10,9 +10,6 @@
 import type { Conn } from "../lib/sidecarClient.ts";
 import {
   listDocuments,
-  exportTei,
-  exportAlignCsv,
-  exportRunReport,
   enqueueJob,
   getJob,
   type DocumentRecord,
@@ -34,6 +31,15 @@ export class ExportsScreen {
   private _pkgDocSelEl!: HTMLSelectElement;
   private _pivotSelEl!: HTMLSelectElement;
   private _targetSelEl!: HTMLSelectElement;
+  private _v2DocSelEl!: HTMLSelectElement;
+  private _v2StageEl!: HTMLSelectElement;
+  private _v2ProductEl!: HTMLSelectElement;
+  private _v2FormatEl!: HTMLSelectElement;
+  private _v2PivotEl!: HTMLSelectElement;
+  private _v2TargetEl!: HTMLSelectElement;
+  private _v2RunIdEl!: HTMLInputElement;
+  private _v2StrictEl!: HTMLInputElement;
+  private _v2RunBtn!: HTMLButtonElement;
 
   setJobCenter(jc: JobCenter, showToast: (msg: string, isError?: boolean) => void): void {
     this._jobCenter = jc;
@@ -52,6 +58,103 @@ export class ExportsScreen {
 
     root.innerHTML = `
       <h2 class="screen-title">Exporter</h2>
+
+      <!-- Unified V2 Export Flow -->
+      <div class="card">
+        <h3>Flux export V2 <span class="badge-preview">recommandé</span></h3>
+        <p class="hint">Ordre recommandé: 1) jeu de données, 2) produit de sortie, 3) format fichier, puis lancer.</p>
+        <div class="form-row">
+          <label>Documents
+            <select id="v2-doc-sel" multiple style="height:90px;min-width:220px">
+              <option value="__all__" selected>— Tous les documents —</option>
+            </select>
+          </label>
+          <label>Jeu de données
+            <select id="v2-stage" style="min-width:190px">
+              <option value="alignment" selected>Alignement</option>
+              <option value="publication">Publication</option>
+              <option value="segmentation">Segmentation</option>
+              <option value="curation">Curation</option>
+              <option value="runs">Historique des runs</option>
+              <option value="qa">Rapport QA</option>
+            </select>
+          </label>
+          <label>Produit de sortie
+            <select id="v2-product" style="min-width:220px"></select>
+          </label>
+          <label>Format fichier
+            <select id="v2-format" style="min-width:180px"></select>
+          </label>
+        </div>
+
+        <div id="v2-tei-options" class="form-row" style="margin-top:0.4rem;display:none">
+          <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.84rem;cursor:pointer;align-self:flex-end">
+            <input id="v2-tei-include-structure" type="checkbox" />
+            Inclure unités structurelles (<code>&lt;head&gt;</code>)
+          </label>
+          <label>Relation inter-documents (info)
+            <select id="v2-tei-relation-type" style="min-width:180px">
+              <option value="none">Aucune</option>
+              <option value="translation_of">translation_of</option>
+              <option value="excerpt_of">excerpt_of</option>
+            </select>
+          </label>
+        </div>
+
+        <div id="v2-align-options" class="form-row" style="margin-top:0.4rem;display:none">
+          <label>Pivot (optionnel)
+            <select id="v2-align-pivot" style="min-width:170px">
+              <option value="">— tous —</option>
+            </select>
+          </label>
+          <label>Cible (optionnel)
+            <select id="v2-align-target" style="min-width:170px">
+              <option value="">— tous —</option>
+            </select>
+          </label>
+          <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.84rem;cursor:pointer;align-self:flex-end">
+            <input id="v2-align-exceptions-only" type="checkbox" />
+            Exceptions uniquement (placeholder)
+          </label>
+        </div>
+
+        <div id="v2-package-options" class="form-row" style="margin-top:0.4rem;display:none">
+          <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.84rem;cursor:pointer;align-self:flex-end">
+            <input id="v2-pkg-include-structure" type="checkbox" />
+            Inclure unités structurelles
+          </label>
+          <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.84rem;cursor:pointer;align-self:flex-end">
+            <input id="v2-pkg-include-alignment" type="checkbox" />
+            Inclure alignements acceptés
+          </label>
+          <label>Profil TEI
+            <select id="v2-pkg-tei-profile" style="min-width:210px">
+              <option value="generic">Generic</option>
+              <option value="parcolab_like">ParCoLab-like (enrichi)</option>
+              <option value="parcolab_strict">ParCoLab strict (expert)</option>
+            </select>
+          </label>
+        </div>
+
+        <div id="v2-run-options" class="form-row" style="margin-top:0.4rem;display:none">
+          <label>run_id (optionnel)
+            <input id="v2-run-id" type="text" placeholder="ex: sidecar-align-..." style="min-width:280px"/>
+          </label>
+        </div>
+
+        <div id="v2-qa-options" class="form-row" style="margin-top:0.4rem;display:none">
+          <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.84rem;cursor:pointer;align-self:flex-end">
+            <input type="checkbox" id="v2-qa-strict-mode">
+            Politique QA : Strict
+          </label>
+        </div>
+
+        <div id="v2-pending-hint" style="display:none;margin-top:0.45rem;font-size:0.83rem;padding:0.4rem 0.6rem;background:#fff3cd;border-radius:4px;border:1px solid #ffe69c;color:#8a6116"></div>
+        <div id="v2-summary-hint" class="hint" style="margin-top:0.45rem"></div>
+        <div class="btn-row" style="margin-top:0.6rem">
+          <button id="v2-run-btn" class="btn btn-primary btn-sm" disabled>Choisir destination et lancer…</button>
+        </div>
+      </div>
 
       <!-- TEI Export -->
       <div class="card">
@@ -204,7 +307,19 @@ export class ExportsScreen {
     this._pkgDocSelEl = root.querySelector<HTMLSelectElement>("#pkg-doc-sel")!;
     this._pivotSelEl = root.querySelector<HTMLSelectElement>("#align-csv-pivot")!;
     this._targetSelEl = root.querySelector<HTMLSelectElement>("#align-csv-target")!;
+    this._v2DocSelEl = root.querySelector<HTMLSelectElement>("#v2-doc-sel")!;
+    this._v2StageEl = root.querySelector<HTMLSelectElement>("#v2-stage")!;
+    this._v2ProductEl = root.querySelector<HTMLSelectElement>("#v2-product")!;
+    this._v2FormatEl = root.querySelector<HTMLSelectElement>("#v2-format")!;
+    this._v2PivotEl = root.querySelector<HTMLSelectElement>("#v2-align-pivot")!;
+    this._v2TargetEl = root.querySelector<HTMLSelectElement>("#v2-align-target")!;
+    this._v2RunIdEl = root.querySelector<HTMLInputElement>("#v2-run-id")!;
+    this._v2StrictEl = root.querySelector<HTMLInputElement>("#v2-qa-strict-mode")!;
+    this._v2RunBtn = root.querySelector<HTMLButtonElement>("#v2-run-btn")!;
 
+    root.querySelector("#v2-run-btn")!.addEventListener("click", () => this._runUnifiedExport());
+    root.querySelector("#v2-stage")!.addEventListener("change", () => this._syncV2Ui());
+    root.querySelector("#v2-product")!.addEventListener("change", () => this._syncV2Ui());
     root.querySelector("#tei-export-btn")!.addEventListener("click", () => this._runTeiExport());
     root.querySelector("#pkg-export-btn")!.addEventListener("click", () => this._runPackageExport());
     root.querySelector("#align-csv-btn")!.addEventListener("click", () => this._runAlignCsvExport());
@@ -216,15 +331,26 @@ export class ExportsScreen {
       const notice = root.querySelector<HTMLElement>("#pkg-strict-notice");
       if (notice) notice.style.display = (e.target as HTMLSelectElement).value === "parcolab_strict" ? "block" : "none";
     });
+    root.querySelector("#v2-pkg-tei-profile")?.addEventListener("change", (e) => {
+      const hint = root.querySelector<HTMLElement>("#v2-summary-hint");
+      if (!hint) return;
+      const strict = (e.target as HTMLSelectElement).value === "parcolab_strict";
+      if (strict) {
+        hint.textContent = "Profil strict: peut bloquer l’export si des métadonnées sont incomplètes.";
+      } else {
+        this._syncV2Ui();
+      }
+    });
 
     this._refreshDocs();
+    this._syncV2Ui();
     return root;
   }
 
   // ── Doc refresh ─────────────────────────────────────────────────────────────
 
   private async _refreshDocs(): Promise<void> {
-    const teiBtns = this._root.querySelectorAll<HTMLButtonElement>("#tei-export-btn, #pkg-export-btn, #align-csv-btn, #report-export-btn, #qa-report-btn");
+    const teiBtns = this._root.querySelectorAll<HTMLButtonElement>("#v2-run-btn, #tei-export-btn, #pkg-export-btn, #align-csv-btn, #report-export-btn, #qa-report-btn");
     if (!this._conn) {
       teiBtns.forEach(b => b.disabled = true);
       return;
@@ -236,16 +362,21 @@ export class ExportsScreen {
     }
     teiBtns.forEach(b => (b.disabled = false));
     this._renderDocOptions();
+    this._syncV2Ui();
   }
 
   private _renderDocOptions(): void {
+    const allOption = (): HTMLOptionElement => {
+      const o = document.createElement("option");
+      o.value = "__all__";
+      o.textContent = "— Tous les documents —";
+      o.selected = true;
+      return o;
+    };
+
     // TEI multi-select
-    const allOption = document.createElement("option");
-    allOption.value = "__all__";
-    allOption.textContent = "— Tous les documents —";
-    allOption.selected = true;
     this._docSelEl.innerHTML = "";
-    this._docSelEl.appendChild(allOption);
+    this._docSelEl.appendChild(allOption());
     for (const d of this._docs) {
       const opt = document.createElement("option");
       opt.value = String(d.doc_id);
@@ -254,12 +385,8 @@ export class ExportsScreen {
     }
 
     // Package multi-select
-    const allOptionPkg = document.createElement("option");
-    allOptionPkg.value = "__all__";
-    allOptionPkg.textContent = "— Tous les documents —";
-    allOptionPkg.selected = true;
     this._pkgDocSelEl.innerHTML = "";
-    this._pkgDocSelEl.appendChild(allOptionPkg);
+    this._pkgDocSelEl.appendChild(allOption());
     for (const d of this._docs) {
       const opt = document.createElement("option");
       opt.value = String(d.doc_id);
@@ -267,8 +394,18 @@ export class ExportsScreen {
       this._pkgDocSelEl.appendChild(opt);
     }
 
+    // V2 multi-select
+    this._v2DocSelEl.innerHTML = "";
+    this._v2DocSelEl.appendChild(allOption());
+    for (const d of this._docs) {
+      const opt = document.createElement("option");
+      opt.value = String(d.doc_id);
+      opt.textContent = `#${d.doc_id} ${d.title} (${d.language})`;
+      this._v2DocSelEl.appendChild(opt);
+    }
+
     // Align CSV pivot/target selects
-    const emptyOpt = () => {
+    const emptyOpt = (): HTMLOptionElement => {
       const o = document.createElement("option");
       o.value = "";
       o.textContent = "— tous —";
@@ -286,6 +423,395 @@ export class ExportsScreen {
       const ot = op.cloneNode(true) as HTMLOptionElement;
       this._pivotSelEl.appendChild(op);
       this._targetSelEl.appendChild(ot);
+    }
+
+    this._v2PivotEl.innerHTML = "";
+    this._v2PivotEl.appendChild(emptyOpt());
+    this._v2TargetEl.innerHTML = "";
+    this._v2TargetEl.appendChild(emptyOpt());
+    for (const d of this._docs) {
+      const label = `#${d.doc_id} ${d.title}`;
+      const op = document.createElement("option");
+      op.value = String(d.doc_id);
+      op.textContent = label;
+      const ot = op.cloneNode(true) as HTMLOptionElement;
+      this._v2PivotEl.appendChild(op);
+      this._v2TargetEl.appendChild(ot);
+    }
+  }
+
+  // ── Unified V2 export flow ─────────────────────────────────────────────────
+
+  private _selectedDocIds(selectEl: HTMLSelectElement): number[] | undefined {
+    const selected = Array.from(selectEl.selectedOptions).map(o => o.value);
+    if (selected.length === 0 || selected.includes("__all__")) return undefined;
+    const ids = selected.map(v => Number(v)).filter(v => Number.isInteger(v) && v > 0);
+    return ids.length > 0 ? ids : undefined;
+  }
+
+  private _setSelectOptions(
+    selectEl: HTMLSelectElement,
+    options: Array<{ value: string; label: string }>,
+    preferred?: string,
+  ): string {
+    const current = preferred ?? selectEl.value;
+    selectEl.innerHTML = "";
+    for (const opt of options) {
+      const o = document.createElement("option");
+      o.value = opt.value;
+      o.textContent = opt.label;
+      selectEl.appendChild(o);
+    }
+    const exists = options.some(o => o.value === current);
+    selectEl.value = exists ? current : options[0]?.value ?? "";
+    return selectEl.value;
+  }
+
+  private _syncV2Ui(): void {
+    if (!this._root) return;
+
+    const stage = this._v2StageEl.value;
+    const productByStage: Record<string, Array<{ value: string; label: string; pending?: boolean }>> = {
+      alignment: [
+        { value: "aligned_table", label: "Tableau segments alignés" },
+        { value: "tei_xml", label: "TEI XML (documents sélectionnés)" },
+      ],
+      publication: [
+        { value: "tei_package", label: "Package publication TEI (ZIP)" },
+      ],
+      segmentation: [
+        { value: "tei_xml", label: "TEI XML (segments validés)" },
+        { value: "readable_text", label: "Texte lisible" },
+      ],
+      curation: [
+        { value: "tei_xml", label: "TEI XML (texte revu)" },
+        { value: "readable_text", label: "Texte lisible" },
+      ],
+      runs: [
+        { value: "run_report", label: "Rapport des runs" },
+      ],
+      qa: [
+        { value: "qa_report", label: "Rapport QA corpus" },
+      ],
+    };
+
+    const products = productByStage[stage] ?? productByStage.alignment;
+    const product = this._setSelectOptions(
+      this._v2ProductEl,
+      products.map(p => ({ value: p.value, label: p.label })),
+    );
+    const productMeta = products.find(p => p.value === product);
+    const productPending = Boolean(productMeta?.pending);
+
+    const formatByProduct: Record<string, Array<{ value: string; label: string; pending?: boolean }>> = {
+      aligned_table: [
+        { value: "csv", label: "CSV" },
+        { value: "tsv", label: "TSV" },
+      ],
+      tei_xml: [
+        { value: "tei_dir", label: "Dossier TEI (un fichier/doc)" },
+      ],
+      tei_package: [
+        { value: "zip", label: "ZIP" },
+      ],
+      run_report: [
+        { value: "jsonl", label: "JSONL" },
+        { value: "html", label: "HTML" },
+      ],
+      qa_report: [
+        { value: "json", label: "JSON" },
+        { value: "html", label: "HTML" },
+      ],
+      readable_text: [
+        { value: "txt", label: "TXT" },
+        { value: "docx", label: "DOCX" },
+      ],
+    };
+    const formats = formatByProduct[product] ?? [];
+    const format = this._setSelectOptions(
+      this._v2FormatEl,
+      formats.map(f => ({ value: f.value, label: f.label })),
+    );
+    const formatPending = Boolean(formats.find(f => f.value === format)?.pending);
+    const isPending = productPending || formatPending;
+
+    const teiOptions = this._root.querySelector<HTMLElement>("#v2-tei-options");
+    const alignOptions = this._root.querySelector<HTMLElement>("#v2-align-options");
+    const pkgOptions = this._root.querySelector<HTMLElement>("#v2-package-options");
+    const runOptions = this._root.querySelector<HTMLElement>("#v2-run-options");
+    const qaOptions = this._root.querySelector<HTMLElement>("#v2-qa-options");
+    const pendingHint = this._root.querySelector<HTMLElement>("#v2-pending-hint");
+    const summaryHint = this._root.querySelector<HTMLElement>("#v2-summary-hint");
+
+    if (teiOptions) teiOptions.style.display = product === "tei_xml" ? "flex" : "none";
+    if (alignOptions) alignOptions.style.display = product === "aligned_table" ? "flex" : "none";
+    if (pkgOptions) pkgOptions.style.display = product === "tei_package" ? "flex" : "none";
+    if (runOptions) runOptions.style.display = product === "run_report" ? "flex" : "none";
+    if (qaOptions) qaOptions.style.display = product === "qa_report" ? "flex" : "none";
+
+    if (pendingHint) {
+      if (isPending) {
+        pendingHint.style.display = "block";
+        pendingHint.textContent = "Ce couple produit/format est prévu en V2, mais n'est pas encore branché côté moteur.";
+      } else {
+        pendingHint.style.display = "none";
+      }
+    }
+    if (summaryHint) {
+      const stageLabel = this._v2StageEl.selectedOptions[0]?.textContent ?? stage;
+      const productLabel = this._v2ProductEl.selectedOptions[0]?.textContent ?? product;
+      const formatLabel = this._v2FormatEl.selectedOptions[0]?.textContent ?? format;
+      summaryHint.textContent = `Sélection courante: ${stageLabel} → ${productLabel} → ${formatLabel}.`;
+    }
+    this._v2RunBtn.disabled = !this._conn || isPending;
+  }
+
+  private async _runUnifiedExport(): Promise<void> {
+    if (!this._conn) return;
+
+    const product = this._v2ProductEl.value;
+    const format = this._v2FormatEl.value;
+    if (product.startsWith("pending_") || format.endsWith("_pending")) {
+      this._showToast?.("Format non implémenté pour le moment", true);
+      return;
+    }
+
+    const doc_ids = this._selectedDocIds(this._v2DocSelEl);
+    this._v2RunBtn.disabled = true;
+    let keepDisabledUntilCallback = false;
+
+    try {
+      if (product === "tei_xml") {
+        const outDir = await open({ directory: true, title: "Choisir le dossier de sortie TEI" });
+        if (!outDir || typeof outDir !== "string") return;
+        const includeStructure = (this._root.querySelector<HTMLInputElement>("#v2-tei-include-structure")?.checked) ?? false;
+        const relationType = (this._root.querySelector<HTMLSelectElement>("#v2-tei-relation-type")?.value) ?? "none";
+        const params: Record<string, unknown> = { out_dir: outDir, include_structure: includeStructure };
+        if (doc_ids) params.doc_ids = doc_ids;
+
+        this._log(`Export V2 TEI → ${outDir} (${doc_ids?.length ?? this._docs.length} doc(s))…`);
+        const job = await enqueueJob(this._conn, "export_tei", params);
+        if (this._jobCenter) {
+          keepDisabledUntilCallback = true;
+          this._jobCenter.trackJob(job.job_id, `Export V2 TEI`, (done) => {
+            if (done.status === "done") {
+              const r = done.result as { count?: number; files_created?: string[] } | undefined;
+              this._log(`✓ Export TEI terminé (${r?.count ?? 0} fichier(s))${relationType !== "none" ? ` · relation: ${relationType}` : ""}`);
+              this._showToast?.(`✓ Export TEI (${r?.count ?? 0})`);
+            } else {
+              this._log(`Erreur export V2 TEI: ${done.error ?? done.status}`, true);
+              this._showToast?.("✗ Erreur export TEI", true);
+            }
+            this._v2RunBtn.disabled = false;
+            this._syncV2Ui();
+          });
+        } else {
+          this._log(`Job ${job.job_id} soumis (suivi asynchrone indisponible).`);
+          this._showToast?.("✓ Job export TEI soumis");
+        }
+        return;
+      }
+
+      if (product === "aligned_table") {
+        const delimiter = format === "tsv" ? "\t" : ",";
+        const ext = delimiter === "\t" ? "tsv" : "csv";
+        const outPath = await save({
+          title: "Enregistrer le fichier d'alignement",
+          defaultPath: `alignements.${ext}`,
+          filters: [{ name: ext.toUpperCase(), extensions: [ext] }],
+        });
+        if (!outPath) return;
+        const pivot_doc_id = this._v2PivotEl.value ? Number(this._v2PivotEl.value) : undefined;
+        const target_doc_id = this._v2TargetEl.value ? Number(this._v2TargetEl.value) : undefined;
+        const params: Record<string, unknown> = { out_path: outPath, delimiter };
+        if (pivot_doc_id !== undefined) params.pivot_doc_id = pivot_doc_id;
+        if (target_doc_id !== undefined) params.target_doc_id = target_doc_id;
+
+        this._log(`Export V2 alignements → ${outPath}…`);
+        const job = await enqueueJob(this._conn, "export_align_csv", params);
+        if (this._jobCenter) {
+          keepDisabledUntilCallback = true;
+          this._jobCenter.trackJob(job.job_id, "Export V2 alignements", (done) => {
+            if (done.status === "done") {
+              const r = done.result as { rows_written?: number; out_path?: string } | undefined;
+              this._log(`✓ ${r?.rows_written ?? "?"} liens exportés → ${r?.out_path ?? outPath}`);
+              this._showToast?.(`✓ Export alignements (${r?.rows_written ?? "?"})`);
+            } else {
+              this._log(`Erreur export V2 alignements: ${done.error ?? done.status}`, true);
+              this._showToast?.("✗ Erreur export alignements", true);
+            }
+            this._v2RunBtn.disabled = false;
+            this._syncV2Ui();
+          });
+        } else {
+          this._log(`Job ${job.job_id} soumis (suivi asynchrone indisponible).`);
+          this._showToast?.("✓ Job export alignements soumis");
+        }
+        return;
+      }
+
+      if (product === "tei_package") {
+        const outPath = await save({
+          title: "Enregistrer le package de publication",
+          defaultPath: `agrafes_publication_${new Date().toISOString().slice(0, 10)}.zip`,
+          filters: [{ name: "ZIP", extensions: ["zip"] }],
+        });
+        if (!outPath) return;
+        const includeStructure = (this._root.querySelector<HTMLInputElement>("#v2-pkg-include-structure")?.checked) ?? false;
+        const includeAlignment = (this._root.querySelector<HTMLInputElement>("#v2-pkg-include-alignment")?.checked) ?? false;
+        const teiProfile = (this._root.querySelector<HTMLSelectElement>("#v2-pkg-tei-profile")?.value) ?? "generic";
+        const params: Record<string, unknown> = {
+          out_path: outPath,
+          include_structure: includeStructure,
+          include_alignment: includeAlignment,
+          tei_profile: teiProfile,
+        };
+        if (doc_ids) params.doc_ids = doc_ids;
+
+        this._log(`Export V2 package TEI → ${outPath}…`);
+        const job = await enqueueJob(this._conn, "export_tei_package", params);
+        if (this._jobCenter) {
+          keepDisabledUntilCallback = true;
+          this._jobCenter.trackJob(job.job_id, "Export V2 package", (done) => {
+            if (done.status === "done") {
+              const r = done.result as { doc_count?: number; zip_path?: string } | undefined;
+              this._log(`✓ Package TEI créé (${r?.doc_count ?? 0} doc(s)) → ${r?.zip_path ?? outPath}`);
+              this._showToast?.(`✓ Package TEI (${r?.doc_count ?? 0} doc(s))`);
+            } else {
+              this._log(`Erreur export V2 package: ${done.error ?? done.status}`, true);
+              this._showToast?.("✗ Erreur package TEI", true);
+            }
+            this._v2RunBtn.disabled = false;
+            this._syncV2Ui();
+          });
+        } else {
+          this._log(`Job ${job.job_id} soumis (suivi asynchrone indisponible).`);
+          this._showToast?.("✓ Job package TEI soumis");
+        }
+        return;
+      }
+
+      if (product === "readable_text") {
+        const exportFmt = format === "docx" ? "docx" : "txt";
+        const outDir = await open({ directory: true, title: `Choisir le dossier de sortie (${exportFmt.toUpperCase()})` });
+        if (!outDir || typeof outDir !== "string") return;
+        const params: Record<string, unknown> = { out_dir: outDir, format: exportFmt };
+        if (doc_ids) params.doc_ids = doc_ids;
+
+        this._log(`Export V2 texte lisible (${exportFmt.toUpperCase()}) → ${outDir}…`);
+        const job = await enqueueJob(this._conn, "export_readable_text", params);
+        if (this._jobCenter) {
+          keepDisabledUntilCallback = true;
+          this._jobCenter.trackJob(job.job_id, `Export V2 texte (${exportFmt.toUpperCase()})`, (done) => {
+            if (done.status === "done") {
+              const r = done.result as { count?: number; files_created?: string[] } | undefined;
+              this._log(`✓ Export texte terminé (${r?.count ?? 0} fichier(s))`);
+              this._showToast?.(`✓ Export texte (${r?.count ?? 0})`);
+            } else {
+              this._log(`Erreur export V2 texte: ${done.error ?? done.status}`, true);
+              this._showToast?.("✗ Erreur export texte", true);
+            }
+            this._v2RunBtn.disabled = false;
+            this._syncV2Ui();
+          });
+        } else {
+          this._log(`Job ${job.job_id} soumis (suivi asynchrone indisponible).`);
+          this._showToast?.("✓ Job export texte soumis");
+        }
+        return;
+      }
+
+      if (product === "run_report") {
+        const fmt = format === "html" ? "html" : "jsonl";
+        const ext = fmt === "html" ? "html" : "jsonl";
+        const outPath = await save({
+          title: "Enregistrer le rapport des runs",
+          defaultPath: `runs_report.${ext}`,
+          filters: [{ name: ext.toUpperCase(), extensions: [ext] }],
+        });
+        if (!outPath) return;
+        const runIdFilter = this._v2RunIdEl.value.trim();
+        const params: Record<string, unknown> = { out_path: outPath, format: fmt };
+        if (runIdFilter) params.run_id = runIdFilter;
+
+        this._log(`Export V2 rapport runs → ${outPath}${runIdFilter ? ` (run_id=${runIdFilter})` : ""}…`);
+        const job = await enqueueJob(this._conn, "export_run_report", params);
+        if (this._jobCenter) {
+          keepDisabledUntilCallback = true;
+          this._jobCenter.trackJob(job.job_id, "Export V2 runs", (done) => {
+            if (done.status === "done") {
+              const r = done.result as { runs_exported?: number; out_path?: string } | undefined;
+              this._log(`✓ ${r?.runs_exported ?? "?"} run(s) exporté(s) → ${r?.out_path ?? outPath}`);
+              this._showToast?.(`✓ Rapport runs (${r?.runs_exported ?? "?"})`);
+            } else {
+              this._log(`Erreur export V2 runs: ${done.error ?? done.status}`, true);
+              this._showToast?.("✗ Erreur rapport runs", true);
+            }
+            this._v2RunBtn.disabled = false;
+            this._syncV2Ui();
+          });
+        } else {
+          this._log(`Job ${job.job_id} soumis (suivi asynchrone indisponible).`);
+          this._showToast?.("✓ Job rapport runs soumis");
+        }
+        return;
+      }
+
+      if (product === "qa_report") {
+        const fmt = format === "html" ? "html" : "json";
+        const ext = fmt === "html" ? "html" : "json";
+        const outPath = await save({
+          title: "Enregistrer le rapport QA",
+          defaultPath: `agrafes_qa_report.${ext}`,
+          filters: [{ name: ext.toUpperCase(), extensions: [ext] }],
+        });
+        if (!outPath) return;
+        const qaPolicy = this._v2StrictEl.checked ? "strict" : "lenient";
+        this._log(`Export V2 QA → ${outPath} (politique: ${qaPolicy})…`);
+
+        const conn = this._conn;
+        const job = await enqueueJob(conn, "qa_report", {
+          out_path: outPath,
+          format: fmt,
+          policy: qaPolicy,
+        });
+        keepDisabledUntilCallback = true;
+        const poll = async (): Promise<void> => {
+          const rec = await getJob(conn, job.job_id) as unknown as {
+            status: string;
+            result?: { gate_status: string; blocking?: string[]; warnings?: string[] };
+            error?: string;
+          };
+          if (rec.status === "done" && rec.result) {
+            const gate = rec.result.gate_status;
+            const blocking = rec.result.blocking ?? [];
+            const warnings = rec.result.warnings ?? [];
+            const issues = [...blocking, ...warnings];
+            this._log(`✓ Rapport QA exporté → ${outPath} (gate=${gate}, policy=${qaPolicy})`);
+            if (issues.length > 0) this._log(`  ⚠ ${issues.length} item(s) QA signalé(s)`);
+            this._showToast?.(`✓ Rapport QA (${gate})`);
+            this._v2RunBtn.disabled = false;
+            this._syncV2Ui();
+          } else if (rec.status === "error" || rec.status === "canceled") {
+            this._log(`Erreur export V2 QA: ${rec.error ?? rec.status}`, true);
+            this._showToast?.("✗ Erreur rapport QA", true);
+            this._v2RunBtn.disabled = false;
+            this._syncV2Ui();
+          } else {
+            setTimeout(() => void poll(), 1000);
+          }
+        };
+        setTimeout(() => void poll(), 500);
+        return;
+      }
+    } catch (err) {
+      this._log(`Erreur export V2: ${err instanceof SidecarError ? err.message : String(err)}`, true);
+      this._showToast?.("✗ Erreur export", true);
+    } finally {
+      if (!keepDisabledUntilCallback && this._v2RunBtn.disabled) {
+        this._v2RunBtn.disabled = false;
+      }
+      this._syncV2Ui();
     }
   }
 

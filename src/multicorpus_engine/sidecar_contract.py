@@ -12,10 +12,13 @@ from __future__ import annotations
 from typing import Any
 
 
-API_VERSION = "1.4.1"
-CONTRACT_VERSION = "1.4.1"  # semantic versioning for the sidecar API contract
+API_VERSION = "1.4.4"
+CONTRACT_VERSION = "1.4.4"  # semantic versioning for the sidecar API contract
 # 1.4.0: added export_tei_package job kind (Sprint 4 — Publication ZIP)
 # 1.4.1: ERR_CONFLICT (409) for duplicate run_id; token protection on /align, /curate, /segment
+# 1.4.2: document workflow status fields on /documents and metadata update endpoints.
+# 1.4.3: POST /db/backup endpoint (token-required DB backup to timestamped .db.bak).
+# 1.4.4: add async job kind export_readable_text (TXT/DOCX readable exports).
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
@@ -668,6 +671,19 @@ def openapi_spec() -> dict[str, Any]:
                     "responses": {"200": {"description": "Report written"}, "400": {"description": "Bad request"}, "401": {"description": "Unauthorized"}},
                 }
             },
+            "/db/backup": {
+                "post": {
+                    "summary": "Create a timestamped SQLite backup file (.db.bak)",
+                    "security": [{"token": []}],
+                    "requestBody": {"required": False, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/DbBackupRequest"}}}},
+                    "responses": {
+                        "200": {"description": "Backup created", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/DbBackupResponse"}}}},
+                        "400": {"description": "Bad request"},
+                        "401": {"description": "Unauthorized"},
+                        "404": {"description": "DB file not found"},
+                    },
+                }
+            },
             # ── V0.4C — Align link editing ────────────────────────────────
             "/align/link/update_status": {
                 "post": {
@@ -1050,6 +1066,13 @@ def openapi_spec() -> dict[str, Any]:
                         "language": {"type": "string"},
                         "doc_role": {"type": "string", "nullable": True},
                         "resource_type": {"type": "string", "nullable": True},
+                        "workflow_status": {
+                            "type": "string",
+                            "enum": ["draft", "review", "validated"],
+                            "default": "draft",
+                        },
+                        "validated_at": {"type": "string", "nullable": True},
+                        "validated_run_id": {"type": "string", "nullable": True},
                         "unit_count": {"type": "integer"},
                     },
                     "additionalProperties": False,
@@ -1303,6 +1326,11 @@ def openapi_spec() -> dict[str, Any]:
                         "language": {"type": "string"},
                         "doc_role": {"type": "string"},
                         "resource_type": {"type": "string"},
+                        "workflow_status": {
+                            "type": "string",
+                            "enum": ["draft", "review", "validated"],
+                        },
+                        "validated_run_id": {"type": "string", "nullable": True},
                     },
                 },
                 "DocumentBulkUpdateRequest": {
@@ -1368,6 +1396,28 @@ def openapi_spec() -> dict[str, Any]:
                         "out_path": {"type": "string"},
                         "format": {"type": "string", "enum": ["jsonl", "html"], "default": "jsonl"},
                     },
+                },
+                "DbBackupRequest": {
+                    "type": "object",
+                    "properties": {
+                        "out_dir": {"type": "string", "description": "Optional destination directory. Default: DB directory."},
+                    },
+                    "additionalProperties": False,
+                },
+                "DbBackupResponse": {
+                    "allOf": [
+                        {"$ref": "#/components/schemas/BaseResponse"},
+                        {
+                            "type": "object",
+                            "required": ["source_db_path", "backup_path", "file_size_bytes", "created_at"],
+                            "properties": {
+                                "source_db_path": {"type": "string"},
+                                "backup_path": {"type": "string"},
+                                "file_size_bytes": {"type": "integer"},
+                                "created_at": {"type": "string"},
+                            },
+                        },
+                    ],
                 },
                 # ── V0.4C — Align link editing ───────────────────────────────
                 "AlignLinkUpdateStatusRequest": {
@@ -1497,7 +1547,7 @@ def openapi_spec() -> dict[str, Any]:
                             "enum": [
                                 "index", "curate", "validate-meta", "segment",
                                 "import", "align", "export_tei", "export_align_csv", "export_run_report",
-                                "export_tei_package",
+                                "export_tei_package", "export_readable_text", "qa_report",
                             ],
                         },
                         "params": {"type": "object", "additionalProperties": True},

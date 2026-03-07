@@ -1,6 +1,10 @@
 # Status — Concordancier Prep (tauri-prep) V0
 
-**Last updated:** 2026-03-01 (V1.1: Sprint 1.1 align quality metrics + Sprint 2.1 virtualisation)
+**Last updated:** 2026-03-06 (DB backup action wired in Documents tab)
+
+Current contract/runtime reference:
+- `CONTRACT_VERSION = 1.4.4`
+- `docs/openapi.json` currently exposes 34 paths
 
 ---
 
@@ -24,11 +28,28 @@
 - [x] `tauri-prep/src-tauri/binaries/.gitkeep`
 - [x] `tauri-prep/scripts/prepare_sidecar.sh` + `.ps1`
 - [x] `tauri-prep/README.md` — dev launch instructions
+- [x] `docs/UX_FLOW_PREP.md` — règles UX de navigation et branchements (document courant vs batch, fin de flux)
 - [x] Open in Concordancier helpers (copy DB path + workflow instructions modal)
+- [x] Documents tab workflow wiring: `draft/review/validated` badge in list + status selector + quick actions ("Marquer à revoir", "Valider ce document")
+- [x] Segmentation fast-path: "Segmenter + valider ce document" (Actions tab) updates workflow_status then redirects to Documents
+- [x] Segmentation post-validation routing preference (`Documents` / `Document suivant` / `Rester sur place`) persisted in localStorage
+- [x] Deep-link handoff to unified Shell: `agrafes-shell://open-db?mode=explorer&path=...` (topbar button + fallback)
 - [x] Segmentation quality pack selector in Actions (`auto`, `default`, `fr_strict`, `en_strict`) + sidecar `/segment` and async job support (`params.pack`)
 - [x] Advanced align strategy in Actions: `external_id_then_position` (hybrid fallback) + sidecar `/align` + `/jobs/enqueue` support
 - [x] Align explainability option: `debug_align` on `/align` and align jobs; debug sources/stats logged in Actions screen
 - [x] Align explainability panel in Actions: structured per-target diagnostics + "Copier diagnostic JSON" button
+- [x] Actions runtime UX state banner:
+  - session state shown in UI (`sidecar indisponible` / `opération en cours` / `prévisualisation en attente` / `aucun alignement` / `prêt`)
+  - state updates live after preview, audit load, success/error logs, and busy transitions
+- [x] Runtime unsaved-change guard (inter-onglets):
+  - tab switch now prompts confirmation when pending changes are detected
+  - `Actions`: pending curation preview not yet applied
+  - `Documents`: edited metadata form, relation draft, or bulk draft values
+  - browser close/refresh guard mirrors current-tab pending state (`beforeunload`)
+- [x] Documents tab DB backup action:
+  - `Sauvegarder la DB` button calls sidecar `POST /db/backup`
+  - backend writes timestamped backup file (`<db_stem>_<timestamp>.db.bak`)
+  - UI displays latest backup status and logs full backup path
 - [x] Segmentation quality benchmark harness:
   - `bench/fixtures/segmentation_quality_cases.json` (FR/EN deterministic fixtures)
   - `scripts/bench_segmentation_quality.py` (pack scoring: exact match + precision/recall/F1)
@@ -98,11 +119,11 @@
 ### V0.5 (Async Job Enqueue + Job Center + Contract Freeze)
 
 - [x] `sidecar_jobs.py` extended — `cancel(job_id)` method (queued → immediate; running → best-effort)
-- [x] `POST /jobs/enqueue` (token required) — 9 job kinds: index, curate, validate-meta, segment, import, align, export_tei, export_align_csv, export_run_report
+- [x] `POST /jobs/enqueue` (token required) — 12 job kinds: index, curate, validate-meta, segment, import, align, export_tei, export_align_csv, export_run_report, export_tei_package, export_readable_text, qa_report
 - [x] `POST /jobs/{job_id}/cancel` (token required) — idempotent; 404 for unknown id
 - [x] `GET /jobs` extended — `?status=`, `?limit=`, `?offset=`; response includes pagination fields
 - [x] `sidecar_contract.py` — `CONTRACT_VERSION = "0.5.0"`, `x-contract-version` in OpenAPI info, 2 new paths + 2 schemas
-- [x] `scripts/export_openapi.py` — exports `docs/openapi.json` (28 paths, sorted keys)
+- [x] `scripts/export_openapi.py` — exports `docs/openapi.json` (28 paths at V0.5 milestone, sorted keys)
 - [x] `docs/openapi.json` — generated OpenAPI snapshot
 - [x] `tests/snapshots/openapi_paths.json` — 29 "METHOD /path" entries (breaking-change detector)
 - [x] `tests/test_contract_openapi_snapshot.py` — 8 contract freeze tests (`test_no_endpoints_removed` is the key guard)
@@ -156,10 +177,9 @@
 
 ## Next tasks (V1.x)
 
-1. Prep V1: include_explain toggle in audit UI (backend ready at V1.2)
-2. Concordancier V1: metadata panel (doc title/lang/role/resource_type/units side panel)
-3. Concordancier V1: demo corpus (bundled small multilingual corpus on first run)
-4. Sidecar release hardening: notarization, Windows signing, production certs setup
+1. Concordancier V1: metadata panel (doc title/lang/role/resource_type/units side panel)
+2. Concordancier V1: demo corpus (bundled small multilingual corpus on first run)
+3. Sidecar release hardening: notarization, Windows signing, production certs setup
 
 ---
 

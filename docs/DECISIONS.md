@@ -705,3 +705,130 @@ consistently persisted in the `runs` table.
 - Explainability traces are exportable and reproducible via run history.
 - Existing clients remain compatible (new fields are additive).
 - Auditing/debug workflows can reference one stable identifier (`run_id`) end-to-end.
+
+---
+
+## ADR-031 — Document workflow status for Prep finalization
+
+**Date:** 2026-03-03
+**Status:** Accepted
+
+**Context**
+The Prep UX now distinguishes clearly between:
+- document-local completion (`Valider ce document`)
+- optional batch actions.
+
+Without a persisted document workflow state, this decision remains purely visual
+and cannot drive navigation, filtering, or downstream automation reliably.
+
+**Decision**
+- Add persistent workflow fields on `documents`:
+  - `workflow_status` (`draft` | `review` | `validated`, default `draft`)
+  - `validated_at` (nullable timestamp)
+  - `validated_run_id` (nullable run reference string)
+- Expose these fields in `GET /documents`.
+- Extend `POST /documents/update` and `POST /documents/bulk_update` to support
+  `workflow_status`.
+- Validation metadata behavior:
+  - setting `workflow_status="validated"` auto-fills `validated_at` if missing
+  - switching to `draft` or `review` clears `validated_at` and `validated_run_id`
+
+**Consequences**
+- Prep can implement deterministic post-validation routing (e.g. return to
+  `Documents`) with a stable persisted state.
+- Existing clients stay compatible (additive fields and optional inputs).
+- Batch and per-document workflows become auditable and queryable.
+
+---
+
+## ADR-032 — Deep-link contract between `tauri-prep` and AGRAFES apps
+
+**Date:** 2026-03-03  
+**Status:** Accepted
+
+**Context**
+The Prep -> Concordancier handoff depended on manual copy/paste of DB paths, which
+added friction and frequent user errors. After introducing `tauri-shell` as the
+primary app, the handoff target needed to be shell-first.
+
+**Decision**
+- Define a stable handoff URI contract:
+  - shell-first URI: `agrafes-shell://open-db?mode=explorer&path=<absolute_db_path>`
+  - accepted aliases on consumer side: `path` (preferred), `db` / `open_db` (compat)
+- In `tauri-prep`, add topbar action `↗ Shell`:
+  - build URI from current DB path
+  - attempt immediate open
+  - keep copy/manual fallback behavior
+- In `tauri-shell`, integrate `tauri-plugin-deep-link`:
+  - process startup payload via `getCurrent()`
+  - process runtime payloads via `onOpenUrl(...)`
+  - switch DB only for valid SQLite path candidates (`.db`, `.sqlite`, `.sqlite3`)
+  - ignore invalid/unexpected payloads safely
+- Keep standalone `tauri-app` deep-link intake (`agrafes://open-db`) for compatibility.
+
+**Consequences**
+- Prep can hand off directly into the primary unified app (`tauri-shell`) without
+  forcing users through manual DB selection.
+- User workflow friction is reduced while preserving manual fallback and standalone
+  compatibility.
+- Contract remains additive and does not affect CLI/sidecar JSON behavior.
+
+---
+
+## ADR-033 — DB backup safety checkpoint in Prep Documents tab
+
+**Date:** 2026-03-06
+**Status:** Accepted
+
+**Context**
+Metadata edits in `tauri-prep` (single/bulk + workflow status) need a visible
+safety checkpoint before large write operations.
+
+**Decision**
+- Add sidecar endpoint `POST /db/backup` (token required).
+- Endpoint creates a timestamped backup file in `.db.bak` format:
+  - default target directory = current DB directory;
+  - optional `out_dir` override accepted.
+- In `tauri-prep` Documents tab, expose `Sauvegarder la DB` and show:
+  - latest backup status text,
+  - full backup path in the log panel.
+
+**Consequences**
+- Backup generation is centralized in backend (consistent behavior across
+  Tauri wrappers).
+- Users get an explicit recovery checkpoint before metadata batch work.
+- Change is additive and does not alter CLI/sidecar JSON envelope contract.
+
+---
+
+## ADR-034 — Readable text exports in async job pipeline (TXT/DOCX)
+
+**Date:** 2026-03-07
+**Status:** Accepted
+
+**Context**
+The unified Export V2 flow in `tauri-prep` exposed “Texte lisible” as pending,
+which blocked a common user expectation: exporting reviewed/segmented content in
+editable formats.
+
+**Decision**
+- Add async job kind `export_readable_text` to sidecar `/jobs/enqueue`.
+- Support output formats:
+  - `txt` (UTF-8)
+  - `docx` (via `python-docx`, already a project dependency)
+- Export scope:
+  - `doc_ids` optional (`None` => all documents)
+  - default source field: `text_norm` (stable post-curation/segmentation view)
+  - optional flags: `include_structure`, `include_external_id`, `source_field`
+- Apply strict enqueue-time validation for this job:
+  - `format` must be `txt|docx`
+  - `doc_ids` must be an array of positive integers when provided
+  - `source_field` must be `text_norm|text_raw`
+  - optional flags must be booleans when provided
+- Wire `tauri-prep` Export V2 card to this job for segmentation/curation flows
+  (remove pending placeholder state for TXT/DOCX).
+
+**Consequences**
+- “Texte lisible” is now operational in runtime (not just a roadmap placeholder).
+- Contract remains backward-compatible (additive job kind + optional params).
+- No change to core JSON envelope policy (`ok/error`) for sidecar responses.

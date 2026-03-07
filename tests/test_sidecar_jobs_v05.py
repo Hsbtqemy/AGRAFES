@@ -347,6 +347,98 @@ def test_enqueue_export_run_report_job_runs(v05_env: dict) -> None:
     assert out_path.exists()
 
 
+def test_enqueue_export_readable_text_missing_out_dir(v05_env: dict) -> None:
+    code, p = _http(
+        "POST", f"{v05_env['base_url']}/jobs/enqueue",
+        {"kind": "export_readable_text", "params": {"format": "txt"}},
+        token=v05_env["token"],
+    )
+    assert code == 400
+    assert p["error_code"] == "VALIDATION_ERROR"
+
+
+def test_enqueue_export_readable_text_rejects_invalid_format(v05_env: dict) -> None:
+    out_dir = v05_env["tmp_path"] / "readable_export_invalid_fmt"
+    code, p = _http(
+        "POST",
+        f"{v05_env['base_url']}/jobs/enqueue",
+        {"kind": "export_readable_text", "params": {"out_dir": str(out_dir), "format": "pdf"}},
+        token=v05_env["token"],
+    )
+    assert code == 400
+    assert p["error_code"] == "VALIDATION_ERROR"
+
+
+def test_enqueue_export_readable_text_rejects_invalid_doc_ids(v05_env: dict) -> None:
+    out_dir = v05_env["tmp_path"] / "readable_export_invalid_doc_ids"
+
+    code1, p1 = _http(
+        "POST",
+        f"{v05_env['base_url']}/jobs/enqueue",
+        {"kind": "export_readable_text", "params": {"out_dir": str(out_dir), "format": "txt", "doc_ids": "1,2"}},
+        token=v05_env["token"],
+    )
+    assert code1 == 400
+    assert p1["error_code"] == "VALIDATION_ERROR"
+
+    code2, p2 = _http(
+        "POST",
+        f"{v05_env['base_url']}/jobs/enqueue",
+        {"kind": "export_readable_text", "params": {"out_dir": str(out_dir), "format": "txt", "doc_ids": [0, -1]}},
+        token=v05_env["token"],
+    )
+    assert code2 == 400
+    assert p2["error_code"] == "VALIDATION_ERROR"
+
+
+def test_enqueue_export_readable_text_rejects_invalid_source_field(v05_env: dict) -> None:
+    out_dir = v05_env["tmp_path"] / "readable_export_invalid_source"
+    code, p = _http(
+        "POST",
+        f"{v05_env['base_url']}/jobs/enqueue",
+        {"kind": "export_readable_text", "params": {"out_dir": str(out_dir), "format": "txt", "source_field": "text_display"}},
+        token=v05_env["token"],
+    )
+    assert code == 400
+    assert p["error_code"] == "VALIDATION_ERROR"
+
+
+def test_enqueue_export_readable_text_job_runs_txt_and_docx(v05_env: dict) -> None:
+    out_dir = v05_env["tmp_path"] / "readable_export"
+
+    code_txt, p_txt = _http(
+        "POST",
+        f"{v05_env['base_url']}/jobs/enqueue",
+        {"kind": "export_readable_text", "params": {"out_dir": str(out_dir), "format": "txt"}},
+        token=v05_env["token"],
+    )
+    assert code_txt == 202
+    done_txt = _wait_job(v05_env["base_url"], p_txt["job"]["job_id"])
+    assert done_txt["status"] == "done"
+    result_txt = done_txt["result"]
+    assert result_txt["format"] == "txt"
+    assert result_txt["count"] >= 1
+    for p in result_txt["files_created"]:
+        assert Path(p).exists()
+        assert Path(p).suffix == ".txt"
+
+    code_docx, p_docx = _http(
+        "POST",
+        f"{v05_env['base_url']}/jobs/enqueue",
+        {"kind": "export_readable_text", "params": {"out_dir": str(out_dir), "format": "docx"}},
+        token=v05_env["token"],
+    )
+    assert code_docx == 202
+    done_docx = _wait_job(v05_env["base_url"], p_docx["job"]["job_id"])
+    assert done_docx["status"] == "done"
+    result_docx = done_docx["result"]
+    assert result_docx["format"] == "docx"
+    assert result_docx["count"] >= 1
+    for p in result_docx["files_created"]:
+        assert Path(p).exists()
+        assert Path(p).suffix == ".docx"
+
+
 # ---------------------------------------------------------------------------
 # POST /jobs/{job_id}/cancel
 # ---------------------------------------------------------------------------

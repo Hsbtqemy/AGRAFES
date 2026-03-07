@@ -5,6 +5,63 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- Migration `005_document_workflow_status.sql`:
+  - `documents.workflow_status` (`draft|review|validated`, default `draft`)
+  - `documents.validated_at` (nullable)
+  - `documents.validated_run_id` (nullable)
+- Sidecar async export job `export_readable_text`:
+  - formats: `txt` and `docx`
+  - output mode: one file per document in target directory
+  - optional params: `doc_ids`, `include_structure`, `include_external_id`, `source_field`
+
+### Changed
+
+- Sidecar metadata endpoints:
+  - `GET /documents` now returns `workflow_status`, `validated_at`, `validated_run_id`
+  - `POST /documents/update` now accepts `workflow_status` and optional `validated_run_id`
+  - `POST /documents/bulk_update` now accepts `workflow_status`
+- Validation rules:
+  - `workflow_status="validated"` auto-sets `validated_at` (if absent)
+  - switching to `draft`/`review` clears `validated_at` and `validated_run_id`
+- `tauri-prep` (`Documents` tab) now wires this workflow state in UI:
+  - status badge in list rows (`Brouillon` / `À revoir` / `Validé`)
+  - editable workflow selector in the document form
+  - quick actions: `Marquer à revoir` and `Valider ce document`
+- `tauri-prep` (`Actions` tab) adds a segmentation finalization shortcut:
+  - `Segmenter + valider ce document`
+  - on successful segmentation, sets `workflow_status=validated` then opens the `Documents` tab
+- `tauri-prep` (`Actions` tab) adds a persisted post-validation routing preference:
+  - `Après validation`: `Documents` (default) / `Document suivant` / `Rester sur place`
+  - if `Document suivant` is selected but unavailable, fallback to `Documents`
+- Standalone handoff target switched to unified Shell:
+  - `tauri-prep` topbar action `↗ Shell` emits `agrafes-shell://open-db?mode=explorer&path=...`
+  - `tauri-shell` consumes deep-link startup/runtime payloads and opens the targeted DB
+- `tauri-prep` (`Actions` tab) now exposes a runtime UX state banner:
+  - states: `sidecar indisponible` / `opération en cours` / `prévisualisation en attente` / `aucun alignement` / `session prête`
+  - refreshed after preview/audit flows, busy transitions, and error/success logs
+- `tauri-prep` now guards tab navigation on unsaved changes:
+  - confirmation prompt when leaving `Actions` with a pending preview not applied
+  - confirmation prompt when leaving `Documents` with edited metadata/relation/bulk draft values
+  - browser close/refresh guard (`beforeunload`) aligned with current tab pending state
+- `tauri-prep` Exporter now includes a unified V2 flow card (`jeu de données → produit → format`):
+  - dynamic options for alignment/TEI package/runs/QA
+  - single launcher button with async job tracking and explicit pending-format hints
+- `tauri-prep` Exporter V2 now wires “Texte lisible” to runtime sidecar job (TXT/DOCX),
+  removing the previous pending placeholder in segmentation/curation export flows.
+- Sidecar jobs enqueue hardening:
+  - OpenAPI `JobEnqueueRequest.kind` now matches runtime support for `qa_report`.
+  - `export_readable_text` params are strictly validated (`format`, `doc_ids`, `source_field`, boolean flags)
+    to avoid accidental fallback to full-corpus export on malformed payloads.
+- Sidecar + Prep DB backup safety checkpoint:
+  - new token-protected endpoint `POST /db/backup` creates timestamped `.db.bak`
+  - `tauri-prep` Documents tab adds `Sauvegarder la DB` button and live backup status
+  - backup naming now avoids same-second collisions (`..._1.bak`, `..._2.bak`, ...)
+  - backup file creation errors are normalized to `400 BAD_REQUEST` when destination is invalid/unwritable
+
 ## [V1.9.1] — 2026-03-01
 
 ### Added

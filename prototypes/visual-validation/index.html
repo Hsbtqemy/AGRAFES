@@ -124,65 +124,55 @@
       </p>
       <nav class="proto-nav" aria-label="Navigation maquettes">
         <a class="active" href="./index.html">Index</a>
-        <a href="./board-vnext.html">Board</a>
-        <a href="./shell-vnext.html">Home</a>
-        <a href="./explorer-vnext.html">Explorer</a>
-        <a href="./prep-vnext.html">Constituer</a>
-        <a href="./publish-vnext.html">Publier</a>
+        <a href="./shell/board-vnext.html">Board</a>
+        <a href="./shell/shell-vnext.html">Home</a>
+        <a href="./shell/explorer-vnext.html">Explorer</a>
+        <a href="./prep/prep-vnext.html">Constituer</a>
+        <a href="./shell/publish-vnext.html">Publier</a>
       </nav>
 
       <div class="grid">
-        <a class="card" href="./board-vnext.html">
+        <a class="card" href="./shell/board-vnext.html">
           <div class="kicker">Vue globale</div>
           <h2>Board V-next</h2>
           <p>Montage complet Home + Explorer + Constituer + Publier pour revue rapide.</p>
         </a>
-        <a class="card" href="./shell-vnext.html">
+        <a class="card" href="./shell/shell-vnext.html">
           <div class="kicker">Global Shell</div>
           <h2>Shell V-next</h2>
           <p>Header 3 zones, accueil orienté workflow, accès rapide modules.</p>
         </a>
-        <a class="card" href="./explorer-vnext.html">
+        <a class="card" href="./shell/explorer-vnext.html">
           <div class="kicker">Concordancier</div>
           <h2>Explorer V-next</h2>
           <p>Barre primaire/secondaire, résultats plus lisibles, mode aligné/parallèle clarifié.</p>
         </a>
-        <a class="card" href="./prep-vnext.html">
+        <a class="card" href="./prep/prep-vnext.html">
           <div class="kicker">Constituer</div>
           <h2>Prep Hub + Onglets</h2>
           <p>Point d’entrée unique Importer / Documents / Actions / Exporter.</p>
         </a>
-        <a class="card" href="./prep-curation-hub-vnext.html">
+        <a class="card" href="./prep/prep-curation-preview-vnext.html">
           <div class="kicker">Constituer</div>
-          <h2>Hub Curation</h2>
-          <p>Toutes les variantes de curation regroupées sur une seule page de choix.</p>
+          <h2>Curation (vue retenue)</h2>
+          <p>Entrée directe vers la curation validée, puis transition segmentation/alignement.</p>
         </a>
-        <a class="card" href="./prep-segmentation-vo-vnext.html">
+        <a class="card" href="./prep/prep-segmentation-vo-vnext.html">
           <div class="kicker">Constituer</div>
           <h2>Segmentation pilotée VO</h2>
           <p>Préparer 7 langues à partir d’une VO de référence avant alignement.</p>
         </a>
-        <a class="card" href="./prep-segmentation-translation-vo-vnext.html">
-          <div class="kicker">Constituer</div>
-          <h2>Segmentation traduction vs VO</h2>
-          <p>Matrice d'ecarts (match/split/merge/manquant/extra) pour corriger la traduction en mode pilote VO.</p>
-        </a>
-        <a class="card" href="./prep-segmentation-translation-vo-native-layout-vnext.html">
+        <a class="card" href="./prep/prep-segmentation-translation-vo-native-layout-vnext.html">
           <div class="kicker">Constituer</div>
           <h2>Segmentation traduction (layout natif)</h2>
           <p>Maquette V-next: meme organisation visuelle que segmentation native, avec couche VO ajoutee.</p>
         </a>
-        <a class="card" href="./prep-segmentation-translation-focus-vnext.html">
-          <div class="kicker">Constituer</div>
-          <h2>Segmentation traduction - Mode Focus</h2>
-          <p>Vue epuree pour traiter le texte directement, sans l'appareillage complet autour.</p>
-        </a>
-        <a class="card" href="./prep-actions-longtext-vnext.html">
+        <a class="card" href="./prep/prep-actions-longtext-vnext.html">
           <div class="kicker">Constituer</div>
           <h2>Actions grand texte</h2>
           <p>Preview document complet (~16k) avec contrôle global et vérification continue.</p>
         </a>
-        <a class="card" href="./publish-vnext.html">
+        <a class="card" href="./shell/publish-vnext.html">
           <div class="kicker">Publication</div>
           <h2>Publier V-next</h2>
           <p>Assistant 5 étapes, gate QA et export package avec codes couleur dédiés.</p>
@@ -192,6 +182,7 @@
       <div class="note">
         Ces fichiers servent uniquement à la discussion visuelle.
         Aucun comportement métier n'est branché.
+        Référence état runtime: export “texte lisible” disponible en <code>TXT</code> et <code>DOCX</code>.
         Recommandation: valider écran par écran puis figer les priorités d'implémentation.
       </div>
     </main>

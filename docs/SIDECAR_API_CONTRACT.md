@@ -1,4 +1,4 @@
-# Sidecar API Contract (v1.1.0)
+# Sidecar API Contract (v1.4.4)
 
 This document defines the persistent localhost HTTP contract for
 `multicorpus_engine` sidecar.
@@ -29,7 +29,7 @@ When `multicorpus serve` starts and a portfile already exists:
 
 ## Versioning
 
-- `api_version`: sidecar API contract version (`1.1.0`)
+- `api_version`: sidecar API contract version (`1.4.4`)
 - `version`: engine version
 
 ## Response envelope
@@ -39,7 +39,7 @@ When `multicorpus serve` starts and a portfile already exists:
 ```json
 {
   "ok": true,
-  "api_version": "1.1.0",
+  "api_version": "1.4.4",
   "version": "0.6.1",
   "status": "ok"
 }
@@ -50,7 +50,7 @@ When `multicorpus serve` starts and a portfile already exists:
 ```json
 {
   "ok": false,
-  "api_version": "1.1.0",
+  "api_version": "1.4.4",
   "version": "0.6.1",
   "status": "error",
   "error": {
@@ -84,6 +84,7 @@ When `multicorpus serve` starts and a portfile already exists:
 - Token-protected write endpoints:
   - `POST /import`
   - `POST /index`
+  - `POST /db/backup`
   - `POST /shutdown`
 - Read endpoints (`/health`, `/query`, `/openapi.json`) do not require token.
 
@@ -171,6 +172,11 @@ When `multicorpus serve` starts and a portfile already exists:
   - CONTRACT_VERSION 1.3.1: added `include_structure` optional boolean field (backward-compatible)
 - `POST /export/align_csv`
 - `POST /export/run_report`
+- `POST /db/backup`
+  - body: `{ out_dir?: string }`
+  - creates a timestamped backup file (`<db_stem>_<YYYYMMDD_HHMMSS><db_suffix>.bak`)
+  - if a file already exists for the same second, appends `_<n>` before `.bak`
+  - returns `source_db_path`, `backup_path`, `file_size_bytes`, `created_at`
 - `POST /validate-meta`
 - `POST /segment`
   - body: `{ doc_id, lang?, pack? }`
@@ -191,7 +197,7 @@ Enqueue an async job supporting all operation kinds (including import, align, ex
 Request:
 ```json
 {
-  "kind": "index|curate|validate-meta|segment|import|align|export_tei|export_align_csv|export_run_report",
+  "kind": "index|curate|validate-meta|segment|import|align|export_tei|export_align_csv|export_run_report|export_tei_package|export_readable_text|qa_report",
   "params": {}
 }
 ```
@@ -213,6 +219,9 @@ Supported `kind` values and required `params`:
 - `export_tei` — `params.out_dir` required; optional: `params.doc_ids`, `params.include_structure` (bool, default false)
 - `export_align_csv` — `params.out_path` required; optional: `pivot_doc_id`, `target_doc_id`, `delimiter`
 - `export_run_report` — `params.out_path` required; optional: `run_id`, `format` (`jsonl`|`html`)
+- `export_readable_text` — `params.out_dir` required; optional: `doc_ids` (array d'entiers positifs), `format` (`txt`|`docx`), `include_structure` (bool), `include_external_id` (bool), `source_field` (`text_norm`|`text_raw`)
+- `export_tei_package` — `params.out_path` required; optional: `doc_ids`, `include_structure`, `include_alignment`, `status_filter`, `tei_profile`
+- `qa_report` — `params.out_path` required; optional: `doc_ids`, `format` (`json`|`html`), `policy` (`lenient`|`strict`)
 
 Token enforcement: `X-Agrafes-Token` required when token is active.
 
@@ -241,11 +250,15 @@ Response now includes pagination fields: `total`, `limit`, `offset`, `has_more`,
 ### V0.4A — Metadata panel (token required for writes)
 
 - `GET /doc_relations?doc_id=N` — list relations for a document (no token)
-- `POST /documents/update` — update title/language/doc_role/resource_type for one doc
-  - body: `{ doc_id, title?, language?, doc_role?, resource_type? }`
+- `GET /documents` — document list now includes workflow fields:
+  - `workflow_status`: `draft|review|validated`
+  - `validated_at`: string|null
+  - `validated_run_id`: string|null
+- `POST /documents/update` — update one document metadata + workflow status
+  - body: `{ doc_id, title?, language?, doc_role?, resource_type?, workflow_status?, validated_run_id? }`
   - returns: `{ updated: int, doc: DocumentRecord }`
 - `POST /documents/bulk_update` — update multiple docs at once
-  - body: `{ updates: [{doc_id, title?, language?, doc_role?, resource_type?}, …] }`
+  - body: `{ updates: [{doc_id, title?, language?, doc_role?, resource_type?, workflow_status?}, …] }`
   - returns: `{ updated: int }`
 - `POST /doc_relations/set` — upsert a doc_relation
   - body: `{ doc_id, relation_type, target_doc_id, note? }`
@@ -253,6 +266,10 @@ Response now includes pagination fields: `total`, `limit`, `offset`, `has_more`,
 - `POST /doc_relations/delete` — delete a doc_relation by `id`
   - body: `{ id: int }`
   - returns: `{ deleted: int }`
+
+Workflow status semantics:
+- `workflow_status="validated"`: `validated_at` is auto-filled by server if absent.
+- `workflow_status="draft"` or `"review"`: `validated_at` and `validated_run_id` are cleared.
 
 ### V0.4B — Exports (token required)
 

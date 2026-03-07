@@ -58,6 +58,8 @@ from . import __version__ as ENGINE_VERSION
 
 logger = logging.getLogger(__name__)
 
+_DOC_WORKFLOW_STATUSES = {"draft", "review", "validated"}
+
 
 def sidecar_portfile_path(db_path: str | Path) -> Path:
     """Return sidecar discovery file path for a given DB path."""
@@ -336,6 +338,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             _write_paths = {
                 # Core mutators
                 "/index", "/import", "/shutdown",
+                "/db/backup",
                 # Document / relation writes
                 "/documents/update", "/documents/bulk_update",
                 "/doc_relations/set", "/doc_relations/delete",
@@ -409,6 +412,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 self._handle_export_align_csv(body)
             elif path == "/export/run_report":
                 self._handle_export_run_report(body)
+            elif path == "/db/backup":
+                self._handle_db_backup(body)
             elif path == "/shutdown":
                 self._handle_shutdown()
             elif path == "/jobs":
@@ -602,7 +607,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         supported = {
             "index", "curate", "validate-meta", "segment",
             "import", "align", "export_tei", "export_align_csv", "export_run_report",
-            "export_tei_package", "qa_report",
+            "export_tei_package", "export_readable_text", "qa_report",
         }
         if kind not in supported:
             self._send_error(
@@ -699,6 +704,67 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         if kind in ("export_tei",) and not params.get("out_dir"):
             self._send_error("export_tei job requires params.out_dir", code=ERR_VALIDATION, http_status=400)
             return
+        if kind == "export_readable_text" and not params.get("out_dir"):
+            self._send_error("export_readable_text job requires params.out_dir", code=ERR_VALIDATION, http_status=400)
+            return
+        if kind == "export_readable_text":
+            export_fmt = str(params.get("format", "txt")).strip().lower()
+            if export_fmt not in {"txt", "docx"}:
+                self._send_error(
+                    "export_readable_text params.format must be 'txt' or 'docx'",
+                    code=ERR_VALIDATION,
+                    http_status=400,
+                )
+                return
+            if "source_field" in params:
+                source_field = str(params.get("source_field", "text_norm")).strip()
+                if source_field not in {"text_norm", "text_raw"}:
+                    self._send_error(
+                        "export_readable_text params.source_field must be 'text_norm' or 'text_raw'",
+                        code=ERR_VALIDATION,
+                        http_status=400,
+                    )
+                    return
+            if "include_structure" in params and not isinstance(params.get("include_structure"), bool):
+                self._send_error(
+                    "export_readable_text params.include_structure must be a boolean",
+                    code=ERR_VALIDATION,
+                    http_status=400,
+                )
+                return
+            if "include_external_id" in params and not isinstance(params.get("include_external_id"), bool):
+                self._send_error(
+                    "export_readable_text params.include_external_id must be a boolean",
+                    code=ERR_VALIDATION,
+                    http_status=400,
+                )
+                return
+            if "doc_ids" in params and params.get("doc_ids") is not None:
+                raw_doc_ids = params.get("doc_ids")
+                if not isinstance(raw_doc_ids, list):
+                    self._send_error(
+                        "export_readable_text params.doc_ids must be an array of positive integers",
+                        code=ERR_VALIDATION,
+                        http_status=400,
+                    )
+                    return
+                try:
+                    doc_ids = [int(v) for v in raw_doc_ids]
+                except (TypeError, ValueError):
+                    self._send_error(
+                        "export_readable_text params.doc_ids must be an array of positive integers",
+                        code=ERR_VALIDATION,
+                        http_status=400,
+                    )
+                    return
+                if any(v <= 0 for v in doc_ids):
+                    self._send_error(
+                        "export_readable_text params.doc_ids must be an array of positive integers",
+                        code=ERR_VALIDATION,
+                        http_status=400,
+                    )
+                    return
+                params["doc_ids"] = doc_ids
         if kind in ("export_align_csv", "export_run_report", "export_tei_package", "qa_report") and not params.get("out_path"):
             self._send_error(f"{kind} job requires params.out_path", code=ERR_VALIDATION, http_status=400)
             return
@@ -1374,6 +1440,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         rows = self._conn().execute(
             """
             SELECT d.doc_id, d.title, d.language, d.doc_role, d.resource_type,
+                   d.workflow_status, d.validated_at, d.validated_run_id,
                    COUNT(u.unit_id) AS unit_count
             FROM documents d
             LEFT JOIN units u ON u.doc_id = d.doc_id AND u.unit_type = 'line'
@@ -1388,7 +1455,10 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 "language": r[2],
                 "doc_role": r[3],
                 "resource_type": r[4],
-                "unit_count": r[5],
+                "workflow_status": r[5],
+                "validated_at": r[6],
+                "validated_run_id": r[7],
+                "unit_count": r[8],
             }
             for r in rows
         ]
@@ -1584,11 +1654,50 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         if doc_id is None:
             self._send_error("doc_id is required", code=ERR_BAD_REQUEST, http_status=400)
             return
-        allowed = {"title", "language", "doc_role", "resource_type"}
+        allowed = {"title", "language", "doc_role", "resource_type", "workflow_status", "validated_run_id"}
         updates = {k: v for k, v in body.items() if k in allowed}
         if not updates:
-            self._send_error("No updatable fields provided (allowed: title, language, doc_role, resource_type)", code=ERR_BAD_REQUEST, http_status=400)
+            self._send_error(
+                "No updatable fields provided "
+                "(allowed: title, language, doc_role, resource_type, workflow_status, validated_run_id)",
+                code=ERR_BAD_REQUEST,
+                http_status=400,
+            )
             return
+
+        workflow_status = updates.get("workflow_status")
+        if workflow_status is not None:
+            if not isinstance(workflow_status, str) or workflow_status not in _DOC_WORKFLOW_STATUSES:
+                self._send_error(
+                    "workflow_status must be one of: draft, review, validated",
+                    code=ERR_VALIDATION,
+                    http_status=400,
+                    details={"supported_values": sorted(_DOC_WORKFLOW_STATUSES)},
+                )
+                return
+            if workflow_status == "validated":
+                updates.setdefault("validated_at", utcnow_iso())
+                if "validated_run_id" in updates and updates["validated_run_id"] is not None:
+                    if not isinstance(updates["validated_run_id"], str) or not updates["validated_run_id"].strip():
+                        self._send_error(
+                            "validated_run_id must be a non-empty string or null",
+                            code=ERR_VALIDATION,
+                            http_status=400,
+                        )
+                        return
+                    updates["validated_run_id"] = updates["validated_run_id"].strip()
+            else:
+                # Leaving validated state clears validation metadata.
+                updates["validated_at"] = None
+                updates["validated_run_id"] = None
+        elif "validated_run_id" in updates:
+            self._send_error(
+                "validated_run_id can only be set when workflow_status='validated'",
+                code=ERR_VALIDATION,
+                http_status=400,
+            )
+            return
+
         set_clause = ", ".join(f"{k} = ?" for k in updates)
         params = list(updates.values()) + [doc_id]
         with self._lock():
@@ -1599,9 +1708,24 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             self._send_error(f"Document doc_id={doc_id} not found", code=ERR_NOT_FOUND, http_status=404)
             return
         row = self._conn().execute(
-            "SELECT doc_id, title, language, doc_role, resource_type FROM documents WHERE doc_id = ?", (doc_id,)
+            """
+            SELECT doc_id, title, language, doc_role, resource_type,
+                   workflow_status, validated_at, validated_run_id
+            FROM documents
+            WHERE doc_id = ?
+            """,
+            (doc_id,),
         ).fetchone()
-        doc = {"doc_id": row[0], "title": row[1], "language": row[2], "doc_role": row[3], "resource_type": row[4]}
+        doc = {
+            "doc_id": row[0],
+            "title": row[1],
+            "language": row[2],
+            "doc_role": row[3],
+            "resource_type": row[4],
+            "workflow_status": row[5],
+            "validated_at": row[6],
+            "validated_run_id": row[7],
+        }
         self._send_json(success_payload({"updated": 1, "doc": doc}))
 
     def _handle_documents_bulk_update(self, body: dict) -> None:
@@ -1609,7 +1733,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         if not isinstance(updates_list, list) or not updates_list:
             self._send_error("updates must be a non-empty list of {doc_id, ...fields}", code=ERR_BAD_REQUEST, http_status=400)
             return
-        allowed = {"title", "language", "doc_role", "resource_type"}
+        allowed = {"title", "language", "doc_role", "resource_type", "workflow_status", "validated_run_id"}
         total_updated = 0
         with self._lock():
             for item in updates_list:
@@ -1619,6 +1743,37 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 fields = {k: v for k, v in item.items() if k in allowed}
                 if not fields:
                     continue
+                workflow_status = fields.get("workflow_status")
+                if workflow_status is not None:
+                    if not isinstance(workflow_status, str) or workflow_status not in _DOC_WORKFLOW_STATUSES:
+                        self._send_error(
+                            "workflow_status must be one of: draft, review, validated",
+                            code=ERR_VALIDATION,
+                            http_status=400,
+                            details={"supported_values": sorted(_DOC_WORKFLOW_STATUSES)},
+                        )
+                        return
+                    if workflow_status == "validated":
+                        fields.setdefault("validated_at", utcnow_iso())
+                        if "validated_run_id" in fields and fields["validated_run_id"] is not None:
+                            if not isinstance(fields["validated_run_id"], str) or not fields["validated_run_id"].strip():
+                                self._send_error(
+                                    "validated_run_id must be a non-empty string or null",
+                                    code=ERR_VALIDATION,
+                                    http_status=400,
+                                )
+                                return
+                            fields["validated_run_id"] = fields["validated_run_id"].strip()
+                    else:
+                        fields["validated_at"] = None
+                        fields["validated_run_id"] = None
+                elif "validated_run_id" in fields:
+                    self._send_error(
+                        "validated_run_id can only be set when workflow_status='validated'",
+                        code=ERR_VALIDATION,
+                        http_status=400,
+                    )
+                    return
                 set_clause = ", ".join(f"{k} = ?" for k in fields)
                 params = list(fields.values()) + [doc_id]
                 cur = self._conn().execute(f"UPDATE documents SET {set_clause} WHERE doc_id = ?", params)
@@ -1793,6 +1948,65 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 for r in records:
                     f.write(_json.dumps(r, ensure_ascii=False) + "\n")
         self._send_json(success_payload({"out_path": str(out), "runs_exported": len(records), "format": fmt}))
+
+    def _handle_db_backup(self, body: dict) -> None:
+        out_dir = body.get("out_dir")
+        if out_dir is not None and not isinstance(out_dir, str):
+            self._send_error("out_dir must be a string", code=ERR_BAD_REQUEST, http_status=400)
+            return
+
+        raw_db_path = getattr(self.server, "db_path", None)  # type: ignore[attr-defined]
+        if not isinstance(raw_db_path, str) or not raw_db_path.strip():
+            self._send_error("Source DB path is not configured", code=ERR_NOT_FOUND, http_status=404)
+            return
+
+        source_db = Path(raw_db_path).resolve()
+        if not source_db.exists() or not source_db.is_file():
+            self._send_error("Source DB file not found", code=ERR_NOT_FOUND, http_status=404)
+            return
+
+        target_dir = source_db.parent if not out_dir else Path(out_dir)
+        try:
+            target_dir.mkdir(parents=True, exist_ok=True)
+        except Exception as exc:
+            self._send_error(
+                f"Unable to create backup directory: {exc}",
+                code=ERR_BAD_REQUEST,
+                http_status=400,
+            )
+            return
+
+        stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%d_%H%M%S")
+        suffix = source_db.suffix or ".db"
+        backup_base = f"{source_db.stem}_{stamp}{suffix}"
+        backup_path = target_dir / f"{backup_base}.bak"
+        collision_index = 1
+        while backup_path.exists():
+            backup_path = target_dir / f"{backup_base}_{collision_index}.bak"
+            collision_index += 1
+
+        try:
+            with self._lock():
+                self._conn().commit()
+                dest = sqlite3.connect(str(backup_path))
+                try:
+                    self._conn().backup(dest)
+                finally:
+                    dest.close()
+        except (sqlite3.OperationalError, OSError) as exc:
+            self._send_error(
+                f"Unable to create backup file: {exc}",
+                code=ERR_BAD_REQUEST,
+                http_status=400,
+            )
+            return
+
+        self._send_json(success_payload({
+            "source_db_path": str(source_db),
+            "backup_path": str(backup_path),
+            "file_size_bytes": backup_path.stat().st_size,
+            "created_at": utcnow_iso(),
+        }))
 
     # ------------------------------------------------------------------
     # V0.4C — Alignment link editing
@@ -2614,6 +2828,37 @@ class CorpusServer:
                 progress_cb(pct, f"Exported {i + 1}/{len(doc_ids)}")
             progress_cb(100, "TEI export completed")
             return {"files_created": files_created, "count": len(files_created)}
+
+        if kind == "export_readable_text":
+            from multicorpus_engine.exporters.readable_text import export_readable_text
+
+            out_dir = params.get("out_dir")
+            if not out_dir:
+                raise ValueError("export_readable_text job requires params.out_dir")
+            export_fmt = str(params.get("format", "txt")).strip().lower()
+            if export_fmt not in {"txt", "docx"}:
+                raise ValueError("export_readable_text params.format must be 'txt' or 'docx'")
+
+            doc_ids = params.get("doc_ids")
+            include_structure = bool(params.get("include_structure", False))
+            include_external_id = bool(params.get("include_external_id", True))
+            source_field = str(params.get("source_field", "text_norm"))
+            if source_field not in {"text_norm", "text_raw"}:
+                raise ValueError("export_readable_text params.source_field must be 'text_norm' or 'text_raw'")
+
+            progress_cb(10, f"Exporting readable text ({export_fmt})")
+            with lock:
+                result = export_readable_text(
+                    conn,
+                    out_dir=str(out_dir),
+                    doc_ids=doc_ids if isinstance(doc_ids, list) else None,
+                    fmt=export_fmt,
+                    include_structure=include_structure,
+                    include_external_id=include_external_id,
+                    source_field=source_field,
+                )
+            progress_cb(100, "Readable text export completed")
+            return result
 
         if kind == "qa_report":
             from pathlib import Path as _Path

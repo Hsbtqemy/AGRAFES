@@ -1,6 +1,6 @@
 # Integration Guide — Tauri + multicorpus_engine
 
-Last updated: 2026-02-28 (tauri-prep V0.8.1: align explainability panel)
+Last updated: 2026-03-06 (tauri-prep DB backup action in Documents)
 
 ## Integration modes
 
@@ -224,6 +224,31 @@ const child = await serve.spawn();
 // Call /health, /query and token-protected write endpoints via fetch.
 ```
 
+## Deep-link Prep -> Shell (`open-db`)
+
+Recommended handoff now targets the unified app (`tauri-shell`):
+
+- URI scheme: `agrafes-shell://open-db?mode=explorer&path=<absolute_db_path>`
+- Query keys accepted by Shell parser: `path` (preferred), `db` / `open_db` (compat)
+- Accepted file extensions: `.db`, `.sqlite`, `.sqlite3`
+
+Example:
+
+```text
+agrafes-shell://open-db?mode=explorer&path=%2FUsers%2Fme%2Fcorpora%2Fmy_project.db
+```
+
+Implementation notes:
+
+- `tauri-prep` topbar button `↗ Shell` builds this URI from current DB.
+- `tauri-shell` uses `@tauri-apps/plugin-deep-link`:
+  - startup resolution via `getCurrent()`
+  - runtime events via `onOpenUrl(...)`
+- additional startup fallback is accepted via URL params in shell:
+  - `?open_db=/abs/path/to/corpus.db` (dev/manual scenarios)
+- Invalid or non-DB payloads are ignored safely.
+- Fallback remains manual DB selection in Shell.
+
 ## Sidecar hardening hooks
 
 Benchmark helper script:
@@ -268,19 +293,20 @@ When enabled via `multicorpus serve`:
 - `POST /align/link/delete` — permanently delete a link (token required, V0.4)
 - `POST /align/link/retarget` — change target unit of a link (token required, V0.4)
 - `GET /doc_relations?doc_id=N` — list doc-level relations (no token, V0.4)
-- `POST /documents/update` — update one doc's metadata (token required, V0.4)
-- `POST /documents/bulk_update` — bulk update docs (token required, V0.4)
+- `POST /documents/update` — update one doc's metadata/workflow status (token required, V0.4+)
+- `POST /documents/bulk_update` — bulk update docs metadata/workflow status (token required, V0.4+)
 - `POST /doc_relations/set` — upsert a doc_relation (token required, V0.4)
 - `POST /doc_relations/delete` — delete a doc_relation (token required, V0.4)
 - `POST /export/tei` — export TEI XML to server-side dir (token required, V0.4)
 - `POST /export/align_csv` — export alignment links as CSV/TSV (token required, V0.4)
 - `POST /export/run_report` — export run history as JSONL or HTML (token required, V0.4)
+- `POST /db/backup` — create timestamped backup `.db.bak` (token required)
 - `POST /validate-meta`
 - `POST /segment`
 - `GET /jobs` — list jobs; supports `?status=`, `?limit=`, `?offset=`; returns pagination fields (V0.5)
 - `POST /jobs`
 - `GET /jobs/{job_id}`
-- `POST /jobs/enqueue` — async job enqueue for long ops (token required, V0.5); 9 kinds: index, curate, validate-meta, segment, import, align, export_tei, export_align_csv, export_run_report
+- `POST /jobs/enqueue` — async job enqueue for long ops (token required, V0.5+); 12 kinds: index, curate, validate-meta, segment, import, align, export_tei, export_align_csv, export_run_report, export_tei_package, export_readable_text, qa_report
 - `POST /jobs/{job_id}/cancel` — cancel queued/running job, idempotent for terminal states (token required, V0.5)
 
 #### tauri-prep V0.3 usage
@@ -295,10 +321,16 @@ When enabled via `multicorpus serve`:
 
 **MetadataScreen** (`Métadonnées` tab):
 - Fetches doc list via `GET /documents`; click doc to select.
-- Edit panel: title, language, doc_role, resource_type → `POST /documents/update`.
+- Edit panel: title, language, doc_role, resource_type (+ workflow fields when enabled) → `POST /documents/update`.
 - Relations panel: lists relations (`GET /doc_relations`), add form → `POST /doc_relations/set`, delete button → `POST /doc_relations/delete`.
-- Bulk edit bar: apply doc_role/resource_type to all docs → `POST /documents/bulk_update`.
+- Bulk edit bar: apply doc_role/resource_type/workflow_status to selected docs → `POST /documents/bulk_update`.
+- Backup action: `Sauvegarder la DB` → `POST /db/backup` and displays the created backup filename/path in UI log/status.
 - Validate button → `POST /validate-meta`; displays warnings in log pane.
+
+Workflow status fields (additive):
+- `workflow_status`: `draft | review | validated`
+- `validated_at`: timestamp set by server when status becomes `validated`
+- `validated_run_id`: optional run identifier for traceability
 
 **ExportsScreen** (`Exports` tab):
 - TEI export: multi-select docs + directory picker (`open({ directory: true })`) → `POST /export/tei`.
@@ -337,13 +369,14 @@ The `JobCenter` component polls `GET /jobs/{id}` every 500ms and displays:
 - `POST /jobs/enqueue` `{kind: "export_tei", params: {out_dir, doc_ids?}}`
 - `POST /jobs/enqueue` `{kind: "export_align_csv", params: {out_path, pivot_doc_id?, target_doc_id?, delimiter?}}`
 - `POST /jobs/enqueue` `{kind: "export_run_report", params: {out_path, format, run_id?}}`
+- `POST /jobs/enqueue` `{kind: "export_readable_text", params: {out_dir, format: "txt"|"docx", doc_ids?}}`
   - `run_id` filter can export one specific align run/debug payload.
 
 Cancel: `JobCenter` cancel button calls `POST /jobs/{job_id}/cancel` (token required).
 
 Payload envelope, error codes, and OpenAPI details are defined in:
 - `docs/SIDECAR_API_CONTRACT.md`
-- `docs/openapi.json` (generated snapshot, 28 paths)
+- `docs/openapi.json` (generated snapshot, 34 paths)
 
 Token note:
 - With `--token auto` (default), send `X-Agrafes-Token` for all write endpoints.

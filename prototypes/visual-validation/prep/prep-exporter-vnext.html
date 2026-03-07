@@ -1,0 +1,866 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Prototype visuel AGRAFES: Constituer — Exporter V2 (formats travail + publication)."
+    />
+    <link rel="icon" href="../favicon.ico" />
+    <title>Constituer — Exporter V2 (V-next)</title>
+    <style>
+      :root {
+        --bg: #f0f2f5;
+        --card: #fff;
+        --line: #dde1e8;
+        --text: #1a1a2e;
+        --muted: #4f5d6d;
+        --accent: #0f766e;
+        --accent-soft: #e8f5f3;
+        --link-bg: #eaf1fb;
+        --link-line: #b7c8df;
+        --link-text: #1e4a80;
+        --ok-bg: #ecf8f5;
+        --ok-line: #b8e1d6;
+        --warn-bg: #fff8e6;
+        --warn-line: #ecd694;
+        --new-bg: #f7f1ff;
+        --new-line: #d8c2ff;
+        --new-text: #4c2c8a;
+        --ready-bg: #ecf8f5;
+        --ready-line: #b8e1d6;
+        --ready-text: #0c6b45;
+        --todo-bg: #fff0f0;
+        --todo-line: #efbaba;
+        --todo-text: #8a2f2f;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; font-family: "SF Pro Text", "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); }
+      .top { height: 54px; background: linear-gradient(135deg, #0c4a46, #0f766e); color: #fff; border-bottom: 1px solid #0c4a46; display: flex; align-items: center; gap: 10px; padding: 0 14px; }
+      .top strong { letter-spacing: .02em; }
+      .db { margin-left: auto; font-size: 12px; border: 1px solid rgba(255,255,255,.34); border-radius: 999px; padding: 4px 10px; background: rgba(255,255,255,.13); }
+      .proto-nav { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 14px; border-bottom: 1px solid var(--line); background: #fff; }
+      .proto-nav a { border: 1px solid var(--line); border-radius: 999px; padding: 5px 10px; font-size: 12px; color: var(--muted); text-decoration: none; background: #f8f9fa; }
+      .proto-nav a.active { color: #0c4a46; border-color: #9fd3cc; background: #e8f5f3; font-weight: 700; }
+
+      .shell { display: grid; grid-template-columns: 230px 1fr; min-height: calc(100vh - 54px); }
+      .nav { border-right: 1px solid var(--line); background: #f8f9fa; padding: 12px; }
+      .nav h2 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
+      .tab { width: 100%; text-align: left; border: 1px solid transparent; border-radius: 8px; padding: 10px; background: transparent; color: var(--text); font-size: 14px; margin-bottom: 6px; display: block; text-decoration: none; }
+      .tab.active { background: var(--accent-soft); border-color: #9fd3cc; color: #0c4a46; font-weight: 700; }
+      .tree { margin: -2px 0 8px 8px; padding-left: 10px; border-left: 2px solid #cfe8e3; display: grid; gap: 4px; }
+      .tree a { display: block; text-decoration: none; font-size: 12px; color: var(--muted); border: 1px solid transparent; border-radius: 7px; padding: 6px 8px; }
+      .tree a.active { background: #f0faf8; border-color: #9fd3cc; color: #0c4a46; font-weight: 700; }
+      .tree a:hover { border-color: #cfe8e3; background: #f6fbfa; }
+      .tree-wrap { margin: -2px 0 8px; }
+      .tree-summary {
+        list-style: none;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border: 1px solid #cfe8e3;
+        border-radius: 8px;
+        padding: 7px 8px;
+        font-size: 12px;
+        font-weight: 700;
+        color: #0c4a46;
+        background: #edf7f5;
+      }
+      .tree-summary::-webkit-details-marker { display: none; }
+      .tree-caret { font-size: 11px; color: var(--muted); transition: transform .16s ease; }
+      .tree-wrap[open] .tree-caret { transform: rotate(180deg); }
+
+      .content { padding: 14px; display: grid; gap: 12px; align-content: start; }
+      .card { border: 1px solid var(--line); background: var(--card); border-radius: 12px; overflow: hidden; }
+      .head-card { padding: 12px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+      .head-card h1 { margin: 0; font-size: 18px; }
+      .head-card p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+      .head-tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+      .pill { display: inline-block; border: 1px solid #9fd3cc; background: #e8f5f3; color: #0c4a46; border-radius: 999px; padding: 2px 8px; font-size: 11px; }
+      .pill.new { border-color: var(--new-line); background: var(--new-bg); color: var(--new-text); }
+      .pill.warn { border-color: var(--warn-line); background: var(--warn-bg); color: #8b6a07; }
+      .pill.ready { border-color: var(--ready-line); background: var(--ready-bg); color: var(--ready-text); }
+      .pill.todo { border-color: var(--todo-line); background: var(--todo-bg); color: var(--todo-text); }
+
+      .card-head { background: #f8f9fa; border-bottom: 1px solid var(--line); padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+      .card-head h3 { margin: 0; font-size: 15px; }
+      .body { padding: 12px; display: grid; gap: 10px; }
+
+      .btns { display: flex; gap: 8px; flex-wrap: wrap; }
+      .btn {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #f8f9fa;
+        color: #24304a;
+        padding: 8px 10px;
+        font-size: 13px;
+        font-weight: 600;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .btn.pri { border-color: #0f766e; background: #0f766e; color: #fff; }
+      .btn.alt { border-color: var(--link-line); background: var(--link-bg); color: var(--link-text); }
+
+      .check-grid { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: 8px; }
+      .check { border: 1px solid var(--line); border-radius: 9px; background: #fff; padding: 8px; }
+      .check.ok { background: var(--ok-bg); border-color: var(--ok-line); }
+      .check.warn { background: var(--warn-bg); border-color: var(--warn-line); }
+      .check .k { font-size: 11px; color: var(--muted); }
+      .check .v { margin-top: 3px; font-size: 19px; font-weight: 700; }
+
+      .grid-2 { display: grid; grid-template-columns: 1.2fr 1fr; gap: 10px; }
+      .grid-2.single > .card { grid-column: 1 / -1; }
+      .grid-3 { display: grid; grid-template-columns: repeat(3, minmax(120px, 1fr)); gap: 8px; }
+      .row { display: grid; grid-template-columns: repeat(2, minmax(120px, 1fr)); gap: 8px; }
+
+      .f { border: 1px solid var(--line); border-radius: 8px; padding: 8px; font-size: 13px; background: #fff; }
+      .f strong { display: block; margin-bottom: 3px; color: #28344f; font-size: 12px; }
+      .f select, .f input {
+        width: 100%;
+        border: 1px solid #c7d3e7;
+        border-radius: 7px;
+        background: #fff;
+        padding: 6px 7px;
+        font-size: 12px;
+        font-family: inherit;
+      }
+
+      .hint { font-size: 12px; color: var(--muted); }
+      .hint-box {
+        border: 1px dashed #9fd3cc;
+        background: #f3f9f8;
+        color: #0c4a46;
+        border-radius: 8px;
+        padding: 8px;
+        font-size: 12px;
+      }
+      .status-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+      .status-box {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+        padding: 8px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .status-box strong {
+        display: block;
+        margin-bottom: 5px;
+        color: #26324b;
+      }
+      .status-box ul {
+        margin: 0;
+        padding-left: 16px;
+      }
+      .status-box li + li {
+        margin-top: 4px;
+      }
+      .status-box.ready {
+        background: var(--ready-bg);
+        border-color: var(--ready-line);
+      }
+      .status-box.todo {
+        background: var(--todo-bg);
+        border-color: var(--todo-line);
+      }
+      .btn.pending {
+        border-style: dashed;
+        opacity: .68;
+      }
+      .export-doc-workspace {
+        display: grid;
+        grid-template-columns: minmax(440px, 1fr) minmax(300px, .85fr);
+        gap: 10px;
+        align-items: start;
+      }
+      .export-doc-tools {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 8px;
+      }
+      .export-doc-tools input,
+      .export-doc-tools select {
+        border: 1px solid #c7d3e7;
+        border-radius: 7px;
+        background: #fff;
+        padding: 6px 7px;
+        font-size: 12px;
+        font-family: inherit;
+      }
+      .export-doc-tools input {
+        flex: 1 1 220px;
+      }
+      .export-select-all {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        color: #334460;
+        padding: 6px 8px;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: #fff;
+      }
+      .doc-grid-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+        background: #fff;
+      }
+      .doc-grid-table th,
+      .doc-grid-table td {
+        border: 1px solid var(--line);
+        padding: 7px 8px;
+        text-align: left;
+        vertical-align: top;
+      }
+      .doc-grid-table th {
+        background: #f8f9fa;
+      }
+      .doc-grid-table tr:hover td {
+        background: #f8fbff;
+      }
+      .doc-check-col {
+        width: 34px;
+        text-align: center;
+      }
+      .export-panel {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fbfcfd;
+        padding: 10px;
+        display: grid;
+        gap: 8px;
+      }
+      .export-selection-meta {
+        border: 1px dashed #b7c8df;
+        border-radius: 8px;
+        background: #f8fbff;
+        color: #355074;
+        font-size: 12px;
+        padding: 8px;
+      }
+      .export-selection-meta strong {
+        color: #1e3f6b;
+      }
+      .export-stage-note {
+        border: 1px dashed #b7c8df;
+        border-radius: 8px;
+        background: #f8fbff;
+        color: #355074;
+        font-size: 12px;
+        padding: 8px;
+      }
+      .export-align-options {
+        border: 1px solid #dbe4f2;
+        border-radius: 8px;
+        background: #f8fbff;
+        padding: 8px;
+        display: grid;
+        gap: 8px;
+      }
+      .is-hidden { display: none !important; }
+      .compat-list {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+        overflow: hidden;
+      }
+      .compat-item {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 8px;
+        align-items: center;
+        padding: 7px 8px;
+        font-size: 12px;
+      }
+      .compat-item + .compat-item {
+        border-top: 1px solid var(--line);
+      }
+
+      .stage-table {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        overflow: hidden;
+      }
+      .stage-row {
+        display: grid;
+        grid-template-columns: 140px 1fr 220px;
+        gap: 8px;
+        align-items: center;
+        padding: 8px 10px;
+        font-size: 12px;
+        background: #fff;
+      }
+      .stage-row + .stage-row { border-top: 1px solid var(--line); }
+      .stage-head {
+        background: #f8f9fa;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: .05em;
+        font-size: 11px;
+        font-weight: 700;
+      }
+
+      .history-wrap {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fff;
+        overflow: hidden;
+      }
+      .history-wrap > summary {
+        list-style: none;
+        cursor: pointer;
+        padding: 9px 11px;
+        font-weight: 700;
+        font-size: 13px;
+        color: #2a364f;
+        background: #f8f9fa;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .history-wrap > summary::-webkit-details-marker { display: none; }
+      .history-wrap[open] > summary { border-bottom: 1px solid var(--line); }
+      .caret { color: var(--muted); font-size: 11px; }
+      .history-wrap[open] .caret { transform: rotate(180deg); }
+      .history-body { padding: 10px; }
+
+      .table {
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        overflow: hidden;
+      }
+      .trow {
+        display: grid;
+        grid-template-columns: 160px 170px 120px 1fr;
+        gap: 8px;
+        align-items: center;
+        padding: 8px 10px;
+        font-size: 12px;
+        background: #fff;
+      }
+      .trow + .trow { border-top: 1px solid var(--line); }
+      .thead { background: #f8f9fa; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .05em; font-size: 11px; }
+      .status-ok { color: #0c6b45; font-weight: 700; }
+      .status-run { color: #946200; font-weight: 700; }
+
+      @media (max-width: 1120px) {
+        .shell { grid-template-columns: 1fr; }
+        .nav { border-right: 0; border-bottom: 1px solid var(--line); }
+        .grid-2 { grid-template-columns: 1fr; }
+        .grid-2.single > .card { grid-column: 1 / -1; }
+        .status-grid { grid-template-columns: 1fr; }
+        .export-doc-workspace { grid-template-columns: 1fr; }
+      }
+      @media (max-width: 960px) {
+        .check-grid { grid-template-columns: 1fr 1fr; }
+        .grid-3 { grid-template-columns: 1fr; }
+        .row { grid-template-columns: 1fr; }
+        .stage-row { grid-template-columns: 1fr; }
+        .trow { grid-template-columns: 1fr; gap: 3px; }
+        .thead { display: none; }
+      }
+      a:focus-visible,
+      button:focus-visible,
+      input:focus-visible,
+      select:focus-visible,
+      textarea:focus-visible,
+      summary:focus-visible,
+      [role="button"]:focus-visible,
+      [tabindex]:focus-visible {
+        outline: 2px solid #1e4a80;
+        outline-offset: 2px;
+        box-shadow: 0 0 0 3px rgba(30, 74, 128, 0.18);
+      }
+    </style>
+  </head>
+  <body>
+    <header class="top">
+      <strong>Constituer</strong>
+      <span>Préparation corpus</span>
+      <span class="db">DB: corpus_himyc_2026.db</span>
+    </header>
+
+    <nav class="proto-nav" aria-label="Navigation maquettes">
+      <a href="../index.html">Index</a>
+      <a href="../shell/board-vnext.html">Board</a>
+      <a href="../shell/shell-vnext.html">Home</a>
+      <a href="../shell/explorer-vnext.html">Explorer</a>
+      <a class="active" href="./prep-vnext.html">Constituer</a>
+      <a href="../shell/publish-vnext.html">Publier</a>
+    </nav>
+
+    <div class="shell">
+      <aside class="nav">
+        <h2>Sections</h2>
+        <a class="tab" href="./prep-import-vnext.html">Importer</a>
+        <a class="tab" href="./prep-documents-vnext.html">Documents</a>
+        <a class="tab" href="./prep-actions-vnext.html">Actions</a>
+        <details class="tree-wrap actions-tree" data-actions-tree data-default-open="false">
+          <summary class="tree-summary">Actions disponibles <span class="tree-caret" aria-hidden="true">▾</span></summary>
+          <div class="tree" aria-label="Actions disponibles">
+            <a href="./prep-curation-preview-vnext.html">Curation</a>
+            <a href="./prep-segmentation-vo-vnext.html">Segmentation</a>
+            <a href="./prep-alignement-run-vnext.html">Alignement</a>
+          </div>
+        </details>
+        <a class="tab active" href="./prep-exporter-vnext.html">Exporter</a>
+      </aside>
+
+      <main class="content">
+        <section class="card head-card">
+          <div>
+            <h1>Exporter V2 — publication + formats de travail</h1>
+            <p>
+              Un même onglet pour 3 besoins: livrer (TEI), partager (CSV/Excel/TXT), archiver (DB + historique run).
+            </p>
+          </div>
+          <div class="head-tools">
+            <span class="pill">run source: align_2026-03-04_10h14</span>
+            <span class="pill new">V2 maquette</span>
+            <a class="btn alt" href="./prep-alignement-run-vnext.html">Retour alignement</a>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-head"><h3>Statut backend actuel (réalité code)</h3><span class="pill">lecture rapide</span></div>
+          <div class="body">
+            <div class="status-grid">
+              <div class="status-box ready">
+                <strong>Disponible maintenant</strong>
+                <ul>
+                  <li>Export TEI (XML)</li>
+                  <li>Package TEI ZIP (manifest + checksums + README)</li>
+                  <li>Export alignements CSV/TSV (pivot/cible)</li>
+                  <li>Rapport runs (JSONL/HTML)</li>
+                  <li>Rapport QA (JSON/HTML)</li>
+                </ul>
+              </div>
+              <div class="status-box todo">
+                <strong>À implémenter</strong>
+                <ul>
+                  <li>Export XLSX natif</li>
+                  <li>Exports \"snapshot\" curation/segmentation</li>
+                  <li>Export multilingue 2–4 langues en un seul fichier</li>
+                  <li>Backup/clone DB depuis Export</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-head"><h3>Pré-check avant export</h3><span class="pill warn">bloquant si erreurs</span></div>
+          <div class="body">
+            <div class="check-grid">
+              <div class="check ok"><div class="k">Erreurs bloquantes</div><div class="v">0</div></div>
+              <div class="check warn"><div class="k">Warnings</div><div class="v">3</div></div>
+              <div class="check ok"><div class="k">Docs validés</div><div class="v">12 / 12</div></div>
+              <div class="check ok"><div class="k">Alignements actifs</div><div class="v">98.4%</div></div>
+            </div>
+            <div class="btns">
+              <a class="btn alt" href="./prep-audit-advanced-vnext.html">Ouvrir audit avancé</a>
+              <button class="btn">Prévisualiser rapport QA</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="grid-2 single">
+          <article class="card">
+            <div class="card-head"><h3>Sélection des documents à exporter</h3><span class="pill warn">partiel</span></div>
+            <div class="body export-doc-workspace">
+              <div>
+                <div class="export-doc-tools">
+                  <input id="exportDocSearch" type="text" placeholder="Rechercher titre/langue/rôle" aria-label="Recherche docs export" />
+                  <select id="exportDocLangFilter" aria-label="Filtrer langue">
+                    <option value="all">Toutes langues</option>
+                    <option value="fr">fr</option>
+                    <option value="de">de</option>
+                    <option value="en">en</option>
+                    <option value="es">es</option>
+                  </select>
+                  <label class="export-select-all">
+                    <input id="exportSelectAll" type="checkbox" />
+                    Tout sélectionner
+                  </label>
+                </div>
+                <table class="doc-grid-table" aria-label="Documents exportables">
+                  <thead>
+                    <tr>
+                      <th class="doc-check-col"></th>
+                      <th>ID</th>
+                      <th>Titre</th>
+                      <th>Langue</th>
+                      <th>Rôle</th>
+                      <th>Statut</th>
+                    </tr>
+                  </thead>
+                  <tbody id="exportDocBody">
+                    <tr data-title="discours 1793 fr" data-lang="fr">
+                      <td class="doc-check-col"><input class="export-doc-check" type="checkbox" checked /></td>
+                      <td>#1</td>
+                      <td>Discours_1793_fr.docx</td>
+                      <td>fr</td>
+                      <td>VO</td>
+                      <td><span class="pill ready">validé</span></td>
+                    </tr>
+                    <tr data-title="ubersetzung 1793 de" data-lang="de">
+                      <td class="doc-check-col"><input class="export-doc-check" type="checkbox" checked /></td>
+                      <td>#6</td>
+                      <td>Übersetzung_1793_de.docx</td>
+                      <td>de</td>
+                      <td>traduction</td>
+                      <td><span class="pill ready">aligné</span></td>
+                    </tr>
+                    <tr data-title="speech 1793 en" data-lang="en">
+                      <td class="doc-check-col"><input class="export-doc-check" type="checkbox" /></td>
+                      <td>#2</td>
+                      <td>Speech_1793_en.docx</td>
+                      <td>en</td>
+                      <td>traduction</td>
+                      <td><span class="pill warn">à vérifier</span></td>
+                    </tr>
+                    <tr data-title="traduccion 1793 es" data-lang="es">
+                      <td class="doc-check-col"><input class="export-doc-check" type="checkbox" /></td>
+                      <td>#5</td>
+                      <td>Traduccion_1793_es.docx</td>
+                      <td>es</td>
+                      <td>traduction</td>
+                      <td><span class="pill warn">non aligné</span></td>
+                    </tr>
+                  </tbody>
+                </table>
+                <p class="hint">
+                  Logique proposée: la sélection ci-dessus alimente tous les exports du panneau de droite.
+                </p>
+              </div>
+
+              <aside class="export-panel">
+                <div id="exportSelectionMeta" class="export-selection-meta">
+                  <strong id="exportSelectedCount">2</strong> document(s) sélectionné(s) pour l'export.
+                </div>
+                <p class="hint">La sélection de gauche définit automatiquement la portée de l'export.</p>
+                <label class="f"><strong>Jeu de données à exporter</strong>
+                  <select id="exportStage">
+                    <option value="curation">Curation (texte revu)</option>
+                    <option value="segmentation">Segmentation (segments [n])</option>
+                    <option value="alignment" selected>Alignement run</option>
+                    <option value="publication">Package publication TEI</option>
+                  </select>
+                </label>
+                <div id="exportStageNote" class="export-stage-note">
+                  Export des paires alignées (pivot + langues sélectionnées), avec filtres d'exceptions possibles.
+                </div>
+                <div id="exportAlignmentOptions" class="export-align-options">
+                  <div class="row">
+                    <label class="f"><strong>Document pivot (VO)</strong>
+                      <select>
+                        <option selected>Discours_1793_fr.docx (doc#1)</option>
+                      </select>
+                    </label>
+                    <label class="f"><strong>Langues/docs à inclure (max 4)</strong>
+                      <select>
+                        <option selected>de · Übersetzung_1793_de.docx</option>
+                        <option selected>en · Speech_1793_en.docx</option>
+                        <option>es · Traduccion_1793_es.docx</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div class="row">
+                    <label class="f"><strong>Structure</strong>
+                      <select>
+                        <option selected>Large (1 ligne = 1 external_id)</option>
+                        <option>Long (1 ligne = 1 paire pivot/langue)</option>
+                      </select>
+                    </label>
+                    <label class="f"><strong>Filtre qualité</strong>
+                      <select>
+                        <option selected>Tous</option>
+                        <option>Exceptions seulement</option>
+                        <option>Acceptés seulement</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div class="btns">
+                    <button class="btn pending">Simuler (aperçu 20 lignes)</button>
+                  </div>
+                </div>
+                <div id="exportPublicationOptions" class="export-align-options is-hidden">
+                  <div class="row">
+                    <label class="f"><strong>Profil TEI</strong>
+                      <select>
+                        <option selected>parcolab_like</option>
+                        <option>parcolab_strict</option>
+                        <option>generic</option>
+                      </select>
+                    </label>
+                    <label class="f"><strong>Contenu package</strong>
+                      <select>
+                        <option selected>TEI + manifest + checksums + README</option>
+                      </select>
+                    </label>
+                  </div>
+                  <p class="hint">Sortie cible: package prêt à importer ensuite dans ParCoLab.</p>
+                </div>
+                <label class="f"><strong id="exportOutputTypeLabel">Produit de sortie</strong>
+                  <select id="exportOutputType">
+                    <option value="table" selected>Tableau segments alignés</option>
+                    <option value="text">Texte lisible / révisé</option>
+                    <option value="package">Package publication TEI</option>
+                  </select>
+                </label>
+                <p id="exportOutputHint" class="hint">
+                  Choisit le résultat attendu (tableau de travail, texte lisible, ou package publication).
+                </p>
+                <label class="f"><strong id="exportFormatLabel">Format fichier</strong>
+                  <select id="exportFormat">
+                    <option value="csv" selected>CSV (ouvrable Excel)</option>
+                    <option value="tsv">TSV</option>
+                    <option value="jsonl">JSONL</option>
+                    <option value="xlsx_pending">XLSX (à implémenter)</option>
+                  </select>
+                </label>
+                <div class="compat-list" aria-label="Compatibilité format / backend">
+                  <div class="compat-item"><span>CSV / TSV</span><span class="pill ready">OK</span></div>
+                  <div class="compat-item"><span>TXT lisible</span><span class="pill ready">OK</span></div>
+                  <div class="compat-item"><span>DOCX lisible</span><span class="pill ready">OK</span></div>
+                  <div class="compat-item"><span>TEI / ZIP publication</span><span class="pill ready">OK</span></div>
+                  <div class="compat-item"><span>XLSX natif</span><span class="pill todo">à implémenter</span></div>
+                  <div class="compat-item"><span>DOC (Word legacy)</span><span class="pill todo">à implémenter</span></div>
+                  <div class="compat-item"><span>Snapshot curation/segmentation</span><span class="pill todo">à implémenter</span></div>
+                </div>
+                <div class="btns">
+                  <button class="btn">Choisir destination…</button>
+                  <button class="btn pri">Lancer export</button>
+                </div>
+                <p class="hint">En backend actuel: CSV/TSV alignement + package TEI + TXT/DOCX lisibles sont branchés; XLSX et DOC legacy restent à brancher.</p>
+              </aside>
+            </div>
+          </article>
+        </section>
+
+        <details class="history-wrap">
+          <summary>
+            Historique des runs export (replié par défaut)
+            <span class="caret" aria-hidden="true">▾</span>
+          </summary>
+          <div class="history-body">
+            <div class="table">
+              <div class="trow thead">
+                <div>Date</div>
+                <div>Run ID</div>
+                <div>Statut</div>
+                <div>Sortie</div>
+              </div>
+              <div class="trow">
+                <div>2026-03-06 10:42</div>
+                <div>run_84c9</div>
+                <div class="status-ok">OK</div>
+                <div>agrafes_publication_2026-03-06.zip</div>
+              </div>
+              <div class="trow">
+                <div>2026-03-06 10:12</div>
+                <div>run_84c1</div>
+                <div class="status-ok">OK</div>
+                <div>alignements_fr-de-en.csv</div>
+              </div>
+              <div class="trow">
+                <div>2026-03-05 18:09</div>
+                <div>run_83f8</div>
+                <div class="status-run">RUNNING</div>
+                <div>qa_report_20260305.html</div>
+              </div>
+            </div>
+            <div class="btns" style="margin-top:8px">
+              <button class="btn">Ouvrir dossier exports</button>
+              <button class="btn">Copier run ID</button>
+            </div>
+          </div>
+        </details>
+      </main>
+    </div>
+
+    <script>
+      (function () {
+        var tree = document.querySelector("[data-actions-tree]");
+        if (tree) {
+          var key = "agrafes.prep.actionsTreeOpen";
+          try {
+            var saved = window.localStorage.getItem(key);
+            if (saved === "1" || saved === "0") {
+              tree.open = saved === "1";
+            } else {
+              tree.open = tree.getAttribute("data-default-open") === "true";
+            }
+            tree.addEventListener("toggle", function () {
+              window.localStorage.setItem(key, tree.open ? "1" : "0");
+            });
+          } catch (_err) {
+            tree.open = tree.getAttribute("data-default-open") === "true";
+          }
+        }
+
+        var searchInput = document.getElementById("exportDocSearch");
+        var langFilter = document.getElementById("exportDocLangFilter");
+        var selectAll = document.getElementById("exportSelectAll");
+        var rows = Array.prototype.slice.call(document.querySelectorAll("#exportDocBody tr"));
+        var checks = Array.prototype.slice.call(document.querySelectorAll(".export-doc-check"));
+        var countEl = document.getElementById("exportSelectedCount");
+        var metaEl = document.getElementById("exportSelectionMeta");
+        var stageSelect = document.getElementById("exportStage");
+        var stageNote = document.getElementById("exportStageNote");
+        var alignmentOptions = document.getElementById("exportAlignmentOptions");
+        var publicationOptions = document.getElementById("exportPublicationOptions");
+        var outputType = document.getElementById("exportOutputType");
+        var outputHint = document.getElementById("exportOutputHint");
+        var formatSelect = document.getElementById("exportFormat");
+
+        var formatOptionsByType = {
+          table: [
+            { value: "csv", label: "CSV (ouvrable Excel)" },
+            { value: "tsv", label: "TSV" },
+            { value: "jsonl", label: "JSONL" },
+            { value: "xlsx_pending", label: "XLSX (à implémenter)" }
+          ],
+          text: [
+            { value: "txt", label: "TXT" },
+            { value: "docx", label: "DOCX" },
+            { value: "html", label: "HTML" },
+            { value: "doc_pending", label: "DOC (Word legacy, à implémenter)" }
+          ],
+          package: [
+            { value: "tei_zip", label: "ZIP package TEI" }
+          ]
+        };
+
+        function setSelectOptions(selectEl, options) {
+          if (!selectEl) return;
+          selectEl.innerHTML = "";
+          options.forEach(function (opt, idx) {
+            var o = document.createElement("option");
+            o.value = opt.value;
+            o.textContent = opt.label;
+            if (idx === 0) o.selected = true;
+            selectEl.appendChild(o);
+          });
+        }
+
+        function syncOutputByStage() {
+          if (!stageSelect || !outputType) return;
+          var stage = stageSelect.value;
+          if (stage === "publication") {
+            outputType.value = "package";
+          } else if (stage === "alignment") {
+            outputType.value = "table";
+          } else {
+            outputType.value = "text";
+          }
+          syncFormatByOutputType();
+        }
+
+        function syncFormatByOutputType() {
+          if (!outputType || !formatSelect) return;
+          var type = outputType.value;
+          var options = formatOptionsByType[type] || formatOptionsByType.table;
+          setSelectOptions(formatSelect, options);
+          if (outputHint) {
+            var hints = {
+              table: "Table de travail (alignements/segments), pratique pour analyse ou retraitement.",
+              text: "Sortie lisible pour relecture/partage éditorial (pas un format d'alignement riche).",
+              package: "Package de publication TEI complet (XML + manifest + checksums + README)."
+            };
+            outputHint.textContent = hints[type] || hints.table;
+          }
+        }
+
+        function visibleRows() {
+          return rows.filter(function (row) {
+            return row.style.display !== "none";
+          });
+        }
+
+        function updateCount() {
+          var selected = checks.filter(function (c) { return c.checked; }).length;
+          if (countEl) countEl.textContent = String(selected);
+          if (metaEl) {
+            metaEl.style.borderStyle = selected === 0 ? "solid" : "dashed";
+            metaEl.style.borderColor = selected === 0 ? "#efbaba" : "#b7c8df";
+            metaEl.style.background = selected === 0 ? "#fff5f5" : "#f8fbff";
+          }
+          if (selectAll) {
+            var vis = visibleRows();
+            var visChecked = vis.filter(function (row) {
+              var c = row.querySelector(".export-doc-check");
+              return c && c.checked;
+            }).length;
+            selectAll.checked = vis.length > 0 && visChecked === vis.length;
+          }
+        }
+
+        function applyFilter() {
+          var q = ((searchInput && searchInput.value) || "").trim().toLowerCase();
+          var lang = ((langFilter && langFilter.value) || "all").toLowerCase();
+          rows.forEach(function (row) {
+            var hay = (row.getAttribute("data-title") || "").toLowerCase();
+            var rowLang = (row.getAttribute("data-lang") || "").toLowerCase();
+            var matchQuery = q === "" || hay.indexOf(q) !== -1;
+            var matchLang = lang === "all" || rowLang === lang;
+            row.style.display = matchQuery && matchLang ? "" : "none";
+          });
+          updateCount();
+        }
+
+        function updateStageNote() {
+          if (!stageSelect || !stageNote) return;
+          var stage = stageSelect.value;
+          var messages = {
+            curation: "Export du texte revu (avant/après corrections), utile pour validation éditoriale.",
+            segmentation: "Export des segments numérotés ([n]) + état des exceptions de segmentation.",
+            alignment: "Export des paires alignées (pivot + langues sélectionnées), avec filtres d'exceptions possibles.",
+            publication: "Export final de publication: package TEI (XML + manifest + checksums + README)."
+          };
+          stageNote.textContent = messages[stage] || messages.alignment;
+          if (alignmentOptions) {
+            alignmentOptions.classList.toggle("is-hidden", stage !== "alignment");
+          }
+          if (publicationOptions) {
+            publicationOptions.classList.toggle("is-hidden", stage !== "publication");
+          }
+          syncOutputByStage();
+        }
+
+        checks.forEach(function (c) {
+          c.addEventListener("change", updateCount);
+        });
+        if (searchInput) searchInput.addEventListener("input", applyFilter);
+        if (langFilter) langFilter.addEventListener("change", applyFilter);
+        if (stageSelect) stageSelect.addEventListener("change", updateStageNote);
+        if (outputType) outputType.addEventListener("change", syncFormatByOutputType);
+        if (selectAll) {
+          selectAll.addEventListener("change", function () {
+            var on = selectAll.checked;
+            visibleRows().forEach(function (row) {
+              var c = row.querySelector(".export-doc-check");
+              if (c) c.checked = on;
+            });
+            updateCount();
+          });
+        }
+        updateCount();
+        updateStageNote();
+        syncFormatByOutputType();
+      })();
+    </script>
+  </body>
+</html>

@@ -1,6 +1,6 @@
 # Backlog — multicorpus_engine
 
-Last updated: 2026-03-01 (Sprints 1.5/2.4/3.3: collision resolver, virtual list, CI hardening)
+Last updated: 2026-03-06 (Prep UX gates + DB backup action wired)
 
 ## Priority backlog (realistic, post-implementation)
 
@@ -15,6 +15,7 @@ Last updated: 2026-03-01 (Sprints 1.5/2.4/3.3: collision resolver, virtual list,
 | P1 | Concordancier Prep V1 — advanced align strategies | Partial anchor corpora need robust fallback linking | Hybrid strategy `external_id_then_position` available in sidecar/jobs/ActionsScreen | done |
 | P1 | Concordancier Prep V1 — align explainability | Users need visibility on fallback behavior | Optional `debug_align` payload available and visible in Actions logs | done |
 | P1 | Concordancier Prep — persisted document workflow status | UX finalization needs a durable `draft/review/validated` state, not visual-only toggles | Migration + sidecar `/documents` + update endpoints carry workflow status and validation metadata; `tauri-prep` Documents tab shows/edits status and offers quick validate/review actions; `Actions` adds "Segmenter + valider ce document" fast-path + configurable post-validation routing | done |
+| P1 | Concordancier Prep — UX workflow gates (design -> implementation) | The current mockup iteration needs explicit closure criteria before final wiring | `docs/UX_FLOW_PREP.md` checklist section completed (Done-by-tab, align vs audit boundary, save/error guards, recalculation conflict policy, Export V2 scope, accessibility, end-to-end validation) + runtime state banner and unsaved-change inter-tab guard wired in `tauri-prep` | done |
 | P1 | Concordancier V0.2 — pagination backend + load more | Prevent loading too many hits per request, especially with aligned mode | `/query` supports `limit/offset/has_more`; UI supports reset + `Charger plus` paging | done |
 | P1 | Concordancier V1 — virtualisation / IntersectionObserver | V0.2 load-more exists; scrolling UX can be smoother | Automatic near-bottom page fetch with guardrails and no duplicate fetches | done |
 | P1 | Concordancier V1 — metadata panel | Users need doc-level metadata at a glance | Side panel: title, language, role, resource_type, unit count | todo |
@@ -26,7 +27,7 @@ Last updated: 2026-03-01 (Sprints 1.5/2.4/3.3: collision resolver, virtual list,
 | P1 | Windows sidecar code signing hardening | Script/workflow stubs exist; production cert flow not yet exercised | Signed `.exe` artifacts verified in CI with operational cert management process | in_progress |
 | P1 | Persistent sidecar restart resilience (advanced cases) | Baseline stale recovery is implemented; edge cases remain (PID reuse/races/forced kill) | Stress tests for crash/restart, stale cleanup race handling, and deterministic behavior under rapid relaunch loops | in_progress |
 | P1 | Sidecar lifecycle and resilience | Sidecar contract exists; runtime behavior needs production guardrails | Extended integration tests for restart/recovery and process supervision recommendations for desktop wrapper | todo |
-| P2 | Prep UX: DB backup action in Documents | Metadata batch edits need a visible safety checkpoint before write operations | `tauri-prep` Documents tab exposes `Sauvegarder la DB`; backend creates timestamped `.db.bak`; UI shows success/error with saved path | todo |
+| P2 | Prep UX: DB backup action in Documents | Metadata batch edits need a visible safety checkpoint before write operations | `tauri-prep` Documents tab exposes `Sauvegarder la DB`; sidecar `POST /db/backup` creates timestamped `.db.bak`; UI shows latest backup status + log path | done |
 | P1 | Tauri fixture expansion to GUI-capable runners | Headless smoke exists; full app-run coverage is still partial | Add optional GUI-capable runner lane that executes `tauri run`/`tauri build` smoke with sidecar | todo |
 | P2 | Sidecar localhost security posture | Optional token is implemented, but policy is still minimal | Explicit threat model, token rotation/expiry policy, and wrapper guidance for secure defaults | in_progress |
 | P2 | Linux portability baseline (glibc/manylinux policy) | manylinux build scaffold exists; support floor must be validated empirically | Documented glibc support floor + compatibility smoke matrix on older distros | **done** (Sprint 3.3: glibc floor table in DISTRIBUTION.md) |
@@ -67,7 +68,7 @@ Last updated: 2026-03-01 (Sprints 1.5/2.4/3.3: collision resolver, virtual list,
 - Export endpoints: `POST /export/tei`, `POST /export/align_csv`, `POST /export/run_report`.
 - Align correction: `POST /align/link/update_status`, `POST /align/link/delete`, `POST /align/link/retarget`.
 - Migration 004: `alignment_links.status` column (NULL=unreviewed, accepted, rejected).
-- **V0.5 async job enqueue**: `POST /jobs/enqueue` (9 kinds) + `POST /jobs/{id}/cancel` + extended `GET /jobs` (status filter + pagination).
+- **V0.5 async job enqueue**: `POST /jobs/enqueue` (12 kinds) + `POST /jobs/{id}/cancel` + extended `GET /jobs` (status filter + pagination).
 - **V0.5 sidecar_jobs.py cancel()**: best-effort cancel, idempotent for terminal states.
 - **V0.5 contract freeze**: `tests/snapshots/openapi_paths.json` + `test_contract_openapi_snapshot.py` + `test_contract_docs_sync.py` + `scripts/export_openapi.py` + `docs/openapi.json`.
 - **V0.5 tauri-prep JobCenter**: `tauri-prep/src/components/JobCenter.ts` — progress strip, cancel, recent jobs.
