@@ -22,6 +22,9 @@ export interface DocumentRecord {
   language: string;
   doc_role: string | null;
   resource_type: string | null;
+  workflow_status?: "draft" | "review" | "validated";
+  validated_at?: string | null;
+  validated_run_id?: string | null;
   unit_count: number;
 }
 
@@ -198,6 +201,8 @@ export interface DocumentUpdateOptions {
   language?: string;
   doc_role?: string;
   resource_type?: string;
+  workflow_status?: "draft" | "review" | "validated";
+  validated_run_id?: string | null;
 }
 
 export interface DocRelationRecord {
@@ -221,6 +226,18 @@ export interface DocRelationSetOptions {
   relation_type: string;
   target_doc_id: number;
   note?: string;
+}
+
+export interface DbBackupOptions {
+  out_dir?: string;
+}
+
+export interface DbBackupResponse {
+  ok: boolean;
+  source_db_path: string;
+  backup_path: string;
+  file_size_bytes: number;
+  created_at: string;
 }
 
 // ─── V0.4B — Export types ─────────────────────────────────────────────────────
@@ -619,6 +636,10 @@ export async function setDocRelation(conn: Conn, opts: DocRelationSetOptions): P
 
 export async function deleteDocRelation(conn: Conn, id: number): Promise<{ deleted: number }> {
   return conn.post("/doc_relations/delete", { id }) as Promise<{ deleted: number }>;
+}
+
+export async function backupDatabase(conn: Conn, opts: DbBackupOptions = {}): Promise<DbBackupResponse> {
+  return conn.post("/db/backup", opts) as Promise<DbBackupResponse>;
 }
 
 // ─── V0.4B — Exports API ─────────────────────────────────────────────────────

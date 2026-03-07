@@ -36,6 +36,7 @@ import {
   rebuildIndex,
   enqueueJob,
   exportRunReport,
+  updateDocument,
   SidecarError,
 } from "../lib/sidecarClient.ts";
 import { save as dialogSave } from "@tauri-apps/plugin-dialog";
@@ -105,6 +106,7 @@ export class ActionsScreen {
   private _docs: DocumentRecord[] = [];
   private _jobCenter: JobCenter | null = null;
   private _showToast: ((msg: string, isError?: boolean) => void) | null = null;
+  private _openDocumentsTab: (() => void) | null = null;
 
   // Audit state
   private _auditPivotId: number | null = null;
@@ -129,10 +131,16 @@ export class ActionsScreen {
   private _wfRoot: HTMLElement | null = null;
   private static readonly LS_WF_RUN_ID = "agrafes.prep.workflow.run_id";
   private static readonly LS_WF_STEP = "agrafes.prep.workflow.step";
+  private static readonly LS_SEG_POST_VALIDATE = "agrafes.prep.seg.post_validate";
 
   // Log + busy
   private _logEl!: HTMLElement;
   private _busyEl!: HTMLElement;
+  private _stateEl!: HTMLElement;
+  private _isBusy = false;
+  private _hasPendingPreview = false;
+  private _lastErrorMsg: string | null = null;
+  private _lastAuditEmpty = false;
 
   render(): HTMLElement {
     const root = document.createElement("div");
@@ -226,6 +234,14 @@ export class ActionsScreen {
         </div><!-- /wf-steps -->
       </section>
 
+      <!-- Runtime UX state -->
+      <section class="card">
+        <h3>État de session</h3>
+        <div id="act-state-banner" class="runtime-state state-info" aria-live="polite">
+          En attente de connexion sidecar…
+        </div>
+      </section>
+
       <!-- Documents -->
       <section class="card">
         <h3>Documents du corpus</h3>
@@ -297,6 +313,16 @@ export class ActionsScreen {
         </div>
         <div class="btn-row" style="margin-top:0.5rem">
           <button id="act-seg-btn" class="btn btn-warning" disabled>Segmenter</button>
+          <button id="act-seg-validate-btn" class="btn btn-secondary" disabled>Segmenter + valider ce document</button>
+        </div>
+        <div class="form-row" style="margin-top:0.5rem">
+          <label>Après validation
+            <select id="act-seg-after-validate" style="max-width:280px">
+              <option value="documents">Aller à Documents (défaut)</option>
+              <option value="next">Passer au document suivant</option>
+              <option value="stay">Rester sur place</option>
+            </select>
+          </label>
         </div>
       </section>
 
@@ -483,6 +509,8 @@ export class ActionsScreen {
 
     this._logEl = root.querySelector("#act-log")!;
     this._busyEl = root.querySelector("#act-busy")!;
+    this._stateEl = root.querySelector("#act-state-banner")!;
+    this._refreshRuntimeState();
 
     // Wire events
     root.querySelector("#act-reload-docs")!.addEventListener("click", () => this._loadDocs());
@@ -502,6 +530,16 @@ export class ActionsScreen {
 
     // Segment
     root.querySelector("#act-seg-btn")!.addEventListener("click", () => this._runSegment());
+    root.querySelector("#act-seg-validate-btn")!.addEventListener("click", () => this._runSegment(true));
+    const segAfterValidateSel = root.querySelector("#act-seg-after-validate") as HTMLSelectElement | null;
+    if (segAfterValidateSel) {
+      segAfterValidateSel.value = this._postValidateDestination();
+      segAfterValidateSel.addEventListener("change", () => {
+        const raw = segAfterValidateSel.value;
+        const next = raw === "next" || raw === "stay" ? raw : "documents";
+        try { localStorage.setItem(ActionsScreen.LS_SEG_POST_VALIDATE, next); } catch { /* ignore */ }
+      });
+    }
 
     // Align + strategy
     root.querySelector("#act-align-strategy")!.addEventListener("change", (e) => {
@@ -572,6 +610,9 @@ export class ActionsScreen {
     this._docs = [];
     this._alignExplainability = [];
     this._alignRunId = null;
+    this._hasPendingPreview = false;
+    this._lastAuditEmpty = false;
+    if (!conn) this._lastErrorMsg = null;
     this._setButtonsEnabled(false);
     if (conn) {
       this._loadDocs();
@@ -585,11 +626,24 @@ export class ActionsScreen {
     } else {
       this._wfEnableButtons(false);
     }
+    this._refreshRuntimeState();
   }
 
   setJobCenter(jc: JobCenter, showToast: (msg: string, isError?: boolean) => void): void {
     this._jobCenter = jc;
     this._showToast = showToast;
+  }
+
+  setOnOpenDocuments(cb: (() => void) | null): void {
+    this._openDocumentsTab = cb;
+  }
+
+  hasPendingChanges(): boolean {
+    return this._hasPendingPreview;
+  }
+
+  pendingChangesMessage(): string {
+    return "Une prévisualisation de curation non appliquée est en attente. Quitter cet onglet ?";
   }
 
   /** Apply a project preset to the current form fields (non-destructive). */
@@ -619,15 +673,58 @@ export class ActionsScreen {
     line.textContent = `[${ts}] ${msg}`;
     this._logEl.appendChild(line);
     this._logEl.scrollTop = this._logEl.scrollHeight;
+    if (isError) {
+      this._lastErrorMsg = msg;
+    } else if (msg.trim().startsWith("✓")) {
+      this._lastErrorMsg = null;
+    }
+    this._refreshRuntimeState();
   }
 
   private _setBusy(v: boolean): void {
+    this._isBusy = v;
     this._busyEl.style.display = v ? "flex" : "none";
+    this._refreshRuntimeState();
+  }
+
+  private _setRuntimeState(kind: "ok" | "info" | "warn" | "error", text: string): void {
+    if (!this._stateEl) return;
+    this._stateEl.className = `runtime-state state-${kind}`;
+    this._stateEl.textContent = text;
+  }
+
+  private _refreshRuntimeState(): void {
+    if (!this._stateEl) return;
+    if (!this._conn) {
+      this._setRuntimeState("error", "Sidecar indisponible. Ouvrez un projet ou relancez la connexion.");
+      return;
+    }
+    if (this._isBusy) {
+      this._setRuntimeState("info", "Opération en cours…");
+      return;
+    }
+    if (this._hasPendingPreview) {
+      this._setRuntimeState("warn", "Prévisualisation prête: appliquez ou relancez avant de quitter la section.");
+      return;
+    }
+    if (this._lastErrorMsg) {
+      this._setRuntimeState("warn", `Dernière erreur: ${this._lastErrorMsg}`);
+      return;
+    }
+    if (this._docs.length === 0) {
+      this._setRuntimeState("info", "Aucun document importé pour le moment.");
+      return;
+    }
+    if (this._lastAuditEmpty) {
+      this._setRuntimeState("info", "Aucun alignement trouvé pour le filtre courant.");
+      return;
+    }
+    this._setRuntimeState("ok", "Session prête: vous pouvez lancer des actions.");
   }
 
   private _setButtonsEnabled(on: boolean): void {
     ["act-preview-btn", "act-curate-btn", "act-seg-btn", "act-align-btn",
-     "act-meta-btn", "act-index-btn", "act-quality-btn", "act-coll-load-btn",
+     "act-seg-validate-btn", "act-meta-btn", "act-index-btn", "act-quality-btn", "act-coll-load-btn",
      "act-report-btn"].forEach(id => {
       const el = document.querySelector(`#${id}`) as HTMLButtonElement | null;
       if (el) el.disabled = !on;
@@ -680,8 +777,10 @@ export class ActionsScreen {
       const ap = document.querySelector("#act-audit-panel") as HTMLElement | null;
       if (ap) ap.style.display = "";
       this._log(`${this._docs.length} document(s) chargé(s).`);
+      this._refreshRuntimeState();
     } catch (err) {
       this._log(`Erreur chargement docs : ${err instanceof SidecarError ? err.message : String(err)}`, true);
+      this._refreshRuntimeState();
     }
   }
 
@@ -734,6 +833,7 @@ export class ActionsScreen {
       const changed = res.stats.units_changed;
       const total = res.stats.units_total;
       const reps = res.stats.replacements_total;
+      this._hasPendingPreview = changed > 0;
       statsEl.innerHTML = changed === 0
         ? `<span class="stat-ok">✓ Aucune modification prévue (${total} unités analysées).</span>`
         : `<span class="stat-warn">⚠ ${changed}/${total} unité(s) modifiée(s), ${reps} remplacement(s).</span>`;
@@ -748,9 +848,11 @@ export class ActionsScreen {
 
       this._log(`Prévisualisation : ${changed}/${total} unités → ${reps} remplacements.`);
     } catch (err) {
+      this._hasPendingPreview = false;
       this._log(`✗ Prévisualisation : ${err instanceof SidecarError ? err.message : String(err)}`, true);
     }
     this._setBusy(false);
+    this._refreshRuntimeState();
   }
 
   private _renderDiffList(examples: CuratePreviewExample[]): void {
@@ -809,22 +911,25 @@ export class ActionsScreen {
             const btn = document.querySelector("#act-reindex-after-curate-btn") as HTMLElement | null;
             if (btn) btn.style.display = "";
           }
+          this._hasPendingPreview = false;
           this._showToast?.("✓ Curation appliquée");
         } else {
           this._log(`✗ Curation : ${done.error ?? done.status}`, true);
           this._showToast?.("✗ Erreur curation", true);
         }
         this._setBusy(false);
+        this._refreshRuntimeState();
       });
     } catch (err) {
       this._log(`✗ Curation : ${err instanceof SidecarError ? err.message : String(err)}`, true);
       this._setBusy(false);
+      this._refreshRuntimeState();
     }
   }
 
   // ─── Segment ─────────────────────────────────────────────────────────────
 
-  private async _runSegment(): Promise<void> {
+  private async _runSegment(validateAfter = false): Promise<void> {
     if (!this._conn) return;
     const docSel = (document.querySelector("#act-seg-doc") as HTMLSelectElement).value;
     if (!docSel) { this._log("Sélectionnez un document.", true); return; }
@@ -833,12 +938,21 @@ export class ActionsScreen {
     const pack = (document.querySelector("#act-seg-pack") as HTMLSelectElement).value || "auto";
     const doc = this._docs.find(d => d.doc_id === docId);
     const docLabel = doc ? `"${doc.title}"` : `#${docId}`;
+    const postValidate = this._postValidateDestination();
+    const postValidateLabel = postValidate === "next"
+      ? "sélectionnera le document suivant"
+      : postValidate === "stay"
+      ? "restera sur l'onglet Actions"
+      : "basculera vers l'onglet Documents";
 
-    if (!window.confirm(
-      `Segmenter le document ${docLabel} ?\n` +
-      `Pack: ${pack}\n` +
-      "Cette opération EFFACE les liens d'alignement existants."
-    )) return;
+    const prompt = validateAfter
+      ? `Segmenter puis valider le document ${docLabel} ?\n` +
+        `Pack: ${pack}\n` +
+        `Cette opération EFFACE les liens d'alignement existants puis ${postValidateLabel}.`
+      : `Segmenter le document ${docLabel} ?\n` +
+        `Pack: ${pack}\n` +
+        "Cette opération EFFACE les liens d'alignement existants.";
+    if (!window.confirm(prompt)) return;
 
     this._setBusy(true);
     try {
@@ -857,17 +971,80 @@ export class ActionsScreen {
           const usedPack = r?.segment_pack ? ` Pack=${r.segment_pack}.` : "";
           this._log(`✓ Segmentation : ${r?.units_input ?? "?"} → ${r?.units_output ?? "?"} unités.${usedPack}${warns}`);
           if (r?.fts_stale) this._log("⚠ Index FTS périmé.");
-          this._showToast?.(`✓ Segmentation ${docLabel} terminée`);
+          if (validateAfter) {
+            void this._markSegmentedDocValidated(docId, docLabel);
+          } else {
+            this._showToast?.(`✓ Segmentation ${docLabel} terminée`);
+            this._setBusy(false);
+          }
         } else {
           this._log(`✗ Segmentation : ${done.error ?? done.status}`, true);
           this._showToast?.("✗ Erreur segmentation", true);
+          this._setBusy(false);
         }
-        this._setBusy(false);
       });
     } catch (err) {
       this._log(`✗ Segmentation : ${err instanceof SidecarError ? err.message : String(err)}`, true);
       this._setBusy(false);
     }
+  }
+
+  private async _markSegmentedDocValidated(docId: number, docLabel: string): Promise<void> {
+    if (!this._conn) {
+      this._setBusy(false);
+      return;
+    }
+    try {
+      await updateDocument(this._conn, {
+        doc_id: docId,
+        workflow_status: "validated",
+      });
+      this._log(`✓ ${docLabel} marqué comme validé.`);
+      this._showToast?.(`✓ ${docLabel} validé`);
+      const postValidate = this._postValidateDestination();
+      if (postValidate === "next") {
+        const moved = this._selectNextSegDoc(docId);
+        if (moved) {
+          this._log(`→ Document suivant sélectionné: #${moved.doc_id} (${moved.language}).`);
+        } else {
+          this._log("→ Aucun document suivant: redirection vers Documents.");
+          this._openDocumentsTab?.();
+        }
+      } else if (postValidate === "stay") {
+        this._log("→ Reste sur l'onglet Actions.");
+      } else {
+        this._openDocumentsTab?.();
+      }
+    } catch (err) {
+      this._log(`✗ Validation workflow après segmentation : ${err instanceof SidecarError ? err.message : String(err)}`, true);
+      this._showToast?.("✗ Segmentation OK mais validation workflow en échec", true);
+    } finally {
+      this._setBusy(false);
+    }
+  }
+
+  private _postValidateDestination(): "documents" | "next" | "stay" {
+    try {
+      const raw = localStorage.getItem(ActionsScreen.LS_SEG_POST_VALIDATE);
+      if (raw === "next" || raw === "stay") return raw;
+    } catch { /* ignore */ }
+    return "documents";
+  }
+
+  private _selectNextSegDoc(currentDocId: number): DocumentRecord | null {
+    const idx = this._docs.findIndex((d) => d.doc_id === currentDocId);
+    if (idx < 0 || idx >= this._docs.length - 1) return null;
+    const nextDoc = this._docs[idx + 1];
+    const segDocSel = document.querySelector("#act-seg-doc") as HTMLSelectElement | null;
+    if (segDocSel) {
+      segDocSel.value = String(nextDoc.doc_id);
+      segDocSel.dispatchEvent(new Event("change"));
+    }
+    const segLang = document.querySelector("#act-seg-lang") as HTMLInputElement | null;
+    if (segLang && nextDoc.language) {
+      segLang.value = nextDoc.language.slice(0, 10);
+    }
+    return nextDoc;
   }
 
   // ─── Feature 2: Align + Audit ────────────────────────────────────────────
@@ -963,6 +1140,7 @@ export class ActionsScreen {
           this._auditTargetId = targetIds[0];
           this._auditOffset = 0;
           this._auditLinks = [];
+          this._lastAuditEmpty = false;
           const auditPivSel = document.querySelector("#act-audit-pivot") as HTMLSelectElement | null;
           const auditTgtSel = document.querySelector("#act-audit-target") as HTMLSelectElement | null;
           if (auditPivSel) auditPivSel.value = String(pivotId);
@@ -1132,11 +1310,14 @@ export class ActionsScreen {
     const batchBar = root.querySelector("#act-audit-batch-bar") as HTMLElement | null;
 
     if (this._auditLinks.length === 0) {
+      this._lastAuditEmpty = true;
       wrap.innerHTML = '<p class="empty-hint">Aucun lien. Lancez un alignement ou chargez les liens.</p>';
       if (moreBtn) moreBtn.style.display = "none";
       if (batchBar) batchBar.style.display = "none";
+      this._refreshRuntimeState();
       return;
     }
+    this._lastAuditEmpty = false;
 
     const showExplain = this._auditIncludeExplain;
     const table = document.createElement("table");
@@ -1235,6 +1416,7 @@ export class ActionsScreen {
 
     if (moreBtn) moreBtn.style.display = this._auditHasMore ? "" : "none";
     if (batchBar) batchBar.style.display = "none"; // hidden until selection
+    this._refreshRuntimeState();
   }
 
   // ─── V1.3 — Batch audit actions ────────────────────────────────────────────

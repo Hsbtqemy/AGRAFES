@@ -18,6 +18,7 @@
 
 import { open as dialogOpen, save as dialogSave } from "@tauri-apps/plugin-dialog";
 import { exists, writeFile, mkdir } from "@tauri-apps/plugin-fs";
+import { getCurrent as getCurrentDeepLinks, onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { appDataDir } from "@tauri-apps/api/path";
 import type { ShellContext } from "./context.ts";
 
@@ -797,6 +798,7 @@ const LS_DB_RECENT         = "agrafes.db.recent";             // MruEntry[]
 const LS_CRASH_MARKER      = "agrafes.session.crash_marker";  // ISO timestamp if crashed
 
 const MRU_MAX = 10;
+const DEEP_LINK_SCHEME = "agrafes-shell";
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -807,6 +809,7 @@ let _currentDbPath: string | null = null;
 let _currentDispose: (() => void) | null = null;
 let _navigating = false;
 const _dbListeners: Set<(path: string | null) => void> = new Set();
+let _deepLinkUnlisten: (() => void) | null = null;
 
 // ─── ShellContext factory ─────────────────────────────────────────────────────
 
@@ -1159,17 +1162,121 @@ function _persist(): void {
 
 // ─── Deep-link resolution ─────────────────────────────────────────────────────
 
-function _resolveDeepLink(): Mode | null {
+interface DeepLinkPayload {
+  mode: Mode | null;
+  dbPath: string | null;
+}
+
+function _normalizeMode(raw: string | null | undefined): Mode | null {
+  const mode = (raw ?? "").trim().toLowerCase();
+  if (mode === "explorer" || mode === "constituer" || mode === "home" || mode === "publish") {
+    return mode;
+  }
+  return null;
+}
+
+function _isDbPathCandidate(path: string): boolean {
+  return /\.(db|sqlite|sqlite3)$/i.test(path);
+}
+
+function _parseOpenDbDeepLink(uri: string): DeepLinkPayload | null {
+  try {
+    const u = new URL(uri);
+    const protocol = u.protocol.toLowerCase();
+    if (protocol !== `${DEEP_LINK_SCHEME}:` && protocol !== "agrafes:") return null;
+
+    const hostPath = (u.hostname || u.pathname || "").replace(/^\/+/, "").toLowerCase();
+    if (hostPath && hostPath !== "open-db" && hostPath !== "open") return null;
+
+    const dbRaw = (u.searchParams.get("path") ?? u.searchParams.get("db") ?? u.searchParams.get("open_db") ?? "").trim();
+    const mode = _normalizeMode(u.searchParams.get("mode"));
+    return {
+      mode,
+      dbPath: dbRaw && _isDbPathCandidate(dbRaw) ? dbRaw : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function _firstDeepLinkPayload(urls: readonly string[]): DeepLinkPayload | null {
+  for (const raw of urls) {
+    const parsed = _parseOpenDbDeepLink(raw);
+    if (parsed && (parsed.dbPath || parsed.mode)) return parsed;
+  }
+  return null;
+}
+
+function _modeFromLocation(): Mode | null {
   // Check location.hash: #explorer, #constituer, #home
-  const hash = location.hash.replace(/^#/, "").trim().toLowerCase();
-  if (hash === "explorer" || hash === "constituer" || hash === "home" || hash === "publish") return hash as Mode;
+  const hashMode = _normalizeMode(location.hash.replace(/^#/, ""));
+  if (hashMode) return hashMode;
 
   // Check ?mode= query param
   const params = new URLSearchParams(location.search);
-  const q = (params.get("mode") ?? "").trim().toLowerCase();
-  if (q === "explorer" || q === "constituer" || q === "home" || q === "publish") return q as Mode;
+  const queryMode = _normalizeMode(params.get("mode"));
+  if (queryMode) return queryMode;
 
   return null;
+}
+
+function _dbPathFromLocationSearch(): string | null {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const raw = (params.get("open_db") ?? params.get("db") ?? params.get("path") ?? "").trim();
+    if (!raw || !_isDbPathCandidate(raw)) return null;
+    return raw;
+  } catch {
+    return null;
+  }
+}
+
+async function _resolveStartupDeepLinkPayload(): Promise<DeepLinkPayload> {
+  const fromLocation: DeepLinkPayload = {
+    mode: _normalizeMode(new URLSearchParams(window.location.search).get("mode")),
+    dbPath: _dbPathFromLocationSearch(),
+  };
+  if (fromLocation.mode || fromLocation.dbPath) return fromLocation;
+
+  try {
+    const initialLinks = await getCurrentDeepLinks();
+    const fromPlugin = _firstDeepLinkPayload(initialLinks ?? []);
+    if (fromPlugin) return fromPlugin;
+  } catch {
+    // no deep-link payload available at startup (normal path)
+  }
+  return { mode: null, dbPath: null };
+}
+
+async function _initDeepLinkRuntimeListener(): Promise<void> {
+  try {
+    _deepLinkUnlisten = await onOpenUrl((urls) => {
+      const payload = _firstDeepLinkPayload(urls);
+      if (!payload || (!payload.mode && !payload.dbPath)) return;
+
+      void (async () => {
+        try {
+          if (payload.mode && payload.mode !== _currentMode) {
+            await _setMode(payload.mode);
+          } else if (!payload.mode && _currentMode === "home") {
+            await _setMode("explorer");
+          }
+
+          if (payload.dbPath) {
+            if (payload.dbPath !== _currentDbPath) {
+              await _switchDb(payload.dbPath);
+            } else {
+              _showToast(`DB déjà active : ${_pathLabel(payload.dbPath)}`);
+            }
+          }
+        } catch (err) {
+          _shellLog("error", "deep_link", "Runtime deep-link failed", String(err));
+        }
+      })();
+    });
+  } catch {
+    _deepLinkUnlisten = null;
+  }
 }
 
 // ─── Entry point ─────────────────────────────────────────────────────────────
@@ -1190,9 +1297,16 @@ export async function initShell(): Promise<void> {
   _currentDbPath = savedDb;
   if (savedDb) _shellLog("info", "boot", `Restored DB: ${_pathLabel(savedDb)}`);
 
+  const startupDeepLink = await _resolveStartupDeepLinkPayload();
+  if (startupDeepLink.dbPath) {
+    _currentDbPath = startupDeepLink.dbPath;
+    _addToMru(startupDeepLink.dbPath);
+    _shellLog("info", "boot", `Deep-link DB: ${_pathLabel(startupDeepLink.dbPath)}`);
+  }
+
   // Deep-link overrides saved mode
-  const deepLink = _resolveDeepLink();
-  const startMode: Mode = deepLink ?? savedMode;
+  const deepLinkMode = startupDeepLink.mode ?? _modeFromLocation();
+  const startMode: Mode = deepLinkMode ?? savedMode;
 
   _buildHeader();
   _installKeyboardShortcuts();
@@ -1201,6 +1315,7 @@ export async function initShell(): Promise<void> {
   document.addEventListener("click", _closeSupportMenu);
   document.body.dataset.mode = startMode;
   await _setMode(startMode);
+  await _initDeepLinkRuntimeListener();
 
   // ── Show crash recovery banner if previous session crashed ───────────────────
   if (previousCrash) {
@@ -1210,6 +1325,8 @@ export async function initShell(): Promise<void> {
 
   // ── Clean shutdown handler ───────────────────────────────────────────────────
   window.addEventListener("beforeunload", () => {
+    _deepLinkUnlisten?.();
+    _deepLinkUnlisten = null;
     _shellLog("info", "shutdown", "Clean shutdown");
     _clearCrashMarker();
   });

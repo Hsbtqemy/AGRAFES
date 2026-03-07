@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import datetime as dt
 import json
+import sqlite3
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.parse import urlencode
@@ -165,6 +167,103 @@ def test_documents_bulk_update(v04_sidecar) -> None:
     assert code == 200, payload
     assert payload["ok"] is True
     assert payload["updated"] == 2
+
+
+def test_documents_list_includes_workflow_status_defaults(v04_sidecar) -> None:
+    base_url = v04_sidecar["base_url"]
+    code, payload = _get(f"{base_url}/documents")
+    assert code == 200, payload
+    assert payload["ok"] is True
+    assert payload["count"] >= 2
+    for doc in payload["documents"]:
+        assert doc["workflow_status"] == "draft"
+        assert doc["validated_at"] is None
+        assert doc["validated_run_id"] is None
+
+
+def test_documents_update_workflow_status_validated_sets_metadata(v04_sidecar) -> None:
+    base_url = v04_sidecar["base_url"]
+    token = v04_sidecar["token"]
+    doc_id = v04_sidecar["pivot_doc_id"]
+
+    code, payload = _post(
+        f"{base_url}/documents/update",
+        {
+            "doc_id": doc_id,
+            "workflow_status": "validated",
+            "validated_run_id": "run-seg-001",
+        },
+        token=token,
+    )
+    assert code == 200, payload
+    assert payload["doc"]["workflow_status"] == "validated"
+    assert payload["doc"]["validated_run_id"] == "run-seg-001"
+    assert isinstance(payload["doc"]["validated_at"], str)
+    assert payload["doc"]["validated_at"].endswith("Z")
+
+
+def test_documents_update_workflow_status_review_clears_validation_fields(v04_sidecar) -> None:
+    base_url = v04_sidecar["base_url"]
+    token = v04_sidecar["token"]
+    doc_id = v04_sidecar["pivot_doc_id"]
+
+    code1, payload1 = _post(
+        f"{base_url}/documents/update",
+        {"doc_id": doc_id, "workflow_status": "validated", "validated_run_id": "run-seg-002"},
+        token=token,
+    )
+    assert code1 == 200, payload1
+    assert payload1["doc"]["validated_at"] is not None
+
+    code2, payload2 = _post(
+        f"{base_url}/documents/update",
+        {"doc_id": doc_id, "workflow_status": "review"},
+        token=token,
+    )
+    assert code2 == 200, payload2
+    assert payload2["doc"]["workflow_status"] == "review"
+    assert payload2["doc"]["validated_at"] is None
+    assert payload2["doc"]["validated_run_id"] is None
+
+
+def test_documents_update_invalid_workflow_status_is_400(v04_sidecar) -> None:
+    from multicorpus_engine.sidecar_contract import ERR_VALIDATION
+
+    code, payload = _post(
+        f"{v04_sidecar['base_url']}/documents/update",
+        {"doc_id": v04_sidecar["pivot_doc_id"], "workflow_status": "done"},
+        token=v04_sidecar["token"],
+    )
+    assert code == 400
+    assert payload["error"]["type"] == ERR_VALIDATION
+
+
+def test_documents_bulk_update_workflow_status(v04_sidecar) -> None:
+    base_url = v04_sidecar["base_url"]
+    token = v04_sidecar["token"]
+    pivot_id = v04_sidecar["pivot_doc_id"]
+    target_id = v04_sidecar["target_doc_id"]
+
+    code, payload = _post(
+        f"{base_url}/documents/bulk_update",
+        {
+            "updates": [
+                {"doc_id": pivot_id, "workflow_status": "review"},
+                {"doc_id": target_id, "workflow_status": "review"},
+            ]
+        },
+        token=token,
+    )
+    assert code == 200, payload
+    assert payload["updated"] == 2
+
+    code2, payload2 = _get(f"{base_url}/documents")
+    assert code2 == 200, payload2
+    for doc in payload2["documents"]:
+        if doc["doc_id"] in (pivot_id, target_id):
+            assert doc["workflow_status"] == "review"
+            assert doc["validated_at"] is None
+            assert doc["validated_run_id"] is None
 
 
 def test_doc_relations_set_and_get(v04_sidecar) -> None:
@@ -353,6 +452,78 @@ def test_export_run_report_html(v04_sidecar, tmp_path: Path) -> None:
 def test_export_run_report_missing_out_path_is_400(v04_sidecar) -> None:
     from multicorpus_engine.sidecar_contract import ERR_BAD_REQUEST
     code, payload = _post(f"{v04_sidecar['base_url']}/export/run_report", {}, token=v04_sidecar["token"])
+    assert code == 400
+    assert payload["error"]["type"] == ERR_BAD_REQUEST
+
+
+def test_db_backup_creates_timestamped_file(v04_sidecar, tmp_path: Path) -> None:
+    base_url = v04_sidecar["base_url"]
+    token = v04_sidecar["token"]
+    out_dir = tmp_path / "db_backups"
+
+    code, payload = _post(f"{base_url}/db/backup", {"out_dir": str(out_dir)}, token=token)
+    assert code == 200, payload
+    assert payload["ok"] is True
+    backup_path = Path(payload["backup_path"])
+    assert backup_path.exists()
+    assert backup_path.parent == out_dir
+    assert backup_path.name.startswith("v04_")
+    assert backup_path.name.endswith(".db.bak")
+    assert payload["file_size_bytes"] > 0
+    assert payload["source_db_path"].endswith("v04.db")
+
+
+def test_db_backup_requires_token(v04_sidecar) -> None:
+    from multicorpus_engine.sidecar_contract import ERR_UNAUTHORIZED
+
+    code, payload = _post(f"{v04_sidecar['base_url']}/db/backup", {})
+    assert code == 401
+    assert payload["error"]["type"] == ERR_UNAUTHORIZED
+
+
+def test_db_backup_invalid_out_dir_is_400(v04_sidecar) -> None:
+    from multicorpus_engine.sidecar_contract import ERR_BAD_REQUEST
+
+    code, payload = _post(f"{v04_sidecar['base_url']}/db/backup", {"out_dir": 123}, token=v04_sidecar["token"])
+    assert code == 400
+    assert payload["error"]["type"] == ERR_BAD_REQUEST
+
+
+def test_db_backup_same_second_uses_unique_filename(v04_sidecar, tmp_path: Path, monkeypatch) -> None:
+    import multicorpus_engine.sidecar as sidecar_mod
+
+    class _FixedDateTime(dt.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            fixed = dt.datetime(2026, 3, 6, 12, 0, 0, tzinfo=dt.timezone.utc)
+            if tz is None:
+                return fixed.replace(tzinfo=None)
+            return fixed.astimezone(tz)
+
+    monkeypatch.setattr(sidecar_mod.dt, "datetime", _FixedDateTime)
+    base_url = v04_sidecar["base_url"]
+    token = v04_sidecar["token"]
+    out_dir = tmp_path / "same_second"
+
+    code1, payload1 = _post(f"{base_url}/db/backup", {"out_dir": str(out_dir)}, token=token)
+    code2, payload2 = _post(f"{base_url}/db/backup", {"out_dir": str(out_dir)}, token=token)
+
+    assert code1 == 200, payload1
+    assert code2 == 200, payload2
+    assert payload1["backup_path"] != payload2["backup_path"]
+    assert Path(payload1["backup_path"]).exists()
+    assert Path(payload2["backup_path"]).exists()
+
+
+def test_db_backup_sqlite_connect_error_is_400(v04_sidecar, monkeypatch) -> None:
+    import multicorpus_engine.sidecar as sidecar_mod
+    from multicorpus_engine.sidecar_contract import ERR_BAD_REQUEST
+
+    def _raise_sqlite_connect(*args, **kwargs):
+        raise sqlite3.OperationalError("unable to open database file")
+
+    monkeypatch.setattr(sidecar_mod.sqlite3, "connect", _raise_sqlite_connect)
+    code, payload = _post(f"{v04_sidecar['base_url']}/db/backup", {}, token=v04_sidecar["token"])
     assert code == 400
     assert payload["error"]["type"] == ERR_BAD_REQUEST
 

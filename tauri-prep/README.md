@@ -55,16 +55,20 @@ Bundles are in `tauri-prep/src-tauri/target/release/bundle/`.
 
 | Screen | Purpose |
 |--------|---------|
-| **Projet** | Open or create a corpus DB, view sidecar status (port/PID), shutdown sidecar |
+| **Topbar DB** | Open/create corpus DB, presets, handoff to AGRAFES Shell |
 | **Import** | Multi-file import with mode/language/title per file, 2-concurrent batch, FTS rebuild |
 | **Actions** | Curate (regex rules), Segment (per-doc + pack `auto/default/fr_strict/en_strict`), Align (pivot+targets, 4 strategies incl. `external_id_then_position` + optional debug explainability), Validate metadata |
+| **Documents** | Edit metadata + workflow status (`draft/review/validated`) |
+| **Exporter** | TEI / CSV / run-report exports |
 
-## Workflow recommandé (Prep → Concordancier)
+## Workflow recommandé (Prep → Shell)
 
 1. Préparer le corpus dans `tauri-prep` (import + index + align).
-2. Dans l’écran **Projet**, cliquer **Copier le chemin de la DB**.
-3. Ouvrir l’app `tauri-app` (Concordancier), puis cliquer **Open DB…**.
-4. Coller le chemin copié (ou sélectionner le fichier `.db`) et lancer la recherche.
+2. Dans la topbar, cliquer **↗ Shell** (deep-link `agrafes-shell://open-db?mode=explorer&path=...`).
+3. Si le deep-link n’est pas pris en charge sur la machine, ouvrir `tauri-shell` puis choisir la DB via le menu DB.
+4. Ouvrir la même DB `.db` dans l’onglet Explorer et lancer la recherche.
+
+Règles UX de navigation/fin de flux (Prep): voir [docs/UX_FLOW_PREP.md](../docs/UX_FLOW_PREP.md).
 
 ## Sidecar lifecycle
 

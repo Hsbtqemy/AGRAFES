@@ -52,13 +52,21 @@ jobs:
         id: gate
         run: |
           mkdir -p build
-          # stdout = JSON only; operator progress logged to build/release_gate.log
-          python scripts/release_gate.py > build/release_gate.json
-          echo "gate_status=$(python -c "import json; print(json.load(open('build/release_gate.json'))['status'])")" >> "$GITHUB_OUTPUT"
+          # release_gate.py writes JSON to stdout then exits 0/1; exit 1 = a gate failed (not mkdir)
+          python scripts/release_gate.py > build/release_gate.json || true
+          gate_rc="${PIPESTATUS[0]}"
+          if [ -s build/release_gate.json ]; then
+            echo "gate_status=$(python -c "import json; print(json.load(open('build/release_gate.json'))['status'])")" >> "$GITHUB_OUTPUT"
+          fi
+          exit "$gate_rc"
 
       - name: Print gate summary
         if: always()
         run: |
+          if [ ! -f build/release_gate.json ] || [ ! -s build/release_gate.json ]; then
+            echo "Gate step did not produce JSON (script error or crash). Check logs."
+            exit 0
+          fi
           python -c "
           import json, sys
           d = json.load(open('build/release_gate.json'))

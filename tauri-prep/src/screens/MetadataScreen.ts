@@ -1,7 +1,7 @@
 /**
  * MetadataScreen.ts — Corpus metadata panel (V0.4A).
  *
- * Tabs: Projet | Import | Actions | Métadonnées | Exports
+ * Host tab: Documents (within Importer | Documents | Actions | Exporter).
  * Features:
  *   - Document list (GET /documents)
  *   - Edit panel: title, language, doc_role, resource_type (POST /documents/update)
@@ -18,6 +18,7 @@ import {
   getDocRelations,
   setDocRelation,
   deleteDocRelation,
+  backupDatabase,
   validateMeta,
   type DocumentRecord,
   type DocRelationRecord,
@@ -26,6 +27,8 @@ import {
 
 const DOC_ROLES = ["standalone", "original", "translation", "excerpt", "unknown"];
 const RELATION_TYPES = ["translation_of", "excerpt_of"];
+const WORKFLOW_STATUS = ["draft", "review", "validated"] as const;
+type WorkflowStatus = (typeof WORKFLOW_STATUS)[number];
 
 export class MetadataScreen {
   private _conn: Conn | null = null;
@@ -48,6 +51,16 @@ export class MetadataScreen {
     }
   }
 
+  hasPendingChanges(): boolean {
+    if (!this._root) return false;
+    if (this._hasBulkDraftValues()) return true;
+    return this._isSelectedDocDirty() || this._hasPendingRelationDraft();
+  }
+
+  pendingChangesMessage(): string {
+    return "Des modifications de métadonnées non enregistrées sont détectées. Quitter l'onglet Documents ?";
+  }
+
   render(): HTMLElement {
     const root = document.createElement("div");
     root.className = "screen actions-screen";
@@ -59,6 +72,10 @@ export class MetadataScreen {
       <!-- Bulk edit + Validate bar -->
       <div class="card">
         <h3>Édition en masse</h3>
+        <div class="btn-row" style="margin-bottom:0.55rem; align-items:center">
+          <button id="db-backup-btn" class="btn btn-secondary btn-sm">Sauvegarder la DB</button>
+          <span id="db-backup-status" class="hint" style="margin:0">Aucune sauvegarde récente</span>
+        </div>
         <div class="form-row">
           <label>Doc role (tous)
             <select id="bulk-role">
@@ -108,6 +125,7 @@ export class MetadataScreen {
     root.querySelector("#refresh-docs-btn")!.addEventListener("click", () => this._refreshDocList());
     root.querySelector("#bulk-apply-btn")!.addEventListener("click", () => this._runBulkUpdate());
     root.querySelector("#validate-btn")!.addEventListener("click", () => this._runValidate());
+    root.querySelector("#db-backup-btn")!.addEventListener("click", () => void this._runDbBackup());
 
     // Enable bulk-apply when any bulk field has value
     const bulkRole = root.querySelector<HTMLSelectElement>("#bulk-role")!;
@@ -152,9 +170,18 @@ export class MetadataScreen {
       if (this._selectedDoc?.doc_id === doc.doc_id) {
         row.style.background = "#e0ecff";
       }
+      const wfStatus = this._workflowStatus(doc);
+      const wfLabel = this._workflowLabel(wfStatus);
+      const validatedMeta = wfStatus === "validated" && doc.validated_at
+        ? `<span class="wf-meta">validé ${this._esc(new Date(doc.validated_at).toLocaleDateString())}</span>`
+        : "";
       row.innerHTML = `
         <div style="font-weight:600;font-size:0.85rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${this._esc(doc.title)}</div>
-        <div style="font-size:0.78rem;color:var(--color-muted)">#${doc.doc_id} · ${doc.language} · ${doc.unit_count} unités</div>
+        <div style="font-size:0.78rem;color:var(--color-muted);display:flex;align-items:center;gap:0.35rem;flex-wrap:wrap">
+          <span>#${doc.doc_id} · ${this._esc(doc.language)} · ${doc.unit_count} unités</span>
+          <span class="wf-pill wf-${wfStatus}">${wfLabel}</span>
+          ${validatedMeta}
+        </div>
       `;
       row.addEventListener("click", () => this._selectDoc(doc));
       this._docListEl.appendChild(row);
@@ -204,8 +231,27 @@ export class MetadataScreen {
           <input id="edit-restype" type="text" value="${this._esc(doc.resource_type ?? "")}" style="max-width:160px" placeholder="literary, legal, …">
         </label>
       </div>
+      <div class="form-row">
+        <label>Statut workflow
+          <select id="edit-workflow-status">
+            ${WORKFLOW_STATUS.map((status) => (
+              `<option value="${status}"${status === this._workflowStatus(doc) ? " selected" : ""}>${this._workflowLabel(status)}</option>`
+            )).join("")}
+          </select>
+        </label>
+        <label style="flex:1">Run ID validation (optionnel)
+          <input id="edit-validated-run-id" type="text" value="${this._esc(doc.validated_run_id ?? "")}" placeholder="run_...">
+        </label>
+      </div>
+      <div class="form-row" style="margin-top:-0.2rem">
+        <div class="hint" style="margin:0">
+          ${doc.validated_at ? `Dernière validation: ${this._esc(new Date(doc.validated_at).toLocaleString())}` : "Dernière validation: —"}
+        </div>
+      </div>
       <div class="btn-row" style="margin-bottom:1rem">
         <button id="save-doc-btn" class="btn btn-primary btn-sm">Enregistrer</button>
+        <button id="mark-review-btn" class="btn btn-secondary btn-sm">Marquer à revoir</button>
+        <button id="mark-validated-btn" class="btn btn-secondary btn-sm">Valider ce document</button>
       </div>
 
       <h4 style="font-size:0.88rem;font-weight:600;margin:0.5rem 0 0.3rem">Relations documentaires</h4>
@@ -239,6 +285,8 @@ export class MetadataScreen {
     this._renderRelationsList();
 
     this._editPanelEl.querySelector("#save-doc-btn")!.addEventListener("click", () => this._saveDoc());
+    this._editPanelEl.querySelector("#mark-review-btn")!.addEventListener("click", () => this._setWorkflowStatus("review"));
+    this._editPanelEl.querySelector("#mark-validated-btn")!.addEventListener("click", () => this._setWorkflowStatus("validated"));
     this._editPanelEl.querySelector("#add-rel-btn")!.addEventListener("click", () => this._addRelation());
   }
 
@@ -280,6 +328,8 @@ export class MetadataScreen {
     const language = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-lang")!).value.trim();
     const doc_role = (this._editPanelEl.querySelector<HTMLSelectElement>("#edit-role")!).value;
     const resource_type = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-restype")!).value.trim() || undefined;
+    const workflow_status = this._workflowStatusFromForm();
+    const validated_run_id = this._validatedRunIdFromForm();
 
     const btn = this._editPanelEl.querySelector<HTMLButtonElement>("#save-doc-btn")!;
     btn.disabled = true;
@@ -290,18 +340,43 @@ export class MetadataScreen {
         language: language || undefined,
         doc_role: doc_role || undefined,
         resource_type,
+        workflow_status,
+        ...(workflow_status === "validated" && validated_run_id
+          ? { validated_run_id }
+          : {}),
       });
-      // Update local state
       const updated = res.doc;
-      this._selectedDoc = { ...this._selectedDoc, ...updated };
-      const idx = this._docs.findIndex(d => d.doc_id === updated.doc_id);
-      if (idx >= 0) this._docs[idx] = { ...this._docs[idx], ...updated };
-      this._renderDocList();
+      this._applyUpdatedDoc(updated);
       this._log(`✓ Document #${updated.doc_id} mis à jour.`);
     } catch (err) {
       this._log(`Erreur sauvegarde: ${err instanceof SidecarError ? err.message : String(err)}`, true);
     } finally {
       btn.disabled = false;
+    }
+  }
+
+  private async _setWorkflowStatus(status: WorkflowStatus): Promise<void> {
+    if (!this._conn || !this._selectedDoc) return;
+    const validated_run_id = this._validatedRunIdFromForm();
+    const btnId = status === "validated" ? "#mark-validated-btn" : "#mark-review-btn";
+    const btn = this._editPanelEl.querySelector<HTMLButtonElement>(btnId);
+    if (btn) btn.disabled = true;
+    try {
+      const res = await updateDocument(this._conn, {
+        doc_id: this._selectedDoc.doc_id,
+        workflow_status: status,
+        ...(status === "validated" && validated_run_id ? { validated_run_id } : {}),
+      });
+      this._applyUpdatedDoc(res.doc);
+      this._log(
+        status === "validated"
+          ? `✓ Document #${res.doc.doc_id} validé.`
+          : `✓ Document #${res.doc.doc_id} marqué à revoir.`,
+      );
+    } catch (err) {
+      this._log(`Erreur workflow: ${err instanceof SidecarError ? err.message : String(err)}`, true);
+    } finally {
+      if (btn) btn.disabled = false;
     }
   }
 
@@ -402,6 +477,29 @@ export class MetadataScreen {
     }
   }
 
+  private async _runDbBackup(): Promise<void> {
+    if (!this._conn) return;
+    const btn = this._root.querySelector<HTMLButtonElement>("#db-backup-btn");
+    const status = this._root.querySelector<HTMLElement>("#db-backup-status");
+    if (!btn || !status) return;
+    btn.disabled = true;
+    status.textContent = "Sauvegarde en cours…";
+    status.style.color = "var(--color-muted)";
+    try {
+      const res = await backupDatabase(this._conn);
+      const file = res.backup_path.split(/[\\/]/).pop() ?? res.backup_path;
+      status.textContent = `Dernière sauvegarde: ${file}`;
+      status.style.color = "var(--color-ok)";
+      this._log(`✓ Sauvegarde DB créée: ${res.backup_path}`);
+    } catch (err) {
+      status.textContent = "Erreur de sauvegarde";
+      status.style.color = "var(--color-danger)";
+      this._log(`Erreur sauvegarde DB: ${err instanceof SidecarError ? err.message : String(err)}`, true);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
   // ── Helpers ─────────────────────────────────────────────────────────────────
 
   private _log(msg: string, isError = false): void {
@@ -414,5 +512,74 @@ export class MetadataScreen {
 
   private _esc(s: string): string {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  private _workflowStatus(doc: DocumentRecord): WorkflowStatus {
+    if (doc.workflow_status === "review" || doc.workflow_status === "validated") return doc.workflow_status;
+    return "draft";
+  }
+
+  private _workflowStatusFromForm(): WorkflowStatus {
+    const raw = (this._editPanelEl.querySelector<HTMLSelectElement>("#edit-workflow-status")?.value ?? "draft") as WorkflowStatus;
+    if (raw === "review" || raw === "validated") return raw;
+    return "draft";
+  }
+
+  private _validatedRunIdFromForm(): string | undefined {
+    const runId = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-validated-run-id")?.value ?? "").trim();
+    return runId || undefined;
+  }
+
+  private _workflowLabel(status: WorkflowStatus): string {
+    if (status === "review") return "À revoir";
+    if (status === "validated") return "Validé";
+    return "Brouillon";
+  }
+
+  private _applyUpdatedDoc(updated: DocumentRecord): void {
+    this._selectedDoc = { ...this._selectedDoc, ...updated };
+    const idx = this._docs.findIndex(d => d.doc_id === updated.doc_id);
+    if (idx >= 0) this._docs[idx] = { ...this._docs[idx], ...updated };
+    this._renderDocList();
+    this._renderEditPanel();
+  }
+
+  private _hasBulkDraftValues(): boolean {
+    const role = this._root.querySelector<HTMLSelectElement>("#bulk-role");
+    const restype = this._root.querySelector<HTMLInputElement>("#bulk-restype");
+    return Boolean((role?.value ?? "").trim() || (restype?.value ?? "").trim());
+  }
+
+  private _isSelectedDocDirty(): boolean {
+    if (!this._selectedDoc || !this._editPanelEl) return false;
+    const title = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-title")?.value ?? "").trim();
+    const language = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-lang")?.value ?? "").trim();
+    const docRole = (this._editPanelEl.querySelector<HTMLSelectElement>("#edit-role")?.value ?? "").trim();
+    const resourceType = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-restype")?.value ?? "").trim();
+    const workflow = (this._editPanelEl.querySelector<HTMLSelectElement>("#edit-workflow-status")?.value ?? "draft").trim();
+    const validatedRunId = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-validated-run-id")?.value ?? "").trim();
+
+    const baseTitle = (this._selectedDoc.title ?? "").trim();
+    const baseLanguage = (this._selectedDoc.language ?? "").trim();
+    const baseDocRole = (this._selectedDoc.doc_role ?? "unknown").trim();
+    const baseResourceType = (this._selectedDoc.resource_type ?? "").trim();
+    const baseWorkflow = this._workflowStatus(this._selectedDoc);
+    const baseValidatedRunId = (this._selectedDoc.validated_run_id ?? "").trim();
+
+    return (
+      title !== baseTitle ||
+      language !== baseLanguage ||
+      docRole !== baseDocRole ||
+      resourceType !== baseResourceType ||
+      workflow !== baseWorkflow ||
+      validatedRunId !== baseValidatedRunId
+    );
+  }
+
+  private _hasPendingRelationDraft(): boolean {
+    if (!this._editPanelEl) return false;
+    const relTarget = (this._editPanelEl.querySelector<HTMLSelectElement>("#rel-target-sel")?.value ?? "").trim();
+    const relNote = (this._editPanelEl.querySelector<HTMLInputElement>("#rel-note")?.value ?? "").trim();
+    return Boolean(relTarget || relNote);
   }
 }

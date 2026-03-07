@@ -122,8 +122,8 @@ sur macOS, `%APPDATA%\com.agrafes.concordancier\corpus.db` sur Windows).
 ## Utiliser une DB préparée (tauri-prep)
 
 1. Dans `tauri-prep`, finaliser les étapes import/index/align.
-2. Copier le chemin de la DB depuis l’écran **Projet**.
-3. Dans `tauri-app`, cliquer **Open DB…** et ouvrir cette même DB.
+2. Flux recommandé global: ouvrir la DB dans `tauri-shell` (app unifiée).
+3. Pour cette app standalone (`tauri-app`), cliquer **Open DB…** et ouvrir la même DB `.db`.
 4. Si nécessaire, relancer un index puis activer la vue Alignés.
 
 ---
@@ -159,3 +159,4 @@ Le binaire résultant est dans `src-tauri/target/release/bundle/`.
 - Le sidecar portfile `.agrafes_sidecar.json` est créé dans le répertoire contenant la DB.
 - Token d'authentification : lu depuis le portfile, injecté automatiquement en header `X-Agrafes-Token`.
 - Dev uses PNG-only icons placeholders; generate real `icon.icns` and `icon.ico` before release packaging.
+- Deep-link standalone support remains available: `agrafes://open-db?path=...` (plus fallback `?open_db=...` au démarrage).

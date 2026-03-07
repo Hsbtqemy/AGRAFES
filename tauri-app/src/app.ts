@@ -17,6 +17,7 @@
 
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
+import { getCurrent as getCurrentDeepLinks, onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import {
   type Conn,
   type QueryHit,
@@ -225,6 +226,9 @@ interface AppState {
 const ALIGNED_LIMIT_DEFAULT = 20;
 const PAGE_LIMIT_DEFAULT = 50;
 const PAGE_LIMIT_ALIGNED = 20;
+const DEEP_LINK_SCHEME = "agrafes";
+
+let _deepLinkUnlisten: (() => void) | null = null;
 
 const state: AppState = {
   status: "idle",
@@ -1676,9 +1680,76 @@ async function doOpenDb(): Promise<void> {
     multiple: false,
   });
   if (!selected || Array.isArray(selected)) return;
-  const newPath = selected;
+  await switchDbPath(selected);
+}
 
-  // Shutdown existing sidecar if any
+function _isDbPathCandidate(path: string): boolean {
+  return /\.(db|sqlite|sqlite3)$/i.test(path);
+}
+
+function _parseOpenDbDeepLink(uri: string): string | null {
+  try {
+    const u = new URL(uri);
+    if (u.protocol !== `${DEEP_LINK_SCHEME}:`) return null;
+
+    const hostPath = (u.hostname || u.pathname || "").replace(/^\/+/, "").toLowerCase();
+    if (hostPath !== "open-db") return null;
+
+    const dbPath = (u.searchParams.get("path") ?? u.searchParams.get("db") ?? "").trim();
+    if (!dbPath || !_isDbPathCandidate(dbPath)) return null;
+    return dbPath;
+  } catch {
+    return null;
+  }
+}
+
+function _firstDeepLinkDbPath(urls: readonly string[]): string | null {
+  for (const raw of urls) {
+    const parsed = _parseOpenDbDeepLink(raw);
+    if (parsed) return parsed;
+  }
+  return null;
+}
+
+function _dbPathFromUrlSearch(): string | null {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const raw = (params.get("open_db") ?? params.get("db") ?? params.get("path") ?? "").trim();
+    if (!raw || !_isDbPathCandidate(raw)) return null;
+    return raw;
+  } catch {
+    return null;
+  }
+}
+
+async function _resolveInitialDbPath(): Promise<{ path: string; source: "deep-link" | "default" }> {
+  const fromSearch = _dbPathFromUrlSearch();
+  if (fromSearch) {
+    setCurrentDbPath(fromSearch);
+    return { path: fromSearch, source: "deep-link" };
+  }
+  try {
+    const initialLinks = await getCurrentDeepLinks();
+    const deepLinkedPath = _firstDeepLinkDbPath(initialLinks ?? []);
+    if (deepLinkedPath) {
+      setCurrentDbPath(deepLinkedPath);
+      return { path: deepLinkedPath, source: "deep-link" };
+    }
+  } catch {
+    // no deep-link payload available at startup (normal path)
+  }
+  const fallback = await getOrCreateDefaultDbPath();
+  return { path: fallback, source: "default" };
+}
+
+async function switchDbPath(
+  newPath: string,
+  source: "dialog" | "deep-link" = "dialog",
+): Promise<void> {
+  if (!newPath || !_isDbPathCandidate(newPath)) return;
+
+  if (state.dbPath === newPath && state.conn) return;
+
   if (state.conn) {
     await shutdownSidecar(state.conn);
   }
@@ -1687,6 +1758,30 @@ async function doOpenDb(): Promise<void> {
   setCurrentDbPath(newPath);
   state.dbPath = newPath;
   await startSidecar(newPath);
+
+  if (source === "deep-link" && state.status === "ready") {
+    const area = document.getElementById("results-area");
+    if (area) {
+      const notice = elt("div", { class: "error-banner" });
+      notice.style.background = "#eef7ff";
+      notice.style.borderColor = "#b6daf9";
+      notice.style.color = "#1e4a80";
+      notice.textContent = "DB ouverte via deep-link agrafes://open-db.";
+      area.prepend(notice);
+    }
+  }
+}
+
+async function initDeepLinkRuntimeListener(): Promise<void> {
+  try {
+    _deepLinkUnlisten = await onOpenUrl((urls) => {
+      const deepLinkedPath = _firstDeepLinkDbPath(urls);
+      if (!deepLinkedPath) return;
+      void switchDbPath(deepLinkedPath, "deep-link");
+    });
+  } catch {
+    _deepLinkUnlisten = null;
+  }
 }
 
 async function startSidecar(dbPath: string): Promise<void> {
@@ -2352,14 +2447,27 @@ function _closeMetaPanel(): void {
 export async function initApp(container: HTMLElement): Promise<void> {
   buildUI(container);
 
-  const dbPath = await getOrCreateDefaultDbPath();
+  const startup = await _resolveInitialDbPath();
+  const dbPath = startup.path;
   state.dbPath = dbPath;
   updateStatus();
 
   // Enable search button once sidecar is ready (done in startSidecar callback)
   await startSidecar(dbPath);
+  await initDeepLinkRuntimeListener();
 
   if (state.status === "ready") {
+    if (startup.source === "deep-link") {
+      const area = document.getElementById("results-area");
+      if (area) {
+        const notice = elt("div", { class: "error-banner" });
+        notice.style.background = "#eef7ff";
+        notice.style.borderColor = "#b6daf9";
+        notice.style.color = "#1e4a80";
+        notice.textContent = "DB ouverte via deep-link agrafes://open-db.";
+        area.prepend(notice);
+      }
+    }
     (document.getElementById("search-btn") as HTMLButtonElement).disabled = false;
     searchInput?.focus();
   }
@@ -2369,6 +2477,10 @@ export async function initApp(container: HTMLElement): Promise<void> {
 export function disposeApp(): void {
   _scrollObserver?.disconnect();
   _scrollObserver = null;
+  if (_deepLinkUnlisten) {
+    _deepLinkUnlisten();
+    _deepLinkUnlisten = null;
+  }
 }
 
 // Helper to focus search input after init

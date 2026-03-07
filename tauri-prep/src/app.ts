@@ -1,7 +1,7 @@
 /**
  * app.ts — ConcordancierPrep V0.4 shell.
  *
- * Tab navigation: [Projet] [Import] [Actions] [Métadonnées] [Exports]
+ * Tab navigation: [Importer] [Documents] [Actions] [Exporter]
  * Manages shared Conn state and propagates db-changed events.
  */
 
@@ -9,6 +9,7 @@ import type { Conn } from "./lib/sidecarClient.ts";
 import { ensureRunning, SidecarError } from "./lib/sidecarClient.ts";
 import { getCurrentDbPath, setCurrentDbPath, getOrCreateDefaultDbPath } from "./lib/db.ts";
 import { open as dialogOpen, save as dialogSave } from "@tauri-apps/plugin-dialog";
+import { open as shellOpen } from "@tauri-apps/plugin-shell";
 import { writeTextFile, readTextFile } from "@tauri-apps/plugin-fs";
 import { ImportScreen } from "./screens/ImportScreen.ts";
 import { ActionsScreen, type ProjectPreset } from "./screens/ActionsScreen.ts";
@@ -192,6 +193,19 @@ const CSS = `
   .status-ok { background: #d4edda; color: var(--color-ok); }
   .status-error { background: #f8d7da; color: var(--color-danger); }
   .status-unknown { background: #e9ecef; color: var(--color-muted); }
+  .wf-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.08rem 0.45rem;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    line-height: 1.2;
+  }
+  .wf-draft { background: #e9ecef; color: #5f6770; }
+  .wf-review { background: #fff3cd; color: #8a5a00; }
+  .wf-validated { background: #d4edda; color: var(--color-ok); }
+  .wf-meta { font-size: 0.72rem; color: var(--color-muted); }
 
   /* Log pane */
   .log-pane { background: #1a1a2e; color: #c8d6e5; font-family: monospace; font-size: 0.78rem;
@@ -233,6 +247,18 @@ const CSS = `
     font-size: 0.85rem; padding: 0.3rem 0.5rem; border: 1px solid var(--color-border);
     border-radius: var(--radius); width: 100%; max-width: 420px; }
   .actions-screen textarea { resize: vertical; }
+  .runtime-state {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    padding: 0.5rem 0.65rem;
+    font-size: 0.84rem;
+    line-height: 1.35;
+    font-weight: 500;
+  }
+  .state-ok { background: #eaf7ef; border-color: #b6e0c5; color: #13653e; }
+  .state-info { background: #eef3fb; border-color: #c9d7ee; color: #20446f; }
+  .state-warn { background: #fff5e7; border-color: #f1d39f; color: #8d5500; }
+  .state-error { background: #ffe9e9; border-color: #efb8b8; color: #9d2f2f; }
 
   /* Busy overlay */
   .busy-overlay { position: absolute; inset: 0; background: rgba(255,255,255,0.75);
@@ -339,6 +365,11 @@ const CSS = `
 const TABS = ["import", "documents", "actions", "exporter"] as const;
 type TabId = typeof TABS[number];
 
+type GuardableScreen = {
+  hasPendingChanges?: () => boolean;
+  pendingChangesMessage?: () => string;
+};
+
 export class App {
   private _conn: Conn | null = null;
   private _activeTab: TabId = "import";
@@ -351,6 +382,7 @@ export class App {
 
   private _tabBtns: Record<TabId, HTMLButtonElement> = {} as never;
   private _screenEls: Record<TabId, HTMLElement> = {} as never;
+  private _screenControllers: Record<TabId, GuardableScreen> = {} as never;
   private _dbPathEl!: HTMLElement;
 
   async init(): Promise<void> {
@@ -376,7 +408,13 @@ export class App {
     this._jobCenter.setConn(this._conn);
     this._import.setJobCenter(this._jobCenter, showToast);
     this._actions.setJobCenter(this._jobCenter, showToast);
+    this._actions.setOnOpenDocuments(() => this._switchTab("documents"));
     this._exports.setJobCenter(this._jobCenter, showToast);
+    window.addEventListener("beforeunload", (event) => {
+      if (!this._hasPendingChangesInCurrentTab()) return;
+      event.preventDefault();
+      event.returnValue = "";
+    });
   }
 
   private _buildUI(): void {
@@ -413,11 +451,18 @@ export class App {
     presetsBtn.title = "Gérer les presets de projet";
     presetsBtn.addEventListener("click", () => this._showPresetsModal());
 
+    const openConcordancierBtn = document.createElement("button");
+    openConcordancierBtn.className = "topbar-db-btn";
+    openConcordancierBtn.textContent = "\u2197 Shell";
+    openConcordancierBtn.title = "Ouvrir la DB active dans AGRAFES Shell (app unifiée)";
+    openConcordancierBtn.addEventListener("click", () => void this._openInConcordancier());
+
     topbar.appendChild(titleEl);
     topbar.appendChild(dbPathEl);
     topbar.appendChild(openBtn);
     topbar.appendChild(createBtn);
     topbar.appendChild(presetsBtn);
+    topbar.appendChild(openConcordancierBtn);
 
     this._dbPathEl = dbPathEl;
     root.appendChild(topbar);
@@ -453,6 +498,12 @@ export class App {
     this._actions = new ActionsScreen();
     this._metadata = new MetadataScreen();
     this._exports = new ExportsScreen();
+    this._screenControllers = {
+      import: this._import as GuardableScreen,
+      documents: this._metadata,
+      actions: this._actions,
+      exporter: this._exports as GuardableScreen,
+    };
 
     const screenMap: Record<TabId, () => HTMLElement> = {
       import: () => this._import.render(),
@@ -473,6 +524,12 @@ export class App {
   }
 
   private _switchTab(tab: TabId): void {
+    if (tab === this._activeTab) return;
+    const cur = this._screenControllers[this._activeTab];
+    if (cur?.hasPendingChanges?.()) {
+      const msg = cur.pendingChangesMessage?.() ?? "Des modifications non enregistrées sont détectées. Continuer ?";
+      if (!window.confirm(msg)) return;
+    }
     this._screenEls[this._activeTab].classList.remove("active");
     this._tabBtns[this._activeTab].classList.remove("active");
     this._activeTab = tab;
@@ -480,10 +537,85 @@ export class App {
     this._tabBtns[tab].classList.add("active");
   }
 
+  private _hasPendingChangesInCurrentTab(): boolean {
+    return Boolean(this._screenControllers[this._activeTab]?.hasPendingChanges?.());
+  }
+
   private _dbBadge(): string {
     const p = getCurrentDbPath();
     if (!p) return "Aucun corpus";
     return p.replace(/\\/g, "/").split("/").pop() ?? p;
+  }
+
+  private _buildShellOpenDbDeepLink(dbPath: string): string {
+    return `agrafes-shell://open-db?mode=explorer&path=${encodeURIComponent(dbPath)}`;
+  }
+
+  private _buildStandaloneOpenDbDeepLink(dbPath: string): string {
+    return `agrafes://open-db?path=${encodeURIComponent(dbPath)}`;
+  }
+
+  private async _openInConcordancier(): Promise<void> {
+    const dbPath = getCurrentDbPath();
+    if (!dbPath) {
+      showToast("Aucune DB active à transmettre.", true);
+      return;
+    }
+
+    const shellUri = this._buildShellOpenDbDeepLink(dbPath);
+    const standaloneUri = this._buildStandaloneOpenDbDeepLink(dbPath);
+
+    let copied = false;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(shellUri);
+        copied = true;
+      }
+    } catch {
+      copied = false;
+    }
+
+    let opened = false;
+    try {
+      await shellOpen(shellUri);
+      opened = true;
+    } catch {
+      try {
+        await shellOpen(standaloneUri);
+        opened = true;
+      } catch {
+        try {
+          const w = window.open(shellUri, "_blank");
+          opened = w !== null;
+        } catch {
+          opened = false;
+        }
+      }
+    }
+
+    if (opened) {
+      showToast("Ouverture Concordancier/Shell demandée (deep-link).");
+      return;
+    }
+
+    try {
+      const w = window.open(standaloneUri, "_blank");
+      opened = w !== null;
+    } catch {
+      opened = false;
+    }
+
+    if (opened) {
+      showToast("Ouverture Concordancier standalone demandée (fallback).");
+      return;
+    }
+
+    if (copied) {
+      showToast("Deep-link Shell copié. Ouvre-le depuis le presse-papiers si nécessaire.");
+      return;
+    }
+
+    showToast(`Deep-link prêt: ${shellUri}`);
   }
 
   private async _onOpenDb(): Promise<void> {
