@@ -7,7 +7,7 @@
       name="description"
       content="Prototype visuel AGRAFES: Constituer — Actions + Preview persistante (V-next)."
     />
-    <link rel="icon" href="./favicon.ico" />
+    <link rel="icon" href="../favicon.ico" />
     <title>Constituer — Actions + Preview persistante (V-next)</title>
     <style>
       :root {
@@ -422,6 +422,77 @@
         border-radius: 8px;
         padding: 8px 10px;
       }
+      .state-list {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        display: grid;
+        gap: 8px;
+      }
+      .state-item {
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        background: #fff;
+        padding: 8px;
+        display: grid;
+        gap: 6px;
+      }
+      .state-item.warn {
+        border-color: #edd89e;
+        background: #fffaf0;
+      }
+      .state-item.err {
+        border-color: #efc2c2;
+        background: #fff3f3;
+      }
+      .state-item.info {
+        border-color: #b7c8df;
+        background: #f6f9ff;
+      }
+      .state-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        font-size: 12px;
+      }
+      .state-title {
+        font-weight: 700;
+        color: #2b3246;
+      }
+      .state-badge {
+        border: 1px solid transparent;
+        border-radius: 999px;
+        padding: 2px 7px;
+        font-size: 11px;
+        font-weight: 700;
+      }
+      .state-badge.empty {
+        border-color: #c7d3e7;
+        background: #eef2f8;
+        color: #4f5d6d;
+      }
+      .state-badge.warn {
+        border-color: #edd89e;
+        background: #fff0cf;
+        color: #9b6a00;
+      }
+      .state-badge.err {
+        border-color: #efc2c2;
+        background: #ffe4e4;
+        color: #9f3333;
+      }
+      .state-item p {
+        margin: 0;
+        font-size: 12px;
+        color: #3d4558;
+        line-height: 1.45;
+      }
+      .state-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
 
       @media (max-width: 1180px) {
         .workspace { grid-template-columns: 1fr; }
@@ -431,6 +502,18 @@
         .row { grid-template-columns: 1fr; }
         .diff { grid-template-columns: 1fr; }
         .diff .col + .col { border-left: 0; border-top: 1px solid var(--line); }
+      }
+      a:focus-visible,
+      button:focus-visible,
+      input:focus-visible,
+      select:focus-visible,
+      textarea:focus-visible,
+      summary:focus-visible,
+      [role="button"]:focus-visible,
+      [tabindex]:focus-visible {
+        outline: 2px solid #1e4a80;
+        outline-offset: 2px;
+        box-shadow: 0 0 0 3px rgba(30, 74, 128, 0.18);
       }
     </style>
   </head>
@@ -442,12 +525,12 @@
     </header>
 
     <nav class="proto-nav" aria-label="Navigation maquettes">
-      <a href="./index.html">Index</a>
-      <a href="./board-vnext.html">Board</a>
-      <a href="./shell-vnext.html">Home</a>
-      <a href="./explorer-vnext.html">Explorer</a>
+      <a href="../index.html">Index</a>
+      <a href="../shell/board-vnext.html">Board</a>
+      <a href="../shell/shell-vnext.html">Home</a>
+      <a href="../shell/explorer-vnext.html">Explorer</a>
       <a class="active" href="./prep-vnext.html">Constituer</a>
-      <a href="./publish-vnext.html">Publier</a>
+      <a href="../shell/publish-vnext.html">Publier</a>
     </nav>
 
     <div class="shell">
@@ -459,11 +542,9 @@
         <details class="tree-wrap actions-tree" data-actions-tree data-default-open="true">
           <summary class="tree-summary">Actions disponibles <span class="tree-caret" aria-hidden="true">▾</span></summary>
           <div class="tree" aria-label="Actions disponibles">
-          <a class="active" href="./prep-curation-hub-vnext.html">Curation (hub)</a>
+          <a class="active" href="./prep-curation-preview-vnext.html">Curation</a>
           <a href="./prep-segmentation-vo-vnext.html">Segmentation</a>
-          <a href="./prep-alignement-vnext.html">Alignement</a>
-          <a href="#">Audit</a>
-          <a href="#">Collisions</a>
+          <a href="./prep-alignement-run-vnext.html">Alignement</a>
         </div>
         </details>
         <a class="tab" href="./prep-exporter-vnext.html">Exporter</a>
@@ -480,9 +561,9 @@
           </div>
           <div class="head-tools">
             <span class="pill">Mode "édition contrôlée"</span>
-            <a class="head-link" href="./prep-curation-hub-vnext.html">Ouvrir hub curation</a>
+            <a class="head-link" href="./prep-curation-preview-vnext.html">Ouvrir curation</a>
             <a class="head-link" href="./prep-segmentation-vo-vnext.html">Voir segmentation VO</a>
-            <a class="head-link" href="./prep-alignement-vnext.html">Voir alignement</a>
+            <a class="head-link" href="./prep-alignement-run-vnext.html">Voir alignement</a>
             <a class="head-link" href="./prep-actions-longtext-vnext.html">Voir scénario grand texte</a>
           </div>
         </section>
@@ -518,6 +599,57 @@
                   <button class="btn">Précédent (K)</button>
                   <button class="btn pri">Appliquer sélection</button>
                 </div>
+              </div>
+            </article>
+
+            <article class="card">
+              <div class="card-head"><h2>États système (vides/erreurs)</h2><span style="font-size:12px;color: var(--muted)">garde UX</span></div>
+              <div class="card-body">
+                <ul class="state-list">
+                  <li class="state-item info">
+                    <div class="state-head">
+                      <span class="state-title">Aucun document sélectionné</span>
+                      <span class="state-badge empty">État vide</span>
+                    </div>
+                    <p>Le panneau de preview est verrouillé tant qu’un document n’est pas choisi.</p>
+                    <div class="state-actions">
+                      <button class="btn alt">Choisir un document</button>
+                    </div>
+                  </li>
+                  <li class="state-item warn">
+                    <div class="state-head">
+                      <span class="state-title">Run interrompu</span>
+                      <span class="state-badge warn">Alerte</span>
+                    </div>
+                    <p>La dernière opération s’est arrêtée avant la fin. Les changements partiels restent en brouillon.</p>
+                    <div class="state-actions">
+                      <button class="btn">Voir le log</button>
+                      <button class="btn alt">Relancer le run</button>
+                    </div>
+                  </li>
+                  <li class="state-item info">
+                    <div class="state-head">
+                      <span class="state-title">Aucun alignement trouvé</span>
+                      <span class="state-badge empty">État vide</span>
+                    </div>
+                    <p>Aucune paire VO/traduction ne correspond au filtre courant.</p>
+                    <div class="state-actions">
+                      <button class="btn">Réinitialiser filtres</button>
+                      <button class="btn alt">Ouvrir l’audit avancé</button>
+                    </div>
+                  </li>
+                  <li class="state-item err">
+                    <div class="state-head">
+                      <span class="state-title">Sidecar indisponible ou token manquant</span>
+                      <span class="state-badge err">Bloquant</span>
+                    </div>
+                    <p>Impossible d’appliquer les changements tant que la connexion sidecar n’est pas rétablie.</p>
+                    <div class="state-actions">
+                      <button class="btn">Réessayer la connexion</button>
+                      <button class="btn alt">Copier diagnostic</button>
+                    </div>
+                  </li>
+                </ul>
               </div>
             </article>
           </div>

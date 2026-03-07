@@ -1,0 +1,1800 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Prototype visuel AGRAFES: Alignement run global VO/traduction avec rail central d'état."
+    />
+    <link rel="icon" href="../favicon.ico" />
+    <title>Constituer — Alignement run global (V-next)</title>
+    <style>
+      :root {
+        --bg: #f0f2f5;
+        --card: #fff;
+        --line: #dde1e8;
+        --text: #1a1a2e;
+        --muted: #4f5d6d;
+        --accent: #0f766e;
+        --accent-soft: #e8f5f3;
+        --link-bg: #eaf1fb;
+        --link-line: #b7c8df;
+        --link-text: #1e4a80;
+        --warn-soft: #fff7e6;
+        --warn-line: #edd89e;
+        --bad-soft: #fff3f3;
+        --bad-line: #efc2c2;
+        --align-run-height: 64vh;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+      }
+      .top {
+        height: 54px;
+        background: linear-gradient(135deg, #0c4a46, #0f766e);
+        color: #fff;
+        border-bottom: 1px solid #0c4a46;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 0 14px;
+      }
+      .top strong { letter-spacing: .02em; }
+      .db {
+        margin-left: auto;
+        font-size: 12px;
+        border: 1px solid rgba(255,255,255,.34);
+        border-radius: 999px;
+        padding: 4px 10px;
+        background: rgba(255,255,255,.13);
+      }
+      .proto-nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 8px 14px;
+        border-bottom: 1px solid var(--line);
+        background: #fff;
+      }
+      .proto-nav a {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 7px 12px;
+        font-size: 13px;
+        color: var(--muted);
+        text-decoration: none;
+        background: #f8f9fa;
+      }
+      .proto-nav a.active {
+        color: #0c4a46;
+        border-color: #9fd3cc;
+        background: #e8f5f3;
+        font-weight: 700;
+      }
+
+      .shell {
+        display: grid;
+        grid-template-columns: 230px 1fr;
+        min-height: calc(100vh - 54px);
+      }
+      .nav {
+        border-right: 1px solid var(--line);
+        background: #f8f9fa;
+        padding: 12px;
+      }
+      .nav h2 {
+        margin: 0 0 10px;
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: .07em;
+        color: var(--muted);
+      }
+      .tab {
+        width: 100%;
+        text-align: left;
+        border: 1px solid transparent;
+        border-radius: 8px;
+        padding: 10px;
+        background: transparent;
+        color: var(--text);
+        font-size: 14px;
+        margin-bottom: 6px;
+        display: block;
+        text-decoration: none;
+      }
+      .tab.active {
+        background: var(--accent-soft);
+        border-color: #9fd3cc;
+        color: #0c4a46;
+        font-weight: 700;
+      }
+      .tree {
+        margin: -2px 0 8px 8px;
+        padding-left: 10px;
+        border-left: 2px solid #cfe8e3;
+        display: grid;
+        gap: 4px;
+      }
+      .tree a {
+        display: block;
+        text-decoration: none;
+        font-size: 12px;
+        color: var(--muted);
+        border: 1px solid transparent;
+        border-radius: 7px;
+        padding: 6px 8px;
+      }
+      .tree a.active {
+        background: #f0faf8;
+        border-color: #9fd3cc;
+        color: #0c4a46;
+        font-weight: 700;
+      }
+      .tree-wrap {
+        margin: -2px 0 8px;
+      }
+      .tree-summary {
+        list-style: none;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border: 1px solid #cfe8e3;
+        border-radius: 8px;
+        padding: 7px 8px;
+        font-size: 12px;
+        font-weight: 700;
+        color: #0c4a46;
+        background: #edf7f5;
+      }
+      .tree-summary::-webkit-details-marker { display: none; }
+      .tree-caret {
+        font-size: 11px;
+        color: var(--muted);
+        transition: transform .16s ease;
+      }
+      .tree-wrap[open] .tree-caret { transform: rotate(180deg); }
+
+      .content {
+        padding: 14px;
+        display: grid;
+        gap: 12px;
+        align-content: start;
+      }
+      .card {
+        border: 1px solid var(--line);
+        background: var(--card);
+        border-radius: 12px;
+        overflow: hidden;
+      }
+      .head-card {
+        padding: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      .head-card h1 { margin: 0; font-size: 20px; }
+      .head-card p { margin: 5px 0 0; font-size: 13px; color: var(--muted); }
+      .head-tools {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+      }
+      .pill {
+        border: 1px solid #9fd3cc;
+        background: #e8f5f3;
+        color: #0c4a46;
+        border-radius: 999px;
+        font-size: 11px;
+        padding: 3px 8px;
+        font-weight: 700;
+      }
+      .head-link {
+        border: 1px solid var(--link-line);
+        background: var(--link-bg);
+        color: var(--link-text);
+        border-radius: 999px;
+        padding: 4px 9px;
+        font-size: 12px;
+        text-decoration: none;
+        font-weight: 600;
+      }
+
+      .card-head {
+        background: #f8f9fa;
+        border-bottom: 1px solid var(--line);
+        padding: 10px 12px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .card-head h2 {
+        margin: 0;
+        font-size: 14px;
+      }
+      .body {
+        padding: 12px;
+        display: grid;
+        gap: 10px;
+      }
+      .run-setup {
+        display: grid;
+        gap: 10px;
+      }
+      .setup-row {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(170px, 1fr));
+        gap: 8px;
+      }
+      .setup-row-files {
+        grid-template-columns: 1fr 1fr;
+      }
+      .f {
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        background: #fff;
+        padding: 8px;
+        font-size: 12px;
+      }
+      .f strong {
+        display: block;
+        margin-bottom: 4px;
+        color: #2b3246;
+      }
+      .f select,
+      .f input {
+        width: 100%;
+        border: 1px solid #c7d3e7;
+        border-radius: 8px;
+        background: #fff;
+        color: var(--text);
+        padding: 7px 8px;
+        font-size: 13px;
+        font-family: inherit;
+      }
+      .advanced {
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        background: #fafbfc;
+      }
+      .advanced > summary {
+        list-style: none;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 700;
+        color: #2b3246;
+        padding: 8px 9px;
+      }
+      .advanced > summary::-webkit-details-marker { display: none; }
+      .advanced[open] > summary {
+        border-bottom: 1px solid var(--line);
+        background: #f3f6fb;
+      }
+      .advanced-body {
+        padding: 8px;
+      }
+      .flow-note {
+        border: 1px dashed #9fd3cc;
+        border-radius: 9px;
+        background: #f3f9f8;
+        color: #0c4a46;
+        padding: 8px;
+        font-size: 12px;
+      }
+
+      .btns {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .btn {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #f7f8fa;
+        color: #2b3246;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        text-decoration: none;
+        cursor: pointer;
+        padding: 8px 11px;
+        font-size: 13px;
+        font-weight: 600;
+        min-height: 34px;
+      }
+      .btn:hover { border-color: #c7d3e7; }
+      .btn:disabled {
+        opacity: .55;
+        cursor: not-allowed;
+      }
+      .btn-primary {
+        border-color: #0f766e;
+        background: #0f766e;
+        color: #fff;
+      }
+      .btn-secondary {
+        border-color: var(--link-line);
+        background: var(--link-bg);
+        color: var(--link-text);
+      }
+      .btn-ghost {
+        border-color: #d4dae4;
+        background: #fff;
+        color: #4f5d6d;
+      }
+
+      .filters {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      .chip {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: #f8f9fa;
+        color: var(--muted);
+        padding: 4px 8px;
+        font-size: 11px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .chip.active {
+        border-color: #9fd3cc;
+        background: #e8f5f3;
+        color: #0c4a46;
+      }
+      .chip-count {
+        margin-left: 6px;
+        font-size: 11px;
+        font-weight: 700;
+      }
+      .run-preview-note {
+        margin-top: 6px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .audit-cta {
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+      }
+      .run-panel {
+        padding: 10px 12px 12px;
+        display: grid;
+        gap: 8px;
+      }
+      .run-hero {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fff;
+        padding: 10px 12px;
+      }
+      .run-hero h3 {
+        margin: 0;
+        font-size: 14px;
+      }
+      .run-hero p {
+        margin: 5px 0 0;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .run-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1.65fr) minmax(300px, 0.95fr);
+        gap: 8px;
+        align-items: stretch;
+        height: var(--align-run-height);
+      }
+      .run-list-col {
+        min-width: 0;
+        min-height: 0;
+        display: grid;
+        grid-template-rows: minmax(0, 1fr) auto;
+        gap: 6px;
+      }
+      .run-toolbar {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fbfcfe;
+        padding: 8px;
+        display: grid;
+        gap: 8px;
+      }
+      .run-toolbar-main {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .run-toolbar-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 7px;
+        align-items: center;
+      }
+      .run-toolbar-actions input {
+        width: 190px;
+        border: 1px solid #c7d3e7;
+        border-radius: 8px;
+        background: #fff;
+        color: var(--text);
+        padding: 6px 8px;
+        font-size: 12px;
+        font-family: inherit;
+      }
+      .run-toolbar-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .run-toolbar-meta code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px;
+      }
+      .editor-pane {
+        position: sticky;
+        top: 8px;
+        display: grid;
+        gap: 8px;
+        height: 100%;
+        min-height: 0;
+        grid-template-rows: minmax(0, 1fr) auto;
+      }
+      .inline-audit {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fbfcfe;
+        margin: 0;
+        max-height: none;
+        height: 100%;
+        min-height: 0;
+        overflow: auto;
+      }
+      .inline-audit > summary {
+        list-style: none;
+        cursor: pointer;
+        padding: 8px 10px;
+        font-size: 12px;
+        font-weight: 700;
+        color: #2b3246;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .inline-audit > summary::-webkit-details-marker { display: none; }
+      .inline-audit[open] > summary {
+        border-bottom: 1px solid var(--line);
+        background: #f3f6fb;
+      }
+      .inline-audit-body {
+        padding: 10px;
+        display: grid;
+        gap: 8px;
+      }
+      .inline-shortcuts {
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .inline-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 7px;
+      }
+      .inline-separator {
+        border-top: 1px solid #e6eaf0;
+        margin-top: 2px;
+        padding-top: 8px;
+      }
+      .inline-actions-struct {
+        gap: 6px;
+      }
+      .inline-struct-label {
+        margin: 0 0 4px;
+        font-size: 11px;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: .05em;
+        font-weight: 700;
+      }
+      .inline-btn {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 5px 10px;
+        background: #fff;
+        font-size: 12px;
+        font-weight: 700;
+        color: #2b3246;
+        cursor: pointer;
+      }
+      .inline-btn[data-status="ok"] { border-color: #9fd3cc; color: #0c4a46; }
+      .inline-btn[data-status="review"] { border-color: var(--warn-line); color: #8d6200; }
+      .inline-btn[data-status="orphan"],
+      .inline-btn[data-status="collision"] { border-color: var(--bad-line); color: #a83f3f; }
+      .inline-btn.struct {
+        background: #f8f9fb;
+        color: #3c4a5f;
+      }
+      .inline-btn.struct.locked {
+        border-color: #b7c8df;
+        background: #eef4ff;
+        color: #1e4a80;
+      }
+      .inline-edit {
+        border-top: 1px solid var(--line);
+        padding-top: 8px;
+        display: grid;
+        gap: 8px;
+      }
+      .inline-focus {
+        border-top: 0;
+        padding-top: 0;
+      }
+      .inline-section-title {
+        margin: 0;
+        font-size: 12px;
+        font-weight: 700;
+        color: #2b3246;
+      }
+      .inline-decision {
+        border-top: 1px solid var(--line);
+        padding-top: 8px;
+        display: grid;
+        gap: 8px;
+      }
+      .inline-edit-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+      .inline-edit-field {
+        display: grid;
+        gap: 5px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .inline-edit-field strong {
+        color: #2b3246;
+      }
+      .inline-edit-field textarea {
+        width: 100%;
+        min-height: 94px;
+        border: 1px solid #c7d3e7;
+        border-radius: 8px;
+        background: #fff;
+        color: var(--text);
+        padding: 8px;
+        font-size: 13px;
+        line-height: 1.45;
+        font-family: "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+        resize: vertical;
+      }
+      .inline-edit-actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .inline-edit-note {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .inline-diff {
+        border-top: 1px dashed #d7dde7;
+        padding-top: 8px;
+        display: grid;
+        gap: 8px;
+      }
+      .inline-diff-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+      .inline-diff-card {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+        padding: 7px;
+        font-size: 12px;
+        line-height: 1.4;
+      }
+      .inline-diff-card strong {
+        display: block;
+        margin-bottom: 4px;
+        color: #2b3246;
+        font-size: 11px;
+      }
+      .inline-diff-line {
+        margin-bottom: 6px;
+      }
+      .inline-diff-line:last-child {
+        margin-bottom: 0;
+      }
+      .inline-diff-card del {
+        background: #fff2f2;
+        color: #a83f3f;
+        text-decoration-thickness: 2px;
+      }
+      .inline-diff-card ins {
+        background: #eef9f1;
+        color: #1f7a3b;
+        text-decoration: none;
+      }
+
+      .run-wrap {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        overflow: auto;
+        max-height: none;
+        height: 100%;
+        min-height: 0;
+        background: #fff;
+      }
+      .run-load-note {
+        margin-top: 6px;
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .run-row {
+        display: grid;
+        grid-template-columns: 1fr 72px 1fr;
+        gap: 0;
+        border-bottom: 1px solid #edf1f6;
+        cursor: pointer;
+      }
+      .run-row:last-child { border-bottom: 0; }
+      .run-row:hover {
+        background: #f8fbff;
+      }
+      .run-row.active {
+        outline: 2px solid #9fd3cc;
+        outline-offset: -2px;
+        background: #f5fbfa;
+      }
+      .run-row.is-hidden {
+        display: none;
+      }
+      .run-cell {
+        padding: 8px;
+        font-size: 12px;
+        line-height: 1.45;
+      }
+      .run-cell + .run-cell {
+        border-left: 1px solid var(--line);
+      }
+      .seg-id {
+        display: inline-block;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 11px;
+        color: #5a6780;
+        margin-bottom: 5px;
+      }
+      .row-flag {
+        display: inline-flex;
+        align-items: center;
+        margin-left: 6px;
+        padding: 1px 7px;
+        border-radius: 999px;
+        border: 1px solid transparent;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: .03em;
+        text-transform: uppercase;
+        vertical-align: middle;
+      }
+      .row-flag.review {
+        border-color: var(--warn-line);
+        background: var(--warn-soft);
+        color: #8d6200;
+      }
+      .row-flag.lock {
+        border-color: #b7c8df;
+        background: #eef4ff;
+        color: #1e4a80;
+      }
+      .row-flag.orphan,
+      .row-flag.collision {
+        border-color: var(--bad-line);
+        background: var(--bad-soft);
+        color: #a83f3f;
+      }
+      .mark {
+        background: #fff3cf;
+        border-radius: 3px;
+        padding: 0 2px;
+      }
+      .status-rail {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 5px;
+        padding: 8px 6px;
+      }
+      .dot {
+        width: 28px;
+        height: 28px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        cursor: pointer;
+      }
+      .dot.ok {
+        border-color: #9fd3cc;
+        background: #e8f5f3;
+        color: #0c4a46;
+      }
+      .dot.review {
+        border-color: var(--warn-line);
+        background: var(--warn-soft);
+        color: #8d6200;
+      }
+      .dot.orphan,
+      .dot.collision {
+        border-color: var(--bad-line);
+        background: var(--bad-soft);
+        color: #a83f3f;
+      }
+      .state {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: .04em;
+        font-weight: 700;
+        color: var(--muted);
+      }
+      .hidden-ok[data-status="ok"] {
+        display: none;
+      }
+
+      .kpis {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(100px, 1fr));
+        gap: 8px;
+      }
+      .kpi {
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        padding: 8px;
+        background: #fff;
+      }
+      .kpi .label {
+        font-size: 11px;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: .06em;
+      }
+      .kpi .value {
+        margin-top: 4px;
+        font-size: 18px;
+        font-weight: 700;
+      }
+      .kpi.ok .value { color: #0c4a46; }
+      .kpi.warn .value { color: #8d6200; }
+      .kpi.bad .value { color: #a83f3f; }
+
+      @media (max-width: 1240px) {
+        .shell { grid-template-columns: 1fr; }
+        .nav { border-right: 0; border-bottom: 1px solid var(--line); }
+      }
+      @media (max-width: 880px) {
+        .run-layout {
+          grid-template-columns: 1fr;
+          height: auto;
+        }
+        .editor-pane {
+          position: static;
+          height: auto;
+          grid-template-rows: auto auto;
+        }
+        .inline-audit {
+          height: auto;
+          max-height: none;
+        }
+        .run-wrap {
+          height: auto;
+          max-height: 58vh;
+        }
+        .run-row { grid-template-columns: 1fr; }
+        .run-cell + .run-cell { border-left: 0; border-top: 1px solid var(--line); }
+        .status-rail { flex-direction: row; justify-content: flex-start; }
+        .setup-row { grid-template-columns: 1fr; }
+        .kpis { grid-template-columns: 1fr 1fr; }
+        .inline-edit-grid { grid-template-columns: 1fr; }
+        .inline-diff-grid { grid-template-columns: 1fr; }
+        .run-toolbar-actions input { width: 100%; }
+      }
+      a:focus-visible,
+      button:focus-visible,
+      input:focus-visible,
+      select:focus-visible,
+      textarea:focus-visible,
+      summary:focus-visible,
+      [role="button"]:focus-visible,
+      [tabindex]:focus-visible {
+        outline: 2px solid #1e4a80;
+        outline-offset: 2px;
+        box-shadow: 0 0 0 3px rgba(30, 74, 128, 0.18);
+      }
+    </style>
+  </head>
+  <body>
+    <header class="top">
+      <strong>Constituer</strong>
+      <span>Préparation corpus</span>
+      <span class="db">DB: corpus_himyc_2026.db</span>
+    </header>
+
+    <nav class="proto-nav" aria-label="Navigation maquettes">
+      <a href="../index.html">Index</a>
+      <a href="../shell/board-vnext.html">Board</a>
+      <a href="../shell/shell-vnext.html">Home</a>
+      <a href="../shell/explorer-vnext.html">Explorer</a>
+      <a class="active" href="./prep-vnext.html">Constituer</a>
+      <a href="../shell/publish-vnext.html">Publier</a>
+    </nav>
+
+    <div class="shell">
+      <aside class="nav">
+        <h2>Sections</h2>
+        <a class="tab" href="./prep-import-vnext.html">Importer</a>
+        <a class="tab" href="./prep-documents-vnext.html">Documents</a>
+        <a class="tab active" href="./prep-actions-vnext.html">Actions</a>
+        <details class="tree-wrap actions-tree" data-actions-tree data-default-open="true">
+          <summary class="tree-summary">Actions disponibles <span class="tree-caret" aria-hidden="true">▾</span></summary>
+          <div class="tree" aria-label="Actions disponibles">
+            <a href="./prep-curation-preview-vnext.html">Curation</a>
+            <a href="./prep-segmentation-vo-vnext.html">Segmentation</a>
+            <a class="active" href="./prep-alignement-run-vnext.html">Alignement</a>
+          </div>
+        </details>
+        <a class="tab" href="./prep-exporter-vnext.html">Exporter</a>
+      </aside>
+
+      <main class="content">
+        <section class="card head-card">
+          <div>
+            <h1>Alignement — vue run globale</h1>
+            <p>
+              Lecture continue VO/traduction sur tout le run. Le rail central signale les exceptions sans imposer une validation segment par segment.
+            </p>
+          </div>
+          <div class="head-tools">
+            <span class="pill">run: align_2026-03-04_10h14</span>
+            <a class="head-link" href="./prep-alignement-vnext.html">Mode focus segment</a>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-head">
+            <h2>Lancer un run</h2>
+            <span class="pill">fichier actif + VO + paramètres</span>
+          </div>
+          <div class="body run-setup">
+            <div class="setup-row setup-row-files">
+              <label class="f"> <strong>Fichier à aligner (traduction)</strong>
+                <select>
+                  <option selected>Übersetzung_1793_de.docx (doc#6)</option>
+                  <option>Speech_1793_en.docx (doc#2)</option>
+                  <option>Traduccion_1793_es.docx (doc#5)</option>
+                </select>
+              </label>
+              <label class="f"> <strong>Fichier VO (référence)</strong>
+                <select>
+                  <option selected>Discours_1793_fr.docx (doc#1)</option>
+                  <option>Traite_1801_fr.docx (doc#4)</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="setup-row">
+              <label class="f"> <strong>Portée du run</strong>
+                <select>
+                  <option selected>Document actif (recommandé)</option>
+                  <option>Documents sélectionnés</option>
+                </select>
+              </label>
+              <label class="f"> <strong>Stratégie d'alignement</strong>
+                <select>
+                  <option selected>Auto (ancres + position)</option>
+                  <option>Ancres strictes</option>
+                  <option>Position</option>
+                </select>
+              </label>
+              <label class="f"> <strong>Politique d'application</strong>
+                <select>
+                  <option selected>Appliquer tout sauf exceptions</option>
+                  <option>Prévisualiser seulement</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="flow-note">
+              Étapes: 1) sélectionner la traduction, 2) sélectionner la VO, 3) ajuster les paramètres, 4) lancer la prévisualisation du run.
+            </div>
+
+            <details class="advanced">
+              <summary>Réglages avancés</summary>
+              <div class="advanced-body">
+                <div class="setup-row">
+                  <label class="f"> <strong>Couverture minimale (%)</strong>
+                    <input type="number" value="90" min="0" max="100" />
+                  </label>
+                  <label class="f"> <strong>Seuil max orphelins</strong>
+                    <input type="number" value="25" min="0" />
+                  </label>
+                  <label class="f"> <strong>Seuil max collisions</strong>
+                    <input type="number" value="10" min="0" />
+                  </label>
+                </div>
+              </div>
+            </details>
+
+            <div class="btns">
+              <button class="btn btn-ghost">Réinitialiser paramètres</button>
+              <button class="btn btn-primary">Lancer la prévisualisation du run</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-head">
+            <h2>Synthèse du run</h2>
+            <span class="pill">validation par exception</span>
+          </div>
+          <div class="body">
+            <div class="kpis">
+              <div class="kpi ok"><div class="label">Total segments</div><div class="value" id="kpiTotal">0</div></div>
+              <div class="kpi ok"><div class="label">OK</div><div class="value" id="kpiOk">0</div></div>
+              <div class="kpi warn"><div class="label">À revoir</div><div class="value" id="kpiReview">0</div></div>
+              <div class="kpi bad"><div class="label">Orphelins</div><div class="value" id="kpiOrphan">0</div></div>
+              <div class="kpi bad"><div class="label">Collisions</div><div class="value" id="kpiCollision">0</div></div>
+            </div>
+            <div class="btns">
+              <button class="btn btn-primary">Appliquer tout (sauf exceptions)</button>
+              <a class="btn btn-secondary" href="./prep-audit-advanced-vnext.html">Ouvrir les exceptions (audit avancé)</a>
+              <button class="btn btn-ghost">Revenir à la segmentation</button>
+            </div>
+            <div id="runPreviewNote" class="run-preview-note"></div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-head">
+            <h2>Texte complet aligné (VO ↔ traduction)</h2>
+            <span class="pill">compact + édition à la demande</span>
+          </div>
+          <div class="run-panel">
+            <div class="run-hero">
+              <h3>Run aligné — correction par exceptions</h3>
+              <p>
+                La liste se charge d'abord en mode rapide, puis complète automatiquement. Les ajustements locaux
+                (split/merge) déclenchent un recalcul local; utilise “Recalcul global” pour relancer tout le run.
+              </p>
+            </div>
+            <div class="run-layout">
+              <div class="run-list-col">
+                <div id="runWrap" class="run-wrap" aria-label="Run alignement global"></div>
+                <div id="runLoadNote" class="run-load-note">Chargement initial des segments...</div>
+              </div>
+
+              <aside class="editor-pane">
+                <details class="inline-audit" open>
+                  <summary>Corriger le segment sélectionné</summary>
+                  <div class="inline-audit-body">
+                    <h3 class="inline-section-title">Focus segment (édition)</h3>
+                    <div class="inline-edit inline-focus">
+                      <div class="inline-edit-grid">
+                        <label class="inline-edit-field">
+                          <strong>VO (édition locale maquette)</strong>
+                          <textarea id="inlineVoInput"></textarea>
+                        </label>
+                        <label class="inline-edit-field">
+                          <strong>Traduction (édition locale maquette)</strong>
+                          <textarea id="inlineTrInput"></textarea>
+                        </label>
+                      </div>
+                      <div class="inline-edit-actions">
+                        <button type="button" id="inlineSaveText" class="btn btn-secondary">Enregistrer texte</button>
+                        <button type="button" id="inlineResetText" class="btn btn-ghost">Annuler modifications</button>
+                        <span id="inlineEditNote" class="inline-edit-note">Sélectionne un segment pour modifier son texte.</span>
+                      </div>
+                      <div class="inline-diff">
+                        <p class="inline-struct-label">Diff avant / après (segment actif)</p>
+                        <div class="inline-diff-grid">
+                          <div id="diffBeforeCard" class="inline-diff-card">
+                            <strong>Avant</strong>
+                            <div class="inline-diff-line"><b>VO:</b> <span id="diffVoBefore">—</span></div>
+                            <div class="inline-diff-line"><b>TR:</b> <span id="diffTrBefore">—</span></div>
+                          </div>
+                          <div id="diffAfterCard" class="inline-diff-card">
+                            <strong>Après</strong>
+                            <div class="inline-diff-line"><b>VO:</b> <span id="diffVoAfter">—</span></div>
+                            <div class="inline-diff-line"><b>TR:</b> <span id="diffTrAfter">—</span></div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="inline-decision">
+                      <h3 class="inline-section-title">Décisions d'action</h3>
+                      <div class="inline-actions">
+                        <button type="button" class="inline-btn" data-set-status="ok" data-status="ok">Marquer OK</button>
+                        <button type="button" class="inline-btn" data-set-status="review" data-status="review">Marquer à revoir</button>
+                        <button type="button" class="inline-btn" data-set-status="orphan" data-status="orphan">Marquer orphelin</button>
+                        <button type="button" class="inline-btn" data-set-status="collision" data-status="collision">Marquer collision</button>
+                        <button type="button" id="toggleLockBtn" class="inline-btn struct">Verrouiller segment</button>
+                      </div>
+                      <div class="inline-separator">
+                        <p class="inline-struct-label">Ajustements structurels</p>
+                        <div class="inline-actions inline-actions-struct">
+                          <button type="button" id="actionUnlinkBtn" class="inline-btn struct">Délier VO ↔ TR</button>
+                          <button type="button" id="actionMergePrevBtn" class="inline-btn struct">Fusionner avec précédent</button>
+                          <button type="button" id="actionMergeNextBtn" class="inline-btn struct">Fusionner avec suivant</button>
+                          <button type="button" id="actionSplitBtn" class="inline-btn struct">Couper ici</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </details>
+
+                <div class="run-toolbar">
+                  <div class="run-toolbar-main">
+                    <div class="filters">
+                      <button type="button" class="chip active" data-filter="all">Tous</button>
+                      <button type="button" class="chip" data-filter="review">À revoir<span class="chip-count" id="countReviewChip">0</span></button>
+                      <button type="button" class="chip" data-filter="exceptions">Exceptions<span class="chip-count" id="countExceptionsChip">0</span></button>
+                    </div>
+                    <div class="run-toolbar-actions">
+                      <button type="button" id="undoBtn" class="btn btn-ghost" disabled>Undo</button>
+                      <button type="button" id="redoBtn" class="btn btn-ghost" disabled>Redo</button>
+                      <button type="button" id="jumpPrevIssue" class="btn btn-ghost">Exception précédente</button>
+                      <button type="button" id="jumpNextIssue" class="btn btn-ghost">Exception suivante</button>
+                      <input type="text" id="searchTextInput" placeholder="Recherche texte..." />
+                      <button type="button" id="searchClearBtn" class="btn btn-ghost">Effacer</button>
+                      <input type="text" id="jumpSegInput" placeholder="Segment (S0012)" />
+                      <button type="button" id="jumpSegBtn" class="btn btn-secondary">Aller</button>
+                      <button type="button" id="recalcGlobalBtn" class="btn btn-primary">Recalcul global</button>
+                    </div>
+                  </div>
+                  <div class="run-toolbar-meta">
+                    Segment actif: <code id="inlineSegId">—</code> · Statut: <strong id="inlineStatusLabel">—</strong>
+                    <span id="runRecalcState">Après split/merge: recalcul local automatique.</span>
+                    <span class="inline-shortcuts">Entrée: aller · Cmd/Ctrl+S: enregistrer · Cmd/Ctrl+Z: undo</span>
+                  </div>
+                </div>
+              </aside>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="body audit-cta">
+            <a class="btn btn-secondary" href="./prep-audit-advanced-vnext.html">Ouvrir audit avancé</a>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script>
+      (function () {
+        var tree = document.querySelector("[data-actions-tree]");
+        if (tree) {
+          var key = "agrafes.prep.actionsTreeOpen";
+          try {
+            var saved = window.localStorage.getItem(key);
+            if (saved === "1" || saved === "0") {
+              tree.open = saved === "1";
+            } else {
+              tree.open = tree.getAttribute("data-default-open") === "true";
+            }
+            tree.addEventListener("toggle", function () {
+              window.localStorage.setItem(key, tree.open ? "1" : "0");
+            });
+          } catch (_err) {
+            tree.open = tree.getAttribute("data-default-open") === "true";
+          }
+        }
+
+        var rows = [
+          { id: "S0001", status: "ok", vo: "Dans ce passage de travail, la phrase reste continue et non segmentée.", tr: "In this working passage, the sentence remains continuous and unsegmented." },
+          { id: "S0002", status: "ok", vo: "Le lecteur doit pouvoir vérifier facilement la proposition d'alignement.", tr: "Der Leser soll den alignment-Vorschlag leicht prüfen können." },
+          { id: "S0003", status: "review", vo: "La ligne introduit deux idées ; une coupure peut être préférable.", tr: "Die Zeile trägt <span class='mark'>zwei Ideen</span> und könnte gesplittet werden." },
+          { id: "S0004", status: "ok", vo: "La ponctuation fine est conservée lors de la projection.", tr: "La puntuación fina se conserva durante la proyección." },
+          { id: "S0005", status: "orphan", vo: "Une citation longue suit dans la VO.", tr: "—" },
+          { id: "S0006", status: "ok", vo: "Le segment suivant est court et stable.", tr: "The next segment is short and stable." },
+          { id: "S0007", status: "collision", vo: "Deux cibles ont été proposées pour ce segment.", tr: "Für dieses Segment wurden zwei Ziele vorgeschlagen." },
+          { id: "S0008", status: "ok", vo: "Le corpus est prêt pour un export après revue des exceptions.", tr: "El corpus está listo para exportar tras revisar excepciones." },
+          { id: "S0009", status: "review", vo: "Le rythme syntaxique change au milieu de la phrase.", tr: "Der syntaktische Rhythmus ändert sich mitten im Satz." },
+          { id: "S0010", status: "ok", vo: "Les segments alignés valides ne demandent pas d'action manuelle.", tr: "Valid aligned segments do not require manual action." },
+          { id: "S0011", status: "ok", vo: "Le run couvre la majorité des segments automatiquement.", tr: "Der Lauf deckt den Großteil der Segmente automatisch ab." },
+          { id: "S0012", status: "orphan", vo: "Segment VO sans correspondant direct dans la traduction.", tr: "—" },
+          { id: "S0013", status: "ok", vo: "La continuité contextuelle est préservée.", tr: "Continuity of context is preserved." },
+          { id: "S0014", status: "collision", vo: "Deux traductions candidates semblent plausibles ici.", tr: "Aquí parecen plausibles dos traducciones candidatas." },
+          { id: "S0015", status: "ok", vo: "Le run peut être appliqué en lot hors exceptions.", tr: "Der Lauf kann außerhalb der Ausnahmen im Batch angewendet werden." }
+        ];
+
+        var statusMeta = {
+          ok: { icon: "✓", label: "OK" },
+          review: { icon: "!", label: "À revoir" },
+          orphan: { icon: "×", label: "Orphelin" },
+          collision: { icon: "⚠", label: "Collision" }
+        };
+
+        var runWrap = document.getElementById("runWrap");
+        var runLoadNote = document.getElementById("runLoadNote");
+        var runPreviewNote = document.getElementById("runPreviewNote");
+        var countReviewChip = document.getElementById("countReviewChip");
+        var countExceptionsChip = document.getElementById("countExceptionsChip");
+        var kpiTotal = document.getElementById("kpiTotal");
+        var kpiOk = document.getElementById("kpiOk");
+        var kpiReview = document.getElementById("kpiReview");
+        var kpiOrphan = document.getElementById("kpiOrphan");
+        var kpiCollision = document.getElementById("kpiCollision");
+        var inlineSegId = document.getElementById("inlineSegId");
+        var inlineStatusLabel = document.getElementById("inlineStatusLabel");
+        var inlineVoInput = document.getElementById("inlineVoInput");
+        var inlineTrInput = document.getElementById("inlineTrInput");
+        var inlineSaveText = document.getElementById("inlineSaveText");
+        var inlineResetText = document.getElementById("inlineResetText");
+        var inlineEditNote = document.getElementById("inlineEditNote");
+        var toggleLockBtn = document.getElementById("toggleLockBtn");
+        var actionUnlinkBtn = document.getElementById("actionUnlinkBtn");
+        var actionMergePrevBtn = document.getElementById("actionMergePrevBtn");
+        var actionMergeNextBtn = document.getElementById("actionMergeNextBtn");
+        var actionSplitBtn = document.getElementById("actionSplitBtn");
+        var diffVoBefore = document.getElementById("diffVoBefore");
+        var diffTrBefore = document.getElementById("diffTrBefore");
+        var diffVoAfter = document.getElementById("diffVoAfter");
+        var diffTrAfter = document.getElementById("diffTrAfter");
+        var undoBtn = document.getElementById("undoBtn");
+        var redoBtn = document.getElementById("redoBtn");
+        var searchTextInput = document.getElementById("searchTextInput");
+        var searchClearBtn = document.getElementById("searchClearBtn");
+        var jumpPrevIssue = document.getElementById("jumpPrevIssue");
+        var jumpNextIssue = document.getElementById("jumpNextIssue");
+        var jumpSegInput = document.getElementById("jumpSegInput");
+        var jumpSegBtn = document.getElementById("jumpSegBtn");
+        var recalcGlobalBtn = document.getElementById("recalcGlobalBtn");
+        var runRecalcState = document.getElementById("runRecalcState");
+        var activeId = "S0003";
+        var currentFilter = "all";
+        var inlineDirty = false;
+        var INITIAL_RENDER_COUNT = 8;
+        var fullRenderReady = false;
+        var fullRenderScheduled = false;
+        var HISTORY_LIMIT = 80;
+        var historyPast = [];
+        var historyFuture = [];
+        var runFilterStorageKey = "agrafes.align.runFilter";
+        var runSearchStorageKey = "agrafes.align.runSearch";
+        var searchQuery = "";
+        try {
+          var savedRunFilter = window.localStorage.getItem(runFilterStorageKey);
+          if (savedRunFilter === "all" || savedRunFilter === "review" || savedRunFilter === "exceptions") {
+            currentFilter = savedRunFilter;
+          }
+          var savedSearch = window.localStorage.getItem(runSearchStorageKey);
+          if (savedSearch) searchQuery = String(savedSearch);
+        } catch (_err) {
+          currentFilter = "all";
+          searchQuery = "";
+        }
+
+        function getRenderableRows() {
+          if (fullRenderReady || rows.length <= INITIAL_RENDER_COUNT) return rows;
+          return rows.slice(0, INITIAL_RENDER_COUNT);
+        }
+
+        function rowById(id) {
+          return rows.find(function (r) { return r.id === id; }) || null;
+        }
+
+        function htmlToText(html) {
+          var tmp = document.createElement("div");
+          tmp.innerHTML = html;
+          return (tmp.textContent || tmp.innerText || "").trim();
+        }
+
+        function escapeHtml(text) {
+          return String(text)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#39;");
+        }
+
+        function asHtmlWithBreaks(text) {
+          return escapeHtml(text).replace(/\n/g, "<br />");
+        }
+
+        function cloneRowsState(rowsInput) {
+          return rowsInput.map(function (row) { return Object.assign({}, row); });
+        }
+
+        function captureState() {
+          return {
+            rows: cloneRowsState(rows),
+            activeId: activeId,
+            currentFilter: currentFilter,
+            fullRenderReady: fullRenderReady
+          };
+        }
+
+        function applyState(state) {
+          if (!state) return;
+          rows = cloneRowsState(state.rows || []);
+          activeId = state.activeId || activeId;
+          currentFilter = state.currentFilter || "all";
+          fullRenderReady = !!state.fullRenderReady;
+          fullRenderScheduled = false;
+          renderRows();
+          setFilter(currentFilter);
+          refreshCounters();
+          setActive(activeId, { scroll: false });
+          setInlineDirty(false);
+        }
+
+        function syncHistoryButtons() {
+          if (undoBtn) undoBtn.disabled = historyPast.length === 0;
+          if (redoBtn) redoBtn.disabled = historyFuture.length === 0;
+        }
+
+        function pushHistory() {
+          historyPast.push(captureState());
+          if (historyPast.length > HISTORY_LIMIT) historyPast.shift();
+          historyFuture = [];
+          syncHistoryButtons();
+        }
+
+        function undo() {
+          if (!historyPast.length) return;
+          historyFuture.push(captureState());
+          var previous = historyPast.pop();
+          applyState(previous);
+          syncHistoryButtons();
+          if (inlineEditNote) inlineEditNote.textContent = "Annulation effectuée.";
+        }
+
+        function redo() {
+          if (!historyFuture.length) return;
+          historyPast.push(captureState());
+          var next = historyFuture.pop();
+          applyState(next);
+          syncHistoryButtons();
+          if (inlineEditNote) inlineEditNote.textContent = "Rétablissement effectué.";
+        }
+
+        function diffPair(before, after) {
+          var a = String(before || "");
+          var b = String(after || "");
+          var start = 0;
+          while (start < a.length && start < b.length && a[start] === b[start]) start += 1;
+          var endA = a.length - 1;
+          var endB = b.length - 1;
+          while (endA >= start && endB >= start && a[endA] === b[endB]) {
+            endA -= 1;
+            endB -= 1;
+          }
+          if (start === 0 && endA === a.length - 1 && endB === b.length - 1 && a !== b) {
+            return {
+              before: "<del>" + asHtmlWithBreaks(a) + "</del>",
+              after: "<ins>" + asHtmlWithBreaks(b) + "</ins>"
+            };
+          }
+          var aPrefix = a.slice(0, start);
+          var bPrefix = b.slice(0, start);
+          var aMid = a.slice(start, endA + 1);
+          var bMid = b.slice(start, endB + 1);
+          var aSuffix = a.slice(endA + 1);
+          var bSuffix = b.slice(endB + 1);
+          return {
+            before: asHtmlWithBreaks(aPrefix) + (aMid ? "<del>" + asHtmlWithBreaks(aMid) + "</del>" : "") + asHtmlWithBreaks(aSuffix),
+            after: asHtmlWithBreaks(bPrefix) + (bMid ? "<ins>" + asHtmlWithBreaks(bMid) + "</ins>" : "") + asHtmlWithBreaks(bSuffix)
+          };
+        }
+
+        function updateDiffPreview() {
+          var row = rowById(activeId);
+          if (!row) return;
+          var voBefore = htmlToText(row.vo);
+          var trBefore = htmlToText(row.tr);
+          var voAfter = inlineVoInput ? inlineVoInput.value : voBefore;
+          var trAfter = inlineTrInput ? inlineTrInput.value : trBefore;
+          var voDiff = diffPair(voBefore, voAfter);
+          var trDiff = diffPair(trBefore, trAfter);
+          if (diffVoBefore) diffVoBefore.innerHTML = voDiff.before || asHtmlWithBreaks(voBefore);
+          if (diffVoAfter) diffVoAfter.innerHTML = voDiff.after || asHtmlWithBreaks(voAfter);
+          if (diffTrBefore) diffTrBefore.innerHTML = trDiff.before || asHtmlWithBreaks(trBefore);
+          if (diffTrAfter) diffTrAfter.innerHTML = trDiff.after || asHtmlWithBreaks(trAfter);
+        }
+
+        function setInlineDirty(next) {
+          inlineDirty = !!next;
+          if (inlineSaveText) inlineSaveText.disabled = !inlineDirty;
+          if (inlineEditNote && inlineDirty) {
+            inlineEditNote.textContent = "Modifications non enregistrées sur " + activeId + ".";
+          }
+          updateDiffPreview();
+        }
+
+        function isIssueStatus(status) {
+          return status === "review" || status === "orphan" || status === "collision";
+        }
+
+        function normalizeSegId(raw) {
+          var value = String(raw || "").trim().toUpperCase();
+          if (!value) return "";
+          if (/^\d+$/.test(value)) return "S" + value.padStart(4, "0");
+          if (/^S\d+$/.test(value)) return "S" + value.slice(1).padStart(4, "0");
+          return value;
+        }
+
+        function renderRows() {
+          var visibleRows = getRenderableRows();
+          runWrap.innerHTML = visibleRows
+            .map(function (r) {
+              var meta = statusMeta[r.status] || statusMeta.ok;
+              var lockFlag = r.locked ? '<span class="row-flag lock">Verrouillé</span>' : "";
+              var active = r.id === activeId ? " active" : "";
+              var flag = r.status === "ok"
+                ? ""
+                : '<span class="row-flag ' + r.status + '">' + meta.label + '</span>';
+              return (
+                '<article class="run-row' + active + '" data-id="' + r.id + '" data-status="' + r.status + '">' +
+                  '<section class="run-cell">' +
+                    '<span class="seg-id">' + r.id + ' · VO' + flag + lockFlag + '</span>' +
+                    '<div>' + r.vo + '</div>' +
+                  '</section>' +
+                  '<section class="run-cell status-rail">' +
+                    '<button type="button" class="dot ' + r.status + '" data-id="' + r.id + '" aria-label="Voir segment ' + r.id + '">' + meta.icon + '</button>' +
+                    '<span class="state">' + meta.label + '</span>' +
+                  '</section>' +
+                  '<section class="run-cell">' +
+                    '<span class="seg-id">' + r.id + ' · TR</span>' +
+                    '<div>' + r.tr + '</div>' +
+                  '</section>' +
+                '</article>'
+              );
+            })
+            .join("");
+          if (runLoadNote) {
+            if (fullRenderReady || rows.length <= INITIAL_RENDER_COUNT) {
+              runLoadNote.textContent = "Tous les segments sont chargés.";
+            } else {
+              runLoadNote.textContent =
+                "Chargement rapide: " + visibleRows.length + " / " + rows.length + " segments affichés...";
+            }
+          }
+        }
+
+        function refreshCounters() {
+          var totalCount = rows.length;
+          var okCount = rows.filter(function (r) { return r.status === "ok"; }).length;
+          var reviewCount = rows.filter(function (r) { return r.status === "review"; }).length;
+          var orphanCount = rows.filter(function (r) { return r.status === "orphan"; }).length;
+          var collisionCount = rows.filter(function (r) { return r.status === "collision"; }).length;
+          var exceptionsCount = rows.filter(function (r) { return r.status !== "ok"; }).length;
+          if (kpiTotal) kpiTotal.textContent = String(totalCount);
+          if (kpiOk) kpiOk.textContent = String(okCount);
+          if (kpiReview) kpiReview.textContent = String(reviewCount);
+          if (kpiOrphan) kpiOrphan.textContent = String(orphanCount);
+          if (kpiCollision) kpiCollision.textContent = String(collisionCount);
+          if (countReviewChip) countReviewChip.textContent = String(reviewCount);
+          if (countExceptionsChip) countExceptionsChip.textContent = String(exceptionsCount);
+          if (runPreviewNote) {
+            runPreviewNote.textContent =
+              "Aperçu maquette: " + totalCount + " segments affichés · " +
+              reviewCount + " à revoir · " + exceptionsCount + " exceptions (à revoir + orphelins + collisions).";
+          }
+        }
+
+        function applyFilter(mode) {
+          currentFilter = mode || "all";
+          var rowsDom = runWrap.querySelectorAll(".run-row");
+          rowsDom.forEach(function (row) {
+            var rowId = row.getAttribute("data-id");
+            var rowData = rowById(rowId);
+            if (!rowData) return;
+            var st = row.getAttribute("data-status");
+            var statusMatch = true;
+            if (currentFilter === "exceptions") statusMatch = st !== "ok";
+            else if (currentFilter === "review") statusMatch = st === "review";
+
+            var q = String(searchQuery || "").trim().toLowerCase();
+            var searchMatch = true;
+            if (q) {
+              var haystack = (rowId + " " + htmlToText(rowData.vo) + " " + htmlToText(rowData.tr)).toLowerCase();
+              searchMatch = haystack.indexOf(q) !== -1;
+            }
+            row.classList.toggle("is-hidden", !(statusMatch && searchMatch));
+          });
+        }
+
+        function setFilter(mode) {
+          currentFilter = mode || "all";
+          chips.forEach(function (chip) {
+            chip.classList.toggle("active", chip.getAttribute("data-filter") === currentFilter);
+          });
+          applyFilter(currentFilter);
+          try {
+            window.localStorage.setItem(runFilterStorageKey, currentFilter);
+          } catch (_err) {
+            // ignore storage write issues in prototype mode
+          }
+        }
+
+        function jumpIssue(direction) {
+          var issues = rows.filter(function (r) { return isIssueStatus(r.status); });
+          if (!issues.length) return;
+          var currentIndex = issues.findIndex(function (r) { return r.id === activeId; });
+          var base = currentIndex >= 0 ? currentIndex : 0;
+          var nextIndex = (base + direction + issues.length) % issues.length;
+          setFilter("exceptions");
+          setActive(issues[nextIndex].id);
+        }
+
+        function goToSegment(rawValue) {
+          var id = normalizeSegId(rawValue);
+          var row = rowById(id);
+          if (!row) {
+            if (inlineEditNote) inlineEditNote.textContent = "Segment introuvable: " + id;
+            return;
+          }
+          setFilter("all");
+          setActive(id);
+          if (inlineEditNote) inlineEditNote.textContent = "Segment " + id + " chargé.";
+          if (jumpSegInput) jumpSegInput.value = id;
+        }
+
+        function refreshInlineEditor() {
+          var row = rowById(activeId);
+          if (!row) return;
+          var meta = statusMeta[row.status] || statusMeta.ok;
+          if (inlineSegId) inlineSegId.textContent = row.id;
+          if (inlineStatusLabel) inlineStatusLabel.textContent = meta.label;
+          if (inlineVoInput) inlineVoInput.value = htmlToText(row.vo);
+          if (inlineTrInput) inlineTrInput.value = htmlToText(row.tr);
+          if (toggleLockBtn) {
+            var isLocked = !!row.locked;
+            toggleLockBtn.textContent = isLocked ? "Déverrouiller segment" : "Verrouiller segment";
+            toggleLockBtn.classList.toggle("locked", isLocked);
+          }
+          setInlineDirty(false);
+          updateDiffPreview();
+        }
+
+        function setActive(id, options) {
+          var opts = options || {};
+          activeId = id;
+          var nodes = runWrap.querySelectorAll(".run-row");
+          nodes.forEach(function (n) {
+            n.classList.toggle("active", n.getAttribute("data-id") === id);
+          });
+          var target = runWrap.querySelector('.run-row[data-id="' + id + '"]');
+          if (target && opts.scroll !== false) {
+            target.scrollIntoView({ block: "center", behavior: opts.behavior || "smooth" });
+          }
+          refreshInlineEditor();
+        }
+
+        function scheduleFullRender() {
+          if (fullRenderReady || fullRenderScheduled) return;
+          fullRenderScheduled = true;
+          var onIdle = function () {
+            fullRenderReady = true;
+            fullRenderScheduled = false;
+            renderRows();
+            applyFilter(currentFilter);
+            setActive(activeId, { scroll: false });
+          };
+          if ("requestIdleCallback" in window) {
+            window.requestIdleCallback(onIdle, { timeout: 900 });
+          } else {
+            window.setTimeout(onIdle, 140);
+          }
+        }
+
+        function setRowStatus(id, status) {
+          var row = rowById(id);
+          if (!row || !statusMeta[status]) return;
+          if (row.status === status) return;
+          pushHistory();
+          row.status = status;
+          renderRows();
+          applyFilter(currentFilter);
+          refreshCounters();
+          setActive(id);
+        }
+
+        function toggleActiveLock() {
+          var row = rowById(activeId);
+          if (!row) return;
+          pushHistory();
+          row.locked = !row.locked;
+          renderRows();
+          applyFilter(currentFilter);
+          setActive(activeId, { scroll: false });
+          setInlineDirty(true);
+          if (inlineEditNote) {
+            inlineEditNote.textContent = row.locked
+              ? "Segment " + activeId + " verrouillé (protégé du recalcul automatique)."
+              : "Segment " + activeId + " déverrouillé.";
+          }
+        }
+
+        function applyStructuralAction(kind) {
+          var row = rowById(activeId);
+          if (!row) return;
+          var labels = {
+            unlink: "Délier VO ↔ TR",
+            merge_prev: "Fusionner avec précédent",
+            merge_next: "Fusionner avec suivant",
+            split: "Couper ici"
+          };
+          var label = labels[kind] || "Action structurelle";
+          var ok = window.confirm(label + " sur " + activeId + " ? Cette action demandera un recalcul local.");
+          if (!ok) return;
+          pushHistory();
+          if (kind === "unlink") {
+            row.status = "orphan";
+          } else {
+            row.status = "review";
+          }
+          renderRows();
+          applyFilter(currentFilter);
+          refreshCounters();
+          setActive(activeId, { scroll: false });
+          setInlineDirty(true);
+          if (runRecalcState) {
+            runRecalcState.textContent = label + " appliqué sur " + activeId + ". Recalcul local recommandé.";
+          }
+          if (inlineEditNote) {
+            inlineEditNote.textContent = label + " appliqué (maquette). Enregistre puis relance un recalcul si nécessaire.";
+          }
+        }
+
+        runWrap.addEventListener("click", function (event) {
+          var marker = event.target.closest(".dot");
+          if (marker) {
+            setActive(marker.getAttribute("data-id"));
+            return;
+          }
+          var row = event.target.closest(".run-row");
+          if (!row) return;
+          setActive(row.getAttribute("data-id"));
+        });
+
+        var chips = Array.from(document.querySelectorAll("[data-filter]"));
+        chips.forEach(function (chip) {
+          chip.addEventListener("click", function () {
+            setFilter(chip.getAttribute("data-filter"));
+          });
+        });
+
+        if (searchTextInput) {
+          searchTextInput.value = searchQuery;
+          searchTextInput.addEventListener("input", function () {
+            searchQuery = searchTextInput.value || "";
+            try {
+              window.localStorage.setItem(runSearchStorageKey, searchQuery);
+            } catch (_err) {
+              // ignore storage write issues in prototype mode
+            }
+            applyFilter(currentFilter);
+          });
+        }
+        if (searchClearBtn) {
+          searchClearBtn.addEventListener("click", function () {
+            searchQuery = "";
+            if (searchTextInput) searchTextInput.value = "";
+            try {
+              window.localStorage.setItem(runSearchStorageKey, searchQuery);
+            } catch (_err) {
+              // ignore storage write issues in prototype mode
+            }
+            applyFilter(currentFilter);
+          });
+        }
+
+        var inlineButtons = Array.from(document.querySelectorAll("[data-set-status]"));
+        inlineButtons.forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            var next = btn.getAttribute("data-set-status");
+            if (!next) return;
+            setRowStatus(activeId, next);
+          });
+        });
+
+        if (toggleLockBtn) {
+          toggleLockBtn.addEventListener("click", function () {
+            toggleActiveLock();
+          });
+        }
+        if (actionUnlinkBtn) {
+          actionUnlinkBtn.addEventListener("click", function () {
+            applyStructuralAction("unlink");
+          });
+        }
+        if (actionMergePrevBtn) {
+          actionMergePrevBtn.addEventListener("click", function () {
+            applyStructuralAction("merge_prev");
+          });
+        }
+        if (actionMergeNextBtn) {
+          actionMergeNextBtn.addEventListener("click", function () {
+            applyStructuralAction("merge_next");
+          });
+        }
+        if (actionSplitBtn) {
+          actionSplitBtn.addEventListener("click", function () {
+            applyStructuralAction("split");
+          });
+        }
+        if (undoBtn) {
+          undoBtn.addEventListener("click", function () {
+            undo();
+          });
+        }
+        if (redoBtn) {
+          redoBtn.addEventListener("click", function () {
+            redo();
+          });
+        }
+
+        if (inlineSaveText) {
+          inlineSaveText.addEventListener("click", function () {
+            var row = rowById(activeId);
+            if (!row) return;
+            var voNext = inlineVoInput ? inlineVoInput.value : "";
+            var trNext = inlineTrInput ? inlineTrInput.value : "";
+            var voCurrent = htmlToText(row.vo);
+            var trCurrent = htmlToText(row.tr);
+            if (voNext === voCurrent && trNext === trCurrent) {
+              if (inlineEditNote) inlineEditNote.textContent = "Aucun changement à enregistrer.";
+              return;
+            }
+            pushHistory();
+            row.vo = escapeHtml(voNext).replace(/\n/g, "<br />");
+            row.tr = escapeHtml(trNext).replace(/\n/g, "<br />");
+            renderRows();
+            applyFilter(currentFilter);
+            setActive(activeId);
+            setInlineDirty(false);
+            if (inlineEditNote) {
+              inlineEditNote.textContent = "Texte enregistré sur " + activeId + " (maquette locale).";
+            }
+          });
+        }
+
+        if (inlineResetText) {
+          inlineResetText.addEventListener("click", function () {
+            refreshInlineEditor();
+            if (inlineEditNote) {
+              inlineEditNote.textContent = "Modifications locales annulées pour " + activeId + ".";
+            }
+          });
+        }
+
+        if (inlineVoInput) {
+          inlineVoInput.addEventListener("input", function () {
+            setInlineDirty(true);
+          });
+        }
+        if (inlineTrInput) {
+          inlineTrInput.addEventListener("input", function () {
+            setInlineDirty(true);
+          });
+        }
+
+        if (jumpPrevIssue) {
+          jumpPrevIssue.addEventListener("click", function () {
+            jumpIssue(-1);
+          });
+        }
+        if (jumpNextIssue) {
+          jumpNextIssue.addEventListener("click", function () {
+            jumpIssue(1);
+          });
+        }
+        if (jumpSegBtn && jumpSegInput) {
+          jumpSegBtn.addEventListener("click", function () {
+            goToSegment(jumpSegInput.value);
+          });
+        }
+        if (jumpSegInput) {
+          jumpSegInput.addEventListener("keydown", function (event) {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              goToSegment(jumpSegInput.value);
+            }
+          });
+        }
+
+        if (recalcGlobalBtn) {
+          recalcGlobalBtn.addEventListener("click", function () {
+            pushHistory();
+            var keepManual = window.confirm(
+              "Recalcul global: conserver les modifications manuelles et segments verrouillés ?\nOK = conserver / Annuler = écraser."
+            );
+            recalcGlobalBtn.disabled = true;
+            recalcGlobalBtn.textContent = "Recalcul global...";
+            if (runRecalcState) runRecalcState.textContent = "Recalcul global en cours sur tout le run...";
+            window.setTimeout(function () {
+              fullRenderReady = true;
+              if (!keepManual) {
+                rows.forEach(function (r) {
+                  r.locked = false;
+                  if (r.status === "review") r.status = "ok";
+                });
+              }
+              var lockedCount = rows.filter(function (r) { return !!r.locked; }).length;
+              recalcGlobalBtn.disabled = false;
+              recalcGlobalBtn.textContent = "Recalcul global";
+              if (runRecalcState) {
+                runRecalcState.textContent = keepManual
+                  ? "Recalcul global terminé. " + lockedCount + " segment(s) verrouillé(s) conservés."
+                  : "Recalcul global terminé avec écrasement des modifications manuelles.";
+              }
+              if (runPreviewNote) {
+                runPreviewNote.textContent =
+                  "Recalcul global terminé (maquette): " + rows.length +
+                  " segments recalculés sur l'ensemble du document" +
+                  (keepManual ? "." : " (mode écrasement).");
+              }
+              renderRows();
+              applyFilter(currentFilter);
+              setActive(activeId, { scroll: false });
+              refreshCounters();
+            }, 700);
+          });
+        }
+
+        document.addEventListener("keydown", function (event) {
+          var key = String(event.key || "").toLowerCase();
+          if ((event.metaKey || event.ctrlKey) && !event.shiftKey && key === "z") {
+            event.preventDefault();
+            undo();
+            return;
+          }
+          if ((event.metaKey || event.ctrlKey) && (key === "y" || (event.shiftKey && key === "z"))) {
+            event.preventDefault();
+            redo();
+            return;
+          }
+          if ((event.metaKey || event.ctrlKey) && key === "s") {
+            event.preventDefault();
+            if (inlineSaveText && !inlineSaveText.disabled) inlineSaveText.click();
+          }
+        });
+
+        window.addEventListener("beforeunload", function (event) {
+          if (!inlineDirty) return;
+          event.preventDefault();
+          event.returnValue = "";
+        });
+
+        renderRows();
+        setFilter(currentFilter);
+        refreshCounters();
+        setActive(activeId, { scroll: false });
+        syncHistoryButtons();
+        scheduleFullRender();
+      })();
+    </script>
+  </body>
+</html>

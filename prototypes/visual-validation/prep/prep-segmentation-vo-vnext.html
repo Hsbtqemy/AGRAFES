@@ -201,6 +201,38 @@
         color: #0c4a46;
         font-weight: 700;
       }
+      .tree a:hover {
+        border-color: #cfe8e3;
+        background: #f6fbfa;
+      }
+      .tree-wrap {
+        margin: -2px 0 8px;
+      }
+      .tree-summary {
+        list-style: none;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border: 1px solid #cfe8e3;
+        border-radius: 8px;
+        padding: 7px 8px;
+        font-size: 12px;
+        font-weight: 700;
+        color: #0c4a46;
+        background: #edf7f5;
+      }
+      .tree-summary::-webkit-details-marker {
+        display: none;
+      }
+      .tree-caret {
+        font-size: 11px;
+        color: var(--muted);
+        transition: transform .16s ease;
+      }
+      .tree-wrap[open] .tree-caret {
+        transform: rotate(180deg);
+      }
 
       .content {
         padding: 14px;
@@ -764,6 +796,18 @@
       @media (max-width: 640px) {
         .row { grid-template-columns: 1fr; }
       }
+      a:focus-visible,
+      button:focus-visible,
+      input:focus-visible,
+      select:focus-visible,
+      textarea:focus-visible,
+      summary:focus-visible,
+      [role="button"]:focus-visible,
+      [tabindex]:focus-visible {
+        outline: 2px solid #1e4a80;
+        outline-offset: 2px;
+        box-shadow: 0 0 0 3px rgba(30, 74, 128, 0.18);
+      }
     </style>
   </head>
   <body>
@@ -774,12 +818,12 @@
     </header>
 
     <nav class="proto-nav" aria-label="Navigation maquettes">
-      <a href="./index.html">Index</a>
-      <a href="./board-vnext.html">Board</a>
-      <a href="./shell-vnext.html">Home</a>
-      <a href="./explorer-vnext.html">Explorer</a>
+      <a href="../index.html">Index</a>
+      <a href="../shell/board-vnext.html">Board</a>
+      <a href="../shell/shell-vnext.html">Home</a>
+      <a href="../shell/explorer-vnext.html">Explorer</a>
       <a class="active" href="./prep-vnext.html">Constituer</a>
-      <a href="./publish-vnext.html">Publier</a>
+      <a href="../shell/publish-vnext.html">Publier</a>
     </nav>
 
     <div class="shell" id="shellMain">
@@ -811,11 +855,9 @@
         <details class="tree-wrap actions-tree" data-actions-tree data-default-open="true">
           <summary class="tree-summary">Actions disponibles <span class="tree-caret" aria-hidden="true">▾</span></summary>
           <div class="tree" aria-label="Actions disponibles">
-          <a href="./prep-curation-hub-vnext.html">Curation (hub)</a>
-          <a class="active" href="#">Segmentation (pilotée VO)</a>
-          <a href="./prep-alignement-vnext.html">Alignement</a>
-          <a href="#">Audit</a>
-          <a href="#">Collisions</a>
+          <a href="./prep-curation-preview-vnext.html">Curation</a>
+          <a class="active" href="./prep-segmentation-vo-vnext.html">Segmentation (pilotée VO)</a>
+          <a href="./prep-alignement-run-vnext.html">Alignement</a>
         </div>
         </details>
         <a class="tab" href="./prep-exporter-vnext.html">Exporter</a>
@@ -850,9 +892,8 @@
           </div>
           <div class="head-tools">
             <span class="pill">workflow recommandé avant alignement</span>
-            <a class="head-link" href="./prep-curation-hub-vnext.html">Retour curation</a>
-            <a class="head-link" href="./prep-segmentation-translation-vo-vnext.html">Variante traduction pilotee VO</a>
-            <a class="head-link" href="./prep-segmentation-translation-focus-vnext.html">Mode focus texte</a>
+            <a class="head-link" href="./prep-curation-preview-vnext.html">Retour curation</a>
+            <a class="head-link" href="./prep-segmentation-translation-vo-native-layout-vnext.html">Segmentation traduction (layout natif)</a>
             <a class="head-link" href="./prep-actions-longtext-vnext.html">Scénario grand texte</a>
           </div>
         </section>
@@ -1117,7 +1158,7 @@
             </div>
             <div class="doc-final-actions">
               <button class="btn">Enregistrer brouillon</button>
-              <button class="btn alt">Marquer a revoir</button>
+              <button class="btn alt">Marquer à revoir</button>
               <button class="btn pri">Valider ce document</button>
             </div>
           </div>

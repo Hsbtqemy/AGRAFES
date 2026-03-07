@@ -5,10 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="Prototype visuel AGRAFES: Constituer - Curation preview focus (V-next)."
+      content="Prototype visuel AGRAFES: Constituer - Curation avec preview centrale (V-next)."
     />
-    <link rel="icon" href="./favicon.ico" />
-    <title>Constituer - Curation preview focus (V-next)</title>
+    <link rel="icon" href="../favicon.ico" />
+    <title>Constituer - Curation avec preview centrale (V-next)</title>
     <style>
       :root {
         --bg: #f0f2f5;
@@ -49,7 +49,6 @@
         padding: 4px 10px;
         background: rgba(255, 255, 255, .13);
       }
-
       .sections-toggle {
         border: 1px solid rgba(255, 255, 255, .34);
         border-radius: 999px;
@@ -68,18 +67,29 @@
         background: var(--blue-soft);
         color: #1e4a80;
       }
+      .sections-toggle.nav-btn {
+        font-size: 11px;
+        padding: 4px 9px;
+      }
       .sections-toggle.icon-only {
         border-radius: 10px;
         padding: 7px 6px;
       }
-      .sections-toggle.icon-only .toggle-label { display: none; }
+      .sections-toggle.icon-only .toggle-label {
+        display: none;
+      }
       .toggle-icon {
         display: inline-flex;
         align-items: center;
         gap: 3px;
       }
-      .toggle-icon svg { display: block; }
-      .toggle-icon .wheel { width: 13px; height: 13px; }
+      .toggle-icon svg {
+        display: block;
+      }
+      .toggle-icon .wheel {
+        width: 13px;
+        height: 13px;
+      }
       .toggle-icon .arrow {
         width: 10px;
         height: 10px;
@@ -121,9 +131,12 @@
       .shell.nav-hidden {
         grid-template-columns: 30px 1fr;
       }
-      .shell.nav-hidden .nav { display: none; }
-      .shell.nav-hidden .left-rail { display: flex; }
-
+      .shell.nav-hidden .nav {
+        display: none;
+      }
+      .shell.nav-hidden .left-rail {
+        display: flex;
+      }
       .nav {
         border-right: 1px solid var(--line);
         background: #f8f9fa;
@@ -155,7 +168,6 @@
       .left-rail .sections-toggle {
         box-shadow: 0 4px 10px rgba(15, 118, 110, 0.15);
       }
-
       .tab {
         width: 100%;
         text-align: left;
@@ -196,6 +208,38 @@
         border-color: #9fd3cc;
         color: #0c4a46;
         font-weight: 700;
+      }
+      .tree a:hover {
+        border-color: #cfe8e3;
+        background: #f6fbfa;
+      }
+      .tree-wrap {
+        margin: -2px 0 8px;
+      }
+      .tree-summary {
+        list-style: none;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border: 1px solid #cfe8e3;
+        border-radius: 8px;
+        padding: 7px 8px;
+        font-size: 12px;
+        font-weight: 700;
+        color: #0c4a46;
+        background: #edf7f5;
+      }
+      .tree-summary::-webkit-details-marker {
+        display: none;
+      }
+      .tree-caret {
+        font-size: 11px;
+        color: var(--muted);
+        transition: transform .16s ease;
+      }
+      .tree-wrap[open] .tree-caret {
+        transform: rotate(180deg);
       }
 
       .content {
@@ -248,10 +292,11 @@
 
       .workspace {
         display: grid;
-        grid-template-columns: 300px minmax(720px, 1fr);
+        grid-template-columns: 310px minmax(640px, 1fr) 320px;
         gap: 12px;
         align-items: start;
       }
+
       .col {
         min-width: 0;
         display: grid;
@@ -281,12 +326,7 @@
         font-size: 13px;
         background: #fff;
       }
-      .f strong {
-        display: block;
-        font-size: 12px;
-        color: var(--muted);
-        margin-bottom: 3px;
-      }
+      .f strong { display: block; font-size: 12px; color: var(--muted); margin-bottom: 3px; }
 
       .btns {
         display: flex;
@@ -332,23 +372,10 @@
         color: #0c4a46;
         font-weight: 700;
       }
-      .chip.warn {
-        border-color: var(--warn-line);
-        background: var(--warn-soft);
-        color: #8f6200;
-      }
 
       .preview-card {
         position: sticky;
         top: 10px;
-      }
-      .status-strip {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-        padding: 8px 12px;
-        border-bottom: 1px solid var(--line);
-        background: #fcfdfd;
       }
       .preview-controls {
         padding: 10px 12px;
@@ -379,7 +406,7 @@
         color: var(--muted);
       }
       .doc-scroll {
-        max-height: 480px;
+        max-height: 560px;
         overflow: auto;
         padding: 10px;
         font-size: 13px;
@@ -405,103 +432,75 @@
         gap: 4px;
         padding: 8px 5px;
       }
-      .mm { height: 12px; border-radius: 3px; background: #d6dde8; }
+      .mm {
+        height: 12px;
+        border-radius: 3px;
+        background: #d6dde8;
+      }
       .mm.changed { background: #e6a817; }
       .mm.focus { background: #0f766e; }
 
-      .drawer {
-        border-top: 1px solid var(--line);
-      }
-      .drawer > summary {
-        list-style: none;
-        cursor: pointer;
-        padding: 10px 12px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 8px;
-        font-size: 13px;
-        background: #f9fbfb;
-      }
-      .drawer > summary::-webkit-details-marker { display: none; }
-      .drawer-icon {
-        color: var(--muted);
-        font-size: 11px;
-      }
-      .drawer[open] .drawer-icon { transform: rotate(180deg); display: inline-block; }
-      .drawer-body {
-        padding: 10px;
-        border-top: 1px solid var(--line);
-        background: #fff;
-      }
-      .drawer-tabs {
-        display: flex;
-        gap: 6px;
-        flex-wrap: wrap;
-        margin-bottom: 10px;
-      }
-      .tab-chip {
-        border: 1px solid var(--line);
-        border-radius: 999px;
-        padding: 4px 9px;
-        font-size: 11px;
-        background: #f8f9fa;
-        color: var(--muted);
-      }
-      .tab-chip.active {
-        border-color: #9fd3cc;
-        background: #e8f5f3;
-        color: #0c4a46;
-        font-weight: 700;
-      }
-      .drawer-grid {
+      .diag-list {
         display: grid;
-        grid-template-columns: 1.2fr 1fr 1fr;
-        gap: 10px;
+        gap: 8px;
       }
-      .panel {
+      .diag {
         border: 1px solid var(--line);
         border-radius: 10px;
+        padding: 8px;
+        font-size: 12px;
         background: #fff;
-        overflow: hidden;
       }
-      .panel h4 {
-        margin: 0;
-        font-size: 12px;
-        padding: 8px 10px;
-        background: #f8f9fa;
-        border-bottom: 1px solid var(--line);
+      .diag.warn {
+        border-color: var(--warn-line);
+        background: var(--warn-soft);
       }
-      .panel .pbody {
-        padding: 8px 10px;
-        font-size: 12px;
-        color: #2e3243;
+      .diag strong {
+        display: block;
+        margin-bottom: 2px;
+      }
+
+      .queue {
         display: grid;
         gap: 6px;
       }
-      .diag.warn {
-        border: 1px solid var(--warn-line);
-        border-radius: 8px;
-        padding: 7px 8px;
-        background: var(--warn-soft);
-      }
-      .event {
+      .qitem {
         border: 1px dashed #cfd8e6;
         border-radius: 8px;
-        padding: 6px 7px;
+        padding: 7px 8px;
+        font-size: 12px;
+        background: #fbfcfe;
       }
 
-      @media (max-width: 1480px) {
-        .workspace { grid-template-columns: 280px 1fr; }
-        .drawer-grid { grid-template-columns: 1fr 1fr; }
+      @media (max-width: 1400px) {
+        .workspace {
+          grid-template-columns: 280px 1fr;
+        }
+        .col.right {
+          grid-column: 1 / -1;
+          grid-template-columns: 1fr 1fr;
+        }
       }
-      @media (max-width: 1150px) {
+      @media (max-width: 1050px) {
         .shell { grid-template-columns: 1fr; }
         .shell.nav-hidden { grid-template-columns: 26px 1fr; }
+        .nav { border-right: 0; border-bottom: 1px solid var(--line); }
         .workspace { grid-template-columns: 1fr; }
+        .col.right { grid-template-columns: 1fr; }
         .preview-grid { grid-template-columns: 1fr; }
         .minimap { display: none; }
-        .drawer-grid { grid-template-columns: 1fr; }
+      }
+      a:focus-visible,
+      button:focus-visible,
+      input:focus-visible,
+      select:focus-visible,
+      textarea:focus-visible,
+      summary:focus-visible,
+      [role="button"]:focus-visible,
+      [tabindex]:focus-visible {
+        outline: 2px solid #1e4a80;
+        outline-offset: 2px;
+        box-shadow: 0 0 0 3px rgba(30, 74, 128, 0.18);
       }
     </style>
   </head>
@@ -513,21 +512,33 @@
     </header>
 
     <nav class="proto-nav" aria-label="Navigation prototypes">
-      <a href="./index.html">Index</a>
-      <a href="./board-vnext.html">Board</a>
+      <a href="../index.html">Index</a>
+      <a href="../shell/board-vnext.html">Board</a>
       <a class="active" href="./prep-vnext.html">Constituer</a>
-      <a href="./explorer-vnext.html">Explorer</a>
-      <a href="./publish-vnext.html">Publier</a>
+      <a href="../shell/explorer-vnext.html">Explorer</a>
+      <a href="../shell/publish-vnext.html">Publier</a>
     </nav>
 
     <div class="shell" id="shellMain">
       <aside class="nav" id="sectionsNav">
         <div class="nav-head">
           <h2>Sections</h2>
-          <button class="sections-toggle inline icon-only" type="button" aria-controls="sectionsNav" aria-label="Fermer sections" aria-expanded="true">
+          <button
+            class="sections-toggle inline nav-btn icon-only"
+            type="button"
+            aria-controls="sectionsNav"
+            aria-label="Fermer sections"
+            aria-expanded="true"
+          >
             <span class="toggle-icon" aria-hidden="true">
-              <svg class="wheel" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="1.8"></circle><circle cx="12" cy="12" r="2" fill="currentColor"></circle><path d="M12 4v4M20 12h-4M12 20v-4M4 12h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg>
-              <svg class="arrow" viewBox="0 0 24 24" fill="none"><path d="M14 6L8 12L14 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+              <svg class="wheel" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="1.8"></circle>
+                <circle cx="12" cy="12" r="2" fill="currentColor"></circle>
+                <path d="M12 4v4M20 12h-4M12 20v-4M4 12h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path>
+              </svg>
+              <svg class="arrow" viewBox="0 0 24 24" fill="none">
+                <path d="M14 6L8 12L14 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+              </svg>
             </span>
           </button>
         </div>
@@ -537,21 +548,31 @@
         <details class="tree-wrap actions-tree" data-actions-tree data-default-open="true">
           <summary class="tree-summary">Actions disponibles <span class="tree-caret" aria-hidden="true">▾</span></summary>
           <div class="tree" aria-label="Actions disponibles">
-          <a class="active" href="./prep-curation-focus-vnext.html">Curation</a>
-          <a href="./prep-segmentation-vo-vnext.html">Segmentation (pilotee VO)</a>
-          <a href="./prep-alignement-vnext.html">Alignement</a>
-          <a href="#">Audit</a>
-          <a href="#">Collisions</a>
+          <a class="active" href="./prep-curation-preview-vnext.html">Curation</a>
+          <a href="./prep-segmentation-vo-vnext.html">Segmentation (pilotée VO)</a>
+          <a href="./prep-alignement-run-vnext.html">Alignement</a>
         </div>
         </details>
         <a class="tab" href="./prep-exporter-vnext.html">Exporter</a>
       </aside>
-
       <aside class="left-rail" aria-label="Rouvrir sections">
-        <button class="sections-toggle inline icon-only" type="button" aria-controls="sectionsNav" aria-label="Ouvrir sections" aria-expanded="false" title="Ouvrir sections">
+        <button
+          class="sections-toggle inline icon-only"
+          type="button"
+          aria-controls="sectionsNav"
+          aria-label="Ouvrir sections"
+          aria-expanded="false"
+          title="Ouvrir sections"
+        >
           <span class="toggle-icon" aria-hidden="true">
-            <svg class="wheel" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="1.8"></circle><circle cx="12" cy="12" r="2" fill="currentColor"></circle><path d="M12 4v4M20 12h-4M12 20v-4M4 12h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg>
-            <svg class="arrow" viewBox="0 0 24 24" fill="none"><path d="M14 6L8 12L14 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+            <svg class="wheel" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="1.8"></circle>
+              <circle cx="12" cy="12" r="2" fill="currentColor"></circle>
+              <path d="M12 4v4M20 12h-4M12 20v-4M4 12h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path>
+            </svg>
+            <svg class="arrow" viewBox="0 0 24 24" fill="none">
+              <path d="M14 6L8 12L14 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+            </svg>
           </span>
         </button>
       </aside>
@@ -559,15 +580,33 @@
       <main class="content">
         <section class="card head-card">
           <div>
-            <h1>Curation - preview seule (moins de charge visuelle)</h1>
-            <p>La colonne droite est supprimee. Les informations qualite/journal sont deplacees dans un tiroir bas repliable.</p>
+            <h1>Curation - preview centrale active en continu</h1>
+            <p>
+              Le centre de l'ecran est reserve a la verification texte brut vs texte cure, avec diff visible pendant chaque action.
+            </p>
           </div>
           <div class="head-tools">
-            <span class="pill">Mode focus lecture</span>
-            <a class="head-link" href="./prep-curation-hub-vnext.html">Retour hub curation</a>
-            <a class="head-link" href="./prep-curation-review-fine-vnext.html">Comparer variante revue fine</a>
-            <a class="head-link" href="./prep-curation-preview-vnext.html">Comparer variante 3 colonnes</a>
-            <a class="head-link" href="./prep-curation-findreplace-vnext.html">Comparer variante chercher/remplacer</a>
+            <span class="pill">Mode revue editoriale</span>
+            <button
+              class="sections-toggle inline icon-only"
+              type="button"
+              aria-controls="sectionsNav"
+              aria-label="Fermer sections"
+              aria-expanded="true"
+            >
+              <span class="toggle-icon" aria-hidden="true">
+                <svg class="wheel" viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="1.8"></circle>
+                  <circle cx="12" cy="12" r="2" fill="currentColor"></circle>
+                  <path d="M12 4v4M20 12h-4M12 20v-4M4 12h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path>
+                </svg>
+                <svg class="arrow" viewBox="0 0 24 24" fill="none">
+                  <path d="M14 6L8 12L14 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+                </svg>
+              </span>
+            </button>
+            <a class="head-link" href="./prep-actions-vnext.html">Retour vue Actions</a>
+            <a class="head-link" href="./prep-actions-longtext-vnext.html">Voir scénario grand texte</a>
             <a class="head-link" href="./prep-segmentation-vo-vnext.html">Voir Segmentation VO</a>
           </div>
         </section>
@@ -575,24 +614,27 @@
         <section class="workspace">
           <div class="col left">
             <article class="card">
-              <div class="card-head"><h2>Parametres curation</h2><span style="font-size:12px;color: var(--muted)">doc#1 (VO fr)</span></div>
+              <div class="card-head">
+                <h2>Paramètres curation</h2>
+                <span style="font-size:12px;color: var(--muted)">doc#1 (VO fr)</span>
+              </div>
               <div class="card-body">
                 <div class="row">
-                  <div class="f"><strong>Langue pivot</strong>Francais (VO)</div>
+                  <div class="f"><strong>Langue pivot</strong>Français (VO)</div>
                   <div class="f"><strong>Pack</strong>Auto multicorpus</div>
-                  <div class="f"><strong>Portee</strong>Document complet</div>
-                  <div class="f"><strong>Apercu live</strong>Active</div>
+                  <div class="f"><strong>Portée</strong>Document complet</div>
+                  <div class="f"><strong>Aperçu live</strong>Active</div>
                 </div>
                 <div class="chip-row" style="margin-top:8px">
-                  <span class="chip active">Espaces incoherents</span>
+                  <span class="chip active">Espaces incohérents</span>
                   <span class="chip active">Ponctuation fine</span>
                   <span class="chip active">Controle invisibles</span>
                   <span class="chip">Numerotation [n]</span>
                   <span class="chip">Guillemets typographiques</span>
                 </div>
                 <div class="btns">
-                  <button class="btn">Reinitialiser</button>
-                  <button class="btn alt">Previsualiser maintenant</button>
+                  <button class="btn">Réinitialiser</button>
+                  <button class="btn alt">Prévisualiser maintenant</button>
                   <button class="btn pri">Appliquer curation</button>
                 </div>
               </div>
@@ -601,15 +643,15 @@
             <article class="card">
               <div class="card-head"><h2>Actions rapides</h2><span style="font-size:12px;color: var(--muted)">selection locale</span></div>
               <div class="card-body">
-                <div class="chip-row">
-                  <span class="chip active">12 modifs detectees</span>
-                  <span class="chip warn">3 NBSP</span>
-                  <span class="chip">0 collision</span>
+                <div class="queue">
+                  <div class="qitem">[0042] Fusion double espace avant virgule</div>
+                  <div class="qitem">[0047] Remplacement NBSP -> espace standard</div>
+                  <div class="qitem">[0051] Correction guillemets fermants</div>
+                  <div class="qitem">[0059] Nettoyage traits d'union OCR</div>
                 </div>
                 <div class="btns">
                   <button class="btn">Precedent changement</button>
                   <button class="btn">Suivant changement</button>
-                  <button class="btn alt">Ouvrir tiroir qualite</button>
                 </div>
               </div>
             </article>
@@ -617,16 +659,7 @@
 
           <div class="col center">
             <article class="card preview-card">
-              <div class="card-head"><h2>Preview synchronisee</h2><span style="font-size:12px;color: var(--muted)">chapitre I - 16 000+ caracteres</span></div>
-
-              <div class="status-strip">
-                <span class="chip active">12 modifications</span>
-                <span class="chip warn">3 NBSP remplaces</span>
-                <span class="chip">impact segmentation: faible</span>
-                <span class="chip">0 collision attendue</span>
-                <span class="chip">derniere preview: 420 ms</span>
-              </div>
-
+              <div class="card-head"><h2>Preview synchronisee</h2><span style="font-size:12px;color: var(--muted)">chapitre I · 16 000+ caracteres</span></div>
               <div class="preview-controls">
                 <div class="chip-row">
                   <span class="chip active">Brut</span>
@@ -639,7 +672,6 @@
                   <span class="chip">Contexte +-2 segments</span>
                 </div>
               </div>
-
               <div class="preview-grid">
                 <section class="pane">
                   <div class="pane-head">Texte brut (source)</div>
@@ -666,57 +698,52 @@
                 </section>
 
                 <aside class="minimap" aria-label="Minimap changements">
-                  <div class="mm"></div><div class="mm changed"></div><div class="mm"></div><div class="mm focus"></div>
-                  <div class="mm"></div><div class="mm"></div><div class="mm changed"></div><div class="mm"></div>
-                  <div class="mm"></div><div class="mm"></div><div class="mm changed"></div><div class="mm"></div>
+                  <div class="mm"></div>
+                  <div class="mm changed"></div>
+                  <div class="mm"></div>
+                  <div class="mm focus"></div>
+                  <div class="mm"></div>
+                  <div class="mm"></div>
+                  <div class="mm changed"></div>
+                  <div class="mm"></div>
+                  <div class="mm"></div>
+                  <div class="mm"></div>
+                  <div class="mm changed"></div>
+                  <div class="mm"></div>
                 </aside>
               </div>
+            </article>
+          </div>
 
-              <details class="drawer">
-                <summary>
-                  <span><strong>Tiroir qualite</strong> - diagnostics, journal et queue (ouvrir seulement si besoin)</span>
-                  <span class="drawer-icon">v</span>
-                </summary>
-                <div class="drawer-body">
-                  <div class="drawer-tabs">
-                    <span class="tab-chip active">Diagnostics</span>
-                    <span class="tab-chip">Journal</span>
-                    <span class="tab-chip">Queue</span>
-                  </div>
-                  <div class="drawer-grid">
-                    <section class="panel">
-                      <h4>Diagnostics</h4>
-                      <div class="pbody">
-                        <div class="diag warn"><strong>12 modifications a valider</strong>8 espaces multiples, 3 NBSP, 1 ponctuation fine.</div>
-                        <div class="event">Impact segmentation estime: faible (2 segments potentiellement fusionnes).</div>
-                        <div class="event">Compat alignement: aucune rupture de numerotation detectee.</div>
-                      </div>
-                    </section>
-                    <section class="panel">
-                      <h4>Journal de revue</h4>
-                      <div class="pbody">
-                        <div class="event">10:14 - Rule spaces.normalize: 8 lignes</div>
-                        <div class="event">10:15 - Rule nbsp.to_space: 3 lignes</div>
-                        <div class="event">10:16 - Preview diff regeneree (420 ms)</div>
-                      </div>
-                    </section>
-                    <section class="panel">
-                      <h4>Queue actions</h4>
-                      <div class="pbody">
-                        <div class="event">[0042] Fusion double espace avant virgule</div>
-                        <div class="event">[0047] Remplacement NBSP -> espace standard</div>
-                        <div class="event">[0051] Correction guillemets fermants</div>
-                      </div>
-                    </section>
-                  </div>
+          <div class="col right">
+            <article class="card">
+              <div class="card-head"><h2>Diagnostics curation</h2><span style="font-size:12px;color: var(--muted)">mise a jour live</span></div>
+              <div class="card-body diag-list">
+                <div class="diag warn"><strong>12 modifications a valider</strong>8 espaces multiples, 3 NBSP, 1 punctuation fine.</div>
+                <div class="diag"><strong>Impact segmentation estime</strong>0 collision attendue, 2 segments potentiellement fusionnes.</div>
+                <div class="diag"><strong>Compat alignement</strong>Aucun changement de numerotation externe detecte.</div>
+              </div>
+            </article>
+
+            <article class="card">
+              <div class="card-head"><h2>Journal de revue</h2><span style="font-size:12px;color: var(--muted)">session #run_20260302</span></div>
+              <div class="card-body">
+                <div class="queue">
+                  <div class="qitem">10:14 - Rule spaces.normalize: 8 lignes</div>
+                  <div class="qitem">10:15 - Rule nbsp.to_space: 3 lignes</div>
+                  <div class="qitem">10:16 - Preview diff regeneree (420 ms)</div>
                 </div>
-              </details>
+                <div class="btns">
+                  <button class="btn">Exporter diff</button>
+                  <button class="btn alt">Ouvrir audit</button>
+                  <button class="btn pri">Valider lot curation</button>
+                </div>
+              </div>
             </article>
           </div>
         </section>
       </main>
     </div>
-
     <script>
       (function () {
         var body = document.body;
@@ -728,6 +755,8 @@
           body.classList.toggle("nav-hidden-mode", hidden);
           toggles.forEach(function (toggle) {
             var nextLabel = hidden ? "Ouvrir sections" : "Fermer sections";
+            var labelNode = toggle.querySelector(".toggle-label");
+            if (labelNode) labelNode.textContent = nextLabel;
             toggle.setAttribute("aria-label", nextLabel);
             toggle.setAttribute("title", nextLabel);
             toggle.setAttribute("aria-expanded", hidden ? "false" : "true");
@@ -740,7 +769,6 @@
             syncLabels(hidden);
           });
         });
-
         syncLabels(false);
       })();
     </script>

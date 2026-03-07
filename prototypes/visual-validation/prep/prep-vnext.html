@@ -7,7 +7,7 @@
       name="description"
       content="Prototype visuel AGRAFES: Constituer — Hub onglets (V-next)."
     />
-    <link rel="icon" href="./favicon.ico" />
+    <link rel="icon" href="../favicon.ico" />
     <title>Constituer — Hub onglets (V-next)</title>
     <style>
       :root {
@@ -137,6 +137,18 @@
       @media (max-width: 760px) {
         .grid { grid-template-columns: 1fr; }
       }
+      a:focus-visible,
+      button:focus-visible,
+      input:focus-visible,
+      select:focus-visible,
+      textarea:focus-visible,
+      summary:focus-visible,
+      [role="button"]:focus-visible,
+      [tabindex]:focus-visible {
+        outline: 2px solid #1e4a80;
+        outline-offset: 2px;
+        box-shadow: 0 0 0 3px rgba(30, 74, 128, 0.18);
+      }
     </style>
   </head>
   <body>
@@ -146,12 +158,12 @@
       <span class="db">DB: corpus_himyc_2026.db</span>
     </header>
     <nav class="proto-nav" aria-label="Navigation maquettes">
-      <a href="./index.html">Index</a>
-      <a href="./board-vnext.html">Board</a>
-      <a href="./shell-vnext.html">Home</a>
-      <a href="./explorer-vnext.html">Explorer</a>
+      <a href="../index.html">Index</a>
+      <a href="../shell/board-vnext.html">Board</a>
+      <a href="../shell/shell-vnext.html">Home</a>
+      <a href="../shell/explorer-vnext.html">Explorer</a>
       <a class="active" href="./prep-vnext.html">Constituer</a>
-      <a href="./publish-vnext.html">Publier</a>
+      <a href="../shell/publish-vnext.html">Publier</a>
     </nav>
 
     <main>
@@ -179,10 +191,10 @@
           <h2>Actions</h2>
           <p>Curation, segmentation, alignement, audit/collisions et workflow qualité.</p>
         </a>
-        <a class="card" href="./prep-curation-hub-vnext.html">
-          <div class="kicker">Hub variantes</div>
-          <h2>Curation — vue organisée</h2>
-          <p>Entrée unique pour choisir entre revue fine, chercher/remplacer, texte continu, focus preview.</p>
+        <a class="card" href="./prep-curation-preview-vnext.html">
+          <div class="kicker">Variante retenue</div>
+          <h2>Curation</h2>
+          <p>Entrée directe vers la curation validée, puis navigation vers segmentation.</p>
         </a>
         <a class="card" href="./prep-actions-longtext-vnext.html">
           <div class="kicker">Variante</div>
@@ -194,25 +206,20 @@
           <h2>Segmentation pilotée VO</h2>
           <p>Batch multilingue (7 docs), projection sur VO, split/merge/orphans par langue.</p>
         </a>
-        <a class="card" href="./prep-segmentation-translation-vo-vnext.html">
-          <div class="kicker">Variante</div>
-          <h2>Segmentation traduction vs VO</h2>
-          <p>Vue centree ecarts traduction vs VO (match/split/merge/manquant/extra) avec actions de correction.</p>
-        </a>
         <a class="card" href="./prep-segmentation-translation-vo-native-layout-vnext.html">
           <div class="kicker">Variante</div>
           <h2>Segmentation traduction (layout natif)</h2>
           <p>Meme structure que la segmentation native: reglages a gauche, preview centrale, couche VO additionnelle.</p>
         </a>
-        <a class="card" href="./prep-segmentation-translation-focus-vnext.html">
-          <div class="kicker">Variante</div>
-          <h2>Segmentation traduction - mode focus</h2>
-          <p>Espace de traitement direct du texte, interface allegee, edition locale sans surcharge.</p>
-        </a>
-        <a class="card" href="./prep-alignement-vnext.html">
+        <a class="card" href="./prep-alignement-run-vnext.html">
           <div class="kicker">Variante</div>
           <h2>Alignement</h2>
           <p>Parametrage simple, preview des paires VO/traductions et indicateurs qualite en continu.</p>
+        </a>
+        <a class="card" href="./prep-alignement-vnext.html">
+          <div class="kicker">Variante</div>
+          <h2>Alignement — mode focus segment</h2>
+          <p>Traitement ponctuel d'un segment actif avec inspection experte et ajustements ciblés.</p>
         </a>
         <a class="card" href="./prep-exporter-vnext.html">
           <div class="kicker">Onglet</div>
@@ -223,7 +230,7 @@
 
       <div class="note">
         Conseil revue: suivre ce chemin dans l’ordre:
-        Importer → Documents → Actions → Hub Curation → Segmentation VO → Alignement → Exporter.
+        Importer → Documents → Actions → Curation → Segmentation VO → Alignement → Exporter.
       </div>
     </main>
   </body>

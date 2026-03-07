@@ -7,7 +7,7 @@
       name="description"
       content="Prototype visuel AGRAFES: Constituer — Actions (grand texte, preview segmentation)."
     />
-    <link rel="icon" href="./favicon.ico" />
+    <link rel="icon" href="../favicon.ico" />
     <title>Constituer — Actions (grand texte, preview segmentation)</title>
     <style>
       :root {
@@ -124,6 +124,38 @@
         border-color: #9fd3cc;
         color: #0c4a46;
         font-weight: 700;
+      }
+      .tree a:hover {
+        border-color: #cfe8e3;
+        background: #f6fbfa;
+      }
+      .tree-wrap {
+        margin: -2px 0 8px;
+      }
+      .tree-summary {
+        list-style: none;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border: 1px solid #cfe8e3;
+        border-radius: 8px;
+        padding: 7px 8px;
+        font-size: 12px;
+        font-weight: 700;
+        color: #0c4a46;
+        background: #edf7f5;
+      }
+      .tree-summary::-webkit-details-marker {
+        display: none;
+      }
+      .tree-caret {
+        font-size: 11px;
+        color: var(--muted);
+        transition: transform .16s ease;
+      }
+      .tree-wrap[open] .tree-caret {
+        transform: rotate(180deg);
       }
 
       .content {
@@ -368,6 +400,18 @@
       @media (max-width: 540px) {
         .row { grid-template-columns: 1fr; }
       }
+      a:focus-visible,
+      button:focus-visible,
+      input:focus-visible,
+      select:focus-visible,
+      textarea:focus-visible,
+      summary:focus-visible,
+      [role="button"]:focus-visible,
+      [tabindex]:focus-visible {
+        outline: 2px solid #1e4a80;
+        outline-offset: 2px;
+        box-shadow: 0 0 0 3px rgba(30, 74, 128, 0.18);
+      }
     </style>
   </head>
   <body>
@@ -378,12 +422,12 @@
     </header>
 
     <nav class="proto-nav" aria-label="Navigation maquettes">
-      <a href="./index.html">Index</a>
-      <a href="./board-vnext.html">Board</a>
-      <a href="./shell-vnext.html">Home</a>
-      <a href="./explorer-vnext.html">Explorer</a>
+      <a href="../index.html">Index</a>
+      <a href="../shell/board-vnext.html">Board</a>
+      <a href="../shell/shell-vnext.html">Home</a>
+      <a href="../shell/explorer-vnext.html">Explorer</a>
       <a class="active" href="./prep-vnext.html">Constituer</a>
-      <a href="./publish-vnext.html">Publier</a>
+      <a href="../shell/publish-vnext.html">Publier</a>
     </nav>
 
     <div class="shell">
@@ -395,11 +439,9 @@
         <details class="tree-wrap actions-tree" data-actions-tree data-default-open="true">
           <summary class="tree-summary">Actions disponibles <span class="tree-caret" aria-hidden="true">▾</span></summary>
           <div class="tree" aria-label="Actions disponibles">
-          <a href="#">Curation</a>
-          <a class="active" href="#">Segmentation</a>
-          <a href="./prep-alignement-vnext.html">Alignement</a>
-          <a href="#">Audit</a>
-          <a href="#">Collisions</a>
+          <a href="./prep-curation-preview-vnext.html">Curation</a>
+          <a class="active" href="./prep-actions-longtext-vnext.html">Segmentation</a>
+          <a href="./prep-alignement-run-vnext.html">Alignement</a>
         </div>
         </details>
         <a class="tab" href="./prep-exporter-vnext.html">Exporter</a>

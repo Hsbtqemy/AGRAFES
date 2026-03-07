@@ -201,6 +201,38 @@
         color: #0c4a46;
         font-weight: 700;
       }
+      .tree a:hover {
+        border-color: #cfe8e3;
+        background: #f6fbfa;
+      }
+      .tree-wrap {
+        margin: -2px 0 8px;
+      }
+      .tree-summary {
+        list-style: none;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border: 1px solid #cfe8e3;
+        border-radius: 8px;
+        padding: 7px 8px;
+        font-size: 12px;
+        font-weight: 700;
+        color: #0c4a46;
+        background: #edf7f5;
+      }
+      .tree-summary::-webkit-details-marker {
+        display: none;
+      }
+      .tree-caret {
+        font-size: 11px;
+        color: var(--muted);
+        transition: transform .16s ease;
+      }
+      .tree-wrap[open] .tree-caret {
+        transform: rotate(180deg);
+      }
 
       .content {
         padding: 14px 14px 92px;
@@ -472,7 +504,7 @@
       .seg-main {
         min-width: 0;
         display: grid;
-        grid-template-rows: auto 1fr;
+        grid-template-rows: auto auto 1fr;
         gap: 8px;
         min-height: 0;
         overflow: hidden;
@@ -572,6 +604,12 @@
         border-top: 1px solid #eef2f7;
       }
       .seg-row:first-child { border-top: 0; }
+      .seg-row.active {
+        outline: 2px solid #9fd3cc;
+        outline-offset: -2px;
+        background: #f4fbfa;
+      }
+      .seg-row.hidden-by-filter { display: none; }
       .sid { color: #5f6878; font-variant-numeric: tabular-nums; }
       .seg-row .txt mark { background: #fff0c2; border-radius: 3px; padding: 0 2px; }
       .seg-row .txt.seg-clickable {
@@ -620,6 +658,35 @@
         background: #2c5f9e;
         color: #fff;
       }
+      .seg-status-pill {
+        display: inline-flex;
+        align-items: center;
+        border: 1px solid #d2dbe8;
+        border-radius: 999px;
+        padding: 3px 7px;
+        font-size: 10px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .03em;
+        color: #4f5d6d;
+        background: #fff;
+      }
+      .seg-status-pill.ok {
+        border-color: #b6dbc5;
+        background: #edf8f1;
+        color: var(--ok);
+      }
+      .seg-status-pill.review {
+        border-color: #edd89e;
+        background: #fffaf0;
+        color: #9b6a00;
+      }
+      .seg-status-pill.orphan,
+      .seg-status-pill.collision {
+        border-color: #efc2c2;
+        background: #fff3f3;
+        color: var(--bad);
+      }
       .live-note {
         font-size: 12px;
         color: #0c4a46;
@@ -634,6 +701,67 @@
         flex-wrap: wrap;
         margin-bottom: 0;
         min-height: 0;
+      }
+      .seg-preview-filters {
+        display: inline-flex;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .seg-filter-btn {
+        border: 1px solid #d2dbe8;
+        border-radius: 999px;
+        background: #fff;
+        color: #4f5d6d;
+        padding: 4px 9px;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .seg-filter-btn.active {
+        border-color: #9fd3cc;
+        background: #e8f5f3;
+        color: #0c4a46;
+      }
+      .seg-inline-review {
+        border: 1px solid #d9e3f0;
+        border-radius: 10px;
+        background: #f8fbff;
+        padding: 8px 10px;
+        display: grid;
+        gap: 7px;
+      }
+      .seg-inline-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        flex-wrap: wrap;
+        font-size: 12px;
+        color: #4f5d6d;
+      }
+      .seg-inline-actions {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .seg-inline-btn {
+        border: 1px solid #d2dbe8;
+        border-radius: 999px;
+        background: #fff;
+        color: #2d3548;
+        padding: 4px 10px;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .seg-inline-btn[data-status="ok"] { border-color: #b6dbc5; color: var(--ok); }
+      .seg-inline-btn[data-status="review"] { border-color: #edd89e; color: #9b6a00; }
+      .seg-inline-btn[data-status="orphan"],
+      .seg-inline-btn[data-status="collision"] { border-color: #efc2c2; color: var(--bad); }
+      .seg-inline-btn.active {
+        background: #eef4ff;
+        border-color: #b7c8df;
+        box-shadow: inset 0 0 0 1px rgba(30, 74, 128, 0.18);
       }
       .preview-grid {
         display: grid;
@@ -907,6 +1035,18 @@
       @media (max-width: 640px) {
         .row { grid-template-columns: 1fr; }
       }
+      a:focus-visible,
+      button:focus-visible,
+      input:focus-visible,
+      select:focus-visible,
+      textarea:focus-visible,
+      summary:focus-visible,
+      [role="button"]:focus-visible,
+      [tabindex]:focus-visible {
+        outline: 2px solid #1e4a80;
+        outline-offset: 2px;
+        box-shadow: 0 0 0 3px rgba(30, 74, 128, 0.18);
+      }
     </style>
   </head>
   <body>
@@ -917,12 +1057,12 @@
     </header>
 
     <nav class="proto-nav" aria-label="Navigation maquettes">
-      <a href="./index.html">Index</a>
-      <a href="./board-vnext.html">Board</a>
-      <a href="./shell-vnext.html">Home</a>
-      <a href="./explorer-vnext.html">Explorer</a>
+      <a href="../index.html">Index</a>
+      <a href="../shell/board-vnext.html">Board</a>
+      <a href="../shell/shell-vnext.html">Home</a>
+      <a href="../shell/explorer-vnext.html">Explorer</a>
       <a class="active" href="./prep-vnext.html">Constituer</a>
-      <a href="./publish-vnext.html">Publier</a>
+      <a href="../shell/publish-vnext.html">Publier</a>
     </nav>
 
     <div class="shell" id="shellMain">
@@ -954,11 +1094,9 @@
         <details class="tree-wrap actions-tree" data-actions-tree data-default-open="true">
           <summary class="tree-summary">Actions disponibles <span class="tree-caret" aria-hidden="true">▾</span></summary>
           <div class="tree" aria-label="Actions disponibles">
-          <a href="./prep-curation-hub-vnext.html">Curation (hub)</a>
-          <a class="active" href="#">Segmentation traduction (meme layout)</a>
-          <a href="./prep-alignement-vnext.html">Alignement</a>
-          <a href="#">Audit</a>
-          <a href="#">Collisions</a>
+          <a href="./prep-curation-preview-vnext.html">Curation</a>
+          <a class="active" href="./prep-segmentation-translation-vo-native-layout-vnext.html">Segmentation traduction (meme layout)</a>
+          <a href="./prep-alignement-run-vnext.html">Alignement</a>
         </div>
         </details>
         <a class="tab" href="./prep-exporter-vnext.html">Exporter</a>
@@ -993,9 +1131,9 @@
           </div>
           <div class="head-tools">
             <span class="pill">workflow recommandé avant alignement</span>
-            <a class="head-link" href="./prep-curation-hub-vnext.html">Retour curation</a>
-            <a class="head-link" href="./prep-segmentation-translation-vo-vnext.html">Variante traduction actuelle</a>
-            <a class="head-link" href="./prep-segmentation-translation-focus-vnext.html">Ouvrir mode focus</a>
+            <a class="head-link" href="./prep-curation-preview-vnext.html">Retour curation</a>
+            <a class="head-link" href="./prep-segmentation-vo-vnext.html">Retour segmentation VO</a>
+            <a class="head-link" href="./prep-alignement-run-vnext.html">Aller vers alignement</a>
             <a class="head-link" href="./prep-actions-longtext-vnext.html">Scénario grand texte</a>
           </div>
         </section>
@@ -1138,17 +1276,36 @@
               </aside>
               <div class="seg-main">
                 <div class="preview-controls">
-              <span class="chip">document complet (~16k)</span>
-              <span class="chip vo">mode traduction + ancrage VO</span>
-              <span class="chip">ancrage VO: split + merge autorises</span>
-              <span class="chip">synchronisation scroll</span>
-              <span id="seg-zones-chip" class="chip warn">zones sensibles: 6</span>
-              <span id="seg-stats-chip" class="chip">split: 12 · merge: 8 · orphans: 4</span>
-              <span id="seg-active-chip" class="chip">coupures: . ? !</span>
-              <span id="seg-marker-chip" class="chip">marqueurs: 0</span>
-              <span id="seg-manual-chip" class="chip">retouches manuelles: +0 / -0</span>
-              <button class="btn">Aller au prochain écart</button>
-              <button class="btn alt">Valider cette zone</button>
+                  <span class="chip">document complet (~16k)</span>
+                  <span class="chip vo">mode traduction + ancrage VO</span>
+                  <span class="chip">ancrage VO: split + merge autorises</span>
+                  <span class="chip">synchronisation scroll</span>
+                  <span id="seg-zones-chip" class="chip warn">à revoir: 0 · exceptions: 0</span>
+                  <span id="seg-stats-chip" class="chip">split: 12 · merge: 8 · orphans: 4</span>
+                  <span id="seg-active-chip" class="chip">coupures: . ? !</span>
+                  <span id="seg-marker-chip" class="chip">marqueurs: 0</span>
+                  <span id="seg-manual-chip" class="chip">retouches manuelles: +0 / -0</span>
+                  <div class="seg-preview-filters">
+                    <button id="seg-filter-all" class="seg-filter-btn active" type="button">Tous</button>
+                    <button id="seg-filter-review" class="seg-filter-btn" type="button">A revoir</button>
+                    <button id="seg-filter-exceptions" class="seg-filter-btn" type="button">Exceptions</button>
+                  </div>
+                  <button id="seg-prev-issue" class="btn" type="button">Precedent probleme</button>
+                  <button id="seg-next-issue" class="btn" type="button">Prochain probleme</button>
+                  <button class="btn alt" type="button">Valider cette zone</button>
+                </div>
+                <div class="seg-inline-review">
+                  <div class="seg-inline-head">
+                    <span>Segment actif: <code id="seg-active-row">—</code></span>
+                    <span>Statut: <strong id="seg-active-status">—</strong></span>
+                  </div>
+                  <div class="seg-inline-actions">
+                    <button class="seg-inline-btn" data-seg-status="ok" data-status="ok" type="button">Marquer OK</button>
+                    <button class="seg-inline-btn" data-seg-status="review" data-status="review" type="button">Marquer à revoir</button>
+                    <button class="seg-inline-btn" data-seg-status="orphan" data-status="orphan" type="button">Marquer orphelin</button>
+                    <button class="seg-inline-btn" data-seg-status="collision" data-status="collision" type="button">Marquer collision</button>
+                    <button class="seg-inline-btn" type="button">Audit détaillé…</button>
+                  </div>
                 </div>
                 <div class="preview-grid">
               <section class="pane">
@@ -1209,7 +1366,7 @@
             <div class="semantic-toolbar">
               <span class="chip">ecarts detectes: 12</span>
               <span class="chip warn">critiques: 2</span>
-              <span class="chip">a revoir: 6</span>
+              <span class="chip">à revoir: 6</span>
               <span class="chip ok">resolus: 4</span>
               <span class="chip">scroll synchronise: ON</span>
               <span class="semantic-legend"><span class="swatch crit"></span> perte de sens</span>
@@ -1328,7 +1485,7 @@
                   <div class="semantic-action-group">
                     <span class="semantic-action-label">Decision</span>
                     <button class="btn pri" type="button">Valider tel quel</button>
-                    <button class="btn alt" type="button">Marquer a revoir</button>
+                    <button class="btn alt" type="button">Marquer à revoir</button>
                   </div>
                   <div class="semantic-action-group">
                     <span class="semantic-action-label">Edition</span>
@@ -1381,7 +1538,7 @@
             </div>
             <div class="doc-final-actions">
               <button class="btn">Enregistrer brouillon</button>
-              <button class="btn alt">Marquer a revoir</button>
+              <button class="btn alt">Marquer à revoir</button>
               <button class="btn pri">Valider ce document</button>
             </div>
           </div>
@@ -1411,6 +1568,14 @@
         var segMarkerAddBtn = document.getElementById("seg-marker-add");
         var segMarkerList = document.getElementById("seg-marker-list");
         var segMarkerSummary = document.getElementById("seg-marker-summary");
+        var segFilterAllBtn = document.getElementById("seg-filter-all");
+        var segFilterReviewBtn = document.getElementById("seg-filter-review");
+        var segFilterExceptionsBtn = document.getElementById("seg-filter-exceptions");
+        var segPrevIssueBtn = document.getElementById("seg-prev-issue");
+        var segNextIssueBtn = document.getElementById("seg-next-issue");
+        var segActiveRowLabel = document.getElementById("seg-active-row");
+        var segActiveStatusLabel = document.getElementById("seg-active-status");
+        var segInlineButtons = Array.from(document.querySelectorAll("[data-seg-status]"));
         var semanticScrollPanes = Array.from(document.querySelectorAll("#panel-inspection-comparative .semantic-scroll"));
         var semanticItems = Array.from(document.querySelectorAll("#panel-inspection-comparative .semantic-item[data-sem-key]"));
         var semPrevBtn = document.getElementById("sem-prev");
@@ -1423,53 +1588,55 @@
         var manualRemoveCuts = 0;
         var baseStats = { split: 12, merge: 8, orphans: 4, zones: 6 };
         var isPlaceCutMode = false;
+        var segFilterMode = "all";
+        var activeSegIndex = 0;
         if (semanticActiveIndex < 0) semanticActiveIndex = 0;
 
         var strictRows = [
-          { id: "S0041", text: "Die Redaktion hat den vollständigen Absatz beibehalten, ohne harte Trennung; dadurch bleiben Einschübe, Verweise und Zitate in einem langen Fluss, was die spätere Kontrolle der Schnittpunkte erschwert." },
-          { id: "S0042", text: "Im zweiten Abschnitt folgen Nebensätze mit verketteter Interpunktion; der Leser soll erkennen, ob die vorgeschlagene Zerlegung die argumentative Struktur bewahrt oder ungewollt aufteilt." },
-          { id: "S0043", text: "Die Passage enthält Datumsangaben, abgekürzte Titel und parenthetische Präzisierungen, die bei einfacher Regeltrennung häufig zu Fehlgrenzen führen." },
-          { id: "S0044", text: "Ein weiterer Absatz verdichtet mehrere Aussagen, die im Französischen auf zwei Sätze verteilt sind." },
-          { id: "S0045", text: "Im Deutschen laufen sie in einer längeren Periode zusammen." },
-          { id: "S0046", text: "Diese Konstellation ist typisch für Übersetzungen mit stilistischer Kompression und muss vor dem Alignment sichtbar geprüft werden." },
-          { id: "S0047", text: "Split/Merge-Effekte bleiben markiert und steuerbar." }
+          { id: "S0041", status: "ok", text: "Die Redaktion hat den vollständigen Absatz beibehalten, ohne harte Trennung; dadurch bleiben Einschübe, Verweise und Zitate in einem langen Fluss, was die spätere Kontrolle der Schnittpunkte erschwert." },
+          { id: "S0042", status: "review", text: "Im zweiten Abschnitt folgen Nebensätze mit verketteter Interpunktion; der Leser soll erkennen, ob die vorgeschlagene Zerlegung die argumentative Struktur bewahrt oder ungewollt aufteilt." },
+          { id: "S0043", status: "ok", text: "Die Passage enthält Datumsangaben, abgekürzte Titel und parenthetische Präzisierungen, die bei einfacher Regeltrennung häufig zu Fehlgrenzen führen." },
+          { id: "S0044", status: "ok", text: "Ein weiterer Absatz verdichtet mehrere Aussagen, die im Französischen auf zwei Sätze verteilt sind." },
+          { id: "S0045", status: "review", text: "Im Deutschen laufen sie in einer längeren Periode zusammen." },
+          { id: "S0046", status: "orphan", text: "Diese Konstellation ist typisch für Übersetzungen mit stilistischer Kompression und muss vor dem Alignment sichtbar geprüft werden." },
+          { id: "S0047", status: "collision", text: "Split/Merge-Effekte bleiben markiert und steuerbar." }
         ];
 
         var extendedRows = [
-          { id: "S0041", text: "Die Redaktion hat den vollständigen Absatz beibehalten, ohne harte Trennung;" },
-          { id: "S0042a", text: "<mark>Dadurch bleiben Einschübe, Verweise und Zitate in einem langen Fluss.</mark>" },
-          { id: "S0042b", text: "Dies erschwert die spätere Kontrolle der Schnittpunkte." },
-          { id: "S0043", text: "Im zweiten Abschnitt folgen Nebensätze mit verketteter Interpunktion;" },
-          { id: "S0044", text: "Der Leser soll erkennen, ob die vorgeschlagene Zerlegung die argumentative Struktur bewahrt." },
-          { id: "S0045", text: "Oder ob sie ungewollt aufteilt." },
-          { id: "S0046", text: "Die Passage enthält Datumsangaben, abgekürzte Titel und parenthetische Präzisierungen." },
-          { id: "S0047-48", text: "<mark>Bei einfacher Regeltrennung entstehen hier Fehlgrenzen.</mark>" },
-          { id: "S0049", text: "Ein weiterer Absatz verdichtet mehrere Aussagen." },
-          { id: "S0050", text: "Im Französischen sind diese auf zwei Sätze verteilt." },
-          { id: "S0051", text: "Im Deutschen laufen sie in einer längeren Periode zusammen." },
-          { id: "S0052a", text: "Diese Konstellation ist typisch für Übersetzungen mit stilistischer Kompression." },
-          { id: "S0052b", text: "Sie muss vor dem Alignment sichtbar geprüft werden." },
-          { id: "S0053-54", text: "<mark>Split/Merge-Effekte bleiben markiert und steuerbar.</mark>" }
+          { id: "S0041", status: "ok", text: "Die Redaktion hat den vollständigen Absatz beibehalten, ohne harte Trennung;" },
+          { id: "S0042a", status: "review", text: "<mark>Dadurch bleiben Einschübe, Verweise und Zitate in einem langen Fluss.</mark>" },
+          { id: "S0042b", status: "review", text: "Dies erschwert die spätere Kontrolle der Schnittpunkte." },
+          { id: "S0043", status: "ok", text: "Im zweiten Abschnitt folgen Nebensätze mit verketteter Interpunktion;" },
+          { id: "S0044", status: "ok", text: "Der Leser soll erkennen, ob die vorgeschlagene Zerlegung die argumentative Struktur bewahrt." },
+          { id: "S0045", status: "review", text: "Oder ob sie ungewollt aufteilt." },
+          { id: "S0046", status: "orphan", text: "Die Passage enthält Datumsangaben, abgekürzte Titel und parenthetische Präzisierungen." },
+          { id: "S0047-48", status: "collision", text: "<mark>Bei einfacher Regeltrennung entstehen hier Fehlgrenzen.</mark>" },
+          { id: "S0049", status: "ok", text: "Ein weiterer Absatz verdichtet mehrere Aussagen." },
+          { id: "S0050", status: "ok", text: "Im Französischen sind diese auf zwei Sätze verteilt." },
+          { id: "S0051", status: "review", text: "Im Deutschen laufen sie in einer längeren Periode zusammen." },
+          { id: "S0052a", status: "ok", text: "Diese Konstellation ist typisch für Übersetzungen mit stilistischer Kompression." },
+          { id: "S0052b", status: "ok", text: "Sie muss vor dem Alignment sichtbar geprüft werden." },
+          { id: "S0053-54", status: "review", text: "<mark>Split/Merge-Effekte bleiben markiert und steuerbar.</mark>" }
         ];
 
         function buildSegmentationRows(activeChars, markers) {
           var rows = (activeChars.indexOf(";") !== -1 || activeChars.indexOf(":") !== -1 ? extendedRows : strictRows)
             .map(function (row) {
-              return { kind: "segment", sourceId: row.id, text: row.text };
+              return { kind: "segment", sourceId: row.id, status: row.status || "ok", text: row.text };
             });
 
           if (activeChars.indexOf("/") !== -1) {
             rows = rows.flatMap(function (row) {
               if (row.sourceId === "S0053-54") {
                 return [
-                  { kind: "segment", sourceId: "S0053a", text: "<mark>Split-Effekte bleiben markiert.</mark>" },
-                  { kind: "segment", sourceId: "S0053b", text: "<mark>Merge-Effekte bleiben steuerbar.</mark>" }
+                  { kind: "segment", sourceId: "S0053a", status: row.status || "review", text: "<mark>Split-Effekte bleiben markiert.</mark>" },
+                  { kind: "segment", sourceId: "S0053b", status: row.status || "review", text: "<mark>Merge-Effekte bleiben steuerbar.</mark>" }
                 ];
               }
               if (row.sourceId === "S0047") {
                 return [
-                  { kind: "segment", sourceId: "S0047a", text: "Split-Effekte bleiben markiert." },
-                  { kind: "segment", sourceId: "S0047b", text: "Merge-Effekte bleiben steuerbar." }
+                  { kind: "segment", sourceId: "S0047a", status: row.status || "review", text: "Split-Effekte bleiben markiert." },
+                  { kind: "segment", sourceId: "S0047b", status: row.status || "review", text: "Merge-Effekte bleiben steuerbar." }
                 ];
               }
               return [row];
@@ -1481,6 +1648,7 @@
               var safeMarker = escapeHtml(marker);
               rows.push({
                 kind: "marker",
+                status: "review",
                 text: '<mark>Signal marqueur « ' + safeMarker + ' »: possible segmentation à vérifier.</mark>'
               });
             });
@@ -1492,27 +1660,39 @@
           if (!segProposalList) return;
           var segmentCounter = 0;
           var markerCounter = 0;
+          if (activeSegIndex < 0 || activeSegIndex >= rows.length) activeSegIndex = 0;
           segProposalList.innerHTML = rows
             .map(function (row, index) {
               var sid = "";
               var actions = "";
               var rowClass = "seg-row";
               var txtClass = "txt";
+              var status = row.status || "ok";
+              var statusLabel = status === "review"
+                ? "A revoir"
+                : status === "orphan"
+                ? "Orphelin"
+                : status === "collision"
+                ? "Collision"
+                : "OK";
               if (row.kind === "marker") {
                 markerCounter += 1;
                 sid = "M" + String(markerCounter).padStart(3, "0");
-                actions = '<span class="batch-meta">signal</span>';
+                actions = '<span class="seg-status-pill ' + status + '">' + statusLabel + '</span>';
               } else {
                 segmentCounter += 1;
                 sid = "S" + String(segmentCounter).padStart(4, "0");
                 txtClass += " seg-clickable";
                 if (isPlaceCutMode) rowClass += " target-split";
                 actions =
+                  '<span class="seg-status-pill ' + status + '">' + statusLabel + "</span>" +
                   '<button class="seg-action-btn add" type="button" data-action="add" data-index="' + index + '">+ coupure</button>' +
                   '<button class="seg-action-btn remove" type="button" data-action="remove" data-index="' + index + '">- coupure</button>';
               }
+              if (index === activeSegIndex) rowClass += " active";
+              row._displayId = sid;
               return (
-                '<div class="' + rowClass + '" data-index="' + index + '">' +
+                '<div class="' + rowClass + '" data-index="' + index + '" data-row-kind="' + row.kind + '" data-status="' + status + '">' +
                 '<span class="sid">' + sid + '</span>' +
                 '<span class="' + txtClass + '">' + row.text + '</span>' +
                 '<span class="seg-row-actions">' +
@@ -1522,6 +1702,96 @@
               );
             })
             .join("");
+        }
+
+        function statusLabel(status) {
+          if (status === "review") return "A revoir";
+          if (status === "orphan") return "Orphelin";
+          if (status === "collision") return "Collision";
+          return "OK";
+        }
+
+        function isProblemStatus(status) {
+          return status === "review" || status === "orphan" || status === "collision";
+        }
+
+        function collectSegStatusCounts() {
+          var counts = { review: 0, orphan: 0, collision: 0, exceptions: 0 };
+          currentSegRows.forEach(function (row) {
+            if (!row || row.kind !== "segment") return;
+            var st = row.status || "ok";
+            if (st === "review") counts.review += 1;
+            if (st === "orphan") counts.orphan += 1;
+            if (st === "collision") counts.collision += 1;
+            if (isProblemStatus(st)) counts.exceptions += 1;
+          });
+          return counts;
+        }
+
+        function applySegFilter() {
+          if (!segProposalList) return;
+          var rows = segProposalList.querySelectorAll(".seg-row");
+          rows.forEach(function (rowNode) {
+            var st = rowNode.getAttribute("data-status") || "ok";
+            var kind = rowNode.getAttribute("data-row-kind") || "segment";
+            var hide = false;
+            if (segFilterMode === "review") hide = st !== "review" || kind !== "segment";
+            if (segFilterMode === "exceptions") hide = !isProblemStatus(st) || kind !== "segment";
+            rowNode.classList.toggle("hidden-by-filter", hide);
+          });
+          if (segFilterAllBtn) segFilterAllBtn.classList.toggle("active", segFilterMode === "all");
+          if (segFilterReviewBtn) segFilterReviewBtn.classList.toggle("active", segFilterMode === "review");
+          if (segFilterExceptionsBtn) segFilterExceptionsBtn.classList.toggle("active", segFilterMode === "exceptions");
+        }
+
+        function refreshSegActiveMeta() {
+          var row = currentSegRows[activeSegIndex];
+          if (!row) {
+            if (segActiveRowLabel) segActiveRowLabel.textContent = "—";
+            if (segActiveStatusLabel) segActiveStatusLabel.textContent = "—";
+            return;
+          }
+          if (segActiveRowLabel) segActiveRowLabel.textContent = row._displayId || row.sourceId || "—";
+          if (segActiveStatusLabel) segActiveStatusLabel.textContent = statusLabel(row.status || "ok");
+          segInlineButtons.forEach(function (btn) {
+            var targetStatus = btn.getAttribute("data-seg-status");
+            btn.classList.toggle("active", !!targetStatus && targetStatus === (row.status || "ok"));
+          });
+        }
+
+        function setActiveSegIndex(index, opts) {
+          if (!currentSegRows.length) return;
+          var safe = Math.max(0, Math.min(index, currentSegRows.length - 1));
+          activeSegIndex = safe;
+          renderSegmentationRows(currentSegRows);
+          applySegFilter();
+          refreshSegActiveMeta();
+          if (opts && opts.scroll === false) return;
+          if (!segProposalList) return;
+          var rowNode = segProposalList.querySelector('.seg-row[data-index="' + safe + '"]');
+          if (rowNode) rowNode.scrollIntoView({ block: "center", behavior: "smooth" });
+        }
+
+        function setActiveSegStatus(status) {
+          var row = currentSegRows[activeSegIndex];
+          if (!row || row.kind !== "segment") return;
+          row.status = status;
+          refreshManualDerivedChips();
+          setActiveSegIndex(activeSegIndex, { scroll: false });
+        }
+
+        function jumpIssue(direction) {
+          if (!currentSegRows.length) return;
+          var len = currentSegRows.length;
+          var start = activeSegIndex;
+          for (var step = 1; step <= len; step += 1) {
+            var idx = (start + direction * step + len) % len;
+            var row = currentSegRows[idx];
+            if (!row || row.kind !== "segment") continue;
+            if (!isProblemStatus(row.status || "ok")) continue;
+            setActiveSegIndex(idx);
+            return;
+          }
         }
 
         function syncButton(button) {
@@ -1640,6 +1910,7 @@
             var side = workbench.querySelector(".seg-side");
             var main = workbench.querySelector(".seg-main");
             var controls = workbench.querySelector(".preview-controls");
+            var inlineReview = workbench.querySelector(".seg-inline-review");
             var grid = workbench.querySelector(".preview-grid");
             if (!(main instanceof HTMLElement) || !(grid instanceof HTMLElement)) return;
 
@@ -1658,9 +1929,22 @@
                 (parseFloat(controlsStyles.marginTop) || 0) +
                 (parseFloat(controlsStyles.marginBottom) || 0);
             }
+            var inlineHeight = inlineReview instanceof HTMLElement ? inlineReview.getBoundingClientRect().height : 0;
+            var inlineMargins = 0;
+            if (inlineReview instanceof HTMLElement) {
+              var inlineStyles = window.getComputedStyle(inlineReview);
+              inlineMargins =
+                (parseFloat(inlineStyles.marginTop) || 0) +
+                (parseFloat(inlineStyles.marginBottom) || 0);
+            }
             var mainStyles = window.getComputedStyle(main);
             var rowGap = parseFloat(mainStyles.rowGap) || parseFloat(mainStyles.gap) || 0;
-            var gridHeight = Math.max(0, Math.floor(sideHeight - controlsHeight - controlsMargins - rowGap));
+            var gridHeight = Math.max(
+              0,
+              Math.floor(
+                sideHeight - controlsHeight - controlsMargins - inlineHeight - inlineMargins - rowGap * 2
+              )
+            );
 
             main.style.height = sideHeight + "px";
             grid.style.height = gridHeight + "px";
@@ -1878,12 +2162,12 @@
           var split = Math.max(1, baseStats.split + manualAddCuts - manualRemoveCuts);
           var merge = Math.max(0, baseStats.merge + manualRemoveCuts);
           var orphans = Math.max(0, baseStats.orphans + Math.max(0, manualAddCuts - manualRemoveCuts));
-          var zones = Math.max(0, baseStats.zones + manualAddCuts + manualRemoveCuts);
+          var statusCounts = collectSegStatusCounts();
           if (segStatsChip) {
             segStatsChip.textContent = "split: " + split + " · merge: " + merge + " · orphans: " + orphans;
           }
           if (segZonesChip) {
-            segZonesChip.textContent = "zones sensibles: " + zones;
+            segZonesChip.textContent = "à revoir: " + statusCounts.review + " · exceptions: " + statusCounts.exceptions;
           }
           updateManualChip();
         }
@@ -1897,20 +2181,21 @@
           if (words.length < 6) return false;
           var cutAt = computeSplitWordIndex(plainText, activeChars);
           if (cutAt < 2 || cutAt >= words.length) return false;
-          return applySplitAtWordBoundary(index, cutAt, words);
+          return applySplitAtWordBoundary(index, cutAt, words, row.status || "review");
         }
 
-        function applySplitAtWordBoundary(index, cutAt, words) {
+        function applySplitAtWordBoundary(index, cutAt, words, nextStatus) {
           if (!Number.isInteger(cutAt)) return false;
           if (!Array.isArray(words) || words.length < 6) return false;
           if (cutAt < 2 || cutAt >= words.length) return false;
           var first = escapeHtml(words.slice(0, cutAt).join(" "));
           var second = escapeHtml(words.slice(cutAt).join(" "));
+          var status = nextStatus || "review";
           currentSegRows.splice(
             index,
             1,
-            { kind: "segment", text: first },
-            { kind: "segment", text: second }
+            { kind: "segment", status: status, text: first },
+            { kind: "segment", status: status, text: second }
           );
           manualAddCuts += 1;
           return true;
@@ -1927,7 +2212,7 @@
           var safeOffset = Math.max(1, Math.min(plainText.length - 1, charOffset));
           var prefix = plainText.slice(0, safeOffset);
           var cutAt = prefix.split(/\s+/).filter(Boolean).length;
-          return applySplitAtWordBoundary(index, cutAt, words);
+          return applySplitAtWordBoundary(index, cutAt, words, row.status || "review");
         }
 
         function getCaretOffsetFromPoint(event, element) {
@@ -1962,8 +2247,14 @@
           if (!current || !next) return false;
           if (current.kind !== "segment" || next.kind !== "segment") return false;
           var mergedText = escapeHtml(stripTags(current.text) + " " + stripTags(next.text));
+          var currentStatus = current.status || "ok";
+          var nextStatus = next.status || "ok";
+          var mergedStatus = currentStatus === "ok" && nextStatus === "ok"
+            ? "ok"
+            : (currentStatus !== "ok" ? currentStatus : nextStatus);
           currentSegRows.splice(index, 2, {
             kind: "segment",
+            status: mergedStatus,
             text: mergedText
           });
           manualRemoveCuts += 1;
@@ -2009,9 +2300,10 @@
           baseStats = { split: split, merge: merge, orphans: orphans, zones: zones };
           manualAddCuts = 0;
           manualRemoveCuts = 0;
-          refreshManualDerivedChips();
           currentSegRows = buildSegmentationRows(checked, customMarkers);
-          renderSegmentationRows(currentSegRows);
+          activeSegIndex = 0;
+          refreshManualDerivedChips();
+          setActiveSegIndex(activeSegIndex, { scroll: false });
           requestSegWorkbenchSync();
         }
 
@@ -2065,7 +2357,45 @@
           segPlaceCutBtn.addEventListener("click", function () {
             isPlaceCutMode = !isPlaceCutMode;
             updatePlaceCutButton();
-            renderSegmentationRows(currentSegRows);
+            setActiveSegIndex(activeSegIndex, { scroll: false });
+          });
+        }
+
+        if (segFilterAllBtn) {
+          segFilterAllBtn.addEventListener("click", function () {
+            segFilterMode = "all";
+            applySegFilter();
+          });
+        }
+        if (segFilterReviewBtn) {
+          segFilterReviewBtn.addEventListener("click", function () {
+            segFilterMode = "review";
+            applySegFilter();
+          });
+        }
+        if (segFilterExceptionsBtn) {
+          segFilterExceptionsBtn.addEventListener("click", function () {
+            segFilterMode = "exceptions";
+            applySegFilter();
+          });
+        }
+        if (segPrevIssueBtn) {
+          segPrevIssueBtn.addEventListener("click", function () {
+            jumpIssue(-1);
+          });
+        }
+        if (segNextIssueBtn) {
+          segNextIssueBtn.addEventListener("click", function () {
+            jumpIssue(1);
+          });
+        }
+        if (segInlineButtons.length) {
+          segInlineButtons.forEach(function (btn) {
+            btn.addEventListener("click", function () {
+              var status = btn.getAttribute("data-seg-status");
+              if (!status) return;
+              setActiveSegStatus(status);
+            });
           });
         }
 
@@ -2073,6 +2403,13 @@
           segProposalList.addEventListener("click", function (event) {
             var target = event.target;
             if (!(target instanceof HTMLElement)) return;
+            var rowNode = target.closest(".seg-row");
+            if (rowNode instanceof HTMLElement) {
+              var selectedIndex = Number(rowNode.getAttribute("data-index"));
+              if (Number.isInteger(selectedIndex)) {
+                setActiveSegIndex(selectedIndex, { scroll: false });
+              }
+            }
             var actionButton = target.closest(".seg-action-btn");
             if (actionButton instanceof HTMLElement) {
               var action = actionButton.getAttribute("data-action");
@@ -2084,8 +2421,8 @@
               if (action === "remove") changedByAction = applyManualMergeByIndex(actionIndex);
               if (!changedByAction) return;
 
-              renderSegmentationRows(currentSegRows);
               refreshManualDerivedChips();
+              setActiveSegIndex(Math.min(actionIndex, currentSegRows.length - 1), { scroll: false });
               return;
             }
 
@@ -2101,8 +2438,8 @@
             var changedByCaret = applyManualSplitAtCharOffset(rowIndex, caretOffset);
             if (!changedByCaret) return;
 
-            renderSegmentationRows(currentSegRows);
             refreshManualDerivedChips();
+            setActiveSegIndex(Math.min(rowIndex, currentSegRows.length - 1), { scroll: false });
           });
         }
 
@@ -2145,7 +2482,7 @@
             requestSegWorkbenchSync();
           });
           var segObservedNodes = Array.from(
-            document.querySelectorAll(".seg-workbench .seg-side, .seg-workbench .preview-controls, .seg-workbench .seg-main")
+            document.querySelectorAll(".seg-workbench .seg-side, .seg-workbench .preview-controls, .seg-workbench .seg-inline-review, .seg-workbench .seg-main")
           );
           segObservedNodes.forEach(function (node) {
             segResizeObserver.observe(node);

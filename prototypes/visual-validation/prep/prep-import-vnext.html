@@ -7,7 +7,7 @@
       name="description"
       content="Prototype visuel AGRAFES: Constituer — Importer réorganisé (Sources, Profil, Diagnostics)."
     />
-    <link rel="icon" href="./favicon.ico" />
+    <link rel="icon" href="../favicon.ico" />
     <title>Constituer — Importer (reorg V-next)</title>
     <style>
       :root {
@@ -470,6 +470,18 @@
         .workspace,
         .grid2 { grid-template-columns: 1fr; }
       }
+      a:focus-visible,
+      button:focus-visible,
+      input:focus-visible,
+      select:focus-visible,
+      textarea:focus-visible,
+      summary:focus-visible,
+      [role="button"]:focus-visible,
+      [tabindex]:focus-visible {
+        outline: 2px solid #1e4a80;
+        outline-offset: 2px;
+        box-shadow: 0 0 0 3px rgba(30, 74, 128, 0.18);
+      }
     </style>
   </head>
   <body>
@@ -480,12 +492,12 @@
     </header>
 
     <nav class="proto-nav" aria-label="Navigation maquettes">
-      <a href="./index.html">Index</a>
-      <a href="./board-vnext.html">Board</a>
-      <a href="./shell-vnext.html">Home</a>
-      <a href="./explorer-vnext.html">Explorer</a>
+      <a href="../index.html">Index</a>
+      <a href="../shell/board-vnext.html">Board</a>
+      <a href="../shell/shell-vnext.html">Home</a>
+      <a href="../shell/explorer-vnext.html">Explorer</a>
       <a class="active" href="./prep-vnext.html">Constituer</a>
-      <a href="./publish-vnext.html">Publier</a>
+      <a href="../shell/publish-vnext.html">Publier</a>
     </nav>
 
     <div class="shell">
@@ -497,11 +509,9 @@
         <details class="tree-wrap actions-tree" data-actions-tree data-default-open="false">
           <summary class="tree-summary">Actions disponibles <span class="tree-caret" aria-hidden="true">▾</span></summary>
           <div class="tree" aria-label="Actions disponibles">
-          <a href="./prep-curation-hub-vnext.html">Curation (hub)</a>
+          <a href="./prep-curation-preview-vnext.html">Curation</a>
           <a href="./prep-segmentation-vo-vnext.html">Segmentation</a>
-          <a href="./prep-alignement-vnext.html">Alignement</a>
-          <a href="./prep-actions-vnext.html#audit">Audit</a>
-          <a href="./prep-actions-vnext.html#collisions">Collisions</a>
+          <a href="./prep-alignement-run-vnext.html">Alignement</a>
         </div>
         </details>
         <a class="tab" href="./prep-exporter-vnext.html">Exporter</a>

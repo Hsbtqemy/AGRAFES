@@ -15,30 +15,26 @@ open prototypes/visual-validation/index.html
 Or open files directly in a browser:
 
 - `index.html`
-- `board-vnext.html`
-- `shell-vnext.html`
-- `explorer-vnext.html`
-- `prep-vnext.html`
-- `prep-import-vnext.html`
-- `prep-documents-vnext.html`
-- `prep-actions-vnext.html`
-- `prep-curation-hub-vnext.html`
-- `prep-curation-preview-vnext.html`
-- `prep-curation-focus-vnext.html`
-- `prep-curation-findreplace-vnext.html`
-- `prep-curation-continuous-edit-vnext.html`
-- `prep-curation-review-fine-vnext.html`
-- `prep-actions-longtext-vnext.html`
-- `prep-segmentation-vo-vnext.html`
-- `prep-segmentation-translation-vo-vnext.html`
-- `prep-segmentation-translation-vo-native-layout-vnext.html`
-- `prep-segmentation-translation-focus-vnext.html`
-- `prep-exporter-vnext.html`
-- `publish-vnext.html`
+- `shell/board-vnext.html`
+- `shell/shell-vnext.html`
+- `shell/explorer-vnext.html`
+- `shell/publish-vnext.html`
+- `prep/prep-vnext.html`
+- `prep/prep-import-vnext.html`
+- `prep/prep-documents-vnext.html`
+- `prep/prep-actions-vnext.html`
+- `prep/prep-curation-preview-vnext.html`
+- `prep/prep-actions-longtext-vnext.html`
+- `prep/prep-segmentation-vo-vnext.html`
+- `prep/prep-segmentation-translation-vo-native-layout-vnext.html`
+- `prep/prep-alignement-run-vnext.html`
+- `prep/prep-alignement-vnext.html`
+- `prep/prep-audit-advanced-vnext.html`
+- `prep/prep-exporter-vnext.html`
 
 ## Purpose
 
 - Validate information architecture before implementation.
 - Compare current UI vs proposed V-next layouts.
 - Collect visual feedback without impacting production code.
-- Navigation is simplified with a dedicated curation hub (`prep-curation-hub-vnext.html`) to avoid link overload.
+- Primary curation entry is `prep/prep-curation-preview-vnext.html`.

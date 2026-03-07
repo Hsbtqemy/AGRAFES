@@ -1,0 +1,1471 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Prototype visuel AGRAFES: Constituer — Alignement (V-next)."
+    />
+    <link rel="icon" href="../favicon.ico" />
+    <title>Constituer — Alignement (V-next)</title>
+    <style>
+      :root {
+        --bg: #f0f2f5;
+        --card: #fff;
+        --line: #dde1e8;
+        --text: #1a1a2e;
+        --muted: #4f5d6d;
+        --accent: #0f766e;
+        --accent-soft: #e8f5f3;
+        --link-bg: #eaf1fb;
+        --link-line: #b7c8df;
+        --link-text: #1e4a80;
+        --warn-soft: #fff7e6;
+        --warn-line: #edd89e;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+      }
+      .top {
+        height: 54px;
+        background: linear-gradient(135deg, #0c4a46, #0f766e);
+        color: #fff;
+        border-bottom: 1px solid #0c4a46;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 0 14px;
+      }
+      .top strong { letter-spacing: .02em; }
+      .db {
+        margin-left: auto;
+        font-size: 12px;
+        border: 1px solid rgba(255,255,255,.34);
+        border-radius: 999px;
+        padding: 4px 10px;
+        background: rgba(255,255,255,.13);
+      }
+
+      .proto-nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 8px 14px;
+        border-bottom: 1px solid var(--line);
+        background: #fff;
+      }
+      .proto-nav a {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 7px 12px;
+        font-size: 13px;
+        color: var(--muted);
+        text-decoration: none;
+        background: #f8f9fa;
+      }
+      .proto-nav a.active {
+        color: #0c4a46;
+        border-color: #9fd3cc;
+        background: #e8f5f3;
+        font-weight: 700;
+      }
+
+      .shell {
+        display: grid;
+        grid-template-columns: 230px 1fr;
+        min-height: calc(100vh - 54px);
+      }
+      .nav {
+        border-right: 1px solid var(--line);
+        background: #f8f9fa;
+        padding: 12px;
+      }
+      .nav h2 {
+        margin: 0 0 10px;
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: .07em;
+        color: var(--muted);
+      }
+      .tab {
+        width: 100%;
+        text-align: left;
+        border: 1px solid transparent;
+        border-radius: 8px;
+        padding: 10px;
+        background: transparent;
+        color: var(--text);
+        font-size: 14px;
+        margin-bottom: 6px;
+        display: block;
+        text-decoration: none;
+      }
+      .tab.active {
+        background: var(--accent-soft);
+        border-color: #9fd3cc;
+        color: #0c4a46;
+        font-weight: 700;
+      }
+      .tree {
+        margin: -2px 0 8px 8px;
+        padding-left: 10px;
+        border-left: 2px solid #cfe8e3;
+        display: grid;
+        gap: 4px;
+      }
+      .tree a {
+        display: block;
+        text-decoration: none;
+        font-size: 12px;
+        color: var(--muted);
+        border: 1px solid transparent;
+        border-radius: 7px;
+        padding: 6px 8px;
+      }
+      .tree a.active {
+        background: #f0faf8;
+        border-color: #9fd3cc;
+        color: #0c4a46;
+        font-weight: 700;
+      }
+      .tree a:hover {
+        border-color: #cfe8e3;
+        background: #f6fbfa;
+      }
+      .tree-wrap {
+        margin: -2px 0 8px;
+      }
+      .tree-summary {
+        list-style: none;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border: 1px solid #cfe8e3;
+        border-radius: 8px;
+        padding: 7px 8px;
+        font-size: 12px;
+        font-weight: 700;
+        color: #0c4a46;
+        background: #edf7f5;
+      }
+      .tree-summary::-webkit-details-marker {
+        display: none;
+      }
+      .tree-caret {
+        font-size: 11px;
+        color: var(--muted);
+        transition: transform .16s ease;
+      }
+      .tree-wrap[open] .tree-caret {
+        transform: rotate(180deg);
+      }
+
+      .content {
+        padding: 14px;
+        display: grid;
+        gap: 12px;
+        align-content: start;
+      }
+      .card {
+        border: 1px solid var(--line);
+        background: var(--card);
+        border-radius: 12px;
+        overflow: hidden;
+      }
+      .head-card {
+        padding: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      .head-card h1 { margin: 0; font-size: 20px; }
+      .head-card p { margin: 5px 0 0; font-size: 13px; color: var(--muted); }
+      .head-tools {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      .pill {
+        border: 1px solid #9fd3cc;
+        background: #e8f5f3;
+        color: #0c4a46;
+        border-radius: 999px;
+        font-size: 11px;
+        padding: 3px 8px;
+        font-weight: 700;
+      }
+      .head-link {
+        border: 1px solid var(--link-line);
+        background: var(--link-bg);
+        color: var(--link-text);
+        border-radius: 999px;
+        padding: 4px 9px;
+        font-size: 12px;
+        text-decoration: none;
+        font-weight: 600;
+      }
+      .context-card {
+        padding: 10px 12px;
+      }
+      .context-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(140px, 1fr));
+        gap: 8px;
+      }
+      .context-item {
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        background: #fff;
+        padding: 8px;
+      }
+      .context-item strong {
+        display: block;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: .06em;
+        color: var(--muted);
+        margin-bottom: 4px;
+      }
+      .context-item span {
+        font-size: 13px;
+        font-weight: 700;
+        color: #1f2a44;
+      }
+      .context-foot {
+        margin-top: 8px;
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+
+      .workspace {
+        display: grid;
+        grid-template-columns: minmax(300px, 0.85fr) minmax(640px, 1.6fr) minmax(360px, 1fr);
+        gap: 12px;
+        align-items: start;
+      }
+      .col {
+        min-width: 0;
+        display: grid;
+        gap: 10px;
+      }
+      .setup-col {
+        align-content: start;
+      }
+      .list-col,
+      .review-col {
+        align-content: start;
+      }
+      .audit-expert {
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        background: #fafbfc;
+      }
+      .audit-expert > summary {
+        list-style: none;
+        cursor: pointer;
+        padding: 8px 10px;
+        font-size: 12px;
+        font-weight: 700;
+        color: #2b3246;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .audit-expert > summary::-webkit-details-marker { display: none; }
+      .audit-expert[open] > summary {
+        border-bottom: 1px solid var(--line);
+        background: #f3f6fb;
+      }
+      .audit-expert-body {
+        padding: 9px;
+        display: grid;
+        gap: 8px;
+      }
+      .audit-mini-list {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+        padding: 8px;
+        display: grid;
+        gap: 6px;
+        font-size: 12px;
+      }
+      .audit-mini-row {
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        gap: 8px;
+        align-items: center;
+      }
+
+      .card-head {
+        background: #f8f9fa;
+        border-bottom: 1px solid var(--line);
+        padding: 10px 12px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .card-head h2 {
+        margin: 0;
+        font-size: 14px;
+      }
+      .card-head.compact {
+        padding: 8px 10px;
+      }
+      .body {
+        padding: 12px;
+        display: grid;
+        gap: 10px;
+      }
+      .row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+      .f {
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        background: #fff;
+        padding: 8px;
+        font-size: 12px;
+      }
+      .f strong {
+        display: block;
+        margin-bottom: 4px;
+        color: #2b3246;
+      }
+      .f select,
+      .f input {
+        width: 100%;
+        border: 1px solid #c7d3e7;
+        border-radius: 8px;
+        background: #fff;
+        color: var(--text);
+        padding: 7px 8px;
+        font-size: 13px;
+        font-family: inherit;
+      }
+      .f.full { grid-column: 1 / -1; }
+
+      .doc-list {
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        padding: 8px;
+        background: #fff;
+        display: grid;
+        gap: 6px;
+      }
+      .doc-list label {
+        display: flex;
+        gap: 7px;
+        align-items: center;
+        font-size: 13px;
+      }
+      .doc-list legend {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: .06em;
+        color: var(--muted);
+        font-weight: 700;
+      }
+      .target-row {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fafbfc;
+        padding: 7px 8px;
+      }
+      .target-main {
+        display: flex;
+        gap: 7px;
+        align-items: center;
+      }
+      .target-meta {
+        margin-left: 25px;
+        margin-top: 4px;
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .mini-chip {
+        display: inline-block;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 2px 7px;
+        font-size: 10px;
+        font-weight: 700;
+      }
+      .mini-chip.ok {
+        border-color: #9fd3cc;
+        background: #e8f5f3;
+        color: #0c4a46;
+      }
+      .mini-chip.warn {
+        border-color: var(--warn-line);
+        background: var(--warn-soft);
+        color: #8d6200;
+      }
+      .mini-chip.bad {
+        border-color: #efc2c2;
+        background: #fff3f3;
+        color: #a83f3f;
+      }
+      .active-doc {
+        border: 1px solid #b7c8df;
+        border-radius: 9px;
+        background: #f8fbff;
+        padding: 9px;
+      }
+      .active-doc strong {
+        display: block;
+        font-size: 12px;
+        margin-bottom: 5px;
+        color: #1f2a44;
+      }
+      .setup-summary {
+        border: 1px solid #b7c8df;
+        border-radius: 9px;
+        background: #f8fbff;
+        padding: 8px;
+        display: grid;
+        gap: 6px;
+      }
+      .setup-line {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        align-items: center;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .setup-line strong {
+        color: #1f2a44;
+      }
+      .state-list {
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        overflow: hidden;
+      }
+      .state-row {
+        display: grid;
+        grid-template-columns: 1.4fr .7fr .9fr;
+        gap: 8px;
+        align-items: center;
+        padding: 8px 9px;
+        font-size: 12px;
+        background: #fff;
+      }
+      .state-row + .state-row {
+        border-top: 1px solid var(--line);
+      }
+      .state-head {
+        background: #f8f9fa;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: .06em;
+        color: var(--muted);
+        font-weight: 700;
+      }
+
+      .btns {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .btn {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #f7f8fa;
+        color: #2b3246;
+        padding: 8px 11px;
+        font-size: 13px;
+        font-weight: 600;
+        min-height: 34px;
+        line-height: 1.2;
+      }
+      .btn:hover {
+        border-color: #c7d3e7;
+      }
+      .btn.pri,
+      .btn-primary {
+        border-color: #0f766e;
+        background: #0f766e;
+        color: #fff;
+      }
+      .btn.alt,
+      .btn-secondary {
+        border-color: var(--link-line);
+        background: var(--link-bg);
+        color: var(--link-text);
+      }
+      .btn-ghost {
+        border-color: #d4dae4;
+        background: #fff;
+        color: #4f5d6d;
+      }
+      .btn:disabled {
+        opacity: .55;
+        cursor: not-allowed;
+      }
+      .advanced {
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        background: #fafbfc;
+      }
+      .advanced > summary {
+        list-style: none;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 700;
+        color: #2b3246;
+        padding: 8px 9px;
+        border-bottom: 1px solid transparent;
+      }
+      .advanced > summary::-webkit-details-marker { display: none; }
+      .advanced[open] > summary {
+        border-bottom-color: var(--line);
+        background: #f3f6fb;
+      }
+      .advanced-body {
+        padding: 8px;
+      }
+      .flow-note {
+        border: 1px dashed #9fd3cc;
+        border-radius: 9px;
+        background: #f3f9f8;
+        color: #0c4a46;
+        padding: 8px;
+        font-size: 12px;
+      }
+
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(100px, 1fr));
+        gap: 8px;
+      }
+      .stats.compact {
+        grid-template-columns: repeat(2, minmax(100px, 1fr));
+      }
+      .stat {
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        background: #fff;
+        padding: 9px;
+      }
+      .stat .label {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: .06em;
+        color: var(--muted);
+      }
+      .stat .value {
+        margin-top: 4px;
+        font-size: 17px;
+        font-weight: 700;
+        color: #1f2a44;
+      }
+
+      .toolbar {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      .chip {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: #f8f9fa;
+        color: var(--muted);
+        padding: 5px 9px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .chip.active {
+        border-color: #9fd3cc;
+        background: #e8f5f3;
+        color: #0c4a46;
+      }
+      .chip-count {
+        margin-left: 6px;
+        font-size: 11px;
+        font-weight: 700;
+      }
+      .inline-review {
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        background: #f8fbff;
+        padding: 9px;
+        display: grid;
+        gap: 8px;
+      }
+      .inline-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        flex-wrap: wrap;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .inline-actions {
+        display: flex;
+        gap: 7px;
+        flex-wrap: wrap;
+      }
+      .inline-btn {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: #fff;
+        color: #2b3246;
+        padding: 5px 10px;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .inline-btn[data-status="ok"] { border-color: #9fd3cc; color: #0c4a46; }
+      .inline-btn[data-status="review"] { border-color: var(--warn-line); color: #8d6200; }
+      .inline-btn[data-status="orphan"],
+      .inline-btn[data-status="collision"] { border-color: #efc2c2; color: #a83f3f; }
+      .inline-btn.active {
+        background: #eef4ff;
+        border-color: #b7c8df;
+      }
+      .compare-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+      .compare-col {
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        background: #fff;
+        overflow: hidden;
+      }
+      .compare-head {
+        border-bottom: 1px solid var(--line);
+        background: #f8f9fa;
+        padding: 7px 8px;
+        font-size: 12px;
+        font-weight: 700;
+      }
+      .compare-text {
+        padding: 9px;
+        font-size: 13px;
+        line-height: 1.5;
+        min-height: 260px;
+      }
+      .mark {
+        background: #fff3cf;
+        border-radius: 3px;
+        padding: 0 2px;
+      }
+      .compare-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        border: 1px dashed #c7d3e7;
+        border-radius: 9px;
+        background: #f8fbff;
+        padding: 8px;
+      }
+      .list-priority,
+      .review-priority {
+        min-height: 76vh;
+        display: grid;
+        grid-template-rows: auto 1fr;
+      }
+      .list-priority .body {
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+      }
+      .review-priority .body {
+        display: grid;
+        grid-template-rows: auto auto auto;
+      }
+      .table-wrap {
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        overflow: auto;
+        max-height: 240px;
+        background: #fff;
+      }
+      .table-wrap.tall {
+        max-height: none;
+        min-height: 62vh;
+      }
+      .summary-details {
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        background: #fafbfc;
+      }
+      .summary-details > summary {
+        list-style: none;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 700;
+        color: #2b3246;
+        padding: 8px 9px;
+      }
+      .summary-details > summary::-webkit-details-marker { display: none; }
+      .summary-details[open] > summary {
+        border-bottom: 1px solid var(--line);
+        background: #f3f6fb;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+      }
+      th, td {
+        border: 1px solid var(--line);
+        padding: 7px 8px;
+        text-align: left;
+        vertical-align: top;
+      }
+      th { background: #f8f9fa; }
+      .status {
+        display: inline-block;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 2px 8px;
+        font-size: 11px;
+        font-weight: 700;
+      }
+      .status.ok {
+        border-color: #9fd3cc;
+        background: #e8f5f3;
+        color: #0c4a46;
+      }
+      .status.warn {
+        border-color: var(--warn-line);
+        background: var(--warn-soft);
+        color: #8d6200;
+      }
+      .status.bad {
+        border-color: #efc2c2;
+        background: #fff3f3;
+        color: #a83f3f;
+      }
+      tr.align-active td {
+        background: #f4fbfa;
+      }
+
+      .diag {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 8px;
+        background: #fff;
+        font-size: 12px;
+      }
+      .diag strong {
+        display: block;
+        margin-bottom: 3px;
+      }
+      .diag.warn {
+        border-color: var(--warn-line);
+        background: var(--warn-soft);
+      }
+
+      .note {
+        border: 1px dashed #b7c8df;
+        background: #f8fbff;
+        color: #3f5678;
+        border-radius: 9px;
+        padding: 8px;
+        font-size: 12px;
+      }
+
+      @media (max-width: 1480px) {
+        .workspace {
+          grid-template-columns: minmax(280px, 0.8fr) minmax(620px, 1.5fr);
+        }
+        .review-col {
+          grid-column: 1 / -1;
+        }
+      }
+      @media (max-width: 1140px) {
+        .shell { grid-template-columns: 1fr; }
+        .nav { border-right: 0; border-bottom: 1px solid var(--line); }
+        .workspace { grid-template-columns: 1fr; }
+        .setup-col { order: 1; }
+        .list-col { order: 2; }
+        .review-col { order: 3; }
+      }
+      @media (max-width: 760px) {
+        .context-grid,
+        .row,
+        .compare-grid,
+        .stats { grid-template-columns: 1fr 1fr; }
+      }
+      a:focus-visible,
+      button:focus-visible,
+      input:focus-visible,
+      select:focus-visible,
+      textarea:focus-visible,
+      summary:focus-visible,
+      [role="button"]:focus-visible,
+      [tabindex]:focus-visible {
+        outline: 2px solid #1e4a80;
+        outline-offset: 2px;
+        box-shadow: 0 0 0 3px rgba(30, 74, 128, 0.18);
+      }
+    </style>
+  </head>
+  <body>
+    <header class="top">
+      <strong>Constituer</strong>
+      <span>Préparation corpus</span>
+      <span class="db">DB: corpus_himyc_2026.db</span>
+    </header>
+
+    <nav class="proto-nav" aria-label="Navigation maquettes">
+      <a href="../index.html">Index</a>
+      <a href="../shell/board-vnext.html">Board</a>
+      <a href="../shell/shell-vnext.html">Home</a>
+      <a href="../shell/explorer-vnext.html">Explorer</a>
+      <a class="active" href="./prep-vnext.html">Constituer</a>
+      <a href="../shell/publish-vnext.html">Publier</a>
+    </nav>
+
+    <div class="shell">
+      <aside class="nav">
+        <h2>Sections</h2>
+        <a class="tab" href="./prep-import-vnext.html">Importer</a>
+        <a class="tab" href="./prep-documents-vnext.html">Documents</a>
+        <a class="tab active" href="./prep-actions-vnext.html">Actions</a>
+        <details class="tree-wrap actions-tree" data-actions-tree data-default-open="true">
+          <summary class="tree-summary">Actions disponibles <span class="tree-caret" aria-hidden="true">▾</span></summary>
+          <div class="tree" aria-label="Actions disponibles">
+            <a href="./prep-curation-preview-vnext.html">Curation</a>
+            <a href="./prep-segmentation-vo-vnext.html">Segmentation</a>
+            <a class="active" href="./prep-alignement-vnext.html">Alignement</a>
+          </div>
+        </details>
+        <a class="tab" href="./prep-exporter-vnext.html">Exporter</a>
+      </aside>
+
+      <main class="content">
+        <section class="card head-card">
+          <div>
+            <h1>Alignement — pilotage simple + contrôle rapide</h1>
+            <p>
+              Configuration à gauche, aperçu des paires au centre, indicateurs de qualité visibles en continu.
+            </p>
+          </div>
+          <div class="head-tools">
+            <span class="pill">mode comparaison VO</span>
+            <a class="head-link" href="./prep-segmentation-vo-vnext.html">Retour Segmentation</a>
+            <a class="head-link" href="./prep-audit-advanced-vnext.html">Ouvrir Audit</a>
+            <a class="head-link" href="./prep-alignement-run-vnext.html">Vue run globale</a>
+          </div>
+        </section>
+
+        <section class="card context-card">
+          <div class="context-grid">
+            <div class="context-item">
+              <strong>VO active</strong>
+              <span>Discours 1793 (fr)</span>
+            </div>
+            <div class="context-item">
+              <strong>Traduction en cours</strong>
+              <span>Übersetzung 1793 (de)</span>
+            </div>
+            <div class="context-item">
+              <strong>Dernière segmentation</strong>
+              <span>aujourd’hui 10:14</span>
+            </div>
+            <div class="context-item">
+              <strong>Segments VO / DE</strong>
+              <span>1 284 / 1 279</span>
+            </div>
+          </div>
+          <div class="context-foot">
+            <span class="mini-chip warn">segmentation DE à vérifier (5 écarts)</span>
+            <a class="head-link" href="./prep-segmentation-translation-vo-native-layout-vnext.html">Retourner corriger la segmentation</a>
+            <button class="btn btn-secondary">Rafraîchir depuis segmentation</button>
+            <span class="pill">Tu alignes maintenant: VO FR ↔ DE</span>
+          </div>
+        </section>
+
+        <section class="workspace">
+          <div class="col setup-col">
+            <article class="card">
+              <div class="card-head">
+                <h2>Setup run (compact)</h2>
+                <span class="pill">gauche: configuration</span>
+              </div>
+              <div class="body">
+                <div class="row">
+                  <div class="f">
+                    <strong>Document pivot (VO)</strong>
+                    <select>
+                      <option selected>doc#1 — Discours 1793 (fr)</option>
+                      <option>doc#4 — Traité 1801 (fr)</option>
+                    </select>
+                  </div>
+                  <div class="f">
+                    <strong>Traduction active (issue de segmentation)</strong>
+                    <select>
+                      <option selected>doc#6 — Übersetzung 1793 (de)</option>
+                      <option>doc#2 — Speech 1793 (en)</option>
+                      <option>doc#5 — Traducción 1793 (es)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="f full">
+                  <strong>Document actif</strong>
+                  <div class="setup-summary">
+                    <div class="setup-line">
+                      <strong>Allemand — Übersetzung 1793</strong>
+                      <span class="mini-chip ok">doc#6</span>
+                    </div>
+                    <div class="setup-line">
+                      <span>VO liée: doc#1</span>
+                      <span>Segmentation: prête</span>
+                    </div>
+                  </div>
+                  <details class="advanced" style="margin-top:8px">
+                    <summary>Batch optionnel</summary>
+                    <div class="advanced-body">
+                      <fieldset class="doc-list">
+                        <legend>Ajouter d'autres traductions</legend>
+                        <label><input type="checkbox" /> Anglais — Speech 1793 <span class="mini-chip ok">doc#2</span></label>
+                        <label><input type="checkbox" /> Espagnol — Traducción 1793 <span class="mini-chip ok">doc#5</span></label>
+                      </fieldset>
+                    </div>
+                  </details>
+                </div>
+
+                <div class="btns">
+                  <button id="resetBtn" class="btn btn-ghost">Réinitialiser</button>
+                  <button id="previewBtn" class="btn btn-primary">Prévisualiser l'alignement</button>
+                  <button id="applyBtn" class="btn btn-secondary" disabled>Appliquer l'alignement</button>
+                </div>
+                <div id="previewState" class="flow-note">Étape 1/2: prévisualise, puis applique.</div>
+
+                <details class="advanced">
+                  <summary>Réglages avancés</summary>
+                  <div class="advanced-body">
+                    <div class="row">
+                      <div class="f">
+                        <strong>Stratégie</strong>
+                        <select id="strategySelect">
+                          <option value="hybrid" selected>Auto (ancres puis position)</option>
+                          <option value="external">Ancres uniquement</option>
+                          <option value="position">Position uniquement</option>
+                        </select>
+                      </div>
+                      <div class="f">
+                        <strong>Portée run</strong>
+                        <select>
+                          <option selected>Document actif (recommandé)</option>
+                          <option>VO + traductions ajoutées (batch)</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div class="row">
+                      <div class="f">
+                        <strong>Conserver ponctuation originale</strong>
+                        <select>
+                          <option selected>Oui</option>
+                          <option>Non</option>
+                        </select>
+                      </div>
+                      <div class="f">
+                        <strong>Sortie</strong>
+                        <select>
+                          <option selected>Proposition + validation manuelle</option>
+                          <option>Application immédiate</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                </details>
+
+                <div id="strategyHint" class="note">
+                  Auto: ancres d'abord, puis position.
+                </div>
+
+                <div class="diag warn">
+                  <strong>Suivi run (en direct)</strong>
+                  3 segments longs créent des splits à vérifier.
+                </div>
+                <div class="stats compact" id="statsBox">
+                  <div class="stat"><div class="label">Couverture</div><div class="value" data-stat="coverage">92%</div></div>
+                  <div class="stat"><div class="label">Orphelins</div><div class="value" data-stat="orphans">11</div></div>
+                  <div class="stat"><div class="label">Collisions</div><div class="value" data-stat="collisions">4</div></div>
+                  <div class="stat"><div class="label">A revoir</div><div class="value" data-stat="review">8</div></div>
+                </div>
+                <div class="flow-note">Prévisualise -> corrige -> applique.</div>
+              </div>
+            </article>
+
+            <article class="card">
+              <div class="card-head"><h2>État des traductions du corpus</h2><span class="pill">contexte</span></div>
+              <div class="body">
+                <div class="state-list">
+                  <div class="state-row state-head">
+                    <div>Document</div>
+                    <div>Segmentation</div>
+                    <div>Alignement</div>
+                  </div>
+                  <div class="state-row">
+                    <div>Anglais — Speech 1793</div>
+                    <div><span class="mini-chip ok">prête</span></div>
+                    <div><span class="mini-chip ok">aligné</span></div>
+                  </div>
+                  <div class="state-row">
+                    <div>Allemand — Übersetzung 1793</div>
+                    <div><span class="mini-chip warn">à vérifier</span></div>
+                    <div><span class="mini-chip warn">en cours</span></div>
+                  </div>
+                  <div class="state-row">
+                    <div>Espagnol — Traducción 1793</div>
+                    <div><span class="mini-chip ok">prête</span></div>
+                    <div><span class="mini-chip warn">à lancer</span></div>
+                  </div>
+                  <div class="state-row">
+                    <div>Roumain — Traducere 1793</div>
+                    <div><span class="mini-chip bad">non prête</span></div>
+                    <div><span class="mini-chip bad">bloqué</span></div>
+                  </div>
+                </div>
+              </div>
+            </article>
+          </div>
+
+          <div class="col list-col">
+            <article class="card list-priority">
+              <div class="card-head">
+                <h2>Liste alignée complète</h2>
+                <span class="pill">centre: vue corpus</span>
+              </div>
+              <div class="body">
+                <div class="toolbar">
+                  <button type="button" class="chip active" data-filter="all">Tous</button>
+                  <button type="button" class="chip" data-filter="ok">OK<span class="chip-count" id="countOk">0</span></button>
+                  <button type="button" class="chip" data-filter="review">A revoir<span class="chip-count" id="countReview">0</span></button>
+                  <button type="button" class="chip" data-filter="exceptions">Exceptions<span class="chip-count" id="countExceptions">0</span></button>
+                  <button id="alignPrevIssue" class="btn btn-ghost" style="margin-left:auto" type="button">Precedent probleme</button>
+                  <button id="alignNextIssue" class="btn btn-ghost" type="button">Prochain probleme</button>
+                </div>
+
+                <div class="table-wrap tall">
+                  <table aria-label="Résumé des correspondances" id="alignTable">
+                    <thead>
+                      <tr>
+                        <th>Segment VO</th>
+                        <th>Cible</th>
+                        <th>Langue</th>
+                        <th>Statut</th>
+                      </tr>
+                    </thead>
+                    <tbody id="alignTableBody"></tbody>
+                  </table>
+                </div>
+
+                <div class="flow-note">
+                  Clique une ligne pour la corriger dans le panneau de droite. Les statuts sont éditables segment par segment.
+                </div>
+                <div class="btns">
+                  <button class="btn btn-secondary">Ouvrir audit détaillé</button>
+                  <button class="btn btn-ghost">Exporter le rapport du run</button>
+                </div>
+              </div>
+            </article>
+          </div>
+
+          <div class="col review-col">
+            <article class="card">
+              <div class="card-head">
+                <h2>Correction du segment actif</h2>
+                <span class="pill">droite: actions réelles</span>
+              </div>
+              <div class="body">
+                <div class="compare-grid">
+                  <div class="compare-col">
+                    <div class="compare-head" id="voHead">VO — segment S0001</div>
+                    <div class="compare-text" id="voText"></div>
+                  </div>
+                  <div class="compare-col">
+                    <div class="compare-head" id="trHead">Traduction DE — segment S0001</div>
+                    <div class="compare-text" id="trText"></div>
+                  </div>
+                </div>
+
+                <div class="inline-review">
+                  <div class="inline-head">
+                    <span>Segment actif: <code id="activeSegId">—</code></span>
+                    <span>Statut: <strong id="activeSegStatus">—</strong></span>
+                  </div>
+                  <div class="inline-actions">
+                    <button type="button" class="inline-btn" data-set-status="ok" data-status="ok">Marquer OK</button>
+                    <button type="button" class="inline-btn" data-set-status="review" data-status="review">Marquer à revoir</button>
+                    <button type="button" class="inline-btn" data-set-status="orphan" data-status="orphan">Marquer orphelin</button>
+                    <button type="button" class="inline-btn" data-set-status="collision" data-status="collision">Marquer collision</button>
+                    <button type="button" class="inline-btn">Audit détaillé…</button>
+                  </div>
+                </div>
+
+                <div class="btns">
+                  <button class="btn btn-ghost">Segment suivant</button>
+                  <button class="btn btn-secondary">Marquer la sélection à revoir</button>
+                  <button class="btn btn-primary">Appliquer et passer au segment suivant</button>
+                </div>
+              </div>
+            </article>
+
+            <article class="card">
+              <div class="card-head">
+                <h2>Audit expert (optionnel)</h2>
+                <span class="pill">non bloquant</span>
+              </div>
+              <div class="body">
+                <details class="audit-expert">
+                  <summary>
+                    Cas techniques avancés (collisions/retarget/historique)
+                    <span class="mini-chip warn">4 collisions · 2 orphelins</span>
+                  </summary>
+                  <div class="audit-expert-body">
+                    <div class="audit-mini-list">
+                      <div class="audit-mini-row">
+                        <code>S0004</code>
+                        <span>Deux cibles possibles sur le même pivot</span>
+                        <span class="status bad">Collision</span>
+                      </div>
+                      <div class="audit-mini-row">
+                        <code>S0005</code>
+                        <span>Segment VO sans cible directe</span>
+                        <span class="status bad">Orphelin</span>
+                      </div>
+                      <div class="audit-mini-row">
+                        <code>S0006</code>
+                        <span>Revue manuelle demandée</span>
+                        <span class="status warn">A revoir</span>
+                      </div>
+                    </div>
+                    <div class="btns">
+                      <button class="btn btn-secondary">Ouvrir audit complet</button>
+                      <button class="btn btn-ghost">Exporter rapport audit</button>
+                    </div>
+                  </div>
+                </details>
+              </div>
+            </article>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script>
+      (function () {
+        var tree = document.querySelector("[data-actions-tree]");
+        if (tree) {
+          var key = "agrafes.prep.actionsTreeOpen";
+          try {
+            var saved = window.localStorage.getItem(key);
+            if (saved === "1" || saved === "0") {
+              tree.open = saved === "1";
+            } else {
+              tree.open = tree.getAttribute("data-default-open") === "true";
+            }
+            tree.addEventListener("toggle", function () {
+              window.localStorage.setItem(key, tree.open ? "1" : "0");
+            });
+          } catch (_err) {
+            tree.open = tree.getAttribute("data-default-open") === "true";
+          }
+        }
+
+        var strategySelect = document.getElementById("strategySelect");
+        var strategyHint = document.getElementById("strategyHint");
+        var previewBtn = document.getElementById("previewBtn");
+        var applyBtn = document.getElementById("applyBtn");
+        var resetBtn = document.getElementById("resetBtn");
+        var previewState = document.getElementById("previewState");
+        var stats = {
+          hybrid: { coverage: "92%", orphans: "11", collisions: "4", review: "8", hint: "Auto: tente les ancres (numérotation) puis comble les trous par position." },
+          external: { coverage: "79%", orphans: "26", collisions: "2", review: "15", hint: "Ancres uniquement: plus strict, mais laisse plus d'orphelins si la numérotation diverge." },
+          position: { coverage: "95%", orphans: "6", collisions: "9", review: "13", hint: "Position uniquement: couvre plus, mais augmente les cas à vérifier (risque de faux positifs)." }
+        };
+
+        if (strategySelect && strategyHint) {
+          strategySelect.addEventListener("change", function () {
+            var mode = stats[strategySelect.value] || stats.hybrid;
+            strategyHint.textContent = mode.hint;
+            document.querySelector('[data-stat="coverage"]').textContent = mode.coverage;
+            document.querySelector('[data-stat="orphans"]').textContent = mode.orphans;
+            document.querySelector('[data-stat="collisions"]').textContent = mode.collisions;
+            document.querySelector('[data-stat="review"]').textContent = mode.review;
+          });
+        }
+
+        if (previewBtn && applyBtn && previewState) {
+          previewBtn.addEventListener("click", function () {
+            previewBtn.disabled = true;
+            previewBtn.textContent = "Prévisualisation en cours...";
+            window.setTimeout(function () {
+              previewBtn.disabled = false;
+              previewBtn.textContent = "Prévisualisation mise à jour";
+              previewBtn.classList.remove("btn-primary");
+              previewBtn.classList.add("btn-secondary");
+              applyBtn.disabled = false;
+              applyBtn.classList.remove("btn-secondary");
+              applyBtn.classList.add("btn-primary");
+              previewState.textContent = "Étape 2/2: prévisualisation prête. Corrige si besoin puis applique.";
+            }, 550);
+          });
+        }
+
+        if (resetBtn && applyBtn && previewState && previewBtn) {
+          resetBtn.addEventListener("click", function () {
+            applyBtn.disabled = true;
+            applyBtn.classList.remove("btn-primary");
+            applyBtn.classList.add("btn-secondary");
+            previewBtn.disabled = false;
+            previewBtn.textContent = "Prévisualiser l'alignement";
+            previewBtn.classList.remove("btn-secondary");
+            previewBtn.classList.add("btn-primary");
+            previewState.textContent = "Étape 1/2: prévisualise, puis applique.";
+          });
+        }
+
+        var alignRows = [
+          {
+            id: "S0001",
+            language: "DE",
+            status: "ok",
+            vo: "Le passage conserve une ponctuation forte ; la cadence reste longue.",
+            tr: "Der Abschnitt behält eine starke Zeichensetzung; der Rhythmus bleibt lang."
+          },
+          {
+            id: "S0002",
+            language: "DE",
+            status: "review",
+            vo: "La proposition suivante introduit <span class=\"mark\">deux idées</span> dans la même phrase.",
+            tr: "Der folgende Satz trägt <span class=\"mark\">zwei Ideen</span> in derselben Periode und provoque aktuell einen split."
+          },
+          {
+            id: "S0003",
+            language: "DE",
+            status: "ok",
+            vo: "Le texte mentionne une citation avec ponctuation mixte.",
+            tr: "Der Text erwähnt ein Zitat mit gemischter Zeichensetzung."
+          },
+          {
+            id: "S0004",
+            language: "DE",
+            status: "collision",
+            vo: "La transition logique est compacte et sensible aux fusions.",
+            tr: "Die logische Übergangszone ist kompakt und führt zu zwei konkurrierenden Zielen."
+          },
+          {
+            id: "S0005",
+            language: "DE",
+            status: "orphan",
+            vo: "Un segment VO reste sans correspondant direct.",
+            tr: "—"
+          },
+          {
+            id: "S0006",
+            language: "DE",
+            status: "review",
+            vo: "La phrase finale combine cause et conséquence.",
+            tr: "Der Schlusssatz bündelt Ursache und Konsequenz in einer langen Periode."
+          },
+          {
+            id: "S0007",
+            language: "DE",
+            status: "ok",
+            vo: "Les transitions courtes s'alignent bien sur la VO.",
+            tr: "Kurze Übergänge richten sich gut an der VO aus."
+          }
+        ];
+
+        var filterButtons = Array.from(document.querySelectorAll("[data-filter]"));
+        var tableBody = document.getElementById("alignTableBody");
+        var voHead = document.getElementById("voHead");
+        var voText = document.getElementById("voText");
+        var trHead = document.getElementById("trHead");
+        var trText = document.getElementById("trText");
+        var activeSegId = document.getElementById("activeSegId");
+        var activeSegStatus = document.getElementById("activeSegStatus");
+        var inlineStatusButtons = Array.from(document.querySelectorAll("[data-set-status]"));
+        var countOk = document.getElementById("countOk");
+        var countReview = document.getElementById("countReview");
+        var countExceptions = document.getElementById("countExceptions");
+        var alignPrevIssue = document.getElementById("alignPrevIssue");
+        var alignNextIssue = document.getElementById("alignNextIssue");
+        var currentFilter = "all";
+        var activeRowId = "S0002";
+
+        function isIssueStatus(status) {
+          return status === "review" || status === "orphan" || status === "collision";
+        }
+
+        function statusToLabel(status) {
+          if (status === "review") return "A revoir";
+          if (status === "orphan") return "Orphelin";
+          if (status === "collision") return "Collision";
+          return "OK";
+        }
+
+        function statusToClass(status) {
+          return status === "ok" ? "ok" : status === "review" ? "warn" : "bad";
+        }
+
+        function visibleRows() {
+          return alignRows.filter(function (row) {
+            if (currentFilter === "ok") return row.status === "ok";
+            if (currentFilter === "review") return row.status === "review";
+            if (currentFilter === "exceptions") return isIssueStatus(row.status);
+            return true;
+          });
+        }
+
+        function getActiveRow() {
+          return alignRows.find(function (row) { return row.id === activeRowId; }) || alignRows[0] || null;
+        }
+
+        function renderCounters() {
+          var ok = alignRows.filter(function (row) { return row.status === "ok"; }).length;
+          var review = alignRows.filter(function (row) { return row.status === "review"; }).length;
+          var exceptions = alignRows.filter(function (row) { return isIssueStatus(row.status); }).length;
+          if (countOk) countOk.textContent = String(ok);
+          if (countReview) countReview.textContent = String(review);
+          if (countExceptions) countExceptions.textContent = String(exceptions);
+        }
+
+        function renderCompare() {
+          var row = getActiveRow();
+          if (!row) return;
+          if (voHead) voHead.textContent = "VO — segment " + row.id;
+          if (trHead) trHead.textContent = "Traduction " + row.language + " — segment " + row.id;
+          if (voText) voText.innerHTML = row.vo;
+          if (trText) trText.innerHTML = row.tr;
+          if (activeSegId) activeSegId.textContent = row.id;
+          if (activeSegStatus) activeSegStatus.textContent = statusToLabel(row.status);
+          inlineStatusButtons.forEach(function (btn) {
+            var next = btn.getAttribute("data-set-status");
+            btn.classList.toggle("active", !!next && next === row.status);
+          });
+        }
+
+        function renderTable() {
+          if (!tableBody) return;
+          var rows = visibleRows();
+          if (!rows.length) {
+            tableBody.innerHTML = '<tr><td colspan="4">Aucun segment pour ce filtre.</td></tr>';
+            return;
+          }
+          tableBody.innerHTML = rows.map(function (row) {
+            var active = row.id === activeRowId ? " class=\"align-active\"" : "";
+            return (
+              "<tr" + active + " data-align-id=\"" + row.id + "\">" +
+                "<td>[" + row.id.slice(1) + "] " + row.vo + "</td>" +
+                "<td>" + row.tr + "</td>" +
+                "<td>" + row.language + "</td>" +
+                "<td><span class=\"status " + statusToClass(row.status) + "\">" + statusToLabel(row.status) + "</span></td>" +
+              "</tr>"
+            );
+          }).join("");
+        }
+
+        function ensureActiveVisible() {
+          var rows = visibleRows();
+          if (!rows.length) return;
+          var present = rows.some(function (row) { return row.id === activeRowId; });
+          if (!present) activeRowId = rows[0].id;
+        }
+
+        function applyFilter(mode) {
+          currentFilter = mode || "all";
+          filterButtons.forEach(function (btn) {
+            btn.classList.toggle("active", btn.getAttribute("data-filter") === currentFilter);
+          });
+          ensureActiveVisible();
+          renderTable();
+          renderCompare();
+        }
+
+        function setActiveRow(id) {
+          activeRowId = id;
+          ensureActiveVisible();
+          renderTable();
+          renderCompare();
+        }
+
+        function setActiveStatus(status) {
+          var row = getActiveRow();
+          if (!row) return;
+          row.status = status;
+          renderCounters();
+          renderTable();
+          renderCompare();
+        }
+
+        function jumpIssue(direction) {
+          var issues = alignRows.filter(function (row) { return isIssueStatus(row.status); });
+          if (!issues.length) return;
+          var idx = issues.findIndex(function (row) { return row.id === activeRowId; });
+          var base = idx >= 0 ? idx : 0;
+          var nextIdx = (base + direction + issues.length) % issues.length;
+          setActiveRow(issues[nextIdx].id);
+        }
+
+        if (tableBody) {
+          tableBody.addEventListener("click", function (event) {
+            var target = event.target;
+            if (!(target instanceof HTMLElement)) return;
+            var row = target.closest("[data-align-id]");
+            if (!row) return;
+            var id = row.getAttribute("data-align-id");
+            if (!id) return;
+            setActiveRow(id);
+          });
+        }
+
+        filterButtons.forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            applyFilter(btn.getAttribute("data-filter"));
+          });
+        });
+
+        inlineStatusButtons.forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            var next = btn.getAttribute("data-set-status");
+            if (!next) return;
+            setActiveStatus(next);
+          });
+        });
+
+        if (alignPrevIssue) {
+          alignPrevIssue.addEventListener("click", function () {
+            jumpIssue(-1);
+          });
+        }
+        if (alignNextIssue) {
+          alignNextIssue.addEventListener("click", function () {
+            jumpIssue(1);
+          });
+        }
+
+        renderCounters();
+        applyFilter("all");
+      })();
+    </script>
+  </body>
+</html>

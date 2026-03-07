@@ -1,0 +1,560 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Prototype visuel AGRAFES: Constituer — Audit avancé alignement." />
+    <link rel="icon" href="../favicon.ico" />
+    <title>Constituer — Audit avancé (V-next)</title>
+    <style>
+      :root {
+        --bg: #f0f2f5;
+        --card: #fff;
+        --line: #dde1e8;
+        --text: #1a1a2e;
+        --muted: #4f5d6d;
+        --accent: #0f766e;
+        --accent-soft: #e8f5f3;
+        --link-bg: #eaf1fb;
+        --link-line: #b7c8df;
+        --link-text: #1e4a80;
+        --ok: #e8f5f3;
+        --warn: #fff8e6;
+        --bad: #fff0f0;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+      }
+      .top {
+        height: 54px;
+        background: linear-gradient(135deg, #0c4a46, #0f766e);
+        color: #fff;
+        border-bottom: 1px solid #0c4a46;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 0 14px;
+      }
+      .top strong { letter-spacing: .02em; }
+      .db {
+        margin-left: auto;
+        font-size: 12px;
+        border: 1px solid rgba(255,255,255,.34);
+        border-radius: 999px;
+        padding: 4px 10px;
+        background: rgba(255,255,255,.13);
+      }
+      .proto-nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 8px 14px;
+        border-bottom: 1px solid var(--line);
+        background: #fff;
+      }
+      .proto-nav a {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 7px 12px;
+        font-size: 13px;
+        color: var(--muted);
+        text-decoration: none;
+        background: #f8f9fa;
+      }
+      .proto-nav a.active {
+        color: #0c4a46;
+        border-color: #9fd3cc;
+        background: #e8f5f3;
+        font-weight: 700;
+      }
+
+      .shell {
+        display: grid;
+        grid-template-columns: 230px 1fr;
+        min-height: calc(100vh - 54px);
+      }
+      .nav {
+        border-right: 1px solid var(--line);
+        background: #f8f9fa;
+        padding: 12px;
+      }
+      .nav h2 {
+        margin: 0 0 10px;
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: .07em;
+        color: var(--muted);
+      }
+      .tab {
+        width: 100%;
+        text-align: left;
+        border: 1px solid transparent;
+        border-radius: 8px;
+        padding: 10px;
+        background: transparent;
+        color: var(--text);
+        font-size: 14px;
+        margin-bottom: 6px;
+        display: block;
+        text-decoration: none;
+      }
+      .tab.active {
+        background: var(--accent-soft);
+        border-color: #9fd3cc;
+        color: #0c4a46;
+        font-weight: 700;
+      }
+      .tree {
+        margin: -2px 0 8px 8px;
+        padding-left: 10px;
+        border-left: 2px solid #cfe8e3;
+        display: grid;
+        gap: 4px;
+      }
+      .tree a {
+        display: block;
+        text-decoration: none;
+        font-size: 12px;
+        color: var(--muted);
+        border: 1px solid transparent;
+        border-radius: 7px;
+        padding: 6px 8px;
+      }
+      .tree a.active {
+        background: #f0faf8;
+        border-color: #9fd3cc;
+        color: #0c4a46;
+        font-weight: 700;
+      }
+      .tree-wrap {
+        margin: -2px 0 8px;
+      }
+      .tree-summary {
+        list-style: none;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border: 1px solid #cfe8e3;
+        border-radius: 8px;
+        padding: 7px 8px;
+        font-size: 12px;
+        font-weight: 700;
+        color: #0c4a46;
+        background: #edf7f5;
+      }
+      .tree-summary::-webkit-details-marker { display: none; }
+      .tree-caret {
+        font-size: 11px;
+        color: var(--muted);
+        transition: transform .16s ease;
+      }
+      .tree-wrap[open] .tree-caret { transform: rotate(180deg); }
+
+      .content {
+        padding: 14px;
+        display: grid;
+        gap: 12px;
+        align-content: start;
+      }
+      .card {
+        border: 1px solid var(--line);
+        background: var(--card);
+        border-radius: 12px;
+        overflow: hidden;
+      }
+      .head-card {
+        padding: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      .head-card h1 {
+        margin: 0;
+        font-size: 18px;
+      }
+      .head-card p {
+        margin: 5px 0 0;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .head-tools {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+      }
+      .pill {
+        display: inline-block;
+        border: 1px solid #9fd3cc;
+        background: #e8f5f3;
+        color: #0c4a46;
+        border-radius: 999px;
+        font-size: 11px;
+        padding: 3px 8px;
+      }
+      .btn {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #f8f9fa;
+        color: #2b3246;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        text-decoration: none;
+        cursor: pointer;
+        padding: 8px 10px;
+        font-size: 13px;
+        font-weight: 600;
+      }
+      .btn.pri {
+        border-color: #0f766e;
+        background: #0f766e;
+        color: #fff;
+      }
+      .btn.alt {
+        border-color: var(--link-line);
+        background: var(--link-bg);
+        color: var(--link-text);
+      }
+      .btns {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .toolbar {
+        padding: 10px 12px;
+        display: grid;
+        gap: 8px;
+      }
+      .filters {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .chip {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 4px 8px;
+        font-size: 11px;
+        background: #f8f9fa;
+        color: var(--muted);
+      }
+      .chip.active {
+        border-color: #9fd3cc;
+        background: #e8f5f3;
+        color: #0c4a46;
+        font-weight: 700;
+      }
+      .kpis {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(100px, 1fr));
+        gap: 8px;
+      }
+      .kpi {
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        padding: 8px;
+        background: #fff;
+      }
+      .kpi .label { font-size: 11px; color: var(--muted); }
+      .kpi .value { margin-top: 3px; font-size: 19px; font-weight: 700; }
+      .kpi.ok { background: var(--ok); border-color: #bfe5dd; }
+      .kpi.warn { background: var(--warn); border-color: #ecd694; }
+      .kpi.bad { background: var(--bad); border-color: #edc0c0; }
+
+      .workspace {
+        display: grid;
+        grid-template-columns: 1.45fr 1fr;
+        gap: 12px;
+      }
+      .audit-list {
+        max-height: 65vh;
+        overflow: auto;
+      }
+      .audit-row {
+        border-bottom: 1px solid var(--line);
+        padding: 10px 12px;
+        display: grid;
+        grid-template-columns: 90px 130px 1fr 110px;
+        gap: 8px;
+        align-items: start;
+      }
+      .audit-row:last-child { border-bottom: 0; }
+      .audit-row.active {
+        background: #f4f8ff;
+        outline: 1px solid #b7c8df;
+      }
+      .seg-id {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-size: 12px;
+        color: #25324a;
+      }
+      .tag {
+        display: inline-block;
+        border-radius: 999px;
+        padding: 2px 8px;
+        font-size: 11px;
+        font-weight: 700;
+      }
+      .tag.review { background: #fff8e6; color: #8b6a07; border: 1px solid #ecd694; }
+      .tag.orphan { background: #fff0f0; color: #8b2c2c; border: 1px solid #edc0c0; }
+      .tag.collision { background: #ffe9e9; color: #7d2323; border: 1px solid #efb1b1; }
+      .reason {
+        font-size: 13px;
+        line-height: 1.4;
+      }
+      .status-col {
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .panel {
+        padding: 12px;
+        display: grid;
+        gap: 10px;
+      }
+      .focus {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        overflow: hidden;
+      }
+      .focus-head {
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--line);
+        background: #f8f9fa;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .focus-body {
+        padding: 10px;
+        font-size: 13px;
+        line-height: 1.45;
+        display: grid;
+        gap: 10px;
+      }
+      .focus-col {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 8px;
+      }
+      .focus-col strong {
+        display: block;
+        margin-bottom: 5px;
+        font-size: 12px;
+        color: #2b3246;
+      }
+      .meta-note {
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .footer-actions {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        align-items: center;
+      }
+
+      @media (max-width: 1200px) {
+        .workspace { grid-template-columns: 1fr; }
+        .audit-list { max-height: none; }
+      }
+      @media (max-width: 860px) {
+        .shell { grid-template-columns: 1fr; }
+        .nav { border-right: 0; border-bottom: 1px solid var(--line); }
+        .audit-row { grid-template-columns: 1fr; }
+        .kpis { grid-template-columns: 1fr 1fr; }
+      }
+      a:focus-visible,
+      button:focus-visible,
+      input:focus-visible,
+      select:focus-visible,
+      textarea:focus-visible,
+      summary:focus-visible,
+      [role="button"]:focus-visible,
+      [tabindex]:focus-visible {
+        outline: 2px solid #1e4a80;
+        outline-offset: 2px;
+        box-shadow: 0 0 0 3px rgba(30, 74, 128, 0.18);
+      }
+    </style>
+  </head>
+  <body>
+    <header class="top">
+      <strong>Constituer</strong>
+      <span>Préparation corpus</span>
+      <span class="db">DB: corpus_himyc_2026.db</span>
+    </header>
+
+    <nav class="proto-nav" aria-label="Navigation maquettes">
+      <a href="../index.html">Index</a>
+      <a href="../shell/board-vnext.html">Board</a>
+      <a href="../shell/shell-vnext.html">Home</a>
+      <a href="../shell/explorer-vnext.html">Explorer</a>
+      <a class="active" href="./prep-vnext.html">Constituer</a>
+      <a href="../shell/publish-vnext.html">Publier</a>
+    </nav>
+
+    <div class="shell">
+      <aside class="nav">
+        <h2>Sections</h2>
+        <a class="tab" href="./prep-import-vnext.html">Importer</a>
+        <a class="tab" href="./prep-documents-vnext.html">Documents</a>
+        <a class="tab active" href="./prep-actions-vnext.html">Actions</a>
+        <details class="tree-wrap actions-tree" data-actions-tree data-default-open="true">
+          <summary class="tree-summary">Actions disponibles <span class="tree-caret" aria-hidden="true">▾</span></summary>
+          <div class="tree" aria-label="Actions disponibles">
+            <a href="./prep-curation-preview-vnext.html">Curation</a>
+            <a href="./prep-segmentation-vo-vnext.html">Segmentation</a>
+            <a href="./prep-alignement-run-vnext.html">Alignement</a>
+          </div>
+        </details>
+        <a class="tab" href="./prep-exporter-vnext.html">Exporter</a>
+      </aside>
+
+      <main class="content">
+        <section class="card head-card">
+          <div>
+            <h1>Audit avancé — exceptions d'alignement</h1>
+            <p>
+              Revue ciblée des segments problématiques après run d'alignement. Tu traites les exceptions ici,
+              puis tu reviens dans l'alignement si un recalcul global est nécessaire.
+            </p>
+          </div>
+          <div class="head-tools">
+            <span class="pill">run: align_2026-03-04_10h14</span>
+            <a class="btn alt" href="./prep-alignement-run-vnext.html">Retour à l'alignement</a>
+          </div>
+        </section>
+
+        <section class="card toolbar">
+          <div class="filters">
+            <span class="chip active">Exceptions uniquement</span>
+            <span class="chip">À revoir</span>
+            <span class="chip">Orphelins</span>
+            <span class="chip">Collisions</span>
+            <span class="chip">Non traités</span>
+          </div>
+          <div class="kpis">
+            <div class="kpi ok"><div class="label">Exceptions traitées</div><div class="value">128</div></div>
+            <div class="kpi warn"><div class="label">À revoir</div><div class="value">23</div></div>
+            <div class="kpi bad"><div class="label">Orphelins</div><div class="value">9</div></div>
+            <div class="kpi bad"><div class="label">Collisions</div><div class="value">4</div></div>
+          </div>
+        </section>
+
+        <section class="workspace">
+          <article class="card">
+            <div class="audit-list" id="auditList">
+              <div class="audit-row active" data-seg="S0043" tabindex="0">
+                <div class="seg-id">S0043</div>
+                <div><span class="tag review">À revoir</span></div>
+                <div class="reason">Décalage de coupure: VO en 1 segment, traduction en 2 segments après point-virgule.</div>
+                <div class="status-col">non traité</div>
+              </div>
+              <div class="audit-row" data-seg="S0112" tabindex="0">
+                <div class="seg-id">S0112</div>
+                <div><span class="tag orphan">Orphelin</span></div>
+                <div class="reason">Aucun segment traduction associé à la VO. Vérifier split/merge local.</div>
+                <div class="status-col">non traité</div>
+              </div>
+              <div class="audit-row" data-seg="S0219" tabindex="0">
+                <div class="seg-id">S0219</div>
+                <div><span class="tag collision">Collision</span></div>
+                <div class="reason">Deux segments traduction pointent vers la même VO (conflit d'ancre).</div>
+                <div class="status-col">non traité</div>
+              </div>
+              <div class="audit-row" data-seg="S0301" tabindex="0">
+                <div class="seg-id">S0301</div>
+                <div><span class="tag review">À revoir</span></div>
+                <div class="reason">Différence de ponctuation forte pouvant changer le sens (":" vs ";").</div>
+                <div class="status-col">à valider</div>
+              </div>
+            </div>
+          </article>
+
+          <aside class="card panel">
+            <div class="focus">
+              <div class="focus-head">Segment actif: <code id="activeSeg">S0043</code></div>
+              <div class="focus-body">
+                <div class="focus-col">
+                  <strong>VO</strong>
+                  <div>Le texte source conserve une longue proposition; la coupure attendue intervient après la proposition incidente.</div>
+                </div>
+                <div class="focus-col">
+                  <strong>Traduction</strong>
+                  <div>Der Zieltext wurde früh geschnitten; die zweite Hälfte reste isolée et perturbe l'alignement de suite.</div>
+                </div>
+                <div class="meta-note">Suggestion: fusionner S0043a + S0043b, puis relancer recalcul local.</div>
+              </div>
+            </div>
+
+            <div class="btns">
+              <button class="btn pri">Marquer corrigé</button>
+              <button class="btn">Marquer à revoir</button>
+              <button class="btn">Ignorer pour ce run</button>
+            </div>
+            <div class="btns">
+              <a class="btn alt" href="./prep-alignement-run-vnext.html">Ouvrir ce segment dans Alignement</a>
+              <button class="btn">Recalcul local</button>
+            </div>
+
+            <div class="footer-actions">
+              <span class="meta-note">4 / 36 exceptions en cours</span>
+              <div class="btns">
+                <button class="btn">Enregistrer la revue</button>
+                <button class="btn pri">Terminer l'audit</button>
+              </div>
+            </div>
+          </aside>
+        </section>
+      </main>
+    </div>
+
+    <script>
+      (function () {
+        var tree = document.querySelector("[data-actions-tree]");
+        if (tree) {
+          var key = "agrafes.prep.actionsTreeOpen";
+          try {
+            var saved = window.localStorage.getItem(key);
+            if (saved === "1" || saved === "0") {
+              tree.open = saved === "1";
+            } else {
+              tree.open = tree.getAttribute("data-default-open") === "true";
+            }
+            tree.addEventListener("toggle", function () {
+              window.localStorage.setItem(key, tree.open ? "1" : "0");
+            });
+          } catch (_err) {
+            tree.open = tree.getAttribute("data-default-open") === "true";
+          }
+        }
+
+        var rows = Array.prototype.slice.call(document.querySelectorAll(".audit-row"));
+        var activeSeg = document.getElementById("activeSeg");
+        function setActive(row) {
+          rows.forEach(function (r) { r.classList.remove("active"); });
+          row.classList.add("active");
+          if (activeSeg) activeSeg.textContent = row.getAttribute("data-seg") || "—";
+        }
+        rows.forEach(function (row) {
+          row.addEventListener("click", function () { setActive(row); });
+          row.addEventListener("keydown", function (event) {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              setActive(row);
+            }
+          });
+        });
+      })();
+    </script>
+  </body>
+</html>
