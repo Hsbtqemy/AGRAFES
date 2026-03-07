@@ -17,6 +17,7 @@
   "POST /align/retarget_candidates",
   "POST /curate",
   "POST /curate/preview",
+  "POST /db/backup",
   "POST /doc_relations/delete",
   "POST /doc_relations/set",
   "POST /documents/bulk_update",

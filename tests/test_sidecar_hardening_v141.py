@@ -362,11 +362,13 @@ class TestTokenProtection:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 class TestContractVersion:
-    def test_contract_version_is_141(self, hardening_sidecar) -> None:
+    def test_contract_version_matches_module_constant(self, hardening_sidecar) -> None:
+        from multicorpus_engine.sidecar_contract import API_VERSION
+
         code, payload = _get(f"{hardening_sidecar['base_url']}/health")
         assert code == 200
         # /health exposes api_version (mirrors CONTRACT_VERSION)
-        assert payload.get("api_version") == "1.4.1", (
+        assert payload.get("api_version") == API_VERSION, (
             f"Unexpected api_version: {payload.get('api_version')!r}"
         )
 
