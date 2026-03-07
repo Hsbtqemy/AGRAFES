@@ -362,9 +362,15 @@ export class ActionsScreen {
                   <input id="act-align-debug" type="checkbox" />
                   debug explainability
                 </label>
+                <label style="display:flex; align-items:center; gap:0.35rem">
+                  <input id="act-align-preserve-accepted" type="checkbox" checked />
+                  Conserver les liens validés au recalcul
+                </label>
               </div>
+              <p class="hint" style="margin:0.35rem 0 0">Au recalcul global, les liens marqués « acceptés » sont considérés comme verrouillés.</p>
               <div class="btn-row" style="margin-top:0.5rem">
                 <button id="act-align-btn" class="btn btn-warning" disabled>Lancer la run d'alignement</button>
+                <button id="act-align-recalc-btn" class="btn btn-secondary" disabled>Recalcul global</button>
               </div>
             </div>
 
@@ -446,6 +452,8 @@ export class ActionsScreen {
                 <button id="act-focus-accept-btn" class="btn btn-sm btn-secondary">✓ Valider</button>
                 <button id="act-focus-reject-btn" class="btn btn-sm btn-secondary">✗ À revoir</button>
                 <button id="act-focus-unreviewed-btn" class="btn btn-sm btn-secondary">? Non révisé</button>
+                <button id="act-focus-lock-btn" class="btn btn-sm btn-secondary">🔒 Verrouiller</button>
+                <button id="act-focus-unlock-btn" class="btn btn-sm btn-secondary">🔓 Déverrouiller</button>
                 <button id="act-focus-retarget-btn" class="btn btn-sm btn-secondary">⇄ Retarget</button>
                 <button id="act-focus-delete-btn" class="btn btn-sm btn-danger">🗑 Supprimer</button>
               </div>
@@ -590,7 +598,8 @@ export class ActionsScreen {
       (root.querySelector("#act-sim-row") as HTMLElement).style.display =
         v === "similarity" ? "" : "none";
     });
-    root.querySelector("#act-align-btn")!.addEventListener("click", () => this._runAlign());
+    root.querySelector("#act-align-btn")!.addEventListener("click", () => this._runAlign(false));
+    root.querySelector("#act-align-recalc-btn")!.addEventListener("click", () => this._runAlign(true));
     root.querySelector("#act-align-copy-debug-btn")!.addEventListener("click", () => this._copyAlignDebugJson());
 
     // Audit
@@ -635,6 +644,10 @@ export class ActionsScreen {
     root.querySelector("#act-focus-reject-btn")!.addEventListener("click", () =>
       this._runFocusStatusAction(root, "rejected"));
     root.querySelector("#act-focus-unreviewed-btn")!.addEventListener("click", () =>
+      this._runFocusStatusAction(root, null));
+    root.querySelector("#act-focus-lock-btn")!.addEventListener("click", () =>
+      this._runFocusStatusAction(root, "accepted"));
+    root.querySelector("#act-focus-unlock-btn")!.addEventListener("click", () =>
       this._runFocusStatusAction(root, null));
     root.querySelector("#act-focus-delete-btn")!.addEventListener("click", () =>
       this._runFocusDeleteAction(root));
@@ -796,7 +809,7 @@ export class ActionsScreen {
   }
 
   private _setButtonsEnabled(on: boolean): void {
-    ["act-preview-btn", "act-curate-btn", "act-seg-btn", "act-align-btn",
+    ["act-preview-btn", "act-curate-btn", "act-seg-btn", "act-align-btn", "act-align-recalc-btn",
      "act-seg-validate-btn", "act-meta-btn", "act-index-btn", "act-quality-btn", "act-coll-load-btn",
      "act-report-btn"].forEach(id => {
       const el = document.querySelector(`#${id}`) as HTMLButtonElement | null;
@@ -1227,7 +1240,7 @@ export class ActionsScreen {
 
   // ─── Feature 2: Align + Audit ────────────────────────────────────────────
 
-  private async _runAlign(): Promise<void> {
+  private async _runAlign(recalculate = false): Promise<void> {
     if (!this._conn) return;
     const pivotSel = (document.querySelector("#act-align-pivot") as HTMLSelectElement).value;
     if (!pivotSel) { this._log("Sélectionnez un document pivot.", true); return; }
@@ -1244,9 +1257,14 @@ export class ActionsScreen {
     const simThreshold = parseFloat(
       (document.querySelector("#act-sim-threshold") as HTMLInputElement).value
     ) || 0.8;
+    const preserveAccepted = (document.querySelector("#act-align-preserve-accepted") as HTMLInputElement | null)?.checked ?? true;
+    const modeLabel = recalculate ? "Recalcul global" : "Alignement";
 
     if (!window.confirm(
-      `Aligner pivot #${pivotId} → cibles [${targetIds.join(", ")}]\nStratégie : ${strategy}\nDebug: ${debugAlign ? "on" : "off"}`
+      `${modeLabel} pivot #${pivotId} → cibles [${targetIds.join(", ")}]\n` +
+      `Stratégie : ${strategy}\n` +
+      `Conserver liens validés : ${preserveAccepted ? "oui" : "non"}\n` +
+      `Debug: ${debugAlign ? "on" : "off"}`
     )) return;
 
     this._alignExplainability = [];
@@ -1258,19 +1276,33 @@ export class ActionsScreen {
       target_doc_ids: targetIds,
       strategy,
       debug_align: debugAlign,
+      replace_existing: recalculate,
+      preserve_accepted: preserveAccepted,
     };
     if (strategy === "similarity") alignParams.sim_threshold = simThreshold;
 
     try {
       const job = await enqueueJob(this._conn, "align", alignParams);
-      this._log(`Job alignement soumis pivot #${pivotId} → [${targetIds.join(",")}] (${job.job_id.slice(0, 8)}…)`);
+      this._log(`${modeLabel} soumis pivot #${pivotId} → [${targetIds.join(",")}] (${job.job_id.slice(0, 8)}…)`);
       this._jobCenter?.trackJob(job.job_id, `Alignement #${pivotId}→[${targetIds.join(",")}]`, (done) => {
         if (done.status === "done") {
           const reports = (done.result as {
             run_id?: string;
+            deleted_before?: number;
+            preserved_before?: number;
+            total_effective_links?: number;
             reports?: Array<{ target_doc_id: number; links_created: number; links_skipped?: number; debug?: AlignDebugPayload }>;
           } | undefined)?.reports ?? [];
-          const runId = (done.result as { run_id?: string } | undefined)?.run_id;
+          const result = (done.result as {
+            run_id?: string;
+            deleted_before?: number;
+            preserved_before?: number;
+            total_effective_links?: number;
+          } | undefined);
+          const runId = result?.run_id;
+          const deletedBefore = Number(result?.deleted_before ?? 0);
+          const preservedBefore = Number(result?.preserved_before ?? 0);
+          const totalEffectiveLinks = Number(result?.total_effective_links ?? reports.reduce((s, r) => s + r.links_created, 0));
           this._alignRunId = typeof runId === "string" && runId ? runId : null;
           // Persist run_id for workflow
           if (this._alignRunId) {
@@ -1291,17 +1323,24 @@ export class ActionsScreen {
           const bannerEl = document.querySelector("#act-align-banner");
           if (resultsEl) resultsEl.style.display = "";
           if (bannerEl) {
-            bannerEl.innerHTML = reports
+            const reportBits = reports
               .map((r) => {
                 const skipped = r.links_skipped ?? 0;
                 return `<span class="stat-ok">→ doc #${r.target_doc_id} : ${r.links_created} liens créés, ${skipped} ignorés.</span>`;
               })
               .join(" &nbsp;");
+            const recalcBits = recalculate
+              ? ` <span class="stat-warn">Nettoyés: ${deletedBefore}</span> <span class="stat-ok">Conservés: ${preservedBefore}</span> <span class="stat-ok">Liens effectifs: ${totalEffectiveLinks}</span>`
+              : "";
+            bannerEl.innerHTML = `${reportBits}${recalcBits}`;
           }
           this._renderAlignExplainability();
           for (const r of reports) {
             const skipped = r.links_skipped ?? 0;
             this._log(`✓ → doc #${r.target_doc_id} : ${r.links_created} liens créés, ${skipped} ignorés.`);
+          }
+          if (recalculate) {
+            this._log(`✓ Recalcul global: ${deletedBefore} liens supprimés, ${preservedBefore} conservés, ${totalEffectiveLinks} liens effectifs.`);
           }
           if (debugAlign) {
             const withDebug = reports.filter((r) => Boolean(r.debug)).length;
@@ -1312,7 +1351,11 @@ export class ActionsScreen {
               this._log("Explainability : aucun détail debug renvoyé par le backend.");
             }
           }
-          this._showToast?.(`✓ Alignement terminé (${reports.reduce((s, r) => s + r.links_created, 0)} liens)`);
+          if (recalculate) {
+            this._showToast?.(`✓ Recalcul global terminé (${totalEffectiveLinks} liens effectifs)`);
+          } else {
+            this._showToast?.(`✓ Alignement terminé (${reports.reduce((s, r) => s + r.links_created, 0)} liens)`);
+          }
           // Pre-fill audit selects
           this._auditPivotId = pivotId;
           this._auditTargetId = targetIds[0];

@@ -90,6 +90,13 @@ export interface AlignOptions {
   target_doc_ids: number[];
   strategy?: "external_id" | "position" | "similarity" | "external_id_then_position";
   debug_align?: boolean;
+  /** If true, clear previous links for this pivot↔target scope before re-running alignment. */
+  replace_existing?: boolean;
+  /**
+   * With replace_existing=true, keep already accepted links and treat them as protected.
+   * Defaults to true on server side.
+   */
+  preserve_accepted?: boolean;
   relation_type?: string;
   sim_threshold?: number;
   run_id?: string;
@@ -130,7 +137,12 @@ export interface AlignResponse {
   strategy: string;
   debug_align?: boolean;
   pivot_doc_id: number;
+  replace_existing?: boolean;
+  preserve_accepted?: boolean;
+  deleted_before?: number;
+  preserved_before?: number;
   total_links_created?: number;
+  total_effective_links?: number;
   reports: AlignReport[];
 }
 

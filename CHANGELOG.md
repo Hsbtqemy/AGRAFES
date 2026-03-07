@@ -20,6 +20,16 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+- Sidecar alignment (`POST /align` and async `align` jobs) now supports global
+  recalculation flags:
+  - `replace_existing` (default `false`)
+  - `preserve_accepted` (default `true`)
+  - response/run stats now expose `deleted_before`, `preserved_before`,
+    `total_effective_links` for traceability.
+- `tauri-prep` Actions tab alignment flow now exposes:
+  - `Recalcul global` action,
+  - `Conserver les liens validés` option (checked by default),
+  - clearer runtime feedback for preserved/deleted/effective link counts.
 - Sidecar metadata endpoints:
   - `GET /documents` now returns `workflow_status`, `validated_at`, `validated_run_id`
   - `POST /documents/update` now accepts `workflow_status` and optional `validated_run_id`

@@ -1,4 +1,4 @@
-# Sidecar API Contract (v1.4.4)
+# Sidecar API Contract (v1.4.5)
 
 This document defines the persistent localhost HTTP contract for
 `multicorpus_engine` sidecar.
@@ -29,7 +29,7 @@ When `multicorpus serve` starts and a portfile already exists:
 
 ## Versioning
 
-- `api_version`: sidecar API contract version (`1.4.4`)
+- `api_version`: sidecar API contract version (`1.4.5`)
 - `version`: engine version
 
 ## Response envelope
@@ -39,7 +39,7 @@ When `multicorpus serve` starts and a portfile already exists:
 ```json
 {
   "ok": true,
-  "api_version": "1.4.4",
+  "api_version": "1.4.5",
   "version": "0.6.1",
   "status": "ok"
 }
@@ -50,7 +50,7 @@ When `multicorpus serve` starts and a portfile already exists:
 ```json
 {
   "ok": false,
-  "api_version": "1.4.4",
+  "api_version": "1.4.5",
   "version": "0.6.1",
   "status": "error",
   "error": {
@@ -146,11 +146,14 @@ When `multicorpus serve` starts and a portfile already exists:
 - `POST /curate`
 - `POST /curate/preview`
 - `POST /align`
-  - body: `{ pivot_doc_id, target_doc_ids, strategy?, sim_threshold?, debug_align?, run_id? }`
+  - body: `{ pivot_doc_id, target_doc_ids, strategy?, sim_threshold?, debug_align?, replace_existing?, preserve_accepted?, run_id? }`
   - `strategy` values: `external_id` (default), `position`, `similarity`, `external_id_then_position` (hybrid)
   - `sim_threshold` only applies to `similarity` (range `[0.0, 1.0]`)
   - `debug_align` (bool, default false) adds optional `report.debug` diagnostics payload
-  - response now includes `run_id` and `total_links_created`
+  - `replace_existing` (bool, default `false`): clear previous links for the same pivot/target scope before running.
+  - `preserve_accepted` (bool, default `true`): with `replace_existing=true`, keep `status='accepted'` links and protect them from being rewritten.
+  - response includes `run_id`, `total_links_created`, and when recalc is used:
+    - `deleted_before`, `preserved_before`, `total_effective_links`
   - each report includes `links_created` and `links_skipped`
   - align responses are persisted in `runs` (`kind=align`, stats include `strategy`, `pairs`, debug payload when enabled)
 - `POST /align/audit`
@@ -213,8 +216,9 @@ Supported `kind` values and required `params`:
 - `validate-meta` — `params.doc_id?`
 - `segment` — `params.doc_id` (required), optional `params.lang`, optional `params.pack` (`auto|default|fr_strict|en_strict`)
 - `import` — `params.mode` + `params.path` required; optional: `language`, `title`, `doc_role`, `resource_type`, `tei_unit`
-- `align` — `params.pivot_doc_id` + `params.target_doc_ids` required; optional: `strategy`, `sim_threshold`, `debug_align`, `run_id`
+- `align` — `params.pivot_doc_id` + `params.target_doc_ids` required; optional: `strategy`, `sim_threshold`, `debug_align`, `replace_existing`, `preserve_accepted`, `run_id`
   - `strategy`: `external_id|position|similarity|external_id_then_position`
+  - `replace_existing=true` + `preserve_accepted=true` is the recommended "global recalculation" mode for keeping manually accepted links stable
   - job result includes `run_id`; this run can be exported via `export_run_report` with `params.run_id`
 - `export_tei` — `params.out_dir` required; optional: `params.doc_ids`, `params.include_structure` (bool, default false)
 - `export_align_csv` — `params.out_path` required; optional: `pivot_doc_id`, `target_doc_id`, `delimiter`

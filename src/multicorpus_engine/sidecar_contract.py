@@ -12,13 +12,14 @@ from __future__ import annotations
 from typing import Any
 
 
-API_VERSION = "1.4.4"
-CONTRACT_VERSION = "1.4.4"  # semantic versioning for the sidecar API contract
+API_VERSION = "1.4.5"
+CONTRACT_VERSION = "1.4.5"  # semantic versioning for the sidecar API contract
 # 1.4.0: added export_tei_package job kind (Sprint 4 — Publication ZIP)
 # 1.4.1: ERR_CONFLICT (409) for duplicate run_id; token protection on /align, /curate, /segment
 # 1.4.2: document workflow status fields on /documents and metadata update endpoints.
 # 1.4.3: POST /db/backup endpoint (token-required DB backup to timestamped .db.bak).
 # 1.4.4: add async job kind export_readable_text (TXT/DOCX readable exports).
+# 1.4.5: /align supports replace_existing + preserve_accepted (global recalculation mode).
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
@@ -1119,6 +1120,22 @@ def openapi_spec() -> dict[str, Any]:
                         },
                         "sim_threshold": {"type": "number", "minimum": 0.0, "maximum": 1.0, "default": 0.8},
                         "debug_align": {"type": "boolean", "default": False},
+                        "replace_existing": {
+                            "type": "boolean",
+                            "default": False,
+                            "description": (
+                                "If true, remove previous links for the pivot/target scope "
+                                "before creating a new alignment run."
+                            ),
+                        },
+                        "preserve_accepted": {
+                            "type": "boolean",
+                            "default": True,
+                            "description": (
+                                "When replace_existing=true, keep links with status='accepted' "
+                                "and treat them as protected anchors."
+                            ),
+                        },
                         "run_id": {"type": "string"},
                     },
                     "additionalProperties": False,
@@ -1134,7 +1151,12 @@ def openapi_spec() -> dict[str, Any]:
                                 "strategy": {"type": "string"},
                                 "pivot_doc_id": {"type": "integer"},
                                 "debug_align": {"type": "boolean"},
+                                "replace_existing": {"type": "boolean"},
+                                "preserve_accepted": {"type": "boolean"},
+                                "deleted_before": {"type": "integer"},
+                                "preserved_before": {"type": "integer"},
                                 "total_links_created": {"type": "integer"},
+                                "total_effective_links": {"type": "integer"},
                                 "reports": {"type": "array", "items": {"type": "object"}},
                             },
                         },

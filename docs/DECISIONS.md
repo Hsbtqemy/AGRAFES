@@ -832,3 +832,33 @@ editable formats.
 - “Texte lisible” is now operational in runtime (not just a roadmap placeholder).
 - Contract remains backward-compatible (additive job kind + optional params).
 - No change to core JSON envelope policy (`ok/error`) for sidecar responses.
+
+---
+
+## ADR-035 — Alignment global recalculation keeps accepted links by default
+
+**Date:** 2026-03-07
+**Status:** Accepted
+
+**Context**
+During alignment review, users manually mark links as accepted/rejected. A full
+re-run of alignment should refresh machine-generated links without destroying
+already validated decisions.
+
+**Decision**
+- Extend `/align` (and async align job params) with optional flags:
+  - `replace_existing` (default `false`)
+  - `preserve_accepted` (default `true`)
+- Behavior:
+  - `replace_existing=false`: additive run (existing behavior).
+  - `replace_existing=true` + `preserve_accepted=true`: delete non-accepted links,
+    keep accepted links and protect them from overwrite in the new run.
+  - `replace_existing=true` + `preserve_accepted=false`: full replacement.
+- Return extra counters for transparency:
+  - `deleted_before`, `preserved_before`, `total_effective_links`.
+
+**Consequences**
+- Prep UI can expose a clear “Recalcul global” action without breaking reviewed
+  work by default.
+- Contract change is backward-compatible (optional request fields, additive
+  response fields).

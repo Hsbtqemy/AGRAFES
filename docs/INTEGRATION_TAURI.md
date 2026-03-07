@@ -357,8 +357,9 @@ The `JobCenter` component polls `GET /jobs/{id}` every 500ms and displays:
 **ActionsScreen** — curate, segment, align, validate-meta, index:
 - `POST /jobs/enqueue` `{kind: "curate", params: {rules, doc_id?}}`
 - `POST /jobs/enqueue` `{kind: "segment", params: {doc_id, lang, pack?}}`
-- `POST /jobs/enqueue` `{kind: "align", params: {pivot_doc_id, target_doc_ids, strategy, sim_threshold?, debug_align?}}`
+- `POST /jobs/enqueue` `{kind: "align", params: {pivot_doc_id, target_doc_ids, strategy, sim_threshold?, debug_align?, replace_existing?, preserve_accepted?}}`
   - recommended fallback mode for prep workflows: `strategy="external_id_then_position"`
+  - global recalculation mode: `replace_existing=true` (optionally keep user-approved links with `preserve_accepted=true`)
   - with `debug_align=true`, UI renders a dedicated explainability panel (sources, similarity stats, sample links)
     and allows copying diagnostic JSON for offline troubleshooting.
   - align job result now includes `run_id`, so explainability can be tied to a single persisted run.

@@ -196,6 +196,114 @@ def resolve_token_mode(token_mode: str) -> str | None:
     return mode
 
 
+def _prepare_alignment_replace(
+    conn: sqlite3.Connection,
+    *,
+    pivot_doc_id: int,
+    target_doc_ids: list[int],
+    preserve_accepted: bool,
+) -> tuple[dict[int, set[tuple[int, int]]], int, int]:
+    """Delete previous links before a global recalculation.
+
+    Returns:
+        protected_pairs_by_target, deleted_count, preserved_count
+    """
+    protected_pairs_by_target: dict[int, set[tuple[int, int]]] = {}
+    deleted_count = 0
+    preserved_count = 0
+
+    for target_doc_id in target_doc_ids:
+        protected_pairs: set[tuple[int, int]] = set()
+        if preserve_accepted:
+            rows = conn.execute(
+                """
+                SELECT pivot_unit_id, target_unit_id
+                FROM alignment_links
+                WHERE pivot_doc_id = ? AND target_doc_id = ? AND status = 'accepted'
+                """,
+                (pivot_doc_id, target_doc_id),
+            ).fetchall()
+            protected_pairs = {(int(r[0]), int(r[1])) for r in rows}
+            preserved_count += len(protected_pairs)
+            cur = conn.execute(
+                """
+                DELETE FROM alignment_links
+                WHERE pivot_doc_id = ? AND target_doc_id = ?
+                  AND (status IS NULL OR status != 'accepted')
+                """,
+                (pivot_doc_id, target_doc_id),
+            )
+        else:
+            cur = conn.execute(
+                """
+                DELETE FROM alignment_links
+                WHERE pivot_doc_id = ? AND target_doc_id = ?
+                """,
+                (pivot_doc_id, target_doc_id),
+            )
+        deleted_count += int(cur.rowcount or 0)
+        protected_pairs_by_target[int(target_doc_id)] = protected_pairs
+
+    conn.commit()
+    return protected_pairs_by_target, deleted_count, preserved_count
+
+
+def _run_alignment_strategy(
+    conn: sqlite3.Connection,
+    *,
+    pivot_doc_id: int,
+    target_doc_ids: list[int],
+    run_id: str,
+    strategy: str,
+    debug_align: bool,
+    threshold: float = 0.8,
+    protected_pairs_by_target: dict[int, set[tuple[int, int]]] | None = None,
+):
+    from multicorpus_engine.aligner import (
+        align_by_external_id,
+        align_by_external_id_then_position,
+        align_by_position,
+        align_by_similarity,
+    )
+
+    if strategy == "position":
+        return align_by_position(
+            conn,
+            pivot_doc_id=pivot_doc_id,
+            target_doc_ids=target_doc_ids,
+            run_id=run_id,
+            debug=debug_align,
+            protected_pairs_by_target=protected_pairs_by_target,
+        )
+    if strategy == "similarity":
+        return align_by_similarity(
+            conn,
+            pivot_doc_id=pivot_doc_id,
+            target_doc_ids=target_doc_ids,
+            run_id=run_id,
+            threshold=threshold,
+            debug=debug_align,
+            protected_pairs_by_target=protected_pairs_by_target,
+        )
+    if strategy == "external_id_then_position":
+        return align_by_external_id_then_position(
+            conn,
+            pivot_doc_id=pivot_doc_id,
+            target_doc_ids=target_doc_ids,
+            run_id=run_id,
+            debug=debug_align,
+            protected_pairs_by_target=protected_pairs_by_target,
+        )
+    return align_by_external_id(
+        conn,
+        pivot_doc_id=pivot_doc_id,
+        target_doc_ids=target_doc_ids,
+        run_id=run_id,
+        debug=debug_align,
+        protected_pairs_by_target=protected_pairs_by_target,
+    )
+
+
 # ---------------------------------------------------------------------------
 # HTTP handler
 # ---------------------------------------------------------------------------
@@ -701,6 +809,20 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                         http_status=400,
                     )
                     return
+            if "replace_existing" in params and not isinstance(params.get("replace_existing"), bool):
+                self._send_error(
+                    "align params.replace_existing must be a boolean",
+                    code=ERR_VALIDATION,
+                    http_status=400,
+                )
+                return
+            if "preserve_accepted" in params and not isinstance(params.get("preserve_accepted"), bool):
+                self._send_error(
+                    "align params.preserve_accepted must be a boolean",
+                    code=ERR_VALIDATION,
+                    http_status=400,
+                )
+                return
         if kind in ("export_tei",) and not params.get("out_dir"):
             self._send_error("export_tei job requires params.out_dir", code=ERR_VALIDATION, http_status=400)
             return
@@ -1465,13 +1587,6 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         self._send_json(success_payload({"documents": documents, "count": len(documents)}))
 
     def _handle_align(self, body: dict) -> None:
-        from multicorpus_engine.aligner import (
-            align_by_external_id,
-            align_by_external_id_then_position,
-            align_by_position,
-            align_by_similarity,
-        )
-
         pivot_doc_id = body.get("pivot_doc_id")
         target_doc_ids = body.get("target_doc_ids")
         if pivot_doc_id is None or not target_doc_ids:
@@ -1519,6 +1634,24 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             )
             return
         debug_align = raw_debug_align
+        raw_replace_existing = body.get("replace_existing", False)
+        if not isinstance(raw_replace_existing, bool):
+            self._send_error(
+                "replace_existing must be a boolean",
+                code=ERR_BAD_REQUEST,
+                http_status=400,
+            )
+            return
+        replace_existing = raw_replace_existing
+        raw_preserve_accepted = body.get("preserve_accepted", True)
+        if not isinstance(raw_preserve_accepted, bool):
+            self._send_error(
+                "preserve_accepted must be a boolean",
+                code=ERR_BAD_REQUEST,
+                http_status=400,
+            )
+            return
+        preserve_accepted = raw_preserve_accepted
         requested_run_id = body.get("run_id")
         if requested_run_id is not None:
             if not isinstance(requested_run_id, str) or not requested_run_id.strip():
@@ -1553,6 +1686,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             "target_doc_ids": target_doc_ids,
             "strategy": strategy,
             "debug_align": debug_align,
+            "replace_existing": replace_existing,
+            "preserve_accepted": preserve_accepted,
         }
         if "relation_type" in body and body.get("relation_type") is not None:
             # Stored for traceability in run params; not yet applied to alignment_links
@@ -1562,43 +1697,31 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             run_params["sim_threshold"] = threshold
 
         from multicorpus_engine.runs import RunIdConflictError
+        deleted_before = 0
+        preserved_before = 0
         try:
             with self._lock():
                 run_id = self._create_run("align", run_params, run_id=requested_run_id)
-                if strategy == "position":
-                    reports = align_by_position(
+                protected_pairs_by_target: dict[int, set[tuple[int, int]]] | None = None
+                if replace_existing:
+                    protected_pairs_by_target, deleted_before, preserved_before = _prepare_alignment_replace(
                         self._conn(),
                         pivot_doc_id=pivot_doc_id,
                         target_doc_ids=target_doc_ids,
-                        run_id=run_id,
-                        debug=debug_align,
+                        preserve_accepted=preserve_accepted,
                     )
-                elif strategy == "similarity":
-                    reports = align_by_similarity(
-                        self._conn(),
-                        pivot_doc_id=pivot_doc_id,
-                        target_doc_ids=target_doc_ids,
-                        run_id=run_id,
-                        threshold=threshold,
-                        debug=debug_align,
-                    )
-                elif strategy == "external_id_then_position":
-                    reports = align_by_external_id_then_position(
-                        self._conn(),
-                        pivot_doc_id=pivot_doc_id,
-                        target_doc_ids=target_doc_ids,
-                        run_id=run_id,
-                        debug=debug_align,
-                    )
-                else:
-                    reports = align_by_external_id(
-                        self._conn(),
-                        pivot_doc_id=pivot_doc_id,
-                        target_doc_ids=target_doc_ids,
-                        run_id=run_id,
-                        debug=debug_align,
-                    )
+                reports = _run_alignment_strategy(
+                    self._conn(),
+                    pivot_doc_id=pivot_doc_id,
+                    target_doc_ids=target_doc_ids,
+                    run_id=run_id,
+                    strategy=strategy,
+                    debug_align=debug_align,
+                    threshold=threshold,
+                    protected_pairs_by_target=protected_pairs_by_target,
+                )
                 total_links = sum(r.links_created for r in reports)
+                total_effective_links = total_links + (preserved_before if replace_existing and preserve_accepted else 0)
                 self._update_run_stats(
                     run_id,
                     {
@@ -1606,7 +1729,12 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                         "pivot_doc_id": pivot_doc_id,
                         "target_doc_ids": target_doc_ids,
                         "debug_align": debug_align,
+                        "replace_existing": replace_existing,
+                        "preserve_accepted": preserve_accepted,
+                        "deleted_before": deleted_before,
+                        "preserved_before": preserved_before,
                         "total_links_created": total_links,
+                        "total_effective_links": total_effective_links,
                         "pairs": [r.to_dict() for r in reports],
                     },
                 )
@@ -1619,7 +1747,12 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             "strategy": strategy,
             "pivot_doc_id": pivot_doc_id,
             "debug_align": debug_align,
+            "replace_existing": replace_existing,
+            "preserve_accepted": preserve_accepted,
+            "deleted_before": deleted_before,
+            "preserved_before": preserved_before,
             "total_links_created": total_links,
+            "total_effective_links": total_links + (preserved_before if replace_existing and preserve_accepted else 0),
             "reports": [r.to_dict() for r in reports],
         }))
 
@@ -2697,12 +2830,6 @@ class CorpusServer:
             return report.to_dict()
 
         if kind == "align":
-            from multicorpus_engine.aligner import (
-                align_by_external_id,
-                align_by_external_id_then_position,
-                align_by_position,
-                align_by_similarity,
-            )
             from multicorpus_engine.runs import RunIdConflictError, create_run, update_run_stats
 
             pivot_doc_id = params.get("pivot_doc_id")
@@ -2718,6 +2845,8 @@ class CorpusServer:
                     f"Supported: {', '.join(sorted(allowed_strategies))}"
                 )
             debug_align = bool(params.get("debug_align", False))
+            replace_existing = bool(params.get("replace_existing", False))
+            preserve_accepted = bool(params.get("preserve_accepted", True))
             run_id_param = params.get("run_id", f"job-align-{job_id[:8]}")
             if not isinstance(run_id_param, str) or not run_id_param.strip():
                 raise ValueError("align job expects params.run_id to be a non-empty string when provided")
@@ -2730,6 +2859,8 @@ class CorpusServer:
                     "target_doc_ids": [int(t) for t in target_doc_ids],
                     "strategy": strategy,
                     "debug_align": debug_align,
+                    "replace_existing": replace_existing,
+                    "preserve_accepted": preserve_accepted,
                 }
                 if strategy == "similarity":
                     run_params["sim_threshold"] = float(params.get("sim_threshold", 0.8))
@@ -2740,43 +2871,31 @@ class CorpusServer:
                         f"run_id already exists: {exc.run_id!r}. "
                         "Supply a unique run_id or omit it to auto-generate one."
                     ) from exc
-                if strategy == "position":
-                    reports = align_by_position(
+                threshold = float(params.get("sim_threshold", 0.8))
+                if strategy == "similarity" and (threshold < 0.0 or threshold > 1.0):
+                    raise ValueError("sim_threshold must be in [0.0, 1.0]")
+                protected_pairs_by_target: dict[int, set[tuple[int, int]]] | None = None
+                deleted_before = 0
+                preserved_before = 0
+                if replace_existing:
+                    protected_pairs_by_target, deleted_before, preserved_before = _prepare_alignment_replace(
                         conn,
                         pivot_doc_id=int(pivot_doc_id),
                         target_doc_ids=[int(t) for t in target_doc_ids],
-                        run_id=created_run_id,
-                        debug=debug_align,
+                        preserve_accepted=preserve_accepted,
                     )
-                elif strategy == "similarity":
-                    threshold = float(params.get("sim_threshold", 0.8))
-                    if threshold < 0.0 or threshold > 1.0:
-                        raise ValueError("sim_threshold must be in [0.0, 1.0]")
-                    reports = align_by_similarity(
-                        conn,
-                        pivot_doc_id=int(pivot_doc_id),
-                        target_doc_ids=[int(t) for t in target_doc_ids],
-                        run_id=created_run_id,
-                        threshold=threshold,
-                        debug=debug_align,
-                    )
-                elif strategy == "external_id_then_position":
-                    reports = align_by_external_id_then_position(
-                        conn,
-                        pivot_doc_id=int(pivot_doc_id),
-                        target_doc_ids=[int(t) for t in target_doc_ids],
-                        run_id=created_run_id,
-                        debug=debug_align,
-                    )
-                else:
-                    reports = align_by_external_id(
-                        conn,
-                        pivot_doc_id=int(pivot_doc_id),
-                        target_doc_ids=[int(t) for t in target_doc_ids],
-                        run_id=created_run_id,
-                        debug=debug_align,
-                    )
+                reports = _run_alignment_strategy(
+                    conn,
+                    pivot_doc_id=int(pivot_doc_id),
+                    target_doc_ids=[int(t) for t in target_doc_ids],
+                    run_id=created_run_id,
+                    strategy=strategy,
+                    debug_align=debug_align,
+                    threshold=threshold,
+                    protected_pairs_by_target=protected_pairs_by_target,
+                )
                 total_links = sum(r.links_created for r in reports)
+                total_effective_links = total_links + (preserved_before if replace_existing and preserve_accepted else 0)
                 update_run_stats(
                     conn,
                     created_run_id,
@@ -2785,7 +2904,12 @@ class CorpusServer:
                         "pivot_doc_id": int(pivot_doc_id),
                         "target_doc_ids": [int(t) for t in target_doc_ids],
                         "debug_align": debug_align,
+                        "replace_existing": replace_existing,
+                        "preserve_accepted": preserve_accepted,
+                        "deleted_before": deleted_before,
+                        "preserved_before": preserved_before,
                         "total_links_created": total_links,
+                        "total_effective_links": total_effective_links,
                         "pairs": [r.to_dict() for r in reports],
                     },
                 )
@@ -2795,7 +2919,12 @@ class CorpusServer:
                 "strategy": strategy,
                 "pivot_doc_id": pivot_doc_id,
                 "debug_align": debug_align,
+                "replace_existing": replace_existing,
+                "preserve_accepted": preserve_accepted,
+                "deleted_before": deleted_before if replace_existing else 0,
+                "preserved_before": preserved_before if replace_existing else 0,
                 "total_links_created": total_links,
+                "total_effective_links": total_effective_links if replace_existing else total_links,
                 "reports": [r.to_dict() for r in reports],
             }
 

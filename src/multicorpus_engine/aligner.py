@@ -127,6 +127,7 @@ def align_pair(
     target_doc_id: int,
     run_id: str,
     debug: bool = False,
+    protected_pairs: set[tuple[int, int]] | None = None,
     run_logger: Optional[logging.Logger] = None,
 ) -> AlignmentReport:
     """Align a single (pivot, target) document pair by external_id.
@@ -195,10 +196,22 @@ def align_pair(
     # Create alignment links for matched external_ids
     # When duplicates exist on either side, use the first unit_id (lowest n)
     links: list[tuple] = []
+    used_pivot: set[int] = set()
+    used_target: set[int] = set()
+    if protected_pairs:
+        for pivot_uid, target_uid in protected_pairs:
+            used_pivot.add(pivot_uid)
+            used_target.add(target_uid)
+    protected_skipped = 0
     sample_links: list[dict[str, Any]] = []
     for eid in common:
         pivot_uid = pivot_map[eid][0]
         target_uid = target_map[eid][0]
+        if pivot_uid in used_pivot or target_uid in used_target:
+            protected_skipped += 1
+            continue
+        used_pivot.add(pivot_uid)
+        used_target.add(target_uid)
         links.append((run_id, pivot_uid, target_uid, eid, pivot_doc_id, target_doc_id, utcnow))
         if debug and len(sample_links) < 20:
             sample_links.append(
@@ -222,10 +235,14 @@ def align_pair(
     conn.commit()
 
     report.links_created = len(links)
+    if protected_skipped:
+        msg = f"{protected_skipped} lien(s) protégé(s) ignoré(s) pendant l'alignement"
+        report.warnings.append(msg)
+        log.info(msg)
     if debug:
         report.debug = {
             "strategy": "external_id",
-            "link_sources": {"external_id": len(links)},
+            "link_sources": {"external_id": len(links), "protected_skipped": protected_skipped},
             "sample_links": sample_links,
         }
     log.info(
@@ -242,6 +259,7 @@ def align_by_external_id(
     target_doc_ids: list[int],
     run_id: str,
     debug: bool = False,
+    protected_pairs_by_target: dict[int, set[tuple[int, int]]] | None = None,
     run_logger: Optional[logging.Logger] = None,
 ) -> list[AlignmentReport]:
     """Align pivot document against one or more target documents.
@@ -256,6 +274,7 @@ def align_by_external_id(
             target_doc_id=target_doc_id,
             run_id=run_id,
             debug=debug,
+            protected_pairs=(protected_pairs_by_target or {}).get(target_doc_id),
             run_logger=run_logger,
         )
         reports.append(report)
@@ -268,6 +287,7 @@ def align_pair_external_id_then_position(
     target_doc_id: int,
     run_id: str,
     debug: bool = False,
+    protected_pairs: set[tuple[int, int]] | None = None,
     run_logger: Optional[logging.Logger] = None,
 ) -> AlignmentReport:
     """Align by external_id first, then fill remaining lines by shared position n."""
@@ -340,14 +360,22 @@ def align_pair_external_id_then_position(
 
     used_pivot: set[int] = set()
     used_target: set[int] = set()
+    if protected_pairs:
+        for pivot_uid, target_uid in protected_pairs:
+            used_pivot.add(pivot_uid)
+            used_target.add(target_uid)
     links: list[tuple] = []
     sample_links: list[dict[str, Any]] = []
     external_id_links = 0
+    protected_skipped = 0
 
     # Phase 1: explicit anchor links.
     for eid in common_ext:
         pivot_uid = pivot_ext_map[eid][0]
         target_uid = target_ext_map[eid][0]
+        if pivot_uid in used_pivot or target_uid in used_target:
+            protected_skipped += 1
+            continue
         used_pivot.add(pivot_uid)
         used_target.add(target_uid)
         links.append((run_id, pivot_uid, target_uid, eid, pivot_doc_id, target_doc_id, utcnow))
@@ -378,6 +406,11 @@ def align_pair_external_id_then_position(
     for n in common_pos:
         pivot_uid = pivot_remaining[n]
         target_uid = target_remaining[n]
+        if pivot_uid in used_pivot or target_uid in used_target:
+            protected_skipped += 1
+            continue
+        used_pivot.add(pivot_uid)
+        used_target.add(target_uid)
         links.append((run_id, pivot_uid, target_uid, n, pivot_doc_id, target_doc_id, utcnow))
         position_links += 1
         if debug and len(sample_links) < 20:
@@ -406,6 +439,10 @@ def align_pair_external_id_then_position(
         msg = f"Position fallback created {len(common_pos)} link(s)"
         report.warnings.append(msg)
         log.info(msg)
+    if protected_skipped:
+        msg = f"{protected_skipped} lien(s) protégé(s) ignoré(s) pendant l'alignement"
+        report.warnings.append(msg)
+        log.info(msg)
 
     report.links_created = len(links)
     if debug:
@@ -414,6 +451,7 @@ def align_pair_external_id_then_position(
             "link_sources": {
                 "external_id": external_id_links,
                 "position": position_links,
+                "protected_skipped": protected_skipped,
             },
             "sample_links": sample_links,
         }
@@ -431,6 +469,7 @@ def align_by_external_id_then_position(
     target_doc_ids: list[int],
     run_id: str,
     debug: bool = False,
+    protected_pairs_by_target: dict[int, set[tuple[int, int]]] | None = None,
     run_logger: Optional[logging.Logger] = None,
 ) -> list[AlignmentReport]:
     """Align pivot against targets with external_id first, then position fallback."""
@@ -442,6 +481,7 @@ def align_by_external_id_then_position(
             target_doc_id=target_doc_id,
             run_id=run_id,
             debug=debug,
+            protected_pairs=(protected_pairs_by_target or {}).get(target_doc_id),
             run_logger=run_logger,
         )
         reports.append(report)
@@ -474,6 +514,7 @@ def align_pair_by_position(
     target_doc_id: int,
     run_id: str,
     debug: bool = False,
+    protected_pairs: set[tuple[int, int]] | None = None,
     run_logger: Optional[logging.Logger] = None,
 ) -> AlignmentReport:
     """Align a single (pivot, target) pair by paragraph position (n).
@@ -526,10 +567,22 @@ def align_pair_by_position(
         log.warning(msg)
 
     links: list[tuple] = []
+    used_pivot: set[int] = set()
+    used_target: set[int] = set()
+    if protected_pairs:
+        for pivot_uid, target_uid in protected_pairs:
+            used_pivot.add(pivot_uid)
+            used_target.add(target_uid)
+    protected_skipped = 0
     sample_links: list[dict[str, Any]] = []
     for n in common:
         pivot_uid = pivot_pos[n]
         target_uid = target_pos[n]
+        if pivot_uid in used_pivot or target_uid in used_target:
+            protected_skipped += 1
+            continue
+        used_pivot.add(pivot_uid)
+        used_target.add(target_uid)
         links.append((run_id, pivot_uid, target_uid, n, pivot_doc_id, target_doc_id, utcnow))
         if debug and len(sample_links) < 20:
             sample_links.append(
@@ -553,10 +606,14 @@ def align_pair_by_position(
     conn.commit()
 
     report.links_created = len(links)
+    if protected_skipped:
+        msg = f"{protected_skipped} lien(s) protégé(s) ignoré(s) pendant l'alignement"
+        report.warnings.append(msg)
+        log.info(msg)
     if debug:
         report.debug = {
             "strategy": "position",
-            "link_sources": {"position": len(links)},
+            "link_sources": {"position": len(links), "protected_skipped": protected_skipped},
             "sample_links": sample_links,
         }
     log.info(
@@ -572,6 +629,7 @@ def align_by_position(
     target_doc_ids: list[int],
     run_id: str,
     debug: bool = False,
+    protected_pairs_by_target: dict[int, set[tuple[int, int]]] | None = None,
     run_logger: Optional[logging.Logger] = None,
 ) -> list[AlignmentReport]:
     """Align pivot document against targets by paragraph position (n).
@@ -586,6 +644,7 @@ def align_by_position(
             target_doc_id=target_doc_id,
             run_id=run_id,
             debug=debug,
+            protected_pairs=(protected_pairs_by_target or {}).get(target_doc_id),
             run_logger=run_logger,
         )
         reports.append(report)
@@ -629,6 +688,7 @@ def align_pair_by_similarity(
     run_id: str,
     threshold: float = 0.8,
     debug: bool = False,
+    protected_pairs: set[tuple[int, int]] | None = None,
     run_logger: Optional[logging.Logger] = None,
 ) -> AlignmentReport:
     """Align a (pivot, target) pair using character-level edit-distance similarity.
@@ -675,12 +735,21 @@ def align_pair_by_similarity(
     )
 
     used_target: set[int] = set()
+    protected_pivot: set[int] = set()
+    if protected_pairs:
+        for pivot_uid, target_uid in protected_pairs:
+            protected_pivot.add(pivot_uid)
+            used_target.add(target_uid)
+    protected_skipped = 0
     links: list[tuple] = []
     sample_links: list[dict[str, Any]] = []
     matched_scores: list[float] = []
 
     for p_row in pivot_rows:
         p_uid = p_row["unit_id"]
+        if p_uid in protected_pivot:
+            protected_skipped += 1
+            continue
         p_text = p_row["text_norm"] or ""
         best_score = -1.0
         best_t_uid: Optional[int] = None
@@ -750,10 +819,14 @@ def align_pair_by_similarity(
         report.debug = {
             "strategy": "similarity",
             "threshold": threshold,
-            "link_sources": {"similarity": len(links)},
+            "link_sources": {"similarity": len(links), "protected_skipped": protected_skipped},
             "similarity_stats": similarity_stats,
             "sample_links": sample_links,
         }
+    if protected_skipped:
+        msg = f"{protected_skipped} lien(s) protégé(s) ignoré(s) pendant l'alignement"
+        report.warnings.append(msg)
+        log.info(msg)
 
     log.info(
         "Similarity alignment complete: %d links created (%.1f%% coverage)",
@@ -770,6 +843,7 @@ def align_by_similarity(
     run_id: str,
     threshold: float = 0.8,
     debug: bool = False,
+    protected_pairs_by_target: dict[int, set[tuple[int, int]]] | None = None,
     run_logger: Optional[logging.Logger] = None,
 ) -> list[AlignmentReport]:
     """Align pivot against one or more targets using edit-distance similarity.
@@ -785,6 +859,7 @@ def align_by_similarity(
             run_id=run_id,
             threshold=threshold,
             debug=debug,
+            protected_pairs=(protected_pairs_by_target or {}).get(target_doc_id),
             run_logger=run_logger,
         )
         reports.append(report)

@@ -543,6 +543,100 @@ def test_align_invalid_debug_align_is_bad_request(sidecar_base_url: str) -> None
     assert payload["error"]["type"] == ERR_BAD_REQUEST
 
 
+def test_align_recalculate_preserves_accepted_links_when_requested(sidecar_base_url: str) -> None:
+    _, docs_payload = _http_json("GET", f"{sidecar_base_url}/documents")
+    docs = docs_payload["documents"]
+    pivot_id = docs[0]["doc_id"]
+    target_id = docs[1]["doc_id"]
+
+    _, initial_audit = _http_json(
+        "POST",
+        f"{sidecar_base_url}/align/audit",
+        {"pivot_doc_id": pivot_id, "target_doc_id": target_id, "limit": 200},
+    )
+    assert len(initial_audit["links"]) >= 1
+    first_link_id = initial_audit["links"][0]["link_id"]
+
+    code_accept, payload_accept = _http_json(
+        "POST",
+        f"{sidecar_base_url}/align/link/update_status",
+        {"link_id": first_link_id, "status": "accepted"},
+    )
+    assert code_accept == 200, payload_accept
+
+    code, payload = _http_json(
+        "POST",
+        f"{sidecar_base_url}/align",
+        {
+            "pivot_doc_id": pivot_id,
+            "target_doc_ids": [target_id],
+            "strategy": "external_id",
+            "replace_existing": True,
+            "preserve_accepted": True,
+            "run_id": "sidecar-test-align-recalc-preserve",
+        },
+    )
+    assert code == 200, payload
+    assert payload["ok"] is True
+    assert payload["replace_existing"] is True
+    assert payload["preserve_accepted"] is True
+    assert payload["preserved_before"] == 1
+    assert payload["deleted_before"] >= 1
+    assert payload["total_effective_links"] == len(initial_audit["links"])
+
+    _, accepted_audit = _http_json(
+        "POST",
+        f"{sidecar_base_url}/align/audit",
+        {"pivot_doc_id": pivot_id, "target_doc_id": target_id, "status": "accepted", "limit": 200},
+    )
+    accepted_ids = {row["link_id"] for row in accepted_audit["links"]}
+    assert first_link_id in accepted_ids
+
+
+def test_align_recalculate_can_drop_previous_accepted_links(sidecar_base_url: str) -> None:
+    _, docs_payload = _http_json("GET", f"{sidecar_base_url}/documents")
+    docs = docs_payload["documents"]
+    pivot_id = docs[0]["doc_id"]
+    target_id = docs[1]["doc_id"]
+
+    _, initial_audit = _http_json(
+        "POST",
+        f"{sidecar_base_url}/align/audit",
+        {"pivot_doc_id": pivot_id, "target_doc_id": target_id, "limit": 200},
+    )
+    first_link_id = initial_audit["links"][0]["link_id"]
+    _http_json(
+        "POST",
+        f"{sidecar_base_url}/align/link/update_status",
+        {"link_id": first_link_id, "status": "accepted"},
+    )
+
+    code, payload = _http_json(
+        "POST",
+        f"{sidecar_base_url}/align",
+        {
+            "pivot_doc_id": pivot_id,
+            "target_doc_ids": [target_id],
+            "strategy": "external_id",
+            "replace_existing": True,
+            "preserve_accepted": False,
+            "run_id": "sidecar-test-align-recalc-drop",
+        },
+    )
+    assert code == 200, payload
+    assert payload["ok"] is True
+    assert payload["replace_existing"] is True
+    assert payload["preserve_accepted"] is False
+    assert payload["preserved_before"] == 0
+
+    _, accepted_audit = _http_json(
+        "POST",
+        f"{sidecar_base_url}/align/audit",
+        {"pivot_doc_id": pivot_id, "target_doc_id": target_id, "status": "accepted", "limit": 200},
+    )
+    assert len(accepted_audit["links"]) == 0
+
+
 def test_openapi_spec_has_documents_and_align_routes() -> None:
     from multicorpus_engine.sidecar_contract import openapi_spec
 
