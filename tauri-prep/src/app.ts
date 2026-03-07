@@ -376,6 +376,66 @@ const CSS = `
   /* Audit table */
   .audit-table { font-size: 0.82rem; }
   .audit-text { max-width: 300px; word-break: break-word; }
+  .audit-table tbody tr {
+    cursor: pointer;
+  }
+  .audit-table tbody tr.audit-row-active {
+    background: #edf7f5;
+  }
+  .audit-table tbody tr:hover {
+    background: #f5fbfa;
+  }
+
+  /* Align workspace */
+  .align-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 320px;
+    gap: 12px;
+    align-items: start;
+  }
+  .align-main { min-width: 0; }
+  .align-launcher {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    background: var(--color-surface-alt);
+    padding: 0.6rem 0.7rem;
+  }
+  .align-focus {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    background: #fff;
+    padding: 0.7rem;
+    position: sticky;
+    top: 12px;
+  }
+  .align-focus-text {
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    padding: 0.5rem 0.55rem;
+    background: #fafbfd;
+  }
+  .align-focus-text strong {
+    display: block;
+    font-size: 0.76rem;
+    color: var(--color-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    margin-bottom: 0.25rem;
+  }
+  .align-focus-text p {
+    margin: 0;
+    white-space: pre-wrap;
+    line-height: 1.4;
+    font-size: 0.84rem;
+  }
+  @media (max-width: 1200px) {
+    .align-layout {
+      grid-template-columns: 1fr;
+    }
+    .align-focus {
+      position: static;
+    }
+  }
 
   /* Batch action bar (V1.3) */
   .audit-batch-bar {

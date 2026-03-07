@@ -116,6 +116,9 @@ export class ActionsScreen {
   private _auditHasMore = false;
   private _auditLinks: AlignLinkRecord[] = [];
   private _auditIncludeExplain = false;
+  private _auditExceptionsOnly = false;
+  private _auditTextFilter = "";
+  private _auditSelectedLinkId: number | null = null;
   private _alignExplainability: AlignExplainabilityEntry[] = [];
   private _alignRunId: string | null = null;
 
@@ -132,6 +135,7 @@ export class ActionsScreen {
   private static readonly LS_WF_RUN_ID = "agrafes.prep.workflow.run_id";
   private static readonly LS_WF_STEP = "agrafes.prep.workflow.step";
   private static readonly LS_SEG_POST_VALIDATE = "agrafes.prep.seg.post_validate";
+  private static readonly LS_AUDIT_EXCEPTIONS_ONLY = "agrafes.prep.audit.exceptions_only";
 
   // Log + busy
   private _logEl!: HTMLElement;
@@ -330,89 +334,123 @@ export class ActionsScreen {
 
       <!-- ═══ FEATURE 2: Align + Audit UI ═══ -->
       <section class="card">
-        <h3>Alignement <span class="badge-preview">avec audit</span></h3>
-        <div class="form-row">
-          <label>Doc pivot :
-            <select id="act-align-pivot"><option value="">— choisir —</option></select>
-          </label>
-          <label>Doc(s) cible(s) :
-            <select id="act-align-targets" multiple size="3"></select>
-          </label>
-        </div>
-        <div class="form-row">
-          <label>Stratégie :
-            <select id="act-align-strategy">
-              <option value="external_id">external_id</option>
-              <option value="external_id_then_position">external_id_then_position (hybride)</option>
-              <option value="position">position</option>
-              <option value="similarity">similarité</option>
-            </select>
-          </label>
-          <label id="act-sim-row" style="display:none">Seuil :
-            <input id="act-sim-threshold" type="number" min="0" max="1" step="0.05" value="0.8" style="width:70px"/>
-          </label>
-          <label style="display:flex; align-items:center; gap:0.35rem">
-            <input id="act-align-debug" type="checkbox" />
-            debug explainability
-          </label>
-        </div>
-        <div class="btn-row" style="margin-top:0.5rem">
-          <button id="act-align-btn" class="btn btn-warning" disabled>Aligner</button>
-        </div>
+        <h3>Alignement <span class="badge-preview">run + correction</span></h3>
+        <div class="align-layout">
+          <div class="align-main">
+            <div class="align-launcher">
+              <div class="form-row">
+                <label>Doc pivot :
+                  <select id="act-align-pivot"><option value="">— choisir —</option></select>
+                </label>
+                <label>Doc(s) cible(s) :
+                  <select id="act-align-targets" multiple size="3"></select>
+                </label>
+              </div>
+              <div class="form-row">
+                <label>Stratégie :
+                  <select id="act-align-strategy">
+                    <option value="external_id">external_id</option>
+                    <option value="external_id_then_position">external_id_then_position (hybride)</option>
+                    <option value="position">position</option>
+                    <option value="similarity">similarité</option>
+                  </select>
+                </label>
+                <label id="act-sim-row" style="display:none">Seuil :
+                  <input id="act-sim-threshold" type="number" min="0" max="1" step="0.05" value="0.8" style="width:70px"/>
+                </label>
+                <label style="display:flex; align-items:center; gap:0.35rem">
+                  <input id="act-align-debug" type="checkbox" />
+                  debug explainability
+                </label>
+              </div>
+              <div class="btn-row" style="margin-top:0.5rem">
+                <button id="act-align-btn" class="btn btn-warning" disabled>Lancer la run d'alignement</button>
+              </div>
+            </div>
 
-        <!-- Align results banner -->
-        <div id="act-align-results" style="display:none; margin-top:0.75rem">
-          <div id="act-align-banner" class="preview-stats"></div>
-        </div>
+            <div id="act-align-results" style="display:none; margin-top:0.75rem">
+              <div id="act-align-banner" class="preview-stats"></div>
+            </div>
 
-        <div id="act-align-debug-panel" style="display:none; margin-top:0.75rem">
-          <div class="align-debug-head">
-            <h4 style="margin:0; font-size:0.9rem">Explainability</h4>
-            <button id="act-align-copy-debug-btn" class="btn btn-secondary btn-sm">Copier diagnostic JSON</button>
-          </div>
-          <div id="act-align-debug-content" class="align-debug-content"></div>
-        </div>
+            <div id="act-align-debug-panel" style="display:none; margin-top:0.75rem">
+              <div class="align-debug-head">
+                <h4 style="margin:0; font-size:0.9rem">Explainability</h4>
+                <button id="act-align-copy-debug-btn" class="btn btn-secondary btn-sm">Copier diagnostic JSON</button>
+              </div>
+              <div id="act-align-debug-content" class="align-debug-content"></div>
+            </div>
 
-        <!-- Audit panel -->
-        <div id="act-audit-panel" style="display:none; margin-top:0.75rem">
-          <h4 style="margin:0 0 0.4rem; font-size:0.9rem">Audit des liens</h4>
-          <div class="form-row">
-            <label>Pivot :
-              <select id="act-audit-pivot"><option value="">— choisir —</option></select>
-            </label>
-            <label>Cible :
-              <select id="act-audit-target"><option value="">— choisir —</option></select>
-            </label>
-            <label>ext_id exact :
-              <input id="act-audit-extid" type="number" placeholder="optionnel" style="width:100px"/>
-            </label>
-            <label>Statut :
-              <select id="act-audit-status">
-                <option value="">Tous</option>
-                <option value="unreviewed">Non révisés</option>
-                <option value="accepted">Acceptés</option>
-                <option value="rejected">Rejetés</option>
-              </select>
-            </label>
+            <div id="act-audit-panel" style="display:none; margin-top:0.75rem">
+              <h4 style="margin:0 0 0.4rem; font-size:0.9rem">Texte complet aligné</h4>
+              <div class="form-row">
+                <label>Pivot :
+                  <select id="act-audit-pivot"><option value="">— choisir —</option></select>
+                </label>
+                <label>Cible :
+                  <select id="act-audit-target"><option value="">— choisir —</option></select>
+                </label>
+                <label>ext_id exact :
+                  <input id="act-audit-extid" type="number" placeholder="optionnel" style="width:100px"/>
+                </label>
+                <label>Statut :
+                  <select id="act-audit-status">
+                    <option value="">Tous</option>
+                    <option value="unreviewed">Non révisés</option>
+                    <option value="accepted">Acceptés</option>
+                    <option value="rejected">Rejetés</option>
+                  </select>
+                </label>
+                <label>Recherche texte :
+                  <input id="act-audit-text-filter" type="text" placeholder="mot clé dans pivot/cible" style="min-width:220px"/>
+                </label>
+              </div>
+              <div class="btn-row" style="margin-top:0.4rem; gap:0.75rem; align-items:center">
+                <button id="act-audit-load-btn" class="btn btn-secondary btn-sm">Charger les liens</button>
+                <label style="display:flex; align-items:center; gap:0.3rem; font-size:0.82rem; cursor:pointer">
+                  <input id="act-audit-explain-toggle" type="checkbox" />
+                  Expliquer (include_explain)
+                </label>
+                <label style="display:flex; align-items:center; gap:0.3rem; font-size:0.82rem; cursor:pointer">
+                  <input id="act-audit-exceptions-only" type="checkbox" />
+                  Exceptions seulement
+                </label>
+              </div>
+              <div id="act-audit-table-wrap" style="margin-top:0.5rem; overflow-x:auto"></div>
+              <div id="act-audit-batch-bar" class="audit-batch-bar" style="display:none">
+                <span id="act-audit-sel-count" class="audit-sel-count">0 sélectionné(s)</span>
+                <button id="act-audit-batch-accept" class="btn btn-sm btn-secondary">✓ Accepter</button>
+                <button id="act-audit-batch-reject" class="btn btn-sm btn-secondary">✗ Rejeter</button>
+                <button id="act-audit-batch-unreviewed" class="btn btn-sm btn-secondary">? Non révisé</button>
+                <button id="act-audit-batch-delete" class="btn btn-sm btn-danger">🗑 Supprimer</button>
+              </div>
+              <div class="btn-row" style="margin-top:0.4rem">
+                <button id="act-audit-more-btn" class="btn btn-secondary btn-sm" style="display:none">Charger plus</button>
+              </div>
+            </div>
           </div>
-          <div class="btn-row" style="margin-top:0.4rem; gap:0.75rem; align-items:center">
-            <button id="act-audit-load-btn" class="btn btn-secondary btn-sm">Charger les liens</button>
-            <label style="display:flex; align-items:center; gap:0.3rem; font-size:0.82rem; cursor:pointer">
-              <input id="act-audit-explain-toggle" type="checkbox" />
-              Expliquer (include_explain)
-            </label>
-          </div>
-          <div id="act-audit-table-wrap" style="margin-top:0.5rem; overflow-x:auto"></div>
-          <div id="act-audit-batch-bar" class="audit-batch-bar" style="display:none">
-            <span id="act-audit-sel-count" class="audit-sel-count">0 sélectionné(s)</span>
-            <button id="act-audit-batch-accept" class="btn btn-sm btn-secondary">✓ Accepter</button>
-            <button id="act-audit-batch-reject" class="btn btn-sm btn-secondary">✗ Rejeter</button>
-            <button id="act-audit-batch-unreviewed" class="btn btn-sm btn-secondary">? Non révisé</button>
-            <button id="act-audit-batch-delete" class="btn btn-sm btn-danger">🗑 Supprimer</button>
-          </div>
-          <div class="btn-row" style="margin-top:0.4rem">
-            <button id="act-audit-more-btn" class="btn btn-secondary btn-sm" style="display:none">Charger plus</button>
-          </div>
+
+          <aside class="align-focus">
+            <h4 style="margin:0 0 0.45rem; font-size:0.9rem">Correction ciblée</h4>
+            <p id="act-align-focus-empty" class="empty-hint">Sélectionnez une ligne dans “Texte complet aligné” pour corriger rapidement.</p>
+            <div id="act-align-focus-panel" style="display:none">
+              <div id="act-align-focus-meta" class="hint" style="margin-bottom:0.35rem"></div>
+              <div class="align-focus-text">
+                <strong>Pivot</strong>
+                <p id="act-align-focus-pivot"></p>
+              </div>
+              <div class="align-focus-text" style="margin-top:0.45rem">
+                <strong>Cible</strong>
+                <p id="act-align-focus-target"></p>
+              </div>
+              <div class="btn-row" style="margin-top:0.65rem">
+                <button id="act-focus-accept-btn" class="btn btn-sm btn-secondary">✓ Valider</button>
+                <button id="act-focus-reject-btn" class="btn btn-sm btn-secondary">✗ À revoir</button>
+                <button id="act-focus-unreviewed-btn" class="btn btn-sm btn-secondary">? Non révisé</button>
+                <button id="act-focus-retarget-btn" class="btn btn-sm btn-secondary">⇄ Retarget</button>
+                <button id="act-focus-delete-btn" class="btn btn-sm btn-danger">🗑 Supprimer</button>
+              </div>
+            </div>
+          </aside>
         </div>
       </section>
 
@@ -559,6 +597,7 @@ export class ActionsScreen {
     root.querySelector("#act-audit-load-btn")!.addEventListener("click", () => {
       this._auditOffset = 0;
       this._auditLinks = [];
+      this._auditSelectedLinkId = null;
       this._renderAuditTable(root);
       this._loadAuditPage(root, false);
     });
@@ -574,6 +613,33 @@ export class ActionsScreen {
           void this._loadAuditPage(root, false);
         }
       });
+    const auditTextFilterEl = root.querySelector("#act-audit-text-filter") as HTMLInputElement | null;
+    auditTextFilterEl?.addEventListener("input", () => {
+      this._auditTextFilter = auditTextFilterEl.value.trim().toLowerCase();
+      this._renderAuditTable(root);
+    });
+    const exceptionsOnlyEl = root.querySelector("#act-audit-exceptions-only") as HTMLInputElement | null;
+    if (exceptionsOnlyEl) {
+      this._auditExceptionsOnly = this._readAuditExceptionsOnlyPref();
+      exceptionsOnlyEl.checked = this._auditExceptionsOnly;
+      exceptionsOnlyEl.addEventListener("change", () => {
+        this._auditExceptionsOnly = exceptionsOnlyEl.checked;
+        this._writeAuditExceptionsOnlyPref(this._auditExceptionsOnly);
+        this._renderAuditTable(root);
+      });
+    }
+
+    // Focus correction panel actions
+    root.querySelector("#act-focus-accept-btn")!.addEventListener("click", () =>
+      this._runFocusStatusAction(root, "accepted"));
+    root.querySelector("#act-focus-reject-btn")!.addEventListener("click", () =>
+      this._runFocusStatusAction(root, "rejected"));
+    root.querySelector("#act-focus-unreviewed-btn")!.addEventListener("click", () =>
+      this._runFocusStatusAction(root, null));
+    root.querySelector("#act-focus-delete-btn")!.addEventListener("click", () =>
+      this._runFocusDeleteAction(root));
+    root.querySelector("#act-focus-retarget-btn")!.addEventListener("click", () =>
+      this._runFocusRetargetAction(root));
 
     // Batch action bar
     root.querySelector("#act-audit-batch-accept")!.addEventListener("click", () =>
@@ -618,6 +684,7 @@ export class ActionsScreen {
     this._alignRunId = null;
     this._hasPendingPreview = false;
     this._lastAuditEmpty = false;
+    this._auditSelectedLinkId = null;
     if (!conn) this._lastErrorMsg = null;
     this._setButtonsEnabled(false);
     if (conn) {
@@ -735,6 +802,45 @@ export class ActionsScreen {
       const el = document.querySelector(`#${id}`) as HTMLButtonElement | null;
       if (el) el.disabled = !on;
     });
+  }
+
+  private _readAuditExceptionsOnlyPref(): boolean {
+    try {
+      return localStorage.getItem(ActionsScreen.LS_AUDIT_EXCEPTIONS_ONLY) === "1";
+    } catch {
+      return false;
+    }
+  }
+
+  private _writeAuditExceptionsOnlyPref(value: boolean): void {
+    try {
+      localStorage.setItem(ActionsScreen.LS_AUDIT_EXCEPTIONS_ONLY, value ? "1" : "0");
+    } catch {
+      // ignore preference persistence failure
+    }
+  }
+
+  private _selectedAuditLink(): AlignLinkRecord | null {
+    if (this._auditSelectedLinkId === null) return null;
+    return this._auditLinks.find((l) => l.link_id === this._auditSelectedLinkId) ?? null;
+  }
+
+  private async _runFocusStatusAction(root: HTMLElement, status: "accepted" | "rejected" | null): Promise<void> {
+    const link = this._selectedAuditLink();
+    if (!link) return;
+    await this._setLinkStatus(link.link_id, status, root);
+  }
+
+  private async _runFocusDeleteAction(root: HTMLElement): Promise<void> {
+    const link = this._selectedAuditLink();
+    if (!link) return;
+    await this._deleteLinkFromAudit(link.link_id, root);
+  }
+
+  private async _runFocusRetargetAction(root: HTMLElement): Promise<void> {
+    const link = this._selectedAuditLink();
+    if (!link) return;
+    await this._openRetargetModal(link.link_id, link.pivot_unit_id, root);
   }
 
   private _schedulePreview(silent = false): void {
@@ -1212,6 +1318,7 @@ export class ActionsScreen {
           this._auditTargetId = targetIds[0];
           this._auditOffset = 0;
           this._auditLinks = [];
+          this._auditSelectedLinkId = null;
           this._lastAuditEmpty = false;
           const auditPivSel = document.querySelector("#act-audit-pivot") as HTMLSelectElement | null;
           const auditTgtSel = document.querySelector("#act-audit-target") as HTMLSelectElement | null;
@@ -1345,6 +1452,7 @@ export class ActionsScreen {
     if (!append) {
       this._auditOffset = 0;
       this._auditLinks = [];
+      this._auditSelectedLinkId = null;
     }
 
     const statusSel = root.querySelector("#act-audit-status") as HTMLSelectElement;
@@ -1380,16 +1488,35 @@ export class ActionsScreen {
     const wrap = root.querySelector("#act-audit-table-wrap")!;
     const moreBtn = root.querySelector("#act-audit-more-btn") as HTMLElement;
     const batchBar = root.querySelector("#act-audit-batch-bar") as HTMLElement | null;
+    const textFilter = this._auditTextFilter;
+    const visibleLinks = this._auditLinks.filter((link) => {
+      if (this._auditExceptionsOnly && link.status === "accepted") return false;
+      if (!textFilter) return true;
+      const haystack = `${link.external_id ?? ""} ${link.pivot_text ?? ""} ${link.target_text ?? ""}`.toLowerCase();
+      return haystack.includes(textFilter);
+    });
+    if (!visibleLinks.some((l) => l.link_id === this._auditSelectedLinkId)) {
+      this._auditSelectedLinkId = visibleLinks.length > 0 ? visibleLinks[0].link_id : null;
+    }
 
     if (this._auditLinks.length === 0) {
       this._lastAuditEmpty = true;
       wrap.innerHTML = '<p class="empty-hint">Aucun lien. Lancez un alignement ou chargez les liens.</p>';
       if (moreBtn) moreBtn.style.display = "none";
       if (batchBar) batchBar.style.display = "none";
+      this._renderAuditFocus(root);
       this._refreshRuntimeState();
       return;
     }
-    this._lastAuditEmpty = false;
+    this._lastAuditEmpty = visibleLinks.length === 0;
+    if (visibleLinks.length === 0) {
+      wrap.innerHTML = '<p class="empty-hint">Aucune ligne ne correspond au filtre courant.</p>';
+      if (moreBtn) moreBtn.style.display = this._auditHasMore ? "" : "none";
+      if (batchBar) batchBar.style.display = "none";
+      this._renderAuditFocus(root);
+      this._refreshRuntimeState();
+      return;
+    }
 
     const showExplain = this._auditIncludeExplain;
     const table = document.createElement("table");
@@ -1406,8 +1533,10 @@ export class ActionsScreen {
       </tr></thead>
     `;
     const tbody = document.createElement("tbody");
-    for (const link of this._auditLinks) {
+    for (const link of visibleLinks) {
       const tr = document.createElement("tr");
+      tr.classList.toggle("audit-row-active", link.link_id === this._auditSelectedLinkId);
+      tr.dataset.linkId = String(link.link_id);
       const statusBadge = link.status === "accepted"
         ? `<span class="status-badge status-ok">✅ Accepté</span>`
         : link.status === "rejected"
@@ -1439,7 +1568,7 @@ export class ActionsScreen {
         <td style="white-space:nowrap">
           <button class="btn btn-sm btn-secondary audit-accept-btn" data-id="${link.link_id}" title="Accepter">✓</button>
           <button class="btn btn-sm btn-danger audit-reject-btn" data-id="${link.link_id}" title="Rejeter">✗</button>
-          <button class="btn btn-sm btn-secondary audit-retarget-btn" data-id="${link.link_id}" data-pivot="${link.pivot_unit_id}" title="Reciblaer">⇄</button>
+          <button class="btn btn-sm btn-secondary audit-retarget-btn" data-id="${link.link_id}" data-pivot="${link.pivot_unit_id}" title="Recibler">⇄</button>
           <button class="btn btn-sm btn-danger audit-del-btn" data-id="${link.link_id}" title="Supprimer">🗑</button>
         </td>
       `;
@@ -1452,18 +1581,36 @@ export class ActionsScreen {
     // Wire action buttons
     const self = this;
     wrap.querySelectorAll<HTMLButtonElement>(".audit-accept-btn").forEach(btn => {
-      btn.addEventListener("click", () => self._updateLinkStatus(Number(btn.dataset.id), "accepted", root));
+      btn.addEventListener("click", (evt) => {
+        evt.stopPropagation();
+        void self._setLinkStatus(Number(btn.dataset.id), "accepted", root);
+      });
     });
     wrap.querySelectorAll<HTMLButtonElement>(".audit-reject-btn").forEach(btn => {
-      btn.addEventListener("click", () => self._updateLinkStatus(Number(btn.dataset.id), "rejected", root));
+      btn.addEventListener("click", (evt) => {
+        evt.stopPropagation();
+        void self._setLinkStatus(Number(btn.dataset.id), "rejected", root);
+      });
     });
     wrap.querySelectorAll<HTMLButtonElement>(".audit-del-btn").forEach(btn => {
-      btn.addEventListener("click", () => self._deleteLinkFromAudit(Number(btn.dataset.id), root));
+      btn.addEventListener("click", (evt) => {
+        evt.stopPropagation();
+        void self._deleteLinkFromAudit(Number(btn.dataset.id), root);
+      });
     });
     wrap.querySelectorAll<HTMLButtonElement>(".audit-retarget-btn").forEach(btn => {
-      btn.addEventListener("click", () =>
-        self._openRetargetModal(Number(btn.dataset.id), Number(btn.dataset.pivot), root)
-      );
+      btn.addEventListener("click", (evt) => {
+        evt.stopPropagation();
+        void self._openRetargetModal(Number(btn.dataset.id), Number(btn.dataset.pivot), root);
+      });
+    });
+    wrap.querySelectorAll<HTMLTableRowElement>("tbody tr").forEach((tr) => {
+      tr.addEventListener("click", () => {
+        const id = Number(tr.dataset.linkId);
+        if (!Number.isFinite(id)) return;
+        this._auditSelectedLinkId = id;
+        this._renderAuditTable(root);
+      });
     });
 
     // Select-all checkbox
@@ -1483,12 +1630,44 @@ export class ActionsScreen {
       });
     }
     wrap.querySelectorAll<HTMLInputElement>(".audit-row-cb").forEach(cb => {
-      cb.addEventListener("change", updateBatchBar);
+      cb.addEventListener("change", (evt) => {
+        evt.stopPropagation();
+        updateBatchBar();
+      });
+      cb.addEventListener("click", (evt) => evt.stopPropagation());
     });
 
     if (moreBtn) moreBtn.style.display = this._auditHasMore ? "" : "none";
     if (batchBar) batchBar.style.display = "none"; // hidden until selection
+    this._renderAuditFocus(root);
     this._refreshRuntimeState();
+  }
+
+  private _renderAuditFocus(root: HTMLElement): void {
+    const emptyEl = root.querySelector<HTMLElement>("#act-align-focus-empty");
+    const panelEl = root.querySelector<HTMLElement>("#act-align-focus-panel");
+    if (!emptyEl || !panelEl) return;
+    const selected = this._selectedAuditLink();
+    if (!selected) {
+      emptyEl.style.display = "";
+      panelEl.style.display = "none";
+      return;
+    }
+    emptyEl.style.display = "none";
+    panelEl.style.display = "";
+    const metaEl = root.querySelector<HTMLElement>("#act-align-focus-meta");
+    const pivotEl = root.querySelector<HTMLElement>("#act-align-focus-pivot");
+    const targetEl = root.querySelector<HTMLElement>("#act-align-focus-target");
+    if (metaEl) {
+      const statusLabel = selected.status === "accepted"
+        ? "accepté"
+        : selected.status === "rejected"
+        ? "rejeté"
+        : "non révisé";
+      metaEl.innerHTML = `Lien #${selected.link_id} · ext_id ${selected.external_id ?? "—"} · statut <strong>${statusLabel}</strong>`;
+    }
+    if (pivotEl) pivotEl.textContent = String(selected.pivot_text ?? "");
+    if (targetEl) targetEl.textContent = String(selected.target_text ?? "");
   }
 
   // ─── V1.3 — Batch audit actions ────────────────────────────────────────────
@@ -1520,6 +1699,9 @@ export class ActionsScreen {
       const res = await batchUpdateAlignLinks(this._conn, actions);
       if (action === "delete") {
         this._auditLinks = this._auditLinks.filter(l => !ids.includes(l.link_id));
+        if (this._auditSelectedLinkId !== null && ids.includes(this._auditSelectedLinkId)) {
+          this._auditSelectedLinkId = null;
+        }
         this._log(`✓ ${res.deleted} lien(s) supprimé(s) en lot.`);
         this._showToast?.(`✓ ${res.deleted} lien(s) supprimé(s)`);
       } else {
@@ -1565,7 +1747,7 @@ export class ActionsScreen {
 
     const modal = document.createElement("div");
     modal.style.cssText = "background:#fff;border-radius:8px;padding:1.2rem 1.4rem;min-width:340px;max-width:520px;max-height:80vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.18)";
-    modal.innerHTML = `<h3 style="margin:0 0 .7rem">Reciblaer le lien #${linkId}</h3>
+    modal.innerHTML = `<h3 style="margin:0 0 .7rem">Recibler le lien #${linkId}</h3>
       <p style="font-size:.83rem;color:#666;margin:0 0 .7rem">Pivot : <em>${_escHtml(String(link.pivot_text ?? ""))}</em></p>
       <p style="font-size:.83rem;color:#666;margin:0 0 .8rem">Actuel : <em>${_escHtml(String(link.target_text ?? ""))}</em></p>
       <div id="retarget-cands"></div>
@@ -2096,15 +2278,24 @@ export class ActionsScreen {
 
   // ─── V0.4C — Audit link actions ──────────────────────────────────────────────
 
-  private async _updateLinkStatus(linkId: number, status: "accepted" | "rejected", root: HTMLElement): Promise<void> {
+  private async _setLinkStatus(
+    linkId: number,
+    status: "accepted" | "rejected" | null,
+    root: HTMLElement,
+  ): Promise<void> {
     if (!this._conn) return;
     try {
-      await updateAlignLinkStatus(this._conn, { link_id: linkId, status });
+      if (status === null) {
+        await batchUpdateAlignLinks(this._conn, [{ action: "set_status", link_id: linkId, status: null }]);
+      } else {
+        await updateAlignLinkStatus(this._conn, { link_id: linkId, status });
+      }
       // Update in-memory link status
       const link = this._auditLinks.find(l => l.link_id === linkId);
       if (link) link.status = status;
       this._renderAuditTable(root);
-      this._log(`✓ Lien #${linkId} marqué "${status}".`);
+      const statusLabel = status === null ? "non révisé" : status;
+      this._log(`✓ Lien #${linkId} marqué "${statusLabel}".`);
     } catch (err) {
       this._log(`✗ Mise à jour statut : ${err instanceof SidecarError ? err.message : String(err)}`, true);
     }
@@ -2116,6 +2307,7 @@ export class ActionsScreen {
     try {
       await deleteAlignLink(this._conn, { link_id: linkId });
       this._auditLinks = this._auditLinks.filter(l => l.link_id !== linkId);
+      if (this._auditSelectedLinkId === linkId) this._auditSelectedLinkId = null;
       this._renderAuditTable(root);
       this._log(`✓ Lien #${linkId} supprimé.`);
     } catch (err) {
