@@ -28,6 +28,7 @@ export class ImportScreen {
   private _files: FileItem[] = [];
   private _listEl!: HTMLElement;
   private _logEl!: HTMLElement;
+  private _summaryEl!: HTMLElement;
   private _importBtn!: HTMLButtonElement;
   private _indexBtn!: HTMLButtonElement;
   private _jobCenter: JobCenter | null = null;
@@ -41,32 +42,35 @@ export class ImportScreen {
       <h2 class="screen-title">Importer</h2>
 
       <section class="card">
-        <h3>Fichiers à importer</h3>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:0.7rem;flex-wrap:wrap">
+          <h3 style="margin:0">Fichiers à importer</h3>
+          <span id="imp-summary" class="hint" style="margin:0">0 fichier · 0 en attente</span>
+        </div>
         <div class="btn-row">
           <button id="imp-add-btn" class="btn btn-primary">Ajouter des fichiers…</button>
           <button id="imp-clear-btn" class="btn btn-secondary">Vider la liste</button>
+          <button id="imp-import-btn" class="btn btn-primary" disabled>Importer la file</button>
         </div>
 
-        <div class="import-defaults">
-          <label>Mode par défaut :
-            <select id="imp-default-mode">
-              <option value="docx_numbered_lines">DOCX lignes numérotées</option>
-              <option value="txt_numbered_lines">TXT lignes numérotées</option>
-              <option value="docx_paragraphs">DOCX paragraphes</option>
-              <option value="tei">TEI</option>
-            </select>
-          </label>
-          <label>Langue par défaut :
-            <input id="imp-default-lang" type="text" value="fr" placeholder="fr, en, …" maxlength="10" />
-          </label>
-        </div>
+        <details class="import-disclosure">
+          <summary>Options avancées d'import</summary>
+          <div class="import-defaults">
+            <label>Mode par défaut :
+              <select id="imp-default-mode">
+                <option value="docx_numbered_lines">DOCX lignes numérotées</option>
+                <option value="txt_numbered_lines">TXT lignes numérotées</option>
+                <option value="docx_paragraphs">DOCX paragraphes</option>
+                <option value="tei">TEI</option>
+              </select>
+            </label>
+            <label>Langue par défaut :
+              <input id="imp-default-lang" type="text" value="fr" placeholder="fr, en, …" maxlength="10" />
+            </label>
+          </div>
+        </details>
 
         <div id="imp-list" class="import-list">
           <p class="empty-hint">Aucun fichier sélectionné.</p>
-        </div>
-
-        <div class="btn-row" style="margin-top:0.75rem">
-          <button id="imp-import-btn" class="btn btn-primary" disabled>Importer tout</button>
         </div>
       </section>
 
@@ -78,14 +82,15 @@ export class ImportScreen {
         </div>
       </section>
 
-      <section class="card">
-        <h3>Journal</h3>
+      <details class="card import-log-card">
+        <summary class="import-log-summary">Journal des imports</summary>
         <div id="imp-log" class="log-pane"></div>
-      </section>
+      </details>
     `;
 
     this._listEl = root.querySelector("#imp-list")!;
     this._logEl = root.querySelector("#imp-log")!;
+    this._summaryEl = root.querySelector("#imp-summary")!;
     this._importBtn = root.querySelector("#imp-import-btn")!;
     this._indexBtn = root.querySelector("#imp-index-btn")!;
 
@@ -117,8 +122,10 @@ export class ImportScreen {
   }
 
   private _updateButtons(): void {
-    this._importBtn.disabled = !this._conn || this._files.length === 0;
+    const pendingCount = this._files.filter((f) => f.status === "pending").length;
+    this._importBtn.disabled = !this._conn || pendingCount === 0;
     this._indexBtn.disabled = !this._conn;
+    this._summaryEl.textContent = `${this._files.length} fichier${this._files.length > 1 ? "s" : ""} · ${pendingCount} en attente`;
   }
 
   private async _addFiles(): Promise<void> {
@@ -162,6 +169,7 @@ export class ImportScreen {
   }
 
   private _renderList(): void {
+    this._updateButtons();
     if (this._files.length === 0) {
       this._listEl.innerHTML = '<p class="empty-hint">Aucun fichier sélectionné.</p>';
       return;

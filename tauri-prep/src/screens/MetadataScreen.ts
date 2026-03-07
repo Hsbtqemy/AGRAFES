@@ -41,6 +41,7 @@ export class MetadataScreen {
   private _docListEl!: HTMLElement;
   private _editPanelEl!: HTMLElement;
   private _logEl!: HTMLElement;
+  private _docCountEl!: HTMLElement;
 
   setConn(conn: Conn | null): void {
     this._conn = conn;
@@ -69,41 +70,42 @@ export class MetadataScreen {
     root.innerHTML = `
       <h2 class="screen-title">Documents</h2>
 
-      <!-- Bulk edit + Validate bar -->
       <div class="card">
-        <h3>Édition en masse</h3>
+        <div class="meta-toolbar-head">
+          <h3 style="margin:0">Gestion corpus</h3>
+          <span id="meta-doc-count" class="hint" style="margin:0">0 document</span>
+        </div>
         <div class="btn-row" style="margin-bottom:0.55rem; align-items:center">
           <button id="db-backup-btn" class="btn btn-secondary btn-sm">Sauvegarder la DB</button>
+          <button id="validate-btn" class="btn btn-secondary btn-sm">Valider métadonnées</button>
           <span id="db-backup-status" class="hint" style="margin:0">Aucune sauvegarde récente</span>
         </div>
-        <div class="form-row">
-          <label>Doc role (tous)
-            <select id="bulk-role">
-              <option value="">— ne pas changer —</option>
-              ${DOC_ROLES.map(r => `<option value="${r}">${r}</option>`).join("")}
-            </select>
-          </label>
-          <label>Resource type (tous)
-            <input id="bulk-restype" type="text" placeholder="literary, legal, …" style="max-width:160px">
-          </label>
-          <div style="align-self:flex-end">
-            <button id="bulk-apply-btn" class="btn btn-secondary btn-sm" disabled>Appliquer à tous</button>
-            <button id="validate-btn" class="btn btn-secondary btn-sm" style="margin-left:0.4rem">Valider métadonnées</button>
+        <details class="meta-bulk-disclosure">
+          <summary>Édition en masse</summary>
+          <div class="form-row" style="margin-top:0.55rem">
+            <label>Doc role (tous)
+              <select id="bulk-role">
+                <option value="">— ne pas changer —</option>
+                ${DOC_ROLES.map(r => `<option value="${r}">${r}</option>`).join("")}
+              </select>
+            </label>
+            <label>Resource type (tous)
+              <input id="bulk-restype" type="text" placeholder="literary, legal, …" style="max-width:160px">
+            </label>
+            <div style="align-self:flex-end">
+              <button id="bulk-apply-btn" class="btn btn-secondary btn-sm" disabled>Appliquer à tous</button>
+            </div>
           </div>
-        </div>
+        </details>
       </div>
 
-      <!-- Two-column layout: doc list + edit panel -->
-      <div style="display:flex;gap:1rem;align-items:flex-start">
-
-        <!-- Doc list -->
-        <div class="card" style="flex:1;min-width:240px">
+      <div class="meta-layout">
+        <div class="card meta-list-card">
           <h3>Documents <button id="refresh-docs-btn" class="btn btn-secondary btn-sm">↻</button></h3>
-          <div id="meta-doc-list" class="doc-list" style="max-height:400px;overflow-y:auto"></div>
+          <div id="meta-doc-list" class="doc-list meta-doc-list"></div>
         </div>
 
-        <!-- Edit panel -->
-        <div class="card" style="flex:2">
+        <div class="card meta-edit-card">
           <h3>Édition du document sélectionné</h3>
           <div id="meta-edit-panel">
             <p class="empty-hint">Sélectionnez un document dans la liste.</p>
@@ -111,16 +113,16 @@ export class MetadataScreen {
         </div>
       </div>
 
-      <!-- Log -->
-      <div class="card">
-        <h3>Journal</h3>
+      <details class="card meta-log-card">
+        <summary class="import-log-summary">Journal des actions documents</summary>
         <div id="meta-log" class="log-pane"></div>
-      </div>
+      </details>
     `;
 
     this._docListEl = root.querySelector("#meta-doc-list")!;
     this._editPanelEl = root.querySelector("#meta-edit-panel")!;
     this._logEl = root.querySelector("#meta-log")!;
+    this._docCountEl = root.querySelector("#meta-doc-count")!;
 
     root.querySelector("#refresh-docs-btn")!.addEventListener("click", () => this._refreshDocList());
     root.querySelector("#bulk-apply-btn")!.addEventListener("click", () => this._runBulkUpdate());
@@ -146,6 +148,7 @@ export class MetadataScreen {
   private async _refreshDocList(): Promise<void> {
     if (!this._conn) {
       this._docListEl.innerHTML = `<p class="empty-hint">Sidecar non connecté.</p>`;
+      this._updateDocCount();
       return;
     }
     try {
@@ -154,10 +157,12 @@ export class MetadataScreen {
       this._log(`Erreur liste documents: ${err instanceof SidecarError ? err.message : String(err)}`, true);
       return;
     }
+    this._updateDocCount();
     this._renderDocList();
   }
 
   private _renderDocList(): void {
+    this._updateDocCount();
     if (this._docs.length === 0) {
       this._docListEl.innerHTML = `<p class="empty-hint">Aucun document.</p>`;
       return;
@@ -166,9 +171,8 @@ export class MetadataScreen {
     for (const doc of this._docs) {
       const row = document.createElement("div");
       row.className = "meta-doc-row";
-      row.style.cssText = "padding:0.35rem 0.5rem;cursor:pointer;border-bottom:1px solid var(--color-border);";
       if (this._selectedDoc?.doc_id === doc.doc_id) {
-        row.style.background = "#e0ecff";
+        row.classList.add("is-active");
       }
       const wfStatus = this._workflowStatus(doc);
       const wfLabel = this._workflowLabel(wfStatus);
@@ -176,8 +180,8 @@ export class MetadataScreen {
         ? `<span class="wf-meta">validé ${this._esc(new Date(doc.validated_at).toLocaleDateString())}</span>`
         : "";
       row.innerHTML = `
-        <div style="font-weight:600;font-size:0.85rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${this._esc(doc.title)}</div>
-        <div style="font-size:0.78rem;color:var(--color-muted);display:flex;align-items:center;gap:0.35rem;flex-wrap:wrap">
+        <div class="meta-doc-title">${this._esc(doc.title)}</div>
+        <div class="meta-doc-meta">
           <span>#${doc.doc_id} · ${this._esc(doc.language)} · ${doc.unit_count} unités</span>
           <span class="wf-pill wf-${wfStatus}">${wfLabel}</span>
           ${validatedMeta}
@@ -508,6 +512,12 @@ export class MetadataScreen {
     line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
     this._logEl.appendChild(line);
     this._logEl.scrollTop = this._logEl.scrollHeight;
+  }
+
+  private _updateDocCount(): void {
+    if (!this._docCountEl) return;
+    const count = this._docs.length;
+    this._docCountEl.textContent = `${count} document${count > 1 ? "s" : ""}`;
   }
 
   private _esc(s: string): string {

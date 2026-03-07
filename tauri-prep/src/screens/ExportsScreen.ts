@@ -40,6 +40,8 @@ export class ExportsScreen {
   private _v2RunIdEl!: HTMLInputElement;
   private _v2StrictEl!: HTMLInputElement;
   private _v2RunBtn!: HTMLButtonElement;
+  private _legacyContainer!: HTMLElement;
+  private _legacyToggleBtn!: HTMLButtonElement;
 
   setJobCenter(jc: JobCenter, showToast: (msg: string, isError?: boolean) => void): void {
     this._jobCenter = jc;
@@ -156,6 +158,17 @@ export class ExportsScreen {
         </div>
       </div>
 
+      <div class="card export-legacy-toggle-card">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:0.7rem;flex-wrap:wrap">
+          <div>
+            <h3 style="margin:0">Exports avancés / historiques</h3>
+            <p class="hint" style="margin:0.2rem 0 0">Conservez cette zone fermée pour un parcours simplifié.</p>
+          </div>
+          <button id="exports-toggle-legacy-btn" class="btn btn-secondary btn-sm">Afficher les exports avancés</button>
+        </div>
+      </div>
+
+      <div id="exports-legacy-container" style="display:none">
       <!-- TEI Export -->
       <div class="card">
         <h3>Export TEI <span class="badge-preview">XML</span></h3>
@@ -294,12 +307,12 @@ export class ExportsScreen {
         </div>
         <div id="qa-gate-banner" style="display:none;margin-top:0.5rem;padding:0.4rem 0.75rem;border-radius:4px;font-size:0.83rem"></div>
       </div>
-
-      <!-- Log -->
-      <div class="card">
-        <h3>Journal</h3>
-        <div id="export-log" class="log-pane"></div>
       </div>
+
+      <details class="card export-log-card">
+        <summary class="import-log-summary">Journal des exports</summary>
+        <div id="export-log" class="log-pane"></div>
+      </details>
     `;
 
     this._logEl = root.querySelector("#export-log")!;
@@ -316,10 +329,13 @@ export class ExportsScreen {
     this._v2RunIdEl = root.querySelector<HTMLInputElement>("#v2-run-id")!;
     this._v2StrictEl = root.querySelector<HTMLInputElement>("#v2-qa-strict-mode")!;
     this._v2RunBtn = root.querySelector<HTMLButtonElement>("#v2-run-btn")!;
+    this._legacyContainer = root.querySelector<HTMLElement>("#exports-legacy-container")!;
+    this._legacyToggleBtn = root.querySelector<HTMLButtonElement>("#exports-toggle-legacy-btn")!;
 
     root.querySelector("#v2-run-btn")!.addEventListener("click", () => this._runUnifiedExport());
     root.querySelector("#v2-stage")!.addEventListener("change", () => this._syncV2Ui());
     root.querySelector("#v2-product")!.addEventListener("change", () => this._syncV2Ui());
+    this._legacyToggleBtn.addEventListener("click", () => this._toggleLegacyExports());
     root.querySelector("#tei-export-btn")!.addEventListener("click", () => this._runTeiExport());
     root.querySelector("#pkg-export-btn")!.addEventListener("click", () => this._runPackageExport());
     root.querySelector("#align-csv-btn")!.addEventListener("click", () => this._runAlignCsvExport());
@@ -345,6 +361,14 @@ export class ExportsScreen {
     this._refreshDocs();
     this._syncV2Ui();
     return root;
+  }
+
+  private _toggleLegacyExports(): void {
+    const isOpen = this._legacyContainer.style.display !== "none";
+    this._legacyContainer.style.display = isOpen ? "none" : "block";
+    this._legacyToggleBtn.textContent = isOpen
+      ? "Afficher les exports avancés"
+      : "Masquer les exports avancés";
   }
 
   // ── Doc refresh ─────────────────────────────────────────────────────────────
