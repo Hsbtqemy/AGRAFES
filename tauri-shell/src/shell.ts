@@ -207,6 +207,57 @@ const SHELL_CSS = `
   }
   .shell-init-error-btns { display: flex; gap: 6px; margin-left: auto; flex-shrink: 0; }
 
+  /* ── DB change banner (P4-2) ────────────────────────────────── */
+  .shell-db-change-banner {
+    position: fixed;
+    top: 44px;
+    left: 0;
+    right: 0;
+    background: #e8f4fd;
+    border-bottom: 2px solid #4a90d9;
+    z-index: 9989;
+    padding: 7px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    font-size: 0.83rem;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+    animation: shell-banner-in 0.18s ease-out;
+  }
+  @keyframes shell-banner-in {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .shell-db-change-banner-icon { font-size: 1rem; flex-shrink: 0; }
+  .shell-db-change-banner-msg  { color: #1a4f7a; font-weight: 600; flex-shrink: 0; }
+  .shell-db-change-banner-name {
+    font-family: ui-monospace, "SF Mono", monospace;
+    font-size: 0.78rem;
+    color: #2c6fa8;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 400px;
+  }
+  .shell-db-change-banner-btns { display: flex; gap: 6px; margin-left: auto; flex-shrink: 0; }
+  .shell-db-change-banner-btn {
+    font-size: 0.78rem;
+    padding: 3px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    border: 1px solid #4a90d9;
+    background: #fff;
+    color: #1a4f7a;
+    transition: background 0.12s;
+  }
+  .shell-db-change-banner-btn:hover { background: #d0e8f8; }
+  .shell-db-change-banner-btn.primary { background: #4a90d9; color: #fff; border-color: #3575bb; }
+  .shell-db-change-banner-btn.primary:hover { background: #3575bb; }
+  .shell-db-change-banner-btn.dismiss { border-color: transparent; color: #5a8aad; background: transparent; }
+  .shell-db-change-banner-btn.dismiss:hover { background: #cce0f2; }
+
   /* ── Home screen ───────────────────────────────────────────── */
   .shell-home-wrap {
     display: flex;
@@ -808,6 +859,7 @@ let _currentMode: Mode = "home";
 let _currentDbPath: string | null = null;
 let _currentDispose: (() => void) | null = null;
 let _navigating = false;
+let _pendingDbRemount = false;
 const _dbListeners: Set<(path: string | null) => void> = new Set();
 let _deepLinkUnlisten: (() => void) | null = null;
 
@@ -1130,11 +1182,16 @@ async function _switchDb(path: string): Promise<void> {
 
   try {
     await _initDb(path);
-    _showToast(`DB active : ${_pathLabel(path)}`);
     _shellLog("info", "db_switch", `DB ready: ${_pathLabel(path)}`);
-    // Remount active module so it uses the new DB
-    if (_currentMode !== "home") {
-      await _setMode(_currentMode);
+    if (_currentMode === "home") {
+      // Home is stateless — remount immediately (no context to lose).
+      _showToast(`DB active : ${_pathLabel(path)}`);
+    } else {
+      // Non-home module is mounted: defer remount so the user keeps scroll/context.
+      // A banner lets them choose when to refresh.
+      _pendingDbRemount = true;
+      _showToast(`DB changée : ${_pathLabel(path)}`);
+      _showDbChangeBanner(_pathLabel(path));
     }
   } catch (err) {
     _shellLog("error", "db_switch", `DB init failed: ${_pathLabel(path)}`, String(err));
@@ -1906,6 +1963,86 @@ function _clearInitError(): void {
   document.getElementById("shell-init-error")?.remove();
 }
 
+// ─── DB change banner (P4-2) ─────────────────────────────────────────────────
+
+/**
+ * Show a non-blocking sticky banner informing the user that the active DB
+ * has changed and offering to refresh (remount) the current module.
+ * The banner is dismissed on any module navigation (_setMode clears it).
+ */
+function _showDbChangeBanner(dbLabel: string): void {
+  _clearDbChangeBanner();
+
+  const banner = document.createElement("div");
+  banner.id = "shell-db-change-banner";
+  banner.className = "shell-db-change-banner";
+  banner.setAttribute("role", "status");
+  banner.setAttribute("aria-live", "polite");
+
+  const icon = document.createElement("span");
+  icon.className = "shell-db-change-banner-icon";
+  icon.textContent = "🔄";
+
+  const msg = document.createElement("span");
+  msg.className = "shell-db-change-banner-msg";
+  msg.textContent = "DB changée :";
+
+  const name = document.createElement("span");
+  name.className = "shell-db-change-banner-name";
+  name.title = dbLabel;
+  name.textContent = dbLabel;
+
+  const hint = document.createElement("span");
+  hint.style.cssText = "color:#3a7ab5;font-size:0.78rem;";
+  hint.textContent = "— rafraîchir le module pour l'appliquer";
+
+  const btns = document.createElement("div");
+  btns.className = "shell-db-change-banner-btns";
+
+  const refreshBtn = document.createElement("button");
+  refreshBtn.className = "shell-db-change-banner-btn primary";
+  refreshBtn.textContent = "Rafraîchir maintenant";
+  refreshBtn.addEventListener("click", () => {
+    _clearDbChangeBanner();
+    _pendingDbRemount = false;
+    void _setMode(_currentMode);
+  });
+
+  const laterBtn = document.createElement("button");
+  laterBtn.className = "shell-db-change-banner-btn dismiss";
+  laterBtn.textContent = "Plus tard";
+  laterBtn.title = "La DB sera appliquée à la prochaine navigation";
+  laterBtn.addEventListener("click", () => {
+    _clearDbChangeBanner();
+    // _pendingDbRemount stays true — will be applied on next _setMode
+  });
+
+  const dismissBtn = document.createElement("button");
+  dismissBtn.className = "shell-db-change-banner-btn dismiss";
+  dismissBtn.textContent = "✕";
+  dismissBtn.title = "Ignorer";
+  dismissBtn.setAttribute("aria-label", "Fermer ce bandeau");
+  dismissBtn.addEventListener("click", () => {
+    _clearDbChangeBanner();
+    _pendingDbRemount = false;
+  });
+
+  btns.appendChild(refreshBtn);
+  btns.appendChild(laterBtn);
+  btns.appendChild(dismissBtn);
+
+  banner.appendChild(icon);
+  banner.appendChild(msg);
+  banner.appendChild(name);
+  banner.appendChild(hint);
+  banner.appendChild(btns);
+  document.body.appendChild(banner);
+}
+
+function _clearDbChangeBanner(): void {
+  document.getElementById("shell-db-change-banner")?.remove();
+}
+
 async function _onChangeDb(defaultPath?: string): Promise<void> {
   let picked: string | string[] | null;
   try {
@@ -1931,6 +2068,10 @@ async function _onChangeDb(defaultPath?: string): Promise<void> {
 async function _setMode(mode: Mode): Promise<void> {
   if (_navigating) return;
   _navigating = true;
+
+  // Any navigation clears the DB-change banner and the pending-remount flag.
+  _clearDbChangeBanner();
+  _pendingDbRemount = false;
 
   _shellLog("info", "navigation", `Navigate: ${_currentMode} → ${mode}`);
 
