@@ -724,14 +724,19 @@ export class ActionsScreen {
                       <p class="empty-hint">S&#233;lectionnez un document VO.</p>
                     </div>
                   </section>
-                  <aside class="minimap minimap-track" aria-label="Minimap" id="act-seg-tr-minimap">
-                    <div class="mm"></div>
-                    <div class="mm"></div>
-                    <div class="mm"></div>
-                  </aside>
+                  <aside class="minimap minimap-track" aria-label="Minimap" id="act-seg-tr-minimap"></aside>
                 </div>
                 <div class="preview-foot">
                   <div id="act-seg-tr-footer-stats" class="preview-stats"></div>
+                </div>
+                <div class="doc-final-bar" id="act-seg-tr-final-bar" hidden>
+                  <div class="doc-final-wrap">
+                    <div class="doc-final-meta" id="act-seg-tr-final-meta"></div>
+                    <div class="doc-final-actions">
+                      <button class="btn btn-secondary btn-sm" id="act-seg-tr-final-compare">Comparer</button>
+                      <button class="btn btn-primary btn-sm" id="act-seg-tr-final-validate" disabled title="Validation disponible après alignement">Valider&#160;&#10003;</button>
+                    </div>
+                  </div>
                 </div>
               </article>
             </div>
@@ -964,16 +969,19 @@ export class ActionsScreen {
                       <p class="empty-hint">Disponible apr&#232;s segmentation.</p>
                     </div>
                   </section>
-                  <aside class="minimap minimap-track" aria-label="Minimap" id="act-seg-lt-minimap">
-                    <div class="mm"></div>
-                    <div class="mm changed"></div>
-                    <div class="mm"></div>
-                    <div class="mm current"></div>
-                    <div class="mm"></div>
-                  </aside>
+                  <aside class="minimap minimap-track" aria-label="Minimap" id="act-seg-lt-minimap"></aside>
                 </div>
                 <div class="preview-foot">
                   <div id="act-seg-lt-footer-stats" class="preview-stats"></div>
+                </div>
+                <div class="doc-final-bar" id="act-seg-lt-final-bar" hidden>
+                  <div class="doc-final-wrap">
+                    <div class="doc-final-meta" id="act-seg-lt-final-meta"></div>
+                    <div class="doc-final-actions">
+                      <button class="btn btn-secondary btn-sm" id="act-seg-lt-final-diff">Voir Diff</button>
+                      <button class="btn btn-primary btn-sm" id="act-seg-lt-final-apply" disabled title="Application disponible depuis la vue Curation">Appliquer</button>
+                    </div>
+                  </div>
                 </div>
               </article>
             </div>
@@ -993,9 +1001,19 @@ export class ActionsScreen {
     el.querySelector("#act-seg-btn")!.addEventListener("click", () => this._runSegment());
     el.querySelector("#act-seg-validate-btn")!.addEventListener("click", () => this._runSegment(true));
     el.querySelector("#act-seg-validate-only-btn")!.addEventListener("click", () => this._runValidateCurrentSegDoc());
-    // doc-final-bar buttons (proxy to same handlers)
+    // doc-final-bar buttons (units)
     el.querySelector("#act-seg-final-seg-btn")?.addEventListener("click", () => this._runSegment(true));
     el.querySelector("#act-seg-final-validate-btn")?.addEventListener("click", () => void this._runValidateCurrentSegDoc());
+    // doc-final-bar buttons (longtext) — switch to diff tab
+    el.querySelector("#act-seg-lt-final-diff")?.addEventListener("click", () => {
+      const diffTab = el.querySelector<HTMLButtonElement>('#act-seg-longtext-view .ptab[data-tab="diff"]');
+      diffTab?.click();
+    });
+    // doc-final-bar buttons (traduction) — switch to compare tab
+    el.querySelector("#act-seg-tr-final-compare")?.addEventListener("click", () => {
+      const compareTab = el.querySelector<HTMLButtonElement>('.ptab-tr[data-tab-tr="compare"]');
+      compareTab?.click();
+    });
     el.querySelector("#act-seg-focus-toggle")!.addEventListener("click", () => this._toggleSegFocusMode(root));
     el.querySelector("#act-seg-doc")!.addEventListener("change", () => {
       this._refreshSegmentationStatusUI();
@@ -1762,6 +1780,14 @@ export class ActionsScreen {
     if (pillEl) pillEl.textContent = `doc#${r.doc_id} · ${r.segment_pack ?? "auto"}`;
     const mmEl = segPanel.querySelector<HTMLElement>("#act-seg-lt-minimap");
     if (mmEl) this._renderMinimap(mmEl, r.units_output, r.warnings?.length ?? 0);
+    // Show doc-final-bar for longtext
+    const ltBar = segPanel.querySelector<HTMLElement>("#act-seg-lt-final-bar");
+    const ltMeta = segPanel.querySelector<HTMLElement>("#act-seg-lt-final-meta");
+    if (ltBar) ltBar.removeAttribute("hidden");
+    if (ltMeta) {
+      const warnSuffix = r.warnings?.length ? ` · ${r.warnings.length} avert.` : "";
+      ltMeta.textContent = `doc#${r.doc_id} · ${r.units_output} segments${warnSuffix}`;
+    }
   }
 
   /** Fills a minimap element with bucket bars. Changed buckets mark warning density. */
@@ -1819,6 +1845,15 @@ export class ActionsScreen {
     }
     const mmEl = segPanel.querySelector<HTMLElement>("#act-seg-tr-minimap");
     if (mmEl) this._renderMinimap(mmEl, r.units_output, r.warnings?.length ?? 0);
+    // Show doc-final-bar for traduction
+    const trBar = segPanel.querySelector<HTMLElement>("#act-seg-tr-final-bar");
+    const trMeta = segPanel.querySelector<HTMLElement>("#act-seg-tr-final-meta");
+    if (trBar) trBar.removeAttribute("hidden");
+    if (trMeta) {
+      const doc = this._docs.find(d => d.doc_id === r.doc_id);
+      const docLabel = doc ? `${doc.title}` : `doc#${r.doc_id}`;
+      trMeta.textContent = `${docLabel} · ${r.units_output} segments · pack ${r.segment_pack ?? "auto"}`;
+    }
   }
 
   /**
