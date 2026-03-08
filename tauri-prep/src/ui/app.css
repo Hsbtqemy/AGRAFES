@@ -825,6 +825,24 @@ mark.diff-mark { background: #b7f5c8; color: #14532d; border-radius: 2px; paddin
 .minimap-track .mm-mark { cursor: pointer; transition: opacity 0.1s, transform 0.1s; }
 .minimap-track .mm-mark:hover { opacity: 0.75; transform: scaleX(1.5); }
 
+/* ─── P20 Inc 1 — CSS polish résiduel ──────────────────────────────── */
+/* .vo-load-more: "Afficher plus" button (VO segments pagination) */
+.vo-load-more {
+  display: block;
+  margin: 8px auto;
+  width: fit-content;
+}
+/* Panes inside article.preview fill height (prevents scroll truncation) */
+article.preview .preview-body > .pane { height: 100%; min-height: 0; }
+/* run-row: focus-within accent (keyboard / action) */
+.run-row:focus-within { box-shadow: 0 0 0 2px var(--prep-accent, #0f766e); background: rgba(15,118,110,0.025); }
+/* doc-final-bar: ensure wrap height stays compact on all viewports */
+.doc-final-bar { min-height: 0; }
+/* run-row gap refinement at 900px (already stacked, loosen padding) */
+@media (max-width: 900px) {
+  .run-row { padding: 10px 10px; gap: 4px; }
+}
+
 /* Preview footer / foot */
 .preview-foot, .curate-preview-footer { padding: 8px 12px; border-top: 1px solid var(--prep-line,#dde1e8); background: #f8f9fa; flex-shrink: 0; }
 

@@ -1946,7 +1946,7 @@ export class ActionsScreen {
       const nextStep = VO_STEPS.find(s => s > currentLimit) ?? preview.total_lines;
       const remaining = preview.total_lines - currentLimit;
       const loadMoreHtml = hasMore
-        ? `<button class="btn btn-secondary btn-sm vo-load-more" data-doc-id="${docId}" data-next-limit="${nextStep}" style="margin:8px auto;display:block">Afficher ${Math.min(remaining, nextStep - currentLimit)} de plus (${currentLimit}/${preview.total_lines})</button>`
+        ? `<button class="btn btn-secondary btn-sm vo-load-more" data-doc-id="${docId}" data-next-limit="${nextStep}">Afficher ${Math.min(remaining, nextStep - currentLimit)} de plus (${currentLimit}/${preview.total_lines})</button>`
         : "";
       voScrollEl.innerHTML = header + lines + loadMoreHtml;
       // Wire load-more button
