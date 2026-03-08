@@ -2082,6 +2082,17 @@ async function _onChangeDb(defaultPath?: string): Promise<void> {
 
 // ─── Router / lifecycle ───────────────────────────────────────────────────────
 
+const _MODE_TITLES: Record<Mode, string> = {
+  home:       "AGRAFES",
+  explorer:   "AGRAFES — Explorer",
+  constituer: "AGRAFES — Constituer",
+  publish:    "AGRAFES — Publier",
+};
+
+function _updateDocTitle(mode: Mode): void {
+  document.title = _MODE_TITLES[mode] ?? "AGRAFES";
+}
+
 async function _setMode(mode: Mode): Promise<void> {
   if (_navigating) return;
   _navigating = true;
@@ -2096,6 +2107,7 @@ async function _setMode(mode: Mode): Promise<void> {
   _currentMode = mode;
   document.body.dataset.mode = mode;
   _updateHeaderTabs(mode);
+  _updateDocTitle(mode);
   _persist();
 
   // Dispose current module (best-effort)
