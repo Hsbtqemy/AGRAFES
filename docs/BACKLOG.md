@@ -1,6 +1,6 @@
 # Backlog — multicorpus_engine
 
-Last updated: 2026-03-08 (P6 — extraction CSS PREP_CSS vers fichiers Vite-managed)
+Last updated: 2026-03-08 (P7 — cleanup final + document.title par mode)
 
 ## Priority backlog (realistic, post-implementation)
 
@@ -100,11 +100,16 @@ Last updated: 2026-03-08 (P6 — extraction CSS PREP_CSS vers fichiers Vite-mana
   - **Impact bundle** : JS −36 kB pour prep et shell ; CSS désormais asset Vite dédié.
   - `styleRegistry.ts` conservé (20 tests, utile P7+).
 
-## P6 — Placeholders (post-P6)
+- **P7 — Cleanup final + document.title** (2026-03-08):
+  - `tauri-prep/src/app.ts` : placeholder `PREP_CSS` + commentaire `PREP_STYLE_ID` supprimés.
+  - `tauri-shell/src/styleRegistry.ts` : JSDoc mis à jour (Option A — conservé, tree-shaked en prod).
+  - `tauri-shell/src/shell.ts` : `_updateDocTitle(mode)` + `_MODE_TITLES` — titre OS par mode.
+
+## Placeholders (post-P7)
 
 | Priority | Item | Rationale | Status |
 |----------|------|-----------|--------|
-| P6 | **CSS extraction complète de `PREP_CSS`** | Extraire les ~67 KB de CSS inline de `app.ts` vers des fichiers `.css` dédiés | **done** |
-| P6 | **Shell multi-fenêtre** — `tauri::WebviewWindowBuilder` | Ouvrir Explorer et Constituer en parallèle dans des fenêtres séparées | todo |
-| P6 | **Deprecation tauri-app + tauri-prep** standalone | tauri-shell les supplante ; maintien pour standalone uniquement jusqu'à V2.0 | todo |
-| P6 | **Hot-swap DB sidecar** — éviter le redémarrage sidecar lors d'un switch DB | Actuellement : `_initDb` redémarre le sidecar ; un futur mécanisme de rechargement à chaud éviterait l'interruption | todo |
+| P8 | **Shell multi-fenêtre** — `tauri::WebviewWindowBuilder` | Ouvrir Explorer et Constituer en parallèle dans des fenêtres séparées | todo |
+| P8 | **Deprecation tauri-app + tauri-prep** standalone | tauri-shell les supplante ; maintien pour standalone uniquement jusqu'à V2.0 | todo |
+| P8 | **Hot-swap DB sidecar** — éviter le redémarrage sidecar lors d'un switch DB | Actuellement : `_initDb` redémarre le sidecar ; un futur mécanisme de rechargement à chaud éviterait l'interruption | todo |
+| P8 | **CSS audit des 4 fichiers ui/** (tokens/base/components/prep-vnext) | Depuis P6, `app.css` contient des règles dupliquées avec les 4 fichiers existants (`:root` vars, sidebar layout) | todo |

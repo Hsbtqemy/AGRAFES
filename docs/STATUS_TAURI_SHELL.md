@@ -1,6 +1,6 @@
 # Status: AGRAFES Shell (tauri-shell/)
 
-**Current version:** V1.9.1 (2026-03-08)
+**Current version:** V1.9.2 (2026-03-08)
 
 ## What it is
 
@@ -139,6 +139,39 @@ http://localhost:1422/?mode=constituer
 ```
 
 Hash takes precedence over `?mode=`. Both override `localStorage.lastMode`.
+
+## P7 — Cleanup final + document.title par mode (2026-03-08)
+
+### P7-1 — Suppression du placeholder `PREP_CSS` dans `app.ts`
+
+Le résidu laissé en P6 (`const PREP_CSS = ""; // remove in P7`) et le commentaire
+`// PREP_STYLE_ID removed in P6` ont été supprimés. Plus aucune référence à `PREP_CSS`,
+`PREP_STYLE_ID` ou `agrafes-prep-inline` dans le codebase.
+
+### P7-2 — Décision sur `styleRegistry.ts`
+
+**Choix : Option A — Conserver comme bibliothèque utilitaire.**
+
+Raisons :
+- 20 tests unitaires documentent le contrat d'idempotence (`test_style_registry.mjs`).
+- Vite tree-shake le module si aucun code de production ne l'importe → coût build nul.
+- Réutilisable pour des usages futurs (injection de thèmes runtime, modules P8+).
+- JSDoc mis à jour pour refléter le statut "aucun consommateur actif en prod".
+
+### P7-3 — Shell: `document.title` par mode
+
+`_updateDocTitle(mode)` appelé à chaque `_setMode()` :
+
+| Mode | Titre |
+|------|-------|
+| `home` | `AGRAFES` |
+| `explorer` | `AGRAFES — Explorer` |
+| `constituer` | `AGRAFES — Constituer` |
+| `publish` | `AGRAFES — Publier` |
+
+Améliore la barre de tâches OS, l'historique navigateur et l'accessibilité.
+
+---
 
 ## P6 — Extraction CSS PREP_CSS vers Vite-managed (2026-03-08)
 

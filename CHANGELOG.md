@@ -9,6 +9,23 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+- **P7-3 — Shell: `document.title` par mode** (`tauri-shell`)
+  - `_updateDocTitle(mode)` appelé dans `_setMode()` à chaque navigation.
+  - Titres : "AGRAFES" (home), "AGRAFES — Explorer", "AGRAFES — Constituer", "AGRAFES — Publier".
+  - Améliore la gestion des fenêtres OS (barre de tâches, historique navigateur, accessibilité).
+  - Constante `_MODE_TITLES: Record<Mode, string>` ajoutée comme source de vérité unique.
+
+### Fixed
+
+- **P7-1 — Prep: suppression du placeholder `PREP_CSS`** (`tauri-prep`)
+  - `app.ts` : bloc `// ─── CSS ───` + `const PREP_CSS = ""` + commentaire `PREP_STYLE_ID` supprimés.
+  - Plus aucune référence à `PREP_CSS` / `PREP_STYLE_ID` / `agrafes-prep-inline` dans le codebase.
+
+- **P7-2 — Shell: `styleRegistry.ts` statut documenté** (`tauri-shell`)
+  - JSDoc mis à jour : historique P3→P6, raisons de conservation (tests × 20, usage futur P8+,
+    coût build nul par tree-shaking).
+  - Décision : **Option A — Conserver** le module comme bibliothèque utilitaire.
+
 - **P6-1 — Prep: extraction CSS vers fichiers Vite-managed** (`tauri-prep` + `tauri-shell`)
   - `PREP_CSS` (~67 kB, constante JS inline dans `app.ts`) extrait vers :
     - `tauri-prep/src/ui/app.css` (768 lignes, règles globales + topbar + widgets + screens + layout)

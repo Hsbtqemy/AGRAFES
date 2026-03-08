@@ -1,6 +1,6 @@
 # Status — Concordancier Prep (tauri-prep) V0
 
-**Last updated:** 2026-03-08 (P6 — extraction CSS PREP_CSS vers fichiers Vite-managed)
+**Last updated:** 2026-03-08 (P7 — suppression placeholder PREP_CSS)
 
 Current contract/runtime reference:
 - `CONTRACT_VERSION = 1.4.6`
@@ -8,6 +8,14 @@ Current contract/runtime reference:
 - Execution plan reference: `docs/PREP_IMPLEMENTATION_PLAN.md`
 - Plan status: Phase 0–6 done; **vNext UI Pilot (P0 + P1 + P2) done**
 - Redesign plan: `docs/PREP_UI_REDESIGN_PLAN.md`
+
+---
+
+## P7 — Suppression placeholder PREP_CSS (2026-03-08) — fait
+
+- `app.ts` : bloc `// ─── CSS ───` + `const PREP_CSS = ""` + commentaire `PREP_STYLE_ID` supprimés.
+- Aucune référence résiduelle à `PREP_CSS` / `PREP_STYLE_ID` / `agrafes-prep-inline` dans le codebase.
+- Build vert : `npm --prefix tauri-prep run build`.
 
 ---
 
