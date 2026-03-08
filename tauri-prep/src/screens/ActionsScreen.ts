@@ -904,14 +904,26 @@ export class ActionsScreen {
     el.querySelector<HTMLSelectElement>("#act-seg-ref-doc")?.addEventListener("change", (e) => {
       const docId = parseInt((e.target as HTMLSelectElement).value);
       const contentEl = el.querySelector<HTMLElement>("#act-seg-ref-content");
-      if (!contentEl) return;
+      const voScrollEl = el.querySelector<HTMLElement>("#act-seg-tr-vo-scroll");
       if (!docId) {
-        contentEl.innerHTML = '<p class="empty-hint">S&#233;lectionnez un document VO pour afficher les segments de r&#233;f&#233;rence.</p>';
+        if (contentEl) contentEl.innerHTML = '<p class="empty-hint">S&#233;lectionnez un document VO pour afficher les segments de r&#233;f&#233;rence.</p>';
+        if (voScrollEl) voScrollEl.innerHTML = '<p class="empty-hint">S&#233;lectionnez un document VO.</p>';
         return;
       }
       const doc = this._docs.find(d => d.doc_id === docId);
-      if (!doc) return;
-      contentEl.innerHTML = `<div class="seg-ref-doc-row"><span>${doc.title}</span><span class="seg-ref-doc-id">[${doc.doc_id}] ${doc.language} &mdash; ${doc.unit_count} unit&#233;s</span></div><p class="empty-hint" style="margin:8px 0 0">Pr&#233;visualisation des segments disponible apr&#232;s chargement.</p>`;
+      if (!doc) {
+        if (contentEl) contentEl.innerHTML = '<p class="empty-hint">Document introuvable.</p>';
+        if (voScrollEl) voScrollEl.innerHTML = '<p class="empty-hint">Document VO introuvable.</p>';
+        return;
+      }
+      const docRow = `<div class="seg-ref-doc-row"><span>${_escHtml(doc.title)}</span><span class="seg-ref-doc-id">[${doc.doc_id}] ${_escHtml(doc.language)} &mdash; ${doc.unit_count} unit&#233;s</span></div>`;
+      if (contentEl) {
+        contentEl.innerHTML = docRow + '<p class="empty-hint" style="margin:8px 0 0">Pr&#233;visualisation des segments disponible apr&#232;s chargement.</p>';
+      }
+      if (voScrollEl) {
+        voScrollEl.innerHTML = docRow +
+          `<p class="empty-hint" style="margin:8px 0 0">Segments VO disponibles apr&#232;s chargement sidecar.</p>`;
+      }
     });
     // Traduction preview tabs (Inc 3 — preview à droite structurée)
     el.querySelectorAll<HTMLButtonElement>(".ptab-tr").forEach((tab) => {
@@ -924,7 +936,7 @@ export class ActionsScreen {
         });
         const paneTarget = el.querySelector<HTMLElement>("#act-seg-tr-pane-target");
         const paneVo = el.querySelector<HTMLElement>("#act-seg-tr-pane-vo");
-        if (paneTarget) paneTarget.style.display = targetTab === "target" ? "" : "none";
+        if (paneTarget) paneTarget.style.display = (targetTab === "target" || targetTab === "compare") ? "" : "none";
         if (paneVo) paneVo.style.display = (targetTab === "vo" || targetTab === "compare") ? "" : "none";
       });
     });
@@ -1330,6 +1342,34 @@ export class ActionsScreen {
     if (footEl) footEl.textContent = `${r.units_output} segments • ${r.units_input} → ${r.units_output}`;
     const pillEl = segPanel.querySelector<HTMLElement>("#act-seg-lt-pill");
     if (pillEl) pillEl.textContent = `doc#${r.doc_id} · ${r.segment_pack ?? "auto"}`;
+  }
+
+  private _updateTraductionPreview(): void {
+    const segPanel = this._root?.querySelector<HTMLElement>('[data-panel="segmentation"]');
+    if (!segPanel || !this._lastSegmentReport) return;
+    const r = this._lastSegmentReport;
+    const warns = r.warnings ?? [];
+    const warnHtml = warns.length
+      ? `<div class="seg-warn-list">${warns.map((w) => `<div class="seg-warn">${_escHtml(w)}</div>`).join("")}</div>`
+      : `<p style="font-size:12px;color:#1a7f4e;margin:6px 0 0">&#10003; Aucun avertissement</p>`;
+    const targetScroll = segPanel.querySelector<HTMLElement>("#act-seg-tr-target-scroll");
+    if (targetScroll) {
+      targetScroll.innerHTML = `
+        <div class="seg-stats-grid" style="margin:8px 0">
+          <div class="seg-stat"><span class="quality-label">Unités avant</span><strong>${r.units_input}</strong></div>
+          <div class="seg-stat"><span class="quality-label">Segments après</span><strong>${r.units_output}</strong></div>
+          <div class="seg-stat"><span class="quality-label">Pack utilisé</span><strong>${_escHtml(r.segment_pack ?? "auto")}</strong></div>
+          <div class="seg-stat"><span class="quality-label">Avertissements</span><strong>${warns.length}</strong></div>
+        </div>
+        ${warnHtml}
+      `;
+    }
+    const footEl = segPanel.querySelector<HTMLElement>("#act-seg-tr-footer-stats");
+    if (footEl) {
+      const doc = this._docs.find(d => d.doc_id === r.doc_id);
+      const docLabel = doc ? `${_escHtml(doc.title)} [${_escHtml(doc.language)}]` : `doc#${r.doc_id}`;
+      footEl.textContent = `${docLabel} · ${r.units_output} segments · pack ${r.segment_pack ?? "auto"}`;
+    }
   }
 
   setConn(conn: Conn | null): void {
@@ -2147,6 +2187,8 @@ export class ActionsScreen {
             warnings: r?.warnings ?? [],
           };
           this._renderSegPreview();
+          this._updateLongtextPreview(this._root?.querySelector('[data-panel="segmentation"]') ?? null);
+          this._updateTraductionPreview();
           const warns = r?.warnings?.length ? ` Avertissements : ${r.warnings.join("; ")}` : "";
           const usedPack = r?.segment_pack ? ` Pack=${r.segment_pack}.` : "";
           this._log(`✓ Segmentation : ${r?.units_input ?? "?"} → ${r?.units_output ?? "?"} unités.${usedPack}${warns}`);
