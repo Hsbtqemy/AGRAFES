@@ -238,18 +238,14 @@ export class App {
           ["Segmentation", "#act-seg-card", "segmentation"],
           ["Alignement", "#act-align-card", "alignement"],
         ];
-        for (const [label, selector, navKey] of treeItems) {
+        for (const [label, , navKey] of treeItems) {
           const link = document.createElement("button");
           link.className = "prep-nav-tree-link";
           link.dataset.nav = navKey;
           link.textContent = label;
           link.addEventListener("click", () => {
             this._switchTab("actions");
-            // Scroll to section after brief delay for tab activation
-            setTimeout(() => {
-              const el = document.querySelector(selector);
-              if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-            }, 60);
+            this._actions.setSubView(navKey as "curation" | "segmentation" | "alignement");
           });
           treeBody.appendChild(link);
         }

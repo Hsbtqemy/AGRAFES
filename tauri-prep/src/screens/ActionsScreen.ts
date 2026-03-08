@@ -100,6 +100,11 @@ export interface ProjectPreset {
   created_at: number;
 }
 
+
+// ─── Sub-view type ────────────────────────────────────────────────
+
+type SubView = "curation" | "segmentation" | "alignement";
+
 // ─── ActionsScreen ────────────────────────────────────────────────────────────
 
 export class ActionsScreen {
@@ -161,150 +166,152 @@ export class ActionsScreen {
   private _lastAuditEmpty = false;
   private _previewDebounceHandle: number | null = null;
 
-  // P2-E: IntersectionObserver for sidebar active state
-  private _navObserver: IntersectionObserver | null = null;
-  // Tracks which sections are currently intersecting (for tie-break)
-  private _visibleSections = new Map<string, DOMRectReadOnly>();
+  // Sub-view state (hub navigation)
+  private _activeSubView: SubView = "curation";
+  private _root: HTMLElement | null = null;
+  private _segLongTextMode = false;
+  private static readonly LS_ACTIVE_SUB = "agrafes.prep.actions.active";
+
 
   render(): HTMLElement {
     const root = document.createElement("div");
     root.className = "screen actions-screen";
+    this._root = root;
+    this._loadSubViewPref();
 
-    root.innerHTML = `
-      <h2 class="screen-title">Actions corpus</h2>
+    const header = document.createElement("div");
+    header.className = "acts-header";
+    header.innerHTML = `
+      <div id="act-state-banner" class="runtime-state state-info" aria-live="polite">
+        En attente de connexion sidecar…
+      </div>
+      <button id="act-reload-docs" class="btn btn-secondary btn-sm acts-reload-btn">↻ Rafraîchir docs</button>
+    `;
+    root.appendChild(header);
+    this._stateEl = root.querySelector("#act-state-banner")!;
+    root.querySelector("#act-reload-docs")!.addEventListener("click", () => this._loadDocs());
 
-      <!-- ═══ WORKFLOW ALIGNEMENT GUIDÉ ═══ -->
-      <section class="card workflow-section" id="wf-section" data-collapsible="true" data-collapsed-default="true" style="border:2px solid var(--accent,#1a7f4e)">
-        <h3 style="margin-bottom:0.45rem">Workflow alignement guidé
-          <span style="font-size:0.75rem;font-weight:400;color:#6c757d;margin-left:0.5rem">
-            5 étapes
-          </span>
-        </h3>
-        <p class="hint" style="margin-bottom:0.5rem">Progression rapide: aligner, contrôler, corriger, exporter.</p>
+    const subnav = document.createElement("nav");
+    subnav.className = "acts-subnav";
+    subnav.setAttribute("aria-label", "Sections Actions");
+    const SUBNAV_ITEMS: Array<[SubView, string]> = [
+      ["curation",     "Curation"],
+      ["segmentation", "Segmentation"],
+      ["alignement",   "Alignement"],
+    ];
+    for (const [view, label] of SUBNAV_ITEMS) {
+      const btn = document.createElement("button");
+      btn.className = "acts-subnav-btn" + (view === this._activeSubView ? " active" : "");
+      btn.dataset.view = view;
+      btn.textContent = label;
+      if (view === this._activeSubView) btn.setAttribute("aria-current", "true");
+      btn.addEventListener("click", () => this._switchSubViewDOM(root, view));
+      subnav.appendChild(btn);
+    }
+    root.appendChild(subnav);
 
-        <div id="wf-steps" style="display:flex;flex-direction:column;gap:0;border:1px solid #e9ecef;border-radius:6px;overflow:hidden">
+    const panelSlot = document.createElement("div");
+    panelSlot.className = "acts-panel-slot";
 
-          <!-- Étape 1 : Alignement -->
-          <div class="wf-step" id="wf-step-0" style="border-bottom:1px solid #e9ecef">
-            <div class="wf-step-header" id="wf-hdr-0" style="display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;background:#f8f9fa;transition:background 0.12s">
-              <span class="wf-num" id="wf-num-0" style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.85rem;font-weight:700;background:#e9ecef;color:#495057;flex-shrink:0">1</span>
-              <span style="font-weight:600;flex:1">Alignement</span>
-              <span class="wf-status" id="wf-st-0" style="font-size:0.74rem;color:#6c757d"></span>
-              <span class="wf-toggle" id="wf-tog-0" style="font-size:0.8rem;color:#6c757d">▼</span>
-            </div>
-            <div class="wf-body" id="wf-body-0" style="padding:8px 12px;border-top:1px solid #e9ecef;display:none">
-              <div style="font-size:0.8rem;margin-bottom:6px">Dernier run : <code id="wf-run-id-display">(aucun)</code></div>
-              <button id="wf-goto-align" class="btn btn-primary" style="font-size:0.82rem">Ouvrir la zone Alignement ↓</button>
-            </div>
-          </div>
+    const curationPanel = this._renderCurationPanel(root);
+    curationPanel.dataset.panel = "curation";
+    curationPanel.style.display = this._activeSubView === "curation" ? "" : "none";
 
-          <!-- Étape 2 : Qualité -->
-          <div class="wf-step" id="wf-step-1" style="border-bottom:1px solid #e9ecef">
-            <div class="wf-step-header" id="wf-hdr-1" style="display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;background:#f8f9fa;transition:background 0.12s">
-              <span class="wf-num" id="wf-num-1" style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.85rem;font-weight:700;background:#e9ecef;color:#495057;flex-shrink:0">2</span>
-              <span style="font-weight:600;flex:1">Contrôle qualité</span>
-              <span class="wf-status" id="wf-st-1" style="font-size:0.74rem;color:#6c757d"></span>
-              <span class="wf-toggle" id="wf-tog-1" style="font-size:0.8rem;color:#6c757d">▼</span>
-            </div>
-            <div class="wf-body" id="wf-body-1" style="padding:8px 12px;border-top:1px solid #e9ecef;display:none">
-              <div id="wf-quality-result" style="margin-bottom:8px"></div>
-              <button id="wf-quality-btn" class="btn btn-secondary" disabled style="font-size:0.82rem">Lancer la vérification qualité</button>
-            </div>
-          </div>
+    const segPanel = this._renderSegmentationPanel(root);
+    segPanel.dataset.panel = "segmentation";
+    segPanel.style.display = this._activeSubView === "segmentation" ? "" : "none";
 
-          <!-- Étape 3 : Collisions -->
-          <div class="wf-step" id="wf-step-2" style="border-bottom:1px solid #e9ecef">
-            <div class="wf-step-header" id="wf-hdr-2" style="display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;background:#f8f9fa;transition:background 0.12s">
-              <span class="wf-num" id="wf-num-2" style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.85rem;font-weight:700;background:#e9ecef;color:#495057;flex-shrink:0">3</span>
-              <span style="font-weight:600;flex:1">Collisions</span>
-              <span class="wf-status" id="wf-st-2" style="font-size:0.74rem;color:#6c757d"></span>
-              <span class="wf-toggle" id="wf-tog-2" style="font-size:0.8rem;color:#6c757d">▼</span>
-            </div>
-            <div class="wf-body" id="wf-body-2" style="padding:8px 12px;border-top:1px solid #e9ecef;display:none">
-              <button id="wf-coll-btn" class="btn btn-secondary" disabled style="font-size:0.82rem">Ouvrir la section Collisions ↓</button>
-            </div>
-          </div>
+    const alignPanel = this._renderAlignementPanel(root);
+    alignPanel.dataset.panel = "alignement";
+    alignPanel.style.display = this._activeSubView === "alignement" ? "" : "none";
 
-          <!-- Étape 4 : Audit & Retarget -->
-          <div class="wf-step" id="wf-step-3" style="border-bottom:1px solid #e9ecef">
-            <div class="wf-step-header" id="wf-hdr-3" style="display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;background:#f8f9fa;transition:background 0.12s">
-              <span class="wf-num" id="wf-num-3" style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.85rem;font-weight:700;background:#e9ecef;color:#495057;flex-shrink:0">4</span>
-              <span style="font-weight:600;flex:1">Revue et correction</span>
-              <span class="wf-status" id="wf-st-3" style="font-size:0.74rem;color:#6c757d"></span>
-              <span class="wf-toggle" id="wf-tog-3" style="font-size:0.8rem;color:#6c757d">▼</span>
-            </div>
-            <div class="wf-body" id="wf-body-3" style="padding:8px 12px;border-top:1px solid #e9ecef;display:none">
-              <button id="wf-audit-btn" class="btn btn-secondary" disabled style="font-size:0.82rem">Ouvrir la zone Revue ↓</button>
-            </div>
-          </div>
+    panelSlot.appendChild(curationPanel);
+    panelSlot.appendChild(segPanel);
+    panelSlot.appendChild(alignPanel);
+    root.appendChild(panelSlot);
 
-          <!-- Étape 5 : Rapport -->
-          <div class="wf-step" id="wf-step-4">
-            <div class="wf-step-header" id="wf-hdr-4" style="display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;background:#f8f9fa;transition:background 0.12s">
-              <span class="wf-num" id="wf-num-4" style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.85rem;font-weight:700;background:#e9ecef;color:#495057;flex-shrink:0">5</span>
-              <span style="font-weight:600;flex:1">Rapport final</span>
-              <span class="wf-status" id="wf-st-4" style="font-size:0.74rem;color:#6c757d"></span>
-              <span class="wf-toggle" id="wf-tog-4" style="font-size:0.8rem;color:#6c757d">▼</span>
-            </div>
-            <div class="wf-body" id="wf-body-4" style="padding:8px 12px;border-top:1px solid #e9ecef;display:none">
-              <button id="wf-report-btn" class="btn btn-secondary" disabled style="font-size:0.82rem">Ouvrir la section Rapport ↓</button>
-            </div>
-          </div>
+    const logSection = document.createElement("section");
+    logSection.className = "card";
+    logSection.setAttribute("data-collapsible", "true");
+    logSection.setAttribute("data-collapsed-default", "true");
+    logSection.innerHTML = `<h3>Journal</h3><div id="act-log" class="log-pane"></div>`;
+    root.appendChild(logSection);
 
-        </div><!-- /wf-steps -->
-      </section>
+    const busyOverlay = document.createElement("div");
+    busyOverlay.id = "act-busy";
+    busyOverlay.className = "busy-overlay";
+    busyOverlay.style.display = "none";
+    busyOverlay.innerHTML = `<div class="busy-spinner">⏳ Opération en cours…</div>`;
+    root.appendChild(busyOverlay);
 
-      <!-- Runtime UX state -->
-      <section class="card" data-collapsible="true" data-collapsed-default="true">
-        <h3>État de session</h3>
-        <div id="act-state-banner" class="runtime-state state-info" aria-live="polite">
-          En attente de connexion sidecar…
-        </div>
-      </section>
+    this._logEl = root.querySelector("#act-log")!;
+    this._busyEl = root.querySelector("#act-busy")!;
 
-      <!-- Documents -->
-      <section class="card" data-collapsible="true" data-collapsed-default="true">
-        <h3>Documents du corpus</h3>
-        <div class="btn-row">
-          <button id="act-reload-docs" class="btn btn-secondary">Rafraîchir</button>
-        </div>
-        <div id="act-doc-list" class="doc-list"><p class="empty-hint">Aucun corpus ouvert.</p></div>
-      </section>
+    this._wfRoot = root;
+    this._initWorkflow(root);
+    initCardAccordions(root);
+    this._refreshSegmentationStatusUI();
+    this._refreshRuntimeState();
 
-      <section class="card actions-shortcuts-card">
-        <h3>Navigation rapide</h3>
-        <div class="btn-row actions-quicknav-row">
-          <button id="act-jump-curate" class="btn btn-secondary btn-sm">Aller à Curation</button>
-          <button id="act-jump-seg" class="btn btn-secondary btn-sm">Aller à Segmentation</button>
-          <button id="act-jump-align" class="btn btn-secondary btn-sm">Aller à Alignement</button>
-          <button id="act-jump-quality" class="btn btn-secondary btn-sm">Aller à Qualité</button>
-          <button id="act-jump-collisions" class="btn btn-secondary btn-sm">Aller à Collisions</button>
-          <button id="act-jump-report" class="btn btn-secondary btn-sm">Aller au Rapport runs</button>
-        </div>
-      </section>
+    return root;
+  }
 
-      <!-- ═══ FEATURE 1: Curation Preview Diff — vNext 3-column workspace ═══ -->
+  // ─── Sub-view management ───────────────────────────────────────────────────────────
+
+  /** Public API: called from app.ts sidebar tree links. */
+  setSubView(view: SubView): void {
+    this._activeSubView = view;
+    try { localStorage.setItem(ActionsScreen.LS_ACTIVE_SUB, view); } catch { /* */ }
+    if (this._root) this._switchSubViewDOM(this._root, view);
+  }
+
+  private _loadSubViewPref(): void {
+    try {
+      const saved = localStorage.getItem(ActionsScreen.LS_ACTIVE_SUB) as SubView | null;
+      if (saved === "curation" || saved === "segmentation" || saved === "alignement") {
+        this._activeSubView = saved;
+      }
+    } catch { /* ignore */ }
+  }
+
+  private _switchSubViewDOM(root: HTMLElement, view: SubView): void {
+    this._activeSubView = view;
+    try { localStorage.setItem(ActionsScreen.LS_ACTIVE_SUB, view); } catch { /* */ }
+    root.querySelectorAll<HTMLElement>("[data-panel]").forEach((panel) => {
+      panel.style.display = panel.dataset.panel === view ? "" : "none";
+    });
+    root.querySelectorAll<HTMLButtonElement>(".acts-subnav-btn").forEach((btn) => {
+      const isActive = btn.dataset.view === view;
+      btn.classList.toggle("active", isActive);
+      if (isActive) btn.setAttribute("aria-current", "true");
+      else btn.removeAttribute("aria-current");
+    });
+    document.querySelectorAll<HTMLElement>("[data-nav]").forEach((link) => {
+      const isActive = link.dataset.nav === view;
+      link.classList.toggle("active", isActive);
+      if (isActive) link.setAttribute("aria-current", "true");
+      else link.removeAttribute("aria-current");
+    });
+  }
+
+  private _renderCurationPanel(root: HTMLElement): HTMLElement {
+    const el = document.createElement("div");
+    el.setAttribute("role", "main");
+    el.setAttribute("aria-label", "Vue Curation");
+    el.innerHTML = `
       <section class="card curate-workspace-card" id="act-curate-card">
-
-        <!-- Card header -->
         <div class="curate-card-head">
           <div>
-            <h2>Curation <span class="badge-preview">avec prévisualisation</span></h2>
-            <p>La preview centrale se met à jour dès qu’une option change.</p>
+            <h2>Curation <span class="badge-preview">avec pr&#233;visualisation</span></h2>
+            <p>La preview centrale se met &#224; jour d&#232;s qu&#8217;une option change.</p>
           </div>
-          <span class="curate-pill" id="act-curate-mode-pill">Mode édition</span>
+          <span class="curate-pill" id="act-curate-mode-pill">Mode &#233;dition</span>
         </div>
-
-        <!-- 3-column workspace -->
         <div class="curate-workspace">
-
-          <!-- ── LEFT: Params ───────────────────────────────────────────── -->
           <div class="curate-col curate-col-left">
-
-            <!-- Params card -->
             <div class="curate-inner-card">
               <div class="curate-inner-head">
-                <h3>Paramètres curation</h3>
+                <h3>Param&#232;tres curation</h3>
                 <span id="act-curate-doc-label" style="font-size:12px;color:var(--prep-muted,#4f5d6d)"></span>
               </div>
               <div class="curate-inner-body">
@@ -315,7 +322,7 @@ export class ActionsScreen {
                 <div class="curate-chip-row curation-quick-rules">
                   <label class="curation-rule-pill">
                     <input id="act-rule-spaces" type="checkbox" checked />
-                    Espaces incohérents
+                    Espaces incoh&#233;rents
                   </label>
                   <label class="curation-rule-pill">
                     <input id="act-rule-quotes" type="checkbox" />
@@ -327,18 +334,16 @@ export class ActionsScreen {
                   </label>
                 </div>
                 <div class="curate-btns">
-                  <button id="act-preview-btn" class="btn btn-secondary" disabled>Prévisualiser</button>
+                  <button id="act-preview-btn" class="btn btn-secondary" disabled>Pr&#233;visualiser</button>
                   <button id="act-curate-btn" class="btn btn-warning" disabled>Appliquer</button>
                 </div>
               </div>
             </div>
-
-            <!-- Advanced retouches -->
             <div class="curate-inner-card">
               <details id="act-curate-advanced" class="curation-advanced">
                 <summary class="curate-inner-head" style="cursor:pointer;list-style:none;display:flex">
-                  <h3 style="flex:1">Retouches avancées</h3>
-                  <span style="font-size:11px;color:var(--prep-muted,#4f5d6d)">▾</span>
+                  <h3 style="flex:1">Retouches avanc&#233;es</h3>
+                  <span style="font-size:11px;color:var(--prep-muted,#4f5d6d)">&#x25be;</span>
                 </summary>
                 <div class="curate-inner-body">
                   <div class="form-row" style="margin-top:0.2rem">
@@ -346,7 +351,7 @@ export class ActionsScreen {
                       <input id="act-curate-quick-pattern" type="text" placeholder="ex: \\u2019" />
                     </label>
                     <label style="min-width:160px">Remplacer
-                      <input id="act-curate-quick-replacement" type="text" placeholder="ex: ‘" />
+                      <input id="act-curate-quick-replacement" type="text" placeholder="ex: '" />
                     </label>
                     <label style="max-width:80px">Flags
                       <input id="act-curate-quick-flags" type="text" value="g" maxlength="6" />
@@ -355,57 +360,44 @@ export class ActionsScreen {
                       <button id="act-curate-add-rule-btn" class="btn btn-secondary btn-sm">+ Ajouter</button>
                     </div>
                   </div>
-                  <label style="font-size:0.82rem;display:flex;flex-direction:column;gap:0.2rem">Règles JSON
-                    <textarea id="act-curate-rules" rows="3" placeholder=’[{"pattern":"foo","replacement":"bar","flags":"gi"}]’></textarea>
+                  <label style="font-size:0.82rem;display:flex;flex-direction:column;gap:0.2rem">R&#232;gles JSON
+                    <textarea id="act-curate-rules" rows="3" placeholder='[{"pattern":"foo","replacement":"bar","flags":"gi"}]'></textarea>
                   </label>
-                  <p class="hint" style="margin:0.2rem 0 0">Ajoutées après les règles rapides.</p>
+                  <p class="hint" style="margin:0.2rem 0 0">Ajout&#233;es apr&#232;s les r&#232;gles rapides.</p>
                 </div>
               </details>
             </div>
-
-          </div><!-- /curate-col-left -->
-
-          <!-- ── CENTER: Preview synchronisée ───────────────────────────── -->
+          </div>
           <div class="curate-col curate-col-center">
             <div class="curate-inner-card curate-preview-card" id="act-preview-panel">
-
               <div class="curate-inner-head">
-                <h3>Preview synchronisée</h3>
-                <span id="act-preview-info" style="font-size:12px;color:var(--prep-muted,#4f5d6d)">—</span>
+                <h3>Preview synchronis&#233;e</h3>
+                <span id="act-preview-info" style="font-size:12px;color:var(--prep-muted,#4f5d6d)">&#8212;</span>
               </div>
-
               <div class="curate-preview-controls">
                 <span class="curation-rule-pill" style="border-color:#9fd3cc;background:#e8f5f3;color:#0c4a46;font-size:11px;padding:2px 8px">Brut</span>
-                <span class="curation-rule-pill" style="border-color:#9fd3cc;background:#e8f5f3;color:#0c4a46;font-size:11px;padding:2px 8px">Curé</span>
-                <span class="curation-rule-pill" style="border-color:#9fd3cc;background:#e8f5f3;color:#0c4a46;font-size:11px;padding:2px 8px">Diff surlignée</span>
+                <span class="curation-rule-pill" style="border-color:#9fd3cc;background:#e8f5f3;color:#0c4a46;font-size:11px;padding:2px 8px">Cur&#233;</span>
+                <span class="curation-rule-pill" style="border-color:#9fd3cc;background:#e8f5f3;color:#0c4a46;font-size:11px;padding:2px 8px">Diff surlign&#233;e</span>
               </div>
-
               <div class="curate-preview-body">
-                <!-- Left pane: source text -->
                 <section class="curate-pane">
                   <div class="curate-pane-head">Texte brut (source)</div>
                   <div id="act-preview-raw" class="curate-doc-scroll" aria-label="Texte brut">
-                    <p class="empty-hint">Sélectionnez un document et lancez une prévisualisation.</p>
+                    <p class="empty-hint">S&#233;lectionnez un document et lancez une pr&#233;visualisation.</p>
                   </div>
                 </section>
-
-                <!-- Right pane: curated diff -->
                 <section class="curate-pane">
-                  <div class="curate-pane-head">Texte curé (diff)</div>
-                  <div id="act-diff-list" class="diff-list curate-doc-scroll" aria-label="Texte curé avec différences">
-                    <p class="empty-hint">Aucune prévisualisation.</p>
+                  <div class="curate-pane-head">Texte cur&#233; (diff)</div>
+                  <div id="act-diff-list" class="diff-list curate-doc-scroll" aria-label="Texte cur&#233; avec diff&#233;rences">
+                    <p class="empty-hint">Aucune pr&#233;visualisation.</p>
                   </div>
                 </section>
-
-                <!-- Minimap -->
                 <aside id="act-curate-minimap" class="curate-minimap" aria-label="Minimap des changements">
                   <div class="curate-mm"></div>
                   <div class="curate-mm"></div>
                   <div class="curate-mm"></div>
                 </aside>
               </div>
-
-              <!-- Footer: stats + apply -->
               <div class="curate-preview-footer">
                 <div id="act-preview-stats" class="preview-stats"></div>
                 <div class="btn-row" style="margin-top:0.35rem">
@@ -413,13 +405,9 @@ export class ActionsScreen {
                   <button id="act-reindex-after-curate-btn" class="btn btn-secondary btn-sm" style="display:none">Re-indexer</button>
                 </div>
               </div>
-
             </div>
-          </div><!-- /curate-col-center -->
-
-          <!-- ── RIGHT: Diagnostics + Review log ────────────────────────── -->
+          </div>
           <div class="curate-col curate-col-right">
-
             <div class="curate-inner-card">
               <div class="curate-inner-head">
                 <h3>Diagnostics</h3>
@@ -427,93 +415,380 @@ export class ActionsScreen {
               </div>
               <div class="curate-inner-body">
                 <div id="act-curate-diag" class="curate-diag-list">
-                  <p class="empty-hint">Lancez une prévisualisation pour voir les statistiques.</p>
+                  <p class="empty-hint">Lancez une pr&#233;visualisation pour voir les statistiques.</p>
                 </div>
-              </div>
-            </div>
-
-          </div><!-- /curate-col-right -->
-
-        </div><!-- /curate-workspace -->
-      </section>
-
-      <!-- Segmentation — vNext 2-col workspace -->
-      <section class="card seg-workspace-card" id="act-seg-card">
-        <div class="seg-workspace">
-          <!-- Left col: controls -->
-          <div class="seg-col seg-col-left">
-            <div class="seg-inner-card">
-              <div class="seg-inner-head"><h3>Segmentation</h3></div>
-              <div class="seg-inner-body">
-                <p class="hint">Flux recommandé : sélectionner le document, lancer la segmentation, vérifier le statut, puis valider le document.</p>
-                <div class="form-row">
-                  <label>Document :
-                    <select id="act-seg-doc"><option value="">— choisir —</option></select>
-                  </label>
-                  <label>Langue :
-                    <input id="act-seg-lang" type="text" value="fr" maxlength="10" style="width:70px" />
-                  </label>
-                  <label>Pack :
-                    <select id="act-seg-pack">
-                      <option value="auto">Auto multicorpus (recommandé)</option>
-                      <option value="fr_strict">Français strict</option>
-                      <option value="en_strict">Anglais strict</option>
-                      <option value="default">Standard</option>
-                    </select>
-                  </label>
-                </div>
-                <div id="act-seg-status-banner" class="runtime-state state-info" style="margin-top:0.4rem">
-                  Aucune segmentation lancée pour ce document dans cette session.
-                </div>
-                <div class="btn-row" style="margin-top:0.5rem">
-                  <button id="act-seg-btn" class="btn btn-warning" disabled>Segmenter</button>
-                  <button id="act-seg-validate-btn" class="btn btn-secondary" disabled>Segmenter + valider</button>
-                  <button id="act-seg-validate-only-btn" class="btn btn-primary" disabled>Valider ce document</button>
-                  <button id="act-seg-focus-toggle" class="btn btn-secondary" disabled>Mode focus</button>
-                </div>
-                <div class="form-row" style="margin-top:0.5rem">
-                  <label>Après validation
-                    <select id="act-seg-after-validate" style="max-width:280px">
-                      <option value="documents">Aller à Documents (défaut)</option>
-                      <option value="next">Passer au document suivant</option>
-                      <option value="stay">Rester sur place</option>
-                    </select>
-                  </label>
-                </div>
-                <p class="hint" style="margin-top:0.35rem">
-                  Ce mode applique la segmentation backend (pack/lang).
-                </p>
-              </div>
-            </div>
-
-            <!-- Batch VO overview (P1-3) -->
-            <details class="seg-inner-card seg-batch-overview" open>
-              <summary class="seg-inner-head" style="cursor:pointer;list-style:none">
-                <h3>Vue d'ensemble corpus</h3>
-                <span class="seg-preview-info" id="act-seg-batch-info">—</span>
-              </summary>
-              <div id="act-seg-batch-list" class="seg-inner-body" style="padding:8px 12px">
-                <p class="empty-hint">Chargement des documents…</p>
-              </div>
-            </details>
-          </div>
-
-          <!-- Right col: sticky stats preview -->
-          <div class="seg-col seg-col-right">
-            <div class="seg-preview-card" id="act-seg-preview-card">
-              <div class="seg-inner-head">
-                <h3>Résumé segmentation</h3>
-                <span id="act-seg-preview-info" class="seg-preview-info">—</span>
-              </div>
-              <div id="act-seg-preview-body" class="seg-preview-body">
-                <p class="empty-hint">Lancez une segmentation pour voir les résultats ici.</p>
               </div>
             </div>
           </div>
         </div>
       </section>
+      <section class="card" data-collapsible="true" data-collapsed-default="true">
+        <h3>Validation m&#233;tadonn&#233;es</h3>
+        <div class="form-row">
+          <label>Document :
+            <select id="act-meta-doc"><option value="">Tous</option></select>
+          </label>
+        </div>
+        <div class="btn-row" style="margin-top:0.5rem">
+          <button id="act-meta-btn" class="btn btn-secondary" disabled>Valider</button>
+        </div>
+      </section>
+      <section class="card" data-collapsible="true" data-collapsed-default="true">
+        <h3>Index FTS</h3>
+        <div class="btn-row">
+          <button id="act-index-btn" class="btn btn-secondary" disabled>Reconstruire l&#8217;index</button>
+        </div>
+      </section>
+    `;
+    ["#act-rule-spaces", "#act-rule-quotes", "#act-rule-punctuation"].forEach((sel) => {
+      el.querySelector(sel)!.addEventListener("change", () => this._schedulePreview(true));
+    });
+    el.querySelector("#act-curate-doc")!.addEventListener("change", () => this._schedulePreview(true));
+    el.querySelector("#act-curate-rules")!.addEventListener("input", () => this._schedulePreview(true));
+    el.querySelector("#act-curate-add-rule-btn")!.addEventListener("click", (evt) => {
+      evt.preventDefault();
+      this._addAdvancedCurateRule(root);
+    });
+    el.querySelector("#act-preview-btn")!.addEventListener("click", () => this._runPreview());
+    el.querySelector("#act-curate-btn")!.addEventListener("click", () => this._runCurate());
+    el.querySelector("#act-apply-after-preview-btn")!.addEventListener("click", () => this._runCurate());
+    el.querySelector("#act-reindex-after-curate-btn")!.addEventListener("click", () => this._runIndex());
+    el.querySelector("#act-meta-btn")!.addEventListener("click", () => this._runValidateMeta());
+    el.querySelector("#act-index-btn")!.addEventListener("click", () => this._runIndex());
+    initCardAccordions(el);
+    return el;
+  }
 
-      <!-- ═══ FEATURE 2: Align + Audit UI ═══ -->
+  private _renderSegmentationPanel(root: HTMLElement): HTMLElement {
+    const el = document.createElement("div");
+    el.setAttribute("role", "main");
+    el.setAttribute("aria-label", "Vue Segmentation");
+    el.innerHTML = `
+      <div id="act-seg-longtext-hint" class="acts-longtext-hint" style="display:none" role="status">
+        <span>Ce document est long (&gt;12&#8239;000 caract&#232;res) &#8212; le mode <strong>document complet</strong> est recommand&#233;.</span>
+        <button id="act-seg-switch-longtext" class="btn btn-sm btn-secondary">Basculer</button>
+      </div>
+      <div class="acts-seg-mode-bar">
+        <span class="acts-seg-mode-label">Aper&#231;u&#160;:</span>
+        <div class="acts-seg-mode-pills">
+          <button id="act-seg-mode-units" class="acts-seg-mode-btn active" aria-pressed="true">Unit&#233;s</button>
+          <button id="act-seg-mode-longtext" class="acts-seg-mode-btn" aria-pressed="false">Document complet</button>
+        </div>
+      </div>
+      <div id="act-seg-normal-view">
+        <section class="card seg-workspace-card" id="act-seg-card">
+          <div class="seg-workspace">
+            <div class="seg-col seg-col-left">
+              <div class="seg-inner-card">
+                <div class="seg-inner-head"><h3>Segmentation</h3></div>
+                <div class="seg-inner-body">
+                  <p class="hint">Flux recommand&#233; : s&#233;lectionner le document, lancer la segmentation, v&#233;rifier le statut, puis valider le document.</p>
+                  <div class="form-row">
+                    <label>Document :
+                      <select id="act-seg-doc"><option value="">&#8212; choisir &#8212;</option></select>
+                    </label>
+                    <label>Langue :
+                      <input id="act-seg-lang" type="text" value="fr" maxlength="10" style="width:70px" />
+                    </label>
+                    <label>Pack :
+                      <select id="act-seg-pack">
+                        <option value="auto">Auto multicorpus (recommand&#233;)</option>
+                        <option value="fr_strict">Fran&#231;ais strict</option>
+                        <option value="en_strict">Anglais strict</option>
+                        <option value="default">Standard</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div id="act-seg-status-banner" class="runtime-state state-info" style="margin-top:0.4rem">
+                    Aucune segmentation lanc&#233;e pour ce document dans cette session.
+                  </div>
+                  <div class="btn-row" style="margin-top:0.5rem">
+                    <button id="act-seg-btn" class="btn btn-warning" disabled>Segmenter</button>
+                    <button id="act-seg-validate-btn" class="btn btn-secondary" disabled>Segmenter + valider</button>
+                    <button id="act-seg-validate-only-btn" class="btn btn-primary" disabled>Valider ce document</button>
+                    <button id="act-seg-focus-toggle" class="btn btn-secondary" disabled>Mode focus</button>
+                  </div>
+                  <div class="form-row" style="margin-top:0.5rem">
+                    <label>Apr&#232;s validation
+                      <select id="act-seg-after-validate" style="max-width:280px">
+                        <option value="documents">Aller &#224; Documents (d&#233;faut)</option>
+                        <option value="next">Passer au document suivant</option>
+                        <option value="stay">Rester sur place</option>
+                      </select>
+                    </label>
+                  </div>
+                  <p class="hint" style="margin-top:0.35rem">Ce mode applique la segmentation backend (pack/lang).</p>
+                </div>
+              </div>
+              <details class="seg-inner-card seg-batch-overview" open>
+                <summary class="seg-inner-head" style="cursor:pointer;list-style:none">
+                  <h3>Vue d&#8217;ensemble corpus</h3>
+                  <span class="seg-preview-info" id="act-seg-batch-info">&#8212;</span>
+                </summary>
+                <div id="act-seg-batch-list" class="seg-inner-body" style="padding:8px 12px">
+                  <p class="empty-hint">Chargement des documents&#8230;</p>
+                </div>
+              </details>
+            </div>
+            <div class="seg-col seg-col-right">
+              <div class="seg-preview-card" id="act-seg-preview-card">
+                <div class="seg-inner-head">
+                  <h3>R&#233;sum&#233; segmentation</h3>
+                  <span id="act-seg-preview-info" class="seg-preview-info">&#8212;</span>
+                </div>
+                <div id="act-seg-preview-body" class="seg-preview-body">
+                  <p class="empty-hint">Lancez une segmentation pour voir les r&#233;sultats ici.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+      <div id="act-seg-longtext-view" style="display:none">
+        <section class="card">
+          <div class="curate-card-head">
+            <div>
+              <h2>Segmentation &#8212; document complet <span class="badge-preview">aper&#231;u &#233;tendu</span></h2>
+              <p>Pr&#233;visualisation globale avant application : brut vs segment&#233;, minimap et suivi des suspects.</p>
+            </div>
+            <span id="act-seg-lt-pill" class="curate-pill">&#8212;</span>
+          </div>
+          <div style="padding:0 1rem 0.75rem">
+            <div class="form-row">
+              <label>Document :
+                <select id="act-seg-lt-doc"><option value="">&#8212; choisir &#8212;</option></select>
+              </label>
+              <label>Langue :
+                <input id="act-seg-lt-lang" type="text" value="fr" maxlength="10" style="width:70px" />
+              </label>
+              <label>Pack :
+                <select id="act-seg-lt-pack">
+                  <option value="auto">Auto multicorpus</option>
+                  <option value="fr_strict">Fran&#231;ais strict</option>
+                  <option value="en_strict">Anglais strict</option>
+                  <option value="default">Standard</option>
+                </select>
+              </label>
+            </div>
+            <div class="btn-row" style="margin-top:0.5rem">
+              <button id="act-seg-lt-btn" class="btn btn-warning" disabled>Segmenter</button>
+              <button id="act-seg-lt-validate-btn" class="btn btn-secondary" disabled>Segmenter + valider</button>
+              <button id="act-seg-lt-validate-only-btn" class="btn btn-primary" disabled>Valider ce document</button>
+            </div>
+            <div id="act-seg-lt-status" class="runtime-state state-info" style="margin-top:0.4rem">Aucune segmentation lanc&#233;e.</div>
+          </div>
+          <div class="seg-workspace" style="padding:0">
+            <div class="seg-col seg-col-left" style="padding:0 0.75rem 0.75rem">
+              <div id="act-seg-lt-stats" class="seg-stats-grid" style="margin-bottom:0.75rem">
+                <p class="empty-hint" style="grid-column:1/-1">Lancez une segmentation pour voir les r&#233;sultats.</p>
+              </div>
+              <div id="act-seg-lt-warns" class="seg-warn-list" style="display:none"></div>
+              <details class="seg-inner-card seg-batch-overview" style="margin-top:0.5rem" open>
+                <summary class="seg-inner-head" style="cursor:pointer;list-style:none">
+                  <h3>Vue d&#8217;ensemble corpus</h3>
+                  <span id="act-seg-lt-batch-info" class="seg-preview-info">&#8212;</span>
+                </summary>
+                <div id="act-seg-lt-batch-list" class="seg-inner-body" style="padding:8px 12px">
+                  <p class="empty-hint">Chargement&#8230;</p>
+                </div>
+              </details>
+            </div>
+            <div class="seg-col seg-col-right">
+              <div class="seg-preview-card acts-seg-lt-sticky-preview">
+                <div class="seg-inner-head">
+                  <h3>Preview persistante &#8212; document complet</h3>
+                  <span id="act-seg-lt-preview-info" class="seg-preview-info">scroll synchronis&#233;</span>
+                </div>
+                <div class="acts-seg-lt-chips">
+                  <button class="acts-seg-lt-chip active" data-chip="text_norm">text_norm</button>
+                  <button class="acts-seg-lt-chip" data-chip="text_raw">text_raw</button>
+                  <button class="acts-seg-lt-chip" data-chip="highlight_cuts">surligner coupures</button>
+                  <button class="acts-seg-lt-chip" data-chip="suspects_only">suspects uniquement</button>
+                </div>
+                <div class="acts-seg-lt-tabs" role="tablist" aria-label="Vue du document">
+                  <button class="acts-seg-lt-tab" role="tab" aria-selected="false" data-tab="raw">Brut</button>
+                  <button class="acts-seg-lt-tab active" role="tab" aria-selected="true" data-tab="seg">Pr&#233;visualisation segmentation</button>
+                  <button class="acts-seg-lt-tab" role="tab" aria-selected="false" data-tab="diff">Diff global</button>
+                </div>
+                <div class="acts-seg-lt-body">
+                  <section class="curate-pane" id="act-seg-lt-pane-raw" style="display:none">
+                    <div class="curate-pane-head">Document brut</div>
+                    <div id="act-seg-lt-raw-scroll" class="curate-doc-scroll">
+                      <p class="empty-hint">Lancez une segmentation pour voir le document.</p>
+                    </div>
+                  </section>
+                  <section class="curate-pane" id="act-seg-lt-pane-seg">
+                    <div class="curate-pane-head" id="act-seg-lt-seg-head">Segmentation propos&#233;e</div>
+                    <div id="act-seg-lt-seg-scroll" class="curate-doc-scroll">
+                      <p class="empty-hint">Lancez une segmentation pour voir la proposition.</p>
+                    </div>
+                  </section>
+                  <section class="curate-pane" id="act-seg-lt-pane-diff" style="display:none">
+                    <div class="curate-pane-head">Diff global</div>
+                    <div id="act-seg-lt-diff-scroll" class="curate-doc-scroll">
+                      <p class="empty-hint">Disponible apr&#232;s segmentation.</p>
+                    </div>
+                  </section>
+                  <aside class="curate-minimap" aria-label="Minimap" id="act-seg-lt-minimap">
+                    <div class="curate-mm"></div>
+                    <div class="curate-mm changed"></div>
+                    <div class="curate-mm"></div>
+                    <div class="curate-mm current"></div>
+                    <div class="curate-mm"></div>
+                  </aside>
+                </div>
+                <div class="curate-preview-footer">
+                  <div id="act-seg-lt-footer-stats" class="preview-stats"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    `;
+    const modeUnits = el.querySelector<HTMLButtonElement>("#act-seg-mode-units")!;
+    const modeLongtext = el.querySelector<HTMLButtonElement>("#act-seg-mode-longtext")!;
+    const normalView = el.querySelector<HTMLElement>("#act-seg-normal-view")!;
+    const longtextView = el.querySelector<HTMLElement>("#act-seg-longtext-view")!;
+    const setSegMode = (long: boolean): void => {
+      this._segLongTextMode = long;
+      modeUnits.classList.toggle("active", !long);
+      modeUnits.setAttribute("aria-pressed", long ? "false" : "true");
+      modeLongtext.classList.toggle("active", long);
+      modeLongtext.setAttribute("aria-pressed", long ? "true" : "false");
+      normalView.style.display = long ? "none" : "";
+      longtextView.style.display = long ? "" : "none";
+      if (long) this._syncLongtextSelectors(el);
+    };
+    modeUnits.addEventListener("click", () => setSegMode(false));
+    modeLongtext.addEventListener("click", () => setSegMode(true));
+    el.querySelector("#act-seg-switch-longtext")?.addEventListener("click", () => setSegMode(true));
+    el.querySelector("#act-seg-btn")!.addEventListener("click", () => this._runSegment());
+    el.querySelector("#act-seg-validate-btn")!.addEventListener("click", () => this._runSegment(true));
+    el.querySelector("#act-seg-validate-only-btn")!.addEventListener("click", () => this._runValidateCurrentSegDoc());
+    el.querySelector("#act-seg-focus-toggle")!.addEventListener("click", () => this._toggleSegFocusMode(root));
+    el.querySelector("#act-seg-doc")!.addEventListener("change", () => {
+      this._refreshSegmentationStatusUI();
+      this._checkLongtextHint(el);
+    });
+    el.querySelector("#act-seg-pack")!.addEventListener("change", () => this._refreshSegmentationStatusUI());
+    el.querySelector("#act-seg-lang")!.addEventListener("input", () => this._refreshSegmentationStatusUI());
+    const segAfterValidateSel = el.querySelector<HTMLSelectElement>("#act-seg-after-validate");
+    if (segAfterValidateSel) {
+      segAfterValidateSel.value = this._postValidateDestination();
+      segAfterValidateSel.addEventListener("change", () => {
+        const raw = segAfterValidateSel.value;
+        const next = raw === "next" || raw === "stay" ? raw : "documents";
+        try { localStorage.setItem(ActionsScreen.LS_SEG_POST_VALIDATE, next); } catch { /* ignore */ }
+      });
+    }
+    el.querySelectorAll<HTMLButtonElement>(".acts-seg-lt-tab").forEach((tab) => {
+      tab.addEventListener("click", () => {
+        const targetTab = tab.dataset.tab!;
+        el.querySelectorAll<HTMLButtonElement>(".acts-seg-lt-tab").forEach((t) => {
+          const active = t.dataset.tab === targetTab;
+          t.classList.toggle("active", active);
+          t.setAttribute("aria-selected", active ? "true" : "false");
+        });
+        (el.querySelector("#act-seg-lt-pane-raw") as HTMLElement).style.display = targetTab === "raw" ? "" : "none";
+        (el.querySelector("#act-seg-lt-pane-seg") as HTMLElement).style.display = targetTab === "seg" ? "" : "none";
+        (el.querySelector("#act-seg-lt-pane-diff") as HTMLElement).style.display = targetTab === "diff" ? "" : "none";
+      });
+    });
+    el.querySelector("#act-seg-lt-doc")!.addEventListener("change", () => {
+      const ltDoc = el.querySelector<HTMLSelectElement>("#act-seg-lt-doc")!;
+      const normDoc = el.querySelector<HTMLSelectElement>("#act-seg-doc")!;
+      if (normDoc) normDoc.value = ltDoc.value;
+      this._refreshSegmentationStatusUI();
+      this._checkLongtextHint(el);
+    });
+    el.querySelector("#act-seg-lt-btn")!.addEventListener("click", () => this._runSegment());
+    el.querySelector("#act-seg-lt-validate-btn")!.addEventListener("click", () => this._runSegment(true));
+    el.querySelector("#act-seg-lt-validate-only-btn")!.addEventListener("click", () => this._runValidateCurrentSegDoc());
+    el.querySelectorAll<HTMLButtonElement>(".acts-seg-lt-chip").forEach((chip) => {
+      chip.addEventListener("click", () => chip.classList.toggle("active"));
+    });
+    initCardAccordions(el);
+    return el;
+  }
+
+  private _renderAlignementPanel(root: HTMLElement): HTMLElement {
+    const el = document.createElement("div");
+    el.setAttribute("role", "main");
+    el.setAttribute("aria-label", "Vue Alignement");
+    el.innerHTML = `
+      <section class="card workflow-section" id="wf-section" data-collapsible="true" data-collapsed-default="true" style="border:2px solid var(--accent,#1a7f4e)">
+        <h3>Workflow alignement guid&#233;
+          <span style="font-size:0.75rem;font-weight:400;color:#6c757d;margin-left:0.5rem">5 &#233;tapes</span>
+        </h3>
+        <p class="hint" style="margin-bottom:0.5rem">Progression rapide : aligner, contr&#244;ler, corriger, exporter.</p>
+        <div id="wf-steps" style="display:flex;flex-direction:column;gap:0;border:1px solid #e9ecef;border-radius:6px;overflow:hidden">
+          <div class="wf-step" id="wf-step-0" style="border-bottom:1px solid #e9ecef">
+            <div class="wf-step-header" id="wf-hdr-0" style="display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;background:#f8f9fa;transition:background 0.12s">
+              <span class="wf-num" id="wf-num-0" style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.85rem;font-weight:700;background:#e9ecef;color:#495057;flex-shrink:0">1</span>
+              <span style="font-weight:600;flex:1">Alignement</span>
+              <span class="wf-status" id="wf-st-0" style="font-size:0.74rem;color:#6c757d"></span>
+              <span class="wf-toggle" id="wf-tog-0" style="font-size:0.8rem;color:#6c757d">&#9660;</span>
+            </div>
+            <div class="wf-body" id="wf-body-0" style="padding:8px 12px;border-top:1px solid #e9ecef;display:none">
+              <div style="font-size:0.8rem;margin-bottom:6px">Dernier run : <code id="wf-run-id-display">(aucun)</code></div>
+              <button id="wf-goto-align" class="btn btn-primary" style="font-size:0.82rem">Ouvrir la zone Alignement &#8595;</button>
+            </div>
+          </div>
+          <div class="wf-step" id="wf-step-1" style="border-bottom:1px solid #e9ecef">
+            <div class="wf-step-header" id="wf-hdr-1" style="display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;background:#f8f9fa;transition:background 0.12s">
+              <span class="wf-num" id="wf-num-1" style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.85rem;font-weight:700;background:#e9ecef;color:#495057;flex-shrink:0">2</span>
+              <span style="font-weight:600;flex:1">Contr&#244;le qualit&#233;</span>
+              <span class="wf-status" id="wf-st-1" style="font-size:0.74rem;color:#6c757d"></span>
+              <span class="wf-toggle" id="wf-tog-1" style="font-size:0.8rem;color:#6c757d">&#9660;</span>
+            </div>
+            <div class="wf-body" id="wf-body-1" style="padding:8px 12px;border-top:1px solid #e9ecef;display:none">
+              <div id="wf-quality-result" style="margin-bottom:8px"></div>
+              <button id="wf-quality-btn" class="btn btn-secondary" disabled style="font-size:0.82rem">Lancer la v&#233;rification qualit&#233;</button>
+            </div>
+          </div>
+          <div class="wf-step" id="wf-step-2" style="border-bottom:1px solid #e9ecef">
+            <div class="wf-step-header" id="wf-hdr-2" style="display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;background:#f8f9fa;transition:background 0.12s">
+              <span class="wf-num" id="wf-num-2" style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.85rem;font-weight:700;background:#e9ecef;color:#495057;flex-shrink:0">3</span>
+              <span style="font-weight:600;flex:1">Collisions</span>
+              <span class="wf-status" id="wf-st-2" style="font-size:0.74rem;color:#6c757d"></span>
+              <span class="wf-toggle" id="wf-tog-2" style="font-size:0.8rem;color:#6c757d">&#9660;</span>
+            </div>
+            <div class="wf-body" id="wf-body-2" style="padding:8px 12px;border-top:1px solid #e9ecef;display:none">
+              <button id="wf-coll-btn" class="btn btn-secondary" disabled style="font-size:0.82rem">Ouvrir la section Collisions &#8595;</button>
+            </div>
+          </div>
+          <div class="wf-step" id="wf-step-3" style="border-bottom:1px solid #e9ecef">
+            <div class="wf-step-header" id="wf-hdr-3" style="display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;background:#f8f9fa;transition:background 0.12s">
+              <span class="wf-num" id="wf-num-3" style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.85rem;font-weight:700;background:#e9ecef;color:#495057;flex-shrink:0">4</span>
+              <span style="font-weight:600;flex:1">Revue et correction</span>
+              <span class="wf-status" id="wf-st-3" style="font-size:0.74rem;color:#6c757d"></span>
+              <span class="wf-toggle" id="wf-tog-3" style="font-size:0.8rem;color:#6c757d">&#9660;</span>
+            </div>
+            <div class="wf-body" id="wf-body-3" style="padding:8px 12px;border-top:1px solid #e9ecef;display:none">
+              <button id="wf-audit-btn" class="btn btn-secondary" disabled style="font-size:0.82rem">Ouvrir la zone Revue &#8595;</button>
+            </div>
+          </div>
+          <div class="wf-step" id="wf-step-4">
+            <div class="wf-step-header" id="wf-hdr-4" style="display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;background:#f8f9fa;transition:background 0.12s">
+              <span class="wf-num" id="wf-num-4" style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.85rem;font-weight:700;background:#e9ecef;color:#495057;flex-shrink:0">5</span>
+              <span style="font-weight:600;flex:1">Rapport final</span>
+              <span class="wf-status" id="wf-st-4" style="font-size:0.74rem;color:#6c757d"></span>
+              <span class="wf-toggle" id="wf-tog-4" style="font-size:0.8rem;color:#6c757d">&#9660;</span>
+            </div>
+            <div class="wf-body" id="wf-body-4" style="padding:8px 12px;border-top:1px solid #e9ecef;display:none">
+              <button id="wf-report-btn" class="btn btn-secondary" disabled style="font-size:0.82rem">Ouvrir la section Rapport &#8595;</button>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section class="card" data-collapsible="true" data-collapsed-default="true">
+        <h3>Documents du corpus</h3>
+        <div class="btn-row">
+          <button id="act-reload-docs-align" class="btn btn-secondary btn-sm">&#8635;&#160;Rafra&#238;chir</button>
+        </div>
+        <div id="act-doc-list" class="doc-list"><p class="empty-hint">Aucun corpus ouvert.</p></div>
+      </section>
       <section class="card" id="act-align-card">
         <h3>Alignement <span class="badge-preview">run + correction</span></h3>
         <div class="align-layout">
@@ -521,60 +796,57 @@ export class ActionsScreen {
             <div class="align-launcher">
               <div class="form-row">
                 <label>Doc pivot :
-                  <select id="act-align-pivot"><option value="">— choisir —</option></select>
+                  <select id="act-align-pivot"><option value="">&#8212; choisir &#8212;</option></select>
                 </label>
                 <label>Doc(s) cible(s) :
                   <select id="act-align-targets" multiple size="3"></select>
                 </label>
               </div>
               <div class="form-row">
-                <label>Stratégie :
+                <label>Strat&#233;gie :
                   <select id="act-align-strategy">
                     <option value="external_id">external_id</option>
                     <option value="external_id_then_position">external_id_then_position (hybride)</option>
                     <option value="position">position</option>
-                    <option value="similarity">similarité</option>
+                    <option value="similarity">similarit&#233;</option>
                   </select>
                 </label>
                 <label id="act-sim-row" style="display:none">Seuil :
                   <input id="act-sim-threshold" type="number" min="0" max="1" step="0.05" value="0.8" style="width:70px"/>
                 </label>
-                <label style="display:flex; align-items:center; gap:0.35rem">
+                <label style="display:flex;align-items:center;gap:0.35rem">
                   <input id="act-align-debug" type="checkbox" />
                   debug explainability
                 </label>
-                <label style="display:flex; align-items:center; gap:0.35rem">
+                <label style="display:flex;align-items:center;gap:0.35rem">
                   <input id="act-align-preserve-accepted" type="checkbox" checked />
-                  Conserver les liens validés au recalcul
+                  Conserver les liens valid&#233;s au recalcul
                 </label>
               </div>
-              <p class="hint" style="margin:0.35rem 0 0">Au recalcul global, les liens marqués « acceptés » sont considérés comme verrouillés.</p>
+              <p class="hint" style="margin:0.35rem 0 0">Au recalcul global, les liens marqu&#233;s &#171; accept&#233;s &#187; sont consid&#233;r&#233;s comme verrouill&#233;s.</p>
               <div class="btn-row" style="margin-top:0.5rem">
-                <button id="act-align-btn" class="btn btn-warning" disabled>Lancer la run d'alignement</button>
+                <button id="act-align-btn" class="btn btn-warning" disabled>Lancer la run d&#8217;alignement</button>
                 <button id="act-align-recalc-btn" class="btn btn-secondary" disabled>Recalcul global</button>
               </div>
             </div>
-
-            <div id="act-align-results" style="display:none; margin-top:0.75rem">
+            <div id="act-align-results" style="display:none;margin-top:0.75rem">
               <div id="act-align-banner" class="preview-stats"></div>
             </div>
-
-            <div id="act-align-debug-panel" style="display:none; margin-top:0.75rem">
+            <div id="act-align-debug-panel" style="display:none;margin-top:0.75rem">
               <div class="align-debug-head">
-                <h4 style="margin:0; font-size:0.9rem">Explainability</h4>
+                <h4 style="margin:0;font-size:0.9rem">Explainability</h4>
                 <button id="act-align-copy-debug-btn" class="btn btn-secondary btn-sm">Copier diagnostic JSON</button>
               </div>
               <div id="act-align-debug-content" class="align-debug-content"></div>
             </div>
-
-            <div id="act-audit-panel" style="display:none; margin-top:0.75rem">
-              <h4 style="margin:0 0 0.4rem; font-size:0.9rem">Texte complet aligné</h4>
+            <div id="act-audit-panel" style="display:none;margin-top:0.75rem">
+              <h4 style="margin:0 0 0.4rem;font-size:0.9rem">Texte complet align&#233;</h4>
               <div class="form-row">
                 <label>Pivot :
-                  <select id="act-audit-pivot"><option value="">— choisir —</option></select>
+                  <select id="act-audit-pivot"><option value="">&#8212; choisir &#8212;</option></select>
                 </label>
                 <label>Cible :
-                  <select id="act-audit-target"><option value="">— choisir —</option></select>
+                  <select id="act-audit-target"><option value="">&#8212; choisir &#8212;</option></select>
                 </label>
                 <label>ext_id exact :
                   <input id="act-audit-extid" type="number" placeholder="optionnel" style="width:100px"/>
@@ -582,51 +854,50 @@ export class ActionsScreen {
                 <label>Statut :
                   <select id="act-audit-status">
                     <option value="">Tous</option>
-                    <option value="unreviewed">Non révisés</option>
-                    <option value="accepted">Acceptés</option>
-                    <option value="rejected">Rejetés</option>
+                    <option value="unreviewed">Non r&#233;vis&#233;s</option>
+                    <option value="accepted">Accept&#233;s</option>
+                    <option value="rejected">Rejet&#233;s</option>
                   </select>
                 </label>
                 <label>Recherche texte :
-                  <input id="act-audit-text-filter" type="text" placeholder="mot clé dans pivot/cible" style="min-width:220px"/>
+                  <input id="act-audit-text-filter" type="text" placeholder="mot cl&#233; dans pivot/cible" style="min-width:220px"/>
                 </label>
               </div>
-              <div class="btn-row" style="margin-top:0.4rem; gap:0.75rem; align-items:center">
+              <div class="btn-row" style="margin-top:0.4rem;gap:0.75rem;align-items:center">
                 <button id="act-audit-load-btn" class="btn btn-secondary btn-sm">Charger les liens</button>
-                <label style="display:flex; align-items:center; gap:0.3rem; font-size:0.82rem; cursor:pointer">
+                <label style="display:flex;align-items:center;gap:0.3rem;font-size:0.82rem;cursor:pointer">
                   <input id="act-audit-explain-toggle" type="checkbox" />
                   Expliquer (include_explain)
                 </label>
-                <label style="display:flex; align-items:center; gap:0.3rem; font-size:0.82rem; cursor:pointer">
+                <label style="display:flex;align-items:center;gap:0.3rem;font-size:0.82rem;cursor:pointer">
                   <input id="act-audit-exceptions-only" type="checkbox" />
                   Exceptions seulement
                 </label>
               </div>
-              <div class="btn-row" style="margin-top:0.35rem; gap:0.4rem; align-items:center">
+              <div class="btn-row" style="margin-top:0.35rem;gap:0.4rem;align-items:center">
                 <button id="act-audit-qf-all" class="btn btn-sm btn-secondary audit-filter-btn" data-qf="all">Tout</button>
-                <button id="act-audit-qf-review" class="btn btn-sm btn-secondary audit-filter-btn" data-qf="review">À revoir</button>
-                <button id="act-audit-qf-unreviewed" class="btn btn-sm btn-secondary audit-filter-btn" data-qf="unreviewed">Non révisés</button>
-                <button id="act-audit-qf-rejected" class="btn btn-sm btn-secondary audit-filter-btn" data-qf="rejected">Rejetés</button>
-                <button id="act-audit-next-exception-btn" class="btn btn-sm btn-secondary">Suivant à revoir</button>
+                <button id="act-audit-qf-review" class="btn btn-sm btn-secondary audit-filter-btn" data-qf="review">&#192; revoir</button>
+                <button id="act-audit-qf-unreviewed" class="btn btn-sm btn-secondary audit-filter-btn" data-qf="unreviewed">Non r&#233;vis&#233;s</button>
+                <button id="act-audit-qf-rejected" class="btn btn-sm btn-secondary audit-filter-btn" data-qf="rejected">Rejet&#233;s</button>
+                <button id="act-audit-next-exception-btn" class="btn btn-sm btn-secondary">Suivant &#224; revoir</button>
               </div>
               <div id="act-audit-kpis" class="hint" style="margin-top:0.35rem"></div>
-              <div id="act-audit-table-wrap" style="margin-top:0.5rem; overflow-x:auto"></div>
+              <div id="act-audit-table-wrap" style="margin-top:0.5rem;overflow-x:auto"></div>
               <div id="act-audit-batch-bar" class="audit-batch-bar" style="display:none">
-                <span id="act-audit-sel-count" class="audit-sel-count">0 sélectionné(s)</span>
-                <button id="act-audit-batch-accept" class="btn btn-sm btn-secondary">✓ Accepter</button>
-                <button id="act-audit-batch-reject" class="btn btn-sm btn-secondary">✗ Rejeter</button>
-                <button id="act-audit-batch-unreviewed" class="btn btn-sm btn-secondary">? Non révisé</button>
-                <button id="act-audit-batch-delete" class="btn btn-sm btn-danger">🗑 Supprimer</button>
+                <span id="act-audit-sel-count" class="audit-sel-count">0 s&#233;lectionn&#233;(s)</span>
+                <button id="act-audit-batch-accept" class="btn btn-sm btn-secondary">&#10003; Accepter</button>
+                <button id="act-audit-batch-reject" class="btn btn-sm btn-secondary">&#10007; Rejeter</button>
+                <button id="act-audit-batch-unreviewed" class="btn btn-sm btn-secondary">? Non r&#233;vis&#233;</button>
+                <button id="act-audit-batch-delete" class="btn btn-sm btn-danger">Supprimer</button>
               </div>
               <div class="btn-row" style="margin-top:0.4rem">
                 <button id="act-audit-more-btn" class="btn btn-secondary btn-sm" style="display:none">Charger plus</button>
               </div>
             </div>
           </div>
-
           <aside class="align-focus">
-            <h4 style="margin:0 0 0.45rem; font-size:0.9rem">Correction ciblée</h4>
-            <p id="act-align-focus-empty" class="empty-hint">Sélectionnez une ligne dans “Texte complet aligné” pour corriger rapidement.</p>
+            <h4 style="margin:0 0 0.45rem;font-size:0.9rem">Correction cibl&#233;e</h4>
+            <p id="act-align-focus-empty" class="empty-hint">S&#233;lectionnez une ligne dans &#171; Texte complet align&#233; &#187; pour corriger rapidement.</p>
             <div id="act-align-focus-panel" style="display:none">
               <div id="act-align-focus-meta" class="hint" style="margin-bottom:0.35rem"></div>
               <div class="align-focus-text">
@@ -638,86 +909,59 @@ export class ActionsScreen {
                 <p id="act-align-focus-target"></p>
               </div>
               <div class="btn-row" style="margin-top:0.65rem">
-                <button id="act-focus-accept-btn" class="btn btn-sm btn-secondary">✓ Valider</button>
-                <button id="act-focus-reject-btn" class="btn btn-sm btn-secondary">✗ À revoir</button>
-                <button id="act-focus-unreviewed-btn" class="btn btn-sm btn-secondary">? Non révisé</button>
-                <button id="act-focus-lock-btn" class="btn btn-sm btn-secondary">🔒 Verrouiller</button>
-                <button id="act-focus-unlock-btn" class="btn btn-sm btn-secondary">🔓 Déverrouiller</button>
-                <button id="act-focus-retarget-btn" class="btn btn-sm btn-secondary">⇄ Retarget</button>
-                <button id="act-focus-delete-btn" class="btn btn-sm btn-danger">🗑 Supprimer</button>
+                <button id="act-focus-accept-btn" class="btn btn-sm btn-secondary">&#10003; Valider</button>
+                <button id="act-focus-reject-btn" class="btn btn-sm btn-secondary">&#10007; &#192; revoir</button>
+                <button id="act-focus-unreviewed-btn" class="btn btn-sm btn-secondary">? Non r&#233;vis&#233;</button>
+                <button id="act-focus-lock-btn" class="btn btn-sm btn-secondary">Verrouiller</button>
+                <button id="act-focus-unlock-btn" class="btn btn-sm btn-secondary">D&#233;verrouiller</button>
+                <button id="act-focus-retarget-btn" class="btn btn-sm btn-secondary">&#8644; Retarget</button>
+                <button id="act-focus-delete-btn" class="btn btn-sm btn-danger">Supprimer</button>
               </div>
             </div>
           </aside>
         </div>
         <div class="btn-row align-finalize-row">
-          <button id="act-goto-report" class="btn btn-secondary btn-sm">Terminer: ouvrir Rapport runs ↓</button>
+          <button id="act-goto-report" class="btn btn-secondary btn-sm">Terminer: ouvrir Rapport runs &#8595;</button>
         </div>
       </section>
-
-      <!-- ═══ FEATURE 3: Align Quality Metrics ═══ -->
       <section class="card" id="act-quality-card" data-collapsible="true" data-collapsed-default="true">
-        <h3>Qualité alignement <span class="badge-preview">métriques</span></h3>
-        <p class="hint">Calculer les métriques de couverture et d'orphelins pour une paire pivot↔cible.</p>
+        <h3>Qualit&#233; alignement <span class="badge-preview">m&#233;triques</span></h3>
+        <p class="hint">Calculer les m&#233;triques de couverture et d&#8217;orphelins pour une paire pivot&#8596;cible.</p>
         <div class="form-row">
           <label>Pivot
-            <select id="act-quality-pivot"><option value="">— choisir —</option></select>
+            <select id="act-quality-pivot"><option value="">&#8212; choisir &#8212;</option></select>
           </label>
           <label>Cible
-            <select id="act-quality-target"><option value="">— choisir —</option></select>
+            <select id="act-quality-target"><option value="">&#8212; choisir &#8212;</option></select>
           </label>
           <div style="align-self:flex-end">
-            <button id="act-quality-btn" class="btn btn-secondary btn-sm" disabled>Calculer métriques</button>
+            <button id="act-quality-btn" class="btn btn-secondary btn-sm" disabled>Calculer m&#233;triques</button>
           </div>
         </div>
-        <div id="act-quality-result" style="display:none; margin-top:0.75rem"></div>
+        <div id="act-quality-result" style="display:none;margin-top:0.75rem"></div>
       </section>
-
-      <!-- ═══ FEATURE 4: Collision resolver (V1.5) ═══ -->
       <section class="card" id="act-collision-card" data-collapsible="true" data-collapsed-default="true">
-        <h3>Collisions d'alignement <span class="badge-preview">résolution</span></h3>
-        <p class="hint">Un pivot ayant plusieurs liens vers le même document cible est une collision. Résolvez-les ici.</p>
+        <h3>Collisions d&#8217;alignement <span class="badge-preview">r&#233;solution</span></h3>
+        <p class="hint">Un pivot ayant plusieurs liens vers le m&#234;me document cible est une collision.</p>
         <div class="form-row">
           <label>Pivot
-            <select id="act-coll-pivot"><option value="">— choisir —</option></select>
+            <select id="act-coll-pivot"><option value="">&#8212; choisir &#8212;</option></select>
           </label>
           <label>Cible
-            <select id="act-coll-target"><option value="">— choisir —</option></select>
+            <select id="act-coll-target"><option value="">&#8212; choisir &#8212;</option></select>
           </label>
           <div style="align-self:flex-end">
             <button id="act-coll-load-btn" class="btn btn-secondary btn-sm" disabled>Charger les collisions</button>
           </div>
         </div>
-        <div id="act-coll-result" style="display:none; margin-top:0.75rem"></div>
-        <div id="act-coll-more-wrap" style="display:none; margin-top:0.5rem; text-align:center">
+        <div id="act-coll-result" style="display:none;margin-top:0.75rem"></div>
+        <div id="act-coll-more-wrap" style="display:none;margin-top:0.5rem;text-align:center">
           <button id="act-coll-more-btn" class="btn btn-sm btn-secondary">Charger plus</button>
         </div>
       </section>
-
-      <!-- Validate meta -->
-      <section class="card" data-collapsible="true" data-collapsed-default="true">
-        <h3>Validation métadonnées</h3>
-        <div class="form-row">
-          <label>Document :
-            <select id="act-meta-doc"><option value="">Tous</option></select>
-          </label>
-        </div>
-        <div class="btn-row" style="margin-top:0.5rem">
-          <button id="act-meta-btn" class="btn btn-secondary" disabled>Valider</button>
-        </div>
-      </section>
-
-      <!-- FTS index -->
-      <section class="card" data-collapsible="true" data-collapsed-default="true">
-        <h3>Index FTS</h3>
-        <div class="btn-row">
-          <button id="act-index-btn" class="btn btn-secondary" disabled>Reconstruire l'index</button>
-        </div>
-      </section>
-
-      <!-- ═══ Rapport de runs ═══ -->
       <section class="card" id="act-report-card" data-collapsible="true" data-collapsed-default="true">
         <h3>Rapport de runs <span class="badge-preview">export</span></h3>
-        <p class="hint">Exporter l'historique des runs (import, alignement, curation…) en HTML ou JSONL.</p>
+        <p class="hint">Exporter l&#8217;historique des runs (import, alignement, curation&#8230;) en HTML ou JSONL.</p>
         <div class="form-row">
           <label>Format :
             <select id="act-report-fmt">
@@ -726,112 +970,41 @@ export class ActionsScreen {
             </select>
           </label>
           <label style="flex:1">Run ID (optionnel) :
-            <input id="act-report-run-id" type="text"
-              placeholder="laisser vide = tous les runs"
-              style="width:100%;max-width:340px" />
+            <input id="act-report-run-id" type="text" placeholder="laisser vide = tous les runs" style="width:100%;max-width:340px" />
           </label>
         </div>
         <div class="btn-row" style="margin-top:0.5rem">
-          <button id="act-report-btn" class="btn btn-secondary" disabled>Enregistrer le rapport…</button>
+          <button id="act-report-btn" class="btn btn-secondary" disabled>Enregistrer le rapport&#8230;</button>
         </div>
-        <div id="act-report-result" style="display:none; margin-top:0.5rem; font-size:0.85rem"></div>
-      </section>
-
-      <div id="act-busy" class="busy-overlay" style="display:none">
-        <div class="busy-spinner">⏳ Opération en cours…</div>
-      </div>
-
-      <section class="card" data-collapsible="true" data-collapsed-default="true">
-        <h3>Journal</h3>
-        <div id="act-log" class="log-pane"></div>
+        <div id="act-report-result" style="display:none;margin-top:0.5rem;font-size:0.85rem"></div>
       </section>
     `;
-
-    this._logEl = root.querySelector("#act-log")!;
-    this._busyEl = root.querySelector("#act-busy")!;
-    this._stateEl = root.querySelector("#act-state-banner")!;
-    this._refreshRuntimeState();
-
-    // Wire events
-    root.querySelector("#act-reload-docs")!.addEventListener("click", () => this._loadDocs());
-    root.querySelector("#act-jump-curate")?.addEventListener("click", () => this._scrollToSection(root, "#act-curate-card"));
-    root.querySelector("#act-jump-seg")?.addEventListener("click", () => this._scrollToSection(root, "#act-seg-card"));
-    root.querySelector("#act-jump-align")?.addEventListener("click", () => this._scrollToSection(root, "#act-align-card"));
-    root.querySelector("#act-jump-quality")?.addEventListener("click", () => this._scrollToSection(root, "#act-quality-card"));
-    root.querySelector("#act-jump-collisions")?.addEventListener("click", () => this._scrollToSection(root, "#act-collision-card"));
-    root.querySelector("#act-jump-report")?.addEventListener("click", () => this._scrollToSection(root, "#act-report-card"));
-
-    // Curation quick/advanced rules
-    ["#act-rule-spaces", "#act-rule-quotes", "#act-rule-punctuation"].forEach((sel) => {
-      root.querySelector(sel)!.addEventListener("change", () => this._schedulePreview(true));
-    });
-    root.querySelector("#act-curate-doc")!.addEventListener("change", () => this._schedulePreview(true));
-    root.querySelector("#act-curate-rules")!.addEventListener("input", () => this._schedulePreview(true));
-    root.querySelector("#act-curate-add-rule-btn")!.addEventListener("click", (evt) => {
-      evt.preventDefault();
-      this._addAdvancedCurateRule(root);
-    });
-
-    // Curate
-    root.querySelector("#act-preview-btn")!.addEventListener("click", () => this._runPreview());
-    root.querySelector("#act-curate-btn")!.addEventListener("click", () => this._runCurate());
-    root.querySelector("#act-apply-after-preview-btn")!.addEventListener("click", () => this._runCurate());
-    root.querySelector("#act-reindex-after-curate-btn")!.addEventListener("click", () => this._runIndex());
-
-    // Segment
-    root.querySelector("#act-seg-btn")!.addEventListener("click", () => this._runSegment());
-    root.querySelector("#act-seg-validate-btn")!.addEventListener("click", () => this._runSegment(true));
-    root.querySelector("#act-seg-validate-only-btn")!.addEventListener("click", () => this._runValidateCurrentSegDoc());
-    root.querySelector("#act-seg-focus-toggle")!.addEventListener("click", () => this._toggleSegFocusMode(root));
-    root.querySelector("#act-seg-doc")!.addEventListener("change", () => this._refreshSegmentationStatusUI());
-    root.querySelector("#act-seg-pack")!.addEventListener("change", () => this._refreshSegmentationStatusUI());
-    root.querySelector("#act-seg-lang")!.addEventListener("input", () => this._refreshSegmentationStatusUI());
-    const segAfterValidateSel = root.querySelector("#act-seg-after-validate") as HTMLSelectElement | null;
-    if (segAfterValidateSel) {
-      segAfterValidateSel.value = this._postValidateDestination();
-      segAfterValidateSel.addEventListener("change", () => {
-        const raw = segAfterValidateSel.value;
-        const next = raw === "next" || raw === "stay" ? raw : "documents";
-        try { localStorage.setItem(ActionsScreen.LS_SEG_POST_VALIDATE, next); } catch { /* ignore */ }
-      });
-    }
-
-    // Align + strategy
-    root.querySelector("#act-align-strategy")!.addEventListener("change", (e) => {
+    el.querySelector("#act-reload-docs-align")!.addEventListener("click", () => this._loadDocs());
+    el.querySelector("#act-align-strategy")!.addEventListener("change", (e) => {
       const v = (e.target as HTMLSelectElement).value;
-      (root.querySelector("#act-sim-row") as HTMLElement).style.display =
-        v === "similarity" ? "" : "none";
+      (el.querySelector("#act-sim-row") as HTMLElement).style.display = v === "similarity" ? "" : "none";
     });
-    root.querySelector("#act-align-btn")!.addEventListener("click", () => this._runAlign(false));
-    root.querySelector("#act-align-recalc-btn")!.addEventListener("click", () => this._runAlign(true));
-    root.querySelector("#act-align-copy-debug-btn")!.addEventListener("click", () => this._copyAlignDebugJson());
-
-    // Audit
-    root.querySelector("#act-audit-load-btn")!.addEventListener("click", () => {
-      this._auditOffset = 0;
-      this._auditLinks = [];
-      this._auditSelectedLinkId = null;
-      this._renderAuditTable(root);
-      this._loadAuditPage(root, false);
+    el.querySelector("#act-align-btn")!.addEventListener("click", () => this._runAlign(false));
+    el.querySelector("#act-align-recalc-btn")!.addEventListener("click", () => this._runAlign(true));
+    el.querySelector("#act-align-copy-debug-btn")!.addEventListener("click", () => this._copyAlignDebugJson());
+    el.querySelector("#act-audit-load-btn")!.addEventListener("click", () => {
+      this._auditOffset = 0; this._auditLinks = []; this._auditSelectedLinkId = null;
+      this._renderAuditTable(root); this._loadAuditPage(root, false);
     });
-    root.querySelector("#act-audit-more-btn")!.addEventListener("click", () => this._loadAuditPage(root, true));
-    (root.querySelector("#act-audit-explain-toggle") as HTMLInputElement)
-      .addEventListener("change", (e) => {
-        this._auditIncludeExplain = (e.target as HTMLInputElement).checked;
-        if (this._auditLinks.length > 0) {
-          // Reload current page with updated flag
-          this._auditOffset = 0;
-          this._auditLinks = [];
-          this._renderAuditTable(root);
-          void this._loadAuditPage(root, false);
-        }
-      });
-    const auditTextFilterEl = root.querySelector("#act-audit-text-filter") as HTMLInputElement | null;
+    el.querySelector("#act-audit-more-btn")!.addEventListener("click", () => this._loadAuditPage(root, true));
+    (el.querySelector("#act-audit-explain-toggle") as HTMLInputElement).addEventListener("change", (e) => {
+      this._auditIncludeExplain = (e.target as HTMLInputElement).checked;
+      if (this._auditLinks.length > 0) {
+        this._auditOffset = 0; this._auditLinks = [];
+        this._renderAuditTable(root); void this._loadAuditPage(root, false);
+      }
+    });
+    const auditTextFilterEl = el.querySelector<HTMLInputElement>("#act-audit-text-filter");
     auditTextFilterEl?.addEventListener("input", () => {
       this._auditTextFilter = auditTextFilterEl.value.trim().toLowerCase();
       this._renderAuditTable(root);
     });
-    const exceptionsOnlyEl = root.querySelector("#act-audit-exceptions-only") as HTMLInputElement | null;
+    const exceptionsOnlyEl = el.querySelector<HTMLInputElement>("#act-audit-exceptions-only");
     if (exceptionsOnlyEl) {
       this._auditExceptionsOnly = this._readAuditExceptionsOnlyPref();
       exceptionsOnlyEl.checked = this._auditExceptionsOnly;
@@ -842,122 +1015,85 @@ export class ActionsScreen {
       });
     }
     this._auditQuickFilter = this._readAuditQuickFilterPref();
-    this._syncAuditQuickFilterUi(root);
+    this._syncAuditQuickFilterUi(el);
     ["all", "review", "unreviewed", "rejected"].forEach((key) => {
-      const btn = root.querySelector<HTMLButtonElement>(`#act-audit-qf-${key}`);
+      const btn = el.querySelector<HTMLButtonElement>(`#act-audit-qf-${key}`);
       if (!btn) return;
-      btn.addEventListener("click", () => {
-        this._setAuditQuickFilter(root, key as "all" | "review" | "unreviewed" | "rejected");
-      });
+      btn.addEventListener("click", () => this._setAuditQuickFilter(root, key as "all" | "review" | "unreviewed" | "rejected"));
     });
-    root.querySelector("#act-audit-next-exception-btn")!.addEventListener("click", () => {
-      this._focusNextAuditException(root);
+    el.querySelector("#act-audit-next-exception-btn")!.addEventListener("click", () => this._focusNextAuditException(root));
+    el.querySelector("#act-focus-accept-btn")!.addEventListener("click", () => this._runFocusStatusAction(root, "accepted"));
+    el.querySelector("#act-focus-reject-btn")!.addEventListener("click", () => this._runFocusStatusAction(root, "rejected"));
+    el.querySelector("#act-focus-unreviewed-btn")!.addEventListener("click", () => this._runFocusStatusAction(root, null));
+    el.querySelector("#act-focus-lock-btn")!.addEventListener("click", () => this._runFocusStatusAction(root, "accepted"));
+    el.querySelector("#act-focus-unlock-btn")!.addEventListener("click", () => this._runFocusStatusAction(root, null));
+    el.querySelector("#act-focus-delete-btn")!.addEventListener("click", () => this._runFocusDeleteAction(root));
+    el.querySelector("#act-focus-retarget-btn")!.addEventListener("click", () => this._runFocusRetargetAction(root));
+    el.querySelector("#act-audit-batch-accept")!.addEventListener("click", () => this._runBatchAction(root, "set_status", "accepted"));
+    el.querySelector("#act-audit-batch-reject")!.addEventListener("click", () => this._runBatchAction(root, "set_status", "rejected"));
+    el.querySelector("#act-audit-batch-unreviewed")!.addEventListener("click", () => this._runBatchAction(root, "set_status", null));
+    el.querySelector("#act-audit-batch-delete")!.addEventListener("click", () => this._runBatchAction(root, "delete", null));
+    el.querySelector("#act-quality-btn")!.addEventListener("click", () => this._runAlignQuality(root));
+    el.querySelector("#act-coll-load-btn")!.addEventListener("click", () => {
+      this._collOffset = 0; this._collGroups = []; this._loadCollisionsPage(root, false);
     });
+    el.querySelector("#act-coll-more-btn")!.addEventListener("click", () => this._loadCollisionsPage(root, true));
+    el.querySelector("#act-report-btn")!.addEventListener("click", () => void this._runExportReport());
+    el.querySelector("#act-goto-report")?.addEventListener("click", () =>
+      el.querySelector("#act-report-card")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    el.querySelector("#wf-goto-align")?.addEventListener("click", () =>
+      el.querySelector("#act-align-card")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    el.querySelector("#wf-coll-btn")?.addEventListener("click", () =>
+      el.querySelector("#act-collision-card")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    el.querySelector("#wf-audit-btn")?.addEventListener("click", () =>
+      el.querySelector("#act-audit-panel")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    el.querySelector("#wf-report-btn")?.addEventListener("click", () =>
+      el.querySelector("#act-report-card")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    initCardAccordions(el);
+    return el;
+  }
 
-    // Focus correction panel actions
-    root.querySelector("#act-focus-accept-btn")!.addEventListener("click", () =>
-      this._runFocusStatusAction(root, "accepted"));
-    root.querySelector("#act-focus-reject-btn")!.addEventListener("click", () =>
-      this._runFocusStatusAction(root, "rejected"));
-    root.querySelector("#act-focus-unreviewed-btn")!.addEventListener("click", () =>
-      this._runFocusStatusAction(root, null));
-    root.querySelector("#act-focus-lock-btn")!.addEventListener("click", () =>
-      this._runFocusStatusAction(root, "accepted"));
-    root.querySelector("#act-focus-unlock-btn")!.addEventListener("click", () =>
-      this._runFocusStatusAction(root, null));
-    root.querySelector("#act-focus-delete-btn")!.addEventListener("click", () =>
-      this._runFocusDeleteAction(root));
-    root.querySelector("#act-focus-retarget-btn")!.addEventListener("click", () =>
-      this._runFocusRetargetAction(root));
+  // ─── Long text helpers ───────────────────────────────────────────────────────
 
-    // Batch action bar
-    root.querySelector("#act-audit-batch-accept")!.addEventListener("click", () =>
-      this._runBatchAction(root, "set_status", "accepted"));
-    root.querySelector("#act-audit-batch-reject")!.addEventListener("click", () =>
-      this._runBatchAction(root, "set_status", "rejected"));
-    root.querySelector("#act-audit-batch-unreviewed")!.addEventListener("click", () =>
-      this._runBatchAction(root, "set_status", null));
-    root.querySelector("#act-audit-batch-delete")!.addEventListener("click", () =>
-      this._runBatchAction(root, "delete", null));
+  private _syncLongtextSelectors(segPanel: HTMLElement): void {
+    const normDoc = segPanel.querySelector<HTMLSelectElement>("#act-seg-doc");
+    const ltDoc = segPanel.querySelector<HTMLSelectElement>("#act-seg-lt-doc");
+    if (normDoc && ltDoc && normDoc.value) ltDoc.value = normDoc.value;
+    const normLang = segPanel.querySelector<HTMLInputElement>("#act-seg-lang");
+    const ltLang = segPanel.querySelector<HTMLInputElement>("#act-seg-lt-lang");
+    if (normLang && ltLang) ltLang.value = normLang.value;
+    const normPack = segPanel.querySelector<HTMLSelectElement>("#act-seg-pack");
+    const ltPack = segPanel.querySelector<HTMLSelectElement>("#act-seg-lt-pack");
+    if (normPack && ltPack) ltPack.value = normPack.value;
+  }
 
-    // Quality metrics
-    root.querySelector("#act-quality-btn")!.addEventListener("click", () => this._runAlignQuality(root));
+  private _checkLongtextHint(segPanel: HTMLElement): void {
+    const THRESHOLD = 12_000;
+    const docSel = segPanel.querySelector<HTMLSelectElement>("#act-seg-doc");
+    const hint = segPanel.querySelector<HTMLElement>("#act-seg-longtext-hint");
+    if (!docSel || !docSel.value || !hint) return;
+    const docId = parseInt(docSel.value);
+    const doc = this._docs.find(d => d.doc_id === docId);
+    const charCount = (doc as unknown as { char_count?: number })?.char_count ?? 0;
+    hint.style.display = (charCount > THRESHOLD && !this._segLongTextMode) ? "" : "none";
+  }
 
-    // Collision resolver (V1.5)
-    root.querySelector("#act-coll-load-btn")!.addEventListener("click", () => {
-      this._collOffset = 0;
-      this._collGroups = [];
-      this._loadCollisionsPage(root, false);
-    });
-    root.querySelector("#act-coll-more-btn")!.addEventListener("click", () => this._loadCollisionsPage(root, true));
-
-    // Validate meta + index
-    root.querySelector("#act-meta-btn")!.addEventListener("click", () => this._runValidateMeta());
-    root.querySelector("#act-index-btn")!.addEventListener("click", () => this._runIndex());
-
-    // Run report export
-    root.querySelector("#act-report-btn")!.addEventListener("click", () => void this._runExportReport());
-    root.querySelector("#act-goto-report")?.addEventListener("click", () => this._scrollToSection(root, "#act-report-card"));
-
-    // ── Sidebar nav active state via IntersectionObserver (P2-E hardened) ──
-    // Disconnect any previous observer from a prior render()
-    this._navObserver?.disconnect();
-    this._visibleSections.clear();
-
-    const navSections: Array<[string, string]> = [
-      ["curation", "#act-curate-card"],
-      ["segmentation", "#act-seg-card"],
-      ["alignement", "#act-align-card"],
-    ];
-
-    const _updateNavActive = (): void => {
-      // Tie-break: activate the visible section whose top is closest to 0 (top of viewport)
-      let bestKey: string | null = null;
-      let bestTop = Infinity;
-      for (const [key, rect] of this._visibleSections) {
-        if (rect.top < bestTop) { bestTop = rect.top; bestKey = key; }
-      }
-      for (const [navKey] of navSections) {
-        const link = document.querySelector<HTMLElement>(`[data-nav="${navKey}"]`);
-        if (!link) continue;
-        const isActive = navKey === bestKey;
-        link.classList.toggle("active", isActive);
-        if (isActive) {
-          link.setAttribute("aria-current", "true");
-        } else {
-          link.removeAttribute("aria-current");
-        }
-      }
-    };
-
-    this._navObserver = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          const id = (entry.target as HTMLElement).id;
-          const pair = navSections.find(([, sel]) => sel === `#${id}`);
-          if (!pair) continue;
-          if (entry.isIntersecting) {
-            this._visibleSections.set(pair[0], entry.boundingClientRect);
-          } else {
-            this._visibleSections.delete(pair[0]);
-          }
-        }
-        _updateNavActive();
-      },
-      { threshold: 0.1 }
-    );
-    for (const [, sel] of navSections) {
-      const el = root.querySelector(sel);
-      if (el) this._navObserver.observe(el);
+  _updateLongtextPreview(segPanel: HTMLElement | null): void {
+    if (!segPanel || !this._lastSegmentReport) return;
+    const r = this._lastSegmentReport;
+    const statsEl = segPanel.querySelector<HTMLElement>("#act-seg-lt-stats");
+    if (statsEl) {
+      statsEl.innerHTML =
+        `<div class="seg-stat"><span class="quality-label">Unités entrée</span><strong>${r.units_input}</strong></div>` +
+        `<div class="seg-stat"><span class="quality-label">Unités sortie</span><strong>${r.units_output}</strong></div>` +
+        (r.warnings?.length ? `<div class="seg-stat"><span class="quality-label">Suspects</span><strong style="color:var(--color-warning)">${r.warnings.length}</strong></div>` : "");
     }
-
-    // ── Workflow ──────────────────────────────────────────────────
-    this._wfRoot = root;
-    this._initWorkflow(root);
-    initCardAccordions(root);
-    this._refreshSegmentationStatusUI();
-
-    return root;
+    const headEl = segPanel.querySelector<HTMLElement>("#act-seg-lt-seg-head");
+    if (headEl) headEl.textContent = `Segmentation proposée — ${r.units_output} segments`;
+    const footEl = segPanel.querySelector<HTMLElement>("#act-seg-lt-footer-stats");
+    if (footEl) footEl.textContent = `${r.units_output} segments • ${r.units_input} → ${r.units_output}`;
+    const pillEl = segPanel.querySelector<HTMLElement>("#act-seg-lt-pill");
+    if (pillEl) pillEl.textContent = `doc#${r.doc_id} · ${r.segment_pack ?? "auto"}`;
   }
 
   setConn(conn: Conn | null): void {
@@ -973,10 +1109,6 @@ export class ActionsScreen {
     this._auditSelectedLinkId = null;
     if (!conn) {
       this._lastErrorMsg = null;
-      // P2-E: disconnect nav observer when disconnecting DB
-      this._navObserver?.disconnect();
-      this._navObserver = null;
-      this._visibleSections.clear();
     }
     this._setButtonsEnabled(false);
     if (conn) {
