@@ -7,6 +7,24 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **P4-2 — Shell: DB switch avec banner de confirmation + remount différé** (`tauri-shell`)
+  - `_switchDb` : lorsqu'un module non-home est monté, le remount n'est plus immédiat.
+    Un banner bleu `#shell-db-change-banner` propose "Rafraîchir maintenant" / "Plus tard" / "✕".
+  - "Rafraîchir maintenant" → remount + clear banner.
+  - "Plus tard" → dismiss banner ; `_pendingDbRemount = true` reste actif.
+  - "✕ Ignorer" → dismiss + reset flag (module garde l'état courant).
+  - Chaque `_setMode()` clear le banner en entrée — la navigation Tab/raccourcis reste cohérente.
+  - Home : remount toujours immédiat (stateless).
+  - CSS `.shell-db-change-banner` ajouté dans `SHELL_CSS`.
+
+- **P4-1 — Shell/Prep: injection CSS Prep centralisée via styleRegistry** (`tauri-shell` + `tauri-prep`)
+  - `tauri-prep/src/app.ts` : `CSS` → `export const PREP_CSS` ; `PREP_STYLE_ID` exporté.
+  - `tauri-shell/src/modules/constituerModule.ts` : appel `ensureStyleTag(PREP_STYLE_ID, PREP_CSS)`
+    avant `_app.init()` — le Shell est désormais propriétaire de l'injection CSS Prep
+    en mode embedded. Le guard dans `App.init()` (P3-B) reste comme filet de sécurité.
+
 ### Fixed
 
 - **P3-A — Shell: déduplication des styles lors de la navigation** (`tauri-shell`)

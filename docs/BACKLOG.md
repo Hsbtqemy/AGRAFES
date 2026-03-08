@@ -1,6 +1,6 @@
 # Backlog — multicorpus_engine
 
-Last updated: 2026-03-08 (P3 — Shell style de-dup + Prep CSS idempotent injection)
+Last updated: 2026-03-08 (P4 — DB switch banner + Prep CSS embedded registry)
 
 ## Priority backlog (realistic, post-implementation)
 
@@ -82,12 +82,16 @@ Last updated: 2026-03-08 (P3 — Shell style de-dup + Prep CSS idempotent inject
   - `tauri-shell/scripts/test_style_registry.mjs` : 20 tests, 5 suites.
   - `tauri-prep/src/app.ts` App.init() : guard `id="agrafes-prep-inline"` — injection unique par document lifetime.
   - `tauri-prep/src/app.ts` App.dispose() : retrait du listener `beforeunload` via référence stockée.
+- **P4 — DB switch banner + Prep CSS embedded registry** (2026-03-08):
+  - `tauri-shell/src/shell.ts` : banner `.shell-db-change-banner` (bleu) ; `_pendingDbRemount` flag ; `_switchDb` → deferred remount si module non-home ; `_showDbChangeBanner` / `_clearDbChangeBanner` ; `_setMode` → clear banner en entrée.
+  - `tauri-prep/src/app.ts` : export `PREP_CSS` + `PREP_STYLE_ID`.
+  - `tauri-shell/src/modules/constituerModule.ts` : injection CSS via `ensureStyleTag` avant mount (P4-1 embedded mode).
 
-## P4 — Placeholders (post-P3)
+## P5 — Placeholders (post-P4)
 
 | Priority | Item | Rationale | Status |
 |----------|------|-----------|--------|
-| P4 | **DB shared state** — hot-swap sidecar entre modules | Actuellement : re-mount complet du module actif à chaque changement de DB ; une future version pourrait faire un hot-swap sans redémarrer le sidecar | todo |
-| P4 | **Shell multi-fenêtre** — `tauri::WebviewWindowBuilder` | Ouvrir Explorer et Constituer en parallèle dans des fenêtres séparées | todo |
-| P4 | **CSS build asset pour Prep** — link statique au lieu d'inline | Vite injecte déjà les 4 CSS files en standalone ; en embedded mode un `<link>` vers un asset buildé serait plus propre que la constante JS inline | todo |
-| P4 | **Deprecation tauri-app + tauri-prep** standalone | tauri-shell les supplante ; maintien pour standalone uniquement jusqu'à V2.0 | todo |
+| P5 | **Shell multi-fenêtre** — `tauri::WebviewWindowBuilder` | Ouvrir Explorer et Constituer en parallèle dans des fenêtres séparées | todo |
+| P5 | **CSS build asset pour Prep** — link statique au lieu d'inline | Vite injecte déjà les 4 CSS files en standalone ; en embedded mode un `<link>` vers un asset buildé serait plus propre que la constante JS inline | todo |
+| P5 | **`_pendingDbRemount` : apply-on-navigate** — lorsque le flag est `true` et que l'user navigue, le module est rechargé avec la nouvelle DB sans exiger de clic "Rafraîchir" | Améliore la cohérence entre navigation tab et switch DB | todo |
+| P5 | **Deprecation tauri-app + tauri-prep** standalone | tauri-shell les supplante ; maintien pour standalone uniquement jusqu'à V2.0 | todo |

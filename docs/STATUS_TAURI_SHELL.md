@@ -140,6 +140,66 @@ http://localhost:1422/?mode=constituer
 
 Hash takes precedence over `?mode=`. Both override `localStorage.lastMode`.
 
+## P4 — DB switch banner + Prep CSS embedded registry (2026-03-08)
+
+### P4-2 — DB switch banner + deferred remount
+
+**Problème :** `_switchDb` remontait immédiatement le module actif (`_setMode(_currentMode)`) dès que la DB changeait, provoquant une perte de contexte/scroll et un flicker.
+
+**Fix :**
+
+- Quand la DB change et qu'un module non-home est monté (`_currentMode !== "home"`), le remount est différé.
+- Un banner bleu (`.shell-db-change-banner`, `id="shell-db-change-banner"`) apparaît avec :
+  - **"Rafraîchir maintenant"** → remount immédiat du module actif + clear banner
+  - **"Plus tard"** → dismiss banner, `_pendingDbRemount` reste `true`
+  - **"✕ Ignorer"** → dismiss banner + reset flag (module reste dans l'état courant)
+- À chaque `_setMode(mode)` : `_clearDbChangeBanner()` + `_pendingDbRemount = false` en tête de fonction → navigation Tab/raccourci clavier s'applique proprement.
+- Home reste remounté immédiatement (stateless, pas de contexte à perdre).
+
+**Files :**
+
+| Fichier | Changement |
+|---------|-----------|
+| `tauri-shell/src/shell.ts` | CSS `.shell-db-change-banner` dans `SHELL_CSS` ; `_pendingDbRemount` flag ; `_switchDb` → deferred path ; `_showDbChangeBanner()` ; `_clearDbChangeBanner()` ; `_setMode` → clear banner en entrée |
+
+### P4-1 — Prep CSS injection via styleRegistry (mode embedded)
+
+**But :** la Shell devient propriétaire de l'injection CSS Prep en mode embedded. `App.init()` garde son guard (P3-B) comme filet de sécurité.
+
+**Fix :**
+
+- `tauri-prep/src/app.ts` : export de `PREP_CSS` (renommé depuis `CSS`) et `PREP_STYLE_ID`.
+- `tauri-shell/src/modules/constituerModule.ts` : import `ensureStyleTag` depuis `styleRegistry.ts`, import `PREP_CSS, PREP_STYLE_ID` depuis `app.ts`, appel `ensureStyleTag(PREP_STYLE_ID, PREP_CSS)` avant `_app.init()`.
+
+**Files :**
+
+| Fichier | Changement |
+|---------|-----------|
+| `tauri-prep/src/app.ts` | `CSS` → `export const PREP_CSS` ; `PREP_STYLE_ID` exporté |
+| `tauri-shell/src/modules/constituerModule.ts` | import `ensureStyleTag` + `PREP_CSS`/`PREP_STYLE_ID`, injection avant mount |
+
+### Comment tester (manuel)
+
+```bash
+npm --prefix tauri-shell run tauri dev
+
+# P4-2 — DB switch banner
+# 1. Ouvrir une DB → naviguer vers Constituer
+# 2. Changer de DB via "DB ▾" → "Ouvrir…"
+# 3. → Banner bleu sous le header : "DB changée : nom.db — rafraîchir le module pour l'appliquer"
+# 4. Cliquer "Rafraîchir maintenant" → module rechargé avec nouvelle DB, banner disparu
+# 5. Refaire étapes 1-2, puis cliquer "Plus tard" → banner disparu, module non rechargé
+# 6. Refaire, puis naviguer via tab ⌘1/⌘2 → banner disparu, module rechargé normalement
+# 7. En mode Home → changer DB → PAS de banner, toast direct
+
+# P4-1 — CSS registry
+# Inspecter DevTools → <head> → 1 seul <style id="agrafes-prep-inline"> après N navigations Constituer
+```
+
+### Note pytest
+
+Aucun fichier Python modifié dans P3/P4. Le résultat de référence est **391 tests verts** (baseline P3). Relancer avant merge si souhaité : `pytest -q`.
+
 ## P3-A — Style de-dup fix (2026-03-08)
 
 ### Root cause analysis (5 lignes)
