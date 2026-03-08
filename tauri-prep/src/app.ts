@@ -60,8 +60,10 @@ function _savePresets(presets: ProjectPreset[]): void {
 }
 
 // ─── CSS ─────────────────────────────────────────────────────────────────────
+// Exported so tauri-shell's constituerModule can inject once via styleRegistry
+// (P4-1 embedded mode). App.init() also keeps its own idempotent guard (P3-B).
 
-const CSS = `
+export const PREP_CSS = `
   :root {
     --color-bg: #f0f2f5;
     --color-surface: #ffffff;
@@ -843,8 +845,9 @@ type GuardableScreen = {
   pendingChangesMessage?: () => string;
 };
 
-/** Stable id for the inline <style> injected by App.init(). Used as dedup key. */
-const PREP_STYLE_ID = "agrafes-prep-inline";
+/** Stable id for the inline <style> injected by App.init(). Used as dedup key.
+ *  Exported so shell's styleRegistry can use the same key. */
+export const PREP_STYLE_ID = "agrafes-prep-inline";
 
 export class App {
   private _conn: Conn | null = null;
@@ -870,7 +873,7 @@ export class App {
     if (!document.getElementById(PREP_STYLE_ID)) {
       const style = document.createElement("style");
       style.id = PREP_STYLE_ID;
-      style.textContent = CSS;
+      style.textContent = PREP_CSS;
       document.head.appendChild(style);
     }
 
