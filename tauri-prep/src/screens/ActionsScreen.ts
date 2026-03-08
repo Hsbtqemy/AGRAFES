@@ -725,6 +725,38 @@ export class ActionsScreen {
         </div>
         <section class="card seg-workspace-card" id="act-seg-card">
           <div class="seg-workspace">
+            <details class="seg-side" id="act-seg-side">
+              <summary>R&#233;glages avanc&#233;s</summary>
+              <div class="seg-side-body">
+                <div class="seg-box">
+                  <div class="seg-box-head">Preset global</div>
+                  <div class="seg-box-body">
+                    <label class="seg-box-radio"><input type="radio" name="seg-preset" value="strict" /> Strict</label>
+                    <label class="seg-box-radio"><input type="radio" name="seg-preset" value="extended" checked /> &#201;tendu</label>
+                    <label class="seg-box-radio"><input type="radio" name="seg-preset" value="custom" /> Personnalis&#233;</label>
+                  </div>
+                </div>
+                <div class="seg-box">
+                  <div class="seg-box-head">S&#233;parateurs actifs</div>
+                  <div class="seg-box-body">
+                    <!-- TODO: wiring vers options pack backend -->
+                    <label class="seg-box-radio"><input type="checkbox" checked /> Point <code>.</code></label>
+                    <label class="seg-box-radio"><input type="checkbox" checked /> Interrog. <code>?</code></label>
+                    <label class="seg-box-radio"><input type="checkbox" checked /> Excl. <code>!</code></label>
+                    <label class="seg-box-radio"><input type="checkbox" /> Barre <code>/</code></label>
+                    <label class="seg-box-radio"><input type="checkbox" /> Point-virgule <code>;</code></label>
+                    <label class="seg-box-radio"><input type="checkbox" /> Deux-points <code>:</code></label>
+                  </div>
+                </div>
+                <div class="seg-box">
+                  <div class="seg-box-head">Port&#233;e</div>
+                  <div class="seg-box-body">
+                    <label class="seg-box-radio"><input type="radio" name="seg-scope" value="document" checked /> Document entier</label>
+                    <label class="seg-box-radio"><input type="radio" name="seg-scope" value="selection" /> S&#233;lection active</label>
+                  </div>
+                </div>
+              </div>
+            </details>
             <div class="seg-col seg-col-left">
               <div class="seg-inner-card">
                 <div class="seg-inner-head"><h3>Param&#232;tres</h3></div>
