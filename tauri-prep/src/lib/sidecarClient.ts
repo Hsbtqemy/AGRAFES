@@ -28,6 +28,22 @@ export interface DocumentRecord {
   unit_count: number;
 }
 
+export interface DocumentPreviewLine {
+  unit_id: number;
+  n: number;
+  external_id?: number | null;
+  text: string;
+}
+
+export interface DocumentPreviewResponse {
+  ok: boolean;
+  doc: DocumentRecord;
+  lines: DocumentPreviewLine[];
+  count: number;
+  total_lines: number;
+  limit: number;
+}
+
 export interface ImportOptions {
   mode: "docx_numbered_lines" | "txt_numbered_lines" | "docx_paragraphs" | "tei";
   path: string;
@@ -578,6 +594,18 @@ export async function getHealth(conn: Conn): Promise<HealthInfo> {
 export async function listDocuments(conn: Conn): Promise<DocumentRecord[]> {
   const res = (await conn.get("/documents")) as { documents: DocumentRecord[] };
   return res.documents;
+}
+
+export async function getDocumentPreview(
+  conn: Conn,
+  doc_id: number,
+  limit = 6
+): Promise<DocumentPreviewResponse> {
+  const qs = new URLSearchParams({
+    doc_id: String(doc_id),
+    limit: String(limit),
+  });
+  return conn.get(`/documents/preview?${qs.toString()}`) as Promise<DocumentPreviewResponse>;
 }
 
 export async function importFile(conn: Conn, opts: ImportOptions): Promise<ImportResponse> {

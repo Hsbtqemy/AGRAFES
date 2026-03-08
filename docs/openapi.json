@@ -397,10 +397,20 @@
           "pivot_doc_id": {
             "type": "integer"
           },
+          "preserve_accepted": {
+            "default": true,
+            "description": "When replace_existing=true, keep links with status='accepted' and treat them as protected anchors.",
+            "type": "boolean"
+          },
           "relation_type": {
             "default": "translation",
             "description": "Stored in run params for traceability. Not yet applied functionally to alignment_links — tracked as known drift (ADR-009, v1.4.1).",
             "type": "string"
+          },
+          "replace_existing": {
+            "default": false,
+            "description": "If true, remove previous links for the pivot/target scope before creating a new alignment run.",
+            "type": "boolean"
           },
           "run_id": {
             "type": "string"
@@ -445,8 +455,20 @@
               "debug_align": {
                 "type": "boolean"
               },
+              "deleted_before": {
+                "type": "integer"
+              },
               "pivot_doc_id": {
                 "type": "integer"
+              },
+              "preserve_accepted": {
+                "type": "boolean"
+              },
+              "preserved_before": {
+                "type": "integer"
+              },
+              "replace_existing": {
+                "type": "boolean"
               },
               "reports": {
                 "items": {
@@ -459,6 +481,9 @@
               },
               "strategy": {
                 "type": "string"
+              },
+              "total_effective_links": {
+                "type": "integer"
               },
               "total_links_created": {
                 "type": "integer"
@@ -839,6 +864,67 @@
           "updates"
         ],
         "type": "object"
+      },
+      "DocumentPreviewLine": {
+        "additionalProperties": false,
+        "properties": {
+          "external_id": {
+            "nullable": true,
+            "type": "integer"
+          },
+          "n": {
+            "type": "integer"
+          },
+          "text": {
+            "type": "string"
+          },
+          "unit_id": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "unit_id",
+          "n",
+          "text"
+        ],
+        "type": "object"
+      },
+      "DocumentPreviewResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BaseResponse"
+          },
+          {
+            "properties": {
+              "count": {
+                "type": "integer"
+              },
+              "doc": {
+                "$ref": "#/components/schemas/DocumentRecord"
+              },
+              "limit": {
+                "type": "integer"
+              },
+              "lines": {
+                "items": {
+                  "$ref": "#/components/schemas/DocumentPreviewLine"
+                },
+                "type": "array"
+              },
+              "total_lines": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "doc",
+              "lines",
+              "count",
+              "total_lines",
+              "limit"
+            ],
+            "type": "object"
+          }
+        ]
       },
       "DocumentRecord": {
         "additionalProperties": false,
@@ -1644,8 +1730,8 @@
   "info": {
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
-    "version": "1.4.4",
-    "x-contract-version": "1.4.4"
+    "version": "1.4.6",
+    "x-contract-version": "1.4.6"
   },
   "openapi": "3.0.3",
   "paths": {
@@ -2284,6 +2370,76 @@
           }
         ],
         "summary": "Bulk update document metadata"
+      }
+    },
+    "/documents/preview": {
+      "get": {
+        "parameters": [
+          {
+            "description": "Document identifier",
+            "in": "query",
+            "name": "doc_id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Maximum number of preview lines",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 6,
+              "maximum": 20,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentPreviewResponse"
+                }
+              }
+            },
+            "description": "Document preview"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Document not found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Get mini content preview for one document"
       }
     },
     "/documents/update": {

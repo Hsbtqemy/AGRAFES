@@ -12,14 +12,15 @@ from __future__ import annotations
 from typing import Any
 
 
-API_VERSION = "1.4.5"
-CONTRACT_VERSION = "1.4.5"  # semantic versioning for the sidecar API contract
+API_VERSION = "1.4.6"
+CONTRACT_VERSION = "1.4.6"  # semantic versioning for the sidecar API contract
 # 1.4.0: added export_tei_package job kind (Sprint 4 — Publication ZIP)
 # 1.4.1: ERR_CONFLICT (409) for duplicate run_id; token protection on /align, /curate, /segment
 # 1.4.2: document workflow status fields on /documents and metadata update endpoints.
 # 1.4.3: POST /db/backup endpoint (token-required DB backup to timestamped .db.bak).
 # 1.4.4: add async job kind export_readable_text (TXT/DOCX readable exports).
 # 1.4.5: /align supports replace_existing + preserve_accepted (global recalculation mode).
+# 1.4.6: GET /documents/preview (mini excerpt endpoint for Prep Documents screen).
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
@@ -423,6 +424,61 @@ def openapi_spec() -> dict[str, Any]:
                             "content": {
                                 "application/json": {
                                     "schema": {"$ref": "#/components/schemas/DocumentsResponse"},
+                                }
+                            },
+                        },
+                        "500": {
+                            "description": "Internal error",
+                            "content": {
+                                "application/json": {
+                                    "schema": {"$ref": "#/components/schemas/ErrorResponse"},
+                                }
+                            },
+                        },
+                    },
+                }
+            },
+            "/documents/preview": {
+                "get": {
+                    "summary": "Get mini content preview for one document",
+                    "parameters": [
+                        {
+                            "name": "doc_id",
+                            "in": "query",
+                            "required": True,
+                            "schema": {"type": "integer"},
+                            "description": "Document identifier",
+                        },
+                        {
+                            "name": "limit",
+                            "in": "query",
+                            "required": False,
+                            "schema": {"type": "integer", "minimum": 1, "maximum": 20, "default": 6},
+                            "description": "Maximum number of preview lines",
+                        },
+                    ],
+                    "responses": {
+                        "200": {
+                            "description": "Document preview",
+                            "content": {
+                                "application/json": {
+                                    "schema": {"$ref": "#/components/schemas/DocumentPreviewResponse"},
+                                }
+                            },
+                        },
+                        "400": {
+                            "description": "Bad request",
+                            "content": {
+                                "application/json": {
+                                    "schema": {"$ref": "#/components/schemas/ErrorResponse"},
+                                }
+                            },
+                        },
+                        "404": {
+                            "description": "Document not found",
+                            "content": {
+                                "application/json": {
+                                    "schema": {"$ref": "#/components/schemas/ErrorResponse"},
                                 }
                             },
                         },
@@ -1090,6 +1146,36 @@ def openapi_spec() -> dict[str, Any]:
                                     "items": {"$ref": "#/components/schemas/DocumentRecord"},
                                 },
                                 "count": {"type": "integer"},
+                            },
+                        },
+                    ]
+                },
+                "DocumentPreviewLine": {
+                    "type": "object",
+                    "required": ["unit_id", "n", "text"],
+                    "properties": {
+                        "unit_id": {"type": "integer"},
+                        "n": {"type": "integer"},
+                        "external_id": {"type": "integer", "nullable": True},
+                        "text": {"type": "string"},
+                    },
+                    "additionalProperties": False,
+                },
+                "DocumentPreviewResponse": {
+                    "allOf": [
+                        {"$ref": "#/components/schemas/BaseResponse"},
+                        {
+                            "type": "object",
+                            "required": ["doc", "lines", "count", "total_lines", "limit"],
+                            "properties": {
+                                "doc": {"$ref": "#/components/schemas/DocumentRecord"},
+                                "lines": {
+                                    "type": "array",
+                                    "items": {"$ref": "#/components/schemas/DocumentPreviewLine"},
+                                },
+                                "count": {"type": "integer"},
+                                "total_lines": {"type": "integer"},
+                                "limit": {"type": "integer"},
                             },
                         },
                     ]

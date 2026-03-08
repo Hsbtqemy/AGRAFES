@@ -1,6 +1,7 @@
 [
   "GET /doc_relations",
   "GET /documents",
+  "GET /documents/preview",
   "GET /health",
   "GET /jobs",
   "GET /jobs/{job_id}",

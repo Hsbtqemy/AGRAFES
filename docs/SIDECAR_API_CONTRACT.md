@@ -1,4 +1,4 @@
-# Sidecar API Contract (v1.4.5)
+# Sidecar API Contract (v1.4.6)
 
 This document defines the persistent localhost HTTP contract for
 `multicorpus_engine` sidecar.
@@ -29,7 +29,7 @@ When `multicorpus serve` starts and a portfile already exists:
 
 ## Versioning
 
-- `api_version`: sidecar API contract version (`1.4.5`)
+- `api_version`: sidecar API contract version (`1.4.6`)
 - `version`: engine version
 
 ## Response envelope
@@ -39,7 +39,7 @@ When `multicorpus serve` starts and a portfile already exists:
 ```json
 {
   "ok": true,
-  "api_version": "1.4.5",
+  "api_version": "1.4.6",
   "version": "0.6.1",
   "status": "ok"
 }
@@ -50,7 +50,7 @@ When `multicorpus serve` starts and a portfile already exists:
 ```json
 {
   "ok": false,
-  "api_version": "1.4.5",
+  "api_version": "1.4.6",
   "version": "0.6.1",
   "status": "error",
   "error": {
@@ -142,6 +142,7 @@ When `multicorpus serve` starts and a portfile already exists:
 
 - `GET /openapi.json`
 - `GET /documents`
+- `GET /documents/preview?doc_id=N&limit=M`
 - `GET /doc_relations?doc_id=N`
 - `POST /curate`
 - `POST /curate/preview`
@@ -258,6 +259,11 @@ Response now includes pagination fields: `total`, `limit`, `offset`, `has_more`,
   - `workflow_status`: `draft|review|validated`
   - `validated_at`: string|null
   - `validated_run_id`: string|null
+- `GET /documents/preview?doc_id=N&limit=M` — mini aperçu du contenu (read-only)
+  - `limit` optionnel, défaut `6`, bornes `1..20`
+  - retourne les premières unités `line` triées par `n`:
+    - `lines: [{ unit_id, n, external_id|null, text }]`
+    - `count`, `total_lines`, `limit`
 - `POST /documents/update` — update one document metadata + workflow status
   - body: `{ doc_id, title?, language?, doc_role?, resource_type?, workflow_status?, validated_run_id? }`
   - returns: `{ updated: int, doc: DocumentRecord }`

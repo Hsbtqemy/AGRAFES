@@ -1,6 +1,6 @@
 # Integration Guide — Tauri + multicorpus_engine
 
-Last updated: 2026-03-06 (tauri-prep DB backup action in Documents)
+Last updated: 2026-03-08 (Prep phase 5 UX refinements)
 
 ## Integration modes
 
@@ -279,6 +279,7 @@ When enabled via `multicorpus serve`:
 - `GET /health`
 - `GET /openapi.json`
 - `GET /documents` — list all docs with unit_count
+- `GET /documents/preview?doc_id=N&limit=M` — mini excerpt for Documents screen verification (no token)
 - `POST /query`
 - `POST /index`
 - `POST /import`

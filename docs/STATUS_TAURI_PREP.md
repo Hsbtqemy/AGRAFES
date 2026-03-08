@@ -1,10 +1,12 @@
 # Status — Concordancier Prep (tauri-prep) V0
 
-**Last updated:** 2026-03-06 (DB backup action wired in Documents tab)
+**Last updated:** 2026-03-08 (Prep phases 0→6 completed)
 
 Current contract/runtime reference:
-- `CONTRACT_VERSION = 1.4.4`
-- `docs/openapi.json` currently exposes 34 paths
+- `CONTRACT_VERSION = 1.4.6`
+- `docs/openapi.json` currently exposes 35 paths
+- Execution plan reference: `docs/PREP_IMPLEMENTATION_PLAN.md`
+- Plan status: Phase 0 (freeze UX) done; Phase 1 (socle UI commun) done; Phase 2 (Curation) done; Phase 3 (Segmentation) done; Phase 4 (Alignement) done; Phase 5 (Documents/Import/Export V2) done; Phase 6 (hardening final) done
 
 ---
 

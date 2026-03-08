@@ -391,6 +391,36 @@ def test_documents_returns_list(sidecar_base_url: str) -> None:
     assert isinstance(doc["unit_count"], int)
 
 
+def test_documents_preview_returns_excerpt(sidecar_base_url: str) -> None:
+    _, docs_payload = _http_json("GET", f"{sidecar_base_url}/documents")
+    doc_id = docs_payload["documents"][0]["doc_id"]
+
+    code, payload = _http_json(
+        "GET",
+        f"{sidecar_base_url}/documents/preview?doc_id={doc_id}&limit=3",
+    )
+    assert code == 200
+    assert payload["ok"] is True
+    assert payload["doc"]["doc_id"] == doc_id
+    assert payload["limit"] == 3
+    assert isinstance(payload["lines"], list)
+    assert payload["count"] == len(payload["lines"])
+    if payload["lines"]:
+        line = payload["lines"][0]
+        for key in ("unit_id", "n", "text"):
+            assert key in line
+
+
+def test_documents_preview_missing_doc_returns_404(sidecar_base_url: str) -> None:
+    code, payload = _http_json(
+        "GET",
+        f"{sidecar_base_url}/documents/preview?doc_id=999999",
+    )
+    assert code == 404
+    assert payload["ok"] is False
+    assert payload["error_code"] == "NOT_FOUND"
+
+
 def test_align_external_id_via_sidecar(sidecar_base_url: str, tmp_path: Path) -> None:
     # First get the doc_ids from /documents
     _, docs_payload = _http_json("GET", f"{sidecar_base_url}/documents")

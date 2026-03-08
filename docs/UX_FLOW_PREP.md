@@ -282,3 +282,82 @@ for f in $(rg --files prototypes/visual-validation -g '*.html'); do \
   rg -o 'href=\"[^\"]+\"' "$f" >/dev/null; \
 done
 ```
+
+## 15) Matrice freeze UX -> runtime (phase 0 lancee, 2026-03-07)
+
+Objectif:
+- fermer l'ecart maquettes vNext / implementation `tauri-prep` avant cablage final.
+
+| Zone | Maquette reference | Runtime principal | Etat |
+|------|--------------------|-------------------|------|
+| Import | `prep-import-vnext.html` | `ImportScreen.ts` | done |
+| Documents | `prep-documents-vnext.html` | `MetadataScreen.ts` | done |
+| Actions / Curation | `prep-curation-preview-vnext.html` | `ActionsScreen.ts` | done |
+| Actions / Segmentation | `prep-segmentation-vo-vnext.html`, `prep-segmentation-translation-vo-native-layout-vnext.html` | `ActionsScreen.ts` | done |
+| Actions / Alignement | `prep-alignement-run-vnext.html`, `prep-audit-advanced-vnext.html` | `ActionsScreen.ts` | done |
+| Exports | `prep-exporter-vnext.html` | `ExportsScreen.ts` | done |
+| Layout commun | `prep-vnext.html` | `app.ts` | done |
+
+Checklist execution phase 0:
+- [x] inventaire maquettes prep valide.
+- [x] mapping maquette -> ecran runtime valide.
+- [x] ecarts critiques listes par onglet (fonctionnel + ergonomie).
+- [x] priorisation lot 1 implementation (Curation/Segmentation/Alignement).
+
+### 15.1 Ecarts critiques par onglet (runtime vs maquettes vNext)
+
+Note (2026-03-08):
+- cette liste est conservee comme base de diagnostic historique (phase 0);
+- les lots phase 1 -> 6 ont couvre les ecarts principaux runtime.
+
+#### Import
+
+- libelles trop techniques dans la table fichier (`docx_numbered_lines`, `txt_numbered_lines`, etc.) pour un usage lambda;
+- manque de separation explicite entre options "globales de lot" et overrides "fichier courant";
+- feedback "profil/strategie d'import" encore implicite (la priorite des options n'est pas lisible).
+
+#### Documents
+
+- absence de mini-preview du contenu pour verifier rapidement qu'on edite le bon document;
+- taxonomie metier inegale (`doc_role` tres technique) vs attentes utilisateur;
+- flux "selection -> edition -> confirmation" correct mais dense, sans mode compact.
+
+#### Actions / Curation
+
+- la preview n'est pas encore "centrale continue" au sens maquette (brut/propose en lecture longue);
+- options rapides insuffisamment actionnables (preset principal + JSON custom, peu de controle granulaire);
+- outillage avance orienté technique (JSON de regles) au lieu d'une UX rechercher/remplacer explicite.
+
+#### Actions / Segmentation
+
+- ecart majeur: workflow maquette non implemente (preview texte long + split/merge/couper manuels en contexte);
+- pas de panneau de correction segmentation dans le flux principal;
+- pas de visualisation explicite de l'impact des regles de coupure avant validation.
+
+#### Actions / Alignement
+
+- progression "run -> revue -> correction" fonctionnelle mais encore trop chargee (workflow guide + audit dense);
+- frontiere Alignement vs Audit encore trop melangee visuellement;
+- correction focalisee presente, mais lisibilite "action locale vs recalcul global" encore perfectible.
+
+#### Exports
+
+- flux V2 present, mais coexistence avec legacy ajoute encore du bruit cognitif;
+- "source des donnees / produit / format" existe, mais l'explication des combinaisons valides reste insuffisante;
+- exports multilingues alignes (2-4 langues) pas encore explicitement guides de bout en bout.
+
+#### Layout commun
+
+- ecart structurel: panneau "Sections" stable/repliable dans Actions pas encore aligne avec les maquettes;
+- densite elevee sur Actions (trop de cartes ouvertes pour un premier passage utilisateur);
+- coherence visuelle inter-onglets a consolider (priorite visuelle des CTA primaires).
+
+### 15.2 Priorisation lot 1 implementation (demarrage)
+
+Objectif lot 1:
+- reduire la charge cognitive sur `Actions` et aligner le coeur de flux sur les maquettes validees.
+
+Ordre lot 1:
+1. Curation: preview centrale + options rapides user-friendly.
+2. Segmentation: mode focus long texte + corrections manuelles principales.
+3. Alignement: simplification de la vue run/revue/correction et frontiere explicite vers Audit avance.

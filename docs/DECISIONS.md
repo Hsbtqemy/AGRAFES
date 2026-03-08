@@ -862,3 +862,33 @@ already validated decisions.
   work by default.
 - Contract change is backward-compatible (optional request fields, additive
   response fields).
+
+---
+
+## ADR-036 — Prep phase 5: explicit document scope + lightweight document preview
+
+**Date:** 2026-03-08
+**Status:** Accepted
+
+**Context**
+During Prep implementation, two recurring UX issues remained on non-technical flows:
+- in `Exporter`, users could not always infer the effective document scope before launch;
+- in `Documents`, users could edit metadata without a quick content excerpt to verify they selected the right document.
+
+Additionally, some CI runs surfaced legacy DBs missing workflow columns (`workflow_status`), causing `/documents` and metadata updates to fail hard.
+
+**Decision**
+- Add read endpoint `GET /documents/preview?doc_id=<id>&limit=<1..20>`:
+  - returns the first line units (`unit_id`, `n`, `external_id`, `text`) + `count/total_lines`.
+  - no token required (read-only).
+- In `tauri-prep`:
+  - `Documents` screen displays a mini excerpt panel fed by this endpoint;
+  - `Exports` V2 keeps document scope explicit with select-all/clear controls and blocks launch on empty scope;
+  - `Import` uses user-facing mode labels and provides an explicit “apply lot defaults” action.
+- Sidecar hardening:
+  - auto-backfill missing document workflow columns before `/documents` read and metadata update operations.
+
+**Consequences**
+- Prep runtime becomes clearer for lambda users without changing core JSON envelopes.
+- Contract remains backward-compatible (additive endpoint only).
+- Legacy DB schemas are tolerated more gracefully, reducing runtime/CI fragility.

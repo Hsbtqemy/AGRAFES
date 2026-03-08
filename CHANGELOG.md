@@ -71,6 +71,20 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - `tauri-prep` Documents tab adds `Sauvegarder la DB` button and live backup status
   - backup naming now avoids same-second collisions (`..._1.bak`, `..._2.bak`, ...)
   - backup file creation errors are normalized to `400 BAD_REQUEST` when destination is invalid/unwritable
+- Sidecar documents metadata/read hardening:
+  - new read endpoint `GET /documents/preview?doc_id=&limit=` returns a lightweight excerpt
+    (first line units) for document verification in Prep.
+  - `/documents` and metadata update routes now auto-backfill workflow columns on legacy DBs
+    before querying/updating (prevents `no such column: workflow_status` crashes).
+- `tauri-prep` phase 5 UX refinements:
+  - Import tab: human-readable import mode labels + one-click apply of lot defaults to pending files.
+  - Documents tab: mini content preview pane wired to sidecar excerpt endpoint.
+  - Export tab V2: clearer document-scope controls (`tout sélectionner` / `effacer`) and explicit
+    blocking state when no document is selected.
+- `tauri-prep` phase 6 hardening:
+  - global `:focus-visible` styling for keyboard navigation readability;
+  - collapsible cards now expose explicit ARIA relationships/states (`aria-controls`, `aria-expanded`, `aria-hidden`);
+  - icon-only critical action buttons now carry explicit accessibility labels.
 
 ## [V1.9.1] — 2026-03-01
 

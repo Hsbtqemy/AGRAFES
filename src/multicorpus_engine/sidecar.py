@@ -40,7 +40,7 @@ from pathlib import Path
 from typing import Optional
 from urllib.error import URLError
 from urllib.request import Request, urlopen
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from .sidecar_contract import (
     ERR_BAD_REQUEST,
@@ -421,6 +421,9 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             self._send_json(openapi_spec())
         elif path == "/documents":
             self._handle_documents()
+        elif path == "/documents/preview":
+            qs = parse_qs(urlparse(self.path).query)
+            self._handle_documents_preview(qs)
         elif path == "/doc_relations":
             self._handle_doc_relations_get()
         elif path == "/jobs":
@@ -1559,6 +1562,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         self._send_json(success_payload({"fts_stale": True, **report.to_dict()}))
 
     def _handle_documents(self) -> None:
+        self._ensure_document_workflow_columns()
         rows = self._conn().execute(
             """
             SELECT d.doc_id, d.title, d.language, d.doc_role, d.resource_type,
@@ -1585,6 +1589,140 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             for r in rows
         ]
         self._send_json(success_payload({"documents": documents, "count": len(documents)}))
+
+    def _ensure_document_workflow_columns(self) -> None:
+        """Backfill workflow columns when running against legacy DB schemas."""
+        cols = {
+            row[1]
+            for row in self._conn().execute("PRAGMA table_info(documents)").fetchall()
+        }
+        if {"workflow_status", "validated_at", "validated_run_id"}.issubset(cols):
+            return
+
+        with self._lock():
+            cols = {
+                row[1]
+                for row in self._conn().execute("PRAGMA table_info(documents)").fetchall()
+            }
+            if "workflow_status" not in cols:
+                self._conn().execute(
+                    "ALTER TABLE documents ADD COLUMN workflow_status TEXT NOT NULL DEFAULT 'draft'"
+                )
+            if "validated_at" not in cols:
+                self._conn().execute("ALTER TABLE documents ADD COLUMN validated_at TEXT")
+            if "validated_run_id" not in cols:
+                self._conn().execute(
+                    "ALTER TABLE documents ADD COLUMN validated_run_id TEXT"
+                )
+            self._conn().execute(
+                "CREATE INDEX IF NOT EXISTS idx_documents_workflow_status ON documents (workflow_status)"
+            )
+            self._conn().commit()
+
+    def _handle_documents_preview(self, qs: dict[str, list[str]]) -> None:
+        doc_id_raw = (qs.get("doc_id") or [None])[0]
+        if doc_id_raw is None:
+            self._send_error(
+                "doc_id query param is required",
+                code=ERR_BAD_REQUEST,
+                http_status=400,
+            )
+            return
+        try:
+            doc_id = int(doc_id_raw)
+        except (TypeError, ValueError):
+            self._send_error(
+                "doc_id must be an integer",
+                code=ERR_BAD_REQUEST,
+                http_status=400,
+            )
+            return
+        limit_raw = (qs.get("limit") or ["6"])[0]
+        try:
+            limit = int(limit_raw)
+        except (TypeError, ValueError):
+            self._send_error(
+                "limit must be an integer",
+                code=ERR_BAD_REQUEST,
+                http_status=400,
+            )
+            return
+        if limit < 1 or limit > 20:
+            self._send_error(
+                "limit must be between 1 and 20",
+                code=ERR_BAD_REQUEST,
+                http_status=400,
+            )
+            return
+
+        self._ensure_document_workflow_columns()
+
+        doc_row = self._conn().execute(
+            """
+            SELECT doc_id, title, language, doc_role, resource_type,
+                   workflow_status, validated_at, validated_run_id
+            FROM documents
+            WHERE doc_id = ?
+            """,
+            (doc_id,),
+        ).fetchone()
+        if doc_row is None:
+            self._send_error(
+                f"Unknown doc_id: {doc_id}",
+                code=ERR_NOT_FOUND,
+                http_status=404,
+            )
+            return
+
+        total_lines = (
+            self._conn()
+            .execute(
+                "SELECT COUNT(*) FROM units WHERE doc_id = ? AND unit_type = 'line'",
+                (doc_id,),
+            )
+            .fetchone()[0]
+            or 0
+        )
+        line_rows = self._conn().execute(
+            """
+            SELECT unit_id, n, external_id, text_norm
+            FROM units
+            WHERE doc_id = ? AND unit_type = 'line'
+            ORDER BY n
+            LIMIT ?
+            """,
+            (doc_id, limit),
+        ).fetchall()
+        lines = [
+            {
+                "unit_id": row[0],
+                "n": row[1],
+                "external_id": row[2],
+                "text": row[3],
+            }
+            for row in line_rows
+        ]
+
+        self._send_json(
+            success_payload(
+                {
+                    "doc": {
+                        "doc_id": doc_row[0],
+                        "title": doc_row[1],
+                        "language": doc_row[2],
+                        "doc_role": doc_row[3],
+                        "resource_type": doc_row[4],
+                        "workflow_status": doc_row[5],
+                        "validated_at": doc_row[6],
+                        "validated_run_id": doc_row[7],
+                    },
+                    "lines": lines,
+                    "count": len(lines),
+                    "total_lines": total_lines,
+                    "limit": limit,
+                }
+            )
+        )
 
     def _handle_align(self, body: dict) -> None:
         pivot_doc_id = body.get("pivot_doc_id")
@@ -1761,8 +1899,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
     # ------------------------------------------------------------------
 
     def _handle_doc_relations_get(self) -> None:
-        from urllib.parse import parse_qs, urlparse as _up
-        qs = parse_qs(_up(self.path).query)
+        qs = parse_qs(urlparse(self.path).query)
         doc_id_str = (qs.get("doc_id") or [None])[0]
         if doc_id_str is None:
             self._send_error("doc_id query param is required", code=ERR_BAD_REQUEST, http_status=400)
@@ -1783,6 +1920,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         self._send_json(success_payload({"doc_id": doc_id, "relations": relations, "count": len(relations)}))
 
     def _handle_documents_update(self, body: dict) -> None:
+        self._ensure_document_workflow_columns()
         doc_id = body.get("doc_id")
         if doc_id is None:
             self._send_error("doc_id is required", code=ERR_BAD_REQUEST, http_status=400)
@@ -1862,6 +2000,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         self._send_json(success_payload({"updated": 1, "doc": doc}))
 
     def _handle_documents_bulk_update(self, body: dict) -> None:
+        self._ensure_document_workflow_columns()
         updates_list = body.get("updates")
         if not isinstance(updates_list, list) or not updates_list:
             self._send_error("updates must be a non-empty list of {doc_id, ...fields}", code=ERR_BAD_REQUEST, http_status=400)

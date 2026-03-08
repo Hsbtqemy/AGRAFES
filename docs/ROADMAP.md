@@ -71,7 +71,11 @@ Last updated: 2026-03-06 (Prep UX checklist closure + docs sync)
   - `tauri-prep` Documents tab now exposes the workflow state directly (badge in doc list + status selector + quick action "Valider ce document").
   - `tauri-prep` Actions tab now includes a persisted "Après validation" routing choice (`Documents` / `Document suivant` / `Rester sur place`) for segmentation finalization.
   - `tauri-prep` Documents tab now includes `Sauvegarder la DB` (sidecar `POST /db/backup`, timestamped `.db.bak` output + status/log feedback).
+  - `tauri-prep` Documents tab now includes a mini content preview (`GET /documents/preview`) to verify the selected document before metadata edits.
+  - `tauri-prep` Import tab now uses user-facing mode labels and explicit lot-to-pending propagation.
   - `tauri-prep` Exporter now exposes a unified V2 flow card (`jeu de données → produit → format`) with dynamic options and one launch action, including readable text exports (`TXT`/`DOCX`).
+  - Export V2 scope controls hardened: explicit selection summary + empty-scope block before launch.
+  - Prep hardening baseline done: focus-visible global, accordion ARIA wiring, icon-button accessibility labels on critical actions.
 - Deep-link handoff implemented from `tauri-prep` to unified shell: `agrafes-shell://open-db?mode=explorer&path=...` (startup + runtime listener, fallback manual open).
 - **Concordancier V1.0 (Sprint 2.1)**: IntersectionObserver sentinel — auto load-more on scroll.
 - **Concordancier V1.1 (Sprints 2.2/2.3)**: Query builder (phrase/and/or/near) + FTS safety guards + parallel KWIC 2-column layout.

@@ -1,6 +1,6 @@
 # Backlog — multicorpus_engine
 
-Last updated: 2026-03-06 (Prep UX gates + DB backup action wired)
+Last updated: 2026-03-08 (Prep phase 5 runtime refinements)
 
 ## Priority backlog (realistic, post-implementation)
 
@@ -16,6 +16,7 @@ Last updated: 2026-03-06 (Prep UX gates + DB backup action wired)
 | P1 | Concordancier Prep V1 — align explainability | Users need visibility on fallback behavior | Optional `debug_align` payload available and visible in Actions logs | done |
 | P1 | Concordancier Prep — persisted document workflow status | UX finalization needs a durable `draft/review/validated` state, not visual-only toggles | Migration + sidecar `/documents` + update endpoints carry workflow status and validation metadata; `tauri-prep` Documents tab shows/edits status and offers quick validate/review actions; `Actions` adds "Segmenter + valider ce document" fast-path + configurable post-validation routing | done |
 | P1 | Concordancier Prep — UX workflow gates (design -> implementation) | The current mockup iteration needs explicit closure criteria before final wiring | `docs/UX_FLOW_PREP.md` checklist section completed (Done-by-tab, align vs audit boundary, save/error guards, recalculation conflict policy, Export V2 scope, accessibility, end-to-end validation) + runtime state banner and unsaved-change inter-tab guard wired in `tauri-prep` | done |
+| P2 | Concordancier Prep — accessibility baseline hardening | Final prep iteration required keyboard/focus consistency before broader rollout | Global focus-visible styles, accordion ARIA state wiring, and explicit labels on icon-only critical controls | done |
 | P1 | Concordancier V0.2 — pagination backend + load more | Prevent loading too many hits per request, especially with aligned mode | `/query` supports `limit/offset/has_more`; UI supports reset + `Charger plus` paging | done |
 | P1 | Concordancier V1 — virtualisation / IntersectionObserver | V0.2 load-more exists; scrolling UX can be smoother | Automatic near-bottom page fetch with guardrails and no duplicate fetches | done |
 | P1 | Concordancier V1 — metadata panel | Users need doc-level metadata at a glance | Side panel: title, language, role, resource_type, unit count | todo |
@@ -63,6 +64,7 @@ Last updated: 2026-03-06 (Prep UX gates + DB backup action wired)
 - `POST /curate/preview` — read-only dry-run, in-memory regex simulation, no DB write.
 - `POST /align/audit` — paginated alignment link audit with pivot/target texts; optional status filter.
 - `GET /documents`, `POST /align` — sidecar endpoints for Concordancier Prep.
+- `GET /documents/preview` — lightweight excerpt endpoint for Documents quick verification.
 - `tauri-prep/` full V0.4 scaffold: 5 screens (Project, Import, Actions, Métadonnées, Exports).
 - Metadata endpoints: `GET /doc_relations`, `POST /documents/update`, `POST /documents/bulk_update`, `POST /doc_relations/set`, `POST /doc_relations/delete`.
 - Export endpoints: `POST /export/tei`, `POST /export/align_csv`, `POST /export/run_report`.

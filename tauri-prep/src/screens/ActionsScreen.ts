@@ -41,6 +41,7 @@ import {
 } from "../lib/sidecarClient.ts";
 import { save as dialogSave } from "@tauri-apps/plugin-dialog";
 import type { JobCenter } from "../components/JobCenter.ts";
+import { initCardAccordions } from "../lib/uiAccordions.ts";
 
 // ─── Curation presets ─────────────────────────────────────────────────────────
 
@@ -117,10 +118,22 @@ export class ActionsScreen {
   private _auditLinks: AlignLinkRecord[] = [];
   private _auditIncludeExplain = false;
   private _auditExceptionsOnly = false;
+  private _auditQuickFilter: "all" | "review" | "rejected" | "unreviewed" = "review";
   private _auditTextFilter = "";
   private _auditSelectedLinkId: number | null = null;
   private _alignExplainability: AlignExplainabilityEntry[] = [];
   private _alignRunId: string | null = null;
+
+  // Segmentation workflow state
+  private _segmentPendingValidation = false;
+  private _lastSegmentReport: {
+    doc_id: number;
+    units_input: number;
+    units_output: number;
+    segment_pack?: string;
+    warnings?: string[];
+  } | null = null;
+  private _segFocusMode = false;
 
   // V1.5 — Collision state
   private _collOffset = 0;
@@ -136,6 +149,7 @@ export class ActionsScreen {
   private static readonly LS_WF_STEP = "agrafes.prep.workflow.step";
   private static readonly LS_SEG_POST_VALIDATE = "agrafes.prep.seg.post_validate";
   private static readonly LS_AUDIT_EXCEPTIONS_ONLY = "agrafes.prep.audit.exceptions_only";
+  private static readonly LS_AUDIT_QUICK_FILTER = "agrafes.prep.audit.quick_filter";
 
   // Log + busy
   private _logEl!: HTMLElement;
@@ -259,30 +273,56 @@ export class ActionsScreen {
       <!-- ═══ FEATURE 1: Curation Preview Diff ═══ -->
       <section class="card" id="act-curate-card">
         <h3>Curation <span class="badge-preview">avec prévisualisation</span></h3>
-        <p class="hint">Prévisualisation active: la comparaison se met à jour automatiquement lors des changements de preset/document.</p>
+        <p class="hint">Prévisualisation active: la comparaison se met à jour automatiquement dès qu’une option change.</p>
 
         <div class="form-row">
-          <label>Preset :
-            <select id="act-preset-sel">
-              <option value="spaces">Espaces</option>
-              <option value="quotes">Apostrophes et guillemets</option>
-              <option value="punctuation">Ponctuation</option>
-              <option value="custom">Règles personnalisées</option>
-            </select>
-          </label>
           <label>Document :
             <select id="act-curate-doc"><option value="">Tous</option></select>
           </label>
+          <div style="display:flex;align-items:flex-end">
+            <span class="hint" style="margin:0">Les options cochées alimentent la preview en continu.</span>
+          </div>
         </div>
 
-        <div id="act-custom-rules-wrap" style="display:none; margin-top:0.5rem">
-          <label>Règles JSON :
-            <textarea id="act-curate-rules" rows="4" placeholder='[{"pattern":"foo","replacement":"bar","flags":"gi"}]'></textarea>
+        <div class="curation-quick-rules" style="margin-top:0.55rem">
+          <label class="curation-rule-pill">
+            <input id="act-rule-spaces" type="checkbox" checked />
+            NBSP/NNBSP + espaces multiples
+          </label>
+          <label class="curation-rule-pill">
+            <input id="act-rule-quotes" type="checkbox" />
+            Apostrophes et guillemets
+          </label>
+          <label class="curation-rule-pill">
+            <input id="act-rule-punctuation" type="checkbox" />
+            Ponctuation fine
           </label>
         </div>
 
-        <div class="btn-row" style="margin-top:0.75rem">
-          <button id="act-preview-btn" class="btn btn-secondary" disabled>Recalculer preview</button>
+        <details id="act-curate-advanced" class="curation-advanced" style="margin-top:0.65rem">
+          <summary>Retouches avancées (chercher/remplacer)</summary>
+          <div class="form-row" style="margin-top:0.55rem">
+            <label style="min-width:220px">Chercher (regex)
+              <input id="act-curate-quick-pattern" type="text" placeholder="ex: \\u2019" />
+            </label>
+            <label style="min-width:220px">Remplacer par
+              <input id="act-curate-quick-replacement" type="text" placeholder="ex: '" />
+            </label>
+            <label style="max-width:110px">Flags
+              <input id="act-curate-quick-flags" type="text" value="g" maxlength="6" />
+            </label>
+            <div style="align-self:flex-end">
+              <button id="act-curate-add-rule-btn" class="btn btn-secondary btn-sm">Ajouter la règle</button>
+            </div>
+          </div>
+          <label>Règles JSON avancées
+            <textarea id="act-curate-rules" rows="4" placeholder='[{"pattern":"foo","replacement":"bar","flags":"gi"}]'></textarea>
+          </label>
+          <p class="hint" style="margin:0">Ces règles sont ajoutées après les options rapides cochées.</p>
+        </details>
+
+        <div class="btn-row" style="margin-top:0.8rem">
+          <button id="act-preview-btn" class="btn btn-secondary" disabled>Recalculer maintenant</button>
           <button id="act-curate-btn" class="btn btn-warning" disabled>Appliquer</button>
         </div>
 
@@ -298,9 +338,9 @@ export class ActionsScreen {
       </section>
 
       <!-- Segmentation -->
-      <section class="card">
+      <section class="card" id="act-seg-card">
         <h3>Segmentation</h3>
-        <p class="hint">Remplace les unités-lignes par des unités-phrase (efface les liens d'alignement).</p>
+        <p class="hint">Flux recommandé: sélectionner le document, lancer la segmentation, vérifier le statut, puis valider le document.</p>
         <div class="form-row">
           <label>Document :
             <select id="act-seg-doc"><option value="">— choisir —</option></select>
@@ -317,9 +357,14 @@ export class ActionsScreen {
             </select>
           </label>
         </div>
+        <div id="act-seg-status-banner" class="runtime-state state-info" style="margin-top:0.4rem">
+          Aucune segmentation lancée pour ce document dans cette session.
+        </div>
         <div class="btn-row" style="margin-top:0.5rem">
           <button id="act-seg-btn" class="btn btn-warning" disabled>Segmenter</button>
           <button id="act-seg-validate-btn" class="btn btn-secondary" disabled>Segmenter + valider ce document</button>
+          <button id="act-seg-validate-only-btn" class="btn btn-primary" disabled>Valider ce document</button>
+          <button id="act-seg-focus-toggle" class="btn btn-secondary" disabled>Mode focus segmentation</button>
         </div>
         <div class="form-row" style="margin-top:0.5rem">
           <label>Après validation
@@ -330,6 +375,9 @@ export class ActionsScreen {
             </select>
           </label>
         </div>
+        <p class="hint" style="margin-top:0.35rem">
+          Note: ce mode applique la segmentation backend (pack/lang). Les retouches fines segment-par-segment seront traitées dans la phase suivante.
+        </p>
       </section>
 
       <!-- ═══ FEATURE 2: Align + Audit UI ═══ -->
@@ -421,6 +469,14 @@ export class ActionsScreen {
                   Exceptions seulement
                 </label>
               </div>
+              <div class="btn-row" style="margin-top:0.35rem; gap:0.4rem; align-items:center">
+                <button id="act-audit-qf-all" class="btn btn-sm btn-secondary audit-filter-btn" data-qf="all">Tout</button>
+                <button id="act-audit-qf-review" class="btn btn-sm btn-secondary audit-filter-btn" data-qf="review">À revoir</button>
+                <button id="act-audit-qf-unreviewed" class="btn btn-sm btn-secondary audit-filter-btn" data-qf="unreviewed">Non révisés</button>
+                <button id="act-audit-qf-rejected" class="btn btn-sm btn-secondary audit-filter-btn" data-qf="rejected">Rejetés</button>
+                <button id="act-audit-next-exception-btn" class="btn btn-sm btn-secondary">Suivant à revoir</button>
+              </div>
+              <div id="act-audit-kpis" class="hint" style="margin-top:0.35rem"></div>
               <div id="act-audit-table-wrap" style="margin-top:0.5rem; overflow-x:auto"></div>
               <div id="act-audit-batch-bar" class="audit-batch-bar" style="display:none">
                 <span id="act-audit-sel-count" class="audit-sel-count">0 sélectionné(s)</span>
@@ -563,15 +619,16 @@ export class ActionsScreen {
     // Wire events
     root.querySelector("#act-reload-docs")!.addEventListener("click", () => this._loadDocs());
 
-    // Preset selector
-    root.querySelector("#act-preset-sel")!.addEventListener("change", (e) => {
-      const v = (e.target as HTMLSelectElement).value;
-      (root.querySelector("#act-custom-rules-wrap") as HTMLElement).style.display =
-        v === "custom" ? "" : "none";
-      this._schedulePreview(true);
+    // Curation quick/advanced rules
+    ["#act-rule-spaces", "#act-rule-quotes", "#act-rule-punctuation"].forEach((sel) => {
+      root.querySelector(sel)!.addEventListener("change", () => this._schedulePreview(true));
     });
     root.querySelector("#act-curate-doc")!.addEventListener("change", () => this._schedulePreview(true));
     root.querySelector("#act-curate-rules")!.addEventListener("input", () => this._schedulePreview(true));
+    root.querySelector("#act-curate-add-rule-btn")!.addEventListener("click", (evt) => {
+      evt.preventDefault();
+      this._addAdvancedCurateRule(root);
+    });
 
     // Curate
     root.querySelector("#act-preview-btn")!.addEventListener("click", () => this._runPreview());
@@ -582,6 +639,11 @@ export class ActionsScreen {
     // Segment
     root.querySelector("#act-seg-btn")!.addEventListener("click", () => this._runSegment());
     root.querySelector("#act-seg-validate-btn")!.addEventListener("click", () => this._runSegment(true));
+    root.querySelector("#act-seg-validate-only-btn")!.addEventListener("click", () => this._runValidateCurrentSegDoc());
+    root.querySelector("#act-seg-focus-toggle")!.addEventListener("click", () => this._toggleSegFocusMode(root));
+    root.querySelector("#act-seg-doc")!.addEventListener("change", () => this._refreshSegmentationStatusUI());
+    root.querySelector("#act-seg-pack")!.addEventListener("change", () => this._refreshSegmentationStatusUI());
+    root.querySelector("#act-seg-lang")!.addEventListener("input", () => this._refreshSegmentationStatusUI());
     const segAfterValidateSel = root.querySelector("#act-seg-after-validate") as HTMLSelectElement | null;
     if (segAfterValidateSel) {
       segAfterValidateSel.value = this._postValidateDestination();
@@ -637,6 +699,18 @@ export class ActionsScreen {
         this._renderAuditTable(root);
       });
     }
+    this._auditQuickFilter = this._readAuditQuickFilterPref();
+    this._syncAuditQuickFilterUi(root);
+    ["all", "review", "unreviewed", "rejected"].forEach((key) => {
+      const btn = root.querySelector<HTMLButtonElement>(`#act-audit-qf-${key}`);
+      if (!btn) return;
+      btn.addEventListener("click", () => {
+        this._setAuditQuickFilter(root, key as "all" | "review" | "unreviewed" | "rejected");
+      });
+    });
+    root.querySelector("#act-audit-next-exception-btn")!.addEventListener("click", () => {
+      this._focusNextAuditException(root);
+    });
 
     // Focus correction panel actions
     root.querySelector("#act-focus-accept-btn")!.addEventListener("click", () =>
@@ -685,7 +759,8 @@ export class ActionsScreen {
     // ── Workflow ──────────────────────────────────────────────────
     this._wfRoot = root;
     this._initWorkflow(root);
-    this._initSectionAccordions(root);
+    initCardAccordions(root);
+    this._refreshSegmentationStatusUI();
 
     return root;
   }
@@ -695,6 +770,9 @@ export class ActionsScreen {
     this._docs = [];
     this._alignExplainability = [];
     this._alignRunId = null;
+    this._lastSegmentReport = null;
+    this._segmentPendingValidation = false;
+    this._segFocusMode = false;
     this._hasPendingPreview = false;
     this._lastAuditEmpty = false;
     this._auditSelectedLinkId = null;
@@ -712,6 +790,12 @@ export class ActionsScreen {
     } else {
       this._wfEnableButtons(false);
     }
+    if (this._wfRoot) {
+      this._wfRoot.classList.remove("seg-focus-mode");
+      const focusBtn = this._wfRoot.querySelector<HTMLButtonElement>("#act-seg-focus-toggle");
+      if (focusBtn) focusBtn.textContent = "Mode focus segmentation";
+      this._refreshSegmentationStatusUI();
+    }
     this._refreshRuntimeState();
   }
 
@@ -725,10 +809,16 @@ export class ActionsScreen {
   }
 
   hasPendingChanges(): boolean {
-    return this._hasPendingPreview;
+    return this._hasPendingPreview || this._segmentPendingValidation;
   }
 
   pendingChangesMessage(): string {
+    if (this._hasPendingPreview && this._segmentPendingValidation) {
+      return "Prévisualisation curation et segmentation non validée en attente. Quitter cet onglet ?";
+    }
+    if (this._segmentPendingValidation) {
+      return "Une segmentation est en attente de validation document. Quitter cet onglet ?";
+    }
     return "Une prévisualisation de curation non appliquée est en attente. Quitter cet onglet ?";
   }
 
@@ -743,7 +833,7 @@ export class ActionsScreen {
     };
     setVal("#act-seg-lang", preset.segmentation_lang);
     setVal("#act-seg-pack", preset.segmentation_pack);
-    setVal("#act-preset-sel", preset.curation_preset);
+    this._applyCurationPreset(root, preset.curation_preset);
     setVal("#act-align-strategy", preset.alignment_strategy);
     if (preset.similarity_threshold !== undefined) {
       setVal("#act-sim-threshold", String(preset.similarity_threshold));
@@ -793,6 +883,10 @@ export class ActionsScreen {
       this._setRuntimeState("warn", "Prévisualisation prête: appliquez ou relancez avant de quitter la section.");
       return;
     }
+    if (this._segmentPendingValidation) {
+      this._setRuntimeState("warn", "Segmentation terminée: validez le document pour finaliser le workflow.");
+      return;
+    }
     if (this._lastErrorMsg) {
       this._setRuntimeState("warn", `Dernière erreur: ${this._lastErrorMsg}`);
       return;
@@ -810,7 +904,8 @@ export class ActionsScreen {
 
   private _setButtonsEnabled(on: boolean): void {
     ["act-preview-btn", "act-curate-btn", "act-seg-btn", "act-align-btn", "act-align-recalc-btn",
-     "act-seg-validate-btn", "act-meta-btn", "act-index-btn", "act-quality-btn", "act-coll-load-btn",
+     "act-seg-validate-btn", "act-seg-validate-only-btn", "act-seg-focus-toggle",
+     "act-meta-btn", "act-index-btn", "act-quality-btn", "act-coll-load-btn",
      "act-report-btn"].forEach(id => {
       const el = document.querySelector(`#${id}`) as HTMLButtonElement | null;
       if (el) el.disabled = !on;
@@ -831,6 +926,87 @@ export class ActionsScreen {
     } catch {
       // ignore preference persistence failure
     }
+  }
+
+  private _readAuditQuickFilterPref(): "all" | "review" | "unreviewed" | "rejected" {
+    try {
+      const raw = localStorage.getItem(ActionsScreen.LS_AUDIT_QUICK_FILTER);
+      if (raw === "all" || raw === "review" || raw === "unreviewed" || raw === "rejected") {
+        return raw;
+      }
+    } catch {
+      // ignore preference persistence failure
+    }
+    return "review";
+  }
+
+  private _writeAuditQuickFilterPref(value: "all" | "review" | "unreviewed" | "rejected"): void {
+    try {
+      localStorage.setItem(ActionsScreen.LS_AUDIT_QUICK_FILTER, value);
+    } catch {
+      // ignore preference persistence failure
+    }
+  }
+
+  private _setAuditQuickFilter(
+    root: HTMLElement,
+    value: "all" | "review" | "unreviewed" | "rejected",
+  ): void {
+    this._auditQuickFilter = value;
+    this._writeAuditQuickFilterPref(value);
+    this._syncAuditQuickFilterUi(root);
+    this._renderAuditTable(root);
+  }
+
+  private _syncAuditQuickFilterUi(root: HTMLElement): void {
+    root.querySelectorAll<HTMLButtonElement>(".audit-filter-btn").forEach((btn) => {
+      const current = btn.dataset.qf;
+      const active = current === this._auditQuickFilter;
+      btn.classList.toggle("is-active", active);
+      btn.setAttribute("aria-pressed", active ? "true" : "false");
+    });
+  }
+
+  private _normalizeAuditStatus(
+    status: AlignLinkRecord["status"] | "unreviewed" | null | undefined,
+  ): "accepted" | "rejected" | "unreviewed" {
+    if (status === "accepted" || status === "rejected") return status;
+    return "unreviewed";
+  }
+
+  private _isAuditExceptionStatus(
+    status: AlignLinkRecord["status"] | "unreviewed" | null | undefined,
+  ): boolean {
+    return this._normalizeAuditStatus(status) !== "accepted";
+  }
+
+  private _computeVisibleAuditLinks(): AlignLinkRecord[] {
+    const textFilter = this._auditTextFilter;
+    return this._auditLinks.filter((link) => {
+      const status = this._normalizeAuditStatus(link.status);
+      if (this._auditQuickFilter === "review" && status === "accepted") return false;
+      if (this._auditQuickFilter === "unreviewed" && status !== "unreviewed") return false;
+      if (this._auditQuickFilter === "rejected" && status !== "rejected") return false;
+      if (this._auditExceptionsOnly && status === "accepted") return false;
+      if (!textFilter) return true;
+      const haystack = `${link.external_id ?? ""} ${link.pivot_text ?? ""} ${link.target_text ?? ""}`.toLowerCase();
+      return haystack.includes(textFilter);
+    });
+  }
+
+  private _focusNextAuditException(root: HTMLElement): void {
+    const visibleLinks = this._computeVisibleAuditLinks();
+    const exceptionLinks = visibleLinks.filter((link) => this._isAuditExceptionStatus(link.status));
+    if (exceptionLinks.length === 0) {
+      this._showToast?.("Aucune exception visible dans le filtre courant.");
+      return;
+    }
+    const currentIdx = exceptionLinks.findIndex((link) => link.link_id === this._auditSelectedLinkId);
+    const next = exceptionLinks[(currentIdx + 1) % exceptionLinks.length];
+    this._auditSelectedLinkId = next.link_id;
+    this._renderAuditTable(root);
+    const row = root.querySelector<HTMLElement>(`tr[data-link-id='${next.link_id}']`);
+    row?.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
   private _selectedAuditLink(): AlignLinkRecord | null {
@@ -867,67 +1043,87 @@ export class ActionsScreen {
     }, 260);
   }
 
-  private _initSectionAccordions(root: HTMLElement): void {
-    const sections = Array.from(root.querySelectorAll<HTMLElement>("section.card[data-collapsible='true']"));
-    for (const section of sections) {
-      const heading = section.querySelector<HTMLElement>(":scope > h3");
-      if (!heading) continue;
-      if (heading.querySelector(".acc-toggle")) continue;
+  private _applyCurationPreset(root: HTMLElement, preset?: string): void {
+    const spaces = root.querySelector<HTMLInputElement>("#act-rule-spaces");
+    const quotes = root.querySelector<HTMLInputElement>("#act-rule-quotes");
+    const punctuation = root.querySelector<HTMLInputElement>("#act-rule-punctuation");
+    if (!spaces || !quotes || !punctuation) return;
 
-      const body = document.createElement("div");
-      body.className = "acc-body";
-      let node = heading.nextSibling;
-      while (node) {
-        const next = node.nextSibling;
-        body.appendChild(node);
-        node = next;
-      }
-      section.appendChild(body);
+    const mode = (preset ?? "spaces").trim();
+    if (mode === "spaces") {
+      spaces.checked = true;
+      quotes.checked = false;
+      punctuation.checked = false;
+    } else if (mode === "quotes") {
+      spaces.checked = false;
+      quotes.checked = true;
+      punctuation.checked = false;
+    } else if (mode === "punctuation") {
+      spaces.checked = false;
+      quotes.checked = false;
+      punctuation.checked = true;
+    } else {
+      // "custom" or unknown preset keeps multicorpus-friendly default.
+      spaces.checked = true;
+      quotes.checked = true;
+      punctuation.checked = true;
+    }
+    this._schedulePreview(true);
+  }
 
-      heading.classList.add("acc-head");
-      heading.tabIndex = 0;
-      heading.setAttribute("role", "button");
+  private _isRuleChecked(id: string): boolean {
+    return (document.querySelector<HTMLInputElement>(`#${id}`)?.checked) ?? false;
+  }
 
-      const toggle = document.createElement("button");
-      toggle.type = "button";
-      toggle.className = "acc-toggle";
-      toggle.setAttribute("aria-label", "Ouvrir ou fermer");
-      toggle.innerHTML = `<span class="acc-caret">▾</span>`;
-      heading.appendChild(toggle);
-
-      const applyState = (collapsed: boolean) => {
-        section.classList.toggle("is-collapsed", collapsed);
-        heading.setAttribute("aria-expanded", String(!collapsed));
-      };
-
-      const initialCollapsed = section.dataset.collapsedDefault === "true";
-      applyState(initialCollapsed);
-
-      const toggleCollapsed = () => applyState(!section.classList.contains("is-collapsed"));
-      heading.addEventListener("click", (evt) => {
-        if ((evt.target as HTMLElement).closest(".acc-toggle")) return;
-        toggleCollapsed();
-      });
-      heading.addEventListener("keydown", (evt) => {
-        if (evt.key !== "Enter" && evt.key !== " ") return;
-        evt.preventDefault();
-        toggleCollapsed();
-      });
-      toggle.addEventListener("click", (evt) => {
-        evt.stopPropagation();
-        toggleCollapsed();
-      });
+  private _parseAdvancedCurateRules(raw: string): CurateRule[] {
+    const trimmed = raw.trim();
+    if (!trimmed) return [];
+    try {
+      const parsed = JSON.parse(trimmed);
+      return Array.isArray(parsed) ? (parsed as CurateRule[]) : [];
+    } catch {
+      return [];
     }
   }
 
-  private _currentRules(): CurateRule[] {
-    const preset = (document.querySelector("#act-preset-sel") as HTMLSelectElement)?.value ?? "spaces";
-    if (preset === "custom") {
-      const raw = (document.querySelector("#act-curate-rules") as HTMLTextAreaElement)?.value.trim() ?? "[]";
-      try { return JSON.parse(raw) as CurateRule[]; }
-      catch { return []; }
+  private _addAdvancedCurateRule(root: HTMLElement): void {
+    const patternEl = root.querySelector<HTMLInputElement>("#act-curate-quick-pattern");
+    const replacementEl = root.querySelector<HTMLInputElement>("#act-curate-quick-replacement");
+    const flagsEl = root.querySelector<HTMLInputElement>("#act-curate-quick-flags");
+    const rulesEl = root.querySelector<HTMLTextAreaElement>("#act-curate-rules");
+    if (!patternEl || !replacementEl || !flagsEl || !rulesEl) return;
+
+    const pattern = patternEl.value.trim();
+    if (!pattern) {
+      this._log("Saisissez un motif de recherche pour ajouter une règle.", true);
+      return;
     }
-    return CURATE_PRESETS[preset]?.rules ?? [];
+    const replacement = replacementEl.value;
+    const flags = flagsEl.value.trim();
+
+    const existing = this._parseAdvancedCurateRules(rulesEl.value);
+    existing.push({
+      pattern,
+      replacement,
+      ...(flags ? { flags } : {}),
+    });
+    rulesEl.value = JSON.stringify(existing, null, 2);
+    patternEl.value = "";
+    replacementEl.value = "";
+    flagsEl.value = "g";
+    this._log(`Règle avancée ajoutée (${existing.length} au total).`);
+    this._schedulePreview(true);
+  }
+
+  private _currentRules(): CurateRule[] {
+    const rules: CurateRule[] = [];
+    if (this._isRuleChecked("act-rule-spaces")) rules.push(...CURATE_PRESETS.spaces.rules);
+    if (this._isRuleChecked("act-rule-quotes")) rules.push(...CURATE_PRESETS.quotes.rules);
+    if (this._isRuleChecked("act-rule-punctuation")) rules.push(...CURATE_PRESETS.punctuation.rules);
+
+    const raw = (document.querySelector("#act-curate-rules") as HTMLTextAreaElement | null)?.value ?? "";
+    rules.push(...this._parseAdvancedCurateRules(raw));
+    return rules;
   }
 
   private _currentCurateDocId(): number | undefined {
@@ -966,9 +1162,11 @@ export class ActionsScreen {
       const ap = document.querySelector("#act-audit-panel") as HTMLElement | null;
       if (ap) ap.style.display = "";
       this._log(`${this._docs.length} document(s) chargé(s).`);
+      this._refreshSegmentationStatusUI();
       this._refreshRuntimeState();
     } catch (err) {
       this._log(`Erreur chargement docs : ${err instanceof SidecarError ? err.message : String(err)}`, true);
+      this._refreshSegmentationStatusUI();
       this._refreshRuntimeState();
     }
   }
@@ -1120,15 +1318,87 @@ export class ActionsScreen {
 
   // ─── Segment ─────────────────────────────────────────────────────────────
 
+  private _currentSegDocSelection(): { docId: number; docLabel: string } | null {
+    const docSel = (document.querySelector("#act-seg-doc") as HTMLSelectElement | null)?.value ?? "";
+    if (!docSel) return null;
+    const docId = parseInt(docSel, 10);
+    if (!Number.isInteger(docId)) return null;
+    const doc = this._docs.find((d) => d.doc_id === docId);
+    const docLabel = doc ? `"${doc.title}"` : `#${docId}`;
+    return { docId, docLabel };
+  }
+
+  private _toggleSegFocusMode(root: HTMLElement): void {
+    this._segFocusMode = !this._segFocusMode;
+    root.classList.toggle("seg-focus-mode", this._segFocusMode);
+    const btn = root.querySelector<HTMLButtonElement>("#act-seg-focus-toggle");
+    if (btn) {
+      btn.textContent = this._segFocusMode ? "Quitter mode focus segmentation" : "Mode focus segmentation";
+    }
+  }
+
+  private _refreshSegmentationStatusUI(): void {
+    const banner = document.querySelector<HTMLElement>("#act-seg-status-banner");
+    const validateOnlyBtn = document.querySelector<HTMLButtonElement>("#act-seg-validate-only-btn");
+    if (!banner) return;
+
+    const segSel = this._currentSegDocSelection();
+    if (!this._conn) {
+      banner.className = "runtime-state state-error";
+      banner.textContent = "Sidecar indisponible.";
+      if (validateOnlyBtn) validateOnlyBtn.disabled = true;
+      return;
+    }
+    if (!segSel) {
+      banner.className = "runtime-state state-info";
+      banner.textContent = "Sélectionnez un document pour segmenter.";
+      if (validateOnlyBtn) validateOnlyBtn.disabled = true;
+      return;
+    }
+
+    if (this._lastSegmentReport && this._lastSegmentReport.doc_id === segSel.docId) {
+      const warnings = this._lastSegmentReport.warnings ?? [];
+      const warningText = warnings.length ? ` · avertissements: ${warnings.length}` : "";
+      if (this._segmentPendingValidation) {
+        banner.className = "runtime-state state-warn";
+        banner.textContent =
+          `Segmentation prête sur ${segSel.docLabel}: ${this._lastSegmentReport.units_input} → ${this._lastSegmentReport.units_output} unités (pack ${this._lastSegmentReport.segment_pack ?? "auto"})${warningText}. Validez le document.`;
+      } else {
+        banner.className = "runtime-state state-ok";
+        banner.textContent =
+          `Dernière segmentation ${segSel.docLabel}: ${this._lastSegmentReport.units_input} → ${this._lastSegmentReport.units_output} unités (pack ${this._lastSegmentReport.segment_pack ?? "auto"})${warningText}.`;
+      }
+      if (validateOnlyBtn) validateOnlyBtn.disabled = !this._segmentPendingValidation;
+      return;
+    }
+
+    banner.className = "runtime-state state-info";
+    banner.textContent = `Aucune segmentation lancée sur ${segSel.docLabel} dans cette session.`;
+    if (validateOnlyBtn) validateOnlyBtn.disabled = true;
+  }
+
+  private async _runValidateCurrentSegDoc(): Promise<void> {
+    if (this._isBusy) return;
+    const segSel = this._currentSegDocSelection();
+    if (!segSel) {
+      this._log("Sélectionnez un document avant validation.", true);
+      return;
+    }
+    if (!window.confirm(`Valider le document ${segSel.docLabel} sans relancer la segmentation ?`)) {
+      return;
+    }
+    this._setBusy(true);
+    await this._markSegmentedDocValidated(segSel.docId, segSel.docLabel);
+  }
+
   private async _runSegment(validateAfter = false): Promise<void> {
     if (!this._conn) return;
-    const docSel = (document.querySelector("#act-seg-doc") as HTMLSelectElement).value;
-    if (!docSel) { this._log("Sélectionnez un document.", true); return; }
-    const docId = parseInt(docSel);
+    const segSel = this._currentSegDocSelection();
+    if (!segSel) { this._log("Sélectionnez un document.", true); return; }
+    const docId = segSel.docId;
     const lang = (document.querySelector("#act-seg-lang") as HTMLInputElement).value.trim() || "und";
     const pack = (document.querySelector("#act-seg-pack") as HTMLSelectElement).value || "auto";
-    const doc = this._docs.find(d => d.doc_id === docId);
-    const docLabel = doc ? `"${doc.title}"` : `#${docId}`;
+    const docLabel = segSel.docLabel;
     const postValidate = this._postValidateDestination();
     const postValidateLabel = postValidate === "next"
       ? "sélectionnera le document suivant"
@@ -1158,13 +1428,24 @@ export class ActionsScreen {
             warnings?: string[];
             fts_stale?: boolean;
           } | undefined;
+          this._lastSegmentReport = {
+            doc_id: docId,
+            units_input: Number(r?.units_input ?? 0),
+            units_output: Number(r?.units_output ?? 0),
+            segment_pack: r?.segment_pack,
+            warnings: r?.warnings ?? [],
+          };
           const warns = r?.warnings?.length ? ` Avertissements : ${r.warnings.join("; ")}` : "";
           const usedPack = r?.segment_pack ? ` Pack=${r.segment_pack}.` : "";
           this._log(`✓ Segmentation : ${r?.units_input ?? "?"} → ${r?.units_output ?? "?"} unités.${usedPack}${warns}`);
           if (r?.fts_stale) this._log("⚠ Index FTS périmé.");
           if (validateAfter) {
+            this._segmentPendingValidation = true;
+            this._refreshSegmentationStatusUI();
             void this._markSegmentedDocValidated(docId, docLabel);
           } else {
+            this._segmentPendingValidation = true;
+            this._refreshSegmentationStatusUI();
             this._showToast?.(`✓ Segmentation ${docLabel} terminée`);
             this._setBusy(false);
           }
@@ -1190,8 +1471,10 @@ export class ActionsScreen {
         doc_id: docId,
         workflow_status: "validated",
       });
+      this._segmentPendingValidation = false;
       this._log(`✓ ${docLabel} marqué comme validé.`);
       this._showToast?.(`✓ ${docLabel} validé`);
+      this._refreshSegmentationStatusUI();
       const postValidate = this._postValidateDestination();
       if (postValidate === "next") {
         const moved = this._selectNextSegDoc(docId);
@@ -1210,6 +1493,7 @@ export class ActionsScreen {
       this._log(`✗ Validation workflow après segmentation : ${err instanceof SidecarError ? err.message : String(err)}`, true);
       this._showToast?.("✗ Segmentation OK mais validation workflow en échec", true);
     } finally {
+      this._refreshSegmentationStatusUI();
       this._setBusy(false);
     }
   }
@@ -1369,6 +1653,9 @@ export class ActionsScreen {
           if (auditTgtSel) auditTgtSel.value = String(targetIds[0]);
           const root = document.querySelector(".actions-screen");
           if (root) {
+            this._auditQuickFilter = "review";
+            this._writeAuditQuickFilterPref(this._auditQuickFilter);
+            this._syncAuditQuickFilterUi(root as HTMLElement);
             this._renderAuditTable(root as HTMLElement);
             void this._loadAuditPage(root as HTMLElement, false);
           }
@@ -1531,13 +1818,22 @@ export class ActionsScreen {
     const wrap = root.querySelector("#act-audit-table-wrap")!;
     const moreBtn = root.querySelector("#act-audit-more-btn") as HTMLElement;
     const batchBar = root.querySelector("#act-audit-batch-bar") as HTMLElement | null;
-    const textFilter = this._auditTextFilter;
-    const visibleLinks = this._auditLinks.filter((link) => {
-      if (this._auditExceptionsOnly && link.status === "accepted") return false;
-      if (!textFilter) return true;
-      const haystack = `${link.external_id ?? ""} ${link.pivot_text ?? ""} ${link.target_text ?? ""}`.toLowerCase();
-      return haystack.includes(textFilter);
-    });
+    const kpiEl = root.querySelector<HTMLElement>("#act-audit-kpis");
+    const visibleLinks = this._computeVisibleAuditLinks();
+    const acceptedCount = this._auditLinks.filter((l) => this._normalizeAuditStatus(l.status) === "accepted").length;
+    const rejectedCount = this._auditLinks.filter((l) => this._normalizeAuditStatus(l.status) === "rejected").length;
+    const unreviewedCount = this._auditLinks.filter((l) => this._normalizeAuditStatus(l.status) === "unreviewed").length;
+    const exceptionCount = rejectedCount + unreviewedCount;
+    if (kpiEl) {
+      const filterLabel = this._auditQuickFilter === "review"
+        ? "À revoir"
+        : this._auditQuickFilter === "unreviewed"
+        ? "Non révisés"
+        : this._auditQuickFilter === "rejected"
+        ? "Rejetés"
+        : "Tout";
+      kpiEl.textContent = `Chargés: ${this._auditLinks.length} · Acceptés: ${acceptedCount} · Non révisés: ${unreviewedCount} · Rejetés: ${rejectedCount} · Exceptions: ${exceptionCount} · Filtre: ${filterLabel} (${visibleLinks.length} visible(s))`;
+    }
     if (!visibleLinks.some((l) => l.link_id === this._auditSelectedLinkId)) {
       this._auditSelectedLinkId = visibleLinks.length > 0 ? visibleLinks[0].link_id : null;
     }
@@ -1566,7 +1862,7 @@ export class ActionsScreen {
     table.className = "meta-table audit-table";
     table.innerHTML = `
       <thead><tr>
-        <th><input type="checkbox" id="act-audit-sel-all" title="Tout sélectionner"/></th>
+        <th><input type="checkbox" id="act-audit-sel-all" title="Tout sélectionner" aria-label="Tout sélectionner"/></th>
         <th>ext_id</th>
         <th>Pivot (texte)</th>
         <th>Cible (texte)</th>
@@ -1580,9 +1876,10 @@ export class ActionsScreen {
       const tr = document.createElement("tr");
       tr.classList.toggle("audit-row-active", link.link_id === this._auditSelectedLinkId);
       tr.dataset.linkId = String(link.link_id);
-      const statusBadge = link.status === "accepted"
+      const normalizedStatus = this._normalizeAuditStatus(link.status);
+      const statusBadge = normalizedStatus === "accepted"
         ? `<span class="status-badge status-ok">✅ Accepté</span>`
-        : link.status === "rejected"
+        : normalizedStatus === "rejected"
         ? `<span class="status-badge status-error">❌ Rejeté</span>`
         : `<span class="status-badge status-unknown">🔵 Non révisé</span>`;
 
@@ -1609,10 +1906,10 @@ export class ActionsScreen {
         <td style="white-space:nowrap">${statusBadge}</td>
         ${explainCell}
         <td style="white-space:nowrap">
-          <button class="btn btn-sm btn-secondary audit-accept-btn" data-id="${link.link_id}" title="Accepter">✓</button>
-          <button class="btn btn-sm btn-danger audit-reject-btn" data-id="${link.link_id}" title="Rejeter">✗</button>
-          <button class="btn btn-sm btn-secondary audit-retarget-btn" data-id="${link.link_id}" data-pivot="${link.pivot_unit_id}" title="Recibler">⇄</button>
-          <button class="btn btn-sm btn-danger audit-del-btn" data-id="${link.link_id}" title="Supprimer">🗑</button>
+          <button class="btn btn-sm btn-secondary audit-accept-btn" data-id="${link.link_id}" title="Accepter" aria-label="Accepter ce lien">✓</button>
+          <button class="btn btn-sm btn-danger audit-reject-btn" data-id="${link.link_id}" title="Rejeter" aria-label="Rejeter ce lien">✗</button>
+          <button class="btn btn-sm btn-secondary audit-retarget-btn" data-id="${link.link_id}" data-pivot="${link.pivot_unit_id}" title="Recibler" aria-label="Recibler ce lien">⇄</button>
+          <button class="btn btn-sm btn-danger audit-del-btn" data-id="${link.link_id}" title="Supprimer" aria-label="Supprimer ce lien">🗑</button>
         </td>
       `;
       tbody.appendChild(tr);
@@ -1702,9 +1999,9 @@ export class ActionsScreen {
     const pivotEl = root.querySelector<HTMLElement>("#act-align-focus-pivot");
     const targetEl = root.querySelector<HTMLElement>("#act-align-focus-target");
     if (metaEl) {
-      const statusLabel = selected.status === "accepted"
+      const statusLabel = this._normalizeAuditStatus(selected.status) === "accepted"
         ? "accepté"
-        : selected.status === "rejected"
+        : this._normalizeAuditStatus(selected.status) === "rejected"
         ? "rejeté"
         : "non révisé";
       metaEl.innerHTML = `Lien #${selected.link_id} · ext_id ${selected.external_id ?? "—"} · statut <strong>${statusLabel}</strong>`;
@@ -1994,7 +2291,7 @@ export class ActionsScreen {
           <td class="audit-cell-actions">
             <button class="btn btn-sm btn-primary coll-keep-btn" data-link="${lnk.link_id}" data-group="${g.pivot_unit_id}" title="Garder — marquer accepté">✓ Garder</button>
             <button class="btn btn-sm btn-secondary coll-reject-btn" data-link="${lnk.link_id}" title="Rejeter">❌ Rejeter</button>
-            <button class="btn btn-sm btn-danger coll-delete-btn" data-link="${lnk.link_id}" data-group="${g.pivot_unit_id}" data-target="${targetDocId}" title="Supprimer ce lien">🗑</button>
+            <button class="btn btn-sm btn-danger coll-delete-btn" data-link="${lnk.link_id}" data-group="${g.pivot_unit_id}" data-target="${targetDocId}" title="Supprimer ce lien" aria-label="Supprimer ce lien">🗑</button>
           </td>
         </tr>`;
       }).join("");
@@ -2003,7 +2300,7 @@ export class ActionsScreen {
         <div class="collision-pivot-header" style="background:var(--surface-alt,#f5f5f5); padding:0.4rem 0.75rem; font-size:0.85rem; font-weight:600">
           [§${g.pivot_external_id ?? "?"}] ${g.pivot_text}
           <button class="btn btn-sm btn-danger coll-delete-others-btn" data-group="${g.pivot_unit_id}" data-target="${targetDocId}"
-            style="float:right; font-size:0.75rem" title="Supprimer tous les liens de ce groupe">🗑 Tout supprimer</button>
+            style="float:right; font-size:0.75rem" title="Supprimer tous les liens de ce groupe" aria-label="Supprimer tous les liens de ce groupe">🗑 Tout supprimer</button>
         </div>
         <table class="meta-table" style="margin:0; width:100%">
           <thead><tr><th>Texte cible</th><th>Ext. id</th><th>Statut</th><th>Actions</th></tr></thead>

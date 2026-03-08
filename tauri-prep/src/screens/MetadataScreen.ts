@@ -13,6 +13,7 @@
 import type { Conn } from "../lib/sidecarClient.ts";
 import {
   listDocuments,
+  getDocumentPreview,
   updateDocument,
   bulkUpdateDocuments,
   getDocRelations,
@@ -21,9 +22,11 @@ import {
   backupDatabase,
   validateMeta,
   type DocumentRecord,
+  type DocumentPreviewLine,
   type DocRelationRecord,
   SidecarError,
 } from "../lib/sidecarClient.ts";
+import { initCardAccordions } from "../lib/uiAccordions.ts";
 
 const DOC_ROLES = ["standalone", "original", "translation", "excerpt", "unknown"];
 const RELATION_TYPES = ["translation_of", "excerpt_of"];
@@ -35,6 +38,12 @@ export class MetadataScreen {
   private _docs: DocumentRecord[] = [];
   private _selectedDoc: DocumentRecord | null = null;
   private _relations: DocRelationRecord[] = [];
+  private _previewLines: DocumentPreviewLine[] = [];
+  private _previewTotalLines = 0;
+  private _previewLimit = 6;
+  private _previewLoading = false;
+  private _previewError: string | null = null;
+  private _previewDocId: number | null = null;
 
   // DOM refs
   private _root!: HTMLElement;
@@ -42,11 +51,19 @@ export class MetadataScreen {
   private _editPanelEl!: HTMLElement;
   private _logEl!: HTMLElement;
   private _docCountEl!: HTMLElement;
+  private _stateEl!: HTMLElement;
+  private _isBusy = false;
+  private _lastErrorMsg: string | null = null;
 
   setConn(conn: Conn | null): void {
     this._conn = conn;
     this._selectedDoc = null;
     this._relations = [];
+    this._previewLines = [];
+    this._previewTotalLines = 0;
+    this._previewError = null;
+    this._previewDocId = null;
+    this._previewLoading = false;
     if (this._root) {
       this._refreshDocList();
     }
@@ -70,7 +87,14 @@ export class MetadataScreen {
     root.innerHTML = `
       <h2 class="screen-title">Documents</h2>
 
-      <div class="card">
+      <section class="card" data-collapsible="true" data-collapsed-default="true">
+        <h3>État de session</h3>
+        <div id="meta-state-banner" class="runtime-state state-info" aria-live="polite">
+          En attente de connexion sidecar…
+        </div>
+      </section>
+
+      <section class="card" data-collapsible="true">
         <div class="meta-toolbar-head">
           <h3 style="margin:0">Gestion corpus</h3>
           <span id="meta-doc-count" class="hint" style="margin:0">0 document</span>
@@ -97,32 +121,33 @@ export class MetadataScreen {
             </div>
           </div>
         </details>
-      </div>
+      </section>
 
       <div class="meta-layout">
-        <div class="card meta-list-card">
-          <h3>Documents <button id="refresh-docs-btn" class="btn btn-secondary btn-sm">↻</button></h3>
+        <section class="card meta-list-card" data-collapsible="true">
+          <h3>Documents <button id="refresh-docs-btn" class="btn btn-secondary btn-sm" aria-label="Rafraîchir la liste des documents" title="Rafraîchir la liste des documents">↻</button></h3>
           <div id="meta-doc-list" class="doc-list meta-doc-list"></div>
-        </div>
+        </section>
 
-        <div class="card meta-edit-card">
+        <section class="card meta-edit-card" data-collapsible="true">
           <h3>Édition du document sélectionné</h3>
           <div id="meta-edit-panel">
             <p class="empty-hint">Sélectionnez un document dans la liste.</p>
           </div>
-        </div>
+        </section>
       </div>
 
-      <details class="card meta-log-card">
-        <summary class="import-log-summary">Journal des actions documents</summary>
+      <section class="card meta-log-card" data-collapsible="true" data-collapsed-default="true">
+        <h3>Journal des actions documents</h3>
         <div id="meta-log" class="log-pane"></div>
-      </details>
+      </section>
     `;
 
     this._docListEl = root.querySelector("#meta-doc-list")!;
     this._editPanelEl = root.querySelector("#meta-edit-panel")!;
     this._logEl = root.querySelector("#meta-log")!;
     this._docCountEl = root.querySelector("#meta-doc-count")!;
+    this._stateEl = root.querySelector("#meta-state-banner")!;
 
     root.querySelector("#refresh-docs-btn")!.addEventListener("click", () => this._refreshDocList());
     root.querySelector("#bulk-apply-btn")!.addEventListener("click", () => this._runBulkUpdate());
@@ -139,6 +164,7 @@ export class MetadataScreen {
     bulkRole.addEventListener("change", onBulkChange);
     bulkRestype.addEventListener("input", onBulkChange);
 
+    initCardAccordions(root);
     this._refreshDocList();
     return root;
   }
@@ -149,13 +175,19 @@ export class MetadataScreen {
     if (!this._conn) {
       this._docListEl.innerHTML = `<p class="empty-hint">Sidecar non connecté.</p>`;
       this._updateDocCount();
+      this._refreshRuntimeState();
       return;
     }
+    this._isBusy = true;
+    this._refreshRuntimeState();
     try {
       this._docs = await listDocuments(this._conn);
+      this._lastErrorMsg = null;
     } catch (err) {
       this._log(`Erreur liste documents: ${err instanceof SidecarError ? err.message : String(err)}`, true);
-      return;
+    } finally {
+      this._isBusy = false;
+      this._refreshRuntimeState();
     }
     this._updateDocCount();
     this._renderDocList();
@@ -196,6 +228,11 @@ export class MetadataScreen {
 
   private async _selectDoc(doc: DocumentRecord): Promise<void> {
     this._selectedDoc = doc;
+    this._previewDocId = doc.doc_id;
+    this._previewLoading = true;
+    this._previewError = null;
+    this._previewLines = [];
+    this._previewTotalLines = 0;
     this._renderDocList();
     // Load relations
     if (this._conn) {
@@ -207,6 +244,7 @@ export class MetadataScreen {
       }
     }
     this._renderEditPanel();
+    void this._loadDocPreview(doc.doc_id);
   }
 
   private _renderEditPanel(): void {
@@ -284,9 +322,18 @@ export class MetadataScreen {
         <button id="add-rel-btn" class="btn btn-secondary btn-sm" style="align-self:flex-end">＋ Ajouter</button>
       </div>
       <div id="relations-list" style="margin-top:0.4rem"></div>
+
+      <div class="meta-preview">
+        <div class="meta-preview-head">
+          <h4 style="font-size:0.88rem;font-weight:600;margin:0">Aperçu rapide du contenu</h4>
+          <span class="hint" style="margin:0">${this._previewLimit} lignes max</span>
+        </div>
+        <div id="meta-preview-panel"></div>
+      </div>
     `;
 
     this._renderRelationsList();
+    this._renderPreviewPanel();
 
     this._editPanelEl.querySelector("#save-doc-btn")!.addEventListener("click", () => this._saveDoc());
     this._editPanelEl.querySelector("#mark-review-btn")!.addEventListener("click", () => this._setWorkflowStatus("review"));
@@ -319,7 +366,7 @@ export class MetadataScreen {
         <span style="color:var(--color-muted)">→</span>
         <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${targetLabel}</span>
         ${rel.note ? `<span style="font-style:italic;color:var(--color-muted);font-size:0.78rem">${this._esc(rel.note)}</span>` : ""}
-        <button class="btn btn-danger btn-sm del-rel-btn" data-id="${rel.id}" title="Supprimer cette relation">✕</button>
+        <button class="btn btn-danger btn-sm del-rel-btn" data-id="${rel.id}" aria-label="Supprimer cette relation" title="Supprimer cette relation">✕</button>
       `;
       row.querySelector(".del-rel-btn")!.addEventListener("click", () => this._deleteRelation(rel.id));
       container.appendChild(row);
@@ -504,6 +551,61 @@ export class MetadataScreen {
     }
   }
 
+  private async _loadDocPreview(docId: number): Promise<void> {
+    if (!this._conn) return;
+    this._previewLoading = true;
+    this._previewError = null;
+    this._renderPreviewPanel();
+    try {
+      const res = await getDocumentPreview(this._conn, docId, this._previewLimit);
+      if (this._selectedDoc?.doc_id !== docId) return;
+      this._previewDocId = docId;
+      this._previewLines = res.lines ?? [];
+      this._previewTotalLines = res.total_lines ?? this._previewLines.length;
+      this._previewError = null;
+    } catch (err) {
+      if (this._selectedDoc?.doc_id !== docId) return;
+      this._previewLines = [];
+      this._previewTotalLines = 0;
+      this._previewError = err instanceof SidecarError ? err.message : String(err);
+    } finally {
+      if (this._selectedDoc?.doc_id === docId) {
+        this._previewLoading = false;
+        this._renderPreviewPanel();
+      }
+    }
+  }
+
+  private _renderPreviewPanel(): void {
+    const panel = this._editPanelEl.querySelector<HTMLElement>("#meta-preview-panel");
+    if (!panel || !this._selectedDoc) return;
+
+    if (this._previewLoading) {
+      panel.innerHTML = `<p class="empty-hint">Chargement de l'aperçu…</p>`;
+      return;
+    }
+    if (this._previewError) {
+      panel.innerHTML = `<p class="empty-hint" style="color:var(--color-danger)">Aperçu indisponible: ${this._esc(this._previewError)}</p>`;
+      return;
+    }
+    if (this._previewLines.length === 0) {
+      panel.innerHTML = `<p class="empty-hint">Aucune ligne disponible pour ce document.</p>`;
+      return;
+    }
+
+    const count = this._previewLines.length;
+    const suffix = this._previewTotalLines > count ? ` / ${this._previewTotalLines} lignes` : "";
+    panel.innerHTML = `
+      <p class="hint" style="margin:0 0 0.35rem">Extrait affiché: ${count}${suffix}</p>
+      <div class="meta-preview-lines">
+        ${this._previewLines.map((line) => {
+          const marker = line.external_id != null ? `[${String(line.external_id).padStart(4, "0")}]` : `[n${line.n}]`;
+          return `<div class="meta-preview-line"><span class="meta-preview-marker">${marker}</span> <span>${this._esc(line.text)}</span></div>`;
+        }).join("")}
+      </div>
+    `;
+  }
+
   // ── Helpers ─────────────────────────────────────────────────────────────────
 
   private _log(msg: string, isError = false): void {
@@ -512,12 +614,19 @@ export class MetadataScreen {
     line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
     this._logEl.appendChild(line);
     this._logEl.scrollTop = this._logEl.scrollHeight;
+    if (isError) {
+      this._lastErrorMsg = msg;
+    } else if (msg.startsWith("✓")) {
+      this._lastErrorMsg = null;
+    }
+    this._refreshRuntimeState();
   }
 
   private _updateDocCount(): void {
     if (!this._docCountEl) return;
     const count = this._docs.length;
     this._docCountEl.textContent = `${count} document${count > 1 ? "s" : ""}`;
+    this._refreshRuntimeState();
   }
 
   private _esc(s: string): string {
@@ -591,5 +700,32 @@ export class MetadataScreen {
     const relTarget = (this._editPanelEl.querySelector<HTMLSelectElement>("#rel-target-sel")?.value ?? "").trim();
     const relNote = (this._editPanelEl.querySelector<HTMLInputElement>("#rel-note")?.value ?? "").trim();
     return Boolean(relTarget || relNote);
+  }
+
+  private _setRuntimeState(kind: "ok" | "info" | "warn" | "error", text: string): void {
+    if (!this._stateEl) return;
+    this._stateEl.className = `runtime-state state-${kind}`;
+    this._stateEl.textContent = text;
+  }
+
+  private _refreshRuntimeState(): void {
+    if (!this._stateEl) return;
+    if (!this._conn) {
+      this._setRuntimeState("error", "Sidecar indisponible. Ouvrez ou créez un corpus.");
+      return;
+    }
+    if (this._isBusy) {
+      this._setRuntimeState("info", "Chargement en cours…");
+      return;
+    }
+    if (this._lastErrorMsg) {
+      this._setRuntimeState("error", `Dernière erreur: ${this._lastErrorMsg}`);
+      return;
+    }
+    if (this.hasPendingChanges()) {
+      this._setRuntimeState("warn", "Modifications locales non enregistrées.");
+      return;
+    }
+    this._setRuntimeState("ok", `${this._docs.length} document(s) chargés. Prêt.`);
   }
 }

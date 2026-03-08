@@ -13,6 +13,14 @@ import { open } from "@tauri-apps/plugin-dialog";
 import type { Conn } from "../lib/sidecarClient.ts";
 import { importFile, rebuildIndex, enqueueJob, SidecarError } from "../lib/sidecarClient.ts";
 import type { JobCenter } from "../components/JobCenter.ts";
+import { initCardAccordions } from "../lib/uiAccordions.ts";
+
+const IMPORT_MODE_OPTIONS: Array<{ value: FileItem["mode"]; label: string }> = [
+  { value: "docx_numbered_lines", label: "DOCX lignes numérotées [n]" },
+  { value: "txt_numbered_lines", label: "TXT lignes numérotées [n]" },
+  { value: "docx_paragraphs", label: "DOCX paragraphes" },
+  { value: "tei", label: "TEI XML" },
+];
 
 interface FileItem {
   path: string;
@@ -26,22 +34,34 @@ interface FileItem {
 export class ImportScreen {
   private _conn: Conn | null = null;
   private _files: FileItem[] = [];
+  private _root!: HTMLElement;
   private _listEl!: HTMLElement;
   private _logEl!: HTMLElement;
   private _summaryEl!: HTMLElement;
+  private _stateEl!: HTMLElement;
   private _importBtn!: HTMLButtonElement;
   private _indexBtn!: HTMLButtonElement;
   private _jobCenter: JobCenter | null = null;
   private _showToast: ((msg: string, isError?: boolean) => void) | null = null;
+  private _isBusy = false;
+  private _lastErrorMsg: string | null = null;
 
   render(): HTMLElement {
     const root = document.createElement("div");
     root.className = "screen import-screen";
+    this._root = root;
 
     root.innerHTML = `
       <h2 class="screen-title">Importer</h2>
 
-      <section class="card">
+      <section class="card" data-collapsible="true" data-collapsed-default="true">
+        <h3>État de session</h3>
+        <div id="imp-state-banner" class="runtime-state state-info" aria-live="polite">
+          En attente de connexion sidecar…
+        </div>
+      </section>
+
+      <section class="card" data-collapsible="true">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:0.7rem;flex-wrap:wrap">
           <h3 style="margin:0">Fichiers à importer</h3>
           <span id="imp-summary" class="hint" style="margin:0">0 fichier · 0 en attente</span>
@@ -53,19 +73,20 @@ export class ImportScreen {
         </div>
 
         <details class="import-disclosure">
-          <summary>Options avancées d'import</summary>
+          <summary>Options globales du lot</summary>
           <div class="import-defaults">
             <label>Mode par défaut :
               <select id="imp-default-mode">
-                <option value="docx_numbered_lines">DOCX lignes numérotées</option>
-                <option value="txt_numbered_lines">TXT lignes numérotées</option>
-                <option value="docx_paragraphs">DOCX paragraphes</option>
-                <option value="tei">TEI</option>
+                ${IMPORT_MODE_OPTIONS.map((opt) => `<option value="${opt.value}">${opt.label}</option>`).join("")}
               </select>
             </label>
             <label>Langue par défaut :
               <input id="imp-default-lang" type="text" value="fr" placeholder="fr, en, …" maxlength="10" />
             </label>
+          </div>
+          <div class="btn-row import-defaults-actions">
+            <button id="imp-apply-defaults-btn" class="btn btn-secondary btn-sm">Appliquer aux fichiers en attente</button>
+            <span class="hint" style="margin:0">Les réglages ligne par ligne restent modifiables ensuite.</span>
           </div>
         </details>
 
@@ -74,7 +95,7 @@ export class ImportScreen {
         </div>
       </section>
 
-      <section class="card">
+      <section class="card" data-collapsible="true" data-collapsed-default="true">
         <h3>Index FTS</h3>
         <p class="hint">Après avoir importé des documents, reconstruisez l'index pour activer la recherche.</p>
         <div class="btn-row">
@@ -82,15 +103,16 @@ export class ImportScreen {
         </div>
       </section>
 
-      <details class="card import-log-card">
-        <summary class="import-log-summary">Journal des imports</summary>
+      <section class="card import-log-card" data-collapsible="true" data-collapsed-default="true">
+        <h3>Journal des imports</h3>
         <div id="imp-log" class="log-pane"></div>
-      </details>
+      </section>
     `;
 
     this._listEl = root.querySelector("#imp-list")!;
     this._logEl = root.querySelector("#imp-log")!;
     this._summaryEl = root.querySelector("#imp-summary")!;
+    this._stateEl = root.querySelector("#imp-state-banner")!;
     this._importBtn = root.querySelector("#imp-import-btn")!;
     this._indexBtn = root.querySelector("#imp-index-btn")!;
 
@@ -98,6 +120,9 @@ export class ImportScreen {
     root.querySelector("#imp-clear-btn")!.addEventListener("click", () => this._clearList());
     this._importBtn.addEventListener("click", () => this._runImport());
     this._indexBtn.addEventListener("click", () => this._runIndex());
+    root.querySelector("#imp-apply-defaults-btn")!.addEventListener("click", () => this._applyDefaultsToPending());
+    initCardAccordions(root);
+    this._refreshRuntimeState();
 
     return root;
   }
@@ -105,6 +130,7 @@ export class ImportScreen {
   setConn(conn: Conn | null): void {
     this._conn = conn;
     this._updateButtons();
+    this._refreshRuntimeState();
   }
 
   setJobCenter(jc: JobCenter, showToast: (msg: string, isError?: boolean) => void): void {
@@ -119,6 +145,12 @@ export class ImportScreen {
     line.textContent = `[${ts}] ${msg}`;
     this._logEl.appendChild(line);
     this._logEl.scrollTop = this._logEl.scrollHeight;
+    if (isError) {
+      this._lastErrorMsg = msg;
+    } else if (this._lastErrorMsg && msg.startsWith("✓")) {
+      this._lastErrorMsg = null;
+    }
+    this._refreshRuntimeState();
   }
 
   private _updateButtons(): void {
@@ -126,6 +158,7 @@ export class ImportScreen {
     this._importBtn.disabled = !this._conn || pendingCount === 0;
     this._indexBtn.disabled = !this._conn;
     this._summaryEl.textContent = `${this._files.length} fichier${this._files.length > 1 ? "s" : ""} · ${pendingCount} en attente`;
+    this._refreshRuntimeState();
   }
 
   private async _addFiles(): Promise<void> {
@@ -138,8 +171,8 @@ export class ImportScreen {
     });
     if (!selected) return;
     const paths = Array.isArray(selected) ? selected : [selected];
-    const defaultMode = (document.querySelector("#imp-default-mode") as HTMLSelectElement).value;
-    const defaultLang = (document.querySelector("#imp-default-lang") as HTMLInputElement).value.trim() || "fr";
+    const defaultMode = (this._root.querySelector("#imp-default-mode") as HTMLSelectElement).value;
+    const defaultLang = (this._root.querySelector("#imp-default-lang") as HTMLInputElement).value.trim() || "fr";
 
     for (const p of paths) {
       const name = p.split("/").pop()?.split("\\").pop() ?? p;
@@ -168,6 +201,24 @@ export class ImportScreen {
     this._updateButtons();
   }
 
+  private _applyDefaultsToPending(): void {
+    if (!this._root || this._files.length === 0) return;
+    const defaultMode = (this._root.querySelector("#imp-default-mode") as HTMLSelectElement).value;
+    const defaultLang = (this._root.querySelector("#imp-default-lang") as HTMLInputElement).value.trim() || "fr";
+    let touched = 0;
+    for (const file of this._files) {
+      if (file.status !== "pending") continue;
+      file.mode = defaultMode;
+      file.language = defaultLang;
+      touched += 1;
+    }
+    this._renderList();
+    this._updateButtons();
+    if (touched > 0) {
+      this._log(`✓ Paramètres globaux appliqués à ${touched} fichier(s) en attente.`);
+    }
+  }
+
   private _renderList(): void {
     this._updateButtons();
     if (this._files.length === 0) {
@@ -186,13 +237,13 @@ export class ImportScreen {
         </div>
         <div class="import-row-controls">
           <select class="imp-mode-sel" data-i="${i}">
-            ${["docx_numbered_lines","txt_numbered_lines","docx_paragraphs","tei"]
-              .map(m => `<option value="${m}"${f.mode===m?" selected":""}>${m}</option>`)
+            ${IMPORT_MODE_OPTIONS
+              .map((opt) => `<option value="${opt.value}"${f.mode===opt.value?" selected":""}>${opt.label}</option>`)
               .join("")}
           </select>
           <input class="imp-lang-inp" type="text" value="${f.language}" maxlength="10" placeholder="lang" data-i="${i}" />
           <input class="imp-title-inp" type="text" value="${f.title}" placeholder="titre" data-i="${i}" />
-          <button class="btn btn-sm btn-danger imp-remove-btn" data-i="${i}">✕</button>
+          <button class="btn btn-sm btn-danger imp-remove-btn" data-i="${i}" aria-label="Retirer ce fichier de la liste" title="Retirer ce fichier de la liste">✕</button>
         </div>
       `;
       this._listEl.appendChild(row);
@@ -237,9 +288,16 @@ export class ImportScreen {
   private async _runImport(): Promise<void> {
     if (!this._conn) return;
     this._importBtn.disabled = true;
+    this._isBusy = true;
+    this._refreshRuntimeState();
 
     const pending = this._files.filter(f => f.status === "pending");
-    if (pending.length === 0) { this._importBtn.disabled = false; return; }
+    if (pending.length === 0) {
+      this._importBtn.disabled = false;
+      this._isBusy = false;
+      this._refreshRuntimeState();
+      return;
+    }
 
     this._log(`Envoi de ${pending.length} import(s) en job asynchrone…`);
 
@@ -248,6 +306,7 @@ export class ImportScreen {
 
     const onAllDone = () => {
       this._importBtn.disabled = false;
+      this._isBusy = false;
       this._updateButtons();
     };
 
@@ -295,6 +354,8 @@ export class ImportScreen {
   private async _runIndex(): Promise<void> {
     if (!this._conn) return;
     this._indexBtn.disabled = true;
+    this._isBusy = true;
+    this._refreshRuntimeState();
     this._log("Reconstruction de l'index FTS (job asynchrone)…");
     try {
       const job = await enqueueJob(this._conn, "index", {});
@@ -308,15 +369,51 @@ export class ImportScreen {
           this._log(`✗ Erreur index : ${done.error ?? done.status}`, true);
           this._showToast?.("✗ Erreur index FTS", true);
         }
+        this._isBusy = false;
         this._indexBtn.disabled = !this._conn;
+        this._refreshRuntimeState();
       });
     } catch (err) {
       this._log(
         `✗ Erreur index : ${err instanceof SidecarError ? err.message : String(err)}`,
         true
       );
+      this._isBusy = false;
       this._indexBtn.disabled = !this._conn;
+      this._refreshRuntimeState();
     }
+  }
+
+  private _setRuntimeState(kind: "ok" | "info" | "warn" | "error", text: string): void {
+    if (!this._stateEl) return;
+    this._stateEl.className = `runtime-state state-${kind}`;
+    this._stateEl.textContent = text;
+  }
+
+  private _refreshRuntimeState(): void {
+    if (!this._stateEl) return;
+    if (!this._conn) {
+      this._setRuntimeState("error", "Sidecar indisponible. Ouvrez ou créez un corpus.");
+      return;
+    }
+    if (this._isBusy) {
+      this._setRuntimeState("info", "Opération en cours…");
+      return;
+    }
+    if (this._lastErrorMsg) {
+      this._setRuntimeState("error", `Dernière erreur: ${this._lastErrorMsg}`);
+      return;
+    }
+    const pendingCount = this._files.filter((f) => f.status === "pending").length;
+    if (pendingCount > 0) {
+      this._setRuntimeState("warn", `${pendingCount} fichier(s) en attente d'import.`);
+      return;
+    }
+    if (this._files.length === 0) {
+      this._setRuntimeState("info", "Aucun fichier sélectionné.");
+      return;
+    }
+    this._setRuntimeState("ok", "Prêt: vous pouvez lancer un import ou reconstruire l’index.");
   }
 }
 

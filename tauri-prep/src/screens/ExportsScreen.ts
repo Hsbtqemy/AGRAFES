@@ -17,16 +17,20 @@ import {
 } from "../lib/sidecarClient.ts";
 import { save, open } from "@tauri-apps/plugin-dialog";
 import type { JobCenter } from "../components/JobCenter.ts";
+import { initCardAccordions } from "../lib/uiAccordions.ts";
 
 export class ExportsScreen {
   private _conn: Conn | null = null;
   private _docs: DocumentRecord[] = [];
   private _jobCenter: JobCenter | null = null;
   private _showToast: ((msg: string, isError?: boolean) => void) | null = null;
+  private _isBusy = false;
+  private _lastErrorMsg: string | null = null;
 
   // DOM refs
   private _root!: HTMLElement;
   private _logEl!: HTMLElement;
+  private _stateEl!: HTMLElement;
   private _docSelEl!: HTMLSelectElement;
   private _pkgDocSelEl!: HTMLSelectElement;
   private _pivotSelEl!: HTMLSelectElement;
@@ -35,6 +39,9 @@ export class ExportsScreen {
   private _v2StageEl!: HTMLSelectElement;
   private _v2ProductEl!: HTMLSelectElement;
   private _v2FormatEl!: HTMLSelectElement;
+  private _v2DocSummaryEl!: HTMLElement;
+  private _v2DocSelectAllBtn!: HTMLButtonElement;
+  private _v2DocClearBtn!: HTMLButtonElement;
   private _v2PivotEl!: HTMLSelectElement;
   private _v2TargetEl!: HTMLSelectElement;
   private _v2RunIdEl!: HTMLInputElement;
@@ -51,6 +58,7 @@ export class ExportsScreen {
   setConn(conn: Conn | null): void {
     this._conn = conn;
     if (this._root) this._refreshDocs();
+    this._refreshRuntimeState();
   }
 
   render(): HTMLElement {
@@ -61,8 +69,15 @@ export class ExportsScreen {
     root.innerHTML = `
       <h2 class="screen-title">Exporter</h2>
 
+      <section class="card" data-collapsible="true" data-collapsed-default="true">
+        <h3>État de session</h3>
+        <div id="exp-state-banner" class="runtime-state state-info" aria-live="polite">
+          En attente de connexion sidecar…
+        </div>
+      </section>
+
       <!-- Unified V2 Export Flow -->
-      <div class="card">
+      <section class="card" data-collapsible="true">
         <h3>Flux export V2 <span class="badge-preview">recommandé</span></h3>
         <p class="hint">Ordre recommandé: 1) jeu de données, 2) produit de sortie, 3) format fichier, puis lancer.</p>
         <div class="form-row">
@@ -71,6 +86,13 @@ export class ExportsScreen {
               <option value="__all__" selected>— Tous les documents —</option>
             </select>
           </label>
+          <div class="exports-doc-tools">
+            <div class="btn-row" style="margin:0">
+              <button id="v2-doc-select-all-btn" class="btn btn-secondary btn-sm">Tout sélectionner</button>
+              <button id="v2-doc-clear-btn" class="btn btn-secondary btn-sm">Effacer la sélection</button>
+            </div>
+            <div id="v2-doc-summary" class="hint" style="margin:0">Portée actuelle: tous les documents.</div>
+          </div>
           <label>Jeu de données
             <select id="v2-stage" style="min-width:190px">
               <option value="alignment" selected>Alignement</option>
@@ -156,7 +178,7 @@ export class ExportsScreen {
         <div class="btn-row" style="margin-top:0.6rem">
           <button id="v2-run-btn" class="btn btn-primary btn-sm" disabled>Choisir destination et lancer…</button>
         </div>
-      </div>
+      </section>
 
       <div class="card export-legacy-toggle-card">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:0.7rem;flex-wrap:wrap">
@@ -309,13 +331,14 @@ export class ExportsScreen {
       </div>
       </div>
 
-      <details class="card export-log-card">
-        <summary class="import-log-summary">Journal des exports</summary>
+      <section class="card export-log-card" data-collapsible="true" data-collapsed-default="true">
+        <h3>Journal des exports</h3>
         <div id="export-log" class="log-pane"></div>
-      </details>
+      </section>
     `;
 
     this._logEl = root.querySelector("#export-log")!;
+    this._stateEl = root.querySelector("#exp-state-banner")!;
     this._docSelEl = root.querySelector<HTMLSelectElement>("#tei-doc-sel")!;
     this._pkgDocSelEl = root.querySelector<HTMLSelectElement>("#pkg-doc-sel")!;
     this._pivotSelEl = root.querySelector<HTMLSelectElement>("#align-csv-pivot")!;
@@ -324,6 +347,9 @@ export class ExportsScreen {
     this._v2StageEl = root.querySelector<HTMLSelectElement>("#v2-stage")!;
     this._v2ProductEl = root.querySelector<HTMLSelectElement>("#v2-product")!;
     this._v2FormatEl = root.querySelector<HTMLSelectElement>("#v2-format")!;
+    this._v2DocSummaryEl = root.querySelector<HTMLElement>("#v2-doc-summary")!;
+    this._v2DocSelectAllBtn = root.querySelector<HTMLButtonElement>("#v2-doc-select-all-btn")!;
+    this._v2DocClearBtn = root.querySelector<HTMLButtonElement>("#v2-doc-clear-btn")!;
     this._v2PivotEl = root.querySelector<HTMLSelectElement>("#v2-align-pivot")!;
     this._v2TargetEl = root.querySelector<HTMLSelectElement>("#v2-align-target")!;
     this._v2RunIdEl = root.querySelector<HTMLInputElement>("#v2-run-id")!;
@@ -335,6 +361,9 @@ export class ExportsScreen {
     root.querySelector("#v2-run-btn")!.addEventListener("click", () => this._runUnifiedExport());
     root.querySelector("#v2-stage")!.addEventListener("change", () => this._syncV2Ui());
     root.querySelector("#v2-product")!.addEventListener("change", () => this._syncV2Ui());
+    this._v2DocSelEl.addEventListener("change", () => this._handleV2DocSelectionChange());
+    this._v2DocSelectAllBtn.addEventListener("click", () => this._selectAllV2Docs());
+    this._v2DocClearBtn.addEventListener("click", () => this._clearV2DocSelection());
     this._legacyToggleBtn.addEventListener("click", () => this._toggleLegacyExports());
     root.querySelector("#tei-export-btn")!.addEventListener("click", () => this._runTeiExport());
     root.querySelector("#pkg-export-btn")!.addEventListener("click", () => this._runPackageExport());
@@ -358,8 +387,10 @@ export class ExportsScreen {
       }
     });
 
+    initCardAccordions(root);
     this._refreshDocs();
     this._syncV2Ui();
+    this._refreshRuntimeState();
     return root;
   }
 
@@ -377,16 +408,24 @@ export class ExportsScreen {
     const teiBtns = this._root.querySelectorAll<HTMLButtonElement>("#v2-run-btn, #tei-export-btn, #pkg-export-btn, #align-csv-btn, #report-export-btn, #qa-report-btn");
     if (!this._conn) {
       teiBtns.forEach(b => b.disabled = true);
+      this._refreshRuntimeState();
       return;
     }
+    this._isBusy = true;
+    this._refreshRuntimeState();
     try {
       this._docs = await listDocuments(this._conn);
+      this._lastErrorMsg = null;
     } catch {
       this._docs = [];
+      this._lastErrorMsg = "Impossible de charger la liste des documents.";
+    } finally {
+      this._isBusy = false;
     }
     teiBtns.forEach(b => (b.disabled = false));
     this._renderDocOptions();
     this._syncV2Ui();
+    this._refreshRuntimeState();
   }
 
   private _renderDocOptions(): void {
@@ -467,10 +506,35 @@ export class ExportsScreen {
   // ── Unified V2 export flow ─────────────────────────────────────────────────
 
   private _selectedDocIds(selectEl: HTMLSelectElement): number[] | undefined {
-    const selected = Array.from(selectEl.selectedOptions).map(o => o.value);
-    if (selected.length === 0 || selected.includes("__all__")) return undefined;
-    const ids = selected.map(v => Number(v)).filter(v => Number.isInteger(v) && v > 0);
-    return ids.length > 0 ? ids : undefined;
+    const selected = Array.from(selectEl.selectedOptions).map((o) => o.value);
+    if (selected.includes("__all__")) return undefined;
+    if (selected.length === 0) return [];
+    const ids = selected.map((v) => Number(v)).filter((v) => Number.isInteger(v) && v > 0);
+    return ids;
+  }
+
+  private _handleV2DocSelectionChange(): void {
+    const values = Array.from(this._v2DocSelEl.selectedOptions).map((opt) => opt.value);
+    if (values.includes("__all__") && values.length > 1) {
+      for (const opt of Array.from(this._v2DocSelEl.options)) {
+        opt.selected = opt.value === "__all__";
+      }
+    }
+    this._syncV2Ui();
+  }
+
+  private _selectAllV2Docs(): void {
+    for (const opt of Array.from(this._v2DocSelEl.options)) {
+      opt.selected = opt.value === "__all__";
+    }
+    this._syncV2Ui();
+  }
+
+  private _clearV2DocSelection(): void {
+    for (const opt of Array.from(this._v2DocSelEl.options)) {
+      opt.selected = false;
+    }
+    this._syncV2Ui();
   }
 
   private _setSelectOptions(
@@ -581,13 +645,36 @@ export class ExportsScreen {
         pendingHint.style.display = "none";
       }
     }
+    const selectedIds = this._selectedDocIds(this._v2DocSelEl);
+    const hasEmptySelection = Array.isArray(selectedIds) && selectedIds.length === 0;
+    if (this._v2DocSummaryEl) {
+      if (selectedIds === undefined) {
+        this._v2DocSummaryEl.textContent = `Portée actuelle: tous les documents (${this._docs.length}).`;
+      } else if (hasEmptySelection) {
+        this._v2DocSummaryEl.textContent = "Portée actuelle: aucun document sélectionné.";
+      } else {
+        const titles = this._docs
+          .filter((doc) => selectedIds.includes(doc.doc_id))
+          .map((doc) => `#${doc.doc_id} ${doc.title}`);
+        const compact = titles.slice(0, 2).join(" · ");
+        const suffix = titles.length > 2 ? ` +${titles.length - 2}` : "";
+        this._v2DocSummaryEl.textContent = `Portée actuelle: ${selectedIds.length} document(s) (${compact}${suffix}).`;
+      }
+    }
+
     if (summaryHint) {
       const stageLabel = this._v2StageEl.selectedOptions[0]?.textContent ?? stage;
       const productLabel = this._v2ProductEl.selectedOptions[0]?.textContent ?? product;
       const formatLabel = this._v2FormatEl.selectedOptions[0]?.textContent ?? format;
-      summaryHint.textContent = `Sélection courante: ${stageLabel} → ${productLabel} → ${formatLabel}.`;
+      const scopeLabel = hasEmptySelection
+        ? "aucune portée"
+        : selectedIds === undefined
+          ? `tous (${this._docs.length})`
+          : `${selectedIds.length} document(s)`;
+      summaryHint.textContent = `Sélection courante: ${scopeLabel} · ${stageLabel} → ${productLabel} → ${formatLabel}.`;
     }
-    this._v2RunBtn.disabled = !this._conn || isPending;
+    this._v2RunBtn.disabled = !this._conn || isPending || hasEmptySelection;
+    this._refreshRuntimeState();
   }
 
   private async _runUnifiedExport(): Promise<void> {
@@ -601,6 +688,10 @@ export class ExportsScreen {
     }
 
     const doc_ids = this._selectedDocIds(this._v2DocSelEl);
+    if (Array.isArray(doc_ids) && doc_ids.length === 0) {
+      this._showToast?.("Sélectionnez au moins un document.", true);
+      return;
+    }
     this._v2RunBtn.disabled = true;
     let keepDisabledUntilCallback = false;
 
@@ -1110,5 +1201,39 @@ export class ExportsScreen {
     line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
     this._logEl.appendChild(line);
     this._logEl.scrollTop = this._logEl.scrollHeight;
+    if (isError) {
+      this._lastErrorMsg = msg;
+    } else if (msg.startsWith("✓")) {
+      this._lastErrorMsg = null;
+    }
+    this._refreshRuntimeState();
+  }
+
+  private _setRuntimeState(kind: "ok" | "info" | "warn" | "error", text: string): void {
+    if (!this._stateEl) return;
+    this._stateEl.className = `runtime-state state-${kind}`;
+    this._stateEl.textContent = text;
+  }
+
+  private _refreshRuntimeState(): void {
+    if (!this._stateEl) return;
+    if (!this._conn) {
+      this._setRuntimeState("error", "Sidecar indisponible. Ouvrez ou créez un corpus.");
+      return;
+    }
+    if (this._isBusy) {
+      this._setRuntimeState("info", "Chargement en cours…");
+      return;
+    }
+    if (this._lastErrorMsg) {
+      this._setRuntimeState("error", `Dernière erreur: ${this._lastErrorMsg}`);
+      return;
+    }
+    const hasPendingSelection = this._v2ProductEl?.value === "readable_text";
+    if (hasPendingSelection) {
+      this._setRuntimeState("warn", "Produit texte lisible sélectionné: disponibilité moteur partielle selon format.");
+      return;
+    }
+    this._setRuntimeState("ok", `${this._docs.length} document(s) disponibles pour export.`);
   }
 }
