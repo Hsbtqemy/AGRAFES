@@ -1153,6 +1153,36 @@ mark { background: #fff0b3; border-radius: 2px; }
 .align-kpi-value.bad { color: var(--prep-danger, #c0392b); }
 @media (max-width: 900px) { .align-kpis { grid-template-columns: repeat(3, 1fr); } }
 
+/* ─── Synthèse du run section header (P11 Inc D) ───────────────────────── */
+.run-synthese-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+.run-synthese-title {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--prep-heading, #1a2533);
+  flex-shrink: 0;
+}
+
+/* ─── Run toolbar above audit table (P11 Inc D) ────────────────────────── */
+.run-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 0 10px;
+  border-bottom: 1px solid var(--prep-line, #dde1e8);
+  margin-bottom: 10px;
+}
+.run-toolbar-title { flex: 0 0 auto; }
+.run-toolbar-filters { display: flex; gap: 6px; flex: 1; flex-wrap: wrap; }
+.run-toolbar-actions { flex: 0 0 auto; }
+
 /* ─── Alignment setup row ────────────────────────────────────────────────── */
 .align-setup-row {
   display: grid;

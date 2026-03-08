@@ -1192,14 +1192,22 @@ export class ActionsScreen {
                 <button id="act-align-recalc-btn" class="btn btn-secondary" disabled>Recalcul global</button>
               </div>
             </div>
+            <!-- Synthèse du run — visible after alignment -->
             <div id="act-align-results" style="display:none;margin-top:0.75rem">
-              <div id="act-align-banner" class="preview-stats"></div>
+              <div class="run-synthese-head">
+                <h4 class="run-synthese-title">Synth&#232;se du run</h4>
+                <div id="act-align-banner" class="preview-stats"></div>
+              </div>
               <div id="act-align-kpis" class="align-kpis" style="margin-top:10px">
                 <div class="align-kpi"><div class="align-kpi-label">Liens cr&#233;&#233;s</div><div class="align-kpi-value" id="act-kpi-created">&#8212;</div></div>
                 <div class="align-kpi"><div class="align-kpi-label">Ignor&#233;s</div><div class="align-kpi-value" id="act-kpi-skipped">&#8212;</div></div>
                 <div class="align-kpi"><div class="align-kpi-label">Couverture</div><div class="align-kpi-value" id="act-kpi-coverage">&#8212;</div></div>
                 <div class="align-kpi"><div class="align-kpi-label">Orphelins pivot</div><div class="align-kpi-value" id="act-kpi-orphan-p">&#8212;</div></div>
                 <div class="align-kpi"><div class="align-kpi-label">Orphelins cible</div><div class="align-kpi-value" id="act-kpi-orphan-t">&#8212;</div></div>
+              </div>
+              <div class="btn-row" style="margin-top:10px">
+                <button id="act-align-open-audit-cta" class="btn btn-primary btn-sm">Ouvrir l&#8217;audit &#8595;</button>
+                <button id="act-align-recalc-cta" class="btn btn-secondary btn-sm">Recalcul global</button>
               </div>
             </div>
             <div id="act-align-debug-panel" style="display:none;margin-top:0.75rem">
@@ -1210,7 +1218,20 @@ export class ActionsScreen {
               <div id="act-align-debug-content" class="align-debug-content"></div>
             </div>
             <div id="act-audit-panel" style="display:none;margin-top:0.75rem">
-              <h4 style="margin:0 0 0.4rem;font-size:0.9rem">Texte complet align&#233;</h4>
+              <div class="run-toolbar">
+                <div class="run-toolbar-title">
+                  <h4 style="margin:0;font-size:0.9rem">Texte complet align&#233;</h4>
+                </div>
+                <div class="run-toolbar-filters">
+                  <button id="act-audit-qf2-all" class="chip active" data-qf2="all">Tout</button>
+                  <button id="act-audit-qf2-review" class="chip" data-qf2="review">&#192; revoir</button>
+                  <button id="act-audit-qf2-unreviewed" class="chip" data-qf2="unreviewed">Non r&#233;vis&#233;s</button>
+                  <button id="act-audit-qf2-rejected" class="chip" data-qf2="rejected">Rejet&#233;s</button>
+                </div>
+                <div class="run-toolbar-actions">
+                  <button id="act-audit-next-cta" class="btn btn-sm btn-secondary">Suivant &#224; revoir &#8595;</button>
+                </div>
+              </div>
               <div class="form-row">
                 <label>Pivot :
                   <select id="act-audit-pivot"><option value="">&#8212; choisir &#8212;</option></select>
@@ -1419,6 +1440,21 @@ export class ActionsScreen {
       el.querySelector("#act-audit-panel")?.scrollIntoView({ behavior: "smooth", block: "start" }));
     el.querySelector("#wf-report-btn")?.addEventListener("click", () =>
       el.querySelector("#act-report-card")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    // New CTA buttons in synthèse run section
+    el.querySelector("#act-align-open-audit-cta")?.addEventListener("click", () =>
+      el.querySelector("#act-audit-panel")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    el.querySelector("#act-align-recalc-cta")?.addEventListener("click", () => this._runAlign(true));
+    // Run-toolbar filter chips (mirror the existing filter buttons)
+    el.querySelector("#act-audit-next-cta")?.addEventListener("click", () => this._focusNextAuditException(root));
+    ["all", "review", "unreviewed", "rejected"].forEach((key) => {
+      const btn = el.querySelector<HTMLButtonElement>(`#act-audit-qf2-${key}`);
+      if (!btn) return;
+      btn.addEventListener("click", () => {
+        this._setAuditQuickFilter(root, key as "all" | "review" | "unreviewed" | "rejected");
+        // Sync visual state of toolbar chips
+        el.querySelectorAll<HTMLElement>("[data-qf2]").forEach((b) => b.classList.toggle("active", b.dataset.qf2 === key));
+      });
+    });
     initCardAccordions(el);
     this._bindHeadNavLinks(el, root);
     return el;
