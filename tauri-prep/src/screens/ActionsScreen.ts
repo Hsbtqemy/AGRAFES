@@ -103,7 +103,7 @@ export interface ProjectPreset {
 
 // ─── Sub-view type ────────────────────────────────────────────────
 
-type SubView = "curation" | "segmentation" | "alignement";
+type SubView = "hub" | "curation" | "segmentation" | "alignement";
 
 // ─── ActionsScreen ────────────────────────────────────────────────────────────
 
@@ -167,9 +167,10 @@ export class ActionsScreen {
   private _previewDebounceHandle: number | null = null;
 
   // Sub-view state (hub navigation)
-  private _activeSubView: SubView = "curation";
+  private _activeSubView: SubView = "hub";
   private _root: HTMLElement | null = null;
   private _segLongTextMode = false;
+  private _segMode: "units" | "traduction" | "longtext" = "units";
   private static readonly LS_ACTIVE_SUB = "agrafes.prep.actions.active";
 
 
@@ -191,40 +192,29 @@ export class ActionsScreen {
     this._stateEl = root.querySelector("#act-state-banner")!;
     root.querySelector("#act-reload-docs")!.addEventListener("click", () => this._loadDocs());
 
-    const subnav = document.createElement("nav");
-    subnav.className = "acts-subnav";
-    subnav.setAttribute("aria-label", "Sections Actions");
-    const SUBNAV_ITEMS: Array<[SubView, string]> = [
-      ["curation",     "Curation"],
-      ["segmentation", "Segmentation"],
-      ["alignement",   "Alignement"],
-    ];
-    for (const [view, label] of SUBNAV_ITEMS) {
-      const btn = document.createElement("button");
-      btn.className = "acts-subnav-btn" + (view === this._activeSubView ? " active" : "");
-      btn.dataset.view = view;
-      btn.textContent = label;
-      if (view === this._activeSubView) btn.setAttribute("aria-current", "true");
-      btn.addEventListener("click", () => this._switchSubViewDOM(root, view));
-      subnav.appendChild(btn);
-    }
-    root.appendChild(subnav);
-
     const panelSlot = document.createElement("div");
     panelSlot.className = "acts-panel-slot";
+
+    const hubPanel = this._renderHubPanel(root);
+    hubPanel.dataset.panel = "hub";
+    hubPanel.style.display = this._activeSubView === "hub" ? "" : "none";
 
     const curationPanel = this._renderCurationPanel(root);
     curationPanel.dataset.panel = "curation";
     curationPanel.style.display = this._activeSubView === "curation" ? "" : "none";
+    this._prependBackBtn(curationPanel, root);
 
     const segPanel = this._renderSegmentationPanel(root);
     segPanel.dataset.panel = "segmentation";
     segPanel.style.display = this._activeSubView === "segmentation" ? "" : "none";
+    this._prependBackBtn(segPanel, root);
 
     const alignPanel = this._renderAlignementPanel(root);
     alignPanel.dataset.panel = "alignement";
     alignPanel.style.display = this._activeSubView === "alignement" ? "" : "none";
+    this._prependBackBtn(alignPanel, root);
 
+    panelSlot.appendChild(hubPanel);
     panelSlot.appendChild(curationPanel);
     panelSlot.appendChild(segPanel);
     panelSlot.appendChild(alignPanel);
@@ -268,7 +258,7 @@ export class ActionsScreen {
   private _loadSubViewPref(): void {
     try {
       const saved = localStorage.getItem(ActionsScreen.LS_ACTIVE_SUB) as SubView | null;
-      if (saved === "curation" || saved === "segmentation" || saved === "alignement") {
+      if (saved === "hub" || saved === "curation" || saved === "segmentation" || saved === "alignement") {
         this._activeSubView = saved;
       }
     } catch { /* ignore */ }
@@ -280,18 +270,110 @@ export class ActionsScreen {
     root.querySelectorAll<HTMLElement>("[data-panel]").forEach((panel) => {
       panel.style.display = panel.dataset.panel === view ? "" : "none";
     });
-    root.querySelectorAll<HTMLButtonElement>(".acts-subnav-btn").forEach((btn) => {
-      const isActive = btn.dataset.view === view;
-      btn.classList.toggle("active", isActive);
-      if (isActive) btn.setAttribute("aria-current", "true");
-      else btn.removeAttribute("aria-current");
-    });
     document.querySelectorAll<HTMLElement>("[data-nav]").forEach((link) => {
       const isActive = link.dataset.nav === view;
       link.classList.toggle("active", isActive);
       if (isActive) link.setAttribute("aria-current", "true");
       else link.removeAttribute("aria-current");
     });
+  }
+
+  /** Stable class method — replaces captured closure pattern for seg mode switching. */
+  private _setSegMode(mode: "units" | "traduction" | "longtext"): void {
+    this._segMode = mode;
+    const el = this._root?.querySelector<HTMLElement>('[data-panel="segmentation"]');
+    if (!el) return;
+    const modeUnits = el.querySelector<HTMLButtonElement>("#act-seg-mode-units");
+    const modeTraduction = el.querySelector<HTMLButtonElement>("#act-seg-mode-traduction");
+    const modeLongtext = el.querySelector<HTMLButtonElement>("#act-seg-mode-longtext");
+    const normalView = el.querySelector<HTMLElement>("#act-seg-normal-view");
+    const longtextView = el.querySelector<HTMLElement>("#act-seg-longtext-view");
+    const traductionHint = el.querySelector<HTMLElement>("#act-seg-traduction-hint");
+    const long = mode === "longtext";
+    this._segLongTextMode = long;
+    if (modeUnits) { modeUnits.classList.toggle("active", mode === "units"); modeUnits.setAttribute("aria-pressed", mode === "units" ? "true" : "false"); }
+    if (modeTraduction) { modeTraduction.classList.toggle("active", mode === "traduction"); modeTraduction.setAttribute("aria-pressed", mode === "traduction" ? "true" : "false"); }
+    if (modeLongtext) { modeLongtext.classList.toggle("active", mode === "longtext"); modeLongtext.setAttribute("aria-pressed", mode === "longtext" ? "true" : "false"); }
+    if (normalView) normalView.style.display = long ? "none" : "";
+    if (longtextView) longtextView.style.display = long ? "" : "none";
+    if (traductionHint) traductionHint.style.display = mode === "traduction" ? "" : "none";
+    if (long) this._syncLongtextSelectors(el);
+  }
+
+  private _renderHubPanel(root: HTMLElement): HTMLElement {
+    const el = document.createElement("div");
+    el.className = "acts-hub";
+    el.setAttribute("role", "main");
+    el.setAttribute("aria-label", "Vue synth\u00e8se Actions");
+    el.innerHTML = `
+      <section class="acts-hub-head-card">
+        <div class="acts-hub-head-left">
+          <h1>Actions &#8212; vue synth&#232;se</h1>
+          <p>Cette page sert d&#8217;aper&#231;u des actions de pr&#233;paration du corpus. S&#233;lectionnez une op&#233;ration ou utilisez les raccourcis ci-dessous.</p>
+        </div>
+        <div class="acts-hub-head-tools">
+          <span class="curate-pill">Mode &#233;dition contr&#244;l&#233;e</span>
+          <button class="acts-hub-head-link" data-cta="curation">Ouvrir curation</button>
+          <button class="acts-hub-head-link" data-cta="segmentation">Voir segmentation VO</button>
+          <button class="acts-hub-head-link" data-cta="alignement">Voir alignement</button>
+          <button class="acts-hub-head-link" data-cta="segmentation-longtext">Sc&#233;nario grand texte</button>
+        </div>
+      </section>
+      <div class="acts-hub-nav-cards">
+        <button class="acts-hub-nav-card" data-target="curation">
+          <div class="acts-hub-nav-card-icon">&#10002;</div>
+          <div class="acts-hub-nav-card-content">
+            <h3>Curation</h3>
+            <p>Nettoyage et normalisation du texte brut avant segmentation.</p>
+          </div>
+          <span class="acts-hub-nav-card-arrow" aria-hidden="true">&#8594;</span>
+        </button>
+        <button class="acts-hub-nav-card" data-target="segmentation">
+          <div class="acts-hub-nav-card-icon">&#9889;</div>
+          <div class="acts-hub-nav-card-content">
+            <h3>Segmentation</h3>
+            <p>D&#233;coupage du corpus en unit&#233;s traductionnelles.</p>
+          </div>
+          <span class="acts-hub-nav-card-arrow" aria-hidden="true">&#8594;</span>
+        </button>
+        <button class="acts-hub-nav-card" data-target="alignement">
+          <div class="acts-hub-nav-card-icon">&#8644;</div>
+          <div class="acts-hub-nav-card-content">
+            <h3>Alignement</h3>
+            <p>Cr&#233;ation des liens pivot &#8596; cible entre documents align&#233;s.</p>
+          </div>
+          <span class="acts-hub-nav-card-arrow" aria-hidden="true">&#8594;</span>
+        </button>
+      </div>
+    `;
+    // Nav-card clicks
+    el.querySelectorAll<HTMLButtonElement>(".acts-hub-nav-card").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const target = btn.dataset.target as SubView;
+        this._switchSubViewDOM(root, target);
+      });
+    });
+    // CTA head-link clicks
+    el.querySelectorAll<HTMLButtonElement>(".acts-hub-head-link").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const cta = btn.dataset.cta!;
+        if (cta === "segmentation-longtext") {
+          this._switchSubViewDOM(root, "segmentation");
+          this._setSegMode("longtext");
+        } else {
+          this._switchSubViewDOM(root, cta as SubView);
+        }
+      });
+    });
+    return el;
+  }
+
+  private _prependBackBtn(panel: HTMLElement, root: HTMLElement): void {
+    const div = document.createElement("div");
+    div.className = "acts-view-back";
+    div.innerHTML = `<button class="acts-view-back-btn">&#8592; Vue synth&#232;se</button>`;
+    div.querySelector("button")!.addEventListener("click", () => this._switchSubViewDOM(root, "hub"));
+    panel.prepend(div);
   }
 
   private _renderCurationPanel(root: HTMLElement): HTMLElement {
@@ -309,17 +391,17 @@ export class ActionsScreen {
         </div>
         <div class="curate-workspace">
           <div class="curate-col curate-col-left">
-            <div class="curate-inner-card">
-              <div class="curate-inner-head">
-                <h3>Param&#232;tres curation</h3>
+            <article class="curate-inner-card">
+              <div class="card-head">
+                <h2>Param&#232;tres curation</h2>
                 <span id="act-curate-doc-label" style="font-size:12px;color:var(--prep-muted,#4f5d6d)"></span>
               </div>
-              <div class="curate-inner-body">
+              <div class="card-body">
                 <label style="font-size:0.85rem;display:flex;flex-direction:column;gap:0.2rem;margin-bottom:0.5rem">
                   Document :
                   <select id="act-curate-doc"><option value="">Tous les documents</option></select>
                 </label>
-                <div class="curate-chip-row curation-quick-rules">
+                <div class="chip-row curation-quick-rules">
                   <label class="curation-rule-pill">
                     <input id="act-rule-spaces" type="checkbox" checked />
                     Espaces incoh&#233;rents
@@ -333,19 +415,19 @@ export class ActionsScreen {
                     Ponctuation fine
                   </label>
                 </div>
-                <div class="curate-btns">
+                <div class="btns" style="margin-top:8px">
                   <button id="act-preview-btn" class="btn btn-secondary" disabled>Pr&#233;visualiser</button>
                   <button id="act-curate-btn" class="btn btn-warning" disabled>Appliquer</button>
                 </div>
               </div>
-            </div>
-            <div class="curate-inner-card">
+            </article>
+            <article class="curate-inner-card" style="margin-top:10px">
               <details id="act-curate-advanced" class="curation-advanced">
-                <summary class="curate-inner-head" style="cursor:pointer;list-style:none;display:flex">
-                  <h3 style="flex:1">Retouches avanc&#233;es</h3>
+                <summary class="card-head" style="cursor:pointer;list-style:none;display:flex">
+                  <h2 style="flex:1">Retouches avanc&#233;es</h2>
                   <span style="font-size:11px;color:var(--prep-muted,#4f5d6d)">&#x25be;</span>
                 </summary>
-                <div class="curate-inner-body">
+                <div class="card-body">
                   <div class="form-row" style="margin-top:0.2rem">
                     <label style="min-width:160px">Chercher (regex)
                       <input id="act-curate-quick-pattern" type="text" placeholder="ex: \\u2019" />
@@ -366,59 +448,92 @@ export class ActionsScreen {
                   <p class="hint" style="margin:0.2rem 0 0">Ajout&#233;es apr&#232;s les r&#232;gles rapides.</p>
                 </div>
               </details>
-            </div>
+            </article>
+            <article class="curate-inner-card" id="act-curate-quick-actions" style="margin-top:10px">
+              <div class="card-head">
+                <h2>Actions rapides</h2>
+                <span style="font-size:12px;color:var(--prep-muted,#4f5d6d)">s&#233;lection locale</span>
+              </div>
+              <div class="card-body">
+                <div id="act-curate-queue" class="curate-queue">
+                  <p class="empty-hint">Aucune action en attente.</p>
+                </div>
+                <div class="btns" style="margin-top:8px">
+                  <button class="btn btn-secondary btn-sm" disabled>&#8592; Pr&#233;c&#233;dent</button>
+                  <button class="btn btn-secondary btn-sm" disabled>Suivant &#8594;</button>
+                </div>
+              </div>
+            </article>
           </div>
           <div class="curate-col curate-col-center">
-            <div class="curate-inner-card curate-preview-card" id="act-preview-panel">
-              <div class="curate-inner-head">
-                <h3>Preview synchronis&#233;e</h3>
+            <article class="curate-inner-card curate-preview-card" id="act-preview-panel">
+              <div class="card-head">
+                <h2>Preview synchronis&#233;e</h2>
                 <span id="act-preview-info" style="font-size:12px;color:var(--prep-muted,#4f5d6d)">&#8212;</span>
               </div>
-              <div class="curate-preview-controls">
-                <span class="curation-rule-pill" style="border-color:#9fd3cc;background:#e8f5f3;color:#0c4a46;font-size:11px;padding:2px 8px">Brut</span>
-                <span class="curation-rule-pill" style="border-color:#9fd3cc;background:#e8f5f3;color:#0c4a46;font-size:11px;padding:2px 8px">Cur&#233;</span>
-                <span class="curation-rule-pill" style="border-color:#9fd3cc;background:#e8f5f3;color:#0c4a46;font-size:11px;padding:2px 8px">Diff surlign&#233;e</span>
+              <div class="preview-controls">
+                <div class="chip-row">
+                  <span class="chip active">Brut</span>
+                  <span class="chip active">Cur&#233;</span>
+                  <span class="chip active">Diff surlign&#233;e</span>
+                </div>
+                <div class="chip-row">
+                  <span class="chip active">Scroll synchronis&#233;</span>
+                  <span class="chip">Afficher non-modifi&#233;s</span>
+                  <span class="chip">Contexte &#177;2 segments</span>
+                </div>
               </div>
-              <div class="curate-preview-body">
-                <section class="curate-pane">
-                  <div class="curate-pane-head">Texte brut (source)</div>
-                  <div id="act-preview-raw" class="curate-doc-scroll" aria-label="Texte brut">
+              <div class="preview-grid">
+                <section class="pane">
+                  <div class="pane-head">Texte brut (source)</div>
+                  <div id="act-preview-raw" class="doc-scroll" aria-label="Texte brut">
                     <p class="empty-hint">S&#233;lectionnez un document et lancez une pr&#233;visualisation.</p>
                   </div>
                 </section>
-                <section class="curate-pane">
-                  <div class="curate-pane-head">Texte cur&#233; (diff)</div>
-                  <div id="act-diff-list" class="diff-list curate-doc-scroll" aria-label="Texte cur&#233; avec diff&#233;rences">
+                <section class="pane">
+                  <div class="pane-head">Texte cur&#233; (diff)</div>
+                  <div id="act-diff-list" class="diff-list doc-scroll" aria-label="Texte cur&#233; avec diff&#233;rences">
                     <p class="empty-hint">Aucune pr&#233;visualisation.</p>
                   </div>
                 </section>
-                <aside id="act-curate-minimap" class="curate-minimap" aria-label="Minimap des changements">
-                  <div class="curate-mm"></div>
-                  <div class="curate-mm"></div>
-                  <div class="curate-mm"></div>
+                <aside id="act-curate-minimap" class="minimap" aria-label="Minimap des changements">
+                  <div class="mm"></div>
+                  <div class="mm"></div>
+                  <div class="mm"></div>
                 </aside>
               </div>
-              <div class="curate-preview-footer">
+              <div class="preview-foot">
                 <div id="act-preview-stats" class="preview-stats"></div>
                 <div class="btn-row" style="margin-top:0.35rem">
                   <button id="act-apply-after-preview-btn" class="btn btn-warning btn-sm" style="display:none">Appliquer maintenant</button>
                   <button id="act-reindex-after-curate-btn" class="btn btn-secondary btn-sm" style="display:none">Re-indexer</button>
                 </div>
               </div>
-            </div>
+            </article>
           </div>
           <div class="curate-col curate-col-right">
-            <div class="curate-inner-card">
-              <div class="curate-inner-head">
-                <h3>Diagnostics</h3>
+            <article class="curate-inner-card">
+              <div class="card-head">
+                <h2>Diagnostics curation</h2>
                 <span style="font-size:12px;color:var(--prep-muted,#4f5d6d)">live</span>
               </div>
-              <div class="curate-inner-body">
+              <div class="card-body">
                 <div id="act-curate-diag" class="curate-diag-list">
                   <p class="empty-hint">Lancez une pr&#233;visualisation pour voir les statistiques.</p>
                 </div>
               </div>
-            </div>
+            </article>
+            <article class="curate-inner-card" style="margin-top:10px">
+              <div class="card-head">
+                <h2>Journal de revue</h2>
+                <span style="font-size:12px;color:var(--prep-muted,#4f5d6d)">session</span>
+              </div>
+              <div class="card-body">
+                <div id="act-curate-review-log" class="curate-review-log">
+                  <p class="empty-hint">Aucune action enregistr&#233;e.</p>
+                </div>
+              </div>
+            </article>
           </div>
         </div>
       </section>
@@ -464,18 +579,98 @@ export class ActionsScreen {
     el.setAttribute("role", "main");
     el.setAttribute("aria-label", "Vue Segmentation");
     el.innerHTML = `
+      <section class="acts-seg-head-card">
+        <div class="acts-hub-head-left">
+          <h1>Segmentation</h1>
+          <p>D&#233;coupez le corpus en unit&#233;s traductionnelles. S&#233;lectionnez le mode adapt&#233; au type de document.</p>
+        </div>
+        <div class="acts-hub-head-tools">
+          <span class="curate-pill">workflow recommand&#233; avant alignement</span>
+          <button class="acts-hub-head-link" id="act-seg-head-longtext">Sc&#233;nario grand texte</button>
+        </div>
+      </section>
       <div id="act-seg-longtext-hint" class="acts-longtext-hint" style="display:none" role="status">
         <span>Ce document est long (&gt;12&#8239;000 caract&#232;res) &#8212; le mode <strong>document complet</strong> est recommand&#233;.</span>
         <button id="act-seg-switch-longtext" class="btn btn-sm btn-secondary">Basculer</button>
       </div>
       <div class="acts-seg-mode-bar">
-        <span class="acts-seg-mode-label">Aper&#231;u&#160;:</span>
+        <span class="acts-seg-mode-label">Mode&#160;:</span>
         <div class="acts-seg-mode-pills">
           <button id="act-seg-mode-units" class="acts-seg-mode-btn active" aria-pressed="true">Unit&#233;s</button>
+          <button id="act-seg-mode-traduction" class="acts-seg-mode-btn" aria-pressed="false">Traduction</button>
           <button id="act-seg-mode-longtext" class="acts-seg-mode-btn" aria-pressed="false">Document complet</button>
         </div>
       </div>
       <div id="act-seg-normal-view">
+        <div id="act-seg-traduction-hint" class="seg-traduction-panel" style="display:none">
+          <div class="seg-traduction-workspace">
+            <!-- Colonne gauche : bandeau + ref VO collapsible -->
+            <div class="seg-traduction-left">
+              <div class="seg-traduction-bandeau">
+                <span class="seg-mode-pill">Mode Traduction</span>
+                <p>S&#233;lectionnez un document de type <strong>traduction</strong> pour segmenter la version cible. La r&#233;f&#233;rence VO ci-dessous permet de comparer les segments source.</p>
+              </div>
+              <details class="seg-ref-vo-details" id="act-seg-ref-details" open>
+                <summary class="seg-ref-vo-summary">
+                  <span>R&#233;f&#233;rence VO</span>
+                  <span class="muted-label">lecture seule</span>
+                  <span class="seg-ref-vo-caret" aria-hidden="true">&#9660;</span>
+                </summary>
+                <div class="seg-ref-vo-body">
+                  <div class="form-row" style="padding:8px 14px 0">
+                    <label>Document VO :
+                      <select id="act-seg-ref-doc"><option value="">&#8212; choisir &#8212;</option></select>
+                    </label>
+                  </div>
+                  <div id="act-seg-ref-content" class="seg-ref-content">
+                    <p class="empty-hint">S&#233;lectionnez un document VO pour afficher les segments de r&#233;f&#233;rence.</p>
+                  </div>
+                </div>
+              </details>
+            </div>
+            <!-- Colonne droite : preview structur&#233;e (tools / tabs / panes) -->
+            <div class="seg-traduction-preview-wrap">
+              <article class="seg-preview-card seg-traduction-preview preview" id="act-seg-traduction-preview">
+                <div class="seg-inner-head">
+                  <h3>Preview traduction &#8212; comparaison VO</h3>
+                  <span class="seg-preview-info">scroll synchronis&#233;</span>
+                </div>
+                <div class="preview-tools">
+                  <button class="chip active" data-chip-tr="target">Cible</button>
+                  <button class="chip" data-chip-tr="vo">R&#233;f&#233;rence VO</button>
+                  <button class="chip" data-chip-tr="diff">Diff</button>
+                </div>
+                <div class="preview-tabs" role="tablist" aria-label="Vue traduction">
+                  <button class="ptab-tr active" role="tab" aria-selected="true" data-tab-tr="target">Cible</button>
+                  <button class="ptab-tr" role="tab" aria-selected="false" data-tab-tr="vo">VO r&#233;f&#233;rence</button>
+                  <button class="ptab-tr" role="tab" aria-selected="false" data-tab-tr="compare">Comparaison</button>
+                </div>
+                <div class="preview-body">
+                  <section class="pane" id="act-seg-tr-pane-target">
+                    <div class="pane-head">Document cible (traduction)</div>
+                    <div id="act-seg-tr-target-scroll" class="doc-scroll">
+                      <p class="empty-hint">S&#233;lectionnez un document et lancez la segmentation.</p>
+                    </div>
+                  </section>
+                  <section class="pane" id="act-seg-tr-pane-vo" style="display:none">
+                    <div class="pane-head">R&#233;f&#233;rence VO</div>
+                    <div id="act-seg-tr-vo-scroll" class="doc-scroll">
+                      <p class="empty-hint">S&#233;lectionnez un document VO.</p>
+                    </div>
+                  </section>
+                  <aside class="minimap" aria-label="Minimap" id="act-seg-tr-minimap">
+                    <div class="mm"></div>
+                    <div class="mm"></div>
+                    <div class="mm"></div>
+                  </aside>
+                </div>
+                <div class="preview-foot">
+                  <div id="act-seg-tr-footer-stats" class="preview-stats"></div>
+                </div>
+              </article>
+            </div>
+          </div>
+        </div>
         <section class="card seg-workspace-card" id="act-seg-card">
           <div class="seg-workspace">
             <div class="seg-col seg-col-left">
@@ -553,116 +748,114 @@ export class ActionsScreen {
             </div>
             <span id="act-seg-lt-pill" class="curate-pill">&#8212;</span>
           </div>
-          <div style="padding:0 1rem 0.75rem">
-            <div class="form-row">
-              <label>Document :
-                <select id="act-seg-lt-doc"><option value="">&#8212; choisir &#8212;</option></select>
-              </label>
-              <label>Langue :
-                <input id="act-seg-lt-lang" type="text" value="fr" maxlength="10" style="width:70px" />
-              </label>
-              <label>Pack :
-                <select id="act-seg-lt-pack">
-                  <option value="auto">Auto multicorpus</option>
-                  <option value="fr_strict">Fran&#231;ais strict</option>
-                  <option value="en_strict">Anglais strict</option>
-                  <option value="default">Standard</option>
-                </select>
-              </label>
-            </div>
-            <div class="btn-row" style="margin-top:0.5rem">
-              <button id="act-seg-lt-btn" class="btn btn-warning" disabled>Segmenter</button>
-              <button id="act-seg-lt-validate-btn" class="btn btn-secondary" disabled>Segmenter + valider</button>
-              <button id="act-seg-lt-validate-only-btn" class="btn btn-primary" disabled>Valider ce document</button>
-            </div>
-            <div id="act-seg-lt-status" class="runtime-state state-info" style="margin-top:0.4rem">Aucune segmentation lanc&#233;e.</div>
-          </div>
-          <div class="seg-workspace" style="padding:0">
-            <div class="seg-col seg-col-left" style="padding:0 0.75rem 0.75rem">
-              <div id="act-seg-lt-stats" class="seg-stats-grid" style="margin-bottom:0.75rem">
-                <p class="empty-hint" style="grid-column:1/-1">Lancez une segmentation pour voir les r&#233;sultats.</p>
-              </div>
-              <div id="act-seg-lt-warns" class="seg-warn-list" style="display:none"></div>
-              <details class="seg-inner-card seg-batch-overview" style="margin-top:0.5rem" open>
-                <summary class="seg-inner-head" style="cursor:pointer;list-style:none">
-                  <h3>Vue d&#8217;ensemble corpus</h3>
-                  <span id="act-seg-lt-batch-info" class="seg-preview-info">&#8212;</span>
-                </summary>
-                <div id="act-seg-lt-batch-list" class="seg-inner-body" style="padding:8px 12px">
-                  <p class="empty-hint">Chargement&#8230;</p>
+          <div class="seg-workspace seg-workspace-lt">
+            <div class="seg-col seg-col-left">
+              <div class="seg-inner-card">
+                <div class="seg-inner-head"><h3>Param&#232;tres segmentation</h3></div>
+                <div class="seg-inner-body">
+                  <div class="form-row">
+                    <label>Document :
+                      <select id="act-seg-lt-doc"><option value="">&#8212; choisir &#8212;</option></select>
+                    </label>
+                    <label>Langue :
+                      <input id="act-seg-lt-lang" type="text" value="fr" maxlength="10" style="width:70px" />
+                    </label>
+                    <label>Pack :
+                      <select id="act-seg-lt-pack">
+                        <option value="auto">Auto multicorpus</option>
+                        <option value="fr_strict">Fran&#231;ais strict</option>
+                        <option value="en_strict">Anglais strict</option>
+                        <option value="default">Standard</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div class="btn-row" style="margin-top:0.5rem">
+                    <button id="act-seg-lt-btn" class="btn btn-warning" disabled>Segmenter</button>
+                    <button id="act-seg-lt-validate-btn" class="btn btn-secondary" disabled>Segmenter + valider</button>
+                    <button id="act-seg-lt-validate-only-btn" class="btn btn-primary" disabled>Valider ce document</button>
+                  </div>
+                  <div id="act-seg-lt-status" class="runtime-state state-info" style="margin-top:0.4rem">Aucune segmentation lanc&#233;e.</div>
                 </div>
-              </details>
+              </div>
+              <div class="seg-inner-card" style="margin-top:10px">
+                <div class="seg-inner-head">
+                  <h3>R&#233;sum&#233; v&#233;rification</h3>
+                  <span id="act-seg-lt-batch-info" class="seg-preview-info">&#8212;</span>
+                </div>
+                <div class="seg-inner-body">
+                  <div id="act-seg-lt-stats" class="seg-stats-grid">
+                    <p class="empty-hint" style="grid-column:1/-1">Lancez une segmentation pour voir les r&#233;sultats.</p>
+                  </div>
+                  <div id="act-seg-lt-warns" class="seg-warn-list" style="display:none"></div>
+                  <div id="act-seg-lt-batch-list" style="margin-top:0.5rem">
+                    <p class="empty-hint">Chargement&#8230;</p>
+                  </div>
+                </div>
+              </div>
             </div>
             <div class="seg-col seg-col-right">
-              <div class="seg-preview-card acts-seg-lt-sticky-preview">
+              <article class="seg-preview-card acts-seg-lt-sticky-preview preview">
                 <div class="seg-inner-head">
                   <h3>Preview persistante &#8212; document complet</h3>
                   <span id="act-seg-lt-preview-info" class="seg-preview-info">scroll synchronis&#233;</span>
                 </div>
-                <div class="acts-seg-lt-chips">
-                  <button class="acts-seg-lt-chip active" data-chip="text_norm">text_norm</button>
-                  <button class="acts-seg-lt-chip" data-chip="text_raw">text_raw</button>
-                  <button class="acts-seg-lt-chip" data-chip="highlight_cuts">surligner coupures</button>
-                  <button class="acts-seg-lt-chip" data-chip="suspects_only">suspects uniquement</button>
+                <div class="preview-tools">
+                  <button class="chip active" data-chip="text_norm">text_norm</button>
+                  <button class="chip" data-chip="text_raw">text_raw</button>
+                  <button class="chip" data-chip="highlight_cuts">surligner coupures</button>
+                  <button class="chip" data-chip="suspects_only">suspects uniquement</button>
+                  <button class="chip" data-chip="search">recherche dans document</button>
                 </div>
-                <div class="acts-seg-lt-tabs" role="tablist" aria-label="Vue du document">
-                  <button class="acts-seg-lt-tab" role="tab" aria-selected="false" data-tab="raw">Brut</button>
-                  <button class="acts-seg-lt-tab active" role="tab" aria-selected="true" data-tab="seg">Pr&#233;visualisation segmentation</button>
-                  <button class="acts-seg-lt-tab" role="tab" aria-selected="false" data-tab="diff">Diff global</button>
+                <div class="preview-tabs" role="tablist" aria-label="Vue du document">
+                  <button class="ptab" role="tab" aria-selected="false" data-tab="raw">Brut</button>
+                  <button class="ptab active" role="tab" aria-selected="true" data-tab="seg">Pr&#233;visualisation segmentation</button>
+                  <button class="ptab" role="tab" aria-selected="false" data-tab="diff">Diff global</button>
                 </div>
-                <div class="acts-seg-lt-body">
-                  <section class="curate-pane" id="act-seg-lt-pane-raw" style="display:none">
-                    <div class="curate-pane-head">Document brut</div>
-                    <div id="act-seg-lt-raw-scroll" class="curate-doc-scroll">
+                <div class="preview-body">
+                  <section class="pane" id="act-seg-lt-pane-raw" style="display:none">
+                    <div class="pane-head">Document brut</div>
+                    <div id="act-seg-lt-raw-scroll" class="doc-scroll">
                       <p class="empty-hint">Lancez une segmentation pour voir le document.</p>
                     </div>
                   </section>
-                  <section class="curate-pane" id="act-seg-lt-pane-seg">
-                    <div class="curate-pane-head" id="act-seg-lt-seg-head">Segmentation propos&#233;e</div>
-                    <div id="act-seg-lt-seg-scroll" class="curate-doc-scroll">
+                  <section class="pane" id="act-seg-lt-pane-seg">
+                    <div class="pane-head" id="act-seg-lt-seg-head">Segmentation propos&#233;e</div>
+                    <div id="act-seg-lt-seg-scroll" class="doc-scroll">
                       <p class="empty-hint">Lancez une segmentation pour voir la proposition.</p>
                     </div>
                   </section>
-                  <section class="curate-pane" id="act-seg-lt-pane-diff" style="display:none">
-                    <div class="curate-pane-head">Diff global</div>
-                    <div id="act-seg-lt-diff-scroll" class="curate-doc-scroll">
+                  <section class="pane" id="act-seg-lt-pane-diff" style="display:none">
+                    <div class="pane-head">Diff global</div>
+                    <div id="act-seg-lt-diff-scroll" class="doc-scroll">
                       <p class="empty-hint">Disponible apr&#232;s segmentation.</p>
                     </div>
                   </section>
-                  <aside class="curate-minimap" aria-label="Minimap" id="act-seg-lt-minimap">
-                    <div class="curate-mm"></div>
-                    <div class="curate-mm changed"></div>
-                    <div class="curate-mm"></div>
-                    <div class="curate-mm current"></div>
-                    <div class="curate-mm"></div>
+                  <aside class="minimap" aria-label="Minimap" id="act-seg-lt-minimap">
+                    <div class="mm"></div>
+                    <div class="mm changed"></div>
+                    <div class="mm"></div>
+                    <div class="mm current"></div>
+                    <div class="mm"></div>
                   </aside>
                 </div>
-                <div class="curate-preview-footer">
+                <div class="preview-foot">
                   <div id="act-seg-lt-footer-stats" class="preview-stats"></div>
                 </div>
-              </div>
+              </article>
             </div>
           </div>
         </section>
       </div>
     `;
     const modeUnits = el.querySelector<HTMLButtonElement>("#act-seg-mode-units")!;
+    const modeTraduction = el.querySelector<HTMLButtonElement>("#act-seg-mode-traduction")!;
     const modeLongtext = el.querySelector<HTMLButtonElement>("#act-seg-mode-longtext")!;
-    const normalView = el.querySelector<HTMLElement>("#act-seg-normal-view")!;
-    const longtextView = el.querySelector<HTMLElement>("#act-seg-longtext-view")!;
-    const setSegMode = (long: boolean): void => {
-      this._segLongTextMode = long;
-      modeUnits.classList.toggle("active", !long);
-      modeUnits.setAttribute("aria-pressed", long ? "false" : "true");
-      modeLongtext.classList.toggle("active", long);
-      modeLongtext.setAttribute("aria-pressed", long ? "true" : "false");
-      normalView.style.display = long ? "none" : "";
-      longtextView.style.display = long ? "" : "none";
-      if (long) this._syncLongtextSelectors(el);
-    };
-    modeUnits.addEventListener("click", () => setSegMode(false));
-    modeLongtext.addEventListener("click", () => setSegMode(true));
-    el.querySelector("#act-seg-switch-longtext")?.addEventListener("click", () => setSegMode(true));
+    // Wire mode buttons to class method (no captured closure, refactor-safe)
+    el.querySelector("#act-seg-head-longtext")?.addEventListener("click", () => this._setSegMode("longtext"));
+    modeUnits.addEventListener("click", () => this._setSegMode("units"));
+    modeTraduction.addEventListener("click", () => this._setSegMode("traduction"));
+    modeLongtext.addEventListener("click", () => this._setSegMode("longtext"));
+    el.querySelector("#act-seg-switch-longtext")?.addEventListener("click", () => this._setSegMode("longtext"));
     el.querySelector("#act-seg-btn")!.addEventListener("click", () => this._runSegment());
     el.querySelector("#act-seg-validate-btn")!.addEventListener("click", () => this._runSegment(true));
     el.querySelector("#act-seg-validate-only-btn")!.addEventListener("click", () => this._runValidateCurrentSegDoc());
@@ -682,10 +875,10 @@ export class ActionsScreen {
         try { localStorage.setItem(ActionsScreen.LS_SEG_POST_VALIDATE, next); } catch { /* ignore */ }
       });
     }
-    el.querySelectorAll<HTMLButtonElement>(".acts-seg-lt-tab").forEach((tab) => {
+    el.querySelectorAll<HTMLButtonElement>(".ptab").forEach((tab) => {
       tab.addEventListener("click", () => {
         const targetTab = tab.dataset.tab!;
-        el.querySelectorAll<HTMLButtonElement>(".acts-seg-lt-tab").forEach((t) => {
+        el.querySelectorAll<HTMLButtonElement>(".ptab").forEach((t) => {
           const active = t.dataset.tab === targetTab;
           t.classList.toggle("active", active);
           t.setAttribute("aria-selected", active ? "true" : "false");
@@ -705,8 +898,35 @@ export class ActionsScreen {
     el.querySelector("#act-seg-lt-btn")!.addEventListener("click", () => this._runSegment());
     el.querySelector("#act-seg-lt-validate-btn")!.addEventListener("click", () => this._runSegment(true));
     el.querySelector("#act-seg-lt-validate-only-btn")!.addEventListener("click", () => this._runValidateCurrentSegDoc());
-    el.querySelectorAll<HTMLButtonElement>(".acts-seg-lt-chip").forEach((chip) => {
+    el.querySelectorAll<HTMLButtonElement>("[data-chip]").forEach((chip) => {
       chip.addEventListener("click", () => chip.classList.toggle("active"));
+    });
+    el.querySelector<HTMLSelectElement>("#act-seg-ref-doc")?.addEventListener("change", (e) => {
+      const docId = parseInt((e.target as HTMLSelectElement).value);
+      const contentEl = el.querySelector<HTMLElement>("#act-seg-ref-content");
+      if (!contentEl) return;
+      if (!docId) {
+        contentEl.innerHTML = '<p class="empty-hint">S&#233;lectionnez un document VO pour afficher les segments de r&#233;f&#233;rence.</p>';
+        return;
+      }
+      const doc = this._docs.find(d => d.doc_id === docId);
+      if (!doc) return;
+      contentEl.innerHTML = `<div class="seg-ref-doc-row"><span>${doc.title}</span><span class="seg-ref-doc-id">[${doc.doc_id}] ${doc.language} &mdash; ${doc.unit_count} unit&#233;s</span></div><p class="empty-hint" style="margin:8px 0 0">Pr&#233;visualisation des segments disponible apr&#232;s chargement.</p>`;
+    });
+    // Traduction preview tabs (Inc 3 — preview à droite structurée)
+    el.querySelectorAll<HTMLButtonElement>(".ptab-tr").forEach((tab) => {
+      tab.addEventListener("click", () => {
+        const targetTab = tab.dataset.tabTr!;
+        el.querySelectorAll<HTMLButtonElement>(".ptab-tr").forEach((t) => {
+          const active = t.dataset.tabTr === targetTab;
+          t.classList.toggle("active", active);
+          t.setAttribute("aria-selected", active ? "true" : "false");
+        });
+        const paneTarget = el.querySelector<HTMLElement>("#act-seg-tr-pane-target");
+        const paneVo = el.querySelector<HTMLElement>("#act-seg-tr-pane-vo");
+        if (paneTarget) paneTarget.style.display = targetTab === "target" ? "" : "none";
+        if (paneVo) paneVo.style.display = (targetTab === "vo" || targetTab === "compare") ? "" : "none";
+      });
     });
     initCardAccordions(el);
     return el;
@@ -717,6 +937,15 @@ export class ActionsScreen {
     el.setAttribute("role", "main");
     el.setAttribute("aria-label", "Vue Alignement");
     el.innerHTML = `
+      <section class="acts-seg-head-card">
+        <div class="acts-hub-head-left">
+          <h1>Alignement &#8212; vue run globale</h1>
+          <p>Cr&#233;ez les liens pivot &#8596; cible entre documents. Lancez un run, contr&#244;lez la qualit&#233;, corrigez les exceptions.</p>
+        </div>
+        <div class="acts-hub-head-tools">
+          <span class="curate-pill" id="act-align-run-pill">Liens pivot &#8596; cible</span>
+        </div>
+      </section>
       <section class="card workflow-section" id="wf-section" data-collapsible="true" data-collapsed-default="true" style="border:2px solid var(--accent,#1a7f4e)">
         <h3>Workflow alignement guid&#233;
           <span style="font-size:0.75rem;font-weight:400;color:#6c757d;margin-left:0.5rem">5 &#233;tapes</span>
@@ -794,15 +1023,13 @@ export class ActionsScreen {
         <div class="align-layout">
           <div class="align-main">
             <div class="align-launcher">
-              <div class="form-row">
+              <div class="align-setup-row">
                 <label>Doc pivot :
                   <select id="act-align-pivot"><option value="">&#8212; choisir &#8212;</option></select>
                 </label>
                 <label>Doc(s) cible(s) :
                   <select id="act-align-targets" multiple size="3"></select>
                 </label>
-              </div>
-              <div class="form-row">
                 <label>Strat&#233;gie :
                   <select id="act-align-strategy">
                     <option value="external_id">external_id</option>
@@ -811,6 +1038,8 @@ export class ActionsScreen {
                     <option value="similarity">similarit&#233;</option>
                   </select>
                 </label>
+              </div>
+              <div class="form-row" style="margin-top:8px">
                 <label id="act-sim-row" style="display:none">Seuil :
                   <input id="act-sim-threshold" type="number" min="0" max="1" step="0.05" value="0.8" style="width:70px"/>
                 </label>
@@ -831,6 +1060,13 @@ export class ActionsScreen {
             </div>
             <div id="act-align-results" style="display:none;margin-top:0.75rem">
               <div id="act-align-banner" class="preview-stats"></div>
+              <div id="act-align-kpis" class="align-kpis" style="margin-top:10px">
+                <div class="align-kpi"><div class="align-kpi-label">Liens cr&#233;&#233;s</div><div class="align-kpi-value" id="act-kpi-created">&#8212;</div></div>
+                <div class="align-kpi"><div class="align-kpi-label">Ignor&#233;s</div><div class="align-kpi-value" id="act-kpi-skipped">&#8212;</div></div>
+                <div class="align-kpi"><div class="align-kpi-label">Couverture</div><div class="align-kpi-value" id="act-kpi-coverage">&#8212;</div></div>
+                <div class="align-kpi"><div class="align-kpi-label">Orphelins pivot</div><div class="align-kpi-value" id="act-kpi-orphan-p">&#8212;</div></div>
+                <div class="align-kpi"><div class="align-kpi-label">Orphelins cible</div><div class="align-kpi-value" id="act-kpi-orphan-t">&#8212;</div></div>
+              </div>
             </div>
             <div id="act-align-debug-panel" style="display:none;margin-top:0.75rem">
               <div class="align-debug-head">
@@ -1471,7 +1707,7 @@ export class ActionsScreen {
   }
 
   private _populateSelects(): void {
-    const allDocSelects = ["act-curate-doc", "act-seg-doc", "act-align-pivot",
+    const allDocSelects = ["act-curate-doc", "act-seg-doc", "act-seg-ref-doc", "act-align-pivot",
       "act-align-targets", "act-meta-doc", "act-audit-pivot", "act-audit-target",
       "act-quality-pivot", "act-quality-target",
       "act-coll-pivot", "act-coll-target"];
@@ -1690,7 +1926,7 @@ export class ActionsScreen {
     const density = total > 0 ? Math.min(changed / total, 1) : 0;
     const changedBars = Math.round(density * bars);
     mm.innerHTML = Array.from({ length: bars }, (_, i) =>
-      `<div class="curate-mm${i < changedBars ? " changed" : ""}"></div>`
+      `<div class="mm${i < changedBars ? " changed" : ""}"></div>`
     ).join("");
   }
 
@@ -2094,6 +2330,23 @@ export class ActionsScreen {
               : "";
             bannerEl.innerHTML = `${reportBits}${recalcBits}`;
           }
+          // Populate KPIs
+          const totalCreated = reports.reduce((s, r) => s + r.links_created, 0);
+          const totalSkipped = reports.reduce((s, r) => s + (r.links_skipped ?? 0), 0);
+          const setKpi = (id: string, value: string, cls?: string) => {
+            const el = document.querySelector(`#${id}`);
+            if (el) { el.textContent = value; if (cls) { el.className = `align-kpi-value ${cls}`; } }
+          };
+          setKpi("act-kpi-created", String(totalCreated), totalCreated > 0 ? "ok" : undefined);
+          setKpi("act-kpi-skipped", String(totalSkipped), totalSkipped > 0 ? "warn" : undefined);
+          if (recalculate) {
+            setKpi("act-kpi-coverage", totalEffectiveLinks > 0 ? `${totalEffectiveLinks}` : "—");
+          } else {
+            setKpi("act-kpi-coverage", "—");
+          }
+          setKpi("act-kpi-orphan-p", "—");
+          setKpi("act-kpi-orphan-t", "—");
+
           this._renderAlignExplainability();
           for (const r of reports) {
             const skipped = r.links_skipped ?? 0;
@@ -2694,6 +2947,14 @@ export class ActionsScreen {
           </div>
         </details>` : ""}
       `;
+      // Update KPIs from quality result
+      const updKpi = (id: string, value: string, cls?: string) => {
+        const el = document.querySelector(`#${id}`);
+        if (el) { el.textContent = value; if (cls) el.className = `align-kpi-value ${cls}`; }
+      };
+      updKpi("act-kpi-coverage", `${s.coverage_pct}%`, s.coverage_pct >= 90 ? "ok" : s.coverage_pct >= 60 ? "warn" : "bad");
+      updKpi("act-kpi-orphan-p", String(s.orphan_pivot_count), s.orphan_pivot_count === 0 ? "ok" : "warn");
+      updKpi("act-kpi-orphan-t", String(s.orphan_target_count ?? 0), (s.orphan_target_count ?? 0) === 0 ? "ok" : "warn");
       this._log(`Qualité : couverture ${s.coverage_pct}%, orphelins=${s.orphan_pivot_count}p/${s.orphan_target_count}c, collisions=${s.collision_count}`);
     } catch (err) {
       this._log(`Erreur qualité : ${err instanceof SidecarError ? err.message : String(err)}`, true);
