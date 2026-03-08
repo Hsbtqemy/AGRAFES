@@ -1395,6 +1395,23 @@ export class ActionsScreen {
     if (footEl) footEl.textContent = `${r.units_output} segments • ${r.units_input} → ${r.units_output}`;
     const pillEl = segPanel.querySelector<HTMLElement>("#act-seg-lt-pill");
     if (pillEl) pillEl.textContent = `doc#${r.doc_id} · ${r.segment_pack ?? "auto"}`;
+    const mmEl = segPanel.querySelector<HTMLElement>("#act-seg-lt-minimap");
+    if (mmEl) this._renderMinimap(mmEl, r.units_output, r.warnings?.length ?? 0);
+  }
+
+  /** Fills a minimap element with bucket bars. Changed buckets mark warning density. */
+  private _renderMinimap(mmEl: HTMLElement, totalUnits: number, warnCount: number, bucketCount = 12): void {
+    if (totalUnits === 0) { mmEl.innerHTML = ""; return; }
+    const clampedWarn = Math.min(warnCount, totalUnits);
+    let html = "";
+    for (let i = 0; i < bucketCount; i++) {
+      // Bresenham-like distribution: bucket i is "changed" if a warning falls in it
+      const warnsNow = Math.floor(clampedWarn * (i + 1) / bucketCount);
+      const warnsBefore = Math.floor(clampedWarn * i / bucketCount);
+      const isWarn = warnsNow > warnsBefore;
+      html += `<div class="mm${isWarn ? " changed" : ""}"></div>`;
+    }
+    mmEl.innerHTML = html;
   }
 
   private _updateTraductionPreview(): void {
@@ -1423,6 +1440,8 @@ export class ActionsScreen {
       const docLabel = doc ? `${_escHtml(doc.title)} [${_escHtml(doc.language)}]` : `doc#${r.doc_id}`;
       footEl.textContent = `${docLabel} · ${r.units_output} segments · pack ${r.segment_pack ?? "auto"}`;
     }
+    const mmEl = segPanel.querySelector<HTMLElement>("#act-seg-tr-minimap");
+    if (mmEl) this._renderMinimap(mmEl, r.units_output, r.warnings?.length ?? 0);
   }
 
   setConn(conn: Conn | null): void {
