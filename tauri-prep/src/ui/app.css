@@ -410,9 +410,19 @@ code { font-family: monospace; background: var(--color-bg); padding: 0 3px; bord
   background: #f6fbfa;
   font-size: 0.8rem;
   margin: 0;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.curation-rule-pill:hover { background: #eef8f6; border-color: #9fd3cc; }
+.curation-rule-pill:has(input:checked) {
+  background: var(--prep-accent-soft, #e8f5f3);
+  border-color: #9fd3cc;
+  color: var(--prep-accent-dark, #0c4a46);
+  font-weight: 600;
 }
 .curation-rule-pill input {
   margin: 0;
+  accent-color: var(--prep-accent, #0f766e);
 }
 .curation-advanced > summary {
   cursor: pointer;
@@ -1310,6 +1320,37 @@ mark { background: #fff0b3; border-radius: 2px; }
   .seg-preview-card.preview { position: static; max-height: none; }
 }
 
+/* ─── P15 Inc 4 — Curation form fields (inside .card-body) ────────── */
+.card-body label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+  color: var(--prep-muted, #4f5d6d);
+  font-weight: 500;
+  margin-bottom: 8px;
+}
+.card-body select, .card-body input[type="text"] {
+  border: 1px solid var(--prep-line, #dde1e8);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 13px;
+  font-family: inherit;
+  background: #fff;
+  color: var(--prep-text, #1a1a2e);
+  width: 100%;
+  appearance: auto;
+}
+.card-body select:focus, .card-body input:focus {
+  outline: 2px solid var(--prep-accent, #0f766e);
+  outline-offset: 1px;
+}
+/* Curate right column: diag list polish */
+.curate-diag { padding: 10px 12px; font-size: 12.5px; border-bottom: 1px solid var(--prep-line, #dde1e8); }
+.curate-diag:last-child { border-bottom: 0; }
+.curate-diag.warn { background: var(--prep-warn-soft, #fff7e6); border-left: 3px solid var(--prep-warn, #e6a817); }
+.curate-diag strong { color: var(--prep-text, #1a1a2e); display: block; margin-bottom: 3px; font-size: 13px; }
+
 /* ═══════════════════════════════════════════════════════════════════
    P15 INC 1 — Design system vNext: components polish
    ═══════════════════════════════════════════════════════════════════ */
@@ -1380,15 +1421,17 @@ article.preview .preview-foot {
 button.chip { cursor: pointer; transition: background 0.12s, color 0.12s, border-color 0.12s; }
 button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outline-offset: 2px; }
 
-/* ── 4. Inner cards — depth + hover ────────────────────────────── */
-.seg-inner-card, .curate-inner-card {
+/* ── 4. Seg inner cards — floating depth (not used for curate rows) ── */
+.seg-inner-card {
   background: var(--prep-surface, #fff);
   border: 1px solid var(--prep-line, #dde1e8);
   border-radius: 10px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.05);
   overflow: hidden;
+  margin-bottom: 10px;
 }
-.seg-inner-head, .curate-inner-head {
+.seg-inner-card:last-child { margin-bottom: 0; }
+.seg-inner-head {
   padding: 10px 14px;
   border-bottom: 1px solid var(--prep-line, #dde1e8);
   background: #f8f9fb;
@@ -1396,15 +1439,21 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
   align-items: center;
   justify-content: space-between;
 }
-.seg-inner-head h3, .curate-inner-head h3,
-.seg-inner-head h2, .curate-inner-head h2 {
+.seg-inner-head h3,
+.seg-inner-head h2 {
   margin: 0;
   font-size: 13px;
   font-weight: 600;
   color: var(--prep-text, #1a1a2e);
 }
-.seg-inner-body, .curate-inner-body {
-  padding: 12px 14px;
+.seg-inner-body { padding: 12px 14px; }
+/* Curate inner head: row variant (not floating card) */
+.curate-inner-head {
+  padding: 9px 12px;
+  background: #f8f9fb;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 /* ── 5. .live-note — dashed green empty state ───────────────────── */
