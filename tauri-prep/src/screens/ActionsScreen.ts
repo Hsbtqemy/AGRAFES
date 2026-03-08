@@ -198,6 +198,12 @@ export class ActionsScreen {
   private _ltSearchOpen = false;
   /** Cleanup fns for minimap viewport-zone scroll listeners (P19 Inc 3) */
   private _mmScrollCleanups: Array<() => void> = [];
+  /**
+   * Updater callbacks per minimap element for post-render zone refresh (P20 Inc 3).
+   * RAF flag in _setupMmZone is sufficient for trackpad throttle (one update per frame).
+   * Prefetch VO segments is already live via #act-seg-ref-doc change handler.
+   */
+  private _mmZoneUpdaters = new WeakMap<HTMLElement, () => void>();
   private _alignViewMode: "table" | "run" = "table";
 
 
@@ -1128,6 +1134,8 @@ export class ActionsScreen {
     });
     el.querySelector<HTMLSelectElement>("#act-seg-ref-doc")?.addEventListener("change", (e) => {
       const docId = parseInt((e.target as HTMLSelectElement).value);
+      // Reset VO pagination limit when doc changes (P20 Inc 3 perf)
+      if (docId) this._voPreviewLimitByDocId.delete(docId);
       const contentEl = el.querySelector<HTMLElement>("#act-seg-ref-content");
       const voScrollEl = el.querySelector<HTMLElement>("#act-seg-tr-vo-scroll");
       if (!docId) {
@@ -1815,10 +1823,13 @@ export class ActionsScreen {
     previewBody.addEventListener("scroll", onScroll, { capture: true, passive: true });
     const tabBar = mmEl.closest<HTMLElement>("article.preview")?.querySelector<HTMLElement>(".preview-tabs");
     tabBar?.addEventListener("click", onScroll);
+    // Store updater so _renderMinimap can trigger a zone refresh post-render
+    this._mmZoneUpdaters.set(mmEl, update);
     update();
     return () => {
       previewBody.removeEventListener("scroll", onScroll, { capture: true });
       tabBar?.removeEventListener("click", onScroll);
+      this._mmZoneUpdaters.delete(mmEl);
     };
   }
 
@@ -1877,6 +1888,9 @@ export class ActionsScreen {
     const warnMarkHtml = warnMarks.map(top => `<div class="mm-mark warn" style="top:${top}%"></div>`).join("");
 
     mmEl.innerHTML = `<div class="mm-track"></div><div class="mm-zone"></div>${segMarkHtml}${warnMarkHtml}`;
+    // Refresh viewport zone after minimap content is replaced (P20 Inc 3)
+    const zoneUpdater = this._mmZoneUpdaters.get(mmEl);
+    if (zoneUpdater) requestAnimationFrame(zoneUpdater);
   }
 
   private _updateTraductionPreview(): void {
