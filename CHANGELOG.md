@@ -7,6 +7,22 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **P3-A — Shell: déduplication des styles lors de la navigation** (`tauri-shell`)
+  - Ajout de `tauri-shell/src/styleRegistry.ts` : helpers idempotents `ensureStyleTag`,
+    `ensureStylesheetLink`, `removeStyleTag`, `removeLink`, `countManagedStyles`.
+  - Tests : `tauri-shell/scripts/test_style_registry.mjs` (20 tests, 5 suites — dont simulation
+    mount×3 → 1 seul `<style>`).
+
+- **P3-B — Prep: injection CSS idempotente (standalone + embedded)** (`tauri-prep`)
+  - `tauri-prep/src/app.ts` — `App.init()` : guard `document.getElementById("agrafes-prep-inline")`
+    avant `appendChild()` ; la constante CSS de ~67 Ko n'est plus injectée qu'une seule fois
+    par lifetime de document, même après N navigations vers le mode "Constituer" dans le Shell.
+  - `App.dispose()` : le handler `beforeunload` est maintenant stocké dans
+    `this._beforeUnloadHandler` et retiré via `window.removeEventListener()` à chaque démontage —
+    élimine la fuite de listeners lors de la navigation Shell.
+
 ### Added
 
 - **tauri-prep vNext UI Pilot — P1 (Extension)**

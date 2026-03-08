@@ -1,6 +1,6 @@
 # Backlog — multicorpus_engine
 
-Last updated: 2026-03-08 (Prep phase 5 runtime refinements)
+Last updated: 2026-03-08 (P3 — Shell style de-dup + Prep CSS idempotent injection)
 
 ## Priority backlog (realistic, post-implementation)
 
@@ -77,3 +77,17 @@ Last updated: 2026-03-08 (Prep phase 5 runtime refinements)
 - **V0.5 contract freeze**: `tests/snapshots/openapi_paths.json` + `test_contract_openapi_snapshot.py` + `test_contract_docs_sync.py` + `scripts/export_openapi.py` + `docs/openapi.json`.
 - **V0.5 tauri-prep JobCenter**: `tauri-prep/src/components/JobCenter.ts` — progress strip, cancel, recent jobs.
 - **V0.5 tauri-prep screens**: all long operations use `enqueueJob` + `jobCenter.trackJob`; toast on result.
+- **P3 — Shell style de-dup + Prep CSS idempotent injection** (2026-03-08):
+  - `tauri-shell/src/styleRegistry.ts` : helpers idempotents (ensureStyleTag, ensureStylesheetLink, removeStyleTag, removeLink, countManagedStyles).
+  - `tauri-shell/scripts/test_style_registry.mjs` : 20 tests, 5 suites.
+  - `tauri-prep/src/app.ts` App.init() : guard `id="agrafes-prep-inline"` — injection unique par document lifetime.
+  - `tauri-prep/src/app.ts` App.dispose() : retrait du listener `beforeunload` via référence stockée.
+
+## P4 — Placeholders (post-P3)
+
+| Priority | Item | Rationale | Status |
+|----------|------|-----------|--------|
+| P4 | **DB shared state** — hot-swap sidecar entre modules | Actuellement : re-mount complet du module actif à chaque changement de DB ; une future version pourrait faire un hot-swap sans redémarrer le sidecar | todo |
+| P4 | **Shell multi-fenêtre** — `tauri::WebviewWindowBuilder` | Ouvrir Explorer et Constituer en parallèle dans des fenêtres séparées | todo |
+| P4 | **CSS build asset pour Prep** — link statique au lieu d'inline | Vite injecte déjà les 4 CSS files en standalone ; en embedded mode un `<link>` vers un asset buildé serait plus propre que la constante JS inline | todo |
+| P4 | **Deprecation tauri-app + tauri-prep** standalone | tauri-shell les supplante ; maintien pour standalone uniquement jusqu'à V2.0 | todo |

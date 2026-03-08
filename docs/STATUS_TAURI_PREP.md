@@ -258,10 +258,33 @@ npm --prefix tauri-shell run dev
 - [x] `ActionsScreen.ts` V1.5: "Collisions d'alignement" card — collision table per group,
   per-link ✓ Garder / ❌ Rejeter / 🗑 / "Tout supprimer" batch; toast + auto-refresh
 
+## P3-B — Embedded CSS invariant (2026-03-08)
+
+### Problème
+
+`App.init()` injectait la constante CSS (~67 Ko, incluant `JOB_CENTER_CSS`) via `document.head.appendChild(style)` **sans guard**. En mode embedded (tauri-shell), chaque navigation vers "Constituer" ajoutait un nouveau bloc `<style>` sans jamais le retirer. De plus, le handler `beforeunload` était ajouté via `window.addEventListener` sans stocker la référence, créant une fuite de listeners à chaque remount.
+
+### Fix (P3-B)
+
+**`tauri-prep/src/app.ts`** :
+
+1. **Guard CSS injection** — constante `PREP_STYLE_ID = "agrafes-prep-inline"` ; `init()` vérifie `document.getElementById(PREP_STYLE_ID)` avant d'injecter. Si l'élément existe déjà, le bloc entier est sauté.
+2. **Cleanup listener `beforeunload`** — le handler est stocké dans `this._beforeUnloadHandler`. `dispose()` appelle `window.removeEventListener("beforeunload", this._beforeUnloadHandler)` puis set à `null`.
+
+### Invariants garantis
+
+| Scénario | Avant P3-B | Après P3-B |
+|----------|-----------|-----------|
+| Standalone (tauri-prep dev/build) | 1 `<style>` (1 seul mount) | 1 `<style>` (inchangé) |
+| Embedded, navigation ×N | N `<style>` accumulés | 1 `<style>` (guard idempotent) |
+| Listeners `beforeunload` | N listeners en mémoire | max 1 (retiré dans `dispose()`) |
+
+**Build résultant :** `dist/assets/index-*.js` 251.72 kB JS, 13.14 kB CSS (build vert, 0 erreur TS).
+
 ## Confirmed green
 
 - [x] pytest: **352 tests passing**, 0 failures (2026-03-01; includes hardening fixes v1.4.1)
-- [x] npm build: green (tauri-prep bundle ~113 kB, tauri-app ~43 kB)
+- [x] npm build: green (tauri-prep bundle ~251.72 kB JS, 13.14 kB CSS)
 
 ## Next tasks (V1.x)
 

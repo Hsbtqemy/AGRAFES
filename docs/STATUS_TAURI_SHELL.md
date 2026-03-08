@@ -140,10 +140,28 @@ http://localhost:1422/?mode=constituer
 
 Hash takes precedence over `?mode=`. Both override `localStorage.lastMode`.
 
+## P3-A — Style de-dup fix (2026-03-08)
+
+### Root cause analysis (5 lignes)
+
+`App.init()` dans `tauri-prep/src/app.ts` injectait un `<style>` de ~67 Ko via `document.head.appendChild()` **sans guard**, à chaque appel. `constituerModule.mount()` crée une nouvelle instance `App` et appelle `init()` à chaque navigation vers le mode "Constituer". `dispose()` ne retirait pas le `<style>`. Résultat : les balises s'accumulaient indéfiniment dans `<head>`. L'injection `SHELL_CSS` du shell lui-même était déjà protégée par un guard `getElementById` — seule l'injection prep était fautive.
+
+### Fix (P3-A)
+
+- **`tauri-shell/src/styleRegistry.ts`** (nouveau fichier) : helpers idempotents `ensureStyleTag(id, cssText)`, `ensureStylesheetLink(id, href)`, `removeStyleTag(id)`, `removeLink(id)`, `countManagedStyles(prefix)`.
+- **`tauri-shell/scripts/test_style_registry.mjs`** : 20 tests Node.js (5 suites) — simulation navigation ×3 → 1 seul `<style>`. **20/20 verts.**
+- Fix appliqué à la source dans `tauri-prep/src/app.ts` (voir STATUS_TAURI_PREP.md — P3-B).
+
+### Files
+
+| Fichier | Changement |
+|---------|-----------|
+| `tauri-shell/src/styleRegistry.ts` | Nouveau — helpers de déduplication |
+| `tauri-shell/scripts/test_style_registry.mjs` | Nouveau — 20 tests unitaires |
+
 ## V0.1 limitations (carried forward)
 
-1. **CSS accumulation**: both child apps inject `<style>` tags on each `init()`.
-   Re-navigating adds duplicate tags (harmless, no visual conflict).
+1. ~~**CSS accumulation**~~: **Résolu en P3-A** — le guard `id="agrafes-prep-inline"` dans `App.init()` garantit une injection unique par document.
 
 ## V0.2 limitations
 
