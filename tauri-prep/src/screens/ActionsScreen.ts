@@ -1137,60 +1137,60 @@ export class ActionsScreen {
         <p class="hint" style="margin-bottom:0.5rem">Progression rapide : aligner, contr&#244;ler, corriger, exporter.</p>
         <div id="wf-steps" style="display:flex;flex-direction:column;gap:0;border:1px solid #e9ecef;border-radius:6px;overflow:hidden">
           <div class="wf-step" id="wf-step-0" style="border-bottom:1px solid #e9ecef">
-            <div class="wf-step-header" id="wf-hdr-0" style="display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;background:#f8f9fa;transition:background 0.12s">
-              <span class="wf-num" id="wf-num-0" style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.85rem;font-weight:700;background:#e9ecef;color:#495057;flex-shrink:0">1</span>
-              <span style="font-weight:600;flex:1">Alignement</span>
-              <span class="wf-status" id="wf-st-0" style="font-size:0.74rem;color:#6c757d"></span>
-              <span class="wf-toggle" id="wf-tog-0" style="font-size:0.8rem;color:#6c757d">&#9660;</span>
+            <div class="wf-step-header" id="wf-hdr-0">
+              <span class="wf-num" id="wf-num-0">1</span>
+              <span class="wf-step-label">Alignement</span>
+              <span class="wf-status" id="wf-st-0"></span>
+              <span class="wf-toggle" id="wf-tog-0">&#9660;</span>
             </div>
-            <div class="wf-body" id="wf-body-0" style="padding:8px 12px;border-top:1px solid #e9ecef;display:none">
+            <div class="wf-body" id="wf-body-0" style="display:none">
               <div style="font-size:0.8rem;margin-bottom:6px">Dernier run : <code id="wf-run-id-display">(aucun)</code></div>
-              <button id="wf-goto-align" class="btn btn-primary" style="font-size:0.82rem">Ouvrir la zone Alignement &#8595;</button>
+              <button id="wf-goto-align" class="btn btn-primary btn-sm">Ouvrir la zone Alignement &#8595;</button>
             </div>
           </div>
           <div class="wf-step" id="wf-step-1" style="border-bottom:1px solid #e9ecef">
-            <div class="wf-step-header" id="wf-hdr-1" style="display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;background:#f8f9fa;transition:background 0.12s">
-              <span class="wf-num" id="wf-num-1" style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.85rem;font-weight:700;background:#e9ecef;color:#495057;flex-shrink:0">2</span>
-              <span style="font-weight:600;flex:1">Contr&#244;le qualit&#233;</span>
-              <span class="wf-status" id="wf-st-1" style="font-size:0.74rem;color:#6c757d"></span>
-              <span class="wf-toggle" id="wf-tog-1" style="font-size:0.8rem;color:#6c757d">&#9660;</span>
+            <div class="wf-step-header" id="wf-hdr-1">
+              <span class="wf-num" id="wf-num-1">2</span>
+              <span class="wf-step-label">Contr&#244;le qualit&#233;</span>
+              <span class="wf-status" id="wf-st-1"></span>
+              <span class="wf-toggle" id="wf-tog-1">&#9660;</span>
             </div>
-            <div class="wf-body" id="wf-body-1" style="padding:8px 12px;border-top:1px solid #e9ecef;display:none">
+            <div class="wf-body" id="wf-body-1" style="display:none">
               <div id="wf-quality-result" style="margin-bottom:8px"></div>
-              <button id="wf-quality-btn" class="btn btn-secondary" disabled style="font-size:0.82rem">Lancer la v&#233;rification qualit&#233;</button>
+              <button id="wf-quality-btn" class="btn btn-secondary btn-sm" disabled>Lancer la v&#233;rification qualit&#233;</button>
             </div>
           </div>
           <div class="wf-step" id="wf-step-2" style="border-bottom:1px solid #e9ecef">
-            <div class="wf-step-header" id="wf-hdr-2" style="display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;background:#f8f9fa;transition:background 0.12s">
-              <span class="wf-num" id="wf-num-2" style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.85rem;font-weight:700;background:#e9ecef;color:#495057;flex-shrink:0">3</span>
-              <span style="font-weight:600;flex:1">Collisions</span>
-              <span class="wf-status" id="wf-st-2" style="font-size:0.74rem;color:#6c757d"></span>
-              <span class="wf-toggle" id="wf-tog-2" style="font-size:0.8rem;color:#6c757d">&#9660;</span>
+            <div class="wf-step-header" id="wf-hdr-2">
+              <span class="wf-num" id="wf-num-2">3</span>
+              <span class="wf-step-label">Collisions</span>
+              <span class="wf-status" id="wf-st-2"></span>
+              <span class="wf-toggle" id="wf-tog-2">&#9660;</span>
             </div>
-            <div class="wf-body" id="wf-body-2" style="padding:8px 12px;border-top:1px solid #e9ecef;display:none">
-              <button id="wf-coll-btn" class="btn btn-secondary" disabled style="font-size:0.82rem">Ouvrir la section Collisions &#8595;</button>
+            <div class="wf-body" id="wf-body-2" style="display:none">
+              <button id="wf-coll-btn" class="btn btn-secondary btn-sm" disabled>Ouvrir la section Collisions &#8595;</button>
             </div>
           </div>
           <div class="wf-step" id="wf-step-3" style="border-bottom:1px solid #e9ecef">
-            <div class="wf-step-header" id="wf-hdr-3" style="display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;background:#f8f9fa;transition:background 0.12s">
-              <span class="wf-num" id="wf-num-3" style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.85rem;font-weight:700;background:#e9ecef;color:#495057;flex-shrink:0">4</span>
-              <span style="font-weight:600;flex:1">Revue et correction</span>
-              <span class="wf-status" id="wf-st-3" style="font-size:0.74rem;color:#6c757d"></span>
-              <span class="wf-toggle" id="wf-tog-3" style="font-size:0.8rem;color:#6c757d">&#9660;</span>
+            <div class="wf-step-header" id="wf-hdr-3">
+              <span class="wf-num" id="wf-num-3">4</span>
+              <span class="wf-step-label">Revue et correction</span>
+              <span class="wf-status" id="wf-st-3"></span>
+              <span class="wf-toggle" id="wf-tog-3">&#9660;</span>
             </div>
-            <div class="wf-body" id="wf-body-3" style="padding:8px 12px;border-top:1px solid #e9ecef;display:none">
-              <button id="wf-audit-btn" class="btn btn-secondary" disabled style="font-size:0.82rem">Ouvrir la zone Revue &#8595;</button>
+            <div class="wf-body" id="wf-body-3" style="display:none">
+              <button id="wf-audit-btn" class="btn btn-secondary btn-sm" disabled>Ouvrir la zone Revue &#8595;</button>
             </div>
           </div>
           <div class="wf-step" id="wf-step-4">
-            <div class="wf-step-header" id="wf-hdr-4" style="display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;background:#f8f9fa;transition:background 0.12s">
-              <span class="wf-num" id="wf-num-4" style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.85rem;font-weight:700;background:#e9ecef;color:#495057;flex-shrink:0">5</span>
-              <span style="font-weight:600;flex:1">Rapport final</span>
-              <span class="wf-status" id="wf-st-4" style="font-size:0.74rem;color:#6c757d"></span>
-              <span class="wf-toggle" id="wf-tog-4" style="font-size:0.8rem;color:#6c757d">&#9660;</span>
+            <div class="wf-step-header" id="wf-hdr-4">
+              <span class="wf-num" id="wf-num-4">5</span>
+              <span class="wf-step-label">Rapport final</span>
+              <span class="wf-status" id="wf-st-4"></span>
+              <span class="wf-toggle" id="wf-tog-4">&#9660;</span>
             </div>
-            <div class="wf-body" id="wf-body-4" style="padding:8px 12px;border-top:1px solid #e9ecef;display:none">
-              <button id="wf-report-btn" class="btn btn-secondary" disabled style="font-size:0.82rem">Ouvrir la section Rapport &#8595;</button>
+            <div class="wf-body" id="wf-body-4" style="display:none">
+              <button id="wf-report-btn" class="btn btn-secondary btn-sm" disabled>Ouvrir la section Rapport &#8595;</button>
             </div>
           </div>
         </div>

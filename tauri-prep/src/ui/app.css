@@ -1061,6 +1061,15 @@ details.seg-side[open] { width: 220px; }
   color: #fff;
 }
 .acts-hub-head-link:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outline-offset: 2px; }
+/* ─── P16 micro-polish: stepper wf-* classes (remove inline styles) ── */
+.wf-step-header { display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;background:#f8f9fa;transition:background 0.12s; }
+.wf-step-header:hover { background: #edf0f4; }
+.wf-num { width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.85rem;font-weight:700;background:#e9ecef;color:#495057;flex-shrink:0; }
+.wf-status { font-size:0.74rem;color:#6c757d; }
+.wf-toggle { font-size:0.8rem;color:#6c757d; }
+.wf-body { padding:8px 12px;border-top:1px solid #e9ecef; }
+.wf-step-header .wf-step-label { font-weight:600;flex:1; }
+
 /* Accent variant — filled, for primary CTAs like "Scénario grand texte" */
 .acts-hub-head-link-accent {
   background: var(--prep-accent, #0f766e);
