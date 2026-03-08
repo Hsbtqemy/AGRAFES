@@ -855,6 +855,15 @@ export class ActionsScreen {
                 <div class="preview-foot">
                   <div class="preview-stats" id="act-seg-units-foot-stats"></div>
                 </div>
+                <div class="doc-final-bar" id="act-seg-final-bar" hidden>
+                  <div class="doc-final-wrap">
+                    <div class="doc-final-meta" id="act-seg-final-meta"></div>
+                    <div class="doc-final-actions">
+                      <button class="btn btn-secondary btn-sm" id="act-seg-final-seg-btn" disabled>Seg. + valider</button>
+                      <button class="btn btn-primary btn-sm" id="act-seg-final-validate-btn" disabled>Valider &#10003;</button>
+                    </div>
+                  </div>
+                </div>
               </article>
             </div>
           </div>
@@ -984,6 +993,9 @@ export class ActionsScreen {
     el.querySelector("#act-seg-btn")!.addEventListener("click", () => this._runSegment());
     el.querySelector("#act-seg-validate-btn")!.addEventListener("click", () => this._runSegment(true));
     el.querySelector("#act-seg-validate-only-btn")!.addEventListener("click", () => this._runValidateCurrentSegDoc());
+    // doc-final-bar buttons (proxy to same handlers)
+    el.querySelector("#act-seg-final-seg-btn")?.addEventListener("click", () => this._runSegment(true));
+    el.querySelector("#act-seg-final-validate-btn")?.addEventListener("click", () => void this._runValidateCurrentSegDoc());
     el.querySelector("#act-seg-focus-toggle")!.addEventListener("click", () => this._toggleSegFocusMode(root));
     el.querySelector("#act-seg-doc")!.addEventListener("change", () => {
       this._refreshSegmentationStatusUI();
@@ -2618,21 +2630,32 @@ export class ActionsScreen {
       return;
     }
 
+    const finalBar = document.querySelector<HTMLElement>("#act-seg-final-bar");
+    const finalMeta = document.querySelector<HTMLElement>("#act-seg-final-meta");
+    const finalSegBtn = document.querySelector<HTMLButtonElement>("#act-seg-final-seg-btn");
+    const finalValBtn = document.querySelector<HTMLButtonElement>("#act-seg-final-validate-btn");
+
     if (this._lastSegmentReport && this._lastSegmentReport.doc_id === segSel.docId) {
       const warnings = this._lastSegmentReport.warnings ?? [];
-      const warningText = warnings.length ? ` · avertissements: ${warnings.length}` : "";
+      const warningText = warnings.length ? ` · ${warnings.length} avert.` : "";
+      const pack = this._lastSegmentReport.segment_pack ?? "auto";
       if (this._segmentPendingValidation) {
         banner.className = "runtime-state state-warn";
         banner.textContent =
-          `Segmentation prête sur ${segSel.docLabel}: ${this._lastSegmentReport.units_input} → ${this._lastSegmentReport.units_output} unités (pack ${this._lastSegmentReport.segment_pack ?? "auto"})${warningText}. Validez le document.`;
+          `Segmentation prête sur ${segSel.docLabel}: ${this._lastSegmentReport.units_input} → ${this._lastSegmentReport.units_output} unités (pack ${pack})${warnings.length ? ` · avertissements: ${warnings.length}` : ""}. Validez le document.`;
         if (chipStatus) { chipStatus.textContent = `${this._lastSegmentReport.units_output} segments`; chipStatus.className = "chip active"; }
       } else {
         banner.className = "runtime-state state-ok";
         banner.textContent =
-          `Dernière segmentation ${segSel.docLabel}: ${this._lastSegmentReport.units_input} → ${this._lastSegmentReport.units_output} unités (pack ${this._lastSegmentReport.segment_pack ?? "auto"})${warningText}.`;
+          `Dernière segmentation ${segSel.docLabel}: ${this._lastSegmentReport.units_input} → ${this._lastSegmentReport.units_output} unités (pack ${pack})${warnings.length ? ` · avertissements: ${warnings.length}` : ""}.`;
         if (chipStatus) { chipStatus.textContent = `${this._lastSegmentReport.units_output} segments ✓`; chipStatus.className = "chip active"; }
       }
       if (validateOnlyBtn) validateOnlyBtn.disabled = !this._segmentPendingValidation;
+      // Show doc-final-bar with contextual meta
+      if (finalBar) finalBar.removeAttribute("hidden");
+      if (finalMeta) finalMeta.textContent = `Pack: ${pack} · ${this._lastSegmentReport.units_output} unités${warningText}`;
+      if (finalValBtn) finalValBtn.disabled = !this._segmentPendingValidation;
+      if (finalSegBtn) finalSegBtn.disabled = false;
       return;
     }
 
@@ -2640,6 +2663,8 @@ export class ActionsScreen {
     banner.textContent = `Aucune segmentation lancée sur ${segSel.docLabel} dans cette session.`;
     if (chipStatus) { chipStatus.textContent = "Non segmenté"; chipStatus.className = "chip"; }
     if (validateOnlyBtn) validateOnlyBtn.disabled = true;
+    // Hide doc-final-bar when no results
+    if (finalBar) finalBar.setAttribute("hidden", "");
   }
 
   private async _runValidateCurrentSegDoc(): Promise<void> {
