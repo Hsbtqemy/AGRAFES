@@ -426,6 +426,7 @@ export class ActionsScreen {
         </div>
         <div class="acts-hub-head-tools">
           <span class="curate-pill" id="act-curate-mode-pill">Mode &#233;dition</span>
+          <button class="acts-hub-head-link acts-hub-head-link-accent" id="act-curate-lt-cta">&#9656; Sc&#233;nario grand texte</button>
           <button class="acts-hub-head-link" data-nav="segmentation">Voir Segmentation VO</button>
           <button class="acts-hub-head-link" data-nav="alignement">Voir Alignement</button>
         </div>
@@ -571,6 +572,7 @@ export class ActionsScreen {
                 <div id="act-curate-diag" class="curate-diag-list">
                   <p class="empty-hint">Lancez une pr&#233;visualisation pour voir les statistiques.</p>
                 </div>
+                <div id="act-curate-seg-link" style="display:none;padding:8px 0"></div>
               </div>
             </article>
             <article class="curate-inner-card" style="margin-top:10px">
@@ -620,6 +622,17 @@ export class ActionsScreen {
     el.querySelector("#act-reindex-after-curate-btn")!.addEventListener("click", () => this._runIndex());
     el.querySelector("#act-meta-btn")!.addEventListener("click", () => this._runValidateMeta());
     el.querySelector("#act-index-btn")!.addEventListener("click", () => this._runIndex());
+    // "Scénario grand texte" CTA: switch to segmentation + longtext mode
+    el.querySelector("#act-curate-lt-cta")?.addEventListener("click", () => {
+      this._switchSubViewDOM(root, "segmentation");
+      // Mount happens synchronously via _switchSubViewDOM, setSegMode after microtask
+      queueMicrotask(() => this._setSegMode("longtext"));
+    });
+    // Delegation for diagnostics "Voir segmentation" link (rendered dynamically)
+    el.querySelector("#act-curate-seg-link")?.addEventListener("click", (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLButtonElement>("[data-action='goto-seg']");
+      if (btn) this._switchSubViewDOM(root, "segmentation");
+    });
     initCardAccordions(el);
     this._bindHeadNavLinks(el, root);
     return el;
@@ -2421,18 +2434,32 @@ export class ActionsScreen {
     if (!diagEl) return;
     if (changed === 0) {
       diagEl.innerHTML = `<div class="curate-diag"><strong>✓ Aucune modification</strong>${total} unités analysées, corpus propre.</div>`;
-      return;
+    } else {
+      diagEl.innerHTML = `
+        <div class="curate-diag warn">
+          <strong>${changed} modification(s) à valider</strong>
+          ${replacements} remplacement(s) au total sur ${total} unités.
+        </div>
+        <div class="curate-diag">
+          <strong>Impact segmentation estimé</strong>
+          Vérifiez la preview avant d'appliquer.
+        </div>
+      `;
     }
-    diagEl.innerHTML = `
-      <div class="curate-diag warn">
-        <strong>${changed} modification(s) à valider</strong>
-        ${replacements} remplacement(s) au total sur ${total} unités.
-      </div>
-      <div class="curate-diag">
-        <strong>Impact segmentation estimé</strong>
-        Vérifiez la preview avant d'appliquer.
-      </div>
-    `;
+    // Show "Voir segmentation" link if a segmentation report exists
+    const segLinkEl = document.querySelector<HTMLElement>("#act-curate-seg-link");
+    if (segLinkEl) {
+      if (this._lastSegmentReport) {
+        const r = this._lastSegmentReport;
+        segLinkEl.style.display = "";
+        segLinkEl.innerHTML = `
+          <button class="acts-hub-head-link" data-action="goto-seg" style="font-size:11.5px">
+            &#9654; Voir segmentation (${r.units_output} unités${r.warnings?.length ? ` · ${r.warnings.length} avertissements` : ""})
+          </button>`;
+      } else {
+        segLinkEl.style.display = "none";
+      }
+    }
   }
 
   private _renderCurateMinimap(changed: number, total: number): void {
