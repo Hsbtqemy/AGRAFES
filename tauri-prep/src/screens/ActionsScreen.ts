@@ -1013,7 +1013,7 @@ export class ActionsScreen {
       const diffTab = el.querySelector<HTMLButtonElement>('#act-seg-longtext-view .ptab[data-tab="diff"]');
       diffTab?.click();
     });
-    el.querySelector("#act-seg-lt-final-apply")?.addEventListener("click", () => void this._runValidateCurrentSegDoc());
+    el.querySelector("#act-seg-lt-final-apply")?.addEventListener("click", () => void this._applyLongtextValidation());
     // doc-final-bar buttons (traduction) — switch to compare tab + validate
     el.querySelector("#act-seg-tr-final-compare")?.addEventListener("click", () => {
       const compareTab = el.querySelector<HTMLButtonElement>('.ptab-tr[data-tab-tr="compare"]');
@@ -2806,6 +2806,22 @@ export class ActionsScreen {
     }
     this._setBusy(true);
     await this._markSegmentedDocValidated(segSel.docId, segSel.docLabel);
+  }
+
+  /**
+   * Longtext "Appliquer" CTA: validates current segmentation, then navigates
+   * to the Curation sub-view if validation succeeded. Non-breaking on failure.
+   */
+  private async _applyLongtextValidation(): Promise<void> {
+    const wasPending = this._segmentPendingValidation;
+    await this._runValidateCurrentSegDoc();
+    if (wasPending && !this._segmentPendingValidation && this._root) {
+      try {
+        this._switchSubViewDOM(this._root, "curation");
+      } catch {
+        // navigation failure is non-breaking
+      }
+    }
   }
 
   private async _runSegment(validateAfter = false): Promise<void> {
