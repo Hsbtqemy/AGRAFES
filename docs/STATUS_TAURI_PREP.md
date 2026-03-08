@@ -1,12 +1,51 @@
 # Status — Concordancier Prep (tauri-prep) V0
 
-**Last updated:** 2026-03-08 (Prep phases 0→6 completed)
+**Last updated:** 2026-03-01 (vNext UI Pilot — P0 implémenté)
 
 Current contract/runtime reference:
 - `CONTRACT_VERSION = 1.4.6`
 - `docs/openapi.json` currently exposes 35 paths
 - Execution plan reference: `docs/PREP_IMPLEMENTATION_PLAN.md`
-- Plan status: Phase 0 (freeze UX) done; Phase 1 (socle UI commun) done; Phase 2 (Curation) done; Phase 3 (Segmentation) done; Phase 4 (Alignement) done; Phase 5 (Documents/Import/Export V2) done; Phase 6 (hardening final) done
+- Plan status: Phase 0–6 done; **vNext UI Pilot (P0) done**
+- Redesign plan: `docs/PREP_UI_REDESIGN_PLAN.md`
+
+---
+
+## vNext UI Pilot (P0) — fait
+
+- [x] CSS architecture : `src/ui/{tokens,base,components,prep-vnext}.css` + `src/vite-env.d.ts`
+- [x] `main.ts` : imports CSS pour build standalone
+- [x] `app.ts` CSS constant : ajout classes sidebar + curation workspace (compatibilité tauri-shell)
+- [x] `app.ts` `_buildUI()` : sidebar layout vNext (`.prep-shell` / `.prep-nav` / `.prep-nav-tab` / collapse toggle / Actions sub-tree)
+- [x] `ActionsScreen.ts` curation section : workspace 3 colonnes (params gauche · preview centrale sticky · diagnostics droite)
+- [x] `_runPreview()` : panel toujours visible, `_renderCurateDiag()` + `_renderCurateMinimap()` appelés après preview
+- [x] `_runCurate()` : reset contenu preview au lieu de `display:none`
+- [x] `docs/PREP_UI_REDESIGN_PLAN.md` : inventaire visuels, mapping, P0/P1/P2, tokens
+
+**Comment tester :**
+```bash
+# Dev standalone (port 1421)
+npm --prefix tauri-prep run dev
+
+# Dev via shell (port 1422)
+npm --prefix tauri-shell run dev
+# → onglet "Constituer" → sidebar gauche, onglet Actions → section Curation 3 colonnes
+```
+
+## Reste à faire (P1 / P2)
+
+P1 — Extension :
+- Segmentation longtext : preview sticky 2-col (Brut vs Segmenté) — ref `prep-actions-longtext-vnext.html`
+- Segmentation VO batch : tableau multilingue — ref `prep-segmentation-vo-vnext.html`
+- Segmentation traduction : vue côte à côte VO/trad — ref `prep-segmentation-translation-vo-native-layout-vnext.html`
+- Pane brut dans preview : remplir `#act-preview-raw` avec le texte brut avant curation
+- Sidebar nav : tracking actif par section (Curation / Segmentation / Alignement)
+
+P2 — Polish :
+- Sidebar collapse persisté en localStorage
+- Scroll synchronisé pane brut ↔ pane curé
+- Minimap proportionnelle aux positions réelles dans le document
+- Animations transitions CSS
 
 ---
 
