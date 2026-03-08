@@ -72,6 +72,21 @@ const CURATE_PRESETS: Record<string, { label: string; rules: CurateRule[] }> = {
       { pattern: "\\.{4,}", replacement: "…", description: "Points de suspension multiples → …" },
     ],
   },
+  invisibles: {
+    label: "Contrôle invisibles",
+    rules: [
+      { pattern: "\\u200B|\\u200C|\\u200D|\\uFEFF", replacement: "", flags: "g", description: "Supprimer espaces de largeur nulle et BOM" },
+      { pattern: "\\u00AD", replacement: "", flags: "g", description: "Supprimer tirets conditionnels" },
+      { pattern: "[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\\u007F]", replacement: "", flags: "g", description: "Supprimer caractères de contrôle" },
+    ],
+  },
+  numbering: {
+    label: "Numérotation [n]",
+    rules: [
+      { pattern: "^(\\d+)\\.\\s+", replacement: "[$1] ", flags: "m", description: "Normaliser numérotation décimale [n]" },
+      { pattern: "^([ivxlcdmIVXLCDM]+)\\.\\s+", replacement: "[$1] ", flags: "m", description: "Normaliser numérotation romaine [n]" },
+    ],
+  },
   custom: {
     label: "Règles personnalisées",
     rules: [],
@@ -440,6 +455,14 @@ export class ActionsScreen {
                     <input id="act-rule-punctuation" type="checkbox" />
                     Ponctuation fine
                   </label>
+                  <label class="curation-rule-pill">
+                    <input id="act-rule-invisibles" type="checkbox" />
+                    Contr&#244;le invisibles
+                  </label>
+                  <label class="curation-rule-pill">
+                    <input id="act-rule-numbering" type="checkbox" />
+                    Num&#233;rotation [n]
+                  </label>
                 </div>
                 <div class="btns" style="margin-top:8px">
                   <button id="act-preview-btn" class="btn btn-secondary" disabled>Pr&#233;visualiser</button>
@@ -581,7 +604,7 @@ export class ActionsScreen {
         </div>
       </section>
     `;
-    ["#act-rule-spaces", "#act-rule-quotes", "#act-rule-punctuation"].forEach((sel) => {
+    ["#act-rule-spaces", "#act-rule-quotes", "#act-rule-punctuation", "#act-rule-invisibles", "#act-rule-numbering"].forEach((sel) => {
       el.querySelector(sel)!.addEventListener("change", () => this._schedulePreview(true));
     });
     el.querySelector("#act-curate-doc")!.addEventListener("change", () => this._schedulePreview(true));
@@ -1971,6 +1994,8 @@ export class ActionsScreen {
     if (this._isRuleChecked("act-rule-spaces")) rules.push(...CURATE_PRESETS.spaces.rules);
     if (this._isRuleChecked("act-rule-quotes")) rules.push(...CURATE_PRESETS.quotes.rules);
     if (this._isRuleChecked("act-rule-punctuation")) rules.push(...CURATE_PRESETS.punctuation.rules);
+    if (this._isRuleChecked("act-rule-invisibles")) rules.push(...CURATE_PRESETS.invisibles.rules);
+    if (this._isRuleChecked("act-rule-numbering")) rules.push(...CURATE_PRESETS.numbering.rules);
 
     const raw = (document.querySelector("#act-curate-rules") as HTMLTextAreaElement | null)?.value ?? "";
     rules.push(...this._parseAdvancedCurateRules(raw));
