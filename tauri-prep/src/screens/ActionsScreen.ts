@@ -155,6 +155,8 @@ export class ActionsScreen {
     warnings?: string[];
   } | null = null;
   private _segFocusMode = false;
+  /** Tracks current VO preview limit per docId for "Afficher plus" pagination */
+  private _voPreviewLimitByDocId = new Map<number, number>();
 
   // V1.5 — Collision state
   private _collOffset = 0;
@@ -1878,32 +1880,45 @@ export class ActionsScreen {
   }
 
   /**
-   * Loads VO document lines via getDocumentPreview (limit 100) and renders them
-   * in the traduction VO pane. Best-effort: silently falls back to placeholder on error.
-   *
-   * TODO P14: if the document has many more lines (total_lines > 100), show a
-   * "Afficher plus" CTA or paginate. Currently shows first 100 units only.
+   * Loads VO document lines via getDocumentPreview with incremental pagination.
+   * Shows an "Afficher X de plus" button when total_lines > current limit.
+   * Stores current limit per docId in _voPreviewLimitByDocId.
    */
-  private async _loadVoSegmentsPreview(el: HTMLElement, docId: number): Promise<void> {
+  private async _loadVoSegmentsPreview(el: HTMLElement, docId: number, limit?: number): Promise<void> {
     const voScrollEl = el.querySelector<HTMLElement>("#act-seg-tr-vo-scroll");
     if (!voScrollEl || !this._conn) return;
+    const VO_STEPS = [100, 500, 2000];
+    const currentLimit = limit ?? this._voPreviewLimitByDocId.get(docId) ?? VO_STEPS[0];
     voScrollEl.innerHTML = '<p class="empty-hint">Chargement des unit&#233;s VO&#8230;</p>';
     try {
-      const preview = await getDocumentPreview(this._conn, docId, 100);
+      const preview = await getDocumentPreview(this._conn, docId, currentLimit);
+      this._voPreviewLimitByDocId.set(docId, currentLimit);
       if (!preview.lines.length) {
         voScrollEl.innerHTML = '<p class="empty-hint">Aucune unit&#233; disponible pour ce document VO.</p>';
         return;
       }
-      const truncNote = preview.total_lines > preview.limit
-        ? `<p class="empty-hint" style="margin:4px 0 8px;font-style:italic">Aper&#231;u — ${preview.limit}/${preview.total_lines} unit&#233;s affich&#233;es</p>`
-        : "";
       const header = `<div class="seg-ref-doc-row"><span>${_escHtml(preview.doc.title)}</span><span class="seg-ref-doc-id">[${preview.doc.doc_id}] ${_escHtml(preview.doc.language)} &mdash; ${preview.total_lines}&nbsp;unit&#233;s</span></div>`;
       const lines = preview.lines.map(l =>
         `<div class="vo-line"><span class="vo-ln">${l.n}</span><span class="vo-txt">${_escHtml(l.text)}</span></div>`
       ).join("");
-      voScrollEl.innerHTML = header + truncNote + lines;
+      const hasMore = preview.total_lines > currentLimit;
+      const nextStep = VO_STEPS.find(s => s > currentLimit) ?? preview.total_lines;
+      const remaining = preview.total_lines - currentLimit;
+      const loadMoreHtml = hasMore
+        ? `<button class="btn btn-secondary btn-sm vo-load-more" data-doc-id="${docId}" data-next-limit="${nextStep}" style="margin:8px auto;display:block">Afficher ${Math.min(remaining, nextStep - currentLimit)} de plus (${currentLimit}/${preview.total_lines})</button>`
+        : "";
+      voScrollEl.innerHTML = header + lines + loadMoreHtml;
+      // Wire load-more button
+      const moreBtn = voScrollEl.querySelector<HTMLButtonElement>(".vo-load-more");
+      if (moreBtn) {
+        moreBtn.addEventListener("click", async () => {
+          moreBtn.textContent = "Chargement\u2026";
+          moreBtn.disabled = true;
+          const nextLimit = parseInt(moreBtn.dataset.nextLimit ?? String(preview.total_lines), 10);
+          await this._loadVoSegmentsPreview(el, docId, nextLimit);
+        });
+      }
     } catch {
-      // Silently fall back — VO segment loading is best-effort
       voScrollEl.innerHTML = '<p class="empty-hint">Impossible de charger les segments VO.</p>';
     }
   }
@@ -1916,6 +1931,7 @@ export class ActionsScreen {
     this._lastSegmentReport = null;
     this._segmentPendingValidation = false;
     this._segFocusMode = false;
+    this._voPreviewLimitByDocId.clear();
     this._hasPendingPreview = false;
     this._lastAuditEmpty = false;
     this._auditSelectedLinkId = null;
