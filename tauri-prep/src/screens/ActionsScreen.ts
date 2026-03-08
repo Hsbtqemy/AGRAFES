@@ -37,6 +37,7 @@ import {
   enqueueJob,
   exportRunReport,
   updateDocument,
+  getDocumentPreview,
   SidecarError,
 } from "../lib/sidecarClient.ts";
 import { save as dialogSave } from "@tauri-apps/plugin-dialog";
@@ -963,6 +964,8 @@ export class ActionsScreen {
         voScrollEl.innerHTML = docRow +
           `<p class="empty-hint" style="margin:8px 0 0">Segments VO disponibles apr&#232;s chargement sidecar.</p>`;
       }
+      // Best-effort: load actual VO segments via getDocumentPreview
+      void this._loadVoSegmentsPreview(el, docId);
     });
     // Traduction preview tabs (Inc 3 — preview à droite structurée)
     el.querySelectorAll<HTMLButtonElement>(".ptab-tr").forEach((tab) => {
@@ -1551,6 +1554,37 @@ export class ActionsScreen {
     }
     const mmEl = segPanel.querySelector<HTMLElement>("#act-seg-tr-minimap");
     if (mmEl) this._renderMinimap(mmEl, r.units_output, r.warnings?.length ?? 0);
+  }
+
+  /**
+   * Loads VO document lines via getDocumentPreview (limit 100) and renders them
+   * in the traduction VO pane. Best-effort: silently falls back to placeholder on error.
+   *
+   * TODO P14: if the document has many more lines (total_lines > 100), show a
+   * "Afficher plus" CTA or paginate. Currently shows first 100 units only.
+   */
+  private async _loadVoSegmentsPreview(el: HTMLElement, docId: number): Promise<void> {
+    const voScrollEl = el.querySelector<HTMLElement>("#act-seg-tr-vo-scroll");
+    if (!voScrollEl || !this._conn) return;
+    voScrollEl.innerHTML = '<p class="empty-hint">Chargement des unit&#233;s VO&#8230;</p>';
+    try {
+      const preview = await getDocumentPreview(this._conn, docId, 100);
+      if (!preview.lines.length) {
+        voScrollEl.innerHTML = '<p class="empty-hint">Aucune unit&#233; disponible pour ce document VO.</p>';
+        return;
+      }
+      const truncNote = preview.total_lines > preview.limit
+        ? `<p class="empty-hint" style="margin:4px 0 8px;font-style:italic">Aper&#231;u — ${preview.limit}/${preview.total_lines} unit&#233;s affich&#233;es</p>`
+        : "";
+      const header = `<div class="seg-ref-doc-row"><span>${_escHtml(preview.doc.title)}</span><span class="seg-ref-doc-id">[${preview.doc.doc_id}] ${_escHtml(preview.doc.language)} &mdash; ${preview.total_lines}&nbsp;unit&#233;s</span></div>`;
+      const lines = preview.lines.map(l =>
+        `<div class="vo-line"><span class="vo-ln">${l.n}</span><span class="vo-txt">${_escHtml(l.text)}</span></div>`
+      ).join("");
+      voScrollEl.innerHTML = header + truncNote + lines;
+    } catch {
+      // Silently fall back — VO segment loading is best-effort
+      voScrollEl.innerHTML = '<p class="empty-hint">Impossible de charger les segments VO.</p>';
+    }
   }
 
   setConn(conn: Conn | null): void {
