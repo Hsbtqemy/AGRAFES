@@ -778,15 +778,34 @@ export class ActionsScreen {
               </details>
             </div>
             <div class="seg-col seg-col-right">
-              <div class="seg-preview-card" id="act-seg-preview-card">
+              <article class="seg-preview-card preview" id="act-seg-preview-card">
                 <div class="seg-inner-head">
-                  <h3>R&#233;sum&#233; segmentation</h3>
+                  <h3>Preview segmentation</h3>
                   <span id="act-seg-preview-info" class="seg-preview-info">&#8212;</span>
                 </div>
-                <div id="act-seg-preview-body" class="seg-preview-body">
-                  <p class="empty-hint">Lancez une segmentation pour voir les r&#233;sultats ici.</p>
+                <div class="preview-tabs" role="tablist" aria-label="Vue segmentation units">
+                  <button class="ptab" role="tab" aria-selected="false" data-stab="raw">Document brut</button>
+                  <button class="ptab active" role="tab" aria-selected="true" data-stab="seg">Proposition</button>
                 </div>
-              </div>
+                <div class="preview-body">
+                  <section class="pane" id="act-seg-pane-raw" style="display:none">
+                    <div class="pane-head">Document brut (original)</div>
+                    <div id="act-seg-raw-scroll" class="doc-scroll">
+                      <p class="empty-hint">S&#233;lectionnez un document pour voir le texte brut.</p>
+                    </div>
+                  </section>
+                  <section class="pane" id="act-seg-pane-seg">
+                    <div class="pane-head">Proposition segment&#233;e</div>
+                    <div id="act-seg-preview-body" class="doc-scroll">
+                      <p class="empty-hint">Lancez une segmentation pour voir les r&#233;sultats ici.</p>
+                    </div>
+                  </section>
+                  <aside class="minimap" aria-label="Minimap segments" id="act-seg-units-minimap"></aside>
+                </div>
+                <div class="preview-foot">
+                  <div class="preview-stats" id="act-seg-units-foot-stats"></div>
+                </div>
+              </article>
             </div>
           </div>
         </section>
@@ -919,6 +938,8 @@ export class ActionsScreen {
     el.querySelector("#act-seg-doc")!.addEventListener("change", () => {
       this._refreshSegmentationStatusUI();
       this._checkLongtextHint(el);
+      const docId = parseInt((el.querySelector<HTMLSelectElement>("#act-seg-doc"))?.value ?? "");
+      if (docId && this._conn) void this._loadUnitsRawPreview(el, docId);
     });
     el.querySelector("#act-seg-pack")!.addEventListener("change", () => this._refreshSegmentationStatusUI());
     el.querySelector("#act-seg-lang")!.addEventListener("input", () => this._refreshSegmentationStatusUI());
@@ -931,10 +952,11 @@ export class ActionsScreen {
         try { localStorage.setItem(ActionsScreen.LS_SEG_POST_VALIDATE, next); } catch { /* ignore */ }
       });
     }
-    el.querySelectorAll<HTMLButtonElement>(".ptab").forEach((tab) => {
+    // Tabs longtext (scoped to longtext view to avoid conflict with units tabs)
+    el.querySelectorAll<HTMLButtonElement>("#act-seg-longtext-view .ptab").forEach((tab) => {
       tab.addEventListener("click", () => {
         const targetTab = tab.dataset.tab!;
-        el.querySelectorAll<HTMLButtonElement>(".ptab").forEach((t) => {
+        el.querySelectorAll<HTMLButtonElement>("#act-seg-longtext-view .ptab").forEach((t) => {
           const active = t.dataset.tab === targetTab;
           t.classList.toggle("active", active);
           t.setAttribute("aria-selected", active ? "true" : "false");
@@ -942,6 +964,21 @@ export class ActionsScreen {
         (el.querySelector("#act-seg-lt-pane-raw") as HTMLElement).style.display = targetTab === "raw" ? "" : "none";
         (el.querySelector("#act-seg-lt-pane-seg") as HTMLElement).style.display = targetTab === "seg" ? "" : "none";
         (el.querySelector("#act-seg-lt-pane-diff") as HTMLElement).style.display = targetTab === "diff" ? "" : "none";
+      });
+    });
+    // Tabs units mode (scoped to preview card, using data-stab attribute)
+    el.querySelectorAll<HTMLButtonElement>("#act-seg-preview-card .ptab").forEach((tab) => {
+      tab.addEventListener("click", () => {
+        const targetTab = tab.dataset.stab!;
+        el.querySelectorAll<HTMLButtonElement>("#act-seg-preview-card .ptab").forEach((t) => {
+          const active = t.dataset.stab === targetTab;
+          t.classList.toggle("active", active);
+          t.setAttribute("aria-selected", active ? "true" : "false");
+        });
+        const paneRaw = el.querySelector<HTMLElement>("#act-seg-pane-raw");
+        const paneSeg = el.querySelector<HTMLElement>("#act-seg-pane-seg");
+        if (paneRaw) paneRaw.style.display = targetTab === "raw" ? "" : "none";
+        if (paneSeg) paneSeg.style.display = targetTab === "seg" ? "" : "none";
       });
     });
     el.querySelector("#act-seg-lt-doc")!.addEventListener("change", () => {
@@ -2199,6 +2236,37 @@ export class ActionsScreen {
       </div>
       ${warnHtml}
     `;
+    // Update units minimap after segmentation
+    const mmEl = document.querySelector<HTMLElement>("#act-seg-units-minimap");
+    if (mmEl) this._renderMinimap(mmEl, r.units_output, warnings.length);
+    // Update footer stats
+    const footEl = document.querySelector<HTMLElement>("#act-seg-units-foot-stats");
+    if (footEl) {
+      const doc = this._docs.find(d => d.doc_id === r.doc_id);
+      footEl.textContent = `${doc ? _escHtml(doc.title) : `doc#${r.doc_id}`} · ${r.units_output} segments`;
+    }
+  }
+
+  /** Loads first 100 lines of a doc into the units raw-text pane (best-effort). */
+  private async _loadUnitsRawPreview(el: HTMLElement, docId: number): Promise<void> {
+    const rawScroll = el.querySelector<HTMLElement>("#act-seg-raw-scroll");
+    if (!rawScroll || !this._conn) return;
+    rawScroll.innerHTML = '<p class="empty-hint">Chargement du texte brut&#8230;</p>';
+    try {
+      const preview = await getDocumentPreview(this._conn, docId, 100);
+      if (!preview.lines.length) {
+        rawScroll.innerHTML = '<p class="empty-hint">Aucune unit&#233; disponible pour ce document.</p>';
+        return;
+      }
+      const truncNote = preview.total_lines > preview.limit
+        ? `<p class="empty-hint" style="margin:4px 0 8px;font-style:italic">Aper&#231;u — ${preview.limit}/${preview.total_lines} unit&#233;s</p>`
+        : "";
+      rawScroll.innerHTML = truncNote + preview.lines.map(l =>
+        `<div class="vo-line"><span class="vo-ln">${l.n}</span><span class="vo-txt">${_escHtml(l.text)}</span></div>`
+      ).join("");
+    } catch {
+      rawScroll.innerHTML = '<p class="empty-hint">Impossible de charger le texte brut.</p>';
+    }
   }
 
   private _renderCurateDiag(changed: number, total: number, replacements: number): void {
