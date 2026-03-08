@@ -1,0 +1,19 @@
+/**
+ * base.css — Base styles and focus-visible overrides for AGRAFES Prep (vNext).
+ *
+ * Only adds what isn't already in app.ts CSS constant.
+ */
+
+/* vNext focus-visible style (also defined in app.ts; harmless duplicate) */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible,
+[role="button"]:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--prep-blue, #1e4a80);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 3px rgba(30, 74, 128, 0.18);
+}

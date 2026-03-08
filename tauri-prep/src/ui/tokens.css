@@ -1,0 +1,51 @@
+/**
+ * tokens.css — Design tokens for AGRAFES Prep (vNext).
+ *
+ * Supplements the CSS custom properties injected by app.ts.
+ * Use --prep-* prefix to avoid collisions with the existing --color-* vars.
+ */
+
+:root {
+  /* Background & surface */
+  --prep-bg: #f0f2f5;
+  --prep-surface: #ffffff;
+  --prep-surface-alt: #f8f9fa;
+  --prep-surface-hover: #f6fbfa;
+
+  /* Borders */
+  --prep-line: #dde1e8;
+  --prep-line-accent: #9fd3cc;
+  --prep-line-accent-light: #cfe8e3;
+
+  /* Typography */
+  --prep-text: #1a1a2e;
+  --prep-muted: #4f5d6d;
+
+  /* Accent (teal-green) */
+  --prep-accent: #0f766e;
+  --prep-accent-dark: #0c4a46;
+  --prep-accent-soft: #e8f5f3;
+
+  /* Blue variant */
+  --prep-blue: #1e4a80;
+  --prep-blue-soft: #eaf1fb;
+  --prep-blue-line: #b7c8df;
+
+  /* Status */
+  --prep-ok: #1a7f4e;
+  --prep-warn: #e6a817;
+  --prep-warn-soft: #fff7e6;
+  --prep-warn-line: #edd89e;
+  --prep-danger: #c0392b;
+
+  /* Spacing & shape */
+  --prep-radius: 10px;
+  --prep-radius-sm: 8px;
+  --prep-radius-pill: 999px;
+  --prep-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --prep-shadow-md: 0 8px 22px rgba(15, 118, 110, 0.08);
+
+  /* Layout dimensions */
+  --prep-topbar-h: 54px;
+  --prep-nav-w: 230px;
+}

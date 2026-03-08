@@ -1,0 +1,62 @@
+/**
+ * components.css — Shared UI primitives for AGRAFES Prep (vNext).
+ *
+ * Documents and supplements the component classes used across Prep screens.
+ * Classes defined here that also appear in app.ts CSS constant are harmless
+ * duplicates (the JS-injected <style> wins on insertion order for same specificity).
+ */
+
+/* ── Chip ─────────────────────────────────────────────────────────────────── */
+.chip-v {
+  border: 1px solid var(--prep-line, #dde1e8);
+  border-radius: var(--prep-radius-pill, 999px);
+  padding: 3px 8px;
+  font-size: 11px;
+  background: var(--prep-surface-alt, #f8f9fa);
+  color: var(--prep-muted, #4f5d6d);
+  cursor: default;
+  user-select: none;
+}
+.chip-v.active {
+  border-color: var(--prep-line-accent, #9fd3cc);
+  background: var(--prep-accent-soft, #e8f5f3);
+  color: var(--prep-accent-dark, #0c4a46);
+  font-weight: 700;
+}
+
+/* ── Pill badge ───────────────────────────────────────────────────────────── */
+.pill-v {
+  display: inline-block;
+  border: 1px solid var(--prep-line-accent, #9fd3cc);
+  background: var(--prep-accent-soft, #e8f5f3);
+  color: var(--prep-accent-dark, #0c4a46);
+  border-radius: var(--prep-radius-pill, 999px);
+  font-size: 11px;
+  padding: 3px 10px;
+}
+
+/* ── Diag / alert banner ──────────────────────────────────────────────────── */
+.diag-v {
+  border: 1px solid var(--prep-line, #dde1e8);
+  border-radius: var(--prep-radius-sm, 8px);
+  padding: 8px 10px;
+  font-size: 12px;
+  background: #fff;
+}
+.diag-v.warn {
+  border-color: var(--prep-warn-line, #edd89e);
+  background: var(--prep-warn-soft, #fff7e6);
+}
+.diag-v strong {
+  display: block;
+  margin-bottom: 2px;
+}
+
+/* ── Queue item ───────────────────────────────────────────────────────────── */
+.qitem-v {
+  border: 1px dashed var(--prep-blue-line, #b7c8df);
+  border-radius: 8px;
+  padding: 6px 8px;
+  font-size: 12px;
+  background: #fbfcfe;
+}
