@@ -59,16 +59,8 @@ function _savePresets(presets: ProjectPreset[]): void {
   try { localStorage.setItem(LS_PRESETS, JSON.stringify(presets)); } catch { /* */ }
 }
 
-// ─── CSS ─────────────────────────────────────────────────────────────────────
-// P6: CSS extracted to tauri-prep/src/ui/app.css + job-center.css.
-// Loaded via Vite CSS imports in main.ts (standalone) and constituerModule.ts (shell).
-// The PREP_CSS JS constant and inline injection have been removed.
-
-// CSS is now in tauri-prep/src/ui/app.css and job-center.css
-const PREP_CSS = "";  // empty — kept for TS compatibility; remove in P7
-
-
 // ─── App ──────────────────────────────────────────────────────────────────────
+// CSS lives in tauri-prep/src/ui/app.css + job-center.css (Vite-managed, P6).
 
 const TABS = ["import", "documents", "actions", "exporter"] as const;
 type TabId = typeof TABS[number];
@@ -77,8 +69,6 @@ type GuardableScreen = {
   hasPendingChanges?: () => boolean;
   pendingChangesMessage?: () => string;
 };
-
-// PREP_STYLE_ID removed in P6 — CSS is now Vite-managed, no inline injection.
 
 export class App {
   private _conn: Conn | null = null;

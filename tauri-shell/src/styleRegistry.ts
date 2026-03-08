@@ -1,14 +1,18 @@
 /**
  * styleRegistry.ts — Idempotent style injection helpers for tauri-shell.
  *
- * Problem: child modules (esp. tauri-prep's App.init()) inject <style> tags on every
- * mount without guards, causing accumulation in <head> across navigations.
+ * History: created in P3 to prevent <style> tag accumulation across navigations.
+ * Since P6, embedded-module CSS is handled by Vite imports (constituerModule.ts),
+ * so this module has no active production callers — Vite tree-shakes it from the
+ * output bundle.
  *
- * Solution: all style injection goes through this registry.  Each tag/link is keyed
- * by a stable string id.  Subsequent calls with the same id are no-ops.
+ * Kept as a utility library because:
+ * 1. The 20 unit tests (test_style_registry.mjs) document the idempotency contract.
+ * 2. Runtime CSS injection may be needed for future features (dynamic theming,
+ *    external stylesheet loading, P8+ modules that can't rely on static Vite imports).
+ * 3. Zero build cost when unused.
  *
- * This module has zero dependencies and runs in any browser-compatible environment,
- * making it straightforward to unit-test with a JSDOM-like shim (see scripts/test_style_registry.mjs).
+ * If a new consumer is added, import directly — no registration step is needed.
  */
 
 /** Insert a <style id="…"> once; subsequent calls with the same id are no-ops. */
