@@ -122,6 +122,11 @@ const SHELL_CSS = `
     max-width: 200px;
     overflow: hidden;
     text-overflow: ellipsis;
+    cursor: default;
+    transition: color 0.2s;
+  }
+  .shell-db-badge--pending {
+    color: #fcd34d;
   }
 
   .shell-db-btn {
@@ -1190,6 +1195,7 @@ async function _switchDb(path: string): Promise<void> {
       // Non-home module is mounted: defer remount so the user keeps scroll/context.
       // A banner lets them choose when to refresh.
       _pendingDbRemount = true;
+      _updateDbBadge(); // shows ⚠ suffix while remount is pending
       _showToast(`DB changée : ${_pathLabel(path)}`);
       _showDbChangeBanner(_pathLabel(path));
     }
@@ -1831,12 +1837,22 @@ function _updateHeaderTabs(mode: Mode): void {
 function _dbBadgeText(): string {
   if (!_currentDbPath) return "DB: (aucune)";
   const parts = _currentDbPath.replace(/\\/g, "/").split("/");
-  return `DB: ${parts[parts.length - 1]}`;
+  const name = parts[parts.length - 1];
+  // ⚠ suffix persists while a DB change is pending (banner "Plus tard" dismissed).
+  return _pendingDbRemount ? `DB: ${name} ⚠` : `DB: ${name}`;
 }
 
 function _updateDbBadge(): void {
   const badge = document.getElementById("shell-db-badge");
-  if (badge) badge.textContent = _dbBadgeText();
+  if (!badge) return;
+  badge.textContent = _dbBadgeText();
+  if (_pendingDbRemount) {
+    badge.classList.add("shell-db-badge--pending");
+    badge.title = "DB modifiée — cliquez l'onglet actif ou « Rafraîchir » pour appliquer";
+  } else {
+    badge.classList.remove("shell-db-badge--pending");
+    badge.title = "";
+  }
 }
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
@@ -2025,6 +2041,7 @@ function _showDbChangeBanner(dbLabel: string): void {
   dismissBtn.addEventListener("click", () => {
     _clearDbChangeBanner();
     _pendingDbRemount = false;
+    _updateDbBadge(); // remove ⚠ suffix — user explicitly dismissed the change
   });
 
   btns.appendChild(refreshBtn);
@@ -2072,6 +2089,7 @@ async function _setMode(mode: Mode): Promise<void> {
   // Any navigation clears the DB-change banner and the pending-remount flag.
   _clearDbChangeBanner();
   _pendingDbRemount = false;
+  _updateDbBadge(); // remove ⚠ suffix now that remount has occurred
 
   _shellLog("info", "navigation", `Navigate: ${_currentMode} → ${mode}`);
 
