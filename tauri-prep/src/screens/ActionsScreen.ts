@@ -1014,6 +1014,21 @@ export class ActionsScreen {
       const compareTab = el.querySelector<HTMLButtonElement>('.ptab-tr[data-tab-tr="compare"]');
       compareTab?.click();
     });
+    // Inc 3 P18 — Minimap click-to-scroll: click on .mm-mark scrolls the active .doc-scroll
+    el.querySelectorAll<HTMLElement>(".minimap.minimap-track").forEach(mm => {
+      mm.addEventListener("click", (e: MouseEvent) => {
+        const mark = (e.target as HTMLElement).closest<HTMLElement>(".mm-mark");
+        if (!mark) return;
+        const ratio = parseFloat(mark.style.top) / 100;
+        if (!isFinite(ratio)) return;
+        const body = mm.closest<HTMLElement>(".preview-body");
+        if (!body) return;
+        const scroll = Array.from(body.querySelectorAll<HTMLElement>(".pane .doc-scroll"))
+          .find(s => (s.closest<HTMLElement>(".pane") as HTMLElement).style.display !== "none");
+        if (!scroll) return;
+        scroll.scrollTop = ratio * (scroll.scrollHeight - scroll.clientHeight);
+      });
+    });
     el.querySelector("#act-seg-focus-toggle")!.addEventListener("click", () => this._toggleSegFocusMode(root));
     el.querySelector("#act-seg-doc")!.addEventListener("change", () => {
       this._refreshSegmentationStatusUI();

@@ -818,6 +818,9 @@ mark.diff-mark { background: #b7f5c8; color: #14532d; border-radius: 2px; paddin
 .mm-mark.warn { background: var(--prep-warn, #e6a817); }
 .mm-mark.seg  { background: var(--prep-accent, #0f766e); }
 .mm-mark.hit  { background: var(--prep-blue, #1e4a80); }
+/* Minimap click-to-scroll affordance (P18 Inc 3) */
+.minimap-track .mm-mark { cursor: pointer; transition: opacity 0.1s, transform 0.1s; }
+.minimap-track .mm-mark:hover { opacity: 0.75; transform: scaleX(1.5); }
 
 /* Preview footer / foot */
 .preview-foot, .curate-preview-footer { padding: 8px 12px; border-top: 1px solid var(--prep-line,#dde1e8); background: #f8f9fa; flex-shrink: 0; }
