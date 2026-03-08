@@ -2827,9 +2827,15 @@ export class ActionsScreen {
    * to the Curation sub-view if validation succeeded. Non-breaking on failure.
    */
   private async _applyLongtextValidation(): Promise<void> {
-    const wasPending = this._segmentPendingValidation;
+    const beforePending = this._segmentPendingValidation;
+    const beforeView = this._activeSubView;
     await this._runValidateCurrentSegDoc();
-    if (wasPending && !this._segmentPendingValidation && this._root) {
+    // Only navigate to Curation if:
+    //  1. validation actually consumed the pending flag
+    //  2. no internal navigation already occurred (postValidate routing may have moved away)
+    const consumed = beforePending && !this._segmentPendingValidation;
+    const navAlreadyOccurred = this._activeSubView !== beforeView;
+    if (consumed && !navAlreadyOccurred && this._root) {
       try {
         this._switchSubViewDOM(this._root, "curation");
       } catch {
