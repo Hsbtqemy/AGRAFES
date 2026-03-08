@@ -1820,15 +1820,17 @@ export class ActionsScreen {
       rafPending = false;
     };
     const onScroll = () => { if (!rafPending) { rafPending = true; requestAnimationFrame(update); } };
+    // Tab switch: defer via microtask so the DOM (pane display) reflects the new tab before update reads it
+    const onTabClick = () => queueMicrotask(() => { rafPending = false; onScroll(); });
     previewBody.addEventListener("scroll", onScroll, { capture: true, passive: true });
     const tabBar = mmEl.closest<HTMLElement>("article.preview")?.querySelector<HTMLElement>(".preview-tabs");
-    tabBar?.addEventListener("click", onScroll);
+    tabBar?.addEventListener("click", onTabClick);
     // Store updater so _renderMinimap can trigger a zone refresh post-render
     this._mmZoneUpdaters.set(mmEl, update);
     update();
     return () => {
       previewBody.removeEventListener("scroll", onScroll, { capture: true });
-      tabBar?.removeEventListener("click", onScroll);
+      tabBar?.removeEventListener("click", onTabClick);
       this._mmZoneUpdaters.delete(mmEl);
     };
   }
