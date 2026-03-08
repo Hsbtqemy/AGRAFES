@@ -194,6 +194,7 @@ export class ActionsScreen {
   private _onLtRawScroll: EventListener | null = null;
   private _onLtSegScroll: EventListener | null = null;
   private _ltSearchOpen = false;
+  private _alignViewMode: "table" | "run" = "table";
 
 
   render(): HTMLElement {
@@ -1265,6 +1266,10 @@ export class ActionsScreen {
                   <button id="act-audit-qf2-rejected" class="chip" data-qf2="rejected">Rejet&#233;s</button>
                 </div>
                 <div class="run-toolbar-actions">
+                  <div class="run-view-toggle chip-row">
+                    <button id="act-audit-view-table" class="chip active" title="Vue tableau" aria-pressed="true">&#9776; Tableau</button>
+                    <button id="act-audit-view-run" class="chip" title="Vue run-row" aria-pressed="false">&#9711; Run</button>
+                  </div>
                   <button id="act-audit-next-cta" class="btn btn-sm btn-secondary">Suivant &#224; revoir &#8595;</button>
                 </div>
               </div>
@@ -1310,6 +1315,7 @@ export class ActionsScreen {
               </div>
               <div id="act-audit-kpis" class="hint" style="margin-top:0.35rem"></div>
               <div id="act-audit-table-wrap" style="margin-top:0.5rem;overflow-x:auto"></div>
+              <div id="act-audit-run-view" style="display:none;margin-top:0.5rem"></div>
               <div id="act-audit-batch-bar" class="audit-batch-bar" style="display:none">
                 <span id="act-audit-sel-count" class="audit-sel-count">0 s&#233;lectionn&#233;(s)</span>
                 <button id="act-audit-batch-accept" class="btn btn-sm btn-secondary">&#10003; Accepter</button>
@@ -1491,9 +1497,78 @@ export class ActionsScreen {
         el.querySelectorAll<HTMLElement>("[data-qf2]").forEach((b) => b.classList.toggle("active", b.dataset.qf2 === key));
       });
     });
+    // View mode toggle (tableau / run)
+    const viewTableBtn = el.querySelector<HTMLButtonElement>("#act-audit-view-table");
+    const viewRunBtn = el.querySelector<HTMLButtonElement>("#act-audit-view-run");
+    viewTableBtn?.addEventListener("click", () => this._setAlignViewMode("table", root));
+    viewRunBtn?.addEventListener("click", () => this._setAlignViewMode("run", root));
+
     initCardAccordions(el);
     this._bindHeadNavLinks(el, root);
     return el;
+  }
+
+  /** Toggle between audit table view and visual run-row view. */
+  private _setAlignViewMode(mode: "table" | "run", root: HTMLElement): void {
+    this._alignViewMode = mode;
+    const tableWrap = root.querySelector<HTMLElement>("#act-audit-table-wrap");
+    const runView = root.querySelector<HTMLElement>("#act-audit-run-view");
+    const viewTableBtn = root.querySelector<HTMLButtonElement>("#act-audit-view-table");
+    const viewRunBtn = root.querySelector<HTMLButtonElement>("#act-audit-view-run");
+    if (tableWrap) tableWrap.style.display = mode === "table" ? "" : "none";
+    if (runView) runView.style.display = mode === "run" ? "" : "none";
+    if (viewTableBtn) { viewTableBtn.classList.toggle("active", mode === "table"); viewTableBtn.setAttribute("aria-pressed", String(mode === "table")); }
+    if (viewRunBtn) { viewRunBtn.classList.toggle("active", mode === "run"); viewRunBtn.setAttribute("aria-pressed", String(mode === "run")); }
+    if (mode === "run") this._renderAuditRunView(root);
+  }
+
+  /** Render the visual "run-row" list from existing _auditLinks data. */
+  private _renderAuditRunView(root: HTMLElement): void {
+    const container = root.querySelector<HTMLElement>("#act-audit-run-view");
+    if (!container) return;
+    const visibleLinks = this._computeVisibleAuditLinks();
+    if (visibleLinks.length === 0) {
+      container.innerHTML = '<p class="live-note">Aucun lien &#224; afficher. Chargez les liens depuis le tableau.</p>';
+      return;
+    }
+    const frag = document.createDocumentFragment();
+    for (const link of visibleLinks) {
+      const normalizedStatus = this._normalizeAuditStatus(link.status);
+      const dotClass = normalizedStatus === "accepted" ? "dot ok" : normalizedStatus === "rejected" ? "dot bad" : "dot review";
+      const dotLabel = normalizedStatus === "accepted" ? "Accepté" : normalizedStatus === "rejected" ? "Rejeté" : "Non révisé";
+      const art = document.createElement("article");
+      art.className = "run-row";
+      art.dataset.linkId = String(link.link_id);
+      art.innerHTML = `
+        <div class="run-cell run-cell-pivot">
+          <span class="run-cell-id">${_escHtml(String(link.external_id ?? "—"))}</span>
+          <span class="run-cell-text">${_escHtml(String(link.pivot_text ?? "")).slice(0, 140)}</span>
+        </div>
+        <div class="status-rail">
+          <span class="${dotClass}" title="${dotLabel}"></span>
+          <span class="dot-label">${dotLabel}</span>
+        </div>
+        <div class="run-cell run-cell-target">
+          <span class="run-cell-text">${_escHtml(String(link.target_text ?? "")).slice(0, 140)}</span>
+          <span class="run-row-actions">
+            <button class="btn btn-sm btn-secondary run-accept-btn" data-id="${link.link_id}" title="Accepter" aria-label="Accepter ce lien">✓</button>
+            <button class="btn btn-sm btn-danger run-reject-btn" data-id="${link.link_id}" title="Rejeter" aria-label="Rejeter ce lien">✗</button>
+          </span>
+        </div>
+      `;
+      frag.appendChild(art);
+    }
+    container.innerHTML = "";
+    container.appendChild(frag);
+    // Delegate run-row actions to existing sidecar handlers
+    container.addEventListener("click", (e) => {
+      const target = e.target as HTMLElement;
+      const id = Number(target.dataset.id);
+      if (!id) return;
+      this._auditSelectedLinkId = id;
+      if (target.classList.contains("run-accept-btn")) void this._runFocusStatusAction(root, "accepted");
+      else if (target.classList.contains("run-reject-btn")) void this._runFocusStatusAction(root, "rejected");
+    }, { once: false });
   }
 
   // ─── Long text helpers ───────────────────────────────────────────────────────
@@ -3175,6 +3250,8 @@ export class ActionsScreen {
     if (batchBar) batchBar.style.display = "none"; // hidden until selection
     this._renderAuditFocus(root);
     this._refreshRuntimeState();
+    // Also refresh run-view if currently active
+    if (this._alignViewMode === "run") this._renderAuditRunView(root);
   }
 
   private _renderAuditFocus(root: HTMLElement): void {
