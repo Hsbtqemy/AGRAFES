@@ -177,6 +177,7 @@ export class ActionsScreen {
   private _ltSyncLock = false;
   private _onLtRawScroll: EventListener | null = null;
   private _onLtSegScroll: EventListener | null = null;
+  private _ltSearchOpen = false;
 
 
   render(): HTMLElement {
@@ -821,6 +822,10 @@ export class ActionsScreen {
                   <button class="ptab active" role="tab" aria-selected="true" data-tab="seg">Pr&#233;visualisation segmentation</button>
                   <button class="ptab" role="tab" aria-selected="false" data-tab="diff">Diff global</button>
                 </div>
+                <div id="act-seg-lt-search-bar" class="lt-search-bar" style="display:none" role="search" aria-label="Recherche dans le document">
+                  <input id="act-seg-lt-search-input" type="search" class="lt-search-input" placeholder="Rechercher dans le document&#8230;" aria-label="Rechercher" />
+                  <button id="act-seg-lt-search-clear" class="lt-search-clear" type="button" aria-label="Fermer la recherche">&#10005;</button>
+                </div>
                 <div class="preview-body">
                   <section class="pane" id="act-seg-lt-pane-raw" style="display:none">
                     <div class="pane-head">Document brut</div>
@@ -909,7 +914,31 @@ export class ActionsScreen {
     el.querySelector("#act-seg-lt-validate-btn")!.addEventListener("click", () => this._runSegment(true));
     el.querySelector("#act-seg-lt-validate-only-btn")!.addEventListener("click", () => this._runValidateCurrentSegDoc());
     el.querySelectorAll<HTMLButtonElement>("[data-chip]").forEach((chip) => {
-      chip.addEventListener("click", () => chip.classList.toggle("active"));
+      if (chip.dataset.chip === "search") {
+        chip.addEventListener("click", () => {
+          this._ltSearchOpen = !this._ltSearchOpen;
+          chip.classList.toggle("active", this._ltSearchOpen);
+          const bar = el.querySelector<HTMLElement>("#act-seg-lt-search-bar");
+          const input = el.querySelector<HTMLInputElement>("#act-seg-lt-search-input");
+          if (bar) bar.style.display = this._ltSearchOpen ? "" : "none";
+          if (this._ltSearchOpen && input) { input.value = ""; input.focus(); }
+          if (!this._ltSearchOpen) this._closeLtSearch(el);
+        });
+      } else {
+        chip.addEventListener("click", () => chip.classList.toggle("active"));
+      }
+    });
+    // Inline search bar — permanent listeners (no stored refs needed; bar lives with the panel)
+    el.querySelector<HTMLInputElement>("#act-seg-lt-search-input")?.addEventListener("input", (e) => {
+      const query = (e.target as HTMLInputElement).value.trim();
+      const scroll = this._getActiveLtPane(el);
+      if (scroll) this._applyLtSearchFilter(scroll, query);
+    });
+    el.querySelector<HTMLInputElement>("#act-seg-lt-search-input")?.addEventListener("keydown", (e) => {
+      if ((e as KeyboardEvent).key === "Escape") this._closeLtSearch(el);
+    });
+    el.querySelector<HTMLButtonElement>("#act-seg-lt-search-clear")?.addEventListener("click", () => {
+      this._closeLtSearch(el);
     });
     el.querySelector<HTMLSelectElement>("#act-seg-ref-doc")?.addEventListener("change", (e) => {
       const docId = parseInt((e.target as HTMLSelectElement).value);
@@ -1335,6 +1364,86 @@ export class ActionsScreen {
     const charCount = (doc as unknown as { char_count?: number })?.char_count ?? 0;
     hint.style.display = (charCount > THRESHOLD && !this._segLongTextMode) ? "" : "none";
   }
+
+  // ── Longtext inline search ──────────────────────────────────────────────────
+
+  /** Closes the search bar, clears highlights and resets state. */
+  private _closeLtSearch(el: HTMLElement): void {
+    this._ltSearchOpen = false;
+    const chip = el.querySelector<HTMLButtonElement>("[data-chip='search']");
+    const bar = el.querySelector<HTMLElement>("#act-seg-lt-search-bar");
+    const input = el.querySelector<HTMLInputElement>("#act-seg-lt-search-input");
+    if (chip) chip.classList.remove("active");
+    if (bar) bar.style.display = "none";
+    if (input) input.value = "";
+    (["#act-seg-lt-raw-scroll", "#act-seg-lt-seg-scroll", "#act-seg-lt-diff-scroll"] as const)
+      .forEach(id => {
+        const scroll = el.querySelector<HTMLElement>(id);
+        if (scroll) this._clearLtSearchHighlights(scroll);
+      });
+  }
+
+  /** Returns the scrollable container of the currently visible longtext pane. */
+  private _getActiveLtPane(el: HTMLElement): HTMLElement | null {
+    const paneIds = ["#act-seg-lt-pane-raw", "#act-seg-lt-pane-seg", "#act-seg-lt-pane-diff"];
+    for (const id of paneIds) {
+      const pane = el.querySelector<HTMLElement>(id);
+      if (pane && pane.style.display !== "none") {
+        return pane.querySelector<HTMLElement>(".doc-scroll");
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Filters and highlights `query` across direct children of `scroll`.
+   * Stores original text in `data-raw-text` to avoid re-highlighting.
+   */
+  private _applyLtSearchFilter(scroll: HTMLElement, query: string): void {
+    const children = Array.from(scroll.children) as HTMLElement[];
+    if (!query) {
+      children.forEach(child => {
+        if (child.dataset.rawText !== undefined) {
+          child.textContent = child.dataset.rawText;
+          delete child.dataset.rawText;
+        }
+        child.style.display = "";
+      });
+      return;
+    }
+    const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp(`(${escaped})`, "gi");
+    const lq = query.toLowerCase();
+    children.forEach(child => {
+      if (child.dataset.rawText === undefined) {
+        child.dataset.rawText = child.textContent ?? "";
+      }
+      const raw = child.dataset.rawText;
+      if (raw.toLowerCase().includes(lq)) {
+        child.style.display = "";
+        // Build HTML: split by match (capturing group → odd indices are matches)
+        const parts = raw.split(re);
+        child.innerHTML = parts.map((part, idx) =>
+          idx % 2 === 1 ? `<mark>${_escHtml(part)}</mark>` : _escHtml(part)
+        ).join("");
+      } else {
+        child.style.display = "none";
+      }
+    });
+  }
+
+  /** Restores all children of `scroll` to their original text and shows them. */
+  private _clearLtSearchHighlights(scroll: HTMLElement): void {
+    (Array.from(scroll.children) as HTMLElement[]).forEach(child => {
+      if (child.dataset.rawText !== undefined) {
+        child.textContent = child.dataset.rawText;
+        delete child.dataset.rawText;
+      }
+      child.style.display = "";
+    });
+  }
+
+  // ── Longtext scroll sync ─────────────────────────────────────────────────────
 
   private _bindLongtextScrollSync(): void {
     const el = this._root?.querySelector<HTMLElement>('[data-panel="segmentation"]');
