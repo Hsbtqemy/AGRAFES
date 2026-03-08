@@ -727,17 +727,17 @@ export class ActionsScreen {
           <div class="seg-workspace">
             <div class="seg-col seg-col-left">
               <div class="seg-inner-card">
-                <div class="seg-inner-head"><h3>Segmentation</h3></div>
+                <div class="seg-inner-head"><h3>Param&#232;tres</h3></div>
                 <div class="seg-inner-body">
-                  <p class="hint">Flux recommand&#233; : s&#233;lectionner le document, lancer la segmentation, v&#233;rifier le statut, puis valider le document.</p>
-                  <div class="form-row">
-                    <label>Document :
+                  <p class="live-note" style="margin-top:0">Flux recommand&#233; : s&#233;lectionner le document &#8594; Segmenter &#8594; Valider.</p>
+                  <div class="form-grid-seg">
+                    <label>Document
                       <select id="act-seg-doc"><option value="">&#8212; choisir &#8212;</option></select>
                     </label>
-                    <label>Langue :
-                      <input id="act-seg-lang" type="text" value="fr" maxlength="10" style="width:70px" />
+                    <label>Langue
+                      <input id="act-seg-lang" type="text" value="fr" maxlength="10" />
                     </label>
-                    <label>Pack :
+                    <label style="grid-column:1/-1">Pack
                       <select id="act-seg-pack">
                         <option value="auto">Auto multicorpus (recommand&#233;)</option>
                         <option value="fr_strict">Fran&#231;ais strict</option>
@@ -746,25 +746,22 @@ export class ActionsScreen {
                       </select>
                     </label>
                   </div>
-                  <div id="act-seg-status-banner" class="runtime-state state-info" style="margin-top:0.4rem">
+                  <div id="act-seg-status-banner" class="runtime-state state-info" style="margin-top:8px">
                     Aucune segmentation lanc&#233;e pour ce document dans cette session.
                   </div>
-                  <div class="btn-row" style="margin-top:0.5rem">
+                  <div class="btn-row" style="margin-top:8px">
                     <button id="act-seg-btn" class="btn btn-warning" disabled>Segmenter</button>
-                    <button id="act-seg-validate-btn" class="btn btn-secondary" disabled>Segmenter + valider</button>
-                    <button id="act-seg-validate-only-btn" class="btn btn-primary" disabled>Valider ce document</button>
-                    <button id="act-seg-focus-toggle" class="btn btn-secondary" disabled>Mode focus</button>
+                    <button id="act-seg-validate-btn" class="btn btn-secondary" disabled>Seg. + valider</button>
+                    <button id="act-seg-validate-only-btn" class="btn btn-primary" disabled>Valider</button>
+                    <button id="act-seg-focus-toggle" class="btn btn-secondary" disabled>Focus</button>
                   </div>
-                  <div class="form-row" style="margin-top:0.5rem">
-                    <label>Apr&#232;s validation
-                      <select id="act-seg-after-validate" style="max-width:280px">
-                        <option value="documents">Aller &#224; Documents (d&#233;faut)</option>
-                        <option value="next">Passer au document suivant</option>
-                        <option value="stay">Rester sur place</option>
-                      </select>
-                    </label>
-                  </div>
-                  <p class="hint" style="margin-top:0.35rem">Ce mode applique la segmentation backend (pack/lang).</p>
+                  <label style="margin-top:8px;font-size:12px;color:var(--prep-muted,#4f5d6d);display:flex;flex-direction:column;gap:3px">Apr&#232;s validation
+                    <select id="act-seg-after-validate">
+                      <option value="documents">Aller &#224; Documents (d&#233;faut)</option>
+                      <option value="next">Passer au document suivant</option>
+                      <option value="stay">Rester sur place</option>
+                    </select>
+                  </label>
                 </div>
               </div>
               <details class="seg-inner-card seg-batch-overview" open>
@@ -783,6 +780,13 @@ export class ActionsScreen {
                   <h3>Preview segmentation</h3>
                   <span id="act-seg-preview-info" class="seg-preview-info">&#8212;</span>
                 </div>
+                <div class="preview-controls">
+                  <div class="chip-row">
+                    <span class="chip active" id="act-seg-chip-doc">Aucun document</span>
+                    <span class="chip" id="act-seg-chip-status">En attente</span>
+                    <span class="chip" id="act-seg-chip-pack">auto</span>
+                  </div>
+                </div>
                 <div class="preview-tabs" role="tablist" aria-label="Vue segmentation units">
                   <button class="ptab" role="tab" aria-selected="false" data-stab="raw">Document brut</button>
                   <button class="ptab active" role="tab" aria-selected="true" data-stab="seg">Proposition</button>
@@ -791,13 +795,13 @@ export class ActionsScreen {
                   <section class="pane" id="act-seg-pane-raw" style="display:none">
                     <div class="pane-head">Document brut (original)</div>
                     <div id="act-seg-raw-scroll" class="doc-scroll">
-                      <p class="empty-hint">S&#233;lectionnez un document pour voir le texte brut.</p>
+                      <p class="live-note">S&#233;lectionnez un document pour voir le texte brut.</p>
                     </div>
                   </section>
                   <section class="pane" id="act-seg-pane-seg">
                     <div class="pane-head">Proposition segment&#233;e</div>
                     <div id="act-seg-preview-body" class="doc-scroll">
-                      <p class="empty-hint">Lancez une segmentation pour voir les r&#233;sultats ici.</p>
+                      <p class="live-note">Lancez une segmentation pour voir les r&#233;sultats ici.</p>
                     </div>
                   </section>
                   <aside class="minimap" aria-label="Minimap segments" id="act-seg-units-minimap"></aside>
@@ -2454,15 +2458,28 @@ export class ActionsScreen {
     if (!banner) return;
 
     const segSel = this._currentSegDocSelection();
+
+    // Update preview-controls chips
+    const chipDoc = document.querySelector<HTMLElement>("#act-seg-chip-doc");
+    const chipStatus = document.querySelector<HTMLElement>("#act-seg-chip-status");
+    const chipPack = document.querySelector<HTMLElement>("#act-seg-chip-pack");
+    if (chipDoc) chipDoc.textContent = segSel ? segSel.docLabel : "Aucun document";
+    if (chipPack) {
+      const packEl = document.querySelector<HTMLSelectElement>("#act-seg-pack");
+      chipPack.textContent = packEl?.value || "auto";
+    }
+
     if (!this._conn) {
       banner.className = "runtime-state state-error";
       banner.textContent = "Sidecar indisponible.";
+      if (chipStatus) { chipStatus.textContent = "Hors ligne"; chipStatus.className = "chip"; }
       if (validateOnlyBtn) validateOnlyBtn.disabled = true;
       return;
     }
     if (!segSel) {
       banner.className = "runtime-state state-info";
       banner.textContent = "Sélectionnez un document pour segmenter.";
+      if (chipStatus) { chipStatus.textContent = "En attente"; chipStatus.className = "chip"; }
       if (validateOnlyBtn) validateOnlyBtn.disabled = true;
       return;
     }
@@ -2474,10 +2491,12 @@ export class ActionsScreen {
         banner.className = "runtime-state state-warn";
         banner.textContent =
           `Segmentation prête sur ${segSel.docLabel}: ${this._lastSegmentReport.units_input} → ${this._lastSegmentReport.units_output} unités (pack ${this._lastSegmentReport.segment_pack ?? "auto"})${warningText}. Validez le document.`;
+        if (chipStatus) { chipStatus.textContent = `${this._lastSegmentReport.units_output} segments`; chipStatus.className = "chip active"; }
       } else {
         banner.className = "runtime-state state-ok";
         banner.textContent =
           `Dernière segmentation ${segSel.docLabel}: ${this._lastSegmentReport.units_input} → ${this._lastSegmentReport.units_output} unités (pack ${this._lastSegmentReport.segment_pack ?? "auto"})${warningText}.`;
+        if (chipStatus) { chipStatus.textContent = `${this._lastSegmentReport.units_output} segments ✓`; chipStatus.className = "chip active"; }
       }
       if (validateOnlyBtn) validateOnlyBtn.disabled = !this._segmentPendingValidation;
       return;
@@ -2485,6 +2504,7 @@ export class ActionsScreen {
 
     banner.className = "runtime-state state-info";
     banner.textContent = `Aucune segmentation lancée sur ${segSel.docLabel} dans cette session.`;
+    if (chipStatus) { chipStatus.textContent = "Non segmenté"; chipStatus.className = "chip"; }
     if (validateOnlyBtn) validateOnlyBtn.disabled = true;
   }
 

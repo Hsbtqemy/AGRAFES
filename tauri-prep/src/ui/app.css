@@ -1450,6 +1450,14 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
 /* ── 7. .seg-col-right — align-self: start for sticky to work ─── */
 .seg-col.seg-col-right { align-self: start; }
 
+/* ── 7b. Form grid for segmentation params ──────────────────────── */
+.form-grid-seg {
+  display: grid;
+  grid-template-columns: 1fr 70px;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
 /* ── 8. KPI cards: .kpi variant classes for alignement ──────────── */
 .kpi { display: flex; flex-direction: column; gap: 4px; padding: 10px 14px; background: #f8f9fa; border-radius: 8px; border: 1px solid var(--prep-line, #dde1e8); }
 .kpi .label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--prep-muted, #4f5d6d); }
