@@ -1,0 +1,19 @@
+.job-center { background: #f0f5ff; border-bottom: 1px solid #c8d8f5; display: none; }
+.jc-inner { max-width: 900px; margin: 0 auto; padding: 0.35rem 1.25rem; display: flex;
+  flex-direction: column; gap: 0.25rem; }
+.jc-section-title { font-size: 0.68rem; text-transform: uppercase; color: var(--color-muted);
+  letter-spacing: 0.07em; margin: 0.15rem 0 0; }
+.jc-job { display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; }
+.jc-job-active { flex-direction: column; align-items: flex-start; gap: 0.15rem; }
+.jc-job-head { display: flex; align-items: center; gap: 0.5rem; width: 100%; }
+.jc-job-label { font-weight: 600; }
+.jc-job-kind { color: var(--color-muted); font-size: 0.72rem; font-family: monospace; }
+.jc-job-pct { margin-left: auto; font-weight: 600; color: var(--color-primary); font-size: 0.8rem; }
+.jc-progress-bar { width: 100%; height: 3px; background: #c8d8f5; border-radius: 2px; }
+.jc-progress-fill { height: 100%; background: var(--color-primary); border-radius: 2px;
+  transition: width 0.4s ease; }
+.jc-msg { font-size: 0.72rem; color: var(--color-muted); }
+.jc-job-done .jc-icon { color: var(--color-ok); font-weight: 700; }
+.jc-job-err .jc-icon  { color: var(--color-danger); font-weight: 700; }
+.jc-job-cancel .jc-icon { color: var(--color-secondary); }
+.jc-recent-row { display: flex; align-items: center; gap: 0.4rem; }
