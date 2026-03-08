@@ -388,19 +388,33 @@ export class ActionsScreen {
     panel.prepend(div);
   }
 
+  /** Wires `data-nav` head-links inside a panel (cross-view navigation). */
+  private _bindHeadNavLinks(el: HTMLElement, root: HTMLElement): void {
+    el.querySelectorAll<HTMLButtonElement>("[data-nav]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const target = btn.dataset.nav as SubView;
+        if (target) this._switchSubViewDOM(root, target);
+      });
+    });
+  }
+
   private _renderCurationPanel(root: HTMLElement): HTMLElement {
     const el = document.createElement("div");
     el.setAttribute("role", "main");
     el.setAttribute("aria-label", "Vue Curation");
     el.innerHTML = `
-      <section class="card curate-workspace-card" id="act-curate-card">
-        <div class="curate-card-head">
-          <div>
-            <h2>Curation <span class="badge-preview">avec pr&#233;visualisation</span></h2>
-            <p>La preview centrale se met &#224; jour d&#232;s qu&#8217;une option change.</p>
-          </div>
-          <span class="curate-pill" id="act-curate-mode-pill">Mode &#233;dition</span>
+      <section class="acts-seg-head-card">
+        <div class="acts-hub-head-left">
+          <h1>Curation <span class="badge-preview">avec pr&#233;visualisation</span></h1>
+          <p>La preview centrale se met &#224; jour d&#232;s qu&#8217;une option change.</p>
         </div>
+        <div class="acts-hub-head-tools">
+          <span class="curate-pill" id="act-curate-mode-pill">Mode &#233;dition</span>
+          <button class="acts-hub-head-link" data-nav="segmentation">Voir Segmentation VO</button>
+          <button class="acts-hub-head-link" data-nav="alignement">Voir Alignement</button>
+        </div>
+      </section>
+      <section class="card curate-workspace-card" id="act-curate-card">
         <div class="curate-workspace">
           <div class="curate-col curate-col-left">
             <article class="curate-inner-card">
@@ -583,6 +597,7 @@ export class ActionsScreen {
     el.querySelector("#act-meta-btn")!.addEventListener("click", () => this._runValidateMeta());
     el.querySelector("#act-index-btn")!.addEventListener("click", () => this._runIndex());
     initCardAccordions(el);
+    this._bindHeadNavLinks(el, root);
     return el;
   }
 
@@ -598,6 +613,8 @@ export class ActionsScreen {
         </div>
         <div class="acts-hub-head-tools">
           <span class="curate-pill">workflow recommand&#233; avant alignement</span>
+          <button class="acts-hub-head-link" data-nav="curation">Voir Curation</button>
+          <button class="acts-hub-head-link" data-nav="alignement">Voir Alignement</button>
           <button class="acts-hub-head-link" id="act-seg-head-longtext">Sc&#233;nario grand texte</button>
         </div>
       </section>
@@ -983,6 +1000,7 @@ export class ActionsScreen {
       });
     });
     initCardAccordions(el);
+    this._bindHeadNavLinks(el, root);
     return el;
   }
 
@@ -998,6 +1016,8 @@ export class ActionsScreen {
         </div>
         <div class="acts-hub-head-tools">
           <span class="curate-pill" id="act-align-run-pill">Liens pivot &#8596; cible</span>
+          <button class="acts-hub-head-link" data-nav="curation">Voir Curation</button>
+          <button class="acts-hub-head-link" data-nav="segmentation">Voir Segmentation VO</button>
         </div>
       </section>
       <section class="card workflow-section" id="wf-section" data-collapsible="true" data-collapsed-default="true" style="border:2px solid var(--accent,#1a7f4e)">
@@ -1340,6 +1360,7 @@ export class ActionsScreen {
     el.querySelector("#wf-report-btn")?.addEventListener("click", () =>
       el.querySelector("#act-report-card")?.scrollIntoView({ behavior: "smooth", block: "start" }));
     initCardAccordions(el);
+    this._bindHeadNavLinks(el, root);
     return el;
   }
 
