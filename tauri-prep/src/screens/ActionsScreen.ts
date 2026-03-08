@@ -170,39 +170,38 @@ export class ActionsScreen {
 
       <!-- ═══ WORKFLOW ALIGNEMENT GUIDÉ ═══ -->
       <section class="card workflow-section" id="wf-section" data-collapsible="true" data-collapsed-default="true" style="border:2px solid var(--accent,#1a7f4e)">
-        <h3 style="margin-bottom:0.75rem">🔄 Workflow Alignement guidé
+        <h3 style="margin-bottom:0.45rem">Workflow alignement guidé
           <span style="font-size:0.75rem;font-weight:400;color:#6c757d;margin-left:0.5rem">
-            Suivez les 5 étapes dans l'ordre
+            5 étapes
           </span>
         </h3>
+        <p class="hint" style="margin-bottom:0.5rem">Progression rapide: aligner, contrôler, corriger, exporter.</p>
 
         <div id="wf-steps" style="display:flex;flex-direction:column;gap:0;border:1px solid #e9ecef;border-radius:6px;overflow:hidden">
 
           <!-- Étape 1 : Alignement -->
           <div class="wf-step" id="wf-step-0" style="border-bottom:1px solid #e9ecef">
-            <div class="wf-step-header" id="wf-hdr-0" style="display:flex;align-items:center;gap:10px;padding:10px 16px;cursor:pointer;background:#f8f9fa;transition:background 0.12s">
+            <div class="wf-step-header" id="wf-hdr-0" style="display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;background:#f8f9fa;transition:background 0.12s">
               <span class="wf-num" id="wf-num-0" style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.85rem;font-weight:700;background:#e9ecef;color:#495057;flex-shrink:0">1</span>
               <span style="font-weight:600;flex:1">Alignement</span>
-              <span class="wf-status" id="wf-st-0" style="font-size:0.78rem;color:#6c757d"></span>
+              <span class="wf-status" id="wf-st-0" style="font-size:0.74rem;color:#6c757d"></span>
               <span class="wf-toggle" id="wf-tog-0" style="font-size:0.8rem;color:#6c757d">▼</span>
             </div>
-            <div class="wf-body" id="wf-body-0" style="padding:12px 16px;border-top:1px solid #e9ecef;display:none">
-              <p style="font-size:0.84rem;color:#6c757d;margin:0 0 8px">Configurez et lancez un alignement ci-dessous. Le run_id sera mémorisé automatiquement.</p>
-              <div style="font-size:0.83rem;margin-bottom:8px">Dernier run : <code id="wf-run-id-display">(aucun)</code></div>
-              <button id="wf-goto-align" class="btn btn-primary" style="font-size:0.82rem">Aller à la section Alignement ↓</button>
+            <div class="wf-body" id="wf-body-0" style="padding:8px 12px;border-top:1px solid #e9ecef;display:none">
+              <div style="font-size:0.8rem;margin-bottom:6px">Dernier run : <code id="wf-run-id-display">(aucun)</code></div>
+              <button id="wf-goto-align" class="btn btn-primary" style="font-size:0.82rem">Ouvrir la zone Alignement ↓</button>
             </div>
           </div>
 
           <!-- Étape 2 : Qualité -->
           <div class="wf-step" id="wf-step-1" style="border-bottom:1px solid #e9ecef">
-            <div class="wf-step-header" id="wf-hdr-1" style="display:flex;align-items:center;gap:10px;padding:10px 16px;cursor:pointer;background:#f8f9fa;transition:background 0.12s">
+            <div class="wf-step-header" id="wf-hdr-1" style="display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;background:#f8f9fa;transition:background 0.12s">
               <span class="wf-num" id="wf-num-1" style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.85rem;font-weight:700;background:#e9ecef;color:#495057;flex-shrink:0">2</span>
-              <span style="font-weight:600;flex:1">Qualité</span>
-              <span class="wf-status" id="wf-st-1" style="font-size:0.78rem;color:#6c757d"></span>
+              <span style="font-weight:600;flex:1">Contrôle qualité</span>
+              <span class="wf-status" id="wf-st-1" style="font-size:0.74rem;color:#6c757d"></span>
               <span class="wf-toggle" id="wf-tog-1" style="font-size:0.8rem;color:#6c757d">▼</span>
             </div>
-            <div class="wf-body" id="wf-body-1" style="padding:12px 16px;border-top:1px solid #e9ecef;display:none">
-              <p style="font-size:0.84rem;color:#6c757d;margin:0 0 8px">Vérification de la couverture et des métriques qualité de l'alignement actif.</p>
+            <div class="wf-body" id="wf-body-1" style="padding:8px 12px;border-top:1px solid #e9ecef;display:none">
               <div id="wf-quality-result" style="margin-bottom:8px"></div>
               <button id="wf-quality-btn" class="btn btn-secondary" disabled style="font-size:0.82rem">Lancer la vérification qualité</button>
             </div>
@@ -210,42 +209,39 @@ export class ActionsScreen {
 
           <!-- Étape 3 : Collisions -->
           <div class="wf-step" id="wf-step-2" style="border-bottom:1px solid #e9ecef">
-            <div class="wf-step-header" id="wf-hdr-2" style="display:flex;align-items:center;gap:10px;padding:10px 16px;cursor:pointer;background:#f8f9fa;transition:background 0.12s">
+            <div class="wf-step-header" id="wf-hdr-2" style="display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;background:#f8f9fa;transition:background 0.12s">
               <span class="wf-num" id="wf-num-2" style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.85rem;font-weight:700;background:#e9ecef;color:#495057;flex-shrink:0">3</span>
               <span style="font-weight:600;flex:1">Collisions</span>
-              <span class="wf-status" id="wf-st-2" style="font-size:0.78rem;color:#6c757d"></span>
+              <span class="wf-status" id="wf-st-2" style="font-size:0.74rem;color:#6c757d"></span>
               <span class="wf-toggle" id="wf-tog-2" style="font-size:0.8rem;color:#6c757d">▼</span>
             </div>
-            <div class="wf-body" id="wf-body-2" style="padding:12px 16px;border-top:1px solid #e9ecef;display:none">
-              <p style="font-size:0.84rem;color:#6c757d;margin:0 0 8px">Détecter et résoudre les unités assignées à plusieurs cibles.</p>
+            <div class="wf-body" id="wf-body-2" style="padding:8px 12px;border-top:1px solid #e9ecef;display:none">
               <button id="wf-coll-btn" class="btn btn-secondary" disabled style="font-size:0.82rem">Ouvrir la section Collisions ↓</button>
             </div>
           </div>
 
           <!-- Étape 4 : Audit & Retarget -->
           <div class="wf-step" id="wf-step-3" style="border-bottom:1px solid #e9ecef">
-            <div class="wf-step-header" id="wf-hdr-3" style="display:flex;align-items:center;gap:10px;padding:10px 16px;cursor:pointer;background:#f8f9fa;transition:background 0.12s">
+            <div class="wf-step-header" id="wf-hdr-3" style="display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;background:#f8f9fa;transition:background 0.12s">
               <span class="wf-num" id="wf-num-3" style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.85rem;font-weight:700;background:#e9ecef;color:#495057;flex-shrink:0">4</span>
-              <span style="font-weight:600;flex:1">Audit &amp; Retarget</span>
-              <span class="wf-status" id="wf-st-3" style="font-size:0.78rem;color:#6c757d"></span>
+              <span style="font-weight:600;flex:1">Revue et correction</span>
+              <span class="wf-status" id="wf-st-3" style="font-size:0.74rem;color:#6c757d"></span>
               <span class="wf-toggle" id="wf-tog-3" style="font-size:0.8rem;color:#6c757d">▼</span>
             </div>
-            <div class="wf-body" id="wf-body-3" style="padding:12px 16px;border-top:1px solid #e9ecef;display:none">
-              <p style="font-size:0.84rem;color:#6c757d;margin:0 0 8px">Révision manuelle des liens, retarget des orphelins, include_explain toggle.</p>
-              <button id="wf-audit-btn" class="btn btn-secondary" disabled style="font-size:0.82rem">Ouvrir la section Audit ↓</button>
+            <div class="wf-body" id="wf-body-3" style="padding:8px 12px;border-top:1px solid #e9ecef;display:none">
+              <button id="wf-audit-btn" class="btn btn-secondary" disabled style="font-size:0.82rem">Ouvrir la zone Revue ↓</button>
             </div>
           </div>
 
           <!-- Étape 5 : Rapport -->
           <div class="wf-step" id="wf-step-4">
-            <div class="wf-step-header" id="wf-hdr-4" style="display:flex;align-items:center;gap:10px;padding:10px 16px;cursor:pointer;background:#f8f9fa;transition:background 0.12s">
+            <div class="wf-step-header" id="wf-hdr-4" style="display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;background:#f8f9fa;transition:background 0.12s">
               <span class="wf-num" id="wf-num-4" style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.85rem;font-weight:700;background:#e9ecef;color:#495057;flex-shrink:0">5</span>
-              <span style="font-weight:600;flex:1">Rapport</span>
-              <span class="wf-status" id="wf-st-4" style="font-size:0.78rem;color:#6c757d"></span>
+              <span style="font-weight:600;flex:1">Rapport final</span>
+              <span class="wf-status" id="wf-st-4" style="font-size:0.74rem;color:#6c757d"></span>
               <span class="wf-toggle" id="wf-tog-4" style="font-size:0.8rem;color:#6c757d">▼</span>
             </div>
-            <div class="wf-body" id="wf-body-4" style="padding:12px 16px;border-top:1px solid #e9ecef;display:none">
-              <p style="font-size:0.84rem;color:#6c757d;margin:0 0 8px">Exporter le rapport HTML ou JSONL du run actif.</p>
+            <div class="wf-body" id="wf-body-4" style="padding:8px 12px;border-top:1px solid #e9ecef;display:none">
               <button id="wf-report-btn" class="btn btn-secondary" disabled style="font-size:0.82rem">Ouvrir la section Rapport ↓</button>
             </div>
           </div>
@@ -270,71 +266,170 @@ export class ActionsScreen {
         <div id="act-doc-list" class="doc-list"><p class="empty-hint">Aucun corpus ouvert.</p></div>
       </section>
 
-      <!-- ═══ FEATURE 1: Curation Preview Diff ═══ -->
-      <section class="card" id="act-curate-card">
-        <h3>Curation <span class="badge-preview">avec prévisualisation</span></h3>
-        <p class="hint">Prévisualisation active: la comparaison se met à jour automatiquement dès qu’une option change.</p>
+      <section class="card actions-shortcuts-card">
+        <h3>Navigation rapide</h3>
+        <div class="btn-row actions-quicknav-row">
+          <button id="act-jump-curate" class="btn btn-secondary btn-sm">Aller à Curation</button>
+          <button id="act-jump-seg" class="btn btn-secondary btn-sm">Aller à Segmentation</button>
+          <button id="act-jump-align" class="btn btn-secondary btn-sm">Aller à Alignement</button>
+          <button id="act-jump-quality" class="btn btn-secondary btn-sm">Aller à Qualité</button>
+          <button id="act-jump-collisions" class="btn btn-secondary btn-sm">Aller à Collisions</button>
+          <button id="act-jump-report" class="btn btn-secondary btn-sm">Aller au Rapport runs</button>
+        </div>
+      </section>
 
-        <div class="form-row">
-          <label>Document :
-            <select id="act-curate-doc"><option value="">Tous</option></select>
-          </label>
-          <div style="display:flex;align-items:flex-end">
-            <span class="hint" style="margin:0">Les options cochées alimentent la preview en continu.</span>
+      <!-- ═══ FEATURE 1: Curation Preview Diff — vNext 3-column workspace ═══ -->
+      <section class="card curate-workspace-card" id="act-curate-card">
+
+        <!-- Card header -->
+        <div class="curate-card-head">
+          <div>
+            <h2>Curation <span class="badge-preview">avec prévisualisation</span></h2>
+            <p>La preview centrale se met à jour dès qu’une option change.</p>
           </div>
+          <span class="curate-pill" id="act-curate-mode-pill">Mode édition</span>
         </div>
 
-        <div class="curation-quick-rules" style="margin-top:0.55rem">
-          <label class="curation-rule-pill">
-            <input id="act-rule-spaces" type="checkbox" checked />
-            NBSP/NNBSP + espaces multiples
-          </label>
-          <label class="curation-rule-pill">
-            <input id="act-rule-quotes" type="checkbox" />
-            Apostrophes et guillemets
-          </label>
-          <label class="curation-rule-pill">
-            <input id="act-rule-punctuation" type="checkbox" />
-            Ponctuation fine
-          </label>
-        </div>
+        <!-- 3-column workspace -->
+        <div class="curate-workspace">
 
-        <details id="act-curate-advanced" class="curation-advanced" style="margin-top:0.65rem">
-          <summary>Retouches avancées (chercher/remplacer)</summary>
-          <div class="form-row" style="margin-top:0.55rem">
-            <label style="min-width:220px">Chercher (regex)
-              <input id="act-curate-quick-pattern" type="text" placeholder="ex: \\u2019" />
-            </label>
-            <label style="min-width:220px">Remplacer par
-              <input id="act-curate-quick-replacement" type="text" placeholder="ex: '" />
-            </label>
-            <label style="max-width:110px">Flags
-              <input id="act-curate-quick-flags" type="text" value="g" maxlength="6" />
-            </label>
-            <div style="align-self:flex-end">
-              <button id="act-curate-add-rule-btn" class="btn btn-secondary btn-sm">Ajouter la règle</button>
+          <!-- ── LEFT: Params ───────────────────────────────────────────── -->
+          <div class="curate-col curate-col-left">
+
+            <!-- Params card -->
+            <div class="curate-inner-card">
+              <div class="curate-inner-head">
+                <h3>Paramètres curation</h3>
+                <span id="act-curate-doc-label" style="font-size:12px;color:var(--prep-muted,#4f5d6d)"></span>
+              </div>
+              <div class="curate-inner-body">
+                <label style="font-size:0.85rem;display:flex;flex-direction:column;gap:0.2rem;margin-bottom:0.5rem">
+                  Document :
+                  <select id="act-curate-doc"><option value="">Tous les documents</option></select>
+                </label>
+                <div class="curate-chip-row curation-quick-rules">
+                  <label class="curation-rule-pill">
+                    <input id="act-rule-spaces" type="checkbox" checked />
+                    Espaces incohérents
+                  </label>
+                  <label class="curation-rule-pill">
+                    <input id="act-rule-quotes" type="checkbox" />
+                    Guillemets typographiques
+                  </label>
+                  <label class="curation-rule-pill">
+                    <input id="act-rule-punctuation" type="checkbox" />
+                    Ponctuation fine
+                  </label>
+                </div>
+                <div class="curate-btns">
+                  <button id="act-preview-btn" class="btn btn-secondary" disabled>Prévisualiser</button>
+                  <button id="act-curate-btn" class="btn btn-warning" disabled>Appliquer</button>
+                </div>
+              </div>
             </div>
-          </div>
-          <label>Règles JSON avancées
-            <textarea id="act-curate-rules" rows="4" placeholder='[{"pattern":"foo","replacement":"bar","flags":"gi"}]'></textarea>
-          </label>
-          <p class="hint" style="margin:0">Ces règles sont ajoutées après les options rapides cochées.</p>
-        </details>
 
-        <div class="btn-row" style="margin-top:0.8rem">
-          <button id="act-preview-btn" class="btn btn-secondary" disabled>Recalculer maintenant</button>
-          <button id="act-curate-btn" class="btn btn-warning" disabled>Appliquer</button>
-        </div>
+            <!-- Advanced retouches -->
+            <div class="curate-inner-card">
+              <details id="act-curate-advanced" class="curation-advanced">
+                <summary class="curate-inner-head" style="cursor:pointer;list-style:none;display:flex">
+                  <h3 style="flex:1">Retouches avancées</h3>
+                  <span style="font-size:11px;color:var(--prep-muted,#4f5d6d)">▾</span>
+                </summary>
+                <div class="curate-inner-body">
+                  <div class="form-row" style="margin-top:0.2rem">
+                    <label style="min-width:160px">Chercher (regex)
+                      <input id="act-curate-quick-pattern" type="text" placeholder="ex: \\u2019" />
+                    </label>
+                    <label style="min-width:160px">Remplacer
+                      <input id="act-curate-quick-replacement" type="text" placeholder="ex: ‘" />
+                    </label>
+                    <label style="max-width:80px">Flags
+                      <input id="act-curate-quick-flags" type="text" value="g" maxlength="6" />
+                    </label>
+                    <div style="align-self:flex-end">
+                      <button id="act-curate-add-rule-btn" class="btn btn-secondary btn-sm">+ Ajouter</button>
+                    </div>
+                  </div>
+                  <label style="font-size:0.82rem;display:flex;flex-direction:column;gap:0.2rem">Règles JSON
+                    <textarea id="act-curate-rules" rows="3" placeholder=’[{"pattern":"foo","replacement":"bar","flags":"gi"}]’></textarea>
+                  </label>
+                  <p class="hint" style="margin:0.2rem 0 0">Ajoutées après les règles rapides.</p>
+                </div>
+              </details>
+            </div>
 
-        <!-- Preview panel -->
-        <div id="act-preview-panel" style="display:none; margin-top:0.75rem">
-          <div id="act-preview-stats" class="preview-stats"></div>
-          <div id="act-diff-list" class="diff-list"></div>
-          <div class="btn-row" style="margin-top:0.5rem">
-            <button id="act-apply-after-preview-btn" class="btn btn-warning btn-sm">Appliquer maintenant</button>
-            <button id="act-reindex-after-curate-btn" class="btn btn-secondary btn-sm" style="display:none">Re-indexer</button>
-          </div>
-        </div>
+          </div><!-- /curate-col-left -->
+
+          <!-- ── CENTER: Preview synchronisée ───────────────────────────── -->
+          <div class="curate-col curate-col-center">
+            <div class="curate-inner-card curate-preview-card" id="act-preview-panel">
+
+              <div class="curate-inner-head">
+                <h3>Preview synchronisée</h3>
+                <span id="act-preview-info" style="font-size:12px;color:var(--prep-muted,#4f5d6d)">—</span>
+              </div>
+
+              <div class="curate-preview-controls">
+                <span class="curation-rule-pill" style="border-color:#9fd3cc;background:#e8f5f3;color:#0c4a46;font-size:11px;padding:2px 8px">Brut</span>
+                <span class="curation-rule-pill" style="border-color:#9fd3cc;background:#e8f5f3;color:#0c4a46;font-size:11px;padding:2px 8px">Curé</span>
+                <span class="curation-rule-pill" style="border-color:#9fd3cc;background:#e8f5f3;color:#0c4a46;font-size:11px;padding:2px 8px">Diff surlignée</span>
+              </div>
+
+              <div class="curate-preview-body">
+                <!-- Left pane: source text -->
+                <section class="curate-pane">
+                  <div class="curate-pane-head">Texte brut (source)</div>
+                  <div id="act-preview-raw" class="curate-doc-scroll" aria-label="Texte brut">
+                    <p class="empty-hint">Sélectionnez un document et lancez une prévisualisation.</p>
+                  </div>
+                </section>
+
+                <!-- Right pane: curated diff -->
+                <section class="curate-pane">
+                  <div class="curate-pane-head">Texte curé (diff)</div>
+                  <div id="act-diff-list" class="diff-list curate-doc-scroll" aria-label="Texte curé avec différences">
+                    <p class="empty-hint">Aucune prévisualisation.</p>
+                  </div>
+                </section>
+
+                <!-- Minimap -->
+                <aside id="act-curate-minimap" class="curate-minimap" aria-label="Minimap des changements">
+                  <div class="curate-mm"></div>
+                  <div class="curate-mm"></div>
+                  <div class="curate-mm"></div>
+                </aside>
+              </div>
+
+              <!-- Footer: stats + apply -->
+              <div class="curate-preview-footer">
+                <div id="act-preview-stats" class="preview-stats"></div>
+                <div class="btn-row" style="margin-top:0.35rem">
+                  <button id="act-apply-after-preview-btn" class="btn btn-warning btn-sm" style="display:none">Appliquer maintenant</button>
+                  <button id="act-reindex-after-curate-btn" class="btn btn-secondary btn-sm" style="display:none">Re-indexer</button>
+                </div>
+              </div>
+
+            </div>
+          </div><!-- /curate-col-center -->
+
+          <!-- ── RIGHT: Diagnostics + Review log ────────────────────────── -->
+          <div class="curate-col curate-col-right">
+
+            <div class="curate-inner-card">
+              <div class="curate-inner-head">
+                <h3>Diagnostics</h3>
+                <span style="font-size:12px;color:var(--prep-muted,#4f5d6d)">live</span>
+              </div>
+              <div class="curate-inner-body">
+                <div id="act-curate-diag" class="curate-diag-list">
+                  <p class="empty-hint">Lancez une prévisualisation pour voir les statistiques.</p>
+                </div>
+              </div>
+            </div>
+
+          </div><!-- /curate-col-right -->
+
+        </div><!-- /curate-workspace -->
       </section>
 
       <!-- Segmentation -->
@@ -381,7 +476,7 @@ export class ActionsScreen {
       </section>
 
       <!-- ═══ FEATURE 2: Align + Audit UI ═══ -->
-      <section class="card">
+      <section class="card" id="act-align-card">
         <h3>Alignement <span class="badge-preview">run + correction</span></h3>
         <div class="align-layout">
           <div class="align-main">
@@ -516,10 +611,13 @@ export class ActionsScreen {
             </div>
           </aside>
         </div>
+        <div class="btn-row align-finalize-row">
+          <button id="act-goto-report" class="btn btn-secondary btn-sm">Terminer: ouvrir Rapport runs ↓</button>
+        </div>
       </section>
 
       <!-- ═══ FEATURE 3: Align Quality Metrics ═══ -->
-      <section class="card" data-collapsible="true" data-collapsed-default="true">
+      <section class="card" id="act-quality-card" data-collapsible="true" data-collapsed-default="true">
         <h3>Qualité alignement <span class="badge-preview">métriques</span></h3>
         <p class="hint">Calculer les métriques de couverture et d'orphelins pour une paire pivot↔cible.</p>
         <div class="form-row">
@@ -579,7 +677,7 @@ export class ActionsScreen {
       </section>
 
       <!-- ═══ Rapport de runs ═══ -->
-      <section class="card" data-collapsible="true" data-collapsed-default="true">
+      <section class="card" id="act-report-card" data-collapsible="true" data-collapsed-default="true">
         <h3>Rapport de runs <span class="badge-preview">export</span></h3>
         <p class="hint">Exporter l'historique des runs (import, alignement, curation…) en HTML ou JSONL.</p>
         <div class="form-row">
@@ -605,7 +703,7 @@ export class ActionsScreen {
         <div class="busy-spinner">⏳ Opération en cours…</div>
       </div>
 
-      <section class="card">
+      <section class="card" data-collapsible="true" data-collapsed-default="true">
         <h3>Journal</h3>
         <div id="act-log" class="log-pane"></div>
       </section>
@@ -618,6 +716,12 @@ export class ActionsScreen {
 
     // Wire events
     root.querySelector("#act-reload-docs")!.addEventListener("click", () => this._loadDocs());
+    root.querySelector("#act-jump-curate")?.addEventListener("click", () => this._scrollToSection(root, "#act-curate-card"));
+    root.querySelector("#act-jump-seg")?.addEventListener("click", () => this._scrollToSection(root, "#act-seg-card"));
+    root.querySelector("#act-jump-align")?.addEventListener("click", () => this._scrollToSection(root, "#act-align-card"));
+    root.querySelector("#act-jump-quality")?.addEventListener("click", () => this._scrollToSection(root, "#act-quality-card"));
+    root.querySelector("#act-jump-collisions")?.addEventListener("click", () => this._scrollToSection(root, "#act-collision-card"));
+    root.querySelector("#act-jump-report")?.addEventListener("click", () => this._scrollToSection(root, "#act-report-card"));
 
     // Curation quick/advanced rules
     ["#act-rule-spaces", "#act-rule-quotes", "#act-rule-punctuation"].forEach((sel) => {
@@ -755,6 +859,7 @@ export class ActionsScreen {
 
     // Run report export
     root.querySelector("#act-report-btn")!.addEventListener("click", () => void this._runExportReport());
+    root.querySelector("#act-goto-report")?.addEventListener("click", () => this._scrollToSection(root, "#act-report-card"));
 
     // ── Workflow ──────────────────────────────────────────────────
     this._wfRoot = root;
@@ -855,6 +960,12 @@ export class ActionsScreen {
       this._lastErrorMsg = null;
     }
     this._refreshRuntimeState();
+  }
+
+  private _scrollToSection(root: HTMLElement, selector: string): void {
+    const target = root.querySelector<HTMLElement>(selector);
+    if (!target) return;
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   private _setBusy(v: boolean): void {
@@ -1208,14 +1319,14 @@ export class ActionsScreen {
     }
 
     this._setBusy(true);
-    const panel = document.querySelector("#act-preview-panel") as HTMLElement;
-    panel.style.display = "none";
+    // vNext: panel is always visible; update info label while loading
+    const infoEl = document.querySelector("#act-preview-info");
+    if (infoEl) infoEl.textContent = "Chargement…";
 
     try {
       const res = await curatePreview(this._conn, { doc_id: docId, rules, limit_examples: 10 });
-      panel.style.display = "";
 
-      // Stats banner
+      // Stats banner (footer)
       const statsEl = document.querySelector("#act-preview-stats")!;
       const changed = res.stats.units_changed;
       const total = res.stats.units_total;
@@ -1225,8 +1336,17 @@ export class ActionsScreen {
         ? `<span class="stat-ok">✓ Aucune modification prévue (${total} unités analysées).</span>`
         : `<span class="stat-warn">⚠ ${changed}/${total} unité(s) modifiée(s), ${reps} remplacement(s).</span>`;
 
-      // Diff table
+      // Info label in preview card header
+      if (infoEl) infoEl.textContent = `${total} unités · ${changed} modifiée(s)`;
+
+      // Diff table in center right pane
       this._renderDiffList(res.examples);
+
+      // Update diagnostics panel (right column)
+      this._renderCurateDiag(changed, total, reps);
+
+      // Minimap
+      this._renderCurateMinimap(res.examples.length, total);
 
       // Show / hide apply button
       const applyBtn = document.querySelector("#act-apply-after-preview-btn") as HTMLButtonElement;
@@ -1236,12 +1356,43 @@ export class ActionsScreen {
       this._log(`Prévisualisation : ${changed}/${total} unités → ${reps} remplacements.`);
     } catch (err) {
       this._hasPendingPreview = false;
+      if (infoEl) infoEl.textContent = "Erreur";
       if (!silent) {
         this._log(`✗ Prévisualisation : ${err instanceof SidecarError ? err.message : String(err)}`, true);
       }
     }
     this._setBusy(false);
     this._refreshRuntimeState();
+  }
+
+  private _renderCurateDiag(changed: number, total: number, replacements: number): void {
+    const diagEl = document.querySelector("#act-curate-diag");
+    if (!diagEl) return;
+    if (changed === 0) {
+      diagEl.innerHTML = `<div class="curate-diag"><strong>✓ Aucune modification</strong>${total} unités analysées, corpus propre.</div>`;
+      return;
+    }
+    diagEl.innerHTML = `
+      <div class="curate-diag warn">
+        <strong>${changed} modification(s) à valider</strong>
+        ${replacements} remplacement(s) au total sur ${total} unités.
+      </div>
+      <div class="curate-diag">
+        <strong>Impact segmentation estimé</strong>
+        Vérifiez la preview avant d'appliquer.
+      </div>
+    `;
+  }
+
+  private _renderCurateMinimap(changed: number, total: number): void {
+    const mm = document.querySelector("#act-curate-minimap");
+    if (!mm) return;
+    const bars = 12;
+    const density = total > 0 ? Math.min(changed / total, 1) : 0;
+    const changedBars = Math.round(density * bars);
+    mm.innerHTML = Array.from({ length: bars }, (_, i) =>
+      `<div class="curate-mm${i < changedBars ? " changed" : ""}"></div>`
+    ).join("");
   }
 
   private _renderDiffList(examples: CuratePreviewExample[]): void {
@@ -1290,7 +1441,13 @@ export class ActionsScreen {
     try {
       const job = await enqueueJob(this._conn, "curate", params);
       this._log(`Job curation soumis (${job.job_id.slice(0, 8)}…)`);
-      (document.querySelector("#act-preview-panel") as HTMLElement).style.display = "none";
+      // vNext: panel is always visible — reset content to "applied" state
+      const diffEl = document.querySelector("#act-diff-list");
+      if (diffEl) diffEl.innerHTML = `<p class="empty-hint">Curation en cours…</p>`;
+      const statsEl = document.querySelector("#act-preview-stats");
+      if (statsEl) statsEl.innerHTML = "";
+      const infoEl2 = document.querySelector("#act-preview-info");
+      if (infoEl2) infoEl2.textContent = "Job soumis…";
       this._jobCenter?.trackJob(job.job_id, `Curation ${label}`, (done) => {
         if (done.status === "done") {
           const r = done.result as { docs_curated?: number; units_modified?: number; fts_stale?: boolean } | undefined;
@@ -2433,6 +2590,7 @@ export class ActionsScreen {
     }
     this._wfStep = idx;
     try { localStorage.setItem(ActionsScreen.LS_WF_STEP, String(idx)); } catch { /* ignore */ }
+    this._wfSyncCompactProgress(root);
   }
 
   private _wfSyncRunId(): void {
@@ -2448,6 +2606,15 @@ export class ActionsScreen {
     // Sync run_id in report section
     const reportInput = root.querySelector<HTMLInputElement>("#act-report-run-id");
     if (reportInput && this._alignRunId) reportInput.value = this._alignRunId;
+    this._wfSyncCompactProgress(root);
+  }
+
+  private _wfSyncCompactProgress(root: HTMLElement): void {
+    for (let i = 0; i < 5; i++) {
+      const step = root.querySelector<HTMLElement>(`#wf-step-${i}`);
+      if (!step) continue;
+      step.style.opacity = i < this._wfStep ? "0.88" : "1";
+    }
   }
 
   private _wfEnableButtons(on: boolean): void {
