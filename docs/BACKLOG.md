@@ -1,6 +1,6 @@
 # Backlog — multicorpus_engine
 
-Last updated: 2026-03-08 (P4 — DB switch banner + Prep CSS embedded registry)
+Last updated: 2026-03-08 (P5 — DB remount indicator + CSS feasibility analysis)
 
 ## Priority backlog (realistic, post-implementation)
 
@@ -87,11 +87,16 @@ Last updated: 2026-03-08 (P4 — DB switch banner + Prep CSS embedded registry)
   - `tauri-prep/src/app.ts` : export `PREP_CSS` + `PREP_STYLE_ID`.
   - `tauri-shell/src/modules/constituerModule.ts` : injection CSS via `ensureStyleTag` avant mount (P4-1 embedded mode).
 
-## P5 — Placeholders (post-P4)
+- **P5 — DB remount indicator + CSS feasibility** (2026-03-08):
+  - `tauri-shell/src/shell.ts` : `_dbBadgeText()` → badge `"DB: nom ⚠"` quand `_pendingDbRemount = true` ; `_updateDbBadge()` → classe `.shell-db-badge--pending` (ambre) + tooltip ; CSS `.shell-db-badge--pending` dans `SHELL_CSS`.
+  - P5-2 (CSS `<link>` statique) : différé P6 — les 4 CSS files sont des compléments, pas des remplacements de `PREP_CSS`.
+  - Analyse P5-1 : comportement apply-on-navigate déjà correct (chaque `_setMode` remonte systématiquement).
+
+## P6 — Placeholders (post-P5)
 
 | Priority | Item | Rationale | Status |
 |----------|------|-----------|--------|
-| P5 | **Shell multi-fenêtre** — `tauri::WebviewWindowBuilder` | Ouvrir Explorer et Constituer en parallèle dans des fenêtres séparées | todo |
-| P5 | **CSS build asset pour Prep** — link statique au lieu d'inline | Vite injecte déjà les 4 CSS files en standalone ; en embedded mode un `<link>` vers un asset buildé serait plus propre que la constante JS inline | todo |
-| P5 | **`_pendingDbRemount` : apply-on-navigate** — lorsque le flag est `true` et que l'user navigue, le module est rechargé avec la nouvelle DB sans exiger de clic "Rafraîchir" | Améliore la cohérence entre navigation tab et switch DB | todo |
-| P5 | **Deprecation tauri-app + tauri-prep** standalone | tauri-shell les supplante ; maintien pour standalone uniquement jusqu'à V2.0 | todo |
+| P6 | **CSS extraction complète de `PREP_CSS`** | Extraire les ~67 KB de CSS inline de `app.ts` vers des fichiers `.css` dédiés (plan : 1 fichier par écran + 1 fichier layout) ; `constituerModule.ts` importerait les fichiers CSS via Vite, sans injection inline | todo |
+| P6 | **Shell multi-fenêtre** — `tauri::WebviewWindowBuilder` | Ouvrir Explorer et Constituer en parallèle dans des fenêtres séparées | todo |
+| P6 | **Deprecation tauri-app + tauri-prep** standalone | tauri-shell les supplante ; maintien pour standalone uniquement jusqu'à V2.0 | todo |
+| P6 | **Hot-swap DB sidecar** — éviter le redémarrage sidecar lors d'un switch DB | Actuellement : `_initDb` redémarre le sidecar ; un futur mécanisme de rechargement à chaud éviterait l'interruption | todo |

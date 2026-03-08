@@ -9,6 +9,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+- **P5-1 — Shell: indicateur visuel DB remount en attente** (`tauri-shell`)
+  - Badge DB affiche `"DB: nom ⚠"` (couleur ambre `#fcd34d`) lorsqu'un remount est différé
+    (banner "Plus tard" ou "Rafraîchir maintenant" pas encore cliqué).
+  - Tooltip sur le badge : *"DB modifiée — cliquez l'onglet actif ou Rafraîchir pour appliquer"*.
+  - `_updateDbBadge()` mis à jour pour gérer la classe `.shell-db-badge--pending` et le tooltip.
+  - Appels `_updateDbBadge()` aux 3 sites de mutation de `_pendingDbRemount` :
+    dans `_switchDb` (set), `_setMode` (clear), bouton "✕ Ignorer" (clear).
+
 - **P4-2 — Shell: DB switch avec banner de confirmation + remount différé** (`tauri-shell`)
   - `_switchDb` : lorsqu'un module non-home est monté, le remount n'est plus immédiat.
     Un banner bleu `#shell-db-change-banner` propose "Rafraîchir maintenant" / "Plus tard" / "✕".

@@ -140,6 +140,57 @@ http://localhost:1422/?mode=constituer
 
 Hash takes precedence over `?mode=`. Both override `localStorage.lastMode`.
 
+## P5 — DB remount indicator + CSS feasibility analysis (2026-03-08)
+
+### P5-1 — apply-on-navigate analysis + badge indicator
+
+**Analyse comportement actuel :** `_setMode` dispose et remonte **systématiquement** le module actif, quelle que soit la transition (même mode → même mode ou mode différent). En conséquence :
+- L'user clique le tab actif après "Plus tard" → `_setMode(currentMode)` → remount avec nouvelle DB ✓
+- L'user navigue vers un autre mode → remount naturel ✓
+- **Verdict : aucun changement de flux nécessaire.** `_pendingDbRemount` est un état, non un guard de contrôle.
+
+**Amélioration :** ajout d'un indicateur visuel persistant quand le remount est différé et banner fermé ("Plus tard").
+
+**Fichier :** `tauri-shell/src/shell.ts`
+
+- `_dbBadgeText()` : retourne `"DB: nom ⚠"` si `_pendingDbRemount === true`.
+- `_updateDbBadge()` : ajoute/retire la classe `.shell-db-badge--pending` (couleur ambre `#fcd34d`) et le `title` tooltip.
+- Appels `_updateDbBadge()` ajoutés aux 3 sites de mutation de `_pendingDbRemount` :
+  1. Après `_pendingDbRemount = true` dans `_switchDb` (deferred path)
+  2. Après `_pendingDbRemount = false` dans `_setMode`
+  3. Après `_pendingDbRemount = false` dans le bouton "✕ Ignorer"
+- CSS `.shell-db-badge--pending { color: #fcd34d; }` ajouté dans `SHELL_CSS`.
+
+### P5-2 — CSS `<link>` statique pour Prep embedded (différé P6)
+
+**Analyse de faisabilité :**
+
+Les 4 fichiers CSS (`tokens.css`, `base.css`, `components.css`, `prep-vnext.css`) ne remplacent **pas** `PREP_CSS`. Leurs propres commentaires le confirment :
+
+| Fichier | Commentaire |
+|---------|-------------|
+| `tokens.css` | *"Supplements the CSS custom properties injected by app.ts"* |
+| `base.css` | *"Only adds what isn't already in app.ts CSS constant"* |
+| `components.css` | *"Classes defined here that also appear in app.ts CSS constant are harmless duplicates"* |
+
+`PREP_CSS` (~67 KB) est ~3× plus grand que la somme des 4 fichiers (~22 KB non-compressés). Importer les 4 fichiers en embedded mode serait **additif** (CSS en double) sans réduction de l'inline CSS. Une implémentation propre nécessite d'extraire la totalité du CSS applicatif de `app.ts` vers des fichiers `.css` dédiés — refactoring significatif réservé à P6.
+
+**Décision :** différé. Voir P6 placeholder dans `BACKLOG.md`.
+
+### Comment tester (P5-1)
+
+```bash
+npm --prefix tauri-shell run tauri dev
+
+# 1. Ouvrir une DB → Constituer
+# 2. Changer DB → banner bleu → cliquer "Plus tard"
+# 3. Observer badge DB → "DB: nom.db ⚠" en couleur ambre
+# 4. Survoler le badge → tooltip "DB modifiée — cliquez l'onglet actif..."
+# 5. Cliquer l'onglet "Constituer" (actif) → remount + ⚠ disparaît
+# — OU —
+# 5b. Naviguer vers Explorer → revenir → ⚠ disparu, module frais avec nouvelle DB
+```
+
 ## P4 — DB switch banner + Prep CSS embedded registry (2026-03-08)
 
 ### P4-2 — DB switch banner + deferred remount
