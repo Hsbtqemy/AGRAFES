@@ -777,10 +777,42 @@ mark.diff-mark { background: #b7f5c8; color: #14532d; border-radius: 2px; paddin
 .doc-scroll p, .curate-doc-scroll p { margin: 0 0 8px; }
 
 /* Minimap */
+/* Bucket minimap (curation — grid layout) */
 .minimap, .curate-minimap { border: 1px solid var(--prep-line,#dde1e8); border-radius: 8px; background: #fafbfc; display: grid; align-content: start; gap: 3px; padding: 6px 4px; min-height: 200px; }
 .mm, .curate-mm { height: 10px; border-radius: 2px; background: #d6dde8; }
 .mm.changed, .curate-mm.changed { background: var(--prep-warn,#e6a817); }
 .mm.current, .curate-mm.current { background: var(--prep-accent,#0f766e); }
+/* Track minimap (segmentation vnext — position layout) */
+.minimap.minimap-track {
+  display: block;
+  position: relative;
+  overflow: hidden;
+  padding: 0;
+  min-height: 200px;
+}
+.mm-track {
+  position: absolute;
+  inset: 6px;
+  border-radius: 6px;
+  background: linear-gradient(to bottom, #edf2f8, #f7f9fc);
+}
+.mm-zone {
+  position: absolute;
+  left: 8px; right: 8px;
+  height: 18%; top: 20%;
+  border: 1px solid var(--prep-blue-line, #b7c8df);
+  border-radius: 4px;
+  background: rgba(234,241,251,0.75);
+}
+.mm-mark {
+  position: absolute;
+  left: 10px; right: 10px;
+  height: 3px;
+  border-radius: 2px;
+}
+.mm-mark.warn { background: var(--prep-warn, #e6a817); }
+.mm-mark.seg  { background: var(--prep-accent, #0f766e); }
+.mm-mark.hit  { background: var(--prep-blue, #1e4a80); }
 
 /* Preview footer / foot */
 .preview-foot, .curate-preview-footer { padding: 8px 12px; border-top: 1px solid var(--prep-line,#dde1e8); background: #f8f9fa; flex-shrink: 0; }

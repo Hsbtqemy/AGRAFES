@@ -724,7 +724,7 @@ export class ActionsScreen {
                       <p class="empty-hint">S&#233;lectionnez un document VO.</p>
                     </div>
                   </section>
-                  <aside class="minimap" aria-label="Minimap" id="act-seg-tr-minimap">
+                  <aside class="minimap minimap-track" aria-label="Minimap" id="act-seg-tr-minimap">
                     <div class="mm"></div>
                     <div class="mm"></div>
                     <div class="mm"></div>
@@ -850,7 +850,7 @@ export class ActionsScreen {
                       <p class="live-note">Lancez une segmentation pour voir les r&#233;sultats ici.</p>
                     </div>
                   </section>
-                  <aside class="minimap" aria-label="Minimap segments" id="act-seg-units-minimap"></aside>
+                  <aside class="minimap minimap-track" aria-label="Minimap segments" id="act-seg-units-minimap"></aside>
                 </div>
                 <div class="preview-foot">
                   <div class="preview-stats" id="act-seg-units-foot-stats"></div>
@@ -964,7 +964,7 @@ export class ActionsScreen {
                       <p class="empty-hint">Disponible apr&#232;s segmentation.</p>
                     </div>
                   </section>
-                  <aside class="minimap" aria-label="Minimap" id="act-seg-lt-minimap">
+                  <aside class="minimap minimap-track" aria-label="Minimap" id="act-seg-lt-minimap">
                     <div class="mm"></div>
                     <div class="mm changed"></div>
                     <div class="mm"></div>
@@ -1765,18 +1765,30 @@ export class ActionsScreen {
   }
 
   /** Fills a minimap element with bucket bars. Changed buckets mark warning density. */
-  private _renderMinimap(mmEl: HTMLElement, totalUnits: number, warnCount: number, bucketCount = 12): void {
-    if (totalUnits === 0) { mmEl.innerHTML = ""; return; }
-    const clampedWarn = Math.min(warnCount, totalUnits);
-    let html = "";
-    for (let i = 0; i < bucketCount; i++) {
-      // Bresenham-like distribution: bucket i is "changed" if a warning falls in it
-      const warnsNow = Math.floor(clampedWarn * (i + 1) / bucketCount);
-      const warnsBefore = Math.floor(clampedWarn * i / bucketCount);
-      const isWarn = warnsNow > warnsBefore;
-      html += `<div class="mm${isWarn ? " changed" : ""}"></div>`;
-    }
-    mmEl.innerHTML = html;
+  /** Render vnext-style minimap: track + zone + marks (warn/seg).
+   *  Used by segmentation minimaps (.minimap-track elements).
+   *  For curation, _renderCurateMinimap uses bucket style independently. */
+  private _renderMinimap(mmEl: HTMLElement, totalUnits: number, warnCount: number): void {
+    // Base structure always visible (even with 0 units)
+    const MAX_SEG_MARKS = 5;
+    const MAX_WARN_MARKS = 4;
+
+    // Compute segment mark positions (evenly distributed)
+    const segCount = Math.min(Math.max(totalUnits > 0 ? Math.ceil(totalUnits / 10) : 0, 1), MAX_SEG_MARKS);
+    const segMarks = totalUnits > 0
+      ? Array.from({ length: segCount }, (_, i) => Math.round(10 + (i / (segCount - 1 || 1)) * 70))
+      : [];
+
+    // Compute warning mark positions (distributed across 15%–85%)
+    const warnCount2 = Math.min(warnCount, MAX_WARN_MARKS);
+    const warnMarks = warnCount2 > 0
+      ? Array.from({ length: warnCount2 }, (_, i) => Math.round(15 + (i / (warnCount2 - 1 || 1)) * 70))
+      : [];
+
+    const segMarkHtml = segMarks.map(top => `<div class="mm-mark seg" style="top:${top}%"></div>`).join("");
+    const warnMarkHtml = warnMarks.map(top => `<div class="mm-mark warn" style="top:${top}%"></div>`).join("");
+
+    mmEl.innerHTML = `<div class="mm-track"></div><div class="mm-zone"></div>${segMarkHtml}${warnMarkHtml}`;
   }
 
   private _updateTraductionPreview(): void {
