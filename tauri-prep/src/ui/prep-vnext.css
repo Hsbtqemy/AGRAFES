@@ -9,6 +9,29 @@
  */
 
 /* ════════════════════════════════════════════════════════════════════════════
+   SKIP LINK (A11y)
+   ════════════════════════════════════════════════════════════════════════════ */
+
+.prep-skip-link {
+  position: absolute;
+  top: -40px;
+  left: 8px;
+  background: var(--prep-blue, #1e4a80);
+  color: #fff;
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  z-index: 9999;
+  transition: top 0.12s;
+}
+
+.prep-skip-link:focus {
+  top: 8px;
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
    SIDEBAR SHELL LAYOUT
    ════════════════════════════════════════════════════════════════════════════ */
 
@@ -615,7 +638,7 @@
    RESPONSIVE
    ════════════════════════════════════════════════════════════════════════════ */
 
-@media (max-width: 1320px) {
+@media (max-width: 1100px) {
   .seg-workspace {
     grid-template-columns: 1fr;
   }
@@ -625,9 +648,27 @@
     border-bottom: 1px solid var(--prep-line, #dde1e8);
   }
 
+  .seg-col:last-child {
+    border-bottom: 0;
+  }
+
   .seg-preview-card {
     position: static;
     max-height: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .seg-stats-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .seg-inner-body {
+    padding: 8px;
+  }
+
+  .seg-preview-body {
+    padding: 8px;
   }
 }
 

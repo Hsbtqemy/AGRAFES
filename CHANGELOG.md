@@ -9,6 +9,37 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- **tauri-prep vNext UI Pilot — P1 (Extension)**
+  - Pane brut dans preview curation : `_renderRawPane()` remplit `#act-preview-raw` avec `ex.before`
+    depuis `curatePreview()`; reset sur apply réussi.
+  - Segmentation 2-col sticky : section restructurée en `.seg-workspace` (360 px gauche · 1 fr droite);
+    contrôles + batch overview à gauche, `.seg-preview-card` sticky à droite;
+    `_renderSegPreview()` popule `.seg-stats-grid` après fin du job.
+  - Segmentation VO batch overview : `_renderSegBatchOverview()` construit le tableau multilingue
+    depuis `_docs`; badges `workflow_status` par document; appelé depuis `_loadDocs()`.
+  - Sidebar nav active : `IntersectionObserver` sur les 3 cartes section (curation / segmentation /
+    alignement); `data-nav` sur les liens de l'arbre; `_updateNavActive()` active le lien visible
+    dont `rect.top` est minimal.
+  - `app.ts` nav tree : `treeItems` étendu à `[string, string, string]` (label + icon + navKey);
+    CSS `.prep-nav-tree-link.active`.
+
+- **tauri-prep vNext UI Pilot — P2 (Polish)**
+  - **P2-A CSS/tokens** : `tokens.css` enrichi (typographie `--prep-fs-*`, espacement `--prep-sp-*`,
+    statut `--prep-ok-soft/line`, `--prep-loading-pulse`); `components.css` remplace les tailles
+    hardcodées par tokens, ajoute transitions + `:focus-visible` sur `.chip-v`, variant `.diag-v.ok`,
+    classes `.loading-hint`, `.status-counter-row`, `.status-counter`; `prep-vnext.css` synchronisé.
+  - **P2-B Responsive** : breakpoint workspace seg `1320px` → `1100px`; règle `@media (max-width: 900px)`
+    réduit les paddings internes. JS constant `app.ts` synchronisé.
+  - **P2-C États** : état chargement `.loading-hint` dans `#act-preview-raw` + `#act-seg-preview-body`
+    avant awaits/soumission; état erreur `.diag-v.warn` dans le catch de `_runPreview()`;
+    compteurs de statut colorés dans le header `<summary>` du batch overview.
+  - **P2-D Accessibilité** : skip link `#prep-main-content`; `<aside>` → `<nav aria-label>`; topbar
+    `role="banner"`; `role="main"` sur zone principale; `aria-current="page"` géré par `_switchTab()`;
+    `aria-expanded` + `aria-controls` sur le bouton collapse; `aria-current="true"` géré par
+    `_updateNavActive()`.
+  - **P2-E IO lifecycle** : `_navObserver` + `_visibleSections` champs de classe; disconnect +
+    clear en début de `render()` et dans `setConn(null)`; tie-break par `rect.top` minimal.
+
 - Migration `005_document_workflow_status.sql`:
   - `documents.workflow_status` (`draft|review|validated`, default `draft`)
   - `documents.validated_at` (nullable)

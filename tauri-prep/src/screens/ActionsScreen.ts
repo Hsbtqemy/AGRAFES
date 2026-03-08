@@ -161,6 +161,11 @@ export class ActionsScreen {
   private _lastAuditEmpty = false;
   private _previewDebounceHandle: number | null = null;
 
+  // P2-E: IntersectionObserver for sidebar active state
+  private _navObserver: IntersectionObserver | null = null;
+  // Tracks which sections are currently intersecting (for tie-break)
+  private _visibleSections = new Map<string, DOMRectReadOnly>();
+
   render(): HTMLElement {
     const root = document.createElement("div");
     root.className = "screen actions-screen";
@@ -894,27 +899,56 @@ export class ActionsScreen {
     root.querySelector("#act-report-btn")!.addEventListener("click", () => void this._runExportReport());
     root.querySelector("#act-goto-report")?.addEventListener("click", () => this._scrollToSection(root, "#act-report-card"));
 
-    // ── Sidebar nav active state via IntersectionObserver ─────────
+    // ── Sidebar nav active state via IntersectionObserver (P2-E hardened) ──
+    // Disconnect any previous observer from a prior render()
+    this._navObserver?.disconnect();
+    this._visibleSections.clear();
+
     const navSections: Array<[string, string]> = [
       ["curation", "#act-curate-card"],
       ["segmentation", "#act-seg-card"],
       ["alignement", "#act-align-card"],
     ];
-    const navObserver = new IntersectionObserver(
+
+    const _updateNavActive = (): void => {
+      // Tie-break: activate the visible section whose top is closest to 0 (top of viewport)
+      let bestKey: string | null = null;
+      let bestTop = Infinity;
+      for (const [key, rect] of this._visibleSections) {
+        if (rect.top < bestTop) { bestTop = rect.top; bestKey = key; }
+      }
+      for (const [navKey] of navSections) {
+        const link = document.querySelector<HTMLElement>(`[data-nav="${navKey}"]`);
+        if (!link) continue;
+        const isActive = navKey === bestKey;
+        link.classList.toggle("active", isActive);
+        if (isActive) {
+          link.setAttribute("aria-current", "true");
+        } else {
+          link.removeAttribute("aria-current");
+        }
+      }
+    };
+
+    this._navObserver = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
           const id = (entry.target as HTMLElement).id;
           const pair = navSections.find(([, sel]) => sel === `#${id}`);
           if (!pair) continue;
-          const link = document.querySelector<HTMLElement>(`[data-nav="${pair[0]}"]`);
-          if (link) link.classList.toggle("active", entry.isIntersecting);
+          if (entry.isIntersecting) {
+            this._visibleSections.set(pair[0], entry.boundingClientRect);
+          } else {
+            this._visibleSections.delete(pair[0]);
+          }
         }
+        _updateNavActive();
       },
-      { threshold: 0.15 }
+      { threshold: 0.1 }
     );
     for (const [, sel] of navSections) {
       const el = root.querySelector(sel);
-      if (el) navObserver.observe(el);
+      if (el) this._navObserver.observe(el);
     }
 
     // ── Workflow ──────────────────────────────────────────────────
@@ -937,7 +971,13 @@ export class ActionsScreen {
     this._hasPendingPreview = false;
     this._lastAuditEmpty = false;
     this._auditSelectedLinkId = null;
-    if (!conn) this._lastErrorMsg = null;
+    if (!conn) {
+      this._lastErrorMsg = null;
+      // P2-E: disconnect nav observer when disconnecting DB
+      this._navObserver?.disconnect();
+      this._navObserver = null;
+      this._visibleSections.clear();
+    }
     this._setButtonsEnabled(false);
     if (conn) {
       this._loadDocs();
@@ -1376,9 +1416,13 @@ export class ActionsScreen {
     }
 
     this._setBusy(true);
-    // vNext: panel is always visible; update info label while loading
+    // vNext: panel is always visible; update info label + show loading state
     const infoEl = document.querySelector("#act-preview-info");
     if (infoEl) infoEl.textContent = "Chargement…";
+    const rawEl = document.querySelector("#act-preview-raw");
+    if (rawEl) rawEl.innerHTML = `<p class="loading-hint">Prévisualisation en cours…</p>`;
+    const diffEl0 = document.querySelector("#act-diff-list");
+    if (diffEl0) diffEl0.innerHTML = "";
 
     try {
       const res = await curatePreview(this._conn, { doc_id: docId, rules, limit_examples: 10 });
@@ -1417,8 +1461,11 @@ export class ActionsScreen {
     } catch (err) {
       this._hasPendingPreview = false;
       if (infoEl) infoEl.textContent = "Erreur";
+      const msg = err instanceof SidecarError ? err.message : String(err);
+      const rawElErr = document.querySelector("#act-preview-raw");
+      if (rawElErr) rawElErr.innerHTML = `<p class="diag-v warn" style="margin:0"><strong>Erreur prévisualisation</strong>${_escHtml(msg)}</p>`;
       if (!silent) {
-        this._log(`✗ Prévisualisation : ${err instanceof SidecarError ? err.message : String(err)}`, true);
+        this._log(`✗ Prévisualisation : ${msg}`, true);
       }
     }
     this._setBusy(false);
@@ -1435,11 +1482,18 @@ export class ActionsScreen {
       if (infoEl) infoEl.textContent = "—";
       return;
     }
-    if (infoEl) infoEl.textContent = `${docs.length} doc(s)`;
+    // Compute status counters
+    const countValidated = docs.filter((d) => d.workflow_status === "validated").length;
+    const countReview = docs.filter((d) => d.workflow_status === "review").length;
+    const countNone = docs.length - countValidated - countReview;
+    if (infoEl) infoEl.innerHTML =
+      `<span class="seg-batch-badge seg-badge-ok" style="margin-right:3px">${countValidated} ✓</span>` +
+      (countReview ? `<span class="seg-batch-badge seg-badge-warn" style="margin-right:3px">${countReview} ⏳</span>` : "") +
+      (countNone ? `<span class="seg-batch-badge seg-badge-none">${countNone} —</span>` : "");
     const statusLabel = (s: string | undefined): string => {
-      if (!s) return `<span class="seg-batch-badge seg-badge-none">Non segmenté</span>`;
+      if (!s || s === "draft") return `<span class="seg-batch-badge seg-badge-none">Brouillon</span>`;
       if (s === "validated") return `<span class="seg-batch-badge seg-badge-ok">✓ Validé</span>`;
-      if (s === "segmented") return `<span class="seg-batch-badge seg-badge-warn">En attente validation</span>`;
+      if (s === "review") return `<span class="seg-batch-badge seg-badge-warn">⏳ En revue</span>`;
       return `<span class="seg-batch-badge seg-badge-none">${_escHtml(s)}</span>`;
     };
     listEl.innerHTML = `<div class="seg-batch-list">${docs.map((d) => `
@@ -1703,6 +1757,11 @@ export class ActionsScreen {
     try {
       const job = await enqueueJob(this._conn, "segment", { doc_id: docId, lang, pack });
       this._log(`Job segmentation soumis pour ${docLabel} (${job.job_id.slice(0, 8)}…)`);
+      // Show loading state in preview card immediately
+      const segPreviewBody = document.querySelector("#act-seg-preview-body");
+      const segPreviewInfo = document.querySelector("#act-seg-preview-info");
+      if (segPreviewBody) segPreviewBody.innerHTML = `<p class="loading-hint">Segmentation en cours…</p>`;
+      if (segPreviewInfo) segPreviewInfo.textContent = "En cours…";
       this._jobCenter?.trackJob(job.job_id, `Segmentation ${docLabel}`, (done) => {
         if (done.status === "done") {
           const r = done.result as {

@@ -36,6 +36,7 @@ type WorkflowStatus = (typeof WORKFLOW_STATUS)[number];
 export class MetadataScreen {
   private _conn: Conn | null = null;
   private _docs: DocumentRecord[] = [];
+  private _docFilter = "";
   private _selectedDoc: DocumentRecord | null = null;
   private _relations: DocRelationRecord[] = [];
   private _previewLines: DocumentPreviewLine[] = [];
@@ -57,6 +58,7 @@ export class MetadataScreen {
 
   setConn(conn: Conn | null): void {
     this._conn = conn;
+    this._docFilter = "";
     this._selectedDoc = null;
     this._relations = [];
     this._previewLines = [];
@@ -65,6 +67,8 @@ export class MetadataScreen {
     this._previewDocId = null;
     this._previewLoading = false;
     if (this._root) {
+      const filterInput = this._root.querySelector<HTMLInputElement>("#meta-doc-filter");
+      if (filterInput) filterInput.value = "";
       this._refreshDocList();
     }
   }
@@ -114,7 +118,7 @@ export class MetadataScreen {
               </select>
             </label>
             <label>Resource type (tous)
-              <input id="bulk-restype" type="text" placeholder="literary, legal, …" style="max-width:160px">
+              <input id="bulk-restype" type="text" placeholder="littérature, article, discours…" style="max-width:220px">
             </label>
             <div style="align-self:flex-end">
               <button id="bulk-apply-btn" class="btn btn-secondary btn-sm" disabled>Appliquer à tous</button>
@@ -126,6 +130,11 @@ export class MetadataScreen {
       <div class="meta-layout">
         <section class="card meta-list-card" data-collapsible="true">
           <h3>Documents <button id="refresh-docs-btn" class="btn btn-secondary btn-sm" aria-label="Rafraîchir la liste des documents" title="Rafraîchir la liste des documents">↻</button></h3>
+          <div class="form-row" style="margin:0 0 0.45rem">
+            <label style="margin:0;min-width:250px">Recherche
+              <input id="meta-doc-filter" type="text" placeholder="Titre, langue, #doc_id…" />
+            </label>
+          </div>
           <div id="meta-doc-list" class="doc-list meta-doc-list"></div>
         </section>
 
@@ -150,6 +159,10 @@ export class MetadataScreen {
     this._stateEl = root.querySelector("#meta-state-banner")!;
 
     root.querySelector("#refresh-docs-btn")!.addEventListener("click", () => this._refreshDocList());
+    root.querySelector("#meta-doc-filter")!.addEventListener("input", (e) => {
+      this._docFilter = ((e.target as HTMLInputElement).value ?? "").trim().toLowerCase();
+      this._renderDocList();
+    });
     root.querySelector("#bulk-apply-btn")!.addEventListener("click", () => this._runBulkUpdate());
     root.querySelector("#validate-btn")!.addEventListener("click", () => this._runValidate());
     root.querySelector("#db-backup-btn")!.addEventListener("click", () => void this._runDbBackup());
@@ -199,8 +212,13 @@ export class MetadataScreen {
       this._docListEl.innerHTML = `<p class="empty-hint">Aucun document.</p>`;
       return;
     }
+    const docs = this._filteredDocs();
+    if (docs.length === 0) {
+      this._docListEl.innerHTML = `<p class="empty-hint">Aucun document ne correspond à la recherche.</p>`;
+      return;
+    }
     this._docListEl.innerHTML = "";
-    for (const doc of this._docs) {
+    for (const doc of docs) {
       const row = document.createElement("div");
       row.className = "meta-doc-row";
       if (this._selectedDoc?.doc_id === doc.doc_id) {
@@ -270,7 +288,7 @@ export class MetadataScreen {
           </select>
         </label>
         <label>Resource type
-          <input id="edit-restype" type="text" value="${this._esc(doc.resource_type ?? "")}" style="max-width:160px" placeholder="literary, legal, …">
+          <input id="edit-restype" type="text" value="${this._esc(doc.resource_type ?? "")}" style="max-width:220px" placeholder="littérature, article, discours…">
         </label>
       </div>
       <div class="form-row">
@@ -624,9 +642,33 @@ export class MetadataScreen {
 
   private _updateDocCount(): void {
     if (!this._docCountEl) return;
-    const count = this._docs.length;
-    this._docCountEl.textContent = `${count} document${count > 1 ? "s" : ""}`;
+    const total = this._docs.length;
+    const shown = this._filteredDocs().length;
+    if (this._docFilter) {
+      this._docCountEl.textContent = `${shown} / ${total} document${total > 1 ? "s" : ""}`;
+    } else {
+      this._docCountEl.textContent = `${total} document${total > 1 ? "s" : ""}`;
+    }
     this._refreshRuntimeState();
+  }
+
+  private _filteredDocs(): DocumentRecord[] {
+    if (!this._docFilter) return this._docs;
+    const q = this._docFilter;
+    return this._docs.filter((doc) => {
+      const title = (doc.title ?? "").toLowerCase();
+      const lang = (doc.language ?? "").toLowerCase();
+      const role = (doc.doc_role ?? "").toLowerCase();
+      const restype = (doc.resource_type ?? "").toLowerCase();
+      const id = String(doc.doc_id);
+      return (
+        title.includes(q) ||
+        lang.includes(q) ||
+        role.includes(q) ||
+        restype.includes(q) ||
+        id.includes(q)
+      );
+    });
   }
 
   private _esc(s: string): string {

@@ -20,6 +20,10 @@
   /* Typography */
   --prep-text: #1a1a2e;
   --prep-muted: #4f5d6d;
+  --prep-fs-xs: 11px;
+  --prep-fs-sm: 12px;
+  --prep-fs-body: 13px;
+  --prep-fs-base: 14px;
 
   /* Accent (teal-green) */
   --prep-accent: #0f766e;
@@ -33,12 +37,21 @@
 
   /* Status */
   --prep-ok: #1a7f4e;
+  --prep-ok-soft: #e8f5e9;
+  --prep-ok-line: #a8d5b0;
   --prep-warn: #e6a817;
   --prep-warn-soft: #fff7e6;
   --prep-warn-line: #edd89e;
   --prep-danger: #c0392b;
 
-  /* Spacing & shape */
+  /* Spacing scale */
+  --prep-sp-1: 4px;
+  --prep-sp-2: 8px;
+  --prep-sp-3: 12px;
+  --prep-sp-4: 16px;
+  --prep-sp-6: 24px;
+
+  /* Shape */
   --prep-radius: 10px;
   --prep-radius-sm: 8px;
   --prep-radius-pill: 999px;
@@ -48,4 +61,7 @@
   /* Layout dimensions */
   --prep-topbar-h: 54px;
   --prep-nav-w: 230px;
+
+  /* Loading state color */
+  --prep-loading-pulse: rgba(15, 118, 110, 0.08);
 }

@@ -733,6 +733,9 @@ const CSS = `
   .quality-value.warn { color: #f4a261; }
   .quality-value.err  { color: var(--color-danger, #e63946); }
 
+  /* ── Skip link (A11y) ─────────────────────────────────────────────────── */
+  .prep-skip-link { position: absolute; top: -40px; left: 8px; background: var(--prep-blue,#1e4a80); color: #fff; border-radius: 4px; padding: 6px 12px; font-size: 13px; font-weight: 600; text-decoration: none; z-index: 9999; transition: top 0.12s; }
+  .prep-skip-link:focus { top: 8px; }
   /* ── Prep vNext sidebar layout (also in prep-vnext.css for standalone) ── */
   :root { --prep-topbar-h: 54px; --prep-nav-w: 230px; --prep-line: #dde1e8; --prep-line-accent: #9fd3cc; --prep-line-accent-light: #cfe8e3; --prep-accent-soft: #e8f5f3; --prep-accent-dark: #0c4a46; --prep-accent: #0f766e; --prep-muted: #4f5d6d; --prep-text: #1a1a2e; --prep-blue: #1e4a80; --prep-blue-soft: #eaf1fb; --prep-blue-line: #b7c8df; --prep-warn: #e6a817; --prep-warn-soft: #fff7e6; --prep-warn-line: #edd89e; }
   .prep-shell { display: grid; grid-template-columns: var(--prep-nav-w,230px) 1fr; min-height: calc(100vh - var(--prep-topbar-h,54px)); }
@@ -822,7 +825,8 @@ const CSS = `
   .seg-badge-ok { background: #e8f5e9; color: #1a5c33; border: 1px solid #a8d5b0; }
   .seg-badge-warn { background: var(--prep-warn-soft,#fff7e6); color: #7a4a00; border: 1px solid var(--prep-warn-line,#edd89e); }
   .seg-badge-none { background: #f8f9fa; color: var(--prep-muted,#4f5d6d); border: 1px solid var(--prep-line,#dde1e8); }
-  @media (max-width:1320px) { .seg-workspace { grid-template-columns: 1fr; } .seg-col { border-right: 0; border-bottom: 1px solid var(--prep-line,#dde1e8); } .seg-preview-card { position: static; max-height: none; } }
+  @media (max-width:1100px) { .seg-workspace { grid-template-columns: 1fr; } .seg-col { border-right: 0; border-bottom: 1px solid var(--prep-line,#dde1e8); } .seg-col:last-child { border-bottom: 0; } .seg-preview-card { position: static; max-height: none; } }
+  @media (max-width:900px) { .seg-stats-grid { grid-template-columns: 1fr 1fr; } .seg-inner-body { padding: 8px; } .seg-preview-body { padding: 8px; } }
   @media (max-width:1400px) { .curate-workspace { grid-template-columns: 280px 1fr; } .curate-col-right { grid-column: 1/-1; border-right: 0; border-top: 1px solid var(--prep-line,#dde1e8); } .curate-preview-body { grid-template-columns: 1fr 1fr; } .curate-minimap { display: none; } }
   @media (max-width:1050px) { .prep-shell { grid-template-columns: 1fr; } .prep-nav { border-right: 0; border-bottom: 1px solid var(--prep-line,#dde1e8); } .curate-workspace { grid-template-columns: 1fr; } .curate-col { border-right: 0; border-bottom: 1px solid var(--prep-line,#dde1e8); } .curate-col:last-child { border-bottom: 0; } .curate-preview-card { position: static; max-height: none; } }
   @media (max-width:800px) { .curate-preview-body { grid-template-columns: 1fr; } .curate-pane { min-height: 160px; } }
@@ -889,9 +893,17 @@ export class App {
   private _buildUI(): void {
     const root = document.getElementById("app")!;
 
+    // Skip link (A11y)
+    const skipLink = document.createElement("a");
+    skipLink.href = "#prep-main-content";
+    skipLink.className = "prep-skip-link";
+    skipLink.textContent = "Aller au contenu";
+    root.appendChild(skipLink);
+
     // Topbar
     const topbar = document.createElement("div");
     topbar.className = "topbar";
+    topbar.setAttribute("role", "banner");
 
     const titleEl = document.createElement("span");
     titleEl.className = "topbar-title";
@@ -942,9 +954,10 @@ export class App {
     shell.id = "prep-shell-main";
 
     // Sidebar nav
-    const nav = document.createElement("aside");
+    const nav = document.createElement("nav");
     nav.className = "prep-nav";
     nav.id = "prep-nav";
+    nav.setAttribute("aria-label", "Navigation Prep");
 
     const navHead = document.createElement("div");
     navHead.className = "prep-nav-head";
@@ -954,8 +967,10 @@ export class App {
     collapseBtn.className = "prep-nav-collapse-btn";
     collapseBtn.title = "Masquer le panneau";
     collapseBtn.setAttribute("aria-label", "Masquer le panneau de navigation");
+    collapseBtn.setAttribute("aria-expanded", "true");
+    collapseBtn.setAttribute("aria-controls", "prep-nav");
     collapseBtn.textContent = "◀";
-    collapseBtn.addEventListener("click", () => this._toggleNav(shell));
+    collapseBtn.addEventListener("click", () => this._toggleNav(shell, collapseBtn));
     navHead.appendChild(navTitle);
     navHead.appendChild(collapseBtn);
     nav.appendChild(navHead);
@@ -970,6 +985,7 @@ export class App {
     for (const tab of TABS) {
       const btn = document.createElement("button");
       btn.className = "prep-nav-tab" + (tab === this._activeTab ? " active" : "");
+      if (tab === this._activeTab) btn.setAttribute("aria-current", "page");
       btn.textContent = LABELS[tab];
       btn.addEventListener("click", () => this._switchTab(tab));
       this._tabBtns[tab] = btn as HTMLButtonElement;
@@ -1029,6 +1045,8 @@ export class App {
     // Main content area
     const main = document.createElement("div");
     main.className = "prep-main";
+    main.id = "prep-main-content";
+    main.setAttribute("role", "main");
     shell.appendChild(main);
 
     root.appendChild(shell);
@@ -1070,8 +1088,12 @@ export class App {
     main.appendChild(content);
   }
 
-  private _toggleNav(shell: HTMLElement): void {
-    shell.classList.toggle("nav-hidden");
+  private _toggleNav(shell: HTMLElement, btn?: HTMLButtonElement): void {
+    const nowHidden = shell.classList.toggle("nav-hidden");
+    // Update aria-expanded on whichever button triggered the toggle
+    const collapseBtn = shell.querySelector<HTMLButtonElement>(".prep-nav-collapse-btn");
+    if (collapseBtn) collapseBtn.setAttribute("aria-expanded", String(!nowHidden));
+    if (btn) btn.setAttribute("aria-expanded", String(!nowHidden));
   }
 
   private _switchTab(tab: TabId): void {
@@ -1083,9 +1105,11 @@ export class App {
     }
     this._screenEls[this._activeTab].classList.remove("active");
     this._tabBtns[this._activeTab].classList.remove("active");
+    this._tabBtns[this._activeTab].removeAttribute("aria-current");
     this._activeTab = tab;
     this._screenEls[tab].classList.add("active");
     this._tabBtns[tab].classList.add("active");
+    this._tabBtns[tab].setAttribute("aria-current", "page");
   }
 
   private _hasPendingChangesInCurrentTab(): boolean {

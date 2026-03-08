@@ -1,12 +1,12 @@
 # Status — Concordancier Prep (tauri-prep) V0
 
-**Last updated:** 2026-03-01 (vNext UI Pilot — P0 implémenté)
+**Last updated:** 2026-03-01 (vNext UI Pilot — P0 + P1 + P2 implémentés)
 
 Current contract/runtime reference:
 - `CONTRACT_VERSION = 1.4.6`
 - `docs/openapi.json` currently exposes 35 paths
 - Execution plan reference: `docs/PREP_IMPLEMENTATION_PLAN.md`
-- Plan status: Phase 0–6 done; **vNext UI Pilot (P0) done**
+- Plan status: Phase 0–6 done; **vNext UI Pilot (P0 + P1 + P2) done**
 - Redesign plan: `docs/PREP_UI_REDESIGN_PLAN.md`
 
 ---
@@ -32,20 +32,67 @@ npm --prefix tauri-shell run dev
 # → onglet "Constituer" → sidebar gauche, onglet Actions → section Curation 3 colonnes
 ```
 
-## Reste à faire (P1 / P2)
+## vNext UI Pilot (P1) — fait
 
-P1 — Extension :
-- Segmentation longtext : preview sticky 2-col (Brut vs Segmenté) — ref `prep-actions-longtext-vnext.html`
-- Segmentation VO batch : tableau multilingue — ref `prep-segmentation-vo-vnext.html`
-- Segmentation traduction : vue côte à côte VO/trad — ref `prep-segmentation-translation-vo-native-layout-vnext.html`
-- Pane brut dans preview : remplir `#act-preview-raw` avec le texte brut avant curation
-- Sidebar nav : tracking actif par section (Curation / Segmentation / Alignement)
+- [x] `ActionsScreen.ts` pane brut : `_renderRawPane()` remplit `#act-preview-raw` avec `ex.before` de `curatePreview()`; reset à `_runCurate()` success
+- [x] `ActionsScreen.ts` segmentation 2-col : section restructurée en `.seg-workspace` (360px gauche · 1fr droite sticky)
+  - colonne gauche : contrôles + `<details class="seg-batch-overview">` avec `#act-seg-batch-list`
+  - colonne droite : `.seg-preview-card` sticky avec `#act-seg-preview-body` et `#act-seg-preview-info`
+  - `_renderSegPreview()` : popule `.seg-stats-grid` depuis `_lastSegmentReport` après fin du job
+- [x] `ActionsScreen.ts` segmentation VO batch : `_renderSegBatchOverview()` construit le tableau multilingue depuis `_docs`; badges `workflow_status` par doc; appelé depuis `_loadDocs()`
+- [x] `ActionsScreen.ts` sidebar nav active : `IntersectionObserver` sur 3 cartes (curation / segmentation / alignement), `data-nav` sur les liens de l'arbre; `_updateNavActive()` marque le lien visible le plus haut
+- [x] `app.ts` nav tree : `treeItems: Array<[string, string, string]>` — ajout du `navKey`; `link.dataset.nav = navKey`; CSS `.prep-nav-tree-link.active`
 
-P2 — Polish :
-- Sidebar collapse persisté en localStorage
-- Scroll synchronisé pane brut ↔ pane curé
-- Minimap proportionnelle aux positions réelles dans le document
-- Animations transitions CSS
+**Comment tester :**
+```bash
+# Dev standalone (port 1421)
+npm --prefix tauri-prep run dev
+
+# Dev via shell (port 1422)
+npm --prefix tauri-shell run dev
+# → onglet "Constituer" → sidebar gauche, onglet Actions → section Curation 3 colonnes + Segmentation 2 colonnes
+```
+
+## vNext UI Pilot (P2) — fait
+
+### P2-A — Cohérence CSS + audit tokens
+
+- [x] `tokens.css` : ajout tokens typographie (`--prep-fs-xs/sm/body/base`), espacement (`--prep-sp-1/2/3/4/6`), statut (`--prep-ok-soft`, `--prep-ok-line`, `--prep-loading-pulse`)
+- [x] `components.css` : remplacement des `font-size: 11px/12px` hardcodés par `var(--prep-fs-xs/sm)`; transitions + `:focus-visible` sur `.chip-v`; variant `.diag-v.ok`; nouvelles classes `.loading-hint`, `.status-counter-row`, `.status-counter`
+- [x] `prep-vnext.css` : littéraux `font-size` dans les classes seg remplacés par tokens; livraison JS constant dans `app.ts` synchronisée
+
+### P2-B — Responsive ≤ 900px
+
+- [x] Breakpoint workspace seg : `1320px` → `1100px` (dans `prep-vnext.css` et constante JS `app.ts`)
+- [x] Règle `@media (max-width: 900px)` : réduction `padding` sur `.seg-stats-grid`, `.seg-inner-body`, `.seg-preview-body`
+
+### P2-C — États vides/chargement/erreur
+
+- [x] `_runPreview()` : état chargement `<p class="loading-hint">Prévisualisation en cours…</p>` dans `#act-preview-raw` avant `await`; état erreur `.diag-v.warn` dans le catch
+- [x] `_runSegment()` : état chargement `<p class="loading-hint">Segmentation en cours…</p>` dans `#act-seg-preview-body` juste après soumission du job
+- [x] `_renderSegBatchOverview()` : compteurs de statut (`Validé` / `À revoir` / `Aucun`) affichés en `.status-counter` colorés dans le header `<summary>`
+
+### P2-D — Accessibilité
+
+- [x] Skip link `<a class="prep-skip-link" href="#prep-main-content">` injecté en tête de `_buildUI()`; CSS visible au focus
+- [x] `<aside>` → `<nav>` avec `aria-label="Navigation Prep"` dans `_buildUI()`
+- [x] Topbar : `role="banner"` ajouté
+- [x] Bouton collapse : `aria-expanded` + `aria-controls="prep-nav"` initiaux; `_toggleNav()` les met à jour
+- [x] Onglets : `aria-current="page"` sur l'onglet actif; `_switchTab()` le bascule
+- [x] Zone principale : `id="prep-main-content"` + `role="main"`
+- [x] Arbre nav : `aria-current="true"` géré par `_updateNavActive()` en sync avec la classe `.active`
+
+### P2-E — Cycle de vie IntersectionObserver
+
+- [x] `_navObserver: IntersectionObserver | null` et `_visibleSections: Map<string, DOMRectReadOnly>` comme champs de classe
+- [x] `render()` : `this._navObserver?.disconnect()` + `this._visibleSections.clear()` avant recréation
+- [x] `_updateNavActive()` : tie-break par `rect.top` minimal → un seul lien actif même si plusieurs sections visibles
+- [x] `setConn(null)` : `disconnect()` + `null` + `clear()` pour libérer l'observer à la déconnexion
+
+**Résultat build :**
+- tauri-prep : ✅ **251.43 kB JS, 13.14 kB CSS** (0 erreurs TS)
+- pytest : ✅ 391 passing
+- JS FTS tests : ✅ 26 passed
 
 ---
 

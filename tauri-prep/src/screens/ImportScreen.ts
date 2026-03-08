@@ -69,24 +69,24 @@ export class ImportScreen {
         <div class="btn-row">
           <button id="imp-add-btn" class="btn btn-primary">Ajouter des fichiers…</button>
           <button id="imp-clear-btn" class="btn btn-secondary">Vider la liste</button>
-          <button id="imp-import-btn" class="btn btn-primary" disabled>Importer la file</button>
+          <button id="imp-import-btn" class="btn btn-primary" disabled>Importer les fichiers en attente</button>
         </div>
 
         <details class="import-disclosure">
-          <summary>Options globales du lot</summary>
+          <summary>Réglages du lot (optionnels)</summary>
           <div class="import-defaults">
-            <label>Mode par défaut :
+            <label>Mode initial du lot :
               <select id="imp-default-mode">
                 ${IMPORT_MODE_OPTIONS.map((opt) => `<option value="${opt.value}">${opt.label}</option>`).join("")}
               </select>
             </label>
-            <label>Langue par défaut :
+            <label>Langue initiale du lot :
               <input id="imp-default-lang" type="text" value="fr" placeholder="fr, en, …" maxlength="10" />
             </label>
           </div>
           <div class="btn-row import-defaults-actions">
             <button id="imp-apply-defaults-btn" class="btn btn-secondary btn-sm">Appliquer aux fichiers en attente</button>
-            <span class="hint" style="margin:0">Les réglages ligne par ligne restent modifiables ensuite.</span>
+            <span class="hint" style="margin:0">Chaque ligne reste modifiable ensuite (mode, langue, titre).</span>
           </div>
         </details>
 

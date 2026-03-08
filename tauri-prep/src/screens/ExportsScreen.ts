@@ -88,7 +88,7 @@ export class ExportsScreen {
           </label>
           <div class="exports-doc-tools">
             <div class="btn-row" style="margin:0">
-              <button id="v2-doc-select-all-btn" class="btn btn-secondary btn-sm">Tout sélectionner</button>
+              <button id="v2-doc-select-all-btn" class="btn btn-secondary btn-sm">Sélectionner tous les documents</button>
               <button id="v2-doc-clear-btn" class="btn btn-secondary btn-sm">Effacer la sélection</button>
             </div>
             <div id="v2-doc-summary" class="hint" style="margin:0">Portée actuelle: tous les documents.</div>
@@ -138,7 +138,7 @@ export class ExportsScreen {
           </label>
           <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.84rem;cursor:pointer;align-self:flex-end">
             <input id="v2-align-exceptions-only" type="checkbox" />
-            Exceptions uniquement (placeholder)
+            Exceptions uniquement
           </label>
         </div>
 
@@ -524,8 +524,20 @@ export class ExportsScreen {
   }
 
   private _selectAllV2Docs(): void {
+    let selectedAny = false;
     for (const opt of Array.from(this._v2DocSelEl.options)) {
-      opt.selected = opt.value === "__all__";
+      if (opt.value === "__all__") {
+        opt.selected = false;
+        continue;
+      }
+      opt.selected = true;
+      selectedAny = true;
+    }
+    // Fallback: if no document row exists yet, keep "all corpus" selected.
+    if (!selectedAny) {
+      for (const opt of Array.from(this._v2DocSelEl.options)) {
+        opt.selected = opt.value === "__all__";
+      }
     }
     this._syncV2Ui();
   }
@@ -1229,9 +1241,9 @@ export class ExportsScreen {
       this._setRuntimeState("error", `Dernière erreur: ${this._lastErrorMsg}`);
       return;
     }
-    const hasPendingSelection = this._v2ProductEl?.value === "readable_text";
-    if (hasPendingSelection) {
-      this._setRuntimeState("warn", "Produit texte lisible sélectionné: disponibilité moteur partielle selon format.");
+    const hasReadableSelection = this._v2ProductEl?.value === "readable_text";
+    if (hasReadableSelection) {
+      this._setRuntimeState("info", "Produit texte lisible sélectionné (TXT/DOCX).");
       return;
     }
     this._setRuntimeState("ok", `${this._docs.length} document(s) disponibles pour export.`);
