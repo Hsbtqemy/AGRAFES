@@ -499,6 +499,7 @@ const CSS = `
   }
   .screen .card {
     overflow: hidden;
+    scroll-margin-top: 74px;
   }
   .screen .acc-head {
     margin: -1rem -1rem 0;
@@ -609,6 +610,36 @@ const CSS = `
     position: sticky;
     top: 12px;
   }
+  .align-finalize-row {
+    margin-top: 0.65rem;
+    padding-top: 0.5rem;
+    border-top: 1px dashed var(--color-border);
+    justify-content: flex-end;
+  }
+  .actions-shortcuts-card .btn-row {
+    gap: 0.45rem;
+  }
+  .actions-shortcuts-card .btn {
+    min-width: 150px;
+  }
+  .actions-shortcuts-card {
+    background: #f8fbfa;
+  }
+  .actions-shortcuts-card h3 {
+    margin-bottom: 0.45rem;
+    font-size: 0.9rem;
+  }
+  .actions-quicknav-row .btn {
+    border-radius: 999px;
+    border: 1px solid #cfd8e6;
+    background: #fff;
+    color: #35506a;
+  }
+  .actions-quicknav-row .btn:hover {
+    background: #eef6f4;
+    border-color: #9fd3cc;
+    color: #0c4a46;
+  }
   .align-focus-text {
     border: 1px solid var(--color-border);
     border-radius: 8px;
@@ -701,6 +732,70 @@ const CSS = `
   .quality-value.ok  { color: var(--color-success, #2dc653); }
   .quality-value.warn { color: #f4a261; }
   .quality-value.err  { color: var(--color-danger, #e63946); }
+
+  /* ── Prep vNext sidebar layout (also in prep-vnext.css for standalone) ── */
+  :root { --prep-topbar-h: 54px; --prep-nav-w: 230px; --prep-line: #dde1e8; --prep-line-accent: #9fd3cc; --prep-line-accent-light: #cfe8e3; --prep-accent-soft: #e8f5f3; --prep-accent-dark: #0c4a46; --prep-accent: #0f766e; --prep-muted: #4f5d6d; --prep-text: #1a1a2e; --prep-blue: #1e4a80; --prep-blue-soft: #eaf1fb; --prep-blue-line: #b7c8df; --prep-warn: #e6a817; --prep-warn-soft: #fff7e6; --prep-warn-line: #edd89e; }
+  .prep-shell { display: grid; grid-template-columns: var(--prep-nav-w,230px) 1fr; min-height: calc(100vh - var(--prep-topbar-h,54px)); }
+  .prep-shell.nav-hidden { grid-template-columns: 30px 1fr; }
+  .prep-shell.nav-hidden .prep-nav { display: none; }
+  .prep-shell.nav-hidden .prep-rail { display: flex; }
+  .prep-nav { border-right: 1px solid var(--prep-line,#dde1e8); background: #f8f9fa; padding: 12px; overflow-y: auto; }
+  .prep-nav-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+  .prep-nav-head h2 { margin: 0; font-size: 13px; text-transform: uppercase; letter-spacing: .07em; color: var(--prep-muted,#4f5d6d); }
+  .prep-nav-tab { width: 100%; text-align: left; border: 1px solid transparent; border-radius: 8px; padding: 10px; background: transparent; color: var(--prep-text,#1a1a2e); font-size: 14px; margin-bottom: 4px; display: block; cursor: pointer; transition: background .12s, border-color .12s; font-family: inherit; }
+  .prep-nav-tab:hover { background: #f0faf8; border-color: var(--prep-line-accent-light,#cfe8e3); }
+  .prep-nav-tab.active { background: var(--prep-accent-soft,#e8f5f3); border-color: var(--prep-line-accent,#9fd3cc); color: var(--prep-accent-dark,#0c4a46); font-weight: 700; }
+  .prep-nav-collapse-btn { border: 1px solid var(--prep-blue-line,#b7c8df); border-radius: 7px; color: var(--prep-blue,#1e4a80); background: var(--prep-blue-soft,#eaf1fb); width: 26px; height: 26px; padding: 0; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 11px; flex-shrink: 0; font-family: inherit; transition: background .12s; }
+  .prep-nav-collapse-btn:hover { background: #d8e8f8; }
+  .prep-rail { display: none; width: 30px; border-right: 1px solid var(--prep-line-accent-light,#cfe8e3); background: linear-gradient(180deg,#f3f8f7,#eef3f2); align-items: flex-start; justify-content: center; padding-top: 10px; }
+  .prep-rail-expand-btn { border: 1px solid var(--prep-blue-line,#b7c8df); border-radius: 7px; color: var(--prep-blue,#1e4a80); background: var(--prep-blue-soft,#eaf1fb); width: 22px; height: 22px; padding: 0; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 11px; font-family: inherit; }
+  .prep-nav-tree { margin: 2px 0 6px 2px; }
+  .prep-nav-tree-summary { list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; border: 1px solid var(--prep-line-accent-light,#cfe8e3); border-radius: 8px; padding: 7px 8px; font-size: 12px; font-weight: 700; color: var(--prep-accent-dark,#0c4a46); background: #edf7f5; user-select: none; }
+  .prep-nav-tree-summary::-webkit-details-marker { display: none; }
+  .prep-nav-tree-caret { font-size: 11px; color: var(--prep-muted,#4f5d6d); transition: transform .16s ease; }
+  .prep-nav-tree[open] .prep-nav-tree-caret { transform: rotate(180deg); }
+  .prep-nav-tree-body { margin: 3px 0 0 6px; padding: 4px 0 0 10px; border-left: 2px solid var(--prep-line-accent-light,#cfe8e3); display: grid; gap: 3px; }
+  .prep-nav-tree-link { display: block; font-size: 12px; color: var(--prep-muted,#4f5d6d); border: 1px solid transparent; border-radius: 7px; padding: 6px 8px; background: transparent; width: 100%; text-align: left; cursor: pointer; transition: background .1s, border-color .1s; font-family: inherit; text-decoration: none; }
+  .prep-nav-tree-link:hover { border-color: var(--prep-line-accent-light,#cfe8e3); background: #f6fbfa; }
+  .prep-main { min-width: 0; overflow-x: hidden; }
+
+  /* ── Curation 3-column workspace (also in prep-vnext.css for standalone) ── */
+  .curate-workspace-card { padding: 0 !important; overflow: hidden; }
+  .curate-card-head { padding: 12px 16px; border-bottom: 1px solid var(--prep-line,#dde1e8); background: #f8f9fa; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  .curate-card-head h2 { margin: 0; font-size: 16px; }
+  .curate-card-head p { margin: 4px 0 0; font-size: 13px; color: var(--prep-muted,#4f5d6d); }
+  .curate-pill { display: inline-block; border: 1px solid var(--prep-line-accent,#9fd3cc); background: var(--prep-accent-soft,#e8f5f3); color: var(--prep-accent-dark,#0c4a46); border-radius: 999px; font-size: 11px; padding: 3px 10px; }
+  .curate-workspace { display: grid; grid-template-columns: 300px minmax(480px,1fr) 270px; align-items: start; }
+  .curate-col { min-width: 0; border-right: 1px solid var(--prep-line,#dde1e8); height: 100%; }
+  .curate-col:last-child { border-right: 0; }
+  .curate-inner-card { border-bottom: 1px solid var(--prep-line,#dde1e8); }
+  .curate-inner-card:last-child { border-bottom: 0; }
+  .curate-inner-head { padding: 9px 12px; border-bottom: 1px solid var(--prep-line,#dde1e8); background: #f8f9fa; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .curate-inner-head h3 { margin: 0; font-size: 14px; }
+  .curate-inner-body { padding: 10px 12px; }
+  .curate-chip-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+  .curate-btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .curate-preview-card { display: flex; flex-direction: column; position: sticky; top: 0; max-height: calc(100vh - var(--prep-topbar-h,54px) - 8px); overflow: hidden; }
+  .curate-preview-controls { padding: 7px 12px; border-bottom: 1px solid var(--prep-line,#dde1e8); display: flex; gap: 6px; flex-wrap: wrap; align-items: center; background: #fcfdfd; flex-shrink: 0; }
+  .curate-preview-body { display: grid; grid-template-columns: 1fr 1fr 22px; gap: 8px; padding: 8px; overflow: hidden; flex: 1; min-height: 200px; }
+  .curate-pane { border: 1px solid var(--prep-line,#dde1e8); border-radius: 8px; overflow: hidden; display: grid; grid-template-rows: auto 1fr; min-height: 200px; }
+  .curate-pane-head { padding: 6px 10px; font-size: 12px; color: var(--prep-muted,#4f5d6d); border-bottom: 1px solid var(--prep-line,#dde1e8); background: #f8f9fa; }
+  .curate-doc-scroll { overflow-y: auto; padding: 8px 10px; font-size: 13px; line-height: 1.5; background: #fff; }
+  .curate-doc-scroll p { margin: 0 0 8px; }
+  .curate-minimap { border: 1px solid var(--prep-line,#dde1e8); border-radius: 8px; background: #fafbfc; display: grid; align-content: start; gap: 3px; padding: 6px 4px; min-height: 200px; }
+  .curate-mm { height: 10px; border-radius: 2px; background: #d6dde8; }
+  .curate-mm.changed { background: var(--prep-warn,#e6a817); }
+  .curate-mm.current { background: var(--prep-accent,#0f766e); }
+  .curate-preview-footer { padding: 8px 12px; border-top: 1px solid var(--prep-line,#dde1e8); background: #f8f9fa; flex-shrink: 0; }
+  .curate-diag-list { display: grid; gap: 8px; }
+  .curate-diag { border: 1px solid var(--prep-line,#dde1e8); border-radius: 8px; padding: 8px 10px; font-size: 12px; background: #fff; }
+  .curate-diag.warn { border-color: var(--prep-warn-line,#edd89e); background: var(--prep-warn-soft,#fff7e6); }
+  .curate-diag strong { display: block; margin-bottom: 2px; }
+  .curate-doc-scroll .diff-table { font-size: 12px; }
+  .curate-doc-scroll .diff-table th, .curate-doc-scroll .diff-table td { padding: 4px 6px; }
+  @media (max-width:1400px) { .curate-workspace { grid-template-columns: 280px 1fr; } .curate-col-right { grid-column: 1/-1; border-right: 0; border-top: 1px solid var(--prep-line,#dde1e8); } .curate-preview-body { grid-template-columns: 1fr 1fr; } .curate-minimap { display: none; } }
+  @media (max-width:1050px) { .prep-shell { grid-template-columns: 1fr; } .prep-nav { border-right: 0; border-bottom: 1px solid var(--prep-line,#dde1e8); } .curate-workspace { grid-template-columns: 1fr; } .curate-col { border-right: 0; border-bottom: 1px solid var(--prep-line,#dde1e8); } .curate-col:last-child { border-bottom: 0; } .curate-preview-card { position: static; max-height: none; } }
+  @media (max-width:800px) { .curate-preview-body { grid-template-columns: 1fr; } .curate-pane { min-height: 160px; } }
 `+ JOB_CENTER_CSS;
 
 
@@ -811,9 +906,31 @@ export class App {
     this._dbPathEl = dbPathEl;
     root.appendChild(topbar);
 
-    // Tab bar
-    const tabbar = document.createElement("div");
-    tabbar.className = "tabbar";
+    // ── vNext Shell: sidebar + main grid ─────────────────────────────────────
+    const shell = document.createElement("div");
+    shell.className = "prep-shell";
+    shell.id = "prep-shell-main";
+
+    // Sidebar nav
+    const nav = document.createElement("aside");
+    nav.className = "prep-nav";
+    nav.id = "prep-nav";
+
+    const navHead = document.createElement("div");
+    navHead.className = "prep-nav-head";
+    const navTitle = document.createElement("h2");
+    navTitle.textContent = "Sections";
+    const collapseBtn = document.createElement("button");
+    collapseBtn.className = "prep-nav-collapse-btn";
+    collapseBtn.title = "Masquer le panneau";
+    collapseBtn.setAttribute("aria-label", "Masquer le panneau de navigation");
+    collapseBtn.textContent = "◀";
+    collapseBtn.addEventListener("click", () => this._toggleNav(shell));
+    navHead.appendChild(navTitle);
+    navHead.appendChild(collapseBtn);
+    nav.appendChild(navHead);
+
+    // Tab links in sidebar
     const LABELS: Record<TabId, string> = {
       import: "Importer",
       documents: "Documents",
@@ -822,13 +939,68 @@ export class App {
     };
     for (const tab of TABS) {
       const btn = document.createElement("button");
-      btn.className = "tab-btn" + (tab === this._activeTab ? " active" : "");
+      btn.className = "prep-nav-tab" + (tab === this._activeTab ? " active" : "");
       btn.textContent = LABELS[tab];
       btn.addEventListener("click", () => this._switchTab(tab));
       this._tabBtns[tab] = btn as HTMLButtonElement;
-      tabbar.appendChild(btn);
+      nav.appendChild(btn);
+
+      // Actions sub-tree (shortcuts to major sections)
+      if (tab === "actions") {
+        const tree = document.createElement("details");
+        tree.className = "prep-nav-tree";
+        tree.open = true;
+        const summary = document.createElement("summary");
+        summary.className = "prep-nav-tree-summary";
+        summary.innerHTML = `Actions disponibles <span class="prep-nav-tree-caret" aria-hidden="true">▾</span>`;
+        tree.appendChild(summary);
+        const treeBody = document.createElement("div");
+        treeBody.className = "prep-nav-tree-body";
+        const treeItems: Array<[string, string]> = [
+          ["Curation", "#act-curate-card"],
+          ["Segmentation", "#act-seg-card"],
+          ["Alignement", "#act-align-card"],
+        ];
+        for (const [label, selector] of treeItems) {
+          const link = document.createElement("button");
+          link.className = "prep-nav-tree-link";
+          link.textContent = label;
+          link.addEventListener("click", () => {
+            this._switchTab("actions");
+            // Scroll to section after brief delay for tab activation
+            setTimeout(() => {
+              const el = document.querySelector(selector);
+              if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+            }, 60);
+          });
+          treeBody.appendChild(link);
+        }
+        tree.appendChild(treeBody);
+        nav.appendChild(tree);
+      }
     }
-    root.appendChild(tabbar);
+
+    shell.appendChild(nav);
+
+    // Left rail (visible when sidebar is collapsed)
+    const leftRail = document.createElement("div");
+    leftRail.className = "prep-rail";
+    leftRail.setAttribute("aria-label", "Rouvrir le panneau");
+    const expandBtn = document.createElement("button");
+    expandBtn.className = "prep-rail-expand-btn";
+    expandBtn.title = "Ouvrir la navigation";
+    expandBtn.setAttribute("aria-label", "Ouvrir le panneau de navigation");
+    expandBtn.textContent = "▶";
+    expandBtn.addEventListener("click", () => this._toggleNav(shell));
+    leftRail.appendChild(expandBtn);
+    shell.appendChild(leftRail);
+
+    // Main content area
+    const main = document.createElement("div");
+    main.className = "prep-main";
+    shell.appendChild(main);
+
+    root.appendChild(shell);
 
     // Content
     const content = document.createElement("div");
@@ -836,7 +1008,7 @@ export class App {
 
     // Job Center strip
     this._jobCenter = new JobCenter();
-    root.appendChild(this._jobCenter.render());
+    main.appendChild(this._jobCenter.render());
 
     this._import = new ImportScreen();
     this._actions = new ActionsScreen();
@@ -864,7 +1036,11 @@ export class App {
       content.appendChild(el);
     }
 
-    root.appendChild(content);
+    main.appendChild(content);
+  }
+
+  private _toggleNav(shell: HTMLElement): void {
+    shell.classList.toggle("nav-hidden");
   }
 
   private _switchTab(tab: TabId): void {
