@@ -173,6 +173,11 @@ export class ActionsScreen {
   private _segMode: "units" | "traduction" | "longtext" = "units";
   private static readonly LS_ACTIVE_SUB = "agrafes.prep.actions.active";
 
+  // Longtext scroll sync state
+  private _ltSyncLock = false;
+  private _onLtRawScroll: EventListener | null = null;
+  private _onLtSegScroll: EventListener | null = null;
+
 
   render(): HTMLElement {
     const root = document.createElement("div");
@@ -297,7 +302,12 @@ export class ActionsScreen {
     if (normalView) normalView.style.display = long ? "none" : "";
     if (longtextView) longtextView.style.display = long ? "" : "none";
     if (traductionHint) traductionHint.style.display = mode === "traduction" ? "" : "none";
-    if (long) this._syncLongtextSelectors(el);
+    if (long) {
+      this._syncLongtextSelectors(el);
+      this._bindLongtextScrollSync();
+    } else {
+      this._unbindLongtextScrollSync();
+    }
   }
 
   private _renderHubPanel(root: HTMLElement): HTMLElement {
@@ -1324,6 +1334,49 @@ export class ActionsScreen {
     const doc = this._docs.find(d => d.doc_id === docId);
     const charCount = (doc as unknown as { char_count?: number })?.char_count ?? 0;
     hint.style.display = (charCount > THRESHOLD && !this._segLongTextMode) ? "" : "none";
+  }
+
+  private _bindLongtextScrollSync(): void {
+    const el = this._root?.querySelector<HTMLElement>('[data-panel="segmentation"]');
+    if (!el) return;
+    const rawEl = el.querySelector<HTMLElement>("#act-seg-lt-raw-scroll");
+    const segEl = el.querySelector<HTMLElement>("#act-seg-lt-seg-scroll");
+    if (!rawEl || !segEl) return;
+    this._unbindLongtextScrollSync();
+    this._onLtRawScroll = () => {
+      if (this._ltSyncLock) return;
+      this._ltSyncLock = true;
+      const maxRaw = rawEl.scrollHeight - rawEl.clientHeight;
+      const ratio = maxRaw > 0 ? rawEl.scrollTop / maxRaw : 0;
+      segEl.scrollTop = ratio * Math.max(0, segEl.scrollHeight - segEl.clientHeight);
+      requestAnimationFrame(() => { this._ltSyncLock = false; });
+    };
+    this._onLtSegScroll = () => {
+      if (this._ltSyncLock) return;
+      this._ltSyncLock = true;
+      const maxSeg = segEl.scrollHeight - segEl.clientHeight;
+      const ratio = maxSeg > 0 ? segEl.scrollTop / maxSeg : 0;
+      rawEl.scrollTop = ratio * Math.max(0, rawEl.scrollHeight - rawEl.clientHeight);
+      requestAnimationFrame(() => { this._ltSyncLock = false; });
+    };
+    rawEl.addEventListener("scroll", this._onLtRawScroll);
+    segEl.addEventListener("scroll", this._onLtSegScroll);
+  }
+
+  private _unbindLongtextScrollSync(): void {
+    const el = this._root?.querySelector<HTMLElement>('[data-panel="segmentation"]');
+    if (!el) return;
+    const rawEl = el.querySelector<HTMLElement>("#act-seg-lt-raw-scroll");
+    const segEl = el.querySelector<HTMLElement>("#act-seg-lt-seg-scroll");
+    if (rawEl && this._onLtRawScroll) {
+      rawEl.removeEventListener("scroll", this._onLtRawScroll);
+      this._onLtRawScroll = null;
+    }
+    if (segEl && this._onLtSegScroll) {
+      segEl.removeEventListener("scroll", this._onLtSegScroll);
+      this._onLtSegScroll = null;
+    }
+    this._ltSyncLock = false;
   }
 
   _updateLongtextPreview(segPanel: HTMLElement | null): void {
