@@ -757,6 +757,7 @@ const CSS = `
   .prep-nav-tree-body { margin: 3px 0 0 6px; padding: 4px 0 0 10px; border-left: 2px solid var(--prep-line-accent-light,#cfe8e3); display: grid; gap: 3px; }
   .prep-nav-tree-link { display: block; font-size: 12px; color: var(--prep-muted,#4f5d6d); border: 1px solid transparent; border-radius: 7px; padding: 6px 8px; background: transparent; width: 100%; text-align: left; cursor: pointer; transition: background .1s, border-color .1s; font-family: inherit; text-decoration: none; }
   .prep-nav-tree-link:hover { border-color: var(--prep-line-accent-light,#cfe8e3); background: #f6fbfa; }
+  .prep-nav-tree-link.active { border-color: var(--prep-line-accent,#9fd3cc); background: var(--prep-accent-soft,#e8f5f3); color: var(--prep-accent-dark,#0c4a46); font-weight: 700; }
   .prep-main { min-width: 0; overflow-x: hidden; }
 
   /* ── Curation 3-column workspace (also in prep-vnext.css for standalone) ── */
@@ -793,6 +794,35 @@ const CSS = `
   .curate-diag strong { display: block; margin-bottom: 2px; }
   .curate-doc-scroll .diff-table { font-size: 12px; }
   .curate-doc-scroll .diff-table th, .curate-doc-scroll .diff-table td { padding: 4px 6px; }
+  /* ── Segmentation 2-col workspace (also in prep-vnext.css for standalone) ── */
+  .seg-workspace-card { padding: 0 !important; overflow: hidden; }
+  .seg-workspace { display: grid; grid-template-columns: 360px 1fr; align-items: start; }
+  .seg-col { min-width: 0; border-right: 1px solid var(--prep-line,#dde1e8); }
+  .seg-col:last-child { border-right: 0; }
+  .seg-inner-card { border-bottom: 1px solid var(--prep-line,#dde1e8); }
+  .seg-inner-card:last-child { border-bottom: 0; }
+  .seg-inner-head { padding: 9px 12px; border-bottom: 1px solid var(--prep-line,#dde1e8); background: #f8f9fa; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .seg-inner-head h3 { margin: 0; font-size: 14px; }
+  .seg-inner-body { padding: 10px 12px; }
+  .seg-preview-card { position: sticky; top: 0; max-height: calc(100vh - var(--prep-topbar-h,54px) - 8px); overflow: hidden; display: flex; flex-direction: column; }
+  .seg-preview-info { font-size: 12px; color: var(--prep-muted,#4f5d6d); }
+  .seg-preview-body { overflow-y: auto; padding: 12px; flex: 1; }
+  .seg-stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+  .seg-stat { border: 1px solid var(--prep-line,#dde1e8); border-radius: 8px; padding: 8px 10px; background: #fff; font-size: 12px; }
+  .seg-stat strong { display: block; font-size: 20px; color: var(--prep-accent-dark,#0c4a46); margin-bottom: 2px; }
+  .seg-warn-list { display: grid; gap: 6px; }
+  .seg-warn { border: 1px solid var(--prep-warn-line,#edd89e); background: var(--prep-warn-soft,#fff7e6); border-radius: 8px; padding: 7px 10px; font-size: 12px; }
+  .seg-batch-overview > summary::-webkit-details-marker { display: none; }
+  .seg-batch-list { display: grid; gap: 5px; }
+  .seg-batch-line { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; padding: 6px 0; border-top: 1px solid var(--prep-line,#dde1e8); font-size: 12px; }
+  .seg-batch-line:first-child { border-top: 0; padding-top: 0; }
+  .seg-batch-line strong { font-size: 13px; }
+  .seg-batch-meta { color: var(--prep-muted,#4f5d6d); font-size: 11px; }
+  .seg-batch-badge { border-radius: 999px; font-size: 11px; padding: 3px 8px; white-space: nowrap; }
+  .seg-badge-ok { background: #e8f5e9; color: #1a5c33; border: 1px solid #a8d5b0; }
+  .seg-badge-warn { background: var(--prep-warn-soft,#fff7e6); color: #7a4a00; border: 1px solid var(--prep-warn-line,#edd89e); }
+  .seg-badge-none { background: #f8f9fa; color: var(--prep-muted,#4f5d6d); border: 1px solid var(--prep-line,#dde1e8); }
+  @media (max-width:1320px) { .seg-workspace { grid-template-columns: 1fr; } .seg-col { border-right: 0; border-bottom: 1px solid var(--prep-line,#dde1e8); } .seg-preview-card { position: static; max-height: none; } }
   @media (max-width:1400px) { .curate-workspace { grid-template-columns: 280px 1fr; } .curate-col-right { grid-column: 1/-1; border-right: 0; border-top: 1px solid var(--prep-line,#dde1e8); } .curate-preview-body { grid-template-columns: 1fr 1fr; } .curate-minimap { display: none; } }
   @media (max-width:1050px) { .prep-shell { grid-template-columns: 1fr; } .prep-nav { border-right: 0; border-bottom: 1px solid var(--prep-line,#dde1e8); } .curate-workspace { grid-template-columns: 1fr; } .curate-col { border-right: 0; border-bottom: 1px solid var(--prep-line,#dde1e8); } .curate-col:last-child { border-bottom: 0; } .curate-preview-card { position: static; max-height: none; } }
   @media (max-width:800px) { .curate-preview-body { grid-template-columns: 1fr; } .curate-pane { min-height: 160px; } }
@@ -956,14 +986,15 @@ export class App {
         tree.appendChild(summary);
         const treeBody = document.createElement("div");
         treeBody.className = "prep-nav-tree-body";
-        const treeItems: Array<[string, string]> = [
-          ["Curation", "#act-curate-card"],
-          ["Segmentation", "#act-seg-card"],
-          ["Alignement", "#act-align-card"],
+        const treeItems: Array<[string, string, string]> = [
+          ["Curation", "#act-curate-card", "curation"],
+          ["Segmentation", "#act-seg-card", "segmentation"],
+          ["Alignement", "#act-align-card", "alignement"],
         ];
-        for (const [label, selector] of treeItems) {
+        for (const [label, selector, navKey] of treeItems) {
           const link = document.createElement("button");
           link.className = "prep-nav-tree-link";
+          link.dataset.nav = navKey;
           link.textContent = label;
           link.addEventListener("click", () => {
             this._switchTab("actions");

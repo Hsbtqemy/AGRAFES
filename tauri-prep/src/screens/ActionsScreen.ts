@@ -432,47 +432,80 @@ export class ActionsScreen {
         </div><!-- /curate-workspace -->
       </section>
 
-      <!-- Segmentation -->
-      <section class="card" id="act-seg-card">
-        <h3>Segmentation</h3>
-        <p class="hint">Flux recommandé: sélectionner le document, lancer la segmentation, vérifier le statut, puis valider le document.</p>
-        <div class="form-row">
-          <label>Document :
-            <select id="act-seg-doc"><option value="">— choisir —</option></select>
-          </label>
-          <label>Langue :
-            <input id="act-seg-lang" type="text" value="fr" maxlength="10" style="width:70px" />
-          </label>
-          <label>Pack :
-            <select id="act-seg-pack">
-              <option value="auto">Auto multicorpus (recommandé)</option>
-              <option value="fr_strict">Français strict</option>
-              <option value="en_strict">Anglais strict</option>
-              <option value="default">Standard</option>
-            </select>
-          </label>
+      <!-- Segmentation — vNext 2-col workspace -->
+      <section class="card seg-workspace-card" id="act-seg-card">
+        <div class="seg-workspace">
+          <!-- Left col: controls -->
+          <div class="seg-col seg-col-left">
+            <div class="seg-inner-card">
+              <div class="seg-inner-head"><h3>Segmentation</h3></div>
+              <div class="seg-inner-body">
+                <p class="hint">Flux recommandé : sélectionner le document, lancer la segmentation, vérifier le statut, puis valider le document.</p>
+                <div class="form-row">
+                  <label>Document :
+                    <select id="act-seg-doc"><option value="">— choisir —</option></select>
+                  </label>
+                  <label>Langue :
+                    <input id="act-seg-lang" type="text" value="fr" maxlength="10" style="width:70px" />
+                  </label>
+                  <label>Pack :
+                    <select id="act-seg-pack">
+                      <option value="auto">Auto multicorpus (recommandé)</option>
+                      <option value="fr_strict">Français strict</option>
+                      <option value="en_strict">Anglais strict</option>
+                      <option value="default">Standard</option>
+                    </select>
+                  </label>
+                </div>
+                <div id="act-seg-status-banner" class="runtime-state state-info" style="margin-top:0.4rem">
+                  Aucune segmentation lancée pour ce document dans cette session.
+                </div>
+                <div class="btn-row" style="margin-top:0.5rem">
+                  <button id="act-seg-btn" class="btn btn-warning" disabled>Segmenter</button>
+                  <button id="act-seg-validate-btn" class="btn btn-secondary" disabled>Segmenter + valider</button>
+                  <button id="act-seg-validate-only-btn" class="btn btn-primary" disabled>Valider ce document</button>
+                  <button id="act-seg-focus-toggle" class="btn btn-secondary" disabled>Mode focus</button>
+                </div>
+                <div class="form-row" style="margin-top:0.5rem">
+                  <label>Après validation
+                    <select id="act-seg-after-validate" style="max-width:280px">
+                      <option value="documents">Aller à Documents (défaut)</option>
+                      <option value="next">Passer au document suivant</option>
+                      <option value="stay">Rester sur place</option>
+                    </select>
+                  </label>
+                </div>
+                <p class="hint" style="margin-top:0.35rem">
+                  Ce mode applique la segmentation backend (pack/lang).
+                </p>
+              </div>
+            </div>
+
+            <!-- Batch VO overview (P1-3) -->
+            <details class="seg-inner-card seg-batch-overview" open>
+              <summary class="seg-inner-head" style="cursor:pointer;list-style:none">
+                <h3>Vue d'ensemble corpus</h3>
+                <span class="seg-preview-info" id="act-seg-batch-info">—</span>
+              </summary>
+              <div id="act-seg-batch-list" class="seg-inner-body" style="padding:8px 12px">
+                <p class="empty-hint">Chargement des documents…</p>
+              </div>
+            </details>
+          </div>
+
+          <!-- Right col: sticky stats preview -->
+          <div class="seg-col seg-col-right">
+            <div class="seg-preview-card" id="act-seg-preview-card">
+              <div class="seg-inner-head">
+                <h3>Résumé segmentation</h3>
+                <span id="act-seg-preview-info" class="seg-preview-info">—</span>
+              </div>
+              <div id="act-seg-preview-body" class="seg-preview-body">
+                <p class="empty-hint">Lancez une segmentation pour voir les résultats ici.</p>
+              </div>
+            </div>
+          </div>
         </div>
-        <div id="act-seg-status-banner" class="runtime-state state-info" style="margin-top:0.4rem">
-          Aucune segmentation lancée pour ce document dans cette session.
-        </div>
-        <div class="btn-row" style="margin-top:0.5rem">
-          <button id="act-seg-btn" class="btn btn-warning" disabled>Segmenter</button>
-          <button id="act-seg-validate-btn" class="btn btn-secondary" disabled>Segmenter + valider ce document</button>
-          <button id="act-seg-validate-only-btn" class="btn btn-primary" disabled>Valider ce document</button>
-          <button id="act-seg-focus-toggle" class="btn btn-secondary" disabled>Mode focus segmentation</button>
-        </div>
-        <div class="form-row" style="margin-top:0.5rem">
-          <label>Après validation
-            <select id="act-seg-after-validate" style="max-width:280px">
-              <option value="documents">Aller à Documents (défaut)</option>
-              <option value="next">Passer au document suivant</option>
-              <option value="stay">Rester sur place</option>
-            </select>
-          </label>
-        </div>
-        <p class="hint" style="margin-top:0.35rem">
-          Note: ce mode applique la segmentation backend (pack/lang). Les retouches fines segment-par-segment seront traitées dans la phase suivante.
-        </p>
       </section>
 
       <!-- ═══ FEATURE 2: Align + Audit UI ═══ -->
@@ -860,6 +893,29 @@ export class ActionsScreen {
     // Run report export
     root.querySelector("#act-report-btn")!.addEventListener("click", () => void this._runExportReport());
     root.querySelector("#act-goto-report")?.addEventListener("click", () => this._scrollToSection(root, "#act-report-card"));
+
+    // ── Sidebar nav active state via IntersectionObserver ─────────
+    const navSections: Array<[string, string]> = [
+      ["curation", "#act-curate-card"],
+      ["segmentation", "#act-seg-card"],
+      ["alignement", "#act-align-card"],
+    ];
+    const navObserver = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const id = (entry.target as HTMLElement).id;
+          const pair = navSections.find(([, sel]) => sel === `#${id}`);
+          if (!pair) continue;
+          const link = document.querySelector<HTMLElement>(`[data-nav="${pair[0]}"]`);
+          if (link) link.classList.toggle("active", entry.isIntersecting);
+        }
+      },
+      { threshold: 0.15 }
+    );
+    for (const [, sel] of navSections) {
+      const el = root.querySelector(sel);
+      if (el) navObserver.observe(el);
+    }
 
     // ── Workflow ──────────────────────────────────────────────────
     this._wfRoot = root;
@@ -1267,6 +1323,7 @@ export class ActionsScreen {
     try {
       this._docs = await listDocuments(this._conn);
       this._renderDocList();
+      this._renderSegBatchOverview();
       this._populateSelects();
       this._setButtonsEnabled(true);
       // Show audit panel once docs are loaded
@@ -1339,6 +1396,9 @@ export class ActionsScreen {
       // Info label in preview card header
       if (infoEl) infoEl.textContent = `${total} unités · ${changed} modifiée(s)`;
 
+      // Raw pane (center left): source text before curation
+      this._renderRawPane(res.examples);
+
       // Diff table in center right pane
       this._renderDiffList(res.examples);
 
@@ -1363,6 +1423,59 @@ export class ActionsScreen {
     }
     this._setBusy(false);
     this._refreshRuntimeState();
+  }
+
+  private _renderSegBatchOverview(): void {
+    const listEl = document.querySelector("#act-seg-batch-list");
+    const infoEl = document.querySelector("#act-seg-batch-info");
+    if (!listEl) return;
+    const docs = this._docs;
+    if (docs.length === 0) {
+      listEl.innerHTML = `<p class="empty-hint">Aucun document.</p>`;
+      if (infoEl) infoEl.textContent = "—";
+      return;
+    }
+    if (infoEl) infoEl.textContent = `${docs.length} doc(s)`;
+    const statusLabel = (s: string | undefined): string => {
+      if (!s) return `<span class="seg-batch-badge seg-badge-none">Non segmenté</span>`;
+      if (s === "validated") return `<span class="seg-batch-badge seg-badge-ok">✓ Validé</span>`;
+      if (s === "segmented") return `<span class="seg-batch-badge seg-badge-warn">En attente validation</span>`;
+      return `<span class="seg-batch-badge seg-badge-none">${_escHtml(s)}</span>`;
+    };
+    listEl.innerHTML = `<div class="seg-batch-list">${docs.map((d) => `
+      <div class="seg-batch-line">
+        <div>
+          <strong>${_escHtml(d.title)}</strong>
+          <div class="seg-batch-meta">doc#${d.doc_id} · ${d.language} · ${d.unit_count} u.</div>
+        </div>
+        ${statusLabel(d.workflow_status)}
+      </div>`).join("")}</div>`;
+  }
+
+  private _renderSegPreview(): void {
+    const body = document.querySelector("#act-seg-preview-body");
+    const info = document.querySelector("#act-seg-preview-info");
+    if (!body) return;
+    const r = this._lastSegmentReport;
+    if (!r) {
+      body.innerHTML = `<p class="empty-hint">Lancez une segmentation pour voir les résultats ici.</p>`;
+      if (info) info.textContent = "—";
+      return;
+    }
+    const warnings = r.warnings ?? [];
+    if (info) info.textContent = `${r.units_output} segments · pack ${r.segment_pack ?? "auto"}`;
+    const warnHtml = warnings.length
+      ? `<div class="seg-warn-list">${warnings.map((w) => `<div class="seg-warn">${_escHtml(w)}</div>`).join("")}</div>`
+      : `<p class="stat-ok" style="font-size:12px">✓ Aucun avertissement</p>`;
+    body.innerHTML = `
+      <div class="seg-stats-grid">
+        <div class="seg-stat"><strong>${r.units_input}</strong>Unités avant</div>
+        <div class="seg-stat"><strong>${r.units_output}</strong>Segments après</div>
+        <div class="seg-stat"><strong>${warnings.length}</strong>Avertissements</div>
+        <div class="seg-stat"><strong>${r.segment_pack ?? "auto"}</strong>Pack utilisé</div>
+      </div>
+      ${warnHtml}
+    `;
   }
 
   private _renderCurateDiag(changed: number, total: number, replacements: number): void {
@@ -1392,6 +1505,18 @@ export class ActionsScreen {
     const changedBars = Math.round(density * bars);
     mm.innerHTML = Array.from({ length: bars }, (_, i) =>
       `<div class="curate-mm${i < changedBars ? " changed" : ""}"></div>`
+    ).join("");
+  }
+
+  private _renderRawPane(examples: CuratePreviewExample[]): void {
+    const el = document.querySelector("#act-preview-raw");
+    if (!el) return;
+    if (examples.length === 0) {
+      el.innerHTML = `<p class="empty-hint">Aucun exemple disponible.</p>`;
+      return;
+    }
+    el.innerHTML = examples.map((ex) =>
+      `<p>${_escHtml(ex.before)}</p>`
     ).join("");
   }
 
@@ -1442,6 +1567,8 @@ export class ActionsScreen {
       const job = await enqueueJob(this._conn, "curate", params);
       this._log(`Job curation soumis (${job.job_id.slice(0, 8)}…)`);
       // vNext: panel is always visible — reset content to "applied" state
+      const rawEl = document.querySelector("#act-preview-raw");
+      if (rawEl) rawEl.innerHTML = `<p class="empty-hint">Curation en cours…</p>`;
       const diffEl = document.querySelector("#act-diff-list");
       if (diffEl) diffEl.innerHTML = `<p class="empty-hint">Curation en cours…</p>`;
       const statsEl = document.querySelector("#act-preview-stats");
@@ -1592,6 +1719,7 @@ export class ActionsScreen {
             segment_pack: r?.segment_pack,
             warnings: r?.warnings ?? [],
           };
+          this._renderSegPreview();
           const warns = r?.warnings?.length ? ` Avertissements : ${r.warnings.join("; ")}` : "";
           const usedPack = r?.segment_pack ? ` Pack=${r.segment_pack}.` : "";
           this._log(`✓ Segmentation : ${r?.units_input ?? "?"} → ${r?.units_output ?? "?"} unités.${usedPack}${warns}`);
