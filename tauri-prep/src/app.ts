@@ -843,6 +843,9 @@ type GuardableScreen = {
   pendingChangesMessage?: () => string;
 };
 
+/** Stable id for the inline <style> injected by App.init(). Used as dedup key. */
+const PREP_STYLE_ID = "agrafes-prep-inline";
+
 export class App {
   private _conn: Conn | null = null;
   private _activeTab: TabId = "import";
@@ -858,11 +861,18 @@ export class App {
   private _screenControllers: Record<TabId, GuardableScreen> = {} as never;
   private _dbPathEl!: HTMLElement;
 
+  /** beforeunload handler stored so dispose() can remove it cleanly. */
+  private _beforeUnloadHandler: ((e: BeforeUnloadEvent) => void) | null = null;
+
   async init(): Promise<void> {
-    // Inject CSS
-    const style = document.createElement("style");
-    style.textContent = CSS;
-    document.head.appendChild(style);
+    // Inject CSS once per document lifetime — idempotent guard prevents accumulation
+    // when App is mounted multiple times (e.g. shell navigation Explorer ⇄ Constituer).
+    if (!document.getElementById(PREP_STYLE_ID)) {
+      const style = document.createElement("style");
+      style.id = PREP_STYLE_ID;
+      style.textContent = CSS;
+      document.head.appendChild(style);
+    }
 
     // Try to auto-open default DB
     try {
@@ -883,11 +893,15 @@ export class App {
     this._actions.setJobCenter(this._jobCenter, showToast);
     this._actions.setOnOpenDocuments(() => this._switchTab("documents"));
     this._exports.setJobCenter(this._jobCenter, showToast);
-    window.addEventListener("beforeunload", (event) => {
+
+    // Store handler reference so dispose() can remove it (prevents listener leak
+    // when App is re-mounted during shell navigation).
+    this._beforeUnloadHandler = (event: BeforeUnloadEvent) => {
       if (!this._hasPendingChangesInCurrentTab()) return;
       event.preventDefault();
       event.returnValue = "";
-    });
+    };
+    window.addEventListener("beforeunload", this._beforeUnloadHandler);
   }
 
   private _buildUI(): void {
@@ -1565,8 +1579,12 @@ export class App {
     this._exports.setJobCenter(this._jobCenter, showToast);
   }
 
-  /** Stop all background timers (JobCenter polling). Called by tauri-shell on unmount. */
+  /** Stop all background timers and remove event listeners. Called by tauri-shell on unmount. */
   dispose(): void {
     this._jobCenter?.setConn(null);
+    if (this._beforeUnloadHandler) {
+      window.removeEventListener("beforeunload", this._beforeUnloadHandler);
+      this._beforeUnloadHandler = null;
+    }
   }
 }
