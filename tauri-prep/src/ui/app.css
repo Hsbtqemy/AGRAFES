@@ -808,7 +808,10 @@ mark.diff-mark { background: #b7f5c8; color: #14532d; border-radius: 2px; paddin
   border: 1px solid var(--prep-blue-line, #b7c8df);
   border-radius: 4px;
   background: rgba(234,241,251,0.75);
+  transition: top 0.12s ease, height 0.12s ease;
 }
+/* Dynamic zone managed by JS — hide until first scroll update */
+.minimap-track .mm-zone { display: none; }
 .mm-mark {
   position: absolute;
   left: 10px; right: 10px;

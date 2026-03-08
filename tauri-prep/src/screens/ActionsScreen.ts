@@ -196,6 +196,8 @@ export class ActionsScreen {
   private _onLtRawScroll: EventListener | null = null;
   private _onLtSegScroll: EventListener | null = null;
   private _ltSearchOpen = false;
+  /** Cleanup fns for minimap viewport-zone scroll listeners (P19 Inc 3) */
+  private _mmScrollCleanups: Array<() => void> = [];
   private _alignViewMode: "table" | "run" = "table";
 
 
@@ -1033,6 +1035,13 @@ export class ActionsScreen {
         scroll.scrollTop = ratio * (scroll.scrollHeight - scroll.clientHeight);
       });
     });
+    // Inc 3 P19 — Minimap viewport zone: live mm-zone position/size tracking
+    this._mmScrollCleanups.forEach(fn => fn());
+    this._mmScrollCleanups = [];
+    el.querySelectorAll<HTMLElement>(".minimap.minimap-track").forEach(mm => {
+      const body = mm.closest<HTMLElement>(".preview-body");
+      if (body) this._mmScrollCleanups.push(this._setupMmZone(body, mm));
+    });
     el.querySelector("#act-seg-focus-toggle")!.addEventListener("click", () => this._toggleSegFocusMode(root));
     el.querySelector("#act-seg-doc")!.addEventListener("change", () => {
       this._refreshSegmentationStatusUI();
@@ -1781,6 +1790,38 @@ export class ActionsScreen {
     this._ltSyncLock = false;
   }
 
+  /**
+   * Attaches a RAF-throttled scroll listener to update the .mm-zone viewport indicator.
+   * Also fires on tab-bar clicks (pane change). Returns a cleanup function.
+   */
+  private _setupMmZone(previewBody: HTMLElement, mmEl: HTMLElement): () => void {
+    let rafPending = false;
+    const update = () => {
+      const zone = mmEl.querySelector<HTMLElement>(".mm-zone");
+      if (!zone) return;
+      const scroll = Array.from(previewBody.querySelectorAll<HTMLElement>(".pane .doc-scroll"))
+        .find(s => (s.closest<HTMLElement>(".pane") as HTMLElement).style.display !== "none");
+      if (!scroll || scroll.scrollHeight <= 0) { zone.style.display = "none"; rafPending = false; return; }
+      zone.style.display = "";
+      const maxScroll = scroll.scrollHeight - scroll.clientHeight;
+      if (maxScroll <= 0) { zone.style.top = "0%"; zone.style.height = "40%"; rafPending = false; return; }
+      const ratioTop = scroll.scrollTop / maxScroll;
+      const ratioH = scroll.clientHeight / scroll.scrollHeight;
+      zone.style.top = `${Math.round(ratioTop * 100)}%`;
+      zone.style.height = `${Math.max(6, Math.min(40, Math.round(ratioH * 100)))}%`;
+      rafPending = false;
+    };
+    const onScroll = () => { if (!rafPending) { rafPending = true; requestAnimationFrame(update); } };
+    previewBody.addEventListener("scroll", onScroll, { capture: true, passive: true });
+    const tabBar = mmEl.closest<HTMLElement>("article.preview")?.querySelector<HTMLElement>(".preview-tabs");
+    tabBar?.addEventListener("click", onScroll);
+    update();
+    return () => {
+      previewBody.removeEventListener("scroll", onScroll, { capture: true });
+      tabBar?.removeEventListener("click", onScroll);
+    };
+  }
+
   _updateLongtextPreview(segPanel: HTMLElement | null): void {
     if (!segPanel || !this._lastSegmentReport) return;
     const r = this._lastSegmentReport;
@@ -1932,6 +1973,8 @@ export class ActionsScreen {
     this._segmentPendingValidation = false;
     this._segFocusMode = false;
     this._voPreviewLimitByDocId.clear();
+    this._mmScrollCleanups.forEach(fn => fn());
+    this._mmScrollCleanups = [];
     this._hasPendingPreview = false;
     this._lastAuditEmpty = false;
     this._auditSelectedLinkId = null;
