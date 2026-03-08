@@ -1157,10 +1157,10 @@ export class ActionsScreen {
         <div id="act-doc-list" class="doc-list"><p class="empty-hint">Aucun corpus ouvert.</p></div>
       </section>
       <section class="card" id="act-align-card">
-        <h3>Alignement <span class="badge-preview">run + correction</span></h3>
         <div class="align-layout">
           <div class="align-main">
             <div class="align-launcher">
+              <div class="align-launcher-head">Configuration du run</div>
               <div class="align-setup-row">
                 <label>Doc pivot :
                   <select id="act-align-pivot"><option value="">&#8212; choisir &#8212;</option></select>
@@ -1203,11 +1203,11 @@ export class ActionsScreen {
                 <div id="act-align-banner" class="preview-stats"></div>
               </div>
               <div id="act-align-kpis" class="align-kpis" style="margin-top:10px">
-                <div class="align-kpi"><div class="align-kpi-label">Liens cr&#233;&#233;s</div><div class="align-kpi-value" id="act-kpi-created">&#8212;</div></div>
-                <div class="align-kpi"><div class="align-kpi-label">Ignor&#233;s</div><div class="align-kpi-value" id="act-kpi-skipped">&#8212;</div></div>
-                <div class="align-kpi"><div class="align-kpi-label">Couverture</div><div class="align-kpi-value" id="act-kpi-coverage">&#8212;</div></div>
-                <div class="align-kpi"><div class="align-kpi-label">Orphelins pivot</div><div class="align-kpi-value" id="act-kpi-orphan-p">&#8212;</div></div>
-                <div class="align-kpi"><div class="align-kpi-label">Orphelins cible</div><div class="align-kpi-value" id="act-kpi-orphan-t">&#8212;</div></div>
+                <div class="kpi align-kpi" id="act-kpi-wrap-created"><div class="label align-kpi-label">Liens cr&#233;&#233;s</div><div class="value align-kpi-value" id="act-kpi-created">&#8212;</div></div>
+                <div class="kpi align-kpi" id="act-kpi-wrap-skipped"><div class="label align-kpi-label">Ignor&#233;s</div><div class="value align-kpi-value" id="act-kpi-skipped">&#8212;</div></div>
+                <div class="kpi align-kpi" id="act-kpi-wrap-coverage"><div class="label align-kpi-label">Couverture</div><div class="value align-kpi-value" id="act-kpi-coverage">&#8212;</div></div>
+                <div class="kpi align-kpi" id="act-kpi-wrap-orphan-p"><div class="label align-kpi-label">Orphelins pivot</div><div class="value align-kpi-value" id="act-kpi-orphan-p">&#8212;</div></div>
+                <div class="kpi align-kpi" id="act-kpi-wrap-orphan-t"><div class="label align-kpi-label">Orphelins cible</div><div class="value align-kpi-value" id="act-kpi-orphan-t">&#8212;</div></div>
               </div>
               <div class="btn-row" style="margin-top:10px">
                 <button id="act-align-open-audit-cta" class="btn btn-primary btn-sm">Ouvrir l&#8217;audit &#8595;</button>
@@ -2762,7 +2762,13 @@ export class ActionsScreen {
           const totalSkipped = reports.reduce((s, r) => s + (r.links_skipped ?? 0), 0);
           const setKpi = (id: string, value: string, cls?: string) => {
             const el = document.querySelector(`#${id}`);
-            if (el) { el.textContent = value; if (cls) { el.className = `align-kpi-value ${cls}`; } }
+            if (el) {
+              el.textContent = value;
+              el.className = cls ? `align-kpi-value value ${cls}` : "align-kpi-value value";
+              // Also update parent kpi card class for color coding
+              const wrap = document.querySelector(`#${id.replace("act-kpi-", "act-kpi-wrap-")}`);
+              if (wrap) wrap.className = cls ? `kpi align-kpi ${cls}` : "kpi align-kpi";
+            }
           };
           setKpi("act-kpi-created", String(totalCreated), totalCreated > 0 ? "ok" : undefined);
           setKpi("act-kpi-skipped", String(totalSkipped), totalSkipped > 0 ? "warn" : undefined);
