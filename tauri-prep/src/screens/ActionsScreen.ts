@@ -734,7 +734,7 @@ export class ActionsScreen {
                     <div class="doc-final-meta" id="act-seg-tr-final-meta"></div>
                     <div class="doc-final-actions">
                       <button class="btn btn-secondary btn-sm" id="act-seg-tr-final-compare">Comparer</button>
-                      <button class="btn btn-primary btn-sm" id="act-seg-tr-final-validate" disabled title="Validation disponible après alignement">Valider&#160;&#10003;</button>
+                      <button class="btn btn-primary btn-sm" id="act-seg-tr-final-validate" disabled>Valider&#160;&#10003;</button>
                     </div>
                   </div>
                 </div>
@@ -979,7 +979,7 @@ export class ActionsScreen {
                     <div class="doc-final-meta" id="act-seg-lt-final-meta"></div>
                     <div class="doc-final-actions">
                       <button class="btn btn-secondary btn-sm" id="act-seg-lt-final-diff">Voir Diff</button>
-                      <button class="btn btn-primary btn-sm" id="act-seg-lt-final-apply" disabled title="Application disponible depuis la vue Curation">Appliquer</button>
+                      <button class="btn btn-primary btn-sm" id="act-seg-lt-final-apply" disabled>Appliquer&#160;&#10003;</button>
                     </div>
                   </div>
                 </div>
@@ -1004,16 +1004,18 @@ export class ActionsScreen {
     // doc-final-bar buttons (units)
     el.querySelector("#act-seg-final-seg-btn")?.addEventListener("click", () => this._runSegment(true));
     el.querySelector("#act-seg-final-validate-btn")?.addEventListener("click", () => void this._runValidateCurrentSegDoc());
-    // doc-final-bar buttons (longtext) — switch to diff tab
+    // doc-final-bar buttons (longtext) — switch to diff tab + apply validation
     el.querySelector("#act-seg-lt-final-diff")?.addEventListener("click", () => {
       const diffTab = el.querySelector<HTMLButtonElement>('#act-seg-longtext-view .ptab[data-tab="diff"]');
       diffTab?.click();
     });
-    // doc-final-bar buttons (traduction) — switch to compare tab
+    el.querySelector("#act-seg-lt-final-apply")?.addEventListener("click", () => void this._runValidateCurrentSegDoc());
+    // doc-final-bar buttons (traduction) — switch to compare tab + validate
     el.querySelector("#act-seg-tr-final-compare")?.addEventListener("click", () => {
       const compareTab = el.querySelector<HTMLButtonElement>('.ptab-tr[data-tab-tr="compare"]');
       compareTab?.click();
     });
+    el.querySelector("#act-seg-tr-final-validate")?.addEventListener("click", () => void this._runValidateCurrentSegDoc());
     // Inc 3 P18 — Minimap click-to-scroll: click on .mm-mark scrolls the active .doc-scroll
     el.querySelectorAll<HTMLElement>(".minimap.minimap-track").forEach(mm => {
       mm.addEventListener("click", (e: MouseEvent) => {
@@ -1795,14 +1797,16 @@ export class ActionsScreen {
     if (pillEl) pillEl.textContent = `doc#${r.doc_id} · ${r.segment_pack ?? "auto"}`;
     const mmEl = segPanel.querySelector<HTMLElement>("#act-seg-lt-minimap");
     if (mmEl) this._renderMinimap(mmEl, r.units_output, r.warnings?.length ?? 0);
-    // Show doc-final-bar for longtext
+    // Show doc-final-bar for longtext + enable Appliquer if pending validation
     const ltBar = segPanel.querySelector<HTMLElement>("#act-seg-lt-final-bar");
     const ltMeta = segPanel.querySelector<HTMLElement>("#act-seg-lt-final-meta");
+    const ltApplyBtn = segPanel.querySelector<HTMLButtonElement>("#act-seg-lt-final-apply");
     if (ltBar) ltBar.removeAttribute("hidden");
     if (ltMeta) {
       const warnSuffix = r.warnings?.length ? ` · ${r.warnings.length} avert.` : "";
       ltMeta.textContent = `doc#${r.doc_id} · ${r.units_output} segments${warnSuffix}`;
     }
+    if (ltApplyBtn) ltApplyBtn.disabled = !this._segmentPendingValidation;
   }
 
   /** Fills a minimap element with bucket bars. Changed buckets mark warning density. */
@@ -1860,15 +1864,17 @@ export class ActionsScreen {
     }
     const mmEl = segPanel.querySelector<HTMLElement>("#act-seg-tr-minimap");
     if (mmEl) this._renderMinimap(mmEl, r.units_output, r.warnings?.length ?? 0);
-    // Show doc-final-bar for traduction
+    // Show doc-final-bar for traduction + enable Valider if pending validation
     const trBar = segPanel.querySelector<HTMLElement>("#act-seg-tr-final-bar");
     const trMeta = segPanel.querySelector<HTMLElement>("#act-seg-tr-final-meta");
+    const trValBtn = segPanel.querySelector<HTMLButtonElement>("#act-seg-tr-final-validate");
     if (trBar) trBar.removeAttribute("hidden");
     if (trMeta) {
       const doc = this._docs.find(d => d.doc_id === r.doc_id);
       const docLabel = doc ? `${doc.title}` : `doc#${r.doc_id}`;
       trMeta.textContent = `${docLabel} · ${r.units_output} segments · pack ${r.segment_pack ?? "auto"}`;
     }
+    if (trValBtn) trValBtn.disabled = !this._segmentPendingValidation;
   }
 
   /**
