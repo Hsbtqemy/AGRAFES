@@ -1,11 +1,13 @@
 # Backlog — multicorpus_engine
 
-Last updated: 2026-03-08 (P7 — cleanup final + document.title par mode)
+Last updated: 2026-03-08 (P11 — Actions TRUE DOM parity — Inc 3 traduction native layout)
 
 ## Priority backlog (realistic, post-implementation)
 
 | Priority | Item | Why now | Acceptance criteria | Status |
 |----------|------|---------|---------------------|--------|
+| **NOW** | **P11 — Actions TRUE DOM parity** | Inc 3 traduction native layout; Inc 0/1/2 vérifiés conformes | 2-col traduction workspace, `<details>` ref VO, preview-tools/tabs/panes à droite; build vert | **done** |
+| **P1** | **P12 — Wiring traduction preview + scroll sync** | La preview traduction droite est structurée mais non câblée ; le scroll sync longtext est TODO | `_runSegment()` alimente les panes traduction (target + VO) ; sync scroll `raw-scroll` ↔ `seg-scroll` mode longtext | **todo** |
 | **NOW** | **Tauri UI "Concordancier" V0** | Core + sidecar stable; time to deliver user-facing value | `tauri-app/` launches with `npm run tauri dev`; search, KWIC, import, index | **done** |
 | **NOW** | **Tauri Concordancier Prep V0** (`tauri-prep/`) | Corpus preparation workflow (import → curate → segment → align) needs dedicated app | 3-screen scaffold: Project/DB, Import+Index, Actions; all sidecar routes wired | **done** |
 | **NOW** | **Concordancier Prep V0.3** — curate preview diff + align audit UI | Users need to preview curation changes before applying + review alignment links | `POST /curate/preview` dry-run with diff table; `POST /align/audit` paginated link table | **done** |
@@ -105,11 +107,19 @@ Last updated: 2026-03-08 (P7 — cleanup final + document.title par mode)
   - `tauri-shell/src/styleRegistry.ts` : JSDoc mis à jour (Option A — conservé, tree-shaked en prod).
   - `tauri-shell/src/shell.ts` : `_updateDocTitle(mode)` + `_MODE_TITLES` — titre OS par mode.
 
-## Placeholders (post-P7)
+- **P8 — Actions state-nav refactor + hub view** (2026-03-08):
+  - `ActionsScreen.ts` : `SubView` étendu à `"hub" | ...` ; défaut "hub" ; `_renderHubPanel()` + `_prependBackBtn()`.
+  - Segmentation : 3e mode "Traduction" (Unités / Traduction / Document complet).
+  - Alignement : header `acts-align-head` (titre + pill stratégie).
+  - Suppression barre `acts-subnav` ; sidebar tree = seule navigation.
+  - `app.ts` : "Vue synthèse" en tête des tree-items ; clic onglet Actions → hub.
+  - `app.css` : classes hub + back-btn + align-head ajoutées.
+
+## Placeholders (post-P8)
 
 | Priority | Item | Rationale | Status |
 |----------|------|-----------|--------|
-| P8 | **Shell multi-fenêtre** — `tauri::WebviewWindowBuilder` | Ouvrir Explorer et Constituer en parallèle dans des fenêtres séparées | todo |
-| P8 | **Deprecation tauri-app + tauri-prep** standalone | tauri-shell les supplante ; maintien pour standalone uniquement jusqu'à V2.0 | todo |
-| P8 | **Hot-swap DB sidecar** — éviter le redémarrage sidecar lors d'un switch DB | Actuellement : `_initDb` redémarre le sidecar ; un futur mécanisme de rechargement à chaud éviterait l'interruption | todo |
-| P8 | **CSS audit des 4 fichiers ui/** (tokens/base/components/prep-vnext) | Depuis P6, `app.css` contient des règles dupliquées avec les 4 fichiers existants (`:root` vars, sidebar layout) | todo |
+| P9 | **Shell multi-fenêtre** — `tauri::WebviewWindowBuilder` | Ouvrir Explorer et Constituer en parallèle dans des fenêtres séparées | todo |
+| P9 | **Deprecation tauri-app + tauri-prep** standalone | tauri-shell les supplante ; maintien pour standalone uniquement jusqu'à V2.0 | todo |
+| P9 | **Hot-swap DB sidecar** — éviter le redémarrage sidecar lors d'un switch DB | Actuellement : `_initDb` redémarre le sidecar ; un futur mécanisme de rechargement à chaud éviterait l'interruption | todo |
+| P9 | **CSS audit des 4 fichiers ui/** (tokens/base/components/prep-vnext) | Depuis P6, `app.css` contient des règles dupliquées avec les 4 fichiers existants (`:root` vars, sidebar layout) | todo |

@@ -1,6 +1,6 @@
 # Status — Concordancier Prep (tauri-prep) V0
 
-**Last updated:** 2026-03-08 (P7 — suppression placeholder PREP_CSS)
+**Last updated:** 2026-03-08 (P11 — Actions TRUE DOM parity: Inc 3 traduction native layout + vérification Inc 0/1/2)
 
 Current contract/runtime reference:
 - `CONTRACT_VERSION = 1.4.6`
@@ -8,6 +8,120 @@ Current contract/runtime reference:
 - Execution plan reference: `docs/PREP_IMPLEMENTATION_PLAN.md`
 - Plan status: Phase 0–6 done; **vNext UI Pilot (P0 + P1 + P2) done**
 - Redesign plan: `docs/PREP_UI_REDESIGN_PLAN.md`
+
+---
+
+## P11 — Actions TRUE DOM parity (2026-03-08) — fait
+
+### Objectif
+
+Aligner la structure DOM de `ActionsScreen.ts` sur les prototypes HTML vnext avec conformité exacte (classes, nesting, structure sémantique) pour les 4 sous-vues. Fin des closures capturées pour le changement de mode seg.
+
+### Changements
+
+- **Inc 0 (vérification)** : `_setSegMode()` en place depuis P10. Plus aucun usage de `_segModeSetter`. Le CTA "Scénario grand texte" (hub + head seg) appelle `this._setSegMode("longtext")` — stable, pas de DOM précédent requis. ✅
+- **Inc 1 (vérification)** : Curation — `.curate-workspace` 3-col (310px / minmax / 300px), `.curate-preview-card` sticky, `.preview-controls` (2 chip-rows), `.preview-grid` (2 panes + minimap), `.preview-foot` — CSS complet. DOM conforme prototype `prep-curation-preview-vnext.html`. ✅
+- **Inc 2 (vérification)** : Longtext — `article.seg-preview-card.preview` sticky, `.preview-tools` (5 chips), `.preview-tabs` tablist (3 tabs), `.preview-body` (pane-raw + pane-seg + pane-diff + minimap), `.preview-foot` — CSS complet. DOM conforme prototype `prep-actions-longtext-vnext.html`. ✅
+- **Inc 3 (implémenté)** : Traduction — layout natif 2-col conforme :
+  - `#act-seg-traduction-hint` restructuré en `.seg-traduction-workspace` (grid `340px 1fr`)
+  - Colonne gauche `.seg-traduction-left` : `.seg-traduction-bandeau` (guidance) + `<details id="act-seg-ref-details">` natif remplace l'ancien `collapsible-card` + collapse button
+  - `<summary class="seg-ref-vo-summary">` avec caret animé CSS (`:open` → `rotate(180deg)`)
+  - `<div class="seg-ref-vo-body">` contient le select `#act-seg-ref-doc` + `#act-seg-ref-content`
+  - Colonne droite `.seg-traduction-preview-wrap` : `article.seg-preview-card.seg-traduction-preview.preview` avec `.preview-tools` (chips: Cible/VO/Diff), `.preview-tabs` (tablist: Cible/VO référence/Comparaison), `.preview-body` (pane-target + pane-vo + minimap), `.preview-foot`
+  - Listener `#act-seg-ref-collapse-btn` remplacé par listeners `.ptab-tr` pour les tabs traduction
+  - CSS `app.css` : refonte `.seg-traduction-panel`, `.seg-traduction-workspace`, `.seg-traduction-left`, `.seg-traduction-preview-wrap`, `.seg-traduction-bandeau`, `.seg-ref-vo-details`, `.seg-ref-vo-body`, responsive `@media (max-width:1100px)`
+
+### Invariants
+
+- `npm --prefix tauri-prep run build` ✓ après Inc 3.
+- Zéro nouveau listener non nettoyé (le seul ajout `.ptab-tr` est un listener standard sur éléments DOM rendus une fois).
+- Zéro changement backend/sidecar/contrat.
+
+### Note refactor segMode (fin des closures)
+
+Depuis P11 Inc 0, le pattern "closure capturée `_segModeSetter`" est définitivement remplacé par la méthode de classe `_setSegMode(mode)`. Ce pattern était fragile lors des refactors DOM car la closure était assignée dans `_renderSegmentationPanel()` et pouvait capturer des références obsolètes. La méthode `_setSegMode()` résout le panneau via `this._root?.querySelector('[data-panel="segmentation"]')` à chaque appel, ce qui la rend robuste aux remplacements DOM.
+
+---
+
+## P10 — Actions DOM structure parity (2026-03-08) — fait
+
+### Objectif
+
+Parité DOM structurelle entre `ActionsScreen.ts` et les prototypes HTML vnext (5 incréments, builds verts après chaque).
+
+### Changements
+
+- **Inc 1 — Hub** (`ActionsScreen.ts`): `_renderHubPanel()` rebâti avec `<section class="acts-hub-head-card">` (h1 + description + head-tools : pill + 4 boutons CTA `acts-hub-head-link`). CTA "Scénario grand texte" combine `_switchSubViewDOM("segmentation")` + `_segModeSetter("longtext")`. Champ `_segModeSetter` ajouté au class ; assigné dans `_renderSegmentationPanel()` après la définition de `setSegMode`.
+  - **CSS** (`app.css`): `.acts-hub-head-card`, `.acts-hub-head-left`, `.acts-hub-head-tools`, `.acts-hub-head-link` (style bouton outline accent, hover filled).
+- **Inc 2 — Curation** (`ActionsScreen.ts`): `preview-controls` : 3 spans statiques → 2 `<div class="curate-chip-row">` (chips display + chips scroll). Colonne droite : "Journal de revue" card ajoutée (`#act-curate-review-log`).
+  - **CSS** (`app.css`): `.curate-chip` (+ `.active`) ajouté ; `.curate-preview-controls` passe en `flex-direction: column` ; `.curate-review-log`.
+- **Inc 3 — Longtext** (`ActionsScreen.ts`): Vue Document complet restructurée — le form (doc/lang/pack + btns + status) migré DANS la col gauche comme carte "Paramètres segmentation" ; stats + warns + batch-list regroupés dans carte "Résumé vérification". Ajout 5e chip "recherche dans document".
+- **Inc 4 — Seg Unités + Traduction** (`ActionsScreen.ts`): `<section class="acts-seg-head-card">` ajoutée en tête du panneau segmentation (h1, description, pill, CTA "Scénario grand texte"). CTA câblé sur `setSegMode("longtext")`.
+  - **CSS** (`app.css`): `.acts-seg-head-card` (même pattern que `.acts-hub-head-card`).
+- **Inc 5 — Alignement** (`ActionsScreen.ts`): `<div class="acts-align-head">` remplacé par `<section class="acts-seg-head-card">` (h1 "Alignement — vue run globale", description, pill `#act-align-run-pill`).
+
+### Invariants
+
+- Tous les IDs fonctionnels (sélecteurs, boutons JS) inchangés.
+- `npm --prefix tauri-prep run build` ✓ après chaque incrément.
+- `npm --prefix tauri-shell run build` ✓ final.
+
+---
+
+## P9 — Actions visual parity (2026-03-08) — fait
+
+### Objectif
+
+Alignement visuel de l'onglet Actions sur les maquettes HTML vnext (hub, curation, segmentation, alignement).
+
+### Changements
+
+- **Navigation** (`app.ts`): "Vue synthèse" supprimé des tree-items — seuls Curation/Segmentation/Alignement restent.
+- **Curation** (`app.css`): `.curate-workspace` grid `310px minmax(580px,1fr) 300px` (était `300px minmax(480px,1fr) 270px`).
+- **Segmentation** (`app.css`): `.seg-workspace` grid `310px 1fr` (était `360px 1fr`) ; `.seg-workspace-lt` variant `360px 1fr` pour le mode Document complet.
+- **Segmentation** (`ActionsScreen.ts`): mode Document complet utilise `seg-workspace-lt`; mode Traduction redessiné en panneau de référence avec sélecteur de VO.
+- **Alignement** (`ActionsScreen.ts`): setup form restructuré en `align-setup-row` 3-col grid (pivot/cibles/stratégie) ; KPIs row (`align-kpis`) après les résultats de run et mis à jour depuis la qualité.
+- **CSS cleanup** (`app.css`): `.acts-subnav` + `.acts-subnav-btn` supprimés (dead code post-P8).
+- **CSS new** (`app.css`): `.seg-traduction-panel`, `.seg-mode-pill`, `.seg-ref-vo-card`, `.align-kpis`, `.align-kpi`, `.align-setup-row`.
+
+### Invariants
+
+- `npm --prefix tauri-prep run build` vert
+- `npm --prefix tauri-shell run build` vert
+- `act-seg-ref-doc` ajouté à `_populateSelects()`
+
+---
+
+## P8 — Actions state-nav refactor + hub view (2026-03-08) — fait
+
+### Objectif
+
+Refonte de la navigation interne de l'onglet Actions : remplacement du modèle "scroll + IntersectionObserver"
+par un switch de vues explicite (état), avec ajout d'une vue hub "Vue synthèse".
+
+### Changements
+
+- `ActionsScreen.ts` :
+  - `SubView = "hub" | "curation" | "segmentation" | "alignement"` (hub ajouté)
+  - `_activeSubView` : défaut `"hub"` (était `"curation"`)
+  - `_renderHubPanel()` : hub avec 3 cards de navigation vers Curation / Segmentation / Alignement
+  - `_prependBackBtn()` : bouton "← Vue synthèse" injecté en tête de chaque panneau sous-vue
+  - `_renderAlignementPanel()` : header `acts-align-head` avec titre + pill "Liens pivot ↔ cible"
+  - Segmentation : mode "Traduction" ajouté (3 modes : Unités / Traduction / Document complet)
+  - Barre `acts-subnav` supprimée (sidebar tree suffit)
+- `app.ts` :
+  - `treeItems` : "Vue synthèse" (hub) ajouté en premier item
+  - Clic sur l'onglet "Actions" → `setSubView("hub")` (re-entry sur hub)
+- `app.css` :
+  - `.acts-hub` + `.acts-hub-header` + `.acts-hub-nav-cards` + `.acts-hub-nav-card[-icon/-content/-arrow]`
+  - `.acts-view-back` + `.acts-view-back-btn`
+  - `.acts-align-head` + `.acts-align-head-pill`
+
+### Invariants
+
+- `npm --prefix tauri-prep run build` vert
+- `npm --prefix tauri-shell run build` vert
+- `pytest -q` → 391 passed
 
 ---
 
