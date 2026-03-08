@@ -1,6 +1,6 @@
 # Backlog — multicorpus_engine
 
-Last updated: 2026-03-08 (P5 — DB remount indicator + CSS feasibility analysis)
+Last updated: 2026-03-08 (P6 — extraction CSS PREP_CSS vers fichiers Vite-managed)
 
 ## Priority backlog (realistic, post-implementation)
 
@@ -92,11 +92,19 @@ Last updated: 2026-03-08 (P5 — DB remount indicator + CSS feasibility analysis
   - P5-2 (CSS `<link>` statique) : différé P6 — les 4 CSS files sont des compléments, pas des remplacements de `PREP_CSS`.
   - Analyse P5-1 : comportement apply-on-navigate déjà correct (chaque `_setMode` remonte systématiquement).
 
-## P6 — Placeholders (post-P5)
+- **P6 — Extraction CSS PREP_CSS vers Vite-managed** (2026-03-08):
+  - `tauri-prep/src/ui/app.css` (768 lignes) + `tauri-prep/src/ui/job-center.css` (19 lignes) créés.
+  - `tauri-prep/src/main.ts` : imports CSS ajoutés.
+  - `tauri-shell/src/modules/constituerModule.ts` : imports CSS ; `ensureStyleTag` supprimé.
+  - `tauri-prep/src/app.ts` : `PREP_CSS` vidé, `PREP_STYLE_ID` retiré, injection inline supprimée.
+  - **Impact bundle** : JS −36 kB pour prep et shell ; CSS désormais asset Vite dédié.
+  - `styleRegistry.ts` conservé (20 tests, utile P7+).
+
+## P6 — Placeholders (post-P6)
 
 | Priority | Item | Rationale | Status |
 |----------|------|-----------|--------|
-| P6 | **CSS extraction complète de `PREP_CSS`** | Extraire les ~67 KB de CSS inline de `app.ts` vers des fichiers `.css` dédiés (plan : 1 fichier par écran + 1 fichier layout) ; `constituerModule.ts` importerait les fichiers CSS via Vite, sans injection inline | todo |
+| P6 | **CSS extraction complète de `PREP_CSS`** | Extraire les ~67 KB de CSS inline de `app.ts` vers des fichiers `.css` dédiés | **done** |
 | P6 | **Shell multi-fenêtre** — `tauri::WebviewWindowBuilder` | Ouvrir Explorer et Constituer en parallèle dans des fenêtres séparées | todo |
 | P6 | **Deprecation tauri-app + tauri-prep** standalone | tauri-shell les supplante ; maintien pour standalone uniquement jusqu'à V2.0 | todo |
 | P6 | **Hot-swap DB sidecar** — éviter le redémarrage sidecar lors d'un switch DB | Actuellement : `_initDb` redémarre le sidecar ; un futur mécanisme de rechargement à chaud éviterait l'interruption | todo |

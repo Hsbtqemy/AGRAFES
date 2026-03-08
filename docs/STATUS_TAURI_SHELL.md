@@ -1,6 +1,6 @@
 # Status: AGRAFES Shell (tauri-shell/)
 
-**Current version:** V1.9.0 (2026-03-01)
+**Current version:** V1.9.1 (2026-03-08)
 
 ## What it is
 
@@ -139,6 +139,32 @@ http://localhost:1422/?mode=constituer
 ```
 
 Hash takes precedence over `?mode=`. Both override `localStorage.lastMode`.
+
+## P6 — Extraction CSS PREP_CSS vers Vite-managed (2026-03-08)
+
+### P6-1 — PREP_CSS extrait en fichiers CSS
+
+La constante `PREP_CSS` (~67 kB) qui était embarquée dans `constituerModule.js` est maintenant
+gérée par Vite comme asset CSS.
+
+**Avant :** `constituerModule.js` 238.03 kB (CSS inline dans JS)
+**Après :** `constituerModule.js` 201.99 kB + `constituerModule.css` 28.91 kB
+
+`constituerModule.ts` importe désormais directement :
+```ts
+import "../../../tauri-prep/src/ui/app.css";
+import "../../../tauri-prep/src/ui/job-center.css";
+```
+
+L'appel `ensureStyleTag(PREP_STYLE_ID, PREP_CSS)` et les imports `styleRegistry` ont été supprimés.
+
+### P6-2 — Cleanup
+
+- `constituerModule.ts` : plus de dépendance sur `styleRegistry` ni sur `PREP_CSS`/`PREP_STYLE_ID`.
+- `app.ts` (tauri-prep) : exports `PREP_CSS`/`PREP_STYLE_ID` supprimés ; injection inline supprimée.
+- `styleRegistry.ts` conservé (20 tests verts, utilisable pour P7+).
+
+---
 
 ## P5 — DB remount indicator + CSS feasibility analysis (2026-03-08)
 

@@ -9,6 +9,25 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+- **P6-1 — Prep: extraction CSS vers fichiers Vite-managed** (`tauri-prep` + `tauri-shell`)
+  - `PREP_CSS` (~67 kB, constante JS inline dans `app.ts`) extrait vers :
+    - `tauri-prep/src/ui/app.css` (768 lignes, règles globales + topbar + widgets + screens + layout)
+    - `tauri-prep/src/ui/job-center.css` (19 lignes, classes `.jc-*`)
+  - `tauri-prep/src/main.ts` : imports des deux nouveaux fichiers CSS (standalone).
+  - `tauri-shell/src/modules/constituerModule.ts` : imports des deux fichiers CSS (embedded) ;
+    suppression de l'appel `ensureStyleTag(PREP_STYLE_ID, PREP_CSS)` et du import `styleRegistry`.
+  - `tauri-prep/src/app.ts` : `PREP_CSS` vidé (empty string, supprimé en P7) ;
+    `PREP_STYLE_ID` retiré ; bloc d'injection inline dans `App.init()` supprimé ;
+    import `JOB_CENTER_CSS` de `JobCenter.ts` retiré.
+  - **Impact bundle** — `tauri-prep` : JS 251.72 → 215.89 kB (−36 kB), CSS 13.14 → 39.73 kB.
+    `tauri-shell` : `constituerModule.js` 238.03 → 201.99 kB (−36 kB) + nouveau chunk CSS 28.91 kB.
+  - Invariants : 20/20 tests styleRegistry, 26/26 tests FTS, deux builds verts.
+
+- **P6-2 — Cleanup styleRegistry usage** (`tauri-shell` + `tauri-prep`)
+  - `constituerModule.ts` : `ensureStyleTag` + imports `PREP_CSS`/`PREP_STYLE_ID` supprimés.
+  - `app.ts` : exports `PREP_CSS`/`PREP_STYLE_ID` supprimés.
+  - `styleRegistry.ts` conservé (module stable, utile pour P7+, 20 tests).
+
 - **P5-1 — Shell: indicateur visuel DB remount en attente** (`tauri-shell`)
   - Badge DB affiche `"DB: nom ⚠"` (couleur ambre `#fcd34d`) lorsqu'un remount est différé
     (banner "Plus tard" ou "Rafraîchir maintenant" pas encore cliqué).

@@ -1,6 +1,6 @@
 # Status — Concordancier Prep (tauri-prep) V0
 
-**Last updated:** 2026-03-01 (vNext UI Pilot — P0 + P1 + P2 implémentés)
+**Last updated:** 2026-03-08 (P6 — extraction CSS PREP_CSS vers fichiers Vite-managed)
 
 Current contract/runtime reference:
 - `CONTRACT_VERSION = 1.4.6`
@@ -8,6 +8,51 @@ Current contract/runtime reference:
 - Execution plan reference: `docs/PREP_IMPLEMENTATION_PLAN.md`
 - Plan status: Phase 0–6 done; **vNext UI Pilot (P0 + P1 + P2) done**
 - Redesign plan: `docs/PREP_UI_REDESIGN_PLAN.md`
+
+---
+
+## P6 — Extraction CSS PREP_CSS (2026-03-08) — fait
+
+### Problème
+
+`app.ts` contenait une constante JS `PREP_CSS` (~67 kB, ~768 lignes) injectée inline dans `<head>`
+à chaque `App.init()`. Depuis P3-B un guard idempotent évitait l'accumulation, mais le CSS restait
+embarqué dans le bundle JS, gonflant `constituerModule.js` (shell) et `index.js` (standalone).
+
+### Solution
+
+- Extraction vers deux fichiers CSS Vite-managed :
+  - `tauri-prep/src/ui/app.css` — règles globales (`:root`, topbar, widgets, screens, layout vNext)
+  - `tauri-prep/src/ui/job-center.css` — classes `.jc-*` (ex-`JOB_CENTER_CSS`)
+- `main.ts` importe les deux fichiers (standalone build).
+- `constituerModule.ts` importe les deux fichiers (embedded build) ; `ensureStyleTag` supprimé.
+- `app.ts` : `PREP_CSS` vidé (kept as `""` pour P7), injection inline supprimée, `PREP_STYLE_ID` retiré.
+
+### Impact bundle
+
+| Artifact | Avant P6 | Après P6 | Delta |
+|---|---|---|---|
+| `tauri-prep dist/index-*.js` | 251.72 kB | 215.89 kB | **−35.83 kB** |
+| `tauri-prep dist/index-*.css` | 13.14 kB | 39.73 kB | +26.59 kB |
+| `tauri-shell constituerModule-*.js` | 238.03 kB | 201.99 kB | **−36.04 kB** |
+| `tauri-shell constituerModule-*.css` | (absent) | 28.91 kB | nouveau chunk |
+
+Le JS est allégé ; le CSS est désormais un asset à part entière (cache browser, HMR, séparation).
+
+### Fichiers touchés
+
+- `tauri-prep/src/ui/app.css` — **nouveau**
+- `tauri-prep/src/ui/job-center.css` — **nouveau**
+- `tauri-prep/src/main.ts` — imports CSS ajoutés
+- `tauri-prep/src/app.ts` — `PREP_CSS`, `PREP_STYLE_ID`, injection supprimés
+- `tauri-shell/src/modules/constituerModule.ts` — imports CSS ; `ensureStyleTag` supprimé
+
+### Invariants post-P6
+
+- `node tauri-shell/scripts/test_style_registry.mjs` → 20/20
+- `node tauri-app/scripts/test_buildFtsQuery.mjs` → 26/26
+- `npm --prefix tauri-prep run build` → vert
+- `npm --prefix tauri-shell run build` → vert
 
 ---
 
