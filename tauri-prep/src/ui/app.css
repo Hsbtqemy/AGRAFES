@@ -916,15 +916,6 @@ mark.diff-mark { background: #b7f5c8; color: #14532d; border-radius: 2px; paddin
 }
 .acts-hub-head-link:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outline-offset: 2px; }
 
-/* Legacy header (kept for safety) */
-.acts-hub-header { margin-bottom: 20px; }
-.acts-hub-header h2 {
-  font-size: 1.3rem;
-  font-weight: 700;
-  color: var(--prep-heading, #1a2533);
-  margin: 0 0 6px;
-}
-.acts-hub-header p { color: var(--prep-muted, #4f5d6d); font-size: 0.875rem; margin: 0; }
 .acts-hub-nav-cards { display: flex; flex-direction: column; gap: 10px; }
 .acts-hub-nav-card {
   display: flex;
@@ -1071,6 +1062,7 @@ mark.diff-mark { background: #b7f5c8; color: #14532d; border-radius: 2px; paddin
 .seg-ref-vo-body { padding: 0 0 4px; }
 
 .seg-ref-content { padding: 8px 14px 12px; font-size: 0.82rem; color: var(--prep-muted, #4f5d6d); min-height: 40px; }
+.muted-label { font-size: 0.75rem; color: var(--prep-muted, #4f5d6d); }
 .seg-ref-doc-row { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-bottom: 1px solid var(--prep-line, #dde1e8); }
 .seg-ref-doc-row:last-child { border-bottom: 0; }
 .seg-ref-doc-id { font-size: 0.75rem; color: var(--prep-muted, #4f5d6d); font-family: monospace; }
@@ -1141,7 +1133,7 @@ mark.diff-mark { background: #b7f5c8; color: #14532d; border-radius: 2px; paddin
   display: flex;
   flex-direction: column;
 }
-.acts-seg-lt-chips,
+/* P12 — preview-tools, preview-tabs, preview-body, ptab: shared across longtext + traduction */
 .preview-tools {
   display: flex;
   flex-wrap: wrap;
@@ -1150,13 +1142,11 @@ mark.diff-mark { background: #b7f5c8; color: #14532d; border-radius: 2px; paddin
   border-bottom: 1px solid var(--prep-line, #dde1e8);
   background: #fff;
 }
-/* Chips inside preview-tools are interactive — override global cursor:default */
-.preview-tools .chip,
-.acts-seg-lt-chips .acts-seg-lt-chip {
+/* Chips inside preview-tools are interactive */
+.preview-tools .chip {
   cursor: pointer;
   transition: background 0.1s;
 }
-.acts-seg-lt-tabs,
 .preview-tabs {
   display: flex;
   gap: 3px;
@@ -1164,8 +1154,8 @@ mark.diff-mark { background: #b7f5c8; color: #14532d; border-radius: 2px; paddin
   border-bottom: 1px solid var(--prep-line, #dde1e8);
   background: #fff;
 }
-.acts-seg-lt-tab,
-.ptab {
+.ptab,
+.ptab-tr {
   border: 1px solid var(--prep-line, #dde1e8);
   border-radius: 6px;
   padding: 4px 10px;
@@ -1174,14 +1164,13 @@ mark.diff-mark { background: #b7f5c8; color: #14532d; border-radius: 2px; paddin
   color: var(--prep-muted, #4f5d6d);
   cursor: pointer;
 }
-.acts-seg-lt-tab.active,
-.ptab.active {
+.ptab.active,
+.ptab-tr.active {
   border-color: #b7c8df;
   background: #eaf1fb;
   color: #1e4a80;
   font-weight: 700;
 }
-.acts-seg-lt-body,
 .preview-body {
   display: grid;
   grid-template-columns: 1fr 1fr 38px;
@@ -1217,6 +1206,6 @@ mark.diff-mark { background: #b7f5c8; color: #14532d; border-radius: 2px; paddin
 }
 
 @media (max-width:900px) {
-  .acts-seg-lt-body, .preview-body { grid-template-columns: 1fr; }
-  .acts-seg-lt-sticky-preview, .seg-preview-card.preview { position: static; max-height: none; }
+  .preview-body { grid-template-columns: 1fr; }
+  .seg-preview-card.preview { position: static; max-height: none; }
 }
