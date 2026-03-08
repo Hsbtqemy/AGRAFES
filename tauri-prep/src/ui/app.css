@@ -387,11 +387,16 @@ details[open] > .import-log-summary::before {
 code { font-family: monospace; background: var(--color-bg); padding: 0 3px; border-radius: 3px; }
 
 /* Actions screen — form rows */
-.form-row { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.4rem; }
-.form-row label { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.85rem; }
+.form-row { display: flex; gap: 0.75rem 1rem; flex-wrap: wrap; margin-bottom: 0.4rem; align-items: flex-end; }
+.form-row label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.82rem; color: var(--prep-muted, #4f5d6d); font-weight: 500; }
 .form-row select, .form-row input[type=text], .form-row input[type=number] {
-  font-size: 0.85rem; padding: 0.25rem 0.4rem; border: 1px solid var(--color-border);
-  border-radius: var(--radius); }
+  font-size: 0.85rem; padding: 0.3rem 0.45rem; border: 1px solid var(--color-border);
+  border-radius: var(--radius); background: #fff; color: var(--prep-text, #1a1a2e); }
+.form-row select:focus, .form-row input:focus {
+  outline: 2px solid var(--prep-accent, #0f766e); outline-offset: 1px; }
+/* Named widths to replace inline styles */
+#act-audit-extid { width: 7rem; }
+#act-audit-text-filter { min-width: 14rem; flex: 1; }
 .actions-screen textarea {
   font-size: 0.85rem; padding: 0.3rem 0.5rem; border: 1px solid var(--color-border);
   border-radius: var(--radius); width: 100%; max-width: 480px; resize: vertical; }
@@ -1599,6 +1604,10 @@ mark { background: #fff0b3; border-radius: 2px; }
   /* run-toolbar: wrap actions */
   .run-toolbar { flex-wrap: wrap; gap: 6px; }
   .run-toolbar-filters, .run-toolbar-actions { flex-wrap: wrap; }
+  /* form-row: stack vertically on mobile */
+  .form-row { flex-direction: column; align-items: stretch; }
+  .form-row label { width: 100%; }
+  .form-row select, .form-row input { width: 100%; max-width: 100%; }
 }
 
 /* ─── P15 Inc 4 — Curation form fields (inside .card-body) ────────── */

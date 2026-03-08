@@ -1324,7 +1324,7 @@ export class ActionsScreen {
                   <select id="act-audit-target"><option value="">&#8212; choisir &#8212;</option></select>
                 </label>
                 <label>ext_id exact :
-                  <input id="act-audit-extid" type="number" placeholder="optionnel" style="width:100px"/>
+                  <input id="act-audit-extid" type="number" placeholder="optionnel"/>
                 </label>
                 <label>Statut :
                   <select id="act-audit-status">
@@ -1335,7 +1335,7 @@ export class ActionsScreen {
                   </select>
                 </label>
                 <label>Recherche texte :
-                  <input id="act-audit-text-filter" type="text" placeholder="mot cl&#233; dans pivot/cible" style="min-width:220px"/>
+                  <input id="act-audit-text-filter" type="text" placeholder="mot cl&#233; dans pivot/cible"/>
                 </label>
               </div>
               <div class="btn-row" style="margin-top:0.4rem;gap:0.75rem;align-items:center">
