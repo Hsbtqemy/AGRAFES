@@ -1518,6 +1518,89 @@ mark { background: #fff0b3; border-radius: 2px; }
   .seg-preview-card.preview { position: static; max-height: none; }
 }
 
+/* ═══════════════════════════════════════════════════════════════════
+   P17 INC 3 — Responsive pass Actions (global)
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ─── 1100px: head-tools wrap + align-layout collapse ─────────────── */
+@media (max-width: 1100px) {
+  /* Head-card tools wrap */
+  .acts-hub-head-tools {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  /* Align layout: sidebar below (already works via 1fr stacking,
+     but we remove sticky so focus pane flows naturally) */
+  .align-layout {
+    grid-template-columns: 1fr;
+  }
+  .align-focus {
+    position: static;
+  }
+  /* Minimap-track: remove sticky side-col constraint at this bp */
+  .seg-col.seg-col-right { align-self: auto; }
+}
+
+/* ─── 900px: run-row, form-grid, align extras ──────────────────────── */
+@media (max-width: 900px) {
+  /* seg-side: show above left col if viewport is small (force open) */
+  details.seg-side[open] { width: 100%; }
+
+  /* form-grid-seg: 1 col */
+  .form-grid-seg {
+    grid-template-columns: 1fr;
+  }
+  .form-grid-seg label[style*="grid-column"] {
+    grid-column: auto;
+  }
+
+  /* run-row: stack pivot / rail / cible */
+  .run-row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+  .status-rail {
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 8px;
+    padding: 4px 0;
+    border-top: 1px solid var(--prep-line, #dde1e8);
+    border-bottom: 1px solid var(--prep-line, #dde1e8);
+  }
+  .run-cell-target { align-items: flex-start; text-align: left; }
+  .run-row-actions { justify-content: flex-start; }
+
+  /* doc-final-bar: compact */
+  .doc-final-wrap { flex-direction: column; align-items: stretch; gap: 6px; }
+  .doc-final-actions { justify-content: flex-end; }
+
+  /* align-kpis: 2 cols */
+  .align-kpis { grid-template-columns: repeat(2, 1fr); }
+
+  /* seg-preview-card sticky → static */
+  #act-seg-preview-card, .acts-seg-lt-sticky-preview { position: static; max-height: none; }
+
+  /* curate-preview-card: static */
+  .curate-preview-card { position: static; max-height: none; }
+}
+
+/* ─── 768px: minimal pass ─────────────────────────────────────────── */
+@media (max-width: 768px) {
+  /* Head-card: stack vertically */
+  .acts-seg-head-card, .acts-hub-head-card {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  /* align-kpis: 2 cols */
+  .align-kpis { grid-template-columns: 1fr 1fr; }
+  /* align-setup-row: 1 col */
+  .align-setup-row { grid-template-columns: 1fr; }
+  /* run-toolbar: wrap actions */
+  .run-toolbar { flex-wrap: wrap; gap: 6px; }
+  .run-toolbar-filters, .run-toolbar-actions { flex-wrap: wrap; }
+}
+
 /* ─── P15 Inc 4 — Curation form fields (inside .card-body) ────────── */
 .card-body label {
   display: flex;
