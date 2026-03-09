@@ -15,6 +15,10 @@
   --radius-pill: 999px;
   --shadow: 0 1px 3px rgba(0,0,0,0.08);
   --shadow-soft: 0 8px 22px rgba(15, 118, 110, 0.08);
+  --prep-content-max: 1520px;
+  --prep-content-pad-x: 1.1rem;
+  --prep-content-pad-y-top: 1rem;
+  --prep-content-pad-y-bottom: 1.25rem;
 }
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -121,8 +125,13 @@ body { margin: 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Se
   font-weight: 700;
 }
 
-/* Content area */
-.content { padding: 1rem 1.1rem 1.25rem; max-width: 1380px; margin: 0 auto; }
+/* Content area (prep scoped): wider vnext shell */
+.prep-main > .content {
+  width: 100%;
+  max-width: var(--prep-content-max);
+  margin: 0 auto;
+  padding: var(--prep-content-pad-y-top) var(--prep-content-pad-x) var(--prep-content-pad-y-bottom);
+}
 .screen { display: none; }
 .screen.active { display: block; }
 .screen-title { font-size: 1.15rem; font-weight: 700; margin: 0 0 1rem; letter-spacing: -0.01em; }
@@ -856,6 +865,14 @@ article.preview .preview-body > .pane { height: 100%; min-height: 0; }
 /* Queue (Actions rapides left col) */
 .curate-queue { display: grid; gap: 5px; }
 .curate-queue .qitem { border: 1px dashed var(--prep-line,#dde1e8); border-radius: 6px; padding: 5px 8px; font-size: 12px; color: var(--prep-muted,#4f5d6d); }
+
+/* Journal de revue — log list in right col (P23 Inc 3) */
+.curate-log-list { display: grid; gap: 0; }
+.curate-qitem { border-bottom: 1px solid var(--prep-line, #dde1e8); padding: 7px 10px; background: #fff; font-size: 12px; }
+.curate-qitem:last-child { border-bottom: 0; }
+.curate-qitem.curate-log-apply { background: #f4fbf8; }
+.curate-qitem.curate-log-warn { background: #fdf8ed; }
+.curate-qmeta { display: flex; justify-content: space-between; font-size: 11px; color: var(--prep-muted, #4f5d6d); margin-bottom: 2px; font-weight: 600; }
 
 /* Diff table within doc-scroll */
 .doc-scroll .diff-table, .curate-doc-scroll .diff-table { font-size: 12px; }
@@ -1843,3 +1860,227 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
 .kpi.warn .value, .kpi.warn .align-kpi-value { color: #a16207; }
 .kpi.bad { border-color: #f5c6c3; background: #fdf0ef; }
 .kpi.bad .value, .kpi.bad .align-kpi-value { color: var(--prep-danger, #c0392b); }
+
+/* ═══════════════════════════════════════════════════════════════════
+   Curation parity fix (scoped): restore dominant central preview
+   ═══════════════════════════════════════════════════════════════════ */
+/* overflow:clip clips paint without creating a scroll container,
+   so position:sticky on .curate-preview-card works vs the page scroll.
+   overflow:hidden (global rule on .curate-workspace-card) would block sticky. */
+#act-curate-card {
+  overflow: clip;
+}
+#act-curate-card .curate-workspace {
+  grid-template-columns: 310px minmax(640px, 1fr) 320px;
+  align-items: start;
+  gap: 0;
+}
+#act-curate-card .curate-col {
+  height: auto;    /* override height:100% — prevents left-col stretch driving center height (RC1) */
+  min-height: 0;
+}
+#act-curate-card .curate-col-left {
+  max-width: 310px;
+}
+#act-curate-card .curate-col-center {
+  min-width: 0;
+}
+#act-curate-card .curate-col-right {
+  max-width: 320px;
+}
+/* preview-card: block (not flex), sticky top:10px — matches mockup exactly, breaks RC2 flex chain */
+#act-curate-card .curate-preview-card {
+  display: block;
+  overflow: visible;
+  max-height: none;
+  position: sticky;
+  top: 10px;
+}
+/* preview-controls: horizontal toolbar (mockup: space-between, not column) */
+#act-curate-card .preview-controls {
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px 10px;
+  padding: 8px 12px;
+}
+/* preview-grid: natural height — pane doc-scroll drives height; not a flex child (RC2 fix) */
+#act-curate-card .preview-grid {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 26px;
+  gap: 10px;
+  padding: 10px;
+  min-height: 0;
+  min-width: 0;
+  flex: none;
+  overflow: visible;
+}
+/* pane: block (not grid), natural height from pane-head + doc-scroll max-height (RC3 fix) */
+#act-curate-card .preview-grid > .pane {
+  display: block;
+  min-height: 0;
+  min-width: 0;
+}
+/* doc-scroll: dominant preview — 560px cap + 400px floor so preview fills even with sparse content */
+#act-curate-card .preview-grid > .pane .doc-scroll {
+  max-height: 560px;
+  min-height: 400px;
+  overflow-y: auto;
+}
+#act-curate-card #act-curate-minimap {
+  min-height: 0;
+  overflow: hidden;
+  gap: 4px;
+  padding: 8px 5px;
+  align-self: stretch;  /* explicit: stretch to pane row height in preview-grid */
+}
+/* Minimap bars: match mockup proportions */
+#act-curate-card #act-curate-minimap .mm {
+  height: 12px;
+  border-radius: 3px;
+}
+#act-curate-card .curate-col-left .curate-stack-card {
+  margin-top: 10px;  /* match mockup col gap:10px between left-col cards */
+}
+#act-curate-card .curate-col-left .card-head {
+  padding: 8px 10px;
+}
+#act-curate-card .curate-col-left .card-body {
+  padding: 10px;
+}
+#act-curate-card .curate-doc-field {
+  margin-bottom: 6px;
+}
+/* Ctx row: 2×2 info boxes showing doc metadata (P23 Inc 1) */
+.curate-ctx-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin: 6px 0 10px;
+}
+.curate-ctx-cell {
+  border: 1px solid var(--prep-line, #dde1e8);
+  border-radius: 8px;
+  padding: 8px;
+  font-size: 13px;
+  background: #fff;
+  min-width: 0;
+}
+.curate-ctx-cell strong {
+  display: block;
+  font-size: 12px;
+  color: var(--prep-muted, #4f5d6d);
+  margin-bottom: 3px;
+  font-weight: 600;
+}
+/* Scoped doc-label (replaces inline style on span#act-curate-doc-label) */
+#act-curate-doc-label {
+  font-size: 12px;
+  color: var(--prep-muted, #4f5d6d);
+}
+#act-curate-card .curation-quick-rules {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;  /* parity mockup chip-row gap:6px */
+}
+#act-curate-card .curation-rule-pill {
+  width: 100%;
+  min-width: 0;
+  justify-content: flex-start;
+  border-radius: 8px;
+  padding: 4px 7px;
+  font-size: 11.5px;
+  gap: 4px;
+}
+/* Primary actions: flex wrap (matches mockup btns layout) */
+#act-curate-card .curate-primary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+#act-curate-card .curate-primary-actions .btn {
+  flex: 1 1 auto;
+  min-width: 80px;
+}
+#act-curate-card .curate-advanced-summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+}
+#act-curate-card .curate-advanced-summary h2 {
+  flex: 1;
+  margin: 0;
+}
+#act-curate-card .curate-chevron {
+  font-size: 11px;
+  color: var(--prep-muted, #4f5d6d);
+}
+#act-curate-card .curate-advanced-row {
+  margin-top: 0;
+  margin-bottom: 8px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 78px auto;
+  gap: 8px;
+  align-items: end;
+}
+#act-curate-card .curate-advanced-flags {
+  max-width: 78px;
+}
+#act-curate-card .curate-advanced-add {
+  align-self: end;
+}
+#act-curate-card .curate-json-field {
+  margin-bottom: 0;
+}
+#act-curate-card .curate-nav-actions {
+  margin-top: 6px;
+  gap: 6px;
+}
+/* Actions rapides: compact buttons + tighter card-body when queue is empty */
+#act-curate-card .curate-nav-actions .btn {
+  font-size: 12px;
+  padding: 5px 8px;
+}
+#act-curate-quick-actions .card-body {
+  padding-bottom: 8px;
+}
+
+/* At 1400px: collapse right col below center (mirrors global rule for this scoped layout) */
+@media (max-width: 1400px) {
+  #act-curate-card .curate-workspace {
+    grid-template-columns: 310px 1fr;
+  }
+  #act-curate-card .curate-col-right {
+    grid-column: 1 / -1;
+    max-width: none;
+  }
+}
+
+@media (max-width: 1050px) {
+  /* preview-card loses sticky at this breakpoint (global CSS); no extra overrides needed */
+  #act-curate-card .curation-quick-rules,
+  #act-curate-card .curate-advanced-row {
+    grid-template-columns: 1fr;
+  }
+  #act-curate-card .curate-advanced-flags {
+    max-width: none;
+  }
+  /* Minimap hidden at 1050px (matches curation mockup); drop the 26px minimap column */
+  #act-curate-card .preview-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  #act-curate-card #act-curate-minimap {
+    display: none;
+  }
+}
+
+@media (max-width: 800px) {
+  #act-curate-card .preview-grid {
+    grid-template-columns: 1fr;
+  }
+  #act-curate-card .preview-grid > .pane .doc-scroll {
+    max-height: none;
+    min-height: 260px;
+  }
+}
