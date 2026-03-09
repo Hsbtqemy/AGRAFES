@@ -37,7 +37,9 @@ export class MetadataScreen {
   private _conn: Conn | null = null;
   private _docs: DocumentRecord[] = [];
   private _docFilter = "";
+  private _statusFilter: "all" | "ok" | "todo" = "all";
   private _selectedDoc: DocumentRecord | null = null;
+  private _selectedDocIds: Set<number> = new Set();
   private _relations: DocRelationRecord[] = [];
   private _previewLines: DocumentPreviewLine[] = [];
   private _previewTotalLines = 0;
@@ -53,13 +55,19 @@ export class MetadataScreen {
   private _logEl!: HTMLElement;
   private _docCountEl!: HTMLElement;
   private _stateEl!: HTMLElement;
+  private _kpiBarEl!: HTMLElement;
+  private _batchBarEl!: HTMLElement;
+  private _batchMetaEl!: HTMLElement;
+  private _selectAllEl!: HTMLInputElement;
   private _isBusy = false;
   private _lastErrorMsg: string | null = null;
 
   setConn(conn: Conn | null): void {
     this._conn = conn;
     this._docFilter = "";
+    this._statusFilter = "all";
     this._selectedDoc = null;
+    this._selectedDocIds = new Set();
     this._relations = [];
     this._previewLines = [];
     this._previewTotalLines = 0;
@@ -69,6 +77,8 @@ export class MetadataScreen {
     if (this._root) {
       const filterInput = this._root.querySelector<HTMLInputElement>("#meta-doc-filter");
       if (filterInput) filterInput.value = "";
+      const statusSel = this._root.querySelector<HTMLSelectElement>("#meta-status-filter");
+      if (statusSel) statusSel.value = "all";
       this._refreshDocList();
     }
   }
@@ -89,55 +99,82 @@ export class MetadataScreen {
     this._root = root;
 
     root.innerHTML = `
-      <h2 class="screen-title">Documents</h2>
+      <!-- Head card: title + state banner + KPI bar + corpus actions -->
+      <div class="card meta-screen-head">
+        <div class="meta-head-top">
+          <div>
+            <h2 class="screen-title" style="margin:0 0 4px">Documents</h2>
+            <p class="meta-head-desc">Sélectionnez un document pour éditer ses métadonnées ou utilisez l'édition en masse.</p>
+          </div>
+          <div id="meta-state-banner" class="runtime-state state-info" aria-live="polite">
+            En attente de connexion sidecar…
+          </div>
+        </div>
+        <div class="meta-head-bottom">
+          <div id="meta-kpi-bar" class="meta-kpi-bar">
+            <span id="meta-kpi-total"  class="meta-kpi">0 doc</span>
+            <span id="meta-kpi-ok"    class="meta-kpi meta-kpi-ok">0 validés</span>
+            <span id="meta-kpi-warn"  class="meta-kpi meta-kpi-warn">0 à traiter</span>
+            <span id="meta-kpi-langs" class="meta-kpi">0 langues</span>
+          </div>
+          <div class="meta-head-actions">
+            <button id="db-backup-btn" class="btn btn-secondary btn-sm">Sauvegarder la DB</button>
+            <span id="db-backup-status" class="hint" style="margin:0">Aucune sauvegarde récente</span>
+            <button id="validate-btn" class="btn btn-secondary btn-sm">Valider métadonnées</button>
+          </div>
+        </div>
+      </div>
 
-      <section class="card" data-collapsible="true" data-collapsed-default="true">
-        <h3>État de session</h3>
-        <div id="meta-state-banner" class="runtime-state state-info" aria-live="polite">
-          En attente de connexion sidecar…
-        </div>
-      </section>
+      <!-- 2-col workspace -->
+      <div class="meta-layout">
 
-      <section class="card" data-collapsible="true">
-        <div class="meta-toolbar-head">
-          <h3 style="margin:0">Gestion corpus</h3>
-          <span id="meta-doc-count" class="hint" style="margin:0">0 document</span>
-        </div>
-        <div class="btn-row" style="margin-bottom:0.55rem; align-items:center">
-          <button id="db-backup-btn" class="btn btn-secondary btn-sm">Sauvegarder la DB</button>
-          <button id="validate-btn" class="btn btn-secondary btn-sm">Valider métadonnées</button>
-          <span id="db-backup-status" class="hint" style="margin:0">Aucune sauvegarde récente</span>
-        </div>
-        <details class="meta-bulk-disclosure">
-          <summary>Édition en masse</summary>
-          <div class="form-row" style="margin-top:0.55rem">
-            <label>Doc role (tous)
-              <select id="bulk-role">
-                <option value="">— ne pas changer —</option>
-                ${DOC_ROLES.map(r => `<option value="${r}">${r}</option>`).join("")}
-              </select>
-            </label>
-            <label>Resource type (tous)
-              <input id="bulk-restype" type="text" placeholder="littérature, article, discours…" style="max-width:220px">
-            </label>
-            <div style="align-self:flex-end">
-              <button id="bulk-apply-btn" class="btn btn-secondary btn-sm" disabled>Appliquer à tous</button>
+        <!-- Left column: document list (not collapsible — always visible) -->
+        <section class="card meta-list-card">
+          <div class="meta-list-head">
+            <div class="meta-list-head-left">
+              <h3 style="margin:0">Documents</h3>
+              <button id="refresh-docs-btn" class="btn btn-secondary btn-sm"
+                aria-label="Rafraîchir la liste des documents" title="Rafraîchir la liste">↻</button>
+            </div>
+            <span id="meta-doc-count" class="hint" style="margin:0">0 document</span>
+          </div>
+          <div class="meta-list-toolbar">
+            <input id="meta-doc-filter" type="text"
+              placeholder="Titre, langue, #id…" class="meta-filter-input" />
+            <select id="meta-status-filter" class="meta-filter-select">
+              <option value="all">Tous statuts</option>
+              <option value="ok">Validé</option>
+              <option value="todo">Brouillon / À revoir</option>
+            </select>
+            <button id="meta-reset-filter" class="btn btn-secondary btn-sm"
+              aria-label="Réinitialiser les filtres" title="Réinitialiser">↺</button>
+          </div>
+          <div class="meta-doc-list-wrap">
+            <table class="meta-doc-table" aria-label="Documents du corpus">
+              <thead>
+                <tr>
+                  <th class="col-check">
+                    <input id="meta-select-all" type="checkbox" aria-label="Sélectionner tout" />
+                  </th>
+                  <th class="col-id">ID</th>
+                  <th class="col-title">Titre</th>
+                  <th class="col-lang">Langue</th>
+                  <th class="col-role">Rôle</th>
+                  <th class="col-status">Statut</th>
+                </tr>
+              </thead>
+              <tbody id="meta-doc-list"></tbody>
+            </table>
+          </div>
+          <div id="meta-batch-bar" class="meta-batch-bar">
+            <span id="meta-batch-meta" class="meta-batch-meta">0 sélectionné</span>
+            <div class="meta-batch-actions">
+              <button id="meta-batch-role-btn" class="btn btn-secondary btn-sm" disabled>Définir rôle</button>
             </div>
           </div>
-        </details>
-      </section>
-
-      <div class="meta-layout">
-        <section class="card meta-list-card" data-collapsible="true">
-          <h3>Documents <button id="refresh-docs-btn" class="btn btn-secondary btn-sm" aria-label="Rafraîchir la liste des documents" title="Rafraîchir la liste des documents">↻</button></h3>
-          <div class="form-row" style="margin:0 0 0.45rem">
-            <label style="margin:0;min-width:250px">Recherche
-              <input id="meta-doc-filter" type="text" placeholder="Titre, langue, #doc_id…" />
-            </label>
-          </div>
-          <div id="meta-doc-list" class="doc-list meta-doc-list"></div>
         </section>
 
+        <!-- Right column: edit panel -->
         <section class="card meta-edit-card" data-collapsible="true">
           <h3>Édition du document sélectionné</h3>
           <div id="meta-edit-panel">
@@ -146,34 +183,79 @@ export class MetadataScreen {
         </section>
       </div>
 
+      <!-- Bulk update (collapsed by default) -->
+      <section class="card" data-collapsible="true" data-collapsed-default="true">
+        <h3>Édition en masse</h3>
+        <div class="form-row" style="margin-top:0.55rem">
+          <label>Doc role (tous)
+            <select id="bulk-role">
+              <option value="">— ne pas changer —</option>
+              ${DOC_ROLES.map(r => `<option value="${r}">${r}</option>`).join("")}
+            </select>
+          </label>
+          <label>Resource type (tous)
+            <input id="bulk-restype" type="text" placeholder="littérature, article, discours…" style="max-width:220px">
+          </label>
+          <div style="align-self:flex-end">
+            <button id="bulk-apply-btn" class="btn btn-secondary btn-sm" disabled>Appliquer à tous</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Log (collapsed by default) -->
       <section class="card meta-log-card" data-collapsible="true" data-collapsed-default="true">
         <h3>Journal des actions documents</h3>
         <div id="meta-log" class="log-pane"></div>
       </section>
     `;
 
-    this._docListEl = root.querySelector("#meta-doc-list")!;
+    this._docListEl   = root.querySelector("#meta-doc-list")!;
     this._editPanelEl = root.querySelector("#meta-edit-panel")!;
-    this._logEl = root.querySelector("#meta-log")!;
-    this._docCountEl = root.querySelector("#meta-doc-count")!;
-    this._stateEl = root.querySelector("#meta-state-banner")!;
+    this._logEl       = root.querySelector("#meta-log")!;
+    this._docCountEl  = root.querySelector("#meta-doc-count")!;
+    this._stateEl     = root.querySelector("#meta-state-banner")!;
+    this._kpiBarEl    = root.querySelector("#meta-kpi-bar")!;
+    this._batchBarEl  = root.querySelector("#meta-batch-bar")!;
+    this._batchMetaEl = root.querySelector("#meta-batch-meta")!;
+    this._selectAllEl = root.querySelector<HTMLInputElement>("#meta-select-all")!;
 
     root.querySelector("#refresh-docs-btn")!.addEventListener("click", () => this._refreshDocList());
     root.querySelector("#meta-doc-filter")!.addEventListener("input", (e) => {
       this._docFilter = ((e.target as HTMLInputElement).value ?? "").trim().toLowerCase();
       this._renderDocList();
     });
+    root.querySelector("#meta-status-filter")!.addEventListener("change", (e) => {
+      this._statusFilter = (e.target as HTMLSelectElement).value as "all" | "ok" | "todo";
+      this._renderDocList();
+    });
+    root.querySelector("#meta-reset-filter")!.addEventListener("click", () => {
+      this._docFilter = "";
+      this._statusFilter = "all";
+      const fi = root.querySelector<HTMLInputElement>("#meta-doc-filter");
+      const ss = root.querySelector<HTMLSelectElement>("#meta-status-filter");
+      if (fi) fi.value = "";
+      if (ss) ss.value = "all";
+      this._renderDocList();
+    });
+    this._selectAllEl.addEventListener("change", () => {
+      const docs = this._filteredDocs();
+      if (this._selectAllEl.checked) {
+        docs.forEach(d => this._selectedDocIds.add(d.doc_id));
+      } else {
+        docs.forEach(d => this._selectedDocIds.delete(d.doc_id));
+      }
+      this._renderDocList();
+      this._renderBatchBar();
+    });
     root.querySelector("#bulk-apply-btn")!.addEventListener("click", () => this._runBulkUpdate());
     root.querySelector("#validate-btn")!.addEventListener("click", () => this._runValidate());
     root.querySelector("#db-backup-btn")!.addEventListener("click", () => void this._runDbBackup());
 
     // Enable bulk-apply when any bulk field has value
-    const bulkRole = root.querySelector<HTMLSelectElement>("#bulk-role")!;
+    const bulkRole    = root.querySelector<HTMLSelectElement>("#bulk-role")!;
     const bulkRestype = root.querySelector<HTMLInputElement>("#bulk-restype")!;
-    const bulkBtn = root.querySelector<HTMLButtonElement>("#bulk-apply-btn")!;
-    const onBulkChange = () => {
-      bulkBtn.disabled = !bulkRole.value && !bulkRestype.value.trim();
-    };
+    const bulkBtn     = root.querySelector<HTMLButtonElement>("#bulk-apply-btn")!;
+    const onBulkChange = () => { bulkBtn.disabled = !bulkRole.value && !bulkRestype.value.trim(); };
     bulkRole.addEventListener("change", onBulkChange);
     bulkRestype.addEventListener("input", onBulkChange);
 
@@ -186,7 +268,7 @@ export class MetadataScreen {
 
   private async _refreshDocList(): Promise<void> {
     if (!this._conn) {
-      this._docListEl.innerHTML = `<p class="empty-hint">Sidecar non connecté.</p>`;
+      this._docListEl.innerHTML = `<tr><td colspan="6" class="meta-empty-cell">Sidecar non connecté.</td></tr>`;
       this._updateDocCount();
       this._refreshRuntimeState();
       return;
@@ -209,37 +291,76 @@ export class MetadataScreen {
   private _renderDocList(): void {
     this._updateDocCount();
     if (this._docs.length === 0) {
-      this._docListEl.innerHTML = `<p class="empty-hint">Aucun document.</p>`;
+      this._docListEl.innerHTML = `<tr><td colspan="6" class="meta-empty-cell">Aucun document.</td></tr>`;
+      this._renderBatchBar();
       return;
     }
     const docs = this._filteredDocs();
     if (docs.length === 0) {
-      this._docListEl.innerHTML = `<p class="empty-hint">Aucun document ne correspond à la recherche.</p>`;
+      this._docListEl.innerHTML = `<tr><td colspan="6" class="meta-empty-cell">Aucun document ne correspond aux filtres.</td></tr>`;
+      this._renderBatchBar();
       return;
     }
     this._docListEl.innerHTML = "";
     for (const doc of docs) {
-      const row = document.createElement("div");
-      row.className = "meta-doc-row";
-      if (this._selectedDoc?.doc_id === doc.doc_id) {
-        row.classList.add("is-active");
-      }
+      const tr = document.createElement("tr");
+      tr.className = "meta-doc-row";
+      if (this._selectedDoc?.doc_id === doc.doc_id) tr.classList.add("is-active");
+      const isChecked = this._selectedDocIds.has(doc.doc_id);
       const wfStatus = this._workflowStatus(doc);
-      const wfLabel = this._workflowLabel(wfStatus);
-      const validatedMeta = wfStatus === "validated" && doc.validated_at
-        ? `<span class="wf-meta">validé ${this._esc(new Date(doc.validated_at).toLocaleDateString())}</span>`
-        : "";
-      row.innerHTML = `
-        <div class="meta-doc-title">${this._esc(doc.title)}</div>
-        <div class="meta-doc-meta">
-          <span>#${doc.doc_id} · ${this._esc(doc.language)} · ${doc.unit_count} unités</span>
-          <span class="wf-pill wf-${wfStatus}">${wfLabel}</span>
-          ${validatedMeta}
-        </div>
+      const wfLabel  = this._workflowLabel(wfStatus);
+      tr.innerHTML = `
+        <td class="col-check">
+          <input class="meta-row-check" type="checkbox" data-id="${doc.doc_id}"
+            ${isChecked ? "checked" : ""} aria-label="Sélectionner doc ${doc.doc_id}" />
+        </td>
+        <td class="col-id">#${doc.doc_id}</td>
+        <td class="col-title" title="${this._esc(doc.title)}">${this._esc(doc.title)}</td>
+        <td class="col-lang">${this._esc(doc.language)}</td>
+        <td class="col-role">${this._esc(doc.doc_role ?? "—")}</td>
+        <td class="col-status"><span class="wf-pill wf-${wfStatus}">${wfLabel}</span></td>
       `;
-      row.addEventListener("click", () => this._selectDoc(doc));
-      this._docListEl.appendChild(row);
+      tr.querySelector(".meta-row-check")!.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const cb = e.target as HTMLInputElement;
+        if (cb.checked) this._selectedDocIds.add(doc.doc_id);
+        else this._selectedDocIds.delete(doc.doc_id);
+        this._renderBatchBar();
+        this._updateSelectAll();
+      });
+      tr.addEventListener("click", (e) => {
+        if ((e.target as HTMLElement).closest(".meta-row-check")) return;
+        void this._selectDoc(doc);
+      });
+      this._docListEl.appendChild(tr);
     }
+    this._renderBatchBar();
+    this._updateSelectAll();
+  }
+
+  private _renderBatchBar(): void {
+    const count = this._selectedDocIds.size;
+    if (this._batchMetaEl) {
+      if (count === 0)      this._batchMetaEl.textContent = "0 sélectionné";
+      else if (count === 1) this._batchMetaEl.textContent = "1 document sélectionné";
+      else                  this._batchMetaEl.textContent = `${count} documents sélectionnés`;
+    }
+    if (this._batchBarEl) this._batchBarEl.classList.toggle("active", count > 0);
+    const roleBtn = this._root?.querySelector<HTMLButtonElement>("#meta-batch-role-btn");
+    if (roleBtn) roleBtn.disabled = count < 2;
+  }
+
+  private _updateSelectAll(): void {
+    if (!this._selectAllEl) return;
+    const docs = this._filteredDocs();
+    if (docs.length === 0) {
+      this._selectAllEl.checked = false;
+      this._selectAllEl.indeterminate = false;
+      return;
+    }
+    const selectedVisible = docs.filter(d => this._selectedDocIds.has(d.doc_id)).length;
+    this._selectAllEl.checked = selectedVisible === docs.length;
+    this._selectAllEl.indeterminate = selectedVisible > 0 && selectedVisible < docs.length;
   }
 
   // ── Edit panel ──────────────────────────────────────────────────────────────
@@ -644,30 +765,47 @@ export class MetadataScreen {
     if (!this._docCountEl) return;
     const total = this._docs.length;
     const shown = this._filteredDocs().length;
-    if (this._docFilter) {
+    if (this._docFilter || this._statusFilter !== "all") {
       this._docCountEl.textContent = `${shown} / ${total} document${total > 1 ? "s" : ""}`;
     } else {
       this._docCountEl.textContent = `${total} document${total > 1 ? "s" : ""}`;
+    }
+    // Update KPI bar
+    if (this._kpiBarEl) {
+      const validated = this._docs.filter(d => this._workflowStatus(d) === "validated").length;
+      const todo      = total - validated;
+      const langs     = new Set(this._docs.map(d => d.language)).size;
+      const set = (id: string, text: string) => {
+        const el = this._kpiBarEl.querySelector(`#${id}`);
+        if (el) el.textContent = text;
+      };
+      set("meta-kpi-total", `${total} doc${total !== 1 ? "s" : ""}`);
+      set("meta-kpi-ok",    `${validated} validé${validated !== 1 ? "s" : ""}`);
+      set("meta-kpi-warn",  `${todo} à traiter`);
+      set("meta-kpi-langs", `${langs} langue${langs !== 1 ? "s" : ""}`);
     }
     this._refreshRuntimeState();
   }
 
   private _filteredDocs(): DocumentRecord[] {
-    if (!this._docFilter) return this._docs;
+    let docs = this._docs;
+    if (this._statusFilter !== "all") {
+      docs = docs.filter(doc => {
+        const wf = this._workflowStatus(doc);
+        if (this._statusFilter === "ok") return wf === "validated";
+        if (this._statusFilter === "todo") return wf === "draft" || wf === "review";
+        return true;
+      });
+    }
+    if (!this._docFilter) return docs;
     const q = this._docFilter;
-    return this._docs.filter((doc) => {
-      const title = (doc.title ?? "").toLowerCase();
-      const lang = (doc.language ?? "").toLowerCase();
-      const role = (doc.doc_role ?? "").toLowerCase();
+    return docs.filter((doc) => {
+      const title   = (doc.title ?? "").toLowerCase();
+      const lang    = (doc.language ?? "").toLowerCase();
+      const role    = (doc.doc_role ?? "").toLowerCase();
       const restype = (doc.resource_type ?? "").toLowerCase();
-      const id = String(doc.doc_id);
-      return (
-        title.includes(q) ||
-        lang.includes(q) ||
-        role.includes(q) ||
-        restype.includes(q) ||
-        id.includes(q)
-      );
+      const id      = String(doc.doc_id);
+      return title.includes(q) || lang.includes(q) || role.includes(q) || restype.includes(q) || id.includes(q);
     });
   }
 
@@ -706,25 +844,25 @@ export class MetadataScreen {
   }
 
   private _hasBulkDraftValues(): boolean {
-    const role = this._root.querySelector<HTMLSelectElement>("#bulk-role");
+    const role    = this._root.querySelector<HTMLSelectElement>("#bulk-role");
     const restype = this._root.querySelector<HTMLInputElement>("#bulk-restype");
     return Boolean((role?.value ?? "").trim() || (restype?.value ?? "").trim());
   }
 
   private _isSelectedDocDirty(): boolean {
     if (!this._selectedDoc || !this._editPanelEl) return false;
-    const title = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-title")?.value ?? "").trim();
-    const language = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-lang")?.value ?? "").trim();
-    const docRole = (this._editPanelEl.querySelector<HTMLSelectElement>("#edit-role")?.value ?? "").trim();
-    const resourceType = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-restype")?.value ?? "").trim();
-    const workflow = (this._editPanelEl.querySelector<HTMLSelectElement>("#edit-workflow-status")?.value ?? "draft").trim();
+    const title          = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-title")?.value ?? "").trim();
+    const language       = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-lang")?.value ?? "").trim();
+    const docRole        = (this._editPanelEl.querySelector<HTMLSelectElement>("#edit-role")?.value ?? "").trim();
+    const resourceType   = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-restype")?.value ?? "").trim();
+    const workflow       = (this._editPanelEl.querySelector<HTMLSelectElement>("#edit-workflow-status")?.value ?? "draft").trim();
     const validatedRunId = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-validated-run-id")?.value ?? "").trim();
 
-    const baseTitle = (this._selectedDoc.title ?? "").trim();
-    const baseLanguage = (this._selectedDoc.language ?? "").trim();
-    const baseDocRole = (this._selectedDoc.doc_role ?? "unknown").trim();
-    const baseResourceType = (this._selectedDoc.resource_type ?? "").trim();
-    const baseWorkflow = this._workflowStatus(this._selectedDoc);
+    const baseTitle          = (this._selectedDoc.title ?? "").trim();
+    const baseLanguage       = (this._selectedDoc.language ?? "").trim();
+    const baseDocRole        = (this._selectedDoc.doc_role ?? "unknown").trim();
+    const baseResourceType   = (this._selectedDoc.resource_type ?? "").trim();
+    const baseWorkflow       = this._workflowStatus(this._selectedDoc);
     const baseValidatedRunId = (this._selectedDoc.validated_run_id ?? "").trim();
 
     return (
@@ -740,7 +878,7 @@ export class MetadataScreen {
   private _hasPendingRelationDraft(): boolean {
     if (!this._editPanelEl) return false;
     const relTarget = (this._editPanelEl.querySelector<HTMLSelectElement>("#rel-target-sel")?.value ?? "").trim();
-    const relNote = (this._editPanelEl.querySelector<HTMLInputElement>("#rel-note")?.value ?? "").trim();
+    const relNote   = (this._editPanelEl.querySelector<HTMLInputElement>("#rel-note")?.value ?? "").trim();
     return Boolean(relTarget || relNote);
   }
 
@@ -770,4 +908,6 @@ export class MetadataScreen {
     }
     this._setRuntimeState("ok", `${this._docs.length} document(s) chargés. Prêt.`);
   }
+
+  dispose(): void { /* nothing to clean up */ }
 }
