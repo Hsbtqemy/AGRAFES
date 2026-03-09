@@ -276,6 +276,7 @@ export class ActionsScreen {
     initCardAccordions(root);
     this._refreshSegmentationStatusUI();
     this._refreshRuntimeState();
+    this._setSubViewClass(root, this._activeSubView);
 
     return root;
   }
@@ -310,6 +311,12 @@ export class ActionsScreen {
       if (isActive) link.setAttribute("aria-current", "true");
       else link.removeAttribute("aria-current");
     });
+    this._setSubViewClass(root, view);
+  }
+
+  private _setSubViewClass(root: HTMLElement, view: SubView): void {
+    root.classList.remove("actions-sub-hub", "actions-sub-curation", "actions-sub-segmentation", "actions-sub-alignement");
+    root.classList.add(`actions-sub-${view}`);
   }
 
   /** Stable class method — replaces captured closure pattern for seg mode switching. */
@@ -430,7 +437,7 @@ export class ActionsScreen {
     el.setAttribute("role", "main");
     el.setAttribute("aria-label", "Vue Curation");
     el.innerHTML = `
-      <section class="acts-seg-head-card">
+      <section class="acts-seg-head-card" id="act-curation-head">
         <div class="acts-hub-head-left">
           <h1>Curation <span class="badge-preview">avec pr&#233;visualisation</span></h1>
           <p>La preview centrale se met &#224; jour d&#232;s qu&#8217;une option change.</p>
