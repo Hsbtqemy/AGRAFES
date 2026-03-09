@@ -317,6 +317,8 @@ export class ActionsScreen {
   private _setSubViewClass(root: HTMLElement, view: SubView): void {
     root.classList.remove("actions-sub-hub", "actions-sub-curation", "actions-sub-segmentation", "actions-sub-alignement");
     root.classList.add(`actions-sub-${view}`);
+    const content = root.closest<HTMLElement>(".content");
+    if (content) content.classList.toggle("prep-curation-wide", view === "curation");
   }
 
   /** Stable class method — replaces captured closure pattern for seg mode switching. */

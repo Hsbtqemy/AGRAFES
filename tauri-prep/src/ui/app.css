@@ -133,9 +133,9 @@ body { margin: 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Se
   margin: 0 auto;
   padding: var(--prep-content-pad-y-top) var(--prep-content-pad-x) var(--prep-content-pad-y-bottom);
 }
-/* Curation-only: use a bit more horizontal room inside the same shell cap. */
-.actions-screen.actions-sub-curation > .acts-panel-slot > [data-panel="curation"] {
-  margin-inline: calc(var(--prep-content-pad-x) * -0.45);
+/* Curation-only structural width tuning (replaces transient negative-margin hack). */
+.prep-main > .content.prep-curation-wide {
+  padding-inline: clamp(0.35rem, 0.7vw, 0.65rem);
 }
 @media (min-width: 1200px) {
   #prep-shell-main.nav-hidden .prep-main > .content {
@@ -144,10 +144,8 @@ body { margin: 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Se
     margin-right: 0;
     padding-inline: clamp(1.1rem, 1.6vw, 1.8rem);
   }
-}
-@media (max-width: 1200px) {
-  .actions-screen.actions-sub-curation > .acts-panel-slot > [data-panel="curation"] {
-    margin-inline: 0;
+  #prep-shell-main.nav-hidden .prep-main > .content.prep-curation-wide {
+    padding-inline: clamp(0.6rem, 1vw, 1rem);
   }
 }
 .screen { display: none; }
@@ -1884,27 +1882,28 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
    ═══════════════════════════════════════════════════════════════════ */
 #act-curation-head {
   border-left: 0;
-  padding: 12px 14px;
+  padding: 14px 16px;
   margin-bottom: 12px;
-  gap: 12px;
+  gap: 14px;
 }
 #act-curation-head .acts-hub-head-left h1 {
-  font-size: 1.1rem;
-  margin: 0 0 5px;
+  font-size: 1.13rem;
+  margin: 0 0 6px;
 }
 #act-curation-head .acts-hub-head-left p {
-  font-size: 0.82rem;
-  line-height: 1.35;
+  font-size: 0.85rem;
+  line-height: 1.42;
 }
 #act-curation-head .acts-hub-head-tools {
   gap: 8px;
 }
 #act-curation-head #act-curate-mode-pill {
-  font-size: 12px;
+  font-size: 12.5px;
   padding: 4px 10px;
 }
 #act-curation-head #act-curate-lt-cta {
-  padding: 4px 10px;
+  font-size: 12.5px;
+  padding: 4px 11px;
 }
 
 /* overflow:clip clips paint without creating a scroll container,
@@ -1914,7 +1913,7 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
   overflow: clip;
 }
 #act-curate-card .curate-workspace {
-  grid-template-columns: 310px minmax(560px, 1fr) 320px;
+  grid-template-columns: minmax(280px, 0.95fr) minmax(620px, 2.1fr) minmax(260px, 0.9fr);
   align-items: start;
   gap: 0;
 }
@@ -1923,13 +1922,13 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
   min-height: 0;
 }
 #act-curate-card .curate-col-left {
-  max-width: 310px;
+  max-width: none;
 }
 #act-curate-card .curate-col-center {
   min-width: 0;
 }
 #act-curate-card .curate-col-right {
-  max-width: 320px;
+  max-width: none;
 }
 /* preview-card: block (not flex), sticky top:10px — matches mockup exactly, breaks RC2 flex chain */
 #act-curate-card .curate-preview-card {
@@ -1945,9 +1944,13 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
   flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
-  gap: 8px 10px;
+  gap: 9px 12px;
   padding: 10px 12px;
+  font-size: 13px;
+}
+#act-curate-card .preview-controls .chip {
   font-size: 12px;
+  padding: 3px 8px;
 }
 /* preview-grid: natural height — pane doc-scroll drives height; not a flex child (RC2 fix) */
 #act-curate-card .preview-grid {
@@ -1977,7 +1980,7 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
 }
 #act-curate-card .preview-grid > .pane .pane-head {
   padding: 8px 10px;
-  font-size: 12.5px;
+  font-size: 13px;
 }
 #act-curate-card #act-curate-minimap {
   min-height: 0;
@@ -2145,7 +2148,7 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
 /* At 1400px: collapse right col below center (mirrors global rule for this scoped layout) */
 @media (max-width: 1400px) {
   #act-curate-card .curate-workspace {
-    grid-template-columns: 310px 1fr;
+    grid-template-columns: minmax(280px, 300px) 1fr;
   }
   #act-curate-card .curate-col-right {
     grid-column: 1 / -1;

@@ -313,6 +313,7 @@ export class App {
     }
 
     main.appendChild(content);
+    this._syncCurationWideClass();
   }
 
   private _toggleNav(shell: HTMLElement, btn?: HTMLButtonElement): void {
@@ -337,6 +338,15 @@ export class App {
     this._screenEls[tab].classList.add("active");
     this._tabBtns[tab].classList.add("active");
     this._tabBtns[tab].setAttribute("aria-current", "page");
+    this._syncCurationWideClass();
+  }
+
+  private _syncCurationWideClass(): void {
+    const content = document.querySelector<HTMLElement>("#prep-main-content > .content");
+    if (!content) return;
+    const actionsScreen = this._screenEls.actions;
+    const curationActive = this._activeTab === "actions" && actionsScreen?.classList.contains("actions-sub-curation");
+    content.classList.toggle("prep-curation-wide", Boolean(curationActive));
   }
 
   private _hasPendingChangesInCurrentTab(): boolean {
