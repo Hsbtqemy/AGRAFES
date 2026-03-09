@@ -16,6 +16,7 @@
   --shadow: 0 1px 3px rgba(0,0,0,0.08);
   --shadow-soft: 0 8px 22px rgba(15, 118, 110, 0.08);
   --prep-content-max: 1520px;
+  --prep-content-max-wide: 1760px;
   --prep-content-pad-x: 1.1rem;
   --prep-content-pad-y-top: 1rem;
   --prep-content-pad-y-bottom: 1.25rem;
@@ -134,7 +135,7 @@ body { margin: 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Se
 }
 @media (min-width: 1200px) {
   #prep-shell-main.nav-hidden .prep-main > .content {
-    max-width: none;
+    max-width: min(100%, var(--prep-content-max-wide));
     margin-left: 0;
     margin-right: 0;
     padding-inline: clamp(1.1rem, 1.6vw, 1.8rem);
@@ -1959,14 +1960,16 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
 #act-curate-card .curate-doc-field {
   margin-bottom: 6px;
 }
-/* Ctx row: 2×2 info boxes showing doc metadata (P23 Inc 1) */
-.curate-ctx-row {
+/* Curation left panel: 2x2 info boxes */
+#act-curate-card .row,
+#act-curate-card .curate-ctx-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 6px;
   margin: 6px 0 10px;
 }
-.curate-ctx-cell {
+#act-curate-card .f,
+#act-curate-card .curate-ctx-cell {
   border: 1px solid var(--prep-line, #dde1e8);
   border-radius: 8px;
   padding: 8px;
@@ -1974,7 +1977,8 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
   background: #fff;
   min-width: 0;
 }
-.curate-ctx-cell strong {
+#act-curate-card .f strong,
+#act-curate-card .curate-ctx-cell strong {
   display: block;
   font-size: 12px;
   color: var(--prep-muted, #4f5d6d);
@@ -1987,20 +1991,42 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
   color: var(--prep-muted, #4f5d6d);
 }
 #act-curate-card .curation-quick-rules {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;  /* parity mockup chip-row gap:6px */
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
-#act-curate-card .curation-rule-pill {
-  width: 100%;
-  min-width: 0;
-  justify-content: flex-start;
-  border-radius: 8px;
-  padding: 4px 7px;
+#act-curate-card .curation-quick-rules .curate-rule-input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+#act-curate-card .curation-quick-rules .chip,
+#act-curate-card .curation-quick-rules .curation-chip {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--prep-line, #dde1e8);
+  border-radius: 999px;
+  padding: 3px 8px;
   font-size: 11.5px;
-  gap: 4px;
+  font-weight: 500;
+  color: var(--prep-muted, #4f5d6d);
+  background: #f8f9fa;
+  cursor: pointer;
+  user-select: none;
 }
-/* Primary actions: flex wrap (matches mockup btns layout) */
+#act-curate-card .curation-quick-rules .curate-rule-input:checked + .curation-chip,
+#act-curate-card .curation-quick-rules .curation-chip.active {
+  border-color: var(--prep-line-accent, #9fd3cc);
+  background: var(--prep-accent-soft, #e8f5f3);
+  color: var(--prep-accent-dark, #0c4a46);
+  font-weight: 600;
+}
+#act-curate-card .curation-quick-rules .curate-rule-input:focus-visible + .curation-chip {
+  outline: 2px solid var(--prep-accent, #0f766e);
+  outline-offset: 2px;
+}
+/* Primary actions with mockup hierarchy (.btn / .btn.alt / .btn.pri) */
 #act-curate-card .curate-primary-actions {
   display: flex;
   flex-wrap: wrap;
@@ -2008,8 +2034,22 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
   margin-top: 8px;
 }
 #act-curate-card .curate-primary-actions .btn {
-  flex: 1 1 auto;
-  min-width: 80px;
+  border: 1px solid var(--prep-line, #dde1e8);
+  background: #fff;
+  color: var(--prep-text, #1a1a2e);
+  border-radius: 8px;
+  padding: 7px 11px;
+  min-width: 0;
+}
+#act-curate-card .curate-primary-actions .btn.alt {
+  border-color: var(--prep-blue-line, #b7c8df);
+  color: var(--prep-blue, #1e4a80);
+  background: var(--prep-blue-soft, #eaf1fb);
+}
+#act-curate-card .curate-primary-actions .btn.pri {
+  border-color: var(--prep-accent, #0f766e);
+  background: var(--prep-accent, #0f766e);
+  color: #fff;
 }
 #act-curate-card .curate-advanced-summary {
   cursor: pointer;
