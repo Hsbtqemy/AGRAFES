@@ -3142,6 +3142,9 @@ export class ActionsScreen {
           // Pre-fill run report field
           const reportInput = document.querySelector<HTMLInputElement>("#act-report-run-id");
           if (reportInput && this._alignRunId) reportInput.value = this._alignRunId;
+          // ALIGN-3: mettre à jour la pill avec le run ID actif
+          const pillEl = document.querySelector<HTMLElement>("#act-align-run-pill");
+          if (pillEl && this._alignRunId) pillEl.textContent = `run\u00a0: ${this._alignRunId}`;
           // Sync workflow display
           this._wfSyncRunId();
           this._alignExplainability = reports.map((r) => ({

@@ -832,9 +832,9 @@ mark.diff-mark { background: #b7f5c8; color: #14532d; border-radius: 2px; paddin
 /* Align workspace */
 .align-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.38fr); /* ALIGN-4: proportionnel, était 320px fixe */
   gap: 12px;
-  align-items: start;
+  align-items: stretch; /* ALIGN-2+5: remplir hauteur grille */
 }
 .align-main { min-width: 0; }
 .align-launcher {
@@ -862,6 +862,8 @@ mark.diff-mark { background: #b7f5c8; color: #14532d; border-radius: 2px; paddin
   position: sticky;
   top: 12px;
   box-shadow: 0 2px 8px rgba(15,118,110,0.05);
+  min-height: 200px; /* ALIGN-2: évite l'effondrement à 117px en état vide */
+  align-self: stretch; /* ALIGN-2: remplit la cellule grille */
 }
 .align-finalize-row {
   margin-top: 0.65rem;
