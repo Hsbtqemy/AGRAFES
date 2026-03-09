@@ -52,61 +52,127 @@ export class ImportScreen {
     this._root = root;
 
     root.innerHTML = `
-      <h2 class="screen-title">Importer</h2>
-
-      <section class="card" data-collapsible="true" data-collapsed-default="true">
-        <h3>État de session</h3>
-        <div id="imp-state-banner" class="runtime-state state-info" aria-live="polite">
-          En attente de connexion sidecar…
+      <!-- Head card + stepper -->
+      <div class="card imp-head-card">
+        <div class="imp-head-top">
+          <div>
+            <h2 class="screen-title" style="margin:0 0 4px">Importer des fichiers</h2>
+            <p class="imp-head-desc">Ajoutez vos fichiers source, configurez le profil de lot, puis lancez l'import.</p>
+          </div>
+          <div id="imp-state-banner" class="runtime-state state-info" aria-live="polite">
+            En attente de connexion sidecar…
+          </div>
         </div>
-      </section>
+        <div class="imp-steps">
+          <span class="imp-step active">① Sources</span>
+          <span class="imp-step-sep">›</span>
+          <span class="imp-step">② Profil</span>
+          <span class="imp-step-sep">›</span>
+          <span class="imp-step">③ Validation</span>
+          <span class="imp-step-sep">›</span>
+          <span class="imp-step">④ Exécution</span>
+        </div>
+      </div>
 
-      <section class="card" data-collapsible="true">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:0.7rem;flex-wrap:wrap">
-          <h3 style="margin:0">Fichiers à importer</h3>
-          <span id="imp-summary" class="hint" style="margin:0">0 fichier · 0 en attente</span>
+      <!-- 2-col workspace -->
+      <div class="imp-workspace">
+
+        <!-- Left column: files -->
+        <div class="imp-col-main">
+          <div class="card">
+            <div class="imp-file-card-head">
+              <h3 style="margin:0">Fichiers source</h3>
+              <span id="imp-summary" class="chip">0 fichier</span>
+            </div>
+            <div class="imp-dropzone" id="imp-dropzone">
+              <div class="imp-dropzone-icon">📂</div>
+              <div class="imp-dropzone-text">Glissez vos fichiers ici</div>
+              <div class="imp-dropzone-sub">.docx &middot; .txt &middot; .tei &middot; .xml</div>
+              <div class="btn-row" style="justify-content:center;margin-top:8px">
+                <button id="imp-add-btn" class="btn btn-primary btn-sm">Ajouter des fichiers…</button>
+                <button id="imp-clear-btn" class="btn btn-secondary btn-sm">Vider</button>
+              </div>
+            </div>
+            <div id="imp-list" class="imp-file-list">
+              <p class="empty-hint">Aucun fichier sélectionné.</p>
+            </div>
+          </div>
+
+          <section class="card" data-collapsible="true" data-collapsed-default="true">
+            <h3>Journal des imports</h3>
+            <div id="imp-log" class="log-pane"></div>
+          </section>
+        </div>
+
+        <!-- Right column: settings + pre-check + index -->
+        <div class="imp-col-side">
+          <details class="card imp-settings-card" open>
+            <summary class="imp-settings-summary">
+              <h3 style="margin:0">Profil de lot</h3>
+              <span class="chip">optionnel</span>
+            </summary>
+            <div class="imp-settings-body">
+              <div class="imp-settings-grid">
+                <label>Format par défaut
+                  <select id="imp-default-mode">
+                    ${IMPORT_MODE_OPTIONS.map((opt) => `<option value="${opt.value}">${opt.label}</option>`).join("")}
+                  </select>
+                </label>
+                <label>Langue par défaut
+                  <input id="imp-default-lang" type="text" value="fr" placeholder="fr, en, …" maxlength="10" />
+                </label>
+              </div>
+              <div class="btn-row">
+                <button id="imp-apply-defaults-btn" class="btn btn-secondary btn-sm">Appliquer aux fichiers en attente</button>
+                <span class="hint" style="margin:0">Chaque ligne reste modifiable ensuite.</span>
+              </div>
+            </div>
+          </details>
+
+          <div class="card imp-precheck-card">
+            <div class="imp-precheck-head">
+              <h3 style="margin:0">Pré-vérification</h3>
+              <span id="imp-precheck-badge" class="chip">—</span>
+            </div>
+            <div class="imp-precheck-body">
+              <div class="imp-diag">
+                <span class="imp-diag-label">Fichiers sélectionnés</span>
+                <span class="imp-diag-value" id="imp-diag-total">0</span>
+              </div>
+              <div class="imp-diag">
+                <span class="imp-diag-label">En attente</span>
+                <span class="imp-diag-value" id="imp-diag-pending">0</span>
+              </div>
+              <div class="imp-diag">
+                <span class="imp-diag-label">Importés</span>
+                <span class="imp-diag-value" id="imp-diag-done">0</span>
+              </div>
+              <div class="imp-diag">
+                <span class="imp-diag-label">Erreurs</span>
+                <span class="imp-diag-value" id="imp-diag-errors">0</span>
+              </div>
+            </div>
+          </div>
+
+          <section class="card" data-collapsible="true" data-collapsed-default="true">
+            <h3>Index FTS</h3>
+            <p class="hint">Après avoir importé des documents, reconstruisez l'index pour activer la recherche.</p>
+            <div class="btn-row">
+              <button id="imp-index-btn" class="btn btn-secondary" disabled>Reconstruire l'index</button>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <!-- Footer sticky -->
+      <div class="imp-footer-bar">
+        <div class="imp-footer-meta">
+          <span class="hint" style="margin:0">Sélectionnez des fichiers puis lancez l'import.</span>
         </div>
         <div class="btn-row">
-          <button id="imp-add-btn" class="btn btn-primary">Ajouter des fichiers…</button>
-          <button id="imp-clear-btn" class="btn btn-secondary">Vider la liste</button>
-          <button id="imp-import-btn" class="btn btn-primary" disabled>Importer les fichiers en attente</button>
+          <button id="imp-import-btn" class="btn btn-primary" disabled>⬆ Importer le lot</button>
         </div>
-
-        <details class="import-disclosure">
-          <summary>Réglages du lot (optionnels)</summary>
-          <div class="import-defaults">
-            <label>Mode initial du lot :
-              <select id="imp-default-mode">
-                ${IMPORT_MODE_OPTIONS.map((opt) => `<option value="${opt.value}">${opt.label}</option>`).join("")}
-              </select>
-            </label>
-            <label>Langue initiale du lot :
-              <input id="imp-default-lang" type="text" value="fr" placeholder="fr, en, …" maxlength="10" />
-            </label>
-          </div>
-          <div class="btn-row import-defaults-actions">
-            <button id="imp-apply-defaults-btn" class="btn btn-secondary btn-sm">Appliquer aux fichiers en attente</button>
-            <span class="hint" style="margin:0">Chaque ligne reste modifiable ensuite (mode, langue, titre).</span>
-          </div>
-        </details>
-
-        <div id="imp-list" class="import-list">
-          <p class="empty-hint">Aucun fichier sélectionné.</p>
-        </div>
-      </section>
-
-      <section class="card" data-collapsible="true" data-collapsed-default="true">
-        <h3>Index FTS</h3>
-        <p class="hint">Après avoir importé des documents, reconstruisez l'index pour activer la recherche.</p>
-        <div class="btn-row">
-          <button id="imp-index-btn" class="btn btn-secondary" disabled>Reconstruire l'index</button>
-        </div>
-      </section>
-
-      <section class="card import-log-card" data-collapsible="true" data-collapsed-default="true">
-        <h3>Journal des imports</h3>
-        <div id="imp-log" class="log-pane"></div>
-      </section>
+      </div>
     `;
 
     this._listEl = root.querySelector("#imp-list")!;
@@ -121,6 +187,14 @@ export class ImportScreen {
     this._importBtn.addEventListener("click", () => this._runImport());
     this._indexBtn.addEventListener("click", () => this._runIndex());
     root.querySelector("#imp-apply-defaults-btn")!.addEventListener("click", () => this._applyDefaultsToPending());
+
+    const dz = root.querySelector<HTMLElement>("#imp-dropzone");
+    if (dz) {
+      dz.addEventListener("dragover",  e => { e.preventDefault(); dz.classList.add("dragover"); });
+      dz.addEventListener("dragleave", ()  => dz.classList.remove("dragover"));
+      dz.addEventListener("drop",      e  => { e.preventDefault(); dz.classList.remove("dragover"); });
+    }
+
     initCardAccordions(root);
     this._refreshRuntimeState();
 
@@ -157,7 +231,7 @@ export class ImportScreen {
     const pendingCount = this._files.filter((f) => f.status === "pending").length;
     this._importBtn.disabled = !this._conn || pendingCount === 0;
     this._indexBtn.disabled = !this._conn;
-    this._summaryEl.textContent = `${this._files.length} fichier${this._files.length > 1 ? "s" : ""} · ${pendingCount} en attente`;
+    this._summaryEl.textContent = `${this._files.length} fichier${this._files.length > 1 ? "s" : ""}`;
     this._refreshRuntimeState();
   }
 
@@ -219,23 +293,32 @@ export class ImportScreen {
     }
   }
 
+  private _chipClass(status: FileItem["status"]): string {
+    if (status === "done") return "ok";
+    if (status === "importing") return "warn";
+    if (status === "error") return "error";
+    return "";
+  }
+
   private _renderList(): void {
     this._updateButtons();
     if (this._files.length === 0) {
       this._listEl.innerHTML = '<p class="empty-hint">Aucun fichier sélectionné.</p>';
+      this._updatePrecheck();
       return;
     }
     this._listEl.innerHTML = "";
     this._files.forEach((f, i) => {
       const row = document.createElement("div");
-      row.className = `import-row import-row-${f.status}`;
+      row.className = `imp-file-item imp-file-item-${f.status}`;
       row.dataset.index = String(i);
+      const chipCls = this._chipClass(f.status);
       row.innerHTML = `
-        <div class="import-row-info">
-          <span class="import-row-name" title="${f.path}">${f.title}</span>
-          <span class="import-row-status">${this._statusLabel(f)}</span>
+        <div class="imp-file-main">
+          <span class="imp-file-name" title="${f.path}">${f.title}</span>
+          <span class="chip${chipCls ? " " + chipCls : ""}">${this._statusLabel(f)}</span>
         </div>
-        <div class="import-row-controls">
+        <div class="imp-file-controls">
           <select class="imp-mode-sel" data-i="${i}">
             ${IMPORT_MODE_OPTIONS
               .map((opt) => `<option value="${opt.value}"${f.mode===opt.value?" selected":""}>${opt.label}</option>`)
@@ -243,7 +326,7 @@ export class ImportScreen {
           </select>
           <input class="imp-lang-inp" type="text" value="${f.language}" maxlength="10" placeholder="lang" data-i="${i}" />
           <input class="imp-title-inp" type="text" value="${f.title}" placeholder="titre" data-i="${i}" />
-          <button class="btn btn-sm btn-danger imp-remove-btn" data-i="${i}" aria-label="Retirer ce fichier de la liste" title="Retirer ce fichier de la liste">✕</button>
+          <button class="btn btn-sm imp-remove-btn" data-i="${i}" aria-label="Retirer ce fichier de la liste" title="Retirer ce fichier de la liste">✕</button>
         </div>
       `;
       this._listEl.appendChild(row);
@@ -275,6 +358,29 @@ export class ImportScreen {
         this._updateButtons();
       });
     });
+
+    this._updatePrecheck();
+  }
+
+  private _updatePrecheck(): void {
+    const total   = this._files.length;
+    const pending = this._files.filter(f => f.status === "pending").length;
+    const done    = this._files.filter(f => f.status === "done").length;
+    const errors  = this._files.filter(f => f.status === "error").length;
+    const set = (id: string, v: number) => {
+      const el = this._root?.querySelector(`#${id}`);
+      if (el) el.textContent = String(v);
+    };
+    set("imp-diag-total", total);
+    set("imp-diag-pending", pending);
+    set("imp-diag-done", done);
+    set("imp-diag-errors", errors);
+    const badge = this._root?.querySelector("#imp-precheck-badge");
+    if (!badge) return;
+    if (errors > 0)       { badge.textContent = `${errors} erreur${errors > 1 ? "s" : ""}`; badge.className = "chip error"; }
+    else if (pending > 0) { badge.textContent = `${pending} en attente`;                    badge.className = "chip warn"; }
+    else if (done > 0)    { badge.textContent = "Tout importé";                             badge.className = "chip ok"; }
+    else                  { badge.textContent = "—";                                        badge.className = "chip"; }
   }
 
   private _statusLabel(f: FileItem): string {
@@ -413,7 +519,7 @@ export class ImportScreen {
       this._setRuntimeState("info", "Aucun fichier sélectionné.");
       return;
     }
-    this._setRuntimeState("ok", "Prêt: vous pouvez lancer un import ou reconstruire l’index.");
+    this._setRuntimeState("ok", "Prêt: vous pouvez lancer un import ou reconstruire l'index.");
   }
 }
 
