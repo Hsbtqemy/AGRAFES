@@ -1879,7 +1879,7 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
   overflow: clip;
 }
 #act-curate-card .curate-workspace {
-  grid-template-columns: 310px minmax(640px, 1fr) 320px;
+  grid-template-columns: 310px minmax(680px, 1fr) 320px;
   align-items: start;
   gap: 0;
 }
