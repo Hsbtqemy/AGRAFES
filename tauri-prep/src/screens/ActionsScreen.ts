@@ -180,6 +180,7 @@ export class ActionsScreen {
   private _stateEl!: HTMLElement;
   private _isBusy = false;
   private _hasPendingPreview = false;
+  private _curateLog: Array<{ ts: number; kind: "preview" | "apply" | "warn"; msg: string }> = [];
   private _lastErrorMsg: string | null = null;
   private _lastAuditEmpty = false;
   private _previewDebounceHandle: number | null = null;
@@ -447,70 +448,67 @@ export class ActionsScreen {
             <article class="curate-inner-card">
               <div class="card-head">
                 <h2>Param&#232;tres curation</h2>
-                <span id="act-curate-doc-label" style="font-size:12px;color:var(--prep-muted,#4f5d6d)"></span>
+                <span id="act-curate-doc-label"></span>
               </div>
               <div class="card-body">
-                <label style="font-size:0.85rem;display:flex;flex-direction:column;gap:0.2rem;margin-bottom:0.5rem">
+                <label class="curate-doc-field">
                   Document :
                   <select id="act-curate-doc"><option value="">Tous les documents</option></select>
                 </label>
-                <div class="chip-row curation-quick-rules">
-                  <label class="curation-rule-pill">
-                    <input id="act-rule-spaces" type="checkbox" checked />
-                    Espaces incoh&#233;rents
-                  </label>
-                  <label class="curation-rule-pill">
-                    <input id="act-rule-quotes" type="checkbox" />
-                    Guillemets typographiques
-                  </label>
-                  <label class="curation-rule-pill">
-                    <input id="act-rule-punctuation" type="checkbox" />
-                    Ponctuation fine
-                  </label>
-                  <label class="curation-rule-pill">
-                    <input id="act-rule-invisibles" type="checkbox" />
-                    Contr&#244;le invisibles
-                  </label>
-                  <label class="curation-rule-pill">
-                    <input id="act-rule-numbering" type="checkbox" />
-                    Num&#233;rotation [n]
-                  </label>
+                <div id="act-curate-ctx" class="row curate-ctx-row" aria-label="Contexte du document">
+                  <div class="f curate-ctx-cell"><strong>Langue pivot</strong>fr</div>
+                  <div class="f curate-ctx-cell"><strong>Pack</strong>&#8212;</div>
+                  <div class="f curate-ctx-cell"><strong>Port&#233;e</strong>Document complet</div>
+                  <div class="f curate-ctx-cell"><strong>Aper&#231;u live</strong>Actif</div>
                 </div>
-                <div class="btns" style="margin-top:8px">
-                  <button id="act-preview-btn" class="btn btn-secondary" disabled>Pr&#233;visualiser</button>
-                  <button id="act-curate-btn" class="btn btn-warning" disabled>Appliquer</button>
+                <div class="chip-row curation-quick-rules">
+                  <input id="act-rule-spaces" class="curate-rule-input" type="checkbox" checked />
+                  <label class="chip curation-chip" for="act-rule-spaces">Espaces incoh&#233;rents</label>
+                  <input id="act-rule-quotes" class="curate-rule-input" type="checkbox" />
+                  <label class="chip curation-chip" for="act-rule-quotes">Guillemets typographiques</label>
+                  <input id="act-rule-punctuation" class="curate-rule-input" type="checkbox" />
+                  <label class="chip curation-chip" for="act-rule-punctuation">Ponctuation fine</label>
+                  <input id="act-rule-invisibles" class="curate-rule-input" type="checkbox" />
+                  <label class="chip curation-chip" for="act-rule-invisibles">Contr&#244;le invisibles</label>
+                  <input id="act-rule-numbering" class="curate-rule-input" type="checkbox" />
+                  <label class="chip curation-chip" for="act-rule-numbering">Num&#233;rotation [n]</label>
+                </div>
+                <div class="btns curate-primary-actions">
+                  <button id="act-curate-reset-btn" class="btn">R&#233;initialiser</button>
+                  <button id="act-preview-btn" class="btn alt" disabled>Pr&#233;visualiser maintenant</button>
+                  <button id="act-curate-btn" class="btn pri" disabled>Appliquer curation</button>
                 </div>
               </div>
             </article>
-            <article class="curate-inner-card" style="margin-top:10px">
+            <article class="curate-inner-card curate-stack-card">
               <details id="act-curate-advanced" class="curation-advanced">
-                <summary class="card-head" style="cursor:pointer;list-style:none;display:flex">
-                  <h2 style="flex:1">Retouches avanc&#233;es</h2>
-                  <span style="font-size:11px;color:var(--prep-muted,#4f5d6d)">&#x25be;</span>
+                <summary class="card-head curate-advanced-summary">
+                  <h2>Retouches avanc&#233;es</h2>
+                  <span class="curate-chevron">&#x25be;</span>
                 </summary>
                 <div class="card-body">
-                  <div class="form-row" style="margin-top:0.2rem">
-                    <label style="min-width:160px">Chercher (regex)
+                  <div class="form-row curate-advanced-row">
+                    <label>Chercher (regex)
                       <input id="act-curate-quick-pattern" type="text" placeholder="ex: \\u2019" />
                     </label>
-                    <label style="min-width:160px">Remplacer
+                    <label>Remplacer
                       <input id="act-curate-quick-replacement" type="text" placeholder="ex: '" />
                     </label>
-                    <label style="max-width:80px">Flags
+                    <label class="curate-advanced-flags">Flags
                       <input id="act-curate-quick-flags" type="text" value="g" maxlength="6" />
                     </label>
-                    <div style="align-self:flex-end">
+                    <div class="curate-advanced-add">
                       <button id="act-curate-add-rule-btn" class="btn btn-secondary btn-sm">+ Ajouter</button>
                     </div>
                   </div>
-                  <label style="font-size:0.82rem;display:flex;flex-direction:column;gap:0.2rem">R&#232;gles JSON
+                  <label class="curate-json-field">R&#232;gles JSON
                     <textarea id="act-curate-rules" rows="3" placeholder='[{"pattern":"foo","replacement":"bar","flags":"gi"}]'></textarea>
                   </label>
                   <p class="hint" style="margin:0.2rem 0 0">Ajout&#233;es apr&#232;s les r&#232;gles rapides.</p>
                 </div>
               </details>
             </article>
-            <article class="curate-inner-card" id="act-curate-quick-actions" style="margin-top:10px">
+            <article class="curate-inner-card curate-stack-card" id="act-curate-quick-actions">
               <div class="card-head">
                 <h2>Actions rapides</h2>
                 <span style="font-size:12px;color:var(--prep-muted,#4f5d6d)">s&#233;lection locale</span>
@@ -519,7 +517,7 @@ export class ActionsScreen {
                 <div id="act-curate-queue" class="curate-queue">
                   <p class="empty-hint">Aucune action en attente.</p>
                 </div>
-                <div class="btns" style="margin-top:8px">
+                <div class="btns curate-nav-actions">
                   <button class="btn btn-secondary btn-sm" disabled>&#8592; Pr&#233;c&#233;dent</button>
                   <button class="btn btn-secondary btn-sm" disabled>Suivant &#8594;</button>
                 </div>
@@ -585,14 +583,14 @@ export class ActionsScreen {
                 <div id="act-curate-seg-link" style="display:none;padding:8px 0"></div>
               </div>
             </article>
-            <article class="curate-inner-card" style="margin-top:10px">
+            <article class="curate-inner-card">
               <div class="card-head">
                 <h2>Journal de revue</h2>
                 <span style="font-size:12px;color:var(--prep-muted,#4f5d6d)">session</span>
               </div>
-              <div class="card-body">
-                <div id="act-curate-review-log" class="curate-review-log">
-                  <p class="empty-hint">Aucune action enregistr&#233;e.</p>
+              <div class="card-body" style="padding:0">
+                <div id="act-curate-review-log" class="curate-log-list" aria-live="polite">
+                  <p class="empty-hint" style="padding:10px">Aucune action enregistr&#233;e.</p>
                 </div>
               </div>
             </article>
@@ -620,11 +618,19 @@ export class ActionsScreen {
     ["#act-rule-spaces", "#act-rule-quotes", "#act-rule-punctuation", "#act-rule-invisibles", "#act-rule-numbering"].forEach((sel) => {
       el.querySelector(sel)!.addEventListener("change", () => this._schedulePreview(true));
     });
-    el.querySelector("#act-curate-doc")!.addEventListener("change", () => this._schedulePreview(true));
+    el.querySelector("#act-curate-doc")!.addEventListener("change", () => {
+      this._updateCurateCtx();
+      this._schedulePreview(true);
+    });
     el.querySelector("#act-curate-rules")!.addEventListener("input", () => this._schedulePreview(true));
     el.querySelector("#act-curate-add-rule-btn")!.addEventListener("click", (evt) => {
       evt.preventDefault();
       this._addAdvancedCurateRule(root);
+    });
+    el.querySelector("#act-curate-reset-btn")?.addEventListener("click", () => {
+      const ta = root.querySelector<HTMLTextAreaElement>("#act-curate-rules");
+      if (ta) ta.value = "";
+      this._applyCurationPreset(root, "spaces");
     });
     el.querySelector("#act-preview-btn")!.addEventListener("click", () => this._runPreview());
     el.querySelector("#act-curate-btn")!.addEventListener("click", () => this._runCurate());
@@ -2359,6 +2365,57 @@ export class ActionsScreen {
     return v ? parseInt(v) : undefined;
   }
 
+  /** Push an entry to the in-memory curate log (max 10, FIFO) and re-render. */
+  private _pushCurateLog(kind: "preview" | "apply" | "warn", msg: string): void {
+    this._curateLog.unshift({ ts: Date.now(), kind, msg });
+    if (this._curateLog.length > 10) this._curateLog.length = 10;
+    this._renderCurateLog();
+  }
+
+  private _renderCurateLog(): void {
+    const el = document.querySelector<HTMLElement>("#act-curate-review-log");
+    if (!el) return;
+    if (this._curateLog.length === 0) {
+      el.innerHTML = `<p class="empty-hint" style="padding:10px">Aucune action enregistr&#233;e.</p>`;
+      return;
+    }
+    const now = Date.now();
+    el.innerHTML = this._curateLog.map(entry => {
+      const diffS = Math.round((now - entry.ts) / 1000);
+      const age = diffS < 60 ? `il y a ${diffS} s` : new Date(entry.ts).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+      const kindClass = entry.kind === "warn" ? "curate-log-warn" : entry.kind === "apply" ? "curate-log-apply" : "";
+      return `<div class="curate-qitem ${kindClass}">` +
+        `<div class="curate-qmeta"><span>${entry.kind === "preview" ? "Prévisu" : entry.kind === "apply" ? "Application" : "⚠"}</span><span>${age}</span></div>` +
+        `<div>${_escHtml(entry.msg)}</div>` +
+        `</div>`;
+    }).join("");
+  }
+
+  /** Update the 2×2 context info row in the left col when doc selection changes. */
+  private _updateCurateCtx(): void {
+    const el = document.querySelector<HTMLElement>("#act-curate-ctx");
+    if (!el) return;
+    const docId = this._currentCurateDocId();
+    const doc = docId !== undefined ? this._docs.find(d => d.doc_id === docId) : undefined;
+    const pivotLabel = !doc ? "fr" : (doc.language?.toLowerCase() === "fr" ? "Fran&#231;ais (VO)" : _escHtml(doc.language ?? "fr"));
+    const packLabel = "&#8212;";
+    const scopeLabel = doc ? "Document s&#233;lectionn&#233;" : "Document complet";
+    const liveLabel = "Actif";
+    if (!doc) {
+      el.innerHTML =
+        `<div class="f curate-ctx-cell"><strong>Langue pivot</strong>${pivotLabel}</div>` +
+        `<div class="f curate-ctx-cell"><strong>Pack</strong>${packLabel}</div>` +
+        `<div class="f curate-ctx-cell"><strong>Port&#233;e</strong>${scopeLabel}</div>` +
+        `<div class="f curate-ctx-cell"><strong>Aper&#231;u live</strong>${liveLabel}</div>`;
+      return;
+    }
+    el.innerHTML =
+      `<div class="f curate-ctx-cell"><strong>Langue pivot</strong>${pivotLabel}</div>` +
+      `<div class="f curate-ctx-cell"><strong>Pack</strong>${packLabel}</div>` +
+      `<div class="f curate-ctx-cell"><strong>Port&#233;e</strong>${scopeLabel}</div>` +
+      `<div class="f curate-ctx-cell"><strong>Aper&#231;u live</strong>${liveLabel}</div>`;
+  }
+
   private _populateSelects(): void {
     const allDocSelects = ["act-curate-doc", "act-seg-doc", "act-seg-ref-doc", "act-align-pivot",
       "act-align-targets", "act-meta-doc", "act-audit-pivot", "act-audit-target",
@@ -2386,6 +2443,7 @@ export class ActionsScreen {
       this._renderDocList();
       this._renderSegBatchOverview();
       this._populateSelects();
+      this._updateCurateCtx();
       this._setButtonsEnabled(true);
       // Show audit panel once docs are loaded
       const ap = document.querySelector("#act-audit-panel") as HTMLElement | null;
@@ -2479,6 +2537,10 @@ export class ActionsScreen {
       (document.querySelector("#act-reindex-after-curate-btn") as HTMLElement).style.display = "none";
 
       this._log(`Prévisualisation : ${changed}/${total} unités → ${reps} remplacements.`);
+      const previewMsg = changed === 0
+        ? `OK – aucune modification (${total} unités)`
+        : `OK – ${changed}/${total} unités, ${reps} remplacement(s)`;
+      this._pushCurateLog("preview", previewMsg);
     } catch (err) {
       this._hasPendingPreview = false;
       if (infoEl) infoEl.textContent = "Erreur";
@@ -2487,6 +2549,7 @@ export class ActionsScreen {
       if (rawElErr) rawElErr.innerHTML = `<p class="diag-v warn" style="margin:0"><strong>Erreur prévisualisation</strong>${_escHtml(msg)}</p>`;
       if (!silent) {
         this._log(`✗ Prévisualisation : ${msg}`, true);
+        this._pushCurateLog("warn", `Erreur prévisu : ${msg}`);
       }
     }
     this._setBusy(false);
@@ -2686,6 +2749,7 @@ export class ActionsScreen {
     try {
       const job = await enqueueJob(this._conn, "curate", params);
       this._log(`Job curation soumis (${job.job_id.slice(0, 8)}…)`);
+      this._pushCurateLog("apply", `Soumis – ${label}`);
       // vNext: panel is always visible — reset content to "applied" state
       const rawEl = document.querySelector("#act-preview-raw");
       if (rawEl) rawEl.innerHTML = `<p class="empty-hint">Curation en cours…</p>`;
@@ -2699,8 +2763,10 @@ export class ActionsScreen {
         if (done.status === "done") {
           const r = done.result as { docs_curated?: number; units_modified?: number; fts_stale?: boolean } | undefined;
           this._log(`✓ Curation : ${r?.docs_curated ?? "?"} doc(s), ${r?.units_modified ?? "?"} unité(s).`);
+          this._pushCurateLog("apply", `OK – ${r?.docs_curated ?? "?"} doc(s), ${r?.units_modified ?? "?"} unité(s)`);
           if (r?.fts_stale) {
             this._log("⚠ Index FTS périmé.");
+            this._pushCurateLog("warn", "Index FTS périmé – re-indexer");
             const btn = document.querySelector("#act-reindex-after-curate-btn") as HTMLElement | null;
             if (btn) btn.style.display = "";
           }
@@ -2708,13 +2774,16 @@ export class ActionsScreen {
           this._showToast?.("✓ Curation appliquée");
         } else {
           this._log(`✗ Curation : ${done.error ?? done.status}`, true);
+          this._pushCurateLog("warn", `Erreur : ${done.error ?? done.status}`);
           this._showToast?.("✗ Erreur curation", true);
         }
         this._setBusy(false);
         this._refreshRuntimeState();
       });
     } catch (err) {
-      this._log(`✗ Curation : ${err instanceof SidecarError ? err.message : String(err)}`, true);
+      const msg = err instanceof SidecarError ? err.message : String(err);
+      this._log(`✗ Curation : ${msg}`, true);
+      this._pushCurateLog("warn", `Erreur soumission : ${msg}`);
       this._setBusy(false);
       this._refreshRuntimeState();
     }
