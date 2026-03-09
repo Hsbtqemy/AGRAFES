@@ -356,53 +356,59 @@ export class ActionsScreen {
     el.innerHTML = `
       <section class="acts-hub-head-card">
         <div class="acts-hub-head-left">
-          <h1>Actions &#8212; vue synth&#232;se</h1>
-          <p>Cette page sert d&#8217;aper&#231;u des actions de pr&#233;paration du corpus. S&#233;lectionnez une op&#233;ration ou utilisez les raccourcis ci-dessous.</p>
+          <h2 class="acts-hub-head-title">Traitement de corpus</h2>
+          <p class="acts-hub-head-desc">Curation &middot; Segmentation &middot; Alignement &mdash; pilotage des op&eacute;rations de pr&eacute;paration du corpus.</p>
         </div>
         <div class="acts-hub-head-tools">
-          <span class="curate-pill">Mode &#233;dition contr&#244;l&#233;e</span>
-          <button class="acts-hub-head-link" data-cta="curation">Ouvrir curation</button>
-          <button class="acts-hub-head-link" data-cta="segmentation">Voir segmentation VO</button>
-          <button class="acts-hub-head-link" data-cta="alignement">Voir alignement</button>
-          <button class="acts-hub-head-link" data-cta="segmentation-longtext">Sc&#233;nario grand texte</button>
+          <button class="acts-hub-head-link acts-hub-head-link-accent" data-cta="segmentation-longtext">Sc&eacute;nario grand texte &nearr;</button>
         </div>
       </section>
-      <div class="acts-hub-nav-cards">
-        <button class="acts-hub-nav-card" data-target="curation">
-          <div class="acts-hub-nav-card-icon">&#10002;</div>
-          <div class="acts-hub-nav-card-content">
-            <h3>Curation</h3>
-            <p>Nettoyage et normalisation du texte brut avant segmentation.</p>
+      <div class="acts-hub-workspace">
+        <div class="card acts-hub-wf-card">
+          <div class="acts-hub-wf-top">
+            <span class="acts-hub-wf-icon" aria-hidden="true">&#10002;</span>
+            <span class="acts-hub-wf-step">&Eacute;tape 1</span>
           </div>
-          <span class="acts-hub-nav-card-arrow" aria-hidden="true">&#8594;</span>
-        </button>
-        <button class="acts-hub-nav-card" data-target="segmentation">
-          <div class="acts-hub-nav-card-icon">&#9889;</div>
-          <div class="acts-hub-nav-card-content">
-            <h3>Segmentation</h3>
-            <p>D&#233;coupage du corpus en unit&#233;s traductionnelles.</p>
+          <h3 class="acts-hub-wf-title">Curation</h3>
+          <p class="acts-hub-wf-desc">Nettoyage et normalisation du texte brut. Applique des r&egrave;gles regex sur les documents sources avant segmentation.</p>
+          <div class="acts-hub-wf-actions">
+            <button class="acts-hub-wf-btn" data-target="curation">Ouvrir &rarr;</button>
           </div>
-          <span class="acts-hub-nav-card-arrow" aria-hidden="true">&#8594;</span>
-        </button>
-        <button class="acts-hub-nav-card" data-target="alignement">
-          <div class="acts-hub-nav-card-icon">&#8644;</div>
-          <div class="acts-hub-nav-card-content">
-            <h3>Alignement</h3>
-            <p>Cr&#233;ation des liens pivot &#8596; cible entre documents align&#233;s.</p>
+        </div>
+        <div class="card acts-hub-wf-card">
+          <div class="acts-hub-wf-top">
+            <span class="acts-hub-wf-icon" aria-hidden="true">&#9889;</span>
+            <span class="acts-hub-wf-step">&Eacute;tape 2</span>
           </div>
-          <span class="acts-hub-nav-card-arrow" aria-hidden="true">&#8594;</span>
-        </button>
+          <h3 class="acts-hub-wf-title">Segmentation</h3>
+          <p class="acts-hub-wf-desc">D&eacute;coupage du corpus en unit&eacute;s traductionnelles pivot et cibles. G&eacute;n&egrave;re les segments pour l&rsquo;alignement automatique.</p>
+          <div class="acts-hub-wf-actions">
+            <button class="acts-hub-wf-btn" data-target="segmentation">Ouvrir &rarr;</button>
+            <button class="acts-hub-wf-link" data-cta="segmentation-longtext">Grand texte &nearr;</button>
+          </div>
+        </div>
+        <div class="card acts-hub-wf-card">
+          <div class="acts-hub-wf-top">
+            <span class="acts-hub-wf-icon" aria-hidden="true">&#8644;</span>
+            <span class="acts-hub-wf-step">&Eacute;tape 3</span>
+          </div>
+          <h3 class="acts-hub-wf-title">Alignement</h3>
+          <p class="acts-hub-wf-desc">Cr&eacute;ation et r&eacute;vision des liens pivot &harr; cible entre documents align&eacute;s. Inspection, retarget et r&eacute;solution de collisions.</p>
+          <div class="acts-hub-wf-actions">
+            <button class="acts-hub-wf-btn" data-target="alignement">Ouvrir &rarr;</button>
+          </div>
+        </div>
       </div>
     `;
-    // Nav-card clicks
-    el.querySelectorAll<HTMLButtonElement>(".acts-hub-nav-card").forEach((btn) => {
+    // Workflow card primary buttons → navigate to sub-view
+    el.querySelectorAll<HTMLButtonElement>(".acts-hub-wf-btn").forEach((btn) => {
       btn.addEventListener("click", () => {
         const target = btn.dataset.target as SubView;
         this._switchSubViewDOM(root, target);
       });
     });
-    // CTA head-link clicks
-    el.querySelectorAll<HTMLButtonElement>(".acts-hub-head-link").forEach((btn) => {
+    // CTA buttons (head accent + secondary wf links) → navigate with optional segMode
+    el.querySelectorAll<HTMLButtonElement>(".acts-hub-head-link, .acts-hub-wf-link").forEach((btn) => {
       btn.addEventListener("click", () => {
         const cta = btn.dataset.cta!;
         if (cta === "segmentation-longtext") {
