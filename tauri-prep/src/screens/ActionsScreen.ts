@@ -919,7 +919,7 @@ export class ActionsScreen {
               <div class="seg-inner-card">
                 <div class="seg-inner-head"><h3>Param&#232;tres segmentation</h3></div>
                 <div class="seg-inner-body">
-                  <div class="form-row">
+                  <div class="form-grid-seg">
                     <label>Document :
                       <select id="act-seg-lt-doc"><option value="">&#8212; choisir &#8212;</option></select>
                     </label>

@@ -1161,7 +1161,7 @@ article.preview .preview-body > .pane { height: 100%; min-height: 0; }
 .curate-doc-scroll .diff-table th, .curate-doc-scroll .diff-table td { padding: 4px 6px; }
 /* ── Segmentation 2-col workspace (also in prep-vnext.css for standalone) ── */
 .seg-workspace-card { padding: 0 !important; overflow: hidden; }
-.seg-workspace { display: grid; grid-template-columns: auto 310px 1fr; align-items: start; }
+.seg-workspace { display: grid; grid-template-columns: auto 340px 1fr; align-items: start; }
 .seg-workspace-lt { grid-template-columns: 360px 1fr; }
 
 /* ─── P17 Inc 1: .doc-final-bar sticky footer (seg units preview) ─── */
@@ -2138,6 +2138,8 @@ article.preview .preview-foot {
   min-height: 300px;
 }
 #act-seg-preview-card .pane { min-height: 0; }
+/* SEG-S1: pin lt minimap to col 3 regardless of display:none siblings */
+#act-seg-lt-minimap { grid-column: 3; }
 
 /* ── 3. Chips — pill shape matching mockup ──────────────────────── */
 .chip, .curate-chip {
