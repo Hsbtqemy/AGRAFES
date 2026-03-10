@@ -880,9 +880,11 @@ export class ExportsScreen {
         if (!outPath) return;
         const pivot_doc_id = this._v2PivotEl.value ? Number(this._v2PivotEl.value) : undefined;
         const target_doc_id = this._v2TargetEl.value ? Number(this._v2TargetEl.value) : undefined;
+        const exceptionsOnly = (this._root.querySelector<HTMLInputElement>("#v2-align-exceptions-only")?.checked) ?? false;
         const params: Record<string, unknown> = { out_path: outPath, delimiter };
         if (pivot_doc_id !== undefined) params.pivot_doc_id = pivot_doc_id;
         if (target_doc_id !== undefined) params.target_doc_id = target_doc_id;
+        if (exceptionsOnly) params.exceptions_only = true;
 
         this._log(`Export V2 alignements → ${outPath}…`);
         const job = await enqueueJob(this._conn, "export_align_csv", params);

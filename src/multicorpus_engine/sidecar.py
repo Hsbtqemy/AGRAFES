@@ -3199,6 +3199,7 @@ class CorpusServer:
             pivot_doc_id = params.get("pivot_doc_id")
             target_doc_id = params.get("target_doc_id")
             delimiter = params.get("delimiter", ",")
+            exceptions_only = bool(params.get("exceptions_only", False))
 
             progress_cb(10, "Querying alignment links")
             where_parts: list[str] = []
@@ -3209,6 +3210,8 @@ class CorpusServer:
             if target_doc_id is not None:
                 where_parts.append("al.target_doc_id = ?")
                 sql_params.append(int(target_doc_id))
+            if exceptions_only:
+                where_parts.append("al.status = 'rejected'")
             where_clause = ("WHERE " + " AND ".join(where_parts)) if where_parts else ""
 
             with lock:

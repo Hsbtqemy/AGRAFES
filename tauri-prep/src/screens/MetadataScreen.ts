@@ -248,6 +248,7 @@ export class MetadataScreen {
       this._renderBatchBar();
     });
     root.querySelector("#bulk-apply-btn")!.addEventListener("click", () => this._runBulkUpdate());
+    root.querySelector("#meta-batch-role-btn")!.addEventListener("click", () => void this._runBatchRoleUpdate());
     root.querySelector("#validate-btn")!.addEventListener("click", () => this._runValidate());
     root.querySelector("#db-backup-btn")!.addEventListener("click", () => void this._runDbBackup());
 
@@ -641,6 +642,30 @@ export class MetadataScreen {
       this._log(`Erreur bulk update: ${err instanceof SidecarError ? err.message : String(err)}`, true);
     } finally {
       btn.disabled = false;
+    }
+  }
+
+  private async _runBatchRoleUpdate(): Promise<void> {
+    if (!this._conn || this._selectedDocIds.size < 2) return;
+    const roleList = DOC_ROLES.join(" | ");
+    const chosen = prompt(`Rôle pour les ${this._selectedDocIds.size} documents sélectionnés :\n(${roleList})`);
+    if (!chosen) return;
+    const doc_role = chosen.trim();
+    if (!DOC_ROLES.includes(doc_role)) {
+      alert(`Rôle invalide : "${doc_role}"\nValeurs acceptées : ${roleList}`);
+      return;
+    }
+    const updates = [...this._selectedDocIds].map(doc_id => ({ doc_id, doc_role }));
+    const btn = this._root.querySelector<HTMLButtonElement>("#meta-batch-role-btn")!;
+    btn.disabled = true;
+    try {
+      const res = await bulkUpdateDocuments(this._conn, updates);
+      this._log(`✓ ${res.updated} document(s) — rôle défini : "${doc_role}".`);
+      await this._refreshDocList();
+    } catch (err) {
+      this._log(`Erreur batch rôle: ${err instanceof SidecarError ? err.message : String(err)}`, true);
+    } finally {
+      this._renderBatchBar();
     }
   }
 

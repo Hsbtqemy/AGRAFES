@@ -192,7 +192,32 @@ export class ImportScreen {
     if (dz) {
       dz.addEventListener("dragover",  e => { e.preventDefault(); dz.classList.add("dragover"); });
       dz.addEventListener("dragleave", ()  => dz.classList.remove("dragover"));
-      dz.addEventListener("drop",      e  => { e.preventDefault(); dz.classList.remove("dragover"); });
+      dz.addEventListener("drop", e => {
+        e.preventDefault();
+        dz.classList.remove("dragover");
+        const files = e.dataTransfer?.files;
+        if (!files || files.length === 0) return;
+        const defaultMode = (this._root.querySelector<HTMLSelectElement>("#imp-default-mode"))!.value;
+        const defaultLang = (this._root.querySelector<HTMLInputElement>("#imp-default-lang"))!.value.trim() || "fr";
+        let added = 0;
+        for (const file of Array.from(files)) {
+          // Tauri WebView exposes native path via non-standard File.path property
+          const path = (file as File & { path?: string }).path;
+          if (!path) continue;
+          const name = file.name;
+          const ext = name.split(".").pop()?.toLowerCase() ?? "";
+          let mode = defaultMode;
+          if (ext === "xml") mode = "tei";
+          else if (ext === "txt") mode = "txt_numbered_lines";
+          else if (ext === "docx") mode = defaultMode.startsWith("docx") ? defaultMode : "docx_numbered_lines";
+          this._files.push({ path, mode, language: defaultLang, title: name, status: "pending", message: "" });
+          added++;
+        }
+        if (added > 0) {
+          this._renderList();
+          this._updateButtons();
+        }
+      });
     }
 
     initCardAccordions(root);
