@@ -1,0 +1,120 @@
+{
+  "viewport": {
+    "w": 1440,
+    "h": 900
+  },
+  "ts": "2026-03-09T18:29:38.341Z",
+  "elements": {
+    "actions_screen": {
+      "w": 1175,
+      "h": 478,
+      "x": 248,
+      "y": 68,
+      "display": "block",
+      "position": "static",
+      "gridTemplateColumns": "none"
+    },
+    "meta_screen_head": {
+      "w": 1175,
+      "h": 107,
+      "x": 248,
+      "y": 68,
+      "display": "block",
+      "position": "relative",
+      "gridTemplateColumns": "none"
+    },
+    "meta_kpi_bar": {
+      "w": 287,
+      "h": 21,
+      "x": 265,
+      "y": 137,
+      "display": "flex",
+      "position": "static",
+      "gridTemplateColumns": "none"
+    },
+    "meta_layout": {
+      "w": 1175,
+      "h": 205,
+      "x": 248,
+      "y": 187,
+      "display": "grid",
+      "position": "static",
+      "gridTemplateColumns": "626.375px 532.438px"
+    },
+    "meta_list_card": {
+      "w": 626,
+      "h": 189,
+      "x": 248,
+      "y": 187,
+      "display": "block",
+      "position": "relative",
+      "gridTemplateColumns": "none"
+    },
+    "meta_edit_card": {
+      "w": 532,
+      "h": 138,
+      "x": 890,
+      "y": 187,
+      "display": "block",
+      "position": "relative",
+      "gridTemplateColumns": "none"
+    },
+    "meta_doc_table": {
+      "w": 590,
+      "h": 60,
+      "x": 266,
+      "y": 298,
+      "display": "table",
+      "position": "static",
+      "gridTemplateColumns": "none"
+    },
+    "meta_doc_list_wrap": {
+      "w": 592,
+      "h": 62,
+      "x": 265,
+      "y": 297,
+      "display": "block",
+      "position": "static",
+      "gridTemplateColumns": "none"
+    },
+    "meta_list_toolbar": {
+      "w": 592,
+      "h": 56,
+      "x": 265,
+      "y": 233,
+      "display": "flex",
+      "position": "static",
+      "gridTemplateColumns": "none"
+    },
+    "meta_batch_bar": {
+      "w": 0,
+      "h": 0,
+      "x": 0,
+      "y": 0,
+      "display": "none",
+      "position": "static",
+      "gridTemplateColumns": "none"
+    },
+    "meta_state_banner": {
+      "w": 305,
+      "h": 25,
+      "x": 1100,
+      "y": 85,
+      "display": "block",
+      "position": "static",
+      "gridTemplateColumns": "none"
+    }
+  },
+  "presence": {
+    "meta_screen_head": true,
+    "meta_kpi_bar": true,
+    "meta_layout": true,
+    "meta_list_card": true,
+    "meta_edit_card": true,
+    "meta_doc_table": true,
+    "meta_list_toolbar": true,
+    "meta_batch_bar": true,
+    "meta_filter_input": true,
+    "meta_filter_select": true
+  }
+}

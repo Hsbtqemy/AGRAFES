@@ -1,0 +1,64 @@
+{
+  "viewport": {
+    "w": 1728,
+    "h": 1080
+  },
+  "ts": "2026-03-09T19:07:16.667Z",
+  "elements": {
+    "acts_hub": {
+      "w": 1463,
+      "h": 299,
+      "x": 248,
+      "y": 114,
+      "display": "block",
+      "gridTemplateColumns": "none"
+    },
+    "hub_head_card": {
+      "w": 1463,
+      "h": 78,
+      "x": 248,
+      "y": 134,
+      "display": "flex",
+      "gridTemplateColumns": "none"
+    },
+    "hub_workspace": {
+      "w": 1463,
+      "h": 181,
+      "x": 248,
+      "y": 232,
+      "display": "grid",
+      "gridTemplateColumns": "476.938px 476.938px 476.938px"
+    },
+    "hub_wf_card_0": {
+      "w": 477,
+      "h": 181,
+      "x": 248,
+      "y": 232
+    },
+    "hub_wf_card_1": {
+      "w": 477,
+      "h": 181,
+      "x": 741,
+      "y": 232
+    },
+    "hub_wf_card_2": {
+      "w": 477,
+      "h": 181,
+      "x": 1233,
+      "y": 232
+    }
+  },
+  "presence": {
+    "acts_hub": true,
+    "hub_head_card": true,
+    "acts_hub_head_title": true,
+    "hub_workspace": true,
+    "hub_wf_card": true,
+    "hub_wf_btn": true,
+    "hub_wf_link": true,
+    "hub_wf_top": true,
+    "hub_wf_step": true
+  },
+  "wf_card_count": 3,
+  "wf_btn_count": 3
+}

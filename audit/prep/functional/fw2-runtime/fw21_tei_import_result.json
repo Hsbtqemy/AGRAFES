@@ -1,0 +1,17 @@
+{
+  "job_status": "done",
+  "job_error": null,
+  "result": {
+    "doc_id": 1,
+    "units_total": 3,
+    "units_line": 3,
+    "units_structure": 0,
+    "duplicates": [],
+    "holes": [],
+    "non_monotonic": [],
+    "warnings": []
+  },
+  "documents_count": 1,
+  "tei_unit_kwarg_error_absent": true,
+  "validated": true
+}

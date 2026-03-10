@@ -1,0 +1,56 @@
+{
+  "sprint": "Import Inc 1",
+  "date": "2026-03-09",
+  "viewports": [
+    {
+      "w": 1440,
+      "h": 900,
+      "workspace_w": 1175,
+      "workspace_h": 515,
+      "col_main_w": 678,
+      "col_side_w": 485,
+      "col_ratio": 1.40,
+      "grid_cols": "678.3px 484.5px",
+      "dropzone_w": 644,
+      "dropzone_h": 145,
+      "file_list_h": 55,
+      "footer_pos": "sticky",
+      "footer_z": "10",
+      "footer_h": 53
+    },
+    {
+      "w": 1728,
+      "h": 1080,
+      "workspace_w": 1463,
+      "workspace_h": 515,
+      "col_main_w": 846,
+      "col_side_w": 605,
+      "col_ratio": 1.40,
+      "grid_cols": "846.3px 604.5px",
+      "dropzone_w": 812,
+      "dropzone_h": 145,
+      "file_list_h": 55,
+      "footer_pos": "sticky",
+      "footer_z": "10",
+      "footer_h": 53
+    }
+  ],
+  "presence": {
+    "workspace_2col": true,
+    "dropzone": true,
+    "col_main": true,
+    "col_side": true,
+    "footer_bar": true,
+    "precheck_card": true,
+    "settings_card": true,
+    "steps": true,
+    "state_banner": true
+  },
+  "regressions": [],
+  "issues": [
+    "journal_log_not_collapsed: data-collapsed-default=true not applied to journal card — log-pane visible and dark, occupying ~155px",
+    "log_pane_dark_bg: log-pane has dark/black background from existing CSS, visually aggressive",
+    "dropzone_h_short: 145px — functional but less dominant than mockup target (~200px)",
+    "settings_summary_caret_invisible: ::after caret not clearly visible in screenshot"
+  ]
+}

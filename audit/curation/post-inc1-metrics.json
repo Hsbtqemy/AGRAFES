@@ -1,0 +1,353 @@
+{
+  "viewport": {
+    "w": 1440,
+    "h": 900
+  },
+  "state": "long-content",
+  "targets": {
+    "curation_panel_width": {
+      "key": "workspace",
+      "pre_runtime": {
+        "rect": {
+          "w": 1172.81,
+          "h": 598.0
+        },
+        "fontSize": "14px"
+      },
+      "post_runtime": {
+        "rect": {
+          "w": 1188.62,
+          "h": 742.0
+        },
+        "fontSize": "14px"
+      },
+      "mockup": {
+        "rect": {
+          "w": 1294.0,
+          "h": 694.0
+        },
+        "fontSize": "16px"
+      },
+      "delta_pre_to_post": {
+        "w": 15.81,
+        "h": 144.0
+      },
+      "delta_post_to_mockup": {
+        "w": -105.38,
+        "h": 48.0
+      }
+    },
+    "center_width": {
+      "key": "col_center",
+      "pre_runtime": {
+        "rect": {
+          "w": 680.0,
+          "h": 549.0
+        },
+        "fontSize": "14px"
+      },
+      "post_runtime": {
+        "rect": {
+          "w": 560.0,
+          "h": 742.0
+        },
+        "fontSize": "14px"
+      },
+      "mockup": {
+        "rect": {
+          "w": 640.0,
+          "h": 694.0
+        },
+        "fontSize": "16px"
+      },
+      "delta_pre_to_post": {
+        "w": -120.0,
+        "h": 193.0
+      },
+      "delta_post_to_mockup": {
+        "w": -80.0,
+        "h": 48.0
+      }
+    },
+    "doc_scroll": {
+      "key": "doc_scroll",
+      "pre_runtime": {
+        "rect": {
+          "w": 304.5,
+          "h": 400.0
+        },
+        "fontSize": "13px",
+        "overflow": "auto",
+        "overflowY": "auto"
+      },
+      "post_runtime": {
+        "rect": {
+          "w": 248.5,
+          "h": 558.0
+        },
+        "fontSize": "14px",
+        "overflow": "auto",
+        "overflowY": "auto"
+      },
+      "mockup": {
+        "rect": {
+          "w": 286.0,
+          "h": 560.0
+        },
+        "fontSize": "13px",
+        "overflow": "auto",
+        "overflowY": "auto"
+      },
+      "delta_pre_to_post": {
+        "w": -56.0,
+        "h": 158.0
+      },
+      "delta_post_to_mockup": {
+        "w": -37.5,
+        "h": -2.0
+      }
+    },
+    "minimap": {
+      "key": "minimap",
+      "pre_runtime": {
+        "rect": {
+          "w": 26.0,
+          "h": 430.0
+        },
+        "fontSize": "14px",
+        "overflow": "hidden",
+        "overflowY": "hidden"
+      },
+      "post_runtime": {
+        "rect": {
+          "w": 22.0,
+          "h": 592.0
+        },
+        "fontSize": "14px",
+        "overflow": "visible",
+        "overflowY": "visible"
+      },
+      "mockup": {
+        "rect": {
+          "w": 22.0,
+          "h": 593.0
+        },
+        "fontSize": "16px",
+        "overflow": "visible",
+        "overflowY": "visible"
+      },
+      "delta_pre_to_post": {
+        "w": -4.0,
+        "h": 162.0
+      },
+      "delta_post_to_mockup": {
+        "w": 0.0,
+        "h": -1.0
+      }
+    },
+    "head_card": {
+      "key": "head_card",
+      "pre_runtime": {
+        "rect": {
+          "w": 1174.81,
+          "h": 71.55
+        },
+        "fontSize": "14px"
+      },
+      "post_runtime": {
+        "rect": {
+          "w": 1190.62,
+          "h": 69.72
+        },
+        "fontSize": "14px"
+      },
+      "mockup": {
+        "rect": {
+          "w": 1294.0,
+          "h": 87.0
+        },
+        "fontSize": "16px"
+      },
+      "delta_pre_to_post": {
+        "w": 15.81,
+        "h": -1.83
+      },
+      "delta_post_to_mockup": {
+        "w": -103.38,
+        "h": -17.28
+      }
+    },
+    "head_title": {
+      "key": "head_title",
+      "pre_runtime": {
+        "rect": {
+          "w": 571.84,
+          "h": 20.0
+        },
+        "fontSize": "16.8px"
+      },
+      "post_runtime": {
+        "rect": {
+          "w": 597.28,
+          "h": 21.0
+        },
+        "fontSize": "17.6px"
+      },
+      "mockup": {
+        "rect": {
+          "w": 632.31,
+          "h": 21.0
+        },
+        "fontSize": "18px"
+      },
+      "delta_pre_to_post": {
+        "w": 25.44,
+        "h": 1.0
+      },
+      "delta_post_to_mockup": {
+        "w": -35.03,
+        "h": 0.0
+      }
+    },
+    "head_subtitle": {
+      "key": "head_subtitle",
+      "pre_runtime": {
+        "rect": {
+          "w": 571.84,
+          "h": 18.55
+        },
+        "fontSize": "12.8px"
+      },
+      "post_runtime": {
+        "rect": {
+          "w": 597.28,
+          "h": 17.72
+        },
+        "fontSize": "13.12px"
+      },
+      "mockup": {
+        "rect": {
+          "w": 632.31,
+          "h": 30.0
+        },
+        "fontSize": "13px"
+      },
+      "delta_pre_to_post": {
+        "w": 25.44,
+        "h": -0.83
+      },
+      "delta_post_to_mockup": {
+        "w": -35.03,
+        "h": -12.28
+      }
+    },
+    "preview_controls": {
+      "key": "preview_controls",
+      "pre_runtime": {
+        "rect": {
+          "w": 679.0,
+          "h": 38.0
+        },
+        "fontSize": "14px"
+      },
+      "post_runtime": {
+        "rect": {
+          "w": 559.0,
+          "h": 71.0
+        },
+        "fontSize": "12px"
+      },
+      "mockup": {
+        "rect": {
+          "w": 638.0,
+          "h": 42.0
+        },
+        "fontSize": "16px"
+      },
+      "delta_pre_to_post": {
+        "w": -120.0,
+        "h": 33.0
+      },
+      "delta_post_to_mockup": {
+        "w": -79.0,
+        "h": 29.0
+      }
+    },
+    "pane_head": {
+      "key": "pane_head",
+      "pre_runtime": {
+        "rect": {
+          "w": 304.5,
+          "h": 28.0
+        },
+        "fontSize": "12px"
+      },
+      "post_runtime": {
+        "rect": {
+          "w": 248.5,
+          "h": 32.0
+        },
+        "fontSize": "12.5px"
+      },
+      "mockup": {
+        "rect": {
+          "w": 286.0,
+          "h": 31.0
+        },
+        "fontSize": "12px"
+      },
+      "delta_pre_to_post": {
+        "w": -56.0,
+        "h": 4.0
+      },
+      "delta_post_to_mockup": {
+        "w": -37.5,
+        "h": 1.0
+      }
+    },
+    "preview_card_overflow": {
+      "key": "preview_card",
+      "post_runtime": {
+        "overflow": "hidden",
+        "overflowY": "hidden"
+      },
+      "mockup": {
+        "overflow": "hidden",
+        "overflowY": "hidden"
+      }
+    },
+    "preview_grid_overflow": {
+      "key": "preview_grid",
+      "post_runtime": {
+        "overflow": "hidden",
+        "overflowY": "hidden"
+      },
+      "mockup": {
+        "overflow": "visible",
+        "overflowY": "visible"
+      }
+    },
+    "doc_scroll_overflow": {
+      "key": "doc_scroll",
+      "post_runtime": {
+        "overflow": "auto",
+        "overflowY": "auto"
+      },
+      "mockup": {
+        "overflow": "auto",
+        "overflowY": "auto"
+      }
+    },
+    "minimap_overflow": {
+      "key": "minimap",
+      "post_runtime": {
+        "overflow": "visible",
+        "overflowY": "visible"
+      },
+      "mockup": {
+        "overflow": "visible",
+        "overflowY": "visible"
+      }
+    }
+  }
+}

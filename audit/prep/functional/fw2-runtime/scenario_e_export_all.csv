@@ -1,0 +1,4 @@
+link_id,pivot_doc_id,target_doc_id,external_id,pivot_text,target_text,status
+1,1,2,1,Le prince régnait sur une île lointaine.,The prince ruled over a distant island.,rejected
+2,1,2,2,"Chaque matin, il observait la mer.",Each morning he watched the sea.,
+3,1,2,3,"Un jour, un navire apparut à l'horizon.",One day a ship appeared on the horizon.,

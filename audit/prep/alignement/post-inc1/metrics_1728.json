@@ -1,0 +1,230 @@
+{
+  "viewport": {
+    "w": 1728,
+    "h": 1080
+  },
+  "ts": "2026-03-09T21:54:08.784Z",
+  "elements": {
+    "align_head_card": {
+      "w": 0,
+      "h": 0,
+      "x": 0,
+      "y": 0,
+      "display": "flex",
+      "gridCols": "none",
+      "position": "static",
+      "maxHeight": "none"
+    },
+    "align_head_tools": {
+      "w": 0,
+      "h": 0,
+      "x": 0,
+      "y": 0,
+      "display": "flex",
+      "gridCols": "none",
+      "position": "static",
+      "maxHeight": "none"
+    },
+    "wf_section": {
+      "w": 1463,
+      "h": 73,
+      "x": 248,
+      "y": 244,
+      "display": "block",
+      "gridCols": "none",
+      "position": "relative",
+      "maxHeight": "none"
+    },
+    "doc_list_card": {
+      "w": 0,
+      "h": 0,
+      "x": 0,
+      "y": 0,
+      "display": "block",
+      "gridCols": "none",
+      "position": "static",
+      "maxHeight": "none"
+    },
+    "align_card": {
+      "w": 1463,
+      "h": 343,
+      "x": 248,
+      "y": 420,
+      "display": "block",
+      "gridCols": "none",
+      "position": "relative",
+      "maxHeight": "none"
+    },
+    "align_layout": {
+      "w": 1429,
+      "h": 269,
+      "x": 265,
+      "y": 437,
+      "display": "grid",
+      "gridCols": "1026.67px 390.141px",
+      "position": "static",
+      "maxHeight": "none"
+    },
+    "align_main": {
+      "w": 1027,
+      "h": 269,
+      "x": 265,
+      "y": 437,
+      "display": "block",
+      "gridCols": "none",
+      "position": "static",
+      "maxHeight": "none"
+    },
+    "align_focus": {
+      "w": 390,
+      "h": 269,
+      "x": 1303,
+      "y": 437,
+      "display": "block",
+      "gridCols": "none",
+      "position": "sticky",
+      "maxHeight": "none"
+    },
+    "align_launcher": {
+      "w": 1027,
+      "h": 269,
+      "x": 265,
+      "y": 437,
+      "display": "block",
+      "gridCols": "none",
+      "position": "static",
+      "maxHeight": "none"
+    },
+    "align_setup_row": {
+      "w": 993,
+      "h": 90,
+      "x": 282,
+      "y": 486,
+      "display": "grid",
+      "gridCols": "324.219px 324.219px 324.234px",
+      "position": "static",
+      "maxHeight": "none"
+    },
+    "align_results": {
+      "w": 0,
+      "h": 0,
+      "x": 0,
+      "y": 0,
+      "display": "none",
+      "gridCols": "none",
+      "position": "static",
+      "maxHeight": "none"
+    },
+    "align_kpis": {
+      "w": 0,
+      "h": 0,
+      "x": 0,
+      "y": 0,
+      "display": "grid",
+      "gridCols": "repeat(5, minmax(90px, 1fr))",
+      "position": "static",
+      "maxHeight": "none"
+    },
+    "audit_panel": {
+      "w": 0,
+      "h": 0,
+      "x": 0,
+      "y": 0,
+      "display": "none",
+      "gridCols": "none",
+      "position": "static",
+      "maxHeight": "none"
+    },
+    "run_toolbar": {
+      "w": 0,
+      "h": 0,
+      "x": 0,
+      "y": 0,
+      "display": "flex",
+      "gridCols": "none",
+      "position": "static",
+      "maxHeight": "none"
+    },
+    "audit_table_wrap": {
+      "w": 0,
+      "h": 0,
+      "x": 0,
+      "y": 0,
+      "display": "block",
+      "gridCols": "none",
+      "position": "static",
+      "maxHeight": "none"
+    },
+    "audit_run_view": {
+      "w": 0,
+      "h": 0,
+      "x": 0,
+      "y": 0,
+      "display": "none",
+      "gridCols": "none",
+      "position": "static",
+      "maxHeight": "none"
+    },
+    "audit_batch_bar": {
+      "w": 0,
+      "h": 0,
+      "x": 0,
+      "y": 0,
+      "display": "none",
+      "gridCols": "none",
+      "position": "static",
+      "maxHeight": "none"
+    },
+    "quality_card": {
+      "w": 1463,
+      "h": 71,
+      "x": 248,
+      "y": 779,
+      "display": "block",
+      "gridCols": "none",
+      "position": "relative",
+      "maxHeight": "none"
+    },
+    "collision_card": {
+      "w": 1463,
+      "h": 71,
+      "x": 248,
+      "y": 866,
+      "display": "block",
+      "gridCols": "none",
+      "position": "relative",
+      "maxHeight": "none"
+    },
+    "report_card": {
+      "w": 1463,
+      "h": 71,
+      "x": 248,
+      "y": 953,
+      "display": "block",
+      "gridCols": "none",
+      "position": "relative",
+      "maxHeight": "none"
+    }
+  },
+  "presence": {
+    "align_head_card": true,
+    "wf_section": true,
+    "doc_list_card": true,
+    "align_card": true,
+    "align_layout": true,
+    "align_focus": true,
+    "align_launcher": true,
+    "align_setup_row": true,
+    "align_results": true,
+    "align_kpis": true,
+    "audit_panel": true,
+    "run_toolbar": true,
+    "audit_table_wrap": true,
+    "run_view_toggle": true,
+    "quality_card": true,
+    "collision_card": true,
+    "report_card": true,
+    "align_run_pill": true
+  },
+  "scroll_height": 1147
+}

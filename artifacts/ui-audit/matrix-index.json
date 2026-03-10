@@ -1,0 +1,450 @@
+[
+  {
+    "mode": "mockup",
+    "state": "nominal",
+    "width": 1280,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/mockup__nominal__w1280.json",
+    "screenshot": "artifacts/ui-audit/screenshots/mockup__nominal__w1280.png"
+  },
+  {
+    "mode": "mockup",
+    "state": "nominal",
+    "width": 1366,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/mockup__nominal__w1366.json",
+    "screenshot": "artifacts/ui-audit/screenshots/mockup__nominal__w1366.png"
+  },
+  {
+    "mode": "mockup",
+    "state": "nominal",
+    "width": 1440,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/mockup__nominal__w1440.json",
+    "screenshot": "artifacts/ui-audit/screenshots/mockup__nominal__w1440.png"
+  },
+  {
+    "mode": "mockup",
+    "state": "nominal",
+    "width": 1536,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/mockup__nominal__w1536.json",
+    "screenshot": "artifacts/ui-audit/screenshots/mockup__nominal__w1536.png"
+  },
+  {
+    "mode": "mockup",
+    "state": "nominal",
+    "width": 1600,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/mockup__nominal__w1600.json",
+    "screenshot": "artifacts/ui-audit/screenshots/mockup__nominal__w1600.png"
+  },
+  {
+    "mode": "mockup",
+    "state": "nominal",
+    "width": 1728,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/mockup__nominal__w1728.json",
+    "screenshot": "artifacts/ui-audit/screenshots/mockup__nominal__w1728.png"
+  },
+  {
+    "mode": "mockup",
+    "state": "nominal",
+    "width": 1920,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/mockup__nominal__w1920.json",
+    "screenshot": "artifacts/ui-audit/screenshots/mockup__nominal__w1920.png"
+  },
+  {
+    "mode": "mockup",
+    "state": "one-collapsed",
+    "width": 1280,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/mockup__one-collapsed__w1280.json",
+    "screenshot": "artifacts/ui-audit/screenshots/mockup__one-collapsed__w1280.png"
+  },
+  {
+    "mode": "mockup",
+    "state": "one-collapsed",
+    "width": 1366,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/mockup__one-collapsed__w1366.json",
+    "screenshot": "artifacts/ui-audit/screenshots/mockup__one-collapsed__w1366.png"
+  },
+  {
+    "mode": "mockup",
+    "state": "one-collapsed",
+    "width": 1440,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/mockup__one-collapsed__w1440.json",
+    "screenshot": "artifacts/ui-audit/screenshots/mockup__one-collapsed__w1440.png"
+  },
+  {
+    "mode": "mockup",
+    "state": "one-collapsed",
+    "width": 1536,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/mockup__one-collapsed__w1536.json",
+    "screenshot": "artifacts/ui-audit/screenshots/mockup__one-collapsed__w1536.png"
+  },
+  {
+    "mode": "mockup",
+    "state": "one-collapsed",
+    "width": 1600,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/mockup__one-collapsed__w1600.json",
+    "screenshot": "artifacts/ui-audit/screenshots/mockup__one-collapsed__w1600.png"
+  },
+  {
+    "mode": "mockup",
+    "state": "one-collapsed",
+    "width": 1728,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/mockup__one-collapsed__w1728.json",
+    "screenshot": "artifacts/ui-audit/screenshots/mockup__one-collapsed__w1728.png"
+  },
+  {
+    "mode": "mockup",
+    "state": "one-collapsed",
+    "width": 1920,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/mockup__one-collapsed__w1920.json",
+    "screenshot": "artifacts/ui-audit/screenshots/mockup__one-collapsed__w1920.png"
+  },
+  {
+    "mode": "mockup",
+    "state": "multi-collapsed",
+    "width": 1280,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/mockup__multi-collapsed__w1280.json",
+    "screenshot": "artifacts/ui-audit/screenshots/mockup__multi-collapsed__w1280.png"
+  },
+  {
+    "mode": "mockup",
+    "state": "multi-collapsed",
+    "width": 1366,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/mockup__multi-collapsed__w1366.json",
+    "screenshot": "artifacts/ui-audit/screenshots/mockup__multi-collapsed__w1366.png"
+  },
+  {
+    "mode": "mockup",
+    "state": "multi-collapsed",
+    "width": 1440,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/mockup__multi-collapsed__w1440.json",
+    "screenshot": "artifacts/ui-audit/screenshots/mockup__multi-collapsed__w1440.png"
+  },
+  {
+    "mode": "mockup",
+    "state": "multi-collapsed",
+    "width": 1536,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/mockup__multi-collapsed__w1536.json",
+    "screenshot": "artifacts/ui-audit/screenshots/mockup__multi-collapsed__w1536.png"
+  },
+  {
+    "mode": "mockup",
+    "state": "multi-collapsed",
+    "width": 1600,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/mockup__multi-collapsed__w1600.json",
+    "screenshot": "artifacts/ui-audit/screenshots/mockup__multi-collapsed__w1600.png"
+  },
+  {
+    "mode": "mockup",
+    "state": "multi-collapsed",
+    "width": 1728,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/mockup__multi-collapsed__w1728.json",
+    "screenshot": "artifacts/ui-audit/screenshots/mockup__multi-collapsed__w1728.png"
+  },
+  {
+    "mode": "mockup",
+    "state": "multi-collapsed",
+    "width": 1920,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/mockup__multi-collapsed__w1920.json",
+    "screenshot": "artifacts/ui-audit/screenshots/mockup__multi-collapsed__w1920.png"
+  },
+  {
+    "mode": "mockup",
+    "state": "long-content",
+    "width": 1280,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/mockup__long-content__w1280.json",
+    "screenshot": "artifacts/ui-audit/screenshots/mockup__long-content__w1280.png"
+  },
+  {
+    "mode": "mockup",
+    "state": "long-content",
+    "width": 1366,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/mockup__long-content__w1366.json",
+    "screenshot": "artifacts/ui-audit/screenshots/mockup__long-content__w1366.png"
+  },
+  {
+    "mode": "mockup",
+    "state": "long-content",
+    "width": 1440,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/mockup__long-content__w1440.json",
+    "screenshot": "artifacts/ui-audit/screenshots/mockup__long-content__w1440.png"
+  },
+  {
+    "mode": "mockup",
+    "state": "long-content",
+    "width": 1536,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/mockup__long-content__w1536.json",
+    "screenshot": "artifacts/ui-audit/screenshots/mockup__long-content__w1536.png"
+  },
+  {
+    "mode": "mockup",
+    "state": "long-content",
+    "width": 1600,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/mockup__long-content__w1600.json",
+    "screenshot": "artifacts/ui-audit/screenshots/mockup__long-content__w1600.png"
+  },
+  {
+    "mode": "mockup",
+    "state": "long-content",
+    "width": 1728,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/mockup__long-content__w1728.json",
+    "screenshot": "artifacts/ui-audit/screenshots/mockup__long-content__w1728.png"
+  },
+  {
+    "mode": "mockup",
+    "state": "long-content",
+    "width": 1920,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/mockup__long-content__w1920.json",
+    "screenshot": "artifacts/ui-audit/screenshots/mockup__long-content__w1920.png"
+  },
+  {
+    "mode": "runtime",
+    "state": "nominal",
+    "width": 1280,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/runtime__nominal__w1280.json",
+    "screenshot": "artifacts/ui-audit/screenshots/runtime__nominal__w1280.png"
+  },
+  {
+    "mode": "runtime",
+    "state": "nominal",
+    "width": 1366,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/runtime__nominal__w1366.json",
+    "screenshot": "artifacts/ui-audit/screenshots/runtime__nominal__w1366.png"
+  },
+  {
+    "mode": "runtime",
+    "state": "nominal",
+    "width": 1440,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/runtime__nominal__w1440.json",
+    "screenshot": "artifacts/ui-audit/screenshots/runtime__nominal__w1440.png"
+  },
+  {
+    "mode": "runtime",
+    "state": "nominal",
+    "width": 1536,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/runtime__nominal__w1536.json",
+    "screenshot": "artifacts/ui-audit/screenshots/runtime__nominal__w1536.png"
+  },
+  {
+    "mode": "runtime",
+    "state": "nominal",
+    "width": 1600,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/runtime__nominal__w1600.json",
+    "screenshot": "artifacts/ui-audit/screenshots/runtime__nominal__w1600.png"
+  },
+  {
+    "mode": "runtime",
+    "state": "nominal",
+    "width": 1728,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/runtime__nominal__w1728.json",
+    "screenshot": "artifacts/ui-audit/screenshots/runtime__nominal__w1728.png"
+  },
+  {
+    "mode": "runtime",
+    "state": "nominal",
+    "width": 1920,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/runtime__nominal__w1920.json",
+    "screenshot": "artifacts/ui-audit/screenshots/runtime__nominal__w1920.png"
+  },
+  {
+    "mode": "runtime",
+    "state": "one-collapsed",
+    "width": 1280,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/runtime__one-collapsed__w1280.json",
+    "screenshot": "artifacts/ui-audit/screenshots/runtime__one-collapsed__w1280.png"
+  },
+  {
+    "mode": "runtime",
+    "state": "one-collapsed",
+    "width": 1366,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/runtime__one-collapsed__w1366.json",
+    "screenshot": "artifacts/ui-audit/screenshots/runtime__one-collapsed__w1366.png"
+  },
+  {
+    "mode": "runtime",
+    "state": "one-collapsed",
+    "width": 1440,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/runtime__one-collapsed__w1440.json",
+    "screenshot": "artifacts/ui-audit/screenshots/runtime__one-collapsed__w1440.png"
+  },
+  {
+    "mode": "runtime",
+    "state": "one-collapsed",
+    "width": 1536,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/runtime__one-collapsed__w1536.json",
+    "screenshot": "artifacts/ui-audit/screenshots/runtime__one-collapsed__w1536.png"
+  },
+  {
+    "mode": "runtime",
+    "state": "one-collapsed",
+    "width": 1600,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/runtime__one-collapsed__w1600.json",
+    "screenshot": "artifacts/ui-audit/screenshots/runtime__one-collapsed__w1600.png"
+  },
+  {
+    "mode": "runtime",
+    "state": "one-collapsed",
+    "width": 1728,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/runtime__one-collapsed__w1728.json",
+    "screenshot": "artifacts/ui-audit/screenshots/runtime__one-collapsed__w1728.png"
+  },
+  {
+    "mode": "runtime",
+    "state": "one-collapsed",
+    "width": 1920,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/runtime__one-collapsed__w1920.json",
+    "screenshot": "artifacts/ui-audit/screenshots/runtime__one-collapsed__w1920.png"
+  },
+  {
+    "mode": "runtime",
+    "state": "multi-collapsed",
+    "width": 1280,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/runtime__multi-collapsed__w1280.json",
+    "screenshot": "artifacts/ui-audit/screenshots/runtime__multi-collapsed__w1280.png"
+  },
+  {
+    "mode": "runtime",
+    "state": "multi-collapsed",
+    "width": 1366,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/runtime__multi-collapsed__w1366.json",
+    "screenshot": "artifacts/ui-audit/screenshots/runtime__multi-collapsed__w1366.png"
+  },
+  {
+    "mode": "runtime",
+    "state": "multi-collapsed",
+    "width": 1440,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/runtime__multi-collapsed__w1440.json",
+    "screenshot": "artifacts/ui-audit/screenshots/runtime__multi-collapsed__w1440.png"
+  },
+  {
+    "mode": "runtime",
+    "state": "multi-collapsed",
+    "width": 1536,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/runtime__multi-collapsed__w1536.json",
+    "screenshot": "artifacts/ui-audit/screenshots/runtime__multi-collapsed__w1536.png"
+  },
+  {
+    "mode": "runtime",
+    "state": "multi-collapsed",
+    "width": 1600,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/runtime__multi-collapsed__w1600.json",
+    "screenshot": "artifacts/ui-audit/screenshots/runtime__multi-collapsed__w1600.png"
+  },
+  {
+    "mode": "runtime",
+    "state": "multi-collapsed",
+    "width": 1728,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/runtime__multi-collapsed__w1728.json",
+    "screenshot": "artifacts/ui-audit/screenshots/runtime__multi-collapsed__w1728.png"
+  },
+  {
+    "mode": "runtime",
+    "state": "multi-collapsed",
+    "width": 1920,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/runtime__multi-collapsed__w1920.json",
+    "screenshot": "artifacts/ui-audit/screenshots/runtime__multi-collapsed__w1920.png"
+  },
+  {
+    "mode": "runtime",
+    "state": "long-content",
+    "width": 1280,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/runtime__long-content__w1280.json",
+    "screenshot": "artifacts/ui-audit/screenshots/runtime__long-content__w1280.png"
+  },
+  {
+    "mode": "runtime",
+    "state": "long-content",
+    "width": 1366,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/runtime__long-content__w1366.json",
+    "screenshot": "artifacts/ui-audit/screenshots/runtime__long-content__w1366.png"
+  },
+  {
+    "mode": "runtime",
+    "state": "long-content",
+    "width": 1440,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/runtime__long-content__w1440.json",
+    "screenshot": "artifacts/ui-audit/screenshots/runtime__long-content__w1440.png"
+  },
+  {
+    "mode": "runtime",
+    "state": "long-content",
+    "width": 1536,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/runtime__long-content__w1536.json",
+    "screenshot": "artifacts/ui-audit/screenshots/runtime__long-content__w1536.png"
+  },
+  {
+    "mode": "runtime",
+    "state": "long-content",
+    "width": 1600,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/runtime__long-content__w1600.json",
+    "screenshot": "artifacts/ui-audit/screenshots/runtime__long-content__w1600.png"
+  },
+  {
+    "mode": "runtime",
+    "state": "long-content",
+    "width": 1728,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/runtime__long-content__w1728.json",
+    "screenshot": "artifacts/ui-audit/screenshots/runtime__long-content__w1728.png"
+  },
+  {
+    "mode": "runtime",
+    "state": "long-content",
+    "width": 1920,
+    "height": 900,
+    "json": "artifacts/ui-audit/json/runtime__long-content__w1920.json",
+    "screenshot": "artifacts/ui-audit/screenshots/runtime__long-content__w1920.png"
+  }
+]

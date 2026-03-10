@@ -1,0 +1,156 @@
+{
+  "viewport": {
+    "w": 1728,
+    "h": 1080
+  },
+  "ts": "2026-03-10T06:07:29.959Z",
+  "elements": {
+    "screen_root": {
+      "w": 0,
+      "h": 0,
+      "x": 0,
+      "y": 0,
+      "display": "none",
+      "gridCols": "none",
+      "position": "static"
+    },
+    "screen_title": {
+      "w": 0,
+      "h": 0,
+      "x": 0,
+      "y": 0,
+      "display": "block",
+      "gridCols": "none",
+      "position": "static"
+    },
+    "exp_state_banner": {
+      "w": 0,
+      "h": 0,
+      "x": 0,
+      "y": 0,
+      "display": "block",
+      "gridCols": "none",
+      "position": "static"
+    },
+    "v2_card": {
+      "w": 1463,
+      "h": 71,
+      "x": 248,
+      "y": 106,
+      "display": "block",
+      "gridCols": "none",
+      "position": "relative"
+    },
+    "v2_form_row": {
+      "w": 0,
+      "h": 0,
+      "x": 0,
+      "y": 0,
+      "display": "flex",
+      "gridCols": "none",
+      "position": "static"
+    },
+    "v2_doc_sel": {
+      "w": 220,
+      "h": 90,
+      "x": 265,
+      "y": 303,
+      "display": "block",
+      "gridCols": "none",
+      "position": "static"
+    },
+    "v2_stage": {
+      "w": 190,
+      "h": 29,
+      "x": 845,
+      "y": 364,
+      "display": "block",
+      "gridCols": "none",
+      "position": "static"
+    },
+    "v2_product": {
+      "w": 248,
+      "h": 29,
+      "x": 1051,
+      "y": 364,
+      "display": "block",
+      "gridCols": "none",
+      "position": "static"
+    },
+    "v2_format": {
+      "w": 180,
+      "h": 29,
+      "x": 1316,
+      "y": 364,
+      "display": "block",
+      "gridCols": "none",
+      "position": "static"
+    },
+    "v2_run_btn": {
+      "w": 184,
+      "h": 20,
+      "x": 265,
+      "y": 497,
+      "display": "block",
+      "gridCols": "none",
+      "position": "static"
+    },
+    "v2_doc_summary": {
+      "w": 329,
+      "h": 16,
+      "x": 501,
+      "y": 385,
+      "display": "block",
+      "gridCols": "none",
+      "position": "static"
+    },
+    "legacy_toggle_card": {
+      "w": 1463,
+      "h": 71,
+      "x": 248,
+      "y": 550,
+      "display": "block",
+      "gridCols": "none",
+      "position": "relative"
+    },
+    "legacy_container": {
+      "w": 0,
+      "h": 0,
+      "x": 0,
+      "y": 0,
+      "display": "none",
+      "gridCols": "none",
+      "position": "static"
+    },
+    "export_log_card": {
+      "w": 1463,
+      "h": 67,
+      "x": 248,
+      "y": 637,
+      "display": "block",
+      "gridCols": "none",
+      "position": "relative"
+    }
+  },
+  "presence": {
+    "screen_title": true,
+    "v2_doc_sel": true,
+    "v2_stage": true,
+    "v2_product": true,
+    "v2_format": true,
+    "v2_run_btn": true,
+    "v2_align_options": true,
+    "v2_tei_options": true,
+    "v2_package_options": true,
+    "legacy_toggle_btn": true,
+    "legacy_container": true,
+    "tei_export_btn": true,
+    "export_log": true
+  },
+  "text": {
+    "screen_title": "Importer des fichiers",
+    "v2_run_btn": "Choisir destination et lancer…",
+    "v2_doc_summary": "Portée actuelle: tous les documents (0)."
+  },
+  "scroll_height": 1078
+}
