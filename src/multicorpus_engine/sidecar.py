@@ -829,6 +829,34 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         if kind in ("export_tei",) and not params.get("out_dir"):
             self._send_error("export_tei job requires params.out_dir", code=ERR_VALIDATION, http_status=400)
             return
+        if kind == "export_tei":
+            if "include_structure" in params and not isinstance(params.get("include_structure"), bool):
+                self._send_error(
+                    "export_tei params.include_structure must be a boolean",
+                    code=ERR_VALIDATION,
+                    http_status=400,
+                )
+                return
+            if "relation_type" in params and params.get("relation_type") is not None:
+                relation_type = params.get("relation_type")
+                if not isinstance(relation_type, str):
+                    self._send_error(
+                        "export_tei params.relation_type must be a string",
+                        code=ERR_VALIDATION,
+                        http_status=400,
+                    )
+                    return
+                relation_type = relation_type.strip() or "none"
+                allowed_relation_types = {"none", "translation_of", "excerpt_of", "all"}
+                if relation_type not in allowed_relation_types:
+                    self._send_error(
+                        "export_tei params.relation_type must be one of: none, translation_of, excerpt_of, all",
+                        code=ERR_VALIDATION,
+                        http_status=400,
+                        details={"supported_values": sorted(allowed_relation_types)},
+                    )
+                    return
+                params["relation_type"] = relation_type
         if kind == "export_readable_text" and not params.get("out_dir"):
             self._send_error("export_readable_text job requires params.out_dir", code=ERR_VALIDATION, http_status=400)
             return
@@ -2106,6 +2134,25 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             return
         doc_ids = body.get("doc_ids")  # list or None (None = all)
         include_structure: bool = bool(body.get("include_structure", False))
+        relation_type = body.get("relation_type")
+        if relation_type is not None:
+            if not isinstance(relation_type, str):
+                self._send_error(
+                    "relation_type must be a string",
+                    code=ERR_BAD_REQUEST,
+                    http_status=400,
+                )
+                return
+            relation_type = relation_type.strip() or "none"
+            allowed_relation_types = {"none", "translation_of", "excerpt_of", "all"}
+            if relation_type not in allowed_relation_types:
+                self._send_error(
+                    "relation_type must be one of: none, translation_of, excerpt_of, all",
+                    code=ERR_BAD_REQUEST,
+                    http_status=400,
+                    details={"supported_values": sorted(allowed_relation_types)},
+                )
+                return
         tei_profile_direct: str = body.get("tei_profile", "generic")
         with self._lock():
             if doc_ids is None:
@@ -2119,7 +2166,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             out_path = out_dir_path / f"doc_{doc_id}.tei.xml"
             try:
                 _out, _warns = export_tei(self._conn(), doc_id=doc_id, output_path=out_path,
-                                           include_structure=include_structure, tei_profile=tei_profile_direct)
+                                           include_structure=include_structure, relation_type=relation_type,
+                                           tei_profile=tei_profile_direct)
                 files_created.append(str(_out))
             except Exception as exc:
                 logger.warning("TEI export failed for doc_id=%s: %s", doc_id, exc)
@@ -3075,6 +3123,8 @@ class CorpusServer:
             if not out_dir:
                 raise ValueError("export_tei job requires params.out_dir")
             doc_ids = params.get("doc_ids")
+            include_structure_job: bool = bool(params.get("include_structure", False))
+            relation_type_job = params.get("relation_type")
 
             out_path = _Path(out_dir)
             out_path.mkdir(parents=True, exist_ok=True)
@@ -3090,7 +3140,14 @@ class CorpusServer:
             for i, doc_id in enumerate(doc_ids):
                 dest = out_path / f"doc_{doc_id}.xml"
                 with lock:
-                    _out2, _w2 = export_tei(conn, doc_id=int(doc_id), output_path=dest, tei_profile=tei_profile_job)
+                    _out2, _w2 = export_tei(
+                        conn,
+                        doc_id=int(doc_id),
+                        output_path=dest,
+                        include_structure=include_structure_job,
+                        relation_type=relation_type_job,
+                        tei_profile=tei_profile_job,
+                    )
                 files_created.append(str(_out2))
                 pct = 5 + int(90 * (i + 1) / max(len(doc_ids), 1))
                 progress_cb(pct, f"Exported {i + 1}/{len(doc_ids)}")

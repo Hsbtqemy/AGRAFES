@@ -769,10 +769,12 @@ export class ExportsScreen {
     const pkgOptions = this._root.querySelector<HTMLElement>("#v2-package-options");
     const runOptions = this._root.querySelector<HTMLElement>("#v2-run-options");
     const qaOptions = this._root.querySelector<HTMLElement>("#v2-qa-options");
+    const v2TeiRelationTypeEl = this._root.querySelector<HTMLSelectElement>("#v2-tei-relation-type");
     const pendingHint = this._root.querySelector<HTMLElement>("#v2-pending-hint");
     const summaryHint = this._root.querySelector<HTMLElement>("#v2-summary-hint");
 
     if (teiOptions) teiOptions.style.display = product === "tei_xml" ? "flex" : "none";
+    if (v2TeiRelationTypeEl) v2TeiRelationTypeEl.disabled = product !== "tei_xml";
     if (alignOptions) alignOptions.style.display = product === "aligned_table" ? "flex" : "none";
     if (pkgOptions) pkgOptions.style.display = product === "tei_package" ? "flex" : "none";
     if (runOptions) runOptions.style.display = product === "run_report" ? "flex" : "none";
@@ -843,7 +845,11 @@ export class ExportsScreen {
         if (!outDir || typeof outDir !== "string") return;
         const includeStructure = (this._root.querySelector<HTMLInputElement>("#v2-tei-include-structure")?.checked) ?? false;
         const relationType = (this._root.querySelector<HTMLSelectElement>("#v2-tei-relation-type")?.value) ?? "none";
-        const params: Record<string, unknown> = { out_dir: outDir, include_structure: includeStructure };
+        const params: Record<string, unknown> = {
+          out_dir: outDir,
+          include_structure: includeStructure,
+          relation_type: relationType,
+        };
         if (doc_ids) params.doc_ids = doc_ids;
 
         this._log(`Export V2 TEI → ${outDir} (${doc_ids?.length ?? this._docs.length} doc(s))…`);
@@ -1098,7 +1104,11 @@ export class ExportsScreen {
     const nbDocs = doc_ids ? doc_ids.length : this._docs.length;
     this._log(`Export TEI vers ${outDir} (${nbDocs} doc(s), include_structure=${includeStructure})…`);
 
-    const params: Record<string, unknown> = { out_dir: outDir, include_structure: includeStructure };
+    const params: Record<string, unknown> = {
+      out_dir: outDir,
+      include_structure: includeStructure,
+      relation_type: relationType,
+    };
     if (doc_ids) params.doc_ids = doc_ids;
 
     try {

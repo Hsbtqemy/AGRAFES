@@ -533,8 +533,8 @@ export class ActionsScreen {
                   <p class="empty-hint">Aucune action en attente.</p>
                 </div>
                 <div class="btns curate-nav-actions">
-                  <button class="btn btn-secondary btn-sm" disabled>&#8592; Pr&#233;c&#233;dent</button>
-                  <button class="btn btn-secondary btn-sm" disabled>Suivant &#8594;</button>
+                  <button id="act-curate-prev-btn" class="btn btn-secondary btn-sm" disabled>&#8592; Pr&#233;c&#233;dent</button>
+                  <button id="act-curate-next-btn" class="btn btn-secondary btn-sm" disabled>Suivant &#8594;</button>
                 </div>
               </div>
             </article>
@@ -637,6 +637,8 @@ export class ActionsScreen {
       this._updateCurateCtx();
       this._schedulePreview(true);
     });
+    el.querySelector("#act-curate-prev-btn")?.addEventListener("click", () => this._navigateCurateDoc(-1));
+    el.querySelector("#act-curate-next-btn")?.addEventListener("click", () => this._navigateCurateDoc(1));
     el.querySelector("#act-curate-rules")!.addEventListener("input", () => this._schedulePreview(true));
     el.querySelector("#act-curate-add-rule-btn")!.addEventListener("click", (evt) => {
       evt.preventDefault();
@@ -664,6 +666,8 @@ export class ActionsScreen {
       const btn = (e.target as HTMLElement).closest<HTMLButtonElement>("[data-action='goto-seg']");
       if (btn) this._switchSubViewDOM(root, "segmentation");
     });
+    this._refreshCurateHeaderState();
+    this._renderCurateQuickQueue();
     initCardAccordions(el);
     this._bindHeadNavLinks(el, root);
     return el;
@@ -781,30 +785,33 @@ export class ActionsScreen {
                 <div class="seg-box">
                   <div class="seg-box-head">Preset global</div>
                   <div class="seg-box-body">
-                    <label class="seg-box-radio"><input type="radio" name="seg-preset" value="strict" /> Strict</label>
-                    <label class="seg-box-radio"><input type="radio" name="seg-preset" value="extended" checked /> &#201;tendu</label>
-                    <label class="seg-box-radio"><input type="radio" name="seg-preset" value="custom" /> Personnalis&#233;</label>
+                    <label class="seg-box-radio"><input id="act-seg-preset-strict" type="radio" name="seg-preset" value="strict" /> Strict</label>
+                    <label class="seg-box-radio"><input id="act-seg-preset-extended" type="radio" name="seg-preset" value="extended" checked /> &#201;tendu</label>
+                    <label class="seg-box-radio"><input id="act-seg-preset-custom" type="radio" name="seg-preset" value="custom" /> Personnalis&#233;</label>
                   </div>
                 </div>
                 <div class="seg-box">
                   <div class="seg-box-head">S&#233;parateurs actifs</div>
                   <div class="seg-box-body">
-                    <!-- TODO: wiring vers options pack backend -->
-                    <label class="seg-box-radio"><input type="checkbox" checked /> Point <code>.</code></label>
-                    <label class="seg-box-radio"><input type="checkbox" checked /> Interrog. <code>?</code></label>
-                    <label class="seg-box-radio"><input type="checkbox" checked /> Excl. <code>!</code></label>
-                    <label class="seg-box-radio"><input type="checkbox" /> Barre <code>/</code></label>
-                    <label class="seg-box-radio"><input type="checkbox" /> Point-virgule <code>;</code></label>
-                    <label class="seg-box-radio"><input type="checkbox" /> Deux-points <code>:</code></label>
+                    <label class="seg-box-radio"><input id="act-seg-sep-dot" type="checkbox" checked disabled /> Point <code>.</code></label>
+                    <label class="seg-box-radio"><input id="act-seg-sep-qmark" type="checkbox" checked disabled /> Interrog. <code>?</code></label>
+                    <label class="seg-box-radio"><input id="act-seg-sep-bang" type="checkbox" checked disabled /> Excl. <code>!</code></label>
+                    <label class="seg-box-radio"><input id="act-seg-sep-slash" type="checkbox" disabled /> Barre <code>/</code></label>
+                    <label class="seg-box-radio"><input id="act-seg-sep-semicolon" type="checkbox" disabled /> Point-virgule <code>;</code></label>
+                    <label class="seg-box-radio"><input id="act-seg-sep-colon" type="checkbox" disabled /> Deux-points <code>:</code></label>
                   </div>
                 </div>
                 <div class="seg-box">
                   <div class="seg-box-head">Port&#233;e</div>
                   <div class="seg-box-body">
-                    <label class="seg-box-radio"><input type="radio" name="seg-scope" value="document" checked /> Document entier</label>
-                    <label class="seg-box-radio"><input type="radio" name="seg-scope" value="selection" /> S&#233;lection active</label>
+                    <label class="seg-box-radio"><input id="act-seg-scope-document" type="radio" name="seg-scope" value="document" checked /> Document entier</label>
+                    <label class="seg-box-radio"><input id="act-seg-scope-selection" type="radio" name="seg-scope" value="selection" disabled /> S&#233;lection active</label>
                   </div>
                 </div>
+                <p id="act-seg-advanced-note" class="hint" style="margin:8px 0 0">
+                  Les s&#233;parateurs personnalis&#233;s et la port&#233;e &#171;&#160;S&#233;lection active&#160;&#187; ne sont pas support&#233;s dans ce flux.
+                  Utilisez le champ <strong>Pack</strong> pour piloter la segmentation.
+                </p>
               </div>
             </details>
             <div class="seg-col seg-col-left">
@@ -1069,15 +1076,32 @@ export class ActionsScreen {
       const body = mm.closest<HTMLElement>(".preview-body");
       if (body) this._mmScrollCleanups.push(this._setupMmZone(body, mm));
     });
+    this._wireSegAdvancedControls(el);
     el.querySelector("#act-seg-focus-toggle")!.addEventListener("click", () => this._toggleSegFocusMode(root));
     el.querySelector("#act-seg-doc")!.addEventListener("change", () => {
+      const normDoc = el.querySelector<HTMLSelectElement>("#act-seg-doc");
+      const ltDoc = el.querySelector<HTMLSelectElement>("#act-seg-lt-doc");
+      if (normDoc && ltDoc) ltDoc.value = normDoc.value;
       this._refreshSegmentationStatusUI();
       this._checkLongtextHint(el);
       const docId = parseInt((el.querySelector<HTMLSelectElement>("#act-seg-doc"))?.value ?? "");
       if (docId && this._conn) void this._loadUnitsRawPreview(el, docId);
     });
-    el.querySelector("#act-seg-pack")!.addEventListener("change", () => this._refreshSegmentationStatusUI());
-    el.querySelector("#act-seg-lang")!.addEventListener("input", () => this._refreshSegmentationStatusUI());
+    el.querySelector("#act-seg-pack")!.addEventListener("change", () => {
+      const normPack = el.querySelector<HTMLSelectElement>("#act-seg-pack");
+      const ltPack = el.querySelector<HTMLSelectElement>("#act-seg-lt-pack");
+      if (normPack && ltPack) ltPack.value = normPack.value;
+      this._syncSegPresetFromPack(el);
+      this._refreshSegmentationStatusUI();
+    });
+    el.querySelector("#act-seg-lang")!.addEventListener("input", () => {
+      const normLang = el.querySelector<HTMLInputElement>("#act-seg-lang");
+      const ltLang = el.querySelector<HTMLInputElement>("#act-seg-lt-lang");
+      if (normLang && ltLang) ltLang.value = normLang.value;
+      this._applyStrictPresetIfActive(el);
+      this._syncSegPresetFromPack(el);
+      this._refreshSegmentationStatusUI();
+    });
     const segAfterValidateSel = el.querySelector<HTMLSelectElement>("#act-seg-after-validate");
     if (segAfterValidateSel) {
       segAfterValidateSel.value = this._postValidateDestination();
@@ -1122,6 +1146,22 @@ export class ActionsScreen {
       if (normDoc) normDoc.value = ltDoc.value;
       this._refreshSegmentationStatusUI();
       this._checkLongtextHint(el);
+    });
+    el.querySelector("#act-seg-lt-pack")?.addEventListener("change", () => {
+      const ltPack = el.querySelector<HTMLSelectElement>("#act-seg-lt-pack");
+      const normPack = el.querySelector<HTMLSelectElement>("#act-seg-pack");
+      if (ltPack && normPack) {
+        normPack.value = ltPack.value;
+        normPack.dispatchEvent(new Event("change"));
+      }
+    });
+    el.querySelector("#act-seg-lt-lang")?.addEventListener("input", () => {
+      const ltLang = el.querySelector<HTMLInputElement>("#act-seg-lt-lang");
+      const normLang = el.querySelector<HTMLInputElement>("#act-seg-lang");
+      if (ltLang && normLang) {
+        normLang.value = ltLang.value;
+        normLang.dispatchEvent(new Event("input"));
+      }
     });
     el.querySelector("#act-seg-lt-btn")!.addEventListener("click", () => this._runSegment());
     el.querySelector("#act-seg-lt-validate-btn")!.addEventListener("click", () => this._runSegment(true));
@@ -1629,6 +1669,7 @@ export class ActionsScreen {
     const visibleLinks = this._computeVisibleAuditLinks();
     if (visibleLinks.length === 0) {
       container.innerHTML = '<p class="live-note">Aucun lien &#224; afficher. Chargez les liens depuis le tableau.</p>';
+      container.onclick = null;
       return;
     }
     const frag = document.createDocumentFragment();
@@ -1660,15 +1701,103 @@ export class ActionsScreen {
     }
     container.innerHTML = "";
     container.appendChild(frag);
-    // Delegate run-row actions to existing sidecar handlers
-    container.addEventListener("click", (e) => {
-      const target = e.target as HTMLElement;
-      const id = Number(target.dataset.id);
+    // Delegate run-row actions (single handler, replaced each render).
+    container.onclick = (e: MouseEvent) => {
+      const btn = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-id]");
+      if (!btn) return;
+      const id = Number(btn.dataset.id);
       if (!id) return;
       this._auditSelectedLinkId = id;
-      if (target.classList.contains("run-accept-btn")) void this._runFocusStatusAction(root, "accepted");
-      else if (target.classList.contains("run-reject-btn")) void this._runFocusStatusAction(root, "rejected");
-    }, { once: false });
+      if (btn.classList.contains("run-accept-btn")) void this._runFocusStatusAction(root, "accepted");
+      else if (btn.classList.contains("run-reject-btn")) void this._runFocusStatusAction(root, "rejected");
+    };
+  }
+
+  private _wireSegAdvancedControls(segPanel: HTMLElement): void {
+    const unsupportedMsg = "Option non supportée dans ce flux (FW-1). Utiliser le champ Pack.";
+    const scopeSelection = segPanel.querySelector<HTMLInputElement>("#act-seg-scope-selection");
+    const scopeDocument = segPanel.querySelector<HTMLInputElement>("#act-seg-scope-document");
+    if (scopeSelection) {
+      scopeSelection.disabled = true;
+      scopeSelection.checked = false;
+      scopeSelection.title = unsupportedMsg;
+    }
+    if (scopeDocument) scopeDocument.checked = true;
+    [
+      "#act-seg-sep-dot",
+      "#act-seg-sep-qmark",
+      "#act-seg-sep-bang",
+      "#act-seg-sep-slash",
+      "#act-seg-sep-semicolon",
+      "#act-seg-sep-colon",
+    ].forEach((sel) => {
+      const cb = segPanel.querySelector<HTMLInputElement>(sel);
+      if (!cb) return;
+      cb.disabled = true;
+      cb.title = unsupportedMsg;
+    });
+    segPanel.querySelectorAll<HTMLInputElement>('input[name="seg-preset"]').forEach((radio) => {
+      radio.addEventListener("change", () => {
+        if (!radio.checked) return;
+        const preset = radio.value === "strict" || radio.value === "extended" || radio.value === "custom"
+          ? radio.value
+          : "extended";
+        this._setSegPreset(segPanel, preset);
+      });
+    });
+    this._syncSegPresetFromPack(segPanel);
+  }
+
+  private _strictPackForLang(lang: string): "fr_strict" | "en_strict" | "default" {
+    const norm = lang.trim().toLowerCase();
+    if (norm.startsWith("fr")) return "fr_strict";
+    if (norm.startsWith("en")) return "en_strict";
+    return "default";
+  }
+
+  private _setSegPreset(segPanel: HTMLElement, preset: "strict" | "extended" | "custom"): void {
+    const packSel = segPanel.querySelector<HTMLSelectElement>("#act-seg-pack");
+    const langInput = segPanel.querySelector<HTMLInputElement>("#act-seg-lang");
+    if (!packSel || !langInput) return;
+    const strictPack = this._strictPackForLang(langInput.value || "und");
+    if (preset === "strict") {
+      packSel.value = strictPack;
+    } else if (preset === "extended") {
+      packSel.value = "auto";
+    } else if (preset === "custom" && packSel.value === "auto") {
+      packSel.value = "default";
+    }
+    const ltPack = segPanel.querySelector<HTMLSelectElement>("#act-seg-lt-pack");
+    if (ltPack) ltPack.value = packSel.value;
+    this._syncSegPresetFromPack(segPanel);
+    this._refreshSegmentationStatusUI();
+  }
+
+  private _applyStrictPresetIfActive(segPanel: HTMLElement): void {
+    const currentPreset = segPanel.querySelector<HTMLInputElement>('input[name="seg-preset"]:checked')?.value;
+    if (currentPreset !== "strict") return;
+    const packSel = segPanel.querySelector<HTMLSelectElement>("#act-seg-pack");
+    const langInput = segPanel.querySelector<HTMLInputElement>("#act-seg-lang");
+    if (!packSel || !langInput) return;
+    const strictPack = this._strictPackForLang(langInput.value || "und");
+    if (packSel.value !== strictPack) {
+      packSel.value = strictPack;
+      const ltPack = segPanel.querySelector<HTMLSelectElement>("#act-seg-lt-pack");
+      if (ltPack) ltPack.value = strictPack;
+    }
+  }
+
+  private _syncSegPresetFromPack(segPanel: HTMLElement): void {
+    const packSel = segPanel.querySelector<HTMLSelectElement>("#act-seg-pack");
+    const langInput = segPanel.querySelector<HTMLInputElement>("#act-seg-lang");
+    if (!packSel || !langInput) return;
+    const strictPack = this._strictPackForLang(langInput.value || "und");
+    const pack = (packSel.value || "auto").trim();
+    let nextPreset: "strict" | "extended" | "custom" = "custom";
+    if (pack === "auto") nextPreset = "extended";
+    else if (pack === strictPack) nextPreset = "strict";
+    const radio = segPanel.querySelector<HTMLInputElement>(`input[name="seg-preset"][value="${nextPreset}"]`);
+    if (radio) radio.checked = true;
   }
 
   // ─── Long text helpers ───────────────────────────────────────────────────────
@@ -2019,6 +2148,8 @@ export class ActionsScreen {
       this._lastErrorMsg = null;
     }
     this._setButtonsEnabled(false);
+    this._renderCurateQuickQueue();
+    this._refreshCurateHeaderState();
     if (conn) {
       this._loadDocs();
       // Restore workflow run_id from localStorage
@@ -2117,6 +2248,7 @@ export class ActionsScreen {
   }
 
   private _refreshRuntimeState(): void {
+    this._refreshCurateHeaderState();
     if (!this._stateEl) return;
     if (!this._conn) {
       this._setRuntimeState("error", "Sidecar indisponible. Ouvrez un projet ou relancez la connexion.");
@@ -2380,6 +2512,86 @@ export class ActionsScreen {
     return v ? parseInt(v) : undefined;
   }
 
+  private _curateDocIndex(docId: number | undefined): number {
+    if (docId === undefined) return -1;
+    return this._docs.findIndex((d) => d.doc_id === docId);
+  }
+
+  private _navigateCurateDoc(direction: -1 | 1): void {
+    const sel = document.querySelector<HTMLSelectElement>("#act-curate-doc");
+    if (!sel || this._docs.length === 0) return;
+    const currentId = this._currentCurateDocId();
+    const idx = this._curateDocIndex(currentId);
+    let nextIdx = idx;
+    if (idx < 0) nextIdx = direction > 0 ? 0 : this._docs.length - 1;
+    else nextIdx = idx + direction;
+    if (nextIdx < 0 || nextIdx >= this._docs.length) return;
+    sel.value = String(this._docs[nextIdx].doc_id);
+    sel.dispatchEvent(new Event("change"));
+  }
+
+  private _refreshCurateHeaderState(): void {
+    const docLabelEl = document.querySelector<HTMLElement>("#act-curate-doc-label");
+    const modePillEl = document.querySelector<HTMLElement>("#act-curate-mode-pill");
+    const docId = this._currentCurateDocId();
+    const doc = docId !== undefined ? this._docs.find((d) => d.doc_id === docId) : undefined;
+    if (docLabelEl) {
+      docLabelEl.textContent = doc
+        ? `#${doc.doc_id} · ${doc.title} (${doc.language})`
+        : "Portée: tous les documents";
+    }
+    if (modePillEl) {
+      if (!this._conn) modePillEl.textContent = "Mode hors ligne";
+      else if (this._isBusy) modePillEl.textContent = "Traitement en cours";
+      else if (this._hasPendingPreview) modePillEl.textContent = "Preview en attente";
+      else if (doc) modePillEl.textContent = `Mode document #${doc.doc_id}`;
+      else modePillEl.textContent = "Mode corpus";
+    }
+  }
+
+  private _renderCurateQuickQueue(): void {
+    const queueEl = document.querySelector<HTMLElement>("#act-curate-queue");
+    const prevBtn = document.querySelector<HTMLButtonElement>("#act-curate-prev-btn");
+    const nextBtn = document.querySelector<HTMLButtonElement>("#act-curate-next-btn");
+    if (!queueEl) return;
+    if (this._docs.length === 0) {
+      queueEl.innerHTML = '<p class="empty-hint">Aucun document charg&#233;.</p>';
+      if (prevBtn) prevBtn.disabled = true;
+      if (nextBtn) nextBtn.disabled = true;
+      return;
+    }
+    const currentId = this._currentCurateDocId();
+    const currentIdx = this._curateDocIndex(currentId);
+    if (currentIdx < 0) {
+      queueEl.innerHTML = `
+        <div class="curate-qitem">
+          <div class="curate-qmeta"><span>File locale</span><span>${this._docs.length} doc(s)</span></div>
+          <div>Aucun document cibl&#233;. Utilisez <strong>Suivant</strong> pour d&#233;marrer la revue locale.</div>
+        </div>
+      `;
+      if (prevBtn) prevBtn.disabled = true;
+      if (nextBtn) nextBtn.disabled = false;
+      return;
+    }
+    const start = Math.max(0, currentIdx - 1);
+    const end = Math.min(this._docs.length, currentIdx + 2);
+    const rows = this._docs.slice(start, end).map((doc, offset) => {
+      const idx = start + offset;
+      const state = idx === currentIdx ? "Document actif" : idx < currentIdx ? "D&#233;j&#224; revu" : "Suivant";
+      const role = doc.doc_role ? `${_escHtml(doc.doc_role)} · ` : "";
+      return `
+        <div class="curate-qitem${idx === currentIdx ? " curate-log-apply" : ""}">
+          <div class="curate-qmeta"><span>#${doc.doc_id} · ${_escHtml(doc.language)}</span><span>${state}</span></div>
+          <div>${_escHtml(doc.title)}</div>
+          <div style="font-size:11px;color:var(--prep-muted,#4f5d6d)">${role}${doc.unit_count} unit&#233;s</div>
+        </div>
+      `;
+    }).join("");
+    queueEl.innerHTML = rows;
+    if (prevBtn) prevBtn.disabled = currentIdx <= 0;
+    if (nextBtn) nextBtn.disabled = currentIdx >= this._docs.length - 1;
+  }
+
   /** Push an entry to the in-memory curate log (max 10, FIFO) and re-render. */
   private _pushCurateLog(kind: "preview" | "apply" | "warn", msg: string): void {
     this._curateLog.unshift({ ts: Date.now(), kind, msg });
@@ -2416,19 +2628,13 @@ export class ActionsScreen {
     const packLabel = "&#8212;";
     const scopeLabel = doc ? "Document s&#233;lectionn&#233;" : "Document complet";
     const liveLabel = "Actif";
-    if (!doc) {
-      el.innerHTML =
-        `<div class="f curate-ctx-cell"><strong>Langue pivot</strong>${pivotLabel}</div>` +
-        `<div class="f curate-ctx-cell"><strong>Pack</strong>${packLabel}</div>` +
-        `<div class="f curate-ctx-cell"><strong>Port&#233;e</strong>${scopeLabel}</div>` +
-        `<div class="f curate-ctx-cell"><strong>Aper&#231;u live</strong>${liveLabel}</div>`;
-      return;
-    }
     el.innerHTML =
       `<div class="f curate-ctx-cell"><strong>Langue pivot</strong>${pivotLabel}</div>` +
       `<div class="f curate-ctx-cell"><strong>Pack</strong>${packLabel}</div>` +
       `<div class="f curate-ctx-cell"><strong>Port&#233;e</strong>${scopeLabel}</div>` +
       `<div class="f curate-ctx-cell"><strong>Aper&#231;u live</strong>${liveLabel}</div>`;
+    this._refreshCurateHeaderState();
+    this._renderCurateQuickQueue();
   }
 
   private _populateSelects(): void {

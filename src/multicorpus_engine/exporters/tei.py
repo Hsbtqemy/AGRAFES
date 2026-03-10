@@ -328,6 +328,7 @@ def export_tei(
     doc_id: int,
     output_path: str | Path,
     include_structure: bool = False,
+    relation_type: Optional[str] = None,
     include_alignment: bool = False,
     target_doc_id: Optional[int] = None,
     status_filter: Optional[list[str]] = None,
@@ -341,6 +342,10 @@ def export_tei(
         doc_id: Document to export.
         output_path: Destination file path (.xml).
         include_structure: If True, also emit <head> elements for structure units.
+        relation_type: Optional relation filter for <listRelation>.
+                       - None / "all": export all relation types (legacy behavior)
+                       - "none": disable relation export
+                       - "translation_of" / "excerpt_of": export only this type
         include_alignment: If True, emit <linkGrp> with alignment links.
         target_doc_id: If given, restrict alignment links to this target doc.
         status_filter: List of statuses to include in alignment export.
@@ -357,6 +362,21 @@ def export_tei(
     """
     if status_filter is None:
         status_filter = ["accepted"]
+    relation_filter: str | None
+    if relation_type is None:
+        relation_filter = None
+    else:
+        rel_raw = str(relation_type).strip()
+        if rel_raw in ("", "all"):
+            relation_filter = None
+        elif rel_raw == "none":
+            relation_filter = "none"
+        elif rel_raw in {"translation_of", "excerpt_of"}:
+            relation_filter = rel_raw
+        else:
+            raise ValueError(
+                "relation_type must be one of: none, translation_of, excerpt_of, all"
+            )
 
     output_path = Path(output_path)
     doc = _get_document(conn, doc_id)
@@ -426,8 +446,18 @@ def export_tei(
         if tei_profile == "parcolab_strict":
             _apply_strict_validation(header, profile, doc, meta, doc_id, warnings)
 
-    # listRelation from doc_relations — always emitted when relations exist
-    relations = _get_doc_relations(conn, doc_id)
+    # listRelation from doc_relations — filtered when relation_type is requested.
+    relations: list = []
+    if relation_filter != "none":
+        relations = _get_doc_relations(conn, doc_id)
+        if relation_filter is not None:
+            relations = [
+                rel for rel in relations
+                if (
+                    (rel["relation_type"] if "relation_type" in rel.keys() else rel[2])
+                    == relation_filter
+                )
+            ]
     if relations:
         list_rel = ET.SubElement(profile, "listRelation")
         for rel in relations:

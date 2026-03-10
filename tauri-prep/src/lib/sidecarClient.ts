@@ -275,6 +275,8 @@ export interface ExportTeiOptions {
   doc_ids?: number[];
   /** Emit <head> elements for structure units in addition to body units. Default false. */
   include_structure?: boolean;
+  /** Filter listRelation output: none|translation_of|excerpt_of|all. */
+  relation_type?: "none" | "translation_of" | "excerpt_of" | "all";
 }
 
 export interface ExportTeiResponse {

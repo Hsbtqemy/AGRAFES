@@ -1484,6 +1484,12 @@ def openapi_spec() -> dict[str, Any]:
                             "default": False,
                             "description": "Emit <head> elements for structure units in addition to body units.",
                         },
+                        "relation_type": {
+                            "type": "string",
+                            "enum": ["none", "translation_of", "excerpt_of", "all"],
+                            "default": "none",
+                            "description": "Relation filter for TEI listRelation (none disables relation export).",
+                        },
                     },
                 },
                 "ExportAlignCsvRequest": {
