@@ -525,6 +525,112 @@ details[open] > .import-log-summary::before {
   min-width: 240px;
   padding-top: 1.35rem;
 }
+
+/* ===== Exports Screen vNext ===== */
+.exports-screen .exp-head-card { margin-bottom: 10px; }
+.exports-screen .exp-head-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.exports-screen .exp-head-top h2 { margin: 0; }
+.exports-screen .exp-head-desc { font-size: 13px; color: #555; margin: 4px 0 0; }
+.exports-screen .exp-head-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.exports-screen .exp-kpi-strip {
+  display: flex;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+.exports-screen .exp-kpi {
+  flex: 1;
+  padding: 8px 12px;
+  border-right: 1px solid #e2e8f0;
+}
+.exports-screen .exp-kpi:last-child { border-right: none; }
+.exports-screen .exp-kpi label {
+  display: block;
+  font-size: 11px;
+  color: #64748b;
+  margin-bottom: 2px;
+}
+.exports-screen .exp-kpi span {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1e293b;
+}
+.exports-screen .exp-v2-card { margin-bottom: 10px; }
+.exports-screen .exp-workspace {
+  display: grid;
+  grid-template-columns: minmax(440px, 1fr) minmax(300px, .85fr);
+  gap: 10px;
+  align-items: start;
+}
+.exports-screen .exp-col-docs,
+.exports-screen .exp-col-opts {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.exports-screen .exp-doc-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.exports-screen .exp-doc-toolbar h3 { margin: 0; font-size: 14px; font-weight: 600; }
+.exports-screen .exp-doc-grid {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.exports-screen .exp-doc-grid thead th {
+  text-align: left;
+  padding: 4px 8px;
+  border-bottom: 2px solid #e2e8f0;
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 600;
+}
+.exports-screen .exp-doc-grid tbody td {
+  padding: 5px 8px;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
+}
+.exports-screen .exp-doc-grid tbody tr:hover { background: #f8fafc; }
+.exports-screen .exp-doc-id { font-family: monospace; font-size: 11px; color: #94a3b8; width: 32px; }
+.exports-screen .exp-doc-title { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.exports-screen .exp-doc-lang { font-size: 11px; }
+.exports-screen .exp-doc-role { font-size: 11px; color: #64748b; }
+.exports-screen .exp-empty-hint {
+  padding: 20px;
+  text-align: center;
+  color: #64748b;
+  font-size: 13px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+}
+.exports-screen .exp-opts-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.exports-screen .exp-col-opts label { font-size: 12px; color: #555; display: block; margin-bottom: 2px; }
+.exports-screen .exp-col-opts select { width: 100%; }
+@media (max-width: 1060px) {
+  .exports-screen .exp-workspace { grid-template-columns: 1fr; }
+}
+
 @media (max-width: 1080px) {
   .meta-layout {
     grid-template-columns: 1fr;

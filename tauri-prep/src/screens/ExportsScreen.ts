@@ -19,6 +19,10 @@ import { save, open } from "@tauri-apps/plugin-dialog";
 import type { JobCenter } from "../components/JobCenter.ts";
 import { initCardAccordions } from "../lib/uiAccordions.ts";
 
+function _escHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
 export class ExportsScreen {
   private _conn: Conn | null = null;
   private _docs: DocumentRecord[] = [];
@@ -63,122 +67,168 @@ export class ExportsScreen {
 
   render(): HTMLElement {
     const root = document.createElement("div");
-    root.className = "screen actions-screen";
+    root.className = "screen exports-screen";
     this._root = root;
 
     root.innerHTML = `
-      <h2 class="screen-title">Exporter</h2>
-
-      <section class="card" data-collapsible="true" data-collapsed-default="true">
-        <h3>État de session</h3>
-        <div id="exp-state-banner" class="runtime-state state-info" aria-live="polite">
-          En attente de connexion sidecar…
+      <!-- EXP-1: Head card enrichie -->
+      <div class="card exp-head-card">
+        <div class="exp-head-top">
+          <div>
+            <h2 class="screen-title">Exporter</h2>
+            <p class="exp-head-desc">Livrer (TEI) · partager (CSV/Excel) · archiver (Package ZIP)</p>
+          </div>
+          <div id="exp-state-banner" class="runtime-state state-info" aria-live="polite">
+            En attente de connexion sidecar…
+          </div>
         </div>
-      </section>
+        <div class="exp-head-actions">
+          <span id="exp-run-pill" class="chip">—</span>
+          <button class="btn btn-sm exp-back-btn">← Alignement</button>
+        </div>
+      </div>
 
-      <!-- Unified V2 Export Flow -->
-      <section class="card" data-collapsible="true">
-        <h3>Flux export V2 <span class="badge-preview">recommandé</span></h3>
-        <p class="hint">Ordre recommandé: 1) jeu de données, 2) produit de sortie, 3) format fichier, puis lancer.</p>
-        <div class="form-row">
-          <label>Documents
-            <select id="v2-doc-sel" multiple style="height:90px;min-width:220px">
+      <!-- EXP-4: KPI strip display-only -->
+      <div class="exp-kpi-strip">
+        <div class="exp-kpi"><label>Documents</label><span id="exp-kpi-docs">0</span></div>
+        <div class="exp-kpi"><label>Sélectionnés</label><span id="exp-kpi-sel">—</span></div>
+        <div class="exp-kpi"><label>Jeu de données</label><span id="exp-kpi-stage">—</span></div>
+        <div class="exp-kpi"><label>Format</label><span id="exp-kpi-fmt">—</span></div>
+      </div>
+
+      <!-- EXP-2: Workspace 2-col -->
+      <div class="card exp-v2-card">
+        <div class="exp-workspace">
+
+          <!-- LEFT: doc selection -->
+          <div class="exp-col-docs">
+            <div class="exp-doc-toolbar">
+              <div style="display:flex;align-items:center;gap:8px">
+                <h3>Documents source</h3>
+                <span id="v2-doc-summary" class="chip">0 doc</span>
+              </div>
+              <div class="btn-row" style="margin:0">
+                <button id="v2-doc-select-all-btn" class="btn btn-secondary btn-sm">Tout sélectionner</button>
+                <button id="v2-doc-clear-btn" class="btn btn-secondary btn-sm">Effacer</button>
+              </div>
+            </div>
+            <!-- EXP-3: hidden select (internal state) + visible table -->
+            <select id="v2-doc-sel" multiple style="display:none" aria-hidden="true">
               <option value="__all__" selected>— Tous les documents —</option>
             </select>
-          </label>
-          <div class="exports-doc-tools">
-            <div class="btn-row" style="margin:0">
-              <button id="v2-doc-select-all-btn" class="btn btn-secondary btn-sm">Sélectionner tous les documents</button>
-              <button id="v2-doc-clear-btn" class="btn btn-secondary btn-sm">Effacer la sélection</button>
+            <!-- EXP-9: état vide -->
+            <div id="exp-empty-hint" class="exp-empty-hint" style="display:none">
+              Aucun document importé — allez d'abord dans <strong>Importer</strong>.
             </div>
-            <div id="v2-doc-summary" class="hint" style="margin:0">Portée actuelle: tous les documents.</div>
+            <!-- EXP-3: doc table -->
+            <table id="exp-doc-grid" class="exp-doc-grid" style="display:none">
+              <thead>
+                <tr>
+                  <th></th>
+                  <th>ID</th>
+                  <th>Titre</th>
+                  <th>Langue</th>
+                  <th>Rôle</th>
+                  <th>Statut</th>
+                </tr>
+              </thead>
+              <tbody id="exp-doc-body"></tbody>
+            </table>
           </div>
-          <label>Jeu de données
-            <select id="v2-stage" style="min-width:190px">
-              <option value="alignment" selected>Alignement</option>
-              <option value="publication">Publication</option>
-              <option value="segmentation">Segmentation</option>
-              <option value="curation">Curation</option>
-              <option value="runs">Historique des runs</option>
-              <option value="qa">Rapport QA</option>
-            </select>
-          </label>
-          <label>Produit de sortie
-            <select id="v2-product" style="min-width:220px"></select>
-          </label>
-          <label>Format fichier
-            <select id="v2-format" style="min-width:180px"></select>
-          </label>
-        </div>
 
-        <div id="v2-tei-options" class="form-row" style="margin-top:0.4rem;display:none">
-          <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.84rem;cursor:pointer;align-self:flex-end">
-            <input id="v2-tei-include-structure" type="checkbox" />
-            Inclure unités structurelles (<code>&lt;head&gt;</code>)
-          </label>
-          <label>Relation inter-documents (info)
-            <select id="v2-tei-relation-type" style="min-width:180px">
-              <option value="none">Aucune</option>
-              <option value="translation_of">translation_of</option>
-              <option value="excerpt_of">excerpt_of</option>
-            </select>
-          </label>
-        </div>
+          <!-- RIGHT: options + CTA -->
+          <div class="exp-col-opts">
+            <div class="exp-opts-meta">
+              <label>Jeu de données
+                <select id="v2-stage">
+                  <option value="alignment" selected>Alignement</option>
+                  <option value="publication">Publication</option>
+                  <option value="segmentation">Segmentation</option>
+                  <option value="curation">Curation</option>
+                  <option value="runs">Historique des runs</option>
+                  <option value="qa">Rapport QA</option>
+                </select>
+              </label>
+              <label>Produit de sortie
+                <select id="v2-product"></select>
+              </label>
+              <label>Format fichier
+                <select id="v2-format"></select>
+              </label>
+            </div>
 
-        <div id="v2-align-options" class="form-row" style="margin-top:0.4rem;display:none">
-          <label>Pivot (optionnel)
-            <select id="v2-align-pivot" style="min-width:170px">
-              <option value="">— tous —</option>
-            </select>
-          </label>
-          <label>Cible (optionnel)
-            <select id="v2-align-target" style="min-width:170px">
-              <option value="">— tous —</option>
-            </select>
-          </label>
-          <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.84rem;cursor:pointer;align-self:flex-end">
-            <input id="v2-align-exceptions-only" type="checkbox" />
-            Exceptions uniquement
-          </label>
-        </div>
+            <div id="v2-tei-options" class="form-row" style="margin-top:0.4rem;display:none">
+              <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.84rem;cursor:pointer;align-self:flex-end">
+                <input id="v2-tei-include-structure" type="checkbox" />
+                Inclure unités structurelles (<code>&lt;head&gt;</code>)
+              </label>
+              <label>Relation inter-documents (info)
+                <select id="v2-tei-relation-type" style="min-width:180px">
+                  <option value="none">Aucune</option>
+                  <option value="translation_of">translation_of</option>
+                  <option value="excerpt_of">excerpt_of</option>
+                </select>
+              </label>
+            </div>
 
-        <div id="v2-package-options" class="form-row" style="margin-top:0.4rem;display:none">
-          <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.84rem;cursor:pointer;align-self:flex-end">
-            <input id="v2-pkg-include-structure" type="checkbox" />
-            Inclure unités structurelles
-          </label>
-          <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.84rem;cursor:pointer;align-self:flex-end">
-            <input id="v2-pkg-include-alignment" type="checkbox" />
-            Inclure alignements acceptés
-          </label>
-          <label>Profil TEI
-            <select id="v2-pkg-tei-profile" style="min-width:210px">
-              <option value="generic">Generic</option>
-              <option value="parcolab_like">ParCoLab-like (enrichi)</option>
-              <option value="parcolab_strict">ParCoLab strict (expert)</option>
-            </select>
-          </label>
-        </div>
+            <div id="v2-align-options" class="form-row" style="margin-top:0.4rem;display:none">
+              <label>Pivot (optionnel)
+                <select id="v2-align-pivot" style="min-width:170px">
+                  <option value="">— tous —</option>
+                </select>
+              </label>
+              <label>Cible (optionnel)
+                <select id="v2-align-target" style="min-width:170px">
+                  <option value="">— tous —</option>
+                </select>
+              </label>
+              <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.84rem;cursor:pointer;align-self:flex-end">
+                <input id="v2-align-exceptions-only" type="checkbox" />
+                Exceptions uniquement
+              </label>
+            </div>
 
-        <div id="v2-run-options" class="form-row" style="margin-top:0.4rem;display:none">
-          <label>run_id (optionnel)
-            <input id="v2-run-id" type="text" placeholder="ex: sidecar-align-..." style="min-width:280px"/>
-          </label>
-        </div>
+            <div id="v2-package-options" class="form-row" style="margin-top:0.4rem;display:none">
+              <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.84rem;cursor:pointer;align-self:flex-end">
+                <input id="v2-pkg-include-structure" type="checkbox" />
+                Inclure unités structurelles
+              </label>
+              <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.84rem;cursor:pointer;align-self:flex-end">
+                <input id="v2-pkg-include-alignment" type="checkbox" />
+                Inclure alignements acceptés
+              </label>
+              <label>Profil TEI
+                <select id="v2-pkg-tei-profile" style="min-width:210px">
+                  <option value="generic">Generic</option>
+                  <option value="parcolab_like">ParCoLab-like (enrichi)</option>
+                  <option value="parcolab_strict">ParCoLab strict (expert)</option>
+                </select>
+              </label>
+            </div>
 
-        <div id="v2-qa-options" class="form-row" style="margin-top:0.4rem;display:none">
-          <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.84rem;cursor:pointer;align-self:flex-end">
-            <input type="checkbox" id="v2-qa-strict-mode">
-            Politique QA : Strict
-          </label>
-        </div>
+            <div id="v2-run-options" class="form-row" style="margin-top:0.4rem;display:none">
+              <label>run_id (optionnel)
+                <input id="v2-run-id" type="text" placeholder="ex: sidecar-align-..." style="min-width:280px"/>
+              </label>
+            </div>
 
-        <div id="v2-pending-hint" style="display:none;margin-top:0.45rem;font-size:0.83rem;padding:0.4rem 0.6rem;background:#fff3cd;border-radius:4px;border:1px solid #ffe69c;color:#8a6116"></div>
-        <div id="v2-summary-hint" class="hint" style="margin-top:0.45rem"></div>
-        <div class="btn-row" style="margin-top:0.6rem">
-          <button id="v2-run-btn" class="btn btn-primary btn-sm" disabled>Choisir destination et lancer…</button>
+            <div id="v2-qa-options" class="form-row" style="margin-top:0.4rem;display:none">
+              <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.84rem;cursor:pointer;align-self:flex-end">
+                <input type="checkbox" id="v2-qa-strict-mode">
+                Politique QA : Strict
+              </label>
+            </div>
+
+            <div id="v2-pending-hint" style="display:none;margin-top:0.45rem;font-size:0.83rem;padding:0.4rem 0.6rem;background:#fff3cd;border-radius:4px;border:1px solid #ffe69c;color:#8a6116"></div>
+            <div id="v2-summary-hint" class="hint" style="margin-top:0.45rem"></div>
+            <!-- EXP-6: btn-sm supprimé -->
+            <div class="btn-row" style="margin-top:0.6rem">
+              <button id="v2-run-btn" class="btn btn-primary" disabled>Choisir destination et lancer…</button>
+            </div>
+          </div>
+
         </div>
-      </section>
+      </div>
 
       <div class="card export-legacy-toggle-card">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:0.7rem;flex-wrap:wrap">
@@ -358,6 +408,16 @@ export class ExportsScreen {
     this._legacyContainer = root.querySelector<HTMLElement>("#exports-legacy-container")!;
     this._legacyToggleBtn = root.querySelector<HTMLButtonElement>("#exports-toggle-legacy-btn")!;
 
+    // EXP-1: head card — run pill + back button
+    const runPill = root.querySelector<HTMLElement>("#exp-run-pill");
+    if (runPill) {
+      const runId = localStorage.getItem("agrafes.prep.workflow.run_id");
+      if (runId) runPill.textContent = `run\u00a0: ${runId}`;
+    }
+    root.querySelector<HTMLButtonElement>(".exp-back-btn")?.addEventListener("click", () => {
+      document.querySelector<HTMLElement>('.prep-nav-tree-link[data-nav="alignement"]')?.click();
+    });
+
     root.querySelector("#v2-run-btn")!.addEventListener("click", () => this._runUnifiedExport());
     root.querySelector("#v2-stage")!.addEventListener("change", () => this._syncV2Ui());
     root.querySelector("#v2-product")!.addEventListener("change", () => this._syncV2Ui());
@@ -501,6 +561,9 @@ export class ExportsScreen {
       this._v2PivotEl.appendChild(op);
       this._v2TargetEl.appendChild(ot);
     }
+
+    this._renderDocTable();
+    this._updateKpiStrip();
   }
 
   // ── Unified V2 export flow ─────────────────────────────────────────────────
@@ -539,14 +602,80 @@ export class ExportsScreen {
         opt.selected = opt.value === "__all__";
       }
     }
+    this._root?.querySelectorAll<HTMLInputElement>(".exp-doc-check").forEach(cb => { cb.checked = true; });
     this._syncV2Ui();
+    this._updateKpiStrip();
   }
 
   private _clearV2DocSelection(): void {
     for (const opt of Array.from(this._v2DocSelEl.options)) {
       opt.selected = false;
     }
+    this._root?.querySelectorAll<HTMLInputElement>(".exp-doc-check").forEach(cb => { cb.checked = false; });
     this._syncV2Ui();
+    this._updateKpiStrip();
+  }
+
+  // EXP-3: render visible doc table (display-only, hidden select remains source of truth)
+  private _renderDocTable(): void {
+    const body = this._root?.querySelector<HTMLElement>("#exp-doc-body");
+    const emptyHint = this._root?.querySelector<HTMLElement>("#exp-empty-hint");
+    const grid = this._root?.querySelector<HTMLElement>("#exp-doc-grid");
+    if (!body) return;
+    const selectedIds = this._selectedDocIds(this._v2DocSelEl) ?? this._docs.map(d => d.doc_id);
+    if (this._docs.length === 0) {
+      if (emptyHint) emptyHint.style.display = "";
+      if (grid) grid.style.display = "none";
+      return;
+    }
+    if (emptyHint) emptyHint.style.display = "none";
+    if (grid) grid.style.display = "";
+    const statusLabel = (d: DocumentRecord): string => {
+      switch (d.workflow_status) {
+        case "validated": return "Validé";
+        case "review":    return "Révision";
+        case "draft":     return "Brouillon";
+        default:          return "—";
+      }
+    };
+    body.innerHTML = this._docs.map(d => {
+      const sel = selectedIds.includes(d.doc_id);
+      const title = d.title.length > 40 ? d.title.slice(0, 40) + "…" : d.title;
+      return `<tr class="exp-doc-row" data-doc-id="${d.doc_id}">
+        <td><input type="checkbox" class="exp-doc-check" data-doc-id="${d.doc_id}"${sel ? " checked" : ""}></td>
+        <td class="exp-doc-id">${d.doc_id}</td>
+        <td class="exp-doc-title" title="${_escHtml(d.title)}">${_escHtml(title)}</td>
+        <td class="exp-doc-lang">${d.language}</td>
+        <td class="exp-doc-role">${d.doc_role ?? "—"}</td>
+        <td><span class="chip">${statusLabel(d)}</span></td>
+      </tr>`;
+    }).join("");
+    body.querySelectorAll<HTMLInputElement>(".exp-doc-check").forEach(cb => {
+      cb.addEventListener("change", () => this._onDocCheckChange(Number(cb.dataset.docId), cb.checked));
+    });
+  }
+
+  private _onDocCheckChange(docId: number, checked: boolean): void {
+    const opt = this._v2DocSelEl?.querySelector<HTMLOptionElement>(`option[value="${docId}"]`);
+    if (opt) opt.selected = checked;
+    this._handleV2DocSelectionChange();
+    this._updateKpiStrip();
+  }
+
+  // EXP-4: update KPI strip display-only
+  private _updateKpiStrip(): void {
+    if (!this._root) return;
+    const setKpi = (id: string, v: string) => {
+      const el = this._root.querySelector(`#${id}`);
+      if (el) el.textContent = v;
+    };
+    setKpi("exp-kpi-docs", String(this._docs.length));
+    const selIds = this._selectedDocIds(this._v2DocSelEl);
+    setKpi("exp-kpi-sel", selIds === undefined ? String(this._docs.length) : selIds.length > 0 ? String(selIds.length) : "—");
+    const stage = this._v2StageEl?.selectedOptions[0]?.text ?? "—";
+    const fmt   = this._v2FormatEl?.selectedOptions[0]?.text ?? "—";
+    setKpi("exp-kpi-stage", stage);
+    setKpi("exp-kpi-fmt", fmt);
   }
 
   private _setSelectOptions(
@@ -686,6 +815,7 @@ export class ExportsScreen {
       summaryHint.textContent = `Sélection courante: ${scopeLabel} · ${stageLabel} → ${productLabel} → ${formatLabel}.`;
     }
     this._v2RunBtn.disabled = !this._conn || isPending || hasEmptySelection;
+    this._updateKpiStrip();
     this._refreshRuntimeState();
   }
 
