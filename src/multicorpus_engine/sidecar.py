@@ -3007,7 +3007,7 @@ class CorpusServer:
                     from multicorpus_engine.importers.tei_importer import import_tei
                     report = import_tei(
                         conn, path=file_path, language=language if language != "und" else None,
-                        title=title, tei_unit=tei_unit,
+                        title=title, unit_element=tei_unit,
                         doc_role=doc_role, resource_type=resource_type,
                     )
                 else:
