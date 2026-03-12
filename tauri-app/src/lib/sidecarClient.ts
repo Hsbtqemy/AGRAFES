@@ -13,7 +13,8 @@
 
 import { Command, type Child } from "@tauri-apps/plugin-shell";
 import { readTextFile, exists } from "@tauri-apps/plugin-fs";
-import { fetch } from "@tauri-apps/plugin-http";
+import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
+import { resolveResource } from "@tauri-apps/api/path";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -118,6 +119,101 @@ export interface Conn {
 let _conn: Conn | null = null;
 let _spawnedChild: Child | null = null;
 const SIDECAR_PROGRAM = "multicorpus";
+const IS_WINDOWS_RUNTIME =
+  typeof navigator !== "undefined" && /windows/i.test(navigator.userAgent);
+const SIDECAR_HEALTH_TIMEOUT_MS = IS_WINDOWS_RUNTIME ? 45000 : 15000;
+const SIDECAR_HEALTH_INITIAL_DELAY_MS = IS_WINDOWS_RUNTIME ? 1200 : 0;
+const SIDECAR_HEALTH_POLL_INTERVAL_MS = 350;
+const SIDECAR_STARTUP_JSON_TIMEOUT_MS = IS_WINDOWS_RUNTIME ? 20000 : 12000;
+
+type SidecarLogLevel = "info" | "warn" | "error";
+type SidecarFetchInit = Parameters<typeof tauriFetch>[1] & RequestInit;
+
+function sidecarLog(level: SidecarLogLevel, message: string, detail?: unknown): void {
+  const prefix = `[sidecar-client ${new Date().toISOString()}] ${message}`;
+  if (level === "error") {
+    if (detail !== undefined) console.error(prefix, detail);
+    else console.error(prefix);
+    return;
+  }
+  if (level === "warn") {
+    if (detail !== undefined) console.warn(prefix, detail);
+    else console.warn(prefix);
+    return;
+  }
+  if (detail !== undefined) console.info(prefix, detail);
+  else console.info(prefix);
+}
+
+function errToString(err: unknown): string {
+  if (err instanceof Error) return `${err.name}: ${err.message}`;
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return String(err);
+  }
+}
+
+function expectedSidecarResourceName(): string {
+  if (IS_WINDOWS_RUNTIME) {
+    const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
+    const isArm64 = /\b(arm64|aarch64)\b/i.test(ua);
+    const triple = isArm64 ? "aarch64-pc-windows-msvc" : "x86_64-pc-windows-msvc";
+    return `${SIDECAR_PROGRAM}-${triple}.exe`;
+  }
+  return SIDECAR_PROGRAM;
+}
+
+async function resolveExpectedSidecarPathForLogs(): Promise<string | null> {
+  try {
+    return await resolveResource(expectedSidecarResourceName());
+  } catch {
+    return null;
+  }
+}
+
+export function normalizeLoopbackHost(host: string | null | undefined): string {
+  const raw = (host ?? "").trim();
+  if (!raw) return "127.0.0.1";
+
+  const unbracketed = raw.startsWith("[") && raw.endsWith("]") ? raw.slice(1, -1) : raw;
+  const lowered = unbracketed.toLowerCase();
+  if (lowered === "localhost" || lowered === "0.0.0.0" || lowered === "::1") {
+    return "127.0.0.1";
+  }
+  return unbracketed;
+}
+
+export function makeBaseUrl(host: string | null | undefined, port: number): string {
+  return `http://${normalizeLoopbackHost(host)}:${port}`;
+}
+
+export function isLoopbackUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    return host === "127.0.0.1" || host === "localhost" || host === "::1";
+  } catch {
+    return false;
+  }
+}
+
+async function sidecarFetch(url: string, init?: SidecarFetchInit): Promise<Response> {
+  if (isLoopbackUrl(url)) {
+    if (typeof globalThis.fetch === "function") {
+      try {
+        return await globalThis.fetch(url, init);
+      } catch (err) {
+        sidecarLog(
+          "warn",
+          `loopback fetch via globalThis.fetch failed for ${url}; fallback to tauri fetch`,
+          errToString(err)
+        );
+      }
+    }
+  }
+  return tauriFetch(url, init);
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -141,20 +237,82 @@ async function readPortfile(portfile: string): Promise<Record<string, unknown> |
   }
 }
 
-async function pollHealth(baseUrl: string, maxMs = 15000): Promise<boolean> {
-  const deadline = Date.now() + maxMs;
-  while (Date.now() < deadline) {
-    try {
-      const res = await fetch(`${baseUrl}/health`);
-      if (res.ok) {
-        const json = (await res.json()) as Record<string, unknown>;
-        if (json.ok === true || json.status === "ok") return true;
-      }
-    } catch {
-      // still starting
-    }
-    await sleep(300);
+interface PollHealthOptions {
+  maxMs?: number;
+  initialDelayMs?: number;
+  intervalMs?: number;
+}
+
+async function pollHealth(baseUrl: string, options: PollHealthOptions = {}): Promise<boolean> {
+  const maxMs = options.maxMs ?? SIDECAR_HEALTH_TIMEOUT_MS;
+  const initialDelayMs = options.initialDelayMs ?? SIDECAR_HEALTH_INITIAL_DELAY_MS;
+  const intervalMs = options.intervalMs ?? SIDECAR_HEALTH_POLL_INTERVAL_MS;
+
+  if (initialDelayMs > 0) {
+    sidecarLog(
+      "info",
+      `health polling initial delay ${initialDelayMs}ms before first ping (${baseUrl}/health)`
+    );
+    await sleep(initialDelayMs);
   }
+
+  const deadline = Date.now() + maxMs;
+  let attempts = 0;
+  let lastError = "";
+
+  while (Date.now() < deadline) {
+    attempts += 1;
+    const attemptStarted = Date.now();
+    try {
+      const res = await sidecarFetch(`${baseUrl}/health`);
+      const elapsedMs = Date.now() - attemptStarted;
+
+      let json: Record<string, unknown> | null = null;
+      try {
+        json = (await res.json()) as Record<string, unknown>;
+      } catch (jsonErr) {
+        lastError = `attempt ${attempts}: invalid JSON (${errToString(jsonErr)})`;
+        sidecarLog("warn", `${baseUrl}/health attempt #${attempts} invalid JSON (${elapsedMs}ms)`);
+      }
+
+      if (res.ok) {
+        if (json && (json.ok === true || json.status === "ok")) {
+          sidecarLog("info", `${baseUrl}/health attempt #${attempts} OK (${elapsedMs}ms)`);
+          return true;
+        }
+        lastError = `attempt ${attempts}: HTTP ${res.status} but payload is not healthy`;
+        sidecarLog(
+          "warn",
+          `${baseUrl}/health attempt #${attempts} not healthy (${elapsedMs}ms)`,
+          json
+        );
+      } else {
+        lastError = `attempt ${attempts}: HTTP ${res.status}`;
+        sidecarLog(
+          "warn",
+          `${baseUrl}/health attempt #${attempts} HTTP ${res.status} (${elapsedMs}ms)`,
+          json
+        );
+      }
+    } catch (err) {
+      const elapsedMs = Date.now() - attemptStarted;
+      lastError = `attempt ${attempts}: ${errToString(err)}`;
+      sidecarLog(
+        "warn",
+        `${baseUrl}/health attempt #${attempts} failed (${elapsedMs}ms)`,
+        errToString(err)
+      );
+    }
+
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) break;
+    await sleep(Math.min(intervalMs, remaining));
+  }
+
+  sidecarLog(
+    "error",
+    `health timeout after ${maxMs}ms (${attempts} attempts) for ${baseUrl}/health; last error: ${lastError || "(none)"}`
+  );
   return false;
 }
 
@@ -171,7 +329,7 @@ function makeConn(baseUrl: string, token: string | null): Conn {
         "Content-Type": "application/json; charset=utf-8",
       };
       if (token) headers["X-Agrafes-Token"] = token;
-      const res = await fetch(`${baseUrl}${path}`, {
+      const res = await sidecarFetch(`${baseUrl}${path}`, {
         method: "POST",
         headers,
         body: JSON.stringify(body),
@@ -187,7 +345,7 @@ function makeConn(baseUrl: string, token: string | null): Conn {
       return json;
     },
     async get(path: string): Promise<unknown> {
-      const res = await fetch(`${baseUrl}${path}`);
+      const res = await sidecarFetch(`${baseUrl}${path}`);
       const json = (await res.json()) as Record<string, unknown>;
       if (!res.ok) {
         const msg = (json.error_message as string) || `HTTP ${res.status}`;
@@ -218,39 +376,48 @@ export class SidecarError extends Error {
  * 3. If neither works, spawn a new sidecar process.
  */
 export async function ensureRunning(dbPath: string): Promise<Conn> {
+  sidecarLog("info", `ensureRunning called (db=${dbPath})`);
+
   // 1. In-memory: reuse if /health still OK
   if (_conn) {
     try {
       await _conn.get("/health");
+      sidecarLog("info", "reusing in-memory sidecar connection");
       return _conn;
-    } catch {
+    } catch (err) {
+      sidecarLog("warn", "in-memory sidecar connection is stale; reconnecting", errToString(err));
       _conn = null;
     }
   }
 
   // 2. Portfile discovery
   const pf = portfilePath(dbPath);
+  sidecarLog("info", `checking sidecar portfile at ${pf}`);
   const pfData = await readPortfile(pf);
   if (pfData) {
     const host = (pfData.host as string) ?? "127.0.0.1";
     const port = pfData.port as number;
     const token = (pfData.token as string | null) ?? null;
     if (typeof port === "number" && port > 0) {
-      const baseUrl = `http://${host}:${port}`;
+      const baseUrl = makeBaseUrl(host, port);
       try {
-        const res = await fetch(`${baseUrl}/health`);
+        const res = await sidecarFetch(`${baseUrl}/health`);
         const json = (await res.json()) as Record<string, unknown>;
         if (res.ok && json.ok === true) {
+          sidecarLog("info", `reusing sidecar from portfile (${baseUrl})`);
           _conn = makeConn(baseUrl, token);
           return _conn;
         }
-      } catch {
+        sidecarLog("warn", `portfile sidecar not healthy (${baseUrl})`, json);
+      } catch (err) {
+        sidecarLog("warn", `portfile sidecar health check failed (${baseUrl})`, errToString(err));
         // portfile stale — fall through to spawn
       }
     }
   }
 
   // 3. Spawn
+  sidecarLog("info", "spawning new sidecar process");
   return _spawnSidecar(dbPath);
 }
 
@@ -277,35 +444,82 @@ async function _spawnSidecar(dbPath: string): Promise<Conn> {
     "auto",
   ];
 
+  const expectedSidecarPath = await resolveExpectedSidecarPathForLogs();
+  if (expectedSidecarPath) {
+    const expectedExists = await exists(expectedSidecarPath).catch(() => false);
+    sidecarLog(
+      "info",
+      `resolved sidecar path candidate: ${expectedSidecarPath} (exists=${expectedExists})`
+    );
+  } else {
+    sidecarLog("warn", "could not resolve sidecar resource path candidate");
+  }
+
   const command = Command.sidecar(SIDECAR_PROGRAM, sidecarArgs);
-  const firstJsonPromise = _readFirstJsonFromCommand(command);
+  const commandDebug = command as unknown as {
+    program?: string;
+    args?: string[];
+    options?: { cwd?: string };
+  };
+  sidecarLog("info", "spawn config", {
+    at: new Date().toISOString(),
+    program: commandDebug.program ?? SIDECAR_PROGRAM,
+    args: commandDebug.args ?? sidecarArgs,
+    cwd: commandDebug.options?.cwd ?? null,
+    dbPath,
+  });
+
+  command.stderr.on("data", (chunk: string) => {
+    const stderrLine = chunk.trim();
+    if (stderrLine) sidecarLog("warn", "sidecar stderr", stderrLine);
+  });
+
+  const firstJsonPromise = _readFirstJsonFromCommand(command, SIDECAR_STARTUP_JSON_TIMEOUT_MS);
 
   let child: Child;
+  const spawnStartedAt = Date.now();
   try {
     child = await command.spawn();
   } catch (err) {
+    sidecarLog("error", "sidecar spawn failed", errToString(err));
     throw new SidecarError(`Sidecar process error: ${String(err)}`);
   }
   _spawnedChild = child;
+  sidecarLog("info", `sidecar spawned (pid=${child.pid}) after ${Date.now() - spawnStartedAt}ms`);
 
   const started = await firstJsonPromise;
+  sidecarLog("info", "sidecar startup JSON", started);
 
   const host = (started.host as string) ?? "127.0.0.1";
   const port = started.port as number;
   if (!Number.isFinite(port) || port <= 0) {
+    sidecarLog("error", "startup JSON missing a valid port", started);
     throw new SidecarError("Sidecar startup payload missing valid port");
   }
 
-  const baseUrl = `http://${host}:${port}`;
-  const healthy = await pollHealth(baseUrl);
+  const baseUrl = makeBaseUrl(host, port);
+  sidecarLog("info", `polling sidecar health on ${baseUrl}/health`, {
+    timeoutMs: SIDECAR_HEALTH_TIMEOUT_MS,
+    initialDelayMs: SIDECAR_HEALTH_INITIAL_DELAY_MS,
+    intervalMs: SIDECAR_HEALTH_POLL_INTERVAL_MS,
+  });
+
+  const healthy = await pollHealth(baseUrl, {
+    maxMs: SIDECAR_HEALTH_TIMEOUT_MS,
+    initialDelayMs: SIDECAR_HEALTH_INITIAL_DELAY_MS,
+    intervalMs: SIDECAR_HEALTH_POLL_INTERVAL_MS,
+  });
   if (!healthy) {
-    throw new SidecarError("Sidecar did not become healthy within timeout");
+    throw new SidecarError(
+      `Sidecar did not become healthy within timeout (${SIDECAR_HEALTH_TIMEOUT_MS}ms)`
+    );
   }
 
   // Read token from portfile (authoritative source)
   const pf = portfilePath(dbPath);
   const pfData = await readPortfile(pf);
   const token = pfData ? ((pfData.token as string | null) ?? null) : null;
+  sidecarLog("info", `sidecar healthy at ${baseUrl} (token=${token ? "present" : "absent"})`);
 
   _conn = makeConn(baseUrl, token);
   return _conn;
@@ -315,14 +529,22 @@ async function _spawnSidecar(dbPath: string): Promise<Conn> {
 function _readFirstJsonFromCommand(command: {
   stdout: { on(event: "data", cb: (chunk: string) => void): void };
   on(event: "error", cb: (err: unknown) => void): void;
-}): Promise<Record<string, unknown>> {
+}, timeoutMs: number): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
     let buffer = "";
     let depth = 0;
     let started = false;
+    sidecarLog("info", `waiting for sidecar startup JSON (timeout=${timeoutMs}ms)`);
     const timer = setTimeout(
-      () => reject(new SidecarError("Timeout waiting for sidecar startup JSON")),
-      12000
+      () => {
+        sidecarLog(
+          "error",
+          "timeout waiting for startup JSON",
+          buffer.trim().slice(0, 800)
+        );
+        reject(new SidecarError("Timeout waiting for sidecar startup JSON"));
+      },
+      timeoutMs
     );
 
     command.stdout.on("data", (chunk: string) => {
@@ -336,8 +558,14 @@ function _readFirstJsonFromCommand(command: {
           if (started && depth === 0) {
             clearTimeout(timer);
             try {
-              resolve(JSON.parse(buffer.trim()) as Record<string, unknown>);
+              const parsed = JSON.parse(buffer.trim()) as Record<string, unknown>;
+              sidecarLog("info", "startup JSON received");
+              resolve(parsed);
             } catch (e) {
+              sidecarLog("error", "failed parsing startup JSON", {
+                error: errToString(e),
+                raw: buffer.trim().slice(0, 800),
+              });
               reject(new SidecarError(`Failed to parse sidecar startup JSON: ${e}`));
             }
             return;
@@ -348,6 +576,7 @@ function _readFirstJsonFromCommand(command: {
 
     command.on("error", (err: unknown) => {
       clearTimeout(timer);
+      sidecarLog("error", "sidecar command emitted error before healthy", errToString(err));
       reject(new SidecarError(`Sidecar process error: ${String(err)}`));
     });
   });
