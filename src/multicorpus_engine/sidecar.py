@@ -75,12 +75,27 @@ def _pid_is_alive(pid: int) -> bool:
         return False
     try:
         os.kill(pid, 0)
+    except (OverflowError, ValueError):
+        # Invalid/stale PID value in portfile.
+        return False
     except ProcessLookupError:
         return False
     except PermissionError:
         return True
     except OSError:
         return False
+    except SystemError as exc:
+        # Windows can occasionally surface SystemError from os.kill(pid, 0)
+        # with an underlying WinError 87; treat as stale/non-alive so serve
+        # can continue instead of aborting startup.
+        if os.name == "nt":
+            logger.warning(
+                "PID liveness check raised SystemError on Windows (pid=%s): %s",
+                pid,
+                exc,
+            )
+            return False
+        raise
     return True
 
 

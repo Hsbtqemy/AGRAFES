@@ -237,6 +237,17 @@ async function readPortfile(portfile: string): Promise<Record<string, unknown> |
   }
 }
 
+function parseStartupPort(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return Math.trunc(value);
+  }
+  if (typeof value === "string") {
+    const n = Number(value.trim());
+    if (Number.isFinite(n) && n > 0) return Math.trunc(n);
+  }
+  return null;
+}
+
 interface PollHealthOptions {
   maxMs?: number;
   initialDelayMs?: number;
@@ -461,8 +472,9 @@ async function _spawnSidecar(dbPath: string): Promise<Conn> {
     args?: string[];
     options?: { cwd?: string };
   };
+  const spawnRequestedAtMs = Date.now();
   sidecarLog("info", "spawn config", {
-    at: new Date().toISOString(),
+    at: new Date(spawnRequestedAtMs).toISOString(),
     program: commandDebug.program ?? SIDECAR_PROGRAM,
     args: commandDebug.args ?? sidecarArgs,
     cwd: commandDebug.options?.cwd ?? null,
@@ -485,15 +497,23 @@ async function _spawnSidecar(dbPath: string): Promise<Conn> {
     throw new SidecarError(`Sidecar process error: ${String(err)}`);
   }
   _spawnedChild = child;
+  command.on("close", (terminated) => {
+    sidecarLog("warn", "sidecar process closed", {
+      pid: child.pid,
+      code: terminated.code,
+      signal: terminated.signal,
+      closedAt: new Date().toISOString(),
+    });
+  });
   sidecarLog("info", `sidecar spawned (pid=${child.pid}) after ${Date.now() - spawnStartedAt}ms`);
 
   const started = await firstJsonPromise;
-  sidecarLog("info", "sidecar startup JSON", started);
+  sidecarLog("info", "startup payload selected", started);
 
   const host = (started.host as string) ?? "127.0.0.1";
-  const port = started.port as number;
-  if (!Number.isFinite(port) || port <= 0) {
-    sidecarLog("error", "startup JSON missing a valid port", started);
+  const port = parseStartupPort(started.port);
+  if (port === null) {
+    sidecarLog("error", "startup payload rejected (invalid port)", started);
     throw new SidecarError("Sidecar startup payload missing valid port");
   }
 
@@ -529,47 +549,87 @@ async function _spawnSidecar(dbPath: string): Promise<Conn> {
 function _readFirstJsonFromCommand(command: {
   stdout: { on(event: "data", cb: (chunk: string) => void): void };
   on(event: "error", cb: (err: unknown) => void): void;
+  on(event: "close", cb: (payload: { code: number | null; signal: number | null }) => void): void;
 }, timeoutMs: number): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
-    let buffer = "";
+    let rawBuffer = "";
+    let currentJson = "";
     let depth = 0;
-    let started = false;
-    sidecarLog("info", `waiting for sidecar startup JSON (timeout=${timeoutMs}ms)`);
+    let seenCandidates = 0;
+    let lastCandidate: Record<string, unknown> | null = null;
+    let resolved = false;
+    const waitStartedAtMs = Date.now();
+    const waitDeadlineAtMs = waitStartedAtMs + timeoutMs;
+    sidecarLog("info", "waiting for sidecar startup JSON", {
+      timeoutMs,
+      startedAt: new Date(waitStartedAtMs).toISOString(),
+      deadlineAt: new Date(waitDeadlineAtMs).toISOString(),
+    });
+
+    const tryResolveCandidate = (rawJson: string): void => {
+      if (resolved) return;
+      try {
+        const candidate = JSON.parse(rawJson) as Record<string, unknown>;
+        seenCandidates += 1;
+        lastCandidate = candidate;
+        sidecarLog("info", "startup payload candidate", candidate);
+
+        const port = parseStartupPort(candidate.port);
+        if (port === null) {
+          sidecarLog("warn", "startup payload rejected (invalid port)", candidate);
+          return;
+        }
+
+        candidate.port = port;
+        resolved = true;
+        clearTimeout(timer);
+        resolve(candidate);
+      } catch (e) {
+        sidecarLog("warn", "ignoring unparsable startup JSON candidate", {
+          error: errToString(e),
+          raw: rawJson.slice(0, 800),
+        });
+      }
+    };
+
     const timer = setTimeout(
       () => {
         sidecarLog(
           "error",
-          "timeout waiting for startup JSON",
-          buffer.trim().slice(0, 800)
+          "timeout waiting for startup JSON with valid port",
+          {
+            seenCandidates,
+            lastCandidate,
+            rawPreview: rawBuffer.trim().slice(0, 800),
+            startedAt: new Date(waitStartedAtMs).toISOString(),
+            timedOutAt: new Date().toISOString(),
+            deadlineAt: new Date(waitDeadlineAtMs).toISOString(),
+            elapsedMs: Date.now() - waitStartedAtMs,
+          }
         );
-        reject(new SidecarError("Timeout waiting for sidecar startup JSON"));
+        reject(new SidecarError("Timeout waiting for sidecar startup JSON with valid port"));
       },
       timeoutMs
     );
 
     command.stdout.on("data", (chunk: string) => {
-      buffer += chunk;
+      rawBuffer += chunk;
       for (const ch of chunk) {
         if (ch === "{") {
+          if (depth === 0) currentJson = "{";
+          else currentJson += ch;
           depth += 1;
-          started = true;
         } else if (ch === "}") {
+          if (depth <= 0) continue;
+          currentJson += ch;
           depth -= 1;
-          if (started && depth === 0) {
-            clearTimeout(timer);
-            try {
-              const parsed = JSON.parse(buffer.trim()) as Record<string, unknown>;
-              sidecarLog("info", "startup JSON received");
-              resolve(parsed);
-            } catch (e) {
-              sidecarLog("error", "failed parsing startup JSON", {
-                error: errToString(e),
-                raw: buffer.trim().slice(0, 800),
-              });
-              reject(new SidecarError(`Failed to parse sidecar startup JSON: ${e}`));
-            }
-            return;
+          if (depth === 0 && currentJson.trim().length > 0) {
+            tryResolveCandidate(currentJson.trim());
+            currentJson = "";
+            if (resolved) return;
           }
+        } else if (depth > 0) {
+          currentJson += ch;
         }
       }
     });
@@ -578,6 +638,16 @@ function _readFirstJsonFromCommand(command: {
       clearTimeout(timer);
       sidecarLog("error", "sidecar command emitted error before healthy", errToString(err));
       reject(new SidecarError(`Sidecar process error: ${String(err)}`));
+    });
+
+    command.on("close", (payload) => {
+      sidecarLog("warn", "sidecar command close event while waiting for startup payload", {
+        code: payload.code,
+        signal: payload.signal,
+        seenCandidates,
+        lastCandidate,
+        closedAt: new Date().toISOString(),
+      });
     });
   });
 }
