@@ -384,6 +384,8 @@ export interface Conn {
 let _conn: Conn | null = null;
 let _spawnedChild: Child | null = null;
 const SIDECAR_PROGRAM = "multicorpus";
+const SPAWN_TOKEN_PORTFILE_RETRY_COUNT = 8;
+const SPAWN_TOKEN_PORTFILE_RETRY_DELAY_MS = 150;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -396,6 +398,12 @@ function parseStartupPort(value: unknown): number | null {
     if (Number.isFinite(n) && n > 0) return Math.trunc(n);
   }
   return null;
+}
+
+function parseToken(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 function portfilePath(dbPath: string): string {
@@ -503,13 +511,24 @@ export async function ensureRunning(dbPath: string): Promise<Conn> {
   if (pfData) {
     const host = (pfData.host as string) ?? "127.0.0.1";
     const port = pfData.port as number;
-    const token = (pfData.token as string | null) ?? null;
+    const token = parseToken(pfData.token);
     if (typeof port === "number" && port > 0) {
       const baseUrl = `http://${host}:${port}`;
       try {
         const res = await fetch(`${baseUrl}/health`);
         const json = (await res.json()) as Record<string, unknown>;
         if (res.ok && json.ok === true) {
+          if (token === null && json.token_required === true) {
+            console.warn("[prep-sidecar] portfile connection has no token while sidecar requires token", {
+              baseUrl,
+              tokenPresent: false,
+            });
+          }
+          console.info("[prep-sidecar] building connection from portfile", {
+            baseUrl,
+            tokenPresent: token !== null,
+            tokenLength: token?.length ?? 0,
+          });
           _conn = makeConn(baseUrl, token);
           return _conn;
         }
@@ -556,9 +575,37 @@ async function _spawnSidecar(dbPath: string): Promise<Conn> {
     throw new SidecarError("Sidecar did not become healthy within timeout");
   }
 
+  const startupToken = parseToken(started.token);
   const pf = portfilePath(dbPath);
-  const pfData = await readPortfile(pf);
-  const token = pfData ? ((pfData.token as string | null) ?? null) : null;
+  let pfData = await readPortfile(pf);
+  let portfileToken = pfData ? parseToken(pfData.token) : null;
+  if (startupToken === null && portfileToken === null) {
+    for (let i = 0; i < SPAWN_TOKEN_PORTFILE_RETRY_COUNT; i += 1) {
+      await sleep(SPAWN_TOKEN_PORTFILE_RETRY_DELAY_MS);
+      pfData = await readPortfile(pf);
+      portfileToken = pfData ? parseToken(pfData.token) : null;
+      if (portfileToken !== null) break;
+    }
+  }
+  const token = startupToken ?? portfileToken ?? null;
+
+  const tokenSource =
+    startupToken !== null ? "startup_payload" :
+    portfileToken !== null ? "portfile" :
+    "missing";
+  if (tokenSource === "missing") {
+    console.warn("[prep-sidecar] token missing after startup + portfile retries", {
+      baseUrl,
+      retryCount: SPAWN_TOKEN_PORTFILE_RETRY_COUNT,
+      retryDelayMs: SPAWN_TOKEN_PORTFILE_RETRY_DELAY_MS,
+    });
+  }
+  console.info("[prep-sidecar] building connection after spawn", {
+    baseUrl,
+    tokenSource,
+    tokenPresent: token !== null,
+    tokenLength: token?.length ?? 0,
+  });
 
   _conn = makeConn(baseUrl, token);
   return _conn;
