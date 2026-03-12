@@ -146,12 +146,13 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           mkdir -p dist-shell
-          # App bundle / DMG (macOS)
-          find tauri-shell/src-tauri/target/release/bundle -name "*.app" -o -name "*.dmg" \
+          # Release bundles (avoid uploading .app internals as individual assets)
+          find tauri-shell/src-tauri/target/release/bundle -name "*.dmg" \
                -o -name "*.AppImage" -o -name "*.deb" 2>/dev/null | \
             xargs -I{} cp -r {} dist-shell/ 2>/dev/null || true
-          # Sidecar manifest
-          cp tauri-shell/src-tauri/binaries/sidecar-manifest.json dist-shell/ 2>/dev/null || true
+          # Sidecar manifest (suffix per OS to avoid duplicate release asset names)
+          cp tauri-shell/src-tauri/binaries/sidecar-manifest.json \
+            "dist-shell/sidecar-manifest-${{ matrix.artifact_suffix }}.json" 2>/dev/null || true
           ls -lh dist-shell/ || true
 
       - name: Collect build artifacts (Windows)
@@ -162,7 +163,7 @@ jobs:
           Get-ChildItem -Recurse tauri-shell/src-tauri/target/release/bundle `
             -Include "*.exe","*.msi" -ErrorAction SilentlyContinue |
             ForEach-Object { Copy-Item $_.FullName dist-shell/ }
-          Copy-Item tauri-shell/src-tauri/binaries/sidecar-manifest.json dist-shell/ -ErrorAction SilentlyContinue
+          Copy-Item tauri-shell/src-tauri/binaries/sidecar-manifest.json "dist-shell/sidecar-manifest-${{ matrix.artifact_suffix }}.json" -ErrorAction SilentlyContinue
           Get-ChildItem dist-shell/
 
       # ── 10. Upload artifacts ──────────────────────────────────────────────────
@@ -196,9 +197,49 @@ jobs:
       - name: List release artifacts
         run: find release-shell-artifacts -type f | sort
 
+      - name: Prepare release assets (filtered + unique basenames)
+        run: |
+          mkdir -p release-shell-assets
+          python3 - <<'PY'
+          from pathlib import Path
+          import shutil
+
+          src = Path("release-shell-artifacts")
+          dst = Path("release-shell-assets")
+          allowed_suffixes = (".exe", ".msi", ".dmg", ".deb", ".AppImage")
+
+          selected = []
+          for p in src.rglob("*"):
+              if not p.is_file():
+                  continue
+              name = p.name
+              if name.startswith("sidecar-manifest-") and name.endswith(".json"):
+                  selected.append(p)
+                  continue
+              if name.endswith(allowed_suffixes):
+                  selected.append(p)
+
+          by_name = {}
+          for p in selected:
+              by_name[p.name] = by_name.get(p.name, 0) + 1
+          duplicates = sorted(name for name, count in by_name.items() if count > 1)
+          if duplicates:
+              raise SystemExit(
+                  "Duplicate release asset basenames detected: " + ", ".join(duplicates)
+              )
+
+          for p in selected:
+              shutil.copy2(p, dst / p.name)
+
+          print("Prepared release assets:")
+          for p in sorted(dst.iterdir()):
+              print(f" - {p.name}")
+          PY
+          ls -lh release-shell-assets
+
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: release-shell-artifacts/**/*
+          files: release-shell-assets/*
           fail_on_unmatched_files: false
           tag_name: ${{ github.ref_name }}
