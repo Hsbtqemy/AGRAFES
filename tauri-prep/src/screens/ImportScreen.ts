@@ -167,10 +167,10 @@ export class ImportScreen {
       <!-- Footer sticky -->
       <div class="imp-footer-bar">
         <div class="imp-footer-meta">
-          <span class="hint" style="margin:0">Sélectionnez des fichiers puis lancez l'import.</span>
+          <span class="hint" style="margin:0">Importe tous les fichiers en attente.</span>
         </div>
         <div class="btn-row">
-          <button id="imp-import-btn" class="btn btn-primary" disabled>⬆ Importer le lot</button>
+          <button id="imp-import-btn" class="btn btn-primary" title="Importer tous les fichiers en attente" aria-label="Importer tous les fichiers en attente" disabled>⬆ Importer</button>
         </div>
       </div>
     `;
