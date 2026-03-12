@@ -18,8 +18,8 @@ $RepoRoot    = (Resolve-Path (Join-Path $ScriptDir ".." "..")).Path
 $BuildScript = Join-Path $RepoRoot "scripts\build_sidecar.py"
 $Preset      = "shell"
 
-Write-Host "==> Building sidecar (preset=$Preset) ..."
-python $BuildScript --preset $Preset
+Write-Host "==> Building sidecar (preset=$Preset, format=onefile) ..."
+python $BuildScript --preset $Preset --format onefile
 
 # ── Read manifest ──────────────────────────────────────────────────────────────
 $ManifestPath = Join-Path $RepoRoot "tauri-shell\src-tauri\binaries\sidecar-manifest.json"

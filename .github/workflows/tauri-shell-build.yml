@@ -31,7 +31,7 @@ jobs:
             sidecar_format: onedir
             artifact_suffix: linux
           - os: windows-latest
-            sidecar_format: onedir
+            sidecar_format: onefile
             artifact_suffix: windows
 
     steps:
@@ -47,7 +47,10 @@ jobs:
         with:
           node-version: "20"
           cache: "npm"
-          cache-dependency-path: tauri-shell/package-lock.json
+          cache-dependency-path: |
+            tauri-app/package-lock.json
+            tauri-prep/package-lock.json
+            tauri-shell/package-lock.json
 
       # ── 3. Rust stable ───────────────────────────────────────────────────────
       - name: Set up Rust stable
@@ -112,11 +115,24 @@ jobs:
           }
 
       # ── 7. npm install ────────────────────────────────────────────────────────
-      - name: Install npm dependencies (tauri-shell)
-        run: npm --prefix tauri-shell ci --prefer-offline
+      - name: Install npm dependencies (shared apps + tauri-shell)
+        run: |
+          npm --prefix tauri-app ci --prefer-offline
+          npm --prefix tauri-prep ci --prefer-offline
+          npm --prefix tauri-shell ci --prefer-offline
 
       # ── 8. Tauri build ────────────────────────────────────────────────────────
-      - name: Build Tauri Shell (unsigned)
+      - name: Build Tauri Shell Windows NSIS (unsigned)
+        if: runner.os == 'Windows'
+        env:
+          # Disable code signing — build unsigned
+          TAURI_SIGNING_PRIVATE_KEY: ""
+          APPLE_SIGNING_IDENTITY: "-"
+          CI: "true"
+        run: npm --prefix tauri-shell run tauri:build:windows
+
+      - name: Build Tauri Shell non-Windows (unsigned)
+        if: runner.os != 'Windows'
         env:
           # Disable code signing — build unsigned
           TAURI_SIGNING_PRIVATE_KEY: ""
