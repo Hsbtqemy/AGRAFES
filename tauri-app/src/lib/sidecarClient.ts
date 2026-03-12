@@ -125,6 +125,9 @@ const SIDECAR_HEALTH_TIMEOUT_MS = IS_WINDOWS_RUNTIME ? 45000 : 15000;
 const SIDECAR_HEALTH_INITIAL_DELAY_MS = IS_WINDOWS_RUNTIME ? 1200 : 0;
 const SIDECAR_HEALTH_POLL_INTERVAL_MS = 350;
 const SIDECAR_STARTUP_JSON_TIMEOUT_MS = IS_WINDOWS_RUNTIME ? 20000 : 12000;
+type LoopbackHttpBackendMode = "auto" | "global_this_only" | "tauri_only";
+const SIDECAR_LOOPBACK_HTTP_BACKEND_MODE: LoopbackHttpBackendMode = "auto";
+const SIDECAR_GLOBAL_FETCH_TIMEOUT_MS = IS_WINDOWS_RUNTIME ? 1200 : 1500;
 
 type SidecarLogLevel = "info" | "warn" | "error";
 type SidecarFetchInit = Parameters<typeof tauriFetch>[1] & RequestInit;
@@ -199,20 +202,102 @@ export function isLoopbackUrl(url: string): boolean {
 }
 
 async function sidecarFetch(url: string, init?: SidecarFetchInit): Promise<Response> {
-  if (isLoopbackUrl(url)) {
+  const method = (init?.method ?? "GET").toUpperCase();
+  const loopback = isLoopbackUrl(url);
+  const mode = loopback ? SIDECAR_LOOPBACK_HTTP_BACKEND_MODE : "tauri_only";
+
+  if (mode !== "tauri_only") {
     if (typeof globalThis.fetch === "function") {
+      sidecarLog("info", "sidecarFetch loopback attempt via globalThis.fetch", {
+        method,
+        url,
+        mode,
+        timeoutMs: SIDECAR_GLOBAL_FETCH_TIMEOUT_MS,
+      });
+      let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+      let abortController: AbortController | null = null;
+      let didTimeout = false;
       try {
-        return await globalThis.fetch(url, init);
+        if (typeof AbortController !== "undefined") {
+          abortController = new AbortController();
+          timeoutHandle = setTimeout(() => {
+            didTimeout = true;
+            abortController?.abort();
+          }, SIDECAR_GLOBAL_FETCH_TIMEOUT_MS);
+        }
+        const response = await globalThis.fetch(url, {
+          ...init,
+          signal: abortController?.signal ?? init?.signal,
+        });
+        sidecarLog("info", "sidecarFetch loopback globalThis.fetch success", {
+          method,
+          url,
+          mode,
+          status: response.status,
+          ok: response.ok,
+        });
+        return response;
       } catch (err) {
-        sidecarLog(
-          "warn",
-          `loopback fetch via globalThis.fetch failed for ${url}; fallback to tauri fetch`,
-          errToString(err)
-        );
+        sidecarLog("warn", "sidecarFetch loopback globalThis.fetch failed", {
+          method,
+          url,
+          mode,
+          timedOut: didTimeout,
+          error: errToString(err),
+        });
+        if (mode === "global_this_only") throw err;
+      } finally {
+        if (timeoutHandle) clearTimeout(timeoutHandle);
+      }
+    } else {
+      sidecarLog("warn", "sidecarFetch loopback globalThis.fetch unavailable", { method, url, mode });
+      if (mode === "global_this_only") {
+        throw new Error("globalThis.fetch unavailable in global_this_only mode");
       }
     }
+
+    sidecarLog("info", "sidecarFetch loopback fallback attempt via tauriFetch", { method, url, mode });
+    try {
+      const response = await tauriFetch(url, init);
+      sidecarLog("info", "sidecarFetch loopback tauriFetch success", {
+        method,
+        url,
+        mode,
+        status: response.status,
+        ok: response.ok,
+      });
+      return response;
+    } catch (err) {
+      sidecarLog("error", "sidecarFetch loopback tauriFetch failed", {
+        method,
+        url,
+        mode,
+        error: errToString(err),
+      });
+      throw err;
+    }
   }
-  return tauriFetch(url, init);
+
+  sidecarLog("info", "sidecarFetch non-loopback attempt via tauriFetch", { method, url, mode });
+  try {
+    const response = await tauriFetch(url, init);
+    sidecarLog("info", "sidecarFetch non-loopback tauriFetch success", {
+      method,
+      url,
+      mode,
+      status: response.status,
+      ok: response.ok,
+    });
+    return response;
+  } catch (err) {
+    sidecarLog("error", "sidecarFetch non-loopback tauriFetch failed", {
+      method,
+      url,
+      mode,
+      error: errToString(err),
+    });
+    throw err;
+  }
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -258,11 +343,24 @@ async function pollHealth(baseUrl: string, options: PollHealthOptions = {}): Pro
   const maxMs = options.maxMs ?? SIDECAR_HEALTH_TIMEOUT_MS;
   const initialDelayMs = options.initialDelayMs ?? SIDECAR_HEALTH_INITIAL_DELAY_MS;
   const intervalMs = options.intervalMs ?? SIDECAR_HEALTH_POLL_INTERVAL_MS;
+  const healthUrl = `${baseUrl}/health`;
+  const pollStartedAt = Date.now();
+
+  sidecarLog("info", "health polling started", {
+    baseUrl,
+    healthUrl,
+    loopbackBackendMode: SIDECAR_LOOPBACK_HTTP_BACKEND_MODE,
+    globalFetchTimeoutMs: SIDECAR_GLOBAL_FETCH_TIMEOUT_MS,
+    timeoutMs: maxMs,
+    initialDelayMs,
+    intervalMs,
+    startedAt: new Date(pollStartedAt).toISOString(),
+  });
 
   if (initialDelayMs > 0) {
     sidecarLog(
       "info",
-      `health polling initial delay ${initialDelayMs}ms before first ping (${baseUrl}/health)`
+      `health polling initial delay ${initialDelayMs}ms before first ping (${healthUrl})`
     );
     await sleep(initialDelayMs);
   }
@@ -274,45 +372,80 @@ async function pollHealth(baseUrl: string, options: PollHealthOptions = {}): Pro
   while (Date.now() < deadline) {
     attempts += 1;
     const attemptStarted = Date.now();
+    sidecarLog("info", "health polling attempt started", {
+      baseUrl,
+      healthUrl,
+      attempt: attempts,
+      attemptStartedAt: new Date(attemptStarted).toISOString(),
+      elapsedSincePollStartMs: attemptStarted - pollStartedAt,
+    });
     try {
-      const res = await sidecarFetch(`${baseUrl}/health`);
+      const res = await sidecarFetch(healthUrl);
       const elapsedMs = Date.now() - attemptStarted;
+      const totalElapsedMs = Date.now() - pollStartedAt;
 
       let json: Record<string, unknown> | null = null;
       try {
         json = (await res.json()) as Record<string, unknown>;
       } catch (jsonErr) {
         lastError = `attempt ${attempts}: invalid JSON (${errToString(jsonErr)})`;
-        sidecarLog("warn", `${baseUrl}/health attempt #${attempts} invalid JSON (${elapsedMs}ms)`);
+        sidecarLog("warn", "health polling attempt invalid JSON", {
+          baseUrl,
+          healthUrl,
+          attempt: attempts,
+          elapsedMs,
+          totalElapsedMs,
+          error: errToString(jsonErr),
+        });
       }
 
       if (res.ok) {
         if (json && (json.ok === true || json.status === "ok")) {
-          sidecarLog("info", `${baseUrl}/health attempt #${attempts} OK (${elapsedMs}ms)`);
+          sidecarLog("info", "health polling attempt OK", {
+            baseUrl,
+            healthUrl,
+            attempt: attempts,
+            status: res.status,
+            elapsedMs,
+            totalElapsedMs,
+            payload: json,
+          });
           return true;
         }
         lastError = `attempt ${attempts}: HTTP ${res.status} but payload is not healthy`;
-        sidecarLog(
-          "warn",
-          `${baseUrl}/health attempt #${attempts} not healthy (${elapsedMs}ms)`,
-          json
-        );
+        sidecarLog("warn", "health polling attempt payload not healthy", {
+          baseUrl,
+          healthUrl,
+          attempt: attempts,
+          status: res.status,
+          elapsedMs,
+          totalElapsedMs,
+          payload: json,
+        });
       } else {
         lastError = `attempt ${attempts}: HTTP ${res.status}`;
-        sidecarLog(
-          "warn",
-          `${baseUrl}/health attempt #${attempts} HTTP ${res.status} (${elapsedMs}ms)`,
-          json
-        );
+        sidecarLog("warn", "health polling attempt HTTP error", {
+          baseUrl,
+          healthUrl,
+          attempt: attempts,
+          status: res.status,
+          elapsedMs,
+          totalElapsedMs,
+          payload: json,
+        });
       }
     } catch (err) {
       const elapsedMs = Date.now() - attemptStarted;
+      const totalElapsedMs = Date.now() - pollStartedAt;
       lastError = `attempt ${attempts}: ${errToString(err)}`;
-      sidecarLog(
-        "warn",
-        `${baseUrl}/health attempt #${attempts} failed (${elapsedMs}ms)`,
-        errToString(err)
-      );
+      sidecarLog("warn", "health polling attempt failed", {
+        baseUrl,
+        healthUrl,
+        attempt: attempts,
+        elapsedMs,
+        totalElapsedMs,
+        error: errToString(err),
+      });
     }
 
     const remaining = deadline - Date.now();
@@ -322,7 +455,7 @@ async function pollHealth(baseUrl: string, options: PollHealthOptions = {}): Pro
 
   sidecarLog(
     "error",
-    `health timeout after ${maxMs}ms (${attempts} attempts) for ${baseUrl}/health; last error: ${lastError || "(none)"}`
+    `health timeout after ${maxMs}ms (${attempts} attempts) for ${healthUrl}; last error: ${lastError || "(none)"}`
   );
   return false;
 }
