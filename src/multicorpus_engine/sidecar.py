@@ -445,6 +445,12 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             self._handle_jobs_list()
         elif path.startswith("/jobs/"):
             self._handle_job_get(path)
+        elif path == "/curate/exceptions":
+            qs = parse_qs(urlparse(self.path).query)
+            doc_id_str = qs.get("doc_id", [None])[0]
+            self._handle_curate_exceptions_list(
+                {"doc_id": int(doc_id_str)} if doc_id_str else {}
+            )
         else:
             self._send_error(
                 f"Unknown route: {path}",
@@ -500,6 +506,12 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 self._handle_curate(body)
             elif path == "/curate/preview":
                 self._handle_curate_preview(body)
+            elif path == "/curate/exceptions":
+                self._handle_curate_exceptions_list(body)
+            elif path == "/curate/exceptions/set":
+                self._handle_curate_exceptions_set(body)
+            elif path == "/curate/exceptions/delete":
+                self._handle_curate_exceptions_delete(body)
             elif path == "/align/audit":
                 self._handle_align_audit(body)
             elif path == "/align/quality":
@@ -1178,6 +1190,136 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             **stats,
         }))
 
+    def _handle_curate_exceptions_list(self, body: dict) -> None:
+        """Return all curation exceptions for a given doc_id (or all if absent).
+
+        Enriched for Level 8A: response now includes doc_id, doc_title and
+        unit_text (truncated to 200 chars) for each exception row, so the
+        admin panel can display useful context without extra queries.
+        """
+        doc_id = body.get("doc_id")
+        with self._lock():
+            conn = self._conn()
+            if doc_id is not None:
+                rows = conn.execute(
+                    """
+                    SELECT ce.id, ce.unit_id, ce.kind, ce.override_text, ce.note, ce.created_at,
+                           u.doc_id,
+                           COALESCE(d.title, '') AS doc_title,
+                           SUBSTR(u.text_norm, 1, 200)  AS unit_text
+                    FROM curation_exceptions ce
+                    JOIN units u    ON u.unit_id = ce.unit_id
+                    JOIN documents d ON d.doc_id  = u.doc_id
+                    WHERE u.doc_id = ?
+                    ORDER BY ce.unit_id
+                    """,
+                    (int(doc_id),),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT ce.id, ce.unit_id, ce.kind, ce.override_text, ce.note, ce.created_at,
+                           u.doc_id,
+                           COALESCE(d.title, '') AS doc_title,
+                           SUBSTR(u.text_norm, 1, 200)  AS unit_text
+                    FROM curation_exceptions ce
+                    JOIN units u    ON u.unit_id = ce.unit_id
+                    JOIN documents d ON d.doc_id  = u.doc_id
+                    ORDER BY u.doc_id, ce.unit_id
+                    """
+                ).fetchall()
+        exceptions = [
+            {
+                "id": row[0],
+                "unit_id": row[1],
+                "kind": row[2],
+                "override_text": row[3],
+                "note": row[4],
+                "created_at": row[5],
+                "doc_id": row[6],
+                "doc_title": row[7] or None,
+                "unit_text": row[8] or None,
+            }
+            for row in rows
+        ]
+        self._send_json(success_payload({"exceptions": exceptions, "count": len(exceptions)}))
+
+    def _handle_curate_exceptions_set(self, body: dict) -> None:
+        """Create or replace a curation exception for a unit_id.
+
+        Required fields: unit_id (int), kind ('ignore' | 'override')
+        When kind = 'override': override_text (str, non-empty) is required.
+        Optional: note (str)
+        """
+        unit_id = body.get("unit_id")
+        kind = body.get("kind")
+        if unit_id is None or kind not in ("ignore", "override"):
+            self._send_error(
+                "unit_id (int) and kind ('ignore'|'override') are required",
+                code=ERR_BAD_REQUEST,
+                http_status=400,
+            )
+            return
+        unit_id = int(unit_id)
+        override_text = body.get("override_text")
+        if kind == "override" and not override_text:
+            self._send_error(
+                "override_text is required when kind = 'override'",
+                code=ERR_BAD_REQUEST,
+                http_status=400,
+            )
+            return
+        note = body.get("note")
+        with self._lock():
+            conn = self._conn()
+            # Verify unit exists
+            row = conn.execute(
+                "SELECT unit_id FROM units WHERE unit_id = ?", (unit_id,)
+            ).fetchone()
+            if not row:
+                self._send_error(
+                    f"unit_id {unit_id} not found",
+                    code=ERR_NOT_FOUND,
+                    http_status=404,
+                )
+                return
+            conn.execute(
+                """
+                INSERT INTO curation_exceptions (unit_id, kind, override_text, note, created_at)
+                VALUES (?, ?, ?, ?, datetime('now'))
+                ON CONFLICT(unit_id) DO UPDATE SET
+                    kind = excluded.kind,
+                    override_text = excluded.override_text,
+                    note = excluded.note,
+                    created_at = excluded.created_at
+                """,
+                (unit_id, kind, override_text, note),
+            )
+            conn.commit()
+        self._send_json(success_payload({
+            "unit_id": unit_id,
+            "kind": kind,
+            "override_text": override_text,
+            "note": note,
+            "action": "set",
+        }))
+
+    def _handle_curate_exceptions_delete(self, body: dict) -> None:
+        """Delete the curation exception for a unit_id (if any)."""
+        unit_id = body.get("unit_id")
+        if unit_id is None:
+            self._send_error("unit_id is required", code=ERR_BAD_REQUEST, http_status=400)
+            return
+        unit_id = int(unit_id)
+        with self._lock():
+            conn = self._conn()
+            cur = conn.execute(
+                "DELETE FROM curation_exceptions WHERE unit_id = ?", (unit_id,)
+            )
+            conn.commit()
+            deleted = cur.rowcount
+        self._send_json(success_payload({"unit_id": unit_id, "deleted": deleted > 0}))
+
     def _handle_curate_preview(self, body: dict) -> None:
         """Read-only curation simulation — never writes to DB."""
         import re as _re
@@ -1195,6 +1337,18 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         limit_examples = int(body.get("limit_examples", 10))
         limit_examples = max(1, min(limit_examples, 50))
 
+        # Level 8C: optional forced unit.  When provided, this unit is always
+        # included in examples regardless of limit_examples, even if it:
+        #   - would be beyond the top-N modifications
+        #   - has a persistent 'ignore' exception (shown with preview_reason="forced_ignored")
+        #   - produces no diff at all (shown as "no change" inspection entry)
+        force_unit_id: int | None = body.get("force_unit_id")
+        if force_unit_id is not None:
+            try:
+                force_unit_id = int(force_unit_id)
+            except (TypeError, ValueError):
+                force_unit_id = None
+
         try:
             rules = rules_from_list(body.get("rules", []))
         except ValueError as exc:
@@ -1204,8 +1358,14 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         if not rules:
             self._send_json(success_payload({
                 "doc_id": doc_id,
-                "stats": {"units_total": 0, "units_changed": 0, "replacements_total": 0},
+                "stats": {
+                    "units_total": 0,
+                    "units_changed": 0,
+                    "replacements_total": 0,
+                    "units_exception_ignored": 0,
+                },
                 "examples": [],
+                "exceptions_active": 0,
                 "fts_stale": False,
             }))
             return
@@ -1215,28 +1375,143 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             (doc_id,),
         ).fetchall()
 
+        # Load persistent exceptions for this document (Level 7B).
+        # Map unit_id → {kind, override_text}
+        unit_ids_in_doc = [row[0] for row in rows]
+        exceptions_map: dict[int, dict] = {}
+        if unit_ids_in_doc:
+            placeholders = ",".join("?" * len(unit_ids_in_doc))
+            exc_rows = self._conn().execute(
+                f"SELECT unit_id, kind, override_text FROM curation_exceptions "
+                f"WHERE unit_id IN ({placeholders})",
+                unit_ids_in_doc,
+            ).fetchall()
+            for er in exc_rows:
+                exceptions_map[er[0]] = {"kind": er[1], "override_text": er[2]}
+
         units_total = len(rows)
         units_changed = 0
+        units_exception_ignored = 0
         replacements_total = 0
         examples: list[dict] = []
+        # Track whether force_unit_id was already injected (may happen naturally)
+        forced_unit_injected = False
 
-        for row in rows:
+        # Max chars for context_before / context_after to keep payload reasonable.
+        # Neighbouring units can be arbitrarily long (full paragraphs), so we trim.
+        _CTX_TRIM = 300
+
+        def _ctx(row_idx: int) -> tuple[str | None, str | None]:
+            cb = (rows[row_idx - 1][2] or "").strip()[:_CTX_TRIM] or None if row_idx > 0 else None
+            ca = (rows[row_idx + 1][2] or "").strip()[:_CTX_TRIM] or None if row_idx < len(rows) - 1 else None
+            return cb, ca
+
+        for row_idx, row in enumerate(rows):
+            unit_id = row[0]
             original = row[2] or ""
+            is_forced = (force_unit_id is not None and unit_id == force_unit_id)
+
+            # ── Persistent exception: ignore ────────────────────────────────
+            exc = exceptions_map.get(unit_id)
+            if exc and exc["kind"] == "ignore":
+                # Simulate what the rule engine would do (to know if unit would change).
+                # We count it as a change that is being suppressed, but do NOT include
+                # it in examples — the user explicitly never wants to see it again.
+                curated_sim = original
+                for rule in rules:
+                    curated_sim = _re.sub(rule.pattern, rule.replacement, curated_sim, flags=rule.flags)
+                if curated_sim != original:
+                    units_changed += 1
+                    units_exception_ignored += 1
+                # Level 8C: if this unit was explicitly requested, include it anyway
+                # with preview_reason="forced_ignored" so the UI can show it for inspection.
+                if is_forced and not forced_unit_injected:
+                    ctx_before, ctx_after = _ctx(row_idx)
+                    examples.append({
+                        "unit_id": unit_id,
+                        "external_id": row[1],
+                        "before": original,
+                        "after": curated_sim if curated_sim != original else original,
+                        "matched_rule_ids": [],
+                        "unit_index": row_idx,
+                        "context_before": ctx_before,
+                        "context_after": ctx_after,
+                        "is_exception_ignored": True,
+                        "preview_reason": "forced_ignored",
+                    })
+                    forced_unit_injected = True
+                continue
+
+            # ── Persistent exception: override ──────────────────────────────
+            if exc and exc["kind"] == "override":
+                override_text = exc["override_text"] or ""
+                if override_text != original:
+                    units_changed += 1
+                    # Use the regular limit guard, but bypass it for the forced unit
+                    if len(examples) < limit_examples or (is_forced and not forced_unit_injected):
+                        ctx_before, ctx_after = _ctx(row_idx)
+                        examples.append({
+                            "unit_id": unit_id,
+                            "external_id": row[1],
+                            "before": original,
+                            "after": override_text,
+                            "matched_rule_ids": [],
+                            "unit_index": row_idx,
+                            "context_before": ctx_before,
+                            "context_after": ctx_after,
+                            "is_exception_override": True,
+                            "preview_reason": "forced" if is_forced else "standard",
+                        })
+                        if is_forced:
+                            forced_unit_injected = True
+                continue
+
+            # ── Normal rule application ─────────────────────────────────────
             curated = original
             unit_reps = 0
-            for rule in rules:
-                curated, n = _re.subn(rule.pattern, rule.replacement, curated, flags=rule.flags)
-                unit_reps += n
+            matched_rule_ids: list[int] = []
+            for rule_idx, rule in enumerate(rules):
+                new_text, n = _re.subn(rule.pattern, rule.replacement, curated, flags=rule.flags)
+                if n > 0:
+                    unit_reps += n
+                    if rule_idx not in matched_rule_ids:
+                        matched_rule_ids.append(rule_idx)
+                curated = new_text
             if curated != original:
                 units_changed += 1
                 replacements_total += unit_reps
-                if len(examples) < limit_examples:
+                # Bypass limit guard for the explicitly forced unit
+                if len(examples) < limit_examples or (is_forced and not forced_unit_injected):
+                    ctx_before, ctx_after = _ctx(row_idx)
                     examples.append({
-                        "unit_id": row[0],
+                        "unit_id": unit_id,
                         "external_id": row[1],
                         "before": original,
                         "after": curated,
+                        "matched_rule_ids": matched_rule_ids,
+                        "unit_index": row_idx,
+                        "context_before": ctx_before,
+                        "context_after": ctx_after,
+                        "preview_reason": "forced" if is_forced else "standard",
                     })
+                    if is_forced:
+                        forced_unit_injected = True
+            elif is_forced and not forced_unit_injected:
+                # Unit was explicitly requested but produces no diff.
+                # Include it as an "no change" inspection entry so the UI can display it.
+                ctx_before, ctx_after = _ctx(row_idx)
+                examples.append({
+                    "unit_id": unit_id,
+                    "external_id": row[1],
+                    "before": original,
+                    "after": original,
+                    "matched_rule_ids": [],
+                    "unit_index": row_idx,
+                    "context_before": ctx_before,
+                    "context_after": ctx_after,
+                    "preview_reason": "forced_no_change",
+                })
+                forced_unit_injected = True
 
         self._send_json(success_payload({
             "doc_id": doc_id,
@@ -1244,8 +1519,11 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 "units_total": units_total,
                 "units_changed": units_changed,
                 "replacements_total": replacements_total,
+                "units_exception_ignored": units_exception_ignored,
             },
             "examples": examples,
+            "exceptions_active": len(exceptions_map),
+            "forced_unit_found": forced_unit_injected if force_unit_id is not None else None,
             "fts_stale": False,
         }))
 
@@ -1528,15 +1806,42 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 
         rules = rules_from_list(body.get("rules", []))
         doc_id = body.get("doc_id")
+
+        # Selective apply (Strategy B: all except ignored)
+        raw_skip = body.get("ignored_unit_ids", [])
+        skip_unit_ids: set[int] | None = None
+        if isinstance(raw_skip, list) and raw_skip:
+            skip_unit_ids = {int(uid) for uid in raw_skip
+                             if isinstance(uid, (int, float))}
+
+        # Manual overrides: {unit_id → user-supplied replacement text}
+        raw_overrides = body.get("manual_overrides", [])
+        manual_overrides: dict[int, str] | None = None
+        if isinstance(raw_overrides, list) and raw_overrides:
+            _parsed = {
+                int(item["unit_id"]): str(item["text"])
+                for item in raw_overrides
+                if isinstance(item, dict)
+                   and "unit_id" in item and "text" in item
+            }
+            if _parsed:
+                manual_overrides = _parsed
+
         with self._lock():
             if doc_id is not None:
-                reports = [curate_document(self._conn(), doc_id, rules)]
+                reports = [curate_document(self._conn(), doc_id, rules,
+                                           skip_unit_ids=skip_unit_ids,
+                                           manual_overrides=manual_overrides)]
             else:
-                reports = curate_all_documents(self._conn(), rules)
+                reports = curate_all_documents(self._conn(), rules,
+                                               skip_unit_ids=skip_unit_ids,
+                                               manual_overrides=manual_overrides)
         total_modified = sum(r.units_modified for r in reports)
+        total_skipped  = sum(r.units_skipped  for r in reports)
         self._send_json(success_payload({
             "docs_curated": len(reports),
             "units_modified": total_modified,
+            "units_skipped": total_skipped,
             "fts_stale": total_modified > 0,
             "results": [r.to_dict() for r in reports],
         }))
@@ -2930,17 +3235,45 @@ class CorpusServer:
             rules = rules_from_list(raw_rules)
             doc_id = params.get("doc_id")
 
+            # Selective apply: skip_unit_ids are units the user explicitly ignored
+            # in the local review session.  Strategy B: apply all except ignored.
+            # Units outside the preview sample (not reviewed) are always applied.
+            raw_skip = params.get("ignored_unit_ids", [])
+            skip_unit_ids: set[int] | None = None
+            if isinstance(raw_skip, list) and raw_skip:
+                skip_unit_ids = {int(uid) for uid in raw_skip
+                                 if isinstance(uid, (int, float))}
+
+            # Manual overrides: {unit_id → user-supplied replacement text}
+            raw_overrides = params.get("manual_overrides", [])
+            manual_overrides: dict[int, str] | None = None
+            if isinstance(raw_overrides, list) and raw_overrides:
+                _parsed = {
+                    int(item["unit_id"]): str(item["text"])
+                    for item in raw_overrides
+                    if isinstance(item, dict)
+                       and "unit_id" in item and "text" in item
+                }
+                if _parsed:
+                    manual_overrides = _parsed
+
             progress_cb(10, "Applying curation rules")
             with lock:
                 if doc_id is not None:
-                    reports = [curate_document(conn, int(doc_id), rules)]
+                    reports = [curate_document(conn, int(doc_id), rules,
+                                               skip_unit_ids=skip_unit_ids,
+                                               manual_overrides=manual_overrides)]
                 else:
-                    reports = curate_all_documents(conn, rules)
+                    reports = curate_all_documents(conn, rules,
+                                                   skip_unit_ids=skip_unit_ids,
+                                                   manual_overrides=manual_overrides)
             units_modified = sum(r.units_modified for r in reports)
+            units_skipped  = sum(r.units_skipped  for r in reports)
             progress_cb(100, "Curation completed")
             return {
                 "docs_curated": len(reports),
                 "units_modified": units_modified,
+                "units_skipped": units_skipped,
                 "fts_stale": units_modified > 0,
                 "results": [r.to_dict() for r in reports],
             }

@@ -1271,6 +1271,826 @@ article.preview .preview-body > .pane { height: 100%; min-height: 0; }
 .doc-scroll .diff-table, .curate-doc-scroll .diff-table { font-size: 12px; }
 .doc-scroll .diff-table th, .doc-scroll .diff-table td,
 .curate-doc-scroll .diff-table th, .curate-doc-scroll .diff-table td { padding: 4px 6px; }
+
+/* ── Curation review-locale — niveau 1 ──────────────────────────────── */
+
+/* Diff row: hover + active state */
+.diff-row { cursor: pointer; transition: background 0.1s; }
+.diff-row:hover { background: #f0f7ff; }
+.diff-row.diff-active { background: #dff0fd; outline: 2px solid #5aadec; outline-offset: -2px; }
+
+/* Raw unit paragraph: hover + active state */
+.raw-unit { cursor: pointer; border-radius: 4px; padding: 1px 3px; margin: 0 -3px; transition: background 0.1s; }
+.raw-unit:hover { background: #f0f7ff; }
+.raw-unit.raw-active { background: #dff0fd; outline: 2px solid #5aadec; outline-offset: -1px; }
+
+/* Preview mode buttons (replace static chips) */
+.preview-mode-row { align-items: center; gap: 4px; }
+.preview-mode-btn {
+  padding: 2px 9px; font-size: 11px; border-radius: 20px; border: 1px solid var(--prep-line, #dde1e8);
+  background: var(--prep-bg, #f5f7fa); color: var(--prep-muted, #4f5d6d);
+  cursor: pointer; user-select: none; transition: background 0.1s, border-color 0.1s;
+}
+.preview-mode-btn:hover { background: #e8f5f3; border-color: #9fd3cc; }
+.preview-mode-btn.active { background: #e8f5f3; border-color: #9fd3cc; color: #0c4a46; font-weight: 600; }
+
+/* Sync-scroll label */
+.preview-sync-label { font-size: 11px; color: var(--prep-muted, #4f5d6d); cursor: pointer; display: flex; align-items: center; gap: 2px; user-select: none; }
+
+/* Diff navigation row inside preview-controls */
+.preview-nav-row { display: flex; align-items: center; gap: 6px; padding-top: 2px; }
+.preview-nav-pos { font-size: 11px; color: var(--prep-muted, #4f5d6d); min-width: 48px; text-align: center; }
+
+/* Diagnostics — actionnable "goto first" item */
+/* ══════════════════════════════════════════════════════════════════════════
+   Level 3C — Context card
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* Container */
+.curate-context-body {
+  padding: 6px 10px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* One row = label + content */
+.ctx-row {
+  display: grid;
+  grid-template-columns: 52px 1fr;
+  gap: 4px 6px;
+  align-items: baseline;
+  padding: 5px 0;
+  border-bottom: 1px solid #f0f2f5;
+}
+.ctx-row:last-child { border-bottom: none; }
+
+/* Neighbour rows (before/after) */
+.ctx-before { opacity: 0.72; }
+.ctx-after  { opacity: 0.72; }
+
+/* Label column */
+.ctx-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--prep-muted, #6b7280);
+  padding-top: 1px;
+  white-space: nowrap;
+}
+.ctx-label-cur { color: #2962c9; }
+
+/* Context text (neighbouring unit) */
+.ctx-text {
+  font-size: 12px;
+  color: #444;
+  line-height: 1.45;
+  word-break: break-word;
+  font-style: italic;
+}
+
+/* Modification zone */
+.ctx-current { background: #f5f8ff; border-radius: 4px; padding: 5px 4px; }
+.ctx-modification {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-size: 12px;
+}
+.ctx-diff-before {
+  color: #b71c1c;
+  text-decoration: line-through;
+  word-break: break-word;
+  max-width: 100%;
+}
+.ctx-diff-after  {
+  color: #1b5e20;
+  word-break: break-word;
+  max-width: 100%;
+}
+.ctx-arrow {
+  color: var(--prep-muted, #6b7280);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+/* ── Level 7A: manual override in context card ─────────────────────────── */
+
+/* Override badge shown in read mode when item has a manual correction */
+.ctx-override-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #6d28d9;
+  background: #ede9fe;
+  border-radius: 3px;
+  padding: 1px 6px;
+  margin-right: 4px;
+  white-space: nowrap;
+  cursor: help;
+}
+
+/* "After" span tinted when showing a manual override value */
+.ctx-manual-override {
+  color: #6d28d9;
+  font-style: italic;
+}
+
+/* Edit mode: textarea container row */
+.ctx-edit-row { align-items: flex-start; }
+.ctx-label-edit { color: #6d28d9; }
+.ctx-edit-area {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+}
+.ctx-override-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 12px;
+  font-family: inherit;
+  padding: 5px 7px;
+  border: 1.5px solid #a78bfa;
+  border-radius: 4px;
+  background: #faf8ff;
+  resize: vertical;
+  outline: none;
+  line-height: 1.45;
+}
+.ctx-override-textarea:focus {
+  border-color: #7c3aed;
+  box-shadow: 0 0 0 2px rgba(124,58,237,0.15);
+}
+.ctx-edit-hint {
+  font-size: 10.5px;
+  color: var(--prep-muted, #6b7280);
+  font-style: italic;
+}
+
+/* Action row (edit / revert buttons + save / cancel) */
+.ctx-edit-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  padding: 5px 0 2px;
+  border-top: 1px solid #f0f2f5;
+  margin-top: 3px;
+}
+
+/* ── Override badge in diff table ─────────────────────────────────────── */
+.diff-override-badge {
+  display: inline-block;
+  font-size: 10px;
+  color: #6d28d9;
+  margin-left: 2px;
+  cursor: default;
+}
+/* Tint the "after" column when it contains a manual override value */
+.diff-after-overridden {
+  color: #6d28d9;
+  font-style: italic;
+}
+
+/* Override note in session summary */
+.session-override-note {
+  margin-top: 4px;
+  font-size: 10.5px;
+  color: #6d28d9;
+}
+
+/* ── Level 7B: persistent exception styles ─────────────────────────────── */
+
+/* Badge in context card for persistent exceptions */
+.ctx-exception-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #7c1d1d;
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  border-radius: 3px;
+  padding: 1px 6px;
+  margin-right: 4px;
+  white-space: nowrap;
+  cursor: help;
+}
+
+/* Exception action row in context card */
+.ctx-exception-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  padding: 5px 0 2px;
+  border-top: 1px solid #f0f2f5;
+  margin-top: 3px;
+}
+
+/* Buttons inside ctx-exception-actions */
+.ctx-exception-btn {
+  background: #fef2f2;
+  color: #7c1d1d;
+  border: 1px solid #fca5a5;
+}
+.ctx-exception-btn:hover:not(:disabled) {
+  background: #fee2e2;
+  border-color: #f87171;
+}
+.ctx-exception-btn-delete {
+  background: #f0fdf4;
+  color: #14532d;
+  border: 1px solid #86efac;
+}
+.ctx-exception-btn-delete:hover:not(:disabled) {
+  background: #dcfce7;
+  border-color: #4ade80;
+}
+
+/* Badge in diff table for persistent exceptions */
+.diff-exception-badge {
+  display: inline-block;
+  font-size: 11px;
+  margin-left: 2px;
+  cursor: default;
+}
+
+/* Exception note in session summary */
+.session-exception-note {
+  margin-top: 4px;
+  font-size: 10.5px;
+  color: #7c1d1d;
+}
+
+/* Exception count in stats banner */
+.stat-exc {
+  font-size: 11px;
+  color: #7c1d1d;
+  background: #fef2f2;
+  border-radius: 3px;
+  padding: 1px 5px;
+  margin-left: 4px;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Level 8A — Exceptions admin panel
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* <details> wrapper styled like curate-inner-card */
+.exc-admin-panel {
+  border: 1px solid var(--prep-border, #d4dce8);
+  border-radius: 6px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.exc-admin-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+  padding: 8px 12px;
+  border-bottom: 1px solid transparent;
+}
+.exc-admin-panel[open] > .exc-admin-summary {
+  border-bottom-color: var(--prep-border, #d4dce8);
+  background: #f8fafc;
+}
+.exc-admin-summary::-webkit-details-marker { display: none; }
+.exc-admin-summary h2 { margin: 0; flex: 1; }
+
+/* Count badge next to summary title */
+.exc-admin-count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #7c1d1d;
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  border-radius: 9px;
+}
+
+/* Toolbar: filter buttons + refresh */
+.exc-admin-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.exc-admin-filters { display: flex; gap: 4px; }
+
+.exc-filter-btn { background: #f0f4f8; color: #4f5d6d; border: 1px solid #d4dce8; }
+.exc-filter-btn:hover:not(:disabled) { background: #e2e8f0; }
+.exc-filter-active { background: #dbeafe !important; color: #1e40af !important; border-color: #93c5fd !important; }
+
+.exc-admin-refresh {
+  background: none;
+  border: 1px solid #d4dce8;
+  color: #4f5d6d;
+  font-size: 15px;
+  padding: 2px 7px;
+  line-height: 1;
+}
+.exc-admin-refresh:hover { background: #f0f4f8; }
+
+/* Scrollable list container */
+.exc-admin-list {
+  max-height: 420px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.exc-admin-loading { padding: 8px; font-style: italic; color: #9ca3af; }
+
+/* Document header separator */
+.exc-admin-doc-head {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 0 2px 2px;
+  border-bottom: 1px solid #e2e8f0;
+  margin-top: 4px;
+}
+
+/* Individual exception row */
+.exc-admin-row {
+  border: 1px solid #e2e8f0;
+  border-radius: 5px;
+  padding: 7px 9px;
+  background: #fafbfc;
+  font-size: 12px;
+}
+.exc-admin-row:hover { background: #f1f5f9; }
+
+.exc-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.exc-row-actions { margin-left: auto; display: flex; gap: 4px; }
+
+/* Kind badge */
+.exc-kind-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 3px;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
+.exc-kind-ignore  { color: #7c1d1d; background: #fef2f2; border: 1px solid #fca5a5; }
+.exc-kind-override { color: #1e3a8a; background: #eff6ff; border: 1px solid #93c5fd; }
+
+/* Unit ID label */
+.exc-unit-id { font-size: 11px; color: #64748b; }
+
+/* Created-at timestamp */
+.exc-created-at { font-size: 10px; color: #94a3b8; margin-left: auto; }
+
+/* Unit text preview (clipped) */
+.exc-unit-preview-block { margin-top: 4px; }
+.exc-unit-preview {
+  display: block;
+  font-size: 11px;
+  color: #475569;
+  background: #f8fafc;
+  border-left: 2px solid #cbd5e1;
+  padding: 2px 6px;
+  border-radius: 0 3px 3px 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+/* Override text box (read mode) */
+.exc-override-text {
+  margin-top: 5px;
+  font-size: 11.5px;
+  color: #1e3a8a;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 4px;
+  padding: 3px 7px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Inline edit block */
+.exc-row-edit-block { margin-top: 6px; }
+.exc-edit-label { display: block; font-size: 10.5px; color: #64748b; margin-bottom: 3px; }
+.exc-edit-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 12px;
+  border: 1px solid #93c5fd;
+  border-radius: 4px;
+  padding: 4px 6px;
+  resize: vertical;
+  font-family: inherit;
+}
+.exc-edit-actions { display: flex; gap: 5px; margin-top: 5px; }
+
+/* Row action buttons (delete / edit-start) */
+.exc-row-delete { background: #fef2f2; color: #7c1d1d; border: 1px solid #fca5a5; }
+.exc-row-delete:hover:not(:disabled) { background: #fee2e2; }
+.exc-row-edit-start { background: #eff6ff; color: #1e3a8a; border: 1px solid #93c5fd; }
+.exc-row-edit-start:hover:not(:disabled) { background: #dbeafe; }
+
+/* ── Level 8B: doc filter select + open-in-curation button ──────────────── */
+
+/* Doc filter row below kind buttons */
+.exc-admin-doc-filter-row {
+  margin-bottom: 6px;
+}
+.exc-doc-filter-select {
+  width: 100%;
+  font-size: 11.5px;
+  border: 1px solid #d4dce8;
+  border-radius: 4px;
+  padding: 3px 6px;
+  background: #fff;
+  color: #334155;
+}
+.exc-doc-filter-select:focus { outline: 1px solid #93c5fd; border-color: #93c5fd; }
+
+/* "Voir dans Curation" eye button */
+.exc-row-open-curation {
+  background: #f0fdf4;
+  color: #14532d;
+  border: 1px solid #86efac;
+  font-size: 13px;
+  padding: 1px 6px;
+  line-height: 1.3;
+}
+.exc-row-open-curation:hover:not(:disabled) { background: #dcfce7; border-color: #4ade80; }
+
+/* Temporary "↗" jump indicator on diff rows */
+.exc-admin-jump-note {
+  display: inline-block;
+  font-size: 11px;
+  color: #15803d;
+  background: #dcfce7;
+  border: 1px solid #86efac;
+  border-radius: 3px;
+  padding: 0 4px;
+  margin-left: 4px;
+  animation: exc-jump-fade 4s forwards;
+}
+@keyframes exc-jump-fade {
+  0%   { opacity: 1; }
+  70%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Level 8C — Forced / targeted preview entries
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* Badge in diff table for forced unit rows */
+.diff-forced-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 3px;
+  padding: 0 4px;
+  margin-left: 2px;
+  cursor: default;
+  white-space: nowrap;
+}
+.diff-forced-forced       { color: #14532d; background: #dcfce7; border: 1px solid #86efac; }
+.diff-forced-forced_ignored { color: #7c1d1d; background: #fef2f2; border: 1px solid #fca5a5; }
+.diff-forced-forced_no_change { color: #78350f; background: #fef3c7; border: 1px solid #fcd34d; }
+
+/* Row tints for forced entries */
+.diff-forced-row        { background: rgba(220, 252, 231, 0.25); }
+.diff-forced-ignored    { background: rgba(254, 242, 242, 0.35); }
+.diff-forced-no-change  { background: rgba(254, 243, 199, 0.35); }
+
+/* "Contexte local" forced note banner */
+.ctx-forced-note {
+  margin: 6px 0 4px;
+  padding: 5px 9px;
+  border-radius: 4px;
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+.ctx-forced-forced        { background: #f0fdf4; color: #14532d; border-left: 3px solid #4ade80; }
+.ctx-forced-forced_ignored  { background: #fef2f2; color: #7c1d1d; border-left: 3px solid #f87171; }
+.ctx-forced-forced_no_change { background: #fefce8; color: #78350f; border-left: 3px solid #fbbf24; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Level 3A — Local review status
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Action bar (accept / ignore / pending + bulk) ───────────────────────── */
+.curate-action-bar {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 0 2px;
+  flex-wrap: wrap;
+}
+.action-bar-sep {
+  display: inline-block;
+  width: 1px;
+  height: 20px;
+  background: #d0d7e6;
+  margin: 0 4px;
+}
+.btn-action-accept  { background: #e8f5e9; color: #2e7d32; border: 1.5px solid #a5d6a7; }
+.btn-action-ignore  { background: #fce4ec; color: #b71c1c; border: 1.5px solid #ef9a9a; }
+.btn-action-pending { background: #fff8e1; color: #6d4c00; border: 1.5px solid #ffe082; }
+.btn-action-bulk    { background: #f5f5f5; color: #444;    border: 1.5px solid #ccc; font-size: 11px; }
+.btn-action-accept:hover  { background: #c8e6c9; }
+.btn-action-ignore:hover  { background: #ffcdd2; }
+.btn-action-pending:hover { background: #fff3cd; }
+.btn-action-bulk:hover    { background: #e8e8e8; }
+/* Highlight the button matching the current item's status */
+.btn-action-accept.action-active  { background: #388e3c; color: #fff; border-color: #1b5e20; }
+.btn-action-ignore.action-active  { background: #c62828; color: #fff; border-color: #7f0000; }
+.btn-action-pending.action-active { background: #f9a825; color: #fff; border-color: #f57f17; }
+
+/* ── Diff table rows — status states ─────────────────────────────────────── */
+.diff-row.diff-accepted {
+  background: #f0faf0;
+  color: #3a6b3a;
+  opacity: 0.85;
+}
+.diff-row.diff-ignored {
+  background: #fdf5f5;
+  color: #999;
+  opacity: 0.75;
+  text-decoration: line-through;
+}
+/* Active row takes precedence even when accepted/ignored */
+.diff-row.diff-active.diff-accepted,
+.diff-row.diff-active.diff-ignored { opacity: 1; background: #2962c9; color: #fff; }
+
+/* ── Raw pane paragraphs — status states ─────────────────────────────────── */
+.raw-unit.raw-accepted { background: #f0faf0; color: #3a6b3a; opacity: 0.80; }
+.raw-unit.raw-ignored  { background: #fdf5f5; color: #aaa;     opacity: 0.65; }
+.raw-unit.raw-active.raw-accepted,
+.raw-unit.raw-active.raw-ignored   { opacity: 1; background: #dce8ff; }
+
+/* ── Status badge inside diff row (small icon) ───────────────────────────── */
+.diff-status-badge {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 800;
+  padding: 0 3px;
+  border-radius: 2px;
+  margin-left: 3px;
+  vertical-align: middle;
+  line-height: 14px;
+}
+.diff-status-accepted { background: #c8e6c9; color: #1b5e20; }
+.diff-status-ignored  { background: #ffcdd2; color: #7f0000; }
+
+/* ── Session summary chips ───────────────────────────────────────────────── */
+.curate-session-summary {
+  padding: 6px 8px 4px;
+  border-bottom: 1px solid #e8ecf2;
+  margin-bottom: 4px;
+}
+.session-counts {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.session-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 9px;
+  border-radius: 11px;
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1.5px solid transparent;
+  transition: background 0.1s, border-color 0.1s;
+  outline: none;
+}
+.session-chip:focus-visible { box-shadow: 0 0 0 2px #6690d8; }
+.session-chip-label { font-weight: 400; font-size: 10.5px; }
+
+.session-pending  { background: #fff8e1; color: #6d4c00; border-color: #ffe082; }
+.session-accepted { background: #e8f5e9; color: #1b5e20; border-color: #a5d6a7; }
+.session-ignored  { background: #fce4ec; color: #7f0000; border-color: #ef9a9a; }
+.session-pending:hover  { background: #fff3cd; }
+.session-accepted:hover { background: #c8e6c9; }
+.session-ignored:hover  { background: #ffcdd2; }
+.session-chip-active.session-pending  { background: #f9a825; color: #fff; border-color: #f57f17; }
+.session-chip-active.session-accepted { background: #388e3c; color: #fff; border-color: #1b5e20; }
+.session-chip-active.session-ignored  { background: #c62828; color: #fff; border-color: #7f0000; }
+.session-filter-note {
+  font-size: 10.5px;
+  color: var(--prep-muted, #6b7280);
+  margin-top: 4px;
+  font-style: italic;
+}
+.session-restore-notice {
+  margin-top: 5px;
+  font-size: 10.5px;
+  color: #1976d2;
+  font-style: italic;
+}
+.session-restore-notice .btn-inline-link { color: #1565c0; font-style: normal; }
+.session-reset-row {
+  margin-top: 5px;
+  font-size: 10.5px;
+}
+.session-all-note {
+  color: var(--prep-muted, #6b7280);
+  font-style: italic;
+  cursor: help;
+}
+
+/* ── Rule badge in diff table cell ───────────────────────────────────────── */
+.diff-rule-cell { white-space: nowrap; }
+.diff-rule-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: #e8edf8;
+  color: #3a5bad;
+  letter-spacing: 0.01em;
+}
+.diff-rule-badge-unknown { background: #f0f0f0; color: #999; }
+
+/* ── Rule badge in raw pane paragraph ────────────────────────────────────── */
+.raw-rule-badge {
+  display: inline-block;
+  font-size: 9.5px;
+  font-weight: 700;
+  padding: 0 4px;
+  border-radius: 2px;
+  background: #dce8ff;
+  color: #2c4fa8;
+  margin-right: 3px;
+  vertical-align: middle;
+  letter-spacing: 0.02em;
+}
+
+/* ── Per-rule diagnostic chips (clickable) ───────────────────────────────── */
+.diag-rule-chips { flex-wrap: wrap; gap: 5px; }
+.curate-diag-rule-chip {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 12px;
+  background: #eef1f8;
+  border: 1.5px solid transparent;
+  color: #3a4a7a;
+  font-size: 11.5px;
+  font-weight: 500;
+  transition: background 0.12s, border-color 0.12s;
+  outline: none;
+}
+.curate-diag-rule-chip:hover { background: #d8e4f7; border-color: #a0b8e8; }
+.curate-diag-rule-chip:focus-visible { box-shadow: 0 0 0 2px #6690d8; }
+.curate-diag-rule-chip.active {
+  background: #2962c9;
+  color: #fff;
+  border-color: #1a4aaa;
+}
+.curate-diag-rule-chip.active .diag-rule-count { background: rgba(255,255,255,0.25); color: #fff; }
+.diag-rule-count {
+  display: inline-block;
+  background: #c8d8f8;
+  color: #2038a0;
+  border-radius: 8px;
+  padding: 0 5px;
+  font-size: 10px;
+  font-weight: 700;
+  min-width: 16px;
+  text-align: center;
+}
+
+/* ── Sample info notice (truncation + completeness) ─────────────────────── */
+.curate-sample-info {
+  font-size: 11.5px;
+  padding: 4px 10px;
+  border-radius: 5px;
+  margin: 5px 0 0;
+  line-height: 1.4;
+}
+.curate-sample-truncated {
+  background: #fff8e6;
+  border: 1px solid #f5c842;
+  color: #7a5800;
+}
+.curate-sample-full {
+  background: #f0f8f0;
+  border: 1px solid #a8d4a8;
+  color: #2d6b2d;
+}
+.sample-scope-note { font-style: italic; opacity: 0.85; }
+
+/* ── Scope note on filter badge ──────────────────────────────────────────── */
+.filter-scope-note { font-size: 10.5px; font-style: italic; opacity: 0.80; }
+
+/* ── Scope note inside diagnostics (rule filter header) ─────────────────── */
+.diag-scope-note {
+  display: inline-block;
+  font-size: 10px;
+  font-style: italic;
+  color: var(--prep-muted, #6b7280);
+  margin-left: 5px;
+  vertical-align: middle;
+}
+
+/* ── Inline text button (clear filter from pane empty state) ─────────────── */
+.btn-inline-link {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #2962c9;
+  font-size: inherit;
+  padding: 0;
+  text-decoration: underline;
+  font-family: inherit;
+}
+.btn-inline-link:hover { color: #1a4aaa; }
+
+/* ── Truncation notice inside diagnostics panel ──────────────────────────── */
+.curate-diag-notice {
+  font-size: 11px;
+  line-height: 1.4;
+  padding: 5px 8px;
+  background: #fff8e6;
+  border-left: 3px solid #f5c842;
+  color: #7a5800;
+  border-radius: 0 4px 4px 0;
+  margin: 0 0 2px;
+}
+
+/* ── Active filter badge (below nav row) ─────────────────────────────────── */
+.preview-filter-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 5px 0 0;
+  padding: 4px 10px;
+  background: #ebf0ff;
+  border: 1px solid #b0c4f0;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #2a409a;
+}
+.preview-filter-badge strong { font-weight: 700; }
+.filter-clear-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #4a60b8;
+  font-size: 14px;
+  padding: 0 2px;
+  line-height: 1;
+  border-radius: 3px;
+}
+.filter-clear-btn:hover { background: #c0d0f0; }
+
+.curate-diag-action {
+  cursor: pointer; border-color: #5aadec !important;
+  background: #f0f8ff !important;
+  transition: background 0.1s;
+}
+.curate-diag-action:hover { background: #dff0fd !important; }
+.curate-diag-action strong { color: #1a6db5; }
+
+/* Diagnostics — active rules chips inside diag card */
+.curate-diag-rules { background: #fafbfc; }
+
+/* Diagnostics right col: scrollable body if content overflows */
+#act-curate-diag { overflow-y: auto; max-height: 320px; }
+#act-curate-review-log { overflow-y: auto; max-height: 200px; }
 /* ── Segmentation 2-col workspace (also in prep-vnext.css for standalone) ── */
 .seg-workspace-card { padding: 0 !important; overflow: hidden; }
 .seg-workspace { display: grid; grid-template-columns: auto 340px 1fr; align-items: start; }

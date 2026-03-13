@@ -170,6 +170,12 @@ export interface CuratePreviewOptions {
   doc_id: number;
   rules: CurateRule[];
   limit_examples?: number;
+  /**
+   * Level 8C: when provided, this unit_id is guaranteed to appear in examples
+   * even if it would normally be beyond limit_examples, has a persistent 'ignore'
+   * exception, or produces no diff.  The example is annotated with `preview_reason`.
+   */
+  force_unit_id?: number;
 }
 
 export interface CuratePreviewExample {
@@ -177,12 +183,93 @@ export interface CuratePreviewExample {
   external_id: number | null;
   before: string;
   after: string;
+  /** Indices (0-based) into the rules array that caused this unit to change. */
+  matched_rule_ids?: number[];
+  /**
+   * Client-side editorial status — never sent by the server, never persisted.
+   * Reserved for Level 3 local review workflow.
+   * Default (absent) is implicitly "pending".
+   */
+  status?: "pending" | "accepted" | "ignored";
+  /**
+   * 0-based position of this unit in the document's unit list (ordered by n).
+   * Sent by the server since Level 3C.
+   */
+  unit_index?: number;
+  /**
+   * text_norm of the immediately preceding unit (trimmed to 300 chars).
+   * null/absent when this unit is the first in the document.
+   */
+  context_before?: string | null;
+  /**
+   * text_norm of the immediately following unit (trimmed to 300 chars).
+   * null/absent when this unit is the last in the document.
+   */
+  context_after?: string | null;
+  /**
+   * User-supplied replacement text for this unit's result (client-side only, never from server).
+   * When set, overrides the server's `after` both in the UI and at apply time.
+   * null / absent = no override (use server's `after`).
+   */
+  manual_after?: string | null;
+  /**
+   * True when the user has entered a manual override for this unit.
+   * Client-side only — never sent to or read from the server.
+   */
+  is_manual_override?: boolean;
+  /**
+   * True when the server signals that this unit has a persistent 'ignore' exception
+   * in curation_exceptions (Level 7B).  Set from the server's example payload
+   * when is_exception_override is absent and the unit appears in the exception map.
+   * For ignore exceptions the unit is excluded from examples — this flag is
+   * populated client-side after loading the exceptions list.
+   */
+  is_exception_ignored?: boolean;
+  /**
+   * When the server signals that this unit has a persistent 'override' exception
+   * (curation_exceptions.kind = 'override'), this field holds the stored text.
+   * The server includes is_exception_override = true in the example payload.
+   */
+  exception_override?: string;
+  /**
+   * Set by the server on examples generated from a persistent 'override' exception
+   * (Level 7B).  When true, the "after" value is the persisted override_text, not
+   * the automatic rule result.
+   */
+  is_exception_override?: boolean;
+  /**
+   * Level 8C: why this example is present in the preview.
+   *   "standard"        — normal inclusion within limit_examples
+   *   "forced"          — unit was requested via force_unit_id and is a normal diff
+   *   "forced_ignored"  — unit was requested but has a persistent 'ignore' exception;
+   *                       included for inspection only; changes are NOT applied
+   *   "forced_no_change"— unit was requested but produces no diff with current rules
+   */
+  preview_reason?: "standard" | "forced" | "forced_ignored" | "forced_no_change";
+}
+
+/**
+ * A persistent local curation exception stored in curation_exceptions (Level 7B).
+ */
+export interface CurateException {
+  id: number;
+  unit_id: number;
+  kind: "ignore" | "override";
+  override_text: string | null;
+  note: string | null;
+  created_at: string;
+  /** Enriched by Level 8A — may be absent on very old sidecar versions. */
+  doc_id?: number;
+  doc_title?: string | null;
+  unit_text?: string | null;
 }
 
 export interface CuratePreviewStats {
   units_total: number;
   units_changed: number;
   replacements_total: number;
+  /** Number of units silenced by a persistent 'ignore' exception (Level 7B). */
+  units_exception_ignored?: number;
 }
 
 export interface CuratePreviewResponse {
@@ -190,6 +277,13 @@ export interface CuratePreviewResponse {
   doc_id: number;
   stats: CuratePreviewStats;
   examples: CuratePreviewExample[];
+  /** Total number of active exceptions for this document (Level 7B). */
+  exceptions_active?: number;
+  /**
+   * Level 8C: when force_unit_id was supplied, indicates whether that unit
+   * was found in the document and injected into examples.
+   */
+  forced_unit_found?: boolean | null;
   fts_stale: boolean;
 }
 
@@ -1468,6 +1562,60 @@ export async function resolveCollisions(
   actions: CollisionResolveAction[]
 ): Promise<CollisionResolveResponse> {
   return conn.post("/align/collisions/resolve", { actions }) as Promise<CollisionResolveResponse>;
+}
+
+// ─── Curation exceptions (Level 7B) ──────────────────────────────────────────
+
+export interface CurateExceptionsListResponse {
+  ok: boolean;
+  exceptions: CurateException[];
+  count: number;
+}
+
+export interface CurateExceptionSetOptions {
+  unit_id: number;
+  kind: "ignore" | "override";
+  override_text?: string;
+  note?: string;
+}
+
+export interface CurateExceptionSetResponse {
+  ok: boolean;
+  unit_id: number;
+  kind: "ignore" | "override";
+  override_text: string | null;
+  note: string | null;
+  action: string;
+}
+
+export interface CurateExceptionDeleteResponse {
+  ok: boolean;
+  unit_id: number;
+  deleted: boolean;
+}
+
+/** List all curation exceptions for a given doc_id (or all if omitted). */
+export async function listCurateExceptions(
+  conn: Conn,
+  doc_id?: number,
+): Promise<CurateExceptionsListResponse> {
+  return conn.post("/curate/exceptions", doc_id !== undefined ? { doc_id } : {}) as Promise<CurateExceptionsListResponse>;
+}
+
+/** Create or replace a curation exception (INSERT OR REPLACE). */
+export async function setCurateException(
+  conn: Conn,
+  opts: CurateExceptionSetOptions,
+): Promise<CurateExceptionSetResponse> {
+  return conn.post("/curate/exceptions/set", opts) as Promise<CurateExceptionSetResponse>;
+}
+
+/** Delete the curation exception for a unit_id. */
+export async function deleteCurateException(
+  conn: Conn,
+  unit_id: number,
+): Promise<CurateExceptionDeleteResponse> {
+  return conn.post("/curate/exceptions/delete", { unit_id }) as Promise<CurateExceptionDeleteResponse>;
 }
 
 export async function shutdownSidecar(conn: Conn): Promise<void> {

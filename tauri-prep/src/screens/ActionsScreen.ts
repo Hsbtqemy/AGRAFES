@@ -39,12 +39,113 @@ import {
   updateDocument,
   getDocumentPreview,
   SidecarError,
+  type CurateException,
+  listCurateExceptions,
+  setCurateException,
+  deleteCurateException,
 } from "../lib/sidecarClient.ts";
 import { save as dialogSave } from "@tauri-apps/plugin-dialog";
 import type { JobCenter } from "../components/JobCenter.ts";
 import { initCardAccordions } from "../lib/uiAccordions.ts";
 
+// ─── Curation review persistence ──────────────────────────────────────────────
+
+/**
+ * LocalStorage structure for persisting local review statuses (Level 4A / 4B / 5A / 5B).
+ *
+ * Compatibility check sequence (in priority order):
+ *
+ *   1. rulesSignature   — HARD GATE (all versions):
+ *      If the ruleset changed, the state is not loaded at all.
+ *
+ *   2. sampleFingerprint — HARD GATE (v3+):
+ *      FNV-1a of sorted (unit_id + matched_rule_ids) for every example.
+ *      Detects: membership change, rule-assignment change.
+ *      Does NOT detect: text changes when membership is stable.
+ *
+ *   3. sampleTextFingerprint — HARD GATE (v4+):
+ *      FNV-1a of sorted (unit_id + normalised_before_prefix[0..64]) for every example.
+ *      Normalisation: whitespace collapsed to a single space, trimmed.
+ *      Detects: meaningful text changes in the first 64 chars of any unit's "before".
+ *      Does NOT detect: changes beyond position 64, trivial whitespace-only variations.
+ *      Applied after the structural gate, so both must pass for a full v4 restore.
+ *
+ *   4. unitsTotal  — SOFT GUARD (v2+, kept for v2 backward compat):
+ *      Warns but allows restore.
+ *
+ *   5. v1/v2/v3 degradation:
+ *      States missing a fingerprint (v1/v2) or the text fingerprint (v3) degrade
+ *      gracefully: restore proceeds with an explicit warning.
+ *
+ * Only "accepted" and "ignored" statuses are stored — "pending" is the default.
+ * An empty statuses object is not written (the key is removed instead).
+ *
+ * Keyed by: agrafes.prep.curate.review.<docId|"all">
+ */
+interface StoredCurateReviewState {
+  /**
+   * 1 = Level 4A (rulesSignature only)
+   * 2 = Level 4B (adds unitsTotal / unitsChanged)
+   * 3 = Level 5A (adds sampleFingerprint / sampleSize)
+   * 4 = Level 5B (adds sampleTextFingerprint)
+   * 5 = Level 7A (adds overrides — manual_after per unit_id)
+   */
+  version: 1 | 2 | 3 | 4 | 5;
+  /** numeric doc_id, or null when applied to all documents */
+  docId: number | null;
+  /** FNV-1a 32-bit hash of the canonical rules list (pattern|replacement|flags|description, sorted) */
+  rulesSignature: string;
+  /** epoch ms of last write */
+  updatedAt: number;
+  /**
+   * units_total from the preview stats at save time (v2+).
+   * Used at restore time as a soft guard against significant document-size changes.
+   */
+  unitsTotal?: number;
+  /**
+   * units_changed from the preview stats at save time (v2+).
+   * Reserved for a future strong guard (currently not used as a gate).
+   */
+  unitsChanged?: number;
+  /**
+   * FNV-1a 32-bit structural fingerprint of the sample at save time (v3+).
+   * Built from sorted (unit_id + sorted matched_rule_ids) per example.
+   * Hard gate: if present in both saved and current state and different,
+   * restore is refused.
+   */
+  sampleFingerprint?: string;
+  /**
+   * Number of examples in the preview sample at save time (v3+).
+   * Used in feedback messages.
+   */
+  sampleSize?: number;
+  /**
+   * FNV-1a 32-bit textual fingerprint of the sample at save time (v4+).
+   * Built from sorted (unit_id + normalised_before[0..64]) per example.
+   * Normalisation: whitespace sequences collapsed to " ", trimmed.
+   * Hard gate: if both saved and current have this field and they differ,
+   * restore is refused.  Applied after the structural fingerprint passes.
+   *
+   * Detects: meaningful text changes in the first 64 chars of "before".
+   * Does NOT detect: changes beyond position 64 of a unit's text, or changes
+   * that are purely in whitespace (e.g. double space → single space).
+   */
+  sampleTextFingerprint?: string;
+  /** unit_id (as string) → non-pending status */
+  statuses: Record<string, "accepted" | "ignored">;
+  /**
+   * Manual text overrides (v5+).
+   * Maps unit_id (as string) → user-supplied replacement text.
+   * These are applied instead of the auto-generated "after" at apply time.
+   * Only present when at least one override exists.
+   */
+  overrides?: Record<string, string>;
+}
+
 // ─── Curation presets ─────────────────────────────────────────────────────────
+
+/** Maximum number of examples requested from the server. The server caps at 50. */
+const CURATE_PREVIEW_LIMIT = 50;
 
 const CURATE_PRESETS: Record<string, { label: string; rules: CurateRule[] }> = {
   spaces: {
@@ -173,6 +274,8 @@ export class ActionsScreen {
   private static readonly LS_SEG_POST_VALIDATE = "agrafes.prep.seg.post_validate";
   private static readonly LS_AUDIT_EXCEPTIONS_ONLY = "agrafes.prep.audit.exceptions_only";
   private static readonly LS_AUDIT_QUICK_FILTER = "agrafes.prep.audit.quick_filter";
+  /** Prefix for per-document curate review state.  Suffix = docId | "all". */
+  private static readonly LS_CURATE_REVIEW_PREFIX = "agrafes.prep.curate.review.";
 
   // Log + busy
   private _logEl!: HTMLElement;
@@ -207,6 +310,68 @@ export class ActionsScreen {
   private _mmZoneUpdaters = new WeakMap<HTMLElement, () => void>();
   private _alignViewMode: "table" | "run" = "table";
 
+  // ─── Curation review-locale state ────────────────────────────────────────
+  /** Examples returned by the last curatePreview call (full set). */
+  private _curateExamples: CuratePreviewExample[] = [];
+  /** Index of the currently selected diff item in the FILTERED list (null = none). */
+  private _activeDiffIdx: number | null = null;
+  /** Preview display mode: both panes | raw only | diff only. */
+  private _previewMode: "sidebyside" | "rawonly" | "diffonly" = "sidebyside";
+  /** Whether raw pane and diff pane scroll in sync. */
+  private _previewSyncScroll = true;
+  /**
+   * Maps rule index (position in the rules array sent to the server) → human label.
+   * Built by _buildRuleLabels() before each preview call.
+   */
+  private _curateRuleLabels: string[] = [];
+  /** Rule label currently used as filter (null = show all). */
+  private _activeRuleFilter: string | null = null;
+  /**
+   * Real count of changed units in the full document (from stats.units_changed).
+   * May be > _curateExamples.length when the sample is truncated.
+   * Used to display truncation notices honestly.
+   */
+  private _curateGlobalChanged = 0;
+  /**
+   * Status filter applied on top of the rule filter (null = all statuses shown).
+   * Purely local; cleared on new preview.
+   */
+  private _activeStatusFilter: "pending" | "accepted" | "ignored" | null = null;
+  /**
+   * Number of review statuses restored from localStorage on the last _runPreview().
+   * 0 = no restore happened (new preview or incompatible context).
+   * Displayed in the session summary as a brief "N statuts restaurés" notice.
+   */
+  private _curateRestoredCount = 0;
+  /**
+   * Total number of statuses present in the saved state that was loaded.
+   * May differ from _curateRestoredCount when only a subset of saved unit_ids
+   * appear in the current preview sample (partial restore).
+   */
+  private _curateSavedCount = 0;
+  /**
+   * units_total from the last successful _runPreview() stats.
+   * Persisted into StoredCurateReviewState so it can be compared at restore time
+   * to detect documents that have changed in size since the last save.
+   */
+  private _curateUnitsTotal = 0;
+  /**
+   * Level 8C: when set, the next call to _runPreview will include force_unit_id
+   * in the request payload, guaranteeing that unit's presence in examples.
+   * Reset to null after each preview completes (success or failure).
+   */
+  private _forcedPreviewUnitId: number | null = null;
+  /**
+   * True while the user has opened the inline edit mode on the active item.
+   * Cleared when changing active item or cancelling.
+   */
+  private _editingManualOverride = false;
+  /**
+   * Persistent exceptions loaded from the sidecar after each preview (Level 7B).
+   * Maps unit_id → CurateException for the current document.
+   * Populated by _loadCurateExceptions(), cleared on new preview / doc change.
+   */
+  private _curateExceptions: Map<number, CurateException> = new Map();
 
   render(): HTMLElement {
     const root = document.createElement("div");
@@ -546,16 +711,24 @@ export class ActionsScreen {
                 <span id="act-preview-info" style="font-size:12px;color:var(--prep-muted,#4f5d6d)">&#8212;</span>
               </div>
               <div class="preview-controls">
-                <div class="chip-row">
-                  <span class="chip active">Brut</span>
-                  <span class="chip active">Cur&#233;</span>
-                  <span class="chip active">Diff surlign&#233;e</span>
+                <div class="preview-mode-row chip-row">
+                  <button class="preview-mode-btn active" data-preview-mode="sidebyside" title="Afficher les deux panneaux">C&#244;te &#224; c&#244;te</button>
+                  <button class="preview-mode-btn" data-preview-mode="rawonly" title="Afficher le texte source uniquement">Brut seul</button>
+                  <button class="preview-mode-btn" data-preview-mode="diffonly" title="Afficher le diff uniquement">Diff seule</button>
+                  <label class="preview-sync-label" title="Synchroniser le scroll entre les deux panneaux">
+                    <input id="act-sync-scroll" type="checkbox" checked />&#160;Sync scroll
+                  </label>
                 </div>
-                <div class="chip-row">
-                  <span class="chip active">Scroll synchronis&#233;</span>
-                  <span class="chip">Afficher non-modifi&#233;s</span>
-                  <span class="chip">Contexte &#177;2 segments</span>
+                <div class="preview-nav-row">
+                  <button id="act-diff-prev" class="btn btn-sm btn-secondary" disabled>&#8592; Pr&#233;c.</button>
+                  <span id="act-diff-position" class="preview-nav-pos">&#8212;</span>
+                  <button id="act-diff-next" class="btn btn-sm btn-secondary" disabled>Suiv. &#8594;</button>
                 </div>
+                <div id="act-curate-filter-badge" class="preview-filter-badge" style="display:none">
+                  Filtre&#160;: <strong id="act-curate-filter-label"></strong><span class="filter-scope-note">&#160;&#8212;&#160;dans l&#8217;&#233;chantillon courant</span>
+                  <button id="act-curate-filter-clear" class="filter-clear-btn" title="Effacer le filtre">&#215;</button>
+                </div>
+                <div id="act-curate-sample-info" class="curate-sample-info" style="display:none"></div>
               </div>
               <div class="preview-grid">
                 <section class="pane">
@@ -578,6 +751,14 @@ export class ActionsScreen {
               </div>
               <div class="preview-foot">
                 <div id="act-preview-stats" class="preview-stats"></div>
+                <div id="act-curate-action-bar" class="curate-action-bar" style="display:none">
+                  <button id="act-item-accept"  class="btn btn-sm btn-action-accept"  disabled title="Marquer cette modification comme accept&#233;e">&#10003;&#160;Accepter</button>
+                  <button id="act-item-ignore"  class="btn btn-sm btn-action-ignore"  disabled title="Ignorer cette modification (ne pas appliquer)">&#215;&#160;Ignorer</button>
+                  <button id="act-item-pending" class="btn btn-sm btn-action-pending" disabled title="Remettre en attente de d&#233;cision">&#8635;&#160;En attente</button>
+                  <span class="action-bar-sep"></span>
+                  <button id="act-bulk-accept"  class="btn btn-sm btn-action-bulk" title="Accepter toutes les modifications visibles">&#10003;&#160;Tout accepter</button>
+                  <button id="act-bulk-ignore"  class="btn btn-sm btn-action-bulk" title="Ignorer toutes les modifications visibles">&#215;&#160;Tout ignorer</button>
+                </div>
                 <div class="btn-row" style="margin-top:0.35rem">
                   <button id="act-apply-after-preview-btn" class="btn btn-warning btn-sm" style="display:none">Appliquer maintenant</button>
                   <button id="act-reindex-after-curate-btn" class="btn btn-secondary btn-sm" style="display:none">Re-indexer</button>
@@ -592,11 +773,19 @@ export class ActionsScreen {
                 <span style="font-size:12px;color:var(--prep-muted,#4f5d6d)">live</span>
               </div>
               <div class="card-body">
+                <div id="act-curate-session-summary" class="curate-session-summary" style="display:none"></div>
                 <div id="act-curate-diag" class="curate-diag-list">
                   <p class="empty-hint">Lancez une pr&#233;visualisation pour voir les statistiques.</p>
                 </div>
                 <div id="act-curate-seg-link" style="display:none;padding:8px 0"></div>
               </div>
+            </article>
+            <article class="curate-inner-card" id="act-curate-context-card" style="display:none" aria-label="Contexte local de la modification active">
+              <div class="card-head">
+                <h2>Contexte local</h2>
+                <span id="act-context-pos" style="font-size:12px;color:var(--prep-muted,#4f5d6d)">&#8212;</span>
+              </div>
+              <div id="act-curate-context" class="curate-context-body"></div>
             </article>
             <article class="curate-inner-card">
               <div class="card-head">
@@ -609,6 +798,30 @@ export class ActionsScreen {
                 </div>
               </div>
             </article>
+            <details class="curate-inner-card exc-admin-panel" id="act-exc-admin-panel">
+              <summary class="card-head exc-admin-summary">
+                <h2>Exceptions persistées</h2>
+                <span id="act-exc-admin-badge" class="exc-admin-count-badge" style="display:none">0</span>
+              </summary>
+              <div class="card-body" style="padding:8px 10px 10px">
+                <div class="exc-admin-toolbar">
+                  <div class="exc-admin-filters">
+                    <button class="btn btn-sm exc-filter-btn exc-filter-active" data-exc-filter="all">Toutes</button>
+                    <button class="btn btn-sm exc-filter-btn" data-exc-filter="ignore">Ignore</button>
+                    <button class="btn btn-sm exc-filter-btn" data-exc-filter="override">Override</button>
+                  </div>
+                  <button class="btn btn-sm exc-admin-refresh" id="act-exc-admin-refresh" title="Actualiser la liste">&#8635;</button>
+                </div>
+                <div class="exc-admin-doc-filter-row">
+                  <select id="act-exc-doc-filter" class="exc-doc-filter-select">
+                    <option value="">Tous les documents</option>
+                  </select>
+                </div>
+                <div id="act-exc-admin-list" class="exc-admin-list" aria-live="polite">
+                  <p class="empty-hint">Ouvrez ce panneau apr&#232;s une pr&#233;visualisation.</p>
+                </div>
+              </div>
+            </details>
           </div>
         </div>
       </section>
@@ -639,6 +852,37 @@ export class ActionsScreen {
     });
     el.querySelector("#act-curate-prev-btn")?.addEventListener("click", () => this._navigateCurateDoc(-1));
     el.querySelector("#act-curate-next-btn")?.addEventListener("click", () => this._navigateCurateDoc(1));
+    // Preview mode buttons
+    el.querySelectorAll<HTMLButtonElement>(".preview-mode-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const mode = btn.dataset.previewMode as "sidebyside" | "rawonly" | "diffonly";
+        if (mode) { this._previewMode = mode; this._applyPreviewMode(el); }
+      });
+    });
+    // Sync-scroll toggle
+    el.querySelector<HTMLInputElement>("#act-sync-scroll")?.addEventListener("change", (e) => {
+      this._previewSyncScroll = (e.target as HTMLInputElement).checked;
+    });
+    // Diff item navigation (within preview, scoped to filtered set)
+    el.querySelector("#act-diff-prev")?.addEventListener("click", () => {
+      if (this._activeDiffIdx !== null && this._activeDiffIdx > 0)
+        this._setActiveDiffItem(this._activeDiffIdx - 1, el);
+    });
+    el.querySelector("#act-diff-next")?.addEventListener("click", () => {
+      const next = this._activeDiffIdx === null ? 0 : this._activeDiffIdx + 1;
+      if (next < this._filteredExamples().length) this._setActiveDiffItem(next, el);
+    });
+    // Clear active rule filter
+    el.querySelector("#act-curate-filter-clear")?.addEventListener("click", () => {
+      this._setRuleFilter(null, el);
+    });
+
+    // ─── Local review actions ─────────────────────────────────────────────
+    el.querySelector("#act-item-accept")?.addEventListener("click",  () => this._setItemStatus("accepted"));
+    el.querySelector("#act-item-ignore")?.addEventListener("click",  () => this._setItemStatus("ignored"));
+    el.querySelector("#act-item-pending")?.addEventListener("click", () => this._setItemStatus("pending"));
+    el.querySelector("#act-bulk-accept")?.addEventListener("click",  () => this._bulkSetStatus("accepted"));
+    el.querySelector("#act-bulk-ignore")?.addEventListener("click",  () => this._bulkSetStatus("ignored"));
     el.querySelector("#act-curate-rules")!.addEventListener("input", () => this._schedulePreview(true));
     el.querySelector("#act-curate-add-rule-btn")!.addEventListener("click", (evt) => {
       evt.preventDefault();
@@ -670,6 +914,52 @@ export class ActionsScreen {
     this._renderCurateQuickQueue();
     initCardAccordions(el);
     this._bindHeadNavLinks(el, root);
+
+    // ─── Exceptions admin panel (Level 8A) ───────────────────────────────────
+    el.querySelector("#act-exc-admin-refresh")?.addEventListener("click", () => {
+      this._loadExceptionsAdminPanel(el);
+    });
+    // Auto-load when user first opens the <details> panel
+    el.querySelector<HTMLDetailsElement>("#act-exc-admin-panel")?.addEventListener("toggle", (e) => {
+      const det = e.target as HTMLDetailsElement;
+      if (det.open && this._excAdminAll.length === 0) {
+        this._loadExceptionsAdminPanel(el);
+      }
+    });
+    el.querySelectorAll<HTMLButtonElement>(".exc-filter-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const filter = btn.dataset.excFilter as "all" | "ignore" | "override" | undefined;
+        if (filter) this._setExcAdminFilter(filter, el);
+      });
+    });
+    // Delegation for dynamic rows: delete + edit save/cancel + open-in-curation
+    el.querySelector("#act-exc-admin-list")?.addEventListener("click", async (e) => {
+      const target = e.target as HTMLElement;
+      const row = target.closest<HTMLElement>("[data-exc-unit-id]");
+      if (!row) return;
+      const unitId = parseInt(row.dataset.excUnitId ?? "0");
+      if (!unitId) return;
+
+      if (target.closest(".exc-row-delete")) {
+        await this._excAdminDelete(unitId, el);
+      } else if (target.closest(".exc-row-edit-start")) {
+        this._excAdminEnterEdit(unitId, el);
+      } else if (target.closest(".exc-row-edit-save")) {
+        await this._excAdminSaveEdit(unitId, el);
+      } else if (target.closest(".exc-row-edit-cancel")) {
+        this._excAdminCancelEdit(unitId, el);
+      } else if (target.closest(".exc-row-open-curation")) {
+        const exc = this._excAdminAll.find(e => e.unit_id === unitId);
+        if (exc) await this._excAdminOpenInCuration(exc, el);
+      }
+    });
+    // Document filter select
+    el.querySelector<HTMLSelectElement>("#act-exc-doc-filter")?.addEventListener("change", (e) => {
+      const val = (e.target as HTMLSelectElement).value;
+      this._excAdminDocFilter = val ? parseInt(val) : 0;
+      this._renderExcAdminPanel(el);
+    });
+
     return el;
   }
 
@@ -2144,6 +2434,17 @@ export class ActionsScreen {
     this._hasPendingPreview = false;
     this._lastAuditEmpty = false;
     this._auditSelectedLinkId = null;
+    this._curateExamples = [];
+    this._activeDiffIdx = null;
+    this._curateRuleLabels = [];
+    this._activeRuleFilter = null;
+    this._activeStatusFilter = null;
+    this._curateGlobalChanged = 0;
+    this._curateRestoredCount = 0;
+    this._curateSavedCount = 0;
+    this._curateUnitsTotal = 0;
+    this._editingManualOverride = false;
+    this._curateExceptions = new Map();
     if (!conn) {
       this._lastErrorMsg = null;
     }
@@ -2494,6 +2795,1066 @@ export class ActionsScreen {
     this._schedulePreview(true);
   }
 
+  // ─── Level 3A: local status management ─────────────────────────────────
+
+  private static readonly _STATUS_LABEL: Record<string, string> = {
+    pending:  "En attente",
+    accepted: "Acceptée",
+    ignored:  "Ignorée",
+  };
+
+  /** Count pending / accepted / ignored across all examples (regardless of active filters). */
+  private _getStatusCounts(): { pending: number; accepted: number; ignored: number } {
+    let pending = 0, accepted = 0, ignored = 0;
+    for (const ex of this._curateExamples) {
+      const s = ex.status ?? "pending";
+      if (s === "accepted") accepted++;
+      else if (s === "ignored") ignored++;
+      else pending++;
+    }
+    return { pending, accepted, ignored };
+  }
+
+  /**
+   * Set the status of the currently active example.
+   *
+   * Mutation is in-place on the CuratePreviewExample object so _filteredExamples()
+   * reflects the new status immediately on next call.
+   *
+   * If the new status excludes the current item from the active filter set,
+   * the list is re-rendered and the next available item is auto-selected.
+   */
+  private _setItemStatus(status: NonNullable<CuratePreviewExample["status"]>): void {
+    if (this._activeDiffIdx === null) return;
+    const filtered = this._filteredExamples();
+    const ex = filtered[this._activeDiffIdx];
+    if (!ex) return;
+
+    const prevStatus = ex.status ?? "pending";
+    if (prevStatus === status) return; // no-op
+
+    // Mutate the shared object reference
+    ex.status = status;
+
+    const idx = this._activeDiffIdx;
+
+    // If no status filter or the new status still matches the filter, just update DOM in place
+    if (!this._activeStatusFilter || this._activeStatusFilter === status) {
+      const statusClass = `diff-${status}`;
+      const row = document.querySelector<HTMLElement>(`tr[data-diff-idx="${idx}"]`);
+      if (row) {
+        row.classList.remove("diff-pending", "diff-accepted", "diff-ignored");
+        row.classList.add(statusClass);
+        this._renderStatusBadge(row, status);
+      }
+      const para = document.querySelector<HTMLElement>(`.raw-unit[data-diff-idx="${idx}"]`);
+      if (para) {
+        para.classList.remove("raw-pending", "raw-accepted", "raw-ignored");
+        para.classList.add(`raw-${status}`);
+      }
+      this._updateActionButtons();
+    } else {
+      // Item no longer matches the status filter — re-render and advance
+      const newFiltered = this._filteredExamples();
+      this._activeDiffIdx = null;
+      this._renderDiffList(newFiltered);
+      this._renderRawPane(newFiltered);
+      const panel = document.querySelector<HTMLElement>("#act-preview-panel");
+      if (newFiltered.length > 0) {
+        this._setActiveDiffItem(Math.min(idx, newFiltered.length - 1), panel);
+      } else {
+        this._updateActionButtons();
+        const posEl = document.querySelector<HTMLElement>("#act-diff-position");
+        if (posEl) posEl.textContent = "0 modif.";
+        [document.querySelector<HTMLButtonElement>("#act-diff-prev"),
+         document.querySelector<HTMLButtonElement>("#act-diff-next")].forEach(b => { if (b) b.disabled = true; });
+      }
+    }
+
+    // Update session summary + log, then persist
+    this._updateSessionSummary();
+    this._saveCurateReviewState();
+    const extId = ex.external_id ?? (idx + 1);
+    const sl = ActionsScreen._STATUS_LABEL;
+    this._pushCurateLog("apply", `Unité ${extId} : ${sl[prevStatus] ?? prevStatus} → ${sl[status]}`);
+  }
+
+  /**
+   * Apply a status to every example in the current filtered view.
+   * Used by "Tout accepter" / "Tout ignorer" bulk actions.
+   */
+  private _bulkSetStatus(status: NonNullable<CuratePreviewExample["status"]>): void {
+    const filtered = this._filteredExamples();
+    if (filtered.length === 0) return;
+    for (const ex of filtered) ex.status = status;
+
+    // Re-render because status filter may now exclude everything shown
+    const newFiltered = this._filteredExamples();
+    this._activeDiffIdx = null;
+    this._renderDiffList(newFiltered);
+    this._renderRawPane(newFiltered);
+    const panel = document.querySelector<HTMLElement>("#act-preview-panel");
+    if (newFiltered.length > 0) {
+      this._setActiveDiffItem(0, panel);
+    } else {
+      this._updateActionButtons();
+    }
+    this._updateSessionSummary();
+    this._saveCurateReviewState();
+    const sl = ActionsScreen._STATUS_LABEL;
+    this._pushCurateLog("apply", `Lot : ${filtered.length} modif(s) → ${sl[status]}`);
+  }
+
+  /**
+   * Activate or clear the status filter.
+   * Combines with the rule filter via _filteredExamples().
+   */
+  private _setStatusFilter(status: "pending" | "accepted" | "ignored" | null): void {
+    this._activeStatusFilter = status;
+    this._activeDiffIdx = null;
+    const filtered = this._filteredExamples();
+    this._renderDiffList(filtered);
+    this._renderRawPane(filtered);
+    this._updateSessionSummary(); // re-renders chips with correct active state
+    const panel = document.querySelector<HTMLElement>("#act-preview-panel");
+    if (filtered.length > 0) {
+      this._setActiveDiffItem(0, panel);
+    } else {
+      this._updateActionButtons();
+      const posEl = document.querySelector<HTMLElement>("#act-diff-position");
+      if (posEl) posEl.textContent = status ? "0 modif." : "—";
+      [document.querySelector<HTMLButtonElement>("#act-diff-prev"),
+       document.querySelector<HTMLButtonElement>("#act-diff-next")].forEach(b => { if (b) b.disabled = true; });
+    }
+  }
+
+  /**
+   * Re-render the session summary (pending / accepted / ignored counts).
+   * The summary chips double as status-filter toggles.
+   */
+  private _updateSessionSummary(): void {
+    const el = document.querySelector<HTMLElement>("#act-curate-session-summary");
+    if (!el) return;
+    const total = this._curateExamples.length;
+    if (total === 0) { el.style.display = "none"; return; }
+
+    el.style.display = "";
+    const c = this._getStatusCounts();
+    const af = this._activeStatusFilter;
+    const sl = ActionsScreen._STATUS_LABEL;
+
+    const chip = (key: "pending" | "accepted" | "ignored", icon: string, label: string, count: number) =>
+      `<span class="session-chip session-${key}${af === key ? " session-chip-active" : ""}"` +
+      ` data-sf="${key}" role="button" tabindex="0" title="${af === key ? "Effacer ce filtre" : `Filtrer : ${label}`}">` +
+      `${icon}&#160;<strong>${count}</strong>&#160;<span class="session-chip-label">${label}</span></span>`;
+
+    // Build restore notice with partial-restore detail.
+    // Level 6A note: preview always requires a specific doc_id, so _curateRestoredCount
+    // always reflects a per-doc restore.  The "isAllMode" branch is an edge case where
+    // the user changed the doc selector *after* the preview ran — it doesn't indicate
+    // a real "all documents" restore.  We still show a helpful note in that case.
+    const docId = this._currentCurateDocId() ?? null;
+    const isAllMode = docId === null;
+    let restoreNotice: string;
+    if (this._curateRestoredCount > 0) {
+      const countText = this._curateSavedCount > this._curateRestoredCount
+        ? `${this._curateRestoredCount} statut(s) restauré(s) sur ${this._curateSavedCount} sauvegardé(s)`
+        : `${this._curateRestoredCount} statut(s) restauré(s)`;
+      // When the doc selector was changed after preview, clarify that the scope shown
+      // may not match the document currently selected.
+      const modeNote = isAllMode ? ` <em>(sélection modifiée depuis la preview)</em>` : "";
+      restoreNotice =
+        `<div class="session-restore-notice" title="Statuts restaurés depuis la session précédente (même document, mêmes règles)">` +
+        `&#8635; ${countText}${modeNote} &#8212; ` +
+        `<button class="btn-inline-link" id="act-reset-review">Réinitialiser</button>` +
+        `</div>`;
+    } else {
+      // When no doc is selected, "Réinitialiser" sweeps all saved review states (Level 6A).
+      const modeNote = isAllMode
+        ? `<span class="session-all-note" title="Aucun document sélectionné. La réinitialisation effacera toutes les sessions de review sauvegardées.">&#9432; Portée globale</span> &#8212; `
+        : "";
+      restoreNotice = `<div class="session-reset-row">${modeNote}<button class="btn-inline-link" id="act-reset-review">Effacer la review sauvegardée</button></div>`;
+    }
+
+    el.innerHTML =
+      `<div class="session-counts">` +
+      chip("pending",  "&#9632;", sl.pending,  c.pending)  +
+      chip("accepted", "&#10003;", sl.accepted, c.accepted) +
+      chip("ignored",  "&#215;",  sl.ignored,  c.ignored)  +
+      `</div>` +
+      (af ? `<div class="session-filter-note">Filtre statut actif &#8212; <button class="btn-inline-link" id="act-clear-sf">Afficher tout</button></div>` : "") +
+      (() => {
+        const overrideCount = this._curateExamples.filter(ex => ex.is_manual_override).length;
+        return overrideCount > 0
+          ? `<div class="session-override-note">&#9998;&#160;${overrideCount} correction(s) manuelle(s) dans cette session</div>`
+          : "";
+      })() +
+      (() => {
+        const excCount = this._curateExceptions.size;
+        return excCount > 0
+          ? `<div class="session-exception-note">🔒&#160;${excCount} exception(s) persistée(s) active(s) pour ce document</div>`
+          : "";
+      })() +
+      restoreNotice;
+
+    el.querySelectorAll<HTMLElement>("[data-sf]").forEach(chip => {
+      chip.addEventListener("click", () => {
+        const sf = chip.dataset.sf as "pending" | "accepted" | "ignored";
+        this._setStatusFilter(this._activeStatusFilter === sf ? null : sf);
+      });
+      chip.addEventListener("keydown", e => { if ((e as KeyboardEvent).key === "Enter") chip.click(); });
+    });
+    el.querySelector("#act-clear-sf")?.addEventListener("click", () => this._setStatusFilter(null));
+    el.querySelector("#act-reset-review")?.addEventListener("click", () => this._clearCurateReviewState());
+  }
+
+  /**
+   * Update the accept / ignore / pending action buttons to reflect
+   * the active item's current status and disabled state.
+   */
+  private _updateActionButtons(): void {
+    const filtered = this._filteredExamples();
+    const ex = this._activeDiffIdx !== null ? filtered[this._activeDiffIdx] : undefined;
+    const currentStatus = ex?.status ?? "pending";
+    const hasActive = ex !== undefined;
+
+    const accept  = document.querySelector<HTMLButtonElement>("#act-item-accept");
+    const ignore  = document.querySelector<HTMLButtonElement>("#act-item-ignore");
+    const pending = document.querySelector<HTMLButtonElement>("#act-item-pending");
+
+    if (accept)  { accept.disabled  = !hasActive; accept.classList.toggle("action-active",  hasActive && currentStatus === "accepted"); }
+    if (ignore)  { ignore.disabled  = !hasActive; ignore.classList.toggle("action-active",  hasActive && currentStatus === "ignored");  }
+    if (pending) { pending.disabled = !hasActive || currentStatus === "pending";
+                   pending.classList.toggle("action-active", hasActive && currentStatus === "pending"); }
+  }
+
+  /**
+   * (Re-)render the status badge inside a diff table row without full re-render.
+   * Replaces an existing .diff-status-badge if present.
+   */
+  private _renderStatusBadge(row: HTMLElement, status: string): void {
+    const existing = row.querySelector<HTMLElement>(".diff-status-badge");
+    if (status === "pending") { existing?.remove(); return; }
+    const badge = existing ?? document.createElement("span");
+    badge.className = `diff-status-badge diff-status-${status}`;
+    badge.textContent = status === "accepted" ? "✓" : "✗";
+    badge.title = ActionsScreen._STATUS_LABEL[status] ?? status;
+    if (!existing) {
+      const firstCell = row.querySelector("td");
+      if (firstCell) firstCell.appendChild(badge);
+    }
+  }
+
+  /**
+   * Render the "Contexte local" card for the given example.
+   * Shows the preceding unit (context_before), the modification itself (before→after),
+   * and the following unit (context_after).
+   *
+   * The card is hidden when ex is null or when both context fields are absent.
+   * Falls back gracefully: if only before/after exist, shows the modification without neighbours.
+   *
+   * Context text is already trimmed to 300 chars by the server.
+   * We trim again here at 200 display-chars with "…" to keep the card compact.
+   */
+  private _renderContextDetail(ex: CuratePreviewExample | null): void {
+    const card   = document.querySelector<HTMLElement>("#act-curate-context-card");
+    const body   = document.querySelector<HTMLElement>("#act-curate-context");
+    const posEl  = document.querySelector<HTMLElement>("#act-context-pos");
+    if (!card || !body) return;
+
+    if (!ex) {
+      card.style.display = "none";
+      return;
+    }
+
+    card.style.display = "";
+
+    // Position label: prefer human-readable unit_index + 1, fallback to unit_id
+    if (posEl) {
+      posEl.textContent = ex.unit_index !== undefined
+        ? `Unité ${ex.unit_index + 1}`
+        : `ID ${ex.unit_id}`;
+    }
+
+    const DISPLAY_TRIM = 200;
+    const trim = (t: string): string =>
+      t.length > DISPLAY_TRIM ? t.slice(0, DISPLAY_TRIM) + "…" : t;
+
+    const ctxBefore = (ex.context_before ?? "").trim();
+    const ctxAfter  = (ex.context_after  ?? "").trim();
+
+    // Effective "after" value: manual override wins over auto
+    const effectiveAfter = ex.manual_after ?? ex.after;
+
+    const ctxBeforeHtml = ctxBefore
+      ? `<div class="ctx-row ctx-before">
+           <span class="ctx-label">Avant</span>
+           <span class="ctx-text">${_escHtml(trim(ctxBefore))}</span>
+         </div>`
+      : "";
+    const ctxAfterHtml = ctxAfter
+      ? `<div class="ctx-row ctx-after">
+           <span class="ctx-label">Après</span>
+           <span class="ctx-text">${_escHtml(trim(ctxAfter))}</span>
+         </div>`
+      : "";
+
+    if (this._editingManualOverride) {
+      // ── Edit mode ──────────────────────────────────────────────────────────
+      body.innerHTML =
+        ctxBeforeHtml +
+        `<div class="ctx-row ctx-current">
+           <span class="ctx-label ctx-label-cur">Original</span>
+           <span class="ctx-text ctx-original">${_escHtml(ex.before)}</span>
+         </div>` +
+        `<div class="ctx-row ctx-edit-row">
+           <span class="ctx-label ctx-label-edit">Résultat</span>
+           <span class="ctx-edit-area">
+             <textarea id="act-manual-override-input" class="ctx-override-textarea"
+               rows="3" spellcheck="true">${_escHtml(effectiveAfter)}</textarea>
+             <span class="ctx-edit-hint">Proposition automatique : <em>${_escHtml(ex.after)}</em></span>
+           </span>
+         </div>` +
+        `<div class="ctx-edit-actions">
+           <button class="btn btn-sm btn-primary" id="act-override-save">Enregistrer</button>
+           <button class="btn btn-sm btn-secondary" id="act-override-cancel">Annuler</button>
+           ${ex.is_manual_override
+             ? `<button class="btn btn-sm" id="act-override-revert" title="Revenir à la proposition automatique">&#8617; Automatique</button>`
+             : ""}
+         </div>` +
+        ctxAfterHtml;
+    } else {
+      // ── Read mode ─────────────────────────────────────────────────────────
+      const overrideBadgeHtml = ex.is_manual_override
+        ? `<span class="ctx-override-badge"
+             title="Ce résultat a été corrigé manuellement. Proposition automatique : ${_escHtml(ex.after)}">
+             ✏ Édité manuellement
+           </span>`
+        : "";
+
+      // Level 7B: persistent exception badge
+      const hasException = ex.is_exception_ignored || ex.is_exception_override;
+      const exceptionBadgeHtml = hasException
+        ? `<span class="ctx-exception-badge"
+             title="${ex.is_exception_ignored
+               ? "Exception persistée : cette unité sera toujours ignorée par la curation, quelle que soit la session."
+               : `Exception persistée : ce texte sera toujours appliqué à cette unité. Texte : "${_escHtml(ex.exception_override ?? "")}"`}">
+             🔒 ${ex.is_exception_ignored ? "Ignoré durablement" : "Override durable"}
+           </span>`
+        : "";
+
+      // Level 8C: forced-unit indicator
+      const forcedReason = ex.preview_reason;
+      const forcedNoteHtml = forcedReason && forcedReason !== "standard"
+        ? `<div class="ctx-forced-note ctx-forced-${forcedReason}">
+             ${forcedReason === "forced"
+               ? "↗ Ouverture ciblée depuis le panneau Exceptions."
+               : forcedReason === "forced_ignored"
+               ? "↗ Ouverture ciblée — cette unité est <strong>neutralisée par une exception ignore</strong>. Elle n'est pas appliquée."
+               : "↗ Ouverture ciblée — aucune modification active avec les règles courantes."}
+           </div>`
+        : "";
+
+      body.innerHTML =
+        ctxBeforeHtml +
+        `<div class="ctx-row ctx-current">
+           <span class="ctx-label ctx-label-cur">${forcedReason === "forced_no_change" ? "Inchangé" : forcedReason === "forced_ignored" ? "Neutralisé" : "Modifié"}</span>
+           <span class="ctx-modification">
+             <span class="ctx-diff-before">${_escHtml(ex.before)}</span>
+             <span class="ctx-arrow">&#8594;</span>
+             <span class="ctx-diff-after${ex.is_manual_override ? " ctx-manual-override" : ""}">${_highlightChanges(ex.before, effectiveAfter)}</span>
+           </span>
+         </div>` +
+        ctxAfterHtml +
+        forcedNoteHtml +
+        `<div class="ctx-edit-actions">
+           ${overrideBadgeHtml}
+           <button class="btn btn-sm" id="act-override-edit"
+             title="Modifier manuellement le résultat de cette modification">&#9998; Éditer</button>
+           ${ex.is_manual_override
+             ? `<button class="btn btn-sm" id="act-override-revert"
+                  title="Annuler la correction manuelle et utiliser la proposition automatique">&#8617; Proposition auto</button>`
+             : ""}
+         </div>` +
+        `<div class="ctx-exception-actions">
+           ${exceptionBadgeHtml}
+           ${!hasException
+             ? `<button class="btn btn-sm ctx-exception-btn" id="act-exc-ignore"
+                  title="Ne plus jamais appliquer de curation sur cette unité, même lors des prochaines sessions">
+                  🔒 Toujours ignorer</button>
+                <button class="btn btn-sm ctx-exception-btn" id="act-exc-override"
+                  title="Appliquer durablement le résultat actuel comme correction permanente de cette unité">
+                  🔒 Conserver cette correction</button>`
+             : `<button class="btn btn-sm ctx-exception-btn ctx-exception-btn-delete" id="act-exc-delete"
+                  title="Supprimer l'exception persistée — la curation automatique sera réactivée pour cette unité">
+                  🔓 Supprimer l'exception</button>`}
+         </div>`;
+    }
+
+    // Attach event listeners (must be after innerHTML is set)
+    body.querySelector<HTMLButtonElement>("#act-override-edit")
+      ?.addEventListener("click", () => this._enterEditMode());
+    body.querySelector<HTMLButtonElement>("#act-override-save")
+      ?.addEventListener("click", () => {
+        const ta = body.querySelector<HTMLTextAreaElement>("#act-manual-override-input");
+        if (ta) this._saveManualOverride(ta.value);
+      });
+    body.querySelector<HTMLButtonElement>("#act-override-cancel")
+      ?.addEventListener("click", () => this._cancelEditMode());
+    body.querySelector<HTMLButtonElement>("#act-override-revert")
+      ?.addEventListener("click", () => this._revertManualOverride());
+    // Level 7B: persistent exception buttons
+    body.querySelector<HTMLButtonElement>("#act-exc-ignore")
+      ?.addEventListener("click", () => { this._setExceptionIgnore(ex); });
+    body.querySelector<HTMLButtonElement>("#act-exc-override")
+      ?.addEventListener("click", () => { this._setExceptionOverride(ex); });
+    body.querySelector<HTMLButtonElement>("#act-exc-delete")
+      ?.addEventListener("click", () => { this._deleteException(ex); });
+  }
+
+  /**
+   * Compute a compact, deterministic FNV-1a 32-bit signature for a rules list.
+   * Used to decide whether saved review statuses are compatible with the current
+   * preview (same ruleset ⇒ restore; different ⇒ clean start).
+   */
+  private static _rulesSignature(rules: CurateRule[]): string {
+    const canonical = rules
+      .map(r => `${r.pattern}|${r.replacement ?? ""}|${r.flags ?? ""}|${r.description ?? ""}`)
+      .sort()
+      .join("\x00");
+    let h = 0x811c9dc5;
+    for (let i = 0; i < canonical.length; i++) {
+      h ^= canonical.charCodeAt(i);
+      h = Math.imul(h, 0x01000193) >>> 0;
+    }
+    return h.toString(16).padStart(8, "0");
+  }
+
+  /**
+   * Build a compact, deterministic FNV-1a 32-bit fingerprint for a preview sample
+   * (Level 5A).  Encodes which units are in the sample AND which rules matched each
+   * one, without hashing the actual text content.
+   *
+   * Captures correctly:
+   *   - units added to / removed from the sample
+   *   - changes in which rules match a given unit
+   *   - re-ordering of examples (sort is applied before hashing)
+   *
+   * Does NOT capture:
+   *   - changes to the text content of a unit (before / after)
+   *   - changes to context_before / context_after
+   *   These are intentional omissions to keep the fingerprint lightweight.
+   *
+   * Option B chosen over Option A (unit_id only) because matched_rule_ids reveals
+   * rule-assignment changes (e.g. a rule removed then a similar one added) that
+   * unit_id alone cannot detect.  Option C (unit_id + before) was rejected for being
+   * too fragile on benign text edits.
+   */
+  private static _sampleFingerprint(examples: CuratePreviewExample[]): string {
+    const canonical = examples
+      .filter(ex => ex.unit_id !== undefined)
+      .map(ex => `${ex.unit_id}:${(ex.matched_rule_ids ?? []).slice().sort((a, b) => a - b).join(",")}`)
+      .sort()
+      .join("\x00");
+    let h = 0x811c9dc5;
+    for (let i = 0; i < canonical.length; i++) {
+      h ^= canonical.charCodeAt(i);
+      h = Math.imul(h, 0x01000193) >>> 0;
+    }
+    return h.toString(16).padStart(8, "0");
+  }
+
+  /**
+   * Build a compact, deterministic FNV-1a 32-bit textual fingerprint for a
+   * preview sample (Level 5B).  Encodes the beginning of each unit's original
+   * text ("before") alongside its unit_id.
+   *
+   * Normalisation applied to each "before" value:
+   *   1. Collapse any whitespace sequence to a single ASCII space.
+   *   2. Trim leading / trailing whitespace.
+   *   3. Take only the first 64 characters of the result.
+   *
+   * This makes the fingerprint robust against trivial whitespace variations
+   * (e.g., NBSP → space, double space → single space) while still detecting
+   * any substantive change to the beginning of a unit's text.
+   *
+   * Chosen over full-text hashing to avoid false invalidations on small edits
+   * beyond position 64, and over shorter prefixes (32) to give enough signal
+   * for typical corpus sentences (which often start similarly).
+   *
+   * Detects:  meaningful text changes in the first 64 normalised chars of "before".
+   * Does NOT detect:  changes beyond position 64; pure whitespace normalisation.
+   *
+   * Applied as a hard gate AFTER the structural fingerprint (unit_id +
+   * matched_rule_ids) has already passed.  If the structural fingerprint
+   * already caught a membership or rule-assignment change, this method is
+   * never reached for that session.
+   */
+  private static _sampleTextFingerprint(examples: CuratePreviewExample[]): string {
+    const canonical = examples
+      .filter(ex => ex.unit_id !== undefined)
+      .map(ex => {
+        const norm = (ex.before ?? "").replace(/\s+/g, " ").trim().slice(0, 64);
+        return `${ex.unit_id}:${norm}`;
+      })
+      .sort()
+      .join("\x00");
+    let h = 0x811c9dc5;
+    for (let i = 0; i < canonical.length; i++) {
+      h ^= canonical.charCodeAt(i);
+      h = Math.imul(h, 0x01000193) >>> 0;
+    }
+    return h.toString(16).padStart(8, "0");
+  }
+
+  /** Build the LocalStorage key for a specific document scope (or the legacy "all" key). */
+  private _curateReviewKey(docId: number | null): string {
+    return ActionsScreen.LS_CURATE_REVIEW_PREFIX + (docId ?? "all");
+  }
+
+  /**
+   * Enumerate and remove every localStorage key that belongs to the curate
+   * review namespace (keys starting with LS_CURATE_REVIEW_PREFIX).
+   *
+   * Used when an apply-all operation completes successfully, or when the user
+   * manually resets the review in "all documents" mode.
+   *
+   * Returns the number of keys that were removed, for feedback purposes.
+   *
+   * Design note (Level 6A):
+   *   Since /curate/preview always requires a specific doc_id, per-doc statuses
+   *   are stored under "review.<docId>" keys.  A global apply invalidates all
+   *   those individual documents, so we must sweep the entire namespace rather
+   *   than only removing the (never-actually-populated) "review.all" key.
+   */
+  private _clearAllCurateReviewKeys(): number {
+    const prefix = ActionsScreen.LS_CURATE_REVIEW_PREFIX;
+    const keysToRemove: string[] = [];
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith(prefix)) keysToRemove.push(k);
+      }
+      for (const k of keysToRemove) {
+        try { localStorage.removeItem(k); } catch { /* */ }
+      }
+    } catch { /* localStorage unavailable */ }
+    return keysToRemove.length;
+  }
+
+  /**
+   * Persist the current review statuses to localStorage (version 4 format).
+   * Includes:
+   *   - sampleFingerprint (structural: unit_id + matched_rule_ids)
+   *   - sampleTextFingerprint (textual: unit_id + normalised before[0..64])
+   *
+   * Auto-cleans: if all statuses are pending (empty map), the key is removed
+   * rather than writing a useless entry.
+   */
+  private _saveCurateReviewState(): void {
+    if (this._curateExamples.length === 0) return;
+    const docId = this._currentCurateDocId() ?? null;
+    const rules = this._currentRules();
+    const sig = ActionsScreen._rulesSignature(rules);
+    const statuses: Record<string, "accepted" | "ignored"> = {};
+    const overrides: Record<string, string> = {};
+    for (const ex of this._curateExamples) {
+      if (ex.unit_id === undefined) continue;
+      if (ex.status === "accepted" || ex.status === "ignored") {
+        statuses[String(ex.unit_id)] = ex.status;
+      }
+      if (ex.is_manual_override && ex.manual_after != null) {
+        overrides[String(ex.unit_id)] = ex.manual_after;
+      }
+    }
+    const key = this._curateReviewKey(docId);
+    // Auto-cleanup: if both statuses and overrides are empty, remove the entry entirely.
+    if (Object.keys(statuses).length === 0 && Object.keys(overrides).length === 0) {
+      try { localStorage.removeItem(key); } catch { /* */ }
+      return;
+    }
+    const state: StoredCurateReviewState = {
+      version: 5,
+      docId,
+      rulesSignature: sig,
+      updatedAt: Date.now(),
+      unitsTotal: this._curateUnitsTotal,
+      unitsChanged: this._curateGlobalChanged,
+      sampleFingerprint: ActionsScreen._sampleFingerprint(this._curateExamples),
+      sampleSize: this._curateExamples.length,
+      sampleTextFingerprint: ActionsScreen._sampleTextFingerprint(this._curateExamples),
+      statuses,
+      ...(Object.keys(overrides).length > 0 ? { overrides } : {}),
+    };
+    try { localStorage.setItem(key, JSON.stringify(state)); } catch { /* quota exceeded */ }
+  }
+
+  /**
+   * Load and validate stored review state for the current docId + rules.
+   * Returns null if absent, malformed, or incompatible (different rules signature).
+   * Accepts versions 1–4 for backward compatibility with already-stored sessions.
+   * Fingerprint checks (v3 structural, v4 textual) are done in _restoreCurateReviewState().
+   */
+  private _loadCurateReviewState(docId: number | null, rulesSignature: string): StoredCurateReviewState | null {
+    try {
+      const raw = localStorage.getItem(this._curateReviewKey(docId));
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as StoredCurateReviewState;
+      if (parsed.version !== 1 && parsed.version !== 2 && parsed.version !== 3 && parsed.version !== 4 && parsed.version !== 5) return null;
+      if (parsed.rulesSignature !== rulesSignature) return null;
+      if (typeof parsed.statuses !== "object" || parsed.statuses === null) return null;
+      return parsed;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Attempt to restore review statuses from localStorage after a preview.
+   *
+   * Compatibility guards applied in priority order:
+   *
+   * [HARD GATE] rulesSignature (all versions) — enforced in _loadCurateReviewState():
+   *   If the ruleset changed, no state is loaded at all.
+   *
+   * [HARD GATE v3+] sampleFingerprint — structural:
+   *   FNV-1a of (unit_id + matched_rule_ids) per example.
+   *   If different → refused.  Detects: membership change, rule-assignment change.
+   *
+   * [HARD GATE v4] sampleTextFingerprint — textual (applied after structural pass):
+   *   FNV-1a of (unit_id + normalised_before[0..64]) per example.
+   *   If different → refused.  Detects: substantive text change in unit's original text.
+   *   Does NOT detect: changes beyond position 64, trivial whitespace differences.
+   *
+   * [DEGRADED v3] structural match, no text fingerprint:
+   *   Restore proceeds with a warning about missing textual guard.
+   *
+   * [DEGRADED v1/v2] no structural fingerprint:
+   *   Uses unitsTotal soft guard, then proceeds with appropriate warnings.
+   *
+   * [SOFT GUARD] mode "all documents": always flagged.
+   * [SOFT GUARD] partial restore: warned when < 50% of saved statuses found.
+   *
+   * Sets _curateSavedCount for feedback.  Returns the restored count (0 on refusal).
+   */
+  private _restoreCurateReviewState(rules: CurateRule[], currentUnitsTotal: number, currentUnitsChanged: number): number {
+    // currentUnitsChanged is stored in v4 state; reserved for a future strong guard.
+    void currentUnitsChanged;
+
+    const docId = this._currentCurateDocId() ?? null;
+    const sig = ActionsScreen._rulesSignature(rules);
+    const saved = this._loadCurateReviewState(docId, sig);
+    if (!saved) {
+      this._curateSavedCount = 0;
+      return 0;
+    }
+
+    this._curateSavedCount = Object.keys(saved.statuses).length;
+
+    // ── HARD GATE (v3+): structural fingerprint ───────────────────────────────
+    if (saved.sampleFingerprint !== undefined) {
+      const currentFp = ActionsScreen._sampleFingerprint(this._curateExamples);
+      if (currentFp !== saved.sampleFingerprint) {
+        const savedSize = saved.sampleSize ?? this._curateSavedCount;
+        this._pushCurateLog("warn",
+          `Session sauvegardée ignorée : l'échantillon de preview a changé ` +
+          `(${savedSize} éléments sauvegardés, empreinte structurelle différente). ` +
+          `Les statuts précédents ne correspondent plus à l'aperçu courant.`
+        );
+        this._curateSavedCount = 0;
+        return 0;
+      }
+
+      // ── HARD GATE (v4): textual fingerprint ──────────────────────────────────
+      // Applied only after the structural gate has passed.
+      if (saved.sampleTextFingerprint !== undefined) {
+        const currentTextFp = ActionsScreen._sampleTextFingerprint(this._curateExamples);
+        if (currentTextFp !== saved.sampleTextFingerprint) {
+          const savedSize = saved.sampleSize ?? this._curateSavedCount;
+          this._pushCurateLog("warn",
+            `Session sauvegardée ignorée : l'échantillon textuel a changé ` +
+            `(${savedSize} éléments sauvegardés, empreinte textuelle différente). ` +
+            `Le texte source d'au moins une unité révisée a été modifié depuis la dernière session.`
+          );
+          this._curateSavedCount = 0;
+          return 0;
+        }
+        // Both fingerprints match — full v4 compatibility confirmed.
+      } else {
+        // ── DEGRADED MODE (v3): structural match but no text fingerprint ─────────
+        // Restore proceeds with a warning about reduced guarantees.
+        this._pushCurateLog("warn",
+          "Session restaurée avec garde-fous textuels réduits (format v3 sans empreinte textuelle). " +
+          "Des modifications textuelles non détectées restent possibles si le document a changé."
+        );
+      }
+    } else {
+      // ── DEGRADED MODE (v1/v2): no structural fingerprint ─────────────────────
+      if (saved.unitsTotal !== undefined && saved.unitsTotal > 0) {
+        const delta = Math.abs(currentUnitsTotal - saved.unitsTotal);
+        const threshold = Math.max(5, Math.round(saved.unitsTotal * 0.10));
+        if (delta > threshold) {
+          this._pushCurateLog("warn",
+            `Ancienne session restaurée avec garde-fous réduits — ` +
+            `le document a changé (${saved.unitsTotal} → ${currentUnitsTotal} unités). ` +
+            `Certains statuts peuvent être obsolètes.`
+          );
+        } else {
+          this._pushCurateLog("warn",
+            "Ancienne session restaurée avec garde-fous réduits (format v1/v2 sans empreinte d'aperçu)."
+          );
+        }
+      } else {
+        this._pushCurateLog("warn",
+          "Ancienne session restaurée avec garde-fous réduits (format v1 sans métadonnées de compatibilité)."
+        );
+      }
+    }
+
+    // Mode "all documents" is inherently less reliable — always flag it.
+    if (docId === null) {
+      this._pushCurateLog("warn",
+        "Restauration en mode global (tous les documents). La fiabilité est moindre si le corpus a changé depuis la dernière session."
+      );
+    }
+
+    // ── Apply statuses ────────────────────────────────────────────────────────
+    let restored = 0;
+    for (const ex of this._curateExamples) {
+      if (ex.unit_id === undefined) continue;
+      const storedStatus = saved.statuses[String(ex.unit_id)];
+      if (storedStatus) {
+        ex.status = storedStatus;
+        restored++;
+      }
+      // Level 7A: restore manual overrides
+      if (saved.overrides) {
+        const storedOverride = saved.overrides[String(ex.unit_id)];
+        if (storedOverride !== undefined) {
+          ex.manual_after = storedOverride;
+          ex.is_manual_override = true;
+        }
+      }
+    }
+
+    // Partial restore warning: < 50% of saved statuses found in the current sample.
+    if (this._curateSavedCount > 0 && restored < this._curateSavedCount / 2) {
+      this._pushCurateLog("warn",
+        `Restauration partielle : ${restored} statut(s) retrouvé(s) sur ${this._curateSavedCount} sauvegardé(s). ` +
+        `L'échantillon courant ne couvre peut-être pas tous les éléments révisés.`
+      );
+    } else if (restored > 0) {
+      // Positive confirmation — distinguish quality of the restore.
+      const quality = saved.sampleTextFingerprint !== undefined
+        ? "aperçu structurellement et textuellement compatible ✓"
+        : saved.sampleFingerprint !== undefined
+          ? "aperçu structurellement compatible ✓ (garde-fous textuels réduits)"
+          : "garde-fous réduits (ancienne session)";
+      const overrideCount = Object.keys(saved.overrides ?? {}).length;
+      const overrideNote = overrideCount > 0 ? `, ${overrideCount} override(s) manuel(s)` : "";
+      this._pushCurateLog("preview", `${restored} statut(s) restauré(s)${overrideNote} — ${quality}`);
+    }
+
+    return restored;
+  }
+
+  /**
+   * Invalidate the saved review state after a successful apply (Level 4B / 6A).
+   *
+   * Two modes:
+   *
+   * docId !== null — per-document apply:
+   *   Remove only the key for that document.  Other per-doc keys are untouched.
+   *
+   * docId === null — global apply (all documents):
+   *   Remove every key in the LS_CURATE_REVIEW_PREFIX namespace.
+   *   Rationale (Level 6A): because /curate/preview always requires a specific
+   *   doc_id, review statuses are stored as "review.<docId>" per-doc keys even
+   *   when the apply scope is global.  Removing only "review.all" (which is never
+   *   actually populated in normal usage) would leave those per-doc states intact,
+   *   leading to stale restore on the next preview of any individual document.
+   *
+   * Does NOT touch in-memory _curateExamples (the apply flow already clears them).
+   */
+  private _invalidateCurateReviewAfterApply(docId: number | null): void {
+    if (docId === null) {
+      // Global apply: sweep the entire review namespace.
+      const cleared = this._clearAllCurateReviewKeys();
+      this._curateRestoredCount = 0;
+      this._curateSavedCount = 0;
+      this._updateSessionSummary();
+      const note = cleared > 0
+        ? `Review locale effacée pour ${cleared} document(s) après application globale.`
+        : "Review locale effacée après application globale (aucun état sauvegardé).";
+      this._pushCurateLog("apply", note);
+    } else {
+      // Per-document apply: remove only that document's key.
+      try { localStorage.removeItem(this._curateReviewKey(docId)); } catch { /* */ }
+      this._curateRestoredCount = 0;
+      this._curateSavedCount = 0;
+      this._updateSessionSummary();
+      this._pushCurateLog("apply", `Review locale du document #${docId} effacée après application réussie.`);
+    }
+  }
+
+  /**
+   * Clear the saved review state and reset all visible statuses to "pending".
+   *
+   * Scope (Level 6A):
+   *   - If a specific document is selected: remove only its key.
+   *   - If no document is selected (docId === null, "all" scope): sweep the
+   *     entire LS_CURATE_REVIEW_PREFIX namespace, because per-doc statuses are
+   *     stored as "review.<docId>" keys, not under a single "review.all" entry.
+   */
+  private _clearCurateReviewState(): void {
+    const docId = this._currentCurateDocId() ?? null;
+    let logMsg: string;
+    if (docId === null) {
+      const cleared = this._clearAllCurateReviewKeys();
+      logMsg = cleared > 0
+        ? `Review globale réinitialisée — ${cleared} clé(s) de session effacée(s).`
+        : "Review globale réinitialisée (aucun état sauvegardé).";
+    } else {
+      try { localStorage.removeItem(this._curateReviewKey(docId)); } catch { /* */ }
+      logMsg = `Review du document #${docId} réinitialisée (statuts remis à en attente).`;
+    }
+    for (const ex of this._curateExamples) {
+      ex.status = "pending";
+      ex.manual_after = undefined;
+      ex.is_manual_override = undefined;
+    }
+    this._editingManualOverride = false;
+    this._curateRestoredCount = 0;
+    this._curateSavedCount = 0;
+    const filtered = this._filteredExamples();
+    this._renderDiffList(filtered);
+    this._renderRawPane(filtered);
+    this._updateSessionSummary();
+    this._updateActionButtons();
+    this._pushCurateLog("preview", logMsg);
+  }
+
+  /**
+   * Build _curateRuleLabels: one human-readable label per position in the rules
+   * array that will be sent to the server. Must be called before each preview so
+   * matched_rule_ids from the response can be mapped back to labels.
+   *
+   * Order must exactly match _currentRules() — same preset order, same custom rules.
+   */
+  private _buildRuleLabels(): void {
+    const labels: string[] = [];
+    const PRESET_LABEL: Record<string, string> = {
+      spaces: "Espaces",
+      quotes: "Guillemets",
+      punctuation: "Ponctuation",
+      invisibles: "Invisibles",
+      numbering: "Numérotation",
+    };
+    const entries: Array<[string, string]> = [
+      ["act-rule-spaces", "spaces"],
+      ["act-rule-quotes", "quotes"],
+      ["act-rule-punctuation", "punctuation"],
+      ["act-rule-invisibles", "invisibles"],
+      ["act-rule-numbering", "numbering"],
+    ];
+    for (const [checkId, key] of entries) {
+      if (this._isRuleChecked(checkId)) {
+        for (const _ of CURATE_PRESETS[key].rules) labels.push(PRESET_LABEL[key]);
+      }
+    }
+    const raw = (document.querySelector<HTMLTextAreaElement>("#act-curate-rules"))?.value ?? "";
+    for (const rule of this._parseAdvancedCurateRules(raw)) {
+      labels.push(rule.description || "Règle custom");
+    }
+    this._curateRuleLabels = labels;
+  }
+
+  /**
+   * Return _curateExamples filtered by the current rule filter AND status filter.
+   * Both filters are independent and cumulative.
+   * Results are references into _curateExamples — mutations to .status are visible immediately.
+   */
+  private _filteredExamples(): CuratePreviewExample[] {
+    return this._curateExamples.filter(ex => {
+      const ruleOk = !this._activeRuleFilter ||
+        (ex.matched_rule_ids ?? []).some(idx => (this._curateRuleLabels[idx] ?? "") === this._activeRuleFilter);
+      const statusOk = !this._activeStatusFilter ||
+        (ex.status ?? "pending") === this._activeStatusFilter;
+      return ruleOk && statusOk;
+    });
+  }
+
+  /**
+   * Count how many examples in _curateExamples match each rule label.
+   * Each example is counted once per distinct label (not once per matched_rule_id).
+   */
+  private _getRuleStats(): Map<string, number> {
+    const map = new Map<string, number>();
+    for (const ex of this._curateExamples) {
+      const seenLabels = new Set<string>();
+      for (const idx of (ex.matched_rule_ids ?? [])) {
+        const label = this._curateRuleLabels[idx] ?? `règle ${idx + 1}`;
+        if (!seenLabels.has(label)) {
+          seenLabels.add(label);
+          map.set(label, (map.get(label) ?? 0) + 1);
+        }
+      }
+    }
+    return map;
+  }
+
+  /**
+   * Activate or clear a rule filter.
+   * Re-renders diff and raw panes with the filtered set and auto-selects the first item.
+   */
+  private _setRuleFilter(label: string | null, panel?: HTMLElement | null): void {
+    this._activeRuleFilter = label;
+    this._activeDiffIdx = null;
+    const filtered = this._filteredExamples();
+    // Re-render both panes with the new filtered set
+    this._renderDiffList(filtered);
+    this._renderRawPane(filtered);
+    // Update filter badge visibility
+    this._updateFilterBadge(panel);
+    // Highlight diagnostics chips to show which filter is active
+    (panel ?? document).querySelectorAll<HTMLElement>(".curate-diag-rule-chip").forEach(chip => {
+      chip.classList.toggle("active", chip.dataset.ruleLabel === label);
+    });
+    // Auto-select first item in filtered set (or reset nav buttons)
+    if (filtered.length > 0) {
+      this._setActiveDiffItem(0, panel);
+    } else {
+      const posEl = (panel ?? document).querySelector<HTMLElement>("#act-diff-position")
+        ?? document.querySelector<HTMLElement>("#act-diff-position");
+      if (posEl) posEl.textContent = label ? "0 modif." : "—";
+      [(panel ?? document).querySelector<HTMLButtonElement>("#act-diff-prev"),
+       (panel ?? document).querySelector<HTMLButtonElement>("#act-diff-next")].forEach(btn => {
+        if (btn) btn.disabled = true;
+      });
+    }
+  }
+
+  /**
+   * Show or hide the sample-info notice in the preview controls.
+   * Explains clearly how many examples are shown vs. the real total,
+   * so users know whether the preview is a complete or partial view.
+   *
+   * What we can know from the API:
+   *   - stats.units_changed → _curateGlobalChanged (real total)
+   *   - examples.length     → _curateExamples.length (sample shown)
+   * What we cannot know: the count per rule across the FULL document (only for the sample).
+   */
+  private _updateSampleInfo(): void {
+    const el = document.querySelector<HTMLElement>("#act-curate-sample-info");
+    if (!el) return;
+    const shown = this._curateExamples.length;
+    const changed = this._curateGlobalChanged;
+    if (changed === 0 || shown === 0) {
+      el.style.display = "none";
+      return;
+    }
+    el.style.display = "";
+    if (shown < changed) {
+      // Truncated: we show a partial sample
+      el.className = "curate-sample-info curate-sample-truncated";
+      el.innerHTML =
+        `&#9432;&#160;<strong>${shown}</strong> modification(s) affich&#233;e(s) sur` +
+        ` <strong>${changed}</strong> au total &#8212;` +
+        ` <span class="sample-scope-note">preview limit&#233;e &#224; ${CURATE_PREVIEW_LIMIT}&#160;exemples</span>`;
+    } else {
+      // Full sample: nothing hidden
+      el.className = "curate-sample-info curate-sample-full";
+      el.innerHTML =
+        `&#10003;&#160;${shown} modification(s) affich&#233;e(s) &#8212;` +
+        ` <span class="sample-scope-note">liste compl&#232;te</span>`;
+    }
+  }
+
+  /** Show or hide the filter badge in the preview controls. */
+  private _updateFilterBadge(panel?: HTMLElement | null): void {
+    const scope = panel ?? document;
+    const badge = scope.querySelector<HTMLElement>("#act-curate-filter-badge")
+      ?? document.querySelector<HTMLElement>("#act-curate-filter-badge");
+    const labelEl = scope.querySelector<HTMLElement>("#act-curate-filter-label")
+      ?? document.querySelector<HTMLElement>("#act-curate-filter-label");
+    if (!badge) return;
+    if (this._activeRuleFilter) {
+      badge.style.display = "";
+      if (labelEl) labelEl.textContent = this._activeRuleFilter;
+    } else {
+      badge.style.display = "none";
+    }
+  }
+
+  /**
+   * Select a diff item by index: highlights the row in the diff pane,
+   * syncs the raw pane scroll, and updates nav buttons + position indicator.
+   */
+  private _setActiveDiffItem(idx: number | null, panel?: HTMLElement | null): void {
+    // Level 7A: cancel any uncommitted manual edit when switching to a different item
+    if (this._editingManualOverride) {
+      this._editingManualOverride = false;
+    }
+    this._activeDiffIdx = idx;
+    const scope = panel ?? document;
+
+    // Highlight diff row
+    scope.querySelectorAll<HTMLElement>("tr[data-diff-idx]").forEach(tr => {
+      tr.classList.toggle("diff-active", tr.dataset.diffIdx === String(idx));
+    });
+    if (idx !== null) {
+      const activeRow = scope.querySelector<HTMLElement>(`tr[data-diff-idx="${idx}"]`);
+      activeRow?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+
+    // Highlight raw paragraph and sync scroll
+    scope.querySelectorAll<HTMLElement>("[data-diff-idx].raw-unit").forEach(p => {
+      p.classList.toggle("raw-active", p.dataset.diffIdx === String(idx));
+    });
+    if (idx !== null && this._previewSyncScroll) {
+      const rawPara = scope.querySelector<HTMLElement>(`.raw-unit[data-diff-idx="${idx}"]`);
+      rawPara?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+
+    // Update position indicator and nav buttons (scoped to filtered set)
+    const total = this._filteredExamples().length;
+    const filterParts: string[] = [];
+    if (this._activeRuleFilter)  filterParts.push(this._activeRuleFilter);
+    if (this._activeStatusFilter) filterParts.push(ActionsScreen._STATUS_LABEL[this._activeStatusFilter] ?? this._activeStatusFilter);
+    const filterSuffix = filterParts.length ? ` (${filterParts.join(" + ")})` : "";
+    const posEl = scope.querySelector<HTMLElement>("#act-diff-position") ?? document.querySelector<HTMLElement>("#act-diff-position");
+    if (posEl) posEl.textContent = total > 0 && idx !== null ? `${idx + 1} / ${total}${filterSuffix}` : total > 0 ? `${total} modif.` : "—";
+
+    const prevBtn = scope.querySelector<HTMLButtonElement>("#act-diff-prev") ?? document.querySelector<HTMLButtonElement>("#act-diff-prev");
+    const nextBtn = scope.querySelector<HTMLButtonElement>("#act-diff-next") ?? document.querySelector<HTMLButtonElement>("#act-diff-next");
+    if (prevBtn) prevBtn.disabled = idx === null || idx <= 0;
+    if (nextBtn) nextBtn.disabled = idx === null || idx >= total - 1;
+
+    // Update preview-info header
+    const infoEl = document.querySelector<HTMLElement>("#act-preview-info");
+    if (infoEl && total > 0 && idx !== null) {
+      infoEl.textContent = `Modif. ${idx + 1}/${total}${filterSuffix}`;
+    }
+
+    // Reflect active item's status in action buttons
+    this._updateActionButtons();
+
+    // Update context detail card for the active example
+    const activeEx = idx !== null ? this._filteredExamples()[idx] ?? null : null;
+    this._renderContextDetail(activeEx);
+  }
+
+  /** Switch the preview pane display mode and update the mode button visual state. */
+  private _applyPreviewMode(container: HTMLElement): void {
+    const rawPane  = container.querySelector<HTMLElement>("#act-preview-raw")?.closest<HTMLElement>(".pane");
+    const diffPane = container.querySelector<HTMLElement>("#act-diff-list")?.closest<HTMLElement>(".pane");
+    if (rawPane)  rawPane.style.display  = this._previewMode === "diffonly"   ? "none" : "";
+    if (diffPane) diffPane.style.display = this._previewMode === "rawonly"    ? "none" : "";
+    container.querySelectorAll<HTMLButtonElement>(".preview-mode-btn").forEach(btn => {
+      btn.classList.toggle("active", btn.dataset.previewMode === this._previewMode);
+    });
+  }
+
   private _currentRules(): CurateRule[] {
     const rules: CurateRule[] = [];
     if (this._isRuleChecked("act-rule-spaces")) rules.push(...CURATE_PRESETS.spaces.rules);
@@ -2725,7 +4086,13 @@ export class ActionsScreen {
     if (diffEl0) diffEl0.innerHTML = "";
 
     try {
-      const res = await curatePreview(this._conn, { doc_id: docId, rules, limit_examples: 10 });
+      const res = await curatePreview(this._conn, {
+        doc_id: docId,
+        rules,
+        limit_examples: CURATE_PREVIEW_LIMIT,
+        ...(this._forcedPreviewUnitId !== null ? { force_unit_id: this._forcedPreviewUnitId } : {}),
+      });
+      this._forcedPreviewUnitId = null; // reset after use
 
       // Stats banner (footer)
       const statsEl = document.querySelector("#act-preview-stats")!;
@@ -2740,14 +4107,43 @@ export class ActionsScreen {
       // Info label in preview card header
       if (infoEl) infoEl.textContent = `${total} unités · ${changed} modifiée(s)`;
 
-      // Raw pane (center left): source text before curation
-      this._renderRawPane(res.examples);
+      // Store examples with initial status "pending" for every item.
+      // Level 4B: restore statuses from localStorage when context is compatible
+      // (same docId, same rulesSignature, units_total within ±10%).
+      this._curateExamples = res.examples.map(ex => ({ ...ex, status: "pending" as const }));
+      this._curateGlobalChanged = changed;
+      this._curateUnitsTotal = total;   // needed by _saveCurateReviewState
+      this._activeDiffIdx = null;
+      this._activeRuleFilter = null;
+      this._activeStatusFilter = null;
+      // Build rule labels AFTER storing examples (must match rules sent to server)
+      this._buildRuleLabels();
+      // Attempt restore; pass current stats so divergence can be detected.
+      this._curateRestoredCount = this._restoreCurateReviewState(rules, total, changed);
 
-      // Diff table in center right pane
-      this._renderDiffList(res.examples);
+      // Raw pane and diff pane: use filtered list (= full list since filter is reset)
+      const toRender = this._filteredExamples();
+      this._renderRawPane(toRender);
+      this._renderDiffList(toRender);
 
       // Update diagnostics panel (right column)
       this._renderCurateDiag(changed, total, reps);
+
+      // Hide filter badge + show sample-info notice + session summary
+      const panel = document.querySelector<HTMLElement>("#act-preview-panel");
+      this._updateFilterBadge(panel);
+      this._updateSampleInfo();
+      this._updateSessionSummary();
+
+      // Show action bar when there are examples to review
+      const actionBar = document.querySelector<HTMLElement>("#act-curate-action-bar");
+      if (actionBar) actionBar.style.display = toRender.length > 0 ? "" : "none";
+      this._updateActionButtons();
+
+      // Auto-select first diff item if any
+      if (toRender.length > 0) {
+        this._setActiveDiffItem(0, panel ?? undefined);
+      }
 
       // Minimap
       this._renderCurateMinimap(res.examples.length, total);
@@ -2762,7 +4158,44 @@ export class ActionsScreen {
         ? `OK – aucune modification (${total} unités)`
         : `OK – ${changed}/${total} unités, ${reps} remplacement(s)`;
       this._pushCurateLog("preview", previewMsg);
+
+      // Level 7B: load persistent exceptions for this document (async, non-blocking).
+      // After loading, re-render to reflect exception badges.
+      this._loadCurateExceptions().then(() => {
+        const filtered = this._filteredExamples();
+        this._renderDiffList(filtered);
+        const activeEx = this._activeDiffIdx !== null ? filtered[this._activeDiffIdx] ?? null : null;
+        this._renderContextDetail(activeEx);
+        if (this._curateExceptions.size > 0) {
+          // Optionally update stats banner to mention silenced units
+          const excIgnored = [...this._curateExceptions.values()].filter(e => e.kind === "ignore").length;
+          if (excIgnored > 0) {
+            const statsEl = document.querySelector("#act-preview-stats");
+            if (statsEl) {
+              const cur = statsEl.innerHTML;
+              statsEl.innerHTML = cur + ` <span class="stat-exc">🔒 ${excIgnored} unité(s) silencée(s) par exception persistée.</span>`;
+            }
+          }
+        }
+      }).catch(() => { /* non-critical */ });
+      // Level 8A: also refresh the admin panel (cross-doc list) after each preview.
+      if (this._root) {
+        const root = this._root;
+        const panel = root.querySelector<HTMLDetailsElement>("#act-exc-admin-panel");
+        // Only auto-refresh if the panel is already open (avoid unnecessary requests)
+        if (panel?.open) {
+          this._loadExceptionsAdminPanel(root).catch(() => { /* non-critical */ });
+        } else {
+          // Update badge count with current session exceptions size
+          const badge = root.querySelector<HTMLElement>("#act-exc-admin-badge");
+          if (badge && this._curateExceptions.size > 0) {
+            badge.textContent = String(this._curateExceptions.size);
+            badge.style.display = "inline-flex";
+          }
+        }
+      }
     } catch (err) {
+      this._forcedPreviewUnitId = null; // always reset even on failure
       this._hasPendingPreview = false;
       if (infoEl) infoEl.textContent = "Erreur";
       const msg = err instanceof SidecarError ? err.message : String(err);
@@ -2869,22 +4302,86 @@ export class ActionsScreen {
   }
 
   private _renderCurateDiag(changed: number, total: number, replacements: number): void {
-    const diagEl = document.querySelector("#act-curate-diag");
+    const diagEl = document.querySelector<HTMLElement>("#act-curate-diag");
     if (!diagEl) return;
+
     if (changed === 0) {
       diagEl.innerHTML = `<div class="curate-diag"><strong>✓ Aucune modification</strong>${total} unités analysées, corpus propre.</div>`;
     } else {
+      const shown = this._curateExamples.length;
+      const isTruncated = shown < this._curateGlobalChanged;
+      const ruleStats = this._getRuleStats(); // label → count (within sample only)
+
+      // Truncation notice: shown when the sample doesn't cover all real changes.
+      // We can confirm truncation (shown < changed) but cannot state the exact total per rule.
+      const truncationHtml = isTruncated
+        ? `<div class="curate-diag curate-diag-notice">
+             &#9432;&#160;Preview limit&#233;e &#224; ${shown}&#160;exemples sur&#160;${this._curateGlobalChanged} modifications r&#233;elles.
+             Les compteurs par r&#232;gle ci-dessous concernent uniquement l&#8217;&#233;chantillon affich&#233;.
+           </div>`
+        : "";
+
+      // Build per-rule clickable chips with explicit scope annotation
+      let ruleChipsHtml = "";
+      if (ruleStats.size > 0) {
+        const scopeNote = isTruncated
+          ? `<span class="diag-scope-note">dans l&#8217;&#233;chantillon courant</span>`
+          : "";
+        const chipsInner = [...ruleStats.entries()]
+          .sort((a, b) => b[1] - a[1])
+          .map(([label, count]) =>
+            `<span class="chip curate-diag-rule-chip" data-rule-label="${_escHtml(label)}" role="button" tabindex="0"` +
+            ` title="Filtrer sur : ${_escHtml(label)}${isTruncated ? " (dans l\u2019\u00e9chantillon courant)" : ""}"` +
+            `>${_escHtml(label)}<span class="diag-rule-count">${count}</span></span>`
+          ).join("");
+        ruleChipsHtml = `
+          <div class="curate-diag curate-diag-rules">
+            <strong>Filtrer par r&#232;gle</strong>${scopeNote}
+            <div class="chip-row diag-rule-chips" style="margin-top:5px">${chipsInner}</div>
+          </div>`;
+      }
+
       diagEl.innerHTML = `
-        <div class="curate-diag warn">
-          <strong>${changed} modification(s) à valider</strong>
-          ${replacements} remplacement(s) au total sur ${total} unités.
+        <div class="curate-diag warn curate-diag-summary">
+          <strong>${changed} unit&#233;(s) modifi&#233;e(s)</strong>
+          ${replacements} remplacement(s) sur ${total} unit&#233;s.
         </div>
+        ${shown > 0 ? `<div class="curate-diag curate-diag-action" id="act-diag-goto-first" role="button" tabindex="0">
+          <strong>&#8594; Premi&#232;re modification</strong>
+          <span style="font-size:11px;color:var(--prep-muted)">${shown} exemple(s) &#8212; cliquer pour naviguer</span>
+        </div>` : ""}
+        ${truncationHtml}
+        ${ruleChipsHtml}
         <div class="curate-diag">
-          <strong>Impact segmentation estimé</strong>
-          Vérifiez la preview avant d'appliquer.
+          <strong>Impact segmentation</strong>
+          V&#233;rifiez la preview avant d&#8217;appliquer.
         </div>
       `;
+
+      // Jump-to-first listener
+      if (shown > 0) {
+        const gotoBtn = diagEl.querySelector<HTMLElement>("#act-diag-goto-first");
+        gotoBtn?.addEventListener("click", () => {
+          const panel = document.querySelector<HTMLElement>("#act-preview-panel") ?? undefined;
+          this._setRuleFilter(null, panel);
+          document.querySelector("#act-diff-list")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        });
+        gotoBtn?.addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter") gotoBtn.click(); });
+      }
+
+      // Per-rule chip filter listeners
+      diagEl.querySelectorAll<HTMLElement>(".curate-diag-rule-chip").forEach(chip => {
+        const label = chip.dataset.ruleLabel ?? "";
+        const activate = () => {
+          const panel = document.querySelector<HTMLElement>("#act-preview-panel") ?? undefined;
+          // Toggle: clicking the active filter clears it
+          this._setRuleFilter(this._activeRuleFilter === label ? null : label, panel);
+        };
+        chip.addEventListener("click", activate);
+        chip.addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter") activate(); });
+      });
     }
+
     // Show "Voir segmentation" link if a segmentation report exists
     const segLinkEl = document.querySelector<HTMLElement>("#act-curate-seg-link");
     if (segLinkEl) {
@@ -2913,21 +4410,71 @@ export class ActionsScreen {
   }
 
   private _renderRawPane(examples: CuratePreviewExample[]): void {
-    const el = document.querySelector("#act-preview-raw");
+    const el = document.querySelector<HTMLElement>("#act-preview-raw");
     if (!el) return;
     if (examples.length === 0) {
-      el.innerHTML = `<p class="empty-hint">Aucun exemple disponible.</p>`;
+      let msg: string;
+      if (this._activeRuleFilter) {
+        // Filter active but no matches in sample
+        msg = `Aucune modification pour &#171;&#160;${_escHtml(this._activeRuleFilter)}&#160;&#187; dans cet &#233;chantillon.` +
+          ` <button class="btn-inline-link" id="raw-pane-clear-filter">Effacer le filtre</button>`;
+      } else if (this._curateGlobalChanged === 0) {
+        // Document is genuinely clean with these rules
+        msg = `&#10003;&#160;Aucune modification &#8212; le document est propre avec ces r&#232;gles.`;
+      } else {
+        // Shouldn't normally happen (sample empty while changes exist and no filter)
+        msg = `Aucun exemple disponible dans cet &#233;chantillon.`;
+      }
+      el.innerHTML = `<p class="empty-hint">${msg}</p>`;
+      el.querySelector<HTMLElement>("#raw-pane-clear-filter")?.addEventListener("click", () => {
+        this._setRuleFilter(null, document.querySelector<HTMLElement>("#act-preview-panel"));
+      });
       return;
     }
-    el.innerHTML = examples.map((ex) =>
-      `<p>${_escHtml(ex.before)}</p>`
-    ).join("");
+    el.innerHTML = "";
+    examples.forEach((ex, i) => {
+      const p = document.createElement("p");
+      p.dataset.diffIdx = String(i);
+      p.className = "raw-unit";
+      // Primary label from first matched rule (if available)
+      const firstLabel = (ex.matched_rule_ids ?? []).length > 0
+        ? (this._curateRuleLabels[ex.matched_rule_ids![0]] ?? "")
+        : "";
+      // Status class for raw pane
+      const st = ex.status ?? "pending";
+      if (st !== "pending") p.classList.add(`raw-${st}`);
+      if (firstLabel) {
+        const badge = document.createElement("span");
+        badge.className = "raw-rule-badge";
+        badge.textContent = firstLabel;
+        p.appendChild(badge);
+        p.appendChild(document.createTextNode(" "));
+      }
+      p.appendChild(document.createTextNode(ex.before));
+      p.addEventListener("click", () => {
+        const panel = p.closest<HTMLElement>("#act-preview-panel") ?? undefined;
+        this._setActiveDiffItem(i, panel);
+      });
+      el.appendChild(p);
+    });
   }
 
   private _renderDiffList(examples: CuratePreviewExample[]): void {
-    const el = document.querySelector("#act-diff-list")!;
+    const el = document.querySelector<HTMLElement>("#act-diff-list")!;
     if (examples.length === 0) {
-      el.innerHTML = "";
+      let msg: string;
+      if (this._activeRuleFilter) {
+        msg = `Aucune modification pour &#171;&#160;${_escHtml(this._activeRuleFilter)}&#160;&#187; dans cet &#233;chantillon.` +
+          ` <button class="btn-inline-link" id="diff-pane-clear-filter">Effacer le filtre</button>`;
+      } else if (this._curateGlobalChanged === 0) {
+        msg = `&#10003;&#160;Aucune modification &#8212; document propre.`;
+      } else {
+        msg = `Aucun exemple dans cet &#233;chantillon.`;
+      }
+      el.innerHTML = `<p class="empty-hint" style="padding:8px">${msg}</p>`;
+      el.querySelector<HTMLElement>("#diff-pane-clear-filter")?.addEventListener("click", () => {
+        this._setRuleFilter(null, document.querySelector<HTMLElement>("#act-preview-panel"));
+      });
       return;
     }
     const table = document.createElement("table");
@@ -2935,24 +4482,821 @@ export class ActionsScreen {
     table.innerHTML = `
       <thead>
         <tr>
-          <th style="width:40px">ext_id</th>
+          <th style="width:28px">#</th>
+          <th style="width:80px">R&#232;gle</th>
           <th>Avant</th>
-          <th>Après</th>
+          <th>Apr&#232;s</th>
         </tr>
       </thead>
     `;
     const tbody = document.createElement("tbody");
-    for (const ex of examples) {
+    examples.forEach((ex, i) => {
       const tr = document.createElement("tr");
-      const extIdCell = `<td class="diff-extid">${ex.external_id ?? "—"}</td>`;
-      const beforeCell = `<td class="diff-before">${_escHtml(ex.before)}</td>`;
-      const afterCell = `<td class="diff-after">${_highlightChanges(ex.before, ex.after)}</td>`;
-      tr.innerHTML = extIdCell + beforeCell + afterCell;
+      tr.dataset.diffIdx = String(i);
+      tr.className = "diff-row";
+      // Informative tooltip: single-rule vs. multi-rule, plus click affordance
+      const ruleCount = [...new Set(
+        (ex.matched_rule_ids ?? []).map(idx => this._curateRuleLabels[idx] ?? `r${idx + 1}`)
+      )].length;
+      tr.title = ruleCount > 1
+        ? `Modification par ${ruleCount} règles — cliquer pour sélectionner`
+        : "Cliquer pour sélectionner cette modification";
+      // Compact rule badge(s) — show distinct labels (reuses ruleCount computed above)
+      const ruleLabels = [...new Set(
+        (ex.matched_rule_ids ?? []).map(idx => this._curateRuleLabels[idx] ?? `r${idx + 1}`)
+      )];
+      const ruleBadgeHtml = ruleLabels.length
+        ? ruleLabels.map(l => `<span class="diff-rule-badge">${_escHtml(l)}</span>`).join(" ")
+        : `<span class="diff-rule-badge diff-rule-badge-unknown">—</span>`;
+      // Apply status class so CSS can show accepted/ignored state
+      const st = ex.status ?? "pending";
+      if (st !== "pending") tr.classList.add(`diff-${st}`);
+      // Status badge (only for non-pending, to avoid clutter)
+      const statusBadgeHtml = st !== "pending"
+        ? `<span class="diff-status-badge diff-status-${st}" title="${_escHtml(ActionsScreen._STATUS_LABEL[st] ?? st)}">${st === "accepted" ? "✓" : "✗"}</span>`
+        : "";
+      // Override badge (Level 7A)
+      const overrideBadgeHtml = ex.is_manual_override
+        ? `<span class="diff-override-badge" title="Modifié manuellement">✏</span>`
+        : "";
+      // Exception badge (Level 7B)
+      const exceptionBadgeHtml = (ex.is_exception_ignored || ex.is_exception_override)
+        ? `<span class="diff-exception-badge" title="${ex.is_exception_ignored ? "Exception persistée : ignoré durablement" : "Exception persistée : override durable"}">🔒</span>`
+        : "";
+      // Forced-unit badge (Level 8C)
+      const forcedReason = ex.preview_reason;
+      const forcedBadgeHtml = forcedReason && forcedReason !== "standard"
+        ? `<span class="diff-forced-badge diff-forced-${forcedReason}" title="${
+            forcedReason === "forced" ? "Ouverture ciblée depuis Exceptions" :
+            forcedReason === "forced_ignored" ? "Ouverture ciblée — neutralisée par exception ignore" :
+            "Ouverture ciblée — aucune modification active"
+          }">↗</span>`
+        : "";
+      if (forcedReason && forcedReason !== "standard") {
+        tr.classList.add("diff-forced-row");
+        if (forcedReason === "forced_ignored") tr.classList.add("diff-forced-ignored");
+        if (forcedReason === "forced_no_change") tr.classList.add("diff-forced-no-change");
+      }
+      // Effective "after": user override wins over auto (Level 7A)
+      const effectiveAfter = ex.manual_after ?? ex.after;
+      tr.innerHTML =
+        `<td class="diff-extid">${ex.external_id ?? i + 1}${statusBadgeHtml}${overrideBadgeHtml}${exceptionBadgeHtml}${forcedBadgeHtml}</td>` +
+        `<td class="diff-rule-cell">${ruleBadgeHtml}</td>` +
+        `<td class="diff-before">${_escHtml(ex.before)}</td>` +
+        `<td class="diff-after${ex.is_manual_override ? " diff-after-overridden" : ""}">${_highlightChanges(ex.before, effectiveAfter)}</td>`;
+      tr.addEventListener("click", () => {
+        const panel = tr.closest<HTMLElement>("#act-preview-panel") ?? undefined;
+        this._setActiveDiffItem(i, panel);
+      });
       tbody.appendChild(tr);
-    }
+    });
     table.appendChild(tbody);
     el.innerHTML = "";
     el.appendChild(table);
+  }
+
+  /**
+   * Build the list of unit_ids that should be excluded from the apply.
+   * Strategy B: apply all EXCEPT units explicitly ignored in the current review session.
+   * Returns an empty array if no review session is active (no status set).
+   */
+  private _collectIgnoredUnitIds(): number[] {
+    return this._curateExamples
+      .filter(ex => ex.status === "ignored")
+      .map(ex => ex.unit_id);
+  }
+
+  /**
+   * Collect manual overrides for the apply payload.
+   * Returns [{unit_id, text}] for every example that has is_manual_override === true.
+   */
+  private _collectManualOverrides(): Array<{ unit_id: number; text: string }> {
+    return this._curateExamples
+      .filter(ex => ex.is_manual_override === true && ex.manual_after != null && ex.unit_id !== undefined)
+      .map(ex => ({ unit_id: ex.unit_id, text: ex.manual_after! }));
+  }
+
+  /** Enter inline edit mode for the currently active example. */
+  private _enterEditMode(): void {
+    this._editingManualOverride = true;
+    const filtered = this._filteredExamples();
+    const ex = this._activeDiffIdx !== null ? filtered[this._activeDiffIdx] ?? null : null;
+    this._renderContextDetail(ex);
+    // Auto-focus the textarea after a short tick (DOM needs to be in place)
+    setTimeout(() => {
+      const ta = document.querySelector<HTMLTextAreaElement>("#act-manual-override-input");
+      if (ta) { ta.focus(); ta.select(); }
+    }, 30);
+  }
+
+  /**
+   * Save the manual override value and exit edit mode.
+   * If the value is identical to the auto "after", treats it as a no-op (revert).
+   */
+  private _saveManualOverride(value: string): void {
+    const filtered = this._filteredExamples();
+    const ex = this._activeDiffIdx !== null ? filtered[this._activeDiffIdx] ?? null : null;
+    if (!ex) return;
+    const trimmed = value.trim();
+    if (!trimmed || trimmed === ex.after) {
+      // User left the auto value unchanged → revert any previous override silently
+      if (ex.is_manual_override) {
+        ex.manual_after = null;
+        ex.is_manual_override = false;
+        this._log(`↩ Override annulé pour unité ${ex.unit_id} (valeur identique à la proposition automatique).`);
+        this._pushCurateLog("preview", `Override identique à l'auto — annulé (unité ${ex.unit_id})`);
+      }
+    } else {
+      ex.manual_after = trimmed;
+      ex.is_manual_override = true;
+      // Option A: saving an override implicitly accepts the item
+      if (!ex.status || ex.status === "pending") {
+        ex.status = "accepted";
+      }
+      this._log(`✏ Override manuel enregistré pour unité ${ex.unit_id}.`);
+      this._pushCurateLog("preview", `Override manuel – unité ${ex.unit_id}`);
+    }
+    this._editingManualOverride = false;
+    this._saveCurateReviewState();
+    // Re-render the context card
+    this._renderContextDetail(ex);
+    this._updateSessionSummary();
+    this._updateActionButtons();
+    // Patch the diff row in-place (avoid full re-render)
+    const panel = document.querySelector<HTMLElement>("#act-preview-panel");
+    const row = (panel ?? document).querySelector<HTMLElement>(`tr[data-diff-idx="${this._activeDiffIdx}"]`);
+    if (row) {
+      const afterCell = row.querySelector<HTMLElement>(".diff-after");
+      if (afterCell) afterCell.innerHTML = _highlightChanges(ex.before, ex.manual_after ?? ex.after);
+      this._renderOverrideBadge(row, ex.is_manual_override ?? false);
+      // Refresh status badge too (status may have changed to accepted)
+      this._renderStatusBadge(row, ex.status ?? "pending");
+      const st = ex.status ?? "pending";
+      row.className = "diff-row" + (st !== "pending" ? ` diff-${st}` : "");
+      if (this._activeDiffIdx !== null) row.classList.add("diff-active");
+    }
+  }
+
+  /** Cancel edit mode without saving. */
+  private _cancelEditMode(): void {
+    this._editingManualOverride = false;
+    const filtered = this._filteredExamples();
+    const ex = this._activeDiffIdx !== null ? filtered[this._activeDiffIdx] ?? null : null;
+    this._renderContextDetail(ex);
+  }
+
+  /** Remove the manual override for the active item and revert to auto "after". */
+  private _revertManualOverride(): void {
+    const filtered = this._filteredExamples();
+    const ex = this._activeDiffIdx !== null ? filtered[this._activeDiffIdx] ?? null : null;
+    if (!ex) return;
+    ex.manual_after = null;
+    ex.is_manual_override = false;
+    this._editingManualOverride = false;
+    this._log(`↩ Override annulé pour unité ${ex.unit_id} — proposition automatique rétablie.`);
+    this._pushCurateLog("preview", `Override annulé – unité ${ex.unit_id}`);
+    this._saveCurateReviewState();
+    this._renderContextDetail(ex);
+    this._updateSessionSummary();
+    // Patch the diff row in-place
+    const panel = document.querySelector<HTMLElement>("#act-preview-panel");
+    const row = (panel ?? document).querySelector<HTMLElement>(`tr[data-diff-idx="${this._activeDiffIdx}"]`);
+    if (row) {
+      const afterCell = row.querySelector<HTMLElement>(".diff-after");
+      if (afterCell) afterCell.innerHTML = _highlightChanges(ex.before, ex.after);
+      this._renderOverrideBadge(row, false);
+    }
+  }
+
+  /**
+   * Show or hide the ✏ override badge in a diff table row's first cell.
+   * Idempotent: creates badge if missing, removes if not needed.
+   */
+  private _renderOverrideBadge(row: HTMLElement, isOverride: boolean): void {
+    const existing = row.querySelector<HTMLElement>(".diff-override-badge");
+    if (!isOverride) { existing?.remove(); return; }
+    if (existing) return;
+    const badge = document.createElement("span");
+    badge.className = "diff-override-badge";
+    badge.textContent = "✏";
+    badge.title = "Modifié manuellement";
+    const firstCell = row.querySelector("td");
+    if (firstCell) firstCell.appendChild(badge);
+  }
+
+  // ─── Level 7B: Persistent exception helpers ──────────────────────────────
+
+  /**
+   * Load persistent curation exceptions for the current doc from the sidecar.
+   * Called after each successful preview.  Populates _curateExceptions and
+   * annotates matching _curateExamples with is_exception_ignored / exception_override.
+   */
+  private async _loadCurateExceptions(): Promise<void> {
+    if (!this._conn) return;
+    const docId = this._currentCurateDocId();
+    if (docId === undefined) return;
+    try {
+      const res = await listCurateExceptions(this._conn, docId);
+      this._curateExceptions = new Map(res.exceptions.map(e => [e.unit_id, e]));
+      // Annotate examples with exception flags
+      for (const ex of this._curateExamples) {
+        const exc = this._curateExceptions.get(ex.unit_id);
+        if (exc) {
+          if (exc.kind === "ignore") {
+            ex.is_exception_ignored = true;
+            ex.exception_override = undefined;
+          } else {
+            ex.is_exception_override = true;
+            ex.exception_override = exc.override_text ?? undefined;
+          }
+        }
+      }
+      // Also annotate examples whose is_exception_override was set by the server
+      // (they came from the preview already with is_exception_override = true)
+      for (const ex of this._curateExamples) {
+        if (ex.is_exception_override && !this._curateExceptions.has(ex.unit_id)) {
+          // Server marked it but our local map doesn't have it yet — re-fetch was
+          // already done above, so this is a no-op guard.
+        }
+      }
+      if (this._curateExceptions.size > 0) {
+        this._log(`ℹ ${this._curateExceptions.size} exception(s) locale(s) persistée(s) active(s) pour ce document.`);
+        this._pushCurateLog("preview", `${this._curateExceptions.size} exception(s) persistée(s) chargée(s)`);
+      }
+    } catch (err) {
+      this._log(`⚠ Impossible de charger les exceptions persistées : ${String(err)}`, true);
+    }
+  }
+
+  /**
+   * Create or update a persistent 'ignore' exception for the active example.
+   * The unit will be silenced in all future previews and applies.
+   */
+  private async _setExceptionIgnore(ex: CuratePreviewExample): Promise<void> {
+    if (!this._conn) return;
+    try {
+      await setCurateException(this._conn, { unit_id: ex.unit_id, kind: "ignore" });
+      ex.is_exception_ignored = true;
+      ex.is_exception_override = false;
+      ex.exception_override = undefined;
+      // Also set status = ignored for this session
+      if (!ex.status || ex.status === "pending") ex.status = "ignored";
+      this._curateExceptions.set(ex.unit_id, {
+        id: -1, unit_id: ex.unit_id, kind: "ignore",
+        override_text: null, note: null, created_at: new Date().toISOString(),
+      });
+      this._log(`🔒 Exception persistée créée : ignorer l'unité ${ex.unit_id} durablement.`);
+      this._pushCurateLog("apply", `Exception persistée ignore – unité ${ex.unit_id}`);
+      this._saveCurateReviewState();
+      this._renderContextDetail(ex);
+      this._updateSessionSummary();
+      this._updateActionButtons();
+      const panel = document.querySelector<HTMLElement>("#act-preview-panel");
+      const row = (panel ?? document).querySelector<HTMLElement>(`tr[data-diff-idx="${this._activeDiffIdx}"]`);
+      if (row) this._renderExceptionBadge(row, ex);
+    } catch (err) {
+      this._log(`✗ Erreur lors de la création de l'exception ignore : ${String(err)}`, true);
+    }
+  }
+
+  /**
+   * Create or update a persistent 'override' exception using the current session's
+   * manual_after value (or the auto 'after' if no session override is present).
+   */
+  private async _setExceptionOverride(ex: CuratePreviewExample): Promise<void> {
+    if (!this._conn) return;
+    const text = ex.manual_after ?? ex.after;
+    if (!text) return;
+    try {
+      await setCurateException(this._conn, {
+        unit_id: ex.unit_id,
+        kind: "override",
+        override_text: text,
+      });
+      ex.is_exception_override = true;
+      ex.exception_override = text;
+      ex.is_exception_ignored = false;
+      if (!ex.status || ex.status === "pending") ex.status = "accepted";
+      this._curateExceptions.set(ex.unit_id, {
+        id: -1, unit_id: ex.unit_id, kind: "override",
+        override_text: text, note: null, created_at: new Date().toISOString(),
+      });
+      this._log(`🔒 Exception persistée créée : override durablement "${text}" pour l'unité ${ex.unit_id}.`);
+      this._pushCurateLog("apply", `Exception persistée override – unité ${ex.unit_id}`);
+      this._saveCurateReviewState();
+      this._renderContextDetail(ex);
+      this._updateSessionSummary();
+      this._updateActionButtons();
+      const panel = document.querySelector<HTMLElement>("#act-preview-panel");
+      const row = (panel ?? document).querySelector<HTMLElement>(`tr[data-diff-idx="${this._activeDiffIdx}"]`);
+      if (row) this._renderExceptionBadge(row, ex);
+    } catch (err) {
+      this._log(`✗ Erreur lors de la création de l'exception override : ${String(err)}`, true);
+    }
+  }
+
+  /**
+   * Delete the persistent exception for the active example.
+   * Future previews and applies will use the normal rule pipeline again.
+   */
+  private async _deleteException(ex: CuratePreviewExample): Promise<void> {
+    if (!this._conn) return;
+    try {
+      await deleteCurateException(this._conn, ex.unit_id);
+      ex.is_exception_ignored = false;
+      ex.is_exception_override = false;
+      ex.exception_override = undefined;
+      this._curateExceptions.delete(ex.unit_id);
+      this._log(`🔓 Exception persistée supprimée pour l'unité ${ex.unit_id}. Comportement automatique rétabli.`);
+      this._pushCurateLog("apply", `Exception persistée supprimée – unité ${ex.unit_id}`);
+      this._saveCurateReviewState();
+      this._renderContextDetail(ex);
+      this._updateSessionSummary();
+      const panel = document.querySelector<HTMLElement>("#act-preview-panel");
+      const row = (panel ?? document).querySelector<HTMLElement>(`tr[data-diff-idx="${this._activeDiffIdx}"]`);
+      if (row) this._renderExceptionBadge(row, ex);
+    } catch (err) {
+      this._log(`✗ Erreur lors de la suppression de l'exception : ${String(err)}`, true);
+    }
+  }
+
+  /**
+   * Render (or remove) the exception badge in a diff table row's first cell.
+   * Exception badges are distinct from session-override badges.
+   */
+  private _renderExceptionBadge(row: HTMLElement, ex: CuratePreviewExample): void {
+    const existing = row.querySelector<HTMLElement>(".diff-exception-badge");
+    const hasException = ex.is_exception_ignored || ex.is_exception_override;
+    if (!hasException) { existing?.remove(); return; }
+    if (existing) {
+      existing.textContent = ex.is_exception_ignored ? "🔒" : "🔒✏";
+      existing.title = ex.is_exception_ignored
+        ? "Exception persistée : ignoré durablement"
+        : "Exception persistée : override durable";
+      return;
+    }
+    const badge = document.createElement("span");
+    badge.className = "diff-exception-badge";
+    badge.textContent = ex.is_exception_ignored ? "🔒" : "🔒✏";
+    badge.title = ex.is_exception_ignored
+      ? "Exception persistée : ignoré durablement"
+      : "Exception persistée : override durable";
+    const firstCell = row.querySelector("td");
+    if (firstCell) firstCell.appendChild(badge);
+  }
+
+  // ── Level 8A: Exceptions admin panel ──────────────────────────────────────
+
+  /** Current filter applied to the admin panel: "all" | "ignore" | "override". */
+  private _excAdminFilter: "all" | "ignore" | "override" = "all";
+  /** Full list of exceptions loaded for the admin panel (all docs). */
+  private _excAdminAll: import("../lib/sidecarClient.js").CurateException[] = [];
+  /** unit_id currently being edited inline in the admin panel (or null). */
+  private _excAdminEditing: number | null = null;
+  /** doc_id filter applied in the admin panel (0 = all). */
+  private _excAdminDocFilter: number = 0;
+
+  /**
+   * Load all persistent exceptions (cross-document) and render the admin panel.
+   * Called after each successful preview and via the Refresh button.
+   */
+  private async _loadExceptionsAdminPanel(root: HTMLElement): Promise<void> {
+    if (!this._conn) return;
+    const list = root.querySelector<HTMLElement>("#act-exc-admin-list");
+    if (!list) return;
+    list.innerHTML = `<p class="empty-hint exc-admin-loading">Chargement…</p>`;
+    try {
+      const res = await listCurateExceptions(this._conn);
+      this._excAdminAll = res.exceptions;
+      this._excAdminEditing = null;
+      this._pushCurateLog("preview", `${res.count} exception(s) persistée(s) chargée(s) dans le panneau admin`);
+      this._renderExcAdminPanel(root);
+    } catch (err) {
+      list.innerHTML = `<p class="empty-hint" style="color:#b91c1c">Erreur lors du chargement : ${String(err)}</p>`;
+    }
+  }
+
+  /** Set active filter and re-render the admin panel table. */
+  private _setExcAdminFilter(f: "all" | "ignore" | "override", root: HTMLElement): void {
+    this._excAdminFilter = f;
+    root.querySelectorAll<HTMLButtonElement>(".exc-filter-btn").forEach(btn => {
+      btn.classList.toggle("exc-filter-active", btn.dataset.excFilter === f);
+    });
+    this._renderExcAdminPanel(root);
+  }
+
+  /** Render the list of exceptions inside #act-exc-admin-list. */
+  private _renderExcAdminPanel(root: HTMLElement): void {
+    const list = root.querySelector<HTMLElement>("#act-exc-admin-list");
+    const badge = root.querySelector<HTMLElement>("#act-exc-admin-badge");
+    if (!list) return;
+
+    const all = this._excAdminAll;
+
+    // Update count badge on summary
+    if (badge) {
+      badge.textContent = String(all.length);
+      badge.style.display = all.length > 0 ? "inline-flex" : "none";
+    }
+
+    // Refresh the doc-filter select with currently known docs
+    const docSel = root.querySelector<HTMLSelectElement>("#act-exc-doc-filter");
+    if (docSel) {
+      const knownDocs = new Map<number, string>();
+      for (const exc of all) {
+        if (exc.doc_id !== undefined) {
+          knownDocs.set(exc.doc_id, exc.doc_title || `Document #${exc.doc_id}`);
+        }
+      }
+      // Rebuild options only if the set changed (avoid resetting mid-user-interaction)
+      const existingDocIds = new Set(
+        Array.from(docSel.options).slice(1).map(o => parseInt(o.value))
+      );
+      const newDocIds = new Set(knownDocs.keys());
+      const needsRebuild = existingDocIds.size !== newDocIds.size ||
+        [...newDocIds].some(id => !existingDocIds.has(id));
+      if (needsRebuild) {
+        const currentVal = docSel.value;
+        docSel.innerHTML = `<option value="">Tous les documents</option>`;
+        for (const [docId, docTitle] of [...knownDocs.entries()].sort((a, b) => a[0] - b[0])) {
+          const opt = document.createElement("option");
+          opt.value = String(docId);
+          opt.textContent = docTitle;
+          docSel.appendChild(opt);
+        }
+        if (currentVal) docSel.value = currentVal;
+      }
+    }
+
+    // Apply kind + doc filters
+    let filtered = this._excAdminFilter === "all"
+      ? all
+      : all.filter(e => e.kind === this._excAdminFilter);
+    if (this._excAdminDocFilter > 0) {
+      filtered = filtered.filter(e => e.doc_id === this._excAdminDocFilter);
+    }
+
+    if (all.length === 0) {
+      list.innerHTML = `<p class="empty-hint">Aucune exception persistée.</p>`;
+      return;
+    }
+    if (filtered.length === 0) {
+      list.innerHTML = `<p class="empty-hint">Aucun résultat pour ce filtre.</p>`;
+      return;
+    }
+
+    // Group by doc for readability when showing all-docs
+    const byDoc = new Map<string, typeof filtered>();
+    for (const exc of filtered) {
+      const key = exc.doc_id !== undefined ? String(exc.doc_id) : "?";
+      if (!byDoc.has(key)) byDoc.set(key, []);
+      byDoc.get(key)!.push(exc);
+    }
+
+    const frag = document.createDocumentFragment();
+    for (const [, rows] of byDoc) {
+      // Only show doc header when displaying multiple docs
+      const firstRow = rows[0];
+      const showDocHead = this._excAdminDocFilter === 0 && firstRow.doc_title !== undefined;
+      if (showDocHead) {
+        const docHead = document.createElement("div");
+        docHead.className = "exc-admin-doc-head";
+        docHead.textContent = firstRow.doc_title || `Document #${firstRow.doc_id ?? "?"}`;
+        frag.appendChild(docHead);
+      }
+
+      for (const exc of rows) {
+        frag.appendChild(this._buildExcAdminRow(exc));
+      }
+    }
+    list.innerHTML = "";
+    list.appendChild(frag);
+  }
+
+  /** Build a single exception row element. */
+  private _buildExcAdminRow(exc: import("../lib/sidecarClient.js").CurateException): HTMLElement {
+    const row = document.createElement("div");
+    row.className = "exc-admin-row";
+    row.dataset.excUnitId = String(exc.unit_id);
+
+    const kindBadge = `<span class="exc-kind-badge exc-kind-${exc.kind}">${exc.kind === "ignore" ? "🚫 ignore" : "✏ override"}</span>`;
+    const unitText = exc.unit_text ? `<span class="exc-unit-preview" title="${this._escHtml(exc.unit_text)}">${this._escHtml(exc.unit_text.slice(0, 80))}…</span>` : "";
+    const createdAt = exc.created_at ? `<span class="exc-created-at">${exc.created_at.slice(0, 16).replace("T", " ")}</span>` : "";
+    // "Voir dans Curation" button — only shown when doc_id is known
+    const openBtn = exc.doc_id !== undefined
+      ? `<button class="btn btn-sm exc-row-open-curation" title="Voir cette unité dans Curation">&#x1F441;</button>`
+      : "";
+
+    const isEditing = this._excAdminEditing === exc.unit_id;
+
+    if (exc.kind === "override" && isEditing) {
+      row.innerHTML = `
+        <div class="exc-row-meta">
+          ${kindBadge}
+          <span class="exc-unit-id">unité&nbsp;${exc.unit_id}</span>
+          ${createdAt}
+        </div>
+        ${unitText ? `<div class="exc-unit-preview-block">${unitText}</div>` : ""}
+        <div class="exc-row-edit-block">
+          <label class="exc-edit-label">Texte override :</label>
+          <textarea class="exc-edit-textarea" id="exc-edit-${exc.unit_id}" rows="3">${this._escHtml(exc.override_text ?? "")}</textarea>
+          <div class="exc-edit-actions">
+            <button class="btn btn-sm btn-primary exc-row-edit-save">Enregistrer</button>
+            <button class="btn btn-sm exc-row-edit-cancel">Annuler</button>
+          </div>
+        </div>`;
+    } else {
+      const overrideText = exc.kind === "override" && exc.override_text
+        ? `<div class="exc-override-text">${this._escHtml(exc.override_text)}</div>`
+        : "";
+      const editBtn = exc.kind === "override"
+        ? `<button class="btn btn-sm exc-row-edit-start" title="Modifier le texte override">✎</button>`
+        : "";
+      row.innerHTML = `
+        <div class="exc-row-meta">
+          ${kindBadge}
+          <span class="exc-unit-id">unité&nbsp;${exc.unit_id}</span>
+          ${createdAt}
+          <div class="exc-row-actions">
+            ${openBtn}
+            ${editBtn}
+            <button class="btn btn-sm exc-row-delete" title="Supprimer cette exception">✕</button>
+          </div>
+        </div>
+        ${unitText ? `<div class="exc-unit-preview-block">${unitText}</div>` : ""}
+        ${overrideText}`;
+    }
+    return row;
+  }
+
+  /** Helper: escape HTML for safe injection in innerHTML. */
+  private _escHtml(s: string): string {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  /**
+   * Level 8B: Navigate from the exceptions admin panel to the Curation review
+   * for the document/unit concerned.
+   *
+   * Strategy (Option A — soft navigation):
+   * 1. Switch to Curation sub-view.
+   * 2. Select the target document in #act-curate-doc.
+   * 3. Dispatch a 'change' event to trigger _updateCurateCtx + _schedulePreview.
+   * 4. After the preview completes, search for the unit_id in _curateExamples.
+   * 5. If found: call _setActiveDiffItem to focus it.
+   * 6. If not found: show an honest fallback message.
+   *
+   * Limitation: units with a persistent 'ignore' exception are excluded from
+   * the preview sample by the sidecar and will never appear in _curateExamples.
+   * For override exceptions, the unit is included with the override text.
+   */
+  private async _excAdminOpenInCuration(
+    exc: import("../lib/sidecarClient.js").CurateException,
+    adminRoot: HTMLElement,
+  ): Promise<void> {
+    if (exc.doc_id === undefined) {
+      this._log("⚠ Impossible d'ouvrir dans Curation : doc_id inconnu pour cette exception.", true);
+      return;
+    }
+
+    // 1. Ensure we are in the Curation sub-view
+    if (this._root) {
+      this._switchSubViewDOM(this._root, "curation");
+    }
+
+    // 2. Select the target document
+    const sel = document.querySelector<HTMLSelectElement>("#act-curate-doc");
+    if (!sel) {
+      this._log("⚠ Sélecteur de document introuvable.", true);
+      return;
+    }
+
+    const alreadyOnDoc = sel.value === String(exc.doc_id);
+    sel.value = String(exc.doc_id);
+    sel.dispatchEvent(new Event("change"));
+
+    const docTitle = exc.doc_title || `Document #${exc.doc_id}`;
+    this._log(`→ Navigation vers ${docTitle} (unité ${exc.unit_id}) depuis le panneau Exceptions.`);
+    this._pushCurateLog("preview", `Ouverture depuis admin – ${docTitle}, unité ${exc.unit_id}`);
+
+    // 3. If we were already on that doc, force a fresh preview
+    if (alreadyOnDoc) {
+      this._schedulePreview(true);
+    }
+
+    // ── Phase A: standard polling (up to 2.5 s) ─────────────────────────────
+    // Wait for the preview to include the unit naturally (standard sample).
+    const targetUnitId = exc.unit_id;
+    const maxAttempts = 10;
+    const attemptIntervalMs = 250;
+    let found = false;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      await new Promise<void>(res => setTimeout(res, attemptIntervalMs));
+      if (this._isBusy) continue;
+
+      const filtered = this._filteredExamples();
+      const idx = filtered.findIndex(ex => ex.unit_id === targetUnitId);
+      if (idx >= 0) {
+        this._setActiveDiffItem(idx);
+        this._log(`✓ Unité ${targetUnitId} trouvée dans le sample standard — sélectionnée.`);
+        this._pushCurateLog("preview", `Unité ${targetUnitId} sélectionnée via admin`);
+        found = true;
+        break;
+      }
+      // Also check full _curateExamples (in case active filter hides it)
+      const rawIdx = this._curateExamples.findIndex(ex => ex.unit_id === targetUnitId);
+      if (rawIdx >= 0) {
+        this._setRuleFilter(null, null);
+        this._activeStatusFilter = null;
+        const filtered2 = this._filteredExamples();
+        const idx2 = filtered2.findIndex(ex => ex.unit_id === targetUnitId);
+        if (idx2 >= 0) {
+          this._setActiveDiffItem(idx2);
+          this._log(`✓ Unité ${targetUnitId} trouvée (filtres réinitialisés) — sélectionnée.`);
+          this._pushCurateLog("preview", `Unité ${targetUnitId} sélectionnée via admin (filtres effacés)`);
+          found = true;
+          break;
+        }
+      }
+      // If preview completed without the unit, stop early to move to Phase B
+      if (!this._isBusy && attempt >= 3) break;
+    }
+
+    if (found) return;
+
+    // ── Phase B: forced preview (Level 8C) ──────────────────────────────────
+    // Unit was not in the standard sample. Trigger a new preview with force_unit_id
+    // so the sidecar guarantees inclusion even if: beyond top-50, has 'ignore'
+    // exception, or produces no diff at all.
+    this._log(`ℹ Unité ${targetUnitId} hors du sample standard. Lancement d'une preview ciblée…`);
+    this._pushCurateLog("preview", `Preview ciblée pour unité ${targetUnitId}…`);
+
+    this._forcedPreviewUnitId = targetUnitId;
+    // Trigger the preview immediately (bypass debounce for responsiveness)
+    await this._runPreview(true);
+
+    // Poll again for the forced unit
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      await new Promise<void>(res => setTimeout(res, attemptIntervalMs));
+      if (this._isBusy) continue;
+
+      // Reset any filters that might hide it
+      if (this._activeRuleFilter || this._activeStatusFilter) {
+        this._setRuleFilter(null, null);
+        this._activeStatusFilter = null;
+      }
+
+      const filtered = this._filteredExamples();
+      const idx = filtered.findIndex(ex => ex.unit_id === targetUnitId);
+      if (idx >= 0) {
+        this._setActiveDiffItem(idx);
+        const reason = filtered[idx].preview_reason ?? "forced";
+        const label =
+          reason === "forced_ignored"  ? "unité neutralisée par exception ignore (inspection seulement)" :
+          reason === "forced_no_change" ? "unité sans modification active" :
+          "ouverture ciblée";
+        this._log(`✓ Unité ${targetUnitId} rendue visible en mode forcé (${label}).`);
+        this._pushCurateLog("preview", `Unité ${targetUnitId} ouverte en mode ciblé – ${label}`);
+        found = true;
+        break;
+      }
+      if (!this._isBusy) break;
+    }
+
+    if (!found) {
+      // Final honest fallback — unit could not be located even with forced preview
+      this._log(`⚠ Unité ${targetUnitId} introuvable même en mode ciblé. Elle a peut-être été supprimée ou le document a changé.`);
+      this._pushCurateLog("warn", `Unité ${targetUnitId} introuvable (doc ${exc.doc_id})`);
+    }
+  }
+
+  /** Delete an exception from the admin panel. */
+  private async _excAdminDelete(unitId: number, root: HTMLElement): Promise<void> {
+    if (!this._conn) return;
+    try {
+      await deleteCurateException(this._conn, unitId);
+      this._excAdminAll = this._excAdminAll.filter(e => e.unit_id !== unitId);
+      // Also sync in-session state
+      this._curateExceptions.delete(unitId);
+      const ex = this._curateExamples.find(e => e.unit_id === unitId);
+      if (ex) {
+        ex.is_exception_ignored = false;
+        ex.is_exception_override = false;
+        ex.exception_override = undefined;
+      }
+      this._log(`🔓 Exception persistée supprimée (panneau admin) – unité ${unitId}.`);
+      this._pushCurateLog("apply", `Exception supprimée via admin – unité ${unitId}`);
+      this._renderExcAdminPanel(root);
+      this._updateSessionSummary();
+    } catch (err) {
+      this._log(`✗ Erreur lors de la suppression de l'exception ${unitId} : ${String(err)}`, true);
+    }
+  }
+
+  /** Enter inline edit mode for an override row. */
+  private _excAdminEnterEdit(unitId: number, root: HTMLElement): void {
+    this._excAdminEditing = unitId;
+    this._renderExcAdminPanel(root);
+    // Focus the textarea
+    const ta = root.querySelector<HTMLTextAreaElement>(`#exc-edit-${unitId}`);
+    ta?.focus();
+  }
+
+  /** Cancel inline edit without saving. */
+  private _excAdminCancelEdit(unitId: number, root: HTMLElement): void {
+    if (this._excAdminEditing === unitId) this._excAdminEditing = null;
+    this._renderExcAdminPanel(root);
+  }
+
+  /** Save the edited override text and persist it. */
+  private async _excAdminSaveEdit(unitId: number, root: HTMLElement): Promise<void> {
+    if (!this._conn) return;
+    const ta = root.querySelector<HTMLTextAreaElement>(`#exc-edit-${unitId}`);
+    const newText = ta?.value.trim() ?? "";
+    if (!newText) {
+      this._log("⚠ Le texte override ne peut pas être vide.", true);
+      return;
+    }
+    try {
+      await setCurateException(this._conn, { unit_id: unitId, kind: "override", override_text: newText });
+      // Update local list
+      const idx = this._excAdminAll.findIndex(e => e.unit_id === unitId);
+      if (idx >= 0) this._excAdminAll[idx] = { ...this._excAdminAll[idx], override_text: newText };
+      // Sync in-session state
+      const sessionExc = this._curateExceptions.get(unitId);
+      if (sessionExc) this._curateExceptions.set(unitId, { ...sessionExc, override_text: newText });
+      const ex = this._curateExamples.find(e => e.unit_id === unitId);
+      if (ex) ex.exception_override = newText;
+      this._excAdminEditing = null;
+      this._log(`🔒 Override persisté mis à jour – unité ${unitId}.`);
+      this._pushCurateLog("apply", `Override persisté mis à jour via admin – unité ${unitId}`);
+      this._renderExcAdminPanel(root);
+      this._updateSessionSummary();
+    } catch (err) {
+      this._log(`✗ Erreur lors de la mise à jour de l'override : ${String(err)}`, true);
+    }
+  }
+
+  /**
+   * Build an informative pre-apply confirmation message.
+   * Called from _runCurate() before window.confirm().
+   *
+   * The message is honest about what WILL and WILL NOT be applied,
+   * and explicitly warns when the preview is truncated (non-reviewed units exist).
+   */
+  private _buildApplyConfirmMessage(
+    label: string,
+    ignoredUnitIds: number[],
+    manualOverrides: Array<{ unit_id: number; text: string }> = [],
+  ): string {
+    const hasReview = this._curateExamples.length > 0;
+    const isTruncated = this._curateExamples.length < this._curateGlobalChanged;
+    const counts = hasReview ? this._getStatusCounts() : null;
+
+    let msg = `Appliquer la curation sur ${label} ?\nCette opération modifie text_norm en base.\n`;
+
+    if (hasReview && counts) {
+      msg += `\nRésumé de la session de review :\n`;
+      msg += `  • Acceptées    : ${counts.accepted}\n`;
+      msg += `  • En attente   : ${counts.pending}\n`;
+      msg += `  • Ignorées     : ${counts.ignored}`;
+      if (counts.ignored > 0) msg += ` → ne seront PAS appliquées`;
+      msg += `\n`;
+
+      if (isTruncated) {
+        const unreviewed = this._curateGlobalChanged - this._curateExamples.length;
+        msg += `\n⚠ Attention — preview partielle :\n`;
+        msg += `  ${unreviewed} modification(s) hors échantillon n'ont pas été examinées.\n`;
+        msg += `  Elles seront appliquées normalement (aucun statut local disponible).\n`;
+        msg += `  Seules les ${ignoredUnitIds.length} unités ignorées dans l'échantillon seront exclues.`;
+      } else {
+        // Sample covers all changes: the apply is exhaustive
+        if (counts.ignored > 0) {
+          msg += `\nL'application exclura ${counts.ignored} unité(s) ignorée(s).`;
+        } else {
+          msg += `\nToutes les modifications seront appliquées (aucune ignorée).`;
+        }
+      }
+    } else {
+      msg += `\nAucune review locale — toutes les modifications seront appliquées.`;
+    }
+
+    // Level 6A: inform the user that saved review states will be invalidated.
+    const docId = this._currentCurateDocId();
+    if (docId === undefined) {
+      // Apply-all: all per-doc review keys will be swept.
+      msg += `\n\n📌 Toutes les sessions de review sauvegardées par document seront effacées après application.`;
+    } else {
+      msg += `\n\n📌 La session de review sauvegardée pour ce document sera effacée après application.`;
+    }
+
+    // Level 7A: note manual overrides
+    if (manualOverrides.length > 0) {
+      msg += `\n✏ ${manualOverrides.length} correction(s) manuelle(s) seront appliquées à la place de la proposition automatique.`;
+    }
+
+    return msg;
   }
 
   private async _runCurate(): Promise<void> {
@@ -2962,29 +5306,50 @@ export class ActionsScreen {
 
     const docId = this._currentCurateDocId();
     const label = docId !== undefined ? `doc #${docId}` : "tous les documents";
-    if (!window.confirm(`Appliquer la curation sur ${label} ?\nCette opération modifie text_norm en base.`)) return;
+
+    // Collect ignored unit_ids from the local review session (Strategy B).
+    const ignoredUnitIds = this._collectIgnoredUnitIds();
+    // Collect manual overrides (Level 7A).
+    const manualOverrides = this._collectManualOverrides();
+    const confirmMsg = this._buildApplyConfirmMessage(label, ignoredUnitIds, manualOverrides);
+
+    if (!window.confirm(confirmMsg)) return;
 
     this._setBusy(true);
     const params: Record<string, unknown> = { rules };
     if (docId !== undefined) params.doc_id = docId;
+    // Pass ignored units to sidecar — Strategy B: apply all except ignored.
+    if (ignoredUnitIds.length > 0) params.ignored_unit_ids = ignoredUnitIds;
+    // Pass manual overrides — Level 7A: apply user-supplied text for these units.
+    if (manualOverrides.length > 0) params.manual_overrides = manualOverrides;
+
     try {
       const job = await enqueueJob(this._conn, "curate", params);
-      this._log(`Job curation soumis (${job.job_id.slice(0, 8)}…)`);
-      this._pushCurateLog("apply", `Soumis – ${label}`);
+      const skipNote = ignoredUnitIds.length > 0 ? `, ${ignoredUnitIds.length} ignorée(s)` : "";
+      const overrideNote = manualOverrides.length > 0 ? `, ${manualOverrides.length} correction(s) manuelle(s)` : "";
+      this._log(`Job curation soumis (${job.job_id.slice(0, 8)}…)${skipNote}${overrideNote}`);
+      this._pushCurateLog("apply", `Soumis – ${label}${skipNote}${overrideNote}`);
       // vNext: panel is always visible — reset content to "applied" state
       const rawEl = document.querySelector("#act-preview-raw");
-      if (rawEl) rawEl.innerHTML = `<p class="empty-hint">Curation en cours…</p>`;
+      if (rawEl) rawEl.innerHTML = `<p class="empty-hint">Curation en cours&#8230;</p>`;
       const diffEl = document.querySelector("#act-diff-list");
-      if (diffEl) diffEl.innerHTML = `<p class="empty-hint">Curation en cours…</p>`;
+      if (diffEl) diffEl.innerHTML = `<p class="empty-hint">Curation en cours&#8230;</p>`;
       const statsEl = document.querySelector("#act-preview-stats");
       if (statsEl) statsEl.innerHTML = "";
       const infoEl2 = document.querySelector("#act-preview-info");
       if (infoEl2) infoEl2.textContent = "Job soumis…";
       this._jobCenter?.trackJob(job.job_id, `Curation ${label}`, (done) => {
         if (done.status === "done") {
-          const r = done.result as { docs_curated?: number; units_modified?: number; fts_stale?: boolean } | undefined;
-          this._log(`✓ Curation : ${r?.docs_curated ?? "?"} doc(s), ${r?.units_modified ?? "?"} unité(s).`);
-          this._pushCurateLog("apply", `OK – ${r?.docs_curated ?? "?"} doc(s), ${r?.units_modified ?? "?"} unité(s)`);
+          const r = done.result as {
+            docs_curated?: number; units_modified?: number;
+            units_skipped?: number; fts_stale?: boolean;
+          } | undefined;
+          const skippedNote = (r?.units_skipped ?? 0) > 0 ? `, ${r!.units_skipped} ignorée(s)` : "";
+          this._log(`✓ Curation : ${r?.docs_curated ?? "?"} doc(s), ${r?.units_modified ?? "?"} unité(s) modifiée(s)${skippedNote}.`);
+          this._pushCurateLog("apply", `OK – ${r?.docs_curated ?? "?"} doc(s), ${r?.units_modified ?? "?"} modifiée(s)${skippedNote}`);
+          // Level 4B — Option A: invalidate saved review state after a successful apply.
+          // The document has been modified; any saved statuses are now potentially obsolete.
+          this._invalidateCurateReviewAfterApply(docId ?? null);
           if (r?.fts_stale) {
             this._log("⚠ Index FTS périmé.");
             this._pushCurateLog("warn", "Index FTS périmé – re-indexer");

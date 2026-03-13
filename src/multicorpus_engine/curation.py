@@ -41,6 +41,7 @@ class CurationReport:
     doc_id: int
     units_total: int
     units_modified: int
+    units_skipped: int = 0   # units excluded by selective apply (ignored_unit_ids)
     rules_matched: list[str] = field(default_factory=list)  # descriptions of rules that fired
     warnings: list[str] = field(default_factory=list)
 
@@ -49,6 +50,7 @@ class CurationReport:
             "doc_id": self.doc_id,
             "units_total": self.units_total,
             "units_modified": self.units_modified,
+            "units_skipped": self.units_skipped,
             "rules_matched": self.rules_matched,
             "warnings": self.warnings,
         }
@@ -101,6 +103,8 @@ def curate_document(
     conn: sqlite3.Connection,
     doc_id: int,
     rules: list[CurationRule],
+    skip_unit_ids: Optional[set[int]] = None,
+    manual_overrides: Optional[dict[int, str]] = None,
     run_logger: Optional[logging.Logger] = None,
 ) -> CurationReport:
     """Apply curation rules to all units of doc_id.
@@ -108,7 +112,25 @@ def curate_document(
     Updates text_norm in-place in the DB. Only modified units are written.
     The FTS index is NOT rebuilt here — caller must run build_index() afterwards.
 
-    Returns a CurationReport with counts.
+    Priority order for each unit (highest first):
+      1. Persistent override exception (curation_exceptions.kind = 'override')
+      2. manual_overrides session value
+      3. Persistent ignore exception (curation_exceptions.kind = 'ignore')
+      4. skip_unit_ids session set
+      5. Automatic rule application
+
+    skip_unit_ids: optional set of unit_id values to exclude from the apply.
+        Used for selective curation based on a local review session (Strategy B:
+        apply all *except* the units the user explicitly marked as "ignored").
+        Units not present in skip_unit_ids are always processed, including units
+        that were not part of the preview sample.
+
+    manual_overrides: optional dict mapping unit_id → user-supplied replacement text.
+        When a unit_id is present here, the user's text is written directly instead
+        of applying the automatic rules.  Applied before skip_unit_ids so an override
+        always wins even if the unit was also marked ignored (override implies acceptance).
+
+    Returns a CurationReport with counts including units_skipped.
     """
     log = run_logger or logger
 
@@ -122,19 +144,70 @@ def curate_document(
         return CurationReport(doc_id=doc_id, units_total=0, units_modified=0,
                               warnings=[f"No units found for doc_id={doc_id}"])
 
+    # Load persistent exceptions for this document (Level 7B).
+    unit_ids = [row["unit_id"] for row in rows]
+    persistent_exceptions: dict[int, dict] = {}
+    if unit_ids:
+        placeholders = ",".join("?" * len(unit_ids))
+        exc_rows = conn.execute(
+            f"SELECT unit_id, kind, override_text FROM curation_exceptions "
+            f"WHERE unit_id IN ({placeholders})",
+            unit_ids,
+        ).fetchall()
+        for er in exc_rows:
+            persistent_exceptions[er[0]] = {"kind": er[1], "override_text": er[2]}
+
     modified = 0
+    skipped = 0
     rules_fired: set[str] = set()
     updates: list[tuple] = []
 
     for row in rows:
         unit_id = row["unit_id"]
         original = row["text_norm"] or ""
+
+        # Priority 1: Persistent override exception → always use the stored text.
+        exc = persistent_exceptions.get(unit_id)
+        if exc and exc["kind"] == "override":
+            overridden = exc["override_text"] or ""
+            if overridden != original:
+                updates.append((overridden, unit_id))
+                modified += 1
+                log.debug("Persistent override exception applied unit_id=%d", unit_id)
+            else:
+                log.debug("Persistent override identical to original unit_id=%d", unit_id)
+            continue
+
+        # Priority 2: Session manual override → user-supplied text for this run.
+        if manual_overrides and unit_id in manual_overrides:
+            overridden = manual_overrides[unit_id]
+            if overridden != original:
+                updates.append((overridden, unit_id))
+                modified += 1
+                log.debug("Manual override applied unit_id=%d", unit_id)
+            else:
+                log.debug("Manual override identical to original, no write unit_id=%d", unit_id)
+            continue
+
+        # Priority 3: Persistent ignore exception → never curate this unit.
+        if exc and exc["kind"] == "ignore":
+            skipped += 1
+            log.debug("Persistent ignore exception — skipped unit_id=%d", unit_id)
+            continue
+
+        # Priority 4: Session skip (user marked ignored in the current review session).
+        # Units outside the preview sample are NOT in skip_unit_ids and are always curated.
+        if skip_unit_ids and unit_id in skip_unit_ids:
+            skipped += 1
+            log.debug("Skipped (ignored in review) unit_id=%d", unit_id)
+            continue
+
+        # Priority 5: Apply rules normally.
         curated = apply_rules(original, rules)
 
         if curated != original:
             updates.append((curated, unit_id))
             modified += 1
-            # Track which rules actually fired on this unit
             for rule in rules:
                 if re.search(rule.pattern, original, flags=rule.flags):
                     rules_fired.add(rule.description or rule.pattern)
@@ -148,13 +221,14 @@ def curate_document(
         conn.commit()
 
     log.info(
-        "Curation doc_id=%d: %d/%d units modified",
-        doc_id, modified, len(rows),
+        "Curation doc_id=%d: %d/%d units modified, %d skipped",
+        doc_id, modified, len(rows), skipped,
     )
     return CurationReport(
         doc_id=doc_id,
         units_total=len(rows),
         units_modified=modified,
+        units_skipped=skipped,
         rules_matched=sorted(rules_fired),
     )
 
@@ -162,9 +236,14 @@ def curate_document(
 def curate_all_documents(
     conn: sqlite3.Connection,
     rules: list[CurationRule],
+    skip_unit_ids: Optional[set[int]] = None,
+    manual_overrides: Optional[dict[int, str]] = None,
     run_logger: Optional[logging.Logger] = None,
 ) -> list[CurationReport]:
     """Apply curation rules to every document in the DB.
+
+    skip_unit_ids: forwarded to curate_document — see its docstring.
+    manual_overrides: forwarded to curate_document — see its docstring.
 
     Returns one CurationReport per document.
     """
@@ -172,6 +251,7 @@ def curate_all_documents(
         row[0] for row in conn.execute("SELECT doc_id FROM documents ORDER BY doc_id")
     ]
     return [
-        curate_document(conn, doc_id, rules, run_logger=run_logger)
+        curate_document(conn, doc_id, rules, skip_unit_ids=skip_unit_ids,
+                        manual_overrides=manual_overrides, run_logger=run_logger)
         for doc_id in doc_ids
     ]
