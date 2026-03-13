@@ -61,6 +61,7 @@ export class MetadataScreen {
   private _selectAllEl!: HTMLInputElement;
   private _isBusy = false;
   private _lastErrorMsg: string | null = null;
+  private _lastRefreshAt = 0;
 
   setConn(conn: Conn | null): void {
     this._conn = conn;
@@ -133,8 +134,8 @@ export class MetadataScreen {
           <div class="meta-list-head">
             <div class="meta-list-head-left">
               <h3 style="margin:0">Documents</h3>
-              <button id="refresh-docs-btn" class="btn btn-secondary btn-sm"
-                aria-label="Rafraîchir la liste des documents" title="Rafraîchir la liste">↻</button>
+              <button id="refresh-docs-btn" class="btn btn-secondary btn-sm meta-refresh-btn"
+                aria-label="Actualiser la liste des documents" title="Recharger la liste depuis la base">↻ Actualiser</button>
             </div>
             <span id="meta-doc-count" class="hint" style="margin:0">0 document</span>
           </div>
@@ -267,6 +268,14 @@ export class MetadataScreen {
 
   // ── Doc list ────────────────────────────────────────────────────────────────
 
+  /** Auto-refresh when switching to the Documents tab (debounced: max once per 10 s). */
+  onActivate(): void {
+    const DEBOUNCE_MS = 10_000;
+    if (this._conn && Date.now() - this._lastRefreshAt > DEBOUNCE_MS) {
+      void this._refreshDocList();
+    }
+  }
+
   private async _refreshDocList(): Promise<void> {
     if (!this._conn) {
       this._docListEl.innerHTML = `<tr><td colspan="6" class="meta-empty-cell">Sidecar non connecté.</td></tr>`;
@@ -279,6 +288,7 @@ export class MetadataScreen {
     try {
       this._docs = await listDocuments(this._conn);
       this._lastErrorMsg = null;
+      this._lastRefreshAt = Date.now();
     } catch (err) {
       this._log(`Erreur liste documents: ${err instanceof SidecarError ? err.message : String(err)}`, true);
     } finally {
@@ -316,7 +326,7 @@ export class MetadataScreen {
             ${isChecked ? "checked" : ""} aria-label="Sélectionner doc ${doc.doc_id}" />
         </td>
         <td class="col-id">#${doc.doc_id}</td>
-        <td class="col-title" title="${this._esc(doc.title)}">${this._esc(doc.title)}</td>
+        <td class="col-title" title="${this._esc(doc.title)}">${this._esc(this._truncateMid(doc.title))}</td>
         <td class="col-lang">${this._esc(doc.language)}</td>
         <td class="col-role">${this._esc(doc.doc_role ?? "—")}</td>
         <td class="col-status"><span class="wf-pill wf-${wfStatus}">${wfLabel}</span></td>
@@ -836,6 +846,14 @@ export class MetadataScreen {
 
   private _esc(s: string): string {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  /** Middle-truncate long titles: "Lorem ipsum…sit amet" — preserves start and end. */
+  private _truncateMid(text: string, maxChars = 42): string {
+    if (!text || text.length <= maxChars) return text;
+    const tail = Math.max(8, Math.floor(maxChars * 0.35));
+    const head = maxChars - tail - 1; // 1 for the ellipsis
+    return text.slice(0, head) + "…" + text.slice(-tail);
   }
 
   private _workflowStatus(doc: DocumentRecord): WorkflowStatus {

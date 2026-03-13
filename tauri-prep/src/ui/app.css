@@ -642,7 +642,7 @@ details[open] > .import-log-summary::before {
 
 /* Override legacy columns: list wider than edit panel */
 .meta-layout {
-  grid-template-columns: minmax(420px, 1fr) minmax(340px, 0.85fr);
+  grid-template-columns: minmax(440px, 1.35fr) minmax(300px, 0.65fr);
 }
 
 /* Head card */
@@ -715,12 +715,16 @@ details[open] > .import-log-summary::before {
   letter-spacing: .04em; position: sticky; top: 0; z-index: 1;
 }
 .meta-doc-table tbody tr:last-child td { border-bottom: none; }
-.meta-doc-table .col-check { width: 34px; text-align: center; padding: 4px; }
-.meta-doc-table .col-id    { width: 46px; font-size: 12px; color: var(--color-muted, #64748b); }
-.meta-doc-table .col-lang  { width: 58px; font-size: 12px; }
-.meta-doc-table .col-role  { font-size: 12px; color: var(--color-muted, #64748b); }
-.meta-doc-table .col-title { max-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.meta-doc-table .col-check  { width: 30px; text-align: center; padding: 4px; }
+.meta-doc-table .col-id     { width: 40px; font-size: 12px; color: var(--color-muted, #64748b); white-space: nowrap; }
+.meta-doc-table .col-lang   { width: 46px; font-size: 12px; white-space: nowrap; }
+.meta-doc-table .col-role   { width: 76px; font-size: 12px; color: var(--color-muted, #64748b); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.meta-doc-table .col-status { width: 66px; white-space: nowrap; }
+.meta-doc-table .col-title  { max-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
 .meta-doc-table input[type="checkbox"] { width: 15px; height: 15px; margin: 0; cursor: pointer; }
+
+/* Refresh button in list header — slightly more prominent than icon-only */
+.meta-refresh-btn { font-size: 12px; padding: 3px 9px; }
 
 /* Cancel div-era .meta-doc-row rules when on <tr> */
 table .meta-doc-row { padding: 0; border-radius: 0; border-bottom: none; }

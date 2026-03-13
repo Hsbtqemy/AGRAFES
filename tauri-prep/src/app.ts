@@ -339,6 +339,7 @@ export class App {
     this._tabBtns[tab].classList.add("active");
     this._tabBtns[tab].setAttribute("aria-current", "page");
     this._syncCurationWideClass();
+    if (tab === "documents") this._metadata.onActivate();
   }
 
   private _syncCurationWideClass(): void {
