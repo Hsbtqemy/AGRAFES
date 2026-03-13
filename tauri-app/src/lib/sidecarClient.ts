@@ -15,6 +15,7 @@ import { Command, type Child } from "@tauri-apps/plugin-shell";
 import { readTextFile, exists } from "@tauri-apps/plugin-fs";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { resolveResource } from "@tauri-apps/api/path";
+import { invoke } from "@tauri-apps/api/core";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -126,7 +127,10 @@ const SIDECAR_HEALTH_INITIAL_DELAY_MS = IS_WINDOWS_RUNTIME ? 1200 : 0;
 const SIDECAR_HEALTH_POLL_INTERVAL_MS = 350;
 const SIDECAR_STARTUP_JSON_TIMEOUT_MS = IS_WINDOWS_RUNTIME ? 20000 : 12000;
 type LoopbackHttpBackendMode = "auto" | "global_this_only" | "tauri_only";
-const SIDECAR_LOOPBACK_HTTP_BACKEND_MODE: LoopbackHttpBackendMode = "auto";
+// "tauri_only": bypasses globalThis.fetch for loopback (avoids WebView2 mixed-content
+// hang when fetching http:// from https://tauri.localhost). reqwest/WinHTTP natively
+// bypasses system proxy for loopback — no proxy issue on machines with or without proxy.
+const SIDECAR_LOOPBACK_HTTP_BACKEND_MODE: LoopbackHttpBackendMode = "tauri_only";
 const SIDECAR_GLOBAL_FETCH_TIMEOUT_MS = IS_WINDOWS_RUNTIME ? 1200 : 1500;
 
 type SidecarLogLevel = "info" | "warn" | "error";
@@ -134,18 +138,45 @@ type SidecarFetchInit = Parameters<typeof tauriFetch>[1] & RequestInit;
 
 function sidecarLog(level: SidecarLogLevel, message: string, detail?: unknown): void {
   const prefix = `[sidecar-client ${new Date().toISOString()}] ${message}`;
+  const detailStr =
+    detail !== undefined
+      ? ` | ${(() => { try { return JSON.stringify(detail); } catch { return String(detail); } })()}`
+      : "";
   if (level === "error") {
     if (detail !== undefined) console.error(prefix, detail);
     else console.error(prefix);
-    return;
-  }
-  if (level === "warn") {
+  } else if (level === "warn") {
     if (detail !== undefined) console.warn(prefix, detail);
     else console.warn(prefix);
-    return;
+  } else {
+    if (detail !== undefined) console.info(prefix, detail);
+    else console.info(prefix);
   }
-  if (detail !== undefined) console.info(prefix, detail);
-  else console.info(prefix);
+  // Best-effort file logging for diagnosis (AppData\com.agrafes.shell\sidecar-debug.log)
+  invoke("write_sidecar_log", {
+    message: `${level.toUpperCase()} ${prefix}${detailStr}`,
+  }).catch(() => {});
+}
+
+function headersToRecord(
+  headers: HeadersInit | undefined
+): Record<string, string> | undefined {
+  if (!headers) return undefined;
+  if (headers instanceof Headers) {
+    const rec: Record<string, string> = {};
+    headers.forEach((v, k) => {
+      rec[k] = v;
+    });
+    return rec;
+  }
+  if (Array.isArray(headers)) {
+    const rec: Record<string, string> = {};
+    for (const [k, v] of headers as [string, string][]) {
+      rec[k] = v;
+    }
+    return rec;
+  }
+  return headers as Record<string, string>;
 }
 
 function errToString(err: unknown): string {
@@ -278,7 +309,41 @@ async function sidecarFetch(url: string, init?: SidecarFetchInit): Promise<Respo
     }
   }
 
-  sidecarLog("info", "sidecarFetch non-loopback attempt via tauriFetch", { method, url, mode });
+  // Loopback: use the Rust sidecar_fetch_loopback command (bypasses plugin-http scope entirely)
+  if (loopback) {
+    sidecarLog("info", "sidecarFetch loopback via sidecar_fetch_loopback command", {
+      method,
+      url,
+    });
+    try {
+      const result = await invoke<{ status: number; ok: boolean; body: string }>(
+        "sidecar_fetch_loopback",
+        {
+          url,
+          method,
+          body: typeof init?.body === "string" ? init.body : undefined,
+          headers: headersToRecord(init?.headers),
+        }
+      );
+      sidecarLog("info", "sidecarFetch loopback command success", {
+        method,
+        url,
+        status: result.status,
+        ok: result.ok,
+      });
+      return new Response(result.body, { status: result.status });
+    } catch (err) {
+      sidecarLog("error", "sidecarFetch loopback command failed", {
+        method,
+        url,
+        error: errToString(err),
+      });
+      throw err;
+    }
+  }
+
+  // Non-loopback: use tauriFetch via Tauri HTTP plugin
+  sidecarLog("info", "sidecarFetch non-loopback via tauriFetch", { method, url, mode });
   try {
     const response = await tauriFetch(url, init);
     sidecarLog("info", "sidecarFetch non-loopback tauriFetch success", {
@@ -337,12 +402,14 @@ interface PollHealthOptions {
   maxMs?: number;
   initialDelayMs?: number;
   intervalMs?: number;
+  perAttemptTimeoutMs?: number;
 }
 
 async function pollHealth(baseUrl: string, options: PollHealthOptions = {}): Promise<boolean> {
   const maxMs = options.maxMs ?? SIDECAR_HEALTH_TIMEOUT_MS;
   const initialDelayMs = options.initialDelayMs ?? SIDECAR_HEALTH_INITIAL_DELAY_MS;
   const intervalMs = options.intervalMs ?? SIDECAR_HEALTH_POLL_INTERVAL_MS;
+  const perAttemptTimeoutMs = options.perAttemptTimeoutMs ?? 3500;
   const healthUrl = `${baseUrl}/health`;
   const pollStartedAt = Date.now();
 
@@ -354,6 +421,7 @@ async function pollHealth(baseUrl: string, options: PollHealthOptions = {}): Pro
     timeoutMs: maxMs,
     initialDelayMs,
     intervalMs,
+    perAttemptTimeoutMs,
     startedAt: new Date(pollStartedAt).toISOString(),
   });
 
@@ -380,7 +448,11 @@ async function pollHealth(baseUrl: string, options: PollHealthOptions = {}): Pro
       elapsedSincePollStartMs: attemptStarted - pollStartedAt,
     });
     try {
-      const res = await sidecarFetch(healthUrl);
+      const fetchPromise = sidecarFetch(healthUrl);
+      const timeoutPromise = sleep(perAttemptTimeoutMs).then(() => {
+        throw new Error(`sidecarFetch per-attempt timeout (${perAttemptTimeoutMs}ms)`);
+      });
+      const res = await Promise.race([fetchPromise, timeoutPromise]);
       const elapsedMs = Date.now() - attemptStarted;
       const totalElapsedMs = Date.now() - pollStartedAt;
 
