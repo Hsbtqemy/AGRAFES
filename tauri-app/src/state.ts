@@ -3,7 +3,7 @@
  * All modules import { state } from here; mutation is intentional (no framework).
  */
 
-import type { Conn, QueryHit, DocumentRecord } from "./lib/sidecarClient";
+import type { Conn, QueryHit, DocumentRecord, QueryFacetsResponse } from "./lib/sidecarClient";
 
 export type Status = "idle" | "starting" | "ready" | "error";
 
@@ -38,6 +38,12 @@ export interface AppState {
   nearN: number;
   // parallel KWIC
   showParallel: boolean;
+  // Sprint G: sort mode applied to loaded hits at render time
+  sortMode: "natural" | "by-doc";
+  // Sprint H: backend facets (null = not loaded or invalidated)
+  facets: QueryFacetsResponse | null;
+  /** The query string for which state.facets was computed — used for stale-check. */
+  facetsQuery: string;
 }
 
 export const ALIGNED_LIMIT_DEFAULT = 20;
@@ -73,4 +79,7 @@ export const state: AppState = {
   builderMode: "simple",
   nearN: 5,
   showParallel: false,
+  sortMode: "natural",
+  facets: null,
+  facetsQuery: "",
 };

@@ -389,6 +389,102 @@ def run_query_page(
     }
 
 
+def run_query_facets(
+    conn: sqlite3.Connection,
+    q: str,
+    language: Optional[str] = None,
+    doc_id: Optional[int] = None,
+    resource_type: Optional[str] = None,
+    doc_role: Optional[str] = None,
+    top_docs_limit: int = 10,
+) -> dict[str, Any]:
+    """Compute lightweight facet summary for a query without fetching hit content.
+
+    Executes a single GROUP BY over the FTS index — no hit-level processing.
+    Significantly cheaper than loading all hits to compute front-side facets.
+
+    Returns:
+        total_hits:    Number of matching units across all documents.
+        distinct_docs: Number of distinct documents containing at least one match.
+        distinct_langs: Number of distinct languages among matching documents.
+        top_docs:      Top ``top_docs_limit`` documents by hit count, descending.
+
+    Note: ``total_hits`` counts matching *units*, not KWIC occurrences (which can be
+    higher when all_occurrences=True). This is consistent with segment mode counts.
+    """
+    if not q.strip():
+        return {
+            "total_hits": 0,
+            "distinct_docs": 0,
+            "distinct_langs": 0,
+            "top_docs": [],
+        }
+
+    filters: list[str] = ["u.unit_type = 'line'"]
+    params: list[Any] = [q]
+
+    if language:
+        filters.append("d.language = ?")
+        params.append(language)
+    if doc_id is not None:
+        filters.append("u.doc_id = ?")
+        params.append(doc_id)
+    if resource_type:
+        filters.append("d.resource_type = ?")
+        params.append(resource_type)
+    if doc_role:
+        filters.append("d.doc_role = ?")
+        params.append(doc_role)
+
+    where_clause = " AND ".join(filters)
+    sql = f"""
+        SELECT
+            d.doc_id,
+            d.title,
+            d.language,
+            COUNT(*) AS hit_count
+        FROM fts_units f
+        JOIN units u ON u.unit_id = f.rowid
+        JOIN documents d ON d.doc_id = u.doc_id
+        WHERE fts_units MATCH ?
+          AND {where_clause}
+        GROUP BY d.doc_id
+        ORDER BY hit_count DESC
+    """
+
+    try:
+        rows = conn.execute(sql, params).fetchall()
+    except sqlite3.OperationalError as exc:
+        logger.error("Facets query error: %s", exc)
+        raise
+
+    total_hits = sum(row["hit_count"] for row in rows)
+    distinct_docs = len(rows)
+    lang_set = {row["language"] for row in rows if row["language"]}
+    distinct_langs = len(lang_set)
+
+    top_docs = [
+        {
+            "doc_id": row["doc_id"],
+            "title": row["title"] or f"Doc #{row['doc_id']}",
+            "language": row["language"],
+            "count": row["hit_count"],
+        }
+        for row in rows[:top_docs_limit]
+    ]
+
+    logger.info(
+        "Facets %r → %d total hits, %d docs, %d langs",
+        q, total_hits, distinct_docs, distinct_langs,
+    )
+    return {
+        "total_hits": total_hits,
+        "distinct_docs": distinct_docs,
+        "distinct_langs": distinct_langs,
+        "top_docs": top_docs,
+    }
+
+
 def run_query(
     conn: sqlite3.Connection,
     q: str,

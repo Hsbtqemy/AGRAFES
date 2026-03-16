@@ -135,14 +135,19 @@ export async function exportHits(format: ExportFormat): Promise<void> {
 
   try {
     await writeTextFile(outPath, content);
-    const bytes = new TextEncoder().encode(content).length;
+    // Use Blob.size for byte count — avoids re-encoding the full content string
+    const bytes = new Blob([content]).size;
     const nbAligned = state.hits.reduce((s, h) => s + (h.aligned?.length ?? 0), 0);
+    const isPartial = state.hasMore || (typeof state.total === "number" && state.hits.length < state.total);
+    const partialLabel = isPartial
+      ? ` (${state.hits.length}/${state.total ?? "?"} chargés — export partiel)`
+      : ` (complet)`;
     const statusEl = document.getElementById("status-msg");
     if (statusEl) {
       const prev = statusEl.textContent;
-      const recap = `✓ ${state.hits.length} hit(s)${nbAligned > 0 ? ` · ${nbAligned} aligned` : ""} · ${(bytes / 1024).toFixed(1)} KB → ${outPath.split(/[/\\]/).pop()}`;
+      const recap = `✓ Export${partialLabel} · ${nbAligned > 0 ? `${nbAligned} alignés · ` : ""}${(bytes / 1024).toFixed(1)} KB → ${outPath.split(/[/\\]/).pop()}`;
       statusEl.textContent = recap;
-      setTimeout(() => { if (statusEl.textContent?.startsWith("✓")) statusEl.textContent = prev; }, 5000);
+      setTimeout(() => { if (statusEl.textContent?.startsWith("✓")) statusEl.textContent = prev; }, 6000);
     }
   } catch (err) {
     console.error("[export] error:", err);

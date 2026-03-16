@@ -10,6 +10,12 @@ import { elt } from "../ui/dom";
 /** Fast doc lookup for meta panel (populated when docs are loaded). */
 export const docsById: Map<number, DocumentRecord> = new Map();
 
+/**
+ * Threshold above which a soft notice is shown in the filter area warning that
+ * the corpus is large and some filter interactions may be slower.
+ */
+const LARGE_CORPUS_WARN = 2000;
+
 export async function loadDocsForFilters(): Promise<void> {
   if (!state.conn) return;
   try {
@@ -17,9 +23,28 @@ export async function loadDocsForFilters(): Promise<void> {
     docsById.clear();
     for (const doc of state.docs) docsById.set(doc.doc_id, doc);
     populateFilterDropdowns();
+    _setLargeCorpusNotice(state.docs.length);
   } catch {
     // non-critical — filters stay free-text
   }
+}
+
+/** Shows or hides a soft corpus-size notice near the document filters. */
+function _setLargeCorpusNotice(count: number): void {
+  const existing = document.getElementById("large-corpus-notice");
+  if (count <= LARGE_CORPUS_WARN) {
+    existing?.remove();
+    return;
+  }
+  if (existing) return; // already displayed
+  const bar = document.getElementById("chips-bar");
+  if (!bar?.parentElement) return;
+  const notice = document.createElement("div");
+  notice.id = "large-corpus-notice";
+  notice.className = "large-corpus-notice";
+  notice.title = `${count} documents indexés dans ce corpus`;
+  notice.textContent = `ℹ ${count} documents — le filtre par doc_id est recommandé pour cibler un document précis.`;
+  bar.parentElement.insertBefore(notice, bar);
 }
 
 export function populateFilterDropdowns(): void {

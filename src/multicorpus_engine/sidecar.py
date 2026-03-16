@@ -439,6 +439,9 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         elif path == "/documents/preview":
             qs = parse_qs(urlparse(self.path).query)
             self._handle_documents_preview(qs)
+        elif path == "/unit/context":
+            qs = parse_qs(urlparse(self.path).query)
+            self._handle_unit_context(qs)
         elif path == "/doc_relations":
             self._handle_doc_relations_get()
         elif path == "/jobs":
@@ -451,6 +454,14 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             self._handle_curate_exceptions_list(
                 {"doc_id": int(doc_id_str)} if doc_id_str else {}
             )
+        elif path == "/curate/apply-history":
+            qs = parse_qs(urlparse(self.path).query)
+            doc_id_str = qs.get("doc_id", [None])[0]
+            limit_str = qs.get("limit", [None])[0]
+            self._handle_curate_apply_history_list({
+                "doc_id": int(doc_id_str) if doc_id_str else None,
+                "limit": int(limit_str) if limit_str else 50,
+            })
         else:
             self._send_error(
                 f"Unknown route: {path}",
@@ -476,6 +487,10 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 "/doc_relations/set", "/doc_relations/delete",
                 # Exports (write to disk)
                 "/export/tei", "/export/align_csv", "/export/run_report",
+                "/curate/exceptions/export",
+                "/curate/apply-history/export",
+                # Apply history record (writes to DB)
+                "/curate/apply-history/record",
                 # Alignment writes (previously unprotected — fixed in 1.4.1)
                 "/align",
                 "/align/link/update_status", "/align/link/delete", "/align/link/retarget",
@@ -498,6 +513,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 
             if path == "/query":
                 self._handle_query(body)
+            elif path == "/query/facets":
+                self._handle_query_facets(body)
             elif path == "/index":
                 self._handle_index()
             elif path == "/import":
@@ -512,6 +529,12 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 self._handle_curate_exceptions_set(body)
             elif path == "/curate/exceptions/delete":
                 self._handle_curate_exceptions_delete(body)
+            elif path == "/curate/exceptions/export":
+                self._handle_curate_exceptions_export(body)
+            elif path == "/curate/apply-history/record":
+                self._handle_curate_apply_history_record(body)
+            elif path == "/curate/apply-history/export":
+                self._handle_curate_apply_history_export(body)
             elif path == "/align/audit":
                 self._handle_align_audit(body)
             elif path == "/align/quality":
@@ -1061,6 +1084,34 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             "total": page["total"],
         }))
 
+    def _handle_query_facets(self, body: dict) -> None:
+        """POST /query/facets — lightweight facet summary for a query.
+
+        Returns total_hits, distinct_docs, distinct_langs, and top_docs without
+        fetching any hit content. Accepts the same filter parameters as /query.
+        """
+        from multicorpus_engine.query import run_query_facets
+
+        raw_top = body.get("top_docs_limit", 10)
+        try:
+            top_docs_limit = int(raw_top)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("top_docs_limit must be an integer") from exc
+        if top_docs_limit < 1 or top_docs_limit > 50:
+            raise ValueError("top_docs_limit must be in [1, 50]")
+
+        params = {
+            "q": body.get("q", ""),
+            "language": body.get("language"),
+            "doc_id": body.get("doc_id"),
+            "resource_type": body.get("resource_type"),
+            "doc_role": body.get("doc_role"),
+            "top_docs_limit": top_docs_limit,
+        }
+        with self._lock():
+            result = run_query_facets(conn=self._conn(), **params)
+        self._send_json(success_payload(result))
+
     def _handle_index(self) -> None:
         from multicorpus_engine.indexer import build_index
 
@@ -1319,6 +1370,334 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             conn.commit()
             deleted = cur.rowcount
         self._send_json(success_payload({"unit_id": unit_id, "deleted": deleted > 0}))
+
+    def _handle_curate_exceptions_export(self, body: dict) -> None:
+        """Export curation exceptions to JSON or CSV.
+
+        Body fields:
+          out_path (str)       — absolute path to write (chosen by the frontend via dialog)
+          format   (str)       — "json" | "csv"  (default: "json")
+          doc_id   (int|None)  — if provided, export only that document; else export all
+
+        Returns { ok, out_path, count, format }.
+        """
+        import json as _json
+        import csv as _csv
+        import io as _io
+        import datetime as _dt
+
+        out_path = body.get("out_path")
+        if not out_path:
+            self._send_error("out_path is required", code=ERR_BAD_REQUEST, http_status=400)
+            return
+
+        fmt = body.get("format", "json")
+        if fmt not in ("json", "csv"):
+            self._send_error(
+                "format must be 'json' or 'csv'",
+                code=ERR_BAD_REQUEST,
+                http_status=400,
+            )
+            return
+
+        doc_id = body.get("doc_id")
+
+        # Re-use the same JOIN query as _handle_curate_exceptions_list to keep
+        # the field set consistent.
+        _sql_select = """
+            SELECT ce.unit_id, ce.kind, ce.override_text, ce.note, ce.created_at,
+                   u.doc_id,
+                   COALESCE(d.title, '') AS doc_title,
+                   SUBSTR(u.text_norm, 1, 200) AS unit_text
+            FROM curation_exceptions ce
+            JOIN units u     ON u.unit_id = ce.unit_id
+            JOIN documents d ON d.doc_id  = u.doc_id
+        """
+
+        with self._lock():
+            conn = self._conn()
+            if doc_id is not None:
+                rows = conn.execute(
+                    _sql_select + " WHERE u.doc_id = ? ORDER BY ce.unit_id",
+                    (int(doc_id),),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    _sql_select + " ORDER BY u.doc_id, ce.unit_id"
+                ).fetchall()
+
+        count = len(rows)
+        exported_at = _dt.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        try:
+            if fmt == "json":
+                payload = {
+                    "exported_at": exported_at,
+                    "scope": "doc" if doc_id is not None else "all",
+                    "doc_id": doc_id,
+                    "count": count,
+                    "exceptions": [
+                        {
+                            "doc_id": row[5],
+                            "doc_title": row[6] or None,
+                            "unit_id": row[0],
+                            "kind": row[1],
+                            "text": row[2],
+                            "unit_text": row[7] or None,
+                            "note": row[3],
+                            "created_at": row[4],
+                        }
+                        for row in rows
+                    ],
+                }
+                content = _json.dumps(payload, ensure_ascii=False, indent=2)
+                with open(out_path, "w", encoding="utf-8") as fh:
+                    fh.write(content)
+            else:  # csv
+                buf = _io.StringIO()
+                writer = _csv.writer(buf, lineterminator="\n")
+                writer.writerow(
+                    ["doc_id", "doc_title", "unit_id", "kind", "text", "unit_text", "note", "created_at"]
+                )
+                for row in rows:
+                    writer.writerow([
+                        row[5],             # doc_id
+                        row[6] or "",       # doc_title
+                        row[0],             # unit_id
+                        row[1],             # kind
+                        row[2] or "",       # text (override_text)
+                        row[7] or "",       # unit_text
+                        row[3] or "",       # note
+                        row[4],             # created_at
+                    ])
+                with open(out_path, "w", encoding="utf-8-sig", newline="") as fh:
+                    fh.write(buf.getvalue())
+        except OSError as exc:
+            self._send_error(
+                f"Could not write export file: {exc}",
+                code="EXPORT_WRITE_ERROR",
+                http_status=500,
+            )
+            return
+
+        self._send_json(success_payload({
+            "out_path": out_path,
+            "count": count,
+            "format": fmt,
+        }))
+
+    # ─── Apply-history endpoints (Level 10A/10B) ──────────────────────────────
+
+    def _handle_curate_apply_history_record(self, body: dict) -> None:
+        """Insert one apply event into curation_apply_history.
+
+        Called by the frontend immediately after each successful curation job.
+        All fields sourced from the frontend session — the sidecar trusts them.
+        """
+        scope = body.get("scope", "all")
+        if scope not in ("doc", "all"):
+            scope = "all"
+
+        doc_id = body.get("doc_id")
+        if doc_id is not None:
+            doc_id = int(doc_id)
+
+        # Coerce integer-like booleans
+        def _int(v, default=None):
+            try:
+                return int(v)
+            except (TypeError, ValueError):
+                return default
+
+        with self._lock():
+            conn = self._conn()
+            cur = conn.execute(
+                """
+                INSERT INTO curation_apply_history
+                  (applied_at, scope, doc_id, doc_title,
+                   docs_curated, units_modified, units_skipped,
+                   ignored_count, manual_override_count,
+                   preview_displayed_count, preview_units_changed, preview_truncated)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    body.get("applied_at") or "unknown",
+                    scope,
+                    doc_id,
+                    body.get("doc_title"),
+                    _int(body.get("docs_curated"), 0),
+                    _int(body.get("units_modified"), 0),
+                    _int(body.get("units_skipped"), 0),
+                    _int(body.get("ignored_count")),
+                    _int(body.get("manual_override_count")),
+                    _int(body.get("preview_displayed_count")),
+                    _int(body.get("preview_units_changed")),
+                    1 if body.get("preview_truncated") else 0,
+                ),
+            )
+            conn.commit()
+            new_id = cur.lastrowid
+
+        self._send_json(success_payload({"id": new_id}))
+
+    def _handle_curate_apply_history_list(self, body: dict) -> None:
+        """List recent apply events, optionally filtered by doc_id or scope.
+
+        Query-string / body params:
+          doc_id (int | None) — filter to that document; None = all
+          scope  (str | None) — 'doc' | 'all' | None (no filter)
+          limit  (int)        — max rows returned (default 50, max 200)
+        """
+        doc_id = body.get("doc_id")
+        scope  = body.get("scope")
+        limit  = min(int(body.get("limit", 50)), 200)
+
+        sql = """
+            SELECT id, applied_at, scope, doc_id, doc_title,
+                   docs_curated, units_modified, units_skipped,
+                   ignored_count, manual_override_count,
+                   preview_displayed_count, preview_units_changed, preview_truncated
+            FROM curation_apply_history
+        """
+        conditions, params = [], []
+        if doc_id is not None:
+            conditions.append("doc_id = ?")
+            params.append(int(doc_id))
+        if scope is not None:
+            conditions.append("scope = ?")
+            params.append(scope)
+        if conditions:
+            sql += " WHERE " + " AND ".join(conditions)
+        sql += " ORDER BY applied_at DESC LIMIT ?"
+        params.append(limit)
+
+        with self._lock():
+            rows = self._conn().execute(sql, params).fetchall()
+
+        events = [
+            {
+                "id":                      row[0],
+                "applied_at":              row[1],
+                "scope":                   row[2],
+                "doc_id":                  row[3],
+                "doc_title":               row[4],
+                "docs_curated":            row[5],
+                "units_modified":          row[6],
+                "units_skipped":           row[7],
+                "ignored_count":           row[8],
+                "manual_override_count":   row[9],
+                "preview_displayed_count": row[10],
+                "preview_units_changed":   row[11],
+                "preview_truncated":       bool(row[12]),
+            }
+            for row in rows
+        ]
+        self._send_json(success_payload({"events": events, "count": len(events)}))
+
+    def _handle_curate_apply_history_export(self, body: dict) -> None:
+        """Export apply history to JSON or CSV.
+
+        Body: { out_path, format ('json'|'csv'), doc_id? (int|None) }
+        """
+        import json as _json
+        import csv as _csv
+        import io as _io
+        import datetime as _dt
+
+        out_path = body.get("out_path")
+        if not out_path:
+            self._send_error("out_path is required", code=ERR_BAD_REQUEST, http_status=400)
+            return
+        fmt = body.get("format", "json")
+        if fmt not in ("json", "csv"):
+            self._send_error("format must be 'json' or 'csv'", code=ERR_BAD_REQUEST, http_status=400)
+            return
+
+        # Reuse the list handler's query logic.
+        list_body = {"limit": 1000}
+        doc_id = body.get("doc_id")
+        if doc_id is not None:
+            list_body["doc_id"] = int(doc_id)
+
+        # Inline query (avoids HTTP round-trip back to self)
+        sql = """
+            SELECT id, applied_at, scope, doc_id, doc_title,
+                   docs_curated, units_modified, units_skipped,
+                   ignored_count, manual_override_count,
+                   preview_displayed_count, preview_units_changed, preview_truncated
+            FROM curation_apply_history
+        """
+        if doc_id is not None:
+            sql += " WHERE doc_id = ?"
+            params: list = [int(doc_id)]
+        else:
+            params = []
+        sql += " ORDER BY applied_at DESC LIMIT 1000"
+
+        with self._lock():
+            rows = self._conn().execute(sql, params).fetchall()
+
+        count = len(rows)
+        exported_at = _dt.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+        events = [
+            {
+                "id":                      row[0],
+                "applied_at":              row[1],
+                "scope":                   row[2],
+                "doc_id":                  row[3],
+                "doc_title":               row[4],
+                "docs_curated":            row[5],
+                "units_modified":          row[6],
+                "units_skipped":           row[7],
+                "ignored_count":           row[8],
+                "manual_override_count":   row[9],
+                "preview_displayed_count": row[10],
+                "preview_units_changed":   row[11],
+                "preview_truncated":       bool(row[12]),
+            }
+            for row in rows
+        ]
+
+        try:
+            if fmt == "json":
+                payload = {
+                    "exported_at": exported_at,
+                    "scope": "doc" if doc_id is not None else "all",
+                    "doc_id": doc_id,
+                    "count": count,
+                    "events": events,
+                }
+                with open(out_path, "w", encoding="utf-8") as fh:
+                    fh.write(_json.dumps(payload, ensure_ascii=False, indent=2))
+            else:
+                buf = _io.StringIO()
+                writer = _csv.writer(buf, lineterminator="\n")
+                writer.writerow([
+                    "id", "applied_at", "scope", "doc_id", "doc_title",
+                    "docs_curated", "units_modified", "units_skipped",
+                    "ignored_count", "manual_override_count",
+                    "preview_displayed_count", "preview_units_changed", "preview_truncated",
+                ])
+                for e in events:
+                    writer.writerow([
+                        e["id"], e["applied_at"], e["scope"], e["doc_id"] or "",
+                        e["doc_title"] or "",
+                        e["docs_curated"], e["units_modified"], e["units_skipped"],
+                        e["ignored_count"] or "", e["manual_override_count"] or "",
+                        e["preview_displayed_count"] or "", e["preview_units_changed"] or "",
+                        1 if e["preview_truncated"] else 0,
+                    ])
+                with open(out_path, "w", encoding="utf-8-sig", newline="") as fh:
+                    fh.write(buf.getvalue())
+        except OSError as exc:
+            self._send_error(
+                f"Could not write export file: {exc}",
+                code="EXPORT_WRITE_ERROR",
+                http_status=500,
+            )
+            return
+
+        self._send_json(success_payload({"out_path": out_path, "count": count, "format": fmt}))
 
     def _handle_curate_preview(self, body: dict) -> None:
         """Read-only curation simulation — never writes to DB."""
@@ -2071,6 +2450,106 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 }
             )
         )
+
+    def _handle_unit_context(self, qs: dict[str, list[str]]) -> None:
+        """GET /unit/context?unit_id=N — prev/current/next units for local document context."""
+        unit_id_raw = (qs.get("unit_id") or [None])[0]
+        if unit_id_raw is None:
+            self._send_error(
+                "unit_id query param is required",
+                code=ERR_BAD_REQUEST,
+                http_status=400,
+            )
+            return
+        try:
+            unit_id = int(unit_id_raw)
+        except (TypeError, ValueError):
+            self._send_error(
+                "unit_id must be an integer",
+                code=ERR_BAD_REQUEST,
+                http_status=400,
+            )
+            return
+        if unit_id <= 0:
+            self._send_error(
+                "unit_id must be a positive integer",
+                code=ERR_BAD_REQUEST,
+                http_status=400,
+            )
+            return
+
+        self._ensure_document_workflow_columns()
+
+        cur = self._conn().execute(
+            """
+            SELECT unit_id, doc_id, n, external_id, text_norm
+            FROM units
+            WHERE unit_id = ? AND unit_type = 'line'
+            """,
+            (unit_id,),
+        ).fetchone()
+        if cur is None:
+            self._send_error(
+                f"Unknown or non-line unit_id: {unit_id}",
+                code=ERR_NOT_FOUND,
+                http_status=404,
+            )
+            return
+
+        cur_unit_id, doc_id, n_cur, external_id, text_norm = cur
+        total_units = (
+            self._conn()
+            .execute(
+                "SELECT COUNT(*) FROM units WHERE doc_id = ? AND unit_type = 'line'",
+                (doc_id,),
+            )
+            .fetchone()[0]
+            or 0
+        )
+        unit_index_1based = (
+            self._conn()
+            .execute(
+                "SELECT COUNT(*) FROM units WHERE doc_id = ? AND unit_type = 'line' AND n <= ?",
+                (doc_id, n_cur),
+            )
+            .fetchone()[0]
+            or 0
+        )
+
+        prev_row = self._conn().execute(
+            """
+            SELECT unit_id, text_norm
+            FROM units
+            WHERE doc_id = ? AND unit_type = 'line' AND n < ?
+            ORDER BY n DESC
+            LIMIT 1
+            """,
+            (doc_id, n_cur),
+        ).fetchone()
+        next_row = self._conn().execute(
+            """
+            SELECT unit_id, text_norm
+            FROM units
+            WHERE doc_id = ? AND unit_type = 'line' AND n > ?
+            ORDER BY n ASC
+            LIMIT 1
+            """,
+            (doc_id, n_cur),
+        ).fetchone()
+
+        def _unit_blob(uid: int, text: str) -> dict:
+            return {"unit_id": uid, "text": (text or "").strip()}
+
+        payload = {
+            "doc_id": doc_id,
+            "unit_id": cur_unit_id,
+            "unit_index": unit_index_1based,
+            "total_units": total_units,
+            "prev": _unit_blob(prev_row[0], prev_row[1]) if prev_row else None,
+            "current": _unit_blob(cur_unit_id, text_norm),
+            "next": _unit_blob(next_row[0], next_row[1]) if next_row else None,
+        }
+        self._send_json(success_payload(payload))
 
     def _handle_align(self, body: dict) -> None:
         pivot_doc_id = body.get("pivot_doc_id")

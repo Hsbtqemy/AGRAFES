@@ -9,19 +9,74 @@ import type { QueryHit, AlignedUnit } from "../lib/sidecarClient";
 import { state } from "../state";
 import { elt, escapeHtml } from "./dom";
 
-// ─── Dependency injection (breaks circular: results ↔ metaPanel) ─────────────
+// ─── Dependency injection (breaks circular: results ↔ metaPanel / query) ─────
 
 let _openMetaFn: ((hit: QueryHit) => void) | null = null;
+let _filterDocFn: ((docId: number) => void) | null = null;
 
 /** Called once from app.ts after all modules are imported. */
 export function setMetaOpener(fn: (hit: QueryHit) => void): void {
   _openMetaFn = fn;
 }
 
+/** Called once from app.ts: wires the "filter on this doc + re-search" action. */
+export function setFilterDocCallback(fn: (docId: number) => void): void {
+  _filterDocFn = fn;
+}
+
+/**
+ * Marks the result card whose unit_id matches as active (for meta panel continuity).
+ * Called by metaPanel.ts on open/close. Pass null to clear.
+ */
+export function markActiveCard(unitId: number | null): void {
+  document.querySelectorAll(".result-card.card--active, .parallel-card.card--active").forEach(el => {
+    el.classList.remove("card--active");
+  });
+  if (unitId == null) return;
+  const card = document.querySelector(`[data-unit-id="${unitId}"]`) as HTMLElement | null;
+  card?.classList.add("card--active");
+}
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 export const PARALLEL_COLLAPSE_N = 5;
 export const VIRT_DOM_CAP = 150;
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Extract plain text from a hit (strips << >> markers, works in both modes). */
+function hitPlainText(hit: QueryHit): string {
+  if (hit.text ?? hit.text_norm) {
+    return (hit.text ?? hit.text_norm ?? "").replace(/<<|>>/g, "").trim();
+  }
+  // KWIC fallback
+  return `${hit.left ?? ""} ${hit.match ?? ""} ${hit.right ?? ""}`.trim();
+}
+
+/** Compact copy-text button with "Copié !" flash feedback. */
+function makeCopyBtn(text: string): HTMLButtonElement {
+  const btn = elt("button", { class: "card-action-btn", title: "Copier le texte du passage", type: "button" }, "📋 Copier") as HTMLButtonElement;
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    void navigator.clipboard?.writeText(text).then(() => {
+      btn.textContent = "✓ Copié";
+      btn.classList.add("copied");
+      setTimeout(() => { btn.textContent = "📋 Copier"; btn.classList.remove("copied"); }, 1500);
+    });
+  });
+  return btn;
+}
+
+/** Compact "filter on this document" quick action button. */
+function makeFilterDocBtn(docId: number, docTitle: string): HTMLButtonElement {
+  const label = docTitle ? `Ce doc (${docTitle.slice(0, 20)}${docTitle.length > 20 ? "…" : ""})` : `Doc #${docId}`;
+  const btn = elt("button", { class: "card-action-btn", title: `Chercher dans ce document : ${docTitle || `#${docId}`}`, type: "button" }, `🔍 ${label}`) as HTMLButtonElement;
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    _filterDocFn?.(docId);
+  });
+  return btn;
+}
 
 // ─── Card renderers ───────────────────────────────────────────────────────────
 
@@ -69,7 +124,7 @@ export function renderAlignedBlock(hit: QueryHit): HTMLElement {
 }
 
 export function renderParallelHit(hit: QueryHit, mode: "segment" | "kwic"): HTMLElement {
-  const card = elt("div", { class: "parallel-card" });
+  const card = elt("div", { class: "parallel-card", "data-unit-id": String(hit.unit_id) });
 
   // ── Pivot column ──
   const pivotCol = elt("div", { class: "parallel-pivot" });
@@ -96,6 +151,14 @@ export function renderParallelHit(hit: QueryHit, mode: "segment" | "kwic"): HTML
       .replace(/&lt;&lt;(.*?)&gt;&gt;/g, '<span class="highlight">$1</span>');
     pivotCol.appendChild(textDiv);
   }
+
+  // Quick actions on parallel card pivot
+  const pActions = elt("div", { class: "card-actions" });
+  const pText = hitPlainText(hit);
+  if (pText) pActions.appendChild(makeCopyBtn(pText));
+  if (_filterDocFn) pActions.appendChild(makeFilterDocBtn(hit.doc_id, hit.title ?? ""));
+  pivotCol.appendChild(pActions);
+
   card.appendChild(pivotCol);
 
   // ── Aligned column ──
@@ -150,7 +213,7 @@ export function renderHit(hit: QueryHit, mode: "segment" | "kwic", showAligned: 
     return renderParallelHit(hit, mode);
   }
 
-  const card = elt("div", { class: "result-card" });
+  const card = elt("div", { class: "result-card", "data-unit-id": String(hit.unit_id) });
 
   const meta = elt("div", { class: "result-meta" });
   const titleSpan = elt("span", { class: "doc-title" }, hit.title || "");
@@ -175,6 +238,13 @@ export function renderHit(hit: QueryHit, mode: "segment" | "kwic", showAligned: 
       .replace(/&lt;&lt;(.*?)&gt;&gt;/g, '<span class="highlight">$1</span>');
     card.appendChild(textDiv);
   }
+
+  // ── Quick actions row ──
+  const actions = elt("div", { class: "card-actions" });
+  const plainText = hitPlainText(hit);
+  if (plainText) actions.appendChild(makeCopyBtn(plainText));
+  if (_filterDocFn) actions.appendChild(makeFilterDocBtn(hit.doc_id, hit.title ?? ""));
+  card.appendChild(actions);
 
   if (showAligned) {
     const expanded = state.expandedAlignedUnitIds.has(hit.unit_id);

@@ -143,6 +143,7 @@ When `multicorpus serve` starts and a portfile already exists:
 - `GET /openapi.json`
 - `GET /documents`
 - `GET /documents/preview?doc_id=N&limit=M`
+- `GET /unit/context?unit_id=N` — (Sprint I) Returns local document context around a line unit: `doc_id`, `unit_id`, `unit_index` (1-based), `total_units`, `prev` / `current` / `next` (each `{ unit_id, text }` or `null`). Read-only; 404 if unit not found or not a line unit.
 - `GET /doc_relations?doc_id=N`
 - `POST /curate`
 - `POST /curate/preview`
@@ -507,6 +508,57 @@ Response:
 ```
 - Partial failures tolerated: failed items go to `errors: [{ index, link_id, error }]`
 - Non-existent link_ids are reported as errors, not 404
+
+## GET /unit/context (Sprint I)
+
+Read-only. No token required.
+
+### Query parameters
+
+| Param | Type | Required | Description |
+|---|---|---|---|
+| `unit_id` | integer ≥ 1 | Yes | ID of the target unit (`unit_type = 'line'`) |
+
+### Success response (200)
+
+```json
+{
+  "ok": true,
+  "doc_id": 12,
+  "unit_id": 847,
+  "unit_index": 54,
+  "total_units": 1200,
+  "prev": { "unit_id": 846, "text": "Texte de l'unité précédente." },
+  "current": { "unit_id": 847, "text": "Texte de l'unité courante." },
+  "next": { "unit_id": 848, "text": "Texte de l'unité suivante." }
+}
+```
+
+`prev` and `next` are `null` at document boundaries.  
+`unit_index` is 1-based, counting only `unit_type = 'line'` units within the document.
+
+### Error cases
+
+| Condition | HTTP | `code` |
+|---|---|---|
+| Missing `unit_id` | 400 | `BAD_REQUEST` |
+| `unit_id` not an integer | 400 | `BAD_REQUEST` |
+| Unit not found or not a line unit | 404 | `NOT_FOUND` |
+
+### SQL implementation (read-only, 4 targeted queries)
+
+```sql
+-- 1. Fetch target unit
+SELECT unit_id, doc_id, n, external_id, text_norm FROM units WHERE unit_id = ? AND unit_type = 'line';
+-- 2. Total units in document
+SELECT COUNT(*) FROM units WHERE doc_id = ? AND unit_type = 'line';
+-- 3. 1-based index (count of line units with n ≤ n_cur)
+SELECT COUNT(*) FROM units WHERE doc_id = ? AND unit_type = 'line' AND n <= ?;
+-- 4. Prev unit
+SELECT unit_id, text_norm FROM units WHERE doc_id = ? AND unit_type = 'line' AND n < ? ORDER BY n DESC LIMIT 1;
+-- 5. Next unit
+SELECT unit_id, text_norm FROM units WHERE doc_id = ? AND unit_type = 'line' AND n > ? ORDER BY n ASC LIMIT 1;
+```
 
 ## Shutdown semantics
 

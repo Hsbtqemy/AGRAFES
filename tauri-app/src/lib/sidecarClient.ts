@@ -104,6 +104,53 @@ export interface DocumentRecord {
   unit_count: number;
 }
 
+export interface QueryFacetsOptions {
+  q: string;
+  language?: string;
+  doc_id?: number;
+  doc_role?: string;
+  resource_type?: string;
+  /** How many top documents to return (max 50, default 10). */
+  top_docs_limit?: number;
+}
+
+/** One entry in the top_docs list returned by /query/facets. */
+export interface FacetDocEntry {
+  doc_id: number;
+  title: string;
+  language: string;
+  count: number;
+}
+
+/**
+ * Response from POST /query/facets.
+ * All counts are exact (computed server-side over the full FTS index),
+ * not estimates based on loaded hits.
+ */
+export interface QueryFacetsResponse {
+  total_hits: number;
+  distinct_docs: number;
+  distinct_langs: number;
+  top_docs: FacetDocEntry[];
+}
+
+/** One unit in GET /unit/context response (prev, current, or next). */
+export interface UnitContextItem {
+  unit_id: number;
+  text: string;
+}
+
+/** Response from GET /unit/context?unit_id=N — local document context around a unit. */
+export interface UnitContextResponse {
+  doc_id: number;
+  unit_id: number;
+  unit_index: number;
+  total_units: number;
+  prev: UnitContextItem | null;
+  current: UnitContextItem;
+  next: UnitContextItem | null;
+}
+
 // ─── Connection handle ────────────────────────────────────────────────────────
 
 export interface Conn {
@@ -884,6 +931,28 @@ export async function query(
   return conn.post("/query", payload) as Promise<QueryResponse>;
 }
 
+/**
+ * POST /query/facets — compute lightweight facet summary for a query.
+ *
+ * Returns exact counts (total_hits, distinct_docs, distinct_langs, top_docs)
+ * computed server-side in a single GROUP BY pass over the FTS index.
+ * Much cheaper than fetching all pages of results.
+ *
+ * Note: total_hits counts matching *units*, not KWIC occurrences.
+ */
+export async function queryFacets(
+  conn: Conn,
+  opts: QueryFacetsOptions
+): Promise<QueryFacetsResponse> {
+  const payload: Record<string, unknown> = { q: opts.q };
+  if (opts.language) payload.language = opts.language;
+  if (opts.doc_id !== undefined) payload.doc_id = opts.doc_id;
+  if (opts.doc_role) payload.doc_role = opts.doc_role;
+  if (opts.resource_type) payload.resource_type = opts.resource_type;
+  if (opts.top_docs_limit !== undefined) payload.top_docs_limit = opts.top_docs_limit;
+  return conn.post("/query/facets", payload) as Promise<QueryFacetsResponse>;
+}
+
 export async function importFile(
   conn: Conn,
   opts: ImportOptions
@@ -898,6 +967,18 @@ export async function rebuildIndex(conn: Conn): Promise<IndexResponse> {
 export async function listDocuments(conn: Conn): Promise<DocumentRecord[]> {
   const res = (await conn.get("/documents")) as { documents: DocumentRecord[] };
   return res.documents;
+}
+
+/**
+ * GET /unit/context?unit_id=N — prev/current/next units for local document context (Sprint I).
+ */
+export async function getUnitContext(
+  conn: Conn,
+  unitId: number
+): Promise<UnitContextResponse> {
+  const path = `/unit/context?unit_id=${encodeURIComponent(String(unitId))}`;
+  const res = (await conn.get(path)) as UnitContextResponse;
+  return res;
 }
 
 export async function shutdownSidecar(conn: Conn): Promise<void> {

@@ -676,7 +676,450 @@ body {
   opacity: 1;
   transform: translateY(0);
 }
+
+/* ─── Sprint G — Analytics, facets, sort, document groups ─── */
+
+.analytics-summary {
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 2px 0 3px;
+  letter-spacing: 0.01em;
+}
+
+.results-facets {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 5px 0 7px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+.results-facets-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-right: 2px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.facet-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 2px 8px 2px 9px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+  max-width: 200px;
+}
+.facet-chip:hover {
+  background: var(--brand-light, #dbeafe);
+  border-color: var(--brand);
+}
+.facet-chip-title {
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.facet-chip-count {
+  background: var(--brand);
+  color: #fff;
+  border-radius: 8px;
+  padding: 0 5px;
+  font-size: 10px;
+  font-weight: 700;
+  flex-shrink: 0;
+  line-height: 1.5;
+}
+
+.sort-toggle-btn {
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.sort-toggle-btn:hover {
+  border-color: var(--brand);
+  color: var(--brand);
+}
+.sort-toggle-btn.active {
+  background: var(--brand);
+  color: #fff;
+  border-color: var(--brand);
+}
+
+.doc-group-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  background: var(--surface2);
+  border-left: 3px solid var(--brand);
+  border-radius: 0 4px 4px 0;
+  padding: 4px 10px;
+  margin: 10px 0 4px;
+  gap: 8px;
+}
+.doc-group-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.doc-group-count {
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+/* ─── Sprint F — Document exploration ─── */
+
+/* Card active state: subtle left border when its meta panel is open */
+.result-card.card--active {
+  border-left: 3px solid var(--brand);
+  background: var(--surface2);
+}
+.parallel-card.card--active {
+  border-left: 3px solid var(--brand);
+  background: var(--surface2);
+}
+
+/* Meta panel prev/next navigation row */
+.meta-nav-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 0 2px;
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+.meta-nav-btn {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--text);
+  padding: 3px 10px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.meta-nav-btn:hover:not(:disabled) {
+  background: var(--brand-light, #e0edff);
+  border-color: var(--brand);
+}
+.meta-nav-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.meta-nav-pos {
+  font-size: 11px;
+  color: var(--text-muted);
+  flex: 1;
+  text-align: center;
+}
+
+/* Hit counter (other occurrences in same doc) */
+.meta-hit-counter {
+  font-size: 11px;
+  color: var(--brand);
+  font-style: italic;
+  margin-top: 2px;
+  cursor: pointer;
+  text-decoration: underline dotted;
+}
+.meta-hit-counter.no-others {
+  color: var(--text-muted);
+  text-decoration: none;
+  cursor: default;
+}
+
+/* Position in document (unit index / total) */
+.meta-doc-position {
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 1px 5px;
+  background: var(--surface2);
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  display: inline-block;
+  margin-left: 4px;
+}
+
+/* Extrait toggle button */
+.meta-excerpt-toggle {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--brand);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline dotted;
+}
+
+/* ─── Sprint I — Contexte local (voisinage documentaire) ─── */
+.meta-context-wrap {
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.meta-context-loading {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.meta-context-loading.meta-context-error {
+  color: var(--danger, #c00);
+}
+.meta-context-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.meta-context-pos-line {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.meta-context-pos {
+  font-family: ui-monospace, monospace;
+  padding: 1px 5px;
+  background: var(--surface2);
+  border-radius: 3px;
+  border: 1px solid var(--border);
+}
+.meta-context-block {
+  font-size: 12px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+}
+.meta-context-block.meta-context-current {
+  border-color: var(--brand, #0066cc);
+  background: color-mix(in srgb, var(--brand, #0066cc) 12%, transparent);
+  font-weight: 500;
+}
+.meta-context-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 2px;
+}
+.meta-context-text {
+  word-break: break-word;
+  line-height: 1.35;
+}
+.meta-context-nav-line {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.meta-context-nav-btn {
+  font-size: 11px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface2);
+  color: var(--text);
+  cursor: pointer;
+}
+.meta-context-nav-btn:hover:not(:disabled) {
+  background: var(--surface3);
+}
+.meta-context-nav-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.meta-context-nav-sep {
+  min-width: 4px;
+}
+
+/* ─── Sprint E — Large corpus notice ─── */
+.large-corpus-notice {
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 8px;
+  margin-bottom: 4px;
+}
+
+/* ─── Sprint D — Result cards actions ─── */
+.card-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.card-action-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  white-space: nowrap;
+  line-height: 1.6;
+}
+.card-action-btn:hover {
+  background: var(--surface2);
+  color: var(--brand);
+  border-color: var(--brand);
+}
+.card-action-btn.copied {
+  color: var(--success);
+  border-color: var(--success);
+}
+
+/* ─── Results header enrichi ─── */
+.results-header { justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.results-header-left { font-size: 12px; color: var(--text-muted); }
+.results-header-right { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.mode-badge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+.mode-badge--kwic { background: #ede9fe; border-color: #c4b5fd; color: #6d28d9; }
+.mode-badge--segment { background: #e0f2fe; border-color: #7dd3fc; color: #0369a1; }
+.results-filter-summary {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.results-end-msg {
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 10px 0 4px;
+  border-top: 1px dashed var(--border);
+  margin-top: 4px;
+}
+
+/* ─── Meta panel excerpt ─── */
+.meta-excerpt {
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 8px;
+  word-break: break-word;
+  white-space: pre-wrap;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+/* ─── Sprint I — Local context (unit neighbourhood) ─── */
+
+.meta-context-wrap {
+  margin-top: 8px;
+}
+.meta-context-loading {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 4px 0;
+}
+.meta-context-error {
+  color: var(--danger, #c0392b);
+}
+.meta-context-pos-line {
+  margin-bottom: 6px;
+}
+.meta-context-pos {
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 6px;
+  display: inline-block;
+}
+.meta-context-block {
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  padding: 5px 8px;
+  margin-bottom: 4px;
+  background: var(--surface2);
+}
+.meta-context-current {
+  border-color: var(--brand);
+  background: color-mix(in srgb, var(--brand) 8%, var(--surface));
+}
+.meta-context-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin-bottom: 3px;
+}
+.meta-context-current .meta-context-label {
+  color: var(--brand);
+}
+.meta-context-text {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text);
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+.meta-context-nav-line {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+.meta-context-nav-btn {
+  flex: 1;
+  font-size: 11px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.meta-context-nav-btn:hover:not(:disabled) {
+  background: var(--surface3, var(--surface2));
+  border-color: var(--brand);
+  color: var(--brand);
+}
+.meta-context-nav-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
 `;
+
 
 export function injectStyles(): void {
   const style = document.createElement("style");

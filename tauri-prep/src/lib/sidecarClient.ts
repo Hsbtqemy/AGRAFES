@@ -1618,6 +1618,104 @@ export async function deleteCurateException(
   return conn.post("/curate/exceptions/delete", { unit_id }) as Promise<CurateExceptionDeleteResponse>;
 }
 
+// ─── Level 9A — Exceptions export ────────────────────────────────────────────
+
+export interface ExportCurateExceptionsOptions {
+  /** Absolute path chosen via save dialog. */
+  out_path: string;
+  /** "json" | "csv" */
+  format: "json" | "csv";
+  /** When provided, export only that document's exceptions; else export all. */
+  doc_id?: number;
+}
+
+export interface ExportCurateExceptionsResponse {
+  ok: boolean;
+  out_path: string;
+  count: number;
+  format: string;
+}
+
+/** Export curation exceptions to a JSON or CSV file. */
+export async function exportCurateExceptions(
+  conn: Conn,
+  opts: ExportCurateExceptionsOptions,
+): Promise<ExportCurateExceptionsResponse> {
+  return conn.post("/curate/exceptions/export", opts) as Promise<ExportCurateExceptionsResponse>;
+}
+
+// ─── Level 10A/10B — Apply history ───────────────────────────────────────────
+
+/**
+ * Canonical schema for a curation apply event.
+ * Used both in-memory (frontend session) and as a DB record (via sidecar).
+ * When loaded from the DB, `id` is set; in-memory events have `id` undefined.
+ */
+export interface CurateApplyEvent {
+  /** Set when loaded from DB. Absent for in-memory session events. */
+  id?: number;
+  applied_at: string;
+  scope: "doc" | "all";
+  doc_id: number | null;
+  doc_title?: string | null;
+  docs_curated: number;
+  units_modified: number;
+  units_skipped: number;
+  ignored_count?: number;
+  manual_override_count?: number;
+  preview_displayed_count?: number;
+  preview_units_changed?: number;
+  preview_truncated?: boolean;
+}
+
+export interface ApplyHistoryListResponse {
+  ok: boolean;
+  events: CurateApplyEvent[];
+  count: number;
+}
+
+export interface RecordApplyHistoryResponse {
+  ok: boolean;
+  id: number;
+}
+
+export interface ExportApplyHistoryOptions {
+  out_path: string;
+  format: "json" | "csv";
+  doc_id?: number;
+}
+
+export interface ExportApplyHistoryResponse {
+  ok: boolean;
+  out_path: string;
+  count: number;
+  format: string;
+}
+
+/** Persist one apply event in the sidecar DB. Fire-and-forget safe. */
+export async function recordApplyHistory(
+  conn: Conn,
+  event: CurateApplyEvent,
+): Promise<RecordApplyHistoryResponse> {
+  return conn.post("/curate/apply-history/record", event) as Promise<RecordApplyHistoryResponse>;
+}
+
+/** List recent apply events (newest first). Optional doc_id and limit. */
+export async function listApplyHistory(
+  conn: Conn,
+  opts: { doc_id?: number; limit?: number } = {},
+): Promise<ApplyHistoryListResponse> {
+  return conn.post("/curate/apply-history", opts) as Promise<ApplyHistoryListResponse>;
+}
+
+/** Export apply history to JSON or CSV via sidecar file write. */
+export async function exportApplyHistory(
+  conn: Conn,
+  opts: ExportApplyHistoryOptions,
+): Promise<ExportApplyHistoryResponse> {
+  return conn.post("/curate/apply-history/export", opts) as Promise<ExportApplyHistoryResponse>;
+}
+
 export async function shutdownSidecar(conn: Conn): Promise<void> {
   try { await conn.post("/shutdown", {}); } catch { /* best-effort */ }
   _conn = null;

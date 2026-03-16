@@ -43,8 +43,16 @@ import {
   listCurateExceptions,
   setCurateException,
   deleteCurateException,
+  exportCurateExceptions,
+  type ExportCurateExceptionsOptions,
+  type CurateApplyEvent,
+  recordApplyHistory,
+  listApplyHistory,
+  exportApplyHistory,
+  type ExportApplyHistoryOptions,
 } from "../lib/sidecarClient.ts";
 import { save as dialogSave } from "@tauri-apps/plugin-dialog";
+import { writeTextFile } from "@tauri-apps/plugin-fs";
 import type { JobCenter } from "../components/JobCenter.ts";
 import { initCardAccordions } from "../lib/uiAccordions.ts";
 
@@ -141,6 +149,14 @@ interface StoredCurateReviewState {
    */
   overrides?: Record<string, string>;
 }
+
+// ─── Level 9C / 10A — Apply result + history ──────────────────────────────────
+
+/**
+ * Alias: the canonical apply event type is defined in sidecarClient (Level 10A/10B).
+ * Local session captures use the same shape; DB-loaded records additionally have `id`.
+ */
+type CurateApplyResult = CurateApplyEvent;
 
 // ─── Curation presets ─────────────────────────────────────────────────────────
 
@@ -372,6 +388,19 @@ export class ActionsScreen {
    * Populated by _loadCurateExceptions(), cleared on new preview / doc change.
    */
   private _curateExceptions: Map<number, CurateException> = new Map();
+
+  /**
+   * Level 9C: Structured capture of the last successful curation apply.
+   * Alias for _applyHistory[0] — kept for backward compatibility with 9B/9C.
+   * Cleared on doc change or disconnect.
+   */
+  private _lastApplyResult: CurateApplyResult | null = null;
+  /**
+   * Level 10A: All successful apply events in the current session (newest first).
+   * Never cleared on doc change — the history is global to the session.
+   * Cleared only on disconnect (setConn).
+   */
+  private _applyHistory: CurateApplyEvent[] = [];
 
   render(): HTMLElement {
     const root = document.createElement("div");
@@ -798,6 +827,43 @@ export class ActionsScreen {
                 </div>
               </div>
             </article>
+            <article class="curate-inner-card review-export-card" id="act-review-export-card" style="display:none">
+              <div class="card-head">
+                <h2>Exporter le rapport</h2>
+                <span style="font-size:12px;color:var(--prep-muted,#4f5d6d)">session courante</span>
+              </div>
+              <div class="card-body review-export-body">
+                <div id="act-apply-result-note" class="apply-result-note" style="display:none"></div>
+                <div class="review-export-row">
+                  <button class="btn btn-sm review-export-btn" id="act-review-export-json" title="Exporter en JSON structuré">JSON</button>
+                  <button class="btn btn-sm review-export-btn" id="act-review-export-csv" title="Exporter en CSV (une ligne par item)">CSV</button>
+                  <span id="act-review-export-result" class="review-export-result" style="display:none"></span>
+                </div>
+                <p class="hint review-export-hint">Items de l&#8217;&#233;chantillon courant, statuts et d&#233;cisions de la session.</p>
+              </div>
+            </article>
+            <details class="curate-inner-card apply-hist-panel" id="act-apply-hist-panel">
+              <summary class="card-head apply-hist-summary">
+                <h2>Historique des apply</h2>
+                <span id="act-apply-hist-badge" class="apply-hist-badge" style="display:none">0</span>
+              </summary>
+              <div class="card-body" style="padding:8px 10px 10px">
+                <div class="apply-hist-toolbar">
+                  <select id="act-apply-hist-scope" class="apply-hist-scope-select" title="Filtrer par portée">
+                    <option value="">Tous</option>
+                    <option value="doc">Document</option>
+                    <option value="all">Corpus</option>
+                  </select>
+                  <button class="btn btn-sm apply-hist-refresh" id="act-apply-hist-refresh" title="Actualiser">&#8635;</button>
+                  <button class="btn btn-sm apply-hist-export-btn" id="act-apply-hist-export-json" title="Exporter en JSON">JSON</button>
+                  <button class="btn btn-sm apply-hist-export-btn" id="act-apply-hist-export-csv" title="Exporter en CSV">CSV</button>
+                </div>
+                <div id="act-apply-hist-list" class="apply-hist-list" aria-live="polite">
+                  <p class="empty-hint">Ouvrez ce panneau pour charger l&#8217;historique.</p>
+                </div>
+                <span id="act-apply-hist-export-result" class="apply-hist-export-result" style="display:none"></span>
+              </div>
+            </details>
             <details class="curate-inner-card exc-admin-panel" id="act-exc-admin-panel">
               <summary class="card-head exc-admin-summary">
                 <h2>Exceptions persistées</h2>
@@ -816,6 +882,12 @@ export class ActionsScreen {
                   <select id="act-exc-doc-filter" class="exc-doc-filter-select">
                     <option value="">Tous les documents</option>
                   </select>
+                </div>
+                <div class="exc-admin-export-row">
+                  <span class="exc-export-label">Exporter&nbsp;:</span>
+                  <button class="btn btn-sm exc-export-btn" id="act-exc-export-json" title="Exporter en JSON">JSON</button>
+                  <button class="btn btn-sm exc-export-btn" id="act-exc-export-csv" title="Exporter en CSV">CSV</button>
+                  <span id="act-exc-export-result" class="exc-export-result" style="display:none"></span>
                 </div>
                 <div id="act-exc-admin-list" class="exc-admin-list" aria-live="polite">
                   <p class="empty-hint">Ouvrez ce panneau apr&#232;s une pr&#233;visualisation.</p>
@@ -847,6 +919,13 @@ export class ActionsScreen {
       el.querySelector(sel)!.addEventListener("change", () => this._schedulePreview(true));
     });
     el.querySelector("#act-curate-doc")!.addEventListener("change", () => {
+      // Level 9C: invalidate last apply result when switching to a different document
+      // context, to avoid showing stale apply data for the wrong document.
+      const newDocId = this._currentCurateDocId() ?? null;
+      if (this._lastApplyResult !== null && this._lastApplyResult.doc_id !== newDocId) {
+        this._lastApplyResult = null;
+        this._updateApplyResultUI();
+      }
       this._updateCurateCtx();
       this._schedulePreview(true);
     });
@@ -958,6 +1037,36 @@ export class ActionsScreen {
       const val = (e.target as HTMLSelectElement).value;
       this._excAdminDocFilter = val ? parseInt(val) : 0;
       this._renderExcAdminPanel(el);
+    });
+
+    el.querySelector("#act-exc-export-json")?.addEventListener("click", () => {
+      void this._runExcAdminExport("json", el);
+    });
+    el.querySelector("#act-exc-export-csv")?.addEventListener("click", () => {
+      void this._runExcAdminExport("csv", el);
+    });
+
+    el.querySelector("#act-review-export-json")?.addEventListener("click", () => {
+      void this._runExportReviewReport("json");
+    });
+    el.querySelector("#act-review-export-csv")?.addEventListener("click", () => {
+      void this._runExportReviewReport("csv");
+    });
+
+    el.querySelector<HTMLDetailsElement>("#act-apply-hist-panel")?.addEventListener("toggle", (e) => {
+      if ((e.target as HTMLDetailsElement).open) void this._loadApplyHistoryPanel(el);
+    });
+    el.querySelector("#act-apply-hist-refresh")?.addEventListener("click", () => {
+      void this._loadApplyHistoryPanel(el);
+    });
+    el.querySelector("#act-apply-hist-scope")?.addEventListener("change", () => {
+      void this._loadApplyHistoryPanel(el);
+    });
+    el.querySelector("#act-apply-hist-export-json")?.addEventListener("click", () => {
+      void this._runApplyHistoryExport("json");
+    });
+    el.querySelector("#act-apply-hist-export-csv")?.addEventListener("click", () => {
+      void this._runApplyHistoryExport("csv");
     });
 
     return el;
@@ -2440,6 +2549,10 @@ export class ActionsScreen {
     this._activeRuleFilter = null;
     this._activeStatusFilter = null;
     this._curateGlobalChanged = 0;
+    this._lastApplyResult = null;
+    this._applyHistory = [];
+    const _rec = document.querySelector<HTMLElement>("#act-review-export-card");
+    if (_rec) _rec.style.display = "none";
     this._curateRestoredCount = 0;
     this._curateSavedCount = 0;
     this._curateUnitsTotal = 0;
@@ -4151,6 +4264,9 @@ export class ActionsScreen {
       // Show / hide apply button
       const applyBtn = document.querySelector("#act-apply-after-preview-btn") as HTMLButtonElement;
       applyBtn.style.display = changed > 0 ? "" : "none";
+      // Show review export card as soon as we have a loaded sample.
+      const reviewExportCard = document.querySelector<HTMLElement>("#act-review-export-card");
+      if (reviewExportCard) reviewExportCard.style.display = "";
       (document.querySelector("#act-reindex-after-curate-btn") as HTMLElement).style.display = "none";
 
       this._log(`Prévisualisation : ${changed}/${total} unités → ${reps} remplacements.`);
@@ -5034,6 +5150,386 @@ export class ActionsScreen {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
 
+  // ─── Level 9B — Review session report export ──────────────────────────────
+
+  /**
+   * Build the structured review report payload from the current session state.
+   * All data comes from in-memory frontend fields — no sidecar call needed.
+   */
+  private _buildReviewReportPayload(): object {
+    const docId = this._currentCurateDocId() ?? null;
+    const docTitle = docId !== null
+      ? (this._docs.find(d => d.doc_id === docId)?.title ?? null)
+      : null;
+
+    const items = this._curateExamples;
+    const pending  = items.filter(e => (e.status ?? "pending") === "pending").length;
+    const accepted = items.filter(e => e.status === "accepted").length;
+    const ignored  = items.filter(e => e.status === "ignored").length;
+    const manuals  = items.filter(e => e.is_manual_override).length;
+
+    const isTruncated = this._curateGlobalChanged > items.length;
+    const notes: string[] = [];
+    if (isTruncated) {
+      notes.push(
+        `Preview tronquée : ${items.length} item(s) affichés sur ` +
+        `${this._curateGlobalChanged} modifications réelles dans le document.`
+      );
+    }
+    notes.push("Ce rapport reflète uniquement la session courante (en mémoire). " +
+               "Les décisions ne survivent pas à un rechargement sans restauration localStorage.");
+
+    return {
+      exported_at: new Date().toISOString(),
+      report_type: "curation_review_session",
+      doc_id: docId,
+      doc_title: docTitle,
+      sample: {
+        displayed: items.length,
+        units_changed: this._curateGlobalChanged,
+        units_total: this._curateUnitsTotal,
+        truncated: isTruncated,
+      },
+      summary: { pending, accepted, ignored, manual_overrides: manuals },
+      rules: [...this._curateRuleLabels],
+      items: items.map(ex => {
+        const persistentExc = ex.unit_id !== undefined
+          ? (this._curateExceptions.get(ex.unit_id) ?? null)
+          : null;
+        return {
+          unit_id: ex.unit_id ?? null,
+          unit_index: ex.unit_index ?? null,
+          status: ex.status ?? "pending",
+          before: ex.before,
+          after: ex.after,
+          effective_after: ex.is_manual_override ? (ex.manual_after ?? ex.after) : ex.after,
+          is_manual_override: ex.is_manual_override ?? false,
+          matched_rules: (ex.matched_rule_ids ?? []).map(
+            idx => this._curateRuleLabels[idx] ?? `règle ${idx + 1}`
+          ),
+          preview_reason: ex.preview_reason ?? "standard",
+          context_before: ex.context_before ?? null,
+          context_after: ex.context_after ?? null,
+          persistent_exception: persistentExc
+            ? { kind: persistentExc.kind, text: persistentExc.override_text ?? null }
+            : null,
+        };
+      }),
+      last_apply_result: this._lastApplyResult,
+      notes,
+    };
+  }
+
+  /** Build a CSV (one row per review item) from the current session. */
+  private _buildReviewReportCsv(): string {
+    const cols = [
+      "unit_id", "unit_index", "status", "is_manual_override",
+      "before", "after", "effective_after",
+      "matched_rules", "preview_reason",
+      "context_before", "context_after",
+      "persistent_exception_kind",
+    ];
+    const escape = (v: unknown): string => {
+      const s = v == null ? "" : String(v);
+      return s.includes(",") || s.includes('"') || s.includes("\n")
+        ? `"${s.replace(/"/g, '""')}"`
+        : s;
+    };
+    const rows: string[] = [cols.join(",")];
+    for (const ex of this._curateExamples) {
+      const persistentExc = ex.unit_id !== undefined
+        ? (this._curateExceptions.get(ex.unit_id) ?? null)
+        : null;
+      rows.push([
+        ex.unit_id ?? "",
+        ex.unit_index ?? "",
+        ex.status ?? "pending",
+        ex.is_manual_override ? "true" : "false",
+        escape(ex.before),
+        escape(ex.after),
+        escape(ex.is_manual_override ? (ex.manual_after ?? ex.after) : ex.after),
+        escape((ex.matched_rule_ids ?? []).map(idx => this._curateRuleLabels[idx] ?? `r${idx + 1}`).join("; ")),
+        ex.preview_reason ?? "standard",
+        escape(ex.context_before ?? ""),
+        escape(ex.context_after ?? ""),
+        persistentExc?.kind ?? "",
+      ].join(","));
+    }
+    return rows.join("\n");
+  }
+
+  /** Export the current review session as JSON or CSV via a save dialog (no sidecar). */
+  private async _runExportReviewReport(fmt: "json" | "csv"): Promise<void> {
+    if (this._curateExamples.length === 0) {
+      this._showToast?.("ℹ Aucune preview active à exporter");
+      const resultEl = document.querySelector<HTMLElement>("#act-review-export-result");
+      if (resultEl) {
+        resultEl.style.display = "";
+        resultEl.className = "review-export-result review-export-empty";
+        resultEl.textContent = "ℹ Aucune preview active à exporter";
+      }
+      return;
+    }
+
+    const docId = this._currentCurateDocId();
+    const today = new Date().toISOString().slice(0, 10);
+    const scopeTag = docId !== undefined ? `doc_${docId}` : "all";
+    const defaultName = `curation_review_${scopeTag}_${today}.${fmt}`;
+
+    let outPath: string | null;
+    try {
+      outPath = await dialogSave({
+        title: "Exporter le rapport de review",
+        defaultPath: defaultName,
+        filters: fmt === "json"
+          ? [{ name: "JSON", extensions: ["json"] }]
+          : [{ name: "CSV", extensions: ["csv"] }],
+      });
+    } catch { return; }
+    if (!outPath) return;
+
+    const resultEl = document.querySelector<HTMLElement>("#act-review-export-result");
+    const btnJson = document.querySelector<HTMLButtonElement>("#act-review-export-json");
+    const btnCsv  = document.querySelector<HTMLButtonElement>("#act-review-export-csv");
+    if (btnJson) btnJson.disabled = true;
+    if (btnCsv)  btnCsv.disabled = true;
+    if (resultEl) { resultEl.style.display = "none"; resultEl.textContent = ""; }
+
+    try {
+      let content: string;
+      if (fmt === "json") {
+        content = JSON.stringify(this._buildReviewReportPayload(), null, 2);
+      } else {
+        content = this._buildReviewReportCsv();
+      }
+      await writeTextFile(outPath, content);
+
+      const count = this._curateExamples.length;
+      const msg = `✓ Rapport exporté (${count} item(s))`;
+      if (resultEl) {
+        resultEl.style.display = "";
+        resultEl.className = "review-export-result review-export-ok";
+        resultEl.textContent = msg;
+      }
+      this._log(`✓ Rapport de review (${fmt.toUpperCase()}) exporté : ${count} item(s) → ${outPath}`);
+      this._pushCurateLog("apply", `Rapport export\u00e9 – ${count} item(s)`);
+      this._showToast?.(msg);
+    } catch (err) {
+      const msg = `✗ Erreur export rapport : ${err instanceof Error ? err.message : String(err)}`;
+      if (resultEl) {
+        resultEl.style.display = "";
+        resultEl.className = "review-export-result review-export-error";
+        resultEl.textContent = msg;
+      }
+      this._log(msg, true);
+      this._showToast?.("✗ Erreur export rapport", true);
+    } finally {
+      if (btnJson) btnJson.disabled = false;
+      if (btnCsv)  btnCsv.disabled = false;
+    }
+  }
+
+  /**
+   * Level 9C: Update the apply result note inside the review export card.
+   * Called after a successful apply and after invalidation.
+   */
+  private _updateApplyResultUI(): void {
+    const note = document.querySelector<HTMLElement>("#act-apply-result-note");
+    if (!note) return;
+    if (!this._lastApplyResult) {
+      note.style.display = "none";
+      note.textContent = "";
+      return;
+    }
+    const r = this._lastApplyResult;
+    const when = new Date(r.applied_at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+    const skipped = r.units_skipped > 0 ? `, ${r.units_skipped} sautée(s)` : "";
+    note.style.display = "";
+    note.className = "apply-result-note apply-result-ok";
+    const sessionCount = this._applyHistory.length;
+    const sessionSuffix = sessionCount > 1 ? ` · ${sessionCount} apply dans cette session` : "";
+    note.textContent =
+      `✓ Dernier apply — ${r.units_modified} modifiée(s)${skipped} (${when})` +
+      (r.ignored_count != null && r.ignored_count > 0 ? ` · ${r.ignored_count} ignorée(s)` : "") +
+      (r.manual_override_count != null && r.manual_override_count > 0 ? ` · ${r.manual_override_count} correction(s)` : "") +
+      ` — inclus dans le rapport${sessionSuffix}`;
+  }
+
+  // ─── Level 10A/10B — Apply history panel ─────────────────────────────────────
+
+  /** Load (or refresh) apply history from DB and render the panel. */
+  private async _loadApplyHistoryPanel(el: HTMLElement): Promise<void> {
+    if (!this._conn) return;
+    const listEl = el.querySelector<HTMLElement>("#act-apply-hist-list");
+    if (!listEl) return;
+
+    const scopeEl = el.querySelector<HTMLSelectElement>("#act-apply-hist-scope");
+    const scopeFilter = scopeEl?.value ?? "";
+
+    listEl.innerHTML = `<p class="empty-hint" style="opacity:.6">Chargement\u2026</p>`;
+
+    try {
+      const res = await listApplyHistory(this._conn, { limit: 50 });
+      let events = (res.events ?? []) as CurateApplyEvent[];
+
+      if (scopeFilter === "doc") events = events.filter(e => e.scope === "doc");
+      else if (scopeFilter === "all") events = events.filter(e => e.scope === "all");
+
+      // Merge in-memory session events not yet persisted (guard by applied_at equality)
+      const dbTimes = new Set(events.map(e => e.applied_at));
+      const sessionOnly = this._applyHistory.filter(e => !dbTimes.has(e.applied_at));
+      const merged = [...sessionOnly, ...events].slice(0, 50);
+
+      this._renderApplyHistoryPanel(listEl, merged);
+
+      const badge = el.querySelector<HTMLElement>("#act-apply-hist-badge");
+      if (badge) {
+        badge.textContent = String(merged.length);
+        badge.style.display = merged.length ? "" : "none";
+      }
+    } catch (err) {
+      listEl.innerHTML = `<p class="empty-hint error-hint">Erreur lors du chargement.</p>`;
+      this._log(`\u26a0 Historique apply : ${err}`, true);
+    }
+  }
+
+  private _renderApplyHistoryPanel(container: HTMLElement, events: CurateApplyEvent[]): void {
+    if (!events.length) {
+      container.innerHTML = `<p class="empty-hint">Aucun apply enregistr\u00e9.</p>`;
+      return;
+    }
+    const rows = events.map(e => {
+      const ts = e.applied_at
+        ? new Date(e.applied_at).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })
+        : "\u2014";
+      const scope  = e.scope === "doc" ? "Document" : "Corpus";
+      const docLbl = e.doc_title ? e.doc_title : (e.doc_id != null ? `#${e.doc_id}` : "\u2014");
+      const modified = e.units_modified ?? 0;
+      const skipped  = e.units_skipped  ?? 0;
+      const extras   = [
+        e.ignored_count != null && e.ignored_count > 0 ? `${e.ignored_count}\u00a0ign.` : "",
+        e.manual_override_count != null && e.manual_override_count > 0 ? `${e.manual_override_count}\u00a0man.` : "",
+      ].filter(Boolean).join(" / ");
+      const sessionMark = e.id == null ? " apply-hist-row--session" : "";
+      return `
+        <div class="apply-hist-row${sessionMark}">
+          <span class="apply-hist-ts">${ts}</span>
+          <span class="apply-hist-scope-badge apply-hist-scope--${e.scope}">${scope}</span>
+          <span class="apply-hist-doc" title="${e.doc_title ?? ""}">${docLbl}</span>
+          <span class="apply-hist-counts">${modified}\u00a0mod. / ${skipped}\u00a0saut.</span>
+          ${extras ? `<span class="apply-hist-extras">${extras}</span>` : ""}
+        </div>`;
+    });
+    container.innerHTML = rows.join("");
+  }
+
+  private async _runApplyHistoryExport(format: "json" | "csv"): Promise<void> {
+    if (!this._conn) return;
+    const resultEl = document.querySelector<HTMLElement>("#act-apply-hist-export-result");
+    const scopeEl  = document.querySelector<HTMLSelectElement>("#act-apply-hist-scope");
+    const scopeFilter = scopeEl?.value ?? "";
+
+    if (resultEl) { resultEl.textContent = ""; resultEl.style.display = "none"; }
+
+    const today = new Date().toISOString().slice(0, 10);
+    const defaultName = `curation_apply_history_${scopeFilter || "all"}_${today}.${format}`;
+    const { save: dialogSave } = await import("@tauri-apps/plugin-dialog");
+    const outPath = await dialogSave({
+      title: "Exporter l\u2019historique des apply",
+      defaultPath: defaultName,
+      filters: [{ name: format.toUpperCase(), extensions: [format] }],
+    });
+    if (!outPath) return;
+
+    try {
+      const opts: ExportApplyHistoryOptions = { out_path: outPath, format };
+      const res = await exportApplyHistory(this._conn, opts);
+      if (resultEl) {
+        resultEl.textContent = res.count
+          ? `Export\u00e9\u00a0: ${res.count}\u00a0\u00e9v\u00e9nement(s) \u2192 ${outPath}`
+          : "Aucun \u00e9v\u00e9nement \u00e0 exporter.";
+        resultEl.className = res.count ? "apply-hist-export-result ok" : "apply-hist-export-result empty";
+        resultEl.style.display = "";
+      }
+    } catch (err) {
+      if (resultEl) {
+        resultEl.textContent = `Erreur export\u00a0: ${err}`;
+        resultEl.className = "apply-hist-export-result error";
+        resultEl.style.display = "";
+      }
+      this._log(`\u26a0 Export historique apply\u00a0: ${err}`, true);
+    }
+  }
+
+  /**
+   * Level 9A: Export curation exceptions to JSON or CSV.
+   *
+   * Scope is driven by the current _excAdminDocFilter:
+   * - 0  → export all exceptions across the corpus
+   * - >0 → export only the current document's exceptions
+   *
+   * The sidecar writes the file to the path chosen via the save dialog.
+   */
+  private async _runExcAdminExport(fmt: "json" | "csv", root: HTMLElement): Promise<void> {
+    if (!this._conn) return;
+
+    const docId = this._excAdminDocFilter > 0 ? this._excAdminDocFilter : undefined;
+    const today = new Date().toISOString().slice(0, 10);
+    const scopeTag = docId ? `doc_${docId}` : "all";
+    const defaultName = `curation_exceptions_${scopeTag}_${today}.${fmt}`;
+
+    let outPath: string | null;
+    try {
+      outPath = await dialogSave({
+        title: "Exporter les exceptions de curation",
+        defaultPath: defaultName,
+        filters: fmt === "json"
+          ? [{ name: "JSON", extensions: ["json"] }]
+          : [{ name: "CSV", extensions: ["csv"] }],
+      });
+    } catch {
+      return;
+    }
+    if (!outPath) return;
+
+    const resultEl = root.querySelector<HTMLElement>("#act-exc-export-result");
+    const btnJson = root.querySelector<HTMLButtonElement>("#act-exc-export-json");
+    const btnCsv  = root.querySelector<HTMLButtonElement>("#act-exc-export-csv");
+    if (btnJson) btnJson.disabled = true;
+    if (btnCsv)  btnCsv.disabled = true;
+    if (resultEl) { resultEl.style.display = "none"; resultEl.textContent = ""; }
+
+    try {
+      const opts: ExportCurateExceptionsOptions = { out_path: outPath, format: fmt };
+      if (docId !== undefined) opts.doc_id = docId;
+
+      const res = await exportCurateExceptions(this._conn, opts);
+
+      const msg = res.count > 0
+        ? `✓ ${res.count} exception(s) exportée(s)`
+        : "ℹ Aucune exception à exporter";
+      if (resultEl) {
+        resultEl.style.display = "";
+        resultEl.className = `exc-export-result ${res.count > 0 ? "exc-export-ok" : "exc-export-empty"}`;
+        resultEl.textContent = msg;
+      }
+      this._log(`✓ Exceptions exportées (${fmt.toUpperCase()}) : ${res.count} → ${res.out_path}`);
+      this._showToast?.(msg);
+    } catch (err) {
+      const msg = `✗ Erreur export : ${err instanceof SidecarError ? err.message : String(err)}`;
+      if (resultEl) {
+        resultEl.style.display = "";
+        resultEl.className = "exc-export-result exc-export-error";
+        resultEl.textContent = msg;
+      }
+      this._log(msg, true);
+      this._showToast?.("✗ Erreur export exceptions", true);
+    } finally {
+      if (btnJson) btnJson.disabled = false;
+      if (btnCsv)  btnCsv.disabled = false;
+    }
+  }
+
   /**
    * Level 8B: Navigate from the exceptions admin panel to the Curation review
    * for the document/unit concerned.
@@ -5323,6 +5819,21 @@ export class ActionsScreen {
     // Pass manual overrides — Level 7A: apply user-supplied text for these units.
     if (manualOverrides.length > 0) params.manual_overrides = manualOverrides;
 
+    // Level 9C: snapshot submit-time context for the structured apply result.
+    // These values are synchronously available before the async job resolves.
+    const _applySnapshot = {
+      scope: (docId !== undefined ? "doc" : "all") as "doc" | "all",
+      doc_id: docId ?? null,
+      doc_title: docId !== undefined
+        ? (this._docs.find(d => d.doc_id === docId)?.title ?? null)
+        : null,
+      ignored_count: ignoredUnitIds.length,
+      manual_override_count: manualOverrides.length,
+      preview_displayed_count: this._curateExamples.length,
+      preview_units_changed: this._curateGlobalChanged,
+      preview_truncated: this._curateExamples.length < this._curateGlobalChanged,
+    };
+
     try {
       const job = await enqueueJob(this._conn, "curate", params);
       const skipNote = ignoredUnitIds.length > 0 ? `, ${ignoredUnitIds.length} ignorée(s)` : "";
@@ -5347,6 +5858,24 @@ export class ActionsScreen {
           const skippedNote = (r?.units_skipped ?? 0) > 0 ? `, ${r!.units_skipped} ignorée(s)` : "";
           this._log(`✓ Curation : ${r?.docs_curated ?? "?"} doc(s), ${r?.units_modified ?? "?"} unité(s) modifiée(s)${skippedNote}.`);
           this._pushCurateLog("apply", `OK – ${r?.docs_curated ?? "?"} doc(s), ${r?.units_modified ?? "?"} modifiée(s)${skippedNote}`);
+          // Level 9C / 10A: store structured apply result.
+          const _event: CurateApplyEvent = {
+            ..._applySnapshot,
+            applied_at: new Date().toISOString(),
+            docs_curated: r?.docs_curated ?? 0,
+            units_modified: r?.units_modified ?? 0,
+            units_skipped: r?.units_skipped ?? 0,
+          };
+          this._lastApplyResult = _event;
+          // Level 10A: push to session history (newest first).
+          this._applyHistory.unshift(_event);
+          // Level 10B: persist durably — fire and forget, do not block the callback.
+          if (this._conn) {
+            recordApplyHistory(this._conn, _event).catch(() => {
+              this._log("⚠ Impossible de persister l'historique d'apply.", true);
+            });
+          }
+          this._updateApplyResultUI();
           // Level 4B — Option A: invalidate saved review state after a successful apply.
           // The document has been modified; any saved statuses are now potentially obsolete.
           this._invalidateCurateReviewAfterApply(docId ?? null);
@@ -5361,6 +5890,7 @@ export class ActionsScreen {
         } else {
           this._log(`✗ Curation : ${done.error ?? done.status}`, true);
           this._pushCurateLog("warn", `Erreur : ${done.error ?? done.status}`);
+          // Do NOT set _lastApplyResult on failure — keep any previous successful one.
           this._showToast?.("✗ Erreur curation", true);
         }
         this._setBusy(false);
