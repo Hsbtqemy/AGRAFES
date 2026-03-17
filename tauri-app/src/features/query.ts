@@ -25,7 +25,15 @@ import { elt } from "../ui/dom";
 import { renderHit, VIRT_DOM_CAP } from "../ui/results";
 import { buildFtsQuery } from "./search";
 import { renderChips } from "./filters";
+import { syncDocSelectorUI, saveDocSelectorState } from "./docSelector";
 import type { QueryHit, FacetDocEntry } from "../lib/sidecarClient";
+
+/** Set filterDocIds to a single-doc restriction and sync the selector UI. */
+export function _setDocFilter(docIds: number[]): void {
+  state.filterDocIds = docIds;
+  saveDocSelectorState(state.dbPath ?? "");
+  syncDocSelectorUI();
+}
 
 // ─── Pagination ───────────────────────────────────────────────────────────────
 
@@ -83,7 +91,7 @@ function applySortToHits(hits: QueryHit[]): QueryHit[] {
 
 /** Returns true if any documentary filter is currently active. */
 function hasActiveFilters(): boolean {
-  return !!(state.filterLang || state.filterRole || state.filterDocId || state.filterResourceType);
+  return !!(state.filterLang || state.filterRole || state.filterDocIds !== null || state.filterResourceType);
 }
 
 /** Builds a short summary of active filters for display. */
@@ -92,7 +100,14 @@ function activeFiltersSummary(): string {
   if (state.filterLang) parts.push(`Langue : ${state.filterLang}`);
   if (state.filterRole) parts.push(`Rôle : ${state.filterRole}`);
   if (state.filterResourceType) parts.push(`Type : ${state.filterResourceType}`);
-  if (state.filterDocId) parts.push(`Doc : #${state.filterDocId}`);
+  if (state.filterDocIds !== null) {
+    const n = state.filterDocIds.length;
+    const total = state.docs.length;
+    parts.push(n === 1
+      ? `Doc : ${state.docs.find(d => d.doc_id === state.filterDocIds![0])?.title ?? `#${state.filterDocIds[0]}`}`
+      : `Docs : ${n} / ${total}`
+    );
+  }
   return parts.join(" · ");
 }
 
@@ -109,7 +124,7 @@ async function _fetchAndApplyFacets(forQuery: string): Promise<void> {
     const facets = await queryFacets(state.conn, {
       q: forQuery,
       language: state.filterLang || undefined,
-      doc_id: state.filterDocId ? parseInt(state.filterDocId, 10) : undefined,
+      doc_ids: state.filterDocIds ?? undefined,
       doc_role: state.filterRole || undefined,
       resource_type: state.filterResourceType || undefined,
       top_docs_limit: 10,
@@ -153,7 +168,7 @@ function _updateAnalyticsUI(facets: { total_hits: number; distinct_docs: number;
 
   // Rebuild top-doc facet chips with exact backend counts
   const facetsRow = area.querySelector<HTMLElement>(".results-facets");
-  if (facetsRow && facets.top_docs.length >= 2 && !state.filterDocId) {
+  if (facetsRow && facets.top_docs.length >= 2 && state.filterDocIds === null) {
     // Keep label, replace chips
     const label = facetsRow.querySelector(".results-facets-label");
     facetsRow.innerHTML = "";
@@ -170,9 +185,7 @@ function _updateAnalyticsUI(facets: { total_hits: number; distinct_docs: number;
       chip.appendChild(elt("span", { class: "facet-chip-title" }, displayTitle));
       chip.appendChild(elt("span", { class: "facet-chip-count" }, String(count)));
       chip.addEventListener("click", () => {
-        state.filterDocId = String(docId);
-        const inp = document.getElementById("filter-docid") as HTMLInputElement | null;
-        if (inp) inp.value = String(docId);
+        _setDocFilter([docId]);
         renderChips();
         if (state.currentQuery) void doSearch(state.currentQuery);
       });
@@ -328,7 +341,7 @@ export function renderResults(): void {
     : stats.topDocs;
   const effectiveDocCount = backendFacets ? backendFacets.distinct_docs : docCount;
 
-  if (effectiveDocCount > 1 && !state.filterDocId && topDocsToShow.length >= 2) {
+  if (effectiveDocCount > 1 && state.filterDocIds === null && topDocsToShow.length >= 2) {
     const facetsRow = elt("div", { class: "results-facets" });
     facetsRow.appendChild(elt("span", { class: "results-facets-label" }, "Docs :"));
 
@@ -344,9 +357,7 @@ export function renderResults(): void {
       chip.appendChild(elt("span", { class: "facet-chip-count" }, String(count)));
 
       chip.addEventListener("click", () => {
-        state.filterDocId = String(docId);
-        const inp = document.getElementById("filter-docid") as HTMLInputElement | null;
-        if (inp) inp.value = String(docId);
+        _setDocFilter([docId]);
         renderChips();
         if (state.currentQuery) void doSearch(state.currentQuery);
       });
@@ -537,7 +548,7 @@ export async function fetchQueryPage(append: boolean): Promise<void> {
       language: state.filterLang || undefined,
       doc_role: state.filterRole || undefined,
       resource_type: state.filterResourceType || undefined,
-      doc_id: state.filterDocId ? parseInt(state.filterDocId, 10) : undefined,
+      doc_ids: state.filterDocIds ?? undefined,
       includeAligned: state.showAligned,
       alignedLimit: state.showAligned ? ALIGNED_LIMIT_DEFAULT : undefined,
       limit: state.pageLimit,

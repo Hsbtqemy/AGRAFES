@@ -497,8 +497,10 @@ export class ImportScreen {
           this._log(`✓ Index reconstruit — ${n} unités indexées.`);
           this._showToast?.(`✓ Index reconstruit (${n} unités)`);
         } else {
-          this._log(`✗ Erreur index : ${done.error ?? done.status}`, true);
-          this._showToast?.("✗ Erreur index FTS", true);
+          const errMsg = done.error ?? done.status;
+          this._log(`✗ Erreur index : ${errMsg}`, true);
+          const short = typeof errMsg === "string" && errMsg.length > 60 ? errMsg.slice(0, 57) + "…" : errMsg;
+          this._showToast?.(`✗ Erreur index FTS${short ? `: ${short}` : ""}`, true);
         }
         this._isBusy = false;
         this._indexBtn.disabled = !this._conn;

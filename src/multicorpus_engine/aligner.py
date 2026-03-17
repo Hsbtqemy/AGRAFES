@@ -1,4 +1,4 @@
-"""Alignment engine — external_id / position / similarity strategies.
+﻿"""Alignment engine â€” external_id / position / similarity strategies.
 
 Creates unit-level 1-1 links between a pivot document and one or more target
 documents, matching on shared external_id values.
@@ -146,7 +146,7 @@ def align_pair(
     target_title = _get_doc_title(conn, target_doc_id)
 
     log.info(
-        "Aligning pivot=%d (%s) → target=%d (%s)",
+        "Aligning pivot=%d (%s) â†’ target=%d (%s)",
         pivot_doc_id, pivot_title, target_doc_id, target_title,
     )
 
@@ -225,7 +225,7 @@ def align_pair(
 
     conn.executemany(
         """
-        INSERT INTO alignment_links
+        INSERT OR IGNORE INTO alignment_links
             (run_id, pivot_unit_id, target_unit_id, external_id,
              pivot_doc_id, target_doc_id, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -236,7 +236,7 @@ def align_pair(
 
     report.links_created = len(links)
     if protected_skipped:
-        msg = f"{protected_skipped} lien(s) protégé(s) ignoré(s) pendant l'alignement"
+        msg = f"{protected_skipped} lien(s) protÃ©gÃ©(s) ignorÃ©(s) pendant l'alignement"
         report.warnings.append(msg)
         log.info(msg)
     if debug:
@@ -426,7 +426,7 @@ def align_pair_external_id_then_position(
     if links:
         conn.executemany(
             """
-            INSERT INTO alignment_links
+            INSERT OR IGNORE INTO alignment_links
                 (run_id, pivot_unit_id, target_unit_id, external_id,
                  pivot_doc_id, target_doc_id, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -440,7 +440,7 @@ def align_pair_external_id_then_position(
         report.warnings.append(msg)
         log.info(msg)
     if protected_skipped:
-        msg = f"{protected_skipped} lien(s) protégé(s) ignoré(s) pendant l'alignement"
+        msg = f"{protected_skipped} lien(s) protÃ©gÃ©(s) ignorÃ©(s) pendant l'alignement"
         report.warnings.append(msg)
         log.info(msg)
 
@@ -534,7 +534,7 @@ def align_pair_by_position(
     target_title = _get_doc_title(conn, target_doc_id)
 
     log.info(
-        "Aligning by position: pivot=%d (%s) → target=%d (%s)",
+        "Aligning by position: pivot=%d (%s) â†’ target=%d (%s)",
         pivot_doc_id, pivot_title, target_doc_id, target_title,
     )
 
@@ -596,7 +596,7 @@ def align_pair_by_position(
 
     conn.executemany(
         """
-        INSERT INTO alignment_links
+        INSERT OR IGNORE INTO alignment_links
             (run_id, pivot_unit_id, target_unit_id, external_id,
              pivot_doc_id, target_doc_id, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -607,7 +607,7 @@ def align_pair_by_position(
 
     report.links_created = len(links)
     if protected_skipped:
-        msg = f"{protected_skipped} lien(s) protégé(s) ignoré(s) pendant l'alignement"
+        msg = f"{protected_skipped} lien(s) protÃ©gÃ©(s) ignorÃ©(s) pendant l'alignement"
         report.warnings.append(msg)
         log.info(msg)
     if debug:
@@ -711,7 +711,7 @@ def align_pair_by_similarity(
     target_title = _get_doc_title(conn, target_doc_id)
 
     log.info(
-        "Aligning by similarity (threshold=%.2f): pivot=%d (%s) → target=%d (%s)",
+        "Aligning by similarity (threshold=%.2f): pivot=%d (%s) â†’ target=%d (%s)",
         threshold, pivot_doc_id, pivot_title, target_doc_id, target_title,
     )
 
@@ -786,7 +786,7 @@ def align_pair_by_similarity(
     if links:
         conn.executemany(
             """
-            INSERT INTO alignment_links
+            INSERT OR IGNORE INTO alignment_links
                 (run_id, pivot_unit_id, target_unit_id, external_id,
                  pivot_doc_id, target_doc_id, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -824,7 +824,7 @@ def align_pair_by_similarity(
             "sample_links": sample_links,
         }
     if protected_skipped:
-        msg = f"{protected_skipped} lien(s) protégé(s) ignoré(s) pendant l'alignement"
+        msg = f"{protected_skipped} lien(s) protÃ©gÃ©(s) ignorÃ©(s) pendant l'alignement"
         report.warnings.append(msg)
         log.info(msg)
 
@@ -891,3 +891,4 @@ def add_doc_relation(
     )
     conn.commit()
     return cur.lastrowid
+

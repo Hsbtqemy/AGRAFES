@@ -1031,12 +1031,21 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         if offset < 0:
             raise ValueError("offset must be >= 0")
 
+        raw_doc_ids = body.get("doc_ids")
+        doc_ids: list[int] | None = None
+        if isinstance(raw_doc_ids, list):
+            try:
+                doc_ids = [int(x) for x in raw_doc_ids]
+            except (TypeError, ValueError) as exc:
+                raise ValueError("doc_ids must be a list of integers") from exc
+
         params = {
             "q": body.get("q", ""),
             "mode": body.get("mode", "segment"),
             "window": body.get("window", 10),
             "language": body.get("language"),
             "doc_id": body.get("doc_id"),
+            "doc_ids": doc_ids,
             "resource_type": body.get("resource_type"),
             "doc_role": body.get("doc_role"),
             "include_aligned": body.get("include_aligned", False),
@@ -1054,6 +1063,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 window=params["window"],
                 language=params["language"],
                 doc_id=params["doc_id"],
+                doc_ids=params["doc_ids"],
                 resource_type=params["resource_type"],
                 doc_role=params["doc_role"],
                 include_aligned=params["include_aligned"],
@@ -1100,10 +1110,19 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         if top_docs_limit < 1 or top_docs_limit > 50:
             raise ValueError("top_docs_limit must be in [1, 50]")
 
+        raw_doc_ids_f = body.get("doc_ids")
+        doc_ids_f: list[int] | None = None
+        if isinstance(raw_doc_ids_f, list):
+            try:
+                doc_ids_f = [int(x) for x in raw_doc_ids_f]
+            except (TypeError, ValueError) as exc:
+                raise ValueError("doc_ids must be a list of integers") from exc
+
         params = {
             "q": body.get("q", ""),
             "language": body.get("language"),
             "doc_id": body.get("doc_id"),
+            "doc_ids": doc_ids_f,
             "resource_type": body.get("resource_type"),
             "doc_role": body.get("doc_role"),
             "top_docs_limit": top_docs_limit,

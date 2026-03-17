@@ -11,7 +11,7 @@ import { state } from "./state";
 import { buildUI } from "./ui/buildUI";
 import { updateStatus } from "./ui/status";
 import { setMetaOpener, setRerenderCallback, setFilterDocCallback } from "./ui/results";
-import { renderResults, disposeQuery, doSearch } from "./features/query";
+import { renderResults, disposeQuery, doSearch, _setDocFilter } from "./features/query";
 import { openMetaPanel } from "./features/metaPanel";
 import { renderChips } from "./features/filters";
 import {
@@ -32,9 +32,7 @@ setRerenderCallback(renderResults);
 
 // Wire the "filter on this doc + re-search" quick action from result cards
 setFilterDocCallback((docId: number) => {
-  state.filterDocId = String(docId);
-  const inp = document.getElementById("filter-docid") as HTMLInputElement | null;
-  if (inp) inp.value = String(docId);
+  _setDocFilter([docId]);
   renderChips();
   if (state.currentQuery) void doSearch(state.currentQuery);
 });

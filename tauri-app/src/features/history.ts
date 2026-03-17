@@ -5,7 +5,8 @@
 import { state } from "../state";
 import { elt } from "../ui/dom";
 import { doSearch } from "./query";
-import { renderChips } from "./filters";
+import { renderChips, clearDocSelector } from "./filters";
+import { syncDocSelectorUI, saveDocSelectorState } from "./docSelector";
 import { updateFtsPreview } from "./search";
 
 // ─── Types + constants ────────────────────────────────────────────────────────
@@ -15,7 +16,13 @@ export interface HistoryItem {
   raw: string;
   fts: string;
   mode: string;
-  filters: { lang: string; role: string; resourceType: string; docId: string };
+  filters: {
+    lang: string;
+    role: string;
+    resourceType: string;
+    /** @deprecated use docIds */ docId?: string;
+    docIds: number[] | null;
+  };
   aligned: boolean;
   parallel: boolean;
   pinned?: boolean;
@@ -37,7 +44,7 @@ export function saveToHistory(raw: string, fts: string): void {
       lang: state.filterLang,
       role: state.filterRole,
       resourceType: state.filterResourceType,
-      docId: state.filterDocId,
+      docIds: state.filterDocIds,
     },
     aligned: state.showAligned,
     parallel: state.showParallel,
@@ -154,7 +161,17 @@ export function renderHistPanel(panel: HTMLElement, searchInput: HTMLInputElemen
         state.filterLang = item.filters.lang;
         state.filterRole = item.filters.role;
         state.filterResourceType = item.filters.resourceType;
-        state.filterDocId = item.filters.docId;
+        // Restore docIds — cast to permissive type to handle legacy entries
+        const f = item.filters as { lang: string; role: string; resourceType: string; docId?: string; docIds?: number[] | null };
+        if (f.docIds !== undefined) {
+          state.filterDocIds = f.docIds;
+        } else if (f.docId) {
+          state.filterDocIds = [parseInt(f.docId, 10)];
+        } else {
+          state.filterDocIds = null;
+        }
+        saveDocSelectorState(state.dbPath ?? "");
+        syncDocSelectorUI();
         state.showAligned = item.aligned;
         state.showParallel = item.parallel;
         state.builderMode = item.mode as typeof state.builderMode;

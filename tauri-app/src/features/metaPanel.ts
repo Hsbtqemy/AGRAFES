@@ -18,7 +18,7 @@ import { getUnitContext, queryFacets } from "../lib/sidecarClient";
 import { state } from "../state";
 import { elt } from "../ui/dom";
 import { docsById, renderChips } from "./filters";
-import { doSearch } from "./query";
+import { doSearch, _setDocFilter } from "./query";
 import { markActiveCard } from "../ui/results";
 
 // ─── Module state ─────────────────────────────────────────────────────────────
@@ -110,9 +110,7 @@ function _renderPanelContent(hit: QueryHit, body: HTMLElement, foot: HTMLElement
       `${otherCount} autre${otherCount > 1 ? "s" : ""} occurrence${otherCount > 1 ? "s" : ""} dans ce document (résultats chargés · hit ${hitIndexInDoc}/${sameDocHits.length})`
     ) as HTMLButtonElement;
     occBtn.addEventListener("click", () => {
-      state.filterDocId = String(hit.doc_id);
-      const inp = document.getElementById("filter-docid") as HTMLInputElement | null;
-      if (inp) inp.value = String(hit.doc_id);
+      _setDocFilter([hit.doc_id]);
       renderChips();
       closeMetaPanel();
       if (state.currentQuery) void doSearch(state.currentQuery);
@@ -160,9 +158,7 @@ function _renderPanelContent(hit: QueryHit, body: HTMLElement, foot: HTMLElement
   const filterDocBtn = elt("button", { class: "btn btn-primary", type: "button" }, "Chercher dans ce document") as HTMLButtonElement;
   filterDocBtn.title = `Limiter la recherche au document #${hit.doc_id}`;
   filterDocBtn.addEventListener("click", () => {
-    state.filterDocId = String(hit.doc_id);
-    const docIdInput = document.getElementById("filter-docid") as HTMLInputElement | null;
-    if (docIdInput) docIdInput.value = String(hit.doc_id);
+    _setDocFilter([hit.doc_id]);
     renderChips();
     closeMetaPanel();
     if (state.currentQuery) void doSearch(state.currentQuery);
@@ -451,9 +447,7 @@ async function _enrichDocCount(hit: QueryHit, row: HTMLElement): Promise<void> {
       title: `Relancer la recherche sur ce document pour accéder aux ${total} occurrences`,
     }, `Voir les ${total} occurrences →`) as HTMLButtonElement;
     loadAllBtn.addEventListener("click", () => {
-      state.filterDocId = String(hit.doc_id);
-      const inp = document.getElementById("filter-docid") as HTMLInputElement | null;
-      if (inp) inp.value = String(hit.doc_id);
+      _setDocFilter([hit.doc_id]);
       renderChips();
       closeMetaPanel();
       if (state.currentQuery) void doSearch(state.currentQuery);

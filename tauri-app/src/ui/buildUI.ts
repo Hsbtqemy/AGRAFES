@@ -9,7 +9,7 @@ import { elt, injectStyles } from "./dom";
 import { showToast } from "./status";
 import { renderResults } from "../features/query";
 import { doSearch } from "../features/query";
-import { renderChips } from "../features/filters";
+import { renderChips, clearDocSelector } from "../features/filters";
 import { updateFtsPreview, buildFtsQuery } from "../features/search";
 import { renderHistPanel, saveToHistory } from "../features/history";
 import { showImportModal, hideImportModal, doImport } from "../features/importFlow";
@@ -205,15 +205,13 @@ export function buildUI(container: HTMLElement): void {
   restypeSel.innerHTML = `<option value="">Tous</option>`;
   fg2b.appendChild(restypeSel);
 
-  const fg3 = elt("div", { class: "filter-group" });
-  fg3.appendChild(elt("label", {}, "Doc ID"));
-  fg3.appendChild(elt("input", { type: "number", class: "filter-input", id: "filter-docid", placeholder: "1" }));
+  const docSelectorMount = elt("div", { id: "doc-selector-mount", class: "doc-sel-mount" });
 
   const clearBtn = elt("span", { class: "filter-clear", id: "filter-clear" }, "Effacer tout");
   filterDrawer.appendChild(fg1);
   filterDrawer.appendChild(fg2);
   filterDrawer.appendChild(fg2b);
-  filterDrawer.appendChild(fg3);
+  filterDrawer.appendChild(docSelectorMount);
   filterDrawer.appendChild(clearBtn);
 
   // ── Query builder panel ──
@@ -469,19 +467,14 @@ export function buildUI(container: HTMLElement): void {
   roleSel.addEventListener("change", () => { state.filterRole = roleSel.value; renderChips(); });
   restypeSel.addEventListener("change", () => { state.filterResourceType = restypeSel.value; renderChips(); });
 
-  (document.getElementById("filter-docid")! as HTMLInputElement).addEventListener("input", (e) => {
-    state.filterDocId = (e.target as HTMLInputElement).value.trim();
-    renderChips();
-  });
   document.getElementById("filter-clear")!.addEventListener("click", () => {
     state.filterLang = "";
     state.filterRole = "";
-    state.filterDocId = "";
     state.filterResourceType = "";
     langSel.value = "";
     roleSel.value = "";
     restypeSel.value = "";
-    (document.getElementById("filter-docid") as HTMLInputElement).value = "";
+    clearDocSelector(state.dbPath ?? "");
     renderChips();
   });
 
@@ -558,12 +551,11 @@ export function buildUI(container: HTMLElement): void {
     state.expandedAlignedUnitIds.clear();
     state.filterLang = "";
     state.filterRole = "";
-    state.filterDocId = "";
     state.filterResourceType = "";
     langSel.value = "";
     roleSel.value = "";
     restypeSel.value = "";
-    (document.getElementById("filter-docid") as HTMLInputElement).value = "";
+    clearDocSelector(state.dbPath ?? "");
     state.builderMode = "simple";
     const simpleRadio = document.querySelector<HTMLInputElement>("input[name='builder-mode'][value='simple']");
     if (simpleRadio) simpleRadio.checked = true;

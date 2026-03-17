@@ -138,15 +138,23 @@ export function renderParallelHit(hit: QueryHit, mode: "segment" | "kwic"): HTML
   meta.appendChild(pMetaBtn);
   pivotCol.appendChild(meta);
 
-  if (mode === "kwic" && hit.left !== undefined) {
-    const row = elt("div", { class: "kwic-row" });
-    row.appendChild(elt("span", { class: "kwic-left" }, hit.left ?? ""));
-    row.appendChild(elt("span", { class: "kwic-match" }, hit.match ?? ""));
-    row.appendChild(elt("span", { class: "kwic-right" }, hit.right ?? ""));
-    pivotCol.appendChild(row);
-  } else {
+  // In parallel mode, always show full text (KWIC grid doesn't work inside a 2-col grid)
+  {
     const textDiv = elt("div", { class: "result-text" });
-    const raw = hit.text ?? hit.text_norm ?? "";
+    let raw: string;
+    if (hit.text) {
+      // Segment mode: <<marker>> format
+      raw = hit.text;
+    } else if (hit.text_norm) {
+      // KWIC mode: text_norm available but no markers — re-highlight the match term
+      raw = hit.text_norm;
+      if (hit.match) {
+        const escaped = hit.match.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        raw = raw.replace(new RegExp(`(${escaped})`, "gi"), "<<$1>>");
+      }
+    } else {
+      raw = [hit.left ?? "", hit.match ?? "", hit.right ?? ""].filter(Boolean).join(" ");
+    }
     textDiv.innerHTML = escapeHtml(raw)
       .replace(/&lt;&lt;(.*?)&gt;&gt;/g, '<span class="highlight">$1</span>');
     pivotCol.appendChild(textDiv);
@@ -166,8 +174,9 @@ export function renderParallelHit(hit: QueryHit, mode: "segment" | "kwic"): HTML
   const aligned = Array.isArray(hit.aligned) ? hit.aligned : [];
 
   if (aligned.length === 0) {
-    alignedCol.appendChild(elt("div", { class: "aligned-empty" }, "Aucun alignement"));
+    alignedCol.appendChild(elt("div", { class: "parallel-empty" }, "Aucun alignement"));
   } else {
+    alignedCol.appendChild(elt("div", { class: "parallel-aligned-header" }, "Traductions alignées"));
     const groups = new Map<string, typeof aligned>();
     for (const item of aligned) {
       const key = `${item.language ?? "und"}|${item.doc_id}|${item.title ?? ""}`;
@@ -177,13 +186,17 @@ export function renderParallelHit(hit: QueryHit, mode: "segment" | "kwic"): HTML
     for (const [key, items] of groups.entries()) {
       const [lang, , title] = key.split("|");
       const grp = elt("div", { class: "parallel-aligned-group" });
-      grp.appendChild(elt("div", { class: "parallel-lang-header" }, `${lang} · ${title || "(sans titre)"}`));
+      const hdr = elt("div", { class: "parallel-lang-header" });
+      const badge = elt("span", { class: "parallel-lang-badge" }, (lang ?? "?").toUpperCase());
+      hdr.appendChild(badge);
+      hdr.appendChild(document.createTextNode(` ${title || "(sans titre)"}`));
+      grp.appendChild(hdr);
       const visible = items.slice(0, PARALLEL_COLLAPSE_N);
       const hidden = items.slice(PARALLEL_COLLAPSE_N);
       for (const item of visible) {
         const row = elt("div", { class: "parallel-line" });
-        if (item.external_id != null) row.appendChild(elt("span", { class: "aligned-ref" }, `[${item.external_id}] `));
-        row.appendChild(document.createTextNode(item.text ?? item.text_norm ?? ""));
+        if (item.external_id != null) row.appendChild(elt("span", { class: "parallel-ref" }, `[${item.external_id}]`));
+        row.appendChild(document.createTextNode(" " + (item.text ?? item.text_norm ?? "")));
         grp.appendChild(row);
       }
       if (hidden.length > 0) {
@@ -192,8 +205,8 @@ export function renderParallelHit(hit: QueryHit, mode: "segment" | "kwic"): HTML
         moreBtn.addEventListener("click", () => {
           for (const item of hidden) {
             const row = elt("div", { class: "parallel-line" });
-            if (item.external_id != null) row.appendChild(elt("span", { class: "aligned-ref" }, `[${item.external_id}] `));
-            row.appendChild(document.createTextNode(item.text ?? item.text_norm ?? ""));
+            if (item.external_id != null) row.appendChild(elt("span", { class: "parallel-ref" }, `[${item.external_id}]`));
+            row.appendChild(document.createTextNode(" " + (item.text ?? item.text_norm ?? "")));
             grp.insertBefore(row, moreWrap);
           }
           moreWrap.remove();

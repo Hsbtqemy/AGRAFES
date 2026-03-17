@@ -52,6 +52,8 @@ export interface QueryOptions {
   window?: number;
   language?: string;
   doc_id?: number;
+  /** Multi-doc filter — takes priority over doc_id when provided. */
+  doc_ids?: number[];
   doc_role?: string;
   resource_type?: string;
   includeAligned?: boolean;
@@ -108,6 +110,8 @@ export interface QueryFacetsOptions {
   q: string;
   language?: string;
   doc_id?: number;
+  /** Multi-doc filter — takes priority over doc_id when provided. */
+  doc_ids?: number[];
   doc_role?: string;
   resource_type?: string;
   /** How many top documents to return (max 50, default 10). */
@@ -927,7 +931,11 @@ export async function query(
   };
   if (opts.window !== undefined) payload.window = opts.window;
   if (opts.language) payload.language = opts.language;
-  if (opts.doc_id !== undefined) payload.doc_id = opts.doc_id;
+  if (opts.doc_ids !== undefined && opts.doc_ids.length > 0) {
+    payload.doc_ids = opts.doc_ids;
+  } else if (opts.doc_id !== undefined) {
+    payload.doc_id = opts.doc_id;
+  }
   if (opts.doc_role) payload.doc_role = opts.doc_role;
   if (opts.resource_type) payload.resource_type = opts.resource_type;
   if (includeAligned) payload.include_aligned = true;
@@ -956,7 +964,11 @@ export async function queryFacets(
 ): Promise<QueryFacetsResponse> {
   const payload: Record<string, unknown> = { q: opts.q };
   if (opts.language) payload.language = opts.language;
-  if (opts.doc_id !== undefined) payload.doc_id = opts.doc_id;
+  if (opts.doc_ids !== undefined && opts.doc_ids.length > 0) {
+    payload.doc_ids = opts.doc_ids;
+  } else if (opts.doc_id !== undefined) {
+    payload.doc_id = opts.doc_id;
+  }
   if (opts.doc_role) payload.doc_role = opts.doc_role;
   if (opts.resource_type) payload.resource_type = opts.resource_type;
   if (opts.top_docs_limit !== undefined) payload.top_docs_limit = opts.top_docs_limit;

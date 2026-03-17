@@ -7299,8 +7299,10 @@ export class ActionsScreen {
           if (reindexBtn) reindexBtn.style.display = "none";
           this._showToast?.(`✓ Index reconstruit (${n} unités)`);
         } else {
-          this._log(`✗ Index : ${done.error ?? done.status}`, true);
-          this._showToast?.("✗ Erreur index FTS", true);
+          const errMsg = done.error ?? done.status;
+          this._log(`✗ Index : ${errMsg}`, true);
+          const short = typeof errMsg === "string" && errMsg.length > 60 ? errMsg.slice(0, 57) + "…" : errMsg;
+          this._showToast?.(`✗ Erreur index FTS${short ? `: ${short}` : ""}`, true);
         }
         this._setBusy(false);
       });

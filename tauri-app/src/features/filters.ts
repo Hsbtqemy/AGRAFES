@@ -6,6 +6,11 @@ import type { DocumentRecord } from "../lib/sidecarClient";
 import { listDocuments } from "../lib/sidecarClient";
 import { state } from "../state";
 import { elt } from "../ui/dom";
+import {
+  mountDocSelector,
+  loadDocSelectorState,
+  clearDocSelector,
+} from "./docSelector";
 
 /** Fast doc lookup for meta panel (populated when docs are loaded). */
 export const docsById: Map<number, DocumentRecord> = new Map();
@@ -24,10 +29,16 @@ export async function loadDocsForFilters(): Promise<void> {
     for (const doc of state.docs) docsById.set(doc.doc_id, doc);
     populateFilterDropdowns();
     _setLargeCorpusNotice(state.docs.length);
+    // Restore saved doc selection, then mount the selector
+    const dbPath = state.dbPath ?? "";
+    loadDocSelectorState(state.docs, dbPath);
+    mountDocSelector(state.docs, dbPath, () => renderChips());
   } catch {
-    // non-critical — filters stay free-text
+    // non-critical — filters stay operational
   }
 }
+
+export { clearDocSelector };
 
 /** Shows or hides a soft corpus-size notice near the document filters. */
 function _setLargeCorpusNotice(count: number): void {
@@ -100,11 +111,31 @@ export function renderChips(): void {
     const s = document.getElementById("filter-restype-sel") as HTMLSelectElement | null;
     if (s) s.value = "";
   });
-  if (state.filterDocId) add("Doc ID", state.filterDocId, () => {
-    state.filterDocId = "";
-    const inp = document.getElementById("filter-docid") as HTMLInputElement | null;
-    if (inp) inp.value = "";
-  });
+
+  // Doc selection chip — shown when a subset (not all) is selected
+  if (state.filterDocIds !== null) {
+    const total = state.docs.length;
+    const n = state.filterDocIds.length;
+    if (n === 0) {
+      // Nothing selected — warn the user
+      const chip = elt("div", { class: "chip chip--warn" });
+      chip.appendChild(document.createTextNode("Docs: aucun sélectionné ⚠"));
+      const removeBtn = elt("button", { class: "chip-remove", title: "Sélectionner tous les documents", type: "button" }, "\u00d7") as HTMLButtonElement;
+      removeBtn.addEventListener("click", () => {
+        clearDocSelector(state.dbPath ?? "");
+        renderChips();
+      });
+      chip.appendChild(removeBtn);
+      bar.appendChild(chip);
+    } else {
+      const label = n === 1
+        ? (state.docs.find(d => d.doc_id === state.filterDocIds![0])?.title ?? `Doc #${state.filterDocIds[0]}`)
+        : `${n} / ${total} docs`;
+      add("Docs", label, () => {
+        clearDocSelector(state.dbPath ?? "");
+      });
+    }
+  }
 
   bar.style.display = bar.children.length > 0 ? "" : "none";
 }

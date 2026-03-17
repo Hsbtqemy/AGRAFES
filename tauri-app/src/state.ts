@@ -23,7 +23,8 @@ export interface AppState {
   window: number;
   filterLang: string;
   filterRole: string;
-  filterDocId: string;
+  /** null = all documents (no filter); number[] = restrict to these doc_ids. */
+  filterDocIds: number[] | null;
   filterResourceType: string;
   showAligned: boolean;
   expandedAlignedUnitIds: Set<number>;
@@ -66,7 +67,7 @@ export const state: AppState = {
   window: 10,
   filterLang: "",
   filterRole: "",
-  filterDocId: "",
+  filterDocIds: null,
   filterResourceType: "",
   showAligned: false,
   expandedAlignedUnitIds: new Set<number>(),

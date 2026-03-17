@@ -154,17 +154,22 @@ def _fetch_aligned_units(
     unit_id: int,
     aligned_limit: Optional[int] = None,
 ) -> list[dict]:
-    """Return all units aligned to the given pivot unit_id.
+    """Return all units aligned to the given unit_id, in both directions.
 
-    Looks up alignment_links where pivot_unit_id = unit_id,
-    returns target unit data (text_norm, language, title, external_id).
+    Strategy:
+    1. Forward: unit_id is a pivot  → return all its targets.
+    2. Reverse: unit_id is a target → find its pivot, then return the pivot
+       plus all other targets of that pivot (excluding the original unit_id
+       itself, since it is the hit being displayed).
+
+    This makes the view work regardless of which language was searched.
     """
-    sql = """
+    # ── Forward lookup (unit is pivot) ──────────────────────────────────────
+    forward_sql = """
         SELECT
-            al.target_unit_id,
+            al.target_unit_id  AS matched_unit_id,
             al.external_id,
             u.text_norm,
-            u.text_raw,
             u.doc_id,
             d.language,
             d.title
@@ -172,27 +177,93 @@ def _fetch_aligned_units(
         JOIN units u ON u.unit_id = al.target_unit_id
         JOIN documents d ON d.doc_id = u.doc_id
         WHERE al.pivot_unit_id = ?
+          AND al.target_unit_id != al.pivot_unit_id
         ORDER BY d.language, al.target_doc_id
     """
-    params: list[object] = [unit_id]
+    forward_rows = conn.execute(forward_sql, [unit_id]).fetchall()
+
+    if forward_rows:
+        seen: set[int] = set()
+        result = []
+        for row in forward_rows:
+            uid = row["matched_unit_id"]
+            if uid not in seen:
+                seen.add(uid)
+                result.append({
+                    "unit_id": uid,
+                    "doc_id": row["doc_id"],
+                    "external_id": row["external_id"],
+                    "language": row["language"],
+                    "title": row["title"],
+                    "text": row["text_norm"],
+                    "text_norm": row["text_norm"],
+                })
+        if aligned_limit is not None:
+            result = result[:aligned_limit]
+        return result
+
+    # ── Reverse lookup (unit is a target — find its pivot then siblings) ────
+    pivot_sql = """
+        SELECT al.pivot_unit_id
+        FROM alignment_links al
+        WHERE al.target_unit_id = ?
+        LIMIT 1
+    """
+    pivot_row = conn.execute(pivot_sql, [unit_id]).fetchone()
+    if pivot_row is None:
+        return []
+
+    pivot_unit_id = pivot_row["pivot_unit_id"]
+
+    # Return the pivot unit itself + all other targets (excluding the hit unit and self-links)
+    siblings_sql = """
+        SELECT
+            u.unit_id AS matched_unit_id,
+            u.external_id,
+            u.text_norm,
+            u.doc_id,
+            d.language,
+            d.title
+        FROM units u
+        JOIN documents d ON d.doc_id = u.doc_id
+        WHERE u.unit_id = ?
+        UNION ALL
+        SELECT
+            al.target_unit_id AS matched_unit_id,
+            al.external_id,
+            u2.text_norm,
+            u2.doc_id,
+            d2.language,
+            d2.title
+        FROM alignment_links al
+        JOIN units u2 ON u2.unit_id = al.target_unit_id
+        JOIN documents d2 ON d2.doc_id = u2.doc_id
+        WHERE al.pivot_unit_id = ?
+          AND al.target_unit_id != ?
+          AND al.target_unit_id != al.pivot_unit_id
+        ORDER BY language
+    """
+    sibling_rows = conn.execute(siblings_sql, [pivot_unit_id, pivot_unit_id, unit_id]).fetchall()
+
+    seen: set[int] = set()
+    result = []
+    for row in sibling_rows:
+        uid = row["matched_unit_id"]
+        if uid not in seen:
+            seen.add(uid)
+            result.append({
+                "unit_id": uid,
+                "doc_id": row["doc_id"],
+                "external_id": row["external_id"],
+                "language": row["language"],
+                "title": row["title"],
+                "text": row["text_norm"],
+                "text_norm": row["text_norm"],
+            })
+
     if aligned_limit is not None:
-        sql += "\nLIMIT ?"
-        params.append(aligned_limit)
-
-    rows = conn.execute(sql, params).fetchall()
-
-    return [
-        {
-            "unit_id": row["target_unit_id"],
-            "doc_id": row["doc_id"],
-            "external_id": row["external_id"],
-            "language": row["language"],
-            "title": row["title"],
-            "text": row["text_norm"],
-            "text_norm": row["text_norm"],
-        }
-        for row in rows
-    ]
+        result = result[:aligned_limit]
+    return result
 
 
 def _build_hits(
@@ -275,6 +346,7 @@ def run_query_page(
     window: int = 10,
     language: Optional[str] = None,
     doc_id: Optional[int] = None,
+    doc_ids: Optional[list[int]] = None,
     resource_type: Optional[str] = None,
     doc_role: Optional[str] = None,
     include_aligned: bool = False,
@@ -314,7 +386,11 @@ def run_query_page(
     if language:
         filters.append("d.language = ?")
         params.append(language)
-    if doc_id is not None:
+    if doc_ids is not None and len(doc_ids) > 0:
+        placeholders = ",".join("?" * len(doc_ids))
+        filters.append(f"u.doc_id IN ({placeholders})")
+        params.extend(doc_ids)
+    elif doc_id is not None:
         filters.append("u.doc_id = ?")
         params.append(doc_id)
     if resource_type:
@@ -394,6 +470,7 @@ def run_query_facets(
     q: str,
     language: Optional[str] = None,
     doc_id: Optional[int] = None,
+    doc_ids: Optional[list[int]] = None,
     resource_type: Optional[str] = None,
     doc_role: Optional[str] = None,
     top_docs_limit: int = 10,
@@ -426,7 +503,11 @@ def run_query_facets(
     if language:
         filters.append("d.language = ?")
         params.append(language)
-    if doc_id is not None:
+    if doc_ids is not None and len(doc_ids) > 0:
+        placeholders = ",".join("?" * len(doc_ids))
+        filters.append(f"u.doc_id IN ({placeholders})")
+        params.extend(doc_ids)
+    elif doc_id is not None:
         filters.append("u.doc_id = ?")
         params.append(doc_id)
     if resource_type:

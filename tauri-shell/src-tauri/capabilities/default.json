@@ -35,6 +35,7 @@
     "fs:default",
     "fs:scope-app-recursive",
     "fs:scope-appdata-recursive",
+    "fs:allow-appdata-write-recursive",
     "dialog:default",
     "dialog:allow-open",
     "dialog:allow-save",
