@@ -794,7 +794,7 @@ body {
   background: var(--surface2);
 }
 
-/* Meta panel prev/next navigation row */
+/* Meta panel prev/next navigation row (global hits) */
 .meta-nav-row {
   display: flex;
   align-items: center;
@@ -827,6 +827,51 @@ body {
   color: var(--text-muted);
   flex: 1;
   text-align: center;
+}
+
+/* ─── Sprint L: intra-document hit navigation row ─── */
+
+.meta-doc-nav-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 0 2px;
+  border-top: 1px dashed var(--border);
+  margin-top: 3px;
+  flex-wrap: wrap;
+}
+.meta-doc-nav-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  width: 100%;
+  margin-bottom: 2px;
+  font-style: italic;
+}
+.meta-doc-nav-btn {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--text);
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.meta-doc-nav-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, #e67e22 15%, var(--surface));
+  border-color: #e67e22;
+  color: #e67e22;
+}
+.meta-doc-nav-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.meta-doc-nav-pos {
+  font-size: 11px;
+  color: var(--text-muted);
+  flex: 1;
+  text-align: center;
+  cursor: default;
 }
 
 /* Hit counter (other occurrences in same doc) */

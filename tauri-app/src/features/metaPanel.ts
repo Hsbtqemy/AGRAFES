@@ -218,6 +218,10 @@ function _renderPanelContent(hit: QueryHit, body: HTMLElement, foot: HTMLElement
   navRow.appendChild(posLabel);
   navRow.appendChild(nextBtn);
   foot.appendChild(navRow);
+
+  // ── Intra-document hit navigation (Sprint L) ─────────────────────────────
+  const docNavRow = _buildDocNavRow(hit);
+  if (docNavRow) foot.appendChild(docNavRow);
 }
 
 // ─── Reading window constants ─────────────────────────────────────────────────
@@ -388,6 +392,72 @@ async function _reloadReader(docId: number, unitId: number, body: HTMLElement): 
   } catch {
     // strip stays unchanged on error
   }
+}
+
+/**
+ * Build the intra-document hit navigation row (Sprint L).
+ *
+ * Returns null when the current document has only one loaded hit
+ * (no point showing disabled buttons in that case).
+ *
+ * Buttons call _navigateTo with the global index of the target hit,
+ * which reloads the full panel including the reading strip and card sync.
+ */
+function _buildDocNavRow(hit: QueryHit): HTMLElement | null {
+  const sameDocHits = state.hits.filter(h => h.doc_id === hit.doc_id);
+  if (sameDocHits.length <= 1) return null;
+
+  const docIdx = sameDocHits.findIndex(h => h.unit_id === hit.unit_id);
+  if (docIdx < 0) return null;
+
+  const total = sameDocHits.length;
+  const hasPrev = docIdx > 0;
+  const hasNext = docIdx < total - 1;
+  const moreExist = state.hasMore;
+
+  const row = elt("div", { class: "meta-doc-nav-row" });
+
+  // Label making the scope of this row explicit
+  row.appendChild(elt("span", { class: "meta-doc-nav-label" }, "Dans ce document"));
+
+  const prevDocBtn = elt("button", {
+    class: "meta-doc-nav-btn",
+    type: "button",
+    title: hasPrev
+      ? `Occurrence précédente dans ce document${moreExist ? " (chargés)" : ""}`
+      : "Première occurrence chargée dans ce document",
+  }, "← Préc.") as HTMLButtonElement;
+  prevDocBtn.disabled = !hasPrev;
+  prevDocBtn.addEventListener("click", () => {
+    const target = sameDocHits[docIdx - 1];
+    const gi = state.hits.indexOf(target);
+    if (gi >= 0) _navigateTo(gi);
+  });
+
+  const posLabel = elt("span", { class: "meta-doc-nav-pos" });
+  posLabel.textContent = `Hit ${docIdx + 1} / ${total}${moreExist ? "+" : ""}`;
+  posLabel.title = moreExist
+    ? "Position parmi les hits chargés dans ce document (d'autres peuvent exister)"
+    : "Position parmi les hits de ce document";
+
+  const nextDocBtn = elt("button", {
+    class: "meta-doc-nav-btn",
+    type: "button",
+    title: hasNext
+      ? `Occurrence suivante dans ce document${moreExist ? " (chargés)" : ""}`
+      : "Dernière occurrence chargée dans ce document",
+  }, "Suiv. →") as HTMLButtonElement;
+  nextDocBtn.disabled = !hasNext;
+  nextDocBtn.addEventListener("click", () => {
+    const target = sameDocHits[docIdx + 1];
+    const gi = state.hits.indexOf(target);
+    if (gi >= 0) _navigateTo(gi);
+  });
+
+  row.appendChild(prevDocBtn);
+  row.appendChild(posLabel);
+  row.appendChild(nextDocBtn);
+  return row;
 }
 
 /** Navigate to a hit by its index in state.hits, re-rendering the panel in-place. */
