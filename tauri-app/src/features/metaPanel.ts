@@ -227,11 +227,16 @@ const READER_WINDOW = 3;
 /** Max characters shown per unit row in the reading strip. */
 const READER_TEXT_CAP = 180;
 
+// ─── Reading window size (session state, not persisted) ───────────────────────
+
+/** Current reading window depth — toggled between ±3 and ±6 by the user. */
+let _readerWindow: 3 | 6 = READER_WINDOW;
+
 // ─── Local context loading ────────────────────────────────────────────────────
 
 function loadUnitContext(unitId: number, body: HTMLElement): void {
   if (!state.conn) return;
-  getUnitContext(state.conn, unitId, READER_WINDOW)
+  getUnitContext(state.conn, unitId, _readerWindow)
     .then((ctx) => renderLocalContext(body, ctx))
     .catch(() => {
       const wrap = body.querySelector("#meta-local-context") as HTMLElement | null;
@@ -246,8 +251,12 @@ function loadUnitContext(unitId: number, body: HTMLElement): void {
 
 /**
  * Render (or replace) the reading strip inside #meta-local-context.
- * Each item is a clickable row; clicking a non-current row recentres
- * the strip without reloading the full panel.
+ *
+ * Sprint J: each item is a clickable row that recentres the strip.
+ * Sprint K additions:
+ *  - Rows that are also search hits get class `.is-hit` + amber dot marker.
+ *  - Window depth toggle (±3 / ±6) in the header.
+ *  - Legend when at least one hit is visible in the strip.
  */
 function renderLocalContext(body: HTMLElement, ctx: UnitContextResponse): void {
   const wrap = body.querySelector("#meta-local-context") as HTMLElement | null;
@@ -255,31 +264,63 @@ function renderLocalContext(body: HTMLElement, ctx: UnitContextResponse): void {
   wrap.querySelector(".meta-context-loading")?.remove();
   wrap.querySelector(".meta-context-content")?.remove();
 
+  // Build a fast lookup of loaded hit unit_ids
+  const hitIds = new Set(state.hits.map(h => h.unit_id));
+
   const content = elt("div", { class: "meta-context-content" });
 
-  // ── Header: position + window scope ──────────────────────────────────────
+  // ── Header: position · scope badge · window toggle ────────────────────────
   const header = elt("div", { class: "meta-reader-header" });
   header.appendChild(elt("span", { class: "meta-context-pos" }, `§ ${ctx.unit_index} / ${ctx.total_units}`));
-  if (ctx.window_before > 0 || ctx.window_after > 0) {
-    const scope = elt("span", { class: "meta-reader-scope" });
-    scope.textContent = `±${Math.max(ctx.window_before, ctx.window_after)}`;
-    scope.title = `${ctx.window_before} unité(s) avant · ${ctx.window_after} après`;
-    header.appendChild(scope);
+
+  // Window depth toggle (±3 / ±6)
+  const winCtl = elt("div", { class: "meta-reader-win-ctl" });
+  for (const w of [3, 6] as const) {
+    const btn = elt("button", {
+      class: `meta-reader-win-btn${_readerWindow === w ? " active" : ""}`,
+      type: "button",
+      title: `Afficher ±${w} unités de contexte`,
+    }, `±${w}`) as HTMLButtonElement;
+    btn.addEventListener("click", () => {
+      if (_readerWindow === w) return;
+      _readerWindow = w;
+      void _reloadReader(ctx.doc_id, ctx.unit_id, body);
+    });
+    winCtl.appendChild(btn);
   }
+  header.appendChild(winCtl);
   content.appendChild(header);
 
   // ── Reading strip ─────────────────────────────────────────────────────────
   const strip = elt("div", { class: "meta-reader" }) as HTMLElement;
   let currentEl: HTMLElement | null = null;
+  let anyHitInStrip = false;
 
   for (const item of ctx.items) {
     const isCurrent = item.is_current;
+    const isHit = hitIds.has(item.unit_id);
+    if (isHit) anyHitInStrip = true;
+
+    let rowClass = "meta-reader-row";
+    if (isCurrent) rowClass += " is-current";
+    if (isHit) rowClass += " is-hit";
+
+    const titleParts: string[] = [];
+    if (isCurrent) titleParts.push("Passage courant");
+    if (isHit && !isCurrent) titleParts.push("Hit de recherche");
+    if (!isCurrent) titleParts.push("Recentrer la lecture sur cette unité");
+
     const rowAttrs: Record<string, string> = {
-      class: `meta-reader-row${isCurrent ? " is-current" : ""}`,
-      title: isCurrent ? "Passage courant" : "Recentrer la lecture sur cette unité",
+      class: rowClass,
+      title: titleParts.join(" · "),
     };
     if (!isCurrent) { rowAttrs.role = "button"; rowAttrs.tabindex = "0"; }
     const row = elt("div", rowAttrs) as HTMLElement;
+
+    // Amber hit-dot marker (shown on all hit rows, including current)
+    if (isHit) {
+      row.appendChild(elt("span", { class: "meta-reader-hit-dot", "aria-label": "hit de recherche" }, "●"));
+    }
 
     const truncated = item.text.length > READER_TEXT_CAP
       ? item.text.slice(0, READER_TEXT_CAP) + "…"
@@ -302,9 +343,17 @@ function renderLocalContext(body: HTMLElement, ctx: UnitContextResponse): void {
   }
   content.appendChild(strip);
 
+  // ── Legend (only when at least one hit is visible in the strip) ───────────
+  if (anyHitInStrip) {
+    const legend = elt("div", { class: "meta-reader-legend" });
+    legend.appendChild(elt("span", { class: "meta-reader-legend-dot" }, "●"));
+    legend.appendChild(document.createTextNode(" Hit de recherche"));
+    content.appendChild(legend);
+  }
+
   // ── Boundary hint ─────────────────────────────────────────────────────────
-  const atDocStart = ctx.window_before < READER_WINDOW && ctx.unit_index <= ctx.window_before + 1;
-  const atDocEnd = ctx.window_after < READER_WINDOW && ctx.unit_index >= ctx.total_units - ctx.window_after;
+  const atDocStart = ctx.window_before < _readerWindow;
+  const atDocEnd = ctx.window_after < _readerWindow;
   if (atDocStart || atDocEnd) {
     const hint = elt("div", { class: "meta-reader-boundary" });
     hint.textContent = atDocStart && atDocEnd
@@ -325,6 +374,8 @@ function renderLocalContext(body: HTMLElement, ctx: UnitContextResponse): void {
  * Reload only the reading strip centred on a different unit.
  * Does NOT reload the full panel — the metadata sections stay on the original hit.
  * This is intentional: the strip is for reading local context, not for navigating.
+ *
+ * Sprint K: also highlights the result card when the recentred unit is a loaded hit.
  */
 async function _reloadReader(docId: number, unitId: number, body: HTMLElement): Promise<void> {
   if (!state.conn) return;
@@ -332,7 +383,7 @@ async function _reloadReader(docId: number, unitId: number, body: HTMLElement): 
   const inHits = state.hits.find(h => h.unit_id === unitId);
   if (inHits) markActiveCard(unitId);
   try {
-    const ctx = await getUnitContext(state.conn, unitId, READER_WINDOW);
+    const ctx = await getUnitContext(state.conn, unitId, _readerWindow);
     renderLocalContext(body, ctx);
   } catch {
     // strip stays unchanged on error

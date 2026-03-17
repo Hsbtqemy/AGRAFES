@@ -1062,21 +1062,13 @@ body {
   display: inline-block;
 }
 
-/* ─── Sprint J: reading strip ─── */
+/* ─── Sprint J/K: reading strip ─── */
 
 .meta-reader-header {
   display: flex;
   align-items: center;
   gap: 6px;
   margin-bottom: 5px;
-}
-.meta-reader-scope {
-  font-size: 10px;
-  color: var(--text-muted);
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: 3px;
-  padding: 0 5px;
 }
 .meta-reader {
   overflow-y: auto;
@@ -1090,7 +1082,9 @@ body {
   padding: 6px 10px;
   border-bottom: 1px solid var(--border);
   transition: background 0.12s;
-  display: block;
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
   line-height: 1.45;
 }
 .meta-reader-row:last-child {
@@ -1106,22 +1100,81 @@ body {
   outline: 2px solid var(--brand);
   outline-offset: -2px;
 }
+/* Current unit — brand accent */
 .meta-reader-row.is-current {
   background: color-mix(in srgb, var(--brand) 10%, var(--surface));
   border-left: 3px solid var(--brand);
   padding-left: 8px;
+}
+/* Hit unit (non-current) — amber left accent */
+.meta-reader-row.is-hit:not(.is-current) {
+  border-left: 2px solid rgba(230, 126, 34, 0.55);
+  padding-left: 9px;
+}
+/* Both current AND hit — keep brand left, add amber right accent */
+.meta-reader-row.is-current.is-hit {
+  border-right: 2px solid rgba(230, 126, 34, 0.6);
 }
 .meta-reader-text {
   font-size: 12px;
   color: var(--text);
   word-break: break-word;
   white-space: pre-wrap;
+  flex: 1;
 }
 .meta-reader-row.is-current .meta-reader-text {
   font-weight: 500;
 }
 .meta-reader-row:not(.is-current) .meta-reader-text {
   color: var(--text-muted);
+}
+/* Amber hit-dot marker */
+.meta-reader-hit-dot {
+  font-size: 8px;
+  color: #e67e22;
+  flex-shrink: 0;
+  margin-top: 4px;
+  line-height: 1;
+}
+/* Legend shown below strip when hits are present */
+.meta-reader-legend {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--text-muted);
+  padding: 3px 8px 4px;
+  border-top: 1px solid var(--border);
+  font-style: italic;
+}
+.meta-reader-legend-dot {
+  color: #e67e22;
+  font-size: 9px;
+}
+/* Window depth toggle (±3 / ±6) */
+.meta-reader-win-ctl {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+}
+.meta-reader-win-btn {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+.meta-reader-win-btn:hover:not(.active) {
+  border-color: var(--brand);
+  color: var(--brand);
+}
+.meta-reader-win-btn.active {
+  background: var(--brand);
+  color: #fff;
+  border-color: var(--brand);
 }
 .meta-reader-boundary {
   font-size: 10px;
