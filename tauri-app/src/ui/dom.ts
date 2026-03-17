@@ -873,6 +873,29 @@ body {
   text-align: center;
   cursor: default;
 }
+/* Sprint M: exact total suffix inside the position label */
+.meta-doc-nav-total {
+  color: #e67e22;
+  font-weight: 500;
+}
+/* Sprint M: "Voir les N occurrences" action button */
+.meta-doc-load-all-btn {
+  width: 100%;
+  margin-top: 4px;
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(230, 126, 34, 0.5);
+  background: color-mix(in srgb, #e67e22 8%, var(--surface));
+  color: #e67e22;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.12s, border-color 0.12s;
+}
+.meta-doc-load-all-btn:hover {
+  background: color-mix(in srgb, #e67e22 18%, var(--surface));
+  border-color: #e67e22;
+}
 
 /* Hit counter (other occurrences in same doc) */
 .meta-hit-counter {

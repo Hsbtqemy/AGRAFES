@@ -14,7 +14,7 @@
  */
 
 import type { QueryHit, UnitContextResponse } from "../lib/sidecarClient";
-import { getUnitContext } from "../lib/sidecarClient";
+import { getUnitContext, queryFacets } from "../lib/sidecarClient";
 import { state } from "../state";
 import { elt } from "../ui/dom";
 import { docsById, renderChips } from "./filters";
@@ -219,9 +219,13 @@ function _renderPanelContent(hit: QueryHit, body: HTMLElement, foot: HTMLElement
   navRow.appendChild(nextBtn);
   foot.appendChild(navRow);
 
-  // ── Intra-document hit navigation (Sprint L) ─────────────────────────────
+  // ── Intra-document hit navigation (Sprint L/M) ───────────────────────────
   const docNavRow = _buildDocNavRow(hit);
-  if (docNavRow) foot.appendChild(docNavRow);
+  if (docNavRow) {
+    foot.appendChild(docNavRow);
+    // Sprint M: async enrich with exact backend count (non-blocking)
+    void _enrichDocCount(hit, docNavRow);
+  }
 }
 
 // ─── Reading window constants ─────────────────────────────────────────────────
@@ -391,6 +395,70 @@ async function _reloadReader(docId: number, unitId: number, body: HTMLElement): 
     renderLocalContext(body, ctx);
   } catch {
     // strip stays unchanged on error
+  }
+}
+
+/**
+ * Async enrich the intra-doc nav row with an exact occurrence count from the backend
+ * (Sprint M). Uses POST /query/facets with doc_id filter — no new endpoint needed.
+ *
+ * Updates the position label to show "Hit X / Y chargés · Z au total" and appends
+ * a "Voir les Z occurrences →" button when the loaded count is less than the real total.
+ * Silently exits on error so the row remains functional with its initial loaded data.
+ */
+async function _enrichDocCount(hit: QueryHit, row: HTMLElement): Promise<void> {
+  if (!state.conn || !state.currentQuery) return;
+
+  const sameDocHits = state.hits.filter(h => h.doc_id === hit.doc_id);
+  const loaded = sameDocHits.length;
+  const docIdx = sameDocHits.findIndex(h => h.unit_id === hit.unit_id);
+  if (docIdx < 0) return;
+
+  let total: number;
+  try {
+    // Pass current global filters but force doc_id to the hit's document
+    const res = await queryFacets(state.conn, {
+      q: state.currentQuery,
+      doc_id: hit.doc_id,
+      language: state.filterLang || undefined,
+      doc_role: state.filterRole || undefined,
+      resource_type: state.filterResourceType || undefined,
+      top_docs_limit: 1,
+    });
+    total = res.total_hits;
+  } catch {
+    return; // keep the row as-is
+  }
+
+  const posEl = row.querySelector(".meta-doc-nav-pos") as HTMLElement | null;
+  if (!posEl) return;
+
+  if (total <= loaded) {
+    // All hits already loaded — replace "Y+" with exact total, no action needed
+    posEl.textContent = `Hit ${docIdx + 1} / ${total}`;
+    posEl.title = `${total} occurrence(s) dans ce document pour la requête courante`;
+  } else {
+    // More hits exist than loaded — make the gap explicit
+    posEl.textContent = `Hit ${docIdx + 1} / ${loaded} chargés`;
+    posEl.title = `${loaded} occurrence(s) chargée(s) · ${total} réelles dans ce document`;
+    const totalSpan = elt("span", { class: "meta-doc-nav-total" }, ` · ${total} au total`);
+    posEl.appendChild(totalSpan);
+
+    // Action: relance the search scoped to this document
+    const loadAllBtn = elt("button", {
+      class: "meta-doc-load-all-btn",
+      type: "button",
+      title: `Relancer la recherche sur ce document pour accéder aux ${total} occurrences`,
+    }, `Voir les ${total} occurrences →`) as HTMLButtonElement;
+    loadAllBtn.addEventListener("click", () => {
+      state.filterDocId = String(hit.doc_id);
+      const inp = document.getElementById("filter-docid") as HTMLInputElement | null;
+      if (inp) inp.value = String(hit.doc_id);
+      renderChips();
+      closeMetaPanel();
+      if (state.currentQuery) void doSearch(state.currentQuery);
+    });
+    row.appendChild(loadAllBtn);
   }
 }
 
