@@ -2848,19 +2848,30 @@ async function _initDemoSection(
   });
 
   openBtn.addEventListener("click", async () => {
-    // Toujours réinstaller avant d'ouvrir — garantit que la DB bundlée est à jour
-    openBtn.disabled = true;
-    const prevLabel = openBtn.textContent;
-    openBtn.textContent = "Mise à jour\u2026";
-    try {
-      await _installDemo();
-    } catch (err) {
-      console.warn("[shell] demo reinstall failed, opening existing copy:", err);
-    } finally {
-      openBtn.disabled = false;
-      openBtn.textContent = prevLabel;
-    }
     const demoPath = await _getDemoDbPath();
+    // Réinstaller uniquement si le sidecar n'a pas cette DB déjà ouverte.
+    // Réécrire un fichier ouvert par le sidecar corrompt les shadow tables FTS5.
+    const isAlreadyActive = _currentDbPath === demoPath;
+    if (!isAlreadyActive) {
+      openBtn.disabled = true;
+      const prevLabel = openBtn.textContent;
+      openBtn.textContent = "Mise à jour\u2026";
+      try {
+        // Déconnecter le sidecar actuel avant d'écraser le fichier
+        if (_currentDbPath !== null) {
+          _currentDbPath = null;
+          _dbListeners.forEach(cb => cb(null));
+          // Laisser le temps au sidecar de se déconnecter
+          await new Promise(r => setTimeout(r, 300));
+        }
+        await _installDemo();
+      } catch (err) {
+        console.warn("[shell] demo reinstall failed, opening existing copy:", err);
+      } finally {
+        openBtn.disabled = false;
+        openBtn.textContent = prevLabel;
+      }
+    }
     _currentDbPath = demoPath;
     _persist();
     _addToMru(demoPath);
