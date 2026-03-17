@@ -854,19 +854,29 @@ async function _installDemo(): Promise<void> {
     await new Promise(r => setTimeout(r, 500));
   }
 
-  // Supprimer les fichiers WAL/SHM résiduels avant d'écrire la nouvelle DB.
-  for (const suffix of ["-wal", "-shm"]) {
-    try { await remove(demoPath + suffix); } catch { /* inexistants — OK */ }
-  }
-
-  // Télécharger et écrire la DB bundle.
+  // Télécharger la DB bundle en mémoire d'abord (avant toute modification du disque).
   const resp = await window.fetch(DEMO_ASSET_URL);
   if (!resp.ok) throw new Error(`Impossible de charger la démo (${resp.status})`);
   const bytes = new Uint8Array(await resp.arrayBuffer());
   if (bytes.length < DEMO_MIN_VALID_BYTES) {
     throw new Error(`Réponse trop courte (${bytes.length} octets) — corpus démo non disponible`);
   }
+
+  // Supprimer WAL/SHM AVANT l'écriture.
+  for (const suffix of ["-wal", "-shm"]) {
+    try { await remove(demoPath + suffix); } catch { /* inexistants — OK */ }
+  }
+
+  // Écrire la nouvelle DB.
   await writeFile(demoPath, bytes);
+
+  // Supprimer WAL/SHM APRÈS l'écriture aussi : le sidecar encore actif peut
+  // les avoir recréés pendant le délai de déconnexion. Le WAL d'une session
+  // précédente écrase les données de la main DB même si les salts diffèrent.
+  await new Promise(r => setTimeout(r, 300));
+  for (const suffix of ["-wal", "-shm"]) {
+    try { await remove(demoPath + suffix); } catch { /* inexistants — OK */ }
+  }
 }
 
 // ─── Storage keys ─────────────────────────────────────────────────────────────
