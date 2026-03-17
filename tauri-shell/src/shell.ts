@@ -2848,6 +2848,18 @@ async function _initDemoSection(
   });
 
   openBtn.addEventListener("click", async () => {
+    // Toujours réinstaller avant d'ouvrir — garantit que la DB bundlée est à jour
+    openBtn.disabled = true;
+    const prevLabel = openBtn.textContent;
+    openBtn.textContent = "Mise à jour\u2026";
+    try {
+      await _installDemo();
+    } catch (err) {
+      console.warn("[shell] demo reinstall failed, opening existing copy:", err);
+    } finally {
+      openBtn.disabled = false;
+      openBtn.textContent = prevLabel;
+    }
     const demoPath = await _getDemoDbPath();
     _currentDbPath = demoPath;
     _persist();
