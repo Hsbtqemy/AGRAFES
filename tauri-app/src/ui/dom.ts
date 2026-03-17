@@ -1038,7 +1038,7 @@ body {
   overflow-y: auto;
 }
 
-/* ─── Sprint I — Local context (unit neighbourhood) ─── */
+/* ─── Sprint I/J — Local context + reading strip ─── */
 
 .meta-context-wrap {
   margin-top: 8px;
@@ -1052,9 +1052,6 @@ body {
 .meta-context-error {
   color: var(--danger, #c0392b);
 }
-.meta-context-pos-line {
-  margin-bottom: 6px;
-}
 .meta-context-pos {
   font-size: 11px;
   color: var(--text-muted);
@@ -1064,59 +1061,76 @@ body {
   padding: 1px 6px;
   display: inline-block;
 }
-.meta-context-block {
-  border-radius: 4px;
+
+/* ─── Sprint J: reading strip ─── */
+
+.meta-reader-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 5px;
+}
+.meta-reader-scope {
+  font-size: 10px;
+  color: var(--text-muted);
+  background: var(--surface2);
   border: 1px solid var(--border);
-  padding: 5px 8px;
-  margin-bottom: 4px;
+  border-radius: 3px;
+  padding: 0 5px;
+}
+.meta-reader {
+  overflow-y: auto;
+  max-height: 260px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  scroll-behavior: smooth;
+}
+.meta-reader-row {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.12s;
+  display: block;
+  line-height: 1.45;
+}
+.meta-reader-row:last-child {
+  border-bottom: none;
+}
+.meta-reader-row:not(.is-current) {
+  cursor: pointer;
+}
+.meta-reader-row:not(.is-current):hover {
   background: var(--surface2);
 }
-.meta-context-current {
-  border-color: var(--brand);
-  background: color-mix(in srgb, var(--brand) 8%, var(--surface));
+.meta-reader-row:not(.is-current):focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: -2px;
 }
-.meta-context-label {
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--text-muted);
-  margin-bottom: 3px;
+.meta-reader-row.is-current {
+  background: color-mix(in srgb, var(--brand) 10%, var(--surface));
+  border-left: 3px solid var(--brand);
+  padding-left: 8px;
 }
-.meta-context-current .meta-context-label {
-  color: var(--brand);
-}
-.meta-context-text {
+.meta-reader-text {
   font-size: 12px;
-  line-height: 1.5;
   color: var(--text);
   word-break: break-word;
   white-space: pre-wrap;
 }
-.meta-context-nav-line {
-  display: flex;
-  gap: 6px;
-  margin-top: 4px;
+.meta-reader-row.is-current .meta-reader-text {
+  font-weight: 500;
 }
-.meta-context-nav-btn {
-  flex: 1;
-  font-size: 11px;
-  padding: 3px 6px;
-  border-radius: 4px;
-  border: 1px solid var(--border);
-  background: var(--surface2);
-  color: var(--text);
-  cursor: pointer;
-  transition: background 0.15s;
+.meta-reader-row:not(.is-current) .meta-reader-text {
+  color: var(--text-muted);
 }
-.meta-context-nav-btn:hover:not(:disabled) {
-  background: var(--surface3, var(--surface2));
-  border-color: var(--brand);
-  color: var(--brand);
-}
-.meta-context-nav-btn:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
+.meta-reader-boundary {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 4px 6px;
+  font-style: italic;
+  border-top: 1px solid var(--border);
+  margin-top: 2px;
 }
 `;
 

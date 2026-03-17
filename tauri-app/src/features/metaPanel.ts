@@ -146,10 +146,10 @@ function _renderPanelContent(hit: QueryHit, body: HTMLElement, foot: HTMLElement
     }
   }
 
-  // ── Section : Contexte local (Sprint I) ───────────────────────────────────────
+  // ── Section : Lecture locale (Sprint J) ────────────────────────────────────────
   const contextWrap = elt("div", { id: "meta-local-context", class: "meta-context-wrap" });
-  contextWrap.appendChild(elt("div", { class: "meta-section-head" }, "Contexte local (voisinage documentaire)"));
-  contextWrap.appendChild(elt("div", { class: "meta-context-loading" }, "Chargement du voisinage…"));
+  contextWrap.appendChild(elt("div", { class: "meta-section-head" }, "Lecture locale"));
+  contextWrap.appendChild(elt("div", { class: "meta-context-loading" }, "Chargement…"));
   body.appendChild(contextWrap);
   void loadUnitContext(hit.unit_id, body);
 
@@ -220,104 +220,123 @@ function _renderPanelContent(hit: QueryHit, body: HTMLElement, foot: HTMLElement
   foot.appendChild(navRow);
 }
 
-const EXCERPT_TRUNCATE_CONTEXT = 200;
+// ─── Reading window constants ─────────────────────────────────────────────────
 
-function _syntheticHit(docId: number, unitId: number, text: string): QueryHit {
-  const doc = docsById.get(docId);
-  return {
-    doc_id: docId,
-    unit_id: unitId,
-    external_id: null,
-    language: doc?.language ?? "",
-    title: doc?.title ?? "",
-    text,
-    text_norm: text,
-  };
-}
+/** Default reading window on each side of the current unit. */
+const READER_WINDOW = 3;
+/** Max characters shown per unit row in the reading strip. */
+const READER_TEXT_CAP = 180;
+
+// ─── Local context loading ────────────────────────────────────────────────────
 
 function loadUnitContext(unitId: number, body: HTMLElement): void {
   if (!state.conn) return;
-  getUnitContext(state.conn, unitId)
+  getUnitContext(state.conn, unitId, READER_WINDOW)
     .then((ctx) => renderLocalContext(body, ctx))
     .catch(() => {
       const wrap = body.querySelector("#meta-local-context") as HTMLElement | null;
       if (!wrap) return;
       const loading = wrap.querySelector(".meta-context-loading");
       if (loading) {
-        loading.textContent = "Contexte indisponible.";
+        loading.textContent = "Lecture locale indisponible.";
         (loading as HTMLElement).classList.add("meta-context-error");
       }
     });
 }
 
+/**
+ * Render (or replace) the reading strip inside #meta-local-context.
+ * Each item is a clickable row; clicking a non-current row recentres
+ * the strip without reloading the full panel.
+ */
 function renderLocalContext(body: HTMLElement, ctx: UnitContextResponse): void {
   const wrap = body.querySelector("#meta-local-context") as HTMLElement | null;
   if (!wrap) return;
-  const loading = wrap.querySelector(".meta-context-loading");
-  if (loading) loading.remove();
-  const existingContent = wrap.querySelector(".meta-context-content");
-  if (existingContent) existingContent.remove();
+  wrap.querySelector(".meta-context-loading")?.remove();
+  wrap.querySelector(".meta-context-content")?.remove();
 
   const content = elt("div", { class: "meta-context-content" });
 
-  const posLine = elt("div", { class: "meta-context-pos-line" });
-  posLine.appendChild(elt("span", { class: "meta-context-pos" }, `§ ${ctx.unit_index} / ${ctx.total_units}`));
-  content.appendChild(posLine);
-
-  if (ctx.prev) {
-    const prevBlock = elt("div", { class: "meta-context-block meta-context-prev" });
-    prevBlock.appendChild(elt("div", { class: "meta-context-label" }, "Unité précédente"));
-    const prevText = elt("div", { class: "meta-context-text" }, ctx.prev.text.slice(0, EXCERPT_TRUNCATE_CONTEXT) + (ctx.prev.text.length > EXCERPT_TRUNCATE_CONTEXT ? "…" : ""));
-    prevBlock.appendChild(prevText);
-    content.appendChild(prevBlock);
+  // ── Header: position + window scope ──────────────────────────────────────
+  const header = elt("div", { class: "meta-reader-header" });
+  header.appendChild(elt("span", { class: "meta-context-pos" }, `§ ${ctx.unit_index} / ${ctx.total_units}`));
+  if (ctx.window_before > 0 || ctx.window_after > 0) {
+    const scope = elt("span", { class: "meta-reader-scope" });
+    scope.textContent = `±${Math.max(ctx.window_before, ctx.window_after)}`;
+    scope.title = `${ctx.window_before} unité(s) avant · ${ctx.window_after} après`;
+    header.appendChild(scope);
   }
+  content.appendChild(header);
 
-  const curBlock = elt("div", { class: "meta-context-block meta-context-current" });
-  curBlock.appendChild(elt("div", { class: "meta-context-label" }, "Unité courante (hit)"));
-  const curText = elt("div", { class: "meta-context-text" }, ctx.current.text.slice(0, EXCERPT_TRUNCATE_CONTEXT) + (ctx.current.text.length > EXCERPT_TRUNCATE_CONTEXT ? "…" : ""));
-  curBlock.appendChild(curText);
-  content.appendChild(curBlock);
+  // ── Reading strip ─────────────────────────────────────────────────────────
+  const strip = elt("div", { class: "meta-reader" }) as HTMLElement;
+  let currentEl: HTMLElement | null = null;
 
-  if (ctx.next) {
-    const nextBlock = elt("div", { class: "meta-context-block meta-context-next" });
-    nextBlock.appendChild(elt("div", { class: "meta-context-label" }, "Unité suivante"));
-    const nextText = elt("div", { class: "meta-context-text" }, ctx.next.text.slice(0, EXCERPT_TRUNCATE_CONTEXT) + (ctx.next.text.length > EXCERPT_TRUNCATE_CONTEXT ? "…" : ""));
-    nextBlock.appendChild(nextText);
-    content.appendChild(nextBlock);
+  for (const item of ctx.items) {
+    const isCurrent = item.is_current;
+    const rowAttrs: Record<string, string> = {
+      class: `meta-reader-row${isCurrent ? " is-current" : ""}`,
+      title: isCurrent ? "Passage courant" : "Recentrer la lecture sur cette unité",
+    };
+    if (!isCurrent) { rowAttrs.role = "button"; rowAttrs.tabindex = "0"; }
+    const row = elt("div", rowAttrs) as HTMLElement;
+
+    const truncated = item.text.length > READER_TEXT_CAP
+      ? item.text.slice(0, READER_TEXT_CAP) + "…"
+      : item.text;
+    row.appendChild(elt("span", { class: "meta-reader-text" }, truncated));
+
+    if (!isCurrent) {
+      const recentre = (): void => { void _reloadReader(ctx.doc_id, item.unit_id, body); };
+      row.addEventListener("click", recentre);
+      row.addEventListener("keydown", (e) => {
+        if ((e as KeyboardEvent).key === "Enter" || (e as KeyboardEvent).key === " ") {
+          e.preventDefault();
+          recentre();
+        }
+      });
+    }
+
+    strip.appendChild(row);
+    if (isCurrent) currentEl = row;
   }
+  content.appendChild(strip);
 
-  const navLine = elt("div", { class: "meta-context-nav-line" });
-  const prevUnitBtn = elt("button", { class: "meta-context-nav-btn", type: "button" }, "← Unité préc.") as HTMLButtonElement;
-  prevUnitBtn.disabled = !ctx.prev;
-  prevUnitBtn.title = ctx.prev ? "Afficher l'unité précédente dans le document" : "Pas d'unité précédente";
-  prevUnitBtn.addEventListener("click", () => {
-    if (ctx.prev) _navigateToUnit(ctx.doc_id, ctx.prev.unit_id, ctx.prev.text, body);
-  });
-  const nextUnitBtn = elt("button", { class: "meta-context-nav-btn", type: "button" }, "Unité suiv. →") as HTMLButtonElement;
-  nextUnitBtn.disabled = !ctx.next;
-  nextUnitBtn.title = ctx.next ? "Afficher l'unité suivante dans le document" : "Pas d'unité suivante";
-  nextUnitBtn.addEventListener("click", () => {
-    if (ctx.next) _navigateToUnit(ctx.doc_id, ctx.next.unit_id, ctx.next.text, body);
-  });
-  navLine.appendChild(prevUnitBtn);
-  navLine.appendChild(elt("span", { class: "meta-context-nav-sep" }, " "));
-  navLine.appendChild(nextUnitBtn);
-  content.appendChild(navLine);
+  // ── Boundary hint ─────────────────────────────────────────────────────────
+  const atDocStart = ctx.window_before < READER_WINDOW && ctx.unit_index <= ctx.window_before + 1;
+  const atDocEnd = ctx.window_after < READER_WINDOW && ctx.unit_index >= ctx.total_units - ctx.window_after;
+  if (atDocStart || atDocEnd) {
+    const hint = elt("div", { class: "meta-reader-boundary" });
+    hint.textContent = atDocStart && atDocEnd
+      ? "Document entier affiché"
+      : atDocStart ? "Début du document" : "Fin du document";
+    content.appendChild(hint);
+  }
 
   wrap.appendChild(content);
+
+  // Auto-scroll so the current row is centred in the strip
+  requestAnimationFrame(() => {
+    currentEl?.scrollIntoView({ block: "center", behavior: "instant" });
+  });
 }
 
-function _navigateToUnit(docId: number, unitId: number, text: string, body: HTMLElement): void {
-  const foot = document.getElementById("meta-foot");
-  if (!foot) return;
-  const synthetic = _syntheticHit(docId, unitId, text);
-  _currentUnitId = unitId;
-  const inHits = state.hits.find((h) => h.unit_id === unitId);
+/**
+ * Reload only the reading strip centred on a different unit.
+ * Does NOT reload the full panel — the metadata sections stay on the original hit.
+ * This is intentional: the strip is for reading local context, not for navigating.
+ */
+async function _reloadReader(docId: number, unitId: number, body: HTMLElement): Promise<void> {
+  if (!state.conn) return;
+  // Highlight result card if this unit is in the current hit list, silently otherwise
+  const inHits = state.hits.find(h => h.unit_id === unitId);
   if (inHits) markActiveCard(unitId);
-  else markActiveCard(null);
-  const card = document.querySelector(`[data-unit-id="${unitId}"]`) as HTMLElement | null;
-  card?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  _renderPanelContent(synthetic, body, foot);
+  try {
+    const ctx = await getUnitContext(state.conn, unitId, READER_WINDOW);
+    renderLocalContext(body, ctx);
+  } catch {
+    // strip stays unchanged on error
+  }
 }
 
 /** Navigate to a hit by its index in state.hits, re-rendering the panel in-place. */

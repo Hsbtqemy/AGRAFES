@@ -134,21 +134,31 @@ export interface QueryFacetsResponse {
   top_docs: FacetDocEntry[];
 }
 
-/** One unit in GET /unit/context response (prev, current, or next). */
+/** One unit in a GET /unit/context reading window. */
 export interface UnitContextItem {
   unit_id: number;
   text: string;
+  /** True for the unit that was requested; false for context neighbours. */
+  is_current: boolean;
 }
 
-/** Response from GET /unit/context?unit_id=N — local document context around a unit. */
+/**
+ * Response from GET /unit/context?unit_id=N&window=N (Sprint J).
+ *
+ * ``items`` is the full ordered reading window: ``window_before`` units before
+ * the current unit, the current unit itself (``is_current=true``), and
+ * ``window_after`` units after it.  ``window_before`` / ``window_after`` may be
+ * less than the requested ``window`` at document boundaries.
+ */
 export interface UnitContextResponse {
   doc_id: number;
   unit_id: number;
+  /** 1-based ordinal among line units in this document. */
   unit_index: number;
   total_units: number;
-  prev: UnitContextItem | null;
-  current: UnitContextItem;
-  next: UnitContextItem | null;
+  window_before: number;
+  window_after: number;
+  items: UnitContextItem[];
 }
 
 // ─── Connection handle ────────────────────────────────────────────────────────
@@ -970,15 +980,18 @@ export async function listDocuments(conn: Conn): Promise<DocumentRecord[]> {
 }
 
 /**
- * GET /unit/context?unit_id=N — prev/current/next units for local document context (Sprint I).
+ * GET /unit/context?unit_id=N&window=W — reading window around a unit (Sprint J).
+ *
+ * ``window`` controls how many units to include on each side (default 3, max 10).
+ * Response contains an ``items`` array with ``is_current`` tagged on the pivot unit.
  */
 export async function getUnitContext(
   conn: Conn,
-  unitId: number
+  unitId: number,
+  window = 3
 ): Promise<UnitContextResponse> {
-  const path = `/unit/context?unit_id=${encodeURIComponent(String(unitId))}`;
-  const res = (await conn.get(path)) as UnitContextResponse;
-  return res;
+  const path = `/unit/context?unit_id=${encodeURIComponent(String(unitId))}&window=${window}`;
+  return conn.get(path) as Promise<UnitContextResponse>;
 }
 
 export async function shutdownSidecar(conn: Conn): Promise<void> {

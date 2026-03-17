@@ -2452,7 +2452,12 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         )
 
     def _handle_unit_context(self, qs: dict[str, list[str]]) -> None:
-        """GET /unit/context?unit_id=N — prev/current/next units for local document context."""
+        """GET /unit/context?unit_id=N&window=N — reading window around a unit.
+
+        Returns a ``window``-wide slice of the document centred on the requested
+        unit, with each item tagged ``is_current``.  Default window = 3 (±3 units),
+        maximum = 10.  Handles document boundaries gracefully.
+        """
         unit_id_raw = (qs.get("unit_id") or [None])[0]
         if unit_id_raw is None:
             self._send_error(
@@ -2478,14 +2483,16 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             )
             return
 
+        window_raw = (qs.get("window") or ["3"])[0]
+        try:
+            window = max(1, min(10, int(window_raw)))
+        except (TypeError, ValueError):
+            window = 3
+
         self._ensure_document_workflow_columns()
 
         cur = self._conn().execute(
-            """
-            SELECT unit_id, doc_id, n, external_id, text_norm
-            FROM units
-            WHERE unit_id = ? AND unit_type = 'line'
-            """,
+            "SELECT unit_id, doc_id, n, external_id, text_norm FROM units WHERE unit_id = ? AND unit_type = 'line'",
             (unit_id,),
         ).fetchone()
         if cur is None:
@@ -2496,7 +2503,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             )
             return
 
-        cur_unit_id, doc_id, n_cur, external_id, text_norm = cur
+        cur_unit_id, doc_id, n_cur, _external_id, text_norm = cur
+
         total_units = (
             self._conn()
             .execute(
@@ -2516,40 +2524,49 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             or 0
         )
 
-        prev_row = self._conn().execute(
+        # Fetch `window` units before current (ORDER BY n DESC → reverse for chronological order)
+        before_rows = self._conn().execute(
             """
             SELECT unit_id, text_norm
             FROM units
             WHERE doc_id = ? AND unit_type = 'line' AND n < ?
             ORDER BY n DESC
-            LIMIT 1
+            LIMIT ?
             """,
-            (doc_id, n_cur),
-        ).fetchone()
-        next_row = self._conn().execute(
+            (doc_id, n_cur, window),
+        ).fetchall()
+        before_rows = list(reversed(before_rows))  # restore chronological order
+
+        # Fetch `window` units after current
+        after_rows = self._conn().execute(
             """
             SELECT unit_id, text_norm
             FROM units
             WHERE doc_id = ? AND unit_type = 'line' AND n > ?
             ORDER BY n ASC
-            LIMIT 1
+            LIMIT ?
             """,
-            (doc_id, n_cur),
-        ).fetchone()
+            (doc_id, n_cur, window),
+        ).fetchall()
 
-        def _unit_blob(uid: int, text: str) -> dict:
-            return {"unit_id": uid, "text": (text or "").strip()}
+        def _item(uid: int, text: str, is_current: bool) -> dict:
+            return {"unit_id": uid, "text": (text or "").strip(), "is_current": is_current}
 
-        payload = {
+        items = (
+            [_item(r[0], r[1], False) for r in before_rows]
+            + [_item(cur_unit_id, text_norm, True)]
+            + [_item(r[0], r[1], False) for r in after_rows]
+        )
+
+        self._send_json(success_payload({
             "doc_id": doc_id,
             "unit_id": cur_unit_id,
             "unit_index": unit_index_1based,
             "total_units": total_units,
-            "prev": _unit_blob(prev_row[0], prev_row[1]) if prev_row else None,
-            "current": _unit_blob(cur_unit_id, text_norm),
-            "next": _unit_blob(next_row[0], next_row[1]) if next_row else None,
-        }
-        self._send_json(success_payload(payload))
+            "window_before": len(before_rows),
+            "window_after": len(after_rows),
+            "items": items,
+        }))
 
     def _handle_align(self, body: dict) -> None:
         pivot_doc_id = body.get("pivot_doc_id")
