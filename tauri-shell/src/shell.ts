@@ -17,7 +17,7 @@
  */
 
 import { open as dialogOpen, save as dialogSave } from "@tauri-apps/plugin-dialog";
-import { exists, writeFile, mkdir } from "@tauri-apps/plugin-fs";
+import { exists, writeFile, mkdir, remove, stat } from "@tauri-apps/plugin-fs";
 import { getCurrent as getCurrentDeepLinks, onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { appDataDir } from "@tauri-apps/api/path";
 import type { ShellContext } from "./context.ts";
@@ -824,22 +824,48 @@ async function _getDemoDbPath(): Promise<string> {
   return `${dir}${sep}${DEMO_FILENAME}`;
 }
 
+// Un fichier SQLite valide fait au moins 100 Ko.
+// Un fichier de 4 Ko = DB vide créée par le sidecar sur un chemin inconnu.
+const DEMO_MIN_VALID_BYTES = 100_000;
+
 async function _isDemoInstalled(): Promise<boolean> {
   try {
     const p = await _getDemoDbPath();
-    return await exists(p);
+    if (!(await exists(p))) return false;
+    const info = await stat(p);
+    return (info.size ?? 0) >= DEMO_MIN_VALID_BYTES;
   } catch {
     return false;
   }
 }
 
+/** Déconnecte le sidecar de la démo si elle est active, supprime WAL/SHM,
+ *  télécharge la DB depuis l'asset bundle et l'écrit sur disque. */
 async function _installDemo(): Promise<void> {
   const demoPath = await _getDemoDbPath();
   const dir = await appDataDir();
   if (!(await exists(dir))) await mkdir(dir, { recursive: true });
+
+  // Déconnecter le sidecar si la démo est la DB active, pour éviter
+  // d'écrire sur un fichier ouvert (corrompt les shadow tables FTS5).
+  if (_currentDbPath === demoPath) {
+    _currentDbPath = null;
+    _dbListeners.forEach(cb => cb(null));
+    await new Promise(r => setTimeout(r, 500));
+  }
+
+  // Supprimer les fichiers WAL/SHM résiduels avant d'écrire la nouvelle DB.
+  for (const suffix of ["-wal", "-shm"]) {
+    try { await remove(demoPath + suffix); } catch { /* inexistants — OK */ }
+  }
+
+  // Télécharger et écrire la DB bundle.
   const resp = await window.fetch(DEMO_ASSET_URL);
   if (!resp.ok) throw new Error(`Impossible de charger la démo (${resp.status})`);
   const bytes = new Uint8Array(await resp.arrayBuffer());
+  if (bytes.length < DEMO_MIN_VALID_BYTES) {
+    throw new Error(`Réponse trop courte (${bytes.length} octets) — corpus démo non disponible`);
+  }
   await writeFile(demoPath, bytes);
 }
 
@@ -2848,30 +2874,20 @@ async function _initDemoSection(
   });
 
   openBtn.addEventListener("click", async () => {
-    const demoPath = await _getDemoDbPath();
-    // Réinstaller uniquement si le sidecar n'a pas cette DB déjà ouverte.
-    // Réécrire un fichier ouvert par le sidecar corrompt les shadow tables FTS5.
-    const isAlreadyActive = _currentDbPath === demoPath;
-    if (!isAlreadyActive) {
-      openBtn.disabled = true;
-      const prevLabel = openBtn.textContent;
-      openBtn.textContent = "Mise à jour\u2026";
-      try {
-        // Déconnecter le sidecar actuel avant d'écraser le fichier
-        if (_currentDbPath !== null) {
-          _currentDbPath = null;
-          _dbListeners.forEach(cb => cb(null));
-          // Laisser le temps au sidecar de se déconnecter
-          await new Promise(r => setTimeout(r, 300));
-        }
-        await _installDemo();
-      } catch (err) {
-        console.warn("[shell] demo reinstall failed, opening existing copy:", err);
-      } finally {
-        openBtn.disabled = false;
-        openBtn.textContent = prevLabel;
-      }
+    // Toujours réinstaller depuis l'asset bundle.
+    // _installDemo() gère la déconnexion du sidecar et la suppression WAL/SHM.
+    openBtn.disabled = true;
+    const prevLabel = openBtn.textContent;
+    openBtn.textContent = "Mise à jour\u2026";
+    try {
+      await _installDemo();
+    } catch (err) {
+      console.warn("[shell] demo reinstall failed, opening existing copy:", err);
+    } finally {
+      openBtn.disabled = false;
+      openBtn.textContent = prevLabel;
     }
+    const demoPath = await _getDemoDbPath();
     _currentDbPath = demoPath;
     _persist();
     _addToMru(demoPath);
