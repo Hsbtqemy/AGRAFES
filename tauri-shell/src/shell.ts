@@ -2790,7 +2790,7 @@ function _renderHome(container: HTMLElement): void {
       <p class="shell-demo-hint">Ou essayez avec un corpus pr&eacute;install&eacute;&nbsp;:</p>
       <div class="shell-demo-card">
         <span class="shell-demo-icon">&#127981;</span>
-        <span class="shell-demo-label">Corpus d&eacute;mo (Machiavel FR/EN, 10 unit&eacute;s)</span>
+        <span class="shell-demo-label">Corpus d&eacute;mo — Il Principe (IT&nbsp;/&nbsp;FR&nbsp;/&nbsp;EN, 148 unit&eacute;s align&eacute;es)</span>
         <div class="shell-demo-btns">
           <button class="shell-demo-btn shell-demo-btn-install" id="shell-demo-install-btn">Installer&hellip;</button>
           <button class="shell-demo-btn shell-demo-btn-open" id="shell-demo-open-btn" style="display:none">Ouvrir Explorer</button>
