@@ -42,6 +42,7 @@ tauri-fixture/src-tauri/binaries/sidecar-manifest.json
 tauri-app/src-tauri/multicorpus-*
 tauri-prep/src-tauri/multicorpus-*
 tauri-shell/src-tauri/multicorpus-*
+tauri-shell/src-tauri/sidecar-manifest.json
 
 # Local benchmark outputs
 bench/results/
