@@ -727,9 +727,10 @@ body {
 .parallel-card {
   display: grid;
   grid-template-columns: 1fr 1fr;
+  /* No overflow:hidden — it clips content in the shorter column.
+     Border-radius is applied per-cell instead. */
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  overflow: hidden;
   margin-bottom: 10px;
   min-height: 70px;
 }
@@ -737,15 +738,52 @@ body {
   background: var(--surface);
   padding: 10px 12px;
   border-right: 1px solid var(--border);
+  border-radius: var(--radius) 0 0 var(--radius);
   min-width: 0;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 .parallel-aligned {
   background: var(--surface2);
   padding: 10px 12px;
+  border-radius: 0 var(--radius) var(--radius) 0;
   min-width: 0;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 .parallel-pivot .result-meta { font-size: 11px; color: var(--text-muted); margin-bottom: 5px; }
-.parallel-pivot .result-text { font-size: 13px; line-height: 1.55; color: var(--text); word-wrap: break-word; }
+.parallel-pivot .result-text {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text);
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+/* KWIC excerpt in pivot column */
+.parallel-kwic {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 4px;
+  font-size: 13px;
+  line-height: 1.55;
+}
+.parallel-kwic-left  { color: var(--text-muted); text-align: right; flex: 1 1 35%; min-width: 0; overflow-wrap: break-word; }
+.parallel-kwic-match { font-weight: 700; background: var(--match-bg); color: var(--match-color); padding: 0 4px; border-radius: 3px; white-space: nowrap; flex-shrink: 0; }
+.parallel-kwic-right { color: var(--text-muted); flex: 1 1 35%; min-width: 0; overflow-wrap: break-word; }
+
+/* Scrollable aligned content area */
+.parallel-aligned-scroll {
+  max-height: 260px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+  padding-right: 2px;
+}
+.parallel-aligned-scroll::-webkit-scrollbar { width: 4px; }
+.parallel-aligned-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
 .parallel-aligned-header {
   font-size: 10px;
   font-weight: 600;
@@ -755,8 +793,12 @@ body {
   margin-bottom: 6px;
   border-bottom: 1px solid var(--border);
   padding-bottom: 4px;
+  position: sticky;
+  top: 0;
+  background: var(--surface2);
+  z-index: 1;
 }
-.parallel-aligned-group { margin-bottom: 8px; }
+.parallel-aligned-group { margin-bottom: 10px; }
 .parallel-aligned-group:last-child { margin-bottom: 0; }
 .parallel-lang-header {
   font-size: 11px;
@@ -778,7 +820,13 @@ body {
   padding: 0 4px;
   line-height: 1.6;
 }
-.parallel-line { font-size: 13px; line-height: 1.5; color: var(--text); word-wrap: break-word; }
+.parallel-line {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
 .parallel-ref { font-size: 11px; color: var(--text-muted); margin-right: 3px; }
 .parallel-empty { font-size: 12px; color: var(--text-muted); font-style: italic; margin-top: 4px; }
 .parallel-more-btn { font-size: 11px; color: var(--brand); cursor: pointer; background: none; border: none; padding: 2px 0; display: block; margin-top: 3px; }

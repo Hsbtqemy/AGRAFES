@@ -138,15 +138,20 @@ export function renderParallelHit(hit: QueryHit, mode: "segment" | "kwic"): HTML
   meta.appendChild(pMetaBtn);
   pivotCol.appendChild(meta);
 
-  // In parallel mode, always show full text (KWIC grid doesn't work inside a 2-col grid)
-  {
+  // Pivot text: KWIC flex layout if in kwic mode (avoids nested CSS grid issues),
+  // full highlighted text in segment mode.
+  if (mode === "kwic" && (hit.left !== undefined || hit.match !== undefined)) {
+    const kwicRow = elt("div", { class: "parallel-kwic" });
+    kwicRow.appendChild(elt("span", { class: "parallel-kwic-left" }, hit.left ?? ""));
+    kwicRow.appendChild(elt("span", { class: "parallel-kwic-match" }, hit.match ?? ""));
+    kwicRow.appendChild(elt("span", { class: "parallel-kwic-right" }, hit.right ?? ""));
+    pivotCol.appendChild(kwicRow);
+  } else {
     const textDiv = elt("div", { class: "result-text" });
     let raw: string;
     if (hit.text) {
-      // Segment mode: <<marker>> format
       raw = hit.text;
     } else if (hit.text_norm) {
-      // KWIC mode: text_norm available but no markers — re-highlight the match term
       raw = hit.text_norm;
       if (hit.match) {
         const escaped = hit.match.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -177,6 +182,7 @@ export function renderParallelHit(hit: QueryHit, mode: "segment" | "kwic"): HTML
     alignedCol.appendChild(elt("div", { class: "parallel-empty" }, "Aucun alignement"));
   } else {
     alignedCol.appendChild(elt("div", { class: "parallel-aligned-header" }, "Traductions alignées"));
+    const scroll = elt("div", { class: "parallel-aligned-scroll" });
     const groups = new Map<string, typeof aligned>();
     for (const item of aligned) {
       const key = `${item.language ?? "und"}|${item.doc_id}|${item.title ?? ""}`;
@@ -214,8 +220,9 @@ export function renderParallelHit(hit: QueryHit, mode: "segment" | "kwic"): HTML
         moreWrap.appendChild(moreBtn);
         grp.appendChild(moreWrap);
       }
-      alignedCol.appendChild(grp);
+      scroll.appendChild(grp);
     }
+    alignedCol.appendChild(scroll);
   }
   card.appendChild(alignedCol);
   return card;
