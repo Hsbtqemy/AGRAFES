@@ -469,7 +469,7 @@ def run_query_page(
                 row for row in rows
                 if all(t in (row["text_raw"] or "") for t in terms)
             ]
-            logger.debug("Case-sensitive filter kept %d/%d rows for terms %r", len(rows), len(rows), terms)
+            logger.debug("Case-sensitive filter kept %d rows for terms %r", len(rows), terms)
 
     has_more = False
     next_offset: int | None = None

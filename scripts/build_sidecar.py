@@ -228,7 +228,17 @@ def build_sidecar(
             raise FileNotFoundError(f"PyInstaller output not found: {produced}")
         final_name = f"{final_stem}.exe" if is_windows else final_stem
         artifact_path = out_dir / final_name
-        shutil.copy2(produced, artifact_path)
+        # On Windows, the destination may be locked by a running process.
+        # Copy to a temp file then replace atomically (works even when dest is
+        # open, because Windows allows renaming in-place with MoveFileEx).
+        tmp_path = artifact_path.with_suffix(".exe.tmp" if is_windows else ".tmp")
+        shutil.copy2(produced, tmp_path)
+        try:
+            tmp_path.replace(artifact_path)
+        except PermissionError:
+            # Destination still locked — remove and retry once
+            artifact_path.unlink(missing_ok=True)
+            tmp_path.replace(artifact_path)
         executable_path = artifact_path
         artifact_type = "file"
     else:
@@ -274,6 +284,31 @@ def build_sidecar(
         json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+
+    # On Windows, Tauri dev mode runs the binary from target/debug/<name>.exe
+    # (without the target-triple suffix).  Copy the new executable there so
+    # the next sidecar spawn picks it up without requiring a full Tauri recompile.
+    # We only do this for the `tauri-shell/src-tauri` out_dir (dev workflow).
+    if is_windows and package_format == "onefile":
+        debug_dir = out_dir / "target" / "debug"
+        debug_bin = debug_dir / f"{base_name}.exe"
+        if debug_dir.is_dir():
+            try:
+                tmp_debug = debug_bin.with_suffix(".exe.tmp")
+                shutil.copy2(executable_path, tmp_debug)
+                try:
+                    tmp_debug.replace(debug_bin)
+                except PermissionError:
+                    # Binary is locked by a running sidecar process — skip silently.
+                    tmp_debug.unlink(missing_ok=True)
+                    print(
+                        f"  (target/debug/{base_name}.exe is locked by a running "
+                        f"process — restart the app to load the new binary)"
+                    )
+                else:
+                    print(f"  Copied to: {debug_bin}")
+            except Exception as exc:
+                print(f"  Warning: could not copy to target/debug: {exc}")
 
     return manifest
 
