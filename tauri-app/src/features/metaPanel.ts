@@ -130,6 +130,58 @@ function _renderPanelContent(hit: QueryHit, body: HTMLElement, foot: HTMLElement
   );
   body.appendChild(excerptDiv);
 
+  // ── Section : Alignements ────────────────────────────────────────────────────
+  const alignedUnits = hit.aligned ?? [];
+  if (alignedUnits.length > 0) {
+    body.appendChild(elt("div", { class: "meta-section-head" }, "Alignements"));
+
+    // Group by language + document (same logic as parallel cards)
+    const aGroups = new Map<string, typeof alignedUnits>();
+    for (const au of alignedUnits) {
+      const key = `${au.language ?? "und"}|${au.doc_id}|${au.title ?? ""}`;
+      const cur = aGroups.get(key);
+      if (cur) cur.push(au); else aGroups.set(key, [au]);
+    }
+
+    for (const [key, items] of aGroups.entries()) {
+      const parts = key.split("|");
+      const lang = parts[0] ?? "?";
+      const title = parts.slice(2).join("|");
+      const groupText = items.map(i => (i.text ?? i.text_norm ?? "").trim()).filter(Boolean).join("\n");
+
+      const grpEl = elt("div", { class: "meta-aligned-group" });
+
+      // Header: badge + title + copy micro-button
+      const grpHdr = elt("div", { class: "meta-aligned-group-header" });
+      grpHdr.appendChild(elt("span", { class: "lang-badge" }, lang.toUpperCase()));
+      grpHdr.appendChild(elt("span", { class: "meta-aligned-group-title" }, title || "(sans titre)"));
+      const copyGrpBtn = elt("button", {
+        class: "meta-copy-micro",
+        type: "button",
+        title: `Copier les passages ${lang.toUpperCase()}`,
+      }, "📋") as HTMLButtonElement;
+      copyGrpBtn.addEventListener("click", () => {
+        void navigator.clipboard?.writeText(groupText).then(() => {
+          copyGrpBtn.textContent = "✓";
+          setTimeout(() => { copyGrpBtn.textContent = "📋"; }, 1200);
+        });
+      });
+      grpHdr.appendChild(copyGrpBtn);
+      grpEl.appendChild(grpHdr);
+
+      // Text rows
+      for (const item of items) {
+        const row = elt("div", { class: "meta-aligned-row" });
+        if (item.external_id != null) {
+          row.appendChild(elt("span", { class: "meta-aligned-ref" }, `§${item.external_id} `));
+        }
+        row.appendChild(document.createTextNode((item.text ?? item.text_norm ?? "").trim()));
+        grpEl.appendChild(row);
+      }
+      body.appendChild(grpEl);
+    }
+  }
+
   // ── Section : Lecture locale (Sprint J) ────────────────────────────────────────
   const contextWrap = elt("div", { id: "meta-local-context", class: "meta-context-wrap" });
   contextWrap.appendChild(elt("div", { class: "meta-section-head" }, "Lecture locale"));
@@ -150,11 +202,13 @@ function _renderPanelContent(hit: QueryHit, body: HTMLElement, foot: HTMLElement
     if (state.currentQuery) void doSearch(state.currentQuery);
   });
 
-  // Secondary: copy hit text
+  // Secondary: copy pivot text (reads excerptDiv at click time to get full text)
   const copyTextBtn = elt("button", { class: "btn btn-secondary", type: "button" }, "Copier le texte") as HTMLButtonElement;
   copyTextBtn.title = "Copier l'extrait dans le presse-papier";
   copyTextBtn.addEventListener("click", () => {
-    void navigator.clipboard?.writeText(hitText).then(() => {
+    const text = (body.querySelector("#meta-excerpt-content") as HTMLElement | null)
+      ?.textContent?.replace(/…$/, "").trim() ?? hitText;
+    void navigator.clipboard?.writeText(text).then(() => {
       copyTextBtn.textContent = "✓ Copié !";
       setTimeout(() => { copyTextBtn.textContent = "Copier le texte"; }, 1500);
     });
@@ -165,6 +219,42 @@ function _renderPanelContent(hit: QueryHit, body: HTMLElement, foot: HTMLElement
 
   foot.appendChild(filterDocBtn);
   foot.appendChild(copyTextBtn);
+
+  // Citation button: pivot + all aligned units (only shown in parallel mode)
+  if (alignedUnits.length > 0) {
+    const copyCitBtn = elt("button", { class: "btn btn-secondary", type: "button" }, "📄 Copier la citation") as HTMLButtonElement;
+    copyCitBtn.title = "Copier le pivot et toutes les traductions alignées";
+    copyCitBtn.addEventListener("click", () => {
+      const pivotText = (body.querySelector("#meta-excerpt-content") as HTMLElement | null)
+        ?.textContent?.replace(/…$/, "").trim() ?? hitText;
+      const pivotRef = hit.external_id != null ? ` §${hit.external_id}` : "";
+      const pivotLang = (hit.language ?? "?").toUpperCase();
+      const lines: string[] = [
+        `[${pivotLang}] ${hit.title || "—"}${pivotRef}`,
+        `«${pivotText}»`,
+      ];
+      const citGroups = new Map<string, typeof alignedUnits>();
+      for (const au of alignedUnits) {
+        const key = `${au.language ?? "und"}|${au.doc_id}|${au.title ?? ""}`;
+        const cur = citGroups.get(key);
+        if (cur) cur.push(au); else citGroups.set(key, [au]);
+      }
+      for (const [key, items] of citGroups.entries()) {
+        const parts = key.split("|");
+        const lang = (parts[0] ?? "?").toUpperCase();
+        const title = parts.slice(2).join("|");
+        const firstRef = items[0]?.external_id != null ? ` §${items[0].external_id}` : "";
+        const text = items.map(i => (i.text ?? i.text_norm ?? "").trim()).filter(Boolean).join(" / ");
+        lines.push("", `[${lang}] ${title || "—"}${firstRef}`, `«${text}»`);
+      }
+      void navigator.clipboard?.writeText(lines.join("\n")).then(() => {
+        copyCitBtn.textContent = "✓ Copié !";
+        setTimeout(() => { copyCitBtn.textContent = "📄 Copier la citation"; }, 1500);
+      });
+    });
+    foot.appendChild(copyCitBtn);
+  }
+
   foot.appendChild(closeBtn);
 
   // ── Prev/Next navigation row ─────────────────────────────────────────────────

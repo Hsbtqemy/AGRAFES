@@ -1102,6 +1102,77 @@ body {
   text-decoration: underline dotted;
 }
 
+/* ─── Alignements section in meta panel ─── */
+.meta-aligned-group {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 12px;
+}
+.meta-aligned-group + .meta-aligned-group { margin-top: 6px; }
+.meta-aligned-group-header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 5px;
+}
+.meta-aligned-group-title {
+  flex: 1;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.meta-aligned-row {
+  line-height: 1.5;
+  color: var(--text);
+  word-break: break-word;
+}
+.meta-aligned-ref {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: ui-monospace, monospace;
+}
+/* Small inline copy button (used in meta panel aligned groups) */
+.meta-copy-micro {
+  flex-shrink: 0;
+  margin-left: auto;
+  font-size: 11px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.1s, border-color 0.1s;
+  line-height: 1;
+}
+.meta-copy-micro:hover { color: var(--brand); border-color: var(--brand); }
+
+/* Small copy icon button in parallel card aligned group headers */
+.parallel-group-copy-btn {
+  flex-shrink: 0;
+  margin-left: auto;
+  font-size: 11px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  border: 1px solid transparent;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0.5;
+  transition: opacity 0.15s, border-color 0.15s;
+  line-height: 1;
+}
+.parallel-lang-header:hover .parallel-group-copy-btn,
+.parallel-group-copy-btn:focus-visible {
+  opacity: 1;
+  border-color: var(--border);
+}
+
 /* ─── Sprint I — Contexte local (voisinage documentaire) ─── */
 .meta-context-wrap {
   margin-top: 4px;

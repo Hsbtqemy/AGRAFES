@@ -67,6 +67,67 @@ function makeCopyBtn(text: string): HTMLButtonElement {
   return btn;
 }
 
+/** Small inline copy icon for aligned group headers. */
+function makeGroupCopyBtn(text: string, lang: string): HTMLButtonElement {
+  const btn = elt("button", {
+    class: "parallel-group-copy-btn",
+    title: `Copier les passages ${lang.toUpperCase()}`,
+    type: "button",
+  }, "📋") as HTMLButtonElement;
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    void navigator.clipboard?.writeText(text).then(() => {
+      btn.textContent = "✓";
+      setTimeout(() => { btn.textContent = "📋"; }, 1200);
+    });
+  });
+  return btn;
+}
+
+/** Build a formatted plain-text citation: pivot + all aligned groups. */
+function buildCitationText(hit: QueryHit): string {
+  const pivotText = hitPlainText(hit);
+  const pivotRef = hit.external_id != null ? ` §${hit.external_id}` : "";
+  const pivotLang = (hit.language ?? "?").toUpperCase();
+  const lines: string[] = [
+    `[${pivotLang}] ${hit.title || "—"}${pivotRef}`,
+    `«${pivotText}»`,
+  ];
+  const groups = new Map<string, AlignedUnit[]>();
+  for (const item of hit.aligned ?? []) {
+    const key = `${item.language ?? "und"}|${item.doc_id}|${item.title ?? ""}`;
+    const cur = groups.get(key);
+    if (cur) cur.push(item); else groups.set(key, [item]);
+  }
+  for (const [key, items] of groups.entries()) {
+    const parts = key.split("|");
+    const lang = (parts[0] ?? "?").toUpperCase();
+    const title = parts.slice(2).join("|");
+    const firstRef = items[0]?.external_id != null ? ` §${items[0].external_id}` : "";
+    const text = items.map(i => (i.text ?? i.text_norm ?? "").trim()).filter(Boolean).join(" / ");
+    lines.push("", `[${lang}] ${title || "—"}${firstRef}`, `«${text}»`);
+  }
+  return lines.join("\n");
+}
+
+/** Button that copies a formatted multi-language citation. */
+function makeCitationBtn(hit: QueryHit): HTMLButtonElement {
+  const btn = elt("button", {
+    class: "card-action-btn",
+    title: "Copier la citation complète (pivot + alignements)",
+    type: "button",
+  }, "📄 Citation") as HTMLButtonElement;
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    void navigator.clipboard?.writeText(buildCitationText(hit)).then(() => {
+      btn.textContent = "✓ Copié";
+      btn.classList.add("copied");
+      setTimeout(() => { btn.textContent = "📄 Citation"; btn.classList.remove("copied"); }, 1500);
+    });
+  });
+  return btn;
+}
+
 /** Compact "filter on this document" quick action button. */
 function makeFilterDocBtn(docId: number, docTitle: string): HTMLButtonElement {
   const label = docTitle ? `Ce doc (${docTitle.slice(0, 20)}${docTitle.length > 20 ? "…" : ""})` : `Doc #${docId}`;
@@ -170,6 +231,7 @@ export function renderParallelHit(hit: QueryHit, mode: "segment" | "kwic"): HTML
   const pText = hitPlainText(hit);
   if (pText) pActions.appendChild(makeCopyBtn(pText));
   if (_filterDocFn) pActions.appendChild(makeFilterDocBtn(hit.doc_id, hit.title ?? ""));
+  // Citation button added after aligned column is built (see below)
   pivotCol.appendChild(pActions);
 
   card.appendChild(pivotCol);
@@ -197,6 +259,8 @@ export function renderParallelHit(hit: QueryHit, mode: "segment" | "kwic"): HTML
       const badge = elt("span", { class: "parallel-lang-badge" }, (lang ?? "?").toUpperCase());
       hdr.appendChild(badge);
       hdr.appendChild(document.createTextNode(` ${title || "(sans titre)"}`));
+      const grpText = items.map(i => (i.text ?? i.text_norm ?? "").trim()).filter(Boolean).join("\n");
+      hdr.appendChild(makeGroupCopyBtn(grpText, lang ?? "?"));
       grp.appendChild(hdr);
       const visible = items.slice(0, PARALLEL_COLLAPSE_N);
       const hidden = items.slice(PARALLEL_COLLAPSE_N);
@@ -225,6 +289,10 @@ export function renderParallelHit(hit: QueryHit, mode: "segment" | "kwic"): HTML
     }
   }
   card.appendChild(alignedCol);
+
+  // Add citation button to pivot actions now that we know aligned is populated
+  if (aligned.length > 0) pActions.appendChild(makeCitationBtn(hit));
+
   return card;
 }
 
