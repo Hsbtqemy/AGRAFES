@@ -182,7 +182,6 @@ export function renderParallelHit(hit: QueryHit, mode: "segment" | "kwic"): HTML
     alignedCol.appendChild(elt("div", { class: "parallel-empty" }, "Aucun alignement"));
   } else {
     alignedCol.appendChild(elt("div", { class: "parallel-aligned-header" }, "Traductions alignées"));
-    const scroll = elt("div", { class: "parallel-aligned-scroll" });
     const groups = new Map<string, typeof aligned>();
     for (const item of aligned) {
       const key = `${item.language ?? "und"}|${item.doc_id}|${item.title ?? ""}`;
@@ -190,7 +189,9 @@ export function renderParallelHit(hit: QueryHit, mode: "segment" | "kwic"): HTML
       if (cur) cur.push(item); else groups.set(key, [item]);
     }
     for (const [key, items] of groups.entries()) {
-      const [lang, , title] = key.split("|");
+      const parts = key.split("|");
+      const lang = parts[0];
+      const title = parts.slice(2).join("|");
       const grp = elt("div", { class: "parallel-aligned-group" });
       const hdr = elt("div", { class: "parallel-lang-header" });
       const badge = elt("span", { class: "parallel-lang-badge" }, (lang ?? "?").toUpperCase());
@@ -220,9 +221,8 @@ export function renderParallelHit(hit: QueryHit, mode: "segment" | "kwic"): HTML
         moreWrap.appendChild(moreBtn);
         grp.appendChild(moreWrap);
       }
-      scroll.appendChild(grp);
+      alignedCol.appendChild(grp);
     }
-    alignedCol.appendChild(scroll);
   }
   card.appendChild(alignedCol);
   return card;

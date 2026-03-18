@@ -725,31 +725,34 @@ body {
 
 /* ─── Parallel view ─── */
 .parallel-card {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  /* No overflow:hidden — it clips content in the shorter column.
-     Border-radius is applied per-cell instead. */
+  overflow: hidden;        /* clearfix — gives card the height of the tallest column */
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   margin-bottom: 10px;
-  min-height: 70px;
+  flex-shrink: 0;
 }
 .parallel-pivot {
-  background: var(--surface);
+  float: left;
+  width: 50%;
   padding: 10px 12px;
   border-right: 1px solid var(--border);
-  border-radius: var(--radius) 0 0 var(--radius);
-  min-width: 0;
+  box-sizing: border-box;
   overflow-wrap: break-word;
   word-break: break-word;
 }
 .parallel-aligned {
+  float: left;
+  width: 50%;
   background: var(--surface2);
   padding: 10px 12px;
-  border-radius: 0 var(--radius) var(--radius) 0;
-  min-width: 0;
+  box-sizing: border-box;
   overflow-wrap: break-word;
   word-break: break-word;
+  max-height: 480px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
 }
 .parallel-pivot .result-meta { font-size: 11px; color: var(--text-muted); margin-bottom: 5px; }
 .parallel-pivot .result-text {
@@ -773,17 +776,6 @@ body {
 .parallel-kwic-match { font-weight: 700; background: var(--match-bg); color: var(--match-color); padding: 0 4px; border-radius: 3px; white-space: nowrap; flex-shrink: 0; }
 .parallel-kwic-right { color: var(--text-muted); flex: 1 1 35%; min-width: 0; overflow-wrap: break-word; }
 
-/* Scrollable aligned content area */
-.parallel-aligned-scroll {
-  max-height: 260px;
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--border) transparent;
-  padding-right: 2px;
-}
-.parallel-aligned-scroll::-webkit-scrollbar { width: 4px; }
-.parallel-aligned-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
-
 .parallel-aligned-header {
   font-size: 10px;
   font-weight: 600;
@@ -793,12 +785,9 @@ body {
   margin-bottom: 6px;
   border-bottom: 1px solid var(--border);
   padding-bottom: 4px;
-  position: sticky;
-  top: 0;
-  background: var(--surface2);
-  z-index: 1;
 }
-.parallel-aligned-group { margin-bottom: 10px; }
+.parallel-aligned-group { margin-bottom: 8px; }
+.parallel-aligned-group + .parallel-aligned-group { padding-top: 6px; border-top: 1px dashed var(--border); }
 .parallel-aligned-group:last-child { margin-bottom: 0; }
 .parallel-lang-header {
   font-size: 11px;
