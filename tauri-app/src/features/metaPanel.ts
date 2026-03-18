@@ -254,17 +254,21 @@ function renderLocalContext(body: HTMLElement, ctx: UnitContextResponse): void {
   wrap.querySelector(".meta-context-loading")?.remove();
   wrap.querySelector(".meta-context-content")?.remove();
 
-  // Populate EXTRAIT with the full text of the current unit now that we have it.
+  // Upgrade EXTRAIT with the full unit text — but only when the context text
+  // is longer than what is already shown (i.e. the placeholder came from a
+  // short KWIC left+match+right fallback).  In segment mode hit.text already
+  // contains the full text, so the excerpt is already correct and we leave it
+  // untouched to avoid a visual flash.
   const excerptEl = body.querySelector("#meta-excerpt-content") as HTMLElement | null;
   if (excerptEl) {
     const cur = ctx.items.find(i => i.is_current);
-    const fullText = cur?.text ?? "";
-    if (fullText) {
+    const fullText = (cur?.text ?? "").trim();
+    const currentLen = (excerptEl.textContent ?? "").replace(/…$/, "").length;
+    if (fullText && fullText.length > currentLen) {
       const EXCERPT_LIMIT = 600;
       let expanded = false;
       const isTruncated = fullText.length > EXCERPT_LIMIT;
       excerptEl.textContent = isTruncated ? fullText.slice(0, EXCERPT_LIMIT) + "…" : fullText;
-      // Add / refresh the toggle button if text is long
       const existingToggle = body.querySelector(".meta-excerpt-toggle");
       if (existingToggle) existingToggle.remove();
       if (isTruncated) {
