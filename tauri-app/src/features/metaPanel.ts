@@ -122,27 +122,13 @@ function _renderPanelContent(hit: QueryHit, body: HTMLElement, foot: HTMLElement
   body.appendChild(occRow);
 
   // ── Section : Extrait ───────────────────────────────────────────────────────
-  if (hitText) {
-    body.appendChild(elt("div", { class: "meta-section-head" }, "Extrait"));
-
-    const EXCERPT_LIMIT = 400;
-    const isTruncated = hitText.length > EXCERPT_LIMIT;
-    const excerptDiv = elt("div", { class: "meta-excerpt" },
-      isTruncated ? hitText.slice(0, EXCERPT_LIMIT) + "…" : hitText
-    );
-    body.appendChild(excerptDiv);
-
-    if (isTruncated) {
-      let expanded = false;
-      const toggleBtn = elt("button", { class: "meta-excerpt-toggle", type: "button" }, "Voir la suite →") as HTMLButtonElement;
-      toggleBtn.addEventListener("click", () => {
-        expanded = !expanded;
-        excerptDiv.textContent = expanded ? hitText : hitText.slice(0, EXCERPT_LIMIT) + "…";
-        toggleBtn.textContent = expanded ? "← Réduire" : "Voir la suite →";
-      });
-      body.appendChild(toggleBtn);
-    }
-  }
+  // Shown immediately with KWIC fallback; overwritten with full unit text once
+  // loadUnitContext resolves (via #meta-excerpt-content).
+  body.appendChild(elt("div", { class: "meta-section-head" }, "Extrait"));
+  const excerptDiv = elt("div", { class: "meta-excerpt", id: "meta-excerpt-content" },
+    hitText || "Chargement…"
+  );
+  body.appendChild(excerptDiv);
 
   // ── Section : Lecture locale (Sprint J) ────────────────────────────────────────
   const contextWrap = elt("div", { id: "meta-local-context", class: "meta-context-wrap" });
@@ -267,6 +253,31 @@ function renderLocalContext(body: HTMLElement, ctx: UnitContextResponse): void {
   if (!wrap) return;
   wrap.querySelector(".meta-context-loading")?.remove();
   wrap.querySelector(".meta-context-content")?.remove();
+
+  // Populate EXTRAIT with the full text of the current unit now that we have it.
+  const excerptEl = body.querySelector("#meta-excerpt-content") as HTMLElement | null;
+  if (excerptEl) {
+    const cur = ctx.items.find(i => i.is_current);
+    const fullText = cur?.text ?? "";
+    if (fullText) {
+      const EXCERPT_LIMIT = 600;
+      let expanded = false;
+      const isTruncated = fullText.length > EXCERPT_LIMIT;
+      excerptEl.textContent = isTruncated ? fullText.slice(0, EXCERPT_LIMIT) + "…" : fullText;
+      // Add / refresh the toggle button if text is long
+      const existingToggle = body.querySelector(".meta-excerpt-toggle");
+      if (existingToggle) existingToggle.remove();
+      if (isTruncated) {
+        const toggleBtn = elt("button", { class: "meta-excerpt-toggle", type: "button" }, "Voir la suite →") as HTMLButtonElement;
+        toggleBtn.addEventListener("click", () => {
+          expanded = !expanded;
+          excerptEl.textContent = expanded ? fullText : fullText.slice(0, EXCERPT_LIMIT) + "…";
+          toggleBtn.textContent = expanded ? "← Réduire" : "Voir la suite →";
+        });
+        excerptEl.insertAdjacentElement("afterend", toggleBtn);
+      }
+    }
+  }
 
   // Build a fast lookup of loaded hit unit_ids
   const hitIds = new Set(state.hits.map(h => h.unit_id));
