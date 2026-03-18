@@ -25,6 +25,28 @@ logger = logging.getLogger(__name__)
 _HIGHLIGHT_OPEN = "<<"
 
 
+def _extract_literal_terms(q: str) -> list[str]:
+    """Extract plain text terms from an FTS5 query for case-sensitive post-filtering.
+
+    Strips NEAR(...) clauses, boolean operators (AND/OR/NOT), anchors (^), and
+    wildcards (*), then returns quoted phrases and remaining plain word tokens.
+    The caller uses these terms to check whether ``text_raw`` contains them all
+    with the exact casing the user typed.
+    """
+    # Remove NEAR(...) constructs
+    clean = re.sub(r"\bNEAR\s*\([^)]*\)", " ", q, flags=re.IGNORECASE)
+    # Remove boolean keywords
+    clean = re.sub(r"\b(AND|OR|NOT)\b", " ", clean, flags=re.IGNORECASE)
+    # Remove FTS5 special chars
+    clean = clean.replace("^", "").replace("*", "")
+    # Collect quoted phrases first (they count as single terms)
+    phrases = re.findall(r'"([^"]+)"', clean)
+    clean = re.sub(r'"[^"]+"', " ", clean)
+    # Remaining plain word tokens
+    words = [w for w in re.findall(r"\w+", clean) if w]
+    return phrases + words
+
+
 def proximity_query(terms: list[str], distance: int = 5) -> str:
     """Build an FTS5 NEAR() proximity query string.
 
@@ -354,6 +376,7 @@ def run_query_page(
     all_occurrences: bool = False,
     limit: Optional[int] = None,
     offset: int = 0,
+    case_sensitive: bool = False,
 ) -> dict[str, Any]:
     """Run an FTS query and return a paginated payload.
 
@@ -434,6 +457,19 @@ def run_query_page(
     except sqlite3.OperationalError as exc:
         logger.error("FTS query error: %s", exc)
         raise
+
+    # Case-sensitive post-filter: FTS5 is always case-insensitive (unicode61
+    # tokenizer folds to lowercase).  When requested, we re-check each row
+    # against text_raw so only units whose raw text contains every query term
+    # with the exact casing are kept.
+    if case_sensitive:
+        terms = _extract_literal_terms(q)
+        if terms:
+            rows = [
+                row for row in rows
+                if all(t in (row["text_raw"] or "") for t in terms)
+            ]
+            logger.debug("Case-sensitive filter kept %d/%d rows for terms %r", len(rows), len(rows), terms)
 
     has_more = False
     next_offset: int | None = None

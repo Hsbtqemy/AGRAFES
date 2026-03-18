@@ -1051,6 +1051,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             "include_aligned": body.get("include_aligned", False),
             "aligned_limit": aligned_limit,
             "all_occurrences": body.get("all_occurrences", False),
+            "case_sensitive": bool(body.get("case_sensitive", False)),
             "limit": limit,
             "offset": offset,
         }
@@ -1069,6 +1070,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 include_aligned=params["include_aligned"],
                 aligned_limit=params["aligned_limit"],
                 all_occurrences=params["all_occurrences"],
+                case_sensitive=params["case_sensitive"],
                 limit=params["limit"],
                 offset=params["offset"],
             )

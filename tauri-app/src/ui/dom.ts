@@ -349,6 +349,20 @@ body {
   min-width: 118px;
 }
 
+/* Case-sensitive toggle button */
+.case-sensitive-btn {
+  font-family: ui-serif, Georgia, serif;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  padding: 4px 9px;
+  font-size: 0.85rem;
+}
+.case-sensitive-btn.active {
+  background: color-mix(in srgb, var(--brand) 12%, var(--surface));
+  color: var(--brand);
+  border-color: var(--brand);
+}
+
 .aligned-block {
   margin-top: 8px;
   padding-top: 8px;

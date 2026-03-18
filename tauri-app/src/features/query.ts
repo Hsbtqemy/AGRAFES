@@ -551,6 +551,7 @@ export async function fetchQueryPage(append: boolean): Promise<void> {
       doc_ids: state.filterDocIds ?? undefined,
       includeAligned: state.showAligned,
       alignedLimit: state.showAligned ? ALIGNED_LIMIT_DEFAULT : undefined,
+      case_sensitive: state.caseSensitive || undefined,
       limit: state.pageLimit,
       offset,
     });

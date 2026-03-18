@@ -39,6 +39,8 @@ export interface AppState {
   nearN: number;
   // parallel KWIC
   showParallel: boolean;
+  // Case-sensitive search post-filter
+  caseSensitive: boolean;
   // Sprint G: sort mode applied to loaded hits at render time
   sortMode: "natural" | "by-doc";
   // Sprint H: backend facets (null = not loaded or invalidated)
@@ -80,6 +82,7 @@ export const state: AppState = {
   builderMode: "simple",
   nearN: 5,
   showParallel: false,
+  caseSensitive: false,
   sortMode: "natural",
   facets: null,
   facetsQuery: "",

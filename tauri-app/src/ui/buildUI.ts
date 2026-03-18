@@ -67,6 +67,19 @@ export function buildUI(container: HTMLElement): void {
   ) as HTMLButtonElement;
   toolbar.appendChild(parallelToggleBtn);
 
+  // Case-sensitive toggle
+  const caseSensBtn = elt(
+    "button",
+    {
+      class: "btn btn-ghost case-sensitive-btn",
+      id: "case-sensitive-btn",
+      type: "button",
+      title: "Respecter la casse (post-filtre sur text_raw)",
+    },
+    "Aa"
+  ) as HTMLButtonElement;
+  toolbar.appendChild(caseSensBtn);
+
   // Window slider (hidden by default)
   const windowCtrl = elt("div", { class: "window-control", id: "window-ctrl", style: "display:none" });
   windowCtrl.appendChild(document.createTextNode("Fenêtre "));
@@ -449,6 +462,15 @@ export function buildUI(container: HTMLElement): void {
     state.showParallel = !state.showParallel;
     refreshParallelToggle();
     renderResults();
+  });
+
+  caseSensBtn.addEventListener("click", () => {
+    state.caseSensitive = !state.caseSensitive;
+    caseSensBtn.classList.toggle("active", state.caseSensitive);
+    caseSensBtn.title = state.caseSensitive
+      ? "Casse respectée — cliquer pour désactiver"
+      : "Respecter la casse (post-filtre sur text_raw)";
+    if (state.currentQuery) void doSearch(state.currentQuery);
   });
 
   filterBtn.addEventListener("click", () => {

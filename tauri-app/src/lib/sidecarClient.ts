@@ -60,6 +60,7 @@ export interface QueryOptions {
   alignedLimit?: number;
   include_aligned?: boolean;
   all_occurrences?: boolean;
+  case_sensitive?: boolean;
   limit?: number;
   offset?: number;
 }
@@ -943,6 +944,7 @@ export async function query(
     payload.aligned_limit = opts.alignedLimit;
   }
   if (opts.all_occurrences) payload.all_occurrences = opts.all_occurrences;
+  if (opts.case_sensitive) payload.case_sensitive = true;
   if (opts.limit !== undefined) payload.limit = opts.limit;
   if (opts.offset !== undefined) payload.offset = opts.offset;
 
