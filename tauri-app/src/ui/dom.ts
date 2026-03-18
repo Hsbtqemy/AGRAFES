@@ -1267,6 +1267,7 @@ body {
   padding: 6px 8px;
   word-break: break-word;
   white-space: pre-wrap;
+  min-height: 80px;
   max-height: 200px;
   overflow-y: auto;
 }
