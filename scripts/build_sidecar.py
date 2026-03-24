@@ -290,7 +290,7 @@ def build_sidecar(
     # the next sidecar spawn picks it up without requiring a full Tauri recompile.
     # We only do this for the `tauri-shell/src-tauri` out_dir (dev workflow).
     if is_windows and package_format == "onefile":
-        debug_dir = out_dir / "target" / "debug"
+        debug_dir = out_dir.parent / "target" / "debug"
         debug_bin = debug_dir / f"{base_name}.exe"
         if debug_dir.is_dir():
             try:
