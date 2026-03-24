@@ -22,6 +22,7 @@
   "POST /doc_relations/delete",
   "POST /doc_relations/set",
   "POST /documents/bulk_update",
+  "POST /documents/delete",
   "POST /documents/update",
   "POST /export/align_csv",
   "POST /export/run_report",

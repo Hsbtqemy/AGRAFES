@@ -169,6 +169,10 @@ When `multicorpus serve` starts and a portfile already exists:
 - `POST /align/collisions/resolve`
 - `POST /documents/update`
 - `POST /documents/bulk_update`
+- `POST /documents/delete`
+  - body: `{ doc_ids: int[] }` (non-empty list, token required)
+  - suppression en cascade : alignment_links → units → doc_relations → units_fts → documents
+  - response: `{ ok: true, deleted: int, doc_ids: int[] }`
 - `POST /doc_relations/set`
 - `POST /doc_relations/delete`
 - `POST /export/tei`
