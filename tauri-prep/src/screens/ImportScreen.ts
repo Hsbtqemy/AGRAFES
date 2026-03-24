@@ -201,6 +201,10 @@ export class ImportScreen {
         <div class="imp-footer-meta">
           <span class="hint" style="margin:0">Importe tous les fichiers en attente (profil + options ci-dessus).</span>
         </div>
+        <label class="imp-footer-check" title="Si coché : refuse l'import lorsqu'un document avec le même nom de fichier existe déjà dans le corpus (chemins différents inclus).">
+          <input type="checkbox" id="imp-check-filename-footer" />
+          Bloquer doublons par nom
+        </label>
         <div class="btn-row">
           <button id="imp-import-btn" class="btn btn-primary" title="Importer tous les fichiers en attente" aria-label="Importer tous les fichiers en attente" disabled>⬆ Importer</button>
         </div>
@@ -219,6 +223,12 @@ export class ImportScreen {
     this._importBtn.addEventListener("click", () => this._runImport());
     this._indexBtn.addEventListener("click", () => this._runIndex());
     root.querySelector("#imp-apply-defaults-btn")!.addEventListener("click", () => this._applyDefaultsToPending());
+
+    // Sync the two check_filename checkboxes (footer ↔ settings)
+    const ckFooter = root.querySelector<HTMLInputElement>("#imp-check-filename-footer")!;
+    const ckSettings = root.querySelector<HTMLInputElement>("#imp-check-filename")!;
+    ckFooter.addEventListener("change", () => { ckSettings.checked = ckFooter.checked; });
+    ckSettings.addEventListener("change", () => { ckFooter.checked = ckSettings.checked; });
 
     const dz = root.querySelector<HTMLElement>("#imp-dropzone");
     if (dz) {
@@ -553,7 +563,9 @@ export class ImportScreen {
       f.status = "importing";
       this._renderList();
       try {
-        const checkFilename = (this._root?.querySelector<HTMLInputElement>("#imp-check-filename"))?.checked ?? false;
+        const checkFilename = (this._root?.querySelector<HTMLInputElement>("#imp-check-filename-footer"))?.checked
+          ?? (this._root?.querySelector<HTMLInputElement>("#imp-check-filename"))?.checked
+          ?? false;
         const job = await enqueueJob(this._conn!, "import", {
           mode: f.mode,
           path: f.path,

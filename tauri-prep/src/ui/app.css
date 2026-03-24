@@ -596,6 +596,14 @@ details[open] > .import-log-summary::before {
 .import-screen .imp-footer-meta {
   display: flex; align-items: center; gap: 8px;
 }
+.import-screen .imp-footer-check {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 13px; color: var(--color-muted, #64748b);
+  cursor: pointer; user-select: none; white-space: nowrap;
+}
+.import-screen .imp-footer-check input[type="checkbox"] {
+  width: 15px; height: 15px; cursor: pointer; flex-shrink: 0;
+}
 
 /* Responsive: grilles Import */
 @media (max-width: 900px) {
