@@ -1389,6 +1389,10 @@ export async function bulkUpdateDocuments(conn: Conn, updates: DocumentUpdateOpt
   return conn.post("/documents/bulk_update", { updates }) as Promise<{ updated: number }>;
 }
 
+export async function deleteDocuments(conn: Conn, docIds: number[]): Promise<{ deleted: number; doc_ids: number[] }> {
+  return conn.post("/documents/delete", { doc_ids: docIds }) as Promise<{ deleted: number; doc_ids: number[] }>;
+}
+
 export async function getDocRelations(conn: Conn, doc_id: number): Promise<DocRelationsResponse> {
   return conn.get(`/doc_relations?doc_id=${doc_id}`) as Promise<DocRelationsResponse>;
 }

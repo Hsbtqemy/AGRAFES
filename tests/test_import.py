@@ -132,3 +132,25 @@ def test_import_rejects_duplicate_corpus_entry(
     import_docx_numbered_lines(conn=db_conn, path=simple_docx, language="fr")
     with pytest.raises(ValueError, match="doc_id="):
         import_docx_numbered_lines(conn=db_conn, path=simple_docx, language="fr")
+
+
+def test_import_rejects_duplicate_when_paths_differ_only_by_separators(
+    db_conn: sqlite3.Connection,
+    simple_docx: Path,
+) -> None:
+    """Same file on disk: stored path may use / while importer receives \\ (Windows)."""
+    from multicorpus_engine.importers.docx_numbered_lines import import_docx_numbered_lines
+
+    import_docx_numbered_lines(conn=db_conn, path=simple_docx, language="fr")
+    p = str(simple_docx)
+    if "\\" not in p:
+        pytest.skip("needs backslash path to build a posix variant")
+    posix = p.replace("\\", "/")
+    # Force path-only match branch (hash column would hide the regression)
+    db_conn.execute(
+        "UPDATE documents SET source_hash = ?, source_path = ? WHERE doc_id = 1",
+        ("wrong_hash_not_in_file", posix),
+    )
+    db_conn.commit()
+    with pytest.raises(ValueError, match="doc_id="):
+        import_docx_numbered_lines(conn=db_conn, path=simple_docx, language="fr")

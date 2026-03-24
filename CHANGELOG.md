@@ -22,6 +22,29 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Suppression de documents** (`tauri-prep`, `sidecar`)
+  - Endpoint `POST /documents/delete` dans `sidecar.py` : suppression en cascade (units, alignment_links, doc_relations, units_fts, documents).
+  - Contrat OpenAPI `sidecar_contract.py` mis à jour (`API_VERSION 1.4.7`).
+  - `deleteDocuments()` ajouté dans `tauri-prep/src/lib/sidecarClient.ts`.
+  - Bouton "🗑 Supprimer" dans la barre d'actions batch de `MetadataScreen` (confirmation + feedback).
+
+- **Overlay de chargement du sidecar** (`tauri-shell`)
+  - `_showSidecarOverlay()` / `_hideSidecarOverlay()` avec spinner CSS, fond flouté et label.
+  - Affiché pendant `_initDb()` → `ensureRunning()`, masqué dès que le sidecar répond.
+
+### Changed
+
+- **Page d'accueil forcée au démarrage** (`tauri-shell`)
+  - L'application s'ouvre toujours sur `mode = "home"` quel que soit l'état `localStorage`.
+
+- **Sidecar : robustesse token et portfile** (`tauri-shell`, `tauri-prep`, `tauri-app`)
+  - `cli.py` : le payload JSON de démarrage inclut maintenant `"token"` dans les états `listening` et `already_running`.
+  - `sidecarClient.ts` : `_connDbPath` trackée pour détecter les connexions périmées ; fallback au spawn si le portfile n'a pas de token mais que le sidecar en exige un.
+  - `portfilePath()` : séparateur de chemin corrigé sur Windows.
+  - `read_text_file_raw` : commande Rust personnalisée dans `tauri-shell/src-tauri/src/main.rs` pour lire le portfile hors du scope FS Tauri.
+
 ### Changed
 
 - **P7-3 — Shell: `document.title` par mode** (`tauri-shell`)

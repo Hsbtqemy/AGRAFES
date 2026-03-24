@@ -15,9 +15,12 @@ import { importFile, rebuildIndex, enqueueJob, SidecarError, listDocuments } fro
 import type { JobCenter } from "../components/JobCenter.ts";
 import { initCardAccordions } from "../lib/uiAccordions.ts";
 
-/** Normalise un chemin pour détecter les doublons (séparateurs + casse). */
+/** Normalise un chemin pour détecter les doublons (séparateurs + casse + préfixe long Windows). */
 function normalizeImportPath(p: string): string {
-  return p.replace(/\\/g, "/").replace(/\/+$/u, "").toLowerCase();
+  let s = p.replace(/\\/g, "/").replace(/\/+$/u, "").toLowerCase();
+  // \\?\C:\... → //?/c:/... après replace
+  if (s.startsWith("//?/")) s = s.slice(4);
+  return s;
 }
 
 const IMPORT_MODE_OPTIONS: Array<{ value: FileItem["mode"]; label: string }> = [
@@ -494,8 +497,15 @@ export class ImportScreen {
           corpusByPath.set(normalizeImportPath(sp), d.doc_id);
         }
       }
-    } catch {
-      /* liste indisponible — le moteur refusera encore les doublons */
+    } catch (err) {
+      this._log(
+        `Liste documents indisponible pour pré-contrôle doublons : ${err instanceof Error ? err.message : String(err)}`,
+        true
+      );
+      this._showToast?.(
+        "Impossible de charger les documents existants — le serveur bloquera tout de même les doublons (hash / chemin).",
+        true
+      );
     }
 
     for (const f of pending) {

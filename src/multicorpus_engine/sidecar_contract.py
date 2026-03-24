@@ -12,8 +12,8 @@ from __future__ import annotations
 from typing import Any
 
 
-API_VERSION = "1.4.6"
-CONTRACT_VERSION = "1.4.6"  # semantic versioning for the sidecar API contract
+API_VERSION = "1.4.7"
+CONTRACT_VERSION = "1.4.7"  # semantic versioning for the sidecar API contract
 # 1.4.0: added export_tei_package job kind (Sprint 4 — Publication ZIP)
 # 1.4.1: ERR_CONFLICT (409) for duplicate run_id; token protection on /align, /curate, /segment
 # 1.4.2: document workflow status fields on /documents and metadata update endpoints.
@@ -21,6 +21,7 @@ CONTRACT_VERSION = "1.4.6"  # semantic versioning for the sidecar API contract
 # 1.4.4: add async job kind export_readable_text (TXT/DOCX readable exports).
 # 1.4.5: /align supports replace_existing + preserve_accepted (global recalculation mode).
 # 1.4.6: GET /documents/preview (mini excerpt endpoint for Prep Documents screen).
+# 1.4.7: POST /documents/delete (cascade delete documents with all associated data).
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
@@ -678,6 +679,33 @@ def openapi_spec() -> dict[str, Any]:
                     "security": [{"token": []}],
                     "requestBody": {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/DocumentBulkUpdateRequest"}}}},
                     "responses": {"200": {"description": "Updated"}, "400": {"description": "Bad request"}, "401": {"description": "Unauthorized"}},
+                }
+            },
+            "/documents/delete": {
+                "post": {
+                    "summary": "Delete documents and all associated data (units, alignment links, relations)",
+                    "security": [{"token": []}],
+                    "requestBody": {
+                        "required": True,
+                        "content": {"application/json": {"schema": {
+                            "type": "object",
+                            "required": ["doc_ids"],
+                            "properties": {
+                                "doc_ids": {"type": "array", "items": {"type": "integer"}, "minItems": 1},
+                            },
+                        }}},
+                    },
+                    "responses": {
+                        "200": {"description": "Deleted", "content": {"application/json": {"schema": {
+                            "type": "object", "properties": {
+                                "ok": {"type": "boolean"},
+                                "deleted": {"type": "integer"},
+                                "doc_ids": {"type": "array", "items": {"type": "integer"}},
+                            },
+                        }}}},
+                        "400": {"description": "Bad request"},
+                        "401": {"description": "Unauthorized"},
+                    },
                 }
             },
             "/doc_relations": {

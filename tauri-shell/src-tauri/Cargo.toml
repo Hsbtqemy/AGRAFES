@@ -1,6 +1,6 @@
 [package]
 name = "agrafes-shell"
-version = "0.1.0"
+version = "0.1.12"
 description = "AGRAFES Shell — unified Tauri V0 app (Prep + Concordancier)"
 authors = ["AGRAFES"]
 edition = "2021"

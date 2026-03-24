@@ -483,7 +483,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 "/index", "/import", "/shutdown",
                 "/db/backup",
                 # Document / relation writes
-                "/documents/update", "/documents/bulk_update",
+                "/documents/update", "/documents/bulk_update", "/documents/delete",
                 "/doc_relations/set", "/doc_relations/delete",
                 # Exports (write to disk)
                 "/export/tei", "/export/align_csv", "/export/run_report",
@@ -563,6 +563,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 self._handle_documents_update(body)
             elif path == "/documents/bulk_update":
                 self._handle_documents_bulk_update(body)
+            elif path == "/documents/delete":
+                self._handle_documents_delete(body)
             elif path == "/doc_relations/set":
                 self._handle_doc_relations_set(body)
             elif path == "/doc_relations/delete":
@@ -2972,6 +2974,33 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 action = "created"
             self._conn().commit()
         self._send_json(success_payload({"action": action, "id": rel_id, "doc_id": doc_id, "relation_type": relation_type, "target_doc_id": target_doc_id}))
+
+    def _handle_documents_delete(self, body: dict) -> None:
+        """POST /documents/delete — supprime un ou plusieurs documents et toutes leurs données liées."""
+        doc_ids = body.get("doc_ids")
+        if not isinstance(doc_ids, list) or not doc_ids:
+            self._send_error("doc_ids (non-empty list) is required", code=ERR_BAD_REQUEST, http_status=400)
+            return
+        if not all(isinstance(d, int) for d in doc_ids):
+            self._send_error("doc_ids must be a list of integers", code=ERR_BAD_REQUEST, http_status=400)
+            return
+        placeholders = ",".join("?" * len(doc_ids))
+        deleted = 0
+        with self._lock():
+            conn = self._conn()
+            # Cascade: units → alignment_links → doc_relations → fts → document
+            conn.execute(f"DELETE FROM alignment_links WHERE src_unit_id IN (SELECT unit_id FROM units WHERE doc_id IN ({placeholders}))", doc_ids)
+            conn.execute(f"DELETE FROM alignment_links WHERE tgt_unit_id IN (SELECT unit_id FROM units WHERE doc_id IN ({placeholders}))", doc_ids)
+            conn.execute(f"DELETE FROM units WHERE doc_id IN ({placeholders})", doc_ids)
+            conn.execute(f"DELETE FROM doc_relations WHERE src_doc_id IN ({placeholders}) OR tgt_doc_id IN ({placeholders})", doc_ids + doc_ids)
+            try:
+                conn.execute(f"DELETE FROM units_fts WHERE doc_id IN ({placeholders})", doc_ids)
+            except Exception:
+                pass  # FTS table may not exist or use triggers
+            cur = conn.execute(f"DELETE FROM documents WHERE doc_id IN ({placeholders})", doc_ids)
+            deleted = cur.rowcount
+            conn.commit()
+        self._send_json(success_payload({"deleted": deleted, "doc_ids": doc_ids}))
 
     def _handle_doc_relations_delete(self, body: dict) -> None:
         rel_id = body.get("id")

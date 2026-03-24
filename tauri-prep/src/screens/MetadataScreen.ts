@@ -16,6 +16,7 @@ import {
   getDocumentPreview,
   updateDocument,
   bulkUpdateDocuments,
+  deleteDocuments,
   getDocRelations,
   setDocRelation,
   deleteDocRelation,
@@ -171,6 +172,7 @@ export class MetadataScreen {
             <span id="meta-batch-meta" class="meta-batch-meta">0 sélectionné</span>
             <div class="meta-batch-actions">
               <button id="meta-batch-role-btn" class="btn btn-secondary btn-sm" disabled>Définir rôle</button>
+              <button id="meta-batch-delete-btn" class="btn btn-danger btn-sm" disabled>🗑 Supprimer</button>
             </div>
           </div>
         </section>
@@ -250,6 +252,7 @@ export class MetadataScreen {
     });
     root.querySelector("#bulk-apply-btn")!.addEventListener("click", () => this._runBulkUpdate());
     root.querySelector("#meta-batch-role-btn")!.addEventListener("click", () => void this._runBatchRoleUpdate());
+    root.querySelector("#meta-batch-delete-btn")!.addEventListener("click", () => void this._runBatchDelete());
     root.querySelector("#validate-btn")!.addEventListener("click", () => this._runValidate());
     root.querySelector("#db-backup-btn")!.addEventListener("click", () => void this._runDbBackup());
 
@@ -359,6 +362,8 @@ export class MetadataScreen {
     if (this._batchBarEl) this._batchBarEl.classList.toggle("active", count > 0);
     const roleBtn = this._root?.querySelector<HTMLButtonElement>("#meta-batch-role-btn");
     if (roleBtn) roleBtn.disabled = count < 2;
+    const deleteBtn = this._root?.querySelector<HTMLButtonElement>("#meta-batch-delete-btn");
+    if (deleteBtn) deleteBtn.disabled = count === 0;
   }
 
   private _updateSelectAll(): void {
@@ -674,6 +679,31 @@ export class MetadataScreen {
       await this._refreshDocList();
     } catch (err) {
       this._log(`Erreur batch rôle: ${err instanceof SidecarError ? err.message : String(err)}`, true);
+    } finally {
+      this._renderBatchBar();
+    }
+  }
+
+  private async _runBatchDelete(): Promise<void> {
+    if (!this._conn || this._selectedDocIds.size === 0) return;
+    const ids = [...this._selectedDocIds];
+    const n = ids.length;
+    const label = n === 1 ? "ce document" : `ces ${n} documents`;
+    const confirmed = confirm(
+      `Supprimer ${label} du corpus ?\n\nCette action est irréversible : toutes les unités, les alignements et les relations associés seront également supprimés.`
+    );
+    if (!confirmed) return;
+
+    const btn = this._root?.querySelector<HTMLButtonElement>("#meta-batch-delete-btn");
+    if (btn) btn.disabled = true;
+    try {
+      const res = await deleteDocuments(this._conn, ids);
+      this._selectedDocIds.clear();
+      this._selectedDoc = null;
+      this._log(`✓ ${res.deleted} document(s) supprimé(s).`);
+      await this._refreshDocList();
+    } catch (err) {
+      this._log(`Erreur suppression : ${err instanceof SidecarError ? err.message : String(err)}`, true);
     } finally {
       this._renderBatchBar();
     }
