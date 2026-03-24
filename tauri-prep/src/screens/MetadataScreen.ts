@@ -18,13 +18,16 @@ import {
   bulkUpdateDocuments,
   deleteDocuments,
   getDocRelations,
+  getAllDocRelations,
   setDocRelation,
   deleteDocRelation,
   backupDatabase,
   validateMeta,
+  getCorpusAudit,
   type DocumentRecord,
   type DocumentPreviewLine,
   type DocRelationRecord,
+  type CorpusAuditResult,
   SidecarError,
 } from "../lib/sidecarClient.ts";
 import { initCardAccordions } from "../lib/uiAccordions.ts";
@@ -33,6 +36,13 @@ const DOC_ROLES = ["standalone", "original", "translation", "excerpt", "unknown"
 const RELATION_TYPES = ["translation_of", "excerpt_of"];
 const WORKFLOW_STATUS = ["draft", "review", "validated"] as const;
 type WorkflowStatus = (typeof WORKFLOW_STATUS)[number];
+type SortCol = "id" | "title" | "lang" | "role" | "status";
+
+interface TreeNode {
+  doc: DocumentRecord;
+  children: TreeNode[];
+  relationLabel?: string; // e.g. "translation_of"
+}
 
 export class MetadataScreen {
   private _conn: Conn | null = null;
@@ -49,6 +59,11 @@ export class MetadataScreen {
   private _previewError: string | null = null;
   private _previewDocId: number | null = null;
 
+  // Hierarchy view
+  private _hierarchyView = false;
+  private _allRelations: DocRelationRecord[] = [];
+  private _allRelationsLoaded = false;
+
   // DOM refs
   private _root!: HTMLElement;
   private _docListEl!: HTMLElement;
@@ -63,6 +78,10 @@ export class MetadataScreen {
   private _isBusy = false;
   private _lastErrorMsg: string | null = null;
   private _lastRefreshAt = 0;
+  private _auditResult: CorpusAuditResult | null = null;
+  private _auditPanelEl!: HTMLElement;
+  private _sortCol: SortCol = "id";
+  private _sortDir: "asc" | "desc" = "asc";
 
   setConn(conn: Conn | null): void {
     this._conn = conn;
@@ -76,6 +95,8 @@ export class MetadataScreen {
     this._previewError = null;
     this._previewDocId = null;
     this._previewLoading = false;
+    this._allRelations = [];
+    this._allRelationsLoaded = false;
     if (this._root) {
       const filterInput = this._root.querySelector<HTMLInputElement>("#meta-doc-filter");
       if (filterInput) filterInput.value = "";
@@ -123,8 +144,11 @@ export class MetadataScreen {
             <button id="db-backup-btn" class="btn btn-secondary btn-sm">Sauvegarder la DB</button>
             <span id="db-backup-status" class="hint" style="margin:0">Aucune sauvegarde récente</span>
             <button id="validate-btn" class="btn btn-secondary btn-sm">Valider métadonnées</button>
+            <button id="audit-btn" class="btn btn-secondary btn-sm">🔍 Audit corpus</button>
           </div>
         </div>
+        <!-- Audit panel — shown after clicking "Audit corpus" -->
+        <div id="meta-audit-panel" class="meta-audit-panel" hidden></div>
       </div>
 
       <!-- 2-col workspace -->
@@ -150,6 +174,8 @@ export class MetadataScreen {
             </select>
             <button id="meta-reset-filter" class="btn btn-secondary btn-sm"
               aria-label="Réinitialiser les filtres" title="Réinitialiser">↺</button>
+            <button id="meta-hierarchy-btn" class="btn btn-secondary btn-sm"
+              title="Basculer entre vue liste et vue hiérarchique" aria-pressed="false">🌿 Hiérarchie</button>
           </div>
           <div class="meta-doc-list-wrap">
             <table class="meta-doc-table" aria-label="Documents du corpus">
@@ -158,11 +184,11 @@ export class MetadataScreen {
                   <th class="col-check">
                     <input id="meta-select-all" type="checkbox" aria-label="Sélectionner tout" />
                   </th>
-                  <th class="col-id">ID</th>
-                  <th class="col-title">Titre</th>
-                  <th class="col-lang">Langue</th>
-                  <th class="col-role">Rôle</th>
-                  <th class="col-status">Statut</th>
+                  <th class="col-id sortable-th" data-sort="id">ID <span class="sort-ind" aria-hidden="true"></span></th>
+                  <th class="col-title sortable-th" data-sort="title">Titre <span class="sort-ind" aria-hidden="true"></span></th>
+                  <th class="col-lang sortable-th" data-sort="lang">Langue <span class="sort-ind" aria-hidden="true"></span></th>
+                  <th class="col-role sortable-th" data-sort="role">Rôle <span class="sort-ind" aria-hidden="true"></span></th>
+                  <th class="col-status sortable-th" data-sort="status">Statut <span class="sort-ind" aria-hidden="true"></span></th>
                 </tr>
               </thead>
               <tbody id="meta-doc-list"></tbody>
@@ -255,6 +281,23 @@ export class MetadataScreen {
     root.querySelector("#meta-batch-delete-btn")!.addEventListener("click", () => void this._runBatchDelete());
     root.querySelector("#validate-btn")!.addEventListener("click", () => this._runValidate());
     root.querySelector("#db-backup-btn")!.addEventListener("click", () => void this._runDbBackup());
+    root.querySelector("#audit-btn")!.addEventListener("click", () => void this._runAudit());
+    this._auditPanelEl = root.querySelector<HTMLElement>("#meta-audit-panel")!;
+    root.querySelector("#meta-hierarchy-btn")!.addEventListener("click", () => void this._toggleHierarchyView());
+
+    // Sortable column headers
+    root.querySelectorAll<HTMLElement>("th[data-sort]").forEach(th => {
+      th.addEventListener("click", () => {
+        const col = th.dataset.sort as SortCol;
+        if (this._sortCol === col) {
+          this._sortDir = this._sortDir === "asc" ? "desc" : "asc";
+        } else {
+          this._sortCol = col;
+          this._sortDir = "asc";
+        }
+        this._renderDocList();
+      });
+    });
 
     // Enable bulk-apply when any bulk field has value
     const bulkRole    = root.querySelector<HTMLSelectElement>("#bulk-role")!;
@@ -304,6 +347,25 @@ export class MetadataScreen {
 
   private _renderDocList(): void {
     this._updateDocCount();
+
+    if (this._hierarchyView) {
+      // Disable sort indicators in hierarchy mode
+      this._root.querySelectorAll<HTMLElement>("th[data-sort]").forEach(th => {
+        th.classList.remove("sort-active");
+        const ind = th.querySelector<HTMLElement>(".sort-ind");
+        if (ind) ind.textContent = "";
+      });
+      this._renderHierarchyList();
+      return;
+    }
+
+    // Refresh sort indicators on column headers
+    this._root.querySelectorAll<HTMLElement>("th[data-sort]").forEach(th => {
+      const isActive = th.dataset.sort === this._sortCol;
+      th.classList.toggle("sort-active", isActive);
+      const ind = th.querySelector<HTMLElement>(".sort-ind");
+      if (ind) ind.textContent = isActive ? (this._sortDir === "asc" ? " ↑" : " ↓") : " ⇅";
+    });
     if (this._docs.length === 0) {
       this._docListEl.innerHTML = `<tr><td colspan="6" class="meta-empty-cell">Aucun document.</td></tr>`;
       this._renderBatchBar();
@@ -350,6 +412,176 @@ export class MetadataScreen {
     }
     this._renderBatchBar();
     this._updateSelectAll();
+  }
+
+  // ── Hierarchy view ───────────────────────────────────────────────────────────
+
+  private async _toggleHierarchyView(): Promise<void> {
+    this._hierarchyView = !this._hierarchyView;
+    const btn = this._root.querySelector<HTMLButtonElement>("#meta-hierarchy-btn");
+    if (btn) {
+      btn.setAttribute("aria-pressed", String(this._hierarchyView));
+      btn.classList.toggle("btn-active", this._hierarchyView);
+      btn.textContent = this._hierarchyView ? "📋 Liste" : "🌿 Hiérarchie";
+    }
+    // Disable/enable filters in hierarchy mode
+    const filterInput = this._root.querySelector<HTMLInputElement>("#meta-doc-filter");
+    const statusSel   = this._root.querySelector<HTMLSelectElement>("#meta-status-filter");
+    if (filterInput) filterInput.disabled = this._hierarchyView;
+    if (statusSel)   statusSel.disabled   = this._hierarchyView;
+
+    if (this._hierarchyView && !this._allRelationsLoaded && this._conn) {
+      try {
+        this._allRelations = await getAllDocRelations(this._conn);
+        this._allRelationsLoaded = true;
+      } catch (err) {
+        this._log(`Erreur chargement relations : ${err instanceof SidecarError ? err.message : String(err)}`, true);
+        this._hierarchyView = false;
+        if (btn) { btn.setAttribute("aria-pressed", "false"); btn.classList.remove("btn-active"); btn.textContent = "🌿 Hiérarchie"; }
+        if (filterInput) filterInput.disabled = false;
+        if (statusSel)   statusSel.disabled   = false;
+        return;
+      }
+    }
+    this._renderDocList();
+  }
+
+  private _buildTree(): { roots: TreeNode[]; standalone: DocumentRecord[]; orphans: DocumentRecord[] } {
+    const docMap = new Map(this._docs.map(d => [d.doc_id, d]));
+    // childId → { parentId, relationLabel }
+    const childOf = new Map<number, { parentId: number; label: string }>();
+    // parentId → [{ childId, label }]
+    const parentTo = new Map<number, { childId: number; label: string }[]>();
+
+    for (const rel of this._allRelations) {
+      // rel.doc_id is "child", rel.target_doc_id is "parent"
+      if (!docMap.has(rel.doc_id)) continue;
+      childOf.set(rel.doc_id, { parentId: rel.target_doc_id, label: rel.relation_type });
+      if (!parentTo.has(rel.target_doc_id)) parentTo.set(rel.target_doc_id, []);
+      parentTo.get(rel.target_doc_id)!.push({ childId: rel.doc_id, label: rel.relation_type });
+    }
+
+    const roots: TreeNode[] = [];
+    const standalone: DocumentRecord[] = [];
+    const orphans: DocumentRecord[] = [];
+
+    for (const doc of this._docs) {
+      const childInfo = childOf.get(doc.doc_id);
+      if (childInfo) {
+        // This doc is a child — only show it under its parent
+        if (!docMap.has(childInfo.parentId)) {
+          orphans.push(doc); // parent missing from corpus
+        }
+        continue; // will be rendered as child of parent
+      }
+      // Not a child — check if it has children
+      const children = parentTo.get(doc.doc_id) ?? [];
+      if (children.length === 0) {
+        standalone.push(doc);
+      } else {
+        roots.push({
+          doc,
+          children: children
+            .map(c => ({ doc: docMap.get(c.childId)!, relationLabel: c.label, children: [] }))
+            .filter(n => n.doc != null),
+        });
+      }
+    }
+
+    return { roots, standalone, orphans };
+  }
+
+  private _renderHierarchyList(): void {
+    this._docListEl.innerHTML = "";
+    const { roots, standalone, orphans } = this._buildTree();
+
+    if (this._docs.length === 0) {
+      this._docListEl.innerHTML = `<tr><td colspan="6" class="meta-empty-cell">Aucun document.</td></tr>`;
+      return;
+    }
+
+    const appendRow = (doc: DocumentRecord, depth = 0, relationLabel?: string) => {
+      const tr = document.createElement("tr");
+      tr.className = "meta-doc-row";
+      if (depth > 0) tr.classList.add("tree-child");
+      if (this._selectedDoc?.doc_id === doc.doc_id) tr.classList.add("is-active");
+      const isChecked = this._selectedDocIds.has(doc.doc_id);
+      const wfStatus = this._workflowStatus(doc);
+      const wfLabel  = this._workflowLabel(wfStatus);
+      const indent   = depth > 0 ? `<span class="tree-connector" aria-hidden="true">└</span>` : "";
+      const relBadge = relationLabel
+        ? `<span class="tree-rel-badge">${this._esc(this._relLabel(relationLabel))}</span>`
+        : "";
+      tr.innerHTML = `
+        <td class="col-check">
+          <input class="meta-row-check" type="checkbox" data-id="${doc.doc_id}"
+            ${isChecked ? "checked" : ""} aria-label="Sélectionner doc ${doc.doc_id}" />
+        </td>
+        <td class="col-id">#${doc.doc_id}</td>
+        <td class="col-title tree-title-cell" title="${this._esc(doc.title)}" style="padding-left:${0.5 + depth * 1.4}rem">
+          ${indent}${relBadge}${this._esc(this._truncateMid(doc.title))}
+        </td>
+        <td class="col-lang">${this._esc(doc.language)}</td>
+        <td class="col-role">${this._esc(doc.doc_role ?? "—")}</td>
+        <td class="col-status"><span class="wf-pill wf-${wfStatus}">${wfLabel}</span></td>
+      `;
+      tr.querySelector(".meta-row-check")!.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const cb = e.target as HTMLInputElement;
+        if (cb.checked) this._selectedDocIds.add(doc.doc_id);
+        else this._selectedDocIds.delete(doc.doc_id);
+        this._renderBatchBar();
+        this._updateSelectAll();
+      });
+      tr.addEventListener("click", (e) => {
+        if ((e.target as HTMLElement).closest(".meta-row-check")) return;
+        void this._selectDoc(doc);
+      });
+      this._docListEl.appendChild(tr);
+    };
+
+    const appendSectionHeader = (label: string, count: number) => {
+      const tr = document.createElement("tr");
+      tr.className = "tree-section-header";
+      tr.innerHTML = `<td colspan="6" class="tree-section-label">${this._esc(label)} <span class="tree-section-count">${count}</span></td>`;
+      this._docListEl.appendChild(tr);
+    };
+
+    // Groups with parent→children
+    if (roots.length > 0) {
+      for (const node of roots) {
+        appendRow(node.doc, 0);
+        for (const child of node.children) {
+          appendRow(child.doc, 1, child.relationLabel);
+        }
+      }
+    }
+
+    // Standalone (no relations)
+    if (standalone.length > 0) {
+      if (roots.length > 0 || orphans.length > 0) {
+        appendSectionHeader("Documents indépendants", standalone.length);
+      }
+      for (const doc of standalone) appendRow(doc, 0);
+    }
+
+    // Orphans (parent absent du corpus)
+    if (orphans.length > 0) {
+      appendSectionHeader("Relations incomplètes (parent absent)", orphans.length);
+      for (const doc of orphans) appendRow(doc, 0);
+    }
+
+    this._renderBatchBar();
+    this._updateSelectAll();
+  }
+
+  /** Human-readable label for a relation type. */
+  private _relLabel(rel: string): string {
+    switch (rel) {
+      case "translation_of": return "trad.";
+      case "excerpt_of":     return "extrait";
+      default:               return rel;
+    }
   }
 
   private _renderBatchBar(): void {
@@ -409,6 +641,46 @@ export class MetadataScreen {
       return;
     }
 
+    // ── Author propagation context ──────────────────────────────────────────
+    // Parent: a doc that THIS doc is a translation/excerpt of
+    const parentRel = this._relations.find(r =>
+      r.relation_type === "translation_of" || r.relation_type === "excerpt_of"
+    );
+    const parentDoc = parentRel ? this._docs.find(d => d.doc_id === parentRel.target_doc_id) : null;
+    const parentHasAuthor = parentDoc && (parentDoc.author_lastname || parentDoc.author_firstname);
+
+    // Children: docs that are translations/excerpts of THIS doc (from _allRelations if loaded)
+    const childDocIds = this._allRelationsLoaded
+      ? this._allRelations
+          .filter(r =>
+            r.target_doc_id === doc.doc_id &&
+            (r.relation_type === "translation_of" || r.relation_type === "excerpt_of")
+          )
+          .map(r => r.doc_id)
+      : [];
+
+    const inheritHtml = parentHasAuthor
+      ? `<div class="author-inherit-banner">
+          <span class="author-inherit-from">
+            De l'original #${parentDoc!.doc_id} :
+            <strong>${this._esc([parentDoc!.author_lastname, parentDoc!.author_firstname].filter(Boolean).join(", "))}</strong>
+          </span>
+          <button id="inherit-author-btn" class="btn btn-secondary btn-sm author-inherit-btn"
+            title="Copier le nom et prénom de l'auteur depuis l'original">← Hériter</button>
+        </div>`
+      : "";
+
+    const propagateHtml = childDocIds.length > 0
+      ? `<button id="propagate-author-btn" class="btn btn-secondary btn-sm"
+            title="Appliquer le nom et prénom de l'auteur à toutes les traductions/extraits"
+            data-child-ids="${childDocIds.join(",")}">
+            → Propager aux ${childDocIds.length} traduction${childDocIds.length > 1 ? "s" : ""}
+          </button>`
+      : (this._allRelationsLoaded ? "" :
+          `<button id="propagate-author-btn" class="btn btn-secondary btn-sm"
+              title="Charger les traductions et appliquer le nom et prénom de l'auteur"
+              data-child-ids="">→ Propager…</button>`);
+
     this._editPanelEl.innerHTML = `
       <div class="form-row">
         <label style="flex:2">Titre
@@ -418,6 +690,18 @@ export class MetadataScreen {
           <input id="edit-lang" type="text" value="${this._esc(doc.language)}" style="max-width:80px">
         </label>
       </div>
+      <div class="form-row">
+        <label style="flex:1.2">Nom de l'auteur
+          <input id="edit-author-lastname" type="text" value="${this._esc(doc.author_lastname ?? "")}" placeholder="Dupont">
+        </label>
+        <label style="flex:1.2">Prénom de l'auteur
+          <input id="edit-author-firstname" type="text" value="${this._esc(doc.author_firstname ?? "")}" placeholder="Marie">
+        </label>
+        <label>Date
+          <input id="edit-doc-date" type="text" value="${this._esc(doc.doc_date ?? "")}" placeholder="2024 ou 2024-03-15" style="max-width:130px">
+        </label>
+      </div>
+      ${inheritHtml}
       <div class="form-row">
         <label>Rôle
           <select id="edit-role">
@@ -449,6 +733,7 @@ export class MetadataScreen {
         <button id="save-doc-btn" class="btn btn-primary btn-sm">Enregistrer</button>
         <button id="mark-review-btn" class="btn btn-secondary btn-sm">Marquer à revoir</button>
         <button id="mark-validated-btn" class="btn btn-secondary btn-sm">Valider ce document</button>
+        ${propagateHtml}
       </div>
 
       <h4 style="font-size:0.88rem;font-weight:600;margin:0.5rem 0 0.3rem">Relations documentaires</h4>
@@ -494,6 +779,102 @@ export class MetadataScreen {
     this._editPanelEl.querySelector("#mark-review-btn")!.addEventListener("click", () => this._setWorkflowStatus("review"));
     this._editPanelEl.querySelector("#mark-validated-btn")!.addEventListener("click", () => this._setWorkflowStatus("validated"));
     this._editPanelEl.querySelector("#add-rel-btn")!.addEventListener("click", () => this._addRelation());
+
+    this._editPanelEl.querySelector<HTMLButtonElement>("#inherit-author-btn")
+      ?.addEventListener("click", () => this._inheritAuthorFromParent());
+
+    this._editPanelEl.querySelector<HTMLButtonElement>("#propagate-author-btn")
+      ?.addEventListener("click", (e) => {
+        const btn = e.currentTarget as HTMLButtonElement;
+        const ids = btn.dataset.childIds
+          ? btn.dataset.childIds.split(",").map(Number).filter(Boolean)
+          : [];
+        void this._propagateAuthorToChildren(ids, btn);
+      });
+  }
+
+  private _inheritAuthorFromParent(): void {
+    const parentRel = this._relations.find(r =>
+      r.relation_type === "translation_of" || r.relation_type === "excerpt_of"
+    );
+    const parent = parentRel ? this._docs.find(d => d.doc_id === parentRel.target_doc_id) : null;
+    if (!parent) return;
+
+    const lastnameEl  = this._editPanelEl.querySelector<HTMLInputElement>("#edit-author-lastname");
+    const firstnameEl = this._editPanelEl.querySelector<HTMLInputElement>("#edit-author-firstname");
+    if (lastnameEl)  lastnameEl.value  = parent.author_lastname  ?? "";
+    if (firstnameEl) firstnameEl.value = parent.author_firstname ?? "";
+
+    // Visual feedback on the button
+    const btn = this._editPanelEl.querySelector<HTMLButtonElement>("#inherit-author-btn");
+    if (btn) { btn.textContent = "✓ Hérité"; btn.disabled = true; }
+  }
+
+  private async _propagateAuthorToChildren(childIds: number[], btn: HTMLButtonElement): Promise<void> {
+    if (!this._conn || !this._selectedDoc) return;
+
+    // If childIds is empty, relations weren't loaded yet — load them now
+    if (childIds.length === 0) {
+      btn.disabled = true;
+      btn.textContent = "Chargement…";
+      try {
+        this._allRelations = await getAllDocRelations(this._conn);
+        this._allRelationsLoaded = true;
+        childIds = this._allRelations
+          .filter(r =>
+            r.target_doc_id === this._selectedDoc!.doc_id &&
+            (r.relation_type === "translation_of" || r.relation_type === "excerpt_of")
+          )
+          .map(r => r.doc_id);
+      } catch (err) {
+        this._log(`Erreur chargement relations : ${err instanceof SidecarError ? err.message : String(err)}`, true);
+        btn.disabled = false;
+        btn.textContent = "→ Propager…";
+        return;
+      }
+      if (childIds.length === 0) {
+        btn.textContent = "Aucun enfant trouvé";
+        return;
+      }
+      btn.dataset.childIds = childIds.join(",");
+      btn.textContent = `→ Propager aux ${childIds.length} traduction${childIds.length > 1 ? "s" : ""}`;
+      btn.disabled = false;
+      return; // let user confirm by clicking again
+    }
+
+    const lastname  = this._editPanelEl.querySelector<HTMLInputElement>("#edit-author-lastname")?.value.trim() || null;
+    const firstname = this._editPanelEl.querySelector<HTMLInputElement>("#edit-author-firstname")?.value.trim() || null;
+
+    if (!lastname && !firstname) {
+      this._log("Aucun auteur renseigné sur ce document — rien à propager.", true);
+      return;
+    }
+
+    if (!confirm(`Appliquer "${[lastname, firstname].filter(Boolean).join(", ")}" comme auteur sur ${childIds.length} document(s) enfant(s) ?`)) return;
+
+    btn.disabled = true;
+    btn.textContent = "Propagation…";
+    try {
+      const updates = childIds.map(id => ({
+        doc_id: id,
+        author_lastname: lastname,
+        author_firstname: firstname,
+      }));
+      await bulkUpdateDocuments(this._conn, updates);
+      // Update in-memory cache
+      for (const id of childIds) {
+        const idx = this._docs.findIndex(d => d.doc_id === id);
+        if (idx >= 0) {
+          this._docs[idx] = { ...this._docs[idx], author_lastname: lastname, author_firstname: firstname };
+        }
+      }
+      btn.textContent = `✓ Propagé à ${childIds.length} doc(s)`;
+      this._log(`✓ Auteur propagé à ${childIds.length} document(s) enfant(s).`);
+    } catch (err) {
+      this._log(`Erreur propagation : ${err instanceof SidecarError ? err.message : String(err)}`, true);
+      btn.disabled = false;
+      btn.textContent = `→ Propager aux ${childIds.length} traduction${childIds.length > 1 ? "s" : ""}`;
+    }
   }
 
   private _renderRelationsList(): void {
@@ -536,6 +917,9 @@ export class MetadataScreen {
     const resource_type = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-restype")!).value.trim() || undefined;
     const workflow_status = this._workflowStatusFromForm();
     const validated_run_id = this._validatedRunIdFromForm();
+    const author_lastname = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-author-lastname")!).value.trim() || null;
+    const author_firstname = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-author-firstname")!).value.trim() || null;
+    const doc_date = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-doc-date")!).value.trim() || null;
 
     const btn = this._editPanelEl.querySelector<HTMLButtonElement>("#save-doc-btn")!;
     btn.disabled = true;
@@ -550,6 +934,9 @@ export class MetadataScreen {
         ...(workflow_status === "validated" && validated_run_id
           ? { validated_run_id }
           : {}),
+        author_lastname,
+        author_firstname,
+        doc_date,
       });
       const updated = res.doc;
       this._applyUpdatedDoc(updated);
@@ -610,7 +997,11 @@ export class MetadataScreen {
       });
       const res = await getDocRelations(this._conn, this._selectedDoc.doc_id);
       this._relations = res.relations;
+      this._allRelationsLoaded = false; // force reload for hierarchy view
       this._renderRelationsList();
+      if (this._hierarchyView) this._allRelations = await getAllDocRelations(this._conn);
+      this._allRelationsLoaded = this._hierarchyView;
+      this._renderDocList();
       this._log(`✓ Relation ${rel_type} → doc #${target_doc_id} ajoutée.`);
     } catch (err) {
       this._log(`Erreur ajout relation: ${err instanceof SidecarError ? err.message : String(err)}`, true);
@@ -623,7 +1014,14 @@ export class MetadataScreen {
     try {
       await deleteDocRelation(this._conn, id);
       this._relations = this._relations.filter(r => r.id !== id);
+      if (this._conn && this._hierarchyView) {
+        this._allRelations = await getAllDocRelations(this._conn);
+        this._allRelationsLoaded = true;
+      } else {
+        this._allRelationsLoaded = false;
+      }
       this._renderRelationsList();
+      this._renderDocList();
       this._log(`✓ Relation #${id} supprimée.`);
     } catch (err) {
       this._log(`Erreur suppression: ${err instanceof SidecarError ? err.message : String(err)}`, true);
@@ -702,6 +1100,10 @@ export class MetadataScreen {
       this._selectedDoc = null;
       this._log(`✓ ${res.deleted} document(s) supprimé(s).`);
       await this._refreshDocList();
+      // Si le panneau d'audit est ouvert, le relancer pour refléter les suppressions
+      if (this._auditPanelEl && !this._auditPanelEl.hidden) {
+        await this._runAudit();
+      }
     } catch (err) {
       this._log(`Erreur suppression : ${err instanceof SidecarError ? err.message : String(err)}`, true);
     } finally {
@@ -862,16 +1264,31 @@ export class MetadataScreen {
         return true;
       });
     }
-    if (!this._docFilter) return docs;
-    const q = this._docFilter;
-    return docs.filter((doc) => {
-      const title   = (doc.title ?? "").toLowerCase();
-      const lang    = (doc.language ?? "").toLowerCase();
-      const role    = (doc.doc_role ?? "").toLowerCase();
-      const restype = (doc.resource_type ?? "").toLowerCase();
-      const id      = String(doc.doc_id);
-      return title.includes(q) || lang.includes(q) || role.includes(q) || restype.includes(q) || id.includes(q);
+    if (this._docFilter) {
+      const q = this._docFilter;
+      docs = docs.filter((doc) => {
+        const title   = (doc.title ?? "").toLowerCase();
+        const lang    = (doc.language ?? "").toLowerCase();
+        const role    = (doc.doc_role ?? "").toLowerCase();
+        const restype = (doc.resource_type ?? "").toLowerCase();
+        const id      = String(doc.doc_id);
+        return title.includes(q) || lang.includes(q) || role.includes(q) || restype.includes(q) || id.includes(q);
+      });
+    }
+    // Sort
+    const dir = this._sortDir === "asc" ? 1 : -1;
+    const col = this._sortCol;
+    docs = [...docs].sort((a, b) => {
+      switch (col) {
+        case "id":     return dir * (a.doc_id - b.doc_id);
+        case "title":  return dir * (a.title ?? "").localeCompare(b.title ?? "", undefined, { sensitivity: "base" });
+        case "lang":   return dir * (a.language ?? "").localeCompare(b.language ?? "", undefined, { sensitivity: "base" });
+        case "role":   return dir * (a.doc_role ?? "").localeCompare(b.doc_role ?? "", undefined, { sensitivity: "base" });
+        case "status": return dir * this._workflowStatus(a).localeCompare(this._workflowStatus(b));
+        default:       return 0;
+      }
     });
+    return docs;
   }
 
   private _esc(s: string): string {
@@ -924,19 +1341,25 @@ export class MetadataScreen {
 
   private _isSelectedDocDirty(): boolean {
     if (!this._selectedDoc || !this._editPanelEl) return false;
-    const title          = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-title")?.value ?? "").trim();
-    const language       = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-lang")?.value ?? "").trim();
-    const docRole        = (this._editPanelEl.querySelector<HTMLSelectElement>("#edit-role")?.value ?? "").trim();
-    const resourceType   = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-restype")?.value ?? "").trim();
-    const workflow       = (this._editPanelEl.querySelector<HTMLSelectElement>("#edit-workflow-status")?.value ?? "draft").trim();
-    const validatedRunId = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-validated-run-id")?.value ?? "").trim();
+    const title           = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-title")?.value ?? "").trim();
+    const language        = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-lang")?.value ?? "").trim();
+    const docRole         = (this._editPanelEl.querySelector<HTMLSelectElement>("#edit-role")?.value ?? "").trim();
+    const resourceType    = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-restype")?.value ?? "").trim();
+    const workflow        = (this._editPanelEl.querySelector<HTMLSelectElement>("#edit-workflow-status")?.value ?? "draft").trim();
+    const validatedRunId  = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-validated-run-id")?.value ?? "").trim();
+    const authorLastname  = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-author-lastname")?.value ?? "").trim();
+    const authorFirstname = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-author-firstname")?.value ?? "").trim();
+    const docDate         = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-doc-date")?.value ?? "").trim();
 
-    const baseTitle          = (this._selectedDoc.title ?? "").trim();
-    const baseLanguage       = (this._selectedDoc.language ?? "").trim();
-    const baseDocRole        = (this._selectedDoc.doc_role ?? "unknown").trim();
-    const baseResourceType   = (this._selectedDoc.resource_type ?? "").trim();
-    const baseWorkflow       = this._workflowStatus(this._selectedDoc);
-    const baseValidatedRunId = (this._selectedDoc.validated_run_id ?? "").trim();
+    const baseTitle           = (this._selectedDoc.title ?? "").trim();
+    const baseLanguage        = (this._selectedDoc.language ?? "").trim();
+    const baseDocRole         = (this._selectedDoc.doc_role ?? "unknown").trim();
+    const baseResourceType    = (this._selectedDoc.resource_type ?? "").trim();
+    const baseWorkflow        = this._workflowStatus(this._selectedDoc);
+    const baseValidatedRunId  = (this._selectedDoc.validated_run_id ?? "").trim();
+    const baseAuthorLastname  = (this._selectedDoc.author_lastname ?? "").trim();
+    const baseAuthorFirstname = (this._selectedDoc.author_firstname ?? "").trim();
+    const baseDocDate         = (this._selectedDoc.doc_date ?? "").trim();
 
     return (
       title !== baseTitle ||
@@ -944,7 +1367,10 @@ export class MetadataScreen {
       docRole !== baseDocRole ||
       resourceType !== baseResourceType ||
       workflow !== baseWorkflow ||
-      validatedRunId !== baseValidatedRunId
+      validatedRunId !== baseValidatedRunId ||
+      authorLastname !== baseAuthorLastname ||
+      authorFirstname !== baseAuthorFirstname ||
+      docDate !== baseDocDate
     );
   }
 
@@ -980,6 +1406,314 @@ export class MetadataScreen {
       return;
     }
     this._setRuntimeState("ok", `${this._docs.length} document(s) chargés. Prêt.`);
+  }
+
+  // ── Corpus audit ─────────────────────────────────────────────────────────────
+
+  private async _runAudit(): Promise<void> {
+    if (!this._conn) {
+      this._setRuntimeState("error", "Sidecar indisponible.");
+      return;
+    }
+    const btn = this._root.querySelector<HTMLButtonElement>("#audit-btn");
+    if (btn) { btn.disabled = true; btn.textContent = "Audit en cours…"; }
+    try {
+      this._auditResult = await getCorpusAudit(this._conn);
+      this._renderAuditPanel();
+    } catch (err) {
+      this._lastErrorMsg = err instanceof SidecarError ? err.message : String(err);
+      this._refreshRuntimeState();
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = "🔍 Audit corpus"; }
+    }
+  }
+
+  private _renderAuditPanel(): void {
+    const panel = this._auditPanelEl;
+    if (!panel) return;
+    const r = this._auditResult;
+    if (!r) { panel.hidden = true; return; }
+
+    panel.innerHTML = "";
+    panel.hidden = false;
+
+    // ── Header ────────────────────────────────────────────────────────────────
+    const header = document.createElement("div");
+    header.className = r.total_issues === 0 ? "audit-header audit-header-ok" : "audit-header audit-header-warn";
+
+    const headerText = document.createElement("span");
+    headerText.textContent = r.total_issues === 0
+      ? `✅ Corpus sain — ${r.total_docs} document(s), aucun problème détecté.`
+      : `⚠️ ${r.total_issues} problème(s) sur ${r.total_docs} document(s)`;
+
+    const closeBtn = document.createElement("button");
+    closeBtn.className = "audit-close-btn";
+    closeBtn.title = "Fermer";
+    closeBtn.textContent = "✕";
+    closeBtn.addEventListener("click", () => { panel.hidden = true; this._auditResult = null; });
+
+    header.appendChild(headerText);
+    header.appendChild(closeBtn);
+    panel.appendChild(header);
+
+    // ── Sections ──────────────────────────────────────────────────────────────
+    if (r.missing_fields.length > 0) {
+      panel.appendChild(this._auditSimpleSection(
+        "Champs manquants",
+        r.missing_fields.map(e => ({ docId: e.doc_id, extra: e.missing.join(", ") })),
+      ));
+    }
+    if (r.empty_documents.length > 0) {
+      panel.appendChild(this._auditSimpleSection(
+        "Documents vides (0 unité importée)",
+        r.empty_documents.map(e => ({ docId: e.doc_id, extra: "" })),
+      ));
+    }
+    if (r.duplicate_hashes.length > 0) {
+      panel.appendChild(this._auditGroupSection(
+        "Doublons de contenu (même fichier importé plusieurs fois)",
+        r.duplicate_hashes.map(g => ({ label: `hash ${g.hash_prefix}…`, ids: g.doc_ids })),
+      ));
+    }
+    if (r.duplicate_filenames.length > 0) {
+      panel.appendChild(this._auditGroupSection(
+        "Doublons de nom de fichier",
+        r.duplicate_filenames.map(g => ({ label: g.filename, ids: g.doc_ids })),
+      ));
+    }
+    if (r.duplicate_titles.length > 0) {
+      panel.appendChild(this._auditGroupSection(
+        "Doublons de titre",
+        r.duplicate_titles.map(g => ({ label: `«${g.title}»`, ids: g.doc_ids })),
+      ));
+    }
+  }
+
+  // ── Audit helpers ─────────────────────────────────────────────────────────
+
+  private _auditSelectIds(ids: number[], feedbackBtn?: HTMLButtonElement): void {
+    // Toggle: if all ids are already selected → deselect, otherwise select all
+    const allSelected = ids.every(id => this._selectedDocIds.has(id));
+    if (allSelected) {
+      ids.forEach(id => this._selectedDocIds.delete(id));
+    } else {
+      ids.forEach(id => this._selectedDocIds.add(id));
+    }
+
+    // Update checkboxes inside the audit panel without rebuilding it
+    this._auditPanelEl?.querySelectorAll<HTMLInputElement>(".audit-doc-check").forEach(cb => {
+      const id = Number(cb.dataset.docId);
+      if (id && ids.includes(id)) cb.checked = this._selectedDocIds.has(id);
+    });
+
+    // Update button label to reflect current state
+    if (feedbackBtn) {
+      const isNowSelected = !allSelected;
+      feedbackBtn.textContent = isNowSelected
+        ? (ids.length === 1 ? "Désélectionner" : "Tout désélectionner")
+        : (ids.length === 1 ? "Sélectionner" : "Tout sélectionner");
+    }
+
+    this._renderDocList();
+    this._renderBatchBar();
+
+    // Scroll so the user sees the batch bar when selecting
+    if (!allSelected) this._batchBarEl?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
+  private _auditNavToDoc(docId: number): void {
+    const doc = this._docs.find(d => d.doc_id === docId);
+    if (!doc) return;
+    this._selectedDoc = doc;
+    this._renderDocList();
+    this._renderEditPanel();
+    this._editPanelEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
+  /** One doc row: [ ☐ ] [#id] [title…………] [lang · role] [→] */
+  private _auditDocRow(docId: number, extra: string, onToggle?: () => void): HTMLElement {
+    const doc = this._docs.find(d => d.doc_id === docId);
+    const title = doc?.title ?? `doc #${docId}`;
+    const lang  = doc?.language ?? "";
+    const role  = doc?.doc_role ?? "";
+
+    const row = document.createElement("div");
+    row.className = "audit-doc-row";
+
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.className = "audit-doc-check";
+    cb.dataset.docId = String(docId);
+    cb.checked = this._selectedDocIds.has(docId);
+    cb.title = "Ajouter / retirer de la sélection";
+    cb.addEventListener("change", () => {
+      if (cb.checked) this._selectedDocIds.add(docId);
+      else            this._selectedDocIds.delete(docId);
+      this._renderBatchBar();
+      if (cb.checked) this._batchBarEl?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      onToggle?.();
+    });
+
+    const idBadge = document.createElement("span");
+    idBadge.className = "audit-doc-id-badge";
+    idBadge.textContent = `#${docId}`;
+
+    const titleEl = document.createElement("span");
+    titleEl.className = "audit-doc-title-cell";
+    titleEl.textContent = this._truncateMid(title, 44);
+    titleEl.title = title;
+
+    const metaEl = document.createElement("span");
+    metaEl.className = "audit-doc-meta";
+    metaEl.textContent = extra || [lang, role].filter(Boolean).join(" · ");
+
+    const navBtn = document.createElement("button");
+    navBtn.className = "audit-doc-nav-btn";
+    navBtn.textContent = "→";
+    navBtn.title = `Ouvrir la fiche du document #${docId}`;
+    navBtn.addEventListener("click", () => this._auditNavToDoc(docId));
+
+    row.appendChild(cb);
+    row.appendChild(idBadge);
+    row.appendChild(titleEl);
+    row.appendChild(metaEl);
+    row.appendChild(navBtn);
+    return row;
+  }
+
+  /** Section with one row per document (missing fields, empty docs). */
+  private _auditSimpleSection(
+    title: string,
+    items: { docId: number; extra: string }[],
+  ): HTMLDetailsElement {
+    const allIds = items.map(i => i.docId);
+    const details = document.createElement("details");
+    details.className = "audit-section";
+    details.open = items.length <= 15;
+
+    const summary = this._auditSummary(title, items.length,
+      `${items.length} document${items.length > 1 ? "s" : ""}`, allIds);
+    details.appendChild(summary);
+
+    const body = document.createElement("div");
+    body.className = "audit-section-body";
+    items.forEach(item => body.appendChild(this._auditDocRow(item.docId, item.extra)));
+    details.appendChild(body);
+    return details;
+  }
+
+  /** Section with group cards (duplicate hashes / filenames / titles). */
+  private _auditGroupSection(
+    title: string,
+    groups: { label: string; ids: number[] }[],
+  ): HTMLDetailsElement {
+    const PAGE = 20;
+    const totalDocs = groups.reduce((s, g) => s + g.ids.length, 0);
+    const allIds = groups.flatMap(g => g.ids);
+
+    const details = document.createElement("details");
+    details.className = "audit-section";
+    details.open = groups.length <= 5;
+
+    const summary = this._auditSummary(title, groups.length,
+      `${groups.length} groupe${groups.length > 1 ? "s" : ""} · ${totalDocs} documents`, allIds);
+    details.appendChild(summary);
+
+    const body = document.createElement("div");
+    body.className = "audit-section-body";
+
+    const makeCard = (g: { label: string; ids: number[] }): HTMLElement => {
+      const card = document.createElement("div");
+      card.className = "audit-group-card";
+
+      const head = document.createElement("div");
+      head.className = "audit-group-head";
+
+      const labelEl = document.createElement("span");
+      labelEl.className = "audit-group-label";
+      labelEl.textContent = g.label;
+      labelEl.title = g.label;
+
+      const countEl = document.createElement("span");
+      countEl.className = "audit-group-count";
+      countEl.textContent = `${g.ids.length} copie${g.ids.length > 1 ? "s" : ""}`;
+
+      const selBtn = document.createElement("button");
+      selBtn.className = "audit-sel-btn audit-sel-btn-sm";
+      selBtn.textContent = "Sélectionner";
+      selBtn.title = "Ajouter ce groupe à la sélection (puis Supprimer dans la barre)";
+      const updateSelBtn = () => {
+        const allSel = g.ids.every(id => this._selectedDocIds.has(id));
+        selBtn.textContent = allSel ? "Tout désélectionner" : "Sélectionner";
+      };
+      selBtn.addEventListener("click", () => { this._auditSelectIds(g.ids, selBtn); updateSelBtn(); });
+
+      head.appendChild(labelEl);
+      head.appendChild(countEl);
+      head.appendChild(selBtn);
+      card.appendChild(head);
+
+      g.ids.forEach(id => card.appendChild(this._auditDocRow(id, "", updateSelBtn)));
+      return card;
+    };
+
+    const firstPage = groups.slice(0, PAGE);
+    const rest = groups.slice(PAGE);
+    firstPage.forEach(g => body.appendChild(makeCard(g)));
+
+    if (rest.length > 0) {
+      let offset = 0;
+      const moreBtn = document.createElement("button");
+      moreBtn.className = "audit-show-more-btn";
+      const updateMoreBtn = () => {
+        const remaining = rest.length - offset;
+        moreBtn.textContent = `Afficher ${Math.min(PAGE, remaining)} groupe${remaining > 1 ? "s" : ""} de plus… (${remaining} restant${remaining > 1 ? "s" : ""})`;
+      };
+      updateMoreBtn();
+      moreBtn.addEventListener("click", () => {
+        const batch = rest.slice(offset, offset + PAGE);
+        batch.forEach(g => body.insertBefore(makeCard(g), moreBtn));
+        offset += batch.length;
+        if (offset >= rest.length) moreBtn.remove();
+        else updateMoreBtn();
+      });
+      body.appendChild(moreBtn);
+    }
+
+    details.appendChild(body);
+    return details;
+  }
+
+  /** Shared <summary> element for audit sections. */
+  private _auditSummary(title: string, count: number, metaText: string, allIds: number[]): HTMLElement {
+    const summary = document.createElement("summary");
+    summary.className = "audit-section-head";
+
+    const badge = document.createElement("span");
+    badge.className = "audit-badge audit-badge-warn";
+    badge.textContent = String(count);
+
+    const titleEl = document.createElement("strong");
+    titleEl.textContent = title;
+
+    const meta = document.createElement("span");
+    meta.className = "audit-section-meta";
+    meta.textContent = metaText;
+
+    const selAllBtn = document.createElement("button");
+    selAllBtn.className = "audit-sel-btn";
+    selAllBtn.textContent = "Tout sélectionner";
+    selAllBtn.title = "Ajouter tous ces documents à la sélection pour action groupée";
+    selAllBtn.addEventListener("click", e => {
+      e.stopPropagation(); // prevent <details> toggle
+      this._auditSelectIds(allIds, selAllBtn);
+    });
+
+    summary.appendChild(badge);
+    summary.appendChild(titleEl);
+    summary.appendChild(meta);
+    summary.appendChild(selAllBtn);
+    return summary;
   }
 
   dispose(): void { /* nothing to clean up */ }

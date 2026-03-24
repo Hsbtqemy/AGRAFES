@@ -191,6 +191,15 @@ When `multicorpus serve` starts and a portfile already exists:
   - returns `corpus`: `{ title?, description?, meta? (object), updated_at? }` — métadonnées de la base (une ligne par DB)
 - `POST /corpus/info` (token required when enabled)
   - body (partiel): `{ title?, description?, meta? }` — seuls les champs présents sont mis à jour ; `meta` remplace l’objet entier si fourni
+- `GET /corpus/audit`
+  - returns a health report for the corpus (no params needed):
+    - `total_docs` — total number of documents
+    - `total_issues` — sum of all detected issues
+    - `missing_fields` — list of `{ doc_id, title, missing: string[] }` where `missing` contains any of `title`, `language`, `doc_role`
+    - `empty_documents` — list of `{ doc_id, title }` for documents with 0 imported units
+    - `duplicate_hashes` — list of `{ hash_prefix, doc_ids }` grouping documents with identical content
+    - `duplicate_filenames` — list of `{ filename, doc_ids }` grouping documents with the same source filename (case-insensitive)
+    - `duplicate_titles` — list of `{ title, doc_ids }` grouping documents with the same title (case-insensitive)
 - `POST /validate-meta`
 - `POST /segment`
   - body: `{ doc_id, lang?, pack? }`
@@ -265,17 +274,21 @@ Response now includes pagination fields: `total`, `limit`, `offset`, `has_more`,
 ### V0.4A — Metadata panel (token required for writes)
 
 - `GET /doc_relations?doc_id=N` — list relations for a document (no token)
+- `GET /doc_relations/all` — all doc_relations in the corpus (for hierarchy view, no token)
 - `GET /documents` — document list now includes workflow fields:
   - `workflow_status`: `draft|review|validated`
   - `validated_at`: string|null
   - `validated_run_id`: string|null
+  - `author_lastname`: string|null — nom de famille de l'auteur principal (optionnel)
+  - `author_firstname`: string|null — prénom de l'auteur principal (optionnel)
+  - `doc_date`: string|null — date du document en texte libre, ex. "2024" ou "2024-03-15" (optionnel)
 - `GET /documents/preview?doc_id=N&limit=M` — mini aperçu du contenu (read-only)
   - `limit` optionnel, défaut `6`, bornes `1..20`
   - retourne les premières unités `line` triées par `n`:
     - `lines: [{ unit_id, n, external_id|null, text }]`
     - `count`, `total_lines`, `limit`
 - `POST /documents/update` — update one document metadata + workflow status
-  - body: `{ doc_id, title?, language?, doc_role?, resource_type?, workflow_status?, validated_run_id? }`
+  - body: `{ doc_id, title?, language?, doc_role?, resource_type?, workflow_status?, validated_run_id?, author_lastname?, author_firstname?, doc_date? }`
   - returns: `{ updated: int, doc: DocumentRecord }`
 - `POST /documents/bulk_update` — update multiple docs at once
   - body: `{ updates: [{doc_id, title?, language?, doc_role?, resource_type?, workflow_status?}, …] }`

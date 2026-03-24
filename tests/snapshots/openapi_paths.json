@@ -1,6 +1,8 @@
 [
+  "GET /corpus/audit",
   "GET /corpus/info",
   "GET /doc_relations",
+  "GET /doc_relations/all",
   "GET /documents",
   "GET /documents/preview",
   "GET /health",

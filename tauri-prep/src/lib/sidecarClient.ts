@@ -40,6 +40,10 @@ export interface DocumentRecord {
   source_path?: string | null;
   /** SHA-256 hex of source file at import. */
   source_hash?: string | null;
+  author_lastname?: string | null;
+  author_firstname?: string | null;
+  /** Free-form date string: "2024", "2024-03", "2024-03-15", etc. */
+  doc_date?: string | null;
   unit_count: number;
 }
 
@@ -65,6 +69,37 @@ export interface CorpusInfoRecord {
   description: string | null;
   meta: Record<string, unknown>;
   updated_at: string | null;
+}
+
+export interface AuditMissingFieldsEntry {
+  doc_id: number;
+  title: string;
+  missing: string[];
+}
+export interface AuditEmptyDocEntry {
+  doc_id: number;
+  title: string;
+}
+export interface AuditDuplicateHashEntry {
+  hash_prefix: string;
+  doc_ids: number[];
+}
+export interface AuditDuplicateFilenameEntry {
+  filename: string;
+  doc_ids: number[];
+}
+export interface AuditDuplicateTitleEntry {
+  title: string;
+  doc_ids: number[];
+}
+export interface CorpusAuditResult {
+  total_docs: number;
+  total_issues: number;
+  missing_fields: AuditMissingFieldsEntry[];
+  empty_documents: AuditEmptyDocEntry[];
+  duplicate_hashes: AuditDuplicateHashEntry[];
+  duplicate_filenames: AuditDuplicateFilenameEntry[];
+  duplicate_titles: AuditDuplicateTitleEntry[];
 }
 
 export interface ImportOptions {
@@ -355,6 +390,9 @@ export interface DocumentUpdateOptions {
   resource_type?: string;
   workflow_status?: "draft" | "review" | "validated";
   validated_run_id?: string | null;
+  author_lastname?: string | null;
+  author_firstname?: string | null;
+  doc_date?: string | null;
 }
 
 export interface DocRelationRecord {
@@ -1357,6 +1395,10 @@ export async function updateCorpusInfo(
   return res.corpus;
 }
 
+export async function getCorpusAudit(conn: Conn): Promise<CorpusAuditResult> {
+  return conn.get("/corpus/audit") as Promise<CorpusAuditResult>;
+}
+
 export async function importFile(conn: Conn, opts: ImportOptions): Promise<ImportResponse> {
   return conn.post("/import", opts) as Promise<ImportResponse>;
 }
@@ -1421,6 +1463,11 @@ export async function deleteDocuments(conn: Conn, docIds: number[]): Promise<{ d
 
 export async function getDocRelations(conn: Conn, doc_id: number): Promise<DocRelationsResponse> {
   return conn.get(`/doc_relations?doc_id=${doc_id}`) as Promise<DocRelationsResponse>;
+}
+
+export async function getAllDocRelations(conn: Conn): Promise<DocRelationRecord[]> {
+  const res = (await conn.get("/doc_relations/all")) as { relations: DocRelationRecord[] };
+  return res.relations;
 }
 
 export async function setDocRelation(conn: Conn, opts: DocRelationSetOptions): Promise<{ action: string; id: number }> {

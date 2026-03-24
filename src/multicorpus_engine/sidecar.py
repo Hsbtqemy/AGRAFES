@@ -66,6 +66,49 @@ def sidecar_portfile_path(db_path: str | Path) -> Path:
     return Path(db_path).resolve().parent / ".agrafes_sidecar.json"
 
 
+def _find_free_port(host: str = "127.0.0.1") -> int:
+    """Pick a free TCP port avoiding Windows-excluded ranges (e.g. 50000-50059).
+
+    Falls back to OS-assigned port (bind to 0) if no port found in safe range.
+    """
+    import random
+    import socket as _socket
+
+    # Query Windows excluded port ranges dynamically when possible
+    excluded: list[tuple[int, int]] = []
+    try:
+        import subprocess
+        result = subprocess.run(
+            ["netsh", "int", "ipv4", "show", "excludedportrange", "protocol=tcp"],
+            capture_output=True, text=True, timeout=3,
+        )
+        for line in result.stdout.splitlines():
+            parts = line.split()
+            if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
+                excluded.append((int(parts[0]), int(parts[1])))
+    except Exception:
+        # Fallback: common Windows reserved ranges
+        excluded = [(50000, 50059), (28385, 28385), (28390, 28390)]
+
+    candidates = list(range(49152, 65501))
+    random.shuffle(candidates)
+    for port in candidates:
+        if any(lo <= port <= hi for lo, hi in excluded):
+            continue
+        try:
+            with _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM) as s:
+                s.setsockopt(_socket.SOL_SOCKET, _socket.SO_REUSEADDR, 1)
+                s.bind((host, port))
+                return port
+        except OSError:
+            continue
+
+    # Ultimate fallback: let the OS pick
+    with _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM) as s:
+        s.bind((host, 0))
+        return s.getsockname()[1]
+
+
 def utcnow_iso() -> str:
     return dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -444,6 +487,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             self._handle_unit_context(qs)
         elif path == "/doc_relations":
             self._handle_doc_relations_get()
+        elif path == "/doc_relations/all":
+            self._handle_doc_relations_all()
         elif path == "/jobs":
             self._handle_jobs_list()
         elif path.startswith("/jobs/"):
@@ -464,6 +509,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             })
         elif path == "/corpus/info":
             self._handle_corpus_info_get()
+        elif path == "/corpus/audit":
+            self._handle_corpus_audit()
         else:
             self._send_error(
                 f"Unknown route: {path}",
@@ -2355,7 +2402,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             SELECT d.doc_id, d.title, d.language, d.doc_role, d.resource_type,
                    d.workflow_status, d.validated_at, d.validated_run_id,
                    d.source_path, d.source_hash,
-                   COUNT(u.unit_id) AS unit_count
+                   COUNT(u.unit_id) AS unit_count,
+                   d.author_lastname, d.author_firstname, d.doc_date
             FROM documents d
             LEFT JOIN units u ON u.doc_id = d.doc_id AND u.unit_type = 'line'
             GROUP BY d.doc_id
@@ -2375,18 +2423,25 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 "source_path": r[8],
                 "source_hash": r[9],
                 "unit_count": r[10],
+                "author_lastname": r[11],
+                "author_firstname": r[12],
+                "doc_date": r[13],
             }
             for r in rows
         ]
         self._send_json(success_payload({"documents": documents, "count": len(documents)}))
 
     def _ensure_document_workflow_columns(self) -> None:
-        """Backfill workflow columns when running against legacy DB schemas."""
+        """Backfill optional document columns when running against legacy DB schemas."""
+        required = {
+            "workflow_status", "validated_at", "validated_run_id",
+            "author_lastname", "author_firstname", "doc_date",
+        }
         cols = {
             row[1]
             for row in self._conn().execute("PRAGMA table_info(documents)").fetchall()
         }
-        if {"workflow_status", "validated_at", "validated_run_id"}.issubset(cols):
+        if required.issubset(cols):
             return
 
         with self._lock():
@@ -2404,6 +2459,12 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 self._conn().execute(
                     "ALTER TABLE documents ADD COLUMN validated_run_id TEXT"
                 )
+            if "author_lastname" not in cols:
+                self._conn().execute("ALTER TABLE documents ADD COLUMN author_lastname TEXT")
+            if "author_firstname" not in cols:
+                self._conn().execute("ALTER TABLE documents ADD COLUMN author_firstname TEXT")
+            if "doc_date" not in cols:
+                self._conn().execute("ALTER TABLE documents ADD COLUMN doc_date TEXT")
             self._conn().execute(
                 "CREATE INDEX IF NOT EXISTS idx_documents_workflow_status ON documents (workflow_status)"
             )
@@ -2450,7 +2511,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         doc_row = self._conn().execute(
             """
             SELECT doc_id, title, language, doc_role, resource_type,
-                   workflow_status, validated_at, validated_run_id
+                   workflow_status, validated_at, validated_run_id,
+                   author_lastname, author_firstname, doc_date
             FROM documents
             WHERE doc_id = ?
             """,
@@ -2505,6 +2567,9 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                         "workflow_status": doc_row[5],
                         "validated_at": doc_row[6],
                         "validated_run_id": doc_row[7],
+                        "author_lastname": doc_row[8],
+                        "author_firstname": doc_row[9],
+                        "doc_date": doc_row[10],
                     },
                     "lines": lines,
                     "count": len(lines),
@@ -2826,18 +2891,39 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         ]
         self._send_json(success_payload({"doc_id": doc_id, "relations": relations, "count": len(relations)}))
 
+    def _handle_doc_relations_all(self) -> None:
+        """GET /doc_relations/all — return every doc_relation row in the corpus.
+
+        Used by the frontend to build the hierarchy view of documents without
+        issuing one request per document.
+        """
+        rows = self._conn().execute(
+            "SELECT id, doc_id, relation_type, target_doc_id, note, created_at"
+            " FROM doc_relations ORDER BY doc_id, id"
+        ).fetchall()
+        relations = [
+            {"id": r[0], "doc_id": r[1], "relation_type": r[2], "target_doc_id": r[3], "note": r[4], "created_at": r[5]}
+            for r in rows
+        ]
+        self._send_json(success_payload({"relations": relations, "count": len(relations)}))
+
     def _handle_documents_update(self, body: dict) -> None:
         self._ensure_document_workflow_columns()
         doc_id = body.get("doc_id")
         if doc_id is None:
             self._send_error("doc_id is required", code=ERR_BAD_REQUEST, http_status=400)
             return
-        allowed = {"title", "language", "doc_role", "resource_type", "workflow_status", "validated_run_id"}
+        allowed = {
+            "title", "language", "doc_role", "resource_type",
+            "workflow_status", "validated_run_id",
+            "author_lastname", "author_firstname", "doc_date",
+        }
         updates = {k: v for k, v in body.items() if k in allowed}
         if not updates:
             self._send_error(
                 "No updatable fields provided "
-                "(allowed: title, language, doc_role, resource_type, workflow_status, validated_run_id)",
+                "(allowed: title, language, doc_role, resource_type, workflow_status, validated_run_id, "
+                "author_lastname, author_firstname, doc_date)",
                 code=ERR_BAD_REQUEST,
                 http_status=400,
             )
@@ -2888,7 +2974,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         row = self._conn().execute(
             """
             SELECT doc_id, title, language, doc_role, resource_type,
-                   workflow_status, validated_at, validated_run_id
+                   workflow_status, validated_at, validated_run_id,
+                   author_lastname, author_firstname, doc_date
             FROM documents
             WHERE doc_id = ?
             """,
@@ -2903,6 +2990,9 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             "workflow_status": row[5],
             "validated_at": row[6],
             "validated_run_id": row[7],
+            "author_lastname": row[8],
+            "author_firstname": row[9],
+            "doc_date": row[10],
         }
         self._send_json(success_payload({"updated": 1, "doc": doc}))
 
@@ -2912,7 +3002,11 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         if not isinstance(updates_list, list) or not updates_list:
             self._send_error("updates must be a non-empty list of {doc_id, ...fields}", code=ERR_BAD_REQUEST, http_status=400)
             return
-        allowed = {"title", "language", "doc_role", "resource_type", "workflow_status", "validated_run_id"}
+        allowed = {
+            "title", "language", "doc_role", "resource_type",
+            "workflow_status", "validated_run_id",
+            "author_lastname", "author_firstname", "doc_date",
+        }
         total_updated = 0
         with self._lock():
             for item in updates_list:
@@ -3003,15 +3097,49 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         deleted = 0
         with self._lock():
             conn = self._conn()
-            # Cascade: units → alignment_links → doc_relations → fts → document
-            conn.execute(f"DELETE FROM alignment_links WHERE src_unit_id IN (SELECT unit_id FROM units WHERE doc_id IN ({placeholders}))", doc_ids)
-            conn.execute(f"DELETE FROM alignment_links WHERE tgt_unit_id IN (SELECT unit_id FROM units WHERE doc_id IN ({placeholders}))", doc_ids)
+
+            # 1. Collect unit_ids before deletion (needed for FTS cleanup)
+            unit_ids: list[int] = [
+                row[0] for row in conn.execute(
+                    f"SELECT unit_id FROM units WHERE doc_id IN ({placeholders})", doc_ids
+                ).fetchall()
+            ]
+
+            # 2. alignment_links — uses pivot_doc_id / target_doc_id directly
+            conn.execute(
+                f"DELETE FROM alignment_links"
+                f" WHERE pivot_doc_id IN ({placeholders}) OR target_doc_id IN ({placeholders})",
+                doc_ids + doc_ids,
+            )
+
+            # 3. FTS index — must happen BEFORE units are deleted (rowid = unit_id)
+            if unit_ids:
+                fts_ph = ",".join("?" * len(unit_ids))
+                try:
+                    conn.execute(f"DELETE FROM fts_units WHERE rowid IN ({fts_ph})", unit_ids)
+                except Exception:
+                    pass  # FTS table may not exist
+
+            # 4. Units — curation_exceptions cascade automatically (ON DELETE CASCADE)
             conn.execute(f"DELETE FROM units WHERE doc_id IN ({placeholders})", doc_ids)
-            conn.execute(f"DELETE FROM doc_relations WHERE src_doc_id IN ({placeholders}) OR tgt_doc_id IN ({placeholders})", doc_ids + doc_ids)
+
+            # 5. Doc relations
+            conn.execute(
+                f"DELETE FROM doc_relations"
+                f" WHERE doc_id IN ({placeholders}) OR target_doc_id IN ({placeholders})",
+                doc_ids + doc_ids,
+            )
+
+            # 6. Curation apply history (doc_id without FK — orphaned history rows)
             try:
-                conn.execute(f"DELETE FROM units_fts WHERE doc_id IN ({placeholders})", doc_ids)
+                conn.execute(
+                    f"DELETE FROM curation_apply_history WHERE doc_id IN ({placeholders})",
+                    doc_ids,
+                )
             except Exception:
-                pass  # FTS table may not exist or use triggers
+                pass  # table may not exist in older DBs
+
+            # 8. Documents
             cur = conn.execute(f"DELETE FROM documents WHERE doc_id IN ({placeholders})", doc_ids)
             deleted = cur.rowcount
             conn.commit()
@@ -3181,6 +3309,97 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         with self._lock():
             info = get_corpus_info(self._conn())
         self._send_json(success_payload({"corpus": info}))
+
+    def _handle_corpus_audit(self) -> None:
+        """Return an audit of the corpus: missing fields, empty docs, duplicates."""
+        from pathlib import Path as _Path
+
+        with self._lock():
+            conn = self._conn()
+            rows = conn.execute(
+                """
+                SELECT d.doc_id, d.title, d.language, d.doc_role, d.resource_type,
+                       d.source_path, d.source_hash,
+                       COUNT(u.unit_id) AS unit_count
+                FROM documents d
+                LEFT JOIN units u ON u.doc_id = d.doc_id
+                GROUP BY d.doc_id
+                ORDER BY d.doc_id
+                """
+            ).fetchall()
+
+        missing_fields: list[dict] = []
+        empty_documents: list[dict] = []
+        hash_map: dict[str, list[int]] = {}
+        filename_map: dict[str, list[int]] = {}
+        title_map: dict[str, list[int]] = {}
+
+        for doc_id, title, language, doc_role, resource_type, source_path, source_hash, unit_count in rows:
+            label = title or f"(doc #{doc_id})"
+
+            # Missing / suspicious fields
+            missing: list[str] = []
+            if not title or not title.strip():
+                missing.append("title")
+            if not language or language.strip().lower() in ("", "und"):
+                missing.append("language")
+            if not doc_role:
+                missing.append("doc_role")
+            if missing:
+                missing_fields.append({"doc_id": doc_id, "title": label, "missing": missing})
+
+            # Empty documents (imported but no units)
+            if unit_count == 0:
+                empty_documents.append({"doc_id": doc_id, "title": label})
+
+            # Duplicate content (same hash)
+            if source_hash:
+                hash_map.setdefault(source_hash, []).append(doc_id)
+
+            # Duplicate filename
+            if source_path:
+                fn = _Path(source_path).name.strip().lower()
+                if fn:
+                    filename_map.setdefault(fn, []).append(doc_id)
+
+            # Duplicate title
+            if title and title.strip():
+                t = title.strip().lower()
+                title_map.setdefault(t, []).append(doc_id)
+
+        duplicate_hashes = [
+            {"hash_prefix": h[:12], "doc_ids": ids}
+            for h, ids in hash_map.items()
+            if len(ids) > 1
+        ]
+        duplicate_filenames = [
+            {"filename": fn, "doc_ids": ids}
+            for fn, ids in filename_map.items()
+            if len(ids) > 1
+        ]
+        duplicate_titles = [
+            {"title": t, "doc_ids": ids}
+            for t, ids in title_map.items()
+            if len(ids) > 1
+        ]
+
+        total_issues = (
+            len(missing_fields)
+            + len(empty_documents)
+            + len(duplicate_hashes)
+            + len(duplicate_filenames)
+            + len(duplicate_titles)
+        )
+
+        self._send_json(success_payload({
+            "total_docs": len(rows),
+            "total_issues": total_issues,
+            "missing_fields": missing_fields,
+            "empty_documents": empty_documents,
+            "duplicate_hashes": duplicate_hashes,
+            "duplicate_filenames": duplicate_filenames,
+            "duplicate_titles": duplicate_titles,
+        }))
 
     def _handle_corpus_info_post(self, body: dict) -> None:
         from multicorpus_engine.corpus_info import apply_corpus_info_patch
@@ -3717,7 +3936,8 @@ class CorpusServer:
         self._conn.execute("PRAGMA foreign_keys=ON")
         apply_migrations(self._conn)
 
-        self._httpd = HTTPServer((self._host, self._port), _CorpusHandler)
+        bind_port = _find_free_port(self._host) if self._port == 0 else self._port
+        self._httpd = HTTPServer((self._host, bind_port), _CorpusHandler)
         self._started_at = utcnow_iso()
         self._httpd.conn = self._conn  # type: ignore[attr-defined]
         self._httpd.lock = threading.Lock()  # type: ignore[attr-defined]

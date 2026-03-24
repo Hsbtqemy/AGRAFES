@@ -12,8 +12,8 @@ from __future__ import annotations
 from typing import Any
 
 
-API_VERSION = "1.4.8"
-CONTRACT_VERSION = "1.4.8"  # semantic versioning for the sidecar API contract
+API_VERSION = "1.5.1"
+CONTRACT_VERSION = "1.5.1"  # semantic versioning for the sidecar API contract
 # 1.4.0: added export_tei_package job kind (Sprint 4 — Publication ZIP)
 # 1.4.1: ERR_CONFLICT (409) for duplicate run_id; token protection on /align, /curate, /segment
 # 1.4.2: document workflow status fields on /documents and metadata update endpoints.
@@ -23,6 +23,9 @@ CONTRACT_VERSION = "1.4.8"  # semantic versioning for the sidecar API contract
 # 1.4.6: GET /documents/preview (mini excerpt endpoint for Prep Documents screen).
 # 1.4.7: POST /documents/delete (cascade delete documents with all associated data).
 # 1.4.8: GET/POST /corpus/info — corpus-level title, description, meta_json (metadata / qualification).
+# 1.4.9: GET /corpus/audit — corpus health audit (missing fields, empty docs, duplicates by hash/filename/title).
+# 1.5.0: DocumentRecord gains optional author_lastname, author_firstname, doc_date fields (migration 010).
+# 1.5.1: GET /doc_relations/all — returns all relations in corpus for hierarchy view.
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
@@ -716,6 +719,12 @@ def openapi_spec() -> dict[str, Any]:
                     "responses": {"200": {"description": "Relations"}, "400": {"description": "Bad request"}},
                 }
             },
+            "/doc_relations/all": {
+                "get": {
+                    "summary": "All doc_relations in the corpus (for hierarchy view)",
+                    "responses": {"200": {"description": "All relations"}},
+                }
+            },
             "/doc_relations/set": {
                 "post": {
                     "summary": "Upsert a doc_relation",
@@ -769,6 +778,17 @@ def openapi_spec() -> dict[str, Any]:
                         "404": {"description": "DB file not found"},
                     },
                 }
+            },
+            "/corpus/audit": {
+                "get": {
+                    "summary": "Corpus health audit: missing fields, empty documents, duplicates (hash/filename/title)",
+                    "responses": {
+                        "200": {
+                            "description": "Audit result",
+                            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CorpusAuditResponse"}}},
+                        },
+                    },
+                },
             },
             "/corpus/info": {
                 "get": {
@@ -1194,6 +1214,9 @@ def openapi_spec() -> dict[str, Any]:
                         },
                         "validated_at": {"type": "string", "nullable": True},
                         "validated_run_id": {"type": "string", "nullable": True},
+                        "author_lastname": {"type": "string", "nullable": True},
+                        "author_firstname": {"type": "string", "nullable": True},
+                        "doc_date": {"type": "string", "nullable": True},
                         "unit_count": {"type": "integer"},
                     },
                     "additionalProperties": False,
@@ -1503,6 +1526,9 @@ def openapi_spec() -> dict[str, Any]:
                             "enum": ["draft", "review", "validated"],
                         },
                         "validated_run_id": {"type": "string", "nullable": True},
+                        "author_lastname": {"type": "string", "nullable": True},
+                        "author_firstname": {"type": "string", "nullable": True},
+                        "doc_date": {"type": "string", "nullable": True},
                     },
                 },
                 "DocumentBulkUpdateRequest": {
@@ -1623,6 +1649,73 @@ def openapi_spec() -> dict[str, Any]:
                             "required": ["corpus"],
                             "properties": {
                                 "corpus": {"$ref": "#/components/schemas/CorpusInfoRecord"},
+                            },
+                        },
+                    ],
+                },
+                # ── V1.4.9 — Corpus audit ────────────────────────────────────
+                "CorpusAuditResponse": {
+                    "allOf": [
+                        {"$ref": "#/components/schemas/BaseResponse"},
+                        {
+                            "type": "object",
+                            "required": ["total_docs", "total_issues", "missing_fields",
+                                         "empty_documents", "duplicate_hashes",
+                                         "duplicate_filenames", "duplicate_titles"],
+                            "properties": {
+                                "total_docs":   {"type": "integer"},
+                                "total_issues": {"type": "integer"},
+                                "missing_fields": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "doc_id":  {"type": "integer"},
+                                            "title":   {"type": "string"},
+                                            "missing": {"type": "array", "items": {"type": "string"}},
+                                        },
+                                    },
+                                },
+                                "empty_documents": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "doc_id": {"type": "integer"},
+                                            "title":  {"type": "string"},
+                                        },
+                                    },
+                                },
+                                "duplicate_hashes": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "hash_prefix": {"type": "string"},
+                                            "doc_ids": {"type": "array", "items": {"type": "integer"}},
+                                        },
+                                    },
+                                },
+                                "duplicate_filenames": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "filename": {"type": "string"},
+                                            "doc_ids": {"type": "array", "items": {"type": "integer"}},
+                                        },
+                                    },
+                                },
+                                "duplicate_titles": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "title": {"type": "string"},
+                                            "doc_ids": {"type": "array", "items": {"type": "integer"}},
+                                        },
+                                    },
+                                },
                             },
                         },
                     ],

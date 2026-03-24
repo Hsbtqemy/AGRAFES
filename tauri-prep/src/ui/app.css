@@ -886,6 +886,140 @@ details[open] > .import-log-summary::before {
 .meta-kpi-ok   { border-color: #9fd3cc; background: #e8f5f3; color: #0c4a46; }
 .meta-kpi-warn { border-color: #edd89e; background: #fff7e6; color: #8d6200; }
 
+/* ── Corpus audit panel ──────────────────────────────────────────────────── */
+.meta-audit-panel {
+  margin-top: 10px;
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-radius: var(--radius, 6px);
+  background: var(--color-surface, #fff);
+  font-size: 13px;
+  overflow: hidden;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+.audit-header {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; padding: 8px 12px; font-weight: 600; font-size: 13px;
+  position: sticky; top: 0; z-index: 2;
+}
+.audit-header-ok   { background: #e8f5f3; color: #0c4a46; border-bottom: 1px solid #9fd3cc; }
+.audit-header-warn { background: #fff7e6; color: #8d6200; border-bottom: 1px solid #edd89e; }
+.audit-close-btn {
+  background: none; border: none; cursor: pointer; font-size: 15px;
+  line-height: 1; color: inherit; opacity: 0.55; padding: 0 3px; flex-shrink: 0;
+}
+.audit-close-btn:hover { opacity: 1; }
+
+/* Section = <details> */
+.audit-section {
+  border-bottom: 1px solid var(--color-border, #e2e8f0);
+}
+.audit-section:last-child { border-bottom: none; }
+
+/* Summary = section header */
+.audit-section-head {
+  display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+  padding: 7px 12px;
+  background: var(--color-surface-alt, #f8fafc);
+  font-size: 12px; cursor: pointer; list-style: none; user-select: none;
+}
+.audit-section-head::-webkit-details-marker { display: none; }
+.audit-section-head::before {
+  content: "▶"; font-size: 9px; color: var(--color-muted, #94a3b8);
+  transition: transform 0.15s; flex-shrink: 0;
+}
+details[open] > .audit-section-head::before { transform: rotate(90deg); }
+.audit-section-head strong { flex-shrink: 0; }
+.audit-section-meta {
+  font-size: 11px; color: var(--color-muted, #64748b);
+  flex: 1; /* push "Tout sélectionner" to the right */
+}
+
+/* Section body */
+.audit-section-body {
+  padding: 8px 12px 10px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+
+/* Badges */
+.audit-badge {
+  display: inline-block; font-size: 10px; font-weight: 700; min-width: 20px;
+  text-align: center; padding: 1px 5px; border-radius: 10px; line-height: 1.6; flex-shrink: 0;
+}
+.audit-badge-ok   { background: #e8f5f3; color: #0c4a46; border: 1px solid #9fd3cc; }
+.audit-badge-warn { background: #fff0e6; color: #9a3c00; border: 1px solid #f7c7a5; }
+
+/* "Tout sélectionner" / "Sélectionner" buttons */
+.audit-sel-btn {
+  margin-left: auto; flex-shrink: 0;
+  font-size: 11px; padding: 2px 9px; border-radius: 4px; cursor: pointer;
+  background: #eef2ff; border: 1px solid #c7d2f7; color: #3730a3;
+  transition: background 0.12s;
+}
+.audit-sel-btn:hover { background: #e0e7ff; }
+.audit-sel-btn-sm { font-size: 10px; padding: 1px 7px; margin-left: 0; }
+
+/* Group card (for duplicate groups) */
+.audit-group-card {
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-radius: 5px;
+  overflow: hidden;
+}
+.audit-group-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 10px;
+  background: #f8fafc;
+  border-bottom: 1px solid var(--color-border, #e2e8f0);
+  font-size: 12px;
+}
+.audit-group-label {
+  font-weight: 600; color: #1e293b;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0;
+}
+.audit-group-count {
+  font-size: 11px; color: var(--color-muted, #64748b); white-space: nowrap; flex-shrink: 0;
+}
+
+/* Document row inside a section or group */
+.audit-doc-row {
+  display: flex; align-items: center; gap: 7px;
+  padding: 4px 10px;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 12px;
+  transition: background 0.1s;
+}
+.audit-doc-row:last-child { border-bottom: none; }
+.audit-doc-row:hover { background: #f8fafc; }
+.audit-doc-check { width: 14px; height: 14px; flex-shrink: 0; cursor: pointer; }
+.audit-doc-id-badge {
+  font-size: 10px; font-weight: 700; font-variant-numeric: tabular-nums;
+  color: var(--color-muted, #64748b); white-space: nowrap; flex-shrink: 0; min-width: 28px;
+}
+.audit-doc-title-cell {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-weight: 500; color: #1e293b;
+}
+.audit-doc-meta {
+  font-size: 11px; color: var(--color-muted, #64748b);
+  white-space: nowrap; flex-shrink: 0;
+}
+.audit-doc-nav-btn {
+  flex-shrink: 0; background: none; border: 1px solid transparent;
+  border-radius: 4px; cursor: pointer; font-size: 13px; padding: 1px 5px;
+  color: #6366f1; opacity: 0.7; transition: opacity 0.1s, border-color 0.1s;
+}
+.audit-doc-nav-btn:hover { opacity: 1; border-color: #c7d2f7; background: #eef2ff; }
+
+/* "Afficher N de plus" button */
+.audit-show-more-btn {
+  width: 100%; text-align: center; padding: 7px;
+  background: none; border: 1px dashed var(--color-border, #e2e8f0);
+  border-radius: 5px; cursor: pointer; font-size: 12px;
+  color: var(--color-muted, #64748b);
+  transition: background 0.12s, color 0.12s;
+}
+.audit-show-more-btn:hover { background: #f0f4ff; color: #3730a3; }
+
 /* List column head */
 .meta-list-head {
   display: flex; justify-content: space-between; align-items: center;
@@ -925,6 +1059,14 @@ details[open] > .import-log-summary::before {
   font-weight: 700; color: var(--color-muted, #64748b); text-transform: uppercase;
   letter-spacing: .04em; position: sticky; top: 0; z-index: 1;
 }
+.meta-doc-table th.sortable-th {
+  cursor: pointer; user-select: none;
+  transition: background 0.12s, color 0.12s;
+}
+.meta-doc-table th.sortable-th:hover { background: #eef2ff; color: #3730a3; }
+.meta-doc-table th.sort-active { color: #3730a3; }
+.meta-doc-table th .sort-ind { font-size: 10px; opacity: 0.55; }
+.meta-doc-table th.sort-active .sort-ind { opacity: 1; }
 .meta-doc-table tbody tr:last-child td { border-bottom: none; }
 .meta-doc-table .col-check  { width: 30px; text-align: center; padding: 4px; }
 .meta-doc-table .col-id     { width: 40px; font-size: 12px; color: var(--color-muted, #64748b); white-space: nowrap; }
@@ -936,6 +1078,82 @@ details[open] > .import-log-summary::before {
 
 /* Refresh button in list header — slightly more prominent than icon-only */
 .meta-refresh-btn { font-size: 12px; padding: 3px 9px; }
+
+/* Author inherit banner (shown when current doc is a translation/excerpt) */
+.author-inherit-banner {
+  display: flex; align-items: center; gap: 8px;
+  background: #f0f4ff; border: 1px solid #c7d4f5; border-radius: 6px;
+  padding: 5px 10px; margin-bottom: 6px; font-size: 0.8rem;
+}
+.author-inherit-from { flex: 1; color: #374151; }
+.author-inherit-btn  { white-space: nowrap; font-size: 0.75rem; padding: 2px 8px; }
+
+/* ── Hierarchy view ─────────────────────────────────────────────────────────── */
+
+/* Active state for the hierarchy toggle button */
+.btn.btn-active {
+  background: #4a6fa5; color: #fff; border-color: #3b5998;
+}
+.btn.btn-active:hover { background: #3b5998; }
+
+/* Child rows — subtle left-border accent */
+.meta-doc-table tr.tree-child td {
+  background: #f8fafc;
+}
+.meta-doc-table tr.tree-child:hover td {
+  background: #eef2ff;
+}
+
+/* Connector symbol (└) */
+.tree-connector {
+  display: inline-block;
+  color: #94a3b8;
+  font-size: 13px;
+  margin-right: 4px;
+  font-family: monospace;
+  vertical-align: middle;
+}
+
+/* Relation type badge (trad. / extrait) */
+.tree-rel-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  color: #4a6fa5;
+  background: #e0e7ff;
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin-right: 5px;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+/* Section separator header (indépendants / orphelins) */
+.meta-doc-table tr.tree-section-header td.tree-section-label {
+  background: var(--color-surface-alt, #f1f5f9);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-muted, #64748b);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  padding: 6px 10px;
+  border-top: 2px solid var(--color-border, #e2e8f0);
+}
+.tree-section-count {
+  display: inline-block;
+  background: #cbd5e1;
+  color: #334155;
+  border-radius: 10px;
+  font-size: 10px;
+  padding: 0 6px;
+  margin-left: 5px;
+  font-weight: 700;
+}
+
+/* Title cell in tree mode — let padding-left do the indentation */
+.tree-title-cell {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500;
+}
 
 /* Cancel div-era .meta-doc-row rules when on <tr> */
 table .meta-doc-row { padding: 0; border-radius: 0; border-bottom: none; }
