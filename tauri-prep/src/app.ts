@@ -6,7 +6,7 @@
  */
 
 import type { Conn } from "./lib/sidecarClient.ts";
-import { ensureRunning, SidecarError } from "./lib/sidecarClient.ts";
+import { ensureRunning, SidecarError, getCorpusInfo, updateCorpusInfo } from "./lib/sidecarClient.ts";
 import { getCurrentDbPath, setCurrentDbPath, getOrCreateDefaultDbPath } from "./lib/db.ts";
 import { open as dialogOpen, save as dialogSave } from "@tauri-apps/plugin-dialog";
 import { open as shellOpen } from "@tauri-apps/plugin-shell";
@@ -111,6 +111,8 @@ export class App {
     this._actions.setOnOpenDocuments(() => this._switchTab("documents"));
     this._exports.setJobCenter(this._jobCenter, showToast);
 
+    void this._refreshTopbarDbLabel();
+
     // Store handler reference so dispose() can remove it (prevents listener leak
     // when App is re-mounted during shell navigation).
     this._beforeUnloadHandler = (event: BeforeUnloadEvent) => {
@@ -163,6 +165,12 @@ export class App {
     presetsBtn.title = "Gérer les presets de projet";
     presetsBtn.addEventListener("click", () => this._showPresetsModal());
 
+    const corpusInfoBtn = document.createElement("button");
+    corpusInfoBtn.className = "topbar-db-btn";
+    corpusInfoBtn.textContent = "\uD83D\uDCC4 Fiche corpus";
+    corpusInfoBtn.title = "Qualifier le corpus : titre, descriptif, métadonnées";
+    corpusInfoBtn.addEventListener("click", () => void this._showCorpusInfoModal());
+
     const openConcordancierBtn = document.createElement("button");
     openConcordancierBtn.className = "topbar-db-btn";
     openConcordancierBtn.textContent = "\u2197 Shell";
@@ -174,6 +182,7 @@ export class App {
     topbar.appendChild(openBtn);
     topbar.appendChild(createBtn);
     topbar.appendChild(presetsBtn);
+    topbar.appendChild(corpusInfoBtn);
     topbar.appendChild(openConcordancierBtn);
 
     this._dbPathEl = dbPathEl;
@@ -356,6 +365,26 @@ export class App {
     return p.replace(/\\/g, "/").split("/").pop() ?? p;
   }
 
+  /** Met à jour le libellé topbar (titre du corpus + nom de fichier) et le title (chemin complet). */
+  private async _refreshTopbarDbLabel(): Promise<void> {
+    const p = getCurrentDbPath();
+    const file = this._dbBadge();
+    if (!this._conn) {
+      this._dbPathEl.textContent = file;
+      this._dbPathEl.title = p ? `Chemin complet : ${p.replace(/\\/g, "/")}` : "";
+      return;
+    }
+    try {
+      const info = await getCorpusInfo(this._conn);
+      const t = info.title?.trim();
+      this._dbPathEl.textContent = t ? `${t} \u2014 ${file}` : file;
+      this._dbPathEl.title = p ? `Chemin complet : ${p.replace(/\\/g, "/")}` : "";
+    } catch {
+      this._dbPathEl.textContent = file;
+      this._dbPathEl.title = p ? `Chemin complet : ${p.replace(/\\/g, "/")}` : "";
+    }
+  }
+
   private _buildShellOpenDbDeepLink(dbPath: string): string {
     return `agrafes-shell://open-db?mode=explorer&path=${encodeURIComponent(dbPath)}`;
   }
@@ -499,6 +528,114 @@ export class App {
       void this._onOpenDb();
     });
     banner.querySelector("#prep-dismiss-btn")?.addEventListener("click", () => banner.remove());
+  }
+
+  // ─── Fiche corpus (métadonnées DB) ─────────────────────────────────────────
+
+  private async _showCorpusInfoModal(): Promise<void> {
+    if (!this._conn) {
+      showToast("Ouvrez ou cr\u00e9ez une base pour \u00e9diter la fiche corpus.", true);
+      return;
+    }
+    let info;
+    try {
+      info = await getCorpusInfo(this._conn);
+    } catch (err) {
+      showToast(`Lecture fiche corpus : ${String(err)}`, true);
+      return;
+    }
+
+    const overlay = document.createElement("div");
+    overlay.className = "presets-overlay";
+
+    const modal = document.createElement("div");
+    modal.className = "presets-modal";
+    overlay.appendChild(modal);
+
+    const head = document.createElement("div");
+    head.className = "presets-modal-head";
+    head.innerHTML = `<h3>\uD83D\uDCC4 Fiche corpus</h3>`;
+    const closeX = document.createElement("button");
+    closeX.className = "btn btn-secondary btn-sm";
+    closeX.textContent = "\u2715 Fermer";
+    closeX.addEventListener("click", () => overlay.remove());
+    head.appendChild(closeX);
+    modal.appendChild(head);
+
+    const body = document.createElement("div");
+    body.className = "presets-modal-body";
+    const metaBase: Record<string, unknown> = { ...info.meta };
+    const q0 = typeof metaBase.qualifier === "string" ? metaBase.qualifier : "";
+    const tags0 = Array.isArray(metaBase.tags)
+      ? metaBase.tags.map((x) => String(x)).join(", ")
+      : "";
+
+    body.innerHTML = `
+      <label class="prep-corpus-label">Titre du corpus
+        <input type="text" id="ci-title" class="prep-corpus-input" autocomplete="off"
+          placeholder="Nom lisible (affich\u00e9 dans la barre)" />
+      </label>
+      <label class="prep-corpus-label">Descriptif
+        <textarea id="ci-desc" class="prep-corpus-textarea" rows="5"
+          placeholder="Contexte, sources, contraintes\u2026"></textarea>
+      </label>
+      <label class="prep-corpus-label">Qualification / usage
+        <input type="text" id="ci-qual" class="prep-corpus-input" autocomplete="off"
+          placeholder="ex. production, brouillon, archive\u2026" />
+      </label>
+      <label class="prep-corpus-label">Mots-cl\u00e9s (s\u00e9par\u00e9s par des virgules)
+        <input type="text" id="ci-tags" class="prep-corpus-input" autocomplete="off"
+          placeholder="fr, en, th\u00e9\u00e2tre\u2026" />
+      </label>
+      <p class="prep-corpus-hint">Les champs optionnels sont stock\u00e9s dans la base (table <code>corpus_info</code>) avec des m\u00e9tadonn\u00e9es flexibles (<code>meta</code>).</p>
+    `;
+    (body.querySelector("#ci-title") as HTMLInputElement).value = info.title ?? "";
+    (body.querySelector("#ci-desc") as HTMLTextAreaElement).value = info.description ?? "";
+    (body.querySelector("#ci-qual") as HTMLInputElement).value = q0;
+    (body.querySelector("#ci-tags") as HTMLInputElement).value = tags0;
+    modal.appendChild(body);
+
+    const foot = document.createElement("div");
+    foot.className = "presets-modal-foot";
+    const saveBtn = document.createElement("button");
+    saveBtn.className = "btn btn-primary btn-sm";
+    saveBtn.textContent = "Enregistrer";
+    saveBtn.addEventListener("click", async () => {
+      if (!this._conn) return;
+      const title = (modal.querySelector("#ci-title") as HTMLInputElement).value.trim() || null;
+      const description = (modal.querySelector("#ci-desc") as HTMLTextAreaElement).value.trim() || null;
+      const qual = (modal.querySelector("#ci-qual") as HTMLInputElement).value.trim();
+      const tagsRaw = (modal.querySelector("#ci-tags") as HTMLInputElement).value;
+      const tags = tagsRaw.split(",").map((s) => s.trim()).filter(Boolean);
+      const nextMeta: Record<string, unknown> = { ...metaBase };
+      if (qual) nextMeta.qualifier = qual;
+      else delete nextMeta.qualifier;
+      if (tags.length) nextMeta.tags = tags;
+      else delete nextMeta.tags;
+      try {
+        await updateCorpusInfo(this._conn, {
+          title,
+          description,
+          meta: nextMeta,
+        });
+        overlay.remove();
+        await this._refreshTopbarDbLabel();
+        showToast("Fiche corpus enregistr\u00e9e.");
+      } catch (err) {
+        showToast(`Enregistrement : ${String(err)}`, true);
+      }
+    });
+    const cancelBtn = document.createElement("button");
+    cancelBtn.className = "btn btn-secondary btn-sm";
+    cancelBtn.textContent = "Annuler";
+    cancelBtn.addEventListener("click", () => overlay.remove());
+    foot.appendChild(saveBtn);
+    foot.appendChild(cancelBtn);
+    modal.appendChild(foot);
+
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape") overlay.remove(); }, { once: true });
+    document.body.appendChild(overlay);
   }
 
   // ─── Presets modal ─────────────────────────────────────────────────────────
@@ -782,7 +919,6 @@ export class App {
   }
 
   private async _onDbChanged(dbPath: string): Promise<void> {
-    this._dbPathEl.textContent = dbPath;
     try {
       this._conn = await ensureRunning(dbPath);
     } catch (err) {
@@ -797,6 +933,7 @@ export class App {
     this._import.setJobCenter(this._jobCenter, showToast);
     this._actions.setJobCenter(this._jobCenter, showToast);
     this._exports.setJobCenter(this._jobCenter, showToast);
+    await this._refreshTopbarDbLabel();
   }
 
   /** Stop all background timers and remove event listeners. Called by tauri-shell on unmount. */

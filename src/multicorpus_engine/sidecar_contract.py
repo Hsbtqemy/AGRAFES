@@ -12,8 +12,8 @@ from __future__ import annotations
 from typing import Any
 
 
-API_VERSION = "1.4.7"
-CONTRACT_VERSION = "1.4.7"  # semantic versioning for the sidecar API contract
+API_VERSION = "1.4.8"
+CONTRACT_VERSION = "1.4.8"  # semantic versioning for the sidecar API contract
 # 1.4.0: added export_tei_package job kind (Sprint 4 — Publication ZIP)
 # 1.4.1: ERR_CONFLICT (409) for duplicate run_id; token protection on /align, /curate, /segment
 # 1.4.2: document workflow status fields on /documents and metadata update endpoints.
@@ -22,6 +22,7 @@ CONTRACT_VERSION = "1.4.7"  # semantic versioning for the sidecar API contract
 # 1.4.5: /align supports replace_existing + preserve_accepted (global recalculation mode).
 # 1.4.6: GET /documents/preview (mini excerpt endpoint for Prep Documents screen).
 # 1.4.7: POST /documents/delete (cascade delete documents with all associated data).
+# 1.4.8: GET/POST /corpus/info — corpus-level title, description, meta_json (metadata / qualification).
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
@@ -768,6 +769,33 @@ def openapi_spec() -> dict[str, Any]:
                         "404": {"description": "DB file not found"},
                     },
                 }
+            },
+            "/corpus/info": {
+                "get": {
+                    "summary": "Read corpus-level metadata (title, description, flexible meta object)",
+                    "responses": {
+                        "200": {
+                            "description": "Corpus info",
+                            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CorpusInfoResponse"}}},
+                        },
+                    },
+                },
+                "post": {
+                    "summary": "Update corpus metadata (partial JSON body; token required when enabled)",
+                    "security": [{"token": []}],
+                    "requestBody": {
+                        "required": False,
+                        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CorpusInfoPatchRequest"}}},
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Updated corpus info",
+                            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CorpusInfoResponse"}}},
+                        },
+                        "400": {"description": "Bad request"},
+                        "401": {"description": "Unauthorized"},
+                    },
+                },
             },
             # ── V0.4C — Align link editing ────────────────────────────────
             "/align/link/update_status": {
@@ -1565,6 +1593,36 @@ def openapi_spec() -> dict[str, Any]:
                                 "backup_path": {"type": "string"},
                                 "file_size_bytes": {"type": "integer"},
                                 "created_at": {"type": "string"},
+                            },
+                        },
+                    ],
+                },
+                "CorpusInfoRecord": {
+                    "type": "object",
+                    "properties": {
+                        "title": {"type": "string", "nullable": True},
+                        "description": {"type": "string", "nullable": True},
+                        "meta": {"type": "object", "additionalProperties": True},
+                        "updated_at": {"type": "string", "nullable": True},
+                    },
+                },
+                "CorpusInfoPatchRequest": {
+                    "type": "object",
+                    "properties": {
+                        "title": {"type": "string", "nullable": True},
+                        "description": {"type": "string", "nullable": True},
+                        "meta": {"type": "object", "nullable": True, "additionalProperties": True},
+                    },
+                    "additionalProperties": False,
+                },
+                "CorpusInfoResponse": {
+                    "allOf": [
+                        {"$ref": "#/components/schemas/BaseResponse"},
+                        {
+                            "type": "object",
+                            "required": ["corpus"],
+                            "properties": {
+                                "corpus": {"$ref": "#/components/schemas/CorpusInfoRecord"},
                             },
                         },
                     ],

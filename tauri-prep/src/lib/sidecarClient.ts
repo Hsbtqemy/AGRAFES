@@ -59,6 +59,14 @@ export interface DocumentPreviewResponse {
   limit: number;
 }
 
+/** Métadonnées corpus (table `corpus_info`, une ligne par base). */
+export interface CorpusInfoRecord {
+  title: string | null;
+  description: string | null;
+  meta: Record<string, unknown>;
+  updated_at: string | null;
+}
+
 export interface ImportOptions {
   mode:
     | "docx_numbered_lines"
@@ -1330,6 +1338,23 @@ export async function getDocumentPreview(
     limit: String(limit),
   });
   return conn.get(`/documents/preview?${qs.toString()}`) as Promise<DocumentPreviewResponse>;
+}
+
+export async function getCorpusInfo(conn: Conn): Promise<CorpusInfoRecord> {
+  const res = (await conn.get("/corpus/info")) as { corpus: CorpusInfoRecord };
+  return res.corpus;
+}
+
+export async function updateCorpusInfo(
+  conn: Conn,
+  patch: {
+    title?: string | null;
+    description?: string | null;
+    meta?: Record<string, unknown> | null;
+  },
+): Promise<CorpusInfoRecord> {
+  const res = (await conn.post("/corpus/info", patch)) as { corpus: CorpusInfoRecord };
+  return res.corpus;
 }
 
 export async function importFile(conn: Conn, opts: ImportOptions): Promise<ImportResponse> {

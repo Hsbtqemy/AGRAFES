@@ -462,6 +462,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 "doc_id": int(doc_id_str) if doc_id_str else None,
                 "limit": int(limit_str) if limit_str else 50,
             })
+        elif path == "/corpus/info":
+            self._handle_corpus_info_get()
         else:
             self._send_error(
                 f"Unknown route: {path}",
@@ -482,6 +484,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 # Core mutators
                 "/index", "/import", "/shutdown",
                 "/db/backup",
+                "/corpus/info",
                 # Document / relation writes
                 "/documents/update", "/documents/bulk_update", "/documents/delete",
                 "/doc_relations/set", "/doc_relations/delete",
@@ -577,6 +580,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 self._handle_export_run_report(body)
             elif path == "/db/backup":
                 self._handle_db_backup(body)
+            elif path == "/corpus/info":
+                self._handle_corpus_info_post(body)
             elif path == "/shutdown":
                 self._handle_shutdown()
             elif path == "/jobs":
@@ -3169,6 +3174,24 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 for r in records:
                     f.write(_json.dumps(r, ensure_ascii=False) + "\n")
         self._send_json(success_payload({"out_path": str(out), "runs_exported": len(records), "format": fmt}))
+
+    def _handle_corpus_info_get(self) -> None:
+        from multicorpus_engine.corpus_info import get_corpus_info
+
+        with self._lock():
+            info = get_corpus_info(self._conn())
+        self._send_json(success_payload({"corpus": info}))
+
+    def _handle_corpus_info_post(self, body: dict) -> None:
+        from multicorpus_engine.corpus_info import apply_corpus_info_patch
+
+        try:
+            with self._lock():
+                info = apply_corpus_info_patch(self._conn(), body)
+        except ValueError as exc:
+            self._send_error(str(exc), code=ERR_VALIDATION, http_status=400)
+            return
+        self._send_json(success_payload({"corpus": info}))
 
     def _handle_db_backup(self, body: dict) -> None:
         out_dir = body.get("out_dir")

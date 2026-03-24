@@ -1,4 +1,4 @@
-# Sidecar API Contract (v1.4.6)
+# Sidecar API Contract (v1.4.8)
 
 This document defines the persistent localhost HTTP contract for
 `multicorpus_engine` sidecar.
@@ -29,7 +29,7 @@ When `multicorpus serve` starts and a portfile already exists:
 
 ## Versioning
 
-- `api_version`: sidecar API contract version (`1.4.6`)
+- `api_version`: sidecar API contract version (`1.4.8`)
 - `version`: engine version
 
 ## Response envelope
@@ -39,7 +39,7 @@ When `multicorpus serve` starts and a portfile already exists:
 ```json
 {
   "ok": true,
-  "api_version": "1.4.6",
+  "api_version": "1.4.8",
   "version": "0.6.1",
   "status": "ok"
 }
@@ -50,7 +50,7 @@ When `multicorpus serve` starts and a portfile already exists:
 ```json
 {
   "ok": false,
-  "api_version": "1.4.6",
+  "api_version": "1.4.8",
   "version": "0.6.1",
   "status": "error",
   "error": {
@@ -85,6 +85,7 @@ When `multicorpus serve` starts and a portfile already exists:
   - `POST /import`
   - `POST /index`
   - `POST /db/backup`
+  - `POST /corpus/info`
   - `POST /shutdown`
 - Read endpoints (`/health`, `/query`, `/openapi.json`) do not require token.
 
@@ -186,6 +187,10 @@ When `multicorpus serve` starts and a portfile already exists:
   - creates a timestamped backup file (`<db_stem>_<YYYYMMDD_HHMMSS><db_suffix>.bak`)
   - if a file already exists for the same second, appends `_<n>` before `.bak`
   - returns `source_db_path`, `backup_path`, `file_size_bytes`, `created_at`
+- `GET /corpus/info`
+  - returns `corpus`: `{ title?, description?, meta? (object), updated_at? }` — métadonnées de la base (une ligne par DB)
+- `POST /corpus/info` (token required when enabled)
+  - body (partiel): `{ title?, description?, meta? }` — seuls les champs présents sont mis à jour ; `meta` remplace l’objet entier si fourni
 - `POST /validate-meta`
 - `POST /segment`
   - body: `{ doc_id, lang?, pack? }`

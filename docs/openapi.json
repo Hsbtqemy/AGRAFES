@@ -616,6 +616,64 @@
         ],
         "type": "object"
       },
+      "CorpusInfoPatchRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "nullable": true,
+            "type": "string"
+          },
+          "meta": {
+            "additionalProperties": true,
+            "nullable": true,
+            "type": "object"
+          },
+          "title": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "CorpusInfoRecord": {
+        "properties": {
+          "description": {
+            "nullable": true,
+            "type": "string"
+          },
+          "meta": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": {
+            "nullable": true,
+            "type": "string"
+          },
+          "updated_at": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "CorpusInfoResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BaseResponse"
+          },
+          {
+            "properties": {
+              "corpus": {
+                "$ref": "#/components/schemas/CorpusInfoRecord"
+              }
+            },
+            "required": [
+              "corpus"
+            ],
+            "type": "object"
+          }
+        ]
+      },
       "CuratePreviewExample": {
         "additionalProperties": false,
         "properties": {
@@ -1136,6 +1194,17 @@
           },
           "out_dir": {
             "type": "string"
+          },
+          "relation_type": {
+            "default": "none",
+            "description": "Relation filter for TEI listRelation (none disables relation export).",
+            "enum": [
+              "none",
+              "translation_of",
+              "excerpt_of",
+              "all"
+            ],
+            "type": "string"
           }
         },
         "required": [
@@ -1178,6 +1247,9 @@
       "ImportRequest": {
         "additionalProperties": false,
         "properties": {
+          "check_filename": {
+            "type": "boolean"
+          },
           "doc_role": {
             "type": "string"
           },
@@ -1189,6 +1261,8 @@
               "docx_numbered_lines",
               "txt_numbered_lines",
               "docx_paragraphs",
+              "odt_paragraphs",
+              "odt_numbered_lines",
               "tei"
             ],
             "type": "string"
@@ -1730,8 +1804,8 @@
   "info": {
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
-    "version": "1.4.6",
-    "x-contract-version": "1.4.6"
+    "version": "1.4.8",
+    "x-contract-version": "1.4.8"
   },
   "openapi": "3.0.3",
   "paths": {
@@ -2086,6 +2160,59 @@
         "summary": "Suggest candidate target units for retargeting an alignment link"
       }
     },
+    "/corpus/info": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorpusInfoResponse"
+                }
+              }
+            },
+            "description": "Corpus info"
+          }
+        },
+        "summary": "Read corpus-level metadata (title, description, flexible meta object)"
+      },
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorpusInfoPatchRequest"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorpusInfoResponse"
+                }
+              }
+            },
+            "description": "Updated corpus info"
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "summary": "Update corpus metadata (partial JSON body; token required when enabled)"
+      }
+    },
     "/curate": {
       "post": {
         "requestBody": {
@@ -2370,6 +2497,70 @@
           }
         ],
         "summary": "Bulk update document metadata"
+      }
+    },
+    "/documents/delete": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "doc_ids": {
+                    "items": {
+                      "type": "integer"
+                    },
+                    "minItems": 1,
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "doc_ids"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "deleted": {
+                      "type": "integer"
+                    },
+                    "doc_ids": {
+                      "items": {
+                        "type": "integer"
+                      },
+                      "type": "array"
+                    },
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Deleted"
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "summary": "Delete documents and all associated data (units, alignment links, relations)"
       }
     },
     "/documents/preview": {

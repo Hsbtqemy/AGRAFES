@@ -119,23 +119,43 @@ export class ImportScreen {
         <div class="imp-col-side">
           <details class="card imp-settings-card" open>
             <summary class="imp-settings-summary">
-              <h3 style="margin:0">Profil de lot</h3>
-              <span class="chip">optionnel</span>
+              <span class="imp-settings-title" id="imp-settings-title">Profil de lot</span>
+              <span class="chip">par défaut</span>
             </summary>
-            <div class="imp-settings-body">
+            <div class="imp-settings-body" role="region" aria-labelledby="imp-settings-title">
               <div class="imp-settings-grid">
-                <label>Format par défaut
-                  <select id="imp-default-mode">
+                <div class="imp-settings-field">
+                  <label for="imp-default-mode">Format par défaut</label>
+                  <select id="imp-default-mode" aria-describedby="imp-settings-hint-apply">
                     ${IMPORT_MODE_OPTIONS.map((opt) => `<option value="${opt.value}">${opt.label}</option>`).join("")}
                   </select>
-                </label>
-                <label>Langue par défaut
-                  <input id="imp-default-lang" type="text" value="fr" placeholder="fr, en, …" maxlength="10" />
-                </label>
+                </div>
+                <div class="imp-settings-field">
+                  <label for="imp-default-lang">Langue par défaut</label>
+                  <input
+                    id="imp-default-lang"
+                    type="text"
+                    value="fr"
+                    placeholder="fr, en, …"
+                    maxlength="10"
+                    autocomplete="off"
+                    spellcheck="false"
+                    inputmode="text"
+                    aria-describedby="imp-settings-hint-apply"
+                  />
+                </div>
               </div>
-              <div class="btn-row">
-                <button id="imp-apply-defaults-btn" class="btn btn-secondary btn-sm">Appliquer aux fichiers en attente</button>
-                <span class="hint" style="margin:0">Chaque ligne reste modifiable ensuite.</span>
+              <label class="imp-settings-filename-check" title="Si coché : refuse l’import lorsqu’un document avec le même nom de fichier existe déjà dans le corpus (chemins différents inclus).">
+                <input type="checkbox" id="imp-check-filename" />
+                <span>Bloquer les doublons par nom de fichier</span>
+              </label>
+              <div class="imp-settings-actions btn-row">
+                <button type="button" id="imp-apply-defaults-btn" class="btn btn-secondary btn-sm">
+                  Appliquer aux fichiers en attente
+                </button>
+                <p id="imp-settings-hint-apply" class="hint imp-settings-hint">
+                  Réapplique le format (selon l’extension de chaque fichier) et la langue ci-dessus aux lignes encore en attente.
+                </p>
               </div>
             </div>
           </details>
@@ -179,12 +199,8 @@ export class ImportScreen {
       <!-- Footer docked at bottom of main pane (above scrolling content) -->
       <div class="imp-footer-bar">
         <div class="imp-footer-meta">
-          <span class="hint" style="margin:0">Importe tous les fichiers en attente.</span>
+          <span class="hint" style="margin:0">Importe tous les fichiers en attente (profil + options ci-dessus).</span>
         </div>
-        <label class="imp-footer-check" title="Bloque l'import si un document portant le même nom de fichier existe déjà dans le corpus">
-          <input type="checkbox" id="imp-check-filename" />
-          Bloquer doublons par nom
-        </label>
         <div class="btn-row">
           <button id="imp-import-btn" class="btn btn-primary" title="Importer tous les fichiers en attente" aria-label="Importer tous les fichiers en attente" disabled>⬆ Importer</button>
         </div>
@@ -279,7 +295,7 @@ export class ImportScreen {
   }
 
   private _deriveModeFromExt(ext: string, defaultMode: string): string {
-    if (ext === "xml") return "tei";
+    if (ext === "xml" || ext === "tei") return "tei";
     if (ext === "txt") return "txt_numbered_lines";
     if (ext === "docx") return defaultMode.startsWith("docx") ? defaultMode : "docx_numbered_lines";
     if (ext === "odt") return defaultMode.startsWith("odt") ? defaultMode : "odt_paragraphs";
@@ -317,7 +333,7 @@ export class ImportScreen {
     const selected = await open({
       title: "Sélectionner des fichiers",
       filters: [
-        { name: "Corpus", extensions: ["docx", "odt", "txt", "xml"] },
+        { name: "Corpus", extensions: ["docx", "odt", "txt", "xml", "tei"] },
       ],
       multiple: true,
     });
@@ -352,7 +368,14 @@ export class ImportScreen {
   }
 
   private _applyDefaultsToPending(): void {
-    if (!this._root || this._files.length === 0) return;
+    if (!this._root) return;
+    if (this._files.length === 0) {
+      this._showToast?.(
+        "Aucun fichier dans la liste — ajoutez des sources ou glissez-déposez des fichiers.",
+        false
+      );
+      return;
+    }
     const defaultMode = (this._root.querySelector("#imp-default-mode") as HTMLSelectElement).value;
     const defaultLang = (this._root.querySelector("#imp-default-lang") as HTMLInputElement).value.trim() || "fr";
     let touched = 0;
@@ -367,7 +390,9 @@ export class ImportScreen {
     this._renderList();
     this._updateButtons();
     if (touched > 0) {
-      this._log(`✓ Paramètres globaux appliqués à ${touched} fichier(s) en attente.`);
+      this._log(`✓ Profil de lot appliqué à ${touched} fichier(s) en attente.`);
+    } else {
+      this._showToast?.("Aucun fichier en attente — ajoutez des fichiers ou réinitialisez une ligne en erreur.", false);
     }
   }
 
