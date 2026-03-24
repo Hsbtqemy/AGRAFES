@@ -299,6 +299,8 @@ export function buildUI(container: HTMLElement): void {
   for (const [val, lbl] of [
     ["docx_numbered_lines", "DOCX lignes numérotées [n]"],
     ["docx_paragraphs", "DOCX paragraphes"],
+    ["odt_numbered_lines", "ODT lignes numérotées [n]"],
+    ["odt_paragraphs", "ODT paragraphes"],
     ["txt_numbered_lines", "TXT lignes numérotées"],
     ["tei", "TEI XML"],
   ]) {
@@ -609,7 +611,7 @@ export function buildUI(container: HTMLElement): void {
     const sel = await openDialog({
       title: "Choisir un fichier à importer",
       filters: [
-        { name: "DOCX / TXT / TEI", extensions: ["docx", "txt", "xml"] },
+        { name: "DOCX / ODT / TXT / TEI", extensions: ["docx", "odt", "txt", "xml"] },
         { name: "Tous les fichiers", extensions: ["*"] },
       ],
       multiple: false,

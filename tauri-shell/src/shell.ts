@@ -811,6 +811,60 @@ const SHELL_CSS = `
     opacity: 0;
     transform: translateX(-50%) translateY(8px);
   }
+
+  /* ── Sidecar loading overlay ────────────────────────────────── */
+  .shell-sidecar-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(255, 255, 255, 0.72);
+    backdrop-filter: blur(3px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9998;
+    opacity: 1;
+    transition: opacity 0.35s ease;
+  }
+  .shell-sidecar-overlay.shell-sidecar-overlay-hide {
+    opacity: 0;
+    pointer-events: none;
+  }
+  .shell-sidecar-card {
+    background: #fff;
+    border: 1px solid #dde1e8;
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+    padding: 2rem 2.5rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.25rem;
+    min-width: 220px;
+  }
+  .shell-sidecar-spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid #e9ecef;
+    border-top-color: var(--accent, #2c5f9e);
+    border-radius: 50%;
+    animation: shell-spin 0.75s linear infinite;
+  }
+  @keyframes shell-spin {
+    to { transform: rotate(360deg); }
+  }
+  .shell-sidecar-label {
+    font-size: 0.9rem;
+    color: #495057;
+    font-weight: 500;
+    text-align: center;
+    line-height: 1.4;
+  }
+  .shell-sidecar-sub {
+    font-size: 0.78rem;
+    color: #868e96;
+    margin-top: -0.5rem;
+    text-align: center;
+  }
 `;
 
 // ─── Demo corpus ──────────────────────────────────────────────────────────────
@@ -1403,9 +1457,9 @@ export async function initShell(): Promise<void> {
     _shellLog("info", "boot", `Deep-link DB: ${_pathLabel(startupDeepLink.dbPath)}`);
   }
 
-  // Deep-link overrides saved mode
+  // Deep-link overrides saved mode; without a deep link, always start on home
   const deepLinkMode = startupDeepLink.mode ?? _modeFromLocation();
-  const startMode: Mode = deepLinkMode ?? savedMode;
+  const startMode: Mode = deepLinkMode ?? "home";
 
   _buildHeader();
   _installKeyboardShortcuts();
@@ -1947,14 +2001,17 @@ async function _initDb(dbPath: string): Promise<void> {
   const btn = document.getElementById("shell-db-btn") as HTMLButtonElement | null;
   if (btn) { btn.textContent = "Initialisation\u2026"; btn.disabled = true; }
   _clearInitError();
+  _showSidecarOverlay("Démarrage du moteur de recherche\u2026");
 
   try {
     // Dynamic import keeps sidecar logic in the explorer chunk (lazy-loaded)
     const { ensureRunning } = await import("../../tauri-app/src/lib/sidecarClient.ts");
     await ensureRunning(dbPath);
+    _hideSidecarOverlay();
     _showToast("DB initialis\u00e9e \u2713", 3000);
     _shellLog("info", "sidecar", `Sidecar healthy for DB: ${_pathLabel(dbPath)}`);
   } catch (err) {
+    _hideSidecarOverlay();
     _shellLog("error", "sidecar", `Sidecar health failure for DB: ${_pathLabel(dbPath)}`, String(err));
     _showInitError(dbPath, String(err));
   } finally {
@@ -2909,6 +2966,28 @@ async function _initDemoSection(
 }
 
 // ─── Loading indicator ────────────────────────────────────────────────────────
+
+function _showSidecarOverlay(label = "Démarrage du moteur…"): void {
+  _hideSidecarOverlay();
+  const el = document.createElement("div");
+  el.id = "shell-sidecar-overlay";
+  el.className = "shell-sidecar-overlay";
+  el.innerHTML = `
+    <div class="shell-sidecar-card">
+      <div class="shell-sidecar-spinner"></div>
+      <div class="shell-sidecar-label">${label}</div>
+      <div class="shell-sidecar-sub">Cela peut prendre quelques secondes</div>
+    </div>
+  `;
+  document.body.appendChild(el);
+}
+
+function _hideSidecarOverlay(): void {
+  const el = document.getElementById("shell-sidecar-overlay");
+  if (!el) return;
+  el.classList.add("shell-sidecar-overlay-hide");
+  setTimeout(() => el.remove(), 380);
+}
 
 function _showLoading(container: HTMLElement): void {
   container.innerHTML = `

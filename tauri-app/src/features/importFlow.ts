@@ -38,7 +38,13 @@ export async function doImport(
 
   try {
     await importFile(state.conn, {
-      mode: mode as "docx_numbered_lines" | "txt_numbered_lines" | "docx_paragraphs" | "tei",
+      mode: mode as
+        | "docx_numbered_lines"
+        | "txt_numbered_lines"
+        | "docx_paragraphs"
+        | "odt_paragraphs"
+        | "odt_numbered_lines"
+        | "tei",
       path: filePath,
       language: language || undefined,
       title: title || undefined,

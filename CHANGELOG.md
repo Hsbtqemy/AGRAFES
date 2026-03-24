@@ -5,6 +5,21 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.1.12] - 2026-03-23
+
+### Added
+
+- Importeurs **ODT** (`odt_numbered_lines`, `odt_paragraphs`) et tests associés (`tests/test_odt.py`, `tests/support_odt.py`).
+- Garde **anti-doublons** côté moteur (`importers/import_guard.py`) pour l’import.
+
+### Changed
+
+- **Sidecar / CLI** : robustesse encodage UTF-8 (Windows), délais et flux JSON de démarrage ; ajustements `sidecar.py`, `cli.py`, importers DOCX/TXT/TEI.
+- **tauri-prep** : barre d’actions Import en bas de **fenêtre** (`position: fixed`) ; correction affichage de l’écran Import sur les autres onglets (spécificité `.screen` / `.active`).
+- **tauri-app / tauri-fixture** : alignement client sidecar et runners.
+- **tauri-shell / tauri-prep** : évolutions build Tauri, schémas, icônes bundle Prep.
+- **Docs** : entrée backlog P2 (page Exporter + vue embarquée Constituer — nettoyage / affinage).
+
 ## [Unreleased]
 
 ### Changed

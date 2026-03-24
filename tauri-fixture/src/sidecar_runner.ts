@@ -15,20 +15,25 @@ function parseSingleJson(stdout: string): Record<string, unknown> {
 export async function runSidecarInitProject(dbPath: string): Promise<Record<string, unknown>> {
   let result;
   try {
-    const command = Command.sidecar("binaries/multicorpus", [
-      "init-project",
-      "--db",
-      dbPath,
-    ]);
+    const command = Command.sidecar(
+      "binaries/multicorpus",
+      ["init-project", "--db", dbPath],
+      {
+        env: { PYTHONUNBUFFERED: "1" },
+      }
+    );
     result = await command.execute();
   } catch (err) {
     throw new Error(`failed to execute sidecar: ${String(err)}`);
   }
-  if (result.stderr.trim() !== "") {
-    throw new Error(`stderr must stay empty, got: ${result.stderr}`);
+  const dec = new TextDecoder("utf-8", { fatal: false });
+  const stdout = typeof result.stdout === "string" ? result.stdout : dec.decode(result.stdout);
+  const stderr = typeof result.stderr === "string" ? result.stderr : dec.decode(result.stderr);
+  if (stderr.trim() !== "") {
+    throw new Error(`stderr must stay empty, got: ${stderr}`);
   }
   if (result.code !== 0) {
     throw new Error(`init-project failed with rc=${result.code}`);
   }
-  return parseSingleJson(result.stdout);
+  return parseSingleJson(stdout);
 }

@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Optional
 
 from ..unicode_policy import count_sep, normalize
+from .import_guard import assert_not_duplicate_import
 import json
 from .docx_numbered_lines import ImportReport, _analyze_external_ids
 
@@ -155,6 +156,7 @@ def import_tei(
     log.info("Starting import of %s (mode=tei, unit=%s)", path, unit_element)
 
     source_hash = _compute_file_hash(path)
+    assert_not_duplicate_import(conn, path, source_hash)
 
     try:
         tree = ET.parse(str(path))

@@ -17,6 +17,15 @@ import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { resolveResource } from "@tauri-apps/api/path";
 import { invoke } from "@tauri-apps/api/core";
 
+/** Force le flush immédiat du pipe stdout sous Windows (évite les blocages). */
+const SIDECAR_SPAWN_OPTIONS = {
+  env: { PYTHONUNBUFFERED: "1" },
+};
+
+function utf8DecodeStream(chunk: Uint8Array, decoder: TextDecoder): string {
+  return decoder.decode(chunk, { stream: true });
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface QueryHit {
@@ -78,7 +87,13 @@ export interface QueryResponse {
 }
 
 export interface ImportOptions {
-  mode: "docx_numbered_lines" | "txt_numbered_lines" | "docx_paragraphs" | "tei";
+  mode:
+    | "docx_numbered_lines"
+    | "txt_numbered_lines"
+    | "docx_paragraphs"
+    | "odt_paragraphs"
+    | "odt_numbered_lines"
+    | "tei";
   path: string;
   language?: string;
   title?: string;
@@ -104,6 +119,8 @@ export interface DocumentRecord {
   language: string;
   doc_role: string | null;
   resource_type: string | null;
+  source_path?: string | null;
+  source_hash?: string | null;
   unit_count: number;
 }
 
@@ -180,6 +197,7 @@ export interface Conn {
 // ─── Internal state ───────────────────────────────────────────────────────────
 
 let _conn: Conn | null = null;
+let _connDbPath: string | null = null;
 let _spawnedChild: Child | null = null;
 const SIDECAR_PROGRAM = "multicorpus";
 const IS_WINDOWS_RUNTIME =
@@ -187,7 +205,8 @@ const IS_WINDOWS_RUNTIME =
 const SIDECAR_HEALTH_TIMEOUT_MS = IS_WINDOWS_RUNTIME ? 45000 : 15000;
 const SIDECAR_HEALTH_INITIAL_DELAY_MS = IS_WINDOWS_RUNTIME ? 1200 : 0;
 const SIDECAR_HEALTH_POLL_INTERVAL_MS = 350;
-const SIDECAR_STARTUP_JSON_TIMEOUT_MS = IS_WINDOWS_RUNTIME ? 20000 : 12000;
+/** Cold start PyInstaller + migrations SQLite peuvent dépasser 20s sous Windows. */
+const SIDECAR_STARTUP_JSON_TIMEOUT_MS = IS_WINDOWS_RUNTIME ? 90000 : 12000;
 type LoopbackHttpBackendMode = "auto" | "global_this_only" | "tauri_only";
 // "tauri_only": bypasses globalThis.fetch for loopback (avoids WebView2 mixed-content
 // hang when fetching http:// from https://tauri.localhost). reqwest/WinHTTP natively
@@ -430,19 +449,19 @@ async function sidecarFetch(url: string, init?: SidecarFetchInit): Promise<Respo
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function portfilePath(dbPath: string): string {
-  // Place portfile next to the DB file
-  const dir = dbPath.includes("/")
-    ? dbPath.substring(0, dbPath.lastIndexOf("/"))
-    : dbPath.includes("\\")
-    ? dbPath.substring(0, dbPath.lastIndexOf("\\"))
+  // Place portfile next to the DB file — use the same separator as the path
+  const sep = dbPath.includes("\\") ? "\\" : "/";
+  const dir = dbPath.includes(sep)
+    ? dbPath.substring(0, dbPath.lastIndexOf(sep))
     : ".";
-  return `${dir}/.agrafes_sidecar.json`;
+  return `${dir}${sep}.agrafes_sidecar.json`;
 }
 
 async function readPortfile(portfile: string): Promise<Record<string, unknown> | null> {
   try {
-    if (!(await exists(portfile))) return null;
-    const raw = await readTextFile(portfile);
+    // Use the raw Rust command to bypass Tauri FS scope restrictions.
+    // Portfiles live next to the user's DB file which can be anywhere on disk.
+    const raw = await invoke<string>("read_text_file_raw", { path: portfile });
     return JSON.parse(raw) as Record<string, unknown>;
   } catch {
     return null;
@@ -656,16 +675,31 @@ export class SidecarError extends Error {
 export async function ensureRunning(dbPath: string): Promise<Conn> {
   sidecarLog("info", `ensureRunning called (db=${dbPath})`);
 
-  // 1. In-memory: reuse if /health still OK
-  if (_conn) {
+  // 1. In-memory: reuse only if it serves the same DB
+  if (_conn && _connDbPath === dbPath) {
     try {
       await _conn.get("/health");
+      // If token was null at spawn time (portfile not yet ready), try to recover it now
+      if (_conn.token === null) {
+        const pfData = await readPortfile(portfilePath(dbPath));
+        const freshToken = pfData ? (pfData.token as string | null) ?? null : null;
+        if (freshToken) {
+          sidecarLog("info", "recovered missing token from portfile; refreshing connection");
+          _conn = makeConn(_conn.baseUrl, freshToken);
+          _connDbPath = dbPath;
+        }
+      }
       sidecarLog("info", "reusing in-memory sidecar connection");
       return _conn;
     } catch (err) {
       sidecarLog("warn", "in-memory sidecar connection is stale; reconnecting", errToString(err));
       _conn = null;
+      _connDbPath = null;
     }
+  } else if (_conn && _connDbPath !== dbPath) {
+    sidecarLog("info", `DB path changed (${_connDbPath} → ${dbPath}); dropping old connection`);
+    _conn = null;
+    _connDbPath = null;
   }
 
   // 2. Portfile discovery
@@ -682,9 +716,17 @@ export async function ensureRunning(dbPath: string): Promise<Conn> {
         const res = await sidecarFetch(`${baseUrl}/health`);
         const json = (await res.json()) as Record<string, unknown>;
         if (res.ok && json.ok === true) {
-          sidecarLog("info", `reusing sidecar from portfile (${baseUrl})`);
-          _conn = makeConn(baseUrl, token);
-          return _conn;
+          if (!token && json.token_required === true) {
+            sidecarLog("warn", "portfile has no token but sidecar requires one; falling through to spawn", {
+              baseUrl,
+            });
+            // Fall through to spawn so we get a fresh token from stdout
+          } else {
+            sidecarLog("info", `reusing sidecar from portfile (${baseUrl})`);
+            _conn = makeConn(baseUrl, token);
+            _connDbPath = dbPath;
+            return _conn;
+          }
         }
         sidecarLog("warn", `portfile sidecar not healthy (${baseUrl})`, json);
       } catch (err) {
@@ -733,7 +775,7 @@ async function _spawnSidecar(dbPath: string): Promise<Conn> {
     sidecarLog("warn", "could not resolve sidecar resource path candidate");
   }
 
-  const command = Command.sidecar(SIDECAR_PROGRAM, sidecarArgs);
+  const command = Command.sidecar(SIDECAR_PROGRAM, sidecarArgs, SIDECAR_SPAWN_OPTIONS);
   const commandDebug = command as unknown as {
     program?: string;
     args?: string[];
@@ -748,8 +790,11 @@ async function _spawnSidecar(dbPath: string): Promise<Conn> {
     dbPath,
   });
 
-  command.stderr.on("data", (chunk: string) => {
-    const stderrLine = chunk.trim();
+  const stderrDec = new TextDecoder("utf-8", { fatal: false });
+  command.stderr.on("data", (chunk: string | Uint8Array) => {
+    const stderrLine = (
+      typeof chunk === "string" ? chunk : utf8DecodeStream(chunk, stderrDec)
+    ).trim();
     if (stderrLine) sidecarLog("warn", "sidecar stderr", stderrLine);
   });
 
@@ -802,23 +847,27 @@ async function _spawnSidecar(dbPath: string): Promise<Conn> {
     );
   }
 
-  // Read token from portfile (authoritative source)
-  const pf = portfilePath(dbPath);
+  // Read token from portfile — prefer the path reported by the sidecar (authoritative)
+  const pf = (typeof started.portfile === "string" && started.portfile.length > 0)
+    ? started.portfile
+    : portfilePath(dbPath);
   const pfData = await readPortfile(pf);
   const token = pfData ? ((pfData.token as string | null) ?? null) : null;
   sidecarLog("info", `sidecar healthy at ${baseUrl} (token=${token ? "present" : "absent"})`);
 
   _conn = makeConn(baseUrl, token);
+  _connDbPath = dbPath;
   return _conn;
 }
 
 /** Read first JSON line from command stdout. Call before spawn(); resolve after spawn(). */
 function _readFirstJsonFromCommand(command: {
-  stdout: { on(event: "data", cb: (chunk: string) => void): void };
+  stdout: { on(event: "data", cb: (chunk: string | Uint8Array) => void): void };
   on(event: "error", cb: (err: unknown) => void): void;
   on(event: "close", cb: (payload: { code: number | null; signal: number | null }) => void): void;
 }, timeoutMs: number): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
+    const stdoutDec = new TextDecoder("utf-8", { fatal: false });
     let rawBuffer = "";
     let currentJson = "";
     let depth = 0;
@@ -879,9 +928,12 @@ function _readFirstJsonFromCommand(command: {
       timeoutMs
     );
 
-    command.stdout.on("data", (chunk: string) => {
-      rawBuffer += chunk;
-      for (const ch of chunk) {
+    command.stdout.on("data", (chunk: string | Uint8Array) => {
+      const textChunk = typeof chunk === "string"
+        ? chunk
+        : utf8DecodeStream(chunk, stdoutDec);
+      rawBuffer += textChunk;
+      for (const ch of textChunk) {
         if (ch === "{") {
           if (depth === 0) currentJson = "{";
           else currentJson += ch;
@@ -908,13 +960,20 @@ function _readFirstJsonFromCommand(command: {
     });
 
     command.on("close", (payload) => {
-      sidecarLog("warn", "sidecar command close event while waiting for startup payload", {
+      const closeInfo = {
         code: payload.code,
         signal: payload.signal,
         seenCandidates,
         lastCandidate,
         closedAt: new Date().toISOString(),
-      });
+      };
+      sidecarLog("warn", "sidecar command close event while waiting for startup payload", closeInfo);
+      if (!resolved) {
+        clearTimeout(timer);
+        const msg = `Sidecar exited (code=${payload.code ?? "null"}) before outputting startup JSON`;
+        sidecarLog("error", msg, closeInfo);
+        reject(new SidecarError(msg));
+      }
     });
   });
 }
@@ -1015,10 +1074,12 @@ export async function shutdownSidecar(conn: Conn): Promise<void> {
     // best-effort
   }
   _conn = null;
+  _connDbPath = null;
   _spawnedChild = null;
 }
 
 /** Reset in-memory state (e.g. after switching DB). */
 export function resetConnection(): void {
   _conn = null;
+  _connDbPath = null;
 }

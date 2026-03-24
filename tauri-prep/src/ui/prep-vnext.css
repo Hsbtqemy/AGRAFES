@@ -235,6 +235,20 @@
   overflow-x: hidden;
 }
 
+.prep-main:has(.import-screen.active) {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.prep-main:has(.import-screen.active) > .content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 0;
+}
+
 /* ════════════════════════════════════════════════════════════════════════════
    CURATION 3-COLUMN WORKSPACE
    ════════════════════════════════════════════════════════════════════════════ */

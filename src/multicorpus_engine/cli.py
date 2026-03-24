@@ -29,6 +29,19 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
+def _configure_stdio_utf8() -> None:
+    """Windows: stdout/stderr en UTF-8 pour éviter des octets CP1252 (Tauri shell décode en UTF-8 strict)."""
+    if sys.platform != "win32":
+        return
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            try:
+                reconfigure(encoding="utf-8", errors="replace")
+            except (OSError, ValueError, AttributeError):
+                pass
+
+
 def _created_at() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -36,7 +49,9 @@ def _created_at() -> str:
 def _ok(data: dict) -> None:
     payload = dict(data)
     payload.setdefault("status", "ok")
-    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    # ensure_ascii=True : évite les octets CP1252 dans le pipe Tauri (UTF-8 strict côté Rust).
+    print(json.dumps(payload, ensure_ascii=True, indent=2))
+    sys.stdout.flush()
 
 
 def _err(data: dict, code: int = 1) -> None:
@@ -44,7 +59,8 @@ def _err(data: dict, code: int = 1) -> None:
     payload["status"] = "error"
     payload.setdefault("error", "Unknown error")
     payload.setdefault("created_at", _created_at())
-    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    print(json.dumps(payload, ensure_ascii=True, indent=2))
+    sys.stdout.flush()
     sys.exit(code)
 
 
@@ -150,6 +166,30 @@ def cmd_import(args: argparse.Namespace) -> None:
         elif args.mode == "docx_paragraphs":
             from .importers.docx_paragraphs import import_docx_paragraphs
             report = import_docx_paragraphs(
+                conn=conn,
+                path=args.path,
+                language=args.language,
+                title=getattr(args, "title", None),
+                doc_role=getattr(args, "doc_role", "standalone"),
+                resource_type=getattr(args, "resource_type", None),
+                run_id=run_id,
+                run_logger=log,
+            )
+        elif args.mode == "odt_paragraphs":
+            from .importers.odt_paragraphs import import_odt_paragraphs
+            report = import_odt_paragraphs(
+                conn=conn,
+                path=args.path,
+                language=args.language,
+                title=getattr(args, "title", None),
+                doc_role=getattr(args, "doc_role", "standalone"),
+                resource_type=getattr(args, "resource_type", None),
+                run_id=run_id,
+                run_logger=log,
+            )
+        elif args.mode == "odt_numbered_lines":
+            from .importers.odt_numbered_lines import import_odt_numbered_lines
+            report = import_odt_numbered_lines(
                 conn=conn,
                 path=args.path,
                 language=args.language,
@@ -857,6 +897,7 @@ def cmd_serve(args: argparse.Namespace) -> None:
                 "started_at": state.get("started_at"),
                 "portfile": state.get("portfile"),
                 "token_required": bool(state.get("token_required", False)),
+                "token": state.get("token"),
                 "log": str(log_path),
                 "created_at": utcnow_iso(),
             })
@@ -894,10 +935,10 @@ def cmd_serve(args: argparse.Namespace) -> None:
             "started_at": server.started_at,
             "portfile": str(server.portfile_path),
             "token_required": bool(server.token),
+            "token": server.token,
             "log": str(log_path),
             "created_at": utcnow_iso(),
         })
-        sys.stdout.flush()
         server.join()
     except KeyboardInterrupt:
         log.info("Sidecar shutdown requested")
@@ -1034,7 +1075,14 @@ def build_parser() -> argparse.ArgumentParser:
     p_import.add_argument(
         "--mode",
         required=True,
-        choices=["docx_numbered_lines", "txt_numbered_lines", "docx_paragraphs", "tei"],
+        choices=[
+            "docx_numbered_lines",
+            "txt_numbered_lines",
+            "docx_paragraphs",
+            "odt_paragraphs",
+            "odt_numbered_lines",
+            "tei",
+        ],
         help="Import mode",
     )
     p_import.add_argument("--language", default=None, help="ISO language code (fr, en, ...). TEI: inferred from xml:lang if omitted.")
@@ -1286,6 +1334,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
+    _configure_stdio_utf8()
     parser = build_parser()
     try:
         args = parser.parse_args()

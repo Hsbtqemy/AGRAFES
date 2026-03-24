@@ -222,17 +222,11 @@ export class App {
       this._tabBtns[tab] = btn as HTMLButtonElement;
       nav.appendChild(btn);
 
-      // Actions sub-tree (shortcuts to major sections)
+      // Raccourcis sous « Actions » (sans sous-titre « Actions disponibles »)
       if (tab === "actions") {
-        const tree = document.createElement("details");
-        tree.className = "prep-nav-tree";
-        tree.open = true;
-        const summary = document.createElement("summary");
-        summary.className = "prep-nav-tree-summary";
-        summary.innerHTML = `Actions disponibles <span class="prep-nav-tree-caret" aria-hidden="true">▾</span>`;
-        tree.appendChild(summary);
         const treeBody = document.createElement("div");
         treeBody.className = "prep-nav-tree-body";
+        treeBody.setAttribute("aria-label", "Raccourcis Actions");
         const treeItems: Array<[string, string, string]> = [
           ["Curation", "#act-curate-card", "curation"],
           ["Segmentation", "#act-seg-card", "segmentation"],
@@ -249,8 +243,10 @@ export class App {
           });
           treeBody.appendChild(link);
         }
-        tree.appendChild(treeBody);
-        nav.appendChild(tree);
+        const actionsBlock = document.createElement("div");
+        actionsBlock.className = "prep-nav-tree";
+        actionsBlock.appendChild(treeBody);
+        nav.appendChild(actionsBlock);
       }
     }
 

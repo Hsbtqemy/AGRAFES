@@ -1219,6 +1219,28 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                         resource_type=resource_type,
                         run_id=run_id,
                     )
+                elif mode == "odt_paragraphs":
+                    from multicorpus_engine.importers.odt_paragraphs import import_odt_paragraphs
+                    report = import_odt_paragraphs(
+                        conn=self._conn(),
+                        path=path,
+                        language=language,
+                        title=title,
+                        doc_role=doc_role,
+                        resource_type=resource_type,
+                        run_id=run_id,
+                    )
+                elif mode == "odt_numbered_lines":
+                    from multicorpus_engine.importers.odt_numbered_lines import import_odt_numbered_lines
+                    report = import_odt_numbered_lines(
+                        conn=self._conn(),
+                        path=path,
+                        language=language,
+                        title=title,
+                        doc_role=doc_role,
+                        resource_type=resource_type,
+                        run_id=run_id,
+                    )
                 elif mode == "tei":
                     from multicorpus_engine.importers.tei_importer import import_tei
                     report = import_tei(
@@ -2315,6 +2337,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             """
             SELECT d.doc_id, d.title, d.language, d.doc_role, d.resource_type,
                    d.workflow_status, d.validated_at, d.validated_run_id,
+                   d.source_path, d.source_hash,
                    COUNT(u.unit_id) AS unit_count
             FROM documents d
             LEFT JOIN units u ON u.doc_id = d.doc_id AND u.unit_type = 'line'
@@ -2332,7 +2355,9 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 "workflow_status": r[5],
                 "validated_at": r[6],
                 "validated_run_id": r[7],
-                "unit_count": r[8],
+                "source_path": r[8],
+                "source_hash": r[9],
+                "unit_count": r[10],
             }
             for r in rows
         ]
@@ -3865,6 +3890,18 @@ class CorpusServer:
                 elif mode == "docx_paragraphs":
                     from multicorpus_engine.importers.docx_paragraphs import import_docx_paragraphs
                     report = import_docx_paragraphs(
+                        conn, path=file_path, language=language,
+                        title=title, doc_role=doc_role, resource_type=resource_type,
+                    )
+                elif mode == "odt_paragraphs":
+                    from multicorpus_engine.importers.odt_paragraphs import import_odt_paragraphs
+                    report = import_odt_paragraphs(
+                        conn, path=file_path, language=language,
+                        title=title, doc_role=doc_role, resource_type=resource_type,
+                    )
+                elif mode == "odt_numbered_lines":
+                    from multicorpus_engine.importers.odt_numbered_lines import import_odt_numbered_lines
+                    report = import_odt_numbered_lines(
                         conn, path=file_path, language=language,
                         title=title, doc_role=doc_role, resource_type=resource_type,
                     )

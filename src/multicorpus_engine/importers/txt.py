@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Optional
 
 from ..unicode_policy import count_sep, normalize
+from .import_guard import assert_not_duplicate_import
 from .docx_numbered_lines import ImportReport, _analyze_external_ids
 
 _NUMBERED_RE = re.compile(r"^\[\s*(\d+)\s*\]\s*(.+)$")
@@ -96,6 +97,7 @@ def import_txt_numbered_lines(
 
     raw_bytes = path.read_bytes()
     source_hash = hashlib.sha256(raw_bytes).hexdigest()
+    assert_not_duplicate_import(conn, path, source_hash)
     encoding, enc_method = _detect_encoding(raw_bytes)
 
     # Encoding fallback: do not use module logger (would go to stderr in sidecar).

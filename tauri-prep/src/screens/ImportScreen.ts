@@ -11,14 +11,21 @@
 
 import { open } from "@tauri-apps/plugin-dialog";
 import type { Conn } from "../lib/sidecarClient.ts";
-import { importFile, rebuildIndex, enqueueJob, SidecarError } from "../lib/sidecarClient.ts";
+import { importFile, rebuildIndex, enqueueJob, SidecarError, listDocuments } from "../lib/sidecarClient.ts";
 import type { JobCenter } from "../components/JobCenter.ts";
 import { initCardAccordions } from "../lib/uiAccordions.ts";
+
+/** Normalise un chemin pour détecter les doublons (séparateurs + casse). */
+function normalizeImportPath(p: string): string {
+  return p.replace(/\\/g, "/").replace(/\/+$/u, "").toLowerCase();
+}
 
 const IMPORT_MODE_OPTIONS: Array<{ value: FileItem["mode"]; label: string }> = [
   { value: "docx_numbered_lines", label: "DOCX lignes numérotées [n]" },
   { value: "txt_numbered_lines", label: "TXT lignes numérotées [n]" },
   { value: "docx_paragraphs", label: "DOCX paragraphes" },
+  { value: "odt_numbered_lines", label: "ODT lignes numérotées [n]" },
+  { value: "odt_paragraphs", label: "ODT paragraphes" },
   { value: "tei", label: "TEI XML" },
 ];
 
@@ -48,10 +55,11 @@ export class ImportScreen {
 
   render(): HTMLElement {
     const root = document.createElement("div");
-    root.className = "screen import-screen";
+    root.className = "screen import-screen import-screen--layout";
     this._root = root;
 
     root.innerHTML = `
+      <div class="imp-scroll">
       <!-- Head card + stepper -->
       <div class="card imp-head-card">
         <div class="imp-head-top">
@@ -87,7 +95,7 @@ export class ImportScreen {
             <div class="imp-dropzone" id="imp-dropzone">
               <div class="imp-dropzone-icon">📂</div>
               <div class="imp-dropzone-text">Glissez vos fichiers ici</div>
-              <div class="imp-dropzone-sub">.docx &middot; .txt &middot; .tei &middot; .xml</div>
+              <div class="imp-dropzone-sub">.docx &middot; .odt &middot; .txt &middot; .tei &middot; .xml</div>
               <div class="btn-row" style="justify-content:center;margin-top:8px">
                 <button id="imp-add-btn" class="btn btn-primary btn-sm">Ajouter des fichiers…</button>
                 <button id="imp-clear-btn" class="btn btn-secondary btn-sm">Vider</button>
@@ -163,8 +171,9 @@ export class ImportScreen {
           </section>
         </div>
       </div>
+      </div>
 
-      <!-- Footer sticky -->
+      <!-- Footer docked at bottom of main pane (above scrolling content) -->
       <div class="imp-footer-bar">
         <div class="imp-footer-meta">
           <span class="hint" style="margin:0">Importe tous les fichiers en attente.</span>
@@ -200,22 +209,24 @@ export class ImportScreen {
         const defaultMode = (this._root.querySelector<HTMLSelectElement>("#imp-default-mode"))!.value;
         const defaultLang = (this._root.querySelector<HTMLInputElement>("#imp-default-lang"))!.value.trim() || "fr";
         let added = 0;
+        let skippedDup = 0;
         for (const file of Array.from(files)) {
           // Tauri WebView exposes native path via non-standard File.path property
           const path = (file as File & { path?: string }).path;
           if (!path) continue;
           const name = file.name;
-          const ext = name.split(".").pop()?.toLowerCase() ?? "";
-          let mode = defaultMode;
-          if (ext === "xml") mode = "tei";
-          else if (ext === "txt") mode = "txt_numbered_lines";
-          else if (ext === "docx") mode = defaultMode.startsWith("docx") ? defaultMode : "docx_numbered_lines";
-          this._files.push({ path, mode, language: defaultLang, title: name, status: "pending", message: "" });
-          added++;
+          const r = this._tryAddSingle(path, name, defaultMode, defaultLang);
+          if (r === "added") added++;
+          else skippedDup++;
         }
         if (added > 0) {
           this._renderList();
           this._updateButtons();
+        }
+        if (skippedDup > 0) {
+          this._showToast?.(
+            `${skippedDup} fichier${skippedDup > 1 ? "s" : ""} ignoré${skippedDup > 1 ? "s" : ""} (déjà dans la liste).`,
+          );
         }
       });
     }
@@ -260,11 +271,46 @@ export class ImportScreen {
     this._refreshRuntimeState();
   }
 
+  private _deriveModeFromExt(ext: string, defaultMode: string): string {
+    if (ext === "xml") return "tei";
+    if (ext === "txt") return "txt_numbered_lines";
+    if (ext === "docx") return defaultMode.startsWith("docx") ? defaultMode : "docx_numbered_lines";
+    if (ext === "odt") return defaultMode.startsWith("odt") ? defaultMode : "odt_paragraphs";
+    return defaultMode;
+  }
+
+  /**
+   * Ajoute un fichier à la file s'il n'y est pas déjà (même chemin normalisé).
+   * @returns "added" | "dup_queue"
+   */
+  private _tryAddSingle(
+    path: string,
+    fileName: string,
+    defaultMode: string,
+    defaultLang: string,
+  ): "added" | "dup_queue" {
+    const norm = normalizeImportPath(path);
+    if (this._files.some((f) => normalizeImportPath(f.path) === norm)) {
+      return "dup_queue";
+    }
+    const ext = fileName.split(".").pop()?.toLowerCase() ?? "";
+    const mode = this._deriveModeFromExt(ext, defaultMode);
+    this._files.push({
+      path,
+      mode,
+      language: defaultLang,
+      title: fileName,
+      status: "pending",
+      message: "",
+    });
+    return "added";
+  }
+
   private async _addFiles(): Promise<void> {
     const selected = await open({
       title: "Sélectionner des fichiers",
       filters: [
-        { name: "Corpus", extensions: ["docx", "txt", "xml"] },
+        { name: "Corpus", extensions: ["docx", "odt", "txt", "xml"] },
       ],
       multiple: true,
     });
@@ -273,25 +319,23 @@ export class ImportScreen {
     const defaultMode = (this._root.querySelector("#imp-default-mode") as HTMLSelectElement).value;
     const defaultLang = (this._root.querySelector("#imp-default-lang") as HTMLInputElement).value.trim() || "fr";
 
+    let added = 0;
+    let skippedDup = 0;
     for (const p of paths) {
       const name = p.split("/").pop()?.split("\\").pop() ?? p;
-      const ext = name.split(".").pop()?.toLowerCase() ?? "";
-      let mode = defaultMode;
-      if (ext === "xml") mode = "tei";
-      else if (ext === "txt") mode = "txt_numbered_lines";
-      else if (ext === "docx") mode = defaultMode.startsWith("docx") ? defaultMode : "docx_numbered_lines";
-
-      this._files.push({
-        path: p,
-        mode,
-        language: defaultLang,
-        title: name,
-        status: "pending",
-        message: "",
-      });
+      const r = this._tryAddSingle(p, name, defaultMode, defaultLang);
+      if (r === "added") added++;
+      else skippedDup++;
     }
-    this._renderList();
-    this._updateButtons();
+    if (added > 0) {
+      this._renderList();
+      this._updateButtons();
+    }
+    if (skippedDup > 0) {
+      this._showToast?.(
+        `${skippedDup} fichier${skippedDup > 1 ? "s" : ""} ignoré${skippedDup > 1 ? "s" : ""} (déjà dans la liste).`,
+      );
+    }
   }
 
   private _clearList(): void {
@@ -441,7 +485,30 @@ export class ImportScreen {
       this._updateButtons();
     };
 
+    const corpusByPath = new Map<string, number>();
+    try {
+      const docs = await listDocuments(this._conn);
+      for (const d of docs) {
+        const sp = d.source_path;
+        if (typeof sp === "string" && sp.length > 0) {
+          corpusByPath.set(normalizeImportPath(sp), d.doc_id);
+        }
+      }
+    } catch {
+      /* liste indisponible — le moteur refusera encore les doublons */
+    }
+
     for (const f of pending) {
+      const existingId = corpusByPath.get(normalizeImportPath(f.path));
+      if (existingId !== undefined) {
+        f.status = "error";
+        f.message = `Déjà dans le corpus (doc_id ${existingId})`;
+        this._log(`⊘ "${f.title}": ${f.message}`, true);
+        this._showToast?.(`⊘ ${f.title} — déjà importé (doc_id ${existingId})`, true);
+        this._renderList();
+        continue;
+      }
+
       f.status = "importing";
       this._renderList();
       try {
@@ -479,6 +546,10 @@ export class ImportScreen {
         finished++;
         if (finished === submitted) onAllDone();
       }
+    }
+
+    if (submitted === 0) {
+      onAllDone();
     }
   }
 

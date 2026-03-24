@@ -20,6 +20,7 @@ from typing import Optional
 
 from ..unicode_policy import count_sep, normalize
 from .docx_numbered_lines import ImportReport
+from .import_guard import assert_not_duplicate_import
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +64,7 @@ def import_docx_paragraphs(
     log.info("Starting import of %s (mode=docx_paragraphs)", path)
 
     source_hash = _compute_file_hash(path)
+    assert_not_duplicate_import(conn, path, source_hash)
     doc_title = title or path.stem
     utcnow = __import__("datetime").datetime.now(
         __import__("datetime").timezone.utc

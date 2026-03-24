@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Optional
 
 from ..unicode_policy import count_sep, normalize
+from .import_guard import assert_not_duplicate_import
 
 _NUMBERED_RE = re.compile(r"^\[\s*(\d+)\s*\]\s*(.+)$", re.DOTALL)
 
@@ -115,6 +116,7 @@ def import_docx_numbered_lines(
     log.info("Starting import of %s (mode=docx_numbered_lines)", path)
 
     source_hash = _compute_file_hash(path)
+    assert_not_duplicate_import(conn, path, source_hash)
     doc_title = title or path.stem
     utcnow = __import__("datetime").datetime.now(
         __import__("datetime").timezone.utc

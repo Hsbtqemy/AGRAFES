@@ -15,16 +15,20 @@ function parseSingleJson(text: string): JsonObject {
   return parsed as JsonObject;
 }
 
-function readFirstJsonFromStream(getData: (onData: (chunk: string) => void) => void): Promise<JsonObject> {
+function readFirstJsonFromStream(getData: (onData: (chunk: Uint8Array) => void) => void): Promise<JsonObject> {
   return new Promise((resolve, reject) => {
     let buffer = "";
+    const decoder = new TextDecoder("utf-8", { fatal: false });
     let depth = 0;
     let started = false;
     const timer = setTimeout(() => reject(new Error("timeout waiting sidecar startup JSON")), 10000);
 
     getData((chunk) => {
-      buffer += chunk;
-      for (const ch of chunk) {
+      const textChunk = typeof chunk === "string"
+        ? chunk
+        : decoder.decode(chunk, { stream: true });
+      buffer += textChunk;
+      for (const ch of textChunk) {
         if (ch === "{") {
           depth += 1;
           started = true;
@@ -62,15 +66,13 @@ async function loadTokenFromPortfile(started: JsonObject): Promise<string | null
 export async function runPersistentSidecarFlow(dbPath: string): Promise<JsonObject> {
   let child;
   try {
-    child = await Command.sidecar("binaries/multicorpus", [
-      "serve",
-      "--db",
-      dbPath,
-      "--host",
-      "127.0.0.1",
-      "--port",
-      "0",
-    ]).spawn();
+    child = await Command.sidecar(
+      "binaries/multicorpus",
+      ["serve", "--db", dbPath, "--host", "127.0.0.1", "--port", "0"],
+      {
+        env: { PYTHONUNBUFFERED: "1" },
+      }
+    ).spawn();
   } catch (err) {
     throw new Error(`failed to spawn sidecar: ${String(err)}`);
   }

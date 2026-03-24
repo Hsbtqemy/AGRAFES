@@ -83,6 +83,14 @@ async fn sidecar_fetch_loopback(
     })
 }
 
+/// Reads a text file from any path, bypassing Tauri FS scope (used to read sidecar portfiles
+/// which live next to the user's DB file, potentially outside the app data directory).
+#[tauri::command]
+fn read_text_file_raw(path: String) -> Result<String, String> {
+    std::fs::read_to_string(&path)
+        .map_err(|e| format!("read_text_file_raw: cannot read '{}': {}", path, e))
+}
+
 /// Appends a diagnostic message to %APPDATA%\com.agrafes.shell\sidecar-debug.log.
 #[tauri::command]
 fn write_sidecar_log(message: String) -> Result<(), String> {
@@ -125,6 +133,7 @@ fn main() {
         .plugin(tauri_plugin_deep_link::init())
         .invoke_handler(tauri::generate_handler![
             sidecar_fetch_loopback,
+            read_text_file_raw,
             write_sidecar_log,
         ])
         .run(tauri::generate_context!())

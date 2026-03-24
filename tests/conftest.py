@@ -13,6 +13,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.support_odt import make_odt_bytes
+
 # We need the migrations directory path at test time.
 _REPO_ROOT = Path(__file__).parent.parent
 _MIGRATIONS_DIR = _REPO_ROOT / "migrations"
@@ -89,4 +91,21 @@ def docx_with_duplicates(tmp_path: Path) -> Path:
     data = make_docx(paragraphs)
     path = tmp_path / "dupes.docx"
     path.write_bytes(data)
+    return path
+
+
+@pytest.fixture()
+def simple_odt(tmp_path: Path) -> Path:
+    """Minimal ODT with numbered lines + structure (mirrors simple_docx intent)."""
+    paragraphs = [
+        "Introduction",
+        "[1] Bonjour le monde.",
+        "[2] Il fait beau aujourd'hui.",
+        "[3] Le chat¤le chien jouent ensemble.",
+        "Section 2",
+        "[4] Voici une autre phrase.",
+        "[5] Fin du document.",
+    ]
+    path = tmp_path / "fixture.odt"
+    path.write_bytes(make_odt_bytes(paragraphs))
     return path

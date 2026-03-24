@@ -933,7 +933,14 @@ def openapi_spec() -> dict[str, Any]:
                     "properties": {
                         "mode": {
                             "type": "string",
-                            "enum": ["docx_numbered_lines", "txt_numbered_lines", "docx_paragraphs", "tei"],
+                            "enum": [
+                                "docx_numbered_lines",
+                                "txt_numbered_lines",
+                                "docx_paragraphs",
+                                "odt_paragraphs",
+                                "odt_numbered_lines",
+                                "tei",
+                            ],
                         },
                         "path": {"type": "string"},
                         "language": {"type": "string"},

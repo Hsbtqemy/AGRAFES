@@ -1,11 +1,12 @@
 # Backlog — multicorpus_engine
 
-Last updated: 2026-03-08 (P11 — Actions TRUE DOM parity — Inc 3 traduction native layout)
+Last updated: 2026-03-23 (backlog — surfaces Export Prep + Constituer)
 
 ## Priority backlog (realistic, post-implementation)
 
 | Priority | Item | Why now | Acceptance criteria | Status |
 |----------|------|---------|---------------------|--------|
+| P2 | **Prep — page « Exporter » + vue Exporter dans Constituer** | `ExportsScreen` (V2 + blocs legacy) et navigation shell : besoin de **nettoyage et d’affinage** (hiérarchie visuelle, duplication V2/legacy, KPI, bouton retour Alignement, états vides/erreur) | Pass UX dédié : parcours clair sur `tauri-prep` **et** même surface embarquée via `constituerModule` (pas de régression shell : titres, scroll, Job Center) ; documenter décisions dans `UX_FLOW_PREP` ou note courte ; build vert | **todo** |
 | **NOW** | **P11 — Actions TRUE DOM parity** | Inc 3 traduction native layout; Inc 0/1/2 vérifiés conformes | 2-col traduction workspace, `<details>` ref VO, preview-tools/tabs/panes à droite; build vert | **done** |
 | **P1** | **P12 — Wiring traduction preview + scroll sync** | La preview traduction droite est structurée mais non câblée ; le scroll sync longtext est TODO | `_runSegment()` alimente les panes traduction (target + VO) ; sync scroll `raw-scroll` ↔ `seg-scroll` mode longtext | **todo** |
 | **NOW** | **Tauri UI "Concordancier" V0** | Core + sidecar stable; time to deliver user-facing value | `tauri-app/` launches with `npm run tauri dev`; search, KWIC, import, index | **done** |

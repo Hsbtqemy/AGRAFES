@@ -120,3 +120,15 @@ def test_import_detects_duplicates(
     )
     assert 2 in report.duplicates
     assert any("Duplicate" in w for w in report.warnings)
+
+
+def test_import_rejects_duplicate_corpus_entry(
+    db_conn: sqlite3.Connection,
+    simple_docx: Path,
+) -> None:
+    """Re-importing the same file must raise (same path / same hash)."""
+    from multicorpus_engine.importers.docx_numbered_lines import import_docx_numbered_lines
+
+    import_docx_numbered_lines(conn=db_conn, path=simple_docx, language="fr")
+    with pytest.raises(ValueError, match="doc_id="):
+        import_docx_numbered_lines(conn=db_conn, path=simple_docx, language="fr")
