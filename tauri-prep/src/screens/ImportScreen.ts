@@ -2,16 +2,16 @@
  * ImportScreen — batch import documents + rebuild FTS index.
  *
  * Features:
- *  - File picker (multi-select)
+ *  - File picker (multi-select) + glisser-déposer (chemins natifs Tauri)
  *  - Per-file: mode, language, title override
- *  - Batch import (2 concurrent) with per-file status
+ *  - Batch import : jobs async côté sidecar (plusieurs imports peuvent tourner en parallèle)
  *  - "Reconstruire l'index" button
  *  - Log pane
  */
 
 import { open } from "@tauri-apps/plugin-dialog";
 import type { Conn } from "../lib/sidecarClient.ts";
-import { importFile, rebuildIndex, enqueueJob, SidecarError, listDocuments } from "../lib/sidecarClient.ts";
+import { importFile, enqueueJob, SidecarError, listDocuments } from "../lib/sidecarClient.ts";
 import type { JobCenter } from "../components/JobCenter.ts";
 import { initCardAccordions } from "../lib/uiAccordions.ts";
 
@@ -133,12 +133,6 @@ export class ImportScreen {
                   <input id="imp-default-lang" type="text" value="fr" placeholder="fr, en, …" maxlength="10" />
                 </label>
               </div>
-              <div class="imp-settings-grid" style="margin-top:8px">
-                <label style="flex-direction:row;align-items:center;gap:6px;cursor:pointer">
-                  <input type="checkbox" id="imp-check-filename" />
-                  Bloquer les doublons par nom de fichier
-                </label>
-              </div>
               <div class="btn-row">
                 <button id="imp-apply-defaults-btn" class="btn btn-secondary btn-sm">Appliquer aux fichiers en attente</button>
                 <span class="hint" style="margin:0">Chaque ligne reste modifiable ensuite.</span>
@@ -187,6 +181,10 @@ export class ImportScreen {
         <div class="imp-footer-meta">
           <span class="hint" style="margin:0">Importe tous les fichiers en attente.</span>
         </div>
+        <label class="imp-footer-check" title="Bloque l'import si un document portant le même nom de fichier existe déjà dans le corpus">
+          <input type="checkbox" id="imp-check-filename" />
+          Bloquer doublons par nom
+        </label>
         <div class="btn-row">
           <button id="imp-import-btn" class="btn btn-primary" title="Importer tous les fichiers en attente" aria-label="Importer tous les fichiers en attente" disabled>⬆ Importer</button>
         </div>
@@ -360,7 +358,9 @@ export class ImportScreen {
     let touched = 0;
     for (const file of this._files) {
       if (file.status !== "pending") continue;
-      file.mode = defaultMode;
+      const base = file.path.split(/[/\\]/u).pop() ?? "";
+      const ext = base.includes(".") ? base.split(".").pop()?.toLowerCase() ?? "" : "";
+      file.mode = this._deriveModeFromExt(ext, defaultMode);
       file.language = defaultLang;
       touched += 1;
     }
