@@ -26,6 +26,7 @@ def import_odt_paragraphs(
     resource_type: Optional[str] = None,
     run_id: Optional[str] = None,
     run_logger: Optional[logging.Logger] = None,
+    check_filename: bool = False,
 ) -> ImportReport:
     """Import an ODT file — every non-empty ``text:p`` / ``text:h`` becomes a line unit."""
     path = Path(path)
@@ -36,7 +37,7 @@ def import_odt_paragraphs(
     log.info("Starting import of %s (mode=odt_paragraphs)", path)
 
     source_hash = _compute_file_hash(path)
-    assert_not_duplicate_import(conn, path, source_hash)
+    assert_not_duplicate_import(conn, path, source_hash, check_filename=check_filename)
     doc_title = title or path.stem
     utcnow = __import__("datetime").datetime.now(
         __import__("datetime").timezone.utc

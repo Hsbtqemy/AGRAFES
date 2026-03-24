@@ -128,6 +128,7 @@ def import_tei(
     unit_element: str = "p",
     run_id: Optional[str] = None,
     run_logger: Optional[logging.Logger] = None,
+    check_filename: bool = False,
 ) -> ImportReport:
     """Import a TEI XML file, extracting <p> or <s> elements as line units.
 
@@ -156,7 +157,7 @@ def import_tei(
     log.info("Starting import of %s (mode=tei, unit=%s)", path, unit_element)
 
     source_hash = _compute_file_hash(path)
-    assert_not_duplicate_import(conn, path, source_hash)
+    assert_not_duplicate_import(conn, path, source_hash, check_filename=check_filename)
 
     try:
         tree = ET.parse(str(path))

@@ -97,6 +97,7 @@ def import_docx_numbered_lines(
     resource_type: Optional[str] = None,
     run_id: Optional[str] = None,
     run_logger: Optional[logging.Logger] = None,
+    check_filename: bool = False,
 ) -> ImportReport:
     """Import a DOCX file using the numbered-lines convention.
 
@@ -116,7 +117,7 @@ def import_docx_numbered_lines(
     log.info("Starting import of %s (mode=docx_numbered_lines)", path)
 
     source_hash = _compute_file_hash(path)
-    assert_not_duplicate_import(conn, path, source_hash)
+    assert_not_duplicate_import(conn, path, source_hash, check_filename=check_filename)
     doc_title = title or path.stem
     utcnow = __import__("datetime").datetime.now(
         __import__("datetime").timezone.utc

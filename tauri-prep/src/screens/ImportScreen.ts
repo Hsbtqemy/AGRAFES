@@ -133,6 +133,12 @@ export class ImportScreen {
                   <input id="imp-default-lang" type="text" value="fr" placeholder="fr, en, …" maxlength="10" />
                 </label>
               </div>
+              <div class="imp-settings-grid" style="margin-top:8px">
+                <label style="flex-direction:row;align-items:center;gap:6px;cursor:pointer">
+                  <input type="checkbox" id="imp-check-filename" />
+                  Bloquer les doublons par nom de fichier
+                </label>
+              </div>
               <div class="btn-row">
                 <button id="imp-apply-defaults-btn" class="btn btn-secondary btn-sm">Appliquer aux fichiers en attente</button>
                 <span class="hint" style="margin:0">Chaque ligne reste modifiable ensuite.</span>
@@ -522,11 +528,13 @@ export class ImportScreen {
       f.status = "importing";
       this._renderList();
       try {
+        const checkFilename = (this._root?.querySelector<HTMLInputElement>("#imp-check-filename"))?.checked ?? false;
         const job = await enqueueJob(this._conn!, "import", {
           mode: f.mode,
           path: f.path,
           language: f.language || "und",
           title: f.title,
+          check_filename: checkFilename,
         });
         submitted++;
         this._log(`Job soumis pour "${f.title}" (${job.job_id.slice(0, 8)}…)`);

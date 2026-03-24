@@ -73,6 +73,7 @@ export interface ImportOptions {
   doc_role?: string;
   resource_type?: string;
   tei_unit?: "p" | "s";
+  check_filename?: boolean;
 }
 
 export interface ImportResponse {

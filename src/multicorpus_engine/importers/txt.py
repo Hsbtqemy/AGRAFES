@@ -79,6 +79,7 @@ def import_txt_numbered_lines(
     resource_type: Optional[str] = None,
     run_id: Optional[str] = None,
     run_logger: Optional[logging.Logger] = None,
+    check_filename: bool = False,
 ) -> ImportReport:
     """Import a plain-text file using the numbered-lines convention.
 
@@ -97,7 +98,7 @@ def import_txt_numbered_lines(
 
     raw_bytes = path.read_bytes()
     source_hash = hashlib.sha256(raw_bytes).hexdigest()
-    assert_not_duplicate_import(conn, path, source_hash)
+    assert_not_duplicate_import(conn, path, source_hash, check_filename=check_filename)
     encoding, enc_method = _detect_encoding(raw_bytes)
 
     # Encoding fallback: do not use module logger (would go to stderr in sidecar).

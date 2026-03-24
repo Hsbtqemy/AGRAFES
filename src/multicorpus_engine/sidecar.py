@@ -1155,6 +1155,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         doc_role = body.get("doc_role", "standalone")
         resource_type = body.get("resource_type")
         tei_unit = body.get("tei_unit", "p")
+        check_filename = bool(body.get("check_filename", False))
 
         if not isinstance(mode, str) or not mode:
             self._send_error(
@@ -1201,6 +1202,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                         doc_role=doc_role,
                         resource_type=resource_type,
                         run_id=run_id,
+                        check_filename=check_filename,
                     )
                 elif mode == "txt_numbered_lines":
                     from multicorpus_engine.importers.txt import import_txt_numbered_lines
@@ -1212,6 +1214,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                         doc_role=doc_role,
                         resource_type=resource_type,
                         run_id=run_id,
+                        check_filename=check_filename,
                     )
                 elif mode == "docx_paragraphs":
                     from multicorpus_engine.importers.docx_paragraphs import import_docx_paragraphs
@@ -1223,6 +1226,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                         doc_role=doc_role,
                         resource_type=resource_type,
                         run_id=run_id,
+                        check_filename=check_filename,
                     )
                 elif mode == "odt_paragraphs":
                     from multicorpus_engine.importers.odt_paragraphs import import_odt_paragraphs
@@ -1234,6 +1238,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                         doc_role=doc_role,
                         resource_type=resource_type,
                         run_id=run_id,
+                        check_filename=check_filename,
                     )
                 elif mode == "odt_numbered_lines":
                     from multicorpus_engine.importers.odt_numbered_lines import import_odt_numbered_lines
@@ -1245,6 +1250,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                         doc_role=doc_role,
                         resource_type=resource_type,
                         run_id=run_id,
+                        check_filename=check_filename,
                     )
                 elif mode == "tei":
                     from multicorpus_engine.importers.tei_importer import import_tei
@@ -1257,6 +1263,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                         resource_type=resource_type,
                         unit_element=tei_unit,
                         run_id=run_id,
+                        check_filename=check_filename,
                     )
                 else:
                     self._send_error(
@@ -3900,6 +3907,7 @@ class CorpusServer:
             doc_role = params.get("doc_role", "standalone")
             resource_type = params.get("resource_type")
             tei_unit = params.get("tei_unit", "p")
+            check_filename = bool(params.get("check_filename", False))
 
             if not mode or not path_str:
                 raise ValueError("import job requires params.mode and params.path")
@@ -3915,30 +3923,35 @@ class CorpusServer:
                     report = import_docx_numbered_lines(
                         conn, path=file_path, language=language,
                         title=title, doc_role=doc_role, resource_type=resource_type,
+                        check_filename=check_filename,
                     )
                 elif mode == "txt_numbered_lines":
                     from multicorpus_engine.importers.txt import import_txt_numbered_lines
                     report = import_txt_numbered_lines(
                         conn, path=file_path, language=language,
                         title=title, doc_role=doc_role, resource_type=resource_type,
+                        check_filename=check_filename,
                     )
                 elif mode == "docx_paragraphs":
                     from multicorpus_engine.importers.docx_paragraphs import import_docx_paragraphs
                     report = import_docx_paragraphs(
                         conn, path=file_path, language=language,
                         title=title, doc_role=doc_role, resource_type=resource_type,
+                        check_filename=check_filename,
                     )
                 elif mode == "odt_paragraphs":
                     from multicorpus_engine.importers.odt_paragraphs import import_odt_paragraphs
                     report = import_odt_paragraphs(
                         conn, path=file_path, language=language,
                         title=title, doc_role=doc_role, resource_type=resource_type,
+                        check_filename=check_filename,
                     )
                 elif mode == "odt_numbered_lines":
                     from multicorpus_engine.importers.odt_numbered_lines import import_odt_numbered_lines
                     report = import_odt_numbered_lines(
                         conn, path=file_path, language=language,
                         title=title, doc_role=doc_role, resource_type=resource_type,
+                        check_filename=check_filename,
                     )
                 elif mode == "tei":
                     from multicorpus_engine.importers.tei_importer import import_tei
@@ -3946,6 +3959,7 @@ class CorpusServer:
                         conn, path=file_path, language=language if language != "und" else None,
                         title=title, unit_element=tei_unit,
                         doc_role=doc_role, resource_type=resource_type,
+                        check_filename=check_filename,
                     )
                 else:
                     raise ValueError(f"import job: unsupported mode: {mode!r}")

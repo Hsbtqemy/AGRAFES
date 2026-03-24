@@ -976,6 +976,7 @@ def openapi_spec() -> dict[str, Any]:
                         "doc_role": {"type": "string"},
                         "resource_type": {"type": "string"},
                         "tei_unit": {"type": "string", "enum": ["p", "s"]},
+                        "check_filename": {"type": "boolean"},
                     },
                     "additionalProperties": False,
                 },
