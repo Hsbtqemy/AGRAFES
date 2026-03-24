@@ -1146,6 +1146,9 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 
     def _handle_import(self, body: dict) -> None:
         mode = body.get("mode")
+        # Normalise legacy/malformed mode values (e.g. "odt paragraphs" → "odt_paragraphs")
+        if isinstance(mode, str):
+            mode = mode.strip().lower().replace(" ", "_").replace("-", "_")
         path = body.get("path")
         language = body.get("language")
         title = body.get("title")
@@ -3888,6 +3891,9 @@ class CorpusServer:
             from pathlib import Path as _Path
 
             mode = params.get("mode")
+            # Normalise legacy/malformed mode values (e.g. "odt paragraphs" → "odt_paragraphs")
+            if isinstance(mode, str):
+                mode = mode.strip().lower().replace(" ", "_").replace("-", "_")
             path_str = params.get("path")
             language = params.get("language") or "und"
             title = params.get("title")
