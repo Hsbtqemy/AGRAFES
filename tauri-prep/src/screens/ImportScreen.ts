@@ -530,12 +530,15 @@ export class ImportScreen {
     };
 
     const corpusByPath = new Map<string, number>();
+    const corpusByFilename = new Map<string, number>(); // nom de fichier → doc_id
     try {
       const docs = await listDocuments(this._conn);
       for (const d of docs) {
         const sp = d.source_path;
         if (typeof sp === "string" && sp.length > 0) {
           corpusByPath.set(normalizeImportPath(sp), d.doc_id);
+          const fname = sp.replace(/\\/g, "/").split("/").pop()?.toLowerCase();
+          if (fname) corpusByFilename.set(fname, d.doc_id);
         }
       }
     } catch (err) {
@@ -549,6 +552,10 @@ export class ImportScreen {
       );
     }
 
+    const checkFilename = (this._root?.querySelector<HTMLInputElement>("#imp-check-filename-footer"))?.checked
+      ?? (this._root?.querySelector<HTMLInputElement>("#imp-check-filename"))?.checked
+      ?? false;
+
     for (const f of pending) {
       const existingId = corpusByPath.get(normalizeImportPath(f.path));
       if (existingId !== undefined) {
@@ -560,12 +567,24 @@ export class ImportScreen {
         continue;
       }
 
+      if (checkFilename) {
+        const fname = f.path.replace(/\\/g, "/").split("/").pop()?.toLowerCase() ?? "";
+        const existingByName = corpusByFilename.get(fname);
+        if (existingByName !== undefined) {
+          f.status = "error";
+          f.message = `Nom de fichier déjà présent (doc_id ${existingByName})`;
+          this._log(`⊘ "${f.title}": doublon par nom de fichier (doc_id ${existingByName})`, true);
+          this._showToast?.(`⊘ ${f.title} — nom déjà importé (doc_id ${existingByName})`, true);
+          this._renderList();
+          continue;
+        }
+        // Enregistre aussi les fichiers en cours de batch pour bloquer les doublons intra-lot
+        if (fname) corpusByFilename.set(fname, -1);
+      }
+
       f.status = "importing";
       this._renderList();
       try {
-        const checkFilename = (this._root?.querySelector<HTMLInputElement>("#imp-check-filename-footer"))?.checked
-          ?? (this._root?.querySelector<HTMLInputElement>("#imp-check-filename"))?.checked
-          ?? false;
         const job = await enqueueJob(this._conn!, "import", {
           mode: f.mode,
           path: f.path,
