@@ -7,6 +7,8 @@
   "GET /families",
   "POST /families/{family_root_id}/segment",
   "POST /families/{family_root_id}/align",
+  "POST /export/tmx",
+  "POST /export/bilingual",
   "GET /documents/preview",
   "GET /health",
   "GET /jobs",

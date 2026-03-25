@@ -1648,6 +1648,71 @@ export async function alignFamily(
   ) as Promise<FamilyAlignResponse>;
 }
 
+// ─── Sprint 5 — Export TMX et bilingue ───────────────────────────────────────
+
+export interface ExportTmxOptions {
+  /** Required for single-pair export (omit if using family_id) */
+  pivot_doc_id?: number;
+  target_doc_id?: number;
+  /** Export all parent↔child pairs in one TMX file */
+  family_id?: number;
+  /** Absolute path for the output .tmx file */
+  out_path?: string;
+  /** Directory; file named automatically if out_path not given */
+  out_dir?: string;
+}
+
+export interface ExportTmxResponse {
+  ok: boolean;
+  out_path: string;
+  tu_count: number;
+  pairs: [number, number][];
+}
+
+export interface ExportBilingualOptions {
+  pivot_doc_id: number;
+  target_doc_id: number;
+  format?: "html" | "txt";
+  /** Required unless preview_only=true */
+  out_path?: string;
+  /** Return JSON pairs without writing a file */
+  preview_only?: boolean;
+  preview_limit?: number;
+}
+
+export interface BilingualPreviewPair {
+  pivot_text: string;
+  target_text: string;
+}
+
+export interface ExportBilingualResponse {
+  ok: boolean;
+  /** Present when preview_only=false */
+  out_path?: string;
+  /** Present when preview_only=true */
+  preview?: BilingualPreviewPair[];
+  pair_count: number;
+  format?: string;
+  pivot_doc_id?: number;
+  target_doc_id?: number;
+  pivot_lang?: string;
+  target_lang?: string;
+}
+
+export async function exportTmx(
+  conn: Conn,
+  opts: ExportTmxOptions,
+): Promise<ExportTmxResponse> {
+  return conn.post("/export/tmx", opts) as Promise<ExportTmxResponse>;
+}
+
+export async function exportBilingual(
+  conn: Conn,
+  opts: ExportBilingualOptions,
+): Promise<ExportBilingualResponse> {
+  return conn.post("/export/bilingual", opts) as Promise<ExportBilingualResponse>;
+}
+
 export async function setDocRelation(conn: Conn, opts: DocRelationSetOptions): Promise<{ action: string; id: number }> {
   return conn.post("/doc_relations/set", opts) as Promise<{ action: string; id: number }>;
 }

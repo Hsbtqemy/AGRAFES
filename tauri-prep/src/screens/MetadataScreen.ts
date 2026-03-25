@@ -22,6 +22,8 @@ import {
   getFamilies,
   segmentFamily,
   alignFamily,
+  exportTmx,
+  exportBilingual,
   setDocRelation,
   deleteDocRelation,
   backupDatabase,
@@ -35,6 +37,7 @@ import {
   type FamilySegmentDocResult,
   type FamilyAlignPairResult,
   type FamilyAuditData,
+  type BilingualPreviewPair,
   SidecarError,
 } from "../lib/sidecarClient.ts";
 import { initCardAccordions } from "../lib/uiAccordions.ts";
@@ -851,6 +854,17 @@ export class MetadataScreen {
         const familyId = Number(btn.dataset.familyId);
         void this._alignFamilyFlow(familyId, btn);
       });
+
+    this._editPanelEl.querySelectorAll<HTMLButtonElement>(".fam-export-pair-btn")
+      .forEach(btn => {
+        btn.addEventListener("click", () => {
+          const pivotId  = Number(btn.dataset.pivot);
+          const targetId = Number(btn.dataset.target);
+          const pivotLang  = btn.dataset.pivotLang  ?? "und";
+          const targetLang = btn.dataset.targetLang ?? "und";
+          void this._showExportPairDialog(pivotId, targetId, pivotLang, targetLang);
+        });
+      });
   }
 
   private _familyPanelHtml(doc: DocumentRecord): string {
@@ -867,12 +881,20 @@ export class MetadataScreen {
       const alnClass = c.aligned_to_parent ? "fam-ok" : "fam-todo";
       const childTitle = c.doc ? this._esc(this._truncateMid(c.doc.title, 28)) : `doc #${c.doc_id}`;
       const childLang  = c.doc ? this._esc(c.doc.language) : "?";
+      const exportDisabled = c.aligned_to_parent ? "" : "disabled title=\"Aligner la paire d'abord\"";
       return `
         <tr class="fam-pair-row">
           <td class="fam-pair-lang">${childLang}</td>
           <td class="fam-pair-title" title="${c.doc ? this._esc(c.doc.title) : ""}">${childTitle}</td>
           <td class="fam-pair-icon ${segClass}" title="Segmenté">${segIcon}</td>
           <td class="fam-pair-icon ${alnClass}" title="Aligné">${alnIcon}</td>
+          <td class="fam-pair-export">
+            <button class="btn btn-xs fam-export-pair-btn"
+                    data-pivot="${family.family_id}" data-target="${c.doc_id}"
+                    data-pivot-lang="${this._esc(family.parent?.language ?? 'und')}"
+                    data-target-lang="${childLang}"
+                    ${exportDisabled}>↗ Export</button>
+          </td>
         </tr>`;
     }).join("");
 
@@ -895,7 +917,7 @@ export class MetadataScreen {
         <table class="fam-pairs-table">
           <thead><tr>
             <th>Langue</th><th>Traduction / Extrait</th>
-            <th title="Segmenté">Seg.</th><th title="Aligné">Aln.</th>
+            <th title="Segmenté">Seg.</th><th title="Aligné">Aln.</th><th></th>
           </tr></thead>
           <tbody>${pairRows}</tbody>
         </table>
@@ -917,6 +939,7 @@ export class MetadataScreen {
         </div>
         <div id="seg-family-result"></div>
         <div id="aln-family-result"></div>
+        <div id="export-pair-dialog"></div>
       </div>`;
   }
 
@@ -2043,6 +2066,151 @@ export class MetadataScreen {
       wrap.appendChild(row);
     });
     return wrap;
+  }
+
+  // ── Sprint 5: export par paire ───────────────────────────────────────────────
+
+  private async _showExportPairDialog(
+    pivotId: number,
+    targetId: number,
+    pivotLang: string,
+    targetLang: string,
+  ): Promise<void> {
+    if (!this._conn) return;
+    const container = this._editPanelEl.querySelector<HTMLDivElement>("#export-pair-dialog");
+    if (!container) return;
+
+    // Suggested default out_path (desktop or documents folder heuristic)
+    const suggestedPath = `export_${pivotLang}_${targetLang}_${pivotId}_${targetId}`;
+
+    container.innerHTML = `
+      <div class="export-pair-dialog">
+        <div class="export-pair-head">
+          <strong>↗ Exporter la paire #${pivotId} ↔ #${targetId}</strong>
+          <button id="export-close-btn" class="audit-close-btn" title="Fermer">✕</button>
+        </div>
+        <div class="export-pair-body">
+          <div class="form-row" style="flex-wrap:wrap;gap:0.5rem">
+            <label>Format
+              <select id="export-format-sel" style="width:90px">
+                <option value="html">HTML</option>
+                <option value="txt">TXT</option>
+                <option value="tmx">TMX</option>
+              </select>
+            </label>
+            <label style="flex:2">Chemin de sortie
+              <input id="export-out-path" type="text"
+                     placeholder="${suggestedPath}.html"
+                     style="width:100%;font-size:0.8rem">
+            </label>
+          </div>
+          <div class="btn-row" style="gap:0.5rem;margin-top:0.4rem">
+            <button id="export-preview-btn" class="btn btn-secondary btn-sm">👁 Prévisualiser</button>
+            <button id="export-save-btn" class="btn btn-primary btn-sm">↗ Enregistrer</button>
+          </div>
+          <div id="export-preview-area" style="margin-top:0.5rem"></div>
+          <div id="export-status" style="font-size:0.8rem;margin-top:0.4rem"></div>
+        </div>
+      </div>`;
+
+    const formatSel  = container.querySelector<HTMLSelectElement>("#export-format-sel")!;
+    const outInput   = container.querySelector<HTMLInputElement>("#export-out-path")!;
+    const previewArea = container.querySelector<HTMLDivElement>("#export-preview-area")!;
+    const statusEl   = container.querySelector<HTMLDivElement>("#export-status")!;
+
+    // Update placeholder when format changes
+    formatSel.addEventListener("change", () => {
+      const ext = formatSel.value === "tmx" ? "tmx" : formatSel.value;
+      if (!outInput.value || outInput.value === outInput.placeholder) {
+        outInput.placeholder = `${suggestedPath}.${ext}`;
+        outInput.value = "";
+      }
+    });
+
+    container.querySelector("#export-close-btn")?.addEventListener("click", () => {
+      container.innerHTML = "";
+    });
+
+    container.querySelector("#export-preview-btn")?.addEventListener("click", async () => {
+      const fmt = formatSel.value;
+      if (fmt === "tmx") {
+        statusEl.textContent = "Prévisualisation non disponible pour TMX — utilisez Enregistrer.";
+        return;
+      }
+      statusEl.textContent = "Chargement de la prévisualisation…";
+      previewArea.innerHTML = "";
+      try {
+        const res = await exportBilingual(this._conn!, {
+          pivot_doc_id: pivotId,
+          target_doc_id: targetId,
+          format: fmt as "html" | "txt",
+          preview_only: true,
+          preview_limit: 15,
+        });
+        statusEl.textContent = `${res.pair_count} paires alignées.`;
+        previewArea.innerHTML = this._renderBilingualPreview(
+          res.preview ?? [], pivotLang, targetLang, res.pair_count,
+        );
+      } catch (err) {
+        statusEl.textContent = `Erreur : ${err instanceof SidecarError ? err.message : String(err)}`;
+      }
+    });
+
+    container.querySelector("#export-save-btn")?.addEventListener("click", async () => {
+      const fmt     = formatSel.value;
+      const outPath = outInput.value.trim();
+      if (!outPath) {
+        statusEl.textContent = "⚠ Indiquez un chemin de sortie.";
+        return;
+      }
+      statusEl.textContent = "Export en cours…";
+      try {
+        if (fmt === "tmx") {
+          const res = await exportTmx(this._conn!, {
+            pivot_doc_id: pivotId,
+            target_doc_id: targetId,
+            out_path: outPath,
+          });
+          statusEl.innerHTML = `✅ TMX enregistré : <code>${this._esc(res.out_path)}</code> · ${res.tu_count} TU(s)`;
+        } else {
+          const res = await exportBilingual(this._conn!, {
+            pivot_doc_id: pivotId,
+            target_doc_id: targetId,
+            format: fmt as "html" | "txt",
+            out_path: outPath,
+          });
+          statusEl.innerHTML = `✅ Fichier enregistré : <code>${this._esc(res.out_path ?? "")}</code> · ${res.pair_count} paires`;
+        }
+      } catch (err) {
+        statusEl.textContent = `Erreur : ${err instanceof SidecarError ? err.message : String(err)}`;
+      }
+    });
+  }
+
+  private _renderBilingualPreview(
+    pairs: BilingualPreviewPair[],
+    srcLang: string,
+    tgtLang: string,
+    totalCount: number,
+  ): string {
+    if (pairs.length === 0) return `<p class="empty-hint">Aucune paire alignée.</p>`;
+    const rows = pairs.map(p => `
+      <tr>
+        <td>${this._esc(p.pivot_text)}</td>
+        <td>${this._esc(p.target_text)}</td>
+      </tr>`).join("");
+    const more = totalCount > pairs.length
+      ? `<p class="hint" style="margin:4px 0">… et ${totalCount - pairs.length} paire(s) de plus.</p>`
+      : "";
+    return `
+      <table class="bilingual-preview-table">
+        <thead><tr>
+          <th>${this._esc(srcLang)}</th>
+          <th>${this._esc(tgtLang)}</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      ${more}`;
   }
 
   private async _auditSegmentFamilies(familyRootIds: number[]): Promise<void> {

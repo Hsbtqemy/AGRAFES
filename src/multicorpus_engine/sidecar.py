@@ -644,6 +644,10 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 self._handle_doc_relations_delete(body)
             elif path == "/export/tei":
                 self._handle_export_tei(body)
+            elif path == "/export/tmx":
+                self._handle_export_tmx(body)
+            elif path == "/export/bilingual":
+                self._handle_export_bilingual(body)
             elif path == "/export/align_csv":
                 self._handle_export_align_csv(body)
             elif path == "/export/run_report":
@@ -3779,6 +3783,301 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             except Exception as exc:
                 logger.warning("TEI export failed for doc_id=%s: %s", doc_id, exc)
         self._send_json(success_payload({"files_created": files_created, "count": len(files_created)}))
+
+    # ── Sprint 5 helpers ──────────────────────────────────────────────────────
+
+    @staticmethod
+    def _escape_xml(text: str) -> str:
+        """Escape special characters for XML text content / attribute values."""
+        return (
+            str(text)
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace('"', "&quot;")
+        )
+
+    @staticmethod
+    def _build_tmx(
+        tu_list: list[list[tuple[str, str]]],
+        srclang: str,
+        creationtoolversion: str,
+    ) -> str:
+        """Build a TMX 1.4 document string.
+
+        tu_list: list of TUs; each TU is a list of (lang, text) tuples.
+        """
+        import datetime as _dt
+        esc = SidecarHandler._escape_xml
+        stamp = _dt.datetime.now(_dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        lines = [
+            '<?xml version="1.0" encoding="UTF-8"?>',
+            '<tmx version="1.4">',
+            f'  <header creationtool="AGRAFES" creationtoolversion="{esc(creationtoolversion)}"',
+            '    datatype="plaintext" segtype="sentence" adminlang="und"',
+            f'    srclang="{esc(srclang)}" creationdate="{stamp}"/>',
+            "  <body>",
+        ]
+        for i, tuvs in enumerate(tu_list, 1):
+            lines.append(f'    <tu tuid="{i}">')
+            for lang, text in tuvs:
+                lines.append(f'      <tuv xml:lang="{esc(lang)}">')
+                lines.append(f"        <seg>{esc(text)}</seg>")
+                lines.append("      </tuv>")
+            lines.append("    </tu>")
+        lines += ["  </body>", "</tmx>"]
+        return "\n".join(lines)
+
+    def _fetch_aligned_pairs(
+        self,
+        pivot_doc_id: int,
+        target_doc_id: int,
+    ) -> list[tuple[str, str]]:
+        """Return list of (pivot_text, target_text) for aligned pairs, ordered by link."""
+        rows = self._conn().execute(
+            """
+            SELECT pu.text_norm, tu.text_norm
+            FROM alignment_links al
+            JOIN units pu ON pu.unit_id = al.pivot_unit_id
+            JOIN units tu ON tu.unit_id = al.target_unit_id
+            WHERE al.pivot_doc_id = ? AND al.target_doc_id = ?
+            ORDER BY al.external_id, al.link_id
+            """,
+            (pivot_doc_id, target_doc_id),
+        ).fetchall()
+        return [(r[0] or "", r[1] or "") for r in rows]
+
+    def _fetch_doc_meta(self, doc_id: int) -> dict:
+        row = self._conn().execute(
+            "SELECT doc_id, title, language FROM documents WHERE doc_id = ?", (doc_id,)
+        ).fetchone()
+        if row is None:
+            return {"doc_id": doc_id, "title": f"doc #{doc_id}", "language": "und"}
+        return {"doc_id": row[0], "title": row[1] or f"doc #{row[0]}", "language": row[2] or "und"}
+
+    def _handle_export_tmx(self, body: dict) -> None:
+        """POST /export/tmx — export aligned pairs to TMX 1.4 format.
+
+        Body fields:
+          pivot_doc_id   : int (required unless family_id is set)
+          target_doc_id  : int (required for single-pair export)
+          family_id      : int — export all parent↔child pairs in one TMX file
+          out_path       : str — absolute path for the output file
+          out_dir        : str — directory; file named auto (used when out_path not given)
+        """
+        from multicorpus_engine.sidecar_contract import API_VERSION
+
+        # ── Resolve pivot / targets ──────────────────────────────────────────
+        family_id_raw = body.get("family_id")
+        pivot_doc_id_raw = body.get("pivot_doc_id")
+        target_doc_id_raw = body.get("target_doc_id")
+        out_path_str = body.get("out_path")
+        out_dir_str  = body.get("out_dir")
+
+        if not out_path_str and not out_dir_str:
+            self._send_error("out_path or out_dir is required", code=ERR_BAD_REQUEST, http_status=400)
+            return
+
+        # Build list of (pivot, target) pairs
+        pairs_to_export: list[tuple[int, int]] = []
+
+        if family_id_raw is not None:
+            try:
+                fam_id = int(family_id_raw)
+            except (TypeError, ValueError):
+                self._send_error("family_id must be an integer", code=ERR_BAD_REQUEST, http_status=400)
+                return
+            child_rows = self._conn().execute(
+                "SELECT doc_id FROM doc_relations WHERE target_doc_id = ?"
+                " AND relation_type IN ('translation_of', 'excerpt_of') ORDER BY doc_id",
+                (fam_id,),
+            ).fetchall()
+            pairs_to_export = [(fam_id, r[0]) for r in child_rows]
+            if not pairs_to_export:
+                self._send_error(
+                    f"No children found for family_id={fam_id}",
+                    code=ERR_BAD_REQUEST, http_status=400,
+                )
+                return
+            pivot_doc_id = fam_id
+        else:
+            if pivot_doc_id_raw is None or target_doc_id_raw is None:
+                self._send_error(
+                    "pivot_doc_id and target_doc_id are required (or use family_id)",
+                    code=ERR_BAD_REQUEST, http_status=400,
+                )
+                return
+            try:
+                pivot_doc_id = int(pivot_doc_id_raw)
+                target_doc_id = int(target_doc_id_raw)
+            except (TypeError, ValueError):
+                self._send_error("pivot_doc_id and target_doc_id must be integers", code=ERR_BAD_REQUEST, http_status=400)
+                return
+            pairs_to_export = [(pivot_doc_id, target_doc_id)]
+
+        # ── Collect doc metadata ─────────────────────────────────────────────
+        pivot_meta = self._fetch_doc_meta(pivot_doc_id)
+        srclang = pivot_meta["language"] or "und"
+
+        # ── Build TU list ────────────────────────────────────────────────────
+        tu_list: list[list[tuple[str, str]]] = []
+
+        # For multi-pair (family), we build one TU per pivot unit that is aligned
+        # to at least one target. If multiple targets exist, we add all TUVs.
+        # Simpler approach: one TU per alignment link (pair-wise, concatenated).
+        for pivot_id, tgt_id in pairs_to_export:
+            tgt_meta = self._fetch_doc_meta(tgt_id)
+            tgt_lang = tgt_meta["language"] or "und"
+            raw_pairs = self._fetch_aligned_pairs(pivot_id, tgt_id)
+            for src_text, tgt_text in raw_pairs:
+                tu_list.append([
+                    (srclang, src_text),
+                    (tgt_lang, tgt_text),
+                ])
+
+        # ── Resolve output path ──────────────────────────────────────────────
+        if out_path_str:
+            out = Path(out_path_str)
+        else:
+            out_dir = Path(out_dir_str)  # type: ignore[arg-type]
+            out_dir.mkdir(parents=True, exist_ok=True)
+            if family_id_raw is not None:
+                fname = f"family_{pivot_doc_id}.tmx"
+            else:
+                fname = f"doc_{pivot_doc_id}_doc_{target_doc_id_raw}.tmx"
+            out = out_dir / fname
+
+        out.parent.mkdir(parents=True, exist_ok=True)
+        tmx_content = self._build_tmx(tu_list, srclang, API_VERSION)
+        out.write_text(tmx_content, encoding="utf-8")
+
+        self._send_json(success_payload({
+            "out_path": str(out),
+            "tu_count": len(tu_list),
+            "pairs": [(p, t) for p, t in pairs_to_export],
+        }))
+
+    def _handle_export_bilingual(self, body: dict) -> None:
+        """POST /export/bilingual — interleaved bilingual export (HTML or TXT).
+
+        Body fields:
+          pivot_doc_id   : int (required)
+          target_doc_id  : int (required)
+          format         : "html" | "txt" (default "html")
+          out_path       : str — path to write (omit or null for preview_only mode)
+          preview_only   : bool — if true, return first `preview_limit` pairs as JSON
+          preview_limit  : int — max pairs to include in preview (default 20)
+        """
+        import datetime as _dt
+
+        pivot_doc_id_raw  = body.get("pivot_doc_id")
+        target_doc_id_raw = body.get("target_doc_id")
+        fmt          = str(body.get("format", "html")).lower()
+        out_path_str = body.get("out_path")
+        preview_only = bool(body.get("preview_only", False))
+        preview_limit = int(body.get("preview_limit", 20))
+
+        if pivot_doc_id_raw is None or target_doc_id_raw is None:
+            self._send_error("pivot_doc_id and target_doc_id are required", code=ERR_BAD_REQUEST, http_status=400)
+            return
+        try:
+            pivot_doc_id  = int(pivot_doc_id_raw)
+            target_doc_id = int(target_doc_id_raw)
+        except (TypeError, ValueError):
+            self._send_error("pivot_doc_id and target_doc_id must be integers", code=ERR_BAD_REQUEST, http_status=400)
+            return
+        if fmt not in ("html", "txt"):
+            self._send_error("format must be 'html' or 'txt'", code=ERR_BAD_REQUEST, http_status=400)
+            return
+
+        pivot_meta  = self._fetch_doc_meta(pivot_doc_id)
+        target_meta = self._fetch_doc_meta(target_doc_id)
+        pairs = self._fetch_aligned_pairs(pivot_doc_id, target_doc_id)
+
+        if preview_only:
+            preview = [
+                {"pivot_text": src, "target_text": tgt}
+                for src, tgt in pairs[:preview_limit]
+            ]
+            self._send_json(success_payload({
+                "preview": preview,
+                "pair_count": len(pairs),
+                "pivot_doc_id": pivot_doc_id,
+                "target_doc_id": target_doc_id,
+                "pivot_lang": pivot_meta["language"],
+                "target_lang": target_meta["language"],
+            }))
+            return
+
+        if not out_path_str:
+            self._send_error(
+                "out_path is required when preview_only=false",
+                code=ERR_BAD_REQUEST, http_status=400,
+            )
+            return
+
+        out = Path(out_path_str)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        date_str = _dt.date.today().isoformat()
+        esc = self._escape_xml
+
+        if fmt == "html":
+            src_lang = esc(pivot_meta["language"])
+            tgt_lang = esc(target_meta["language"])
+            src_title = esc(pivot_meta["title"])
+            tgt_title = esc(target_meta["title"])
+            rows_html = "\n".join(
+                f"        <tr>\n"
+                f"          <td>{esc(src)}</td>\n"
+                f"          <td>{esc(tgt)}</td>\n"
+                f"        </tr>"
+                for src, tgt in pairs
+            )
+            content = (
+                f'<!DOCTYPE html>\n<html lang="{src_lang}">\n<head>\n'
+                f'  <meta charset="UTF-8">\n'
+                f'  <title>Bilingue {src_lang} / {tgt_lang} — #{pivot_doc_id} / #{target_doc_id}</title>\n'
+                f'  <style>\n'
+                f'    body {{ font-family: Georgia, serif; max-width: 960px; margin: 2em auto; color: #1a202c; }}\n'
+                f'    h1 {{ font-size: 1.3em; color: #2d3748; }}\n'
+                f'    p.meta {{ color: #718096; font-size: 0.88em; }}\n'
+                f'    table {{ border-collapse: collapse; width: 100%; }}\n'
+                f'    th {{ background: #edf2f7; padding: 8px 12px; text-align: left; '
+                f'font-size: 0.85em; color: #4a5568; border-bottom: 2px solid #e2e8f0; }}\n'
+                f'    td {{ padding: 7px 12px; vertical-align: top; border-bottom: 1px solid #e2e8f0; '
+                f'font-size: 0.93em; }}\n'
+                f'    tr:hover td {{ background: #f7fafc; }}\n'
+                f'  </style>\n'
+                f'</head>\n<body>\n'
+                f'  <h1>{src_lang} / {tgt_lang}</h1>\n'
+                f'  <p class="meta">#{pivot_doc_id} {src_title} ↔ #{target_doc_id} {tgt_title} · '
+                f'Exporté le {date_str} · {len(pairs)} paires</p>\n'
+                f'  <table>\n'
+                f'    <thead><tr><th>{src_lang} — {src_title}</th><th>{tgt_lang} — {tgt_title}</th></tr></thead>\n'
+                f'    <tbody>\n{rows_html}\n    </tbody>\n'
+                f'  </table>\n</body>\n</html>'
+            )
+        else:  # txt
+            src_lang = pivot_meta["language"]
+            tgt_lang = target_meta["language"]
+            lines = [
+                f"# Bilingue {src_lang} / {tgt_lang}",
+                f"# #{pivot_doc_id} {pivot_meta['title']} ↔ #{target_doc_id} {target_meta['title']}",
+                f"# Exporté le {date_str} · {len(pairs)} paires",
+                "",
+            ]
+            for src, tgt in pairs:
+                lines.append(f"[{src_lang}] {src}")
+                lines.append(f"[{tgt_lang}] {tgt}")
+                lines.append("")
+            content = "\n".join(lines)
+
+        out.write_text(content, encoding="utf-8")
+        self._send_json(success_payload({
+            "out_path": str(out),
+            "pair_count": len(pairs),
+            "format": fmt,
+        }))
 
     def _handle_export_align_csv(self, body: dict) -> None:
         import csv as _csv

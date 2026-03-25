@@ -1202,6 +1202,35 @@ details[open] > .audit-section-summary::before { transform: rotate(90deg); }
 }
 .btn.btn-ghost:hover { background: var(--color-bg); }
 
+/* ── Sprint 5: export par paire ──────────────────────────────────────────── */
+.fam-pair-export { text-align: right; padding: 2px 4px; }
+.fam-export-pair-btn { font-size: 10px; padding: 2px 6px; }
+
+.export-pair-dialog {
+  margin-top: 6px;
+  border: 1px solid #c7d2f7; border-radius: 6px;
+  background: #f0f4ff; overflow: hidden;
+}
+.export-pair-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 10px; background: #dce7ff; font-size: 0.82rem;
+  border-bottom: 1px solid #c7d2f7;
+}
+.export-pair-body { padding: 8px 10px; }
+
+.bilingual-preview-table {
+  width: 100%; border-collapse: collapse; font-size: 0.78rem; margin-top: 4px;
+}
+.bilingual-preview-table th {
+  background: #edf2f7; padding: 4px 8px; text-align: left;
+  border-bottom: 2px solid #e2e8f0; color: #4a5568;
+}
+.bilingual-preview-table td {
+  padding: 4px 8px; vertical-align: top; border-bottom: 1px solid #f1f5f9;
+  max-width: 280px; word-break: break-word;
+}
+.bilingual-preview-table tr:hover td { background: #f7fafc; }
+
 /* Author inherit banner (shown when current doc is a translation/excerpt) */
 .author-inherit-banner {
   display: flex; align-items: center; gap: 8px;

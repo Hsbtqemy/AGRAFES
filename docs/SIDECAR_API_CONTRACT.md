@@ -282,6 +282,12 @@ Response now includes pagination fields: `total`, `limit`, `offset`, `has_more`,
   - `status` per doc: `"segmented"` | `"skipped"` (already done, force=false) | `"error"`
   - Adds ratio warning when child segment count differs > 15 % from parent
 - `POST /segment` — body now accepts optional `calibrate_to: int` (reference doc_id for ratio check)
+- `POST /export/tmx` — export paires alignées au format TMX 1.4 (token required)
+  - body: `{ pivot_doc_id, target_doc_id }` OU `{ family_id }` pour toute la famille + `out_path|out_dir`
+  - retourne `{ out_path, tu_count, pairs }`
+- `POST /export/bilingual` — export bilingue entrelacé HTML ou TXT (token required)
+  - body: `{ pivot_doc_id, target_doc_id, format?, out_path?, preview_only?, preview_limit? }`
+  - `preview_only=true` retourne `{ preview: [{pivot_text, target_text}], pair_count }` sans fichier
 - `GET /corpus/audit?ratio_threshold_pct=15` — now returns a `families` section with:
   - `orphan_docs`: children whose parent is absent from the corpus
   - `unsegmented_children`: children (or their parents) with 0 line units

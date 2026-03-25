@@ -12,8 +12,8 @@ from __future__ import annotations
 from typing import Any
 
 
-API_VERSION = "1.6.3"
-CONTRACT_VERSION = "1.6.3"  # semantic versioning for the sidecar API contract
+API_VERSION = "1.6.4"
+CONTRACT_VERSION = "1.6.4"  # semantic versioning for the sidecar API contract
 # 1.4.0: added export_tei_package job kind (Sprint 4 — Publication ZIP)
 # 1.4.1: ERR_CONFLICT (409) for duplicate run_id; token protection on /align, /curate, /segment
 # 1.4.2: document workflow status fields on /documents and metadata update endpoints.
@@ -29,7 +29,8 @@ CONTRACT_VERSION = "1.6.3"  # semantic versioning for the sidecar API contract
 # 1.6.0: GET /families — list document families (parent+children) with completion stats.
 # 1.6.1: POST /families/{id}/segment — segment whole family; POST /segment gains calibrate_to.
 # 1.6.2: POST /families/{id}/align — align all parent↔child pairs in a family.
-# 1.6.3: GET /corpus/audit gains `families` section (orphans, unsegmented, unaligned, ratio warnings)
+# 1.6.3: GET /corpus/audit gains `families` section
+# 1.6.4: POST /export/tmx (paire ou famille entière), POST /export/bilingual (html|txt, preview_only). (orphans, unsegmented, unaligned, ratio warnings)
 #         and optional query param ratio_threshold_pct (default 15).
 
 # Error code catalog (stable machine-readable values).
@@ -781,6 +782,28 @@ def openapi_spec() -> dict[str, Any]:
                 }
             },
             # ── V0.4B — Exports ───────────────────────────────────────────
+            "/export/tmx": {
+                "post": {
+                    "summary": "Export aligned pairs to TMX 1.4 format (single pair or whole family)",
+                    "requestBody": {"required": True, "content": {"application/json": {
+                        "schema": {"$ref": "#/components/schemas/ExportTmxRequest"}}}},
+                    "responses": {
+                        "200": {"description": "TMX file path and TU count"},
+                        "400": {"description": "Bad request"},
+                    },
+                }
+            },
+            "/export/bilingual": {
+                "post": {
+                    "summary": "Export interleaved bilingual text (HTML or TXT) or return inline preview",
+                    "requestBody": {"required": True, "content": {"application/json": {
+                        "schema": {"$ref": "#/components/schemas/ExportBilingualRequest"}}}},
+                    "responses": {
+                        "200": {"description": "File path + pair_count, or preview payload"},
+                        "400": {"description": "Bad request"},
+                    },
+                }
+            },
             "/export/tei": {
                 "post": {
                     "summary": "Export documents as TEI XML",
@@ -1200,6 +1223,34 @@ def openapi_spec() -> dict[str, Any]:
                         "preserved_before": {"type": "integer"},
                         "warnings": {"type": "array", "items": {"type": "string"}},
                     },
+                },
+                "ExportTmxRequest": {
+                    "type": "object",
+                    "properties": {
+                        "pivot_doc_id":  {"type": "integer", "nullable": True,
+                                          "description": "Required unless family_id is set"},
+                        "target_doc_id": {"type": "integer", "nullable": True,
+                                          "description": "Required for single-pair export"},
+                        "family_id":     {"type": "integer", "nullable": True,
+                                          "description": "Export all parent↔child pairs in one TMX"},
+                        "out_path":      {"type": "string", "description": "Absolute path for the .tmx file"},
+                        "out_dir":       {"type": "string", "description": "Directory; file named automatically"},
+                    },
+                    "additionalProperties": False,
+                },
+                "ExportBilingualRequest": {
+                    "type": "object",
+                    "required": ["pivot_doc_id", "target_doc_id"],
+                    "properties": {
+                        "pivot_doc_id":   {"type": "integer"},
+                        "target_doc_id":  {"type": "integer"},
+                        "format":         {"type": "string", "enum": ["html", "txt"], "default": "html"},
+                        "out_path":       {"type": "string", "description": "Required unless preview_only=true"},
+                        "preview_only":   {"type": "boolean", "default": False,
+                                           "description": "Return pairs as JSON without writing a file"},
+                        "preview_limit":  {"type": "integer", "default": 20, "minimum": 1, "maximum": 200},
+                    },
+                    "additionalProperties": False,
                 },
                 "SegmentResponse": {
                     "allOf": [
