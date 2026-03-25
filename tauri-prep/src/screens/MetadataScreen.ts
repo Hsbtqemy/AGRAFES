@@ -19,6 +19,7 @@ import {
   deleteDocuments,
   getDocRelations,
   getAllDocRelations,
+  getFamilies,
   setDocRelation,
   deleteDocRelation,
   backupDatabase,
@@ -28,6 +29,7 @@ import {
   type DocumentPreviewLine,
   type DocRelationRecord,
   type CorpusAuditResult,
+  type FamilyRecord,
   SidecarError,
 } from "../lib/sidecarClient.ts";
 import { initCardAccordions } from "../lib/uiAccordions.ts";
@@ -63,6 +65,8 @@ export class MetadataScreen {
   private _hierarchyView = false;
   private _allRelations: DocRelationRecord[] = [];
   private _allRelationsLoaded = false;
+  private _families: FamilyRecord[] = [];
+  private _familiesLoaded = false;
 
   // DOM refs
   private _root!: HTMLElement;
@@ -97,6 +101,8 @@ export class MetadataScreen {
     this._previewLoading = false;
     this._allRelations = [];
     this._allRelationsLoaded = false;
+    this._families = [];
+    this._familiesLoaded = false;
     if (this._root) {
       const filterInput = this._root.querySelector<HTMLInputElement>("#meta-doc-filter");
       if (filterInput) filterInput.value = "";
@@ -430,10 +436,16 @@ export class MetadataScreen {
     if (filterInput) filterInput.disabled = this._hierarchyView;
     if (statusSel)   statusSel.disabled   = this._hierarchyView;
 
-    if (this._hierarchyView && !this._allRelationsLoaded && this._conn) {
+    if (this._hierarchyView && this._conn) {
       try {
-        this._allRelations = await getAllDocRelations(this._conn);
-        this._allRelationsLoaded = true;
+        if (!this._allRelationsLoaded) {
+          this._allRelations = await getAllDocRelations(this._conn);
+          this._allRelationsLoaded = true;
+        }
+        if (!this._familiesLoaded) {
+          this._families = await getFamilies(this._conn);
+          this._familiesLoaded = true;
+        }
       } catch (err) {
         this._log(`Erreur chargement relations : ${err instanceof SidecarError ? err.message : String(err)}`, true);
         this._hierarchyView = false;
@@ -500,7 +512,7 @@ export class MetadataScreen {
       return;
     }
 
-    const appendRow = (doc: DocumentRecord, depth = 0, relationLabel?: string) => {
+    const appendRow = (doc: DocumentRecord, depth = 0, relationLabel?: string, completionPct?: number) => {
       const tr = document.createElement("tr");
       tr.className = "meta-doc-row";
       if (depth > 0) tr.classList.add("tree-child");
@@ -512,6 +524,10 @@ export class MetadataScreen {
       const relBadge = relationLabel
         ? `<span class="tree-rel-badge">${this._esc(this._relLabel(relationLabel))}</span>`
         : "";
+      const pctBadge = completionPct !== undefined
+        ? `<span class="family-pct-badge family-pct-${this._completionTier(completionPct)}"
+              title="Famille : ${completionPct} % traité">${completionPct} %</span>`
+        : "";
       tr.innerHTML = `
         <td class="col-check">
           <input class="meta-row-check" type="checkbox" data-id="${doc.doc_id}"
@@ -519,7 +535,7 @@ export class MetadataScreen {
         </td>
         <td class="col-id">#${doc.doc_id}</td>
         <td class="col-title tree-title-cell" title="${this._esc(doc.title)}" style="padding-left:${0.5 + depth * 1.4}rem">
-          ${indent}${relBadge}${this._esc(this._truncateMid(doc.title))}
+          ${indent}${relBadge}${this._esc(this._truncateMid(doc.title))}${pctBadge}
         </td>
         <td class="col-lang">${this._esc(doc.language)}</td>
         <td class="col-role">${this._esc(doc.doc_role ?? "—")}</td>
@@ -547,10 +563,14 @@ export class MetadataScreen {
       this._docListEl.appendChild(tr);
     };
 
+    // Build a quick lookup: family_id → completion_pct
+    const familyPct = new Map(this._families.map(f => [f.family_id, f.stats.completion_pct]));
+
     // Groups with parent→children
     if (roots.length > 0) {
       for (const node of roots) {
-        appendRow(node.doc, 0);
+        const pct = familyPct.get(node.doc.doc_id);
+        appendRow(node.doc, 0, undefined, pct);
         for (const child of node.children) {
           appendRow(child.doc, 1, child.relationLabel);
         }
@@ -573,6 +593,15 @@ export class MetadataScreen {
 
     this._renderBatchBar();
     this._updateSelectAll();
+  }
+
+  /** CSS tier for a completion percentage: none | low | mid | high | done. */
+  private _completionTier(pct: number): string {
+    if (pct === 0)   return "none";
+    if (pct < 40)    return "low";
+    if (pct < 80)    return "mid";
+    if (pct < 100)   return "high";
+    return "done";
   }
 
   /** Human-readable label for a relation type. */
@@ -736,6 +765,8 @@ export class MetadataScreen {
         ${propagateHtml}
       </div>
 
+      ${this._familyPanelHtml(doc)}
+
       <h4 style="font-size:0.88rem;font-weight:600;margin:0.5rem 0 0.3rem">Relations documentaires</h4>
       <p style="font-size:0.78rem;color:var(--color-muted);margin:0 0 0.5rem">
         Définissez comment ce document est lié à un autre (traduction, extrait…).
@@ -791,6 +822,60 @@ export class MetadataScreen {
           : [];
         void this._propagateAuthorToChildren(ids, btn);
       });
+  }
+
+  private _familyPanelHtml(doc: DocumentRecord): string {
+    const family = this._families.find(f => f.family_id === doc.doc_id);
+    if (!family) return "";
+
+    const { stats } = family;
+    const tier = this._completionTier(stats.completion_pct);
+
+    const pairRows = family.children.map(c => {
+      const segIcon  = c.segmented       ? "✓" : "○";
+      const segClass = c.segmented       ? "fam-ok" : "fam-todo";
+      const alnIcon  = c.aligned_to_parent ? "✓" : "○";
+      const alnClass = c.aligned_to_parent ? "fam-ok" : "fam-todo";
+      const childTitle = c.doc ? this._esc(this._truncateMid(c.doc.title, 28)) : `doc #${c.doc_id}`;
+      const childLang  = c.doc ? this._esc(c.doc.language) : "?";
+      return `
+        <tr class="fam-pair-row">
+          <td class="fam-pair-lang">${childLang}</td>
+          <td class="fam-pair-title" title="${c.doc ? this._esc(c.doc.title) : ""}">${childTitle}</td>
+          <td class="fam-pair-icon ${segClass}" title="Segmenté">${segIcon}</td>
+          <td class="fam-pair-icon ${alnClass}" title="Aligné">${alnIcon}</td>
+        </tr>`;
+    }).join("");
+
+    const ratioWarnings = stats.ratio_warnings.length > 0
+      ? `<p class="fam-ratio-warn">⚠ ${stats.ratio_warnings.length} paire(s) avec ratio de segments suspect (&gt;15 %)</p>`
+      : "";
+
+    return `
+      <div class="family-panel">
+        <div class="family-panel-head">
+          <span class="fam-title">📁 Famille documentaire</span>
+          <span class="family-pct-badge family-pct-${tier}">${stats.completion_pct} %</span>
+        </div>
+        <div class="fam-stats-row">
+          <span>${stats.total_docs} doc(s)</span>
+          <span>${stats.segmented_docs}/${stats.total_docs} segmentés</span>
+          <span>${stats.aligned_pairs}/${stats.total_pairs} paires alignées</span>
+          <span>${stats.validated_docs} validé(s)</span>
+        </div>
+        <table class="fam-pairs-table">
+          <thead><tr>
+            <th>Langue</th><th>Traduction / Extrait</th>
+            <th title="Segmenté">Seg.</th><th title="Aligné">Aln.</th>
+          </tr></thead>
+          <tbody>${pairRows}</tbody>
+        </table>
+        ${ratioWarnings}
+        <div class="fam-actions">
+          <button class="btn btn-secondary btn-sm" disabled title="Disponible Sprint 2">⟳ Segmenter la famille</button>
+          <button class="btn btn-secondary btn-sm" disabled title="Disponible Sprint 3">⇄ Aligner la famille</button>
+        </div>
+      </div>`;
   }
 
   private _inheritAuthorFromParent(): void {
@@ -997,10 +1082,15 @@ export class MetadataScreen {
       });
       const res = await getDocRelations(this._conn, this._selectedDoc.doc_id);
       this._relations = res.relations;
-      this._allRelationsLoaded = false; // force reload for hierarchy view
+      this._allRelationsLoaded = false;
+      this._familiesLoaded = false;
       this._renderRelationsList();
-      if (this._hierarchyView) this._allRelations = await getAllDocRelations(this._conn);
-      this._allRelationsLoaded = this._hierarchyView;
+      if (this._hierarchyView && this._conn) {
+        this._allRelations = await getAllDocRelations(this._conn);
+        this._families = await getFamilies(this._conn);
+        this._allRelationsLoaded = true;
+        this._familiesLoaded = true;
+      }
       this._renderDocList();
       this._log(`✓ Relation ${rel_type} → doc #${target_doc_id} ajoutée.`);
     } catch (err) {
@@ -1016,9 +1106,12 @@ export class MetadataScreen {
       this._relations = this._relations.filter(r => r.id !== id);
       if (this._conn && this._hierarchyView) {
         this._allRelations = await getAllDocRelations(this._conn);
+        this._families = await getFamilies(this._conn);
         this._allRelationsLoaded = true;
+        this._familiesLoaded = true;
       } else {
         this._allRelationsLoaded = false;
+        this._familiesLoaded = false;
       }
       this._renderRelationsList();
       this._renderDocList();

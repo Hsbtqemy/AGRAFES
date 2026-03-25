@@ -4,6 +4,7 @@
   "GET /doc_relations",
   "GET /doc_relations/all",
   "GET /documents",
+  "GET /families",
   "GET /documents/preview",
   "GET /health",
   "GET /jobs",

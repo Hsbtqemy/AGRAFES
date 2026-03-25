@@ -12,8 +12,8 @@ from __future__ import annotations
 from typing import Any
 
 
-API_VERSION = "1.5.1"
-CONTRACT_VERSION = "1.5.1"  # semantic versioning for the sidecar API contract
+API_VERSION = "1.6.0"
+CONTRACT_VERSION = "1.6.0"  # semantic versioning for the sidecar API contract
 # 1.4.0: added export_tei_package job kind (Sprint 4 — Publication ZIP)
 # 1.4.1: ERR_CONFLICT (409) for duplicate run_id; token protection on /align, /curate, /segment
 # 1.4.2: document workflow status fields on /documents and metadata update endpoints.
@@ -26,6 +26,7 @@ CONTRACT_VERSION = "1.5.1"  # semantic versioning for the sidecar API contract
 # 1.4.9: GET /corpus/audit — corpus health audit (missing fields, empty docs, duplicates by hash/filename/title).
 # 1.5.0: DocumentRecord gains optional author_lastname, author_firstname, doc_date fields (migration 010).
 # 1.5.1: GET /doc_relations/all — returns all relations in corpus for hierarchy view.
+# 1.6.0: GET /families — list document families (parent+children) with completion stats.
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
@@ -723,6 +724,12 @@ def openapi_spec() -> dict[str, Any]:
                 "get": {
                     "summary": "All doc_relations in the corpus (for hierarchy view)",
                     "responses": {"200": {"description": "All relations"}},
+                }
+            },
+            "/families": {
+                "get": {
+                    "summary": "List document families (parent + children + completion stats)",
+                    "responses": {"200": {"description": "Families with stats"}},
                 }
             },
             "/doc_relations/set": {

@@ -1470,6 +1470,45 @@ export async function getAllDocRelations(conn: Conn): Promise<DocRelationRecord[
   return res.relations;
 }
 
+export interface FamilyChildEntry {
+  doc_id: number;
+  relation_type: string;
+  doc: DocumentRecord | null;
+  segmented: boolean;
+  seg_count: number;
+  aligned_to_parent: boolean;
+}
+
+export interface FamilyRatioWarning {
+  child_doc_id: number;
+  parent_segs: number;
+  child_segs: number;
+  ratio_pct: number;
+}
+
+export interface FamilyStats {
+  total_docs: number;
+  segmented_docs: number;
+  parent_seg_count: number;
+  aligned_pairs: number;
+  total_pairs: number;
+  validated_docs: number;
+  completion_pct: number;
+  ratio_warnings: FamilyRatioWarning[];
+}
+
+export interface FamilyRecord {
+  family_id: number;
+  parent: DocumentRecord | null;
+  children: FamilyChildEntry[];
+  stats: FamilyStats;
+}
+
+export async function getFamilies(conn: Conn): Promise<FamilyRecord[]> {
+  const res = (await conn.get("/families")) as { families: FamilyRecord[] };
+  return res.families;
+}
+
 export async function setDocRelation(conn: Conn, opts: DocRelationSetOptions): Promise<{ action: string; id: number }> {
   return conn.post("/doc_relations/set", opts) as Promise<{ action: string; id: number }>;
 }

@@ -489,6 +489,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             self._handle_doc_relations_get()
         elif path == "/doc_relations/all":
             self._handle_doc_relations_all()
+        elif path == "/families":
+            self._handle_families()
         elif path == "/jobs":
             self._handle_jobs_list()
         elif path.startswith("/jobs/"):
@@ -2906,6 +2908,161 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             for r in rows
         ]
         self._send_json(success_payload({"relations": relations, "count": len(relations)}))
+
+    def _handle_families(self) -> None:
+        """GET /families — list all document families (parent + children + completion stats).
+
+        A family is rooted at a document that appears as ``target_doc_id`` in at least
+        one ``doc_relation`` of type ``translation_of`` or ``excerpt_of``.  Stats are
+        computed on the fly from ``units`` and ``alignment_links``.
+        """
+        from collections import defaultdict
+
+        conn = self._conn()
+        self._ensure_document_workflow_columns()
+
+        # ── 1. Load all relevant relations ──────────────────────────────────
+        rel_rows = conn.execute(
+            "SELECT doc_id, relation_type, target_doc_id FROM doc_relations"
+            " WHERE relation_type IN ('translation_of', 'excerpt_of')"
+            " ORDER BY target_doc_id, doc_id"
+        ).fetchall()
+
+        if not rel_rows:
+            self._send_json(success_payload({"families": [], "count": 0}))
+            return
+
+        # children_of[parent_id] = [{doc_id, relation_type}, ...]
+        children_of: dict[int, list[dict]] = defaultdict(list)
+        child_ids: set[int] = set()
+
+        for doc_id, rel_type, target_doc_id in rel_rows:
+            children_of[target_doc_id].append({"doc_id": doc_id, "relation_type": rel_type})
+            child_ids.add(doc_id)
+
+        all_parent_ids = set(children_of.keys())
+        all_doc_ids = all_parent_ids | child_ids
+
+        # ── 2. Fetch document metadata ───────────────────────────────────────
+        ph = ",".join("?" * len(all_doc_ids))
+        doc_rows = conn.execute(
+            f"SELECT doc_id, title, language, doc_role, workflow_status,"
+            f"       author_lastname, author_firstname, doc_date, source_path"
+            f" FROM documents WHERE doc_id IN ({ph})",
+            list(all_doc_ids),
+        ).fetchall()
+        doc_map: dict[int, dict] = {
+            r[0]: {
+                "doc_id": r[0], "title": r[1], "language": r[2],
+                "doc_role": r[3], "workflow_status": r[4],
+                "author_lastname": r[5], "author_firstname": r[6],
+                "doc_date": r[7], "source_path": r[8],
+            }
+            for r in doc_rows
+        }
+
+        # ── 3. Which docs are segmented? ─────────────────────────────────────
+        seg_rows = conn.execute(
+            f"SELECT DISTINCT doc_id FROM units"
+            f" WHERE unit_type = 'line' AND doc_id IN ({ph})",
+            list(all_doc_ids),
+        ).fetchall()
+        segmented_ids: set[int] = {r[0] for r in seg_rows}
+
+        # Segment counts per doc (for ratio checks)
+        seg_count_rows = conn.execute(
+            f"SELECT doc_id, COUNT(*) FROM units"
+            f" WHERE unit_type = 'line' AND doc_id IN ({ph})"
+            f" GROUP BY doc_id",
+            list(all_doc_ids),
+        ).fetchall()
+        seg_counts: dict[int, int] = {r[0]: r[1] for r in seg_count_rows}
+
+        # ── 4. Which pairs are aligned? ──────────────────────────────────────
+        align_rows = conn.execute(
+            f"SELECT DISTINCT pivot_doc_id, target_doc_id FROM alignment_links"
+            f" WHERE pivot_doc_id IN ({ph}) OR target_doc_id IN ({ph})",
+            list(all_doc_ids) * 2,
+        ).fetchall()
+        # Normalise so (a,b) and (b,a) are the same pair
+        aligned_pairs: set[tuple[int, int]] = {
+            (min(r[0], r[1]), max(r[0], r[1])) for r in align_rows
+        }
+
+        # ── 5. Build family objects ──────────────────────────────────────────
+        families = []
+        for parent_id in sorted(all_parent_ids):
+            parent_doc = doc_map.get(parent_id)
+            children = children_of[parent_id]
+
+            family_member_ids = {parent_id} | {c["doc_id"] for c in children}
+            total_docs = len(family_member_ids)
+            segmented_docs = len(segmented_ids & family_member_ids)
+            validated_docs = sum(
+                1 for mid in family_member_ids
+                if doc_map.get(mid, {}).get("workflow_status") == "validated"
+            )
+
+            # Pairs: parent ↔ each child
+            pairs = [(parent_id, c["doc_id"]) for c in children]
+            total_pairs = len(pairs)
+            aligned_count = sum(
+                1 for a, b in pairs
+                if (min(a, b), max(a, b)) in aligned_pairs
+            )
+
+            # Segment ratio warnings (> 15 % difference)
+            parent_segs = seg_counts.get(parent_id, 0)
+            ratio_warnings = []
+            if parent_segs > 0:
+                for c in children:
+                    child_segs = seg_counts.get(c["doc_id"], 0)
+                    if child_segs > 0:
+                        ratio = abs(child_segs - parent_segs) / parent_segs
+                        if ratio > 0.15:
+                            ratio_warnings.append({
+                                "child_doc_id": c["doc_id"],
+                                "parent_segs": parent_segs,
+                                "child_segs": child_segs,
+                                "ratio_pct": round(ratio * 100),
+                            })
+
+            # Completion % : 50 % segmentation, 50 % alignment
+            if total_pairs > 0:
+                seg_pct = (segmented_docs / total_docs) * 50
+                align_pct = (aligned_count / total_pairs) * 50
+                completion_pct = round(seg_pct + align_pct)
+            else:
+                completion_pct = round((segmented_docs / total_docs) * 100) if total_docs else 0
+
+            families.append({
+                "family_id": parent_id,
+                "parent": parent_doc,
+                "children": [
+                    {
+                        **c,
+                        "doc": doc_map.get(c["doc_id"]),
+                        "segmented": c["doc_id"] in segmented_ids,
+                        "seg_count": seg_counts.get(c["doc_id"], 0),
+                        "aligned_to_parent": (
+                            min(parent_id, c["doc_id"]), max(parent_id, c["doc_id"])
+                        ) in aligned_pairs,
+                    }
+                    for c in children
+                ],
+                "stats": {
+                    "total_docs": total_docs,
+                    "segmented_docs": segmented_docs,
+                    "parent_seg_count": seg_counts.get(parent_id, 0),
+                    "aligned_pairs": aligned_count,
+                    "total_pairs": total_pairs,
+                    "validated_docs": validated_docs,
+                    "completion_pct": completion_pct,
+                    "ratio_warnings": ratio_warnings,
+                },
+            })
+
+        self._send_json(success_payload({"families": families, "count": len(families)}))
 
     def _handle_documents_update(self, body: dict) -> None:
         self._ensure_document_workflow_columns()

@@ -1079,6 +1079,57 @@ details[open] > .audit-section-head::before { transform: rotate(90deg); }
 /* Refresh button in list header — slightly more prominent than icon-only */
 .meta-refresh-btn { font-size: 12px; padding: 3px 9px; }
 
+/* ── Family panel ────────────────────────────────────────────────────────────── */
+
+.family-panel {
+  border: 1px solid #c7d4f5; border-radius: 8px;
+  background: #f7f9ff; padding: 10px 12px; margin-bottom: 10px;
+  font-size: 0.82rem;
+}
+.family-panel-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 6px;
+}
+.fam-title { font-weight: 700; color: #374151; font-size: 0.85rem; }
+.fam-stats-row {
+  display: flex; gap: 12px; flex-wrap: wrap;
+  color: var(--color-muted, #64748b); font-size: 0.78rem; margin-bottom: 6px;
+}
+
+/* Completion badge — used both in family panel and in hierarchy list */
+.family-pct-badge {
+  display: inline-block; font-size: 10px; font-weight: 700;
+  border-radius: 10px; padding: 1px 7px; white-space: nowrap;
+  margin-left: 6px; vertical-align: middle;
+}
+.family-pct-none { background: #e2e8f0; color: #64748b; }
+.family-pct-low  { background: #fee2e2; color: #b91c1c; }
+.family-pct-mid  { background: #fef3c7; color: #92400e; }
+.family-pct-high { background: #d1fae5; color: #065f46; }
+.family-pct-done { background: #bbf7d0; color: #14532d; }
+
+/* Pairs table inside family panel */
+.fam-pairs-table {
+  width: 100%; border-collapse: collapse; font-size: 0.78rem; margin-bottom: 6px;
+}
+.fam-pairs-table th {
+  text-align: left; font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .04em; color: var(--color-muted, #64748b);
+  padding: 3px 6px; border-bottom: 1px solid #e2e8f0;
+}
+.fam-pair-row td { padding: 3px 6px; border-bottom: 1px solid #f1f5f9; }
+.fam-pair-lang  { width: 36px; font-size: 11px; font-weight: 600; color: #374151; }
+.fam-pair-title { max-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fam-pair-icon  { width: 28px; text-align: center; font-size: 13px; }
+.fam-ok   { color: #16a34a; }
+.fam-todo { color: #94a3b8; }
+
+.fam-ratio-warn {
+  font-size: 0.75rem; color: #92400e; background: #fef3c7;
+  border-radius: 4px; padding: 3px 8px; margin: 4px 0;
+}
+.fam-actions { display: flex; gap: 6px; margin-top: 6px; }
+
 /* Author inherit banner (shown when current doc is a translation/excerpt) */
 .author-inherit-banner {
   display: flex; align-items: center; gap: 8px;
