@@ -1509,6 +1509,51 @@ export async function getFamilies(conn: Conn): Promise<FamilyRecord[]> {
   return res.families;
 }
 
+// ─── Sprint 2 — Segmentation famille ─────────────────────────────────────────
+
+export interface FamilySegmentOptions {
+  pack?: "auto" | "default" | "fr_strict" | "en_strict";
+  /** Re-segment even already-segmented docs */
+  force?: boolean;
+  /** Per-doc language override: { [doc_id]: lang } */
+  lang_map?: Record<string, string>;
+}
+
+export interface FamilySegmentDocResult {
+  doc_id: number;
+  status: "segmented" | "skipped" | "error";
+  units_input: number;
+  units_output: number;
+  segment_pack: string | null;
+  warnings: string[];
+  calibrate_ratio_pct?: number;
+}
+
+export interface FamilySegmentSummary {
+  total: number;
+  segmented: number;
+  skipped: number;
+  errors: number;
+}
+
+export interface FamilySegmentResponse {
+  family_root_id: number;
+  fts_stale: boolean;
+  results: FamilySegmentDocResult[];
+  summary: FamilySegmentSummary;
+}
+
+export async function segmentFamily(
+  conn: Conn,
+  familyRootId: number,
+  opts: FamilySegmentOptions = {},
+): Promise<FamilySegmentResponse> {
+  return conn.post(
+    `/families/${familyRootId}/segment`,
+    opts,
+  ) as Promise<FamilySegmentResponse>;
+}
+
 export async function setDocRelation(conn: Conn, opts: DocRelationSetOptions): Promise<{ action: string; id: number }> {
   return conn.post("/doc_relations/set", opts) as Promise<{ action: string; id: number }>;
 }

@@ -1128,7 +1128,31 @@ details[open] > .audit-section-head::before { transform: rotate(90deg); }
   font-size: 0.75rem; color: #92400e; background: #fef3c7;
   border-radius: 4px; padding: 3px 8px; margin: 4px 0;
 }
-.fam-actions { display: flex; gap: 6px; margin-top: 6px; }
+.fam-actions { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+
+/* ── Sprint 2: family segmentation inline result ──────────────────────────── */
+.seg-family-confirm {
+  background: #fff8e1; border: 1px solid #f5c842; border-radius: 6px;
+  padding: 8px 12px; margin-top: 6px; font-size: 0.82rem;
+}
+.seg-family-confirm p { margin: 0 0 6px; }
+.seg-family-loading {
+  color: var(--color-muted); font-style: italic; font-size: 0.8rem; margin-top: 4px;
+}
+.seg-family-report {
+  margin-top: 6px; background: #f6f9ff; border: 1px solid #d0daf5;
+  border-radius: 6px; padding: 8px 10px;
+}
+.seg-report-summary { font-size: 0.82rem; margin: 0 0 6px; font-weight: 600; }
+.btn.btn-danger {
+  background: #c0392b; color: #fff; border-color: #a93226;
+}
+.btn.btn-danger:hover { background: #a93226; }
+.btn.btn-ghost {
+  background: transparent; color: var(--color-muted);
+  border-color: var(--color-border);
+}
+.btn.btn-ghost:hover { background: var(--color-bg); }
 
 /* Author inherit banner (shown when current doc is a translation/excerpt) */
 .author-inherit-banner {

@@ -12,8 +12,8 @@ from __future__ import annotations
 from typing import Any
 
 
-API_VERSION = "1.6.0"
-CONTRACT_VERSION = "1.6.0"  # semantic versioning for the sidecar API contract
+API_VERSION = "1.6.1"
+CONTRACT_VERSION = "1.6.1"  # semantic versioning for the sidecar API contract
 # 1.4.0: added export_tei_package job kind (Sprint 4 — Publication ZIP)
 # 1.4.1: ERR_CONFLICT (409) for duplicate run_id; token protection on /align, /curate, /segment
 # 1.4.2: document workflow status fields on /documents and metadata update endpoints.
@@ -27,6 +27,7 @@ CONTRACT_VERSION = "1.6.0"  # semantic versioning for the sidecar API contract
 # 1.5.0: DocumentRecord gains optional author_lastname, author_firstname, doc_date fields (migration 010).
 # 1.5.1: GET /doc_relations/all — returns all relations in corpus for hierarchy view.
 # 1.6.0: GET /families — list document families (parent+children) with completion stats.
+# 1.6.1: POST /families/{id}/segment — segment whole family; POST /segment gains calibrate_to.
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
@@ -732,6 +733,20 @@ def openapi_spec() -> dict[str, Any]:
                     "responses": {"200": {"description": "Families with stats"}},
                 }
             },
+            "/families/{family_root_id}/segment": {
+                "post": {
+                    "summary": "Segment all documents in a family (parent first, then children)",
+                    "parameters": [{"name": "family_root_id", "in": "path", "required": True,
+                                    "schema": {"type": "integer"}}],
+                    "requestBody": {"required": False, "content": {"application/json": {
+                        "schema": {"$ref": "#/components/schemas/FamilySegmentRequest"}}}},
+                    "responses": {
+                        "200": {"description": "Per-doc segmentation results"},
+                        "400": {"description": "Bad request"},
+                        "404": {"description": "Family root not found"},
+                    },
+                }
+            },
             "/doc_relations/set": {
                 "post": {
                     "summary": "Upsert a doc_relation",
@@ -1102,8 +1117,39 @@ def openapi_spec() -> dict[str, Any]:
                             "default": "auto",
                             "enum": ["auto", "default", "fr_strict", "en_strict"],
                         },
+                        "calibrate_to": {
+                            "type": "integer",
+                            "nullable": True,
+                            "description": "doc_id of reference document; adds a ratio warning if segment counts differ by > 15 %",
+                        },
                     },
                     "additionalProperties": False,
+                },
+                "FamilySegmentRequest": {
+                    "type": "object",
+                    "properties": {
+                        "pack": {"type": "string", "default": "auto",
+                                 "enum": ["auto", "default", "fr_strict", "en_strict"]},
+                        "force": {"type": "boolean", "default": False,
+                                  "description": "Re-segment even already-segmented documents"},
+                        "lang_map": {"type": "object",
+                                     "description": "Per-doc language override {doc_id: lang}",
+                                     "additionalProperties": {"type": "string"}},
+                    },
+                    "additionalProperties": False,
+                },
+                "FamilySegmentDocResult": {
+                    "type": "object",
+                    "required": ["doc_id", "status", "units_input", "units_output", "warnings"],
+                    "properties": {
+                        "doc_id": {"type": "integer"},
+                        "status": {"type": "string", "enum": ["segmented", "skipped", "error"]},
+                        "units_input": {"type": "integer"},
+                        "units_output": {"type": "integer"},
+                        "segment_pack": {"type": "string", "nullable": True},
+                        "warnings": {"type": "array", "items": {"type": "string"}},
+                        "calibrate_ratio_pct": {"type": "integer", "nullable": True},
+                    },
                 },
                 "SegmentResponse": {
                     "allOf": [

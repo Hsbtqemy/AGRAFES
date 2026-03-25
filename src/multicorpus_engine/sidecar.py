@@ -609,6 +609,16 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 self._handle_validate_meta(body)
             elif path == "/segment":
                 self._handle_segment(body)
+            elif path.startswith("/families/") and path.endswith("/segment"):
+                parts = path.split("/")  # ['', 'families', '{id}', 'segment']
+                if len(parts) == 4:
+                    try:
+                        family_root_id = int(parts[2])
+                        self._handle_family_segment(family_root_id, body)
+                    except ValueError:
+                        self._send_error("Invalid family_root_id", code=ERR_BAD_REQUEST, http_status=400)
+                else:
+                    self._send_error("Unknown route: " + path, code=ERR_NOT_FOUND, http_status=404)
             elif path == "/align":
                 self._handle_align(body)
             elif path == "/documents/update":
@@ -2357,37 +2367,32 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 
         doc_id = body.get("doc_id")
         if doc_id is None:
-            self._send_error(
-                "doc_id is required",
-                code=ERR_BAD_REQUEST,
-                http_status=400,
-            )
+            self._send_error("doc_id is required", code=ERR_BAD_REQUEST, http_status=400)
             return
         try:
             doc_id = int(doc_id)
         except (TypeError, ValueError):
-            self._send_error(
-                "doc_id must be an integer",
-                code=ERR_BAD_REQUEST,
-                http_status=400,
-            )
+            self._send_error("doc_id must be an integer", code=ERR_BAD_REQUEST, http_status=400)
             return
         pack = body.get("pack", "auto")
         if pack is not None and not isinstance(pack, str):
-            self._send_error(
-                "pack must be a string when provided",
-                code=ERR_BAD_REQUEST,
-                http_status=400,
-            )
+            self._send_error("pack must be a string when provided", code=ERR_BAD_REQUEST, http_status=400)
             return
         lang = body.get("lang", "und")
         if lang is not None and not isinstance(lang, str):
-            self._send_error(
-                "lang must be a string when provided",
-                code=ERR_BAD_REQUEST,
-                http_status=400,
-            )
+            self._send_error("lang must be a string when provided", code=ERR_BAD_REQUEST, http_status=400)
             return
+
+        # Optional: calibrate_to=doc_id of reference document for ratio check
+        calibrate_to_raw = body.get("calibrate_to")
+        calibrate_to: int | None = None
+        if calibrate_to_raw is not None:
+            try:
+                calibrate_to = int(calibrate_to_raw)
+            except (TypeError, ValueError):
+                self._send_error("calibrate_to must be an integer", code=ERR_BAD_REQUEST, http_status=400)
+                return
+
         with self._lock():
             report = resegment_document(
                 self._conn(),
@@ -2395,7 +2400,178 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 lang=lang or "und",
                 pack=pack,
             )
-        self._send_json(success_payload({"fts_stale": True, **report.to_dict()}))
+            # Ratio check against reference document
+            calibrate_ratio_pct: int | None = None
+            calibrate_warning: str | None = None
+            if calibrate_to is not None and report.units_output > 0:
+                ref_count = self._conn().execute(
+                    "SELECT COUNT(*) FROM units WHERE doc_id = ? AND unit_type = 'line'",
+                    (calibrate_to,),
+                ).fetchone()[0]
+                if ref_count > 0:
+                    ratio = abs(report.units_output - ref_count) / ref_count
+                    calibrate_ratio_pct = round(ratio * 100)
+                    if ratio > 0.15:
+                        calibrate_warning = (
+                            f"Segment count differs by {calibrate_ratio_pct} % from reference "
+                            f"doc #{calibrate_to} ({ref_count} units vs {report.units_output})"
+                        )
+                        report.warnings.append(calibrate_warning)
+
+        payload = {"fts_stale": True, **report.to_dict()}
+        if calibrate_to is not None:
+            payload["calibrate_to"] = calibrate_to
+            payload["calibrate_ratio_pct"] = calibrate_ratio_pct
+        self._send_json(success_payload(payload))
+
+    def _handle_family_segment(self, family_root_id: int, body: dict) -> None:
+        """POST /families/{family_root_id}/segment — segment all docs in a family.
+
+        Body fields (all optional):
+          pack        : segmentation pack ("auto"|"default"|"fr_strict"|"en_strict")
+          force       : bool — if true, re-segment even already-segmented docs (default false)
+          lang_map    : {str(doc_id): lang} — per-doc language override
+
+        Response per-doc status values:
+          "segmented" — segmentation ran successfully
+          "skipped"   — doc was already segmented and force=false
+          "error"     — segmentation raised an exception
+
+        Order: parent is processed first, then children in doc_id order.
+        After segmenting children, a ratio warning is added when the child
+        segment count differs by more than 15 % from the parent.
+        """
+        from multicorpus_engine.segmenter import resegment_document
+
+        pack      = body.get("pack", "auto") or "auto"
+        force     = bool(body.get("force", False))
+        lang_map  = body.get("lang_map") or {}
+
+        conn = self._conn()
+
+        # ── Build the family ────────────────────────────────────────────────
+        # Verify parent exists
+        parent_row = conn.execute(
+            "SELECT doc_id, language FROM documents WHERE doc_id = ?", (family_root_id,)
+        ).fetchone()
+        if parent_row is None:
+            self._send_error(
+                f"Document doc_id={family_root_id} not found",
+                code=ERR_NOT_FOUND,
+                http_status=404,
+            )
+            return
+
+        child_rows = conn.execute(
+            "SELECT r.doc_id, d.language FROM doc_relations r"
+            " JOIN documents d ON d.doc_id = r.doc_id"
+            " WHERE r.target_doc_id = ? AND r.relation_type IN ('translation_of', 'excerpt_of')"
+            " ORDER BY r.doc_id",
+            (family_root_id,),
+        ).fetchall()
+
+        if not child_rows:
+            self._send_error(
+                f"No children found for family root doc_id={family_root_id}",
+                code=ERR_BAD_REQUEST,
+                http_status=400,
+            )
+            return
+
+        # ── Helper: is a doc already segmented? ────────────────────────────
+        def _is_segmented(doc_id: int) -> bool:
+            return conn.execute(
+                "SELECT 1 FROM units WHERE doc_id = ? AND unit_type = 'line' LIMIT 1",
+                (doc_id,),
+            ).fetchone() is not None
+
+        def _seg_count(doc_id: int) -> int:
+            row = conn.execute(
+                "SELECT COUNT(*) FROM units WHERE doc_id = ? AND unit_type = 'line'",
+                (doc_id,),
+            ).fetchone()
+            return row[0] if row else 0
+
+        # ── Helper: add ratio warning to an entry dict ──────────────────────
+        def _add_ratio_warning(entry: dict, child_count: int, ref: int | None, doc_id: int) -> dict:
+            if ref is None or ref == 0 or child_count == 0:
+                return entry
+            ratio = abs(child_count - ref) / ref
+            entry["calibrate_ratio_pct"] = round(ratio * 100)
+            if ratio > 0.15:
+                entry["warnings"] = list(entry.get("warnings", [])) + [
+                    f"Segment count differs by {round(ratio * 100)} % from parent "
+                    f"({ref} units) — doc #{doc_id} has {child_count} units"
+                ]
+            return entry
+
+        # ── Process docs: parent first, then children ───────────────────────
+        results = []
+        parent_seg_count: int | None = None
+
+        all_docs = [(family_root_id, parent_row[1])] + [(r[0], r[1]) for r in child_rows]
+
+        with self._lock():
+            for idx, (doc_id, db_lang) in enumerate(all_docs):
+                lang = str(lang_map.get(str(doc_id), lang_map.get(doc_id, db_lang or "und")))
+                already = _is_segmented(doc_id)
+
+                if already and not force:
+                    count = _seg_count(doc_id)
+                    entry: dict = {
+                        "doc_id": doc_id,
+                        "status": "skipped",
+                        "units_input": count,
+                        "units_output": count,
+                        "segment_pack": None,
+                        "warnings": ["Already segmented — use force=true to re-segment"],
+                    }
+                    if idx == 0:
+                        parent_seg_count = count
+                    else:
+                        entry = _add_ratio_warning(entry, count, parent_seg_count, doc_id)
+                    results.append(entry)
+                    continue
+
+                try:
+                    report = resegment_document(conn, doc_id=doc_id, lang=lang, pack=pack)
+                    entry = {
+                        "doc_id": doc_id,
+                        "status": "segmented",
+                        **report.to_dict(),
+                    }
+                    if idx == 0:
+                        parent_seg_count = report.units_output
+                    else:
+                        entry = _add_ratio_warning(
+                            entry, report.units_output, parent_seg_count, doc_id
+                        )
+                    results.append(entry)
+                except Exception as exc:  # noqa: BLE001
+                    results.append({
+                        "doc_id": doc_id,
+                        "status": "error",
+                        "units_input": 0,
+                        "units_output": 0,
+                        "segment_pack": None,
+                        "warnings": [str(exc)],
+                    })
+
+        segmented_count = sum(1 for r in results if r["status"] == "segmented")
+        skipped_count   = sum(1 for r in results if r["status"] == "skipped")
+        error_count     = sum(1 for r in results if r["status"] == "error")
+
+        self._send_json(success_payload({
+            "family_root_id": family_root_id,
+            "fts_stale": segmented_count > 0,
+            "results": results,
+            "summary": {
+                "total": len(results),
+                "segmented": segmented_count,
+                "skipped": skipped_count,
+                "errors": error_count,
+            },
+        }))
 
     def _handle_documents(self) -> None:
         self._ensure_document_workflow_columns()

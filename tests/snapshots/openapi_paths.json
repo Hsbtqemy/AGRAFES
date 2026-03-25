@@ -5,6 +5,7 @@
   "GET /doc_relations/all",
   "GET /documents",
   "GET /families",
+  "POST /families/{family_root_id}/segment",
   "GET /documents/preview",
   "GET /health",
   "GET /jobs",

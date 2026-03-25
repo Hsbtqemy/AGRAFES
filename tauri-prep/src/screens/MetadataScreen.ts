@@ -20,6 +20,7 @@ import {
   getDocRelations,
   getAllDocRelations,
   getFamilies,
+  segmentFamily,
   setDocRelation,
   deleteDocRelation,
   backupDatabase,
@@ -30,6 +31,7 @@ import {
   type DocRelationRecord,
   type CorpusAuditResult,
   type FamilyRecord,
+  type FamilySegmentDocResult,
   SidecarError,
 } from "../lib/sidecarClient.ts";
 import { initCardAccordions } from "../lib/uiAccordions.ts";
@@ -822,6 +824,13 @@ export class MetadataScreen {
           : [];
         void this._propagateAuthorToChildren(ids, btn);
       });
+
+    this._editPanelEl.querySelector<HTMLButtonElement>("#seg-family-btn")
+      ?.addEventListener("click", (e) => {
+        const btn = e.currentTarget as HTMLButtonElement;
+        const familyId = Number(btn.dataset.familyId);
+        void this._segmentFamilyFlow(familyId, btn);
+      });
   }
 
   private _familyPanelHtml(doc: DocumentRecord): string {
@@ -872,9 +881,11 @@ export class MetadataScreen {
         </table>
         ${ratioWarnings}
         <div class="fam-actions">
-          <button class="btn btn-secondary btn-sm" disabled title="Disponible Sprint 2">⟳ Segmenter la famille</button>
+          <button id="seg-family-btn" class="btn btn-secondary btn-sm"
+                  data-family-id="${family.family_id}">⟳ Segmenter la famille</button>
           <button class="btn btn-secondary btn-sm" disabled title="Disponible Sprint 3">⇄ Aligner la famille</button>
         </div>
+        <div id="seg-family-result"></div>
       </div>`;
   }
 
@@ -960,6 +971,124 @@ export class MetadataScreen {
       btn.disabled = false;
       btn.textContent = `→ Propager aux ${childIds.length} traduction${childIds.length > 1 ? "s" : ""}`;
     }
+  }
+
+  // ── Sprint 2: family segmentation flow ──────────────────────────────────────
+
+  private async _segmentFamilyFlow(familyRootId: number, btn: HTMLButtonElement): Promise<void> {
+    if (!this._conn) return;
+    const resultDiv = this._editPanelEl.querySelector<HTMLDivElement>("#seg-family-result");
+    const family = this._families.find(f => f.family_id === familyRootId);
+
+    const alreadyDone = family?.stats.segmented_docs ?? 0;
+
+    if (alreadyDone > 0) {
+      // Show inline confirmation before proceeding
+      if (resultDiv) {
+        resultDiv.innerHTML = `
+          <div class="seg-family-confirm">
+            <p>⚠ <strong>${alreadyDone} doc(s)</strong> déjà segmenté(s) dans cette famille.
+               Resegmenter effacera les alignements existants pour ces documents.</p>
+            <div class="btn-row" style="gap:0.5rem;flex-wrap:wrap">
+              <button id="seg-skip-btn" class="btn btn-secondary btn-sm">Passer les existants</button>
+              <button id="seg-force-btn" class="btn btn-danger btn-sm">Re-segmenter tout</button>
+              <button id="seg-cancel-btn" class="btn btn-ghost btn-sm">Annuler</button>
+            </div>
+          </div>`;
+
+        resultDiv.querySelector("#seg-skip-btn")?.addEventListener("click", async () => {
+          resultDiv.innerHTML = "";
+          await this._doSegmentFamily(familyRootId, false, resultDiv, btn);
+        });
+        resultDiv.querySelector("#seg-force-btn")?.addEventListener("click", async () => {
+          resultDiv.innerHTML = "";
+          await this._doSegmentFamily(familyRootId, true, resultDiv, btn);
+        });
+        resultDiv.querySelector("#seg-cancel-btn")?.addEventListener("click", () => {
+          resultDiv.innerHTML = "";
+        });
+      }
+      return;
+    }
+
+    // No conflict — proceed directly
+    await this._doSegmentFamily(familyRootId, false, resultDiv, btn);
+  }
+
+  private async _doSegmentFamily(
+    familyRootId: number,
+    force: boolean,
+    resultDiv: HTMLDivElement | null,
+    btn: HTMLButtonElement,
+  ): Promise<void> {
+    if (!this._conn) return;
+
+    btn.disabled = true;
+    btn.textContent = "⟳ Segmentation…";
+    if (resultDiv) resultDiv.innerHTML = `<p class="seg-family-loading">Segmentation en cours…</p>`;
+
+    try {
+      const res = await segmentFamily(this._conn, familyRootId, { force });
+
+      if (resultDiv) {
+        const rows = res.results.map(r => this._segResultRow(r)).join("");
+        const { segmented, skipped, errors } = res.summary;
+        const parts: string[] = [];
+        if (segmented > 0) parts.push(`<span class="fam-ok">${segmented} segmenté(s)</span>`);
+        if (skipped  > 0) parts.push(`<span class="fam-todo">${skipped} ignoré(s)</span>`);
+        if (errors   > 0) parts.push(`<span class="fam-ratio-warn">${errors} erreur(s)</span>`);
+
+        resultDiv.innerHTML = `
+          <div class="seg-family-report">
+            <p class="seg-report-summary">${parts.join(" · ")}</p>
+            <table class="fam-pairs-table">
+              <thead><tr><th>Doc</th><th>Statut</th><th>Unités</th><th>Avertissements</th></tr></thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>`;
+      }
+
+      // Refresh family panel data
+      this._familiesLoaded = false;
+      if (this._hierarchyView) this._renderDocList();
+      if (this._conn) {
+        this._families = await getFamilies(this._conn);
+        this._familiesLoaded = true;
+        this._renderDocList();
+        // Re-render the edit panel to update completion badge
+        if (this._selectedDoc) this._renderEditPanel(this._selectedDoc);
+      }
+
+      this._log(`✓ Famille #${familyRootId} segmentée : ${res.summary.segmented} doc(s) traité(s).`);
+    } catch (err) {
+      const msg = err instanceof SidecarError ? err.message : String(err);
+      if (resultDiv) resultDiv.innerHTML = `<p class="fam-ratio-warn">Erreur : ${msg}</p>`;
+      this._log(`Erreur segmentation famille : ${msg}`, true);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "⟳ Segmenter la famille";
+    }
+  }
+
+  private _segResultRow(r: FamilySegmentDocResult): string {
+    const statusLabel = r.status === "segmented" ? "✓ Segmenté"
+      : r.status === "skipped" ? "— Ignoré"
+      : "✕ Erreur";
+    const statusClass = r.status === "segmented" ? "fam-ok"
+      : r.status === "skipped" ? "fam-todo"
+      : "fam-ratio-warn";
+    const warns = r.warnings.length > 0
+      ? `<span title="${this._esc(r.warnings.join(" | "))}">⚠ ${r.warnings.length}</span>`
+      : "—";
+    const ratio = r.calibrate_ratio_pct != null
+      ? ` <em>(±${r.calibrate_ratio_pct} %)</em>` : "";
+    return `
+      <tr>
+        <td>#${r.doc_id}</td>
+        <td class="${statusClass}">${statusLabel}</td>
+        <td>${r.units_input} → ${r.units_output}${ratio}</td>
+        <td>${warns}</td>
+      </tr>`;
   }
 
   private _renderRelationsList(): void {

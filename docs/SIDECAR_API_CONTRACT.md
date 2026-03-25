@@ -276,6 +276,12 @@ Response now includes pagination fields: `total`, `limit`, `offset`, `has_more`,
 - `GET /doc_relations?doc_id=N` — list relations for a document (no token)
 - `GET /doc_relations/all` — all doc_relations in the corpus (for hierarchy view, no token)
 - `GET /families` — list all document families (parent + children + completion stats, no token)
+- `POST /families/{family_root_id}/segment` — segment all docs in a family (token required)
+  - body: `{ pack?, force?, lang_map? }` — `force=true` re-segments already-segmented docs
+  - Returns `{ results: [{doc_id, status, units_input, units_output, warnings, calibrate_ratio_pct?}], summary }`
+  - `status` per doc: `"segmented"` | `"skipped"` (already done, force=false) | `"error"`
+  - Adds ratio warning when child segment count differs > 15 % from parent
+- `POST /segment` — body now accepts optional `calibrate_to: int` (reference doc_id for ratio check)
   - Returns `families[]` with `family_id`, `parent`, `children[]`, `stats` per family
   - `stats` : `total_docs`, `segmented_docs`, `aligned_pairs`, `total_pairs`, `validated_docs`, `completion_pct`, `ratio_warnings[]`
 - `GET /documents` — document list now includes workflow fields:
