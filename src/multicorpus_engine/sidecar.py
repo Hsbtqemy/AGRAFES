@@ -619,6 +619,16 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                         self._send_error("Invalid family_root_id", code=ERR_BAD_REQUEST, http_status=400)
                 else:
                     self._send_error("Unknown route: " + path, code=ERR_NOT_FOUND, http_status=404)
+            elif path.startswith("/families/") and path.endswith("/align"):
+                parts = path.split("/")  # ['', 'families', '{id}', 'align']
+                if len(parts) == 4:
+                    try:
+                        family_root_id = int(parts[2])
+                        self._handle_family_align(family_root_id, body)
+                    except ValueError:
+                        self._send_error("Invalid family_root_id", code=ERR_BAD_REQUEST, http_status=400)
+                else:
+                    self._send_error("Unknown route: " + path, code=ERR_NOT_FOUND, http_status=404)
             elif path == "/align":
                 self._handle_align(body)
             elif path == "/documents/update":
@@ -2872,6 +2882,235 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             "window_before": len(before_rows),
             "window_after": len(after_rows),
             "items": items,
+        }))
+
+    def _handle_family_align(self, family_root_id: int, body: dict) -> None:
+        """POST /families/{family_root_id}/align — align all parent↔child pairs in a family.
+
+        Body fields (all optional):
+          strategy         : "position" (default) | "external_id" | "external_id_then_position" | "similarity"
+          sim_threshold    : float in [0, 1], default 0.8 (only used with "similarity")
+          replace_existing : bool, default false — delete previous links before alignment
+          preserve_accepted: bool, default true — keep accepted links when replace_existing=true
+          skip_unready     : bool, default false — if true, skip pairs where child is not segmented;
+                             if false (default), return an error listing unready children
+
+        Returns per-pair results with links_created, and a summary.
+        Refuses to align two children against each other (only parent↔child pairs).
+        """
+        from multicorpus_engine.runs import RunIdConflictError
+
+        conn = self._conn()
+
+        # ── Validate params ─────────────────────────────────────────────────
+        strategy = str(body.get("strategy", "position"))
+        allowed_strategies = {"external_id", "position", "similarity", "external_id_then_position"}
+        if strategy not in allowed_strategies:
+            self._send_error(
+                f"Unsupported align strategy: {strategy!r}",
+                code=ERR_BAD_REQUEST, http_status=400,
+                details={"supported_strategies": sorted(allowed_strategies)},
+            )
+            return
+
+        threshold = 0.8
+        if strategy == "similarity":
+            try:
+                threshold = float(body.get("sim_threshold", 0.8))
+            except (TypeError, ValueError):
+                self._send_error("sim_threshold must be a number", code=ERR_BAD_REQUEST, http_status=400)
+                return
+            if not 0.0 <= threshold <= 1.0:
+                self._send_error("sim_threshold must be in [0.0, 1.0]", code=ERR_BAD_REQUEST, http_status=400)
+                return
+
+        replace_existing  = bool(body.get("replace_existing",  False))
+        preserve_accepted = bool(body.get("preserve_accepted", True))
+        skip_unready      = bool(body.get("skip_unready",      False))
+
+        # ── Build the family ─────────────────────────────────────────────────
+        parent_row = conn.execute(
+            "SELECT doc_id, language FROM documents WHERE doc_id = ?", (family_root_id,)
+        ).fetchone()
+        if parent_row is None:
+            self._send_error(
+                f"Document doc_id={family_root_id} not found",
+                code=ERR_NOT_FOUND, http_status=404,
+            )
+            return
+
+        child_rows = conn.execute(
+            "SELECT r.doc_id, d.language, r.relation_type FROM doc_relations r"
+            " JOIN documents d ON d.doc_id = r.doc_id"
+            " WHERE r.target_doc_id = ? AND r.relation_type IN ('translation_of', 'excerpt_of')"
+            " ORDER BY r.doc_id",
+            (family_root_id,),
+        ).fetchall()
+
+        if not child_rows:
+            self._send_error(
+                f"No children found for family root doc_id={family_root_id}",
+                code=ERR_BAD_REQUEST, http_status=400,
+            )
+            return
+
+        child_ids = [r[0] for r in child_rows]
+        child_rel  = {r[0]: r[2] for r in child_rows}   # doc_id → relation_type
+        child_lang = {r[0]: r[1] for r in child_rows}   # doc_id → language
+
+        # ── Segmentation readiness check ─────────────────────────────────────
+        def _seg_count(doc_id: int) -> int:
+            row = conn.execute(
+                "SELECT COUNT(*) FROM units WHERE doc_id = ? AND unit_type = 'line'",
+                (doc_id,),
+            ).fetchone()
+            return row[0] if row else 0
+
+        parent_seg = _seg_count(family_root_id)
+        unready: list[int] = []
+        if parent_seg == 0:
+            unready.append(family_root_id)
+        for cid in child_ids:
+            if _seg_count(cid) == 0:
+                unready.append(cid)
+
+        if unready and not skip_unready:
+            self._send_error(
+                f"{len(unready)} doc(s) not yet segmented — segment first or use skip_unready=true",
+                code=ERR_BAD_REQUEST, http_status=400,
+                details={"unready_doc_ids": unready},
+            )
+            return
+
+        # Narrow down to ready pairs
+        ready_child_ids = [
+            cid for cid in child_ids
+            if cid not in unready and family_root_id not in unready
+        ]
+
+        if not ready_child_ids:
+            self._send_error(
+                "No ready pairs to align (all children or parent not segmented)",
+                code=ERR_BAD_REQUEST, http_status=400,
+            )
+            return
+
+        # ── Run alignment per pair ────────────────────────────────────────────
+        results = []
+        total_links = 0
+        total_skipped = 0
+
+        with self._lock():
+            for target_doc_id in ready_child_ids:
+                run_params: dict[str, object] = {
+                    "pivot_doc_id": family_root_id,
+                    "target_doc_ids": [target_doc_id],
+                    "strategy": strategy,
+                    "replace_existing": replace_existing,
+                    "preserve_accepted": preserve_accepted,
+                    "family_root_id": family_root_id,
+                    "relation_type": child_rel.get(target_doc_id, "translation_of"),
+                }
+                if strategy == "similarity":
+                    run_params["sim_threshold"] = threshold
+
+                deleted_before = 0
+                preserved_before = 0
+                try:
+                    run_id = self._create_run("align", run_params)
+                    protected_pairs_by_target = None
+                    if replace_existing:
+                        protected_pairs_by_target, deleted_before, preserved_before = _prepare_alignment_replace(
+                            conn,
+                            pivot_doc_id=family_root_id,
+                            target_doc_ids=[target_doc_id],
+                            preserve_accepted=preserve_accepted,
+                        )
+
+                    pair_reports = _run_alignment_strategy(
+                        conn,
+                        pivot_doc_id=family_root_id,
+                        target_doc_ids=[target_doc_id],
+                        run_id=run_id,
+                        strategy=strategy,
+                        debug_align=False,
+                        threshold=threshold,
+                        protected_pairs_by_target=protected_pairs_by_target,
+                    )
+                    links_created = sum(r.links_created for r in pair_reports)
+                    total_links += links_created
+                    results.append({
+                        "pivot_doc_id": family_root_id,
+                        "target_doc_id": target_doc_id,
+                        "target_lang": child_lang.get(target_doc_id, "?"),
+                        "relation_type": child_rel.get(target_doc_id, "translation_of"),
+                        "run_id": run_id,
+                        "status": "aligned",
+                        "links_created": links_created,
+                        "deleted_before": deleted_before,
+                        "preserved_before": preserved_before,
+                        "warnings": [],
+                    })
+                except RunIdConflictError as exc:
+                    results.append({
+                        "pivot_doc_id": family_root_id,
+                        "target_doc_id": target_doc_id,
+                        "target_lang": child_lang.get(target_doc_id, "?"),
+                        "relation_type": child_rel.get(target_doc_id, "translation_of"),
+                        "run_id": exc.run_id,
+                        "status": "conflict",
+                        "links_created": 0,
+                        "deleted_before": 0,
+                        "preserved_before": 0,
+                        "warnings": [f"run_id conflict: {exc.run_id}"],
+                    })
+                except Exception as exc:  # noqa: BLE001
+                    results.append({
+                        "pivot_doc_id": family_root_id,
+                        "target_doc_id": target_doc_id,
+                        "target_lang": child_lang.get(target_doc_id, "?"),
+                        "relation_type": child_rel.get(target_doc_id, "translation_of"),
+                        "run_id": None,
+                        "status": "error",
+                        "links_created": 0,
+                        "deleted_before": 0,
+                        "preserved_before": 0,
+                        "warnings": [str(exc)],
+                    })
+
+        # Skipped pairs (parent or child not segmented, skip_unready=true)
+        for cid in child_ids:
+            if cid not in ready_child_ids or family_root_id in unready:
+                total_skipped += 1
+                results.append({
+                    "pivot_doc_id": family_root_id,
+                    "target_doc_id": cid,
+                    "target_lang": child_lang.get(cid, "?"),
+                    "relation_type": child_rel.get(cid, "translation_of"),
+                    "run_id": None,
+                    "status": "skipped",
+                    "links_created": 0,
+                    "deleted_before": 0,
+                    "preserved_before": 0,
+                    "warnings": ["Not segmented — run /families/{id}/segment first"],
+                })
+
+        aligned_count   = sum(1 for r in results if r["status"] == "aligned")
+        conflict_count  = sum(1 for r in results if r["status"] == "conflict")
+        error_count     = sum(1 for r in results if r["status"] == "error")
+
+        self._send_json(success_payload({
+            "family_root_id": family_root_id,
+            "strategy": strategy,
+            "results": results,
+            "summary": {
+                "total_pairs": len(results),
+                "aligned": aligned_count,
+                "skipped": total_skipped,
+                "conflicts": conflict_count,
+                "errors": error_count,
+                "total_links_created": total_links,
+            },
         }))
 
     def _handle_align(self, body: dict) -> None:

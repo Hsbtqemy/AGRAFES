@@ -1554,6 +1554,59 @@ export async function segmentFamily(
   ) as Promise<FamilySegmentResponse>;
 }
 
+// ─── Sprint 3 — Alignement famille ───────────────────────────────────────────
+
+export interface FamilyAlignOptions {
+  strategy?: "external_id" | "position" | "similarity" | "external_id_then_position";
+  sim_threshold?: number;
+  /** Delete previous links before aligning */
+  replace_existing?: boolean;
+  /** Keep accepted links when replace_existing=true */
+  preserve_accepted?: boolean;
+  /** Skip pairs where child is not segmented instead of returning an error */
+  skip_unready?: boolean;
+}
+
+export interface FamilyAlignPairResult {
+  pivot_doc_id: number;
+  target_doc_id: number;
+  target_lang: string;
+  relation_type: string;
+  run_id: string | null;
+  status: "aligned" | "skipped" | "conflict" | "error";
+  links_created: number;
+  deleted_before: number;
+  preserved_before: number;
+  warnings: string[];
+}
+
+export interface FamilyAlignSummary {
+  total_pairs: number;
+  aligned: number;
+  skipped: number;
+  conflicts: number;
+  errors: number;
+  total_links_created: number;
+}
+
+export interface FamilyAlignResponse {
+  family_root_id: number;
+  strategy: string;
+  results: FamilyAlignPairResult[];
+  summary: FamilyAlignSummary;
+}
+
+export async function alignFamily(
+  conn: Conn,
+  familyRootId: number,
+  opts: FamilyAlignOptions = {},
+): Promise<FamilyAlignResponse> {
+  return conn.post(
+    `/families/${familyRootId}/align`,
+    opts,
+  ) as Promise<FamilyAlignResponse>;
+}
+
 export async function setDocRelation(conn: Conn, opts: DocRelationSetOptions): Promise<{ action: string; id: number }> {
   return conn.post("/doc_relations/set", opts) as Promise<{ action: string; id: number }>;
 }

@@ -12,8 +12,8 @@ from __future__ import annotations
 from typing import Any
 
 
-API_VERSION = "1.6.1"
-CONTRACT_VERSION = "1.6.1"  # semantic versioning for the sidecar API contract
+API_VERSION = "1.6.2"
+CONTRACT_VERSION = "1.6.2"  # semantic versioning for the sidecar API contract
 # 1.4.0: added export_tei_package job kind (Sprint 4 — Publication ZIP)
 # 1.4.1: ERR_CONFLICT (409) for duplicate run_id; token protection on /align, /curate, /segment
 # 1.4.2: document workflow status fields on /documents and metadata update endpoints.
@@ -28,6 +28,7 @@ CONTRACT_VERSION = "1.6.1"  # semantic versioning for the sidecar API contract
 # 1.5.1: GET /doc_relations/all — returns all relations in corpus for hierarchy view.
 # 1.6.0: GET /families — list document families (parent+children) with completion stats.
 # 1.6.1: POST /families/{id}/segment — segment whole family; POST /segment gains calibrate_to.
+# 1.6.2: POST /families/{id}/align — align all parent↔child pairs in a family.
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
@@ -747,6 +748,20 @@ def openapi_spec() -> dict[str, Any]:
                     },
                 }
             },
+            "/families/{family_root_id}/align": {
+                "post": {
+                    "summary": "Align all parent↔child pairs in a family",
+                    "parameters": [{"name": "family_root_id", "in": "path", "required": True,
+                                    "schema": {"type": "integer"}}],
+                    "requestBody": {"required": False, "content": {"application/json": {
+                        "schema": {"$ref": "#/components/schemas/FamilyAlignRequest"}}}},
+                    "responses": {
+                        "200": {"description": "Per-pair alignment results"},
+                        "400": {"description": "Bad request (unready children, bad strategy…)"},
+                        "404": {"description": "Family root not found"},
+                    },
+                }
+            },
             "/doc_relations/set": {
                 "post": {
                     "summary": "Upsert a doc_relation",
@@ -1149,6 +1164,39 @@ def openapi_spec() -> dict[str, Any]:
                         "segment_pack": {"type": "string", "nullable": True},
                         "warnings": {"type": "array", "items": {"type": "string"}},
                         "calibrate_ratio_pct": {"type": "integer", "nullable": True},
+                    },
+                },
+                "FamilyAlignRequest": {
+                    "type": "object",
+                    "properties": {
+                        "strategy": {
+                            "type": "string", "default": "position",
+                            "enum": ["external_id", "position", "similarity", "external_id_then_position"],
+                        },
+                        "sim_threshold": {"type": "number", "minimum": 0.0, "maximum": 1.0, "default": 0.8},
+                        "replace_existing": {"type": "boolean", "default": False,
+                                             "description": "Delete previous links before aligning"},
+                        "preserve_accepted": {"type": "boolean", "default": True,
+                                              "description": "Keep accepted links when replace_existing=true"},
+                        "skip_unready": {"type": "boolean", "default": False,
+                                         "description": "Skip pairs where child is not segmented (vs. error)"},
+                    },
+                    "additionalProperties": False,
+                },
+                "FamilyAlignPairResult": {
+                    "type": "object",
+                    "required": ["pivot_doc_id", "target_doc_id", "status", "links_created", "warnings"],
+                    "properties": {
+                        "pivot_doc_id": {"type": "integer"},
+                        "target_doc_id": {"type": "integer"},
+                        "target_lang": {"type": "string"},
+                        "relation_type": {"type": "string"},
+                        "run_id": {"type": "string", "nullable": True},
+                        "status": {"type": "string", "enum": ["aligned", "skipped", "conflict", "error"]},
+                        "links_created": {"type": "integer"},
+                        "deleted_before": {"type": "integer"},
+                        "preserved_before": {"type": "integer"},
+                        "warnings": {"type": "array", "items": {"type": "string"}},
                     },
                 },
                 "SegmentResponse": {

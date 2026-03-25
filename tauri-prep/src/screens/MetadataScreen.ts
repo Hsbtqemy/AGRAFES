@@ -21,6 +21,7 @@ import {
   getAllDocRelations,
   getFamilies,
   segmentFamily,
+  alignFamily,
   setDocRelation,
   deleteDocRelation,
   backupDatabase,
@@ -32,6 +33,7 @@ import {
   type CorpusAuditResult,
   type FamilyRecord,
   type FamilySegmentDocResult,
+  type FamilyAlignPairResult,
   SidecarError,
 } from "../lib/sidecarClient.ts";
 import { initCardAccordions } from "../lib/uiAccordions.ts";
@@ -831,6 +833,13 @@ export class MetadataScreen {
         const familyId = Number(btn.dataset.familyId);
         void this._segmentFamilyFlow(familyId, btn);
       });
+
+    this._editPanelEl.querySelector<HTMLButtonElement>("#aln-family-btn")
+      ?.addEventListener("click", (e) => {
+        const btn = e.currentTarget as HTMLButtonElement;
+        const familyId = Number(btn.dataset.familyId);
+        void this._alignFamilyFlow(familyId, btn);
+      });
   }
 
   private _familyPanelHtml(doc: DocumentRecord): string {
@@ -883,9 +892,20 @@ export class MetadataScreen {
         <div class="fam-actions">
           <button id="seg-family-btn" class="btn btn-secondary btn-sm"
                   data-family-id="${family.family_id}">⟳ Segmenter la famille</button>
-          <button class="btn btn-secondary btn-sm" disabled title="Disponible Sprint 3">⇄ Aligner la famille</button>
+          <button id="aln-family-btn" class="btn btn-secondary btn-sm"
+                  data-family-id="${family.family_id}"
+                  data-pairs="${this._esc(JSON.stringify(family.children.map(c => ({
+                    doc_id: c.doc_id,
+                    lang: c.doc?.language ?? "?",
+                    title: c.doc?.title ?? `#${c.doc_id}`,
+                    segmented: c.segmented,
+                    aligned: c.aligned_to_parent,
+                    relation_type: c.relation_type,
+                  }))))}"
+                  >⇄ Aligner la famille</button>
         </div>
         <div id="seg-family-result"></div>
+        <div id="aln-family-result"></div>
       </div>`;
   }
 
@@ -1087,6 +1107,170 @@ export class MetadataScreen {
         <td>#${r.doc_id}</td>
         <td class="${statusClass}">${statusLabel}</td>
         <td>${r.units_input} → ${r.units_output}${ratio}</td>
+        <td>${warns}</td>
+      </tr>`;
+  }
+
+  // ── Sprint 3: family alignment flow ─────────────────────────────────────────
+
+  private async _alignFamilyFlow(familyRootId: number, btn: HTMLButtonElement): Promise<void> {
+    if (!this._conn) return;
+    const resultDiv = this._editPanelEl.querySelector<HTMLDivElement>("#aln-family-result");
+    const family = this._families.find(f => f.family_id === familyRootId);
+    if (!family) return;
+
+    // Parse pair info from data attribute (set during HTML generation)
+    type PairInfo = { doc_id: number; lang: string; title: string; segmented: boolean; aligned: boolean; relation_type: string };
+    let pairs: PairInfo[] = [];
+    try {
+      pairs = JSON.parse(btn.dataset.pairs ?? "[]") as PairInfo[];
+    } catch {
+      pairs = family.children.map(c => ({
+        doc_id: c.doc_id,
+        lang: c.doc?.language ?? "?",
+        title: c.doc?.title ?? `#${c.doc_id}`,
+        segmented: c.segmented,
+        aligned: c.aligned_to_parent,
+        relation_type: c.relation_type,
+      }));
+    }
+
+    const unready = pairs.filter(p => !p.segmented);
+    const alreadyAligned = pairs.filter(p => p.aligned);
+
+    if (resultDiv && !btn.dataset.confirmed) {
+      // Show pre-flight summary dialog
+      const pairRows = pairs.map(p => {
+        const segIcon = p.segmented ? "✓" : "⚠";
+        const alnIcon = p.aligned ? "⇄" : "○";
+        const segCls  = p.segmented ? "fam-ok" : "fam-ratio-warn";
+        return `<tr>
+          <td>#${familyRootId} ↔ #${p.doc_id}</td>
+          <td>${this._esc(p.lang)}</td>
+          <td title="${this._esc(p.title)}">${this._esc(this._truncateMid(p.title, 25))}</td>
+          <td class="${segCls}">${segIcon}</td>
+          <td>${alnIcon}</td>
+        </tr>`;
+      }).join("");
+
+      const warnHtml = unready.length > 0
+        ? `<p class="fam-ratio-warn">⚠ ${unready.length} enfant(s) non segmenté(s) — seront ignorés (skip_unready).</p>`
+        : "";
+      const replaceHtml = alreadyAligned.length > 0
+        ? `<p class="seg-family-confirm" style="margin:4px 0">
+             ${alreadyAligned.length} paire(s) déjà alignée(s). Remplacer les liens existants ?
+             <label style="display:inline-flex;align-items:center;gap:4px;margin-left:6px">
+               <input type="checkbox" id="aln-replace-chk"> Remplacer
+             </label>
+           </p>`
+        : "";
+
+      resultDiv.innerHTML = `
+        <div class="seg-family-confirm">
+          <p><strong>Paires à aligner (stratégie : position)</strong></p>
+          <table class="fam-pairs-table" style="margin-bottom:6px">
+            <thead><tr><th>Paire</th><th>Langue</th><th>Titre</th><th title="Segmenté">Seg.</th><th title="Aligné">Aln.</th></tr></thead>
+            <tbody>${pairRows}</tbody>
+          </table>
+          ${warnHtml}
+          ${replaceHtml}
+          <div class="btn-row" style="gap:0.5rem;flex-wrap:wrap;margin-top:6px">
+            <button id="aln-confirm-btn" class="btn btn-primary btn-sm">⇄ Lancer l'alignement</button>
+            <button id="aln-cancel-btn" class="btn btn-ghost btn-sm">Annuler</button>
+          </div>
+        </div>`;
+
+      resultDiv.querySelector("#aln-cancel-btn")?.addEventListener("click", () => {
+        resultDiv.innerHTML = "";
+      });
+      resultDiv.querySelector("#aln-confirm-btn")?.addEventListener("click", async () => {
+        const replaceExisting = (resultDiv.querySelector<HTMLInputElement>("#aln-replace-chk"))?.checked ?? false;
+        btn.dataset.confirmed = "1";
+        resultDiv.innerHTML = "";
+        await this._doAlignFamily(familyRootId, replaceExisting, resultDiv, btn);
+        delete btn.dataset.confirmed;
+      });
+      return;
+    }
+
+    await this._doAlignFamily(familyRootId, false, resultDiv, btn);
+  }
+
+  private async _doAlignFamily(
+    familyRootId: number,
+    replaceExisting: boolean,
+    resultDiv: HTMLDivElement | null,
+    btn: HTMLButtonElement,
+  ): Promise<void> {
+    if (!this._conn) return;
+
+    btn.disabled = true;
+    btn.textContent = "⇄ Alignement…";
+    if (resultDiv) resultDiv.innerHTML = `<p class="seg-family-loading">Alignement en cours…</p>`;
+
+    try {
+      const res = await alignFamily(this._conn, familyRootId, {
+        strategy: "position",
+        replace_existing: replaceExisting,
+        preserve_accepted: true,
+        skip_unready: true,
+      });
+
+      if (resultDiv) {
+        const rows = res.results.map(r => this._alnResultRow(r)).join("");
+        const { aligned, skipped, errors, total_links_created } = res.summary;
+        const parts: string[] = [];
+        if (aligned > 0) parts.push(`<span class="fam-ok">${aligned} paire(s) alignée(s)</span>`);
+        if (skipped > 0) parts.push(`<span class="fam-todo">${skipped} ignorée(s)</span>`);
+        if (errors  > 0) parts.push(`<span class="fam-ratio-warn">${errors} erreur(s)</span>`);
+        parts.push(`${total_links_created} lien(s) créé(s)`);
+
+        resultDiv.innerHTML = `
+          <div class="seg-family-report">
+            <p class="seg-report-summary">${parts.join(" · ")}</p>
+            <table class="fam-pairs-table">
+              <thead><tr><th>Paire</th><th>Statut</th><th>Liens</th><th>Avert.</th></tr></thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>`;
+      }
+
+      // Refresh family data
+      this._familiesLoaded = false;
+      if (this._conn) {
+        this._families = await getFamilies(this._conn);
+        this._familiesLoaded = true;
+        this._renderDocList();
+        if (this._selectedDoc) this._renderEditPanel(this._selectedDoc);
+      }
+
+      this._log(`✓ Famille #${familyRootId} alignée : ${res.summary.total_links_created} lien(s) créé(s).`);
+    } catch (err) {
+      const msg = err instanceof SidecarError ? err.message : String(err);
+      if (resultDiv) resultDiv.innerHTML = `<p class="fam-ratio-warn">Erreur : ${msg}</p>`;
+      this._log(`Erreur alignement famille : ${msg}`, true);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "⇄ Aligner la famille";
+    }
+  }
+
+  private _alnResultRow(r: FamilyAlignPairResult): string {
+    const statusLabel = r.status === "aligned"   ? "✓ Aligné"
+      : r.status === "skipped"   ? "— Ignoré"
+      : r.status === "conflict"  ? "⚡ Conflit"
+      : "✕ Erreur";
+    const statusClass = r.status === "aligned"  ? "fam-ok"
+      : r.status === "skipped"  ? "fam-todo"
+      : "fam-ratio-warn";
+    const warns = r.warnings.length > 0
+      ? `<span title="${this._esc(r.warnings.join(" | "))}">⚠ ${r.warnings.length}</span>`
+      : "—";
+    return `
+      <tr>
+        <td>#${r.pivot_doc_id} ↔ #${r.target_doc_id} (${this._esc(r.target_lang)})</td>
+        <td class="${statusClass}">${statusLabel}</td>
+        <td>${r.links_created}</td>
         <td>${warns}</td>
       </tr>`;
   }

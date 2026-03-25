@@ -6,6 +6,7 @@
   "GET /documents",
   "GET /families",
   "POST /families/{family_root_id}/segment",
+  "POST /families/{family_root_id}/align",
   "GET /documents/preview",
   "GET /health",
   "GET /jobs",

@@ -282,6 +282,11 @@ Response now includes pagination fields: `total`, `limit`, `offset`, `has_more`,
   - `status` per doc: `"segmented"` | `"skipped"` (already done, force=false) | `"error"`
   - Adds ratio warning when child segment count differs > 15 % from parent
 - `POST /segment` — body now accepts optional `calibrate_to: int` (reference doc_id for ratio check)
+- `POST /families/{family_root_id}/align` — align all parent↔child pairs in a family (token required)
+  - body: `{ strategy?, sim_threshold?, replace_existing?, preserve_accepted?, skip_unready? }`
+  - default strategy: `"position"` (best for calibrated translations)
+  - if any child not segmented and `skip_unready=false` (default): returns 400 with `unready_doc_ids`
+  - Returns `{ results: [FamilyAlignPairResult], summary: {aligned, skipped, conflicts, errors, total_links_created} }`
   - Returns `families[]` with `family_id`, `parent`, `children[]`, `stats` per family
   - `stats` : `total_docs`, `segmented_docs`, `aligned_pairs`, `total_pairs`, `validated_docs`, `completion_pct`, `ratio_warnings[]`
 - `GET /documents` — document list now includes workflow fields:
