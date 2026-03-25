@@ -12,8 +12,8 @@ from __future__ import annotations
 from typing import Any
 
 
-API_VERSION = "1.6.2"
-CONTRACT_VERSION = "1.6.2"  # semantic versioning for the sidecar API contract
+API_VERSION = "1.6.3"
+CONTRACT_VERSION = "1.6.3"  # semantic versioning for the sidecar API contract
 # 1.4.0: added export_tei_package job kind (Sprint 4 — Publication ZIP)
 # 1.4.1: ERR_CONFLICT (409) for duplicate run_id; token protection on /align, /curate, /segment
 # 1.4.2: document workflow status fields on /documents and metadata update endpoints.
@@ -29,6 +29,8 @@ CONTRACT_VERSION = "1.6.2"  # semantic versioning for the sidecar API contract
 # 1.6.0: GET /families — list document families (parent+children) with completion stats.
 # 1.6.1: POST /families/{id}/segment — segment whole family; POST /segment gains calibrate_to.
 # 1.6.2: POST /families/{id}/align — align all parent↔child pairs in a family.
+# 1.6.3: GET /corpus/audit gains `families` section (orphans, unsegmented, unaligned, ratio warnings)
+#         and optional query param ratio_threshold_pct (default 15).
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
@@ -1762,7 +1764,7 @@ def openapi_spec() -> dict[str, Any]:
                             "type": "object",
                             "required": ["total_docs", "total_issues", "missing_fields",
                                          "empty_documents", "duplicate_hashes",
-                                         "duplicate_filenames", "duplicate_titles"],
+                                         "duplicate_filenames", "duplicate_titles", "families"],
                             "properties": {
                                 "total_docs":   {"type": "integer"},
                                 "total_issues": {"type": "integer"},
@@ -1814,6 +1816,34 @@ def openapi_spec() -> dict[str, Any]:
                                         "properties": {
                                             "title": {"type": "string"},
                                             "doc_ids": {"type": "array", "items": {"type": "integer"}},
+                                        },
+                                    },
+                                },
+                                "families": {
+                                    "type": "object",
+                                    "description": "Family-level audit checks (Sprint 4)",
+                                    "properties": {
+                                        "ratio_threshold_pct": {"type": "integer"},
+                                        "total_family_issues": {"type": "integer"},
+                                        "orphan_docs": {
+                                            "type": "array",
+                                            "items": {"type": "object"},
+                                            "description": "Children whose parent doc is absent from the corpus",
+                                        },
+                                        "unsegmented_children": {
+                                            "type": "array",
+                                            "items": {"type": "object"},
+                                            "description": "Children (or their parents) with 0 line units",
+                                        },
+                                        "unaligned_pairs": {
+                                            "type": "array",
+                                            "items": {"type": "object"},
+                                            "description": "Segmented pairs with no alignment links",
+                                        },
+                                        "ratio_warnings": {
+                                            "type": "array",
+                                            "items": {"type": "object"},
+                                            "description": "Pairs where |child_segs - parent_segs| / parent_segs > threshold",
                                         },
                                     },
                                 },

@@ -92,6 +92,41 @@ export interface AuditDuplicateTitleEntry {
   title: string;
   doc_ids: number[];
 }
+// ── Sprint 4 — Family audit types ─────────────────────────────────────────
+
+export interface FamilyAuditEntry {
+  parent_id: number;
+  parent_title: string;
+  child_id: number;
+  child_title: string;
+  child_lang: string;
+  relation_type: string;
+}
+export interface FamilyAuditOrphan extends FamilyAuditEntry {
+  issue: string;
+}
+export interface FamilyAuditUnsegmented extends FamilyAuditEntry {
+  child_segmented: boolean;
+  parent_segmented: boolean;
+}
+export interface FamilyAuditUnaligned extends FamilyAuditEntry {
+  parent_segs: number;
+  child_segs: number;
+}
+export interface FamilyAuditRatioWarning extends FamilyAuditEntry {
+  parent_segs: number;
+  child_segs: number;
+  ratio_pct: number;
+}
+export interface FamilyAuditData {
+  ratio_threshold_pct: number;
+  total_family_issues: number;
+  orphan_docs: FamilyAuditOrphan[];
+  unsegmented_children: FamilyAuditUnsegmented[];
+  unaligned_pairs: FamilyAuditUnaligned[];
+  ratio_warnings: FamilyAuditRatioWarning[];
+}
+
 export interface CorpusAuditResult {
   total_docs: number;
   total_issues: number;
@@ -100,6 +135,7 @@ export interface CorpusAuditResult {
   duplicate_hashes: AuditDuplicateHashEntry[];
   duplicate_filenames: AuditDuplicateFilenameEntry[];
   duplicate_titles: AuditDuplicateTitleEntry[];
+  families: FamilyAuditData;
 }
 
 export interface ImportOptions {
@@ -1395,8 +1431,13 @@ export async function updateCorpusInfo(
   return res.corpus;
 }
 
-export async function getCorpusAudit(conn: Conn): Promise<CorpusAuditResult> {
-  return conn.get("/corpus/audit") as Promise<CorpusAuditResult>;
+export async function getCorpusAudit(
+  conn: Conn,
+  ratioThresholdPct = 15,
+): Promise<CorpusAuditResult> {
+  return conn.get(
+    `/corpus/audit?ratio_threshold_pct=${ratioThresholdPct}`,
+  ) as Promise<CorpusAuditResult>;
 }
 
 export async function importFile(conn: Conn, opts: ImportOptions): Promise<ImportResponse> {

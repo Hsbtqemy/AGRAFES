@@ -282,6 +282,12 @@ Response now includes pagination fields: `total`, `limit`, `offset`, `has_more`,
   - `status` per doc: `"segmented"` | `"skipped"` (already done, force=false) | `"error"`
   - Adds ratio warning when child segment count differs > 15 % from parent
 - `POST /segment` — body now accepts optional `calibrate_to: int` (reference doc_id for ratio check)
+- `GET /corpus/audit?ratio_threshold_pct=15` — now returns a `families` section with:
+  - `orphan_docs`: children whose parent is absent from the corpus
+  - `unsegmented_children`: children (or their parents) with 0 line units
+  - `unaligned_pairs`: segmented pairs with no alignment links
+  - `ratio_warnings`: pairs where `|child_segs - parent_segs| / parent_segs > threshold`
+  - `ratio_threshold_pct` configurable via query param (default 15)
 - `POST /families/{family_root_id}/align` — align all parent↔child pairs in a family (token required)
   - body: `{ strategy?, sim_threshold?, replace_existing?, preserve_accepted?, skip_unready? }`
   - default strategy: `"position"` (best for calibrated translations)

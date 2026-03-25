@@ -34,6 +34,7 @@ import {
   type FamilyRecord,
   type FamilySegmentDocResult,
   type FamilyAlignPairResult,
+  type FamilyAuditData,
   SidecarError,
 } from "../lib/sidecarClient.ts";
 import { initCardAccordions } from "../lib/uiAccordions.ts";
@@ -88,6 +89,7 @@ export class MetadataScreen {
   private _lastRefreshAt = 0;
   private _auditResult: CorpusAuditResult | null = null;
   private _auditPanelEl!: HTMLElement;
+  private _auditRatioThreshold = 15;
   private _sortCol: SortCol = "id";
   private _sortDir: "asc" | "desc" = "asc";
 
@@ -155,6 +157,11 @@ export class MetadataScreen {
             <span id="db-backup-status" class="hint" style="margin:0">Aucune sauvegarde récente</span>
             <button id="validate-btn" class="btn btn-secondary btn-sm">Valider métadonnées</button>
             <button id="audit-btn" class="btn btn-secondary btn-sm">🔍 Audit corpus</button>
+            <label class="audit-ratio-label" title="Seuil d'avertissement pour le ratio de segments parent/enfant">
+              Seuil ratio
+              <input id="audit-ratio-input" type="number" min="1" max="100" value="15"
+                     class="audit-ratio-input" style="width:52px">%
+            </label>
           </div>
         </div>
         <!-- Audit panel — shown after clicking "Audit corpus" -->
@@ -292,6 +299,10 @@ export class MetadataScreen {
     root.querySelector("#validate-btn")!.addEventListener("click", () => this._runValidate());
     root.querySelector("#db-backup-btn")!.addEventListener("click", () => void this._runDbBackup());
     root.querySelector("#audit-btn")!.addEventListener("click", () => void this._runAudit());
+    root.querySelector<HTMLInputElement>("#audit-ratio-input")?.addEventListener("change", (e) => {
+      const v = parseInt((e.target as HTMLInputElement).value, 10);
+      if (!isNaN(v) && v >= 1 && v <= 100) this._auditRatioThreshold = v;
+    });
     this._auditPanelEl = root.querySelector<HTMLElement>("#meta-audit-panel")!;
     root.querySelector("#meta-hierarchy-btn")!.addEventListener("click", () => void this._toggleHierarchyView());
 
@@ -1824,7 +1835,7 @@ export class MetadataScreen {
     const btn = this._root.querySelector<HTMLButtonElement>("#audit-btn");
     if (btn) { btn.disabled = true; btn.textContent = "Audit en cours…"; }
     try {
-      this._auditResult = await getCorpusAudit(this._conn);
+      this._auditResult = await getCorpusAudit(this._conn, this._auditRatioThreshold);
       this._renderAuditPanel();
     } catch (err) {
       this._lastErrorMsg = err instanceof SidecarError ? err.message : String(err);
@@ -1893,6 +1904,167 @@ export class MetadataScreen {
         r.duplicate_titles.map(g => ({ label: `«${g.title}»`, ids: g.doc_ids })),
       ));
     }
+
+    // ── Families section ─────────────────────────────────────────────────
+    if (r.families && r.families.total_family_issues > 0) {
+      panel.appendChild(this._auditFamiliesSection(r.families));
+    } else if (r.families && r.families.total_family_issues === 0 && (
+      r.families.orphan_docs.length + r.families.unsegmented_children.length +
+      r.families.unaligned_pairs.length + r.families.ratio_warnings.length
+    ) === 0) {
+      // All families healthy — show positive badge only if there are any relations
+      const anyFamilies = this._families.length > 0;
+      if (anyFamilies) {
+        const ok = document.createElement("div");
+        ok.className = "audit-family-ok";
+        ok.textContent = `✅ Toutes les familles documentaires sont en ordre (seuil ratio : ${r.families.ratio_threshold_pct} %)`;
+        panel.appendChild(ok);
+      }
+    }
+  }
+
+  private _auditFamiliesSection(fam: FamilyAuditData): HTMLDetailsElement {
+    const details = document.createElement("details");
+    details.className = "audit-section audit-section-family";
+    details.open = true;
+
+    const summary = document.createElement("summary");
+    summary.className = "audit-section-summary";
+    summary.innerHTML = `
+      <span class="audit-section-label">📁 Familles documentaires</span>
+      <span class="audit-issue-badge">${fam.total_family_issues}</span>
+      <span class="audit-section-meta">(seuil ratio : ${fam.ratio_threshold_pct} %)</span>`;
+    details.appendChild(summary);
+
+    const body = document.createElement("div");
+    body.className = "audit-section-body";
+
+    // Orphan docs
+    if (fam.orphan_docs.length > 0) {
+      body.appendChild(this._auditFamSubsection(
+        `Docs orphelins — parent absent du corpus (${fam.orphan_docs.length})`,
+        fam.orphan_docs.map(e => ({
+          docId: e.child_id,
+          extra: `parent attendu : #${e.parent_id}`,
+          actionNav: e.child_id,
+        })),
+        null, null,
+      ));
+    }
+
+    // Unsegmented children
+    if (fam.unsegmented_children.length > 0) {
+      const familyRootIds = [...new Set(fam.unsegmented_children.map(e => e.parent_id))];
+      body.appendChild(this._auditFamSubsection(
+        `Docs non segmentés dans une famille (${fam.unsegmented_children.length})`,
+        fam.unsegmented_children.map(e => ({
+          docId: e.child_id,
+          extra: `${!e.child_segmented ? "enfant non segmenté" : "parent non segmenté"}`,
+          actionNav: e.parent_id,
+        })),
+        { label: "Segmenter les familles", action: () => void this._auditSegmentFamilies(familyRootIds) },
+        null,
+      ));
+    }
+
+    // Unaligned pairs
+    if (fam.unaligned_pairs.length > 0) {
+      const familyRootIds = [...new Set(fam.unaligned_pairs.map(e => e.parent_id))];
+      body.appendChild(this._auditFamSubsection(
+        `Paires segmentées mais non alignées (${fam.unaligned_pairs.length})`,
+        fam.unaligned_pairs.map(e => ({
+          docId: e.child_id,
+          extra: `#${e.parent_id} ↔ #${e.child_id} · ${e.parent_segs} vs ${e.child_segs} seg.`,
+          actionNav: e.parent_id,
+        })),
+        null,
+        { label: "Aligner les familles", action: () => void this._auditAlignFamilies(familyRootIds) },
+      ));
+    }
+
+    // Ratio warnings
+    if (fam.ratio_warnings.length > 0) {
+      body.appendChild(this._auditFamSubsection(
+        `Ratios de segments suspects > ${fam.ratio_threshold_pct} % (${fam.ratio_warnings.length})`,
+        fam.ratio_warnings.map(e => ({
+          docId: e.child_id,
+          extra: `±${e.ratio_pct} % · #${e.parent_id}: ${e.parent_segs} seg. | #${e.child_id}: ${e.child_segs} seg.`,
+          actionNav: e.parent_id,
+        })),
+        null, null,
+      ));
+    }
+
+    details.appendChild(body);
+    return details;
+  }
+
+  private _auditFamSubsection(
+    title: string,
+    items: { docId: number; extra: string; actionNav: number }[],
+    segAction: { label: string; action: () => void } | null,
+    alnAction: { label: string; action: () => void } | null,
+  ): HTMLElement {
+    const wrap = document.createElement("div");
+    wrap.className = "audit-fam-subsection";
+
+    const head = document.createElement("div");
+    head.className = "audit-fam-subsection-head";
+
+    const titleEl = document.createElement("span");
+    titleEl.className = "audit-fam-subsection-title";
+    titleEl.textContent = title;
+    head.appendChild(titleEl);
+
+    if (segAction) {
+      const btn = document.createElement("button");
+      btn.className = "btn btn-secondary btn-xs";
+      btn.textContent = `⟳ ${segAction.label}`;
+      btn.addEventListener("click", segAction.action);
+      head.appendChild(btn);
+    }
+    if (alnAction) {
+      const btn = document.createElement("button");
+      btn.className = "btn btn-secondary btn-xs";
+      btn.textContent = `⇄ ${alnAction.label}`;
+      btn.addEventListener("click", alnAction.action);
+      head.appendChild(btn);
+    }
+    wrap.appendChild(head);
+
+    items.forEach(item => {
+      const row = this._auditDocRow(item.docId, item.extra, undefined);
+      // Override nav button to go to parent (family root)
+      const navBtn = row.querySelector<HTMLButtonElement>(".audit-doc-nav-btn");
+      if (navBtn) {
+        navBtn.title = `Ouvrir le document parent #${item.actionNav}`;
+        navBtn.onclick = () => this._auditNavToDoc(item.actionNav);
+      }
+      wrap.appendChild(row);
+    });
+    return wrap;
+  }
+
+  private async _auditSegmentFamilies(familyRootIds: number[]): Promise<void> {
+    if (!this._conn) return;
+    for (const id of familyRootIds) {
+      try {
+        await segmentFamily(this._conn, id, { force: false });
+      } catch { /* continue to next */ }
+    }
+    this._log(`✓ Segmentation demandée pour ${familyRootIds.length} famille(s). Rafraîchissement de l'audit…`);
+    await this._runAudit();
+  }
+
+  private async _auditAlignFamilies(familyRootIds: number[]): Promise<void> {
+    if (!this._conn) return;
+    for (const id of familyRootIds) {
+      try {
+        await alignFamily(this._conn, id, { strategy: "position", skip_unready: true });
+      } catch { /* continue to next */ }
+    }
+    this._log(`✓ Alignement demandé pour ${familyRootIds.length} famille(s). Rafraîchissement de l'audit…`);
+    await this._runAudit();
   }
 
   // ── Audit helpers ─────────────────────────────────────────────────────────

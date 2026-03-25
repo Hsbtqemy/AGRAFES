@@ -512,7 +512,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         elif path == "/corpus/info":
             self._handle_corpus_info_get()
         elif path == "/corpus/audit":
-            self._handle_corpus_audit()
+            qs = parse_qs(urlparse(self.path).query)
+            self._handle_corpus_audit(qs)
         else:
             self._send_error(
                 f"Unknown route: {path}",
@@ -3882,9 +3883,16 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             info = get_corpus_info(self._conn())
         self._send_json(success_payload({"corpus": info}))
 
-    def _handle_corpus_audit(self) -> None:
-        """Return an audit of the corpus: missing fields, empty docs, duplicates."""
+    def _handle_corpus_audit(self, qs: dict | None = None) -> None:
+        """Return an audit of the corpus: missing fields, empty docs, duplicates, family checks."""
         from pathlib import Path as _Path
+
+        # Optional ratio threshold for family ratio warnings (default 15 %)
+        try:
+            ratio_threshold_pct = int(((qs or {}).get("ratio_threshold_pct") or ["15"])[0])
+            ratio_threshold_pct = max(1, min(ratio_threshold_pct, 100))
+        except (TypeError, ValueError):
+            ratio_threshold_pct = 15
 
         with self._lock():
             conn = self._conn()
@@ -3900,6 +3908,46 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 """
             ).fetchall()
 
+            # ── Family audit data ─────────────────────────────────────────
+            # All relations
+            rel_rows = conn.execute(
+                "SELECT doc_id, target_doc_id, relation_type FROM doc_relations"
+                " WHERE relation_type IN ('translation_of', 'excerpt_of')"
+            ).fetchall()
+
+            # Seg counts per doc (all docs appearing in any relation)
+            all_doc_ids_in_rel: set[int] = set()
+            for r in rel_rows:
+                all_doc_ids_in_rel.add(r[0])
+                all_doc_ids_in_rel.add(r[1])
+
+            seg_counts: dict[int, int] = {}
+            if all_doc_ids_in_rel:
+                placeholders = ",".join("?" * len(all_doc_ids_in_rel))
+                seg_rows = conn.execute(
+                    f"SELECT doc_id, COUNT(*) FROM units WHERE unit_type='line'"
+                    f" AND doc_id IN ({placeholders}) GROUP BY doc_id",
+                    list(all_doc_ids_in_rel),
+                ).fetchall()
+                seg_counts = {r[0]: r[1] for r in seg_rows}
+
+            # Alignment link counts per (pivot, target) pair — both orderings
+            align_rows = conn.execute(
+                "SELECT pivot_doc_id, target_doc_id, COUNT(*) AS cnt"
+                " FROM alignment_links GROUP BY pivot_doc_id, target_doc_id"
+            ).fetchall()
+            align_counts: dict[tuple[int, int], int] = {}
+            for ar in align_rows:
+                align_counts[(ar[0], ar[1])] = ar[2]
+
+            # Doc existence set
+            existing_doc_ids: set[int] = {r[0] for r in rows}
+            doc_meta: dict[int, dict] = {
+                r[0]: {"title": r[1] or f"doc #{r[0]}", "language": r[2] or ""}
+                for r in rows
+            }
+
+        # ── Standard audit checks (unchanged) ─────────────────────────────
         missing_fields: list[dict] = []
         empty_documents: list[dict] = []
         hash_map: dict[str, list[int]] = {}
@@ -3909,7 +3957,6 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         for doc_id, title, language, doc_role, resource_type, source_path, source_hash, unit_count in rows:
             label = title or f"(doc #{doc_id})"
 
-            # Missing / suspicious fields
             missing: list[str] = []
             if not title or not title.strip():
                 missing.append("title")
@@ -3920,21 +3967,17 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             if missing:
                 missing_fields.append({"doc_id": doc_id, "title": label, "missing": missing})
 
-            # Empty documents (imported but no units)
             if unit_count == 0:
                 empty_documents.append({"doc_id": doc_id, "title": label})
 
-            # Duplicate content (same hash)
             if source_hash:
                 hash_map.setdefault(source_hash, []).append(doc_id)
 
-            # Duplicate filename
             if source_path:
                 fn = _Path(source_path).name.strip().lower()
                 if fn:
                     filename_map.setdefault(fn, []).append(doc_id)
 
-            # Duplicate title
             if title and title.strip():
                 t = title.strip().lower()
                 title_map.setdefault(t, []).append(doc_id)
@@ -3955,12 +3998,75 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             if len(ids) > 1
         ]
 
+        # ── Family checks ─────────────────────────────────────────────────
+        orphan_docs: list[dict] = []            # child's parent is absent from corpus
+        unsegmented_children: list[dict] = []   # child (or parent) not yet segmented
+        unaligned_pairs: list[dict] = []        # segmented pair but 0 alignment links
+        ratio_warnings_fam: list[dict] = []     # |child_segs - parent_segs| / parent_segs > threshold
+
+        for child_id, parent_id, rel_type in rel_rows:
+            child_info  = doc_meta.get(child_id,  {"title": f"doc #{child_id}",  "language": ""})
+            parent_info = doc_meta.get(parent_id, {"title": f"doc #{parent_id}", "language": ""})
+
+            base = {
+                "parent_id": parent_id,
+                "parent_title": parent_info["title"],
+                "child_id": child_id,
+                "child_title": child_info["title"],
+                "child_lang": child_info["language"],
+                "relation_type": rel_type,
+            }
+
+            # Orphan: parent not in corpus
+            if parent_id not in existing_doc_ids:
+                orphan_docs.append({**base, "issue": f"parent doc #{parent_id} not found in corpus"})
+                continue  # remaining checks don't apply
+
+            child_segs  = seg_counts.get(child_id, 0)
+            parent_segs = seg_counts.get(parent_id, 0)
+
+            # Unsegmented (child or parent has 0 line units)
+            if child_segs == 0 or parent_segs == 0:
+                unsegmented_children.append({
+                    **base,
+                    "child_segmented":  child_segs > 0,
+                    "parent_segmented": parent_segs > 0,
+                })
+                continue  # alignment and ratio checks don't apply without segments
+
+            # Unaligned pair (both segmented, 0 alignment links in either direction)
+            link_count = (
+                align_counts.get((parent_id, child_id), 0)
+                + align_counts.get((child_id, parent_id), 0)
+            )
+            if link_count == 0:
+                unaligned_pairs.append({**base, "parent_segs": parent_segs, "child_segs": child_segs})
+
+            # Ratio warning
+            ratio = abs(child_segs - parent_segs) / parent_segs
+            ratio_pct = round(ratio * 100)
+            if ratio_pct > ratio_threshold_pct:
+                ratio_warnings_fam.append({
+                    **base,
+                    "parent_segs": parent_segs,
+                    "child_segs": child_segs,
+                    "ratio_pct": ratio_pct,
+                })
+
+        family_issues = (
+            len(orphan_docs)
+            + len(unsegmented_children)
+            + len(unaligned_pairs)
+            + len(ratio_warnings_fam)
+        )
+
         total_issues = (
             len(missing_fields)
             + len(empty_documents)
             + len(duplicate_hashes)
             + len(duplicate_filenames)
             + len(duplicate_titles)
+            + family_issues
         )
 
         self._send_json(success_payload({
@@ -3971,6 +4077,14 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             "duplicate_hashes": duplicate_hashes,
             "duplicate_filenames": duplicate_filenames,
             "duplicate_titles": duplicate_titles,
+            "families": {
+                "ratio_threshold_pct": ratio_threshold_pct,
+                "total_family_issues": family_issues,
+                "orphan_docs": orphan_docs,
+                "unsegmented_children": unsegmented_children,
+                "unaligned_pairs": unaligned_pairs,
+                "ratio_warnings": ratio_warnings_fam,
+            },
         }))
 
     def _handle_corpus_info_post(self, body: dict) -> None:
