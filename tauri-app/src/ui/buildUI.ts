@@ -16,6 +16,7 @@ import { showImportModal, hideImportModal, doImport } from "../features/importFl
 import { exportHits } from "../features/export";
 import { closeMetaPanel } from "../features/metaPanel";
 import { doOpenDb } from "../bootstrap";
+import { buildStatsPanel, toggleStatsPanel } from "../features/stats";
 
 export function buildUI(container: HTMLElement): void {
   injectStyles();
@@ -105,6 +106,7 @@ export function buildUI(container: HTMLElement): void {
   // Filter + Builder + Help + Import + OpenDB + Reset buttons
   const filterBtn = elt("button", { class: "btn btn-ghost", id: "filter-btn" }, "⚙ Filtres");
   const builderBtn = elt("button", { class: "btn btn-ghost", id: "builder-btn" }, "✏ Requête");
+  const statsBtn = elt("button", { class: "btn btn-ghost", id: "stats-btn", title: "Statistiques lexicales (fréquences, comparaison A/B)" }, "📊 Stats");
 
   // Help popover
   const helpWrap = elt("div", { class: "help-wrap" });
@@ -231,6 +233,7 @@ export function buildUI(container: HTMLElement): void {
 
   toolbar.appendChild(filterBtn);
   toolbar.appendChild(builderBtn);
+  toolbar.appendChild(statsBtn);
   toolbar.appendChild(helpWrap);
   toolbar.appendChild(importBtn);
   toolbar.appendChild(openDbBtn);
@@ -445,6 +448,9 @@ export function buildUI(container: HTMLElement): void {
   // ── Chips bar ──
   const chipsBar = elt("div", { class: "chips-bar", id: "chips-bar", style: "display:none" });
 
+  // ── Stats panel ──
+  const statsPanel = buildStatsPanel();
+
   // ── Assemble ──
   container.appendChild(topbar);
   container.appendChild(toolbar);
@@ -452,6 +458,7 @@ export function buildUI(container: HTMLElement): void {
   container.appendChild(filterDrawer);
   container.appendChild(chipsBar);
   container.appendChild(builderPanel);
+  container.appendChild(statsPanel);
   container.appendChild(resultsArea);
   container.appendChild(statusbar);
   container.appendChild(importModal);
@@ -566,6 +573,8 @@ export function buildUI(container: HTMLElement): void {
     builderPanel.classList.toggle("hidden", !state.showBuilder);
     builderBtn.classList.toggle("active", state.showBuilder);
   });
+
+  statsBtn.addEventListener("click", () => toggleStatsPanel());
 
   langSel.addEventListener("change", () => { state.filterLang = langSel.value; renderChips(); });
   roleSel.addEventListener("change", () => { state.filterRole = roleSel.value; renderChips(); });

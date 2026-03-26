@@ -577,6 +577,10 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 self._handle_query(body)
             elif path == "/query/facets":
                 self._handle_query_facets(body)
+            elif path == "/stats/lexical":
+                self._handle_stats_lexical(body)
+            elif path == "/stats/compare":
+                self._handle_stats_compare(body)
             elif path == "/index":
                 self._handle_index()
             elif path == "/import":
@@ -1273,6 +1277,55 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         with self._lock():
             result = run_query_facets(conn=self._conn(), **params)
         self._send_json(success_payload(result))
+
+    # ── Stats endpoints ───────────────────────────────────────────────────────
+
+    def _handle_stats_lexical(self, body: dict) -> None:
+        """POST /stats/lexical — compute lexical frequency stats for a slot."""
+        from multicorpus_engine.stats import (
+            StatsSlot, compute_lexical_stats, stats_result_to_dict,
+        )
+
+        slot_raw = body.get("slot", {})
+        slot = StatsSlot(
+            doc_ids=slot_raw.get("doc_ids") or None,
+            language=slot_raw.get("language") or None,
+            doc_role=slot_raw.get("doc_role") or None,
+            resource_type=slot_raw.get("resource_type") or None,
+            family_id=int(slot_raw["family_id"]) if slot_raw.get("family_id") is not None else None,
+            top_n=max(1, min(int(slot_raw.get("top_n", 50)), 500)),
+            min_length=max(1, int(slot_raw.get("min_length", 2))),
+        )
+        label = str(body.get("label", ""))
+        with self._lock():
+            result = compute_lexical_stats(self._conn(), slot, label)
+        self._send_json(success_payload(stats_result_to_dict(result)))
+
+    def _handle_stats_compare(self, body: dict) -> None:
+        """POST /stats/compare — compare frequency distributions of two slots."""
+        from multicorpus_engine.stats import (
+            StatsSlot, compute_stats_compare, stats_compare_result_to_dict,
+        )
+
+        def _parse_slot(raw: dict) -> StatsSlot:
+            return StatsSlot(
+                doc_ids=raw.get("doc_ids") or None,
+                language=raw.get("language") or None,
+                doc_role=raw.get("doc_role") or None,
+                resource_type=raw.get("resource_type") or None,
+                family_id=int(raw["family_id"]) if raw.get("family_id") is not None else None,
+                top_n=max(1, min(int(raw.get("top_n", 50)), 500)),
+                min_length=max(1, int(raw.get("min_length", 2))),
+            )
+
+        slot_a = _parse_slot(body.get("a", {}))
+        slot_b = _parse_slot(body.get("b", {}))
+        label_a = str(body.get("label_a", "A"))
+        label_b = str(body.get("label_b", "B"))
+
+        with self._lock():
+            result = compute_stats_compare(self._conn(), slot_a, slot_b, label_a, label_b)
+        self._send_json(success_payload(stats_compare_result_to_dict(result)))
 
     def _handle_index(self) -> None:
         from multicorpus_engine.indexer import build_index

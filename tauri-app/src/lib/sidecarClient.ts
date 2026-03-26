@@ -1141,3 +1141,69 @@ export function resetConnection(): void {
   _conn = null;
   _connDbPath = null;
 }
+
+// ─── Stats (lexical frequency) ────────────────────────────────────────────────
+
+export interface StatsSlot {
+  doc_ids?: number[] | null;
+  language?: string | null;
+  doc_role?: string | null;
+  resource_type?: string | null;
+  family_id?: number | null;
+  top_n?: number;
+  min_length?: number;
+}
+
+export interface StatsWord {
+  word: string;
+  count: number;
+  freq_pct: number;
+}
+
+export interface StatsResult {
+  label: string;
+  total_tokens: number;
+  vocabulary_size: number;
+  total_units: number;
+  total_docs: number;
+  avg_tokens_per_unit: number;
+  top_words: StatsWord[];
+  rare_words: StatsWord[];
+}
+
+export interface StatsCompareWord {
+  word: string;
+  count_a: number;
+  count_b: number;
+  freq_a: number;
+  freq_b: number;
+  ratio: number | null;
+}
+
+export interface StatsCompareResult {
+  label_a: string;
+  label_b: string;
+  summary_a: StatsResult;
+  summary_b: StatsResult;
+  comparison: StatsCompareWord[];
+}
+
+export async function fetchLexicalStats(
+  conn: Conn,
+  slot: StatsSlot,
+  label = "",
+): Promise<StatsResult> {
+  return conn.post("/stats/lexical", { slot, label }) as Promise<StatsResult>;
+}
+
+export async function fetchStatsCompare(
+  conn: Conn,
+  slotA: StatsSlot,
+  slotB: StatsSlot,
+  labelA = "A",
+  labelB = "B",
+): Promise<StatsCompareResult> {
+  return conn.post("/stats/compare", {
+    a: slotA, b: slotB, label_a: labelA, label_b: labelB,
+  }) as Promise<StatsCompareResult>;
+}
