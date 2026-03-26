@@ -59,7 +59,7 @@ class CurationReport:
 def apply_rules(text: str, rules: list[CurationRule]) -> str:
     """Apply all curation rules sequentially to text. Returns the modified text."""
     for rule in rules:
-        text = re.sub(rule.pattern, rule.replacement, text, flags=rule.flags)
+        text = rule.compiled().sub(rule.replacement, text)
     return text
 
 

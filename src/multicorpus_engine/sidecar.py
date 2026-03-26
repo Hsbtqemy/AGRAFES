@@ -1941,7 +1941,6 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 
     def _handle_curate_preview(self, body: dict) -> None:
         """Read-only curation simulation — never writes to DB."""
-        import re as _re
         from multicorpus_engine.curation import rules_from_list
 
         doc_id = body.get("doc_id")
@@ -1994,19 +1993,20 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             (doc_id,),
         ).fetchall()
 
-        # Load persistent exceptions for this document (Level 7B).
-        # Map unit_id → {kind, override_text}
-        unit_ids_in_doc = [row[0] for row in rows]
+        # Load persistent exceptions for this document via JOIN — avoids
+        # a potentially huge IN(?,?,?…) list when a document has many units.
         exceptions_map: dict[int, dict] = {}
-        if unit_ids_in_doc:
-            placeholders = ",".join("?" * len(unit_ids_in_doc))
-            exc_rows = self._conn().execute(
-                f"SELECT unit_id, kind, override_text FROM curation_exceptions "
-                f"WHERE unit_id IN ({placeholders})",
-                unit_ids_in_doc,
-            ).fetchall()
-            for er in exc_rows:
-                exceptions_map[er[0]] = {"kind": er[1], "override_text": er[2]}
+        exc_rows = self._conn().execute(
+            """
+            SELECT ce.unit_id, ce.kind, ce.override_text
+            FROM curation_exceptions ce
+            INNER JOIN units u ON u.unit_id = ce.unit_id
+            WHERE u.doc_id = ?
+            """,
+            (doc_id,),
+        ).fetchall()
+        for er in exc_rows:
+            exceptions_map[er[0]] = {"kind": er[1], "override_text": er[2]}
 
         units_total = len(rows)
         units_changed = 0
@@ -2015,6 +2015,9 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         examples: list[dict] = []
         # Track whether force_unit_id was already injected (may happen naturally)
         forced_unit_injected = False
+
+        # Pre-compile all rules once — avoids repeated LRU cache lookups per unit.
+        compiled_rules = [(rule.compiled(), rule.replacement) for rule in rules]
 
         # Max chars for context_before / context_after to keep payload reasonable.
         # Neighbouring units can be arbitrarily long (full paragraphs), so we trim.
@@ -2037,8 +2040,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 # We count it as a change that is being suppressed, but do NOT include
                 # it in examples — the user explicitly never wants to see it again.
                 curated_sim = original
-                for rule in rules:
-                    curated_sim = _re.sub(rule.pattern, rule.replacement, curated_sim, flags=rule.flags)
+                for compiled_re, replacement in compiled_rules:
+                    curated_sim = compiled_re.sub(replacement, curated_sim)
                 if curated_sim != original:
                     units_changed += 1
                     units_exception_ignored += 1
@@ -2089,8 +2092,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             curated = original
             unit_reps = 0
             matched_rule_ids: list[int] = []
-            for rule_idx, rule in enumerate(rules):
-                new_text, n = _re.subn(rule.pattern, rule.replacement, curated, flags=rule.flags)
+            for rule_idx, (compiled_re, replacement) in enumerate(compiled_rules):
+                new_text, n = compiled_re.subn(replacement, curated)
                 if n > 0:
                     unit_reps += n
                     if rule_idx not in matched_rule_ids:
