@@ -76,6 +76,8 @@ export interface QueryOptions {
   familyId?: number;
   /** When familyId is set, search only in the pivot (parent) document. */
   pivotOnly?: boolean;
+  /** When set, bypass FTS and use a full-scan Python regex instead. */
+  regex_pattern?: string;
 }
 
 export interface QueryResponse {
@@ -1018,6 +1020,7 @@ export async function query(
     payload.include_aligned = true;
     if (opts.pivotOnly) payload.pivot_only = true;
   }
+  if (opts.regex_pattern) payload.regex_pattern = opts.regex_pattern;
 
   return conn.post("/query", payload) as Promise<QueryResponse>;
 }

@@ -560,6 +560,8 @@ body {
 .filter-select { padding: 4px 6px; border: 1px solid var(--border); border-radius: 4px; font-size: 12px; outline: none; }
 .filter-select:focus { border-color: var(--brand); }
 .builder-warn { font-size: 11px; color: var(--warning, #d97706); background: #fffbeb; border: 1px solid #fde68a; border-radius: 4px; padding: 3px 8px; margin-top: 4px; }
+.regex-info-note { font-size: 11px; color: var(--text-muted); background: #f0f4ff; border: 1px solid #c7d7fa; border-radius: 4px; padding: 4px 8px; margin-top: 4px; }
+.regex-info-note code { background: #e0e8ff; border-radius: 2px; padding: 0 3px; font-family: monospace; }
 
 /* ─── History dropdown + Export menu ─── */
 .hist-wrap, .export-wrap {

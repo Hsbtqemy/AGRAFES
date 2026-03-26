@@ -504,8 +504,16 @@ export function disposeQuery(): void {
 // ─── Search ───────────────────────────────────────────────────────────────────
 
 export async function doSearch(rawQ: string): Promise<void> {
-  const fts = buildFtsQuery(rawQ);
-  state.currentQuery = fts;
+  const isRegex = state.builderMode === "regex";
+
+  if (isRegex) {
+    state.regexPattern = rawQ.trim();
+    state.currentQuery = "";
+  } else {
+    state.regexPattern = "";
+    state.currentQuery = buildFtsQuery(rawQ);
+  }
+
   state.pageLimit = state.showAligned ? PAGE_LIMIT_ALIGNED : PAGE_LIMIT_DEFAULT;
   state.nextOffset = null;
   state.hasMore = false;
@@ -516,17 +524,18 @@ export async function doSearch(rawQ: string): Promise<void> {
   // Invalidate stale backend facets when launching a new query
   state.facets = null;
   state.facetsQuery = "";
-  if (!state.currentQuery) {
+
+  if (!state.currentQuery && !state.regexPattern) {
     renderResults();
     return;
   }
   await fetchQueryPage(false);
-  // Fire facets fetch asynchronously — updates analytics UI when it arrives
-  if (state.currentQuery) void _fetchAndApplyFacets(state.currentQuery);
+  // Fire facets fetch only for FTS mode (regex has an exact total from the backend)
+  if (state.currentQuery && !state.regexPattern) void _fetchAndApplyFacets(state.currentQuery);
 }
 
 export async function fetchQueryPage(append: boolean): Promise<void> {
-  if (!state.conn || !state.currentQuery) return;
+  if (!state.conn || (!state.currentQuery && !state.regexPattern)) return;
 
   const offset = append ? (state.nextOffset ?? state.hits.length) : 0;
   const prevCount = state.hits.length;
@@ -564,6 +573,7 @@ export async function fetchQueryPage(append: boolean): Promise<void> {
       case_sensitive: state.caseSensitive || undefined,
       limit: state.pageLimit,
       offset,
+      regex_pattern: state.regexPattern || undefined,
     });
 
     const pageHits = Array.isArray(res.hits) ? res.hits : [];

@@ -160,7 +160,33 @@ export function buildUI(container: HTMLElement): void {
         </div>
       </div>
       <div class="help-section">
-        <div class="help-section-title">Guardrails</div>
+        <div class="help-section-title">Mode Regex (balayage complet)</div>
+        <div class="help-ex">
+          <span class="help-ex-code">\\blib(é|e)r\\w*</span>
+          <span class="help-ex-desc">Variantes orthographiques</span>
+          <button class="help-ex-copy" data-q="\\blib(é|e)r\\w*">Copier</button>
+        </div>
+        <div class="help-ex">
+          <span class="help-ex-code">M(me|lle|\.)?\\s+\\w+</span>
+          <span class="help-ex-desc">Titres de civilité</span>
+          <button class="help-ex-copy" data-q="M(me|lle|\.)?\\s+\\w+">Copier</button>
+        </div>
+        <div class="help-ex">
+          <span class="help-ex-code">\\d{4}</span>
+          <span class="help-ex-desc">Années (4 chiffres)</span>
+          <button class="help-ex-copy" data-q="\\d{4}">Copier</button>
+        </div>
+        <div class="help-ex">
+          <span class="help-ex-code">(?&lt;=[.!?])\\s+[A-Z]</span>
+          <span class="help-ex-desc">Début de phrase</span>
+          <button class="help-ex-copy" data-q="(?<=[.!?])\\s+[A-Z]">Copier</button>
+        </div>
+        <div class="help-passthrough-note" style="margin-top:4px">
+          Syntaxe Python. La casse est ignorée par défaut. Utilisez <code>(?-i)</code> ou le bouton <strong>Aa</strong> pour la respecter.
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-title">Guardrails FTS</div>
         <div class="help-passthrough-note">
           <strong>Mode pass-through :</strong> si votre requête contient déjà <code>AND</code>, <code>OR</code>, <code>NOT</code>, <code>NEAR</code> ou des guillemets, le builder ne la transforme pas — elle est envoyée telle quelle au moteur FTS5.
         </div>
@@ -266,6 +292,7 @@ export function buildUI(container: HTMLElement): void {
     ["and", "ET (AND)"],
     ["or", "OU (OR)"],
     ["near", "NEAR"],
+    ["regex", "Regex"],
   ] as const) {
     const lbEl = document.createElement("label");
     const inp = elt("input", { type: "radio", name: "builder-mode", value: val }) as HTMLInputElement;
@@ -273,6 +300,9 @@ export function buildUI(container: HTMLElement): void {
     inp.addEventListener("change", () => {
       state.builderMode = val;
       (document.getElementById("near-n-ctrl") as HTMLElement).style.display = val === "near" ? "flex" : "none";
+      (document.getElementById("regex-info") as HTMLElement).style.display = val === "regex" ? "block" : "none";
+      const si = document.getElementById("search-input") as HTMLInputElement | null;
+      if (si) si.placeholder = val === "regex" ? "Expression régulière Python (ex : \\blib(é|e)r\\w+)…" : "Rechercher dans le corpus (FTS5)…";
     });
     lbEl.appendChild(inp);
     lbEl.appendChild(document.createTextNode(lbl));
@@ -280,6 +310,14 @@ export function buildUI(container: HTMLElement): void {
   }
   modeGrp.appendChild(radioWrap);
   builderPanel.appendChild(modeGrp);
+
+  const regexInfo = elt("div", {
+    id: "regex-info",
+    class: "regex-info-note",
+    style: "display:none",
+  });
+  regexInfo.innerHTML = `<strong>Mode Regex</strong> — Balayage complet de la table (plus lent que FTS sur de très grands corpus). Syntaxe Python : <code>\\b</code>, <code>(?i)</code>, groupes, classes, etc. La casse est ignorée par défaut (comme FTS).`;
+  builderPanel.appendChild(regexInfo);
 
   const nearCtrl = elt("div", { class: "near-n-ctrl", id: "near-n-ctrl", style: "display:none" });
   nearCtrl.appendChild(document.createTextNode("N ="));

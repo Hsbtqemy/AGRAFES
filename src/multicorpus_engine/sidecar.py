@@ -1168,6 +1168,9 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 doc_ids = [family_id] + child_ids
             include_aligned_raw = True  # always show aligned units in cross-family mode
 
+        regex_pattern_raw = body.get("regex_pattern")
+        regex_pattern: str | None = str(regex_pattern_raw).strip() if regex_pattern_raw else None
+
         params = {
             "q": body.get("q", ""),
             "mode": body.get("mode", "segment"),
@@ -1185,6 +1188,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             "offset": offset,
             "family_id": family_id,
             "pivot_only": pivot_only,
+            "regex_pattern": regex_pattern,
         }
         with self._lock():
             run_id = self._create_run("query", params)
@@ -1204,6 +1208,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 case_sensitive=params["case_sensitive"],
                 limit=params["limit"],
                 offset=params["offset"],
+                regex_pattern=params["regex_pattern"],
             )
             hits = page["hits"]
             self._update_run_stats(

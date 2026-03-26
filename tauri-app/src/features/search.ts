@@ -36,6 +36,7 @@ export function buildFtsQuery(raw: string): string {
   const trimmed = raw.trim();
   const mode = state.builderMode;
   if (mode === "simple") return trimmed;
+  if (mode === "regex") return ""; // handled separately via regex_pattern
 
   if (isSimpleInput(trimmed)) {
     showBuilderWarn("Requête FTS détectée — transformation annulée (mode simple forcé).");
@@ -69,6 +70,11 @@ export function updateFtsPreview(raw: string): void {
   if (!bar || !code) return;
   const trimmed = raw.trim();
   if (!trimmed) { bar.style.display = "none"; return; }
-  code.textContent = buildFtsQuery(trimmed);
-  bar.style.display = "";
+  if (state.builderMode === "regex") {
+    code.textContent = `regex: ${trimmed}`;
+    bar.style.display = "";
+  } else {
+    code.textContent = buildFtsQuery(trimmed);
+    bar.style.display = "";
+  }
 }

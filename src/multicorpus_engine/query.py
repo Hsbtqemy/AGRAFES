@@ -90,6 +90,13 @@ def _highlight_segment(text: str, query: str) -> str:
     )
 
 
+def _highlight_segment_regex(text: str, compiled: "re.Pattern[str]") -> str:
+    """Wrap regex matches with << >> markers."""
+    return compiled.sub(
+        lambda m: f"{_HIGHLIGHT_OPEN}{m.group(0)}{_HIGHLIGHT_CLOSE}", text
+    )
+
+
 def _kwic_windows(text: str, query: str, window: int) -> tuple[str, str, str]:
     """Extract left/match/right context around the first query match.
 
@@ -129,6 +136,64 @@ def _kwic_windows(text: str, query: str, window: int) -> tuple[str, str, str]:
         match_str,
         " ".join(t for _, _, t in right_tokens),
     )
+
+
+def _kwic_windows_regex(
+    text: str, compiled: "re.Pattern[str]", window: int
+) -> tuple[str, str, str]:
+    """KWIC window extraction using a pre-compiled regex."""
+    m = compiled.search(text)
+    if not m:
+        return (text, "", "")
+
+    match_str = m.group(0)
+    match_start = m.start()
+
+    tokens: list[tuple[int, int, str]] = [
+        (tok.start(), tok.end(), tok.group(0)) for tok in re.finditer(r"\S+", text)
+    ]
+    if not tokens:
+        return ("", match_str, "")
+
+    pivot_idx = 0
+    for i, (ts, te, _) in enumerate(tokens):
+        if ts <= match_start < te:
+            pivot_idx = i
+            break
+
+    left_tokens = tokens[max(0, pivot_idx - window): pivot_idx]
+    right_tokens = tokens[pivot_idx + 1: pivot_idx + 1 + window]
+    return (
+        " ".join(t for _, _, t in left_tokens),
+        match_str,
+        " ".join(t for _, _, t in right_tokens),
+    )
+
+
+def _all_kwic_windows_regex(
+    text: str, compiled: "re.Pattern[str]", window: int
+) -> list[tuple[str, str, str]]:
+    """All KWIC occurrences using a pre-compiled regex."""
+    tokens: list[tuple[int, int, str]] = [
+        (tok.start(), tok.end(), tok.group(0)) for tok in re.finditer(r"\S+", text)
+    ]
+    results: list[tuple[str, str, str]] = []
+    for match in compiled.finditer(text):
+        match_str = match.group(0)
+        match_start = match.start()
+        pivot_idx = 0
+        for i, (ts, te, _) in enumerate(tokens):
+            if ts <= match_start < te:
+                pivot_idx = i
+                break
+        left_tokens = tokens[max(0, pivot_idx - window): pivot_idx]
+        right_tokens = tokens[pivot_idx + 1: pivot_idx + 1 + window]
+        results.append((
+            " ".join(t for _, _, t in left_tokens),
+            match_str,
+            " ".join(t for _, _, t in right_tokens),
+        ))
+    return results or [("", text, "")]
 
 
 def _all_kwic_windows(
@@ -371,6 +436,159 @@ def _build_hits(
     return hits
 
 
+def _build_hits_regex(
+    conn: sqlite3.Connection,
+    rows: list,
+    *,
+    compiled: "re.Pattern[str]",
+    mode: str,
+    window: int,
+    include_aligned: bool,
+    aligned_limit: Optional[int],
+    all_occurrences: bool,
+) -> list[dict[str, Any]]:
+    """Like _build_hits but uses a pre-compiled regex for highlighting/KWIC."""
+    hits: list[dict[str, Any]] = []
+    for row in rows:
+        unit_id = row["unit_id"]
+        d_id = row["doc_id"]
+        ext_id = row["external_id"]
+        text_norm = row["text_norm"] or ""
+        lang = row["language"]
+        title = row["title"]
+
+        if mode == "segment":
+            hit: dict[str, Any] = {
+                "doc_id": d_id,
+                "unit_id": unit_id,
+                "external_id": ext_id,
+                "language": lang,
+                "title": title,
+                "text": _highlight_segment_regex(text_norm, compiled),
+                "text_norm": text_norm,
+            }
+            if include_aligned:
+                hit["aligned"] = _fetch_aligned_units(conn, unit_id, aligned_limit=aligned_limit)
+            hits.append(hit)
+            continue
+
+        if mode == "kwic":
+            if all_occurrences:
+                occurrences = _all_kwic_windows_regex(text_norm, compiled, window)
+            else:
+                occurrences = [_kwic_windows_regex(text_norm, compiled, window)]
+
+            for left, match, right in occurrences:
+                occ_hit: dict[str, Any] = {
+                    "doc_id": d_id,
+                    "unit_id": unit_id,
+                    "external_id": ext_id,
+                    "language": lang,
+                    "title": title,
+                    "left": left,
+                    "match": match,
+                    "right": right,
+                    "text_norm": text_norm,
+                }
+                if include_aligned:
+                    occ_hit["aligned"] = _fetch_aligned_units(conn, unit_id, aligned_limit=aligned_limit)
+                hits.append(occ_hit)
+            continue
+
+        raise ValueError(f"Unknown query mode: {mode!r}. Expected 'segment' or 'kwic'.")
+
+    return hits
+
+
+def _run_regex_page(
+    conn: sqlite3.Connection,
+    regex_pattern: str,
+    mode: str,
+    window: int,
+    language: Optional[str],
+    doc_id: Optional[int],
+    doc_ids: Optional[list[int]],
+    resource_type: Optional[str],
+    doc_role: Optional[str],
+    include_aligned: bool,
+    aligned_limit: Optional[int],
+    all_occurrences: bool,
+    limit: Optional[int],
+    offset: int,
+    case_sensitive: bool,
+) -> dict[str, Any]:
+    """Full-table-scan regex query.  Bypasses FTS; applies Python regex
+    post-filter.  Returns an exact ``total``."""
+
+    try:
+        flags = 0 if case_sensitive else re.IGNORECASE
+        compiled = re.compile(regex_pattern, flags)
+    except re.error as exc:
+        raise ValueError(f"Regex invalide : {exc}") from exc
+
+    filters: list[str] = ["u.unit_type = 'line'"]
+    params: list[Any] = []
+
+    if language:
+        filters.append("d.language = ?")
+        params.append(language)
+    if doc_ids is not None and len(doc_ids) > 0:
+        placeholders = ",".join("?" * len(doc_ids))
+        filters.append(f"u.doc_id IN ({placeholders})")
+        params.extend(doc_ids)
+    elif doc_id is not None:
+        filters.append("u.doc_id = ?")
+        params.append(doc_id)
+    if resource_type:
+        filters.append("d.resource_type = ?")
+        params.append(resource_type)
+    if doc_role:
+        filters.append("d.doc_role = ?")
+        params.append(doc_role)
+
+    where_clause = " AND ".join(filters)
+    sql = f"""
+        SELECT u.unit_id, u.doc_id, u.external_id, u.text_norm, u.text_raw,
+               d.language, d.title
+        FROM units u
+        JOIN documents d ON d.doc_id = u.doc_id
+        WHERE {where_clause}
+        ORDER BY u.doc_id, u.n
+    """
+
+    all_rows = conn.execute(sql, params).fetchall()
+    matched_rows = [row for row in all_rows if compiled.search(row["text_norm"] or "")]
+    total = len(matched_rows)
+
+    page_rows = matched_rows[offset: offset + limit] if limit is not None else matched_rows[offset:]
+    has_more = (limit is not None) and (offset + limit < total)
+    next_offset = offset + limit if has_more else None
+
+    hits = _build_hits_regex(
+        conn,
+        page_rows,
+        compiled=compiled,
+        mode=mode,
+        window=window,
+        include_aligned=include_aligned,
+        aligned_limit=aligned_limit,
+        all_occurrences=all_occurrences,
+    )
+
+    logger.info(
+        "Regex %r mode=%s returned %d/%d hits (offset=%d, limit=%s)",
+        regex_pattern, mode, len(hits), total, offset, limit,
+    )
+    return {
+        "hits": hits,
+        "limit": limit,
+        "offset": offset,
+        "next_offset": next_offset,
+        "has_more": has_more,
+        "total": total,
+    }
+
+
 def run_query_page(
     conn: sqlite3.Connection,
     q: str,
@@ -387,14 +605,23 @@ def run_query_page(
     limit: Optional[int] = None,
     offset: int = 0,
     case_sensitive: bool = False,
+    regex_pattern: Optional[str] = None,
 ) -> dict[str, Any]:
-    """Run an FTS query and return a paginated payload.
+    """Run an FTS or regex query and return a paginated payload.
 
-    Pagination strategy:
+    When ``regex_pattern`` is provided, the FTS index is bypassed and a full
+    table scan is performed with Python regex filtering.  All document-level
+    filters (language, doc_ids, resource_type, doc_role) still apply.
+
+    Pagination (FTS path):
     - If ``limit`` is provided, fetch ``limit + 1`` rows to compute ``has_more``
       without an extra count query.
     - ``total`` is intentionally ``None`` in V0.2 to avoid expensive COUNT(*) on
       larger corpora.
+
+    Pagination (regex path):
+    - All matching rows are collected in memory first (full scan), giving an
+      exact ``total``.  This is acceptable for typical corpus sizes.
     """
     if offset < 0:
         raise ValueError("offset must be >= 0")
@@ -403,6 +630,27 @@ def run_query_page(
     if aligned_limit is not None and aligned_limit <= 0:
         raise ValueError("aligned_limit must be >= 1 when provided")
 
+    # ── Regex path ────────────────────────────────────────────────────────────
+    if regex_pattern:
+        return _run_regex_page(
+            conn=conn,
+            regex_pattern=regex_pattern,
+            mode=mode,
+            window=window,
+            language=language,
+            doc_id=doc_id,
+            doc_ids=doc_ids,
+            resource_type=resource_type,
+            doc_role=doc_role,
+            include_aligned=include_aligned,
+            aligned_limit=aligned_limit,
+            all_occurrences=all_occurrences,
+            limit=limit,
+            offset=offset,
+            case_sensitive=case_sensitive,
+        )
+
+    # ── FTS path ──────────────────────────────────────────────────────────────
     if not q.strip():
         return {
             "hits": [],

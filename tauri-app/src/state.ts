@@ -43,8 +43,10 @@ export interface AppState {
   loadingMore: boolean;
   total: number | null;
   // query builder
-  builderMode: "simple" | "phrase" | "and" | "or" | "near";
+  builderMode: "simple" | "phrase" | "and" | "or" | "near" | "regex";
   nearN: number;
+  /** When builderMode === "regex", stores the raw regex pattern (no FTS query is built). */
+  regexPattern: string;
   // parallel KWIC
   showParallel: boolean;
   // Case-sensitive search post-filter
@@ -93,6 +95,7 @@ export const state: AppState = {
   total: null,
   builderMode: "simple",
   nearN: 5,
+  regexPattern: "",
   showParallel: false,
   caseSensitive: false,
   sortMode: "natural",
