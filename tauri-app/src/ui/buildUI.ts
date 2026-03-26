@@ -204,6 +204,7 @@ export function buildUI(container: HTMLElement): void {
   helpWrap.appendChild(helpBtn);
   helpWrap.appendChild(helpPopover);
   const importBtn = elt("button", { class: "btn btn-ghost", id: "import-btn" }, "⬆ Importer…");
+  const reindexBtn = elt("button", { class: "btn btn-ghost", id: "reindex-btn", title: "Reconstruire l'index FTS5 (à faire après import ou modification du corpus)" }, "⟳ Réindexer");
   const openDbBtn = elt("button", { class: "btn btn-ghost", id: "open-db-btn" }, "📂 Ouvrir DB…");
   const resetBtn = elt("button", { class: "btn btn-ghost", id: "reset-btn", title: "Effacer la recherche et tous les filtres" }, "✕ Réinitialiser");
 
@@ -236,6 +237,7 @@ export function buildUI(container: HTMLElement): void {
   toolbar.appendChild(statsBtn);
   toolbar.appendChild(helpWrap);
   toolbar.appendChild(importBtn);
+  toolbar.appendChild(reindexBtn);
   toolbar.appendChild(openDbBtn);
   toolbar.appendChild(resetBtn);
   toolbar.appendChild(histWrap);
@@ -796,6 +798,13 @@ export function buildUI(container: HTMLElement): void {
     if (simpleRadio) simpleRadio.checked = true;
     (document.getElementById("near-n-ctrl") as HTMLElement | null)?.style.setProperty("display", "none");
     updateFtsPreview("");
+    // Close all open panels/menus
+    closeMetaPanel();
+    state.showFilters = false;
+    filterDrawer.classList.add("hidden");
+    filterBtn.classList.remove("active");
+    histPanel.classList.remove("open");
+    exportMenu.classList.remove("open");
     renderChips();
     renderResults();
   });
@@ -810,6 +819,23 @@ export function buildUI(container: HTMLElement): void {
       return;
     }
     showImportModal();
+  });
+  reindexBtn.addEventListener("click", async () => {
+    if (!state.conn) { showToast("Ouvrez une base de données avant de réindexer."); return; }
+    reindexBtn.disabled = true;
+    reindexBtn.textContent = "⏳ Réindexation…";
+    try {
+      const { rebuildIndex } = await import("../lib/sidecarClient");
+      const res = await rebuildIndex(state.conn);
+      showToast(`✓ Index reconstruit (${res.units_indexed} segment(s))`);
+      // Relance la recherche en cours pour refléter le nouvel index
+      if (state.currentQuery) void doSearch(state.currentQuery);
+    } catch (e) {
+      showToast(`✗ Erreur réindexation : ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      reindexBtn.disabled = false;
+      reindexBtn.textContent = "⟳ Réindexer";
+    }
   });
   openDbBtn.addEventListener("click", () => void doOpenDb());
 
