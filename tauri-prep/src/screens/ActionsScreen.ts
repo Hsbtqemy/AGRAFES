@@ -711,7 +711,6 @@ export class ActionsScreen {
               <details id="act-curate-advanced" class="curation-advanced">
                 <summary class="card-head curate-advanced-summary">
                   <h2>Retouches avanc&#233;es</h2>
-                  <span class="curate-chevron">&#x25be;</span>
                 </summary>
                 <div class="card-body">
                   <div class="form-row curate-advanced-row">
