@@ -500,6 +500,58 @@ def _build_hits_regex(
     return hits
 
 
+def _apply_doc_filters(
+    filters: list[str],
+    params: list[Any],
+    *,
+    language: Optional[str],
+    doc_id: Optional[int],
+    doc_ids: Optional[list[int]],
+    resource_type: Optional[str],
+    doc_role: Optional[str],
+    author: Optional[str],
+    title_search: Optional[str],
+    doc_date_from: Optional[str],
+    doc_date_to: Optional[str],
+    source_ext: Optional[str],
+) -> None:
+    """Append document-level WHERE clauses to ``filters``/``params`` in-place."""
+    if language:
+        filters.append("d.language = ?")
+        params.append(language)
+    if doc_ids is not None and len(doc_ids) > 0:
+        placeholders = ",".join("?" * len(doc_ids))
+        filters.append(f"u.doc_id IN ({placeholders})")
+        params.extend(doc_ids)
+    elif doc_id is not None:
+        filters.append("u.doc_id = ?")
+        params.append(doc_id)
+    if resource_type:
+        filters.append("d.resource_type = ?")
+        params.append(resource_type)
+    if doc_role:
+        filters.append("d.doc_role = ?")
+        params.append(doc_role)
+    if author:
+        filters.append("(d.author_lastname LIKE ? OR d.author_firstname LIKE ?)")
+        pat = f"%{author}%"
+        params.extend([pat, pat])
+    if title_search:
+        filters.append("d.title LIKE ?")
+        params.append(f"%{title_search}%")
+    if doc_date_from:
+        filters.append("d.doc_date >= ?")
+        params.append(doc_date_from)
+    if doc_date_to:
+        filters.append("d.doc_date <= ?")
+        params.append(doc_date_to)
+    if source_ext:
+        # Match by file extension (case-insensitive via LIKE)
+        ext = source_ext if source_ext.startswith(".") else f".{source_ext}"
+        filters.append("d.source_path LIKE ?")
+        params.append(f"%{ext}")
+
+
 def _run_regex_page(
     conn: sqlite3.Connection,
     regex_pattern: str,
@@ -510,6 +562,11 @@ def _run_regex_page(
     doc_ids: Optional[list[int]],
     resource_type: Optional[str],
     doc_role: Optional[str],
+    author: Optional[str],
+    title_search: Optional[str],
+    doc_date_from: Optional[str],
+    doc_date_to: Optional[str],
+    source_ext: Optional[str],
     include_aligned: bool,
     aligned_limit: Optional[int],
     all_occurrences: bool,
@@ -529,22 +586,14 @@ def _run_regex_page(
     filters: list[str] = ["u.unit_type = 'line'"]
     params: list[Any] = []
 
-    if language:
-        filters.append("d.language = ?")
-        params.append(language)
-    if doc_ids is not None and len(doc_ids) > 0:
-        placeholders = ",".join("?" * len(doc_ids))
-        filters.append(f"u.doc_id IN ({placeholders})")
-        params.extend(doc_ids)
-    elif doc_id is not None:
-        filters.append("u.doc_id = ?")
-        params.append(doc_id)
-    if resource_type:
-        filters.append("d.resource_type = ?")
-        params.append(resource_type)
-    if doc_role:
-        filters.append("d.doc_role = ?")
-        params.append(doc_role)
+    _apply_doc_filters(
+        filters, params,
+        language=language, doc_id=doc_id, doc_ids=doc_ids,
+        resource_type=resource_type, doc_role=doc_role,
+        author=author, title_search=title_search,
+        doc_date_from=doc_date_from, doc_date_to=doc_date_to,
+        source_ext=source_ext,
+    )
 
     where_clause = " AND ".join(filters)
     sql = f"""
@@ -599,6 +648,11 @@ def run_query_page(
     doc_ids: Optional[list[int]] = None,
     resource_type: Optional[str] = None,
     doc_role: Optional[str] = None,
+    author: Optional[str] = None,
+    title_search: Optional[str] = None,
+    doc_date_from: Optional[str] = None,
+    doc_date_to: Optional[str] = None,
+    source_ext: Optional[str] = None,
     include_aligned: bool = False,
     aligned_limit: Optional[int] = None,
     all_occurrences: bool = False,
@@ -611,7 +665,8 @@ def run_query_page(
 
     When ``regex_pattern`` is provided, the FTS index is bypassed and a full
     table scan is performed with Python regex filtering.  All document-level
-    filters (language, doc_ids, resource_type, doc_role) still apply.
+    filters (language, doc_ids, resource_type, doc_role, author, title_search,
+    doc_date_from, doc_date_to, source_ext) still apply.
 
     Pagination (FTS path):
     - If ``limit`` is provided, fetch ``limit + 1`` rows to compute ``has_more``
@@ -642,6 +697,11 @@ def run_query_page(
             doc_ids=doc_ids,
             resource_type=resource_type,
             doc_role=doc_role,
+            author=author,
+            title_search=title_search,
+            doc_date_from=doc_date_from,
+            doc_date_to=doc_date_to,
+            source_ext=source_ext,
             include_aligned=include_aligned,
             aligned_limit=aligned_limit,
             all_occurrences=all_occurrences,
@@ -664,22 +724,14 @@ def run_query_page(
     filters: list[str] = ["u.unit_type = 'line'"]
     params: list[Any] = [q]
 
-    if language:
-        filters.append("d.language = ?")
-        params.append(language)
-    if doc_ids is not None and len(doc_ids) > 0:
-        placeholders = ",".join("?" * len(doc_ids))
-        filters.append(f"u.doc_id IN ({placeholders})")
-        params.extend(doc_ids)
-    elif doc_id is not None:
-        filters.append("u.doc_id = ?")
-        params.append(doc_id)
-    if resource_type:
-        filters.append("d.resource_type = ?")
-        params.append(resource_type)
-    if doc_role:
-        filters.append("d.doc_role = ?")
-        params.append(doc_role)
+    _apply_doc_filters(
+        filters, params,
+        language=language, doc_id=doc_id, doc_ids=doc_ids,
+        resource_type=resource_type, doc_role=doc_role,
+        author=author, title_search=title_search,
+        doc_date_from=doc_date_from, doc_date_to=doc_date_to,
+        source_ext=source_ext,
+    )
 
     where_clause = " AND ".join(filters)
     base_sql = f"""
@@ -767,6 +819,11 @@ def run_query_facets(
     doc_ids: Optional[list[int]] = None,
     resource_type: Optional[str] = None,
     doc_role: Optional[str] = None,
+    author: Optional[str] = None,
+    title_search: Optional[str] = None,
+    doc_date_from: Optional[str] = None,
+    doc_date_to: Optional[str] = None,
+    source_ext: Optional[str] = None,
     top_docs_limit: int = 10,
 ) -> dict[str, Any]:
     """Compute lightweight facet summary for a query without fetching hit content.
@@ -794,22 +851,14 @@ def run_query_facets(
     filters: list[str] = ["u.unit_type = 'line'"]
     params: list[Any] = [q]
 
-    if language:
-        filters.append("d.language = ?")
-        params.append(language)
-    if doc_ids is not None and len(doc_ids) > 0:
-        placeholders = ",".join("?" * len(doc_ids))
-        filters.append(f"u.doc_id IN ({placeholders})")
-        params.extend(doc_ids)
-    elif doc_id is not None:
-        filters.append("u.doc_id = ?")
-        params.append(doc_id)
-    if resource_type:
-        filters.append("d.resource_type = ?")
-        params.append(resource_type)
-    if doc_role:
-        filters.append("d.doc_role = ?")
-        params.append(doc_role)
+    _apply_doc_filters(
+        filters, params,
+        language=language, doc_id=doc_id, doc_ids=doc_ids,
+        resource_type=resource_type, doc_role=doc_role,
+        author=author, title_search=title_search,
+        doc_date_from=doc_date_from, doc_date_to=doc_date_to,
+        source_ext=source_ext,
+    )
 
     where_clause = " AND ".join(filters)
     sql = f"""

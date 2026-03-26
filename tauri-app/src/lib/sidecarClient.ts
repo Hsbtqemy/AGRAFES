@@ -78,6 +78,16 @@ export interface QueryOptions {
   pivotOnly?: boolean;
   /** When set, bypass FTS and use a full-scan Python regex instead. */
   regex_pattern?: string;
+  /** Filter by author (LIKE search on author_lastname or author_firstname). */
+  author?: string;
+  /** Filter documents whose title contains this substring (LIKE). */
+  title_search?: string;
+  /** Filter documents with doc_date >= this value (string comparison). */
+  doc_date_from?: string;
+  /** Filter documents with doc_date <= this value (string comparison). */
+  doc_date_to?: string;
+  /** Filter by source file extension, e.g. ".docx", ".txt", ".tei". */
+  source_ext?: string;
 }
 
 export interface QueryResponse {
@@ -141,6 +151,11 @@ export interface QueryFacetsOptions {
   doc_ids?: number[];
   doc_role?: string;
   resource_type?: string;
+  author?: string;
+  title_search?: string;
+  doc_date_from?: string;
+  doc_date_to?: string;
+  source_ext?: string;
   /** How many top documents to return (max 50, default 10). */
   top_docs_limit?: number;
 }
@@ -1021,6 +1036,11 @@ export async function query(
     if (opts.pivotOnly) payload.pivot_only = true;
   }
   if (opts.regex_pattern) payload.regex_pattern = opts.regex_pattern;
+  if (opts.author) payload.author = opts.author;
+  if (opts.title_search) payload.title_search = opts.title_search;
+  if (opts.doc_date_from) payload.doc_date_from = opts.doc_date_from;
+  if (opts.doc_date_to) payload.doc_date_to = opts.doc_date_to;
+  if (opts.source_ext) payload.source_ext = opts.source_ext;
 
   return conn.post("/query", payload) as Promise<QueryResponse>;
 }
@@ -1047,6 +1067,11 @@ export async function queryFacets(
   }
   if (opts.doc_role) payload.doc_role = opts.doc_role;
   if (opts.resource_type) payload.resource_type = opts.resource_type;
+  if (opts.author) payload.author = opts.author;
+  if (opts.title_search) payload.title_search = opts.title_search;
+  if (opts.doc_date_from) payload.doc_date_from = opts.doc_date_from;
+  if (opts.doc_date_to) payload.doc_date_to = opts.doc_date_to;
+  if (opts.source_ext) payload.source_ext = opts.source_ext;
   if (opts.top_docs_limit !== undefined) payload.top_docs_limit = opts.top_docs_limit;
   return conn.post("/query/facets", payload) as Promise<QueryFacetsResponse>;
 }

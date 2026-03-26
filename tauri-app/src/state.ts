@@ -34,6 +34,16 @@ export interface AppState {
   families: FamilyRecord[];
   /** Sprint 7: show only aligned units where source_changed_at is set. */
   filterSourceChanged: boolean;
+  /** Filter by author substring (matches author_lastname or author_firstname). */
+  filterAuthor: string;
+  /** Filter by title substring. */
+  filterTitleSearch: string;
+  /** Filter by doc_date >= value (string). */
+  filterDateFrom: string;
+  /** Filter by doc_date <= value (string). */
+  filterDateTo: string;
+  /** Filter by source file extension (e.g. ".docx"). */
+  filterSourceExt: string;
   showAligned: boolean;
   expandedAlignedUnitIds: Set<number>;
   currentQuery: string;
@@ -85,6 +95,11 @@ export const state: AppState = {
   filterFamilyPivotOnly: false,
   families: [],
   filterSourceChanged: false,
+  filterAuthor: "",
+  filterTitleSearch: "",
+  filterDateFrom: "",
+  filterDateTo: "",
+  filterSourceExt: "",
   showAligned: false,
   expandedAlignedUnitIds: new Set<number>(),
   currentQuery: "",

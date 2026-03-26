@@ -91,7 +91,12 @@ function applySortToHits(hits: QueryHit[]): QueryHit[] {
 
 /** Returns true if any documentary filter is currently active. */
 function hasActiveFilters(): boolean {
-  return !!(state.filterLang || state.filterRole || state.filterDocIds !== null || state.filterResourceType || state.filterFamilyId !== null);
+  return !!(
+    state.filterLang || state.filterRole || state.filterDocIds !== null ||
+    state.filterResourceType || state.filterFamilyId !== null ||
+    state.filterAuthor || state.filterTitleSearch ||
+    state.filterDateFrom || state.filterDateTo || state.filterSourceExt
+  );
 }
 
 /** Builds a short summary of active filters for display. */
@@ -113,6 +118,14 @@ function activeFiltersSummary(): string {
       : `Docs : ${n} / ${total}`
     );
   }
+  if (state.filterAuthor) parts.push(`Auteur : ${state.filterAuthor}`);
+  if (state.filterTitleSearch) parts.push(`Titre : ${state.filterTitleSearch}`);
+  if (state.filterDateFrom || state.filterDateTo) {
+    const from = state.filterDateFrom || "…";
+    const to = state.filterDateTo || "…";
+    parts.push(`Date : ${from} – ${to}`);
+  }
+  if (state.filterSourceExt) parts.push(`Format : ${state.filterSourceExt}`);
   return parts.join(" · ");
 }
 
@@ -132,6 +145,11 @@ async function _fetchAndApplyFacets(forQuery: string): Promise<void> {
       doc_ids: state.filterDocIds ?? undefined,
       doc_role: state.filterRole || undefined,
       resource_type: state.filterResourceType || undefined,
+      author: state.filterAuthor || undefined,
+      title_search: state.filterTitleSearch || undefined,
+      doc_date_from: state.filterDateFrom || undefined,
+      doc_date_to: state.filterDateTo || undefined,
+      source_ext: state.filterSourceExt || undefined,
       top_docs_limit: 10,
     });
     // Discard if the query has changed while we were waiting
@@ -563,6 +581,11 @@ export async function fetchQueryPage(append: boolean): Promise<void> {
       language: state.filterLang || undefined,
       doc_role: state.filterRole || undefined,
       resource_type: state.filterResourceType || undefined,
+      author: state.filterAuthor || undefined,
+      title_search: state.filterTitleSearch || undefined,
+      doc_date_from: state.filterDateFrom || undefined,
+      doc_date_to: state.filterDateTo || undefined,
+      source_ext: state.filterSourceExt || undefined,
       // Family filter takes precedence over manual doc_ids
       doc_ids: inFamilyMode ? undefined : (state.filterDocIds ?? undefined),
       familyId: inFamilyMode ? state.filterFamilyId! : undefined,

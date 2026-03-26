@@ -275,11 +275,59 @@ export function buildUI(container: HTMLElement): void {
   pivotOnlyWrap.appendChild(elt("label", { for: "filter-family-pivot-only", class: "filter-pivot-label" }, "Original uniquement"));
   fgFam.appendChild(pivotOnlyWrap);
 
+  // ── Extended filters (author, title, date, source extension) ──
+  const fgAuthor = elt("div", { class: "filter-group" });
+  fgAuthor.appendChild(elt("label", {}, "Auteur"));
+  const authorInput = elt("input", {
+    type: "text", class: "filter-input-text", id: "filter-author",
+    placeholder: "nom ou prénom…", title: "Filtre sur nom ou prénom d'auteur",
+  }) as HTMLInputElement;
+  fgAuthor.appendChild(authorInput);
+
+  const fgTitle = elt("div", { class: "filter-group" });
+  fgTitle.appendChild(elt("label", {}, "Titre"));
+  const titleSearchInput = elt("input", {
+    type: "text", class: "filter-input-text", id: "filter-title-search",
+    placeholder: "mots dans le titre…",
+  }) as HTMLInputElement;
+  fgTitle.appendChild(titleSearchInput);
+
+  const fgDate = elt("div", { class: "filter-group filter-group--date" });
+  fgDate.appendChild(elt("label", {}, "Date"));
+  const dateFromInput = elt("input", {
+    type: "text", class: "filter-input-text filter-input-date", id: "filter-date-from",
+    placeholder: "de (ex. 1800)", title: "Date de début (comparaison de chaînes)",
+  }) as HTMLInputElement;
+  fgDate.appendChild(dateFromInput);
+  fgDate.appendChild(elt("span", { class: "filter-date-sep" }, "–"));
+  const dateToInput = elt("input", {
+    type: "text", class: "filter-input-text filter-input-date", id: "filter-date-to",
+    placeholder: "à (ex. 1900)",
+  }) as HTMLInputElement;
+  fgDate.appendChild(dateToInput);
+
+  const fgExt = elt("div", { class: "filter-group" });
+  fgExt.appendChild(elt("label", {}, "Format"));
+  const sourceExtSel = elt("select", { class: "filter-select", id: "filter-source-ext" }) as HTMLSelectElement;
+  sourceExtSel.innerHTML = `
+    <option value="">Tous</option>
+    <option value=".docx">DOCX</option>
+    <option value=".odt">ODT</option>
+    <option value=".txt">TXT</option>
+    <option value=".tei">TEI/XML</option>
+    <option value=".xml">XML</option>
+  `;
+  fgExt.appendChild(sourceExtSel);
+
   const clearBtn = elt("span", { class: "filter-clear", id: "filter-clear" }, "Effacer tout");
   filterDrawer.appendChild(fg1);
   filterDrawer.appendChild(fg2);
   filterDrawer.appendChild(fg2b);
   filterDrawer.appendChild(fgFam);
+  filterDrawer.appendChild(fgAuthor);
+  filterDrawer.appendChild(fgTitle);
+  filterDrawer.appendChild(fgDate);
+  filterDrawer.appendChild(fgExt);
   filterDrawer.appendChild(docSelectorMount);
   filterDrawer.appendChild(clearBtn);
 
@@ -580,6 +628,16 @@ export function buildUI(container: HTMLElement): void {
   roleSel.addEventListener("change", () => { state.filterRole = roleSel.value; renderChips(); });
   restypeSel.addEventListener("change", () => { state.filterResourceType = restypeSel.value; renderChips(); });
 
+  const applyTextFilter = (key: "filterAuthor" | "filterTitleSearch" | "filterDateFrom" | "filterDateTo", val: string) => {
+    state[key] = val;
+    renderChips();
+  };
+  authorInput.addEventListener("input", () => applyTextFilter("filterAuthor", authorInput.value.trim()));
+  titleSearchInput.addEventListener("input", () => applyTextFilter("filterTitleSearch", titleSearchInput.value.trim()));
+  dateFromInput.addEventListener("input", () => applyTextFilter("filterDateFrom", dateFromInput.value.trim()));
+  dateToInput.addEventListener("input", () => applyTextFilter("filterDateTo", dateToInput.value.trim()));
+  sourceExtSel.addEventListener("change", () => { state.filterSourceExt = sourceExtSel.value; renderChips(); });
+
   familySel.addEventListener("change", () => {
     const val = familySel.value;
     state.filterFamilyId = val ? parseInt(val, 10) : null;
@@ -614,11 +672,21 @@ export function buildUI(container: HTMLElement): void {
     state.filterResourceType = "";
     state.filterFamilyId = null;
     state.filterFamilyPivotOnly = false;
+    state.filterAuthor = "";
+    state.filterTitleSearch = "";
+    state.filterDateFrom = "";
+    state.filterDateTo = "";
+    state.filterSourceExt = "";
     langSel.value = "";
     roleSel.value = "";
     restypeSel.value = "";
     familySel.value = "";
     pivotOnlyCb.checked = false;
+    authorInput.value = "";
+    titleSearchInput.value = "";
+    dateFromInput.value = "";
+    dateToInput.value = "";
+    sourceExtSel.value = "";
     clearDocSelector(state.dbPath ?? "");
     renderChips();
   });
