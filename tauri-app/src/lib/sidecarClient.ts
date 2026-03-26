@@ -59,7 +59,8 @@ export interface QueryOptions {
   q: string;
   mode?: "segment" | "kwic";
   window?: number;
-  language?: string;
+  /** One language code or a list of codes. Empty array or undefined = no filter. */
+  language?: string | string[];
   doc_id?: number;
   /** Multi-doc filter — takes priority over doc_id when provided. */
   doc_ids?: number[];
@@ -145,7 +146,7 @@ export interface DocumentRecord {
 
 export interface QueryFacetsOptions {
   q: string;
-  language?: string;
+  language?: string | string[];
   doc_id?: number;
   /** Multi-doc filter — takes priority over doc_id when provided. */
   doc_ids?: number[];
@@ -1014,7 +1015,10 @@ export async function query(
     mode: opts.mode ?? "segment",
   };
   if (opts.window !== undefined) payload.window = opts.window;
-  if (opts.language) payload.language = opts.language;
+  if (opts.language) {
+    const langs = Array.isArray(opts.language) ? opts.language.filter(Boolean) : [opts.language];
+    if (langs.length > 0) payload.language = langs.length === 1 ? langs[0] : langs;
+  }
   if (opts.doc_ids !== undefined && opts.doc_ids.length > 0) {
     payload.doc_ids = opts.doc_ids;
   } else if (opts.doc_id !== undefined) {
@@ -1059,7 +1063,10 @@ export async function queryFacets(
   opts: QueryFacetsOptions
 ): Promise<QueryFacetsResponse> {
   const payload: Record<string, unknown> = { q: opts.q };
-  if (opts.language) payload.language = opts.language;
+  if (opts.language) {
+    const langs = Array.isArray(opts.language) ? opts.language.filter(Boolean) : [opts.language];
+    if (langs.length > 0) payload.language = langs.length === 1 ? langs[0] : langs;
+  }
   if (opts.doc_ids !== undefined && opts.doc_ids.length > 0) {
     payload.doc_ids = opts.doc_ids;
   } else if (opts.doc_id !== undefined) {

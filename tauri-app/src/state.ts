@@ -21,7 +21,8 @@ export interface AppState {
   // query params
   mode: "segment" | "kwic";
   window: number;
-  filterLang: string;
+  /** Selected language codes. Empty array = no filter (all languages). */
+  filterLangs: string[];
   filterRole: string;
   /** null = all documents (no filter); number[] = restrict to these doc_ids. */
   filterDocIds: number[] | null;
@@ -87,7 +88,7 @@ export const state: AppState = {
   showBuilder: false,
   mode: "segment",
   window: 10,
-  filterLang: "",
+  filterLangs: [],
   filterRole: "",
   filterDocIds: null,
   filterResourceType: "",

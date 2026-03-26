@@ -41,7 +41,7 @@ export function saveToHistory(raw: string, fts: string): void {
     fts,
     mode: state.builderMode,
     filters: {
-      lang: state.filterLang,
+      lang: state.filterLangs.join(","),
       role: state.filterRole,
       resourceType: state.filterResourceType,
       docIds: state.filterDocIds,
@@ -158,7 +158,7 @@ export function renderHistPanel(panel: HTMLElement, searchInput: HTMLInputElemen
         if ((e.target as HTMLElement).closest(".hist-pin-btn")) return;
         panel.classList.remove("open");
         searchInput.value = item.raw;
-        state.filterLang = item.filters.lang;
+        state.filterLangs = item.filters.lang ? item.filters.lang.split(",").filter(Boolean) : [];
         state.filterRole = item.filters.role;
         state.filterResourceType = item.filters.resourceType;
         // Restore docIds — cast to permissive type to handle legacy entries

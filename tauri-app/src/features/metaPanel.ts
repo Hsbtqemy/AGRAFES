@@ -521,7 +521,7 @@ async function _enrichDocCount(hit: QueryHit, row: HTMLElement): Promise<void> {
     const res = await queryFacets(state.conn, {
       q: state.currentQuery,
       doc_id: hit.doc_id,
-      language: state.filterLang || undefined,
+      language: state.filterLangs.length > 0 ? state.filterLangs : undefined,
       doc_role: state.filterRole || undefined,
       resource_type: state.filterResourceType || undefined,
       top_docs_limit: 1,

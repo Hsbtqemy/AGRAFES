@@ -92,7 +92,7 @@ function applySortToHits(hits: QueryHit[]): QueryHit[] {
 /** Returns true if any documentary filter is currently active. */
 function hasActiveFilters(): boolean {
   return !!(
-    state.filterLang || state.filterRole || state.filterDocIds !== null ||
+    state.filterLangs.length > 0 || state.filterRole || state.filterDocIds !== null ||
     state.filterResourceType || state.filterFamilyId !== null ||
     state.filterAuthor || state.filterTitleSearch ||
     state.filterDateFrom || state.filterDateTo || state.filterSourceExt
@@ -102,7 +102,7 @@ function hasActiveFilters(): boolean {
 /** Builds a short summary of active filters for display. */
 function activeFiltersSummary(): string {
   const parts: string[] = [];
-  if (state.filterLang) parts.push(`Langue : ${state.filterLang}`);
+  if (state.filterLangs.length > 0) parts.push(`Langue : ${state.filterLangs.join(", ")}`);
   if (state.filterRole) parts.push(`Rôle : ${state.filterRole}`);
   if (state.filterResourceType) parts.push(`Type : ${state.filterResourceType}`);
   if (state.filterFamilyId !== null) {
@@ -141,7 +141,7 @@ async function _fetchAndApplyFacets(forQuery: string): Promise<void> {
   try {
     const facets = await queryFacets(state.conn, {
       q: forQuery,
-      language: state.filterLang || undefined,
+      language: state.filterLangs.length > 0 ? state.filterLangs : undefined,
       doc_ids: state.filterDocIds ?? undefined,
       doc_role: state.filterRole || undefined,
       resource_type: state.filterResourceType || undefined,
@@ -578,7 +578,7 @@ export async function fetchQueryPage(append: boolean): Promise<void> {
       q: state.currentQuery,
       mode: state.mode,
       window: state.window,
-      language: state.filterLang || undefined,
+      language: state.filterLangs.length > 0 ? state.filterLangs : undefined,
       doc_role: state.filterRole || undefined,
       resource_type: state.filterResourceType || undefined,
       author: state.filterAuthor || undefined,

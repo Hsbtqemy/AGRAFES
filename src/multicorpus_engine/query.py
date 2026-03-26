@@ -517,8 +517,15 @@ def _apply_doc_filters(
 ) -> None:
     """Append document-level WHERE clauses to ``filters``/``params`` in-place."""
     if language:
-        filters.append("d.language = ?")
-        params.append(language)
+        # Accept either a single string or a list of language codes
+        langs = [language] if isinstance(language, str) else list(language)
+        if len(langs) == 1:
+            filters.append("d.language = ?")
+            params.append(langs[0])
+        elif len(langs) > 1:
+            placeholders = ",".join("?" * len(langs))
+            filters.append(f"d.language IN ({placeholders})")
+            params.extend(langs)
     if doc_ids is not None and len(doc_ids) > 0:
         placeholders = ",".join("?" * len(doc_ids))
         filters.append(f"u.doc_id IN ({placeholders})")

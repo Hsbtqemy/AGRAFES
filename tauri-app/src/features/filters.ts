@@ -90,9 +90,49 @@ export function populateFilterDropdowns(): void {
   const roles = [...new Set(state.docs.map(d => d.doc_role).filter((r): r is string => r != null))].sort();
   const resTypes = [...new Set(state.docs.map(d => d.resource_type).filter((r): r is string => r != null))].sort();
 
-  fillSelect("filter-lang-sel", langs, state.filterLang);
+  populateLangCheckboxes(langs);
   fillSelect("filter-role-sel", roles, state.filterRole);
   fillSelect("filter-restype-sel", resTypes, state.filterResourceType);
+}
+
+/** Rebuild the language checkbox list and restore selected state. */
+export function populateLangCheckboxes(langs?: string[]): void {
+  const container = document.getElementById("filter-lang-checkboxes");
+  if (!container) return;
+  const available = langs ?? [...new Set(state.docs.map(d => d.language).filter(Boolean))].sort();
+  container.innerHTML = "";
+  for (const lang of available) {
+    const id = `filter-lang-cb-${lang}`;
+    const wrap = document.createElement("label");
+    wrap.className = "lang-cb-label";
+    wrap.htmlFor = id;
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.id = id;
+    cb.value = lang;
+    cb.checked = state.filterLangs.includes(lang);
+    cb.addEventListener("change", () => {
+      if (cb.checked) {
+        if (!state.filterLangs.includes(lang)) state.filterLangs = [...state.filterLangs, lang];
+      } else {
+        state.filterLangs = state.filterLangs.filter(l => l !== lang);
+      }
+      _updateLangBtnLabel();
+      renderChips();
+    });
+    wrap.appendChild(cb);
+    wrap.appendChild(document.createTextNode(" " + lang));
+    container.appendChild(wrap);
+  }
+}
+
+function _updateLangBtnLabel(): void {
+  const btn = document.getElementById("filter-lang-btn");
+  if (!btn) return;
+  btn.textContent = state.filterLangs.length === 0
+    ? "Langue ▾"
+    : `Langue : ${state.filterLangs.join(", ")} ▾`;
+  btn.classList.toggle("active", state.filterLangs.length > 0);
 }
 
 function fillSelect(id: string, values: string[], currentVal: string): void {
@@ -123,11 +163,15 @@ export function renderChips(): void {
     bar.appendChild(chip);
   };
 
-  if (state.filterLang) add("Langue", state.filterLang, () => {
-    state.filterLang = "";
-    const s = document.getElementById("filter-lang-sel") as HTMLSelectElement | null;
-    if (s) s.value = "";
-  });
+  if (state.filterLangs.length > 0) {
+    add("Langue", state.filterLangs.join(", "), () => {
+      state.filterLangs = [];
+      // Uncheck all lang checkboxes
+      document.querySelectorAll<HTMLInputElement>("#filter-lang-checkboxes input[type=checkbox]").forEach(cb => { cb.checked = false; });
+      const btn = document.getElementById("filter-lang-btn");
+      if (btn) { btn.textContent = "Langue ▾"; btn.classList.remove("active"); }
+    });
+  }
   if (state.filterRole) add("Rôle", state.filterRole, () => {
     state.filterRole = "";
     const s = document.getElementById("filter-role-sel") as HTMLSelectElement | null;

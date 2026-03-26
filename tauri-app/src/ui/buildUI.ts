@@ -9,7 +9,7 @@ import { elt, injectStyles } from "./dom";
 import { showToast } from "./status";
 import { renderResults } from "../features/query";
 import { doSearch } from "../features/query";
-import { renderChips, clearDocSelector, loadFamiliesForFilter } from "../features/filters";
+import { renderChips, clearDocSelector, loadFamiliesForFilter, populateLangCheckboxes } from "../features/filters";
 import { updateFtsPreview, buildFtsQuery } from "../features/search";
 import { renderHistPanel, saveToHistory } from "../features/history";
 import { showImportModal, hideImportModal, doImport } from "../features/importFlow";
@@ -244,11 +244,21 @@ export function buildUI(container: HTMLElement): void {
   // ── Filter drawer ──
   const filterDrawer = elt("div", { class: "filter-drawer hidden", id: "filter-drawer" });
 
-  const fg1 = elt("div", { class: "filter-group" });
-  fg1.appendChild(elt("label", {}, "Langue"));
-  const langSel = elt("select", { class: "filter-select", id: "filter-lang-sel" }) as HTMLSelectElement;
-  langSel.innerHTML = `<option value="">Tous</option>`;
-  fg1.appendChild(langSel);
+  // Language multi-select (popover with checkboxes)
+  const fg1 = elt("div", { class: "filter-group filter-group--lang" });
+  const langBtn = elt("button", { class: "filter-lang-btn", id: "filter-lang-btn", type: "button" }, "Langue ▾") as HTMLButtonElement;
+  const langDropdown = elt("div", { class: "filter-lang-dropdown hidden", id: "filter-lang-dropdown" });
+  const langCheckboxContainer = elt("div", { class: "filter-lang-checkboxes", id: "filter-lang-checkboxes" });
+  langDropdown.appendChild(langCheckboxContainer);
+  langBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    langDropdown.classList.toggle("hidden");
+  });
+  document.addEventListener("click", (e) => {
+    if (!fg1.contains(e.target as Node)) langDropdown.classList.add("hidden");
+  }, { capture: false });
+  fg1.appendChild(langBtn);
+  fg1.appendChild(langDropdown);
 
   const fg2 = elt("div", { class: "filter-group" });
   fg2.appendChild(elt("label", {}, "Rôle"));
@@ -624,7 +634,7 @@ export function buildUI(container: HTMLElement): void {
 
   statsBtn.addEventListener("click", () => toggleStatsPanel());
 
-  langSel.addEventListener("change", () => { state.filterLang = langSel.value; renderChips(); });
+  // lang checkboxes are wired in populateLangCheckboxes (called after docs load)
   roleSel.addEventListener("change", () => { state.filterRole = roleSel.value; renderChips(); });
   restypeSel.addEventListener("change", () => { state.filterResourceType = restypeSel.value; renderChips(); });
 
@@ -667,7 +677,7 @@ export function buildUI(container: HTMLElement): void {
   });
 
   document.getElementById("filter-clear")!.addEventListener("click", () => {
-    state.filterLang = "";
+    state.filterLangs = [];
     state.filterRole = "";
     state.filterResourceType = "";
     state.filterFamilyId = null;
@@ -677,7 +687,10 @@ export function buildUI(container: HTMLElement): void {
     state.filterDateFrom = "";
     state.filterDateTo = "";
     state.filterSourceExt = "";
-    langSel.value = "";
+    // Uncheck all lang checkboxes and reset button label
+    document.querySelectorAll<HTMLInputElement>("#filter-lang-checkboxes input[type=checkbox]").forEach(cb => { cb.checked = false; });
+    const langBtnEl = document.getElementById("filter-lang-btn");
+    if (langBtnEl) { langBtnEl.textContent = "Langue ▾"; langBtnEl.classList.remove("active"); }
     roleSel.value = "";
     restypeSel.value = "";
     familySel.value = "";
@@ -765,12 +778,14 @@ export function buildUI(container: HTMLElement): void {
     state.loadingMore = false;
     state.nextOffset = null;
     state.expandedAlignedUnitIds.clear();
-    state.filterLang = "";
+    state.filterLangs = [];
     state.filterRole = "";
     state.filterResourceType = "";
     state.filterFamilyId = null;
     state.filterFamilyPivotOnly = false;
-    langSel.value = "";
+    document.querySelectorAll<HTMLInputElement>("#filter-lang-checkboxes input[type=checkbox]").forEach(cb => { cb.checked = false; });
+    const langBtnReset = document.getElementById("filter-lang-btn");
+    if (langBtnReset) { langBtnReset.textContent = "Langue ▾"; langBtnReset.classList.remove("active"); }
     roleSel.value = "";
     restypeSel.value = "";
     familySel.value = "";
