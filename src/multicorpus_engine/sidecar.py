@@ -1282,6 +1282,17 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         resource_type = body.get("resource_type")
         tei_unit = body.get("tei_unit", "p")
         check_filename = bool(body.get("check_filename", False))
+        family_root_doc_id = body.get("family_root_doc_id")
+        if family_root_doc_id is not None:
+            try:
+                family_root_doc_id = int(family_root_doc_id)
+            except (TypeError, ValueError):
+                self._send_error(
+                    "family_root_doc_id must be an integer",
+                    code=ERR_VALIDATION,
+                    http_status=400,
+                )
+                return
 
         if not isinstance(mode, str) or not mode:
             self._send_error(
@@ -1416,9 +1427,49 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             )
             return
 
+        relation_created = False
+        relation_id: int | None = None
+        if family_root_doc_id is not None:
+            new_doc_id = stats.get("doc_id")
+            if isinstance(new_doc_id, int):
+                with self._lock():
+                    conn = self._conn()
+                    # Verify parent exists
+                    parent_exists = conn.execute(
+                        "SELECT 1 FROM documents WHERE doc_id = ?",
+                        (family_root_doc_id,),
+                    ).fetchone()
+                    if parent_exists:
+                        existing = conn.execute(
+                            """SELECT id FROM doc_relations
+                               WHERE doc_id = ? AND target_doc_id = ?
+                                 AND relation_type = 'translation_of'""",
+                            (new_doc_id, family_root_doc_id),
+                        ).fetchone()
+                        if existing:
+                            relation_id = existing[0]
+                        else:
+                            cur = conn.execute(
+                                """INSERT INTO doc_relations (doc_id, relation_type, target_doc_id)
+                                   VALUES (?, 'translation_of', ?)""",
+                                (new_doc_id, family_root_doc_id),
+                            )
+                            conn.commit()
+                            relation_id = cur.lastrowid
+                            relation_created = True
+                    else:
+                        self._send_error(
+                            f"family_root_doc_id {family_root_doc_id} not found",
+                            code=ERR_NOT_FOUND,
+                            http_status=404,
+                        )
+                        return
+
         self._send_json(success_payload({
             "run_id": run_id,
             "mode": mode,
+            "relation_created": relation_created,
+            **({"relation_id": relation_id} if relation_id is not None else {}),
             **stats,
         }))
 
@@ -5409,7 +5460,44 @@ class CorpusServer:
                     raise ValueError(f"import job: unsupported mode: {mode!r}")
 
             progress_cb(100, "Import completed")
-            return report.to_dict()
+            result = report.to_dict()
+
+            # If caller wants to attach this doc to a family, create the relation now.
+            family_root_doc_id = params.get("family_root_doc_id")
+            if family_root_doc_id is not None:
+                try:
+                    family_root_doc_id = int(family_root_doc_id)
+                except (TypeError, ValueError):
+                    family_root_doc_id = None
+            if family_root_doc_id is not None:
+                new_doc_id = result.get("doc_id")
+                if isinstance(new_doc_id, int):
+                    with lock:
+                        parent_exists = conn.execute(
+                            "SELECT 1 FROM documents WHERE doc_id = ?",
+                            (family_root_doc_id,),
+                        ).fetchone()
+                        if parent_exists:
+                            existing = conn.execute(
+                                """SELECT id FROM doc_relations
+                                   WHERE doc_id = ? AND target_doc_id = ?
+                                     AND relation_type = 'translation_of'""",
+                                (new_doc_id, family_root_doc_id),
+                            ).fetchone()
+                            if existing:
+                                result["relation_created"] = False
+                                result["relation_id"] = existing[0]
+                            else:
+                                cur = conn.execute(
+                                    """INSERT INTO doc_relations (doc_id, relation_type, target_doc_id)
+                                       VALUES (?, 'translation_of', ?)""",
+                                    (new_doc_id, family_root_doc_id),
+                                )
+                                conn.commit()
+                                result["relation_created"] = True
+                                result["relation_id"] = cur.lastrowid
+
+            return result
 
         if kind == "align":
             from multicorpus_engine.runs import RunIdConflictError, create_run, update_run_stats

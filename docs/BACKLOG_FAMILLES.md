@@ -164,24 +164,29 @@
 
 ---
 
-## Sprint 8 — Import groupé par famille
+## Sprint 8 — Import groupé par famille ✅
 
 > Objectif : rattacher un import à une famille existante ou créer une famille à l'import.
 
 ### Backend
 
-- [ ] `POST /import` : paramètre optionnel `family_root_doc_id`
-  - Crée automatiquement la relation `translation_of` après import
-  - Retourne `relation_created: true` dans la réponse
-- [ ] API version → `1.6.7`
+- [x] `POST /import` : paramètre optionnel `family_root_doc_id`
+  - Crée automatiquement la relation `translation_of` (ou `excerpt_of` selon le choix UI) après import
+  - Retourne `relation_created: true` + `relation_id` dans la réponse
+  - Même logique dans le job asynchrone `enqueueJob("import", { family_root_doc_id })`
+- [x] API version → `1.6.7` (`pyproject.toml` → `0.6.9`)
 
 ### Frontend
 
-- [ ] ImportScreen : dialog post-import "Ce document est-il la traduction d'un existant ?"
-  - Sélecteur du parent → relation créée automatiquement
-  - Option "Ne plus demander" par session
-- [ ] Import par dossier : détection de langue dans le nom de fichier
-  - Ex. `roman_FR.docx`, `roman_EN.docx` → proposition de famille automatique
+- [x] ImportScreen : dialog post-import "Ce document est-il la traduction d'un existant ?"
+  - Sélecteur du parent parmi tous les docs du corpus (trié par titre)
+  - Sélecteur du type de relation (`translation_of` / `excerpt_of`)
+  - Appel direct à `setDocRelation` → relation créée immédiatement
+  - Option "Ne plus demander dans cette session" (`_skipFamilyDialog`)
+- [x] Détection automatique de langue dans le nom de fichier
+  - Regex `[_\-.](LANG)` détecte des codes 2-3 lettres dans les noms
+  - Ex. `roman_FR.docx`, `roman_EN.docx` → groupe proposé avec sélecteur du pivot
+  - Bannière de proposition affichée dans l'écran d'import (violet)
 
 ---
 
@@ -195,7 +200,7 @@ Sprint 4  ░░░░░░░░░░░░░░░░░░░░  Audit fa
 Sprint 5  ░░░░░░░░░░░░░░░░░░░░  Export TMX/bilingue
 Sprint 6  ░░░░░░░░░░░░░░░░░░░░  Concordancier cross-famille
 Sprint 7  ░░░░░░░░░░░░░░░░░░░░  Curation propagée
-Sprint 8  ░░░░░░░░░░░░░░░░░░░░  Import groupé
+Sprint 8  ████████████████████  Import groupé        ← TERMINÉ
 ```
 
 ---

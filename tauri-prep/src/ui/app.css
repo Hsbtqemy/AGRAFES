@@ -1231,6 +1231,95 @@ details[open] > .audit-section-summary::before { transform: rotate(90deg); }
 }
 .bilingual-preview-table tr:hover td { background: #f7fafc; }
 
+/* ── Sprint 8 — Import groupé par famille ──────────────────────────────────── */
+
+/* Family dialog overlay */
+.family-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9000;
+}
+.family-dialog {
+  background: var(--bg-card, #fff);
+  border-radius: 10px;
+  box-shadow: 0 8px 40px rgba(0,0,0,.22);
+  padding: 24px 28px;
+  width: min(520px, 90vw);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.family-dialog-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.family-dialog-icon { font-size: 28px; line-height: 1; }
+.family-dialog-title { font-size: 1.1rem; font-weight: 600; margin-bottom: 2px; }
+.family-dialog-subtitle { font-size: .82rem; color: var(--text-muted, #666); }
+.family-dialog-desc { margin: 0; font-size: .9rem; color: var(--text-secondary, #444); line-height: 1.5; }
+.family-dialog-field { display: flex; flex-direction: column; gap: 4px; }
+.family-dialog-field label { font-size: .8rem; font-weight: 500; color: var(--text-muted, #666); }
+.family-dialog-select {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--border, #d1d5db);
+  border-radius: 6px;
+  font-size: .88rem;
+  background: var(--bg, #fff);
+  color: var(--text, #111);
+}
+.family-dialog-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--border, #e5e7eb);
+  padding-top: 12px;
+  margin-top: 4px;
+}
+.family-dialog-skip-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: .8rem;
+  color: var(--text-muted, #666);
+  cursor: pointer;
+}
+.family-dialog-btns { display: flex; gap: 8px; margin-left: auto; }
+
+/* Family detection banner in ImportScreen */
+.imp-family-banner {
+  margin-bottom: 12px;
+  border-left: 4px solid #7c3aed;
+  background: #f5f3ff;
+}
+.imp-family-banner-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+  font-size: .95rem;
+}
+.imp-family-banner-icon { font-size: 20px; }
+.imp-family-banner-desc { margin: 0 0 10px; font-size: .85rem; color: var(--text-secondary, #444); }
+.imp-family-banner-note { margin: 8px 0 0; font-size: .78rem; color: var(--text-muted, #888); font-style: italic; }
+.imp-family-group {
+  background: #ede9fe;
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+}
+.imp-family-group-head { font-size: .82rem; font-weight: 600; margin-bottom: 4px; color: #5b21b6; }
+.imp-family-group-files { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+.imp-family-group-action { font-size: .82rem; display: flex; align-items: center; gap: 6px; }
+.imp-family-pivot-sel { padding: 3px 6px; border-radius: 4px; border: 1px solid #c4b5fd; font-size: .82rem; background: #fff; }
+
 /* ── Sprint 7 — Curation propagée ──────────────────────────────────────────── */
 .curation-ok-msg {
   margin: 8px 0; padding: 6px 10px; border-radius: 5px;

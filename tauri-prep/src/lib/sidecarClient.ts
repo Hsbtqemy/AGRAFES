@@ -153,6 +153,8 @@ export interface ImportOptions {
   resource_type?: string;
   tei_unit?: "p" | "s";
   check_filename?: boolean;
+  /** When set, creates a translation_of relation to this parent after import. */
+  family_root_doc_id?: number;
 }
 
 export interface ImportResponse {
@@ -160,6 +162,10 @@ export interface ImportResponse {
   doc_id: number;
   units_line?: number;
   units_total?: number;
+  /** True when a translation_of relation was freshly inserted. */
+  relation_created?: boolean;
+  /** Id of the doc_relations row (new or pre-existing). */
+  relation_id?: number;
 }
 
 export interface IndexResponse {

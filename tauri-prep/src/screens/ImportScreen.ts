@@ -7,11 +7,13 @@
  *  - Batch import : jobs async côté sidecar (plusieurs imports peuvent tourner en parallèle)
  *  - "Reconstruire l'index" button
  *  - Log pane
+ *  - Sprint 8: post-import family dialog + filename language detection
  */
 
 import { open } from "@tauri-apps/plugin-dialog";
 import type { Conn } from "../lib/sidecarClient.ts";
-import { importFile, enqueueJob, SidecarError, listDocuments } from "../lib/sidecarClient.ts";
+import { importFile, enqueueJob, SidecarError, listDocuments, setDocRelation } from "../lib/sidecarClient.ts";
+import type { DocumentRecord } from "../lib/sidecarClient.ts";
 import type { JobCenter } from "../components/JobCenter.ts";
 import { initCardAccordions } from "../lib/uiAccordions.ts";
 
@@ -55,6 +57,10 @@ export class ImportScreen {
   private _showToast: ((msg: string, isError?: boolean) => void) | null = null;
   private _isBusy = false;
   private _lastErrorMsg: string | null = null;
+
+  // Sprint 8 — family dialog
+  private _skipFamilyDialog = false;        // "Ne plus demander" flag (session)
+  private _corpusDocs: DocumentRecord[] = []; // cached corpus list for family dialog
 
   render(): HTMLElement {
     const root = document.createElement("div");
@@ -255,6 +261,7 @@ export class ImportScreen {
         if (added > 0) {
           this._renderList();
           this._updateButtons();
+          this._detectAndShowFamilyBanner();
         }
         if (skippedDup > 0) {
           this._showToast?.(
@@ -363,6 +370,7 @@ export class ImportScreen {
     if (added > 0) {
       this._renderList();
       this._updateButtons();
+      this._detectAndShowFamilyBanner();
     }
     if (skippedDup > 0) {
       this._showToast?.(
@@ -594,19 +602,25 @@ export class ImportScreen {
         });
         submitted++;
         this._log(`Job soumis pour "${f.title}" (${job.job_id.slice(0, 8)}…)`);
+        const fileLang = f.language || "und";
+        const fileTitle = f.title;
         this._jobCenter?.trackJob(job.job_id, `Import: ${f.title}`, (done) => {
           finished++;
           if (done.status === "done") {
             const docId = (done.result as { doc_id?: number } | undefined)?.doc_id;
             f.status = "done";
             f.message = String(docId ?? "?");
-            this._log(`✓ "${f.title}" → doc_id ${docId ?? "?"}`);
-            this._showToast?.(`✓ Importé: ${f.title}`);
+            this._log(`✓ "${fileTitle}" → doc_id ${docId ?? "?"}`);
+            this._showToast?.(`✓ Importé: ${fileTitle}`);
+            // Sprint 8: propose family link
+            if (typeof docId === "number" && !this._skipFamilyDialog) {
+              this._showFamilyDialog(docId, fileTitle, fileLang);
+            }
           } else {
             f.status = "error";
             f.message = done.error ?? done.status;
-            this._log(`✗ "${f.title}": ${f.message}`, true);
-            this._showToast?.(`✗ Erreur: ${f.title}`, true);
+            this._log(`✗ "${fileTitle}": ${f.message}`, true);
+            this._showToast?.(`✗ Erreur: ${fileTitle}`, true);
           }
           this._renderList();
           if (finished === submitted) onAllDone();
@@ -625,6 +639,213 @@ export class ImportScreen {
     if (submitted === 0) {
       onAllDone();
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Sprint 8 — family dialog
+  // ---------------------------------------------------------------------------
+
+  /** Show a modal dialog after a successful import to optionally attach the
+   *  new document to an existing family (creates a translation_of relation). */
+  private async _showFamilyDialog(newDocId: number, newDocTitle: string, newDocLang: string): Promise<void> {
+    if (!this._conn) return;
+
+    // Refresh corpus docs list (lazy, refreshed each time dialog opens)
+    try {
+      this._corpusDocs = await listDocuments(this._conn);
+    } catch {
+      // ignore — list will be empty, dialog still shows
+    }
+
+    // Filter out the newly imported doc itself and sort by title
+    const candidates = this._corpusDocs
+      .filter(d => d.doc_id !== newDocId)
+      .sort((a, b) => (a.title ?? "").localeCompare(b.title ?? ""));
+
+    const overlay = document.createElement("div");
+    overlay.className = "family-dialog-overlay";
+    overlay.innerHTML = `
+      <div class="family-dialog">
+        <div class="family-dialog-header">
+          <span class="family-dialog-icon">🔗</span>
+          <div>
+            <div class="family-dialog-title">Rattacher à une famille ?</div>
+            <div class="family-dialog-subtitle">« ${newDocTitle} » vient d'être importé (doc #${newDocId})</div>
+          </div>
+        </div>
+        <p class="family-dialog-desc">
+          Ce document est-il la traduction ou l'extrait d'un document existant&nbsp;?<br>
+          Si oui, sélectionnez le document original ci-dessous.
+        </p>
+        <div class="family-dialog-field">
+          <label for="fam-dlg-parent-sel">Document original (parent)</label>
+          <select id="fam-dlg-parent-sel" class="family-dialog-select">
+            <option value="">— Aucun —</option>
+            ${candidates.map(d => {
+              const label = [d.title ?? `#${d.doc_id}`, d.language ? `[${d.language}]` : ""].filter(Boolean).join(" ");
+              return `<option value="${d.doc_id}">${label}</option>`;
+            }).join("")}
+          </select>
+        </div>
+        <div class="family-dialog-field">
+          <label for="fam-dlg-relation-type">Type de relation</label>
+          <select id="fam-dlg-relation-type" class="family-dialog-select">
+            <option value="translation_of">Traduction de</option>
+            <option value="excerpt_of">Extrait de</option>
+          </select>
+        </div>
+        <div class="family-dialog-actions">
+          <label class="family-dialog-skip-label">
+            <input type="checkbox" id="fam-dlg-skip-session" />
+            Ne plus demander dans cette session
+          </label>
+          <div class="family-dialog-btns">
+            <button id="fam-dlg-cancel-btn" class="btn btn-secondary btn-sm">Non merci</button>
+            <button id="fam-dlg-confirm-btn" class="btn btn-primary btn-sm" disabled>Créer la relation</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    const sel = overlay.querySelector<HTMLSelectElement>("#fam-dlg-parent-sel")!;
+    const relSel = overlay.querySelector<HTMLSelectElement>("#fam-dlg-relation-type")!;
+    const confirmBtn = overlay.querySelector<HTMLButtonElement>("#fam-dlg-confirm-btn")!;
+    const cancelBtn = overlay.querySelector<HTMLButtonElement>("#fam-dlg-cancel-btn")!;
+    const skipChk = overlay.querySelector<HTMLInputElement>("#fam-dlg-skip-session")!;
+
+    sel.addEventListener("change", () => {
+      confirmBtn.disabled = !sel.value;
+    });
+
+    const close = () => {
+      if (skipChk.checked) this._skipFamilyDialog = true;
+      overlay.remove();
+    };
+
+    cancelBtn.addEventListener("click", close);
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+
+    confirmBtn.addEventListener("click", async () => {
+      const parentId = parseInt(sel.value, 10);
+      const relType = relSel.value as "translation_of" | "excerpt_of";
+      if (!parentId || !this._conn) { close(); return; }
+      confirmBtn.disabled = true;
+      confirmBtn.textContent = "En cours…";
+      try {
+        const res = await setDocRelation(this._conn, {
+          doc_id: newDocId,
+          relation_type: relType,
+          target_doc_id: parentId,
+        });
+        const parentTitle = candidates.find(d => d.doc_id === parentId)?.title ?? `#${parentId}`;
+        this._log(`✓ Relation « ${relType} » créée : doc #${newDocId} → doc #${parentId} « ${parentTitle} » (id=${res.id})`);
+        this._showToast?.(`✓ Rattaché à la famille de « ${parentTitle} »`);
+      } catch (err) {
+        this._log(`✗ Erreur création relation: ${err instanceof Error ? err.message : String(err)}`, true);
+        this._showToast?.("✗ Impossible de créer la relation", true);
+      }
+      close();
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Sprint 8 — filename language detection
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Common language codes / abbreviations that can appear in filenames.
+   * Matches patterns like: roman_FR.docx  roman-en.docx  texte.DE.txt
+   */
+  private static readonly _LANG_RE =
+    /[_\-.]([A-Za-z]{2,3})(?:\.[^.]+)?$/u;
+
+  /** Groups files by common stem when they differ only in the language token.
+   *  Returns an array of groups (≥2 files) that share the same stem + extension. */
+  static detectFamilyGroups(paths: string[]): Array<{ stem: string; files: Array<{ path: string; lang: string }> }> {
+    const byNorm = new Map<string, Array<{ path: string; lang: string }>>();
+
+    for (const p of paths) {
+      const fname = p.replace(/\\/g, "/").split("/").pop() ?? p;
+      const m = fname.match(ImportScreen._LANG_RE);
+      if (!m) continue;
+      const lang = m[1].toLowerCase();
+      const ext = fname.split(".").pop()?.toLowerCase() ?? "";
+      // Stem = everything before the language token
+      const stem = fname.slice(0, fname.length - m[0].length) + "." + ext;
+      const key = stem.toLowerCase();
+      if (!byNorm.has(key)) byNorm.set(key, []);
+      byNorm.get(key)!.push({ path: p, lang });
+    }
+
+    const groups: Array<{ stem: string; files: Array<{ path: string; lang: string }> }> = [];
+    for (const [stem, files] of byNorm) {
+      if (files.length >= 2) groups.push({ stem, files });
+    }
+    return groups;
+  }
+
+  /** Render the family-proposal banner inside the screen root when groups are detected. */
+  private _renderFamilyDetectionBanner(groups: ReturnType<typeof ImportScreen.detectFamilyGroups>): void {
+    const existing = this._root?.querySelector("#imp-family-detect-banner");
+    if (existing) existing.remove();
+    if (groups.length === 0) return;
+
+    const banner = document.createElement("div");
+    banner.id = "imp-family-detect-banner";
+    banner.className = "card imp-family-banner";
+    banner.innerHTML = `
+      <div class="imp-family-banner-head">
+        <span class="imp-family-banner-icon">🔗</span>
+        <div>
+          <strong>Familles détectées automatiquement</strong>
+          <span class="chip">${groups.length} groupe${groups.length > 1 ? "s" : ""}</span>
+        </div>
+      </div>
+      <p class="imp-family-banner-desc">
+        Des fichiers partagent le même radical avec des suffixes de langue.
+        Après l'import, ils pourront être rattachés en famille automatiquement.
+      </p>
+      ${groups.map((g, gi) => `
+        <div class="imp-family-group">
+          <div class="imp-family-group-head">
+            Groupe ${gi + 1} — <code>${g.stem}</code>
+          </div>
+          <div class="imp-family-group-files">
+            ${g.files.map(f => {
+              const fname = f.path.replace(/\\/g, "/").split("/").pop() ?? f.path;
+              return `<span class="chip">${fname} <em>[${f.lang.toUpperCase()}]</em></span>`;
+            }).join("")}
+          </div>
+          <div class="imp-family-group-action">
+            <label>Original&nbsp;:&nbsp;
+              <select class="imp-family-pivot-sel" data-group="${gi}">
+                ${g.files.map(f => {
+                  const fname = f.path.replace(/\\/g, "/").split("/").pop() ?? f.path;
+                  return `<option value="${f.path}">${fname} [${f.lang.toUpperCase()}]</option>`;
+                }).join("")}
+              </select>
+            </label>
+          </div>
+        </div>
+      `).join("")}
+      <p class="imp-family-banner-note">
+        Les relations seront proposées dans la dialog post-import de chaque fichier enfant.
+      </p>
+    `;
+
+    const workspace = this._root?.querySelector(".imp-workspace");
+    if (workspace) workspace.insertAdjacentElement("beforebegin", banner);
+  }
+
+  /** Run detection on current file list and update the banner. */
+  private _detectAndShowFamilyBanner(): void {
+    const paths = this._files
+      .filter(f => f.status === "pending")
+      .map(f => f.path);
+    const groups = ImportScreen.detectFamilyGroups(paths);
+    this._renderFamilyDetectionBanner(groups);
   }
 
   private async _runIndex(): Promise<void> {

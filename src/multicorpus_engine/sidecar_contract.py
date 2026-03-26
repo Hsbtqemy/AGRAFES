@@ -12,8 +12,8 @@ from __future__ import annotations
 from typing import Any
 
 
-API_VERSION = "1.6.6"
-CONTRACT_VERSION = "1.6.6"  # semantic versioning for the sidecar API contract
+API_VERSION = "1.6.7"
+CONTRACT_VERSION = "1.6.7"  # semantic versioning for the sidecar API contract
 # 1.4.0: added export_tei_package job kind (Sprint 4 — Publication ZIP)
 # 1.4.1: ERR_CONFLICT (409) for duplicate run_id; token protection on /align, /curate, /segment
 # 1.4.2: document workflow status fields on /documents and metadata update endpoints.
@@ -38,6 +38,9 @@ CONTRACT_VERSION = "1.6.6"  # semantic versioning for the sidecar API contract
 #         GET /families/{id}/curation_status — unités à revoir par enfant.
 #         POST /align/link/acknowledge_source_change — acquitter le flag de changement.
 #         AlignedUnit (in query hits) gains link_id + source_changed_at.
+# 1.6.7: Import groupé — POST /import gains optional family_root_doc_id (integer).
+#         When provided: creates translation_of relation after import and returns
+#         relation_created (bool) + relation_id (int) in ImportResponse.
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
@@ -1132,6 +1135,14 @@ def openapi_spec() -> dict[str, Any]:
                         "resource_type": {"type": "string"},
                         "tei_unit": {"type": "string", "enum": ["p", "s"]},
                         "check_filename": {"type": "boolean"},
+                        "family_root_doc_id": {
+                            "type": "integer",
+                            "nullable": True,
+                            "description": (
+                                "If provided, a 'translation_of' relation is created from the "
+                                "newly imported document to this parent document id."
+                            ),
+                        },
                     },
                     "additionalProperties": False,
                 },
@@ -1145,6 +1156,15 @@ def openapi_spec() -> dict[str, Any]:
                                 "run_id": {"type": "string"},
                                 "mode": {"type": "string"},
                                 "doc_id": {"type": "integer"},
+                                "relation_created": {
+                                    "type": "boolean",
+                                    "description": "True when a translation_of relation was inserted.",
+                                },
+                                "relation_id": {
+                                    "type": "integer",
+                                    "nullable": True,
+                                    "description": "Id of the doc_relations row (new or pre-existing).",
+                                },
                             },
                         },
                     ]
