@@ -60,6 +60,7 @@ import { save as dialogSave } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
 import type { JobCenter } from "../components/JobCenter.ts";
 import { initCardAccordions } from "../lib/uiAccordions.ts";
+import { AlignPanel } from "./AlignPanel.ts";
 
 // ─── Curation review persistence ──────────────────────────────────────────────
 
@@ -285,6 +286,9 @@ export class ActionsScreen {
   private _auditSelectedLinkId: number | null = null;
   private _alignExplainability: AlignExplainabilityEntry[] = [];
   private _alignRunId: string | null = null;
+
+  // AlignPanel (new refactored alignment UI)
+  private _alignPanel: AlignPanel | null = null;
 
   // Segmentation workflow state
   private _segmentPendingValidation = false;
@@ -2499,10 +2503,129 @@ export class ActionsScreen {
   }
 
   private _renderAlignementPanel(root: HTMLElement): HTMLElement {
-    const el = document.createElement("div");
-    el.setAttribute("role", "main");
-    el.setAttribute("aria-label", "Vue Alignement");
-    el.innerHTML = `
+    const wrapper = document.createElement("div");
+    wrapper.setAttribute("role", "main");
+    wrapper.setAttribute("aria-label", "Vue Alignement");
+
+    // ── En-tête rapide ──
+    const headSection = document.createElement("section");
+    headSection.className = "acts-seg-head-card";
+    headSection.innerHTML = `
+      <div class="acts-hub-head-left">
+        <h1>Alignement</h1>
+        <p>Créez les liens pivot ↔ cible entre documents, vérifiez et corrigez.</p>
+      </div>
+      <div class="acts-hub-head-tools">
+        <button class="acts-hub-head-link" data-nav="curation">Voir Curation</button>
+        <button class="acts-hub-head-link" data-nav="segmentation">Voir Segmentation VO</button>
+      </div>`;
+    this._bindHeadNavLinks(headSection, root);
+    wrapper.appendChild(headSection);
+
+    // ── Nouveau panneau alignement (2-col + famille + confirmation inline) ──
+    this._alignPanel = new AlignPanel(
+      () => this._conn,
+      () => this._docs,
+      {
+        log: (msg, isError) => this._log(msg, isError),
+        toast: (msg, isError) => this._showToast?.(msg, isError),
+        setBusy: (v) => this._setBusy(v),
+        jobCenter: () => this._jobCenter,
+        onRunDone: (_pivot, _targets) => {
+          // After a run, also refresh the legacy audit selects below
+          this._loadAlignDocsIntoSelects();
+        },
+        onNav: (target) => {
+          // Navigate to sub-view (curation / segmentation)
+          const linkEl = document.querySelector<HTMLButtonElement>(`[data-nav="${target}"]`);
+          linkEl?.click();
+        },
+      },
+    );
+    const newPanelEl = this._alignPanel.render();
+    newPanelEl.classList.add("align-new-panel-section");
+    wrapper.appendChild(newPanelEl);
+
+    // ── Sections secondaires (qualité, collisions, rapport) — conservées ──
+    const legacyContainer = document.createElement("div");
+    legacyContainer.setAttribute("data-legacy-align", "true");
+    legacyContainer.innerHTML = `
+      <section class="acts-seg-head-card" style="display:none"><!-- placeholder legacy head --></section>
+      <section class="card" id="act-quality-card" data-collapsible="true" data-collapsed-default="true">
+        <h3>Qualit&#233; alignement <span class="badge-preview">m&#233;triques</span></h3>
+        <p class="hint">Calculer les m&#233;triques de couverture et d&#8217;orphelins pour une paire pivot&#8596;cible.</p>
+        <div class="form-row">
+          <label>Pivot
+            <select id="act-quality-pivot"><option value="">&#8212; choisir &#8212;</option></select>
+          </label>
+          <label>Cible
+            <select id="act-quality-target"><option value="">&#8212; choisir &#8212;</option></select>
+          </label>
+          <div style="align-self:flex-end">
+            <button id="act-quality-btn" class="btn btn-secondary btn-sm" disabled>Calculer m&#233;triques</button>
+          </div>
+        </div>
+        <div id="act-quality-result" style="display:none;margin-top:0.75rem"></div>
+      </section>
+      <section class="card" id="act-collision-card" data-collapsible="true" data-collapsed-default="true">
+        <h3>Collisions d&#8217;alignement <span class="badge-preview">r&#233;solution</span></h3>
+        <p class="hint">Un pivot ayant plusieurs liens vers le m&#234;me document cible est une collision.</p>
+        <div class="form-row">
+          <label>Pivot
+            <select id="act-coll-pivot"><option value="">&#8212; choisir &#8212;</option></select>
+          </label>
+          <label>Cible
+            <select id="act-coll-target"><option value="">&#8212; choisir &#8212;</option></select>
+          </label>
+          <div style="align-self:flex-end">
+            <button id="act-coll-load-btn" class="btn btn-secondary btn-sm" disabled>Charger les collisions</button>
+          </div>
+        </div>
+        <div id="act-coll-result" style="display:none;margin-top:0.75rem"></div>
+        <div id="act-coll-more-wrap" style="display:none;margin-top:0.5rem;text-align:center">
+          <button id="act-coll-more-btn" class="btn btn-sm btn-secondary">Charger plus</button>
+        </div>
+      </section>
+      <section class="card" id="act-report-card" data-collapsible="true" data-collapsed-default="true">
+        <h3>Rapport de runs <span class="badge-preview">export</span></h3>
+        <p class="hint">Exporter l&#8217;historique des runs en HTML ou JSONL.</p>
+        <div class="form-row">
+          <label>Format :
+            <select id="act-report-fmt">
+              <option value="html">HTML</option>
+              <option value="jsonl">JSONL</option>
+            </select>
+          </label>
+          <label style="flex:1">Run ID (optionnel) :
+            <input id="act-report-run-id" type="text" placeholder="laisser vide = tous les runs" style="width:100%;max-width:340px" />
+          </label>
+        </div>
+        <div class="btn-row" style="margin-top:0.5rem">
+          <button id="act-report-btn" class="btn btn-secondary" disabled>Enregistrer le rapport&#8230;</button>
+        </div>
+        <div id="act-report-result" style="display:none;margin-top:0.5rem;font-size:0.85rem"></div>
+      </section>
+    `;
+    wrapper.appendChild(legacyContainer);
+
+    // Wire legacy buttons
+    legacyContainer.querySelector("#act-quality-btn")!.addEventListener("click", () => this._runAlignQuality(root));
+    legacyContainer.querySelector("#act-coll-load-btn")!.addEventListener("click", () => {
+      this._collOffset = 0; this._collGroups = []; this._loadCollisionsPage(root, false);
+    });
+    legacyContainer.querySelector("#act-coll-more-btn")!.addEventListener("click", () => this._loadCollisionsPage(root, true));
+    legacyContainer.querySelector("#act-report-btn")!.addEventListener("click", () => void this._runExportReport());
+
+    initCardAccordions(legacyContainer);
+    this._loadAlignDocsIntoSelects();
+    return wrapper;
+
+    // ── ANCIENNE IMPLÉMENTATION (désactivée, code mort conservé pour référence) ──
+    /* eslint-disable no-unreachable */
+    const _legacyEl = document.createElement("div");
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const el = _legacyEl; // alias so the original code below compiles unchanged
+    _legacyEl.innerHTML = `
       <section class="acts-seg-head-card">
         <div class="acts-hub-head-left">
           <h1>Alignement &#8212; vue run globale</h1>
@@ -2831,15 +2954,15 @@ export class ActionsScreen {
     });
     const auditTextFilterEl = el.querySelector<HTMLInputElement>("#act-audit-text-filter");
     auditTextFilterEl?.addEventListener("input", () => {
-      this._auditTextFilter = auditTextFilterEl.value.trim().toLowerCase();
+      this._auditTextFilter = auditTextFilterEl!.value.trim().toLowerCase();
       this._renderAuditTable(root);
     });
     const exceptionsOnlyEl = el.querySelector<HTMLInputElement>("#act-audit-exceptions-only");
     if (exceptionsOnlyEl) {
       this._auditExceptionsOnly = this._readAuditExceptionsOnlyPref();
-      exceptionsOnlyEl.checked = this._auditExceptionsOnly;
-      exceptionsOnlyEl.addEventListener("change", () => {
-        this._auditExceptionsOnly = exceptionsOnlyEl.checked;
+      exceptionsOnlyEl!.checked = this._auditExceptionsOnly;
+      exceptionsOnlyEl!.addEventListener("change", () => {
+        this._auditExceptionsOnly = exceptionsOnlyEl!.checked;
         this._writeAuditExceptionsOnlyPref(this._auditExceptionsOnly);
         this._renderAuditTable(root);
       });
@@ -2900,9 +3023,34 @@ export class ActionsScreen {
     viewTableBtn?.addEventListener("click", () => this._setAlignViewMode("table", root));
     viewRunBtn?.addEventListener("click", () => this._setAlignViewMode("run", root));
 
-    initCardAccordions(el);
-    this._bindHeadNavLinks(el, root);
-    return el;
+    initCardAccordions(_legacyEl);
+    this._bindHeadNavLinks(_legacyEl, root);
+    return _legacyEl;
+    /* eslint-enable no-unreachable */
+  }
+
+  /** Populate quality/collision selects from this._docs (used by new AlignPanel onRunDone). */
+  private _loadAlignDocsIntoSelects(): void {
+    const docs = this._docs;
+    const selIds = ["act-quality-pivot", "act-quality-target", "act-coll-pivot", "act-coll-target"];
+    for (const id of selIds) {
+      const sel = document.querySelector<HTMLSelectElement>(`#${id}`);
+      if (!sel) continue;
+      const prev = sel.value;
+      sel.innerHTML = `<option value="">&#8212; choisir &#8212;</option>`;
+      for (const d of docs) {
+        const opt = document.createElement("option");
+        opt.value = String(d.doc_id);
+        opt.textContent = `${d.title} (${d.language ?? "?"})`;
+        if (String(d.doc_id) === prev) opt.selected = true;
+        sel.appendChild(opt);
+      }
+      const btn = document.querySelector<HTMLButtonElement>(`#act-quality-btn, #act-coll-load-btn`);
+      if (btn) btn.disabled = docs.length === 0;
+    }
+    // Enable report button if docs exist
+    const reportBtn = document.querySelector<HTMLButtonElement>("#act-report-btn");
+    if (reportBtn) reportBtn.disabled = docs.length === 0;
   }
 
   /** Toggle between audit table view and visual run-row view. */
@@ -5029,9 +5177,8 @@ export class ActionsScreen {
       this._populateSegDocList();
       this._updateCurateCtx();
       this._setButtonsEnabled(true);
-      // Show audit panel once docs are loaded
-      const ap = document.querySelector("#act-audit-panel") as HTMLElement | null;
-      if (ap) ap.style.display = "";
+      this._loadAlignDocsIntoSelects();
+      this._alignPanel?.refreshDocs();
       this._log(`${this._docs.length} document(s) chargé(s).`);
       this._refreshSegmentationStatusUI();
       this._refreshRuntimeState();
