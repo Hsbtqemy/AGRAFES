@@ -4395,6 +4395,40 @@ export class ActionsScreen {
     }
   }
 
+  /**
+   * After segmentation, fetches the resulting units via getDocumentPreview and
+   * appends them below the stats in the "Proposition" pane (#act-seg-preview-body).
+   * Also reloads the "Document brut" pane so both tabs are up-to-date.
+   */
+  private async _appendSegmentedLinesPreview(docId: number): Promise<void> {
+    if (!this._conn) return;
+
+    // 1. Reload "Document brut" tab (now contains post-segmentation units)
+    const segCard = document.querySelector<HTMLElement>("#act-seg-preview-card");
+    if (segCard) void this._loadUnitsRawPreview(segCard, docId);
+
+    // 2. Fetch units and append below the stats in "Proposition" pane
+    const body = document.querySelector<HTMLElement>("#act-seg-preview-body");
+    if (!body) return;
+    try {
+      const preview = await getDocumentPreview(this._conn, docId, 300);
+      if (!preview.lines.length) return;
+      const truncNote = preview.total_lines > preview.limit
+        ? `<p class="empty-hint seg-result-trunc">Aperçu — ${preview.limit}/${preview.total_lines} unités</p>`
+        : "";
+      body.insertAdjacentHTML(
+        "beforeend",
+        `<div class="seg-result-sep-row"><hr class="seg-result-sep"><span class="seg-result-label">Segments résultants (${preview.total_lines})</span></div>` +
+        truncNote +
+        preview.lines.map((l) =>
+          `<div class="vo-line"><span class="vo-ln">${l.n}</span><span class="vo-txt">${_escHtml(l.text)}</span></div>`,
+        ).join(""),
+      );
+    } catch {
+      // best-effort — ignore errors
+    }
+  }
+
   /** Loads first 100 lines of a doc into the units raw-text pane (best-effort). */
   private async _loadUnitsRawPreview(el: HTMLElement, docId: number): Promise<void> {
     const rawScroll = el.querySelector<HTMLElement>("#act-seg-raw-scroll");
@@ -6081,6 +6115,9 @@ export class ActionsScreen {
             warnings: r?.warnings ?? [],
           };
           this._renderSegPreview();
+          // Reload the "Document brut" pane with post-segmentation units and
+          // append the segmented lines directly to the "Proposition" pane too.
+          void this._appendSegmentedLinesPreview(docId);
           this._updateLongtextPreview(this._root?.querySelector('[data-panel="segmentation"]') ?? null);
           this._updateTraductionPreview();
           const warns = r?.warnings?.length ? ` Avertissements : ${r.warnings.join("; ")}` : "";

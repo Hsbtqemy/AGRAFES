@@ -4015,6 +4015,36 @@ article.preview .preview-foot {
   min-height: 300px;
 }
 #act-seg-preview-card .pane { min-height: 0; }
+/* Ensure the scroll zone never collapses even with little content */
+#act-seg-preview-card .pane .doc-scroll { min-height: 240px; }
+/* Ensure the card itself is always visible (sticky, aligns start in grid) */
+#act-seg-preview-card { min-height: 440px; }
+
+/* Segmented-lines separator injected after stats */
+.seg-result-sep-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 6px;
+}
+.seg-result-sep {
+  flex: 1;
+  border: none;
+  border-top: 1px solid var(--prep-line, #dde1e8);
+}
+.seg-result-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--prep-muted, #4f5d6d);
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.seg-result-trunc {
+  font-style: italic;
+  margin: 0 0 6px !important;
+  font-size: 11px !important;
+}
 /* SEG-S1: pin lt minimap to col 3 regardless of display:none siblings */
 #act-seg-lt-minimap { grid-column: 3; }
 
