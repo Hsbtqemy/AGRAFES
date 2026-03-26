@@ -403,6 +403,12 @@ export class ActionsScreen {
   private _curateExceptions: Map<number, CurateException> = new Map();
 
   /**
+   * Extra rules added via the Find/Replace quick block (not persisted in JSON).
+   * Injected last by _currentRules(); cleared when the user hits "Effacer".
+   */
+  private _frExtraRules: CurateRule[] = [];
+
+  /**
    * Level 9C: Structured capture of the last successful curation apply.
    * Alias for _applyHistory[0] — kept for backward compatibility with 9B/9C.
    * Cleared on doc change or disconnect.
@@ -729,6 +735,36 @@ export class ActionsScreen {
                 </div>
               </details>
             </article>
+            <article class="curate-inner-card curate-stack-card" id="act-fr-card">
+              <div class="card-head">
+                <h2>Rechercher&#160;/ Remplacer</h2>
+                <span id="act-fr-active-badge" class="fr-active-badge" style="display:none">actif</span>
+              </div>
+              <div class="card-body">
+                <div class="fr-fields">
+                  <label class="fr-field-label">
+                    <span>Chercher</span>
+                    <input id="act-fr-find" type="text" class="fr-input" placeholder="ex&#160;: M.&#160;" autocomplete="off" />
+                  </label>
+                  <label class="fr-field-label">
+                    <span>Remplacer par</span>
+                    <input id="act-fr-replace" type="text" class="fr-input" placeholder="(vide&#160;= supprimer)" autocomplete="off" />
+                  </label>
+                </div>
+                <div class="chip-row fr-options-row">
+                  <input id="act-fr-regex" type="checkbox" />
+                  <label class="chip" for="act-fr-regex">Expression r&#233;guli&#232;re</label>
+                  <input id="act-fr-nocase" type="checkbox" />
+                  <label class="chip" for="act-fr-nocase">Insensible &#224; la casse</label>
+                </div>
+                <div class="btns fr-actions-row">
+                  <button id="act-fr-count-btn" class="btn btn-sm btn-secondary">&#128269;&#160;Compter</button>
+                  <button id="act-fr-apply-btn" class="btn btn-sm alt">&#9654;&#160;Pr&#233;visualiser</button>
+                  <button id="act-fr-clear-btn" class="btn btn-sm" style="display:none">&#10005;&#160;Effacer</button>
+                </div>
+                <p id="act-fr-feedback" class="fr-feedback" style="display:none"></p>
+              </div>
+            </article>
             <article class="curate-inner-card curate-stack-card" id="act-curate-quick-actions">
               <div class="card-head">
                 <h2>Actions rapides</h2>
@@ -985,6 +1021,89 @@ export class ActionsScreen {
       const ta = root.querySelector<HTMLTextAreaElement>("#act-curate-rules");
       if (ta) ta.value = "";
       this._applyCurationPreset(root, "spaces");
+    });
+
+    // ─── Rechercher / Remplacer ────────────────────────────────────────────
+    const _frGetRegex = (): RegExp | null => {
+      const findEl = el.querySelector<HTMLInputElement>("#act-fr-find");
+      const pattern = findEl?.value.trim() ?? "";
+      if (!pattern) return null;
+      const isRegex  = (el.querySelector<HTMLInputElement>("#act-fr-regex"))?.checked ?? false;
+      const noCase   = (el.querySelector<HTMLInputElement>("#act-fr-nocase"))?.checked ?? false;
+      const flags = "g" + (noCase ? "i" : "");
+      try {
+        return new RegExp(isRegex ? pattern : pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), flags);
+      } catch {
+        return null;
+      }
+    };
+    const _frSetFeedback = (msg: string, ok = true) => {
+      const fb = el.querySelector<HTMLElement>("#act-fr-feedback");
+      if (!fb) return;
+      fb.textContent = msg;
+      fb.style.display = msg ? "" : "none";
+      fb.style.color = ok ? "var(--color-muted, #4f5d6d)" : "#b91c1c";
+    };
+    const _frSetActive = (active: boolean) => {
+      const badge = el.querySelector<HTMLElement>("#act-fr-active-badge");
+      const clearBtn = el.querySelector<HTMLElement>("#act-fr-clear-btn");
+      if (badge) badge.style.display = active ? "" : "none";
+      if (clearBtn) clearBtn.style.display = active ? "" : "none";
+    };
+
+    el.querySelector("#act-fr-count-btn")?.addEventListener("click", () => {
+      const re = _frGetRegex();
+      const findEl = el.querySelector<HTMLInputElement>("#act-fr-find");
+      if (!findEl?.value.trim()) { _frSetFeedback("Saisir un motif à chercher.", false); return; }
+      if (!re) { _frSetFeedback("Expression régulière invalide.", false); return; }
+      if (this._curateExamples.length === 0) {
+        _frSetFeedback("Lance d'abord une prévisualisation pour compter.", false); return;
+      }
+      let total = 0;
+      let units = 0;
+      for (const ex of this._curateExamples) {
+        const m = ex.before.match(re);
+        if (m) { total += m.length; units++; }
+      }
+      const note = this._curateExamples.length < this._curateGlobalChanged
+        ? ` (dans l'échantillon de ${this._curateExamples.length} unités)`
+        : ` sur ${this._curateExamples.length} unité(s) analysée(s)`;
+      _frSetFeedback(total > 0
+        ? `${total} occurrence(s) dans ${units} unité(s)${note}.`
+        : `Aucune occurrence trouvée${note}.`);
+    });
+
+    el.querySelector("#act-fr-apply-btn")?.addEventListener("click", () => {
+      const findEl   = el.querySelector<HTMLInputElement>("#act-fr-find");
+      const replaceEl = el.querySelector<HTMLInputElement>("#act-fr-replace");
+      const isRegex  = (el.querySelector<HTMLInputElement>("#act-fr-regex"))?.checked ?? false;
+      const noCase   = (el.querySelector<HTMLInputElement>("#act-fr-nocase"))?.checked ?? false;
+      const pattern = findEl?.value.trim() ?? "";
+      if (!pattern) { _frSetFeedback("Saisir un motif à chercher.", false); return; }
+      const re = _frGetRegex();
+      if (!re) { _frSetFeedback("Expression régulière invalide.", false); return; }
+      const flags = "g" + (noCase ? "i" : "");
+      const safePattern = isRegex ? pattern : pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      this._frExtraRules = [{
+        pattern: safePattern,
+        replacement: replaceEl?.value ?? "",
+        flags,
+        description: `R/R: ${pattern}`,
+      }];
+      _frSetActive(true);
+      _frSetFeedback(`Règle R/R active — prévisualisation en cours…`);
+      this._schedulePreview(true);
+    });
+
+    el.querySelector("#act-fr-clear-btn")?.addEventListener("click", () => {
+      this._frExtraRules = [];
+      _frSetActive(false);
+      _frSetFeedback("");
+      const findEl   = el.querySelector<HTMLInputElement>("#act-fr-find");
+      const replaceEl = el.querySelector<HTMLInputElement>("#act-fr-replace");
+      if (findEl)   findEl.value = "";
+      if (replaceEl) replaceEl.value = "";
+      this._schedulePreview(true);
     });
     el.querySelector("#act-preview-btn")!.addEventListener("click", () => this._runPreview());
     el.querySelector("#act-curate-btn")!.addEventListener("click", () => this._runCurate());
@@ -4691,6 +4810,7 @@ export class ActionsScreen {
 
     const raw = (document.querySelector("#act-curate-rules") as HTMLTextAreaElement | null)?.value ?? "";
     rules.push(...this._parseAdvancedCurateRules(raw));
+    rules.push(...this._frExtraRules);
     return rules;
   }
 

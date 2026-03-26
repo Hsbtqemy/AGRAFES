@@ -4478,6 +4478,28 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
 #act-curate-card .curate-json-field {
   margin-bottom: 0;
 }
+/* ── Rechercher / Remplacer ──────────────────────────────────────────────── */
+#act-fr-card .card-head { position: relative; }
+.fr-active-badge {
+  display: inline-block;
+  background: #2563eb; color: #fff;
+  font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+  border-radius: 9px; padding: 1px 7px; vertical-align: middle;
+}
+.fr-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.fr-field-label { display: flex; flex-direction: column; gap: 3px; font-size: 0.78rem; }
+.fr-field-label span { font-weight: 600; color: var(--color-muted, #4f5d6d); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.03em; }
+.fr-input { font-size: 0.83rem; padding: 4px 7px; border: 1px solid var(--color-border, #d1d8e0); border-radius: 4px; width: 100%; box-sizing: border-box; }
+.fr-input:focus { outline: 2px solid #3b82f6; outline-offset: 1px; border-color: transparent; }
+.fr-options-row { margin-bottom: 8px; gap: 6px; flex-wrap: wrap; }
+.fr-actions-row { gap: 6px; margin-bottom: 0; flex-wrap: wrap; }
+.fr-feedback { font-size: 0.78rem; margin: 6px 0 0; padding: 4px 8px; background: var(--color-bg, #f5f7fa); border-radius: 4px; }
+
 #act-curate-card .curate-nav-actions {
   margin-top: 6px;
   gap: 6px;
@@ -4510,7 +4532,8 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
 @media (max-width: 1050px) {
   /* preview-card loses sticky at this breakpoint (global CSS); no extra overrides needed */
   #act-curate-card .curation-quick-rules,
-  #act-curate-card .curate-advanced-row {
+  #act-curate-card .curate-advanced-row,
+  #act-curate-card .fr-fields {
     grid-template-columns: 1fr;
   }
   #act-curate-card .curate-advanced-flags {
