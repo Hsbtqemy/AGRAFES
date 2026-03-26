@@ -623,6 +623,10 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 self._handle_segment_preview(body)
             elif path == "/segment/detect_markers":
                 self._handle_segment_detect_markers(body)
+            elif path == "/units/merge":
+                self._handle_units_merge(body)
+            elif path == "/units/split":
+                self._handle_units_split(body)
             elif path == "/segment":
                 self._handle_segment(body)
             elif path.startswith("/families/") and path.endswith("/segment"):
@@ -2607,6 +2611,163 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             "segment_pack": resolved_pack,
             "segments": segments,
             "warnings": warnings,
+        }))
+
+    def _handle_units_merge(self, body: dict) -> None:
+        """POST /units/merge — merge two adjacent units into one.
+
+        Body: { doc_id, n1, n2 }
+          n1 and n2 must be adjacent (n2 == n1 + 1).
+          The merged text is stored in the unit with n1.
+          All units with n > n2 are renumbered n-1.
+          Any alignment_links for either unit are deleted.
+        """
+        doc_id = body.get("doc_id")
+        n1_raw = body.get("n1")
+        n2_raw = body.get("n2")
+        if doc_id is None or n1_raw is None or n2_raw is None:
+            self._send_error("doc_id, n1 and n2 are required", code=ERR_BAD_REQUEST, http_status=400)
+            return
+        try:
+            doc_id = int(doc_id)
+            n1 = int(n1_raw)
+            n2 = int(n2_raw)
+        except (TypeError, ValueError):
+            self._send_error("doc_id, n1, n2 must be integers", code=ERR_BAD_REQUEST, http_status=400)
+            return
+        if n2 != n1 + 1:
+            self._send_error(f"n1 and n2 must be adjacent (got n1={n1}, n2={n2})", code=ERR_BAD_REQUEST, http_status=400)
+            return
+
+        with self._lock():
+            conn = self._conn()
+            row1 = conn.execute(
+                "SELECT unit_id, text_raw, text_norm FROM units WHERE doc_id=? AND n=? AND unit_type='line'",
+                (doc_id, n1),
+            ).fetchone()
+            row2 = conn.execute(
+                "SELECT unit_id, text_raw, text_norm FROM units WHERE doc_id=? AND n=? AND unit_type='line'",
+                (doc_id, n2),
+            ).fetchone()
+            if not row1 or not row2:
+                self._send_error(
+                    f"Units n={n1} or n={n2} not found for doc_id={doc_id}",
+                    code=ERR_NOT_FOUND, http_status=404,
+                )
+                return
+
+            merged_raw = (row1["text_raw"] or "").rstrip() + " " + (row2["text_raw"] or "").lstrip()
+            merged_norm = (row1["text_norm"] or "").rstrip() + " " + (row2["text_norm"] or "").lstrip()
+
+            # Delete alignment links for both units
+            conn.execute(
+                "DELETE FROM alignment_links WHERE"
+                " (pivot_doc_id=? AND pivot_unit_n IN (?,?))"
+                " OR (target_doc_id=? AND target_unit_n IN (?,?))",
+                (doc_id, n1, n2, doc_id, n1, n2),
+            )
+
+            # Update unit n1 with merged text
+            conn.execute(
+                "UPDATE units SET text_raw=?, text_norm=? WHERE doc_id=? AND n=?",
+                (merged_raw, merged_norm, doc_id, n1),
+            )
+
+            # Delete unit n2
+            conn.execute("DELETE FROM units WHERE doc_id=? AND n=?", (doc_id, n2))
+
+            # Renumber all units with n > n2 (shift down by 1)
+            conn.execute(
+                "UPDATE units SET n = n - 1 WHERE doc_id=? AND n > ?",
+                (doc_id, n2),
+            )
+
+            conn.commit()
+
+        self._send_json(success_payload({
+            "doc_id": doc_id,
+            "merged_n": n1,
+            "deleted_n": n2,
+            "text": merged_norm,
+        }))
+
+    def _handle_units_split(self, body: dict) -> None:
+        """POST /units/split — split one unit into two at a given text boundary.
+
+        Body: { doc_id, unit_n, text_a, text_b }
+          unit_n   — the n of the unit to split
+          text_a   — text for the first (existing) unit
+          text_b   — text for the new unit inserted at n+1
+          All units with n > unit_n are renumbered n+1.
+          Alignment links for unit_n are deleted (split invalidates alignment).
+        """
+        doc_id = body.get("doc_id")
+        unit_n_raw = body.get("unit_n")
+        text_a = body.get("text_a", "")
+        text_b = body.get("text_b", "")
+        if doc_id is None or unit_n_raw is None:
+            self._send_error("doc_id and unit_n are required", code=ERR_BAD_REQUEST, http_status=400)
+            return
+        try:
+            doc_id = int(doc_id)
+            unit_n = int(unit_n_raw)
+        except (TypeError, ValueError):
+            self._send_error("doc_id and unit_n must be integers", code=ERR_BAD_REQUEST, http_status=400)
+            return
+        text_a = (text_a or "").strip()
+        text_b = (text_b or "").strip()
+        if not text_a or not text_b:
+            self._send_error("text_a and text_b must be non-empty", code=ERR_BAD_REQUEST, http_status=400)
+            return
+
+        with self._lock():
+            conn = self._conn()
+            row = conn.execute(
+                "SELECT unit_id, external_id FROM units WHERE doc_id=? AND n=? AND unit_type='line'",
+                (doc_id, unit_n),
+            ).fetchone()
+            if not row:
+                self._send_error(
+                    f"Unit n={unit_n} not found for doc_id={doc_id}",
+                    code=ERR_NOT_FOUND, http_status=404,
+                )
+                return
+
+            # Delete alignment links for this unit
+            conn.execute(
+                "DELETE FROM alignment_links WHERE"
+                " (pivot_doc_id=? AND pivot_unit_n=?)"
+                " OR (target_doc_id=? AND target_unit_n=?)",
+                (doc_id, unit_n, doc_id, unit_n),
+            )
+
+            # Shift all units after unit_n up by 1 to make room
+            conn.execute(
+                "UPDATE units SET n = n + 1 WHERE doc_id=? AND n > ?",
+                (doc_id, unit_n),
+            )
+
+            # Update the original unit with text_a
+            conn.execute(
+                "UPDATE units SET text_raw=?, text_norm=?, external_id=NULL WHERE doc_id=? AND n=?",
+                (text_a, text_a, doc_id, unit_n),
+            )
+
+            # Insert new unit at n+1 with text_b
+            conn.execute(
+                "INSERT INTO units (doc_id, unit_type, n, external_id, text_raw, text_norm, meta_json)"
+                " VALUES (?, 'line', ?, NULL, ?, ?, NULL)",
+                (doc_id, unit_n + 1, text_b, text_b),
+            )
+
+            conn.commit()
+
+        self._send_json(success_payload({
+            "doc_id": doc_id,
+            "unit_n": unit_n,
+            "new_unit_n": unit_n + 1,
+            "text_a": text_a,
+            "text_b": text_b,
         }))
 
     def _handle_segment(self, body: dict) -> None:

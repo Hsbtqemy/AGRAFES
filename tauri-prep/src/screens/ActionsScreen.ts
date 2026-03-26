@@ -40,6 +40,8 @@ import {
   getDocumentPreview,
   segmentPreview,
   detectMarkers,
+  mergeUnits,
+  splitUnit,
   type DetectMarkersResponse,
   SidecarError,
   type CurateException,
@@ -1598,7 +1600,6 @@ export class ActionsScreen {
     if (!this._conn) return;
     el.innerHTML = `<p class="empty-hint">Chargement&#8230;</p>`;
     try {
-      // /documents/preview accepts limit 1–500; show up to 500 segments in the table
       const preview = await getDocumentPreview(this._conn, docId, 500);
       const countEl = document.querySelector<HTMLElement>("#act-seg-saved-count");
       if (countEl) countEl.textContent = String(preview.total_lines);
@@ -1606,69 +1607,172 @@ export class ActionsScreen {
         el.innerHTML = `<p class="empty-hint">Aucun segment en base.</p>`;
         return;
       }
+
       const truncNote = preview.total_lines > 500
         ? `<p class="seg-trunc-note">Aper&#231;u — 500/${preview.total_lines} segments</p>`
         : "";
 
-      const rows = preview.lines.map(l =>
-        `<tr data-unit-n="${l.n}">
+      const buildRow = (l: { n: number; text: string }, idx: number, total: number): string => {
+        const lenClass = l.text.length > 200 ? " seg-cell-len-warn" : l.text.length > 120 ? " seg-cell-len-hint" : "";
+        const mergeUpBtn   = idx > 0       ? `<button class="seg-action-btn seg-merge-up"   title="Fusionner avec le pr&#233;c&#233;dent" data-n="${l.n}">&#8679;</button>` : `<span class="seg-action-placeholder"></span>`;
+        const mergeDownBtn = idx < total-1  ? `<button class="seg-action-btn seg-merge-down" title="Fusionner avec le suivant"     data-n="${l.n}">&#8681;</button>` : `<span class="seg-action-placeholder"></span>`;
+        const splitBtn     = `<button class="seg-action-btn seg-split-btn" title="Couper ce segment" data-n="${l.n}">&#9986;</button>`;
+        return `<tr data-unit-n="${l.n}">
           <td class="seg-cell-n">${l.n}</td>
-          <td class="seg-cell-text" title="Double-clic pour modifier">${_escHtml(l.text)}</td>
-          <td class="seg-cell-len${l.text.length > 200 ? " seg-cell-len-warn" : l.text.length > 120 ? " seg-cell-len-hint" : ""}">${l.text.length}</td>
-        </tr>`,
-      ).join("");
+          <td class="seg-cell-text" title="Double-clic pour modifier le texte">${_escHtml(l.text)}</td>
+          <td class="seg-cell-len${lenClass}">${l.text.length}</td>
+          <td class="seg-cell-actions">${mergeUpBtn}${mergeDownBtn}${splitBtn}</td>
+        </tr>`;
+      };
 
-      el.innerHTML = truncNote + `
-        <div class="seg-saved-info">${preview.total_lines} segment(s) &middot; double-clic pour modifier un texte</div>
-        <div class="seg-segments-scroll">
-          <table class="seg-segments-table">
-            <colgroup>
-              <col style="width:40px">
-              <col>
-              <col style="width:52px">
-            </colgroup>
-            <thead><tr><th>#</th><th>Texte</th><th>Long.</th></tr></thead>
-            <tbody>${rows}</tbody>
-          </table>
-        </div>`;
+      const renderTable = (lines: { n: number; text: string }[]) => {
+        const rows = lines.map((l, i) => buildRow(l, i, lines.length)).join("");
+        return truncNote + `
+          <div class="seg-saved-info">${lines.length} segment(s) &middot; double-clic pour modifier</div>
+          <div class="seg-segments-scroll">
+            <table class="seg-segments-table">
+              <colgroup>
+                <col style="width:36px">
+                <col>
+                <col style="width:46px">
+                <col style="width:72px">
+              </colgroup>
+              <thead><tr><th>#</th><th>Texte</th><th>Long.</th><th></th></tr></thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>`;
+      };
 
-      // Wire double-click inline edit
-      el.querySelectorAll<HTMLTableCellElement>(".seg-cell-text").forEach(cell => {
-        cell.addEventListener("dblclick", () => {
-          if (cell.querySelector("input")) return;
-          const tr = cell.closest("tr")!;
-          const origHtml = cell.innerHTML;
-          const origText = cell.textContent ?? "";
-          const input = document.createElement("input");
-          input.type = "text";
-          input.value = origText;
-          input.className = "seg-cell-edit-input";
-          cell.innerHTML = "";
-          cell.appendChild(input);
-          input.focus(); input.select();
+      // State: keep a local mutable copy of lines so we can optimistically update
+      let lines = preview.lines.map(l => ({ n: l.n, text: l.text }));
+      el.innerHTML = renderTable(lines);
 
-          const commit = async () => {
-            const newText = input.value.trim();
-            if (!newText || newText === origText) { cancelEdit(); return; }
-            input.disabled = true;
-            const unitN = parseInt(tr.dataset.unitN ?? "", 10);
-              if (!this._conn || !unitN) { cancelEdit(); return; }
+      const reload = () => void this._renderSegSavedTable(docId, el);
+
+      const wireEvents = () => {
+        // ── Merge up (↑) ──────────────────────────────────────────────────────
+        el.querySelectorAll<HTMLButtonElement>(".seg-merge-up").forEach(btn => {
+          btn.addEventListener("click", async () => {
+            const n2 = parseInt(btn.dataset.n ?? "", 10);
+            const idx = lines.findIndex(l => l.n === n2);
+            if (idx < 1 || !this._conn) return;
+            const n1 = lines[idx - 1].n;
+            btn.disabled = true;
             try {
-              // No PATCH /units endpoint yet; show informative note
-              void unitN; // used later when endpoint is available
-              cell.innerHTML = `<em style="color:var(--color-warning)">[Modif. non persistée — bient&#244;t disponible]</em> ${_escHtml(newText)}`;
-              const lenCell = cell.nextElementSibling as HTMLElement | null;
-              if (lenCell) { lenCell.textContent = String(newText.length); }
-            } catch { cell.innerHTML = origHtml; }
-          };
-          const cancelEdit = () => { cell.innerHTML = origHtml; };
-          input.addEventListener("keydown", (e) => {
-            if (e.key === "Enter")  { e.preventDefault(); void commit(); }
-            if (e.key === "Escape") { e.preventDefault(); cancelEdit(); }
+              await mergeUnits(this._conn, { doc_id: docId, n1, n2 });
+              reload();
+            } catch (e) {
+              btn.disabled = false;
+              alert(`Erreur fusion : ${e instanceof Error ? e.message : String(e)}`);
+            }
           });
-          input.addEventListener("blur", () => setTimeout(() => void commit(), 80));
         });
-      });
+
+        // ── Merge down (↓) ────────────────────────────────────────────────────
+        el.querySelectorAll<HTMLButtonElement>(".seg-merge-down").forEach(btn => {
+          btn.addEventListener("click", async () => {
+            const n1 = parseInt(btn.dataset.n ?? "", 10);
+            const idx = lines.findIndex(l => l.n === n1);
+            if (idx < 0 || idx >= lines.length - 1 || !this._conn) return;
+            const n2 = lines[idx + 1].n;
+            btn.disabled = true;
+            try {
+              await mergeUnits(this._conn, { doc_id: docId, n1, n2 });
+              reload();
+            } catch (e) {
+              btn.disabled = false;
+              alert(`Erreur fusion : ${e instanceof Error ? e.message : String(e)}`);
+            }
+          });
+        });
+
+        // ── Split (✂) ─────────────────────────────────────────────────────────
+        el.querySelectorAll<HTMLButtonElement>(".seg-split-btn").forEach(btn => {
+          btn.addEventListener("click", () => {
+            const unitN = parseInt(btn.dataset.n ?? "", 10);
+            const lineData = lines.find(l => l.n === unitN);
+            if (!lineData) return;
+            const tr = btn.closest("tr")!;
+            // Replace the row with an inline split editor
+            const fullText = lineData.text;
+            const midPoint = Math.ceil(fullText.length / 2);
+            const lastSpace = fullText.lastIndexOf(" ", midPoint);
+            const splitAt = lastSpace > 0 ? lastSpace : midPoint;
+
+            tr.innerHTML = `
+              <td colspan="4" class="seg-split-inline">
+                <div class="seg-split-label">&#9986; Couper le segment ${unitN} en deux :</div>
+                <div class="seg-split-fields">
+                  <textarea class="seg-split-ta seg-split-ta-a" rows="2">${_escHtml(fullText.slice(0, splitAt).trim())}</textarea>
+                  <div class="seg-split-divider">&#9660;</div>
+                  <textarea class="seg-split-ta seg-split-ta-b" rows="2">${_escHtml(fullText.slice(splitAt).trim())}</textarea>
+                </div>
+                <div class="seg-split-actions">
+                  <button class="btn btn-warning btn-sm seg-split-confirm">Confirmer la coupure</button>
+                  <button class="btn btn-ghost btn-sm seg-split-cancel">Annuler</button>
+                </div>
+              </td>`;
+
+            tr.querySelector(".seg-split-cancel")?.addEventListener("click", reload);
+            tr.querySelector(".seg-split-confirm")?.addEventListener("click", async () => {
+              const taA = tr.querySelector<HTMLTextAreaElement>(".seg-split-ta-a");
+              const taB = tr.querySelector<HTMLTextAreaElement>(".seg-split-ta-b");
+              const textA = taA?.value.trim() ?? "";
+              const textB = taB?.value.trim() ?? "";
+              if (!textA || !textB) {
+                alert("Les deux parties doivent être non-vides.");
+                return;
+              }
+              if (!this._conn) return;
+              try {
+                await splitUnit(this._conn, { doc_id: docId, unit_n: unitN, text_a: textA, text_b: textB });
+                reload();
+              } catch (e) {
+                alert(`Erreur découpe : ${e instanceof Error ? e.message : String(e)}`);
+              }
+            });
+          });
+        });
+
+        // ── Double-click inline text edit ──────────────────────────────────────
+        el.querySelectorAll<HTMLTableCellElement>(".seg-cell-text").forEach(cell => {
+          cell.addEventListener("dblclick", () => {
+            if (cell.querySelector("textarea")) return;
+            const tr = cell.closest("tr")!;
+            const origHtml = cell.innerHTML;
+            const origText = cell.textContent?.trim() ?? "";
+            const ta = document.createElement("textarea");
+            ta.rows = 2;
+            ta.value = origText;
+            ta.className = "seg-cell-edit-input";
+            cell.innerHTML = "";
+            cell.appendChild(ta);
+            ta.focus(); ta.select();
+
+            const cancelEdit = () => { cell.innerHTML = origHtml; };
+            const commit = () => {
+              const newText = ta.value.trim();
+              if (!newText || newText === origText) { cancelEdit(); return; }
+              // Optimistic update: reflect immediately
+              cell.innerHTML = _escHtml(newText);
+              const lenCell = cell.nextElementSibling as HTMLElement | null;
+              if (lenCell && !lenCell.classList.contains("seg-cell-actions")) {
+                lenCell.textContent = String(newText.length);
+              }
+              const unitN = parseInt(tr.dataset.unitN ?? "", 10);
+              if (unitN) lines = lines.map(l => l.n === unitN ? { ...l, text: newText } : l);
+            };
+            ta.addEventListener("keydown", (e) => {
+              if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); commit(); }
+              if (e.key === "Escape") { e.preventDefault(); cancelEdit(); }
+            });
+            ta.addEventListener("blur", () => setTimeout(commit, 80));
+          });
+        });
+      };
+
+      wireEvents();
+      lines = preview.lines.map(l => ({ n: l.n, text: l.text }));
     } catch (err) {
       el.innerHTML = `<p class="empty-hint" style="color:var(--color-danger)">Erreur: ${_escHtml(err instanceof Error ? err.message : String(err))}</p>`;
     }

@@ -48,5 +48,7 @@
   "POST /segment/detect_markers",
   "POST /segment/preview",
   "POST /shutdown",
+  "POST /units/merge",
+  "POST /units/split",
   "POST /validate-meta"
 ]

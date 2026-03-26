@@ -206,6 +206,8 @@ When `multicorpus serve` starts and a portfile already exists:
   - body: `{ doc_id, lang?, pack? }`
   - `pack` values: `auto` (default), `default`, `fr_strict`, `en_strict`
   - response includes `segment_pack` (resolved pack actually used)
+- `POST /units/merge` — merge two adjacent units into one; body: `{ doc_id, n1, n2 }` (n2 must be n1+1)
+- `POST /units/split` — split one unit into two; body: `{ doc_id, unit_n, text_a, text_b }`
 - `POST /segment/preview` — in-memory segmentation preview, no DB writes
   - body: `{ doc_id, mode?, lang?, pack?, limit? }`
   - `mode` values: `sentences` (default), `markers` ([N] marker-based split)

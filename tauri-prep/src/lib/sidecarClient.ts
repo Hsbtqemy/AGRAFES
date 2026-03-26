@@ -188,6 +188,41 @@ export async function detectMarkers(
 }
 
 // ---------------------------------------------------------------------------
+// Unit editing — merge and split
+// ---------------------------------------------------------------------------
+
+export interface UnitsMergeResponse {
+  ok: boolean;
+  doc_id: number;
+  merged_n: number;
+  deleted_n: number;
+  text: string;
+}
+
+export async function mergeUnits(
+  conn: Conn,
+  opts: { doc_id: number; n1: number; n2: number },
+): Promise<UnitsMergeResponse> {
+  return conn.post("/units/merge", opts) as Promise<UnitsMergeResponse>;
+}
+
+export interface UnitsSplitResponse {
+  ok: boolean;
+  doc_id: number;
+  unit_n: number;
+  new_unit_n: number;
+  text_a: string;
+  text_b: string;
+}
+
+export async function splitUnit(
+  conn: Conn,
+  opts: { doc_id: number; unit_n: number; text_a: string; text_b: string },
+): Promise<UnitsSplitResponse> {
+  return conn.post("/units/split", opts) as Promise<UnitsSplitResponse>;
+}
+
+// ---------------------------------------------------------------------------
 
 export interface ImportOptions {
   mode:

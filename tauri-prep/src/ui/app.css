@@ -5004,7 +5004,81 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
   border: 2px solid var(--color-primary, #1a7f4e);
   border-radius: 3px;
   outline: none;
+  resize: vertical;
 }
+
+/* Action column: merge ↑↓ and split ✂ buttons */
+.seg-cell-actions {
+  white-space: nowrap;
+  padding: 2px 4px;
+  text-align: center;
+  vertical-align: middle;
+}
+.seg-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  font-size: 0.85rem;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  color: var(--prep-text-muted, #6c757d);
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  line-height: 1;
+}
+.seg-action-btn:hover { color: #212529; background: #e9ecef; border-color: #ced4da; }
+.seg-action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.seg-merge-up:hover   { color: #0d6efd; }
+.seg-merge-down:hover { color: #0d6efd; }
+.seg-split-btn:hover  { color: var(--color-warning, #fd7e14); }
+.seg-action-placeholder { display: inline-block; width: 22px; height: 22px; }
+
+/* Inline split editor (replaces a table row) */
+.seg-split-inline {
+  padding: 10px 12px;
+  background: #fffdf0;
+  border-top: 2px solid var(--color-warning, #fd7e14);
+  border-bottom: 2px solid var(--color-warning, #fd7e14);
+}
+.seg-split-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #856404;
+  margin-bottom: 8px;
+}
+.seg-split-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.seg-split-ta {
+  width: 100%;
+  padding: 5px 8px;
+  font-size: 0.82rem;
+  border: 1px solid #ffc107;
+  border-radius: 4px;
+  resize: vertical;
+  background: #fff;
+  line-height: 1.4;
+}
+.seg-split-ta:focus { outline: none; border-color: #e09800; box-shadow: 0 0 0 2px #ffc10730; }
+.seg-split-divider {
+  text-align: center;
+  font-size: 0.75rem;
+  color: #adb5bd;
+  line-height: 1;
+  margin: 2px 0;
+}
+.seg-split-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
 .seg-cell-len {
   width: 48px;
   text-align: right;

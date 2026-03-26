@@ -12,8 +12,8 @@ from __future__ import annotations
 from typing import Any
 
 
-API_VERSION = "1.6.9"
-CONTRACT_VERSION = "1.6.9"  # semantic versioning for the sidecar API contract
+API_VERSION = "1.6.10"
+CONTRACT_VERSION = "1.6.10"  # semantic versioning for the sidecar API contract
 # 1.4.0: added export_tei_package job kind (Sprint 4 — Publication ZIP)
 # 1.4.1: ERR_CONFLICT (409) for duplicate run_id; token protection on /align, /curate, /segment
 # 1.4.2: document workflow status fields on /documents and metadata update endpoints.
@@ -45,6 +45,8 @@ CONTRACT_VERSION = "1.6.9"  # semantic versioning for the sidecar API contract
 # 1.6.9: POST /segment/detect_markers — detect [N] markers in units (read-only).
 #         POST /segment/preview mode=markers — preview [N]-based segmentation.
 #         POST /jobs/enqueue segment mode=markers — execute marker-based resegmentation.
+# 1.6.10: POST /units/merge — merge two adjacent units into one.
+#          POST /units/split — split one unit into two.
 #         Takes { doc_id, lang?, pack?, limit? }, returns segments list + warnings.
 
 # Error code catalog (stable machine-readable values).
@@ -373,6 +375,34 @@ def openapi_spec() -> dict[str, Any]:
                         },
                         "400": {"description": "Bad request", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
                         "404": {"description": "Document not found", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                    },
+                }
+            },
+            "/units/merge": {
+                "post": {
+                    "summary": "Merge two adjacent units into one",
+                    "requestBody": {
+                        "required": True,
+                        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UnitsMergeRequest"}}},
+                    },
+                    "responses": {
+                        "200": {"description": "Merged unit info", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UnitsMergeResponse"}}}},
+                        "400": {"description": "Bad request", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                        "404": {"description": "Unit not found", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                    },
+                }
+            },
+            "/units/split": {
+                "post": {
+                    "summary": "Split one unit into two",
+                    "requestBody": {
+                        "required": True,
+                        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UnitsSplitRequest"}}},
+                    },
+                    "responses": {
+                        "200": {"description": "Split result", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UnitsSplitResponse"}}}},
+                        "400": {"description": "Bad request", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                        "404": {"description": "Unit not found", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
                     },
                 }
             },
@@ -1290,6 +1320,58 @@ def openapi_spec() -> dict[str, Any]:
                         },
                     },
                     "additionalProperties": False,
+                },
+                "UnitsMergeRequest": {
+                    "type": "object",
+                    "required": ["doc_id", "n1", "n2"],
+                    "properties": {
+                        "doc_id": {"type": "integer"},
+                        "n1": {"type": "integer", "description": "n of the first (kept) unit"},
+                        "n2": {"type": "integer", "description": "n of the second (deleted) unit; must be n1+1"},
+                    },
+                    "additionalProperties": False,
+                },
+                "UnitsMergeResponse": {
+                    "allOf": [
+                        {"$ref": "#/components/schemas/BaseResponse"},
+                        {
+                            "type": "object",
+                            "required": ["doc_id", "merged_n", "deleted_n", "text"],
+                            "properties": {
+                                "doc_id": {"type": "integer"},
+                                "merged_n": {"type": "integer"},
+                                "deleted_n": {"type": "integer"},
+                                "text": {"type": "string"},
+                            },
+                        },
+                    ]
+                },
+                "UnitsSplitRequest": {
+                    "type": "object",
+                    "required": ["doc_id", "unit_n", "text_a", "text_b"],
+                    "properties": {
+                        "doc_id": {"type": "integer"},
+                        "unit_n": {"type": "integer"},
+                        "text_a": {"type": "string", "description": "Text for the first (existing) unit"},
+                        "text_b": {"type": "string", "description": "Text for the new unit inserted at unit_n+1"},
+                    },
+                    "additionalProperties": False,
+                },
+                "UnitsSplitResponse": {
+                    "allOf": [
+                        {"$ref": "#/components/schemas/BaseResponse"},
+                        {
+                            "type": "object",
+                            "required": ["doc_id", "unit_n", "new_unit_n", "text_a", "text_b"],
+                            "properties": {
+                                "doc_id": {"type": "integer"},
+                                "unit_n": {"type": "integer"},
+                                "new_unit_n": {"type": "integer"},
+                                "text_a": {"type": "string"},
+                                "text_b": {"type": "string"},
+                            },
+                        },
+                    ]
                 },
                 "SegmentDetectMarkersRequest": {
                     "type": "object",
