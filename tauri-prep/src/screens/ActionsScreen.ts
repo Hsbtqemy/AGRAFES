@@ -1469,6 +1469,11 @@ export class ActionsScreen {
         <div class="seg-saved-info">${preview.total_lines} segment(s) &middot; double-clic pour modifier un texte</div>
         <div class="seg-segments-scroll">
           <table class="seg-segments-table">
+            <colgroup>
+              <col style="width:40px">
+              <col>
+              <col style="width:52px">
+            </colgroup>
             <thead><tr><th>#</th><th>Texte</th><th>Long.</th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
