@@ -4798,6 +4798,9 @@ export class ActionsScreen {
     container.querySelectorAll<HTMLButtonElement>(".preview-mode-btn").forEach(btn => {
       btn.classList.toggle("active", btn.dataset.previewMode === this._previewMode);
     });
+    // Expose mode on the preview-grid so CSS can adapt column layout (ex: full-width in diffonly)
+    const previewGrid = container.querySelector<HTMLElement>(".preview-grid");
+    if (previewGrid) previewGrid.dataset.previewMode = this._previewMode;
   }
 
   private _currentRules(): CurateRule[] {

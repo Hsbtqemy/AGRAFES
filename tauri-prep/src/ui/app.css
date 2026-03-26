@@ -3217,7 +3217,8 @@ details.seg-side[open] { width: 220px; }
 .seg-badge-none { background: #f8f9fa; color: var(--prep-muted,#4f5d6d); border: 1px solid var(--prep-line,#dde1e8); }
 @media (max-width:1100px) { .seg-workspace, .seg-workspace-lt { grid-template-columns: 1fr; } details.seg-side { display: none; } .seg-col { border-right: 0; border-bottom: 1px solid var(--prep-line,#dde1e8); } .seg-col:last-child { border-bottom: 0; } .seg-preview-card { position: static; max-height: none; } }
 @media (max-width:900px) { .seg-stats-grid { grid-template-columns: 1fr 1fr; } .seg-inner-body { padding: 8px; } }
-@media (max-width:1300px) { .curate-workspace { grid-template-columns: 250px 1fr; } #act-curate-card .curate-workspace { grid-template-columns: 220px 1fr; } .curate-col-right { grid-column: 1/-1; border-right: 0; border-top: 1px solid var(--prep-line,#dde1e8); } .curate-preview-body { grid-template-columns: 1fr 1fr; } .curate-minimap { display: none; } }
+/* 1300px : curate-workspaces génériques (hors #act-curate-card géré par ses propres breakpoints) */
+@media (max-width:1300px) { .curate-workspace { grid-template-columns: 250px 1fr; } .curate-col-right { grid-column: 1/-1; border-right: 0; border-top: 1px solid var(--prep-line,#dde1e8); } .curate-preview-body { grid-template-columns: 1fr 1fr; } .curate-minimap { display: none; } }
 @media (max-width:1050px) { .prep-shell { grid-template-columns: 1fr; } .prep-nav { border-right: 0; border-bottom: 1px solid var(--prep-line,#dde1e8); } .curate-workspace { grid-template-columns: 1fr; } .curate-col { border-right: 0; border-bottom: 1px solid var(--prep-line,#dde1e8); } .curate-col:last-child { border-bottom: 0; } .curate-preview-card { position: static; max-height: none; } }
 @media (max-width:800px) { .curate-preview-body { grid-template-columns: 1fr; } .curate-pane { min-height: 160px; } }
 
@@ -4284,15 +4285,29 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
   padding: 8px 10px;
 }
 
-/* preview-controls: barre horizontale compacte (mockup: space-between, not column) */
+/* preview-controls: une seule ligne compacte — mode-row prend la place disponible,
+   nav-row s'accroche à droite via margin-left:auto, filtre-badge tombe sur ligne 2 si besoin */
 #act-curate-card .preview-controls {
   flex-direction: row;
   flex-wrap: wrap;
-  justify-content: space-between;
   align-items: center;
-  gap: 5px 10px;
-  padding: 6px 10px;
+  gap: 4px 8px;
+  padding: 5px 10px;
   font-size: 13px;
+}
+#act-curate-card .preview-controls > .preview-mode-row {
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 4px;
+  flex-wrap: nowrap;  /* les 3 boutons ne wrappent pas entre eux */
+}
+#act-curate-card .preview-controls > .preview-nav-row {
+  flex: 0 0 auto;
+  margin-left: auto; /* pousse la navigation à droite */
+}
+#act-curate-card .preview-controls > .preview-filter-badge {
+  flex: 0 0 100%;     /* badge de filtre toujours sur une ligne dédiée */
+  margin-top: 2px;
 }
 #act-curate-card .preview-controls .chip {
   font-size: 12px;
@@ -4307,6 +4322,14 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
   min-width: 0;
   flex: none;
   overflow: hidden;
+}
+/* En mode "curé seul" (diffonly): le panneau brut est masqué → le diff prend toute la largeur */
+#act-curate-card .preview-grid[data-preview-mode="diffonly"] {
+  grid-template-columns: minmax(0, 1fr) 22px;
+}
+/* En mode "brut seul" (rawonly): le panneau diff est masqué → le brut prend toute la largeur */
+#act-curate-card .preview-grid[data-preview-mode="rawonly"] {
+  grid-template-columns: minmax(0, 1fr) 22px;
 }
 /* pane: block (not grid), natural height from pane-head + doc-scroll max-height (RC3 fix) */
 #act-curate-card .preview-grid > .pane {
@@ -4465,12 +4488,14 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
   margin-top: 0;
   margin-bottom: 8px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 78px auto;
-  gap: 8px;
+  /* Pattern + Remplacement sur ligne 1, Flags + Ajouter sur ligne 2 */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 6px;
   align-items: end;
 }
 #act-curate-card .curate-advanced-flags {
-  max-width: 78px;
+  max-width: none;
+  min-width: 0;
 }
 #act-curate-card .curate-advanced-add {
   align-self: end;
@@ -4487,9 +4512,9 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
   border-radius: 9px; padding: 1px 7px; vertical-align: middle;
 }
 .fr-fields {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
   margin-bottom: 8px;
 }
 .fr-field-label { display: flex; flex-direction: column; gap: 3px; font-size: 0.78rem; }
@@ -4513,35 +4538,43 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
   padding-bottom: 8px;
 }
 
-/* At 1400px: collapse right col below center (mirrors global rule for this scoped layout) */
+/* ── Breakpoints curation ────────────────────────────────────────────────────
+   1400px : passe de 3 colonnes → 2 colonnes (col. droite tombe en dessous)
+   1050px : minimap masquée, texte plus court, colonnes empilées verticalement
+   800px  : preview-grid à 1 colonne
+   ─────────────────────────────────────────────────────────────────────────── */
 @media (max-width: 1400px) {
   #act-curate-card .curate-workspace {
-    grid-template-columns: minmax(280px, 300px) 1fr;
+    grid-template-columns: minmax(260px, 290px) 1fr;
   }
   #act-curate-card .curate-col-right {
     grid-column: 1 / -1;
     max-width: none;
+    border-right: 0;
+    border-top: 1px solid var(--prep-line, #dde1e8);
   }
   #act-curate-card .preview-grid > .pane .doc-scroll {
-    height: clamp(460px, 58vh, 560px);
-    min-height: 460px;
-    max-height: 560px;
+    height: clamp(440px, 56vh, 540px);
+    min-height: 440px;
+    max-height: 540px;
   }
 }
 
 @media (max-width: 1050px) {
-  /* preview-card loses sticky at this breakpoint (global CSS); no extra overrides needed */
+  /* Colonnes rapides → 1 seule colonne */
   #act-curate-card .curation-quick-rules,
-  #act-curate-card .curate-advanced-row,
-  #act-curate-card .fr-fields {
+  #act-curate-card .curate-advanced-row {
     grid-template-columns: 1fr;
   }
-  #act-curate-card .curate-advanced-flags {
-    max-width: none;
-  }
-  /* Minimap hidden at 1050px (matches curation mockup); drop the 26px minimap column */
+  /* Minimap masquée : preview-grid sans la 3e colonne (déjà géré par data-preview-mode pour
+     les modes single-pane ; en sidebyside on garde 2 colonnes de texte) */
   #act-curate-card .preview-grid {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  /* En mode single-pane à 1050px : 1 seule colonne (pas de minimap) */
+  #act-curate-card .preview-grid[data-preview-mode="diffonly"],
+  #act-curate-card .preview-grid[data-preview-mode="rawonly"] {
+    grid-template-columns: minmax(0, 1fr);
   }
   #act-curate-card #act-curate-minimap {
     display: none;
@@ -4549,8 +4582,10 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
 }
 
 @media (max-width: 800px) {
-  #act-curate-card .preview-grid {
-    grid-template-columns: 1fr;
+  #act-curate-card .preview-grid,
+  #act-curate-card .preview-grid[data-preview-mode="diffonly"],
+  #act-curate-card .preview-grid[data-preview-mode="rawonly"] {
+    grid-template-columns: minmax(0, 1fr);
   }
   #act-curate-card .preview-grid > .pane .doc-scroll {
     max-height: none;
