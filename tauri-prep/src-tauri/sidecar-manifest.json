@@ -1,0 +1,15 @@
+{
+  "name": "multicorpus",
+  "target_triple": "x86_64-pc-windows-msvc",
+  "version": "0.7.0",
+  "format": "onefile",
+  "artifact_type": "file",
+  "artifact_path": "C:\\Dev\\AGRAFES-1\\tauri-prep\\src-tauri\\multicorpus-x86_64-pc-windows-msvc.exe",
+  "artifact_size_bytes": 15779029,
+  "artifact_size_mb": 15.048,
+  "executable_path": "C:\\Dev\\AGRAFES-1\\tauri-prep\\src-tauri\\multicorpus-x86_64-pc-windows-msvc.exe",
+  "executable_size_bytes": 15779029,
+  "executable_size_mb": 15.048,
+  "sha256": "3e213aa80a559124bd84ff1368d82533ce802bfb2b201f0ff3a46433a2b4cb3d",
+  "build_time": "2026-03-26T09:04:17Z"
+}

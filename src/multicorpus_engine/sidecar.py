@@ -2865,9 +2865,9 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 http_status=400,
             )
             return
-        if limit < 1 or limit > 20:
+        if limit < 1 or limit > 500:
             self._send_error(
-                "limit must be between 1 and 20",
+                "limit must be between 1 and 500",
                 code=ERR_BAD_REQUEST,
                 http_status=400,
             )

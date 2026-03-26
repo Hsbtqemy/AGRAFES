@@ -1374,20 +1374,21 @@ export class ActionsScreen {
     const countEl = document.querySelector<HTMLElement>("#act-seg-prev-raw-count");
     if (!rawEl || !this._conn) return;
     try {
+      // /documents/preview accepts limit 1–500; show first 200 lines for the raw column
       const preview = await getDocumentPreview(this._conn, docId, 200);
       if (countEl) countEl.textContent = String(preview.total_lines);
       if (!preview.lines.length) {
         rawEl.innerHTML = `<p class="empty-hint">Aucune unit&#233;.</p>`;
         return;
       }
-      const truncNote = preview.total_lines > preview.limit
-        ? `<p class="seg-trunc-note">Aper&#231;u — ${preview.limit}/${preview.total_lines} unit&#233;s</p>`
+      const truncNote = preview.total_lines > 200
+        ? `<p class="seg-trunc-note">Aper&#231;u — 200/${preview.total_lines} unit&#233;s (premi&#232;res lignes)</p>`
         : "";
       rawEl.innerHTML = truncNote + preview.lines.map(l =>
         `<div class="seg-prev-row"><span class="seg-prev-n">${l.n}</span><span class="seg-prev-tx">${_escHtml(l.text)}</span></div>`,
       ).join("");
-    } catch {
-      rawEl.innerHTML = `<p class="empty-hint">Impossible de charger le texte brut.</p>`;
+    } catch (err) {
+      rawEl.innerHTML = `<p class="empty-hint">Impossible de charger le texte brut : ${_escHtml(err instanceof Error ? err.message : String(err))}</p>`;
     }
   }
 
@@ -1446,6 +1447,7 @@ export class ActionsScreen {
     if (!this._conn) return;
     el.innerHTML = `<p class="empty-hint">Chargement&#8230;</p>`;
     try {
+      // /documents/preview accepts limit 1–500; show up to 500 segments in the table
       const preview = await getDocumentPreview(this._conn, docId, 500);
       const countEl = document.querySelector<HTMLElement>("#act-seg-saved-count");
       if (countEl) countEl.textContent = String(preview.total_lines);
@@ -1453,8 +1455,8 @@ export class ActionsScreen {
         el.innerHTML = `<p class="empty-hint">Aucun segment en base.</p>`;
         return;
       }
-      const truncNote = preview.total_lines > preview.limit
-        ? `<p class="seg-trunc-note">Aper&#231;u — ${preview.limit}/${preview.total_lines} segments</p>`
+      const truncNote = preview.total_lines > 500
+        ? `<p class="seg-trunc-note">Aper&#231;u — 500/${preview.total_lines} segments</p>`
         : "";
 
       const rows = preview.lines.map(l =>
