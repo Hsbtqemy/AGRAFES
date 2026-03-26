@@ -1,48 +1,1698 @@
-[
-  "/align",
-  "/align/audit",
-  "/align/collisions",
-  "/align/collisions/resolve",
-  "/align/link/acknowledge_source_change",
-  "/align/link/delete",
-  "/align/link/retarget",
-  "/align/link/update_status",
-  "/align/links/batch_update",
-  "/align/quality",
-  "/align/retarget_candidates",
-  "/corpus/audit",
-  "/corpus/info",
-  "/curate",
-  "/curate/preview",
-  "/db/backup",
-  "/doc_relations",
-  "/doc_relations/all",
-  "/doc_relations/delete",
-  "/doc_relations/set",
-  "/documents",
-  "/documents/bulk_update",
-  "/documents/delete",
-  "/documents/preview",
-  "/documents/update",
-  "/export/align_csv",
-  "/export/bilingual",
-  "/export/run_report",
-  "/export/tei",
-  "/export/tmx",
-  "/families",
-  "/families/{family_root_id}/align",
-  "/families/{family_root_id}/curation_status",
-  "/families/{family_root_id}/segment",
-  "/health",
-  "/import",
-  "/index",
-  "/jobs",
-  "/jobs/enqueue",
-  "/jobs/{job_id}",
-  "/jobs/{job_id}/cancel",
-  "/openapi.json",
-  "/query",
-  "/segment",
-  "/shutdown",
-  "/validate-meta"
-]
+{
+  "/health": {
+    "get": {
+      "summary": "Health check",
+      "responses": {
+        "200": {
+          "description": "Server is healthy",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HealthResponse"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "/openapi.json": {
+    "get": {
+      "summary": "OpenAPI contract",
+      "responses": {
+        "200": {
+          "description": "OpenAPI specification document",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "/query": {
+    "post": {
+      "summary": "Run query",
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/QueryRequest"
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Query result",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QueryResponse"
+              }
+            }
+          }
+        },
+        "400": {
+          "description": "Bad request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          }
+        },
+        "500": {
+          "description": "Internal error",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "/index": {
+    "post": {
+      "summary": "Rebuild FTS index",
+      "responses": {
+        "200": {
+          "description": "Index rebuilt",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IndexResponse"
+              }
+            }
+          }
+        },
+        "401": {
+          "description": "Unauthorized (missing/invalid token)",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          }
+        },
+        "500": {
+          "description": "Internal error",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "/import": {
+    "post": {
+      "summary": "Import a document into corpus DB",
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ImportRequest"
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Import result",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportResponse"
+              }
+            }
+          }
+        },
+        "400": {
+          "description": "Bad request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          }
+        },
+        "401": {
+          "description": "Unauthorized (missing/invalid token)",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          }
+        },
+        "500": {
+          "description": "Internal error",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "/curate": {
+    "post": {
+      "summary": "Apply curation rules",
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/CurateRequest"
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Curation applied",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CurateResponse"
+              }
+            }
+          }
+        },
+        "400": {
+          "description": "Bad request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          }
+        },
+        "500": {
+          "description": "Internal error",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "/validate-meta": {
+    "post": {
+      "summary": "Validate metadata",
+      "requestBody": {
+        "required": false,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ValidateMetaRequest"
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Validation report",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ValidateMetaResponse"
+              }
+            }
+          }
+        },
+        "500": {
+          "description": "Internal error",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "/segment/preview": {
+    "post": {
+      "summary": "Preview segmentation in-memory (no DB writes)",
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/SegmentPreviewRequest"
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Preview result with segments list",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SegmentPreviewResponse"
+              }
+            }
+          }
+        },
+        "400": {
+          "description": "Bad request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          }
+        },
+        "404": {
+          "description": "Document not found",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "/segment": {
+    "post": {
+      "summary": "Resegment document",
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/SegmentRequest"
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Segmentation report",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SegmentResponse"
+              }
+            }
+          }
+        },
+        "400": {
+          "description": "Bad request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          }
+        },
+        "500": {
+          "description": "Internal error",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "/curate/preview": {
+    "post": {
+      "summary": "Preview curation rules without writing to DB (dry-run)",
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/CuratePreviewRequest"
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Preview result with stats and examples",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CuratePreviewResponse"
+              }
+            }
+          }
+        },
+        "400": {
+          "description": "Bad request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          }
+        },
+        "500": {
+          "description": "Internal error",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "/align/audit": {
+    "post": {
+      "summary": "Paginated read-only audit of alignment links for a pivot/target pair",
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/AlignAuditRequest"
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Alignment link audit page",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlignAuditResponse"
+              }
+            }
+          }
+        },
+        "400": {
+          "description": "Bad request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          }
+        },
+        "500": {
+          "description": "Internal error",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "/align/quality": {
+    "post": {
+      "summary": "Read-only alignment quality metrics for a pivot/target pair",
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/AlignQualityRequest"
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Alignment quality report",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlignQualityResponse"
+              }
+            }
+          }
+        },
+        "400": {
+          "description": "Bad request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          }
+        },
+        "500": {
+          "description": "Internal error",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "/documents": {
+    "get": {
+      "summary": "List all documents in corpus",
+      "responses": {
+        "200": {
+          "description": "Document list",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DocumentsResponse"
+              }
+            }
+          }
+        },
+        "500": {
+          "description": "Internal error",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "/documents/preview": {
+    "get": {
+      "summary": "Get mini content preview for one document",
+      "parameters": [
+        {
+          "name": "doc_id",
+          "in": "query",
+          "required": true,
+          "schema": {
+            "type": "integer"
+          },
+          "description": "Document identifier"
+        },
+        {
+          "name": "limit",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20,
+            "default": 6
+          },
+          "description": "Maximum number of preview lines"
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Document preview",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DocumentPreviewResponse"
+              }
+            }
+          }
+        },
+        "400": {
+          "description": "Bad request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          }
+        },
+        "404": {
+          "description": "Document not found",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          }
+        },
+        "500": {
+          "description": "Internal error",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "/align": {
+    "post": {
+      "summary": "Align documents by external_id, position, or similarity",
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/AlignRequest"
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Alignment reports",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlignResponse"
+              }
+            }
+          }
+        },
+        "400": {
+          "description": "Bad request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          }
+        },
+        "500": {
+          "description": "Internal error",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "/shutdown": {
+    "post": {
+      "summary": "Gracefully stop sidecar process",
+      "responses": {
+        "200": {
+          "description": "Shutdown accepted",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShutdownResponse"
+              }
+            }
+          }
+        },
+        "401": {
+          "description": "Unauthorized (missing/invalid token)",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          }
+        },
+        "500": {
+          "description": "Internal error",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "/jobs": {
+    "get": {
+      "summary": "List async jobs",
+      "responses": {
+        "200": {
+          "description": "Job list",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JobsListResponse"
+              }
+            }
+          }
+        }
+      }
+    },
+    "post": {
+      "summary": "Submit async job",
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/JobSubmitRequest"
+            }
+          }
+        }
+      },
+      "responses": {
+        "202": {
+          "description": "Accepted job",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JobAcceptedResponse"
+              }
+            }
+          }
+        },
+        "400": {
+          "description": "Bad request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "/jobs/{job_id}": {
+    "get": {
+      "summary": "Get async job status",
+      "parameters": [
+        {
+          "name": "job_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Job status",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JobAcceptedResponse"
+              }
+            }
+          }
+        },
+        "404": {
+          "description": "Job not found",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "/jobs/enqueue": {
+    "post": {
+      "summary": "Enqueue an async job (token required; supports all kinds including import/align/exports)",
+      "security": [
+        {
+          "token": []
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/JobEnqueueRequest"
+            }
+          }
+        }
+      },
+      "responses": {
+        "202": {
+          "description": "Job accepted",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JobAcceptedResponse"
+              }
+            }
+          }
+        },
+        "400": {
+          "description": "Bad request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          }
+        },
+        "401": {
+          "description": "Unauthorized",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "/jobs/{job_id}/cancel": {
+    "post": {
+      "summary": "Cancel a queued or running job (best-effort; idempotent)",
+      "security": [
+        {
+          "token": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "job_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Job canceled",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JobCancelResponse"
+              }
+            }
+          }
+        },
+        "401": {
+          "description": "Unauthorized",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          }
+        },
+        "404": {
+          "description": "Job not found",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "/documents/update": {
+    "post": {
+      "summary": "Update document metadata",
+      "security": [
+        {
+          "token": []
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/DocumentUpdateRequest"
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Updated"
+        },
+        "400": {
+          "description": "Bad request"
+        },
+        "401": {
+          "description": "Unauthorized"
+        },
+        "404": {
+          "description": "Not found"
+        }
+      }
+    }
+  },
+  "/documents/bulk_update": {
+    "post": {
+      "summary": "Bulk update document metadata",
+      "security": [
+        {
+          "token": []
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/DocumentBulkUpdateRequest"
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Updated"
+        },
+        "400": {
+          "description": "Bad request"
+        },
+        "401": {
+          "description": "Unauthorized"
+        }
+      }
+    }
+  },
+  "/documents/delete": {
+    "post": {
+      "summary": "Delete documents and all associated data (units, alignment links, relations)",
+      "security": [
+        {
+          "token": []
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "doc_ids"
+              ],
+              "properties": {
+                "doc_ids": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  },
+                  "minItems": 1
+                }
+              }
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Deleted",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "ok": {
+                    "type": "boolean"
+                  },
+                  "deleted": {
+                    "type": "integer"
+                  },
+                  "doc_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "400": {
+          "description": "Bad request"
+        },
+        "401": {
+          "description": "Unauthorized"
+        }
+      }
+    }
+  },
+  "/doc_relations": {
+    "get": {
+      "summary": "List doc_relations for a document",
+      "parameters": [
+        {
+          "name": "doc_id",
+          "in": "query",
+          "required": true,
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Relations"
+        },
+        "400": {
+          "description": "Bad request"
+        }
+      }
+    }
+  },
+  "/doc_relations/all": {
+    "get": {
+      "summary": "All doc_relations in the corpus (for hierarchy view)",
+      "responses": {
+        "200": {
+          "description": "All relations"
+        }
+      }
+    }
+  },
+  "/families": {
+    "get": {
+      "summary": "List document families (parent + children + completion stats)",
+      "responses": {
+        "200": {
+          "description": "Families with stats"
+        }
+      }
+    }
+  },
+  "/families/{family_root_id}/segment": {
+    "post": {
+      "summary": "Segment all documents in a family (parent first, then children)",
+      "parameters": [
+        {
+          "name": "family_root_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": false,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/FamilySegmentRequest"
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Per-doc segmentation results"
+        },
+        "400": {
+          "description": "Bad request"
+        },
+        "404": {
+          "description": "Family root not found"
+        }
+      }
+    }
+  },
+  "/families/{family_root_id}/align": {
+    "post": {
+      "summary": "Align all parent↔child pairs in a family",
+      "parameters": [
+        {
+          "name": "family_root_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": false,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/FamilyAlignRequest"
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Per-pair alignment results"
+        },
+        "400": {
+          "description": "Bad request (unready children, bad strategy…)"
+        },
+        "404": {
+          "description": "Family root not found"
+        }
+      }
+    }
+  },
+  "/families/{family_root_id}/curation_status": {
+    "get": {
+      "summary": "List alignment links with source_changed_at set for a family",
+      "parameters": [
+        {
+          "name": "family_root_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Per-child list of pending curation reviews"
+        },
+        "404": {
+          "description": "Family root not found"
+        }
+      }
+    }
+  },
+  "/align/link/acknowledge_source_change": {
+    "post": {
+      "summary": "Clear source_changed_at flag on alignment links (mark as reviewed)",
+      "security": [
+        {
+          "token": []
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/AcknowledgeSourceChangeRequest"
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Number of links acknowledged"
+        },
+        "400": {
+          "description": "Bad request"
+        },
+        "401": {
+          "description": "Unauthorized"
+        }
+      }
+    }
+  },
+  "/doc_relations/set": {
+    "post": {
+      "summary": "Upsert a doc_relation",
+      "security": [
+        {
+          "token": []
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/DocRelationSetRequest"
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Created or updated"
+        },
+        "400": {
+          "description": "Bad request"
+        },
+        "401": {
+          "description": "Unauthorized"
+        }
+      }
+    }
+  },
+  "/doc_relations/delete": {
+    "post": {
+      "summary": "Delete a doc_relation by id",
+      "security": [
+        {
+          "token": []
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "id"
+              ],
+              "properties": {
+                "id": {
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Deleted"
+        },
+        "400": {
+          "description": "Bad request"
+        },
+        "401": {
+          "description": "Unauthorized"
+        }
+      }
+    }
+  },
+  "/export/tmx": {
+    "post": {
+      "summary": "Export aligned pairs to TMX 1.4 format (single pair or whole family)",
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ExportTmxRequest"
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "TMX file path and TU count"
+        },
+        "400": {
+          "description": "Bad request"
+        }
+      }
+    }
+  },
+  "/export/bilingual": {
+    "post": {
+      "summary": "Export interleaved bilingual text (HTML or TXT) or return inline preview",
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ExportBilingualRequest"
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "File path + pair_count, or preview payload"
+        },
+        "400": {
+          "description": "Bad request"
+        }
+      }
+    }
+  },
+  "/export/tei": {
+    "post": {
+      "summary": "Export documents as TEI XML",
+      "security": [
+        {
+          "token": []
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ExportTeiRequest"
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Files created"
+        },
+        "400": {
+          "description": "Bad request"
+        },
+        "401": {
+          "description": "Unauthorized"
+        }
+      }
+    }
+  },
+  "/export/align_csv": {
+    "post": {
+      "summary": "Export alignment links as CSV/TSV",
+      "security": [
+        {
+          "token": []
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ExportAlignCsvRequest"
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "File written"
+        },
+        "400": {
+          "description": "Bad request"
+        },
+        "401": {
+          "description": "Unauthorized"
+        }
+      }
+    }
+  },
+  "/export/run_report": {
+    "post": {
+      "summary": "Export run history as JSONL or HTML",
+      "security": [
+        {
+          "token": []
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ExportRunReportRequest"
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Report written"
+        },
+        "400": {
+          "description": "Bad request"
+        },
+        "401": {
+          "description": "Unauthorized"
+        }
+      }
+    }
+  },
+  "/db/backup": {
+    "post": {
+      "summary": "Create a timestamped SQLite backup file (.db.bak)",
+      "security": [
+        {
+          "token": []
+        }
+      ],
+      "requestBody": {
+        "required": false,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/DbBackupRequest"
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Backup created",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DbBackupResponse"
+              }
+            }
+          }
+        },
+        "400": {
+          "description": "Bad request"
+        },
+        "401": {
+          "description": "Unauthorized"
+        },
+        "404": {
+          "description": "DB file not found"
+        }
+      }
+    }
+  },
+  "/corpus/audit": {
+    "get": {
+      "summary": "Corpus health audit: missing fields, empty documents, duplicates (hash/filename/title)",
+      "responses": {
+        "200": {
+          "description": "Audit result",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorpusAuditResponse"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "/corpus/info": {
+    "get": {
+      "summary": "Read corpus-level metadata (title, description, flexible meta object)",
+      "responses": {
+        "200": {
+          "description": "Corpus info",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorpusInfoResponse"
+              }
+            }
+          }
+        }
+      }
+    },
+    "post": {
+      "summary": "Update corpus metadata (partial JSON body; token required when enabled)",
+      "security": [
+        {
+          "token": []
+        }
+      ],
+      "requestBody": {
+        "required": false,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/CorpusInfoPatchRequest"
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Updated corpus info",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorpusInfoResponse"
+              }
+            }
+          }
+        },
+        "400": {
+          "description": "Bad request"
+        },
+        "401": {
+          "description": "Unauthorized"
+        }
+      }
+    }
+  },
+  "/align/link/update_status": {
+    "post": {
+      "summary": "Update status of an alignment link",
+      "security": [
+        {
+          "token": []
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/AlignLinkUpdateStatusRequest"
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Updated"
+        },
+        "400": {
+          "description": "Bad request"
+        },
+        "401": {
+          "description": "Unauthorized"
+        },
+        "404": {
+          "description": "Not found"
+        }
+      }
+    }
+  },
+  "/align/link/delete": {
+    "post": {
+      "summary": "Delete an alignment link",
+      "security": [
+        {
+          "token": []
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/AlignLinkDeleteRequest"
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Deleted"
+        },
+        "400": {
+          "description": "Bad request"
+        },
+        "401": {
+          "description": "Unauthorized"
+        }
+      }
+    }
+  },
+  "/align/link/retarget": {
+    "post": {
+      "summary": "Change target unit of an alignment link",
+      "security": [
+        {
+          "token": []
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/AlignLinkRetargetRequest"
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Retargeted"
+        },
+        "400": {
+          "description": "Bad request"
+        },
+        "401": {
+          "description": "Unauthorized"
+        },
+        "404": {
+          "description": "Not found"
+        }
+      }
+    }
+  },
+  "/align/links/batch_update": {
+    "post": {
+      "summary": "Apply a batch of set_status/delete operations on alignment links",
+      "security": [
+        {
+          "token": []
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/AlignLinksBatchUpdateRequest"
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Batch result"
+        },
+        "400": {
+          "description": "Bad request"
+        },
+        "401": {
+          "description": "Unauthorized"
+        }
+      }
+    }
+  },
+  "/align/retarget_candidates": {
+    "post": {
+      "summary": "Suggest candidate target units for retargeting an alignment link",
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/RetargetCandidatesRequest"
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Pivot info + candidates list"
+        },
+        "400": {
+          "description": "Bad request"
+        },
+        "404": {
+          "description": "Not found"
+        }
+      }
+    }
+  },
+  "/align/collisions": {
+    "post": {
+      "summary": "List pivot units with multiple alignment links to the same target doc (collisions)",
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/AlignCollisionsRequest"
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Paginated collision groups"
+        },
+        "400": {
+          "description": "Bad request"
+        }
+      }
+    }
+  },
+  "/align/collisions/resolve": {
+    "post": {
+      "summary": "Batch-resolve collision links (keep/delete/reject/unreviewed) — token required",
+      "security": [
+        {
+          "ApiKeyAuth": []
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/CollisionResolveRequest"
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Batch result"
+        },
+        "400": {
+          "description": "Bad request"
+        },
+        "401": {
+          "description": "Unauthorized"
+        }
+      }
+    }
+  }
+}

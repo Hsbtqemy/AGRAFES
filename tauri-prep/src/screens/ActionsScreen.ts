@@ -38,6 +38,7 @@ import {
   exportRunReport,
   updateDocument,
   getDocumentPreview,
+  segmentPreview,
   SidecarError,
   type CurateException,
   listCurateExceptions,
@@ -274,6 +275,12 @@ export class ActionsScreen {
   private _segFocusMode = false;
   /** Tracks current VO preview limit per docId for "Afficher plus" pagination */
   private _voPreviewLimitByDocId = new Map<number, number>();
+
+  // Sprint 9 — new split segmentation panel
+  /** Currently selected document in the split seg panel */
+  private _selectedSegDocId: number | null = null;
+  /** Debounce timer for live segment preview */
+  private _segPreviewTimer: ReturnType<typeof setTimeout> | null = null;
 
   // V1.5 — Collision state
   private _collOffset = 0;
@@ -1072,7 +1079,450 @@ export class ActionsScreen {
     return el;
   }
 
+  // ── New split segmentation panel (Sprint 9) ────────────────────────────────
+
+  /**
+   * Build the segmentation panel: 2-col split (doc list | detail panel).
+   * Replaces the former 3-view layout (units / traduction / longtext).
+   */
   private _renderSegmentationPanel(root: HTMLElement): HTMLElement {
+    const el = document.createElement("div");
+    el.setAttribute("role", "main");
+    el.setAttribute("aria-label", "Vue Segmentation");
+    el.className = "seg-panel-root";
+    el.innerHTML = `
+      <section class="acts-seg-head-card">
+        <div class="acts-hub-head-left">
+          <h1>Segmentation</h1>
+          <p>S&#233;lectionnez un document pour voir l'aper&#231;u live et lancer la segmentation.</p>
+        </div>
+        <div class="acts-hub-head-tools">
+          <button class="acts-hub-head-link" data-nav="curation">Voir Curation</button>
+          <button class="acts-hub-head-link" data-nav="alignement">Voir Alignement</button>
+        </div>
+      </section>
+      <div class="seg-split-layout">
+        <div class="seg-split-list" id="act-seg-split-list">
+          <div class="seg-split-list-head">
+            <span class="seg-split-list-title">Documents</span>
+            <input type="search" id="act-seg-list-filter" class="seg-split-list-filter"
+              placeholder="Filtrer&#8230;" autocomplete="off" />
+          </div>
+          <div class="seg-split-list-scroll" id="act-seg-list-scroll">
+            <p class="empty-hint">Chargement&#8230;</p>
+          </div>
+        </div>
+        <div class="seg-split-right" id="act-seg-split-right">
+          <div class="seg-right-empty">&#8592; S&#233;lectionnez un document</div>
+        </div>
+      </div>
+    `;
+    this._bindHeadNavLinks(el, root);
+
+    // Filter list on input
+    el.querySelector<HTMLInputElement>("#act-seg-list-filter")?.addEventListener("input", (e) => {
+      const q = (e.target as HTMLInputElement).value.toLowerCase();
+      el.querySelectorAll<HTMLElement>(".seg-doc-row").forEach(row => {
+        const match = (row.textContent ?? "").toLowerCase().includes(q);
+        row.style.display = match ? "" : "none";
+      });
+      el.querySelectorAll<HTMLElement>(".seg-doc-group").forEach(grp => {
+        const visible = Array.from(grp.querySelectorAll<HTMLElement>(".seg-doc-row"))
+          .some(r => r.style.display !== "none");
+        (grp.previousElementSibling as HTMLElement | null)?.style &&
+          ((grp.previousElementSibling as HTMLElement).style.display = visible ? "" : "none");
+        (grp as HTMLElement).style.display = visible ? "" : "none";
+      });
+    });
+
+    return el;
+  }
+
+  // ── Populate doc list (called after _loadDocs) ──────────────────────────────
+
+  private _populateSegDocList(): void {
+    const scrollEl = document.querySelector<HTMLElement>("#act-seg-list-scroll");
+    if (!scrollEl) return;
+
+    // Build family groups from doc_relations (same logic as MetadataScreen)
+    const rootDocs = this._docs.filter(d =>
+      !this._docs.some(other => other.doc_id !== d.doc_id &&
+        (other as unknown as { children?: unknown[] }).children),
+    );
+
+    // Simpler grouping: collect docs that have relation info from _docs
+    // We use title prefix matching as a heuristic; actual grouping uses listFamilies
+    // For now: flat list grouped into "families" (docs with same title stem) + orphelins
+    // We rely on workflow_status badge only — grouping by family requires async call,
+    // so we do it async here.
+    scrollEl.innerHTML = `<p class="empty-hint">Chargement des familles&#8230;</p>`;
+    void this._buildSegDocListHtml().then(html => {
+      if (!scrollEl.isConnected) return;
+      scrollEl.innerHTML = html;
+      // Wire click handlers
+      scrollEl.querySelectorAll<HTMLElement>(".seg-doc-row").forEach(row => {
+        row.addEventListener("click", () => {
+          const docId = parseInt(row.dataset.docId ?? "", 10);
+          if (!docId) return;
+          scrollEl.querySelectorAll(".seg-doc-row").forEach(r => r.classList.remove("active"));
+          row.classList.add("active");
+          this._selectedSegDocId = docId;
+          const rightEl = document.querySelector<HTMLElement>("#act-seg-split-right");
+          if (rightEl) void this._loadSegRightPanel(docId, rightEl);
+        });
+      });
+      // Restore selection if a doc was previously selected
+      if (this._selectedSegDocId) {
+        const prevRow = scrollEl.querySelector<HTMLElement>(
+          `.seg-doc-row[data-doc-id="${this._selectedSegDocId}"]`,
+        );
+        prevRow?.classList.add("active");
+      }
+    });
+  }
+
+  private async _buildSegDocListHtml(): Promise<string> {
+    const statusBadge = (d: DocumentRecord): string => {
+      const s = d.workflow_status ?? "draft";
+      if (s === "validated") return `<span class="seg-doc-badge seg-badge-ok">&#10003; Valid&#233;</span>`;
+      if (s === "review")    return `<span class="seg-doc-badge seg-badge-warn">&#9203; En revue</span>`;
+      return `<span class="seg-doc-badge seg-badge-none">Brouillon</span>`;
+    };
+
+    const docRow = (d: DocumentRecord, indent = false): string =>
+      `<div class="seg-doc-row${indent ? " seg-doc-child" : ""}" data-doc-id="${d.doc_id}">
+        <div class="seg-doc-row-main">
+          <span class="seg-doc-title" title="${_escHtml(d.title)}">${_escHtml(d.title)}</span>
+          <span class="seg-doc-lang">[${_escHtml(d.language)}]</span>
+        </div>
+        <div class="seg-doc-row-foot">
+          <span class="seg-doc-units">${d.unit_count} unit&#233;s</span>
+          ${statusBadge(d)}
+        </div>
+      </div>`;
+
+    // Try to load family groupings
+    let familyGroups: Array<{ root: DocumentRecord; children: DocumentRecord[] }> = [];
+    const orphans: DocumentRecord[] = [];
+    try {
+      const { getAllDocRelations } = await import("../lib/sidecarClient.ts");
+      if (this._conn) {
+        const relations = await getAllDocRelations(this._conn);
+        const childIds = new Set(relations.map(r => r.doc_id));
+        const parentMap = new Map<number, number[]>(); // parent_id → child_ids
+
+        for (const rel of relations) {
+          if (!parentMap.has(rel.target_doc_id)) parentMap.set(rel.target_doc_id, []);
+          parentMap.get(rel.target_doc_id)!.push(rel.doc_id);
+        }
+
+        for (const d of this._docs) {
+          if (!childIds.has(d.doc_id) && parentMap.has(d.doc_id)) {
+            // root of a family
+            const children = (parentMap.get(d.doc_id) ?? [])
+              .map(cid => this._docs.find(dd => dd.doc_id === cid))
+              .filter(Boolean) as DocumentRecord[];
+            familyGroups.push({ root: d, children });
+          } else if (!childIds.has(d.doc_id) && !parentMap.has(d.doc_id)) {
+            orphans.push(d);
+          }
+        }
+      }
+    } catch {
+      // If relations API fails, fall back to flat list
+      return this._docs.map(d => docRow(d)).join("");
+    }
+
+    let html = "";
+    for (const { root, children } of familyGroups) {
+      html += `<div class="seg-doc-group-label">&#128194; ${_escHtml(root.title)}</div>`;
+      html += `<div class="seg-doc-group">`;
+      html += docRow(root);
+      for (const child of children) html += docRow(child, true);
+      html += `</div>`;
+    }
+    if (orphans.length > 0) {
+      html += `<div class="seg-doc-group-label">Documents sans famille</div>`;
+      html += `<div class="seg-doc-group">`;
+      for (const d of orphans) html += docRow(d);
+      html += `</div>`;
+    }
+    return html || `<p class="empty-hint">Aucun document.</p>`;
+  }
+
+  // ── Right panel: params + live preview + actions + saved table ──────────────
+
+  private async _loadSegRightPanel(docId: number, rightEl: HTMLElement): Promise<void> {
+    const doc = this._docs.find(d => d.doc_id === docId);
+    if (!doc) { rightEl.innerHTML = `<div class="seg-right-empty">Document introuvable.</div>`; return; }
+
+    const pack = (document.querySelector("#act-seg-pack") as HTMLSelectElement | null)?.value ?? "auto";
+    const lang = (document.querySelector("#act-seg-lang") as HTMLInputElement | null)?.value.trim() || doc.language || "fr";
+    const statusBadge = doc.workflow_status === "validated"
+      ? `<span class="seg-state-chip seg-badge-ok">&#10003; Valid&#233;</span>`
+      : doc.workflow_status === "review"
+      ? `<span class="seg-state-chip seg-badge-warn">&#9203; En revue</span>`
+      : `<span class="seg-state-chip seg-badge-none">Brouillon</span>`;
+
+    const savedAlready = (doc.unit_count ?? 0) > 0 && doc.workflow_status !== "draft";
+
+    rightEl.innerHTML = `
+      <div class="seg-right-root" id="act-seg-right-root">
+        <div class="seg-right-header">
+          <div class="seg-right-header-main">
+            <h3 class="seg-right-doc-title">${_escHtml(doc.title)}</h3>
+            ${statusBadge}
+          </div>
+          <div class="seg-right-header-meta">#${doc.doc_id} &middot; ${_escHtml(doc.language)} &middot; ${doc.unit_count} unit&#233;s</div>
+        </div>
+        <div class="seg-params-bar" id="act-seg-params">
+          <label class="seg-param-field">Langue
+            <input id="act-seg-lang" type="text" value="${_escHtml(lang)}" maxlength="10"
+              class="seg-param-input" placeholder="fr, en&#8230;" autocomplete="off" spellcheck="false" />
+          </label>
+          <label class="seg-param-field">Pack
+            <select id="act-seg-pack" class="seg-param-select">
+              <option value="auto"${pack==="auto"?" selected":""}>Auto multicorpus</option>
+              <option value="fr_strict"${pack==="fr_strict"?" selected":""}>Fran&#231;ais strict</option>
+              <option value="en_strict"${pack==="en_strict"?" selected":""}>Anglais strict</option>
+              <option value="default"${pack==="default"?" selected":""}>Standard</option>
+            </select>
+          </label>
+        </div>
+        <div class="seg-preview-section" id="act-seg-preview-section">
+          <div class="seg-preview-section-head">
+            <span class="seg-preview-section-label">Aper&#231;u live <span class="seg-preview-badge">m&#234;me moteur, sans &#233;criture</span></span>
+            <span id="act-seg-prev-stats" class="seg-preview-stats"></span>
+            <button type="button" class="btn btn-ghost btn-sm" id="act-seg-prev-refresh">&#8635;</button>
+          </div>
+          <div class="seg-preview-split" id="act-seg-preview-split">
+            <div>
+              <div class="seg-preview-col-title">Brut (<span id="act-seg-prev-raw-count">&#8212;</span> unit&#233;s)</div>
+              <div class="seg-preview-col-list" id="act-seg-prev-raw">
+                <p class="empty-hint">Chargement&#8230;</p>
+              </div>
+            </div>
+            <div>
+              <div class="seg-preview-col-title">Segment&#233; (<span id="act-seg-prev-seg-count">&#8212;</span> phrases)</div>
+              <div class="seg-preview-col-list" id="act-seg-prev-seg">
+                <p class="empty-hint">En attente&#8230;</p>
+              </div>
+            </div>
+          </div>
+          <div id="act-seg-prev-warns" class="seg-warn-list" style="display:none"></div>
+        </div>
+        <div class="seg-actions-bar" id="act-seg-actions">
+          <button class="btn btn-warning" id="act-seg-btn">Segmenter</button>
+          <button class="btn btn-secondary btn-sm" id="act-seg-validate-btn">Seg. + Valider</button>
+          <button class="btn btn-primary btn-sm" id="act-seg-validate-only-btn"
+            ${!savedAlready ? "disabled" : ""}>Valider &#10003;</button>
+          <div class="seg-actions-dest">
+            Apr&#232;s validation&nbsp;:
+            <select id="act-seg-after-validate" class="seg-param-select seg-param-select-sm">
+              <option value="next">Doc suivant</option>
+              <option value="stay">Rester</option>
+              <option value="documents">Documents</option>
+            </select>
+          </div>
+        </div>
+        <div id="act-seg-status-banner" class="seg-status-banner" aria-live="polite"></div>
+        <div class="seg-saved-section" id="act-seg-saved-section" style="${savedAlready ? "" : "display:none"}">
+          <div class="seg-saved-head">Segments enregistr&#233;s
+            <span id="act-seg-saved-count" class="chip">${doc.unit_count}</span>
+          </div>
+          <div class="seg-saved-table-wrap" id="act-seg-saved-table">
+            ${savedAlready ? `<p class="empty-hint">Chargement des segments&#8230;</p>` : ""}
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Restore after-validate pref
+    const afterSel = rightEl.querySelector<HTMLSelectElement>("#act-seg-after-validate");
+    if (afterSel) afterSel.value = this._postValidateDestination();
+    afterSel?.addEventListener("change", () => {
+      const raw = afterSel.value;
+      const next = raw === "next" || raw === "stay" ? raw : "documents";
+      try { localStorage.setItem(ActionsScreen.LS_SEG_POST_VALIDATE, next); } catch { /* ignore */ }
+    });
+
+    // Wire params → debounced preview
+    rightEl.querySelector("#act-seg-lang")?.addEventListener("input", () => this._scheduleSegPreview(docId));
+    rightEl.querySelector("#act-seg-pack")?.addEventListener("change", () => this._scheduleSegPreview(docId));
+    rightEl.querySelector("#act-seg-prev-refresh")?.addEventListener("click", () => void this._runSegPreview(docId));
+
+    // Wire action buttons
+    rightEl.querySelector("#act-seg-btn")?.addEventListener("click", () => this._runSegment());
+    rightEl.querySelector("#act-seg-validate-btn")?.addEventListener("click", () => this._runSegment(true));
+    rightEl.querySelector("#act-seg-validate-only-btn")?.addEventListener("click", () => void this._runValidateCurrentSegDoc());
+
+    // Load raw preview (left column) and trigger live preview
+    void this._loadSegRawColumn(docId);
+    void this._runSegPreview(docId);
+
+    // Load saved segments if doc already has units
+    if (savedAlready) {
+      const savedTableEl = rightEl.querySelector<HTMLElement>("#act-seg-saved-table");
+      if (savedTableEl) void this._renderSegSavedTable(docId, savedTableEl);
+    }
+
+    this._refreshSegmentationStatusUI();
+  }
+
+  private async _loadSegRawColumn(docId: number): Promise<void> {
+    const rawEl = document.querySelector<HTMLElement>("#act-seg-prev-raw");
+    const countEl = document.querySelector<HTMLElement>("#act-seg-prev-raw-count");
+    if (!rawEl || !this._conn) return;
+    try {
+      const preview = await getDocumentPreview(this._conn, docId, 200);
+      if (countEl) countEl.textContent = String(preview.total_lines);
+      if (!preview.lines.length) {
+        rawEl.innerHTML = `<p class="empty-hint">Aucune unit&#233;.</p>`;
+        return;
+      }
+      const truncNote = preview.total_lines > preview.limit
+        ? `<p class="seg-trunc-note">Aper&#231;u — ${preview.limit}/${preview.total_lines} unit&#233;s</p>`
+        : "";
+      rawEl.innerHTML = truncNote + preview.lines.map(l =>
+        `<div class="seg-prev-row"><span class="seg-prev-n">${l.n}</span><span class="seg-prev-tx">${_escHtml(l.text)}</span></div>`,
+      ).join("");
+    } catch {
+      rawEl.innerHTML = `<p class="empty-hint">Impossible de charger le texte brut.</p>`;
+    }
+  }
+
+  private _scheduleSegPreview(docId: number): void {
+    if (this._segPreviewTimer) clearTimeout(this._segPreviewTimer);
+    this._segPreviewTimer = setTimeout(() => {
+      this._segPreviewTimer = null;
+      const rightEl = document.querySelector<HTMLElement>("#act-seg-split-right");
+      if (!rightEl?.isConnected) return;
+      void this._runSegPreview(docId);
+    }, 400);
+  }
+
+  private async _runSegPreview(docId: number): Promise<void> {
+    if (!this._conn) return;
+    const segEl = document.querySelector<HTMLElement>("#act-seg-prev-seg");
+    const statsEl = document.querySelector<HTMLElement>("#act-seg-prev-stats");
+    const segCountEl = document.querySelector<HTMLElement>("#act-seg-prev-seg-count");
+    const warnsEl = document.querySelector<HTMLElement>("#act-seg-prev-warns");
+    if (!segEl) return;
+
+    const lang = (document.querySelector("#act-seg-lang") as HTMLInputElement | null)?.value.trim() || "fr";
+    const pack = (document.querySelector("#act-seg-pack") as HTMLSelectElement | null)?.value ?? "auto";
+
+    segEl.innerHTML = `<p class="empty-hint">Calcul en cours&#8230;</p>`;
+    if (statsEl) statsEl.textContent = "&#8230;";
+
+    try {
+      const res = await segmentPreview(this._conn, { doc_id: docId, lang, pack, limit: 300 });
+      if (segCountEl) segCountEl.textContent = String(res.units_output);
+      if (statsEl) statsEl.textContent = `${res.units_input} u. → ${res.units_output} phrases · pack ${res.segment_pack}`;
+
+      const truncNote = res.units_output >= 300
+        ? `<p class="seg-trunc-note">Aper&#231;u tronqu&#233; &#224; 300 segments</p>`
+        : "";
+      segEl.innerHTML = truncNote + (res.segments.length
+        ? res.segments.map(s =>
+          `<div class="seg-prev-row"><span class="seg-prev-n">${s.n}</span><span class="seg-prev-tx">${_escHtml(s.text)}</span></div>`,
+        ).join("")
+        : `<p class="empty-hint">Aucun segment produit.</p>`);
+
+      if (warnsEl) {
+        if (res.warnings.length) {
+          warnsEl.style.display = "";
+          warnsEl.innerHTML = res.warnings.map(w => `<div class="seg-warn">${_escHtml(w)}</div>`).join("");
+        } else {
+          warnsEl.style.display = "none";
+        }
+      }
+    } catch (err) {
+      segEl.innerHTML = `<p class="empty-hint" style="color:var(--color-danger)">Erreur preview: ${_escHtml(err instanceof Error ? err.message : String(err))}</p>`;
+    }
+  }
+
+  private async _renderSegSavedTable(docId: number, el: HTMLElement): Promise<void> {
+    if (!this._conn) return;
+    el.innerHTML = `<p class="empty-hint">Chargement&#8230;</p>`;
+    try {
+      const preview = await getDocumentPreview(this._conn, docId, 500);
+      const countEl = document.querySelector<HTMLElement>("#act-seg-saved-count");
+      if (countEl) countEl.textContent = String(preview.total_lines);
+      if (!preview.lines.length) {
+        el.innerHTML = `<p class="empty-hint">Aucun segment en base.</p>`;
+        return;
+      }
+      const truncNote = preview.total_lines > preview.limit
+        ? `<p class="seg-trunc-note">Aper&#231;u — ${preview.limit}/${preview.total_lines} segments</p>`
+        : "";
+
+      const rows = preview.lines.map(l =>
+        `<tr data-unit-n="${l.n}">
+          <td class="seg-cell-n">${l.n}</td>
+          <td class="seg-cell-text" title="Double-clic pour modifier">${_escHtml(l.text)}</td>
+          <td class="seg-cell-len${l.text.length > 200 ? " seg-cell-len-warn" : l.text.length > 120 ? " seg-cell-len-hint" : ""}">${l.text.length}</td>
+        </tr>`,
+      ).join("");
+
+      el.innerHTML = truncNote + `
+        <div class="seg-saved-info">${preview.total_lines} segment(s) &middot; double-clic pour modifier un texte</div>
+        <div class="seg-segments-scroll">
+          <table class="seg-segments-table">
+            <thead><tr><th>#</th><th>Texte</th><th>Long.</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>`;
+
+      // Wire double-click inline edit
+      el.querySelectorAll<HTMLTableCellElement>(".seg-cell-text").forEach(cell => {
+        cell.addEventListener("dblclick", () => {
+          if (cell.querySelector("input")) return;
+          const tr = cell.closest("tr")!;
+          const origHtml = cell.innerHTML;
+          const origText = cell.textContent ?? "";
+          const input = document.createElement("input");
+          input.type = "text";
+          input.value = origText;
+          input.className = "seg-cell-edit-input";
+          cell.innerHTML = "";
+          cell.appendChild(input);
+          input.focus(); input.select();
+
+          const commit = async () => {
+            const newText = input.value.trim();
+            if (!newText || newText === origText) { cancelEdit(); return; }
+            input.disabled = true;
+            const unitN = parseInt(tr.dataset.unitN ?? "", 10);
+              if (!this._conn || !unitN) { cancelEdit(); return; }
+            try {
+              // No PATCH /units endpoint yet; show informative note
+              void unitN; // used later when endpoint is available
+              cell.innerHTML = `<em style="color:var(--color-warning)">[Modif. non persistée — bient&#244;t disponible]</em> ${_escHtml(newText)}`;
+              const lenCell = cell.nextElementSibling as HTMLElement | null;
+              if (lenCell) { lenCell.textContent = String(newText.length); }
+            } catch { cell.innerHTML = origHtml; }
+          };
+          const cancelEdit = () => { cell.innerHTML = origHtml; };
+          input.addEventListener("keydown", (e) => {
+            if (e.key === "Enter")  { e.preventDefault(); void commit(); }
+            if (e.key === "Escape") { e.preventDefault(); cancelEdit(); }
+          });
+          input.addEventListener("blur", () => setTimeout(() => void commit(), 80));
+        });
+      });
+    } catch (err) {
+      el.innerHTML = `<p class="empty-hint" style="color:var(--color-danger)">Erreur: ${_escHtml(err instanceof Error ? err.message : String(err))}</p>`;
+    }
+  }
+
+  // ── Legacy segmentation panel (kept for fallback, now replaced) ─────────────
+  // The old _renderSegmentationPanel_LEGACY content below is removed.
+  // If any of the following private helpers are still referenced they are kept;
+  // otherwise they can be removed in a later cleanup pass.
+  // ───────────────────────────────────────────────────────────────────────────
+
+  private _renderSegmentationPanel_STUB(root: HTMLElement): HTMLElement {
     const el = document.createElement("div");
     el.setAttribute("role", "main");
     el.setAttribute("aria-label", "Vue Segmentation");
@@ -4112,7 +4562,7 @@ export class ActionsScreen {
   }
 
   private _populateSelects(): void {
-    const allDocSelects = ["act-curate-doc", "act-seg-doc", "act-seg-ref-doc", "act-align-pivot",
+    const allDocSelects = ["act-curate-doc", "act-align-pivot",
       "act-align-targets", "act-meta-doc", "act-audit-pivot", "act-audit-target",
       "act-quality-pivot", "act-quality-target",
       "act-coll-pivot", "act-coll-target"];
@@ -4138,6 +4588,7 @@ export class ActionsScreen {
       this._renderDocList();
       this._renderSegBatchOverview();
       this._populateSelects();
+      this._populateSegDocList();
       this._updateCurateCtx();
       this._setButtonsEnabled(true);
       // Show audit panel once docs are loaded
@@ -5942,10 +6393,10 @@ export class ActionsScreen {
   // ─── Segment ─────────────────────────────────────────────────────────────
 
   private _currentSegDocSelection(): { docId: number; docLabel: string } | null {
-    const docSel = (document.querySelector("#act-seg-doc") as HTMLSelectElement | null)?.value ?? "";
-    if (!docSel) return null;
-    const docId = parseInt(docSel, 10);
-    if (!Number.isInteger(docId)) return null;
+    // New split panel uses _selectedSegDocId; fall back to legacy #act-seg-doc if present
+    const docId = this._selectedSegDocId
+      ?? parseInt((document.querySelector("#act-seg-doc") as HTMLSelectElement | null)?.value ?? "", 10);
+    if (!Number.isInteger(docId) || isNaN(docId)) return null;
     const doc = this._docs.find((d) => d.doc_id === docId);
     const docLabel = doc ? `"${doc.title}"` : `#${docId}`;
     return { docId, docLabel };
@@ -6118,6 +6569,18 @@ export class ActionsScreen {
           // Reload the "Document brut" pane with post-segmentation units and
           // append the segmented lines directly to the "Proposition" pane too.
           void this._appendSegmentedLinesPreview(docId);
+          // New split panel: refresh saved segments table + raw col + status
+          {
+            const savedSection = document.querySelector<HTMLElement>("#act-seg-saved-section");
+            const savedTableEl = document.querySelector<HTMLElement>("#act-seg-saved-table");
+            const savedCount = document.querySelector<HTMLElement>("#act-seg-saved-count");
+            if (savedSection) savedSection.style.display = "";
+            if (savedCount) savedCount.textContent = String(this._lastSegmentReport?.units_output ?? "?");
+            if (savedTableEl) void this._renderSegSavedTable(docId, savedTableEl);
+            void this._loadSegRawColumn(docId);
+            void this._runSegPreview(docId);
+            this._populateSegDocList();
+          }
           this._updateLongtextPreview(this._root?.querySelector('[data-panel="segmentation"]') ?? null);
           this._updateTraductionPreview();
           const warns = r?.warnings?.length ? ` Avertissements : ${r.warnings.join("; ")}` : "";

@@ -138,6 +138,34 @@ export interface CorpusAuditResult {
   families: FamilyAuditData;
 }
 
+// ---------------------------------------------------------------------------
+// Segment preview (in-memory, no DB writes)
+// ---------------------------------------------------------------------------
+export interface SegmentPreviewSegment {
+  n: number;
+  text: string;
+  source_unit_n: number;
+}
+
+export interface SegmentPreviewResponse {
+  ok: boolean;
+  doc_id: number;
+  units_input: number;
+  units_output: number;
+  segment_pack: string;
+  segments: SegmentPreviewSegment[];
+  warnings: string[];
+}
+
+export async function segmentPreview(
+  conn: Conn,
+  opts: { doc_id: number; lang?: string; pack?: string; limit?: number },
+): Promise<SegmentPreviewResponse> {
+  return conn.post("/segment/preview", opts) as Promise<SegmentPreviewResponse>;
+}
+
+// ---------------------------------------------------------------------------
+
 export interface ImportOptions {
   mode:
     | "docx_numbered_lines"

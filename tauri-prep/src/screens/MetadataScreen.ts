@@ -1122,8 +1122,7 @@ export class MetadataScreen {
         this._families = await getFamilies(this._conn);
         this._familiesLoaded = true;
         this._renderDocList();
-        // Re-render the edit panel to update completion badge
-        if (this._selectedDoc) this._renderEditPanel(this._selectedDoc);
+        if (this._selectedDoc) this._renderEditPanel();
       }
 
       this._log(`✓ Famille #${familyRootId} segmentée : ${res.summary.segmented} doc(s) traité(s).`);
@@ -1288,7 +1287,7 @@ export class MetadataScreen {
         this._families = await getFamilies(this._conn);
         this._familiesLoaded = true;
         this._renderDocList();
-        if (this._selectedDoc) this._renderEditPanel(this._selectedDoc);
+        if (this._selectedDoc) this._renderEditPanel();
       }
 
       this._log(`✓ Famille #${familyRootId} alignée : ${res.summary.total_links_created} lien(s) créé(s).`);

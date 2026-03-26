@@ -619,6 +619,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 self._handle_align_collisions_resolve(body)
             elif path == "/validate-meta":
                 self._handle_validate_meta(body)
+            elif path == "/segment/preview":
+                self._handle_segment_preview(body)
             elif path == "/segment":
                 self._handle_segment(body)
             elif path.startswith("/families/") and path.endswith("/segment"):
@@ -2474,6 +2476,80 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             "docs_validated": len(results),
             "results": [r.to_dict() for r in results],
         }, status="warnings" if has_errors else "ok"))
+
+    def _handle_segment_preview(self, body: dict) -> None:
+        """POST /segment/preview — run segmentation in-memory, no DB writes."""
+        from multicorpus_engine.segmenter import segment_text, resolve_segment_pack
+
+        doc_id = body.get("doc_id")
+        if doc_id is None:
+            self._send_error("doc_id is required", code=ERR_BAD_REQUEST, http_status=400)
+            return
+        try:
+            doc_id = int(doc_id)
+        except (TypeError, ValueError):
+            self._send_error("doc_id must be an integer", code=ERR_BAD_REQUEST, http_status=400)
+            return
+
+        lang = str(body.get("lang") or "und")
+        pack = str(body.get("pack") or "auto")
+        limit = body.get("limit", 300)
+        try:
+            limit = int(limit)
+        except (TypeError, ValueError):
+            limit = 300
+
+        # Read-only: no lock needed for pure reads on SQLite
+        conn = self._conn()
+        units = conn.execute(
+            "SELECT n, text_norm FROM units WHERE doc_id = ? AND unit_type = 'line' ORDER BY n",
+            (doc_id,),
+        ).fetchall()
+
+        if not units:
+            self._send_error(
+                f"No units found for doc_id={doc_id}",
+                code=ERR_NOT_FOUND,
+                http_status=404,
+            )
+            return
+
+        resolved_pack = resolve_segment_pack(pack, lang)
+        segments: list[dict] = []
+        warnings: list[str] = []
+        seg_n = 1
+
+        for unit_n, text_norm in units:
+            if not text_norm or not text_norm.strip():
+                continue
+            try:
+                phrases = segment_text(text_norm, lang, resolved_pack)
+            except Exception as exc:  # noqa: BLE001
+                warnings.append(f"unit {unit_n}: {exc}")
+                phrases = [text_norm]
+            for phrase in phrases:
+                if seg_n > limit:
+                    warnings.append(
+                        f"Preview truncated at {limit} segments (document has more)."
+                    )
+                    break
+                segments.append({
+                    "n": seg_n,
+                    "text": phrase,
+                    "source_unit_n": int(unit_n),
+                })
+                seg_n += 1
+            if seg_n > limit:
+                break
+
+        self._send_json(success_payload({
+            "doc_id": doc_id,
+            "units_input": len(units),
+            "units_output": len(segments),
+            "segment_pack": resolved_pack,
+            "segments": segments,
+            "warnings": warnings,
+        }))
 
     def _handle_segment(self, body: dict) -> None:
         from multicorpus_engine.segmenter import resegment_document
