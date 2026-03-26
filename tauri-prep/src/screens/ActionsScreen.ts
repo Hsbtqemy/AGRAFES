@@ -649,7 +649,7 @@ export class ActionsScreen {
         const cta = btn.dataset.cta!;
         if (cta === "segmentation-longtext") {
           this._switchSubViewDOM(root, "segmentation");
-          this._setSegMode("longtext");
+          queueMicrotask(() => this._setSegMode("longtext"));
         } else {
           this._switchSubViewDOM(root, cta as SubView);
         }

@@ -6,7 +6,7 @@ import { importFile, rebuildIndex, SidecarError } from "../lib/sidecarClient";
 import { state } from "../state";
 import { elt } from "../ui/dom";
 import { updateStatus } from "../ui/status";
-import { loadDocsForFilters } from "./filters";
+import { loadDocsForFilters, loadFamiliesForFilter } from "./filters";
 
 export function showImportModal(): void {
   document.getElementById("import-modal")!.classList.remove("hidden");
@@ -55,6 +55,7 @@ export async function doImport(
     hideImportModal();
     updateStatus();
     await loadDocsForFilters();
+    await loadFamiliesForFilter();
     const notice = elt("div", { class: "error-banner" });
     notice.style.background = "#f0fff4";
     notice.style.borderColor = "#b2f2bb";

@@ -1,6 +1,6 @@
 # Backlog — multicorpus_engine
 
-Last updated: 2026-03-23 (backlog — surfaces Export Prep + Constituer)
+Last updated: 2026-03-26 (vérification état réel — familles done, metadata panel done, P12 partiel)
 
 ## Priority backlog (realistic, post-implementation)
 
@@ -8,7 +8,7 @@ Last updated: 2026-03-23 (backlog — surfaces Export Prep + Constituer)
 |----------|------|---------|---------------------|--------|
 | P2 | **Prep — page « Exporter » + vue Exporter dans Constituer** | `ExportsScreen` (V2 + blocs legacy) et navigation shell : besoin de **nettoyage et d’affinage** (hiérarchie visuelle, duplication V2/legacy, KPI, bouton retour Alignement, états vides/erreur) | Pass UX dédié : parcours clair sur `tauri-prep` **et** même surface embarquée via `constituerModule` (pas de régression shell : titres, scroll, Job Center) ; documenter décisions dans `UX_FLOW_PREP` ou note courte ; build vert | **todo** |
 | **NOW** | **P11 — Actions TRUE DOM parity** | Inc 3 traduction native layout; Inc 0/1/2 vérifiés conformes | 2-col traduction workspace, `<details>` ref VO, preview-tools/tabs/panes à droite; build vert | **done** |
-| **P1** | **P12 — Wiring traduction preview + scroll sync** | La preview traduction droite est structurée mais non câblée ; le scroll sync longtext est TODO | `_runSegment()` alimente les panes traduction (target + VO) ; sync scroll `raw-scroll` ↔ `seg-scroll` mode longtext | **todo** |
+| **P1** | **P12 — Wiring traduction preview + scroll sync** | La preview traduction droite est structurée mais non câblée ; le scroll sync longtext est TODO | `_runSegment()` alimente les panes traduction (target + VO) ; sync scroll `raw-scroll` ↔ `seg-scroll` mode longtext | **partiel** — pane cible alimentée, VO manuelle OK ; scroll sync longtext câblé mais comportement à vérifier ; mode traduction déféré |
 | **NOW** | **Tauri UI "Concordancier" V0** | Core + sidecar stable; time to deliver user-facing value | `tauri-app/` launches with `npm run tauri dev`; search, KWIC, import, index | **done** |
 | **NOW** | **Tauri Concordancier Prep V0** (`tauri-prep/`) | Corpus preparation workflow (import → curate → segment → align) needs dedicated app | 3-screen scaffold: Project/DB, Import+Index, Actions; all sidecar routes wired | **done** |
 | **NOW** | **Concordancier Prep V0.3** — curate preview diff + align audit UI | Users need to preview curation changes before applying + review alignment links | `POST /curate/preview` dry-run with diff table; `POST /align/audit` paginated link table | **done** |
@@ -24,7 +24,7 @@ Last updated: 2026-03-23 (backlog — surfaces Export Prep + Constituer)
 | P2 | **tauri-prep vNext P2 — Polish (CSS/A11y/States/Responsive)** | P1 functional; need token coherence, responsive layout, empty/loading/error states, a11y, IO lifecycle | tokens.css enriched; breakpoint 1100px; loading hints + error states; skip link + aria-* wired; IO disconnect/tie-break | **done** |
 | P1 | Concordancier V0.2 — pagination backend + load more | Prevent loading too many hits per request, especially with aligned mode | `/query` supports `limit/offset/has_more`; UI supports reset + `Charger plus` paging | done |
 | P1 | Concordancier V1 — virtualisation / IntersectionObserver | V0.2 load-more exists; scrolling UX can be smoother | Automatic near-bottom page fetch with guardrails and no duplicate fetches | done |
-| P1 | Concordancier V1 — metadata panel | Users need doc-level metadata at a glance | Side panel: title, language, role, resource_type, unit count | todo |
+| P1 | Concordancier V1 — metadata panel | Users need doc-level metadata at a glance | Side panel: title, language, role, resource_type, unit count | done |
 | P1 | Concordancier V1 — corpus démo | New users need a working sample | Bundled small multilingual demo corpus on first run | todo |
 | P2 | Concordancier V1 — aligned view quality | V0.1 exists; needs richer control and readability | Group/sort aligned lines by language/doc and add compact expand/collapse presets | todo |
 | P2 | Concordancier V1 — advanced search (regex/NEAR) | Power users need FTS5 proximity | UI for NEAR(t1 t2, N) and raw FTS5 passthrough | done |

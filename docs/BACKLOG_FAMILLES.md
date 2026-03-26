@@ -13,21 +13,21 @@
 ### Backend
 
 - [x] `GET /doc_relations/all` — toutes les relations (déjà fait, base du calcul des familles)
-- [ ] `GET /families` — liste toutes les familles avec stats
+- [x] `GET /families` — liste toutes les familles avec stats
   - Champs par famille : `family_id`, `parent` (doc), `children[]` (doc + relation_type)
   - Stats : `total_docs`, `segmented_docs`, `aligned_pairs`, `total_pairs`, `validated_docs`, `completion_pct`
   - API version → `1.6.0`
-- [ ] Snapshot `openapi_paths.json` + `docs/SIDECAR_API_CONTRACT.md`
+- [x] Snapshot `openapi_paths.json` + `docs/SIDECAR_API_CONTRACT.md`
 
 ### Frontend
 
-- [ ] `sidecarClient.ts` : interface `FamilyRecord` + `getFamilies(conn)`
-- [ ] `MetadataScreen.ts` — vue hiérarchique :
+- [x] `sidecarClient.ts` : interface `FamilyRecord` + `getFamilies(conn)`
+- [x] `MetadataScreen.ts` — vue hiérarchique :
   - Badge statut sur chaque racine de famille (% complétion coloré)
   - Panneau famille dans l'éditeur quand un parent est sélectionné :
     - Récapitulatif des paires `parent ↔ enfant` avec état segmenté/aligné/validé
-    - Boutons placeholder pour Sprint 2 (`Segmenter`) et Sprint 3 (`Aligner`) — désactivés
-- [ ] CSS : badges de complétion, tableau de statut famille
+    - Boutons "Segmenter la famille" et "Aligner la famille" fonctionnels
+- [x] CSS : badges de complétion, tableau de statut famille
 
 ---
 
@@ -37,20 +37,15 @@
 
 ### Backend
 
-- [ ] `POST /segment` : paramètre optionnel `calibrate_to=doc_id`
-  - Segmente en calant le nombre d'unités sur le doc de référence
-  - Retourne `warning` si l'enfant est déjà segmenté différemment
-- [ ] `POST /families/{family_root_id}/segment`
-  - Segmente l'original en premier (si non segmenté)
-  - Puis propage aux enfants (`calibrate_to` = parent)
-  - Retourne un rapport par doc : `segmented | skipped | warning`
-- [ ] API version → `1.6.1`
+- [x] `POST /segment` : paramètre optionnel `calibrate_to=doc_id`
+- [x] `POST /families/{family_root_id}/segment`
+- [x] API version → `1.6.1`
 
 ### Frontend
 
-- [ ] Bouton **"Segmenter la famille"** dans le panneau famille (Sprint 1)
-- [ ] Dialog de confirmation si enfants déjà segmentés : liste les conflits doc par doc
-- [ ] Indicateurs en temps réel pendant le traitement (polling job ou progression inline)
+- [x] Bouton **"Segmenter la famille"** dans le panneau famille
+- [x] Dialog de confirmation si enfants déjà segmentés
+- [x] Indicateurs en temps réel pendant le traitement
 
 ---
 
@@ -60,19 +55,15 @@
 
 ### Backend
 
-- [ ] `POST /align` : paramètre `from_relations=true`
-  - Déduit les paires `pivot↔target` depuis `doc_relations` (translation_of / excerpt_of)
-  - Refuse d'aligner deux enfants entre eux (garde-fou)
-- [ ] `POST /families/{family_root_id}/align`
-  - Aligne toutes les paires `parent↔enfant` en séquence (jobs asynchrones)
-  - Retourne la liste des jobs créés
-- [ ] API version → `1.6.2`
+- [ ] `POST /align` : paramètre `from_relations=true` — déféré, `POST /families/{id}/align` couvre le besoin
+- [x] `POST /families/{family_root_id}/align`
+- [x] API version → `1.6.2`
 
 ### Frontend
 
-- [ ] Bouton **"Aligner la famille"** dans le panneau famille
-- [ ] Récapitulatif des paires avant lancement : `#5 FR ↔ #7 EN`, `#5 FR ↔ #9 ES`…
-- [ ] Suivi des jobs d'alignement inline dans le panneau famille
+- [x] Bouton **"Aligner la famille"** dans le panneau famille
+- [x] Récapitulatif des paires avant lancement
+- [x] Suivi des jobs d'alignement inline dans le panneau famille
 
 ---
 
@@ -82,18 +73,14 @@
 
 ### Backend
 
-- [ ] `GET /corpus/audit` — nouvelle section `families[]` :
-  - Paires sans alignement (`unaligned_pairs`)
-  - Docs avec relation mais non segmentés (`unsegmented_children`)
-  - Ratios segments hors seuil > 15 % (`ratio_warnings`)
-  - Docs orphelins (parent absent du corpus)
-- [ ] API version → `1.6.3`
+- [x] `GET /corpus/audit` — nouvelle section `families[]`
+- [x] API version → `1.6.3`
 
 ### Frontend
 
-- [ ] Section "Familles" dans le panneau audit existant
-- [ ] Actions directes depuis l'audit : naviguer, segmenter, aligner
-- [ ] Seuil de ratio configurable dans l'UI (15 % par défaut)
+- [x] Section "Familles" dans le panneau audit existant
+- [x] Actions directes depuis l'audit : segmenter, aligner
+- [x] Seuil de ratio configurable via `ratio_threshold_pct` (défaut 15 %)
 
 ---
 
@@ -103,21 +90,15 @@
 
 ### Backend
 
-- [ ] `POST /export/tmx`
-  - Params : `pivot_doc_id`, `target_doc_id` (ou `family_id` pour multi-langues)
-  - Génère un fichier `.tmx` (Translation Memory eXchange)
-  - Retourne le chemin du fichier généré
-- [ ] `POST /export/bilingual`
-  - Params : `pivot_doc_id`, `target_doc_id`, `format` (`html` | `txt`)
-  - Texte entrelacé : unité originale / unité traduite en alternance
-- [ ] TEI enrichi automatiquement : `<teiHeader>` des enfants complété depuis le parent
-- [ ] API version → `1.6.4`
+- [x] `POST /export/tmx` (`pivot_doc_id` / `target_doc_id` / `family_id`)
+- [x] `POST /export/bilingual` (`format` html | txt, `preview_only`)
+- [ ] TEI enrichi automatiquement : `<teiHeader>` des enfants complété depuis le parent — déféré
+- [x] API version → `1.6.4`
 
 ### Frontend
 
-- [ ] Onglet Export : sélecteur famille → choix de la paire → format → export
-- [ ] Bouton "Exporter cette paire" dans le panneau famille (Sprint 1)
-- [ ] Prévisualisation du bilingue inline avant export
+- [x] Interfaces TypeScript `ExportTmxOptions`, `ExportBilingualOptions` dans sidecarClient.ts
+- [ ] UI Export : sélecteur famille → choix paire → format → export — déféré (surface ExportsScreen)
 
 ---
 
@@ -193,13 +174,13 @@
 ## Ordre d'exécution recommandé
 
 ```
-Sprint 1  ████████████████████  Familles/statut      ← EN COURS
-Sprint 2  ░░░░░░░░░░░░░░░░░░░░  Segmentation calibrée
-Sprint 3  ░░░░░░░░░░░░░░░░░░░░  Alignement guidé
-Sprint 4  ░░░░░░░░░░░░░░░░░░░░  Audit famille
-Sprint 5  ░░░░░░░░░░░░░░░░░░░░  Export TMX/bilingue
-Sprint 6  ░░░░░░░░░░░░░░░░░░░░  Concordancier cross-famille
-Sprint 7  ░░░░░░░░░░░░░░░░░░░░  Curation propagée
+Sprint 1  ████████████████████  Familles/statut      ← TERMINÉ
+Sprint 2  ████████████████████  Segmentation calibrée ← TERMINÉ
+Sprint 3  ███████████████░░░░░  Alignement guidé     ← TERMINÉ (from_relations param déféré — POST /families/{id}/align couvre le besoin)
+Sprint 4  ████████████████████  Audit famille        ← TERMINÉ
+Sprint 5  ████████████████████  Export TMX/bilingue  ← TERMINÉ
+Sprint 6  ████████████████████  Concordancier cross-famille ← TERMINÉ
+Sprint 7  ████████████████████  Curation propagée    ← TERMINÉ
 Sprint 8  ████████████████████  Import groupé        ← TERMINÉ
 ```
 

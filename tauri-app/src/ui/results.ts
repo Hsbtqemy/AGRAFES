@@ -62,6 +62,9 @@ function makeCopyBtn(text: string): HTMLButtonElement {
       btn.textContent = "✓ Copié";
       btn.classList.add("copied");
       setTimeout(() => { btn.textContent = "📋 Copier"; btn.classList.remove("copied"); }, 1500);
+    }).catch(() => {
+      btn.textContent = "✗ Échec";
+      setTimeout(() => { btn.textContent = "📋 Copier"; }, 1500);
     });
   });
   return btn;
@@ -78,6 +81,9 @@ function makeGroupCopyBtn(text: string, lang: string): HTMLButtonElement {
     e.stopPropagation();
     void navigator.clipboard?.writeText(text).then(() => {
       btn.textContent = "✓";
+      setTimeout(() => { btn.textContent = "📋"; }, 1200);
+    }).catch(() => {
+      btn.textContent = "✗";
       setTimeout(() => { btn.textContent = "📋"; }, 1200);
     });
   });
@@ -123,6 +129,9 @@ function makeCitationBtn(hit: QueryHit): HTMLButtonElement {
       btn.textContent = "✓ Copié";
       btn.classList.add("copied");
       setTimeout(() => { btn.textContent = "📄 Citation"; btn.classList.remove("copied"); }, 1500);
+    }).catch(() => {
+      btn.textContent = "✗ Échec";
+      setTimeout(() => { btn.textContent = "📄 Citation"; }, 1500);
     });
   });
   return btn;

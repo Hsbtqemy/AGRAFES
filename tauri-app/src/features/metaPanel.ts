@@ -164,6 +164,9 @@ function _renderPanelContent(hit: QueryHit, body: HTMLElement, foot: HTMLElement
         void navigator.clipboard?.writeText(groupText).then(() => {
           copyGrpBtn.textContent = "✓";
           setTimeout(() => { copyGrpBtn.textContent = "📋"; }, 1200);
+        }).catch(() => {
+          copyGrpBtn.textContent = "✗";
+          setTimeout(() => { copyGrpBtn.textContent = "📋"; }, 1200);
         });
       });
       grpHdr.appendChild(copyGrpBtn);
@@ -211,6 +214,9 @@ function _renderPanelContent(hit: QueryHit, body: HTMLElement, foot: HTMLElement
     void navigator.clipboard?.writeText(text).then(() => {
       copyTextBtn.textContent = "✓ Copié !";
       setTimeout(() => { copyTextBtn.textContent = "Copier le texte"; }, 1500);
+    }).catch(() => {
+      copyTextBtn.textContent = "✗ Échec";
+      setTimeout(() => { copyTextBtn.textContent = "Copier le texte"; }, 1500);
     });
   });
 
@@ -249,6 +255,9 @@ function _renderPanelContent(hit: QueryHit, body: HTMLElement, foot: HTMLElement
       }
       void navigator.clipboard?.writeText(lines.join("\n")).then(() => {
         copyCitBtn.textContent = "✓ Copié !";
+        setTimeout(() => { copyCitBtn.textContent = "📄 Copier la citation"; }, 1500);
+      }).catch(() => {
+        copyCitBtn.textContent = "✗ Échec";
         setTimeout(() => { copyCitBtn.textContent = "📄 Copier la citation"; }, 1500);
       });
     });

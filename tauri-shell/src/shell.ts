@@ -1,15 +1,12 @@
 /**
- * shell.ts — AGRAFES Shell V0.2
+ * shell.ts — AGRAFES Shell V0.2 (refactored)
  *
- * V0.1: permanent header + tabs (Explorer / Constituer) + lifecycle + accents.
- * V0.2 additions:
- *   - DB state unique  : `_currentDbPath` as single source of truth
- *   - DB badge         : header shows "DB: <basename>" or "DB: (aucune)"
- *   - Switch DB        : "Changer…" button → Tauri file picker (.db)
- *   - Persistance      : localStorage for last_mode + last_db_path
- *   - Deep-link boot   : location.hash (#explorer/#constituer/#home) or ?mode=
- *   - Module wrappers  : explorerModule / constituerModule via mount/dispose
- *   - Toast            : animated notification on DB change
+ * Extracted modules (Sprint E-1):
+ *   shellState.ts    — shared mutable state, types, LS constants
+ *   shellCss.ts      — SHELL_CSS string (~842 lines)
+ *   shellLogger.ts   — shellLog, crash markers, error capture, log export
+ *   shellDeepLink.ts — deep-link URL parsing + runtime listener
+ *   shellMru.ts      — MRU DB list (load/save/UI)
  *
  * Layout (index.html):
  *   #shell-header  fixed 44px — brand + tabs + db zone (always visible)
@@ -18,854 +15,40 @@
 
 import { open as dialogOpen, save as dialogSave } from "@tauri-apps/plugin-dialog";
 import { exists, writeFile, mkdir, remove, stat } from "@tauri-apps/plugin-fs";
-import { getCurrent as getCurrentDeepLinks, onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { appDataDir } from "@tauri-apps/api/path";
 import type { ShellContext } from "./context.ts";
 
-// ─── CSS ─────────────────────────────────────────────────────────────────────
+import { SHELL_CSS } from "./shellCss.ts";
+import {
+  shellState,
+  LS_MODE, LS_DB, LS_PRESETS_GLOBAL, LS_PRESETS_PREP,
+  LS_ONBOARDING_STEP,
+} from "./shellState.ts";
+import type { Mode } from "./shellState.ts";
+import {
+  shellLog,
+  writeCrashMarker, clearCrashMarker, readCrashMarker,
+  installErrorCapture, exportLogBundle, showCrashRecoveryBanner,
+} from "./shellLogger.ts";
+import {
+  modeFromLocation, resolveStartupDeepLinkPayload,
+  initDeepLinkRuntimeListener,
+} from "./shellDeepLink.ts";
+import {
+  pathLabel, addToMru, buildMruSection, checkMruPaths,
+} from "./shellMru.ts";
+import type { MruCallbacks } from "./shellMru.ts";
 
-const SHELL_CSS = `
-  /* ── Accent tokens ─────────────────────────────────────────── */
-  :root {
-    --accent:            #2c5f9e;
-    --accent-header-bg:  #1a1a2e;
-  }
-  body[data-mode="explorer"] {
-    --accent:            #2c5f9e;
-    --accent-header-bg:  #1e4a80;
-  }
-  body[data-mode="constituer"] {
-    --accent:            #1a7f4e;
-    --accent-header-bg:  #145a38;
-  }
+// ─── MRU callbacks factory ────────────────────────────────────────────────────
 
-  /* ── Shell header ──────────────────────────────────────────── */
-  #shell-header {
-    background: var(--accent-header-bg);
-    display: flex;
-    align-items: center;
-    padding: 0;
-    gap: 0;
-    transition: background 0.22s;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.18);
-  }
-
-  .shell-brand {
-    font-size: 0.95rem;
-    font-weight: 700;
-    color: #fff;
-    cursor: pointer;
-    user-select: none;
-    letter-spacing: 0.5px;
-    padding: 0 1rem;
-    height: 44px;
-    display: flex;
-    align-items: center;
-    border-right: 1px solid rgba(255,255,255,0.15);
-    margin-right: 0.25rem;
-    transition: background 0.15s;
-  }
-  .shell-brand:hover { background: rgba(255,255,255,0.08); }
-
-  .shell-tabs {
-    display: flex;
-    height: 44px;
-    gap: 0;
-  }
-
-  .shell-tab {
-    background: none;
-    border: none;
-    border-bottom: 3px solid transparent;
-    color: rgba(255,255,255,0.65);
-    font-size: 0.875rem;
-    font-weight: 500;
-    padding: 0 1.15rem;
-    height: 100%;
-    cursor: pointer;
-    transition: color 0.15s, border-color 0.15s, background 0.15s;
-    display: flex;
-    align-items: center;
-    gap: 0.3rem;
-  }
-  .shell-tab:hover {
-    color: #fff;
-    background: rgba(255,255,255,0.08);
-  }
-  .shell-tab.active {
-    color: #fff;
-    font-weight: 700;
-    border-bottom-color: rgba(255,255,255,0.88);
-    background: rgba(255,255,255,0.12);
-  }
-  .shell-tab-badge {
-    font-size: 0.7rem;
-    opacity: 0.5;
-  }
-
-  /* ── DB zone (right side of header) ────────────────────────── */
-  .shell-db-zone {
-    margin-left: auto;
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0 0.75rem;
-    height: 44px;
-    border-left: 1px solid rgba(255,255,255,0.12);
-  }
-
-  .shell-db-badge {
-    font-size: 0.75rem;
-    color: rgba(255,255,255,0.6);
-    font-family: ui-monospace, "SF Mono", monospace;
-    white-space: nowrap;
-    max-width: 200px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    cursor: default;
-    transition: color 0.2s;
-  }
-  .shell-db-badge--pending {
-    color: #fcd34d;
-  }
-
-  .shell-db-btn {
-    background: rgba(255,255,255,0.1);
-    border: 1px solid rgba(255,255,255,0.2);
-    border-radius: 4px;
-    color: rgba(255,255,255,0.85);
-    font-size: 0.75rem;
-    padding: 3px 9px;
-    cursor: pointer;
-    transition: background 0.15s, border-color 0.15s;
-    white-space: nowrap;
-  }
-  .shell-db-btn:hover {
-    background: rgba(255,255,255,0.18);
-    border-color: rgba(255,255,255,0.35);
-  }
-
-  /* ── DB action dropdown menu ────────────────────────────────── */
-  .shell-db-menu-wrap {
-    position: relative;
-    display: flex;
-    align-items: center;
-  }
-  .shell-db-menu {
-    position: absolute;
-    top: calc(100% + 6px);
-    right: 0;
-    background: #fff;
-    border: 1px solid rgba(0,0,0,0.12);
-    border-radius: 6px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.20);
-    min-width: 150px;
-    z-index: 9999;
-    overflow: hidden;
-    display: none;
-  }
-  .shell-db-menu.open { display: block; }
-  .shell-db-menu-item {
-    display: block;
-    width: 100%;
-    padding: 9px 16px;
-    background: none;
-    border: none;
-    text-align: left;
-    font-size: 0.83rem;
-    cursor: pointer;
-    color: #1a1a2e;
-    white-space: nowrap;
-    transition: background 0.12s;
-  }
-  .shell-db-menu-item:hover { background: #f0f2f5; }
-  .shell-db-menu-sep { height: 1px; background: #e9ecef; margin: 2px 0; }
-
-  /* ── DB init error banner (V0.5) ────────────────────────────── */
-  .shell-init-error {
-    position: fixed;
-    top: 44px;
-    left: 0;
-    right: 0;
-    background: #fff3cd;
-    border-bottom: 2px solid #e6a817;
-    z-index: 9990;
-    padding: 8px 16px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-    font-size: 0.84rem;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
-  }
-  .shell-init-error-icon { font-size: 1.1rem; color: #856404; flex-shrink: 0; }
-  .shell-init-error-msg { font-weight: 600; color: #856404; flex-shrink: 0; }
-  .shell-init-error-detail {
-    font-family: ui-monospace, monospace;
-    font-size: 0.78rem;
-    color: #555;
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    max-width: 500px;
-  }
-  .shell-init-error-btns { display: flex; gap: 6px; margin-left: auto; flex-shrink: 0; }
-
-  /* ── DB change banner (P4-2) ────────────────────────────────── */
-  .shell-db-change-banner {
-    position: fixed;
-    top: 44px;
-    left: 0;
-    right: 0;
-    background: #e8f4fd;
-    border-bottom: 2px solid #4a90d9;
-    z-index: 9989;
-    padding: 7px 16px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-    font-size: 0.83rem;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.08);
-    animation: shell-banner-in 0.18s ease-out;
-  }
-  @keyframes shell-banner-in {
-    from { opacity: 0; transform: translateY(-6px); }
-    to   { opacity: 1; transform: translateY(0); }
-  }
-  .shell-db-change-banner-icon { font-size: 1rem; flex-shrink: 0; }
-  .shell-db-change-banner-msg  { color: #1a4f7a; font-weight: 600; flex-shrink: 0; }
-  .shell-db-change-banner-name {
-    font-family: ui-monospace, "SF Mono", monospace;
-    font-size: 0.78rem;
-    color: #2c6fa8;
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    max-width: 400px;
-  }
-  .shell-db-change-banner-btns { display: flex; gap: 6px; margin-left: auto; flex-shrink: 0; }
-  .shell-db-change-banner-btn {
-    font-size: 0.78rem;
-    padding: 3px 10px;
-    border-radius: 4px;
-    cursor: pointer;
-    border: 1px solid #4a90d9;
-    background: #fff;
-    color: #1a4f7a;
-    transition: background 0.12s;
-  }
-  .shell-db-change-banner-btn:hover { background: #d0e8f8; }
-  .shell-db-change-banner-btn.primary { background: #4a90d9; color: #fff; border-color: #3575bb; }
-  .shell-db-change-banner-btn.primary:hover { background: #3575bb; }
-  .shell-db-change-banner-btn.dismiss { border-color: transparent; color: #5a8aad; background: transparent; }
-  .shell-db-change-banner-btn.dismiss:hover { background: #cce0f2; }
-
-  /* ── Home screen ───────────────────────────────────────────── */
-  .shell-home-wrap {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    min-height: calc(100vh - 44px);
-    background: #f0f2f5;
-    padding: 2rem;
-  }
-
-  .shell-home-title {
-    font-size: 2.2rem;
-    font-weight: 700;
-    color: #1a1a2e;
-    margin: 0 0 0.35rem;
-    letter-spacing: -0.5px;
-  }
-
-  .shell-home-subtitle {
-    font-size: 0.95rem;
-    color: #6c757d;
-    margin: 0 0 2.5rem;
-  }
-
-  .shell-cards {
-    display: flex;
-    gap: 1.5rem;
-    flex-wrap: wrap;
-    justify-content: center;
-  }
-
-  .shell-card {
-    background: #fff;
-    border: 1px solid #dde1e8;
-    border-radius: 10px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-    padding: 2rem 2.5rem;
-    width: 240px;
-    cursor: pointer;
-    transition: box-shadow 0.18s, transform 0.12s, border-color 0.18s;
-    text-align: center;
-    user-select: none;
-  }
-  .shell-card:hover {
-    transform: translateY(-3px);
-  }
-  .shell-card-explorer:hover {
-    box-shadow: 0 6px 20px rgba(44,95,158,0.22);
-    border-color: #2c5f9e;
-  }
-  .shell-card-constituer:hover {
-    box-shadow: 0 6px 20px rgba(26,127,78,0.22);
-    border-color: #1a7f4e;
-  }
-  .shell-card-badge {
-    display: inline-block;
-    font-size: 0.7rem;
-    font-weight: 600;
-    padding: 2px 8px;
-    border-radius: 20px;
-    margin-bottom: 0.75rem;
-  }
-  .shell-card-badge-explorer {
-    background: #dbeafe;
-    color: #1e4a80;
-  }
-  .shell-card-badge-constituer {
-    background: #d1fae5;
-    color: #145a38;
-  }
-  .shell-card-publish:hover {
-    box-shadow: 0 6px 20px rgba(130,80,20,0.22);
-    border-color: #7c4a00;
-  }
-  .shell-card-badge-publish {
-    background: #fff3cd;
-    color: #7c4a00;
-  }
-  .shell-card-icon { font-size: 2.2rem; margin-bottom: 0.4rem; }
-  .shell-card h2 { font-size: 1.05rem; font-weight: 600; margin: 0 0 0.4rem; color: #1a1a2e; }
-  .shell-card p { font-size: 0.82rem; color: #6c757d; margin: 0; line-height: 1.4; }
-
-  /* ── MRU DB list ───────────────────────────────────────────── */
-  .shell-mru-heading {
-    font-size: 0.7rem;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: #adb5bd;
-    padding: 0.3rem 0.85rem 0.1rem;
-  }
-  .shell-mru-row {
-    display: flex;
-    align-items: center;
-    gap: 0;
-  }
-  .shell-mru-row.missing .shell-mru-name { color: #adb5bd; }
-  .shell-mru-name {
-    flex: 1;
-    text-align: left;
-    background: none;
-    border: none;
-    padding: 0.4rem 0.85rem;
-    font-size: 0.8rem;
-    cursor: pointer;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 160px;
-    color: #1a1a2e;
-  }
-  .shell-mru-name:hover { background: #f0f4ff; }
-  .shell-mru-missing-badge {
-    font-size: 0.65rem;
-    background: #e9ecef;
-    color: #6c757d;
-    border-radius: 3px;
-    padding: 1px 4px;
-    margin-left: 4px;
-  }
-  .shell-mru-actions {
-    display: flex;
-    gap: 0;
-    padding-right: 4px;
-  }
-  .shell-mru-action {
-    background: none;
-    border: none;
-    cursor: pointer;
-    font-size: 0.78rem;
-    padding: 0.25rem 0.3rem;
-    color: #6c757d;
-    opacity: 0;
-    transition: opacity 0.15s;
-  }
-  .shell-mru-row:hover .shell-mru-action { opacity: 1; }
-  .shell-mru-action:hover { color: #1a1a2e; }
-
-  /* ── Guided tour ───────────────────────────────────────────── */
-  .shell-guide-section {
-    margin-top: 1.5rem;
-    width: 100%;
-    max-width: 600px;
-  }
-  .shell-guide-card {
-    background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
-    border: 1px solid #7dd3fc;
-    border-radius: 10px;
-    padding: 1.25rem 1.5rem;
-    box-shadow: 0 2px 8px rgba(14,165,233,0.1);
-  }
-  .shell-guide-title {
-    font-size: 0.95rem;
-    font-weight: 700;
-    color: #0369a1;
-    margin: 0 0 0.75rem;
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-  }
-  .shell-guide-steps {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-  .shell-guide-step {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-    font-size: 0.83rem;
-  }
-  .shell-guide-step-num {
-    min-width: 22px;
-    height: 22px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.72rem;
-    font-weight: 700;
-    flex-shrink: 0;
-  }
-  .shell-guide-step-num.done { background: #1a7f4e; color: #fff; }
-  .shell-guide-step-num.active { background: #0369a1; color: #fff; }
-  .shell-guide-step-num.pending { background: #e2e8f0; color: #64748b; }
-  .shell-guide-step-label { flex: 1; color: #1a1a2e; }
-  .shell-guide-step-label.done { text-decoration: line-through; color: #6c757d; }
-  .shell-guide-step-btn {
-    font-size: 0.75rem;
-    padding: 3px 10px;
-    border-radius: 4px;
-    border: 1px solid #0369a1;
-    background: #0369a1;
-    color: #fff;
-    cursor: pointer;
-    transition: background 0.15s;
-    white-space: nowrap;
-  }
-  .shell-guide-step-btn:hover { background: #0284c7; }
-  .shell-guide-step-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-  .shell-guide-footer {
-    margin-top: 0.75rem;
-    font-size: 0.75rem;
-    color: #64748b;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-  .shell-guide-reset {
-    font-size: 0.72rem;
-    background: none;
-    border: none;
-    color: #94a3b8;
-    cursor: pointer;
-    text-decoration: underline;
-    padding: 0;
-  }
-  .shell-guide-reset:hover { color: #475569; }
-
-  /* ── Support menu ──────────────────────────────────────────── */
-  .shell-support-wrap {
-    position: relative;
-    display: inline-flex;
-  }
-  .shell-support-btn {
-    background: none;
-    border: none;
-    cursor: pointer;
-    font-size: 0.8rem;
-    color: #6c757d;
-    padding: 4px 8px;
-    border-radius: 4px;
-    transition: background 0.15s, color 0.15s;
-    white-space: nowrap;
-  }
-  .shell-support-btn:hover {
-    background: rgba(255,255,255,0.15);
-    color: #fff;
-  }
-  .shell-support-menu {
-    display: none;
-    position: absolute;
-    top: calc(100% + 4px);
-    right: 0;
-    background: #fff;
-    border: 1px solid #e2e8f0;
-    border-radius: 6px;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.12);
-    z-index: 2000;
-    min-width: 200px;
-    padding: 4px 0;
-  }
-  .shell-support-menu.open { display: block; }
-  .shell-support-menu-item {
-    display: block;
-    width: 100%;
-    text-align: left;
-    background: none;
-    border: none;
-    padding: 0.42rem 1rem;
-    font-size: 0.82rem;
-    cursor: pointer;
-    color: #1a1a2e;
-    white-space: nowrap;
-  }
-  .shell-support-menu-item:hover { background: #f0f4ff; }
-  .shell-support-menu-sep {
-    height: 1px;
-    background: #eee;
-    margin: 3px 0;
-  }
-  /* ── Diagnostics modal ──────────────────────────────────────── */
-  .shell-diag-box {
-    background: #fff;
-    border-radius: 12px;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.18);
-    padding: 0;
-    min-width: 520px;
-    max-width: 680px;
-    max-height: 82vh;
-    display: flex;
-    flex-direction: column;
-    position: relative;
-    overflow: hidden;
-  }
-  .shell-diag-header {
-    padding: 1rem 1.25rem 0.75rem;
-    border-bottom: 1px solid #eee;
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-  }
-  .shell-diag-title {
-    font-size: 1rem;
-    font-weight: 700;
-    color: #1a1a2e;
-    flex: 1;
-  }
-  .shell-diag-body {
-    flex: 1;
-    overflow-y: auto;
-    padding: 1rem 1.25rem;
-    font-size: 0.78rem;
-    font-family: monospace;
-    white-space: pre;
-    color: #2d3748;
-    background: #f8fafc;
-    line-height: 1.55;
-  }
-  .shell-diag-footer {
-    padding: 0.75rem 1.25rem;
-    border-top: 1px solid #eee;
-    display: flex;
-    gap: 0.5rem;
-    justify-content: flex-end;
-    flex-wrap: wrap;
-  }
-  .shell-diag-btn {
-    font-size: 0.8rem;
-    padding: 5px 14px;
-    border-radius: 5px;
-    cursor: pointer;
-    border: 1px solid #adb5bd;
-    background: #f8f9fa;
-    color: #495057;
-    transition: background 0.15s;
-  }
-  .shell-diag-btn:hover { background: #e9ecef; }
-  .shell-diag-btn-primary {
-    background: #2563eb;
-    color: #fff;
-    border-color: #2563eb;
-  }
-  .shell-diag-btn-primary:hover { background: #1d4ed8; }
-  .shell-diag-loading {
-    padding: 2rem;
-    text-align: center;
-    color: #6c757d;
-    font-size: 0.84rem;
-  }
-
-  /* ── About + Shortcuts ──────────────────────────────────────── */
-  .shell-about-btn, .shell-shortcuts-btn {
-    background: none;
-    border: none;
-    cursor: pointer;
-    font-size: 0.8rem;
-    color: #6c757d;
-    padding: 4px 8px;
-    border-radius: 4px;
-    transition: background 0.15s, color 0.15s;
-    white-space: nowrap;
-  }
-  .shell-about-btn:hover, .shell-shortcuts-btn:hover {
-    background: rgba(255,255,255,0.15);
-    color: #fff;
-  }
-  .shell-about-modal {
-    position: fixed;
-    inset: 0;
-    z-index: 10000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(0,0,0,0.45);
-  }
-  .shell-about-box {
-    background: #fff;
-    border-radius: 12px;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.18);
-    padding: 2rem 2.5rem;
-    min-width: 340px;
-    max-width: 480px;
-    position: relative;
-  }
-  .shell-about-title {
-    font-size: 1.3rem;
-    font-weight: 800;
-    color: #1a1a2e;
-    margin: 0 0 0.25rem;
-    letter-spacing: -0.5px;
-  }
-  .shell-about-tagline {
-    color: #6c757d;
-    font-size: 0.83rem;
-    margin: 0 0 1.25rem;
-  }
-  .shell-about-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.82rem;
-  }
-  .shell-about-table td { padding: 0.25rem 0.4rem; }
-  .shell-about-table td:first-child { color: #6c757d; min-width: 120px; }
-  .shell-about-table td:last-child { font-weight: 600; font-family: monospace; }
-  .shell-about-profiles {
-    margin-top: 0.75rem;
-    font-size: 0.78rem;
-    color: #6c757d;
-  }
-  .shell-about-close {
-    position: absolute;
-    top: 0.8rem;
-    right: 1rem;
-    background: none;
-    border: none;
-    cursor: pointer;
-    font-size: 1.3rem;
-    color: #adb5bd;
-  }
-  .shell-about-close:hover { color: #1a1a2e; }
-  .shell-shortcuts-box {
-    background: #fff;
-    border-radius: 12px;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.18);
-    padding: 1.75rem 2.25rem;
-    min-width: 320px;
-    max-width: 440px;
-    position: relative;
-  }
-  .shell-shortcuts-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.83rem;
-  }
-  .shell-shortcuts-table tr { border-bottom: 1px solid #f0f0f0; }
-  .shell-shortcuts-table tr:last-child { border-bottom: none; }
-  .shell-shortcuts-table td { padding: 0.3rem 0.4rem; }
-  .shell-shortcuts-table td:first-child {
-    font-family: monospace;
-    background: #f4f5f7;
-    border-radius: 4px;
-    padding: 2px 8px;
-    white-space: nowrap;
-    color: #1a1a2e;
-    font-weight: 600;
-  }
-  .shell-shortcuts-table td:last-child { color: #495057; padding-left: 1rem; }
-
-  /* ── Presets button in header ───────────────────────────────── */
-  .shell-presets-btn {
-    background: none;
-    border: 1px solid rgba(255,255,255,0.25);
-    color: rgba(255,255,255,0.7);
-    font-size: 0.78rem;
-    padding: 3px 10px;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: background 0.15s, color 0.15s;
-    white-space: nowrap;
-  }
-  .shell-presets-btn:hover {
-    background: rgba(255,255,255,0.12);
-    color: #fff;
-  }
-
-  /* ── Loading indicator ─────────────────────────────────────── */
-  .shell-loading {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: calc(100vh - 44px);
-    font-size: 0.95rem;
-    color: #6c757d;
-    gap: 0.5rem;
-  }
-  .shell-loading-dot {
-    width: 6px; height: 6px;
-    border-radius: 50%;
-    background: var(--accent);
-    animation: shell-pulse 1.2s ease-in-out infinite;
-  }
-  .shell-loading-dot:nth-child(2) { animation-delay: 0.2s; }
-  .shell-loading-dot:nth-child(3) { animation-delay: 0.4s; }
-  @keyframes shell-pulse {
-    0%, 80%, 100% { opacity: 0.25; transform: scale(0.85); }
-    40%           { opacity: 1;    transform: scale(1.15); }
-  }
-
-  /* ── Home demo section ─────────────────────────────────────── */
-  .shell-demo-section {
-    margin-top: 2rem;
-    text-align: center;
-  }
-  .shell-demo-hint {
-    font-size: 0.82rem;
-    color: #6c757d;
-    margin: 0 0 0.75rem;
-  }
-  .shell-demo-card {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.75rem;
-    background: #fff;
-    border: 1px solid #dde1e8;
-    border-radius: 8px;
-    padding: 0.75rem 1.25rem;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
-    font-size: 0.88rem;
-    color: #1a1a2e;
-  }
-  .shell-demo-icon { font-size: 1.4rem; }
-  .shell-demo-label { font-weight: 500; }
-  .shell-demo-btns { display: flex; gap: 0.4rem; margin-left: 0.5rem; }
-  .shell-demo-btn {
-    font-size: 0.78rem;
-    padding: 4px 10px;
-    border-radius: 5px;
-    border: 1px solid;
-    cursor: pointer;
-    transition: background 0.15s;
-    white-space: nowrap;
-  }
-  .shell-demo-btn-install {
-    background: #f0f2f5;
-    border-color: #adb5bd;
-    color: #495057;
-  }
-  .shell-demo-btn-install:hover { background: #e2e6ea; }
-  .shell-demo-btn-install:disabled { opacity: 0.55; cursor: not-allowed; }
-  .shell-demo-btn-open {
-    background: #2c5f9e;
-    border-color: #2c5f9e;
-    color: #fff;
-  }
-  .shell-demo-btn-open:hover { background: #1e4a80; border-color: #1e4a80; }
-
-  /* ── Toast ─────────────────────────────────────────────────── */
-  .shell-toast {
-    position: fixed;
-    bottom: 1.5rem;
-    left: 50%;
-    transform: translateX(-50%) translateY(0);
-    background: #1a1a2e;
-    color: #fff;
-    font-size: 0.85rem;
-    padding: 0.55rem 1.25rem;
-    border-radius: 6px;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.28);
-    z-index: 99999;
-    pointer-events: none;
-    opacity: 1;
-    transition: opacity 0.4s, transform 0.4s;
-  }
-  .shell-toast.shell-toast-hide {
-    opacity: 0;
-    transform: translateX(-50%) translateY(8px);
-  }
-
-  /* ── Sidecar loading overlay ────────────────────────────────── */
-  .shell-sidecar-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(255, 255, 255, 0.72);
-    backdrop-filter: blur(3px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 9998;
-    opacity: 1;
-    transition: opacity 0.35s ease;
-  }
-  .shell-sidecar-overlay.shell-sidecar-overlay-hide {
-    opacity: 0;
-    pointer-events: none;
-  }
-  .shell-sidecar-card {
-    background: #fff;
-    border: 1px solid #dde1e8;
-    border-radius: 12px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
-    padding: 2rem 2.5rem;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 1.25rem;
-    min-width: 220px;
-  }
-  .shell-sidecar-spinner {
-    width: 40px;
-    height: 40px;
-    border: 3px solid #e9ecef;
-    border-top-color: var(--accent, #2c5f9e);
-    border-radius: 50%;
-    animation: shell-spin 0.75s linear infinite;
-  }
-  @keyframes shell-spin {
-    to { transform: rotate(360deg); }
-  }
-  .shell-sidecar-label {
-    font-size: 0.9rem;
-    color: #495057;
-    font-weight: 500;
-    text-align: center;
-    line-height: 1.4;
-  }
-  .shell-sidecar-sub {
-    font-size: 0.78rem;
-    color: #868e96;
-    margin-top: -0.5rem;
-    text-align: center;
-  }
-`;
+function _mruCbs(): MruCallbacks {
+  return {
+    closeDbMenu: _closeDbMenu,
+    onChangeDb: (path) => void _onChangeDb(path),
+    switchDb: (path) => void _switchDb(path),
+    esc: _esc,
+  };
+}
 
 // ─── Demo corpus ──────────────────────────────────────────────────────────────
 
@@ -902,9 +85,9 @@ async function _installDemo(): Promise<void> {
 
   // Déconnecter le sidecar si la démo est la DB active, pour éviter
   // d'écrire sur un fichier ouvert (corrompt les shadow tables FTS5).
-  if (_currentDbPath === demoPath) {
-    _currentDbPath = null;
-    _dbListeners.forEach(cb => cb(null));
+  if (shellState.currentDbPath === demoPath) {
+    shellState.currentDbPath = null;
+    shellState.dbListeners.forEach(cb => cb(null));
     await new Promise(r => setTimeout(r, 500));
   }
 
@@ -933,370 +116,19 @@ async function _installDemo(): Promise<void> {
   }
 }
 
-// ─── Storage keys ─────────────────────────────────────────────────────────────
-
-const LS_MODE              = "agrafes.lastMode";
-const LS_DB                = "agrafes.lastDbPath";
-const LS_PRESETS_GLOBAL    = "agrafes.presets.global";
-const LS_PRESETS_PREP      = "agrafes.prep.presets"; // source for migration
-const LS_ONBOARDING_STEP   = "agrafes.onboarding.demo.step";  // 0..3
-const LS_DB_RECENT         = "agrafes.db.recent";             // MruEntry[]
-const LS_CRASH_MARKER      = "agrafes.session.crash_marker";  // ISO timestamp if crashed
-
-const MRU_MAX = 10;
-const DEEP_LINK_SCHEME = "agrafes-shell";
-
-// ─── State ────────────────────────────────────────────────────────────────────
-
-type Mode = "home" | "explorer" | "constituer" | "publish";
-
-let _currentMode: Mode = "home";
-let _currentDbPath: string | null = null;
-let _currentDispose: (() => void) | null = null;
-let _navigating = false;
-let _pendingDbRemount = false;
-const _dbListeners: Set<(path: string | null) => void> = new Set();
-let _deepLinkUnlisten: (() => void) | null = null;
-
 // ─── ShellContext factory ─────────────────────────────────────────────────────
 
 function _makeContext(): ShellContext {
   return {
-    getDbPath() { return _currentDbPath; },
+    getDbPath() { return shellState.currentDbPath; },
     onDbChange(cb) {
-      _dbListeners.add(cb);
-      return () => _dbListeners.delete(cb);
+      shellState.dbListeners.add(cb);
+      return () => shellState.dbListeners.delete(cb);
     },
   };
 }
 
 // ─── Persistence ──────────────────────────────────────────────────────────────
-
-// ─── Session Logger (local-only, no telemetry) ────────────────────────────────
-
-interface LogEntry {
-  ts: string;
-  level: "info" | "warn" | "error";
-  cat: string;
-  msg: string;
-  detail?: string;
-}
-
-const _sessionLog: LogEntry[] = [];
-const _SESSION_LOG_MAX = 500;
-
-function _shellLog(level: LogEntry["level"], cat: string, msg: string, detail?: string): void {
-  const entry: LogEntry = {
-    ts: new Date().toISOString(),
-    level,
-    cat,
-    msg,
-    detail,
-  };
-  _sessionLog.push(entry);
-  if (_sessionLog.length > _SESSION_LOG_MAX) _sessionLog.shift();
-  // Console output for debug builds — never send to network
-  if (level === "error") console.error(`[AGRAFES:${cat}] ${msg}`, detail ?? "");
-  else if (level === "warn") console.warn(`[AGRAFES:${cat}] ${msg}`, detail ?? "");
-}
-
-function _formatLog(): string {
-  const header = [
-    "=== AGRAFES Shell Session Log ===",
-    `Generated: ${new Date().toISOString()}`,
-    `App version: ${typeof APP_VERSION !== "undefined" ? APP_VERSION : "?"}`,
-    `Platform: ${navigator.platform}`,
-    `UserAgent: ${navigator.userAgent}`,
-    `DB active: ${_currentDbPath ?? "(none)"}`,
-    `Last mode: ${_currentMode}`,
-    "=".repeat(40),
-    "",
-  ].join("\n");
-
-  const entries = _sessionLog.map(e =>
-    `[${e.ts}] [${e.level.toUpperCase()}] [${e.cat}] ${e.msg}${e.detail ? "\n  " + e.detail : ""}`
-  ).join("\n");
-
-  return header + entries;
-}
-
-// ── Crash marker ──────────────────────────────────────────────────────────────
-
-function _writeCrashMarker(): void {
-  try { localStorage.setItem(LS_CRASH_MARKER, new Date().toISOString()); } catch { /* */ }
-}
-
-function _clearCrashMarker(): void {
-  try { localStorage.removeItem(LS_CRASH_MARKER); } catch { /* */ }
-}
-
-function _readCrashMarker(): string | null {
-  try { return localStorage.getItem(LS_CRASH_MARKER); } catch { return null; }
-}
-
-// ── Error capture ─────────────────────────────────────────────────────────────
-
-function _installErrorCapture(): void {
-  window.onerror = (msg, src, line, col, err) => {
-    _shellLog("error", "uncaught", String(msg), `${src}:${line}:${col} — ${err?.stack ?? ""}`);
-    return false; // Don't suppress default behavior
-  };
-
-  window.addEventListener("unhandledrejection", (e) => {
-    const reason = e.reason instanceof Error
-      ? e.reason.message + "\n" + (e.reason.stack ?? "")
-      : String(e.reason);
-    _shellLog("error", "unhandledrejection", "Unhandled promise rejection", reason);
-  });
-}
-
-// ── Log export bundle ─────────────────────────────────────────────────────────
-
-async function _exportLogBundle(): Promise<void> {
-  _shellLog("info", "log_export", "User requested log bundle export");
-
-  try {
-    // Build a plain-text bundle (no zip needed — keeps scope minimal)
-    const logText = _formatLog();
-
-    const { save } = await import("@tauri-apps/plugin-dialog");
-    const outPath = await save({
-      title: "Enregistrer les logs AGRAFES",
-      defaultPath: `agrafes-logs-${new Date().toISOString().slice(0, 10)}.txt`,
-      filters: [{ name: "Texte", extensions: ["txt"] }],
-    });
-    if (!outPath) return;
-
-    // Write via Tauri FS API (scoped to user-chosen path only)
-    const { writeTextFile } = await import("@tauri-apps/plugin-fs");
-    await writeTextFile(outPath, logText);
-    _showToast(`Logs exportés → ${_pathLabel(outPath)}`, 4000);
-    _shellLog("info", "log_export", `Logs written to ${outPath}`);
-  } catch (err) {
-    _showToast(`Erreur export logs : ${String(err)}`, 5000);
-    _shellLog("error", "log_export", "Export failed", String(err));
-  }
-}
-
-// ── Crash recovery banner ─────────────────────────────────────────────────────
-
-function _showCrashRecoveryBanner(crashTs: string): void {
-  const banner = document.createElement("div");
-  banner.id = "shell-crash-banner";
-  banner.style.cssText = [
-    "position:fixed;top:0;left:0;right:0;z-index:99998",
-    "background:#c0392b;color:#fff;padding:0.5rem 1rem",
-    "display:flex;align-items:center;gap:0.75rem;font-size:0.84rem",
-    "box-shadow:0 2px 8px rgba(0,0,0,0.25)",
-  ].join(";");
-
-  const date = new Date(crashTs);
-  const dateStr = Number.isNaN(date.getTime()) ? crashTs : date.toLocaleString();
-
-  banner.innerHTML = `
-    <span style="font-size:1.1rem">⚠</span>
-    <span><strong>AGRAFES s'est fermé de façon inattendue</strong> (${_esc(dateStr)})</span>
-    <button id="crash-export-logs" style="margin-left:auto;background:#fff;color:#c0392b;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;font-weight:600;font-size:0.79rem">
-      Exporter logs…
-    </button>
-    <button id="crash-dismiss" style="background:none;border:1px solid rgba(255,255,255,0.5);border-radius:4px;padding:4px 10px;color:#fff;cursor:pointer;font-size:0.79rem">
-      Ignorer
-    </button>
-  `;
-
-  banner.querySelector("#crash-export-logs")!.addEventListener("click", () => {
-    void _exportLogBundle();
-  });
-  banner.querySelector("#crash-dismiss")!.addEventListener("click", () => {
-    banner.remove();
-  });
-
-  document.body.prepend(banner);
-  _shellLog("warn", "crash_recovery", `Crash detected from previous session: ${crashTs}`);
-}
-
-// ─── MRU (Most Recently Used) DB list ────────────────────────────────────────
-
-interface MruEntry {
-  path: string;
-  label: string;            // basename
-  last_opened_at: string;   // ISO timestamp
-  pinned?: boolean;
-  missing?: boolean;        // set after async file-existence check
-}
-
-function _loadMru(): MruEntry[] {
-  try {
-    return JSON.parse(localStorage.getItem(LS_DB_RECENT) ?? "[]") as MruEntry[];
-  } catch { return []; }
-}
-
-function _saveMru(list: MruEntry[]): void {
-  try { localStorage.setItem(LS_DB_RECENT, JSON.stringify(list)); } catch { /* */ }
-}
-
-function _pathLabel(p: string): string {
-  return p.replace(/\\/g, "/").split("/").pop() ?? p;
-}
-
-function _addToMru(path: string): void {
-  const label = _pathLabel(path);
-  const now = new Date().toISOString();
-  let list = _loadMru().filter(e => e.path !== path);
-  list.unshift({ path, label, last_opened_at: now });
-  if (list.length > MRU_MAX) list = list.slice(0, MRU_MAX);
-  _saveMru(list);
-}
-
-function _removeFromMru(path: string): void {
-  _saveMru(_loadMru().filter(e => e.path !== path));
-}
-
-function _togglePinMru(path: string): void {
-  const list = _loadMru().map(e => e.path === path ? { ...e, pinned: !e.pinned } : e);
-  _saveMru(list);
-}
-
-/** Async: mark entries as missing if file does not exist (best-effort via fetch/open). */
-async function _checkMruPaths(): Promise<void> {
-  const { exists } = await import("@tauri-apps/plugin-fs").catch(() => ({ exists: null }));
-  if (!exists) return;
-  const list = _loadMru();
-  let changed = false;
-  for (const entry of list) {
-    try {
-      const ok = await exists(entry.path);
-      if (entry.missing !== !ok) { entry.missing = !ok; changed = true; }
-    } catch { entry.missing = false; }
-  }
-  if (changed) { _saveMru(list); _rebuildMruMenu(); }
-}
-
-/** Rebuild only the MRU section inside the DB menu (without full header rebuild). */
-function _rebuildMruMenu(): void {
-  const menu = document.getElementById("shell-db-menu");
-  if (!menu) return;
-  const section = menu.querySelector(".shell-mru-section");
-  if (section) section.replaceWith(_buildMruSection());
-}
-
-function _buildMruSection(): HTMLElement {
-  const list = _loadMru();
-  if (list.length === 0) {
-    const empty = document.createElement("div");
-    empty.className = "shell-mru-section";
-    return empty;
-  }
-
-  const section = document.createElement("div");
-  section.className = "shell-mru-section";
-
-  const sep = document.createElement("div");
-  sep.className = "shell-db-menu-sep";
-  section.appendChild(sep);
-
-  const heading = document.createElement("div");
-  heading.className = "shell-mru-heading";
-  heading.textContent = "Récents";
-  section.appendChild(heading);
-
-  // Pinned first, then by last_opened_at desc
-  const sorted = [...list].sort((a, b) => {
-    if (a.pinned && !b.pinned) return -1;
-    if (!a.pinned && b.pinned) return 1;
-    return b.last_opened_at.localeCompare(a.last_opened_at);
-  });
-
-  for (const entry of sorted) {
-    const row = document.createElement("div");
-    row.className = `shell-mru-row${entry.missing ? " missing" : ""}`;
-
-    const nameBtn = document.createElement("button");
-    nameBtn.className = "shell-mru-name";
-    nameBtn.title = entry.path;
-    nameBtn.innerHTML = `${entry.pinned ? "📌 " : ""}${_esc(entry.label)}${entry.missing ? ' <span class="shell-mru-missing-badge">introuvable</span>' : ""}`;
-    nameBtn.addEventListener("click", () => {
-      _closeDbMenu();
-      if (entry.missing) {
-        // Re-select via dialog
-        void _onChangeDb(entry.path);
-      } else {
-        void _switchDb(entry.path);
-      }
-    });
-    row.appendChild(nameBtn);
-
-    const actions = document.createElement("div");
-    actions.className = "shell-mru-actions";
-
-    const pinBtn = document.createElement("button");
-    pinBtn.className = "shell-mru-action";
-    pinBtn.title = entry.pinned ? "Désépingler" : "Épingler";
-    pinBtn.textContent = entry.pinned ? "📌" : "📍";
-    pinBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      _togglePinMru(entry.path);
-      _rebuildMruMenu();
-    });
-    actions.appendChild(pinBtn);
-
-    const delBtn = document.createElement("button");
-    delBtn.className = "shell-mru-action";
-    delBtn.title = "Retirer des récents";
-    delBtn.textContent = "✕";
-    delBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      _removeFromMru(entry.path);
-      _rebuildMruMenu();
-    });
-    actions.appendChild(delBtn);
-
-    row.appendChild(actions);
-    section.appendChild(row);
-  }
-  return section;
-}
-
-/** Switch to a different DB with loading state + module remount. */
-async function _switchDb(path: string): Promise<void> {
-  if (path === _currentDbPath) { _closeDbMenu(); return; }
-
-  // Disable nav during switch
-  const dbBtn = document.getElementById("shell-db-btn") as HTMLButtonElement | null;
-  const tabs = document.querySelectorAll<HTMLButtonElement>(".shell-tab");
-  if (dbBtn) { dbBtn.disabled = true; dbBtn.textContent = "Chargement…"; }
-  tabs.forEach(t => t.disabled = true);
-
-  _shellLog("info", "db_switch", `Switching DB: ${_pathLabel(path)}`);
-
-  _currentDbPath = path;
-  _persist();
-  _addToMru(path);
-  _updateDbBadge();
-  _dbListeners.forEach(cb => cb(_currentDbPath));
-
-  try {
-    await _initDb(path);
-    _shellLog("info", "db_switch", `DB ready: ${_pathLabel(path)}`);
-    if (_currentMode === "home") {
-      // Home is stateless — remount immediately (no context to lose).
-      _showToast(`DB active : ${_pathLabel(path)}`);
-    } else {
-      // Non-home module is mounted: defer remount so the user keeps scroll/context.
-      // A banner lets them choose when to refresh.
-      _pendingDbRemount = true;
-      _updateDbBadge(); // shows ⚠ suffix while remount is pending
-      _showToast(`DB changée : ${_pathLabel(path)}`);
-      _showDbChangeBanner(_pathLabel(path));
-    }
-  } catch (err) {
-    _shellLog("error", "db_switch", `DB init failed: ${_pathLabel(path)}`, String(err));
-    throw err;
-  } finally {
-    if (dbBtn) { dbBtn.disabled = false; dbBtn.textContent = "DB \u25be"; }
-    tabs.forEach(t => t.disabled = false);
-  }
-}
 
 function _loadPersisted(): { mode: Mode; dbPath: string | null } {
   const raw = localStorage.getItem(LS_MODE);
@@ -1308,157 +140,38 @@ function _loadPersisted(): { mode: Mode; dbPath: string | null } {
 }
 
 function _persist(): void {
-  localStorage.setItem(LS_MODE, _currentMode);
-  if (_currentDbPath) localStorage.setItem(LS_DB, _currentDbPath);
+  localStorage.setItem(LS_MODE, shellState.currentMode);
+  if (shellState.currentDbPath) localStorage.setItem(LS_DB, shellState.currentDbPath);
   else localStorage.removeItem(LS_DB);
-}
-
-// ─── Deep-link resolution ─────────────────────────────────────────────────────
-
-interface DeepLinkPayload {
-  mode: Mode | null;
-  dbPath: string | null;
-}
-
-function _normalizeMode(raw: string | null | undefined): Mode | null {
-  const mode = (raw ?? "").trim().toLowerCase();
-  if (mode === "explorer" || mode === "constituer" || mode === "home" || mode === "publish") {
-    return mode;
-  }
-  return null;
-}
-
-function _isDbPathCandidate(path: string): boolean {
-  return /\.(db|sqlite|sqlite3)$/i.test(path);
-}
-
-function _parseOpenDbDeepLink(uri: string): DeepLinkPayload | null {
-  try {
-    const u = new URL(uri);
-    const protocol = u.protocol.toLowerCase();
-    if (protocol !== `${DEEP_LINK_SCHEME}:` && protocol !== "agrafes:") return null;
-
-    const hostPath = (u.hostname || u.pathname || "").replace(/^\/+/, "").toLowerCase();
-    if (hostPath && hostPath !== "open-db" && hostPath !== "open") return null;
-
-    const dbRaw = (u.searchParams.get("path") ?? u.searchParams.get("db") ?? u.searchParams.get("open_db") ?? "").trim();
-    const mode = _normalizeMode(u.searchParams.get("mode"));
-    return {
-      mode,
-      dbPath: dbRaw && _isDbPathCandidate(dbRaw) ? dbRaw : null,
-    };
-  } catch {
-    return null;
-  }
-}
-
-function _firstDeepLinkPayload(urls: readonly string[]): DeepLinkPayload | null {
-  for (const raw of urls) {
-    const parsed = _parseOpenDbDeepLink(raw);
-    if (parsed && (parsed.dbPath || parsed.mode)) return parsed;
-  }
-  return null;
-}
-
-function _modeFromLocation(): Mode | null {
-  // Check location.hash: #explorer, #constituer, #home
-  const hashMode = _normalizeMode(location.hash.replace(/^#/, ""));
-  if (hashMode) return hashMode;
-
-  // Check ?mode= query param
-  const params = new URLSearchParams(location.search);
-  const queryMode = _normalizeMode(params.get("mode"));
-  if (queryMode) return queryMode;
-
-  return null;
-}
-
-function _dbPathFromLocationSearch(): string | null {
-  try {
-    const params = new URLSearchParams(window.location.search);
-    const raw = (params.get("open_db") ?? params.get("db") ?? params.get("path") ?? "").trim();
-    if (!raw || !_isDbPathCandidate(raw)) return null;
-    return raw;
-  } catch {
-    return null;
-  }
-}
-
-async function _resolveStartupDeepLinkPayload(): Promise<DeepLinkPayload> {
-  const fromLocation: DeepLinkPayload = {
-    mode: _normalizeMode(new URLSearchParams(window.location.search).get("mode")),
-    dbPath: _dbPathFromLocationSearch(),
-  };
-  if (fromLocation.mode || fromLocation.dbPath) return fromLocation;
-
-  try {
-    const initialLinks = await getCurrentDeepLinks();
-    const fromPlugin = _firstDeepLinkPayload(initialLinks ?? []);
-    if (fromPlugin) return fromPlugin;
-  } catch {
-    // no deep-link payload available at startup (normal path)
-  }
-  return { mode: null, dbPath: null };
-}
-
-async function _initDeepLinkRuntimeListener(): Promise<void> {
-  try {
-    _deepLinkUnlisten = await onOpenUrl((urls) => {
-      const payload = _firstDeepLinkPayload(urls);
-      if (!payload || (!payload.mode && !payload.dbPath)) return;
-
-      void (async () => {
-        try {
-          if (payload.mode && payload.mode !== _currentMode) {
-            await _setMode(payload.mode);
-          } else if (!payload.mode && _currentMode === "home") {
-            await _setMode("explorer");
-          }
-
-          if (payload.dbPath) {
-            if (payload.dbPath !== _currentDbPath) {
-              await _switchDb(payload.dbPath);
-            } else {
-              _showToast(`DB déjà active : ${_pathLabel(payload.dbPath)}`);
-            }
-          }
-        } catch (err) {
-          _shellLog("error", "deep_link", "Runtime deep-link failed", String(err));
-        }
-      })();
-    });
-  } catch {
-    _deepLinkUnlisten = null;
-  }
 }
 
 // ─── Entry point ─────────────────────────────────────────────────────────────
 
 export async function initShell(): Promise<void> {
   // ── Crash detection + error capture (before anything else) ──────────────────
-  _installErrorCapture();
+  installErrorCapture();
 
-  const previousCrash = _readCrashMarker();
-  _writeCrashMarker(); // write now; cleared on clean shutdown
+  const previousCrash = readCrashMarker();
+  writeCrashMarker(); // write now; cleared on clean shutdown
 
   _injectCSS();
 
-  _shellLog("info", "boot", `AGRAFES Shell v${APP_VERSION} starting`);
+  shellLog("info", "boot", `AGRAFES Shell v${APP_VERSION} starting`);
 
   // ── Restore persisted state ──────────────────────────────────────────────────
   const { mode: savedMode, dbPath: savedDb } = _loadPersisted();
-  _currentDbPath = savedDb;
-  if (savedDb) _shellLog("info", "boot", `Restored DB: ${_pathLabel(savedDb)}`);
+  shellState.currentDbPath = savedDb;
+  if (savedDb) shellLog("info", "boot", `Restored DB: ${pathLabel(savedDb)}`);
 
-  const startupDeepLink = await _resolveStartupDeepLinkPayload();
+  const startupDeepLink = await resolveStartupDeepLinkPayload();
   if (startupDeepLink.dbPath) {
-    _currentDbPath = startupDeepLink.dbPath;
-    _addToMru(startupDeepLink.dbPath);
-    _shellLog("info", "boot", `Deep-link DB: ${_pathLabel(startupDeepLink.dbPath)}`);
+    shellState.currentDbPath = startupDeepLink.dbPath;
+    addToMru(startupDeepLink.dbPath);
+    shellLog("info", "boot", `Deep-link DB: ${pathLabel(startupDeepLink.dbPath)}`);
   }
 
   // Deep-link overrides saved mode; without a deep link, always start on home
-  const deepLinkMode = startupDeepLink.mode ?? _modeFromLocation();
+  const deepLinkMode = startupDeepLink.mode ?? modeFromLocation();
   const startMode: Mode = deepLinkMode ?? "home";
 
   _buildHeader();
@@ -1468,23 +181,39 @@ export async function initShell(): Promise<void> {
   document.addEventListener("click", _closeSupportMenu);
   document.body.dataset.mode = startMode;
   await _setMode(startMode);
-  await _initDeepLinkRuntimeListener();
+
+  await initDeepLinkRuntimeListener(async (payload) => {
+    if (payload.mode && payload.mode !== shellState.currentMode) {
+      await _setMode(payload.mode);
+    } else if (!payload.mode && shellState.currentMode === "home") {
+      await _setMode("explorer");
+    }
+    if (payload.dbPath) {
+      if (payload.dbPath !== shellState.currentDbPath) {
+        await _switchDb(payload.dbPath);
+      } else {
+        _showToast(`DB déjà active : ${pathLabel(payload.dbPath)}`);
+      }
+    }
+  });
 
   // ── Show crash recovery banner if previous session crashed ───────────────────
   if (previousCrash) {
     // Small delay so the main UI renders first
-    setTimeout(() => _showCrashRecoveryBanner(previousCrash), 500);
+    setTimeout(() => {
+      showCrashRecoveryBanner(previousCrash, _esc, () => void exportLogBundle(_showToast));
+    }, 500);
   }
 
   // ── Clean shutdown handler ───────────────────────────────────────────────────
   window.addEventListener("beforeunload", () => {
-    _deepLinkUnlisten?.();
-    _deepLinkUnlisten = null;
-    _shellLog("info", "shutdown", "Clean shutdown");
-    _clearCrashMarker();
+    shellState.deepLinkUnlisten?.();
+    shellState.deepLinkUnlisten = null;
+    shellLog("info", "shutdown", "Clean shutdown");
+    clearCrashMarker();
   });
 
-  _shellLog("info", "boot", `Started in mode: ${startMode}`);
+  shellLog("info", "boot", `Started in mode: ${startMode}`);
 }
 
 // ─── CSS ──────────────────────────────────────────────────────────────────────
@@ -1496,8 +225,6 @@ function _injectCSS(): void {
   style.textContent = SHELL_CSS;
   document.head.appendChild(style);
 }
-
-// ─── Header ───────────────────────────────────────────────────────────────────
 
 // ─── Support menu ─────────────────────────────────────────────────────────────
 
@@ -1555,8 +282,8 @@ function _openDiagnosticsModal(): void {
     try {
       const { collectDiagnostics, formatDiagnosticsText } = await import("./diagnostics.ts");
       const diag = await collectDiagnostics({
-        currentDbPath: _currentDbPath,
-        sessionLog: _sessionLog,
+        currentDbPath: shellState.currentDbPath,
+        sessionLog: shellState.sessionLog,
         logTailLines: 50,
       });
       _lastDiagText = formatDiagnosticsText(diag);
@@ -1567,7 +294,7 @@ function _openDiagnosticsModal(): void {
       bodyEl.className = "shell-diag-body";
       bodyEl.textContent = `Erreur lors de la collecte :\n${String(err)}`;
       footerEl.style.display = "";
-      _shellLog("error", "diagnostics", "Diagnostics collection failed", String(err));
+      shellLog("error", "diagnostics", "Diagnostics collection failed", String(err));
     }
   })();
 
@@ -1586,7 +313,7 @@ function _openDiagnosticsModal(): void {
       sel?.addRange(range);
       _showToast("Sélectionnez puis copiez (Ctrl/⌘+C)", 3000);
     }
-    _shellLog("info", "diagnostics", "Diagnostic text copied to clipboard");
+    shellLog("info", "diagnostics", "Diagnostic text copied to clipboard");
   });
 
   // Export button
@@ -1597,7 +324,7 @@ function _openDiagnosticsModal(): void {
 }
 
 async function _exportDiagnosticFile(text: string): Promise<void> {
-  _shellLog("info", "diagnostics", "User requested diagnostic export");
+  shellLog("info", "diagnostics", "User requested diagnostic export");
   try {
     const { save } = await import("@tauri-apps/plugin-dialog");
     const outPath = await save({
@@ -1609,11 +336,11 @@ async function _exportDiagnosticFile(text: string): Promise<void> {
 
     const { writeTextFile } = await import("@tauri-apps/plugin-fs");
     await writeTextFile(outPath, text);
-    _showToast(`Diagnostic exporté → ${_pathLabel(outPath)}`, 4000);
-    _shellLog("info", "diagnostics", `Diagnostic written to ${outPath}`);
+    _showToast(`Diagnostic exporté → ${pathLabel(outPath)}`, 4000);
+    shellLog("info", "diagnostics", `Diagnostic written to ${outPath}`);
   } catch (err) {
     _showToast(`Erreur export diagnostic : ${String(err)}`, 5000);
-    _shellLog("error", "diagnostics", "Diagnostic export failed", String(err));
+    shellLog("error", "diagnostics", "Diagnostic export failed", String(err));
   }
 }
 
@@ -1627,13 +354,13 @@ const TEI_PROFILES = ["generic", "parcolab_like", "parcolab_strict"];
 const RELEASES_URL = "https://github.com/Hsbtqemy/AGRAFES/releases";
 
 async function _checkUpdates(): Promise<void> {
-  _shellLog("info", "updates", `Check updates requested (current: v${APP_VERSION})`);
+  shellLog("info", "updates", `Check updates requested (current: v${APP_VERSION})`);
   _showToast(`Ouverture des Releases… (version locale : v${APP_VERSION})`, 3500);
   try {
     const { open } = await import("@tauri-apps/plugin-shell");
     await open(RELEASES_URL);
   } catch (err) {
-    _shellLog("error", "updates", "Failed to open releases page", String(err));
+    shellLog("error", "updates", "Failed to open releases page", String(err));
     _showUpdatesErrorModal(RELEASES_URL);
   }
 }
@@ -1688,7 +415,7 @@ function _openAboutDialog(): void {
   const existing = document.getElementById("shell-about-modal");
   if (existing) { existing.remove(); return; }
 
-  const dbName = _currentDbPath ? _pathLabel(_currentDbPath) : "(aucune)";
+  const dbName = shellState.currentDbPath ? pathLabel(shellState.currentDbPath) : "(aucune)";
 
   const modal = document.createElement("div");
   modal.id = "shell-about-modal";
@@ -1721,7 +448,7 @@ function _openAboutDialog(): void {
   modal.addEventListener("click", (e) => { if (e.target === modal) modal.remove(); });
   modal.querySelector("#shell-about-close")!.addEventListener("click", () => modal.remove());
   modal.querySelector("#shell-about-export-logs")!.addEventListener("click", () => {
-    void _exportLogBundle();
+    void exportLogBundle(_showToast);
   });
   document.body.appendChild(modal);
   // Close on Escape
@@ -1771,6 +498,8 @@ function _openShortcutsPanel(): void {
   const onKey = (e: KeyboardEvent): void => { if (e.key === "Escape") { modal.remove(); document.removeEventListener("keydown", onKey); } };
   document.addEventListener("keydown", onKey);
 }
+
+// ─── Header ───────────────────────────────────────────────────────────────────
 
 function _buildHeader(): void {
   const header = document.getElementById("shell-header")!;
@@ -1845,7 +574,7 @@ function _buildHeader(): void {
   };
 
   supportMenu.appendChild(_mkSupportItem("🔍 Diagnostic système…", () => _openDiagnosticsModal()));
-  supportMenu.appendChild(_mkSupportItem("📋 Exporter logs…", () => void _exportLogBundle()));
+  supportMenu.appendChild(_mkSupportItem("📋 Exporter logs…", () => void exportLogBundle(_showToast)));
   supportMenu.appendChild(_mkSupportItem("⬆ Vérifier les mises à jour…", () => void _checkUpdates()));
   supportMenu.appendChild((() => { const s = document.createElement("div"); s.className = "shell-support-menu-sep"; return s; })());
   supportMenu.appendChild(_mkSupportItem("ⓘ À propos d'AGRAFES…", () => _openAboutDialog()));
@@ -1897,13 +626,13 @@ function _buildHeader(): void {
   menu.appendChild(itemCreate);
 
   // MRU section (appended to menu, rebuilt async)
-  menu.appendChild(_buildMruSection());
+  menu.appendChild(buildMruSection(_mruCbs()));
 
   menuWrap.appendChild(menu);
   dbZone.appendChild(menuWrap);
 
   // Async: check if MRU paths still exist
-  void _checkMruPaths();
+  void checkMruPaths(_mruCbs());
 
   header.appendChild(dbZone);
 }
@@ -1925,18 +654,18 @@ function _updateHeaderTabs(mode: Mode): void {
 }
 
 function _dbBadgeText(): string {
-  if (!_currentDbPath) return "DB: (aucune)";
-  const parts = _currentDbPath.replace(/\\/g, "/").split("/");
+  if (!shellState.currentDbPath) return "DB: (aucune)";
+  const parts = shellState.currentDbPath.replace(/\\/g, "/").split("/");
   const name = parts[parts.length - 1];
   // ⚠ suffix persists while a DB change is pending (banner "Plus tard" dismissed).
-  return _pendingDbRemount ? `DB: ${name} ⚠` : `DB: ${name}`;
+  return shellState.pendingDbRemount ? `DB: ${name} ⚠` : `DB: ${name}`;
 }
 
 function _updateDbBadge(): void {
   const badge = document.getElementById("shell-db-badge");
   if (!badge) return;
   badge.textContent = _dbBadgeText();
-  if (_pendingDbRemount) {
+  if (shellState.pendingDbRemount) {
     badge.classList.add("shell-db-badge--pending");
     badge.title = "DB modifiée — cliquez l'onglet actif ou « Rafraîchir » pour appliquer";
   } else {
@@ -1947,8 +676,8 @@ function _updateDbBadge(): void {
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
-function _escHtml(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+function _esc(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 // ─── DB menu helpers ──────────────────────────────────────────────────────────
@@ -1979,19 +708,19 @@ async function _onCreateDb(): Promise<void> {
   // Ensure .db extension
   if (!/\.(db|sqlite|sqlite3)$/i.test(savePath)) savePath += ".db";
 
-  _currentDbPath = savePath;
+  shellState.currentDbPath = savePath;
   _persist();
-  _addToMru(savePath);
+  addToMru(savePath);
   _updateDbBadge();
-  _dbListeners.forEach(cb => cb(_currentDbPath));
+  shellState.dbListeners.forEach(cb => cb(shellState.currentDbPath));
   _closeDbMenu();
 
   // Immediate sidecar init (starts sidecar + applies migrations)
   await _initDb(savePath);
 
   // Re-mount if module active so module uses the new DB
-  if (_currentMode !== "home") {
-    await _setMode(_currentMode);
+  if (shellState.currentMode !== "home") {
+    await _setMode(shellState.currentMode);
   }
 }
 
@@ -2009,10 +738,10 @@ async function _initDb(dbPath: string): Promise<void> {
     await ensureRunning(dbPath);
     _hideSidecarOverlay();
     _showToast("DB initialis\u00e9e \u2713", 3000);
-    _shellLog("info", "sidecar", `Sidecar healthy for DB: ${_pathLabel(dbPath)}`);
+    shellLog("info", "sidecar", `Sidecar healthy for DB: ${pathLabel(dbPath)}`);
   } catch (err) {
     _hideSidecarOverlay();
-    _shellLog("error", "sidecar", `Sidecar health failure for DB: ${_pathLabel(dbPath)}`, String(err));
+    shellLog("error", "sidecar", `Sidecar health failure for DB: ${pathLabel(dbPath)}`, String(err));
     _showInitError(dbPath, String(err));
   } finally {
     if (btn) { btn.textContent = "DB \u25be"; btn.disabled = false; }
@@ -2072,7 +801,7 @@ function _clearInitError(): void {
   document.getElementById("shell-init-error")?.remove();
 }
 
-// ─── DB change banner (P4-2) ─────────────────────────────────────────────────
+// ─── DB change banner ─────────────────────────────────────────────────────────
 
 /**
  * Show a non-blocking sticky banner informing the user that the active DB
@@ -2113,8 +842,8 @@ function _showDbChangeBanner(dbLabel: string): void {
   refreshBtn.textContent = "Rafraîchir maintenant";
   refreshBtn.addEventListener("click", () => {
     _clearDbChangeBanner();
-    _pendingDbRemount = false;
-    void _setMode(_currentMode);
+    shellState.pendingDbRemount = false;
+    void _setMode(shellState.currentMode);
   });
 
   const laterBtn = document.createElement("button");
@@ -2123,7 +852,7 @@ function _showDbChangeBanner(dbLabel: string): void {
   laterBtn.title = "La DB sera appliquée à la prochaine navigation";
   laterBtn.addEventListener("click", () => {
     _clearDbChangeBanner();
-    // _pendingDbRemount stays true — will be applied on next _setMode
+    // shellState.pendingDbRemount stays true — will be applied on next _setMode
   });
 
   const dismissBtn = document.createElement("button");
@@ -2133,7 +862,7 @@ function _showDbChangeBanner(dbLabel: string): void {
   dismissBtn.setAttribute("aria-label", "Fermer ce bandeau");
   dismissBtn.addEventListener("click", () => {
     _clearDbChangeBanner();
-    _pendingDbRemount = false;
+    shellState.pendingDbRemount = false;
     _updateDbBadge(); // remove ⚠ suffix — user explicitly dismissed the change
   });
 
@@ -2173,6 +902,49 @@ async function _onChangeDb(defaultPath?: string): Promise<void> {
   await _switchDb(newPath);
 }
 
+// ─── DB switch ────────────────────────────────────────────────────────────────
+
+/** Switch to a different DB with loading state + module remount. */
+async function _switchDb(path: string): Promise<void> {
+  if (path === shellState.currentDbPath) { _closeDbMenu(); return; }
+
+  // Disable nav during switch
+  const dbBtn = document.getElementById("shell-db-btn") as HTMLButtonElement | null;
+  const tabs = document.querySelectorAll<HTMLButtonElement>(".shell-tab");
+  if (dbBtn) { dbBtn.disabled = true; dbBtn.textContent = "Chargement…"; }
+  tabs.forEach(t => t.disabled = true);
+
+  shellLog("info", "db_switch", `Switching DB: ${pathLabel(path)}`);
+
+  shellState.currentDbPath = path;
+  _persist();
+  addToMru(path);
+  _updateDbBadge();
+  shellState.dbListeners.forEach(cb => cb(shellState.currentDbPath));
+
+  try {
+    await _initDb(path);
+    shellLog("info", "db_switch", `DB ready: ${pathLabel(path)}`);
+    if (shellState.currentMode === "home") {
+      // Home is stateless — remount immediately (no context to lose).
+      _showToast(`DB active : ${pathLabel(path)}`);
+    } else {
+      // Non-home module is mounted: defer remount so the user keeps scroll/context.
+      // A banner lets them choose when to refresh.
+      shellState.pendingDbRemount = true;
+      _updateDbBadge(); // shows ⚠ suffix while remount is pending
+      _showToast(`DB changée : ${pathLabel(path)}`);
+      _showDbChangeBanner(pathLabel(path));
+    }
+  } catch (err) {
+    shellLog("error", "db_switch", `DB init failed: ${pathLabel(path)}`, String(err));
+    throw err;
+  } finally {
+    if (dbBtn) { dbBtn.disabled = false; dbBtn.textContent = "DB \u25be"; }
+    tabs.forEach(t => t.disabled = false);
+  }
+}
+
 // ─── Router / lifecycle ───────────────────────────────────────────────────────
 
 const _MODE_TITLES: Record<Mode, string> = {
@@ -2187,25 +959,25 @@ function _updateDocTitle(mode: Mode): void {
 }
 
 async function _setMode(mode: Mode): Promise<void> {
-  if (_navigating) return;
-  _navigating = true;
+  if (shellState.navigating) return;
+  shellState.navigating = true;
 
   // Any navigation clears the DB-change banner and the pending-remount flag.
   _clearDbChangeBanner();
-  _pendingDbRemount = false;
+  shellState.pendingDbRemount = false;
   _updateDbBadge(); // remove ⚠ suffix now that remount has occurred
 
-  _shellLog("info", "navigation", `Navigate: ${_currentMode} → ${mode}`);
+  shellLog("info", "navigation", `Navigate: ${shellState.currentMode} → ${mode}`);
 
-  _currentMode = mode;
+  shellState.currentMode = mode;
   document.body.dataset.mode = mode;
   _updateHeaderTabs(mode);
   _updateDocTitle(mode);
   _persist();
 
   // Dispose current module (best-effort)
-  try { _currentDispose?.(); } catch { /* ignore */ }
-  _currentDispose = null;
+  try { shellState.currentDispose?.(); } catch { /* ignore */ }
+  shellState.currentDispose = null;
 
   try {
     if (mode === "home") {
@@ -2220,7 +992,7 @@ async function _setMode(mode: Mode): Promise<void> {
       const mod = await import("./modules/explorerModule.ts");
       const fresh = _freshContainer();
       await mod.mount(fresh, ctx);
-      _currentDispose = () => mod.dispose();
+      shellState.currentDispose = () => mod.dispose();
     } else if (mode === "publish") {
       const fresh = _freshContainer();
       await _renderPublicationWizard(fresh);
@@ -2228,14 +1000,14 @@ async function _setMode(mode: Mode): Promise<void> {
       const mod = await import("./modules/constituerModule.ts");
       _freshContainer(); // swap out spinner; prep finds #app by id
       await mod.mount(document.getElementById("app")!, ctx);
-      _currentDispose = () => mod.dispose();
+      shellState.currentDispose = () => mod.dispose();
     }
   } catch (err) {
     console.error("[shell] navigation error:", err);
     const c = document.getElementById("app");
     if (c) c.innerHTML = `<div style="padding:2rem;color:#c0392b">Erreur de chargement du module.<br><code>${String(err)}</code></div>`;
   } finally {
-    _navigating = false;
+    shellState.navigating = false;
   }
 }
 
@@ -2397,10 +1169,6 @@ function _openPresetsModal(): void {
   document.body.appendChild(overlay);
 }
 
-function _esc(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
-
 // ─── Publication Wizard ───────────────────────────────────────────────────────
 
 type WizardStep = 1 | 2 | 3 | 4 | 5;
@@ -2421,7 +1189,7 @@ interface WizardState {
 }
 
 async function _renderPublicationWizard(container: HTMLElement): Promise<void> {
-  if (!_currentDbPath) {
+  if (!shellState.currentDbPath) {
     container.innerHTML = `
       <div style="padding:2rem;text-align:center;color:#c0392b">
         <p>Aucune base de données sélectionnée.</p>
@@ -2431,7 +1199,7 @@ async function _renderPublicationWizard(container: HTMLElement): Promise<void> {
   }
 
   const state: WizardState = {
-    dbPath: _currentDbPath,
+    dbPath: shellState.currentDbPath,
     docIds: null,
     docs: [],
     includeStructure: false,
@@ -2653,7 +1421,7 @@ async function _renderPublicationWizard(container: HTMLElement): Promise<void> {
           const job = await enqueueJob(conn, "export_tei_package", params);
           state.jobId = job.job_id;
           statusEl.textContent = `Job ${job.job_id} en cours…`;
-          _shellLog("info", "publish_wizard", `TEI package job submitted: ${job.job_id}`, JSON.stringify({
+          shellLog("info", "publish_wizard", `TEI package job submitted: ${job.job_id}`, JSON.stringify({
             profile: state.teiProfile, policy: state.qaPolicy, docs: state.docIds?.length ?? "all"
           }));
 
@@ -2663,12 +1431,12 @@ async function _renderPublicationWizard(container: HTMLElement): Promise<void> {
             if (rec.status === "done") {
               state.result = rec.result as Record<string, unknown>;
               state.step = 5;
-              _shellLog("info", "publish_wizard", `Job ${job.job_id} completed`, JSON.stringify(state.result));
+              shellLog("info", "publish_wizard", `Job ${job.job_id} completed`, JSON.stringify(state.result));
               await render();
             } else if (rec.status === "error" || rec.status === "canceled") {
               state.error = (rec as unknown as { error?: string }).error ?? rec.status;
               statusEl.innerHTML = `<span style="color:#c0392b">Erreur: ${_esc(state.error ?? "")}</span>`;
-              _shellLog("error", "publish_wizard", `Job ${job.job_id} failed`, state.error ?? rec.status);
+              shellLog("error", "publish_wizard", `Job ${job.job_id} failed`, state.error ?? rec.status);
               launchBtn.disabled = false;
             } else {
               statusEl.textContent = `Job ${state.jobId} — statut: ${rec.status}…`;
@@ -2679,7 +1447,7 @@ async function _renderPublicationWizard(container: HTMLElement): Promise<void> {
         } catch (e) {
           state.error = String(e);
           statusEl.innerHTML = `<span style="color:#c0392b">Erreur: ${_esc(String(e))}</span>`;
-          _shellLog("error", "publish_wizard", "Wizard launch error", String(e));
+          shellLog("error", "publish_wizard", "Wizard launch error", String(e));
           launchBtn.disabled = false;
         }
       });
@@ -2761,11 +1529,11 @@ async function _renderGuidedTour(container: HTMLElement): Promise<void> {
     {
       label: "Ouvrir Explorer et chercher «&nbsp;prince&nbsp;»",
       action: async () => {
-        _currentDbPath = demoPath;
+        shellState.currentDbPath = demoPath;
         _persist();
-        _addToMru(demoPath);
+        addToMru(demoPath);
         _updateDbBadge();
-        _dbListeners.forEach(cb => cb(_currentDbPath));
+        shellState.dbListeners.forEach(cb => cb(shellState.currentDbPath));
         // Store a prefill hint for Explorer welcome hint
         try { sessionStorage.setItem("agrafes.explorer.prefill", "prince"); } catch { /* */ }
         _setOnboardingStep(1);
@@ -2775,11 +1543,11 @@ async function _renderGuidedTour(container: HTMLElement): Promise<void> {
     {
       label: "Générer un rapport QA (politique lenient)",
       action: async () => {
-        _currentDbPath = demoPath;
+        shellState.currentDbPath = demoPath;
         _persist();
-        _addToMru(demoPath);
+        addToMru(demoPath);
         _updateDbBadge();
-        _dbListeners.forEach(cb => cb(_currentDbPath));
+        shellState.dbListeners.forEach(cb => cb(shellState.currentDbPath));
         _setOnboardingStep(2);
         await _setMode("constituer");
         // After constituer mounts, user navigates to Exports themselves
@@ -2790,11 +1558,11 @@ async function _renderGuidedTour(container: HTMLElement): Promise<void> {
     {
       label: "Exporter un package publication (TEI generic)",
       action: async () => {
-        _currentDbPath = demoPath;
+        shellState.currentDbPath = demoPath;
         _persist();
-        _addToMru(demoPath);
+        addToMru(demoPath);
         _updateDbBadge();
-        _dbListeners.forEach(cb => cb(_currentDbPath));
+        shellState.dbListeners.forEach(cb => cb(shellState.currentDbPath));
         _setOnboardingStep(3);
         await _setMode("publish");
       },
@@ -2813,7 +1581,6 @@ async function _renderGuidedTour(container: HTMLElement): Promise<void> {
         ${STEPS.map((s, i) => {
           const done = i < step;
           const active = i === step && !allDone;
-          const pending = i > step;
           const numClass = done ? "done" : active ? "active" : "pending";
           const labelClass = done ? "done" : "";
           return `
@@ -2955,11 +1722,11 @@ async function _initDemoSection(
       openBtn.textContent = prevLabel;
     }
     const demoPath = await _getDemoDbPath();
-    _currentDbPath = demoPath;
+    shellState.currentDbPath = demoPath;
     _persist();
-    _addToMru(demoPath);
+    addToMru(demoPath);
     _updateDbBadge();
-    _dbListeners.forEach(cb => cb(_currentDbPath));
+    shellState.dbListeners.forEach(cb => cb(shellState.currentDbPath));
     _showToast("DB active\u00a0: corpus d\u00e9mo");
     await _setMode("explorer");
   });

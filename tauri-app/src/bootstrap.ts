@@ -13,7 +13,7 @@ import {
 import { getOrCreateDefaultDbPath, setCurrentDbPath } from "./lib/db";
 import { state, DEEP_LINK_SCHEME } from "./state";
 import { elt } from "./ui/dom";
-import { updateStatus } from "./ui/status";
+import { updateStatus, showToast } from "./ui/status";
 import { loadDocsForFilters } from "./features/filters";
 
 // ─── Deep-link unlisten handle ────────────────────────────────────────────────
@@ -139,7 +139,11 @@ export async function switchDbPath(
   if (state.dbPath === newPath && state.conn) return;
 
   if (state.conn) {
-    await shutdownSidecar(state.conn);
+    try {
+      await shutdownSidecar(state.conn);
+    } catch {
+      // Sidecar may already be dead — proceed with reset regardless
+    }
   }
   resetConnection();
   state.conn = null;
@@ -175,7 +179,9 @@ export async function initDeepLinkRuntimeListener(): Promise<void> {
     _deepLinkUnlisten = await onOpenUrl((urls) => {
       const deepLinkedPath = firstDeepLinkDbPath(urls);
       if (!deepLinkedPath) return;
-      void switchDbPath(deepLinkedPath, "deep-link");
+      void switchDbPath(deepLinkedPath, "deep-link").catch((err: unknown) => {
+        showToast(`Erreur deep-link : ${err instanceof SidecarError ? (err as SidecarError).message : String(err)}`);
+      });
     });
   } catch {
     _deepLinkUnlisten = null;
