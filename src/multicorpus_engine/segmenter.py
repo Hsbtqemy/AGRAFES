@@ -143,15 +143,16 @@ def segment_text(text: str, lang: str = "und", pack: str | None = None) -> list[
 # Marker-based segmentation  ([1], [2], [14]… embedded in text)
 # ---------------------------------------------------------------------------
 
-# Matches "[N]" (with optional whitespace) at the start of a string,
-# or preceded by a newline inside a multi-line unit.
-_MARKER_START_RE = re.compile(r"^\s*\[\s*(\d+)\s*\]\s*", re.MULTILINE)
+# Detects [N] anywhere in a text (for scanning units).
+# Captures the first number found.
+_MARKER_ANYWHERE_RE = re.compile(r"\[\s*(\d+)\s*\]")
 
-# Matches "[N]" anywhere in a multi-line block (to split a paragraph into segments)
-_MARKER_SPLIT_RE = re.compile(
-    r"(?:^|\n)\s*\[\s*(\d+)\s*\]\s*",
-    re.MULTILINE,
-)
+# Splits text on [N] occurrences that can appear:
+#   - at the start of the unit              "[1] text"
+#   - in the middle of a paragraph          "text. [15] Next sentence"
+#   - after a newline                       "\n[3] text"
+# The marker may be preceded by whitespace or end-of-sentence punctuation + space.
+_MARKER_SPLIT_RE = re.compile(r"\[\s*(\d+)\s*\]\s*")
 
 
 def detect_markers_in_units(
@@ -161,6 +162,10 @@ def detect_markers_in_units(
     min_ratio: float = 0.3,
 ) -> dict:
     """Scan existing line units for embedded [N] marker patterns.
+
+    Detects markers appearing anywhere in the text — at the start, in the middle
+    of a paragraph, or after a newline.  A unit is considered "marked" if it
+    contains at least one [N] pattern.
 
     Returns a detection report dict:
         {
@@ -184,9 +189,9 @@ def detect_markers_in_units(
     for n, text in rows:
         if not text:
             continue
-        m = _MARKER_START_RE.match(text)
+        m = _MARKER_ANYWHERE_RE.search(text)
         if m:
-            marked.append({"n": n, "text": (text or "")[:100]})
+            marked.append({"n": n, "text": (text or "")[:120]})
             if len(first_markers) < 10:
                 first_markers.append(int(m.group(1)))
 
@@ -204,21 +209,22 @@ def detect_markers_in_units(
 def segment_text_markers(text: str) -> list[tuple[int | None, str]]:
     """Split *text* by embedded [N] markers.
 
-    Handles two cases:
-    - Entire unit starts with [N]: returns [(N, rest_of_text)]
-    - Unit contains multiple [N] markers (e.g. long paragraph): splits at each
+    Handles all placement patterns:
+    - "[N] text"          — marker at start of unit
+    - "text. [N] text"    — marker mid-paragraph (after a sentence)
+    - "text\\n[N] text"   — marker after newline
 
     Returns a list of (external_id_or_None, segment_text) tuples.
+    Text appearing before the first marker gets external_id=None.
     If no markers found, returns [(None, stripped_text)].
     """
     text = (text or "").strip()
     if not text:
         return []
 
-    # Find all marker positions in the text
-    parts = _MARKER_SPLIT_RE.split(text)
-    # split() with a capturing group gives:
+    # Split on [N] wherever it occurs; re.split with a capturing group gives:
     #   [text_before_first_match, id1, text1, id2, text2, ...]
+    parts = _MARKER_SPLIT_RE.split(text)
     result: list[tuple[int | None, str]] = []
 
     prefix = (parts[0] or "").strip()
