@@ -186,12 +186,31 @@ const CURATE_PRESETS: Record<string, { label: string; rules: CurateRule[] }> = {
       { pattern: "\\s*\u00BB", replacement: "\u00A0\u00BB", description: "Espace insécable + guillemet fermant" },
     ],
   },
+  punctuation_fr: {
+    label: "Ponctuation française",
+    rules: [
+      { pattern: "[ \\t]+([!?;])", replacement: "\u202F$1", flags: "g", description: "Espace fine insécable avant ! ? ; (FR)" },
+      { pattern: "[ \\t]+:(?!\\d)", replacement: "\u202F:", flags: "g", description: "Espace fine avant : hors timecodes (FR)" },
+      { pattern: "\u00AB[ \\t]*", replacement: "\u00AB\u202F", flags: "g", description: "Espace fine après « (FR)" },
+      { pattern: "[ \\t]*\u00BB", replacement: "\u202F\u00BB", flags: "g", description: "Espace fine avant » (FR)" },
+      { pattern: "\\.{4,}", replacement: "\u2026", flags: "g", description: "Points de suspension → … (FR)" },
+    ],
+  },
+  punctuation_en: {
+    label: "Ponctuation anglaise",
+    rules: [
+      { pattern: "\\s+([,;:!?])", replacement: "$1", flags: "g", description: "Supprimer espace avant ponctuation (EN)" },
+      { pattern: "([.!?])([A-ZÀ-Ÿ])", replacement: "$1 $2", flags: "g", description: "Espace après ponctuation terminale (EN)" },
+      { pattern: "\\.{4,}", replacement: "\u2026", flags: "g", description: "Points de suspension → … (EN)" },
+    ],
+  },
+  /** @deprecated — conservé pour compatibilité presets projets ; utiliser punctuation_en */
   punctuation: {
     label: "Ponctuation",
     rules: [
-      { pattern: "\\s+([,;:!?])", replacement: "$1", description: "Supprimer espace avant ponctuation" },
-      { pattern: "([.!?])([A-ZÀ-Ÿ])", replacement: "$1 $2", description: "Espace après ponctuation terminale" },
-      { pattern: "\\.{4,}", replacement: "…", description: "Points de suspension multiples → …" },
+      { pattern: "\\s+([,;:!?])", replacement: "$1", flags: "g", description: "Supprimer espace avant ponctuation" },
+      { pattern: "([.!?])([A-ZÀ-Ÿ])", replacement: "$1 $2", flags: "g", description: "Espace après ponctuation terminale" },
+      { pattern: "\\.{4,}", replacement: "\u2026", flags: "g", description: "Points de suspension multiples → …" },
     ],
   },
   invisibles: {
@@ -693,8 +712,12 @@ export class ActionsScreen {
                   <label class="chip curation-chip" for="act-rule-spaces">Espaces incoh&#233;rents</label>
                   <input id="act-rule-quotes" class="curate-rule-input" type="checkbox" />
                   <label class="chip curation-chip" for="act-rule-quotes">Guillemets typographiques</label>
-                  <input id="act-rule-punctuation" class="curate-rule-input" type="checkbox" />
-                  <label class="chip curation-chip" for="act-rule-punctuation">Ponctuation fine</label>
+                  <input id="act-punct-none" class="curate-rule-input" type="radio" name="curate-punct" value="" checked />
+                  <label class="chip curation-chip" for="act-punct-none" title="Aucune correction de ponctuation">Punct.&#160;&#8212;</label>
+                  <input id="act-punct-fr" class="curate-rule-input" type="radio" name="curate-punct" value="fr" />
+                  <label class="chip curation-chip" for="act-punct-fr" title="Typographie fran&#231;aise : espace fine ins&#233;cable avant ! ? ; :, espaces autour de &#171;&#160;&#187;">Punct.&#160;FR</label>
+                  <input id="act-punct-en" class="curate-rule-input" type="radio" name="curate-punct" value="en" />
+                  <label class="chip curation-chip" for="act-punct-en" title="Typographie anglaise : supprimer espace avant , ; : ! ?">Punct.&#160;EN</label>
                   <input id="act-rule-invisibles" class="curate-rule-input" type="checkbox" />
                   <label class="chip curation-chip" for="act-rule-invisibles">Contr&#244;le invisibles</label>
                   <input id="act-rule-numbering" class="curate-rule-input" type="checkbox" />
@@ -964,8 +987,12 @@ export class ActionsScreen {
         </div>
       </section>
     `;
-    ["#act-rule-spaces", "#act-rule-quotes", "#act-rule-punctuation", "#act-rule-invisibles", "#act-rule-numbering"].forEach((sel) => {
+    ["#act-rule-spaces", "#act-rule-quotes", "#act-rule-invisibles", "#act-rule-numbering"].forEach((sel) => {
       el.querySelector(sel)!.addEventListener("change", () => this._schedulePreview(true));
+    });
+    // Ponctuation FR/EN : radio group
+    el.querySelectorAll<HTMLInputElement>('input[name="curate-punct"]').forEach(radio => {
+      radio.addEventListener("change", () => this._schedulePreview(true));
     });
     el.querySelector("#act-curate-doc")!.addEventListener("change", () => {
       // Level 9C: invalidate last apply result when switching to a different document
@@ -3670,33 +3697,50 @@ export class ActionsScreen {
   private _applyCurationPreset(root: HTMLElement, preset?: string): void {
     const spaces = root.querySelector<HTMLInputElement>("#act-rule-spaces");
     const quotes = root.querySelector<HTMLInputElement>("#act-rule-quotes");
-    const punctuation = root.querySelector<HTMLInputElement>("#act-rule-punctuation");
-    if (!spaces || !quotes || !punctuation) return;
+    if (!spaces || !quotes) return;
+
+    /** Helper: select one of the punctuation radio buttons by value ("", "fr", "en"). */
+    const setPunctLang = (v: "" | "fr" | "en") => {
+      const id = v === "fr" ? "act-punct-fr" : v === "en" ? "act-punct-en" : "act-punct-none";
+      const radio = root.querySelector<HTMLInputElement>(`#${id}`);
+      if (radio) radio.checked = true;
+    };
 
     const mode = (preset ?? "spaces").trim();
     if (mode === "spaces") {
       spaces.checked = true;
       quotes.checked = false;
-      punctuation.checked = false;
+      setPunctLang("");
     } else if (mode === "quotes") {
       spaces.checked = false;
       quotes.checked = true;
-      punctuation.checked = false;
-    } else if (mode === "punctuation") {
+      setPunctLang("");
+    } else if (mode === "punctuation" || mode === "punctuation_en") {
       spaces.checked = false;
       quotes.checked = false;
-      punctuation.checked = true;
+      setPunctLang("en");
+    } else if (mode === "punctuation_fr") {
+      spaces.checked = false;
+      quotes.checked = false;
+      setPunctLang("fr");
     } else {
-      // "custom" or unknown preset keeps multicorpus-friendly default.
+      // "custom" or unknown → activer tout par défaut
       spaces.checked = true;
       quotes.checked = true;
-      punctuation.checked = true;
+      setPunctLang("fr");
     }
     this._schedulePreview(true);
   }
 
   private _isRuleChecked(id: string): boolean {
     return (document.querySelector<HTMLInputElement>(`#${id}`)?.checked) ?? false;
+  }
+
+  /** Reads the selected punctuation language from the radio group. */
+  private _getPunctLang(): "fr" | "en" | "" {
+    const el = document.querySelector<HTMLInputElement>('input[name="curate-punct"]:checked');
+    const v = el?.value ?? "";
+    return (v === "fr" || v === "en") ? v : "";
   }
 
   private _parseAdvancedCurateRules(raw: string): CurateRule[] {
@@ -4590,14 +4634,14 @@ export class ActionsScreen {
     const PRESET_LABEL: Record<string, string> = {
       spaces: "Espaces",
       quotes: "Guillemets",
-      punctuation: "Ponctuation",
+      punctuation_fr: "Ponctuation FR",
+      punctuation_en: "Ponctuation EN",
       invisibles: "Invisibles",
       numbering: "Numérotation",
     };
     const entries: Array<[string, string]> = [
       ["act-rule-spaces", "spaces"],
       ["act-rule-quotes", "quotes"],
-      ["act-rule-punctuation", "punctuation"],
       ["act-rule-invisibles", "invisibles"],
       ["act-rule-numbering", "numbering"],
     ];
@@ -4605,6 +4649,13 @@ export class ActionsScreen {
       if (this._isRuleChecked(checkId)) {
         for (const _ of CURATE_PRESETS[key].rules) labels.push(PRESET_LABEL[key]);
       }
+    }
+    // Punctuation FR/EN radio group
+    const punctLang = this._getPunctLang();
+    if (punctLang === "fr") {
+      for (const _ of CURATE_PRESETS.punctuation_fr.rules) labels.push(PRESET_LABEL.punctuation_fr);
+    } else if (punctLang === "en") {
+      for (const _ of CURATE_PRESETS.punctuation_en.rules) labels.push(PRESET_LABEL.punctuation_en);
     }
     const raw = (document.querySelector<HTMLTextAreaElement>("#act-curate-rules"))?.value ?? "";
     for (const rule of this._parseAdvancedCurateRules(raw)) {
@@ -4806,7 +4857,9 @@ export class ActionsScreen {
     const rules: CurateRule[] = [];
     if (this._isRuleChecked("act-rule-spaces")) rules.push(...CURATE_PRESETS.spaces.rules);
     if (this._isRuleChecked("act-rule-quotes")) rules.push(...CURATE_PRESETS.quotes.rules);
-    if (this._isRuleChecked("act-rule-punctuation")) rules.push(...CURATE_PRESETS.punctuation.rules);
+    const punctLang = this._getPunctLang();
+    if (punctLang === "fr") rules.push(...CURATE_PRESETS.punctuation_fr.rules);
+    else if (punctLang === "en") rules.push(...CURATE_PRESETS.punctuation_en.rules);
     if (this._isRuleChecked("act-rule-invisibles")) rules.push(...CURATE_PRESETS.invisibles.rules);
     if (this._isRuleChecked("act-rule-numbering")) rules.push(...CURATE_PRESETS.numbering.rules);
 
