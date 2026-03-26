@@ -141,23 +141,26 @@
 
 ---
 
-## Sprint 7 — Curation propagée
+## Sprint 7 — Curation propagée ✅
 
 > Objectif : signaler les unités des traductions dont l'original a changé depuis la validation.
 
 ### Backend
 
-- [ ] Nouveau champ sur les liens d'alignement ou les unités : `source_changed_at`
-- [ ] Quand une unité de l'original est modifiée/revalidée : marquer les unités alignées
-  comme `source_changed` dans les traductions
-- [ ] `GET /families/{family_root_id}/curation_status` — unités à revoir par enfant
-- [ ] API version → `1.6.6`
+- [x] Migration 011 : `source_changed_at TEXT` sur `alignment_links` + index partiel
+- [x] `curation.py` : après modification d'unités pivot, `UPDATE alignment_links SET source_changed_at = now()`
+       pour toutes les paires dont ces unités sont le pivot
+- [x] `query.py` : `_fetch_aligned_units` retourne `link_id` + `source_changed_at` dans chaque unité alignée
+- [x] `GET /families/{family_root_id}/curation_status` — unités à revoir par enfant
+- [x] `POST /align/link/acknowledge_source_change` — acquitter par link_ids ou target_doc_id
+- [x] API version → `1.6.6`
 
 ### Frontend
 
-- [ ] Badge "source modifiée ⚠" sur les unités des traductions concernées
-- [ ] Vue de curation filtrée : "Montrer uniquement les unités dont la source a changé"
-- [ ] Action "Marquer comme relu" pour acquitter le flag
+- [x] Badge "⚠ source modifiée" sur les unités alignées dans le concordancier (tauri-app)
+- [x] Toggle "⚠ Source modifiée" pour filtrer les lignes sans badge (post-filtre CSS)
+- [x] Section "📋 Curation" dans le panel famille (tauri-prep / MetadataScreen)
+      — liste les paires pivot/traduction à revoir, avec ✓ Lu (par lien) et ✓ Acquitter tout (par doc)
 
 ---
 

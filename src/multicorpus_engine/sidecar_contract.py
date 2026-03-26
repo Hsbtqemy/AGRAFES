@@ -12,8 +12,8 @@ from __future__ import annotations
 from typing import Any
 
 
-API_VERSION = "1.6.5"
-CONTRACT_VERSION = "1.6.5"  # semantic versioning for the sidecar API contract
+API_VERSION = "1.6.6"
+CONTRACT_VERSION = "1.6.6"  # semantic versioning for the sidecar API contract
 # 1.4.0: added export_tei_package job kind (Sprint 4 — Publication ZIP)
 # 1.4.1: ERR_CONFLICT (409) for duplicate run_id; token protection on /align, /curate, /segment
 # 1.4.2: document workflow status fields on /documents and metadata update endpoints.
@@ -34,6 +34,10 @@ CONTRACT_VERSION = "1.6.5"  # semantic versioning for the sidecar API contract
 #         and optional query param ratio_threshold_pct (default 15).
 # 1.6.5: POST /query gains optional family_id (expand to family doc_ids, force include_aligned)
 #         and pivot_only (restrict to parent doc only). Response gains family_id, family_doc_ids, pivot_only.
+# 1.6.6: Curation propagée — alignment_links gains source_changed_at (migration 011).
+#         GET /families/{id}/curation_status — unités à revoir par enfant.
+#         POST /align/link/acknowledge_source_change — acquitter le flag de changement.
+#         AlignedUnit (in query hits) gains link_id + source_changed_at.
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
@@ -767,6 +771,30 @@ def openapi_spec() -> dict[str, Any]:
                     },
                 }
             },
+            "/families/{family_root_id}/curation_status": {
+                "get": {
+                    "summary": "List alignment links with source_changed_at set for a family",
+                    "parameters": [{"name": "family_root_id", "in": "path", "required": True,
+                                    "schema": {"type": "integer"}}],
+                    "responses": {
+                        "200": {"description": "Per-child list of pending curation reviews"},
+                        "404": {"description": "Family root not found"},
+                    },
+                }
+            },
+            "/align/link/acknowledge_source_change": {
+                "post": {
+                    "summary": "Clear source_changed_at flag on alignment links (mark as reviewed)",
+                    "security": [{"token": []}],
+                    "requestBody": {"required": True, "content": {"application/json": {
+                        "schema": {"$ref": "#/components/schemas/AcknowledgeSourceChangeRequest"}}}},
+                    "responses": {
+                        "200": {"description": "Number of links acknowledged"},
+                        "400": {"description": "Bad request"},
+                        "401": {"description": "Unauthorized"},
+                    },
+                }
+            },
             "/doc_relations/set": {
                 "post": {
                     "summary": "Upsert a doc_relation",
@@ -1268,6 +1296,62 @@ def openapi_spec() -> dict[str, Any]:
                         "preview_limit":  {"type": "integer", "default": 20, "minimum": 1, "maximum": 200},
                     },
                     "additionalProperties": False,
+                },
+                "AcknowledgeSourceChangeRequest": {
+                    "type": "object",
+                    "properties": {
+                        "link_ids": {
+                            "type": "array",
+                            "items": {"type": "integer"},
+                            "description": "Explicit list of link_ids to acknowledge.",
+                        },
+                        "target_doc_id": {
+                            "type": "integer",
+                            "description": "Acknowledge all pending links for this target document (bulk).",
+                        },
+                    },
+                    "additionalProperties": False,
+                },
+                "FamilyCurationStatusResponse": {
+                    "allOf": [
+                        {"$ref": "#/components/schemas/BaseResponse"},
+                        {
+                            "type": "object",
+                            "required": ["family_root_id", "total_pending", "children"],
+                            "properties": {
+                                "family_root_id": {"type": "integer"},
+                                "total_pending": {"type": "integer"},
+                                "children": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "required": ["doc_id", "pending_count", "pending"],
+                                        "properties": {
+                                            "doc_id": {"type": "integer"},
+                                            "title": {"type": "string", "nullable": True},
+                                            "language": {"type": "string", "nullable": True},
+                                            "pending_count": {"type": "integer"},
+                                            "pending": {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "link_id": {"type": "integer"},
+                                                        "external_id": {"type": "integer"},
+                                                        "pivot_unit_id": {"type": "integer"},
+                                                        "pivot_text": {"type": "string"},
+                                                        "target_unit_id": {"type": "integer"},
+                                                        "target_text": {"type": "string"},
+                                                        "source_changed_at": {"type": "string"},
+                                                    },
+                                                },
+                                            },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    ]
                 },
                 "SegmentResponse": {
                     "allOf": [

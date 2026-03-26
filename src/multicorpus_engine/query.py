@@ -189,8 +189,10 @@ def _fetch_aligned_units(
     # ── Forward lookup (unit is pivot) ──────────────────────────────────────
     forward_sql = """
         SELECT
+            al.link_id,
             al.target_unit_id  AS matched_unit_id,
             al.external_id,
+            al.source_changed_at,
             u.text_norm,
             u.doc_id,
             d.language,
@@ -213,12 +215,14 @@ def _fetch_aligned_units(
                 seen.add(uid)
                 result.append({
                     "unit_id": uid,
+                    "link_id": row["link_id"],
                     "doc_id": row["doc_id"],
                     "external_id": row["external_id"],
                     "language": row["language"],
                     "title": row["title"],
                     "text": row["text_norm"],
                     "text_norm": row["text_norm"],
+                    "source_changed_at": row["source_changed_at"],
                 })
         if aligned_limit is not None:
             result = result[:aligned_limit]
@@ -240,23 +244,27 @@ def _fetch_aligned_units(
     # Return the pivot unit itself + all other targets (excluding the hit unit and self-links)
     siblings_sql = """
         SELECT
+            NULL AS link_id,
             u.unit_id AS matched_unit_id,
             u.external_id,
             u.text_norm,
             u.doc_id,
             d.language,
-            d.title
+            d.title,
+            NULL AS source_changed_at
         FROM units u
         JOIN documents d ON d.doc_id = u.doc_id
         WHERE u.unit_id = ?
         UNION ALL
         SELECT
+            al.link_id,
             al.target_unit_id AS matched_unit_id,
             al.external_id,
             u2.text_norm,
             u2.doc_id,
             d2.language,
-            d2.title
+            d2.title,
+            al.source_changed_at
         FROM alignment_links al
         JOIN units u2 ON u2.unit_id = al.target_unit_id
         JOIN documents d2 ON d2.doc_id = u2.doc_id
@@ -275,12 +283,14 @@ def _fetch_aligned_units(
             seen.add(uid)
             result.append({
                 "unit_id": uid,
+                "link_id": row["link_id"],
                 "doc_id": row["doc_id"],
                 "external_id": row["external_id"],
                 "language": row["language"],
                 "title": row["title"],
                 "text": row["text_norm"],
                 "text_norm": row["text_norm"],
+                "source_changed_at": row["source_changed_at"],
             })
 
     if aligned_limit is not None:

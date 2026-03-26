@@ -400,6 +400,35 @@ body {
   margin-right: 6px;
 }
 
+.aligned-source-changed-badge {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 5px;
+  background: #fef3c7;
+  border: 1px solid #fde68a;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #92400e;
+  cursor: help;
+  vertical-align: middle;
+}
+
+/* Post-filter: when .filter-source-changed is on results-area, hide lines without badge */
+.results-area.filter-source-changed .aligned-line:not(:has(.aligned-source-changed-badge)) {
+  display: none;
+}
+.results-area.filter-source-changed .aligned-group:not(:has(.aligned-source-changed-badge)) {
+  display: none;
+}
+
+.source-changed-btn { font-size: 0.78rem; }
+.source-changed-btn.active {
+  background: #fef9c3;
+  border-color: #fde68a;
+  color: #92400e;
+}
+
 .load-more-wrap {
   display: flex;
   justify-content: center;

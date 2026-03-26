@@ -67,6 +67,19 @@ export function buildUI(container: HTMLElement): void {
   ) as HTMLButtonElement;
   toolbar.appendChild(parallelToggleBtn);
 
+  const sourceChangedBtn = elt(
+    "button",
+    {
+      class: "btn btn-ghost source-changed-btn",
+      id: "source-changed-btn",
+      type: "button",
+      title: "Montrer uniquement les unités dont la source a changé (curation propagée)",
+      style: "display:none",
+    },
+    "⚠ Source modifiée"
+  ) as HTMLButtonElement;
+  toolbar.appendChild(sourceChangedBtn);
+
   // Case-sensitive toggle
   const caseSensBtn = elt(
     "button",
@@ -458,14 +471,29 @@ export function buildUI(container: HTMLElement): void {
   };
   refreshParallelToggle();
 
+  const refreshSourceChangedToggle = (): void => {
+    sourceChangedBtn.classList.toggle("active", state.filterSourceChanged);
+    sourceChangedBtn.style.display = state.showAligned ? "" : "none";
+    // Apply/remove CSS class on results-area for the post-filter
+    document.getElementById("results-area")?.classList.toggle("filter-source-changed", state.filterSourceChanged);
+  };
+  refreshSourceChangedToggle();
+
+  sourceChangedBtn.addEventListener("click", () => {
+    state.filterSourceChanged = !state.filterSourceChanged;
+    refreshSourceChangedToggle();
+  });
+
   alignedToggleBtn.addEventListener("click", () => {
     state.showAligned = !state.showAligned;
     if (!state.showAligned) {
       state.expandedAlignedUnitIds.clear();
       state.showParallel = false;
+      state.filterSourceChanged = false;
     }
     refreshAlignedToggle();
     refreshParallelToggle();
+    refreshSourceChangedToggle();
     const q = searchInput.value.trim();
     if (q) {
       void doSearch(q);

@@ -2099,6 +2099,46 @@ export async function shutdownSidecar(conn: Conn): Promise<void> {
   _spawnedChild = null;
 }
 
+// ─── Sprint 7 — Curation propagée ────────────────────────────────────────────
+
+export interface CurationPendingLink {
+  link_id: number;
+  external_id: number;
+  pivot_unit_id: number;
+  pivot_text: string;
+  target_unit_id: number;
+  target_text: string;
+  source_changed_at: string;
+}
+
+export interface CurationChildStatus {
+  doc_id: number;
+  title: string | null;
+  language: string | null;
+  pending_count: number;
+  pending: CurationPendingLink[];
+}
+
+export interface FamilyCurationStatusResponse {
+  family_root_id: number;
+  total_pending: number;
+  children: CurationChildStatus[];
+}
+
+export async function getFamilyCurationStatus(
+  conn: Conn,
+  familyRootId: number,
+): Promise<FamilyCurationStatusResponse> {
+  return conn.get(`/families/${familyRootId}/curation_status`) as Promise<FamilyCurationStatusResponse>;
+}
+
+export async function acknowledgeSourceChange(
+  conn: Conn,
+  opts: { link_ids?: number[]; target_doc_id?: number },
+): Promise<{ acknowledged: number }> {
+  return conn.post("/align/link/acknowledge_source_change", opts) as Promise<{ acknowledged: number }>;
+}
+
 export function resetConnection(): void {
   _conn = null;
   _connDbPath = null;

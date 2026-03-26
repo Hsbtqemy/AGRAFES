@@ -1231,6 +1231,45 @@ details[open] > .audit-section-summary::before { transform: rotate(90deg); }
 }
 .bilingual-preview-table tr:hover td { background: #f7fafc; }
 
+/* ── Sprint 7 — Curation propagée ──────────────────────────────────────────── */
+.curation-ok-msg {
+  margin: 8px 0; padding: 6px 10px; border-radius: 5px;
+  background: #f0fdf4; border: 1px solid #bbf7d0;
+  color: #15803d; font-size: 0.82rem;
+}
+.curation-status-block {
+  margin-top: 10px; border: 1px solid #fde68a; border-radius: 6px; overflow: hidden;
+}
+.curation-status-head {
+  background: #fef9c3; padding: 6px 10px; font-size: 0.82rem; color: #854d0e;
+}
+.curation-child-block { border-top: 1px solid #fde68a; }
+.curation-child-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 10px; background: #fffbeb; font-size: 0.8rem;
+}
+.curation-child-lang { font-weight: 600; color: #374151; }
+.curation-child-count { flex: 1; color: #6b7280; }
+.curation-pending-table {
+  width: 100%; border-collapse: collapse; font-size: 0.78rem;
+}
+.curation-pending-table th {
+  background: #fef3c7; padding: 4px 8px; text-align: left;
+  font-weight: 600; color: #6b7280; border-bottom: 1px solid #fde68a;
+}
+.curation-pending-table td {
+  padding: 4px 8px; vertical-align: top; border-bottom: 1px solid #fef3c7;
+  max-width: 220px; word-break: break-word;
+}
+.curation-pending-table tr:hover td { background: #fffbeb; }
+.curation-ext-id { white-space: nowrap; color: #6b7280; width: 40px; }
+.curation-pivot-text { color: #1d4ed8; }
+.curation-target-text { color: #374151; }
+.curation-changed-at { white-space: nowrap; color: #9ca3af; width: 80px; }
+.curation-ack-link-btn, .curation-ack-doc-btn {
+  white-space: nowrap; font-size: 0.72rem;
+}
+
 /* Author inherit banner (shown when current doc is a translation/excerpt) */
 .author-inherit-banner {
   display: flex; align-items: center; gap: 8px;

@@ -29,6 +29,8 @@ import {
   backupDatabase,
   validateMeta,
   getCorpusAudit,
+  getFamilyCurationStatus,
+  acknowledgeSourceChange,
   type DocumentRecord,
   type DocumentPreviewLine,
   type DocRelationRecord,
@@ -38,6 +40,7 @@ import {
   type FamilyAlignPairResult,
   type FamilyAuditData,
   type BilingualPreviewPair,
+  type CurationChildStatus,
   SidecarError,
 } from "../lib/sidecarClient.ts";
 import { initCardAccordions } from "../lib/uiAccordions.ts";
@@ -865,6 +868,13 @@ export class MetadataScreen {
           void this._showExportPairDialog(pivotId, targetId, pivotLang, targetLang);
         });
       });
+
+    this._editPanelEl.querySelector<HTMLButtonElement>("#curation-family-btn")
+      ?.addEventListener("click", (e) => {
+        const btn = e.currentTarget as HTMLButtonElement;
+        const familyId = Number(btn.dataset.familyId);
+        void this._curationFamilyFlow(familyId, btn);
+      });
   }
 
   private _familyPanelHtml(doc: DocumentRecord): string {
@@ -936,9 +946,12 @@ export class MetadataScreen {
                     relation_type: c.relation_type,
                   }))))}"
                   >⇄ Aligner la famille</button>
+          <button id="curation-family-btn" class="btn btn-secondary btn-sm"
+                  data-family-id="${family.family_id}">📋 Curation</button>
         </div>
         <div id="seg-family-result"></div>
         <div id="aln-family-result"></div>
+        <div id="curation-family-result"></div>
         <div id="export-pair-dialog"></div>
       </div>`;
   }
@@ -1307,6 +1320,116 @@ export class MetadataScreen {
         <td>${r.links_created}</td>
         <td>${warns}</td>
       </tr>`;
+  }
+
+  // ── Sprint 7 — Curation propagée ──────────────────────────────────────────
+
+  private async _curationFamilyFlow(familyRootId: number, btn: HTMLButtonElement): Promise<void> {
+    if (!this._conn) return;
+    const resultDiv = this._editPanelEl.querySelector<HTMLElement>("#curation-family-result");
+    if (!resultDiv) return;
+
+    btn.disabled = true;
+    btn.textContent = "Chargement…";
+    resultDiv.innerHTML = `<p class="seg-family-loading">Vérification de la curation…</p>`;
+
+    try {
+      const status = await getFamilyCurationStatus(this._conn, familyRootId);
+
+      if (status.total_pending === 0) {
+        resultDiv.innerHTML = `
+          <div class="curation-ok-msg">
+            ✅ Toutes les unités alignées sont à jour — aucune révision de curation en attente.
+          </div>`;
+        btn.textContent = "📋 Curation";
+        btn.disabled = false;
+        return;
+      }
+
+      resultDiv.innerHTML = this._curationStatusHtml(status.children, familyRootId);
+      this._wireCurationButtons(resultDiv, familyRootId);
+      btn.textContent = `📋 Curation (${status.total_pending})`;
+    } catch (err) {
+      resultDiv.innerHTML = `<p class="fam-ratio-warn">Erreur curation : ${err instanceof SidecarError ? err.message : String(err)}</p>`;
+      btn.textContent = "📋 Curation";
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  private _curationStatusHtml(children: CurationChildStatus[], familyRootId: number): string {
+    const sections = children
+      .filter(c => c.pending_count > 0)
+      .map(c => {
+        const rows = c.pending.map(p => `
+          <tr class="curation-pending-row">
+            <td class="curation-ext-id">[§${p.external_id}]</td>
+            <td class="curation-pivot-text" title="${this._esc(p.pivot_text)}">${this._esc(this._truncateMid(p.pivot_text, 60))}</td>
+            <td class="curation-target-text" title="${this._esc(p.target_text)}">${this._esc(this._truncateMid(p.target_text, 60))}</td>
+            <td class="curation-changed-at" title="${this._esc(p.source_changed_at)}">${p.source_changed_at.slice(0, 10)}</td>
+            <td>
+              <button class="btn btn-xs btn-ghost curation-ack-link-btn"
+                      data-link-id="${p.link_id}">✓ Lu</button>
+            </td>
+          </tr>`).join("");
+
+        return `
+          <div class="curation-child-block">
+            <div class="curation-child-head">
+              <span class="curation-child-lang">${this._esc(c.language ?? "?")} · ${this._esc(c.title ?? `#${c.doc_id}`)}</span>
+              <span class="curation-child-count">${c.pending_count} unité(s) à revoir</span>
+              <button class="btn btn-xs curation-ack-doc-btn"
+                      data-doc-id="${c.doc_id}" data-family-id="${familyRootId}">✓ Acquitter tout</button>
+            </div>
+            <table class="curation-pending-table">
+              <thead><tr>
+                <th>§</th><th>Texte original (pivot)</th><th>Traduction en cours</th>
+                <th>Modifié le</th><th></th>
+              </tr></thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>`;
+      }).join("");
+
+    return `
+      <div class="curation-status-block">
+        <div class="curation-status-head">
+          ⚠ <strong>${children.reduce((s, c) => s + c.pending_count, 0)}</strong>
+          unité(s) de traductions à revoir après modification des originaux
+        </div>
+        ${sections}
+      </div>`;
+  }
+
+  private _wireCurationButtons(container: HTMLElement, familyRootId: number): void {
+    container.querySelectorAll<HTMLButtonElement>(".curation-ack-link-btn").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        if (!this._conn) return;
+        const linkId = Number(btn.dataset.linkId);
+        btn.disabled = true;
+        btn.textContent = "…";
+        try {
+          await acknowledgeSourceChange(this._conn, { link_ids: [linkId] });
+          const row = btn.closest("tr");
+          if (row) row.remove();
+        } catch { btn.disabled = false; btn.textContent = "✓ Lu"; }
+      });
+    });
+
+    container.querySelectorAll<HTMLButtonElement>(".curation-ack-doc-btn").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        if (!this._conn) return;
+        const docId = Number(btn.dataset.docId);
+        btn.disabled = true;
+        btn.textContent = "Acquittement…";
+        try {
+          await acknowledgeSourceChange(this._conn, { target_doc_id: docId });
+          // Refresh the full curation block
+          const famBtn = this._editPanelEl.querySelector<HTMLButtonElement>("#curation-family-btn");
+          if (famBtn) void this._curationFamilyFlow(familyRootId, famBtn);
+        } catch { btn.disabled = false; btn.textContent = "✓ Acquitter tout"; }
+      });
+    });
   }
 
   private _renderRelationsList(): void {

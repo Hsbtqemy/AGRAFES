@@ -491,6 +491,14 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             self._handle_doc_relations_all()
         elif path == "/families":
             self._handle_families()
+        elif path.startswith("/families/") and path.endswith("/curation_status"):
+            parts = path.split("/")  # ['', 'families', '{id}', 'curation_status']
+            try:
+                fam_root_id = int(parts[2])
+            except (IndexError, ValueError):
+                self._send_error(400, "BAD_REQUEST", "Invalid family_root_id in path")
+                return
+            self._handle_family_curation_status(fam_root_id)
         elif path == "/jobs":
             self._handle_jobs_list()
         elif path.startswith("/jobs/"):
@@ -547,6 +555,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 # Alignment writes (previously unprotected — fixed in 1.4.1)
                 "/align",
                 "/align/link/update_status", "/align/link/delete", "/align/link/retarget",
+                "/align/link/acknowledge_source_change",
                 "/align/links/batch_update",
                 "/align/collisions/resolve",
                 # Other DB-mutating operations (fixed in 1.4.1)
@@ -598,6 +607,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 self._handle_align_link_delete(body)
             elif path == "/align/link/retarget":
                 self._handle_align_link_retarget(body)
+            elif path == "/align/link/acknowledge_source_change":
+                self._handle_align_link_acknowledge_source_change(body)
             elif path == "/align/links/batch_update":
                 self._handle_align_links_batch_update(body)
             elif path == "/align/retarget_candidates":
@@ -4548,6 +4559,175 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             self._send_error(f"link_id={link_id} not found", code=ERR_NOT_FOUND, http_status=404)
             return
         self._send_json(success_payload({"link_id": link_id, "new_target_unit_id": new_target_unit_id, "updated": 1}))
+
+    # ------------------------------------------------------------------
+    # Sprint 7 — Curation propagée
+    # ------------------------------------------------------------------
+
+    def _handle_align_link_acknowledge_source_change(self, body: dict) -> None:
+        """POST /align/link/acknowledge_source_change — clear source_changed_at flag.
+
+        Accepts:
+          link_ids: list[int]  — one or more link_id values to acknowledge.
+          target_doc_id: int   — (optional alternative) acknowledge all pending
+                                 links whose target_doc_id matches (per-doc bulk).
+
+        Sets source_changed_at = NULL on matching links (marking them as reviewed).
+        """
+        raw_link_ids = body.get("link_ids")
+        raw_target_doc_id = body.get("target_doc_id")
+
+        if raw_link_ids is not None:
+            if not isinstance(raw_link_ids, list) or len(raw_link_ids) == 0:
+                self._send_error("link_ids must be a non-empty array", code=ERR_BAD_REQUEST, http_status=400)
+                return
+            try:
+                link_ids = [int(lid) for lid in raw_link_ids]
+            except (TypeError, ValueError):
+                self._send_error("link_ids must contain integers", code=ERR_BAD_REQUEST, http_status=400)
+                return
+            ph = ",".join("?" * len(link_ids))
+            with self._lock():
+                cur = self._conn().execute(
+                    f"UPDATE alignment_links SET source_changed_at = NULL WHERE link_id IN ({ph})",
+                    link_ids,
+                )
+                self._conn().commit()
+            self._send_json(success_payload({"acknowledged": cur.rowcount, "link_ids": link_ids}))
+
+        elif raw_target_doc_id is not None:
+            try:
+                target_doc_id = int(raw_target_doc_id)
+            except (TypeError, ValueError):
+                self._send_error("target_doc_id must be an integer", code=ERR_BAD_REQUEST, http_status=400)
+                return
+            with self._lock():
+                cur = self._conn().execute(
+                    "UPDATE alignment_links SET source_changed_at = NULL"
+                    " WHERE target_doc_id = ? AND source_changed_at IS NOT NULL",
+                    [target_doc_id],
+                )
+                self._conn().commit()
+            self._send_json(success_payload({"acknowledged": cur.rowcount, "target_doc_id": target_doc_id}))
+
+        else:
+            self._send_error("Provide link_ids or target_doc_id", code=ERR_BAD_REQUEST, http_status=400)
+
+    def _handle_family_curation_status(self, family_root_id: int) -> None:
+        """GET /families/{family_root_id}/curation_status
+
+        Returns, for each child document in the family, the list of alignment
+        links whose source_changed_at IS NOT NULL (i.e. the pivot text was
+        modified by curation after the link was last reviewed / created).
+
+        Response shape:
+        {
+          "family_root_id": int,
+          "total_pending": int,
+          "children": [
+            {
+              "doc_id": int,
+              "title": str | null,
+              "language": str | null,
+              "pending_count": int,
+              "pending": [
+                {
+                  "link_id": int,
+                  "external_id": int,
+                  "pivot_unit_id": int,
+                  "pivot_text": str,
+                  "target_unit_id": int,
+                  "target_text": str,
+                  "source_changed_at": str,   -- ISO-8601 datetime
+                }
+              ]
+            }
+          ]
+        }
+        """
+        conn = self._conn()
+
+        # Get family children
+        child_rows = conn.execute(
+            "SELECT doc_id, relation_type FROM doc_relations"
+            " WHERE target_doc_id = ? AND relation_type IN ('translation_of', 'excerpt_of')"
+            " ORDER BY doc_id",
+            [family_root_id],
+        ).fetchall()
+
+        if not child_rows:
+            self._send_json(success_payload({
+                "family_root_id": family_root_id,
+                "total_pending": 0,
+                "children": [],
+            }))
+            return
+
+        child_ids = [r[0] for r in child_rows]
+
+        # Fetch document metadata for children
+        ph = ",".join("?" * len(child_ids))
+        doc_rows = conn.execute(
+            f"SELECT doc_id, title, language FROM documents WHERE doc_id IN ({ph})",
+            child_ids,
+        ).fetchall()
+        doc_meta: dict[int, dict] = {r[0]: {"title": r[1], "language": r[2]} for r in doc_rows}
+
+        # Fetch all pending links (source_changed_at IS NOT NULL) for these children
+        pending_rows = conn.execute(
+            f"""
+            SELECT
+                al.link_id,
+                al.external_id,
+                al.pivot_unit_id,
+                pu.text_norm AS pivot_text,
+                al.target_unit_id,
+                tu.text_norm AS target_text,
+                al.target_doc_id,
+                al.source_changed_at
+            FROM alignment_links al
+            JOIN units pu ON pu.unit_id = al.pivot_unit_id
+            JOIN units tu ON tu.unit_id = al.target_unit_id
+            WHERE al.target_doc_id IN ({ph})
+              AND al.source_changed_at IS NOT NULL
+            ORDER BY al.target_doc_id, al.external_id
+            """,
+            child_ids,
+        ).fetchall()
+
+        # Group by child doc
+        from collections import defaultdict
+        by_child: dict[int, list[dict]] = defaultdict(list)
+        for row in pending_rows:
+            by_child[row["target_doc_id"]].append({
+                "link_id": row["link_id"],
+                "external_id": row["external_id"],
+                "pivot_unit_id": row["pivot_unit_id"],
+                "pivot_text": row["pivot_text"] or "",
+                "target_unit_id": row["target_unit_id"],
+                "target_text": row["target_text"] or "",
+                "source_changed_at": row["source_changed_at"],
+            })
+
+        children_out = []
+        total_pending = 0
+        for child_id in child_ids:
+            pending = by_child[child_id]
+            total_pending += len(pending)
+            meta = doc_meta.get(child_id, {})
+            children_out.append({
+                "doc_id": child_id,
+                "title": meta.get("title"),
+                "language": meta.get("language"),
+                "pending_count": len(pending),
+                "pending": pending,
+            })
+
+        self._send_json(success_payload({
+            "family_root_id": family_root_id,
+            "total_pending": total_pending,
+            "children": children_out,
+        }))
 
     # ------------------------------------------------------------------
     # V1.3 — Batch alignment link operations

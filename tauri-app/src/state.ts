@@ -32,6 +32,8 @@ export interface AppState {
   filterFamilyPivotOnly: boolean;
   /** Cached list of families for the family selector. */
   families: FamilyRecord[];
+  /** Sprint 7: show only aligned units where source_changed_at is set. */
+  filterSourceChanged: boolean;
   showAligned: boolean;
   expandedAlignedUnitIds: Set<number>;
   currentQuery: string;
@@ -80,6 +82,7 @@ export const state: AppState = {
   filterFamilyId: null,
   filterFamilyPivotOnly: false,
   families: [],
+  filterSourceChanged: false,
   showAligned: false,
   expandedAlignedUnitIds: new Set<number>(),
   currentQuery: "",

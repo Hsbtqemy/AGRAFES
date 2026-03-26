@@ -175,6 +175,15 @@ export function renderAlignedBlock(hit: QueryHit): HTMLElement {
       if (item.external_id != null) {
         row.appendChild(elt("span", { class: "aligned-ref" }, `[${item.external_id}]`));
       }
+      // Badge "source modifiée" — shown when curation changed the pivot after alignment
+      if ((item as AlignedUnit & { source_changed_at?: string | null }).source_changed_at) {
+        const changedAt = (item as AlignedUnit & { source_changed_at?: string | null }).source_changed_at ?? "";
+        const badge = elt("span", {
+          class: "aligned-source-changed-badge",
+          title: `Source modifiée le ${changedAt.slice(0, 10)} — la traduction est peut-être dépassée`,
+        }, "⚠ source modifiée");
+        row.appendChild(badge);
+      }
       const text = item.text ?? item.text_norm ?? "";
       row.appendChild(elt("span", {}, text));
       card.appendChild(row);

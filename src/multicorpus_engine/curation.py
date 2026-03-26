@@ -218,6 +218,17 @@ def curate_document(
             "UPDATE units SET text_norm = ? WHERE unit_id = ?",
             updates,
         )
+        # Propagate change signal to aligned translations.
+        # Every alignment_link whose pivot_unit_id was just modified gets
+        # source_changed_at = now so that translators know the source changed.
+        modified_unit_ids = [uid for _, uid in updates]
+        if modified_unit_ids:
+            ph = ",".join("?" * len(modified_unit_ids))
+            conn.execute(
+                f"UPDATE alignment_links SET source_changed_at = datetime('now')"
+                f" WHERE pivot_unit_id IN ({ph})",
+                modified_unit_ids,
+            )
         conn.commit()
 
     log.info(
