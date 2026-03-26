@@ -652,16 +652,15 @@ export class ActionsScreen {
     el.setAttribute("role", "main");
     el.setAttribute("aria-label", "Vue Curation");
     el.innerHTML = `
-      <section class="acts-seg-head-card" id="act-curation-head">
+      <section class="acts-seg-head-card acts-seg-head-card--compact" id="act-curation-head">
         <div class="acts-hub-head-left">
-          <h1>Curation <span class="badge-preview">avec pr&#233;visualisation</span></h1>
-          <p>La preview centrale se met &#224; jour d&#232;s qu&#8217;une option change.</p>
+          <h1>Curation <span class="badge-preview">pr&#233;visualisation live</span></h1>
         </div>
         <div class="acts-hub-head-tools">
           <span class="curate-pill" id="act-curate-mode-pill">Mode &#233;dition</span>
-          <button class="acts-hub-head-link acts-hub-head-link-accent" id="act-curate-lt-cta">&#9656; Sc&#233;nario grand texte</button>
-          <button class="acts-hub-head-link" data-nav="segmentation">Voir Segmentation VO</button>
-          <button class="acts-hub-head-link" data-nav="alignement">Voir Alignement</button>
+          <button class="acts-hub-head-link acts-hub-head-link-accent" id="act-curate-lt-cta">&#9656; Grand texte</button>
+          <button class="acts-hub-head-link" data-nav="segmentation">Segmentation</button>
+          <button class="acts-hub-head-link" data-nav="alignement">Alignement</button>
         </div>
       </section>
       <section class="card curate-workspace-card" id="act-curate-card">
@@ -830,15 +829,17 @@ export class ActionsScreen {
               <div id="act-curate-context" class="curate-context-body"></div>
             </article>
             <article class="curate-inner-card">
-              <div class="card-head">
-                <h2>Journal de revue</h2>
-                <span style="font-size:12px;color:var(--prep-muted,#4f5d6d)">session</span>
-              </div>
-              <div class="card-body" style="padding:0">
-                <div id="act-curate-review-log" class="curate-log-list" aria-live="polite">
-                  <p class="empty-hint" style="padding:10px">Aucune action enregistr&#233;e.</p>
+              <details id="act-curate-log-details">
+                <summary class="card-head curate-log-summary">
+                  <h2>Journal de revue <span class="curate-log-badge" id="act-curate-log-badge" style="display:none"></span></h2>
+                  <span style="font-size:11px;color:var(--prep-muted,#4f5d6d)">session</span>
+                </summary>
+                <div style="padding:0">
+                  <div id="act-curate-review-log" class="curate-log-list" aria-live="polite">
+                    <p class="empty-hint" style="padding:10px">Aucune action enregistr&#233;e.</p>
+                  </div>
                 </div>
-              </div>
+              </details>
             </article>
             <article class="curate-inner-card review-export-card" id="act-review-export-card" style="display:none">
               <div class="card-head">
