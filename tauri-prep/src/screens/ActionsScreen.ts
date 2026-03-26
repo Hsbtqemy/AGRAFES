@@ -1234,15 +1234,23 @@ export class ActionsScreen {
     }
 
     let html = "";
-    for (const { root, children } of familyGroups) {
-      html += `<div class="seg-doc-group-label">&#128194; ${_escHtml(root.title)}</div>`;
+    for (let fi = 0; fi < familyGroups.length; fi++) {
+      const { root, children } = familyGroups[fi];
+      html += `<div class="seg-doc-group-label">
+        <span class="seg-family-pill">Famille ${fi + 1}</span>
+        <span class="seg-family-root-name" title="${_escHtml(root.title)}">${_escHtml(root.title)}</span>
+      </div>`;
       html += `<div class="seg-doc-group">`;
       html += docRow(root);
       for (const child of children) html += docRow(child, true);
       html += `</div>`;
     }
     if (orphans.length > 0) {
-      html += `<div class="seg-doc-group-label">Documents sans famille</div>`;
+      if (familyGroups.length > 0) {
+        html += `<div class="seg-doc-group-label">&#8212; Sans famille</div>`;
+      } else {
+        html += `<div class="seg-doc-group-label">Tous les documents</div>`;
+      }
       html += `<div class="seg-doc-group">`;
       for (const d of orphans) html += docRow(d);
       html += `</div>`;
@@ -1280,15 +1288,32 @@ export class ActionsScreen {
             <input id="act-seg-lang" type="text" value="${_escHtml(lang)}" maxlength="10"
               class="seg-param-input" placeholder="fr, en&#8230;" autocomplete="off" spellcheck="false" />
           </label>
-          <label class="seg-param-field">Pack
+          <label class="seg-param-field">Pack d'abr&#233;viations
             <select id="act-seg-pack" class="seg-param-select">
-              <option value="auto"${pack==="auto"?" selected":""}>Auto multicorpus</option>
+              <option value="auto"${pack==="auto"?" selected":""}>Auto (selon langue)</option>
               <option value="fr_strict"${pack==="fr_strict"?" selected":""}>Fran&#231;ais strict</option>
               <option value="en_strict"${pack==="en_strict"?" selected":""}>Anglais strict</option>
               <option value="default"${pack==="default"?" selected":""}>Standard</option>
             </select>
           </label>
+          <label class="seg-param-field">Calibrer sur
+            <select id="act-seg-calibrate" class="seg-param-select">
+              <option value="">&#8212; aucun &#8212;</option>
+              ${this._docs.filter(d => d.doc_id !== docId).map(d =>
+                `<option value="${d.doc_id}">[${d.doc_id}] ${_escHtml(d.title)}</option>`
+              ).join("")}
+            </select>
+          </label>
         </div>
+        <details class="seg-rule-info" id="act-seg-rule-info">
+          <summary class="seg-rule-info-sum">&#9432; Moteur de d&#233;coupage</summary>
+          <div class="seg-rule-info-body">
+            <p>Le moteur coupe sur <code>.&nbsp;!&nbsp;?</code> suivi d&#8217;un espace puis d&#8217;une <strong>lettre majuscule</strong> (ou guillemet ouvrant).</p>
+            <p>&#8594; Si vos phrases d&#233;butent par une minuscule, le moteur ne les d&#233;tectera pas comme d&#233;but de phrase.</p>
+            <p>&#8594; Si chaque paragraphe du document est d&#233;j&#224; une phrase, la segmentation retourne le m&#234;me nombre d&#8217;unit&#233;s.</p>
+            <p><strong>Packs :</strong> les packs <em>fr_strict</em> et <em>en_strict</em> ajoutent des abr&#233;viations prot&#233;g&#233;es (ann., chap., etc.) pour &#233;viter les faux d&#233;coupages.</p>
+          </div>
+        </details>
         <div class="seg-preview-section" id="act-seg-preview-section">
           <div class="seg-preview-section-head">
             <span class="seg-preview-section-label">Aper&#231;u live <span class="seg-preview-badge">m&#234;me moteur, sans &#233;criture</span></span>
@@ -1349,6 +1374,7 @@ export class ActionsScreen {
     // Wire params → debounced preview
     rightEl.querySelector("#act-seg-lang")?.addEventListener("input", () => this._scheduleSegPreview(docId));
     rightEl.querySelector("#act-seg-pack")?.addEventListener("change", () => this._scheduleSegPreview(docId));
+    rightEl.querySelector("#act-seg-calibrate")?.addEventListener("change", () => this._scheduleSegPreview(docId));
     rightEl.querySelector("#act-seg-prev-refresh")?.addEventListener("click", () => void this._runSegPreview(docId));
 
     // Wire action buttons
@@ -1414,7 +1440,7 @@ export class ActionsScreen {
     const pack = (document.querySelector("#act-seg-pack") as HTMLSelectElement | null)?.value ?? "auto";
 
     segEl.innerHTML = `<p class="empty-hint">Calcul en cours&#8230;</p>`;
-    if (statsEl) statsEl.textContent = "&#8230;";
+    if (statsEl) statsEl.textContent = "…";
 
     try {
       const res = await segmentPreview(this._conn, { doc_id: docId, lang, pack, limit: 300 });
@@ -6530,6 +6556,8 @@ export class ActionsScreen {
     const docId = segSel.docId;
     const lang = (document.querySelector("#act-seg-lang") as HTMLInputElement).value.trim() || "und";
     const pack = (document.querySelector("#act-seg-pack") as HTMLSelectElement).value || "auto";
+    const calibrateRaw = (document.querySelector("#act-seg-calibrate") as HTMLSelectElement | null)?.value ?? "";
+    const calibrateTo = calibrateRaw ? parseInt(calibrateRaw, 10) : undefined;
     const docLabel = segSel.docLabel;
     const postValidate = this._postValidateDestination();
     const postValidateLabel = postValidate === "next"
@@ -6549,7 +6577,9 @@ export class ActionsScreen {
 
     this._setBusy(true);
     try {
-      const job = await enqueueJob(this._conn, "segment", { doc_id: docId, lang, pack });
+      const jobPayload: Record<string, unknown> = { doc_id: docId, lang, pack };
+      if (calibrateTo) jobPayload.calibrate_to = calibrateTo;
+      const job = await enqueueJob(this._conn, "segment", jobPayload);
       this._log(`Job segmentation soumis pour ${docLabel} (${job.job_id.slice(0, 8)}…)`);
       // Show loading state in preview card immediately
       const segPreviewBody = document.querySelector("#act-seg-preview-body");

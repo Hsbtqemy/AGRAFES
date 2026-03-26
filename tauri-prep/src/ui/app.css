@@ -4553,13 +4553,38 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
 
 /* Group labels */
 .seg-doc-group-label {
-  padding: 6px 12px 2px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px 3px;
   font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-weight: 600;
   color: var(--prep-text-muted, #6c757d);
   user-select: none;
+  border-top: 1px solid var(--prep-line-light, #eef0f3);
+  margin-top: 4px;
+}
+.seg-doc-group-label:first-child { border-top: none; margin-top: 0; }
+
+.seg-family-pill {
+  flex-shrink: 0;
+  display: inline-block;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  background: var(--prep-blue-soft, #eaf1fb);
+  color: var(--prep-blue, #1e4a80);
+  border: 1px solid var(--prep-blue-line, #b7c8df);
+  border-radius: 10px;
+  padding: 1px 6px;
+}
+.seg-family-root-name {
+  flex: 1 1 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.73rem;
 }
 
 .seg-doc-group {
@@ -4700,6 +4725,39 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
   min-width: 90px;
 }
 .seg-param-select-sm { min-width: 110px; font-size: 0.78rem; }
+
+/* Engine info disclosure */
+.seg-rule-info {
+  margin-bottom: 12px;
+  border: 1px solid var(--prep-line, #dde3ea);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.seg-rule-info-sum {
+  padding: 7px 12px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--prep-sidebar-bg, #f8f9fb);
+  color: var(--prep-text-muted, #6c757d);
+  list-style: none;
+}
+.seg-rule-info-sum:hover { color: var(--prep-text, #212529); }
+.seg-rule-info-body {
+  padding: 8px 14px;
+  font-size: 0.78rem;
+  line-height: 1.55;
+  color: var(--prep-text, #212529);
+  border-top: 1px solid var(--prep-line, #dde3ea);
+}
+.seg-rule-info-body p { margin: 0 0 6px; }
+.seg-rule-info-body p:last-child { margin-bottom: 0; }
+.seg-rule-info-body code {
+  background: #f0f2f5;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 0.85em;
+}
 
 /* Preview section */
 .seg-preview-section {
