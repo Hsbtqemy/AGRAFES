@@ -1615,14 +1615,15 @@ code { font-family: monospace; background: var(--color-bg); padding: 0 3px; bord
   color: var(--color-primary); padding: 1px 6px; border-radius: 10px; vertical-align: middle; }
 
 /* Diff table */
-.diff-table { border-collapse: collapse; font-size: 0.82rem; width: 100%; table-layout: fixed; }
-.diff-table th, .diff-table td { border: 1px solid var(--color-border); padding: 0.25rem 0.45rem;
+.diff-table { border-collapse: collapse; font-size: 0.85rem; width: 100%; table-layout: fixed; line-height: 1.55; }
+.diff-table th, .diff-table td { border: 1px solid var(--color-border); padding: 0.3rem 0.55rem;
   vertical-align: top; word-break: break-word; }
-.diff-table th { background: var(--color-bg); font-weight: 600; }
-.diff-extid { color: var(--color-muted); font-family: monospace; }
-.diff-before { background: #fff5f5; color: #6c1a1a; }
-.diff-after { background: #f0fff4; }
-mark.diff-mark { background: #b7f5c8; color: #14532d; border-radius: 2px; padding: 0 1px; font-weight: 600; }
+.diff-table th { background: var(--color-bg); font-weight: 600; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--color-muted); }
+.diff-extid { color: var(--color-muted); font-family: monospace; white-space: nowrap; }
+/* Colonne Avant supprimée — le diff inline montre suppressions + insertions */
+.diff-after { background: #f8fffe; }
+mark.diff-mark { background: #b7f5c8; color: #14532d; border-radius: 2px; padding: 0 2px; font-weight: 600; }
+del.diff-del { color: #b91c1c; text-decoration: line-through; opacity: 0.75; }
 
 /* Audit table */
 .audit-table { font-size: 0.82rem; }

@@ -345,7 +345,7 @@ export class ActionsScreen {
   /** Index of the currently selected diff item in the FILTERED list (null = none). */
   private _activeDiffIdx: number | null = null;
   /** Preview display mode: both panes | raw only | diff only. */
-  private _previewMode: "sidebyside" | "rawonly" | "diffonly" = "sidebyside";
+  private _previewMode: "sidebyside" | "rawonly" | "diffonly" = "diffonly";
   /** Whether raw pane and diff pane scroll in sync. */
   private _previewSyncScroll = true;
   /**
@@ -753,9 +753,9 @@ export class ActionsScreen {
               </div>
               <div class="preview-controls">
                 <div class="preview-mode-row chip-row">
-                  <button class="preview-mode-btn active" data-preview-mode="sidebyside" title="Afficher les deux panneaux">C&#244;te &#224; c&#244;te</button>
+                  <button class="preview-mode-btn active" data-preview-mode="diffonly" title="Afficher le texte cur&#233; avec les modifications en surbrillance (vue par d&#233;faut)">Cur&#233; seul</button>
                   <button class="preview-mode-btn" data-preview-mode="rawonly" title="Afficher le texte source uniquement">Brut seul</button>
-                  <button class="preview-mode-btn" data-preview-mode="diffonly" title="Afficher le diff uniquement">Diff seule</button>
+                  <button class="preview-mode-btn" data-preview-mode="sidebyside" title="Afficher le brut et le cur&#233; c&#244;te &#224; c&#244;te">C&#244;te &#224; c&#244;te</button>
                   <label class="preview-sync-label" title="Synchroniser le scroll entre les deux panneaux">
                     <input id="act-sync-scroll" type="checkbox" checked />&#160;Sync scroll
                   </label>
@@ -5347,9 +5347,8 @@ export class ActionsScreen {
       <thead>
         <tr>
           <th style="width:28px">#</th>
-          <th style="width:80px">R&#232;gle</th>
-          <th>Avant</th>
-          <th>Apr&#232;s</th>
+          <th style="width:72px">R&#232;gle</th>
+          <th>Texte cur&#233; (modifications en surbrillance)</th>
         </tr>
       </thead>
     `;
@@ -5406,7 +5405,6 @@ export class ActionsScreen {
       tr.innerHTML =
         `<td class="diff-extid">${ex.external_id ?? i + 1}${statusBadgeHtml}${overrideBadgeHtml}${exceptionBadgeHtml}${forcedBadgeHtml}</td>` +
         `<td class="diff-rule-cell">${ruleBadgeHtml}</td>` +
-        `<td class="diff-before">${_escHtml(ex.before)}</td>` +
         `<td class="diff-after${ex.is_manual_override ? " diff-after-overridden" : ""}">${_highlightChanges(ex.before, effectiveAfter)}</td>`;
       tr.addEventListener("click", () => {
         const panel = tr.closest<HTMLElement>("#act-preview-panel") ?? undefined;
@@ -8138,17 +8136,35 @@ function _escHtml(s: string): string {
  * Simple word-level diff: words not present in before set get a <mark>.
  */
 function _highlightChanges(before: string, after: string): string {
-  const beforeWords = new Set(before.toLowerCase().split(/\s+/));
-  return after
-    .split(/(\s+)/)
-    .map(token => {
-      if (/^\s+$/.test(token)) return token;
-      if (!beforeWords.has(token.toLowerCase())) {
-        return `<mark class="diff-mark">${_escHtml(token)}</mark>`;
-      }
-      return _escHtml(token);
-    })
-    .join("");
+  // Tokenise en mots (en ignorant les espaces seuls)
+  const bWords = before.split(/\s+/).filter(Boolean);
+  const aWords = after.split(/\s+/).filter(Boolean);
+  const m = bWords.length, n = aWords.length;
+
+  // LCS par programmation dynamique (Longest Common Subsequence)
+  const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = m - 1; i >= 0; i--)
+    for (let j = n - 1; j >= 0; j--)
+      dp[i][j] = bWords[i].toLowerCase() === aWords[j].toLowerCase()
+        ? dp[i + 1][j + 1] + 1
+        : Math.max(dp[i + 1][j], dp[i][j + 1]);
+
+  // Reconstruction du diff
+  const parts: string[] = [];
+  let i = 0, j = 0;
+  while (i < m || j < n) {
+    if (i < m && j < n && bWords[i].toLowerCase() === aWords[j].toLowerCase()) {
+      parts.push(_escHtml(aWords[j]));
+      i++; j++;
+    } else if (j < n && (i >= m || dp[i + 1][j] >= dp[i][j + 1])) {
+      parts.push(`<mark class="diff-mark">${_escHtml(aWords[j])}</mark>`);
+      j++;
+    } else {
+      parts.push(`<del class="diff-del">${_escHtml(bWords[i])}</del>`);
+      i++;
+    }
+  }
+  return parts.join(" ");
 }
 
 function _formatMaybeNumber(v: unknown): string {
