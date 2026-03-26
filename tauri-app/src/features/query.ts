@@ -91,7 +91,7 @@ function applySortToHits(hits: QueryHit[]): QueryHit[] {
 
 /** Returns true if any documentary filter is currently active. */
 function hasActiveFilters(): boolean {
-  return !!(state.filterLang || state.filterRole || state.filterDocIds !== null || state.filterResourceType);
+  return !!(state.filterLang || state.filterRole || state.filterDocIds !== null || state.filterResourceType || state.filterFamilyId !== null);
 }
 
 /** Builds a short summary of active filters for display. */
@@ -100,6 +100,11 @@ function activeFiltersSummary(): string {
   if (state.filterLang) parts.push(`Langue : ${state.filterLang}`);
   if (state.filterRole) parts.push(`Rôle : ${state.filterRole}`);
   if (state.filterResourceType) parts.push(`Type : ${state.filterResourceType}`);
+  if (state.filterFamilyId !== null) {
+    const fam = state.families.find(f => f.family_id === state.filterFamilyId);
+    const label = fam?.parent?.title ?? `Famille #${state.filterFamilyId}`;
+    parts.push(`Famille : ${label}${state.filterFamilyPivotOnly ? " (original uniquement)" : ""}`);
+  }
   if (state.filterDocIds !== null) {
     const n = state.filterDocIds.length;
     const total = state.docs.length;
@@ -541,6 +546,7 @@ export async function fetchQueryPage(append: boolean): Promise<void> {
   }
 
   try {
+    const inFamilyMode = state.filterFamilyId !== null;
     const res = await query(state.conn, {
       q: state.currentQuery,
       mode: state.mode,
@@ -548,9 +554,13 @@ export async function fetchQueryPage(append: boolean): Promise<void> {
       language: state.filterLang || undefined,
       doc_role: state.filterRole || undefined,
       resource_type: state.filterResourceType || undefined,
-      doc_ids: state.filterDocIds ?? undefined,
-      includeAligned: state.showAligned,
-      alignedLimit: state.showAligned ? ALIGNED_LIMIT_DEFAULT : undefined,
+      // Family filter takes precedence over manual doc_ids
+      doc_ids: inFamilyMode ? undefined : (state.filterDocIds ?? undefined),
+      familyId: inFamilyMode ? state.filterFamilyId! : undefined,
+      pivotOnly: inFamilyMode ? state.filterFamilyPivotOnly : undefined,
+      // In family mode, always show aligned; otherwise honour the toggle
+      includeAligned: inFamilyMode || state.showAligned,
+      alignedLimit: (inFamilyMode || state.showAligned) ? ALIGNED_LIMIT_DEFAULT : undefined,
       case_sensitive: state.caseSensitive || undefined,
       limit: state.pageLimit,
       offset,
@@ -577,9 +587,10 @@ export async function fetchQueryPage(append: boolean): Promise<void> {
       ? res.has_more
       : state.nextOffset !== null;
 
-    if (state.showAligned && !append) {
+    const autoExpand = state.showAligned || state.filterFamilyId !== null;
+    if (autoExpand && !append) {
       state.expandedAlignedUnitIds = new Set(state.hits.map((h) => h.unit_id));
-    } else if (!state.showAligned) {
+    } else if (!autoExpand) {
       state.expandedAlignedUnitIds.clear();
     }
 

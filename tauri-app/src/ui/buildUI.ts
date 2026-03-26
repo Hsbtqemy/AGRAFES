@@ -9,7 +9,7 @@ import { elt, injectStyles } from "./dom";
 import { showToast } from "./status";
 import { renderResults } from "../features/query";
 import { doSearch } from "../features/query";
-import { renderChips, clearDocSelector } from "../features/filters";
+import { renderChips, clearDocSelector, loadFamiliesForFilter } from "../features/filters";
 import { updateFtsPreview, buildFtsQuery } from "../features/search";
 import { renderHistPanel, saveToHistory } from "../features/history";
 import { showImportModal, hideImportModal, doImport } from "../features/importFlow";
@@ -181,10 +181,12 @@ export function buildUI(container: HTMLElement): void {
   const exportJsonlParallelBtn = elt("button", { class: "export-menu-item" }, "JSONL — parallèle (pivot+aligned)");
   const exportCsvFlatBtn = elt("button", { class: "export-menu-item" }, "CSV — plat (N colonnes aligned)");
   const exportCsvLongBtn = elt("button", { class: "export-menu-item" }, "CSV — long (1 ligne/aligned) \u2605");
+  const exportCsvFamilyBtn = elt("button", { class: "export-menu-item export-menu-item--family", id: "export-csv-family-btn", title: "CSV avec une colonne par document de la famille" }, "CSV — famille (colonnes par langue) \uD83D\uDCC1");
   exportMenu.appendChild(exportJsonlSimpleBtn);
   exportMenu.appendChild(exportJsonlParallelBtn);
   exportMenu.appendChild(exportCsvFlatBtn);
   exportMenu.appendChild(exportCsvLongBtn);
+  exportMenu.appendChild(exportCsvFamilyBtn);
   exportWrap.appendChild(exportBtn);
   exportWrap.appendChild(exportMenu);
 
@@ -220,10 +222,22 @@ export function buildUI(container: HTMLElement): void {
 
   const docSelectorMount = elt("div", { id: "doc-selector-mount", class: "doc-sel-mount" });
 
+  const fgFam = elt("div", { class: "filter-group filter-group--family" });
+  fgFam.appendChild(elt("label", { class: "filter-family-label" }, "📁 Famille"));
+  const familySel = elt("select", { class: "filter-select", id: "filter-family-sel" }) as HTMLSelectElement;
+  familySel.innerHTML = `<option value="">Toutes les familles</option>`;
+  fgFam.appendChild(familySel);
+  const pivotOnlyWrap = elt("div", { class: "filter-family-pivot" });
+  const pivotOnlyCb = elt("input", { type: "checkbox", id: "filter-family-pivot-only" }) as HTMLInputElement;
+  pivotOnlyWrap.appendChild(pivotOnlyCb);
+  pivotOnlyWrap.appendChild(elt("label", { for: "filter-family-pivot-only", class: "filter-pivot-label" }, "Original uniquement"));
+  fgFam.appendChild(pivotOnlyWrap);
+
   const clearBtn = elt("span", { class: "filter-clear", id: "filter-clear" }, "Effacer tout");
   filterDrawer.appendChild(fg1);
   filterDrawer.appendChild(fg2);
   filterDrawer.appendChild(fg2b);
+  filterDrawer.appendChild(fgFam);
   filterDrawer.appendChild(docSelectorMount);
   filterDrawer.appendChild(clearBtn);
 
@@ -491,13 +505,45 @@ export function buildUI(container: HTMLElement): void {
   roleSel.addEventListener("change", () => { state.filterRole = roleSel.value; renderChips(); });
   restypeSel.addEventListener("change", () => { state.filterResourceType = restypeSel.value; renderChips(); });
 
+  familySel.addEventListener("change", () => {
+    const val = familySel.value;
+    state.filterFamilyId = val ? parseInt(val, 10) : null;
+    // When a family is selected, auto-enable "aligned" toggle for cross-family view
+    if (state.filterFamilyId !== null && !state.showAligned) {
+      state.showAligned = true;
+      refreshAlignedToggle();
+      refreshParallelToggle();
+    }
+    renderChips();
+    if (state.currentQuery) void doSearch(state.currentQuery);
+  });
+
+  pivotOnlyCb.addEventListener("change", () => {
+    state.filterFamilyPivotOnly = pivotOnlyCb.checked;
+    renderChips();
+    if (state.currentQuery && state.filterFamilyId !== null) void doSearch(state.currentQuery);
+  });
+
+  // Load families when filter drawer opens (lazy)
+  let familiesLoaded = false;
+  filterBtn.addEventListener("click", () => {
+    if (!familiesLoaded && state.conn) {
+      familiesLoaded = true;
+      void loadFamiliesForFilter();
+    }
+  });
+
   document.getElementById("filter-clear")!.addEventListener("click", () => {
     state.filterLang = "";
     state.filterRole = "";
     state.filterResourceType = "";
+    state.filterFamilyId = null;
+    state.filterFamilyPivotOnly = false;
     langSel.value = "";
     roleSel.value = "";
     restypeSel.value = "";
+    familySel.value = "";
+    pivotOnlyCb.checked = false;
     clearDocSelector(state.dbPath ?? "");
     renderChips();
   });
@@ -562,6 +608,9 @@ export function buildUI(container: HTMLElement): void {
   exportCsvLongBtn.addEventListener("click", () => {
     exportMenu.classList.remove("open"); void exportHits("csv-long");
   });
+  exportCsvFamilyBtn.addEventListener("click", () => {
+    exportMenu.classList.remove("open"); void exportHits("csv-family");
+  });
 
   // ── Reset ────────────────────────────────────────────────────────────────────
   resetBtn.addEventListener("click", () => {
@@ -576,9 +625,13 @@ export function buildUI(container: HTMLElement): void {
     state.filterLang = "";
     state.filterRole = "";
     state.filterResourceType = "";
+    state.filterFamilyId = null;
+    state.filterFamilyPivotOnly = false;
     langSel.value = "";
     roleSel.value = "";
     restypeSel.value = "";
+    familySel.value = "";
+    pivotOnlyCb.checked = false;
     clearDocSelector(state.dbPath ?? "");
     state.builderMode = "simple";
     const simpleRadio = document.querySelector<HTMLInputElement>("input[name='builder-mode'][value='simple']");

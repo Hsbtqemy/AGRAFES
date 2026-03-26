@@ -72,6 +72,10 @@ export interface QueryOptions {
   case_sensitive?: boolean;
   limit?: number;
   offset?: number;
+  /** Restrict the query to a document family (parent + all children). Forces include_aligned. */
+  familyId?: number;
+  /** When familyId is set, search only in the pivot (parent) document. */
+  pivotOnly?: boolean;
 }
 
 export interface QueryResponse {
@@ -84,6 +88,9 @@ export interface QueryResponse {
   next_offset?: number | null;
   has_more?: boolean;
   total?: number | null;
+  family_id?: number | null;
+  family_doc_ids?: number[] | null;
+  pivot_only?: boolean | null;
 }
 
 export interface ImportOptions {
@@ -1006,6 +1013,11 @@ export async function query(
   if (opts.case_sensitive) payload.case_sensitive = true;
   if (opts.limit !== undefined) payload.limit = opts.limit;
   if (opts.offset !== undefined) payload.offset = opts.offset;
+  if (opts.familyId !== undefined) {
+    payload.family_id = opts.familyId;
+    payload.include_aligned = true;
+    if (opts.pivotOnly) payload.pivot_only = true;
+  }
 
   return conn.post("/query", payload) as Promise<QueryResponse>;
 }
@@ -1050,6 +1062,49 @@ export async function rebuildIndex(conn: Conn): Promise<IndexResponse> {
 export async function listDocuments(conn: Conn): Promise<DocumentRecord[]> {
   const res = (await conn.get("/documents")) as { documents: DocumentRecord[] };
   return res.documents;
+}
+
+// ─── Document families ────────────────────────────────────────────────────────
+
+export interface FamilyChild {
+  doc_id: number;
+  relation_type: string;
+  doc: {
+    doc_id: number;
+    title: string | null;
+    language: string | null;
+    doc_role: string | null;
+    workflow_status: string | null;
+  } | null;
+  segmented: boolean;
+  seg_count: number;
+  aligned_to_parent: boolean;
+}
+
+export interface FamilyStats {
+  total_docs: number;
+  segmented_docs: number;
+  parent_seg_count: number;
+  aligned_pairs: number;
+  total_pairs: number;
+  completion_pct: number;
+}
+
+export interface FamilyRecord {
+  family_id: number;
+  parent: {
+    doc_id: number;
+    title: string | null;
+    language: string | null;
+    doc_role: string | null;
+  } | null;
+  children: FamilyChild[];
+  stats: FamilyStats;
+}
+
+export async function listFamilies(conn: Conn): Promise<FamilyRecord[]> {
+  const res = (await conn.get("/families")) as { families: FamilyRecord[]; count: number };
+  return res.families;
 }
 
 /**

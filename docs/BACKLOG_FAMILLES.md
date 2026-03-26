@@ -121,22 +121,23 @@
 
 ---
 
-## Sprint 6 — Concordancier cross-famille
+## Sprint 6 — Concordancier cross-famille ✅
 
 > Objectif : rechercher un terme dans l'original et voir ses équivalents dans toutes les traductions.
 
 ### Backend
 
-- [ ] `POST /query` : paramètre `family_id` pour restreindre la recherche
-- [ ] Réponse enrichie : pour chaque hit dans l'original, les unités alignées dans chaque traduction
+- [x] `POST /query` : paramètre `family_id` pour restreindre la recherche
+- [x] Réponse enrichie : pour chaque hit dans l'original, les unités alignées dans chaque traduction
   - Structure : `{ unit_id, text, aligned: { doc_id, language, unit_id, text }[] }`
-- [ ] API version → `1.6.5`
+- [x] API version → `1.6.5` + paramètre `pivot_only` (original uniquement)
 
 ### Frontend
 
-- [ ] Vue concordancier : filtre "Dans la famille de #N"
-- [ ] Affichage côte-à-côte : hit original + équivalents EN, ES, DE sur la même ligne
-- [ ] Export CSV des résultats cross-famille
+- [x] Vue concordancier : filtre "Famille" dans le tiroir Filtres (tauri-app)
+- [x] Sélecteur famille + case "Original uniquement" — active auto `include_aligned`
+- [x] Affichage côte-à-côte via le bloc aligné existant (auto-expand en mode famille)
+- [x] Export CSV des résultats cross-famille (format colonnes par document)
 
 ---
 

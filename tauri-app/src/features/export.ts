@@ -9,7 +9,7 @@ import { state } from "../state";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type ExportFormat = "jsonl-simple" | "jsonl-parallel" | "csv-flat" | "csv-long";
+export type ExportFormat = "jsonl-simple" | "jsonl-parallel" | "csv-flat" | "csv-long" | "csv-family";
 
 // ─── Serializers ──────────────────────────────────────────────────────────────
 
@@ -89,6 +89,58 @@ function toCsvLong(hits: QueryHit[]): string {
   return [header.join(","), ...rows].join("\r\n");
 }
 
+/**
+ * Cross-family concordancer CSV export.
+ *
+ * Each row represents one hit in the pivot document (original).
+ * Columns beyond the pivot data are one column per child document,
+ * identified by "LANG · title" and containing the aligned text.
+ * When a hit has no aligned unit for a given child, the cell is empty.
+ */
+function toCsvFamily(hits: QueryHit[]): string {
+  // Collect all unique child document keys (doc_id|lang|title)
+  const childKeySet = new Set<string>();
+  const childKeyOrder: string[] = [];
+  for (const h of hits) {
+    for (const a of h.aligned ?? []) {
+      const key = `${a.doc_id}|${a.language ?? "?"}|${a.title ?? ""}`;
+      if (!childKeySet.has(key)) {
+        childKeySet.add(key);
+        childKeyOrder.push(key);
+      }
+    }
+  }
+
+  // Build header
+  const header = [
+    "pivot_doc_id", "pivot_title", "pivot_lang",
+    "pivot_unit_id", "pivot_ext_id", "pivot_text",
+    ...childKeyOrder.map(k => {
+      const [, lang, title] = k.split("|");
+      return `${lang?.toUpperCase() ?? "?"} · ${title ?? ""}`.trim();
+    }),
+  ];
+
+  const rows: string[] = [];
+  for (const h of hits) {
+    // Index aligned units by child key
+    const byKey = new Map<string, string>();
+    for (const a of h.aligned ?? []) {
+      const key = `${a.doc_id}|${a.language ?? "?"}|${a.title ?? ""}`;
+      const text = (a.text ?? (a as AlignedUnit).text_norm ?? "").trim();
+      const existing = byKey.get(key);
+      byKey.set(key, existing ? `${existing} / ${text}` : text);
+    }
+    const pivotCells: (string | number | null)[] = [
+      h.doc_id, h.title, h.language, h.unit_id, h.external_id ?? "",
+      h.text ?? `${h.left ?? ""} <<${h.match ?? ""}>> ${h.right ?? ""}`.trim(),
+    ];
+    const alignedCells = childKeyOrder.map(k => byKey.get(k) ?? "");
+    rows.push([...pivotCells, ...alignedCells].map(v => escCsv(v)).join(","));
+  }
+  return [header.join(","), ...rows].join("\r\n");
+}
+
 // ─── Export orchestration ─────────────────────────────────────────────────────
 
 export async function exportHits(format: ExportFormat): Promise<void> {
@@ -121,6 +173,8 @@ export async function exportHits(format: ExportFormat): Promise<void> {
       content = toCsvFlat(state.hits); ext = "csv"; label = "flat"; break;
     case "csv-long":
       content = toCsvLong(state.hits); ext = "csv"; label = "long"; break;
+    case "csv-family":
+      content = toCsvFamily(state.hits); ext = "csv"; label = "famille"; break;
   }
 
   let outPath: string | null;

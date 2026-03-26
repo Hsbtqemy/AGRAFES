@@ -1120,21 +1120,52 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             except (TypeError, ValueError) as exc:
                 raise ValueError("doc_ids must be a list of integers") from exc
 
+        # ── family_id expansion ──────────────────────────────────────────────
+        # When family_id is provided we resolve it to a set of doc_ids
+        # (parent + all translation_of/excerpt_of children) and force
+        # include_aligned=True so the cross-family view is populated.
+        family_id: int | None = None
+        raw_family_id = body.get("family_id")
+        if raw_family_id is not None:
+            try:
+                family_id = int(raw_family_id)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("family_id must be an integer") from exc
+
+        pivot_only: bool = bool(body.get("pivot_only", False))
+        include_aligned_raw: bool = bool(body.get("include_aligned", False))
+
+        if family_id is not None:
+            conn_f = self._conn()
+            child_rows = conn_f.execute(
+                "SELECT doc_id FROM doc_relations"
+                " WHERE target_doc_id = ? AND relation_type IN ('translation_of', 'excerpt_of')",
+                [family_id],
+            ).fetchall()
+            child_ids = [r[0] for r in child_rows]
+            if pivot_only:
+                doc_ids = [family_id]
+            else:
+                doc_ids = [family_id] + child_ids
+            include_aligned_raw = True  # always show aligned units in cross-family mode
+
         params = {
             "q": body.get("q", ""),
             "mode": body.get("mode", "segment"),
             "window": body.get("window", 10),
             "language": body.get("language"),
-            "doc_id": body.get("doc_id"),
+            "doc_id": body.get("doc_id") if family_id is None else None,
             "doc_ids": doc_ids,
             "resource_type": body.get("resource_type"),
             "doc_role": body.get("doc_role"),
-            "include_aligned": body.get("include_aligned", False),
+            "include_aligned": include_aligned_raw,
             "aligned_limit": aligned_limit,
             "all_occurrences": body.get("all_occurrences", False),
             "case_sensitive": bool(body.get("case_sensitive", False)),
             "limit": limit,
             "offset": offset,
+            "family_id": family_id,
+            "pivot_only": pivot_only,
         }
         with self._lock():
             run_id = self._create_run("query", params)
@@ -1166,7 +1197,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                     "next_offset": page["next_offset"],
                 },
             )
-        self._send_json(success_payload({
+        resp: dict = {
             "run_id": run_id,
             "count": len(hits),
             "hits": hits,
@@ -1175,7 +1206,12 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             "next_offset": page["next_offset"],
             "has_more": page["has_more"],
             "total": page["total"],
-        }))
+        }
+        if params["family_id"] is not None:
+            resp["family_id"] = params["family_id"]
+            resp["family_doc_ids"] = params["doc_ids"]
+            resp["pivot_only"] = params["pivot_only"]
+        self._send_json(success_payload(resp))
 
     def _handle_query_facets(self, body: dict) -> None:
         """POST /query/facets — lightweight facet summary for a query.

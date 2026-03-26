@@ -3,7 +3,7 @@
  * All modules import { state } from here; mutation is intentional (no framework).
  */
 
-import type { Conn, QueryHit, DocumentRecord, QueryFacetsResponse } from "./lib/sidecarClient";
+import type { Conn, QueryHit, DocumentRecord, QueryFacetsResponse, FamilyRecord } from "./lib/sidecarClient";
 
 export type Status = "idle" | "starting" | "ready" | "error";
 
@@ -26,6 +26,12 @@ export interface AppState {
   /** null = all documents (no filter); number[] = restrict to these doc_ids. */
   filterDocIds: number[] | null;
   filterResourceType: string;
+  /** null = no family filter; number = restrict to this family_id for cross-family concordancer. */
+  filterFamilyId: number | null;
+  /** Restrict family search to pivot document only (original). */
+  filterFamilyPivotOnly: boolean;
+  /** Cached list of families for the family selector. */
+  families: FamilyRecord[];
   showAligned: boolean;
   expandedAlignedUnitIds: Set<number>;
   currentQuery: string;
@@ -71,6 +77,9 @@ export const state: AppState = {
   filterRole: "",
   filterDocIds: null,
   filterResourceType: "",
+  filterFamilyId: null,
+  filterFamilyPivotOnly: false,
+  families: [],
   showAligned: false,
   expandedAlignedUnitIds: new Set<number>(),
   currentQuery: "",

@@ -2,8 +2,8 @@
  * features/filters.ts — Document filter dropdowns, chips bar, and doc lookup map.
  */
 
-import type { DocumentRecord } from "../lib/sidecarClient";
-import { listDocuments } from "../lib/sidecarClient";
+import type { DocumentRecord, FamilyRecord } from "../lib/sidecarClient";
+import { listDocuments, listFamilies } from "../lib/sidecarClient";
 import { state } from "../state";
 import { elt } from "../ui/dom";
 import {
@@ -35,6 +35,33 @@ export async function loadDocsForFilters(): Promise<void> {
     mountDocSelector(state.docs, dbPath, () => renderChips());
   } catch {
     // non-critical — filters stay operational
+  }
+}
+
+/** Load families from the backend and populate the family filter dropdown. */
+export async function loadFamiliesForFilter(): Promise<void> {
+  if (!state.conn) return;
+  try {
+    state.families = await listFamilies(state.conn);
+    populateFamilyFilterDropdown(state.families);
+  } catch {
+    // non-critical
+  }
+}
+
+export function populateFamilyFilterDropdown(families: FamilyRecord[]): void {
+  const sel = document.getElementById("filter-family-sel") as HTMLSelectElement | null;
+  if (!sel) return;
+  sel.innerHTML = `<option value="">Toutes les familles</option>`;
+  for (const fam of families) {
+    const label = fam.parent?.title
+      ? `${fam.parent.title} (${fam.stats.total_docs} docs)`
+      : `Famille #${fam.family_id} (${fam.stats.total_docs} docs)`;
+    const opt = document.createElement("option");
+    opt.value = String(fam.family_id);
+    opt.textContent = label;
+    if (fam.family_id === state.filterFamilyId) opt.selected = true;
+    sel.appendChild(opt);
   }
 }
 
@@ -111,6 +138,20 @@ export function renderChips(): void {
     const s = document.getElementById("filter-restype-sel") as HTMLSelectElement | null;
     if (s) s.value = "";
   });
+
+  // Family filter chip
+  if (state.filterFamilyId !== null) {
+    const fam = state.families.find(f => f.family_id === state.filterFamilyId);
+    const label = fam?.parent?.title ?? `Famille #${state.filterFamilyId}`;
+    add("Famille", label + (state.filterFamilyPivotOnly ? " (original)" : ""), () => {
+      state.filterFamilyId = null;
+      state.filterFamilyPivotOnly = false;
+      const s = document.getElementById("filter-family-sel") as HTMLSelectElement | null;
+      if (s) s.value = "";
+      const cb = document.getElementById("filter-family-pivot-only") as HTMLInputElement | null;
+      if (cb) cb.checked = false;
+    });
+  }
 
   // Doc selection chip — shown when a subset (not all) is selected
   if (state.filterDocIds !== null) {

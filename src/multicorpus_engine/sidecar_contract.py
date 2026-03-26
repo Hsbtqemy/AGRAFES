@@ -12,8 +12,8 @@ from __future__ import annotations
 from typing import Any
 
 
-API_VERSION = "1.6.4"
-CONTRACT_VERSION = "1.6.4"  # semantic versioning for the sidecar API contract
+API_VERSION = "1.6.5"
+CONTRACT_VERSION = "1.6.5"  # semantic versioning for the sidecar API contract
 # 1.4.0: added export_tei_package job kind (Sprint 4 — Publication ZIP)
 # 1.4.1: ERR_CONFLICT (409) for duplicate run_id; token protection on /align, /curate, /segment
 # 1.4.2: document workflow status fields on /documents and metadata update endpoints.
@@ -32,6 +32,8 @@ CONTRACT_VERSION = "1.6.4"  # semantic versioning for the sidecar API contract
 # 1.6.3: GET /corpus/audit gains `families` section
 # 1.6.4: POST /export/tmx (paire ou famille entière), POST /export/bilingual (html|txt, preview_only). (orphans, unsegmented, unaligned, ratio warnings)
 #         and optional query param ratio_threshold_pct (default 15).
+# 1.6.5: POST /query gains optional family_id (expand to family doc_ids, force include_aligned)
+#         and pivot_only (restrict to parent doc only). Response gains family_id, family_doc_ids, pivot_only.
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
@@ -1014,13 +1016,25 @@ def openapi_spec() -> dict[str, Any]:
                         "window": {"type": "integer", "default": 10},
                         "language": {"type": "string"},
                         "doc_id": {"type": "integer"},
+                        "doc_ids": {"type": "array", "items": {"type": "integer"}},
                         "resource_type": {"type": "string"},
                         "doc_role": {"type": "string"},
                         "include_aligned": {"type": "boolean", "default": False},
                         "aligned_limit": {"type": "integer", "minimum": 1, "default": 20, "nullable": True},
                         "all_occurrences": {"type": "boolean", "default": False},
+                        "case_sensitive": {"type": "boolean", "default": False},
                         "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50},
                         "offset": {"type": "integer", "minimum": 0, "default": 0},
+                        "family_id": {
+                            "type": "integer",
+                            "nullable": True,
+                            "description": "When set, expands the query to all docs in the family (parent + children) and forces include_aligned=true.",
+                        },
+                        "pivot_only": {
+                            "type": "boolean",
+                            "default": False,
+                            "description": "When family_id is set, restrict the search to the pivot (parent) document only.",
+                        },
                     },
                     "additionalProperties": False,
                 },
@@ -1048,6 +1062,9 @@ def openapi_spec() -> dict[str, Any]:
                                 "next_offset": {"type": "integer", "nullable": True},
                                 "has_more": {"type": "boolean"},
                                 "total": {"type": "integer", "nullable": True},
+                                "family_id": {"type": "integer", "nullable": True},
+                                "family_doc_ids": {"type": "array", "items": {"type": "integer"}, "nullable": True},
+                                "pivot_only": {"type": "boolean", "nullable": True},
                             },
                         },
                     ]
