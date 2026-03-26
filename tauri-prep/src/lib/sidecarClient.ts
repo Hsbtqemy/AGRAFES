@@ -145,11 +145,13 @@ export interface SegmentPreviewSegment {
   n: number;
   text: string;
   source_unit_n: number;
+  external_id?: number | null;
 }
 
 export interface SegmentPreviewResponse {
   ok: boolean;
   doc_id: number;
+  mode: "sentences" | "markers";
   units_input: number;
   units_output: number;
   segment_pack: string;
@@ -159,9 +161,30 @@ export interface SegmentPreviewResponse {
 
 export async function segmentPreview(
   conn: Conn,
-  opts: { doc_id: number; lang?: string; pack?: string; limit?: number },
+  opts: { doc_id: number; mode?: "sentences" | "markers"; lang?: string; pack?: string; limit?: number },
 ): Promise<SegmentPreviewResponse> {
   return conn.post("/segment/preview", opts) as Promise<SegmentPreviewResponse>;
+}
+
+// ---------------------------------------------------------------------------
+// Marker detection (read-only scan)
+// ---------------------------------------------------------------------------
+export interface DetectMarkersResponse {
+  ok: boolean;
+  doc_id: number;
+  detected: boolean;
+  total_units: number;
+  marked_units: number;
+  marker_ratio: number;
+  sample: { n: number; text: string }[];
+  first_markers: number[];
+}
+
+export async function detectMarkers(
+  conn: Conn,
+  doc_id: number,
+): Promise<DetectMarkersResponse> {
+  return conn.post("/segment/detect_markers", { doc_id }) as Promise<DetectMarkersResponse>;
 }
 
 // ---------------------------------------------------------------------------

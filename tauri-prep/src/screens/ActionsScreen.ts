@@ -39,6 +39,8 @@ import {
   updateDocument,
   getDocumentPreview,
   segmentPreview,
+  detectMarkers,
+  type DetectMarkersResponse,
   SidecarError,
   type CurateException,
   listCurateExceptions,
@@ -279,6 +281,8 @@ export class ActionsScreen {
   // Sprint 9 — new split segmentation panel
   /** Currently selected document in the split seg panel */
   private _selectedSegDocId: number | null = null;
+  private _segMarkersDetected: DetectMarkersResponse | null = null;
+  private _segSplitMode: "sentences" | "markers" = "sentences";
   /** Debounce timer for live segment preview */
   private _segPreviewTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -1264,6 +1268,10 @@ export class ActionsScreen {
     const doc = this._docs.find(d => d.doc_id === docId);
     if (!doc) { rightEl.innerHTML = `<div class="seg-right-empty">Document introuvable.</div>`; return; }
 
+    // Reset mode state when switching document
+    this._segMarkersDetected = null;
+    this._segSplitMode = "sentences";
+
     const pack = (document.querySelector("#act-seg-pack") as HTMLSelectElement | null)?.value ?? "auto";
     const lang = (document.querySelector("#act-seg-lang") as HTMLInputElement | null)?.value.trim() || doc.language || "fr";
     const statusBadge = doc.workflow_status === "validated"
@@ -1283,6 +1291,7 @@ export class ActionsScreen {
           </div>
           <div class="seg-right-header-meta">#${doc.doc_id} &middot; ${_escHtml(doc.language)} &middot; ${doc.unit_count} unit&#233;s</div>
         </div>
+        <div id="act-seg-marker-banner" class="seg-marker-banner" style="display:none" aria-live="polite"></div>
         <div class="seg-params-bar" id="act-seg-params">
           <label class="seg-param-field">Langue
             <input id="act-seg-lang" type="text" value="${_escHtml(lang)}" maxlength="10"
@@ -1304,6 +1313,8 @@ export class ActionsScreen {
               ).join("")}
             </select>
           </label>
+          <button type="button" class="btn btn-ghost btn-sm" id="act-seg-detect-btn"
+            title="D&#233;tecter les balises [N] dans le texte">&#128270; D&#233;tecter balises</button>
         </div>
         <details class="seg-rule-info" id="act-seg-rule-info">
           <summary class="seg-rule-info-sum">&#9432; Moteur de d&#233;coupage</summary>
@@ -1312,11 +1323,12 @@ export class ActionsScreen {
             <p>&#8594; Si vos phrases d&#233;butent par une minuscule, le moteur ne les d&#233;tectera pas comme d&#233;but de phrase.</p>
             <p>&#8594; Si chaque paragraphe du document est d&#233;j&#224; une phrase, la segmentation retourne le m&#234;me nombre d&#8217;unit&#233;s.</p>
             <p><strong>Packs :</strong> les packs <em>fr_strict</em> et <em>en_strict</em> ajoutent des abr&#233;viations prot&#233;g&#233;es (ann., chap., etc.) pour &#233;viter les faux d&#233;coupages.</p>
+            <p><strong>Mode balises :</strong> si vos textes contiennent des num&#233;ros entre crochets <code>[1]</code>&nbsp;<code>[2]</code>&#8230; en d&#233;but de segment, utilisez le bouton <em>D&#233;tecter balises</em>. Ce mode r&#233;cup&#232;re l&#8217;ID de chaque balise comme identifiant externe, ce qui permet un alignement automatique par num&#233;ro apr&#232;s segmentation.</p>
           </div>
         </details>
         <div class="seg-preview-section" id="act-seg-preview-section">
           <div class="seg-preview-section-head">
-            <span class="seg-preview-section-label">Aper&#231;u live <span class="seg-preview-badge">m&#234;me moteur, sans &#233;criture</span></span>
+            <span class="seg-preview-section-label">Aper&#231;u live <span class="seg-preview-badge" id="act-seg-mode-badge">phrases</span></span>
             <span id="act-seg-prev-stats" class="seg-preview-stats"></span>
             <button type="button" class="btn btn-ghost btn-sm" id="act-seg-prev-refresh">&#8635;</button>
           </div>
@@ -1377,6 +1389,9 @@ export class ActionsScreen {
     rightEl.querySelector("#act-seg-calibrate")?.addEventListener("change", () => this._scheduleSegPreview(docId));
     rightEl.querySelector("#act-seg-prev-refresh")?.addEventListener("click", () => void this._runSegPreview(docId));
 
+    // Wire detect-markers button
+    rightEl.querySelector("#act-seg-detect-btn")?.addEventListener("click", () => void this._runDetectMarkers(docId));
+
     // Wire action buttons
     rightEl.querySelector("#act-seg-btn")?.addEventListener("click", () => this._runSegment());
     rightEl.querySelector("#act-seg-validate-btn")?.addEventListener("click", () => this._runSegment(true));
@@ -1385,6 +1400,9 @@ export class ActionsScreen {
     // Load raw preview (left column) and trigger live preview
     void this._loadSegRawColumn(docId);
     void this._runSegPreview(docId);
+
+    // Auto-detect markers silently (no loading indicator needed — fast endpoint)
+    void this._runDetectMarkers(docId, /* silent */ true);
 
     // Load saved segments if doc already has units
     if (savedAlready) {
@@ -1428,32 +1446,139 @@ export class ActionsScreen {
     }, 400);
   }
 
+  // ── Marker detection ─────────────────────────────────────────────────────────
+
+  private async _runDetectMarkers(docId: number, silent = false): Promise<void> {
+    if (!this._conn) return;
+    const bannerEl = document.querySelector<HTMLElement>("#act-seg-marker-banner");
+    const detectBtn = document.querySelector<HTMLButtonElement>("#act-seg-detect-btn");
+
+    if (!silent && detectBtn) {
+      detectBtn.disabled = true;
+      detectBtn.textContent = "Détection…";
+    }
+
+    try {
+      const report = await detectMarkers(this._conn, docId);
+      this._segMarkersDetected = report;
+
+      if (!bannerEl) return;
+
+      if (report.detected) {
+        const sample = report.first_markers.slice(0, 5).join(", ");
+        bannerEl.style.display = "";
+        bannerEl.innerHTML = `
+          <span class="seg-marker-icon">&#127991;</span>
+          <span class="seg-marker-info">
+            <strong>Balises [N] d&#233;tect&#233;es</strong> —
+            ${report.marked_units}/${report.total_units} unit&#233;s marqu&#233;es
+            (ex.&nbsp;: [${sample}])
+          </span>
+          <button type="button" class="btn btn-sm ${this._segSplitMode === "markers" ? "btn-warning" : "btn-outline-warning"}"
+            id="act-seg-mode-toggle">
+            ${this._segSplitMode === "markers" ? "&#10003; Mode balises actif" : "Utiliser les balises"}
+          </button>
+        `;
+        bannerEl.querySelector("#act-seg-mode-toggle")?.addEventListener("click", () => {
+          if (this._segSplitMode === "markers") {
+            this._deactivateMarkersMode(docId);
+          } else {
+            this._activateMarkersMode(docId);
+          }
+        });
+      } else if (!silent) {
+        bannerEl.style.display = "";
+        bannerEl.innerHTML = `
+          <span class="seg-marker-icon seg-marker-icon-miss">&#8416;</span>
+          <span class="seg-marker-info">Aucune balise <code>[N]</code> d&#233;tect&#233;e dans ce document
+          (${report.total_units} unit&#233;s analys&#233;es).</span>
+        `;
+        setTimeout(() => { if (bannerEl) bannerEl.style.display = "none"; }, 4000);
+      }
+    } catch (err) {
+      if (!silent && bannerEl) {
+        bannerEl.style.display = "";
+        bannerEl.innerHTML = `<span style="color:var(--color-danger)">Erreur d&#233;tection : ${_escHtml(err instanceof Error ? err.message : String(err))}</span>`;
+      }
+    } finally {
+      if (!silent && detectBtn) {
+        detectBtn.disabled = false;
+        detectBtn.innerHTML = "&#128270; D&#233;tecter balises";
+      }
+    }
+  }
+
+  private _activateMarkersMode(docId: number): void {
+    this._segSplitMode = "markers";
+    const badge = document.querySelector<HTMLElement>("#act-seg-mode-badge");
+    if (badge) badge.textContent = "balises [N]";
+    // Re-render banner toggle button as active
+    void this._runDetectMarkers(docId, /* silent */ true);
+    // Disable sentence-specific params
+    const packField = document.querySelector<HTMLElement>(".seg-param-field:nth-child(2)");
+    if (packField) packField.style.opacity = "0.4";
+    // Trigger preview in markers mode
+    void this._runSegPreview(docId);
+  }
+
+  private _deactivateMarkersMode(docId: number): void {
+    this._segSplitMode = "sentences";
+    const badge = document.querySelector<HTMLElement>("#act-seg-mode-badge");
+    if (badge) badge.textContent = "phrases";
+    void this._runDetectMarkers(docId, /* silent */ true);
+    const packField = document.querySelector<HTMLElement>(".seg-param-field:nth-child(2)");
+    if (packField) packField.style.opacity = "";
+    void this._runSegPreview(docId);
+  }
+
+  // ── Live preview ──────────────────────────────────────────────────────────────
+
   private async _runSegPreview(docId: number): Promise<void> {
     if (!this._conn) return;
     const segEl = document.querySelector<HTMLElement>("#act-seg-prev-seg");
     const statsEl = document.querySelector<HTMLElement>("#act-seg-prev-stats");
     const segCountEl = document.querySelector<HTMLElement>("#act-seg-prev-seg-count");
     const warnsEl = document.querySelector<HTMLElement>("#act-seg-prev-warns");
+    const segColTitle = document.querySelector<HTMLElement>("#act-seg-preview-split > div:nth-child(2) .seg-preview-col-title");
     if (!segEl) return;
 
     const lang = (document.querySelector("#act-seg-lang") as HTMLInputElement | null)?.value.trim() || "fr";
     const pack = (document.querySelector("#act-seg-pack") as HTMLSelectElement | null)?.value ?? "auto";
+    const mode = this._segSplitMode;
 
     segEl.innerHTML = `<p class="empty-hint">Calcul en cours&#8230;</p>`;
     if (statsEl) statsEl.textContent = "…";
+    if (segColTitle) {
+      segColTitle.textContent = mode === "markers"
+        ? `Balises [N] (— segments)`
+        : `Segmenté (— phrases)`;
+    }
 
     try {
-      const res = await segmentPreview(this._conn, { doc_id: docId, lang, pack, limit: 300 });
+      const res = await segmentPreview(this._conn, { doc_id: docId, mode, lang, pack, limit: 300 });
       if (segCountEl) segCountEl.textContent = String(res.units_output);
-      if (statsEl) statsEl.textContent = `${res.units_input} u. → ${res.units_output} phrases · pack ${res.segment_pack}`;
+      if (statsEl) {
+        statsEl.textContent = mode === "markers"
+          ? `${res.units_input} u. → ${res.units_output} segments par balise`
+          : `${res.units_input} u. → ${res.units_output} phrases · pack ${res.segment_pack}`;
+      }
+      if (segColTitle) {
+        segColTitle.innerHTML = mode === "markers"
+          ? `Balises [N] (<span id="act-seg-prev-seg-count">${res.units_output}</span> segments)`
+          : `Segment&#233; (<span id="act-seg-prev-seg-count">${res.units_output}</span> phrases)`;
+      }
 
       const truncNote = res.units_output >= 300
         ? `<p class="seg-trunc-note">Aper&#231;u tronqu&#233; &#224; 300 segments</p>`
         : "";
+
       segEl.innerHTML = truncNote + (res.segments.length
-        ? res.segments.map(s =>
-          `<div class="seg-prev-row"><span class="seg-prev-n">${s.n}</span><span class="seg-prev-tx">${_escHtml(s.text)}</span></div>`,
-        ).join("")
+        ? res.segments.map(s => {
+            const hasId = s.external_id != null;
+            return `<div class="seg-prev-row${hasId ? " seg-prev-row-marker" : ""}">` +
+              `<span class="seg-prev-n">${hasId ? `[${s.external_id}]` : s.n}</span>` +
+              `<span class="seg-prev-tx">${_escHtml(s.text)}</span></div>`;
+          }).join("")
         : `<p class="empty-hint">Aucun segment produit.</p>`);
 
       if (warnsEl) {
@@ -6558,6 +6683,7 @@ export class ActionsScreen {
     const pack = (document.querySelector("#act-seg-pack") as HTMLSelectElement).value || "auto";
     const calibrateRaw = (document.querySelector("#act-seg-calibrate") as HTMLSelectElement | null)?.value ?? "";
     const calibrateTo = calibrateRaw ? parseInt(calibrateRaw, 10) : undefined;
+    const useMarkers = this._segSplitMode === "markers";
     const docLabel = segSel.docLabel;
     const postValidate = this._postValidateDestination();
     const postValidateLabel = postValidate === "next"
@@ -6566,19 +6692,22 @@ export class ActionsScreen {
       ? "restera sur l'onglet Actions"
       : "basculera vers l'onglet Documents";
 
+    const modeLabel = useMarkers ? "MODE BALISES [N]" : `Pack: ${pack}`;
     const prompt = validateAfter
       ? `Segmenter puis valider le document ${docLabel} ?\n` +
-        `Pack: ${pack}\n` +
+        `${modeLabel}\n` +
         `Cette opération EFFACE les liens d'alignement existants puis ${postValidateLabel}.`
       : `Segmenter le document ${docLabel} ?\n` +
-        `Pack: ${pack}\n` +
+        `${modeLabel}\n` +
         "Cette opération EFFACE les liens d'alignement existants.";
     if (!window.confirm(prompt)) return;
 
     this._setBusy(true);
     try {
-      const jobPayload: Record<string, unknown> = { doc_id: docId, lang, pack };
-      if (calibrateTo) jobPayload.calibrate_to = calibrateTo;
+      const jobPayload: Record<string, unknown> = useMarkers
+        ? { doc_id: docId, mode: "markers" }
+        : { doc_id: docId, lang, pack };
+      if (!useMarkers && calibrateTo) jobPayload.calibrate_to = calibrateTo;
       const job = await enqueueJob(this._conn, "segment", jobPayload);
       this._log(`Job segmentation soumis pour ${docLabel} (${job.job_id.slice(0, 8)}…)`);
       // Show loading state in preview card immediately

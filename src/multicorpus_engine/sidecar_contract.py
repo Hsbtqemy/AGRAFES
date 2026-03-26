@@ -12,8 +12,8 @@ from __future__ import annotations
 from typing import Any
 
 
-API_VERSION = "1.6.8"
-CONTRACT_VERSION = "1.6.8"  # semantic versioning for the sidecar API contract
+API_VERSION = "1.6.9"
+CONTRACT_VERSION = "1.6.9"  # semantic versioning for the sidecar API contract
 # 1.4.0: added export_tei_package job kind (Sprint 4 — Publication ZIP)
 # 1.4.1: ERR_CONFLICT (409) for duplicate run_id; token protection on /align, /curate, /segment
 # 1.4.2: document workflow status fields on /documents and metadata update endpoints.
@@ -42,6 +42,9 @@ CONTRACT_VERSION = "1.6.8"  # semantic versioning for the sidecar API contract
 #         When provided: creates translation_of relation after import and returns
 #         relation_created (bool) + relation_id (int) in ImportResponse.
 # 1.6.8: POST /segment/preview — in-memory segmentation (same engine, no DB writes).
+# 1.6.9: POST /segment/detect_markers — detect [N] markers in units (read-only).
+#         POST /segment/preview mode=markers — preview [N]-based segmentation.
+#         POST /jobs/enqueue segment mode=markers — execute marker-based resegmentation.
 #         Takes { doc_id, lang?, pack?, limit? }, returns segments list + warnings.
 
 # Error code catalog (stable machine-readable values).
@@ -340,6 +343,31 @@ def openapi_spec() -> dict[str, Any]:
                             "content": {
                                 "application/json": {
                                     "schema": {"$ref": "#/components/schemas/SegmentPreviewResponse"},
+                                }
+                            },
+                        },
+                        "400": {"description": "Bad request", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                        "404": {"description": "Document not found", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                    },
+                }
+            },
+            "/segment/detect_markers": {
+                "post": {
+                    "summary": "Detect [N] markers in existing units (read-only)",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/SegmentDetectMarkersRequest"},
+                            }
+                        },
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Marker detection report",
+                            "content": {
+                                "application/json": {
+                                    "schema": {"$ref": "#/components/schemas/SegmentDetectMarkersResponse"},
                                 }
                             },
                         },
@@ -1243,6 +1271,12 @@ def openapi_spec() -> dict[str, Any]:
                     "required": ["doc_id"],
                     "properties": {
                         "doc_id": {"type": "integer"},
+                        "mode": {
+                            "type": "string",
+                            "default": "sentences",
+                            "enum": ["sentences", "markers"],
+                            "description": "'sentences' = rule-based split; 'markers' = split on [N] markers",
+                        },
                         "lang": {"type": "string", "default": "und"},
                         "pack": {
                             "type": "string",
@@ -1252,10 +1286,36 @@ def openapi_spec() -> dict[str, Any]:
                         "limit": {
                             "type": "integer",
                             "default": 300,
-                            "description": "Maximum number of segments returned (avoids huge responses for large docs).",
+                            "description": "Maximum number of segments returned.",
                         },
                     },
                     "additionalProperties": False,
+                },
+                "SegmentDetectMarkersRequest": {
+                    "type": "object",
+                    "required": ["doc_id"],
+                    "properties": {
+                        "doc_id": {"type": "integer"},
+                    },
+                    "additionalProperties": False,
+                },
+                "SegmentDetectMarkersResponse": {
+                    "allOf": [
+                        {"$ref": "#/components/schemas/BaseResponse"},
+                        {
+                            "type": "object",
+                            "required": ["doc_id", "detected", "total_units", "marked_units", "marker_ratio"],
+                            "properties": {
+                                "doc_id": {"type": "integer"},
+                                "detected": {"type": "boolean"},
+                                "total_units": {"type": "integer"},
+                                "marked_units": {"type": "integer"},
+                                "marker_ratio": {"type": "number"},
+                                "sample": {"type": "array", "items": {"type": "object"}},
+                                "first_markers": {"type": "array", "items": {"type": "integer"}},
+                            },
+                        },
+                    ]
                 },
                 "SegmentPreviewSegment": {
                     "type": "object",
@@ -1264,6 +1324,7 @@ def openapi_spec() -> dict[str, Any]:
                         "n": {"type": "integer"},
                         "text": {"type": "string"},
                         "source_unit_n": {"type": "integer", "description": "n of the original unit this segment was produced from"},
+                        "external_id": {"type": "integer", "nullable": True, "description": "Marker number if mode=markers"},
                     },
                 },
                 "SegmentPreviewResponse": {
@@ -1271,9 +1332,10 @@ def openapi_spec() -> dict[str, Any]:
                         {"$ref": "#/components/schemas/BaseResponse"},
                         {
                             "type": "object",
-                            "required": ["doc_id", "units_input", "units_output", "segment_pack", "segments"],
+                            "required": ["doc_id", "mode", "units_input", "units_output", "segment_pack", "segments"],
                             "properties": {
                                 "doc_id": {"type": "integer"},
+                                "mode": {"type": "string", "enum": ["sentences", "markers"]},
                                 "units_input": {"type": "integer"},
                                 "units_output": {"type": "integer"},
                                 "segment_pack": {"type": "string"},

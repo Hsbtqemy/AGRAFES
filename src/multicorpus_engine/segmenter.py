@@ -140,6 +140,187 @@ def segment_text(text: str, lang: str = "und", pack: str | None = None) -> list[
 
 
 # ---------------------------------------------------------------------------
+# Marker-based segmentation  ([1], [2], [14]… embedded in text)
+# ---------------------------------------------------------------------------
+
+# Matches "[N]" (with optional whitespace) at the start of a string,
+# or preceded by a newline inside a multi-line unit.
+_MARKER_START_RE = re.compile(r"^\s*\[\s*(\d+)\s*\]\s*", re.MULTILINE)
+
+# Matches "[N]" anywhere in a multi-line block (to split a paragraph into segments)
+_MARKER_SPLIT_RE = re.compile(
+    r"(?:^|\n)\s*\[\s*(\d+)\s*\]\s*",
+    re.MULTILINE,
+)
+
+
+def detect_markers_in_units(
+    conn: sqlite3.Connection,
+    doc_id: int,
+    *,
+    min_ratio: float = 0.3,
+) -> dict:
+    """Scan existing line units for embedded [N] marker patterns.
+
+    Returns a detection report dict:
+        {
+            "detected": bool,          # True when marker_ratio > min_ratio
+            "total_units": int,
+            "marked_units": int,
+            "marker_ratio": float,     # marked / total
+            "sample": list[dict],      # first 5 marked units
+            "first_markers": list[int] # up to 10 extracted marker IDs
+        }
+    """
+    rows = conn.execute(
+        "SELECT n, text_norm FROM units WHERE doc_id = ? AND unit_type = 'line' ORDER BY n",
+        (doc_id,),
+    ).fetchall()
+
+    total = len(rows)
+    marked = []
+    first_markers: list[int] = []
+
+    for n, text in rows:
+        if not text:
+            continue
+        m = _MARKER_START_RE.match(text)
+        if m:
+            marked.append({"n": n, "text": (text or "")[:100]})
+            if len(first_markers) < 10:
+                first_markers.append(int(m.group(1)))
+
+    ratio = len(marked) / total if total else 0.0
+    return {
+        "detected": ratio >= min_ratio,
+        "total_units": total,
+        "marked_units": len(marked),
+        "marker_ratio": round(ratio, 3),
+        "sample": marked[:5],
+        "first_markers": first_markers,
+    }
+
+
+def segment_text_markers(text: str) -> list[tuple[int | None, str]]:
+    """Split *text* by embedded [N] markers.
+
+    Handles two cases:
+    - Entire unit starts with [N]: returns [(N, rest_of_text)]
+    - Unit contains multiple [N] markers (e.g. long paragraph): splits at each
+
+    Returns a list of (external_id_or_None, segment_text) tuples.
+    If no markers found, returns [(None, stripped_text)].
+    """
+    text = (text or "").strip()
+    if not text:
+        return []
+
+    # Find all marker positions in the text
+    parts = _MARKER_SPLIT_RE.split(text)
+    # split() with a capturing group gives:
+    #   [text_before_first_match, id1, text1, id2, text2, ...]
+    result: list[tuple[int | None, str]] = []
+
+    prefix = (parts[0] or "").strip()
+    if prefix:
+        result.append((None, prefix))
+
+    i = 1
+    while i + 1 < len(parts):
+        ext_id = int(parts[i])
+        seg = (parts[i + 1] or "").strip()
+        if seg:
+            result.append((ext_id, seg))
+        i += 2
+
+    return result if result else [(None, text)]
+
+
+def resegment_document_markers(
+    conn: sqlite3.Connection,
+    doc_id: int,
+    run_logger: Optional[logging.Logger] = None,
+) -> SegmentationReport:
+    """Re-segment a document using embedded [N] markers.
+
+    Each stored unit whose text_norm contains [N] patterns is split at the
+    markers.  The marker number is stored as external_id so that
+    alignment strategy=external_id can match units across documents.
+
+    Units without any marker are kept with external_id=NULL.
+
+    Clears existing alignment_links (same as resegment_document).
+    FTS index is NOT rebuilt — caller must do it.
+    """
+    log = run_logger or logger
+
+    rows = conn.execute(
+        "SELECT unit_id, n, text_raw, text_norm FROM units"
+        " WHERE doc_id = ? AND unit_type = 'line' ORDER BY n",
+        (doc_id,),
+    ).fetchall()
+
+    if not rows:
+        return SegmentationReport(
+            doc_id=doc_id,
+            units_input=0,
+            units_output=0,
+            segment_pack="markers",
+            warnings=[f"No line units found for doc_id={doc_id}"],
+        )
+
+    new_units: list[tuple] = []  # (doc_id, unit_type, n, external_id, text_raw, text_norm, meta_json)
+    global_n = 1
+    units_without_marker = 0
+
+    for row in rows:
+        text_norm = row["text_norm"] or ""
+        segments = segment_text_markers(text_norm)
+        for ext_id, seg_text in segments:
+            if ext_id is None:
+                units_without_marker += 1
+            new_units.append((doc_id, "line", global_n, ext_id, seg_text, seg_text, None))
+            global_n += 1
+
+    warnings: list[str] = []
+
+    # Delete stale alignment links
+    deleted_links = conn.execute(
+        "DELETE FROM alignment_links WHERE pivot_doc_id = ? OR target_doc_id = ?",
+        (doc_id, doc_id),
+    ).rowcount
+    if deleted_links:
+        w = f"Deleted {deleted_links} alignment_link(s) for doc_id={doc_id} (stale after resegmentation)"
+        log.warning(w)
+        warnings.append(w)
+
+    if units_without_marker:
+        warnings.append(
+            f"{units_without_marker} unit(s) had no [N] marker — external_id left as NULL."
+        )
+
+    conn.execute("DELETE FROM units WHERE doc_id = ? AND unit_type = 'line'", (doc_id,))
+    conn.executemany(
+        "INSERT INTO units (doc_id, unit_type, n, external_id, text_raw, text_norm, meta_json)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?)",
+        new_units,
+    )
+    conn.commit()
+
+    log.info(
+        "Marker resegment doc_id=%d: %d units → %d segments (%d with external_id)",
+        doc_id, len(rows), len(new_units), len(new_units) - units_without_marker,
+    )
+    return SegmentationReport(
+        doc_id=doc_id,
+        units_input=len(rows),
+        units_output=len(new_units),
+        segment_pack="markers",
+        warnings=warnings,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Report
 # ---------------------------------------------------------------------------
 

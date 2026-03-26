@@ -164,6 +164,7 @@ When `multicorpus serve` starts and a portfile already exists:
 - `POST /align/link/update_status`
 - `POST /align/link/delete`
 - `POST /align/link/retarget`
+- `POST /align/link/acknowledge_source_change`
 - `POST /align/links/batch_update`
 - `POST /align/retarget_candidates`
 - `POST /align/collisions`
@@ -205,6 +206,13 @@ When `multicorpus serve` starts and a portfile already exists:
   - body: `{ doc_id, lang?, pack? }`
   - `pack` values: `auto` (default), `default`, `fr_strict`, `en_strict`
   - response includes `segment_pack` (resolved pack actually used)
+- `POST /segment/preview` — in-memory segmentation preview, no DB writes
+  - body: `{ doc_id, mode?, lang?, pack?, limit? }`
+  - `mode` values: `sentences` (default), `markers` ([N] marker-based split)
+  - response includes segments list with `external_id` field when mode=markers
+- `POST /segment/detect_markers` — detect [N] markers in existing units (read-only)
+  - body: `{ doc_id }`
+  - response: `{ detected, total_units, marked_units, marker_ratio, sample, first_markers }`
 - `GET /jobs`
 - `POST /jobs`
 - `GET /jobs/{job_id}`

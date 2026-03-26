@@ -621,6 +621,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 self._handle_validate_meta(body)
             elif path == "/segment/preview":
                 self._handle_segment_preview(body)
+            elif path == "/segment/detect_markers":
+                self._handle_segment_detect_markers(body)
             elif path == "/segment":
                 self._handle_segment(body)
             elif path.startswith("/families/") and path.endswith("/segment"):
@@ -2477,9 +2479,9 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             "results": [r.to_dict() for r in results],
         }, status="warnings" if has_errors else "ok"))
 
-    def _handle_segment_preview(self, body: dict) -> None:
-        """POST /segment/preview — run segmentation in-memory, no DB writes."""
-        from multicorpus_engine.segmenter import segment_text, resolve_segment_pack
+    def _handle_segment_detect_markers(self, body: dict) -> None:
+        """POST /segment/detect_markers — detect [N] markers in existing units (no writes)."""
+        from multicorpus_engine.segmenter import detect_markers_in_units
 
         doc_id = body.get("doc_id")
         if doc_id is None:
@@ -2491,6 +2493,39 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             self._send_error("doc_id must be an integer", code=ERR_BAD_REQUEST, http_status=400)
             return
 
+        conn = self._conn()
+        report = detect_markers_in_units(conn, doc_id)
+        self._send_json(success_payload({"doc_id": doc_id, **report}))
+
+    def _handle_segment_preview(self, body: dict) -> None:
+        """POST /segment/preview — run segmentation in-memory, no DB writes.
+
+        Supports two modes (body.mode):
+          "sentences" (default) — sentence-splitting via pack rules
+          "markers"             — split on embedded [N] markers, expose external_id
+        """
+        from multicorpus_engine.segmenter import (
+            segment_text, resolve_segment_pack, segment_text_markers,
+        )
+
+        doc_id = body.get("doc_id")
+        if doc_id is None:
+            self._send_error("doc_id is required", code=ERR_BAD_REQUEST, http_status=400)
+            return
+        try:
+            doc_id = int(doc_id)
+        except (TypeError, ValueError):
+            self._send_error("doc_id must be an integer", code=ERR_BAD_REQUEST, http_status=400)
+            return
+
+        mode = str(body.get("mode") or "sentences").strip().lower()
+        if mode not in ("sentences", "markers"):
+            self._send_error(
+                "mode must be 'sentences' or 'markers'",
+                code=ERR_BAD_REQUEST, http_status=400,
+            )
+            return
+
         lang = str(body.get("lang") or "und")
         pack = str(body.get("pack") or "auto")
         limit = body.get("limit", 300)
@@ -2499,7 +2534,6 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         except (TypeError, ValueError):
             limit = 300
 
-        # Read-only: no lock needed for pure reads on SQLite
         conn = self._conn()
         units = conn.execute(
             "SELECT n, text_norm FROM units WHERE doc_id = ? AND unit_type = 'line' ORDER BY n",
@@ -2509,41 +2543,65 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         if not units:
             self._send_error(
                 f"No units found for doc_id={doc_id}",
-                code=ERR_NOT_FOUND,
-                http_status=404,
+                code=ERR_NOT_FOUND, http_status=404,
             )
             return
 
-        resolved_pack = resolve_segment_pack(pack, lang)
         segments: list[dict] = []
         warnings: list[str] = []
         seg_n = 1
 
-        for unit_n, text_norm in units:
-            if not text_norm or not text_norm.strip():
-                continue
-            try:
-                phrases = segment_text(text_norm, lang, resolved_pack)
-            except Exception as exc:  # noqa: BLE001
-                warnings.append(f"unit {unit_n}: {exc}")
-                phrases = [text_norm]
-            for phrase in phrases:
+        if mode == "markers":
+            units_with_marker = 0
+            for unit_n, text_norm in units:
+                if not text_norm or not text_norm.strip():
+                    continue
+                parts = segment_text_markers(text_norm)
+                for ext_id, text in parts:
+                    if seg_n > limit:
+                        warnings.append(f"Preview truncated at {limit} segments.")
+                        break
+                    if ext_id is not None:
+                        units_with_marker += 1
+                    segments.append({
+                        "n": seg_n,
+                        "text": text,
+                        "source_unit_n": int(unit_n),
+                        "external_id": ext_id,
+                    })
+                    seg_n += 1
                 if seg_n > limit:
-                    warnings.append(
-                        f"Preview truncated at {limit} segments (document has more)."
-                    )
                     break
-                segments.append({
-                    "n": seg_n,
-                    "text": phrase,
-                    "source_unit_n": int(unit_n),
-                })
-                seg_n += 1
-            if seg_n > limit:
-                break
+            resolved_pack = "markers"
+            if units_with_marker == 0:
+                warnings.append("Aucune balise [N] trouvée dans ce document.")
+        else:
+            resolved_pack = resolve_segment_pack(pack, lang)
+            for unit_n, text_norm in units:
+                if not text_norm or not text_norm.strip():
+                    continue
+                try:
+                    phrases = segment_text(text_norm, lang, resolved_pack)
+                except Exception as exc:  # noqa: BLE001
+                    warnings.append(f"unit {unit_n}: {exc}")
+                    phrases = [text_norm]
+                for phrase in phrases:
+                    if seg_n > limit:
+                        warnings.append(f"Preview truncated at {limit} segments (document has more).")
+                        break
+                    segments.append({
+                        "n": seg_n,
+                        "text": phrase,
+                        "source_unit_n": int(unit_n),
+                        "external_id": None,
+                    })
+                    seg_n += 1
+                if seg_n > limit:
+                    break
 
         self._send_json(success_payload({
             "doc_id": doc_id,
+            "mode": mode,
             "units_input": len(units),
             "units_output": len(segments),
             "segment_pack": resolved_pack,
@@ -5449,19 +5507,43 @@ class CorpusServer:
             }
 
         if kind == "segment":
-            from multicorpus_engine.segmenter import resegment_document
+            from multicorpus_engine.segmenter import resegment_document, resegment_document_markers
 
             if "doc_id" not in params:
                 raise ValueError("segment job expects params.doc_id")
             doc_id = int(params["doc_id"])
-            lang = str(params.get("lang", "und"))
-            pack = params.get("pack", "auto")
-            if pack is not None and not isinstance(pack, str):
-                raise ValueError("segment job expects params.pack to be a string")
+            seg_mode = str(params.get("mode") or "sentences").strip().lower()
 
             progress_cb(10, "Resegmenting document")
             with lock:
-                report = resegment_document(conn, doc_id=doc_id, lang=lang, pack=pack)
+                if seg_mode == "markers":
+                    report = resegment_document_markers(conn, doc_id=doc_id)
+                else:
+                    lang = str(params.get("lang", "und"))
+                    pack = params.get("pack", "auto")
+                    if pack is not None and not isinstance(pack, str):
+                        raise ValueError("segment job expects params.pack to be a string")
+                    calibrate_to_raw = params.get("calibrate_to")
+                    calibrate_to: int | None = None
+                    if calibrate_to_raw is not None:
+                        try:
+                            calibrate_to = int(calibrate_to_raw)
+                        except (TypeError, ValueError):
+                            pass
+                    report = resegment_document(conn, doc_id=doc_id, lang=lang, pack=pack)
+                    if calibrate_to is not None and report.units_output > 0:
+                        ref_count = conn.execute(
+                            "SELECT COUNT(*) FROM units WHERE doc_id = ? AND unit_type = 'line'",
+                            (calibrate_to,),
+                        ).fetchone()[0]
+                        if ref_count > 0:
+                            ratio = abs(report.units_output - ref_count) / ref_count
+                            if ratio > 0.15:
+                                report.warnings.append(
+                                    f"Ratio warning: {report.units_output} segments vs "
+                                    f"{ref_count} in reference doc #{calibrate_to} "
+                                    f"({ratio:.0%} diff)"
+                                )
             progress_cb(100, "Segmentation completed")
             return {"fts_stale": True, **report.to_dict()}
 
