@@ -7,6 +7,8 @@
 import { shellState, SESSION_LOG_MAX, LS_CRASH_MARKER } from "./shellState.ts";
 import type { LogEntry } from "./shellState.ts";
 
+declare const APP_VERSION: string;
+
 // ─── Session logger ───────────────────────────────────────────────────────────
 
 export function shellLog(

@@ -23,6 +23,12 @@ dev = [
     "pytest-cov>=4.1",
     "charset-normalizer>=3.0",  # CI: avoid encoding fallback to cp1252 on UTF-8 fixtures
 ]
+nlp = [
+    "spacy>=3.7",  # optional: spaCy NLP annotation pipeline (Sprint B)
+]
+concordancier = [
+    "odfpy>=1.4",  # optional: ODT export for KWIC results (Sprint C)
+]
 packaging = [
     "pyinstaller>=6.0",
     "charset-normalizer>=3.0",  # embed for sidecar binary TXT import
