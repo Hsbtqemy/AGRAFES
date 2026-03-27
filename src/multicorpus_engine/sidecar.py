@@ -4402,9 +4402,17 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             self._send_error(f"CQL syntax error: {exc}", code=ERR_VALIDATION, http_status=400)
             return
 
-        window  = int(body.get("window", 5))
-        limit   = int(body.get("limit",  100))
-        offset  = int(body.get("offset", 0))
+        try:
+            window = int(body.get("window", 5))
+            limit  = int(body.get("limit",  100))
+            offset = int(body.get("offset", 0))
+        except (TypeError, ValueError):
+            self._send_error(
+                "window, limit and offset must be integers",
+                code=ERR_BAD_REQUEST, http_status=400,
+            )
+            return
+
         doc_ids_raw = body.get("doc_ids")
         doc_ids: list[int] | None = None
         if doc_ids_raw is not None:
@@ -4468,7 +4476,12 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             self._send_error(f"CQL syntax error: {exc}", code=ERR_VALIDATION, http_status=400)
             return
 
-        window  = int(body.get("window", 5))
+        try:
+            window = int(body.get("window", 5))
+        except (TypeError, ValueError):
+            self._send_error("window must be an integer", code=ERR_BAD_REQUEST, http_status=400)
+            return
+
         doc_ids_raw = body.get("doc_ids")
         doc_ids: list[int] | None = None
         if doc_ids_raw is not None:

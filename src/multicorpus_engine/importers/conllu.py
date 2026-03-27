@@ -258,20 +258,18 @@ def import_conllu(
     report.doc_id = doc_id
 
     # ── Group sentences into units ───────────────────────────────────────────
-    if unit_per == "paragraph":
-        # Paragraph grouping: sentences are already parsed; for a simple
-        # CoNLL-U file without explicit paragraph markers we treat the whole
-        # document as one paragraph (common case). A future extension could
-        # use blank-line runs between sentence groups as paragraph markers.
-        # For now: one unit per sentence (same as "sentence" mode) but the
-        # sent_id inside the unit restarts at 0.
-        units_sentences: list[list[_Sentence]] = [[s] for s in sentences]
-    else:
-        # Default: one unit per sentence
-        units_sentences = [[s] for s in sentences]
+    # NOTE: "paragraph" mode is not yet implemented (CoNLL-U has no standard
+    # paragraph marker).  Both modes produce one unit per sentence for now.
+    # A future extension could group consecutive sentences sharing the same
+    # `# newpar` comment into a single unit.
+    if unit_per not in ("sentence", "paragraph"):
+        raise ValueError(
+            f"unit_per must be 'sentence' or 'paragraph', got {unit_per!r}"
+        )
+    units_sentences: list[list[_Sentence]] = [[s] for s in sentences]
 
     # ── Insert units and tokens ──────────────────────────────────────────────
-    for sent_idx_in_unit, unit_sents in enumerate(units_sentences):
+    for _, unit_sents in enumerate(units_sentences):
         # Build unit text from sentence texts
         unit_text_raw = " ".join(s.text for s in unit_sents).strip()
         unit_text_norm = normalize(unit_text_raw)

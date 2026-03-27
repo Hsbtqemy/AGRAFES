@@ -151,6 +151,7 @@ def annotate_document(
         # Run spaCy NLP pipeline
         doc = nlp(text_norm)  # type: ignore[operator]
 
+        rows_to_insert: list[tuple] = []
         sent_id = 0
         for sent in doc.sents:
             position = 0
@@ -159,32 +160,36 @@ def annotate_document(
                 if token.is_space:
                     continue
 
-                feats = str(token.morph) if token.morph else None
+                # str(token.morph) returns "" when morphology is empty;
+                # using `or None` avoids the MorphAnalysis truthiness issue.
+                feats = str(token.morph) or None
                 misc = f"SpaceAfter={'No' if not token.whitespace_ else 'Yes'}"
 
-                cur.execute(
-                    """
-                    INSERT INTO tokens
-                        (unit_id, sent_id, position, word, lemma, upos, xpos, feats, misc)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        unit_id,
-                        sent_id,
-                        position,
-                        token.text,
-                        token.lemma_,
-                        token.pos_,   # Universal POS
-                        token.tag_,   # language-specific POS
-                        feats or None,
-                        misc,
-                    ),
-                )
+                rows_to_insert.append((
+                    unit_id,
+                    sent_id,
+                    position,
+                    token.text,
+                    token.lemma_,
+                    token.pos_,   # Universal POS
+                    token.tag_,   # language-specific POS
+                    feats,
+                    misc,
+                ))
                 report.tokens_total += 1
                 position += 1
 
             sent_id += 1
 
+        # Batch-insert all tokens for this unit in a single call
+        cur.executemany(
+            """
+            INSERT INTO tokens
+                (unit_id, sent_id, position, word, lemma, upos, xpos, feats, misc)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            rows_to_insert,
+        )
         report.units_annotated += 1
 
     conn.commit()
