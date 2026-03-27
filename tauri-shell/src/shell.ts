@@ -1450,20 +1450,27 @@ async function _renderPublicationWizard(container: HTMLElement): Promise<void> {
 
           // Poll until done
           const poll = async (): Promise<void> => {
-            const rec = await sidecarGetJob(conn, state.jobId!);
-            if (rec.status === "done") {
-              state.result = rec.result as Record<string, unknown>;
-              state.step = 5;
-              shellLog("info", "publish_wizard", `Job ${job.job_id} completed`, JSON.stringify(state.result));
-              await render();
-            } else if (rec.status === "error" || rec.status === "canceled") {
-              state.error = (rec as unknown as { error?: string }).error ?? rec.status;
-              statusEl.innerHTML = `<span style="color:#c0392b">Erreur: ${_esc(state.error ?? "")}</span>`;
-              shellLog("error", "publish_wizard", `Job ${job.job_id} failed`, state.error ?? rec.status);
+            try {
+              const rec = await sidecarGetJob(conn, state.jobId!);
+              if (rec.status === "done") {
+                state.result = rec.result as Record<string, unknown>;
+                state.step = 5;
+                shellLog("info", "publish_wizard", `Job ${job.job_id} completed`, JSON.stringify(state.result));
+                await render();
+              } else if (rec.status === "error" || rec.status === "canceled") {
+                state.error = (rec as unknown as { error?: string }).error ?? rec.status;
+                statusEl.innerHTML = `<span style="color:#c0392b">Erreur: ${_esc(state.error ?? "")}</span>`;
+                shellLog("error", "publish_wizard", `Job ${job.job_id} failed`, state.error ?? rec.status);
+                launchBtn.disabled = false;
+              } else {
+                statusEl.textContent = `Job ${state.jobId} — statut: ${rec.status}…`;
+                setTimeout(() => void poll(), 1200);
+              }
+            } catch (pollErr) {
+              state.error = `Erreur de communication sidecar : ${String(pollErr)}`;
+              statusEl.innerHTML = `<span style="color:#c0392b">${_esc(state.error)}</span>`;
+              shellLog("error", "publish_wizard", `Poll error for job ${state.jobId}`, String(pollErr));
               launchBtn.disabled = false;
-            } else {
-              statusEl.textContent = `Job ${state.jobId} — statut: ${rec.status}…`;
-              setTimeout(() => void poll(), 1200);
             }
           };
           setTimeout(() => void poll(), 800);

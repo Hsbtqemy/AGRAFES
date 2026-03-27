@@ -803,8 +803,12 @@ export function buildUI(container: HTMLElement): void {
     state.showFilters = false;
     filterDrawer.classList.add("hidden");
     filterBtn.classList.remove("active");
+    state.showBuilder = false;
+    builderPanel.classList.add("hidden");
+    builderBtn.classList.remove("active");
     histPanel.classList.remove("open");
     exportMenu.classList.remove("open");
+    helpPopover.classList.remove("open");
     renderChips();
     renderResults();
   });
