@@ -45,6 +45,8 @@ export interface DocumentRecord {
   /** Free-form date string: "2024", "2024-03", "2024-03-15", etc. */
   doc_date?: string | null;
   unit_count: number;
+  /** Number of tokens (from the CQL tokens table). 0 if not yet annotated. */
+  token_count?: number;
 }
 
 export interface DocumentPreviewLine {
@@ -2234,4 +2236,66 @@ export async function acknowledgeSourceChange(
 export function resetConnection(): void {
   _conn = null;
   _connDbPath = null;
+}
+
+// ─── CQL — Token query (Sprint C) ────────────────────────────────────────────
+
+export interface KwicHit {
+  doc_id: number;
+  doc_title: string;
+  unit_id: number;
+  unit_position: number;
+  sent_id: number;
+  match_start: number;
+  match_end: number;
+  left: string[];
+  node: string[];
+  right: string[];
+}
+
+export interface TokenQueryOptions {
+  cql: string;
+  window?: number;
+  doc_ids?: number[];
+  limit?: number;
+  offset?: number;
+}
+
+export interface TokenQueryResponse {
+  ok: boolean;
+  hits: KwicHit[];
+  total: number;
+  has_more: boolean;
+  next_offset: number;
+}
+
+/** Run a CQL query against the tokens table. */
+export async function runTokenQuery(
+  conn: Conn,
+  opts: TokenQueryOptions,
+): Promise<TokenQueryResponse> {
+  return conn.post("/token_query", opts) as Promise<TokenQueryResponse>;
+}
+
+export interface ExportKwicOptions {
+  cql: string;
+  window?: number;
+  doc_ids?: number[];
+  format: "csv" | "txt" | "docx" | "odt";
+  out_path: string;
+}
+
+export interface ExportKwicResponse {
+  ok: boolean;
+  out_path: string;
+  count: number;
+  format: string;
+}
+
+/** Export KWIC results to CSV / TXT / DOCX / ODT via sidecar file write. */
+export async function exportKwic(
+  conn: Conn,
+  opts: ExportKwicOptions,
+): Promise<ExportKwicResponse> {
+  return conn.post("/export/kwic", opts) as Promise<ExportKwicResponse>;
 }

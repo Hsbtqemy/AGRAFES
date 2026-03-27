@@ -31,6 +31,7 @@ import {
   getCorpusAudit,
   getFamilyCurationStatus,
   acknowledgeSourceChange,
+  enqueueJob,
   type DocumentRecord,
   type DocumentPreviewLine,
   type DocRelationRecord,
@@ -43,6 +44,7 @@ import {
   type CurationChildStatus,
   SidecarError,
 } from "../lib/sidecarClient.ts";
+import type { JobCenter } from "../components/JobCenter.ts";
 import { initCardAccordions } from "../lib/uiAccordions.ts";
 
 const DOC_ROLES = ["standalone", "original", "translation", "excerpt", "unknown"];
@@ -90,6 +92,8 @@ export class MetadataScreen {
   private _batchBarEl!: HTMLElement;
   private _batchMetaEl!: HTMLElement;
   private _selectAllEl!: HTMLInputElement;
+  private _jobCenter: JobCenter | null = null;
+  private _showToast: ((msg: string, isError?: boolean) => void) | null = null;
   private _isBusy = false;
   private _lastErrorMsg: string | null = null;
   private _lastRefreshAt = 0;
@@ -122,6 +126,11 @@ export class MetadataScreen {
       if (statusSel) statusSel.value = "all";
       this._refreshDocList();
     }
+  }
+
+  setJobCenter(jc: JobCenter, showToast: (msg: string, isError?: boolean) => void): void {
+    this._jobCenter = jc;
+    this._showToast = showToast;
   }
 
   hasPendingChanges(): boolean {
@@ -412,6 +421,9 @@ export class MetadataScreen {
       const isChecked = this._selectedDocIds.has(doc.doc_id);
       const wfStatus = this._workflowStatus(doc);
       const wfLabel  = this._workflowLabel(wfStatus);
+      const annotatedBadge = (doc.token_count ?? 0) > 0
+        ? '<span class="meta-badge meta-badge--annotated" title="Tokens CQL disponibles">🔤 Annoté</span>'
+        : "";
       tr.innerHTML = `
         <td class="col-check">
           <input class="meta-row-check" type="checkbox" data-id="${doc.doc_id}"
@@ -421,7 +433,7 @@ export class MetadataScreen {
         <td class="col-title" title="${this._esc(doc.title)}">${this._esc(this._truncateMid(doc.title))}</td>
         <td class="col-lang">${this._esc(doc.language)}</td>
         <td class="col-role">${this._esc(doc.doc_role ?? "—")}</td>
-        <td class="col-status"><span class="wf-pill wf-${wfStatus}">${wfLabel}</span></td>
+        <td class="col-status"><span class="wf-pill wf-${wfStatus}">${wfLabel}</span>${annotatedBadge}</td>
       `;
       tr.querySelector(".meta-row-check")!.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -788,6 +800,23 @@ export class MetadataScreen {
 
       ${this._familyPanelHtml(doc)}
 
+      <div class="annotate-section" style="margin:0.8rem 0">
+        <h4 style="font-size:0.88rem;font-weight:600;margin:0 0 0.3rem">Annotation NLP (spaCy)</h4>
+        <p style="font-size:0.78rem;color:var(--color-muted);margin:0 0 0.5rem">
+          Annoter les tokens du document avec un modèle spaCy (POS, lemme, morphologie).
+        </p>
+        <div class="form-row" style="align-items:flex-end;gap:0.5rem">
+          <label style="flex:1">Modèle spaCy
+            <input id="annotate-model-input" type="text"
+              value="fr_core_news_lg"
+              placeholder="ex: fr_core_news_lg"
+              style="width:100%">
+          </label>
+          <button id="annotate-doc-btn" class="btn btn-secondary btn-sm" style="align-self:flex-end"
+            data-doc-id="${doc.doc_id}">Annoter</button>
+        </div>
+      </div>
+
       <h4 style="font-size:0.88rem;font-weight:600;margin:0.5rem 0 0.3rem">Relations documentaires</h4>
       <p style="font-size:0.78rem;color:var(--color-muted);margin:0 0 0.5rem">
         Définissez comment ce document est lié à un autre (traduction, extrait…).
@@ -831,6 +860,15 @@ export class MetadataScreen {
     this._editPanelEl.querySelector("#mark-review-btn")!.addEventListener("click", () => this._setWorkflowStatus("review"));
     this._editPanelEl.querySelector("#mark-validated-btn")!.addEventListener("click", () => this._setWorkflowStatus("validated"));
     this._editPanelEl.querySelector("#add-rel-btn")!.addEventListener("click", () => this._addRelation());
+
+    this._editPanelEl.querySelector<HTMLButtonElement>("#annotate-doc-btn")
+      ?.addEventListener("click", (e) => {
+        const btn = e.currentTarget as HTMLButtonElement;
+        const docId = Number(btn.dataset.docId);
+        const modelInput = this._editPanelEl.querySelector<HTMLInputElement>("#annotate-model-input");
+        const model = modelInput?.value.trim() || "fr_core_news_lg";
+        void this._annotateDocFlow(docId, model, btn);
+      });
 
     this._editPanelEl.querySelector<HTMLButtonElement>("#inherit-author-btn")
       ?.addEventListener("click", () => this._inheritAuthorFromParent());
@@ -1037,6 +1075,38 @@ export class MetadataScreen {
       this._log(`Erreur propagation : ${err instanceof SidecarError ? err.message : String(err)}`, true);
       btn.disabled = false;
       btn.textContent = `→ Propager aux ${childIds.length} traduction${childIds.length > 1 ? "s" : ""}`;
+    }
+  }
+
+  // ── Sprint B: NLP annotation flow ────────────────────────────────────────────
+
+  private async _annotateDocFlow(docId: number, model: string, btn: HTMLButtonElement): Promise<void> {
+    if (!this._conn) return;
+    if (!model) {
+      this._showToast?.("Saisissez un nom de modèle spaCy", true);
+      return;
+    }
+    btn.disabled = true;
+    const origText = btn.textContent ?? "Annoter";
+    btn.textContent = "Annotation…";
+    try {
+      const job = await enqueueJob(this._conn, "annotate", { doc_id: docId, model, replace: true });
+      this._jobCenter?.trackJob(job.job_id, `Annotation: doc #${docId} (${model})`, (done) => {
+        btn.disabled = false;
+        btn.textContent = origText;
+        if (done.status === "done") {
+          const r = done.result as { tokens_total?: number } | undefined;
+          this._showToast?.(`✓ Annoté: doc #${docId} — ${r?.tokens_total ?? "?"} tokens`);
+        } else {
+          const short = done.error ? String(done.error).slice(0, 80) : "";
+          this._showToast?.(`✗ Annotation échouée${short ? `: ${short}` : ""}`, true);
+        }
+      });
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = origText;
+      const msg = err instanceof SidecarError ? err.message : String(err);
+      this._showToast?.(`✗ ${msg}`, true);
     }
   }
 

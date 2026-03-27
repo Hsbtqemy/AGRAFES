@@ -64,79 +64,103 @@ CREATE INDEX idx_tokens_upos  ON tokens (upos);
 
 ---
 
-## Sprint A — Import CoNLL-U
+## Sprint A — Import CoNLL-U ✅
 
 > Objectif : ingérer des fichiers CoNLL-U déjà annotés et peupler la table `tokens`.
 
 ### Backend
 
-- [ ] Migration `012_tokens.sql` — création de la table `tokens` + index
-- [ ] Nouvel importeur `importers/conllu.py`
+- [x] Migration `012_tokens.sql` — création de la table `tokens` + index
+- [x] Nouvel importeur `importers/conllu.py`
   - Lit le format CoNLL-U (10 colonnes)
   - Crée les `units` (une par bloc de phrase ou par paragraphe vide-séparé selon option)
   - Crée les `tokens` correspondants
   - Gère les multi-tokens (`1-2 du` → tokens `1 de` + `2 le`)
-- [ ] `sidecar.py` : nouvelle route `POST /import` mode `"conllu"`
-- [ ] `sidecar_contract.py` : mise à jour du schéma, bump API version
-- [ ] Snapshot `openapi_paths.json` + `docs/SIDECAR_API_CONTRACT.md`
+- [x] `sidecar.py` : nouvelle route `POST /jobs/enqueue` mode `"conllu"`
+- [x] `sidecar_contract.py` : mise à jour du schéma, bump API version 1.7.0
 
 ### Frontend (tauri-prep)
 
-- [ ] `ImportScreen.ts` : option `"conllu"` dans le sélecteur de mode d'import
-- [ ] Validation : afficher un aperçu des tokens (word / lemma / upos) avant import définitif
+- [x] `ImportScreen.ts` : option `"conllu"` dans le sélecteur de mode d'import
+- [ ] Validation : afficher un aperçu des tokens (word / lemma / upos) avant import définitif — **déféré Sprint D**
 
 ---
 
-## Sprint B — Annotation automatique (spaCy)
+## Sprint B — Annotation automatique (spaCy) ✅
 
 > Objectif : annoter automatiquement un document texte brut déjà importé, en option.
 
 ### Backend
 
-- [ ] Dépendance optionnelle : `spacy` dans `pyproject.toml` (groupe `[nlp]`)
-- [ ] `annotator.py` — pipeline spaCy :
+- [x] Dépendance optionnelle : `spacy` dans `pyproject.toml` (groupe `[nlp]`)
+- [x] `annotator.py` — pipeline spaCy :
   - `annotate_document(conn, doc_id, model_name)` → peuple `tokens` depuis `units.text_norm`
   - Segmentation en phrases → `sent_id`
   - Tokenisation → `position`, `word`, `lemma`, `upos`, `xpos`, `feats`
   - Modèles supportés : `fr_core_news_lg`, `en_core_web_lg`, etc.
-- [ ] Route `POST /annotate` — lance un job asynchrone (même pattern que `/segment`)
+- [x] Route `POST /jobs/enqueue kind="annotate"` — job asynchrone
   - Body : `{ doc_id, model }` ou `{ all_docs: true, model }`
-  - Répond avec `{ run_id }` ; suivi via `/runs/{run_id}`
-- [ ] Sidecar : chargement paresseux du modèle spaCy (première requête seulement)
+  - Suivi via JobCenter
+- [x] Sidecar : chargement paresseux du modèle spaCy (première requête seulement)
+- [x] API version → 1.7.1
 
 ### Frontend (tauri-prep)
 
-- [ ] Bouton "Annoter" dans le panneau Métadonnées → déclenche `POST /annotate`
-- [ ] Indicateur de progression (JobCenter) pendant l'annotation
-- [ ] Badge "Annoté" sur les documents qui ont des tokens en base
+- [x] Bouton "Annoter" dans le panneau Métadonnées → déclenche le job `annotate`
+- [x] Indicateur de progression (JobCenter) pendant l'annotation
+- [x] Badge "🔤 Annoté" sur les documents qui ont des tokens en base (`token_count > 0`)
 
 ---
 
-## Sprint C — Requêtes CQL simples
+## Sprint C — Requêtes CQL simples + concordancier KWIC ✅
 
-> Objectif : requêtes `[attribut = "valeur"]` et séquences fixes sans wildcards.
+> Objectif : requêtes `[attribut = "valeur"]` et séquences fixes sans wildcards,
+> avec un onglet Concordancier dédié et export des résultats.
 
 ### Backend
 
-- [ ] `cql_parser.py` — parseur de la syntaxe CQL de base :
-  - `[lemma = "..."]`, `[word = "..."]`, `[pos = "..."]`
+- [x] `cql_parser.py` — parseur de la syntaxe CQL de base :
+  - `[lemma = "..."]`, `[word = "..."]`, `[upos = "..."]`, `[feats = "..."]`
   - Regex dans les valeurs (`"lib.*"`)
   - Flag `%c` (insensible à la casse)
-  - Opérateurs booléens dans un token : `[pos = "NOM" & lemma = "lib.*"]`
+  - Opérateurs booléens dans un token : `[upos = "VERB" & lemma = "lib.*"]`
   - Séquences : `[token1][token2][token3]`
-- [ ] `token_query.py` — traducteur CQL → SQL :
-  - Génère des requêtes SQL avec fenêtrage sur `(unit_id, sent_id, position)`
-  - Renvoie des hits au niveau token + contexte (unité parente + tokens voisins)
-- [ ] Route `POST /token_query`
-  - Body : `{ cql, mode ("kwic"|"segment"), window, language?, doc_ids?, limit, offset }`
-  - Réponse : même structure que `/query` mais hits enrichis de `tokens[]`
+- [x] `token_query.py` — traducteur CQL → SQL :
+  - Génère des requêtes SQL avec jointures sur `(unit_id, sent_id, position)`
+  - Renvoie des hits KWIC : contexte gauche / nœud / contexte droit (tokens)
+  - doc_id + unit_id + position dans les résultats
+- [x] Route `POST /token_query`
+  - Body : `{ cql, window, doc_ids?, limit, offset }`
+  - Réponse : `{ hits: [{doc_id, unit_id, left, node, right}], total, has_more, next_offset }`
+- [x] Route `POST /export/kwic` — export CSV / TXT / DOCX / ODT via `kwic_export.py`
 
-### Frontend (concordancier)
+### Frontend — Onglet Concordancier CQL (nouvel onglet dans tauri-prep)
 
-- [ ] Nouveau mode "CQL" dans le builder (distinct de Regex et FTS)
-- [ ] Champ de saisie CQL avec coloration syntaxique légère
-- [ ] Affichage des résultats : token pivot surligné + contexte en KWIC
-- [ ] Indicateur "N tokens analysés" dans l'en-tête des résultats
+- [x] `ConcordancierScreen.ts` — écran dédié enregistré dans `app.ts`
+- [x] Zone de recherche :
+  - Champ CQL (textarea monospace, Ctrl+Enter pour lancer)
+  - Sélecteur contexte : ± 3 / 5 / 10 / 20 tokens
+  - Sélecteur par page : 50 / 100 / 200
+  - Filtre par document (dropdown)
+  - Aide syntaxique dépliable `<details>`
+  - Bouton **Rechercher** + compteur "N occurrences"
+- [x] Tableau KWIC :
+  - Colonnes : Doc | Ligne | ← Contexte | **Nœud** | Contexte →
+  - Pagination "Charger plus" avec offset
+- [x] Export des résultats :
+  - CSV (tabulation : doc_id, unit_id, gauche, nœud, droite)
+  - TXT (lignes KWIC brutes)
+  - DOCX (tableau Word, nœud en gras)
+  - ODT (tableau LibreOffice, nœud en gras)
+- [x] `sidecarClient.ts` : `runTokenQuery` + `exportKwic`
+
+### Différé (Sprint F ou plus tard)
+
+- [ ] Liste de fréquences (bascule KWIC ↔ fréquences)
+- [ ] Navigation croisée → ouvre l'onglet Documents sur la ligne cliquée
+- [ ] Historique des requêtes (dropdown des dernières)
+- [ ] Tri sur colonnes KWIC (L1, R1, nœud, doc)
+- [ ] Coloration syntaxique CQL (CodeMirror / Prism.js)
 
 ---
 
@@ -167,7 +191,7 @@ CREATE INDEX idx_tokens_upos  ON tokens (upos);
 > Objectif : exporter les annotations et résultats de requêtes CQL dans des formats standard.
 
 - [ ] Export CoNLL-U depuis AGRAFES (annotations + texte)
-- [ ] Export des hits CQL en KWIC tabulaire (CSV/TSV)
+- [x] Export des hits CQL en KWIC tabulaire (CSV/TXT/DOCX/ODT) → Sprint C
 - [ ] Export en format Sketch Engine (`.ske`) si faisabilité confirmée
 - [ ] Import depuis NoSketchEngine ou CWB (corpus compilé) — étude de faisabilité
 

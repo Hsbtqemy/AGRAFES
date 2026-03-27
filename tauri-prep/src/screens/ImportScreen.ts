@@ -32,6 +32,7 @@ const IMPORT_MODE_OPTIONS: Array<{ value: FileItem["mode"]; label: string }> = [
   { value: "odt_numbered_lines", label: "ODT lignes numérotées [n]" },
   { value: "odt_paragraphs", label: "ODT paragraphes" },
   { value: "tei", label: "TEI XML" },
+  { value: "conllu", label: "CoNLL-U (annoté)" },
 ];
 
 interface FileItem {
@@ -104,7 +105,7 @@ export class ImportScreen {
             <div class="imp-dropzone" id="imp-dropzone">
               <div class="imp-dropzone-icon">📂</div>
               <div class="imp-dropzone-text">Glissez vos fichiers ici</div>
-              <div class="imp-dropzone-sub">.docx &middot; .odt &middot; .txt &middot; .tei &middot; .xml</div>
+              <div class="imp-dropzone-sub">.docx &middot; .odt &middot; .txt &middot; .tei &middot; .xml &middot; .conllu</div>
               <div class="btn-row" style="justify-content:center;margin-top:8px">
                 <button id="imp-add-btn" class="btn btn-primary btn-sm">Ajouter des fichiers…</button>
                 <button id="imp-clear-btn" class="btn btn-secondary btn-sm">Vider</button>
@@ -316,6 +317,7 @@ export class ImportScreen {
     if (ext === "txt") return "txt_numbered_lines";
     if (ext === "docx") return defaultMode.startsWith("docx") ? defaultMode : "docx_numbered_lines";
     if (ext === "odt") return defaultMode.startsWith("odt") ? defaultMode : "odt_paragraphs";
+    if (ext === "conllu") return "conllu";
     return defaultMode;
   }
 
@@ -350,7 +352,7 @@ export class ImportScreen {
     const selected = await open({
       title: "Sélectionner des fichiers",
       filters: [
-        { name: "Corpus", extensions: ["docx", "odt", "txt", "xml", "tei"] },
+        { name: "Corpus", extensions: ["docx", "odt", "txt", "xml", "tei", "conllu"] },
       ],
       multiple: true,
     });

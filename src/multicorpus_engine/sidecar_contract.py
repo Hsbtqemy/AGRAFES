@@ -12,8 +12,8 @@ from __future__ import annotations
 from typing import Any
 
 
-API_VERSION = "1.6.10"
-CONTRACT_VERSION = "1.6.10"  # semantic versioning for the sidecar API contract
+API_VERSION = "1.7.1"
+CONTRACT_VERSION = "1.7.1"  # semantic versioning for the sidecar API contract
 # 1.4.0: added export_tei_package job kind (Sprint 4 — Publication ZIP)
 # 1.4.1: ERR_CONFLICT (409) for duplicate run_id; token protection on /align, /curate, /segment
 # 1.4.2: document workflow status fields on /documents and metadata update endpoints.
@@ -48,6 +48,12 @@ CONTRACT_VERSION = "1.6.10"  # semantic versioning for the sidecar API contract
 # 1.6.10: POST /units/merge — merge two adjacent units into one.
 #          POST /units/split — split one unit into two.
 #         Takes { doc_id, lang?, pack?, limit? }, returns segments list + warnings.
+# 1.7.0:  Migration 012 — table tokens (token_id, unit_id, sent_id, position, word, lemma, upos, xpos, feats, misc).
+#          POST /jobs/enqueue import mode="conllu" — import CoNLL-U annotated files.
+#          Optional param unit_per="sentence"|"paragraph" (default "sentence").
+# 1.7.1:  POST /jobs/enqueue kind="annotate" — run spaCy NLP pipeline on a document or corpus.
+#          Params: { model, doc_id? | all_docs?: true, replace?: bool }.
+#          spaCy is an optional dependency (pip install 'multicorpus_engine[nlp]').
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"

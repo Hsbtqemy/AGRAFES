@@ -3106,8 +3106,11 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             SELECT d.doc_id, d.title, d.language, d.doc_role, d.resource_type,
                    d.workflow_status, d.validated_at, d.validated_run_id,
                    d.source_path, d.source_hash,
-                   COUNT(u.unit_id) AS unit_count,
-                   d.author_lastname, d.author_firstname, d.doc_date
+                   COUNT(DISTINCT u.unit_id) AS unit_count,
+                   d.author_lastname, d.author_firstname, d.doc_date,
+                   (SELECT COUNT(*) FROM tokens t
+                    JOIN units u2 ON u2.unit_id = t.unit_id
+                    WHERE u2.doc_id = d.doc_id LIMIT 1) AS token_count
             FROM documents d
             LEFT JOIN units u ON u.doc_id = d.doc_id AND u.unit_type = 'line'
             GROUP BY d.doc_id
@@ -3130,6 +3133,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 "author_lastname": r[11],
                 "author_firstname": r[12],
                 "doc_date": r[13],
+                "token_count": r[14] if len(r) > 14 else 0,
             }
             for r in rows
         ]

@@ -15,6 +15,7 @@ import { ImportScreen } from "./screens/ImportScreen.ts";
 import { ActionsScreen, type ProjectPreset } from "./screens/ActionsScreen.ts";
 import { MetadataScreen } from "./screens/MetadataScreen.ts";
 import { ExportsScreen } from "./screens/ExportsScreen.ts";
+import { ConcordancierScreen } from "./screens/ConcordancierScreen.ts";
 import { JobCenter, showToast } from "./components/JobCenter.ts";
 
 // ─── Project Presets store ─────────────────────────────────────────────────────
@@ -62,7 +63,7 @@ function _savePresets(presets: ProjectPreset[]): void {
 // ─── App ──────────────────────────────────────────────────────────────────────
 // CSS lives in tauri-prep/src/ui/app.css + job-center.css (Vite-managed, P6).
 
-const TABS = ["import", "documents", "actions", "exporter"] as const;
+const TABS = ["import", "documents", "actions", "exporter", "concordancier"] as const;
 type TabId = typeof TABS[number];
 
 type GuardableScreen = {
@@ -78,6 +79,7 @@ export class App {
   private _actions!: ActionsScreen;
   private _metadata!: MetadataScreen;
   private _exports!: ExportsScreen;
+  private _concordancier!: ConcordancierScreen;
   private _jobCenter!: JobCenter;
 
   private _tabBtns: Record<TabId, HTMLButtonElement> = {} as never;
@@ -105,11 +107,14 @@ export class App {
     this._actions.setConn(this._conn);
     this._metadata.setConn(this._conn);
     this._exports.setConn(this._conn);
+    this._concordancier.setConn(this._conn);
     this._jobCenter.setConn(this._conn);
     this._import.setJobCenter(this._jobCenter, showToast);
     this._actions.setJobCenter(this._jobCenter, showToast);
     this._actions.setOnOpenDocuments(() => this._switchTab("documents"));
     this._exports.setJobCenter(this._jobCenter, showToast);
+    this._metadata.setJobCenter(this._jobCenter, showToast);
+    this._concordancier.setJobCenter(this._jobCenter, showToast);
 
     void this._refreshTopbarDbLabel();
 
@@ -221,6 +226,7 @@ export class App {
       documents: "Documents",
       actions: "Actions",
       exporter: "Exporter",
+      concordancier: "Concordancier CQL",
     };
     for (const tab of TABS) {
       const btn = document.createElement("button");
@@ -295,11 +301,13 @@ export class App {
     this._actions = new ActionsScreen();
     this._metadata = new MetadataScreen();
     this._exports = new ExportsScreen();
+    this._concordancier = new ConcordancierScreen();
     this._screenControllers = {
       import: this._import as GuardableScreen,
       documents: this._metadata,
       actions: this._actions,
       exporter: this._exports as GuardableScreen,
+      concordancier: this._concordancier as GuardableScreen,
     };
 
     const screenMap: Record<TabId, () => HTMLElement> = {
@@ -307,6 +315,7 @@ export class App {
       documents: () => this._metadata.render(),
       actions: () => this._actions.render(),
       exporter: () => this._exports.render(),
+      concordancier: () => this._concordancier.render(),
     };
 
     for (const tab of TABS) {
@@ -345,6 +354,7 @@ export class App {
     this._tabBtns[tab].setAttribute("aria-current", "page");
     this._syncCurationWideClass();
     if (tab === "documents") this._metadata.onActivate();
+    if (tab === "concordancier") this._concordancier.onActivate();
   }
 
   private _syncCurationWideClass(): void {
@@ -929,10 +939,12 @@ export class App {
     this._actions.setConn(this._conn);
     this._metadata.setConn(this._conn);
     this._exports.setConn(this._conn);
+    this._concordancier.setConn(this._conn);
     this._jobCenter.setConn(this._conn);
     this._import.setJobCenter(this._jobCenter, showToast);
     this._actions.setJobCenter(this._jobCenter, showToast);
     this._exports.setJobCenter(this._jobCenter, showToast);
+    this._metadata.setJobCenter(this._jobCenter, showToast);
     await this._refreshTopbarDbLabel();
   }
 
