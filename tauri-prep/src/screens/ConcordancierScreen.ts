@@ -337,28 +337,29 @@ export class ConcordancierScreen {
     if (!this._conn) { showToast("Ouvrez une base de données d'abord."); return; }
     if (!this._el) return;
 
-    const cql = (this._el.querySelector<HTMLTextAreaElement>("#cql-input")?.value ?? "").trim();
-    if (!cql) { this._setStatus("Saisissez une requête CQL."); return; }
-
-    // Client-side validation before sending
-    const syntaxErr = _validateCqlSyntax(cql);
-    if (syntaxErr) {
-      this._setStatus("Erreur de syntaxe : " + syntaxErr, true);
-      return;
-    }
-
-    // Append within_s to the CQL string if toggle is on
-    const withinS = this._state.withinS;
-    const effectiveCql = withinS
-      ? (cql.endsWith(" within s") ? cql : cql + " within s")
-      : cql.replace(/ within s$/i, "");
-
     if (reset) {
+      // Fresh search: read textarea, validate, build CQL string with within_s.
+      const cql = (this._el.querySelector<HTMLTextAreaElement>("#cql-input")?.value ?? "").trim();
+      if (!cql) { this._setStatus("Saisissez une requête CQL."); return; }
+
+      const syntaxErr = _validateCqlSyntax(cql);
+      if (syntaxErr) {
+        this._setStatus("Erreur de syntaxe : " + syntaxErr, true);
+        return;
+      }
+
+      const withinS = this._state.withinS;
+      const effectiveCql = withinS
+        ? (cql.endsWith(" within s") ? cql : cql + " within s")
+        : cql.replace(/ within s$/i, "");
+
       this._state.cql = effectiveCql;
       this._state.offset = 0;
       this._state.hits = [];
       this._pushHistory(cql);
     }
+
+    // Pagination ("Charger plus"): reuse this._state.cql as-is.
 
     this._state.loading = true;
     this._setStatus("Recherche en cours\u2026");
@@ -383,7 +384,7 @@ export class ConcordancierScreen {
       } else {
         this._setStatus(
           `${resp.total.toLocaleString("fr")} occurrence(s)` +
-          (withinS ? " · within s actif" : "")
+          (this._state.withinS ? " · within s actif" : "")
         );
       }
     } catch (err) {
@@ -400,16 +401,19 @@ export class ConcordancierScreen {
   private async _doExport(fmt: "csv" | "txt" | "docx" | "odt"): Promise<void> {
     if (!this._conn) { showToast("Ouvrez une base de données d'abord."); return; }
 
-    const rawCql = (this._el?.querySelector<HTMLTextAreaElement>("#cql-input")?.value ?? "").trim();
-    if (!rawCql) { showToast("Saisissez une requête CQL avant d'exporter."); return; }
-
-    const syntaxErr = _validateCqlSyntax(rawCql);
-    if (syntaxErr) { showToast("Syntaxe CQL invalide : " + syntaxErr); return; }
-
-    const withinS = this._state.withinS;
-    const effectiveCql = withinS
-      ? (rawCql.endsWith(" within s") ? rawCql : rawCql + " within s")
-      : rawCql;
+    // Prefer the already-validated state CQL (set by the last search).
+    // Fall back to the textarea only if no search has been run yet.
+    let effectiveCql = this._state.cql;
+    if (!effectiveCql) {
+      const rawCql = (this._el?.querySelector<HTMLTextAreaElement>("#cql-input")?.value ?? "").trim();
+      if (!rawCql) { showToast("Lancez une recherche avant d'exporter."); return; }
+      const syntaxErr = _validateCqlSyntax(rawCql);
+      if (syntaxErr) { showToast("Syntaxe CQL invalide : " + syntaxErr); return; }
+      const withinS = this._state.withinS;
+      effectiveCql = withinS
+        ? (rawCql.endsWith(" within s") ? rawCql : rawCql + " within s")
+        : rawCql;
+    }
 
     const EXT: Record<string, string> = { csv: "csv", txt: "txt", docx: "docx", odt: "odt" };
     const savePath = await dialogSave({

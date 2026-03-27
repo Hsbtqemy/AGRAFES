@@ -256,7 +256,6 @@ def _find_matches(
 
     start_idx = 0
     while start_idx < n:
-        prev_len = len(results)
         if match(0, start_idx, tokens[start_idx].position):
             # Advance past the end of this match to avoid full overlap
             last = results[-1]
@@ -380,21 +379,15 @@ def _run_sliding_path(
         doc_filter = f" AND t.unit_id IN (SELECT unit_id FROM units WHERE doc_id IN ({ph}))"
         candidate_params.extend(doc_ids)
 
-    if query.within_s:
-        candidate_sql = f"""
-            SELECT DISTINCT t.unit_id, t.sent_id
-            FROM tokens t
-            WHERE {candidate_where}{doc_filter}
-            ORDER BY t.unit_id, t.sent_id
-        """
-    else:
-        # Without within_s, we still need sentence-level scoping for the window
-        candidate_sql = f"""
-            SELECT DISTINCT t.unit_id, t.sent_id
-            FROM tokens t
-            WHERE {candidate_where}{doc_filter}
-            ORDER BY t.unit_id, t.sent_id
-        """
+    # Candidate sentences are always scoped at (unit_id, sent_id) level.
+    # within_s is enforced implicitly: each candidate is a single sentence,
+    # so all matched tokens in a sentence already share the same sent_id.
+    candidate_sql = f"""
+        SELECT DISTINCT t.unit_id, t.sent_id
+        FROM tokens t
+        WHERE {candidate_where}{doc_filter}
+        ORDER BY t.unit_id, t.sent_id
+    """
 
     candidates = conn.execute(candidate_sql, candidate_params).fetchall()
 

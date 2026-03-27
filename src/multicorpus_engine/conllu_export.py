@@ -230,14 +230,12 @@ def export_conllu(
             fh.write(f"# doc_title = {title}\n")
             fh.write(f"# doc_language = {language}\n")
 
-            doc_units = 0
             doc_sents = 0
             doc_toks  = 0
 
             for unit_id, _unit_pos, sent_id, tok_rows in _iter_sentences(conn, doc_id):
                 lines = _sentence_to_conllu(unit_id, sent_id, tok_rows)
                 fh.write("\n".join(lines) + "\n")
-                doc_units_seen = unit_id   # tracked per unique unit below
                 doc_sents += 1
                 doc_toks  += len(tok_rows)
 
@@ -308,8 +306,14 @@ def export_vertical(
                 report.skipped_unannotated.append(doc_id)
                 continue
 
-            # Escape XML in title attribute
-            safe_title = title.replace("&", "&amp;").replace('"', "&quot;")
+            # Escape XML special characters in attribute value
+            safe_title = (
+                title
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace('"', "&quot;")
+            )
             fh.write(f'<doc id="{doc_id}" title="{safe_title}" lang="{language}">\n')
 
             doc_sents = 0
@@ -318,10 +322,10 @@ def export_vertical(
             for unit_id, _unit_pos, sent_id, tok_rows in _iter_sentences(conn, doc_id):
                 fh.write("<s>\n")
                 for _pos, word, lemma, upos, *_ in tok_rows:
-                    w = _placeholder(word)
-                    u = _placeholder(upos)
-                    l = _placeholder(lemma)
-                    fh.write(f"{w}\t{u}\t{l}\n")
+                    form = _placeholder(word)
+                    tag  = _placeholder(upos)
+                    lem  = _placeholder(lemma)
+                    fh.write(f"{form}\t{tag}\t{lem}\n")
                 fh.write("</s>\n")
                 doc_sents += 1
                 doc_toks  += len(tok_rows)
