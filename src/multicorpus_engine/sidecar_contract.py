@@ -12,8 +12,8 @@ from __future__ import annotations
 from typing import Any
 
 
-API_VERSION = "1.7.1"
-CONTRACT_VERSION = "1.7.1"  # semantic versioning for the sidecar API contract
+API_VERSION = "1.8.0"
+CONTRACT_VERSION = "1.8.0"  # 1.8.0: POST /export/conllu (CoNLL-U + vertical/Sketch Engine)
 # 1.4.0: added export_tei_package job kind (Sprint 4 — Publication ZIP)
 # 1.4.1: ERR_CONFLICT (409) for duplicate run_id; token protection on /align, /curate, /segment
 # 1.4.2: document workflow status fields on /documents and metadata update endpoints.

@@ -12,6 +12,7 @@ import {
   listDocuments,
   enqueueJob,
   getJob,
+  exportConllu,
   type DocumentRecord,
   SidecarError,
 } from "../lib/sidecarClient.ts";
@@ -238,6 +239,32 @@ export class ExportsScreen {
         </div>
       </div>
 
+      <!-- CQL Sprint E: CoNLL-U / Sketch Engine vertical export -->
+      <div class="card" id="exp-conllu-card">
+        <h3 style="margin:0 0 0.3rem">Export annoté — CoNLL-U &amp; Sketch Engine</h3>
+        <p class="hint" style="margin:0 0 0.7rem">
+          Exporte les tokens annotés (spaCy ou CoNLL-U importé) dans un format
+          interopérable. Seuls les documents ayant des tokens sont inclus.
+        </p>
+        <div class="form-row" style="align-items:flex-end;gap:0.6rem;flex-wrap:wrap">
+          <label>Format
+            <select id="exp-conllu-fmt" class="form-select" style="min-width:14rem">
+              <option value="conllu">CoNLL-U (.conllu) — Universal Dependencies</option>
+              <option value="vertical">Vertical (.vert) — Sketch Engine / NoSketchEngine / CWB</option>
+            </select>
+          </label>
+          <label>Documents
+            <select id="exp-conllu-docs" class="form-select" style="min-width:12rem">
+              <option value="__all__">— Tous les documents annotés —</option>
+            </select>
+          </label>
+          <button id="exp-conllu-btn" class="btn btn-secondary" disabled>
+            Choisir fichier et exporter…
+          </button>
+        </div>
+        <div id="exp-conllu-status" class="hint" style="margin-top:0.45rem;min-height:1.2rem" aria-live="polite"></div>
+      </div>
+
       <div class="card export-legacy-toggle-card">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:0.7rem;flex-wrap:wrap">
           <div>
@@ -438,6 +465,8 @@ export class ExportsScreen {
     root.querySelector("#align-csv-btn")!.addEventListener("click", () => this._runAlignCsvExport());
     root.querySelector("#report-export-btn")!.addEventListener("click", () => this._runRunReportExport());
     root.querySelector("#qa-report-btn")!.addEventListener("click", () => this._runQaReportExport());
+    root.querySelector<HTMLButtonElement>("#exp-conllu-btn")!
+      .addEventListener("click", () => void this._runConlluExport());
 
     // Show/hide strict notice when TEI profile changes
     root.querySelector("#pkg-tei-profile")?.addEventListener("change", (e) => {
@@ -473,7 +502,7 @@ export class ExportsScreen {
   // ── Doc refresh ─────────────────────────────────────────────────────────────
 
   private async _refreshDocs(): Promise<void> {
-    const teiBtns = this._root.querySelectorAll<HTMLButtonElement>("#v2-run-btn, #tei-export-btn, #pkg-export-btn, #align-csv-btn, #report-export-btn, #qa-report-btn");
+    const teiBtns = this._root.querySelectorAll<HTMLButtonElement>("#v2-run-btn, #tei-export-btn, #pkg-export-btn, #align-csv-btn, #report-export-btn, #qa-report-btn, #exp-conllu-btn");
     if (!this._conn) {
       teiBtns.forEach(b => b.disabled = true);
       this._refreshRuntimeState();
@@ -533,6 +562,29 @@ export class ExportsScreen {
       opt.value = String(d.doc_id);
       opt.textContent = `#${d.doc_id} ${d.title} (${d.language})`;
       this._v2DocSelEl.appendChild(opt);
+    }
+
+    // CoNLL-U / vertical doc select (single-select; only annotated docs)
+    const conlluSel = this._root.querySelector<HTMLSelectElement>("#exp-conllu-docs");
+    if (conlluSel) {
+      conlluSel.innerHTML = "";
+      const allAnnotOpt = document.createElement("option");
+      allAnnotOpt.value = "__all__";
+      allAnnotOpt.textContent = "— Tous les documents annotés —";
+      conlluSel.appendChild(allAnnotOpt);
+      const annotated = this._docs.filter(d => (d.token_count ?? 0) > 0);
+      for (const d of annotated) {
+        const opt = document.createElement("option");
+        opt.value = String(d.doc_id);
+        opt.textContent = `#${d.doc_id} ${d.title} (${d.language}) · ${d.token_count} tokens`;
+        conlluSel.appendChild(opt);
+      }
+      if (annotated.length === 0) {
+        const noOpt = document.createElement("option");
+        noOpt.disabled = true;
+        noOpt.textContent = "Aucun document annoté — utilisez Annoter dans Documents";
+        conlluSel.appendChild(noOpt);
+      }
     }
 
     // Align CSV pivot/target selects
@@ -1122,6 +1174,61 @@ export class ExportsScreen {
         this._v2RunBtn.disabled = false;
       }
       this._syncV2Ui();
+    }
+  }
+
+  // ── CQL Sprint E: CoNLL-U / vertical Export ───────────────────────────────
+
+  private async _runConlluExport(): Promise<void> {
+    if (!this._conn) return;
+
+    const fmtSel  = this._root.querySelector<HTMLSelectElement>("#exp-conllu-fmt");
+    const docsSel = this._root.querySelector<HTMLSelectElement>("#exp-conllu-docs");
+    const statusEl = this._root.querySelector<HTMLElement>("#exp-conllu-status");
+    const btn     = this._root.querySelector<HTMLButtonElement>("#exp-conllu-btn");
+
+    const fmt = (fmtSel?.value ?? "conllu") as "conllu" | "vertical";
+    const ext = fmt === "conllu" ? "conllu" : "vert";
+    const docsVal = docsSel?.value ?? "__all__";
+    const doc_ids: number[] | undefined = docsVal === "__all__"
+      ? undefined
+      : [Number(docsVal)];
+
+    const outPath = await save({
+      title: "Enregistrer l'export annoté",
+      filters: [{ name: fmt === "conllu" ? "CoNLL-U" : "Vertical", extensions: [ext] }],
+      defaultPath: `corpus.${ext}`,
+    });
+    if (!outPath) return;
+
+    if (btn) btn.disabled = true;
+    if (statusEl) statusEl.textContent = "Export en cours…";
+
+    try {
+      const report = await exportConllu(this._conn, {
+        format: fmt,
+        doc_ids,
+        out_path: outPath,
+      });
+
+      const skippedNote = report.skipped_unannotated.length > 0
+        ? ` (${report.skipped_unannotated.length} doc(s) sans annotation ignoré(s))`
+        : "";
+
+      if (statusEl) {
+        statusEl.textContent =
+          `✓ ${report.docs_exported} document(s) · ${report.tokens_exported.toLocaleString("fr")} tokens · ` +
+          `${report.sentences_exported.toLocaleString("fr")} phrases exportées${skippedNote}.`;
+      }
+      this._showToast?.(
+        `Export ${fmt.toUpperCase()} : ${report.tokens_exported.toLocaleString("fr")} tokens dans ${report.docs_exported} document(s).`
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (statusEl) statusEl.textContent = `✗ ${msg}`;
+      this._showToast?.(`Export CoNLL-U échoué : ${msg}`, true);
+    } finally {
+      if (btn) btn.disabled = false;
     }
   }
 

@@ -2299,3 +2299,37 @@ export async function exportKwic(
 ): Promise<ExportKwicResponse> {
   return conn.post("/export/kwic", opts) as Promise<ExportKwicResponse>;
 }
+
+// ─── CQL Sprint E — CoNLL-U / Sketch Engine vertical export ──────────────────
+
+export interface ExportConlluOptions {
+  /** "conllu" (Universal Dependencies) or "vertical" (Sketch Engine / CWB). */
+  format: "conllu" | "vertical";
+  /** Restrict to these doc IDs; undefined = whole corpus. */
+  doc_ids?: number[];
+  /** Absolute path where the output file will be written. */
+  out_path: string;
+}
+
+export interface ExportConlluReport {
+  docs_exported: number;
+  units_exported: number;
+  tokens_exported: number;
+  sentences_exported: number;
+  /** Doc IDs skipped because they have no tokens (not yet annotated). */
+  skipped_unannotated: number[];
+  out_path: string;
+}
+
+/**
+ * Export annotated tokens to CoNLL-U or Sketch Engine vertical format.
+ *
+ * Documents without tokens (not yet annotated) are silently skipped and
+ * listed in ``report.skipped_unannotated``.
+ */
+export async function exportConllu(
+  conn: Conn,
+  opts: ExportConlluOptions,
+): Promise<ExportConlluReport> {
+  return conn.post("/export/conllu", opts) as Promise<ExportConlluReport>;
+}

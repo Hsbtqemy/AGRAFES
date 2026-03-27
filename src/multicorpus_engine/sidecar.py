@@ -26,6 +26,7 @@ POST /jobs           → enqueue async job {kind, params?}
 GET  /jobs/{job_id}  → async job status/result
 POST /token_query    → CQL token search; body: {cql, window?, doc_ids?, limit?, offset?}
 POST /export/kwic    → export KWIC hits; body: {cql, window?, doc_ids?, format, out_path}
+POST /export/conllu  → export CoNLL-U or Sketch Engine vertical; body: {format?, doc_ids?, out_path}
 """
 
 from __future__ import annotations
@@ -700,6 +701,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 self._handle_token_query(body)
             elif path == "/export/kwic":
                 self._handle_export_kwic(body)
+            elif path == "/export/conllu":
+                self._handle_export_conllu(body)
             elif path == "/export/tei":
                 self._handle_export_tei(body)
             elif path == "/export/tmx":
@@ -4486,6 +4489,58 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         )
         rows = export_kwic([h.to_dict() for h in hits], fmt=fmt, out_path=out_path)
         self._send_json({"out_path": out_path, "rows": rows})
+
+    def _handle_export_conllu(self, body: dict) -> None:
+        """POST /export/conllu — export annotated tokens in CoNLL-U or vertical format.
+
+        Body fields (CQL Sprint E):
+            format    : str  — "conllu" (default) | "vertical"
+            doc_ids   : list[int] (optional) — restrict to these documents; None = all
+            out_path  : str  — absolute path for the output file
+
+        Response:
+            {
+                "out_path": str,
+                "docs_exported": int,
+                "tokens_exported": int,
+                "sentences_exported": int,
+                "skipped_unannotated": [int, ...]
+            }
+        """
+        from .conllu_export import export_conllu, export_vertical
+
+        out_path = str(body.get("out_path", "")).strip()
+        if not out_path:
+            self._send_error("out_path is required", code=ERR_BAD_REQUEST, http_status=400)
+            return
+
+        fmt = str(body.get("format", "conllu")).lower()
+        if fmt not in ("conllu", "vertical"):
+            self._send_error(
+                f"Unsupported format {fmt!r}. Use 'conllu' or 'vertical'.",
+                code=ERR_BAD_REQUEST, http_status=400,
+            )
+            return
+
+        doc_ids_raw = body.get("doc_ids")
+        doc_ids: list[int] | None = None
+        if doc_ids_raw is not None:
+            try:
+                doc_ids = [int(x) for x in doc_ids_raw]
+            except (TypeError, ValueError):
+                self._send_error("doc_ids must be a list of integers", code=ERR_BAD_REQUEST, http_status=400)
+                return
+
+        try:
+            if fmt == "conllu":
+                report = export_conllu(self._conn(), doc_ids=doc_ids, out_path=out_path)
+            else:
+                report = export_vertical(self._conn(), doc_ids=doc_ids, out_path=out_path)
+        except Exception as exc:  # noqa: BLE001
+            self._send_error(str(exc), code=ERR_INTERNAL, http_status=500)
+            return
+
+        self._send_json(report.to_dict())
 
     def _handle_export_tmx(self, body: dict) -> None:
         """POST /export/tmx — export aligned pairs to TMX 1.4 format.
