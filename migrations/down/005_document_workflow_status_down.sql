@@ -1,0 +1,10 @@
+-- Down-migration 005 : suppression des colonnes workflow sur documents
+--
+-- Requiert SQLite >= 3.35.0 (DROP COLUMN supporté).
+-- Les colonnes ajoutées sont : workflow_status, validated_at, validated_run_id.
+-- Les données de validation sont définitivement perdues.
+--
+-- DROP INDEX IF EXISTS idx_documents_workflow_status;
+-- ALTER TABLE documents DROP COLUMN workflow_status;
+-- ALTER TABLE documents DROP COLUMN validated_at;
+-- ALTER TABLE documents DROP COLUMN validated_run_id;

@@ -1,0 +1,8 @@
+-- Down-migration 010 : suppression des colonnes auteur et date sur documents
+--
+-- Requiert SQLite >= 3.35.0.
+-- Perd les champs author_lastname, author_firstname, doc_date de tous les documents.
+--
+-- ALTER TABLE documents DROP COLUMN author_lastname;
+-- ALTER TABLE documents DROP COLUMN author_firstname;
+-- ALTER TABLE documents DROP COLUMN doc_date;

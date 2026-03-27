@@ -1,0 +1,17 @@
+-- Down-migration 001 : suppression du schéma initial
+--
+-- ATTENTION : cette migration détruit toutes les données.
+-- Elle est fournie à titre informatif uniquement — il n'existe pas de retour
+-- automatique vers un état "avant migration 001". Restaurez la DB depuis une
+-- sauvegarde (.db.bak) produite par POST /db/backup avant d'appliquer cette
+-- migration down.
+--
+-- Tables supprimées : documents, units, runs, schema_migrations
+-- Indexes supprimés : tous les indexes créés par 001.
+
+-- DROP TABLE IF EXISTS runs;
+-- DROP TABLE IF EXISTS units;
+-- DROP TABLE IF EXISTS documents;
+-- DROP TABLE IF EXISTS schema_migrations;
+--
+-- (Instructions en commentaires — à exécuter manuellement en cas de besoin.)

@@ -24,6 +24,8 @@ POST /segment        → resegment_document; body: {doc_id: int, lang?: str, pac
 GET  /jobs           → list async jobs
 POST /jobs           → enqueue async job {kind, params?}
 GET  /jobs/{job_id}  → async job status/result
+POST /token_query    → CQL token search; body: {cql, window?, doc_ids?, limit?, offset?}
+POST /export/kwic    → export KWIC hits; body: {cql, window?, doc_ids?, format, out_path}
 """
 
 from __future__ import annotations
@@ -37,7 +39,7 @@ import sqlite3
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 from urllib.parse import parse_qs, urlparse
@@ -363,6 +365,31 @@ def _run_alignment_strategy(
 
 
 # ---------------------------------------------------------------------------
+# Typed HTTP server
+# ---------------------------------------------------------------------------
+
+
+class _SidecarHTTPServer(HTTPServer):
+    """HTTPServer subclass that carries sidecar-specific state as typed attributes.
+
+    Declaring these attributes here eliminates all ``# type: ignore[attr-defined]``
+    on accesses via ``self.server`` inside ``_CorpusHandler``.
+    """
+
+    conn: sqlite3.Connection
+    lock: threading.Lock
+    jobs: "JobManager"
+    job_runner: Callable[..., None]
+    pid: int
+    started_at: str
+    host: str
+    port: int
+    db_path: str
+    portfile: str
+    token: Optional[str]
+    request_shutdown: Callable[[], None]
+
+
 # HTTP handler
 # ---------------------------------------------------------------------------
 
@@ -370,7 +397,11 @@ def _run_alignment_strategy(
 class _CorpusHandler(BaseHTTPRequestHandler):
     """Request handler for the corpus sidecar API."""
 
-    def log_message(self, format: str, *args) -> None:  # type: ignore[override]
+    # Override type annotation so that self.server resolves to _SidecarHTTPServer
+    # throughout this class, removing all attr-defined ignores.
+    server: _SidecarHTTPServer  # type: ignore[assignment]
+
+    def log_message(self, format: str, *args: object) -> None:  # pyright: ignore[reportIncompatibleMethodOverride]
         logger.debug("HTTP %s", format % args)
 
     # ------------------------------------------------------------------
@@ -412,13 +443,13 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         return payload
 
     def _conn(self) -> sqlite3.Connection:
-        return self.server.conn  # type: ignore[attr-defined]
+        return self.server.conn
 
     def _lock(self) -> threading.Lock:
-        return self.server.lock  # type: ignore[attr-defined]
+        return self.server.lock
 
     def _jobs(self) -> JobManager:
-        return self.server.jobs  # type: ignore[attr-defined]
+        return self.server.jobs
 
     def _token(self) -> str | None:
         token = getattr(self.server, "token", None)
@@ -665,6 +696,10 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 self._handle_doc_relations_set(body)
             elif path == "/doc_relations/delete":
                 self._handle_doc_relations_delete(body)
+            elif path == "/token_query":
+                self._handle_token_query(body)
+            elif path == "/export/kwic":
+                self._handle_export_kwic(body)
             elif path == "/export/tei":
                 self._handle_export_tei(body)
             elif path == "/export/tmx":
@@ -847,7 +882,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         job = self._jobs().submit(
             kind=kind,
             params=params,
-            runner=self.server.job_runner,  # type: ignore[attr-defined]
+            runner=self.server.job_runner,
         )
         self._send_json(success_payload({"job": job.to_dict()}, status="accepted"), status=202)
 
@@ -873,6 +908,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             "index", "curate", "validate-meta", "segment",
             "import", "align", "export_tei", "export_align_csv", "export_run_report",
             "export_tei_package", "export_readable_text", "qa_report",
+            "annotate",
         }
         if kind not in supported:
             self._send_error(
@@ -901,6 +937,12 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             return
         if kind == "import" and (not params.get("mode") or not params.get("path")):
             self._send_error("import job requires params.mode and params.path", code=ERR_VALIDATION, http_status=400)
+            return
+        if kind == "annotate" and not params.get("model"):
+            self._send_error("annotate job requires params.model (spaCy model name)", code=ERR_VALIDATION, http_status=400)
+            return
+        if kind == "annotate" and "doc_id" not in params and not params.get("all_docs"):
+            self._send_error("annotate job requires params.doc_id or params.all_docs=true", code=ERR_VALIDATION, http_status=400)
             return
         if kind == "align" and (params.get("pivot_doc_id") is None or not params.get("target_doc_ids")):
             self._send_error(
@@ -1079,7 +1121,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         job = self._jobs().submit(
             kind=kind,
             params=params,
-            runner=self.server.job_runner,  # type: ignore[attr-defined]
+            runner=self.server.job_runner,
         )
         self._send_json(success_payload({"job": job.to_dict()}, status="accepted"), status=202)
 
@@ -4324,6 +4366,118 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             return {"doc_id": doc_id, "title": f"doc #{doc_id}", "language": "und"}
         return {"doc_id": row[0], "title": row[1] or f"doc #{row[0]}", "language": row[2] or "und"}
 
+    # ── Sprint C: CQL concordance ─────────────────────────────────────────────
+
+    def _handle_token_query(self, body: dict) -> None:
+        """POST /token_query — run a CQL query against the tokens table.
+
+        Body fields:
+            cql       : str  (required) — e.g. '[lemma="manger" & upos="VERB"]'
+            window    : int  (default 5) — context tokens on each side
+            doc_ids   : list[int] (optional) — restrict to these documents
+            limit     : int  (default 100)
+            offset    : int  (default 0)
+        """
+        from .cql_parser import parse_cql, CQLSyntaxError
+        from .token_query import run_token_query
+
+        cql = str(body.get("cql", "")).strip()
+        if not cql:
+            self._send_error("cql is required", code=ERR_BAD_REQUEST, http_status=400)
+            return
+
+        try:
+            query = parse_cql(cql)
+        except CQLSyntaxError as exc:
+            self._send_error(f"CQL syntax error: {exc}", code=ERR_VALIDATION, http_status=400)
+            return
+
+        window  = int(body.get("window", 5))
+        limit   = int(body.get("limit",  100))
+        offset  = int(body.get("offset", 0))
+        doc_ids_raw = body.get("doc_ids")
+        doc_ids: list[int] | None = None
+        if doc_ids_raw is not None:
+            try:
+                doc_ids = [int(x) for x in doc_ids_raw]
+            except (TypeError, ValueError):
+                self._send_error("doc_ids must be a list of integers", code=ERR_BAD_REQUEST, http_status=400)
+                return
+
+        hits, total = run_token_query(
+            self._conn(),
+            query,
+            window=window,
+            doc_ids=doc_ids,
+            limit=limit,
+            offset=offset,
+        )
+        self._send_json({
+            "hits":     [h.to_dict() for h in hits],
+            "total":    total,
+            "has_more": (offset + len(hits)) < total,
+        })
+
+    def _handle_export_kwic(self, body: dict) -> None:
+        """POST /export/kwic — re-run a CQL query and export all hits to a file.
+
+        Body fields:
+            cql       : str  (required)
+            window    : int  (default 5)
+            doc_ids   : list[int] (optional)
+            format    : str  — "csv" | "txt" | "docx" | "odt"
+            out_path  : str  — absolute path for the output file
+        """
+        from .cql_parser import parse_cql, CQLSyntaxError
+        from .token_query import run_token_query
+        from .kwic_export import export_kwic, SUPPORTED_FORMATS
+
+        cql = str(body.get("cql", "")).strip()
+        if not cql:
+            self._send_error("cql is required", code=ERR_BAD_REQUEST, http_status=400)
+            return
+
+        fmt = str(body.get("format", "")).strip().lower()
+        if fmt not in SUPPORTED_FORMATS:
+            self._send_error(
+                f"format must be one of: {', '.join(SUPPORTED_FORMATS)}",
+                code=ERR_BAD_REQUEST, http_status=400,
+            )
+            return
+
+        out_path = str(body.get("out_path", "")).strip()
+        if not out_path:
+            self._send_error("out_path is required", code=ERR_BAD_REQUEST, http_status=400)
+            return
+
+        try:
+            query = parse_cql(cql)
+        except CQLSyntaxError as exc:
+            self._send_error(f"CQL syntax error: {exc}", code=ERR_VALIDATION, http_status=400)
+            return
+
+        window  = int(body.get("window", 5))
+        doc_ids_raw = body.get("doc_ids")
+        doc_ids: list[int] | None = None
+        if doc_ids_raw is not None:
+            try:
+                doc_ids = [int(x) for x in doc_ids_raw]
+            except (TypeError, ValueError):
+                self._send_error("doc_ids must be a list of integers", code=ERR_BAD_REQUEST, http_status=400)
+                return
+
+        # Fetch ALL hits (no pagination cap — writer streams to disk)
+        hits, total = run_token_query(
+            self._conn(),
+            query,
+            window=window,
+            doc_ids=doc_ids,
+            limit=100_000,
+            offset=0,
+        )
+        rows = export_kwic([h.to_dict() for h in hits], fmt=fmt, out_path=out_path)
+        self._send_json({"out_path": out_path, "rows": rows})
+
     def _handle_export_tmx(self, body: dict) -> None:
         """POST /export/tmx — export aligned pairs to TMX 1.4 format.
 
@@ -4408,7 +4562,10 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         if out_path_str:
             out = Path(out_path_str)
         else:
-            out_dir = Path(out_dir_str)  # type: ignore[arg-type]
+            if not isinstance(out_dir_str, str):
+                self._send_error("out_dir must be a string", code=ERR_BAD_REQUEST, http_status=400)
+                return
+            out_dir = Path(out_dir_str)
             out_dir.mkdir(parents=True, exist_ok=True)
             if family_id_raw is not None:
                 fname = f"family_{pivot_doc_id}.tmx"
@@ -4872,7 +5029,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             self._send_error("out_dir must be a string", code=ERR_BAD_REQUEST, http_status=400)
             return
 
-        raw_db_path = getattr(self.server, "db_path", None)  # type: ignore[attr-defined]
+        raw_db_path = self.server.db_path
         if not isinstance(raw_db_path, str) or not raw_db_path.strip():
             self._send_error("Source DB path is not configured", code=ERR_NOT_FOUND, http_status=404)
             return
@@ -5537,7 +5694,7 @@ class CorpusServer:
         self._port = port
         self._token = token if token else None
         self._conn: Optional[sqlite3.Connection] = None
-        self._httpd: Optional[HTTPServer] = None
+        self._httpd: Optional[_SidecarHTTPServer] = None
         self._thread: Optional[threading.Thread] = None
         self._jobs = JobManager()
         self._pid = os.getpid()
@@ -5560,20 +5717,20 @@ class CorpusServer:
         apply_migrations(self._conn)
 
         bind_port = _find_free_port(self._host) if self._port == 0 else self._port
-        self._httpd = HTTPServer((self._host, bind_port), _CorpusHandler)
+        self._httpd = _SidecarHTTPServer((self._host, bind_port), _CorpusHandler)
         self._started_at = utcnow_iso()
-        self._httpd.conn = self._conn  # type: ignore[attr-defined]
-        self._httpd.lock = threading.Lock()  # type: ignore[attr-defined]
-        self._httpd.jobs = self._jobs  # type: ignore[attr-defined]
-        self._httpd.job_runner = self._run_async_job  # type: ignore[attr-defined]
-        self._httpd.pid = self._pid  # type: ignore[attr-defined]
-        self._httpd.started_at = self._started_at  # type: ignore[attr-defined]
-        self._httpd.host = self._host  # type: ignore[attr-defined]
-        self._httpd.port = self.actual_port  # type: ignore[attr-defined]
-        self._httpd.db_path = str(self._db_path)  # type: ignore[attr-defined]
-        self._httpd.portfile = str(self._portfile_path)  # type: ignore[attr-defined]
-        self._httpd.token = self._token  # type: ignore[attr-defined]
-        self._httpd.request_shutdown = self.request_shutdown  # type: ignore[attr-defined]
+        self._httpd.conn = self._conn
+        self._httpd.lock = threading.Lock()
+        self._httpd.jobs = self._jobs
+        self._httpd.job_runner = self._run_async_job
+        self._httpd.pid = self._pid
+        self._httpd.started_at = self._started_at
+        self._httpd.host = self._host
+        self._httpd.port = self.actual_port
+        self._httpd.db_path = str(self._db_path)
+        self._httpd.portfile = str(self._portfile_path)
+        self._httpd.token = self._token
+        self._httpd.request_shutdown = self.request_shutdown
 
         self._thread = threading.Thread(
             target=self._httpd.serve_forever,
@@ -5655,7 +5812,8 @@ class CorpusServer:
         progress_cb,
     ) -> dict:
         """Execute an async job kind and return a serializable result payload."""
-        lock = self._httpd.lock  # type: ignore[union-attr]
+        assert self._httpd is not None, "Sidecar HTTP server is not started"
+        lock = self._httpd.lock
         conn = self._conn
         if conn is None:
             raise RuntimeError("Sidecar DB connection is not initialized")
@@ -5851,6 +6009,15 @@ class CorpusServer:
                         doc_role=doc_role, resource_type=resource_type,
                         check_filename=check_filename,
                     )
+                elif mode == "conllu":
+                    from multicorpus_engine.importers.conllu import import_conllu
+                    unit_per = params.get("unit_per", "sentence")
+                    report = import_conllu(
+                        conn, path=file_path, language=language,
+                        title=title, doc_role=doc_role, resource_type=resource_type,
+                        unit_per=unit_per,
+                        check_filename=check_filename,
+                    )
                 else:
                     raise ValueError(f"import job: unsupported mode: {mode!r}")
 
@@ -5892,6 +6059,41 @@ class CorpusServer:
                                 result["relation_created"] = True
                                 result["relation_id"] = cur.lastrowid
 
+            return result
+
+        if kind == "annotate":
+            from multicorpus_engine.annotator import annotate_document, annotate_corpus
+
+            model_name = str(params.get("model", "")).strip()
+            if not model_name:
+                raise ValueError("annotate job requires params.model")
+
+            all_docs = bool(params.get("all_docs", False))
+            replace = bool(params.get("replace", True))
+
+            if all_docs:
+                progress_cb(5, f"Annotating corpus with model '{model_name}'…")
+                with lock:
+                    result = annotate_corpus(
+                        conn,
+                        model_name=model_name,
+                        doc_ids=None,
+                        replace=replace,
+                        progress_cb=progress_cb,
+                    )
+            else:
+                doc_id = params.get("doc_id")
+                if doc_id is None:
+                    raise ValueError("annotate job requires params.doc_id or params.all_docs=true")
+                doc_id = int(doc_id)
+                progress_cb(5, f"Annotating doc #{doc_id} with model '{model_name}'…")
+                with lock:
+                    report = annotate_document(
+                        conn, doc_id=doc_id, model_name=model_name, replace=replace,
+                    )
+                    result = report.to_dict()
+
+            progress_cb(100, "Annotation completed")
             return result
 
         if kind == "align":

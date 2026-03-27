@@ -1,0 +1,7 @@
+-- Down-migration 011 : suppression de source_changed_at sur alignment_links
+--
+-- Requiert SQLite >= 3.35.0.
+-- Perd toutes les informations "source modifiée" sur les liens d'alignement.
+--
+-- DROP INDEX IF EXISTS idx_alinks_source_changed;
+-- ALTER TABLE alignment_links DROP COLUMN source_changed_at;

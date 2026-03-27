@@ -20,6 +20,12 @@ import type { ShellContext } from "./context.ts";
 
 import { SHELL_CSS } from "./shellCss.ts";
 import {
+  ensureRunning as sidecarEnsureRunning,
+  listDocuments as sidecarListDocuments,
+  enqueueJob as sidecarEnqueueJob,
+  getJob as sidecarGetJob,
+} from "./shellSidecar.ts";
+import {
   shellState,
   LS_MODE, LS_DB, LS_PRESETS_GLOBAL, LS_PRESETS_PREP,
   LS_ONBOARDING_STEP,
@@ -726,26 +732,46 @@ async function _onCreateDb(): Promise<void> {
 
 // ─── DB immediate init ────────────────────────────────────────────────────────
 
+/** Delays (ms) between successive sidecar boot attempts (exponential back-off). */
+const _SIDECAR_RETRY_DELAYS = [500, 1000, 2000];
+
 async function _initDb(dbPath: string): Promise<void> {
   const btn = document.getElementById("shell-db-btn") as HTMLButtonElement | null;
   if (btn) { btn.textContent = "Initialisation\u2026"; btn.disabled = true; }
   _clearInitError();
-  _showSidecarOverlay("Démarrage du moteur de recherche\u2026");
 
-  try {
-    // Dynamic import keeps sidecar logic in the explorer chunk (lazy-loaded)
-    const { ensureRunning } = await import("../../tauri-app/src/lib/sidecarClient.ts");
-    await ensureRunning(dbPath);
-    _hideSidecarOverlay();
-    _showToast("DB initialis\u00e9e \u2713", 3000);
-    shellLog("info", "sidecar", `Sidecar healthy for DB: ${pathLabel(dbPath)}`);
-  } catch (err) {
-    _hideSidecarOverlay();
-    shellLog("error", "sidecar", `Sidecar health failure for DB: ${pathLabel(dbPath)}`, String(err));
-    _showInitError(dbPath, String(err));
-  } finally {
-    if (btn) { btn.textContent = "DB \u25be"; btn.disabled = false; }
+  let lastErr: unknown;
+
+  for (let attempt = 0; attempt <= _SIDECAR_RETRY_DELAYS.length; attempt++) {
+    const isRetry = attempt > 0;
+    const overlayMsg = isRetry
+      ? `Tentative ${attempt + 1}/${_SIDECAR_RETRY_DELAYS.length + 1} — D\u00e9marrage du moteur\u2026`
+      : "D\u00e9marrage du moteur de recherche\u2026";
+    _showSidecarOverlay(overlayMsg);
+
+    try {
+      const conn = await sidecarEnsureRunning(dbPath);
+      void conn; // conn unused here — ensureRunning side-effect is sufficient
+      _hideSidecarOverlay();
+      _showToast("DB initialis\u00e9e \u2713", 3000);
+      shellLog("info", "sidecar", `Sidecar healthy for DB: ${pathLabel(dbPath)}` + (isRetry ? ` (attempt ${attempt + 1})` : ""));
+      if (btn) { btn.textContent = "DB \u25be"; btn.disabled = false; }
+      return;
+    } catch (err) {
+      lastErr = err;
+      shellLog("warn", "sidecar", `Sidecar attempt ${attempt + 1} failed: ${String(err)}`);
+      if (attempt < _SIDECAR_RETRY_DELAYS.length) {
+        const delay = _SIDECAR_RETRY_DELAYS[attempt];
+        _showSidecarOverlay(`\u00c9chec — nouvel essai dans ${delay / 1000}\u00a0s\u2026`);
+        await new Promise<void>(resolve => setTimeout(resolve, delay));
+      }
+    }
   }
+
+  _hideSidecarOverlay();
+  shellLog("error", "sidecar", `Sidecar health failure for DB: ${pathLabel(dbPath)}`, String(lastErr));
+  _showInitError(dbPath, String(lastErr));
+  if (btn) { btn.textContent = "DB \u25be"; btn.disabled = false; }
 }
 
 function _showInitError(dbPath: string, errorMsg: string): void {
@@ -1257,9 +1283,8 @@ async function _renderPublicationWizard(container: HTMLElement): Promise<void> {
         state.step = 2;
         // Load docs
         try {
-          const { ensureRunning, listDocuments } = await import("../../tauri-app/src/lib/sidecarClient.ts");
-          const conn = await ensureRunning(state.dbPath);
-          state.docs = (await listDocuments(conn)) as WizardState["docs"];
+          const conn = await sidecarEnsureRunning(state.dbPath);
+          state.docs = (await sidecarListDocuments(conn)) as WizardState["docs"];
         } catch (e) {
           state.error = String(e);
         }
@@ -1405,9 +1430,7 @@ async function _renderPublicationWizard(container: HTMLElement): Promise<void> {
 
         statusEl.textContent = "Envoi du job au sidecar…";
         try {
-          const { ensureRunning } = await import("../../tauri-app/src/lib/sidecarClient.ts");
-          const { enqueueJob, getJob } = await import("../../tauri-prep/src/lib/sidecarClient.ts");
-          const conn = await ensureRunning(state.dbPath);
+          const conn = await sidecarEnsureRunning(state.dbPath);
 
           const params: Record<string, unknown> = {
             out_path: outPath,
@@ -1418,7 +1441,7 @@ async function _renderPublicationWizard(container: HTMLElement): Promise<void> {
           };
           if (state.docIds !== null) params.doc_ids = state.docIds;
 
-          const job = await enqueueJob(conn, "export_tei_package", params);
+          const job = await sidecarEnqueueJob(conn, "export_tei_package", params);
           state.jobId = job.job_id;
           statusEl.textContent = `Job ${job.job_id} en cours…`;
           shellLog("info", "publish_wizard", `TEI package job submitted: ${job.job_id}`, JSON.stringify({
@@ -1427,7 +1450,7 @@ async function _renderPublicationWizard(container: HTMLElement): Promise<void> {
 
           // Poll until done
           const poll = async (): Promise<void> => {
-            const rec = await getJob(conn, state.jobId!);
+            const rec = await sidecarGetJob(conn, state.jobId!);
             if (rec.status === "done") {
               state.result = rec.result as Record<string, unknown>;
               state.step = 5;

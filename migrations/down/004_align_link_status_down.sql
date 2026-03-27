@@ -1,0 +1,13 @@
+-- Down-migration 004 : suppression de la colonne status sur alignment_links
+--
+-- SQLite ne supporte pas DROP COLUMN avant la version 3.35.0.
+-- Pour les versions antérieures, la procédure manuelle est :
+--   1. CREATE TABLE alignment_links_new (...) sans la colonne status
+--   2. INSERT INTO alignment_links_new SELECT ... FROM alignment_links
+--   3. DROP TABLE alignment_links
+--   4. ALTER TABLE alignment_links_new RENAME TO alignment_links
+--   5. Recréer les index (003_alignment.sql)
+--
+-- Sur SQLite >= 3.35.0 :
+-- DROP INDEX IF EXISTS idx_alinks_status;
+-- ALTER TABLE alignment_links DROP COLUMN status;
