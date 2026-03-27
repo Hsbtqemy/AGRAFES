@@ -1,14 +1,9 @@
 /**
  * ConcordancierScreen.ts — Recherche CQL token-level dans tauri-prep.
  *
- * Sprint C du backlog CQL : interface KWIC pour la recherche par attributs
- * linguistiques (lemme, POS, feats…) dans la table tokens.
- *
- * Fonctionnalités :
- *  - Champ CQL + aide syntaxique dépliable
- *  - Sélecteur de fenêtre contextuelle (±3 / 5 / 10 / 20 tokens)
- *  - Tableau KWIC paginé (50 / 100 / 200 résultats par page)
- *  - Export CSV / TXT / DOCX / ODT via POST /export/kwic
+ * Sprint C : mode séquences fixes (SQL joins).
+ * Sprint D : wildcard [], répétitions {m,n}, within s,
+ *            validation syntaxique côté client, aide enrichie.
  */
 
 import type { Conn, KwicHit } from "../lib/sidecarClient.ts";
@@ -29,6 +24,52 @@ interface ScreenState {
   loading: boolean;
   error: string | null;
   filterDocIds: number[];
+  withinS: boolean;
+}
+
+// ─── CQL client-side syntax check ─────────────────────────────────────────────
+
+/** Very lightweight client-side CQL validator.
+ *  Returns null if the query looks valid, or an error message.
+ */
+function _validateCqlSyntax(cql: string): string | null {
+  const trimmed = cql.trim();
+  if (!trimmed) return "La requête est vide.";
+  if (!trimmed.includes("[")) return "La requête doit contenir au moins un token entre crochets [ ].";
+
+  // Check balanced brackets
+  let depth = 0;
+  for (const ch of trimmed) {
+    if (ch === "[") depth++;
+    else if (ch === "]") depth--;
+    if (depth < 0) return "Crochet fermant ] non précédé d'un ouvrant.";
+  }
+  if (depth !== 0) return `${depth} crochet(s) ouvrant(s) [ non fermé(s).`;
+
+  // Check balanced braces for quantifiers
+  let braceDepth = 0;
+  for (const ch of trimmed) {
+    if (ch === "{") braceDepth++;
+    else if (ch === "}") braceDepth--;
+    if (braceDepth < 0) return "Accolade fermante } sans ouvrante.";
+  }
+  if (braceDepth !== 0) return "Accolade ouvrante { non fermée.";
+
+  // Check balanced quotes
+  const quoteCount = (trimmed.match(/(?<!\\)"/g) ?? []).length;
+  if (quoteCount % 2 !== 0) return "Guillemet double non fermé.";
+
+  // Check known attributes (best-effort)
+  const attrMatches = trimmed.matchAll(/\[([A-Za-z_][A-Za-z0-9_]*)\s*=/g);
+  const validAttrs = new Set(["word", "lemma", "upos", "xpos", "feats", "misc"]);
+  for (const m of attrMatches) {
+    const attr = m[1];
+    if (!validAttrs.has(attr)) {
+      return `Attribut inconnu : "${attr}". Valides : ${[...validAttrs].join(", ")}.`;
+    }
+  }
+
+  return null; // valid
 }
 
 // ─── ConcordancierScreen ──────────────────────────────────────────────────────
@@ -48,7 +89,30 @@ export class ConcordancierScreen {
     loading: false,
     error: null,
     filterDocIds: [],
+    withinS: false,
   };
+
+  // ── History ─────────────────────────────────────────────────────────────────
+
+  private _history: string[] = [];
+  private readonly _MAX_HISTORY = 20;
+
+  private _pushHistory(cql: string): void {
+    this._history = [cql, ...this._history.filter(h => h !== cql)].slice(0, this._MAX_HISTORY);
+    this._renderHistory();
+  }
+
+  private _renderHistory(): void {
+    const sel = this._el?.querySelector<HTMLSelectElement>("#cql-history-sel");
+    if (!sel) return;
+    while (sel.options.length > 1) sel.remove(1);
+    for (const h of this._history) {
+      const opt = document.createElement("option");
+      opt.value = h;
+      opt.textContent = h.length > 60 ? h.slice(0, 57) + "…" : h;
+      sel.appendChild(opt);
+    }
+  }
 
   // ── Injections ──────────────────────────────────────────────────────────────
 
@@ -72,8 +136,9 @@ export class ConcordancierScreen {
       <div class="cql-header">
         <h2 class="cql-title">Concordancier CQL</h2>
         <p class="cql-subtitle">
-          Recherche token par token — attributs : <code>word</code>, <code>lemma</code>,
-          <code>upos</code>, <code>xpos</code>, <code>feats</code>, <code>misc</code>
+          Recherche token par token — attributs :
+          <code>word</code>, <code>lemma</code>, <code>upos</code>,
+          <code>xpos</code>, <code>feats</code>, <code>misc</code>
         </p>
       </div>
 
@@ -81,26 +146,53 @@ export class ConcordancierScreen {
         <div class="cql-input-row">
           <textarea id="cql-input" class="cql-input" rows="2"
             placeholder='[lemma="manger"][upos="ADV"]'
-            spellcheck="false"></textarea>
-          <button id="cql-search-btn" class="btn btn-primary cql-search-btn">Rechercher</button>
+            spellcheck="false"
+            aria-label="Requête CQL"
+            aria-describedby="cql-syntax-error"></textarea>
+          <button id="cql-search-btn" class="btn btn-primary cql-search-btn"
+            title="Lancer la recherche (Ctrl+Entrée)">Rechercher</button>
         </div>
+
+        <div id="cql-syntax-error" class="cql-syntax-error" role="alert" aria-live="polite"></div>
 
         <details class="cql-help">
           <summary>Aide syntaxique CQL</summary>
           <div class="cql-help-body">
-            <table class="cql-help-table">
-              <tr><th>Syntaxe</th><th>Signification</th></tr>
-              <tr><td><code>[lemma="aller"]</code></td><td>Token dont le lemme = "aller"</td></tr>
-              <tr><td><code>[upos="VERB"]</code></td><td>Token dont le POS universel = VERB</td></tr>
-              <tr><td><code>[word="les" %c]</code></td><td>Insensible à la casse (%c)</td></tr>
-              <tr><td><code>[lemma="être.*"]</code></td><td>Valeur comme regex Python</td></tr>
-              <tr><td><code>[upos="VERB" &amp; lemma="all.*"]</code></td><td>ET logique</td></tr>
-              <tr><td><code>[upos="VERB" | upos="AUX"]</code></td><td>OU logique</td></tr>
-              <tr><td><code>[upos="DET"][upos="NOUN"]</code></td><td>Séquence de 2 tokens</td></tr>
-            </table>
-            <p class="cql-help-note">
-              Attributs disponibles : <code>word</code>, <code>lemma</code>, <code>upos</code>,
-              <code>xpos</code>, <code>feats</code>, <code>misc</code>
+            <div class="cql-help-cols">
+              <div>
+                <h4 class="cql-help-section">Sprint C — séquences</h4>
+                <table class="cql-help-table">
+                  <tr><th>Syntaxe</th><th>Signification</th></tr>
+                  <tr><td><code>[lemma="aller"]</code></td><td>Lemme exact</td></tr>
+                  <tr><td><code>[upos="VERB"]</code></td><td>POS universel</td></tr>
+                  <tr><td><code>[word="les" %c]</code></td><td>Insensible à la casse</td></tr>
+                  <tr><td><code>[lemma="être.*"]</code></td><td>Regex Python</td></tr>
+                  <tr><td><code>[upos="VERB" &amp; lemma="all.*"]</code></td><td>ET logique</td></tr>
+                  <tr><td><code>[upos="VERB" | upos="AUX"]</code></td><td>OU logique</td></tr>
+                  <tr><td><code>[upos="DET"][upos="NOUN"]</code></td><td>Séquence 2 tokens</td></tr>
+                </table>
+              </div>
+              <div>
+                <h4 class="cql-help-section">Sprint D — répétitions &amp; wildcards</h4>
+                <table class="cql-help-table">
+                  <tr><th>Syntaxe</th><th>Signification</th></tr>
+                  <tr><td><code>[]</code></td><td>N'importe quel token</td></tr>
+                  <tr><td><code>[upos="NOUN"]{2}</code></td><td>Exactement 2 fois</td></tr>
+                  <tr><td><code>[]{0,4}</code></td><td>Entre 0 et 4 tokens quelconques</td></tr>
+                  <tr><td><code>[upos="ADJ"]{1,3}</code></td><td>1 à 3 adjectifs</td></tr>
+                  <tr><td><code>… within s</code></td><td>Tout dans la même phrase</td></tr>
+                </table>
+                <p class="cql-help-note" style="margin-top:0.5rem">
+                  <strong>Exemple :</strong><br>
+                  <code>[lemma="it" %c][]{0,3}[word="that" %c] within s</code><br>
+                  <em>it … that dans la même phrase</em>
+                </p>
+              </div>
+            </div>
+            <p class="cql-help-note" style="margin-top:0.6rem">
+              Attributs : <code>word</code>, <code>lemma</code>, <code>upos</code>,
+              <code>xpos</code>, <code>feats</code>, <code>misc</code> |
+              Max répétition : 50 | Répétition 0 = élément optionnel
             </p>
           </div>
         </details>
@@ -125,6 +217,11 @@ export class ConcordancierScreen {
             </select>
           </label>
 
+          <label class="cql-option-label cql-checkbox-label">
+            <input type="checkbox" id="cql-within-s" class="cql-checkbox">
+            within s <span class="cql-badge-info" title="Tous les tokens matchés doivent être dans la même phrase (sent_id)">?</span>
+          </label>
+
           <label class="cql-option-label">
             Document
             <select id="cql-doc-sel" class="cql-select">
@@ -132,13 +229,20 @@ export class ConcordancierScreen {
             </select>
           </label>
 
-          <div class="cql-export-row">
-            <span class="cql-option-label">Exporter :</span>
-            <button id="cql-export-csv"  class="btn btn-ghost btn-sm" title="Export CSV (tabulation)">CSV</button>
-            <button id="cql-export-txt"  class="btn btn-ghost btn-sm" title="Export texte brut">TXT</button>
-            <button id="cql-export-docx" class="btn btn-ghost btn-sm" title="Export Word (nœud en gras)">DOCX</button>
-            <button id="cql-export-odt"  class="btn btn-ghost btn-sm" title="Export LibreOffice (nœud en gras)">ODT</button>
-          </div>
+          <label class="cql-option-label">
+            Historique
+            <select id="cql-history-sel" class="cql-select cql-select-hist" title="Réutiliser une requête précédente">
+              <option value="">— Requêtes récentes —</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="cql-export-row">
+          <span class="cql-option-label">Exporter :</span>
+          <button id="cql-export-csv"  class="btn btn-ghost btn-sm">CSV</button>
+          <button id="cql-export-txt"  class="btn btn-ghost btn-sm">TXT</button>
+          <button id="cql-export-docx" class="btn btn-ghost btn-sm">DOCX</button>
+          <button id="cql-export-odt"  class="btn btn-ghost btn-sm">ODT</button>
         </div>
       </div>
 
@@ -161,13 +265,14 @@ export class ConcordancierScreen {
     el.querySelector<HTMLButtonElement>("#cql-search-btn")!
       .addEventListener("click", () => void this._doSearch(true));
 
-    el.querySelector<HTMLTextAreaElement>("#cql-input")!
-      .addEventListener("keydown", (e) => {
-        if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-          e.preventDefault();
-          void this._doSearch(true);
-        }
-      });
+    const textarea = el.querySelector<HTMLTextAreaElement>("#cql-input")!;
+    textarea.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        void this._doSearch(true);
+      }
+    });
+    textarea.addEventListener("input", () => this._liveValidate());
 
     el.querySelector<HTMLSelectElement>("#cql-window-sel")!
       .addEventListener("change", (e) => {
@@ -179,10 +284,24 @@ export class ConcordancierScreen {
         this._state.limit = Number((e.target as HTMLSelectElement).value);
       });
 
+    el.querySelector<HTMLInputElement>("#cql-within-s")!
+      .addEventListener("change", (e) => {
+        this._state.withinS = (e.target as HTMLInputElement).checked;
+      });
+
     el.querySelector<HTMLSelectElement>("#cql-doc-sel")!
       .addEventListener("change", (e) => {
         const v = (e.target as HTMLSelectElement).value;
         this._state.filterDocIds = v ? [Number(v)] : [];
+      });
+
+    el.querySelector<HTMLSelectElement>("#cql-history-sel")!
+      .addEventListener("change", (e) => {
+        const v = (e.target as HTMLSelectElement).value;
+        if (!v) return;
+        const ta = el.querySelector<HTMLTextAreaElement>("#cql-input");
+        if (ta) { ta.value = v; this._liveValidate(); }
+        (e.target as HTMLSelectElement).value = "";
       });
 
     el.querySelector<HTMLButtonElement>("#cql-export-csv")!
@@ -195,19 +314,50 @@ export class ConcordancierScreen {
       .addEventListener("click", () => void this._doExport("odt"));
   }
 
+  // ── Live validation ──────────────────────────────────────────────────────────
+
+  private _liveValidate(): void {
+    const cql = (this._el?.querySelector<HTMLTextAreaElement>("#cql-input")?.value ?? "").trim();
+    const errEl = this._el?.querySelector<HTMLElement>("#cql-syntax-error");
+    if (!errEl) return;
+    if (!cql) { errEl.textContent = ""; errEl.hidden = true; return; }
+    const err = _validateCqlSyntax(cql);
+    if (err) {
+      errEl.textContent = "⚠ " + err;
+      errEl.hidden = false;
+    } else {
+      errEl.textContent = "";
+      errEl.hidden = true;
+    }
+  }
+
   // ── Search ──────────────────────────────────────────────────────────────────
 
   private async _doSearch(reset: boolean): Promise<void> {
     if (!this._conn) { showToast("Ouvrez une base de données d'abord."); return; }
     if (!this._el) return;
 
-    const cql = (this._el.querySelector<HTMLTextAreaElement>("#cql-input")!.value ?? "").trim();
+    const cql = (this._el.querySelector<HTMLTextAreaElement>("#cql-input")?.value ?? "").trim();
     if (!cql) { this._setStatus("Saisissez une requête CQL."); return; }
 
+    // Client-side validation before sending
+    const syntaxErr = _validateCqlSyntax(cql);
+    if (syntaxErr) {
+      this._setStatus("Erreur de syntaxe : " + syntaxErr, true);
+      return;
+    }
+
+    // Append within_s to the CQL string if toggle is on
+    const withinS = this._state.withinS;
+    const effectiveCql = withinS
+      ? (cql.endsWith(" within s") ? cql : cql + " within s")
+      : cql.replace(/ within s$/i, "");
+
     if (reset) {
-      this._state.cql = cql;
+      this._state.cql = effectiveCql;
       this._state.offset = 0;
       this._state.hits = [];
+      this._pushHistory(cql);
     }
 
     this._state.loading = true;
@@ -232,7 +382,8 @@ export class ConcordancierScreen {
         this._setStatus("Aucun résultat.");
       } else {
         this._setStatus(
-          `${resp.total.toLocaleString("fr")} occurrence(s) — page ${Math.floor(this._state.offset / this._state.limit) + 1}`
+          `${resp.total.toLocaleString("fr")} occurrence(s)` +
+          (withinS ? " · within s actif" : "")
         );
       }
     } catch (err) {
@@ -249,8 +400,16 @@ export class ConcordancierScreen {
   private async _doExport(fmt: "csv" | "txt" | "docx" | "odt"): Promise<void> {
     if (!this._conn) { showToast("Ouvrez une base de données d'abord."); return; }
 
-    const cql = (this._el?.querySelector<HTMLTextAreaElement>("#cql-input")?.value ?? "").trim();
-    if (!cql) { showToast("Saisissez une requête CQL avant d'exporter."); return; }
+    const rawCql = (this._el?.querySelector<HTMLTextAreaElement>("#cql-input")?.value ?? "").trim();
+    if (!rawCql) { showToast("Saisissez une requête CQL avant d'exporter."); return; }
+
+    const syntaxErr = _validateCqlSyntax(rawCql);
+    if (syntaxErr) { showToast("Syntaxe CQL invalide : " + syntaxErr); return; }
+
+    const withinS = this._state.withinS;
+    const effectiveCql = withinS
+      ? (rawCql.endsWith(" within s") ? rawCql : rawCql + " within s")
+      : rawCql;
 
     const EXT: Record<string, string> = { csv: "csv", txt: "txt", docx: "docx", odt: "odt" };
     const savePath = await dialogSave({
@@ -262,7 +421,7 @@ export class ConcordancierScreen {
 
     try {
       const res = await exportKwic(this._conn, {
-        cql,
+        cql: effectiveCql,
         window: this._state.window,
         doc_ids: this._state.filterDocIds.length ? this._state.filterDocIds : undefined,
         format: fmt,
@@ -299,14 +458,15 @@ export class ConcordancierScreen {
 
     const table = document.createElement("table");
     table.className = "cql-kwic-table";
+    table.setAttribute("role", "grid");
     table.innerHTML = `
       <thead>
         <tr>
-          <th class="cql-col-doc">Document</th>
-          <th class="cql-col-pos">Ligne</th>
-          <th class="cql-col-left">← Contexte</th>
-          <th class="cql-col-node">Nœud</th>
-          <th class="cql-col-right">Contexte →</th>
+          <th class="cql-col-doc" scope="col">Document</th>
+          <th class="cql-col-pos" scope="col">Ligne</th>
+          <th class="cql-col-left" scope="col">← Contexte</th>
+          <th class="cql-col-node" scope="col">Nœud</th>
+          <th class="cql-col-right" scope="col">Contexte →</th>
         </tr>
       </thead>
     `;
@@ -381,10 +541,10 @@ export class ConcordancierScreen {
     }
 
     if (hits.length > 0) {
-      const prevBtn = document.createElement("button");
-      prevBtn.className = "btn btn-ghost btn-sm";
-      prevBtn.textContent = "\u21ba Réinitialiser";
-      prevBtn.addEventListener("click", () => {
+      const resetBtn = document.createElement("button");
+      resetBtn.className = "btn btn-ghost btn-sm";
+      resetBtn.textContent = "\u21ba Réinitialiser";
+      resetBtn.addEventListener("click", () => {
         this._state.hits = [];
         this._state.offset = 0;
         this._state.total = 0;
@@ -392,7 +552,7 @@ export class ConcordancierScreen {
         this._renderResults();
         this._renderPagination();
       });
-      row.appendChild(prevBtn);
+      row.appendChild(resetBtn);
     }
 
     el.appendChild(row);
@@ -410,7 +570,9 @@ export class ConcordancierScreen {
       for (const doc of docs) {
         const opt = document.createElement("option");
         opt.value = String(doc.doc_id);
-        opt.textContent = `[${doc.language}] ${doc.title}`;
+        const annotBadge = (doc.token_count ?? 0) > 0 ? " ✓" : "";
+        opt.textContent = `[${doc.language}] ${doc.title}${annotBadge}`;
+        if ((doc.token_count ?? 0) === 0) opt.style.color = "#9ca3af";
         sel.appendChild(opt);
       }
       if (prev) sel.value = prev;
@@ -420,5 +582,6 @@ export class ConcordancierScreen {
   /** Called when the tab becomes active. */
   onActivate(): void {
     this._refreshDocFilter();
+    this._liveValidate();
   }
 }

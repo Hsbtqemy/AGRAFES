@@ -4375,12 +4375,15 @@ class _CorpusHandler(BaseHTTPRequestHandler):
     def _handle_token_query(self, body: dict) -> None:
         """POST /token_query — run a CQL query against the tokens table.
 
-        Body fields:
-            cql       : str  (required) — e.g. '[lemma="manger" & upos="VERB"]'
+        Body fields (Sprint C + D):
+            cql       : str  (required) — e.g. '[lemma="manger"][]{0,3}[upos="ADV"] within s'
             window    : int  (default 5) — context tokens on each side
             doc_ids   : list[int] (optional) — restrict to these documents
             limit     : int  (default 100)
             offset    : int  (default 0)
+
+        Wildcards (``[]``), repetitions (``{m,n}``), and ``within s`` are handled
+        by the Python sliding-window matcher in token_query.py.
         """
         from .cql_parser import parse_cql, CQLSyntaxError
         from .token_query import run_token_query
@@ -4416,10 +4419,12 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             limit=limit,
             offset=offset,
         )
+        next_offset = offset + len(hits)
         self._send_json({
-            "hits":     [h.to_dict() for h in hits],
-            "total":    total,
-            "has_more": (offset + len(hits)) < total,
+            "hits":        [h.to_dict() for h in hits],
+            "total":       total,
+            "has_more":    next_offset < total,
+            "next_offset": next_offset,
         })
 
     def _handle_export_kwic(self, body: dict) -> None:

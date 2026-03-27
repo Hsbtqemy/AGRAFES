@@ -5865,7 +5865,7 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   Concordancier CQL — Sprint C
+   Concordancier CQL — Sprint C + D
    ═══════════════════════════════════════════════════════════════════════════ */
 
 .concordancier-screen {
@@ -5982,12 +5982,49 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
   background: #fff;
 }
 .cql-select-sm { width: 5rem; }
+.cql-select-hist { max-width: 16rem; }
+
+/* Checkbox option */
+.cql-checkbox-label { gap: 0.4rem; cursor: pointer; }
+.cql-checkbox { accent-color: var(--prep-accent, #3b82f6); width: 1rem; height: 1rem; cursor: pointer; }
+.cql-badge-info {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 1rem; height: 1rem; border-radius: 50%;
+  background: var(--prep-muted, #6b7280); color: #fff;
+  font-size: 0.65rem; font-weight: 700; cursor: help;
+}
+
+/* Syntax error inline */
+.cql-syntax-error {
+  font-size: 0.8rem;
+  color: var(--prep-danger, #dc2626);
+  padding: 0.2rem 0;
+  min-height: 1rem;
+}
+.cql-syntax-error:empty, .cql-syntax-error[hidden] { display: none; }
+
+/* Help 2-col layout */
+.cql-help-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+.cql-help-section {
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--prep-muted, #6b7280);
+  margin: 0 0 0.3rem;
+}
+@media (max-width: 700px) {
+  .cql-help-cols { grid-template-columns: 1fr; }
+}
 
 .cql-export-row {
   display: flex;
   align-items: center;
   gap: 0.35rem;
-  margin-left: auto;
 }
 
 /* Status bar */

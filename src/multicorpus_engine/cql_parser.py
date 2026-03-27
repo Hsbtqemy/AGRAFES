@@ -1,7 +1,7 @@
-"""CQL (Corpus Query Language) parser — Sprint C.
+"""CQL (Corpus Query Language) parser — Sprint C + D.
 
-Supported syntax
-----------------
+Supported syntax (Sprint C)
+---------------------------
 Single token:
     [attr="value"]
     [attr="regex.*"]          value is treated as a Python regex
@@ -15,15 +15,32 @@ Boolean operators (within one token):
 Sequences:
     [tok1][tok2][tok3]
 
-Valid attributes: word, lemma, upos, xpos, feats, misc
+Sprint D extensions
+-------------------
+Wildcard token:
+    []                        matches any single token
 
-Grammar
--------
-    query    ::= token+
-    token    ::= '[' expr ']'
-    expr     ::= and_expr ('|' and_expr)*
-    and_expr ::= primary ('&' primary)*
-    primary  ::= IDENT '=' '"' VALUE '"' ('%c')?
+Repetition quantifiers (applied to a token or wildcard):
+    [tok]{n}                  exactly n times
+    [tok]{m,n}                between m and n times (m ≤ n, n ≤ 50)
+    []{0,4}                   between 0 and 4 tokens, any content
+
+within constraint (appended after the token sequence):
+    within s                  all matched tokens must share the same sent_id
+
+Grammar (Sprint D)
+------------------
+    query      ::= token_item+ ('within' scope)?
+    token_item ::= (token | wildcard) quantifier?
+    token      ::= '[' expr ']'
+    wildcard   ::= '[' ']'
+    quantifier ::= '{' INT '}'  |  '{' INT ',' INT '}'
+    scope      ::= 's'          (sentence boundary)
+    expr       ::= and_expr ('|' and_expr)*
+    and_expr   ::= primary ('&' primary)*
+    primary    ::= IDENT '=' '"' VALUE '"' ('%c')?
+
+Valid attributes: word, lemma, upos, xpos, feats, misc
 """
 from __future__ import annotations
 
@@ -59,12 +76,33 @@ BoolExpr = Union[AttrTest, AndExpr, OrExpr]
 
 @dataclass
 class TokenConstraint:
+    """A concrete token constraint with a boolean expression."""
     expr: BoolExpr
 
 
 @dataclass
+class WildcardToken:
+    """An unconstrained token — matches any single token."""
+
+
+# A PatternElement is either a concrete constraint or a wildcard,
+# optionally decorated with a repetition range.
+@dataclass
+class RepeatToken:
+    """A token (or wildcard) repeated between min and max times."""
+    inner: Union[TokenConstraint, WildcardToken]
+    min: int   # 0 ≤ min ≤ max
+    max: int   # max ≤ 50 (hard cap to prevent runaway queries)
+
+
+#: The union of all pattern elements that can appear in a query.
+PatternElement = Union[TokenConstraint, WildcardToken, RepeatToken]
+
+
+@dataclass
 class CQLQuery:
-    tokens: list[TokenConstraint] = field(default_factory=list)
+    tokens: list[PatternElement] = field(default_factory=list)
+    within_s: bool = False   # True → all matched tokens must share sent_id
 
 
 # ─── Exceptions ───────────────────────────────────────────────────────────────
@@ -77,21 +115,31 @@ class CQLSyntaxError(ValueError):
 
 _T_LBRACKET = "["
 _T_RBRACKET = "]"
+_T_LBRACE   = "{"
+_T_RBRACE   = "}"
+_T_COMMA    = ","
 _T_EQ       = "="
 _T_AND      = "&"
 _T_OR       = "|"
 _T_IDENT    = "IDENT"
 _T_STR      = "STR"
 _T_FLAG_C   = "FLAG_C"
+_T_INT      = "INT"
 _T_EOF      = "EOF"
 
-# Single compiled pattern; groups: quoted_str | %c | operator/bracket | identifier
+# Single compiled pattern; groups:
+#   1 — quoted string
+#   2 — %c
+#   3 — single-char operators/brackets
+#   4 — integer literal
+#   5 — identifier
 _LEX_RE = re.compile(
     r'\s*(?:'
-    r'("(?:[^"\\]|\\.)*")'           # group 1 — quoted string
-    r'|(%c)'                          # group 2 — case flag
-    r'|([&|=\[\]])'                   # group 3 — single-char token
-    r'|([A-Za-z_][A-Za-z0-9_]*)'     # group 4 — identifier
+    r'("(?:[^"\\]|\\.)*")'             # group 1 — quoted string
+    r'|(%c)'                            # group 2 — case flag
+    r'|([&|=\[\]{}|,])'                # group 3 — single-char token (incl. braces/comma)
+    r'|(\d+)'                           # group 4 — integer
+    r'|([A-Za-z_][A-Za-z0-9_]*)'       # group 5 — identifier (incl. "within", "s")
     r')\s*'
 )
 
@@ -117,11 +165,17 @@ def _lex(text: str) -> list[tuple[str, str]]:
             tokens.append((_T_FLAG_C, "%c"))
         elif m.group(3):
             ch = m.group(3)
-            mapping = {"[": _T_LBRACKET, "]": _T_RBRACKET,
-                       "=": _T_EQ, "&": _T_AND, "|": _T_OR}
+            mapping = {
+                "[": _T_LBRACKET, "]": _T_RBRACKET,
+                "{": _T_LBRACE,   "}": _T_RBRACE,
+                ",": _T_COMMA,
+                "=": _T_EQ, "&": _T_AND, "|": _T_OR,
+            }
             tokens.append((mapping[ch], ch))
         elif m.group(4):
-            tokens.append((_T_IDENT, m.group(4)))
+            tokens.append((_T_INT, m.group(4)))
+        elif m.group(5):
+            tokens.append((_T_IDENT, m.group(5)))
     tokens.append((_T_EOF, ""))
     return tokens
 
@@ -129,6 +183,7 @@ def _lex(text: str) -> list[tuple[str, str]]:
 # ─── Parser ───────────────────────────────────────────────────────────────────
 
 _VALID_ATTRS = frozenset({"word", "lemma", "upos", "xpos", "feats", "misc"})
+_MAX_REPEAT  = 50   # hard cap on repetition upper-bound
 
 
 class _Parser:
@@ -153,20 +208,83 @@ class _Parser:
     # ── grammar rules ────────────────────────────────────────────────────────
 
     def parse_query(self) -> CQLQuery:
-        token_list: list[TokenConstraint] = []
+        """query ::= token_item+ ('within' scope)?"""
+        items: list[PatternElement] = []
+
         while self._peek()[0] == _T_LBRACKET:
-            token_list.append(self._parse_token())
+            items.append(self._parse_token_item())
+
+        if not items:
+            raise CQLSyntaxError("Empty query — at least one token constraint is required")
+
+        within_s = False
+        if self._peek() == (_T_IDENT, "within"):
+            self._consume(_T_IDENT)  # consume "within"
+            scope_tok = self._peek()
+            if scope_tok == (_T_IDENT, "s"):
+                self._consume(_T_IDENT)
+                within_s = True
+            else:
+                raise CQLSyntaxError(
+                    f"Expected 'within s', got 'within {scope_tok[1]}'"
+                )
+
         if self._peek()[0] != _T_EOF:
             raise CQLSyntaxError(f"Unexpected token: {self._peek()[1]!r}")
-        if not token_list:
-            raise CQLSyntaxError("Empty query — at least one token constraint is required")
-        return CQLQuery(tokens=token_list)
+
+        return CQLQuery(tokens=items, within_s=within_s)
+
+    def _parse_token_item(self) -> PatternElement:
+        """token_item ::= (token | wildcard) quantifier?"""
+        # Peek ahead: if '[' immediately followed by ']' → wildcard
+        if (self._peek()[0] == _T_LBRACKET
+                and self._pos + 1 < len(self._tokens)
+                and self._tokens[self._pos + 1][0] == _T_RBRACKET):
+            self._consume(_T_LBRACKET)
+            self._consume(_T_RBRACKET)
+            inner: Union[TokenConstraint, WildcardToken] = WildcardToken()
+        else:
+            inner = self._parse_token()
+
+        # Optional quantifier
+        if self._peek()[0] == _T_LBRACE:
+            return self._parse_quantifier(inner)
+
+        return inner
 
     def _parse_token(self) -> TokenConstraint:
+        """token ::= '[' expr ']'"""
         self._consume(_T_LBRACKET)
         expr = self._parse_expr()
         self._consume(_T_RBRACKET)
         return TokenConstraint(expr=expr)
+
+    def _parse_quantifier(self, inner: Union[TokenConstraint, WildcardToken]) -> RepeatToken:
+        """{n} or {m,n}"""
+        self._consume(_T_LBRACE)
+        _, v1 = self._consume(_T_INT)
+        n1 = int(v1)
+
+        if self._peek()[0] == _T_COMMA:
+            self._consume(_T_COMMA)
+            _, v2 = self._consume(_T_INT)
+            n2 = int(v2)
+            lo, hi = n1, n2
+        else:
+            lo = hi = n1
+
+        self._consume(_T_RBRACE)
+
+        if lo < 0:
+            raise CQLSyntaxError(f"Repeat minimum must be ≥ 0, got {lo}")
+        if hi < lo:
+            raise CQLSyntaxError(f"Repeat maximum ({hi}) must be ≥ minimum ({lo})")
+        if hi > _MAX_REPEAT:
+            raise CQLSyntaxError(
+                f"Repeat maximum {hi} exceeds the hard cap of {_MAX_REPEAT}"
+            )
+
+        return RepeatToken(inner=inner, min=lo, max=hi)
 
     def _parse_expr(self) -> BoolExpr:
         """expr ::= and_expr ('|' and_expr)*"""
@@ -211,7 +329,10 @@ def parse_cql(text: str) -> CQLQuery:
     Parameters
     ----------
     text:
-        Raw CQL query, e.g. ``'[lemma="manger" & upos="VERB"][upos="ADV"]'``.
+        Raw CQL query string, e.g.:
+
+        ``'[lemma="manger" & upos="VERB"][upos="ADV"]'``
+        ``'[lemma="it" %c][]{0,3}[word="that" %c] within s'``
 
     Returns
     -------
