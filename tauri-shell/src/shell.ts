@@ -355,7 +355,7 @@ async function _exportDiagnosticFile(text: string): Promise<void> {
 // Static version info (embedded at build time)
 const APP_VERSION = "1.9.1";
 const ENGINE_VERSION_DISPLAY = "0.6.1";
-const CONTRACT_VERSION_DISPLAY = "1.4.0";
+const CONTRACT_VERSION_DISPLAY = "1.8.0";
 const TEI_PROFILES = ["generic", "parcolab_like", "parcolab_strict"];
 const RELEASES_URL = "https://github.com/Hsbtqemy/AGRAFES/releases";
 
@@ -1529,6 +1529,17 @@ async function _renderPublicationWizard(container: HTMLElement): Promise<void> {
   await render();
 }
 
+// ─── Demo DB activation helper ────────────────────────────────────────────────
+
+/** Enregistre demoPath comme DB active et notifie tous les écouteurs. */
+function _activateDemoDb(demoPath: string): void {
+  shellState.currentDbPath = demoPath;
+  _persist();
+  addToMru(demoPath);
+  _updateDbBadge();
+  shellState.dbListeners.forEach(cb => cb(shellState.currentDbPath));
+}
+
 // ─── Onboarding Guided Tour ────────────────────────────────────────────────────
 
 function _getOnboardingStep(): number {
@@ -1552,11 +1563,7 @@ async function _renderGuidedTour(container: HTMLElement): Promise<void> {
     {
       label: "Ouvrir Explorer et chercher «&nbsp;prince&nbsp;»",
       action: async () => {
-        shellState.currentDbPath = demoPath;
-        _persist();
-        addToMru(demoPath);
-        _updateDbBadge();
-        shellState.dbListeners.forEach(cb => cb(shellState.currentDbPath));
+        _activateDemoDb(demoPath);
         // Store a prefill hint for Explorer welcome hint
         try { sessionStorage.setItem("agrafes.explorer.prefill", "prince"); } catch { /* */ }
         _setOnboardingStep(1);
@@ -1566,11 +1573,7 @@ async function _renderGuidedTour(container: HTMLElement): Promise<void> {
     {
       label: "Générer un rapport QA (politique lenient)",
       action: async () => {
-        shellState.currentDbPath = demoPath;
-        _persist();
-        addToMru(demoPath);
-        _updateDbBadge();
-        shellState.dbListeners.forEach(cb => cb(shellState.currentDbPath));
+        _activateDemoDb(demoPath);
         _setOnboardingStep(2);
         await _setMode("constituer");
         // After constituer mounts, user navigates to Exports themselves
@@ -1581,11 +1584,7 @@ async function _renderGuidedTour(container: HTMLElement): Promise<void> {
     {
       label: "Exporter un package publication (TEI generic)",
       action: async () => {
-        shellState.currentDbPath = demoPath;
-        _persist();
-        addToMru(demoPath);
-        _updateDbBadge();
-        shellState.dbListeners.forEach(cb => cb(shellState.currentDbPath));
+        _activateDemoDb(demoPath);
         _setOnboardingStep(3);
         await _setMode("publish");
       },
@@ -1745,11 +1744,7 @@ async function _initDemoSection(
       openBtn.textContent = prevLabel;
     }
     const demoPath = await _getDemoDbPath();
-    shellState.currentDbPath = demoPath;
-    _persist();
-    addToMru(demoPath);
-    _updateDbBadge();
-    shellState.dbListeners.forEach(cb => cb(shellState.currentDbPath));
+    _activateDemoDb(demoPath);
     _showToast("DB active\u00a0: corpus d\u00e9mo");
     await _setMode("explorer");
   });
@@ -1762,13 +1757,25 @@ function _showSidecarOverlay(label = "Démarrage du moteur…"): void {
   const el = document.createElement("div");
   el.id = "shell-sidecar-overlay";
   el.className = "shell-sidecar-overlay";
-  el.innerHTML = `
-    <div class="shell-sidecar-card">
-      <div class="shell-sidecar-spinner"></div>
-      <div class="shell-sidecar-label">${label}</div>
-      <div class="shell-sidecar-sub">Cela peut prendre quelques secondes</div>
-    </div>
-  `;
+
+  const card = document.createElement("div");
+  card.className = "shell-sidecar-card";
+
+  const spinner = document.createElement("div");
+  spinner.className = "shell-sidecar-spinner";
+
+  const labelEl = document.createElement("div");
+  labelEl.className = "shell-sidecar-label";
+  labelEl.textContent = label;
+
+  const sub = document.createElement("div");
+  sub.className = "shell-sidecar-sub";
+  sub.textContent = "Cela peut prendre quelques secondes";
+
+  card.appendChild(spinner);
+  card.appendChild(labelEl);
+  card.appendChild(sub);
+  el.appendChild(card);
   document.body.appendChild(el);
 }
 
