@@ -17,6 +17,23 @@ interface TrackedJob {
   onDone: DoneCallback;
 }
 
+// ─── Job kind → icon + accent colour ─────────────────────────────────────────
+
+const _KIND_META: Record<string, { icon: string; color: string; label: string }> = {
+  import:   { icon: "📥", color: "#3b82f6", label: "Import" },
+  conllu:   { icon: "🔤", color: "#8b5cf6", label: "CoNLL-U" },
+  annotate: { icon: "🔤", color: "#8b5cf6", label: "Annotation" },
+  segment:  { icon: "✂️",  color: "#f59e0b", label: "Segmentation" },
+  align:    { icon: "🔗", color: "#10b981", label: "Alignement" },
+  curate:   { icon: "✏️",  color: "#6366f1", label: "Curation" },
+  export:   { icon: "📤", color: "#0ea5e9", label: "Export" },
+  rebuild:  { icon: "🔄", color: "#64748b", label: "Réindexation" },
+};
+
+function _kindMeta(kind: string): { icon: string; color: string; label: string } {
+  return _KIND_META[kind] ?? { icon: "⚙️", color: "#64748b", label: kind };
+}
+
 // CSS injected once by App
 export const JOB_CENTER_CSS = `
   .job-center { background: #f0f5ff; border-bottom: 1px solid #c8d8f5; display: none; }
@@ -28,10 +45,17 @@ export const JOB_CENTER_CSS = `
   .jc-job-active { flex-direction: column; align-items: flex-start; gap: 0.15rem; }
   .jc-job-head { display: flex; align-items: center; gap: 0.5rem; width: 100%; }
   .jc-job-label { font-weight: 600; }
-  .jc-job-kind { color: var(--color-muted); font-size: 0.72rem; font-family: monospace; }
+  .jc-kind-badge {
+    display: inline-flex; align-items: center; gap: 0.2rem;
+    font-size: 0.68rem; font-weight: 600; font-family: monospace;
+    padding: 0.05rem 0.35rem; border-radius: 99px;
+    background: color-mix(in srgb, var(--jc-kind-color, #64748b) 12%, white);
+    color: var(--jc-kind-color, #64748b);
+    border: 1px solid color-mix(in srgb, var(--jc-kind-color, #64748b) 25%, white);
+  }
   .jc-job-pct { margin-left: auto; font-weight: 600; color: var(--color-primary); font-size: 0.8rem; }
   .jc-progress-bar { width: 100%; height: 3px; background: #c8d8f5; border-radius: 2px; }
-  .jc-progress-fill { height: 100%; background: var(--color-primary); border-radius: 2px;
+  .jc-progress-fill { height: 100%; background: var(--jc-kind-color, var(--color-primary)); border-radius: 2px;
     transition: width 0.4s ease; }
   .jc-msg { font-size: 0.72rem; color: var(--color-muted); }
   .jc-job-done .jc-icon { color: var(--color-ok); font-weight: 700; }
@@ -180,11 +204,13 @@ export class JobCenter {
       for (const [jobId, entry] of this._active.entries()) {
         const j = entry.job;
         const pct = j.progress_pct ?? 0;
+        const meta = _kindMeta(j.kind);
         html += `
-          <div class="jc-job jc-job-active" data-id="${_esc(jobId)}">
+          <div class="jc-job jc-job-active" data-id="${_esc(jobId)}"
+               style="--jc-kind-color:${meta.color}">
             <div class="jc-job-head">
               <span class="jc-job-label">${_esc(entry.label)}</span>
-              <span class="jc-job-kind">${_esc(j.kind)}</span>
+              <span class="jc-kind-badge">${meta.icon} ${_esc(meta.label)}</span>
               <span class="jc-job-pct">${pct}%</span>
               <button class="btn btn-sm btn-danger jc-cancel-btn" data-id="${_esc(jobId)}" style="margin-left:auto">Annuler</button>
             </div>
@@ -197,13 +223,15 @@ export class JobCenter {
     if (this._recent.length > 0) {
       html += `<div class="jc-section-title">Récents (5)</div>`;
       for (const j of this._recent) {
-        const icon = j.status === "done" ? "✓" : j.status === "canceled" ? "↩" : "✗";
-        const cls = j.status === "done" ? "jc-job-done" : j.status === "canceled" ? "jc-job-cancel" : "jc-job-err";
-        const msg = j.progress_message ?? j.status;
+        const statusIcon = j.status === "done" ? "✓" : j.status === "canceled" ? "↩" : "✗";
+        const cls  = j.status === "done" ? "jc-job-done" : j.status === "canceled" ? "jc-job-cancel" : "jc-job-err";
+        const meta = _kindMeta(j.kind);
+        const msg  = j.progress_message ?? j.status;
         html += `
-          <div class="jc-job ${cls} jc-recent-row">
-            <span class="jc-icon">${icon}</span>
-            <span class="jc-job-kind">${_esc(j.kind)}</span>
+          <div class="jc-job ${cls} jc-recent-row"
+               style="--jc-kind-color:${meta.color}">
+            <span class="jc-icon">${statusIcon}</span>
+            <span class="jc-kind-badge">${meta.icon} ${_esc(meta.label)}</span>
             <span class="jc-msg">${_esc(msg)}</span>
           </div>`;
       }

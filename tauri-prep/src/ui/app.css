@@ -791,6 +791,30 @@ details[open] > .import-log-summary::before {
   font-weight: 600;
   color: #1e293b;
 }
+/* D-1 guard: non-segmented documents warning */
+.exp-seg-guard {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  background: #fff8e1;
+  border: 1px solid #f6c752;
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.82rem;
+  margin-top: 0.5rem;
+  color: #7c5800;
+}
+.exp-guard-icon { font-size: 1rem; flex-shrink: 0; }
+.exp-guard-msg { flex: 1; }
+.exp-guard-link {
+  background: none; border: none; padding: 0;
+  color: var(--prep-accent, #3b82f6); font-size: 0.82rem;
+  cursor: pointer; text-decoration: underline;
+  white-space: nowrap;
+}
+.exp-guard-link:hover { color: var(--prep-accent-dark, #2563eb); }
+
 .exports-screen .exp-v2-card { margin-bottom: 10px; }
 .exports-screen .exp-workspace {
   display: grid;

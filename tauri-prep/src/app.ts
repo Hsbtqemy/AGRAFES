@@ -112,6 +112,7 @@ export class App {
     this._import.setJobCenter(this._jobCenter, showToast);
     this._actions.setJobCenter(this._jobCenter, showToast);
     this._actions.setOnOpenDocuments(() => this._switchTab("documents"));
+    this._exports.setOnOpenDocuments(() => this._switchTab("documents"));
     this._exports.setJobCenter(this._jobCenter, showToast);
     this._metadata.setJobCenter(this._jobCenter, showToast);
     this._concordancier.setJobCenter(this._jobCenter, showToast);

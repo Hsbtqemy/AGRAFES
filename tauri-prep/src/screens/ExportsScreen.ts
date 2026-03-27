@@ -59,6 +59,13 @@ export class ExportsScreen {
     this._showToast = showToast;
   }
 
+  /** Register a callback invoked when the user clicks "Voir dans Documents". */
+  setOnOpenDocuments(cb: () => void): void {
+    this._onOpenDocuments = cb;
+  }
+
+  private _onOpenDocuments: (() => void) | null = null;
+
   setConn(conn: Conn | null): void {
     this._conn = conn;
     if (this._root) this._refreshDocs();
@@ -222,6 +229,7 @@ export class ExportsScreen {
             <div id="v2-pending-hint" style="display:none;margin-top:0.45rem;font-size:0.83rem;padding:0.4rem 0.6rem;background:#fff3cd;border-radius:4px;border:1px solid #ffe69c;color:#8a6116"></div>
             <div id="v2-summary-hint" class="hint" style="margin-top:0.45rem"></div>
             <!-- EXP-6: btn-sm supprimé -->
+            <div id="exp-seg-guard" class="exp-seg-guard" style="display:none" aria-live="polite"></div>
             <div class="btn-row" style="margin-top:0.6rem">
               <button id="v2-run-btn" class="btn btn-primary" disabled>Choisir destination et lancer…</button>
             </div>
@@ -676,6 +684,43 @@ export class ExportsScreen {
     const fmt   = this._v2FormatEl?.selectedOptions[0]?.text ?? "—";
     setKpi("exp-kpi-stage", stage);
     setKpi("exp-kpi-fmt", fmt);
+    this._updateSegGuard(selIds);
+  }
+
+  // D-1 + D-2: Segmentation guard — warn if selected docs have no units.
+  private _updateSegGuard(selIds: number[] | undefined): void {
+    const guardEl = this._root?.querySelector<HTMLElement>("#exp-seg-guard");
+    if (!guardEl) return;
+
+    const scope = selIds === undefined ? this._docs : this._docs.filter(d => selIds.includes(d.doc_id));
+    const unseg = scope.filter(d => (d.unit_count ?? 0) === 0);
+
+    if (unseg.length === 0) {
+      guardEl.style.display = "none";
+      guardEl.innerHTML = "";
+      return;
+    }
+
+    const names = unseg.slice(0, 3).map(d => _escHtml(d.title)).join(", ");
+    const more  = unseg.length > 3 ? ` +${unseg.length - 3}` : "";
+    const navLink = this._onOpenDocuments
+      ? `<button class="exp-guard-link" id="exp-guard-nav">Voir dans Documents →</button>`
+      : "";
+
+    guardEl.innerHTML = `
+      <span class="exp-guard-icon">⚠</span>
+      <span class="exp-guard-msg">
+        <strong>${unseg.length} document(s) non segmenté(s)</strong> dans la sélection&nbsp;:
+        ${names}${more}.
+        L'export TEI de ces documents sera vide.
+      </span>
+      ${navLink}
+    `;
+    guardEl.style.display = "flex";
+
+    guardEl.querySelector<HTMLButtonElement>("#exp-guard-nav")?.addEventListener("click", () => {
+      this._onOpenDocuments?.();
+    });
   }
 
   private _setSelectOptions(
