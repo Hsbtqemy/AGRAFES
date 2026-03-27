@@ -521,8 +521,24 @@ export function disposeQuery(): void {
 
 // ─── Search ───────────────────────────────────────────────────────────────────
 
+/** Détecte une requête CQL tapée par erreur dans la barre FTS5. */
+const _CQL_SYNTAX_RE = /(?:^\s*\[|\[\s*\w+\s*=)/;
+
 export async function doSearch(rawQ: string): Promise<void> {
   const isRegex = state.builderMode === "regex";
+
+  // Interception : syntaxe CQL dans le champ FTS5 sans mode Regex
+  if (!isRegex && _CQL_SYNTAX_RE.test(rawQ)) {
+    const area = document.getElementById("results-area")!;
+    area.innerHTML = "";
+    const errDiv = elt("div", { class: "error-banner" });
+    errDiv.innerHTML =
+      `Syntaxe CQL d\u00e9tect\u00e9e\u00a0: la notation <code>[...]</code> n'est pas support\u00e9e en mode FTS5.\u00a0` +
+      `Utilisez l'onglet <strong>Concordancier</strong> (module Constituer) pour les requ\u00eates CQL, ` +
+      `ou activez le mode <strong>Regex</strong> pour une expression r\u00e9guli\u00e8re.`;
+    area.appendChild(errDiv);
+    return;
+  }
 
   if (isRegex) {
     state.regexPattern = rawQ.trim();
@@ -633,8 +649,19 @@ export async function fetchQueryPage(append: boolean): Promise<void> {
       renderResults();
     }
   } catch (err) {
+    const rawMsg = err instanceof SidecarError ? err.message : String(err);
+    let displayMsg: string;
+    if (/fts5.*syntax error/i.test(rawMsg) && rawMsg.includes("[")) {
+      displayMsg =
+        `Syntaxe non valide\u00a0: la notation [...]  est r\u00e9serv\u00e9e au Concordancier CQL. ` +
+        `Activez le mode Regex pour une expression r\u00e9guli\u00e8re, ou utilisez l'onglet Concordancier.`;
+    } else if (/fts5/i.test(rawMsg)) {
+      displayMsg = `Erreur de syntaxe FTS5\u00a0: ${rawMsg}`;
+    } else {
+      displayMsg = `Erreur\u00a0: ${rawMsg}`;
+    }
     const errDiv = elt("div", { class: "error-banner" });
-    errDiv.textContent = `Erreur : ${err instanceof SidecarError ? err.message : String(err)}`;
+    errDiv.textContent = displayMsg;
     if (append && state.hits.length > 0) {
       const loadMoreBtn = area.querySelector<HTMLButtonElement>(".load-more-btn");
       if (loadMoreBtn) {
