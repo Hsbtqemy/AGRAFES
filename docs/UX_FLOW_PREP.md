@@ -1,8 +1,14 @@
 # UX Flow — tauri-prep (navigation & branchements)
 
-Last updated: 2026-03-06
+Last updated: 2026-04-08
 
 Objectif: fixer les règles de navigation et les actions de fin de flux dans `tauri-prep`, pour éviter les ambiguïtés entre maquettes et implémentation.
+
+## 0) Principe non négociable — texte visible à chaque étape
+
+- À **chaque étape** du workflow (import, curation, segmentation, alignement, exports, revue, etc.), l’utilisateur doit pouvoir **lire le texte** porté par l’opération (source, cible, extraits, segments, alignements, aperçus d’export). Seuls des KPI, statuts ou titres **ne remplacent pas** l’affichage du contenu.
+- C’est **l’utilisateur** qui valide la qualité ; la validation suppose un **accès continu au texte**, pas uniquement à des résumés ou indicateurs.
+- Toute évolution d’UI qui retire ou enfouit le texte derrière des flux « techniques » sans lecture immédiate est considérée comme **régression** jusqu’à correction.
 
 ## 1) Scope
 

@@ -11,6 +11,7 @@
   "GET /jobs",
   "GET /jobs/{job_id}",
   "GET /openapi.json",
+  "GET /runs",
   "POST /align",
   "POST /align/audit",
   "POST /align/collisions",

@@ -22,6 +22,7 @@ POST /curate         → curate; body: {rules: [...], doc_id?: int}
 POST /validate-meta  → validate; body: {doc_id?: int}
 POST /segment        → resegment_document; body: {doc_id: int, lang?: str, pack?: str}
 GET  /jobs           → list async jobs
+GET  /runs           → list persisted runs (SQLite ``runs`` table)
 POST /jobs           → enqueue async job {kind, params?}
 GET  /jobs/{job_id}  → async job status/result
 """
@@ -501,6 +502,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             self._handle_family_curation_status(fam_root_id)
         elif path == "/jobs":
             self._handle_jobs_list()
+        elif path == "/runs":
+            self._handle_runs_list()
         elif path.startswith("/jobs/"):
             self._handle_job_get(path)
         elif path == "/curate/exceptions":
@@ -740,6 +743,56 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             "has_more": has_more,
             "next_offset": next_offset,
         }))
+
+    def _handle_runs_list(self) -> None:
+        """GET /runs — persisted run history from SQLite ``runs`` (import, align, index, …)."""
+        qs = parse_qs(urlparse(self.path).query)
+        kind_filter = (qs.get("kind") or [None])[0]
+        try:
+            limit = int((qs.get("limit") or [50])[0])
+        except (ValueError, TypeError):
+            limit = 50
+        limit = max(1, min(limit, 200))
+
+        with self._lock():
+            conn = self._conn()
+            if kind_filter:
+                rows = conn.execute(
+                    "SELECT run_id, kind, params_json, stats_json, created_at FROM runs "
+                    "WHERE kind = ? ORDER BY created_at DESC LIMIT ?",
+                    (kind_filter, limit),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT run_id, kind, params_json, stats_json, created_at FROM runs "
+                    "ORDER BY created_at DESC LIMIT ?",
+                    (limit,),
+                ).fetchall()
+
+        records: list[dict] = []
+        for r in rows:
+            rec: dict = {
+                "run_id": r[0],
+                "kind": r[1],
+                "created_at": r[4],
+            }
+            if r[2]:
+                try:
+                    rec["params"] = json.loads(r[2])
+                except json.JSONDecodeError:
+                    rec["params"] = None
+            else:
+                rec["params"] = None
+            if r[3]:
+                try:
+                    rec["stats"] = json.loads(r[3])
+                except json.JSONDecodeError:
+                    rec["stats"] = None
+            else:
+                rec["stats"] = None
+            records.append(rec)
+
+        self._send_json(success_payload({"runs": records, "limit": limit}))
 
     def _handle_job_get(self, path: str) -> None:
         # /jobs/<job_id>

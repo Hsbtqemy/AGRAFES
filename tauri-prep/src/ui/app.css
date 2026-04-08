@@ -226,6 +226,8 @@ summary:focus-visible,
 .meta-table { border-collapse: collapse; font-size: 0.82rem; width: 100%; margin-top: 0.5rem; }
 .meta-table th, .meta-table td { border: 1px solid var(--color-border); padding: 0.3rem 0.6rem; text-align: left; }
 .meta-table th { background: var(--color-bg); font-weight: 600; }
+.act-run-compare-sel { min-width: 12rem; max-width: min(100%, 24rem); font-size: 0.82rem; }
+.act-run-compare-table code { font-size: 0.78rem; word-break: break-all; }
 
 /* Import list */
 .import-list { margin-top: 0.75rem; }
@@ -757,27 +759,69 @@ details[open] > .import-log-summary::before {
 }
 .exports-screen .exp-kpi-strip {
   display: flex;
+  flex-wrap: wrap;
   border: 1px solid #e2e8f0;
   border-radius: 8px;
   overflow: hidden;
   margin-bottom: 12px;
 }
 .exports-screen .exp-kpi {
-  flex: 1;
+  flex: 1 1 120px;
+  min-width: 100px;
   padding: 8px 12px;
   border-right: 1px solid #e2e8f0;
+  border-bottom: 1px solid #e2e8f0;
 }
 .exports-screen .exp-kpi:last-child { border-right: none; }
-.exports-screen .exp-kpi label {
+.exports-screen .exp-kpi-lbl {
   display: block;
   font-size: 11px;
   color: #64748b;
   margin-bottom: 2px;
+  font-weight: 500;
 }
-.exports-screen .exp-kpi span {
-  font-size: 16px;
+.exports-screen .exp-kpi-val {
+  display: block;
+  font-size: 15px;
   font-weight: 600;
   color: #1e293b;
+  line-height: 1.25;
+  word-break: break-word;
+}
+.exports-screen .exp-workspace-lead {
+  margin: 0 0 8px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #64748b;
+}
+.exports-screen .export-legacy-toggle-card {
+  margin-bottom: 10px;
+}
+.exports-screen .exp-legacy-toggle-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.exports-screen .exp-legacy-toggle-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+.exports-screen .exp-legacy-toggle-hint {
+  margin: 0.2rem 0 0;
+}
+.exports-screen .exports-legacy-container[hidden] {
+  display: none !important;
+}
+.exports-screen .exports-legacy-container:not([hidden]) {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 10px;
 }
 .exports-screen .exp-v2-card { margin-bottom: 10px; }
 .exports-screen .exp-workspace {
@@ -5433,6 +5477,66 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
   margin-top: 3px;
 }
 
+/* Segmentation — stratégie (phrases vs balises) */
+.seg-strategy-bar {
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  background: var(--prep-surface-elevated, #fff);
+  border: 1px solid var(--prep-line, #dde3ea);
+  border-radius: 6px;
+}
+.seg-strategy-fieldset {
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+.seg-strategy-legend {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--prep-text-muted, #6c757d);
+  margin-bottom: 8px;
+  padding: 0;
+}
+.seg-strategy-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+}
+.seg-strategy-opt {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  max-width: 300px;
+}
+.seg-strategy-opt-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.seg-strategy-opt input {
+  flex-shrink: 0;
+}
+.seg-strategy-opt-title {
+  font-weight: 600;
+  color: var(--prep-text, #212529);
+}
+.seg-strategy-opt-desc {
+  font-size: 0.72rem;
+  color: var(--prep-text-muted, #6c757d);
+  line-height: 1.35;
+  padding-left: 1.45rem;
+}
+.seg-strategy-summary {
+  margin: 10px 0 0;
+  font-size: 0.78rem;
+  color: var(--prep-text-muted, #6c757d);
+  line-height: 1.4;
+}
+
 /* Params bar */
 .seg-params-bar {
   display: flex;
@@ -5451,6 +5555,17 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
   gap: 3px;
   font-size: 0.78rem;
   font-weight: 600;
+  color: var(--prep-text-muted, #6c757d);
+}
+.seg-param-label-text {
+  font-weight: 600;
+}
+.seg-param-hint {
+  font-weight: 400;
+  font-size: 0.72rem;
+  font-style: italic;
+  line-height: 1.3;
+  max-width: 22rem;
   color: var(--prep-text-muted, #6c757d);
 }
 .seg-param-input, .seg-param-select {

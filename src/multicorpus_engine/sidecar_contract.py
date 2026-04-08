@@ -712,6 +712,37 @@ def openapi_spec() -> dict[str, Any]:
                     },
                 },
             },
+            "/runs": {
+                "get": {
+                    "summary": "List persisted runs (SQLite runs: import, align, index, …)",
+                    "parameters": [
+                        {
+                            "name": "kind",
+                            "in": "query",
+                            "required": False,
+                            "schema": {"type": "string"},
+                            "description": "Filter by run kind (e.g. align, import)",
+                        },
+                        {
+                            "name": "limit",
+                            "in": "query",
+                            "required": False,
+                            "schema": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50},
+                            "description": "Maximum rows, newest first",
+                        },
+                    ],
+                    "responses": {
+                        "200": {
+                            "description": "Run history",
+                            "content": {
+                                "application/json": {
+                                    "schema": {"$ref": "#/components/schemas/RunsListResponse"},
+                                }
+                            },
+                        },
+                    },
+                }
+            },
             "/jobs/{job_id}": {
                 "get": {
                     "summary": "Get async job status",
@@ -1688,6 +1719,33 @@ def openapi_spec() -> dict[str, Any]:
                                     "type": "array",
                                     "items": {"$ref": "#/components/schemas/JobRecord"},
                                 },
+                            },
+                        },
+                    ]
+                },
+                "RunRecord": {
+                    "type": "object",
+                    "required": ["run_id", "kind", "created_at"],
+                    "properties": {
+                        "run_id": {"type": "string"},
+                        "kind": {"type": "string"},
+                        "created_at": {"type": "string"},
+                        "params": {"type": "object", "nullable": True},
+                        "stats": {"type": "object", "nullable": True},
+                    },
+                },
+                "RunsListResponse": {
+                    "allOf": [
+                        {"$ref": "#/components/schemas/BaseResponse"},
+                        {
+                            "type": "object",
+                            "required": ["runs", "limit"],
+                            "properties": {
+                                "runs": {
+                                    "type": "array",
+                                    "items": {"$ref": "#/components/schemas/RunRecord"},
+                                },
+                                "limit": {"type": "integer"},
                             },
                         },
                     ]

@@ -75,33 +75,35 @@ export class ExportsScreen {
       <div class="card exp-head-card">
         <div class="exp-head-top">
           <div>
-            <h2 class="screen-title">Exporter</h2>
-            <p class="exp-head-desc">Livrer (TEI) · partager (CSV/Excel) · archiver (Package ZIP)</p>
+            <h2 class="screen-title" id="exports-screen-title">Exporter</h2>
+            <p class="exp-head-desc">Port&#233;e des documents, puis &#233;tape, produit et format &#8212; la plupart des exports passent par la zone <strong>Export unifi&#233;</strong> ci-dessous.</p>
           </div>
           <div id="exp-state-banner" class="runtime-state state-info" aria-live="polite">
             En attente de connexion sidecar…
           </div>
         </div>
         <div class="exp-head-actions">
-          <span id="exp-run-pill" class="chip">—</span>
-          <button class="btn btn-sm exp-back-btn">← Alignement</button>
+          <span id="exp-run-pill" class="chip" title="Identifiant de run de workflow (si disponible)">—</span>
+          <button type="button" class="btn btn-sm exp-back-btn" aria-label="Retour &agrave; l&apos;onglet Alignement">&#8592; Alignement</button>
         </div>
       </div>
 
       <!-- EXP-4: KPI strip display-only -->
-      <div class="exp-kpi-strip">
-        <div class="exp-kpi"><label>Documents</label><span id="exp-kpi-docs">0</span></div>
-        <div class="exp-kpi"><label>Sélectionnés</label><span id="exp-kpi-sel">—</span></div>
-        <div class="exp-kpi"><label>Jeu de données</label><span id="exp-kpi-stage">—</span></div>
-        <div class="exp-kpi"><label>Format</label><span id="exp-kpi-fmt">—</span></div>
+      <div class="exp-kpi-strip" role="region" aria-label="R&#233;sum&#233; de la s&#233;lection d&apos;export">
+        <div class="exp-kpi"><span class="exp-kpi-lbl">Documents</span><span id="exp-kpi-docs" class="exp-kpi-val">0</span></div>
+        <div class="exp-kpi"><span class="exp-kpi-lbl">S&#233;lection</span><span id="exp-kpi-sel" class="exp-kpi-val">&#8212;</span></div>
+        <div class="exp-kpi"><span class="exp-kpi-lbl">&#201;tape</span><span id="exp-kpi-stage" class="exp-kpi-val">&#8212;</span></div>
+        <div class="exp-kpi"><span class="exp-kpi-lbl">Produit</span><span id="exp-kpi-product" class="exp-kpi-val">&#8212;</span></div>
+        <div class="exp-kpi"><span class="exp-kpi-lbl">Format</span><span id="exp-kpi-fmt" class="exp-kpi-val">&#8212;</span></div>
       </div>
 
       <!-- EXP-2: Workspace 2-col -->
       <div class="card exp-v2-card">
-        <div class="exp-workspace">
+        <p class="exp-workspace-lead">Export unifi&#233;</p>
+        <div class="exp-workspace" id="exp-workspace-main" aria-label="Configuration d&apos;export : documents et options">
 
           <!-- LEFT: doc selection -->
-          <div class="exp-col-docs">
+          <div class="exp-col-docs" aria-label="Documents du corpus">
             <div class="exp-doc-toolbar">
               <div style="display:flex;align-items:center;gap:8px">
                 <h3>Documents source</h3>
@@ -121,15 +123,15 @@ export class ExportsScreen {
               Aucun document importé — allez d'abord dans <strong>Importer</strong>.
             </div>
             <!-- EXP-3: doc table -->
-            <table id="exp-doc-grid" class="exp-doc-grid" style="display:none">
+            <table id="exp-doc-grid" class="exp-doc-grid" style="display:none" role="table" aria-label="Liste des documents pour la port&#233;e d&apos;export">
               <thead>
                 <tr>
-                  <th></th>
-                  <th>ID</th>
-                  <th>Titre</th>
-                  <th>Langue</th>
-                  <th>Rôle</th>
-                  <th>Statut</th>
+                  <th scope="col" aria-label="Inclure dans l&apos;export"></th>
+                  <th scope="col">ID</th>
+                  <th scope="col">Titre</th>
+                  <th scope="col">Langue</th>
+                  <th scope="col">R&#244;le</th>
+                  <th scope="col">Statut</th>
                 </tr>
               </thead>
               <tbody id="exp-doc-body"></tbody>
@@ -137,10 +139,10 @@ export class ExportsScreen {
           </div>
 
           <!-- RIGHT: options + CTA -->
-          <div class="exp-col-opts">
+          <div class="exp-col-opts" aria-label="&#201;tape, produit, format et lancement">
             <div class="exp-opts-meta">
-              <label>Jeu de données
-                <select id="v2-stage">
+              <label>&#201;tape (jeu de donn&#233;es)
+                <select id="v2-stage" aria-describedby="exports-screen-title">
                   <option value="alignment" selected>Alignement</option>
                   <option value="publication">Publication</option>
                   <option value="segmentation">Segmentation</option>
@@ -231,16 +233,19 @@ export class ExportsScreen {
       </div>
 
       <div class="card export-legacy-toggle-card">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:0.7rem;flex-wrap:wrap">
+        <div class="exp-legacy-toggle-row">
           <div>
-            <h3 style="margin:0">Exports avancés / historiques</h3>
-            <p class="hint" style="margin:0.2rem 0 0">Conservez cette zone fermée pour un parcours simplifié.</p>
+            <h3 class="exp-legacy-toggle-title">Exports avanc&#233;s (formulaires s&#233;par&#233;s)</h3>
+            <p class="hint exp-legacy-toggle-hint">M&#234;mes capacit&#233;s que ci-dessus, pr&#233;sent&#233;es en cartes ind&#233;pendantes (TEI, ZIP, CSV, rapports&#8230;).</p>
           </div>
-          <button id="exports-toggle-legacy-btn" class="btn btn-secondary btn-sm">Afficher les exports avancés</button>
+          <button type="button" id="exports-toggle-legacy-btn" class="btn btn-secondary btn-sm"
+            aria-expanded="false" aria-controls="exports-legacy-container">
+            Afficher les exports avanc&#233;s
+          </button>
         </div>
       </div>
 
-      <div id="exports-legacy-container" style="display:none">
+      <div id="exports-legacy-container" class="exports-legacy-container" hidden>
       <!-- TEI Export -->
       <div class="card">
         <h3>Export TEI <span class="badge-preview">XML</span></h3>
@@ -455,11 +460,13 @@ export class ExportsScreen {
   }
 
   private _toggleLegacyExports(): void {
-    const isOpen = this._legacyContainer.style.display !== "none";
-    this._legacyContainer.style.display = isOpen ? "none" : "block";
-    this._legacyToggleBtn.textContent = isOpen
-      ? "Afficher les exports avancés"
-      : "Masquer les exports avancés";
+    const wasHidden = this._legacyContainer.hidden;
+    this._legacyContainer.hidden = !wasHidden;
+    const nowOpen = !this._legacyContainer.hidden;
+    this._legacyToggleBtn.setAttribute("aria-expanded", nowOpen ? "true" : "false");
+    this._legacyToggleBtn.textContent = nowOpen
+      ? "Masquer les exports avanc\u00e9s"
+      : "Afficher les exports avanc\u00e9s";
   }
 
   // ── Doc refresh ─────────────────────────────────────────────────────────────
@@ -673,8 +680,10 @@ export class ExportsScreen {
     const selIds = this._selectedDocIds(this._v2DocSelEl);
     setKpi("exp-kpi-sel", selIds === undefined ? String(this._docs.length) : selIds.length > 0 ? String(selIds.length) : "—");
     const stage = this._v2StageEl?.selectedOptions[0]?.text ?? "—";
+    const product = this._v2ProductEl?.selectedOptions[0]?.text ?? "—";
     const fmt   = this._v2FormatEl?.selectedOptions[0]?.text ?? "—";
     setKpi("exp-kpi-stage", stage);
+    setKpi("exp-kpi-product", product);
     setKpi("exp-kpi-fmt", fmt);
   }
 
@@ -790,6 +799,8 @@ export class ExportsScreen {
     }
     const selectedIds = this._selectedDocIds(this._v2DocSelEl);
     const hasEmptySelection = Array.isArray(selectedIds) && selectedIds.length === 0;
+    const noDocsInCorpus = this._docs.length === 0;
+
     if (this._v2DocSummaryEl) {
       if (selectedIds === undefined) {
         this._v2DocSummaryEl.textContent = `Portée actuelle: tous les documents (${this._docs.length}).`;
@@ -816,7 +827,7 @@ export class ExportsScreen {
           : `${selectedIds.length} document(s)`;
       summaryHint.textContent = `Sélection courante: ${scopeLabel} · ${stageLabel} → ${productLabel} → ${formatLabel}.`;
     }
-    this._v2RunBtn.disabled = !this._conn || isPending || hasEmptySelection;
+    this._v2RunBtn.disabled = !this._conn || isPending || hasEmptySelection || noDocsInCorpus;
     this._updateKpiStrip();
     this._refreshRuntimeState();
   }
@@ -1381,6 +1392,10 @@ export class ExportsScreen {
     }
     if (this._lastErrorMsg) {
       this._setRuntimeState("error", `Dernière erreur: ${this._lastErrorMsg}`);
+      return;
+    }
+    if (this._docs.length === 0) {
+      this._setRuntimeState("warn", "Aucun document dans le corpus — importez des fichiers avant d\u0027exporter.");
       return;
     }
     const hasReadableSelection = this._v2ProductEl?.value === "readable_text";

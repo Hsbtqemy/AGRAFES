@@ -1,6 +1,6 @@
 # Roadmap — multicorpus_engine
 
-Last updated: 2026-03-06 (Prep UX checklist closure + docs sync)
+Last updated: 2026-04-08 (sync « Next » avec backlog — métadonnées + démo déjà livrés shell/concordancier)
 
 ## Current state (implemented)
 
@@ -94,11 +94,14 @@ Last updated: 2026-03-06 (Prep UX checklist closure + docs sync)
 
 ## Next
 
-- Concordancier V1: corpus metadata panel (title/lang/role/resource_type/unit count side panel).
-- Concordancier V1: demo corpus (bundled small multilingual fixture for first-run onboarding).
-- Sidecar release hardening: macOS notarization, Windows signing with production certs.
+- Prep UX **P2** : page Exporter + intégration Constituer ; libellés curation doc vs diff ; stratégie segmentation explicite (voir `docs/BACKLOG.md` tableau prioritaire + revue consolidée).
+- **P12** : wiring preview traduction + scroll sync (`tauri-prep` Actions).
+- Concordancier : vue alignée (groupement / lisibilité) ; exploration / comparaison de runs d’alignement.
+- Sidecar release hardening : macOS notarization, Windows signing with production certs.
 - Localhost security policy for sidecar HTTP (token rotation/scope/threat model).
-- Performance: FTS benchmarks and documented tuning profile (WAL, batch sizes, vacuum/analyze cadence).
+- Performance : FTS benchmarks and documented tuning profile (WAL, batch sizes, vacuum/analyze cadence).
+
+> **Réalisé (ne pas replanifier ici)** : panneau métadonnées hit/document (`tauri-app` Explorer) ; corpus démo first-run (`tauri-shell` + `agrafes_demo.db`). Détail : `docs/BACKLOG.md` revue 2026-04-08.
 
 ## Later
 

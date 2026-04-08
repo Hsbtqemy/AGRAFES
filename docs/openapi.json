@@ -1,6 +1,23 @@
 {
   "components": {
     "schemas": {
+      "AcknowledgeSourceChangeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "link_ids": {
+            "description": "Explicit list of link_ids to acknowledge.",
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "target_doc_id": {
+            "description": "Acknowledge all pending links for this target document (bulk).",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
       "AlignAuditRequest": {
         "additionalProperties": false,
         "properties": {
@@ -616,6 +633,159 @@
         ],
         "type": "object"
       },
+      "CorpusAuditResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BaseResponse"
+          },
+          {
+            "properties": {
+              "duplicate_filenames": {
+                "items": {
+                  "properties": {
+                    "doc_ids": {
+                      "items": {
+                        "type": "integer"
+                      },
+                      "type": "array"
+                    },
+                    "filename": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "duplicate_hashes": {
+                "items": {
+                  "properties": {
+                    "doc_ids": {
+                      "items": {
+                        "type": "integer"
+                      },
+                      "type": "array"
+                    },
+                    "hash_prefix": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "duplicate_titles": {
+                "items": {
+                  "properties": {
+                    "doc_ids": {
+                      "items": {
+                        "type": "integer"
+                      },
+                      "type": "array"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "empty_documents": {
+                "items": {
+                  "properties": {
+                    "doc_id": {
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "families": {
+                "description": "Family-level audit checks (Sprint 4)",
+                "properties": {
+                  "orphan_docs": {
+                    "description": "Children whose parent doc is absent from the corpus",
+                    "items": {
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "ratio_threshold_pct": {
+                    "type": "integer"
+                  },
+                  "ratio_warnings": {
+                    "description": "Pairs where |child_segs - parent_segs| / parent_segs > threshold",
+                    "items": {
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "total_family_issues": {
+                    "type": "integer"
+                  },
+                  "unaligned_pairs": {
+                    "description": "Segmented pairs with no alignment links",
+                    "items": {
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "unsegmented_children": {
+                    "description": "Children (or their parents) with 0 line units",
+                    "items": {
+                      "type": "object"
+                    },
+                    "type": "array"
+                  }
+                },
+                "type": "object"
+              },
+              "missing_fields": {
+                "items": {
+                  "properties": {
+                    "doc_id": {
+                      "type": "integer"
+                    },
+                    "missing": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "total_docs": {
+                "type": "integer"
+              },
+              "total_issues": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "total_docs",
+              "total_issues",
+              "missing_fields",
+              "empty_documents",
+              "duplicate_hashes",
+              "duplicate_filenames",
+              "duplicate_titles",
+              "families"
+            ],
+            "type": "object"
+          }
+        ]
+      },
       "CorpusInfoPatchRequest": {
         "additionalProperties": false,
         "properties": {
@@ -987,6 +1157,18 @@
       "DocumentRecord": {
         "additionalProperties": false,
         "properties": {
+          "author_firstname": {
+            "nullable": true,
+            "type": "string"
+          },
+          "author_lastname": {
+            "nullable": true,
+            "type": "string"
+          },
+          "doc_date": {
+            "nullable": true,
+            "type": "string"
+          },
           "doc_id": {
             "type": "integer"
           },
@@ -1035,6 +1217,18 @@
       },
       "DocumentUpdateRequest": {
         "properties": {
+          "author_firstname": {
+            "nullable": true,
+            "type": "string"
+          },
+          "author_lastname": {
+            "nullable": true,
+            "type": "string"
+          },
+          "doc_date": {
+            "nullable": true,
+            "type": "string"
+          },
           "doc_id": {
             "type": "integer"
           },
@@ -1155,6 +1349,45 @@
         ],
         "type": "object"
       },
+      "ExportBilingualRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "format": {
+            "default": "html",
+            "enum": [
+              "html",
+              "txt"
+            ],
+            "type": "string"
+          },
+          "out_path": {
+            "description": "Required unless preview_only=true",
+            "type": "string"
+          },
+          "pivot_doc_id": {
+            "type": "integer"
+          },
+          "preview_limit": {
+            "default": 20,
+            "maximum": 200,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "preview_only": {
+            "default": false,
+            "description": "Return pairs as JSON without writing a file",
+            "type": "boolean"
+          },
+          "target_doc_id": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "pivot_doc_id",
+          "target_doc_id"
+        ],
+        "type": "object"
+      },
       "ExportRunReportRequest": {
         "properties": {
           "format": {
@@ -1212,6 +1445,274 @@
         ],
         "type": "object"
       },
+      "ExportTmxRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "family_id": {
+            "description": "Export all parent↔child pairs in one TMX",
+            "nullable": true,
+            "type": "integer"
+          },
+          "out_dir": {
+            "description": "Directory; file named automatically",
+            "type": "string"
+          },
+          "out_path": {
+            "description": "Absolute path for the .tmx file",
+            "type": "string"
+          },
+          "pivot_doc_id": {
+            "description": "Required unless family_id is set",
+            "nullable": true,
+            "type": "integer"
+          },
+          "target_doc_id": {
+            "description": "Required for single-pair export",
+            "nullable": true,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "FamilyAlignPairResult": {
+        "properties": {
+          "deleted_before": {
+            "type": "integer"
+          },
+          "links_created": {
+            "type": "integer"
+          },
+          "pivot_doc_id": {
+            "type": "integer"
+          },
+          "preserved_before": {
+            "type": "integer"
+          },
+          "relation_type": {
+            "type": "string"
+          },
+          "run_id": {
+            "nullable": true,
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "aligned",
+              "skipped",
+              "conflict",
+              "error"
+            ],
+            "type": "string"
+          },
+          "target_doc_id": {
+            "type": "integer"
+          },
+          "target_lang": {
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "pivot_doc_id",
+          "target_doc_id",
+          "status",
+          "links_created",
+          "warnings"
+        ],
+        "type": "object"
+      },
+      "FamilyAlignRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "preserve_accepted": {
+            "default": true,
+            "description": "Keep accepted links when replace_existing=true",
+            "type": "boolean"
+          },
+          "replace_existing": {
+            "default": false,
+            "description": "Delete previous links before aligning",
+            "type": "boolean"
+          },
+          "sim_threshold": {
+            "default": 0.8,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "type": "number"
+          },
+          "skip_unready": {
+            "default": false,
+            "description": "Skip pairs where child is not segmented (vs. error)",
+            "type": "boolean"
+          },
+          "strategy": {
+            "default": "position",
+            "enum": [
+              "external_id",
+              "position",
+              "similarity",
+              "external_id_then_position"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "FamilyCurationStatusResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BaseResponse"
+          },
+          {
+            "properties": {
+              "children": {
+                "items": {
+                  "properties": {
+                    "doc_id": {
+                      "type": "integer"
+                    },
+                    "language": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "pending": {
+                      "items": {
+                        "properties": {
+                          "external_id": {
+                            "type": "integer"
+                          },
+                          "link_id": {
+                            "type": "integer"
+                          },
+                          "pivot_text": {
+                            "type": "string"
+                          },
+                          "pivot_unit_id": {
+                            "type": "integer"
+                          },
+                          "source_changed_at": {
+                            "type": "string"
+                          },
+                          "target_text": {
+                            "type": "string"
+                          },
+                          "target_unit_id": {
+                            "type": "integer"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "pending_count": {
+                      "type": "integer"
+                    },
+                    "title": {
+                      "nullable": true,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "doc_id",
+                    "pending_count",
+                    "pending"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "family_root_id": {
+                "type": "integer"
+              },
+              "total_pending": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "family_root_id",
+              "total_pending",
+              "children"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "FamilySegmentDocResult": {
+        "properties": {
+          "calibrate_ratio_pct": {
+            "nullable": true,
+            "type": "integer"
+          },
+          "doc_id": {
+            "type": "integer"
+          },
+          "segment_pack": {
+            "nullable": true,
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "segmented",
+              "skipped",
+              "error"
+            ],
+            "type": "string"
+          },
+          "units_input": {
+            "type": "integer"
+          },
+          "units_output": {
+            "type": "integer"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "doc_id",
+          "status",
+          "units_input",
+          "units_output",
+          "warnings"
+        ],
+        "type": "object"
+      },
+      "FamilySegmentRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "force": {
+            "default": false,
+            "description": "Re-segment even already-segmented documents",
+            "type": "boolean"
+          },
+          "lang_map": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Per-doc language override {doc_id: lang}",
+            "type": "object"
+          },
+          "pack": {
+            "default": "auto",
+            "enum": [
+              "auto",
+              "default",
+              "fr_strict",
+              "en_strict"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "HealthResponse": {
         "allOf": [
           {
@@ -1252,6 +1753,11 @@
           },
           "doc_role": {
             "type": "string"
+          },
+          "family_root_doc_id": {
+            "description": "If provided, a 'translation_of' relation is created from the newly imported document to this parent document id.",
+            "nullable": true,
+            "type": "integer"
           },
           "language": {
             "type": "string"
@@ -1302,6 +1808,15 @@
               },
               "mode": {
                 "type": "string"
+              },
+              "relation_created": {
+                "description": "True when a translation_of relation was inserted.",
+                "type": "boolean"
+              },
+              "relation_id": {
+                "description": "Id of the doc_relations row (new or pre-existing).",
+                "nullable": true,
+                "type": "integer"
               },
               "run_id": {
                 "type": "string"
@@ -1519,11 +2034,26 @@
             "default": false,
             "type": "boolean"
           },
+          "case_sensitive": {
+            "default": false,
+            "type": "boolean"
+          },
           "doc_id": {
             "type": "integer"
           },
+          "doc_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          },
           "doc_role": {
             "type": "string"
+          },
+          "family_id": {
+            "description": "When set, expands the query to all docs in the family (parent + children) and forces include_aligned=true.",
+            "nullable": true,
+            "type": "integer"
           },
           "include_aligned": {
             "default": false,
@@ -1551,6 +2081,11 @@
             "minimum": 0,
             "type": "integer"
           },
+          "pivot_only": {
+            "default": false,
+            "description": "When family_id is set, restrict the search to the pivot (parent) document only.",
+            "type": "boolean"
+          },
           "q": {
             "type": "string"
           },
@@ -1577,6 +2112,17 @@
               "count": {
                 "type": "integer"
               },
+              "family_doc_ids": {
+                "items": {
+                  "type": "integer"
+                },
+                "nullable": true,
+                "type": "array"
+              },
+              "family_id": {
+                "nullable": true,
+                "type": "integer"
+              },
               "has_more": {
                 "type": "boolean"
               },
@@ -1595,6 +2141,10 @@
               },
               "offset": {
                 "type": "integer"
+              },
+              "pivot_only": {
+                "nullable": true,
+                "type": "boolean"
               },
               "run_id": {
                 "type": "string"
@@ -1672,9 +2222,240 @@
         ],
         "type": "object"
       },
+      "RunRecord": {
+        "properties": {
+          "created_at": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "params": {
+            "nullable": true,
+            "type": "object"
+          },
+          "run_id": {
+            "type": "string"
+          },
+          "stats": {
+            "nullable": true,
+            "type": "object"
+          }
+        },
+        "required": [
+          "run_id",
+          "kind",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "RunsListResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BaseResponse"
+          },
+          {
+            "properties": {
+              "limit": {
+                "type": "integer"
+              },
+              "runs": {
+                "items": {
+                  "$ref": "#/components/schemas/RunRecord"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "runs",
+              "limit"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "SegmentDetectMarkersRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "doc_id": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "doc_id"
+        ],
+        "type": "object"
+      },
+      "SegmentDetectMarkersResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BaseResponse"
+          },
+          {
+            "properties": {
+              "detected": {
+                "type": "boolean"
+              },
+              "doc_id": {
+                "type": "integer"
+              },
+              "first_markers": {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              "marked_units": {
+                "type": "integer"
+              },
+              "marker_ratio": {
+                "type": "number"
+              },
+              "sample": {
+                "items": {
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "total_units": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "doc_id",
+              "detected",
+              "total_units",
+              "marked_units",
+              "marker_ratio"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "SegmentPreviewRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "doc_id": {
+            "type": "integer"
+          },
+          "lang": {
+            "default": "und",
+            "type": "string"
+          },
+          "limit": {
+            "default": 300,
+            "description": "Maximum number of segments returned.",
+            "type": "integer"
+          },
+          "mode": {
+            "default": "sentences",
+            "description": "'sentences' = rule-based split; 'markers' = split on [N] markers",
+            "enum": [
+              "sentences",
+              "markers"
+            ],
+            "type": "string"
+          },
+          "pack": {
+            "default": "auto",
+            "enum": [
+              "auto",
+              "default",
+              "fr_strict",
+              "en_strict"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "doc_id"
+        ],
+        "type": "object"
+      },
+      "SegmentPreviewResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BaseResponse"
+          },
+          {
+            "properties": {
+              "doc_id": {
+                "type": "integer"
+              },
+              "mode": {
+                "enum": [
+                  "sentences",
+                  "markers"
+                ],
+                "type": "string"
+              },
+              "segment_pack": {
+                "type": "string"
+              },
+              "segments": {
+                "items": {
+                  "$ref": "#/components/schemas/SegmentPreviewSegment"
+                },
+                "type": "array"
+              },
+              "units_input": {
+                "type": "integer"
+              },
+              "units_output": {
+                "type": "integer"
+              },
+              "warnings": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "doc_id",
+              "mode",
+              "units_input",
+              "units_output",
+              "segment_pack",
+              "segments"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "SegmentPreviewSegment": {
+        "properties": {
+          "external_id": {
+            "description": "Marker number if mode=markers",
+            "nullable": true,
+            "type": "integer"
+          },
+          "n": {
+            "type": "integer"
+          },
+          "source_unit_n": {
+            "description": "n of the original unit this segment was produced from",
+            "type": "integer"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "n",
+          "text",
+          "source_unit_n"
+        ],
+        "type": "object"
+      },
       "SegmentRequest": {
         "additionalProperties": false,
         "properties": {
+          "calibrate_to": {
+            "description": "doc_id of reference document; adds a ratio warning if segment counts differ by > 15 %",
+            "nullable": true,
+            "type": "integer"
+          },
           "doc_id": {
             "type": "integer"
           },
@@ -1765,6 +2546,118 @@
           }
         ]
       },
+      "UnitsMergeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "doc_id": {
+            "type": "integer"
+          },
+          "n1": {
+            "description": "n of the first (kept) unit",
+            "type": "integer"
+          },
+          "n2": {
+            "description": "n of the second (deleted) unit; must be n1+1",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "doc_id",
+          "n1",
+          "n2"
+        ],
+        "type": "object"
+      },
+      "UnitsMergeResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BaseResponse"
+          },
+          {
+            "properties": {
+              "deleted_n": {
+                "type": "integer"
+              },
+              "doc_id": {
+                "type": "integer"
+              },
+              "merged_n": {
+                "type": "integer"
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "doc_id",
+              "merged_n",
+              "deleted_n",
+              "text"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "UnitsSplitRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "doc_id": {
+            "type": "integer"
+          },
+          "text_a": {
+            "description": "Text for the first (existing) unit",
+            "type": "string"
+          },
+          "text_b": {
+            "description": "Text for the new unit inserted at unit_n+1",
+            "type": "string"
+          },
+          "unit_n": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "doc_id",
+          "unit_n",
+          "text_a",
+          "text_b"
+        ],
+        "type": "object"
+      },
+      "UnitsSplitResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BaseResponse"
+          },
+          {
+            "properties": {
+              "doc_id": {
+                "type": "integer"
+              },
+              "new_unit_n": {
+                "type": "integer"
+              },
+              "text_a": {
+                "type": "string"
+              },
+              "text_b": {
+                "type": "string"
+              },
+              "unit_n": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "doc_id",
+              "unit_n",
+              "new_unit_n",
+              "text_a",
+              "text_b"
+            ],
+            "type": "object"
+          }
+        ]
+      },
       "ValidateMetaRequest": {
         "additionalProperties": false,
         "properties": {
@@ -1804,8 +2697,8 @@
   "info": {
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
-    "version": "1.4.8",
-    "x-contract-version": "1.4.8"
+    "version": "1.6.10",
+    "x-contract-version": "1.6.10"
   },
   "openapi": "3.0.3",
   "paths": {
@@ -1955,6 +2848,37 @@
           }
         ],
         "summary": "Batch-resolve collision links (keep/delete/reject/unreviewed) — token required"
+      }
+    },
+    "/align/link/acknowledge_source_change": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcknowledgeSourceChangeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Number of links acknowledged"
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "summary": "Clear source_changed_at flag on alignment links (mark as reviewed)"
       }
     },
     "/align/link/delete": {
@@ -2158,6 +3082,23 @@
           }
         },
         "summary": "Suggest candidate target units for retargeting an alignment link"
+      }
+    },
+    "/corpus/audit": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorpusAuditResponse"
+                }
+              }
+            },
+            "description": "Audit result"
+          }
+        },
+        "summary": "Corpus health audit: missing fields, empty documents, duplicates (hash/filename/title)"
       }
     },
     "/corpus/info": {
@@ -2369,6 +3310,16 @@
           }
         },
         "summary": "List doc_relations for a document"
+      }
+    },
+    "/doc_relations/all": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "All relations"
+          }
+        },
+        "summary": "All doc_relations in the corpus (for hierarchy view)"
       }
     },
     "/doc_relations/delete": {
@@ -2698,6 +3649,29 @@
         "summary": "Export alignment links as CSV/TSV"
       }
     },
+    "/export/bilingual": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportBilingualRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "File path + pair_count, or preview payload"
+          },
+          "400": {
+            "description": "Bad request"
+          }
+        },
+        "summary": "Export interleaved bilingual text (HTML or TXT) or return inline preview"
+      }
+    },
     "/export/run_report": {
       "post": {
         "requestBody": {
@@ -2758,6 +3732,134 @@
           }
         ],
         "summary": "Export documents as TEI XML"
+      }
+    },
+    "/export/tmx": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportTmxRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "TMX file path and TU count"
+          },
+          "400": {
+            "description": "Bad request"
+          }
+        },
+        "summary": "Export aligned pairs to TMX 1.4 format (single pair or whole family)"
+      }
+    },
+    "/families": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Families with stats"
+          }
+        },
+        "summary": "List document families (parent + children + completion stats)"
+      }
+    },
+    "/families/{family_root_id}/align": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "family_root_id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FamilyAlignRequest"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "description": "Per-pair alignment results"
+          },
+          "400": {
+            "description": "Bad request (unready children, bad strategy…)"
+          },
+          "404": {
+            "description": "Family root not found"
+          }
+        },
+        "summary": "Align all parent↔child pairs in a family"
+      }
+    },
+    "/families/{family_root_id}/curation_status": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "family_root_id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Per-child list of pending curation reviews"
+          },
+          "404": {
+            "description": "Family root not found"
+          }
+        },
+        "summary": "List alignment links with source_changed_at set for a family"
+      }
+    },
+    "/families/{family_root_id}/segment": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "family_root_id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FamilySegmentRequest"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "description": "Per-doc segmentation results"
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "404": {
+            "description": "Family root not found"
+          }
+        },
+        "summary": "Segment all documents in a family (parent first, then children)"
       }
     },
     "/health": {
@@ -3128,6 +4230,46 @@
         "summary": "Run query"
       }
     },
+    "/runs": {
+      "get": {
+        "parameters": [
+          {
+            "description": "Filter by run kind (e.g. align, import)",
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Maximum rows, newest first",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunsListResponse"
+                }
+              }
+            },
+            "description": "Run history"
+          }
+        },
+        "summary": "List persisted runs (SQLite runs: import, align, index, …)"
+      }
+    },
     "/segment": {
       "post": {
         "requestBody": {
@@ -3175,6 +4317,100 @@
         "summary": "Resegment document"
       }
     },
+    "/segment/detect_markers": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SegmentDetectMarkersRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SegmentDetectMarkersResponse"
+                }
+              }
+            },
+            "description": "Marker detection report"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Document not found"
+          }
+        },
+        "summary": "Detect [N] markers in existing units (read-only)"
+      }
+    },
+    "/segment/preview": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SegmentPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SegmentPreviewResponse"
+                }
+              }
+            },
+            "description": "Preview result with segments list"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Document not found"
+          }
+        },
+        "summary": "Preview segmentation in-memory (no DB writes)"
+      }
+    },
     "/shutdown": {
       "post": {
         "responses": {
@@ -3210,6 +4446,100 @@
           }
         },
         "summary": "Gracefully stop sidecar process"
+      }
+    },
+    "/units/merge": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnitsMergeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnitsMergeResponse"
+                }
+              }
+            },
+            "description": "Merged unit info"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unit not found"
+          }
+        },
+        "summary": "Merge two adjacent units into one"
+      }
+    },
+    "/units/split": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnitsSplitRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnitsSplitResponse"
+                }
+              }
+            },
+            "description": "Split result"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unit not found"
+          }
+        },
+        "summary": "Split one unit into two"
       }
     },
     "/validate-meta": {

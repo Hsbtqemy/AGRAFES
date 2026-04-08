@@ -67,6 +67,68 @@ function makeCopyBtn(text: string): HTMLButtonElement {
   return btn;
 }
 
+/** Stable group id for aligned units (JSON: safe if title contains `|`). */
+function alignedGroupKey(item: AlignedUnit): string {
+  const docId = typeof item.doc_id === "number" && Number.isFinite(item.doc_id) ? item.doc_id : Number(item.doc_id) || 0;
+  return JSON.stringify([item.language ?? "und", docId, item.title ?? ""]);
+}
+
+export function parseAlignedGroupKey(key: string): { language: string; doc_id: number; title: string } {
+  try {
+    const [language, doc_id, title] = JSON.parse(key) as [string, number, string];
+    return { language, doc_id, title };
+  } catch {
+    return { language: "und", doc_id: 0, title: "" };
+  }
+}
+
+function compareAlignedGroupKeys(a: string, b: string): number {
+  const pa = parseAlignedGroupKey(a);
+  const pb = parseAlignedGroupKey(b);
+  if (pa.language !== pb.language) return pa.language.localeCompare(pb.language);
+  if (pa.doc_id !== pb.doc_id) return pa.doc_id - pb.doc_id;
+  return pa.title.localeCompare(pb.title);
+}
+
+/** Ordre de lecture : § puis unit_id (aligné avec l’affichage concordance). */
+function sortAlignedUnitsInGroup(items: AlignedUnit[]): AlignedUnit[] {
+  return [...items].sort((a, b) => {
+    const ea = a.external_id;
+    const eb = b.external_id;
+    if (ea != null && eb != null && ea !== eb) return ea - eb;
+    if (ea != null && eb == null) return -1;
+    if (ea == null && eb != null) return 1;
+    return a.unit_id - b.unit_id;
+  });
+}
+
+export function groupAlignedUnits(aligned: AlignedUnit[]): Map<string, AlignedUnit[]> {
+  const groups = new Map<string, AlignedUnit[]>();
+  for (const item of aligned) {
+    const key = alignedGroupKey(item);
+    const cur = groups.get(key);
+    if (cur) cur.push(item);
+    else groups.set(key, [item]);
+  }
+  return groups;
+}
+
+export function sortedAlignedGroupEntries(groups: Map<string, AlignedUnit[]>): Array<[string, AlignedUnit[]]> {
+  return [...groups.entries()]
+    .sort(([ka], [kb]) => compareAlignedGroupKeys(ka, kb))
+    .map(([k, items]) => [k, sortAlignedUnitsInGroup(items)]);
+}
+
+export function appendSourceChangedBadge(row: HTMLElement, item: AlignedUnit): void {
+  const at = (item as AlignedUnit & { source_changed_at?: string | null }).source_changed_at;
+  if (!at) return;
+  const badge = elt("span", {
+    class: "aligned-source-changed-badge",
+    title: `Source modifiée le ${at.slice(0, 10)} — la traduction est peut-être dépassée`,
+  }, "⚠ source modifiée");
+  row.appendChild(badge);
+}
+
 /** Small inline copy icon for aligned group headers. */
 function makeGroupCopyBtn(text: string, lang: string): HTMLButtonElement {
   const btn = elt("button", {
@@ -93,16 +155,10 @@ function buildCitationText(hit: QueryHit): string {
     `[${pivotLang}] ${hit.title || "—"}${pivotRef}`,
     `«${pivotText}»`,
   ];
-  const groups = new Map<string, AlignedUnit[]>();
-  for (const item of hit.aligned ?? []) {
-    const key = `${item.language ?? "und"}|${item.doc_id}|${item.title ?? ""}`;
-    const cur = groups.get(key);
-    if (cur) cur.push(item); else groups.set(key, [item]);
-  }
-  for (const [key, items] of groups.entries()) {
-    const parts = key.split("|");
-    const lang = (parts[0] ?? "?").toUpperCase();
-    const title = parts.slice(2).join("|");
+  const groups = groupAlignedUnits(hit.aligned ?? []);
+  for (const [key, items] of sortedAlignedGroupEntries(groups)) {
+    const { language, title } = parseAlignedGroupKey(key);
+    const lang = language.toUpperCase();
     const firstRef = items[0]?.external_id != null ? ` §${items[0].external_id}` : "";
     const text = items.map(i => (i.text ?? i.text_norm ?? "").trim()).filter(Boolean).join(" / ");
     lines.push("", `[${lang}] ${title || "—"}${firstRef}`, `«${text}»`);
@@ -149,46 +205,26 @@ export function renderAlignedBlock(hit: QueryHit): HTMLElement {
     return block;
   }
 
-  const groups = new Map<string, typeof aligned>();
-  for (const item of aligned) {
-    const key = `${item.doc_id}|${item.language}|${item.title}`;
-    const current = groups.get(key);
-    if (current) {
-      current.push(item);
-    } else {
-      groups.set(key, [item]);
-    }
-  }
-
-  for (const [key, items] of groups.entries()) {
-    const [docId, language, title] = key.split("|");
-    const card = elt("div", { class: "aligned-group" });
-    card.appendChild(
-      elt(
-        "div",
-        { class: "aligned-group-header" },
-        `${language || "und"} · ${title || "(sans titre)"} · doc ${docId}`
-      )
+  const groups = groupAlignedUnits(aligned);
+  for (const [key, items] of sortedAlignedGroupEntries(groups)) {
+    const { language, doc_id: docId, title } = parseAlignedGroupKey(key);
+    const details = elt("details", { class: "aligned-group aligned-group--collapsible", open: "" });
+    const summary = elt("summary", { class: "aligned-group-summary" });
+    summary.appendChild(
+      document.createTextNode(`${language} · ${title || "(sans titre)"} · doc ${docId}`)
     );
+    details.appendChild(summary);
     for (const item of items) {
       const row = elt("div", { class: "aligned-line" });
       if (item.external_id != null) {
         row.appendChild(elt("span", { class: "aligned-ref" }, `[${item.external_id}]`));
       }
-      // Badge "source modifiée" — shown when curation changed the pivot after alignment
-      if ((item as AlignedUnit & { source_changed_at?: string | null }).source_changed_at) {
-        const changedAt = (item as AlignedUnit & { source_changed_at?: string | null }).source_changed_at ?? "";
-        const badge = elt("span", {
-          class: "aligned-source-changed-badge",
-          title: `Source modifiée le ${changedAt.slice(0, 10)} — la traduction est peut-être dépassée`,
-        }, "⚠ source modifiée");
-        row.appendChild(badge);
-      }
+      appendSourceChangedBadge(row, item);
       const text = item.text ?? item.text_norm ?? "";
       row.appendChild(elt("span", {}, text));
-      card.appendChild(row);
+      details.appendChild(row);
     }
-    block.appendChild(card);
+    block.appendChild(details);
   }
   return block;
 }
@@ -253,18 +289,11 @@ export function renderParallelHit(hit: QueryHit, mode: "segment" | "kwic"): HTML
     alignedCol.appendChild(elt("div", { class: "parallel-empty" }, "Aucun alignement"));
   } else {
     alignedCol.appendChild(elt("div", { class: "parallel-aligned-header" }, "Traductions alignées"));
-    const groups = new Map<string, typeof aligned>();
-    for (const item of aligned) {
-      const key = `${item.language ?? "und"}|${item.doc_id}|${item.title ?? ""}`;
-      const cur = groups.get(key);
-      if (cur) cur.push(item); else groups.set(key, [item]);
-    }
-    for (const [key, items] of groups.entries()) {
-      const parts = key.split("|");
-      const lang = parts[0];
-      const title = parts.slice(2).join("|");
-      const grp = elt("div", { class: "parallel-aligned-group" });
-      const hdr = elt("div", { class: "parallel-lang-header" });
+    const groups = groupAlignedUnits(aligned);
+    for (const [key, items] of sortedAlignedGroupEntries(groups)) {
+      const { language: lang, title } = parseAlignedGroupKey(key);
+      const grp = elt("details", { class: "parallel-aligned-group parallel-aligned-group--collapsible", open: "" });
+      const hdr = elt("summary", { class: "parallel-lang-header parallel-lang-summary" });
       const badge = elt("span", { class: "parallel-lang-badge" }, (lang ?? "?").toUpperCase());
       hdr.appendChild(badge);
       hdr.appendChild(document.createTextNode(` ${title || "(sans titre)"}`));
@@ -276,16 +305,19 @@ export function renderParallelHit(hit: QueryHit, mode: "segment" | "kwic"): HTML
       for (const item of visible) {
         const row = elt("div", { class: "parallel-line" });
         if (item.external_id != null) row.appendChild(elt("span", { class: "parallel-ref" }, `[${item.external_id}]`));
+        appendSourceChangedBadge(row, item);
         row.appendChild(document.createTextNode(" " + (item.text ?? item.text_norm ?? "")));
         grp.appendChild(row);
       }
       if (hidden.length > 0) {
         const moreWrap = elt("div", {});
         const moreBtn = elt("button", { class: "parallel-more-btn" }, `Voir ${hidden.length} de plus…`) as HTMLButtonElement;
-        moreBtn.addEventListener("click", () => {
+        moreBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
           for (const item of hidden) {
             const row = elt("div", { class: "parallel-line" });
             if (item.external_id != null) row.appendChild(elt("span", { class: "parallel-ref" }, `[${item.external_id}]`));
+            appendSourceChangedBadge(row, item);
             row.appendChild(document.createTextNode(" " + (item.text ?? item.text_norm ?? "")));
             grp.insertBefore(row, moreWrap);
           }
@@ -377,5 +409,3 @@ export function setRerenderCallback(fn: () => void): void {
   _rerenderFn = fn;
 }
 
-// Silence unused-import warning for AlignedUnit (used via type alias in csv export)
-void (undefined as unknown as AlignedUnit);

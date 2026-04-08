@@ -16,6 +16,7 @@ import type {
   RetargetCandidate,
   CollisionGroup,
   ExportRunReportOptions,
+  RunRecord,
 } from "../lib/sidecarClient.ts";
 import {
   listDocuments,
@@ -54,6 +55,7 @@ import {
   recordApplyHistory,
   listApplyHistory,
   exportApplyHistory,
+  listRuns,
   type ExportApplyHistoryOptions,
 } from "../lib/sidecarClient.ts";
 import { save as dialogSave } from "@tauri-apps/plugin-dialog";
@@ -286,6 +288,8 @@ export class ActionsScreen {
   private _auditSelectedLinkId: number | null = null;
   private _alignExplainability: AlignExplainabilityEntry[] = [];
   private _alignRunId: string | null = null;
+  /** Runs d’alignement pour le comparateur (GET /runs?kind=align) */
+  private _alignRunsCompareCache: RunRecord[] = [];
 
   // AlignPanel (new refactored alignment UI)
   private _alignPanel: AlignPanel | null = null;
@@ -351,6 +355,10 @@ export class ActionsScreen {
   private _ltSyncLock = false;
   private _onLtRawScroll: EventListener | null = null;
   private _onLtSegScroll: EventListener | null = null;
+  /** Split segmentation panel: sync scroll between raw / segmented preview columns */
+  private _segPrevSyncLock = false;
+  private _onSegPrevRawScroll: EventListener | null = null;
+  private _onSegPrevSegScroll: EventListener | null = null;
   private _ltSearchOpen = false;
   /** Cleanup fns for minimap viewport-zone scroll listeners (P19 Inc 3) */
   private _mmScrollCleanups: Array<() => void> = [];
@@ -371,6 +379,10 @@ export class ActionsScreen {
   private _previewMode: "sidebyside" | "rawonly" | "diffonly" = "diffonly";
   /** Whether raw pane and diff pane scroll in sync. */
   private _previewSyncScroll = true;
+  /** Lock pour éviter la boucle brute ↔ diff lors du scroll synchronisé curation. */
+  private _curateSyncLock = false;
+  private _onCurateRawScroll: EventListener | null = null;
+  private _onCurateDiffScroll: EventListener | null = null;
   /**
    * Maps rule index (position in the rules array sent to the server) → human label.
    * Built by _buildRuleLabels() before each preview call.
@@ -513,6 +525,8 @@ export class ActionsScreen {
     this._refreshSegmentationStatusUI();
     this._refreshRuntimeState();
     this._setSubViewClass(root, this._activeSubView);
+
+    this._bindCurateScrollSync();
 
     return root;
   }
@@ -800,9 +814,13 @@ export class ActionsScreen {
                 <div id="act-curate-queue" class="curate-queue">
                   <p class="empty-hint">Aucune action en attente.</p>
                 </div>
-                <div class="btns curate-nav-actions">
-                  <button id="act-curate-prev-btn" class="btn btn-secondary btn-sm" disabled>&#8592; Pr&#233;c&#233;dent</button>
-                  <button id="act-curate-next-btn" class="btn btn-secondary btn-sm" disabled>Suivant &#8594;</button>
+                <div class="btns curate-nav-actions" role="group" aria-label="Navigation entre documents">
+                  <button id="act-curate-prev-btn" type="button" class="btn btn-secondary btn-sm" disabled
+                    title="Document pr&#233;c&#233;dent dans la liste"
+                    aria-label="Document pr&#233;c&#233;dent dans la liste">&#8592; Doc pr&#233;c&#233;d.</button>
+                  <button id="act-curate-next-btn" type="button" class="btn btn-secondary btn-sm" disabled
+                    title="Document suivant dans la liste"
+                    aria-label="Document suivant dans la liste">Doc suiv. &#8594;</button>
                 </div>
               </div>
             </article>
@@ -822,10 +840,14 @@ export class ActionsScreen {
                     <input id="act-sync-scroll" type="checkbox" checked />&#160;Sync scroll
                   </label>
                 </div>
-                <div class="preview-nav-row">
-                  <button id="act-diff-prev" class="btn btn-sm btn-secondary" disabled>&#8592; Pr&#233;c.</button>
+                <div class="preview-nav-row" role="toolbar" aria-label="Navigation entre occurrences de modification">
+                  <button id="act-diff-prev" type="button" class="btn btn-sm btn-secondary" disabled
+                    title="Occurrence de modification pr&#233;c&#233;dente"
+                    aria-label="Occurrence de modification pr&#233;c&#233;dente">&#8592; Modif pr&#233;c&#233;d.</button>
                   <span id="act-diff-position" class="preview-nav-pos">&#8212;</span>
-                  <button id="act-diff-next" class="btn btn-sm btn-secondary" disabled>Suiv. &#8594;</button>
+                  <button id="act-diff-next" type="button" class="btn btn-sm btn-secondary" disabled
+                    title="Occurrence de modification suivante"
+                    aria-label="Occurrence de modification suivante">Modif suiv. &#8594;</button>
                 </div>
                 <div id="act-curate-filter-badge" class="preview-filter-badge" style="display:none">
                   Filtre&#160;: <strong id="act-curate-filter-label"></strong><span class="filter-scope-note">&#160;&#8212;&#160;dans l&#8217;&#233;chantillon courant</span>
@@ -1434,6 +1456,8 @@ export class ActionsScreen {
 
     const savedAlready = (doc.unit_count ?? 0) > 0 && doc.workflow_status !== "draft";
 
+    this._unbindSegPreviewScrollSync();
+
     rightEl.innerHTML = `
       <div class="seg-right-root" id="act-seg-right-root">
         <div class="seg-right-header">
@@ -1443,19 +1467,44 @@ export class ActionsScreen {
           </div>
           <div class="seg-right-header-meta">#${doc.doc_id} &middot; ${_escHtml(doc.language)} &middot; ${doc.unit_count} unit&#233;s</div>
         </div>
+        <div class="seg-strategy-bar" role="region" aria-label="Strat&#233;gie de segmentation">
+          <fieldset class="seg-strategy-fieldset">
+            <legend class="seg-strategy-legend">Strat&#233;gie</legend>
+            <div class="seg-strategy-options">
+              <label class="seg-strategy-opt">
+                <span class="seg-strategy-opt-row">
+                  <input type="radio" name="act-seg-strategy" id="act-seg-strategy-sentences" value="sentences" checked />
+                  <span class="seg-strategy-opt-title">Phrases</span>
+                </span>
+                <span class="seg-strategy-opt-desc">D&#233;coupe automatique (ponctuation + pack)</span>
+              </label>
+              <label class="seg-strategy-opt">
+                <span class="seg-strategy-opt-row">
+                  <input type="radio" name="act-seg-strategy" id="act-seg-strategy-markers" value="markers" />
+                  <span class="seg-strategy-opt-title">Balises <code>[N]</code></span>
+                </span>
+                <span class="seg-strategy-opt-desc">D&#233;coupe sur les num&#233;ros entre crochets</span>
+              </label>
+            </div>
+          </fieldset>
+          <p id="act-seg-strategy-summary" class="seg-strategy-summary" aria-live="polite"></p>
+        </div>
         <div id="act-seg-marker-banner" class="seg-marker-banner" style="display:none" aria-live="polite"></div>
         <div class="seg-params-bar" id="act-seg-params">
           <label class="seg-param-field">Langue
             <input id="act-seg-lang" type="text" value="${_escHtml(lang)}" maxlength="10"
               class="seg-param-input" placeholder="fr, en&#8230;" autocomplete="off" spellcheck="false" />
           </label>
-          <label class="seg-param-field">Pack d'abr&#233;viations
-            <select id="act-seg-pack" class="seg-param-select">
-              <option value="auto"${pack==="auto"?" selected":""}>Auto (selon langue)</option>
-              <option value="fr_strict"${pack==="fr_strict"?" selected":""}>Fran&#231;ais strict</option>
-              <option value="en_strict"${pack==="en_strict"?" selected":""}>Anglais strict</option>
-              <option value="default"${pack==="default"?" selected":""}>Standard</option>
+          <label class="seg-param-field"
+            title="Mode &#171; phrases &#187; uniquement : &#233;vite de couper apr&#232;s un point qui suit une abr&#233;viation (M., Dr., ann., chap., etc.). Sans effet en mode balises [N].">
+            <span class="seg-param-label-text">O&#249; couper les phrases</span>
+            <select id="act-seg-pack" class="seg-param-select" aria-describedby="act-seg-pack-hint">
+              <option value="auto"${pack==="auto"?" selected":""}>Auto (selon la langue)</option>
+              <option value="fr_strict"${pack==="fr_strict"?" selected":""}>Fran&#231;ais — liste longue d&#8217;abr&#233;viations</option>
+              <option value="en_strict"${pack==="en_strict"?" selected":""}>Anglais — liste longue d&#8217;abr&#233;viations</option>
+              <option value="default"${pack==="default"?" selected":""}>Liste courte (moins de protections)</option>
             </select>
+            <span id="act-seg-pack-hint" class="seg-param-hint">&#201;vite les fausses coupes apr&#232;s M., Dr., ann., chap.&#8230;</span>
           </label>
           <label class="seg-param-field">Calibrer sur
             <select id="act-seg-calibrate" class="seg-param-select">
@@ -1474,7 +1523,7 @@ export class ActionsScreen {
             <p>Le moteur coupe sur <code>.&nbsp;!&nbsp;?</code> suivi d&#8217;un espace puis d&#8217;une <strong>lettre majuscule</strong> (ou guillemet ouvrant).</p>
             <p>&#8594; Si vos phrases d&#233;butent par une minuscule, le moteur ne les d&#233;tectera pas comme d&#233;but de phrase.</p>
             <p>&#8594; Si chaque paragraphe du document est d&#233;j&#224; une phrase, la segmentation retourne le m&#234;me nombre d&#8217;unit&#233;s.</p>
-            <p><strong>Packs :</strong> les packs <em>fr_strict</em> et <em>en_strict</em> ajoutent des abr&#233;viations prot&#233;g&#233;es (ann., chap., etc.) pour &#233;viter les faux d&#233;coupages.</p>
+            <p><strong>O&#249; couper les phrases :</strong> les options <em>Fran&#231;ais / Anglais — liste longue</em> ajoutent des abr&#233;viations prot&#233;g&#233;es (ann., chap., etc.) pour &#233;viter les faux d&#233;coupages apr&#232;s un point.</p>
             <p><strong>Mode balises :</strong> si vos textes contiennent des num&#233;ros entre crochets <code>[1]</code>&nbsp;<code>[2]</code>&#8230; en d&#233;but de segment, utilisez le bouton <em>D&#233;tecter balises</em>. Ce mode r&#233;cup&#232;re l&#8217;ID de chaque balise comme identifiant externe, ce qui permet un alignement automatique par num&#233;ro apr&#232;s segmentation.</p>
           </div>
         </details>
@@ -1541,6 +1590,14 @@ export class ActionsScreen {
     rightEl.querySelector("#act-seg-calibrate")?.addEventListener("change", () => this._scheduleSegPreview(docId));
     rightEl.querySelector("#act-seg-prev-refresh")?.addEventListener("click", () => void this._runSegPreview(docId));
 
+    rightEl.querySelectorAll<HTMLInputElement>('input[name="act-seg-strategy"]').forEach(r => {
+      r.addEventListener("change", () => {
+        if (r.value === "markers") this._activateMarkersMode(docId);
+        else this._deactivateMarkersMode(docId);
+      });
+    });
+    this._syncSegStrategyRadios();
+
     // Wire detect-markers button
     rightEl.querySelector("#act-seg-detect-btn")?.addEventListener("click", () => void this._runDetectMarkers(docId));
 
@@ -1555,6 +1612,8 @@ export class ActionsScreen {
 
     // Auto-detect markers silently (no loading indicator needed — fast endpoint)
     void this._runDetectMarkers(docId, /* silent */ true);
+
+    this._bindSegPreviewScrollSync();
 
     // Load saved segments if doc already has units
     if (savedAlready) {
@@ -1638,6 +1697,7 @@ export class ActionsScreen {
             this._activateMarkersMode(docId);
           }
         });
+        this._syncSegStrategyRadios();
       } else if (!silent) {
         bannerEl.style.display = "";
         bannerEl.innerHTML = `
@@ -1669,6 +1729,8 @@ export class ActionsScreen {
     // Disable sentence-specific params
     const packField = document.querySelector<HTMLElement>(".seg-param-field:nth-child(2)");
     if (packField) packField.style.opacity = "0.4";
+    this._setSegPackSelectDisabled(true);
+    this._syncSegStrategyRadios();
     // Trigger preview in markers mode
     void this._runSegPreview(docId);
   }
@@ -1680,6 +1742,8 @@ export class ActionsScreen {
     void this._runDetectMarkers(docId, /* silent */ true);
     const packField = document.querySelector<HTMLElement>(".seg-param-field:nth-child(2)");
     if (packField) packField.style.opacity = "";
+    this._setSegPackSelectDisabled(false);
+    this._syncSegStrategyRadios();
     void this._runSegPreview(docId);
   }
 
@@ -1712,7 +1776,7 @@ export class ActionsScreen {
       if (statsEl) {
         statsEl.textContent = mode === "markers"
           ? `${res.units_input} u. → ${res.units_output} segments par balise`
-          : `${res.units_input} u. → ${res.units_output} phrases · pack ${res.segment_pack}`;
+          : `${res.units_input} u. → ${res.units_output} phrases · r&#233;glage ${res.segment_pack}`;
       }
       if (segColTitle) {
         segColTitle.innerHTML = mode === "markers"
@@ -1741,8 +1805,10 @@ export class ActionsScreen {
           warnsEl.style.display = "none";
         }
       }
+      this._updateSegStrategySummary();
     } catch (err) {
       segEl.innerHTML = `<p class="empty-hint" style="color:var(--color-danger)">Erreur preview: ${_escHtml(err instanceof Error ? err.message : String(err))}</p>`;
+      this._updateSegStrategySummary();
     }
   }
 
@@ -2567,6 +2633,25 @@ export class ActionsScreen {
         </div>
         <div id="act-quality-result" style="display:none;margin-top:0.75rem"></div>
       </section>
+      <section class="card" id="act-run-compare-card" data-collapsible="true" data-collapsed-default="true">
+        <h3>Comparer deux runs <span class="badge-preview">align</span></h3>
+        <p class="hint">Historique des runs d&#8217;alignement en base ; comparez strat&#233;gie et indicateurs.</p>
+        <div class="form-row" style="flex-wrap:wrap;gap:0.5rem;align-items:flex-end">
+          <button id="act-run-compare-refresh" type="button" class="btn btn-secondary btn-sm">Charger l&#8217;historique</button>
+          <label>Run A
+            <select id="act-run-compare-a" class="act-run-compare-sel" aria-label="Premier run">
+              <option value="">&#8212;</option>
+            </select>
+          </label>
+          <label>Run B
+            <select id="act-run-compare-b" class="act-run-compare-sel" aria-label="Second run">
+              <option value="">&#8212;</option>
+            </select>
+          </label>
+        </div>
+        <p id="act-run-compare-hint" class="hint" style="margin-top:0.5rem">Chargez l&#8217;historique, puis choisissez deux runs.</p>
+        <div id="act-run-compare-result" style="display:none;margin-top:0.75rem"></div>
+      </section>
       <section class="card" id="act-collision-card" data-collapsible="true" data-collapsed-default="true">
         <h3>Collisions d&#8217;alignement <span class="badge-preview">r&#233;solution</span></h3>
         <p class="hint">Un pivot ayant plusieurs liens vers le m&#234;me document cible est une collision.</p>
@@ -2615,6 +2700,15 @@ export class ActionsScreen {
     });
     legacyContainer.querySelector("#act-coll-more-btn")!.addEventListener("click", () => this._loadCollisionsPage(root, true));
     legacyContainer.querySelector("#act-report-btn")!.addEventListener("click", () => void this._runExportReport());
+    legacyContainer.querySelector("#act-run-compare-refresh")!.addEventListener("click", () => {
+      void this._refreshAlignRunsCompare(legacyContainer);
+    });
+    legacyContainer.querySelector("#act-run-compare-a")!.addEventListener("change", () => {
+      this._updateAlignRunCompareDiff(legacyContainer);
+    });
+    legacyContainer.querySelector("#act-run-compare-b")!.addEventListener("change", () => {
+      this._updateAlignRunCompareDiff(legacyContainer);
+    });
 
     initCardAccordions(legacyContainer);
     this._loadAlignDocsIntoSelects();
@@ -3053,6 +3147,138 @@ export class ActionsScreen {
     if (reportBtn) reportBtn.disabled = docs.length === 0;
   }
 
+  private async _refreshAlignRunsCompare(root: HTMLElement): Promise<void> {
+    const conn = this._conn;
+    const hintEl = root.querySelector<HTMLElement>("#act-run-compare-hint");
+    const btn = root.querySelector<HTMLButtonElement>("#act-run-compare-refresh");
+    if (!conn) {
+      if (hintEl) hintEl.textContent = "Aucune connexion sidecar.";
+      return;
+    }
+    if (btn) btn.disabled = true;
+    if (hintEl) hintEl.textContent = "Chargement…";
+    try {
+      const res = await listRuns(conn, { kind: "align", limit: 80 });
+      this._alignRunsCompareCache = res.runs ?? [];
+      const selA = root.querySelector<HTMLSelectElement>("#act-run-compare-a");
+      const selB = root.querySelector<HTMLSelectElement>("#act-run-compare-b");
+      const fill = (sel: HTMLSelectElement | null) => {
+        if (!sel) return;
+        const prev = sel.value;
+        sel.innerHTML = `<option value="">&#8212;</option>`;
+        for (const r of this._alignRunsCompareCache) {
+          const opt = document.createElement("option");
+          opt.value = r.run_id;
+          opt.textContent = this._alignRunSelectLabel(r);
+          sel.appendChild(opt);
+        }
+        if (prev && this._alignRunsCompareCache.some(x => x.run_id === prev)) sel.value = prev;
+      };
+      fill(selA);
+      fill(selB);
+      const n = this._alignRunsCompareCache.length;
+      if (hintEl) {
+        hintEl.textContent = n === 0
+          ? "Aucun run d’alignement en base. Lancez un alignement (job) puis rechargez."
+          : `${n} run(s) — choisissez deux entrées pour comparer.`;
+      }
+      this._updateAlignRunCompareDiff(root);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (hintEl) hintEl.textContent = `Erreur : ${msg}`;
+      this._log(`Runs /runs : ${msg}`, true);
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  private _alignRunSelectLabel(r: RunRecord): string {
+    const p = r.params && typeof r.params === "object" ? r.params as Record<string, unknown> : {};
+    const s = r.stats && typeof r.stats === "object" ? r.stats as Record<string, unknown> : {};
+    const strat = String(p.strategy ?? s.strategy ?? "?");
+    const piv = p.pivot_doc_id ?? s.pivot_doc_id;
+    const date = (r.created_at || "").slice(0, 10);
+    const shortId = r.run_id.length > 12 ? `${r.run_id.slice(0, 8)}…` : r.run_id;
+    return `${date} · ${strat} · pivot ${piv ?? "?"} · ${shortId}`;
+  }
+
+  private _pickAlignRunParams(r: RunRecord): Record<string, unknown> {
+    const p = r.params && typeof r.params === "object" ? r.params as Record<string, unknown> : {};
+    const s = r.stats && typeof r.stats === "object" ? r.stats as Record<string, unknown> : {};
+    return {
+      strategy: p.strategy ?? s.strategy,
+      pivot_doc_id: p.pivot_doc_id ?? s.pivot_doc_id,
+      target_doc_ids: p.target_doc_ids ?? s.target_doc_ids,
+      debug_align: p.debug_align ?? s.debug_align,
+      replace_existing: p.replace_existing ?? s.replace_existing,
+      preserve_accepted: p.preserve_accepted ?? s.preserve_accepted,
+    };
+  }
+
+  private _pickAlignRunStats(r: RunRecord): Record<string, unknown> {
+    const s = r.stats && typeof r.stats === "object" ? r.stats as Record<string, unknown> : {};
+    return {
+      total_links_created: s.total_links_created,
+      total_effective_links: s.total_effective_links,
+      deleted_before: s.deleted_before,
+      preserved_before: s.preserved_before,
+    };
+  }
+
+  private _fmtRunCell(v: unknown): string {
+    if (v === undefined || v === null) return "—";
+    if (typeof v === "object") return JSON.stringify(v);
+    return String(v);
+  }
+
+  private _updateAlignRunCompareDiff(root: HTMLElement): void {
+    const resultEl = root.querySelector<HTMLElement>("#act-run-compare-result");
+    if (!resultEl) return;
+    const idA = root.querySelector<HTMLSelectElement>("#act-run-compare-a")?.value ?? "";
+    const idB = root.querySelector<HTMLSelectElement>("#act-run-compare-b")?.value ?? "";
+    if (!idA || !idB || idA === idB) {
+      resultEl.style.display = "none";
+      resultEl.innerHTML = "";
+      return;
+    }
+    const runA = this._alignRunsCompareCache.find(x => x.run_id === idA);
+    const runB = this._alignRunsCompareCache.find(x => x.run_id === idB);
+    if (!runA || !runB) {
+      resultEl.style.display = "none";
+      return;
+    }
+    const pa = this._pickAlignRunParams(runA);
+    const pb = this._pickAlignRunParams(runB);
+    const sta = this._pickAlignRunStats(runA);
+    const stb = this._pickAlignRunStats(runB);
+    const rows: Array<{ label: string; a: unknown; b: unknown }> = [
+      { label: "run_id", a: runA.run_id, b: runB.run_id },
+      { label: "created_at", a: runA.created_at, b: runB.created_at },
+      { label: "strategy", a: pa.strategy, b: pb.strategy },
+      { label: "pivot_doc_id", a: pa.pivot_doc_id, b: pb.pivot_doc_id },
+      { label: "target_doc_ids", a: pa.target_doc_ids, b: pb.target_doc_ids },
+      { label: "debug_align", a: pa.debug_align, b: pb.debug_align },
+      { label: "replace_existing", a: pa.replace_existing, b: pb.replace_existing },
+      { label: "preserve_accepted", a: pa.preserve_accepted, b: pb.preserve_accepted },
+      { label: "total_links_created", a: sta.total_links_created, b: stb.total_links_created },
+      { label: "total_effective_links", a: sta.total_effective_links, b: stb.total_effective_links },
+      { label: "deleted_before", a: sta.deleted_before, b: stb.deleted_before },
+      { label: "preserved_before", a: sta.preserved_before, b: stb.preserved_before },
+    ];
+
+    let html = `<table class="meta-table act-run-compare-table" role="region" aria-label="Comparaison de runs"><thead><tr><th>Champ</th><th>Run A</th><th>Run B</th><th></th></tr></thead><tbody>`;
+    for (const row of rows) {
+      const sa = this._fmtRunCell(row.a);
+      const sb = this._fmtRunCell(row.b);
+      const match = sa === sb;
+      const icon = match ? '<span title="Identique">=</span>' : '<span title="Différent" style="color:var(--color-warning,#b45309)">≠</span>';
+      html += `<tr><td>${_escHtml(row.label)}</td><td><code>${_escHtml(sa)}</code></td><td><code>${_escHtml(sb)}</code></td><td><span aria-hidden="true">${icon}</span></td></tr>`;
+    }
+    html += `</tbody></table>`;
+    resultEl.innerHTML = html;
+    resultEl.style.display = "";
+  }
+
   /** Toggle between audit table view and visual run-row view. */
   private _setAlignViewMode(mode: "table" | "run", root: HTMLElement): void {
     this._alignViewMode = mode;
@@ -3353,6 +3579,128 @@ export class ActionsScreen {
     this._ltSyncLock = false;
   }
 
+  /** Sync scroll between split-panel preview columns (`#act-seg-prev-raw` ↔ `#act-seg-prev-seg`). */
+  private _bindSegPreviewScrollSync(): void {
+    this._unbindSegPreviewScrollSync();
+    const rawEl = document.querySelector<HTMLElement>("#act-seg-prev-raw");
+    const segEl = document.querySelector<HTMLElement>("#act-seg-prev-seg");
+    if (!rawEl || !segEl) return;
+    this._onSegPrevRawScroll = () => {
+      if (this._segPrevSyncLock) return;
+      this._segPrevSyncLock = true;
+      const maxRaw = rawEl.scrollHeight - rawEl.clientHeight;
+      const ratio = maxRaw > 0 ? rawEl.scrollTop / maxRaw : 0;
+      segEl.scrollTop = ratio * Math.max(0, segEl.scrollHeight - segEl.clientHeight);
+      requestAnimationFrame(() => { this._segPrevSyncLock = false; });
+    };
+    this._onSegPrevSegScroll = () => {
+      if (this._segPrevSyncLock) return;
+      this._segPrevSyncLock = true;
+      const maxSeg = segEl.scrollHeight - segEl.clientHeight;
+      const ratio = maxSeg > 0 ? segEl.scrollTop / maxSeg : 0;
+      rawEl.scrollTop = ratio * Math.max(0, rawEl.scrollHeight - rawEl.clientHeight);
+      requestAnimationFrame(() => { this._segPrevSyncLock = false; });
+    };
+    rawEl.addEventListener("scroll", this._onSegPrevRawScroll);
+    segEl.addEventListener("scroll", this._onSegPrevSegScroll);
+  }
+
+  private _unbindSegPreviewScrollSync(): void {
+    const rawEl = document.querySelector<HTMLElement>("#act-seg-prev-raw");
+    const segEl = document.querySelector<HTMLElement>("#act-seg-prev-seg");
+    if (rawEl && this._onSegPrevRawScroll) {
+      rawEl.removeEventListener("scroll", this._onSegPrevRawScroll);
+      this._onSegPrevRawScroll = null;
+    }
+    if (segEl && this._onSegPrevSegScroll) {
+      segEl.removeEventListener("scroll", this._onSegPrevSegScroll);
+      this._onSegPrevSegScroll = null;
+    }
+    this._segPrevSyncLock = false;
+  }
+
+  private _syncSegStrategyRadios(): void {
+    const s = document.querySelector<HTMLInputElement>("#act-seg-strategy-sentences");
+    const m = document.querySelector<HTMLInputElement>("#act-seg-strategy-markers");
+    if (!s || !m) return;
+    if (this._segSplitMode === "markers") {
+      m.checked = true;
+      s.checked = false;
+    } else {
+      s.checked = true;
+      m.checked = false;
+    }
+  }
+
+  private _setSegPackSelectDisabled(disabled: boolean): void {
+    const packSel = document.querySelector<HTMLSelectElement>("#act-seg-pack");
+    if (!packSel) return;
+    packSel.disabled = disabled;
+    if (disabled) packSel.setAttribute("aria-disabled", "true");
+    else packSel.removeAttribute("aria-disabled");
+  }
+
+  private _updateSegStrategySummary(): void {
+    const el = document.querySelector<HTMLElement>("#act-seg-strategy-summary");
+    if (!el) return;
+    if (this._segSplitMode === "markers") {
+      el.textContent =
+        "R\u00e8gle active : d\u00e9coupe sur les balises [N] num\u00e9rot\u00e9es dans le texte des unit\u00e9s.";
+      return;
+    }
+    const packSel = document.querySelector<HTMLSelectElement>("#act-seg-pack");
+    const label = packSel?.selectedOptions[0]?.textContent?.trim() ?? packSel?.value ?? "";
+    el.textContent =
+      `R\u00e8gle active : phrases automatiques \u2014 \u00ab ${label} \u00bb (d\u00e9tail sous \u00ab Moteur de d\u00e9coupage \u00bb).`;
+  }
+
+  // ── Curation preview scroll sync (#act-preview-raw ↔ #act-diff-list) ───────────────
+
+  private _bindCurateScrollSync(): void {
+    const panel = this._root?.querySelector<HTMLElement>('[data-panel="curation"]');
+    const rawEl = panel?.querySelector<HTMLElement>("#act-preview-raw")
+      ?? document.querySelector<HTMLElement>("#act-preview-raw");
+    const diffEl = panel?.querySelector<HTMLElement>("#act-diff-list")
+      ?? document.querySelector<HTMLElement>("#act-diff-list");
+    if (!rawEl || !diffEl) return;
+    this._unbindCurateScrollSync();
+    this._onCurateRawScroll = () => {
+      if (!this._previewSyncScroll || this._curateSyncLock) return;
+      this._curateSyncLock = true;
+      const maxRaw = rawEl.scrollHeight - rawEl.clientHeight;
+      const ratio = maxRaw > 0 ? rawEl.scrollTop / maxRaw : 0;
+      diffEl.scrollTop = ratio * Math.max(0, diffEl.scrollHeight - diffEl.clientHeight);
+      requestAnimationFrame(() => { this._curateSyncLock = false; });
+    };
+    this._onCurateDiffScroll = () => {
+      if (!this._previewSyncScroll || this._curateSyncLock) return;
+      this._curateSyncLock = true;
+      const maxDiff = diffEl.scrollHeight - diffEl.clientHeight;
+      const ratio = maxDiff > 0 ? diffEl.scrollTop / maxDiff : 0;
+      rawEl.scrollTop = ratio * Math.max(0, rawEl.scrollHeight - rawEl.clientHeight);
+      requestAnimationFrame(() => { this._curateSyncLock = false; });
+    };
+    rawEl.addEventListener("scroll", this._onCurateRawScroll);
+    diffEl.addEventListener("scroll", this._onCurateDiffScroll);
+  }
+
+  private _unbindCurateScrollSync(): void {
+    const panel = this._root?.querySelector<HTMLElement>('[data-panel="curation"]');
+    const rawEl = panel?.querySelector<HTMLElement>("#act-preview-raw")
+      ?? document.querySelector<HTMLElement>("#act-preview-raw");
+    const diffEl = panel?.querySelector<HTMLElement>("#act-diff-list")
+      ?? document.querySelector<HTMLElement>("#act-diff-list");
+    if (rawEl && this._onCurateRawScroll) {
+      rawEl.removeEventListener("scroll", this._onCurateRawScroll);
+      this._onCurateRawScroll = null;
+    }
+    if (diffEl && this._onCurateDiffScroll) {
+      diffEl.removeEventListener("scroll", this._onCurateDiffScroll);
+      this._onCurateDiffScroll = null;
+    }
+    this._curateSyncLock = false;
+  }
+
   /**
    * Attaches a RAF-throttled scroll listener to update the .mm-zone viewport indicator.
    * Also fires on tab-bar clicks (pane change). Returns a cleanup function.
@@ -3464,7 +3812,7 @@ export class ActionsScreen {
         <div class="seg-stats-grid" style="margin:8px 0">
           <div class="seg-stat"><span class="quality-label">Unités avant</span><strong>${r.units_input}</strong></div>
           <div class="seg-stat"><span class="quality-label">Segments après</span><strong>${r.units_output}</strong></div>
-          <div class="seg-stat"><span class="quality-label">Pack utilisé</span><strong>${_escHtml(r.segment_pack ?? "auto")}</strong></div>
+          <div class="seg-stat"><span class="quality-label">R&#233;glage phrases</span><strong>${_escHtml(r.segment_pack === "markers" ? "balises [N]" : (r.segment_pack ?? "auto"))}</strong></div>
           <div class="seg-stat"><span class="quality-label">Avertissements</span><strong>${warns.length}</strong></div>
         </div>
         ${warnHtml}
@@ -3474,7 +3822,7 @@ export class ActionsScreen {
     if (footEl) {
       const doc = this._docs.find(d => d.doc_id === r.doc_id);
       const docLabel = doc ? `${_escHtml(doc.title)} [${_escHtml(doc.language)}]` : `doc#${r.doc_id}`;
-      footEl.textContent = `${docLabel} · ${r.units_output} segments · pack ${r.segment_pack ?? "auto"}`;
+      footEl.textContent = `${docLabel} · ${r.units_output} segments · ${r.segment_pack === "markers" ? "balises [N]" : `coupes ${r.segment_pack ?? "auto"}`}`;
     }
     const mmEl = segPanel.querySelector<HTMLElement>("#act-seg-tr-minimap");
     if (mmEl) this._renderMinimap(mmEl, r.units_output, r.warnings?.length ?? 0);
@@ -3486,7 +3834,7 @@ export class ActionsScreen {
     if (trMeta) {
       const doc = this._docs.find(d => d.doc_id === r.doc_id);
       const docLabel = doc ? `${doc.title}` : `doc#${r.doc_id}`;
-      trMeta.textContent = `${docLabel} · ${r.units_output} segments · pack ${r.segment_pack ?? "auto"}`;
+      trMeta.textContent = `${docLabel} · ${r.units_output} segments · ${r.segment_pack === "markers" ? "balises [N]" : `coupes ${r.segment_pack ?? "auto"}`}`;
     }
     if (trValBtn) trValBtn.disabled = !this._segmentPendingValidation;
   }
@@ -3993,8 +4341,7 @@ export class ActionsScreen {
       // Item no longer matches the status filter — re-render and advance
       const newFiltered = this._filteredExamples();
       this._activeDiffIdx = null;
-      this._renderDiffList(newFiltered);
-      this._renderRawPane(newFiltered);
+      this._refreshCuratePreviewPanes();
       const panel = document.querySelector<HTMLElement>("#act-preview-panel");
       if (newFiltered.length > 0) {
         this._setActiveDiffItem(Math.min(idx, newFiltered.length - 1), panel);
@@ -4027,8 +4374,7 @@ export class ActionsScreen {
     // Re-render because status filter may now exclude everything shown
     const newFiltered = this._filteredExamples();
     this._activeDiffIdx = null;
-    this._renderDiffList(newFiltered);
-    this._renderRawPane(newFiltered);
+    this._refreshCuratePreviewPanes();
     const panel = document.querySelector<HTMLElement>("#act-preview-panel");
     if (newFiltered.length > 0) {
       this._setActiveDiffItem(0, panel);
@@ -4049,8 +4395,7 @@ export class ActionsScreen {
     this._activeStatusFilter = status;
     this._activeDiffIdx = null;
     const filtered = this._filteredExamples();
-    this._renderDiffList(filtered);
-    this._renderRawPane(filtered);
+    this._refreshCuratePreviewPanes();
     this._updateSessionSummary(); // re-renders chips with correct active state
     const panel = document.querySelector<HTMLElement>("#act-preview-panel");
     if (filtered.length > 0) {
@@ -4763,8 +5108,7 @@ export class ActionsScreen {
     this._curateRestoredCount = 0;
     this._curateSavedCount = 0;
     const filtered = this._filteredExamples();
-    this._renderDiffList(filtered);
-    this._renderRawPane(filtered);
+    this._refreshCuratePreviewPanes();
     this._updateSessionSummary();
     this._updateActionButtons();
     this._pushCurateLog("preview", logMsg);
@@ -4855,8 +5199,7 @@ export class ActionsScreen {
     this._activeDiffIdx = null;
     const filtered = this._filteredExamples();
     // Re-render both panes with the new filtered set
-    this._renderDiffList(filtered);
-    this._renderRawPane(filtered);
+    this._refreshCuratePreviewPanes();
     // Update filter badge visibility
     this._updateFilterBadge(panel);
     // Highlight diagnostics chips to show which filter is active
@@ -5272,8 +5615,7 @@ export class ActionsScreen {
 
       // Raw pane and diff pane: use filtered list (= full list since filter is reset)
       const toRender = this._filteredExamples();
-      this._renderRawPane(toRender);
-      this._renderDiffList(toRender);
+      this._refreshCuratePreviewPanes();
 
       // Update diagnostics panel (right column)
       this._renderCurateDiag(changed, total, reps);
@@ -5315,7 +5657,11 @@ export class ActionsScreen {
       // After loading, re-render to reflect exception badges.
       this._loadCurateExceptions().then(() => {
         const filtered = this._filteredExamples();
-        this._renderDiffList(filtered);
+        // Badges d'exception sur les lignes du diff uniquement ; si aucun exemple, ne pas
+        // rappeler _renderDiffList (viderait le texte plein doc chargé quand changed === 0).
+        if (filtered.length > 0) {
+          this._renderDiffList(filtered);
+        }
         const activeEx = this._activeDiffIdx !== null ? filtered[this._activeDiffIdx] ?? null : null;
         this._renderContextDetail(activeEx);
         if (this._curateExceptions.size > 0) {
@@ -5407,7 +5753,7 @@ export class ActionsScreen {
       return;
     }
     const warnings = r.warnings ?? [];
-    if (info) info.textContent = `${r.units_output} segments · pack ${r.segment_pack ?? "auto"}`;
+    if (info) info.textContent = `${r.units_output} segments · ${r.segment_pack === "markers" ? "balises [N]" : `coupes ${r.segment_pack ?? "auto"}`}`;
     const warnHtml = warnings.length
       ? `<div class="seg-warn-list">${warnings.map((w) => `<div class="seg-warn">${_escHtml(w)}</div>`).join("")}</div>`
       : `<p class="stat-ok" style="font-size:12px">✓ Aucun avertissement</p>`;
@@ -5416,7 +5762,7 @@ export class ActionsScreen {
         <div class="seg-stat"><strong>${r.units_input}</strong>Unités avant</div>
         <div class="seg-stat"><strong>${r.units_output}</strong>Segments après</div>
         <div class="seg-stat"><strong>${warnings.length}</strong>Avertissements</div>
-        <div class="seg-stat"><strong>${r.segment_pack ?? "auto"}</strong>Pack utilisé</div>
+        <div class="seg-stat"><strong>${r.segment_pack === "markers" ? "balises [N]" : (r.segment_pack ?? "auto")}</strong>R&#233;glage phrases</div>
       </div>
       ${warnHtml}
     `;
@@ -5593,6 +5939,65 @@ export class ActionsScreen {
     mm.innerHTML = Array.from({ length: bars }, (_, i) =>
       `<div class="mm${i < changedBars ? " changed" : ""}"></div>`
     ).join("");
+  }
+
+  /**
+   * Rafraîchit les panneaux « Texte brut » et « Texte curé ».
+   * Si la prévisu ne retourne aucun exemple (document inchangé avec ces règles),
+   * charge le texte des unités via /documents/preview au lieu d’un simple message vide.
+   */
+  private _refreshCuratePreviewPanes(): void {
+    const filtered = this._filteredExamples();
+    const docId = this._currentCurateDocId();
+    if (
+      filtered.length === 0 &&
+      this._curateGlobalChanged === 0 &&
+      (this._curateUnitsTotal ?? 0) > 0 &&
+      docId !== undefined &&
+      !this._activeRuleFilter &&
+      !this._activeStatusFilter
+    ) {
+      void this._fillCuratePanesWithDocumentText(docId);
+      return;
+    }
+    this._renderRawPane(filtered);
+    this._renderDiffList(filtered);
+  }
+
+  private async _fillCuratePanesWithDocumentText(docId: number): Promise<void> {
+    const rawEl = document.querySelector<HTMLElement>("#act-preview-raw");
+    const diffEl = document.querySelector<HTMLElement>("#act-diff-list");
+    if (!this._conn || !rawEl || !diffEl) return;
+    rawEl.innerHTML = '<p class="loading-hint">Chargement du texte&#8230;</p>';
+    diffEl.innerHTML = '<p class="loading-hint">Chargement&#8230;</p>';
+    try {
+      const preview = await getDocumentPreview(this._conn, docId, 300);
+      if (!preview.lines.length) {
+        const empty = '<p class="empty-hint">Aucune unit&#233; disponible pour ce document.</p>';
+        rawEl.innerHTML = empty;
+        diffEl.innerHTML = empty;
+        return;
+      }
+      const bannerRaw =
+        `<div class="stat-ok" style="margin-bottom:8px;font-size:13px">` +
+        `&#10003;&#160;Aucune modification &#8212; le document est propre avec ces r&#232;gles.</div>`;
+      const bannerDiff =
+        `<div class="stat-ok" style="margin-bottom:8px;font-size:13px">` +
+        `&#10003;&#160;Aucune diff&#233;rence &#8212; texte cur&#233; identique au source.</div>`;
+      const truncNote = preview.total_lines > preview.limit
+        ? `<p class="empty-hint" style="margin:4px 0 8px;font-style:italic">` +
+          `Aper&#231;u &#8212; ${preview.limit}/${preview.total_lines} unit&#233;s</p>`
+        : "";
+      const linesHtml = preview.lines.map(l =>
+        `<div class="vo-line"><span class="vo-ln">${l.n}</span><span class="vo-txt">${_escHtml(l.text)}</span></div>`,
+      ).join("");
+      rawEl.innerHTML = bannerRaw + truncNote + linesHtml;
+      diffEl.innerHTML = bannerDiff + truncNote + linesHtml;
+    } catch {
+      const err = '<p class="empty-hint">Impossible de charger le texte.</p>';
+      rawEl.innerHTML = err;
+      diffEl.innerHTML = err;
+    }
   }
 
   private _renderRawPane(examples: CuratePreviewExample[]): void {

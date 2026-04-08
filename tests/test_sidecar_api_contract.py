@@ -167,6 +167,17 @@ def test_openapi_endpoint_contract(sidecar_base_url: str) -> None:
     assert "/query" in payload["paths"]
 
 
+def test_get_runs_list_contract(sidecar_base_url: str) -> None:
+    code, payload = _http_json("GET", f"{sidecar_base_url}/runs")
+    assert code == 200
+    assert payload["ok"] is True
+    assert isinstance(payload.get("runs"), list)
+    assert "limit" in payload
+    code2, all_kinds = _http_json("GET", f"{sidecar_base_url}/runs?limit=5")
+    assert code2 == 200
+    assert all_kinds["limit"] == 5
+
+
 def test_unknown_route_returns_not_found_code(sidecar_base_url: str) -> None:
     from multicorpus_engine.sidecar_contract import ERR_NOT_FOUND
 
@@ -673,8 +684,10 @@ def test_openapi_spec_has_documents_and_align_routes() -> None:
     spec = openapi_spec()
     assert "/documents" in spec["paths"]
     assert "/align" in spec["paths"]
+    assert "/runs" in spec["paths"]
     assert "get" in spec["paths"]["/documents"]
     assert "post" in spec["paths"]["/align"]
+    assert "get" in spec["paths"]["/runs"]
     schemas = spec["components"]["schemas"]
     assert "DocumentRecord" in schemas
     assert "DocumentsResponse" in schemas

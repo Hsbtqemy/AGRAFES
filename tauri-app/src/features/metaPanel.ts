@@ -19,7 +19,7 @@ import { state } from "../state";
 import { elt } from "../ui/dom";
 import { docsById, renderChips } from "./filters";
 import { doSearch, _setDocFilter } from "./query";
-import { markActiveCard } from "../ui/results";
+import { appendSourceChangedBadge, groupAlignedUnits, markActiveCard, parseAlignedGroupKey, sortedAlignedGroupEntries } from "../ui/results";
 
 // ─── Module state ─────────────────────────────────────────────────────────────
 
@@ -135,18 +135,10 @@ function _renderPanelContent(hit: QueryHit, body: HTMLElement, foot: HTMLElement
   if (alignedUnits.length > 0) {
     body.appendChild(elt("div", { class: "meta-section-head" }, "Alignements"));
 
-    // Group by language + document (same logic as parallel cards)
-    const aGroups = new Map<string, typeof alignedUnits>();
-    for (const au of alignedUnits) {
-      const key = `${au.language ?? "und"}|${au.doc_id}|${au.title ?? ""}`;
-      const cur = aGroups.get(key);
-      if (cur) cur.push(au); else aGroups.set(key, [au]);
-    }
+    const aGroups = groupAlignedUnits(alignedUnits);
 
-    for (const [key, items] of aGroups.entries()) {
-      const parts = key.split("|");
-      const lang = parts[0] ?? "?";
-      const title = parts.slice(2).join("|");
+    for (const [key, items] of sortedAlignedGroupEntries(aGroups)) {
+      const { language: lang, title } = parseAlignedGroupKey(key);
       const groupText = items.map(i => (i.text ?? i.text_norm ?? "").trim()).filter(Boolean).join("\n");
 
       const grpEl = elt("div", { class: "meta-aligned-group" });
@@ -175,6 +167,7 @@ function _renderPanelContent(hit: QueryHit, body: HTMLElement, foot: HTMLElement
         if (item.external_id != null) {
           row.appendChild(elt("span", { class: "meta-aligned-ref" }, `§${item.external_id} `));
         }
+        appendSourceChangedBadge(row, item);
         row.appendChild(document.createTextNode((item.text ?? item.text_norm ?? "").trim()));
         grpEl.appendChild(row);
       }
@@ -233,16 +226,10 @@ function _renderPanelContent(hit: QueryHit, body: HTMLElement, foot: HTMLElement
         `[${pivotLang}] ${hit.title || "—"}${pivotRef}`,
         `«${pivotText}»`,
       ];
-      const citGroups = new Map<string, typeof alignedUnits>();
-      for (const au of alignedUnits) {
-        const key = `${au.language ?? "und"}|${au.doc_id}|${au.title ?? ""}`;
-        const cur = citGroups.get(key);
-        if (cur) cur.push(au); else citGroups.set(key, [au]);
-      }
-      for (const [key, items] of citGroups.entries()) {
-        const parts = key.split("|");
-        const lang = (parts[0] ?? "?").toUpperCase();
-        const title = parts.slice(2).join("|");
+      const citGroups = groupAlignedUnits(alignedUnits);
+      for (const [key, items] of sortedAlignedGroupEntries(citGroups)) {
+        const { language, title } = parseAlignedGroupKey(key);
+        const lang = language.toUpperCase();
         const firstRef = items[0]?.external_id != null ? ` §${items[0].external_id}` : "";
         const text = items.map(i => (i.text ?? i.text_norm ?? "").trim()).filter(Boolean).join(" / ");
         lines.push("", `[${lang}] ${title || "—"}${firstRef}`, `«${text}»`);

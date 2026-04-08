@@ -34,6 +34,36 @@ const IMPORT_MODE_OPTIONS: Array<{ value: FileItem["mode"]; label: string }> = [
   { value: "tei", label: "TEI XML" },
 ];
 
+/** Profil de lot : intention commune DOCX/ODT (BACKLOG — Import traitement de texte). */
+const WP_DEFAULT_PARAGRAPHS = "wp_paragraphs";
+const WP_DEFAULT_NUMBERED = "wp_numbered";
+
+function _extFromFileName(fileName: string): string {
+  const base = fileName.split(/[/\\]/u).pop() ?? fileName;
+  if (!base.includes(".")) return "";
+  return base.split(".").pop()?.toLowerCase() ?? "";
+}
+
+/** Modes d’import proposés pour une extension (évite TEI/TXT sur DOCX, etc.). */
+function modeOptionsForExt(ext: string): Array<{ value: string; label: string }> {
+  const e = ext.toLowerCase();
+  if (e === "docx") {
+    return [
+      { value: "docx_paragraphs", label: "Paragraphes" },
+      { value: "docx_numbered_lines", label: "Lignes numérotées [n]" },
+    ];
+  }
+  if (e === "odt") {
+    return [
+      { value: "odt_paragraphs", label: "Paragraphes" },
+      { value: "odt_numbered_lines", label: "Lignes numérotées [n]" },
+    ];
+  }
+  if (e === "txt") return [{ value: "txt_numbered_lines", label: "TXT lignes numérotées [n]" }];
+  if (e === "xml" || e === "tei") return [{ value: "tei", label: "TEI XML" }];
+  return IMPORT_MODE_OPTIONS.slice();
+}
+
 interface FileItem {
   path: string;
   mode: string;
@@ -133,7 +163,14 @@ export class ImportScreen {
                 <div class="imp-settings-field">
                   <label for="imp-default-mode">Format par défaut</label>
                   <select id="imp-default-mode" aria-describedby="imp-settings-hint-apply">
-                    ${IMPORT_MODE_OPTIONS.map((opt) => `<option value="${opt.value}">${opt.label}</option>`).join("")}
+                    <optgroup label="Traitement de texte (DOCX / ODT)">
+                      <option value="${WP_DEFAULT_NUMBERED}" selected>Lignes numérotées [n]</option>
+                      <option value="${WP_DEFAULT_PARAGRAPHS}">Paragraphes</option>
+                    </optgroup>
+                    <optgroup label="Autres formats">
+                      <option value="txt_numbered_lines">TXT · lignes [n]</option>
+                      <option value="tei">TEI XML</option>
+                    </optgroup>
                   </select>
                 </div>
                 <div class="imp-settings-field">
@@ -160,7 +197,13 @@ export class ImportScreen {
                   Appliquer aux fichiers en attente
                 </button>
                 <p id="imp-settings-hint-apply" class="hint imp-settings-hint">
-                  Réapplique le format (selon l’extension de chaque fichier) et la langue ci-dessus aux lignes encore en attente.
+                  Pour DOCX/ODT, le profil « traitement de texte » s’applique selon l’extension de chaque fichier. Réapplique format + langue aux lignes en attente.
+                </p>
+                <p
+                  class="hint imp-settings-hint"
+                  title="Unicode: normalisation NFC, conversion NBSP/NNBSP/¤ en espace, suppression des invisibles de contrôle dans text_norm."
+                >
+                  Texte Unicode: import DOCX/ODT en UTF-8/XML puis normalisation moteur sur <code>text_norm</code> (espaces insécables, invisibles, <code>¤</code>).
                 </p>
               </div>
             </div>
@@ -312,11 +355,29 @@ export class ImportScreen {
   }
 
   private _deriveModeFromExt(ext: string, defaultMode: string): string {
-    if (ext === "xml" || ext === "tei") return "tei";
-    if (ext === "txt") return "txt_numbered_lines";
-    if (ext === "docx") return defaultMode.startsWith("docx") ? defaultMode : "docx_numbered_lines";
-    if (ext === "odt") return defaultMode.startsWith("odt") ? defaultMode : "odt_paragraphs";
+    const e = ext.toLowerCase();
+    if (e === "xml" || e === "tei") return "tei";
+    if (e === "txt") return "txt_numbered_lines";
+    if (e === "docx") {
+      if (defaultMode === WP_DEFAULT_PARAGRAPHS) return "docx_paragraphs";
+      if (defaultMode === WP_DEFAULT_NUMBERED) return "docx_numbered_lines";
+      if (defaultMode.startsWith("docx_")) return defaultMode;
+      return "docx_numbered_lines";
+    }
+    if (e === "odt") {
+      if (defaultMode === WP_DEFAULT_PARAGRAPHS) return "odt_paragraphs";
+      if (defaultMode === WP_DEFAULT_NUMBERED) return "odt_numbered_lines";
+      if (defaultMode.startsWith("odt_")) return defaultMode;
+      return "odt_paragraphs";
+    }
     return defaultMode;
+  }
+
+  /** Si le mode stocké ne correspond pas à l’extension (ex. TEI sur .docx), corrige. */
+  private _normalizeModeForExt(mode: string, ext: string): string {
+    const allowed = new Set(modeOptionsForExt(ext).map(o => o.value));
+    if (allowed.has(mode)) return mode;
+    return this._deriveModeFromExt(ext, WP_DEFAULT_NUMBERED);
   }
 
   /**
@@ -333,8 +394,8 @@ export class ImportScreen {
     if (this._files.some((f) => normalizeImportPath(f.path) === norm)) {
       return "dup_queue";
     }
-    const ext = fileName.split(".").pop()?.toLowerCase() ?? "";
-    const mode = this._deriveModeFromExt(ext, defaultMode);
+    const ext = _extFromFileName(fileName);
+    const mode = this._normalizeModeForExt(this._deriveModeFromExt(ext, defaultMode), ext);
     this._files.push({
       path,
       mode,
@@ -400,8 +461,8 @@ export class ImportScreen {
     for (const file of this._files) {
       if (file.status !== "pending") continue;
       const base = file.path.split(/[/\\]/u).pop() ?? "";
-      const ext = base.includes(".") ? base.split(".").pop()?.toLowerCase() ?? "" : "";
-      file.mode = this._deriveModeFromExt(ext, defaultMode);
+      const ext = _extFromFileName(base);
+      file.mode = this._normalizeModeForExt(this._deriveModeFromExt(ext, defaultMode), ext);
       file.language = defaultLang;
       touched += 1;
     }
@@ -430,6 +491,10 @@ export class ImportScreen {
     }
     this._listEl.innerHTML = "";
     this._files.forEach((f, i) => {
+      const ext = _extFromFileName(f.title);
+      const normMode = this._normalizeModeForExt(f.mode, ext);
+      if (normMode !== f.mode) f.mode = normMode;
+      const modeOpts = modeOptionsForExt(ext);
       const row = document.createElement("div");
       row.className = `imp-file-item imp-file-item-${f.status}`;
       row.dataset.index = String(i);
@@ -440,9 +505,9 @@ export class ImportScreen {
           <span class="chip${chipCls ? " " + chipCls : ""}">${this._statusLabel(f)}</span>
         </div>
         <div class="imp-file-controls">
-          <select class="imp-mode-sel" data-i="${i}">
-            ${IMPORT_MODE_OPTIONS
-              .map((opt) => `<option value="${opt.value}"${f.mode===opt.value?" selected":""}>${opt.label}</option>`)
+          <select class="imp-mode-sel" data-i="${i}" title="Mode d'import (filtré selon l'extension)">
+            ${modeOpts
+              .map((opt) => `<option value="${opt.value}"${f.mode === opt.value ? " selected" : ""}>${opt.label}</option>`)
               .join("")}
           </select>
           <input class="imp-lang-inp" type="text" value="${f.language}" maxlength="10" placeholder="lang" data-i="${i}" />
@@ -580,9 +645,22 @@ export class ImportScreen {
         const existingByName = corpusByFilename.get(fname);
         if (existingByName !== undefined) {
           f.status = "error";
-          f.message = `Nom de fichier déjà présent (doc_id ${existingByName})`;
-          this._log(`⊘ "${f.title}": doublon par nom de fichier (doc_id ${existingByName})`, true);
-          this._showToast?.(`⊘ ${f.title} — nom déjà importé (doc_id ${existingByName})`, true);
+          const sameBatch = existingByName === -1;
+          f.message = sameBatch
+            ? "Même nom de fichier qu’un autre fichier de ce lot"
+            : `Nom de fichier déjà présent (doc_id ${existingByName})`;
+          this._log(
+            sameBatch
+              ? `⊘ "${f.title}": doublon par nom dans le lot en cours`
+              : `⊘ "${f.title}": doublon par nom de fichier (doc_id ${existingByName})`,
+            true
+          );
+          this._showToast?.(
+            sameBatch
+              ? `⊘ ${f.title} — nom déjà utilisé dans ce lot`
+              : `⊘ ${f.title} — nom déjà importé (doc_id ${existingByName})`,
+            true
+          );
           this._renderList();
           continue;
         }

@@ -1888,6 +1888,26 @@ export async function listJobs(
   }>;
 }
 
+/** Persisted run row (``runs`` table): align, import, index, … */
+export interface RunRecord {
+  run_id: string;
+  kind: string;
+  created_at: string;
+  params?: Record<string, unknown> | null;
+  stats?: Record<string, unknown> | null;
+}
+
+export async function listRuns(
+  conn: Conn,
+  opts: { kind?: string; limit?: number } = {}
+): Promise<{ runs: RunRecord[]; limit: number }> {
+  const p = new URLSearchParams();
+  if (opts.kind) p.set("kind", opts.kind);
+  if (opts.limit !== undefined) p.set("limit", String(opts.limit));
+  const qs = p.size > 0 ? `?${p.toString()}` : "";
+  return conn.get(`/runs${qs}`) as Promise<{ runs: RunRecord[]; limit: number }>;
+}
+
 // ─── V1.3 — Batch align link operations ──────────────────────────────────────
 
 export interface AlignBatchAction {
