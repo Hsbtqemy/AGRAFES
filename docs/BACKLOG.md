@@ -1,6 +1,6 @@
 # Backlog — multicorpus_engine
 
-Last updated: 2026-03-23 (backlog — surfaces Export Prep + Constituer)
+Last updated: 2026-04-08 (backlog — idées exploratoires + concordancier multi-DB)
 
 ## Priority backlog (realistic, post-implementation)
 
@@ -124,3 +124,24 @@ Last updated: 2026-03-23 (backlog — surfaces Export Prep + Constituer)
 | P9 | **Deprecation tauri-app + tauri-prep** standalone | tauri-shell les supplante ; maintien pour standalone uniquement jusqu'à V2.0 | todo |
 | P9 | **Hot-swap DB sidecar** — éviter le redémarrage sidecar lors d'un switch DB | Actuellement : `_initDb` redémarre le sidecar ; un futur mécanisme de rechargement à chaud éviterait l'interruption | todo |
 | P9 | **CSS audit des 4 fichiers ui/** (tokens/base/components/prep-vnext) | Depuis P6, `app.css` contient des règles dupliquées avec les 4 fichiers existants (`:root` vars, sidebar layout) | todo |
+
+## Idées à cadrer (exploratoire — à reformuler avant spec)
+
+Notes brèves pour ne pas perdre des pistes ; priorité et critères d’acceptation à définir plus tard.
+
+| Thème | Piste | Notes |
+|-------|--------|-------|
+| Corpus / qualité | **Gestion des doublons** | Détecter / fusionner / signaler les documents ou unités en doublon. |
+| Import | **Import ODT ?** | Évaluer support import OpenDocument Text (vs DOCX/TEI existants). |
+| Notation / query | **`[n]` ?** | Signification à préciser (répétition, comptage, placeholder de segment, autre). |
+| Curation UX | **Curation, bouton « suivant » ?** | Navigation rapide entre occurrences / règles sans quitter le flux. |
+| Segmentation | **Segment `[` ? — options avancées ?** | Syntaxe ou marqueurs autour de `[` ; panneau options segmentation avancées. |
+| UI segmentation | **Séparateurs actifs / autre vue ?** | Visualisation ou édition des séparateurs ; variante de vue alternative. |
+| Normalisation | **Revenir sur espaces incohérents** | Harmoniser traitement des espaces (début/fin, doubles, Unicode) dans un ou plusieurs pipelines. |
+| Segmentation | **Différents modes de segmentation ?** | Au-delà des packs actuels : presets, critères alternatifs, comparaison. |
+| Conventions | **Conventions ? (ex. type `[InterT]` — Raluca)** | Jeu de tags ou types d’unités projet-spécifiques ; lien avec conventions nommées. |
+| Export | **Export DOCX, ODT, TXT ?** | Étendre les formats d’export au-delà de l’existant (TEI, CSV, etc.). |
+| Concordancier / prep | **Mode annotation ?** | Workflow ou couche dédiée à l’annotation (à distinguer de la simple lecture). |
+| Concordancier | **Multiples DB ?** | Travailler avec plusieurs bases (recherche croisée, onglets, agrégation des résultats) ; modèle produit et contrat sidecar à définir. |
+| Qualité données | **Vérifier aussi le XML** | Validation / lint / cohérence XML (TEI et dérivés) en import ou en continu. |
+| Linguistique | **Catégories grammaticales ?** | Intégration POS / tags grammaticaux (source externe ou pipeline dédié). |
