@@ -365,6 +365,7 @@ Response now includes pagination fields: `total`, `limit`, `offset`, `has_more`,
 - `GET /doc_relations?doc_id=N` — list relations for a document (no token)
 - `GET /doc_relations/all` — all doc_relations in the corpus (for hierarchy view, no token)
 - `GET /families` — list all document families (parent + children + completion stats, no token)
+- `GET /families/{family_root_id}/curation_status` — curation status for all docs in a family (no token)
 - `POST /families/{family_root_id}/segment` — segment all docs in a family (token required)
   - body: `{ pack?, force?, lang_map? }` — `force=true` re-segments already-segmented docs
   - Returns `{ results: [{doc_id, status, units_input, units_output, warnings, calibrate_ratio_pct?}], summary }`
