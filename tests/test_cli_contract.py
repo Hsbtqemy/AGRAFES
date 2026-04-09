@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import subprocess
 import sys
 from pathlib import Path
@@ -148,3 +149,118 @@ def test_cli_index_incremental_returns_stats(tmp_path: Path) -> None:
     assert isinstance(payload["inserted"], int)
     assert isinstance(payload["refreshed"], int)
     assert isinstance(payload["deleted"], int)
+
+
+def test_cli_diagnostics_supports_strict_mode(tmp_path: Path) -> None:
+    db_path = tmp_path / "diag_cli.db"
+    docx_path = tmp_path / "diag_cli.docx"
+    docx_path.write_bytes(make_docx(["[1] alpha", "[2] beta"]))
+
+    assert _run_cli(["init-project", "--db", str(db_path)]).returncode == 0
+    assert (
+        _run_cli(
+            [
+                "import",
+                "--db",
+                str(db_path),
+                "--mode",
+                "docx_numbered_lines",
+                "--language",
+                "fr",
+                "--path",
+                str(docx_path),
+            ]
+        ).returncode
+        == 0
+    )
+
+    diag = _run_cli(["diagnostics", "--db", str(db_path)])
+    assert diag.returncode == 0
+    assert diag.stderr == ""
+    payload = _parse_single_json(diag.stdout)
+    assert payload["status"] == "warning"
+    assert payload["fts"]["stale"] is True
+
+    diag_strict = _run_cli(["diagnostics", "--db", str(db_path), "--strict"])
+    assert diag_strict.returncode == 1
+    assert diag_strict.stderr == ""
+    strict_payload = _parse_single_json(diag_strict.stdout)
+    assert strict_payload["status"] == "warning"
+
+
+def test_cli_db_optimize_and_runs_prune(tmp_path: Path) -> None:
+    db_path = tmp_path / "maint_cli.db"
+    docx_path = tmp_path / "maint_cli.docx"
+    docx_path.write_bytes(make_docx(["[1] hello", "[2] world"]))
+
+    assert _run_cli(["init-project", "--db", str(db_path)]).returncode == 0
+    assert (
+        _run_cli(
+            [
+                "import",
+                "--db",
+                str(db_path),
+                "--mode",
+                "docx_numbered_lines",
+                "--language",
+                "fr",
+                "--path",
+                str(docx_path),
+            ]
+        ).returncode
+        == 0
+    )
+    assert _run_cli(["index", "--db", str(db_path)]).returncode == 0
+    assert _run_cli(["query", "--db", str(db_path), "--q", "hello", "--mode", "segment"]).returncode == 0
+
+    optimize = _run_cli(["db-optimize", "--db", str(db_path), "--vacuum", "--analyze"])
+    assert optimize.returncode == 0
+    assert optimize.stderr == ""
+    optimize_payload = _parse_single_json(optimize.stdout)
+    assert optimize_payload["status"] == "ok"
+    assert "vacuum" in optimize_payload["operations"]
+    assert "analyze" in optimize_payload["operations"]
+
+    dry = _run_cli(
+        [
+            "runs-prune",
+            "--db",
+            str(db_path),
+            "--before",
+            "2999-01-01",
+            "--kind",
+            "query",
+            "--dry-run",
+        ]
+    )
+    assert dry.returncode == 0
+    assert dry.stderr == ""
+    dry_payload = _parse_single_json(dry.stdout)
+    assert dry_payload["status"] == "ok"
+    assert dry_payload["dry_run"] is True
+    assert dry_payload["candidates"] >= 1
+
+    prune = _run_cli(
+        [
+            "runs-prune",
+            "--db",
+            str(db_path),
+            "--before",
+            "2999-01-01",
+            "--kind",
+            "query",
+        ]
+    )
+    assert prune.returncode == 0
+    assert prune.stderr == ""
+    prune_payload = _parse_single_json(prune.stdout)
+    assert prune_payload["status"] == "ok"
+    assert prune_payload["dry_run"] is False
+    assert prune_payload["deleted_runs"] >= 1
+
+    conn = sqlite3.connect(str(db_path))
+    remaining_query_runs = conn.execute(
+        "SELECT COUNT(*) FROM runs WHERE kind = 'query'"
+    ).fetchone()[0]
+    conn.close()
+    assert int(remaining_query_runs) == 0

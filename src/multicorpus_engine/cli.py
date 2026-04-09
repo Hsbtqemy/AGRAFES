@@ -10,6 +10,9 @@ Subcommands:
   validate-meta Validate document metadata.
   curate        Apply regex curation rules to text_norm.
   segment       Resegment a document's line units into sentence-level units.
+  diagnostics   Collect DB diagnostics (integrity, FTS/runs/alignment health).
+  db-optimize   Run SQLite maintenance operations (VACUUM / ANALYZE / PRAGMA optimize).
+  runs-prune    Prune persisted run history rows (optional log directory cleanup).
   serve         Start the sidecar HTTP API server.
   status        Inspect sidecar state from DB-side portfile.
   shutdown      Stop a running sidecar discovered from DB portfile.
@@ -25,7 +28,7 @@ import argparse
 import json
 import sys
 import traceback
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
@@ -1094,6 +1097,234 @@ def cmd_shutdown(args: argparse.Namespace) -> None:
         })
 
 
+def _as_utc_iso(value: str) -> str:
+    """Parse an ISO-ish date/datetime and return canonical UTC Z string."""
+    text = (value or "").strip()
+    if not text:
+        raise ValueError("empty timestamp")
+    if len(text) == 10 and text.count("-") == 2:
+        text = f"{text}T00:00:00+00:00"
+    elif text.endswith("Z"):
+        text = f"{text[:-1]}+00:00"
+    dt = datetime.fromisoformat(text)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    else:
+        dt = dt.astimezone(timezone.utc)
+    return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def cmd_diagnostics(args: argparse.Namespace) -> None:
+    """Collect operational diagnostics for a corpus DB."""
+    from .db.connection import get_connection
+    from .db.diagnostics import collect_diagnostics
+    from .db.migrations import apply_migrations
+    from .runs import utcnow_iso
+
+    db_path = Path(args.db)
+    if not db_path.exists():
+        _err({"error": f"DB not found: {db_path}", "created_at": utcnow_iso()})
+
+    conn = get_connection(db_path)
+    apply_migrations(conn)
+    report = collect_diagnostics(conn)
+    report["created_at"] = utcnow_iso()
+
+    if getattr(args, "compact", False):
+        print(json.dumps(report, ensure_ascii=True))
+    else:
+        print(json.dumps(report, ensure_ascii=True, indent=2))
+    sys.stdout.flush()
+
+    if bool(getattr(args, "strict", False)) and report.get("status") != "ok":
+        sys.exit(1)
+
+
+def cmd_db_optimize(args: argparse.Namespace) -> None:
+    """Run SQLite maintenance operations on a corpus DB."""
+    from .db.connection import get_connection
+    from .db.migrations import apply_migrations
+    from .runs import create_run, setup_run_logger, update_run_stats, utcnow_iso
+
+    db_path = Path(args.db)
+    if not db_path.exists():
+        _err({"error": f"DB not found: {db_path}", "created_at": utcnow_iso()})
+
+    run_vacuum = bool(getattr(args, "vacuum", False))
+    run_analyze = bool(getattr(args, "analyze", False))
+    run_optimize = bool(getattr(args, "optimize", False))
+    if not any((run_vacuum, run_analyze, run_optimize)):
+        run_vacuum = True
+        run_analyze = True
+        run_optimize = True
+
+    conn = get_connection(db_path)
+    apply_migrations(conn)
+    params = {
+        "vacuum": run_vacuum,
+        "analyze": run_analyze,
+        "optimize": run_optimize,
+    }
+    run_id = create_run(conn, "maintenance", params)
+    log, log_path = setup_run_logger(db_path, run_id)
+
+    try:
+        before_size = db_path.stat().st_size if db_path.exists() else None
+        operations: list[str] = []
+        optimize_result: list[str] = []
+
+        if run_vacuum:
+            log.info("Running VACUUM")
+            conn.execute("VACUUM")
+            operations.append("vacuum")
+
+        if run_analyze:
+            log.info("Running ANALYZE")
+            conn.execute("ANALYZE")
+            operations.append("analyze")
+
+        if run_optimize:
+            log.info("Running PRAGMA optimize")
+            rows = conn.execute("PRAGMA optimize").fetchall()
+            optimize_result = [str(row[0]) for row in rows] if rows else []
+            operations.append("optimize")
+
+        conn.commit()
+        after_size = db_path.stat().st_size if db_path.exists() else None
+
+        stats = {
+            "operations": operations,
+            "size_before_bytes": before_size,
+            "size_after_bytes": after_size,
+            "optimize_result": optimize_result,
+        }
+        update_run_stats(conn, run_id, stats)
+        _ok(
+            {
+                "run_id": run_id,
+                "status": "ok",
+                "operations": operations,
+                "size_before_bytes": before_size,
+                "size_after_bytes": after_size,
+                "optimize_result": optimize_result,
+                "log": str(log_path),
+                "created_at": utcnow_iso(),
+            }
+        )
+    except Exception as exc:
+        log.error("db-optimize failed: %s\n%s", exc, traceback.format_exc())
+        _err({"run_id": run_id, "error": str(exc), "created_at": utcnow_iso()})
+
+
+def cmd_runs_prune(args: argparse.Namespace) -> None:
+    """Prune old rows from runs table, optionally removing run log directories."""
+    import shutil
+
+    from .db.connection import get_connection
+    from .db.migrations import apply_migrations
+    from .runs import create_run, setup_run_logger, update_run_stats, utcnow_iso
+
+    db_path = Path(args.db)
+    if not db_path.exists():
+        _err({"error": f"DB not found: {db_path}", "created_at": utcnow_iso()})
+
+    before_raw = getattr(args, "before", None)
+    older_days = getattr(args, "older_than_days", None)
+    if before_raw:
+        try:
+            cutoff_iso = _as_utc_iso(before_raw)
+        except Exception:
+            _err(
+                {"error": f"Invalid --before timestamp: {before_raw!r}", "created_at": utcnow_iso()}
+            )
+            return
+    elif older_days is not None:
+        cutoff_dt = datetime.now(timezone.utc) - timedelta(days=int(older_days))
+        cutoff_iso = cutoff_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+    else:
+        _err(
+            {
+                "error": "Provide --before <ISO> or --older-than-days <N>.",
+                "created_at": utcnow_iso(),
+            }
+        )
+        return
+
+    kinds = list(getattr(args, "kind", []) or [])
+    dry_run = bool(getattr(args, "dry_run", False))
+    delete_logs = bool(getattr(args, "delete_logs", False))
+
+    conn = get_connection(db_path)
+    apply_migrations(conn)
+    params = {
+        "cutoff_iso": cutoff_iso,
+        "kinds": kinds,
+        "dry_run": dry_run,
+        "delete_logs": delete_logs,
+    }
+    run_id = create_run(conn, "maintenance", params)
+    log, log_path = setup_run_logger(db_path, run_id)
+
+    try:
+        where = ["created_at < ?"]
+        sql_params: list[object] = [cutoff_iso]
+        if kinds:
+            where.append(f"kind IN ({','.join('?' for _ in kinds)})")
+            sql_params.extend(kinds)
+        where.append("run_id != ?")
+        sql_params.append(run_id)
+
+        rows = conn.execute(
+            f"SELECT run_id, kind, created_at FROM runs WHERE {' AND '.join(where)} ORDER BY created_at ASC",
+            tuple(sql_params),
+        ).fetchall()
+        candidate_ids = [str(row["run_id"]) for row in rows]
+        candidate_log_dirs = [str((db_path.parent / "runs" / rid).resolve()) for rid in candidate_ids]
+
+        deleted_runs = 0
+        deleted_logs = 0
+        if not dry_run and candidate_ids:
+            conn.executemany("DELETE FROM runs WHERE run_id = ?", [(rid,) for rid in candidate_ids])
+            conn.commit()
+            deleted_runs = len(candidate_ids)
+            if delete_logs:
+                for rid in candidate_ids:
+                    run_dir = db_path.parent / "runs" / rid
+                    if run_dir.exists():
+                        shutil.rmtree(run_dir, ignore_errors=True)
+                        deleted_logs += 1
+
+        stats = {
+            "cutoff_iso": cutoff_iso,
+            "kinds": kinds,
+            "dry_run": dry_run,
+            "candidates": len(candidate_ids),
+            "deleted_runs": deleted_runs,
+            "deleted_log_dirs": deleted_logs,
+        }
+        update_run_stats(conn, run_id, stats)
+
+        _ok(
+            {
+                "run_id": run_id,
+                "status": "ok",
+                "cutoff_iso": cutoff_iso,
+                "kinds": kinds,
+                "dry_run": dry_run,
+                "candidates": len(candidate_ids),
+                "deleted_runs": deleted_runs,
+                "deleted_log_dirs": deleted_logs,
+                "candidate_run_ids": candidate_ids,
+                "candidate_log_dirs": candidate_log_dirs,
+                "log": str(log_path),
+                "created_at": utcnow_iso(),
+            }
+        )
+    except Exception as exc:
+        log.error("runs-prune failed: %s\n%s", exc, traceback.format_exc())
+        _err({"run_id": run_id, "error": str(exc), "created_at": utcnow_iso()})
+
+
 # ---------------------------------------------------------------------------
 # Parser
 # ---------------------------------------------------------------------------
@@ -1339,6 +1570,76 @@ def build_parser() -> argparse.ArgumentParser:
         help="Segmentation quality pack: auto|default|fr_strict|en_strict (default: auto)",
     )
     p_segment.set_defaults(func=cmd_segment)
+
+    # diagnostics
+    p_diag = sub.add_parser(
+        "diagnostics",
+        help="Collect DB diagnostics (integrity, FTS consistency, runs/alignment health)",
+    )
+    p_diag.add_argument("--db", required=True)
+    p_diag.add_argument(
+        "--strict",
+        action="store_true",
+        default=False,
+        help="Exit with code 1 when diagnostics status is not 'ok'.",
+    )
+    p_diag.add_argument(
+        "--compact",
+        action="store_true",
+        default=False,
+        help="Output compact JSON instead of pretty JSON.",
+    )
+    p_diag.set_defaults(func=cmd_diagnostics)
+
+    # db-optimize
+    p_opt = sub.add_parser(
+        "db-optimize",
+        help="Run SQLite maintenance operations (VACUUM/ANALYZE/PRAGMA optimize)",
+    )
+    p_opt.add_argument("--db", required=True)
+    p_opt.add_argument("--vacuum", action="store_true", default=False)
+    p_opt.add_argument("--analyze", action="store_true", default=False)
+    p_opt.add_argument("--optimize", action="store_true", default=False)
+    p_opt.set_defaults(func=cmd_db_optimize)
+
+    # runs-prune
+    p_prune = sub.add_parser(
+        "runs-prune",
+        help="Prune run history rows older than a cutoff (optional log cleanup)",
+    )
+    p_prune.add_argument("--db", required=True)
+    cutoff = p_prune.add_mutually_exclusive_group(required=True)
+    cutoff.add_argument(
+        "--before",
+        default=None,
+        help="Delete runs with created_at older than this ISO timestamp/date (UTC assumed if no TZ).",
+    )
+    cutoff.add_argument(
+        "--older-than-days",
+        dest="older_than_days",
+        type=int,
+        default=None,
+        help="Delete runs older than N days.",
+    )
+    p_prune.add_argument(
+        "--kind",
+        action="append",
+        default=[],
+        help="Restrict prune to one or more run kinds (repeatable).",
+    )
+    p_prune.add_argument(
+        "--dry-run",
+        action="store_true",
+        default=False,
+        help="List candidates without deleting anything.",
+    )
+    p_prune.add_argument(
+        "--delete-logs",
+        action="store_true",
+        default=False,
+        help="Also remove DB-side run log directories for deleted run_ids.",
+    )
+    p_prune.set_defaults(func=cmd_runs_prune)
 
     # serve
     p_serve = sub.add_parser(

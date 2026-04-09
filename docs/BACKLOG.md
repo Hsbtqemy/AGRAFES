@@ -51,7 +51,7 @@ Last updated: 2026-04-09 (priorisation « Idées à cadrer » + plan d’action)
 | P2 | Align explainability UI polish | Debug payload exists; rendering can be richer than logs | Dedicated explainability panel (sources, counts, similarity stats, samples) + copy diagnostic JSON | done |
 | P2 | Align explainability export/report | Operators may need offline debug traces from prep runs | Save explainability payloads to file and link them to run history | done |
 | P2 | Align run exploration UX | Explainability is now run-linked; users still need easier browsing/comparison in app | Add run picker + diff view across two align runs (strategy/coverage/debug deltas) | **done** (2026-04-08 — `GET /runs?kind=align` ; Prep Actions « Comparer deux runs » + tableau paramètres / stats) |
-| P3 | Project-level maintenance commands | Long-term operability | CLI helpers for diagnostics, vacuum/analyze, and run history pruning | todo |
+| P3 | Project-level maintenance commands | Long-term operability | CLI helpers for diagnostics, vacuum/analyze, and run history pruning | **done** (2026-04-09 : nouveaux subcommands CLI `diagnostics`, `db-optimize`, `runs-prune` + couverture `tests/test_cli_contract.py`) |
 
 ## Revue consolidée — priorisation, risques, incohérences (2026-04-08)
 
