@@ -187,7 +187,16 @@ jobs:
         with:
           path: release-artifacts
 
-      - name: Prepare release assets (deduplicate by basename)
+      - name: Zip Linux onedir artifact
+        run: |
+          LINUX_DIR=$(find release-artifacts -type d -name "multicorpus-*linux*" | head -n1)
+          if [ -n "$LINUX_DIR" ]; then
+            ARCH=$(basename "$LINUX_DIR")
+            zip -r "release-artifacts/release-linux-onedir/${ARCH}.zip" "$LINUX_DIR"
+            echo "Zipped $LINUX_DIR → ${ARCH}.zip"
+          fi
+
+      - name: Prepare release assets (deduplicate, skip empty files)
         run: |
           mkdir -p release-assets
           python3 - <<'PY'
@@ -197,18 +206,28 @@ jobs:
           src = Path("release-artifacts")
           dst = Path("release-assets")
 
+          # Collect only non-empty files with allowed extensions or known prefixes
+          SKIP_NAMES = {"sidecar-manifest.json"}  # bare name, superseded by OS-suffixed ones
+
           by_name = {}
           for p in src.rglob("*"):
               if not p.is_file():
+                  continue
+              if p.stat().st_size == 0:
+                  print(f"  skip (empty): {p}")
+                  continue
+              if p.name in SKIP_NAMES:
+                  print(f"  skip (superseded): {p}")
                   continue
               by_name.setdefault(p.name, []).append(p)
 
           duplicates = {name: paths for name, paths in by_name.items() if len(paths) > 1}
           if duplicates:
-              raise SystemExit(
-                  "Duplicate release asset basenames: "
-                  + ", ".join(sorted(duplicates))
-              )
+              for name, paths in sorted(duplicates.items()):
+                  print(f"  duplicate '{name}':")
+                  for p in paths:
+                      print(f"    {p}")
+              raise SystemExit("Duplicate release asset basenames detected (see above).")
 
           for paths in by_name.values():
               shutil.copy2(paths[0], dst / paths[0].name)
