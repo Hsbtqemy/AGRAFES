@@ -2186,6 +2186,14 @@
             "default": false,
             "type": "boolean"
           },
+          "db_paths": {
+            "description": "Optional absolute/relative database paths for federated multi-DB query.",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          },
           "doc_id": {
             "type": "integer"
           },
@@ -2260,6 +2268,17 @@
               "count": {
                 "type": "integer"
               },
+              "db_count": {
+                "nullable": true,
+                "type": "integer"
+              },
+              "db_paths": {
+                "items": {
+                  "type": "string"
+                },
+                "nullable": true,
+                "type": "array"
+              },
               "family_doc_ids": {
                 "items": {
                   "type": "integer"
@@ -2270,6 +2289,10 @@
               "family_id": {
                 "nullable": true,
                 "type": "integer"
+              },
+              "federated": {
+                "nullable": true,
+                "type": "boolean"
               },
               "has_more": {
                 "type": "boolean"
@@ -2906,6 +2929,179 @@
         ],
         "type": "object"
       },
+      "TokenRecord": {
+        "additionalProperties": false,
+        "properties": {
+          "doc_id": {
+            "type": "integer"
+          },
+          "external_id": {
+            "nullable": true,
+            "type": "integer"
+          },
+          "feats": {
+            "nullable": true,
+            "type": "string"
+          },
+          "lemma": {
+            "nullable": true,
+            "type": "string"
+          },
+          "misc": {
+            "nullable": true,
+            "type": "string"
+          },
+          "position": {
+            "type": "integer"
+          },
+          "sent_id": {
+            "type": "integer"
+          },
+          "token_id": {
+            "type": "integer"
+          },
+          "unit_id": {
+            "type": "integer"
+          },
+          "unit_n": {
+            "type": "integer"
+          },
+          "upos": {
+            "nullable": true,
+            "type": "string"
+          },
+          "word": {
+            "nullable": true,
+            "type": "string"
+          },
+          "xpos": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "token_id",
+          "doc_id",
+          "unit_id",
+          "unit_n",
+          "external_id",
+          "sent_id",
+          "position"
+        ],
+        "type": "object"
+      },
+      "TokenUpdateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "feats": {
+            "nullable": true,
+            "type": "string"
+          },
+          "lemma": {
+            "nullable": true,
+            "type": "string"
+          },
+          "misc": {
+            "nullable": true,
+            "type": "string"
+          },
+          "token_id": {
+            "type": "integer"
+          },
+          "upos": {
+            "nullable": true,
+            "type": "string"
+          },
+          "word": {
+            "nullable": true,
+            "type": "string"
+          },
+          "xpos": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "token_id"
+        ],
+        "type": "object"
+      },
+      "TokenUpdateResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BaseResponse"
+          },
+          {
+            "properties": {
+              "token": {
+                "$ref": "#/components/schemas/TokenRecord"
+              },
+              "updated": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "updated",
+              "token"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "TokensResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BaseResponse"
+          },
+          {
+            "properties": {
+              "count": {
+                "type": "integer"
+              },
+              "doc_id": {
+                "type": "integer"
+              },
+              "has_more": {
+                "type": "boolean"
+              },
+              "limit": {
+                "type": "integer"
+              },
+              "next_offset": {
+                "nullable": true,
+                "type": "integer"
+              },
+              "offset": {
+                "type": "integer"
+              },
+              "tokens": {
+                "items": {
+                  "$ref": "#/components/schemas/TokenRecord"
+                },
+                "type": "array"
+              },
+              "total": {
+                "type": "integer"
+              },
+              "unit_id": {
+                "nullable": true,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "doc_id",
+              "tokens",
+              "count",
+              "total",
+              "limit",
+              "offset",
+              "next_offset",
+              "has_more"
+            ],
+            "type": "object"
+          }
+        ]
+      },
       "UnitsMergeRequest": {
         "additionalProperties": false,
         "properties": {
@@ -3057,8 +3253,8 @@
   "info": {
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
-    "version": "1.6.19",
-    "x-contract-version": "1.6.19"
+    "version": "1.6.21",
+    "x-contract-version": "1.6.21"
   },
   "openapi": "3.0.3",
   "paths": {
@@ -5008,6 +5204,151 @@
           }
         },
         "summary": "Run token-level CQL query"
+      }
+    },
+    "/tokens": {
+      "get": {
+        "parameters": [
+          {
+            "description": "Document identifier",
+            "in": "query",
+            "name": "doc_id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Optional unit identifier to restrict token list",
+            "in": "query",
+            "name": "unit_id",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 1000,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokensResponse"
+                }
+              }
+            },
+            "description": "Token list"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "List token rows for a document (optionally one unit)"
+      }
+    },
+    "/tokens/update": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TokenUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenUpdateResponse"
+                }
+              }
+            },
+            "description": "Token updated"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized (missing/invalid token)"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Token row not found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Update a token row (manual annotation edit)"
       }
     },
     "/units/merge": {
