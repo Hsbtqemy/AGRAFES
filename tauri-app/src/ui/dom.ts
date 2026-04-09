@@ -903,6 +903,10 @@ body {
   color: var(--brand);
   word-break: break-all;
 }
+.fts-preview-code .cql-attr { color: #14532d; font-weight: 700; }
+.fts-preview-code .cql-value { color: #7c2d12; }
+.fts-preview-code .cql-op { color: #1d4ed8; font-weight: 700; }
+.fts-preview-code .cql-flag { color: #7e22ce; font-weight: 700; }
 .chips-bar {
   background: var(--surface);
   border-bottom: 1px solid var(--border);
@@ -1566,6 +1570,17 @@ body {
 }
 .mode-badge--kwic { background: #ede9fe; border-color: #c4b5fd; color: #6d28d9; }
 .mode-badge--segment { background: #e0f2fe; border-color: #7dd3fc; color: #0369a1; }
+.mode-badge--cql { background: #ecfdf5; border-color: #86efac; color: #166534; }
+.mode-badge--federated { background: #f0fdf4; border-color: #86efac; color: #166534; }
+.mode-badge-btn {
+  appearance: none;
+  cursor: pointer;
+}
+.mode-badge-btn:hover { filter: brightness(0.98); }
+.mode-badge-btn:focus-visible {
+  outline: 2px solid #166534;
+  outline-offset: 1px;
+}
 .results-filter-summary {
   font-size: 11px;
   color: var(--text-muted);

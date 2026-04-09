@@ -20,6 +20,7 @@ export interface HistoryItem {
     lang: string;
     role: string;
     resourceType: string;
+    federatedDbPaths?: string[];
     /** @deprecated use docIds */ docId?: string;
     docIds: number[] | null;
   };
@@ -44,6 +45,7 @@ export function saveToHistory(raw: string, fts: string): void {
       lang: state.filterLangs.join(","),
       role: state.filterRole,
       resourceType: state.filterResourceType,
+      federatedDbPaths: state.filterFederatedDbPaths,
       docIds: state.filterDocIds,
     },
     aligned: state.showAligned,
@@ -146,6 +148,9 @@ export function renderHistPanel(panel: HTMLElement, searchInput: HTMLInputElemen
       if (item.filters.lang) chips.push(`lang:${item.filters.lang}`);
       if (item.filters.role) chips.push(`rôle:${item.filters.role}`);
       if (item.filters.resourceType) chips.push(`type:${item.filters.resourceType}`);
+      if ((item.filters.federatedDbPaths?.length ?? 0) > 0) {
+        chips.push(`fédéré:+${item.filters.federatedDbPaths!.length}`);
+      }
       if (item.aligned) chips.push("alignés");
       textDiv.appendChild(elt("div", { class: "hist-item-meta" }, chips.join(" · ") || "\u00a0"));
       const timeEl = elt("div", { class: "hist-item-time" }, relTime(item.ts));
@@ -170,6 +175,11 @@ export function renderHistPanel(panel: HTMLElement, searchInput: HTMLInputElemen
         } else {
           state.filterDocIds = null;
         }
+        state.filterFederatedDbPaths = Array.isArray(item.filters.federatedDbPaths)
+          ? item.filters.federatedDbPaths
+          : [];
+        const fedTa = document.getElementById("filter-federated-dbs") as HTMLTextAreaElement | null;
+        if (fedTa) fedTa.value = state.filterFederatedDbPaths.join("\n");
         saveDocSelectorState(state.dbPath ?? "");
         syncDocSelectorUI();
         state.showAligned = item.aligned;
@@ -183,6 +193,17 @@ export function renderHistPanel(panel: HTMLElement, searchInput: HTMLInputElemen
         // Show/hide the NEAR N control based on restored mode.
         const nearCtrl = document.getElementById("near-n-ctrl") as HTMLElement | null;
         if (nearCtrl) nearCtrl.style.display = state.builderMode === "near" ? "flex" : "none";
+        const regexInfo = document.getElementById("regex-info") as HTMLElement | null;
+        if (regexInfo) regexInfo.style.display = state.builderMode === "regex" ? "block" : "none";
+        const cqlInfo = document.getElementById("cql-info") as HTMLElement | null;
+        if (cqlInfo) cqlInfo.style.display = state.builderMode === "cql" ? "block" : "none";
+        if (state.builderMode === "regex") {
+          searchInput.placeholder = "Expression régulière Python (ex : \\blib(é|e)r\\w+)…";
+        } else if (state.builderMode === "cql") {
+          searchInput.placeholder = 'Requête CQL (ex : [pos = "DET"][lemma = "liv.*" %c])…';
+        } else {
+          searchInput.placeholder = "Rechercher dans le corpus (FTS5)…";
+        }
         updateFtsPreview(item.raw);
         renderChips();
         void doSearch(item.raw);

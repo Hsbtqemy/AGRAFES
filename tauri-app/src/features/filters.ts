@@ -222,5 +222,13 @@ export function renderChips(): void {
     }
   }
 
+  if (state.filterFederatedDbPaths.length > 0) {
+    add("Fédération", `DB courante + ${state.filterFederatedDbPaths.length}`, () => {
+      state.filterFederatedDbPaths = [];
+      const ta = document.getElementById("filter-federated-dbs") as HTMLTextAreaElement | null;
+      if (ta) ta.value = "";
+    });
+  }
+
   bar.style.display = bar.children.length > 0 ? "" : "none";
 }

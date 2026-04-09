@@ -45,6 +45,8 @@ export interface AppState {
   filterDateTo: string;
   /** Filter by source file extension (e.g. ".docx"). */
   filterSourceExt: string;
+  /** Extra DB paths for federated /query (the current DB is added automatically). */
+  filterFederatedDbPaths: string[];
   showAligned: boolean;
   expandedAlignedUnitIds: Set<number>;
   currentQuery: string;
@@ -54,10 +56,12 @@ export interface AppState {
   loadingMore: boolean;
   total: number | null;
   // query builder
-  builderMode: "simple" | "phrase" | "and" | "or" | "near" | "regex";
+  builderMode: "simple" | "phrase" | "and" | "or" | "near" | "regex" | "cql";
   nearN: number;
   /** When builderMode === "regex", stores the raw regex pattern (no FTS query is built). */
   regexPattern: string;
+  /** Last /token_query total matched token count (hits total × sequence length), if in CQL mode. */
+  cqlTokensMatchedTotal: number | null;
   // parallel KWIC
   showParallel: boolean;
   // Case-sensitive search post-filter
@@ -101,6 +105,7 @@ export const state: AppState = {
   filterDateFrom: "",
   filterDateTo: "",
   filterSourceExt: "",
+  filterFederatedDbPaths: [],
   showAligned: false,
   expandedAlignedUnitIds: new Set<number>(),
   currentQuery: "",
@@ -112,6 +117,7 @@ export const state: AppState = {
   builderMode: "simple",
   nearN: 5,
   regexPattern: "",
+  cqlTokensMatchedTotal: null,
   showParallel: false,
   caseSensitive: false,
   sortMode: "natural",

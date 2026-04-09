@@ -188,6 +188,32 @@ export function buildUI(container: HTMLElement): void {
         </div>
       </div>
       <div class="help-section">
+        <div class="help-section-title">Mode CQL (token-level)</div>
+        <div class="help-ex">
+          <span class="help-ex-code">[lemma = "liv.*" %c]</span>
+          <span class="help-ex-desc">Lemme par regex (insensible casse)</span>
+          <button class="help-ex-copy" data-q='[lemma = "liv.*" %c]'>Copier</button>
+        </div>
+        <div class="help-ex">
+          <span class="help-ex-code">[pos = "DET" & lemma = "le"]</span>
+          <span class="help-ex-desc">Contraintes combinées sur un token</span>
+          <button class="help-ex-copy" data-q='[pos = "DET" & lemma = "le"]'>Copier</button>
+        </div>
+        <div class="help-ex">
+          <span class="help-ex-code">[pos = "DET"][lemma = "liv.*" %c]</span>
+          <span class="help-ex-desc">Séquence fixe de deux tokens</span>
+          <button class="help-ex-copy" data-q='[pos = "DET"][lemma = "liv.*" %c]'>Copier</button>
+        </div>
+        <div class="help-ex">
+          <span class="help-ex-code">[pos = "DET"][]{0,2}[lemma = "arriv.*"] within s</span>
+          <span class="help-ex-desc">Wildcard + quantifieur + contrainte de phrase</span>
+          <button class="help-ex-copy" data-q='[pos = "DET"][]{0,2}[lemma = "arriv.*"] within s'>Copier</button>
+        </div>
+        <div class="help-passthrough-note" style="margin-top:4px">
+          Attributs supportés : <code>word</code>, <code>lemma</code>, <code>pos</code>/<code>upos</code>. Quantifieurs : <code>{m}</code>, <code>{m,n}</code>.
+        </div>
+      </div>
+      <div class="help-section">
         <div class="help-section-title">Guardrails FTS</div>
         <div class="help-passthrough-note">
           <strong>Mode pass-through :</strong> si votre requête contient déjà <code>AND</code>, <code>OR</code>, <code>NOT</code>, <code>NEAR</code> ou des guillemets, le builder ne la transforme pas — elle est envoyée telle quelle au moteur FTS5.
@@ -331,6 +357,29 @@ export function buildUI(container: HTMLElement): void {
   `;
   fgExt.appendChild(sourceExtSel);
 
+  const fgFederated = elt("div", { class: "filter-group", style: "align-items:flex-start;min-width:260px;max-width:420px" });
+  fgFederated.appendChild(elt("label", { style: "padding-top:4px" }, "Fédération DB"));
+  const federatedCol = elt("div", { style: "display:flex;flex-direction:column;gap:4px;min-width:220px;width:100%" });
+  const federatedDbInput = elt("textarea", {
+    id: "filter-federated-dbs",
+    class: "filter-input-text",
+    placeholder: "/abs/path/a.db\\n/abs/path/b.db",
+    rows: "3",
+    style: "min-width:220px;max-width:380px;width:100%;resize:vertical;line-height:1.3",
+    title: "Une base par ligne. La DB courante est toujours incluse automatiquement.",
+  }) as HTMLTextAreaElement;
+  const federatedActions = elt("div", { style: "display:flex;align-items:center;gap:6px" });
+  const federatedBrowseBtn = elt(
+    "button",
+    { class: "btn btn-secondary", type: "button", style: "padding:3px 8px;font-size:12px" },
+    "Ajouter DB…",
+  ) as HTMLButtonElement;
+  federatedActions.appendChild(federatedBrowseBtn);
+  federatedActions.appendChild(elt("span", { style: "font-size:11px;color:var(--text-muted)" }, "DB courante incluse automatiquement"));
+  federatedCol.appendChild(federatedDbInput);
+  federatedCol.appendChild(federatedActions);
+  fgFederated.appendChild(federatedCol);
+
   const clearBtn = elt("span", { class: "filter-clear", id: "filter-clear" }, "Effacer tout");
   filterDrawer.appendChild(fg1);
   filterDrawer.appendChild(fg2);
@@ -340,6 +389,7 @@ export function buildUI(container: HTMLElement): void {
   filterDrawer.appendChild(fgTitle);
   filterDrawer.appendChild(fgDate);
   filterDrawer.appendChild(fgExt);
+  filterDrawer.appendChild(fgFederated);
   filterDrawer.appendChild(docSelectorMount);
   filterDrawer.appendChild(clearBtn);
 
@@ -356,6 +406,7 @@ export function buildUI(container: HTMLElement): void {
     ["or", "OU (OR)"],
     ["near", "NEAR"],
     ["regex", "Regex"],
+    ["cql", "CQL"],
   ] as const) {
     const lbEl = document.createElement("label");
     const inp = elt("input", { type: "radio", name: "builder-mode", value: val }) as HTMLInputElement;
@@ -364,8 +415,17 @@ export function buildUI(container: HTMLElement): void {
       state.builderMode = val;
       (document.getElementById("near-n-ctrl") as HTMLElement).style.display = val === "near" ? "flex" : "none";
       (document.getElementById("regex-info") as HTMLElement).style.display = val === "regex" ? "block" : "none";
+      (document.getElementById("cql-info") as HTMLElement).style.display = val === "cql" ? "block" : "none";
       const si = document.getElementById("search-input") as HTMLInputElement | null;
-      if (si) si.placeholder = val === "regex" ? "Expression régulière Python (ex : \\blib(é|e)r\\w+)…" : "Rechercher dans le corpus (FTS5)…";
+      if (si) {
+        if (val === "regex") {
+          si.placeholder = "Expression régulière Python (ex : \\blib(é|e)r\\w+)…";
+        } else if (val === "cql") {
+          si.placeholder = 'Requête CQL (ex : [pos = "DET"][lemma = "liv.*" %c])…';
+        } else {
+          si.placeholder = "Rechercher dans le corpus (FTS5)…";
+        }
+      }
     });
     lbEl.appendChild(inp);
     lbEl.appendChild(document.createTextNode(lbl));
@@ -381,6 +441,14 @@ export function buildUI(container: HTMLElement): void {
   });
   regexInfo.innerHTML = `<strong>Mode Regex</strong> — Balayage complet de la table (plus lent que FTS sur de très grands corpus). Syntaxe Python : <code>\\b</code>, <code>(?i)</code>, groupes, classes, etc. La casse est ignorée par défaut (comme FTS).`;
   builderPanel.appendChild(regexInfo);
+
+  const cqlInfo = elt("div", {
+    id: "cql-info",
+    class: "regex-info-note",
+    style: "display:none",
+  });
+  cqlInfo.innerHTML = `<strong>Mode CQL</strong> — Requête token-level via <code>/token_query</code>. Syntaxe avancée: séquences <code>[...][...]</code>, wildcard <code>[]</code>, quantifieurs <code>{m,n}</code>, suffixe <code>within s</code>.`;
+  builderPanel.appendChild(cqlInfo);
 
   const nearCtrl = elt("div", { class: "near-n-ctrl", id: "near-n-ctrl", style: "display:none" });
   nearCtrl.appendChild(document.createTextNode("N ="));
@@ -536,14 +604,20 @@ export function buildUI(container: HTMLElement): void {
   searchInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
       const raw = searchInput.value;
-      saveToHistory(raw, buildFtsQuery(raw));
+      const built = (state.builderMode === "regex" || state.builderMode === "cql")
+        ? raw.trim()
+        : buildFtsQuery(raw);
+      saveToHistory(raw, built);
       void doSearch(raw);
     }
   });
   searchInput.addEventListener("input", () => updateFtsPreview(searchInput.value));
   searchBtn.addEventListener("click", () => {
     const raw = searchInput.value;
-    saveToHistory(raw, buildFtsQuery(raw));
+    const built = (state.builderMode === "regex" || state.builderMode === "cql")
+      ? raw.trim()
+      : buildFtsQuery(raw);
+    saveToHistory(raw, built);
     void doSearch(raw);
   });
 
@@ -553,7 +627,7 @@ export function buildUI(container: HTMLElement): void {
     segBtn.classList.add("active");
     kwicBtn.classList.remove("active");
     (document.getElementById("window-ctrl") as HTMLElement).style.display = "none";
-    if (state.currentQuery) void doSearch(state.currentQuery);
+    if (state.currentQuery || state.regexPattern) void doSearch(state.currentQuery || state.regexPattern);
   });
   kwicBtn.addEventListener("click", () => {
     if (state.mode === "kwic") return;
@@ -561,7 +635,7 @@ export function buildUI(container: HTMLElement): void {
     kwicBtn.classList.add("active");
     segBtn.classList.remove("active");
     (document.getElementById("window-ctrl") as HTMLElement).style.display = "flex";
-    if (state.currentQuery) void doSearch(state.currentQuery);
+    if (state.currentQuery || state.regexPattern) void doSearch(state.currentQuery || state.regexPattern);
   });
 
   rangeInput.addEventListener("input", () => {
@@ -649,6 +723,28 @@ export function buildUI(container: HTMLElement): void {
   dateFromInput.addEventListener("input", () => applyTextFilter("filterDateFrom", dateFromInput.value.trim()));
   dateToInput.addEventListener("input", () => applyTextFilter("filterDateTo", dateToInput.value.trim()));
   sourceExtSel.addEventListener("change", () => { state.filterSourceExt = sourceExtSel.value; renderChips(); });
+  const _parseFederatedDbPaths = (raw: string): string[] =>
+    Array.from(new Set(raw.split(/\r?\n/).map((p) => p.trim()).filter((p) => p.length > 0)));
+  const _syncFederatedDbPaths = (): void => {
+    state.filterFederatedDbPaths = _parseFederatedDbPaths(federatedDbInput.value);
+    renderChips();
+  };
+  federatedDbInput.addEventListener("input", _syncFederatedDbPaths);
+  federatedBrowseBtn.addEventListener("click", async () => {
+    const sel = await openDialog({
+      title: "Ajouter des bases fédérées",
+      filters: [{ name: "SQLite DB", extensions: ["db"] }],
+      multiple: true,
+    });
+    if (!sel) return;
+    const picked = Array.isArray(sel) ? sel : [sel];
+    if (picked.length === 0) return;
+    const merged = Array.from(
+      new Set([..._parseFederatedDbPaths(federatedDbInput.value), ...picked.map((p) => p.trim())]),
+    );
+    federatedDbInput.value = merged.join("\n");
+    _syncFederatedDbPaths();
+  });
 
   familySel.addEventListener("change", () => {
     const val = familySel.value;
@@ -689,6 +785,7 @@ export function buildUI(container: HTMLElement): void {
     state.filterDateFrom = "";
     state.filterDateTo = "";
     state.filterSourceExt = "";
+    state.filterFederatedDbPaths = [];
     // Uncheck all lang checkboxes and reset button label
     document.querySelectorAll<HTMLInputElement>("#filter-lang-checkboxes input[type=checkbox]").forEach(cb => { cb.checked = false; });
     const langBtnEl = document.getElementById("filter-lang-btn");
@@ -702,6 +799,7 @@ export function buildUI(container: HTMLElement): void {
     dateFromInput.value = "";
     dateToInput.value = "";
     sourceExtSel.value = "";
+    federatedDbInput.value = "";
     clearDocSelector(state.dbPath ?? "");
     renderChips();
   });
@@ -785,6 +883,12 @@ export function buildUI(container: HTMLElement): void {
     state.filterResourceType = "";
     state.filterFamilyId = null;
     state.filterFamilyPivotOnly = false;
+    state.filterAuthor = "";
+    state.filterTitleSearch = "";
+    state.filterDateFrom = "";
+    state.filterDateTo = "";
+    state.filterSourceExt = "";
+    state.filterFederatedDbPaths = [];
     document.querySelectorAll<HTMLInputElement>("#filter-lang-checkboxes input[type=checkbox]").forEach(cb => { cb.checked = false; });
     const langBtnReset = document.getElementById("filter-lang-btn");
     if (langBtnReset) { langBtnReset.textContent = "Langue ▾"; langBtnReset.classList.remove("active"); }
@@ -792,11 +896,20 @@ export function buildUI(container: HTMLElement): void {
     restypeSel.value = "";
     familySel.value = "";
     pivotOnlyCb.checked = false;
+    authorInput.value = "";
+    titleSearchInput.value = "";
+    dateFromInput.value = "";
+    dateToInput.value = "";
+    sourceExtSel.value = "";
+    federatedDbInput.value = "";
     clearDocSelector(state.dbPath ?? "");
     state.builderMode = "simple";
     const simpleRadio = document.querySelector<HTMLInputElement>("input[name='builder-mode'][value='simple']");
     if (simpleRadio) simpleRadio.checked = true;
     (document.getElementById("near-n-ctrl") as HTMLElement | null)?.style.setProperty("display", "none");
+    (document.getElementById("regex-info") as HTMLElement | null)?.style.setProperty("display", "none");
+    (document.getElementById("cql-info") as HTMLElement | null)?.style.setProperty("display", "none");
+    searchInput.placeholder = "Rechercher dans le corpus (FTS5)…";
     updateFtsPreview("");
     // Close all open panels/menus
     closeMetaPanel();

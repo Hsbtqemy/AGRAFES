@@ -19,11 +19,11 @@
  *     document group separators.
  */
 
-import { query, queryFacets, SidecarError } from "../lib/sidecarClient";
+import { query, tokenQuery, queryFacets, SidecarError } from "../lib/sidecarClient";
 import { state, ALIGNED_LIMIT_DEFAULT, PAGE_LIMIT_DEFAULT, PAGE_LIMIT_ALIGNED } from "../state";
 import { elt } from "../ui/dom";
 import { renderHit, VIRT_DOM_CAP } from "../ui/results";
-import { buildFtsQuery } from "./search";
+import { buildFtsQuery, showBuilderWarn, validateCqlSyntax } from "./search";
 import { renderChips } from "./filters";
 import { syncDocSelectorUI, saveDocSelectorState } from "./docSelector";
 import type { QueryHit, FacetDocEntry } from "../lib/sidecarClient";
@@ -89,14 +89,56 @@ function applySortToHits(hits: QueryHit[]): QueryHit[] {
 
 // ─── Filter helpers ───────────────────────────────────────────────────────────
 
+function _computeFederatedDbPaths(): string[] {
+  return Array.from(
+    new Set(
+      [state.dbPath, ...state.filterFederatedDbPaths]
+        .filter((p): p is string => typeof p === "string" && p.trim().length > 0),
+    ),
+  );
+}
+
+function _isFederationActive(opts?: { isCqlMode?: boolean; inFamilyMode?: boolean }): boolean {
+  const isCqlMode = opts?.isCqlMode ?? (state.builderMode === "cql");
+  const inFamilyMode = opts?.inFamilyMode ?? (state.filterFamilyId !== null);
+  if (isCqlMode || inFamilyMode) return false;
+  return _computeFederatedDbPaths().length > 1;
+}
+
+function _openFederationFilterEditor(): void {
+  state.showFilters = true;
+  document.getElementById("filter-drawer")?.classList.remove("hidden");
+  document.getElementById("filter-btn")?.classList.add("active");
+  const textarea = document.getElementById("filter-federated-dbs") as HTMLTextAreaElement | null;
+  if (textarea) {
+    textarea.scrollIntoView({ block: "nearest" });
+    textarea.focus();
+    textarea.setSelectionRange(0, textarea.value.length);
+  }
+}
+
 /** Returns true if any documentary filter is currently active. */
 function hasActiveFilters(): boolean {
   return !!(
     state.filterLangs.length > 0 || state.filterRole || state.filterDocIds !== null ||
     state.filterResourceType || state.filterFamilyId !== null ||
     state.filterAuthor || state.filterTitleSearch ||
-    state.filterDateFrom || state.filterDateTo || state.filterSourceExt
+    state.filterDateFrom || state.filterDateTo || state.filterSourceExt ||
+    _isFederationActive()
   );
+}
+
+function _resolveCqlDocIds(): number[] | undefined {
+  // Family scope is not yet natively supported by /token_query. We expand it
+  // client-side to doc_ids so CQL mode still works with the family filter.
+  if (state.filterFamilyId !== null) {
+    const fam = state.families.find((f) => f.family_id === state.filterFamilyId);
+    if (!fam || !fam.parent) return state.filterDocIds ?? undefined;
+    if (state.filterFamilyPivotOnly) return [fam.parent.doc_id];
+    const ids = [fam.parent.doc_id, ...fam.children.map((c) => c.doc_id)];
+    return Array.from(new Set(ids));
+  }
+  return state.filterDocIds ?? undefined;
 }
 
 /** Builds a short summary of active filters for display. */
@@ -126,6 +168,10 @@ function activeFiltersSummary(): string {
     parts.push(`Date : ${from} – ${to}`);
   }
   if (state.filterSourceExt) parts.push(`Format : ${state.filterSourceExt}`);
+  if (_isFederationActive()) {
+    const dbCount = _computeFederatedDbPaths().length;
+    parts.push(`Fédération : ${dbCount} DB`);
+  }
   return parts.join(" · ");
 }
 
@@ -299,8 +345,31 @@ export function renderResults(): void {
   header.appendChild(leftSide);
 
   const rightSide = elt("div", { class: "results-header-right" });
-  const modeBadge = elt("span", { class: `mode-badge mode-badge--${mode}` }, mode === "kwic" ? "KWIC" : "Segment");
+  const isCqlMode = state.builderMode === "cql";
+  const modeBadgeClass = isCqlMode
+    ? "mode-badge mode-badge--cql"
+    : `mode-badge mode-badge--${mode}`;
+  const modeBadgeText = isCqlMode
+    ? `CQL ${mode.toUpperCase()}`
+    : (mode === "kwic" ? "KWIC" : "Segment");
+  const modeBadge = elt("span", { class: modeBadgeClass }, modeBadgeText);
   rightSide.appendChild(modeBadge);
+
+  const federationActive = _isFederationActive({ isCqlMode });
+  if (federationActive) {
+    const dbCount = _computeFederatedDbPaths().length;
+    const federationBadge = elt(
+      "button",
+      {
+        class: "mode-badge mode-badge--federated mode-badge-btn",
+        type: "button",
+        title: `Requête fédérée active sur ${dbCount} base${dbCount > 1 ? "s" : ""}`,
+      },
+      `FÉDÉRÉ ${dbCount} DB`,
+    ) as HTMLButtonElement;
+    federationBadge.addEventListener("click", _openFederationFilterEditor);
+    rightSide.appendChild(federationBadge);
+  }
 
   const summary = activeFiltersSummary();
   if (summary) {
@@ -348,6 +417,14 @@ export function renderResults(): void {
   } else {
     const parts = [`${docCount} document${docCount !== 1 ? "s" : ""}`];
     if (langCount > 1) parts.push(`${langCount} langues`);
+    if (isCqlMode) {
+      const loadedMatchedTokens = hits.reduce((acc, h) => acc + (h.tokens?.length ?? 0), 0);
+      if (state.cqlTokensMatchedTotal !== null) {
+        parts.push(`${state.cqlTokensMatchedTotal} tokens appariés`);
+      } else if (loadedMatchedTokens > 0) {
+        parts.push(`${loadedMatchedTokens} tokens appariés (chargés)`);
+      }
+    }
     const scopeLabel = state.hasMore
       ? `${hits.length} hits chargés (calcul exact en cours…)`
       : `${hits.length} hit${hits.length !== 1 ? "s" : ""} chargés`;
@@ -433,6 +510,10 @@ export function renderResults(): void {
  * grouping integrity (new hits may belong to existing document groups).
  */
 function appendResultCards(prevCount: number): void {
+  if (state.builderMode === "cql") {
+    renderResults();
+    return;
+  }
   // In by-doc mode, sorted grouping must be rebuilt — fall back to full rerender
   if (state.sortMode === "by-doc") {
     renderResults();
@@ -523,13 +604,29 @@ export function disposeQuery(): void {
 
 export async function doSearch(rawQ: string): Promise<void> {
   const isRegex = state.builderMode === "regex";
+  const isCql = state.builderMode === "cql";
+  const trimmed = rawQ.trim();
+
+  if (isCql && trimmed) {
+    const cqlErr = validateCqlSyntax(trimmed);
+    if (cqlErr) {
+      showBuilderWarn(`CQL invalide: ${cqlErr}`);
+      return;
+    }
+  }
 
   if (isRegex) {
-    state.regexPattern = rawQ.trim();
+    state.regexPattern = trimmed;
     state.currentQuery = "";
+    state.cqlTokensMatchedTotal = null;
+  } else if (isCql) {
+    state.regexPattern = "";
+    state.currentQuery = trimmed;
+    state.cqlTokensMatchedTotal = null;
   } else {
     state.regexPattern = "";
     state.currentQuery = buildFtsQuery(rawQ);
+    state.cqlTokensMatchedTotal = null;
   }
 
   state.pageLimit = state.showAligned ? PAGE_LIMIT_ALIGNED : PAGE_LIMIT_DEFAULT;
@@ -549,7 +646,7 @@ export async function doSearch(rawQ: string): Promise<void> {
   }
   await fetchQueryPage(false);
   // Fire facets fetch only for FTS mode (regex has an exact total from the backend)
-  if (state.currentQuery && !state.regexPattern) void _fetchAndApplyFacets(state.currentQuery);
+  if (state.currentQuery && !state.regexPattern && !isCql) void _fetchAndApplyFacets(state.currentQuery);
 }
 
 export async function fetchQueryPage(append: boolean): Promise<void> {
@@ -574,30 +671,45 @@ export async function fetchQueryPage(append: boolean): Promise<void> {
 
   try {
     const inFamilyMode = state.filterFamilyId !== null;
-    const res = await query(state.conn, {
-      q: state.currentQuery,
-      mode: state.mode,
-      window: state.window,
-      language: state.filterLangs.length > 0 ? state.filterLangs : undefined,
-      doc_role: state.filterRole || undefined,
-      resource_type: state.filterResourceType || undefined,
-      author: state.filterAuthor || undefined,
-      title_search: state.filterTitleSearch || undefined,
-      doc_date_from: state.filterDateFrom || undefined,
-      doc_date_to: state.filterDateTo || undefined,
-      source_ext: state.filterSourceExt || undefined,
-      // Family filter takes precedence over manual doc_ids
-      doc_ids: inFamilyMode ? undefined : (state.filterDocIds ?? undefined),
-      familyId: inFamilyMode ? state.filterFamilyId! : undefined,
-      pivotOnly: inFamilyMode ? state.filterFamilyPivotOnly : undefined,
-      // In family mode, always show aligned; otherwise honour the toggle
-      includeAligned: inFamilyMode || state.showAligned,
-      alignedLimit: (inFamilyMode || state.showAligned) ? ALIGNED_LIMIT_DEFAULT : undefined,
-      case_sensitive: state.caseSensitive || undefined,
-      limit: state.pageLimit,
-      offset,
-      regex_pattern: state.regexPattern || undefined,
-    });
+    const isCql = state.builderMode === "cql";
+    const federatedDbPaths = _isFederationActive({ isCqlMode: isCql, inFamilyMode })
+      ? _computeFederatedDbPaths()
+      : undefined;
+    const res = isCql
+      ? await tokenQuery(state.conn, {
+          cql: state.currentQuery,
+          mode: state.mode,
+          window: state.window,
+          language: state.filterLangs.length > 0 ? state.filterLangs : undefined,
+          doc_ids: _resolveCqlDocIds(),
+          limit: state.pageLimit,
+          offset,
+        })
+      : await query(state.conn, {
+          q: state.currentQuery,
+          mode: state.mode,
+          window: state.window,
+          language: state.filterLangs.length > 0 ? state.filterLangs : undefined,
+          doc_role: state.filterRole || undefined,
+          resource_type: state.filterResourceType || undefined,
+          author: state.filterAuthor || undefined,
+          title_search: state.filterTitleSearch || undefined,
+          doc_date_from: state.filterDateFrom || undefined,
+          doc_date_to: state.filterDateTo || undefined,
+          source_ext: state.filterSourceExt || undefined,
+          dbPaths: federatedDbPaths,
+          // Family filter takes precedence over manual doc_ids
+          doc_ids: inFamilyMode ? undefined : (state.filterDocIds ?? undefined),
+          familyId: inFamilyMode ? state.filterFamilyId! : undefined,
+          pivotOnly: inFamilyMode ? state.filterFamilyPivotOnly : undefined,
+          // In family mode, always show aligned; otherwise honour the toggle
+          includeAligned: inFamilyMode || state.showAligned,
+          alignedLimit: (inFamilyMode || state.showAligned) ? ALIGNED_LIMIT_DEFAULT : undefined,
+          case_sensitive: state.caseSensitive || undefined,
+          limit: state.pageLimit,
+          offset,
+          regex_pattern: state.regexPattern || undefined,
+        });
 
     const pageHits = Array.isArray(res.hits) ? res.hits : [];
     state.hits = append ? state.hits.concat(pageHits) : pageHits;
@@ -608,6 +720,14 @@ export async function fetchQueryPage(append: boolean): Promise<void> {
       state.total = res.total;
     } else {
       state.total = null;
+    }
+    if (isCql) {
+      const seqLen = state.hits.find((h) => Array.isArray(h.tokens) && h.tokens.length > 0)?.tokens?.length ?? 0;
+      state.cqlTokensMatchedTotal = typeof res.total === "number" && seqLen > 0
+        ? res.total * seqLen
+        : null;
+    } else {
+      state.cqlTokensMatchedTotal = null;
     }
 
     if (typeof res.next_offset === "number") {
