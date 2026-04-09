@@ -28,6 +28,9 @@ jobs:
       - name: Build sidecar (onefile)
         run: python scripts/build_sidecar.py --preset tauri --format onefile
 
+      - name: Enforce sidecar size budget
+        run: python scripts/check_sidecar_size_budget.py --manifest tauri/src-tauri/binaries/sidecar-manifest.json --budget-file bench/fixtures/sidecar_size_budget.json
+
       - name: Sign sidecar executable (if configured)
         shell: pwsh
         env:

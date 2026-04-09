@@ -17,6 +17,8 @@ Last updated: 2026-04-09 (sync « Next » avec backlog — P12 retiré, priorit�
   - canonical Tauri binaries directory `tauri/src-tauri/binaries/`
   - fixture binaries directory `tauri-fixture/src-tauri/binaries/`
   - CI matrix build workflow `.github/workflows/build-sidecar.yml`
+  - PyInstaller payload optimization enabled (`--strip` non-Windows, `--optimize 1`, exclusion de modules lourds non requis)
+  - size budget guard script `scripts/check_sidecar_size_budget.py` + policy `bench/fixtures/sidecar_size_budget.json`
 - Tauri headless fixture implemented:
   - `tauri-fixture/` scaffold (Tauri v2 layout, no UI)
   - sidecar smoke runner validating JSON contract
@@ -41,6 +43,7 @@ Last updated: 2026-04-09 (sync « Next » avec backlog — P12 retiré, priorit�
   - Windows signing script (signtool)
   - Linux manylinux build script + Dockerfile
   - release/signing workflows with secrets-conditional behavior
+  - sidecar build workflows now cache pip + PyInstaller work dir (`build/sidecar_pyinstaller`) and reuse cache via `--no-clean` for faster rebuilds
   - bench matrix workflow `.github/workflows/bench-sidecar.yml`
   - `docs/DISTRIBUTION.md`
 - ADR-025 finalized from multi-OS benchmarks:
@@ -107,7 +110,7 @@ Last updated: 2026-04-09 (sync « Next » avec backlog — P12 retiré, priorit�
 - Prep UX **P2** : page Exporter + intégration Constituer ; libellés curation doc vs diff ; stratégie segmentation explicite (voir `docs/BACKLOG.md` tableau prioritaire + revue consolidée).
 - Concordancier : vue alignée (groupement / lisibilité) ; exploration / comparaison de runs d’alignement.
 - Sidecar release hardening : macOS notarization, Windows signing with production certs.
-- Performance : sidecar binary size optimization + CI cache strategy for PyInstaller builds.
+- Performance : monitor startup/size trade-offs over future benchmark refreshes.
 
 > **Réalisé (ne pas replanifier ici)** : panneau métadonnées hit/document (`tauri-app` Explorer) ; corpus démo first-run (`tauri-shell` + `agrafes_demo.db`). Détail : `docs/BACKLOG.md` revue 2026-04-08.
 

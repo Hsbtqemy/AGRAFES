@@ -44,6 +44,12 @@ jobs:
       - name: Build sidecar (onefile)
         run: python scripts/build_sidecar.py --preset tauri --format onefile
 
+      - name: Enforce sidecar size budget
+        run: |
+          python scripts/check_sidecar_size_budget.py \
+            --manifest tauri/src-tauri/binaries/sidecar-manifest.json \
+            --budget-file bench/fixtures/sidecar_size_budget.json
+
       - name: Import signing certificate (if configured)
         if: ${{ env.MACOS_CERT_P12_BASE64 != '' && env.MACOS_CERT_P12_PASSWORD != '' }}
         run: |
@@ -112,6 +118,12 @@ jobs:
 
       - name: Build sidecar for fixture
         run: python scripts/build_sidecar.py --preset fixture --format onefile
+
+      - name: Enforce sidecar size budget (fixture)
+        run: |
+          python scripts/check_sidecar_size_budget.py \
+            --manifest tauri-fixture/src-tauri/binaries/sidecar-manifest.json \
+            --budget-file bench/fixtures/sidecar_size_budget.json
 
       - name: Install fixture dependencies
         run: npm --prefix tauri-fixture install

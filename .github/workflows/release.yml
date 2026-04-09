@@ -42,6 +42,17 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: "pyproject.toml"
+
+      - name: Restore PyInstaller cache
+        uses: actions/cache@v4
+        with:
+          path: build/sidecar_pyinstaller
+          key: sidecar-pyinstaller-${{ runner.os }}-${{ matrix.format }}-${{ hashFiles('pyproject.toml', 'scripts/build_sidecar.py', 'scripts/sidecar_entry.py', 'src/multicorpus_engine/**/*.py', 'migrations/*.sql') }}
+          restore-keys: |
+            sidecar-pyinstaller-${{ runner.os }}-${{ matrix.format }}-
+            sidecar-pyinstaller-${{ runner.os }}-
 
       - name: Install project with packaging extra
         run: |
@@ -49,7 +60,13 @@ jobs:
           pip install -e ".[packaging]"
 
       - name: Build sidecar
-        run: python scripts/build_sidecar.py --preset tauri --format "${{ matrix.format }}"
+        run: python scripts/build_sidecar.py --preset tauri --format "${{ matrix.format }}" --no-clean
+
+      - name: Enforce sidecar size budget
+        run: |
+          python scripts/check_sidecar_size_budget.py \
+            --manifest tauri/src-tauri/binaries/sidecar-manifest.json \
+            --budget-file bench/fixtures/sidecar_size_budget.json
 
       - name: Import macOS signing certificate (if configured)
         if: ${{ matrix.os == 'macos-latest' && env.MACOS_CERT_P12_BASE64 != '' && env.MACOS_CERT_P12_PASSWORD != '' }}
@@ -98,6 +115,12 @@ jobs:
 
       - name: Build sidecar in manylinux container
         run: bash scripts/linux_manylinux_build_sidecar.sh --format onedir --out tauri/src-tauri/binaries
+
+      - name: Enforce sidecar size budget (manylinux)
+        run: |
+          python scripts/check_sidecar_size_budget.py \
+            --manifest tauri/src-tauri/binaries/sidecar-manifest.json \
+            --budget-file bench/fixtures/sidecar_size_budget.json
 
       - name: Verify executable starts (--help)
         run: |

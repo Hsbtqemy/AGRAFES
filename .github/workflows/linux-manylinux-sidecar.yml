@@ -18,6 +18,12 @@ jobs:
       - name: Build sidecar in manylinux container
         run: bash scripts/linux_manylinux_build_sidecar.sh --format onedir --out tauri/src-tauri/binaries
 
+      - name: Enforce sidecar size budget
+        run: |
+          python scripts/check_sidecar_size_budget.py \
+            --manifest tauri/src-tauri/binaries/sidecar-manifest.json \
+            --budget-file bench/fixtures/sidecar_size_budget.json
+
       - name: Verify executable starts (--help)
         run: |
           EXE_PATH="$(python -c 'import json;from pathlib import Path;print(json.loads(Path(\"tauri/src-tauri/binaries/sidecar-manifest.json\").read_text(encoding=\"utf-8\"))[\"executable_path\"])')"

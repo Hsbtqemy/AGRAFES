@@ -36,6 +36,24 @@ DEFAULT_FORMAT_BY_OS = {
     "linux": "onedir",
     "windows": "onedir",
 }
+PYINSTALLER_OPTIMIZE_LEVEL = "1"
+# Exclude heavy optional stacks that are not needed by the sidecar runtime.
+# This keeps binary size lower and reduces incidental hook collection.
+PYINSTALLER_EXCLUDE_MODULES: tuple[str, ...] = (
+    "IPython",
+    "PyQt5",
+    "PyQt6",
+    "PySide6",
+    "jupyter",
+    "matplotlib",
+    "notebook",
+    "numpy",
+    "pandas",
+    "pytest",
+    "scipy",
+    "sklearn",
+    "tkinter",
+)
 
 
 def _run(cmd: list[str], *, cwd: Path | None = None) -> str:
@@ -200,6 +218,8 @@ def build_sidecar(
         "PyInstaller",
         "--noconfirm",
         f"--{package_format}",
+        "--optimize",
+        PYINSTALLER_OPTIMIZE_LEVEL,
         "--add-data",
         f"{migrations_dir}{';' if os.name == 'nt' else ':'}migrations",
         "--name",
@@ -212,6 +232,10 @@ def build_sidecar(
         str(spec_dir),
         str(ENTRYPOINT),
     ]
+    if not is_windows:
+        pyinstaller_cmd.insert(5, "--strip")
+    for module_name in PYINSTALLER_EXCLUDE_MODULES:
+        pyinstaller_cmd.extend(["--exclude-module", module_name])
     _run(pyinstaller_cmd, cwd=REPO_ROOT)
 
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -270,6 +294,9 @@ def build_sidecar(
         "target_triple": target_triple,
         "version": _project_version(),
         "format": package_format,
+        "pyinstaller_strip": (not is_windows),
+        "pyinstaller_optimize": int(PYINSTALLER_OPTIMIZE_LEVEL),
+        "pyinstaller_excludes": list(PYINSTALLER_EXCLUDE_MODULES),
         "artifact_type": artifact_type,
         "artifact_path": str(artifact_path),
         "artifact_size_bytes": artifact_size,

@@ -41,6 +41,19 @@ python scripts/build_sidecar.py --preset tauri --format onedir
 python scripts/build_sidecar.py --preset fixture
 ```
 
+### Enforce size budget
+
+```bash
+python scripts/check_sidecar_size_budget.py \
+  --manifest tauri/src-tauri/binaries/sidecar-manifest.json \
+  --budget-file bench/fixtures/sidecar_size_budget.json
+```
+
+Default budget policy file:
+- `bench/fixtures/sidecar_size_budget.json`
+- keyed by `os` + `format` (`onefile` / `onedir`)
+- uses `default_limit_mb` fallback when a specific tuple is missing
+
 Default format mapping (when `--format` is omitted):
 - macOS (`darwin`): `onefile`
 - Linux (`linux`): `onedir`

@@ -89,6 +89,12 @@ jobs:
       - name: Build sidecar (shell preset)
         run: python scripts/build_sidecar.py --preset shell --format "${{ matrix.sidecar_format }}"
 
+      - name: Enforce sidecar size budget (shell)
+        run: |
+          python scripts/check_sidecar_size_budget.py \
+            --manifest tauri-shell/src-tauri/binaries/sidecar-manifest.json \
+            --budget-file bench/fixtures/sidecar_size_budget.json
+
       - name: Verify sidecar binary starts (non-Windows)
         if: runner.os != 'Windows'
         run: |

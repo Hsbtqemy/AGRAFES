@@ -37,8 +37,20 @@ jobs:
       - name: Build onefile sidecar
         run: python scripts/build_sidecar.py --out build/dist-bench/onefile --format onefile
 
+      - name: Enforce size budget (onefile)
+        run: |
+          python scripts/check_sidecar_size_budget.py \
+            --manifest build/dist-bench/onefile/sidecar-manifest.json \
+            --budget-file bench/fixtures/sidecar_size_budget.json
+
       - name: Build onedir sidecar
         run: python scripts/build_sidecar.py --out build/dist-bench/onedir --format onedir
+
+      - name: Enforce size budget (onedir)
+        run: |
+          python scripts/check_sidecar_size_budget.py \
+            --manifest build/dist-bench/onedir/sidecar-manifest.json \
+            --budget-file bench/fixtures/sidecar_size_budget.json
 
       - name: Clean previous bench result files
         run: |
