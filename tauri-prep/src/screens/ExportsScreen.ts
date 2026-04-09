@@ -23,6 +23,18 @@ function _escHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
+export interface ExportWorkflowPrefill {
+  stage?: "alignment" | "publication" | "segmentation" | "curation" | "runs" | "qa";
+  product?: "aligned_table" | "tei_xml" | "tei_package" | "run_report" | "qa_report" | "readable_text";
+  format?: "csv" | "tsv" | "tei_dir" | "zip" | "jsonl" | "html" | "json" | "txt" | "docx";
+  docIds?: number[];
+  pivotDocId?: number;
+  targetDocId?: number;
+  runId?: string;
+  exceptionsOnly?: boolean;
+  strictMode?: boolean;
+}
+
 export class ExportsScreen {
   private _conn: Conn | null = null;
   private _docs: DocumentRecord[] = [];
@@ -53,6 +65,7 @@ export class ExportsScreen {
   private _v2RunBtn!: HTMLButtonElement;
   private _legacyContainer!: HTMLElement;
   private _legacyToggleBtn!: HTMLButtonElement;
+  private _pendingWorkflowPrefill: ExportWorkflowPrefill | null = null;
 
   setJobCenter(jc: JobCenter, showToast: (msg: string, isError?: boolean) => void): void {
     this._jobCenter = jc;
@@ -455,8 +468,87 @@ export class ExportsScreen {
     initCardAccordions(root);
     this._refreshDocs();
     this._syncV2Ui();
+    this._applyPendingWorkflowPrefillIfAny();
     this._refreshRuntimeState();
     return root;
+  }
+
+  applyWorkflowPrefill(prefill: ExportWorkflowPrefill): void {
+    this._pendingWorkflowPrefill = prefill;
+    this._applyPendingWorkflowPrefillIfAny();
+  }
+
+  private _applyPendingWorkflowPrefillIfAny(): void {
+    if (!this._root || !this._pendingWorkflowPrefill) return;
+    const prefill = this._pendingWorkflowPrefill;
+
+    if (prefill.stage) {
+      this._v2StageEl.value = prefill.stage;
+    }
+    this._syncV2Ui();
+
+    if (prefill.product) {
+      const hasProduct = Array.from(this._v2ProductEl.options).some((o) => o.value === prefill.product);
+      if (hasProduct) this._v2ProductEl.value = prefill.product;
+    }
+    this._syncV2Ui();
+
+    if (prefill.format) {
+      const hasFormat = Array.from(this._v2FormatEl.options).some((o) => o.value === prefill.format);
+      if (hasFormat) this._v2FormatEl.value = prefill.format;
+    }
+
+    const needsDocSelectors = Boolean(
+      (Array.isArray(prefill.docIds) && prefill.docIds.length > 0)
+      || typeof prefill.pivotDocId === "number"
+      || typeof prefill.targetDocId === "number",
+    );
+    const docSelectorsReady = this._docs.length > 0 && this._v2DocSelEl.options.length > 1;
+    if (needsDocSelectors && !docSelectorsReady) {
+      // Defer until documents are loaded into selector options.
+      this._syncV2Ui();
+      return;
+    }
+
+    if (Array.isArray(prefill.docIds) && prefill.docIds.length > 0) {
+      const wanted = new Set(prefill.docIds.map((v) => String(v)));
+      for (const opt of Array.from(this._v2DocSelEl.options)) {
+        if (opt.value === "__all__") {
+          opt.selected = false;
+          continue;
+        }
+        opt.selected = wanted.has(opt.value);
+      }
+    }
+
+    if (typeof prefill.pivotDocId === "number") {
+      const pivotValue = String(prefill.pivotDocId);
+      if (Array.from(this._v2PivotEl.options).some((o) => o.value === pivotValue)) {
+        this._v2PivotEl.value = pivotValue;
+      }
+    }
+    if (typeof prefill.targetDocId === "number") {
+      const targetValue = String(prefill.targetDocId);
+      if (Array.from(this._v2TargetEl.options).some((o) => o.value === targetValue)) {
+        this._v2TargetEl.value = targetValue;
+      }
+    }
+    if (typeof prefill.exceptionsOnly === "boolean") {
+      const excEl = this._root.querySelector<HTMLInputElement>("#v2-align-exceptions-only");
+      if (excEl) excEl.checked = prefill.exceptionsOnly;
+    }
+    if (typeof prefill.runId === "string") {
+      this._v2RunIdEl.value = prefill.runId;
+    }
+    if (typeof prefill.strictMode === "boolean") {
+      this._v2StrictEl.checked = prefill.strictMode;
+    }
+
+    this._handleV2DocSelectionChange();
+    this._renderDocTable();
+    this._syncV2Ui();
+    this._pendingWorkflowPrefill = null;
+    this._showToast?.("Préremplissage export appliqué.");
   }
 
   private _toggleLegacyExports(): void {
@@ -492,6 +584,7 @@ export class ExportsScreen {
     teiBtns.forEach(b => (b.disabled = false));
     this._renderDocOptions();
     this._syncV2Ui();
+    this._applyPendingWorkflowPrefillIfAny();
     this._refreshRuntimeState();
   }
 

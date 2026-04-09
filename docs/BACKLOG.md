@@ -1,6 +1,6 @@
 # Backlog — multicorpus_engine
 
-Last updated: 2026-04-08 (priorisation « Idées à cadrer » + plan d’action)
+Last updated: 2026-04-09 (priorisation « Idées à cadrer » + plan d’action)
 
 ## Priority backlog (realistic, post-implementation)
 
@@ -10,7 +10,7 @@ Last updated: 2026-04-08 (priorisation « Idées à cadrer » + plan d’action)
 | P2 | **Prep — Curation : distinguer navigation doc vs diff** | Les boutons « Précédent / Suivant » près du sélecteur de document sont utiles mais confondus avec « Préc. / Suiv. » de l’aperçu des différences ; voir spec ci-dessous | Libellés explicites (ex. *Document préc. / suiv.*) ou `title` / `aria-label` ; vérification accessibilité ; pas de régression sur `_navigateCurateDoc` / `_setActiveDiffItem` | **done** (2026-04-08 : Doc précéd. / suiv. vs Modif précéd. / suiv. + `aria-*`) |
 | P2 | **Prep — Segmentation : mode explicite + lisibilité des séparateurs** | Les stratégies existent (phrases vs balises `[N]`) mais le choix n’est pas assez visible ; pas de séparateur « au choix » côté moteur hors ces deux familles ; voir spec ci-dessous | Sélecteur principal **Stratégie** (phrases / balises) + résumé de l’effet ; packs/lang visibles pour phrases ; doc utilisateur ; extension moteur **hors scope** sauf décision produit (délimiteur custom, ¤, etc.) | **done** (2026-04-08 : fieldset Stratégie + ligne « Règle active » + désactivation pack en mode balises) |
 | **NOW** | **P11 — Actions TRUE DOM parity** | Inc 3 traduction native layout; Inc 0/1/2 vérifiés conformes | 2-col traduction workspace, `<details>` ref VO, preview-tools/tabs/panes à droite; build vert | **done** |
-| **P1** | **P12 — Wiring traduction preview + scroll sync** | La preview traduction droite est structurée mais non câblée ; le scroll sync longtext est TODO | `_runSegment()` alimente les panes traduction (target + VO) ; sync scroll `raw-scroll` ↔ `seg-scroll` mode longtext | **done** (2026-04-08 : sync scroll **aperçu segmentation** colonnes brut ↔ segmenté `#act-seg-prev-raw` ↔ `#act-seg-prev-seg` — flux actif ; stub « traduction » non monté) |
+| **P1** | **P12 — Wiring traduction preview + scroll sync** | Stabiliser le câblage preview/synchronisation sur les vues segmentation utilisées en production | `_runSegment()` alimente les panes traduction (target + VO) ; sync scroll `raw-scroll` ↔ `seg-scroll` mode longtext | **done** (2026-04-08 : sync scroll **aperçu segmentation** colonnes brut ↔ segmenté `#act-seg-prev-raw` ↔ `#act-seg-prev-seg` — flux actif ; stub « traduction » non monté) |
 | **NOW** | **Tauri UI "Concordancier" V0** | Core + sidecar stable; time to deliver user-facing value | `tauri-app/` launches with `npm run tauri dev`; search, KWIC, import, index | **done** |
 | **NOW** | **Tauri Concordancier Prep V0** (`tauri-prep/`) | Corpus preparation workflow (import → curate → segment → align) needs dedicated app | 3-screen scaffold: Project/DB, Import+Index, Actions; all sidecar routes wired | **done** |
 | **NOW** | **Concordancier Prep V0.3** — curate preview diff + align audit UI | Users need to preview curation changes before applying + review alignment links | `POST /curate/preview` dry-run with diff table; `POST /align/audit` paginated link table | **done** |
@@ -33,21 +33,21 @@ Last updated: 2026-04-08 (priorisation « Idées à cadrer » + plan d’action)
 | P2 | Deep link between Tauri apps (`open-db` URI) | Current flow relies on copy/paste path between `tauri-prep` and the unified shell | URI contract `agrafes-shell://open-db?mode=explorer&path=...` implemented; `tauri-prep` button emits handoff and `tauri-shell` consumes startup/runtime deep links with safe fallback | done |
 | P1 | macOS sidecar signing + notarization hardening | Base scripts/workflow exist; production rollout still needs credential ops and release validation | Signed/notarized artifacts validated on tag pipeline with real cert identity and Gatekeeper checks | in_progress |
 | P1 | Windows sidecar code signing hardening | Script/workflow stubs exist; production cert flow not yet exercised | Signed `.exe` artifacts verified in CI with operational cert management process | in_progress |
-| P1 | Persistent sidecar restart resilience (advanced cases) | Baseline stale recovery is implemented; edge cases remain (PID reuse/races/forced kill) | Stress tests for crash/restart, stale cleanup race handling, and deterministic behavior under rapid relaunch loops | in_progress |
-| P1 | Sidecar lifecycle and resilience | Sidecar contract exists; runtime behavior needs production guardrails | Extended integration tests for restart/recovery and process supervision recommendations for desktop wrapper | todo |
+| P1 | Persistent sidecar restart resilience (advanced cases) | Baseline stale recovery is implemented; edge cases remain (PID reuse/races/forced kill) | Stress tests for crash/restart, stale cleanup race handling, and deterministic behavior under rapid relaunch loops | **done** (2026-04-09 : couverture ajoutée pour race `exists/unlink`, boucle de relance rapide, forced-kill recovery, et simulation PID vivant + endpoint invalide) |
+| P1 | Sidecar lifecycle and resilience | Sidecar contract exists; runtime behavior needs production guardrails | Extended integration tests for restart/recovery and process supervision recommendations for desktop wrapper | **done** (2026-04-09 : tests restart/recovery étendus + recommandations de supervision wrapper documentées dans `docs/INTEGRATION_TAURI.md`) |
 | P2 | Prep UX: DB backup action in Documents | Metadata batch edits need a visible safety checkpoint before write operations | `tauri-prep` Documents tab exposes `Sauvegarder la DB`; sidecar `POST /db/backup` creates timestamped `.db.bak`; UI shows latest backup status + log path | done |
 | P1 | Tauri fixture expansion to GUI-capable runners | Headless smoke exists; full app-run coverage is still partial | Add optional GUI-capable runner lane that executes `tauri run`/`tauri build` smoke with sidecar | todo |
-| P2 | Sidecar localhost security posture | Optional token is implemented, but policy is still minimal | Explicit threat model, token rotation/expiry policy, and wrapper guidance for secure defaults | in_progress |
+| P2 | Sidecar localhost security posture | Optional token is implemented, but policy is still minimal | Explicit threat model, token rotation/expiry policy, and wrapper guidance for secure defaults | **done** (2026-04-09 : policy formalisée dans `docs/SIDECAR_SECURITY_POSTURE.md` + liens ADR/contract/integration) |
 | P2 | Linux portability baseline (glibc/manylinux policy) | manylinux build scaffold exists; support floor must be validated empirically | Documented glibc support floor + compatibility smoke matrix on older distros | **done** (Sprint 3.3: glibc floor table in DISTRIBUTION.md) |
 | P2 | CI cache strategy for PyInstaller builds | Matrix builds can be slow/costly | Cached dependency/build layers with measurable time reduction | todo (deferred post-3.3) |
 | P2 | Sidecar binary size optimization | Onefile convenience increases binary size | Track size budget and apply PyInstaller/payload optimizations with before/after report | todo |
 | P2 | Tauri release icons (icns/ico) | Dev currently uses PNG-only placeholders to unblock `tauri dev`; release packages need platform-native icons | Generate and validate real `icon.icns` + `icon.ico` assets before release packaging | todo |
-| P2 | FTS performance profile | Large corpora will stress rebuild workflow | Bench report on representative datasets + documented recommended SQLite pragmas | in_progress |
-| P2 | Incremental indexing strategy (flagged) | Full rebuild is simple but costly at scale | Design note + tested incremental mode behind explicit `--incremental`-style gate | todo |
-| P2 | TEI compatibility matrix | TEI files vary heavily across projects | Compatibility doc + fixtures for namespaced/non-namespaced and mixed-content edge cases | todo |
-| P2 | Query/export output contract tests | Prevent regressions in JSON and file schemas | Snapshot-style tests for `query --output` + exporters across modes | todo |
+| P2 | FTS performance profile | Large corpora will stress rebuild workflow | Bench report on representative datasets + documented recommended SQLite pragmas | **done** (2026-04-09 : script `scripts/bench_fts_profile.py` + rapport `docs/FTS_PERFORMANCE_PROFILE.md` avec profils PRAGMA comparés et recommandation opérationnelle) |
+| P2 | Incremental indexing strategy (flagged) | Full rebuild is simple but costly at scale | Design note + tested incremental mode behind explicit `--incremental`-style gate | **done** (2026-04-09 : mode explicite `--incremental` / `POST /index {"incremental":true}` + jobs async, tests dédiés `test_indexer_incremental.py` et note `docs/INCREMENTAL_INDEXING.md`) |
+| P2 | TEI compatibility matrix | TEI files vary heavily across projects | Compatibility doc + fixtures for namespaced/non-namespaced and mixed-content edge cases | **done** (2026-04-09 : `docs/TEI_COMPAT_MATRIX.md` consolidé ; fixtures `tei_non_namespaced.xml` / `tei_mixed_content.xml` ; couverture validate+import via `tests/test_tei_validate.py` + `tests/test_v21.py`) |
+| P2 | Query/export output contract tests | Prevent regressions in JSON and file schemas | Snapshot-style tests for `query --output` + exporters across modes | **done** (2026-04-09 : `tests/test_output_contract_snapshots.py` + snapshot `tests/snapshots/output_contracts.json` couvrant `query --output` et `export --format` sur `jsonl/csv/tsv/html`) |
 | P2 | Segmentation quality fixtures + benchmarks | Pack selector is in place; quality still needs objective checks | Regression fixtures FR/EN + before/after metrics per pack | done |
-| P2 | Segmentation quality fixtures expansion | Current benchmark set is intentionally small and deterministic | Add harder edge cases (quotes, parenthesis, ellipsis, mixed FR/EN) + target thresholds per language | todo |
+| P2 | Segmentation quality fixtures expansion | Current benchmark set is intentionally small and deterministic | Add harder edge cases (quotes, parenthesis, ellipsis, mixed FR/EN) + target thresholds per language | **done** (2026-04-09 : dataset porté à 18 cas dans `bench/fixtures/segmentation_quality_cases.json` + seuils par langue `bench/fixtures/segmentation_quality_thresholds.json`; bench/report et tests mis à jour) |
 | P2 | Align explainability UI polish | Debug payload exists; rendering can be richer than logs | Dedicated explainability panel (sources, counts, similarity stats, samples) + copy diagnostic JSON | done |
 | P2 | Align explainability export/report | Operators may need offline debug traces from prep runs | Save explainability payloads to file and link them to run history | done |
 | P2 | Align run exploration UX | Explainability is now run-linked; users still need easier browsing/comparison in app | Add run picker + diff view across two align runs (strategy/coverage/debug deltas) | **done** (2026-04-08 — `GET /runs?kind=align` ; Prep Actions « Comparer deux runs » + tableau paramètres / stats) |
@@ -62,22 +62,20 @@ Synthèse après passage sur le tableau prioritaire, les placeholders P9, la sec
 | Bande | Thème | Entrées typiques |
 |-------|--------|------------------|
 | **A — UX Prep immédiate** | Lisibilité et finition sans changer le moteur | 3 lignes **P2** en tête de tableau (Exporter, curation doc/diff, segmentation stratégie) ; aligne les specs exploratoires déjà rédigées. |
-| **B — Parcours traduction** | Cohérence Actions | **P12** wiring preview + scroll sync (dépend du layout déjà en place). |
 | **C — Concordancier** | Qualité de lecture / résultats | Vue alignée enrichie ; exploration runs align (picker + diff) ; éventuellement raffinages hors scope moteur. |
 | **D — Release & confiance** | Distribuer sans friction | Signing macOS/Windows, résilience sidecar avancée, politique localhost, icônes release, FTS bench. |
-| **E — Qualité moteur & dette** | Régressions, perf, TEI | TEI compatibility matrix ; tests contrat query/export ; fixtures segmentation étendues ; index incrémental. |
+| **E — Qualité moteur & dette** | Régressions, perf, TEI | Profil perf FTS ; index incrémental. |
 | **F — Horizon produit** | Specs déjà écrites, pas livrées | Section **Idées à cadrer** (export par étape, mode annotation, multiples DB, XML, POS…) — **P2–P3+** selon arbitrages. |
 | **G — Shell / archi** | Placeholders **P9** | Multi-fenêtre, dépréciation standalone, hot-swap DB, audit CSS. |
 
 ### 2. Priorisation recommandée (ordre de traitement)
 
 1. **P2 Prep (A)** — impact utilisateur quotidien, faible risque régression si limité à l’UI (libellés, sélecteur stratégie, Exporter). *Dépendances :* aucune bloquante.
-2. **P12 (B)** — débloque l’usage « traduction » annoncé par le hub Actions ; *risque* : régressions scroll / perf sur gros textes.
-3. **Release (D)** — **bloquant** pour une diffusion large hors dev ; *risque* : secrets CI, certs, comportement Gatekeeper — souvent **parallélisable** avec le dev feature.
-4. **Sidecar résilience + sécurité (D)** — `in_progress` / todo : à garder sous contrôle avant exposition réseau ; lien avec **P9 hot-swap** (moins de redémarrages = moins de courses).
-5. **Qualité & tests (E)** — TEI matrix + snapshots export : **réduit le coût** des évolutions futures ; index incrémental : **priorité basse** tant que les corpus restent modérés.
-6. **F (horizon)** — traiter **après** stabilisation UX Prep et release, sauf **décision métier** (ex. POS obligatoire pour un partenaire).
-7. **G (P9)** — utile quand le shell est la cible principale ; **multi-fenêtre** recoupe la spec **multiples DB** (fenêtres = plusieurs DB sans fédération).
+2. **Release (D)** — **bloquant** pour une diffusion large hors dev ; *risque* : secrets CI, certs, comportement Gatekeeper — souvent **parallélisable** avec le dev feature.
+3. **Sidecar résilience (D)** — socle redémarrage renforcé ; reste le chantier **process supervision** (ligne `Sidecar lifecycle and resilience`), à garder sous contrôle avant exposition réseau ; lien avec **P9 hot-swap** (moins de redémarrages = moins de courses).
+4. **Qualité & tests (E)** — focus restant : index incrémental (priorité plus basse hors besoin immédiat ; profil FTS désormais couvert par bench dédié).
+5. **F (horizon)** — traiter **après** stabilisation UX Prep et release, sauf **décision métier** (ex. POS obligatoire pour un partenaire).
+6. **G (P9)** — utile quand le shell est la cible principale ; **multi-fenêtre** recoupe la spec **multiples DB** (fenêtres = plusieurs DB sans fédération).
 
 ### 3. Risques transverses
 
@@ -97,12 +95,12 @@ Synthèse après passage sur le tableau prioritaire, les placeholders P9, la sec
 | **TEI compatibility matrix** | Apparaît en **P2** dans le tableau prioritaire **et** dans la spec exploratoire **XML**. | **Un seul suivi** : implémentation = ligne P2 du tableau ; la section XML décrit le *pourquoi* produit. |
 | **`docs/ROADMAP.md` section « Next »** | Peut encore lister des items déjà livrés (métadonnées, démo). | À **rafraîchir** quand on referme un sprint (éviter double source avec ce backlog). |
 | **Export « par étape »** | Spec exploratoire ambitieuse vs **Kept stable** (exports listés sans distinguer jobs `readable_text`). | Pas de contradiction : **Kept stable** = capacités moteur ; spec export = **couverture UX** par étape — la revue **P2 maillage étape ↔ exports** reste la bonne entrée. |
-| **Priorités P1 vs P2 en tête de tableau** | Les **P2 Prep** sont placées **avant** les **P1 P12** dans le fichier. | **Volontaire** (finition Prep priorisée) ; sinon réordonner le tableau par **P1 → P2** uniquement pour la lecture. |
+| **Priorités P1 vs P2 en tête de tableau** | Les **P2 Prep** sont placées **avant** certaines lignes **P1** dans le fichier. | **Volontaire** (finition Prep priorisée) ; sinon réordonner le tableau par **P1 → P2** uniquement pour la lecture. |
 
 ### 5. État synthétique du tableau prioritaire (après correction)
 
-- **todo** : surtout **Prep P2** (3), **P12**, **Concordancier** (raffinages résultats au besoin), **infra** (signing, sidecar, sécurité, bench, CI, TEI matrix, tests contrat, segmentation fixtures expansion, icônes, taille binaire, index incrémental), **Tauri fixtures GUI**, **P3** maintenance CLI.
-- **in_progress** : signing macOS/Windows, résilience sidecar avancée, sécurité localhost, FTS bench.
+- **todo** : surtout **Prep P2** (3), **Concordancier** (raffinages résultats au besoin), **infra** (signing, sidecar, sécurité, bench, CI, icônes, taille binaire, index incrémental), **Tauri fixtures GUI**, **P3** maintenance CLI.
+- **in_progress** : signing macOS/Windows.
 - **done** : inclut désormais **metadata panel** et **corpus démo** (avec le périmètre shell ci-dessus).
 
 ---
@@ -228,28 +226,28 @@ Cette synthèse **ne remplace pas** les sous-sections détaillées ci-dessous ; 
 #### Ordre recommandé (séquentiel à l’intérieur d’une bande)
 
 1. **A1** — Finaliser **Import — traitement de texte** : audit Unicode DOCX/ODT (plan déjà dans la sous-section), tooltip ou phrase d’aide, note QA / tests manuels sur caractères typiques ; jeux de tests automatisés si faible coût. **done** (2026-04-08 : aide UI Unicode dans `ImportScreen`, note `docs/IMPORT_DOCX_ODT_UNICODE_QA.md`, tests `tests/test_import_word_processing_unicode.py`).
-2. **A2** — **Export — étapes de workflow** : produire la **matrice** « étape × formats » (même page ou annexe) ; choisir **1 à 2** étapes pilotes (ex. post-segmentation, post-align) avec bouton ou deep-link vers **Exporter** pré-rempli + même options que le job concerné ; documenter les écarts restants (ODT sortant, parité `[n]` réimport).
-3. **A3** — **Normalisation espaces** : exécuter l’**audit** import → FTS → UI (liste dans la sous-section) ; **décision** produit : documenter seulement **vs** évolution de `text_norm` (impact réindexation) ; relier aux presets curation existants.
-4. **B1** — **Notation `[n]`** : textes d’aide (import + panneau segmentation) sur motif en tête de ligne **vs** mode balises ; optionnel : preset curation « retirer `[n]` résiduels » si cas réels.
-5. **B2** — **Préfixe avant `[N]`** : rappel UI que le bloc avant `[1]` est un segment sans `external_id` ; trancher **P3** si besoin d’option « supprimer préfixe » (voir sous-section).
-6. **B3** — **XML / TEI** : décider moment (import bloquant **vs** warning) ; renforcer `validate_tei_ids` / rapports ; aligner avec l’entrée **TEI compatibility matrix** du tableau prioritaire (fixtures).
-7. **B4** — **Revue pack coupes phrases** : revue de contenu des packs + exemples doc ; pas de changement moteur tant que l’audit ne conclut pas.
-8. **B5** — **Segmentation — VO / parent** : doc courte sur **« Calibrer sur »** ; optionnel : étendre `segment/preview` avec `calibrate_to` pour afficher le même avertissement ratio qu’en job.
-9. **C1** — **Conventions projet** : atelier codes `[T]` / équivalents ; choix import **vs** curation **vs** outil externe ; puis **P3+** d’implémentation.
-10. **C2** — **Mode annotation** : atelier strates (lecture / préparation / annotation riche) ; lien explicite avec `BACKLOG_CQL.md` ; une fois cadré, ordre de travail technique (tokens, routes, UI).
-11. **C3** — **Multiples bases** : trancher modèle **A** (basculer + récents) **vs** **B** (multi-fenêtre P9) avant d’envisager **C** fédéré ; renforcer l’indicateur « DB active » si besoin.
-12. **C4** — **POS** : suit **C2** et granularité token/segment ; sinon reste **P3+** documentaire.
-13. **D** — **Import — doublons** (polish) : messages serveur plus discriminants + test d’intégration ; **fédération multi-DB** uniquement si besoin métier prouvé.
+2. **A2** — **Export — étapes de workflow** : produire la **matrice** « étape × formats » (même page ou annexe) ; choisir **1 à 2** étapes pilotes (ex. post-segmentation, post-align) avec bouton ou deep-link vers **Exporter** pré-rempli + même options que le job concerné ; documenter les écarts restants (ODT sortant, parité `[n]` réimport). **done** (2026-04-09 : matrice `docs/EXPORT_STAGE_MATRIX.md` ; préremplissage Actions → Exporter pour Segmentation et Alignement via `ActionsScreen.setOnOpenExporter(...)` + `ExportsScreen.applyWorkflowPrefill(...)` + routing `App._openExporterWithPrefill(...)`).
+3. **A3** — **Normalisation espaces** : exécuter l’**audit** import → FTS → UI (liste dans la sous-section) ; **décision** produit : documenter seulement **vs** évolution de `text_norm` (impact réindexation) ; relier aux presets curation existants. **done** (2026-04-09 : note `docs/NORMALISATION_ESPACES_AUDIT.md` ; décision “pas de collapse global `text_norm`, nettoyage via curation explicite”).
+4. **B1** — **Notation `[n]`** : textes d’aide (import + panneau segmentation) sur motif en tête de ligne **vs** mode balises ; optionnel : preset curation « retirer `[n]` résiduels » si cas réels. **done** (2026-04-09 : aide explicite dans `ImportScreen` sur motif `[n]` en tête et fallback “Paragraphes → Balises [N]” ; aide segmentation clarifiée sur quand utiliser le mode balises vs import “lignes numérotées”).
+5. **B2** — **Préfixe avant `[N]`** : rappel UI que le bloc avant `[1]` est un segment sans `external_id` ; trancher **P3** si besoin d’option « supprimer préfixe » (voir sous-section). **done** (2026-04-09 : rappel ajouté dans `ActionsScreen` dans le panneau “Moteur de découpage” + résumé de stratégie en mode balises).
+6. **B3** — **XML / TEI** : décider moment (import bloquant **vs** warning) ; renforcer `validate_tei_ids` / rapports ; aligner avec l’entrée **TEI compatibility matrix** du tableau prioritaire (fixtures). **done** (2026-04-09 : politique actée “parse_error bloquant, référentiel warning-only” ; `validate_tei_ids` enrichi (`duplicate_xml_id`, severity/blocking, summary) ; import TEI remonte des warnings actionnables ; fixtures ajoutées non-namespaced + mixed-content et doc `TEI_COMPAT_MATRIX` mise à jour).
+7. **B4** — **Revue pack coupes phrases** : revue de contenu des packs + exemples doc ; pas de changement moteur tant que l’audit ne conclut pas. **done** (2026-04-09 : revue livrée dans `docs/SEGMENTATION_PACK_REVIEW.md` avec benchmark actualisé, exemples FR/EN et décision “pas de changement moteur à ce stade”).
+8. **B5** — **Segmentation — VO / parent** : doc courte sur **« Calibrer sur »** ; optionnel : étendre `segment/preview` avec `calibrate_to` pour afficher le même avertissement ratio qu’en job. **done** (2026-04-09 : `/segment/preview` accepte `calibrate_to`, retourne `calibrate_to` + `calibrate_ratio_pct` et relaie l’avertissement ratio >15% comme `/segment` ; UI Prep passe désormais `calibrate_to` aussi en preview phrases).
+9. **C1** — **Conventions projet** : atelier codes `[T]` / équivalents ; choix import **vs** curation **vs** outil externe ; puis **P3+** d’implémentation. **done** (2026-04-09 : cadrage livré dans `docs/cadrage/CONVENTIONS_PROJET.md` ; décisions actées : `[n]` réservé aux IDs segment, conventions sémantiques traitées en texte brut à ce stade, flux recommandé “externe + curation explicite”, implémentation moteur reportée à C2/C4).
+10. **C2** — **Mode annotation** : atelier strates (lecture / préparation / annotation riche) ; lien explicite avec `BACKLOG_CQL.md` ; une fois cadré, ordre de travail technique (tokens, routes, UI). **done** (2026-04-09 : cadrage livré dans `docs/cadrage/MODE_ANNOTATION.md` ; décisions actées sur périmètre linguistique prioritaire, rôle Prep/Concordancier, séquence technique et règle “annotation stale après resegmentation” ; `BACKLOG_CQL.md` confirmé comme feuille d’exécution technique).
+11. **C3** — **Multiples bases** : trancher modèle **A** (basculer + récents) **vs** **B** (multi-fenêtre P9) avant d’envisager **C** fédéré ; renforcer l’indicateur « DB active » si besoin. **done** (2026-04-09 : cadrage livré dans `docs/cadrage/MULTIPLES_BASES.md` ; décision actée A+B en priorité, C fédéré reporté P3+, alignement explicite avec P9 shell).
+12. **C4** — **POS** : suit **C2** et granularité token/segment ; sinon reste **P3+** documentaire. **done** (2026-04-09 : cadrage livré dans `docs/cadrage/CATEGORIES_GRAMMATICALES.md` ; décisions actées : POS token-level, `upos` de référence + `xpos` optionnel, import CoNLL-U prioritaire, annotation auto optionnelle ensuite, règle `stale` après resegmentation).
+13. **D** — **Import — doublons** (polish) : messages serveur plus discriminants + test d’intégration ; **fédération multi-DB** uniquement si besoin métier prouvé. **done** (2026-04-09 : `import_guard` distingue désormais `reason=source_hash|source_path_exact|source_path_normalized|filename` dans les erreurs d’import ; tests ajoutés backend + sidecar pour ces cas).
 
 #### Jalons / livrables suggérés
 
 | Jalon | Contenu | Dépend de |
 |-------|---------|-----------|
-| **J1** | Import DOCX/ODT : critères d’acceptation Unicode + doc utilisateur 1 page | A1 |
-| **J2** | Matrice export + 2 parcours « étape → export » filables | A2 |
-| **J3** | Note décision normalisation (statu quo **vs** évolution) | A3 |
-| **J4** | Pack aide `[n]` + TEI (règles d’erreur actionnables) | B1, B3 |
-| **J5** | Fiche produit « annotation » + lien CQL | C2 |
+| **J1** | Import DOCX/ODT : critères d’acceptation Unicode + doc utilisateur 1 page | A1 — **done** (2026-04-08 : critères + aide UI Unicode + note `docs/IMPORT_DOCX_ODT_UNICODE_QA.md` + tests `tests/test_import_word_processing_unicode.py`) |
+| **J2** | Matrice export + 2 parcours « étape → export » filables | A2 (**done**) |
+| **J3** | Note décision normalisation (statu quo **vs** évolution) | A3 (**done**) |
+| **J4** | Pack aide `[n]` + TEI (règles d’erreur actionnables) | B3 (B1 done) — **done** (2026-04-09 : aides Import/Segmentation `[n]` + politique TEI parse_error bloquante / warnings référentiel, avec enrichissement `validate_tei_ids`) |
+| **J5** | Fiche produit « annotation » + lien CQL | C2 (**done**) |
 
 #### Rappel : entrées déjà largement couvertes ailleurs
 
@@ -279,6 +277,8 @@ Cette synthèse **ne remplace pas** les sous-sections détaillées ci-dessous ; 
 1. **Manuel Prep** : même fichier deux fois (même chemin) → erreur avant job ; copie renommée avec case différente → selon option nom ; deux fichiers différents, même basename, chemins différents → bloqué si option cochée, message `doc_id` cohérent avec le document en base.
 2. **Manuel** : deux fichiers même nom dans **un seul** lot avec option nom → second fichier refusé, libellé « dans ce lot » (pas de `doc_id -1`).
 3. **Amélioration backlog (optionnelle)** : message serveur plus discriminant (hash / chemin / nom) pour le débogage ; test d’intégration Prep ↔ sidecar sur `check_filename`.
+
+**Décision D (2026-04-09)** : polish appliqué — les erreurs serveur d’import incluent désormais `reason` + contexte (`hash_prefix`, `source_path`, `filename`) ; couverture test backend et API sidecar ajoutée.
 
 **Priorité après cadrage global des idées** : P2 (polish UX + messages serveur si besoin).
 
@@ -506,6 +506,8 @@ Cette synthèse **ne remplace pas** les sous-sections détaillées ci-dessous ; 
 2. **Décider** : reconnaissance à l’**import**, à la **curation**, ou **post-traitement** ; besoin de **schéma** fermé (liste de tags) vs texte libre.
 3. **Implémentation** (P3+ tant que la liste de codes et les flux ne sont pas figés) : extraction vers métadonnées unité / document, filtres **query** / **export**.
 
+**Décision C1 (2026-04-09)** : cadrage acté dans `docs/cadrage/CONVENTIONS_PROJET.md` — import neutre, curation explicite, outillage externe recommandé, pas de promotion automatique des tags sémantiques côté moteur avant C2/C4.
+
 **Priorité** : **P3+** jusqu’à inventaire des codes et choix d’intégration (import vs curation vs outil externe).
 
 ### Export — étapes de workflow et formats
@@ -595,6 +597,8 @@ Cette synthèse **ne remplace pas** les sous-sections détaillées ci-dessous ; 
 - Les **annotations** sont **stockées** (où et sous quelle forme), **exportables** (au moins un format cible : CoNLL-U, TEI enrichi, JSON — à trancher), et **reproductibles** après réindexation si le modèle le permet.
 - **Pas de collision** non documentée entre segmentation / `text_norm` et couches token (règles de stabilité ou réannotation après changement de segments).
 
+**Décision C2 (2026-04-09)** : cadrage acté dans `docs/cadrage/MODE_ANNOTATION.md` — priorité linguistique (tokens/lemma/POS), Prep comme point d’entrée, Concordancier comme surface de consommation/requête, séquence d’implémentation alignée sur `BACKLOG_CQL.md`, et statut annotation `stale` après resegmentation.
+
 **Priorité** : **P3+** tant que le périmètre (strates 2 vs 3) et le lien avec `BACKLOG_CQL.md` ne sont pas arbitrés ; peut monter en **P1–P2** si un corpus annoté est au cœur du métier.
 
 ### Multiples bases — concordancier et sidecar
@@ -630,6 +634,8 @@ Cette synthèse **ne remplace pas** les sous-sections détaillées ci-dessous ; 
 - L’utilisateur sait **quelle DB** est active (déjà partiellement : bannière / badge — à renforcer si besoin).
 - Toute fonction **multi-DB** affiche **sans ambiguïté** la **provenance** d’un hit (nom court du fichier ou identifiant projet).
 - **Pas** de mélange silencieux de `doc_id` issus de bases différentes.
+
+**Décision C3 (2026-04-09)** : cadrage acté dans `docs/cadrage/MULTIPLES_BASES.md` — priorité A/B (base active + multi-fenêtre), fédération C reportée, pas de `/query` multi-DB dans ce cycle.
 
 **Priorité** : **P3+** pour **C** ; **P2** pour **A/B** (ergonomie « récents », multi-fenêtre) si le flux actuel « ouvrir une autre DB » est jugé trop lourd.
 
@@ -689,6 +695,8 @@ Cette synthèse **ne remplace pas** les sous-sections détaillées ci-dessous ; 
 - Le **schéma** (tags autorisés, cardinalité) est **fixé** et **documenté**.
 - Les données sont **stockées** de façon **requêtable** (pas seulement du texte libre dans `meta_json` sans contrat).
 - **Cohérence** avec segmentation : règle claire si les unités changent après une annotation (réinitialisation, versionnement, ou interdiction).
+
+**Décision C4 (2026-04-09)** : cadrage acté dans `docs/cadrage/CATEGORIES_GRAMMATICALES.md` — cible token-level, `upos` comme référence (avec `xpos` complémentaire), ingestion CoNLL-U en première vague, annotation auto en seconde vague, et invalidation `stale` après resegmentation.
 
 **Priorité** : **P3+** tant que le socle **tokens** / import CoNLL-U n’est pas arbitré ; aligner avec la **priorité du mode annotation** et de `BACKLOG_CQL.md`.
 

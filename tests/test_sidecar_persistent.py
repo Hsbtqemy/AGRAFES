@@ -82,6 +82,17 @@ def test_persistent_server_import_index_query_shutdown(tmp_path: Path) -> None:
     assert idx["ok"] is True
     assert isinstance(idx["run_id"], str)
     assert idx["units_indexed"] >= 2
+    assert idx["incremental"] is False
+
+    code_idx_inc, idx_inc = _http_json("POST", f"{base_url}/index", {"incremental": True})
+    assert code_idx_inc == 200
+    assert idx_inc["ok"] is True
+    assert isinstance(idx_inc["run_id"], str)
+    assert idx_inc["incremental"] is True
+    assert idx_inc["units_indexed"] >= 2
+    assert isinstance(idx_inc["inserted"], int)
+    assert isinstance(idx_inc["refreshed"], int)
+    assert isinstance(idx_inc["deleted"], int)
 
     code_q, queried = _http_json(
         "POST",

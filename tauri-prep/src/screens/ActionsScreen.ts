@@ -260,6 +260,18 @@ export interface ProjectPreset {
   created_at: number;
 }
 
+interface ActionsExportPrefill {
+  stage?: "alignment" | "publication" | "segmentation" | "curation" | "runs" | "qa";
+  product?: "aligned_table" | "tei_xml" | "tei_package" | "run_report" | "qa_report" | "readable_text";
+  format?: "csv" | "tsv" | "tei_dir" | "zip" | "jsonl" | "html" | "json" | "txt" | "docx";
+  docIds?: number[];
+  pivotDocId?: number;
+  targetDocId?: number;
+  runId?: string;
+  exceptionsOnly?: boolean;
+  strictMode?: boolean;
+}
+
 
 // ─── Sub-view type ────────────────────────────────────────────────
 
@@ -273,6 +285,7 @@ export class ActionsScreen {
   private _jobCenter: JobCenter | null = null;
   private _showToast: ((msg: string, isError?: boolean) => void) | null = null;
   private _openDocumentsTab: (() => void) | null = null;
+  private _openExporterTab: ((prefill?: ActionsExportPrefill) => void) | null = null;
 
   // Audit state
   private _auditPivotId: number | null = null;
@@ -1524,7 +1537,8 @@ export class ActionsScreen {
             <p>&#8594; Si vos phrases d&#233;butent par une minuscule, le moteur ne les d&#233;tectera pas comme d&#233;but de phrase.</p>
             <p>&#8594; Si chaque paragraphe du document est d&#233;j&#224; une phrase, la segmentation retourne le m&#234;me nombre d&#8217;unit&#233;s.</p>
             <p><strong>O&#249; couper les phrases :</strong> les options <em>Fran&#231;ais / Anglais — liste longue</em> ajoutent des abr&#233;viations prot&#233;g&#233;es (ann., chap., etc.) pour &#233;viter les faux d&#233;coupages apr&#232;s un point.</p>
-            <p><strong>Mode balises :</strong> si vos textes contiennent des num&#233;ros entre crochets <code>[1]</code>&nbsp;<code>[2]</code>&#8230; en d&#233;but de segment, utilisez le bouton <em>D&#233;tecter balises</em>. Ce mode r&#233;cup&#232;re l&#8217;ID de chaque balise comme identifiant externe, ce qui permet un alignement automatique par num&#233;ro apr&#232;s segmentation.</p>
+            <p><strong>Mode balises :</strong> utilisez-le si des motifs <code>[N]</code> sont encore dans <em>le texte des unit&#233;s</em> (ex. import en paragraphes / blocs). Chaque balise devient un <code>external_id</code> pour l&#8217;alignement. Si le document a d&#233;j&#224; &#233;t&#233; import&#233; en <em>lignes num&#233;rot&#233;es [n]</em>, les IDs sont d&#233;j&#224; port&#233;s par les unit&#233;s et ce mode apporte souvent peu de diff&#233;rence.</p>
+            <p><strong>Pr&#233;fixe avant <code>[1]</code> :</strong> le texte plac&#233; avant la premi&#232;re balise devient un segment distinct, avec <code>external_id = NULL</code>.</p>
           </div>
         </details>
         <div class="seg-preview-section" id="act-seg-preview-section">
@@ -1605,6 +1619,7 @@ export class ActionsScreen {
     rightEl.querySelector("#act-seg-btn")?.addEventListener("click", () => this._runSegment());
     rightEl.querySelector("#act-seg-validate-btn")?.addEventListener("click", () => this._runSegment(true));
     rightEl.querySelector("#act-seg-validate-only-btn")?.addEventListener("click", () => void this._runValidateCurrentSegDoc());
+    rightEl.querySelector("#act-seg-open-export-btn")?.addEventListener("click", () => this._openSegmentationExportPrefill());
 
     // Load raw preview (left column) and trigger live preview
     void this._loadSegRawColumn(docId);
@@ -1761,6 +1776,8 @@ export class ActionsScreen {
     const lang = (document.querySelector("#act-seg-lang") as HTMLInputElement | null)?.value.trim() || "fr";
     const pack = (document.querySelector("#act-seg-pack") as HTMLSelectElement | null)?.value ?? "auto";
     const mode = this._segSplitMode;
+    const calibrateRaw = (document.querySelector("#act-seg-calibrate") as HTMLSelectElement | null)?.value ?? "";
+    const calibrateTo = mode === "sentences" && calibrateRaw ? parseInt(calibrateRaw, 10) : NaN;
 
     segEl.innerHTML = `<p class="empty-hint">Calcul en cours&#8230;</p>`;
     if (statsEl) statsEl.textContent = "…";
@@ -1771,12 +1788,26 @@ export class ActionsScreen {
     }
 
     try {
-      const res = await segmentPreview(this._conn, { doc_id: docId, mode, lang, pack, limit: 300 });
+      const previewPayload: {
+        doc_id: number;
+        mode: "sentences" | "markers";
+        lang: string;
+        pack: string;
+        limit: number;
+        calibrate_to?: number;
+      } = { doc_id: docId, mode, lang, pack, limit: 300 };
+      if (mode === "sentences" && Number.isInteger(calibrateTo)) {
+        previewPayload.calibrate_to = calibrateTo;
+      }
+      const res = await segmentPreview(this._conn, previewPayload);
       if (segCountEl) segCountEl.textContent = String(res.units_output);
+      const calibrateText = mode === "sentences" && Number.isInteger(res.calibrate_to) && Number.isInteger(res.calibrate_ratio_pct)
+        ? ` · écart ${res.calibrate_ratio_pct}% vs doc #${res.calibrate_to}`
+        : "";
       if (statsEl) {
         statsEl.textContent = mode === "markers"
           ? `${res.units_input} u. → ${res.units_output} segments par balise`
-          : `${res.units_input} u. → ${res.units_output} phrases · r&#233;glage ${res.segment_pack}`;
+          : `${res.units_input} u. → ${res.units_output} phrases · r&#233;glage ${res.segment_pack}${calibrateText}`;
       }
       if (segColTitle) {
         segColTitle.innerHTML = mode === "markers"
@@ -2169,6 +2200,7 @@ export class ActionsScreen {
                     <button id="act-seg-btn" class="btn btn-warning" disabled>Segmenter</button>
                     <button id="act-seg-validate-btn" class="btn btn-secondary" disabled>Seg. + valider</button>
                     <button id="act-seg-validate-only-btn" class="btn btn-primary" disabled>Valider</button>
+                    <button id="act-seg-open-export-btn" class="btn btn-secondary" disabled>Exporter cette étape…</button>
                     <button id="act-seg-focus-toggle" class="btn btn-secondary" disabled>Focus</button>
                   </div>
                   <label style="margin-top:8px;font-size:12px;color:var(--prep-muted,#4f5d6d);display:flex;flex-direction:column;gap:3px">Apr&#232;s validation
@@ -2273,6 +2305,7 @@ export class ActionsScreen {
                     <button id="act-seg-lt-btn" class="btn btn-warning" disabled>Segmenter</button>
                     <button id="act-seg-lt-validate-btn" class="btn btn-secondary" disabled>Segmenter + valider</button>
                     <button id="act-seg-lt-validate-only-btn" class="btn btn-primary" disabled>Valider ce document</button>
+                    <button id="act-seg-lt-open-export-btn" class="btn btn-secondary" disabled>Exporter cette étape…</button>
                   </div>
                   <div id="act-seg-lt-status" class="runtime-state state-info" style="margin-top:0.4rem">Aucune segmentation lanc&#233;e.</div>
                 </div>
@@ -2366,6 +2399,8 @@ export class ActionsScreen {
     el.querySelector("#act-seg-btn")!.addEventListener("click", () => this._runSegment());
     el.querySelector("#act-seg-validate-btn")!.addEventListener("click", () => this._runSegment(true));
     el.querySelector("#act-seg-validate-only-btn")!.addEventListener("click", () => this._runValidateCurrentSegDoc());
+    el.querySelector("#act-seg-open-export-btn")?.addEventListener("click", () => this._openSegmentationExportPrefill());
+    el.querySelector("#act-seg-lt-open-export-btn")?.addEventListener("click", () => this._openSegmentationExportPrefill());
     // doc-final-bar buttons (units)
     el.querySelector("#act-seg-final-seg-btn")?.addEventListener("click", () => this._runSegment(true));
     el.querySelector("#act-seg-final-validate-btn")?.addEventListener("click", () => void this._runValidateCurrentSegDoc());
@@ -2584,8 +2619,10 @@ export class ActionsScreen {
       <div class="acts-hub-head-tools">
         <button class="acts-hub-head-link" data-nav="curation">Voir Curation</button>
         <button class="acts-hub-head-link" data-nav="segmentation">Voir Segmentation VO</button>
+        <button class="acts-hub-head-link" id="act-align-open-export-btn">Exporter cette étape…</button>
       </div>`;
     this._bindHeadNavLinks(headSection, root);
+    headSection.querySelector("#act-align-open-export-btn")?.addEventListener("click", () => this._openAlignmentExportPrefill());
     wrapper.appendChild(headSection);
 
     // ── Nouveau panneau alignement (2-col + famille + confirmation inline) ──
@@ -3645,7 +3682,7 @@ export class ActionsScreen {
     if (!el) return;
     if (this._segSplitMode === "markers") {
       el.textContent =
-        "R\u00e8gle active : d\u00e9coupe sur les balises [N] num\u00e9rot\u00e9es dans le texte des unit\u00e9s.";
+        "R\u00e8gle active : découpe sur les balises [N] présentes dans le texte (utile si [N] n'a pas été absorbé à l'import). Le préfixe avant [1] reste un segment séparé sans external_id.";
       return;
     }
     const packSel = document.querySelector<HTMLSelectElement>("#act-seg-pack");
@@ -3948,6 +3985,10 @@ export class ActionsScreen {
     this._openDocumentsTab = cb;
   }
 
+  setOnOpenExporter(cb: ((prefill?: ActionsExportPrefill) => void) | null): void {
+    this._openExporterTab = cb;
+  }
+
   hasPendingChanges(): boolean {
     return this._hasPendingPreview || this._segmentPendingValidation;
   }
@@ -4052,6 +4093,7 @@ export class ActionsScreen {
   private _setButtonsEnabled(on: boolean): void {
     ["act-preview-btn", "act-curate-btn", "act-seg-btn", "act-align-btn", "act-align-recalc-btn",
      "act-seg-validate-btn", "act-seg-validate-only-btn", "act-seg-focus-toggle",
+     "act-seg-open-export-btn", "act-seg-lt-open-export-btn", "act-align-open-export-btn",
      "act-meta-btn", "act-index-btn", "act-quality-btn", "act-coll-load-btn",
      "act-report-btn"].forEach(id => {
       const el = document.querySelector(`#${id}`) as HTMLButtonElement | null;
@@ -7402,6 +7444,7 @@ export class ActionsScreen {
   private _refreshSegmentationStatusUI(): void {
     const banner = document.querySelector<HTMLElement>("#act-seg-status-banner");
     const validateOnlyBtn = document.querySelector<HTMLButtonElement>("#act-seg-validate-only-btn");
+    const exportBtns = Array.from(document.querySelectorAll<HTMLButtonElement>("#act-seg-open-export-btn, #act-seg-lt-open-export-btn"));
     if (!banner) return;
 
     const segSel = this._currentSegDocSelection();
@@ -7421,6 +7464,7 @@ export class ActionsScreen {
       banner.textContent = "Sidecar indisponible.";
       if (chipStatus) { chipStatus.textContent = "Hors ligne"; chipStatus.className = "chip"; }
       if (validateOnlyBtn) validateOnlyBtn.disabled = true;
+      exportBtns.forEach((b) => { b.disabled = true; });
       return;
     }
     if (!segSel) {
@@ -7428,6 +7472,7 @@ export class ActionsScreen {
       banner.textContent = "Sélectionnez un document pour segmenter.";
       if (chipStatus) { chipStatus.textContent = "En attente"; chipStatus.className = "chip"; }
       if (validateOnlyBtn) validateOnlyBtn.disabled = true;
+      exportBtns.forEach((b) => { b.disabled = true; });
       return;
     }
 
@@ -7452,6 +7497,7 @@ export class ActionsScreen {
         if (chipStatus) { chipStatus.textContent = `${this._lastSegmentReport.units_output} segments ✓`; chipStatus.className = "chip active"; }
       }
       if (validateOnlyBtn) validateOnlyBtn.disabled = !this._segmentPendingValidation;
+      exportBtns.forEach((b) => { b.disabled = false; });
       // Show doc-final-bar with contextual meta
       if (finalBar) finalBar.removeAttribute("hidden");
       if (finalMeta) finalMeta.textContent = `Pack: ${pack} · ${this._lastSegmentReport.units_output} unités${warningText}`;
@@ -7464,8 +7510,61 @@ export class ActionsScreen {
     banner.textContent = `Aucune segmentation lancée sur ${segSel.docLabel} dans cette session.`;
     if (chipStatus) { chipStatus.textContent = "Non segmenté"; chipStatus.className = "chip"; }
     if (validateOnlyBtn) validateOnlyBtn.disabled = true;
+    exportBtns.forEach((b) => { b.disabled = true; });
     // Hide doc-final-bar when no results
     if (finalBar) finalBar.setAttribute("hidden", "");
+  }
+
+  private _openExporterWithPrefill(prefill?: ActionsExportPrefill): void {
+    if (!this._openExporterTab) {
+      this._showToast?.("Onglet Exporter indisponible.", true);
+      return;
+    }
+    this._openExporterTab(prefill);
+  }
+
+  private _openSegmentationExportPrefill(): void {
+    const segSel = this._currentSegDocSelection();
+    if (!segSel) {
+      this._showToast?.("Sélectionnez d'abord un document segmenté.", true);
+      return;
+    }
+    if (!this._lastSegmentReport || this._lastSegmentReport.doc_id !== segSel.docId) {
+      this._showToast?.("Lancez une segmentation avant l'export de cette étape.", true);
+      return;
+    }
+    this._openExporterWithPrefill({
+      stage: "segmentation",
+      product: "readable_text",
+      format: "txt",
+      docIds: [segSel.docId],
+      strictMode: false,
+    });
+  }
+
+  private _openAlignmentExportPrefill(): void {
+    const pivotRaw = (document.querySelector("#act-align-pivot") as HTMLSelectElement | null)?.value ?? "";
+    const pivotId = pivotRaw ? parseInt(pivotRaw, 10) : NaN;
+    const targetsSel = document.querySelector("#act-align-targets") as HTMLSelectElement | null;
+    const targetIds = targetsSel
+      ? Array.from(targetsSel.selectedOptions)
+        .map((opt) => parseInt(opt.value, 10))
+        .filter((v) => Number.isInteger(v))
+      : [];
+
+    const prefill: ActionsExportPrefill = {
+      stage: "alignment",
+      product: "aligned_table",
+      format: "csv",
+      strictMode: false,
+    };
+    if (Number.isInteger(pivotId)) prefill.pivotDocId = pivotId;
+    if (targetIds.length > 0) {
+      prefill.docIds = targetIds;
+      prefill.targetDocId = targetIds[0];
+    }
+    if (this._alignRunId) prefill.runId = this._alignRunId;
+    this._openExporterWithPrefill(prefill);
   }
 
   private async _runValidateCurrentSegDoc(): Promise<void> {

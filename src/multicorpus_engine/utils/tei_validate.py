@@ -2,6 +2,7 @@
 
 Validates a TEI XML file for internal referential integrity:
 - Collects all xml:id values declared in the document.
+- Detects duplicate xml:id declarations.
 - Verifies that every <link target="..."> references only declared xml:ids.
 - Supports both "#id" and bare "id" target syntax.
 - Returns structured errors (no stderr output).
@@ -21,6 +22,7 @@ Design:
 
 from __future__ import annotations
 
+from collections import Counter
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -29,19 +31,23 @@ _XML_NS = "http://www.w3.org/XML/1998/namespace"
 _ATTR_XMLID = f"{{{_XML_NS}}}id"
 
 
-def _collect_xmlids(root: ET.Element) -> set[str]:
-    """Walk the tree and collect all xml:id attribute values."""
-    ids: set[str] = set()
-    for elem in root.iter():
+def _collect_xmlid_occurrences(root: ET.Element) -> dict[str, list[dict]]:
+    """Walk the tree and collect xml:id occurrences with lightweight location info."""
+    occ: dict[str, list[dict]] = {}
+    for i, elem in enumerate(root.iter()):
         # xml:id stored as {ns}id by ElementTree when namespace-aware
         val = elem.get(_ATTR_XMLID)
-        if val:
-            ids.add(val)
-        # Also check plain "xml:id" for non-namespace-aware docs
-        val2 = elem.get("xml:id")
-        if val2:
-            ids.add(val2)
-    return ids
+        if val is None:
+            # Also check plain "xml:id" for non-namespace-aware docs
+            val = elem.get("xml:id")
+        if not val:
+            continue
+        tag = elem.tag.split("}", 1)[1] if "}" in elem.tag else elem.tag
+        occ.setdefault(val, []).append({
+            "element_index": i,
+            "tag": tag,
+        })
+    return occ
 
 
 def _collect_link_targets(root: ET.Element) -> list[tuple[int, str]]:
@@ -82,6 +88,54 @@ def _refs_from_target(target: str) -> list[str]:
     return refs
 
 
+def validate_tei_tree(
+    root: ET.Element,
+    *,
+    source_path: str,
+    check_link_targets: bool = True,
+) -> list[dict]:
+    """Validate an already-parsed TEI element tree.
+
+    This avoids reparsing when callers already hold an Element root.
+    """
+    errors: list[dict] = []
+
+    occ = _collect_xmlid_occurrences(root)
+    declared_ids = set(occ.keys())
+
+    # Duplicate xml:id declarations (warning-level, non-blocking).
+    for xml_id, items in occ.items():
+        if len(items) <= 1:
+            continue
+        errors.append({
+            "type": "duplicate_xml_id",
+            "xml_id": xml_id,
+            "occurrences": len(items),
+            "elements": items,
+            "path": source_path,
+            "severity": "warning",
+            "blocking": False,
+        })
+
+    if not check_link_targets:
+        return errors
+
+    for link_index, target_attr in _collect_link_targets(root):
+        for ref in _refs_from_target(target_attr):
+            if ref not in declared_ids:
+                errors.append({
+                    "type": "broken_link_target",
+                    "target": target_attr,
+                    "ref": ref,
+                    "link_index": link_index,
+                    "path": source_path,
+                    "severity": "warning",
+                    "blocking": False,
+                })
+
+    return errors
+
+
 def validate_tei_ids(
     path: str | Path,
     *,
@@ -103,12 +157,26 @@ def validate_tei_ids(
                 "ref": "u999",            # the offending ref
                 "link_index": 0,          # index within root.iter()
                 "path": "/abs/path.xml",  # source file
+                "severity": "warning",
+                "blocking": False,
+            }
+        Or:
+            {
+                "type": "duplicate_xml_id",
+                "xml_id": "u1",
+                "occurrences": 2,
+                "elements": [{"element_index": 12, "tag": "p"}, ...],
+                "path": "/abs/path.xml",
+                "severity": "warning",
+                "blocking": False,
             }
         Or:
             {
                 "type": "parse_error",
                 "message": "...",
                 "path": "/abs/path.xml",
+                "severity": "error",
+                "blocking": True,
             }
     """
     path = Path(path)
@@ -117,26 +185,33 @@ def validate_tei_ids(
     try:
         tree = ET.parse(str(path))
     except (ET.ParseError, FileNotFoundError, OSError) as exc:
-        return [{"type": "parse_error", "message": str(exc), "path": str(path)}]
+        return [{
+            "type": "parse_error",
+            "message": str(exc),
+            "path": str(path),
+            "severity": "error",
+            "blocking": True,
+        }]
 
     root = tree.getroot()
-    declared_ids = _collect_xmlids(root)
+    return validate_tei_tree(
+        root,
+        source_path=str(path),
+        check_link_targets=check_link_targets,
+    )
 
-    if not check_link_targets:
-        return errors
 
-    for link_index, target_attr in _collect_link_targets(root):
-        for ref in _refs_from_target(target_attr):
-            if ref not in declared_ids:
-                errors.append({
-                    "type": "broken_link_target",
-                    "target": target_attr,
-                    "ref": ref,
-                    "link_index": link_index,
-                    "path": str(path),
-                })
-
-    return errors
+def summarize_tei_validation(errors: list[dict]) -> dict:
+    """Return compact counters for TEI validation reporting."""
+    type_counts = Counter(str(e.get("type", "unknown")) for e in errors)
+    severity_counts = Counter(str(e.get("severity", "warning")) for e in errors)
+    blocking = sum(1 for e in errors if bool(e.get("blocking")))
+    return {
+        "total": len(errors),
+        "blocking": blocking,
+        "by_type": dict(type_counts),
+        "by_severity": dict(severity_counts),
+    }
 
 
 def validate_tei_package(zip_path: str | Path) -> dict[str, list[dict]]:

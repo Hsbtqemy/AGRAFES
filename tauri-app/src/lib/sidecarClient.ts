@@ -34,6 +34,9 @@ export interface QueryHit {
   external_id: number | null;
   language: string;
   title: string;
+  source_db_path?: string;
+  source_db_name?: string;
+  source_db_index?: number;
   // segment mode
   text?: string;
   text_norm?: string;
@@ -43,6 +46,22 @@ export interface QueryHit {
   right?: string;
   // aligned view
   aligned?: AlignedUnit[];
+  // token-query mode (CQL)
+  sent_id?: number;
+  start_position?: number;
+  end_position?: number;
+  tokens?: TokenRecord[];
+  context_tokens?: TokenRecord[];
+}
+
+export interface TokenRecord {
+  token_id: number;
+  position: number;
+  word?: string | null;
+  lemma?: string | null;
+  upos?: string | null;
+  xpos?: string | null;
+  feats?: string | null;
 }
 
 export interface AlignedUnit {
@@ -64,6 +83,8 @@ export interface QueryOptions {
   doc_id?: number;
   /** Multi-doc filter — takes priority over doc_id when provided. */
   doc_ids?: number[];
+  /** Optional federated DB query scope (multiple database paths in one /query request). */
+  dbPaths?: string[];
   doc_role?: string;
   resource_type?: string;
   includeAligned?: boolean;
@@ -104,6 +125,33 @@ export interface QueryResponse {
   family_id?: number | null;
   family_doc_ids?: number[] | null;
   pivot_only?: boolean | null;
+  federated?: boolean | null;
+  db_paths?: string[] | null;
+  db_count?: number | null;
+}
+
+export interface TokenQueryOptions {
+  cql: string;
+  mode?: "segment" | "kwic";
+  window?: number;
+  /** One language code or a list of codes. Empty array or undefined = no filter. */
+  language?: string | string[];
+  /** Multi-doc filter. */
+  doc_ids?: number[];
+  limit?: number;
+  offset?: number;
+}
+
+export interface TokenQueryResponse {
+  ok: boolean;
+  status: string;
+  count: number;
+  hits: QueryHit[];
+  limit?: number;
+  offset?: number;
+  next_offset?: number | null;
+  has_more?: boolean;
+  total?: number | null;
 }
 
 export interface ImportOptions {
@@ -1024,6 +1072,9 @@ export async function query(
   } else if (opts.doc_id !== undefined) {
     payload.doc_id = opts.doc_id;
   }
+  if (opts.dbPaths !== undefined && opts.dbPaths.length > 0) {
+    payload.db_paths = opts.dbPaths;
+  }
   if (opts.doc_role) payload.doc_role = opts.doc_role;
   if (opts.resource_type) payload.resource_type = opts.resource_type;
   if (includeAligned) payload.include_aligned = true;
@@ -1047,6 +1098,25 @@ export async function query(
   if (opts.source_ext) payload.source_ext = opts.source_ext;
 
   return conn.post("/query", payload) as Promise<QueryResponse>;
+}
+
+export async function tokenQuery(
+  conn: Conn,
+  opts: TokenQueryOptions
+): Promise<TokenQueryResponse> {
+  const payload: Record<string, unknown> = {
+    cql: opts.cql,
+    mode: opts.mode ?? "kwic",
+  };
+  if (opts.window !== undefined) payload.window = opts.window;
+  if (opts.language) {
+    const langs = Array.isArray(opts.language) ? opts.language.filter(Boolean) : [opts.language];
+    if (langs.length > 0) payload.language = langs.length === 1 ? langs[0] : langs;
+  }
+  if (opts.doc_ids !== undefined && opts.doc_ids.length > 0) payload.doc_ids = opts.doc_ids;
+  if (opts.limit !== undefined) payload.limit = opts.limit;
+  if (opts.offset !== undefined) payload.offset = opts.offset;
+  return conn.post("/token_query", payload) as Promise<TokenQueryResponse>;
 }
 
 /**

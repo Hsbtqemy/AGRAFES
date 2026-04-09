@@ -12,8 +12,8 @@ from __future__ import annotations
 from typing import Any
 
 
-API_VERSION = "1.6.10"
-CONTRACT_VERSION = "1.6.10"  # semantic versioning for the sidecar API contract
+API_VERSION = "1.6.21"
+CONTRACT_VERSION = "1.6.21"  # semantic versioning for the sidecar API contract
 # 1.4.0: added export_tei_package job kind (Sprint 4 — Publication ZIP)
 # 1.4.1: ERR_CONFLICT (409) for duplicate run_id; token protection on /align, /curate, /segment
 # 1.4.2: document workflow status fields on /documents and metadata update endpoints.
@@ -47,7 +47,23 @@ CONTRACT_VERSION = "1.6.10"  # semantic versioning for the sidecar API contract
 #         POST /jobs/enqueue segment mode=markers — execute marker-based resegmentation.
 # 1.6.10: POST /units/merge — merge two adjacent units into one.
 #          POST /units/split — split one unit into two.
-#         Takes { doc_id, lang?, pack?, limit? }, returns segments list + warnings.
+#         Takes { doc_id, lang?, pack?, limit?, calibrate_to? }, returns segments list + warnings.
+# 1.6.11: POST /segment/preview accepts optional calibrate_to and returns
+#         optional calibrate_ratio_pct, mirroring /segment ratio warnings.
+# 1.6.12: POST /import supports mode=conllu (token rows persisted in `tokens` table).
+# 1.6.13: POST /annotate async job endpoint + job kind `annotate`.
+#         DocumentRecord gains token_count + annotation_status.
+# 1.6.14: POST /token_query endpoint (minimal CQL token search, Sprint C backend).
+# 1.6.15: /token_query supports advanced CQL clauses: [] wildcard, {m,n} quantifiers, `within s`.
+# 1.6.16: POST /export/conllu endpoint (export token annotations as CoNLL-U).
+# 1.6.17: POST /export/token_query_csv endpoint (export CQL hits to CSV/TSV).
+# 1.6.18: POST /export/ske endpoint (Sketch Engine-style vertical export).
+# 1.6.19: POST /index and async index jobs accept optional incremental mode;
+#         incremental index responses include inserted/refreshed/deleted counters.
+# 1.6.20: GET /tokens (list token rows for one document/unit);
+#         POST /tokens/update (manual token-by-token annotation edits).
+# 1.6.21: POST /query gains optional db_paths federation (multi-DB query in one request).
+#         Query hits gain source_db_* provenance when federated; response gains federated metadata.
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
@@ -180,9 +196,56 @@ def openapi_spec() -> dict[str, Any]:
                     },
                 }
             },
+            "/token_query": {
+                "post": {
+                    "summary": "Run token-level CQL query",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/TokenQueryRequest"},
+                            }
+                        },
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Token query result",
+                            "content": {
+                                "application/json": {
+                                    "schema": {"$ref": "#/components/schemas/TokenQueryResponse"},
+                                }
+                            },
+                        },
+                        "400": {
+                            "description": "Bad request",
+                            "content": {
+                                "application/json": {
+                                    "schema": {"$ref": "#/components/schemas/ErrorResponse"},
+                                }
+                            },
+                        },
+                        "500": {
+                            "description": "Internal error",
+                            "content": {
+                                "application/json": {
+                                    "schema": {"$ref": "#/components/schemas/ErrorResponse"},
+                                }
+                            },
+                        },
+                    },
+                }
+            },
             "/index": {
                 "post": {
                     "summary": "Rebuild FTS index",
+                    "requestBody": {
+                        "required": False,
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/IndexRequest"},
+                            }
+                        },
+                    },
                     "responses": {
                         "200": {
                             "description": "Index rebuilt",
@@ -319,6 +382,46 @@ def openapi_spec() -> dict[str, Any]:
                         },
                         "500": {
                             "description": "Internal error",
+                            "content": {
+                                "application/json": {
+                                    "schema": {"$ref": "#/components/schemas/ErrorResponse"},
+                                }
+                            },
+                        },
+                    },
+                }
+            },
+            "/annotate": {
+                "post": {
+                    "summary": "Enqueue automatic annotation job(s) with spaCy",
+                    "security": [{"token": []}],
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/AnnotateRequest"},
+                            }
+                        },
+                    },
+                    "responses": {
+                        "202": {
+                            "description": "Annotation job accepted",
+                            "content": {
+                                "application/json": {
+                                    "schema": {"$ref": "#/components/schemas/JobAcceptedResponse"},
+                                }
+                            },
+                        },
+                        "400": {
+                            "description": "Bad request",
+                            "content": {
+                                "application/json": {
+                                    "schema": {"$ref": "#/components/schemas/ErrorResponse"},
+                                }
+                            },
+                        },
+                        "401": {
+                            "description": "Unauthorized",
                             "content": {
                                 "application/json": {
                                     "schema": {"$ref": "#/components/schemas/ErrorResponse"},
@@ -581,6 +684,120 @@ def openapi_spec() -> dict[str, Any]:
                         },
                         "404": {
                             "description": "Document not found",
+                            "content": {
+                                "application/json": {
+                                    "schema": {"$ref": "#/components/schemas/ErrorResponse"},
+                                }
+                            },
+                        },
+                        "500": {
+                            "description": "Internal error",
+                            "content": {
+                                "application/json": {
+                                    "schema": {"$ref": "#/components/schemas/ErrorResponse"},
+                                }
+                            },
+                        },
+                    },
+                }
+            },
+            "/tokens": {
+                "get": {
+                    "summary": "List token rows for a document (optionally one unit)",
+                    "parameters": [
+                        {
+                            "name": "doc_id",
+                            "in": "query",
+                            "required": True,
+                            "schema": {"type": "integer"},
+                            "description": "Document identifier",
+                        },
+                        {
+                            "name": "unit_id",
+                            "in": "query",
+                            "required": False,
+                            "schema": {"type": "integer"},
+                            "description": "Optional unit identifier to restrict token list",
+                        },
+                        {
+                            "name": "limit",
+                            "in": "query",
+                            "required": False,
+                            "schema": {"type": "integer", "minimum": 1, "maximum": 1000, "default": 200},
+                        },
+                        {
+                            "name": "offset",
+                            "in": "query",
+                            "required": False,
+                            "schema": {"type": "integer", "minimum": 0, "default": 0},
+                        },
+                    ],
+                    "responses": {
+                        "200": {
+                            "description": "Token list",
+                            "content": {
+                                "application/json": {
+                                    "schema": {"$ref": "#/components/schemas/TokensResponse"},
+                                }
+                            },
+                        },
+                        "400": {
+                            "description": "Bad request",
+                            "content": {
+                                "application/json": {
+                                    "schema": {"$ref": "#/components/schemas/ErrorResponse"},
+                                }
+                            },
+                        },
+                        "500": {
+                            "description": "Internal error",
+                            "content": {
+                                "application/json": {
+                                    "schema": {"$ref": "#/components/schemas/ErrorResponse"},
+                                }
+                            },
+                        },
+                    },
+                }
+            },
+            "/tokens/update": {
+                "post": {
+                    "summary": "Update a token row (manual annotation edit)",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/TokenUpdateRequest"},
+                            }
+                        },
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Token updated",
+                            "content": {
+                                "application/json": {
+                                    "schema": {"$ref": "#/components/schemas/TokenUpdateResponse"},
+                                }
+                            },
+                        },
+                        "400": {
+                            "description": "Bad request",
+                            "content": {
+                                "application/json": {
+                                    "schema": {"$ref": "#/components/schemas/ErrorResponse"},
+                                }
+                            },
+                        },
+                        "401": {
+                            "description": "Unauthorized (missing/invalid token)",
+                            "content": {
+                                "application/json": {
+                                    "schema": {"$ref": "#/components/schemas/ErrorResponse"},
+                                }
+                            },
+                        },
+                        "404": {
+                            "description": "Token row not found",
                             "content": {
                                 "application/json": {
                                     "schema": {"$ref": "#/components/schemas/ErrorResponse"},
@@ -961,6 +1178,30 @@ def openapi_spec() -> dict[str, Any]:
                     "responses": {"200": {"description": "Files created"}, "400": {"description": "Bad request"}, "401": {"description": "Unauthorized"}},
                 }
             },
+            "/export/conllu": {
+                "post": {
+                    "summary": "Export token annotations as CoNLL-U",
+                    "security": [{"token": []}],
+                    "requestBody": {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ExportConlluRequest"}}}},
+                    "responses": {"200": {"description": "File written"}, "400": {"description": "Bad request"}, "401": {"description": "Unauthorized"}},
+                }
+            },
+            "/export/token_query_csv": {
+                "post": {
+                    "summary": "Export token_query hits to CSV/TSV",
+                    "security": [{"token": []}],
+                    "requestBody": {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ExportTokenQueryCsvRequest"}}}},
+                    "responses": {"200": {"description": "File written"}, "400": {"description": "Bad request"}, "401": {"description": "Unauthorized"}},
+                }
+            },
+            "/export/ske": {
+                "post": {
+                    "summary": "Export token annotations as Sketch Engine-style vertical file",
+                    "security": [{"token": []}],
+                    "requestBody": {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ExportSkeRequest"}}}},
+                    "responses": {"200": {"description": "File written"}, "400": {"description": "Bad request"}, "401": {"description": "Unauthorized"}},
+                }
+            },
             "/export/align_csv": {
                 "post": {
                     "summary": "Export alignment links as CSV/TSV",
@@ -1166,6 +1407,12 @@ def openapi_spec() -> dict[str, Any]:
                         "doc_ids": {"type": "array", "items": {"type": "integer"}},
                         "resource_type": {"type": "string"},
                         "doc_role": {"type": "string"},
+                        "db_paths": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "nullable": True,
+                            "description": "Optional absolute/relative database paths for federated multi-DB query.",
+                        },
                         "include_aligned": {"type": "boolean", "default": False},
                         "aligned_limit": {"type": "integer", "minimum": 1, "default": 20, "nullable": True},
                         "all_occurrences": {"type": "boolean", "default": False},
@@ -1212,6 +1459,102 @@ def openapi_spec() -> dict[str, Any]:
                                 "family_id": {"type": "integer", "nullable": True},
                                 "family_doc_ids": {"type": "array", "items": {"type": "integer"}, "nullable": True},
                                 "pivot_only": {"type": "boolean", "nullable": True},
+                                "federated": {"type": "boolean", "nullable": True},
+                                "db_paths": {"type": "array", "items": {"type": "string"}, "nullable": True},
+                                "db_count": {"type": "integer", "nullable": True},
+                            },
+                        },
+                    ]
+                },
+                "TokenQueryRequest": {
+                    "type": "object",
+                    "required": ["cql"],
+                    "properties": {
+                        "cql": {"type": "string"},
+                        "mode": {"type": "string", "enum": ["segment", "kwic"], "default": "kwic"},
+                        "window": {"type": "integer", "minimum": 0, "default": 10},
+                        "language": {"type": "string"},
+                        "doc_ids": {"type": "array", "items": {"type": "integer"}},
+                        "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50},
+                        "offset": {"type": "integer", "minimum": 0, "default": 0},
+                    },
+                    "additionalProperties": False,
+                },
+                "TokenQueryToken": {
+                    "type": "object",
+                    "required": ["token_id", "position"],
+                    "properties": {
+                        "token_id": {"type": "integer"},
+                        "position": {"type": "integer"},
+                        "word": {"type": "string", "nullable": True},
+                        "lemma": {"type": "string", "nullable": True},
+                        "upos": {"type": "string", "nullable": True},
+                        "xpos": {"type": "string", "nullable": True},
+                        "feats": {"type": "string", "nullable": True},
+                    },
+                },
+                "TokenQueryHit": {
+                    "type": "object",
+                    "required": [
+                        "doc_id",
+                        "unit_id",
+                        "external_id",
+                        "language",
+                        "title",
+                        "sent_id",
+                        "start_position",
+                        "end_position",
+                        "tokens",
+                        "context_tokens",
+                    ],
+                    "properties": {
+                        "doc_id": {"type": "integer"},
+                        "unit_id": {"type": "integer"},
+                        "external_id": {"type": "integer", "nullable": True},
+                        "language": {"type": "string"},
+                        "title": {"type": "string"},
+                        "text": {"type": "string"},
+                        "text_norm": {"type": "string"},
+                        "left": {"type": "string"},
+                        "match": {"type": "string"},
+                        "right": {"type": "string"},
+                        "sent_id": {"type": "integer"},
+                        "start_position": {"type": "integer"},
+                        "end_position": {"type": "integer"},
+                        "tokens": {
+                            "type": "array",
+                            "items": {"$ref": "#/components/schemas/TokenQueryToken"},
+                        },
+                        "context_tokens": {
+                            "type": "array",
+                            "items": {"$ref": "#/components/schemas/TokenQueryToken"},
+                        },
+                    },
+                },
+                "TokenQueryResponse": {
+                    "allOf": [
+                        {"$ref": "#/components/schemas/BaseResponse"},
+                        {
+                            "type": "object",
+                            "required": [
+                                "run_id",
+                                "count",
+                                "hits",
+                                "limit",
+                                "offset",
+                                "next_offset",
+                                "has_more",
+                                "total",
+                            ],
+                            "properties": {
+                                "run_id": {"type": "string"},
+                                "count": {"type": "integer"},
+                                "hits": {"type": "array", "items": {"$ref": "#/components/schemas/TokenQueryHit"}},
+                                "limit": {"type": "integer"},
+                                "offset": {"type": "integer"},
+                                "next_offset": {"type": "integer", "nullable": True},
+                                "has_more": {"type": "boolean"},
+                                "total": {"type": "integer"},
                             },
                         },
                     ]
@@ -1225,9 +1568,26 @@ def openapi_spec() -> dict[str, Any]:
                             "properties": {
                                 "run_id": {"type": "string"},
                                 "units_indexed": {"type": "integer"},
+                                "incremental": {"type": "boolean"},
+                                "inserted": {"type": "integer"},
+                                "refreshed": {"type": "integer"},
+                                "deleted": {"type": "integer"},
                             },
                         },
                     ]
+                },
+                "IndexRequest": {
+                    "type": "object",
+                    "properties": {
+                        "incremental": {
+                            "type": "boolean",
+                            "description": (
+                                "If true, runs incremental FTS sync (insert/refresh/prune) "
+                                "instead of full rebuild."
+                            ),
+                        },
+                    },
+                    "additionalProperties": False,
                 },
                 "ImportRequest": {
                     "type": "object",
@@ -1242,6 +1602,7 @@ def openapi_spec() -> dict[str, Any]:
                                 "odt_paragraphs",
                                 "odt_numbered_lines",
                                 "tei",
+                                "conllu",
                             ],
                         },
                         "path": {"type": "string"},
@@ -1348,6 +1709,11 @@ def openapi_spec() -> dict[str, Any]:
                             "type": "integer",
                             "default": 300,
                             "description": "Maximum number of segments returned.",
+                        },
+                        "calibrate_to": {
+                            "type": "integer",
+                            "nullable": True,
+                            "description": "doc_id of reference document; adds a ratio warning if segment counts differ by > 15 %",
                         },
                     },
                     "additionalProperties": False,
@@ -1457,6 +1823,8 @@ def openapi_spec() -> dict[str, Any]:
                                     "items": {"$ref": "#/components/schemas/SegmentPreviewSegment"},
                                 },
                                 "warnings": {"type": "array", "items": {"type": "string"}},
+                                "calibrate_to": {"type": "integer", "nullable": True},
+                                "calibrate_ratio_pct": {"type": "integer", "nullable": True},
                             },
                         },
                     ]
@@ -1750,6 +2118,15 @@ def openapi_spec() -> dict[str, Any]:
                         },
                     ]
                 },
+                "AnnotateRequest": {
+                    "type": "object",
+                    "properties": {
+                        "doc_id": {"type": "integer"},
+                        "all_docs": {"type": "boolean", "default": False},
+                        "model": {"type": "string", "nullable": True},
+                    },
+                    "additionalProperties": False,
+                },
                 "DocumentRecord": {
                     "type": "object",
                     "required": ["doc_id", "title", "language", "unit_count"],
@@ -1766,10 +2143,17 @@ def openapi_spec() -> dict[str, Any]:
                         },
                         "validated_at": {"type": "string", "nullable": True},
                         "validated_run_id": {"type": "string", "nullable": True},
+                        "source_path": {"type": "string", "nullable": True},
+                        "source_hash": {"type": "string", "nullable": True},
                         "author_lastname": {"type": "string", "nullable": True},
                         "author_firstname": {"type": "string", "nullable": True},
                         "doc_date": {"type": "string", "nullable": True},
                         "unit_count": {"type": "integer"},
+                        "token_count": {"type": "integer"},
+                        "annotation_status": {
+                            "type": "string",
+                            "enum": ["missing", "annotated"],
+                        },
                     },
                     "additionalProperties": False,
                 },
@@ -1815,6 +2199,90 @@ def openapi_spec() -> dict[str, Any]:
                                 "count": {"type": "integer"},
                                 "total_lines": {"type": "integer"},
                                 "limit": {"type": "integer"},
+                            },
+                        },
+                    ]
+                },
+                "TokenRecord": {
+                    "type": "object",
+                    "required": [
+                        "token_id",
+                        "doc_id",
+                        "unit_id",
+                        "unit_n",
+                        "external_id",
+                        "sent_id",
+                        "position",
+                    ],
+                    "properties": {
+                        "token_id": {"type": "integer"},
+                        "doc_id": {"type": "integer"},
+                        "unit_id": {"type": "integer"},
+                        "unit_n": {"type": "integer"},
+                        "external_id": {"type": "integer", "nullable": True},
+                        "sent_id": {"type": "integer"},
+                        "position": {"type": "integer"},
+                        "word": {"type": "string", "nullable": True},
+                        "lemma": {"type": "string", "nullable": True},
+                        "upos": {"type": "string", "nullable": True},
+                        "xpos": {"type": "string", "nullable": True},
+                        "feats": {"type": "string", "nullable": True},
+                        "misc": {"type": "string", "nullable": True},
+                    },
+                    "additionalProperties": False,
+                },
+                "TokensResponse": {
+                    "allOf": [
+                        {"$ref": "#/components/schemas/BaseResponse"},
+                        {
+                            "type": "object",
+                            "required": [
+                                "doc_id",
+                                "tokens",
+                                "count",
+                                "total",
+                                "limit",
+                                "offset",
+                                "next_offset",
+                                "has_more",
+                            ],
+                            "properties": {
+                                "doc_id": {"type": "integer"},
+                                "unit_id": {"type": "integer", "nullable": True},
+                                "tokens": {"type": "array", "items": {"$ref": "#/components/schemas/TokenRecord"}},
+                                "count": {"type": "integer"},
+                                "total": {"type": "integer"},
+                                "limit": {"type": "integer"},
+                                "offset": {"type": "integer"},
+                                "next_offset": {"type": "integer", "nullable": True},
+                                "has_more": {"type": "boolean"},
+                            },
+                        },
+                    ]
+                },
+                "TokenUpdateRequest": {
+                    "type": "object",
+                    "required": ["token_id"],
+                    "properties": {
+                        "token_id": {"type": "integer"},
+                        "word": {"type": "string", "nullable": True},
+                        "lemma": {"type": "string", "nullable": True},
+                        "upos": {"type": "string", "nullable": True},
+                        "xpos": {"type": "string", "nullable": True},
+                        "feats": {"type": "string", "nullable": True},
+                        "misc": {"type": "string", "nullable": True},
+                    },
+                    "additionalProperties": False,
+                },
+                "TokenUpdateResponse": {
+                    "allOf": [
+                        {"$ref": "#/components/schemas/BaseResponse"},
+                        {
+                            "type": "object",
+                            "required": ["updated", "token"],
+                            "properties": {
+                                "updated": {"type": "integer"},
+                                "token": {"$ref": "#/components/schemas/TokenRecord"},
                             },
                         },
                     ]
@@ -2134,6 +2602,36 @@ def openapi_spec() -> dict[str, Any]:
                         },
                     },
                 },
+                "ExportConlluRequest": {
+                    "type": "object",
+                    "required": ["out_path"],
+                    "properties": {
+                        "doc_ids": {"type": "array", "items": {"type": "integer"}, "nullable": True},
+                        "out_path": {"type": "string"},
+                    },
+                },
+                "ExportTokenQueryCsvRequest": {
+                    "type": "object",
+                    "required": ["out_path", "cql"],
+                    "properties": {
+                        "out_path": {"type": "string"},
+                        "cql": {"type": "string"},
+                        "mode": {"type": "string", "enum": ["segment", "kwic"], "default": "kwic"},
+                        "window": {"type": "integer", "minimum": 0, "default": 10},
+                        "language": {"type": "string", "nullable": True},
+                        "doc_ids": {"type": "array", "items": {"type": "integer"}, "nullable": True},
+                        "delimiter": {"type": "string", "enum": [",", "\t"], "default": ","},
+                        "max_hits": {"type": "integer", "minimum": 1, "maximum": 100000, "default": 10000},
+                    },
+                },
+                "ExportSkeRequest": {
+                    "type": "object",
+                    "required": ["out_path"],
+                    "properties": {
+                        "out_path": {"type": "string"},
+                        "doc_ids": {"type": "array", "items": {"type": "integer"}, "nullable": True},
+                    },
+                },
                 "ExportAlignCsvRequest": {
                     "type": "object",
                     "required": ["out_path"],
@@ -2429,6 +2927,7 @@ def openapi_spec() -> dict[str, Any]:
                                 "index", "curate", "validate-meta", "segment",
                                 "import", "align", "export_tei", "export_align_csv", "export_run_report",
                                 "export_tei_package", "export_readable_text", "qa_report",
+                                "annotate",
                             ],
                         },
                         "params": {"type": "object", "additionalProperties": True},

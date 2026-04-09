@@ -1,0 +1,12 @@
+{
+  "auto": {
+    "fr": {
+      "f1_min": 0.95,
+      "exact_match_min": 0.95
+    },
+    "en": {
+      "f1_min": 0.95,
+      "exact_match_min": 0.95
+    }
+  }
+}

@@ -281,7 +281,7 @@ When enabled via `multicorpus serve`:
 - `GET /documents` — list all docs with unit_count
 - `GET /documents/preview?doc_id=N&limit=M` — mini excerpt for Documents screen verification (no token)
 - `POST /query`
-- `POST /index`
+- `POST /index` (full rebuild by default; accepts `{ "incremental": true }` for incremental sync)
 - `POST /import`
 - `POST /shutdown`
 - `POST /curate`
@@ -308,6 +308,7 @@ When enabled via `multicorpus serve`:
 - `POST /jobs`
 - `GET /jobs/{job_id}`
 - `POST /jobs/enqueue` — async job enqueue for long ops (token required, V0.5+); 12 kinds: index, curate, validate-meta, segment, import, align, export_tei, export_align_csv, export_run_report, export_tei_package, export_readable_text, qa_report
+  - `kind=index` supports optional `params.incremental: boolean`
 - `POST /jobs/{job_id}/cancel` — cancel queued/running job, idempotent for terminal states (token required, V0.5)
 
 #### tauri-prep V0.3 usage
@@ -385,6 +386,28 @@ Token note:
 - Read endpoints (`/health`, `/query`, `/align/audit`, `/curate/preview`, `/doc_relations`, `/openapi.json`) do not require token.
 - `POST /jobs/enqueue` and `POST /jobs/{id}/cancel` require token.
 - `multicorpus status --db ...` can be used by wrappers to detect `running|stale|missing`.
+- Rotate token by restarting sidecar on DB switch / stale recovery (recommended session cap: 8h).
+- Full security posture and threat model: `docs/SIDECAR_SECURITY_POSTURE.md`.
+
+### Wrapper supervision recommendations (resilience)
+
+For desktop wrappers (Tauri shell / prep), use this control loop:
+
+1. On app boot or DB switch, call `multicorpus status --db ...`.
+2. If `state=running`, reuse existing endpoint.
+3. If `state=stale|missing`, launch `serve --host 127.0.0.1 --port 0 --token auto`.
+4. After spawn, wait for startup JSON then verify `GET /health`.
+5. On first write `401`, refresh state/token once and retry once.
+6. On `ECONNREFUSED`/timeout, run one bounded restart attempt (backoff 200-500 ms).
+7. Never run two sidecars for the same DB path intentionally; treat `already_running` as success.
+8. On app shutdown, prefer graceful `POST /shutdown`; if process was killed abruptly,
+   stale detection/recovery on next launch is expected and supported.
+
+This model is validated by sidecar recovery tests covering:
+- stale portfile replacement,
+- rapid relaunch loops,
+- forced-kill recovery,
+- stale unlink race tolerance.
 
 ## Run logs
 

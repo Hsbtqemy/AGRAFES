@@ -32,6 +32,7 @@ def test_migrations_apply_clean_db(tmp_path: Path) -> None:
     }
     assert "documents" in tables, "documents table missing"
     assert "units" in tables, "units table missing"
+    assert "tokens" in tables, "tokens table missing"
     assert "runs" in tables, "runs table missing"
     assert "schema_migrations" in tables, "schema_migrations table missing"
 
@@ -42,6 +43,13 @@ def test_migrations_apply_clean_db(tmp_path: Path) -> None:
     assert "workflow_status" in doc_cols, "documents.workflow_status missing"
     assert "validated_at" in doc_cols, "documents.validated_at missing"
     assert "validated_run_id" in doc_cols, "documents.validated_run_id missing"
+
+    token_cols = {
+        row[1]
+        for row in conn.execute("PRAGMA table_info(tokens)")
+    }
+    for col in ("token_id", "unit_id", "sent_id", "position", "word", "lemma", "upos"):
+        assert col in token_cols, f"tokens.{col} missing"
 
     # Verify FTS virtual table exists
     assert "fts_units" in tables, "fts_units FTS table missing"

@@ -7,6 +7,7 @@
  *  - segment()        → POST /segment
  *  - align()          → POST /align
  *  - validateMeta()   → POST /validate-meta
+ *  - annotate()       → POST /annotate (async job accepted)
  *  - getJob()         → GET /jobs/<id>
  */
 
@@ -40,6 +41,10 @@ export interface DocumentRecord {
   source_path?: string | null;
   /** SHA-256 hex of source file at import. */
   source_hash?: string | null;
+  /** Number of token rows available for this document. */
+  token_count?: number;
+  /** Lightweight annotation state derived from token presence. */
+  annotation_status?: "missing" | "annotated";
   author_lastname?: string | null;
   author_firstname?: string | null;
   /** Free-form date string: "2024", "2024-03", "2024-03-15", etc. */
@@ -61,6 +66,52 @@ export interface DocumentPreviewResponse {
   count: number;
   total_lines: number;
   limit: number;
+}
+
+export interface TokenRecord {
+  token_id: number;
+  doc_id: number;
+  unit_id: number;
+  unit_n: number;
+  external_id: number | null;
+  sent_id: number;
+  position: number;
+  word: string | null;
+  lemma: string | null;
+  upos: string | null;
+  xpos: string | null;
+  feats: string | null;
+  misc: string | null;
+}
+
+export interface TokensListOptions {
+  doc_id: number;
+  unit_id?: number;
+  limit?: number;
+  offset?: number;
+}
+
+export interface TokensListResponse {
+  ok: boolean;
+  doc_id: number;
+  unit_id?: number | null;
+  tokens: TokenRecord[];
+  count: number;
+  total: number;
+  limit: number;
+  offset: number;
+  next_offset: number | null;
+  has_more: boolean;
+}
+
+export interface TokenUpdateOptions {
+  token_id: number;
+  word?: string | null;
+  lemma?: string | null;
+  upos?: string | null;
+  xpos?: string | null;
+  feats?: string | null;
+  misc?: string | null;
 }
 
 /** Métadonnées corpus (table `corpus_info`, une ligne par base). */
@@ -157,11 +208,20 @@ export interface SegmentPreviewResponse {
   segment_pack: string;
   segments: SegmentPreviewSegment[];
   warnings: string[];
+  calibrate_to?: number | null;
+  calibrate_ratio_pct?: number | null;
 }
 
 export async function segmentPreview(
   conn: Conn,
-  opts: { doc_id: number; mode?: "sentences" | "markers"; lang?: string; pack?: string; limit?: number },
+  opts: {
+    doc_id: number;
+    mode?: "sentences" | "markers";
+    lang?: string;
+    pack?: string;
+    limit?: number;
+    calibrate_to?: number;
+  },
 ): Promise<SegmentPreviewResponse> {
   return conn.post("/segment/preview", opts) as Promise<SegmentPreviewResponse>;
 }
@@ -231,7 +291,8 @@ export interface ImportOptions {
     | "docx_paragraphs"
     | "odt_paragraphs"
     | "odt_numbered_lines"
-    | "tei";
+    | "tei"
+    | "conllu";
   path: string;
   language?: string;
   title?: string;
@@ -637,6 +698,12 @@ export interface ValidateMetaResponse {
     is_valid: boolean;
     warnings: string[];
   }>;
+}
+
+export interface AnnotateOptions {
+  doc_id?: number;
+  all_docs?: boolean;
+  model?: string;
 }
 
 export interface JobRecord {
@@ -1506,6 +1573,26 @@ export async function getDocumentPreview(
   return conn.get(`/documents/preview?${qs.toString()}`) as Promise<DocumentPreviewResponse>;
 }
 
+export async function listTokens(
+  conn: Conn,
+  opts: TokensListOptions,
+): Promise<TokensListResponse> {
+  const qs = new URLSearchParams({
+    doc_id: String(opts.doc_id),
+    limit: String(opts.limit ?? 200),
+    offset: String(opts.offset ?? 0),
+  });
+  if (opts.unit_id !== undefined) qs.set("unit_id", String(opts.unit_id));
+  return conn.get(`/tokens?${qs.toString()}`) as Promise<TokensListResponse>;
+}
+
+export async function updateToken(
+  conn: Conn,
+  opts: TokenUpdateOptions,
+): Promise<{ updated: number; token: TokenRecord }> {
+  return conn.post("/tokens/update", opts) as Promise<{ updated: number; token: TokenRecord }>;
+}
+
 export async function getCorpusInfo(conn: Conn): Promise<CorpusInfoRecord> {
   const res = (await conn.get("/corpus/info")) as { corpus: CorpusInfoRecord };
   return res.corpus;
@@ -1559,6 +1646,17 @@ export async function validateMeta(
   const body: Record<string, unknown> = {};
   if (doc_id !== undefined) body.doc_id = doc_id;
   return conn.post("/validate-meta", body) as Promise<ValidateMetaResponse>;
+}
+
+export async function annotate(
+  conn: Conn,
+  opts: AnnotateOptions
+): Promise<JobRecord> {
+  const res = (await conn.post("/annotate", opts)) as {
+    job: JobRecord;
+    status: string;
+  };
+  return res.job;
 }
 
 export async function getJob(conn: Conn, jobId: string): Promise<JobRecord> {

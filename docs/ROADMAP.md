@@ -1,6 +1,6 @@
 # Roadmap — multicorpus_engine
 
-Last updated: 2026-04-08 (sync « Next » avec backlog — métadonnées + démo déjà livrés shell/concordancier)
+Last updated: 2026-04-09 (sync « Next » avec backlog — P12 retiré, priorités restantes consolidées)
 
 ## Current state (implemented)
 
@@ -35,6 +35,7 @@ Last updated: 2026-04-08 (sync « Next » avec backlog — métadonnées + démo
   - graceful shutdown path and fixture persistent scenario
   - stale portfile restart policy (`already_running` vs stale recovery)
   - optional localhost token mode + `status` command
+  - explicit localhost security posture (threat model + token lifecycle + wrapper defaults) in `docs/SIDECAR_SECURITY_POSTURE.md`
 - Distribution tooling scaffold implemented:
   - macOS sign/notarize scripts for sidecar + fixture app
   - Windows signing script (signtool)
@@ -45,6 +46,15 @@ Last updated: 2026-04-08 (sync « Next » avec backlog — métadonnées + démo
 - ADR-025 finalized from multi-OS benchmarks:
   - default format mapping: macOS=`onefile`, Linux=`onedir`, Windows=`onedir`
   - workflows aligned to explicit per-OS format selection
+- FTS performance profiling completed:
+  - benchmark script `scripts/bench_fts_profile.py`
+  - reference report `docs/FTS_PERFORMANCE_PROFILE.md`
+  - recommended SQLite tuning profile (WAL + throughput pragmas + maintenance cadence)
+- Incremental indexing mode completed (explicit gate):
+  - CLI `index --incremental`
+  - sidecar `POST /index {"incremental": true}`
+  - async jobs `kind=index` with `params.incremental`
+  - design note `docs/INCREMENTAL_INDEXING.md`
 
 ## Now (v0.6.1 → tauri-prep)
 
@@ -95,11 +105,9 @@ Last updated: 2026-04-08 (sync « Next » avec backlog — métadonnées + démo
 ## Next
 
 - Prep UX **P2** : page Exporter + intégration Constituer ; libellés curation doc vs diff ; stratégie segmentation explicite (voir `docs/BACKLOG.md` tableau prioritaire + revue consolidée).
-- **P12** : wiring preview traduction + scroll sync (`tauri-prep` Actions).
 - Concordancier : vue alignée (groupement / lisibilité) ; exploration / comparaison de runs d’alignement.
 - Sidecar release hardening : macOS notarization, Windows signing with production certs.
-- Localhost security policy for sidecar HTTP (token rotation/scope/threat model).
-- Performance : FTS benchmarks and documented tuning profile (WAL, batch sizes, vacuum/analyze cadence).
+- Performance : sidecar binary size optimization + CI cache strategy for PyInstaller builds.
 
 > **Réalisé (ne pas replanifier ici)** : panneau métadonnées hit/document (`tauri-app` Explorer) ; corpus démo first-run (`tauri-shell` + `agrafes_demo.db`). Détail : `docs/BACKLOG.md` revue 2026-04-08.
 

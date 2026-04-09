@@ -14,7 +14,7 @@ import { writeTextFile, readTextFile } from "@tauri-apps/plugin-fs";
 import { ImportScreen } from "./screens/ImportScreen.ts";
 import { ActionsScreen, type ProjectPreset } from "./screens/ActionsScreen.ts";
 import { MetadataScreen } from "./screens/MetadataScreen.ts";
-import { ExportsScreen } from "./screens/ExportsScreen.ts";
+import { ExportsScreen, type ExportWorkflowPrefill } from "./screens/ExportsScreen.ts";
 import { JobCenter, showToast } from "./components/JobCenter.ts";
 
 // ─── Project Presets store ─────────────────────────────────────────────────────
@@ -108,7 +108,9 @@ export class App {
     this._jobCenter.setConn(this._conn);
     this._import.setJobCenter(this._jobCenter, showToast);
     this._actions.setJobCenter(this._jobCenter, showToast);
+    this._metadata.setJobCenter(this._jobCenter, showToast);
     this._actions.setOnOpenDocuments(() => this._switchTab("documents"));
+    this._actions.setOnOpenExporter((prefill) => this._openExporterWithPrefill(prefill));
     this._exports.setJobCenter(this._jobCenter, showToast);
 
     void this._refreshTopbarDbLabel();
@@ -345,6 +347,12 @@ export class App {
     this._tabBtns[tab].setAttribute("aria-current", "page");
     this._syncCurationWideClass();
     if (tab === "documents") this._metadata.onActivate();
+  }
+
+  private _openExporterWithPrefill(prefill?: ExportWorkflowPrefill): void {
+    this._switchTab("exporter");
+    if (this._activeTab !== "exporter") return;
+    if (prefill) this._exports.applyWorkflowPrefill(prefill);
   }
 
   private _syncCurationWideClass(): void {

@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pytest
 
+FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures" / "tei"
+
 
 # ===========================================================================
 # TEI importer helpers
@@ -195,6 +197,83 @@ def test_tei_import_file_not_found(db_conn: sqlite3.Connection) -> None:
 
     with pytest.raises(FileNotFoundError):
         import_tei(conn=db_conn, path="/nonexistent/doc.xml")
+
+
+def test_tei_import_broken_link_target_is_warning_only(
+    db_conn: sqlite3.Connection,
+    tmp_path: Path,
+) -> None:
+    """TEI broken link targets should warn but not block import."""
+    from multicorpus_engine.importers.tei_importer import import_tei
+
+    xml = """<?xml version="1.0" encoding="UTF-8"?>
+<TEI xmlns="http://www.tei-c.org/ns/1.0">
+  <teiHeader><fileDesc><titleStmt><title>Warn only</title></titleStmt></fileDesc></teiHeader>
+  <text xml:lang="fr">
+    <body><div><p xml:id="u1">Bonjour.</p></div></body>
+    <linkGrp type="alignment"><link target="#u1 #u999"/></linkGrp>
+  </text>
+</TEI>"""
+    path = tmp_path / "warn_only.xml"
+    path.write_text(xml, encoding="utf-8")
+
+    report = import_tei(conn=db_conn, path=path, unit_element="p")
+    assert report.doc_id > 0
+    assert report.units_total == 1
+    assert any("broken_link_target" in w for w in report.warnings), report.warnings
+
+
+def test_tei_import_fixture_non_namespaced(
+    db_conn: sqlite3.Connection,
+) -> None:
+    """Importer must accept TEI fixtures without namespace declaration."""
+    from multicorpus_engine.importers.tei_importer import import_tei
+
+    report = import_tei(
+        conn=db_conn,
+        path=FIXTURES_DIR / "tei_non_namespaced.xml",
+        unit_element="p",
+    )
+    assert report.units_line == 2
+
+    doc_row = db_conn.execute(
+        "SELECT title, language FROM documents WHERE doc_id = ?",
+        (report.doc_id,),
+    ).fetchone()
+    assert doc_row["title"] == "Non namespaced TEI"
+    assert doc_row["language"] == "und"
+
+    rows = db_conn.execute(
+        "SELECT n, external_id, text_norm FROM units WHERE doc_id = ? ORDER BY n",
+        (report.doc_id,),
+    ).fetchall()
+    assert [(r["n"], r["external_id"], r["text_norm"]) for r in rows] == [
+        (1, 1, "Alpha"),
+        (2, 2, "Beta"),
+    ]
+
+
+def test_tei_import_fixture_mixed_content_itertext(
+    db_conn: sqlite3.Connection,
+) -> None:
+    """Importer must flatten mixed inline content via itertext()."""
+    from multicorpus_engine.importers.tei_importer import import_tei
+
+    report = import_tei(
+        conn=db_conn,
+        path=FIXTURES_DIR / "tei_mixed_content.xml",
+        unit_element="p",
+    )
+    assert report.units_line == 2
+
+    rows = db_conn.execute(
+        "SELECT n, external_id, text_norm FROM units WHERE doc_id = ? ORDER BY n",
+        (report.doc_id,),
+    ).fetchall()
+    assert [(r["n"], r["external_id"], r["text_norm"]) for r in rows] == [
+        (1, 1, "Alpha beta gamma."),
+        (2, 2, "Delta see above."),
+    ]
 
 
 # ===========================================================================

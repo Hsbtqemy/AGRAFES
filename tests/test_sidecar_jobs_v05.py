@@ -121,6 +121,25 @@ def test_enqueue_index_succeeds(v05_env: dict) -> None:
     assert done["result"]["units_indexed"] >= 1
 
 
+def test_enqueue_index_incremental_succeeds(v05_env: dict) -> None:
+    code, p = _http(
+        "POST",
+        f"{v05_env['base_url']}/jobs/enqueue",
+        {"kind": "index", "params": {"incremental": True}},
+        token=v05_env["token"],
+    )
+    assert code == 202
+    job = p["job"]
+
+    done = _wait_job(v05_env["base_url"], job["job_id"])
+    assert done["status"] == "done"
+    assert done["result"]["incremental"] is True
+    assert done["result"]["units_indexed"] >= 1
+    assert isinstance(done["result"]["inserted"], int)
+    assert isinstance(done["result"]["refreshed"], int)
+    assert isinstance(done["result"]["deleted"], int)
+
+
 def test_enqueue_unsupported_kind_returns_400(v05_env: dict) -> None:
     code, p = _http(
         "POST", f"{v05_env['base_url']}/jobs/enqueue",
@@ -139,6 +158,81 @@ def test_enqueue_missing_kind_returns_400(v05_env: dict) -> None:
         token=v05_env["token"],
     )
     assert code == 400
+
+
+def test_annotate_route_requires_token(v05_env: dict) -> None:
+    code, p = _http(
+        "POST",
+        f"{v05_env['base_url']}/annotate",
+        {"doc_id": v05_env["doc_id"]},
+    )
+    assert code == 401
+    assert p["error_code"] == "UNAUTHORIZED"
+
+
+def test_enqueue_annotate_requires_doc_id_or_all_docs(v05_env: dict) -> None:
+    code, p = _http(
+        "POST",
+        f"{v05_env['base_url']}/jobs/enqueue",
+        {"kind": "annotate", "params": {}},
+        token=v05_env["token"],
+    )
+    assert code == 400
+    assert p["error_code"] == "VALIDATION_ERROR"
+    assert "doc_id" in p["error"]["message"].lower() or "all_docs" in p["error"]["message"].lower()
+
+
+def test_enqueue_annotate_job_runs_with_mocked_model(v05_env: dict, monkeypatch: pytest.MonkeyPatch) -> None:
+    import multicorpus_engine.annotator as annotator
+
+    class _Morph:
+        def __str__(self) -> str:
+            return "Number=Sing"
+
+    class _Tok:
+        def __init__(self, text: str) -> None:
+            self.text = text
+            self.lemma_ = text.lower()
+            self.pos_ = "NOUN"
+            self.tag_ = "NN"
+            self.morph = _Morph()
+            self.is_space = False
+
+    class _Sent(list):
+        pass
+
+    class _Doc:
+        def __init__(self, text: str) -> None:
+            toks = [_Tok(t) for t in text.split() if t]
+            self._tokens = toks
+            self.sents = [_Sent(toks)] if toks else []
+
+        def __iter__(self):
+            return iter(self._tokens)
+
+    class _FakeNlp:
+        def __call__(self, text: str) -> _Doc:
+            return _Doc(text)
+
+    monkeypatch.setattr(annotator, "_load_model", lambda _name: _FakeNlp())
+
+    code, p = _http(
+        "POST",
+        f"{v05_env['base_url']}/jobs/enqueue",
+        {"kind": "annotate", "params": {"doc_id": v05_env["doc_id"], "model": "fake_model"}},
+        token=v05_env["token"],
+    )
+    assert code == 202
+    done = _wait_job(v05_env["base_url"], p["job"]["job_id"])
+    assert done["status"] == "done"
+    assert done["result"]["docs_annotated"] == 1
+    assert done["result"]["tokens_written"] >= 1
+
+    code_docs, p_docs = _http("GET", f"{v05_env['base_url']}/documents")
+    assert code_docs == 200
+    doc = next(d for d in p_docs["documents"] if d["doc_id"] == v05_env["doc_id"])
+    assert doc["token_count"] >= 1
+    assert doc["annotation_status"] == "annotated"
 
 
 def test_enqueue_import_requires_mode_and_path(v05_env: dict) -> None:

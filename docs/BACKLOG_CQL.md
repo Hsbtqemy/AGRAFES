@@ -70,20 +70,20 @@ CREATE INDEX idx_tokens_upos  ON tokens (upos);
 
 ### Backend
 
-- [ ] Migration `012_tokens.sql` — création de la table `tokens` + index
-- [ ] Nouvel importeur `importers/conllu.py`
+- [x] Migration `012_tokens.sql` — création de la table `tokens` + index
+- [x] Nouvel importeur `importers/conllu.py`
   - Lit le format CoNLL-U (10 colonnes)
   - Crée les `units` (une par bloc de phrase ou par paragraphe vide-séparé selon option)
   - Crée les `tokens` correspondants
   - Gère les multi-tokens (`1-2 du` → tokens `1 de` + `2 le`)
-- [ ] `sidecar.py` : nouvelle route `POST /import` mode `"conllu"`
-- [ ] `sidecar_contract.py` : mise à jour du schéma, bump API version
-- [ ] Snapshot `openapi_paths.json` + `docs/SIDECAR_API_CONTRACT.md`
+- [x] `sidecar.py` : nouvelle route `POST /import` mode `"conllu"`
+- [x] `sidecar_contract.py` : mise à jour du schéma, bump API version
+- [x] Snapshot `openapi_paths.json` + `docs/SIDECAR_API_CONTRACT.md`
 
 ### Frontend (tauri-prep)
 
-- [ ] `ImportScreen.ts` : option `"conllu"` dans le sélecteur de mode d'import
-- [ ] Validation : afficher un aperçu des tokens (word / lemma / upos) avant import définitif
+- [x] `ImportScreen.ts` : option `"conllu"` dans le sélecteur de mode d'import
+- [x] Validation : afficher un aperçu des tokens (word / lemma / upos) avant import définitif
 
 ---
 
@@ -93,22 +93,22 @@ CREATE INDEX idx_tokens_upos  ON tokens (upos);
 
 ### Backend
 
-- [ ] Dépendance optionnelle : `spacy` dans `pyproject.toml` (groupe `[nlp]`)
-- [ ] `annotator.py` — pipeline spaCy :
+- [x] Dépendance optionnelle : `spacy` dans `pyproject.toml` (groupe `[nlp]`)
+- [x] `annotator.py` — pipeline spaCy :
   - `annotate_document(conn, doc_id, model_name)` → peuple `tokens` depuis `units.text_norm`
   - Segmentation en phrases → `sent_id`
   - Tokenisation → `position`, `word`, `lemma`, `upos`, `xpos`, `feats`
   - Modèles supportés : `fr_core_news_lg`, `en_core_web_lg`, etc.
-- [ ] Route `POST /annotate` — lance un job asynchrone (même pattern que `/segment`)
+- [x] Route `POST /annotate` — lance un job asynchrone (même pattern que `/segment`)
   - Body : `{ doc_id, model }` ou `{ all_docs: true, model }`
-  - Répond avec `{ run_id }` ; suivi via `/runs/{run_id}`
-- [ ] Sidecar : chargement paresseux du modèle spaCy (première requête seulement)
+  - Répond avec un `job_id` (enveloppe job) ; suivi via `/jobs/{job_id}`
+- [x] Sidecar : chargement paresseux du modèle spaCy (première requête seulement)
 
 ### Frontend (tauri-prep)
 
-- [ ] Bouton "Annoter" dans le panneau Métadonnées → déclenche `POST /annotate`
-- [ ] Indicateur de progression (JobCenter) pendant l'annotation
-- [ ] Badge "Annoté" sur les documents qui ont des tokens en base
+- [x] Bouton "Annoter" dans le panneau Métadonnées → déclenche `POST /annotate`
+- [x] Indicateur de progression (JobCenter) pendant l'annotation
+- [x] Badge "Annoté" sur les documents qui ont des tokens en base
 
 ---
 
@@ -118,25 +118,25 @@ CREATE INDEX idx_tokens_upos  ON tokens (upos);
 
 ### Backend
 
-- [ ] `cql_parser.py` — parseur de la syntaxe CQL de base :
+- [x] `cql_parser.py` — parseur de la syntaxe CQL de base :
   - `[lemma = "..."]`, `[word = "..."]`, `[pos = "..."]`
   - Regex dans les valeurs (`"lib.*"`)
   - Flag `%c` (insensible à la casse)
   - Opérateurs booléens dans un token : `[pos = "NOM" & lemma = "lib.*"]`
   - Séquences : `[token1][token2][token3]`
-- [ ] `token_query.py` — traducteur CQL → SQL :
+- [x] `token_query.py` — traducteur CQL → SQL :
   - Génère des requêtes SQL avec fenêtrage sur `(unit_id, sent_id, position)`
   - Renvoie des hits au niveau token + contexte (unité parente + tokens voisins)
-- [ ] Route `POST /token_query`
+- [x] Route `POST /token_query`
   - Body : `{ cql, mode ("kwic"|"segment"), window, language?, doc_ids?, limit, offset }`
   - Réponse : même structure que `/query` mais hits enrichis de `tokens[]`
 
 ### Frontend (concordancier)
 
-- [ ] Nouveau mode "CQL" dans le builder (distinct de Regex et FTS)
-- [ ] Champ de saisie CQL avec coloration syntaxique légère
-- [ ] Affichage des résultats : token pivot surligné + contexte en KWIC
-- [ ] Indicateur "N tokens analysés" dans l'en-tête des résultats
+- [x] Nouveau mode "CQL" dans le builder (distinct de Regex et FTS)
+- [x] Champ de saisie CQL avec coloration syntaxique légère
+- [x] Affichage des résultats : token pivot surligné + contexte en KWIC
+- [x] Indicateur "N tokens analysés" dans l'en-tête des résultats
 
 ---
 
@@ -146,19 +146,19 @@ CREATE INDEX idx_tokens_upos  ON tokens (upos);
 
 ### Backend
 
-- [ ] Parseur CQL : étendre pour
+- [x] Parseur CQL : étendre pour
   - `[]{0,N}` — répétition de tokens quelconques
   - `[token]{m,n}` — répétition d'un token
   - `within s` — contrainte de phrase (tous les tokens dans le même `sent_id`)
   - `within <doc/>` — contrainte de document (implicite dans notre modèle)
-- [ ] `token_query.py` : algorithme de correspondance par glissement de fenêtre
+- [x] `token_query.py` : algorithme de correspondance par glissement de fenêtre
   - Stratégie : SQL + post-filtre Python pour les cas complexes
-  - `within s` : ajout de `GROUP BY sent_id` dans la CTE de correspondance
+  - `within s` : matching par sous-flux `(unit_id, sent_id)` pour garantir la borne phrase
 
 ### Frontend
 
-- [ ] Aide CQL enrichie dans le popover (syntaxe complète avec exemples)
-- [ ] Validation de la syntaxe CQL côté client avant envoi (erreur immédiate si mal formé)
+- [x] Aide CQL enrichie dans le popover (syntaxe complète avec exemples)
+- [x] Validation de la syntaxe CQL côté client avant envoi (erreur immédiate si mal formé)
 
 ---
 
@@ -166,10 +166,11 @@ CREATE INDEX idx_tokens_upos  ON tokens (upos);
 
 > Objectif : exporter les annotations et résultats de requêtes CQL dans des formats standard.
 
-- [ ] Export CoNLL-U depuis AGRAFES (annotations + texte)
-- [ ] Export des hits CQL en KWIC tabulaire (CSV/TSV)
-- [ ] Export en format Sketch Engine (`.ske`) si faisabilité confirmée
-- [ ] Import depuis NoSketchEngine ou CWB (corpus compilé) — étude de faisabilité
+- [x] Export CoNLL-U depuis AGRAFES (annotations + texte)
+- [x] Export des hits CQL en KWIC tabulaire (CSV/TSV)
+- [x] Export en format Sketch Engine (`.ske`) si faisabilité confirmée
+- [x] Import depuis NoSketchEngine ou CWB (corpus compilé) — étude de faisabilité
+  - étude consignée dans `docs/CQL_INTEROP_FEASIBILITY.md` (interop texte/vertical recommandée, binaire compilé non retenu en Sprint E)
 
 ---
 
@@ -183,6 +184,10 @@ CREATE INDEX idx_tokens_upos  ON tokens (upos);
 | Annotation paresseuse vs systématique | À l'import / Sur demande / Tâche de fond | Sur demande (Sprint B) |
 | Modèles spaCy packagés | Bundlés dans l'exécutable / Téléchargés | Téléchargés (trop lourds pour PyInstaller) |
 
+> Alignement produit (C4, 2026-04-09) : `upos` est la référence POS,
+> `xpos` reste optionnel ; l’ingestion CoNLL-U est prioritaire avant
+> annotation automatique. Voir `docs/cadrage/CATEGORIES_GRAMMATICALES.md`.
+
 ---
 
 ## Dépendances et prérequis
@@ -190,18 +195,22 @@ CREATE INDEX idx_tokens_upos  ON tokens (upos);
 - **Python** : `spacy >= 3.7`, `conllu >= 4.5` (parsing CoNLL-U)
 - **SQLite** : version ≥ 3.35 pour les CTE récursives (déjà satisfait)
 - **Frontend** : CodeMirror ou Prism.js pour la coloration syntaxique CQL (optionnel)
-- **Modèles NLP** : à télécharger séparément (`python -m spacy download fr_core_news_lg`)
+- **Modèles NLP** : à télécharger séparément (`python -m spacy download fr_core_news_md` ou modèle équivalent)
 
 ---
 
-## État des lieux (mars 2026)
+## État des lieux (avril 2026)
 
 | Composant | Statut |
 |-----------|--------|
 | Regex texte-brut (bypass FTS) | ✅ Implémenté (`079075b`) |
-| Table `tokens` | ⬜ À faire (Sprint A) |
-| Import CoNLL-U | ⬜ À faire (Sprint A) |
-| Annotation spaCy | ⬜ À faire (Sprint B) |
-| Parser CQL simple | ⬜ À faire (Sprint C) |
-| Séquences + `within s` | ⬜ À faire (Sprint D) |
-| Export CoNLL-U | ⬜ À faire (Sprint E) |
+| Table `tokens` | ✅ Implémentée (Sprint A) |
+| Import CoNLL-U | ✅ Implémenté (Sprint A) |
+| Annotation spaCy | ✅ Implémentée (Sprint B) |
+| Parser CQL simple | ✅ Implémenté (Sprint C) |
+| Séquences + `within s` | ✅ Implémenté (Sprint D) |
+| Export CoNLL-U | ✅ Implémenté (Sprint E) |
+| Export hits CQL CSV/TSV | ✅ Implémenté (Sprint E) |
+| Export Sketch Engine `.ske` | ✅ Implémenté (Sprint E) |
+| Interop NoSketchEngine / CWB (faisabilité) | ✅ Étude terminée (`docs/CQL_INTEROP_FEASIBILITY.md`) |
+| Édition manuelle token par token | ✅ Implémentée (API `/tokens` + `/tokens/update`, UI Prep Documents) |

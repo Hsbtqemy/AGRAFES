@@ -1,0 +1,59 @@
+{
+  "query_output_stdout_keys": [
+    "run_id",
+    "status",
+    "query",
+    "mode",
+    "window",
+    "include_aligned",
+    "all_occurrences",
+    "count",
+    "log",
+    "created_at",
+    "output",
+    "output_format"
+  ],
+  "query_output_stdout_base": {
+    "status": "ok",
+    "query": "ligne",
+    "mode": "kwic",
+    "window": 3,
+    "include_aligned": false,
+    "all_occurrences": false,
+    "count": 1
+  },
+  "export_stdout_keys": [
+    "run_id",
+    "status",
+    "format",
+    "query",
+    "count",
+    "output",
+    "log",
+    "created_at"
+  ],
+  "export_stdout_base": {
+    "status": "ok",
+    "query": "ligne",
+    "count": 1
+  },
+  "kwic_record": {
+    "doc_id": 1,
+    "unit_id": 2,
+    "external_id": 2,
+    "language": "fr",
+    "title": "Smoke",
+    "left": "Ceci est une",
+    "match": "ligne",
+    "right": "",
+    "text_norm": "Ceci est une ligne"
+  },
+  "csv_header": "doc_id,unit_id,external_id,language,title,left,match,right,text_norm",
+  "tsv_header": "doc_id\tunit_id\texternal_id\tlanguage\ttitle\tleft\tmatch\tright\ttext_norm",
+  "html_needles": [
+    "<!DOCTYPE html>",
+    "<title>Query Report: ligne</title>",
+    "<strong>Mode:</strong> kwic",
+    "<span class='match'>ligne</span>"
+  ]
+}

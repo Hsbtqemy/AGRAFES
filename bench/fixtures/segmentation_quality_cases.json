@@ -98,5 +98,85 @@
       "Second sentence."
     ],
     "note": "neutral baseline."
+  },
+  {
+    "case_id": "fr_quote_typographic",
+    "lang": "fr",
+    "text": "Il dit « Bonjour ». Ensuite il part.",
+    "gold_sentences": [
+      "Il dit « Bonjour ».",
+      "Ensuite il part."
+    ],
+    "note": "guillemets typographiques dans la phrase."
+  },
+  {
+    "case_id": "fr_parenthesis_boundary",
+    "lang": "fr",
+    "text": "Il part (très vite). Ensuite il revient.",
+    "gold_sentences": [
+      "Il part (très vite).",
+      "Ensuite il revient."
+    ],
+    "note": "parenthèses dans la première phrase."
+  },
+  {
+    "case_id": "fr_ellipsis_ascii",
+    "lang": "fr",
+    "text": "Il hésite... Puis il parle.",
+    "gold_sentences": [
+      "Il hésite...",
+      "Puis il parle."
+    ],
+    "note": "ellipse ASCII avant une nouvelle phrase."
+  },
+  {
+    "case_id": "fr_mixed_lang_anchor",
+    "lang": "fr",
+    "text": "Env. Paris is calm today. Fin.",
+    "gold_sentences": [
+      "Env. Paris is calm today.",
+      "Fin."
+    ],
+    "note": "cas mixte fr/en avec abréviation FR en tête."
+  },
+  {
+    "case_id": "en_quote_typographic",
+    "lang": "en",
+    "text": "He says “Hello”. Then he leaves.",
+    "gold_sentences": [
+      "He says “Hello”.",
+      "Then he leaves."
+    ],
+    "note": "quoted clause with typographic quotes."
+  },
+  {
+    "case_id": "en_parenthesis_boundary",
+    "lang": "en",
+    "text": "He leaves (very quickly). Then he returns.",
+    "gold_sentences": [
+      "He leaves (very quickly).",
+      "Then he returns."
+    ],
+    "note": "parenthesis edge case."
+  },
+  {
+    "case_id": "en_ellipsis_ascii",
+    "lang": "en",
+    "text": "He hesitates... Then he speaks.",
+    "gold_sentences": [
+      "He hesitates...",
+      "Then he speaks."
+    ],
+    "note": "ASCII ellipsis before boundary."
+  },
+  {
+    "case_id": "en_mixed_lang_anchor",
+    "lang": "en",
+    "text": "Approx. Valeurs observées. End.",
+    "gold_sentences": [
+      "Approx. Valeurs observées.",
+      "End."
+    ],
+    "note": "mixed en/fr with English abbreviation protection."
   }
 ]

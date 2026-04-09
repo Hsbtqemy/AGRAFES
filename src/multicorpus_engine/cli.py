@@ -212,6 +212,18 @@ def cmd_import(args: argparse.Namespace) -> None:
                 run_id=run_id,
                 run_logger=log,
             )
+        elif args.mode == "conllu":
+            from .importers.conllu import import_conllu
+            report = import_conllu(
+                conn=conn,
+                path=args.path,
+                language=args.language,
+                title=getattr(args, "title", None),
+                doc_role=getattr(args, "doc_role", "standalone"),
+                resource_type=getattr(args, "resource_type", None),
+                run_id=run_id,
+                run_logger=log,
+            )
         else:
             _err({
                 "run_id": run_id,
@@ -249,7 +261,7 @@ def cmd_index(args: argparse.Namespace) -> None:
     from .db.connection import get_connection
     from .db.migrations import apply_migrations
     from .runs import create_run, setup_run_logger, update_run_stats, utcnow_iso
-    from .indexer import build_index
+    from .indexer import build_index, update_index
 
     db_path = Path(args.db)
     if not db_path.exists():
@@ -258,21 +270,39 @@ def cmd_index(args: argparse.Namespace) -> None:
     conn = get_connection(db_path)
     apply_migrations(conn)
 
-    run_id = create_run(conn, "index", {"db": str(db_path)})
+    incremental = bool(getattr(args, "incremental", False))
+    run_id = create_run(conn, "index", {"db": str(db_path), "incremental": incremental})
     log, log_path = setup_run_logger(db_path, run_id)
 
     try:
-        count = build_index(conn)
-        update_run_stats(conn, run_id, {"units_indexed": count})
-        log.info("Index complete: %d units indexed", count)
+        if incremental:
+            stats = update_index(conn, prune_deleted=True)
+            count = int(stats["units_indexed"])
+            update_run_stats(conn, run_id, stats)
+            log.info("Incremental index complete: %s", stats)
+        else:
+            count = build_index(conn)
+            stats = {"units_indexed": count}
+            update_run_stats(conn, run_id, stats)
+            log.info("Index complete: %d units indexed", count)
 
-        _ok({
+        payload = {
             "run_id": run_id,
             "status": "ok",
             "units_indexed": count,
+            "incremental": incremental,
             "log": str(log_path),
             "created_at": utcnow_iso(),
-        })
+        }
+        if incremental:
+            payload.update(
+                {
+                    "inserted": int(stats["inserted"]),
+                    "refreshed": int(stats["refreshed"]),
+                    "deleted": int(stats["deleted"]),
+                }
+            )
+        _ok(payload)
     except Exception as exc:
         log.error("Index failed: %s\n%s", exc, traceback.format_exc())
         _err({"run_id": run_id, "error": str(exc), "created_at": utcnow_iso()})
@@ -757,7 +787,7 @@ def cmd_qa_report(args: argparse.Namespace) -> None:
 
 def cmd_validate_tei(args: argparse.Namespace) -> None:
     """Validate a TEI XML file or publication package ZIP for xml:id referential integrity."""
-    from .utils.tei_validate import validate_tei_ids, validate_tei_package
+    from .utils.tei_validate import validate_tei_ids, validate_tei_package, summarize_tei_validation
     from .runs import utcnow_iso
     import json as _json
 
@@ -766,10 +796,12 @@ def cmd_validate_tei(args: argparse.Namespace) -> None:
         if not path.exists():
             _err({"error": f"File not found: {path}", "created_at": utcnow_iso()})
         errors = validate_tei_ids(path)
+        summary = summarize_tei_validation(errors)
         _ok({
             "status": "ok" if not errors else "errors",
             "path": str(path),
             "error_count": len(errors),
+            "summary": summary,
             "errors": errors,
             "created_at": utcnow_iso(),
         })
@@ -779,11 +811,15 @@ def cmd_validate_tei(args: argparse.Namespace) -> None:
             _err({"error": f"ZIP not found: {zip_path}", "created_at": utcnow_iso()})
         results = validate_tei_package(zip_path)
         total_errors = sum(len(v) for v in results.values())
+        by_file_summary = {name: summarize_tei_validation(errs) for name, errs in results.items()}
+        combined = summarize_tei_validation([e for errs in results.values() for e in errs])
         _ok({
             "status": "ok" if total_errors == 0 else "errors",
             "zip_path": str(zip_path),
             "files_checked": len(results),
             "total_errors": total_errors,
+            "summary": combined,
+            "by_file_summary": by_file_summary,
             "results": results,
             "created_at": utcnow_iso(),
         })
@@ -906,7 +942,12 @@ def cmd_serve(args: argparse.Namespace) -> None:
         if state.get("state") == "stale":
             stale_portfile = Path(str(state.get("portfile")))
             if stale_portfile.exists():
-                stale_portfile.unlink()
+                try:
+                    stale_portfile.unlink()
+                except FileNotFoundError:
+                    # Race: another process removed the stale file between
+                    # exists() and unlink(). This is harmless.
+                    pass
             log.info(
                 "Removed stale sidecar portfile: %s (reason=%s)",
                 stale_portfile,
@@ -1082,6 +1123,7 @@ def build_parser() -> argparse.ArgumentParser:
             "odt_paragraphs",
             "odt_numbered_lines",
             "tei",
+            "conllu",
         ],
         help="Import mode",
     )
@@ -1107,6 +1149,11 @@ def build_parser() -> argparse.ArgumentParser:
     # index
     p_index = sub.add_parser("index", help="Rebuild/update the FTS5 index")
     p_index.add_argument("--db", required=True)
+    p_index.add_argument(
+        "--incremental",
+        action="store_true",
+        help="Run incremental FTS synchronization instead of full rebuild.",
+    )
     p_index.set_defaults(func=cmd_index)
 
     # query

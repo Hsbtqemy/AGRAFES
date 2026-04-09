@@ -11,6 +11,7 @@
  */
 
 import { open } from "@tauri-apps/plugin-dialog";
+import { readTextFile } from "@tauri-apps/plugin-fs";
 import type { Conn } from "../lib/sidecarClient.ts";
 import { importFile, enqueueJob, SidecarError, listDocuments, setDocRelation } from "../lib/sidecarClient.ts";
 import type { DocumentRecord } from "../lib/sidecarClient.ts";
@@ -32,6 +33,7 @@ const IMPORT_MODE_OPTIONS: Array<{ value: FileItem["mode"]; label: string }> = [
   { value: "odt_numbered_lines", label: "ODT lignes numérotées [n]" },
   { value: "odt_paragraphs", label: "ODT paragraphes" },
   { value: "tei", label: "TEI XML" },
+  { value: "conllu", label: "CoNLL-U annoté (.conllu)" },
 ];
 
 /** Profil de lot : intention commune DOCX/ODT (BACKLOG — Import traitement de texte). */
@@ -60,8 +62,94 @@ function modeOptionsForExt(ext: string): Array<{ value: string; label: string }>
     ];
   }
   if (e === "txt") return [{ value: "txt_numbered_lines", label: "TXT lignes numérotées [n]" }];
+  if (e === "conllu" || e === "conll") return [{ value: "conllu", label: "CoNLL-U annoté" }];
   if (e === "xml" || e === "tei") return [{ value: "tei", label: "TEI XML" }];
   return IMPORT_MODE_OPTIONS.slice();
+}
+
+interface ConlluPreviewRow {
+  sent: number;
+  id: string;
+  form: string;
+  lemma: string;
+  upos: string;
+}
+
+interface ConlluPreviewResult {
+  rows: ConlluPreviewRow[];
+  tokensTotal: number;
+  sentences: number;
+  skippedRanges: number;
+  skippedEmptyNodes: number;
+  malformedLines: number;
+}
+
+function parseConlluPreview(text: string, maxRows = 60): ConlluPreviewResult {
+  const rows: ConlluPreviewRow[] = [];
+  let tokensTotal = 0;
+  let sentences = 0;
+  let skippedRanges = 0;
+  let skippedEmptyNodes = 0;
+  let malformedLines = 0;
+  let currentSentence = 0;
+  let hasTokenInCurrentSentence = false;
+
+  const finalizeSentence = () => {
+    if (hasTokenInCurrentSentence) {
+      sentences += 1;
+      hasTokenInCurrentSentence = false;
+    }
+  };
+
+  for (const rawLine of text.split(/\r?\n/u)) {
+    const line = rawLine.trim();
+    if (!line) {
+      finalizeSentence();
+      continue;
+    }
+    if (line.startsWith("#")) continue;
+
+    const cols = rawLine.split("\t");
+    if (cols.length !== 10) {
+      malformedLines += 1;
+      continue;
+    }
+    const tokenId = cols[0].trim();
+    if (tokenId.includes("-")) {
+      skippedRanges += 1;
+      continue;
+    }
+    if (tokenId.includes(".")) {
+      skippedEmptyNodes += 1;
+      continue;
+    }
+
+    if (!hasTokenInCurrentSentence) {
+      currentSentence = sentences + 1;
+      hasTokenInCurrentSentence = true;
+    }
+
+    tokensTotal += 1;
+    if (rows.length < maxRows) {
+      rows.push({
+        sent: currentSentence,
+        id: tokenId || "—",
+        form: cols[1]?.trim() || "—",
+        lemma: cols[2]?.trim() && cols[2].trim() !== "_" ? cols[2].trim() : "—",
+        upos: cols[3]?.trim() && cols[3].trim() !== "_" ? cols[3].trim() : "—",
+      });
+    }
+  }
+  finalizeSentence();
+
+  return {
+    rows,
+    tokensTotal,
+    sentences,
+    skippedRanges,
+    skippedEmptyNodes,
+    malformedLines,
+  };
 }
 
 interface FileItem {
@@ -83,10 +171,19 @@ export class ImportScreen {
   private _stateEl!: HTMLElement;
   private _importBtn!: HTMLButtonElement;
   private _indexBtn!: HTMLButtonElement;
+  private _conlluBadgeEl!: HTMLElement;
+  private _conlluFileEl!: HTMLElement;
+  private _conlluSummaryEl!: HTMLElement;
+  private _conlluRowsEl!: HTMLElement;
+  private _conlluRefreshBtn!: HTMLButtonElement;
+  private _conlluNextBtn!: HTMLButtonElement;
   private _jobCenter: JobCenter | null = null;
   private _showToast: ((msg: string, isError?: boolean) => void) | null = null;
   private _isBusy = false;
   private _lastErrorMsg: string | null = null;
+  private _conlluPreviewCursor = 0;
+  private _conlluPreviewPath: string | null = null;
+  private _conlluPreviewReq = 0;
 
   // Sprint 8 — family dialog
   private _skipFamilyDialog = false;        // "Ne plus demander" flag (session)
@@ -134,7 +231,7 @@ export class ImportScreen {
             <div class="imp-dropzone" id="imp-dropzone">
               <div class="imp-dropzone-icon">📂</div>
               <div class="imp-dropzone-text">Glissez vos fichiers ici</div>
-              <div class="imp-dropzone-sub">.docx &middot; .odt &middot; .txt &middot; .tei &middot; .xml</div>
+              <div class="imp-dropzone-sub">.docx &middot; .odt &middot; .txt &middot; .conllu &middot; .tei &middot; .xml</div>
               <div class="btn-row" style="justify-content:center;margin-top:8px">
                 <button id="imp-add-btn" class="btn btn-primary btn-sm">Ajouter des fichiers…</button>
                 <button id="imp-clear-btn" class="btn btn-secondary btn-sm">Vider</button>
@@ -169,6 +266,7 @@ export class ImportScreen {
                     </optgroup>
                     <optgroup label="Autres formats">
                       <option value="txt_numbered_lines">TXT · lignes [n]</option>
+                      <option value="conllu">CoNLL-U annoté</option>
                       <option value="tei">TEI XML</option>
                     </optgroup>
                   </select>
@@ -198,6 +296,9 @@ export class ImportScreen {
                 </button>
                 <p id="imp-settings-hint-apply" class="hint imp-settings-hint">
                   Pour DOCX/ODT, le profil « traitement de texte » s’applique selon l’extension de chaque fichier. Réapplique format + langue aux lignes en attente.
+                </p>
+                <p class="hint imp-settings-hint" title="Le mode lignes numérotées reconnaît [n] seulement en tête de ligne/paragraphe après trim.">
+                  Balises <code>[n]</code> : le mode <strong>Lignes numérotées</strong> attend <code>[12]</code> en début de ligne/paragraphe. Si les balises sont au milieu du texte, importez en <strong>Paragraphes</strong> puis segmentez en mode <strong>Balises [N]</strong>.
                 </p>
                 <p
                   class="hint imp-settings-hint"
@@ -234,6 +335,35 @@ export class ImportScreen {
             </div>
           </div>
 
+          <section class="card imp-conllu-card" data-collapsible="true">
+            <h3>Aperçu CoNLL-U</h3>
+            <div class="imp-conllu-head">
+              <span id="imp-conllu-badge" class="chip">Aucun</span>
+              <div class="btn-row">
+                <button type="button" id="imp-conllu-next" class="btn btn-secondary btn-sm" title="Passer au fichier CoNLL-U suivant">Suivant</button>
+                <button type="button" id="imp-conllu-refresh" class="btn btn-secondary btn-sm" title="Relire le fichier sélectionné">Rafraîchir</button>
+              </div>
+            </div>
+            <p id="imp-conllu-file" class="hint imp-conllu-file">Aucun fichier .conllu sélectionné.</p>
+            <p id="imp-conllu-summary" class="hint imp-conllu-summary">Ajoutez un fichier CoNLL-U pour prévisualiser les tokens avant l’import.</p>
+            <div class="imp-conllu-table-wrap">
+              <table class="imp-conllu-table" aria-label="Aperçu tokens CoNLL-U">
+                <thead>
+                  <tr>
+                    <th>Phrase</th>
+                    <th>ID</th>
+                    <th>Forme</th>
+                    <th>Lemme</th>
+                    <th>UPOS</th>
+                  </tr>
+                </thead>
+                <tbody id="imp-conllu-rows">
+                  <tr><td colspan="5" class="empty-hint">Aperçu indisponible.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
           <section class="card" data-collapsible="true" data-collapsed-default="true">
             <h3>Index FTS</h3>
             <p class="hint">Après avoir importé des documents, reconstruisez l'index pour activer la recherche.</p>
@@ -266,12 +396,28 @@ export class ImportScreen {
     this._stateEl = root.querySelector("#imp-state-banner")!;
     this._importBtn = root.querySelector("#imp-import-btn")!;
     this._indexBtn = root.querySelector("#imp-index-btn")!;
+    this._conlluBadgeEl = root.querySelector("#imp-conllu-badge")!;
+    this._conlluFileEl = root.querySelector("#imp-conllu-file")!;
+    this._conlluSummaryEl = root.querySelector("#imp-conllu-summary")!;
+    this._conlluRowsEl = root.querySelector("#imp-conllu-rows")!;
+    this._conlluRefreshBtn = root.querySelector("#imp-conllu-refresh")!;
+    this._conlluNextBtn = root.querySelector("#imp-conllu-next")!;
 
     root.querySelector("#imp-add-btn")!.addEventListener("click", () => this._addFiles());
     root.querySelector("#imp-clear-btn")!.addEventListener("click", () => this._clearList());
     this._importBtn.addEventListener("click", () => this._runImport());
     this._indexBtn.addEventListener("click", () => this._runIndex());
     root.querySelector("#imp-apply-defaults-btn")!.addEventListener("click", () => this._applyDefaultsToPending());
+    this._conlluRefreshBtn.addEventListener("click", () => {
+      void this._refreshConlluPreview(true);
+    });
+    this._conlluNextBtn.addEventListener("click", () => {
+      const candidates = this._conlluCandidates();
+      if (candidates.length <= 1) return;
+      this._conlluPreviewCursor = (this._conlluPreviewCursor + 1) % candidates.length;
+      this._conlluPreviewPath = null;
+      void this._refreshConlluPreview(true);
+    });
 
     // Sync the two check_filename checkboxes (footer ↔ settings)
     const ckFooter = root.querySelector<HTMLInputElement>("#imp-check-filename-footer")!;
@@ -316,6 +462,7 @@ export class ImportScreen {
 
     initCardAccordions(root);
     this._refreshRuntimeState();
+    void this._refreshConlluPreview();
 
     return root;
   }
@@ -358,6 +505,7 @@ export class ImportScreen {
     const e = ext.toLowerCase();
     if (e === "xml" || e === "tei") return "tei";
     if (e === "txt") return "txt_numbered_lines";
+    if (e === "conllu" || e === "conll") return "conllu";
     if (e === "docx") {
       if (defaultMode === WP_DEFAULT_PARAGRAPHS) return "docx_paragraphs";
       if (defaultMode === WP_DEFAULT_NUMBERED) return "docx_numbered_lines";
@@ -411,7 +559,7 @@ export class ImportScreen {
     const selected = await open({
       title: "Sélectionner des fichiers",
       filters: [
-        { name: "Corpus", extensions: ["docx", "odt", "txt", "xml", "tei"] },
+        { name: "Corpus", extensions: ["docx", "odt", "txt", "conllu", "conll", "xml", "tei"] },
       ],
       multiple: true,
     });
@@ -487,6 +635,7 @@ export class ImportScreen {
     if (this._files.length === 0) {
       this._listEl.innerHTML = '<p class="empty-hint">Aucun fichier sélectionné.</p>';
       this._updatePrecheck();
+      void this._refreshConlluPreview();
       return;
     }
     this._listEl.innerHTML = "";
@@ -522,6 +671,7 @@ export class ImportScreen {
       (el as HTMLSelectElement).addEventListener("change", (e) => {
         const i = parseInt((e.target as HTMLElement).dataset.i!);
         this._files[i].mode = (e.target as HTMLSelectElement).value;
+        void this._refreshConlluPreview(true);
       });
     });
     this._listEl.querySelectorAll(".imp-lang-inp").forEach(el => {
@@ -546,6 +696,7 @@ export class ImportScreen {
     });
 
     this._updatePrecheck();
+    void this._refreshConlluPreview();
   }
 
   private _updatePrecheck(): void {
@@ -567,6 +718,95 @@ export class ImportScreen {
     else if (pending > 0) { badge.textContent = `${pending} en attente`;                    badge.className = "chip warn"; }
     else if (done > 0)    { badge.textContent = "Tout importé";                             badge.className = "chip ok"; }
     else                  { badge.textContent = "—";                                        badge.className = "chip"; }
+  }
+
+  private _conlluCandidates(): FileItem[] {
+    return this._files.filter((f) => f.mode === "conllu");
+  }
+
+  private _setConlluPreviewEmpty(message: string, details?: string): void {
+    this._conlluBadgeEl.textContent = "Aucun";
+    this._conlluBadgeEl.className = "chip";
+    this._conlluFileEl.textContent = message;
+    this._conlluSummaryEl.textContent =
+      details ?? "Ajoutez un fichier CoNLL-U pour prévisualiser les tokens avant l’import.";
+    this._conlluRowsEl.innerHTML = '<tr><td colspan="5" class="empty-hint">Aperçu indisponible.</td></tr>';
+    this._conlluPreviewPath = null;
+    this._conlluNextBtn.disabled = true;
+    this._conlluRefreshBtn.disabled = true;
+  }
+
+  private async _refreshConlluPreview(force = false): Promise<void> {
+    if (!this._conlluRowsEl) return;
+
+    const candidates = this._conlluCandidates();
+    if (candidates.length === 0) {
+      this._setConlluPreviewEmpty("Aucun fichier .conllu sélectionné.");
+      return;
+    }
+
+    if (this._conlluPreviewCursor >= candidates.length) {
+      this._conlluPreviewCursor = 0;
+    }
+    const file = candidates[this._conlluPreviewCursor];
+    this._conlluNextBtn.disabled = candidates.length <= 1;
+    this._conlluRefreshBtn.disabled = false;
+    this._conlluBadgeEl.textContent = `${this._conlluPreviewCursor + 1}/${candidates.length}`;
+    this._conlluBadgeEl.className = "chip warn";
+    this._conlluFileEl.textContent = file.title;
+
+    if (!force && this._conlluPreviewPath === file.path) {
+      return;
+    }
+
+    const reqId = ++this._conlluPreviewReq;
+    this._conlluRowsEl.innerHTML = '<tr><td colspan="5" class="empty-hint">Chargement…</td></tr>';
+    try {
+      const content = await readTextFile(file.path);
+      if (reqId !== this._conlluPreviewReq) return;
+
+      const preview = parseConlluPreview(content, 60);
+      this._conlluPreviewPath = file.path;
+
+      const metaParts = [
+        `${preview.sentences} phrase${preview.sentences > 1 ? "s" : ""}`,
+        `${preview.tokensTotal} token${preview.tokensTotal > 1 ? "s" : ""}`,
+      ];
+      if (preview.skippedRanges > 0) metaParts.push(`${preview.skippedRanges} plage(s) multi-mots ignorée(s)`);
+      if (preview.skippedEmptyNodes > 0) metaParts.push(`${preview.skippedEmptyNodes} nœud(s) vide(s) ignoré(s)`);
+      if (preview.malformedLines > 0) metaParts.push(`${preview.malformedLines} ligne(s) mal formée(s)`);
+      this._conlluSummaryEl.textContent = metaParts.join(" • ");
+
+      this._conlluRowsEl.innerHTML = "";
+      if (preview.rows.length === 0) {
+        this._conlluRowsEl.innerHTML = '<tr><td colspan="5" class="empty-hint">Aucun token exploitable trouvé.</td></tr>';
+        return;
+      }
+      for (const row of preview.rows) {
+        const tr = document.createElement("tr");
+        const tdSent = document.createElement("td");
+        tdSent.textContent = String(row.sent);
+        const tdId = document.createElement("td");
+        tdId.textContent = row.id;
+        const tdForm = document.createElement("td");
+        tdForm.textContent = row.form;
+        const tdLemma = document.createElement("td");
+        tdLemma.textContent = row.lemma;
+        const tdUpos = document.createElement("td");
+        tdUpos.textContent = row.upos;
+        tr.append(tdSent, tdId, tdForm, tdLemma, tdUpos);
+        this._conlluRowsEl.appendChild(tr);
+      }
+    } catch (err) {
+      if (reqId !== this._conlluPreviewReq) return;
+      this._conlluPreviewPath = null;
+      this._conlluSummaryEl.textContent = "Lecture impossible du fichier CoNLL-U.";
+      this._conlluRowsEl.innerHTML = '<tr><td colspan="5" class="empty-hint">Erreur de lecture du fichier.</td></tr>';
+      this._log(
+        `Aperçu CoNLL-U indisponible (${file.title}): ${err instanceof Error ? err.message : String(err)}`,
+        true,
+      );
+    }
   }
 
   private _statusLabel(f: FileItem): string {

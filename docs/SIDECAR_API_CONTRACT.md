@@ -1,4 +1,4 @@
-# Sidecar API Contract (v1.4.8)
+# Sidecar API Contract (v1.6.21)
 
 This document defines the persistent localhost HTTP contract for
 `multicorpus_engine` sidecar.
@@ -29,7 +29,7 @@ When `multicorpus serve` starts and a portfile already exists:
 
 ## Versioning
 
-- `api_version`: sidecar API contract version (`1.4.8`)
+- `api_version`: sidecar API contract version (`1.6.21`)
 - `version`: engine version
 
 ## Response envelope
@@ -39,7 +39,7 @@ When `multicorpus serve` starts and a portfile already exists:
 ```json
 {
   "ok": true,
-  "api_version": "1.4.8",
+  "api_version": "1.6.21",
   "version": "0.6.1",
   "status": "ok"
 }
@@ -50,7 +50,7 @@ When `multicorpus serve` starts and a portfile already exists:
 ```json
 {
   "ok": false,
-  "api_version": "1.4.8",
+  "api_version": "1.6.21",
   "version": "0.6.1",
   "status": "error",
   "error": {
@@ -81,13 +81,20 @@ When `multicorpus serve` starts and a portfile already exists:
   - `--token <value>`: explicit fixed token
 - Header:
   - `X-Agrafes-Token: <token>`
+- Wrapper baseline:
+  - spawn sidecar with `--host 127.0.0.1 --port 0 --token auto`
+  - keep token in memory only (no long-term persistence)
+  - rotate token by restarting sidecar on DB switch/recovery
 - Token-protected write endpoints:
   - `POST /import`
+  - `POST /annotate`
   - `POST /index`
   - `POST /db/backup`
   - `POST /corpus/info`
+  - `POST /tokens/update`
   - `POST /shutdown`
-- Read endpoints (`/health`, `/query`, `/openapi.json`) do not require token.
+- Read endpoints (`/health`, `/query`, `/token_query`, `/openapi.json`) do not require token.
+- Threat model and operational policy: `docs/SIDECAR_SECURITY_POSTURE.md`.
 
 ## Required endpoints (persistent UX baseline)
 
@@ -100,6 +107,7 @@ When `multicorpus serve` starts and a portfile already exists:
     - `mode: "segment"|"kwic"` (default `segment`)
     - `window: int` (default `10`, KWIC only)
     - `language`, `doc_id`, `resource_type`, `doc_role`
+    - `db_paths: string[]` (optional, fédération multi-DB dans une seule requête)
     - `include_aligned: bool` (default `false`)
     - `aligned_limit: int|null` (default `20` in sidecar; ignored when `include_aligned=false`)
     - `all_occurrences: bool` (default `false`, KWIC only)
@@ -116,6 +124,38 @@ When `multicorpus serve` starts and a portfile already exists:
     - if `include_aligned=true`, each hit includes `aligned: []` (possibly empty)
       with items shaped as:
       - `doc_id`, `unit_id`, `language`, `title`, `external_id`, `text`, `text_norm`
+    - if `db_paths` is provided:
+      - response includes `federated: true`, `db_paths`, `db_count`
+      - each hit includes provenance fields:
+        - `source_db_path`, `source_db_name`, `source_db_index`
+- `POST /token_query`
+  - token-level query with CQL parser (Sprint C + D backend):
+    - fixed sequence of token clauses: `[...][...]`
+    - wildcard token: `[]`
+    - quantifiers: `[]{0,N}`, `[token]{m,n}`, `[token]{k}`
+    - trailing sentence constraint: `within s`
+    - terminal `;` accepted (optional)
+    - supported attrs: `word`, `lemma`, `pos` (`upos`)
+    - regex values supported (`"liv.*"`)
+    - case-insensitive flag per predicate: `%c`
+    - boolean `&` inside one token clause
+  - request body:
+    - `cql: string` (required)
+    - `mode: "kwic"|"segment"` (default `kwic`)
+    - `window: int` (default `10`, min `0`)
+    - `language?: string`
+    - `doc_ids?: int[]`
+    - `limit: int` (default `50`, min `1`, max `200`)
+    - `offset: int` (default `0`, min `0`)
+  - response:
+    - same pagination envelope as `/query`: `run_id`, `count`, `hits`, `limit`, `offset`, `next_offset`, `has_more`, `total`
+    - each hit includes:
+      - parent unit metadata (`doc_id`, `unit_id`, `external_id`, `language`, `title`)
+      - token span metadata (`sent_id`, `start_position`, `end_position`)
+      - `tokens[]` (matched token sequence)
+      - `context_tokens[]` (windowed neighboring tokens)
+      - `kwic`: `left/match/right` when `mode=kwic`
+      - `segment`: `text` + `text_norm` when `mode=segment`
 
 ### Pagination policy (V0.2)
 
@@ -123,12 +163,13 @@ When `multicorpus serve` starts and a portfile already exists:
 - `total` is intentionally `null` in V0.2 (no expensive global count query by default).
 - `include_aligned` enrichment is applied only to the current page hits.
 - `POST /index`
-  - rebuilds FTS index
-  - returns `run_id`, `units_indexed`
+  - full rebuild by default; optional incremental mode with body `{ "incremental": true }`
+  - full mode returns: `run_id`, `units_indexed`, `incremental=false`
+  - incremental mode returns: `run_id`, `units_indexed`, `incremental=true`, `inserted`, `refreshed`, `deleted`
   - returns `401` if token is active and header is missing/invalid
 - `POST /import`
   - JSON body:
-    - `mode`: `docx_numbered_lines|txt_numbered_lines|docx_paragraphs|tei`
+    - `mode`: `docx_numbered_lines|txt_numbered_lines|docx_paragraphs|odt_paragraphs|odt_numbered_lines|tei|conllu`
     - `path`: source file path
     - `language` required except TEI mode
     - optional: `title`, `doc_role`, `resource_type`, `tei_unit`
@@ -144,6 +185,13 @@ When `multicorpus serve` starts and a portfile already exists:
 - `GET /openapi.json`
 - `GET /documents`
 - `GET /documents/preview?doc_id=N&limit=M`
+- `GET /tokens?doc_id=N&unit_id=M&limit=L&offset=O`
+  - returns token rows for manual annotation edits.
+  - `doc_id` required, `unit_id` optional (restrict to one unit).
+  - response: `tokens[]`, `count`, `total`, `limit`, `offset`, `next_offset`, `has_more`.
+- `POST /tokens/update`
+  - body: `{ token_id, word?, lemma?, upos?, xpos?, feats?, misc? }` (token required)
+  - updates one token row and returns `{ updated: 1, token }`.
 - `GET /unit/context?unit_id=N` — (Sprint I) Returns local document context around a line unit: `doc_id`, `unit_id`, `unit_index` (1-based), `total_units`, `prev` / `current` / `next` (each `{ unit_id, text }` or `null`). Read-only; 404 if unit not found or not a line unit.
 - `GET /doc_relations?doc_id=N`
 - `POST /curate`
@@ -181,6 +229,12 @@ When `multicorpus serve` starts and a portfile already exists:
   - body: `{ out_dir, doc_ids?: int[], include_structure?: bool }` (token required)
   - `include_structure` (default `false`): if `true`, emits `<head>` elements for structure units
   - CONTRACT_VERSION 1.3.1: added `include_structure` optional boolean field (backward-compatible)
+- `POST /export/conllu`
+  - body: `{ out_path, doc_ids?: int[] }` (token required)
+- `POST /export/token_query_csv`
+  - body: `{ out_path, cql, mode?, window?, language?, doc_ids?, delimiter?, max_hits? }` (token required)
+- `POST /export/ske`
+  - body: `{ out_path, doc_ids?: int[] }` (token required)
 - `POST /export/align_csv`
 - `POST /export/run_report`
 - `POST /db/backup`
@@ -209,17 +263,22 @@ When `multicorpus serve` starts and a portfile already exists:
 - `POST /units/merge` — merge two adjacent units into one; body: `{ doc_id, n1, n2 }` (n2 must be n1+1)
 - `POST /units/split` — split one unit into two; body: `{ doc_id, unit_n, text_a, text_b }`
 - `POST /segment/preview` — in-memory segmentation preview, no DB writes
-  - body: `{ doc_id, mode?, lang?, pack?, limit? }`
+  - body: `{ doc_id, mode?, lang?, pack?, limit?, calibrate_to? }`
   - `mode` values: `sentences` (default), `markers` ([N] marker-based split)
+  - `calibrate_to` (optionnel, mode `sentences`) : `doc_id` de référence pour calculer l’écart de volume
   - response includes segments list with `external_id` field when mode=markers
+  - response may include `calibrate_to` + `calibrate_ratio_pct` (écart en % vs document de référence)
 - `POST /segment/detect_markers` — detect [N] markers in existing units (read-only)
   - body: `{ doc_id }`
   - response: `{ detected, total_units, marked_units, marker_ratio, sample, first_markers }`
 - `GET /jobs`
 - `POST /jobs`
 - `GET /jobs/{job_id}`
+- `GET /runs` — historique persistant des runs (`import`, `align`, `index`, ...)
+  - query: `kind?`, `limit?` (1..200, défaut 50)
 - `POST /jobs/enqueue` (token required)
 - `POST /jobs/{job_id}/cancel` (token required)
+- `POST /annotate` (token required)
 
 ### V0.5 — Job enqueue + cancel
 
@@ -230,7 +289,7 @@ Enqueue an async job supporting all operation kinds (including import, align, ex
 Request:
 ```json
 {
-  "kind": "index|curate|validate-meta|segment|import|align|export_tei|export_align_csv|export_run_report|export_tei_package|export_readable_text|qa_report",
+  "kind": "index|curate|validate-meta|segment|import|align|export_tei|export_align_csv|export_run_report|export_tei_package|export_readable_text|qa_report|annotate",
   "params": {}
 }
 ```
@@ -241,11 +300,12 @@ Response (HTTP 202):
 ```
 
 Supported `kind` values and required `params`:
-- `index` — no params required
+- `index` — no params required; optional `params.incremental` (bool) for incremental FTS sync
 - `curate` — `params.rules` (array, required)
 - `validate-meta` — `params.doc_id?`
 - `segment` — `params.doc_id` (required), optional `params.lang`, optional `params.pack` (`auto|default|fr_strict|en_strict`)
 - `import` — `params.mode` + `params.path` required; optional: `language`, `title`, `doc_role`, `resource_type`, `tei_unit`
+  - `mode`: `docx_numbered_lines|txt_numbered_lines|docx_paragraphs|odt_paragraphs|odt_numbered_lines|tei|conllu`
 - `align` — `params.pivot_doc_id` + `params.target_doc_ids` required; optional: `strategy`, `sim_threshold`, `debug_align`, `replace_existing`, `preserve_accepted`, `run_id`
   - `strategy`: `external_id|position|similarity|external_id_then_position`
   - `replace_existing=true` + `preserve_accepted=true` is the recommended "global recalculation" mode for keeping manually accepted links stable
@@ -256,6 +316,25 @@ Supported `kind` values and required `params`:
 - `export_readable_text` — `params.out_dir` required; optional: `doc_ids` (array d'entiers positifs), `format` (`txt`|`docx`), `include_structure` (bool), `include_external_id` (bool), `source_field` (`text_norm`|`text_raw`)
 - `export_tei_package` — `params.out_path` required; optional: `doc_ids`, `include_structure`, `include_alignment`, `status_filter`, `tei_profile`
 - `qa_report` — `params.out_path` required; optional: `doc_ids`, `format` (`json`|`html`), `policy` (`lenient`|`strict`)
+- `annotate` — `params.doc_id` required (or `params.all_docs=true`); optional: `params.model`
+
+#### `POST /annotate` (token required)
+
+Enqueue a spaCy annotation job without going through the generic `/jobs/enqueue` endpoint.
+
+Request:
+```json
+{ "doc_id": 1, "model": "fr_core_news_md" }
+```
+or
+```json
+{ "all_docs": true, "model": "fr_core_news_md" }
+```
+
+Response (HTTP 202):
+```json
+{ "ok": true, "status": "accepted", "job": { "job_id": "...", "kind": "annotate", "status": "queued" } }
+```
 
 Token enforcement: `X-Agrafes-Token` required when token is active.
 
@@ -318,6 +397,8 @@ Response now includes pagination fields: `total`, `limit`, `offset`, `has_more`,
   - `author_lastname`: string|null — nom de famille de l'auteur principal (optionnel)
   - `author_firstname`: string|null — prénom de l'auteur principal (optionnel)
   - `doc_date`: string|null — date du document en texte libre, ex. "2024" ou "2024-03-15" (optionnel)
+  - `token_count`: integer — nombre de tokens annotés pour ce document
+  - `annotation_status`: `missing|annotated`
 - `GET /documents/preview?doc_id=N&limit=M` — mini aperçu du contenu (read-only)
   - `limit` optionnel, défaut `6`, bornes `1..20`
   - retourne les premières unités `line` triées par `n`:
@@ -345,6 +426,15 @@ Workflow status semantics:
 - `POST /export/tei` — export documents as TEI XML (server-side disk write)
   - body: `{ out_dir, doc_ids?: int[] }` (null = all docs)
   - returns: `{ files_created: string[], count }`
+- `POST /export/conllu` — export token annotations as CoNLL-U
+  - body: `{ out_path, doc_ids?: int[] }` (null = all docs)
+  - returns: `{ out_path, docs_written, sentences_written, tokens_written }`
+- `POST /export/token_query_csv` — export CQL hits as CSV/TSV tabular rows
+  - body: `{ out_path, cql, mode?: "kwic"|"segment", window?: int, language?: str, doc_ids?: int[], delimiter?: ","|"\\t", max_hits?: int }`
+  - returns: `{ out_path, rows_written, mode, delimiter, max_hits }`
+- `POST /export/ske` — export corpus tokens as Sketch Engine-style vertical `.ske`
+  - body: `{ out_path, doc_ids?: int[] }` (null = all docs)
+  - returns: `{ out_path, docs_written, sentences_written, tokens_written }`
 - `POST /export/align_csv` — export alignment links as CSV/TSV
   - body: `{ out_path, pivot_doc_id?, target_doc_id?, delimiter? }`
   - returns: `{ out_path, rows_written }`

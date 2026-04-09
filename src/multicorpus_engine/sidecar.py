@@ -17,7 +17,7 @@ GET  /openapi.json   → OpenAPI 3.0 contract
 POST /query          → run_query; body: {q, mode?, window?, language?, doc_id?,
                         resource_type?, doc_role?, include_aligned?,
                         aligned_limit?, all_occurrences?, limit?, offset?}
-POST /index          → build_index; body: {}
+POST /index          → build/update index; body: {incremental?: bool}
 POST /curate         → curate; body: {rules: [...], doc_id?: int}
 POST /validate-meta  → validate; body: {doc_id?: int}
 POST /segment        → resegment_document; body: {doc_id: int, lang?: str, pack?: str}
@@ -483,6 +483,9 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         elif path == "/documents/preview":
             qs = parse_qs(urlparse(self.path).query)
             self._handle_documents_preview(qs)
+        elif path == "/tokens":
+            qs = parse_qs(urlparse(self.path).query)
+            self._handle_tokens_list(qs)
         elif path == "/unit/context":
             qs = parse_qs(urlparse(self.path).query)
             self._handle_unit_context(qs)
@@ -544,6 +547,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             _write_paths = {
                 # Core mutators
                 "/index", "/import", "/shutdown",
+                "/annotate",
                 "/db/backup",
                 "/corpus/info",
                 # Document / relation writes
@@ -551,8 +555,12 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 "/doc_relations/set", "/doc_relations/delete",
                 # Exports (write to disk)
                 "/export/tei", "/export/align_csv", "/export/run_report",
+                "/export/conllu",
+                "/export/token_query_csv",
+                "/export/ske",
                 "/curate/exceptions/export",
                 "/curate/apply-history/export",
+                "/tokens/update",
                 # Apply history record (writes to DB)
                 "/curate/apply-history/record",
                 # Alignment writes (previously unprotected — fixed in 1.4.1)
@@ -578,6 +586,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 
             if path == "/query":
                 self._handle_query(body)
+            elif path == "/token_query":
+                self._handle_token_query(body)
             elif path == "/query/facets":
                 self._handle_query_facets(body)
             elif path == "/stats/lexical":
@@ -585,9 +595,11 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             elif path == "/stats/compare":
                 self._handle_stats_compare(body)
             elif path == "/index":
-                self._handle_index()
+                self._handle_index(body)
             elif path == "/import":
                 self._handle_import(body)
+            elif path == "/annotate":
+                self._handle_annotate(body)
             elif path == "/curate":
                 self._handle_curate(body)
             elif path == "/curate/preview":
@@ -664,12 +676,20 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 self._handle_documents_bulk_update(body)
             elif path == "/documents/delete":
                 self._handle_documents_delete(body)
+            elif path == "/tokens/update":
+                self._handle_tokens_update(body)
             elif path == "/doc_relations/set":
                 self._handle_doc_relations_set(body)
             elif path == "/doc_relations/delete":
                 self._handle_doc_relations_delete(body)
             elif path == "/export/tei":
                 self._handle_export_tei(body)
+            elif path == "/export/conllu":
+                self._handle_export_conllu(body)
+            elif path == "/export/token_query_csv":
+                self._handle_export_token_query_csv(body)
+            elif path == "/export/ske":
+                self._handle_export_ske(body)
             elif path == "/export/tmx":
                 self._handle_export_tmx(body)
             elif path == "/export/bilingual":
@@ -845,6 +865,15 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             )
             return
 
+        if kind == "index":
+            if "incremental" in params and not isinstance(params.get("incremental"), bool):
+                self._send_error(
+                    "index params.incremental must be a boolean",
+                    code=ERR_VALIDATION,
+                    http_status=400,
+                )
+                return
+
         if kind == "segment":
             if "doc_id" not in params:
                 self._send_error(
@@ -926,6 +955,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             "index", "curate", "validate-meta", "segment",
             "import", "align", "export_tei", "export_align_csv", "export_run_report",
             "export_tei_package", "export_readable_text", "qa_report",
+            "annotate",
         }
         if kind not in supported:
             self._send_error(
@@ -935,6 +965,15 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 details={"supported_kinds": sorted(supported)},
             )
             return
+
+        if kind == "index":
+            if "incremental" in params and not isinstance(params.get("incremental"), bool):
+                self._send_error(
+                    "index params.incremental must be a boolean",
+                    code=ERR_VALIDATION,
+                    http_status=400,
+                )
+                return
 
         # Kind-specific param validation
         if kind == "segment" and "doc_id" not in params:
@@ -952,6 +991,33 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         if kind == "curate" and not isinstance(params.get("rules"), list):
             self._send_error("curate job requires params.rules (array)", code=ERR_VALIDATION, http_status=400)
             return
+        if kind == "annotate":
+            all_docs = bool(params.get("all_docs", False))
+            if not all_docs:
+                if "doc_id" not in params:
+                    self._send_error(
+                        "annotate job requires params.doc_id or params.all_docs=true",
+                        code=ERR_VALIDATION,
+                        http_status=400,
+                    )
+                    return
+                try:
+                    int(params.get("doc_id"))
+                except (TypeError, ValueError):
+                    self._send_error(
+                        "annotate params.doc_id must be an integer",
+                        code=ERR_VALIDATION,
+                        http_status=400,
+                    )
+                    return
+            if "model" in params and params["model"] is not None:
+                if not isinstance(params.get("model"), str) or not params.get("model", "").strip():
+                    self._send_error(
+                        "annotate params.model must be a non-empty string when provided",
+                        code=ERR_VALIDATION,
+                        http_status=400,
+                    )
+                    return
         if kind == "import" and (not params.get("mode") or not params.get("path")):
             self._send_error("import job requires params.mode and params.path", code=ERR_VALIDATION, http_status=400)
             return
@@ -1196,6 +1262,28 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             except (TypeError, ValueError) as exc:
                 raise ValueError("doc_ids must be a list of integers") from exc
 
+        raw_db_paths = body.get("db_paths")
+        db_paths: list[str] | None = None
+        if raw_db_paths is not None:
+            if not isinstance(raw_db_paths, list) or len(raw_db_paths) == 0:
+                raise ValueError("db_paths must be a non-empty list of database file paths")
+            resolved_paths: list[str] = []
+            seen_paths: set[str] = set()
+            for raw_path in raw_db_paths:
+                if not isinstance(raw_path, str) or not raw_path.strip():
+                    raise ValueError("db_paths must only contain non-empty string paths")
+                path_obj = Path(raw_path).expanduser().resolve()
+                if not path_obj.exists() or not path_obj.is_file():
+                    raise ValueError(f"db_path not found: {path_obj}")
+                resolved = str(path_obj)
+                if resolved in seen_paths:
+                    continue
+                seen_paths.add(resolved)
+                resolved_paths.append(resolved)
+            if len(resolved_paths) == 0:
+                raise ValueError("db_paths must contain at least one valid database path")
+            db_paths = resolved_paths
+
         # ── family_id expansion ──────────────────────────────────────────────
         # When family_id is provided we resolve it to a set of doc_ids
         # (parent + all translation_of/excerpt_of children) and force
@@ -1207,6 +1295,9 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 family_id = int(raw_family_id)
             except (TypeError, ValueError) as exc:
                 raise ValueError("family_id must be an integer") from exc
+
+        if family_id is not None and db_paths is not None:
+            raise ValueError("family_id cannot be combined with db_paths federation")
 
         pivot_only: bool = bool(body.get("pivot_only", False))
         include_aligned_raw: bool = bool(body.get("include_aligned", False))
@@ -1251,33 +1342,78 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             "family_id": family_id,
             "pivot_only": pivot_only,
             "regex_pattern": regex_pattern,
+            "db_paths": db_paths,
+        }
+        query_kwargs = {
+            "q": params["q"],
+            "mode": params["mode"],
+            "window": params["window"],
+            "language": params["language"],
+            "doc_id": params["doc_id"],
+            "doc_ids": params["doc_ids"],
+            "resource_type": params["resource_type"],
+            "doc_role": params["doc_role"],
+            "author": params["author"],
+            "title_search": params["title_search"],
+            "doc_date_from": params["doc_date_from"],
+            "doc_date_to": params["doc_date_to"],
+            "source_ext": params["source_ext"],
+            "include_aligned": params["include_aligned"],
+            "aligned_limit": params["aligned_limit"],
+            "all_occurrences": params["all_occurrences"],
+            "case_sensitive": params["case_sensitive"],
+            "regex_pattern": params["regex_pattern"],
         }
         with self._lock():
             run_id = self._create_run("query", params)
-            page = run_query_page(
-                conn=self._conn(),
-                q=params["q"],
-                mode=params["mode"],
-                window=params["window"],
-                language=params["language"],
-                doc_id=params["doc_id"],
-                doc_ids=params["doc_ids"],
-                resource_type=params["resource_type"],
-                doc_role=params["doc_role"],
-                author=params["author"],
-                title_search=params["title_search"],
-                doc_date_from=params["doc_date_from"],
-                doc_date_to=params["doc_date_to"],
-                source_ext=params["source_ext"],
-                include_aligned=params["include_aligned"],
-                aligned_limit=params["aligned_limit"],
-                all_occurrences=params["all_occurrences"],
-                case_sensitive=params["case_sensitive"],
-                limit=params["limit"],
-                offset=params["offset"],
-                regex_pattern=params["regex_pattern"],
-            )
-            hits = page["hits"]
+            if params["db_paths"] is None:
+                page = run_query_page(
+                    conn=self._conn(),
+                    **query_kwargs,
+                    limit=params["limit"],
+                    offset=params["offset"],
+                )
+                hits = page["hits"]
+            else:
+                from multicorpus_engine.db.connection import get_connection
+
+                fed_rows: list[dict] = []
+                totals: list[int | None] = []
+                per_db_limit = params["offset"] + params["limit"] + 1
+                for db_index, db_path in enumerate(params["db_paths"]):
+                    ext_conn = get_connection(db_path)
+                    try:
+                        db_page = run_query_page(
+                            conn=ext_conn,
+                            **query_kwargs,
+                            limit=per_db_limit,
+                            offset=0,
+                        )
+                    finally:
+                        ext_conn.close()
+                    totals.append(db_page.get("total"))
+                    for hit in db_page["hits"]:
+                        with_source = dict(hit)
+                        with_source["source_db_path"] = db_path
+                        with_source["source_db_name"] = Path(db_path).name
+                        with_source["source_db_index"] = db_index
+                        fed_rows.append(with_source)
+
+                window_rows = fed_rows[params["offset"] : params["offset"] + params["limit"] + 1]
+                has_more = len(window_rows) > params["limit"]
+                hits = window_rows[: params["limit"]]
+                next_offset = params["offset"] + params["limit"] if has_more else None
+                total: int | None = None
+                if totals and all(isinstance(v, int) for v in totals):
+                    total = sum(int(v) for v in totals)
+                page = {
+                    "hits": hits,
+                    "limit": params["limit"],
+                    "offset": params["offset"],
+                    "next_offset": next_offset,
+                    "has_more": has_more,
+                    "total": total,
+                }
             self._update_run_stats(
                 run_id,
                 {
@@ -1302,7 +1438,109 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             resp["family_id"] = params["family_id"]
             resp["family_doc_ids"] = params["doc_ids"]
             resp["pivot_only"] = params["pivot_only"]
+        if params["db_paths"] is not None:
+            resp["federated"] = True
+            resp["db_paths"] = params["db_paths"]
+            resp["db_count"] = len(params["db_paths"])
         self._send_json(success_payload(resp))
+
+    def _handle_token_query(self, body: dict) -> None:
+        from multicorpus_engine.token_query import run_token_query_page
+
+        raw_cql = body.get("cql")
+        if not isinstance(raw_cql, str) or not raw_cql.strip():
+            raise ValueError("cql must be a non-empty string")
+        cql = raw_cql.strip()
+
+        mode = str(body.get("mode", "kwic")).strip().lower()
+        if mode not in {"segment", "kwic"}:
+            raise ValueError("mode must be 'segment' or 'kwic'")
+
+        raw_window = body.get("window", 10)
+        try:
+            window = int(raw_window)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("window must be an integer >= 0") from exc
+        if window < 0:
+            raise ValueError("window must be >= 0")
+
+        raw_limit = body.get("limit", 50)
+        try:
+            limit = int(raw_limit)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("limit must be an integer") from exc
+        if limit < 1 or limit > 200:
+            raise ValueError("limit must be in [1, 200]")
+
+        raw_offset = body.get("offset", 0)
+        try:
+            offset = int(raw_offset)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("offset must be an integer >= 0") from exc
+        if offset < 0:
+            raise ValueError("offset must be >= 0")
+
+        language_raw = body.get("language")
+        language = str(language_raw).strip() if isinstance(language_raw, str) and language_raw.strip() else None
+
+        raw_doc_ids = body.get("doc_ids")
+        doc_ids: list[int] | None = None
+        if raw_doc_ids is not None:
+            if not isinstance(raw_doc_ids, list):
+                raise ValueError("doc_ids must be a list of integers")
+            try:
+                doc_ids = [int(x) for x in raw_doc_ids]
+            except (TypeError, ValueError) as exc:
+                raise ValueError("doc_ids must be a list of integers") from exc
+
+        params = {
+            "cql": cql,
+            "mode": mode,
+            "window": window,
+            "language": language,
+            "doc_ids": doc_ids,
+            "limit": limit,
+            "offset": offset,
+        }
+
+        with self._lock():
+            run_id = self._create_run("token_query", params)
+            page = run_token_query_page(
+                conn=self._conn(),
+                cql=cql,
+                mode=mode,
+                window=window,
+                language=language,
+                doc_ids=doc_ids,
+                limit=limit,
+                offset=offset,
+            )
+            hits = page["hits"]
+            self._update_run_stats(
+                run_id,
+                {
+                    "count": len(hits),
+                    "offset": page["offset"],
+                    "limit": page["limit"],
+                    "has_more": page["has_more"],
+                    "next_offset": page["next_offset"],
+                },
+            )
+
+        self._send_json(
+            success_payload(
+                {
+                    "run_id": run_id,
+                    "count": len(hits),
+                    "hits": hits,
+                    "limit": page["limit"],
+                    "offset": page["offset"],
+                    "next_offset": page["next_offset"],
+                    "has_more": page["has_more"],
+                    "total": page["total"],
+                }
+            )
+        )
 
     def _handle_query_facets(self, body: dict) -> None:
         """POST /query/facets — lightweight facet summary for a query.
@@ -1395,14 +1633,29 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             result = compute_stats_compare(self._conn(), slot_a, slot_b, label_a, label_b)
         self._send_json(success_payload(stats_compare_result_to_dict(result)))
 
-    def _handle_index(self) -> None:
-        from multicorpus_engine.indexer import build_index
+    def _handle_index(self, body: dict) -> None:
+        from multicorpus_engine.indexer import build_index, update_index
+
+        incremental = bool(body.get("incremental", False))
+        if "incremental" in body and not isinstance(body.get("incremental"), bool):
+            self._send_error(
+                "incremental must be a boolean when provided",
+                code=ERR_VALIDATION,
+                http_status=400,
+            )
+            return
 
         with self._lock():
-            run_id = self._create_run("index", {})
-            count = build_index(self._conn())
-            self._update_run_stats(run_id, {"units_indexed": count})
-        self._send_json(success_payload({"run_id": run_id, "units_indexed": count}))
+            run_id = self._create_run("index", {"incremental": incremental})
+            if incremental:
+                stats = update_index(self._conn(), prune_deleted=True)
+                self._update_run_stats(run_id, stats)
+                payload = {"run_id": run_id, "incremental": True, **stats}
+            else:
+                count = build_index(self._conn())
+                self._update_run_stats(run_id, {"units_indexed": count})
+                payload = {"run_id": run_id, "units_indexed": count, "incremental": False}
+        self._send_json(success_payload(payload))
 
     def _handle_import(self, body: dict) -> None:
         mode = body.get("mode")
@@ -1533,6 +1786,18 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                         doc_role=doc_role,
                         resource_type=resource_type,
                         unit_element=tei_unit,
+                        run_id=run_id,
+                        check_filename=check_filename,
+                    )
+                elif mode == "conllu":
+                    from multicorpus_engine.importers.conllu import import_conllu
+                    report = import_conllu(
+                        conn=self._conn(),
+                        path=path,
+                        language=language,
+                        title=title,
+                        doc_role=doc_role,
+                        resource_type=resource_type,
                         run_id=run_id,
                         check_filename=check_filename,
                     )
@@ -2612,6 +2877,57 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             "results": [r.to_dict() for r in results],
         }, status="warnings" if has_errors else "ok"))
 
+    def _handle_annotate(self, body: dict) -> None:
+        """POST /annotate — enqueue spaCy annotation job(s).
+
+        Body:
+          - {doc_id, model?}
+          - or {all_docs: true, model?}
+        """
+        all_docs = bool(body.get("all_docs", False))
+        model = body.get("model")
+        if model is not None and (not isinstance(model, str) or not model.strip()):
+            self._send_error(
+                "model must be a non-empty string when provided",
+                code=ERR_BAD_REQUEST,
+                http_status=400,
+            )
+            return
+
+        params: dict[str, object] = {}
+        if model is not None:
+            params["model"] = model.strip()
+
+        if all_docs:
+            params["all_docs"] = True
+        else:
+            if "doc_id" not in body:
+                self._send_error(
+                    "doc_id is required unless all_docs=true",
+                    code=ERR_BAD_REQUEST,
+                    http_status=400,
+                )
+                return
+            try:
+                params["doc_id"] = int(body.get("doc_id"))
+            except (TypeError, ValueError):
+                self._send_error(
+                    "doc_id must be an integer",
+                    code=ERR_BAD_REQUEST,
+                    http_status=400,
+                )
+                return
+
+        job = self._jobs().submit(
+            kind="annotate",
+            params=params,
+            runner=self.server.job_runner,  # type: ignore[attr-defined]
+        )
+        self._send_json(
+            success_payload({"job": job.to_dict()}, status="accepted"),
+            status=202,
+        )
+
     def _handle_segment_detect_markers(self, body: dict) -> None:
         """POST /segment/detect_markers — detect [N] markers in existing units (no writes)."""
         from multicorpus_engine.segmenter import detect_markers_in_units
@@ -2658,6 +2974,15 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 code=ERR_BAD_REQUEST, http_status=400,
             )
             return
+
+        calibrate_to_raw = body.get("calibrate_to")
+        calibrate_to: int | None = None
+        if calibrate_to_raw is not None:
+            try:
+                calibrate_to = int(calibrate_to_raw)
+            except (TypeError, ValueError):
+                self._send_error("calibrate_to must be an integer", code=ERR_BAD_REQUEST, http_status=400)
+                return
 
         lang = str(body.get("lang") or "und")
         pack = str(body.get("pack") or "auto")
@@ -2732,7 +3057,22 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 if seg_n > limit:
                     break
 
-        self._send_json(success_payload({
+        calibrate_ratio_pct: int | None = None
+        if calibrate_to is not None and len(segments) > 0:
+            ref_count = conn.execute(
+                "SELECT COUNT(*) FROM units WHERE doc_id = ? AND unit_type = 'line'",
+                (calibrate_to,),
+            ).fetchone()[0]
+            if ref_count > 0:
+                ratio = abs(len(segments) - ref_count) / ref_count
+                calibrate_ratio_pct = round(ratio * 100)
+                if ratio > 0.15:
+                    warnings.append(
+                        f"Segment count differs by {calibrate_ratio_pct} % from reference "
+                        f"doc #{calibrate_to} ({ref_count} units vs {len(segments)})"
+                    )
+
+        payload = {
             "doc_id": doc_id,
             "mode": mode,
             "units_input": len(units),
@@ -2740,7 +3080,11 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             "segment_pack": resolved_pack,
             "segments": segments,
             "warnings": warnings,
-        }))
+        }
+        if calibrate_to is not None:
+            payload["calibrate_to"] = calibrate_to
+            payload["calibrate_ratio_pct"] = calibrate_ratio_pct
+        self._send_json(success_payload(payload))
 
     def _handle_units_merge(self, body: dict) -> None:
         """POST /units/merge — merge two adjacent units into one.
@@ -3112,16 +3456,29 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 
     def _handle_documents(self) -> None:
         self._ensure_document_workflow_columns()
+        self._ensure_tokens_table()
         rows = self._conn().execute(
             """
             SELECT d.doc_id, d.title, d.language, d.doc_role, d.resource_type,
                    d.workflow_status, d.validated_at, d.validated_run_id,
                    d.source_path, d.source_hash,
-                   COUNT(u.unit_id) AS unit_count,
+                   COALESCE(uc.unit_count, 0) AS unit_count,
+                   COALESCE(tc.token_count, 0) AS token_count,
+                   CASE WHEN COALESCE(tc.token_count, 0) > 0 THEN 'annotated' ELSE 'missing' END AS annotation_status,
                    d.author_lastname, d.author_firstname, d.doc_date
             FROM documents d
-            LEFT JOIN units u ON u.doc_id = d.doc_id AND u.unit_type = 'line'
-            GROUP BY d.doc_id
+            LEFT JOIN (
+                SELECT doc_id, COUNT(*) AS unit_count
+                FROM units
+                WHERE unit_type = 'line'
+                GROUP BY doc_id
+            ) uc ON uc.doc_id = d.doc_id
+            LEFT JOIN (
+                SELECT u.doc_id, COUNT(t.token_id) AS token_count
+                FROM units u
+                JOIN tokens t ON t.unit_id = u.unit_id
+                GROUP BY u.doc_id
+            ) tc ON tc.doc_id = d.doc_id
             ORDER BY d.doc_id
             """
         ).fetchall()
@@ -3138,9 +3495,11 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 "source_path": r[8],
                 "source_hash": r[9],
                 "unit_count": r[10],
-                "author_lastname": r[11],
-                "author_firstname": r[12],
-                "doc_date": r[13],
+                "token_count": r[11],
+                "annotation_status": r[12],
+                "author_lastname": r[13],
+                "author_firstname": r[14],
+                "doc_date": r[15],
             }
             for r in rows
         ]
@@ -3182,6 +3541,50 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 self._conn().execute("ALTER TABLE documents ADD COLUMN doc_date TEXT")
             self._conn().execute(
                 "CREATE INDEX IF NOT EXISTS idx_documents_workflow_status ON documents (workflow_status)"
+            )
+            self._conn().commit()
+
+    def _ensure_tokens_table(self) -> None:
+        """Backfill tokens table for legacy DB schemas that predate migration 012."""
+        exists = self._conn().execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='tokens'"
+        ).fetchone()
+        if exists:
+            return
+        with self._lock():
+            exists_locked = self._conn().execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='tokens'"
+            ).fetchone()
+            if exists_locked:
+                return
+            self._conn().execute(
+                """
+                CREATE TABLE IF NOT EXISTS tokens (
+                    token_id   INTEGER PRIMARY KEY AUTOINCREMENT,
+                    unit_id    INTEGER NOT NULL REFERENCES units(unit_id) ON DELETE CASCADE,
+                    sent_id    INTEGER NOT NULL,
+                    position   INTEGER NOT NULL,
+                    word       TEXT,
+                    lemma      TEXT,
+                    upos       TEXT,
+                    xpos       TEXT,
+                    feats      TEXT,
+                    misc       TEXT
+                )
+                """
+            )
+            self._conn().execute(
+                "CREATE INDEX IF NOT EXISTS idx_tokens_unit ON tokens (unit_id)"
+            )
+            self._conn().execute(
+                "CREATE INDEX IF NOT EXISTS idx_tokens_lemma ON tokens (lemma)"
+            )
+            self._conn().execute(
+                "CREATE INDEX IF NOT EXISTS idx_tokens_upos ON tokens (upos)"
+            )
+            self._conn().execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_tokens_unit_sent_pos "
+                "ON tokens (unit_id, sent_id, position)"
             )
             self._conn().commit()
 
@@ -3293,6 +3696,285 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 }
             )
         )
+
+    def _handle_tokens_list(self, qs: dict[str, list[str]]) -> None:
+        """GET /tokens?doc_id=&unit_id=&limit=&offset= — list token rows for manual edits."""
+        self._ensure_tokens_table()
+
+        doc_id_raw = (qs.get("doc_id") or [None])[0]
+        if doc_id_raw is None:
+            self._send_error(
+                "doc_id query param is required",
+                code=ERR_BAD_REQUEST,
+                http_status=400,
+            )
+            return
+        try:
+            doc_id = int(doc_id_raw)
+        except (TypeError, ValueError):
+            self._send_error(
+                "doc_id must be an integer",
+                code=ERR_BAD_REQUEST,
+                http_status=400,
+            )
+            return
+        if doc_id <= 0:
+            self._send_error(
+                "doc_id must be a positive integer",
+                code=ERR_BAD_REQUEST,
+                http_status=400,
+            )
+            return
+
+        unit_id_raw = (qs.get("unit_id") or [None])[0]
+        unit_id: int | None = None
+        if unit_id_raw is not None:
+            try:
+                unit_id = int(unit_id_raw)
+            except (TypeError, ValueError):
+                self._send_error(
+                    "unit_id must be an integer",
+                    code=ERR_BAD_REQUEST,
+                    http_status=400,
+                )
+                return
+            if unit_id <= 0:
+                self._send_error(
+                    "unit_id must be a positive integer",
+                    code=ERR_BAD_REQUEST,
+                    http_status=400,
+                )
+                return
+
+        limit_raw = (qs.get("limit") or ["200"])[0]
+        offset_raw = (qs.get("offset") or ["0"])[0]
+        try:
+            limit = int(limit_raw)
+            offset = int(offset_raw)
+        except (TypeError, ValueError):
+            self._send_error(
+                "limit and offset must be integers",
+                code=ERR_BAD_REQUEST,
+                http_status=400,
+            )
+            return
+        if limit < 1 or limit > 1000:
+            self._send_error(
+                "limit must be between 1 and 1000",
+                code=ERR_BAD_REQUEST,
+                http_status=400,
+            )
+            return
+        if offset < 0:
+            self._send_error(
+                "offset must be >= 0",
+                code=ERR_BAD_REQUEST,
+                http_status=400,
+            )
+            return
+
+        filters = ["u.doc_id = ?"]
+        params: list[object] = [doc_id]
+        if unit_id is not None:
+            filters.append("t.unit_id = ?")
+            params.append(unit_id)
+        where_sql = " AND ".join(filters)
+
+        total = int(
+            self._conn()
+            .execute(
+                f"""
+                SELECT COUNT(*)
+                FROM tokens t
+                JOIN units u ON u.unit_id = t.unit_id
+                WHERE {where_sql}
+                """,
+                params,
+            )
+            .fetchone()[0]
+            or 0
+        )
+        rows = self._conn().execute(
+            f"""
+            SELECT
+                t.token_id,
+                u.doc_id,
+                t.unit_id,
+                u.n AS unit_n,
+                u.external_id,
+                t.sent_id,
+                t.position,
+                t.word,
+                t.lemma,
+                t.upos,
+                t.xpos,
+                t.feats,
+                t.misc
+            FROM tokens t
+            JOIN units u ON u.unit_id = t.unit_id
+            WHERE {where_sql}
+            ORDER BY u.n, t.sent_id, t.position
+            LIMIT ? OFFSET ?
+            """,
+            [*params, limit, offset],
+        ).fetchall()
+        tokens = [
+            {
+                "token_id": r[0],
+                "doc_id": r[1],
+                "unit_id": r[2],
+                "unit_n": r[3],
+                "external_id": r[4],
+                "sent_id": r[5],
+                "position": r[6],
+                "word": r[7],
+                "lemma": r[8],
+                "upos": r[9],
+                "xpos": r[10],
+                "feats": r[11],
+                "misc": r[12],
+            }
+            for r in rows
+        ]
+        count = len(tokens)
+        has_more = (offset + count) < total
+        next_offset = offset + limit if has_more else None
+
+        self._send_json(
+            success_payload(
+                {
+                    "doc_id": doc_id,
+                    "unit_id": unit_id,
+                    "tokens": tokens,
+                    "count": count,
+                    "total": total,
+                    "limit": limit,
+                    "offset": offset,
+                    "next_offset": next_offset,
+                    "has_more": has_more,
+                }
+            )
+        )
+
+    def _handle_tokens_update(self, body: dict) -> None:
+        """POST /tokens/update — update token annotations for one token row."""
+        self._ensure_tokens_table()
+
+        token_id_raw = body.get("token_id")
+        if token_id_raw is None:
+            self._send_error(
+                "token_id is required",
+                code=ERR_BAD_REQUEST,
+                http_status=400,
+            )
+            return
+        try:
+            token_id = int(token_id_raw)
+        except (TypeError, ValueError):
+            self._send_error(
+                "token_id must be an integer",
+                code=ERR_BAD_REQUEST,
+                http_status=400,
+            )
+            return
+        if token_id <= 0:
+            self._send_error(
+                "token_id must be a positive integer",
+                code=ERR_BAD_REQUEST,
+                http_status=400,
+            )
+            return
+
+        allowed = ("word", "lemma", "upos", "xpos", "feats", "misc")
+        updates: dict[str, object] = {}
+        for key in allowed:
+            if key not in body:
+                continue
+            value = body.get(key)
+            if value is None:
+                updates[key] = None
+            elif isinstance(value, str):
+                updates[key] = value
+            else:
+                self._send_error(
+                    f"{key} must be a string or null",
+                    code=ERR_BAD_REQUEST,
+                    http_status=400,
+                )
+                return
+        if not updates:
+            self._send_error(
+                "No updatable token fields provided (allowed: word, lemma, upos, xpos, feats, misc)",
+                code=ERR_BAD_REQUEST,
+                http_status=400,
+            )
+            return
+
+        set_clause = ", ".join(f"{field} = ?" for field in updates)
+        params = [*updates.values(), token_id]
+
+        with self._lock():
+            cur = self._conn().execute(
+                f"UPDATE tokens SET {set_clause} WHERE token_id = ?",
+                params,
+            )
+            self._conn().commit()
+            updated = cur.rowcount
+
+        if updated == 0:
+            self._send_error(
+                f"Unknown token_id: {token_id}",
+                code=ERR_NOT_FOUND,
+                http_status=404,
+            )
+            return
+
+        row = self._conn().execute(
+            """
+            SELECT
+                t.token_id,
+                u.doc_id,
+                t.unit_id,
+                u.n AS unit_n,
+                u.external_id,
+                t.sent_id,
+                t.position,
+                t.word,
+                t.lemma,
+                t.upos,
+                t.xpos,
+                t.feats,
+                t.misc
+            FROM tokens t
+            JOIN units u ON u.unit_id = t.unit_id
+            WHERE t.token_id = ?
+            """,
+            (token_id,),
+        ).fetchone()
+        if row is None:
+            self._send_error(
+                f"Unknown token_id: {token_id}",
+                code=ERR_NOT_FOUND,
+                http_status=404,
+            )
+            return
+
+        token = {
+            "token_id": row[0],
+            "doc_id": row[1],
+            "unit_id": row[2],
+            "unit_n": row[3],
+            "external_id": row[4],
+            "sent_id": row[5],
+            "position": row[6],
+            "word": row[7],
+            "lemma": row[8],
+            "upos": row[9],
+            "xpos": row[10],
+            "feats": row[11],
+            "misc": row[12],
+        }
+        self._send_json(success_payload({"updated": 1, "token": token}))
 
     def _handle_unit_context(self, qs: dict[str, list[str]]) -> None:
         """GET /unit/context?unit_id=N&window=N — reading window around a unit.
@@ -4257,6 +4939,159 @@ class _CorpusHandler(BaseHTTPRequestHandler):
     # ------------------------------------------------------------------
     # V0.4B — Exports
     # ------------------------------------------------------------------
+
+    def _handle_export_conllu(self, body: dict) -> None:
+        from multicorpus_engine.exporters.conllu_export import export_conllu
+
+        out_path = body.get("out_path")
+        if not isinstance(out_path, str) or not out_path.strip():
+            self._send_error("out_path is required", code=ERR_BAD_REQUEST, http_status=400)
+            return
+
+        raw_doc_ids = body.get("doc_ids")
+        doc_ids: list[int] | None = None
+        if raw_doc_ids is not None:
+            if not isinstance(raw_doc_ids, list):
+                self._send_error("doc_ids must be a list of integers", code=ERR_BAD_REQUEST, http_status=400)
+                return
+            try:
+                doc_ids = [int(x) for x in raw_doc_ids]
+            except (TypeError, ValueError):
+                self._send_error("doc_ids must be a list of integers", code=ERR_BAD_REQUEST, http_status=400)
+                return
+
+        with self._lock():
+            summary = export_conllu(
+                self._conn(),
+                output_path=out_path.strip(),
+                doc_ids=doc_ids,
+            )
+
+        self._send_json(success_payload(summary))
+
+    def _handle_export_token_query_csv(self, body: dict) -> None:
+        from multicorpus_engine.exporters.csv_export import export_csv
+        from multicorpus_engine.token_query import run_token_query_page
+
+        out_path = body.get("out_path")
+        if not isinstance(out_path, str) or not out_path.strip():
+            self._send_error("out_path is required", code=ERR_BAD_REQUEST, http_status=400)
+            return
+
+        raw_cql = body.get("cql")
+        if not isinstance(raw_cql, str) or not raw_cql.strip():
+            self._send_error("cql is required", code=ERR_BAD_REQUEST, http_status=400)
+            return
+        cql = raw_cql.strip()
+
+        mode = str(body.get("mode", "kwic")).strip().lower()
+        if mode not in {"segment", "kwic"}:
+            self._send_error("mode must be 'segment' or 'kwic'", code=ERR_BAD_REQUEST, http_status=400)
+            return
+
+        delimiter = body.get("delimiter", ",")
+        if delimiter not in {",", "\t"}:
+            self._send_error("delimiter must be ',' or '\\t'", code=ERR_BAD_REQUEST, http_status=400)
+            return
+
+        raw_window = body.get("window", 10)
+        try:
+            window = int(raw_window)
+        except (TypeError, ValueError):
+            self._send_error("window must be an integer >= 0", code=ERR_BAD_REQUEST, http_status=400)
+            return
+        if window < 0:
+            self._send_error("window must be >= 0", code=ERR_BAD_REQUEST, http_status=400)
+            return
+
+        language_raw = body.get("language")
+        language = str(language_raw).strip() if isinstance(language_raw, str) and language_raw.strip() else None
+
+        raw_doc_ids = body.get("doc_ids")
+        doc_ids: list[int] | None = None
+        if raw_doc_ids is not None:
+            if not isinstance(raw_doc_ids, list):
+                self._send_error("doc_ids must be a list of integers", code=ERR_BAD_REQUEST, http_status=400)
+                return
+            try:
+                doc_ids = [int(x) for x in raw_doc_ids]
+            except (TypeError, ValueError):
+                self._send_error("doc_ids must be a list of integers", code=ERR_BAD_REQUEST, http_status=400)
+                return
+
+        raw_max_hits = body.get("max_hits", 10000)
+        try:
+            max_hits = int(raw_max_hits)
+        except (TypeError, ValueError):
+            self._send_error("max_hits must be an integer in [1, 100000]", code=ERR_BAD_REQUEST, http_status=400)
+            return
+        if max_hits < 1 or max_hits > 100000:
+            self._send_error("max_hits must be in [1, 100000]", code=ERR_BAD_REQUEST, http_status=400)
+            return
+
+        with self._lock():
+            hits: list[dict] = []
+            offset = 0
+            while len(hits) < max_hits:
+                page_limit = min(200, max_hits - len(hits))
+                page = run_token_query_page(
+                    conn=self._conn(),
+                    cql=cql,
+                    mode=mode,
+                    window=window,
+                    language=language,
+                    doc_ids=doc_ids,
+                    limit=page_limit,
+                    offset=offset,
+                )
+                page_hits = page.get("hits", [])
+                if page_hits:
+                    hits.extend(page_hits)
+                if not page.get("has_more"):
+                    break
+                next_offset = page.get("next_offset")
+                if not isinstance(next_offset, int):
+                    break
+                offset = next_offset
+
+            out = export_csv(hits=hits, output_path=out_path.strip(), mode=mode, delimiter=delimiter)
+
+        self._send_json(success_payload({
+            "out_path": str(out),
+            "rows_written": len(hits),
+            "mode": mode,
+            "delimiter": delimiter,
+            "max_hits": max_hits,
+        }))
+
+    def _handle_export_ske(self, body: dict) -> None:
+        from multicorpus_engine.exporters.ske_export import export_ske
+
+        out_path = body.get("out_path")
+        if not isinstance(out_path, str) or not out_path.strip():
+            self._send_error("out_path is required", code=ERR_BAD_REQUEST, http_status=400)
+            return
+
+        raw_doc_ids = body.get("doc_ids")
+        doc_ids: list[int] | None = None
+        if raw_doc_ids is not None:
+            if not isinstance(raw_doc_ids, list):
+                self._send_error("doc_ids must be a list of integers", code=ERR_BAD_REQUEST, http_status=400)
+                return
+            try:
+                doc_ids = [int(x) for x in raw_doc_ids]
+            except (TypeError, ValueError):
+                self._send_error("doc_ids must be a list of integers", code=ERR_BAD_REQUEST, http_status=400)
+                return
+
+        with self._lock():
+            summary = export_ske(
+                self._conn(),
+                output_path=out_path.strip(),
+                doc_ids=doc_ids,
+            )
+
+        self._send_json(success_payload(summary))
 
     def _handle_export_tei(self, body: dict) -> None:
         from multicorpus_engine.exporters.tei import export_tei
@@ -5714,13 +6549,19 @@ class CorpusServer:
             raise RuntimeError("Sidecar DB connection is not initialized")
 
         if kind == "index":
-            from multicorpus_engine.indexer import build_index
+            from multicorpus_engine.indexer import build_index, update_index
 
-            progress_cb(10, "Rebuilding FTS index")
+            incremental = bool(params.get("incremental", False))
+            progress_cb(10, "Incremental FTS sync" if incremental else "Rebuilding FTS index")
             with lock:
-                units_indexed = build_index(conn)
+                if incremental:
+                    stats = update_index(conn, prune_deleted=True)
+                    result = {"incremental": True, **stats}
+                else:
+                    units_indexed = build_index(conn)
+                    result = {"units_indexed": units_indexed, "incremental": False}
             progress_cb(100, "Index rebuilt")
-            return {"units_indexed": units_indexed}
+            return result
 
         if kind == "curate":
             from multicorpus_engine.curation import (
@@ -5794,6 +6635,66 @@ class CorpusServer:
                 "status": "warnings" if has_errors else "ok",
                 "docs_validated": len(results),
                 "results": [r.to_dict() for r in results],
+            }
+
+        if kind == "annotate":
+            from multicorpus_engine.annotator import annotate_document
+
+            all_docs = bool(params.get("all_docs", False))
+            model_name = params.get("model")
+            if model_name is not None and not isinstance(model_name, str):
+                raise ValueError("annotate job expects params.model to be a string")
+
+            progress_cb(5, "Preparing annotation")
+            if all_docs:
+                # Resolve doc ids from the shared sidecar connection quickly under lock,
+                # then release lock for the potentially long NLP workload.
+                with lock:
+                    doc_ids = [
+                        int(r[0]) for r in conn.execute(
+                            "SELECT doc_id FROM documents ORDER BY doc_id"
+                        ).fetchall()
+                    ]
+                if not doc_ids:
+                    return {
+                        "docs_annotated": 0,
+                        "tokens_written": 0,
+                        "units_annotated": 0,
+                        "results": [],
+                        "model": model_name if isinstance(model_name, str) else None,
+                    }
+            else:
+                if "doc_id" not in params:
+                    raise ValueError("annotate job expects params.doc_id or params.all_docs=true")
+                doc_ids = [int(params["doc_id"])]
+
+            # Use a dedicated SQLite connection for annotation jobs so we do not
+            # monopolize the shared sidecar lock during spaCy processing.
+            job_conn = sqlite3.connect(str(self._db_path))
+            try:
+                job_conn.execute("PRAGMA foreign_keys=ON")
+                job_conn.execute("PRAGMA busy_timeout=5000")
+
+                results: list[dict[str, object]] = []
+                total_tokens = 0
+                total_units = 0
+                for idx, did in enumerate(doc_ids, start=1):
+                    pct = 5 + int(90 * (idx - 1) / max(len(doc_ids), 1))
+                    progress_cb(pct, f"Annotating doc #{did} ({idx}/{len(doc_ids)})")
+                    report = annotate_document(job_conn, doc_id=did, model_name=model_name)
+                    results.append(report)
+                    total_tokens += int(report.get("tokens_written", 0) or 0)
+                    total_units += int(report.get("units_annotated", 0) or 0)
+            finally:
+                job_conn.close()
+
+            progress_cb(100, "Annotation completed")
+            return {
+                "docs_annotated": len(results),
+                "units_annotated": total_units,
+                "tokens_written": total_tokens,
+                "results": results,
+                "model": model_name if isinstance(model_name, str) else None,
             }
 
         if kind == "segment":
@@ -5902,6 +6803,13 @@ class CorpusServer:
                         conn, path=file_path, language=language if language != "und" else None,
                         title=title, unit_element=tei_unit,
                         doc_role=doc_role, resource_type=resource_type,
+                        check_filename=check_filename,
+                    )
+                elif mode == "conllu":
+                    from multicorpus_engine.importers.conllu import import_conllu
+                    report = import_conllu(
+                        conn, path=file_path, language=language,
+                        title=title, doc_role=doc_role, resource_type=resource_type,
                         check_filename=check_filename,
                     )
                 else:

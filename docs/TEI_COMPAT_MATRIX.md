@@ -43,6 +43,16 @@
 | `tei_profile` | `"generic"` | Select metadata profile |
 | `status_filter` | `["accepted"]` | Filter alignment link statuses |
 
+## Import validation policy (B3)
+
+- **Blocking**: XML parse failures (`parse_error`) stop TEI import.
+- **Warning-only**: referential issues reported by `validate_tei_ids` do **not** block import:
+  - `broken_link_target`
+  - `duplicate_xml_id`
+- Import report (`warnings`) now includes a compact validation summary + actionable issue hints.
+
+This keeps import robust on heterogeneous corpora while preserving operator visibility.
+
 ## Alignment link format (TEI P5)
 
 ```xml
@@ -61,6 +71,15 @@
 | ParCoLab | `parcolab_like` | Requires `publisher`, `pubPlace`, `date`, `author` in meta_json |
 | Generic TEI P5 | `generic` | Any TEI-aware reader |
 | TEI Lite | `generic` | Subset compatibility |
+
+## Compatibility fixtures (validation coverage)
+
+| Fixture | Namespace style | Focus |
+|---|---|---|
+| `tests/fixtures/tei/tei_simple_div_p_s.xml` | TEI namespace | Baseline numbered `<p>` import/export |
+| `tests/fixtures/tei/tei_with_head_and_xmlid.xml` | TEI namespace | `<head>` + `xml:id` preservation |
+| `tests/fixtures/tei/tei_non_namespaced.xml` | no namespace | Parser/validator fallback path |
+| `tests/fixtures/tei/tei_mixed_content.xml` | TEI namespace | Mixed inline content + internal refs |
 
 ## V1.6.2 additions
 

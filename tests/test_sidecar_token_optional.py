@@ -7,6 +7,7 @@ import os
 import subprocess
 import sys
 import time
+from argparse import Namespace
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
@@ -336,3 +337,211 @@ def test_serve_replaces_stale_portfile_and_status_reports_states(tmp_path: Path)
     assert missing_status.stderr == ""
     missing_payload = _parse_single_json(missing_status.stdout, "status-missing")
     assert missing_payload["state"] == "missing"
+
+
+def test_cmd_serve_tolerates_stale_portfile_unlink_race(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    from multicorpus_engine import cli
+    from multicorpus_engine.sidecar import sidecar_portfile_path
+    import multicorpus_engine.sidecar as sidecar_mod
+
+    db_path = tmp_path / "unlink_race.db"
+    stale_portfile = sidecar_portfile_path(db_path)
+    stale_portfile.write_text("{}", encoding="utf-8")
+
+    class _DummyServer:
+        def __init__(self, db_path: Path, host: str, port: int, token: str | None) -> None:
+            self.actual_port = 44111
+            self.pid = 424242
+            self.started_at = "2026-04-09T00:00:00Z"
+            self.portfile_path = sidecar_portfile_path(db_path)
+            self.token = token
+
+        def start(self) -> None:
+            return
+
+        def join(self) -> None:
+            return
+
+        def shutdown(self) -> None:
+            return
+
+    def _fake_state(_db_path: Path) -> dict:
+        return {
+            "state": "stale",
+            "portfile": str(stale_portfile),
+            "reason": "unreachable_or_dead",
+        }
+
+    orig_exists = Path.exists
+    orig_unlink = Path.unlink
+
+    def _exists(self: Path) -> bool:
+        if self == stale_portfile:
+            return True
+        return orig_exists(self)
+
+    def _unlink(self: Path, *args, **kwargs) -> None:
+        if self == stale_portfile:
+            raise FileNotFoundError(self)
+        return orig_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(sidecar_mod, "inspect_sidecar_state", _fake_state)
+    monkeypatch.setattr(sidecar_mod, "CorpusServer", _DummyServer)
+    monkeypatch.setattr(Path, "exists", _exists)
+    monkeypatch.setattr(Path, "unlink", _unlink)
+
+    cli.cmd_serve(
+        Namespace(
+            db=str(db_path),
+            host="127.0.0.1",
+            port=0,
+            token="off",
+        )
+    )
+    out = capsys.readouterr().out
+    payload = _parse_single_json(out, "serve-unlink-race")
+    assert payload["status"] == "listening"
+    assert payload["port"] == 44111
+
+
+def test_serve_rapid_relaunch_loop_cleans_stale_state(tmp_path: Path) -> None:
+    from multicorpus_engine.sidecar import sidecar_portfile_path
+
+    db_path = tmp_path / "rapid_relaunch.db"
+    portfile = sidecar_portfile_path(db_path)
+
+    for _ in range(3):
+        proc = _spawn_serve(db_path, token="off")
+        try:
+            info = _wait_portfile(portfile)
+            base_url = f"http://{info['host']}:{info['port']}"
+            _wait_health(base_url)
+            code_s, shut = _http_json("POST", f"{base_url}/shutdown", {})
+            assert code_s == 200
+            assert shut["ok"] is True
+        finally:
+            try:
+                stdout, stderr = proc.communicate(timeout=10.0)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                stdout, stderr = proc.communicate(timeout=5.0)
+        assert proc.returncode == 0
+        assert stderr == ""
+        startup = _parse_single_json(stdout, "serve-rapid-relaunch")
+        assert startup["status"] == "listening"
+
+        deadline = time.time() + 5.0
+        while time.time() < deadline and portfile.exists():
+            time.sleep(0.05)
+        assert not portfile.exists()
+
+        missing_status = _run_cli(["status", "--db", str(db_path)])
+        assert missing_status.returncode == 0
+        assert missing_status.stderr == ""
+        missing_payload = _parse_single_json(missing_status.stdout, "status-missing-loop")
+        assert missing_payload["state"] == "missing"
+
+
+def test_forced_kill_process_recovers_via_stale_portfile(tmp_path: Path) -> None:
+    from multicorpus_engine.sidecar import sidecar_portfile_path
+
+    db_path = tmp_path / "forced_kill.db"
+    portfile = sidecar_portfile_path(db_path)
+
+    first = _spawn_serve(db_path, token="off")
+    try:
+        info = _wait_portfile(portfile)
+        base_url = f"http://{info['host']}:{info['port']}"
+        _wait_health(base_url)
+    finally:
+        # Simulate abrupt crash/kill (no graceful /shutdown).
+        first.kill()
+        try:
+            first_stdout, first_stderr = first.communicate(timeout=10.0)
+        except subprocess.TimeoutExpired:
+            first.kill()
+            first_stdout, first_stderr = first.communicate(timeout=5.0)
+
+    assert first.returncode != 0
+    assert first_stderr == ""
+    _parse_single_json(first_stdout, "serve-forced-kill-first")
+
+    # After abrupt kill, status should see stale state from lingering portfile.
+    stale_status = _run_cli(["status", "--db", str(db_path)])
+    assert stale_status.returncode == 0
+    assert stale_status.stderr == ""
+    stale_payload = _parse_single_json(stale_status.stdout, "status-stale-after-kill")
+    assert stale_payload["state"] == "stale"
+
+    # Restart must recover by replacing stale state and serving again.
+    second = _spawn_serve(db_path, token="off")
+    try:
+        deadline = time.time() + 10.0
+        running_payload: dict | None = None
+        while time.time() < deadline:
+            running_status = _run_cli(["status", "--db", str(db_path)])
+            if running_status.returncode == 0 and running_status.stderr == "":
+                payload = _parse_single_json(running_status.stdout, "status-running-after-kill")
+                if payload.get("state") == "running":
+                    running_payload = payload
+                    break
+            time.sleep(0.05)
+
+        assert running_payload is not None
+        base_url2 = f"http://{running_payload['host']}:{running_payload['port']}"
+        _wait_health(base_url2)
+        code_s, shut = _http_json("POST", f"{base_url2}/shutdown", {})
+        assert code_s == 200
+        assert shut["ok"] is True
+    finally:
+        try:
+            second_stdout, second_stderr = second.communicate(timeout=10.0)
+        except subprocess.TimeoutExpired:
+            second.kill()
+            second_stdout, second_stderr = second.communicate(timeout=5.0)
+
+    assert second.returncode == 0
+    assert second_stderr == ""
+    second_payload = _parse_single_json(second_stdout, "serve-forced-kill-second")
+    assert second_payload["status"] == "listening"
+
+    missing_status = _run_cli(["status", "--db", str(db_path)])
+    assert missing_status.returncode == 0
+    assert missing_status.stderr == ""
+    missing_payload = _parse_single_json(missing_status.stdout, "status-missing-after-recovery")
+    assert missing_payload["state"] == "missing"
+
+
+def test_inspect_state_pid_alive_but_unhealthy_is_stale(tmp_path: Path, monkeypatch) -> None:
+    from multicorpus_engine.sidecar import inspect_sidecar_state, sidecar_portfile_path
+    import multicorpus_engine.sidecar as sidecar_mod
+
+    db_path = tmp_path / "pid_reuse_sim.db"
+    portfile = sidecar_portfile_path(db_path)
+    portfile.write_text(
+        json.dumps(
+            {
+                "host": "127.0.0.1",
+                "port": 43210,
+                "pid": 54321,
+                "started_at": "2026-04-09T00:00:00Z",
+                "db_path": str(db_path),
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    # Simulate PID reuse / unrelated alive process on the same PID.
+    monkeypatch.setattr(sidecar_mod, "_pid_is_alive", lambda _pid: True)
+    # Endpoint does not answer healthy sidecar contract.
+    monkeypatch.setattr(sidecar_mod, "_health_check", lambda _host, _port, timeout=0.6: (False, None))
+
+    state = inspect_sidecar_state(db_path)
+    assert state["state"] == "stale"
+    assert state["reason"] == "unreachable_or_dead"
+    assert state["pid_alive"] is True
+    assert state["health_ok"] is False

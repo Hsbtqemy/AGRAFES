@@ -14,7 +14,9 @@ import type { Conn } from "../lib/sidecarClient.ts";
 import {
   listDocuments,
   getDocumentPreview,
+  listTokens,
   updateDocument,
+  updateToken,
   bulkUpdateDocuments,
   deleteDocuments,
   getDocRelations,
@@ -28,11 +30,13 @@ import {
   deleteDocRelation,
   backupDatabase,
   validateMeta,
+  annotate,
   getCorpusAudit,
   getFamilyCurationStatus,
   acknowledgeSourceChange,
   type DocumentRecord,
   type DocumentPreviewLine,
+  type TokenRecord,
   type DocRelationRecord,
   type CorpusAuditResult,
   type FamilyRecord,
@@ -44,6 +48,7 @@ import {
   SidecarError,
 } from "../lib/sidecarClient.ts";
 import { initCardAccordions } from "../lib/uiAccordions.ts";
+import type { JobCenter } from "../components/JobCenter.ts";
 
 const DOC_ROLES = ["standalone", "original", "translation", "excerpt", "unknown"];
 const RELATION_TYPES = ["translation_of", "excerpt_of"];
@@ -71,6 +76,11 @@ export class MetadataScreen {
   private _previewLoading = false;
   private _previewError: string | null = null;
   private _previewDocId: number | null = null;
+  private _tokenUnitId: number | null = null;
+  private _tokenRows: TokenRecord[] = [];
+  private _tokenLoading = false;
+  private _tokenError: string | null = null;
+  private _tokenSavingIds: Set<number> = new Set();
 
   // Hierarchy view
   private _hierarchyView = false;
@@ -98,6 +108,8 @@ export class MetadataScreen {
   private _auditRatioThreshold = 15;
   private _sortCol: SortCol = "id";
   private _sortDir: "asc" | "desc" = "asc";
+  private _jobCenter: JobCenter | null = null;
+  private _showToast: ((msg: string, isError?: boolean) => void) | null = null;
 
   setConn(conn: Conn | null): void {
     this._conn = conn;
@@ -111,6 +123,11 @@ export class MetadataScreen {
     this._previewError = null;
     this._previewDocId = null;
     this._previewLoading = false;
+    this._tokenUnitId = null;
+    this._tokenRows = [];
+    this._tokenLoading = false;
+    this._tokenError = null;
+    this._tokenSavingIds.clear();
     this._allRelations = [];
     this._allRelationsLoaded = false;
     this._families = [];
@@ -122,6 +139,11 @@ export class MetadataScreen {
       if (statusSel) statusSel.value = "all";
       this._refreshDocList();
     }
+  }
+
+  setJobCenter(jc: JobCenter, showToast: (msg: string, isError?: boolean) => void): void {
+    this._jobCenter = jc;
+    this._showToast = showToast;
   }
 
   hasPendingChanges(): boolean {
@@ -412,6 +434,11 @@ export class MetadataScreen {
       const isChecked = this._selectedDocIds.has(doc.doc_id);
       const wfStatus = this._workflowStatus(doc);
       const wfLabel  = this._workflowLabel(wfStatus);
+      const tokenCount = Number(doc.token_count ?? 0);
+      const annotationStatus = doc.annotation_status ?? (tokenCount > 0 ? "annotated" : "missing");
+      const annLabel = annotationStatus === "annotated"
+        ? `Annoté${tokenCount > 0 ? ` (${tokenCount})` : ""}`
+        : "Non annoté";
       tr.innerHTML = `
         <td class="col-check">
           <input class="meta-row-check" type="checkbox" data-id="${doc.doc_id}"
@@ -421,7 +448,10 @@ export class MetadataScreen {
         <td class="col-title" title="${this._esc(doc.title)}">${this._esc(this._truncateMid(doc.title))}</td>
         <td class="col-lang">${this._esc(doc.language)}</td>
         <td class="col-role">${this._esc(doc.doc_role ?? "—")}</td>
-        <td class="col-status"><span class="wf-pill wf-${wfStatus}">${wfLabel}</span></td>
+        <td class="col-status">
+          <span class="wf-pill wf-${wfStatus}">${wfLabel}</span>
+          <span class="ann-pill ${annotationStatus === "annotated" ? "ann-annotated" : "ann-missing"}" title="${this._esc(annLabel)}">A</span>
+        </td>
       `;
       tr.querySelector(".meta-row-check")!.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -541,6 +571,11 @@ export class MetadataScreen {
       const isChecked = this._selectedDocIds.has(doc.doc_id);
       const wfStatus = this._workflowStatus(doc);
       const wfLabel  = this._workflowLabel(wfStatus);
+      const tokenCount = Number(doc.token_count ?? 0);
+      const annotationStatus = doc.annotation_status ?? (tokenCount > 0 ? "annotated" : "missing");
+      const annLabel = annotationStatus === "annotated"
+        ? `Annoté${tokenCount > 0 ? ` (${tokenCount})` : ""}`
+        : "Non annoté";
       const indent   = depth > 0 ? `<span class="tree-connector" aria-hidden="true">└</span>` : "";
       const relBadge = relationLabel
         ? `<span class="tree-rel-badge">${this._esc(this._relLabel(relationLabel))}</span>`
@@ -560,7 +595,10 @@ export class MetadataScreen {
         </td>
         <td class="col-lang">${this._esc(doc.language)}</td>
         <td class="col-role">${this._esc(doc.doc_role ?? "—")}</td>
-        <td class="col-status"><span class="wf-pill wf-${wfStatus}">${wfLabel}</span></td>
+        <td class="col-status">
+          <span class="wf-pill wf-${wfStatus}">${wfLabel}</span>
+          <span class="ann-pill ${annotationStatus === "annotated" ? "ann-annotated" : "ann-missing"}" title="${this._esc(annLabel)}">A</span>
+        </td>
       `;
       tr.querySelector(".meta-row-check")!.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -670,6 +708,11 @@ export class MetadataScreen {
     this._previewError = null;
     this._previewLines = [];
     this._previewTotalLines = 0;
+    this._tokenUnitId = null;
+    this._tokenRows = [];
+    this._tokenLoading = false;
+    this._tokenError = null;
+    this._tokenSavingIds.clear();
     this._renderDocList();
     // Load relations
     if (this._conn) {
@@ -783,6 +826,7 @@ export class MetadataScreen {
         <button id="save-doc-btn" class="btn btn-primary btn-sm">Enregistrer</button>
         <button id="mark-review-btn" class="btn btn-secondary btn-sm">Marquer à revoir</button>
         <button id="mark-validated-btn" class="btn btn-secondary btn-sm">Valider ce document</button>
+        <button id="annotate-doc-btn" class="btn btn-secondary btn-sm">Annoter (spaCy)</button>
         ${propagateHtml}
       </div>
 
@@ -822,14 +866,24 @@ export class MetadataScreen {
         </div>
         <div id="meta-preview-panel"></div>
       </div>
+
+      <div class="meta-token-editor">
+        <div class="meta-token-head">
+          <h4 style="font-size:0.88rem;font-weight:600;margin:0">Édition token par token</h4>
+          <span class="hint" style="margin:0">Modifiez lemma / UPOS / XPOS / FEATS / MISC pour une unité.</span>
+        </div>
+        <div id="meta-token-editor-panel"></div>
+      </div>
     `;
 
     this._renderRelationsList();
     this._renderPreviewPanel();
+    this._renderTokenEditorPanel();
 
     this._editPanelEl.querySelector("#save-doc-btn")!.addEventListener("click", () => this._saveDoc());
     this._editPanelEl.querySelector("#mark-review-btn")!.addEventListener("click", () => this._setWorkflowStatus("review"));
     this._editPanelEl.querySelector("#mark-validated-btn")!.addEventListener("click", () => this._setWorkflowStatus("validated"));
+    this._editPanelEl.querySelector("#annotate-doc-btn")!.addEventListener("click", () => void this._runAnnotateDoc());
     this._editPanelEl.querySelector("#add-rel-btn")!.addEventListener("click", () => this._addRelation());
 
     this._editPanelEl.querySelector<HTMLButtonElement>("#inherit-author-btn")
@@ -875,6 +929,7 @@ export class MetadataScreen {
         const familyId = Number(btn.dataset.familyId);
         void this._curationFamilyFlow(familyId, btn);
       });
+
   }
 
   private _familyPanelHtml(doc: DocumentRecord): string {
@@ -1696,6 +1751,45 @@ export class MetadataScreen {
     }
   }
 
+  private async _runAnnotateDoc(): Promise<void> {
+    if (!this._conn || !this._selectedDoc) return;
+    const doc = this._selectedDoc;
+    const btn = this._editPanelEl.querySelector<HTMLButtonElement>("#annotate-doc-btn");
+    if (btn?.disabled) return;
+    if (btn) btn.disabled = true;
+    try {
+      const job = await annotate(this._conn, { doc_id: doc.doc_id });
+      this._log(`⏳ Annotation soumise pour doc #${doc.doc_id} (job ${job.job_id}).`);
+      this._showToast?.(`✓ Annotation lancée pour #${doc.doc_id}`);
+
+      if (this._jobCenter) {
+        this._jobCenter.trackJob(job.job_id, `Annotation #${doc.doc_id}`, (done) => {
+          if (done.status === "done") {
+            const result = (done.result ?? {}) as Record<string, unknown>;
+            const tokens = Number(result.tokens_written ?? 0);
+            this._log(`✓ Annotation terminée pour #${doc.doc_id} (${tokens} token(s)).`);
+            this._showToast?.(`✓ Annotation #${doc.doc_id} terminée (${tokens} token(s)).`);
+            void this._refreshDocList();
+          } else if (done.status === "canceled") {
+            this._log(`↩ Annotation annulée pour #${doc.doc_id}.`, true);
+            this._showToast?.(`↩ Annotation #${doc.doc_id} annulée.`, true);
+          } else {
+            this._log(`✗ Annotation en erreur pour #${doc.doc_id}: ${done.error ?? "erreur inconnue"}`, true);
+            this._showToast?.(`✗ Annotation #${doc.doc_id} en erreur`, true);
+          }
+          const annotateBtn = this._editPanelEl.querySelector<HTMLButtonElement>("#annotate-doc-btn");
+          if (annotateBtn) annotateBtn.disabled = false;
+        });
+      } else if (btn) {
+        btn.disabled = false;
+      }
+    } catch (err) {
+      this._log(`Erreur annotation: ${err instanceof SidecarError ? err.message : String(err)}`, true);
+      this._showToast?.("✗ Impossible de lancer l'annotation", true);
+      if (btn) btn.disabled = false;
+    }
+  }
+
   private async _runDbBackup(): Promise<void> {
     if (!this._conn) return;
     const btn = this._root.querySelector<HTMLButtonElement>("#db-backup-btn");
@@ -1750,14 +1844,17 @@ export class MetadataScreen {
 
     if (this._previewLoading) {
       panel.innerHTML = `<p class="empty-hint">Chargement de l'aperçu…</p>`;
+      this._renderTokenEditorPanel();
       return;
     }
     if (this._previewError) {
       panel.innerHTML = `<p class="empty-hint" style="color:var(--color-danger)">Aperçu indisponible: ${this._esc(this._previewError)}</p>`;
+      this._renderTokenEditorPanel();
       return;
     }
     if (this._previewLines.length === 0) {
       panel.innerHTML = `<p class="empty-hint">Aucune ligne disponible pour ce document.</p>`;
+      this._renderTokenEditorPanel();
       return;
     }
 
@@ -1772,6 +1869,185 @@ export class MetadataScreen {
         }).join("")}
       </div>
     `;
+    this._renderTokenEditorPanel();
+  }
+
+  private _bindTokenEditorEvents(): void {
+    const unitSel = this._editPanelEl.querySelector<HTMLSelectElement>("#meta-token-unit");
+    unitSel?.addEventListener("change", () => {
+      const raw = unitSel.value;
+      this._tokenUnitId = raw ? Number(raw) : null;
+    });
+
+    const loadBtn = this._editPanelEl.querySelector<HTMLButtonElement>("#meta-token-load-btn");
+    loadBtn?.addEventListener("click", () => void this._loadTokensForSelectedUnit());
+
+    const wrap = this._editPanelEl.querySelector<HTMLElement>("#meta-token-table-wrap");
+    wrap?.addEventListener("click", (ev) => {
+      const btn = (ev.target as HTMLElement).closest<HTMLButtonElement>(".meta-token-save-btn");
+      if (!btn) return;
+      const tokenId = Number(btn.dataset.tokenId);
+      if (!Number.isInteger(tokenId) || tokenId <= 0) return;
+      const row = btn.closest<HTMLElement>(".meta-token-row");
+      if (!row) return;
+      void this._saveTokenRow(tokenId, row, btn);
+    });
+  }
+
+  private _renderTokenEditorPanel(): void {
+    const panel = this._editPanelEl.querySelector<HTMLElement>("#meta-token-editor-panel");
+    const doc = this._selectedDoc;
+    if (!panel || !doc) return;
+
+    const unitOptions = this._previewLines.map((line) => {
+      const marker = line.external_id != null ? `[${String(line.external_id).padStart(4, "0")}]` : `[n${line.n}]`;
+      const label = `${marker} ${line.text}`.trim();
+      const selected = this._tokenUnitId === line.unit_id ? " selected" : "";
+      return `<option value="${line.unit_id}"${selected}>${this._esc(this._truncateMid(label, 70))}</option>`;
+    }).join("");
+
+    const hasRows = this._tokenRows.length > 0;
+    const status = this._tokenError
+      ? `<span class="meta-token-status err">${this._esc(this._tokenError)}</span>`
+      : hasRows
+        ? `<span class="meta-token-status ok">${this._tokenRows.length} token(s) chargé(s)</span>`
+        : `<span class="meta-token-status">Aucun token chargé.</span>`;
+
+    panel.innerHTML = `
+      <div class="meta-token-toolbar">
+        <label>Unité
+          <select id="meta-token-unit">
+            <option value="">— choisir dans l’aperçu —</option>
+            ${unitOptions}
+          </select>
+        </label>
+        <button id="meta-token-load-btn" class="btn btn-secondary btn-sm"${this._tokenLoading ? " disabled" : ""}>
+          ${this._tokenLoading ? "Chargement…" : "Charger tokens"}
+        </button>
+        ${status}
+      </div>
+      <div id="meta-token-table-wrap" class="meta-token-table-wrap">
+        ${
+          !hasRows
+            ? '<p class="empty-hint">Chargez une unité pour éditer ses annotations tokenisées.</p>'
+            : `
+            <table class="meta-token-table" aria-label="Édition token par token">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Word</th>
+                  <th>Lemma</th>
+                  <th>UPOS</th>
+                  <th>XPOS</th>
+                  <th>FEATS</th>
+                  <th>MISC</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                ${this._tokenRows.map((tok) => `
+                  <tr class="meta-token-row" data-token-id="${tok.token_id}">
+                    <td class="meta-token-pos">${tok.position}</td>
+                    <td><input data-field="word" type="text" value="${this._esc(tok.word ?? "")}"></td>
+                    <td><input data-field="lemma" type="text" value="${this._esc(tok.lemma ?? "")}"></td>
+                    <td><input data-field="upos" type="text" value="${this._esc(tok.upos ?? "")}"></td>
+                    <td><input data-field="xpos" type="text" value="${this._esc(tok.xpos ?? "")}"></td>
+                    <td><input data-field="feats" type="text" value="${this._esc(tok.feats ?? "")}"></td>
+                    <td><input data-field="misc" type="text" value="${this._esc(tok.misc ?? "")}"></td>
+                    <td>
+                      <button class="btn btn-secondary btn-sm meta-token-save-btn" data-token-id="${tok.token_id}"${this._tokenSavingIds.has(tok.token_id) ? " disabled" : ""}>
+                        ${this._tokenSavingIds.has(tok.token_id) ? "…" : "Enregistrer"}
+                      </button>
+                    </td>
+                  </tr>
+                `).join("")}
+              </tbody>
+            </table>
+            `
+        }
+      </div>
+    `;
+    this._bindTokenEditorEvents();
+  }
+
+  private async _loadTokensForSelectedUnit(): Promise<void> {
+    if (!this._conn || !this._selectedDoc) return;
+    const unitSel = this._editPanelEl.querySelector<HTMLSelectElement>("#meta-token-unit");
+    const rawUnit = unitSel?.value ?? "";
+    const unitId = rawUnit ? Number(rawUnit) : this._tokenUnitId;
+    if (!unitId || !Number.isInteger(unitId) || unitId <= 0) {
+      this._tokenError = "Sélectionnez une unité dans l’aperçu avant de charger les tokens.";
+      this._tokenRows = [];
+      this._renderTokenEditorPanel();
+      return;
+    }
+
+    this._tokenUnitId = unitId;
+    this._tokenLoading = true;
+    this._tokenError = null;
+    this._renderTokenEditorPanel();
+
+    try {
+      const res = await listTokens(this._conn, {
+        doc_id: this._selectedDoc.doc_id,
+        unit_id: unitId,
+        limit: 1000,
+        offset: 0,
+      });
+      if (this._selectedDoc.doc_id !== res.doc_id) return;
+      this._tokenRows = res.tokens ?? [];
+      if (this._tokenRows.length === 0) {
+        this._tokenError = "Aucun token disponible pour cette unité (import CoNLL-U ou annotation requis).";
+      } else {
+        this._tokenError = null;
+      }
+    } catch (err) {
+      this._tokenRows = [];
+      this._tokenError = err instanceof SidecarError ? err.message : String(err);
+    } finally {
+      this._tokenLoading = false;
+      this._renderTokenEditorPanel();
+    }
+  }
+
+  private async _saveTokenRow(tokenId: number, row: HTMLElement, btn: HTMLButtonElement): Promise<void> {
+    if (!this._conn || !this._selectedDoc) return;
+    if (this._tokenSavingIds.has(tokenId)) return;
+
+    const getField = (name: "word" | "lemma" | "upos" | "xpos" | "feats" | "misc"): string | null => {
+      const input = row.querySelector<HTMLInputElement>(`input[data-field="${name}"]`);
+      if (!input) return null;
+      const value = input.value;
+      return value === "" ? null : value;
+    };
+
+    const payload = {
+      token_id: tokenId,
+      word: getField("word"),
+      lemma: getField("lemma"),
+      upos: getField("upos"),
+      xpos: getField("xpos"),
+      feats: getField("feats"),
+      misc: getField("misc"),
+    };
+
+    this._tokenSavingIds.add(tokenId);
+    btn.disabled = true;
+    try {
+      const res = await updateToken(this._conn, payload);
+      this._tokenRows = this._tokenRows.map((tok) => (tok.token_id === tokenId ? res.token : tok));
+      this._tokenError = null;
+      this._log(`✓ Token #${tokenId} mis à jour (doc #${res.token.doc_id}, unité ${res.token.unit_n}).`);
+      this._showToast?.(`✓ Token #${tokenId} enregistré`);
+    } catch (err) {
+      const msg = err instanceof SidecarError ? err.message : String(err);
+      this._tokenError = msg;
+      this._log(`Erreur mise à jour token #${tokenId}: ${msg}`, true);
+      this._showToast?.("✗ Impossible d’enregistrer le token", true);
+    } finally {
+      this._tokenSavingIds.delete(tokenId);
+      this._renderTokenEditorPanel();
+    }
   }
 
   // ── Helpers ─────────────────────────────────────────────────────────────────

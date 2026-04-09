@@ -152,6 +152,17 @@ def test_documents_update_requires_token(v04_sidecar) -> None:
     assert payload["error"]["type"] == ERR_UNAUTHORIZED
 
 
+def test_tokens_update_requires_token(v04_sidecar) -> None:
+    from multicorpus_engine.sidecar_contract import ERR_UNAUTHORIZED
+
+    code, payload = _post(
+        f"{v04_sidecar['base_url']}/tokens/update",
+        {"token_id": 1, "lemma": "x"},
+    )
+    assert code == 401
+    assert payload["error"]["type"] == ERR_UNAUTHORIZED
+
+
 def test_documents_bulk_update(v04_sidecar) -> None:
     base_url = v04_sidecar["base_url"]
     token = v04_sidecar["token"]
@@ -370,6 +381,165 @@ def test_export_tei_requires_token(v04_sidecar, tmp_path: Path) -> None:
 def test_export_tei_missing_out_dir_is_400(v04_sidecar) -> None:
     from multicorpus_engine.sidecar_contract import ERR_BAD_REQUEST
     code, payload = _post(f"{v04_sidecar['base_url']}/export/tei", {}, token=v04_sidecar["token"])
+    assert code == 400
+    assert payload["error"]["type"] == ERR_BAD_REQUEST
+
+
+def test_export_conllu_creates_file(v04_sidecar, tmp_path: Path) -> None:
+    base_url = v04_sidecar["base_url"]
+    token = v04_sidecar["token"]
+
+    conllu_src = tmp_path / "sample.conllu"
+    conllu_src.write_text(
+        (
+            "# sent_id = 1\n"
+            "# text = Le livre arrive.\n"
+            "1\tLe\tle\tDET\t_\t_\t0\troot\t_\t_\n"
+            "2\tlivre\tlivre\tNOUN\t_\t_\t1\tnsubj\t_\t_\n"
+            "3\tarrive\tarriver\tVERB\t_\t_\t2\troot\t_\t_\n"
+            "\n"
+        ),
+        encoding="utf-8",
+    )
+    import_code, import_payload = _post(
+        f"{base_url}/import",
+        {
+            "mode": "conllu",
+            "path": str(conllu_src),
+            "language": "fr",
+            "title": "CONLLU FR",
+        },
+        token=token,
+    )
+    assert import_code == 200, import_payload
+    doc_id = import_payload["doc_id"]
+
+    out_path = tmp_path / "tokens_export.conllu"
+    code, payload = _post(
+        f"{base_url}/export/conllu",
+        {"out_path": str(out_path), "doc_ids": [doc_id]},
+        token=token,
+    )
+    assert code == 200, payload
+    assert payload["ok"] is True
+    assert payload["out_path"] == str(out_path)
+    assert payload["docs_written"] == 1
+    assert payload["sentences_written"] >= 1
+    assert payload["tokens_written"] >= 3
+    assert out_path.exists()
+    content = out_path.read_text(encoding="utf-8")
+    assert f"# newdoc id = {doc_id}" in content
+    assert "\tDET\t" in content
+    assert "\tNOUN\t" in content
+    assert "\tVERB\t" in content
+
+
+def test_export_conllu_requires_token(v04_sidecar, tmp_path: Path) -> None:
+    from multicorpus_engine.sidecar_contract import ERR_UNAUTHORIZED
+
+    code, payload = _post(
+        f"{v04_sidecar['base_url']}/export/conllu",
+        {"out_path": str(tmp_path / "x.conllu")},
+    )
+    assert code == 401
+    assert payload["error"]["type"] == ERR_UNAUTHORIZED
+
+
+def test_export_conllu_missing_out_path_is_400(v04_sidecar) -> None:
+    from multicorpus_engine.sidecar_contract import ERR_BAD_REQUEST
+
+    code, payload = _post(
+        f"{v04_sidecar['base_url']}/export/conllu",
+        {},
+        token=v04_sidecar["token"],
+    )
+    assert code == 400
+    assert payload["error"]["type"] == ERR_BAD_REQUEST
+
+
+def test_export_token_query_csv_requires_token(v04_sidecar, tmp_path: Path) -> None:
+    from multicorpus_engine.sidecar_contract import ERR_UNAUTHORIZED
+
+    code, payload = _post(
+        f"{v04_sidecar['base_url']}/export/token_query_csv",
+        {
+            "out_path": str(tmp_path / "token_hits.csv"),
+            "cql": '[word = "Bonjour"]',
+            "mode": "kwic",
+        },
+    )
+    assert code == 401
+    assert payload["error"]["type"] == ERR_UNAUTHORIZED
+
+
+def test_export_ske_creates_file(v04_sidecar, tmp_path: Path) -> None:
+    base_url = v04_sidecar["base_url"]
+    token = v04_sidecar["token"]
+
+    conllu_src = tmp_path / "ske_sample.conllu"
+    conllu_src.write_text(
+        (
+            "# sent_id = 1\n"
+            "# text = Le livre rouge arrive.\n"
+            "1\tLe\tle\tDET\t_\t_\t0\troot\t_\t_\n"
+            "2\tlivre\tlivre\tNOUN\t_\t_\t1\tnsubj\t_\t_\n"
+            "3\trouge\trouge\tADJ\t_\t_\t2\tamod\t_\t_\n"
+            "4\tarrive\tarriver\tVERB\t_\t_\t2\troot\t_\t_\n"
+            "\n"
+        ),
+        encoding="utf-8",
+    )
+    import_code, import_payload = _post(
+        f"{base_url}/import",
+        {
+            "mode": "conllu",
+            "path": str(conllu_src),
+            "language": "fr",
+            "title": "SKE FR",
+        },
+        token=token,
+    )
+    assert import_code == 200, import_payload
+    doc_id = import_payload["doc_id"]
+
+    out_path = tmp_path / "export.ske"
+    code, payload = _post(
+        f"{base_url}/export/ske",
+        {"out_path": str(out_path), "doc_ids": [doc_id]},
+        token=token,
+    )
+    assert code == 200, payload
+    assert payload["ok"] is True
+    assert payload["out_path"] == str(out_path)
+    assert payload["docs_written"] == 1
+    assert payload["sentences_written"] >= 1
+    assert payload["tokens_written"] >= 4
+    text = out_path.read_text(encoding="utf-8")
+    assert f'<doc id="{doc_id}"' in text
+    assert "<s id=" in text
+    assert "\tDET\t" in text
+    assert "\tNOUN\t" in text
+
+
+def test_export_ske_requires_token(v04_sidecar, tmp_path: Path) -> None:
+    from multicorpus_engine.sidecar_contract import ERR_UNAUTHORIZED
+
+    code, payload = _post(
+        f"{v04_sidecar['base_url']}/export/ske",
+        {"out_path": str(tmp_path / "x.ske")},
+    )
+    assert code == 401
+    assert payload["error"]["type"] == ERR_UNAUTHORIZED
+
+
+def test_export_ske_missing_out_path_is_400(v04_sidecar) -> None:
+    from multicorpus_engine.sidecar_contract import ERR_BAD_REQUEST
+
+    code, payload = _post(
+        f"{v04_sidecar['base_url']}/export/ske",
+        {},
+        token=v04_sidecar["token"],
+    )
     assert code == 400
     assert payload["error"]["type"] == ERR_BAD_REQUEST
 

@@ -516,6 +516,23 @@
           }
         ]
       },
+      "AnnotateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "all_docs": {
+            "default": false,
+            "type": "boolean"
+          },
+          "doc_id": {
+            "type": "integer"
+          },
+          "model": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "BaseResponse": {
         "additionalProperties": true,
         "properties": {
@@ -1157,6 +1174,13 @@
       "DocumentRecord": {
         "additionalProperties": false,
         "properties": {
+          "annotation_status": {
+            "enum": [
+              "missing",
+              "annotated"
+            ],
+            "type": "string"
+          },
           "author_firstname": {
             "nullable": true,
             "type": "string"
@@ -1183,8 +1207,19 @@
             "nullable": true,
             "type": "string"
           },
+          "source_hash": {
+            "nullable": true,
+            "type": "string"
+          },
+          "source_path": {
+            "nullable": true,
+            "type": "string"
+          },
           "title": {
             "type": "string"
+          },
+          "token_count": {
+            "type": "integer"
           },
           "unit_count": {
             "type": "integer"
@@ -1388,6 +1423,24 @@
         ],
         "type": "object"
       },
+      "ExportConlluRequest": {
+        "properties": {
+          "doc_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "out_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "out_path"
+        ],
+        "type": "object"
+      },
       "ExportRunReportRequest": {
         "properties": {
           "format": {
@@ -1403,6 +1456,24 @@
           },
           "run_id": {
             "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "out_path"
+        ],
+        "type": "object"
+      },
+      "ExportSkeRequest": {
+        "properties": {
+          "doc_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "out_path": {
             "type": "string"
           }
         },
@@ -1472,6 +1543,59 @@
             "type": "integer"
           }
         },
+        "type": "object"
+      },
+      "ExportTokenQueryCsvRequest": {
+        "properties": {
+          "cql": {
+            "type": "string"
+          },
+          "delimiter": {
+            "default": ",",
+            "enum": [
+              ",",
+              "\t"
+            ],
+            "type": "string"
+          },
+          "doc_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "language": {
+            "nullable": true,
+            "type": "string"
+          },
+          "max_hits": {
+            "default": 10000,
+            "maximum": 100000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "mode": {
+            "default": "kwic",
+            "enum": [
+              "segment",
+              "kwic"
+            ],
+            "type": "string"
+          },
+          "out_path": {
+            "type": "string"
+          },
+          "window": {
+            "default": 10,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "out_path",
+          "cql"
+        ],
         "type": "object"
       },
       "FamilyAlignPairResult": {
@@ -1769,7 +1893,8 @@
               "docx_paragraphs",
               "odt_paragraphs",
               "odt_numbered_lines",
-              "tei"
+              "tei",
+              "conllu"
             ],
             "type": "string"
           },
@@ -1831,6 +1956,16 @@
           }
         ]
       },
+      "IndexRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "incremental": {
+            "description": "If true, runs incremental FTS sync (insert/refresh/prune) instead of full rebuild.",
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
       "IndexResponse": {
         "allOf": [
           {
@@ -1838,6 +1973,18 @@
           },
           {
             "properties": {
+              "deleted": {
+                "type": "integer"
+              },
+              "incremental": {
+                "type": "boolean"
+              },
+              "inserted": {
+                "type": "integer"
+              },
+              "refreshed": {
+                "type": "integer"
+              },
               "run_id": {
                 "type": "string"
               },
@@ -1908,7 +2055,8 @@
               "export_run_report",
               "export_tei_package",
               "export_readable_text",
-              "qa_report"
+              "qa_report",
+              "annotate"
             ],
             "type": "string"
           },
@@ -2335,6 +2483,11 @@
       "SegmentPreviewRequest": {
         "additionalProperties": false,
         "properties": {
+          "calibrate_to": {
+            "description": "doc_id of reference document; adds a ratio warning if segment counts differ by > 15 %",
+            "nullable": true,
+            "type": "integer"
+          },
           "doc_id": {
             "type": "integer"
           },
@@ -2379,6 +2532,14 @@
           },
           {
             "properties": {
+              "calibrate_ratio_pct": {
+                "nullable": true,
+                "type": "integer"
+              },
+              "calibrate_to": {
+                "nullable": true,
+                "type": "integer"
+              },
               "doc_id": {
                 "type": "integer"
               },
@@ -2546,6 +2707,205 @@
           }
         ]
       },
+      "TokenQueryHit": {
+        "properties": {
+          "context_tokens": {
+            "items": {
+              "$ref": "#/components/schemas/TokenQueryToken"
+            },
+            "type": "array"
+          },
+          "doc_id": {
+            "type": "integer"
+          },
+          "end_position": {
+            "type": "integer"
+          },
+          "external_id": {
+            "nullable": true,
+            "type": "integer"
+          },
+          "language": {
+            "type": "string"
+          },
+          "left": {
+            "type": "string"
+          },
+          "match": {
+            "type": "string"
+          },
+          "right": {
+            "type": "string"
+          },
+          "sent_id": {
+            "type": "integer"
+          },
+          "start_position": {
+            "type": "integer"
+          },
+          "text": {
+            "type": "string"
+          },
+          "text_norm": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "tokens": {
+            "items": {
+              "$ref": "#/components/schemas/TokenQueryToken"
+            },
+            "type": "array"
+          },
+          "unit_id": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "doc_id",
+          "unit_id",
+          "external_id",
+          "language",
+          "title",
+          "sent_id",
+          "start_position",
+          "end_position",
+          "tokens",
+          "context_tokens"
+        ],
+        "type": "object"
+      },
+      "TokenQueryRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "cql": {
+            "type": "string"
+          },
+          "doc_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "language": {
+            "type": "string"
+          },
+          "limit": {
+            "default": 50,
+            "maximum": 200,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "mode": {
+            "default": "kwic",
+            "enum": [
+              "segment",
+              "kwic"
+            ],
+            "type": "string"
+          },
+          "offset": {
+            "default": 0,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "window": {
+            "default": 10,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "cql"
+        ],
+        "type": "object"
+      },
+      "TokenQueryResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BaseResponse"
+          },
+          {
+            "properties": {
+              "count": {
+                "type": "integer"
+              },
+              "has_more": {
+                "type": "boolean"
+              },
+              "hits": {
+                "items": {
+                  "$ref": "#/components/schemas/TokenQueryHit"
+                },
+                "type": "array"
+              },
+              "limit": {
+                "type": "integer"
+              },
+              "next_offset": {
+                "nullable": true,
+                "type": "integer"
+              },
+              "offset": {
+                "type": "integer"
+              },
+              "run_id": {
+                "type": "string"
+              },
+              "total": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "run_id",
+              "count",
+              "hits",
+              "limit",
+              "offset",
+              "next_offset",
+              "has_more",
+              "total"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "TokenQueryToken": {
+        "properties": {
+          "feats": {
+            "nullable": true,
+            "type": "string"
+          },
+          "lemma": {
+            "nullable": true,
+            "type": "string"
+          },
+          "position": {
+            "type": "integer"
+          },
+          "token_id": {
+            "type": "integer"
+          },
+          "upos": {
+            "nullable": true,
+            "type": "string"
+          },
+          "word": {
+            "nullable": true,
+            "type": "string"
+          },
+          "xpos": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "token_id",
+          "position"
+        ],
+        "type": "object"
+      },
       "UnitsMergeRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2697,8 +3057,8 @@
   "info": {
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
-    "version": "1.6.10",
-    "x-contract-version": "1.6.10"
+    "version": "1.6.19",
+    "x-contract-version": "1.6.19"
   },
   "openapi": "3.0.3",
   "paths": {
@@ -3082,6 +3442,58 @@
           }
         },
         "summary": "Suggest candidate target units for retargeting an alignment link"
+      }
+    },
+    "/annotate": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnnotateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobAcceptedResponse"
+                }
+              }
+            },
+            "description": "Annotation job accepted"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "summary": "Enqueue automatic annotation job(s) with spaCy"
       }
     },
     "/corpus/audit": {
@@ -3672,6 +4084,37 @@
         "summary": "Export interleaved bilingual text (HTML or TXT) or return inline preview"
       }
     },
+    "/export/conllu": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportConlluRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "File written"
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "summary": "Export token annotations as CoNLL-U"
+      }
+    },
     "/export/run_report": {
       "post": {
         "requestBody": {
@@ -3701,6 +4144,37 @@
           }
         ],
         "summary": "Export run history as JSONL or HTML"
+      }
+    },
+    "/export/ske": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportSkeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "File written"
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "summary": "Export token annotations as Sketch Engine-style vertical file"
       }
     },
     "/export/tei": {
@@ -3755,6 +4229,37 @@
           }
         },
         "summary": "Export aligned pairs to TMX 1.4 format (single pair or whole family)"
+      }
+    },
+    "/export/token_query_csv": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportTokenQueryCsvRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "File written"
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "summary": "Export token_query hits to CSV/TSV"
       }
     },
     "/families": {
@@ -3938,6 +4443,16 @@
     },
     "/index": {
       "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IndexRequest"
+              }
+            }
+          },
+          "required": false
+        },
         "responses": {
           "200": {
             "content": {
@@ -4446,6 +4961,53 @@
           }
         },
         "summary": "Gracefully stop sidecar process"
+      }
+    },
+    "/token_query": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TokenQueryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenQueryResponse"
+                }
+              }
+            },
+            "description": "Token query result"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Run token-level CQL query"
       }
     },
     "/units/merge": {

@@ -27,6 +27,7 @@ from ..unicode_policy import count_sep, normalize
 from .import_guard import assert_not_duplicate_import
 import json
 from .docx_numbered_lines import ImportReport, _analyze_external_ids
+from ..utils.tei_validate import validate_tei_tree, summarize_tei_validation
 
 _TEI_NS = "http://www.tei-c.org/ns/1.0"
 _XML_NS = "http://www.w3.org/XML/1998/namespace"
@@ -165,6 +166,7 @@ def import_tei(
         raise ValueError(f"TEI file is not valid XML: {exc}") from exc
 
     root = tree.getroot()
+    tei_validation_issues = validate_tei_tree(root, source_path=str(path))
 
     # Resolve title and language from TEI header if not supplied
     tei_title = title or _get_title(root) or path.stem
@@ -251,6 +253,30 @@ def import_tei(
         msg = f"Holes in external_id sequence: {holes}"
         report.warnings.append(msg)
         log.warning(msg)
+    if tei_validation_issues:
+        summary = summarize_tei_validation(tei_validation_issues)
+        type_bits = ", ".join(
+            f"{kind}={count}" for kind, count in sorted(summary["by_type"].items())
+        )
+        report.warnings.append(
+            f"TEI validation warnings ({summary['total']}): {type_bits}. "
+            "Import policy: warning-only (document imported)."
+        )
+        for issue in tei_validation_issues[:5]:
+            kind = issue.get("type", "validation_issue")
+            if kind == "broken_link_target":
+                report.warnings.append(
+                    f"TEI warning broken_link_target: ref={issue.get('ref')} target={issue.get('target')}"
+                )
+            elif kind == "duplicate_xml_id":
+                report.warnings.append(
+                    f"TEI warning duplicate_xml_id: xml_id={issue.get('xml_id')} occurrences={issue.get('occurrences')}"
+                )
+        if len(tei_validation_issues) > 5:
+            report.warnings.append(
+                f"TEI validation warnings truncated: {len(tei_validation_issues) - 5} more issue(s)."
+            )
+        log.warning("TEI validation issues for %s: %s", path, summary)
 
     log.info("TEI import complete: %d %s units", report.units_total, unit_element)
     return report

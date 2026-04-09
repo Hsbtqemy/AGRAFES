@@ -215,6 +215,20 @@ summary:focus-visible,
 .wf-review { background: #fff3cd; color: #8a5a00; }
 .wf-validated { background: #d4edda; color: var(--color-ok); }
 .wf-meta { font-size: 0.72rem; color: var(--color-muted); }
+.ann-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.1rem;
+  height: 1.1rem;
+  margin-left: 0.25rem;
+  border-radius: 999px;
+  font-size: 0.64rem;
+  font-weight: 700;
+  line-height: 1;
+}
+.ann-annotated { background: #d4edda; color: #14532d; }
+.ann-missing { background: #eef1f4; color: #6b7280; }
 
 /* Log pane */
 .log-pane { background: #1a1a2e; color: #c8d6e5; font-family: monospace; font-size: 0.78rem;
@@ -552,6 +566,59 @@ details[open] > .import-log-summary::before {
   font-variant-numeric: tabular-nums;
 }
 
+/* CoNLL-U preview card (Sprint A) */
+.import-screen .imp-conllu-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--prep-sp-2, 8px);
+}
+.import-screen .imp-conllu-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--prep-sp-2, 8px);
+}
+.import-screen .imp-conllu-file {
+  margin: 0;
+  font-weight: 600;
+  color: var(--color-text, #1e2936);
+  word-break: break-word;
+}
+.import-screen .imp-conllu-summary {
+  margin: 0;
+  color: var(--prep-muted, #4f5d6d);
+}
+.import-screen .imp-conllu-table-wrap {
+  max-height: min(32vh, 300px);
+  overflow: auto;
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-radius: var(--prep-radius-sm, 8px);
+  background: #fff;
+}
+.import-screen .imp-conllu-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--prep-fs-sm, 12px);
+}
+.import-screen .imp-conllu-table th,
+.import-screen .imp-conllu-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid #f1f5f9;
+  text-align: left;
+  vertical-align: top;
+}
+.import-screen .imp-conllu-table th {
+  position: sticky;
+  top: 0;
+  background: #f8fafc;
+  z-index: 1;
+  font-weight: 700;
+  color: #334155;
+}
+.import-screen .imp-conllu-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
 /* Layout: scrollable region + footer docked at bottom of pane.
    Doit inclure .active : sinon display:flex (2 classes) bat .screen { display:none } (1 classe)
    et l’écran Import reste visible sur toutes les vues. */
@@ -725,6 +792,80 @@ details[open] > .import-log-summary::before {
 .meta-preview-marker {
   color: #5a6470;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+.meta-token-editor {
+  margin-top: 0.8rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: #fbfdfc;
+  padding: 0.6rem 0.7rem;
+}
+.meta-token-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.45rem;
+}
+.meta-token-toolbar {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.45rem;
+}
+.meta-token-toolbar label {
+  min-width: 260px;
+  flex: 1 1 320px;
+}
+.meta-token-status {
+  font-size: 0.77rem;
+  color: var(--color-muted);
+}
+.meta-token-status.ok {
+  color: var(--color-ok, #1d6f42);
+}
+.meta-token-status.err {
+  color: var(--color-danger);
+}
+.meta-token-table-wrap {
+  border: 1px solid #e7ecea;
+  border-radius: 6px;
+  background: #fff;
+  max-height: 340px;
+  overflow: auto;
+}
+.meta-token-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.meta-token-table th,
+.meta-token-table td {
+  border-bottom: 1px solid #eff3f1;
+  padding: 5px 6px;
+  vertical-align: middle;
+}
+.meta-token-table th {
+  position: sticky;
+  top: 0;
+  background: #f5f8f6;
+  z-index: 1;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: #496070;
+}
+.meta-token-table td input {
+  width: 100%;
+  min-width: 90px;
+  font-size: 12px;
+  padding: 5px 6px;
+}
+.meta-token-table .meta-token-pos {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  color: #5b6571;
+  min-width: 30px;
 }
 .export-legacy-toggle-card {
   background: #f8fbfa;
@@ -1164,7 +1305,7 @@ details[open] > .audit-section-summary::before { transform: rotate(90deg); }
 .meta-doc-table .col-id     { width: 40px; font-size: 12px; color: var(--color-muted, #64748b); white-space: nowrap; }
 .meta-doc-table .col-lang   { width: 46px; font-size: 12px; white-space: nowrap; }
 .meta-doc-table .col-role   { width: 76px; font-size: 12px; color: var(--color-muted, #64748b); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.meta-doc-table .col-status { width: 66px; white-space: nowrap; }
+.meta-doc-table .col-status { width: 92px; white-space: nowrap; }
 .meta-doc-table .col-title  { max-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
 .meta-doc-table input[type="checkbox"] { width: 15px; height: 15px; margin: 0; cursor: pointer; }
 

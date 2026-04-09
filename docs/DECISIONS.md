@@ -492,7 +492,9 @@ web dependencies.
 - Sidecar lifecycle is deterministic and easier to integrate from Tauri.
 - Default persistent mode is safer on localhost without breaking compatibility:
   `--token off` preserves previous open behavior.
-- Advanced auth (scoped tokens, rotation, ACL) remains explicit backlog.
+- Localhost threat model and wrapper token lifecycle guidance are now documented
+  in `docs/SIDECAR_SECURITY_POSTURE.md`.
+- Advanced auth (scoped tokens, server-side expiry, ACL) remains explicit backlog.
 
 ---
 

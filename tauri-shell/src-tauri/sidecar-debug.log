@@ -1,0 +1,388 @@
+[1775648702] INFO [prep-sidecar 2026-04-08T11:45:02.454Z] ensureRunning called (db=/Users/hsmy/Dev/AGRAFES/tauri-shell/public/demo/agrafes_demo.db)
+[1775648702] INFO [prep-sidecar 2026-04-08T11:45:02.454Z] checking sidecar portfile at /Users/hsmy/Dev/AGRAFES/tauri-shell/public/demo/.agrafes_sidecar.json
+[1775648702] INFO [prep-sidecar 2026-04-08T11:45:02.466Z] spawning new sidecar process
+[1775648702] INFO [prep-sidecar 2026-04-08T11:45:02.469Z] resolved sidecar path candidate: /Users/hsmy/Dev/AGRAFES/tauri-shell/src-tauri/target/debug/multicorpus (exists=false)
+[1775648702] INFO [prep-sidecar 2026-04-08T11:45:02.469Z] spawn config | {"at":"2026-04-08T11:45:02.469Z","program":"multicorpus","args":["serve","--db","/Users/hsmy/Dev/AGRAFES/tauri-shell/public/demo/agrafes_demo.db","--host","127.0.0.1","--port","0","--token","auto"],"cwd":null,"dbPath":"/Users/hsmy/Dev/AGRAFES/tauri-shell/public/demo/agrafes_demo.db"}
+[1775648702] INFO [prep-sidecar 2026-04-08T11:45:02.470Z] waiting for sidecar startup JSON | {"timeoutMs":12000,"startedAt":"2026-04-08T11:45:02.470Z","deadlineAt":"2026-04-08T11:45:14.470Z"}
+[1775648702] INFO [prep-sidecar 2026-04-08T11:45:02.476Z] sidecar spawned (pid=83534) after 6ms
+[1775648706] INFO [prep-sidecar 2026-04-08T11:45:06.749Z] ensureRunning called (db=/Users/hsmy/Dev/AGRAFES/tauri-shell/public/demo/agrafes_demo.db)
+[1775648706] INFO [prep-sidecar 2026-04-08T11:45:06.749Z] checking sidecar portfile at /Users/hsmy/Dev/AGRAFES/tauri-shell/public/demo/.agrafes_sidecar.json
+[1775648706] INFO [prep-sidecar 2026-04-08T11:45:06.754Z] spawning new sidecar process
+[1775648706] INFO [prep-sidecar 2026-04-08T11:45:06.757Z] resolved sidecar path candidate: /Users/hsmy/Dev/AGRAFES/tauri-shell/src-tauri/target/debug/multicorpus (exists=false)
+[1775648706] INFO [prep-sidecar 2026-04-08T11:45:06.757Z] spawn config | {"at":"2026-04-08T11:45:06.757Z","program":"multicorpus","args":["serve","--db","/Users/hsmy/Dev/AGRAFES/tauri-shell/public/demo/agrafes_demo.db","--host","127.0.0.1","--port","0","--token","auto"],"cwd":null,"dbPath":"/Users/hsmy/Dev/AGRAFES/tauri-shell/public/demo/agrafes_demo.db"}
+[1775648706] INFO [prep-sidecar 2026-04-08T11:45:06.758Z] waiting for sidecar startup JSON | {"timeoutMs":12000,"startedAt":"2026-04-08T11:45:06.758Z","deadlineAt":"2026-04-08T11:45:18.758Z"}
+[1775648706] INFO [prep-sidecar 2026-04-08T11:45:06.760Z] sidecar spawned (pid=83557) after 2ms
+[1775648717] INFO [prep-sidecar 2026-04-08T11:45:17.890Z] startup payload candidate | {"run_id":"46d412f2-0ff1-492a-8fc9-2f8d922540ff","status":"already_running","host":"127.0.0.1","port":60967,"pid":83551,"started_at":"2026-04-08T11:45:15Z","portfile":"/Users/hsmy/Dev/AGRAFES/tauri-shell/public/demo/.agrafes_sidecar.json","token_required":true,"token":"pwglEfBQ5urLdKwWtcODiMgqs42cV2Rc","log":"/Users/hsmy/Dev/AGRAFES/tauri-shell/public/demo/runs/46d412f2-0ff1-492a-8fc9-2f8d922540ff/run.log","created_at":"2026-04-08T11:45:17Z"}
+[1775648717] INFO [prep-sidecar 2026-04-08T11:45:17.892Z] startup payload selected | {"run_id":"46d412f2-0ff1-492a-8fc9-2f8d922540ff","status":"already_running","host":"127.0.0.1","port":60967,"pid":83551,"started_at":"2026-04-08T11:45:15Z","portfile":"/Users/hsmy/Dev/AGRAFES/tauri-shell/public/demo/.agrafes_sidecar.json","token_required":true,"token":"pwglEfBQ5urLdKwWtcODiMgqs42cV2Rc","log":"/Users/hsmy/Dev/AGRAFES/tauri-shell/public/demo/runs/46d412f2-0ff1-492a-8fc9-2f8d922540ff/run.log","created_at":"2026-04-08T11:45:17Z"}
+[1775648717] INFO [prep-sidecar 2026-04-08T11:45:17.892Z] polling sidecar health on http://127.0.0.1:60967/health | {"timeoutMs":15000,"initialDelayMs":0,"intervalMs":350}
+[1775648717] INFO [prep-sidecar 2026-04-08T11:45:17.893Z] health polling started | {"baseUrl":"http://127.0.0.1:60967","healthUrl":"http://127.0.0.1:60967/health","loopbackBackendMode":"tauri_only","globalFetchTimeoutMs":1500,"timeoutMs":15000,"initialDelayMs":0,"intervalMs":350,"perAttemptTimeoutMs":3500,"startedAt":"2026-04-08T11:45:17.893Z"}
+[1775648717] INFO [prep-sidecar 2026-04-08T11:45:17.893Z] health polling attempt started | {"baseUrl":"http://127.0.0.1:60967","healthUrl":"http://127.0.0.1:60967/health","attempt":1,"attemptStartedAt":"2026-04-08T11:45:17.893Z","elapsedSincePollStartMs":0}
+[1775648717] INFO [prep-sidecar 2026-04-08T11:45:17.893Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/health"}
+[1775648717] INFO [prep-sidecar 2026-04-08T11:45:17.911Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/health","status":200,"ok":true}
+[1775648717] INFO [prep-sidecar 2026-04-08T11:45:17.912Z] health polling attempt OK | {"baseUrl":"http://127.0.0.1:60967","healthUrl":"http://127.0.0.1:60967/health","attempt":1,"status":200,"elapsedMs":19,"totalElapsedMs":19,"payload":{"ok":true,"api_version":"1.6.10","version":"0.6.1","status":"ok","pid":83551,"started_at":"2026-04-08T11:45:15Z","host":"127.0.0.1","port":60967,"portfile":"/Users/hsmy/Dev/AGRAFES/tauri-shell/public/demo/.agrafes_sidecar.json","token_required":true}}
+[1775648717] INFO [prep-sidecar 2026-04-08T11:45:17.913Z] sidecar healthy at http://127.0.0.1:60967 (token=present) | {"tokenSource":"startup_payload","tokenLength":32}
+[1775648717] INFO [prep-sidecar 2026-04-08T11:45:17.935Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents"}
+[1775648717] INFO [prep-sidecar 2026-04-08T11:45:17.935Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents"}
+[1775648717] INFO [prep-sidecar 2026-04-08T11:45:17.935Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents"}
+[1775648717] INFO [prep-sidecar 2026-04-08T11:45:17.936Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/corpus/info"}
+[1775648717] WARN [prep-sidecar 2026-04-08T11:45:17.936Z] sidecar command close event while waiting for startup payload | {"code":0,"signal":null,"seenCandidates":1,"lastCandidate":{"run_id":"46d412f2-0ff1-492a-8fc9-2f8d922540ff","status":"already_running","host":"127.0.0.1","port":60967,"pid":83551,"started_at":"2026-04-08T11:45:15Z","portfile":"/Users/hsmy/Dev/AGRAFES/tauri-shell/public/demo/.agrafes_sidecar.json","token_required":true,"token":"pwglEfBQ5urLdKwWtcODiMgqs42cV2Rc","log":"/Users/hsmy/Dev/AGRAFES/tauri-shell/public/demo/runs/46d412f2-0ff1-492a-8fc9-2f8d922540ff/run.log","created_at":"2026-04-08T11:45:17Z"},"closedAt":"2026-04-08T11:45:17.936Z"}
+[1775648717] WARN [prep-sidecar 2026-04-08T11:45:17.936Z] sidecar process closed | {"pid":83557,"code":0,"signal":null,"closedAt":"2026-04-08T11:45:17.936Z"}
+[1775648717] INFO [prep-sidecar 2026-04-08T11:45:17.964Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents","status":200,"ok":true}
+[1775648717] INFO [prep-sidecar 2026-04-08T11:45:17.976Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/doc_relations/all"}
+[1775648717] INFO [prep-sidecar 2026-04-08T11:45:17.976Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents","status":200,"ok":true}
+[1775648717] INFO [prep-sidecar 2026-04-08T11:45:17.977Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents","status":200,"ok":true}
+[1775648717] INFO [prep-sidecar 2026-04-08T11:45:17.978Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/corpus/info","status":200,"ok":true}
+[1775648717] INFO [prep-sidecar 2026-04-08T11:45:17.984Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/doc_relations/all","status":200,"ok":true}
+[1775648731] INFO [prep-sidecar 2026-04-08T11:45:31.590Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents"}
+[1775648731] INFO [prep-sidecar 2026-04-08T11:45:31.622Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents","status":200,"ok":true}
+[1775648947] INFO [prep-sidecar 2026-04-08T11:49:07.639Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents"}
+[1775648947] INFO [prep-sidecar 2026-04-08T11:49:07.749Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents","status":200,"ok":true}
+[1775649430] INFO [prep-sidecar 2026-04-08T11:57:10.172Z] ensureRunning called (db=/Users/hsmy/Dev/AGRAFES/tauri-shell/public/demo/agrafes_demo.db)
+[1775649430] INFO [prep-sidecar 2026-04-08T11:57:10.181Z] checking sidecar portfile at /Users/hsmy/Dev/AGRAFES/tauri-shell/public/demo/.agrafes_sidecar.json
+[1775649430] INFO [prep-sidecar 2026-04-08T11:57:10.208Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/health"}
+[1775649430] INFO [prep-sidecar 2026-04-08T11:57:10.251Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/health","status":200,"ok":true}
+[1775649430] INFO [prep-sidecar 2026-04-08T11:57:10.251Z] reusing sidecar from portfile (http://127.0.0.1:60967) | {"tokenPresent":true,"tokenLength":32}
+[1775649430] INFO [prep-sidecar 2026-04-08T11:57:10.266Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents"}
+[1775649430] INFO [prep-sidecar 2026-04-08T11:57:10.267Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents"}
+[1775649430] INFO [prep-sidecar 2026-04-08T11:57:10.267Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents"}
+[1775649430] INFO [prep-sidecar 2026-04-08T11:57:10.268Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/corpus/info"}
+[1775649430] INFO [prep-sidecar 2026-04-08T11:57:10.356Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents","status":200,"ok":true}
+[1775649430] INFO [prep-sidecar 2026-04-08T11:57:10.357Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents","status":200,"ok":true}
+[1775649430] INFO [prep-sidecar 2026-04-08T11:57:10.358Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents","status":200,"ok":true}
+[1775649430] INFO [prep-sidecar 2026-04-08T11:57:10.359Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/doc_relations/all"}
+[1775649430] INFO [prep-sidecar 2026-04-08T11:57:10.360Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/corpus/info","status":200,"ok":true}
+[1775649430] INFO [prep-sidecar 2026-04-08T11:57:10.362Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/doc_relations/all","status":200,"ok":true}
+[1775649432] INFO [prep-sidecar 2026-04-08T11:57:12.533Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/doc_relations?doc_id=1"}
+[1775649432] INFO [prep-sidecar 2026-04-08T11:57:12.538Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/doc_relations?doc_id=1","status":200,"ok":true}
+[1775649432] INFO [prep-sidecar 2026-04-08T11:57:12.540Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=1&limit=6"}
+[1775649432] INFO [prep-sidecar 2026-04-08T11:57:12.552Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=1&limit=6","status":200,"ok":true}
+[1775649434] INFO [prep-sidecar 2026-04-08T11:57:14.167Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/doc_relations?doc_id=1"}
+[1775649434] INFO [prep-sidecar 2026-04-08T11:57:14.174Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/doc_relations?doc_id=1","status":200,"ok":true}
+[1775649434] INFO [prep-sidecar 2026-04-08T11:57:14.176Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=1&limit=6"}
+[1775649434] INFO [prep-sidecar 2026-04-08T11:57:14.179Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=1&limit=6","status":200,"ok":true}
+[1775649434] INFO [prep-sidecar 2026-04-08T11:57:14.388Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/doc_relations?doc_id=1"}
+[1775649434] INFO [prep-sidecar 2026-04-08T11:57:14.392Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/doc_relations?doc_id=1","status":200,"ok":true}
+[1775649434] INFO [prep-sidecar 2026-04-08T11:57:14.393Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=1&limit=6"}
+[1775649434] INFO [prep-sidecar 2026-04-08T11:57:14.395Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=1&limit=6","status":200,"ok":true}
+[1775649434] INFO [prep-sidecar 2026-04-08T11:57:14.917Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/doc_relations?doc_id=1"}
+[1775649434] INFO [prep-sidecar 2026-04-08T11:57:14.926Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/doc_relations?doc_id=1","status":200,"ok":true}
+[1775649434] INFO [prep-sidecar 2026-04-08T11:57:14.928Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=1&limit=6"}
+[1775649434] INFO [prep-sidecar 2026-04-08T11:57:14.933Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=1&limit=6","status":200,"ok":true}
+[1775649435] INFO [prep-sidecar 2026-04-08T11:57:15.133Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/doc_relations?doc_id=1"}
+[1775649435] INFO [prep-sidecar 2026-04-08T11:57:15.141Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/doc_relations?doc_id=1","status":200,"ok":true}
+[1775649435] INFO [prep-sidecar 2026-04-08T11:57:15.143Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=1&limit=6"}
+[1775649435] INFO [prep-sidecar 2026-04-08T11:57:15.147Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=1&limit=6","status":200,"ok":true}
+[1775649444] INFO [prep-sidecar 2026-04-08T11:57:24.137Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/curate/preview"}
+[1775649444] INFO [prep-sidecar 2026-04-08T11:57:24.253Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/curate/preview","status":200,"ok":true}
+[1775649444] INFO [prep-sidecar 2026-04-08T11:57:24.265Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/curate/exceptions"}
+[1775649444] INFO [prep-sidecar 2026-04-08T11:57:24.267Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/curate/exceptions","status":200,"ok":true}
+[1775649452] INFO [prep-sidecar 2026-04-08T11:57:32.749Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/curate/preview"}
+[1775649452] INFO [prep-sidecar 2026-04-08T11:57:32.767Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/curate/preview","status":200,"ok":true}
+[1775649452] INFO [prep-sidecar 2026-04-08T11:57:32.770Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/curate/exceptions"}
+[1775649452] INFO [prep-sidecar 2026-04-08T11:57:32.774Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/curate/exceptions","status":200,"ok":true}
+[1775649455] INFO [prep-sidecar 2026-04-08T11:57:35.017Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/curate/preview"}
+[1775649455] INFO [prep-sidecar 2026-04-08T11:57:35.028Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/curate/preview","status":200,"ok":true}
+[1775649455] INFO [prep-sidecar 2026-04-08T11:57:35.033Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/curate/exceptions"}
+[1775649455] INFO [prep-sidecar 2026-04-08T11:57:35.036Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/curate/exceptions","status":200,"ok":true}
+[1775649456] INFO [prep-sidecar 2026-04-08T11:57:36.929Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/curate/preview"}
+[1775649456] INFO [prep-sidecar 2026-04-08T11:57:36.943Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/curate/preview","status":200,"ok":true}
+[1775649456] INFO [prep-sidecar 2026-04-08T11:57:36.945Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/curate/exceptions"}
+[1775649456] INFO [prep-sidecar 2026-04-08T11:57:36.949Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/curate/exceptions","status":200,"ok":true}
+[1775649467] INFO [prep-sidecar 2026-04-08T11:57:47.693Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/curate/preview"}
+[1775649467] INFO [prep-sidecar 2026-04-08T11:57:47.709Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/curate/preview","status":200,"ok":true}
+[1775649467] INFO [prep-sidecar 2026-04-08T11:57:47.712Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/curate/exceptions"}
+[1775649467] INFO [prep-sidecar 2026-04-08T11:57:47.716Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/curate/exceptions","status":200,"ok":true}
+[1775649471] INFO [prep-sidecar 2026-04-08T11:57:51.828Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/curate/preview"}
+[1775649471] INFO [prep-sidecar 2026-04-08T11:57:51.839Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/curate/preview","status":200,"ok":true}
+[1775649471] INFO [prep-sidecar 2026-04-08T11:57:51.842Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/curate/exceptions"}
+[1775649471] INFO [prep-sidecar 2026-04-08T11:57:51.847Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/curate/exceptions","status":200,"ok":true}
+[1775649480] INFO [prep-sidecar 2026-04-08T11:58:00.400Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents"}
+[1775649480] INFO [prep-sidecar 2026-04-08T11:58:00.405Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents","status":200,"ok":true}
+[1775649480] INFO [prep-sidecar 2026-04-08T11:58:00.413Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/doc_relations/all"}
+[1775649480] INFO [prep-sidecar 2026-04-08T11:58:00.416Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/doc_relations/all","status":200,"ok":true}
+[1775649482] INFO [prep-sidecar 2026-04-08T11:58:02.887Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/curate/preview"}
+[1775649482] INFO [prep-sidecar 2026-04-08T11:58:02.901Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/curate/preview","status":200,"ok":true}
+[1775649482] INFO [prep-sidecar 2026-04-08T11:58:02.904Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/curate/exceptions"}
+[1775649482] INFO [prep-sidecar 2026-04-08T11:58:02.908Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/curate/exceptions","status":200,"ok":true}
+[1775649744] INFO [prep-sidecar 2026-04-08T12:02:24.156Z] ensureRunning called (db=/Users/hsmy/Dev/AGRAFES/tauri-shell/public/demo/agrafes_demo.db)
+[1775649744] INFO [prep-sidecar 2026-04-08T12:02:24.165Z] checking sidecar portfile at /Users/hsmy/Dev/AGRAFES/tauri-shell/public/demo/.agrafes_sidecar.json
+[1775649744] INFO [prep-sidecar 2026-04-08T12:02:24.190Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/health"}
+[1775649744] INFO [prep-sidecar 2026-04-08T12:02:24.236Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/health","status":200,"ok":true}
+[1775649744] INFO [prep-sidecar 2026-04-08T12:02:24.236Z] reusing sidecar from portfile (http://127.0.0.1:60967) | {"tokenPresent":true,"tokenLength":32}
+[1775649744] INFO [prep-sidecar 2026-04-08T12:02:24.252Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents"}
+[1775649744] INFO [prep-sidecar 2026-04-08T12:02:24.252Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents"}
+[1775649744] INFO [prep-sidecar 2026-04-08T12:02:24.253Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents"}
+[1775649744] INFO [prep-sidecar 2026-04-08T12:02:24.253Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/corpus/info"}
+[1775649744] INFO [prep-sidecar 2026-04-08T12:02:24.267Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents","status":200,"ok":true}
+[1775649744] INFO [prep-sidecar 2026-04-08T12:02:24.268Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/corpus/info","status":200,"ok":true}
+[1775649744] INFO [prep-sidecar 2026-04-08T12:02:24.268Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents","status":200,"ok":true}
+[1775649744] INFO [prep-sidecar 2026-04-08T12:02:24.269Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents","status":200,"ok":true}
+[1775649744] INFO [prep-sidecar 2026-04-08T12:02:24.271Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/doc_relations/all"}
+[1775649744] INFO [prep-sidecar 2026-04-08T12:02:24.273Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/doc_relations/all","status":200,"ok":true}
+[1775649746] INFO [prep-sidecar 2026-04-08T12:02:26.514Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/doc_relations?doc_id=1"}
+[1775649746] INFO [prep-sidecar 2026-04-08T12:02:26.523Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/doc_relations?doc_id=1","status":200,"ok":true}
+[1775649746] INFO [prep-sidecar 2026-04-08T12:02:26.526Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=1&limit=6"}
+[1775649746] INFO [prep-sidecar 2026-04-08T12:02:26.533Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=1&limit=6","status":200,"ok":true}
+[1775649751] INFO [prep-sidecar 2026-04-08T12:02:31.729Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/curate/preview"}
+[1775649751] INFO [prep-sidecar 2026-04-08T12:02:31.736Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/curate/preview","status":200,"ok":true}
+[1775649751] INFO [prep-sidecar 2026-04-08T12:02:31.738Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=1&limit=300"}
+[1775649751] INFO [prep-sidecar 2026-04-08T12:02:31.741Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/curate/exceptions"}
+[1775649751] INFO [prep-sidecar 2026-04-08T12:02:31.743Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=1&limit=300","status":200,"ok":true}
+[1775649751] INFO [prep-sidecar 2026-04-08T12:02:31.744Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/curate/exceptions","status":200,"ok":true}
+[1775649778] INFO [prep-sidecar 2026-04-08T12:02:58.856Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/curate/preview"}
+[1775649778] INFO [prep-sidecar 2026-04-08T12:02:58.881Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/curate/preview","status":200,"ok":true}
+[1775649778] INFO [prep-sidecar 2026-04-08T12:02:58.881Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=2&limit=300"}
+[1775649778] INFO [prep-sidecar 2026-04-08T12:02:58.883Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/curate/exceptions"}
+[1775649778] INFO [prep-sidecar 2026-04-08T12:02:58.885Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/curate/exceptions","status":200,"ok":true}
+[1775649778] INFO [prep-sidecar 2026-04-08T12:02:58.889Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=2&limit=300","status":200,"ok":true}
+[1775649782] INFO [prep-sidecar 2026-04-08T12:03:02.536Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/curate/preview"}
+[1775649782] INFO [prep-sidecar 2026-04-08T12:03:02.545Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/curate/preview","status":200,"ok":true}
+[1775649782] INFO [prep-sidecar 2026-04-08T12:03:02.546Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=3&limit=300"}
+[1775649782] INFO [prep-sidecar 2026-04-08T12:03:02.548Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/curate/exceptions"}
+[1775649782] INFO [prep-sidecar 2026-04-08T12:03:02.551Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/curate/exceptions","status":200,"ok":true}
+[1775649782] INFO [prep-sidecar 2026-04-08T12:03:02.553Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=3&limit=300","status":200,"ok":true}
+[1775649786] INFO [prep-sidecar 2026-04-08T12:03:06.288Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/curate/preview"}
+[1775649786] INFO [prep-sidecar 2026-04-08T12:03:06.300Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/curate/preview","status":200,"ok":true}
+[1775649786] INFO [prep-sidecar 2026-04-08T12:03:06.302Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=1&limit=300"}
+[1775649786] INFO [prep-sidecar 2026-04-08T12:03:06.305Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/curate/exceptions"}
+[1775649786] INFO [prep-sidecar 2026-04-08T12:03:06.308Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/curate/exceptions","status":200,"ok":true}
+[1775649786] INFO [prep-sidecar 2026-04-08T12:03:06.310Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=1&limit=300","status":200,"ok":true}
+[1775649795] INFO [prep-sidecar 2026-04-08T12:03:15.342Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/curate/preview"}
+[1775649795] INFO [prep-sidecar 2026-04-08T12:03:15.353Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/curate/preview","status":200,"ok":true}
+[1775649795] INFO [prep-sidecar 2026-04-08T12:03:15.354Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=2&limit=300"}
+[1775649795] INFO [prep-sidecar 2026-04-08T12:03:15.356Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/curate/exceptions"}
+[1775649795] INFO [prep-sidecar 2026-04-08T12:03:15.360Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/curate/exceptions","status":200,"ok":true}
+[1775649795] INFO [prep-sidecar 2026-04-08T12:03:15.362Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=2&limit=300","status":200,"ok":true}
+[1775649799] INFO [prep-sidecar 2026-04-08T12:03:19.589Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/curate/preview"}
+[1775649799] INFO [prep-sidecar 2026-04-08T12:03:19.607Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/curate/preview","status":200,"ok":true}
+[1775649799] INFO [prep-sidecar 2026-04-08T12:03:19.608Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=1&limit=300"}
+[1775649799] INFO [prep-sidecar 2026-04-08T12:03:19.610Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/curate/exceptions"}
+[1775649799] INFO [prep-sidecar 2026-04-08T12:03:19.614Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/curate/exceptions","status":200,"ok":true}
+[1775649799] INFO [prep-sidecar 2026-04-08T12:03:19.615Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=1&limit=300","status":200,"ok":true}
+[1775649807] INFO [prep-sidecar 2026-04-08T12:03:27.373Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/curate/preview"}
+[1775649807] INFO [prep-sidecar 2026-04-08T12:03:27.384Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/curate/preview","status":200,"ok":true}
+[1775649807] INFO [prep-sidecar 2026-04-08T12:03:27.385Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=1&limit=300"}
+[1775649807] INFO [prep-sidecar 2026-04-08T12:03:27.387Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/curate/exceptions"}
+[1775649807] INFO [prep-sidecar 2026-04-08T12:03:27.390Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/curate/exceptions","status":200,"ok":true}
+[1775649807] INFO [prep-sidecar 2026-04-08T12:03:27.392Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=1&limit=300","status":200,"ok":true}
+[1775649837] INFO [prep-sidecar 2026-04-08T12:03:57.106Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=1&limit=200"}
+[1775649837] INFO [prep-sidecar 2026-04-08T12:03:57.111Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview"}
+[1775649837] INFO [prep-sidecar 2026-04-08T12:03:57.112Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/detect_markers"}
+[1775649837] INFO [prep-sidecar 2026-04-08T12:03:57.152Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=1&limit=200","status":200,"ok":true}
+[1775649837] INFO [prep-sidecar 2026-04-08T12:03:57.153Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/detect_markers","status":200,"ok":true}
+[1775649837] INFO [prep-sidecar 2026-04-08T12:03:57.153Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview","status":200,"ok":true}
+[1775649843] INFO [prep-sidecar 2026-04-08T12:04:03.348Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview"}
+[1775649843] INFO [prep-sidecar 2026-04-08T12:04:03.376Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview","status":200,"ok":true}
+[1775649845] INFO [prep-sidecar 2026-04-08T12:04:05.264Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview"}
+[1775649845] INFO [prep-sidecar 2026-04-08T12:04:05.285Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview","status":200,"ok":true}
+[1775649850] INFO [prep-sidecar 2026-04-08T12:04:10.947Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview"}
+[1775649850] INFO [prep-sidecar 2026-04-08T12:04:10.966Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview","status":200,"ok":true}
+[1775649855] INFO [prep-sidecar 2026-04-08T12:04:15.463Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview"}
+[1775649855] INFO [prep-sidecar 2026-04-08T12:04:15.486Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview","status":200,"ok":true}
+[1775649856] INFO [prep-sidecar 2026-04-08T12:04:16.880Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/detect_markers"}
+[1775649856] INFO [prep-sidecar 2026-04-08T12:04:16.885Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/detect_markers","status":200,"ok":true}
+[1775649863] INFO [prep-sidecar 2026-04-08T12:04:23.896Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/align/audit"}
+[1775649863] INFO [prep-sidecar 2026-04-08T12:04:23.908Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/align/audit","status":200,"ok":true}
+[1775649887] INFO [prep-sidecar 2026-04-08T12:04:47.686Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/jobs/enqueue"}
+[1775649887] INFO [prep-sidecar 2026-04-08T12:04:47.731Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/jobs/enqueue","status":202,"ok":true}
+[1775649887] INFO [prep-sidecar 2026-04-08T12:04:47.733Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/jobs/186315ad-cc17-4d72-8792-a693e4c4decf"}
+[1775649887] INFO [prep-sidecar 2026-04-08T12:04:47.739Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/jobs/186315ad-cc17-4d72-8792-a693e4c4decf","status":200,"ok":true}
+[1775649887] INFO [prep-sidecar 2026-04-08T12:04:47.741Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/align/audit"}
+[1775649887] INFO [prep-sidecar 2026-04-08T12:04:47.749Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/align/audit","status":200,"ok":true}
+[1775649897] INFO [prep-sidecar 2026-04-08T12:04:57.380Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/align/quality"}
+[1775649897] INFO [prep-sidecar 2026-04-08T12:04:57.386Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/align/quality","status":200,"ok":true}
+[1775649927] INFO [prep-sidecar 2026-04-08T12:05:27.271Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents"}
+[1775649927] INFO [prep-sidecar 2026-04-08T12:05:27.301Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents","status":200,"ok":true}
+[1775650129] INFO [prep-sidecar 2026-04-08T12:08:49.746Z] ensureRunning called (db=/Users/hsmy/Dev/AGRAFES/tauri-shell/public/demo/agrafes_demo.db)
+[1775650129] INFO [prep-sidecar 2026-04-08T12:08:49.748Z] checking sidecar portfile at /Users/hsmy/Dev/AGRAFES/tauri-shell/public/demo/.agrafes_sidecar.json
+[1775650129] INFO [prep-sidecar 2026-04-08T12:08:49.762Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/health"}
+[1775650129] INFO [prep-sidecar 2026-04-08T12:08:49.806Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/health","status":200,"ok":true}
+[1775650129] INFO [prep-sidecar 2026-04-08T12:08:49.806Z] reusing sidecar from portfile (http://127.0.0.1:60967) | {"tokenPresent":true,"tokenLength":32}
+[1775650129] INFO [prep-sidecar 2026-04-08T12:08:49.825Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents"}
+[1775650129] INFO [prep-sidecar 2026-04-08T12:08:49.826Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents"}
+[1775650129] INFO [prep-sidecar 2026-04-08T12:08:49.826Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents"}
+[1775650129] INFO [prep-sidecar 2026-04-08T12:08:49.826Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/corpus/info"}
+[1775650129] INFO [prep-sidecar 2026-04-08T12:08:49.845Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents","status":200,"ok":true}
+[1775650129] INFO [prep-sidecar 2026-04-08T12:08:49.848Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/doc_relations/all"}
+[1775650129] INFO [prep-sidecar 2026-04-08T12:08:49.849Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/corpus/info","status":200,"ok":true}
+[1775650129] INFO [prep-sidecar 2026-04-08T12:08:49.849Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents","status":200,"ok":true}
+[1775650129] INFO [prep-sidecar 2026-04-08T12:08:49.849Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents","status":200,"ok":true}
+[1775650129] INFO [prep-sidecar 2026-04-08T12:08:49.851Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/doc_relations/all","status":200,"ok":true}
+[1775650142] INFO [prep-sidecar 2026-04-08T12:09:02.865Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/curate/preview"}
+[1775650142] INFO [prep-sidecar 2026-04-08T12:09:02.880Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/curate/preview","status":200,"ok":true}
+[1775650142] INFO [prep-sidecar 2026-04-08T12:09:02.885Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=2&limit=300"}
+[1775650142] INFO [prep-sidecar 2026-04-08T12:09:02.889Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/curate/exceptions"}
+[1775650142] INFO [prep-sidecar 2026-04-08T12:09:02.892Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/curate/exceptions","status":200,"ok":true}
+[1775650142] INFO [prep-sidecar 2026-04-08T12:09:02.896Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=2&limit=300","status":200,"ok":true}
+[1775650489] INFO [prep-sidecar 2026-04-08T12:14:49.904Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/curate/preview"}
+[1775650490] INFO [prep-sidecar 2026-04-08T12:14:50.030Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/curate/preview","status":200,"ok":true}
+[1775650490] INFO [prep-sidecar 2026-04-08T12:14:50.032Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=1&limit=300"}
+[1775650490] INFO [prep-sidecar 2026-04-08T12:14:50.037Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/curate/exceptions"}
+[1775650490] INFO [prep-sidecar 2026-04-08T12:14:50.040Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/curate/exceptions","status":200,"ok":true}
+[1775650490] INFO [prep-sidecar 2026-04-08T12:14:50.040Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=1&limit=300","status":200,"ok":true}
+[1775650727] INFO [prep-sidecar 2026-04-08T12:18:47.942Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=1&limit=200"}
+[1775650727] INFO [prep-sidecar 2026-04-08T12:18:47.963Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview"}
+[1775650727] INFO [prep-sidecar 2026-04-08T12:18:47.965Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/detect_markers"}
+[1775650728] INFO [prep-sidecar 2026-04-08T12:18:48.080Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/detect_markers","status":200,"ok":true}
+[1775650728] INFO [prep-sidecar 2026-04-08T12:18:48.082Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview","status":200,"ok":true}
+[1775650728] INFO [prep-sidecar 2026-04-08T12:18:48.085Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=1&limit=200","status":200,"ok":true}
+[1775650735] INFO [prep-sidecar 2026-04-08T12:18:55.498Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=2&limit=200"}
+[1775650735] INFO [prep-sidecar 2026-04-08T12:18:55.501Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview"}
+[1775650735] INFO [prep-sidecar 2026-04-08T12:18:55.502Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/detect_markers"}
+[1775650735] INFO [prep-sidecar 2026-04-08T12:18:55.515Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=2&limit=200","status":200,"ok":true}
+[1775650735] INFO [prep-sidecar 2026-04-08T12:18:55.526Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/detect_markers","status":200,"ok":true}
+[1775650735] INFO [prep-sidecar 2026-04-08T12:18:55.526Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview","status":200,"ok":true}
+[1775650790] INFO [prep-sidecar 2026-04-08T12:19:50.963Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/curate/preview"}
+[1775650790] INFO [prep-sidecar 2026-04-08T12:19:50.985Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/curate/preview","status":200,"ok":true}
+[1775650790] INFO [prep-sidecar 2026-04-08T12:19:50.987Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=1&limit=300"}
+[1775650790] INFO [prep-sidecar 2026-04-08T12:19:50.994Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/curate/exceptions"}
+[1775650790] INFO [prep-sidecar 2026-04-08T12:19:50.996Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=1&limit=300","status":200,"ok":true}
+[1775650791] INFO [prep-sidecar 2026-04-08T12:19:51.009Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/curate/exceptions","status":200,"ok":true}
+[1775650792] INFO [prep-sidecar 2026-04-08T12:19:52.892Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/curate/preview"}
+[1775650792] INFO [prep-sidecar 2026-04-08T12:19:52.909Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/curate/preview","status":200,"ok":true}
+[1775650792] INFO [prep-sidecar 2026-04-08T12:19:52.911Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=1&limit=300"}
+[1775650792] INFO [prep-sidecar 2026-04-08T12:19:52.913Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/curate/exceptions"}
+[1775650792] INFO [prep-sidecar 2026-04-08T12:19:52.917Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/curate/exceptions","status":200,"ok":true}
+[1775650792] INFO [prep-sidecar 2026-04-08T12:19:52.919Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=1&limit=300","status":200,"ok":true}
+[1775650793] INFO [prep-sidecar 2026-04-08T12:19:53.973Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/curate/preview"}
+[1775650793] INFO [prep-sidecar 2026-04-08T12:19:53.987Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/curate/preview","status":200,"ok":true}
+[1775650793] INFO [prep-sidecar 2026-04-08T12:19:53.988Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=1&limit=300"}
+[1775650793] INFO [prep-sidecar 2026-04-08T12:19:53.991Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/curate/exceptions"}
+[1775650794] INFO [prep-sidecar 2026-04-08T12:19:54.000Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/curate/exceptions","status":200,"ok":true}
+[1775650794] INFO [prep-sidecar 2026-04-08T12:19:54.002Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=1&limit=300","status":200,"ok":true}
+[1775650796] INFO [prep-sidecar 2026-04-08T12:19:56.372Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/curate/preview"}
+[1775650796] INFO [prep-sidecar 2026-04-08T12:19:56.384Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/curate/preview","status":200,"ok":true}
+[1775650796] INFO [prep-sidecar 2026-04-08T12:19:56.385Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=1&limit=300"}
+[1775650796] INFO [prep-sidecar 2026-04-08T12:19:56.387Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/curate/exceptions"}
+[1775650796] INFO [prep-sidecar 2026-04-08T12:19:56.391Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/curate/exceptions","status":200,"ok":true}
+[1775650796] INFO [prep-sidecar 2026-04-08T12:19:56.393Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=1&limit=300","status":200,"ok":true}
+[1775650797] INFO [prep-sidecar 2026-04-08T12:19:57.520Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/curate/preview"}
+[1775650797] INFO [prep-sidecar 2026-04-08T12:19:57.532Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/curate/preview","status":200,"ok":true}
+[1775650797] INFO [prep-sidecar 2026-04-08T12:19:57.533Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=1&limit=300"}
+[1775650797] INFO [prep-sidecar 2026-04-08T12:19:57.536Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/curate/exceptions"}
+[1775650797] INFO [prep-sidecar 2026-04-08T12:19:57.539Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/curate/exceptions","status":200,"ok":true}
+[1775650797] INFO [prep-sidecar 2026-04-08T12:19:57.541Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=1&limit=300","status":200,"ok":true}
+[1775650812] INFO [prep-sidecar 2026-04-08T12:20:12.860Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=1&limit=200"}
+[1775650812] INFO [prep-sidecar 2026-04-08T12:20:12.862Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview"}
+[1775650812] INFO [prep-sidecar 2026-04-08T12:20:12.862Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/detect_markers"}
+[1775650812] INFO [prep-sidecar 2026-04-08T12:20:12.871Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=1&limit=200","status":200,"ok":true}
+[1775650812] INFO [prep-sidecar 2026-04-08T12:20:12.878Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/detect_markers","status":200,"ok":true}
+[1775650812] INFO [prep-sidecar 2026-04-08T12:20:12.879Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview","status":200,"ok":true}
+[1775650813] INFO [prep-sidecar 2026-04-08T12:20:13.526Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=2&limit=200"}
+[1775650813] INFO [prep-sidecar 2026-04-08T12:20:13.527Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview"}
+[1775650813] INFO [prep-sidecar 2026-04-08T12:20:13.527Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/detect_markers"}
+[1775650813] INFO [prep-sidecar 2026-04-08T12:20:13.533Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=2&limit=200","status":200,"ok":true}
+[1775650813] INFO [prep-sidecar 2026-04-08T12:20:13.538Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/detect_markers","status":200,"ok":true}
+[1775650813] INFO [prep-sidecar 2026-04-08T12:20:13.540Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview","status":200,"ok":true}
+[1775650814] INFO [prep-sidecar 2026-04-08T12:20:14.177Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=3&limit=200"}
+[1775650814] INFO [prep-sidecar 2026-04-08T12:20:14.178Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview"}
+[1775650814] INFO [prep-sidecar 2026-04-08T12:20:14.178Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/detect_markers"}
+[1775650814] INFO [prep-sidecar 2026-04-08T12:20:14.184Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=3&limit=200","status":200,"ok":true}
+[1775650814] INFO [prep-sidecar 2026-04-08T12:20:14.197Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/detect_markers","status":200,"ok":true}
+[1775650814] INFO [prep-sidecar 2026-04-08T12:20:14.197Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview","status":200,"ok":true}
+[1775650815] INFO [prep-sidecar 2026-04-08T12:20:15.112Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=2&limit=200"}
+[1775650815] INFO [prep-sidecar 2026-04-08T12:20:15.113Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview"}
+[1775650815] INFO [prep-sidecar 2026-04-08T12:20:15.113Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/detect_markers"}
+[1775650815] INFO [prep-sidecar 2026-04-08T12:20:15.120Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=2&limit=200","status":200,"ok":true}
+[1775650815] INFO [prep-sidecar 2026-04-08T12:20:15.129Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/detect_markers","status":200,"ok":true}
+[1775650815] INFO [prep-sidecar 2026-04-08T12:20:15.131Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview","status":200,"ok":true}
+[1775650815] INFO [prep-sidecar 2026-04-08T12:20:15.834Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=1&limit=200"}
+[1775650815] INFO [prep-sidecar 2026-04-08T12:20:15.834Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview"}
+[1775650815] INFO [prep-sidecar 2026-04-08T12:20:15.835Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/detect_markers"}
+[1775650815] INFO [prep-sidecar 2026-04-08T12:20:15.840Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=1&limit=200","status":200,"ok":true}
+[1775650815] INFO [prep-sidecar 2026-04-08T12:20:15.845Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/detect_markers","status":200,"ok":true}
+[1775650815] INFO [prep-sidecar 2026-04-08T12:20:15.846Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview","status":200,"ok":true}
+[1775650819] INFO [prep-sidecar 2026-04-08T12:20:19.845Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=2&limit=200"}
+[1775650819] INFO [prep-sidecar 2026-04-08T12:20:19.846Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview"}
+[1775650819] INFO [prep-sidecar 2026-04-08T12:20:19.846Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/detect_markers"}
+[1775650819] INFO [prep-sidecar 2026-04-08T12:20:19.854Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=2&limit=200","status":200,"ok":true}
+[1775650819] INFO [prep-sidecar 2026-04-08T12:20:19.861Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/detect_markers","status":200,"ok":true}
+[1775650819] INFO [prep-sidecar 2026-04-08T12:20:19.863Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview","status":200,"ok":true}
+[1775650821] INFO [prep-sidecar 2026-04-08T12:20:21.426Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=3&limit=200"}
+[1775650821] INFO [prep-sidecar 2026-04-08T12:20:21.426Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview"}
+[1775650821] INFO [prep-sidecar 2026-04-08T12:20:21.427Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/detect_markers"}
+[1775650821] INFO [prep-sidecar 2026-04-08T12:20:21.432Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=3&limit=200","status":200,"ok":true}
+[1775650821] INFO [prep-sidecar 2026-04-08T12:20:21.438Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/detect_markers","status":200,"ok":true}
+[1775650821] INFO [prep-sidecar 2026-04-08T12:20:21.439Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview","status":200,"ok":true}
+[1775650825] INFO [prep-sidecar 2026-04-08T12:20:25.141Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=2&limit=200"}
+[1775650825] INFO [prep-sidecar 2026-04-08T12:20:25.142Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview"}
+[1775650825] INFO [prep-sidecar 2026-04-08T12:20:25.142Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/detect_markers"}
+[1775650825] INFO [prep-sidecar 2026-04-08T12:20:25.148Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=2&limit=200","status":200,"ok":true}
+[1775650825] INFO [prep-sidecar 2026-04-08T12:20:25.155Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/detect_markers","status":200,"ok":true}
+[1775650825] INFO [prep-sidecar 2026-04-08T12:20:25.157Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview","status":200,"ok":true}
+[1775650825] INFO [prep-sidecar 2026-04-08T12:20:25.830Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=1&limit=200"}
+[1775650825] INFO [prep-sidecar 2026-04-08T12:20:25.832Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview"}
+[1775650825] INFO [prep-sidecar 2026-04-08T12:20:25.833Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/detect_markers"}
+[1775650825] INFO [prep-sidecar 2026-04-08T12:20:25.842Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=1&limit=200","status":200,"ok":true}
+[1775650825] INFO [prep-sidecar 2026-04-08T12:20:25.850Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/detect_markers","status":200,"ok":true}
+[1775650825] INFO [prep-sidecar 2026-04-08T12:20:25.852Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview","status":200,"ok":true}
+[1775650826] INFO [prep-sidecar 2026-04-08T12:20:26.577Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=1&limit=200"}
+[1775650826] INFO [prep-sidecar 2026-04-08T12:20:26.579Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview"}
+[1775650826] INFO [prep-sidecar 2026-04-08T12:20:26.579Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/detect_markers"}
+[1775650826] INFO [prep-sidecar 2026-04-08T12:20:26.585Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=1&limit=200","status":200,"ok":true}
+[1775650826] INFO [prep-sidecar 2026-04-08T12:20:26.592Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/detect_markers","status":200,"ok":true}
+[1775650826] INFO [prep-sidecar 2026-04-08T12:20:26.594Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview","status":200,"ok":true}
+[1775650826] INFO [prep-sidecar 2026-04-08T12:20:26.809Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=1&limit=200"}
+[1775650826] INFO [prep-sidecar 2026-04-08T12:20:26.810Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview"}
+[1775650826] INFO [prep-sidecar 2026-04-08T12:20:26.810Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/detect_markers"}
+[1775650826] INFO [prep-sidecar 2026-04-08T12:20:26.820Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/detect_markers","status":200,"ok":true}
+[1775650826] INFO [prep-sidecar 2026-04-08T12:20:26.822Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=1&limit=200","status":200,"ok":true}
+[1775650826] INFO [prep-sidecar 2026-04-08T12:20:26.829Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview","status":200,"ok":true}
+[1775650827] INFO [prep-sidecar 2026-04-08T12:20:27.344Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=2&limit=200"}
+[1775650827] INFO [prep-sidecar 2026-04-08T12:20:27.346Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview"}
+[1775650827] INFO [prep-sidecar 2026-04-08T12:20:27.346Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/detect_markers"}
+[1775650827] INFO [prep-sidecar 2026-04-08T12:20:27.353Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=2&limit=200","status":200,"ok":true}
+[1775650827] INFO [prep-sidecar 2026-04-08T12:20:27.361Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/detect_markers","status":200,"ok":true}
+[1775650827] INFO [prep-sidecar 2026-04-08T12:20:27.363Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview","status":200,"ok":true}
+[1775650830] INFO [prep-sidecar 2026-04-08T12:20:30.855Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview"}
+[1775650830] INFO [prep-sidecar 2026-04-08T12:20:30.878Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview","status":200,"ok":true}
+[1775650831] INFO [prep-sidecar 2026-04-08T12:20:31.710Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=3&limit=200"}
+[1775650831] INFO [prep-sidecar 2026-04-08T12:20:31.711Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview"}
+[1775650831] INFO [prep-sidecar 2026-04-08T12:20:31.711Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/detect_markers"}
+[1775650831] INFO [prep-sidecar 2026-04-08T12:20:31.717Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=3&limit=200","status":200,"ok":true}
+[1775650831] INFO [prep-sidecar 2026-04-08T12:20:31.724Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/detect_markers","status":200,"ok":true}
+[1775650831] INFO [prep-sidecar 2026-04-08T12:20:31.726Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview","status":200,"ok":true}
+[1775650834] INFO [prep-sidecar 2026-04-08T12:20:34.369Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview"}
+[1775650834] INFO [prep-sidecar 2026-04-08T12:20:34.384Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview","status":200,"ok":true}
+[1775650834] INFO [prep-sidecar 2026-04-08T12:20:34.968Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=1&limit=200"}
+[1775650834] INFO [prep-sidecar 2026-04-08T12:20:34.970Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview"}
+[1775650834] INFO [prep-sidecar 2026-04-08T12:20:34.970Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/detect_markers"}
+[1775650834] INFO [prep-sidecar 2026-04-08T12:20:34.974Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=1&limit=200","status":200,"ok":true}
+[1775650834] INFO [prep-sidecar 2026-04-08T12:20:34.979Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/detect_markers","status":200,"ok":true}
+[1775650834] INFO [prep-sidecar 2026-04-08T12:20:34.981Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview","status":200,"ok":true}
+[1775650835] INFO [prep-sidecar 2026-04-08T12:20:35.527Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=2&limit=200"}
+[1775650835] INFO [prep-sidecar 2026-04-08T12:20:35.527Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview"}
+[1775650835] INFO [prep-sidecar 2026-04-08T12:20:35.528Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/detect_markers"}
+[1775650835] INFO [prep-sidecar 2026-04-08T12:20:35.534Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=2&limit=200","status":200,"ok":true}
+[1775650835] INFO [prep-sidecar 2026-04-08T12:20:35.540Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/detect_markers","status":200,"ok":true}
+[1775650835] INFO [prep-sidecar 2026-04-08T12:20:35.542Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview","status":200,"ok":true}
+[1775650836] INFO [prep-sidecar 2026-04-08T12:20:36.060Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=3&limit=200"}
+[1775650836] INFO [prep-sidecar 2026-04-08T12:20:36.061Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview"}
+[1775650836] INFO [prep-sidecar 2026-04-08T12:20:36.061Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/detect_markers"}
+[1775650836] INFO [prep-sidecar 2026-04-08T12:20:36.067Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=3&limit=200","status":200,"ok":true}
+[1775650836] INFO [prep-sidecar 2026-04-08T12:20:36.073Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/detect_markers","status":200,"ok":true}
+[1775650836] INFO [prep-sidecar 2026-04-08T12:20:36.075Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview","status":200,"ok":true}
+[1775650836] INFO [prep-sidecar 2026-04-08T12:20:36.644Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=1&limit=200"}
+[1775650836] INFO [prep-sidecar 2026-04-08T12:20:36.645Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview"}
+[1775650836] INFO [prep-sidecar 2026-04-08T12:20:36.646Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/detect_markers"}
+[1775650836] INFO [prep-sidecar 2026-04-08T12:20:36.654Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=1&limit=200","status":200,"ok":true}
+[1775650836] INFO [prep-sidecar 2026-04-08T12:20:36.661Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/detect_markers","status":200,"ok":true}
+[1775650836] INFO [prep-sidecar 2026-04-08T12:20:36.663Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview","status":200,"ok":true}
+[1775650839] INFO [prep-sidecar 2026-04-08T12:20:39.841Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview"}
+[1775650839] INFO [prep-sidecar 2026-04-08T12:20:39.860Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview","status":200,"ok":true}
+[1775650840] INFO [prep-sidecar 2026-04-08T12:20:40.644Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=2&limit=200"}
+[1775650840] INFO [prep-sidecar 2026-04-08T12:20:40.644Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview"}
+[1775650840] INFO [prep-sidecar 2026-04-08T12:20:40.645Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/detect_markers"}
+[1775650840] INFO [prep-sidecar 2026-04-08T12:20:40.652Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=2&limit=200","status":200,"ok":true}
+[1775650840] INFO [prep-sidecar 2026-04-08T12:20:40.658Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/detect_markers","status":200,"ok":true}
+[1775650840] INFO [prep-sidecar 2026-04-08T12:20:40.660Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview","status":200,"ok":true}
+[1775650844] INFO [prep-sidecar 2026-04-08T12:20:44.547Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview"}
+[1775650844] INFO [prep-sidecar 2026-04-08T12:20:44.565Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview","status":200,"ok":true}
+[1775650846] INFO [prep-sidecar 2026-04-08T12:20:46.205Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/detect_markers"}
+[1775650846] INFO [prep-sidecar 2026-04-08T12:20:46.208Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/detect_markers","status":200,"ok":true}
+[1775650849] INFO [prep-sidecar 2026-04-08T12:20:49.786Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=1&limit=200"}
+[1775650849] INFO [prep-sidecar 2026-04-08T12:20:49.787Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview"}
+[1775650849] INFO [prep-sidecar 2026-04-08T12:20:49.787Z] sidecarFetch loopback via sidecar_fetch_loopback command | {"method":"POST","url":"http://127.0.0.1:60967/segment/detect_markers"}
+[1775650849] INFO [prep-sidecar 2026-04-08T12:20:49.796Z] sidecarFetch loopback command success | {"method":"GET","url":"http://127.0.0.1:60967/documents/preview?doc_id=1&limit=200","status":200,"ok":true}
+[1775650849] INFO [prep-sidecar 2026-04-08T12:20:49.803Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/detect_markers","status":200,"ok":true}
+[1775650849] INFO [prep-sidecar 2026-04-08T12:20:49.804Z] sidecarFetch loopback command success | {"method":"POST","url":"http://127.0.0.1:60967/segment/preview","status":200,"ok":true}

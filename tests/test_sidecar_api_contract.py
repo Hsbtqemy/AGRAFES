@@ -106,6 +106,115 @@ def sidecar_base_url(tmp_path: Path) -> str:
         server.shutdown()
 
 
+@pytest.fixture()
+def federated_sidecar_context(tmp_path: Path) -> dict[str, str]:
+    from multicorpus_engine.db.connection import get_connection
+    from multicorpus_engine.db.migrations import apply_migrations
+    from multicorpus_engine.importers.txt import import_txt_numbered_lines
+    from multicorpus_engine.indexer import build_index
+    from multicorpus_engine.sidecar import CorpusServer
+
+    db_a = (tmp_path / "federated_a.db").resolve()
+    conn_a = get_connection(db_a)
+    apply_migrations(conn_a)
+    txt_a = tmp_path / "federated_a.txt"
+    txt_a.write_text(
+        "".join(f"[{i}] federatedneedle A {i}.\n" for i in range(1, 5)),
+        encoding="utf-8",
+    )
+    import_txt_numbered_lines(conn=conn_a, path=txt_a, language="fr", title="Federated A")
+    build_index(conn_a)
+    conn_a.close()
+
+    db_b = (tmp_path / "federated_b.db").resolve()
+    conn_b = get_connection(db_b)
+    apply_migrations(conn_b)
+    txt_b = tmp_path / "federated_b.txt"
+    txt_b.write_text(
+        "".join(f"[{i}] federatedneedle B {i}.\n" for i in range(1, 5)),
+        encoding="utf-8",
+    )
+    import_txt_numbered_lines(conn=conn_b, path=txt_b, language="en", title="Federated B")
+    build_index(conn_b)
+    conn_b.close()
+
+    server = CorpusServer(db_path=db_a, host="127.0.0.1", port=0)
+    server.start()
+    base_url = f"http://127.0.0.1:{server.actual_port}"
+    _wait_health(base_url)
+    try:
+        yield {
+            "base_url": base_url,
+            "db_a": str(db_a),
+            "db_b": str(db_b),
+        }
+    finally:
+        server.shutdown()
+
+
+@pytest.fixture()
+def token_query_sidecar_base_url(tmp_path: Path) -> str:
+    from multicorpus_engine.db.connection import get_connection
+    from multicorpus_engine.db.migrations import apply_migrations
+    from multicorpus_engine.importers.conllu import import_conllu
+    from multicorpus_engine.sidecar import CorpusServer
+
+    db_path = tmp_path / "sidecar_token_query.db"
+    conn = get_connection(db_path)
+    apply_migrations(conn)
+
+    fr_path = tmp_path / "fr.conllu"
+    fr_path.write_text(
+        (
+            "# sent_id = 1\n"
+            "# text = Le Livre rouge arrive.\n"
+            "1\tLe\tle\tDET\t_\t_\t0\troot\t_\t_\n"
+            "2\tLivre\tlivre\tNOUN\t_\t_\t1\tnsubj\t_\t_\n"
+            "3\trouge\trouge\tADJ\t_\t_\t2\tamod\t_\t_\n"
+            "4\tarrive\tarriver\tVERB\t_\t_\t2\troot\t_\t_\n"
+            "\n"
+            "# sent_id = 2\n"
+            "# text = Un livreur lit.\n"
+            "1\tUn\tun\tDET\t_\t_\t0\troot\t_\t_\n"
+            "2\tlivreur\tlivreur\tNOUN\t_\t_\t1\tnsubj\t_\t_\n"
+            "3\tlit\tlire\tVERB\t_\t_\t2\troot\t_\t_\n"
+            "\n"
+        ),
+        encoding="utf-8",
+    )
+    import_conllu(conn=conn, path=fr_path, language="fr", title="FR CQL")
+
+    en_path = tmp_path / "en.conllu"
+    en_path.write_text(
+        (
+            "# sent_id = 1\n"
+            "# text = The book arrives.\n"
+            "1\tThe\tthe\tDET\t_\t_\t0\troot\t_\t_\n"
+            "2\tbook\tbook\tNOUN\t_\t_\t1\tnsubj\t_\t_\n"
+            "3\tarrives\tarrive\tVERB\t_\t_\t2\troot\t_\t_\n"
+            "\n"
+            "# sent_id = 2\n"
+            "# text = A library opens.\n"
+            "1\tA\ta\tDET\t_\t_\t0\troot\t_\t_\n"
+            "2\tlibrary\tlibrary\tNOUN\t_\t_\t1\tnsubj\t_\t_\n"
+            "3\topens\topen\tVERB\t_\t_\t2\troot\t_\t_\n"
+            "\n"
+        ),
+        encoding="utf-8",
+    )
+    import_conllu(conn=conn, path=en_path, language="en", title="EN CQL")
+    conn.close()
+
+    server = CorpusServer(db_path=db_path, host="127.0.0.1", port=0)
+    server.start()
+    base_url = f"http://127.0.0.1:{server.actual_port}"
+    _wait_health(base_url)
+    try:
+        yield base_url
+    finally:
+        server.shutdown()
+
+
 def test_contract_payload_builders() -> None:
     from multicorpus_engine.sidecar_contract import (
         API_VERSION,
@@ -139,6 +248,8 @@ def test_openapi_spec_has_core_routes() -> None:
         "/health",
         "/openapi.json",
         "/query",
+        "/token_query",
+        "/tokens",
         "/index",
         "/import",
         "/shutdown",
@@ -200,6 +311,20 @@ def test_invalid_json_returns_bad_request(sidecar_base_url: str) -> None:
     assert payload["error_code"] == ERR_BAD_REQUEST
 
 
+def test_index_incremental_bad_type_returns_validation(sidecar_base_url: str) -> None:
+    from multicorpus_engine.sidecar_contract import ERR_VALIDATION
+
+    code, payload = _http_json(
+        "POST",
+        f"{sidecar_base_url}/index",
+        {"incremental": "yes"},
+    )
+    assert code == 400
+    assert payload["ok"] is False
+    assert payload["error"]["type"] == ERR_VALIDATION
+    assert payload["error_code"] == ERR_VALIDATION
+
+
 def test_query_success_contract(sidecar_base_url: str) -> None:
     code, payload = _http_json(
         "POST",
@@ -219,6 +344,389 @@ def test_query_success_contract(sidecar_base_url: str) -> None:
     assert isinstance(payload["has_more"], bool)
     assert "next_offset" in payload
     assert "total" in payload
+
+
+def test_query_federation_multi_db_contract(federated_sidecar_context: dict[str, str]) -> None:
+    base_url = federated_sidecar_context["base_url"]
+    db_a = federated_sidecar_context["db_a"]
+    db_b = federated_sidecar_context["db_b"]
+
+    code, payload = _http_json(
+        "POST",
+        f"{base_url}/query",
+        {
+            "q": "federatedneedle",
+            "mode": "segment",
+            "db_paths": [db_a, db_b],
+            "limit": 10,
+            "offset": 0,
+        },
+    )
+    assert code == 200, payload
+    assert payload["ok"] is True
+    assert payload["federated"] is True
+    assert payload["db_count"] == 2
+    assert payload["db_paths"] == [db_a, db_b]
+    assert payload["count"] == 8
+    sources = {hit.get("source_db_path") for hit in payload["hits"]}
+    assert sources == {db_a, db_b}
+    for hit in payload["hits"]:
+        assert hit["source_db_name"] in {"federated_a.db", "federated_b.db"}
+        assert isinstance(hit["source_db_index"], int)
+
+
+def test_query_federation_pagination_global(federated_sidecar_context: dict[str, str]) -> None:
+    base_url = federated_sidecar_context["base_url"]
+    db_a = federated_sidecar_context["db_a"]
+    db_b = federated_sidecar_context["db_b"]
+
+    code1, page1 = _http_json(
+        "POST",
+        f"{base_url}/query",
+        {
+            "q": "federatedneedle",
+            "mode": "segment",
+            "db_paths": [db_a, db_b],
+            "limit": 5,
+            "offset": 0,
+        },
+    )
+    assert code1 == 200, page1
+    assert page1["count"] == 5
+    assert page1["has_more"] is True
+    assert page1["next_offset"] == 5
+
+    code2, page2 = _http_json(
+        "POST",
+        f"{base_url}/query",
+        {
+            "q": "federatedneedle",
+            "mode": "segment",
+            "db_paths": [db_a, db_b],
+            "limit": 5,
+            "offset": 5,
+        },
+    )
+    assert code2 == 200, page2
+    assert page2["count"] == 3
+    assert page2["has_more"] is False
+    assert page2["next_offset"] is None
+
+
+def test_query_federation_invalid_db_paths_returns_400(sidecar_base_url: str) -> None:
+    from multicorpus_engine.sidecar_contract import ERR_BAD_REQUEST
+
+    code, payload = _http_json(
+        "POST",
+        f"{sidecar_base_url}/query",
+        {"q": "needle", "db_paths": []},
+    )
+    assert code == 400
+    assert payload["ok"] is False
+    assert payload["error"]["type"] == ERR_BAD_REQUEST
+
+
+def test_query_federation_family_id_conflict_returns_400(
+    federated_sidecar_context: dict[str, str],
+) -> None:
+    from multicorpus_engine.sidecar_contract import ERR_BAD_REQUEST
+
+    base_url = federated_sidecar_context["base_url"]
+    db_a = federated_sidecar_context["db_a"]
+    code, payload = _http_json(
+        "POST",
+        f"{base_url}/query",
+        {"q": "federatedneedle", "family_id": 1, "db_paths": [db_a]},
+    )
+    assert code == 400
+    assert payload["ok"] is False
+    assert payload["error"]["type"] == ERR_BAD_REQUEST
+
+
+def test_token_query_success_contract(token_query_sidecar_base_url: str) -> None:
+    code, payload = _http_json(
+        "POST",
+        f"{token_query_sidecar_base_url}/token_query",
+        {
+            "cql": '[lemma = "liv.*" %c]',
+            "mode": "kwic",
+            "language": "fr",
+        },
+    )
+    assert code == 200, payload
+    assert payload["ok"] is True
+    assert isinstance(payload["run_id"], str)
+    assert payload["count"] >= 2
+    assert payload["limit"] == 50
+    assert payload["offset"] == 0
+    assert isinstance(payload["has_more"], bool)
+    assert isinstance(payload["total"], int)
+
+    hit = payload["hits"][0]
+    for key in ("doc_id", "unit_id", "language", "title", "tokens", "context_tokens"):
+        assert key in hit
+    assert isinstance(hit["tokens"], list)
+    assert len(hit["tokens"]) >= 1
+    tok = hit["tokens"][0]
+    for key in ("token_id", "position", "word", "lemma", "upos"):
+        assert key in tok
+
+
+def test_token_query_sequence_with_doc_filter(token_query_sidecar_base_url: str) -> None:
+    docs_code, docs_payload = _http_json("GET", f"{token_query_sidecar_base_url}/documents")
+    assert docs_code == 200
+    fr_docs = [d for d in docs_payload["documents"] if d.get("language") == "fr"]
+    assert fr_docs
+    fr_doc_id = fr_docs[0]["doc_id"]
+
+    code, payload = _http_json(
+        "POST",
+        f"{token_query_sidecar_base_url}/token_query",
+        {
+            "cql": '[pos = "DET"][lemma = "liv.*" %c]',
+            "mode": "kwic",
+            "doc_ids": [fr_doc_id],
+        },
+    )
+    assert code == 200, payload
+    assert payload["ok"] is True
+    assert payload["count"] == 2
+    for hit in payload["hits"]:
+        assert len(hit["tokens"]) == 2
+        assert (hit["tokens"][0]["upos"] or "").upper() == "DET"
+        lemma = (hit["tokens"][1]["lemma"] or "").lower()
+        assert lemma.startswith("liv")
+
+
+def test_token_query_wildcard_quantifier_and_within_s(token_query_sidecar_base_url: str) -> None:
+    code, payload = _http_json(
+        "POST",
+        f"{token_query_sidecar_base_url}/token_query",
+        {
+            "cql": '[pos = "DET"][]{0,2}[lemma = "arriv.*"] within s',
+            "mode": "kwic",
+            "language": "fr",
+        },
+    )
+    assert code == 200, payload
+    assert payload["ok"] is True
+    assert payload["count"] >= 1
+    first = payload["hits"][0]
+    assert len(first["tokens"]) >= 3
+    lemmas = [(t.get("lemma") or "").lower() for t in first["tokens"]]
+    assert any(l.startswith("arriv") for l in lemmas)
+
+
+def test_token_query_within_s_accepts_terminal_semicolon(token_query_sidecar_base_url: str) -> None:
+    code, payload = _http_json(
+        "POST",
+        f"{token_query_sidecar_base_url}/token_query",
+        {
+            "cql": '[pos = "DET"][]{0,2}[lemma = "arriv.*"] within s;',
+            "mode": "kwic",
+            "language": "fr",
+        },
+    )
+    assert code == 200, payload
+    assert payload["ok"] is True
+    assert payload["count"] >= 1
+
+
+def test_token_query_pagination_page_flow(token_query_sidecar_base_url: str) -> None:
+    code1, page1 = _http_json(
+        "POST",
+        f"{token_query_sidecar_base_url}/token_query",
+        {"cql": '[pos = "DET"]', "mode": "segment", "limit": 2, "offset": 0},
+    )
+    assert code1 == 200, page1
+    assert page1["count"] == 2
+    assert page1["limit"] == 2
+    assert page1["offset"] == 0
+    assert page1["has_more"] is True
+    assert page1["next_offset"] == 2
+    assert isinstance(page1["total"], int)
+    assert page1["total"] >= 4
+
+    code2, page2 = _http_json(
+        "POST",
+        f"{token_query_sidecar_base_url}/token_query",
+        {"cql": '[pos = "DET"]', "mode": "segment", "limit": 2, "offset": 2},
+    )
+    assert code2 == 200, page2
+    assert page2["count"] == 2
+    assert page2["offset"] == 2
+    assert page2["has_more"] is False
+    assert page2["next_offset"] is None
+
+
+def test_token_query_invalid_cql_returns_bad_request(token_query_sidecar_base_url: str) -> None:
+    from multicorpus_engine.sidecar_contract import ERR_BAD_REQUEST
+
+    code, payload = _http_json(
+        "POST",
+        f"{token_query_sidecar_base_url}/token_query",
+        {"cql": '[lemma = "liv.*"'},
+    )
+    assert code == 400
+    assert payload["ok"] is False
+    assert payload["error"]["type"] == ERR_BAD_REQUEST
+
+
+def test_token_query_invalid_trailing_constraint_returns_bad_request(token_query_sidecar_base_url: str) -> None:
+    from multicorpus_engine.sidecar_contract import ERR_BAD_REQUEST
+
+    code, payload = _http_json(
+        "POST",
+        f"{token_query_sidecar_base_url}/token_query",
+        {"cql": '[lemma = "liv.*"] within doc'},
+    )
+    assert code == 400
+    assert payload["ok"] is False
+    assert payload["error"]["type"] == ERR_BAD_REQUEST
+
+
+def test_export_conllu_contract(token_query_sidecar_base_url: str, tmp_path: Path) -> None:
+    out_path = tmp_path / "token_query_export.conllu"
+    code, payload = _http_json(
+        "POST",
+        f"{token_query_sidecar_base_url}/export/conllu",
+        {"out_path": str(out_path)},
+    )
+    assert code == 200, payload
+    assert payload["ok"] is True
+    assert payload["out_path"] == str(out_path)
+    assert payload["docs_written"] >= 1
+    assert payload["sentences_written"] >= 1
+    assert payload["tokens_written"] >= 1
+    assert out_path.exists()
+    content = out_path.read_text(encoding="utf-8")
+    assert "# newdoc id =" in content
+    assert "# sent_id =" in content
+    assert "\tDET\t" in content or "\tNOUN\t" in content or "\tVERB\t" in content
+
+
+def test_export_token_query_csv_contract(token_query_sidecar_base_url: str, tmp_path: Path) -> None:
+    out_path = tmp_path / "token_query_hits.tsv"
+    code, payload = _http_json(
+        "POST",
+        f"{token_query_sidecar_base_url}/export/token_query_csv",
+        {
+            "out_path": str(out_path),
+            "cql": '[pos = "DET"][]{0,2}[lemma = "arriv.*"] within s',
+            "mode": "kwic",
+            "delimiter": "\t",
+            "max_hits": 1000,
+        },
+    )
+    assert code == 200, payload
+    assert payload["ok"] is True
+    assert payload["out_path"] == str(out_path)
+    assert payload["rows_written"] >= 1
+    assert payload["mode"] == "kwic"
+    assert payload["delimiter"] == "\t"
+    assert out_path.exists()
+    content = out_path.read_text(encoding="utf-8")
+    lines = [ln for ln in content.splitlines() if ln.strip()]
+    assert len(lines) >= 2  # header + >=1 row
+    assert "left\tmatch\tright" in lines[0]
+
+
+def test_export_ske_contract(token_query_sidecar_base_url: str, tmp_path: Path) -> None:
+    out_path = tmp_path / "token_query_export.ske"
+    code, payload = _http_json(
+        "POST",
+        f"{token_query_sidecar_base_url}/export/ske",
+        {"out_path": str(out_path)},
+    )
+    assert code == 200, payload
+    assert payload["ok"] is True
+    assert payload["out_path"] == str(out_path)
+    assert payload["docs_written"] >= 1
+    assert payload["sentences_written"] >= 1
+    assert payload["tokens_written"] >= 1
+    assert out_path.exists()
+    text = out_path.read_text(encoding="utf-8")
+    assert "<doc id=" in text
+    assert "<s id=" in text
+    assert "</s>" in text
+    assert "</doc>" in text
+
+
+def test_tokens_list_contract(token_query_sidecar_base_url: str) -> None:
+    docs_code, docs_payload = _http_json("GET", f"{token_query_sidecar_base_url}/documents")
+    assert docs_code == 200, docs_payload
+    doc_id = docs_payload["documents"][0]["doc_id"]
+
+    code, payload = _http_json(
+        "GET",
+        f"{token_query_sidecar_base_url}/tokens?doc_id={doc_id}&limit=2&offset=0",
+    )
+    assert code == 200, payload
+    assert payload["ok"] is True
+    assert payload["doc_id"] == doc_id
+    assert payload["count"] <= 2
+    assert payload["limit"] == 2
+    assert payload["offset"] == 0
+    assert isinstance(payload["total"], int)
+    assert isinstance(payload["has_more"], bool)
+    assert "next_offset" in payload
+    assert isinstance(payload["tokens"], list)
+    assert payload["tokens"]
+    row = payload["tokens"][0]
+    for key in (
+        "token_id", "doc_id", "unit_id", "unit_n", "external_id",
+        "sent_id", "position", "word", "lemma", "upos", "xpos", "feats", "misc",
+    ):
+        assert key in row
+
+
+def test_tokens_list_missing_doc_id_is_bad_request(token_query_sidecar_base_url: str) -> None:
+    from multicorpus_engine.sidecar_contract import ERR_BAD_REQUEST
+
+    code, payload = _http_json("GET", f"{token_query_sidecar_base_url}/tokens")
+    assert code == 400
+    assert payload["ok"] is False
+    assert payload["error"]["type"] == ERR_BAD_REQUEST
+
+
+def test_tokens_update_contract(token_query_sidecar_base_url: str) -> None:
+    docs_code, docs_payload = _http_json("GET", f"{token_query_sidecar_base_url}/documents")
+    assert docs_code == 200, docs_payload
+    doc_id = docs_payload["documents"][0]["doc_id"]
+
+    list_code, list_payload = _http_json(
+        "GET",
+        f"{token_query_sidecar_base_url}/tokens?doc_id={doc_id}&limit=1",
+    )
+    assert list_code == 200, list_payload
+    token_id = list_payload["tokens"][0]["token_id"]
+    original_word = list_payload["tokens"][0]["word"]
+
+    upd_code, upd_payload = _http_json(
+        "POST",
+        f"{token_query_sidecar_base_url}/tokens/update",
+        {"token_id": token_id, "lemma": "edited_lemma", "upos": "PROPN"},
+    )
+    assert upd_code == 200, upd_payload
+    assert upd_payload["ok"] is True
+    assert upd_payload["updated"] == 1
+    assert upd_payload["token"]["token_id"] == token_id
+    assert upd_payload["token"]["lemma"] == "edited_lemma"
+    assert upd_payload["token"]["upos"] == "PROPN"
+    assert upd_payload["token"]["word"] == original_word
+
+
+def test_tokens_update_invalid_field_type_is_bad_request(token_query_sidecar_base_url: str) -> None:
+    from multicorpus_engine.sidecar_contract import ERR_BAD_REQUEST
+
+    code, payload = _http_json(
+        "POST",
+        f"{token_query_sidecar_base_url}/tokens/update",
+        {"token_id": 1, "lemma": 123},
+    )
+    assert code == 400
+    assert payload["ok"] is False
+    assert payload["error"]["type"] == ERR_BAD_REQUEST
 
 
 def test_query_pagination_page_flow(sidecar_base_url: str) -> None:
@@ -378,6 +886,50 @@ def test_segment_invalid_pack_is_bad_request(sidecar_base_url: str) -> None:
     assert payload["error"]["type"] == ERR_BAD_REQUEST
 
 
+def test_segment_preview_accepts_calibrate_to_and_returns_ratio(sidecar_base_url: str) -> None:
+    docs_code, docs_payload = _http_json("GET", f"{sidecar_base_url}/documents")
+    assert docs_code == 200
+    docs = docs_payload["documents"]
+    assert len(docs) >= 2
+    doc_id = docs[0]["doc_id"]
+    ref_doc_id = docs[1]["doc_id"]
+
+    code, payload = _http_json(
+        "POST",
+        f"{sidecar_base_url}/segment/preview",
+        {
+            "doc_id": doc_id,
+            "mode": "sentences",
+            "lang": "fr",
+            "pack": "fr_strict",
+            "calibrate_to": ref_doc_id,
+        },
+    )
+    assert code == 200
+    assert payload["ok"] is True
+    assert payload["doc_id"] == doc_id
+    assert payload["calibrate_to"] == ref_doc_id
+    assert "calibrate_ratio_pct" in payload
+    assert payload["calibrate_ratio_pct"] is None or isinstance(payload["calibrate_ratio_pct"], int)
+
+
+def test_segment_preview_invalid_calibrate_to_is_bad_request(sidecar_base_url: str) -> None:
+    from multicorpus_engine.sidecar_contract import ERR_BAD_REQUEST
+
+    docs_code, docs_payload = _http_json("GET", f"{sidecar_base_url}/documents")
+    assert docs_code == 200
+    doc_id = docs_payload["documents"][0]["doc_id"]
+
+    code, payload = _http_json(
+        "POST",
+        f"{sidecar_base_url}/segment/preview",
+        {"doc_id": doc_id, "calibrate_to": "abc"},
+    )
+    assert code == 400
+    assert payload["ok"] is False
+    assert payload["error"]["type"] == ERR_BAD_REQUEST
+
+
 def test_validate_meta_keeps_contract_shape(sidecar_base_url: str) -> None:
     code, payload = _http_json("POST", f"{sidecar_base_url}/validate-meta", {})
     assert code == 200
@@ -430,6 +982,111 @@ def test_documents_preview_missing_doc_returns_404(sidecar_base_url: str) -> Non
     assert code == 404
     assert payload["ok"] is False
     assert payload["error_code"] == "NOT_FOUND"
+
+
+def test_import_duplicate_error_includes_reason_source_hash(
+    sidecar_base_url: str,
+    tmp_path: Path,
+) -> None:
+    from multicorpus_engine.sidecar_contract import ERR_VALIDATION
+
+    txt = tmp_path / "dup-hash.txt"
+    txt.write_text("[1] hash duplicate\n", encoding="utf-8")
+
+    code1, payload1 = _http_json(
+        "POST",
+        f"{sidecar_base_url}/import",
+        {"mode": "txt_numbered_lines", "path": str(txt), "language": "fr"},
+    )
+    assert code1 == 200, payload1
+    assert payload1["ok"] is True
+
+    code2, payload2 = _http_json(
+        "POST",
+        f"{sidecar_base_url}/import",
+        {"mode": "txt_numbered_lines", "path": str(txt), "language": "fr"},
+    )
+    assert code2 == 400, payload2
+    assert payload2["ok"] is False
+    assert payload2["error_code"] == ERR_VALIDATION
+    assert "reason=source_hash" in payload2["error"]["message"]
+
+
+def test_import_conllu_mode_contract(
+    sidecar_base_url: str,
+    tmp_path: Path,
+) -> None:
+    conllu_path = tmp_path / "api-import.conllu"
+    conllu_path.write_text(
+        (
+            "# sent_id = 1\n"
+            "# text = Bonjour tout le monde.\n"
+            "1\tBonjour\tbonjour\tINTJ\t_\t_\t0\troot\t_\t_\n"
+            "2\ttout\ttout\tDET\t_\t_\t3\tdet\t_\t_\n"
+            "3\tle\tle\tDET\t_\t_\t4\tdet\t_\t_\n"
+            "4\tmonde\tmonde\tNOUN\t_\t_\t1\tobj\t_\t_\n"
+            "\n"
+        ),
+        encoding="utf-8",
+    )
+    code, payload = _http_json(
+        "POST",
+        f"{sidecar_base_url}/import",
+        {
+            "mode": "conllu",
+            "path": str(conllu_path),
+            "language": "fr",
+            "title": "CoNLL-U API",
+        },
+    )
+    assert code == 200, payload
+    assert payload["ok"] is True
+    assert payload["mode"] == "conllu"
+    assert isinstance(payload["doc_id"], int)
+
+
+def test_import_duplicate_error_includes_reason_filename_when_enabled(
+    sidecar_base_url: str,
+    tmp_path: Path,
+) -> None:
+    from multicorpus_engine.sidecar_contract import ERR_VALIDATION
+
+    dir_a = tmp_path / "a"
+    dir_b = tmp_path / "b"
+    dir_a.mkdir()
+    dir_b.mkdir()
+    file_a = dir_a / "same-name.txt"
+    file_b = dir_b / "same-name.txt"
+    file_a.write_text("[1] first content\n", encoding="utf-8")
+    file_b.write_text("[1] second content\n", encoding="utf-8")
+
+    code1, payload1 = _http_json(
+        "POST",
+        f"{sidecar_base_url}/import",
+        {
+            "mode": "txt_numbered_lines",
+            "path": str(file_a),
+            "language": "fr",
+            "check_filename": True,
+        },
+    )
+    assert code1 == 200, payload1
+    assert payload1["ok"] is True
+
+    code2, payload2 = _http_json(
+        "POST",
+        f"{sidecar_base_url}/import",
+        {
+            "mode": "txt_numbered_lines",
+            "path": str(file_b),
+            "language": "fr",
+            "check_filename": True,
+        },
+    )
+    assert code2 == 400, payload2
+    assert payload2["ok"] is False
+    assert payload2["error_code"] == ERR_VALIDATION
+    assert "reason=filename" in payload2["error"]["message"]
 
 
 def test_align_external_id_via_sidecar(sidecar_base_url: str, tmp_path: Path) -> None:

@@ -128,10 +128,97 @@ def build_index(conn: sqlite3.Connection) -> int:
     return count
 
 
-def update_index(conn: sqlite3.Connection) -> int:
-    """Update FTS index for units not yet indexed.
+def _changes(conn: sqlite3.Connection) -> int:
+    return int(conn.execute("SELECT changes()").fetchone()[0])
 
-    For Increment 1, this is equivalent to a full rebuild since we don't
-    track incremental state. Future: track last indexed unit_id.
+
+def update_index(
+    conn: sqlite3.Connection,
+    *,
+    prune_deleted: bool = True,
+) -> dict[str, int]:
+    """Incrementally synchronize ``fts_units`` with ``units``.
+
+    This mode is explicit and optimized for corpora where a full rebuild is
+    expensive. It applies three steps:
+    1. optional prune of stale FTS rows (units deleted / no longer ``line``),
+    2. refresh rows whose ``text_norm`` changed,
+    3. insert missing ``line`` rows.
+
+    Returns counters suitable for run logs and API payloads:
+      - units_indexed: total ``line`` units after sync,
+      - inserted: newly indexed rows,
+      - refreshed: rows reindexed due to ``text_norm`` changes,
+      - deleted: stale rows removed from FTS.
     """
-    return build_index(conn)
+    logger.info("Running incremental FTS5 sync (prune_deleted=%s)...", prune_deleted)
+
+    try:
+        conn.execute("SELECT rowid FROM fts_units LIMIT 1").fetchall()
+    except sqlite3.Error as e:
+        if _is_fts_error(e):
+            logger.warning("FTS table unusable (%s), recreating fts_units", e)
+            _recreate_fts_table(conn)
+        else:
+            raise
+
+    deleted = 0
+    if prune_deleted:
+        conn.execute(
+            """
+            DELETE FROM fts_units
+            WHERE rowid IN (
+                SELECT f.rowid
+                FROM fts_units f
+                LEFT JOIN units u ON u.unit_id = f.rowid
+                WHERE u.unit_id IS NULL OR u.unit_type <> 'line'
+            )
+            """
+        )
+        deleted = _changes(conn)
+
+    # Refresh changed rows by deleting stale FTS rows first.
+    conn.execute(
+        """
+        DELETE FROM fts_units
+        WHERE rowid IN (
+            SELECT u.unit_id
+            FROM units u
+            JOIN fts_units f ON f.rowid = u.unit_id
+            WHERE u.unit_type = 'line'
+              AND f.text_norm <> u.text_norm
+        )
+        """
+    )
+    refreshed = _changes(conn)
+
+    # Insert missing rows (new units + refreshed rows removed above).
+    conn.execute(
+        """
+        INSERT INTO fts_units(rowid, text_norm)
+        SELECT u.unit_id, u.text_norm
+        FROM units u
+        LEFT JOIN fts_units f ON f.rowid = u.unit_id
+        WHERE u.unit_type = 'line'
+          AND f.rowid IS NULL
+        """
+    )
+    inserted_total = _changes(conn)
+    inserted = max(0, inserted_total - refreshed)
+
+    conn.commit()
+
+    units_indexed = int(
+        conn.execute(
+            "SELECT COUNT(*) FROM units WHERE unit_type = 'line'"
+        ).fetchone()[0]
+    )
+
+    stats = {
+        "units_indexed": units_indexed,
+        "inserted": inserted,
+        "refreshed": refreshed,
+        "deleted": deleted,
+    }
+    logger.info("Incremental FTS sync complete: %s", stats)
+    return stats

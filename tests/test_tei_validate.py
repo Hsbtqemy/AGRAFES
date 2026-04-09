@@ -78,6 +78,22 @@ _NO_LINKS_TEI = """\
 </TEI>
 """
 
+_DUPLICATE_XMLID_TEI = """\
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xmlns="http://www.tei-c.org/ns/1.0">
+  <text>
+    <body>
+      <div>
+        <p xml:id="u1" n="1">First.</p>
+        <p xml:id="u1" n="2">Duplicate id.</p>
+      </div>
+    </body>
+  </text>
+</TEI>
+"""
+
+FIXTURES_DIR = Path(__file__).parent / "fixtures" / "tei"
+
 
 # ── Unit tests for validate_tei_ids ──────────────────────────────────────────
 
@@ -151,6 +167,8 @@ def test_validate_tei_ids_parse_error(tmp_path: Path) -> None:
     errors = validate_tei_ids(f)
     assert len(errors) == 1
     assert errors[0]["type"] == "parse_error"
+    assert errors[0]["severity"] == "error"
+    assert errors[0]["blocking"] is True
 
 
 def test_validate_tei_ids_missing_file(tmp_path: Path) -> None:
@@ -159,6 +177,31 @@ def test_validate_tei_ids_missing_file(tmp_path: Path) -> None:
     errors = validate_tei_ids(f)
     assert len(errors) == 1
     assert errors[0]["type"] == "parse_error"
+
+
+def test_validate_tei_ids_duplicate_xmlid(tmp_path: Path) -> None:
+    """Duplicate xml:id declarations must be reported as warning issues."""
+    f = _write_tei(tmp_path / "dup_xmlid.tei.xml", _DUPLICATE_XMLID_TEI)
+    errors = validate_tei_ids(f)
+    dup = [e for e in errors if e["type"] == "duplicate_xml_id"]
+    assert len(dup) == 1, f"Expected duplicate_xml_id issue, got {errors}"
+    issue = dup[0]
+    assert issue["xml_id"] == "u1"
+    assert issue["occurrences"] == 2
+    assert issue["severity"] == "warning"
+    assert issue["blocking"] is False
+
+
+def test_validate_tei_ids_fixture_non_namespaced() -> None:
+    """Non-namespaced TEI fixture should validate (compat matrix baseline)."""
+    errors = validate_tei_ids(FIXTURES_DIR / "tei_non_namespaced.xml")
+    assert errors == []
+
+
+def test_validate_tei_ids_fixture_mixed_content() -> None:
+    """Mixed-content fixture should validate and preserve internal links."""
+    errors = validate_tei_ids(FIXTURES_DIR / "tei_mixed_content.xml")
+    assert errors == []
 
 
 # ── Regression test: package ZIP ─────────────────────────────────────────────

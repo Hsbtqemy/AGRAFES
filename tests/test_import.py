@@ -130,7 +130,7 @@ def test_import_rejects_duplicate_corpus_entry(
     from multicorpus_engine.importers.docx_numbered_lines import import_docx_numbered_lines
 
     import_docx_numbered_lines(conn=db_conn, path=simple_docx, language="fr")
-    with pytest.raises(ValueError, match="doc_id="):
+    with pytest.raises(ValueError, match=r"doc_id=.*reason=source_hash"):
         import_docx_numbered_lines(conn=db_conn, path=simple_docx, language="fr")
 
 
@@ -152,5 +152,37 @@ def test_import_rejects_duplicate_when_paths_differ_only_by_separators(
         ("wrong_hash_not_in_file", posix),
     )
     db_conn.commit()
-    with pytest.raises(ValueError, match="doc_id="):
+    with pytest.raises(ValueError, match=r"doc_id=.*reason=source_path_"):
         import_docx_numbered_lines(conn=db_conn, path=simple_docx, language="fr")
+
+
+def test_import_rejects_duplicate_by_filename_when_enabled(
+    db_conn: sqlite3.Connection,
+    tmp_path: Path,
+) -> None:
+    """Filename guard should reject same basename from another directory."""
+    from multicorpus_engine.importers.txt import import_txt_numbered_lines
+
+    dir_a = tmp_path / "a"
+    dir_b = tmp_path / "b"
+    dir_a.mkdir()
+    dir_b.mkdir()
+    file_a = dir_a / "same-name.txt"
+    file_b = dir_b / "same-name.txt"
+
+    file_a.write_text("[1] Alpha.\n", encoding="utf-8")
+    file_b.write_text("[1] Beta.\n", encoding="utf-8")
+
+    import_txt_numbered_lines(
+        conn=db_conn,
+        path=file_a,
+        language="fr",
+        check_filename=True,
+    )
+    with pytest.raises(ValueError, match=r"doc_id=.*reason=filename.*filename=same-name.txt"):
+        import_txt_numbered_lines(
+            conn=db_conn,
+            path=file_b,
+            language="fr",
+            check_filename=True,
+        )

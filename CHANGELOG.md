@@ -24,6 +24,26 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- **Sprint C CQL (backend + concordancier)**
+  - Nouveau parseur minimal `cql_parser.py` (`[lemma=...]`, `[word=...]`, `[pos=...]`, `%c`, `&`, séquences fixes).
+  - Nouveau moteur `token_query.py` + endpoint sidecar `POST /token_query` (pagination `limit/offset/has_more/total`).
+  - Concordancier (`tauri-app`) : mode Builder `CQL` distinct de FTS/Regex, preview syntaxique légère,
+    requêtes token-level via `/token_query`, badge mode `CQL`, et indicateur de volume token dans l’en-tête des résultats.
+
+- **Sprint D CQL avancé (backend + concordancier)**
+  - Parseur CQL étendu : `[]{0,N}`, `[token]{m,n}`, contrainte `within s`.
+  - Moteur `token_query` renforcé : matching par flux token + bornage phrase pour `within s`.
+  - UI Concordancier : aide CQL enrichie + validation de syntaxe côté client avant envoi.
+
+- **Sprint E CQL export / interop**
+  - Nouveaux exports token-level via sidecar :
+    - `POST /export/conllu`
+    - `POST /export/token_query_csv` (KWIC tabulaire CSV/TSV)
+    - `POST /export/ske` (profil vertical compatible Sketch Engine / NoSketchEngine)
+  - Contrat sidecar porté à `1.6.18` (`docs/openapi.json`, snapshot OpenAPI, docs contrat).
+  - Étude d’interop NoSketchEngine / CWB livrée : `docs/CQL_INTEROP_FEASIBILITY.md`
+    (décision : interop via formats texte/vertical, pas d’import direct de corpus compilés CWB).
+
 - **Suppression de documents** (`tauri-prep`, `sidecar`)
   - Endpoint `POST /documents/delete` dans `sidecar.py` : suppression en cascade (units, alignment_links, doc_relations, units_fts, documents).
   - Contrat OpenAPI `sidecar_contract.py` mis à jour (`API_VERSION 1.4.7`).

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xmlns="http://www.tei-c.org/ns/1.0">
+  <teiHeader>
+    <fileDesc>
+      <titleStmt><title>Mixed content TEI</title></titleStmt>
+      <publicationStmt><p>Test</p></publicationStmt>
+      <sourceDesc><p>Test</p></sourceDesc>
+    </fileDesc>
+  </teiHeader>
+  <text>
+    <body>
+      <div>
+        <p xml:id="u1">Alpha <hi rend="italic">beta</hi> gamma.</p>
+        <p xml:id="u2">Delta <ref target="#u1">see above</ref>.</p>
+      </div>
+    </body>
+    <linkGrp type="alignment">
+      <link target="#u1 #u2"/>
+    </linkGrp>
+  </text>
+</TEI>

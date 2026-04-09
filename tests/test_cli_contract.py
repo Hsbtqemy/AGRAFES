@@ -111,3 +111,40 @@ def test_cli_argparse_failure_returns_json_error(tmp_path: Path) -> None:
     assert payload["status"] == "error"
     assert "Invalid arguments" in payload["error"]
     assert "created_at" in payload
+
+
+def test_cli_index_incremental_returns_stats(tmp_path: Path) -> None:
+    db_path = tmp_path / "inc.db"
+    docx_path = tmp_path / "inc.docx"
+    docx_path.write_bytes(make_docx(["[1] alpha", "[2] beta"]))
+
+    init = _run_cli(["init-project", "--db", str(db_path)])
+    assert init.returncode == 0
+    assert init.stderr == ""
+
+    imported = _run_cli(
+        [
+            "import",
+            "--db",
+            str(db_path),
+            "--mode",
+            "docx_numbered_lines",
+            "--language",
+            "fr",
+            "--path",
+            str(docx_path),
+        ]
+    )
+    assert imported.returncode == 0
+    assert imported.stderr == ""
+
+    indexed = _run_cli(["index", "--db", str(db_path), "--incremental"])
+    assert indexed.returncode == 0
+    assert indexed.stderr == ""
+    payload = _parse_single_json(indexed.stdout)
+    assert payload["status"] == "ok"
+    assert payload["incremental"] is True
+    assert payload["units_indexed"] >= 2
+    assert isinstance(payload["inserted"], int)
+    assert isinstance(payload["refreshed"], int)
+    assert isinstance(payload["deleted"], int)
