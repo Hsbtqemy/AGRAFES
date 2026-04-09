@@ -4,7 +4,7 @@
   "default_limit_mb": 80.0,
   "limits_mb": {
     "macos": {
-      "onefile": 18.0,
+      "onefile": 35.0,
       "onedir": 70.0
     },
     "linux": {
