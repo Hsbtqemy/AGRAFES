@@ -5,6 +5,31 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.1.19] - 2026-04-09
+
+### Added
+
+- **ADR-037** : Windows sidecar format override `onedir` → `onefile` (Tauri externalBin exige un fichier unique).
+- **`scripts/read_manifest_field.py`** : helper CLI pour lire un champ de `sidecar-manifest.json` sans escaping shell (remplace les inline `python -c` avec quotes échappées dans les workflows).
+- **CoNLL-U tests** : couverture étendue de 2 à 9 tests (empty nodes, sent_id non-numérique, BOM UTF-8, champs `_`, détection de doublon, fichier manquant/vide).
+- **Contrat API** : 60 routes documentées dans `docs/SIDECAR_API_CONTRACT.md` et `docs/openapi.json` synchronisé avec le code.
+
+### Fixed
+
+- **CI Windows** : ajout de `shell: bash` sur tous les steps utilisant des continuations `\` (`tauri-shell-build.yml`, `build-sidecar.yml`, `tauri-e2e-fixture.yml`, `release.yml`).
+- **CI macOS budget** : limite sidecar macOS onefile relevée à 35 MB (était 18 MB, sidecar réel = 26.4 MB).
+- **`release.yml` race condition** : manifests renommés avec suffixe OS (`sidecar-manifest-macos.json`, etc.) ; filtrage des fichiers 0-octet avant publication GitHub Release.
+- **`linux-manylinux-sidecar.yml`** : désactivé sur push/tags (Python manylinux2014 sans `--enable-shared`, incompatible PyInstaller) ; Linux utilise désormais `ubuntu-latest` + `actions/setup-python`.
+- **`docs/openapi.json`** : resynchronisé (+343 lignes, 15 routes manquantes ajoutées).
+- **Sidecar TEI BUG-FW2-01** : paramètre `tei_unit=` → `unit_element=` dans le job runner async.
+
+### Changed
+
+- **`bench/fixtures/sidecar_size_budget.json`** : limite macOS onefile 18 MB → 35 MB.
+- **`docs/DISTRIBUTION.md`** : format Windows mis à jour, section manylinux annotée, helper script documenté.
+- **`docs/DECISIONS.md`** : ADR-025 amendé + ADR-037 ajouté.
+- **`docs/ROADMAP.md`** : phases V1.9.0–V1.9.3 ajoutées.
+
 ## [0.1.12] - 2026-03-23
 
 ### Added

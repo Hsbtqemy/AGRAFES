@@ -553,7 +553,7 @@ complexity.
 - Default mapping when `--format` is omitted:
   - `darwin` -> `onefile`
   - `linux` -> `onedir`
-  - `windows` -> `onedir`
+  - `windows` -> `onedir` ← **amendé par ADR-037** (voir ci-dessous)
 - CI workflows use explicit per-OS `--format` flags to avoid ambiguity.
 
 Benchmark basis (from `docs/BENCHMARKS.md`):
@@ -566,8 +566,9 @@ Benchmark basis (from `docs/BENCHMARKS.md`):
 
 **Consequences**
 - Sidecar build defaults now depend on OS when `--format` is not provided.
-- Linux/Windows release lanes publish `onedir` sidecars by default.
+- Linux release lanes publish `onedir` sidecars by default.
 - macOS release and fixture lanes keep `onefile` by default.
+- Windows release lanes: `onedir` per benchmark, but **overridden to `onefile`** by Tauri externalBin constraint (ADR-037).
 - Tauri integration must support both artifact layouts:
   - `onefile`: single executable
   - `onedir`: directory bundle with renamed executable inside
@@ -893,4 +894,38 @@ Additionally, some CI runs surfaced legacy DBs missing workflow columns (`workfl
 **Consequences**
 - Prep runtime becomes clearer for lambda users without changing core JSON envelopes.
 - Contract remains backward-compatible (additive endpoint only).
+
+---
+
+## ADR-037 — Windows sidecar format override: onedir → onefile (Tauri externalBin constraint)
+
+**Date:** 2026-04-09
+**Status:** Decided
+
+**Context**
+ADR-025 selected `onedir` for Windows based on startup-latency and size benchmarks.
+However, during PKG-3A (first real Windows NSIS build), it was discovered that
+`tauri.conf.json` `bundle.externalBin` expects a **single file path** — not a directory.
+A `onedir` build produces `multicorpus-x86_64-pc-windows-msvc/` (a directory with
+`multicorpus.exe` inside plus dozens of DLLs), which Tauri cannot reference via
+`externalBin`. Only a single `.exe` file is supported.
+
+**Decision**
+- Override Windows format to `onefile` for all Tauri Shell release and CI lanes.
+- `tauri-shell-build.yml`, `release.yml`, `build-sidecar.yml` all use `onefile` for
+  `windows-latest` matrix entries.
+- `build.rs` in `tauri-shell/src-tauri/` adds the `.exe` suffix on Windows when copying
+  the sidecar to the Tauri manifest root.
+- The `bench/fixtures/sidecar_size_budget.json` Windows onefile limit is set to 20 MB.
+
+**Benchmark note**
+The onedir startup advantage (+73%) does not apply in Tauri Shell context because the
+sidecar runs as a persistent subprocess (started once per session), not as a repeated
+one-shot CLI invocation. The cold-start penalty of onefile is therefore acceptable.
+
+**Consequences**
+- Windows NSIS installer embeds a single `multicorpus.exe` (~15 MB compressed).
+- Tauri `externalBin` works correctly on Windows.
+- ADR-025 mapping updated: `windows` → `onefile` (Tauri Shell context).
+- Non-Tauri benchmarks may still use `onedir` for latency measurement purposes.
 - Legacy DB schemas are tolerated more gracefully, reducing runtime/CI fragility.

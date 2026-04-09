@@ -1,6 +1,6 @@
 # Distribution Guide — AGRAFES Sidecar + Tauri Fixture
 
-Last updated: 2026-02-28 (ADR-025 decided)
+Last updated: 2026-04-09 (ADR-037 — Windows onefile; manylinux désactivé; CI hardening)
 
 ## Goals
 
@@ -49,6 +49,15 @@ python scripts/check_sidecar_size_budget.py \
   --budget-file bench/fixtures/sidecar_size_budget.json
 ```
 
+### Lire un champ du manifest (helper CI)
+
+```bash
+python scripts/read_manifest_field.py tauri/src-tauri/binaries/sidecar-manifest.json executable_path
+```
+
+Évite les problèmes d'échappement shell (quotes imbriquées) dans les workflows CI,
+notamment sur PowerShell (Windows) et dans les `run:` YAML multi-OS.
+
 Default budget policy file:
 - `bench/fixtures/sidecar_size_budget.json`
 - keyed by `os` + `format` (`onefile` / `onedir`)
@@ -57,7 +66,7 @@ Default budget policy file:
 Default format mapping (when `--format` is omitted):
 - macOS (`darwin`): `onefile`
 - Linux (`linux`): `onedir`
-- Windows (`windows`): `onedir`
+- Windows (`windows`): `onefile` ← override ADR-037 (Tauri externalBin exige un fichier unique)
 
 ### Benchmark sidecar formats
 
@@ -106,6 +115,11 @@ $env:WIN_SIGN_CERT_PASSWORD = "<PFX_PASSWORD>"
 
 ### Linux manylinux build
 
+> ⚠️ **Désactivé (2026-04-09)** — Le Python manylinux2014 (`/opt/python/cp311-cp311`)
+> est compilé sans `--enable-shared`, ce que PyInstaller requiert. Le build Linux passe
+> désormais par `ubuntu-latest` + `actions/setup-python` (voir `build-sidecar.yml`).
+> Le script reste disponible pour référence ; réactiver une fois le Dockerfile mis à jour.
+
 ```bash
 bash scripts/linux_manylinux_build_sidecar.sh --format onedir --out tauri/src-tauri/binaries
 ```
@@ -114,7 +128,8 @@ bash scripts/linux_manylinux_build_sidecar.sh --format onedir --out tauri/src-ta
 
 - `.github/workflows/build-sidecar.yml`
   - cross-platform sidecar build (explicit per-OS format)
-  - macOS=`onefile`, Linux=`onedir`, Windows=`onedir`
+  - macOS=`onefile`, Linux=`onedir`, Windows=`onefile` (ADR-037)
+  - `shell: bash` requis sur les steps multi-lignes Windows
 - `.github/workflows/tauri-e2e-fixture.yml`
   - headless persistent sidecar smoke per OS
 - `.github/workflows/bench-sidecar.yml`
@@ -128,11 +143,13 @@ bash scripts/linux_manylinux_build_sidecar.sh --format onedir --out tauri/src-ta
 - `.github/workflows/windows-sign.yml`
   - sidecar signing on windows (conditional by secrets)
 - `.github/workflows/linux-manylinux-sidecar.yml`
-  - manylinux2014 sidecar build (`onedir`) + `--help` verification
+  - ⚠️ **Désactivé sur push/tags** (Python sans `--enable-shared`)
+  - disponible en `workflow_dispatch` uniquement pour tests locaux
 - `.github/workflows/release.yml`
-  - multi-OS build (+ conditional signing/notarization)
-  - upload artifacts
-  - publish GitHub release on `v*` tags
+  - multi-OS build macOS+Windows (`onefile`) + Linux (`onedir`)
+  - manifests renommés avec suffixe OS pour éviter les race conditions
+  - déduplication + filtrage fichiers vides avant publication GitHub Release
+  - publish GitHub release sur tags `v*`
 
 ## Secrets (GitHub Actions)
 
@@ -163,10 +180,19 @@ bash scripts/linux_manylinux_build_sidecar.sh --format onedir --out tauri/src-ta
 
 ## manylinux notes
 
+> ⚠️ **Build manylinux actuellement désactivé** (2026-04-09) : le Python fourni par
+> `quay.io/pypa/manylinux2014_x86_64` (`/opt/python/cp311-cp311`) est compilé sans
+> `--enable-shared`, que PyInstaller requiert obligatoirement. Le workflow
+> `linux-manylinux-sidecar.yml` est retiré des triggers automatiques (push/tags).
+> Le build Linux officiel utilise `ubuntu-latest` + `actions/setup-python` (glibc ≥ 2.35).
+>
+> Pour réactiver manylinux, le `docker/manylinux/Dockerfile` devra compiler Python
+> avec `--enable-shared` (via pyenv ou source), ou utiliser une image disposant
+> d'un Python système partagé.
+
 - Base image: `quay.io/pypa/manylinux2014_x86_64`.
-- Output triple remains `x86_64-unknown-linux-gnu`.
-- Verification in CI runs:
-  - executable `--help`
+- Output triple: `x86_64-unknown-linux-gnu`.
+- Verification: executable `--help`.
 - Additional compatibility checks (`ldd`, distro matrix) remain backlog.
 
 ## Linux glibc floor
@@ -177,11 +203,11 @@ bash scripts/linux_manylinux_build_sidecar.sh --format onedir --out tauri/src-ta
 | `manylinux_2_28` (future) | `manylinux_2_28_x86_64` | 2.28 | Ubuntu 20.04+, RHEL 8+, Debian 11 |
 | Direct host build | Host OS | Host glibc | Dev machines only |
 
-**Policy (Sprint 3.3):**
-- Production binaries use `manylinux2014` (glibc ≥ 2.17) via `linux_manylinux_build_sidecar.sh`.
-- The manylinux2014 image guarantees compatibility with all major enterprise Linux distros
-  that are still in active support as of 2026.
-- aarch64 Linux builds are not yet production-ready (backlog: add `manylinux2014_aarch64` lane).
+**Policy (2026-04-09) :**
+- Production binaries utilisent `ubuntu-latest` + `actions/setup-python` (glibc ≥ 2.35).
+- Cible compatible : Ubuntu 22.04+, Debian 12+, Fedora 37+.
+- manylinux2014 reste l'objectif futur (glibc ≥ 2.17) une fois le Dockerfile corrigé.
+- aarch64 Linux : pas encore en production (backlog).
 
 ## Format default status
 
@@ -210,7 +236,7 @@ bash scripts/linux_manylinux_build_sidecar.sh --format onedir --out tauri/src-ta
 |---|---|---|
 | macos-latest | onefile | `.app` / `.dmg` |
 | ubuntu-latest | onedir | `.AppImage` / `.deb` |
-| windows-latest | onedir | `.exe` / `.msi` |
+| windows-latest | onefile | `.exe` / `.msi` (ADR-037) |
 
 ### Étapes
 

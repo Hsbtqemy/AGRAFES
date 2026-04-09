@@ -32,7 +32,7 @@
 
 ## 3. Sidecar binary build
 
-- [ ] Push tag `v*.*.*` → triggers `build-sidecar.yml` (macos onefile, ubuntu onedir, windows onedir)
+- [ ] Push tag `v*.*.*` → triggers `build-sidecar.yml` (macos onefile, ubuntu onedir, windows **onefile** — ADR-037)
 - [ ] Download artifacts from CI, rename following naming convention:
   - `multicorpus-macos-arm64` (from macos-latest run)
   - `multicorpus-linux-x86_64` (from ubuntu-latest run)
