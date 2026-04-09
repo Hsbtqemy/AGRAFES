@@ -158,5 +158,5 @@ Le binaire résultant est dans `src-tauri/target/release/bundle/`.
 - `tauri-app/` est l'**application utilisateur** (ce dossier).
 - Le sidecar portfile `.agrafes_sidecar.json` est créé dans le répertoire contenant la DB.
 - Token d'authentification : lu depuis le portfile, injecté automatiquement en header `X-Agrafes-Token`.
-- Dev uses PNG-only icons placeholders; generate real `icon.icns` and `icon.ico` before release packaging.
+- Desktop bundle icons are now generated (`icon.icns` + `icon.ico`) from the AGRAFES 1024 source and referenced in `tauri.conf.json`.
 - Deep-link standalone support remains available: `agrafes://open-db?path=...` (plus fallback `?open_db=...` au démarrage).
