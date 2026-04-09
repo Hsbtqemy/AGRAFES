@@ -31,8 +31,10 @@ jobs:
         include:
           - os: macos-latest
             format: onefile
+            artifact_suffix: macos
           - os: windows-latest
             format: onefile
+            artifact_suffix: windows
 
     steps:
       - name: Checkout
@@ -98,13 +100,19 @@ jobs:
           $manifest = Get-Content "tauri/src-tauri/binaries/sidecar-manifest.json" | ConvertFrom-Json
           ./scripts/windows_sign_sidecar.ps1 -FilePath $manifest.executable_path -SkipIfMissing
 
+      - name: Rename manifest with platform suffix
+        shell: bash
+        run: |
+          cp tauri/src-tauri/binaries/sidecar-manifest.json \
+             tauri/src-tauri/binaries/sidecar-manifest-${{ matrix.artifact_suffix }}.json
+
       - name: Upload release artifacts
         uses: actions/upload-artifact@v4
         with:
           name: release-${{ matrix.os }}-${{ matrix.format }}
           path: |
             tauri/src-tauri/binaries/multicorpus-*
-            tauri/src-tauri/binaries/sidecar-manifest.json
+            tauri/src-tauri/binaries/sidecar-manifest-${{ matrix.artifact_suffix }}.json
 
   build-linux:
     runs-on: ubuntu-latest
@@ -149,13 +157,18 @@ jobs:
           chmod +x "$EXE_PATH"
           "$EXE_PATH" --help >/dev/null
 
+      - name: Rename manifest with platform suffix
+        run: |
+          cp tauri/src-tauri/binaries/sidecar-manifest.json \
+             tauri/src-tauri/binaries/sidecar-manifest-linux.json
+
       - name: Upload release artifacts
         uses: actions/upload-artifact@v4
         with:
           name: release-linux-onedir
           path: |
             tauri/src-tauri/binaries/multicorpus-*
-            tauri/src-tauri/binaries/sidecar-manifest.json
+            tauri/src-tauri/binaries/sidecar-manifest-linux.json
 
   publish-release:
     if: ${{ startsWith(github.ref, 'refs/tags/v') }}
@@ -174,10 +187,40 @@ jobs:
         with:
           path: release-artifacts
 
+      - name: Prepare release assets (deduplicate by basename)
+        run: |
+          mkdir -p release-assets
+          python3 - <<'PY'
+          from pathlib import Path
+          import shutil
+
+          src = Path("release-artifacts")
+          dst = Path("release-assets")
+
+          by_name = {}
+          for p in src.rglob("*"):
+              if not p.is_file():
+                  continue
+              by_name.setdefault(p.name, []).append(p)
+
+          duplicates = {name: paths for name, paths in by_name.items() if len(paths) > 1}
+          if duplicates:
+              raise SystemExit(
+                  "Duplicate release asset basenames: "
+                  + ", ".join(sorted(duplicates))
+              )
+
+          for paths in by_name.values():
+              shutil.copy2(paths[0], dst / paths[0].name)
+
+          print("Release assets:")
+          for p in sorted(dst.iterdir()):
+              print(f"  {p.name}  ({p.stat().st_size:,} bytes)")
+          PY
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            release-artifacts/**/*
+          files: release-assets/*
           body_path: CHANGELOG.md
           fail_on_unmatched_files: false
