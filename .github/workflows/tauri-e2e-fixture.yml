@@ -2,6 +2,12 @@ name: tauri-e2e-fixture
 
 on:
   workflow_dispatch:
+    inputs:
+      run_gui_smoke:
+        description: "Run optional GUI-capable tauri fixture build smoke"
+        required: false
+        type: boolean
+        default: false
   push:
     tags:
       - "v*"
@@ -97,3 +103,80 @@ jobs:
         env:
           FIXTURE_SCENARIO: persistent
         run: node tauri-fixture/scripts/fixture_smoke.mjs
+
+  fixture-gui-smoke:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_gui_smoke == true }}
+    needs: build-sidecar
+    timeout-minutes: 35
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            format: onefile
+          - os: ubuntu-latest
+            format: onedir
+          - os: windows-latest
+            format: onedir
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Set up Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "tauri-fixture/src-tauri -> target"
+
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: Download sidecar artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: sidecar-${{ matrix.os }}-${{ matrix.format }}
+          path: tauri-fixture/src-tauri/binaries
+
+      - name: Install fixture dependencies
+        run: npm --prefix tauri-fixture install
+
+      - name: Prepare fixture frontend dist
+        run: |
+          mkdir -p tauri-fixture/dist
+          cat > tauri-fixture/dist/index.html <<'HTML'
+          <!doctype html>
+          <html lang="en">
+            <head>
+              <meta charset="utf-8" />
+              <meta name="viewport" content="width=device-width, initial-scale=1" />
+              <title>AGRAFES Tauri Fixture</title>
+            </head>
+            <body>
+              <div id="app">Fixture GUI smoke</div>
+            </body>
+          </html>
+          HTML
+
+      - name: Build fixture app (GUI-capable smoke)
+        env:
+          CI: "true"
+          TAURI_SIGNING_PRIVATE_KEY: ""
+          APPLE_SIGNING_IDENTITY: "-"
+        run: npm --prefix tauri-fixture exec tauri build --debug
