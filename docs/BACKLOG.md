@@ -177,7 +177,7 @@ Synthèse après passage sur le tableau prioritaire, les placeholders P9, la sec
 | P9 | **Shell multi-fenêtre** — `tauri::WebviewWindowBuilder` | Ouvrir Explorer et Constituer en parallèle dans des fenêtres séparées | todo |
 | P9 | **Deprecation tauri-app + tauri-prep** standalone | tauri-shell les supplante ; maintien pour standalone uniquement jusqu'à V2.0 | todo |
 | P9 | **Hot-swap DB sidecar** — éviter le redémarrage sidecar lors d'un switch DB | Actuellement : `_initDb` redémarre le sidecar ; un futur mécanisme de rechargement à chaud éviterait l'interruption | todo |
-| P9 | **CSS audit des 4 fichiers ui/** (tokens/base/components/prep-vnext) | Depuis P6, `app.css` contient des règles dupliquées avec les 4 fichiers existants (`:root` vars, sidebar layout) | todo |
+| P9 | **CSS audit des 4 fichiers ui/** (tokens/base/components/prep-vnext) | Depuis P6, `app.css` contient des règles dupliquées avec les 4 fichiers existants (`:root` vars, sidebar layout) | **done** (2026-04-09 : suppression dans `tauri-prep/src/ui/app.css` des duplications `:root --prep-*`, shell/sidebar/nav-tree, skip-link et responsive shell déjà définies dans `tokens.css` + `prep-vnext.css`; overrides métier conservés) |
 
 ## Idées à cadrer (exploratoire — à reformuler avant spec)
 

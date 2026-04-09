@@ -2516,49 +2516,9 @@ del.diff-del { color: #b91c1c; text-decoration: line-through; opacity: 0.75; }
 .quality-value.warn { color: #f4a261; }
 .quality-value.err  { color: var(--color-danger, #e63946); }
 
-/* ── Skip link (A11y) ─────────────────────────────────────────────────── */
-.prep-skip-link { position: absolute; top: -40px; left: 8px; background: var(--prep-blue,#1e4a80); color: #fff; border-radius: 4px; padding: 6px 12px; font-size: 13px; font-weight: 600; text-decoration: none; z-index: 9999; transition: top 0.12s; }
-.prep-skip-link:focus { top: 8px; }
-/* ── Prep vNext sidebar layout (also in prep-vnext.css for standalone) ── */
-:root { --prep-topbar-h: 54px; --prep-nav-w: 230px; --prep-line: #dde1e8; --prep-line-accent: #9fd3cc; --prep-line-accent-light: #cfe8e3; --prep-accent-soft: #e8f5f3; --prep-accent-dark: #0c4a46; --prep-accent: #0f766e; --prep-muted: #4f5d6d; --prep-text: #1a1a2e; --prep-blue: #1e4a80; --prep-blue-soft: #eaf1fb; --prep-blue-line: #b7c8df; --prep-warn: #e6a817; --prep-warn-soft: #fff7e6; --prep-warn-line: #edd89e; }
-.prep-shell { display: grid; grid-template-columns: var(--prep-nav-w,230px) 1fr; min-height: calc(100vh - var(--prep-topbar-h,54px)); }
-.prep-shell.nav-hidden { grid-template-columns: 30px 1fr; }
-.prep-shell.nav-hidden .prep-nav { display: none; }
-.prep-shell.nav-hidden .prep-rail { display: flex; }
-.prep-nav { border-right: 1px solid var(--prep-line,#dde1e8); background: #f8f9fa; padding: 12px; overflow-y: auto; }
-.prep-nav-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
-.prep-nav-head h2 { margin: 0; font-size: 13px; text-transform: uppercase; letter-spacing: .07em; color: var(--prep-muted,#4f5d6d); }
-.prep-nav-tab { width: 100%; text-align: left; border: 1px solid transparent; border-radius: 8px; padding: 10px; background: transparent; color: var(--prep-text,#1a1a2e); font-size: 14px; margin-bottom: 4px; display: block; cursor: pointer; transition: background .12s, border-color .12s; font-family: inherit; }
-.prep-nav-tab:hover { background: #f0faf8; border-color: var(--prep-line-accent-light,#cfe8e3); }
-.prep-nav-tab.active { background: var(--prep-accent-soft,#e8f5f3); border-color: var(--prep-line-accent,#9fd3cc); color: var(--prep-accent-dark,#0c4a46); font-weight: 700; }
-.prep-nav-collapse-btn { border: 1px solid var(--prep-blue-line,#b7c8df); border-radius: 7px; color: var(--prep-blue,#1e4a80); background: var(--prep-blue-soft,#eaf1fb); width: 26px; height: 26px; padding: 0; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 11px; flex-shrink: 0; font-family: inherit; transition: background .12s; }
-.prep-nav-collapse-btn:hover { background: #d8e8f8; }
-.prep-rail { display: none; width: 30px; border-right: 1px solid var(--prep-line-accent-light,#cfe8e3); background: linear-gradient(180deg,#f3f8f7,#eef3f2); align-items: flex-start; justify-content: center; padding-top: 10px; }
-.prep-rail-expand-btn { border: 1px solid var(--prep-blue-line,#b7c8df); border-radius: 7px; color: var(--prep-blue,#1e4a80); background: var(--prep-blue-soft,#eaf1fb); width: 22px; height: 22px; padding: 0; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 11px; font-family: inherit; }
-.prep-nav-tree { margin: 2px 0 6px 2px; }
-.prep-nav-tree-summary { list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; border: 1px solid var(--prep-line-accent-light,#cfe8e3); border-radius: 8px; padding: 7px 8px; font-size: 12px; font-weight: 700; color: var(--prep-accent-dark,#0c4a46); background: #edf7f5; user-select: none; }
-.prep-nav-tree-summary::-webkit-details-marker { display: none; }
-.prep-nav-tree-caret { font-size: 11px; color: var(--prep-muted,#4f5d6d); transition: transform .16s ease; }
-.prep-nav-tree[open] .prep-nav-tree-caret { transform: rotate(180deg); }
-.prep-nav-tree-body { margin: 3px 0 0 6px; padding: 4px 0 0 10px; border-left: 2px solid var(--prep-line-accent-light,#cfe8e3); display: grid; gap: 3px; }
-.prep-nav-tree-link { display: block; font-size: 12px; color: var(--prep-muted,#4f5d6d); border: 1px solid transparent; border-radius: 7px; padding: 6px 8px; background: transparent; width: 100%; text-align: left; cursor: pointer; transition: background .1s, border-color .1s; font-family: inherit; text-decoration: none; }
-.prep-nav-tree-link:hover { border-color: var(--prep-line-accent-light,#cfe8e3); background: #f6fbfa; }
-.prep-nav-tree-link.active { border-color: var(--prep-line-accent,#9fd3cc); background: var(--prep-accent-soft,#e8f5f3); color: var(--prep-accent-dark,#0c4a46); font-weight: 700; }
-.prep-main { min-width: 0; overflow-x: hidden; }
-/* Import tab: let main + content fill column so the import footer can dock to bottom */
-.prep-main:has(.import-screen.active) {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-.prep-main:has(.import-screen.active) > .content {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  /* évite un vide sous la zone scroll quand le footer est fixed en bas de fenêtre */
-  padding-bottom: 0;
-}
+/* NOTE (P9 CSS audit): skip-link + sidebar shell + nav-tree + import-main flex rules
+   are canonical in tokens/base/components/prep-vnext files.
+   Duplicated definitions previously in app.css were removed to avoid drift. */
 
 /* ── Curation 3-column workspace (also in prep-vnext.css for standalone) ── */
 .curate-workspace-card { padding: 0 !important; overflow: hidden; }
@@ -3927,7 +3887,7 @@ details.seg-side[open] { width: 220px; }
 @media (max-width:900px) { .seg-stats-grid { grid-template-columns: 1fr 1fr; } .seg-inner-body { padding: 8px; } }
 /* 1300px : curate-workspaces génériques (hors #act-curate-card géré par ses propres breakpoints) */
 @media (max-width:1300px) { .curate-workspace { grid-template-columns: 250px 1fr; } .curate-col-right { grid-column: 1/-1; border-right: 0; border-top: 1px solid var(--prep-line,#dde1e8); } .curate-preview-body { grid-template-columns: 1fr 1fr; } .curate-minimap { display: none; } }
-@media (max-width:1050px) { .prep-shell { grid-template-columns: 1fr; } .prep-nav { border-right: 0; border-bottom: 1px solid var(--prep-line,#dde1e8); } .curate-workspace { grid-template-columns: 1fr; } .curate-col { border-right: 0; border-bottom: 1px solid var(--prep-line,#dde1e8); } .curate-col:last-child { border-bottom: 0; } .curate-preview-card { position: static; max-height: none; } }
+@media (max-width:1050px) { .curate-workspace { grid-template-columns: 1fr; } .curate-col { border-right: 0; border-bottom: 1px solid var(--prep-line,#dde1e8); } .curate-col:last-child { border-bottom: 0; } .curate-preview-card { position: static; max-height: none; } }
 @media (max-width:800px) { .curate-preview-body { grid-template-columns: 1fr; } .curate-pane { min-height: 160px; } }
 
 /* ─── Actions hub: header + subnav + panels ──────────────────────────────── */
