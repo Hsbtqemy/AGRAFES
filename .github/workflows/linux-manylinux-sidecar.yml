@@ -1,10 +1,11 @@
 name: linux-manylinux-sidecar
 
+# NOTE: disabled from automatic tag triggers — manylinux2014 Python (/opt/python/cp311-cp311)
+# was built without --enable-shared, which PyInstaller requires. Linux sidecar is handled
+# by build-sidecar.yml (ubuntu-latest + actions/setup-python) and tauri-shell-build.yml.
+# Re-enable once the Dockerfile is updated to use a Python compiled with --enable-shared.
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - "v*"
 
 jobs:
   build-manylinux:

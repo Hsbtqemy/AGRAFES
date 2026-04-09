@@ -49,6 +49,7 @@ jobs:
         run: python scripts/build_sidecar.py --preset tauri --format "${{ matrix.format }}" --no-clean
 
       - name: Enforce sidecar size budget
+        shell: bash
         run: |
           python scripts/check_sidecar_size_budget.py \
             --manifest tauri/src-tauri/binaries/sidecar-manifest.json \
