@@ -6,6 +6,8 @@ use tauri_plugin_deep_link::DeepLinkExt;
 
 use std::collections::HashMap;
 use std::io::Write as _;
+use std::sync::{Arc, Mutex};
+use tauri::Manager;
 
 // ─── Sidecar loopback fetch (bypasses Tauri HTTP plugin scope) ───────────────
 
@@ -91,12 +93,28 @@ fn read_text_file_raw(path: String) -> Result<String, String> {
         .map_err(|e| format!("read_text_file_raw: cannot read '{}': {}", path, e))
 }
 
-/// Appends a diagnostic message to %APPDATA%\com.agrafes.shell\sidecar-debug.log.
+/// Appends a diagnostic message under the OS user data dir, e.g.
+/// `%APPDATA%\com.agrafes.shell\` (Windows) or `~/Library/Application Support/com.agrafes.shell/` (macOS).
+/// Avoids a cwd-relative path (previous fallback created `src-tauri/sidecar-debug.log` and caused `cargo watch` rebuild loops in dev).
+fn sidecar_log_path() -> Result<std::path::PathBuf, String> {
+    let base = dirs::data_dir().ok_or_else(|| {
+        "write_sidecar_log: could not resolve user data directory".to_string()
+    })?;
+    let dir = base.join("com.agrafes.shell");
+    std::fs::create_dir_all(&dir).map_err(|e| {
+        format!(
+            "write_sidecar_log: cannot create directory '{}': {}",
+            dir.display(),
+            e
+        )
+    })?;
+    Ok(dir.join("sidecar-debug.log"))
+}
+
+/// Appends a diagnostic message to the per-app sidecar debug log (see `sidecar_log_path`).
 #[tauri::command]
 fn write_sidecar_log(message: String) -> Result<(), String> {
-    let log_path = std::env::var("APPDATA")
-        .map(|d| format!("{}\\com.agrafes.shell\\sidecar-debug.log", d))
-        .unwrap_or_else(|_| "sidecar-debug.log".to_string());
+    let log_path = sidecar_log_path()?;
 
     let ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -107,7 +125,7 @@ fn write_sidecar_log(message: String) -> Result<(), String> {
         .create(true)
         .append(true)
         .open(&log_path)
-        .map_err(|e| format!("write_sidecar_log: cannot open '{}': {}", log_path, e))?;
+        .map_err(|e| format!("write_sidecar_log: cannot open '{}': {}", log_path.display(), e))?;
 
     writeln!(file, "[{}] {}", ts, message)
         .map_err(|e| format!("write_sidecar_log: write error: {}", e))?;
@@ -115,16 +133,95 @@ fn write_sidecar_log(message: String) -> Result<(), String> {
     Ok(())
 }
 
+// ─── Sidecar shutdown registry ────────────────────────────────────────────────
+
+/// Shared state: active sidecar connection info registered by the JS layer.
+#[derive(Clone, Default)]
+struct SidecarRegistry(Arc<Mutex<Option<SidecarEntry>>>);
+
+#[derive(Clone, serde::Deserialize)]
+struct SidecarEntry {
+    base_url: String,
+    token: Option<String>,
+}
+
+/// Called by JS whenever a sidecar connection is established or changes.
+/// Stores base_url + token so Rust can POST /shutdown on close.
+#[tauri::command]
+fn register_sidecar(
+    base_url: String,
+    token: Option<String>,
+    state: tauri::State<SidecarRegistry>,
+) {
+    let mut guard = state.0.lock().unwrap();
+    *guard = Some(SidecarEntry { base_url, token });
+}
+
+/// Called by JS on beforeunload — best-effort synchronous shutdown.
+/// Also invoked automatically on WindowEvent::CloseRequested.
+#[tauri::command]
+async fn shutdown_sidecar_cmd(state: tauri::State<'_, SidecarRegistry>) -> Result<(), String> {
+    let entry = {
+        let mut guard = state.0.lock().unwrap();
+        guard.take()
+    };
+    if let Some(e) = entry {
+        _do_shutdown(&e.base_url, e.token.as_deref()).await;
+    }
+    Ok(())
+}
+
+async fn _do_shutdown(base_url: &str, token: Option<&str>) {
+    let url = format!("{}/shutdown", base_url.trim_end_matches('/'));
+    let client = match reqwest::Client::builder()
+        .no_proxy()
+        .connect_timeout(std::time::Duration::from_secs(2))
+        .timeout(std::time::Duration::from_secs(4))
+        .build()
+    {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+    let mut req = client.post(&url).header("Content-Type", "application/json").body("{}");
+    if let Some(tok) = token {
+        req = req.header("X-Sidecar-Token", tok);
+    }
+    let _ = req.send().await; // best-effort
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 fn main() {
+    let registry = SidecarRegistry::default();
+
     tauri::Builder::default()
+        .manage(registry)
         .setup(|_app| {
             #[cfg(any(target_os = "linux", all(debug_assertions, windows)))]
             {
                 _app.deep_link().register_all()?;
             }
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::Destroyed = event {
+                // Synchronous best-effort shutdown on window destroy.
+                // We read the registry and fire a blocking reqwest call.
+                let state = window.state::<SidecarRegistry>();
+                let entry = {
+                    let mut guard = state.0.lock().unwrap();
+                    guard.take()
+                };
+                if let Some(e) = entry {
+                    // Block the thread briefly for a clean shutdown.
+                    let rt = tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build();
+                    if let Ok(rt) = rt {
+                        rt.block_on(_do_shutdown(&e.base_url, e.token.as_deref()));
+                    }
+                }
+            }
         })
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_fs::init())
@@ -135,6 +232,8 @@ fn main() {
             sidecar_fetch_loopback,
             read_text_file_raw,
             write_sidecar_log,
+            register_sidecar,
+            shutdown_sidecar_cmd,
         ])
         .run(tauri::generate_context!())
         .expect("error while running AGRAFES Shell application");

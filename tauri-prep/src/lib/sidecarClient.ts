@@ -1274,6 +1274,7 @@ export async function ensureRunning(dbPath: string): Promise<Conn> {
             });
             _conn = makeConn(baseUrl, token);
             _connDbPath = dbPath;
+            _notifyRustRegistry(_conn);
             return _conn;
           }
         }
@@ -1430,6 +1431,7 @@ async function _spawnSidecar(dbPath: string): Promise<Conn> {
 
   _conn = makeConn(baseUrl, token);
   _connDbPath = dbPath;
+  _notifyRustRegistry(_conn);
   return _conn;
 }
 
@@ -2307,6 +2309,26 @@ export async function shutdownSidecar(conn: Conn): Promise<void> {
   _conn = null;
   _connDbPath = null;
   _spawnedChild = null;
+  _notifyRustRegistry(null);
+}
+
+/** Returns the active connection info (base_url + token) or null. Used by the
+ *  Rust layer to POST /shutdown on window close. */
+export function getActiveConn(): { baseUrl: string; token: string | null } | null {
+  if (!_conn) return null;
+  return { baseUrl: _conn.baseUrl, token: _conn.token };
+}
+
+/** Push the current connection info to the Rust SidecarRegistry so it can
+ *  POST /shutdown on WindowEvent::Destroyed even if JS is already torn down. */
+function _notifyRustRegistry(conn: Conn | null): void {
+  try {
+    if (conn) {
+      void invoke("register_sidecar", { baseUrl: conn.baseUrl, token: conn.token ?? null });
+    } else {
+      void invoke("register_sidecar", { baseUrl: "", token: null });
+    }
+  } catch { /* best-effort */ }
 }
 
 // ─── Sprint 7 — Curation propagée ────────────────────────────────────────────

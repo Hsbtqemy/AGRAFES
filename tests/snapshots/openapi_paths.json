@@ -55,6 +55,7 @@
   "POST /segment/preview",
   "POST /shutdown",
   "POST /token_query",
+  "POST /token_stats",
   "POST /tokens/update",
   "POST /units/merge",
   "POST /units/split",

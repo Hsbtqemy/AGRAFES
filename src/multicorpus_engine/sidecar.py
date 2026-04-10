@@ -588,6 +588,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 self._handle_query(body)
             elif path == "/token_query":
                 self._handle_token_query(body)
+            elif path == "/token_stats":
+                self._handle_token_stats(body)
             elif path == "/query/facets":
                 self._handle_query_facets(body)
             elif path == "/stats/lexical":
@@ -1541,6 +1543,82 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 }
             )
         )
+
+    def _handle_token_stats(self, body: dict) -> None:
+        """POST /token_stats — frequency distribution of a token attribute over CQL hits.
+
+        No auth token required (read-only).
+
+        Body fields:
+            cql        (str, required)  — CQL query string
+            group_by   (str, default "lemma") — lemma | upos | xpos | word | feats
+            language   (str, optional)
+            doc_ids    (list[int], optional)
+            limit      (int, default 50, max 200)
+        """
+        from multicorpus_engine.token_stats import run_token_stats
+
+        raw_cql = body.get("cql")
+        if not isinstance(raw_cql, str) or not raw_cql.strip():
+            self._send_error(
+                "cql must be a non-empty string",
+                code=ERR_VALIDATION, http_status=400,
+            )
+            return
+
+        group_by = str(body.get("group_by", "lemma")).strip().lower()
+        allowed_group_by = ("lemma", "upos", "xpos", "word", "feats")
+        if group_by not in allowed_group_by:
+            self._send_error(
+                f"group_by must be one of {allowed_group_by!r}",
+                code=ERR_VALIDATION, http_status=400,
+            )
+            return
+
+        raw_limit = body.get("limit", 50)
+        try:
+            limit = int(raw_limit)
+        except (TypeError, ValueError):
+            self._send_error("limit must be an integer", code=ERR_VALIDATION, http_status=400)
+            return
+        if limit < 1 or limit > 200:
+            self._send_error("limit must be in [1, 200]", code=ERR_VALIDATION, http_status=400)
+            return
+
+        language_raw = body.get("language")
+        language = (
+            str(language_raw).strip()
+            if isinstance(language_raw, str) and language_raw.strip()
+            else None
+        )
+
+        raw_doc_ids = body.get("doc_ids")
+        doc_ids: list[int] | None = None
+        if raw_doc_ids is not None:
+            if not isinstance(raw_doc_ids, list):
+                self._send_error("doc_ids must be a list of integers", code=ERR_VALIDATION, http_status=400)
+                return
+            try:
+                doc_ids = [int(x) for x in raw_doc_ids]
+            except (TypeError, ValueError):
+                self._send_error("doc_ids must be a list of integers", code=ERR_VALIDATION, http_status=400)
+                return
+
+        with self._lock():
+            try:
+                result = run_token_stats(
+                    conn=self._conn(),
+                    cql=raw_cql.strip(),
+                    group_by=group_by,
+                    language=language,
+                    doc_ids=doc_ids,
+                    limit=limit,
+                )
+            except ValueError as exc:
+                self._send_error(str(exc), code=ERR_VALIDATION, http_status=400)
+                return
+
+        self._send_json(success_payload(result))
 
     def _handle_query_facets(self, body: dict) -> None:
         """POST /query/facets — lightweight facet summary for a query.
@@ -6444,6 +6522,7 @@ class CorpusServer:
         self._conn = sqlite3.connect(str(self._db_path), check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
+        self._conn.execute("PRAGMA busy_timeout=30000")
         self._conn.execute("PRAGMA foreign_keys=ON")
         apply_migrations(self._conn)
 
@@ -6668,25 +6747,21 @@ class CorpusServer:
                     raise ValueError("annotate job expects params.doc_id or params.all_docs=true")
                 doc_ids = [int(params["doc_id"])]
 
-            # Use a dedicated SQLite connection for annotation jobs so we do not
-            # monopolize the shared sidecar lock during spaCy processing.
-            job_conn = sqlite3.connect(str(self._db_path))
-            try:
-                job_conn.execute("PRAGMA foreign_keys=ON")
-                job_conn.execute("PRAGMA busy_timeout=5000")
-
-                results: list[dict[str, object]] = []
-                total_tokens = 0
-                total_units = 0
-                for idx, did in enumerate(doc_ids, start=1):
-                    pct = 5 + int(90 * (idx - 1) / max(len(doc_ids), 1))
-                    progress_cb(pct, f"Annotating doc #{did} ({idx}/{len(doc_ids)})")
-                    report = annotate_document(job_conn, doc_id=did, model_name=model_name)
-                    results.append(report)
-                    total_tokens += int(report.get("tokens_written", 0) or 0)
-                    total_units += int(report.get("units_annotated", 0) or 0)
-            finally:
-                job_conn.close()
+            # NLP is CPU-bound and slow — run it without holding the sidecar lock.
+            # We pass the main conn + lock so annotate_document can:
+            #   1. read unit rows under lock (fast)
+            #   2. run spaCy inference with NO lock held
+            #   3. write token rows under lock (fast batch INSERT)
+            results: list[dict[str, object]] = []
+            total_tokens = 0
+            total_units = 0
+            for idx, did in enumerate(doc_ids, start=1):
+                pct = 5 + int(90 * (idx - 1) / max(len(doc_ids), 1))
+                progress_cb(pct, f"Annotating doc #{did} ({idx}/{len(doc_ids)})")
+                report = annotate_document(conn, doc_id=did, model_name=model_name, lock=lock)
+                results.append(report)
+                total_tokens += int(report.get("tokens_written", 0) or 0)
+                total_units += int(report.get("units_annotated", 0) or 0)
 
             progress_cb(100, "Annotation completed")
             return {

@@ -1,19 +1,19 @@
 {
   "version": 1,
   "unit": "mb",
-  "default_limit_mb": 80.0,
+  "default_limit_mb": 500.0,
   "limits_mb": {
     "macos": {
-      "onefile": 35.0,
-      "onedir": 70.0
+      "onefile": 350.0,
+      "onedir": 400.0
     },
     "linux": {
-      "onefile": 33.0,
-      "onedir": 75.0
+      "onefile": 350.0,
+      "onedir": 400.0
     },
     "windows": {
-      "onefile": 20.0,
-      "onedir": 45.0
+      "onefile": 350.0,
+      "onedir": 400.0
     }
   }
 }

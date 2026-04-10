@@ -242,6 +242,7 @@ export class App {
           ["Curation", "#act-curate-card", "curation"],
           ["Segmentation", "#act-seg-card", "segmentation"],
           ["Alignement", "#act-align-card", "alignement"],
+          ["Annotation", "#act-annot-card", "annoter"],
         ];
         for (const [label, , navKey] of treeItems) {
           const link = document.createElement("button");
@@ -250,7 +251,7 @@ export class App {
           link.textContent = label;
           link.addEventListener("click", () => {
             this._switchTab("actions");
-            this._actions.setSubView(navKey as "curation" | "segmentation" | "alignement");
+            this._actions.setSubView(navKey as "curation" | "segmentation" | "alignement" | "annoter");
           });
           treeBody.appendChild(link);
         }

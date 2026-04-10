@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 import sqlite3
+import threading
 
 
 _DEFAULT_MODEL_BY_LANG: dict[str, str] = {
@@ -16,6 +17,10 @@ _DEFAULT_MODEL_BY_LANG: dict[str, str] = {
     "en": "en_core_web_md",
     "de": "de_core_news_md",
     "es": "es_core_news_md",
+    "it": "it_core_news_md",
+    "sv": "sv_core_news_sm",
+    "ro": "ro_core_news_md",
+    "el": "el_core_news_sm",
     # Generic multilingual fallback.
     "und": "xx_ent_wiki_sm",
 }
@@ -64,41 +69,58 @@ def annotate_document(
     conn: sqlite3.Connection,
     doc_id: int,
     model_name: str | None = None,
+    lock: threading.Lock | None = None,
 ) -> dict[str, object]:
     """Annotate a single document and populate ``tokens``.
+
+    Strategy to avoid "database is locked":
+      1. Read unit rows under lock (fast).
+      2. Run spaCy inference with NO lock held (slow, CPU-bound).
+      3. Write all token rows under lock in a single executemany (fast).
 
     Existing token rows for the document are replaced.
     """
 
-    row = conn.execute(
-        "SELECT doc_id, language FROM documents WHERE doc_id = ?",
-        (doc_id,),
-    ).fetchone()
-    if row is None:
-        raise ValueError(f"Document not found: doc_id={doc_id}")
+    def _with_lock(fn):
+        if lock is not None:
+            with lock:
+                return fn()
+        return fn()
 
-    resolved_model = model_name.strip() if isinstance(model_name, str) and model_name.strip() else _model_for_language(row[1])
-    nlp = _load_model(resolved_model)
+    # ── Phase 1: read metadata + unit rows (under lock, fast) ────────────────
+    def _read():
+        row = conn.execute(
+            "SELECT doc_id, language FROM documents WHERE doc_id = ?",
+            (doc_id,),
+        ).fetchone()
+        if row is None:
+            raise ValueError(f"Document not found: doc_id={doc_id}")
+        unit_rows = conn.execute(
+            """
+            SELECT unit_id, COALESCE(text_norm, text_raw, '') AS text
+            FROM units
+            WHERE doc_id = ? AND unit_type = 'line'
+            ORDER BY n
+            """,
+            (doc_id,),
+        ).fetchall()
+        return row, unit_rows
 
-    unit_rows = conn.execute(
-        """
-        SELECT unit_id, COALESCE(text_norm, text_raw, '') AS text
-        FROM units
-        WHERE doc_id = ? AND unit_type = 'line'
-        ORDER BY n
-        """,
-        (doc_id,),
-    ).fetchall()
+    row, unit_rows = _with_lock(_read)
 
-    # Clear previous annotation for this document.
-    conn.execute(
-        "DELETE FROM tokens WHERE unit_id IN (SELECT unit_id FROM units WHERE doc_id = ?)",
-        (doc_id,),
+    resolved_model = (
+        model_name.strip()
+        if isinstance(model_name, str) and model_name.strip()
+        else _model_for_language(row[1])
     )
+
+    # ── Phase 2: spaCy inference (NO lock held) ───────────────────────────────
+    nlp = _load_model(resolved_model)
 
     units_annotated = 0
     sentences_written = 0
     tokens_written = 0
+    pending_rows: list[tuple] = []
 
     for unit_id, text in unit_rows:
         if not isinstance(text, str):
@@ -128,27 +150,15 @@ def annotate_document(
                 for tok in sent_tokens:
                     position += 1
                     tokens_written += 1
-                    conn.execute(
-                        """
-                        INSERT INTO tokens
-                            (unit_id, sent_id, position, word, lemma, upos, xpos, feats, misc)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """,
-                        (
-                            int(unit_id),
-                            sent_id,
-                            position,
-                            tok.text,
-                            tok.lemma_ or None,
-                            tok.pos_ or None,
-                            tok.tag_ or None,
-                            str(tok.morph) if str(tok.morph) else None,
-                            None,
-                        ),
-                    )
+                    pending_rows.append((
+                        int(unit_id), sent_id, position,
+                        tok.text, tok.lemma_ or None, tok.pos_ or None,
+                        tok.tag_ or None,
+                        str(tok.morph) if str(tok.morph) else None,
+                        None,
+                    ))
                 wrote_in_sent_mode = True
 
-        # Fallback when sentence boundaries are not available in the model.
         if not wrote_in_sent_mode:
             sent_id = 1
             position = 0
@@ -159,28 +169,35 @@ def annotate_document(
                 has_token = True
                 position += 1
                 tokens_written += 1
-                conn.execute(
-                    """
-                    INSERT INTO tokens
-                        (unit_id, sent_id, position, word, lemma, upos, xpos, feats, misc)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        int(unit_id),
-                        sent_id,
-                        position,
-                        tok.text,
-                        tok.lemma_ or None,
-                        tok.pos_ or None,
-                        tok.tag_ or None,
-                        str(tok.morph) if str(tok.morph) else None,
-                        None,
-                    ),
-                )
+                pending_rows.append((
+                    int(unit_id), sent_id, position,
+                    tok.text, tok.lemma_ or None, tok.pos_ or None,
+                    tok.tag_ or None,
+                    str(tok.morph) if str(tok.morph) else None,
+                    None,
+                ))
             if has_token:
                 sentences_written += 1
 
-    conn.commit()
+    # ── Phase 3: write token rows (under lock, fast batch INSERT) ─────────────
+    def _write():
+        conn.execute(
+            "DELETE FROM tokens WHERE unit_id IN "
+            "(SELECT unit_id FROM units WHERE doc_id = ?)",
+            (doc_id,),
+        )
+        conn.executemany(
+            """
+            INSERT INTO tokens
+                (unit_id, sent_id, position, word, lemma, upos, xpos, feats, misc)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            pending_rows,
+        )
+        conn.commit()
+
+    _with_lock(_write)
+
     return {
         "doc_id": int(doc_id),
         "model": resolved_model,
@@ -189,4 +206,3 @@ def annotate_document(
         "sentences_written": sentences_written,
         "tokens_written": tokens_written,
     }
-

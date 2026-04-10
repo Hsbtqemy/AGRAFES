@@ -585,6 +585,146 @@ def test_token_query_invalid_trailing_constraint_returns_bad_request(token_query
     assert payload["error"]["type"] == ERR_BAD_REQUEST
 
 
+# ─── /token_stats ─────────────────────────────────────────────────────────────
+
+
+def test_token_stats_basic_lemma(token_query_sidecar_base_url: str) -> None:
+    """Basic contract: group_by=lemma returns rows with value/count/pct."""
+    code, payload = _http_json(
+        "POST",
+        f"{token_query_sidecar_base_url}/token_stats",
+        {"cql": '[upos="NOUN"]', "group_by": "lemma"},
+    )
+    assert code == 200, payload
+    assert payload["ok"] is True
+    assert payload["group_by"] == "lemma"
+    assert isinstance(payload["total_hits"], int)
+    assert isinstance(payload["total_pivot_tokens"], int)
+    assert payload["total_hits"] > 0
+    assert payload["total_pivot_tokens"] >= payload["total_hits"]
+
+    rows = payload["rows"]
+    assert isinstance(rows, list)
+    assert len(rows) > 0
+    row = rows[0]
+    assert "value" in row
+    assert "count" in row
+    assert "pct" in row
+    assert isinstance(row["count"], int)
+    assert isinstance(row["pct"], float)
+    # Rows sorted descending by count
+    counts = [r["count"] for r in rows]
+    assert counts == sorted(counts, reverse=True)
+
+
+def test_token_stats_group_by_upos(token_query_sidecar_base_url: str) -> None:
+    """group_by=upos returns recognized POS tags."""
+    code, payload = _http_json(
+        "POST",
+        f"{token_query_sidecar_base_url}/token_stats",
+        {"cql": "[]", "group_by": "upos"},
+    )
+    assert code == 200, payload
+    assert payload["group_by"] == "upos"
+    values = {r["value"] for r in payload["rows"]}
+    # CoNLL-U fixture has NOUN, VERB, DET, ADJ, AUX, PUNCT
+    assert values & {"NOUN", "VERB", "DET"}
+
+
+def test_token_stats_pct_sums_to_100(token_query_sidecar_base_url: str) -> None:
+    """Sum of pct across all rows must equal 100% (within rounding tolerance)."""
+    code, payload = _http_json(
+        "POST",
+        f"{token_query_sidecar_base_url}/token_stats",
+        {"cql": "[]", "group_by": "upos", "limit": 200},
+    )
+    assert code == 200, payload
+    total_pct = sum(r["pct"] for r in payload["rows"])
+    assert abs(total_pct - 100.0) < 0.5, f"pct sum = {total_pct}"
+
+
+def test_token_stats_language_filter(token_query_sidecar_base_url: str) -> None:
+    """language filter restricts hits to that language's documents."""
+    code_fr, payload_fr = _http_json(
+        "POST",
+        f"{token_query_sidecar_base_url}/token_stats",
+        {"cql": "[]", "group_by": "upos", "language": "fr"},
+    )
+    code_en, payload_en = _http_json(
+        "POST",
+        f"{token_query_sidecar_base_url}/token_stats",
+        {"cql": "[]", "group_by": "upos", "language": "en"},
+    )
+    assert code_fr == 200 and code_en == 200
+    # Fixture has both fr and en docs; each filtered result must have fewer
+    # (or equal) total tokens than unfiltered
+    code_all, payload_all = _http_json(
+        "POST",
+        f"{token_query_sidecar_base_url}/token_stats",
+        {"cql": "[]", "group_by": "upos"},
+    )
+    assert code_all == 200
+    assert payload_fr["total_pivot_tokens"] <= payload_all["total_pivot_tokens"]
+    assert payload_en["total_pivot_tokens"] <= payload_all["total_pivot_tokens"]
+
+
+def test_token_stats_limit(token_query_sidecar_base_url: str) -> None:
+    """limit parameter caps the number of rows returned."""
+    code, payload = _http_json(
+        "POST",
+        f"{token_query_sidecar_base_url}/token_stats",
+        {"cql": "[]", "group_by": "lemma", "limit": 3},
+    )
+    assert code == 200, payload
+    assert len(payload["rows"]) <= 3
+
+
+def test_token_stats_no_hits(token_query_sidecar_base_url: str) -> None:
+    """A query that matches nothing returns total_hits=0 and empty rows."""
+    code, payload = _http_json(
+        "POST",
+        f"{token_query_sidecar_base_url}/token_stats",
+        {"cql": '[lemma="xyzzy_impossible_match"]'},
+    )
+    assert code == 200, payload
+    assert payload["total_hits"] == 0
+    assert payload["total_pivot_tokens"] == 0
+    assert payload["rows"] == []
+
+
+def test_token_stats_invalid_cql(token_query_sidecar_base_url: str) -> None:
+    """Invalid CQL returns 400."""
+    code, payload = _http_json(
+        "POST",
+        f"{token_query_sidecar_base_url}/token_stats",
+        {"cql": "not valid cql !!!"},
+    )
+    assert code == 400
+    assert payload["ok"] is False
+
+
+def test_token_stats_invalid_group_by(token_query_sidecar_base_url: str) -> None:
+    """Unknown group_by value returns 400."""
+    code, payload = _http_json(
+        "POST",
+        f"{token_query_sidecar_base_url}/token_stats",
+        {"cql": '[upos="NOUN"]', "group_by": "unknown_field"},
+    )
+    assert code == 400
+    assert payload["ok"] is False
+
+
+def test_token_stats_missing_cql(token_query_sidecar_base_url: str) -> None:
+    """Missing cql field returns 400."""
+    code, payload = _http_json(
+        "POST",
+        f"{token_query_sidecar_base_url}/token_stats",
+        {"group_by": "lemma"},
+    )
+    assert code == 400
+    assert payload["ok"] is False
+
+
 def test_export_conllu_contract(token_query_sidecar_base_url: str, tmp_path: Path) -> None:
     out_path = tmp_path / "token_query_export.conllu"
     code, payload = _http_json(

@@ -2990,6 +2990,99 @@
         ],
         "type": "object"
       },
+      "TokenStatsRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "cql": {
+            "description": "CQL query string",
+            "type": "string"
+          },
+          "doc_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "group_by": {
+            "default": "lemma",
+            "enum": [
+              "lemma",
+              "upos",
+              "xpos",
+              "word",
+              "feats"
+            ],
+            "type": "string"
+          },
+          "language": {
+            "nullable": true,
+            "type": "string"
+          },
+          "limit": {
+            "default": 50,
+            "maximum": 200,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "cql"
+        ],
+        "type": "object"
+      },
+      "TokenStatsResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BaseResponse"
+          },
+          {
+            "properties": {
+              "group_by": {
+                "type": "string"
+              },
+              "rows": {
+                "items": {
+                  "$ref": "#/components/schemas/TokenStatsRow"
+                },
+                "type": "array"
+              },
+              "total_hits": {
+                "type": "integer"
+              },
+              "total_pivot_tokens": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "total_hits",
+              "total_pivot_tokens",
+              "group_by",
+              "rows"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "TokenStatsRow": {
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "pct": {
+            "type": "number"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "count",
+          "pct"
+        ],
+        "type": "object"
+      },
       "TokenUpdateRequest": {
         "additionalProperties": false,
         "properties": {
@@ -3253,7 +3346,7 @@
   "info": {
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
-    "version": "1.6.21",
+    "version": "1.6.22",
     "x-contract-version": "1.6.21"
   },
   "openapi": "3.0.3",
@@ -5204,6 +5297,43 @@
           }
         },
         "summary": "Run token-level CQL query"
+      }
+    },
+    "/token_stats": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TokenStatsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenStatsResponse"
+                }
+              }
+            },
+            "description": "Frequency distribution result"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request (invalid CQL or group_by)"
+          }
+        },
+        "summary": "Token attribute frequency distribution over CQL hits"
       }
     },
     "/tokens": {

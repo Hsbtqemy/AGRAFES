@@ -12,7 +12,7 @@ from __future__ import annotations
 from typing import Any
 
 
-API_VERSION = "1.6.21"
+API_VERSION = "1.6.22"
 CONTRACT_VERSION = "1.6.21"  # semantic versioning for the sidecar API contract
 # 1.4.0: added export_tei_package job kind (Sprint 4 — Publication ZIP)
 # 1.4.1: ERR_CONFLICT (409) for duplicate run_id; token protection on /align, /curate, /segment
@@ -63,6 +63,8 @@ CONTRACT_VERSION = "1.6.21"  # semantic versioning for the sidecar API contract
 # 1.6.20: GET /tokens (list token rows for one document/unit);
 #         POST /tokens/update (manual token-by-token annotation edits).
 # 1.6.21: POST /query gains optional db_paths federation (multi-DB query in one request).
+# 1.6.22: POST /token_stats — frequency distribution of a token attribute (lemma/upos/xpos/word/feats)
+#         over all hits of a CQL query. No auth token required (read-only).
 #         Query hits gain source_db_* provenance when federated; response gains federated metadata.
 
 # Error code catalog (stable machine-readable values).
@@ -226,6 +228,37 @@ def openapi_spec() -> dict[str, Any]:
                         },
                         "500": {
                             "description": "Internal error",
+                            "content": {
+                                "application/json": {
+                                    "schema": {"$ref": "#/components/schemas/ErrorResponse"},
+                                }
+                            },
+                        },
+                    },
+                }
+            },
+            "/token_stats": {
+                "post": {
+                    "summary": "Token attribute frequency distribution over CQL hits",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/TokenStatsRequest"},
+                            }
+                        },
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Frequency distribution result",
+                            "content": {
+                                "application/json": {
+                                    "schema": {"$ref": "#/components/schemas/TokenStatsResponse"},
+                                }
+                            },
+                        },
+                        "400": {
+                            "description": "Bad request (invalid CQL or group_by)",
                             "content": {
                                 "application/json": {
                                     "schema": {"$ref": "#/components/schemas/ErrorResponse"},
@@ -1555,6 +1588,53 @@ def openapi_spec() -> dict[str, Any]:
                                 "next_offset": {"type": "integer", "nullable": True},
                                 "has_more": {"type": "boolean"},
                                 "total": {"type": "integer"},
+                            },
+                        },
+                    ]
+                },
+                "TokenStatsRequest": {
+                    "type": "object",
+                    "required": ["cql"],
+                    "properties": {
+                        "cql": {"type": "string", "description": "CQL query string"},
+                        "group_by": {
+                            "type": "string",
+                            "enum": ["lemma", "upos", "xpos", "word", "feats"],
+                            "default": "lemma",
+                        },
+                        "language": {"type": "string", "nullable": True},
+                        "doc_ids": {
+                            "type": "array",
+                            "items": {"type": "integer"},
+                            "nullable": True,
+                        },
+                        "limit": {"type": "integer", "default": 50, "minimum": 1, "maximum": 200},
+                    },
+                    "additionalProperties": False,
+                },
+                "TokenStatsRow": {
+                    "type": "object",
+                    "required": ["value", "count", "pct"],
+                    "properties": {
+                        "value": {"type": "string"},
+                        "count": {"type": "integer"},
+                        "pct": {"type": "number"},
+                    },
+                },
+                "TokenStatsResponse": {
+                    "allOf": [
+                        {"$ref": "#/components/schemas/BaseResponse"},
+                        {
+                            "type": "object",
+                            "required": ["total_hits", "total_pivot_tokens", "group_by", "rows"],
+                            "properties": {
+                                "total_hits": {"type": "integer"},
+                                "total_pivot_tokens": {"type": "integer"},
+                                "group_by": {"type": "string"},
+                                "rows": {
+                                    "type": "array",
+                                    "items": {"$ref": "#/components/schemas/TokenStatsRow"},
+                                },
                             },
                         },
                     ]

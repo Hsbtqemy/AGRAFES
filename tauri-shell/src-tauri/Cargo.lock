@@ -12,6 +12,7 @@ checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 name = "agrafes-shell"
 version = "0.1.12"
 dependencies = [
+ "dirs",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -22,6 +23,7 @@ dependencies = [
  "tauri-plugin-fs",
  "tauri-plugin-http",
  "tauri-plugin-shell",
+ "tokio",
 ]
 
 [[package]]

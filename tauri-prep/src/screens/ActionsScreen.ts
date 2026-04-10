@@ -275,7 +275,15 @@ interface ActionsExportPrefill {
 
 // ─── Sub-view type ────────────────────────────────────────────────
 
-type SubView = "hub" | "curation" | "segmentation" | "alignement";
+type SubView = "hub" | "curation" | "segmentation" | "alignement" | "annoter";
+
+// ─── Annotation token row ─────────────────────────────────────────
+
+type _AnnotToken = {
+  unit_id: number; unit_n: number; sent_id: number; position: number;
+  word: string; lemma: string | null; upos: string | null; xpos: string | null;
+  feats: string | null; misc: string | null; token_id: number;
+};
 
 // ─── ActionsScreen ────────────────────────────────────────────────────────────
 
@@ -509,10 +517,16 @@ export class ActionsScreen {
     alignPanel.style.display = this._activeSubView === "alignement" ? "" : "none";
     this._prependBackBtn(alignPanel, root);
 
+    const annoterPanel = this._renderAnnoterPanel(root);
+    annoterPanel.dataset.panel = "annoter";
+    annoterPanel.style.display = this._activeSubView === "annoter" ? "" : "none";
+    this._prependBackBtn(annoterPanel, root);
+
     panelSlot.appendChild(hubPanel);
     panelSlot.appendChild(curationPanel);
     panelSlot.appendChild(segPanel);
     panelSlot.appendChild(alignPanel);
+    panelSlot.appendChild(annoterPanel);
     root.appendChild(panelSlot);
 
     const logSection = document.createElement("section");
@@ -556,7 +570,7 @@ export class ActionsScreen {
   private _loadSubViewPref(): void {
     try {
       const saved = localStorage.getItem(ActionsScreen.LS_ACTIVE_SUB) as SubView | null;
-      if (saved === "hub" || saved === "curation" || saved === "segmentation" || saved === "alignement") {
+      if (saved === "hub" || saved === "curation" || saved === "segmentation" || saved === "alignement" || saved === "annoter") {
         this._activeSubView = saved;
       }
     } catch { /* ignore */ }
@@ -578,7 +592,7 @@ export class ActionsScreen {
   }
 
   private _setSubViewClass(root: HTMLElement, view: SubView): void {
-    root.classList.remove("actions-sub-hub", "actions-sub-curation", "actions-sub-segmentation", "actions-sub-alignement");
+    root.classList.remove("actions-sub-hub", "actions-sub-curation", "actions-sub-segmentation", "actions-sub-alignement", "actions-sub-annoter");
     root.classList.add(`actions-sub-${view}`);
     const content = root.closest<HTMLElement>(".content");
     if (content) content.classList.toggle("prep-curation-wide", view === "curation");
@@ -659,6 +673,17 @@ export class ActionsScreen {
           <p class="acts-hub-wf-desc">Cr&eacute;ation et r&eacute;vision des liens pivot &harr; cible entre documents align&eacute;s. Inspection, retarget et r&eacute;solution de collisions.</p>
           <div class="acts-hub-wf-actions">
             <button class="acts-hub-wf-btn" data-target="alignement">Ouvrir &rarr;</button>
+          </div>
+        </div>
+        <div class="card acts-hub-wf-card">
+          <div class="acts-hub-wf-top">
+            <span class="acts-hub-wf-icon" aria-hidden="true">&#9000;</span>
+            <span class="acts-hub-wf-step">Optionnel</span>
+          </div>
+          <h3 class="acts-hub-wf-title">Annotation</h3>
+          <p class="acts-hub-wf-desc">Vue interlin&eacute;aire (mot / POS / lemme) par document. Annotation spaCy automatique et correction manuelle token par token.</p>
+          <div class="acts-hub-wf-actions">
+            <button class="acts-hub-wf-btn" data-target="annoter">Ouvrir &rarr;</button>
           </div>
         </div>
       </div>
@@ -3974,6 +3999,19 @@ export class ActionsScreen {
       this._refreshSegmentationStatusUI();
     }
     this._refreshRuntimeState();
+    // Refresh annotation panel if it was rendered before conn was available.
+    if (conn) this._annotRefreshIfVisible();
+  }
+
+  private _annotRefreshIfVisible(): void {
+    const panel = this._annotPanelEl;
+    if (!panel) return;
+    const sidebar = panel.querySelector<HTMLElement>(".annot-sidebar");
+    const viewer  = panel.querySelector<HTMLElement>(".annot-viewer");
+    const editor  = panel.querySelector<HTMLElement>(".annot-editor");
+    if (sidebar && viewer && editor) {
+      this._annotLoadDocs(sidebar, viewer, editor);
+    }
   }
 
   setJobCenter(jc: JobCenter, showToast: (msg: string, isError?: boolean) => void): void {
@@ -8945,7 +8983,669 @@ export class ActionsScreen {
       this._log(`✗ Suppression : ${err instanceof SidecarError ? err.message : String(err)}`, true);
     }
   }
+
+  // ─── Annotation panel ─────────────────────────────────────────────────────
+
+  private _annotDocs: Array<{
+    doc_id: number; title: string; language: string | null;
+    annotation_status?: string; token_count?: number;
+  }> = [];
+  private _annotSelectedDocId: number | null = null;
+  private _annotTokens: _AnnotToken[] = [];
+  private _annotSelectedTokenId: number | null = null;
+  private _annotJobPoll: ReturnType<typeof setInterval> | null = null;
+  private _annotJobId: string | null = null;
+  private _annotPanelEl: HTMLElement | null = null;
+  private _annotModelOverride: string = "";
+
+  private _renderAnnoterPanel(_root: HTMLElement): HTMLElement {
+    // Stop any in-flight poll from a previous panel instance.
+    this._annotStopPoll();
+
+    const panel = document.createElement("div");
+    panel.className = "annot-panel";
+    this._annotPanelEl = panel;
+
+    const style = document.createElement("style");
+    style.textContent = ANNOT_PANEL_CSS;
+    panel.appendChild(style);
+
+    // ── Toolbar ──────────────────────────────────────────────────────────────
+    const toolbar = document.createElement("div");
+    toolbar.className = "annot-toolbar";
+
+    const title = document.createElement("h3");
+    title.className = "annot-title";
+    title.textContent = "Annotation interlinéaire";
+
+    const modelLabel = document.createElement("label");
+    modelLabel.className = "annot-model-label";
+    modelLabel.textContent = "Modèle ";
+    const modelSelect = document.createElement("select");
+    modelSelect.className = "annot-model-select";
+    const SPACY_MODELS = [
+      ["(auto)", ""],
+      ["fr — fr_core_news_md", "fr_core_news_md"],
+      ["en — en_core_web_md", "en_core_web_md"],
+      ["de — de_core_news_md", "de_core_news_md"],
+      ["es — es_core_news_md", "es_core_news_md"],
+      ["it — it_core_news_md", "it_core_news_md"],
+      ["sv — sv_core_news_sm", "sv_core_news_sm"],
+      ["ro — ro_core_news_md", "ro_core_news_md"],
+      ["el — el_core_news_sm", "el_core_news_sm"],
+      ["multi — xx_ent_wiki_sm", "xx_ent_wiki_sm"],
+    ];
+    for (const [label, value] of SPACY_MODELS) {
+      const opt = document.createElement("option");
+      opt.value = value;
+      opt.textContent = label;
+      opt.selected = value === this._annotModelOverride;
+      modelSelect.appendChild(opt);
+    }
+    modelSelect.addEventListener("change", () => {
+      this._annotModelOverride = modelSelect.value;
+    });
+    modelLabel.appendChild(modelSelect);
+
+    const refreshBtn = document.createElement("button");
+    refreshBtn.className = "annot-btn-refresh";
+    refreshBtn.title = "Rafraîchir la liste des documents";
+    refreshBtn.textContent = "↻";
+    refreshBtn.addEventListener("click", () => {
+      const sidebar = panel.querySelector<HTMLElement>(".annot-sidebar");
+      const viewer  = panel.querySelector<HTMLElement>(".annot-viewer");
+      const editor  = panel.querySelector<HTMLElement>(".annot-editor");
+      if (sidebar && viewer && editor) this._annotLoadDocs(sidebar, viewer, editor);
+    });
+
+    const runBtn = document.createElement("button");
+    runBtn.className = "annot-btn-run";
+    runBtn.title = "Lancer l'annotation spaCy sur le document sélectionné";
+    runBtn.textContent = "Annoter ▶";
+    runBtn.addEventListener("click", () => { this._annotRunJob(panel); });
+
+    const statusSpan = document.createElement("span");
+    statusSpan.className = "annot-status";
+
+    toolbar.appendChild(title);
+    toolbar.appendChild(modelLabel);
+    toolbar.appendChild(refreshBtn);
+    toolbar.appendChild(runBtn);
+    toolbar.appendChild(statusSpan);
+    panel.appendChild(toolbar);
+
+    // ── Layout: sidebar + viewer + editor ────────────────────────────────────
+    const layout = document.createElement("div");
+    layout.className = "annot-layout";
+
+    const sidebar = document.createElement("div");
+    sidebar.className = "annot-sidebar";
+    sidebar.innerHTML = `<p class="annot-sidebar-loading">Chargement…</p>`;
+
+    const viewer = document.createElement("div");
+    viewer.className = "annot-viewer";
+    viewer.innerHTML = `<p class="annot-placeholder">Sélectionnez un document dans la liste.</p>`;
+
+    const editor = document.createElement("div");
+    editor.className = "annot-editor";
+    editor.innerHTML = `<p class="annot-placeholder">Cliquez sur un token.</p>`;
+
+    layout.appendChild(sidebar);
+    layout.appendChild(viewer);
+    layout.appendChild(editor);
+    panel.appendChild(layout);
+
+    // Defer load: _conn may not be set yet at render() time.
+    // setConn() will call _annotRefreshIfVisible() once connection is ready.
+    if (this._conn) {
+      this._annotLoadDocs(sidebar, viewer, editor);
+    } else {
+      sidebar.innerHTML = `<p class="annot-sidebar-loading">En attente de connexion…</p>`;
+    }
+
+    return panel;
+  }
+
+  private async _annotLoadDocs(
+    sidebar: HTMLElement,
+    viewer: HTMLElement,
+    editor: HTMLElement,
+  ): Promise<void> {
+    if (!this._conn) { sidebar.innerHTML = `<p class="annot-error">Non connecté.</p>`; return; }
+    try {
+      const res = await this._conn.get("/documents") as {
+        documents?: Array<{
+          doc_id: number; title?: string; language?: string;
+          annotation_status?: string; token_count?: number;
+        }>
+      };
+      const docs = res.documents ?? [];
+      this._annotDocs = docs.map(d => ({
+        doc_id: d.doc_id,
+        title: d.title ?? `#${d.doc_id}`,
+        language: d.language ?? null,
+        annotation_status: d.annotation_status,
+        token_count: d.token_count,
+      }));
+      this._annotRenderDocList(sidebar, viewer, editor);
+    } catch (err) {
+      sidebar.innerHTML = `<p class="annot-error">Erreur : ${_escHtml(String(err))}</p>`;
+    }
+  }
+
+  private _annotRenderDocList(
+    sidebar: HTMLElement,
+    viewer: HTMLElement,
+    editor: HTMLElement,
+  ): void {
+    sidebar.innerHTML = "";
+    if (this._annotDocs.length === 0) {
+      sidebar.innerHTML = `<p class="annot-placeholder">Aucun document.</p>`;
+      return;
+    }
+    const ul = document.createElement("ul");
+    ul.className = "annot-doc-list";
+    for (const doc of this._annotDocs) {
+      const li = document.createElement("li");
+      li.className = "annot-doc-item" + (doc.doc_id === this._annotSelectedDocId ? " selected" : "");
+      li.dataset.docId = String(doc.doc_id);
+
+      const nameSpan = document.createElement("span");
+      nameSpan.className = "annot-doc-name";
+      nameSpan.textContent = doc.title;
+
+      const badge = document.createElement("span");
+      const isAnnotated = doc.annotation_status === "annotated";
+      badge.className = "annot-doc-badge" + (isAnnotated ? " annotated" : "");
+      badge.title = isAnnotated ? `${doc.token_count ?? 0} tokens` : "Non annoté";
+      badge.textContent = isAnnotated ? "✓" : "·";
+
+      li.appendChild(nameSpan);
+      li.appendChild(badge);
+
+      li.addEventListener("click", () => {
+        this._annotSelectedDocId = doc.doc_id;
+        this._annotSelectedTokenId = null;
+        ul.querySelectorAll(".annot-doc-item").forEach(el => el.classList.remove("selected"));
+        li.classList.add("selected");
+        this._annotSelectDoc(doc.doc_id, viewer, editor);
+      });
+      ul.appendChild(li);
+    }
+    sidebar.appendChild(ul);
+  }
+
+  private async _annotSelectDoc(
+    docId: number,
+    viewer: HTMLElement,
+    editor: HTMLElement,
+  ): Promise<void> {
+    viewer.innerHTML = `<p class="annot-placeholder">Chargement des tokens…</p>`;
+    editor.innerHTML = `<p class="annot-placeholder">Cliquez sur un token.</p>`;
+    this._annotTokens = [];
+    if (!this._conn) return;
+    try {
+      const res = await this._conn.get(`/tokens?doc_id=${docId}`) as { tokens?: _AnnotToken[] };
+      const rows = res.tokens ?? [];
+      this._annotTokens = rows;
+      this._annotRenderInterlinear(viewer, editor);
+    } catch {
+      viewer.innerHTML = `<p class="annot-placeholder">Aucun token — lancez l'annotation spaCy d'abord.</p>`;
+    }
+  }
+
+  private _annotRenderInterlinear(viewer: HTMLElement, editor: HTMLElement): void {
+    viewer.innerHTML = "";
+    if (this._annotTokens.length === 0) {
+      viewer.innerHTML = `<p class="annot-placeholder">Aucun token — lancez l'annotation spaCy d'abord.</p>`;
+      return;
+    }
+
+    // Group by unit_n then sent_id
+    const byUnit = new Map<number, Map<number, _AnnotToken[]>>();
+    for (const tok of this._annotTokens) {
+      if (!byUnit.has(tok.unit_n)) byUnit.set(tok.unit_n, new Map());
+      const bySent = byUnit.get(tok.unit_n)!;
+      if (!bySent.has(tok.sent_id)) bySent.set(tok.sent_id, []);
+      bySent.get(tok.sent_id)!.push(tok);
+    }
+
+    const UPOS_COLORS: Record<string, string> = {
+      NOUN: "#4e9af1", VERB: "#e07b39", ADJ: "#8e6bbf",
+      ADV: "#3aab6d", PRON: "#c9a227", DET: "#5bb8c4",
+      ADP: "#b0b0b0", CCONJ: "#b0b0b0", SCONJ: "#b0b0b0",
+      PUNCT: "#cccccc", NUM: "#c94040", PROPN: "#2e7dbf",
+      AUX: "#d97ab8", PART: "#b0b0b0", INTJ: "#e04444",
+      SYM: "#999", X: "#bbb",
+    };
+
+    // Reconstruct a readable plain-text string from tokens (handle PUNCT spacing)
+    const PUNCT_NO_SPACE_BEFORE = new Set([".", ",", ":", ";", "!", "?", ")", "]", "}", "»", "'", "'"]);
+    const PUNCT_NO_SPACE_AFTER  = new Set(["(", "[", "{", "«", "'", "'"]);
+    function _tokensToPlain(tokens: _AnnotToken[]): string {
+      let out = "";
+      for (let i = 0; i < tokens.length; i++) {
+        const word = tokens[i].word;
+        const isPunct = tokens[i].upos === "PUNCT";
+        const needsSpaceBefore = i > 0
+          && !PUNCT_NO_SPACE_BEFORE.has(word)
+          && !PUNCT_NO_SPACE_AFTER.has(tokens[i - 1].word)
+          && !(isPunct && PUNCT_NO_SPACE_BEFORE.has(word));
+        out += (needsSpaceBefore ? " " : "") + word;
+      }
+      return out;
+    }
+
+    let globalSentIdx = 0;
+
+    for (const [unitN, bySent] of Array.from(byUnit.entries()).sort((a, b) => a[0] - b[0])) {
+      const unitDiv = document.createElement("div");
+      unitDiv.className = "annot-unit";
+
+      // ── Unit header: line number + reconstructed plain text ──────────────
+      const allUnitTokens = Array.from(bySent.values()).flat();
+      const plainText = _tokensToPlain(allUnitTokens);
+
+      const unitHeader = document.createElement("div");
+      unitHeader.className = "annot-unit-header";
+      unitHeader.innerHTML =
+        `<span class="annot-unit-n">§${unitN}</span>` +
+        `<span class="annot-unit-plain">${_escHtml(plainText)}</span>`;
+      unitDiv.appendChild(unitHeader);
+
+      // ── Sentences ─────────────────────────────────────────────────────────
+      const sentEntries = Array.from(bySent.entries()).sort((a, b) => a[0] - b[0]);
+      for (const [sentId, tokens] of sentEntries) {
+        globalSentIdx++;
+
+        const sentWrapper = document.createElement("div");
+        sentWrapper.className = "annot-sent-wrapper";
+
+        // Sentence number label (left gutter)
+        const sentLabel = document.createElement("div");
+        sentLabel.className = "annot-sent-n";
+        sentLabel.textContent = sentEntries.length > 1 ? String(sentId) : "";
+        sentWrapper.appendChild(sentLabel);
+
+        // Scrollable token row
+        const sentDiv = document.createElement("div");
+        sentDiv.className = "annot-sent";
+
+        for (const tok of tokens) {
+          const cell = document.createElement("div");
+          cell.className = "annot-token" + (tok.token_id === this._annotSelectedTokenId ? " selected" : "");
+          cell.dataset.tokenId = String(tok.token_id);
+
+          // Row 1: word
+          const wordEl = document.createElement("div");
+          wordEl.className = "annot-word";
+          wordEl.textContent = tok.word;
+
+          // Row 2: UPOS tag
+          const uposEl = document.createElement("div");
+          uposEl.className = "annot-upos";
+          const col = UPOS_COLORS[tok.upos ?? ""] ?? "#bbb";
+          if (tok.upos) {
+            uposEl.textContent = tok.upos;
+            uposEl.style.background = col + "28";
+            uposEl.style.color = col;
+          } else {
+            uposEl.textContent = "";
+            uposEl.style.background = "transparent";
+          }
+
+          // Row 3: lemma (only if different from word)
+          const lemmaEl = document.createElement("div");
+          lemmaEl.className = "annot-lemma";
+          const lemmaVal = tok.lemma ?? "";
+          lemmaEl.textContent = lemmaVal && lemmaVal.toLowerCase() !== tok.word.toLowerCase()
+            ? lemmaVal : "";
+
+          cell.appendChild(wordEl);
+          cell.appendChild(uposEl);
+          cell.appendChild(lemmaEl);
+
+          cell.addEventListener("click", () => {
+            this._annotSelectedTokenId = tok.token_id;
+            viewer.querySelectorAll(".annot-token").forEach(el => el.classList.remove("selected"));
+            cell.classList.add("selected");
+            this._annotRenderEditor(tok, editor);
+          });
+
+          sentDiv.appendChild(cell);
+        }
+
+        sentWrapper.appendChild(sentDiv);
+        unitDiv.appendChild(sentWrapper);
+      }
+
+      viewer.appendChild(unitDiv);
+    }
+    void globalSentIdx; // suppress unused warning
+  }
+
+  private _annotRenderEditor(
+    tok: _AnnotToken,
+    editor: HTMLElement,
+  ): void {
+    const UPOS_LIST = [
+      "ADJ","ADP","ADV","AUX","CCONJ","DET","INTJ","NOUN","NUM",
+      "PART","PRON","PROPN","PUNCT","SCONJ","SYM","VERB","X",
+    ];
+    editor.innerHTML = `
+      <div class="annot-editor-header">Token #${tok.token_id}</div>
+      <label class="annot-field-label">Mot
+        <input class="annot-field" data-field="word" value="${_escHtml(tok.word)}">
+      </label>
+      <label class="annot-field-label">Lemme
+        <input class="annot-field" data-field="lemma" value="${_escHtml(tok.lemma ?? "")}">
+      </label>
+      <label class="annot-field-label">UPOS
+        <select class="annot-field" data-field="upos">
+          <option value="">(vide)</option>
+          ${UPOS_LIST.map(u => `<option value="${u}"${tok.upos === u ? " selected" : ""}>${u}</option>`).join("")}
+        </select>
+      </label>
+      <label class="annot-field-label">XPOS
+        <input class="annot-field" data-field="xpos" value="${_escHtml(tok.xpos ?? "")}">
+      </label>
+      <label class="annot-field-label">Feats
+        <input class="annot-field" data-field="feats" value="${_escHtml(tok.feats ?? "")}">
+      </label>
+      <label class="annot-field-label">Misc
+        <input class="annot-field" data-field="misc" value="${_escHtml(tok.misc ?? "")}">
+      </label>
+      <button class="annot-btn-save">Enregistrer</button>
+      <span class="annot-save-status"></span>
+    `;
+
+    editor.querySelector(".annot-btn-save")!.addEventListener("click", () => {
+      this._annotSaveField(tok, editor);
+    });
+  }
+
+  private async _annotSaveField(
+    tok: _AnnotToken,
+    editor: HTMLElement,
+  ): Promise<void> {
+    const statusEl = editor.querySelector(".annot-save-status") as HTMLElement | null;
+    const get = (field: string) =>
+      (editor.querySelector(`[data-field="${field}"]`) as HTMLInputElement | HTMLSelectElement | null)?.value ?? null;
+
+    const payload = {
+      token_id: tok.token_id,
+      word: get("word") || tok.word,
+      lemma: get("lemma") || null,
+      upos: get("upos") || null,
+      xpos: get("xpos") || null,
+      feats: get("feats") || null,
+      misc: get("misc") || null,
+    };
+
+    if (!this._conn) { if (statusEl) statusEl.textContent = "✗ Non connecté."; return; }
+    if (statusEl) statusEl.textContent = "Enregistrement…";
+    try {
+      await this._conn.post("/tokens/update", payload);
+      // Update local cache
+      const idx = this._annotTokens.findIndex(t => t.token_id === tok.token_id);
+      if (idx >= 0) {
+        this._annotTokens[idx] = { ...this._annotTokens[idx], ...payload };
+      }
+      if (statusEl) {
+        statusEl.textContent = "✓";
+        setTimeout(() => { if (statusEl) statusEl.textContent = ""; }, 1500);
+      }
+      // Refresh interlinear view to reflect the change
+      const panel = this._annotPanelEl;
+      if (panel) {
+        const viewer = panel.querySelector<HTMLElement>(".annot-viewer");
+        if (viewer) {
+          this._annotRenderInterlinear(viewer, editor);
+          // Re-render editor with updated data so form fields are current
+          const updated = this._annotTokens.find(t => t.token_id === tok.token_id);
+          if (updated) this._annotRenderEditor(updated, editor);
+        }
+      }
+    } catch (err) {
+      if (statusEl) statusEl.textContent = `✗ ${err instanceof SidecarError ? err.message : String(err)}`;
+    }
+  }
+
+  private async _annotRunJob(panel: HTMLElement): Promise<void> {
+    if (!this._conn) { this._annotSetStatus(panel, "Non connecté.", true); return; }
+    if (this._annotSelectedDocId === null) {
+      this._annotSetStatus(panel, "Sélectionnez d'abord un document.", true);
+      return;
+    }
+    if (this._annotJobPoll !== null) {
+      this._annotSetStatus(panel, "Annotation déjà en cours…", false);
+      return;
+    }
+    const btn = panel.querySelector<HTMLButtonElement>(".annot-btn-run");
+    if (btn) { btn.disabled = true; btn.textContent = "En cours…"; }
+    this._annotSetStatus(panel, "Lancement…", false);
+    try {
+      const params: Record<string, unknown> = { doc_id: this._annotSelectedDocId };
+      if (this._annotModelOverride) params.model = this._annotModelOverride;
+      const res = await this._conn.post("/jobs/enqueue", { kind: "annotate", params });
+      const enqueued = res as { job?: { job_id?: string } };
+      this._annotJobId = enqueued.job?.job_id ?? null;
+      if (!this._annotJobId) throw new Error("Pas de job_id dans la réponse");
+      this._annotJobPoll = setInterval(() => { this._annotPoll(panel); }, 1000);
+    } catch (err) {
+      if (btn) { btn.disabled = false; btn.textContent = "Annoter ▶"; }
+      this._annotSetStatus(panel, `✗ ${err instanceof SidecarError ? err.message : String(err)}`, true);
+    }
+  }
+
+  private async _annotPoll(panel: HTMLElement): Promise<void> {
+    if (!this._annotJobId || !this._conn) return;
+    try {
+      const res = await this._conn.get(`/jobs/${this._annotJobId}`) as {
+        job?: {
+          status: string; error?: string;
+          progress_pct?: number; progress_message?: string;
+        }
+      };
+      const job = res.job;
+      if (!job) { this._annotStopPoll(); return; }
+
+      if (job.status === "running" && job.progress_message) {
+        this._annotSetStatus(panel, job.progress_message, false);
+      }
+
+      if (job.status === "done") {
+        this._annotStopPoll();
+        const btn = panel.querySelector<HTMLButtonElement>(".annot-btn-run");
+        if (btn) { btn.disabled = false; btn.textContent = "Annoter ▶"; }
+        this._annotSetStatus(panel, "✓ Annotation terminée.", false);
+        // Reload doc list (annotation_status changes) then tokens
+        const sidebar = panel.querySelector<HTMLElement>(".annot-sidebar");
+        const viewer = panel.querySelector<HTMLElement>(".annot-viewer");
+        const editor = panel.querySelector<HTMLElement>(".annot-editor");
+        if (sidebar && viewer && editor) {
+          await this._annotLoadDocs(sidebar, viewer, editor);
+          if (this._annotSelectedDocId !== null) {
+            await this._annotSelectDoc(this._annotSelectedDocId, viewer, editor);
+          }
+        }
+      } else if (job.status === "error" || job.status === "cancelled") {
+        this._annotStopPoll();
+        const btn = panel.querySelector<HTMLButtonElement>(".annot-btn-run");
+        if (btn) { btn.disabled = false; btn.textContent = "Annoter ▶"; }
+        this._annotSetStatus(panel, `✗ ${job.error ?? job.status}`, true);
+      }
+    } catch {
+      // transient — keep polling
+    }
+  }
+
+  private _annotStopPoll(): void {
+    if (this._annotJobPoll !== null) {
+      clearInterval(this._annotJobPoll);
+      this._annotJobPoll = null;
+    }
+    this._annotJobId = null;
+  }
+
+  private _annotSetStatus(panel: HTMLElement, msg: string, isError: boolean): void {
+    const el = panel.querySelector(".annot-status") as HTMLElement | null;
+    if (!el) return;
+    el.textContent = msg;
+    el.style.color = isError ? "var(--color-danger, #c0392b)" : "var(--color-muted, #888)";
+  }
 }
+
+const ANNOT_PANEL_CSS = `
+.annot-panel { display: flex; flex-direction: column; gap: 0; height: 100%; }
+.annot-toolbar {
+  display: flex; align-items: center; gap: 12px;
+  padding: 8px 12px; border-bottom: 1px solid var(--border, #ddd);
+}
+.annot-title { margin: 0; font-size: 1rem; font-weight: 600; flex: 1; }
+.annot-btn-run, .annot-btn-save {
+  padding: 4px 12px; border-radius: 4px; cursor: pointer;
+  border: 1px solid var(--border, #ccc); background: var(--bg-accent, #f5f5f5);
+  font-size: 0.85rem;
+}
+.annot-btn-run:hover:not(:disabled), .annot-btn-save:hover { background: var(--bg-hover, #e8e8e8); }
+.annot-btn-run:disabled { opacity: 0.55; cursor: default; }
+.annot-status { font-size: 0.8rem; color: var(--color-muted, #888); min-width: 120px; }
+.annot-model-label {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 0.8rem; color: var(--color-muted, #888); white-space: nowrap;
+}
+.annot-model-select {
+  padding: 3px 6px; border: 1px solid var(--border, #ccc);
+  border-radius: 4px; font-size: 0.8rem; background: var(--bg, #fff); color: inherit;
+  max-width: 180px;
+}
+.annot-btn-refresh {
+  padding: 4px 8px; border-radius: 4px; cursor: pointer;
+  border: 1px solid var(--border, #ccc); background: var(--bg-accent, #f5f5f5);
+  font-size: 0.9rem; line-height: 1;
+}
+.annot-btn-refresh:hover { background: var(--bg-hover, #e8e8e8); }
+.annot-layout {
+  display: grid; grid-template-columns: 200px 1fr 220px;
+  gap: 0; flex: 1; overflow: hidden; min-height: 0; height: 100%;
+}
+.annot-sidebar {
+  border-right: 1px solid var(--border, #ddd);
+  overflow-y: auto; padding: 8px 0;
+}
+.annot-doc-list { list-style: none; margin: 0; padding: 0; }
+.annot-doc-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 10px 6px 12px; cursor: pointer; font-size: 0.85rem; gap: 4px;
+}
+.annot-doc-item:hover { background: var(--bg-hover, #f0f0f0); }
+.annot-doc-item.selected { background: var(--bg-selected, #dce9ff); font-weight: 600; }
+.annot-doc-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.annot-doc-badge {
+  flex-shrink: 0; font-size: 0.72rem; font-weight: 700;
+  width: 16px; height: 16px; line-height: 16px; text-align: center;
+  border-radius: 50%; color: #aaa; background: #eee;
+}
+.annot-doc-badge.annotated { color: #2e7d32; background: #c8e6c9; }
+.annot-viewer { overflow-y: auto; overflow-x: hidden; padding: 16px 16px 32px; }
+
+/* ── Unit block ── */
+.annot-unit {
+  margin-bottom: 28px;
+  border-left: 3px solid var(--color-primary, #4e9af1);
+  padding-left: 12px;
+}
+.annot-unit-header {
+  display: flex; align-items: baseline; gap: 10px;
+  margin-bottom: 10px;
+}
+.annot-unit-n {
+  flex-shrink: 0;
+  font-size: 0.7rem; font-weight: 700; letter-spacing: 0.06em;
+  color: var(--color-primary, #4e9af1);
+  text-transform: uppercase;
+}
+.annot-unit-plain {
+  font-size: 0.82rem; color: var(--color-muted, #999);
+  font-style: italic; line-height: 1.4;
+  white-space: normal; word-break: break-word;
+}
+
+/* ── Sentence row ── */
+.annot-sent-wrapper {
+  display: flex; align-items: flex-start; gap: 8px;
+  margin-bottom: 6px;
+}
+.annot-sent-n {
+  flex-shrink: 0; width: 16px; padding-top: 6px;
+  font-size: 0.65rem; color: var(--color-muted, #bbb);
+  text-align: right; user-select: none;
+}
+.annot-sent {
+  display: flex; flex-wrap: nowrap; overflow-x: auto;
+  gap: 2px; padding: 4px 4px 8px;
+  /* subtle scroll track */
+  scrollbar-width: thin;
+  scrollbar-color: #ddd transparent;
+}
+.annot-sent::-webkit-scrollbar { height: 4px; }
+.annot-sent::-webkit-scrollbar-thumb { background: #ddd; border-radius: 2px; }
+
+/* ── Token cell: 3 fixed-height rows ── */
+.annot-token {
+  display: flex; flex-direction: column;
+  cursor: pointer; padding: 4px 6px; min-width: 32px;
+  border: 1px solid transparent; border-radius: 5px;
+  transition: background 0.1s, border-color 0.1s;
+  flex-shrink: 0;
+}
+.annot-token:hover { background: var(--bg-hover, #f4f4f4); border-color: var(--border, #ddd); }
+.annot-token.selected {
+  border-color: var(--color-primary, #4e9af1);
+  background: #dce9ff55;
+}
+
+/* Row 1 – word */
+.annot-word {
+  height: 22px; display: flex; align-items: center; justify-content: center;
+  font-size: 0.92rem; font-weight: 600; white-space: nowrap;
+  color: var(--fg, #111);
+}
+
+/* Row 2 – UPOS badge */
+.annot-upos {
+  height: 18px; display: flex; align-items: center; justify-content: center;
+  font-size: 0.6rem; font-weight: 700; letter-spacing: 0.05em;
+  border-radius: 3px; padding: 0 4px; white-space: nowrap;
+  min-width: 20px;
+}
+
+/* Row 3 – lemma (only shown when different from word) */
+.annot-lemma {
+  height: 16px; display: flex; align-items: center; justify-content: center;
+  font-size: 0.7rem; font-style: italic;
+  color: var(--color-muted, #999); white-space: nowrap;
+}
+.annot-editor {
+  border-left: 1px solid var(--border, #ddd);
+  padding: 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;
+}
+.annot-editor-header { font-weight: 600; font-size: 0.85rem; margin-bottom: 4px; }
+.annot-field-label {
+  display: flex; flex-direction: column; gap: 2px;
+  font-size: 0.78rem; color: var(--color-muted, #888);
+}
+.annot-field {
+  padding: 4px 6px; border: 1px solid var(--border, #ccc);
+  border-radius: 3px; font-size: 0.85rem; background: var(--bg, #fff); color: inherit;
+  width: 100%; box-sizing: border-box;
+}
+.annot-save-status { font-size: 0.8rem; color: var(--color-muted, #888); }
+.annot-placeholder { color: var(--color-muted, #888); font-size: 0.85rem; padding: 8px; }
+.annot-error { color: var(--color-danger, #c0392b); font-size: 0.85rem; padding: 8px; }
+.annot-sidebar-loading { color: var(--color-muted, #888); font-size: 0.85rem; padding: 8px; }
+`;
 
 // ─── Utility helpers ──────────────────────────────────────────────────────────
 

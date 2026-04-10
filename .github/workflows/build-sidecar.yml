@@ -45,6 +45,18 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[packaging]"
 
+      - name: Download spaCy models
+        run: |
+          python -m spacy download fr_core_news_md
+          python -m spacy download en_core_web_md
+          python -m spacy download de_core_news_md
+          python -m spacy download es_core_news_md
+          python -m spacy download it_core_news_md
+          python -m spacy download sv_core_news_sm
+          python -m spacy download ro_core_news_md
+          python -m spacy download el_core_news_sm
+          python -m spacy download xx_ent_wiki_sm
+
       - name: Build sidecar binary
         run: python scripts/build_sidecar.py --preset tauri --format "${{ matrix.format }}" --no-clean
 

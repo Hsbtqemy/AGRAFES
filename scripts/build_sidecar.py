@@ -39,6 +39,7 @@ DEFAULT_FORMAT_BY_OS = {
 PYINSTALLER_OPTIMIZE_LEVEL = "1"
 # Exclude heavy optional stacks that are not needed by the sidecar runtime.
 # This keeps binary size lower and reduces incidental hook collection.
+# NOTE: numpy is intentionally NOT excluded — spaCy depends on it.
 PYINSTALLER_EXCLUDE_MODULES: tuple[str, ...] = (
     "IPython",
     "PyQt5",
@@ -47,12 +48,27 @@ PYINSTALLER_EXCLUDE_MODULES: tuple[str, ...] = (
     "jupyter",
     "matplotlib",
     "notebook",
-    "numpy",
     "pandas",
     "pytest",
     "scipy",
     "sklearn",
     "tkinter",
+)
+# spaCy models to bundle into the sidecar.
+# These must be installed in the build environment before running PyInstaller
+# (e.g. `python -m spacy download fr_core_news_md`).
+# PyInstaller will include them via --collect-all; missing models are skipped
+# with a warning so a partial build still succeeds.
+BUNDLED_SPACY_MODELS: tuple[str, ...] = (
+    "fr_core_news_md",
+    "en_core_web_md",
+    "de_core_news_md",
+    "es_core_news_md",
+    "it_core_news_md",
+    "sv_core_news_sm",
+    "ro_core_news_md",
+    "el_core_news_sm",
+    "xx_ent_wiki_sm",
 )
 
 
@@ -236,6 +252,29 @@ def build_sidecar(
         pyinstaller_cmd.insert(5, "--strip")
     for module_name in PYINSTALLER_EXCLUDE_MODULES:
         pyinstaller_cmd.extend(["--exclude-module", module_name])
+
+    # spaCy requires metadata + data files to be explicitly collected.
+    pyinstaller_cmd.extend([
+        "--collect-data", "spacy",
+        "--copy-metadata", "spacy",
+        "--copy-metadata", "thinc",
+    ])
+
+    # Bundle each spaCy model that is installed in the build environment.
+    # A missing model is skipped with a warning (partial build still works).
+    for model in BUNDLED_SPACY_MODELS:
+        try:
+            import importlib.util
+            if importlib.util.find_spec(model) is not None:
+                pyinstaller_cmd.extend(["--collect-all", model])
+            else:
+                print(
+                    f"  [spaCy] Model {model!r} not found in build env — skipping. "
+                    f"Install with: python -m spacy download {model}"
+                )
+        except Exception:
+            print(f"  [spaCy] Could not check model {model!r} — skipping.")
+
     _run(pyinstaller_cmd, cwd=REPO_ROOT)
 
     out_dir.mkdir(parents=True, exist_ok=True)

@@ -20,6 +20,7 @@ import { open as dialogOpen, save as dialogSave } from "@tauri-apps/plugin-dialo
 import { exists, writeFile, mkdir, remove, stat } from "@tauri-apps/plugin-fs";
 import { getCurrent as getCurrentDeepLinks, onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { appDataDir } from "@tauri-apps/api/path";
+import { invoke } from "@tauri-apps/api/core";
 import type { ShellContext } from "./context.ts";
 
 // ─── CSS ─────────────────────────────────────────────────────────────────────
@@ -37,6 +38,10 @@ const SHELL_CSS = `
   body[data-mode="constituer"] {
     --accent:            #1a7f4e;
     --accent-header-bg:  #145a38;
+  }
+  body[data-mode="recherche"] {
+    --accent:            #7b3fa0;
+    --accent-header-bg:  #5a2d75;
   }
 
   /* ── Shell header ──────────────────────────────────────────── */
@@ -333,6 +338,14 @@ const SHELL_CSS = `
   .shell-card-badge-constituer {
     background: #d1fae5;
     color: #145a38;
+  }
+  .shell-card-recherche:hover {
+    border-color: #7b3fa0;
+    box-shadow: 0 4px 18px rgba(123,63,160,0.13);
+  }
+  .shell-card-badge-recherche {
+    background: #7b3fa022;
+    color: #7b3fa0;
   }
   .shell-card-publish:hover {
     box-shadow: 0 6px 20px rgba(130,80,20,0.22);
@@ -948,12 +961,14 @@ const DEEP_LINK_SCHEME = "agrafes-shell";
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
-type Mode = "home" | "explorer" | "constituer" | "publish";
+type Mode = "home" | "explorer" | "constituer" | "publish" | "recherche";
 
 let _currentMode: Mode = "home";
 let _currentDbPath: string | null = null;
 let _currentDispose: (() => void) | null = null;
 let _navigating = false;
+/** After first successful navigation, `_setMode(m)` skips when `m` is already active (avoids full remount on repeated tab clicks). */
+let _shellNavReady = false;
 let _pendingDbRemount = false;
 const _dbListeners: Set<(path: string | null) => void> = new Set();
 let _deepLinkUnlisten: (() => void) | null = null;
@@ -1300,7 +1315,7 @@ async function _switchDb(path: string): Promise<void> {
 
 function _loadPersisted(): { mode: Mode; dbPath: string | null } {
   const raw = localStorage.getItem(LS_MODE);
-  const mode: Mode = (raw === "explorer" || raw === "constituer" || raw === "home" || raw === "publish")
+  const mode: Mode = (raw === "explorer" || raw === "constituer" || raw === "home" || raw === "publish" || raw === "recherche")
     ? raw
     : "home";
   const dbPath = localStorage.getItem(LS_DB) ?? null;
@@ -1322,7 +1337,7 @@ interface DeepLinkPayload {
 
 function _normalizeMode(raw: string | null | undefined): Mode | null {
   const mode = (raw ?? "").trim().toLowerCase();
-  if (mode === "explorer" || mode === "constituer" || mode === "home" || mode === "publish") {
+  if (mode === "explorer" || mode === "constituer" || mode === "home" || mode === "publish" || mode === "recherche") {
     return mode;
   }
   return null;
@@ -1482,6 +1497,10 @@ export async function initShell(): Promise<void> {
     _deepLinkUnlisten = null;
     _shellLog("info", "shutdown", "Clean shutdown");
     _clearCrashMarker();
+    // Best-effort: ask Rust to POST /shutdown synchronously before the window closes.
+    // The Rust SidecarRegistry was updated via register_sidecar on every connection,
+    // so even if this invoke doesn't complete, on_window_event(Destroyed) will fire.
+    void invoke("shutdown_sidecar_cmd").catch(() => { /* best-effort */ });
   });
 
   _shellLog("info", "boot", `Started in mode: ${startMode}`);
@@ -1741,7 +1760,8 @@ function _openShortcutsPanel(): void {
   const shortcuts = [
     [`${mod}+1`, "Explorer"],
     [`${mod}+2`, "Constituer"],
-    [`${mod}+3`, "Publier"],
+    [`${mod}+3`, "Recherche grammaticale"],
+    [`${mod}+4`, "Publier"],
     [`${mod}+0`, "Accueil"],
     ["Echap", "Fermer modal / menu"],
     [`${mod}+O`, "Ouvrir une base de données…"],
@@ -1788,6 +1808,7 @@ function _buildHeader(): void {
   tabs.className = "shell-tabs";
   tabs.appendChild(_makeTab("Explorer",   "⌘1", "explorer"));
   tabs.appendChild(_makeTab("Constituer", "⌘2", "constituer"));
+  tabs.appendChild(_makeTab("Recherche",  "⌘3", "recherche"));
   header.appendChild(tabs);
 
   // Presets button
@@ -1991,7 +2012,7 @@ async function _onCreateDb(): Promise<void> {
 
   // Re-mount if module active so module uses the new DB
   if (_currentMode !== "home") {
-    await _setMode(_currentMode);
+    await _setMode(_currentMode, { force: true });
   }
 }
 
@@ -2114,7 +2135,7 @@ function _showDbChangeBanner(dbLabel: string): void {
   refreshBtn.addEventListener("click", () => {
     _clearDbChangeBanner();
     _pendingDbRemount = false;
-    void _setMode(_currentMode);
+    void _setMode(_currentMode, { force: true });
   });
 
   const laterBtn = document.createElement("button");
@@ -2180,14 +2201,16 @@ const _MODE_TITLES: Record<Mode, string> = {
   explorer:   "AGRAFES — Explorer",
   constituer: "AGRAFES — Constituer",
   publish:    "AGRAFES — Publier",
+  recherche:  "AGRAFES — Recherche grammaticale",
 };
 
 function _updateDocTitle(mode: Mode): void {
   document.title = _MODE_TITLES[mode] ?? "AGRAFES";
 }
 
-async function _setMode(mode: Mode): Promise<void> {
+async function _setMode(mode: Mode, opts?: { force?: boolean }): Promise<void> {
   if (_navigating) return;
+  if (_shellNavReady && mode === _currentMode && !opts?.force) return;
   _navigating = true;
 
   // Any navigation clears the DB-change banner and the pending-remount flag.
@@ -2224,6 +2247,11 @@ async function _setMode(mode: Mode): Promise<void> {
     } else if (mode === "publish") {
       const fresh = _freshContainer();
       await _renderPublicationWizard(fresh);
+    } else if (mode === "recherche") {
+      const mod = await import("./modules/rechercheModule.ts");
+      const fresh = _freshContainer();
+      await mod.mount(fresh, ctx);
+      _currentDispose = () => mod.dispose();
     } else {
       const mod = await import("./modules/constituerModule.ts");
       _freshContainer(); // swap out spinner; prep finds #app by id
@@ -2236,6 +2264,7 @@ async function _setMode(mode: Mode): Promise<void> {
     if (c) c.innerHTML = `<div style="padding:2rem;color:#c0392b">Erreur de chargement du module.<br><code>${String(err)}</code></div>`;
   } finally {
     _navigating = false;
+    _shellNavReady = true;
   }
 }
 
@@ -2845,7 +2874,7 @@ async function _renderGuidedTour(container: HTMLElement): Promise<void> {
   guideSection.querySelector("#guide-reset-btn")!.addEventListener("click", () => {
     _resetOnboarding();
     // Re-render home
-    void _setMode("home");
+    void _setMode("home", { force: true });
   });
 
   container.appendChild(guideSection);
@@ -2871,6 +2900,12 @@ function _renderHome(container: HTMLElement): void {
         <span class="shell-card-badge shell-card-badge-constituer">Constituer</span>
         <h2>Constituer son corpus</h2>
         <p>Importer, aligner, corriger et exporter vos corpus.</p>
+      </div>
+      <div class="shell-card shell-card-recherche" id="shell-btn-recherche">
+        <div class="shell-card-icon">&#128270;</div>
+        <span class="shell-card-badge shell-card-badge-recherche">Recherche</span>
+        <h2>Recherche grammaticale</h2>
+        <p>Requ&ecirc;tes CQL par lemme, POS et traits morphologiques. KWIC interlin&eacute;aire, stats, pivot bilingue.</p>
       </div>
       <div class="shell-card shell-card-publish" id="shell-btn-publish">
         <div class="shell-card-icon">&#128230;</div>
@@ -2898,6 +2933,8 @@ function _renderHome(container: HTMLElement): void {
     .addEventListener("click", () => _setMode("explorer"));
   wrap.querySelector("#shell-btn-constituer")!
     .addEventListener("click", () => _setMode("constituer"));
+  wrap.querySelector("#shell-btn-recherche")!
+    .addEventListener("click", () => _setMode("recherche"));
   wrap.querySelector("#shell-btn-publish")!
     .addEventListener("click", () => _setMode("publish"));
 
@@ -2961,7 +2998,7 @@ async function _initDemoSection(
     _updateDbBadge();
     _dbListeners.forEach(cb => cb(_currentDbPath));
     _showToast("DB active\u00a0: corpus d\u00e9mo");
-    await _setMode("explorer");
+    await _setMode("explorer", { force: true });
   });
 }
 
@@ -3030,7 +3067,8 @@ function _installKeyboardShortcuts(): void {
     if (!mod) return;
     if (e.key === "1") { e.preventDefault(); void _setMode("explorer"); }
     else if (e.key === "2") { e.preventDefault(); void _setMode("constituer"); }
-    else if (e.key === "3") { e.preventDefault(); void _setMode("publish"); }
+    else if (e.key === "3") { e.preventDefault(); void _setMode("recherche"); }
+    else if (e.key === "4") { e.preventDefault(); void _setMode("publish"); }
     else if (e.key === "0") { e.preventDefault(); void _setMode("home"); }
     else if (e.key === "o" || e.key === "O") { e.preventDefault(); void _onChangeDb(); }
     else if ((e.key === "n" || e.key === "N") && e.shiftKey) { e.preventDefault(); void _onCreateDb(); }

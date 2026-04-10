@@ -93,7 +93,7 @@ When `multicorpus serve` starts and a portfile already exists:
   - `POST /corpus/info`
   - `POST /tokens/update`
   - `POST /shutdown`
-- Read endpoints (`/health`, `/query`, `/token_query`, `/openapi.json`) do not require token.
+- Read endpoints (`/health`, `/query`, `/token_query`, `/token_stats`, `/openapi.json`) do not require token.
 - Threat model and operational policy: `docs/SIDECAR_SECURITY_POSTURE.md`.
 
 ## Required endpoints (persistent UX baseline)
@@ -156,6 +156,23 @@ When `multicorpus serve` starts and a portfile already exists:
       - `context_tokens[]` (windowed neighboring tokens)
       - `kwic`: `left/match/right` when `mode=kwic`
       - `segment`: `text` + `text_norm` when `mode=segment`
+
+- `POST /token_stats`
+  - frequency distribution of a token attribute over CQL hits; no auth token required
+  - request body:
+    - `cql: string` (required) — same CQL syntax as `/token_query`
+    - `group_by: "lemma"|"upos"|"xpos"|"word"|"feats"` (default `"lemma"`)
+    - `language?: string`
+    - `doc_ids?: int[]`
+    - `limit: int` (default `50`, max `200`) — max rows returned
+  - response:
+    - `total_hits: int` — number of matched token sequences
+    - `total_pivot_tokens: int` — total tokens across all pivot spans
+    - `group_by: string` — echoed
+    - `rows[]` — sorted descending by count:
+      - `value: string`
+      - `count: int`
+      - `pct: float` — percentage of total_pivot_tokens (0–100)
 
 ### Pagination policy (V0.2)
 

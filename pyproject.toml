@@ -26,6 +26,7 @@ dev = [
 packaging = [
     "pyinstaller>=6.0",
     "charset-normalizer>=3.0",  # embed for sidecar binary TXT import
+    "spacy>=3.7",               # bundled into sidecar (annotation feature)
 ]
 nlp = [
     "spacy>=3.7",
