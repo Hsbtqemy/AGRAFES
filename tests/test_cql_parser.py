@@ -75,3 +75,19 @@ def test_parse_rejects_invalid_quantifier_bounds() -> None:
 
     with pytest.raises(ValueError, match="max < min"):
         parse_cql('[lemma = "liv.*"]{3,1}')
+
+
+def test_parse_xpos_and_feats_attributes() -> None:
+    from multicorpus_engine.cql_parser import parse_cql
+
+    specs = parse_cql('[xpos = "VBC"][feats = ".*Tense=Past.*"]')
+    assert len(specs) == 2
+    assert specs[0].predicates[0].attr == "xpos"
+    assert specs[1].predicates[0].attr == "feats"
+
+
+def test_parse_rejects_unknown_attribute() -> None:
+    from multicorpus_engine.cql_parser import parse_cql
+
+    with pytest.raises(ValueError, match="Invalid predicate syntax"):
+        parse_cql('[form = "chat"]')

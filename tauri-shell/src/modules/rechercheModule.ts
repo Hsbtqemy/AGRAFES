@@ -341,15 +341,6 @@ let _quickMode: _QuickMode = "mot";
 interface _PosToken { pos: string; word: string; }
 let _posSelection: _PosToken[] = [];
 
-const UPOS_COLORS_FULL: Record<string, string> = {
-  NOUN: "#4e9af1", VERB: "#e07b39", ADJ: "#8e6bbf",
-  ADV: "#3aab6d", PRON: "#c9a227", DET: "#5bb8c4",
-  ADP: "#b0b0b0", CCONJ: "#b0b0b0", SCONJ: "#b0b0b0",
-  PUNCT: "#cccccc", NUM: "#c94040", PROPN: "#2e7dbf",
-  AUX: "#d97ab8", PART: "#b0b0b0", INTJ: "#e04444",
-  SYM: "#999", X: "#bbb",
-};
-
 function _escCqlVal(s: string): string {
   return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
@@ -409,7 +400,7 @@ function _updatePosSelection(root: HTMLElement): void {
     _posSelection.forEach((tok, idx) => {
       const tag = document.createElement("span");
       tag.className = "rech-pos-token";
-      const col = UPOS_COLORS_FULL[tok.pos] ?? "#888";
+      const col = UPOS_COLORS[tok.pos] ?? "#888";
       tag.style.borderColor = col;
 
       // POS label
@@ -461,7 +452,7 @@ function _updatePosSelection(root: HTMLElement): void {
   const activePosSet = new Set(_posSelection.map(t => t.pos));
   root.querySelectorAll<HTMLButtonElement>(".rech-pos-chip").forEach(btn => {
     const pos = btn.dataset.pos ?? "";
-    const col = UPOS_COLORS_FULL[pos] ?? "#888";
+    const col = UPOS_COLORS[pos] ?? "#888";
     const active = activePosSet.has(pos);
     btn.style.background = active ? col : "";
     btn.style.color = active ? "#fff" : col;
@@ -508,7 +499,7 @@ function _wireEvents(root: HTMLElement): void {
   // ── POS chips ──
   root.querySelectorAll<HTMLButtonElement>(".rech-pos-chip").forEach(chip => {
     const pos = chip.dataset.pos ?? "";
-    const col = UPOS_COLORS_FULL[pos] ?? "#888";
+    const col = UPOS_COLORS[pos] ?? "#888";
     chip.style.borderColor = col;
     chip.style.color = col;
     chip.addEventListener("click", () => {

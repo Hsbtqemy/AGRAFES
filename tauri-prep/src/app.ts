@@ -201,22 +201,6 @@ export class App {
     nav.id = "prep-nav";
     nav.setAttribute("aria-label", "Navigation Prep");
 
-    const navHead = document.createElement("div");
-    navHead.className = "prep-nav-head";
-    const navTitle = document.createElement("h2");
-    navTitle.textContent = "Sections";
-    const collapseBtn = document.createElement("button");
-    collapseBtn.className = "prep-nav-collapse-btn";
-    collapseBtn.title = "Masquer le panneau";
-    collapseBtn.setAttribute("aria-label", "Masquer le panneau de navigation");
-    collapseBtn.setAttribute("aria-expanded", "true");
-    collapseBtn.setAttribute("aria-controls", "prep-nav");
-    collapseBtn.textContent = "◀";
-    collapseBtn.addEventListener("click", () => this._toggleNav(shell, collapseBtn));
-    navHead.appendChild(navTitle);
-    navHead.appendChild(collapseBtn);
-    nav.appendChild(navHead);
-
     // Tab links in sidebar
     const LABELS: Record<TabId, string> = {
       import: "Importer",
@@ -224,31 +208,53 @@ export class App {
       actions: "Actions",
       exporter: "Exporter",
     };
+    const ICONS: Record<TabId, string> = {
+      import: "⊕",
+      documents: "≡",
+      actions: "◈",
+      exporter: "⊗",
+    };
     for (const tab of TABS) {
       const btn = document.createElement("button");
       btn.className = "prep-nav-tab" + (tab === this._activeTab ? " active" : "");
       if (tab === this._activeTab) btn.setAttribute("aria-current", "page");
-      btn.textContent = LABELS[tab];
+      btn.title = LABELS[tab];
+      const iconEl = document.createElement("span");
+      iconEl.className = "nav-icon";
+      iconEl.textContent = ICONS[tab];
+      const labelEl = document.createElement("span");
+      labelEl.className = "nav-label";
+      labelEl.textContent = LABELS[tab];
+      btn.appendChild(iconEl);
+      btn.appendChild(labelEl);
       btn.addEventListener("click", () => this._switchTab(tab));
       this._tabBtns[tab] = btn as HTMLButtonElement;
       nav.appendChild(btn);
 
-      // Raccourcis sous « Actions » (sans sous-titre « Actions disponibles »)
+      // Raccourcis sous « Actions »
       if (tab === "actions") {
         const treeBody = document.createElement("div");
         treeBody.className = "prep-nav-tree-body";
         treeBody.setAttribute("aria-label", "Raccourcis Actions");
-        const treeItems: Array<[string, string, string]> = [
-          ["Curation", "#act-curate-card", "curation"],
-          ["Segmentation", "#act-seg-card", "segmentation"],
-          ["Alignement", "#act-align-card", "alignement"],
-          ["Annotation", "#act-annot-card", "annoter"],
+        const treeItems: Array<[string, string, string, string]> = [
+          ["Curation",     "#act-curate-card", "curation",    "◇"],
+          ["Segmentation", "#act-seg-card",    "segmentation","⌥"],
+          ["Alignement",   "#act-align-card",  "alignement",  "⇄"],
+          ["Annotation",   "#act-annot-card",  "annoter",     "◎"],
         ];
-        for (const [label, , navKey] of treeItems) {
+        for (const [label, , navKey, icon] of treeItems) {
           const link = document.createElement("button");
           link.className = "prep-nav-tree-link";
           link.dataset.nav = navKey;
-          link.textContent = label;
+          link.title = label;
+          const treeIcon = document.createElement("span");
+          treeIcon.className = "nav-icon";
+          treeIcon.textContent = icon;
+          const treeLabel = document.createElement("span");
+          treeLabel.className = "nav-label";
+          treeLabel.textContent = label;
+          link.appendChild(treeIcon);
+          link.appendChild(treeLabel);
           link.addEventListener("click", () => {
             this._switchTab("actions");
             this._actions.setSubView(navKey as "curation" | "segmentation" | "alignement" | "annoter");
@@ -263,19 +269,6 @@ export class App {
     }
 
     shell.appendChild(nav);
-
-    // Left rail (visible when sidebar is collapsed)
-    const leftRail = document.createElement("div");
-    leftRail.className = "prep-rail";
-    leftRail.setAttribute("aria-label", "Rouvrir le panneau");
-    const expandBtn = document.createElement("button");
-    expandBtn.className = "prep-rail-expand-btn";
-    expandBtn.title = "Ouvrir la navigation";
-    expandBtn.setAttribute("aria-label", "Ouvrir le panneau de navigation");
-    expandBtn.textContent = "▶";
-    expandBtn.addEventListener("click", () => this._toggleNav(shell));
-    leftRail.appendChild(expandBtn);
-    shell.appendChild(leftRail);
 
     // Main content area
     const main = document.createElement("div");
@@ -322,14 +315,6 @@ export class App {
 
     main.appendChild(content);
     this._syncCurationWideClass();
-  }
-
-  private _toggleNav(shell: HTMLElement, btn?: HTMLButtonElement): void {
-    const nowHidden = shell.classList.toggle("nav-hidden");
-    // Update aria-expanded on whichever button triggered the toggle
-    const collapseBtn = shell.querySelector<HTMLButtonElement>(".prep-nav-collapse-btn");
-    if (collapseBtn) collapseBtn.setAttribute("aria-expanded", String(!nowHidden));
-    if (btn) btn.setAttribute("aria-expanded", String(!nowHidden));
   }
 
   private _switchTab(tab: TabId): void {

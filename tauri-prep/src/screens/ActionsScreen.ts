@@ -739,9 +739,7 @@ export class ActionsScreen {
         </div>
         <div class="acts-hub-head-tools">
           <span class="curate-pill" id="act-curate-mode-pill">Mode &#233;dition</span>
-          <button class="acts-hub-head-link acts-hub-head-link-accent" id="act-curate-lt-cta">&#9656; Grand texte</button>
-          <button class="acts-hub-head-link" data-nav="segmentation">Segmentation</button>
-          <button class="acts-hub-head-link" data-nav="alignement">Alignement</button>
+          <button class="acts-hub-head-link acts-hub-head-link-accent" id="act-curate-lt-cta">Grand texte</button>
         </div>
       </section>
       <section class="card curate-workspace-card" id="act-curate-card">
@@ -1311,10 +1309,6 @@ export class ActionsScreen {
         <div class="acts-hub-head-left">
           <h1>Segmentation</h1>
           <p>S&#233;lectionnez un document pour voir l'aper&#231;u live et lancer la segmentation.</p>
-        </div>
-        <div class="acts-hub-head-tools">
-          <button class="acts-hub-head-link" data-nav="curation">Voir Curation</button>
-          <button class="acts-hub-head-link" data-nav="alignement">Voir Alignement</button>
         </div>
       </section>
       <div class="seg-split-layout">
@@ -2642,8 +2636,6 @@ export class ActionsScreen {
         <p>Créez les liens pivot ↔ cible entre documents, vérifiez et corrigez.</p>
       </div>
       <div class="acts-hub-head-tools">
-        <button class="acts-hub-head-link" data-nav="curation">Voir Curation</button>
-        <button class="acts-hub-head-link" data-nav="segmentation">Voir Segmentation VO</button>
         <button class="acts-hub-head-link" id="act-align-open-export-btn">Exporter cette étape…</button>
       </div>`;
     this._bindHeadNavLinks(headSection, root);
@@ -2789,8 +2781,6 @@ export class ActionsScreen {
         </div>
         <div class="acts-hub-head-tools">
           <span class="curate-pill" id="act-align-run-pill">Liens pivot &#8596; cible</span>
-          <button class="acts-hub-head-link" data-nav="curation">Voir Curation</button>
-          <button class="acts-hub-head-link" data-nav="segmentation">Voir Segmentation VO</button>
         </div>
       </section>
       <section class="card workflow-section" id="wf-section" data-collapsible="true" data-collapsed-default="true" style="border:2px solid var(--accent,#1a7f4e)">

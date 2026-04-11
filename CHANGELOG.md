@@ -5,6 +5,18 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.1.21] - 2026-04-11
+
+### Added
+
+- **Tests** : couverture CQL étendue dans `tests/test_cql_parser.py`.
+
+### Changed
+
+- **tauri-prep** : navigation latérale (onglets avec icônes + libellés, raccourcis Actions avec pictos) ; ajustements `prep-vnext.css` et `ActionsScreen`.
+- **tauri-shell** : recherche grammaticale — palette UPOS unifiée (`UPOS_COLORS`).
+- **Versions** : paquet Python **0.7.3** ; applications Tauri **0.1.21** ; Shell **v1.9.4**.
+
 ## [0.1.20] - 2026-04-10
 
 ### Added
