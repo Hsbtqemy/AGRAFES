@@ -1552,6 +1552,15 @@ body {
   color: var(--success);
   border-color: var(--success);
 }
+.card-action-btn--cql {
+  color: #4e9af1;
+  border-color: rgba(78,154,241,0.35);
+}
+.card-action-btn--cql:hover {
+  background: rgba(78,154,241,0.1);
+  color: #4e9af1;
+  border-color: #4e9af1;
+}
 
 /* ─── Results header enrichi ─── */
 .results-header { justify-content: space-between; gap: 8px; flex-wrap: wrap; }

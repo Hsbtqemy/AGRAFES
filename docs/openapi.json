@@ -516,6 +516,38 @@
           }
         ]
       },
+      "AlignedUnit": {
+        "properties": {
+          "doc_id": {
+            "type": "integer"
+          },
+          "language": {
+            "type": "string"
+          },
+          "status": {
+            "description": "accepted | rejected | null",
+            "nullable": true,
+            "type": "string"
+          },
+          "text_norm": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "unit_id": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "unit_id",
+          "doc_id",
+          "title",
+          "language",
+          "text_norm"
+        ],
+        "type": "object"
+      },
       "AnnotateRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2732,6 +2764,13 @@
       },
       "TokenQueryHit": {
         "properties": {
+          "aligned": {
+            "description": "Partner units from alignment_links (only present when include_aligned=true).",
+            "items": {
+              "$ref": "#/components/schemas/AlignedUnit"
+            },
+            "type": "array"
+          },
           "context_tokens": {
             "items": {
               "$ref": "#/components/schemas/TokenQueryToken"
@@ -2810,6 +2849,11 @@
               "type": "integer"
             },
             "type": "array"
+          },
+          "include_aligned": {
+            "default": false,
+            "description": "When true, each hit gains an `aligned` list with partner units from alignment_links.",
+            "type": "boolean"
           },
           "language": {
             "type": "string"
@@ -3346,7 +3390,7 @@
   "info": {
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
-    "version": "1.6.22",
+    "version": "1.6.23",
     "x-contract-version": "1.6.21"
   },
   "openapi": "3.0.3",

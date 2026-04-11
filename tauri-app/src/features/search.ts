@@ -136,7 +136,7 @@ export function validateCqlSyntax(raw: string): string | null {
   if (src.endsWith(";")) src = src.slice(0, -1).trim();
   if (!src) return "La requête CQL est vide.";
 
-  const predRe = /^(word|lemma|pos|upos)\s*=\s*"(?:\\.|[^"\\])*"\s*(%c)?\s*$/i;
+  const predRe = /^(word|lemma|pos|upos|xpos|feats)\s*=\s*"(?:\\.|[^"\\])*"\s*(%c)?\s*$/i;
   const quantRe = /^\{\s*(\d+)\s*(?:,\s*(\d+)\s*)?\}/;
 
   let i = 0;

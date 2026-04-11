@@ -39,11 +39,6 @@ const SHELL_CSS = `
     --accent:            #1a7f4e;
     --accent-header-bg:  #145a38;
   }
-  body[data-mode="recherche"] {
-    --accent:            #7b3fa0;
-    --accent-header-bg:  #5a2d75;
-  }
-
   /* ── Shell header ──────────────────────────────────────────── */
   #shell-header {
     background: var(--accent-header-bg);
@@ -338,14 +333,6 @@ const SHELL_CSS = `
   .shell-card-badge-constituer {
     background: #d1fae5;
     color: #145a38;
-  }
-  .shell-card-recherche:hover {
-    border-color: #7b3fa0;
-    box-shadow: 0 4px 18px rgba(123,63,160,0.13);
-  }
-  .shell-card-badge-recherche {
-    background: #7b3fa022;
-    color: #7b3fa0;
   }
   .shell-card-publish:hover {
     box-shadow: 0 6px 20px rgba(130,80,20,0.22);
@@ -961,7 +948,7 @@ const DEEP_LINK_SCHEME = "agrafes-shell";
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
-type Mode = "home" | "explorer" | "constituer" | "publish" | "recherche";
+type Mode = "home" | "explorer" | "constituer" | "publish";
 
 let _currentMode: Mode = "home";
 let _currentDbPath: string | null = null;
@@ -1315,7 +1302,7 @@ async function _switchDb(path: string): Promise<void> {
 
 function _loadPersisted(): { mode: Mode; dbPath: string | null } {
   const raw = localStorage.getItem(LS_MODE);
-  const mode: Mode = (raw === "explorer" || raw === "constituer" || raw === "home" || raw === "publish" || raw === "recherche")
+  const mode: Mode = (raw === "explorer" || raw === "constituer" || raw === "home" || raw === "publish")
     ? raw
     : "home";
   const dbPath = localStorage.getItem(LS_DB) ?? null;
@@ -1337,7 +1324,7 @@ interface DeepLinkPayload {
 
 function _normalizeMode(raw: string | null | undefined): Mode | null {
   const mode = (raw ?? "").trim().toLowerCase();
-  if (mode === "explorer" || mode === "constituer" || mode === "home" || mode === "publish" || mode === "recherche") {
+  if (mode === "explorer" || mode === "constituer" || mode === "home" || mode === "publish") {
     return mode;
   }
   return null;
@@ -1639,7 +1626,7 @@ async function _exportDiagnosticFile(text: string): Promise<void> {
 // ─── About dialog ─────────────────────────────────────────────────────────────
 
 // Static version info (embedded at build time)
-const APP_VERSION = "1.9.1";
+const APP_VERSION = "1.9.3";
 const ENGINE_VERSION_DISPLAY = "0.6.1";
 const CONTRACT_VERSION_DISPLAY = "1.4.0";
 const TEI_PROFILES = ["generic", "parcolab_like", "parcolab_strict"];
@@ -1760,8 +1747,7 @@ function _openShortcutsPanel(): void {
   const shortcuts = [
     [`${mod}+1`, "Explorer"],
     [`${mod}+2`, "Constituer"],
-    [`${mod}+3`, "Recherche grammaticale"],
-    [`${mod}+4`, "Publier"],
+    [`${mod}+3`, "Publier"],
     [`${mod}+0`, "Accueil"],
     ["Echap", "Fermer modal / menu"],
     [`${mod}+O`, "Ouvrir une base de données…"],
@@ -1808,7 +1794,6 @@ function _buildHeader(): void {
   tabs.className = "shell-tabs";
   tabs.appendChild(_makeTab("Explorer",   "⌘1", "explorer"));
   tabs.appendChild(_makeTab("Constituer", "⌘2", "constituer"));
-  tabs.appendChild(_makeTab("Recherche",  "⌘3", "recherche"));
   header.appendChild(tabs);
 
   // Presets button
@@ -2201,7 +2186,6 @@ const _MODE_TITLES: Record<Mode, string> = {
   explorer:   "AGRAFES — Explorer",
   constituer: "AGRAFES — Constituer",
   publish:    "AGRAFES — Publier",
-  recherche:  "AGRAFES — Recherche grammaticale",
 };
 
 function _updateDocTitle(mode: Mode): void {
@@ -2247,11 +2231,6 @@ async function _setMode(mode: Mode, opts?: { force?: boolean }): Promise<void> {
     } else if (mode === "publish") {
       const fresh = _freshContainer();
       await _renderPublicationWizard(fresh);
-    } else if (mode === "recherche") {
-      const mod = await import("./modules/rechercheModule.ts");
-      const fresh = _freshContainer();
-      await mod.mount(fresh, ctx);
-      _currentDispose = () => mod.dispose();
     } else {
       const mod = await import("./modules/constituerModule.ts");
       _freshContainer(); // swap out spinner; prep finds #app by id
@@ -2892,20 +2871,14 @@ function _renderHome(container: HTMLElement): void {
       <div class="shell-card shell-card-explorer" id="shell-btn-explorer">
         <div class="shell-card-icon">&#128269;</div>
         <span class="shell-card-badge shell-card-badge-explorer">Explorer</span>
-        <h2>Explorer AGRAFES</h2>
-        <p>Interroger vos corpus multilingues, KWIC, r&eacute;sultats align&eacute;s.</p>
+        <h2>Explorer</h2>
+        <p>Concordancier KWIC et recherche grammaticale CQL sur vos corpus multilingues.</p>
       </div>
       <div class="shell-card shell-card-constituer" id="shell-btn-constituer">
         <div class="shell-card-icon">&#128221;</div>
         <span class="shell-card-badge shell-card-badge-constituer">Constituer</span>
         <h2>Constituer son corpus</h2>
         <p>Importer, aligner, corriger et exporter vos corpus.</p>
-      </div>
-      <div class="shell-card shell-card-recherche" id="shell-btn-recherche">
-        <div class="shell-card-icon">&#128270;</div>
-        <span class="shell-card-badge shell-card-badge-recherche">Recherche</span>
-        <h2>Recherche grammaticale</h2>
-        <p>Requ&ecirc;tes CQL par lemme, POS et traits morphologiques. KWIC interlin&eacute;aire, stats, pivot bilingue.</p>
       </div>
       <div class="shell-card shell-card-publish" id="shell-btn-publish">
         <div class="shell-card-icon">&#128230;</div>
@@ -2933,8 +2906,6 @@ function _renderHome(container: HTMLElement): void {
     .addEventListener("click", () => _setMode("explorer"));
   wrap.querySelector("#shell-btn-constituer")!
     .addEventListener("click", () => _setMode("constituer"));
-  wrap.querySelector("#shell-btn-recherche")!
-    .addEventListener("click", () => _setMode("recherche"));
   wrap.querySelector("#shell-btn-publish")!
     .addEventListener("click", () => _setMode("publish"));
 
@@ -3067,8 +3038,7 @@ function _installKeyboardShortcuts(): void {
     if (!mod) return;
     if (e.key === "1") { e.preventDefault(); void _setMode("explorer"); }
     else if (e.key === "2") { e.preventDefault(); void _setMode("constituer"); }
-    else if (e.key === "3") { e.preventDefault(); void _setMode("recherche"); }
-    else if (e.key === "4") { e.preventDefault(); void _setMode("publish"); }
+    else if (e.key === "3") { e.preventDefault(); void _setMode("publish"); }
     else if (e.key === "0") { e.preventDefault(); void _setMode("home"); }
     else if (e.key === "o" || e.key === "O") { e.preventDefault(); void _onChangeDb(); }
     else if ((e.key === "n" || e.key === "N") && e.shiftKey) { e.preventDefault(); void _onCreateDb(); }

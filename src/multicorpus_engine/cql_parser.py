@@ -15,7 +15,7 @@ from dataclasses import dataclass
 import re
 
 
-_VALID_ATTRS = {"word", "lemma", "pos", "upos"}
+_VALID_ATTRS = {"word", "lemma", "pos", "upos", "xpos", "feats"}
 
 
 @dataclass(frozen=True)
@@ -111,7 +111,7 @@ def _split_top_level_and(expr: str) -> list[str]:
 _PRED_RE = re.compile(
     r"""
     ^\s*
-    (?P<attr>word|lemma|pos|upos)
+    (?P<attr>word|lemma|pos|upos|xpos|feats)
     \s*=\s*
     "
     (?P<value>(?:\\.|[^"\\])*)

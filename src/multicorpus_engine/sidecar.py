@@ -1495,6 +1495,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             except (TypeError, ValueError) as exc:
                 raise ValueError("doc_ids must be a list of integers") from exc
 
+        include_aligned = bool(body.get("include_aligned", False))
+
         params = {
             "cql": cql,
             "mode": mode,
@@ -1503,6 +1505,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             "doc_ids": doc_ids,
             "limit": limit,
             "offset": offset,
+            "include_aligned": include_aligned,
         }
 
         with self._lock():
@@ -1516,6 +1519,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 doc_ids=doc_ids,
                 limit=limit,
                 offset=offset,
+                include_aligned=include_aligned,
             )
             hits = page["hits"]
             self._update_run_stats(

@@ -268,6 +268,87 @@ def _stream_groups(
     return groups
 
 
+def _fetch_aligned(
+    conn: sqlite3.Connection,
+    unit_ids: list[int],
+) -> dict[int, list[dict[str, Any]]]:
+    """Return aligned units keyed by hit unit_id.
+
+    For each unit in *unit_ids*, looks up ``alignment_links`` (in both
+    directions) and returns metadata for every partner unit found.
+    """
+    if not unit_ids:
+        return {}
+
+    unit_ids_set = set(unit_ids)
+    ph = ",".join("?" * len(unit_ids))
+
+    rows = conn.execute(
+        f"""
+        SELECT al.pivot_unit_id, al.target_unit_id, al.status
+        FROM alignment_links al
+        WHERE al.pivot_unit_id IN ({ph}) OR al.target_unit_id IN ({ph})
+        """,
+        unit_ids * 2,
+    ).fetchall()
+
+    if not rows:
+        return {}
+
+    # Map each hit unit → list of (partner_unit_id, status)
+    hit_to_partners: dict[int, list[tuple[int, str | None]]] = {}
+    for row in rows:
+        src = int(row["pivot_unit_id"])
+        tgt = int(row["target_unit_id"])
+        status: str | None = row["status"]
+        if src in unit_ids_set:
+            hit_to_partners.setdefault(src, []).append((tgt, status))
+        if tgt in unit_ids_set:
+            hit_to_partners.setdefault(tgt, []).append((src, status))
+
+    # Batch-fetch all partner unit details
+    partner_ids = list({uid for pairs in hit_to_partners.values() for uid, _ in pairs})
+    if not partner_ids:
+        return {}
+
+    pph = ",".join("?" * len(partner_ids))
+    partner_rows = conn.execute(
+        f"""
+        SELECT u.unit_id, u.text_norm, d.doc_id, d.title, d.language
+        FROM units u
+        JOIN documents d ON d.doc_id = u.doc_id
+        WHERE u.unit_id IN ({pph})
+        """,
+        partner_ids,
+    ).fetchall()
+
+    partner_map: dict[int, dict[str, Any]] = {
+        int(r["unit_id"]): {
+            "unit_id": int(r["unit_id"]),
+            "doc_id": int(r["doc_id"]),
+            "title": r["title"],
+            "language": r["language"],
+            "text_norm": r["text_norm"] or "",
+        }
+        for r in partner_rows
+    }
+
+    result: dict[int, list[dict[str, Any]]] = {}
+    for hit_uid, pairs in hit_to_partners.items():
+        seen_partners: set[int] = set()
+        aligned = []
+        for partner_uid, status in pairs:
+            if partner_uid in partner_map and partner_uid not in seen_partners:
+                seen_partners.add(partner_uid)
+                entry = dict(partner_map[partner_uid])
+                entry["status"] = status
+                aligned.append(entry)
+        if aligned:
+            result[hit_uid] = aligned
+
+    return result
+
+
 def run_token_query_page(
     conn: sqlite3.Connection,
     *,
@@ -278,6 +359,7 @@ def run_token_query_page(
     doc_ids: Optional[list[int]] = None,
     limit: int = 50,
     offset: int = 0,
+    include_aligned: bool = False,
 ) -> dict[str, Any]:
     """Run a token-level CQL query with pagination."""
     if mode not in {"segment", "kwic"}:
@@ -323,6 +405,12 @@ def run_token_query_page(
                 match=m,
             )
         )
+
+    if include_aligned and hits:
+        page_unit_ids = [h["unit_id"] for h in hits]
+        aligned_map = _fetch_aligned(conn, page_unit_ids)
+        for hit in hits:
+            hit["aligned"] = aligned_map.get(hit["unit_id"], [])
 
     return {
         "hits": hits,

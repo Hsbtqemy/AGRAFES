@@ -1475,6 +1475,130 @@ def test_align_recalculate_can_drop_previous_accepted_links(sidecar_base_url: st
     assert len(accepted_audit["links"]) == 0
 
 
+# ─── /token_query include_aligned ────────────────────────────────────────────
+
+
+@pytest.fixture()
+def aligned_token_query_sidecar_base_url(tmp_path: Path) -> str:
+    """Sidecar with FR+EN corpus and one alignment link between their first units."""
+    from multicorpus_engine.db.connection import get_connection
+    from multicorpus_engine.db.migrations import apply_migrations
+    from multicorpus_engine.importers.conllu import import_conllu
+    from multicorpus_engine.sidecar import CorpusServer
+
+    db_path = tmp_path / "sidecar_aligned_tq.db"
+    conn = get_connection(db_path)
+    apply_migrations(conn)
+
+    fr_path = tmp_path / "fr.conllu"
+    fr_path.write_text(
+        (
+            "# sent_id = 1\n"
+            "# text = Le livre arrive.\n"
+            "1\tLe\tle\tDET\t_\t_\t0\troot\t_\t_\n"
+            "2\tlivre\tlivre\tNOUN\t_\t_\t1\tnsubj\t_\t_\n"
+            "3\tarrive\tarriver\tVERB\t_\t_\t2\troot\t_\t_\n"
+            "\n"
+        ),
+        encoding="utf-8",
+    )
+    import_conllu(conn=conn, path=fr_path, language="fr", title="FR Aligned")
+
+    en_path = tmp_path / "en.conllu"
+    en_path.write_text(
+        (
+            "# sent_id = 1\n"
+            "# text = The book arrives.\n"
+            "1\tThe\tthe\tDET\t_\t_\t0\troot\t_\t_\n"
+            "2\tbook\tbook\tNOUN\t_\t_\t1\tnsubj\t_\t_\n"
+            "3\tarrives\tarrive\tVERB\t_\t_\t2\troot\t_\t_\n"
+            "\n"
+        ),
+        encoding="utf-8",
+    )
+    import_conllu(conn=conn, path=en_path, language="en", title="EN Aligned")
+
+    # Insert alignment link: FR unit ↔ EN unit (first sentences of each doc)
+    fr_row = conn.execute(
+        "SELECT unit_id, doc_id FROM units WHERE doc_id = (SELECT doc_id FROM documents WHERE language='fr') LIMIT 1"
+    ).fetchone()
+    en_row = conn.execute(
+        "SELECT unit_id, doc_id FROM units WHERE doc_id = (SELECT doc_id FROM documents WHERE language='en') LIMIT 1"
+    ).fetchone()
+    conn.execute(
+        """INSERT INTO alignment_links
+           (run_id, pivot_unit_id, target_unit_id, external_id,
+            pivot_doc_id, target_doc_id, created_at, status)
+           VALUES (?, ?, ?, ?, ?, ?, datetime('now'), ?)""",
+        ("test-run", fr_row["unit_id"], en_row["unit_id"], 1,
+         fr_row["doc_id"], en_row["doc_id"], "accepted"),
+    )
+    conn.commit()
+    conn.close()
+
+    server = CorpusServer(db_path=db_path, host="127.0.0.1", port=0)
+    server.start()
+    base_url = f"http://127.0.0.1:{server.actual_port}"
+    _wait_health(base_url)
+    try:
+        yield base_url
+    finally:
+        server.shutdown()
+
+
+def test_token_query_include_aligned_false_no_field(token_query_sidecar_base_url: str) -> None:
+    """Without include_aligned, hits do not carry an `aligned` key."""
+    code, payload = _http_json(
+        "POST",
+        f"{token_query_sidecar_base_url}/token_query",
+        {"cql": '[upos="NOUN"]', "include_aligned": False},
+    )
+    assert code == 200, payload
+    hits = payload.get("hits", [])
+    assert len(hits) > 0
+    for hit in hits:
+        assert "aligned" not in hit
+
+
+def test_token_query_include_aligned_no_links(token_query_sidecar_base_url: str) -> None:
+    """include_aligned=true on a corpus without links returns aligned=[] on each hit."""
+    code, payload = _http_json(
+        "POST",
+        f"{token_query_sidecar_base_url}/token_query",
+        {"cql": '[upos="NOUN"]', "include_aligned": True},
+    )
+    assert code == 200, payload
+    hits = payload.get("hits", [])
+    assert len(hits) > 0
+    for hit in hits:
+        assert "aligned" in hit
+        assert hit["aligned"] == []
+
+
+def test_token_query_include_aligned_with_links(aligned_token_query_sidecar_base_url: str) -> None:
+    """include_aligned=true returns partner units for hits that have alignment links."""
+    code, payload = _http_json(
+        "POST",
+        f"{aligned_token_query_sidecar_base_url}/token_query",
+        {"cql": '[upos="NOUN"]', "language": "fr", "include_aligned": True},
+    )
+    assert code == 200, payload
+    hits = payload.get("hits", [])
+    assert len(hits) > 0
+
+    # At least the FR hit should have an aligned EN unit
+    linked = [h for h in hits if h.get("aligned")]
+    assert len(linked) >= 1, "Expected at least one hit with an aligned partner"
+
+    partner = linked[0]["aligned"][0]
+    assert partner["language"] == "en"
+    assert partner["title"] == "EN Aligned"
+    assert "text_norm" in partner
+    assert partner["status"] == "accepted"
+    assert isinstance(partner["unit_id"], int)
+    assert isinstance(partner["doc_id"], int)
+
+
 def test_openapi_spec_has_documents_and_align_routes() -> None:
     from multicorpus_engine.sidecar_contract import openapi_spec
 

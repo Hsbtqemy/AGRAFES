@@ -191,7 +191,7 @@ Réponse :
 
 ---
 
-### SP-3.2 — UI stats
+### SP-3.2 — UI stats ✅
 
 **Fichier** : `tauri-shell/src/modules/rechercheModule.ts`
 
@@ -229,7 +229,7 @@ Panneau droit (220 px) :
 > Pour chaque hit, afficher la phrase correspondante dans la langue partenaire
 > via la table `alignment_links`.
 
-### SP-4.1 — Enrichissement hits côté backend
+### SP-4.1 — Enrichissement hits côté backend ✅
 
 **Option A** (préférable) : nouveau paramètre `include_aligned: true` dans `POST /token_query`
 — le sidecar joint `alignment_links` + `units` pour ajouter à chaque hit :
@@ -262,7 +262,7 @@ acceptable si liste courte, sinon trop lent).
 
 ---
 
-### SP-4.2 — UI hit bilingue
+### SP-4.2 — UI hit bilingue ✅
 
 **Fichier** : `tauri-shell/src/modules/rechercheModule.ts`
 
@@ -293,7 +293,7 @@ Chaque hit s'étend pour afficher la phrase partenaire :
 
 > Wiring de l'export CSV déjà disponible côté backend.
 
-### SP-5.1 — Bouton "Exporter CSV"
+### SP-5.1 — Bouton "Exporter CSV" ✅
 
 **Fichier** : `tauri-shell/src/modules/rechercheModule.ts`
 
@@ -306,6 +306,61 @@ Chaque hit s'étend pour afficher la phrase partenaire :
 - CSV téléchargé contient les mêmes hits que l'affichage
 - Bouton désactivé si aucun résultat
 - Pas d'appel réseau si `total = 0`
+
+---
+
+---
+
+## RFT — Refactoring : intégration dans Explorer
+
+> **Décision architecturale (2026-04-10)** : le module "Recherche grammaticale" est intégré
+> comme sous-onglet d'**Explorer** plutôt que comme mode Shell de niveau 1.
+> Rationnel : Explorer est un outil de corpus autonome ; la recherche grammaticale (CQL)
+> est une forme de recherche dans le corpus au même titre que le concordancier (FTS).
+
+### RFT-1 — Supprimer le mode Shell `recherche` (top-level)
+
+**Fichier** : `tauri-shell/src/shell.ts`
+
+- Retirer `"recherche"` de `type Mode`
+- Supprimer le tab "Recherche" dans la barre (`⌘3` → libéré; Publier passe en `⌘3`)
+- Supprimer `body[data-mode="recherche"]` et les CSS `.shell-card-recherche`
+- Supprimer la card "Recherche grammaticale" de l'écran Home
+- Supprimer la branche `else if (mode === "recherche")` dans `_setMode`
+- Mettre à jour `_loadPersisted`, `_normalizeMode`, `_MODE_TITLES`
+- Raccourci clavier : `⌘3` = Publier (précédemment `⌘4`)
+
+**Critères d'acceptation** :
+- Build propre, 3 modes top-level (Explorer ⌘1, Constituer ⌘2, Publier ⌘3)
+- Pas de régression sur les modes existants
+
+---
+
+### RFT-2 — Sous-onglets "Concordancier" / "Recherche grammaticale" dans Explorer
+
+**Fichier** : `tauri-shell/src/modules/explorerModule.ts`
+
+Structure :
+
+```
+Explorer (mode top-level, accent bleu)
+  ┌─ sous-onglet-bar ──────────────────────────────┐
+  │  [Concordancier ⌘]   [Recherche grammaticale]  │
+  └────────────────────────────────────────────────┘
+  ┌─ sous-contenu ─────────────────────────────────┐
+  │  tauri-app (initApp)   OU   rechercheModule    │
+  └────────────────────────────────────────────────┘
+```
+
+- Barre de sous-onglets (36 px) : style cohérent avec l'accent Explorer (#1e4a80)
+- Sous-onglet actif persisté dans `localStorage("agrafes.explorer.subtab")`
+- Montage/démontage propre du sous-module actif (cycle `mount/dispose`)
+- Welcome hint préservé pour le Concordancier
+
+**Critères d'acceptation** :
+- Passage Concordancier ↔ Recherche sans régression
+- Sous-onglet mémorisé au reload
+- `dispose()` nettoie le sous-module actif
 
 ---
 

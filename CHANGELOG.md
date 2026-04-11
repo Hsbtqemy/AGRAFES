@@ -5,6 +5,18 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.1.20] - 2026-04-10
+
+### Added
+
+- **CQL** : prise en charge des attributs `xpos` et `feats` dans le parseur, `token_query` et la validation côté Concordancier.
+- **Sidecar** : `POST /token_stats` (distribution d’attributs sur les occurrences d’une requête CQL), contrat OpenAPI et tests associés.
+- **Shell** : recherche grammaticale (module Recherche + lien depuis Explorer), export CSV token query ; intégration Explorer élargie.
+
+### Changed
+
+- **Versions** : paquet Python `multicorpus-engine` **0.7.2** ; applications Tauri **0.1.20** ; libellé version Shell **v1.9.3**.
+
 ## [0.1.19] - 2026-04-09
 
 ### Added

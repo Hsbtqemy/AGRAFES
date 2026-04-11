@@ -12,7 +12,7 @@ from __future__ import annotations
 from typing import Any
 
 
-API_VERSION = "1.6.22"
+API_VERSION = "1.6.23"
 CONTRACT_VERSION = "1.6.21"  # semantic versioning for the sidecar API contract
 # 1.4.0: added export_tei_package job kind (Sprint 4 — Publication ZIP)
 # 1.4.1: ERR_CONFLICT (409) for duplicate run_id; token protection on /align, /curate, /segment
@@ -65,6 +65,8 @@ CONTRACT_VERSION = "1.6.21"  # semantic versioning for the sidecar API contract
 # 1.6.21: POST /query gains optional db_paths federation (multi-DB query in one request).
 # 1.6.22: POST /token_stats — frequency distribution of a token attribute (lemma/upos/xpos/word/feats)
 #         over all hits of a CQL query. No auth token required (read-only).
+# 1.6.23: POST /token_query gains optional include_aligned (bool, default false).
+#         When true, each hit gains an `aligned` list with partner units from alignment_links.
 #         Query hits gain source_db_* provenance when federated; response gains federated metadata.
 
 # Error code catalog (stable machine-readable values).
@@ -1510,8 +1512,25 @@ def openapi_spec() -> dict[str, Any]:
                         "doc_ids": {"type": "array", "items": {"type": "integer"}},
                         "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50},
                         "offset": {"type": "integer", "minimum": 0, "default": 0},
+                        "include_aligned": {
+                            "type": "boolean",
+                            "default": False,
+                            "description": "When true, each hit gains an `aligned` list with partner units from alignment_links.",
+                        },
                     },
                     "additionalProperties": False,
+                },
+                "AlignedUnit": {
+                    "type": "object",
+                    "required": ["unit_id", "doc_id", "title", "language", "text_norm"],
+                    "properties": {
+                        "unit_id": {"type": "integer"},
+                        "doc_id": {"type": "integer"},
+                        "title": {"type": "string"},
+                        "language": {"type": "string"},
+                        "text_norm": {"type": "string"},
+                        "status": {"type": "string", "nullable": True, "description": "accepted | rejected | null"},
+                    },
                 },
                 "TokenQueryToken": {
                     "type": "object",
@@ -1561,6 +1580,11 @@ def openapi_spec() -> dict[str, Any]:
                         "context_tokens": {
                             "type": "array",
                             "items": {"$ref": "#/components/schemas/TokenQueryToken"},
+                        },
+                        "aligned": {
+                            "type": "array",
+                            "items": {"$ref": "#/components/schemas/AlignedUnit"},
+                            "description": "Partner units from alignment_links (only present when include_aligned=true).",
                         },
                     },
                 },

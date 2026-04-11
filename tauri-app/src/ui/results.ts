@@ -184,6 +184,33 @@ function makeCitationBtn(hit: QueryHit): HTMLButtonElement {
   return btn;
 }
 
+/**
+ * Build a minimal CQL query from a KWIC match string.
+ * Single word → [word="w"]  |  Multi-word → [word="w1"][word="w2"]…
+ */
+function _matchToCql(match: string): string {
+  const words = match.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return '[word=""]';
+  return words
+    .map(w => `[word="${w.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"]`)
+    .join("");
+}
+
+/** Button that dispatches agrafes:cql-prefill to switch Explorer to Recherche sub-tab. */
+function makeCqlBtn(matchText: string): HTMLButtonElement {
+  const cql = _matchToCql(matchText);
+  const btn = elt("button", {
+    class: "card-action-btn card-action-btn--cql",
+    title: `Rechercher en CQL : ${cql}`,
+    type: "button",
+  }, "🔎 CQL") as HTMLButtonElement;
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    window.dispatchEvent(new CustomEvent("agrafes:cql-prefill", { detail: { cql } }));
+  });
+  return btn;
+}
+
 /** Compact "filter on this document" quick action button. */
 function makeFilterDocBtn(docId: number, docTitle: string): HTMLButtonElement {
   const label = docTitle ? `Ce doc (${docTitle.slice(0, 20)}${docTitle.length > 20 ? "…" : ""})` : `Doc #${docId}`;
@@ -276,6 +303,7 @@ export function renderParallelHit(hit: QueryHit, mode: "segment" | "kwic"): HTML
   const pText = hitPlainText(hit);
   if (pText) pActions.appendChild(makeCopyBtn(pText));
   if (_filterDocFn) pActions.appendChild(makeFilterDocBtn(hit.doc_id, hit.title ?? ""));
+  if (hit.match?.trim()) pActions.appendChild(makeCqlBtn(hit.match));
   // Citation button added after aligned column is built (see below)
   pivotCol.appendChild(pActions);
 
@@ -373,6 +401,7 @@ export function renderHit(hit: QueryHit, mode: "segment" | "kwic", showAligned: 
   const plainText = hitPlainText(hit);
   if (plainText) actions.appendChild(makeCopyBtn(plainText));
   if (_filterDocFn) actions.appendChild(makeFilterDocBtn(hit.doc_id, hit.title ?? ""));
+  if (hit.match?.trim()) actions.appendChild(makeCqlBtn(hit.match));
   card.appendChild(actions);
 
   if (showAligned) {
