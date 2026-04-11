@@ -9,11 +9,11 @@
     },
     "linux": {
       "onefile": 350.0,
-      "onedir": 400.0
+      "onedir": 650.0
     },
     "windows": {
       "onefile": 350.0,
-      "onedir": 400.0
+      "onedir": 650.0
     }
   }
 }
