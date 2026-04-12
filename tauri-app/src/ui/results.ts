@@ -122,10 +122,11 @@ export function sortedAlignedGroupEntries(groups: Map<string, AlignedUnit[]>): A
 export function appendSourceChangedBadge(row: HTMLElement, item: AlignedUnit): void {
   const at = (item as AlignedUnit & { source_changed_at?: string | null }).source_changed_at;
   if (!at) return;
+  const dateStr = typeof at === "string" && at.length >= 10 ? at.slice(0, 10) : at;
   const badge = elt("span", {
     class: "aligned-source-changed-badge",
-    title: `Source modifiée le ${at.slice(0, 10)} — la traduction est peut-être dépassée`,
-  }, "⚠ source modifiée");
+    title: `Le segment source a été modifié le ${dateStr} après l'alignement — vérifier si la traduction est encore à jour.`,
+  }, "⚠ traduction à réviser");
   row.appendChild(badge);
 }
 

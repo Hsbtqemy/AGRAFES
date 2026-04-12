@@ -923,7 +923,7 @@ export class ActionsScreen {
                 </div>
                 <div class="btn-row" style="margin-top:0.35rem">
                   <button id="act-apply-after-preview-btn" class="btn btn-warning btn-sm" style="display:none">Appliquer maintenant</button>
-                  <button id="act-reindex-after-curate-btn" class="btn btn-secondary btn-sm" style="display:none">Re-indexer</button>
+                  <button id="act-reindex-after-curate-btn" class="btn btn-secondary btn-sm" style="display:none" title="L'index de recherche est périmé — cliquez pour le mettre à jour">Mettre à jour l'index</button>
                 </div>
               </div>
             </article>
@@ -1033,9 +1033,10 @@ export class ActionsScreen {
         </div>
       </section>
       <section class="card" data-collapsible="true" data-collapsed-default="true">
-        <h3>Index FTS</h3>
+        <h3>Index de recherche</h3>
+        <p class="prep-corpus-hint">À relancer après une curation ou une modification manuelle de textes, pour que le Concordancier reflète les changements.</p>
         <div class="btn-row">
-          <button id="act-index-btn" class="btn btn-secondary" disabled>Reconstruire l&#8217;index</button>
+          <button id="act-index-btn" class="btn btn-secondary" disabled>Mettre à jour l'index</button>
         </div>
       </section>
     `;
@@ -2623,7 +2624,7 @@ export class ActionsScreen {
     headSection.innerHTML = `
       <div class="acts-hub-head-left">
         <h1>Alignement</h1>
-        <p>Créez les liens pivot ↔ cible entre documents, vérifiez et corrigez.</p>
+        <p>L'alignement crée des correspondances segment à segment entre un document pivot et ses traductions. Lancez un alignement automatique, puis vérifiez chaque lien dans l'audit&nbsp;: acceptez, rejetez ou redirigez manuellement. Les liens acceptés alimentent le Concordancier bilingue.</p>
       </div>
       <div class="acts-hub-head-tools">
         <button class="acts-hub-head-link" id="act-align-open-export-btn">Exporter cette étape…</button>
@@ -7455,7 +7456,7 @@ export class ActionsScreen {
           this._invalidateCurateReviewAfterApply(docId ?? null);
           if (r?.fts_stale) {
             this._log("⚠ Index FTS périmé.");
-            this._pushCurateLog("warn", "Index FTS périmé – re-indexer");
+            this._pushCurateLog("warn", "Index de recherche périmé — cliquez sur « Mettre à jour l'index »");
             const btn = document.querySelector("#act-reindex-after-curate-btn") as HTMLElement | null;
             if (btn) btn.style.display = "";
           }
@@ -9028,6 +9029,9 @@ export class ActionsScreen {
   private _annotJobPoll: ReturnType<typeof setInterval> | null = null;
   private _annotJobId: string | null = null;
   private _annotPanelEl: HTMLElement | null = null;
+  private _annotSearchQuery = "";
+  private _annotSearchMatches: number[] = []; // token_ids of matching tokens
+  private _annotSearchCursor = 0;
   private _annotModelOverride: string = "";
 
   private _renderAnnoterPanel(_root: HTMLElement): HTMLElement {
@@ -9099,11 +9103,93 @@ export class ActionsScreen {
     const statusSpan = document.createElement("span");
     statusSpan.className = "annot-status";
 
+    // ── Search bar ───────────────────────────────────────────────────────────
+    const searchWrap = document.createElement("div");
+    searchWrap.className = "annot-search-wrap";
+
+    const searchInput = document.createElement("input");
+    searchInput.type = "search";
+    searchInput.className = "annot-search-input";
+    searchInput.placeholder = "Chercher mot, lemme, UPOS…";
+    searchInput.value = this._annotSearchQuery;
+    searchInput.setAttribute("aria-label", "Rechercher dans les annotations");
+
+    const searchPrev = document.createElement("button");
+    searchPrev.className = "annot-search-nav";
+    searchPrev.textContent = "◀";
+    searchPrev.title = "Occurrence précédente";
+    searchPrev.disabled = true;
+
+    const searchNext = document.createElement("button");
+    searchNext.className = "annot-search-nav";
+    searchNext.textContent = "▶";
+    searchNext.title = "Occurrence suivante";
+    searchNext.disabled = true;
+
+    const searchCount = document.createElement("span");
+    searchCount.className = "annot-search-count";
+
+    const _updateSearch = (): void => {
+      const q = searchInput.value.trim().toLowerCase();
+      this._annotSearchQuery = q;
+      this._annotSearchCursor = 0;
+
+      if (!q) {
+        this._annotSearchMatches = [];
+        searchCount.textContent = "";
+        searchPrev.disabled = true;
+        searchNext.disabled = true;
+        panel.querySelectorAll<HTMLElement>(".annot-token--match, .annot-token--match-current").forEach(el => {
+          el.classList.remove("annot-token--match", "annot-token--match-current");
+        });
+        return;
+      }
+
+      this._annotSearchMatches = this._annotTokens
+        .filter(tok =>
+          (tok.word?.toLowerCase().includes(q)) ||
+          (tok.lemma?.toLowerCase().includes(q)) ||
+          (tok.upos?.toLowerCase().includes(q))
+        )
+        .map(tok => tok.token_id);
+
+      const count = this._annotSearchMatches.length;
+      searchPrev.disabled = count === 0;
+      searchNext.disabled = count === 0;
+      searchCount.textContent = count === 0 ? "0 résultat" : `1 / ${count}`;
+
+      this._annotApplySearchHighlights(panel);
+      if (count > 0) this._annotScrollToMatch(panel, 0);
+    };
+
+    const _navSearch = (dir: 1 | -1): void => {
+      const count = this._annotSearchMatches.length;
+      if (count === 0) return;
+      this._annotSearchCursor = (this._annotSearchCursor + dir + count) % count;
+      searchCount.textContent = `${this._annotSearchCursor + 1} / ${count}`;
+      this._annotApplySearchHighlights(panel);
+      this._annotScrollToMatch(panel, this._annotSearchCursor);
+    };
+
+    searchInput.addEventListener("input", _updateSearch);
+    searchInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); _navSearch(e.shiftKey ? -1 : 1); }
+      if (e.key === "Escape") { searchInput.value = ""; _updateSearch(); }
+    });
+    searchPrev.addEventListener("click", () => _navSearch(-1));
+    searchNext.addEventListener("click", () => _navSearch(1));
+
+    searchWrap.appendChild(searchInput);
+    searchWrap.appendChild(searchPrev);
+    searchWrap.appendChild(searchNext);
+    searchWrap.appendChild(searchCount);
+
     toolbar.appendChild(title);
     toolbar.appendChild(modelLabel);
     toolbar.appendChild(refreshBtn);
     toolbar.appendChild(runBtn);
     toolbar.appendChild(statusSpan);
+    toolbar.appendChild(searchWrap);
     panel.appendChild(toolbar);
 
     // ── Layout: sidebar + viewer + editor ────────────────────────────────────
@@ -9221,6 +9307,19 @@ export class ActionsScreen {
       const rows = res.tokens ?? [];
       this._annotTokens = rows;
       this._annotRenderInterlinear(viewer, editor);
+      // Re-apply search highlights if a query is active
+      if (this._annotSearchQuery && this._annotPanelEl) {
+        this._annotSearchMatches = this._annotTokens
+          .filter(tok =>
+            (tok.word?.toLowerCase().includes(this._annotSearchQuery)) ||
+            (tok.lemma?.toLowerCase().includes(this._annotSearchQuery)) ||
+            (tok.upos?.toLowerCase().includes(this._annotSearchQuery))
+          )
+          .map(tok => tok.token_id);
+        this._annotSearchCursor = 0;
+        this._annotApplySearchHighlights(this._annotPanelEl);
+        if (this._annotSearchMatches.length > 0) this._annotScrollToMatch(this._annotPanelEl, 0);
+      }
     } catch {
       viewer.innerHTML = `<p class="annot-placeholder">Aucun token — lancez l'annotation spaCy d'abord.</p>`;
     }
@@ -9512,6 +9611,36 @@ export class ActionsScreen {
     }
   }
 
+  private _annotApplySearchHighlights(panel: HTMLElement): void {
+    // Clear previous highlights
+    panel.querySelectorAll<HTMLElement>(".annot-token--match, .annot-token--match-current").forEach(el => {
+      el.classList.remove("annot-token--match", "annot-token--match-current");
+    });
+    if (this._annotSearchMatches.length === 0) return;
+    this._annotSearchMatches.forEach((tokenId, idx) => {
+      const el = panel.querySelector<HTMLElement>(`.annot-token[data-token-id="${tokenId}"]`);
+      if (!el) return;
+      el.classList.add(idx === this._annotSearchCursor ? "annot-token--match-current" : "annot-token--match");
+    });
+  }
+
+  private _annotScrollToMatch(panel: HTMLElement, cursorIdx: number): void {
+    const tokenId = this._annotSearchMatches[cursorIdx];
+    if (tokenId == null) return;
+    const el = panel.querySelector<HTMLElement>(`.annot-token[data-token-id="${tokenId}"]`);
+    if (!el) return;
+    // Scroll within the viewer container, not the whole page
+    const viewer = panel.querySelector<HTMLElement>(".annot-viewer");
+    if (viewer) {
+      const elRect = el.getBoundingClientRect();
+      const viewerRect = viewer.getBoundingClientRect();
+      const offset = elRect.top - viewerRect.top - viewerRect.height / 2 + elRect.height / 2;
+      viewer.scrollBy({ top: offset, behavior: "smooth" });
+    } else {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }
+
   private _annotStopPoll(): void {
     if (this._annotJobPoll !== null) {
       clearInterval(this._annotJobPoll);
@@ -9644,6 +9773,34 @@ const ANNOT_PANEL_CSS = `
   0%   { background: #fff3cd; border-color: #f0a500; }
   30%  { background: #fff3cd; border-color: #f0a500; }
   100% { background: transparent; border-color: transparent; }
+}
+.annot-token--match {
+  background: #fef9c3; border-color: #fde047;
+}
+.annot-token--match-current {
+  background: #fde047; border-color: #ca8a04;
+  box-shadow: 0 0 0 2px #ca8a0440;
+}
+
+/* ── Annotation search bar ── */
+.annot-search-wrap {
+  display: flex; align-items: center; gap: 4px;
+  margin-left: auto; flex-shrink: 0;
+}
+.annot-search-input {
+  width: 180px; padding: 3px 8px;
+  border: 1px solid var(--border, #ccc); border-radius: 4px;
+  font-size: 0.82rem; background: var(--bg, #fff); color: inherit;
+}
+.annot-search-input:focus { outline: 2px solid var(--color-primary, #4e9af1); outline-offset: 1px; }
+.annot-search-nav {
+  padding: 2px 7px; border-radius: 4px; border: 1px solid var(--border, #ccc);
+  background: var(--bg-accent, #f5f5f5); cursor: pointer; font-size: 0.75rem;
+}
+.annot-search-nav:disabled { opacity: 0.4; cursor: default; }
+.annot-search-nav:not(:disabled):hover { background: var(--bg-hover, #ebebeb); }
+.annot-search-count {
+  font-size: 0.72rem; color: var(--color-muted, #888); white-space: nowrap; min-width: 52px;
 }
 
 /* Row 1 – word */

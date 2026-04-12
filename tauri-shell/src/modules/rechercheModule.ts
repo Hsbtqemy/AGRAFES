@@ -343,51 +343,60 @@ function _renderShell(root: HTMLElement): void {
           <span class="rech-spinner-dot"></span> Recherche…
         </div>
       </div>
-      <div class="rech-stats-panel">
-        <div class="rech-stats-header">Distribution</div>
-        <div class="rech-dispersion-wrap" hidden>
-          <div class="rech-dispersion-title">Dispersion par document</div>
-          <canvas class="rech-dispersion-chart"></canvas>
-        </div>
-        <div class="rech-stats-group-row">
-          <span class="rech-stats-group-label">Grouper par</span>
-          <select class="rech-stats-group-by">
-            <option value="lemma">Lemme</option>
-            <option value="upos">UPOS</option>
-            <option value="word">Forme</option>
-          </select>
-        </div>
-        <div class="rech-stats-bars"></div>
-        <div class="rech-stats-reset" hidden>
-          <button class="rech-btn-reset-filter">Tout afficher</button>
-        </div>
-      </div>
-      <div class="rech-coll-panel">
-        <div class="rech-coll-header">
-          <span>Collocations</span>
-          <div class="rech-coll-sort-group">
-            <button class="rech-coll-sort-btn rech-coll-sort-btn--active" data-sort="pmi" title="Trier par PMI">PMI</button>
-            <button class="rech-coll-sort-btn" data-sort="ll" title="Trier par log-vraisemblance (G²)">G²</button>
-            <button class="rech-coll-sort-btn" data-sort="freq" title="Trier par fréquence">Fréq.</button>
+
+      <details class="rech-analytics-panel">
+        <summary class="rech-analytics-summary">Analyse</summary>
+        <div class="rech-analytics-body">
+
+          <div class="rech-stats-panel">
+            <div class="rech-stats-header">Distribution</div>
+            <div class="rech-dispersion-wrap" hidden>
+              <div class="rech-dispersion-title">Dispersion par document</div>
+              <canvas class="rech-dispersion-chart"></canvas>
+            </div>
+            <div class="rech-stats-group-row">
+              <span class="rech-stats-group-label">Grouper par</span>
+              <select class="rech-stats-group-by">
+                <option value="lemma">Lemme</option>
+                <option value="upos">UPOS</option>
+                <option value="word">Forme</option>
+              </select>
+            </div>
+            <div class="rech-stats-bars"></div>
+            <div class="rech-stats-reset" hidden>
+              <button class="rech-btn-reset-filter">Tout afficher</button>
+            </div>
           </div>
+
+          <div class="rech-coll-panel">
+            <div class="rech-coll-header">
+              <span>Collocations</span>
+              <div class="rech-coll-sort-group">
+                <button class="rech-coll-sort-btn rech-coll-sort-btn--active" data-sort="pmi" title="Trier par PMI">PMI</button>
+                <button class="rech-coll-sort-btn" data-sort="ll" title="Trier par log-vraisemblance (G²)">G²</button>
+                <button class="rech-coll-sort-btn" data-sort="freq" title="Trier par fréquence">Fréq.</button>
+              </div>
+            </div>
+            <div class="rech-coll-controls">
+              <label class="rech-coll-window-label">Fenêtre ±</label>
+              <select class="rech-coll-window">
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="5" selected>5</option>
+                <option value="8">8</option>
+              </select>
+              <label class="rech-coll-by-label">Par</label>
+              <select class="rech-coll-by">
+                <option value="lemma" selected>Lemme</option>
+                <option value="word">Forme</option>
+                <option value="upos">UPOS</option>
+              </select>
+            </div>
+            <div class="rech-coll-body"></div>
+          </div>
+
         </div>
-        <div class="rech-coll-controls">
-          <label class="rech-coll-window-label">Fenêtre ±</label>
-          <select class="rech-coll-window">
-            <option value="2">2</option>
-            <option value="3">3</option>
-            <option value="5" selected>5</option>
-            <option value="8">8</option>
-          </select>
-          <label class="rech-coll-by-label">Par</label>
-          <select class="rech-coll-by">
-            <option value="lemma" selected>Lemme</option>
-            <option value="word">Forme</option>
-            <option value="upos">UPOS</option>
-          </select>
-        </div>
-        <div class="rech-coll-body"></div>
-      </div>
+      </details>
     </div>
   `;
 
@@ -842,6 +851,9 @@ async function _doSearch(root: HTMLElement, loadMore: boolean): Promise<void> {
       void _fetchStats(root, groupBy);
       void _renderDispersionChart(root, _hits);
       void _fetchCollocates(root);
+      // Auto-open the analytics panel the first time results arrive
+      const analyticsPanel = root.querySelector<HTMLDetailsElement>(".rech-analytics-panel");
+      if (analyticsPanel && !analyticsPanel.open) analyticsPanel.open = true;
     } else if (!loadMore) {
       const wrap = root.querySelector<HTMLElement>(".rech-dispersion-wrap");
       if (wrap) wrap.hidden = true;
@@ -1020,7 +1032,7 @@ function _buildHitCard(hit: _Hit): HTMLElement {
   if (pivot.length) kwicRow.appendChild(_buildTokenGroup(pivot, "pivot", hitCtx));
   if (right.length) kwicRow.appendChild(_buildTokenGroup(right, "right"));
 
-  card.appendChild(kwicRow);
+  if (kwicRow.hasChildNodes()) card.appendChild(kwicRow);
 
   // Aligned translations (only when include_aligned=true and has partners)
   if (hit.aligned && hit.aligned.length > 0) {
@@ -1841,12 +1853,39 @@ const MODULE_CSS = `
 
 /* ── Body: results + stats ── */
 .rech-body {
-  display: grid; grid-template-columns: 1fr 220px;
+  display: flex; flex-direction: column;
   flex: 1; overflow: hidden; min-height: 0;
 }
 .rech-results {
-  overflow-y: auto; padding: 12px 16px;
+  flex: 1; overflow-y: auto; padding: 12px 16px;
   display: flex; flex-direction: column; gap: 8px;
+}
+
+/* ── Analytics bottom panel ── */
+.rech-analytics-panel {
+  border-top: 1px solid var(--border, #e0e0e0);
+  background: var(--bg, #f8f8f8);
+  flex-shrink: 0;
+}
+.rech-analytics-summary {
+  list-style: none; display: flex; align-items: center; gap: 6px;
+  padding: 6px 14px; cursor: pointer;
+  font-size: 0.72rem; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.05em; color: var(--color-muted, #888);
+  user-select: none;
+}
+.rech-analytics-summary::-webkit-details-marker { display: none; }
+.rech-analytics-summary::before {
+  content: "▸"; font-size: 0.65rem; transition: transform 0.15s;
+  display: inline-block;
+}
+.rech-analytics-panel[open] > .rech-analytics-summary::before {
+  transform: rotate(90deg);
+}
+.rech-analytics-body {
+  display: flex; flex-direction: row; gap: 0;
+  overflow-x: auto; max-height: 260px;
+  border-top: 1px solid var(--border, #e0e0e0);
 }
 .rech-results-header {
   display: flex; align-items: center; gap: 12px;
@@ -1903,7 +1942,8 @@ const MODULE_CSS = `
 
 /* ── KWIC row ── */
 .rech-kwic-row {
-  display: flex; align-items: flex-start; gap: 0;
+  /* flex row: groups stretch to same height; fixed-height rows inside each token cell keep word/upos/lemma aligned across groups */
+  display: flex; align-items: stretch; gap: 0;
   overflow-x: auto;
   scrollbar-width: thin; scrollbar-color: #ddd transparent;
 }
@@ -1912,25 +1952,28 @@ const MODULE_CSS = `
 
 .rech-kwic-group {
   display: flex; flex-wrap: nowrap; gap: 2px;
-  padding: 2px 4px;
+  /* Neutral vertical padding so border on pivot doesn't shift rows */
+  padding: 4px 4px;
+  align-items: flex-start;
 }
 .rech-kwic-left  { opacity: 0.65; }
 .rech-kwic-right { opacity: 0.65; }
 .rech-kwic-pivot {
   background: #7b3fa011; border-radius: 5px;
-  border-left: 2px solid var(--accent, #7b3fa0);
-  border-right: 2px solid var(--accent, #7b3fa0);
-  padding: 2px 6px;
+  /* Use box-shadow instead of border to avoid shifting layout height */
+  box-shadow: inset 2px 0 0 var(--accent, #7b3fa0),
+              inset -2px 0 0 var(--accent, #7b3fa0);
+  padding: 4px 6px;
 }
 
-/* ── Token cell (3 rows) ── */
+/* ── Token cell (3 rows, fixed heights for cross-group alignment) ── */
 .rech-kwic-token {
   display: flex; flex-direction: column;
   align-items: center; flex-shrink: 0;
-  padding: 2px 4px; min-width: 28px;
+  padding: 0 4px; min-width: 28px;
 }
 .rech-kwic-word {
-  height: 20px; display: flex; align-items: center; justify-content: center;
+  height: 22px; display: flex; align-items: center; justify-content: center;
   font-size: 0.88rem; font-weight: 500; white-space: nowrap;
 }
 .rech-kwic-upos {
@@ -1939,16 +1982,16 @@ const MODULE_CSS = `
   border-radius: 3px; padding: 0 3px; white-space: nowrap; min-width: 18px;
 }
 .rech-kwic-lemma {
-  height: 14px; display: flex; align-items: center; justify-content: center;
+  height: 15px; display: flex; align-items: center; justify-content: center;
   font-size: 0.67rem; font-style: italic;
   color: var(--color-muted, #999); white-space: nowrap;
 }
 
 /* ── Stats panel ── */
 .rech-stats-panel {
-  border-left: 1px solid var(--border, #e0e0e0);
-  overflow-y: auto; padding: 12px;
-  background: var(--bg, #f8f8f8);
+  flex: 0 0 220px; min-width: 180px;
+  border-right: 1px solid var(--border, #e0e0e0);
+  overflow-y: auto; padding: 10px 12px;
   display: flex; flex-direction: column; gap: 8px;
 }
 .rech-stats-header {
@@ -2144,9 +2187,8 @@ const MODULE_CSS = `
 
 /* ── Collocations panel ── */
 .rech-coll-panel {
-  padding: 10px 12px;
-  border-top: 1px solid #e4e8ed;
-  flex-shrink: 0;
+  flex: 1; min-width: 300px;
+  overflow-y: auto; padding: 10px 12px;
 }
 .rech-coll-header {
   display: flex; align-items: center; justify-content: space-between;

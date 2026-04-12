@@ -3255,8 +3255,10 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 calibrate_ratio_pct = round(ratio * 100)
                 if ratio > 0.15:
                     warnings.append(
-                        f"Segment count differs by {calibrate_ratio_pct} % from reference "
-                        f"doc #{calibrate_to} ({ref_count} units vs {len(segments)})"
+                        f"Le nombre de segments diffère de {calibrate_ratio_pct}\u202f% "
+                        f"par rapport au document de référence #{calibrate_to} "
+                        f"({len(segments)} segments vs {ref_count} attendus). "
+                        f"Vérifier la stratégie de segmentation ou le document source."
                     )
 
         payload = {
@@ -3481,8 +3483,10 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                     calibrate_ratio_pct = round(ratio * 100)
                     if ratio > 0.15:
                         calibrate_warning = (
-                            f"Segment count differs by {calibrate_ratio_pct} % from reference "
-                            f"doc #{calibrate_to} ({ref_count} units vs {report.units_output})"
+                            f"Le nombre de segments diffère de {calibrate_ratio_pct}\u202f% "
+                            f"par rapport au document de référence #{calibrate_to} "
+                            f"({report.units_output} segments vs {ref_count} attendus). "
+                            f"Vérifier la stratégie de segmentation ou le document source."
                         )
                         report.warnings.append(calibrate_warning)
 

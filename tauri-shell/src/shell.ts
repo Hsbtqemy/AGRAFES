@@ -108,42 +108,60 @@ const SHELL_CSS = `
     margin-left: auto;
     display: flex;
     align-items: center;
-    gap: 0.4rem;
-    padding: 0 0.75rem;
+    gap: 0;
+    padding: 0 0.5rem;
     height: 44px;
     border-left: 1px solid rgba(255,255,255,0.12);
   }
 
-  .shell-db-badge {
-    font-size: 0.75rem;
-    color: rgba(255,255,255,0.6);
-    font-family: ui-monospace, "SF Mono", monospace;
-    white-space: nowrap;
-    max-width: 200px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    cursor: default;
-    transition: color 0.2s;
-  }
-  .shell-db-badge--pending {
-    color: #fcd34d;
-  }
-
-  .shell-db-btn {
-    background: rgba(255,255,255,0.1);
-    border: 1px solid rgba(255,255,255,0.2);
-    border-radius: 4px;
-    color: rgba(255,255,255,0.85);
-    font-size: 0.75rem;
-    padding: 3px 9px;
+  /* Single merged trigger: shows DB name + chevron, opens the menu */
+  .shell-db-trigger {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 5px;
+    color: rgba(255,255,255,0.9);
+    font-size: 0.78rem;
+    padding: 4px 10px 4px 8px;
     cursor: pointer;
     transition: background 0.15s, border-color 0.15s;
     white-space: nowrap;
+    max-width: 240px;
+    text-align: left;
   }
-  .shell-db-btn:hover {
-    background: rgba(255,255,255,0.18);
-    border-color: rgba(255,255,255,0.35);
+  .shell-db-trigger:hover {
+    background: rgba(255,255,255,0.16);
+    border-color: rgba(255,255,255,0.32);
   }
+  .shell-db-trigger-icon {
+    font-style: normal;
+    opacity: 0.75;
+    flex-shrink: 0;
+  }
+  .shell-db-trigger-name {
+    font-family: ui-monospace, "SF Mono", monospace;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+    min-width: 0;
+  }
+  .shell-db-trigger-name--none {
+    opacity: 0.55;
+    font-style: italic;
+  }
+  .shell-db-trigger-chevron {
+    flex-shrink: 0;
+    opacity: 0.6;
+    font-size: 0.65rem;
+  }
+  .shell-db-trigger--pending .shell-db-trigger-name {
+    color: #fcd34d;
+  }
+
+  /* Legacy: .shell-db-badge no longer rendered (badge merged into trigger) */
+  .shell-db-badge { display: none; }
 
   /* ── DB action dropdown menu ────────────────────────────────── */
   .shell-db-menu-wrap {
@@ -211,6 +229,17 @@ const SHELL_CSS = `
     max-width: 500px;
   }
   .shell-init-error-btns { display: flex; gap: 6px; margin-left: auto; flex-shrink: 0; }
+  .shell-init-error-btns button {
+    background: rgba(0,0,0,0.07);
+    border: 1px solid rgba(0,0,0,0.18);
+    border-radius: 4px;
+    color: #495057;
+    font-size: 0.75rem;
+    padding: 3px 9px;
+    cursor: pointer;
+    transition: background 0.12s;
+  }
+  .shell-init-error-btns button:hover { background: rgba(0,0,0,0.13); }
 
   /* ── DB change banner (P4-2) ────────────────────────────────── */
   .shell-db-change-banner {
@@ -1266,7 +1295,11 @@ async function _switchDb(path: string): Promise<void> {
   // Disable nav during switch
   const dbBtn = document.getElementById("shell-db-btn") as HTMLButtonElement | null;
   const tabs = document.querySelectorAll<HTMLButtonElement>(".shell-tab");
-  if (dbBtn) { dbBtn.disabled = true; dbBtn.textContent = "Chargement…"; }
+  if (dbBtn) {
+    dbBtn.disabled = true;
+    const nameEl = dbBtn.querySelector<HTMLElement>(".shell-db-trigger-name");
+    if (nameEl) nameEl.textContent = "Chargement…";
+  }
   tabs.forEach(t => t.disabled = true);
 
   _shellLog("info", "db_switch", `Switching DB: ${_pathLabel(path)}`);
@@ -1295,7 +1328,8 @@ async function _switchDb(path: string): Promise<void> {
     _shellLog("error", "db_switch", `DB init failed: ${_pathLabel(path)}`, String(err));
     throw err;
   } finally {
-    if (dbBtn) { dbBtn.disabled = false; dbBtn.textContent = "DB \u25be"; }
+    if (dbBtn) { dbBtn.disabled = false; }
+    _updateDbBadge();
     tabs.forEach(t => t.disabled = false);
   }
 }
@@ -1875,21 +1909,41 @@ function _buildHeader(): void {
   const dbZone = document.createElement("div");
   dbZone.className = "shell-db-zone";
 
-  const badge = document.createElement("span");
-  badge.id = "shell-db-badge";
-  badge.className = "shell-db-badge";
-  badge.textContent = _dbBadgeText();
-  dbZone.appendChild(badge);
-
-  // Dropdown menu: Ouvrir… / Créer…
+  // Dropdown menu: merged trigger shows DB name + opens menu on click
   const menuWrap = document.createElement("div");
   menuWrap.className = "shell-db-menu-wrap";
 
+  // Merged trigger button (replaces separate badge + "DB ▾" button)
   const menuTrigger = document.createElement("button");
   menuTrigger.id = "shell-db-btn";
-  menuTrigger.className = "shell-db-btn";
-  menuTrigger.textContent = "DB \u25be";
+  menuTrigger.className = "shell-db-trigger";
   menuTrigger.addEventListener("click", (e) => { e.stopPropagation(); _toggleDbMenu(); });
+
+  const triggerIcon = document.createElement("span");
+  triggerIcon.className = "shell-db-trigger-icon";
+  triggerIcon.setAttribute("aria-hidden", "true");
+  triggerIcon.textContent = "🗄";
+
+  const triggerName = document.createElement("span");
+  triggerName.className = "shell-db-trigger-name";
+  if (_currentDbPath) {
+    triggerName.textContent = _pathLabel(_currentDbPath);
+  } else {
+    triggerName.textContent = "(aucune)";
+    triggerName.classList.add("shell-db-trigger-name--none");
+  }
+
+  const triggerChevron = document.createElement("span");
+  triggerChevron.className = "shell-db-trigger-chevron";
+  triggerChevron.setAttribute("aria-hidden", "true");
+  triggerChevron.textContent = "▾";
+
+  menuTrigger.appendChild(triggerIcon);
+  menuTrigger.appendChild(triggerName);
+  menuTrigger.appendChild(triggerChevron);
+  if (_currentDbPath) menuTrigger.title = _currentDbPath;
+  else menuTrigger.title = "Aucune base ouverte — cliquez pour en ouvrir ou créer une";
+
   menuWrap.appendChild(menuTrigger);
 
   const menu = document.createElement("div");
@@ -1942,23 +1996,31 @@ function _updateHeaderTabs(mode: Mode): void {
 }
 
 function _dbBadgeText(): string {
+  // Kept for compatibility (log output, about dialog).
   if (!_currentDbPath) return "DB: (aucune)";
-  const parts = _currentDbPath.replace(/\\/g, "/").split("/");
-  const name = parts[parts.length - 1];
-  // ⚠ suffix persists while a DB change is pending (banner "Plus tard" dismissed).
+  const name = _pathLabel(_currentDbPath);
   return _pendingDbRemount ? `DB: ${name} ⚠` : `DB: ${name}`;
 }
 
 function _updateDbBadge(): void {
-  const badge = document.getElementById("shell-db-badge");
-  if (!badge) return;
-  badge.textContent = _dbBadgeText();
-  if (_pendingDbRemount) {
-    badge.classList.add("shell-db-badge--pending");
-    badge.title = "DB modifiée — cliquez l'onglet actif ou « Rafraîchir » pour appliquer";
+  const trigger = document.getElementById("shell-db-btn") as HTMLButtonElement | null;
+  if (!trigger) return;
+  const nameEl = trigger.querySelector<HTMLElement>(".shell-db-trigger-name");
+  if (!nameEl) return;
+  if (_currentDbPath) {
+    nameEl.textContent = _pathLabel(_currentDbPath);
+    nameEl.classList.remove("shell-db-trigger-name--none");
+    trigger.title = _currentDbPath;
   } else {
-    badge.classList.remove("shell-db-badge--pending");
-    badge.title = "";
+    nameEl.textContent = "(aucune)";
+    nameEl.classList.add("shell-db-trigger-name--none");
+    trigger.title = "Aucune base ouverte — cliquez pour en ouvrir ou créer une";
+  }
+  if (_pendingDbRemount) {
+    trigger.classList.add("shell-db-trigger--pending");
+    trigger.title = `${_currentDbPath ?? ""} — DB modifiée, cliquer l'onglet actif pour appliquer`;
+  } else {
+    trigger.classList.remove("shell-db-trigger--pending");
   }
 }
 
@@ -2016,7 +2078,11 @@ async function _onCreateDb(): Promise<void> {
 
 async function _initDb(dbPath: string): Promise<void> {
   const btn = document.getElementById("shell-db-btn") as HTMLButtonElement | null;
-  if (btn) { btn.textContent = "Initialisation\u2026"; btn.disabled = true; }
+  if (btn) {
+    const nameEl = btn.querySelector<HTMLElement>(".shell-db-trigger-name");
+    if (nameEl) nameEl.textContent = "Initialisation\u2026";
+    btn.disabled = true;
+  }
   _clearInitError();
   _showSidecarOverlay("Démarrage du moteur de recherche\u2026");
 
@@ -2032,7 +2098,8 @@ async function _initDb(dbPath: string): Promise<void> {
     _shellLog("error", "sidecar", `Sidecar health failure for DB: ${_pathLabel(dbPath)}`, String(err));
     _showInitError(dbPath, String(err));
   } finally {
-    if (btn) { btn.textContent = "DB \u25be"; btn.disabled = false; }
+    if (btn) { btn.disabled = false; }
+    _updateDbBadge();
   }
 }
 
