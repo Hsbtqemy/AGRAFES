@@ -590,6 +590,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 self._handle_token_query(body)
             elif path == "/token_stats":
                 self._handle_token_stats(body)
+            elif path == "/token_collocates":
+                self._handle_token_collocates(body)
             elif path == "/query/facets":
                 self._handle_query_facets(body)
             elif path == "/stats/lexical":
@@ -614,6 +616,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 self._handle_curate_exceptions_delete(body)
             elif path == "/curate/exceptions/export":
                 self._handle_curate_exceptions_export(body)
+            elif path == "/curate/apply-history":
+                self._handle_curate_apply_history_list(body)
             elif path == "/curate/apply-history/record":
                 self._handle_curate_apply_history_record(body)
             elif path == "/curate/apply-history/export":
@@ -1617,6 +1621,107 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                     language=language,
                     doc_ids=doc_ids,
                     limit=limit,
+                )
+            except ValueError as exc:
+                self._send_error(str(exc), code=ERR_VALIDATION, http_status=400)
+                return
+
+        self._send_json(success_payload(result))
+
+    def _handle_token_collocates(self, body: dict) -> None:
+        """POST /token_collocates — collocation analysis for a CQL query.
+
+        No auth token required (read-only).
+
+        Body fields:
+            cql        (str, required)  — CQL query string
+            window     (int, default 5, range 1–20) — context window size
+            by         (str, default "lemma") — lemma | word | upos | xpos
+            language   (str, optional)
+            doc_ids    (list[int], optional)
+            limit      (int, default 50, max 200)
+            min_freq   (int, default 2)
+            sort_by    (str, default "pmi") — pmi | ll | freq
+        """
+        from multicorpus_engine.token_collocates import run_token_collocates
+
+        raw_cql = body.get("cql")
+        if not isinstance(raw_cql, str) or not raw_cql.strip():
+            self._send_error(
+                "cql must be a non-empty string",
+                code=ERR_VALIDATION, http_status=400,
+            )
+            return
+
+        def _int_field(key: str, default: int, lo: int, hi: int) -> int | None:
+            raw = body.get(key, default)
+            try:
+                val = int(raw)
+            except (TypeError, ValueError):
+                self._send_error(f"{key} must be an integer", code=ERR_VALIDATION, http_status=400)
+                return None
+            if not lo <= val <= hi:
+                self._send_error(f"{key} must be in [{lo}, {hi}]", code=ERR_VALIDATION, http_status=400)
+                return None
+            return val
+
+        window = _int_field("window", 5, 1, 20)
+        if window is None:
+            return
+        limit = _int_field("limit", 50, 1, 200)
+        if limit is None:
+            return
+        min_freq = _int_field("min_freq", 2, 1, 9999)
+        if min_freq is None:
+            return
+
+        by = str(body.get("by", "lemma")).strip().lower()
+        if by not in ("lemma", "word", "upos", "xpos"):
+            self._send_error(
+                "by must be one of ('lemma', 'word', 'upos', 'xpos')",
+                code=ERR_VALIDATION, http_status=400,
+            )
+            return
+
+        sort_by = str(body.get("sort_by", "pmi")).strip().lower()
+        if sort_by not in ("pmi", "ll", "freq"):
+            self._send_error(
+                "sort_by must be one of ('pmi', 'll', 'freq')",
+                code=ERR_VALIDATION, http_status=400,
+            )
+            return
+
+        language_raw = body.get("language")
+        language = (
+            str(language_raw).strip()
+            if isinstance(language_raw, str) and language_raw.strip()
+            else None
+        )
+
+        raw_doc_ids = body.get("doc_ids")
+        doc_ids: list[int] | None = None
+        if raw_doc_ids is not None:
+            if not isinstance(raw_doc_ids, list):
+                self._send_error("doc_ids must be a list of integers", code=ERR_VALIDATION, http_status=400)
+                return
+            try:
+                doc_ids = [int(x) for x in raw_doc_ids]
+            except (TypeError, ValueError):
+                self._send_error("doc_ids must be a list of integers", code=ERR_VALIDATION, http_status=400)
+                return
+
+        with self._lock():
+            try:
+                result = run_token_collocates(
+                    conn=self._conn(),
+                    cql=raw_cql.strip(),
+                    window=window,
+                    by=by,
+                    language=language,
+                    doc_ids=doc_ids,
+                    limit=limit,
+                    min_freq=min_freq,
+                    sort_by=sort_by,
                 )
             except ValueError as exc:
                 self._send_error(str(exc), code=ERR_VALIDATION, http_status=400)

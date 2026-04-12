@@ -114,12 +114,14 @@ body {
 .search-row {
   display: flex;
   gap: 8px;
-  flex: 1;
-  min-width: 260px;
+  flex: 1 1 200px;
+  min-width: 200px;
+  order: -1;
 }
 
 .search-input {
   flex: 1;
+  min-width: 0;
   padding: 8px 12px;
   border: 1.5px solid var(--border);
   border-radius: var(--radius);
@@ -128,6 +130,7 @@ body {
   transition: border-color .15s;
 }
 .search-input:focus { border-color: var(--brand); }
+.search-row #search-btn { flex-shrink: 0; }
 
 .btn {
   padding: 8px 14px;
@@ -346,7 +349,8 @@ body {
 .kwic-right { text-align: left; color: var(--text-muted); }
 
 .aligned-toggle {
-  min-width: 118px;
+  min-width: 84px;
+  flex-shrink: 0;
 }
 
 /* Case-sensitive toggle button */

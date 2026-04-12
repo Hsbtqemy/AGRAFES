@@ -2762,6 +2762,142 @@
           }
         ]
       },
+      "TokenCollocateRow": {
+        "properties": {
+          "corpus_freq": {
+            "type": "integer"
+          },
+          "freq": {
+            "type": "integer"
+          },
+          "left_freq": {
+            "type": "integer"
+          },
+          "ll": {
+            "type": "number"
+          },
+          "pmi": {
+            "type": "number"
+          },
+          "right_freq": {
+            "type": "integer"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "freq",
+          "left_freq",
+          "right_freq",
+          "corpus_freq",
+          "pmi",
+          "ll"
+        ],
+        "type": "object"
+      },
+      "TokenCollocatesRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "by": {
+            "default": "lemma",
+            "enum": [
+              "lemma",
+              "word",
+              "upos",
+              "xpos"
+            ],
+            "type": "string"
+          },
+          "cql": {
+            "description": "CQL query string",
+            "type": "string"
+          },
+          "doc_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "language": {
+            "nullable": true,
+            "type": "string"
+          },
+          "limit": {
+            "default": 50,
+            "maximum": 200,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "min_freq": {
+            "default": 2,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "sort_by": {
+            "default": "pmi",
+            "enum": [
+              "pmi",
+              "ll",
+              "freq"
+            ],
+            "type": "string"
+          },
+          "window": {
+            "default": 5,
+            "maximum": 20,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "cql"
+        ],
+        "type": "object"
+      },
+      "TokenCollocatesResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BaseResponse"
+          },
+          {
+            "properties": {
+              "by": {
+                "type": "string"
+              },
+              "corpus_size": {
+                "type": "integer"
+              },
+              "rows": {
+                "items": {
+                  "$ref": "#/components/schemas/TokenCollocateRow"
+                },
+                "type": "array"
+              },
+              "total_hits": {
+                "type": "integer"
+              },
+              "total_window_tokens": {
+                "type": "integer"
+              },
+              "window": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "total_hits",
+              "total_window_tokens",
+              "corpus_size",
+              "window",
+              "by",
+              "rows"
+            ],
+            "type": "object"
+          }
+        ]
+      },
       "TokenQueryHit": {
         "properties": {
           "aligned": {
@@ -5294,6 +5430,43 @@
           }
         },
         "summary": "Gracefully stop sidecar process"
+      }
+    },
+    "/token_collocates": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TokenCollocatesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenCollocatesResponse"
+                }
+              }
+            },
+            "description": "Ranked collocates with association scores"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request (invalid CQL or parameters)"
+          }
+        },
+        "summary": "Collocation analysis for a CQL query (PMI + log-likelihood)"
       }
     },
     "/token_query": {

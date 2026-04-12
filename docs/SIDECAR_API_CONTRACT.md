@@ -93,7 +93,7 @@ When `multicorpus serve` starts and a portfile already exists:
   - `POST /corpus/info`
   - `POST /tokens/update`
   - `POST /shutdown`
-- Read endpoints (`/health`, `/query`, `/token_query`, `/token_stats`, `/openapi.json`) do not require token.
+- Read endpoints (`/health`, `/query`, `/token_query`, `/token_stats`, `/token_collocates`, `/openapi.json`) do not require token.
 - Threat model and operational policy: `docs/SIDECAR_SECURITY_POSTURE.md`.
 
 ## Required endpoints (persistent UX baseline)
@@ -173,6 +173,32 @@ When `multicorpus serve` starts and a portfile already exists:
       - `value: string`
       - `count: int`
       - `pct: float` — percentage of total_pivot_tokens (0–100)
+
+- `POST /token_collocates`
+  - collocation analysis for a CQL query; no auth token required
+  - request body:
+    - `cql: string` (required)
+    - `window: int` (default `5`, range 1–20) — context window on each side of pivot
+    - `by: "lemma"|"word"|"upos"|"xpos"` (default `"lemma"`)
+    - `language?: string`
+    - `doc_ids?: int[]`
+    - `limit: int` (default `50`, max `200`)
+    - `min_freq: int` (default `2`) — minimum observed frequency to include a collocate
+    - `sort_by: "pmi"|"ll"|"freq"` (default `"pmi"`)
+  - response:
+    - `total_hits: int` — number of CQL matches processed
+    - `total_window_tokens: int` — total collocate tokens collected across all windows
+    - `corpus_size: int` — total tokens in corpus (baseline for PMI/G²)
+    - `window: int` — echoed
+    - `by: string` — echoed
+    - `rows[]` — sorted by `sort_by`:
+      - `value: string`
+      - `freq: int` — observed collocate frequency across all windows
+      - `left_freq: int` — occurrences in left window
+      - `right_freq: int` — occurrences in right window
+      - `corpus_freq: int` — corpus-wide frequency of the collocate
+      - `pmi: float` — Pointwise Mutual Information (log₂)
+      - `ll: float` — Log-likelihood G² score
 
 ### Pagination policy (V0.2)
 

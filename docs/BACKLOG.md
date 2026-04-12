@@ -1,6 +1,36 @@
 # Backlog — multicorpus_engine
 
-Last updated: 2026-04-09 (priorisation « Idées à cadrer » + plan d’action)
+Last updated: 2026-04-12 (plan d'action tickets Q/U/D/F — voir section « Plan d'action 2026-04-12 »)
+
+## Idées à cadrer — ajouts 2026-04-12 (non implémentés)
+
+| Thème | Piste | Notes |
+|-------|-------|-------|
+| Documents | **Métadonnées de chaque document à préciser** | Clarifier le set minimal requis/optionnel par document (titre, langue, rôle, type, statut, source) et les règles de validation UX. |
+| Import | **Vérifier le seuil ratio à l’import** | Revoir le seuil ratio (warning vs blocage), son affichage utilisateur et son calibrage par type de corpus/langue. |
+| Curation UX | **Vérifier la nécessité des panneaux rétractés sous le bloc principal** | Réévaluer l’utilité réelle des panneaux repliables secondaires dans Curation (charge cognitive vs gain). |
+| Curation layout | **Déplacer la colonne diagnostic curation en dessous** | Étudier une variante où diagnostics/journal passent sous la zone principale pour privilégier la lecture continue du texte. |
+| Indexation UX | **Ne faire qu’un bouton d’Index FTS si c’est vraiment nécessaire** | Arbitrer “un seul bouton indexation” vs actions séparées, avec libellé orienté utilisateur non technique. |
+| Segmentation UX | **Renommer bouton “Segmentation” en “Prévisualiser segmentation”** | Vérifier cohérence terminologique entre action destructive/non destructive et compréhension utilisateur. |
+| Alignement UX | **Recadrer l’onglet Alignement (compréhension du workflow)** | Clarifier ce qui est aligné, comment, sur quels textes, et ce qui est modifiable manuellement. |
+| Alignement feedback | **Message “Aucun lien correspondant au filtre” sans apparition de liens** | Vérifier la cohérence état/filtre/résultats et expliciter pourquoi aucun lien n’apparaît après changement de filtres. |
+| Alignement layout | **Que faire des métriques et éléments sous le cadre principal** | Repenser la place/hiérarchie des métriques pour éviter la dispersion de l’attention. |
+| Annotation UX | **Afficher le texte complet (avant/après annotation) + édition manuelle** | Étudier un mode où le texte complet reste visible en continu, avec options d’annotation manuelle sur sélection. |
+
+### Concordancier — ajouts 2026-04-12 (non implémentés)
+
+| Thème | Piste | Notes |
+|-------|-------|-------|
+| UI action bar | **Vérifier le chevauchement des éléments dans la barre d’action** | Contrôler les collisions visuelles selon largeur/zoom et ajuster priorités d’affichage. |
+| Résultats recherche | **Vérifier l’alignement des textes trouvés** | Auditer les cas de rendu (gauche/droite/lignes différentes/espaces) pour éviter des décalages ambigus. |
+| Résultats recherche | **Vérifier “Source modifiée” et son utilité** | Clarifier la signification métier du label et décider s’il doit rester visible tel quel. |
+| Analytics | **Mieux travailler les statistiques disponibles** | Revoir la pertinence, lisibilité et hiérarchie des stats côté Concordancier. |
+| Recherche grammaticale | **Exporter depuis la recherche grammaticale comme le Concordancier** | Évaluer une sortie export + action “copier citations” cohérente avec le flux KWIC. |
+| Citations | **Copier citation avec métadonnées et n° segment** | Étudier un format de copie enrichi (source, doc, segment, contexte) exploitable en aval. |
+| Multi-DB | **Organiser autrement le multi-DB (hors menu filtres)** | Prototyper un parcours simplifié pour sélectionner/changer les bases sans surcharger les filtres. |
+| Recherche grammaticale | **Clarifier “§ phrase 1/2” et afficher le n° de segment** | Documenter la signification du marqueur phrase et ajouter un repère segmentaire explicite dans l’UI. |
+| Annotation | **Ajouter un outil de recherche pour corriger les erreurs** | Ajouter une recherche ciblée dans l’éditeur d’annotation pour accélérer les corrections connues. |
+| Distribution layout | **Placer le schéma de distribution en bas, pas dans la colonne de droite** | Revoir la hiérarchie visuelle pour que ce bloc ne concurrence pas le flux principal de lecture/action. |
 
 ## Priority backlog (realistic, post-implementation)
 
@@ -703,3 +733,337 @@ Cette synthèse **ne remplace pas** les sous-sections détaillées ci-dessous ; 
 ---
 
 *Toutes les lignes du tableau **« Idées à cadrer »** ci-dessus renvoient désormais à une sous-section dédiée dans ce document (sujets encore ouverts au niveau produit, pas nécessairement implémentés).*
+
+---
+
+## Plan d'action — tickets 2026-04-12
+
+> Issu de l'analyse des sections « Idées à cadrer 2026-04-12 » et « Concordancier — ajouts 2026-04-12 ».
+> Classé en 4 bandes : **Q** quick wins, **U** UX/layout, **D** décisions produit, **F** features.
+> Librairie graphiques retenue : **Chart.js** (barres, lignes, scatter) ; CSS pur conservé pour mini-barres existantes.
+
+---
+
+### Bande Q — Quick wins (libellés, messages, clarté immédiate)
+
+#### Q1 — Renommer le bouton "Segmentation" → "Prévisualiser segmentation"
+
+**Contexte** : le bouton actuel ("Segmentation") est ambigu — il suggère une action destructive alors qu'il ouvre un aperçu. L'utilisateur ne sait pas s'il va modifier le document ou simplement voir.
+
+**Fichiers** : `tauri-prep/src/screens/ActionsScreen.ts`
+
+**Travail** :
+- Renommer le bouton d'action principal segmentation → "Prévisualiser la segmentation"
+- Vérifier la cohérence avec les libellés "Appliquer la segmentation" (action réelle) et "Lancer" dans les jobs
+- S'assurer que le `title` / `aria-label` est aussi mis à jour
+
+**Critères d'acceptation** :
+- Le bouton "Prévisualiser" déclenche le preview, pas l'application
+- "Appliquer" reste distinct et clairement destructif
+- Build propre, pas de régression sur `_runSegment` / `_previewSegment`
+
+**Priorité** : P1 — libellé trompeur, risque erreur utilisateur
+
+---
+
+#### Q2 — Message explicite quand filtre alignement → 0 résultats
+
+**Contexte** : après changement de filtre dans l'onglet Alignement, le panneau affiche parfois "Aucun lien correspondant" sans expliquer pourquoi (filtre trop restrictif, aucun lien créé, etc.). L'utilisateur pense à un bug.
+
+**Fichiers** : `tauri-prep/src/screens/ActionsScreen.ts` (vue alignement), `tauri-prep/src/screens/AlignPanel.ts`
+
+**Travail** :
+- Identifier les états vides distincts : (a) aucun lien du tout, (b) liens existent mais filtre actif les exclut, (c) chargement en cours
+- Afficher un message différencié pour chaque état
+- En cas (b) : ajouter un bouton "Réinitialiser les filtres"
+
+**Critères d'acceptation** :
+- 3 états vides clairement distincts visuellement et textuellement
+- Bouton reset filtre visible et fonctionnel en cas (b)
+- Aucune régression sur le rendu des liens existants
+
+**Priorité** : P1 — confusion utilisateur fréquente
+
+---
+
+#### Q3 — Audit et correction chevauchement barre d'action Concordancier
+
+**Contexte** : en mode segment + aligné + parallèle activé, le bouton "Chercher" passe sous les autres éléments de la barre de recherche (overflow). Problème de priorité d'affichage dans la toolbar.
+
+**Fichiers** : `tauri-app/src/ui/dom.ts` (CSS toolbar), `tauri-app/src/ui/query.ts`
+
+**Travail** :
+- Reproduire le cas : mode segment, toggle aligné ON, toggle parallèle ON
+- Identifier l'élément qui pousse "Chercher" hors du flux (suspicion : `.card-actions` ou `.mode-selector` trop large)
+- Correction CSS : `flex-wrap` avec priorité de visibilité sur le bouton Chercher (`order`, `flex-shrink: 0`)
+- Tester aux largeurs 900 px / 1200 px / 1400 px
+
+**Critères d'acceptation** :
+- Le bouton "Chercher" est toujours visible et accessible quelle que soit la combinaison de toggles actifs
+- Pas de saut de layout sur les autres configurations (FTS seul, KWIC, segment)
+
+**Priorité** : P1 — bouton principal inaccessible dans une configuration réelle
+
+---
+
+#### Q4 — Clarifier le label "§ phrase X" dans la recherche grammaticale
+
+**Contexte** : le header de chaque hit affiche `§ phrase 1`, `§ phrase 2` etc. qui correspond au `sent_id` technique — incompréhensible pour l'utilisateur sans formation en NLP.
+
+**Fichiers** : `tauri-shell/src/modules/rechercheModule.ts` (`_buildHitCard`)
+
+**Travail** :
+- Remplacer `§ phrase ${hit.sent_id}` par un label plus lisible, ex. : `phrase ${hit.sent_id}` sans le § ambigu, ou `segment ${hit.unit_id} · phrase ${hit.sent_id}` pour donner le contexte complet
+- Ajouter un `title` HTML sur l'élément expliquant brièvement : "Position de la phrase dans le segment source"
+- Valider avec un utilisateur non-linguiste si possible
+
+**Critères d'acceptation** :
+- Label compréhensible sans formation technique
+- `title` / tooltip présent
+- Aucune régression sur le rendu des hits
+
+**Priorité** : P2 — confusion mais non bloquant
+
+---
+
+### Bande U — UX / Layout (décisions visuelles sans nouveau moteur)
+
+#### U1 — Déplacer le diagnostic Curation sous la zone de travail principale
+
+**Contexte** : la colonne "diagnostic / journal" dans Curation est actuellement en colonne latérale droite, ce qui fragmente l'attention entre le texte et les logs. Hypothèse : le déplacer en bas (accordion ou panneau inférieur) permet une lecture continue du texte.
+
+**Fichiers** : `tauri-prep/src/screens/ActionsScreen.ts`, `tauri-prep/src/ui/prep-vnext.css`
+
+**Décision produit requise** : confirmer que le diagnostic en bas est préférable (à valider sur une session utilisateur réelle ou maquette rapide avant d'implémenter).
+
+**Travail** (après validation) :
+- Passer le layout Curation de 3 colonnes à 2 colonnes + panneau inférieur collapsible
+- Préserver les colonnes gauche (doc selector) + centre (texte + diff) ; diagnostic passe en bas
+- Le panneau bas est réduit par défaut, s'ouvre automatiquement si nouvelles entrées de log
+- Conserver le scroll indépendant de chaque zone
+
+**Critères d'acceptation** :
+- Texte principal visible sans scroll horizontal
+- Diagnostic accessible mais pas imposé visuellement
+- Build propre, pas de régression sur la logique curation
+
+**Priorité** : P2 — décision produit à valider d'abord
+
+---
+
+#### U2 — Réévaluer les panneaux rétractés secondaires dans Curation
+
+**Contexte** : plusieurs panneaux repliables (exceptions, historique apply, etc.) coexistent sous le bloc principal. La charge cognitive est élevée ; certains sont rarement utilisés.
+
+**Fichiers** : `tauri-prep/src/screens/ActionsScreen.ts`
+
+**Travail** :
+- Inventorier tous les panneaux rétractés de la vue Curation (exceptions, historique, options avancées…)
+- Pour chacun : mesurer la fréquence d'usage attendue (quotidien / occasionnel / rare)
+- Décision par panneau : (a) garder tel quel, (b) fusionner, (c) déplacer dans un onglet secondaire, (d) supprimer
+- Implémenter les décisions retenues
+
+**Critères d'acceptation** :
+- Maximum 2 panneaux secondaires visibles dans l'état initial de Curation
+- Les fonctions supprimées de la vue principale restent accessibles (menu, onglet, ou raccourci)
+- Aucune perte de fonctionnalité
+
+**Priorité** : P2 — réduction charge cognitive
+
+---
+
+#### U3 — Revoir la place et hiérarchie des métriques dans Alignement
+
+**Contexte** : les métriques (coverage, precision, liens créés/rejetés…) sont dispersées sous le cadre principal d'alignement. Elles ne guident pas l'action.
+
+**Fichiers** : `tauri-prep/src/screens/ActionsScreen.ts`, `tauri-prep/src/screens/AlignPanel.ts`
+
+**Travail** :
+- Identifier toutes les métriques actuellement affichées dans la vue Alignement
+- Regrouper en 2 niveaux : (a) métriques de pilotage (affichées en permanence, en haut ou inline dans l'en-tête), (b) métriques de debug (dans un panneau collapsible ou onglet)
+- Supprimer les métriques redondantes ou peu actionnables
+- S'assurer que chaque métrique est accompagnée d'un label court et d'un `title` explicatif
+
+**Critères d'acceptation** :
+- Les 3 métriques les plus utiles visibles sans scroll dans l'en-tête de la vue
+- Métriques de debug dans un panneau non intrusif
+- Pas de régression sur les appels `/align/quality` ou `/align/audit`
+
+**Priorité** : P2 — dispersion d'attention, pas bloquant
+
+---
+
+### Bande D — Décisions produit (à cadrer avant implémentation)
+
+#### D1 — Spécifier le set minimal de métadonnées par document
+
+**Contexte** : les champs de métadonnées disponibles (titre, langue, rôle, type, statut, source, auteur, date…) ne sont pas tous requis, mais aucune règle de validation explicite n'est documentée ni appliquée en UI.
+
+**Travail de cadrage** :
+- Définir : champs **obligatoires** (bloquants à l'import/validation), **recommandés** (warning), **optionnels** (silencieux)
+- Préciser les règles de validation par champ (format date, codes langue ISO, valeurs enum pour rôle/type)
+- Documenter dans `docs/cadrage/METADONNEES_DOCUMENT.md`
+- Ensuite : implémenter la validation UI dans `tauri-prep/src/screens/MetadataScreen.ts` + sidecar `/validate-meta`
+
+**Critères d'acceptation cadrage** :
+- Tableau des champs avec colonne obligatoire/recommandé/optionnel
+- Règles de validation par champ documentées
+- Décision actée sur les champs non encore supportés (traducteur, source originale, etc.)
+
+**Priorité** : P3 — bloque D5 (citation enrichie) et F1
+
+---
+
+#### D2 — Revoir le seuil ratio à l'import (calibrage + UX)
+
+**Contexte** : un seuil de ratio (longueur segmentation vs source) déclenche un warning ou un blocage à l'import selon les cas. Le seuil actuel n'est pas calibré par langue/type et son affichage n'est pas assez explicite.
+
+**Travail de cadrage** :
+- Documenter le calcul actuel du ratio et le seuil par défaut
+- Mesurer sur corpus réels FR/EN/IT/DE si le seuil est pertinent
+- Décision : warning non-bloquant vs blocage + override explicite
+- UX : formuler le message d'erreur en termes métier ("le document semble très différent du source"), pas techniques
+
+**Critères d'acceptation cadrage** :
+- Note de décision dans `docs/cadrage/IMPORT_RATIO.md`
+- Seuils retenus par langue/type (si différenciés)
+- Message UX rédigé
+
+**Priorité** : P3 — irritant mais pas critique en production
+
+---
+
+#### D3 — Trancher le label "Source modifiée" dans le Concordancier
+
+**Contexte** : un badge "⚠ source modifiée" apparaît sur certains alignements. Son sens métier exact n'est pas documenté pour l'utilisateur et sa valeur dans le flux de lecture n'est pas claire.
+
+**Travail de cadrage** :
+- Documenter quand exactement le badge est déclenché (`source_changed_at` non null)
+- Évaluer 3 options : (a) garder tel quel + tooltip explicatif, (b) reformuler ("traduction à réviser"), (c) déplacer hors de la vue lecture (uniquement dans Prep)
+- Décision actée
+
+**Après décision** :
+- Implémenter selon l'option retenue dans `tauri-app/src/ui/results.ts` et `rechercheModule.ts`
+
+**Priorité** : P3 — faible urgence, présent mais ignoré
+
+---
+
+#### D4 — Recadrer l'onglet Alignement (clarté workflow)
+
+**Contexte** : l'onglet Alignement dans Prep est difficile à appréhender pour un nouvel utilisateur : on ne comprend pas immédiatement ce qui est aligné, entre quels documents, ni ce qu'on peut modifier manuellement.
+
+**Travail de cadrage** :
+- Rédiger un texte d'introduction (2–3 phrases max) expliquant le workflow : "L'alignement crée des correspondances entre segments de documents de langues différentes. Vous pouvez vérifier, accepter, rejeter ou corriger chaque lien."
+- Identifier les actions disponibles manuellement vs automatiquement
+- Décider si une vue "tutoriel" ou "premier usage" est utile
+
+**Après cadrage** :
+- Ajouter le texte d'introduction dans l'en-tête de la vue Alignement
+- Optionnel : indicateur de progression workflow (étape X/N)
+
+**Priorité** : P3 — onboarding, pas urgent en phase actuelle
+
+---
+
+#### D5 — Multi-DB : prototyper un parcours simplifié hors menu filtres
+
+**Contexte** : changer de base de données active passe par le sélecteur de DB dans le shell, qui est peu visible. Depuis Constituer/Prep, le parcours pour basculer de corpus est long. Le cadrage C3 (MULTIPLES_BASES.md) a acté le modèle A (basculer + récents).
+
+**Travail de cadrage** :
+- Identifier les points de friction concrets dans le parcours actuel (depuis Prep → Shell → sélecteur)
+- Prototyper (wireframe ou maquette HTML) un parcours "ouvrir un autre corpus" depuis Constituer
+- Décider si le sélecteur de DB doit être promu dans la topbar du shell (toujours visible)
+
+**Après cadrage** :
+- Implémenter selon la décision retenue dans `tauri-shell/src/shell.ts` + modules concernés
+
+**Priorité** : P3 — irritant pour utilisateurs multi-corpus, pas bloquant projet
+
+---
+
+### Bande F — Features (nouveau code significatif)
+
+#### F1 — Export et citation enrichie depuis la Recherche grammaticale
+
+**Contexte** : la recherche grammaticale dispose d'un export CSV (`/export/token_query_csv`) mais sans accès depuis l'écran Export du shell, et sans bouton de copie citation comparable au Concordancier.
+
+**Travail** :
+- Ajouter dans `rechercheModule.ts` un bouton "📄 Citation" sur chaque hit (même logique que `makeCitationBtn` dans `results.ts`) — format : doc + segment + texte de la phrase
+- Exposer la RG dans l'écran Export du shell (section dédiée ou lien depuis la barre des résultats)
+- Dépend de **D1** pour les métadonnées enrichies (traducteur, etc.) — implémenter sans ces champs d'abord, extensible ensuite
+
+**Critères d'acceptation** :
+- Bouton Citation sur chaque hit RG, copie dans le presse-papier
+- Format citation lisible : `[LANG] Titre · §phrase — «texte»`
+- Export RG accessible depuis l'écran Publier du shell
+- Build propre, pas de régression rechercheModule
+
+**Priorité** : P2
+
+---
+
+#### F2 — Stats analytiques avancées dans le Concordancier et la RG (Chart.js)
+
+**Contexte** : les statistiques actuelles se limitent aux barres de fréquence distributionnelle (CSS pur). Les besoins analytiques sont plus larges : dispersion, collocations, temporel.
+
+**Dépendance** : ajout de `chart.js` dans `tauri-app/package.json` et `tauri-shell/package.json`.
+
+**Travail — phase 1 (client-side, pas de nouveau endpoint)** :
+- **Tri concordance** : ajouter des boutons de tri KWIC par contexte gauche / droit / fréquence dans `tauri-app/src/ui/results.ts` et `rechercheModule.ts`
+- **Dispersion par document** : graphique barre horizontal (Chart.js) montrant la répartition des occurrences par document — depuis les hits déjà chargés
+
+**Travail — phase 2 (nouveau endpoint)** :
+- **`POST /token_collocates`** : fenêtre ±N tokens autour du pivot, score PMI et log-likelihood, retourne top-K collocats avec score et fréquence
+- **UI collocations** : nuage de points ou tableau scoré dans le panneau stats (Chart.js scatter ou liste triable)
+- **Distribution temporelle** : si `doc_date` renseigné, graphique ligne (Chart.js) fréquence par année — endpoint `POST /token_stats` étendu avec `group_by: "year"`
+
+**Critères d'acceptation phase 1** :
+- Tri concordance fonctionnel sans rechargement réseau
+- Graphique dispersion lisible pour 1–20 documents
+- Chart.js lazy-loadé (pas dans le bundle principal)
+
+**Critères d'acceptation phase 2** :
+- `/token_collocates` testé sur corpus mini, scores PMI corrects
+- Collocations visibles dans le panneau stats
+- Distribution temporelle conditionnelle à la présence de `doc_date`
+
+**Priorité** : phase 1 P2, phase 2 P3
+
+---
+
+#### F3 — Click droit sur token pivot RG → basculer vers Prep pour édition
+
+**Contexte** : depuis la recherche grammaticale, un token annoté incorrectement (mauvais lemme, mauvais UPOS) n'est pas corrigeable sans quitter l'interface. L'idée : click droit sur un token pivot → menu contextuel → ouvre Prep sur le document concerné, positionné sur le token.
+
+**Travail** :
+- Ajouter un menu contextuel (`contextmenu` event) sur les tokens pivot dans `rechercheModule.ts` (`_buildTokenGroup`)
+- Options du menu : "Modifier ce token dans Prep", "Chercher ce lemme", "Chercher ce POS"
+- "Modifier dans Prep" : émet un event custom `agrafes:open-prep-token` avec `{ doc_id, unit_id, token_id }`
+- Dans `tauri-shell/src/shell.ts` ou `constituerModule.ts` : écouter l'event, basculer sur le mode Constituer, passer les paramètres à `tauri-prep` via deep link ou `sessionStorage`
+- Dans `tauri-prep` : au montage, lire les paramètres et naviguer vers le document + token concerné (vue Documents → token editor)
+
+**Critères d'acceptation** :
+- Click droit sur token pivot affiche le menu contextuel
+- "Modifier dans Prep" bascule le shell sur Constituer
+- Prep s'ouvre sur le bon document
+- Menu contextuel se ferme proprement (clic extérieur, Escape)
+- Aucune régression sur le popover actuel (click gauche → suggestions CQL)
+
+**Priorité** : P3 — utile mais parcours complexe, à implémenter après F1 et F2 phase 1
+
+---
+
+#### F4 — Index FTS : arbitrage "un seul bouton" vs actions séparées
+
+**Contexte** : l'indexation FTS est actuellement exposée via plusieurs actions selon les contextes (indexer tout, réindexer un doc, etc.). L'utilisateur ne comprend pas toujours quand réindexer est nécessaire ni ce que ça fait.
+
+**Travail de cadrage** :
+- Recenser toutes les surfaces où un bouton d'indexation apparaît dans Prep et le shell
+- Définir les cas d'usage réels : (a) après import, (b) après curation, (c) jamais nécessaire manuellement
+- Décision : un seul bouton "Mettre à jour l'index" dans la vue Documents avec état visible (indexé / à mettre à jour), ou automatisation complète post-import
+
+**Après cadrage** :
+- Implémenter selon la décision
+
+**Priorité** : P3 — cohérence UX, pas urgent

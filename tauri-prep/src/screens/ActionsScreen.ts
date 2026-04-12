@@ -301,6 +301,7 @@ export class ActionsScreen {
   private _auditOffset = 0;
   private _auditLimit = 30;
   private _auditHasMore = false;
+  private _auditLoading = false;
   private _auditLinks: AlignLinkRecord[] = [];
   private _auditIncludeExplain = false;
   private _auditExceptionsOnly = false;
@@ -927,83 +928,51 @@ export class ActionsScreen {
               </div>
             </article>
           </div>
-          <div class="curate-col curate-col-right">
-            <article class="curate-inner-card">
-              <div class="card-head">
-                <h2>Diagnostics curation</h2>
-                <span style="font-size:12px;color:var(--prep-muted,#4f5d6d)">live</span>
-              </div>
-              <div class="card-body">
-                <div id="act-curate-session-summary" class="curate-session-summary" style="display:none"></div>
-                <div id="act-curate-diag" class="curate-diag-list">
-                  <p class="empty-hint">Lancez une pr&#233;visualisation pour voir les statistiques.</p>
-                </div>
-                <div id="act-curate-seg-link" style="display:none;padding:8px 0"></div>
-              </div>
-            </article>
-            <article class="curate-inner-card" id="act-curate-context-card" style="display:none" aria-label="Contexte local de la modification active">
-              <div class="card-head">
-                <h2>Contexte local</h2>
-                <span id="act-context-pos" style="font-size:12px;color:var(--prep-muted,#4f5d6d)">&#8212;</span>
+        </div>
+      </section>
+      <details class="curate-bottom-panel" id="act-curate-bottom-panel" open>
+        <summary class="curate-bottom-summary">
+          <span class="curate-bottom-title">Diagnostics &amp; journal <span class="curate-log-badge" id="act-curate-log-badge" style="display:none"></span></span>
+          <span class="curate-bottom-hint">session courante</span>
+        </summary>
+        <div class="curate-bottom-body">
+          <div class="curate-bottom-col curate-bottom-col-diag">
+            <div class="curate-bottom-col-head">Diagnostics</div>
+            <div id="act-curate-session-summary" class="curate-session-summary" style="display:none"></div>
+            <div id="act-curate-diag" class="curate-diag-list">
+              <p class="empty-hint">Lancez une pr&#233;visualisation pour voir les statistiques.</p>
+            </div>
+            <div id="act-curate-seg-link" style="display:none;padding:8px 0"></div>
+          </div>
+          <div class="curate-bottom-col curate-bottom-col-journal">
+            <div class="curate-bottom-col-head">Journal de revue</div>
+            <div id="act-curate-review-log" class="curate-log-list" aria-live="polite">
+              <p class="empty-hint" style="padding:10px">Aucune action enregistr&#233;e.</p>
+            </div>
+            <div id="act-curate-context-card" class="curate-bottom-context" style="display:none" aria-label="Contexte local de la modification active">
+              <div class="curate-bottom-context-head">
+                Contexte local
+                <span id="act-context-pos" style="font-size:11px;color:var(--prep-muted,#4f5d6d);margin-left:8px">&#8212;</span>
               </div>
               <div id="act-curate-context" class="curate-context-body"></div>
-            </article>
-            <article class="curate-inner-card">
-              <details id="act-curate-log-details">
-                <summary class="card-head curate-log-summary">
-                  <h2>Journal de revue <span class="curate-log-badge" id="act-curate-log-badge" style="display:none"></span></h2>
-                  <span style="font-size:11px;color:var(--prep-muted,#4f5d6d)">session</span>
-                </summary>
-                <div style="padding:0">
-                  <div id="act-curate-review-log" class="curate-log-list" aria-live="polite">
-                    <p class="empty-hint" style="padding:10px">Aucune action enregistr&#233;e.</p>
-                  </div>
-                </div>
-              </details>
-            </article>
-            <article class="curate-inner-card review-export-card" id="act-review-export-card" style="display:none">
-              <div class="card-head">
-                <h2>Exporter le rapport</h2>
-                <span style="font-size:12px;color:var(--prep-muted,#4f5d6d)">session courante</span>
+            </div>
+          </div>
+          <div class="curate-bottom-col curate-bottom-col-extra">
+            <div id="act-review-export-card" class="curate-bottom-export" style="display:none">
+              <div class="curate-bottom-col-head">Exporter le rapport</div>
+              <div id="act-apply-result-note" class="apply-result-note" style="display:none"></div>
+              <div class="review-export-row">
+                <button class="btn btn-sm review-export-btn" id="act-review-export-json" title="Exporter en JSON structuré">JSON</button>
+                <button class="btn btn-sm review-export-btn" id="act-review-export-csv" title="Exporter en CSV (une ligne par item)">CSV</button>
+                <span id="act-review-export-result" class="review-export-result" style="display:none"></span>
               </div>
-              <div class="card-body review-export-body">
-                <div id="act-apply-result-note" class="apply-result-note" style="display:none"></div>
-                <div class="review-export-row">
-                  <button class="btn btn-sm review-export-btn" id="act-review-export-json" title="Exporter en JSON structuré">JSON</button>
-                  <button class="btn btn-sm review-export-btn" id="act-review-export-csv" title="Exporter en CSV (une ligne par item)">CSV</button>
-                  <span id="act-review-export-result" class="review-export-result" style="display:none"></span>
-                </div>
-                <p class="hint review-export-hint">Items de l&#8217;&#233;chantillon courant, statuts et d&#233;cisions de la session.</p>
-              </div>
-            </article>
-            <details class="curate-inner-card apply-hist-panel" id="act-apply-hist-panel">
-              <summary class="card-head apply-hist-summary">
-                <h2>Historique des apply</h2>
-                <span id="act-apply-hist-badge" class="apply-hist-badge" style="display:none">0</span>
+              <p class="hint review-export-hint">Items de l&#8217;&#233;chantillon courant, statuts et d&#233;cisions.</p>
+            </div>
+            <details class="exc-admin-panel" id="act-exc-admin-panel">
+              <summary class="curate-bottom-details-summary">
+                Exceptions persistées <span id="act-exc-admin-badge" class="exc-admin-count-badge" style="display:none">0</span>
               </summary>
-              <div class="card-body" style="padding:8px 10px 10px">
-                <div class="apply-hist-toolbar">
-                  <select id="act-apply-hist-scope" class="apply-hist-scope-select" title="Filtrer par portée">
-                    <option value="">Tous</option>
-                    <option value="doc">Document</option>
-                    <option value="all">Corpus</option>
-                  </select>
-                  <button class="btn btn-sm apply-hist-refresh" id="act-apply-hist-refresh" title="Actualiser">&#8635;</button>
-                  <button class="btn btn-sm apply-hist-export-btn" id="act-apply-hist-export-json" title="Exporter en JSON">JSON</button>
-                  <button class="btn btn-sm apply-hist-export-btn" id="act-apply-hist-export-csv" title="Exporter en CSV">CSV</button>
-                </div>
-                <div id="act-apply-hist-list" class="apply-hist-list" aria-live="polite">
-                  <p class="empty-hint">Ouvrez ce panneau pour charger l&#8217;historique.</p>
-                </div>
-                <span id="act-apply-hist-export-result" class="apply-hist-export-result" style="display:none"></span>
-              </div>
-            </details>
-            <details class="curate-inner-card exc-admin-panel" id="act-exc-admin-panel">
-              <summary class="card-head exc-admin-summary">
-                <h2>Exceptions persistées</h2>
-                <span id="act-exc-admin-badge" class="exc-admin-count-badge" style="display:none">0</span>
-              </summary>
-              <div class="card-body" style="padding:8px 10px 10px">
+              <div style="padding:6px 10px 10px">
                 <div class="exc-admin-toolbar">
                   <div class="exc-admin-filters">
                     <button class="btn btn-sm exc-filter-btn exc-filter-active" data-exc-filter="all">Toutes</button>
@@ -1028,9 +997,30 @@ export class ActionsScreen {
                 </div>
               </div>
             </details>
+            <details class="apply-hist-panel" id="act-apply-hist-panel">
+              <summary class="curate-bottom-details-summary">
+                Historique des apply <span id="act-apply-hist-badge" class="apply-hist-badge" style="display:none">0</span>
+              </summary>
+              <div style="padding:6px 10px 10px">
+                <div class="apply-hist-toolbar">
+                  <select id="act-apply-hist-scope" class="apply-hist-scope-select" title="Filtrer par portée">
+                    <option value="">Tous</option>
+                    <option value="doc">Document</option>
+                    <option value="all">Corpus</option>
+                  </select>
+                  <button class="btn btn-sm apply-hist-refresh" id="act-apply-hist-refresh" title="Actualiser">&#8635;</button>
+                  <button class="btn btn-sm apply-hist-export-btn" id="act-apply-hist-export-json" title="Exporter en JSON">JSON</button>
+                  <button class="btn btn-sm apply-hist-export-btn" id="act-apply-hist-export-csv" title="Exporter en CSV">CSV</button>
+                </div>
+                <div id="act-apply-hist-list" class="apply-hist-list" aria-live="polite">
+                  <p class="empty-hint">Ouvrez ce panneau pour charger l&#8217;historique.</p>
+                </div>
+                <span id="act-apply-hist-export-result" class="apply-hist-export-result" style="display:none"></span>
+              </div>
+            </details>
           </div>
         </div>
-      </section>
+      </details>
       <section class="card" data-collapsible="true" data-collapsed-default="true">
         <h3>Validation m&#233;tadonn&#233;es</h3>
         <div class="form-row">
@@ -1583,8 +1573,8 @@ export class ActionsScreen {
           <div id="act-seg-prev-warns" class="seg-warn-list" style="display:none"></div>
         </div>
         <div class="seg-actions-bar" id="act-seg-actions">
-          <button class="btn btn-warning" id="act-seg-btn">Segmenter</button>
-          <button class="btn btn-secondary btn-sm" id="act-seg-validate-btn">Seg. + Valider</button>
+          <button class="btn btn-warning" id="act-seg-btn" title="Appliquer la segmentation (efface les liens d'alignement existants)">Appliquer</button>
+          <button class="btn btn-secondary btn-sm" id="act-seg-validate-btn" title="Appliquer la segmentation puis valider le document">Appliquer + Valider</button>
           <button class="btn btn-primary btn-sm" id="act-seg-validate-only-btn"
             ${!savedAlready ? "disabled" : ""}>Valider &#10003;</button>
           <div class="seg-actions-dest">
@@ -2195,7 +2185,7 @@ export class ActionsScreen {
               <div class="seg-inner-card">
                 <div class="seg-inner-head"><h3>Param&#232;tres</h3></div>
                 <div class="seg-inner-body">
-                  <p class="live-note" style="margin-top:0">Flux recommand&#233; : s&#233;lectionner le document &#8594; Segmenter &#8594; Valider.</p>
+                  <p class="live-note" style="margin-top:0">Flux recommand&#233; : s&#233;lectionner le document &#8594; Appliquer &#8594; Valider.</p>
                   <div class="form-grid-seg">
                     <label>Document
                       <select id="act-seg-doc"><option value="">&#8212; choisir &#8212;</option></select>
@@ -2216,8 +2206,8 @@ export class ActionsScreen {
                     Aucune segmentation lanc&#233;e pour ce document dans cette session.
                   </div>
                   <div class="btn-row" style="margin-top:8px">
-                    <button id="act-seg-btn" class="btn btn-warning" disabled>Segmenter</button>
-                    <button id="act-seg-validate-btn" class="btn btn-secondary" disabled>Seg. + valider</button>
+                    <button id="act-seg-btn" class="btn btn-warning" disabled title="Appliquer la segmentation (efface les liens d'alignement existants)">Appliquer</button>
+                    <button id="act-seg-validate-btn" class="btn btn-secondary" disabled title="Appliquer la segmentation puis valider le document">Appliquer + Valider</button>
                     <button id="act-seg-validate-only-btn" class="btn btn-primary" disabled>Valider</button>
                     <button id="act-seg-open-export-btn" class="btn btn-secondary" disabled>Exporter cette étape…</button>
                     <button id="act-seg-focus-toggle" class="btn btn-secondary" disabled>Focus</button>
@@ -2321,8 +2311,8 @@ export class ActionsScreen {
                     </label>
                   </div>
                   <div class="btn-row" style="margin-top:0.5rem">
-                    <button id="act-seg-lt-btn" class="btn btn-warning" disabled>Segmenter</button>
-                    <button id="act-seg-lt-validate-btn" class="btn btn-secondary" disabled>Segmenter + valider</button>
+                    <button id="act-seg-lt-btn" class="btn btn-warning" disabled title="Appliquer la segmentation (efface les liens d'alignement existants)">Appliquer</button>
+                    <button id="act-seg-lt-validate-btn" class="btn btn-secondary" disabled title="Appliquer la segmentation puis valider le document">Appliquer + valider</button>
                     <button id="act-seg-lt-validate-only-btn" class="btn btn-primary" disabled>Valider ce document</button>
                     <button id="act-seg-lt-open-export-btn" class="btn btn-secondary" disabled>Exporter cette étape…</button>
                   </div>
@@ -3088,7 +3078,7 @@ export class ActionsScreen {
     el.querySelector("#act-align-copy-debug-btn")!.addEventListener("click", () => this._copyAlignDebugJson());
     el.querySelector("#act-audit-load-btn")!.addEventListener("click", () => {
       this._auditOffset = 0; this._auditLinks = []; this._auditSelectedLinkId = null;
-      this._renderAuditTable(root); this._loadAuditPage(root, false);
+      this._auditLoading = true; this._renderAuditTable(root); this._loadAuditPage(root, false);
     });
     el.querySelector("#act-audit-more-btn")!.addEventListener("click", () => this._loadAuditPage(root, true));
     (el.querySelector("#act-audit-explain-toggle") as HTMLInputElement).addEventListener("change", (e) => {
@@ -3993,6 +3983,31 @@ export class ActionsScreen {
     if (conn) this._annotRefreshIfVisible();
   }
 
+  /** Public API: called from app.ts after RG→Prep token navigation. */
+  annotFocusDoc(docId: number, tokenId?: number): void {
+    const panel = this._annotPanelEl;
+    if (!panel) return;
+    const li = panel.querySelector<HTMLElement>(`.annot-doc-item[data-doc-id="${docId}"]`);
+    if (li) {
+      li.click();
+      li.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+    // After tokens load, highlight the token
+    if (tokenId != null) {
+      const tryHighlight = (): void => {
+        const tokEl = panel.querySelector<HTMLElement>(`.annot-token[data-token-id="${tokenId}"]`);
+        if (tokEl) {
+          tokEl.scrollIntoView({ behavior: "smooth", block: "center" });
+          tokEl.classList.add("annot-token--highlighted");
+          setTimeout(() => tokEl.classList.remove("annot-token--highlighted"), 2500);
+        }
+      };
+      // Retry a few times to wait for async token load
+      setTimeout(tryHighlight, 400);
+      setTimeout(tryHighlight, 900);
+    }
+  }
+
   private _annotRefreshIfVisible(): void {
     const panel = this._annotPanelEl;
     if (!panel) return;
@@ -4171,6 +4186,19 @@ export class ActionsScreen {
   ): void {
     this._auditQuickFilter = value;
     this._writeAuditQuickFilterPref(value);
+    this._syncAuditQuickFilterUi(root);
+    this._renderAuditTable(root);
+  }
+
+  private _resetAuditFilters(root: HTMLElement): void {
+    this._auditQuickFilter = "all";
+    this._writeAuditQuickFilterPref(this._auditQuickFilter);
+    this._auditTextFilter = "";
+    this._auditExceptionsOnly = false;
+    const textInput = root.querySelector<HTMLInputElement>("#act-audit-text-filter");
+    if (textInput) textInput.value = "";
+    const exceptionsEl = root.querySelector<HTMLInputElement>("#act-audit-exceptions-only");
+    if (exceptionsEl) exceptionsEl.checked = false;
     this._syncAuditQuickFilterUi(root);
     this._renderAuditTable(root);
   }
@@ -5519,6 +5547,9 @@ export class ActionsScreen {
   private _pushCurateLog(kind: "preview" | "apply" | "warn", msg: string): void {
     this._curateLog.unshift({ ts: Date.now(), kind, msg });
     if (this._curateLog.length > 10) this._curateLog.length = 10;
+    // Auto-open the bottom panel when a new log entry arrives
+    const bottomPanel = document.querySelector<HTMLDetailsElement>("#act-curate-bottom-panel");
+    if (bottomPanel && !bottomPanel.open) bottomPanel.open = true;
     this._renderCurateLog();
   }
 
@@ -8104,10 +8135,12 @@ export class ActionsScreen {
       this._auditHasMore = res.has_more;
       this._auditPivotId = pivotId;
       this._auditTargetId = targetId;
-      this._renderAuditTable(root);
       this._log(`Audit : ${this._auditLinks.length} lien(s) chargé(s)${res.has_more ? " (suite disponible)" : ""}.`);
     } catch (err) {
       this._log(`✗ Audit : ${err instanceof SidecarError ? err.message : String(err)}`, true);
+    } finally {
+      this._auditLoading = false;
+      this._renderAuditTable(root);
     }
   }
 
@@ -8136,8 +8169,14 @@ export class ActionsScreen {
     }
 
     if (this._auditLinks.length === 0) {
-      this._lastAuditEmpty = true;
-      wrap.innerHTML = '<p class="empty-hint">Aucun lien. Lancez un alignement ou chargez les liens.</p>';
+      this._lastAuditEmpty = !this._auditLoading;
+      if (this._auditLoading) {
+        // État (c) — chargement en cours
+        wrap.innerHTML = '<p class="empty-hint">Chargement des liens d\u2019alignement\u2026</p>';
+      } else {
+        // État (a) — aucun lien créé
+        wrap.innerHTML = '<p class="empty-hint">Aucun lien d\u2019alignement trouv\u00e9.<br>Lancez d\u2019abord un alignement via le panneau ci-dessus, puis cliquez sur <strong>Charger les liens</strong>.</p>';
+      }
       if (moreBtn) moreBtn.style.display = "none";
       if (batchBar) batchBar.style.display = "none";
       this._renderAuditFocus(root);
@@ -8146,7 +8185,10 @@ export class ActionsScreen {
     }
     this._lastAuditEmpty = visibleLinks.length === 0;
     if (visibleLinks.length === 0) {
-      wrap.innerHTML = '<p class="empty-hint">Aucune ligne ne correspond au filtre courant.</p>';
+      // État (b) — liens chargés mais filtre actif les masque tous
+      const hasActiveFilter = this._auditQuickFilter !== "all" || this._auditTextFilter !== "" || this._auditExceptionsOnly;
+      wrap.innerHTML = `<p class="empty-hint">Aucune ligne ne correspond au filtre courant.${hasActiveFilter ? `<br><button class="btn btn-secondary btn-sm" id="act-audit-reset-filters" style="margin-top:6px">R\u00e9initialiser les filtres</button>` : ""}</p>`;
+      wrap.querySelector("#act-audit-reset-filters")?.addEventListener("click", () => this._resetAuditFilters(root));
       if (moreBtn) moreBtn.style.display = this._auditHasMore ? "" : "none";
       if (batchBar) batchBar.style.display = "none";
       this._renderAuditFocus(root);
@@ -9594,6 +9636,14 @@ const ANNOT_PANEL_CSS = `
 .annot-token.selected {
   border-color: var(--color-primary, #4e9af1);
   background: #dce9ff55;
+}
+.annot-token--highlighted {
+  animation: annot-highlight-flash 2.5s ease-out forwards;
+}
+@keyframes annot-highlight-flash {
+  0%   { background: #fff3cd; border-color: #f0a500; }
+  30%  { background: #fff3cd; border-color: #f0a500; }
+  100% { background: transparent; border-color: transparent; }
 }
 
 /* Row 1 – word */

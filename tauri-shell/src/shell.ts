@@ -1468,6 +1468,17 @@ export async function initShell(): Promise<void> {
   // Close DB menu and support menu when clicking outside
   document.addEventListener("click", _closeDbMenu);
   document.addEventListener("click", _closeSupportMenu);
+
+  // Bridge: RG token right-click → "Modifier dans Prep"
+  window.addEventListener("agrafes:open-prep-token", (e: Event) => {
+    const detail = (e as CustomEvent<{ doc_id: number; unit_id: number; token_id: number }>).detail;
+    if (!detail) return;
+    // Store navigation target in sessionStorage (tauri-prep reads it on mount)
+    try {
+      sessionStorage.setItem("agrafes:prep-token-nav", JSON.stringify(detail));
+    } catch { /* ignore */ }
+    void _setMode("constituer");
+  });
   document.body.dataset.mode = startMode;
   await _setMode(startMode);
   await _initDeepLinkRuntimeListener();
@@ -2453,8 +2464,26 @@ async function _renderPublicationWizard(container: HTMLElement): Promise<void> {
     error: null,
   };
 
+  // Quick exports card (above wizard)
+  const quickExports = document.createElement("div");
+  quickExports.style.cssText = "max-width:700px;margin:1.5rem auto 0;padding:0 1rem;font-family:inherit";
+  quickExports.innerHTML = `
+    <div style="background:#f0f7ff;border:1px solid #b8d4f0;border-radius:8px;padding:1rem 1.2rem;margin-bottom:1rem">
+      <div style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#2c5f9e;margin-bottom:0.5rem">Exports rapides</div>
+      <div style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:center">
+        <button id="pub-goto-rg" style="padding:4px 12px;border-radius:5px;border:1px solid #2c5f9e;background:#fff;color:#2c5f9e;font-size:0.82rem;cursor:pointer;font-weight:600">
+          🔬 Export Recherche grammaticale (CSV)
+        </button>
+        <span style="font-size:0.75rem;color:#6c757d">Lance la RG → utilisez ↓ CSV dans la barre de résultats</span>
+      </div>
+    </div>`;
+  quickExports.querySelector("#pub-goto-rg")!.addEventListener("click", () => {
+    void _setMode("explorer");
+  });
+  container.appendChild(quickExports);
+
   const wrap = document.createElement("div");
-  wrap.style.cssText = "max-width:700px;margin:2rem auto;padding:0 1rem;font-family:inherit";
+  wrap.style.cssText = "max-width:700px;margin:0 auto;padding:0 1rem 2rem;font-family:inherit";
 
   // Progress bar
   const renderProgress = (step: WizardStep): string => {

@@ -54,6 +54,7 @@
   "POST /segment/detect_markers",
   "POST /segment/preview",
   "POST /shutdown",
+  "POST /token_collocates",
   "POST /token_query",
   "POST /token_stats",
   "POST /tokens/update",

@@ -17,6 +17,7 @@ let _mounted = false;
 let _root: HTMLElement | null = null;
 
 let _hits: _Hit[] = [];
+let _sortOrder: "default" | "doc" | "pivot" | "left" | "right" = "default";
 let _total = 0;
 let _offset = 0;
 let _lastQuery: _QueryParams | null = null;
@@ -29,6 +30,21 @@ let _statsLoading = false;
 // Monotonic counter — incremented on every new query so in-flight stats
 // fetches from a previous query are silently discarded when they arrive.
 let _statsGeneration = 0;
+
+// Collocations (server-side)
+interface _CollocateRow {
+  value: string;
+  freq: number;
+  left_freq: number;
+  right_freq: number;
+  corpus_freq: number;
+  pmi: number;
+  ll: number;
+}
+let _collRows: _CollocateRow[] = [];
+let _collLoading = false;
+let _collGeneration = 0;
+let _collSortBy: "pmi" | "ll" | "freq" = "pmi";
 
 const PAGE_SIZE = 50;
 
@@ -93,6 +109,7 @@ const UPOS_COLORS: Record<string, string> = {
 export async function mount(container: HTMLElement, ctx: ShellContext): Promise<void> {
   _mounted = true;
   _hits = [];
+  _sortOrder = "default";
   _total = 0;
   _offset = 0;
   _loading = false;
@@ -101,6 +118,9 @@ export async function mount(container: HTMLElement, ctx: ShellContext): Promise<
   _statsTotalPivot = 0;
   _statsLoading = false;
   _statsGeneration = 0;
+  _collRows = [];
+  _collLoading = false;
+  _collGeneration = 0;
   // Reset quick-mode state so remount always starts clean
   _quickMode = "mot";
   _posSelection = [];
@@ -132,6 +152,9 @@ export async function mount(container: HTMLElement, ctx: ShellContext): Promise<
     _statsTotalPivot = 0;
     _statsLoading = false;
     _statsGeneration++;
+    _collRows = [];
+    _collLoading = false;
+    _collGeneration++;
     if (path) await _connect(path, root);
     else _setStatus(root, "Aucune base de données sélectionnée.", true);
   });
@@ -301,6 +324,14 @@ function _renderShell(root: HTMLElement): void {
       <div class="rech-results">
         <div class="rech-results-header" hidden>
           <span class="rech-total-label"></span>
+          <div class="rech-sort-group">
+            <span class="rech-sort-label">Trier</span>
+            <button class="rech-sort-btn rech-sort-btn--active" data-sort="default" title="Ordre de la requête">Défaut</button>
+            <button class="rech-sort-btn" data-sort="doc" title="Trier par document">Doc</button>
+            <button class="rech-sort-btn" data-sort="pivot" title="Trier par lemme du pivot">Lemme pivot</button>
+            <button class="rech-sort-btn" data-sort="left" title="Trier par contexte gauche">Contexte G</button>
+            <button class="rech-sort-btn" data-sort="right" title="Trier par contexte droit">Contexte D</button>
+          </div>
           <button class="rech-btn-export" title="Exporter en CSV">↓ CSV</button>
         </div>
         <div class="rech-hits-list"></div>
@@ -314,6 +345,10 @@ function _renderShell(root: HTMLElement): void {
       </div>
       <div class="rech-stats-panel">
         <div class="rech-stats-header">Distribution</div>
+        <div class="rech-dispersion-wrap" hidden>
+          <div class="rech-dispersion-title">Dispersion par document</div>
+          <canvas class="rech-dispersion-chart"></canvas>
+        </div>
         <div class="rech-stats-group-row">
           <span class="rech-stats-group-label">Grouper par</span>
           <select class="rech-stats-group-by">
@@ -326,6 +361,32 @@ function _renderShell(root: HTMLElement): void {
         <div class="rech-stats-reset" hidden>
           <button class="rech-btn-reset-filter">Tout afficher</button>
         </div>
+      </div>
+      <div class="rech-coll-panel">
+        <div class="rech-coll-header">
+          <span>Collocations</span>
+          <div class="rech-coll-sort-group">
+            <button class="rech-coll-sort-btn rech-coll-sort-btn--active" data-sort="pmi" title="Trier par PMI">PMI</button>
+            <button class="rech-coll-sort-btn" data-sort="ll" title="Trier par log-vraisemblance (G²)">G²</button>
+            <button class="rech-coll-sort-btn" data-sort="freq" title="Trier par fréquence">Fréq.</button>
+          </div>
+        </div>
+        <div class="rech-coll-controls">
+          <label class="rech-coll-window-label">Fenêtre ±</label>
+          <select class="rech-coll-window">
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="5" selected>5</option>
+            <option value="8">8</option>
+          </select>
+          <label class="rech-coll-by-label">Par</label>
+          <select class="rech-coll-by">
+            <option value="lemma" selected>Lemme</option>
+            <option value="word">Forme</option>
+            <option value="upos">UPOS</option>
+          </select>
+        </div>
+        <div class="rech-coll-body"></div>
       </div>
     </div>
   `;
@@ -582,6 +643,43 @@ function _wireEvents(root: HTMLElement): void {
 
   // Export CSV
   exportBtn.addEventListener("click", () => _doExportCsv(root));
+
+  // Sort buttons
+  root.querySelectorAll<HTMLButtonElement>(".rech-sort-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      _sortOrder = (btn.dataset.sort ?? "default") as typeof _sortOrder;
+      root.querySelectorAll<HTMLButtonElement>(".rech-sort-btn").forEach(b => {
+        b.classList.toggle("rech-sort-btn--active", b === btn);
+      });
+      _renderHits(root, _hits);
+    });
+  });
+
+  // Collocation sort buttons
+  root.querySelectorAll<HTMLButtonElement>(".rech-coll-sort-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      if (!_lastQuery) return;
+      _collSortBy = (btn.dataset.sort ?? "pmi") as typeof _collSortBy;
+      root.querySelectorAll<HTMLButtonElement>(".rech-coll-sort-btn").forEach(b => {
+        b.classList.toggle("rech-coll-sort-btn--active", b === btn);
+      });
+      _collGeneration++;
+      _collLoading = false;
+      void _fetchCollocates(root);
+    });
+  });
+
+  // Collocation window/by change
+  const collWindowSel = root.querySelector<HTMLSelectElement>(".rech-coll-window");
+  const collBySel = root.querySelector<HTMLSelectElement>(".rech-coll-by");
+  const _refetchColl = () => {
+    if (!_lastQuery) return;
+    _collGeneration++;
+    _collLoading = false;
+    void _fetchCollocates(root);
+  };
+  collWindowSel?.addEventListener("change", _refetchColl);
+  collBySel?.addEventListener("change", _refetchColl);
 }
 
 // ─── Populate document filter ─────────────────────────────────────────────────
@@ -692,9 +790,13 @@ async function _doSearch(root: HTMLElement, loadMore: boolean): Promise<void> {
     _statsTotalPivot = 0;
     _statsLoading = false;
     _statsGeneration++;
+    _collRows = [];
+    _collLoading = false;
+    _collGeneration++;
     root.dataset.statsFilter = "";
     _renderHits(root, []);
     _renderStats(root);
+    _renderCollocates(root);
   } else if (!_lastQuery) {
     return;
   }
@@ -738,6 +840,11 @@ async function _doSearch(root: HTMLElement, loadMore: boolean): Promise<void> {
     if (!loadMore && _hits.length > 0) {
       const groupBy = root.querySelector<HTMLSelectElement>(".rech-stats-group-by")?.value ?? "lemma";
       void _fetchStats(root, groupBy);
+      void _renderDispersionChart(root, _hits);
+      void _fetchCollocates(root);
+    } else if (!loadMore) {
+      const wrap = root.querySelector<HTMLElement>(".rech-dispersion-wrap");
+      if (wrap) wrap.hidden = true;
     }
   } catch (err) {
     const msg = err instanceof SidecarError ? err.message : String(err);
@@ -749,6 +856,34 @@ async function _doSearch(root: HTMLElement, loadMore: boolean): Promise<void> {
 }
 
 // ─── Render hits ──────────────────────────────────────────────────────────────
+
+function _sortedHits(hits: _Hit[]): _Hit[] {
+  if (_sortOrder === "default") return hits;
+  return [...hits].sort((a, b) => {
+    if (_sortOrder === "doc") {
+      return (a.title ?? "").localeCompare(b.title ?? "", "fr") || a.unit_id - b.unit_id;
+    }
+    if (_sortOrder === "pivot") {
+      const la = _pivotTokens(a).map(t => t.lemma ?? t.word).join(" ");
+      const lb = _pivotTokens(b).map(t => t.lemma ?? t.word).join(" ");
+      return la.localeCompare(lb, "fr");
+    }
+    if (_sortOrder === "left") {
+      const la = (a.context_tokens ?? []).filter(t => t.position < a.start_position).map(t => t.word).join(" ");
+      const lb = (b.context_tokens ?? []).filter(t => t.position < b.start_position).map(t => t.word).join(" ");
+      // Reverse left context so last word before pivot is primary sort key
+      const ra = la.split(" ").reverse().join(" ");
+      const rb = lb.split(" ").reverse().join(" ");
+      return ra.localeCompare(rb, "fr");
+    }
+    if (_sortOrder === "right") {
+      const ra = (a.context_tokens ?? []).filter(t => t.position > a.end_position).map(t => t.word).join(" ");
+      const rb = (b.context_tokens ?? []).filter(t => t.position > b.end_position).map(t => t.word).join(" ");
+      return ra.localeCompare(rb, "fr");
+    }
+    return 0;
+  });
+}
 
 function _renderHits(root: HTMLElement, hits: _Hit[]): void {
   const list = root.querySelector<HTMLElement>(".rech-hits-list")!;
@@ -769,9 +904,82 @@ function _renderHits(root: HTMLElement, hits: _Hit[]): void {
       })
     : hits;
 
-  for (const hit of filtered) {
+  for (const hit of _sortedHits(filtered)) {
     list.appendChild(_buildHitCard(hit));
   }
+}
+
+async function _renderDispersionChart(root: HTMLElement, hits: _Hit[]): Promise<void> {
+  const wrap = root.querySelector<HTMLElement>(".rech-dispersion-wrap");
+  const canvas = root.querySelector<HTMLCanvasElement>(".rech-dispersion-chart");
+  if (!wrap || !canvas) return;
+
+  if (hits.length === 0) { wrap.hidden = true; return; }
+
+  // Count hits per document title
+  const countByDoc = new Map<string, number>();
+  for (const h of hits) {
+    const key = h.title || `doc#${h.doc_id}`;
+    countByDoc.set(key, (countByDoc.get(key) ?? 0) + 1);
+  }
+  const labels = [...countByDoc.keys()];
+  const data   = labels.map(l => countByDoc.get(l)!);
+
+  // Lazy-load Chart.js
+  let Chart: typeof import("chart.js").Chart;
+  try {
+    const mod = await import("chart.js/auto");
+    Chart = mod.default;
+  } catch {
+    wrap.hidden = true;
+    return;
+  }
+
+  wrap.hidden = false;
+
+  // Destroy previous chart if any
+  const existing = (canvas as HTMLCanvasElement & { _chartInstance?: import("chart.js").Chart })._chartInstance;
+  if (existing) existing.destroy();
+
+  const maxLabelLen = 18;
+  const shortLabels = labels.map(l => l.length > maxLabelLen ? l.slice(0, maxLabelLen) + "…" : l);
+
+  const chartH = Math.max(120, labels.length * 28);
+  canvas.style.height = chartH + "px";
+  canvas.height = chartH;
+
+  const instance = new Chart(canvas, {
+    type: "bar",
+    data: {
+      labels: shortLabels,
+      datasets: [{
+        label: "Occurrences",
+        data,
+        backgroundColor: "rgba(46,184,154,0.6)",
+        borderColor: "rgba(46,184,154,1)",
+        borderWidth: 1,
+        borderRadius: 3,
+      }],
+    },
+    options: {
+      indexAxis: "y",
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: (items) => labels[items[0].dataIndex] ?? "",
+          },
+        },
+      },
+      scales: {
+        x: { beginAtZero: true, ticks: { precision: 0, font: { size: 10 } } },
+        y: { ticks: { font: { size: 10 } } },
+      },
+    },
+  });
+  (canvas as HTMLCanvasElement & { _chartInstance?: import("chart.js").Chart })._chartInstance = instance;
 }
 
 function _pivotTokens(hit: _Hit): _Token[] {
@@ -791,7 +999,7 @@ function _buildHitCard(hit: _Hit): HTMLElement {
   header.innerHTML =
     `<span class="rech-hit-doc">${_esc(hit.title)}</span>` +
     `<span class="rech-hit-lang">${_esc(hit.language || "")}</span>` +
-    `<span class="rech-hit-loc">§ phrase ${hit.sent_id}</span>`;
+    `<span class="rech-hit-loc" title="Segment ${hit.unit_id} \u2014 phrase\u202f${hit.sent_id} dans ce segment">seg.\u202f${hit.unit_id}\u202f\u00b7\u202fphrase\u202f${hit.sent_id}</span>`;
   card.appendChild(header);
 
   // Interlinear KWIC row
@@ -807,8 +1015,9 @@ function _buildHitCard(hit: _Hit): HTMLElement {
   const pivot  = ctx.filter(t => t.position >= pivotStart && t.position <= pivotEnd);
   const right  = ctx.filter(t => t.position > pivotEnd);
 
+  const hitCtx = { doc_id: hit.doc_id, unit_id: hit.unit_id };
   if (left.length)  kwicRow.appendChild(_buildTokenGroup(left, "left"));
-  if (pivot.length) kwicRow.appendChild(_buildTokenGroup(pivot, "pivot"));
+  if (pivot.length) kwicRow.appendChild(_buildTokenGroup(pivot, "pivot", hitCtx));
   if (right.length) kwicRow.appendChild(_buildTokenGroup(right, "right"));
 
   card.appendChild(kwicRow);
@@ -844,10 +1053,58 @@ function _buildHitCard(hit: _Hit): HTMLElement {
     card.appendChild(alBlock);
   }
 
+  // Actions bar
+  const actionsBar = document.createElement("div");
+  actionsBar.className = "rech-hit-actions";
+  actionsBar.appendChild(_buildCitationBtn(hit));
+  card.appendChild(actionsBar);
+
   return card;
 }
 
-function _buildTokenGroup(tokens: _Token[], role: "left" | "pivot" | "right"): HTMLElement {
+function _buildCitationText(hit: _Hit): string {
+  const ctx = hit.context_tokens ?? [];
+  const pivotTokens = ctx.filter(t => t.position >= hit.start_position && t.position <= hit.end_position);
+  const pivotText = pivotTokens.length > 0
+    ? pivotTokens.map(t => t.word).join(" ")
+    : hit.text_norm;
+  const lang = (hit.language ?? "?").toUpperCase();
+  const lines: string[] = [
+    `[${lang}] ${hit.title || "\u2014"} \u00b7 seg.\u202f${hit.unit_id}\u202f\u00b7\u202fphrase\u202f${hit.sent_id}`,
+    `\u00ab${pivotText}\u00bb`,
+  ];
+  for (const partner of hit.aligned ?? []) {
+    const pLang = (partner.language ?? "?").toUpperCase();
+    lines.push("", `[${pLang}] ${partner.title || "\u2014"}`, `\u00ab${partner.text_norm}\u00bb`);
+  }
+  return lines.join("\n");
+}
+
+function _buildCitationBtn(hit: _Hit): HTMLButtonElement {
+  const btn = document.createElement("button");
+  btn.className = "rech-citation-btn";
+  btn.title = "Copier la citation (pivot + traductions)";
+  btn.type = "button";
+  btn.textContent = "\uD83D\uDCC4 Citation";
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    void navigator.clipboard?.writeText(_buildCitationText(hit)).then(() => {
+      btn.textContent = "\u2713 Copi\u00e9";
+      btn.classList.add("rech-citation-btn--copied");
+      setTimeout(() => {
+        btn.textContent = "\uD83D\uDCC4 Citation";
+        btn.classList.remove("rech-citation-btn--copied");
+      }, 1500);
+    });
+  });
+  return btn;
+}
+
+function _buildTokenGroup(
+  tokens: _Token[],
+  role: "left" | "pivot" | "right",
+  hitCtx?: { doc_id: number; unit_id: number },
+): HTMLElement {
   const group = document.createElement("div");
   group.className = `rech-kwic-group rech-kwic-${role}`;
 
@@ -878,13 +1135,22 @@ function _buildTokenGroup(tokens: _Token[], role: "left" | "pivot" | "right"): H
     cell.appendChild(uposEl);
     cell.appendChild(lemmaEl);
 
-    // Pivot tokens: click → popover with CQL suggestions
+    // Pivot tokens: click → popover with CQL suggestions; right-click → context menu
     if (role === "pivot") {
-      cell.title = "Cliquer pour rechercher";
+      cell.title = "Clic : rechercher · Clic droit : options";
       cell.addEventListener("click", (e) => {
         e.stopPropagation();
+        _closeContextMenu();
         _showTokenPopover(cell, tok);
       });
+      if (hitCtx) {
+        cell.addEventListener("contextmenu", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          _closePopover();
+          _showTokenContextMenu(cell, tok, hitCtx);
+        });
+      }
     }
 
     group.appendChild(cell);
@@ -967,6 +1233,106 @@ function _closePopover(): void {
     document.removeEventListener("click", _popoverCloseHandler);
     _popoverCloseHandler = null;
   }
+}
+
+// ─── Token context menu (right-click) ─────────────────────────────────────────
+
+let _ctxMenuEl: HTMLElement | null = null;
+let _ctxMenuCloseHandler: ((e: MouseEvent) => void) | null = null;
+let _ctxMenuKeyHandler: ((e: KeyboardEvent) => void) | null = null;
+
+function _closeContextMenu(): void {
+  if (_ctxMenuEl) { _ctxMenuEl.remove(); _ctxMenuEl = null; }
+  if (_ctxMenuCloseHandler) { document.removeEventListener("mousedown", _ctxMenuCloseHandler); _ctxMenuCloseHandler = null; }
+  if (_ctxMenuKeyHandler) { document.removeEventListener("keydown", _ctxMenuKeyHandler); _ctxMenuKeyHandler = null; }
+}
+
+function _showTokenContextMenu(
+  anchor: HTMLElement,
+  tok: _Token,
+  hit: { doc_id: number; unit_id: number },
+): void {
+  _closeContextMenu();
+
+  let root: HTMLElement | null = anchor;
+  while (root && !root.classList.contains("rech-root")) root = root.parentElement;
+  if (!root) return;
+
+  const menu = document.createElement("div");
+  menu.className = "rech-ctx-menu";
+  menu.setAttribute("role", "menu");
+  _ctxMenuEl = menu;
+
+  // — Modifier dans Prep
+  const editBtn = document.createElement("button");
+  editBtn.className = "rech-ctx-item";
+  editBtn.textContent = "✏ Modifier ce token dans Prep";
+  editBtn.title = `Ouvre Prep sur le document #${hit.doc_id}, segment ${hit.unit_id}`;
+  editBtn.addEventListener("click", () => {
+    _closeContextMenu();
+    try {
+      sessionStorage.setItem("agrafes:prep-token-nav", JSON.stringify({
+        doc_id: hit.doc_id,
+        unit_id: hit.unit_id,
+        token_id: tok.token_id,
+      }));
+    } catch { /* ignore */ }
+    window.dispatchEvent(new CustomEvent("agrafes:open-prep-token", {
+      detail: { doc_id: hit.doc_id, unit_id: hit.unit_id, token_id: tok.token_id },
+    }));
+  });
+  menu.appendChild(editBtn);
+
+  // Séparateur
+  const sep = document.createElement("div");
+  sep.className = "rech-ctx-sep";
+  menu.appendChild(sep);
+
+  // — Chercher ce lemme
+  if (tok.lemma) {
+    const lemmaBtn = document.createElement("button");
+    lemmaBtn.className = "rech-ctx-item";
+    lemmaBtn.textContent = `🔍 Chercher lemme "${tok.lemma}"`;
+    lemmaBtn.addEventListener("click", () => {
+      _closeContextMenu();
+      _prefillAndSearch(root!, `[lemma="${tok.lemma}"]`);
+    });
+    menu.appendChild(lemmaBtn);
+  }
+
+  // — Chercher ce POS
+  if (tok.upos) {
+    const posBtn = document.createElement("button");
+    posBtn.className = "rech-ctx-item";
+    posBtn.textContent = `🔍 Chercher POS "${tok.upos}"`;
+    posBtn.addEventListener("click", () => {
+      _closeContextMenu();
+      _prefillAndSearch(root!, `[upos="${tok.upos}"]`);
+    });
+    menu.appendChild(posBtn);
+  }
+
+  // Position
+  document.body.appendChild(menu);
+  const rect = anchor.getBoundingClientRect();
+  menu.style.left = `${rect.left + window.scrollX}px`;
+  menu.style.top  = `${rect.bottom + window.scrollY + 2}px`;
+  const mr = menu.getBoundingClientRect();
+  if (mr.right > window.innerWidth - 8) {
+    menu.style.left = `${window.innerWidth - mr.width - 8 + window.scrollX}px`;
+  }
+
+  // Close handlers
+  _ctxMenuCloseHandler = (e: MouseEvent) => {
+    if (!menu.contains(e.target as Node)) _closeContextMenu();
+  };
+  _ctxMenuKeyHandler = (e: KeyboardEvent) => {
+    if (e.key === "Escape") _closeContextMenu();
+  };
+  setTimeout(() => {
+    document.addEventListener("mousedown", _ctxMenuCloseHandler!);
+    document.addEventListener("keydown", _ctxMenuKeyHandler!);
+  }, 0);
 }
 
 // ─── Stats panel ──────────────────────────────────────────────────────────────
@@ -1080,6 +1446,129 @@ function _renderStats(root: HTMLElement): void {
     note.style.cssText = "font-size:0.68rem;color:#aaa;margin-top:6px;padding-top:4px;border-top:1px solid #eee";
     note.textContent = `${_statsTotalPivot} token${_statsTotalPivot > 1 ? "s" : ""} pivot au total`;
     bars.appendChild(note);
+  }
+}
+
+// ─── Collocations ─────────────────────────────────────────────────────────────
+
+async function _fetchCollocates(root: HTMLElement): Promise<void> {
+  if (!_conn || !_lastQuery || _collLoading) return;
+  _collLoading = true;
+  const gen = _collGeneration;
+  _renderCollLoading(root);
+
+  const windowVal = parseInt(
+    root.querySelector<HTMLSelectElement>(".rech-coll-window")?.value ?? "5",
+    10,
+  );
+  const byVal = root.querySelector<HTMLSelectElement>(".rech-coll-by")?.value ?? "lemma";
+
+  try {
+    const payload: Record<string, unknown> = {
+      cql: _lastQuery.cql,
+      window: windowVal,
+      by: byVal,
+      limit: 30,
+      min_freq: 1,
+      sort_by: _collSortBy,
+    };
+    if (_lastQuery.language) payload.language = _lastQuery.language;
+    if (_lastQuery.doc_ids)  payload.doc_ids  = _lastQuery.doc_ids;
+
+    const res = await _conn.post("/token_collocates", payload) as {
+      rows?: _CollocateRow[];
+    };
+
+    if (gen !== _collGeneration) return;
+    _collRows = res.rows ?? [];
+    _renderCollocates(root);
+  } catch {
+    if (gen !== _collGeneration) return;
+    _collRows = [];
+    _renderCollocates(root);
+  } finally {
+    if (gen === _collGeneration) _collLoading = false;
+  }
+}
+
+function _renderCollLoading(root: HTMLElement): void {
+  const body = root.querySelector<HTMLElement>(".rech-coll-body");
+  if (body) body.innerHTML = `<div class="rech-coll-hint">Calcul…</div>`;
+}
+
+function _renderCollocates(root: HTMLElement): void {
+  const body = root.querySelector<HTMLElement>(".rech-coll-body");
+  if (!body) return;
+
+  if (_collRows.length === 0) {
+    body.innerHTML = `<div class="rech-coll-hint">${
+      _lastQuery ? "Aucune collocation trouvée." : "Lancez une recherche pour voir les collocations."
+    }</div>`;
+    return;
+  }
+
+  body.innerHTML = "";
+
+  // Table header
+  const thead = document.createElement("div");
+  thead.className = "rech-coll-thead";
+  thead.innerHTML = `
+    <span class="rech-coll-th rech-coll-th-val">Collocat</span>
+    <span class="rech-coll-th rech-coll-th-num" title="Fréquence observée dans la fenêtre">Fréq.</span>
+    <span class="rech-coll-th rech-coll-th-num" title="Pointwise Mutual Information">PMI</span>
+    <span class="rech-coll-th rech-coll-th-num" title="Log-vraisemblance G²">G²</span>
+    <span class="rech-coll-th rech-coll-th-lr" title="Gauche / Droite">G/D</span>
+  `;
+  body.appendChild(thead);
+
+  const maxFreq = _collRows[0]?.freq ?? 1;
+
+  for (const row of _collRows) {
+    const el = document.createElement("div");
+    el.className = "rech-coll-row";
+
+    const pct = Math.round((row.freq / maxFreq) * 100);
+    const leftPct = row.freq > 0 ? Math.round((row.left_freq / row.freq) * 100) : 50;
+
+    // value cell — textContent to avoid XSS (corpus data may contain < > ")
+    const valEl = document.createElement("span");
+    valEl.className = "rech-coll-val";
+    valEl.title = `${row.corpus_freq} occ. dans le corpus`;
+    valEl.textContent = row.value;
+
+    // freq cell with background bar
+    const freqEl = document.createElement("span");
+    freqEl.className = "rech-coll-num";
+    const bar = document.createElement("span");
+    bar.className = "rech-coll-bar";
+    bar.style.width = `${pct}%`;
+    freqEl.appendChild(bar);
+    freqEl.appendChild(document.createTextNode(String(row.freq)));
+
+    // PMI
+    const pmiEl = document.createElement("span");
+    pmiEl.className = "rech-coll-num";
+    pmiEl.textContent = `${row.pmi > 0 ? "+" : ""}${row.pmi.toFixed(1)}`;
+
+    // G²
+    const llEl = document.createElement("span");
+    llEl.className = "rech-coll-num";
+    llEl.textContent = row.ll.toFixed(1);
+
+    // G/D bar
+    const lrEl = document.createElement("span");
+    lrEl.className = "rech-coll-lr";
+    lrEl.title = `Gauche\u00a0: ${row.left_freq} · Droite\u00a0: ${row.right_freq}`;
+    const lrBar = document.createElement("span");
+    lrBar.className = "rech-coll-lr-bar";
+    const lrLeft = document.createElement("span");
+    lrLeft.className = "rech-coll-lr-left";
+    lrLeft.style.width = `${leftPct}%`;
+    lrBar.appendChild(lrLeft);
+    lrEl.appendChild(lrBar);
+
+    el.append(valEl, freqEl, pmiEl, llEl, lrEl);
+    body.appendChild(el);
   }
 }
 
@@ -1596,4 +2085,126 @@ const MODULE_CSS = `
 .rech-aligned-status--accepted  { background: #d1fae5; color: #145a38; }
 .rech-aligned-status--rejected  { background: #fee2e2; color: #7f1d1d; }
 .rech-aligned-status--none      { background: #f0f0f0; color: #888; }
+
+/* ── Sort buttons ── */
+.rech-sort-group {
+  display: flex; align-items: center; gap: 4px;
+  flex-wrap: wrap;
+}
+.rech-sort-label {
+  font-size: 0.72rem; color: #6c757d; margin-right: 2px;
+}
+.rech-sort-btn {
+  font-size: 0.7rem; padding: 2px 7px;
+  border: 1px solid #c8d0dc; border-radius: 4px;
+  background: #f5f7fa; color: #4a5568;
+  cursor: pointer; white-space: nowrap;
+  transition: background 0.1s;
+}
+.rech-sort-btn:hover { background: #e2e8f0; }
+.rech-sort-btn--active {
+  background: #1c2b3a; color: #fff; border-color: #1c2b3a;
+}
+
+/* ── Dispersion chart ── */
+.rech-dispersion-wrap {
+  padding: 8px 10px 0;
+  border-bottom: 1px solid #e8ecf0;
+  margin-bottom: 8px;
+}
+.rech-dispersion-title {
+  font-size: 0.72rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.04em;
+  color: #6c757d; margin-bottom: 6px;
+}
+.rech-dispersion-chart {
+  width: 100% !important;
+  display: block;
+}
+
+/* ── Hit actions bar ── */
+.rech-hit-actions {
+  display: flex; gap: 6px; align-items: center;
+  margin-top: 8px; padding-top: 6px;
+  border-top: 1px solid #e8ecf0;
+}
+.rech-citation-btn {
+  font-size: 0.72rem;
+  padding: 2px 8px;
+  border: 1px solid #c8d0dc;
+  border-radius: 4px;
+  background: #f5f7fa;
+  color: #4a5568;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  white-space: nowrap;
+}
+.rech-citation-btn:hover { background: #e2e8f0; color: #1a2733; }
+.rech-citation-btn--copied { background: #d1fae5; color: #145a38; border-color: #86efac; }
+
+/* ── Collocations panel ── */
+.rech-coll-panel {
+  padding: 10px 12px;
+  border-top: 1px solid #e4e8ed;
+  flex-shrink: 0;
+}
+.rech-coll-header {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 0.72rem; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.04em; color: #6c757d; margin-bottom: 6px;
+}
+.rech-coll-sort-group { display: flex; gap: 3px; }
+.rech-coll-sort-btn {
+  font-size: 0.68rem; padding: 1px 6px; border-radius: 3px;
+  border: 1px solid #dde1e7; background: #f5f7fa; color: #555;
+  cursor: pointer;
+}
+.rech-coll-sort-btn--active { background: #7b3fa0; color: #fff; border-color: #7b3fa0; }
+.rech-coll-controls {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 0.72rem; color: #6c757d; margin-bottom: 6px;
+}
+.rech-coll-window, .rech-coll-by {
+  font-size: 0.72rem; padding: 1px 4px;
+  border: 1px solid #dde1e7; border-radius: 3px;
+}
+.rech-coll-hint { font-size: 0.75rem; color: #aaa; padding: 4px 0; }
+.rech-coll-thead {
+  display: grid;
+  grid-template-columns: 1fr 52px 44px 52px 48px;
+  gap: 2px; font-size: 0.66rem; font-weight: 600;
+  color: #999; text-transform: uppercase; letter-spacing: 0.03em;
+  padding: 0 4px 4px; border-bottom: 1px solid #eee; margin-bottom: 2px;
+}
+.rech-coll-th { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rech-coll-th-num, .rech-coll-th-lr { text-align: right; }
+.rech-coll-row {
+  display: grid;
+  grid-template-columns: 1fr 52px 44px 52px 48px;
+  gap: 2px; align-items: center;
+  padding: 3px 4px; border-radius: 3px;
+  font-size: 0.75rem;
+}
+.rech-coll-row:nth-child(even) { background: #f8f9fb; }
+.rech-coll-val { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: default; }
+.rech-coll-num {
+  text-align: right; font-variant-numeric: tabular-nums;
+  position: relative; white-space: nowrap;
+}
+.rech-coll-bar {
+  display: inline-block; position: absolute;
+  left: 0; top: 2px; height: calc(100% - 4px);
+  background: #7b3fa015; border-radius: 2px;
+  z-index: 0;
+}
+.rech-coll-lr { display: flex; align-items: center; justify-content: flex-end; }
+.rech-coll-lr-bar {
+  width: 36px; height: 6px;
+  background: #e8ecf0; border-radius: 3px;
+  overflow: hidden; flex-shrink: 0;
+}
+.rech-coll-lr-left {
+  display: block; height: 100%;
+  background: #7b3fa0; border-radius: 3px 0 0 3px;
+}
 `;

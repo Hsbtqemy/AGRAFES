@@ -68,6 +68,9 @@ CONTRACT_VERSION = "1.6.21"  # semantic versioning for the sidecar API contract
 # 1.6.23: POST /token_query gains optional include_aligned (bool, default false).
 #         When true, each hit gains an `aligned` list with partner units from alignment_links.
 #         Query hits gain source_db_* provenance when federated; response gains federated metadata.
+# 1.6.24: POST /token_collocates — collocation analysis for a CQL query.
+#         Returns top-K collocates with PMI and log-likelihood (G²) scores, left/right freq split,
+#         and corpus baseline frequency. No auth token required (read-only).
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
@@ -230,6 +233,37 @@ def openapi_spec() -> dict[str, Any]:
                         },
                         "500": {
                             "description": "Internal error",
+                            "content": {
+                                "application/json": {
+                                    "schema": {"$ref": "#/components/schemas/ErrorResponse"},
+                                }
+                            },
+                        },
+                    },
+                }
+            },
+            "/token_collocates": {
+                "post": {
+                    "summary": "Collocation analysis for a CQL query (PMI + log-likelihood)",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/TokenCollocatesRequest"},
+                            }
+                        },
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Ranked collocates with association scores",
+                            "content": {
+                                "application/json": {
+                                    "schema": {"$ref": "#/components/schemas/TokenCollocatesResponse"},
+                                }
+                            },
+                        },
+                        "400": {
+                            "description": "Bad request (invalid CQL or parameters)",
                             "content": {
                                 "application/json": {
                                     "schema": {"$ref": "#/components/schemas/ErrorResponse"},
@@ -1658,6 +1692,69 @@ def openapi_spec() -> dict[str, Any]:
                                 "rows": {
                                     "type": "array",
                                     "items": {"$ref": "#/components/schemas/TokenStatsRow"},
+                                },
+                            },
+                        },
+                    ]
+                },
+                "TokenCollocatesRequest": {
+                    "type": "object",
+                    "required": ["cql"],
+                    "properties": {
+                        "cql": {"type": "string", "description": "CQL query string"},
+                        "window": {"type": "integer", "default": 5, "minimum": 1, "maximum": 20},
+                        "by": {
+                            "type": "string",
+                            "enum": ["lemma", "word", "upos", "xpos"],
+                            "default": "lemma",
+                        },
+                        "language": {"type": "string", "nullable": True},
+                        "doc_ids": {
+                            "type": "array",
+                            "items": {"type": "integer"},
+                            "nullable": True,
+                        },
+                        "limit": {"type": "integer", "default": 50, "minimum": 1, "maximum": 200},
+                        "min_freq": {"type": "integer", "default": 2, "minimum": 1},
+                        "sort_by": {
+                            "type": "string",
+                            "enum": ["pmi", "ll", "freq"],
+                            "default": "pmi",
+                        },
+                    },
+                    "additionalProperties": False,
+                },
+                "TokenCollocateRow": {
+                    "type": "object",
+                    "required": ["value", "freq", "left_freq", "right_freq", "corpus_freq", "pmi", "ll"],
+                    "properties": {
+                        "value": {"type": "string"},
+                        "freq": {"type": "integer"},
+                        "left_freq": {"type": "integer"},
+                        "right_freq": {"type": "integer"},
+                        "corpus_freq": {"type": "integer"},
+                        "pmi": {"type": "number"},
+                        "ll": {"type": "number"},
+                    },
+                },
+                "TokenCollocatesResponse": {
+                    "allOf": [
+                        {"$ref": "#/components/schemas/BaseResponse"},
+                        {
+                            "type": "object",
+                            "required": [
+                                "total_hits", "total_window_tokens",
+                                "corpus_size", "window", "by", "rows",
+                            ],
+                            "properties": {
+                                "total_hits": {"type": "integer"},
+                                "total_window_tokens": {"type": "integer"},
+                                "corpus_size": {"type": "integer"},
+                                "window": {"type": "integer"},
+                                "by": {"type": "string"},
+                                "rows": {
+                                    "type": "array",
+                                    "items": {"$ref": "#/components/schemas/TokenCollocateRow"},
                                 },
                             },
                         },

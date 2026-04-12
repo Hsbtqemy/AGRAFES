@@ -115,6 +115,20 @@ export class App {
 
     void this._refreshTopbarDbLabel();
 
+    // RG → Prep token navigation: if shell set a pending nav target, consume it
+    try {
+      const raw = sessionStorage.getItem("agrafes:prep-token-nav");
+      if (raw) {
+        sessionStorage.removeItem("agrafes:prep-token-nav");
+        const nav = JSON.parse(raw) as { doc_id: number; unit_id: number; token_id: number };
+        if (nav.doc_id && nav.unit_id) {
+          this._switchTab("actions");
+          this._actions.setSubView("annoter");
+          setTimeout(() => this._actions.annotFocusDoc(nav.doc_id, nav.token_id), 200);
+        }
+      }
+    } catch { /* ignore */ }
+
     // Store handler reference so dispose() can remove it (prevents listener leak
     // when App is re-mounted during shell navigation).
     this._beforeUnloadHandler = (event: BeforeUnloadEvent) => {
