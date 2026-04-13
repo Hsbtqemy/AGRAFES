@@ -1814,16 +1814,19 @@ function _updateLangPills(root: HTMLElement, hits: _Hit[]): void {
 }
 
 function _applyLangFilter(root: HTMLElement): void {
+  // Use style.display instead of .hidden: CSS class rules (.rech-aligned-row { display:flex })
+  // override the UA [hidden] selector (same specificity, author sheet wins), so the hidden
+  // attribute would have no visual effect.
   root.querySelectorAll<HTMLElement>(".rech-aligned-row[data-lang]").forEach(row => {
     const lang = (row.dataset.lang ?? "").toLowerCase();
     const visible = !_alignedLangFilter || _alignedLangFilter.has(lang);
-    row.hidden = !visible;
+    row.style.display = visible ? "" : "none";
   });
-  // Hide the whole aligned block if all rows are hidden
+  // Hide the whole aligned block if all its rows are hidden
   root.querySelectorAll<HTMLElement>(".rech-aligned-block").forEach(block => {
     const hasVisible = Array.from(block.querySelectorAll<HTMLElement>(".rech-aligned-row"))
-      .some(r => !r.hidden);
-    block.hidden = !hasVisible;
+      .some(r => r.style.display !== "none");
+    block.style.display = hasVisible ? "" : "none";
   });
 }
 

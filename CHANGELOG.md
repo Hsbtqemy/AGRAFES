@@ -5,6 +5,16 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.1.23] - 2026-04-13
+
+### Fixed
+
+- **tauri-shell** : recherche grammaticale — filtre de langue sur les lignes alignées : utilisation de `style.display` à la place de l’attribut `hidden` (les règles CSS `.rech-aligned-row` masquaient l’effet de `[hidden]`).
+
+### Changed
+
+- **Versions** : paquet Python **0.7.5** ; applications Tauri **0.1.23** ; Shell **v1.9.6**.
+
 ## [0.1.22] - 2026-04-13
 
 ### Changed
