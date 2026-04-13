@@ -233,7 +233,6 @@ def build_sidecar(
         "-m",
         "PyInstaller",
         "--noconfirm",
-        "--noarchive",  # skip PYZ compression — avoids zlib wbits mismatch (PyInstaller 6.19+/Python 3.13)
         f"--{package_format}",
         "--optimize",
         PYINSTALLER_OPTIMIZE_LEVEL,
@@ -251,6 +250,8 @@ def build_sidecar(
     ]
     if not is_windows:
         pyinstaller_cmd.insert(5, "--strip")
+    # Skip PYZ compression — avoids zlib wbits mismatch (PyInstaller 6.19+/Python 3.13).
+    pyinstaller_cmd.extend(["-d", "noarchive"])
     for module_name in PYINSTALLER_EXCLUDE_MODULES:
         pyinstaller_cmd.extend(["--exclude-module", module_name])
 

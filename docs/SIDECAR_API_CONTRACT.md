@@ -228,6 +228,9 @@ When `multicorpus serve` starts and a portfile already exists:
 - `GET /openapi.json`
 - `GET /documents`
 - `GET /documents/preview?doc_id=N&limit=M`
+- `GET /units?doc_id=N[&unit_type=line]`
+  - returns all units for a document: `unit_id`, `n`, `text_norm`, `unit_type`, `unit_role` (nullable).
+  - `doc_id` required, `unit_type` optional filter. Read-only; no auth token required.
 - `GET /tokens?doc_id=N&unit_id=M&limit=L&offset=O`
   - returns token rows for manual annotation edits.
   - `doc_id` required, `unit_id` optional (restrict to one unit).

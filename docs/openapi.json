@@ -3527,7 +3527,7 @@
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
     "version": "1.6.23",
-    "x-contract-version": "1.6.25"
+    "x-contract-version": "1.6.26"
   },
   "openapi": "3.0.3",
   "paths": {
@@ -5965,6 +5965,89 @@
           }
         },
         "summary": "Update a token row (manual annotation edit)"
+      }
+    },
+    "/units": {
+      "get": {
+        "parameters": [
+          {
+            "description": "Document identifier",
+            "in": "query",
+            "name": "doc_id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Optional unit type filter (e.g. 'line')",
+            "in": "query",
+            "name": "unit_type",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "count": {
+                      "type": "integer"
+                    },
+                    "doc_id": {
+                      "type": "integer"
+                    },
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "units": {
+                      "items": {
+                        "properties": {
+                          "n": {
+                            "type": "integer"
+                          },
+                          "text_norm": {
+                            "nullable": true,
+                            "type": "string"
+                          },
+                          "unit_id": {
+                            "type": "integer"
+                          },
+                          "unit_role": {
+                            "nullable": true,
+                            "type": "string"
+                          },
+                          "unit_type": {
+                            "type": "string"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Unit list"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request"
+          }
+        },
+        "summary": "List units for a document with their role"
       }
     },
     "/units/bulk_set_role": {

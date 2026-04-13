@@ -5,6 +5,19 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.1.26] - 2026-04-14
+
+### Added
+
+- **tauri-shell** : module **Conventions** (rôles d’unités) depuis l’Explorer ; script `prepare_sidecar.sh` enrichi.
+
+### Changed
+
+- **Sidecar** : endpoints / contrat API ; **OpenAPI** et doc contrat.
+- **Concordancier** : `sidecarClient.ts` (appels conventions).
+- **build_sidecar** : ajustements manifest / PyInstaller.
+- **Versions** : paquet Python **0.7.8** ; applications Tauri **0.1.26** ; Shell **v1.9.9**.
+
 ## [0.1.25] - 2026-04-13
 
 ### Added

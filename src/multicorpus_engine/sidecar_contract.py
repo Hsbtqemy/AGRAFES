@@ -13,7 +13,7 @@ from typing import Any
 
 
 API_VERSION = "1.6.23"
-CONTRACT_VERSION = "1.6.25"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.26"  # semantic versioning for the sidecar API contract
 # 1.4.0: added export_tei_package job kind (Sprint 4 — Publication ZIP)
 # 1.4.1: ERR_CONFLICT (409) for duplicate run_id; token protection on /align, /curate, /segment
 # 1.4.2: document workflow status fields on /documents and metadata update endpoints.
@@ -76,6 +76,7 @@ CONTRACT_VERSION = "1.6.25"  # semantic versioning for the sidecar API contract
 #         POST /conventions/delete — delete (sets unit_role=NULL on assigned units).
 #         POST /units/set_role — assign role to one unit. POST /units/bulk_set_role — batch assign.
 #         POST /documents/set_text_start — set paratextual boundary (text_start_n).
+# 1.6.26: GET /units?doc_id=N[&unit_type=] — list all units for a document with unit_role field.
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
@@ -877,6 +878,65 @@ def openapi_spec() -> dict[str, Any]:
                         },
                         "500": {
                             "description": "Internal error",
+                            "content": {
+                                "application/json": {
+                                    "schema": {"$ref": "#/components/schemas/ErrorResponse"},
+                                }
+                            },
+                        },
+                    },
+                }
+            },
+            "/units": {
+                "get": {
+                    "summary": "List units for a document with their role",
+                    "parameters": [
+                        {
+                            "name": "doc_id",
+                            "in": "query",
+                            "required": True,
+                            "schema": {"type": "integer"},
+                            "description": "Document identifier",
+                        },
+                        {
+                            "name": "unit_type",
+                            "in": "query",
+                            "required": False,
+                            "schema": {"type": "string"},
+                            "description": "Optional unit type filter (e.g. 'line')",
+                        },
+                    ],
+                    "responses": {
+                        "200": {
+                            "description": "Unit list",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "ok": {"type": "boolean"},
+                                            "doc_id": {"type": "integer"},
+                                            "units": {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "unit_id": {"type": "integer"},
+                                                        "n": {"type": "integer"},
+                                                        "text_norm": {"type": "string", "nullable": True},
+                                                        "unit_type": {"type": "string"},
+                                                        "unit_role": {"type": "string", "nullable": True},
+                                                    },
+                                                },
+                                            },
+                                            "count": {"type": "integer"},
+                                        },
+                                    }
+                                }
+                            },
+                        },
+                        "400": {
+                            "description": "Bad request",
                             "content": {
                                 "application/json": {
                                     "schema": {"$ref": "#/components/schemas/ErrorResponse"},

@@ -14,6 +14,7 @@
   "GET /openapi.json",
   "GET /runs",
   "GET /tokens",
+  "GET /units",
   "POST /align",
   "POST /align/audit",
   "POST /align/collisions",

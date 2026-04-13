@@ -20,6 +20,30 @@ PRESET="shell"
 # Prefer an explicit PYTHON env var; fall back to python3 (avoids conda/venv conflicts).
 PYTHON="${PYTHON:-python3}"
 
+# ── Kill any running sidecar process ──────────────────────────────────────────
+# The sidecar runs in the background; without an explicit kill the old binary
+# stays in memory even after a rebuild, masking the new version.
+_SIDECAR_PIDS=$(pgrep -f "multicorpus serve" 2>/dev/null || true)
+if [[ -n "$_SIDECAR_PIDS" ]]; then
+  echo "==> Killing running sidecar process(es): $_SIDECAR_PIDS"
+  echo "$_SIDECAR_PIDS" | xargs kill 2>/dev/null || true
+  sleep 0.5  # give it a moment to release the port
+else
+  echo "==> No running sidecar found."
+fi
+
+# ── Remove stale portfiles ─────────────────────────────────────────────────────
+# If the sidecar was killed above, its portfile still points to the old port.
+# Remove all known portfiles so the next Tauri launch spawns a fresh sidecar
+# rather than trying to reconnect to the dead process.
+find "$HOME/Library/Application Support/com.agrafes.shell" \
+     "$REPO_ROOT/tauri-shell/public" \
+     -maxdepth 3 -name ".agrafes_sidecar.json" 2>/dev/null \
+  | while IFS= read -r pf; do
+      echo "==> Removing stale portfile: $pf"
+      rm -f "$pf"
+    done
+
 echo "==> Building sidecar (preset=$PRESET) …"
 "$PYTHON" "$BUILD_SCRIPT" --preset "$PRESET"
 

@@ -530,6 +530,9 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             self._handle_corpus_audit(qs)
         elif path == "/conventions":
             self._handle_conventions_list()
+        elif path == "/units":
+            qs = parse_qs(urlparse(self.path).query)
+            self._handle_units_list(qs)
         else:
             self._send_error(
                 f"Unknown route: {path}",
@@ -4016,6 +4019,46 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 "errors": error_count,
             },
         }))
+
+    def _handle_units_list(self, qs: dict) -> None:
+        """GET /units?doc_id=N[&unit_type=line] — list units for a document with their role."""
+        doc_id_str = qs.get("doc_id", [None])[0]
+        if not doc_id_str:
+            self._send_error("doc_id is required", code=ERR_BAD_REQUEST, http_status=400)
+            return
+        try:
+            doc_id = int(doc_id_str)
+        except (TypeError, ValueError):
+            self._send_error("doc_id must be an integer", code=ERR_BAD_REQUEST, http_status=400)
+            return
+
+        unit_type = qs.get("unit_type", [None])[0]  # optional filter
+
+        conn = self._conn()
+        if unit_type:
+            rows = conn.execute(
+                "SELECT unit_id, n, text_norm, unit_type, unit_role"
+                " FROM units WHERE doc_id=? AND unit_type=? ORDER BY n",
+                (doc_id, unit_type),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT unit_id, n, text_norm, unit_type, unit_role"
+                " FROM units WHERE doc_id=? ORDER BY n",
+                (doc_id,),
+            ).fetchall()
+
+        units = [
+            {
+                "unit_id": r[0],
+                "n": r[1],
+                "text_norm": r[2],
+                "unit_type": r[3],
+                "unit_role": r[4],
+            }
+            for r in rows
+        ]
+        self._send_json(success_payload({"units": units, "count": len(units), "doc_id": doc_id}))
 
     def _handle_documents(self) -> None:
         self._ensure_document_workflow_columns()
