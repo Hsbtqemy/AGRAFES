@@ -13,7 +13,7 @@ from typing import Any
 
 
 API_VERSION = "1.6.23"
-CONTRACT_VERSION = "1.6.21"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.25"  # semantic versioning for the sidecar API contract
 # 1.4.0: added export_tei_package job kind (Sprint 4 — Publication ZIP)
 # 1.4.1: ERR_CONFLICT (409) for duplicate run_id; token protection on /align, /curate, /segment
 # 1.4.2: document workflow status fields on /documents and metadata update endpoints.
@@ -71,6 +71,11 @@ CONTRACT_VERSION = "1.6.21"  # semantic versioning for the sidecar API contract
 # 1.6.24: POST /token_collocates — collocation analysis for a CQL query.
 #         Returns top-K collocates with PMI and log-likelihood (G²) scores, left/right freq split,
 #         and corpus baseline frequency. No auth token required (read-only).
+# 1.6.25: Convention/role system (migrations 013–015).
+#         GET /conventions — list roles. POST /conventions — create. PUT /conventions/{name} — update.
+#         POST /conventions/delete — delete (sets unit_role=NULL on assigned units).
+#         POST /units/set_role — assign role to one unit. POST /units/bulk_set_role — batch assign.
+#         POST /documents/set_text_start — set paratextual boundary (text_start_n).
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
@@ -575,6 +580,117 @@ def openapi_spec() -> dict[str, Any]:
                         "200": {"description": "Split result", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UnitsSplitResponse"}}}},
                         "400": {"description": "Bad request", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
                         "404": {"description": "Unit not found", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                    },
+                }
+            },
+            "/units/set_role": {
+                "post": {
+                    "summary": "Assign a convention role to a unit (token required)",
+                    "requestBody": {
+                        "required": True,
+                        "content": {"application/json": {"schema": {"type": "object", "properties": {
+                            "doc_id": {"type": "integer"}, "unit_n": {"type": "integer"},
+                            "role": {"type": "string", "description": "Role name, or null to clear"},
+                        }, "required": ["doc_id", "unit_n"]}}},
+                    },
+                    "responses": {
+                        "200": {"description": "Role assigned", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OkResponse"}}}},
+                        "400": {"description": "Bad request", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                        "404": {"description": "Unit or role not found", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                    },
+                }
+            },
+            "/units/bulk_set_role": {
+                "post": {
+                    "summary": "Assign a convention role to multiple units at once (token required)",
+                    "requestBody": {
+                        "required": True,
+                        "content": {"application/json": {"schema": {"type": "object", "properties": {
+                            "doc_id": {"type": "integer"},
+                            "unit_ns": {"type": "array", "items": {"type": "integer"}},
+                            "role": {"type": "string", "description": "Role name, or null to clear"},
+                        }, "required": ["doc_id", "unit_ns"]}}},
+                    },
+                    "responses": {
+                        "200": {"description": "Roles assigned", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OkResponse"}}}},
+                        "400": {"description": "Bad request", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                        "404": {"description": "Role not found", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                    },
+                }
+            },
+            "/conventions": {
+                "get": {
+                    "summary": "List all convention roles defined for this corpus",
+                    "responses": {
+                        "200": {"description": "List of roles", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OkResponse"}}}},
+                    },
+                },
+                "post": {
+                    "summary": "Create a new convention role (token required)",
+                    "requestBody": {
+                        "required": True,
+                        "content": {"application/json": {"schema": {"type": "object", "properties": {
+                            "name": {"type": "string"}, "label": {"type": "string"},
+                            "color": {"type": "string"}, "icon": {"type": "string"},
+                            "sort_order": {"type": "integer"},
+                        }, "required": ["name", "label"]}}},
+                    },
+                    "responses": {
+                        "201": {"description": "Role created", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OkResponse"}}}},
+                        "400": {"description": "Bad request", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                        "409": {"description": "Name already exists", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                    },
+                },
+            },
+            "/conventions/{name}": {
+                "put": {
+                    "summary": "Update a convention role (token required)",
+                    "parameters": [{"in": "path", "name": "name", "required": True, "schema": {"type": "string"}}],
+                    "requestBody": {
+                        "required": True,
+                        "content": {"application/json": {"schema": {"type": "object", "properties": {
+                            "label": {"type": "string"}, "color": {"type": "string"},
+                            "icon": {"type": "string"}, "sort_order": {"type": "integer"},
+                        }}}},
+                    },
+                    "responses": {
+                        "200": {"description": "Role updated", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OkResponse"}}}},
+                        "400": {"description": "No fields to update", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                        "404": {"description": "Role not found", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                    },
+                }
+            },
+            "/conventions/delete": {
+                "post": {
+                    "summary": "Delete a convention role; assigned units become NULL (token required)",
+                    "requestBody": {
+                        "required": True,
+                        "content": {"application/json": {"schema": {"type": "object", "properties": {
+                            "name": {"type": "string"},
+                        }, "required": ["name"]}}},
+                    },
+                    "responses": {
+                        "200": {"description": "Role deleted", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OkResponse"}}}},
+                        "400": {"description": "Bad request", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                        "404": {"description": "Role not found", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                    },
+                }
+            },
+            "/documents/set_text_start": {
+                "post": {
+                    "summary": "Set the paratextual boundary (text_start_n) for a document (token required)",
+                    "requestBody": {
+                        "required": True,
+                        "content": {"application/json": {"schema": {"type": "object", "properties": {
+                            "doc_id": {"type": "integer"},
+                            "text_start_n": {"type": "integer", "nullable": True,
+                                            "description": "1-based unit n where real text begins; null to clear"},
+                        }, "required": ["doc_id"]}}},
+                    },
+                    "responses": {
+                        "200": {"description": "text_start_n updated", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OkResponse"}}}},
+                        "400": {"description": "Bad request", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                        "404": {"description": "Document not found", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
                     },
                 }
             },

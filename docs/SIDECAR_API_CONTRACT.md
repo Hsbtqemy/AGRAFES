@@ -305,6 +305,13 @@ When `multicorpus serve` starts and a portfile already exists:
   - response includes `segment_pack` (resolved pack actually used)
 - `POST /units/merge` — merge two adjacent units into one; body: `{ doc_id, n1, n2 }` (n2 must be n1+1)
 - `POST /units/split` — split one unit into two; body: `{ doc_id, unit_n, text_a, text_b }`
+- `POST /units/set_role` (token required) — assign a convention role to one unit; body: `{ doc_id, unit_n, role }` (role=null to clear)
+- `POST /units/bulk_set_role` (token required) — batch assign a convention role; body: `{ doc_id, unit_ns, role }`
+- `GET /conventions` — list convention roles for this corpus
+- `POST /conventions` (token required) — create a role; body: `{ name, label, color?, icon?, sort_order? }`
+- `PUT /conventions/{name}` (token required) — update a role; body: `{ label?, color?, icon?, sort_order? }`
+- `POST /conventions/delete` (token required) — delete a role; body: `{ name }` (assigned units become NULL)
+- `POST /documents/set_text_start` (token required) — set paratextual boundary; body: `{ doc_id, text_start_n }` (null to clear)
 - `POST /segment/preview` — in-memory segmentation preview, no DB writes
   - body: `{ doc_id, mode?, lang?, pack?, limit?, calibrate_to? }`
   - `mode` values: `sentences` (default), `markers` ([N] marker-based split)

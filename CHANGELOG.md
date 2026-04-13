@@ -5,6 +5,18 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.1.25] - 2026-04-13
+
+### Added
+
+- **Migrations** : `013_unit_roles.sql`, `014_unit_role_field.sql`, `015_text_start.sql` (rôles de segment / conventions, champs associés).
+- **Sidecar** : évolutions API et handlers ; contrat OpenAPI et `docs/SIDECAR_API_CONTRACT.md` synchronisés.
+- **Tests** : `tests/test_sidecar_conventions.py`.
+
+### Changed
+
+- **Versions** : paquet Python **0.7.7** ; applications Tauri **0.1.25** ; Shell **v1.9.8**.
+
 ## [0.1.24] - 2026-04-13
 
 ### Added

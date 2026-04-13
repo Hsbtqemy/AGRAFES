@@ -1,4 +1,5 @@
 [
+  "GET /conventions",
   "GET /corpus/audit",
   "GET /corpus/info",
   "GET /doc_relations",
@@ -25,6 +26,8 @@
   "POST /align/quality",
   "POST /align/retarget_candidates",
   "POST /annotate",
+  "POST /conventions",
+  "POST /conventions/delete",
   "POST /corpus/info",
   "POST /curate",
   "POST /curate/preview",
@@ -33,6 +36,7 @@
   "POST /doc_relations/set",
   "POST /documents/bulk_update",
   "POST /documents/delete",
+  "POST /documents/set_text_start",
   "POST /documents/update",
   "POST /export/align_csv",
   "POST /export/bilingual",
@@ -58,7 +62,10 @@
   "POST /token_query",
   "POST /token_stats",
   "POST /tokens/update",
+  "POST /units/bulk_set_role",
   "POST /units/merge",
+  "POST /units/set_role",
   "POST /units/split",
-  "POST /validate-meta"
+  "POST /validate-meta",
+  "PUT /conventions/{name}"
 ]

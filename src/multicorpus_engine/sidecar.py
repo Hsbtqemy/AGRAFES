@@ -528,12 +528,34 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         elif path == "/corpus/audit":
             qs = parse_qs(urlparse(self.path).query)
             self._handle_corpus_audit(qs)
+        elif path == "/conventions":
+            self._handle_conventions_list()
         else:
             self._send_error(
                 f"Unknown route: {path}",
                 code=ERR_NOT_FOUND,
                 http_status=404,
             )
+
+    # ------------------------------------------------------------------
+    # PUT dispatch
+    # ------------------------------------------------------------------
+
+    def do_PUT(self) -> None:
+        try:
+            body = self._read_body()
+            path = urlparse(self.path).path
+
+            if not self._require_token_for_write():
+                return
+
+            if path.startswith("/conventions/"):
+                role_name = path[len("/conventions/"):]
+                self._handle_conventions_update(role_name, body)
+            else:
+                self._send_error("not found", code="NOT_FOUND", http_status=404)
+        except Exception as exc:  # noqa: BLE001
+            self._send_error(str(exc), code=ERR_INTERNAL, http_status=500)
 
     # ------------------------------------------------------------------
     # POST dispatch
@@ -574,6 +596,10 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 "/segment",
                 # Unit structural edits
                 "/units/merge", "/units/split",
+                # Convention / role system
+                "/conventions", "/conventions/delete",
+                "/units/set_role", "/units/bulk_set_role",
+                "/documents/set_text_start",
                 # Async jobs
                 "/jobs/enqueue",
             }
@@ -710,6 +736,16 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 self._handle_db_backup(body)
             elif path == "/corpus/info":
                 self._handle_corpus_info_post(body)
+            elif path == "/conventions":
+                self._handle_conventions_create(body)
+            elif path == "/conventions/delete":
+                self._handle_conventions_delete(body)
+            elif path == "/units/set_role":
+                self._handle_units_set_role(body)
+            elif path == "/units/bulk_set_role":
+                self._handle_units_bulk_set_role(body)
+            elif path == "/documents/set_text_start":
+                self._handle_documents_set_text_start(body)
             elif path == "/shutdown":
                 self._handle_shutdown()
             elif path == "/jobs":
@@ -3435,6 +3471,339 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             "text_b": text_b,
         }))
 
+    # ------------------------------------------------------------------
+    # Convention / role system
+    # ------------------------------------------------------------------
+
+    def _handle_conventions_list(self) -> None:
+        """GET /conventions — list all unit roles defined for this corpus."""
+        with self._lock():
+            rows = self._conn().execute(
+                "SELECT role_id, name, label, color, icon, sort_order, created_at"
+                " FROM unit_roles ORDER BY sort_order ASC, role_id ASC"
+            ).fetchall()
+        self._send_json(success_payload({
+            "conventions": [
+                {
+                    "role_id": r["role_id"],
+                    "name": r["name"],
+                    "label": r["label"],
+                    "color": r["color"],
+                    "icon": r["icon"],
+                    "sort_order": r["sort_order"],
+                    "created_at": r["created_at"],
+                }
+                for r in rows
+            ],
+            "count": len(rows),
+        }))
+
+    def _handle_conventions_create(self, body: dict) -> None:
+        """POST /conventions — create a new unit role."""
+        name = (body.get("name") or "").strip()
+        label = (body.get("label") or "").strip()
+        color = (body.get("color") or "#6366f1").strip()
+        icon = body.get("icon")
+        sort_order = body.get("sort_order", 0)
+
+        if not name:
+            self._send_error("name is required", code=ERR_BAD_REQUEST, http_status=400)
+            return
+        if not label:
+            self._send_error("label is required", code=ERR_BAD_REQUEST, http_status=400)
+            return
+        if not name.replace("_", "").replace("-", "").isalnum():
+            self._send_error(
+                "name must contain only letters, digits, hyphens and underscores",
+                code=ERR_BAD_REQUEST, http_status=400,
+            )
+            return
+
+        with self._lock():
+            conn = self._conn()
+            existing = conn.execute(
+                "SELECT role_id FROM unit_roles WHERE name=?", (name,)
+            ).fetchone()
+            if existing:
+                self._send_error(
+                    f"Convention '{name}' already exists",
+                    code=ERR_CONFLICT, http_status=409,
+                )
+                return
+            conn.execute(
+                "INSERT INTO unit_roles (name, label, color, icon, sort_order)"
+                " VALUES (?, ?, ?, ?, ?)",
+                (name, label, color, icon, int(sort_order)),
+            )
+            conn.commit()
+            row = conn.execute(
+                "SELECT role_id, name, label, color, icon, sort_order, created_at"
+                " FROM unit_roles WHERE name=?",
+                (name,),
+            ).fetchone()
+
+        self._send_json(success_payload({
+            "convention": {
+                "role_id": row["role_id"],
+                "name": row["name"],
+                "label": row["label"],
+                "color": row["color"],
+                "icon": row["icon"],
+                "sort_order": row["sort_order"],
+                "created_at": row["created_at"],
+            }
+        }), status=201)
+
+    def _handle_conventions_update(self, role_name: str, body: dict) -> None:
+        """PUT /conventions/<name> — update label, color, icon, sort_order of a role."""
+        if not role_name:
+            self._send_error("role name required in path", code=ERR_BAD_REQUEST, http_status=400)
+            return
+
+        with self._lock():
+            conn = self._conn()
+            row = conn.execute(
+                "SELECT role_id FROM unit_roles WHERE name=?", (role_name,)
+            ).fetchone()
+            if not row:
+                self._send_error(
+                    f"Convention '{role_name}' not found",
+                    code=ERR_NOT_FOUND, http_status=404,
+                )
+                return
+
+            fields: list[str] = []
+            params: list[object] = []
+            for col in ("label", "color", "icon", "sort_order"):
+                if col in body:
+                    fields.append(f"{col}=?")
+                    params.append(body[col])
+            if not fields:
+                self._send_error(
+                    "At least one of label, color, icon, sort_order must be provided",
+                    code=ERR_BAD_REQUEST, http_status=400,
+                )
+                return
+
+            params.append(role_name)
+            conn.execute(
+                f"UPDATE unit_roles SET {', '.join(fields)} WHERE name=?",
+                params,
+            )
+            conn.commit()
+            updated = conn.execute(
+                "SELECT role_id, name, label, color, icon, sort_order, created_at"
+                " FROM unit_roles WHERE name=?",
+                (role_name,),
+            ).fetchone()
+
+        self._send_json(success_payload({
+            "convention": {
+                "role_id": updated["role_id"],
+                "name": updated["name"],
+                "label": updated["label"],
+                "color": updated["color"],
+                "icon": updated["icon"],
+                "sort_order": updated["sort_order"],
+                "created_at": updated["created_at"],
+            }
+        }))
+
+    def _handle_conventions_delete(self, body: dict) -> None:
+        """POST /conventions/delete — delete a role; units with that role become NULL."""
+        name = (body.get("name") or "").strip()
+        if not name:
+            self._send_error("name is required", code=ERR_BAD_REQUEST, http_status=400)
+            return
+
+        with self._lock():
+            conn = self._conn()
+            row = conn.execute(
+                "SELECT role_id FROM unit_roles WHERE name=?", (name,)
+            ).fetchone()
+            if not row:
+                self._send_error(
+                    f"Convention '{name}' not found",
+                    code=ERR_NOT_FOUND, http_status=404,
+                )
+                return
+            # ON DELETE SET NULL handles units automatically via FK
+            # but SQLite FK support may be off; clear manually to be safe
+            conn.execute("UPDATE units SET unit_role=NULL WHERE unit_role=?", (name,))
+            conn.execute("DELETE FROM unit_roles WHERE name=?", (name,))
+            conn.commit()
+
+        self._send_json(success_payload({"deleted": name}))
+
+    def _handle_units_set_role(self, body: dict) -> None:
+        """POST /units/set_role — assign (or clear) a convention role on one unit."""
+        doc_id = body.get("doc_id")
+        unit_n_raw = body.get("unit_n")
+        role = body.get("role")  # None or "" → clear
+
+        if doc_id is None or unit_n_raw is None:
+            self._send_error("doc_id and unit_n are required", code=ERR_BAD_REQUEST, http_status=400)
+            return
+        try:
+            doc_id = int(doc_id)
+            unit_n = int(unit_n_raw)
+        except (TypeError, ValueError):
+            self._send_error("doc_id and unit_n must be integers", code=ERR_BAD_REQUEST, http_status=400)
+            return
+
+        role = (role or "").strip() or None  # normalise empty string → None
+
+        with self._lock():
+            conn = self._conn()
+            # Validate role exists if provided
+            if role is not None:
+                exists = conn.execute(
+                    "SELECT 1 FROM unit_roles WHERE name=?", (role,)
+                ).fetchone()
+                if not exists:
+                    self._send_error(
+                        f"Convention '{role}' not found",
+                        code=ERR_NOT_FOUND, http_status=404,
+                    )
+                    return
+
+            row = conn.execute(
+                "SELECT unit_id FROM units WHERE doc_id=? AND n=?",
+                (doc_id, unit_n),
+            ).fetchone()
+            if not row:
+                self._send_error(
+                    f"Unit n={unit_n} not found for doc_id={doc_id}",
+                    code=ERR_NOT_FOUND, http_status=404,
+                )
+                return
+
+            conn.execute(
+                "UPDATE units SET unit_role=? WHERE doc_id=? AND n=?",
+                (role, doc_id, unit_n),
+            )
+            conn.commit()
+
+        self._send_json(success_payload({
+            "doc_id": doc_id,
+            "unit_n": unit_n,
+            "unit_role": role,
+        }))
+
+    def _handle_units_bulk_set_role(self, body: dict) -> None:
+        """POST /units/bulk_set_role — assign (or clear) a role on multiple units."""
+        doc_id = body.get("doc_id")
+        unit_ns_raw = body.get("unit_ns")
+        role = body.get("role")
+
+        if doc_id is None or unit_ns_raw is None:
+            self._send_error("doc_id and unit_ns are required", code=ERR_BAD_REQUEST, http_status=400)
+            return
+        if not isinstance(unit_ns_raw, list):
+            self._send_error("unit_ns must be an array", code=ERR_BAD_REQUEST, http_status=400)
+            return
+        try:
+            doc_id = int(doc_id)
+            unit_ns = [int(n) for n in unit_ns_raw]
+        except (TypeError, ValueError):
+            self._send_error("doc_id and unit_ns values must be integers", code=ERR_BAD_REQUEST, http_status=400)
+            return
+        if not unit_ns:
+            self._send_json(success_payload({"updated": 0}))
+            return
+
+        role = (role or "").strip() or None
+
+        with self._lock():
+            conn = self._conn()
+            if role is not None:
+                exists = conn.execute(
+                    "SELECT 1 FROM unit_roles WHERE name=?", (role,)
+                ).fetchone()
+                if not exists:
+                    self._send_error(
+                        f"Convention '{role}' not found",
+                        code=ERR_NOT_FOUND, http_status=404,
+                    )
+                    return
+
+            placeholders = ",".join("?" * len(unit_ns))
+            result = conn.execute(
+                f"UPDATE units SET unit_role=? WHERE doc_id=? AND n IN ({placeholders})",
+                [role, doc_id, *unit_ns],
+            )
+            conn.commit()
+
+        self._send_json(success_payload({"updated": result.rowcount}))
+
+    def _handle_documents_set_text_start(self, body: dict) -> None:
+        """POST /documents/set_text_start — set or clear the paratextual boundary.
+
+        Body: { doc_id, text_start_n }
+          text_start_n — 1-based unit n where actual text begins (null to clear).
+        """
+        doc_id = body.get("doc_id")
+        text_start_n_raw = body.get("text_start_n")  # may be None to clear
+
+        if doc_id is None:
+            self._send_error("doc_id is required", code=ERR_BAD_REQUEST, http_status=400)
+            return
+        try:
+            doc_id = int(doc_id)
+        except (TypeError, ValueError):
+            self._send_error("doc_id must be an integer", code=ERR_BAD_REQUEST, http_status=400)
+            return
+
+        if text_start_n_raw is None:
+            text_start_n = None
+        else:
+            try:
+                text_start_n = int(text_start_n_raw)
+                if text_start_n < 1:
+                    raise ValueError
+            except (TypeError, ValueError):
+                self._send_error(
+                    "text_start_n must be a positive integer or null",
+                    code=ERR_BAD_REQUEST, http_status=400,
+                )
+                return
+
+        with self._lock():
+            conn = self._conn()
+            doc = conn.execute(
+                "SELECT doc_id FROM documents WHERE doc_id=?", (doc_id,)
+            ).fetchone()
+            if not doc:
+                self._send_error(
+                    f"Document doc_id={doc_id} not found",
+                    code=ERR_NOT_FOUND, http_status=404,
+                )
+                return
+
+            if text_start_n is not None:
+                # Validate that a unit with this n exists in the document
+                unit = conn.execute(
+                    "SELECT 1 FROM units WHERE doc_id=? AND n=?",
+                    (doc_id, text_start_n),
+                ).fetchone()
+                if not unit:
+                    self._send_error(
+                        f"No unit with n={text_start_n} in doc_id={doc_id}",
+                        code=ERR_BAD_REQUEST, http_status=400,
+                    )
+                    return
+
+            conn.execute(
+                "UPDATE documents SET text_start_n=? WHERE doc_id=?",
+                (text_start_n, doc_id),
+            )
+            conn.commit()
+
+        self._send_json(success_payload({
+            "doc_id": doc_id,
+            "text_start_n": text_start_n,
+        }))
+
     def _handle_segment(self, body: dict) -> None:
         from multicorpus_engine.segmenter import resegment_document
 
@@ -3659,7 +4028,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                    COALESCE(uc.unit_count, 0) AS unit_count,
                    COALESCE(tc.token_count, 0) AS token_count,
                    CASE WHEN COALESCE(tc.token_count, 0) > 0 THEN 'annotated' ELSE 'missing' END AS annotation_status,
-                   d.author_lastname, d.author_firstname, d.doc_date
+                   d.author_lastname, d.author_firstname, d.doc_date,
+                   d.text_start_n
             FROM documents d
             LEFT JOIN (
                 SELECT doc_id, COUNT(*) AS unit_count
@@ -3694,6 +4064,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 "author_lastname": r[13],
                 "author_firstname": r[14],
                 "doc_date": r[15],
+                "text_start_n": r[16],
             }
             for r in rows
         ]
@@ -3704,6 +4075,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         required = {
             "workflow_status", "validated_at", "validated_run_id",
             "author_lastname", "author_firstname", "doc_date",
+            "text_start_n",
         }
         cols = {
             row[1]
@@ -3733,6 +4105,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 self._conn().execute("ALTER TABLE documents ADD COLUMN author_firstname TEXT")
             if "doc_date" not in cols:
                 self._conn().execute("ALTER TABLE documents ADD COLUMN doc_date TEXT")
+            if "text_start_n" not in cols:
+                self._conn().execute("ALTER TABLE documents ADD COLUMN text_start_n INTEGER")
             self._conn().execute(
                 "CREATE INDEX IF NOT EXISTS idx_documents_workflow_status ON documents (workflow_status)"
             )
@@ -3824,7 +4198,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             """
             SELECT doc_id, title, language, doc_role, resource_type,
                    workflow_status, validated_at, validated_run_id,
-                   author_lastname, author_firstname, doc_date
+                   author_lastname, author_firstname, doc_date,
+                   text_start_n
             FROM documents
             WHERE doc_id = ?
             """,
@@ -3849,7 +4224,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         )
         line_rows = self._conn().execute(
             """
-            SELECT unit_id, n, external_id, text_norm
+            SELECT unit_id, n, external_id, text_norm, unit_role
             FROM units
             WHERE doc_id = ? AND unit_type = 'line'
             ORDER BY n
@@ -3863,6 +4238,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 "n": row[1],
                 "external_id": row[2],
                 "text": row[3],
+                "unit_role": row[4],
             }
             for row in line_rows
         ]
@@ -3882,6 +4258,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                         "author_lastname": doc_row[8],
                         "author_firstname": doc_row[9],
                         "doc_date": doc_row[10],
+                        "text_start_n": doc_row[11],
                     },
                     "lines": lines,
                     "count": len(lines),
