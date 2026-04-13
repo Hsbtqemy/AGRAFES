@@ -233,6 +233,7 @@ def build_sidecar(
         "-m",
         "PyInstaller",
         "--noconfirm",
+        "--noarchive",  # skip PYZ compression — avoids zlib wbits mismatch (PyInstaller 6.19+/Python 3.13)
         f"--{package_format}",
         "--optimize",
         PYINSTALLER_OPTIMIZE_LEVEL,
@@ -334,6 +335,7 @@ def build_sidecar(
         "version": _project_version(),
         "format": package_format,
         "pyinstaller_strip": (not is_windows),
+        "pyinstaller_noarchive": True,
         "pyinstaller_optimize": int(PYINSTALLER_OPTIMIZE_LEVEL),
         "pyinstaller_excludes": list(PYINSTALLER_EXCLUDE_MODULES),
         "artifact_type": artifact_type,
