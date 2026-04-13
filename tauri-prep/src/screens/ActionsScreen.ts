@@ -9658,7 +9658,7 @@ export class ActionsScreen {
 }
 
 const ANNOT_PANEL_CSS = `
-.annot-panel { display: flex; flex-direction: column; gap: 0; height: 100%; }
+.annot-panel { display: flex; flex-direction: column; gap: 0; height: 100%; min-height: 0; }
 .annot-toolbar {
   display: flex; align-items: center; gap: 12px;
   padding: 8px 12px; border-bottom: 1px solid var(--border, #ddd);

@@ -17,11 +17,14 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 BUILD_SCRIPT="$REPO_ROOT/scripts/build_sidecar.py"
 PRESET="shell"
 
+# Prefer an explicit PYTHON env var; fall back to python3 (avoids conda/venv conflicts).
+PYTHON="${PYTHON:-python3}"
+
 echo "==> Building sidecar (preset=$PRESET) …"
-python "$BUILD_SCRIPT" --preset "$PRESET"
+"$PYTHON" "$BUILD_SCRIPT" --preset "$PRESET"
 
 # ── Read manifest ──────────────────────────────────────────────────────────────
-MANIFEST=$(python - <<EOF
+MANIFEST=$("$PYTHON" - <<EOF
 import json, sys, pathlib
 manifest_path = pathlib.Path("$REPO_ROOT/tauri-shell/src-tauri/binaries/sidecar-manifest.json")
 if not manifest_path.exists():

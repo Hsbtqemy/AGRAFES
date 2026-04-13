@@ -5,6 +5,16 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.1.22] - 2026-04-13
+
+### Changed
+
+- **Moteur** : `token_query` et version exportée (`__init__.py`).
+- **tauri-shell** : Explorer, recherche grammaticale, `shell.ts`, script `prepare_sidecar.sh`, corpus démo embarqué.
+- **tauri-prep** : `ActionsScreen`, `prep-vnext.css`.
+- **Concordancier** : `dom.ts`.
+- **Versions** : paquet Python **0.7.4** ; applications Tauri **0.1.22** ; Shell **v1.9.5**.
+
 ## [0.1.21] - 2026-04-11
 
 ### Added

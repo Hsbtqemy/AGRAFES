@@ -38,9 +38,10 @@ const EXPLORER_CSS = `
 /* ── Sub-tab bar ── */
 .exp-subtab-bar {
   display: flex;
-  height: 36px;
-  background: #163566;
-  border-bottom: 2px solid rgba(255,255,255,0.08);
+  height: 38px;
+  background: #0f2347;
+  border-top: 1px solid rgba(255,255,255,0.12);
+  border-bottom: 2px solid rgba(255,255,255,0.15);
   padding: 0 0.5rem;
   gap: 0;
   align-items: stretch;
@@ -50,7 +51,7 @@ const EXPLORER_CSS = `
   background: none;
   border: none;
   border-bottom: 3px solid transparent;
-  color: rgba(255,255,255,0.52);
+  color: rgba(255,255,255,0.72);
   font-size: 0.82rem;
   font-weight: 500;
   padding: 0 1.1rem;
@@ -62,14 +63,14 @@ const EXPLORER_CSS = `
   gap: 0.3rem;
 }
 .exp-subtab:hover {
-  color: rgba(255,255,255,0.88);
-  background: rgba(255,255,255,0.07);
+  color: #fff;
+  background: rgba(255,255,255,0.1);
 }
 .exp-subtab.active {
   color: #fff;
   font-weight: 700;
-  border-bottom-color: rgba(255,255,255,0.88);
-  background: rgba(255,255,255,0.1);
+  border-bottom-color: #60a5fa;
+  background: rgba(96,165,250,0.12);
 }
 
 /* ── Sub-content area fills remaining height ── */

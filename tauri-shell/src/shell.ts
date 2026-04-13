@@ -1671,7 +1671,7 @@ async function _exportDiagnosticFile(text: string): Promise<void> {
 // ─── About dialog ─────────────────────────────────────────────────────────────
 
 // Static version info (embedded at build time)
-const APP_VERSION = "1.9.4";
+const APP_VERSION = "1.9.5";
 const ENGINE_VERSION_DISPLAY = "0.6.1";
 const CONTRACT_VERSION_DISPLAY = "1.4.0";
 const TEI_PROFILES = ["generic", "parcolab_like", "parcolab_strict"];
@@ -2312,7 +2312,12 @@ async function _setMode(mode: Mode, opts?: { force?: boolean }): Promise<void> {
     } else {
       const mod = await import("./modules/constituerModule.ts");
       _freshContainer(); // swap out spinner; prep finds #app by id
-      await mod.mount(document.getElementById("app")!, ctx);
+      // Make #app height-bounded so annot-panel / flex panels can use height:100% correctly.
+      const appEl = document.getElementById("app")!;
+      appEl.style.height = "calc(100vh - 44px)";
+      appEl.style.minHeight = "unset";
+      appEl.style.overflowY = "auto";
+      await mod.mount(appEl, ctx);
       _currentDispose = () => mod.dispose();
     }
   } catch (err) {

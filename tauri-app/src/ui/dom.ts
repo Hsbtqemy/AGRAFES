@@ -1779,7 +1779,9 @@ body {
 
 
 export function injectStyles(): void {
+  if (document.getElementById("concordancier-app-styles")) return;
   const style = document.createElement("style");
+  style.id = "concordancier-app-styles";
   style.textContent = CSS;
   document.head.appendChild(style);
 }

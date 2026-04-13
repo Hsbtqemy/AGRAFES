@@ -46,6 +46,9 @@ let _collLoading = false;
 let _collGeneration = 0;
 let _collSortBy: "pmi" | "ll" | "freq" = "pmi";
 
+// Aligned language filter: set of language codes to SHOW; null = all
+let _alignedLangFilter: Set<string> | null = null;
+
 const PAGE_SIZE = 50;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -121,6 +124,7 @@ export async function mount(container: HTMLElement, ctx: ShellContext): Promise<
   _collRows = [];
   _collLoading = false;
   _collGeneration = 0;
+  _alignedLangFilter = null;
   // Reset quick-mode state so remount always starts clean
   _quickMode = "mot";
   _posSelection = [];
@@ -155,6 +159,7 @@ export async function mount(container: HTMLElement, ctx: ShellContext): Promise<
     _collRows = [];
     _collLoading = false;
     _collGeneration++;
+    _alignedLangFilter = null;
     if (path) await _connect(path, root);
     else _setStatus(root, "Aucune base de données sélectionnée.", true);
   });
@@ -289,6 +294,7 @@ function _renderShell(root: HTMLElement): void {
         <label class="rech-filter-check rech-filter-check--aligned" title="Afficher les segments traduits liés (requiert des alignements en base)">
           <input type="checkbox" class="rech-filter-aligned"> + traductions
         </label>
+        <div class="rech-lang-pills" hidden aria-label="Filtrer les langues affichées"></div>
       </div>
     </div>
 
@@ -332,7 +338,7 @@ function _renderShell(root: HTMLElement): void {
             <button class="rech-sort-btn" data-sort="left" title="Trier par contexte gauche">Contexte G</button>
             <button class="rech-sort-btn" data-sort="right" title="Trier par contexte droit">Contexte D</button>
           </div>
-          <button class="rech-btn-analysis" title="Afficher / masquer les étiquettes d'analyse (UPOS, lemme) sur les tokens pivot">🔬 Analyse</button>
+          <button class="rech-btn-analytics" title="Distribution et collocations">📊</button>
           <button class="rech-btn-export" title="Exporter en CSV">↓ CSV</button>
         </div>
         <div class="rech-hits-list"></div>
@@ -345,10 +351,9 @@ function _renderShell(root: HTMLElement): void {
         </div>
       </div>
 
-      <details class="rech-analytics-panel">
-        <summary class="rech-analytics-summary">Analyse</summary>
+      <!-- Analytics content lives in the modal (#rech-analytics-modal), not inline -->
+      <div class="rech-analytics-panel" style="display:none" aria-hidden="true">
         <div class="rech-analytics-body">
-
           <div class="rech-stats-panel">
             <div class="rech-stats-header">Distribution</div>
             <div class="rech-dispersion-wrap" hidden>
@@ -368,7 +373,6 @@ function _renderShell(root: HTMLElement): void {
               <button class="rech-btn-reset-filter">Tout afficher</button>
             </div>
           </div>
-
           <div class="rech-coll-panel">
             <div class="rech-coll-header">
               <span>Collocations</span>
@@ -395,9 +399,8 @@ function _renderShell(root: HTMLElement): void {
             </div>
             <div class="rech-coll-body"></div>
           </div>
-
         </div>
-      </details>
+      </div>
     </div>
   `;
 
@@ -542,7 +545,7 @@ function _wireEvents(root: HTMLElement): void {
   const moreBtn   = root.querySelector<HTMLButtonElement>(".rech-btn-more")!;
   const groupSel  = root.querySelector<HTMLSelectElement>(".rech-stats-group-by")!;
   const resetBtn  = root.querySelector<HTMLButtonElement>(".rech-btn-reset-filter")!;
-  const analysisBtn = root.querySelector<HTMLButtonElement>(".rech-btn-analysis")!;
+  const analyticsBtn = root.querySelector<HTMLButtonElement>(".rech-btn-analytics")!;
   const exportBtn = root.querySelector<HTMLButtonElement>(".rech-btn-export")!;
   const alignedCb = root.querySelector<HTMLInputElement>(".rech-filter-aligned")!;
 
@@ -555,8 +558,16 @@ function _wireEvents(root: HTMLElement): void {
   // Toggle change: persist + relaunch search if results exist
   alignedCb.addEventListener("change", () => {
     try { localStorage.setItem(LS_ALIGNED, alignedCb.checked ? "1" : "0"); } catch { /* ignore */ }
+    const pillsWrap = root.querySelector<HTMLElement>(".rech-lang-pills");
+    if (pillsWrap) pillsWrap.hidden = !alignedCb.checked;
     if (_lastQuery) void _doSearch(root, false);
   });
+
+  // Init pills visibility based on initial checkbox state
+  {
+    const pillsWrap = root.querySelector<HTMLElement>(".rech-lang-pills");
+    if (pillsWrap) pillsWrap.hidden = !alignedCb.checked;
+  }
 
   // ── Mode bar ──
   root.querySelectorAll<HTMLButtonElement>(".rech-mode-btn").forEach(btn => {
@@ -656,14 +667,8 @@ function _wireEvents(root: HTMLElement): void {
     _renderStats(root);
   });
 
-  // Analysis toggle (upos/lemma visibility on pivot tokens)
-  analysisBtn.addEventListener("click", () => {
-    const on = root.classList.toggle("rech-show-analysis");
-    analysisBtn.classList.toggle("rech-btn-analysis--active", on);
-    analysisBtn.title = on
-      ? "Masquer les étiquettes d'analyse"
-      : "Afficher les étiquettes d'analyse (UPOS, lemme)";
-  });
+  // Analytics modal (Distribution + Collocations)
+  analyticsBtn.addEventListener("click", () => _openAnalyticsModal(root));
 
   // Export CSV
   exportBtn.addEventListener("click", () => _doExportCsv(root));
@@ -817,6 +822,7 @@ async function _doSearch(root: HTMLElement, loadMore: boolean): Promise<void> {
     _collRows = [];
     _collLoading = false;
     _collGeneration++;
+    _alignedLangFilter = null;
     root.dataset.statsFilter = "";
     _renderHits(root, []);
     _renderStats(root);
@@ -855,9 +861,16 @@ async function _doSearch(root: HTMLElement, loadMore: boolean): Promise<void> {
     _offset = res.next_offset ?? _hits.length;
 
     _renderHits(root, _hits);
+    if (includeAligned) {
+      _updateLangPills(root, _hits);
+      _applyLangFilter(root);
+    }
     _updateResultsHeader(root, _total);
     _showLoadMore(root, res.has_more ?? false);
-    _setStatus(root, _total === 0 ? "" : `${_total} occurrence${_total > 1 ? "s" : ""}`, false);
+    const hasAligned = includeAligned && _hits.some(h => h.aligned && h.aligned.length > 0);
+    const alignedNote = includeAligned && !hasAligned && _hits.length > 0
+      ? " · (aucune traduction alignée trouvée)" : "";
+    _setStatus(root, _total === 0 ? "" : `${_total} occurrence${_total > 1 ? "s" : ""}${alignedNote}`, false);
     root.querySelector<HTMLElement>(".rech-empty")!.hidden = _hits.length > 0;
 
     // Persist last successful query so the Publier screen can offer a direct re-export
@@ -880,9 +893,9 @@ async function _doSearch(root: HTMLElement, loadMore: boolean): Promise<void> {
       void _fetchStats(root, groupBy);
       void _renderDispersionChart(root, _hits);
       void _fetchCollocates(root);
-      // Auto-open the analytics panel the first time results arrive
-      const analyticsPanel = root.querySelector<HTMLDetailsElement>(".rech-analytics-panel");
-      if (analyticsPanel && !analyticsPanel.open) analyticsPanel.open = true;
+      // Show analytics button as active when results arrive
+      const analyticsBtn = root.querySelector<HTMLButtonElement>(".rech-btn-analytics");
+      if (analyticsBtn) analyticsBtn.title = "Distribution et collocations (données disponibles)";
     } else if (!loadMore) {
       const wrap = root.querySelector<HTMLElement>(".rech-dispersion-wrap");
       if (wrap) wrap.hidden = true;
@@ -1070,6 +1083,7 @@ function _buildHitCard(hit: _Hit): HTMLElement {
     for (const partner of hit.aligned) {
       const row = document.createElement("div");
       row.className = "rech-aligned-row";
+      row.dataset.lang = (partner.language ?? "").toLowerCase();
 
       const langBadge = document.createElement("span");
       langBadge.className = "rech-aligned-lang";
@@ -1101,6 +1115,84 @@ function _buildHitCard(hit: _Hit): HTMLElement {
   card.appendChild(actionsBar);
 
   return card;
+}
+
+// ─── Analytics modal ──────────────────────────────────────────────────────────
+
+function _openAnalyticsModal(root: HTMLElement): void {
+  // Remove existing modal if open (toggle)
+  const existing = document.getElementById("rech-analytics-modal");
+  if (existing) { existing.remove(); return; }
+
+  // The analytics panel (hidden in main layout) is our source of truth
+  const panel = root.querySelector<HTMLElement>(".rech-analytics-panel");
+  if (!panel) return;
+
+  const overlay = document.createElement("div");
+  overlay.id = "rech-analytics-modal";
+  overlay.className = "rech-analytics-modal-overlay";
+  overlay.setAttribute("role", "dialog");
+  overlay.setAttribute("aria-modal", "true");
+  overlay.setAttribute("aria-label", "Distribution et collocations");
+
+  const box = document.createElement("div");
+  box.className = "rech-analytics-modal-box";
+
+  // Header
+  const header = document.createElement("div");
+  header.className = "rech-analytics-modal-header";
+  const title = document.createElement("span");
+  title.textContent = "Distribution & Collocations";
+  title.style.cssText = "font-weight:700;font-size:1rem";
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "rech-analytics-modal-close";
+  closeBtn.textContent = "✕";
+  closeBtn.setAttribute("aria-label", "Fermer");
+  closeBtn.addEventListener("click", () => overlay.remove());
+  header.appendChild(title);
+  header.appendChild(closeBtn);
+  box.appendChild(header);
+
+  // Body: move the analytics content in (it stays in DOM, just repositioned visually)
+  const body = panel.querySelector<HTMLElement>(".rech-analytics-body");
+  if (body) {
+    const bodyClone = body.cloneNode(true) as HTMLElement;
+    bodyClone.style.cssText = "display:flex;flex-direction:row;gap:16px;flex:1;min-height:0;overflow:hidden";
+    // Stats panel side
+    const statsPanel = bodyClone.querySelector<HTMLElement>(".rech-stats-panel");
+    if (statsPanel) statsPanel.style.cssText = "flex:0 0 260px;overflow-y:auto;border-right:1px solid #e0e0e0;padding:12px";
+    // Coll panel side
+    const collPanel = bodyClone.querySelector<HTMLElement>(".rech-coll-panel");
+    if (collPanel) collPanel.style.cssText = "flex:1;overflow-y:auto;padding:12px";
+    box.appendChild(bodyClone);
+
+    // Wire select changes in clone back to the real panel (so data re-renders into real DOM)
+    bodyClone.querySelector<HTMLSelectElement>(".rech-stats-group-by")?.addEventListener("change", (e) => {
+      const realSel = panel.querySelector<HTMLSelectElement>(".rech-stats-group-by");
+      if (realSel) {
+        realSel.value = (e.target as HTMLSelectElement).value;
+        realSel.dispatchEvent(new Event("change"));
+      }
+    });
+    bodyClone.querySelectorAll<HTMLButtonElement>(".rech-coll-sort-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const sort = btn.dataset.sort ?? "";
+        panel.querySelectorAll<HTMLButtonElement>(".rech-coll-sort-btn").forEach(b =>
+          b.classList.toggle("rech-coll-sort-btn--active", b.dataset.sort === sort)
+        );
+        const realBtn = panel.querySelector<HTMLButtonElement>(`.rech-coll-sort-btn[data-sort="${sort}"]`);
+        if (realBtn) realBtn.click();
+      });
+    });
+  }
+
+  overlay.appendChild(box);
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+  document.addEventListener("keydown", function esc(e) {
+    if (e.key === "Escape") { overlay.remove(); document.removeEventListener("keydown", esc); }
+  }, { once: false });
+
+  document.body.appendChild(overlay);
 }
 
 function _buildCitationText(hit: _Hit): string {
@@ -1157,28 +1249,23 @@ function _buildTokenGroup(
     wordEl.className = "rech-kwic-word";
     wordEl.textContent = tok.word;
 
-    // upos + lemma only on pivot tokens; context tokens show word only (less vertical noise)
-    if (role === "pivot") {
-      const uposEl = document.createElement("div");
-      uposEl.className = "rech-kwic-upos";
-      const col = UPOS_COLORS[tok.upos ?? ""] ?? "#bbb";
-      if (tok.upos) {
-        uposEl.textContent = tok.upos;
-        uposEl.style.background = col + "30";
-        uposEl.style.color = col;
-      }
-
-      const lemmaEl = document.createElement("div");
-      lemmaEl.className = "rech-kwic-lemma";
-      const lemma = tok.lemma ?? "";
-      lemmaEl.textContent = (lemma && lemma.toLowerCase() !== tok.word.toLowerCase()) ? lemma : "";
-
-      cell.appendChild(wordEl);
-      cell.appendChild(uposEl);
-      cell.appendChild(lemmaEl);
-    } else {
-      cell.appendChild(wordEl);
+    const uposEl = document.createElement("div");
+    uposEl.className = "rech-kwic-upos";
+    const col = UPOS_COLORS[tok.upos ?? ""] ?? "#bbb";
+    if (tok.upos) {
+      uposEl.textContent = tok.upos;
+      uposEl.style.background = col + (role === "pivot" ? "30" : "18");
+      uposEl.style.color = col;
     }
+
+    const lemmaEl = document.createElement("div");
+    lemmaEl.className = "rech-kwic-lemma";
+    const lemma = tok.lemma ?? "";
+    lemmaEl.textContent = (lemma && lemma.toLowerCase() !== tok.word.toLowerCase()) ? lemma : "";
+
+    cell.appendChild(wordEl);
+    cell.appendChild(uposEl);
+    cell.appendChild(lemmaEl);
 
     // Pivot tokens: click → popover with CQL suggestions; right-click → context menu
     if (role === "pivot") {
@@ -1667,6 +1754,79 @@ function _showLoadMore(root: HTMLElement, show: boolean): void {
   root.querySelector<HTMLElement>(".rech-load-more-wrap")!.hidden = !show;
 }
 
+// ─── Aligned language pills ───────────────────────────────────────────────────
+
+function _updateLangPills(root: HTMLElement, hits: _Hit[]): void {
+  const wrap = root.querySelector<HTMLElement>(".rech-lang-pills");
+  if (!wrap) return;
+
+  // Collect all aligned languages across hits
+  const langs = new Set<string>();
+  for (const h of hits) {
+    for (const a of h.aligned ?? []) {
+      if (a.language) langs.add(a.language.toLowerCase());
+    }
+  }
+
+  if (langs.size === 0) {
+    wrap.hidden = true;
+    wrap.innerHTML = "";
+    _alignedLangFilter = null;
+    return;
+  }
+
+  const alignedCb = root.querySelector<HTMLInputElement>(".rech-filter-aligned");
+  wrap.hidden = !(alignedCb?.checked ?? true);
+
+  // Only rebuild pills if the language set changed
+  const existing = new Set(
+    Array.from(wrap.querySelectorAll<HTMLElement>(".rech-lang-pill")).map(el => el.dataset.lang ?? "")
+  );
+  const sameSet = langs.size === existing.size && [...langs].every(l => existing.has(l));
+  if (sameSet) return;
+
+  // Init filter to all-on
+  _alignedLangFilter = new Set(langs);
+  wrap.innerHTML = "";
+
+  const sorted = [...langs].sort();
+  for (const lang of sorted) {
+    const pill = document.createElement("button");
+    pill.className = "rech-lang-pill rech-lang-pill--on";
+    pill.dataset.lang = lang;
+    pill.textContent = lang.toUpperCase();
+    pill.title = `Afficher / masquer ${lang.toUpperCase()}`;
+    pill.type = "button";
+    pill.addEventListener("click", () => {
+      const active = pill.classList.toggle("rech-lang-pill--on");
+      if (!_alignedLangFilter) _alignedLangFilter = new Set(langs);
+      if (active) {
+        _alignedLangFilter.add(lang);
+      } else {
+        _alignedLangFilter.delete(lang);
+      }
+      _applyLangFilter(root);
+    });
+    wrap.appendChild(pill);
+  }
+
+  _applyLangFilter(root);
+}
+
+function _applyLangFilter(root: HTMLElement): void {
+  root.querySelectorAll<HTMLElement>(".rech-aligned-row[data-lang]").forEach(row => {
+    const lang = (row.dataset.lang ?? "").toLowerCase();
+    const visible = !_alignedLangFilter || _alignedLangFilter.has(lang);
+    row.hidden = !visible;
+  });
+  // Hide the whole aligned block if all rows are hidden
+  root.querySelectorAll<HTMLElement>(".rech-aligned-block").forEach(block => {
+    const hasVisible = Array.from(block.querySelectorAll<HTMLElement>(".rech-aligned-row"))
+      .some(r => !r.hidden);
+    block.hidden = !hasVisible;
+  });
+}
+
 function _updateResultsHeader(root: HTMLElement, total: number): void {
   const header = root.querySelector<HTMLElement>(".rech-results-header")!;
   header.hidden = total === 0;
@@ -1897,32 +2057,47 @@ const MODULE_CSS = `
   display: flex; flex-direction: column; gap: 8px;
 }
 
-/* ── Analytics bottom panel ── */
-.rech-analytics-panel {
-  border-top: 1px solid var(--border, #e0e0e0);
-  background: var(--bg, #f8f8f8);
+/* ── Analytics panel (hidden, source of truth for modal) ── */
+.rech-analytics-panel { display: none !important; }
+
+/* ── Analytics modal overlay ── */
+.rech-analytics-modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.45);
+  z-index: 9800;
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+}
+.rech-analytics-modal-box {
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 12px 48px rgba(0,0,0,0.28);
+  width: min(96vw, 1100px);
+  height: min(80vh, 640px);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+.rech-analytics-modal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px 10px;
+  border-bottom: 1px solid #e0e6ef;
   flex-shrink: 0;
 }
-.rech-analytics-summary {
-  list-style: none; display: flex; align-items: center; gap: 6px;
-  padding: 6px 14px; cursor: pointer;
-  font-size: 0.72rem; font-weight: 600; text-transform: uppercase;
-  letter-spacing: 0.05em; color: var(--color-muted, #888);
-  user-select: none;
+.rech-analytics-modal-close {
+  background: none; border: none; font-size: 1.1rem;
+  cursor: pointer; color: #6c757d; padding: 2px 6px; border-radius: 4px;
+  transition: background 0.12s;
 }
-.rech-analytics-summary::-webkit-details-marker { display: none; }
-.rech-analytics-summary::before {
-  content: "▸"; font-size: 0.65rem; transition: transform 0.15s;
-  display: inline-block;
+.rech-analytics-modal-close:hover { background: #f0f2f5; color: #1a2533; }
+
+/* ── Analytics button in header ── */
+.rech-btn-analytics {
+  padding: 3px 8px; border-radius: 4px; cursor: pointer;
+  border: 1px solid var(--border, #ccc);
+  background: var(--bg-accent, #f5f5f5); font-size: 0.82rem;
+  transition: background 0.12s;
 }
-.rech-analytics-panel[open] > .rech-analytics-summary::before {
-  transform: rotate(90deg);
-}
-.rech-analytics-body {
-  display: flex; flex-direction: row; gap: 0;
-  overflow-x: auto; max-height: 260px;
-  border-top: 1px solid var(--border, #e0e0e0);
-}
+.rech-btn-analytics:hover { background: #e8efff; border-color: #b8ccee; }
 .rech-results-header {
   display: flex; align-items: center; gap: 12px;
   padding-bottom: 4px;
@@ -2003,7 +2178,7 @@ const MODULE_CSS = `
   align-items: flex-start;
 }
 
-/* ── Token cell ── */
+/* ── Token cell (3 rows, fixed heights for cross-group alignment) ── */
 .rech-kwic-token {
   display: flex; flex-direction: column;
   align-items: center; flex-shrink: 0;
@@ -2013,37 +2188,15 @@ const MODULE_CSS = `
   height: 22px; display: flex; align-items: center; justify-content: center;
   font-size: 0.88rem; font-weight: 500; white-space: nowrap;
 }
-/* upos + lemma hidden by default; shown when .rech-show-analysis is active on root */
 .rech-kwic-upos {
-  height: 0; overflow: hidden;
-  display: flex; align-items: center; justify-content: center;
+  height: 16px; display: flex; align-items: center; justify-content: center;
   font-size: 0.58rem; font-weight: 700; letter-spacing: 0.04em;
   border-radius: 3px; padding: 0 3px; white-space: nowrap; min-width: 18px;
-  transition: height 0.15s;
 }
 .rech-kwic-lemma {
-  height: 0; overflow: hidden;
-  display: flex; align-items: center; justify-content: center;
+  height: 15px; display: flex; align-items: center; justify-content: center;
   font-size: 0.67rem; font-style: italic;
-  transition: height 0.15s;
   color: var(--color-muted, #999); white-space: nowrap;
-}
-/* Show upos+lemma when analysis mode active */
-.rech-show-analysis .rech-kwic-upos { height: 16px; }
-.rech-show-analysis .rech-kwic-lemma { height: 15px; }
-
-/* ── Analysis toggle button ── */
-.rech-btn-analysis {
-  padding: 3px 9px; border-radius: 4px; cursor: pointer;
-  border: 1px solid var(--border, #ccc);
-  background: var(--bg-accent, #f5f5f5); font-size: 0.75rem;
-  color: var(--color-muted, #666);
-  transition: background 0.12s, color 0.12s, border-color 0.12s;
-  white-space: nowrap;
-}
-.rech-btn-analysis:hover { background: #e8efff; color: var(--accent, #2c5f9e); border-color: #b8ccee; }
-.rech-btn-analysis--active {
-  background: #dbeafe; color: #1e4a80; border-color: #93c5fd; font-weight: 600;
 }
 
 /* ── Stats panel ── */
@@ -2154,6 +2307,23 @@ const MODULE_CSS = `
   padding-left: 0.75rem;
   margin-left: 0.25rem;
 }
+
+/* ── Aligned language pills filter ── */
+.rech-lang-pills {
+  display: flex; flex-wrap: wrap; gap: 4px; align-items: center;
+  margin-left: 4px;
+}
+.rech-lang-pill {
+  padding: 1px 7px; border-radius: 10px; font-size: 0.68rem;
+  font-weight: 700; letter-spacing: 0.04em; cursor: pointer;
+  border: 1px solid #b8cce8; background: #e8f0fb; color: #6c8ab5;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  opacity: 0.45;
+}
+.rech-lang-pill--on {
+  background: #d0e4ff; color: #1a4f7a; border-color: #7aaee8; opacity: 1;
+}
+.rech-lang-pill:hover { border-color: #5a8fc8; }
 
 /* ── Aligned translations block ── */
 .rech-aligned-block {

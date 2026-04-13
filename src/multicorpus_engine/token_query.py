@@ -274,8 +274,10 @@ def _fetch_aligned(
 ) -> dict[int, list[dict[str, Any]]]:
     """Return aligned units keyed by hit unit_id.
 
-    For each unit in *unit_ids*, looks up ``alignment_links`` (in both
-    directions) and returns metadata for every partner unit found.
+    Performs a two-hop transitive lookup so that indirect partners are
+    included.  For example, if alignment links are structured as
+    IT→FR and IT→EN, a hit in FR will return both the IT pivot *and*
+    the EN co-target (reached via the shared IT pivot).
     """
     if not unit_ids:
         return {}
@@ -283,6 +285,7 @@ def _fetch_aligned(
     unit_ids_set = set(unit_ids)
     ph = ",".join("?" * len(unit_ids))
 
+    # ── Step 1: direct links ──────────────────────────────────────────
     rows = conn.execute(
         f"""
         SELECT al.pivot_unit_id, al.target_unit_id, al.status
@@ -306,12 +309,38 @@ def _fetch_aligned(
         if tgt in unit_ids_set:
             hit_to_partners.setdefault(tgt, []).append((src, status))
 
-    # Batch-fetch all partner unit details
-    partner_ids = list({uid for pairs in hit_to_partners.values() for uid, _ in pairs})
-    if not partner_ids:
+    # ── Step 2: transitive lookup (partners-of-partners) ─────────────
+    # Collect all direct partner ids and look up *their* links to catch
+    # indirect partners (e.g. EN co-target reachable via IT pivot).
+    direct_partner_ids = list({uid for pairs in hit_to_partners.values() for uid, _ in pairs})
+    if direct_partner_ids:
+        pph2 = ",".join("?" * len(direct_partner_ids))
+        extra_rows = conn.execute(
+            f"""
+            SELECT al.pivot_unit_id, al.target_unit_id, al.status
+            FROM alignment_links al
+            WHERE al.pivot_unit_id IN ({pph2}) OR al.target_unit_id IN ({pph2})
+            """,
+            direct_partner_ids * 2,
+        ).fetchall()
+        for row in extra_rows:
+            src = int(row["pivot_unit_id"])
+            tgt = int(row["target_unit_id"])
+            status = row["status"]
+            # For each hit unit, add indirect partners reachable through direct partners
+            for hit_uid, direct_pairs in hit_to_partners.items():
+                direct_set = {uid for uid, _ in direct_pairs}
+                if src in direct_set and tgt not in unit_ids_set and tgt != hit_uid:
+                    hit_to_partners[hit_uid].append((tgt, status))
+                if tgt in direct_set and src not in unit_ids_set and src != hit_uid:
+                    hit_to_partners[hit_uid].append((src, status))
+
+    # ── Batch-fetch all partner unit details ─────────────────────────
+    all_partner_ids = list({uid for pairs in hit_to_partners.values() for uid, _ in pairs})
+    if not all_partner_ids:
         return {}
 
-    pph = ",".join("?" * len(partner_ids))
+    pph = ",".join("?" * len(all_partner_ids))
     partner_rows = conn.execute(
         f"""
         SELECT u.unit_id, u.text_norm, d.doc_id, d.title, d.language
@@ -319,7 +348,7 @@ def _fetch_aligned(
         JOIN documents d ON d.doc_id = u.doc_id
         WHERE u.unit_id IN ({pph})
         """,
-        partner_ids,
+        all_partner_ids,
     ).fetchall()
 
     partner_map: dict[int, dict[str, Any]] = {
