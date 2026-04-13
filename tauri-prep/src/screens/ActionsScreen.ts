@@ -528,14 +528,15 @@ export class ActionsScreen {
     panelSlot.appendChild(segPanel);
     panelSlot.appendChild(alignPanel);
     panelSlot.appendChild(annoterPanel);
-    root.appendChild(panelSlot);
 
     const logSection = document.createElement("section");
-    logSection.className = "card";
+    logSection.className = "card acts-log-section";
     logSection.setAttribute("data-collapsible", "true");
     logSection.setAttribute("data-collapsed-default", "true");
     logSection.innerHTML = `<h3>Journal</h3><div id="act-log" class="log-pane"></div>`;
-    root.appendChild(logSection);
+    panelSlot.appendChild(logSection);
+
+    root.appendChild(panelSlot);
 
     const busyOverlay = document.createElement("div");
     busyOverlay.id = "act-busy";
@@ -740,7 +741,6 @@ export class ActionsScreen {
         </div>
         <div class="acts-hub-head-tools">
           <span class="curate-pill" id="act-curate-mode-pill">Mode &#233;dition</span>
-          <button class="acts-hub-head-link acts-hub-head-link-accent" id="act-curate-lt-cta">Grand texte</button>
         </div>
       </section>
       <section class="card curate-workspace-card" id="act-curate-card">
@@ -1190,12 +1190,6 @@ export class ActionsScreen {
     el.querySelector("#act-reindex-after-curate-btn")!.addEventListener("click", () => this._runIndex());
     el.querySelector("#act-meta-btn")!.addEventListener("click", () => this._runValidateMeta());
     el.querySelector("#act-index-btn")!.addEventListener("click", () => this._runIndex());
-    // "Scénario grand texte" CTA: switch to segmentation + longtext mode
-    el.querySelector("#act-curate-lt-cta")?.addEventListener("click", () => {
-      this._switchSubViewDOM(root, "segmentation");
-      // Mount happens synchronously via _switchSubViewDOM, setSegMode after microtask
-      queueMicrotask(() => this._setSegMode("longtext"));
-    });
     // Delegation for diagnostics "Voir segmentation" link (rendered dynamically)
     el.querySelector("#act-curate-seg-link")?.addEventListener("click", (e) => {
       const btn = (e.target as HTMLElement).closest<HTMLButtonElement>("[data-action='goto-seg']");
@@ -1581,9 +1575,9 @@ export class ActionsScreen {
           <div class="seg-actions-dest">
             Apr&#232;s validation&nbsp;:
             <select id="act-seg-after-validate" class="seg-param-select seg-param-select-sm">
+              <option value="stay">Rester ici</option>
               <option value="next">Doc suivant</option>
-              <option value="stay">Rester</option>
-              <option value="documents">Documents</option>
+              <option value="documents">Onglet Documents</option>
             </select>
           </div>
         </div>
@@ -2215,9 +2209,9 @@ export class ActionsScreen {
                   </div>
                   <label style="margin-top:8px;font-size:12px;color:var(--prep-muted,#4f5d6d);display:flex;flex-direction:column;gap:3px">Apr&#232;s validation
                     <select id="act-seg-after-validate">
-                      <option value="documents">Aller &#224; Documents (d&#233;faut)</option>
-                      <option value="next">Passer au document suivant</option>
                       <option value="stay">Rester sur place</option>
+                      <option value="next">Passer au document suivant</option>
+                      <option value="documents">Aller &#224; Documents</option>
                     </select>
                   </label>
                 </div>
@@ -4137,7 +4131,8 @@ export class ActionsScreen {
   private _setButtonsEnabled(on: boolean): void {
     ["act-preview-btn", "act-curate-btn", "act-seg-btn", "act-align-btn", "act-align-recalc-btn",
      "act-seg-validate-btn", "act-seg-validate-only-btn", "act-seg-focus-toggle",
-     "act-seg-open-export-btn", "act-seg-lt-open-export-btn", "act-align-open-export-btn",
+     "act-seg-open-export-btn", "act-seg-lt-btn", "act-seg-lt-validate-btn", "act-seg-lt-validate-only-btn",
+     "act-seg-lt-open-export-btn", "act-align-open-export-btn",
      "act-meta-btn", "act-index-btn", "act-quality-btn", "act-coll-load-btn",
      "act-report-btn"].forEach(id => {
       const el = document.querySelector(`#${id}`) as HTMLButtonElement | null;
@@ -7804,9 +7799,9 @@ export class ActionsScreen {
   private _postValidateDestination(): "documents" | "next" | "stay" {
     try {
       const raw = localStorage.getItem(ActionsScreen.LS_SEG_POST_VALIDATE);
-      if (raw === "next" || raw === "stay") return raw;
+      if (raw === "next" || raw === "stay" || raw === "documents") return raw;
     } catch { /* ignore */ }
-    return "documents";
+    return "stay";
   }
 
   private _selectNextSegDoc(currentDocId: number): DocumentRecord | null {

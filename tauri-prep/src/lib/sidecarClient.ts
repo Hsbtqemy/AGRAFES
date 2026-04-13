@@ -1169,40 +1169,78 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+async function _rawPost(url: string, token: string | null, path: string, body: unknown): Promise<unknown> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json; charset=utf-8",
+  };
+  if (token) headers["X-Agrafes-Token"] = token;
+  const res = await sidecarFetch(`${url}${path}`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+  });
+  const json = (await res.json()) as Record<string, unknown>;
+  if (!res.ok || json.ok === false) {
+    const msg =
+      (json.error_message as string) ||
+      (json.error as string) ||
+      `HTTP ${res.status}`;
+    throw new SidecarError(msg, res.status);
+  }
+  return json;
+}
+
+async function _rawGet(url: string, token: string | null, path: string): Promise<unknown> {
+  const headers: Record<string, string> = {};
+  if (token) headers["X-Agrafes-Token"] = token;
+  const res = await sidecarFetch(`${url}${path}`, { headers });
+  const json = (await res.json()) as Record<string, unknown>;
+  if (!res.ok) {
+    const msg = (json.error_message as string) || `HTTP ${res.status}`;
+    throw new SidecarError(msg, res.status);
+  }
+  return json;
+}
+
 function makeConn(baseUrl: string, token: string | null): Conn {
   return {
     baseUrl,
     token,
     async post(path: string, body: unknown): Promise<unknown> {
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json; charset=utf-8",
-      };
-      if (token) headers["X-Agrafes-Token"] = token;
-      const res = await sidecarFetch(`${baseUrl}${path}`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(body),
-      });
-      const json = (await res.json()) as Record<string, unknown>;
-      if (!res.ok || json.ok === false) {
-        const msg =
-          (json.error_message as string) ||
-          (json.error as string) ||
-          `HTTP ${res.status}`;
-        throw new SidecarError(msg, res.status);
+      try {
+        return await _rawPost(baseUrl, token, path, body);
+      } catch (err) {
+        // Network error (not HTTP): connection refused → sidecar restarted.
+        // Reconnect once transparently.
+        if (!(err instanceof SidecarError) && _connDbPath && _conn?.baseUrl === baseUrl) {
+          sidecarLog("warn", `post ${path}: network error; reconnecting once`, errToString(err));
+          _conn = null;
+          try {
+            const fresh = await ensureRunning(_connDbPath);
+            return await _rawPost(fresh.baseUrl, fresh.token, path, body);
+          } catch (reconnErr) {
+            sidecarLog("error", `post ${path}: reconnect failed`, errToString(reconnErr));
+          }
+        }
+        throw err;
       }
-      return json;
     },
     async get(path: string): Promise<unknown> {
-      const headers: Record<string, string> = {};
-      if (token) headers["X-Agrafes-Token"] = token;
-      const res = await sidecarFetch(`${baseUrl}${path}`, { headers });
-      const json = (await res.json()) as Record<string, unknown>;
-      if (!res.ok) {
-        const msg = (json.error_message as string) || `HTTP ${res.status}`;
-        throw new SidecarError(msg, res.status);
+      try {
+        return await _rawGet(baseUrl, token, path);
+      } catch (err) {
+        if (!(err instanceof SidecarError) && _connDbPath && _conn?.baseUrl === baseUrl) {
+          sidecarLog("warn", `get ${path}: network error; reconnecting once`, errToString(err));
+          _conn = null;
+          try {
+            const fresh = await ensureRunning(_connDbPath);
+            return await _rawGet(fresh.baseUrl, fresh.token, path);
+          } catch (reconnErr) {
+            sidecarLog("error", `get ${path}: reconnect failed`, errToString(reconnErr));
+          }
+        }
+        throw err;
       }
-      return json;
     },
   };
 }

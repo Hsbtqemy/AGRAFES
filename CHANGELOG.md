@@ -5,6 +5,21 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.1.24] - 2026-04-13
+
+### Added
+
+- **Tests** : `tests/test_sidecar_units_merge_split.py`.
+
+### Fixed
+
+- **Sidecar** : fusion / scission d’unités — suppression des liens d’alignement via `pivot_unit_id` / `target_unit_id` (plus par `unit_n` seul) ; `/units/merge` et `/units/split` exigent le jeton comme les autres opérations mutantes.
+
+### Changed
+
+- **tauri-prep** : `sidecarClient`, `ActionsScreen`, `AlignPanel`, `app.css`, `prep-vnext.css`.
+- **Versions** : paquet Python **0.7.6** ; applications Tauri **0.1.24** ; Shell **v1.9.7**.
+
 ## [0.1.23] - 2026-04-13
 
 ### Fixed

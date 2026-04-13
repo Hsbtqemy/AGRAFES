@@ -572,6 +572,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 # Other DB-mutating operations (fixed in 1.4.1)
                 "/curate",
                 "/segment",
+                # Unit structural edits
+                "/units/merge", "/units/split",
                 # Async jobs
                 "/jobs/enqueue",
             }
@@ -3321,12 +3323,13 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             merged_raw = (row1["text_raw"] or "").rstrip() + " " + (row2["text_raw"] or "").lstrip()
             merged_norm = (row1["text_norm"] or "").rstrip() + " " + (row2["text_norm"] or "").lstrip()
 
-            # Delete alignment links for both units
+            # Delete alignment links for both units (keyed by unit_id, not n)
+            uid1 = int(row1["unit_id"])
+            uid2 = int(row2["unit_id"])
             conn.execute(
                 "DELETE FROM alignment_links WHERE"
-                " (pivot_doc_id=? AND pivot_unit_n IN (?,?))"
-                " OR (target_doc_id=? AND target_unit_n IN (?,?))",
-                (doc_id, n1, n2, doc_id, n1, n2),
+                " pivot_unit_id IN (?,?) OR target_unit_id IN (?,?)",
+                (uid1, uid2, uid1, uid2),
             )
 
             # Update unit n1 with merged text
@@ -3395,12 +3398,12 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 )
                 return
 
-            # Delete alignment links for this unit
+            # Delete alignment links for this unit (keyed by unit_id, not n)
+            uid = int(row["unit_id"])
             conn.execute(
                 "DELETE FROM alignment_links WHERE"
-                " (pivot_doc_id=? AND pivot_unit_n=?)"
-                " OR (target_doc_id=? AND target_unit_n=?)",
-                (doc_id, unit_n, doc_id, unit_n),
+                " pivot_unit_id=? OR target_unit_id=?",
+                (uid, uid),
             )
 
             # Shift all units after unit_n up by 1 to make room

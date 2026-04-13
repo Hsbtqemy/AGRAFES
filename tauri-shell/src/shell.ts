@@ -1671,7 +1671,7 @@ async function _exportDiagnosticFile(text: string): Promise<void> {
 // ─── About dialog ─────────────────────────────────────────────────────────────
 
 // Static version info (embedded at build time)
-const APP_VERSION = "1.9.6";
+const APP_VERSION = "1.9.7";
 const ENGINE_VERSION_DISPLAY = "0.6.1";
 const CONTRACT_VERSION_DISPLAY = "1.4.0";
 const TEI_PROFILES = ["generic", "parcolab_like", "parcolab_strict"];

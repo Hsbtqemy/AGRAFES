@@ -92,6 +92,7 @@ export class AlignPanel {
     el.innerHTML = this._html();
     this._el = el;
     this._bindEvents(el);
+    this._populateManualSelects(el);
     void this._loadFamilies(el);
     return el;
   }
