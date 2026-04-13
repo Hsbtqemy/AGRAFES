@@ -230,19 +230,46 @@ jobs:
           src = Path("release-artifacts")
           dst = Path("release-assets")
 
-          # Collect only non-empty files with allowed extensions or known prefixes
-          SKIP_NAMES = {"sidecar-manifest.json"}  # bare name, superseded by OS-suffixed ones
+          # Bare manifest name — superseded by OS-suffixed copies from each job.
+          SKIP_NAMES = {"sidecar-manifest.json"}
 
-          by_name = {}
-          for p in src.rglob("*"):
+          def under_pyinstaller_bundle(rel: Path) -> bool:
+              """Skip PyInstaller onedir trees (_internal and everything under *-onedir/)."""
+              for part in rel.parts:
+                  if part.endswith("-onedir"):
+                      return True
+                  if part == "_internal":
+                      return True
+              return False
+
+          def include_file(p: Path) -> bool:
               if not p.is_file():
-                  continue
-              if p.stat().st_size == 0:
-                  print(f"  skip (empty): {p}")
-                  continue
+                  return False
+              try:
+                  if p.stat().st_size == 0:
+                      print(f"  skip (empty): {p}")
+                      return False
+              except OSError:
+                  return False
+              rel = p.relative_to(src)
+              if under_pyinstaller_bundle(rel):
+                  return False
               if p.name in SKIP_NAMES:
                   print(f"  skip (superseded): {p}")
-                  continue
+                  return False
+              # Linux is shipped as a zip of the onedir; macOS/Windows as onefile binaries.
+              if p.suffix == ".zip":
+                  return True
+              if p.name.startswith("sidecar-manifest-") and p.suffix == ".json":
+                  return True
+              if p.name.startswith("multicorpus"):
+                  return True
+              return False
+
+          selected = [p for p in src.rglob("*") if include_file(p)]
+
+          by_name: dict[str, list[Path]] = {}
+          for p in selected:
               by_name.setdefault(p.name, []).append(p)
 
           duplicates = {name: paths for name, paths in by_name.items() if len(paths) > 1}
