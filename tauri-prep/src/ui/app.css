@@ -2309,6 +2309,56 @@ del.diff-del { color: #b91c1c; text-decoration: line-through; opacity: 0.75; }
 .align-summary-row.stat-ok { color: #1a7f4e; background: #e8f5f3; }
 .align-summary-row.stat-err { color: #b91c1c; background: #fef2f2; }
 
+/* ── KPI couverture (coloré dynamiquement) ── */
+.align-kpi-card--ok   { border-color: #a8d5b0; background: #f0faf3; }
+.align-kpi-card--warn { border-color: #edd89e; background: #fffbec; }
+.align-kpi-card--err  { border-color: #f5c6c3; background: #fdf0ef; }
+.align-kpi-card--ok   .align-kpi-val { color: #1a7f4e; }
+.align-kpi-card--warn .align-kpi-val { color: #a16207; }
+.align-kpi-card--err  .align-kpi-val { color: #b91c1c; }
+
+/* ── Détails qualité (panel collapsible sous le résumé de run) ── */
+.align-quality-details {
+  margin-top: 8px;
+  border-top: 1px dashed #d0d9e3;
+  padding-top: 6px;
+}
+.align-quality-details-summary {
+  font-size: 0.78rem;
+  color: var(--color-muted, #6c757d);
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+.align-quality-details-summary::-webkit-details-marker { display: none; }
+.align-quality-details[open] .align-quality-details-summary { color: #1a2533; }
+.align-quality-details-body {
+  margin-top: 6px;
+}
+.align-qd-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 12px;
+  font-size: 0.78rem;
+}
+.align-qd-label { color: var(--color-muted, #6c757d); }
+.align-qd-val   { font-weight: 600; color: #1a2533; }
+.align-qd-val.ok   { color: #1a7f4e; }
+.align-qd-val.warn { color: #a16207; }
+.align-qd-val.err  { color: #b91c1c; }
+.align-qd-orphans { margin-top: 6px; font-size: 0.75rem; }
+.align-qd-orphans-label { color: var(--color-muted, #6c757d); margin-bottom: 2px; }
+.align-qd-orphan {
+  background: #f8f9fa;
+  border-left: 2px solid #fcd34d;
+  padding: 2px 6px;
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #495057;
+}
+
 /* ── Colonne droite : Résultats / Audit ── */
 .align-v2-results {
   display: flex;

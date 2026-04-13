@@ -411,7 +411,7 @@ def test_metadata_validation_warns_no_line_units(
     report = import_docx_numbered_lines(conn=db_conn, path=path, language="fr", title="Struct Only")
 
     result = validate_document(db_conn, report.doc_id)
-    assert any("line units" in w.lower() for w in result.warnings)
+    assert any("unité" in w.lower() or "indexée" in w.lower() for w in result.warnings)
 
 
 # ===========================================================================

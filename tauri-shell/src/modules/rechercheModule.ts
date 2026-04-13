@@ -286,8 +286,8 @@ function _renderShell(root: HTMLElement): void {
         <label class="rech-filter-check">
           <input type="checkbox" class="rech-filter-within-s"> dans la phrase
         </label>
-        <label class="rech-filter-check rech-filter-check--aligned">
-          <input type="checkbox" class="rech-filter-aligned"> traductions
+        <label class="rech-filter-check rech-filter-check--aligned" title="Afficher les segments traduits liés (requiert des alignements en base)">
+          <input type="checkbox" class="rech-filter-aligned"> + traductions
         </label>
       </div>
     </div>
@@ -332,6 +332,7 @@ function _renderShell(root: HTMLElement): void {
             <button class="rech-sort-btn" data-sort="left" title="Trier par contexte gauche">Contexte G</button>
             <button class="rech-sort-btn" data-sort="right" title="Trier par contexte droit">Contexte D</button>
           </div>
+          <button class="rech-btn-analysis" title="Afficher / masquer les étiquettes d'analyse (UPOS, lemme) sur les tokens pivot">🔬 Analyse</button>
           <button class="rech-btn-export" title="Exporter en CSV">↓ CSV</button>
         </div>
         <div class="rech-hits-list"></div>
@@ -532,7 +533,8 @@ function _updatePosSelection(root: HTMLElement): void {
 
 // ─── Event wiring ─────────────────────────────────────────────────────────────
 
-const LS_ALIGNED = "agrafes.recherche.aligned";
+// v2: renamed key (old "agrafes.recherche.aligned" defaulted to false — now defaults to true)
+const LS_ALIGNED = "agrafes.recherche.aligned.v2";
 
 function _wireEvents(root: HTMLElement): void {
   const helpPan   = root.querySelector<HTMLElement>(".rech-help-panel")!;
@@ -540,11 +542,15 @@ function _wireEvents(root: HTMLElement): void {
   const moreBtn   = root.querySelector<HTMLButtonElement>(".rech-btn-more")!;
   const groupSel  = root.querySelector<HTMLSelectElement>(".rech-stats-group-by")!;
   const resetBtn  = root.querySelector<HTMLButtonElement>(".rech-btn-reset-filter")!;
+  const analysisBtn = root.querySelector<HTMLButtonElement>(".rech-btn-analysis")!;
   const exportBtn = root.querySelector<HTMLButtonElement>(".rech-btn-export")!;
   const alignedCb = root.querySelector<HTMLInputElement>(".rech-filter-aligned")!;
 
-  // Restore persisted toggle state
-  try { alignedCb.checked = localStorage.getItem(LS_ALIGNED) === "1"; } catch { /* ignore */ }
+  // Restore persisted toggle state; default ON (traductions alignées visibles par défaut)
+  try {
+    const stored = localStorage.getItem(LS_ALIGNED);
+    alignedCb.checked = stored === null ? true : stored === "1";
+  } catch { alignedCb.checked = true; }
 
   // Toggle change: persist + relaunch search if results exist
   alignedCb.addEventListener("change", () => {
@@ -648,6 +654,15 @@ function _wireEvents(root: HTMLElement): void {
     root.querySelector<HTMLElement>(".rech-stats-reset")!.hidden = true;
     _renderHits(root, _hits);
     _renderStats(root);
+  });
+
+  // Analysis toggle (upos/lemma visibility on pivot tokens)
+  analysisBtn.addEventListener("click", () => {
+    const on = root.classList.toggle("rech-show-analysis");
+    analysisBtn.classList.toggle("rech-btn-analysis--active", on);
+    analysisBtn.title = on
+      ? "Masquer les étiquettes d'analyse"
+      : "Afficher les étiquettes d'analyse (UPOS, lemme)";
   });
 
   // Export CSV
@@ -845,6 +860,20 @@ async function _doSearch(root: HTMLElement, loadMore: boolean): Promise<void> {
     _setStatus(root, _total === 0 ? "" : `${_total} occurrence${_total > 1 ? "s" : ""}`, false);
     root.querySelector<HTMLElement>(".rech-empty")!.hidden = _hits.length > 0;
 
+    // Persist last successful query so the Publier screen can offer a direct re-export
+    if (!loadMore && _lastQuery) {
+      try {
+        sessionStorage.setItem("agrafes.rg.lastQuery", JSON.stringify({
+          cql: _lastQuery.cql,
+          language: _lastQuery.language,
+          doc_ids: _lastQuery.doc_ids,
+          window: _lastQuery.window,
+          total: _total,
+          ts: new Date().toISOString(),
+        }));
+      } catch { /* storage full or private mode */ }
+    }
+
     // Fetch server-side stats only on new query (not load-more) and only if there are hits
     if (!loadMore && _hits.length > 0) {
       const groupBy = root.querySelector<HTMLSelectElement>(".rech-stats-group-by")?.value ?? "lemma";
@@ -1011,7 +1040,7 @@ function _buildHitCard(hit: _Hit): HTMLElement {
   header.innerHTML =
     `<span class="rech-hit-doc">${_esc(hit.title)}</span>` +
     `<span class="rech-hit-lang">${_esc(hit.language || "")}</span>` +
-    `<span class="rech-hit-loc" title="Segment ${hit.unit_id} \u2014 phrase\u202f${hit.sent_id} dans ce segment">seg.\u202f${hit.unit_id}\u202f\u00b7\u202fphrase\u202f${hit.sent_id}</span>`;
+    `<span class="rech-hit-loc" title="Segment ${hit.unit_id}${hit.sent_id > 1 ? ` \u2014 phrase\u202f${hit.sent_id} dans ce segment` : ""}">seg.\u202f${hit.unit_id}${hit.sent_id > 1 ? `\u202f\u00b7\u202fph.\u202f${hit.sent_id}` : ""}</span>`;
   card.appendChild(header);
 
   // Interlinear KWIC row
@@ -1075,15 +1104,14 @@ function _buildHitCard(hit: _Hit): HTMLElement {
 }
 
 function _buildCitationText(hit: _Hit): string {
-  const ctx = hit.context_tokens ?? [];
-  const pivotTokens = ctx.filter(t => t.position >= hit.start_position && t.position <= hit.end_position);
-  const pivotText = pivotTokens.length > 0
-    ? pivotTokens.map(t => t.word).join(" ")
-    : hit.text_norm;
   const lang = (hit.language ?? "?").toUpperCase();
+  // Location: always show segment; show phrase only if > 1 (segmentation per sentence → sent_id always 1)
+  const loc = hit.sent_id > 1
+    ? `seg.\u202f${hit.unit_id}\u202f\u00b7\u202fph.\u202f${hit.sent_id}`
+    : `seg.\u202f${hit.unit_id}`;
   const lines: string[] = [
-    `[${lang}] ${hit.title || "\u2014"} \u00b7 seg.\u202f${hit.unit_id}\u202f\u00b7\u202fphrase\u202f${hit.sent_id}`,
-    `\u00ab${pivotText}\u00bb`,
+    `[${lang}] ${hit.title || "\u2014"} \u00b7 ${loc}`,
+    `\u00ab${hit.text_norm}\u00bb`,
   ];
   for (const partner of hit.aligned ?? []) {
     const pLang = (partner.language ?? "?").toUpperCase();
@@ -1129,27 +1157,35 @@ function _buildTokenGroup(
     wordEl.className = "rech-kwic-word";
     wordEl.textContent = tok.word;
 
-    const uposEl = document.createElement("div");
-    uposEl.className = "rech-kwic-upos";
-    const col = UPOS_COLORS[tok.upos ?? ""] ?? "#bbb";
-    if (tok.upos) {
-      uposEl.textContent = tok.upos;
-      uposEl.style.background = col + (role === "pivot" ? "30" : "18");
-      uposEl.style.color = col;
+    // upos + lemma only on pivot tokens; context tokens show word only (less vertical noise)
+    if (role === "pivot") {
+      const uposEl = document.createElement("div");
+      uposEl.className = "rech-kwic-upos";
+      const col = UPOS_COLORS[tok.upos ?? ""] ?? "#bbb";
+      if (tok.upos) {
+        uposEl.textContent = tok.upos;
+        uposEl.style.background = col + "30";
+        uposEl.style.color = col;
+      }
+
+      const lemmaEl = document.createElement("div");
+      lemmaEl.className = "rech-kwic-lemma";
+      const lemma = tok.lemma ?? "";
+      lemmaEl.textContent = (lemma && lemma.toLowerCase() !== tok.word.toLowerCase()) ? lemma : "";
+
+      cell.appendChild(wordEl);
+      cell.appendChild(uposEl);
+      cell.appendChild(lemmaEl);
+    } else {
+      cell.appendChild(wordEl);
     }
-
-    const lemmaEl = document.createElement("div");
-    lemmaEl.className = "rech-kwic-lemma";
-    const lemma = tok.lemma ?? "";
-    lemmaEl.textContent = (lemma && lemma.toLowerCase() !== tok.word.toLowerCase()) ? lemma : "";
-
-    cell.appendChild(wordEl);
-    cell.appendChild(uposEl);
-    cell.appendChild(lemmaEl);
 
     // Pivot tokens: click → popover with CQL suggestions; right-click → context menu
     if (role === "pivot") {
-      cell.title = "Clic : rechercher · Clic droit : options";
+      const parts: string[] = [tok.word];
+      if (tok.upos) parts.push(tok.upos);
+      if (tok.lemma && tok.lemma.toLowerCase() !== tok.word.toLowerCase()) parts.push(`lemme: ${tok.lemma}`);
+      cell.title = parts.join(" · ") + "\nClic : rechercher · Clic droit : options";
       cell.addEventListener("click", (e) => {
         e.stopPropagation();
         _closeContextMenu();
@@ -1952,21 +1988,22 @@ const MODULE_CSS = `
 
 .rech-kwic-group {
   display: flex; flex-wrap: nowrap; gap: 2px;
-  /* Neutral vertical padding so border on pivot doesn't shift rows */
   padding: 4px 4px;
-  align-items: flex-start;
+  /* Context groups: center word vertically against the taller pivot group */
+  align-items: center;
 }
 .rech-kwic-left  { opacity: 0.65; }
 .rech-kwic-right { opacity: 0.65; }
 .rech-kwic-pivot {
   background: #7b3fa011; border-radius: 5px;
-  /* Use box-shadow instead of border to avoid shifting layout height */
   box-shadow: inset 2px 0 0 var(--accent, #7b3fa0),
               inset -2px 0 0 var(--accent, #7b3fa0);
   padding: 4px 6px;
+  /* Pivot tokens have 3 rows (word+upos+lemma); align to top within the group */
+  align-items: flex-start;
 }
 
-/* ── Token cell (3 rows, fixed heights for cross-group alignment) ── */
+/* ── Token cell ── */
 .rech-kwic-token {
   display: flex; flex-direction: column;
   align-items: center; flex-shrink: 0;
@@ -1976,15 +2013,37 @@ const MODULE_CSS = `
   height: 22px; display: flex; align-items: center; justify-content: center;
   font-size: 0.88rem; font-weight: 500; white-space: nowrap;
 }
+/* upos + lemma hidden by default; shown when .rech-show-analysis is active on root */
 .rech-kwic-upos {
-  height: 16px; display: flex; align-items: center; justify-content: center;
+  height: 0; overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
   font-size: 0.58rem; font-weight: 700; letter-spacing: 0.04em;
   border-radius: 3px; padding: 0 3px; white-space: nowrap; min-width: 18px;
+  transition: height 0.15s;
 }
 .rech-kwic-lemma {
-  height: 15px; display: flex; align-items: center; justify-content: center;
+  height: 0; overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
   font-size: 0.67rem; font-style: italic;
+  transition: height 0.15s;
   color: var(--color-muted, #999); white-space: nowrap;
+}
+/* Show upos+lemma when analysis mode active */
+.rech-show-analysis .rech-kwic-upos { height: 16px; }
+.rech-show-analysis .rech-kwic-lemma { height: 15px; }
+
+/* ── Analysis toggle button ── */
+.rech-btn-analysis {
+  padding: 3px 9px; border-radius: 4px; cursor: pointer;
+  border: 1px solid var(--border, #ccc);
+  background: var(--bg-accent, #f5f5f5); font-size: 0.75rem;
+  color: var(--color-muted, #666);
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  white-space: nowrap;
+}
+.rech-btn-analysis:hover { background: #e8efff; color: var(--accent, #2c5f9e); border-color: #b8ccee; }
+.rech-btn-analysis--active {
+  background: #dbeafe; color: #1e4a80; border-color: #93c5fd; font-weight: 600;
 }
 
 /* ── Stats panel ── */

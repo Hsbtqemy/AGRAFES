@@ -2662,9 +2662,9 @@ export class ActionsScreen {
     legacyContainer.setAttribute("data-legacy-align", "true");
     legacyContainer.innerHTML = `
       <section class="acts-seg-head-card" style="display:none"><!-- placeholder legacy head --></section>
-      <section class="card" id="act-quality-card" data-collapsible="true" data-collapsed-default="true">
+      <section class="card" id="act-quality-card" data-collapsible="true">
         <h3>Qualit&#233; alignement <span class="badge-preview">m&#233;triques</span></h3>
-        <p class="hint">Calculer les m&#233;triques de couverture et d&#8217;orphelins pour une paire pivot&#8596;cible.</p>
+        <p class="hint">Couverture et orphelins pour une paire pivot&#8596;cible. Recalculez apr&#232;s chaque run ou modification manuelle.</p>
         <div class="form-row">
           <label>Pivot
             <select id="act-quality-pivot"><option value="">&#8212; choisir &#8212;</option></select>
@@ -3014,9 +3014,9 @@ export class ActionsScreen {
           <button id="act-goto-report" class="btn btn-secondary btn-sm">Terminer: ouvrir Rapport runs &#8595;</button>
         </div>
       </section>
-      <section class="card" id="act-quality-card" data-collapsible="true" data-collapsed-default="true">
+      <section class="card" id="act-quality-card" data-collapsible="true">
         <h3>Qualit&#233; alignement <span class="badge-preview">m&#233;triques</span></h3>
-        <p class="hint">Calculer les m&#233;triques de couverture et d&#8217;orphelins pour une paire pivot&#8596;cible.</p>
+        <p class="hint">Couverture et orphelins pour une paire pivot&#8596;cible. Recalculez apr&#232;s chaque run ou modification manuelle.</p>
         <div class="form-row">
           <label>Pivot
             <select id="act-quality-pivot"><option value="">&#8212; choisir &#8212;</option></select>

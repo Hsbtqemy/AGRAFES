@@ -15,6 +15,7 @@ import {
   alignFamily,
   getFamilies,
   alignAudit,
+  alignQuality,
   updateAlignLinkStatus,
   deleteAlignLink,
   batchUpdateAlignLinks,
@@ -25,6 +26,7 @@ import {
   type FamilyAlignOptions,
   type AlignLinkRecord,
   type AlignBatchAction,
+  type AlignQualityStats,
 } from "../lib/sidecarClient.ts";
 import type { JobCenter } from "../components/JobCenter.ts";
 
@@ -229,8 +231,17 @@ export class AlignPanel {
           <div class="align-kpi-val" id="align-kpi-effective">—</div>
           <div class="align-kpi-lbl">Effectifs</div>
         </div>
+        <div class="align-kpi-card align-kpi-card--coverage" id="align-kpi-coverage-wrap" title="Part des segments pivot ayant au moins un lien. ≥ 90 % = bon ; ≥ 60 % = acceptable.">
+          <div class="align-kpi-val" id="align-kpi-coverage">…</div>
+          <div class="align-kpi-lbl">Couverture</div>
+        </div>
       </div>
       <div id="align-summary-per-target" class="align-summary-per-target"></div>
+      <!-- Métriques de debug (orphelins, collisions, statuts) -->
+      <details id="align-quality-details" class="align-quality-details" style="display:none">
+        <summary class="align-quality-details-summary">Détails qualité ▸</summary>
+        <div id="align-quality-details-body" class="align-quality-details-body"></div>
+      </details>
     </div>
 
   </div><!-- /align-v2-config -->
@@ -827,6 +838,59 @@ export class AlignPanel {
     this._auditOffset = 0;
     this._auditLinks = [];
     void this._loadAuditPage(el, false);
+    void this._autoFetchQuality(el, pivotId, targetId);
+  }
+
+  // ─── Auto-fetch quality after run ────────────────────────────────────────────
+
+  private async _autoFetchQuality(el: HTMLElement, pivotId: number, targetId: number): Promise<void> {
+    const conn = this._conn();
+    if (!conn) return;
+    const coverageEl = el.querySelector<HTMLElement>("#align-kpi-coverage");
+    const coverageWrap = el.querySelector<HTMLElement>("#align-kpi-coverage-wrap");
+    const detailsEl = el.querySelector<HTMLDetailsElement>("#align-quality-details");
+    const detailsBody = el.querySelector<HTMLElement>("#align-quality-details-body");
+    if (!coverageEl) return;
+    coverageEl.textContent = "…";
+    try {
+      const res = await alignQuality(conn, pivotId, targetId);
+      const s: AlignQualityStats = res.stats;
+      const pct = s.coverage_pct;
+      coverageEl.textContent = `${pct}%`;
+      if (coverageWrap) {
+        coverageWrap.classList.remove("align-kpi-card--ok", "align-kpi-card--warn", "align-kpi-card--err");
+        coverageWrap.classList.add(pct >= 90 ? "align-kpi-card--ok" : pct >= 60 ? "align-kpi-card--warn" : "align-kpi-card--err");
+        coverageWrap.title = `Couverture : ${s.covered_pivot_units}/${s.total_pivot_units} segments pivot liés. ≥ 90 % = bon.`;
+      }
+      // Populate details panel
+      if (detailsEl && detailsBody) {
+        detailsBody.innerHTML = `
+          <div class="align-qd-grid">
+            <span class="align-qd-label" title="Segments pivot sans aucun lien">Orphelins pivot</span>
+            <span class="align-qd-val ${s.orphan_pivot_count === 0 ? "ok" : "warn"}">${s.orphan_pivot_count}</span>
+            <span class="align-qd-label" title="Segments cible sans aucun lien">Orphelins cible</span>
+            <span class="align-qd-val ${(s.orphan_target_count ?? 0) === 0 ? "ok" : "warn"}">${s.orphan_target_count ?? 0}</span>
+            <span class="align-qd-label" title="Liens en conflit (même pivot → deux segments cible différents)">Collisions</span>
+            <span class="align-qd-val ${s.collision_count === 0 ? "ok" : "err"}">${s.collision_count}</span>
+            <span class="align-qd-label">Liens total</span>
+            <span class="align-qd-val">${s.total_links}</span>
+            <span class="align-qd-label" title="Liens acceptés manuellement / rejetés / non révisés">Statuts</span>
+            <span class="align-qd-val">✓${s.status_counts.accepted} ✗${s.status_counts.rejected} ?${s.status_counts.unreviewed}</span>
+          </div>
+          ${res.sample_orphan_pivot.length > 0 ? `
+          <div class="align-qd-orphans">
+            <div class="align-qd-orphans-label">Exemples orphelins pivot :</div>
+            ${res.sample_orphan_pivot.slice(0, 3).map(o =>
+              `<div class="align-qd-orphan">[§${o.external_id ?? "?"}] ${o.text?.slice(0, 80) ?? ""}</div>`
+            ).join("")}
+          </div>` : ""}
+        `;
+        detailsEl.style.display = "";
+      }
+      this._cb.log(`Qualité auto : couverture ${pct}%, orphelins=${s.orphan_pivot_count}p/${s.orphan_target_count}c`);
+    } catch {
+      if (coverageEl) coverageEl.textContent = "—";
+    }
   }
 
   // ─── Audit loading ───────────────────────────────────────────────────────────

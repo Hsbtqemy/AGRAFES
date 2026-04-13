@@ -2506,6 +2506,144 @@ interface WizardState {
   error: string | null;
 }
 
+interface _RgLastQuery {
+  cql: string;
+  language: string | null;
+  doc_ids: number[] | null;
+  window: number;
+  total: number;
+  ts: string;
+}
+
+function _readRgLastQuery(): _RgLastQuery | null {
+  try {
+    const raw = sessionStorage.getItem("agrafes.rg.lastQuery");
+    if (!raw) return null;
+    return JSON.parse(raw) as _RgLastQuery;
+  } catch { return null; }
+}
+
+function _renderRgExportCard(container: HTMLElement): void {
+  const lq = _readRgLastQuery();
+
+  const card = document.createElement("div");
+  card.style.cssText = "background:#f0f7ff;border:1px solid #b8d4f0;border-radius:8px;padding:1rem 1.2rem;margin-bottom:1rem";
+
+  const title = document.createElement("div");
+  title.style.cssText = "font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#2c5f9e;margin-bottom:0.75rem";
+  title.textContent = "Export — Recherche grammaticale (CSV)";
+  card.appendChild(title);
+
+  if (lq) {
+    // Show last query info + direct export button
+    const info = document.createElement("div");
+    info.style.cssText = "font-size:0.82rem;color:#495057;margin-bottom:0.6rem;display:flex;flex-direction:column;gap:0.25rem";
+
+    const cqlLine = document.createElement("div");
+    const cqlLabel = document.createElement("span");
+    cqlLabel.style.cssText = "color:#6c757d;margin-right:0.4em";
+    cqlLabel.textContent = "Requête :";
+    const cqlCode = document.createElement("code");
+    cqlCode.style.cssText = "font-size:0.78rem;background:#e8f0ff;border-radius:3px;padding:1px 5px;color:#1a3a6e;word-break:break-all";
+    cqlCode.textContent = lq.cql;
+    cqlLine.appendChild(cqlLabel);
+    cqlLine.appendChild(cqlCode);
+
+    const metaLine = document.createElement("div");
+    metaLine.style.cssText = "color:#6c757d;font-size:0.75rem";
+    const parts: string[] = [`${lq.total} occurrence${lq.total !== 1 ? "s" : ""}`];
+    if (lq.language) parts.push(`langue : ${lq.language}`);
+    if (lq.doc_ids) parts.push(`${lq.doc_ids.length} document(s)`);
+    parts.push(lq.ts.slice(0, 16).replace("T", " "));
+    metaLine.textContent = parts.join(" · ");
+
+    info.appendChild(cqlLine);
+    info.appendChild(metaLine);
+    card.appendChild(info);
+
+    const btns = document.createElement("div");
+    btns.style.cssText = "display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center";
+
+    const exportBtn = document.createElement("button");
+    exportBtn.style.cssText = "padding:4px 12px;border-radius:5px;border:1px solid #2c5f9e;background:#fff;color:#2c5f9e;font-size:0.82rem;cursor:pointer;font-weight:600";
+    exportBtn.textContent = "↓ Exporter cette requête (CSV)";
+    exportBtn.addEventListener("click", () => void _doRgExportFromPublier(exportBtn, lq));
+
+    const goBtn = document.createElement("button");
+    goBtn.style.cssText = "padding:4px 10px;border-radius:5px;border:1px solid #adb5bd;background:#f8f9fa;color:#495057;font-size:0.78rem;cursor:pointer";
+    goBtn.textContent = "Nouvelle requête →";
+    goBtn.title = "Basculer vers la Recherche grammaticale pour lancer une autre requête";
+    goBtn.addEventListener("click", () => void _setMode("explorer"));
+
+    btns.appendChild(exportBtn);
+    btns.appendChild(goBtn);
+    card.appendChild(btns);
+  } else {
+    // No prior query — just link to Explorer
+    const msg = document.createElement("div");
+    msg.style.cssText = "display:flex;gap:0.6rem;flex-wrap:wrap;align-items:center";
+
+    const goBtn = document.createElement("button");
+    goBtn.style.cssText = "padding:4px 12px;border-radius:5px;border:1px solid #2c5f9e;background:#fff;color:#2c5f9e;font-size:0.82rem;cursor:pointer;font-weight:600";
+    goBtn.textContent = "🔬 Ouvrir la Recherche grammaticale";
+    goBtn.addEventListener("click", () => void _setMode("explorer"));
+
+    const hint = document.createElement("span");
+    hint.style.cssText = "font-size:0.75rem;color:#6c757d";
+    hint.textContent = "Lancez une requête RG, puis revenez ici pour exporter.";
+
+    msg.appendChild(goBtn);
+    msg.appendChild(hint);
+    card.appendChild(msg);
+  }
+
+  container.appendChild(card);
+}
+
+async function _doRgExportFromPublier(btn: HTMLButtonElement, lq: _RgLastQuery): Promise<void> {
+  if (!_currentDbPath) return;
+  const origText = btn.textContent ?? "";
+  btn.disabled = true;
+  btn.textContent = "Enregistrement…";
+  try {
+    const { save } = await import("@tauri-apps/plugin-dialog");
+    const outPath = await save({
+      defaultPath: `token_query_${new Date().toISOString().slice(0, 10)}.csv`,
+      filters: [{ name: "CSV", extensions: ["csv"] }],
+    });
+    if (!outPath) { btn.disabled = false; btn.textContent = origText; return; }
+
+    const { ensureRunning } = await import("../../tauri-app/src/lib/sidecarClient.ts");
+    const conn = await ensureRunning(_currentDbPath);
+
+    const payload: Record<string, unknown> = {
+      cql: lq.cql,
+      window: lq.window,
+      out_path: outPath,
+    };
+    if (lq.language) payload.language = lq.language;
+    if (lq.doc_ids)  payload.doc_ids  = lq.doc_ids;
+
+    await conn.post("/export/token_query_csv", payload);
+
+    btn.textContent = "✓ Exporté";
+    btn.style.background = "#d1fae5";
+    btn.style.borderColor = "#86efac";
+    btn.style.color = "#145a38";
+    setTimeout(() => {
+      btn.disabled = false;
+      btn.textContent = origText;
+      btn.style.background = "";
+      btn.style.borderColor = "";
+      btn.style.color = "";
+    }, 2500);
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = `✗ Erreur : ${String(err).slice(0, 60)}`;
+    setTimeout(() => { btn.textContent = origText; }, 3000);
+  }
+}
+
 async function _renderPublicationWizard(container: HTMLElement): Promise<void> {
   if (!_currentDbPath) {
     container.innerHTML = `
@@ -2534,20 +2672,8 @@ async function _renderPublicationWizard(container: HTMLElement): Promise<void> {
   // Quick exports card (above wizard)
   const quickExports = document.createElement("div");
   quickExports.style.cssText = "max-width:700px;margin:1.5rem auto 0;padding:0 1rem;font-family:inherit";
-  quickExports.innerHTML = `
-    <div style="background:#f0f7ff;border:1px solid #b8d4f0;border-radius:8px;padding:1rem 1.2rem;margin-bottom:1rem">
-      <div style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#2c5f9e;margin-bottom:0.5rem">Exports rapides</div>
-      <div style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:center">
-        <button id="pub-goto-rg" style="padding:4px 12px;border-radius:5px;border:1px solid #2c5f9e;background:#fff;color:#2c5f9e;font-size:0.82rem;cursor:pointer;font-weight:600">
-          🔬 Export Recherche grammaticale (CSV)
-        </button>
-        <span style="font-size:0.75rem;color:#6c757d">Lance la RG → utilisez ↓ CSV dans la barre de résultats</span>
-      </div>
-    </div>`;
-  quickExports.querySelector("#pub-goto-rg")!.addEventListener("click", () => {
-    void _setMode("explorer");
-  });
   container.appendChild(quickExports);
+  _renderRgExportCard(quickExports);
 
   const wrap = document.createElement("div");
   wrap.style.cssText = "max-width:700px;margin:0 auto;padding:0 1rem 2rem;font-family:inherit";
@@ -2999,7 +3125,11 @@ function _renderHome(container: HTMLElement): void {
   container.appendChild(wrap);
 
   wrap.querySelector("#shell-btn-explorer")!
-    .addEventListener("click", () => _setMode("explorer"));
+    .addEventListener("click", () => {
+      // Hub → always land on Concordancier, not last visited sub-tab
+      try { localStorage.setItem("agrafes.explorer.subtab", "concordancier"); } catch { /* ignore */ }
+      void _setMode("explorer");
+    });
   wrap.querySelector("#shell-btn-constituer")!
     .addEventListener("click", () => _setMode("constituer"));
   wrap.querySelector("#shell-btn-publish")!
