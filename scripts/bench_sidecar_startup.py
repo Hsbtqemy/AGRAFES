@@ -18,7 +18,9 @@ import platform
 import re
 import statistics
 import subprocess
+import sys
 import tempfile
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -280,28 +282,61 @@ def bench_init_project(binary: Path, runs: int) -> list[float]:
     return samples
 
 
-def _read_first_json_from_stream(stream, timeout_s: float = 20.0) -> dict:
-    start = time.time()
-    buf: list[str] = []
-    depth = 0
-    started = False
+def _read_first_json_from_stream(
+    stream,
+    timeout_s: float = 20.0,
+    *,
+    proc: subprocess.Popen | None = None,
+) -> dict:
+    """Read first complete JSON object from *stream* with a real wall-clock timeout.
 
-    while time.time() - start < timeout_s:
-        line = stream.readline()
-        if not line:
-            time.sleep(0.01)
-            continue
-        buf.append(line)
-        for ch in line:
-            if ch == "{":
-                depth += 1
-                started = True
-            elif ch == "}":
-                depth -= 1
-                if started and depth == 0:
-                    text = "".join(buf)
-                    return _parse_single_json(text, "persistent-startup")
-    raise TimeoutError("Timed out waiting for initial sidecar serve JSON payload")
+    Uses a worker thread so ``readline()`` cannot block the main thread past *timeout_s*
+    (Windows + full stderr pipe otherwise deadlock the child before stdout is written).
+    If *proc* is given and the deadline is exceeded, the process is killed so pipes unblock.
+    """
+    result: list[dict | None] = [None]
+    worker_exc: list[BaseException | None] = [None]
+
+    def _worker() -> None:
+        buf: list[str] = []
+        depth = 0
+        started = False
+        try:
+            while True:
+                line = stream.readline()
+                if not line:
+                    break
+                buf.append(line)
+                for ch in line:
+                    if ch == "{":
+                        depth += 1
+                        started = True
+                    elif ch == "}":
+                        depth -= 1
+                        if started and depth == 0:
+                            text = "".join(buf)
+                            result[0] = _parse_single_json(text, "persistent-startup")
+                            return
+        except BaseException as exc:
+            worker_exc[0] = exc
+
+    t = threading.Thread(target=_worker, daemon=True)
+    t.start()
+    t.join(timeout=timeout_s)
+    if t.is_alive():
+        if proc is not None and proc.poll() is None:
+            proc.kill()
+            try:
+                proc.wait(timeout=15.0)
+            except subprocess.TimeoutExpired:
+                pass
+        t.join(timeout=10.0)
+        raise TimeoutError("Timed out waiting for initial sidecar serve JSON payload")
+    if worker_exc[0] is not None:
+        raise worker_exc[0]
+    if result[0] is None:
+        raise RuntimeError("Sidecar exited before emitting initial JSON on stdout (check stderr)")
+    return result[0]
 
 
 def _http_json(
@@ -344,9 +379,14 @@ def _read_token_from_portfile(portfile_path: str | None) -> str | None:
 def bench_persistent(binary: Path, runs: int, query_runs: int) -> dict:
     ttr_samples: list[float] = []
     query_samples: list[float] = []
+    # Windows CI cold start + PyInstaller may need more time for the first JSON line.
+    startup_json_timeout_s = 45.0 if sys.platform == "win32" else 20.0
 
     for i in range(runs):
-        with tempfile.TemporaryDirectory(prefix="agrafes-sidecar-persistent-bench-") as td:
+        with tempfile.TemporaryDirectory(
+            prefix="agrafes-sidecar-persistent-bench-",
+            ignore_cleanup_errors=True,
+        ) as td:
             tmp = Path(td)
             db = tmp / "bench.db"
             txt = tmp / "fixture.txt"
@@ -362,9 +402,30 @@ def bench_persistent(binary: Path, runs: int, query_runs: int) -> dict:
                 stderr=subprocess.PIPE,
                 text=True,
             )
+            stderr_parts: list[str] = []
+
+            def _drain_stderr() -> None:
+                try:
+                    err = proc.stderr
+                    if err is None:
+                        return
+                    while True:
+                        chunk = err.read(4096)
+                        if not chunk:
+                            break
+                        stderr_parts.append(chunk)
+                except Exception:
+                    pass
+
+            stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
+            stderr_thread.start()
             try:
                 startup_t0 = time.perf_counter()
-                initial = _read_first_json_from_stream(proc.stdout)  # type: ignore[arg-type]
+                initial = _read_first_json_from_stream(
+                    proc.stdout,
+                    timeout_s=startup_json_timeout_s,
+                    proc=proc,
+                )
                 port = initial.get("port")
                 if not isinstance(port, int):
                     raise RuntimeError(f"persistent run {i + 1}: invalid startup payload: {initial}")
@@ -415,7 +476,8 @@ def bench_persistent(binary: Path, runs: int, query_runs: int) -> dict:
 
                 _http_json("POST", f"{base}/shutdown", {}, headers=write_headers)
                 proc.wait(timeout=10.0)
-                stderr_text = proc.stderr.read() if proc.stderr else ""
+                stderr_thread.join(timeout=5.0)
+                stderr_text = "".join(stderr_parts)
                 disallowed = _filter_disallowed_stderr(stderr_text)
                 if disallowed:
                     raise RuntimeError(
@@ -425,7 +487,11 @@ def bench_persistent(binary: Path, runs: int, query_runs: int) -> dict:
             finally:
                 if proc.poll() is None:
                     proc.kill()
-                    proc.wait(timeout=5.0)
+                    try:
+                        proc.wait(timeout=15.0)
+                    except subprocess.TimeoutExpired:
+                        pass
+                stderr_thread.join(timeout=5.0)
 
     return {
         "time_to_ready_ms": _stats(ttr_samples),

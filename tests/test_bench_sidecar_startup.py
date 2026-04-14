@@ -11,6 +11,12 @@ def test_filter_disallowed_stderr_allows_known_pyinstaller_pkgres_warning() -> N
         "pyi_rth_pkgres.py:44: DeprecationWarning: pkg_resources is deprecated as an API.\n"
     )
     assert _filter_disallowed_stderr(stderr_text) == []
+    # setuptools peut ajouter l’URL sur la même ligne (CI / wheels récents).
+    stderr_with_url = (
+        "pyi_rth_pkgres.py:44: DeprecationWarning: pkg_resources is deprecated as an API. "
+        "See https://setuptools.pypa.io/en/latest/pkg_resources.html\n"
+    )
+    assert _filter_disallowed_stderr(stderr_with_url) == []
 
 
 def test_filter_disallowed_stderr_rejects_unexpected_lines() -> None:

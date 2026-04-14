@@ -11,7 +11,8 @@ const __dirname = path.dirname(__filename);
 
 const ALLOWED_STDERR_WARNING_PATTERNS = [
   // PyInstaller runtime hook warning emitted before app code runs.
-  /^pyi_rth_pkgres\.py:\d+: DeprecationWarning: pkg_resources is deprecated as an API\.$/,
+  // Aligné sur scripts/bench_sidecar_startup.py (préfixe : setuptools peut ajouter une URL).
+  /^pyi_rth_pkgres\.py:\d+: DeprecationWarning: pkg_resources is deprecated as an API\./,
 ];
 
 function fail(message, details = {}) {
