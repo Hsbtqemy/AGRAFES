@@ -1,6 +1,6 @@
 # Status: AGRAFES Shell (tauri-shell/)
 
-**Current version:** V1.9.2 (2026-03-08)
+**Current version:** v0.1.28 (2026-04-08)
 
 ## What it is
 
@@ -718,18 +718,36 @@ Panneau modal listant tous les raccourcis :
 - Raccourci `⌘+3` ajouté pour "Publier"
 - Raccourci `⌘+O` pour ouvrir DB, `⌘+Maj+N` pour créer
 
-## V1.9.1 — Check updates (open GitHub Releases)
+## v0.1.28 — Update check (comparaison versions) + fix versioning
 
-- New item **"⬆ Vérifier les mises à jour…"** in the Support menu.
-- Action: displays a toast with the local version (`v1.9.1`) then calls
-  `@tauri-apps/plugin-shell` → `open(RELEASES_URL)` to launch the system browser
-  on `https://github.com/Hsbtqemy/AGRAFES/releases`.
-- **Fallback**: if `open()` fails (Tauri unavailable or permission error), a modal
-  appears with the URL displayed as copyable text — no crash, no silent failure.
-- **Capability added**: `shell:allow-open` in `tauri-shell/src-tauri/capabilities/default.json`.
-- **`RELEASES_URL`** constant defined in `shell.ts` — pure helper `buildReleaseUrl(base, tag)`
-  exported for testing.
-- **Tests**: 12 new cases in `tauri-shell/scripts/test_diagnostics.mjs` (total: 54 passed).
+**Date:** 2026-04-08
+
+### Update check (GitHub Releases API)
+
+- `_checkUpdates()` appelle maintenant la commande Rust `fetch_github_latest_release`
+  (reqwest, restreint à `api.github.com`) plutôt que d'ouvrir directement le navigateur.
+- Comparaison semver locale (major.minor.patch) entre version installée et dernière release.
+- Modal en 4 états : **checking** / **à jour** ✅ / **nouvelle version disponible** ⬆️ (avec
+  notes de release + bouton de téléchargement) / **erreur réseau**.
+- Fallback `fetch()` natif si la commande Rust n'est pas disponible (hors Tauri).
+
+### Fix : versions figées (bug Windows "v1.9.10")
+
+- `APP_VERSION` dans `shell.ts` était `"1.9.10"` (jamais mis à jour). Remplacé par
+  `let APP_VERSION = "0.1.28"` mis à jour dynamiquement via `getVersion()` de l'API Tauri.
+- Constantes de fallback `ENGINE_VERSION_DIAG` / `CONTRACT_VERSION_DIAG` dans `diagnostics.ts`
+  alignées sur `pyproject.toml` et `sidecar_contract.py`.
+- Dialog "À propos" : engine version et contract version lues en direct depuis
+  `/health` du sidecar après ouverture (display `…` pendant fetch, non-bloquant).
+
+---
+
+## V1.9.1 — Check updates (open GitHub Releases) *(remplacé par v0.1.28)*
+
+> Implémentation initiale remplacée par v0.1.28 ci-dessus.
+
+- Ajout du bouton "⬆ Vérifier les mises à jour…" dans le menu support.
+- `shell:allow-open` ajouté dans `capabilities/default.json`.
 
 ---
 

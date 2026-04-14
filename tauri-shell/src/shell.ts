@@ -1670,64 +1670,153 @@ async function _exportDiagnosticFile(text: string): Promise<void> {
 
 // ─── About dialog ─────────────────────────────────────────────────────────────
 
-// Static version info (embedded at build time)
-const APP_VERSION = "1.9.10";
-const ENGINE_VERSION_DISPLAY = "0.6.1";
-const CONTRACT_VERSION_DISPLAY = "1.4.0";
 const TEI_PROFILES = ["generic", "parcolab_like", "parcolab_strict"];
 const RELEASES_URL = "https://github.com/Hsbtqemy/AGRAFES/releases";
+const GITHUB_API_LATEST = "https://api.github.com/repos/Hsbtqemy/AGRAFES/releases/latest";
+
+// App version: initialized from tauri.conf.json at runtime, fallback to build-time constant.
+let APP_VERSION = "0.1.28";
+(async () => {
+  try {
+    const { getVersion } = await import("@tauri-apps/api/app").catch(() => ({ getVersion: null as null }));
+    if (getVersion) APP_VERSION = await getVersion();
+  } catch { /* keep fallback */ }
+})();
+
+// ─── Update check ─────────────────────────────────────────────────────────────
+
+/** Simple semver >=: returns true if a >= b (major.minor.patch). */
+function _semverGte(a: string, b: string): boolean {
+  const parse = (v: string): [number, number, number] =>
+    v.split(".").slice(0, 3).map(n => parseInt(n, 10) || 0) as [number, number, number];
+  const [a0, a1, a2] = parse(a);
+  const [b0, b1, b2] = parse(b);
+  if (a0 !== b0) return a0 > b0;
+  if (a1 !== b1) return a1 > b1;
+  return a2 >= b2;
+}
 
 async function _checkUpdates(): Promise<void> {
   _shellLog("info", "updates", `Check updates requested (current: v${APP_VERSION})`);
-  _showToast(`Ouverture des Releases… (version locale : v${APP_VERSION})`, 3500);
+  _showUpdatesModal({ state: "checking" });
   try {
-    const { open } = await import("@tauri-apps/plugin-shell");
-    await open(RELEASES_URL);
+    // Use Rust command (bypasses WebView CSP/CORS for github.com).
+    // Falls back to native fetch for non-Tauri environments.
+    let rawJson: string;
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      rawJson = await invoke<string>("fetch_github_latest_release", { owner: "Hsbtqemy", repo: "AGRAFES" });
+    } catch {
+      const resp = await fetch(GITHUB_API_LATEST, {
+        headers: { "Accept": "application/vnd.github+json" },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!resp.ok) throw new Error(`GitHub API: HTTP ${resp.status}`);
+      rawJson = await resp.text();
+    }
+    const data = JSON.parse(rawJson) as {
+      tag_name: string; name: string; body: string;
+      html_url: string; published_at: string;
+    };
+    const latestTag = data.tag_name.replace(/^v/, "");
+    const isUpToDate = _semverGte(APP_VERSION, latestTag);
+    _shellLog("info", "updates", `Latest: v${latestTag}, current: v${APP_VERSION}, up-to-date: ${isUpToDate}`);
+    _showUpdatesModal({
+      state: isUpToDate ? "uptodate" : "available",
+      currentVersion: APP_VERSION,
+      latestVersion: latestTag,
+      releaseName: data.name,
+      releaseBody: data.body?.slice(0, 500) ?? "",
+      releaseUrl: data.html_url,
+      publishedAt: data.published_at,
+    });
   } catch (err) {
-    _shellLog("error", "updates", "Failed to open releases page", String(err));
-    _showUpdatesErrorModal(RELEASES_URL);
+    _shellLog("error", "updates", "Update check failed", String(err));
+    _showUpdatesModal({ state: "error", error: String(err) });
   }
 }
 
-function _showUpdatesErrorModal(url: string): void {
+type UpdateModalOpts =
+  | { state: "checking" }
+  | { state: "uptodate"; currentVersion: string; latestVersion: string }
+  | { state: "available"; currentVersion: string; latestVersion: string;
+      releaseName: string; releaseBody: string; releaseUrl: string; publishedAt: string }
+  | { state: "error"; error: string };
+
+function _showUpdatesModal(opts: UpdateModalOpts): void {
   const existing = document.getElementById("shell-updates-modal");
-  if (existing) { existing.remove(); return; }
+  if (existing) existing.remove();
 
   const modal = document.createElement("div");
   modal.id = "shell-updates-modal";
   modal.className = "shell-about-modal";
+
+  let bodyHtml: string;
+  let footerHtml: string;
+
+  if (opts.state === "checking") {
+    bodyHtml = `<p style="text-align:center;padding:1.5rem 0;color:#6c757d">Vérification en cours…</p>`;
+    footerHtml = `<button class="shell-diag-btn" id="shell-upd-close">Fermer</button>`;
+  } else if (opts.state === "uptodate") {
+    bodyHtml = `
+      <p style="text-align:center;font-size:1.3rem;margin-bottom:0.5rem">✅</p>
+      <p style="text-align:center;font-weight:600;color:#155724">Vous êtes à jour</p>
+      <p style="text-align:center;color:#6c757d;font-size:0.82rem;margin-top:0.35rem">
+        Version installée : <strong>v${opts.currentVersion}</strong> — dernière version disponible : <strong>v${opts.latestVersion}</strong>
+      </p>`;
+    footerHtml = `<button class="shell-diag-btn" id="shell-upd-close">Fermer</button>`;
+  } else if (opts.state === "available") {
+    const date = opts.publishedAt ? new Date(opts.publishedAt).toLocaleDateString("fr-FR") : "";
+    const notes = opts.releaseBody
+      ? `<div style="margin-top:0.75rem;background:#f8f9fa;border-radius:6px;padding:0.6rem 0.8rem;
+                     font-size:0.78rem;max-height:140px;overflow:auto;white-space:pre-wrap;color:#495057">${_esc(opts.releaseBody)}</div>`
+      : "";
+    bodyHtml = `
+      <p style="text-align:center;font-size:1.3rem;margin-bottom:0.5rem">⬆️</p>
+      <p style="text-align:center;font-weight:600;color:#856404">Nouvelle version disponible</p>
+      <p style="text-align:center;color:#6c757d;font-size:0.82rem;margin-top:0.35rem">
+        Installée : <strong>v${opts.currentVersion}</strong> → Disponible : <strong>v${opts.latestVersion}</strong>${date ? ` (${date})` : ""}
+      </p>
+      ${notes}`;
+    footerHtml = `
+      <button class="shell-diag-btn shell-diag-btn-primary" id="shell-upd-download">⬇ Télécharger v${opts.latestVersion}</button>
+      <button class="shell-diag-btn" id="shell-upd-close">Plus tard</button>`;
+  } else {
+    bodyHtml = `
+      <p style="color:#721c24;font-weight:600">Impossible de vérifier les mises à jour</p>
+      <p style="font-size:0.78rem;color:#6c757d;margin-top:0.4rem">${_esc(opts.error)}</p>
+      <p style="margin-top:0.75rem;font-size:0.82rem">Vérifiez manuellement :</p>
+      <div style="background:#f0f4ff;border-radius:6px;padding:0.4rem 0.7rem;margin-top:0.3rem;
+                  font-family:monospace;font-size:0.76rem;user-select:all;word-break:break-all">${RELEASES_URL}</div>`;
+    footerHtml = `
+      <button class="shell-diag-btn" id="shell-upd-copy">📋 Copier le lien</button>
+      <button class="shell-diag-btn" id="shell-upd-close">Fermer</button>`;
+  }
+
   modal.innerHTML = `
-    <div class="shell-diag-box" role="dialog" aria-modal="true" style="min-width:360px;max-width:500px">
+    <div class="shell-diag-box" role="dialog" aria-modal="true" style="min-width:340px;max-width:520px">
       <div class="shell-diag-header">
         <span class="shell-diag-title">⬆ Mises à jour</span>
-        <button class="shell-about-close" id="shell-upd-close" aria-label="Fermer">✕</button>
+        <button class="shell-about-close" id="shell-upd-x" aria-label="Fermer">✕</button>
       </div>
-      <div style="padding:1rem 1.25rem;font-size:0.84rem;color:#2d3748">
-        <p>Impossible d'ouvrir le navigateur automatiquement.</p>
-        <p style="margin-top:0.5rem">Rendez-vous sur :</p>
-        <div style="background:#f0f4ff;border-radius:6px;padding:0.5rem 0.75rem;margin-top:0.5rem;
-                    font-family:monospace;font-size:0.78rem;word-break:break-all;user-select:all">
-          ${url}
-        </div>
-        <p style="margin-top:0.5rem;color:#6c757d;font-size:0.76rem">
-          Version locale installée : v${APP_VERSION}
-        </p>
-      </div>
-      <div class="shell-diag-footer">
-        <button class="shell-diag-btn" id="shell-upd-copy">📋 Copier le lien</button>
-        <button class="shell-diag-btn" id="shell-upd-close2">Fermer</button>
-      </div>
-    </div>
-  `;
+      <div style="padding:1rem 1.25rem;font-size:0.84rem;color:#2d3748">${bodyHtml}</div>
+      <div class="shell-diag-footer">${footerHtml}</div>
+    </div>`;
+
   modal.addEventListener("click", (e) => { if (e.target === modal) modal.remove(); });
-  modal.querySelector("#shell-upd-close")!.addEventListener("click", () => modal.remove());
-  modal.querySelector("#shell-upd-close2")!.addEventListener("click", () => modal.remove());
-  modal.querySelector("#shell-upd-copy")!.addEventListener("click", async () => {
-    try {
-      await navigator.clipboard.writeText(url);
-      _showToast("Lien copié !", 2000);
-    } catch { /* ignore */ }
+  modal.querySelector("#shell-upd-x")?.addEventListener("click", () => modal.remove());
+  modal.querySelector("#shell-upd-close")?.addEventListener("click", () => modal.remove());
+  modal.querySelector("#shell-upd-copy")?.addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText(RELEASES_URL); _showToast("Lien copié !", 2000); }
+    catch { /* ignore */ }
   });
+  if (opts.state === "available") {
+    const releaseUrl = opts.releaseUrl;
+    modal.querySelector("#shell-upd-download")?.addEventListener("click", async () => {
+      try { const { open } = await import("@tauri-apps/plugin-shell"); await open(releaseUrl); }
+      catch { window.open(releaseUrl, "_blank"); }
+    });
+  }
   const onKey = (e: KeyboardEvent): void => {
     if (e.key === "Escape") { modal.remove(); document.removeEventListener("keydown", onKey); }
   };
@@ -1751,8 +1840,8 @@ function _openAboutDialog(): void {
       <div class="shell-about-tagline">Atelier de Gestion et de Recherche en Alignement de Corpus</div>
       <table class="shell-about-table">
         <tr><td>App version</td><td>v${APP_VERSION}</td></tr>
-        <tr><td>Engine version</td><td>${ENGINE_VERSION_DISPLAY}</td></tr>
-        <tr><td>Contract version</td><td>${CONTRACT_VERSION_DISPLAY}</td></tr>
+        <tr><td>Engine version</td><td id="shell-about-engine-ver">…</td></tr>
+        <tr><td>Contract version</td><td id="shell-about-contract-ver">…</td></tr>
         <tr><td>DB active</td><td>${_esc(dbName)}</td></tr>
       </table>
       <div class="shell-about-profiles">
@@ -1775,9 +1864,25 @@ function _openAboutDialog(): void {
     void _exportLogBundle();
   });
   document.body.appendChild(modal);
-  // Close on Escape
   const onKey = (e: KeyboardEvent): void => { if (e.key === "Escape") { modal.remove(); document.removeEventListener("keydown", onKey); } };
   document.addEventListener("keydown", onKey);
+
+  // Fetch live engine/contract version from sidecar /health (best-effort, non-blocking)
+  void (async () => {
+    try {
+      const portRaw = localStorage.getItem("agrafes.sidecar.port");
+      if (!portRaw) return;
+      const port = parseInt(portRaw, 10);
+      if (!port) return;
+      const resp = await fetch(`http://127.0.0.1:${port}/health`, { signal: AbortSignal.timeout(2500) });
+      if (!resp.ok) return;
+      const data = await resp.json() as Record<string, unknown>;
+      const engineEl = document.getElementById("shell-about-engine-ver");
+      const contractEl = document.getElementById("shell-about-contract-ver");
+      if (engineEl) engineEl.textContent = String(data.version ?? "?");
+      if (contractEl) contractEl.textContent = String(data.contract_version ?? "?");
+    } catch { /* sidecar unreachable — leave as "…" */ }
+  })();
 }
 
 // ─── Shortcuts panel ──────────────────────────────────────────────────────────

@@ -5,6 +5,23 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.1.28] - 2026-04-08
+
+### Added
+
+- **tauri-shell** : bouton **"Vérifier les mises à jour"** dans le menu support (⚙) — interroge l'API GitHub Releases, compare les versions, affiche un modal avec notes de release et lien de téléchargement direct.
+- **Rust** : commande `fetch_github_latest_release` dans `main.rs` (reqwest, contourne le CSP WebView) pour les appels externes vers `api.github.com`.
+
+### Fixed
+
+- **tauri-shell** : `APP_VERSION` était figée à `"1.9.10"` dans `shell.ts` et `"1.9.0"` dans `diagnostics.ts` (constantes jamais mises à jour). Corrigé : `APP_VERSION` lu dynamiquement via `getVersion()` de l'API Tauri (fallback `"0.1.28"`) ; constantes de fallback `ENGINE_VERSION_DIAG` / `CONTRACT_VERSION_DIAG` alignées avec `pyproject.toml` et `sidecar_contract.py`.
+- **tauri-shell** : dialog "À propos" — engine version et contract version désormais lues en direct depuis `/health` du sidecar (affichage "…" pendant le fetch) au lieu de constantes figées.
+
+### Changed
+
+- **Documentation** : `DECISIONS.md` (ADR-038 PyInstaller `noarchive`, ADR-039 vérification mises à jour GitHub) ; `SIDECAR_API_CONTRACT.md` ; `STATUS_TAURI_SHELL.md`.
+- **Versions** : paquet Python **0.7.9** ; applications Tauri **0.1.28**.
+
 ## [0.1.27] - 2026-04-14
 
 ### Changed

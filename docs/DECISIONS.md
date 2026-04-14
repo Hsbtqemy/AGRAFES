@@ -929,3 +929,82 @@ one-shot CLI invocation. The cold-start penalty of onefile is therefore acceptab
 - ADR-025 mapping updated: `windows` → `onefile` (Tauri Shell context).
 - Non-Tauri benchmarks may still use `onedir` for latency measurement purposes.
 - Legacy DB schemas are tolerated more gracefully, reducing runtime/CI fragility.
+
+---
+
+## ADR-038 — PyInstaller `-d noarchive` pour éviter les erreurs zlib (Python 3.13+)
+
+**Date:** 2026-04-14
+**Status:** Decided
+
+**Context**
+Avec PyInstaller 6.19+ et Python 3.13, le bytecode compressé dans l'archive PYZ
+(archive interne au binaire onefile) provoque une erreur `"Error -3 while decompressing
+data: incorrect header check"` à l'exécution des endpoints `/segment/preview` et
+`/curate/preview`. Ces endpoints importent `segmenter.py` et `curation.py` depuis la PYZ
+au moment de l'appel. La décompression zlib échoue en raison d'un mismatch de header entre
+le format attendu par CPython 3.13 et celui écrit par PyInstaller.
+
+**Investigation**
+Analyse binaire du bundle : PYZ vide (22 octets, 0 entrées) avec l'option noarchive.
+Sans noarchive, les .pyc sont stockés compressés dans la PYZ — le décompresseur zlib
+de CPython 3.13 rejette les headers produits par PyInstaller 6.x.
+
+**Decision**
+Ajouter `-d noarchive` à la commande PyInstaller dans `scripts/build_sidecar.py`.
+Cette option stocke les `.pyc` directement dans le CArchive (archive externe du bootloader)
+sans passer par la compression PYZ, contournant entièrement la décompression zlib
+par module. Le champ `pyinstaller_noarchive: true` est ajouté au manifest JSON.
+
+```python
+# build_sidecar.py
+pyinstaller_cmd.extend(["-d", "noarchive"])  # après --strip si applicable
+```
+
+**Conséquence sur la taille**
+Légère augmentation de taille binaire (pas de compression inter-modules). Acceptable :
+le budget CI de taille reste respecté.
+
+**Consequences**
+- `/segment/preview`, `/curate/preview` et tout endpoint lazily-importé fonctionnent
+  correctement dans le binaire onefile sur macOS, Linux et Windows.
+- Binaire ~5–10 % plus grand qu'avec PYZ compressé.
+- À surveiller lors de mises à jour PyInstaller futures (le flag est un sous-mode de debug,
+  potentiellement amené à changer de nom).
+
+---
+
+## ADR-039 — Update check in-app via GitHub Releases API (sans auto-install)
+
+**Date:** 2026-04-14
+**Status:** Decided
+
+**Context**
+`tauri-plugin-updater` (Tauri 2) exige des binaires **signés** avec une paire de clés
+pour la vérification d'intégrité des téléchargements. Les secrets de signing GitHub
+Actions ne sont pas encore configurés, et l'app macOS est distribuée sans notarisation
+(décision utilisateur). Un auto-install nécessiterait également un endpoint JSON hébergé
+et mis à jour à chaque release.
+
+**Decision**
+Implémenter une vérification légère sans auto-install :
+1. Bouton "Vérifier les mises à jour…" dans le menu support (⚙) de `shell.ts`.
+2. Appel `fetch_github_latest_release(owner, repo)` — commande Rust dans `main.rs`
+   utilisant `reqwest` (déjà dépendance). Nécessaire car le CSP WebView restreint
+   les `fetch()` natifs aux URL autorisées dans `capabilities/default.json`.
+3. Comparaison semver locale (major.minor.patch). Modal en 4 états :
+   checking / à jour / nouvelle version (avec notes de release) / erreur réseau.
+4. Si mise à jour disponible : bouton "Télécharger vX.X.X" ouvre la page GitHub
+   Release dans le navigateur natif via `@tauri-apps/plugin-shell`.
+
+**Raison du rejet de `tauri-plugin-updater`**
+- Requiert signing (non configuré).
+- Sur macOS sans notarisation, Gatekeeper bloquerait de toute façon les binaires téléchargés.
+- Complexité infrastructure (endpoint JSON versionné, secrets CI) disproportionnée
+  par rapport au besoin actuel.
+
+**Consequences**
+- Aucune mise à jour automatique : l'utilisateur télécharge manuellement depuis GitHub.
+- Aucune dépendance CI supplémentaire.
+- Path vers `tauri-plugin-updater` reste ouvert : il suffira de configurer les secrets
+  de signing et un endpoint JSON pour migrer.

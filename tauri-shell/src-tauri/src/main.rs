@@ -133,6 +133,38 @@ fn write_sidecar_log(message: String) -> Result<(), String> {
     Ok(())
 }
 
+// ─── GitHub releases fetch (update check) ────────────────────────────────────
+
+/// Fetches the latest GitHub release JSON for a given owner/repo.
+/// Restricted to api.github.com. Returns the raw JSON body as a string.
+#[tauri::command]
+async fn fetch_github_latest_release(owner: String, repo: String) -> Result<String, String> {
+    // Validate owner/repo to prevent injection (alphanumeric, hyphen, underscore, dot only)
+    let valid = |s: &str| s.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '.');
+    if !valid(&owner) || !valid(&repo) {
+        return Err("fetch_github_latest_release: invalid owner or repo name".to_string());
+    }
+    let url = format!("https://api.github.com/repos/{}/{}/releases/latest", owner, repo);
+    let client = reqwest::Client::builder()
+        .user_agent("AGRAFESShell/updater")
+        .connect_timeout(std::time::Duration::from_secs(8))
+        .timeout(std::time::Duration::from_secs(12))
+        .build()
+        .map_err(|e| format!("fetch_github_latest_release: build client: {}", e))?;
+    let resp = client
+        .get(&url)
+        .header("Accept", "application/vnd.github+json")
+        .send()
+        .await
+        .map_err(|e| format!("fetch_github_latest_release: request failed: {}", e))?;
+    if !resp.status().is_success() {
+        return Err(format!("fetch_github_latest_release: HTTP {}", resp.status()));
+    }
+    resp.text()
+        .await
+        .map_err(|e| format!("fetch_github_latest_release: read body: {}", e))
+}
+
 // ─── Sidecar shutdown registry ────────────────────────────────────────────────
 
 /// Shared state: active sidecar connection info registered by the JS layer.
@@ -234,6 +266,7 @@ fn main() {
             write_sidecar_log,
             register_sidecar,
             shutdown_sidecar_cmd,
+            fetch_github_latest_release,
         ])
         .run(tauri::generate_context!())
         .expect("error while running AGRAFES Shell application");

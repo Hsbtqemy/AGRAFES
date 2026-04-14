@@ -54,9 +54,9 @@ export interface Diag {
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-export const APP_VERSION_DIAG = "1.9.0";
-export const ENGINE_VERSION_DIAG = "0.6.1";
-export const CONTRACT_VERSION_DIAG = "1.4.0";
+export const APP_VERSION_DIAG = "0.1.28";  // fallback if Tauri API unavailable
+export const ENGINE_VERSION_DIAG = "0.7.9";  // fallback if sidecar unreachable
+export const CONTRACT_VERSION_DIAG = "1.6.26";  // fallback if sidecar unreachable
 export const TEI_PROFILES_DIAG = ["generic", "parcolab_like", "parcolab_strict"];
 
 // localStorage keys (replicated from shell.ts to avoid circular imports)
@@ -218,9 +218,16 @@ export async function collectDiagnostics(opts: {
     .slice(-logTailLines)
     .map(e => `[${e.ts}] [${e.level.toUpperCase()}] [${e.cat}] ${e.msg}`);
 
+  // App version from Tauri runtime (supersedes hardcoded constant)
+  let appVersion = APP_VERSION_DIAG;
+  try {
+    const { getVersion } = await import("@tauri-apps/api/app").catch(() => ({ getVersion: null }));
+    if (getVersion) appVersion = await getVersion();
+  } catch { /* non-fatal: keep fallback */ }
+
   return {
     collected_at: new Date().toISOString(),
-    app_version: APP_VERSION_DIAG,
+    app_version: appVersion,
     engine_version: sidecar.engine_version ?? ENGINE_VERSION_DIAG,
     contract_version: sidecar.contract_version ?? CONTRACT_VERSION_DIAG,
     tei_profiles: TEI_PROFILES_DIAG,

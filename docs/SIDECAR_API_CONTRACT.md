@@ -1,4 +1,4 @@
-# Sidecar API Contract (v1.6.21)
+# Sidecar API Contract (v1.6.26)
 
 This document defines the persistent localhost HTTP contract for
 `multicorpus_engine` sidecar.
@@ -29,7 +29,7 @@ When `multicorpus serve` starts and a portfile already exists:
 
 ## Versioning
 
-- `api_version`: sidecar API contract version (`1.6.21`)
+- `api_version`: sidecar API contract version (`1.6.26`)
 - `version`: engine version
 
 ## Response envelope
@@ -39,8 +39,8 @@ When `multicorpus serve` starts and a portfile already exists:
 ```json
 {
   "ok": true,
-  "api_version": "1.6.21",
-  "version": "0.6.1",
+  "api_version": "1.6.26",
+  "version": "0.7.9",
   "status": "ok"
 }
 ```
@@ -50,8 +50,8 @@ When `multicorpus serve` starts and a portfile already exists:
 ```json
 {
   "ok": false,
-  "api_version": "1.6.21",
-  "version": "0.6.1",
+  "api_version": "1.6.26",
+  "version": "0.7.9",
   "status": "error",
   "error": {
     "type": "VALIDATION_ERROR",
