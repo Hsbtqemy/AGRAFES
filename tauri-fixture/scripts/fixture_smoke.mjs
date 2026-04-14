@@ -9,10 +9,26 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const ALLOWED_STDERR_WARNING_PATTERNS = [
+  // PyInstaller runtime hook warning emitted before app code runs.
+  /^pyi_rth_pkgres\.py:\d+: DeprecationWarning: pkg_resources is deprecated as an API\.$/,
+];
+
 function fail(message, details = {}) {
   const payload = { ok: false, error: message, ...details };
   console.log(JSON.stringify(payload, null, 2));
   process.exit(1);
+}
+
+function filterDisallowedStderr(stderrText) {
+  const disallowed = [];
+  for (const rawLine of (stderrText ?? "").split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    const allowed = ALLOWED_STDERR_WARNING_PATTERNS.some((re) => re.test(line));
+    if (!allowed) disallowed.push(line);
+  }
+  return disallowed;
 }
 
 function parseSingleJson(label, stdout) {
@@ -122,9 +138,14 @@ function resolveSidecarBinary() {
 
 function runOneShotStep(binaryPath, label, args, expectedRc) {
   const proc = spawnSync(binaryPath, args, { encoding: "utf-8" });
-  const stderr = (proc.stderr ?? "").trim();
-  if (stderr !== "") {
-    fail(`${label}: stderr must be empty`, { stderr, rc: proc.status });
+  const stderrText = proc.stderr ?? "";
+  const disallowed = filterDisallowedStderr(stderrText);
+  if (disallowed.length > 0) {
+    fail(`${label}: stderr must be empty`, {
+      stderr: stderrText.trim(),
+      disallowed,
+      rc: proc.status,
+    });
   }
   if (proc.status !== expectedRc) {
     fail(`${label}: unexpected exit code`, {
@@ -316,8 +337,12 @@ async function runPersistentScenario(binaryPath, tmpRoot) {
       });
     });
 
-    if (stderrCapture.trim() !== "") {
-      fail("persistent-serve: stderr must be empty", { stderr: stderrCapture.trim() });
+    const disallowed = filterDisallowedStderr(stderrCapture);
+    if (disallowed.length > 0) {
+      fail("persistent-serve: stderr must be empty", {
+        stderr: stderrCapture.trim(),
+        disallowed,
+      });
     }
 
     return {

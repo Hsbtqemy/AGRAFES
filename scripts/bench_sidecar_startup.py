@@ -35,7 +35,13 @@ OS_LABEL_MAP = {
     "windows": "windows",
 }
 # Stderr must be empty (encoding warnings moved to run stats/logs).
-ALLOWED_STDERR_WARNING_PATTERNS: tuple[re.Pattern[str], ...] = ()
+ALLOWED_STDERR_WARNING_PATTERNS: tuple[re.Pattern[str], ...] = (
+    # PyInstaller runtime hook warning emitted before app code runs.
+    # Keep this allowlist narrow and explicit.
+    re.compile(
+        r"^pyi_rth_pkgres\.py:\d+: DeprecationWarning: pkg_resources is deprecated as an API\."
+    ),
+)
 
 
 def _path_size(path: Path) -> int:
@@ -245,8 +251,11 @@ def _validate_contract(proc: subprocess.CompletedProcess[str], expected_rc: int,
         raise RuntimeError(
             f"{label}: expected rc={expected_rc}, got rc={proc.returncode}\nstdout={proc.stdout}\nstderr={proc.stderr}"
         )
-    if proc.stderr.strip():
-        raise RuntimeError(f"{label}: stderr must be empty, got: {proc.stderr!r}")
+    disallowed = _filter_disallowed_stderr(proc.stderr or "")
+    if disallowed:
+        raise RuntimeError(
+            f"{label}: disallowed stderr lines: {disallowed!r}\nraw_stderr={proc.stderr!r}"
+        )
     return _parse_single_json(proc.stdout, label)
 
 

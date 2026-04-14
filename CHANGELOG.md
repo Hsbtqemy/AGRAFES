@@ -5,6 +5,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.1.27] - 2026-04-14
+
+### Changed
+
+- **Bench** : `scripts/bench_sidecar_startup.py` et `tests/test_bench_sidecar_startup.py`.
+- **Fixture CI** : `tauri-fixture/scripts/fixture_smoke.mjs`.
+- **Versions** : paquet Python **0.7.9** ; applications Tauri **0.1.27** ; Shell **v1.9.10**.
+
 ## [0.1.26] - 2026-04-14
 
 ### Added
