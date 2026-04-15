@@ -463,24 +463,24 @@ export class ActionsScreen {
 
   render(): HTMLElement {
     const root = document.createElement("div");
-    root.className = "screen actions-screen";
+    root.className = "screen prep-actions-screen";
     this._root = root;
     this._loadSubViewPref();
 
     const header = document.createElement("div");
-    header.className = "acts-header";
+    header.className = "prep-acts-header";
     header.innerHTML = `
-      <div id="act-state-banner" class="runtime-state state-info" aria-live="polite">
+      <div id="act-state-banner" class="runtime-state prep-state-info" aria-live="polite">
         En attente de connexion sidecar…
       </div>
-      <button id="act-reload-docs" class="btn btn-secondary btn-sm acts-reload-btn">↻ Rafraîchir docs</button>
+      <button id="act-reload-docs" class="btn btn-secondary btn-sm prep-acts-reload-btn">↻ Rafraîchir docs</button>
     `;
     root.appendChild(header);
     this._stateEl = root.querySelector("#act-state-banner")!;
     root.querySelector("#act-reload-docs")!.addEventListener("click", () => this._loadDocs());
 
     const panelSlot = document.createElement("div");
-    panelSlot.className = "acts-panel-slot";
+    panelSlot.className = "prep-acts-panel-slot";
 
     const hubPanel = this._renderHubPanel(root);
     hubPanel.dataset.panel = "hub";
@@ -513,19 +513,19 @@ export class ActionsScreen {
     panelSlot.appendChild(annoterPanel);
 
     const logSection = document.createElement("section");
-    logSection.className = "card acts-log-section";
+    logSection.className = "card prep-acts-log-section";
     logSection.setAttribute("data-collapsible", "true");
     logSection.setAttribute("data-collapsed-default", "true");
-    logSection.innerHTML = `<h3>Journal</h3><div id="act-log" class="log-pane"></div>`;
+    logSection.innerHTML = `<h3>Journal</h3><div id="act-log" class="prep-log-pane"></div>`;
     panelSlot.appendChild(logSection);
 
     root.appendChild(panelSlot);
 
     const busyOverlay = document.createElement("div");
     busyOverlay.id = "act-busy";
-    busyOverlay.className = "busy-overlay";
+    busyOverlay.className = "prep-busy-overlay";
     busyOverlay.style.display = "none";
-    busyOverlay.innerHTML = `<div class="busy-spinner">⏳ Opération en cours…</div>`;
+    busyOverlay.innerHTML = `<div class="prep-busy-spinner">⏳ Opération en cours…</div>`;
     root.appendChild(busyOverlay);
 
     this._logEl = root.querySelector("#act-log")!;
@@ -594,76 +594,76 @@ export class ActionsScreen {
   /** Stable class method — replaces captured closure pattern for seg mode switching. */
   private _renderHubPanel(root: HTMLElement): HTMLElement {
     const el = document.createElement("div");
-    el.className = "acts-hub";
+    el.className = "prep-acts-hub";
     el.setAttribute("role", "main");
     el.setAttribute("aria-label", "Vue synth\u00e8se Actions");
     el.innerHTML = `
-      <section class="acts-hub-head-card">
-        <div class="acts-hub-head-left">
-          <h2 class="acts-hub-head-title">Traitement de corpus</h2>
-          <p class="acts-hub-head-desc">Curation &middot; Segmentation &middot; Alignement &mdash; pilotage des op&eacute;rations de pr&eacute;paration du corpus.</p>
+      <section class="prep-acts-hub-head-card">
+        <div class="prep-acts-hub-head-left">
+          <h2 class="prep-acts-hub-head-title">Traitement de corpus</h2>
+          <p class="prep-acts-hub-head-desc">Curation &middot; Segmentation &middot; Alignement &mdash; pilotage des op&eacute;rations de pr&eacute;paration du corpus.</p>
         </div>
-        <div class="acts-hub-head-tools">
-          <button class="acts-hub-head-link acts-hub-head-link-accent" data-cta="segmentation-longtext">Sc&eacute;nario grand texte &nearr;</button>
+        <div class="prep-acts-hub-head-tools">
+          <button class="prep-acts-hub-head-link acts-hub-head-link-accent" data-cta="segmentation-longtext">Sc&eacute;nario grand texte &nearr;</button>
         </div>
       </section>
-      <div class="acts-hub-workspace">
-        <div class="card acts-hub-wf-card">
-          <div class="acts-hub-wf-top">
-            <span class="acts-hub-wf-icon" aria-hidden="true">&#10002;</span>
-            <span class="acts-hub-wf-step">&Eacute;tape 1</span>
+      <div class="prep-acts-hub-workspace">
+        <div class="card prep-acts-hub-wf-card">
+          <div class="prep-acts-hub-wf-top">
+            <span class="prep-acts-hub-wf-icon" aria-hidden="true">&#10002;</span>
+            <span class="prep-acts-hub-wf-step">&Eacute;tape 1</span>
           </div>
-          <h3 class="acts-hub-wf-title">Curation</h3>
-          <p class="acts-hub-wf-desc">Nettoyage et normalisation du texte brut. Applique des r&egrave;gles regex sur les documents sources avant segmentation.</p>
-          <div class="acts-hub-wf-actions">
-            <button class="acts-hub-wf-btn" data-target="curation">Ouvrir &rarr;</button>
-          </div>
-        </div>
-        <div class="card acts-hub-wf-card">
-          <div class="acts-hub-wf-top">
-            <span class="acts-hub-wf-icon" aria-hidden="true">&#9889;</span>
-            <span class="acts-hub-wf-step">&Eacute;tape 2</span>
-          </div>
-          <h3 class="acts-hub-wf-title">Segmentation</h3>
-          <p class="acts-hub-wf-desc">D&eacute;coupage du corpus en unit&eacute;s traductionnelles pivot et cibles. G&eacute;n&egrave;re les segments pour l&rsquo;alignement automatique.</p>
-          <div class="acts-hub-wf-actions">
-            <button class="acts-hub-wf-btn" data-target="segmentation">Ouvrir &rarr;</button>
-            <button class="acts-hub-wf-link" data-cta="segmentation-longtext">Grand texte &nearr;</button>
+          <h3 class="prep-acts-hub-wf-title">Curation</h3>
+          <p class="prep-acts-hub-wf-desc">Nettoyage et normalisation du texte brut. Applique des r&egrave;gles regex sur les documents sources avant segmentation.</p>
+          <div class="prep-acts-hub-wf-actions">
+            <button class="prep-acts-hub-wf-btn" data-target="curation">Ouvrir &rarr;</button>
           </div>
         </div>
-        <div class="card acts-hub-wf-card">
-          <div class="acts-hub-wf-top">
-            <span class="acts-hub-wf-icon" aria-hidden="true">&#8644;</span>
-            <span class="acts-hub-wf-step">&Eacute;tape 3</span>
+        <div class="card prep-acts-hub-wf-card">
+          <div class="prep-acts-hub-wf-top">
+            <span class="prep-acts-hub-wf-icon" aria-hidden="true">&#9889;</span>
+            <span class="prep-acts-hub-wf-step">&Eacute;tape 2</span>
           </div>
-          <h3 class="acts-hub-wf-title">Alignement</h3>
-          <p class="acts-hub-wf-desc">Cr&eacute;ation et r&eacute;vision des liens pivot &harr; cible entre documents align&eacute;s. Inspection, retarget et r&eacute;solution de collisions.</p>
-          <div class="acts-hub-wf-actions">
-            <button class="acts-hub-wf-btn" data-target="alignement">Ouvrir &rarr;</button>
+          <h3 class="prep-acts-hub-wf-title">Segmentation</h3>
+          <p class="prep-acts-hub-wf-desc">D&eacute;coupage du corpus en unit&eacute;s traductionnelles pivot et cibles. G&eacute;n&egrave;re les segments pour l&rsquo;alignement automatique.</p>
+          <div class="prep-acts-hub-wf-actions">
+            <button class="prep-acts-hub-wf-btn" data-target="segmentation">Ouvrir &rarr;</button>
+            <button class="prep-acts-hub-wf-link" data-cta="segmentation-longtext">Grand texte &nearr;</button>
           </div>
         </div>
-        <div class="card acts-hub-wf-card">
-          <div class="acts-hub-wf-top">
-            <span class="acts-hub-wf-icon" aria-hidden="true">&#9000;</span>
-            <span class="acts-hub-wf-step">Optionnel</span>
+        <div class="card prep-acts-hub-wf-card">
+          <div class="prep-acts-hub-wf-top">
+            <span class="prep-acts-hub-wf-icon" aria-hidden="true">&#8644;</span>
+            <span class="prep-acts-hub-wf-step">&Eacute;tape 3</span>
           </div>
-          <h3 class="acts-hub-wf-title">Annotation</h3>
-          <p class="acts-hub-wf-desc">Vue interlin&eacute;aire (mot / POS / lemme) par document. Annotation spaCy automatique et correction manuelle token par token.</p>
-          <div class="acts-hub-wf-actions">
-            <button class="acts-hub-wf-btn" data-target="annoter">Ouvrir &rarr;</button>
+          <h3 class="prep-acts-hub-wf-title">Alignement</h3>
+          <p class="prep-acts-hub-wf-desc">Cr&eacute;ation et r&eacute;vision des liens pivot &harr; cible entre documents align&eacute;s. Inspection, retarget et r&eacute;solution de collisions.</p>
+          <div class="prep-acts-hub-wf-actions">
+            <button class="prep-acts-hub-wf-btn" data-target="alignement">Ouvrir &rarr;</button>
+          </div>
+        </div>
+        <div class="card prep-acts-hub-wf-card">
+          <div class="prep-acts-hub-wf-top">
+            <span class="prep-acts-hub-wf-icon" aria-hidden="true">&#9000;</span>
+            <span class="prep-acts-hub-wf-step">Optionnel</span>
+          </div>
+          <h3 class="prep-acts-hub-wf-title">Annotation</h3>
+          <p class="prep-acts-hub-wf-desc">Vue interlin&eacute;aire (mot / POS / lemme) par document. Annotation spaCy automatique et correction manuelle token par token.</p>
+          <div class="prep-acts-hub-wf-actions">
+            <button class="prep-acts-hub-wf-btn" data-target="annoter">Ouvrir &rarr;</button>
           </div>
         </div>
       </div>
     `;
     // Workflow card primary buttons → navigate to sub-view
-    el.querySelectorAll<HTMLButtonElement>(".acts-hub-wf-btn").forEach((btn) => {
+    el.querySelectorAll<HTMLButtonElement>(".prep-acts-hub-wf-btn").forEach((btn) => {
       btn.addEventListener("click", () => {
         const target = btn.dataset.target as SubView;
         this._switchSubViewDOM(root, target);
       });
     });
     // CTA buttons (head accent + secondary wf links) → navigate with optional segMode
-    el.querySelectorAll<HTMLButtonElement>(".acts-hub-head-link, .acts-hub-wf-link").forEach((btn) => {
+    el.querySelectorAll<HTMLButtonElement>(".prep-acts-hub-head-link, .prep-acts-hub-wf-link").forEach((btn) => {
       btn.addEventListener("click", () => {
         const cta = btn.dataset.cta!;
         this._switchSubViewDOM(root, cta === "segmentation-longtext" ? "segmentation" : cta as SubView);
@@ -674,8 +674,8 @@ export class ActionsScreen {
 
   private _prependBackBtn(panel: HTMLElement, root: HTMLElement): void {
     const div = document.createElement("div");
-    div.className = "acts-view-back";
-    div.innerHTML = `<button class="acts-view-back-btn">&#8592; Vue synth&#232;se</button>`;
+    div.className = "prep-acts-view-back";
+    div.innerHTML = `<button class="prep-acts-view-back-btn">&#8592; Vue synth&#232;se</button>`;
     div.querySelector("button")!.addEventListener("click", () => this._switchSubViewDOM(root, "hub"));
     panel.prepend(div);
   }
@@ -741,14 +741,14 @@ export class ActionsScreen {
 
     // ── En-tête rapide ──
     const headSection = document.createElement("section");
-    headSection.className = "acts-seg-head-card";
+    headSection.className = "prep-acts-seg-head-card";
     headSection.innerHTML = `
-      <div class="acts-hub-head-left">
+      <div class="prep-acts-hub-head-left">
         <h1>Alignement</h1>
         <p>L'alignement crée des correspondances segment à segment entre un document pivot et ses traductions. Lancez un alignement automatique, puis vérifiez chaque lien dans l'audit&nbsp;: acceptez, rejetez ou redirigez manuellement. Les liens acceptés alimentent le Concordancier bilingue.</p>
       </div>
-      <div class="acts-hub-head-tools">
-        <button class="acts-hub-head-link" id="act-align-open-export-btn">Exporter cette étape…</button>
+      <div class="prep-acts-hub-head-tools">
+        <button class="prep-acts-hub-head-link" id="act-align-open-export-btn">Exporter cette étape…</button>
       </div>`;
     this._bindHeadNavLinks(headSection, root);
     headSection.querySelector("#act-align-open-export-btn")?.addEventListener("click", () => this._openAlignmentExportPrefill());
@@ -775,18 +775,18 @@ export class ActionsScreen {
       },
     );
     const newPanelEl = this._alignPanel.render();
-    newPanelEl.classList.add("align-new-panel-section");
+    newPanelEl.classList.add("prep-align-new-panel-section");
     wrapper.appendChild(newPanelEl);
 
     // ── Sections secondaires (qualité, collisions, rapport) — conservées ──
     const legacyContainer = document.createElement("div");
     legacyContainer.setAttribute("data-legacy-align", "true");
     legacyContainer.innerHTML = `
-      <section class="acts-seg-head-card" style="display:none"><!-- placeholder legacy head --></section>
+      <section class="prep-acts-seg-head-card" style="display:none"><!-- placeholder legacy head --></section>
       <section class="card" id="act-quality-card" data-collapsible="true">
-        <h3>Qualit&#233; alignement <span class="badge-preview">m&#233;triques</span></h3>
+        <h3>Qualit&#233; alignement <span class="prep-badge-preview">m&#233;triques</span></h3>
         <p class="hint">Couverture et orphelins pour une paire pivot&#8596;cible. Recalculez apr&#232;s chaque run ou modification manuelle.</p>
-        <div class="form-row">
+        <div class="prep-form-row">
           <label>Pivot
             <select id="act-quality-pivot"><option value="">&#8212; choisir &#8212;</option></select>
           </label>
@@ -800,9 +800,9 @@ export class ActionsScreen {
         <div id="act-quality-result" style="display:none;margin-top:0.75rem"></div>
       </section>
       <section class="card" id="act-run-compare-card" data-collapsible="true" data-collapsed-default="true">
-        <h3>Comparer deux runs <span class="badge-preview">align</span></h3>
+        <h3>Comparer deux runs <span class="prep-badge-preview">align</span></h3>
         <p class="hint">Historique des runs d&#8217;alignement en base ; comparez strat&#233;gie et indicateurs.</p>
-        <div class="form-row" style="flex-wrap:wrap;gap:0.5rem;align-items:flex-end">
+        <div class="prep-form-row" style="flex-wrap:wrap;gap:0.5rem;align-items:flex-end">
           <button id="act-run-compare-refresh" type="button" class="btn btn-secondary btn-sm">Charger l&#8217;historique</button>
           <label>Run A
             <select id="act-run-compare-a" class="act-run-compare-sel" aria-label="Premier run">
@@ -819,9 +819,9 @@ export class ActionsScreen {
         <div id="act-run-compare-result" style="display:none;margin-top:0.75rem"></div>
       </section>
       <section class="card" id="act-collision-card" data-collapsible="true" data-collapsed-default="true">
-        <h3>Collisions d&#8217;alignement <span class="badge-preview">r&#233;solution</span></h3>
+        <h3>Collisions d&#8217;alignement <span class="prep-badge-preview">r&#233;solution</span></h3>
         <p class="hint">Un pivot ayant plusieurs liens vers le m&#234;me document cible est une collision.</p>
-        <div class="form-row">
+        <div class="prep-form-row">
           <label>Pivot
             <select id="act-coll-pivot"><option value="">&#8212; choisir &#8212;</option></select>
           </label>
@@ -838,9 +838,9 @@ export class ActionsScreen {
         </div>
       </section>
       <section class="card" id="act-report-card" data-collapsible="true" data-collapsed-default="true">
-        <h3>Rapport de runs <span class="badge-preview">export</span></h3>
+        <h3>Rapport de runs <span class="prep-badge-preview">export</span></h3>
         <p class="hint">Exporter l&#8217;historique des runs en HTML ou JSONL.</p>
-        <div class="form-row">
+        <div class="prep-form-row">
           <label>Format :
             <select id="act-report-fmt">
               <option value="html">HTML</option>
@@ -851,7 +851,7 @@ export class ActionsScreen {
             <input id="act-report-run-id" type="text" placeholder="laisser vide = tous les runs" style="width:100%;max-width:340px" />
           </label>
         </div>
-        <div class="btn-row" style="margin-top:0.5rem">
+        <div class="prep-btn-row" style="margin-top:0.5rem">
           <button id="act-report-btn" class="btn btn-secondary" disabled>Enregistrer le rapport&#8230;</button>
         </div>
         <div id="act-report-result" style="display:none;margin-top:0.5rem;font-size:0.85rem"></div>
@@ -886,13 +886,13 @@ export class ActionsScreen {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const el = _legacyEl; // alias so the original code below compiles unchanged
     _legacyEl.innerHTML = `
-      <section class="acts-seg-head-card">
-        <div class="acts-hub-head-left">
+      <section class="prep-acts-seg-head-card">
+        <div class="prep-acts-hub-head-left">
           <h1>Alignement &#8212; vue run globale</h1>
           <p>Cr&#233;ez les liens pivot &#8596; cible entre documents. Lancez un run, contr&#244;lez la qualit&#233;, corrigez les exceptions.</p>
         </div>
-        <div class="acts-hub-head-tools">
-          <span class="curate-pill" id="act-align-run-pill">Liens pivot &#8596; cible</span>
+        <div class="prep-acts-hub-head-tools">
+          <span class="prep-curate-pill" id="act-align-run-pill">Liens pivot &#8596; cible</span>
         </div>
       </section>
       <section class="card workflow-section" id="wf-section" data-collapsible="true" data-collapsed-default="true" style="border:2px solid var(--accent,#1a7f4e)">
@@ -962,17 +962,17 @@ export class ActionsScreen {
       </section>
       <section class="card" data-collapsible="true" data-collapsed-default="true">
         <h3>Documents du corpus</h3>
-        <div class="btn-row">
+        <div class="prep-btn-row">
           <button id="act-reload-docs-align" class="btn btn-secondary btn-sm">&#8635;&#160;Rafra&#238;chir</button>
         </div>
-        <div id="act-doc-list" class="doc-list"><p class="empty-hint">Aucun corpus ouvert.</p></div>
+        <div id="act-doc-list" class="prep-doc-list"><p class="empty-hint">Aucun corpus ouvert.</p></div>
       </section>
       <section class="card" id="act-align-card">
-        <div class="align-layout">
-          <div class="align-main">
-            <div class="align-launcher">
-              <div class="align-launcher-head">Configuration du run</div>
-              <div class="align-setup-row">
+        <div class="prep-align-layout">
+          <div class="prep-align-main">
+            <div class="prep-align-launcher">
+              <div class="prep-align-launcher-head">Configuration du run</div>
+              <div class="prep-align-setup-row">
                 <label>Doc pivot :
                   <select id="act-align-pivot"><option value="">&#8212; choisir &#8212;</option></select>
                 </label>
@@ -988,7 +988,7 @@ export class ActionsScreen {
                   </select>
                 </label>
               </div>
-              <div class="form-row" style="margin-top:8px">
+              <div class="prep-form-row" style="margin-top:8px">
                 <label id="act-sim-row" style="display:none">Seuil :
                   <input id="act-sim-threshold" type="number" min="0" max="1" step="0.05" value="0.8" style="width:70px"/>
                 </label>
@@ -1002,57 +1002,57 @@ export class ActionsScreen {
                 </label>
               </div>
               <p class="hint" style="margin:0.35rem 0 0">Au recalcul global, les liens marqu&#233;s &#171; accept&#233;s &#187; sont consid&#233;r&#233;s comme verrouill&#233;s.</p>
-              <div class="btn-row" style="margin-top:0.5rem">
+              <div class="prep-btn-row" style="margin-top:0.5rem">
                 <button id="act-align-btn" class="btn btn-warning" disabled>Lancer la run d&#8217;alignement</button>
                 <button id="act-align-recalc-btn" class="btn btn-secondary" disabled>Recalcul global</button>
               </div>
-              <div id="act-align-confirm" class="audit-batch-bar" style="display:none"></div>
+              <div id="act-align-confirm" class="prep-audit-batch-bar" style="display:none"></div>
             </div>
             <!-- Synthèse du run — visible after alignment -->
             <div id="act-align-results" style="display:none;margin-top:0.75rem">
-              <div class="run-synthese-head">
-                <h4 class="run-synthese-title">Synth&#232;se du run</h4>
-                <div id="act-align-banner" class="preview-stats"></div>
+              <div class="prep-run-synthese-head">
+                <h4 class="prep-run-synthese-title">Synth&#232;se du run</h4>
+                <div id="act-align-banner" class="prep-preview-stats"></div>
               </div>
-              <div id="act-align-kpis" class="align-kpis" style="margin-top:10px">
-                <div class="kpi align-kpi" id="act-kpi-wrap-created"><div class="label align-kpi-label">Liens cr&#233;&#233;s</div><div class="value align-kpi-value" id="act-kpi-created">&#8212;</div></div>
-                <div class="kpi align-kpi" id="act-kpi-wrap-skipped"><div class="label align-kpi-label">Ignor&#233;s</div><div class="value align-kpi-value" id="act-kpi-skipped">&#8212;</div></div>
-                <div class="kpi align-kpi" id="act-kpi-wrap-coverage"><div class="label align-kpi-label">Couverture</div><div class="value align-kpi-value" id="act-kpi-coverage">&#8212;</div></div>
-                <div class="kpi align-kpi" id="act-kpi-wrap-orphan-p"><div class="label align-kpi-label">Orphelins pivot</div><div class="value align-kpi-value" id="act-kpi-orphan-p">&#8212;</div></div>
-                <div class="kpi align-kpi" id="act-kpi-wrap-orphan-t"><div class="label align-kpi-label">Orphelins cible</div><div class="value align-kpi-value" id="act-kpi-orphan-t">&#8212;</div></div>
+              <div id="act-align-kpis" class="prep-align-kpis" style="margin-top:10px">
+                <div class="kpi prep-align-kpi" id="act-kpi-wrap-created"><div class="label prep-align-kpi-label">Liens cr&#233;&#233;s</div><div class="value prep-align-kpi-value" id="act-kpi-created">&#8212;</div></div>
+                <div class="kpi prep-align-kpi" id="act-kpi-wrap-skipped"><div class="label prep-align-kpi-label">Ignor&#233;s</div><div class="value prep-align-kpi-value" id="act-kpi-skipped">&#8212;</div></div>
+                <div class="kpi prep-align-kpi" id="act-kpi-wrap-coverage"><div class="label prep-align-kpi-label">Couverture</div><div class="value prep-align-kpi-value" id="act-kpi-coverage">&#8212;</div></div>
+                <div class="kpi prep-align-kpi" id="act-kpi-wrap-orphan-p"><div class="label prep-align-kpi-label">Orphelins pivot</div><div class="value prep-align-kpi-value" id="act-kpi-orphan-p">&#8212;</div></div>
+                <div class="kpi prep-align-kpi" id="act-kpi-wrap-orphan-t"><div class="label prep-align-kpi-label">Orphelins cible</div><div class="value prep-align-kpi-value" id="act-kpi-orphan-t">&#8212;</div></div>
               </div>
-              <div class="btn-row" style="margin-top:10px">
+              <div class="prep-btn-row" style="margin-top:10px">
                 <button id="act-align-open-audit-cta" class="btn btn-primary btn-sm">Ouvrir l&#8217;audit &#8595;</button>
                 <button id="act-align-recalc-cta" class="btn btn-secondary btn-sm">Recalcul global</button>
               </div>
             </div>
             <div id="act-align-debug-panel" style="display:none;margin-top:0.75rem">
-              <div class="align-debug-head">
+              <div class="prep-align-debug-head">
                 <h4 style="margin:0;font-size:0.9rem">Explainability</h4>
                 <button id="act-align-copy-debug-btn" class="btn btn-secondary btn-sm">Copier diagnostic JSON</button>
               </div>
-              <div id="act-align-debug-content" class="align-debug-content"></div>
+              <div id="act-align-debug-content" class="prep-align-debug-content"></div>
             </div>
             <div id="act-audit-panel" style="display:none;margin-top:0.75rem">
-              <div class="run-toolbar">
-                <div class="run-toolbar-title">
+              <div class="prep-run-toolbar">
+                <div class="prep-run-toolbar-title">
                   <h4 style="margin:0;font-size:0.9rem">Texte complet align&#233;</h4>
                 </div>
-                <div class="run-toolbar-filters">
+                <div class="prep-run-toolbar-filters">
                   <button id="act-audit-qf2-all" class="chip active" data-qf2="all">Tout</button>
                   <button id="act-audit-qf2-review" class="chip" data-qf2="review">&#192; revoir</button>
                   <button id="act-audit-qf2-unreviewed" class="chip" data-qf2="unreviewed">Non r&#233;vis&#233;s</button>
                   <button id="act-audit-qf2-rejected" class="chip" data-qf2="rejected">Rejet&#233;s</button>
                 </div>
-                <div class="run-toolbar-actions">
-                  <div class="run-view-toggle chip-row">
+                <div class="prep-run-toolbar-actions">
+                  <div class="prep-run-view-toggle chip-row">
                     <button id="act-audit-view-table" class="chip active" title="Vue tableau" aria-pressed="true">&#9776; Tableau</button>
                     <button id="act-audit-view-run" class="chip" title="Vue run-row" aria-pressed="false">&#9711; Run</button>
                   </div>
                   <button id="act-audit-next-cta" class="btn btn-sm btn-secondary">Suivant &#224; revoir &#8595;</button>
                 </div>
               </div>
-              <div class="form-row">
+              <div class="prep-form-row">
                 <label>Pivot :
                   <select id="act-audit-pivot"><option value="">&#8212; choisir &#8212;</option></select>
                 </label>
@@ -1074,7 +1074,7 @@ export class ActionsScreen {
                   <input id="act-audit-text-filter" type="text" placeholder="mot cl&#233; dans pivot/cible"/>
                 </label>
               </div>
-              <div class="btn-row" style="margin-top:0.4rem;gap:0.75rem;align-items:center">
+              <div class="prep-btn-row" style="margin-top:0.4rem;gap:0.75rem;align-items:center">
                 <button id="act-audit-load-btn" class="btn btn-secondary btn-sm">Charger les liens</button>
                 <label style="display:flex;align-items:center;gap:0.3rem;font-size:0.82rem;cursor:pointer">
                   <input id="act-audit-explain-toggle" type="checkbox" />
@@ -1085,43 +1085,43 @@ export class ActionsScreen {
                   Exceptions seulement
                 </label>
               </div>
-              <div class="btn-row" style="margin-top:0.35rem;gap:0.4rem;align-items:center">
-                <button id="act-audit-qf-all" class="btn btn-sm btn-secondary audit-filter-btn" data-qf="all">Tout</button>
-                <button id="act-audit-qf-review" class="btn btn-sm btn-secondary audit-filter-btn" data-qf="review">&#192; revoir</button>
-                <button id="act-audit-qf-unreviewed" class="btn btn-sm btn-secondary audit-filter-btn" data-qf="unreviewed">Non r&#233;vis&#233;s</button>
-                <button id="act-audit-qf-rejected" class="btn btn-sm btn-secondary audit-filter-btn" data-qf="rejected">Rejet&#233;s</button>
+              <div class="prep-btn-row" style="margin-top:0.35rem;gap:0.4rem;align-items:center">
+                <button id="act-audit-qf-all" class="btn btn-sm btn-secondary prep-audit-filter-btn" data-qf="all">Tout</button>
+                <button id="act-audit-qf-review" class="btn btn-sm btn-secondary prep-audit-filter-btn" data-qf="review">&#192; revoir</button>
+                <button id="act-audit-qf-unreviewed" class="btn btn-sm btn-secondary prep-audit-filter-btn" data-qf="unreviewed">Non r&#233;vis&#233;s</button>
+                <button id="act-audit-qf-rejected" class="btn btn-sm btn-secondary prep-audit-filter-btn" data-qf="rejected">Rejet&#233;s</button>
                 <button id="act-audit-next-exception-btn" class="btn btn-sm btn-secondary">Suivant &#224; revoir</button>
               </div>
               <div id="act-audit-kpis" class="hint" style="margin-top:0.35rem"></div>
               <div id="act-audit-table-wrap" style="margin-top:0.5rem;overflow-x:auto"></div>
               <div id="act-audit-run-view" style="display:none;margin-top:0.5rem"></div>
-              <div id="act-audit-batch-bar" class="audit-batch-bar" style="display:none">
-                <span id="act-audit-sel-count" class="audit-sel-count">0 s&#233;lectionn&#233;(s)</span>
+              <div id="act-audit-batch-bar" class="prep-audit-batch-bar" style="display:none">
+                <span id="act-audit-sel-count" class="prep-audit-sel-count">0 s&#233;lectionn&#233;(s)</span>
                 <button id="act-audit-batch-accept" class="btn btn-sm btn-secondary">&#10003; Accepter</button>
                 <button id="act-audit-batch-reject" class="btn btn-sm btn-secondary">&#10007; Rejeter</button>
                 <button id="act-audit-batch-unreviewed" class="btn btn-sm btn-secondary">? Non r&#233;vis&#233;</button>
                 <button id="act-audit-batch-delete" class="btn btn-sm btn-danger">Supprimer</button>
               </div>
-              <div id="act-audit-batch-confirm" class="audit-batch-bar" style="display:none"></div>
-              <div class="btn-row" style="margin-top:0.4rem">
+              <div id="act-audit-batch-confirm" class="prep-audit-batch-bar" style="display:none"></div>
+              <div class="prep-btn-row" style="margin-top:0.4rem">
                 <button id="act-audit-more-btn" class="btn btn-secondary btn-sm" style="display:none">Charger plus</button>
               </div>
             </div>
           </div>
-          <aside class="align-focus">
+          <aside class="prep-align-focus">
             <h4 style="margin:0 0 0.45rem;font-size:0.9rem">Correction cibl&#233;e</h4>
             <p id="act-align-focus-empty" class="empty-hint">S&#233;lectionnez une ligne dans &#171; Texte complet align&#233; &#187; pour corriger rapidement.</p>
             <div id="act-align-focus-panel" style="display:none">
               <div id="act-align-focus-meta" class="hint" style="margin-bottom:0.35rem"></div>
-              <div class="align-focus-text">
+              <div class="prep-align-focus-text">
                 <strong>Pivot</strong>
                 <p id="act-align-focus-pivot"></p>
               </div>
-              <div class="align-focus-text" style="margin-top:0.45rem">
+              <div class="prep-align-focus-text" style="margin-top:0.45rem">
                 <strong>Cible</strong>
                 <p id="act-align-focus-target"></p>
               </div>
-              <div class="btn-row" style="margin-top:0.65rem">
+              <div class="prep-btn-row" style="margin-top:0.65rem">
                 <button id="act-focus-accept-btn" class="btn btn-sm btn-secondary">&#10003; Valider</button>
                 <button id="act-focus-reject-btn" class="btn btn-sm btn-secondary">&#10007; &#192; revoir</button>
                 <button id="act-focus-unreviewed-btn" class="btn btn-sm btn-secondary">? Non r&#233;vis&#233;</button>
@@ -1130,18 +1130,18 @@ export class ActionsScreen {
                 <button id="act-focus-retarget-btn" class="btn btn-sm btn-secondary">&#8644; Retarget</button>
                 <button id="act-focus-delete-btn" class="btn btn-sm btn-danger">Supprimer</button>
               </div>
-              <div id="act-focus-confirm" class="audit-batch-bar" style="display:none"></div>
+              <div id="act-focus-confirm" class="prep-audit-batch-bar" style="display:none"></div>
             </div>
           </aside>
         </div>
-        <div class="btn-row align-finalize-row">
+        <div class="btn-row prep-align-finalize-row">
           <button id="act-goto-report" class="btn btn-secondary btn-sm">Terminer: ouvrir Rapport runs &#8595;</button>
         </div>
       </section>
       <section class="card" id="act-quality-card" data-collapsible="true">
-        <h3>Qualit&#233; alignement <span class="badge-preview">m&#233;triques</span></h3>
+        <h3>Qualit&#233; alignement <span class="prep-badge-preview">m&#233;triques</span></h3>
         <p class="hint">Couverture et orphelins pour une paire pivot&#8596;cible. Recalculez apr&#232;s chaque run ou modification manuelle.</p>
-        <div class="form-row">
+        <div class="prep-form-row">
           <label>Pivot
             <select id="act-quality-pivot"><option value="">&#8212; choisir &#8212;</option></select>
           </label>
@@ -1155,9 +1155,9 @@ export class ActionsScreen {
         <div id="act-quality-result" style="display:none;margin-top:0.75rem"></div>
       </section>
       <section class="card" id="act-collision-card" data-collapsible="true" data-collapsed-default="true">
-        <h3>Collisions d&#8217;alignement <span class="badge-preview">r&#233;solution</span></h3>
+        <h3>Collisions d&#8217;alignement <span class="prep-badge-preview">r&#233;solution</span></h3>
         <p class="hint">Un pivot ayant plusieurs liens vers le m&#234;me document cible est une collision.</p>
-        <div class="form-row">
+        <div class="prep-form-row">
           <label>Pivot
             <select id="act-coll-pivot"><option value="">&#8212; choisir &#8212;</option></select>
           </label>
@@ -1174,9 +1174,9 @@ export class ActionsScreen {
         </div>
       </section>
       <section class="card" id="act-report-card" data-collapsible="true" data-collapsed-default="true">
-        <h3>Rapport de runs <span class="badge-preview">export</span></h3>
+        <h3>Rapport de runs <span class="prep-badge-preview">export</span></h3>
         <p class="hint">Exporter l&#8217;historique des runs (import, alignement, curation&#8230;) en HTML ou JSONL.</p>
-        <div class="form-row">
+        <div class="prep-form-row">
           <label>Format :
             <select id="act-report-fmt">
               <option value="html">HTML</option>
@@ -1187,7 +1187,7 @@ export class ActionsScreen {
             <input id="act-report-run-id" type="text" placeholder="laisser vide = tous les runs" style="width:100%;max-width:340px" />
           </label>
         </div>
-        <div class="btn-row" style="margin-top:0.5rem">
+        <div class="prep-btn-row" style="margin-top:0.5rem">
           <button id="act-report-btn" class="btn btn-secondary" disabled>Enregistrer le rapport&#8230;</button>
         </div>
         <div id="act-report-result" style="display:none;margin-top:0.5rem;font-size:0.85rem"></div>
@@ -1466,7 +1466,7 @@ export class ActionsScreen {
     if (!container) return;
     const visibleLinks = this._computeVisibleAuditLinks();
     if (visibleLinks.length === 0) {
-      container.innerHTML = '<p class="live-note">Aucun lien &#224; afficher. Chargez les liens depuis le tableau.</p>';
+      container.innerHTML = '<p class="prep-live-note">Aucun lien &#224; afficher. Chargez les liens depuis le tableau.</p>';
       container.onclick = null;
       return;
     }
@@ -1476,22 +1476,22 @@ export class ActionsScreen {
       const dotClass = normalizedStatus === "accepted" ? "dot ok" : normalizedStatus === "rejected" ? "dot bad" : "dot review";
       const dotLabel = normalizedStatus === "accepted" ? "Accepté" : normalizedStatus === "rejected" ? "Rejeté" : "Non révisé";
       const art = document.createElement("article");
-      art.className = "run-row";
+      art.className = "prep-run-row";
       art.dataset.linkId = String(link.link_id);
       art.innerHTML = `
-        <div class="run-cell run-cell-pivot">
-          <span class="run-cell-id">${_escHtml(String(link.external_id ?? "—"))}</span>
-          <span class="run-cell-text">${_escHtml(String(link.pivot_text ?? "")).slice(0, 140)}</span>
+        <div class="prep-run-cell prep-run-cell-pivot">
+          <span class="prep-run-cell-id">${_escHtml(String(link.external_id ?? "—"))}</span>
+          <span class="prep-run-cell-text">${_escHtml(String(link.pivot_text ?? "")).slice(0, 140)}</span>
         </div>
-        <div class="status-rail">
+        <div class="prep-status-rail">
           <span class="${dotClass}" title="${dotLabel}"></span>
-          <span class="dot-label">${dotLabel}</span>
+          <span class="prep-dot-label">${dotLabel}</span>
         </div>
-        <div class="run-cell run-cell-target">
-          <span class="run-cell-text">${_escHtml(String(link.target_text ?? "")).slice(0, 140)}</span>
-          <span class="run-row-actions">
-            <button class="btn btn-sm btn-secondary run-accept-btn" data-id="${link.link_id}" title="Accepter" aria-label="Accepter ce lien">✓</button>
-            <button class="btn btn-sm btn-danger run-reject-btn" data-id="${link.link_id}" title="Rejeter" aria-label="Rejeter ce lien">✗</button>
+        <div class="prep-run-cell prep-run-cell-target">
+          <span class="prep-run-cell-text">${_escHtml(String(link.target_text ?? "")).slice(0, 140)}</span>
+          <span class="prep-run-row-actions">
+            <button class="btn btn-sm btn-secondary prep-run-accept-btn" data-id="${link.link_id}" title="Accepter" aria-label="Accepter ce lien">✓</button>
+            <button class="btn btn-sm btn-danger prep-run-reject-btn" data-id="${link.link_id}" title="Rejeter" aria-label="Rejeter ce lien">✗</button>
           </span>
         </div>
       `;
@@ -1506,8 +1506,8 @@ export class ActionsScreen {
       const id = Number(btn.dataset.id);
       if (!id) return;
       this._auditSelectedLinkId = id;
-      if (btn.classList.contains("run-accept-btn")) void this._runFocusStatusAction(root, "accepted");
-      else if (btn.classList.contains("run-reject-btn")) void this._runFocusStatusAction(root, "rejected");
+      if (btn.classList.contains("prep-run-accept-btn")) void this._runFocusStatusAction(root, "accepted");
+      else if (btn.classList.contains("prep-run-reject-btn")) void this._runFocusStatusAction(root, "rejected");
     };
   }
 
@@ -1763,7 +1763,7 @@ export class ActionsScreen {
   }
 
   private _syncAuditQuickFilterUi(root: HTMLElement): void {
-    root.querySelectorAll<HTMLButtonElement>(".audit-filter-btn").forEach((btn) => {
+    root.querySelectorAll<HTMLButtonElement>(".prep-audit-filter-btn").forEach((btn) => {
       const current = btn.dataset.qf;
       const active = current === this._auditQuickFilter;
       btn.classList.toggle("is-active", active);
@@ -1971,9 +1971,9 @@ export class ActionsScreen {
     const sl = ActionsScreen._STATUS_LABEL;
 
     const chip = (key: "pending" | "accepted" | "ignored", icon: string, label: string, count: number) =>
-      `<span class="session-chip session-${key}${af === key ? " session-chip-active" : ""}"` +
+      `<span class="prep-session-chip prep-session-${key}${af === key ? " prep-session-chip-active" : ""}"` +
       ` data-sf="${key}" role="button" tabindex="0" title="${af === key ? "Effacer ce filtre" : `Filtrer : ${label}`}">` +
-      `${icon}&#160;<strong>${count}</strong>&#160;<span class="session-chip-label">${label}</span></span>`;
+      `${icon}&#160;<strong>${count}</strong>&#160;<span class="prep-session-chip-label">${label}</span></span>`;
 
     // Build restore notice with partial-restore detail.
     // Level 6A note: preview always requires a specific doc_id, so _curateRestoredCount
@@ -1991,35 +1991,35 @@ export class ActionsScreen {
       // may not match the document currently selected.
       const modeNote = isAllMode ? ` <em>(sélection modifiée depuis la preview)</em>` : "";
       restoreNotice =
-        `<div class="session-restore-notice" title="Statuts restaurés depuis la session précédente (même document, mêmes règles)">` +
+        `<div class="prep-session-restore-notice" title="Statuts restaurés depuis la session précédente (même document, mêmes règles)">` +
         `&#8635; ${countText}${modeNote} &#8212; ` +
         `<button class="btn-inline-link" id="act-reset-review">Réinitialiser</button>` +
         `</div>`;
     } else {
       // When no doc is selected, "Réinitialiser" sweeps all saved review states (Level 6A).
       const modeNote = isAllMode
-        ? `<span class="session-all-note" title="Aucun document sélectionné. La réinitialisation effacera toutes les sessions de review sauvegardées.">&#9432; Portée globale</span> &#8212; `
+        ? `<span class="prep-session-all-note" title="Aucun document sélectionné. La réinitialisation effacera toutes les sessions de review sauvegardées.">&#9432; Portée globale</span> &#8212; `
         : "";
-      restoreNotice = `<div class="session-reset-row">${modeNote}<button class="btn-inline-link" id="act-reset-review">Effacer la review sauvegardée</button></div>`;
+      restoreNotice = `<div class="prep-session-reset-row">${modeNote}<button class="btn-inline-link" id="act-reset-review">Effacer la review sauvegardée</button></div>`;
     }
 
     el.innerHTML =
-      `<div class="session-counts">` +
+      `<div class="prep-session-counts">` +
       chip("pending",  "&#9632;", sl.pending,  c.pending)  +
       chip("accepted", "&#10003;", sl.accepted, c.accepted) +
       chip("ignored",  "&#215;",  sl.ignored,  c.ignored)  +
       `</div>` +
-      (af ? `<div class="session-filter-note">Filtre statut actif &#8212; <button class="btn-inline-link" id="act-clear-sf">Afficher tout</button></div>` : "") +
+      (af ? `<div class="prep-session-filter-note">Filtre statut actif &#8212; <button class="btn-inline-link" id="act-clear-sf">Afficher tout</button></div>` : "") +
       (() => {
         const overrideCount = this._curateExamples.filter(ex => ex.is_manual_override).length;
         return overrideCount > 0
-          ? `<div class="session-override-note">&#9998;&#160;${overrideCount} correction(s) manuelle(s) dans cette session</div>`
+          ? `<div class="prep-session-override-note">&#9998;&#160;${overrideCount} correction(s) manuelle(s) dans cette session</div>`
           : "";
       })() +
       (() => {
         const excCount = this._curateExceptions.size;
         return excCount > 0
-          ? `<div class="session-exception-note">🔒&#160;${excCount} exception(s) persistée(s) active(s) pour ce document</div>`
+          ? `<div class="prep-session-exception-note">🔒&#160;${excCount} exception(s) persistée(s) active(s) pour ce document</div>`
           : "";
       })() +
       restoreNotice;
@@ -2114,15 +2114,15 @@ export class ActionsScreen {
     const effectiveAfter = ex.manual_after ?? ex.after;
 
     const ctxBeforeHtml = ctxBefore
-      ? `<div class="ctx-row ctx-before">
-           <span class="ctx-label">Avant</span>
-           <span class="ctx-text">${_escHtml(trim(ctxBefore))}</span>
+      ? `<div class="prep-ctx-row ctx-before">
+           <span class="prep-ctx-label">Avant</span>
+           <span class="prep-ctx-text">${_escHtml(trim(ctxBefore))}</span>
          </div>`
       : "";
     const ctxAfterHtml = ctxAfter
-      ? `<div class="ctx-row ctx-after">
-           <span class="ctx-label">Après</span>
-           <span class="ctx-text">${_escHtml(trim(ctxAfter))}</span>
+      ? `<div class="prep-ctx-row ctx-after">
+           <span class="prep-ctx-label">Après</span>
+           <span class="prep-ctx-text">${_escHtml(trim(ctxAfter))}</span>
          </div>`
       : "";
 
@@ -2130,19 +2130,19 @@ export class ActionsScreen {
       // ── Edit mode ──────────────────────────────────────────────────────────
       body.innerHTML =
         ctxBeforeHtml +
-        `<div class="ctx-row ctx-current">
-           <span class="ctx-label ctx-label-cur">Original</span>
-           <span class="ctx-text ctx-original">${_escHtml(ex.before)}</span>
+        `<div class="prep-ctx-row ctx-current">
+           <span class="prep-ctx-label ctx-label-cur">Original</span>
+           <span class="prep-ctx-text ctx-original">${_escHtml(ex.before)}</span>
          </div>` +
-        `<div class="ctx-row ctx-edit-row">
-           <span class="ctx-label ctx-label-edit">Résultat</span>
-           <span class="ctx-edit-area">
-             <textarea id="act-manual-override-input" class="ctx-override-textarea"
+        `<div class="prep-ctx-row ctx-edit-row">
+           <span class="prep-ctx-label ctx-label-edit">Résultat</span>
+           <span class="prep-ctx-edit-area">
+             <textarea id="act-manual-override-input" class="prep-ctx-override-textarea"
                rows="3" spellcheck="true">${_escHtml(effectiveAfter)}</textarea>
-             <span class="ctx-edit-hint">Proposition automatique : <em>${_escHtml(ex.after)}</em></span>
+             <span class="prep-ctx-edit-hint">Proposition automatique : <em>${_escHtml(ex.after)}</em></span>
            </span>
          </div>` +
-        `<div class="ctx-edit-actions">
+        `<div class="prep-ctx-edit-actions">
            <button class="btn btn-sm btn-primary" id="act-override-save">Enregistrer</button>
            <button class="btn btn-sm btn-secondary" id="act-override-cancel">Annuler</button>
            ${ex.is_manual_override
@@ -2153,7 +2153,7 @@ export class ActionsScreen {
     } else {
       // ── Read mode ─────────────────────────────────────────────────────────
       const overrideBadgeHtml = ex.is_manual_override
-        ? `<span class="ctx-override-badge"
+        ? `<span class="prep-ctx-override-badge"
              title="Ce résultat a été corrigé manuellement. Proposition automatique : ${_escHtml(ex.after)}">
              ✏ Édité manuellement
            </span>`
@@ -2162,7 +2162,7 @@ export class ActionsScreen {
       // Level 7B: persistent exception badge
       const hasException = ex.is_exception_ignored || ex.is_exception_override;
       const exceptionBadgeHtml = hasException
-        ? `<span class="ctx-exception-badge"
+        ? `<span class="prep-ctx-exception-badge"
              title="${ex.is_exception_ignored
                ? "Exception persistée : cette unité sera toujours ignorée par la curation, quelle que soit la session."
                : `Exception persistée : ce texte sera toujours appliqué à cette unité. Texte : "${_escHtml(ex.exception_override ?? "")}"`}">
@@ -2173,7 +2173,7 @@ export class ActionsScreen {
       // Level 8C: forced-unit indicator
       const forcedReason = ex.preview_reason;
       const forcedNoteHtml = forcedReason && forcedReason !== "standard"
-        ? `<div class="ctx-forced-note ctx-forced-${forcedReason}">
+        ? `<div class="prep-ctx-forced-note ctx-forced-${forcedReason}">
              ${forcedReason === "forced"
                ? "↗ Ouverture ciblée depuis le panneau Exceptions."
                : forcedReason === "forced_ignored"
@@ -2184,17 +2184,17 @@ export class ActionsScreen {
 
       body.innerHTML =
         ctxBeforeHtml +
-        `<div class="ctx-row ctx-current">
-           <span class="ctx-label ctx-label-cur">${forcedReason === "forced_no_change" ? "Inchangé" : forcedReason === "forced_ignored" ? "Neutralisé" : "Modifié"}</span>
-           <span class="ctx-modification">
-             <span class="ctx-diff-before">${_escHtml(ex.before)}</span>
-             <span class="ctx-arrow">&#8594;</span>
-             <span class="ctx-diff-after${ex.is_manual_override ? " ctx-manual-override" : ""}">${_highlightChanges(ex.before, effectiveAfter)}</span>
+        `<div class="prep-ctx-row ctx-current">
+           <span class="prep-ctx-label ctx-label-cur">${forcedReason === "forced_no_change" ? "Inchangé" : forcedReason === "forced_ignored" ? "Neutralisé" : "Modifié"}</span>
+           <span class="prep-ctx-modification">
+             <span class="prep-ctx-diff-before">${_escHtml(ex.before)}</span>
+             <span class="prep-ctx-arrow">&#8594;</span>
+             <span class="prep-ctx-diff-after${ex.is_manual_override ? " ctx-manual-override" : ""}">${_highlightChanges(ex.before, effectiveAfter)}</span>
            </span>
          </div>` +
         ctxAfterHtml +
         forcedNoteHtml +
-        `<div class="ctx-edit-actions">
+        `<div class="prep-ctx-edit-actions">
            ${overrideBadgeHtml}
            <button class="btn btn-sm" id="act-override-edit"
              title="Modifier manuellement le résultat de cette modification">&#9998; Éditer</button>
@@ -2203,16 +2203,16 @@ export class ActionsScreen {
                   title="Annuler la correction manuelle et utiliser la proposition automatique">&#8617; Proposition auto</button>`
              : ""}
          </div>` +
-        `<div class="ctx-exception-actions">
+        `<div class="prep-ctx-exception-actions">
            ${exceptionBadgeHtml}
            ${!hasException
-             ? `<button class="btn btn-sm ctx-exception-btn" id="act-exc-ignore"
+             ? `<button class="btn btn-sm prep-ctx-exception-btn" id="act-exc-ignore"
                   title="Ne plus jamais appliquer de curation sur cette unité, même lors des prochaines sessions">
                   🔒 Toujours ignorer</button>
-                <button class="btn btn-sm ctx-exception-btn" id="act-exc-override"
+                <button class="btn btn-sm prep-ctx-exception-btn" id="act-exc-override"
                   title="Appliquer durablement le résultat actuel comme correction permanente de cette unité">
                   🔒 Conserver cette correction</button>`
-             : `<button class="btn btn-sm ctx-exception-btn ctx-exception-btn-delete" id="act-exc-delete"
+             : `<button class="btn btn-sm prep-ctx-exception-btn prep-ctx-exception-btn-delete" id="act-exc-delete"
                   title="Supprimer l'exception persistée — la curation automatique sera réactivée pour cette unité">
                   🔓 Supprimer l'exception</button>`}
          </div>`;
@@ -2710,7 +2710,7 @@ export class ActionsScreen {
     // Update filter badge visibility
     this._updateFilterBadge(panel);
     // Highlight diagnostics chips to show which filter is active
-    (panel ?? document).querySelectorAll<HTMLElement>(".curate-diag-rule-chip").forEach(chip => {
+    (panel ?? document).querySelectorAll<HTMLElement>(".prep-curate-diag-rule-chip").forEach(chip => {
       chip.classList.toggle("active", chip.dataset.ruleLabel === label);
     });
     // Auto-select first item in filtered set (or reset nav buttons)
@@ -2802,7 +2802,7 @@ export class ActionsScreen {
 
     // Highlight raw paragraph and sync scroll
     scope.querySelectorAll<HTMLElement>("[data-diff-idx].raw-unit").forEach(p => {
-      p.classList.toggle("raw-active", p.dataset.diffIdx === String(idx));
+      p.classList.toggle("prep-raw-active", p.dataset.diffIdx === String(idx));
     });
     if (idx !== null && this._previewSyncScroll) {
       const rawPara = scope.querySelector<HTMLElement>(`.raw-unit[data-diff-idx="${idx}"]`);
@@ -2897,8 +2897,8 @@ export class ActionsScreen {
     const currentIdx = this._curateDocIndex(currentId);
     if (currentIdx < 0) {
       queueEl.innerHTML = `
-        <div class="curate-qitem">
-          <div class="curate-qmeta"><span>File locale</span><span>${this._docs.length} doc(s)</span></div>
+        <div class="prep-curate-qitem">
+          <div class="prep-curate-qmeta"><span>File locale</span><span>${this._docs.length} doc(s)</span></div>
           <div>Aucun document cibl&#233;. Utilisez <strong>Suivant</strong> pour d&#233;marrer la revue locale.</div>
         </div>
       `;
@@ -2913,8 +2913,8 @@ export class ActionsScreen {
       const state = idx === currentIdx ? "Document actif" : idx < currentIdx ? "D&#233;j&#224; revu" : "Suivant";
       const role = doc.doc_role ? `${_escHtml(doc.doc_role)} · ` : "";
       return `
-        <div class="curate-qitem${idx === currentIdx ? " curate-log-apply" : ""}">
-          <div class="curate-qmeta"><span>#${doc.doc_id} · ${_escHtml(doc.language)}</span><span>${state}</span></div>
+        <div class="prep-curate-qitem${idx === currentIdx ? " prep-curate-log-apply" : ""}">
+          <div class="prep-curate-qmeta"><span>#${doc.doc_id} · ${_escHtml(doc.language)}</span><span>${state}</span></div>
           <div>${_escHtml(doc.title)}</div>
           <div style="font-size:11px;color:var(--prep-muted,#4f5d6d)">${role}${doc.unit_count} unit&#233;s</div>
         </div>
@@ -2946,9 +2946,9 @@ export class ActionsScreen {
     el.innerHTML = this._curateLog.map(entry => {
       const diffS = Math.round((now - entry.ts) / 1000);
       const age = diffS < 60 ? `il y a ${diffS} s` : new Date(entry.ts).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
-      const kindClass = entry.kind === "warn" ? "curate-log-warn" : entry.kind === "apply" ? "curate-log-apply" : "";
-      return `<div class="curate-qitem ${kindClass}">` +
-        `<div class="curate-qmeta"><span>${entry.kind === "preview" ? "Prévisu" : entry.kind === "apply" ? "Application" : "⚠"}</span><span>${age}</span></div>` +
+      const kindClass = entry.kind === "warn" ? "prep-curate-log-warn" : entry.kind === "apply" ? "prep-curate-log-apply" : "";
+      return `<div class="prep-curate-qitem ${kindClass}">` +
+        `<div class="prep-curate-qmeta"><span>${entry.kind === "preview" ? "Prévisu" : entry.kind === "apply" ? "Application" : "⚠"}</span><span>${age}</span></div>` +
         `<div>${_escHtml(entry.msg)}</div>` +
         `</div>`;
     }).join("");
@@ -2965,10 +2965,10 @@ export class ActionsScreen {
     const scopeLabel = doc ? "Document s&#233;lectionn&#233;" : "Document complet";
     const liveLabel = "Actif";
     el.innerHTML =
-      `<div class="f curate-ctx-cell"><strong>Langue pivot</strong>${pivotLabel}</div>` +
-      `<div class="f curate-ctx-cell"><strong>Pack</strong>${packLabel}</div>` +
-      `<div class="f curate-ctx-cell"><strong>Port&#233;e</strong>${scopeLabel}</div>` +
-      `<div class="f curate-ctx-cell"><strong>Aper&#231;u live</strong>${liveLabel}</div>`;
+      `<div class="f prep-curate-ctx-cell"><strong>Langue pivot</strong>${pivotLabel}</div>` +
+      `<div class="f prep-curate-ctx-cell"><strong>Pack</strong>${packLabel}</div>` +
+      `<div class="f prep-curate-ctx-cell"><strong>Port&#233;e</strong>${scopeLabel}</div>` +
+      `<div class="f prep-curate-ctx-cell"><strong>Aper&#231;u live</strong>${liveLabel}</div>`;
     this._refreshCurateHeaderState();
     this._renderCurateQuickQueue();
   }
@@ -3080,8 +3080,8 @@ export class ActionsScreen {
       const reps = res.stats.replacements_total;
       this._hasPendingPreview = changed > 0;
       if (statsEl) statsEl.innerHTML = changed === 0
-        ? `<span class="stat-ok">✓ Aucune modification prévue (${total} unités analysées).</span>`
-        : `<span class="stat-warn">⚠ ${changed}/${total} unité(s) modifiée(s), ${reps} remplacement(s).</span>`;
+        ? `<span class="prep-stat-ok">✓ Aucune modification prévue (${total} unités analysées).</span>`
+        : `<span class="prep-stat-warn">⚠ ${changed}/${total} unité(s) modifiée(s), ${reps} remplacement(s).</span>`;
 
       // Info label in preview card header
       if (infoEl) infoEl.textContent = `${total} unités · ${changed} modifiée(s)`;
@@ -3159,7 +3159,7 @@ export class ActionsScreen {
             const statsEl = this._q("#act-preview-stats");
             if (statsEl) {
               const cur = statsEl.innerHTML;
-              statsEl.innerHTML = cur + ` <span class="stat-exc">🔒 ${excIgnored} unité(s) silencée(s) par exception persistée.</span>`;
+              statsEl.innerHTML = cur + ` <span class="prep-stat-exc">🔒 ${excIgnored} unité(s) silencée(s) par exception persistée.</span>`;
             }
           }
         }
@@ -3186,7 +3186,7 @@ export class ActionsScreen {
       if (infoEl) infoEl.textContent = "Erreur";
       const msg = err instanceof SidecarError ? err.message : String(err);
       const rawElErr = this._q("#act-preview-raw");
-      if (rawElErr) rawElErr.innerHTML = `<p class="diag-v warn" style="margin:0"><strong>Erreur prévisualisation</strong>${_escHtml(msg)}</p>`;
+      if (rawElErr) rawElErr.innerHTML = `<p class="prep-diag-v warn" style="margin:0"><strong>Erreur prévisualisation</strong>${_escHtml(msg)}</p>`;
       if (!silent) {
         this._log(`✗ Prévisualisation : ${msg}`, true);
         this._pushCurateLog("warn", `Erreur prévisu : ${msg}`);
@@ -3235,7 +3235,7 @@ export class ActionsScreen {
     if (!diagEl) return;
 
     if (changed === 0) {
-      diagEl.innerHTML = `<div class="curate-diag"><strong>✓ Aucune modification</strong>${total} unités analysées, corpus propre.</div>`;
+      diagEl.innerHTML = `<div class="prep-curate-diag"><strong>✓ Aucune modification</strong>${total} unités analysées, corpus propre.</div>`;
     } else {
       const shown = this._curateExamples.length;
       const isTruncated = shown < this._curateGlobalChanged;
@@ -3244,7 +3244,7 @@ export class ActionsScreen {
       // Truncation notice: shown when the sample doesn't cover all real changes.
       // We can confirm truncation (shown < changed) but cannot state the exact total per rule.
       const truncationHtml = isTruncated
-        ? `<div class="curate-diag curate-diag-notice">
+        ? `<div class="prep-curate-diag curate-diag-notice">
              &#9432;&#160;Preview limit&#233;e &#224; ${shown}&#160;exemples sur&#160;${this._curateGlobalChanged} modifications r&#233;elles.
              Les compteurs par r&#232;gle ci-dessous concernent uniquement l&#8217;&#233;chantillon affich&#233;.
            </div>`
@@ -3254,34 +3254,34 @@ export class ActionsScreen {
       let ruleChipsHtml = "";
       if (ruleStats.size > 0) {
         const scopeNote = isTruncated
-          ? `<span class="diag-scope-note">dans l&#8217;&#233;chantillon courant</span>`
+          ? `<span class="prep-diag-scope-note">dans l&#8217;&#233;chantillon courant</span>`
           : "";
         const chipsInner = [...ruleStats.entries()]
           .sort((a, b) => b[1] - a[1])
           .map(([label, count]) =>
-            `<span class="chip curate-diag-rule-chip" data-rule-label="${_escHtml(label)}" role="button" tabindex="0"` +
+            `<span class="chip prep-curate-diag-rule-chip" data-rule-label="${_escHtml(label)}" role="button" tabindex="0"` +
             ` title="Filtrer sur : ${_escHtml(label)}${isTruncated ? " (dans l\u2019\u00e9chantillon courant)" : ""}"` +
-            `>${_escHtml(label)}<span class="diag-rule-count">${count}</span></span>`
+            `>${_escHtml(label)}<span class="prep-diag-rule-count">${count}</span></span>`
           ).join("");
         ruleChipsHtml = `
-          <div class="curate-diag curate-diag-rules">
+          <div class="prep-curate-diag curate-diag-rules">
             <strong>Filtrer par r&#232;gle</strong>${scopeNote}
-            <div class="chip-row diag-rule-chips" style="margin-top:5px">${chipsInner}</div>
+            <div class="chip-row prep-diag-rule-chips" style="margin-top:5px">${chipsInner}</div>
           </div>`;
       }
 
       diagEl.innerHTML = `
-        <div class="curate-diag warn curate-diag-summary">
+        <div class="prep-curate-diag warn curate-diag-summary">
           <strong>${changed} unit&#233;(s) modifi&#233;e(s)</strong>
           ${replacements} remplacement(s) sur ${total} unit&#233;s.
         </div>
-        ${shown > 0 ? `<div class="curate-diag curate-diag-action" id="act-diag-goto-first" role="button" tabindex="0">
+        ${shown > 0 ? `<div class="prep-curate-diag curate-diag-action" id="act-diag-goto-first" role="button" tabindex="0">
           <strong>&#8594; Premi&#232;re modification</strong>
           <span style="font-size:11px;color:var(--prep-muted)">${shown} exemple(s) &#8212; cliquer pour naviguer</span>
         </div>` : ""}
         ${truncationHtml}
         ${ruleChipsHtml}
-        <div class="curate-diag">
+        <div class="prep-curate-diag">
           <strong>Impact segmentation</strong>
           V&#233;rifiez la preview avant d&#8217;appliquer.
         </div>
@@ -3299,7 +3299,7 @@ export class ActionsScreen {
       }
 
       // Per-rule chip filter listeners
-      diagEl.querySelectorAll<HTMLElement>(".curate-diag-rule-chip").forEach(chip => {
+      diagEl.querySelectorAll<HTMLElement>(".prep-curate-diag-rule-chip").forEach(chip => {
         const label = chip.dataset.ruleLabel ?? "";
         const activate = () => {
           const panel = this._q<HTMLElement>("#act-preview-panel") ?? undefined;
@@ -3318,7 +3318,7 @@ export class ActionsScreen {
         const r = this._lastSegmentReport;
         segLinkEl.style.display = "";
         segLinkEl.innerHTML = `
-          <button class="acts-hub-head-link" data-action="goto-seg" style="font-size:11.5px">
+          <button class="prep-acts-hub-head-link" data-action="goto-seg" style="font-size:11.5px">
             &#9654; Voir segmentation (${r.units_output} unités${r.warnings?.length ? ` · ${r.warnings.length} avertissements` : ""})
           </button>`;
       } else {
@@ -3361,7 +3361,7 @@ export class ActionsScreen {
         const diffEl = this._q<HTMLElement>("#act-diff-list");
         if (diffEl) {
           diffEl.innerHTML =
-            `<div class="stat-ok" style="margin-bottom:8px;font-size:13px">` +
+            `<div class="prep-stat-ok" style="margin-bottom:8px;font-size:13px">` +
             `&#10003;&#160;Aucune diff&#233;rence &#8212; texte cur&#233; identique au source.</div>`;
         }
       } else {
@@ -3395,17 +3395,17 @@ export class ActionsScreen {
         return;
       }
       const bannerRaw =
-        `<div class="stat-ok" style="margin-bottom:8px;font-size:13px">` +
+        `<div class="prep-stat-ok" style="margin-bottom:8px;font-size:13px">` +
         `&#10003;&#160;Aucune modification &#8212; le document est propre avec ces r&#232;gles.</div>`;
       const bannerDiff =
-        `<div class="stat-ok" style="margin-bottom:8px;font-size:13px">` +
+        `<div class="prep-stat-ok" style="margin-bottom:8px;font-size:13px">` +
         `&#10003;&#160;Aucune diff&#233;rence &#8212; texte cur&#233; identique au source.</div>`;
       const truncNote = preview.total_lines > preview.limit
         ? `<p class="empty-hint" style="margin:4px 0 8px;font-style:italic">` +
           `Aper&#231;u &#8212; ${preview.limit}/${preview.total_lines} unit&#233;s</p>`
         : "";
       const linesHtml = preview.lines.map(l =>
-        `<div class="vo-line"><span class="vo-ln">${l.n}</span><span class="vo-txt">${_escHtml(l.text)}</span></div>`,
+        `<div class="prep-vo-line"><span class="prep-vo-ln">${l.n}</span><span class="prep-vo-txt">${_escHtml(l.text)}</span></div>`,
       ).join("");
       rawEl.innerHTML = bannerRaw + truncNote + linesHtml;
       diffEl.innerHTML = bannerDiff + truncNote + linesHtml;
@@ -3444,7 +3444,7 @@ export class ActionsScreen {
     examples.forEach((ex, i) => {
       const p = document.createElement("p");
       p.dataset.diffIdx = String(i);
-      p.className = "raw-unit";
+      p.className = "prep-raw-unit";
       // Primary label from first matched rule (if available)
       const firstLabel = (ex.matched_rule_ids ?? []).length > 0
         ? (this._curateRuleLabels[ex.matched_rule_ids![0]] ?? "")
@@ -3454,7 +3454,7 @@ export class ActionsScreen {
       if (st !== "pending") p.classList.add(`raw-${st}`);
       if (firstLabel) {
         const badge = document.createElement("span");
-        badge.className = "raw-rule-badge";
+        badge.className = "prep-raw-rule-badge";
         badge.textContent = firstLabel;
         p.appendChild(badge);
         p.appendChild(document.createTextNode(" "));
@@ -3515,27 +3515,27 @@ export class ActionsScreen {
         (ex.matched_rule_ids ?? []).map(idx => this._curateRuleLabels[idx] ?? `r${idx + 1}`)
       )];
       const ruleBadgeHtml = ruleLabels.length
-        ? ruleLabels.map(l => `<span class="diff-rule-badge">${_escHtml(l)}</span>`).join(" ")
-        : `<span class="diff-rule-badge diff-rule-badge-unknown">—</span>`;
+        ? ruleLabels.map(l => `<span class="prep-diff-rule-badge">${_escHtml(l)}</span>`).join(" ")
+        : `<span class="prep-diff-rule-badge prep-diff-rule-badge-unknown">—</span>`;
       // Apply status class so CSS can show accepted/ignored state
       const st = ex.status ?? "pending";
       if (st !== "pending") tr.classList.add(`diff-${st}`);
       // Status badge (only for non-pending, to avoid clutter)
       const statusBadgeHtml = st !== "pending"
-        ? `<span class="diff-status-badge diff-status-${st}" title="${_escHtml(ActionsScreen._STATUS_LABEL[st] ?? st)}">${st === "accepted" ? "✓" : "✗"}</span>`
+        ? `<span class="prep-diff-status-badge prep-diff-status-${st}" title="${_escHtml(ActionsScreen._STATUS_LABEL[st] ?? st)}">${st === "accepted" ? "✓" : "✗"}</span>`
         : "";
       // Override badge (Level 7A)
       const overrideBadgeHtml = ex.is_manual_override
-        ? `<span class="diff-override-badge" title="Modifié manuellement">✏</span>`
+        ? `<span class="prep-diff-override-badge" title="Modifié manuellement">✏</span>`
         : "";
       // Exception badge (Level 7B)
       const exceptionBadgeHtml = (ex.is_exception_ignored || ex.is_exception_override)
-        ? `<span class="diff-exception-badge" title="${ex.is_exception_ignored ? "Exception persistée : ignoré durablement" : "Exception persistée : override durable"}">🔒</span>`
+        ? `<span class="prep-diff-exception-badge" title="${ex.is_exception_ignored ? "Exception persistée : ignoré durablement" : "Exception persistée : override durable"}">🔒</span>`
         : "";
       // Forced-unit badge (Level 8C)
       const forcedReason = ex.preview_reason;
       const forcedBadgeHtml = forcedReason && forcedReason !== "standard"
-        ? `<span class="diff-forced-badge diff-forced-${forcedReason}" title="${
+        ? `<span class="prep-diff-forced-badge prep-diff-forced-${forcedReason}" title="${
             forcedReason === "forced" ? "Ouverture ciblée depuis Exceptions" :
             forcedReason === "forced_ignored" ? "Ouverture ciblée — neutralisée par exception ignore" :
             "Ouverture ciblée — aucune modification active"
@@ -3551,12 +3551,12 @@ export class ActionsScreen {
       // P4: "before" hint above the diff — only when before !== after (no-op rows excluded)
       const showBefore = ex.before !== effectiveAfter;
       const beforeHtml = showBefore
-        ? `<span class="diff-before-hint">${_renderSpecialChars(_escHtml(ex.before))}</span>`
+        ? `<span class="prep-diff-before-hint">${_renderSpecialChars(_escHtml(ex.before))}</span>`
         : "";
       tr.innerHTML =
-        `<td class="diff-extid">${ex.external_id ?? i + 1}${statusBadgeHtml}${overrideBadgeHtml}${exceptionBadgeHtml}${forcedBadgeHtml}</td>` +
-        `<td class="diff-rule-cell">${ruleBadgeHtml}</td>` +
-        `<td class="diff-after${ex.is_manual_override ? " diff-after-overridden" : ""}">${beforeHtml}${_highlightChanges(ex.before, effectiveAfter)}</td>`;
+        `<td class="prep-diff-extid">${ex.external_id ?? i + 1}${statusBadgeHtml}${overrideBadgeHtml}${exceptionBadgeHtml}${forcedBadgeHtml}</td>` +
+        `<td class="prep-diff-rule-cell">${ruleBadgeHtml}</td>` +
+        `<td class="diff-after${ex.is_manual_override ? " prep-diff-after-overridden" : ""}">${beforeHtml}${_highlightChanges(ex.before, effectiveAfter)}</td>`;
       tr.addEventListener("click", () => {
         const panel = tr.closest<HTMLElement>("#act-preview-panel") ?? undefined;
         this._setActiveDiffItem(i, panel);
@@ -3575,7 +3575,7 @@ export class ActionsScreen {
     const listEl = this._q<HTMLElement>("#act-conventions-list");
     if (!listEl) return;
     if (this._conventions.length === 0) {
-      listEl.innerHTML = '<p class="conv-empty">Aucune convention définie.</p>';
+      listEl.innerHTML = '<p class="prep-conv-empty">Aucune convention définie.</p>';
       return;
     }
     listEl.innerHTML = "";
@@ -3608,7 +3608,7 @@ export class ActionsScreen {
 
       // Delete button
       const delBtn = document.createElement("button");
-      delBtn.className = "btn btn-ghost btn-xs conv-del-btn";
+      delBtn.className = "btn btn-ghost btn-xs prep-conv-del-btn";
       delBtn.textContent = "Supprimer";
       delBtn.title = "Supprimer cette convention (les unités assignées perdent ce rôle)";
       delBtn.addEventListener("click", () => void this._conventionDelete(conv.name, row));
@@ -3623,12 +3623,12 @@ export class ActionsScreen {
 
   /** Inline label editing on dblclick. */
   private _conventionEditLabel(row: HTMLElement, conv: ConventionRole): void {
-    const labelEl = row.querySelector<HTMLElement>(".conv-label");
-    if (!labelEl || row.classList.contains("conv-row-editing")) return;
-    row.classList.add("conv-row-editing");
+    const labelEl = row.querySelector<HTMLElement>(".prep-conv-label");
+    if (!labelEl || row.classList.contains("prep-conv-row-editing")) return;
+    row.classList.add("prep-conv-row-editing");
     const input = document.createElement("input");
     input.type = "text";
-    input.className = "conv-input conv-label-edit";
+    input.className = "prep-conv-input prep-conv-label-edit";
     input.value = conv.label || conv.name;
     input.maxLength = 64;
     labelEl.replaceWith(input);
@@ -3649,7 +3649,7 @@ export class ActionsScreen {
     input.addEventListener("blur", () => void save());
     input.addEventListener("keydown", (e) => {
       if (e.key === "Enter") { e.preventDefault(); void save(); }
-      if (e.key === "Escape") { saved = true; row.classList.remove("conv-row-editing"); this._renderConventionsList(); }
+      if (e.key === "Escape") { saved = true; row.classList.remove("prep-conv-row-editing"); this._renderConventionsList(); }
     });
   }
 
@@ -3657,17 +3657,17 @@ export class ActionsScreen {
   private async _conventionDelete(name: string, rowEl: HTMLElement): Promise<void> {
     if (!this._conn) return;
     // Inline confirmation in the row
-    const existing = rowEl.querySelector(".conv-del-confirm");
+    const existing = rowEl.querySelector(".prep-conv-del-confirm");
     if (existing) return; // already showing confirm
     const confirm = document.createElement("span");
     confirm.className = "conv-del-confirm";
     confirm.innerHTML =
-      `<span class="conv-del-warn">Supprimer ? Les unités assignées perdront ce rôle.</span>` +
-      `<button class="btn btn-danger btn-xs conv-del-confirm-yes">Confirmer</button>` +
-      `<button class="btn btn-ghost btn-xs conv-del-confirm-no">Annuler</button>`;
+      `<span class="prep-conv-del-warn">Supprimer ? Les unités assignées perdront ce rôle.</span>` +
+      `<button class="btn btn-danger btn-xs prep-conv-del-confirm-yes">Confirmer</button>` +
+      `<button class="btn btn-ghost btn-xs prep-conv-del-confirm-no">Annuler</button>`;
     rowEl.appendChild(confirm);
-    confirm.querySelector(".conv-del-confirm-no")!.addEventListener("click", () => confirm.remove());
-    confirm.querySelector(".conv-del-confirm-yes")!.addEventListener("click", async () => {
+    confirm.querySelector(".prep-conv-del-confirm-no")!.addEventListener("click", () => confirm.remove());
+    confirm.querySelector(".prep-conv-del-confirm-yes")!.addEventListener("click", async () => {
       if (!this._conn) return;
       try {
         await deleteConvention(this._conn, name);
@@ -3778,15 +3778,15 @@ export class ActionsScreen {
     // Refresh selection state on the existing DOM without full re-render
     const rawEl = this._q<HTMLElement>("#act-preview-raw");
     if (!rawEl) return;
-    rawEl.querySelectorAll<HTMLElement>(".raw-unit-full").forEach(p => {
+    rawEl.querySelectorAll<HTMLElement>(".prep-raw-unit-full").forEach(p => {
       const pn = Number(p.dataset.unitN);
-      p.classList.toggle("raw-unit-selected", this._selectedUnitNs.has(pn));
+      p.classList.toggle("prep-raw-unit-selected", this._selectedUnitNs.has(pn));
     });
   }
 
   /** Show/hide and populate the role assignment bar. */
   private _updateRoleBar(): void {
-    const bar = this._q<HTMLElement>("#raw-role-bar");
+    const bar = this._q<HTMLElement>(".prep-raw-role-bar");
     if (!bar) return;
     const count = this._selectedUnitNs.size;
     if (count === 0) {
@@ -3794,7 +3794,7 @@ export class ActionsScreen {
       return;
     }
     bar.style.display = "";
-    const countEl = bar.querySelector<HTMLElement>(".raw-role-bar-count");
+    const countEl = bar.querySelector<HTMLElement>(".prep-raw-role-bar-count");
     if (countEl) countEl.textContent = `${count} unité(s) sélectionnée(s)`;
   }
 
@@ -3804,18 +3804,18 @@ export class ActionsScreen {
    */
   private _renderRoleBar(container: HTMLElement): void {
     // Remove existing bar if any
-    container.querySelector("#raw-role-bar")?.remove();
+    container.querySelector(".prep-raw-role-bar")?.remove();
     const bar = document.createElement("div");
     bar.id = "raw-role-bar";
-    bar.className = "raw-role-bar";
+    bar.className = "prep-raw-role-bar";
     bar.style.display = "none";
     const roleOptions = this._conventions.map(r =>
       `<option value="${_escHtml(r.name)}">${_escHtml(r.label || r.name)}</option>`
     ).join("");
     bar.innerHTML =
-      `<span class="raw-role-bar-count"></span>` +
-      `<label class="raw-role-bar-label">Assigner&nbsp;:</label>` +
-      `<select id="raw-role-select" class="raw-role-select">` +
+      `<span class="prep-raw-role-bar-count"></span>` +
+      `<label class="prep-raw-role-bar-label">Assigner&nbsp;:</label>` +
+      `<select id="raw-role-select" class="prep-raw-role-select">` +
         `<option value="">— choisir un rôle —</option>` +
         roleOptions +
       `</select>` +
@@ -3835,8 +3835,8 @@ export class ActionsScreen {
       this._selectedUnitNs = new Set();
       this._lastSelectedN = null;
       this._updateRoleBar();
-      container.querySelectorAll<HTMLElement>(".raw-unit-selected").forEach(p =>
-        p.classList.remove("raw-unit-selected")
+      container.querySelectorAll<HTMLElement>(".prep-raw-unit-selected").forEach(p =>
+        p.classList.remove("prep-raw-unit-selected")
       );
     });
     // Insert before the scrollable list
@@ -3908,13 +3908,13 @@ export class ActionsScreen {
       }
 
       const p = document.createElement("p");
-      p.className = "raw-unit raw-unit-full";
+      p.className = "prep-raw-unit raw-unit-full";
       p.dataset.unitId = String(unit.unit_id);
       p.dataset.unitN = String(unit.n);
 
       // Mark paratext units
       if (textStartN !== null && unit.n < textStartN) {
-        p.classList.add("raw-unit-paratext");
+        p.classList.add("prep-raw-unit-paratext");
       }
 
       const hasOverride = this._allOverrides.has(unit.unit_id);
@@ -3923,17 +3923,17 @@ export class ActionsScreen {
       const role = unit.unit_role;
       const conv = role ? roleMap.get(role) : undefined;
 
-      if (hasOverride) p.classList.add("raw-unit-overridden");
-      if (isChanged)   p.classList.add("raw-unit-changed");
-      if (isSelected)  p.classList.add("raw-unit-selected");
-      if (role)        p.classList.add("raw-unit-has-role");
+      if (hasOverride) p.classList.add("prep-raw-unit-overridden");
+      if (isChanged)   p.classList.add("prep-raw-unit-changed");
+      if (isSelected)  p.classList.add("prep-raw-unit-selected");
+      if (role)        p.classList.add("prep-raw-unit-has-role");
 
       // Line number — when no boundary is set, click defines this unit as text start
       const ln = document.createElement("span");
-      ln.className = "vo-ln";
+      ln.className = "prep-vo-ln";
       ln.textContent = String(unit.n);
       if (textStartN === null && this._currentCurateDocId() !== undefined && unit.n > 1) {
-        ln.classList.add("vo-ln-settable");
+        ln.classList.add("prep-vo-ln-settable");
         ln.title = `Cliquer pour définir l'unité ${unit.n} comme début du texte`;
         ln.addEventListener("click", (e) => {
           e.stopPropagation();
@@ -3943,17 +3943,17 @@ export class ActionsScreen {
           // Inline confirm banner at the top of the raw pane
           const rawEl2 = this._q<HTMLElement>("#act-preview-raw");
           if (!rawEl2) return;
-          const existing = rawEl2.querySelector(".raw-tsn-confirm");
+          const existing = rawEl2.querySelector(".prep-raw-tsn-confirm");
           if (existing) { existing.remove(); return; } // toggle off on second click
           const banner = document.createElement("div");
-          banner.className = "raw-tsn-confirm";
+          banner.className = "prep-raw-tsn-confirm";
           const paraCount = unit.n - 1;
           banner.innerHTML =
             `<span>Définir l'unité ${unit.n} comme début du texte ? ` +
             `${paraCount > 0 ? `Les ${paraCount} unité(s) précédente(s) seront marquées comme paratexte.` : ""}</span>` +
             `<button class="btn btn-primary btn-xs">Confirmer</button>` +
             `<button class="btn btn-ghost btn-xs">Annuler</button>`;
-          rawEl2.insertBefore(banner, rawEl2.querySelector(".raw-role-bar")?.nextSibling ?? rawEl2.firstChild);
+          rawEl2.insertBefore(banner, rawEl2.querySelector(".prep-raw-role-bar")?.nextSibling ?? rawEl2.firstChild);
           const [confirmBtn, cancelBtn] = banner.querySelectorAll("button");
           cancelBtn.addEventListener("click", () => banner.remove(), { once: true });
           confirmBtn.addEventListener("click", () => { banner.remove(); void this._setTextStart(unit.n); }, { once: true });
@@ -3965,7 +3965,7 @@ export class ActionsScreen {
       // Convention role badge
       if (conv) {
         const roleBadge = document.createElement("span");
-        roleBadge.className = "raw-role-badge";
+        roleBadge.className = "prep-raw-role-badge";
         roleBadge.textContent = conv.label || conv.name;
         roleBadge.title = `Rôle : ${conv.label || conv.name}`;
         if (conv.color) roleBadge.style.setProperty("--role-color", conv.color);
@@ -3976,7 +3976,7 @@ export class ActionsScreen {
       // Override badge
       if (hasOverride) {
         const badge = document.createElement("span");
-        badge.className = "raw-override-badge";
+        badge.className = "prep-raw-override-badge";
         badge.textContent = "✏";
         badge.title = "Modifié manuellement";
         p.appendChild(badge);
@@ -3995,8 +3995,8 @@ export class ActionsScreen {
 
       // Click: role selection (shift=range) — priority over diff navigation
       p.addEventListener("click", (e: MouseEvent) => {
-        if (p.classList.contains("raw-unit-editing")) return;
-        if ((e.target as HTMLElement).closest(".raw-unit-edit-wrapper")) return;
+        if (p.classList.contains("prep-raw-unit-editing")) return;
+        if ((e.target as HTMLElement).closest(".prep-raw-unit-edit-wrapper")) return;
         // Ctrl/Cmd or Shift → selection mode
         if (e.ctrlKey || e.metaKey || e.shiftKey || this._selectedUnitNs.size > 0) {
           e.preventDefault();
@@ -4038,11 +4038,11 @@ export class ActionsScreen {
    */
   private _renderTextStartSeparator(textStartN: number): HTMLElement {
     const sep = document.createElement("div");
-    sep.className = "raw-text-separator";
+    sep.className = "prep-raw-text-separator";
     sep.dataset.textStartN = String(textStartN);
 
     const label = document.createElement("span");
-    label.className = "raw-text-separator-label";
+    label.className = "prep-raw-text-separator-label";
     label.textContent = `Début du texte (unité ${textStartN})`;
     sep.appendChild(label);
 
@@ -4075,11 +4075,11 @@ export class ActionsScreen {
     btnClear.addEventListener("click", (e) => {
       e.stopPropagation();
       // Inline confirmation in the separator
-      if (sep.querySelector(".raw-sep-del-confirm")) return;
+      if (sep.querySelector(".prep-raw-sep-del-confirm")) return;
       const confirmSpan = document.createElement("span");
-      confirmSpan.className = "raw-sep-del-confirm";
+      confirmSpan.className = "prep-raw-sep-del-confirm";
       confirmSpan.innerHTML =
-        `<span class="conv-del-warn">Supprimer la frontière ?</span>` +
+        `<span class="prep-conv-del-warn">Supprimer la frontière ?</span>` +
         `<button class="btn btn-danger btn-xs">Confirmer</button>` +
         `<button class="btn btn-ghost btn-xs">Annuler</button>`;
       sep.appendChild(confirmSpan);
@@ -4090,7 +4090,7 @@ export class ActionsScreen {
     });
 
     const controls = document.createElement("span");
-    controls.className = "raw-sep-controls";
+    controls.className = "prep-raw-sep-controls";
     controls.appendChild(btnUp);
     controls.appendChild(btnDown);
     controls.appendChild(btnClear);
@@ -4125,20 +4125,20 @@ export class ActionsScreen {
    * Replaces the <p> content with a textarea + save/cancel controls.
    */
   private _enterInlineEdit(unitEl: HTMLElement, unit: UnitRecord): void {
-    if (unitEl.classList.contains("raw-unit-editing")) return; // already editing
-    unitEl.classList.add("raw-unit-editing");
+    if (unitEl.classList.contains("prep-raw-unit-editing")) return; // already editing
+    unitEl.classList.add("prep-raw-unit-editing");
     const currentText = this._allOverrides.get(unit.unit_id) ?? unit.text_norm ?? "";
     // Save original content to restore on cancel
     const originalContent = unitEl.innerHTML;
     unitEl.innerHTML = "";
     const wrapper = document.createElement("div");
-    wrapper.className = "raw-unit-edit-wrapper";
+    wrapper.className = "prep-raw-unit-edit-wrapper";
     const ta = document.createElement("textarea");
-    ta.className = "raw-unit-textarea";
+    ta.className = "prep-raw-unit-textarea";
     ta.value = currentText;
     ta.rows = Math.max(2, Math.ceil(currentText.length / 80));
     const actions = document.createElement("div");
-    actions.className = "raw-unit-edit-actions";
+    actions.className = "prep-raw-unit-edit-actions";
     const saveBtn = document.createElement("button");
     saveBtn.className = "btn btn-primary btn-xs";
     saveBtn.textContent = "Enregistrer";
@@ -4156,7 +4156,7 @@ export class ActionsScreen {
     ta.setSelectionRange(ta.value.length, ta.value.length);
     const save = () => {
       const newText = ta.value;
-      unitEl.classList.remove("raw-unit-editing");
+      unitEl.classList.remove("prep-raw-unit-editing");
       if (newText !== (unit.text_norm ?? "")) {
         this._allOverrides.set(unit.unit_id, newText);
         const docId = this._currentCurateDocId();
@@ -4169,7 +4169,7 @@ export class ActionsScreen {
       this._renderRawPaneFull(changedIds.size > 0 ? changedIds : undefined);
     };
     const cancel = () => {
-      unitEl.classList.remove("raw-unit-editing");
+      unitEl.classList.remove("prep-raw-unit-editing");
       unitEl.innerHTML = originalContent;
       // The dblclick listener is on the element itself (not innerHTML) — still active after restore
     };
@@ -4469,7 +4469,7 @@ export class ActionsScreen {
     if (!this._conn) return;
     const list = root.querySelector<HTMLElement>("#act-exc-admin-list");
     if (!list) return;
-    list.innerHTML = `<p class="empty-hint exc-admin-loading">Chargement…</p>`;
+    list.innerHTML = `<p class="empty-hint prep-exc-admin-loading">Chargement…</p>`;
     try {
       const res = await listCurateExceptions(this._conn);
       this._excAdminAll = res.exceptions;
@@ -4556,7 +4556,7 @@ export class ActionsScreen {
       const showDocHead = this._excAdminDocFilter === 0 && firstRow.doc_title !== undefined;
       if (showDocHead) {
         const docHead = document.createElement("div");
-        docHead.className = "exc-admin-doc-head";
+        docHead.className = "prep-exc-admin-doc-head";
         docHead.textContent = firstRow.doc_title || `Document #${firstRow.doc_id ?? "?"}`;
         frag.appendChild(docHead);
       }
@@ -4572,12 +4572,12 @@ export class ActionsScreen {
   /** Build a single exception row element. */
   private _buildExcAdminRow(exc: import("../lib/sidecarClient.js").CurateException): HTMLElement {
     const row = document.createElement("div");
-    row.className = "exc-admin-row";
+    row.className = "prep-exc-admin-row";
     row.dataset.excUnitId = String(exc.unit_id);
 
-    const kindBadge = `<span class="exc-kind-badge exc-kind-${exc.kind}">${exc.kind === "ignore" ? "🚫 ignore" : "✏ override"}</span>`;
-    const unitText = exc.unit_text ? `<span class="exc-unit-preview" title="${this._escHtml(exc.unit_text)}">${this._escHtml(exc.unit_text.slice(0, 80))}…</span>` : "";
-    const createdAt = exc.created_at ? `<span class="exc-created-at">${exc.created_at.slice(0, 16).replace("T", " ")}</span>` : "";
+    const kindBadge = `<span class="prep-exc-kind-badge exc-kind-${exc.kind}">${exc.kind === "ignore" ? "🚫 ignore" : "✏ override"}</span>`;
+    const unitText = exc.unit_text ? `<span class="prep-exc-unit-preview" title="${this._escHtml(exc.unit_text)}">${this._escHtml(exc.unit_text.slice(0, 80))}…</span>` : "";
+    const createdAt = exc.created_at ? `<span class="prep-exc-created-at">${exc.created_at.slice(0, 16).replace("T", " ")}</span>` : "";
     // "Voir dans Curation" button — only shown when doc_id is known
     const openBtn = exc.doc_id !== undefined
       ? `<button class="btn btn-sm exc-row-open-curation" title="Voir cette unité dans Curation">&#x1F441;</button>`
@@ -4587,39 +4587,39 @@ export class ActionsScreen {
 
     if (exc.kind === "override" && isEditing) {
       row.innerHTML = `
-        <div class="exc-row-meta">
+        <div class="prep-exc-row-meta">
           ${kindBadge}
-          <span class="exc-unit-id">unité&nbsp;${exc.unit_id}</span>
+          <span class="prep-exc-unit-id">unité&nbsp;${exc.unit_id}</span>
           ${createdAt}
         </div>
-        ${unitText ? `<div class="exc-unit-preview-block">${unitText}</div>` : ""}
-        <div class="exc-row-edit-block">
-          <label class="exc-edit-label">Texte override :</label>
-          <textarea class="exc-edit-textarea" id="exc-edit-${exc.unit_id}" rows="3">${this._escHtml(exc.override_text ?? "")}</textarea>
-          <div class="exc-edit-actions">
-            <button class="btn btn-sm btn-primary exc-row-edit-save">Enregistrer</button>
-            <button class="btn btn-sm exc-row-edit-cancel">Annuler</button>
+        ${unitText ? `<div class="prep-exc-unit-preview-block">${unitText}</div>` : ""}
+        <div class="prep-exc-row-edit-block">
+          <label class="prep-exc-edit-label">Texte override :</label>
+          <textarea class="prep-exc-edit-textarea" id="exc-edit-${exc.unit_id}" rows="3">${this._escHtml(exc.override_text ?? "")}</textarea>
+          <div class="prep-exc-edit-actions">
+            <button class="btn btn-sm btn-primary prep-exc-row-edit-save">Enregistrer</button>
+            <button class="btn btn-sm prep-exc-row-edit-cancel">Annuler</button>
           </div>
         </div>`;
     } else {
       const overrideText = exc.kind === "override" && exc.override_text
-        ? `<div class="exc-override-text">${this._escHtml(exc.override_text)}</div>`
+        ? `<div class="prep-exc-override-text">${this._escHtml(exc.override_text)}</div>`
         : "";
       const editBtn = exc.kind === "override"
-        ? `<button class="btn btn-sm exc-row-edit-start" title="Modifier le texte override">✎</button>`
+        ? `<button class="btn btn-sm prep-exc-row-edit-start" title="Modifier le texte override">✎</button>`
         : "";
       row.innerHTML = `
-        <div class="exc-row-meta">
+        <div class="prep-exc-row-meta">
           ${kindBadge}
-          <span class="exc-unit-id">unité&nbsp;${exc.unit_id}</span>
+          <span class="prep-exc-unit-id">unité&nbsp;${exc.unit_id}</span>
           ${createdAt}
-          <div class="exc-row-actions">
+          <div class="prep-exc-row-actions">
             ${openBtn}
             ${editBtn}
-            <button class="btn btn-sm exc-row-delete" title="Supprimer cette exception">✕</button>
+            <button class="btn btn-sm prep-exc-row-delete" title="Supprimer cette exception">✕</button>
           </div>
         </div>
-        ${unitText ? `<div class="exc-unit-preview-block">${unitText}</div>` : ""}
+        ${unitText ? `<div class="prep-exc-unit-preview-block">${unitText}</div>` : ""}
         ${overrideText}`;
     }
     return row;
@@ -4757,11 +4757,11 @@ export class ActionsScreen {
             const reportBits = reports
               .map((r) => {
                 const skipped = r.links_skipped ?? 0;
-                return `<span class="stat-ok">→ doc #${r.target_doc_id} : ${r.links_created} liens créés, ${skipped} ignorés.</span>`;
+                return `<span class="prep-stat-ok">→ doc #${r.target_doc_id} : ${r.links_created} liens créés, ${skipped} ignorés.</span>`;
               })
               .join(" &nbsp;");
             const recalcBits = recalculate
-              ? ` <span class="stat-warn">Nettoyés: ${deletedBefore}</span> <span class="stat-ok">Conservés: ${preservedBefore}</span> <span class="stat-ok">Liens effectifs: ${totalEffectiveLinks}</span>`
+              ? ` <span class="prep-stat-warn">Nettoyés: ${deletedBefore}</span> <span class="prep-stat-ok">Conservés: ${preservedBefore}</span> <span class="prep-stat-ok">Liens effectifs: ${totalEffectiveLinks}</span>`
               : "";
             bannerEl.innerHTML = `${reportBits}${recalcBits}`;
           }
@@ -4775,7 +4775,7 @@ export class ActionsScreen {
               el.className = cls ? `align-kpi-value value ${cls}` : "align-kpi-value value";
               // Also update parent kpi card class for color coding
               const wrap = this._q(`#${id.replace("act-kpi-", "act-kpi-wrap-")}`);
-              if (wrap) wrap.className = cls ? `kpi align-kpi ${cls}` : "kpi align-kpi";
+              if (wrap) wrap.className = cls ? `kpi prep-align-kpi ${cls}` : "kpi prep-align-kpi";
             }
           };
           setKpi("act-kpi-created", String(totalCreated), totalCreated > 0 ? "ok" : undefined);
@@ -4856,15 +4856,15 @@ export class ActionsScreen {
 
     panel.style.display = "";
     const runMeta = this._alignRunId
-      ? `<div class="align-debug-meta" style="margin-bottom:0.35rem">run_id: <code>${_escHtml(this._alignRunId)}</code></div>`
+      ? `<div class="prep-align-debug-meta" style="margin-bottom:0.35rem">run_id: <code>${_escHtml(this._alignRunId)}</code></div>`
       : "";
     const rows = this._alignExplainability.map((rep) => {
       const debug = rep.debug;
       if (!debug) {
         return `
-          <div class="align-debug-card">
-            <div class="align-debug-title">Doc cible #${rep.target_doc_id}</div>
-            <div class="align-debug-meta">
+          <div class="prep-align-debug-card">
+            <div class="prep-align-debug-title">Doc cible #${rep.target_doc_id}</div>
+            <div class="prep-align-debug-meta">
               liens créés: <strong>${rep.links_created}</strong>, ignorés: <strong>${rep.links_skipped}</strong>
             </div>
             <div class="empty-hint">Aucun détail debug pour ce rapport.</div>
@@ -4874,7 +4874,7 @@ export class ActionsScreen {
 
       const strategy = typeof debug.strategy === "string" ? debug.strategy : "n/a";
       const sourceParts = _isRecord(debug.link_sources)
-        ? Object.entries(debug.link_sources).map(([k, v]) => `<span class="align-debug-pill">${_escHtml(k)}: ${_escHtml(String(v))}</span>`)
+        ? Object.entries(debug.link_sources).map(([k, v]) => `<span class="prep-align-debug-pill">${_escHtml(k)}: ${_escHtml(String(v))}</span>`)
         : [];
       const sim = _isRecord(debug.similarity_stats) ? debug.similarity_stats : null;
       const sampleLinks = Array.isArray(debug.sample_links) ? debug.sample_links.slice(0, 3) : [];
@@ -4887,25 +4887,25 @@ export class ActionsScreen {
       }).join("");
 
       return `
-        <div class="align-debug-card">
-          <div class="align-debug-title">Doc cible #${rep.target_doc_id}</div>
-          <div class="align-debug-meta">
+        <div class="prep-align-debug-card">
+          <div class="prep-align-debug-title">Doc cible #${rep.target_doc_id}</div>
+          <div class="prep-align-debug-meta">
             stratégie: <strong>${_escHtml(strategy)}</strong> ·
             liens créés: <strong>${rep.links_created}</strong> · ignorés: <strong>${rep.links_skipped}</strong>
           </div>
           ${sourceParts.length > 0
-            ? `<div class="align-debug-row"><span class="align-debug-label">Sources</span><div class="align-debug-pills">${sourceParts.join("")}</div></div>`
-            : `<div class="align-debug-row"><span class="align-debug-label">Sources</span><span class="empty-hint">n/a</span></div>`}
+            ? `<div class="prep-align-debug-row"><span class="prep-align-debug-label">Sources</span><div class="prep-align-debug-pills">${sourceParts.join("")}</div></div>`
+            : `<div class="prep-align-debug-row"><span class="prep-align-debug-label">Sources</span><span class="empty-hint">n/a</span></div>`}
           ${sim
-            ? `<div class="align-debug-row">
-                 <span class="align-debug-label">Similarité</span>
+            ? `<div class="prep-align-debug-row">
+                 <span class="prep-align-debug-label">Similarité</span>
                  <span>mean=${_formatMaybeNumber(sim.score_mean)} min=${_formatMaybeNumber(sim.score_min)} max=${_formatMaybeNumber(sim.score_max)}</span>
                </div>`
             : ""}
           ${sampleRows
-            ? `<div class="align-debug-row">
-                 <span class="align-debug-label">Exemples</span>
-                 <ul class="align-debug-list">${sampleRows}</ul>
+            ? `<div class="prep-align-debug-row">
+                 <span class="prep-align-debug-label">Exemples</span>
+                 <ul class="prep-align-debug-list">${sampleRows}</ul>
                </div>`
             : ""}
         </div>
@@ -5061,14 +5061,14 @@ export class ActionsScreen {
       const tr = document.createElement("tr");
       tr.setAttribute("role", "row");
       tr.setAttribute("aria-selected", isSelected ? "true" : "false");
-      tr.classList.toggle("audit-row-active", isSelected);
+      tr.classList.toggle("prep-audit-row-active", isSelected);
       tr.dataset.linkId = String(link.link_id);
       const normalizedStatus = this._normalizeAuditStatus(link.status);
       const statusBadge = normalizedStatus === "accepted"
-        ? `<span class="status-badge status-ok">✅ Accepté</span>`
+        ? `<span class="prep-status-badge prep-status-ok">✅ Accepté</span>`
         : normalizedStatus === "rejected"
-        ? `<span class="status-badge status-error">❌ Rejeté</span>`
-        : `<span class="status-badge status-unknown">🔵 Non révisé</span>`;
+        ? `<span class="prep-status-badge prep-status-error">❌ Rejeté</span>`
+        : `<span class="prep-status-badge prep-status-unknown">🔵 Non révisé</span>`;
 
       let explainCell = "";
       if (showExplain) {
@@ -5086,10 +5086,10 @@ export class ActionsScreen {
       }
 
       tr.innerHTML = `
-        <td><input type="checkbox" class="audit-row-cb" data-id="${link.link_id}"/></td>
+        <td><input type="checkbox" class="prep-audit-row-cb" data-id="${link.link_id}"/></td>
         <td style="white-space:nowrap">${link.external_id ?? "—"}</td>
-        <td class="audit-text">${_escHtml(String(link.pivot_text ?? ""))}</td>
-        <td class="audit-text">${_escHtml(String(link.target_text ?? ""))}</td>
+        <td class="prep-audit-text">${_escHtml(String(link.pivot_text ?? ""))}</td>
+        <td class="prep-audit-text">${_escHtml(String(link.target_text ?? ""))}</td>
         <td style="white-space:nowrap">${statusBadge}</td>
         ${explainCell}
         <td style="white-space:nowrap">
@@ -5143,20 +5143,20 @@ export class ActionsScreen {
     // Select-all checkbox
     const selAllCb = table.querySelector<HTMLInputElement>("#act-audit-sel-all");
     const updateBatchBar = () => {
-      const checked = wrap.querySelectorAll<HTMLInputElement>(".audit-row-cb:checked");
+      const checked = wrap.querySelectorAll<HTMLInputElement>(".prep-audit-row-cb:checked");
       const countEl = root.querySelector<HTMLElement>("#act-audit-sel-count");
       if (countEl) countEl.textContent = `${checked.length} sélectionné(s)`;
       if (batchBar) batchBar.style.display = checked.length > 0 ? "flex" : "none";
     };
     if (selAllCb) {
       selAllCb.addEventListener("change", () => {
-        wrap.querySelectorAll<HTMLInputElement>(".audit-row-cb").forEach(cb => {
+        wrap.querySelectorAll<HTMLInputElement>(".prep-audit-row-cb").forEach(cb => {
           cb.checked = selAllCb.checked;
         });
         updateBatchBar();
       });
     }
-    wrap.querySelectorAll<HTMLInputElement>(".audit-row-cb").forEach(cb => {
+    wrap.querySelectorAll<HTMLInputElement>(".prep-audit-row-cb").forEach(cb => {
       cb.addEventListener("change", (evt) => {
         evt.stopPropagation();
         updateBatchBar();
@@ -5202,7 +5202,7 @@ export class ActionsScreen {
   // ─── V1.3 — Batch audit actions ────────────────────────────────────────────
 
   private _getSelectedLinkIds(root: HTMLElement): number[] {
-    return Array.from(root.querySelectorAll<HTMLInputElement>(".audit-row-cb:checked"))
+    return Array.from(root.querySelectorAll<HTMLInputElement>(".prep-audit-row-cb:checked"))
       .map(cb => Number(cb.dataset.id))
       .filter(id => Number.isFinite(id));
   }
@@ -5361,32 +5361,32 @@ export class ActionsScreen {
       const resultEl = root.querySelector<HTMLElement>("#act-quality-result")!;
       resultEl.style.display = "";
       resultEl.innerHTML = `
-        <div class="quality-stats-grid">
-          <div class="quality-stat">
-            <span class="quality-label">Couverture pivot</span>
-            <span class="quality-value ${s.coverage_pct >= 90 ? "ok" : s.coverage_pct >= 60 ? "warn" : "err"}">
+        <div class="prep-quality-stats-grid">
+          <div class="prep-quality-stat">
+            <span class="prep-quality-label">Couverture pivot</span>
+            <span class="prep-quality-value ${s.coverage_pct >= 90 ? "ok" : s.coverage_pct >= 60 ? "warn" : "err"}">
               ${s.coverage_pct}% (${s.covered_pivot_units}/${s.total_pivot_units})
             </span>
           </div>
-          <div class="quality-stat">
-            <span class="quality-label">Liens total</span>
-            <span class="quality-value">${s.total_links}</span>
+          <div class="prep-quality-stat">
+            <span class="prep-quality-label">Liens total</span>
+            <span class="prep-quality-value">${s.total_links}</span>
           </div>
-          <div class="quality-stat">
-            <span class="quality-label">Orphelins pivot</span>
-            <span class="quality-value ${s.orphan_pivot_count === 0 ? "ok" : "warn"}">${s.orphan_pivot_count}</span>
+          <div class="prep-quality-stat">
+            <span class="prep-quality-label">Orphelins pivot</span>
+            <span class="prep-quality-value ${s.orphan_pivot_count === 0 ? "ok" : "warn"}">${s.orphan_pivot_count}</span>
           </div>
-          <div class="quality-stat">
-            <span class="quality-label">Orphelins cible</span>
-            <span class="quality-value ${s.orphan_target_count === 0 ? "ok" : "warn"}">${s.orphan_target_count}</span>
+          <div class="prep-quality-stat">
+            <span class="prep-quality-label">Orphelins cible</span>
+            <span class="prep-quality-value ${s.orphan_target_count === 0 ? "ok" : "warn"}">${s.orphan_target_count}</span>
           </div>
-          <div class="quality-stat">
-            <span class="quality-label">Collisions</span>
-            <span class="quality-value ${s.collision_count === 0 ? "ok" : "err"}">${s.collision_count}</span>
+          <div class="prep-quality-stat">
+            <span class="prep-quality-label">Collisions</span>
+            <span class="prep-quality-value ${s.collision_count === 0 ? "ok" : "err"}">${s.collision_count}</span>
           </div>
-          <div class="quality-stat">
-            <span class="quality-label">Statuts</span>
-            <span class="quality-value">
+          <div class="prep-quality-stat">
+            <span class="prep-quality-label">Statuts</span>
+            <span class="prep-quality-value">
               ✓${s.status_counts.accepted} ✗${s.status_counts.rejected} ?${s.status_counts.unreviewed}
             </span>
           </div>
@@ -5484,15 +5484,15 @@ export class ActionsScreen {
     const groupHtml = this._collGroups.map((g) => {
       const linksHtml = g.links.map((lnk) => {
         const badge = lnk.status === "accepted"
-          ? `<span class="status-badge status-ok">✅ Accepté</span>`
+          ? `<span class="prep-status-badge prep-status-ok">✅ Accepté</span>`
           : lnk.status === "rejected"
-          ? `<span class="status-badge status-error">❌ Rejeté</span>`
-          : `<span class="status-badge status-unknown">🔵 Non révisé</span>`;
+          ? `<span class="prep-status-badge prep-status-error">❌ Rejeté</span>`
+          : `<span class="prep-status-badge prep-status-unknown">🔵 Non révisé</span>`;
         return `<tr>
-          <td class="audit-cell-text">${lnk.target_text}</td>
+          <td class="prep-audit-cell-text">${lnk.target_text}</td>
           <td>[§${lnk.target_external_id ?? "?"}]</td>
           <td>${badge}</td>
-          <td class="audit-cell-actions">
+          <td class="prep-audit-cell-actions">
             <button class="btn btn-sm btn-primary coll-keep-btn" data-link="${lnk.link_id}" data-group="${g.pivot_unit_id}" title="Garder — marquer accepté">✓ Garder</button>
             <button class="btn btn-sm btn-secondary coll-reject-btn" data-link="${lnk.link_id}" title="Rejeter">❌ Rejeter</button>
             <button class="btn btn-sm btn-danger coll-delete-btn" data-link="${lnk.link_id}" data-group="${g.pivot_unit_id}" data-target="${targetDocId}" title="Supprimer ce lien" aria-label="Supprimer ce lien">🗑</button>
@@ -5756,7 +5756,7 @@ export class ActionsScreen {
       if (resultEl) {
         resultEl.style.display = "";
         resultEl.innerHTML =
-          `<span class="stat-ok">✓ ${res.runs_exported} run(s) export\u00e9(s) \u2192 ` +
+          `<span class="prep-stat-ok">✓ ${res.runs_exported} run(s) export\u00e9(s) \u2192 ` +
           `<code>${_escHtml(res.out_path)}</code></span>`;
       }
       this._log(`✓ Rapport export\u00e9 : ${res.runs_exported} run(s) \u2192 ${res.out_path}`);

@@ -108,83 +108,83 @@ export class AlignPanel {
 
   private _html(): string {
     return `
-<div class="align-v2-layout">
+<div class="prep-align-v2-layout">
 
   <!-- ═══ Colonne gauche : Configuration ═══ -->
-  <div class="align-v2-config">
+  <div class="prep-align-v2-config">
 
-    <div class="align-v2-config-head">
+    <div class="prep-align-v2-config-head">
       <h3>Configuration du run</h3>
-      <div class="align-mode-toggle" role="group" aria-label="Mode">
-        <button class="align-mode-btn active" data-mode="famille">📁 Par famille</button>
-        <button class="align-mode-btn" data-mode="manuel">🔧 Manuel</button>
+      <div class="prep-align-mode-toggle" role="group" aria-label="Mode">
+        <button class="prep-align-mode-btn active" data-mode="famille">📁 Par famille</button>
+        <button class="prep-align-mode-btn" data-mode="manuel">🔧 Manuel</button>
       </div>
     </div>
 
     <!-- Mode Famille -->
-    <div id="align-famille-section" class="align-config-section">
-      <div class="align-field-row">
-        <label class="align-field-label">Famille</label>
+    <div id="align-famille-section" class="prep-align-config-section">
+      <div class="prep-align-field-row">
+        <label class="prep-align-field-label">Famille</label>
         <div style="display:flex;gap:6px;align-items:center">
-          <select id="align-family-sel" class="align-select" style="flex:1">
+          <select id="align-family-sel" class="prep-align-select" style="flex:1">
             <option value="">— choisir une famille —</option>
           </select>
           <button id="align-family-refresh" class="btn btn-sm btn-ghost" title="Rafraîchir">⟳</button>
         </div>
       </div>
-      <div id="align-family-preview" class="align-family-preview" style="display:none">
-        <div class="align-fp-row">
-          <span class="align-fp-label">Pivot</span>
-          <span id="align-fp-pivot" class="align-fp-value">—</span>
+      <div id="align-family-preview" class="prep-align-family-preview" style="display:none">
+        <div class="prep-align-fp-row">
+          <span class="prep-align-fp-label">Pivot</span>
+          <span id="align-fp-pivot" class="prep-align-fp-value">—</span>
         </div>
-        <div class="align-fp-row" style="align-items:flex-start">
-          <span class="align-fp-label">Cibles</span>
-          <div id="align-fp-targets" class="align-fp-value" style="flex-wrap:wrap;gap:4px"></div>
+        <div class="prep-align-fp-row" style="align-items:flex-start">
+          <span class="prep-align-fp-label">Cibles</span>
+          <div id="align-fp-targets" class="prep-align-fp-value" style="flex-wrap:wrap;gap:4px"></div>
         </div>
-        <div id="align-family-stats" class="align-family-stats"></div>
+        <div id="align-family-stats" class="prep-align-family-stats"></div>
       </div>
     </div>
 
     <!-- Mode Manuel -->
-    <div id="align-manuel-section" class="align-config-section" style="display:none">
-      <div class="align-field-row">
-        <label class="align-field-label">Pivot</label>
-        <select id="align-pivot-sel" class="align-select">
+    <div id="align-manuel-section" class="prep-align-config-section" style="display:none">
+      <div class="prep-align-field-row">
+        <label class="prep-align-field-label">Pivot</label>
+        <select id="align-pivot-sel" class="prep-align-select">
           <option value="">— choisir —</option>
         </select>
       </div>
-      <div class="align-field-row">
-        <label class="align-field-label">Cible(s) <span style="font-weight:400;font-size:0.72rem">(Ctrl+clic)</span></label>
-        <select id="align-targets-sel" class="align-select" multiple size="4"></select>
+      <div class="prep-align-field-row">
+        <label class="prep-align-field-label">Cible(s) <span style="font-weight:400;font-size:0.72rem">(Ctrl+clic)</span></label>
+        <select id="align-targets-sel" class="prep-align-select" multiple size="4"></select>
       </div>
     </div>
 
     <!-- Stratégie + options (communs) -->
-    <div class="align-config-section align-options-section">
-      <div class="align-field-row">
-        <label class="align-field-label">Stratégie</label>
-        <select id="align-strategy-sel" class="align-select">
+    <div class="prep-align-config-section prep-align-options-section">
+      <div class="prep-align-field-row">
+        <label class="prep-align-field-label">Stratégie</label>
+        <select id="align-strategy-sel" class="prep-align-select">
           <option value="external_id">external_id</option>
           <option value="external_id_then_position" selected>external_id → position (hybride)</option>
           <option value="position">position</option>
           <option value="similarity">similarité</option>
         </select>
       </div>
-      <div id="align-sim-row" class="align-field-row" style="display:none">
-        <label class="align-field-label">Seuil similarité</label>
-        <input id="align-sim-threshold" type="number" class="align-input-num"
+      <div id="align-sim-row" class="prep-align-field-row" style="display:none">
+        <label class="prep-align-field-label">Seuil similarité</label>
+        <input id="align-sim-threshold" type="number" class="prep-align-input-num"
                min="0" max="1" step="0.05" value="0.8"/>
       </div>
-      <div class="align-checks-row">
-        <label class="align-check-label">
+      <div class="prep-align-checks-row">
+        <label class="prep-align-check-label">
           <input id="align-preserve-accepted" type="checkbox" checked/>
           Conserver les liens validés
         </label>
-        <label class="align-check-label">
+        <label class="prep-align-check-label">
           <input id="align-debug-cb" type="checkbox"/>
           Explainability debug
         </label>
-        <label class="align-check-label" id="align-skip-unready-wrap">
+        <label class="prep-align-check-label" id="align-skip-unready-wrap">
           <input id="align-skip-unready" type="checkbox" checked/>
           Ignorer les cibles non segmentées
         </label>
@@ -192,68 +192,68 @@ export class AlignPanel {
     </div>
 
     <!-- Bannière de confirmation inline -->
-    <div id="align-confirm-banner" class="align-confirm-banner" style="display:none">
-      <div id="align-confirm-msg" class="align-confirm-msg"></div>
-      <div class="align-confirm-btns">
+    <div id="align-confirm-banner" class="prep-align-confirm-banner" style="display:none">
+      <div id="align-confirm-msg" class="prep-align-confirm-msg"></div>
+      <div class="prep-align-confirm-btns">
         <button id="align-confirm-ok" class="btn btn-warning btn-sm">▶ Confirmer</button>
         <button id="align-confirm-cancel" class="btn btn-ghost btn-sm">Annuler</button>
       </div>
     </div>
 
     <!-- Boutons lancement -->
-    <div id="align-launch-btns" class="align-launch-row">
+    <div id="align-launch-btns" class="prep-align-launch-row">
       <button id="align-run-btn" class="btn btn-warning" disabled>▶ Lancer l'alignement</button>
       <button id="align-recalc-btn" class="btn btn-secondary" disabled>↺ Recalcul global</button>
     </div>
 
     <!-- Progression pendant run -->
-    <div id="align-progress-area" class="align-progress-area" style="display:none">
-      <div class="align-progress-spinner">⏳</div>
-      <div id="align-progress-msg" class="align-progress-msg">Alignement en cours…</div>
+    <div id="align-progress-area" class="prep-align-progress-area" style="display:none">
+      <div class="prep-align-progress-spinner">⏳</div>
+      <div id="align-progress-msg" class="prep-align-progress-msg">Alignement en cours…</div>
     </div>
 
     <!-- Résumé KPI après run -->
-    <div id="align-summary" class="align-summary" style="display:none">
-      <div class="align-summary-head">
-        <span class="align-summary-title">Résultats du run</span>
+    <div id="align-summary" class="prep-align-summary" style="display:none">
+      <div class="prep-align-summary-head">
+        <span class="prep-align-summary-title">Résultats du run</span>
         <button id="align-summary-recalc" class="btn btn-ghost btn-sm">↺ Recalcul</button>
       </div>
-      <div id="align-summary-banner" class="align-summary-banner"></div>
-      <div class="align-kpi-row">
-        <div class="align-kpi-card">
-          <div class="align-kpi-val" id="align-kpi-created">—</div>
-          <div class="align-kpi-lbl">Créés</div>
+      <div id="align-summary-banner" class="prep-align-summary-banner"></div>
+      <div class="prep-align-kpi-row">
+        <div class="prep-align-kpi-card">
+          <div class="prep-align-kpi-val" id="align-kpi-created">—</div>
+          <div class="prep-align-kpi-lbl">Créés</div>
         </div>
-        <div class="align-kpi-card">
-          <div class="align-kpi-val" id="align-kpi-skipped">—</div>
-          <div class="align-kpi-lbl">Ignorés</div>
+        <div class="prep-align-kpi-card">
+          <div class="prep-align-kpi-val" id="align-kpi-skipped">—</div>
+          <div class="prep-align-kpi-lbl">Ignorés</div>
         </div>
-        <div class="align-kpi-card" id="align-kpi-effective-wrap" style="display:none">
-          <div class="align-kpi-val" id="align-kpi-effective">—</div>
-          <div class="align-kpi-lbl">Effectifs</div>
+        <div class="prep-align-kpi-card" id="align-kpi-effective-wrap" style="display:none">
+          <div class="prep-align-kpi-val" id="align-kpi-effective">—</div>
+          <div class="prep-align-kpi-lbl">Effectifs</div>
         </div>
-        <div class="align-kpi-card align-kpi-card--coverage" id="align-kpi-coverage-wrap" title="Part des segments pivot ayant au moins un lien. ≥ 90 % = bon ; ≥ 60 % = acceptable.">
-          <div class="align-kpi-val" id="align-kpi-coverage">…</div>
-          <div class="align-kpi-lbl">Couverture</div>
+        <div class="prep-align-kpi-card prep-align-kpi-card--coverage" id="align-kpi-coverage-wrap" title="Part des segments pivot ayant au moins un lien. ≥ 90 % = bon ; ≥ 60 % = acceptable.">
+          <div class="prep-align-kpi-val" id="align-kpi-coverage">…</div>
+          <div class="prep-align-kpi-lbl">Couverture</div>
         </div>
       </div>
-      <div id="align-summary-per-target" class="align-summary-per-target"></div>
+      <div id="align-summary-per-target" class="prep-align-summary-per-target"></div>
       <!-- Métriques de debug (orphelins, collisions, statuts) -->
-      <details id="align-quality-details" class="align-quality-details" style="display:none">
-        <summary class="align-quality-details-summary">Détails qualité ▸</summary>
-        <div id="align-quality-details-body" class="align-quality-details-body"></div>
+      <details id="align-quality-details" class="prep-align-quality-details" style="display:none">
+        <summary class="prep-align-quality-details-summary">Détails qualité ▸</summary>
+        <div id="align-quality-details-body" class="prep-align-quality-details-body"></div>
       </details>
     </div>
 
   </div><!-- /align-v2-config -->
 
   <!-- ═══ Colonne droite : Audit / Vérification ═══ -->
-  <div class="align-v2-results">
+  <div class="prep-align-v2-results">
 
-    <div class="align-v2-results-head">
+    <div class="prep-align-v2-results-head">
       <h3>Vérification des liens</h3>
-      <div class="align-audit-toolbar">
-        <div class="align-audit-qf-chips" role="group">
+      <div class="prep-align-audit-toolbar">
+        <div class="prep-align-audit-qf-chips" role="group">
           <button class="chip" data-qf="all">Tout</button>
           <button class="chip active" data-qf="review">À revoir</button>
           <button class="chip" data-qf="unreviewed">Non révisés</button>
@@ -265,43 +265,43 @@ export class AlignPanel {
     </div>
 
     <!-- Filtres audit -->
-    <div class="align-audit-filters">
-      <label class="align-filter-group">
-        <span class="align-field-label">Pivot</span>
-        <select id="align-audit-pivot" class="align-select-sm">
+    <div class="prep-align-audit-filters">
+      <label class="prep-align-filter-group">
+        <span class="prep-align-field-label">Pivot</span>
+        <select id="align-audit-pivot" class="prep-align-select-sm">
           <option value="">— —</option>
         </select>
       </label>
-      <label class="align-filter-group">
-        <span class="align-field-label">Cible</span>
-        <select id="align-audit-target" class="align-select-sm">
+      <label class="prep-align-filter-group">
+        <span class="prep-align-field-label">Cible</span>
+        <select id="align-audit-target" class="prep-align-select-sm">
           <option value="">— —</option>
         </select>
       </label>
-      <label class="align-filter-group">
-        <span class="align-field-label">Statut</span>
-        <select id="align-audit-status" class="align-select-sm">
+      <label class="prep-align-filter-group">
+        <span class="prep-align-field-label">Statut</span>
+        <select id="align-audit-status" class="prep-align-select-sm">
           <option value="">Tous</option>
           <option value="unreviewed">Non révisés</option>
           <option value="accepted">Acceptés</option>
           <option value="rejected">Rejetés</option>
         </select>
       </label>
-      <label class="align-filter-group">
-        <span class="align-field-label">Texte</span>
-        <input id="align-audit-text" type="text" class="align-input-text" placeholder="mot clé…"/>
+      <label class="prep-align-filter-group">
+        <span class="prep-align-field-label">Texte</span>
+        <input id="align-audit-text" type="text" class="prep-align-input-text" placeholder="mot clé…"/>
       </label>
     </div>
 
-    <div id="align-audit-stats" class="align-audit-stats"></div>
+    <div id="align-audit-stats" class="prep-align-audit-stats"></div>
 
     <!-- Tableau des liens -->
-    <div id="align-audit-table-wrap" class="align-audit-table-wrap">
+    <div id="align-audit-table-wrap" class="prep-align-audit-table-wrap">
       <p class="empty-hint">Lancez un alignement ou cliquez sur « Charger les liens ».</p>
     </div>
 
     <!-- Barre d'actions en lot -->
-    <div id="align-batch-bar" class="align-batch-bar" style="display:none">
+    <div id="align-batch-bar" class="prep-align-batch-bar" style="display:none">
       <span id="align-batch-count">0 sélectionné(s)</span>
       <button id="align-batch-accept" class="btn btn-sm btn-secondary">✓ Accepter</button>
       <button id="align-batch-reject" class="btn btn-sm btn-secondary">✗ Rejeter</button>
@@ -309,27 +309,27 @@ export class AlignPanel {
       <button id="align-batch-delete" class="btn btn-sm btn-danger">Supprimer</button>
     </div>
 
-    <div class="align-audit-load-more">
+    <div class="prep-align-audit-load-more">
       <button id="align-audit-more-btn" class="btn btn-sm btn-secondary" style="display:none">Charger plus</button>
     </div>
 
     <!-- Panneau focus (correction ciblée) -->
-    <div id="align-focus-panel" class="align-focus-panel" style="display:none">
-      <div class="align-focus-head">
+    <div id="align-focus-panel" class="prep-align-focus-panel" style="display:none">
+      <div class="prep-align-focus-head">
         <strong id="align-focus-meta"></strong>
         <button id="align-focus-close" class="btn btn-ghost btn-sm">✕</button>
       </div>
-      <div class="align-focus-texts">
-        <div class="align-focus-text-block">
-          <div class="align-focus-text-label">Pivot</div>
-          <div id="align-focus-pivot-text" class="align-focus-text"></div>
+      <div class="prep-align-focus-texts">
+        <div class="prep-align-focus-text-block">
+          <div class="prep-align-focus-text-label">Pivot</div>
+          <div id="align-focus-pivot-text" class="prep-align-focus-text"></div>
         </div>
-        <div class="align-focus-text-block">
-          <div class="align-focus-text-label">Cible</div>
-          <div id="align-focus-target-text" class="align-focus-text"></div>
+        <div class="prep-align-focus-text-block">
+          <div class="prep-align-focus-text-label">Cible</div>
+          <div id="align-focus-target-text" class="prep-align-focus-text"></div>
         </div>
       </div>
-      <div class="align-focus-actions">
+      <div class="prep-align-focus-actions">
         <button data-focus-action="accepted" class="btn btn-sm btn-secondary">✓ Valider</button>
         <button data-focus-action="rejected" class="btn btn-sm btn-secondary">✗ À revoir</button>
         <button data-focus-action="unreviewed" class="btn btn-sm btn-secondary">? Non révisé</button>
@@ -345,7 +345,7 @@ export class AlignPanel {
   // ─── Event binding ──────────────────────────────────────────────────────────
 
   private _bindEvents(el: HTMLElement): void {
-    el.querySelectorAll<HTMLButtonElement>(".align-mode-btn").forEach(btn => {
+    el.querySelectorAll<HTMLButtonElement>(".prep-align-mode-btn").forEach(btn => {
       btn.addEventListener("click", () => this._setMode(btn.dataset.mode as AlignMode, el));
     });
 
@@ -442,7 +442,7 @@ export class AlignPanel {
 
   private _setMode(mode: AlignMode, el: HTMLElement): void {
     this._mode = mode;
-    el.querySelectorAll<HTMLButtonElement>(".align-mode-btn").forEach(btn =>
+    el.querySelectorAll<HTMLButtonElement>(".prep-align-mode-btn").forEach(btn =>
       btn.classList.toggle("active", btn.dataset.mode === mode));
     (el.querySelector("#align-famille-section") as HTMLElement).style.display =
       mode === "famille" ? "" : "none";
@@ -506,16 +506,16 @@ export class AlignPanel {
         const doc = c.doc;
         const lang = doc?.language ? ` (${doc.language})` : "";
         const seg = c.segmented
-          ? `<span class="align-fp-tag-ok">✓ segmenté</span>`
-          : `<span class="align-fp-tag-warn">⚠ non segmenté</span>`;
-        return `<span class="align-fp-child">${_esc(doc?.title ?? `#${c.doc_id}`)}${lang} ${seg}</span>`;
+          ? `<span class="prep-align-fp-tag-ok">✓ segmenté</span>`
+          : `<span class="prep-align-fp-tag-warn">⚠ non segmenté</span>`;
+        return `<span class="prep-align-fp-child">${_esc(doc?.title ?? `#${c.doc_id}`)}${lang} ${seg}</span>`;
       }).join("");
     }
     if (statsEl) {
       const { aligned_pairs, total_pairs, completion_pct } = fam.stats;
-      statsEl.innerHTML = `<span class="align-fp-stat">${aligned_pairs}/${total_pairs} paires alignées · ${completion_pct.toFixed(0)} %</span>`;
+      statsEl.innerHTML = `<span class="prep-align-fp-stat">${aligned_pairs}/${total_pairs} paires alignées · ${completion_pct.toFixed(0)} %</span>`;
       if (fam.stats.ratio_warnings.length > 0) {
-        statsEl.innerHTML += `<span class="align-fp-warn"> · ⚠ ${fam.stats.ratio_warnings.length} ratio(s) inhabituels</span>`;
+        statsEl.innerHTML += `<span class="prep-align-fp-warn"> · ⚠ ${fam.stats.ratio_warnings.length} ratio(s) inhabituels</span>`;
       }
     }
     this._updateRunBtnState(el);
@@ -789,7 +789,7 @@ export class AlignPanel {
     const perTarget = summary.querySelector<HTMLElement>("#align-summary-per-target");
     if (perTarget) {
       perTarget.innerHTML = s.perTarget.map(t =>
-        `<div class="align-summary-row">→ Doc #${t.doc_id} : <strong>${t.created}</strong> créés, ${t.skipped} ignorés</div>`
+        `<div class="prep-align-summary-row">→ Doc #${t.doc_id} : <strong>${t.created}</strong> créés, ${t.skipped} ignorés</div>`
       ).join("");
     }
   }
@@ -814,7 +814,7 @@ export class AlignPanel {
       perTarget.innerHTML = result.results.map(r => {
         const icon = r.status === "aligned" ? "✓" : r.status === "skipped" ? "⏭" : "✗";
         const cls = r.status === "aligned" ? "stat-ok" : r.status === "error" ? "stat-err" : "";
-        return `<div class="align-summary-row ${cls}">${icon} Doc #${r.target_doc_id} (${r.target_lang}) : ${r.links_created} liens · ${r.status}` +
+        return `<div class="prep-align-summary-row ${cls}">${icon} Doc #${r.target_doc_id} (${r.target_lang}) : ${r.links_created} liens · ${r.status}` +
           (r.warnings.length > 0 ? `<br><em>${r.warnings.map(_esc).join(" · ")}</em>` : "") +
           `</div>`;
       }).join("");
@@ -859,30 +859,30 @@ export class AlignPanel {
       const pct = s.coverage_pct;
       coverageEl.textContent = `${pct}%`;
       if (coverageWrap) {
-        coverageWrap.classList.remove("align-kpi-card--ok", "align-kpi-card--warn", "align-kpi-card--err");
+        coverageWrap.classList.remove("prep-align-kpi-card--ok", "align-kpi-card--warn", "align-kpi-card--err");
         coverageWrap.classList.add(pct >= 90 ? "align-kpi-card--ok" : pct >= 60 ? "align-kpi-card--warn" : "align-kpi-card--err");
         coverageWrap.title = `Couverture : ${s.covered_pivot_units}/${s.total_pivot_units} segments pivot liés. ≥ 90 % = bon.`;
       }
       // Populate details panel
       if (detailsEl && detailsBody) {
         detailsBody.innerHTML = `
-          <div class="align-qd-grid">
-            <span class="align-qd-label" title="Segments pivot sans aucun lien">Orphelins pivot</span>
-            <span class="align-qd-val ${s.orphan_pivot_count === 0 ? "ok" : "warn"}">${s.orphan_pivot_count}</span>
-            <span class="align-qd-label" title="Segments cible sans aucun lien">Orphelins cible</span>
-            <span class="align-qd-val ${(s.orphan_target_count ?? 0) === 0 ? "ok" : "warn"}">${s.orphan_target_count ?? 0}</span>
-            <span class="align-qd-label" title="Liens en conflit (même pivot → deux segments cible différents)">Collisions</span>
-            <span class="align-qd-val ${s.collision_count === 0 ? "ok" : "err"}">${s.collision_count}</span>
-            <span class="align-qd-label">Liens total</span>
-            <span class="align-qd-val">${s.total_links}</span>
-            <span class="align-qd-label" title="Liens acceptés manuellement / rejetés / non révisés">Statuts</span>
-            <span class="align-qd-val">✓${s.status_counts.accepted} ✗${s.status_counts.rejected} ?${s.status_counts.unreviewed}</span>
+          <div class="prep-align-qd-grid">
+            <span class="prep-align-qd-label" title="Segments pivot sans aucun lien">Orphelins pivot</span>
+            <span class="prep-align-qd-val ${s.orphan_pivot_count === 0 ? "ok" : "warn"}">${s.orphan_pivot_count}</span>
+            <span class="prep-align-qd-label" title="Segments cible sans aucun lien">Orphelins cible</span>
+            <span class="prep-align-qd-val ${(s.orphan_target_count ?? 0) === 0 ? "ok" : "warn"}">${s.orphan_target_count ?? 0}</span>
+            <span class="prep-align-qd-label" title="Liens en conflit (même pivot → deux segments cible différents)">Collisions</span>
+            <span class="prep-align-qd-val ${s.collision_count === 0 ? "ok" : "err"}">${s.collision_count}</span>
+            <span class="prep-align-qd-label">Liens total</span>
+            <span class="prep-align-qd-val">${s.total_links}</span>
+            <span class="prep-align-qd-label" title="Liens acceptés manuellement / rejetés / non révisés">Statuts</span>
+            <span class="prep-align-qd-val">✓${s.status_counts.accepted} ✗${s.status_counts.rejected} ?${s.status_counts.unreviewed}</span>
           </div>
           ${res.sample_orphan_pivot.length > 0 ? `
-          <div class="align-qd-orphans">
-            <div class="align-qd-orphans-label">Exemples orphelins pivot :</div>
+          <div class="prep-align-qd-orphans">
+            <div class="prep-align-qd-orphans-label">Exemples orphelins pivot :</div>
             ${res.sample_orphan_pivot.slice(0, 3).map(o =>
-              `<div class="align-qd-orphan">[§${o.external_id ?? "?"}] ${o.text?.slice(0, 80) ?? ""}</div>`
+              `<div class="prep-align-qd-orphan">[§${o.external_id ?? "?"}] ${o.text?.slice(0, 80) ?? ""}</div>`
             ).join("")}
           </div>` : ""}
         `;
@@ -957,9 +957,9 @@ export class AlignPanel {
     }
 
     const statusIcon = (s: string | null) =>
-      s === "accepted" ? `<span class="align-status-accepted" title="Accepté">✓</span>` :
-      s === "rejected" ? `<span class="align-status-rejected" title="Rejeté">✗</span>` :
-      `<span class="align-status-unreviewed" title="Non révisé">?</span>`;
+      s === "accepted" ? `<span class="prep-align-status-accepted" title="Accepté">✓</span>` :
+      s === "rejected" ? `<span class="prep-align-status-rejected" title="Rejeté">✗</span>` :
+      `<span class="prep-align-status-unreviewed" title="Non révisé">?</span>`;
 
     const rows = visible.map(lk => {
       const isFocused = this._selectedLinkId === lk.link_id;
@@ -974,7 +974,7 @@ export class AlignPanel {
     }).join("");
 
     wrap.innerHTML = `
-      <table class="align-audit-table">
+      <table class="prep-align-audit-table">
         <thead>
           <tr>
             <th class="audit-col-check"><input type="checkbox" id="align-audit-check-all"></th>
@@ -1140,7 +1140,7 @@ export class AlignPanel {
       if (!bar) { resolve(true); return; }
       const original = bar.innerHTML;
       const restore = () => { bar.innerHTML = original; this._updateBatchBar(el); };
-      bar.innerHTML = `<span class="align-del-confirm-msg">${_esc(msg)}</span>
+      bar.innerHTML = `<span class="prep-align-del-confirm-msg">${_esc(msg)}</span>
         <button class="btn btn-sm btn-danger" id="_inline-ok">Confirmer</button>
         <button class="btn btn-sm btn-ghost" id="_inline-cancel">Annuler</button>`;
       bar.style.display = "";

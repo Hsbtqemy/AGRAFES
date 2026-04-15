@@ -146,8 +146,8 @@ export class SegmentationView {
     el.setAttribute("aria-label", "Vue Segmentation");
     el.className = "seg-panel-root";
     el.innerHTML = `
-      <section class="acts-seg-head-card">
-        <div class="acts-hub-head-left">
+      <section class="prep-acts-seg-head-card">
+        <div class="prep-acts-hub-head-left">
           <h1>Segmentation</h1>
           <p>S&#233;lectionnez un document pour voir l&#8217;aper&#231;u live et lancer la segmentation.</p>
         </div>

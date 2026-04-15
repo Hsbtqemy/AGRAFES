@@ -80,7 +80,7 @@ export class ExportsScreen {
 
   render(): HTMLElement {
     const root = document.createElement("div");
-    root.className = "screen exports-screen";
+    root.className = "screen prep-exports-screen";
     this._root = root;
 
     root.innerHTML = `
@@ -88,10 +88,10 @@ export class ExportsScreen {
       <div class="card exp-head-card">
         <div class="exp-head-top">
           <div>
-            <h2 class="screen-title" id="exports-screen-title">Exporter</h2>
+            <h2 class="prep-screen-title" id="prep-exports-screen-title">Exporter</h2>
             <p class="exp-head-desc">Port&#233;e des documents, puis &#233;tape, produit et format &#8212; la plupart des exports passent par la zone <strong>Export unifi&#233;</strong> ci-dessous.</p>
           </div>
-          <div id="exp-state-banner" class="runtime-state state-info" aria-live="polite">
+          <div id="exp-state-banner" class="runtime-state prep-state-info" aria-live="polite">
             En attente de connexion sidecar…
           </div>
         </div>
@@ -122,7 +122,7 @@ export class ExportsScreen {
                 <h3>Documents source</h3>
                 <span id="v2-doc-summary" class="chip">0 doc</span>
               </div>
-              <div class="btn-row" style="margin:0">
+              <div class="prep-btn-row" style="margin:0">
                 <button id="v2-doc-select-all-btn" class="btn btn-secondary btn-sm">Tout sélectionner</button>
                 <button id="v2-doc-clear-btn" class="btn btn-secondary btn-sm">Effacer</button>
               </div>
@@ -155,7 +155,7 @@ export class ExportsScreen {
           <div class="exp-col-opts" aria-label="&#201;tape, produit, format et lancement">
             <div class="exp-opts-meta">
               <label>&#201;tape (jeu de donn&#233;es)
-                <select id="v2-stage" aria-describedby="exports-screen-title">
+                <select id="v2-stage" aria-describedby="prep-exports-screen-title">
                   <option value="alignment" selected>Alignement</option>
                   <option value="publication">Publication</option>
                   <option value="segmentation">Segmentation</option>
@@ -172,7 +172,7 @@ export class ExportsScreen {
               </label>
             </div>
 
-            <div id="v2-tei-options" class="form-row" style="margin-top:0.4rem;display:none">
+            <div id="v2-tei-options" class="prep-form-row" style="margin-top:0.4rem;display:none">
               <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.84rem;cursor:pointer;align-self:flex-end">
                 <input id="v2-tei-include-structure" type="checkbox" />
                 Inclure unités structurelles (<code>&lt;head&gt;</code>)
@@ -186,7 +186,7 @@ export class ExportsScreen {
               </label>
             </div>
 
-            <div id="v2-align-options" class="form-row" style="margin-top:0.4rem;display:none">
+            <div id="v2-align-options" class="prep-form-row" style="margin-top:0.4rem;display:none">
               <label>Pivot (optionnel)
                 <select id="v2-align-pivot" style="min-width:170px">
                   <option value="">— tous —</option>
@@ -203,7 +203,7 @@ export class ExportsScreen {
               </label>
             </div>
 
-            <div id="v2-package-options" class="form-row" style="margin-top:0.4rem;display:none">
+            <div id="v2-package-options" class="prep-form-row" style="margin-top:0.4rem;display:none">
               <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.84rem;cursor:pointer;align-self:flex-end">
                 <input id="v2-pkg-include-structure" type="checkbox" />
                 Inclure unités structurelles
@@ -221,13 +221,13 @@ export class ExportsScreen {
               </label>
             </div>
 
-            <div id="v2-run-options" class="form-row" style="margin-top:0.4rem;display:none">
+            <div id="v2-run-options" class="prep-form-row" style="margin-top:0.4rem;display:none">
               <label>run_id (optionnel)
                 <input id="v2-run-id" type="text" placeholder="ex: sidecar-align-..." style="min-width:280px"/>
               </label>
             </div>
 
-            <div id="v2-qa-options" class="form-row" style="margin-top:0.4rem;display:none">
+            <div id="v2-qa-options" class="prep-form-row" style="margin-top:0.4rem;display:none">
               <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.84rem;cursor:pointer;align-self:flex-end">
                 <input type="checkbox" id="v2-qa-strict-mode">
                 Politique QA : Strict
@@ -237,7 +237,7 @@ export class ExportsScreen {
             <div id="v2-pending-hint" style="display:none;margin-top:0.45rem;font-size:0.83rem;padding:0.4rem 0.6rem;background:#fff3cd;border-radius:4px;border:1px solid #ffe69c;color:#8a6116"></div>
             <div id="v2-summary-hint" class="hint" style="margin-top:0.45rem"></div>
             <!-- EXP-6: btn-sm supprimé -->
-            <div class="btn-row" style="margin-top:0.6rem">
+            <div class="prep-btn-row" style="margin-top:0.6rem">
               <button id="v2-run-btn" class="btn btn-primary" disabled>Choisir destination et lancer…</button>
             </div>
           </div>
@@ -258,12 +258,12 @@ export class ExportsScreen {
         </div>
       </div>
 
-      <div id="exports-legacy-container" class="exports-legacy-container" hidden>
+      <div id="exports-legacy-container" class="prep-exports-legacy-container" hidden>
       <!-- TEI Export -->
       <div class="card">
-        <h3>Export TEI <span class="badge-preview">XML</span></h3>
+        <h3>Export TEI <span class="prep-badge-preview">XML</span></h3>
         <p class="hint">Exporte un ou plusieurs documents au format TEI "analyse" (UTF-8). Un fichier XML par document.</p>
-        <div class="form-row">
+        <div class="prep-form-row">
           <label>Portée (documents)
             <select id="tei-doc-sel" multiple style="height:90px;min-width:220px">
               <option value="__all__" selected>— Tous les documents —</option>
@@ -285,16 +285,16 @@ export class ExportsScreen {
           </div>
         </div>
         <div id="tei-recap" style="display:none;font-size:0.83rem;margin-top:0.4rem;padding:0.4rem 0.6rem;background:#f0fff4;border-radius:4px;border:1px solid #c6efce;color:#1a7f4e"></div>
-        <div class="btn-row" style="margin-top:0.6rem">
+        <div class="prep-btn-row" style="margin-top:0.6rem">
           <button id="tei-export-btn" class="btn btn-primary btn-sm" disabled>Choisir dossier et exporter…</button>
         </div>
       </div>
 
       <!-- Publication Package Export -->
       <div class="card">
-        <h3>Package publication <span class="badge-preview">ZIP</span></h3>
+        <h3>Package publication <span class="prep-badge-preview">ZIP</span></h3>
         <p class="hint">Génère un fichier ZIP contenant les TEI, un manifeste JSON, les checksums SHA-256 et un README. Idéal pour l'archivage et la diffusion.</p>
-        <div class="form-row">
+        <div class="prep-form-row">
           <label>Portée (documents)
             <select id="pkg-doc-sel" multiple style="height:90px;min-width:220px">
               <option value="__all__" selected>— Tous les documents —</option>
@@ -311,7 +311,7 @@ export class ExportsScreen {
             </label>
           </div>
         </div>
-        <div class="form-row" style="margin-top:0.5rem">
+        <div class="prep-form-row" style="margin-top:0.5rem">
           <label style="font-size:0.84rem">Profil TEI
             <select id="pkg-tei-profile" style="padding:3px 8px;border:1px solid #dee2e6;border-radius:4px;margin-left:0.4rem">
               <option value="generic">Generic</option>
@@ -323,16 +323,16 @@ export class ExportsScreen {
         <div id="pkg-strict-notice" style="display:none;margin-top:0.35rem;font-size:0.78rem;color:#b8590a;background:#fff3cd;border-radius:4px;padding:0.3rem 0.6rem">
           ⚠ Profil strict : peut bloquer l'export si des métadonnées sont incomplètes (title, language, date). Recommande la politique QA Strict.
         </div>
-        <div class="btn-row" style="margin-top:0.6rem">
+        <div class="prep-btn-row" style="margin-top:0.6rem">
           <button id="pkg-export-btn" class="btn btn-success btn-sm" disabled>Choisir fichier et exporter package…</button>
         </div>
       </div>
 
       <!-- Alignment CSV Export -->
       <div class="card">
-        <h3>Export alignements <span class="badge-preview">CSV/TSV</span></h3>
+        <h3>Export alignements <span class="prep-badge-preview">CSV/TSV</span></h3>
         <p class="hint">Exporte les liens d'alignement vers un fichier CSV ou TSV.</p>
-        <div class="form-row">
+        <div class="prep-form-row">
           <label>Pivot (optionnel)
             <select id="align-csv-pivot" style="min-width:160px">
               <option value="">— tous —</option>
@@ -357,9 +357,9 @@ export class ExportsScreen {
 
       <!-- Run Report Export -->
       <div class="card">
-        <h3>Rapport des runs <span class="badge-preview">JSONL/HTML</span></h3>
+        <h3>Rapport des runs <span class="prep-badge-preview">JSONL/HTML</span></h3>
         <p class="hint">Exporte l'historique des opérations (import, index, align, curate…). Option: filtrer un run précis.</p>
-        <div class="form-row">
+        <div class="prep-form-row">
           <label>run_id (optionnel)
             <input id="report-run-id" type="text" placeholder="ex: 4b23... ou sidecar-align-..." style="min-width:280px"/>
           </label>
@@ -377,9 +377,9 @@ export class ExportsScreen {
 
       <!-- QA Report Export -->
       <div class="card">
-        <h3>Rapport QA corpus <span class="badge-preview">JSON/HTML</span></h3>
+        <h3>Rapport QA corpus <span class="prep-badge-preview">JSON/HTML</span></h3>
         <p class="hint">Génère un rapport de qualité : intégrité des identifiants, unités vides, couverture des alignements, collisions et préparation TEI (métadonnées). Consultez le rapport avant publication.</p>
-        <div class="form-row">
+        <div class="prep-form-row">
           <label>Format
             <select id="qa-report-fmt">
               <option value="json">JSON</option>
@@ -401,7 +401,7 @@ export class ExportsScreen {
 
       <section class="card export-log-card" data-collapsible="true" data-collapsed-default="true">
         <h3>Journal des exports</h3>
-        <div id="export-log" class="log-pane"></div>
+        <div id="export-log" class="prep-log-pane"></div>
       </section>
     `;
 

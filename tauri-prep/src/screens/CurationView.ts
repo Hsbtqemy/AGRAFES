@@ -311,98 +311,98 @@ export class CurationView {
     el.setAttribute("aria-label", "Vue Curation");
     this._root = el;
     el.innerHTML = `
-      <section class="acts-seg-head-card acts-seg-head-card--compact" id="act-curation-head">
-        <div class="acts-hub-head-left">
-          <h1>Curation <span class="badge-preview">pr&#233;visualisation live</span></h1>
+      <section class="prep-acts-seg-head-card acts-seg-head-card--compact" id="act-curation-head">
+        <div class="prep-acts-hub-head-left">
+          <h1>Curation <span class="prep-badge-preview">pr&#233;visualisation live</span></h1>
         </div>
-        <div class="acts-hub-head-tools">
-          <span class="curate-pill" id="act-curate-mode-pill">Mode &#233;dition</span>
+        <div class="prep-acts-hub-head-tools">
+          <span class="prep-curate-pill" id="act-curate-mode-pill">Mode &#233;dition</span>
         </div>
       </section>
-      <div id="act-curate-confirm-bar" class="curate-confirm-bar" style="display:none" role="alertdialog" aria-modal="false"></div>
+      <div id="act-curate-confirm-bar" class="prep-curate-confirm-bar" style="display:none" role="alertdialog" aria-modal="false"></div>
       <section class="card curate-workspace-card" id="act-curate-card">
-        <div class="curate-workspace">
-          <div class="curate-col curate-col-left">
-            <article class="curate-inner-card">
+        <div class="prep-curate-workspace">
+          <div class="prep-curate-col curate-col-left">
+            <article class="prep-curate-inner-card">
               <div class="card-head">
                 <h2>Param&#232;tres curation</h2>
                 <span id="act-curate-doc-label"></span>
               </div>
-              <div class="card-body">
-                <label class="curate-doc-field">
+              <div class="prep-card-body">
+                <label class="prep-curate-doc-field">
                   Document :
                   <select id="act-curate-doc"><option value="">Tous les documents</option></select>
                 </label>
                 <div id="act-curate-ctx" class="row curate-ctx-row" aria-label="Contexte du document">
-                  <div class="f curate-ctx-cell"><strong>Langue pivot</strong>fr</div>
-                  <div class="f curate-ctx-cell"><strong>Pack</strong>&#8212;</div>
-                  <div class="f curate-ctx-cell"><strong>Port&#233;e</strong>Document complet</div>
-                  <div class="f curate-ctx-cell"><strong>Aper&#231;u live</strong>Actif</div>
+                  <div class="f prep-curate-ctx-cell"><strong>Langue pivot</strong>fr</div>
+                  <div class="f prep-curate-ctx-cell"><strong>Pack</strong>&#8212;</div>
+                  <div class="f prep-curate-ctx-cell"><strong>Port&#233;e</strong>Document complet</div>
+                  <div class="f prep-curate-ctx-cell"><strong>Aper&#231;u live</strong>Actif</div>
                 </div>
-                <div class="chip-row curation-quick-rules">
-                  <input id="act-rule-spaces" class="curate-rule-input" type="checkbox" />
-                  <label class="chip curation-chip" for="act-rule-spaces">Espaces incoh&#233;rents</label>
-                  <input id="act-rule-quotes" class="curate-rule-input" type="checkbox" />
-                  <label class="chip curation-chip" for="act-rule-quotes">Guillemets typographiques</label>
-                  <input id="act-punct-none" class="curate-rule-input" type="radio" name="curate-punct" value="" checked />
-                  <label class="chip curation-chip" for="act-punct-none" title="Aucune correction de ponctuation">Punct.&#160;&#8212;</label>
-                  <input id="act-punct-fr" class="curate-rule-input" type="radio" name="curate-punct" value="fr" />
-                  <label class="chip curation-chip" for="act-punct-fr" title="Typographie fran&#231;aise : espace fine ins&#233;cable avant ! ? ; :, espaces autour de &#171;&#160;&#187;">Punct.&#160;FR</label>
-                  <input id="act-punct-en" class="curate-rule-input" type="radio" name="curate-punct" value="en" />
-                  <label class="chip curation-chip" for="act-punct-en" title="Typographie anglaise : supprimer espace avant , ; : ! ?">Punct.&#160;EN</label>
-                  <input id="act-rule-invisibles" class="curate-rule-input" type="checkbox" />
-                  <label class="chip curation-chip" for="act-rule-invisibles">Contr&#244;le invisibles</label>
-                  <input id="act-rule-numbering" class="curate-rule-input" type="checkbox" />
-                  <label class="chip curation-chip" for="act-rule-numbering">Num&#233;rotation [n]</label>
+                <div class="chip-row prep-curation-quick-rules">
+                  <input id="act-rule-spaces" class="prep-curate-rule-input" type="checkbox" />
+                  <label class="chip prep-curation-chip" for="act-rule-spaces">Espaces incoh&#233;rents</label>
+                  <input id="act-rule-quotes" class="prep-curate-rule-input" type="checkbox" />
+                  <label class="chip prep-curation-chip" for="act-rule-quotes">Guillemets typographiques</label>
+                  <input id="act-punct-none" class="prep-curate-rule-input" type="radio" name="curate-punct" value="" checked />
+                  <label class="chip prep-curation-chip" for="act-punct-none" title="Aucune correction de ponctuation">Punct.&#160;&#8212;</label>
+                  <input id="act-punct-fr" class="prep-curate-rule-input" type="radio" name="curate-punct" value="fr" />
+                  <label class="chip prep-curation-chip" for="act-punct-fr" title="Typographie fran&#231;aise : espace fine ins&#233;cable avant ! ? ; :, espaces autour de &#171;&#160;&#187;">Punct.&#160;FR</label>
+                  <input id="act-punct-en" class="prep-curate-rule-input" type="radio" name="curate-punct" value="en" />
+                  <label class="chip prep-curation-chip" for="act-punct-en" title="Typographie anglaise : supprimer espace avant , ; : ! ?">Punct.&#160;EN</label>
+                  <input id="act-rule-invisibles" class="prep-curate-rule-input" type="checkbox" />
+                  <label class="chip prep-curation-chip" for="act-rule-invisibles">Contr&#244;le invisibles</label>
+                  <input id="act-rule-numbering" class="prep-curate-rule-input" type="checkbox" />
+                  <label class="chip prep-curation-chip" for="act-rule-numbering">Num&#233;rotation [n]</label>
                 </div>
-                <div class="btns curate-primary-actions">
+                <div class="btns prep-curate-primary-actions">
                   <button id="act-curate-reset-btn" class="btn">R&#233;initialiser</button>
                   <button id="act-preview-btn" class="btn alt" disabled>Pr&#233;visualiser maintenant</button>
                   <button id="act-curate-btn" class="btn pri" disabled>Appliquer curation</button>
                 </div>
               </div>
             </article>
-            <article class="curate-inner-card curate-stack-card">
-              <details id="act-curate-advanced" class="curation-advanced">
-                <summary class="card-head curate-advanced-summary">
+            <article class="prep-curate-inner-card curate-stack-card">
+              <details id="act-curate-advanced" class="prep-curation-advanced">
+                <summary class="card-head prep-curate-advanced-summary">
                   <h2>Retouches avanc&#233;es</h2>
                 </summary>
-                <div class="card-body">
-                  <div class="form-row curate-advanced-row">
+                <div class="prep-card-body">
+                  <div class="form-row prep-curate-advanced-row">
                     <label>Chercher (regex)
                       <input id="act-curate-quick-pattern" type="text" placeholder="ex: \\u2019" />
                     </label>
                     <label>Remplacer
                       <input id="act-curate-quick-replacement" type="text" placeholder="ex: '" />
                     </label>
-                    <label class="curate-advanced-flags">Flags
+                    <label class="prep-curate-advanced-flags">Flags
                       <input id="act-curate-quick-flags" type="text" value="g" maxlength="6" />
                     </label>
-                    <div class="curate-advanced-add">
+                    <div class="prep-curate-advanced-add">
                       <button id="act-curate-add-rule-btn" class="btn btn-secondary btn-sm">+ Ajouter</button>
                     </div>
                   </div>
-                  <label class="curate-json-field">R&#232;gles JSON
+                  <label class="prep-curate-json-field">R&#232;gles JSON
                     <textarea id="act-curate-rules" rows="3" placeholder='[{"pattern":"foo","replacement":"bar","flags":"gi"}]'></textarea>
                   </label>
                   <p class="hint" style="margin:0.2rem 0 0">Ajout&#233;es apr&#232;s les r&#232;gles rapides.</p>
                 </div>
               </details>
             </article>
-            <article class="curate-inner-card curate-stack-card" id="act-fr-card">
+            <article class="prep-curate-inner-card curate-stack-card" id="act-fr-card">
               <div class="card-head">
                 <h2>Rechercher&#160;/ Remplacer</h2>
-                <span id="act-fr-active-badge" class="fr-active-badge" style="display:none">actif</span>
+                <span id="act-fr-active-badge" class="prep-fr-active-badge" style="display:none">actif</span>
               </div>
-              <div class="card-body">
-                <div class="fr-fields">
-                  <label class="fr-field-label">
+              <div class="prep-card-body">
+                <div class="prep-fr-fields">
+                  <label class="prep-fr-field-label">
                     <span>Chercher</span>
-                    <input id="act-fr-find" type="text" class="fr-input" placeholder="ex&#160;: M.&#160;" autocomplete="off" />
+                    <input id="act-fr-find" type="text" class="prep-fr-input" placeholder="ex&#160;: M.&#160;" autocomplete="off" />
                   </label>
-                  <label class="fr-field-label">
+                  <label class="prep-fr-field-label">
                     <span>Remplacer par</span>
-                    <input id="act-fr-replace" type="text" class="fr-input" placeholder="(vide&#160;= supprimer)" autocomplete="off" />
+                    <input id="act-fr-replace" type="text" class="prep-fr-input" placeholder="(vide&#160;= supprimer)" autocomplete="off" />
                   </label>
                 </div>
                 <div class="chip-row fr-options-row">
@@ -416,19 +416,19 @@ export class CurationView {
                   <button id="act-fr-apply-btn" class="btn btn-sm alt">&#9654;&#160;Pr&#233;visualiser</button>
                   <button id="act-fr-clear-btn" class="btn btn-sm" style="display:none">&#10005;&#160;Effacer</button>
                 </div>
-                <p id="act-fr-feedback" class="fr-feedback" style="display:none"></p>
+                <p id="act-fr-feedback" class="prep-fr-feedback" style="display:none"></p>
               </div>
             </article>
-            <article class="curate-inner-card curate-stack-card" id="act-curate-quick-actions">
+            <article class="prep-curate-inner-card curate-stack-card" id="act-curate-quick-actions">
               <div class="card-head">
                 <h2>Actions rapides</h2>
                 <span style="font-size:12px;color:var(--prep-muted,#4f5d6d)">s&#233;lection locale</span>
               </div>
-              <div class="card-body">
-                <div id="act-curate-queue" class="curate-queue">
+              <div class="prep-card-body">
+                <div id="act-curate-queue" class="prep-curate-queue">
                   <p class="empty-hint">Aucune action en attente.</p>
                 </div>
-                <div class="btns curate-nav-actions" role="group" aria-label="Navigation entre documents">
+                <div class="btns prep-curate-nav-actions" role="group" aria-label="Navigation entre documents">
                   <button id="act-curate-prev-btn" type="button" class="btn btn-secondary btn-sm" disabled
                     title="Document pr&#233;c&#233;dent dans la liste"
                     aria-label="Document pr&#233;c&#233;dent dans la liste">&#8592; Doc pr&#233;c&#233;d.</button>
@@ -439,66 +439,66 @@ export class CurationView {
               </div>
             </article>
           </div>
-          <div class="curate-col curate-col-center">
-            <article class="curate-inner-card curate-preview-card" id="act-preview-panel">
+          <div class="prep-curate-col curate-col-center">
+            <article class="prep-curate-inner-card curate-preview-card" id="act-preview-panel">
               <div class="card-head">
                 <h2>Preview synchronis&#233;e</h2>
                 <span id="act-preview-info" style="font-size:12px;color:var(--prep-muted,#4f5d6d)">&#8212;</span>
               </div>
-              <div class="preview-controls">
-                <div class="preview-mode-row chip-row">
-                  <button class="preview-mode-btn" data-preview-mode="diffonly" title="Afficher le texte cur&#233; avec les modifications en surbrillance">Cur&#233; seul</button>
-                  <button class="preview-mode-btn active" data-preview-mode="rawonly" title="Afficher le texte source uniquement (vue par d&#233;faut)">Brut seul</button>
-                  <button class="preview-mode-btn" data-preview-mode="sidebyside" title="Afficher le brut et le cur&#233; c&#244;te &#224; c&#244;te">C&#244;te &#224; c&#244;te</button>
-                  <label class="preview-sync-label" title="Synchroniser le scroll entre les deux panneaux">
+              <div class="prep-preview-controls">
+                <div class="prep-preview-mode-row chip-row">
+                  <button class="prep-preview-mode-btn" data-preview-mode="diffonly" title="Afficher le texte cur&#233; avec les modifications en surbrillance">Cur&#233; seul</button>
+                  <button class="prep-preview-mode-btn active" data-preview-mode="rawonly" title="Afficher le texte source uniquement (vue par d&#233;faut)">Brut seul</button>
+                  <button class="prep-preview-mode-btn" data-preview-mode="sidebyside" title="Afficher le brut et le cur&#233; c&#244;te &#224; c&#244;te">C&#244;te &#224; c&#244;te</button>
+                  <label class="prep-preview-sync-label" title="Synchroniser le scroll entre les deux panneaux">
                     <input id="act-sync-scroll" type="checkbox" checked />&#160;Sync scroll
                   </label>
                 </div>
-                <div class="preview-nav-row" role="toolbar" aria-label="Navigation entre occurrences de modification">
+                <div class="prep-preview-nav-row" role="toolbar" aria-label="Navigation entre occurrences de modification">
                   <button id="act-diff-prev" type="button" class="btn btn-sm btn-secondary" disabled
                     title="Occurrence de modification pr&#233;c&#233;dente"
                     aria-label="Occurrence de modification pr&#233;c&#233;dente">&#8592; Modif pr&#233;c&#233;d.</button>
-                  <span id="act-diff-position" class="preview-nav-pos">&#8212;</span>
+                  <span id="act-diff-position" class="prep-preview-nav-pos">&#8212;</span>
                   <button id="act-diff-next" type="button" class="btn btn-sm btn-secondary" disabled
                     title="Occurrence de modification suivante"
                     aria-label="Occurrence de modification suivante">Modif suiv. &#8594;</button>
                 </div>
-                <div id="act-curate-filter-badge" class="preview-filter-badge" style="display:none">
+                <div id="act-curate-filter-badge" class="prep-preview-filter-badge" style="display:none">
                   Filtre&#160;: <strong id="act-curate-filter-label"></strong><span class="filter-scope-note">&#160;&#8212;&#160;dans l&#8217;&#233;chantillon courant</span>
                   <button id="act-curate-filter-clear" class="filter-clear-btn" title="Effacer le filtre">&#215;</button>
                 </div>
-                <div id="act-curate-sample-info" class="curate-sample-info" style="display:none"></div>
+                <div id="act-curate-sample-info" class="prep-curate-sample-info" style="display:none"></div>
               </div>
-              <div class="preview-grid">
-                <section class="pane">
-                  <div class="pane-head">Texte brut (source)</div>
-                  <div id="act-preview-raw" class="doc-scroll" aria-label="Texte brut">
+              <div class="prep-preview-grid">
+                <section class="prep-pane">
+                  <div class="prep-pane-head">Texte brut (source)</div>
+                  <div id="act-preview-raw" class="prep-doc-scroll" aria-label="Texte brut">
                     <p class="empty-hint">S&#233;lectionnez un document et lancez une pr&#233;visualisation.</p>
                   </div>
                 </section>
-                <section class="pane">
-                  <div class="pane-head">Texte cur&#233; (diff)</div>
-                  <div id="act-diff-list" class="diff-list doc-scroll" tabindex="0" aria-label="Texte cur&#233; avec diff&#233;rences (&#8593;&#8595; naviguer, A&#160;accepter, I&#160;ignorer, P&#160;remettre en attente)">
+                <section class="prep-pane">
+                  <div class="prep-pane-head">Texte cur&#233; (diff)</div>
+                  <div id="act-diff-list" class="prep-diff-list doc-scroll" tabindex="0" aria-label="Texte cur&#233; avec diff&#233;rences (&#8593;&#8595; naviguer, A&#160;accepter, I&#160;ignorer, P&#160;remettre en attente)">
                     <p class="empty-hint">Aucune pr&#233;visualisation.</p>
                   </div>
                 </section>
-                <aside id="act-curate-minimap" class="minimap" aria-label="Minimap des changements">
+                <aside id="act-curate-minimap" class="prep-minimap" aria-label="Minimap des changements">
                   <div class="mm"></div>
                   <div class="mm"></div>
                   <div class="mm"></div>
                 </aside>
               </div>
-              <div class="preview-foot">
-                <div id="act-preview-stats" class="preview-stats"></div>
-                <div id="act-curate-action-bar" class="curate-action-bar" style="display:none">
+              <div class="prep-preview-foot">
+                <div id="act-preview-stats" class="prep-preview-stats"></div>
+                <div id="act-curate-action-bar" class="prep-curate-action-bar" style="display:none">
                   <button id="act-item-accept"  class="btn btn-sm btn-action-accept"  disabled title="Marquer cette modification comme accept&#233;e">&#10003;&#160;Accepter</button>
                   <button id="act-item-ignore"  class="btn btn-sm btn-action-ignore"  disabled title="Ignorer cette modification (ne pas appliquer)">&#215;&#160;Ignorer</button>
                   <button id="act-item-pending" class="btn btn-sm btn-action-pending" disabled title="Remettre en attente de d&#233;cision">&#8635;&#160;En attente</button>
-                  <span class="action-bar-sep"></span>
+                  <span class="prep-action-bar-sep"></span>
                   <button id="act-bulk-accept"  class="btn btn-sm btn-action-bulk" title="Accepter toutes les modifications visibles">&#10003;&#160;Tout accepter</button>
                   <button id="act-bulk-ignore"  class="btn btn-sm btn-action-bulk" title="Ignorer toutes les modifications visibles">&#215;&#160;Tout ignorer</button>
                 </div>
-                <div class="btn-row" style="margin-top:0.35rem">
+                <div class="prep-btn-row" style="margin-top:0.35rem">
                   <button id="act-apply-after-preview-btn" class="btn btn-warning btn-sm" style="display:none">Appliquer maintenant</button>
                   <button id="act-reindex-after-curate-btn" class="btn btn-secondary btn-sm" style="display:none" title="L'index de recherche est périmé — cliquez pour le mettre à jour">Mettre à jour l'index</button>
                 </div>
@@ -507,80 +507,80 @@ export class CurationView {
           </div>
         </div>
       </section>
-      <details class="curate-bottom-panel" id="act-curate-bottom-panel">
-        <summary class="curate-bottom-summary">
-          <span class="curate-bottom-title">Diagnostics &amp; journal <span class="curate-log-badge" id="act-curate-log-badge" style="display:none"></span></span>
-          <span class="curate-bottom-hint">session courante</span>
+      <details class="prep-curate-bottom-panel" id="act-curate-bottom-panel">
+        <summary class="prep-curate-bottom-summary">
+          <span class="prep-curate-bottom-title">Diagnostics &amp; journal <span class="prep-curate-log-badge" id="act-curate-log-badge" style="display:none"></span></span>
+          <span class="prep-curate-bottom-hint">session courante</span>
         </summary>
-        <div class="curate-bottom-body">
-          <div class="curate-bottom-col curate-bottom-col-diag">
-            <div class="curate-bottom-col-head">Diagnostics</div>
-            <div id="act-curate-session-summary" class="curate-session-summary" style="display:none"></div>
-            <div id="act-curate-diag" class="curate-diag-list">
+        <div class="prep-curate-bottom-body">
+          <div class="prep-curate-bottom-col curate-bottom-col-diag">
+            <div class="prep-curate-bottom-col-head">Diagnostics</div>
+            <div id="act-curate-session-summary" class="prep-curate-session-summary" style="display:none"></div>
+            <div id="act-curate-diag" class="prep-curate-diag-list">
               <p class="empty-hint">Lancez une pr&#233;visualisation pour voir les statistiques.</p>
             </div>
             <div id="act-curate-seg-link" style="display:none;padding:8px 0"></div>
           </div>
-          <div class="curate-bottom-col curate-bottom-col-journal">
-            <div class="curate-bottom-col-head">Journal de revue</div>
-            <div id="act-curate-review-log" class="curate-log-list" aria-live="polite">
+          <div class="prep-curate-bottom-col curate-bottom-col-journal">
+            <div class="prep-curate-bottom-col-head">Journal de revue</div>
+            <div id="act-curate-review-log" class="prep-curate-log-list" aria-live="polite">
               <p class="empty-hint" style="padding:10px">Aucune action enregistr&#233;e.</p>
             </div>
-            <div id="act-curate-context-card" class="curate-bottom-context" style="display:none" aria-label="Contexte local de la modification active">
-              <div class="curate-bottom-context-head">
+            <div id="act-curate-context-card" class="prep-curate-bottom-context" style="display:none" aria-label="Contexte local de la modification active">
+              <div class="prep-curate-bottom-context-head">
                 Contexte local
                 <span id="act-context-pos" style="font-size:11px;color:var(--prep-muted,#4f5d6d);margin-left:8px">&#8212;</span>
               </div>
-              <div id="act-curate-context" class="curate-context-body"></div>
+              <div id="act-curate-context" class="prep-curate-context-body"></div>
             </div>
           </div>
-          <div class="curate-bottom-col curate-bottom-col-extra">
-            <div id="act-review-export-card" class="curate-bottom-export" style="display:none">
-              <div class="curate-bottom-col-head">Exporter le rapport</div>
-              <div id="act-apply-result-note" class="apply-result-note" style="display:none"></div>
-              <div class="review-export-row">
+          <div class="prep-curate-bottom-col curate-bottom-col-extra">
+            <div id="act-review-export-card" class="prep-curate-bottom-export" style="display:none">
+              <div class="prep-curate-bottom-col-head">Exporter le rapport</div>
+              <div id="act-apply-result-note" class="prep-apply-result-note" style="display:none"></div>
+              <div class="prep-review-export-row">
                 <button class="btn btn-sm review-export-btn" id="act-review-export-json" title="Exporter en JSON structuré">JSON</button>
                 <button class="btn btn-sm review-export-btn" id="act-review-export-csv" title="Exporter en CSV (une ligne par item)">CSV</button>
-                <span id="act-review-export-result" class="review-export-result" style="display:none"></span>
+                <span id="act-review-export-result" class="prep-review-export-result" style="display:none"></span>
               </div>
               <p class="hint review-export-hint">Items de l&#8217;&#233;chantillon courant, statuts et d&#233;cisions.</p>
             </div>
-            <details class="exc-admin-panel" id="act-exc-admin-panel">
-              <summary class="curate-bottom-details-summary">
-                Exceptions persistées <span id="act-exc-admin-badge" class="exc-admin-count-badge" style="display:none">0</span>
+            <details class="prep-exc-admin-panel" id="act-exc-admin-panel">
+              <summary class="prep-curate-bottom-details-summary">
+                Exceptions persistées <span id="act-exc-admin-badge" class="prep-exc-admin-count-badge" style="display:none">0</span>
               </summary>
               <div style="padding:6px 10px 10px">
-                <div class="exc-admin-toolbar">
-                  <div class="exc-admin-filters">
-                    <button class="btn btn-sm exc-filter-btn exc-filter-active" data-exc-filter="all">Toutes</button>
+                <div class="prep-exc-admin-toolbar">
+                  <div class="prep-exc-admin-filters">
+                    <button class="btn btn-sm prep-exc-filter-btn prep-exc-filter-active" data-exc-filter="all">Toutes</button>
                     <button class="btn btn-sm exc-filter-btn" data-exc-filter="ignore">Ignore</button>
                     <button class="btn btn-sm exc-filter-btn" data-exc-filter="override">Override</button>
                   </div>
                   <button class="btn btn-sm exc-admin-refresh" id="act-exc-admin-refresh" title="Actualiser la liste">&#8635;</button>
                 </div>
-                <div class="exc-admin-doc-filter-row">
-                  <select id="act-exc-doc-filter" class="exc-doc-filter-select">
+                <div class="prep-exc-admin-doc-filter-row">
+                  <select id="act-exc-doc-filter" class="prep-exc-doc-filter-select">
                     <option value="">Tous les documents</option>
                   </select>
                 </div>
-                <div class="exc-admin-export-row">
-                  <span class="exc-export-label">Exporter&nbsp;:</span>
+                <div class="prep-exc-admin-export-row">
+                  <span class="prep-exc-export-label">Exporter&nbsp;:</span>
                   <button class="btn btn-sm exc-export-btn" id="act-exc-export-json" title="Exporter en JSON">JSON</button>
                   <button class="btn btn-sm exc-export-btn" id="act-exc-export-csv" title="Exporter en CSV">CSV</button>
-                  <span id="act-exc-export-result" class="exc-export-result" style="display:none"></span>
+                  <span id="act-exc-export-result" class="prep-exc-export-result" style="display:none"></span>
                 </div>
-                <div id="act-exc-admin-list" class="exc-admin-list" aria-live="polite">
+                <div id="act-exc-admin-list" class="prep-exc-admin-list" aria-live="polite">
                   <p class="empty-hint">Ouvrez ce panneau apr&#232;s une pr&#233;visualisation.</p>
                 </div>
               </div>
             </details>
-            <details class="apply-hist-panel" id="act-apply-hist-panel">
-              <summary class="curate-bottom-details-summary">
-                Historique des apply <span id="act-apply-hist-badge" class="apply-hist-badge" style="display:none">0</span>
+            <details class="prep-apply-hist-panel" id="act-apply-hist-panel">
+              <summary class="prep-curate-bottom-details-summary">
+                Historique des apply <span id="act-apply-hist-badge" class="prep-apply-hist-badge" style="display:none">0</span>
               </summary>
               <div style="padding:6px 10px 10px">
-                <div class="apply-hist-toolbar">
-                  <select id="act-apply-hist-scope" class="apply-hist-scope-select" title="Filtrer par portée">
+                <div class="prep-apply-hist-toolbar">
+                  <select id="act-apply-hist-scope" class="prep-apply-hist-scope-select" title="Filtrer par portée">
                     <option value="">Tous</option>
                     <option value="doc">Document</option>
                     <option value="all">Corpus</option>
@@ -589,10 +589,10 @@ export class CurationView {
                   <button class="btn btn-sm apply-hist-export-btn" id="act-apply-hist-export-json" title="Exporter en JSON">JSON</button>
                   <button class="btn btn-sm apply-hist-export-btn" id="act-apply-hist-export-csv" title="Exporter en CSV">CSV</button>
                 </div>
-                <div id="act-apply-hist-list" class="apply-hist-list" aria-live="polite">
+                <div id="act-apply-hist-list" class="prep-apply-hist-list" aria-live="polite">
                   <p class="empty-hint">Ouvrez ce panneau pour charger l&#8217;historique.</p>
                 </div>
-                <span id="act-apply-hist-export-result" class="apply-hist-export-result" style="display:none"></span>
+                <span id="act-apply-hist-export-result" class="prep-apply-hist-export-result" style="display:none"></span>
               </div>
             </details>
           </div>
@@ -600,25 +600,25 @@ export class CurationView {
       </details>
       <section class="card" data-collapsible="true" data-collapsed-default="true" id="act-conventions-card">
         <h3>Conventions</h3>
-        <div id="act-conventions-list" class="conv-list"></div>
-        <form id="act-conventions-form" class="conv-form" autocomplete="off">
-          <div class="conv-form-row">
-            <input id="act-conv-name"  class="conv-input" type="text"  placeholder="identifiant (ex: titre)"  maxlength="64" required />
-            <input id="act-conv-label" class="conv-input" type="text"  placeholder="label (ex: Titre)"        maxlength="64" required />
-            <input id="act-conv-color" class="conv-color-input" type="color" value="#6366f1" />
+        <div id="act-conventions-list" class="prep-conv-list"></div>
+        <form id="act-conventions-form" class="prep-conv-form" autocomplete="off">
+          <div class="prep-conv-form-row">
+            <input id="act-conv-name"  class="prep-conv-input" type="text"  placeholder="identifiant (ex: titre)"  maxlength="64" required />
+            <input id="act-conv-label" class="prep-conv-input" type="text"  placeholder="label (ex: Titre)"        maxlength="64" required />
+            <input id="act-conv-color" class="prep-conv-color-input" type="color" value="#6366f1" />
             <button type="submit" class="btn btn-primary btn-sm" disabled id="act-conv-add-btn">Ajouter</button>
           </div>
-          <p id="act-conv-form-error" class="conv-form-error" style="display:none"></p>
+          <p id="act-conv-form-error" class="prep-conv-form-error" style="display:none"></p>
         </form>
       </section>
       <section class="card" data-collapsible="true" data-collapsed-default="true">
         <h3>Validation m&#233;tadonn&#233;es</h3>
-        <div class="form-row">
+        <div class="prep-form-row">
           <label>Document :
             <select id="act-meta-doc"><option value="">Tous</option></select>
           </label>
         </div>
-        <div class="btn-row" style="margin-top:0.5rem">
+        <div class="prep-btn-row" style="margin-top:0.5rem">
           <button id="act-meta-btn" class="btn btn-secondary" disabled>Valider</button>
         </div>
       </section>
@@ -684,7 +684,7 @@ export class CurationView {
     el.querySelector("#act-curate-next-btn")?.addEventListener("click", () => this._navigateCurateDoc(1));
 
     // Preview mode buttons
-    el.querySelectorAll<HTMLButtonElement>(".preview-mode-btn").forEach(btn => {
+    el.querySelectorAll<HTMLButtonElement>(".prep-preview-mode-btn").forEach(btn => {
       btn.addEventListener("click", () => {
         const mode = btn.dataset.previewMode as "sidebyside" | "rawonly" | "diffonly";
         if (mode) {
@@ -901,7 +901,7 @@ export class CurationView {
       const det = e.target as HTMLDetailsElement;
       if (det.open && this._excAdminAll.length === 0) void this._loadExceptionsAdminPanel();
     });
-    el.querySelectorAll<HTMLButtonElement>(".exc-filter-btn").forEach(btn => {
+    el.querySelectorAll<HTMLButtonElement>(".prep-exc-filter-btn").forEach(btn => {
       btn.addEventListener("click", () => {
         const filter = btn.dataset.excFilter as "all" | "ignore" | "override" | undefined;
         if (filter) this._setExcAdminFilter(filter);
@@ -913,15 +913,15 @@ export class CurationView {
       if (!row) return;
       const unitId = parseInt(row.dataset.excUnitId ?? "0");
       if (!unitId) return;
-      if (target.closest(".exc-row-delete")) {
+      if (target.closest(".prep-exc-row-delete")) {
         await this._excAdminDelete(unitId);
-      } else if (target.closest(".exc-row-edit-start")) {
+      } else if (target.closest(".prep-exc-row-edit-start")) {
         this._excAdminEnterEdit(unitId);
-      } else if (target.closest(".exc-row-edit-save")) {
+      } else if (target.closest(".prep-exc-row-edit-save")) {
         await this._excAdminSaveEdit(unitId);
-      } else if (target.closest(".exc-row-edit-cancel")) {
+      } else if (target.closest(".prep-exc-row-edit-cancel")) {
         this._excAdminCancelEdit(unitId);
-      } else if (target.closest(".exc-row-open-curation")) {
+      } else if (target.closest(".prep-exc-row-open-curation")) {
         const exc = this._excAdminAll.find(e => e.unit_id === unitId);
         if (exc) await this._excAdminOpenInCuration(exc);
       }
@@ -1072,10 +1072,10 @@ export class CurationView {
     const diffPane = container.querySelector<HTMLElement>("#act-diff-list")?.closest<HTMLElement>(".pane");
     if (rawPane)  rawPane.style.display  = this._previewMode === "diffonly" ? "none" : "";
     if (diffPane) diffPane.style.display = this._previewMode === "rawonly"  ? "none" : "";
-    container.querySelectorAll<HTMLButtonElement>(".preview-mode-btn").forEach(btn => {
+    container.querySelectorAll<HTMLButtonElement>(".prep-preview-mode-btn").forEach(btn => {
       btn.classList.toggle("active", btn.dataset.previewMode === this._previewMode);
     });
-    const previewGrid = container.querySelector<HTMLElement>(".preview-grid");
+    const previewGrid = container.querySelector<HTMLElement>(".prep-preview-grid");
     if (previewGrid) previewGrid.dataset.previewMode = this._previewMode;
   }
 
@@ -1145,7 +1145,7 @@ export class CurationView {
     const currentId = this._currentCurateDocId();
     const currentIdx = this._curateDocIndex(currentId);
     if (currentIdx < 0) {
-      queueEl.innerHTML = `<div class="curate-qitem"><div class="curate-qmeta"><span>File locale</span><span>${docs.length} doc(s)</span></div><div>Aucun document cibl&#233;. Utilisez <strong>Suivant</strong> pour d&#233;marrer la revue locale.</div></div>`;
+      queueEl.innerHTML = `<div class="prep-curate-qitem"><div class="prep-curate-qmeta"><span>File locale</span><span>${docs.length} doc(s)</span></div><div>Aucun document cibl&#233;. Utilisez <strong>Suivant</strong> pour d&#233;marrer la revue locale.</div></div>`;
       if (prevBtn) prevBtn.disabled = true;
       if (nextBtn) nextBtn.disabled = false;
       return;
@@ -1156,8 +1156,8 @@ export class CurationView {
       const idx = start + offset;
       const state = idx === currentIdx ? "Document actif" : idx < currentIdx ? "D&#233;j&#224; revu" : "Suivant";
       const role = doc.doc_role ? `${_escHtml(doc.doc_role)} · ` : "";
-      return `<div class="curate-qitem${idx === currentIdx ? " curate-log-apply" : ""}">` +
-        `<div class="curate-qmeta"><span>#${doc.doc_id} · ${_escHtml(doc.language)}</span><span>${state}</span></div>` +
+      return `<div class="prep-curate-qitem${idx === currentIdx ? " prep-curate-log-apply" : ""}">` +
+        `<div class="prep-curate-qmeta"><span>#${doc.doc_id} · ${_escHtml(doc.language)}</span><span>${state}</span></div>` +
         `<div>${_escHtml(doc.title)}</div>` +
         `<div style="font-size:11px;color:var(--prep-muted,#4f5d6d)">${role}${doc.unit_count} unit&#233;s</div></div>`;
     }).join("");
@@ -1173,10 +1173,10 @@ export class CurationView {
     const pivotLabel = !doc ? "fr" : (doc.language?.toLowerCase() === "fr" ? "Fran&#231;ais (VO)" : _escHtml(doc.language ?? "fr"));
     const scopeLabel = doc ? "Document s&#233;lectionn&#233;" : "Document complet";
     el.innerHTML =
-      `<div class="f curate-ctx-cell"><strong>Langue pivot</strong>${pivotLabel}</div>` +
-      `<div class="f curate-ctx-cell"><strong>Pack</strong>&#8212;</div>` +
-      `<div class="f curate-ctx-cell"><strong>Port&#233;e</strong>${scopeLabel}</div>` +
-      `<div class="f curate-ctx-cell"><strong>Aper&#231;u live</strong>Actif</div>`;
+      `<div class="f prep-curate-ctx-cell"><strong>Langue pivot</strong>${pivotLabel}</div>` +
+      `<div class="f prep-curate-ctx-cell"><strong>Pack</strong>&#8212;</div>` +
+      `<div class="f prep-curate-ctx-cell"><strong>Port&#233;e</strong>${scopeLabel}</div>` +
+      `<div class="f prep-curate-ctx-cell"><strong>Aper&#231;u live</strong>Actif</div>`;
     this._refreshCurateHeaderState();
     this._renderCurateQuickQueue();
   }
@@ -1197,9 +1197,9 @@ export class CurationView {
     el.innerHTML = this._curateLog.map(entry => {
       const diffS = Math.round((now - entry.ts) / 1000);
       const age = diffS < 60 ? `il y a ${diffS} s` : new Date(entry.ts).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
-      const kindClass = entry.kind === "warn" ? "curate-log-warn" : entry.kind === "apply" ? "curate-log-apply" : "";
-      return `<div class="curate-qitem ${kindClass}">` +
-        `<div class="curate-qmeta"><span>${entry.kind === "preview" ? "Prévisu" : entry.kind === "apply" ? "Application" : "⚠"}</span><span>${age}</span></div>` +
+      const kindClass = entry.kind === "warn" ? "prep-curate-log-warn" : entry.kind === "apply" ? "prep-curate-log-apply" : "";
+      return `<div class="prep-curate-qitem ${kindClass}">` +
+        `<div class="prep-curate-qmeta"><span>${entry.kind === "preview" ? "Prévisu" : entry.kind === "apply" ? "Application" : "⚠"}</span><span>${age}</span></div>` +
         `<div>${_escHtml(entry.msg)}</div></div>`;
     }).join("");
   }
@@ -1232,7 +1232,7 @@ export class CurationView {
         this._renderStatusBadge(row, status);
       }
       const para = this._q<HTMLElement>(`.raw-unit[data-diff-idx="${idx}"]`);
-      if (para) { para.classList.remove("raw-pending","raw-accepted","raw-ignored"); para.classList.add(`raw-${status}`); }
+      if (para) { para.classList.remove("prep-raw-pending","prep-raw-accepted","prep-raw-ignored"); para.classList.add(`prep-raw-${status}`); }
       this._updateActionButtons();
     } else {
       const newFiltered = this._filteredExamples();
@@ -1295,9 +1295,9 @@ export class CurationView {
     const af = this._activeStatusFilter;
     const sl = CurationView._STATUS_LABEL;
     const chip = (key: "pending" | "accepted" | "ignored", icon: string, label: string, count: number) =>
-      `<span class="session-chip session-${key}${af === key ? " session-chip-active" : ""}"` +
+      `<span class="prep-session-chip prep-session-${key}${af === key ? " prep-session-chip-active" : ""}"` +
       ` data-sf="${key}" role="button" tabindex="0" title="${af === key ? "Effacer ce filtre" : `Filtrer : ${label}`}">` +
-      `${icon}&#160;<strong>${count}</strong>&#160;<span class="session-chip-label">${label}</span></span>`;
+      `${icon}&#160;<strong>${count}</strong>&#160;<span class="prep-session-chip-label">${label}</span></span>`;
     const docId = this._currentCurateDocId() ?? null;
     const isAllMode = docId === null;
     let restoreNotice: string;
@@ -1306,16 +1306,16 @@ export class CurationView {
         ? `${this._curateRestoredCount} statut(s) restauré(s) sur ${this._curateSavedCount} sauvegardé(s)`
         : `${this._curateRestoredCount} statut(s) restauré(s)`;
       const modeNote = isAllMode ? ` <em>(sélection modifiée depuis la preview)</em>` : "";
-      restoreNotice = `<div class="session-restore-notice" title="Statuts restaurés depuis la session précédente">&#8635; ${countText}${modeNote} &#8212; <button class="btn-inline-link" id="act-reset-review">Réinitialiser</button></div>`;
+      restoreNotice = `<div class="prep-session-restore-notice" title="Statuts restaurés depuis la session précédente">&#8635; ${countText}${modeNote} &#8212; <button class="btn-inline-link" id="act-reset-review">Réinitialiser</button></div>`;
     } else {
-      const modeNote = isAllMode ? `<span class="session-all-note" title="Portée globale">&#9432; Portée globale</span> &#8212; ` : "";
-      restoreNotice = `<div class="session-reset-row">${modeNote}<button class="btn-inline-link" id="act-reset-review">Effacer la review sauvegardée</button></div>`;
+      const modeNote = isAllMode ? `<span class="prep-session-all-note" title="Portée globale">&#9432; Portée globale</span> &#8212; ` : "";
+      restoreNotice = `<div class="prep-session-reset-row">${modeNote}<button class="btn-inline-link" id="act-reset-review">Effacer la review sauvegardée</button></div>`;
     }
     el.innerHTML =
-      `<div class="session-counts">${chip("pending","&#9632;",sl.pending,c.pending)}${chip("accepted","&#10003;",sl.accepted,c.accepted)}${chip("ignored","&#215;",sl.ignored,c.ignored)}</div>` +
-      (af ? `<div class="session-filter-note">Filtre statut actif &#8212; <button class="btn-inline-link" id="act-clear-sf">Afficher tout</button></div>` : "") +
-      (() => { const n = this._curateExamples.filter(ex => ex.is_manual_override).length; return n > 0 ? `<div class="session-override-note">&#9998;&#160;${n} correction(s) manuelle(s)</div>` : ""; })() +
-      (() => { const n = this._curateExceptions.size; return n > 0 ? `<div class="session-exception-note">🔒&#160;${n} exception(s) persistée(s)</div>` : ""; })() +
+      `<div class="prep-session-counts">${chip("pending","&#9632;",sl.pending,c.pending)}${chip("accepted","&#10003;",sl.accepted,c.accepted)}${chip("ignored","&#215;",sl.ignored,c.ignored)}</div>` +
+      (af ? `<div class="prep-session-filter-note">Filtre statut actif &#8212; <button class="btn-inline-link" id="act-clear-sf">Afficher tout</button></div>` : "") +
+      (() => { const n = this._curateExamples.filter(ex => ex.is_manual_override).length; return n > 0 ? `<div class="prep-session-override-note">&#9998;&#160;${n} correction(s) manuelle(s)</div>` : ""; })() +
+      (() => { const n = this._curateExceptions.size; return n > 0 ? `<div class="prep-session-exception-note">🔒&#160;${n} exception(s) persistée(s)</div>` : ""; })() +
       restoreNotice;
     el.querySelectorAll<HTMLElement>("[data-sf]").forEach(chip => {
       chip.addEventListener("click", () => { const sf = chip.dataset.sf as "pending"|"accepted"|"ignored"; this._setStatusFilter(this._activeStatusFilter === sf ? null : sf); });
@@ -1375,7 +1375,7 @@ export class CurationView {
     const filtered = this._filteredExamples();
     this._refreshCuratePreviewPanes();
     this._updateFilterBadge(panel);
-    (panel ?? document).querySelectorAll<HTMLElement>(".curate-diag-rule-chip").forEach(chip => {
+    (panel ?? document).querySelectorAll<HTMLElement>(".prep-curate-diag-rule-chip").forEach(chip => {
       chip.classList.toggle("active", chip.dataset.ruleLabel === label);
     });
     if (filtered.length > 0) {
@@ -1427,7 +1427,7 @@ export class CurationView {
       activeRow?.scrollIntoView({ block: "nearest", behavior: "smooth" });
     }
     scope.querySelectorAll<HTMLElement>("[data-diff-idx].raw-unit").forEach(p => {
-      p.classList.toggle("raw-active", p.dataset.diffIdx === String(idx));
+      p.classList.toggle("prep-raw-active", p.dataset.diffIdx === String(idx));
     });
     if (idx !== null && this._previewSyncScroll) {
       scope.querySelector<HTMLElement>(`.raw-unit[data-diff-idx="${idx}"]`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
@@ -1709,7 +1709,7 @@ export class CurationView {
       if (infoEl) infoEl.textContent = "Erreur";
       const msg = err instanceof SidecarError ? err.message : String(err);
       const rawElErr = this._q("#act-preview-raw");
-      if (rawElErr) rawElErr.innerHTML = `<p class="diag-v warn" style="margin:0"><strong>Erreur prévisualisation</strong>${_escHtml(msg)}</p>`;
+      if (rawElErr) rawElErr.innerHTML = `<p class="prep-diag-v warn" style="margin:0"><strong>Erreur prévisualisation</strong>${_escHtml(msg)}</p>`;
       if (!silent) { this._cb.log(`✗ Prévisualisation : ${msg}`, true); this._pushCurateLog("warn", `Erreur prévisu : ${msg}`); }
     }
     this._cb.setBusy(false);
@@ -1859,24 +1859,24 @@ export class CurationView {
         rawEl.appendChild(this._renderTextStartSeparator(textStartN));
       }
       const p = document.createElement("p");
-      p.className = "raw-unit raw-unit-full";
+      p.className = "prep-raw-unit raw-unit-full";
       p.dataset.unitId = String(unit.unit_id);
       p.dataset.unitN = String(unit.n);
-      if (textStartN !== null && unit.n < textStartN) p.classList.add("raw-unit-paratext");
+      if (textStartN !== null && unit.n < textStartN) p.classList.add("prep-raw-unit-paratext");
       const hasOverride = this._allOverrides.has(unit.unit_id);
       const isChanged = changedUnitIds?.has(unit.unit_id);
       const isSelected = this._selectedUnitNs.has(unit.n);
       const role = unit.unit_role;
       const conv = role ? roleMap.get(role) : undefined;
-      if (hasOverride) p.classList.add("raw-unit-overridden");
-      if (isChanged)   p.classList.add("raw-unit-changed");
-      if (isSelected)  p.classList.add("raw-unit-selected");
-      if (role)        p.classList.add("raw-unit-has-role");
+      if (hasOverride) p.classList.add("prep-raw-unit-overridden");
+      if (isChanged)   p.classList.add("prep-raw-unit-changed");
+      if (isSelected)  p.classList.add("prep-raw-unit-selected");
+      if (role)        p.classList.add("prep-raw-unit-has-role");
       const ln = document.createElement("span");
-      ln.className = "vo-ln";
+      ln.className = "prep-vo-ln";
       ln.textContent = String(unit.n);
       if (textStartN === null && curateDocId !== undefined && unit.n > 1) {
-        ln.classList.add("vo-ln-settable");
+        ln.classList.add("prep-vo-ln-settable");
         ln.title = `Cliquer pour définir l'unité ${unit.n} comme début du texte`;
         ln.addEventListener("click", (e) => {
           e.stopPropagation();
@@ -1884,17 +1884,17 @@ export class CurationView {
           if (unit.n === 1) return;
           const rawEl2 = this._q<HTMLElement>("#act-preview-raw");
           if (!rawEl2) return;
-          const existing = rawEl2.querySelector(".raw-tsn-confirm");
+          const existing = rawEl2.querySelector(".prep-raw-tsn-confirm");
           if (existing) { existing.remove(); return; }
           const banner = document.createElement("div");
-          banner.className = "raw-tsn-confirm";
+          banner.className = "prep-raw-tsn-confirm";
           const paraCount = unit.n - 1;
           banner.innerHTML =
             `<span>Définir l'unité ${unit.n} comme début du texte ? ` +
             `${paraCount > 0 ? `Les ${paraCount} unité(s) précédente(s) seront marquées comme paratexte.` : ""}</span>` +
             `<button class="btn btn-primary btn-xs">Confirmer</button>` +
             `<button class="btn btn-ghost btn-xs">Annuler</button>`;
-          rawEl2.insertBefore(banner, rawEl2.querySelector(".raw-role-bar")?.nextSibling ?? rawEl2.firstChild);
+          rawEl2.insertBefore(banner, rawEl2.querySelector(".prep-raw-role-bar")?.nextSibling ?? rawEl2.firstChild);
           const [confirmBtn, cancelBtn] = banner.querySelectorAll("button");
           cancelBtn.addEventListener("click", () => banner.remove(), { once: true });
           confirmBtn.addEventListener("click", () => { banner.remove(); void this._setTextStart(unit.n); }, { once: true });
@@ -1904,7 +1904,7 @@ export class CurationView {
       p.appendChild(ln);
       if (conv) {
         const roleBadge = document.createElement("span");
-        roleBadge.className = "raw-role-badge";
+        roleBadge.className = "prep-raw-role-badge";
         roleBadge.textContent = conv.label || conv.name;
         roleBadge.title = `Rôle : ${conv.label || conv.name}`;
         if (conv.color) roleBadge.style.setProperty("--role-color", conv.color);
@@ -1913,7 +1913,7 @@ export class CurationView {
       }
       if (hasOverride) {
         const badge = document.createElement("span");
-        badge.className = "raw-override-badge";
+        badge.className = "prep-raw-override-badge";
         badge.textContent = "✏";
         badge.title = "Modifié manuellement";
         p.appendChild(badge);
@@ -1926,8 +1926,8 @@ export class CurationView {
         if (diffIdx !== undefined) p.dataset.diffIdx = String(diffIdx);
       }
       p.addEventListener("click", (e: MouseEvent) => {
-        if (p.classList.contains("raw-unit-editing")) return;
-        if ((e.target as HTMLElement).closest(".raw-unit-edit-wrapper")) return;
+        if (p.classList.contains("prep-raw-unit-editing")) return;
+        if ((e.target as HTMLElement).closest(".prep-raw-unit-edit-wrapper")) return;
         if (e.ctrlKey || e.metaKey || e.shiftKey || this._selectedUnitNs.size > 0) {
           e.preventDefault();
           this._toggleUnitSelection(unit.n, e.shiftKey);
@@ -1957,7 +1957,7 @@ export class CurationView {
     const listEl = this._q<HTMLElement>("#act-conventions-list");
     if (!listEl) return;
     if (this._conventions.length === 0) {
-      listEl.innerHTML = '<p class="conv-empty">Aucune convention définie.</p>';
+      listEl.innerHTML = '<p class="prep-conv-empty">Aucune convention définie.</p>';
       return;
     }
     listEl.innerHTML = "";
@@ -1980,7 +1980,7 @@ export class CurationView {
       nameBadge.className = "conv-name-badge";
       nameBadge.textContent = conv.name;
       const delBtn = document.createElement("button");
-      delBtn.className = "btn btn-ghost btn-xs conv-del-btn";
+      delBtn.className = "btn btn-ghost btn-xs prep-conv-del-btn";
       delBtn.textContent = "Supprimer";
       delBtn.title = "Supprimer cette convention (les unités assignées perdent ce rôle)";
       delBtn.addEventListener("click", () => void this._conventionDelete(conv.name, row));
@@ -2047,7 +2047,7 @@ export class CurationView {
     if (!conn) return;
     const list = this._q<HTMLElement>("#act-exc-admin-list");
     if (!list) return;
-    list.innerHTML = `<p class="empty-hint exc-admin-loading">Chargement…</p>`;
+    list.innerHTML = `<p class="empty-hint prep-exc-admin-loading">Chargement…</p>`;
     try {
       const res = await listCurateExceptions(conn);
       this._excAdminAll = res.exceptions;
@@ -2060,8 +2060,8 @@ export class CurationView {
   }
   private _setExcAdminFilter(f: "all" | "ignore" | "override"): void {
     this._excAdminFilter = f;
-    this._root?.querySelectorAll<HTMLButtonElement>(".exc-filter-btn").forEach(btn => {
-      btn.classList.toggle("exc-filter-active", btn.dataset.excFilter === f);
+    this._root?.querySelectorAll<HTMLButtonElement>(".prep-exc-filter-btn").forEach(btn => {
+      btn.classList.toggle("prep-exc-filter-active", btn.dataset.excFilter === f);
     });
     this._renderExcAdminPanel();
   }
@@ -2108,7 +2108,7 @@ export class CurationView {
       const showDocHead = this._excAdminDocFilter === 0 && firstRow.doc_title !== undefined;
       if (showDocHead) {
         const docHead = document.createElement("div");
-        docHead.className = "exc-admin-doc-head";
+        docHead.className = "prep-exc-admin-doc-head";
         docHead.textContent = firstRow.doc_title || `Document #${firstRow.doc_id ?? "?"}`;
         frag.appendChild(docHead);
       }
@@ -2282,7 +2282,7 @@ export class CurationView {
       this._cb.toast?.(msg);
     } catch (err) {
       const msg = `✗ Erreur export : ${err instanceof SidecarError ? err.message : String(err)}`;
-      if (resultEl) { resultEl.style.display = ""; resultEl.className = "exc-export-result exc-export-error"; resultEl.textContent = msg; }
+      if (resultEl) { resultEl.style.display = ""; resultEl.className = "prep-exc-export-result exc-export-error"; resultEl.textContent = msg; }
       this._cb.log(msg, true);
       this._cb.toast?.("✗ Erreur export exceptions", true);
     } finally {
@@ -2391,36 +2391,36 @@ export class CurationView {
     const diagEl = this._q<HTMLElement>("#act-curate-diag");
     if (!diagEl) return;
     if (changed === 0) {
-      diagEl.innerHTML = `<div class="curate-diag"><strong>✓ Aucune modification</strong>${total} unités analysées, corpus propre.</div>`;
+      diagEl.innerHTML = `<div class="prep-curate-diag"><strong>✓ Aucune modification</strong>${total} unités analysées, corpus propre.</div>`;
     } else {
       const shown = this._curateExamples.length;
       const isTruncated = shown < this._curateGlobalChanged;
       const ruleStats = this._getRuleStats();
       const truncationHtml = isTruncated
-        ? `<div class="curate-diag curate-diag-notice">&#9432;&#160;Preview limit&#233;e &#224; ${shown}&#160;exemples sur&#160;${this._curateGlobalChanged} modifications r&#233;elles. Les compteurs par r&#232;gle ci-dessous concernent uniquement l&#8217;&#233;chantillon affich&#233;.</div>`
+        ? `<div class="prep-curate-diag curate-diag-notice">&#9432;&#160;Preview limit&#233;e &#224; ${shown}&#160;exemples sur&#160;${this._curateGlobalChanged} modifications r&#233;elles. Les compteurs par r&#232;gle ci-dessous concernent uniquement l&#8217;&#233;chantillon affich&#233;.</div>`
         : "";
       let ruleChipsHtml = "";
       if (ruleStats.size > 0) {
-        const scopeNote = isTruncated ? `<span class="diag-scope-note">dans l&#8217;&#233;chantillon courant</span>` : "";
+        const scopeNote = isTruncated ? `<span class="prep-diag-scope-note">dans l&#8217;&#233;chantillon courant</span>` : "";
         const chipsInner = [...ruleStats.entries()].sort((a, b) => b[1] - a[1])
           .map(([label, count]) =>
-            `<span class="chip curate-diag-rule-chip" data-rule-label="${_escHtml(label)}" role="button" tabindex="0"` +
+            `<span class="chip prep-curate-diag-rule-chip" data-rule-label="${_escHtml(label)}" role="button" tabindex="0"` +
             ` title="Filtrer sur : ${_escHtml(label)}${isTruncated ? " (dans l\u2019\u00e9chantillon courant)" : ""}"` +
-            `>${_escHtml(label)}<span class="diag-rule-count">${count}</span></span>`
+            `>${_escHtml(label)}<span class="prep-diag-rule-count">${count}</span></span>`
           ).join("");
-        ruleChipsHtml = `<div class="curate-diag curate-diag-rules"><strong>Filtrer par r&#232;gle</strong>${scopeNote}<div class="chip-row diag-rule-chips" style="margin-top:5px">${chipsInner}</div></div>`;
+        ruleChipsHtml = `<div class="prep-curate-diag curate-diag-rules"><strong>Filtrer par r&#232;gle</strong>${scopeNote}<div class="chip-row prep-diag-rule-chips" style="margin-top:5px">${chipsInner}</div></div>`;
       }
       diagEl.innerHTML = `
-        <div class="curate-diag warn curate-diag-summary"><strong>${changed} unit&#233;(s) modifi&#233;e(s)</strong>${replacements} remplacement(s) sur ${total} unit&#233;s.</div>
-        ${shown > 0 ? `<div class="curate-diag curate-diag-action" id="act-diag-goto-first" role="button" tabindex="0"><strong>&#8594; Premi&#232;re modification</strong><span style="font-size:11px;color:var(--prep-muted)">${shown} exemple(s) &#8212; cliquer pour naviguer</span></div>` : ""}
+        <div class="prep-curate-diag warn curate-diag-summary"><strong>${changed} unit&#233;(s) modifi&#233;e(s)</strong>${replacements} remplacement(s) sur ${total} unit&#233;s.</div>
+        ${shown > 0 ? `<div class="prep-curate-diag curate-diag-action" id="act-diag-goto-first" role="button" tabindex="0"><strong>&#8594; Premi&#232;re modification</strong><span style="font-size:11px;color:var(--prep-muted)">${shown} exemple(s) &#8212; cliquer pour naviguer</span></div>` : ""}
         ${truncationHtml}${ruleChipsHtml}
-        <div class="curate-diag"><strong>Impact segmentation</strong>V&#233;rifiez la preview avant d&#8217;appliquer.</div>`;
+        <div class="prep-curate-diag"><strong>Impact segmentation</strong>V&#233;rifiez la preview avant d&#8217;appliquer.</div>`;
       if (shown > 0) {
         const gotoBtn = diagEl.querySelector<HTMLElement>("#act-diag-goto-first");
         gotoBtn?.addEventListener("click", () => { const panel = this._q<HTMLElement>("#act-preview-panel") ?? undefined; this._setRuleFilter(null, panel); this._q("#act-diff-list")?.scrollIntoView({ behavior: "smooth", block: "nearest" }); });
         gotoBtn?.addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter") (gotoBtn as HTMLElement).click(); });
       }
-      diagEl.querySelectorAll<HTMLElement>(".curate-diag-rule-chip").forEach(chip => {
+      diagEl.querySelectorAll<HTMLElement>(".prep-curate-diag-rule-chip").forEach(chip => {
         const label = chip.dataset.ruleLabel ?? "";
         const activate = () => { const panel = this._q<HTMLElement>("#act-preview-panel") ?? undefined; this._setRuleFilter(this._activeRuleFilter === label ? null : label, panel); };
         chip.addEventListener("click", activate);
@@ -2432,7 +2432,7 @@ export class CurationView {
       const r = this._cb.getLastSegmentReport?.();
       if (r) {
         segLinkEl.style.display = "";
-        segLinkEl.innerHTML = `<button class="acts-hub-head-link" data-action="goto-seg" style="font-size:11.5px">&#9654; Voir segmentation (${r.units_output} unités${r.warnings?.length ? ` · ${r.warnings.length} avertissements` : ""})</button>`;
+        segLinkEl.innerHTML = `<button class="prep-acts-hub-head-link" data-action="goto-seg" style="font-size:11.5px">&#9654; Voir segmentation (${r.units_output} unités${r.warnings?.length ? ` · ${r.warnings.length} avertissements` : ""})</button>`;
       } else {
         segLinkEl.style.display = "none";
       }
@@ -2469,7 +2469,7 @@ export class CurationView {
       const truncNote = preview.total_lines > preview.limit
         ? `<p class="empty-hint" style="margin:4px 0 8px;font-style:italic">Aper&#231;u &#8212; ${preview.limit}/${preview.total_lines} unit&#233;s</p>` : "";
       const linesHtml = preview.lines.map(l =>
-        `<div class="vo-line"><span class="vo-ln">${l.n}</span><span class="vo-txt">${_escHtml(l.text)}</span></div>`
+        `<div class="prep-vo-line"><span class="prep-vo-ln">${l.n}</span><span class="prep-vo-txt">${_escHtml(l.text)}</span></div>`
       ).join("");
       rawEl.innerHTML = bannerRaw + truncNote + linesHtml;
       diffEl.innerHTML = bannerDiff + truncNote + linesHtml;
@@ -2502,13 +2502,13 @@ export class CurationView {
     examples.forEach((ex, i) => {
       const p = document.createElement("p");
       p.dataset.diffIdx = String(i);
-      p.className = "raw-unit";
+      p.className = "prep-raw-unit";
       const firstLabel = (ex.matched_rule_ids ?? []).length > 0 ? (this._curateRuleLabels[ex.matched_rule_ids![0]] ?? "") : "";
       const st = ex.status ?? "pending";
       if (st !== "pending") p.classList.add(`raw-${st}`);
       if (firstLabel) {
         const badge = document.createElement("span");
-        badge.className = "raw-rule-badge";
+        badge.className = "prep-raw-rule-badge";
         badge.textContent = firstLabel;
         p.appendChild(badge);
         p.appendChild(document.createTextNode(" "));
@@ -2556,19 +2556,19 @@ export class CurationView {
       tr.title = ruleCount > 1 ? `Modification par ${ruleCount} règles — cliquer pour sélectionner` : "Cliquer pour sélectionner cette modification";
       const ruleLabels = [...new Set((ex.matched_rule_ids ?? []).map(idx => this._curateRuleLabels[idx] ?? `r${idx + 1}`))];
       const ruleBadgeHtml = ruleLabels.length
-        ? ruleLabels.map(l => `<span class="diff-rule-badge">${_escHtml(l)}</span>`).join(" ")
-        : `<span class="diff-rule-badge diff-rule-badge-unknown">—</span>`;
+        ? ruleLabels.map(l => `<span class="prep-diff-rule-badge">${_escHtml(l)}</span>`).join(" ")
+        : `<span class="prep-diff-rule-badge prep-diff-rule-badge-unknown">—</span>`;
       const st = ex.status ?? "pending";
       if (st !== "pending") tr.classList.add(`diff-${st}`);
       const statusBadgeHtml = st !== "pending"
-        ? `<span class="diff-status-badge diff-status-${st}" title="${_escHtml(CurationView._STATUS_LABEL[st] ?? st)}">${st === "accepted" ? "✓" : "✗"}</span>`
+        ? `<span class="prep-diff-status-badge prep-diff-status-${st}" title="${_escHtml(CurationView._STATUS_LABEL[st] ?? st)}">${st === "accepted" ? "✓" : "✗"}</span>`
         : "";
-      const overrideBadgeHtml = ex.is_manual_override ? `<span class="diff-override-badge" title="Modifié manuellement">✏</span>` : "";
+      const overrideBadgeHtml = ex.is_manual_override ? `<span class="prep-diff-override-badge" title="Modifié manuellement">✏</span>` : "";
       const exceptionBadgeHtml = (ex.is_exception_ignored || ex.is_exception_override)
-        ? `<span class="diff-exception-badge" title="${ex.is_exception_ignored ? "Exception persistée : ignoré durablement" : "Exception persistée : override durable"}">🔒</span>` : "";
+        ? `<span class="prep-diff-exception-badge" title="${ex.is_exception_ignored ? "Exception persistée : ignoré durablement" : "Exception persistée : override durable"}">🔒</span>` : "";
       const forcedReason = ex.preview_reason;
       const forcedBadgeHtml = forcedReason && forcedReason !== "standard"
-        ? `<span class="diff-forced-badge diff-forced-${forcedReason}" title="${forcedReason === "forced" ? "Ouverture ciblée depuis Exceptions" : forcedReason === "forced_ignored" ? "Ouverture ciblée — neutralisée par exception ignore" : "Ouverture ciblée — aucune modification active"}">↗</span>` : "";
+        ? `<span class="prep-diff-forced-badge prep-diff-forced-${forcedReason}" title="${forcedReason === "forced" ? "Ouverture ciblée depuis Exceptions" : forcedReason === "forced_ignored" ? "Ouverture ciblée — neutralisée par exception ignore" : "Ouverture ciblée — aucune modification active"}">↗</span>` : "";
       if (forcedReason && forcedReason !== "standard") {
         tr.classList.add("diff-forced-row");
         if (forcedReason === "forced_ignored")   tr.classList.add("diff-forced-ignored");
@@ -2576,11 +2576,11 @@ export class CurationView {
       }
       const effectiveAfter = ex.manual_after ?? ex.after;
       const showBefore = ex.before !== effectiveAfter;
-      const beforeHtml = showBefore ? `<span class="diff-before-hint">${_renderSpecialChars(_escHtml(ex.before))}</span>` : "";
+      const beforeHtml = showBefore ? `<span class="prep-diff-before-hint">${_renderSpecialChars(_escHtml(ex.before))}</span>` : "";
       tr.innerHTML =
-        `<td class="diff-extid">${ex.external_id ?? i + 1}${statusBadgeHtml}${overrideBadgeHtml}${exceptionBadgeHtml}${forcedBadgeHtml}</td>` +
-        `<td class="diff-rule-cell">${ruleBadgeHtml}</td>` +
-        `<td class="diff-after${ex.is_manual_override ? " diff-after-overridden" : ""}">${beforeHtml}${_highlightChanges(ex.before, effectiveAfter)}</td>`;
+        `<td class="prep-diff-extid">${ex.external_id ?? i + 1}${statusBadgeHtml}${overrideBadgeHtml}${exceptionBadgeHtml}${forcedBadgeHtml}</td>` +
+        `<td class="prep-diff-rule-cell">${ruleBadgeHtml}</td>` +
+        `<td class="diff-after${ex.is_manual_override ? " prep-diff-after-overridden" : ""}">${beforeHtml}${_highlightChanges(ex.before, effectiveAfter)}</td>`;
       tr.addEventListener("click", () => {
         const panel = tr.closest<HTMLElement>("#act-preview-panel") ?? undefined;
         this._setActiveDiffItem(i, panel);
@@ -2607,11 +2607,11 @@ export class CurationView {
   }
 
   private _conventionEditLabel(row: HTMLElement, conv: ConventionRole): void {
-    const labelEl = row.querySelector<HTMLElement>(".conv-label");
-    if (!labelEl || row.classList.contains("conv-row-editing")) return;
-    row.classList.add("conv-row-editing");
+    const labelEl = row.querySelector<HTMLElement>(".prep-conv-label");
+    if (!labelEl || row.classList.contains("prep-conv-row-editing")) return;
+    row.classList.add("prep-conv-row-editing");
     const input = document.createElement("input");
-    input.type = "text"; input.className = "conv-input conv-label-edit";
+    input.type = "text"; input.className = "prep-conv-input prep-conv-label-edit";
     input.value = conv.label || conv.name; input.maxLength = 64;
     labelEl.replaceWith(input); input.focus(); input.select();
     let saved = false;
@@ -2624,24 +2624,24 @@ export class CurationView {
     input.addEventListener("blur", () => void save());
     input.addEventListener("keydown", (e) => {
       if (e.key === "Enter") { e.preventDefault(); void save(); }
-      if (e.key === "Escape") { saved = true; row.classList.remove("conv-row-editing"); this._renderConventionsList(); }
+      if (e.key === "Escape") { saved = true; row.classList.remove("prep-conv-row-editing"); this._renderConventionsList(); }
     });
   }
 
   private async _conventionDelete(name: string, rowEl: HTMLElement): Promise<void> {
     const conn = this._getConn();
     if (!conn) return;
-    const existing = rowEl.querySelector(".conv-del-confirm");
+    const existing = rowEl.querySelector(".prep-conv-del-confirm");
     if (existing) return;
     const confirm = document.createElement("span");
     confirm.className = "conv-del-confirm";
     confirm.innerHTML =
-      `<span class="conv-del-warn">Supprimer ? Les unités assignées perdront ce rôle.</span>` +
-      `<button class="btn btn-danger btn-xs conv-del-confirm-yes">Confirmer</button>` +
-      `<button class="btn btn-ghost btn-xs conv-del-confirm-no">Annuler</button>`;
+      `<span class="prep-conv-del-warn">Supprimer ? Les unités assignées perdront ce rôle.</span>` +
+      `<button class="btn btn-danger btn-xs prep-conv-del-confirm-yes">Confirmer</button>` +
+      `<button class="btn btn-ghost btn-xs prep-conv-del-confirm-no">Annuler</button>`;
     rowEl.appendChild(confirm);
-    confirm.querySelector(".conv-del-confirm-no")!.addEventListener("click", () => confirm.remove());
-    confirm.querySelector(".conv-del-confirm-yes")!.addEventListener("click", async () => {
+    confirm.querySelector(".prep-conv-del-confirm-no")!.addEventListener("click", () => confirm.remove());
+    confirm.querySelector(".prep-conv-del-confirm-yes")!.addEventListener("click", async () => {
       const c = this._getConn();
       if (!c) return;
       try {
@@ -2712,33 +2712,33 @@ export class CurationView {
     this._updateRoleBar();
     const rawEl = this._q<HTMLElement>("#act-preview-raw");
     if (!rawEl) return;
-    rawEl.querySelectorAll<HTMLElement>(".raw-unit-full").forEach(p => {
+    rawEl.querySelectorAll<HTMLElement>(".prep-raw-unit-full").forEach(p => {
       const pn = Number(p.dataset.unitN);
-      p.classList.toggle("raw-unit-selected", this._selectedUnitNs.has(pn));
+      p.classList.toggle("prep-raw-unit-selected", this._selectedUnitNs.has(pn));
     });
   }
 
   private _updateRoleBar(): void {
-    const bar = this._q<HTMLElement>("#raw-role-bar");
+    const bar = this._q<HTMLElement>(".prep-raw-role-bar");
     if (!bar) return;
     const count = this._selectedUnitNs.size;
     if (count === 0) { bar.style.display = "none"; return; }
     bar.style.display = "";
-    const countEl = bar.querySelector<HTMLElement>(".raw-role-bar-count");
+    const countEl = bar.querySelector<HTMLElement>(".prep-raw-role-bar-count");
     if (countEl) countEl.textContent = `${count} unité(s) sélectionnée(s)`;
   }
 
   private _renderRoleBar(container: HTMLElement): void {
-    container.querySelector("#raw-role-bar")?.remove();
+    container.querySelector(".prep-raw-role-bar")?.remove();
     const bar = document.createElement("div");
-    bar.id = "raw-role-bar"; bar.className = "raw-role-bar"; bar.style.display = "none";
+    bar.id = "raw-role-bar"; bar.className = "prep-raw-role-bar"; bar.style.display = "none";
     const roleOptions = this._conventions.map(r =>
       `<option value="${_escHtml(r.name)}">${_escHtml(r.label || r.name)}</option>`
     ).join("");
     bar.innerHTML =
-      `<span class="raw-role-bar-count"></span>` +
-      `<label class="raw-role-bar-label">Assigner&nbsp;:</label>` +
-      `<select id="raw-role-select" class="raw-role-select"><option value="">— choisir un rôle —</option>${roleOptions}</select>` +
+      `<span class="prep-raw-role-bar-count"></span>` +
+      `<label class="prep-raw-role-bar-label">Assigner&nbsp;:</label>` +
+      `<select id="raw-role-select" class="prep-raw-role-select"><option value="">— choisir un rôle —</option>${roleOptions}</select>` +
       `<button id="raw-role-assign-btn" class="btn btn-primary btn-xs">Assigner</button>` +
       `<button id="raw-role-clear-btn" class="btn btn-secondary btn-xs">Effacer le rôle</button>` +
       `<button id="raw-role-deselect-btn" class="btn btn-ghost btn-xs">✕ Désélectionner</button>`;
@@ -2751,16 +2751,16 @@ export class CurationView {
     bar.querySelector("#raw-role-clear-btn")!.addEventListener("click", () => { void this._applyRoleToSelected(null); });
     bar.querySelector("#raw-role-deselect-btn")!.addEventListener("click", () => {
       this._selectedUnitNs = new Set(); this._lastSelectedN = null; this._updateRoleBar();
-      container.querySelectorAll<HTMLElement>(".raw-unit-selected").forEach(p => p.classList.remove("raw-unit-selected"));
+      container.querySelectorAll<HTMLElement>(".prep-raw-unit-selected").forEach(p => p.classList.remove("prep-raw-unit-selected"));
     });
     container.insertBefore(bar, container.firstChild);
   }
 
   private _renderTextStartSeparator(textStartN: number): HTMLElement {
     const sep = document.createElement("div");
-    sep.className = "raw-text-separator"; sep.dataset.textStartN = String(textStartN);
+    sep.className = "prep-raw-text-separator"; sep.dataset.textStartN = String(textStartN);
     const label = document.createElement("span");
-    label.className = "raw-text-separator-label"; label.textContent = `Début du texte (unité ${textStartN})`;
+    label.className = "prep-raw-text-separator-label"; label.textContent = `Début du texte (unité ${textStartN})`;
     sep.appendChild(label);
     const maxN = this._allUnits[this._allUnits.length - 1]?.n ?? 0;
     const btnUp = document.createElement("button");
@@ -2773,10 +2773,10 @@ export class CurationView {
     btnClear.className = "btn-ghost btn-xs raw-sep-btn raw-sep-btn-clear"; btnClear.title = "Supprimer la frontière paratextuelle"; btnClear.textContent = "✕";
     btnClear.addEventListener("click", (e) => {
       e.stopPropagation();
-      if (sep.querySelector(".raw-sep-del-confirm")) return;
+      if (sep.querySelector(".prep-raw-sep-del-confirm")) return;
       const confirmSpan = document.createElement("span");
-      confirmSpan.className = "raw-sep-del-confirm";
-      confirmSpan.innerHTML = `<span class="conv-del-warn">Supprimer la frontière ?</span><button class="btn btn-danger btn-xs">Confirmer</button><button class="btn btn-ghost btn-xs">Annuler</button>`;
+      confirmSpan.className = "prep-raw-sep-del-confirm";
+      confirmSpan.innerHTML = `<span class="prep-conv-del-warn">Supprimer la frontière ?</span><button class="btn btn-danger btn-xs">Confirmer</button><button class="btn btn-ghost btn-xs">Annuler</button>`;
       sep.appendChild(confirmSpan);
       const [confirmBtn, cancelBtn] = confirmSpan.querySelectorAll("button");
       cancelBtn.addEventListener("click", (ev) => { ev.stopPropagation(); confirmSpan.remove(); }, { once: true });
@@ -2784,7 +2784,7 @@ export class CurationView {
       confirmBtn.focus();
     });
     const controls = document.createElement("span");
-    controls.className = "raw-sep-controls";
+    controls.className = "prep-raw-sep-controls";
     controls.appendChild(btnUp); controls.appendChild(btnDown); controls.appendChild(btnClear);
     sep.appendChild(controls);
     return sep;
@@ -2807,18 +2807,18 @@ export class CurationView {
   }
 
   private _enterInlineEdit(unitEl: HTMLElement, unit: UnitRecord): void {
-    if (unitEl.classList.contains("raw-unit-editing")) return;
-    unitEl.classList.add("raw-unit-editing");
+    if (unitEl.classList.contains("prep-raw-unit-editing")) return;
+    unitEl.classList.add("prep-raw-unit-editing");
     const currentText = this._allOverrides.get(unit.unit_id) ?? unit.text_norm ?? "";
     const originalContent = unitEl.innerHTML;
     unitEl.innerHTML = "";
     const wrapper = document.createElement("div");
-    wrapper.className = "raw-unit-edit-wrapper";
+    wrapper.className = "prep-raw-unit-edit-wrapper";
     const ta = document.createElement("textarea");
-    ta.className = "raw-unit-textarea"; ta.value = currentText;
+    ta.className = "prep-raw-unit-textarea"; ta.value = currentText;
     ta.rows = Math.max(2, Math.ceil(currentText.length / 80));
     const actions = document.createElement("div");
-    actions.className = "raw-unit-edit-actions";
+    actions.className = "prep-raw-unit-edit-actions";
     const saveBtn = document.createElement("button");
     saveBtn.className = "btn btn-primary btn-xs"; saveBtn.textContent = "Enregistrer"; saveBtn.title = "Ctrl+Entrée";
     const cancelBtn = document.createElement("button");
@@ -2828,7 +2828,7 @@ export class CurationView {
     unitEl.appendChild(wrapper); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length);
     const save = () => {
       const newText = ta.value;
-      unitEl.classList.remove("raw-unit-editing");
+      unitEl.classList.remove("prep-raw-unit-editing");
       if (newText !== (unit.text_norm ?? "")) {
         this._allOverrides.set(unit.unit_id, newText);
         const docId = this._currentCurateDocId();
@@ -2839,7 +2839,7 @@ export class CurationView {
       const changedIds = new Set(this._curateExamples.map(e => e.unit_id));
       this._renderRawPaneFull(changedIds.size > 0 ? changedIds : undefined);
     };
-    const cancel = () => { unitEl.classList.remove("raw-unit-editing"); unitEl.innerHTML = originalContent; };
+    const cancel = () => { unitEl.classList.remove("prep-raw-unit-editing"); unitEl.innerHTML = originalContent; };
     saveBtn.addEventListener("click", save);
     cancelBtn.addEventListener("click", cancel);
     ta.addEventListener("keydown", (e: KeyboardEvent) => {
@@ -3028,32 +3028,32 @@ export class CurationView {
 
   private _buildExcAdminRow(exc: CurateException): HTMLElement {
     const row = document.createElement("div");
-    row.className = "exc-admin-row"; row.dataset.excUnitId = String(exc.unit_id);
-    const kindBadge = `<span class="exc-kind-badge exc-kind-${exc.kind}">${exc.kind === "ignore" ? "🚫 ignore" : "✏ override"}</span>`;
-    const unitText = exc.unit_text ? `<span class="exc-unit-preview" title="${_escHtml(exc.unit_text)}">${_escHtml(exc.unit_text.slice(0, 80))}…</span>` : "";
-    const createdAt = exc.created_at ? `<span class="exc-created-at">${exc.created_at.slice(0, 16).replace("T", " ")}</span>` : "";
+    row.className = "prep-exc-admin-row"; row.dataset.excUnitId = String(exc.unit_id);
+    const kindBadge = `<span class="prep-exc-kind-badge exc-kind-${exc.kind}">${exc.kind === "ignore" ? "🚫 ignore" : "✏ override"}</span>`;
+    const unitText = exc.unit_text ? `<span class="prep-exc-unit-preview" title="${_escHtml(exc.unit_text)}">${_escHtml(exc.unit_text.slice(0, 80))}…</span>` : "";
+    const createdAt = exc.created_at ? `<span class="prep-exc-created-at">${exc.created_at.slice(0, 16).replace("T", " ")}</span>` : "";
     const openBtn = exc.doc_id !== undefined ? `<button class="btn btn-sm exc-row-open-curation" title="Voir cette unité dans Curation">&#x1F441;</button>` : "";
     const isEditing = this._excAdminEditing === exc.unit_id;
     if (exc.kind === "override" && isEditing) {
       row.innerHTML = `
-        <div class="exc-row-meta">${kindBadge}<span class="exc-unit-id">unité&nbsp;${exc.unit_id}</span>${createdAt}</div>
-        ${unitText ? `<div class="exc-unit-preview-block">${unitText}</div>` : ""}
-        <div class="exc-row-edit-block">
-          <label class="exc-edit-label">Texte override :</label>
-          <textarea class="exc-edit-textarea" id="exc-edit-${exc.unit_id}" rows="3">${_escHtml(exc.override_text ?? "")}</textarea>
-          <div class="exc-edit-actions">
-            <button class="btn btn-sm btn-primary exc-row-edit-save">Enregistrer</button>
-            <button class="btn btn-sm exc-row-edit-cancel">Annuler</button>
+        <div class="prep-exc-row-meta">${kindBadge}<span class="prep-exc-unit-id">unité&nbsp;${exc.unit_id}</span>${createdAt}</div>
+        ${unitText ? `<div class="prep-exc-unit-preview-block">${unitText}</div>` : ""}
+        <div class="prep-exc-row-edit-block">
+          <label class="prep-exc-edit-label">Texte override :</label>
+          <textarea class="prep-exc-edit-textarea" id="exc-edit-${exc.unit_id}" rows="3">${_escHtml(exc.override_text ?? "")}</textarea>
+          <div class="prep-exc-edit-actions">
+            <button class="btn btn-sm btn-primary prep-exc-row-edit-save">Enregistrer</button>
+            <button class="btn btn-sm prep-exc-row-edit-cancel">Annuler</button>
           </div>
         </div>`;
     } else {
-      const overrideText = exc.kind === "override" && exc.override_text ? `<div class="exc-override-text">${_escHtml(exc.override_text)}</div>` : "";
-      const editBtn = exc.kind === "override" ? `<button class="btn btn-sm exc-row-edit-start" title="Modifier le texte override">✎</button>` : "";
+      const overrideText = exc.kind === "override" && exc.override_text ? `<div class="prep-exc-override-text">${_escHtml(exc.override_text)}</div>` : "";
+      const editBtn = exc.kind === "override" ? `<button class="btn btn-sm prep-exc-row-edit-start" title="Modifier le texte override">✎</button>` : "";
       row.innerHTML = `
-        <div class="exc-row-meta">${kindBadge}<span class="exc-unit-id">unité&nbsp;${exc.unit_id}</span>${createdAt}
-          <div class="exc-row-actions">${openBtn}${editBtn}<button class="btn btn-sm exc-row-delete" title="Supprimer cette exception">✕</button></div>
+        <div class="prep-exc-row-meta">${kindBadge}<span class="prep-exc-unit-id">unité&nbsp;${exc.unit_id}</span>${createdAt}
+          <div class="prep-exc-row-actions">${openBtn}${editBtn}<button class="btn btn-sm prep-exc-row-delete" title="Supprimer cette exception">✕</button></div>
         </div>
-        ${unitText ? `<div class="exc-unit-preview-block">${unitText}</div>` : ""}
+        ${unitText ? `<div class="prep-exc-unit-preview-block">${unitText}</div>` : ""}
         ${overrideText}`;
     }
     return row;
@@ -3125,8 +3125,8 @@ export class CurationView {
       if (bar.style.display !== "none") { resolve(false); return; }
       const html = message.split("\n").map(line => line.trim() ? `<span>${_escHtml(line)}</span>` : "").filter(Boolean).join("<br>");
       bar.innerHTML =
-        `<div class="curate-confirm-body">${html}</div>` +
-        `<div class="curate-confirm-actions">` +
+        `<div class="prep-curate-confirm-body">${html}</div>` +
+        `<div class="prep-curate-confirm-actions">` +
           `<button class="btn btn-warning btn-sm" id="act-confirm-ok">Confirmer l'application</button>` +
           `<button class="btn btn-ghost btn-sm" id="act-confirm-cancel">Annuler</button>` +
         `</div>`;
@@ -3180,7 +3180,7 @@ export class CurationView {
       const modified = e.units_modified ?? 0; const skipped = e.units_skipped ?? 0;
       const extras = [e.ignored_count != null && e.ignored_count > 0 ? `${e.ignored_count}\u00a0ign.` : "", e.manual_override_count != null && e.manual_override_count > 0 ? `${e.manual_override_count}\u00a0man.` : ""].filter(Boolean).join(" / ");
       const sessionMark = e.id == null ? " apply-hist-row--session" : "";
-      return `<div class="apply-hist-row${sessionMark}"><span class="apply-hist-ts">${ts}</span><span class="apply-hist-scope-badge apply-hist-scope--${e.scope}">${scope}</span><span class="apply-hist-doc" title="${e.doc_title ?? ""}">${docLbl}</span><span class="apply-hist-counts">${modified}\u00a0mod. / ${skipped}\u00a0saut.</span>${extras ? `<span class="apply-hist-extras">${extras}</span>` : ""}</div>`;
+      return `<div class="prep-apply-hist-row${sessionMark}"><span class="prep-apply-hist-ts">${ts}</span><span class="prep-apply-hist-scope-badge apply-hist-scope--${e.scope}">${scope}</span><span class="prep-apply-hist-doc" title="${e.doc_title ?? ""}">${docLbl}</span><span class="prep-apply-hist-counts">${modified}\u00a0mod. / ${skipped}\u00a0saut.</span>${extras ? `<span class="prep-apply-hist-extras">${extras}</span>` : ""}</div>`;
     });
     container.innerHTML = rows.join("");
   }
@@ -3198,30 +3198,30 @@ export class CurationView {
     const ctxBefore = (ex.context_before ?? "").trim();
     const ctxAfter  = (ex.context_after  ?? "").trim();
     const effectiveAfter = ex.manual_after ?? ex.after;
-    const ctxBeforeHtml = ctxBefore ? `<div class="ctx-row ctx-before"><span class="ctx-label">Avant</span><span class="ctx-text">${_escHtml(trim(ctxBefore))}</span></div>` : "";
-    const ctxAfterHtml  = ctxAfter  ? `<div class="ctx-row ctx-after"><span class="ctx-label">Après</span><span class="ctx-text">${_escHtml(trim(ctxAfter))}</span></div>`  : "";
+    const ctxBeforeHtml = ctxBefore ? `<div class="prep-ctx-row ctx-before"><span class="prep-ctx-label">Avant</span><span class="prep-ctx-text">${_escHtml(trim(ctxBefore))}</span></div>` : "";
+    const ctxAfterHtml  = ctxAfter  ? `<div class="prep-ctx-row ctx-after"><span class="prep-ctx-label">Après</span><span class="prep-ctx-text">${_escHtml(trim(ctxAfter))}</span></div>`  : "";
     if (this._editingManualOverride) {
       body.innerHTML =
         ctxBeforeHtml +
-        `<div class="ctx-row ctx-current"><span class="ctx-label ctx-label-cur">Original</span><span class="ctx-text ctx-original">${_escHtml(ex.before)}</span></div>` +
-        `<div class="ctx-row ctx-edit-row"><span class="ctx-label ctx-label-edit">Résultat</span><span class="ctx-edit-area"><textarea id="act-manual-override-input" class="ctx-override-textarea" rows="3" spellcheck="true">${_escHtml(effectiveAfter)}</textarea><span class="ctx-edit-hint">Proposition automatique : <em>${_escHtml(ex.after)}</em></span></span></div>` +
-        `<div class="ctx-edit-actions"><button class="btn btn-sm btn-primary" id="act-override-save">Enregistrer</button><button class="btn btn-sm btn-secondary" id="act-override-cancel">Annuler</button>${ex.is_manual_override ? `<button class="btn btn-sm" id="act-override-revert" title="Revenir à la proposition automatique">&#8617; Automatique</button>` : ""}</div>` +
+        `<div class="prep-ctx-row ctx-current"><span class="prep-ctx-label ctx-label-cur">Original</span><span class="prep-ctx-text ctx-original">${_escHtml(ex.before)}</span></div>` +
+        `<div class="prep-ctx-row ctx-edit-row"><span class="prep-ctx-label ctx-label-edit">Résultat</span><span class="prep-ctx-edit-area"><textarea id="act-manual-override-input" class="prep-ctx-override-textarea" rows="3" spellcheck="true">${_escHtml(effectiveAfter)}</textarea><span class="prep-ctx-edit-hint">Proposition automatique : <em>${_escHtml(ex.after)}</em></span></span></div>` +
+        `<div class="prep-ctx-edit-actions"><button class="btn btn-sm btn-primary" id="act-override-save">Enregistrer</button><button class="btn btn-sm btn-secondary" id="act-override-cancel">Annuler</button>${ex.is_manual_override ? `<button class="btn btn-sm" id="act-override-revert" title="Revenir à la proposition automatique">&#8617; Automatique</button>` : ""}</div>` +
         ctxAfterHtml;
     } else {
       const overrideBadgeHtml = ex.is_manual_override
-        ? `<span class="ctx-override-badge" title="Ce résultat a été corrigé manuellement. Proposition automatique : ${_escHtml(ex.after)}">✏ Édité manuellement</span>` : "";
+        ? `<span class="prep-ctx-override-badge" title="Ce résultat a été corrigé manuellement. Proposition automatique : ${_escHtml(ex.after)}">✏ Édité manuellement</span>` : "";
       const hasException = ex.is_exception_ignored || ex.is_exception_override;
       const exceptionBadgeHtml = hasException
-        ? `<span class="ctx-exception-badge" title="${ex.is_exception_ignored ? "Exception persistée : cette unité sera toujours ignorée par la curation, quelle que soit la session." : `Exception persistée : ce texte sera toujours appliqué à cette unité. Texte : "${_escHtml(ex.exception_override ?? "")}"`}">🔒 ${ex.is_exception_ignored ? "Ignoré durablement" : "Override durable"}</span>` : "";
+        ? `<span class="prep-ctx-exception-badge" title="${ex.is_exception_ignored ? "Exception persistée : cette unité sera toujours ignorée par la curation, quelle que soit la session." : `Exception persistée : ce texte sera toujours appliqué à cette unité. Texte : "${_escHtml(ex.exception_override ?? "")}"`}">🔒 ${ex.is_exception_ignored ? "Ignoré durablement" : "Override durable"}</span>` : "";
       const forcedReason = ex.preview_reason;
       const forcedNoteHtml = forcedReason && forcedReason !== "standard"
-        ? `<div class="ctx-forced-note ctx-forced-${forcedReason}">${forcedReason === "forced" ? "↗ Ouverture ciblée depuis le panneau Exceptions." : forcedReason === "forced_ignored" ? "↗ Ouverture ciblée — cette unité est <strong>neutralisée par une exception ignore</strong>. Elle n'est pas appliquée." : "↗ Ouverture ciblée — aucune modification active avec les règles courantes."}</div>` : "";
+        ? `<div class="prep-ctx-forced-note ctx-forced-${forcedReason}">${forcedReason === "forced" ? "↗ Ouverture ciblée depuis le panneau Exceptions." : forcedReason === "forced_ignored" ? "↗ Ouverture ciblée — cette unité est <strong>neutralisée par une exception ignore</strong>. Elle n'est pas appliquée." : "↗ Ouverture ciblée — aucune modification active avec les règles courantes."}</div>` : "";
       body.innerHTML =
         ctxBeforeHtml +
-        `<div class="ctx-row ctx-current"><span class="ctx-label ctx-label-cur">${forcedReason === "forced_no_change" ? "Inchangé" : forcedReason === "forced_ignored" ? "Neutralisé" : "Modifié"}</span><span class="ctx-modification"><span class="ctx-diff-before">${_escHtml(ex.before)}</span><span class="ctx-arrow">&#8594;</span><span class="ctx-diff-after${ex.is_manual_override ? " ctx-manual-override" : ""}">${_highlightChanges(ex.before, effectiveAfter)}</span></span></div>` +
+        `<div class="prep-ctx-row ctx-current"><span class="prep-ctx-label ctx-label-cur">${forcedReason === "forced_no_change" ? "Inchangé" : forcedReason === "forced_ignored" ? "Neutralisé" : "Modifié"}</span><span class="prep-ctx-modification"><span class="prep-ctx-diff-before">${_escHtml(ex.before)}</span><span class="prep-ctx-arrow">&#8594;</span><span class="prep-ctx-diff-after${ex.is_manual_override ? " ctx-manual-override" : ""}">${_highlightChanges(ex.before, effectiveAfter)}</span></span></div>` +
         ctxAfterHtml + forcedNoteHtml +
-        `<div class="ctx-edit-actions">${overrideBadgeHtml}<button class="btn btn-sm" id="act-override-edit" title="Modifier manuellement le résultat de cette modification">&#9998; Éditer</button>${ex.is_manual_override ? `<button class="btn btn-sm" id="act-override-revert" title="Annuler la correction manuelle et utiliser la proposition automatique">&#8617; Proposition auto</button>` : ""}</div>` +
-        `<div class="ctx-exception-actions">${exceptionBadgeHtml}${!hasException ? `<button class="btn btn-sm ctx-exception-btn" id="act-exc-ignore" title="Ne plus jamais appliquer de curation sur cette unité, même lors des prochaines sessions">🔒 Toujours ignorer</button><button class="btn btn-sm ctx-exception-btn" id="act-exc-override" title="Appliquer durablement le résultat actuel comme correction permanente de cette unité">🔒 Conserver cette correction</button>` : `<button class="btn btn-sm ctx-exception-btn ctx-exception-btn-delete" id="act-exc-delete" title="Supprimer l'exception persistée — la curation automatique sera réactivée pour cette unité">🔓 Supprimer l'exception</button>`}</div>`;
+        `<div class="prep-ctx-edit-actions">${overrideBadgeHtml}<button class="btn btn-sm" id="act-override-edit" title="Modifier manuellement le résultat de cette modification">&#9998; Éditer</button>${ex.is_manual_override ? `<button class="btn btn-sm" id="act-override-revert" title="Annuler la correction manuelle et utiliser la proposition automatique">&#8617; Proposition auto</button>` : ""}</div>` +
+        `<div class="prep-ctx-exception-actions">${exceptionBadgeHtml}${!hasException ? `<button class="btn btn-sm prep-ctx-exception-btn" id="act-exc-ignore" title="Ne plus jamais appliquer de curation sur cette unité, même lors des prochaines sessions">🔒 Toujours ignorer</button><button class="btn btn-sm prep-ctx-exception-btn" id="act-exc-override" title="Appliquer durablement le résultat actuel comme correction permanente de cette unité">🔒 Conserver cette correction</button>` : `<button class="btn btn-sm prep-ctx-exception-btn prep-ctx-exception-btn-delete" id="act-exc-delete" title="Supprimer l'exception persistée — la curation automatique sera réactivée pour cette unité">🔓 Supprimer l'exception</button>`}</div>`;
     }
     body.querySelector<HTMLButtonElement>("#act-override-edit")?.addEventListener("click", () => this._enterEditMode());
     body.querySelector<HTMLButtonElement>("#act-override-save")?.addEventListener("click", () => { const ta = body.querySelector<HTMLTextAreaElement>("#act-manual-override-input"); if (ta) this._saveManualOverride(ta.value); });
@@ -3258,7 +3258,7 @@ export class CurationView {
         resultEl.style.display = "";
       }
     } catch (err) {
-      if (resultEl) { resultEl.textContent = `Erreur export\u00a0: ${err}`; resultEl.className = "apply-hist-export-result error"; resultEl.style.display = ""; }
+      if (resultEl) { resultEl.textContent = `Erreur export\u00a0: ${err}`; resultEl.className = "prep-apply-hist-export-result error"; resultEl.style.display = ""; }
       this._cb.log(`⚠ Export historique apply\u00a0: ${err}`, true);
     }
   }

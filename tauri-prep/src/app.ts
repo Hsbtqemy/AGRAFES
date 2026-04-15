@@ -170,44 +170,44 @@ export class App {
 
     // Topbar
     const topbar = document.createElement("div");
-    topbar.className = "topbar";
+    topbar.className = "prep-topbar";
     topbar.setAttribute("role", "banner");
 
     const titleEl = document.createElement("span");
-    titleEl.className = "topbar-title";
+    titleEl.className = "prep-topbar-title";
     titleEl.textContent = "Constituer";
 
     const dbPathEl = document.createElement("span");
     dbPathEl.id = "topbar-dbpath";
-    dbPathEl.className = "topbar-dbpath";
+    dbPathEl.className = "prep-topbar-dbpath";
     dbPathEl.textContent = this._dbBadge();
 
     const openBtn = document.createElement("button");
-    openBtn.className = "topbar-db-btn";
+    openBtn.className = "prep-topbar-db-btn";
     openBtn.textContent = "Ouvrir\u2026";
     openBtn.title = "Ouvrir une base de données existante";
     openBtn.addEventListener("click", () => void this._onOpenDb());
 
     const createBtn = document.createElement("button");
-    createBtn.className = "topbar-db-btn";
+    createBtn.className = "prep-topbar-db-btn";
     createBtn.textContent = "Cr\u00e9er\u2026";
     createBtn.title = "Créer une nouvelle base de données";
     createBtn.addEventListener("click", () => void this._onCreateDb(root));
 
     const presetsBtn = document.createElement("button");
-    presetsBtn.className = "topbar-db-btn";
+    presetsBtn.className = "prep-topbar-db-btn";
     presetsBtn.textContent = "\uD83D\uDCCB Presets";
     presetsBtn.title = "Gérer les presets de projet";
     presetsBtn.addEventListener("click", () => this._showPresetsModal());
 
     const corpusInfoBtn = document.createElement("button");
-    corpusInfoBtn.className = "topbar-db-btn";
+    corpusInfoBtn.className = "prep-topbar-db-btn";
     corpusInfoBtn.textContent = "\uD83D\uDCC4 Fiche corpus";
     corpusInfoBtn.title = "Qualifier le corpus : titre, descriptif, métadonnées";
     corpusInfoBtn.addEventListener("click", () => void this._showCorpusInfoModal());
 
     const openConcordancierBtn = document.createElement("button");
-    openConcordancierBtn.className = "topbar-db-btn";
+    openConcordancierBtn.className = "prep-topbar-db-btn";
     openConcordancierBtn.textContent = "\u2197 Shell";
     openConcordancierBtn.title = "Ouvrir la DB active dans AGRAFES Shell (app unifiée)";
     openConcordancierBtn.addEventListener("click", () => void this._openInConcordancier());
@@ -346,7 +346,7 @@ export class App {
 
     for (const tab of TABS) {
       const el = screenMap[tab]();
-      el.classList.add("screen");
+      el.classList.add("prep-screen");
       if (tab === this._activeTab) el.classList.add("active");
       this._screenEls[tab] = el;
       content.appendChild(el);
@@ -528,7 +528,7 @@ export class App {
     this._dbPathEl.textContent = this._dbBadge();
 
     // Show init state
-    const createBtns = root.querySelectorAll<HTMLButtonElement>(".topbar-db-btn");
+    const createBtns = root.querySelectorAll<HTMLButtonElement>(".prep-topbar-db-btn");
     createBtns.forEach(b => { b.disabled = true; });
 
     // Remove any stale error banner
@@ -552,12 +552,12 @@ export class App {
       <span style="color:#856404;font-size:1.1rem">&#9888;</span>
       <span style="font-weight:600;color:#856404;white-space:nowrap">Impossible d&rsquo;initialiser la DB</span>
       <code class="prep-init-error-detail">${msg.replace(/&/g,"&amp;").replace(/</g,"&lt;")}</code>
-      <button id="prep-retry-btn" class="topbar-db-btn">R&eacute;essayer</button>
-      <button id="prep-change-btn" class="topbar-db-btn">Choisir un autre&hellip;</button>
-      <button id="prep-dismiss-btn" class="topbar-db-btn">&times;</button>
+      <button id="prep-retry-btn" class="prep-topbar-db-btn">R&eacute;essayer</button>
+      <button id="prep-change-btn" class="prep-topbar-db-btn">Choisir un autre&hellip;</button>
+      <button id="prep-dismiss-btn" class="prep-topbar-db-btn">&times;</button>
     `;
     // Insert after topbar
-    root.querySelector(".topbar")?.insertAdjacentElement("afterend", banner);
+    root.querySelector(".prep-topbar")?.insertAdjacentElement("afterend", banner);
     banner.querySelector("#prep-retry-btn")?.addEventListener("click", () => {
       banner.remove();
       void this._onCreateDb(root);
@@ -585,14 +585,14 @@ export class App {
     }
 
     const overlay = document.createElement("div");
-    overlay.className = "presets-overlay";
+    overlay.className = "prep-presets-overlay";
 
     const modal = document.createElement("div");
-    modal.className = "presets-modal";
+    modal.className = "prep-presets-modal";
     overlay.appendChild(modal);
 
     const head = document.createElement("div");
-    head.className = "presets-modal-head";
+    head.className = "prep-presets-modal-head";
     head.innerHTML = `<h3>\uD83D\uDCC4 Fiche corpus</h3>`;
     const closeX = document.createElement("button");
     closeX.className = "btn btn-secondary btn-sm";
@@ -602,7 +602,7 @@ export class App {
     modal.appendChild(head);
 
     const body = document.createElement("div");
-    body.className = "presets-modal-body";
+    body.className = "prep-presets-modal-body";
     const metaBase: Record<string, unknown> = { ...info.meta };
     const q0 = typeof metaBase.qualifier === "string" ? metaBase.qualifier : "";
     const tags0 = Array.isArray(metaBase.tags)
@@ -635,7 +635,7 @@ export class App {
     modal.appendChild(body);
 
     const foot = document.createElement("div");
-    foot.className = "presets-modal-foot";
+    foot.className = "prep-presets-modal-foot";
     const saveBtn = document.createElement("button");
     saveBtn.className = "btn btn-primary btn-sm";
     saveBtn.textContent = "Enregistrer";
@@ -681,14 +681,14 @@ export class App {
 
   private _showPresetsModal(): void {
     const overlay = document.createElement("div");
-    overlay.className = "presets-overlay";
+    overlay.className = "prep-presets-overlay";
 
     const modal = document.createElement("div");
-    modal.className = "presets-modal";
+    modal.className = "prep-presets-modal";
     overlay.appendChild(modal);
 
     const head = document.createElement("div");
-    head.className = "presets-modal-head";
+    head.className = "prep-presets-modal-head";
     head.innerHTML = `<h3>\uD83D\uDCCB Presets de projet</h3>`;
     const closeX = document.createElement("button");
     closeX.className = "btn btn-secondary btn-sm";
@@ -698,37 +698,37 @@ export class App {
     modal.appendChild(head);
 
     const body = document.createElement("div");
-    body.className = "presets-modal-body";
+    body.className = "prep-presets-modal-body";
     modal.appendChild(body);
 
     const foot = document.createElement("div");
-    foot.className = "presets-modal-foot";
+    foot.className = "prep-presets-modal-foot";
     modal.appendChild(foot);
 
     const renderList = (): void => {
       body.innerHTML = "";
       const presets = this._presets;
       if (presets.length === 0) {
-        body.innerHTML = `<p class="presets-empty">Aucun preset. Créez-en un ou importez un fichier JSON.</p>`;
+        body.innerHTML = `<p class="prep-presets-empty">Aucun preset. Créez-en un ou importez un fichier JSON.</p>`;
         return;
       }
       for (const preset of presets) {
         const row = document.createElement("div");
-        row.className = "preset-row";
+        row.className = "prep-preset-row";
 
         const info = document.createElement("div");
         info.style.flex = "1";
-        info.innerHTML = `<span class="preset-name">${preset.name}</span>` +
-          (preset.description ? `<span class="preset-desc">${preset.description}</span>` : "");
+        info.innerHTML = `<span class="prep-preset-name">${preset.name}</span>` +
+          (preset.description ? `<span class="prep-preset-desc">${preset.description}</span>` : "");
         const chips = document.createElement("div");
-        chips.className = "preset-chips";
+        chips.className = "prep-preset-chips";
         if (preset.languages?.length) {
-          chips.innerHTML += preset.languages.map(l => `<span class="preset-chip">${l}</span>`).join("");
+          chips.innerHTML += preset.languages.map(l => `<span class="prep-preset-chip">${l}</span>`).join("");
         }
         if (preset.alignment_strategy)
-          chips.innerHTML += `<span class="preset-chip">${preset.alignment_strategy}</span>`;
+          chips.innerHTML += `<span class="prep-preset-chip">${preset.alignment_strategy}</span>`;
         if (preset.segmentation_pack)
-          chips.innerHTML += `<span class="preset-chip">seg:${preset.segmentation_pack}</span>`;
+          chips.innerHTML += `<span class="prep-preset-chip">seg:${preset.segmentation_pack}</span>`;
         info.appendChild(chips);
         row.appendChild(info);
 
@@ -873,18 +873,18 @@ export class App {
     };
 
     const overlay = document.createElement("div");
-    overlay.className = "presets-overlay";
+    overlay.className = "prep-presets-overlay";
     overlay.style.zIndex = "9100";
 
     const modal = document.createElement("div");
-    modal.className = "presets-modal";
+    modal.className = "prep-presets-modal";
     overlay.appendChild(modal);
 
     modal.innerHTML = `
-      <div class="presets-modal-head">
+      <div class="prep-presets-modal-head">
         <h3>${isNew ? "Nouveau preset" : "Modifier preset"}</h3>
       </div>
-      <div class="presets-modal-body">
+      <div class="prep-presets-modal-body">
         <label style="display:flex;flex-direction:column;gap:0.2rem;margin-bottom:0.5rem;font-size:0.85rem">
           Nom <input id="pe-name" type="text" value="${draft.name}" style="padding:0.25rem 0.4rem;border:1px solid #dee2e6;border-radius:4px" />
         </label>
@@ -929,7 +929,7 @@ export class App {
           </label>
         </div>
       </div>
-      <div class="presets-modal-foot"></div>
+      <div class="prep-presets-modal-foot"></div>
     `;
 
     const foot = modal.querySelector(".presets-modal-foot")!;

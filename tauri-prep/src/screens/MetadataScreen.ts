@@ -166,10 +166,10 @@ export class MetadataScreen {
       <div class="card meta-screen-head">
         <div class="meta-head-top">
           <div>
-            <h2 class="screen-title" style="margin:0 0 4px">Documents</h2>
+            <h2 class="prep-screen-title" style="margin:0 0 4px">Documents</h2>
             <p class="meta-head-desc">Sélectionnez un document pour éditer ses métadonnées ou utilisez l'édition en masse.</p>
           </div>
-          <div id="meta-state-banner" class="runtime-state state-info" aria-live="polite">
+          <div id="meta-state-banner" class="runtime-state prep-state-info" aria-live="polite">
             En attente de connexion sidecar…
           </div>
         </div>
@@ -260,7 +260,7 @@ export class MetadataScreen {
       <!-- Bulk update (collapsed by default) -->
       <section class="card" data-collapsible="true" data-collapsed-default="true">
         <h3>Édition en masse</h3>
-        <div class="form-row" style="margin-top:0.55rem">
+        <div class="prep-form-row" style="margin-top:0.55rem">
           <label>Doc role (tous)
             <select id="bulk-role">
               <option value="">— ne pas changer —</option>
@@ -279,7 +279,7 @@ export class MetadataScreen {
       <!-- Log (collapsed by default) -->
       <section class="card meta-log-card" data-collapsible="true" data-collapsed-default="true">
         <h3>Journal des actions documents</h3>
-        <div id="meta-log" class="log-pane"></div>
+        <div id="meta-log" class="prep-log-pane"></div>
       </section>
     `;
 
@@ -576,12 +576,12 @@ export class MetadataScreen {
       const annLabel = annotationStatus === "annotated"
         ? `Annoté${tokenCount > 0 ? ` (${tokenCount})` : ""}`
         : "Non annoté";
-      const indent   = depth > 0 ? `<span class="tree-connector" aria-hidden="true">└</span>` : "";
+      const indent   = depth > 0 ? `<span class="prep-tree-connector" aria-hidden="true">└</span>` : "";
       const relBadge = relationLabel
-        ? `<span class="tree-rel-badge">${this._esc(this._relLabel(relationLabel))}</span>`
+        ? `<span class="prep-tree-rel-badge">${this._esc(this._relLabel(relationLabel))}</span>`
         : "";
       const pctBadge = completionPct !== undefined
-        ? `<span class="family-pct-badge family-pct-${this._completionTier(completionPct)}"
+        ? `<span class="prep-family-pct-badge family-pct-${this._completionTier(completionPct)}"
               title="Famille : ${completionPct} % traité">${completionPct} %</span>`
         : "";
       tr.innerHTML = `
@@ -618,7 +618,7 @@ export class MetadataScreen {
     const appendSectionHeader = (label: string, count: number) => {
       const tr = document.createElement("tr");
       tr.className = "tree-section-header";
-      tr.innerHTML = `<td colspan="6" class="tree-section-label">${this._esc(label)} <span class="tree-section-count">${count}</span></td>`;
+      tr.innerHTML = `<td colspan="6" class="prep-tree-section-label">${this._esc(label)} <span class="prep-tree-section-count">${count}</span></td>`;
       this._docListEl.appendChild(tr);
     };
 
@@ -753,8 +753,8 @@ export class MetadataScreen {
       : [];
 
     const inheritHtml = parentHasAuthor
-      ? `<div class="author-inherit-banner">
-          <span class="author-inherit-from">
+      ? `<div class="prep-author-inherit-banner">
+          <span class="prep-author-inherit-from">
             De l'original #${parentDoc!.doc_id} :
             <strong>${this._esc([parentDoc!.author_lastname, parentDoc!.author_firstname].filter(Boolean).join(", "))}</strong>
           </span>
@@ -775,7 +775,7 @@ export class MetadataScreen {
               data-child-ids="">→ Propager…</button>`);
 
     this._editPanelEl.innerHTML = `
-      <div class="form-row">
+      <div class="prep-form-row">
         <label style="flex:2">Titre
           <input id="edit-title" type="text" value="${this._esc(doc.title)}">
         </label>
@@ -783,7 +783,7 @@ export class MetadataScreen {
           <input id="edit-lang" type="text" value="${this._esc(doc.language)}" style="max-width:80px">
         </label>
       </div>
-      <div class="form-row">
+      <div class="prep-form-row">
         <label style="flex:1.2">Nom de l'auteur
           <input id="edit-author-lastname" type="text" value="${this._esc(doc.author_lastname ?? "")}" placeholder="Dupont">
         </label>
@@ -795,7 +795,7 @@ export class MetadataScreen {
         </label>
       </div>
       ${inheritHtml}
-      <div class="form-row">
+      <div class="prep-form-row">
         <label>Rôle
           <select id="edit-role">
             ${DOC_ROLES.map(r => `<option value="${r}"${r === doc.doc_role ? " selected" : ""}>${r}</option>`).join("")}
@@ -805,7 +805,7 @@ export class MetadataScreen {
           <input id="edit-restype" type="text" value="${this._esc(doc.resource_type ?? "")}" style="max-width:220px" placeholder="littérature, article, discours…">
         </label>
       </div>
-      <div class="form-row">
+      <div class="prep-form-row">
         <label>Statut workflow
           <select id="edit-workflow-status">
             ${WORKFLOW_STATUS.map((status) => (
@@ -817,12 +817,12 @@ export class MetadataScreen {
           <input id="edit-validated-run-id" type="text" value="${this._esc(doc.validated_run_id ?? "")}" placeholder="run_...">
         </label>
       </div>
-      <div class="form-row" style="margin-top:-0.2rem">
+      <div class="prep-form-row" style="margin-top:-0.2rem">
         <div class="hint" style="margin:0">
           ${doc.validated_at ? `Dernière validation: ${this._esc(new Date(doc.validated_at).toLocaleString())}` : "Dernière validation: —"}
         </div>
       </div>
-      <div class="btn-row" style="margin-bottom:1rem">
+      <div class="prep-btn-row" style="margin-bottom:1rem">
         <button id="save-doc-btn" class="btn btn-primary btn-sm">Enregistrer</button>
         <button id="mark-review-btn" class="btn btn-secondary btn-sm">Marquer à revoir</button>
         <button id="mark-validated-btn" class="btn btn-secondary btn-sm">Valider ce document</button>
@@ -837,7 +837,7 @@ export class MetadataScreen {
         Définissez comment ce document est lié à un autre (traduction, extrait…).
         Ces relations apparaîtront dans le <code>&lt;teiHeader&gt;</code> à l'export.
       </p>
-      <div class="form-row" style="align-items:flex-end">
+      <div class="prep-form-row" style="align-items:flex-end">
         <label>Type de relation
           <select id="rel-type" style="min-width:140px">
             ${RELATION_TYPES.map(t => `<option value="${t}">${t}</option>`).join("")}
@@ -968,10 +968,10 @@ export class MetadataScreen {
       : "";
 
     return `
-      <div class="family-panel">
-        <div class="family-panel-head">
+      <div class="prep-family-panel">
+        <div class="prep-family-panel-head">
           <span class="fam-title">📁 Famille documentaire</span>
-          <span class="family-pct-badge family-pct-${tier}">${stats.completion_pct} %</span>
+          <span class="prep-family-pct-badge family-pct-${tier}">${stats.completion_pct} %</span>
         </div>
         <div class="fam-stats-row">
           <span>${stats.total_docs} doc(s)</span>
@@ -1111,7 +1111,7 @@ export class MetadataScreen {
           <div class="seg-family-confirm">
             <p>⚠ <strong>${alreadyDone} doc(s)</strong> déjà segmenté(s) dans cette famille.
                Resegmenter effacera les alignements existants pour ces documents.</p>
-            <div class="btn-row" style="gap:0.5rem;flex-wrap:wrap">
+            <div class="prep-btn-row" style="gap:0.5rem;flex-wrap:wrap">
               <button id="seg-skip-btn" class="btn btn-secondary btn-sm">Passer les existants</button>
               <button id="seg-force-btn" class="btn btn-danger btn-sm">Re-segmenter tout</button>
               <button id="seg-cancel-btn" class="btn btn-ghost btn-sm">Annuler</button>
@@ -1275,7 +1275,7 @@ export class MetadataScreen {
           </table>
           ${warnHtml}
           ${replaceHtml}
-          <div class="btn-row" style="gap:0.5rem;flex-wrap:wrap;margin-top:6px">
+          <div class="prep-btn-row" style="gap:0.5rem;flex-wrap:wrap;margin-top:6px">
             <button id="aln-confirm-btn" class="btn btn-primary btn-sm">⇄ Lancer l'alignement</button>
             <button id="aln-cancel-btn" class="btn btn-ghost btn-sm">Annuler</button>
           </div>
@@ -1392,7 +1392,7 @@ export class MetadataScreen {
 
       if (status.total_pending === 0) {
         resultDiv.innerHTML = `
-          <div class="curation-ok-msg">
+          <div class="prep-curation-ok-msg">
             ✅ Toutes les unités alignées sont à jour — aucune révision de curation en attente.
           </div>`;
         btn.textContent = "📋 Curation";
@@ -1416,11 +1416,11 @@ export class MetadataScreen {
       .filter(c => c.pending_count > 0)
       .map(c => {
         const rows = c.pending.map(p => `
-          <tr class="curation-pending-row">
-            <td class="curation-ext-id">[§${p.external_id}]</td>
-            <td class="curation-pivot-text" title="${this._esc(p.pivot_text)}">${this._esc(this._truncateMid(p.pivot_text, 60))}</td>
-            <td class="curation-target-text" title="${this._esc(p.target_text)}">${this._esc(this._truncateMid(p.target_text, 60))}</td>
-            <td class="curation-changed-at" title="${this._esc(p.source_changed_at)}">${p.source_changed_at.slice(0, 10)}</td>
+          <tr class="prep-curation-pending-row">
+            <td class="prep-curation-ext-id">[§${p.external_id}]</td>
+            <td class="prep-curation-pivot-text" title="${this._esc(p.pivot_text)}">${this._esc(this._truncateMid(p.pivot_text, 60))}</td>
+            <td class="prep-curation-target-text" title="${this._esc(p.target_text)}">${this._esc(this._truncateMid(p.target_text, 60))}</td>
+            <td class="prep-curation-changed-at" title="${this._esc(p.source_changed_at)}">${p.source_changed_at.slice(0, 10)}</td>
             <td>
               <button class="btn btn-xs btn-ghost curation-ack-link-btn"
                       data-link-id="${p.link_id}">✓ Lu</button>
@@ -1428,14 +1428,14 @@ export class MetadataScreen {
           </tr>`).join("");
 
         return `
-          <div class="curation-child-block">
-            <div class="curation-child-head">
-              <span class="curation-child-lang">${this._esc(c.language ?? "?")} · ${this._esc(c.title ?? `#${c.doc_id}`)}</span>
-              <span class="curation-child-count">${c.pending_count} unité(s) à revoir</span>
+          <div class="prep-curation-child-block">
+            <div class="prep-curation-child-head">
+              <span class="prep-curation-child-lang">${this._esc(c.language ?? "?")} · ${this._esc(c.title ?? `#${c.doc_id}`)}</span>
+              <span class="prep-curation-child-count">${c.pending_count} unité(s) à revoir</span>
               <button class="btn btn-xs curation-ack-doc-btn"
                       data-doc-id="${c.doc_id}" data-family-id="${familyRootId}">✓ Acquitter tout</button>
             </div>
-            <table class="curation-pending-table">
+            <table class="prep-curation-pending-table">
               <thead><tr>
                 <th>§</th><th>Texte original (pivot)</th><th>Traduction en cours</th>
                 <th>Modifié le</th><th></th>
@@ -1446,8 +1446,8 @@ export class MetadataScreen {
       }).join("");
 
     return `
-      <div class="curation-status-block">
-        <div class="curation-status-head">
+      <div class="prep-curation-status-block">
+        <div class="prep-curation-status-head">
           ⚠ <strong>${children.reduce((s, c) => s + c.pending_count, 0)}</strong>
           unité(s) de traductions à revoir après modification des originaux
         </div>
@@ -1456,7 +1456,7 @@ export class MetadataScreen {
   }
 
   private _wireCurationButtons(container: HTMLElement, familyRootId: number): void {
-    container.querySelectorAll<HTMLButtonElement>(".curation-ack-link-btn").forEach(btn => {
+    container.querySelectorAll<HTMLButtonElement>(".prep-curation-ack-link-btn").forEach(btn => {
       btn.addEventListener("click", async () => {
         if (!this._conn) return;
         const linkId = Number(btn.dataset.linkId);
@@ -1470,7 +1470,7 @@ export class MetadataScreen {
       });
     });
 
-    container.querySelectorAll<HTMLButtonElement>(".curation-ack-doc-btn").forEach(btn => {
+    container.querySelectorAll<HTMLButtonElement>(".prep-curation-ack-doc-btn").forEach(btn => {
       btn.addEventListener("click", async () => {
         if (!this._conn) return;
         const docId = Number(btn.dataset.docId);
@@ -2482,13 +2482,13 @@ export class MetadataScreen {
     const suggestedPath = `export_${pivotLang}_${targetLang}_${pivotId}_${targetId}`;
 
     container.innerHTML = `
-      <div class="export-pair-dialog">
-        <div class="export-pair-head">
+      <div class="prep-export-pair-dialog">
+        <div class="prep-export-pair-head">
           <strong>↗ Exporter la paire #${pivotId} ↔ #${targetId}</strong>
           <button id="export-close-btn" class="audit-close-btn" title="Fermer">✕</button>
         </div>
-        <div class="export-pair-body">
-          <div class="form-row" style="flex-wrap:wrap;gap:0.5rem">
+        <div class="prep-export-pair-body">
+          <div class="prep-form-row" style="flex-wrap:wrap;gap:0.5rem">
             <label>Format
               <select id="export-format-sel" style="width:90px">
                 <option value="html">HTML</option>
@@ -2502,7 +2502,7 @@ export class MetadataScreen {
                      style="width:100%;font-size:0.8rem">
             </label>
           </div>
-          <div class="btn-row" style="gap:0.5rem;margin-top:0.4rem">
+          <div class="prep-btn-row" style="gap:0.5rem;margin-top:0.4rem">
             <button id="export-preview-btn" class="btn btn-secondary btn-sm">👁 Prévisualiser</button>
             <button id="export-save-btn" class="btn btn-primary btn-sm">↗ Enregistrer</button>
           </div>
@@ -2601,7 +2601,7 @@ export class MetadataScreen {
       ? `<p class="hint" style="margin:4px 0">… et ${totalCount - pairs.length} paire(s) de plus.</p>`
       : "";
     return `
-      <table class="bilingual-preview-table">
+      <table class="prep-bilingual-preview-table">
         <thead><tr>
           <th>${this._esc(srcLang)}</th>
           <th>${this._esc(tgtLang)}</th>

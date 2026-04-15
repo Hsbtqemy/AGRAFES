@@ -191,7 +191,7 @@ export class ImportScreen {
 
   render(): HTMLElement {
     const root = document.createElement("div");
-    root.className = "screen import-screen import-screen--layout";
+    root.className = "screen prep-import-screen prep-import-screen--layout";
     this._root = root;
 
     root.innerHTML = `
@@ -200,10 +200,10 @@ export class ImportScreen {
       <div class="card imp-head-card">
         <div class="imp-head-top">
           <div>
-            <h2 class="screen-title" style="margin:0 0 4px">Importer des fichiers</h2>
+            <h2 class="prep-screen-title" style="margin:0 0 4px">Importer des fichiers</h2>
             <p class="imp-head-desc">Ajoutez vos fichiers source, configurez le profil de lot, puis lancez l'import.</p>
           </div>
-          <div id="imp-state-banner" class="runtime-state state-info" aria-live="polite">
+          <div id="imp-state-banner" class="runtime-state prep-state-info" aria-live="polite">
             En attente de connexion sidecar…
           </div>
         </div>
@@ -232,7 +232,7 @@ export class ImportScreen {
               <div class="imp-dropzone-icon">📂</div>
               <div class="imp-dropzone-text">Glissez vos fichiers ici</div>
               <div class="imp-dropzone-sub">.docx &middot; .odt &middot; .txt &middot; .conllu &middot; .tei &middot; .xml</div>
-              <div class="btn-row" style="justify-content:center;margin-top:8px">
+              <div class="prep-btn-row" style="justify-content:center;margin-top:8px">
                 <button id="imp-add-btn" class="btn btn-primary btn-sm">Ajouter des fichiers…</button>
                 <button id="imp-clear-btn" class="btn btn-secondary btn-sm">Vider</button>
               </div>
@@ -244,7 +244,7 @@ export class ImportScreen {
 
           <section class="card" data-collapsible="true" data-collapsed-default="true">
             <h3>Journal des imports</h3>
-            <div id="imp-log" class="log-pane"></div>
+            <div id="imp-log" class="prep-log-pane"></div>
           </section>
         </div>
 
@@ -339,7 +339,7 @@ export class ImportScreen {
             <h3>Aperçu CoNLL-U</h3>
             <div class="imp-conllu-head">
               <span id="imp-conllu-badge" class="chip">Aucun</span>
-              <div class="btn-row">
+              <div class="prep-btn-row">
                 <button type="button" id="imp-conllu-next" class="btn btn-secondary btn-sm" title="Passer au fichier CoNLL-U suivant">Suivant</button>
                 <button type="button" id="imp-conllu-refresh" class="btn btn-secondary btn-sm" title="Relire le fichier sélectionné">Rafraîchir</button>
               </div>
@@ -367,7 +367,7 @@ export class ImportScreen {
           <section class="card" data-collapsible="true" data-collapsed-default="true">
             <h3>Index FTS</h3>
             <p class="hint">Après avoir importé des documents, reconstruisez l'index pour activer la recherche.</p>
-            <div class="btn-row">
+            <div class="prep-btn-row">
               <button id="imp-index-btn" class="btn btn-secondary" disabled>Reconstruire l'index</button>
             </div>
           </section>
@@ -384,7 +384,7 @@ export class ImportScreen {
           <input type="checkbox" id="imp-check-filename-footer" />
           Bloquer doublons par nom
         </label>
-        <div class="btn-row">
+        <div class="prep-btn-row">
           <button id="imp-import-btn" class="btn btn-primary" title="Importer tous les fichiers en attente" aria-label="Importer tous les fichiers en attente" disabled>⬆ Importer</button>
         </div>
       </div>
