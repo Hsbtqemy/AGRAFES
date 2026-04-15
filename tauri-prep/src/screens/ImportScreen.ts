@@ -13,7 +13,7 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { readTextFile } from "@tauri-apps/plugin-fs";
 import type { Conn } from "../lib/sidecarClient.ts";
-import { importFile, enqueueJob, SidecarError, listDocuments, setDocRelation } from "../lib/sidecarClient.ts";
+import { importFile, enqueueJob, SidecarError, listDocuments, setDocRelation, previewImport } from "../lib/sidecarClient.ts";
 import type { DocumentRecord } from "../lib/sidecarClient.ts";
 import type { JobCenter } from "../components/JobCenter.ts";
 import { initCardAccordions } from "../lib/uiAccordions.ts";
@@ -762,27 +762,50 @@ export class ImportScreen {
     const reqId = ++this._conlluPreviewReq;
     this._conlluRowsEl.innerHTML = '<tr><td colspan="5" class="empty-hint">Chargement…</td></tr>';
     try {
-      const content = await readTextFile(file.path);
-      if (reqId !== this._conlluPreviewReq) return;
+      // Use sidecar when available (accurate Python parser); fall back to JS parser.
+      let sentences: number, tokensTotal: number, skippedRanges: number,
+        skippedEmptyNodes: number, malformedLines: number,
+        rows: Array<{ sent: number; id: string; form: string; lemma: string; upos: string }>;
 
-      const preview = parseConlluPreview(content, 60);
+      if (this._conn) {
+        const res = await previewImport(this._conn, { path: file.path, mode: "conllu", limit: 60 });
+        if (reqId !== this._conlluPreviewReq) return;
+        const s = res.conllu_stats!;
+        sentences = s.sentences;
+        tokensTotal = s.tokens;
+        skippedRanges = s.skipped_ranges;
+        skippedEmptyNodes = s.skipped_empty_nodes;
+        malformedLines = s.malformed_lines;
+        rows = s.sample_rows;
+      } else {
+        const content = await readTextFile(file.path);
+        if (reqId !== this._conlluPreviewReq) return;
+        const preview = parseConlluPreview(content, 60);
+        sentences = preview.sentences;
+        tokensTotal = preview.tokensTotal;
+        skippedRanges = preview.skippedRanges;
+        skippedEmptyNodes = preview.skippedEmptyNodes;
+        malformedLines = preview.malformedLines;
+        rows = preview.rows;
+      }
+
       this._conlluPreviewPath = file.path;
 
       const metaParts = [
-        `${preview.sentences} phrase${preview.sentences > 1 ? "s" : ""}`,
-        `${preview.tokensTotal} token${preview.tokensTotal > 1 ? "s" : ""}`,
+        `${sentences} phrase${sentences > 1 ? "s" : ""}`,
+        `${tokensTotal} token${tokensTotal > 1 ? "s" : ""}`,
       ];
-      if (preview.skippedRanges > 0) metaParts.push(`${preview.skippedRanges} plage(s) multi-mots ignorée(s)`);
-      if (preview.skippedEmptyNodes > 0) metaParts.push(`${preview.skippedEmptyNodes} nœud(s) vide(s) ignoré(s)`);
-      if (preview.malformedLines > 0) metaParts.push(`${preview.malformedLines} ligne(s) mal formée(s)`);
+      if (skippedRanges > 0) metaParts.push(`${skippedRanges} plage(s) multi-mots ignorée(s)`);
+      if (skippedEmptyNodes > 0) metaParts.push(`${skippedEmptyNodes} nœud(s) vide(s) ignoré(s)`);
+      if (malformedLines > 0) metaParts.push(`${malformedLines} ligne(s) mal formée(s)`);
       this._conlluSummaryEl.textContent = metaParts.join(" • ");
 
       this._conlluRowsEl.innerHTML = "";
-      if (preview.rows.length === 0) {
+      if (rows.length === 0) {
         this._conlluRowsEl.innerHTML = '<tr><td colspan="5" class="empty-hint">Aucun token exploitable trouvé.</td></tr>';
         return;
       }
-      for (const row of preview.rows) {
+      for (const row of rows) {
         const tr = document.createElement("tr");
         const tdSent = document.createElement("td");
         tdSent.textContent = String(row.sent);

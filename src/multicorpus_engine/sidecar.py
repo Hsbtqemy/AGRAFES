@@ -641,6 +641,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 self._handle_index(body)
             elif path == "/import":
                 self._handle_import(body)
+            elif path == "/import/preview":
+                self._handle_import_preview(body)
             elif path == "/annotate":
                 self._handle_annotate(body)
             elif path == "/curate":
@@ -2112,6 +2114,139 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             **({"relation_id": relation_id} if relation_id is not None else {}),
             **stats,
         }))
+
+    def _handle_import_preview(self, body: dict) -> None:
+        """POST /import/preview — read-only parse of a file for UI preview.
+
+        For mode=conllu: returns sentence/token counts and a sample of rows.
+        For other modes: returns a preview of the first `limit` text units.
+
+        Body: { path: str, mode: str, limit?: int }
+        Response: {
+            ok, mode,
+            conllu_stats?: {
+                sentences, tokens, skipped_ranges, skipped_empty_nodes,
+                malformed_lines, sample_rows: [{sent, id, form, lemma, upos}]
+            }
+        }
+        """
+        from pathlib import Path as _Path
+
+        path_str = body.get("path")
+        mode = body.get("mode", "")
+        limit = int(body.get("limit", 100))
+
+        if not isinstance(path_str, str) or not path_str:
+            self._send_error("path is required", code=ERR_VALIDATION, http_status=400)
+            return
+        if not isinstance(mode, str) or not mode:
+            self._send_error("mode is required", code=ERR_VALIDATION, http_status=400)
+            return
+
+        fpath = _Path(path_str)
+        if not fpath.exists():
+            self._send_error(f"File not found: {path_str}", code=ERR_NOT_FOUND, http_status=404)
+            return
+
+        mode = mode.strip().lower().replace(" ", "_").replace("-", "_")
+
+        if mode == "conllu":
+            try:
+                raw_bytes = fpath.read_bytes()
+                try:
+                    text = raw_bytes.decode("utf-8-sig")
+                except UnicodeDecodeError:
+                    text = raw_bytes.decode("latin-1")
+
+                sentences_total = 0
+                tokens_total = 0
+                skipped_ranges = 0
+                skipped_empty_nodes = 0
+                malformed_lines = 0
+                sample_rows: list[dict] = []
+
+                current_sent = 0
+                for raw_line in text.splitlines():
+                    line = raw_line.strip()
+                    if not line:
+                        if tokens_total > (sentences_total * 0):  # flush sentence
+                            pass
+                        continue
+                    if line.startswith("#"):
+                        if not line.startswith("# sent_id"):
+                            pass
+                        # count sentence starts via blank-line resets
+                        continue
+                    cols = raw_line.split("\t")
+                    if len(cols) != 10:
+                        malformed_lines += 1
+                        continue
+                    token_id = cols[0].strip()
+                    if "-" in token_id:
+                        skipped_ranges += 1
+                        continue
+                    if "." in token_id:
+                        skipped_empty_nodes += 1
+                        continue
+                    tokens_total += 1
+
+                # Recount sentences (blank-line delimited blocks with tokens)
+                sentences_total = 0
+                in_sentence = False
+                has_tokens = False
+                sample_sent = 0
+                sample_rows = []
+
+                for raw_line in text.splitlines():
+                    line = raw_line.strip()
+                    if not line:
+                        if has_tokens:
+                            sentences_total += 1
+                        in_sentence = False
+                        has_tokens = False
+                        continue
+                    if line.startswith("#"):
+                        if not in_sentence:
+                            in_sentence = True
+                            sample_sent += 1
+                        continue
+                    cols = raw_line.split("\t")
+                    if len(cols) != 10:
+                        continue
+                    token_id = cols[0].strip()
+                    if "-" in token_id or "." in token_id:
+                        continue
+                    has_tokens = True
+                    if len(sample_rows) < limit:
+                        lemma = cols[2].strip()
+                        upos = cols[3].strip()
+                        sample_rows.append({
+                            "sent": sample_sent,
+                            "id": token_id,
+                            "form": cols[1].strip(),
+                            "lemma": "\u2014" if lemma == "_" else lemma,
+                            "upos": "\u2014" if upos == "_" else upos,
+                        })
+
+                if has_tokens:
+                    sentences_total += 1
+
+                self._send_json(success_payload({
+                    "mode": mode,
+                    "conllu_stats": {
+                        "sentences": sentences_total,
+                        "tokens": tokens_total,
+                        "skipped_ranges": skipped_ranges,
+                        "skipped_empty_nodes": skipped_empty_nodes,
+                        "malformed_lines": malformed_lines,
+                        "sample_rows": sample_rows,
+                    },
+                }))
+            except Exception as exc:
+                self._send_error(str(exc), code=ERR_INTERNAL, http_status=500)
+        else:
+            # Generic mode: not implemented in preview (non-conllu modes need full import)
+            self._send_json(success_payload({"mode": mode, "conllu_stats": None}))
 
     def _handle_curate_exceptions_list(self, body: dict) -> None:
         """Return all curation exceptions for a given doc_id (or all if absent).

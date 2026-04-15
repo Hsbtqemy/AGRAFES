@@ -1798,6 +1798,37 @@ export async function importFile(conn: Conn, opts: ImportOptions): Promise<Impor
   return conn.post("/import", opts) as Promise<ImportResponse>;
 }
 
+// ─── Import preview ───────────────────────────────────────────────────────────
+
+export interface ConlluPreviewRow {
+  sent: number;
+  id: string;
+  form: string;
+  lemma: string;
+  upos: string;
+}
+
+export interface ConlluStats {
+  sentences: number;
+  tokens: number;
+  skipped_ranges: number;
+  skipped_empty_nodes: number;
+  malformed_lines: number;
+  sample_rows: ConlluPreviewRow[];
+}
+
+export interface ImportPreviewResponse {
+  mode: string;
+  conllu_stats: ConlluStats | null;
+}
+
+export async function previewImport(
+  conn: Conn,
+  opts: { path: string; mode: string; limit?: number },
+): Promise<ImportPreviewResponse> {
+  return conn.post("/import/preview", opts) as Promise<ImportPreviewResponse>;
+}
+
 export async function rebuildIndex(conn: Conn): Promise<IndexResponse> {
   return conn.post("/index", {}) as Promise<IndexResponse>;
 }

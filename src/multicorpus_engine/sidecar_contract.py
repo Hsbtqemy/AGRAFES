@@ -396,6 +396,58 @@ def openapi_spec() -> dict[str, Any]:
                     },
                 }
             },
+            "/import/preview": {
+                "post": {
+                    "summary": "Read-only parse preview of a file (no DB write)",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": ["path", "mode"],
+                                    "properties": {
+                                        "path": {"type": "string"},
+                                        "mode": {"type": "string"},
+                                        "limit": {"type": "integer", "default": 100},
+                                    },
+                                }
+                            }
+                        },
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Preview result",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "ok": {"type": "boolean"},
+                                            "mode": {"type": "string"},
+                                            "conllu_stats": {
+                                                "nullable": True,
+                                                "type": "object",
+                                                "properties": {
+                                                    "sentences": {"type": "integer"},
+                                                    "tokens": {"type": "integer"},
+                                                    "skipped_ranges": {"type": "integer"},
+                                                    "skipped_empty_nodes": {"type": "integer"},
+                                                    "malformed_lines": {"type": "integer"},
+                                                    "sample_rows": {"type": "array", "items": {"type": "object"}},
+                                                },
+                                            },
+                                        },
+                                    }
+                                }
+                            },
+                        },
+                        "400": {"description": "Bad request", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                        "404": {"description": "File not found", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                        "500": {"description": "Internal error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                    },
+                }
+            },
             "/curate": {
                 "post": {
                     "summary": "Apply curation rules",
