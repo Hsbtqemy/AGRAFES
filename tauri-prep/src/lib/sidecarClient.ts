@@ -12,7 +12,7 @@
  */
 
 import { Command, type Child } from "@tauri-apps/plugin-shell";
-import { readTextFile, exists } from "@tauri-apps/plugin-fs";
+import { exists } from "@tauri-apps/plugin-fs";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { resolveResource } from "@tauri-apps/api/path";
 import { invoke } from "@tauri-apps/api/core";

@@ -416,12 +416,6 @@ export class ActionsScreen {
   private _curateExceptions: Map<number, CurateException> = new Map();
 
   /**
-   * Extra rules added via the Find/Replace quick block (not persisted in JSON).
-   * Injected last by _currentRules(); cleared when the user hits "Effacer".
-   */
-  private _frExtraRules: CurateRule[] = [];
-
-  /**
    * All line units for the currently selected curation document.
    * Loaded once per doc change via _loadAllUnits(). Empty until loaded.
    */
@@ -2849,7 +2843,6 @@ export class ActionsScreen {
 
     const raw = (this._q("#act-curate-rules") as HTMLTextAreaElement | null)?.value ?? "";
     rules.push(...this._parseAdvancedCurateRules(raw));
-    rules.push(...this._frExtraRules);
     return rules;
   }
 
