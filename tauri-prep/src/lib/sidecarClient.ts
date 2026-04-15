@@ -50,6 +50,8 @@ export interface DocumentRecord {
   /** Free-form date string: "2024", "2024-03", "2024-03-15", etc. */
   doc_date?: string | null;
   unit_count: number;
+  /** First unit n that belongs to the main text (units with n < text_start_n are paratext). Null = no boundary. */
+  text_start_n?: number | null;
 }
 
 export interface DocumentPreviewLine {
@@ -734,6 +736,7 @@ export interface Conn {
   token: string | null;
   post(path: string, body: unknown): Promise<unknown>;
   get(path: string): Promise<unknown>;
+  put(path: string, body: unknown): Promise<unknown>;
 }
 
 // ─── Internal state ───────────────────────────────────────────────────────────
@@ -1190,6 +1193,27 @@ async function _rawPost(url: string, token: string | null, path: string, body: u
   return json;
 }
 
+async function _rawPut(url: string, token: string | null, path: string, body: unknown): Promise<unknown> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json; charset=utf-8",
+  };
+  if (token) headers["X-Agrafes-Token"] = token;
+  const res = await sidecarFetch(`${url}${path}`, {
+    method: "PUT",
+    headers,
+    body: JSON.stringify(body),
+  });
+  const json = (await res.json()) as Record<string, unknown>;
+  if (!res.ok || json.ok === false) {
+    const msg =
+      (json.error_message as string) ||
+      (json.error as string) ||
+      `HTTP ${res.status}`;
+    throw new SidecarError(msg, res.status);
+  }
+  return json;
+}
+
 async function _rawGet(url: string, token: string | null, path: string): Promise<unknown> {
   const headers: Record<string, string> = {};
   if (token) headers["X-Agrafes-Token"] = token;
@@ -1237,6 +1261,23 @@ function makeConn(baseUrl: string, token: string | null): Conn {
             return await _rawGet(fresh.baseUrl, fresh.token, path);
           } catch (reconnErr) {
             sidecarLog("error", `get ${path}: reconnect failed`, errToString(reconnErr));
+          }
+        }
+        throw err;
+      }
+    },
+    async put(path: string, body: unknown): Promise<unknown> {
+      try {
+        return await _rawPut(baseUrl, token, path, body);
+      } catch (err) {
+        if (!(err instanceof SidecarError) && _connDbPath && _conn?.baseUrl === baseUrl) {
+          sidecarLog("warn", `put ${path}: network error; reconnecting once`, errToString(err));
+          _conn = null;
+          try {
+            const fresh = await ensureRunning(_connDbPath);
+            return await _rawPut(fresh.baseUrl, fresh.token, path, body);
+          } catch (reconnErr) {
+            sidecarLog("error", `put ${path}: reconnect failed`, errToString(reconnErr));
           }
         }
         throw err;
@@ -1599,6 +1640,100 @@ export async function getHealth(conn: Conn): Promise<HealthInfo> {
 export async function listDocuments(conn: Conn): Promise<DocumentRecord[]> {
   const res = (await conn.get("/documents")) as { documents: DocumentRecord[] };
   return res.documents;
+}
+
+/** A single text unit (line) returned by GET /units. */
+export interface UnitRecord {
+  unit_id: number;
+  n: number;
+  text_norm: string | null;
+  unit_type: string;
+  unit_role: string | null;
+}
+
+/**
+ * Returns all `line` units for a document, ordered by n.
+ * No pagination — use for moderate-sized documents (≤ tens of thousands of lines).
+ */
+export async function listUnits(conn: Conn, docId: number): Promise<UnitRecord[]> {
+  const res = await conn.get(
+    `/units?doc_id=${encodeURIComponent(String(docId))}&unit_type=line`,
+  ) as { units: UnitRecord[]; count: number; doc_id: number };
+  return res.units;
+}
+
+/** A convention role (unit_role) as returned by GET /conventions. */
+export interface ConventionRole {
+  name: string;
+  label: string;
+  color: string | null;
+  icon: string | null;
+  sort_order: number;
+}
+
+/** Returns all convention roles defined for this corpus, ordered by sort_order. */
+export async function listConventions(conn: Conn): Promise<ConventionRole[]> {
+  const res = await conn.get("/conventions") as { conventions: ConventionRole[] };
+  return res.conventions;
+}
+
+/** Create a new convention role. Throws on name conflict (409). */
+export async function createConvention(
+  conn: Conn,
+  options: { name: string; label: string; color?: string; icon?: string; sort_order?: number },
+): Promise<ConventionRole> {
+  const res = await conn.post("/conventions", options) as { convention: ConventionRole };
+  return res.convention;
+}
+
+/** Update label, color, icon or sort_order of an existing convention. */
+export async function updateConvention(
+  conn: Conn,
+  name: string,
+  patch: { label?: string; color?: string; icon?: string; sort_order?: number },
+): Promise<ConventionRole> {
+  const res = await conn.put(`/conventions/${encodeURIComponent(name)}`, patch) as { convention: ConventionRole };
+  return res.convention;
+}
+
+/** Delete a convention role. Assigned units lose their role (set to NULL). */
+export async function deleteConvention(
+  conn: Conn,
+  name: string,
+): Promise<{ deleted: string }> {
+  return conn.post("/conventions/delete", { name }) as Promise<{ deleted: string }>;
+}
+
+/**
+ * Assigns (or clears) a convention role on one or more units.
+ * Pass role=null to clear the role.
+ */
+export async function bulkSetRole(
+  conn: Conn,
+  docId: number,
+  unitNs: number[],
+  role: string | null,
+): Promise<{ updated: number }> {
+  return conn.post("/units/bulk_set_role", {
+    doc_id: docId,
+    unit_ns: unitNs,
+    role: role ?? "",
+  }) as Promise<{ updated: number }>;
+}
+
+/**
+ * Set (or clear) the paratextual boundary for a document.
+ * textStartN — 1-based unit n where actual text begins; null to clear.
+ */
+export async function setTextStart(
+  conn: Conn,
+  docId: number,
+  textStartN: number | null,
+): Promise<{ updated: number }> {
+  return conn.post("/documents/set_text_start", {
+    doc_id: docId,
+    text_start_n: textStartN,
+  }) as Promise<{ updated: number }>;
 }
 
 export async function getDocumentPreview(

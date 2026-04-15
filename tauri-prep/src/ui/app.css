@@ -1809,6 +1809,27 @@ code { font-family: monospace; background: var(--color-bg); padding: 0 3px; bord
 .diff-after { background: #f8fffe; }
 mark.diff-mark { background: #b7f5c8; color: #14532d; border-radius: 2px; padding: 0 2px; font-weight: 600; }
 del.diff-del { color: #b91c1c; text-decoration: line-through; opacity: 0.75; }
+/* Char-level diff — inline within a word */
+mark.diff-char-ins { background: #bbf7d0; color: #14532d; border-radius: 2px; padding: 0 1px; box-shadow: 0 0 0 1px #4ade80; font-weight: 600; }
+del.diff-char-del  { background: #fee2e2; color: #991b1b; text-decoration: line-through; border-radius: 2px; padding: 0 1px; opacity: 0.9; }
+/* Visible representation of invisible/special characters */
+.diff-special-char {
+  display: inline-block;
+  font-family: monospace;
+  font-size: 0.8em;
+  color: #0891b2;
+  background: #e0f2fe;
+  border-radius: 2px;
+  padding: 0 2px;
+  cursor: default;
+  vertical-align: baseline;
+  line-height: 1;
+}
+/* Extra dim for truly invisible chars (ZWNJ, ZWJ, soft-hyphen, etc.) */
+.diff-special-invisible {
+  color: #be185d;
+  background: #fce7f3;
+}
 
 /* Audit table */
 .audit-table { font-size: 0.82rem; }
@@ -2720,6 +2741,257 @@ article.preview .preview-body > .pane { height: 100%; min-height: 0; }
 .raw-unit { cursor: pointer; border-radius: 4px; padding: 1px 3px; margin: 0 -3px; transition: background 0.1s; }
 .raw-unit:hover { background: #f0f7ff; }
 .raw-unit.raw-active { background: #dff0fd; outline: 2px solid #5aadec; outline-offset: -1px; }
+
+/* Full-text raw pane unit (iteration 2) */
+.raw-unit-full { cursor: default; display: flex; align-items: baseline; gap: 6px; padding: 2px 4px; }
+.raw-unit-full:hover { background: #f8faff; cursor: text; }
+.raw-unit-full .vo-ln { flex-shrink: 0; min-width: 32px; text-align: right; font-size: 11px; color: #94a3b8; user-select: none; }
+/* Unit with a pending rule change */
+.raw-unit-full.raw-unit-changed { background: #fffbe6; border-left: 3px solid #facc15; padding-left: 2px; }
+.raw-unit-full.raw-unit-changed:hover { background: #fff8d6; }
+/* Unit with a user-supplied override */
+.raw-unit-full.raw-unit-overridden { background: #f0fdf4; border-left: 3px solid #4ade80; padding-left: 2px; }
+/* Unit being edited */
+.raw-unit-full.raw-unit-editing { background: #f0f7ff; outline: 2px solid #5aadec; outline-offset: -2px; cursor: default; display: block; padding: 4px; }
+/* Override badge (pencil icon) */
+.raw-override-badge { font-size: 10px; color: #16a34a; margin-right: 2px; opacity: 0.75; }
+
+/* Convention role badge on raw unit */
+.raw-role-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 0 5px;
+  border-radius: 10px;
+  line-height: 1.6;
+  background: var(--role-color, #6366f1);
+  color: #fff;
+  opacity: 0.9;
+  cursor: default;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+/* Unit selected for role assignment */
+.raw-unit-full.raw-unit-selected {
+  background: #eff6ff;
+  outline: 2px solid #3b82f6;
+  outline-offset: -2px;
+}
+.raw-unit-full.raw-unit-selected:hover { background: #dbeafe; }
+
+/* Paratext zone units (n < text_start_n) */
+.raw-unit-full.raw-unit-paratext {
+  background: #f8fafc;
+  border-left: 3px solid #94a3b8;
+  padding-left: 2px;
+  color: #64748b;
+}
+.raw-unit-full.raw-unit-paratext:hover { background: #f1f5f9; }
+/* Paratext + changed */
+.raw-unit-full.raw-unit-paratext.raw-unit-changed { background: #fefce8; border-left-color: #facc15; }
+/* Paratext + overridden */
+.raw-unit-full.raw-unit-paratext.raw-unit-overridden { background: #f0fdf4; border-left-color: #4ade80; }
+/* Paratext + selected */
+.raw-unit-full.raw-unit-paratext.raw-unit-selected { background: #eff6ff; border-left-color: #3b82f6; }
+
+/* Text-start separator */
+.raw-text-separator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  margin: 4px 0;
+  background: #e2e8f0;
+  border-radius: 4px;
+  font-size: 11px;
+  color: #475569;
+  user-select: none;
+}
+.raw-text-separator::before,
+.raw-text-separator::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: #94a3b8;
+}
+.raw-text-separator-label { white-space: nowrap; font-weight: 600; color: #334155; }
+.raw-sep-controls { display: flex; gap: 3px; }
+.raw-sep-btn { font-size: 10px; padding: 1px 5px; line-height: 1.4; }
+.raw-sep-btn-clear { color: #ef4444; border-color: #fca5a5; }
+.raw-sep-btn-clear:hover { background: #fef2f2; }
+
+/* ── Convention management panel ──────────────────────────────────────── */
+.conv-empty { color: #94a3b8; font-size: 13px; margin: 4px 0 8px; }
+.conv-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+.conv-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+.conv-row:hover { background: #f1f5f9; }
+.conv-swatch {
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 4px;
+  padding: 0;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.conv-label { font-size: 13px; font-weight: 600; color: #1e293b; flex: 1; cursor: pointer; }
+.conv-label:hover { text-decoration: underline dotted #94a3b8; }
+.conv-name-badge {
+  font-size: 11px;
+  background: #e2e8f0;
+  color: #475569;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-family: monospace;
+}
+.conv-del-btn { margin-left: auto; flex-shrink: 0; color: #ef4444; border-color: #fca5a5; }
+.conv-del-btn:hover { background: #fef2f2; }
+.conv-del-confirm {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+.conv-del-warn { color: #b45309; font-weight: 500; }
+
+/* Inline confirm in text-start separator */
+.raw-sep-del-confirm { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; margin-left: 8px; }
+
+/* Inline confirm banner for text_start_n (ln click) */
+.raw-tsn-confirm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 6px 10px;
+  margin-bottom: 4px;
+  background: #fefce8;
+  border: 1px solid #fde68a;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #92400e;
+}
+
+/* Apply curation inline confirm bar */
+.curate-confirm-bar {
+  padding: 12px 16px;
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.curate-confirm-body {
+  font-size: 13px;
+  color: #1e293b;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.curate-confirm-actions { display: flex; gap: 8px; }
+.conv-row-editing .conv-del-btn { display: none; }
+
+/* Convention add form */
+.conv-form { margin-top: 4px; }
+.conv-form-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.conv-input {
+  font-size: 13px;
+  padding: 4px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  background: #fff;
+  flex: 1;
+  min-width: 100px;
+}
+.conv-input:focus { outline: 2px solid #818cf8; border-color: transparent; }
+.conv-color-input {
+  width: 32px;
+  height: 30px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  padding: 1px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.conv-label-edit { flex: 1; font-weight: 600; }
+.conv-form-error { font-size: 12px; color: #ef4444; margin: 4px 0 0; }
+
+/* Line number interactive (click to set text_start_n) */
+.vo-ln.vo-ln-settable { cursor: pointer; color: #3b82f6; }
+.vo-ln.vo-ln-settable:hover { text-decoration: underline; color: #1d4ed8; }
+
+/* Role assignment bar (sticky above the unit list) */
+.raw-role-bar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 5px 8px;
+  background: #eff6ff;
+  border-bottom: 1px solid #bfdbfe;
+  border-radius: 4px 4px 0 0;
+  font-size: 12px;
+}
+.raw-role-bar-count { font-weight: 600; color: #1d4ed8; min-width: 100px; }
+.raw-role-bar-label { color: #475569; }
+.raw-role-select {
+  font-size: 12px;
+  padding: 2px 6px;
+  border: 1px solid #93c5fd;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+}
+.btn-ghost { background: transparent; border: 1px solid #cbd5e1; color: #64748b; }
+.btn-ghost:hover { background: #f1f5f9; }
+
+/* Inline edit controls */
+.raw-unit-edit-wrapper { display: flex; flex-direction: column; gap: 4px; }
+.raw-unit-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 13px;
+  font-family: inherit;
+  border: 1px solid #93c5fd;
+  border-radius: 4px;
+  padding: 4px 6px;
+  resize: vertical;
+  outline: none;
+  background: #fff;
+}
+.raw-unit-textarea:focus { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.2); }
+.raw-unit-edit-actions { display: flex; gap: 6px; justify-content: flex-end; }
+.btn-xs { padding: 2px 8px; font-size: 11px; border-radius: 4px; }
+
+/* P4: "before" hint above the diff in diff pane */
+.diff-before-hint {
+  display: block;
+  font-size: 11px;
+  color: #64748b;
+  opacity: 0.8;
+  margin-bottom: 3px;
+  padding: 1px 4px;
+  background: #f1f5f9;
+  border-radius: 3px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 
 /* Preview mode buttons (replace static chips) */
 .preview-mode-row { align-items: center; gap: 4px; }

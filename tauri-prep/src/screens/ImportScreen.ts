@@ -19,7 +19,7 @@ import type { JobCenter } from "../components/JobCenter.ts";
 import { initCardAccordions } from "../lib/uiAccordions.ts";
 
 /** Normalise un chemin pour détecter les doublons (séparateurs + casse + préfixe long Windows). */
-function normalizeImportPath(p: string): string {
+export function normalizeImportPath(p: string): string {
   let s = p.replace(/\\/g, "/").replace(/\/+$/u, "").toLowerCase();
   // \\?\C:\... → //?/c:/... après replace
   if (s.startsWith("//?/")) s = s.slice(4);
@@ -47,7 +47,7 @@ function _extFromFileName(fileName: string): string {
 }
 
 /** Modes d’import proposés pour une extension (évite TEI/TXT sur DOCX, etc.). */
-function modeOptionsForExt(ext: string): Array<{ value: string; label: string }> {
+export function modeOptionsForExt(ext: string): Array<{ value: string; label: string }> {
   const e = ext.toLowerCase();
   if (e === "docx") {
     return [
@@ -75,7 +75,7 @@ interface ConlluPreviewRow {
   upos: string;
 }
 
-interface ConlluPreviewResult {
+export interface ConlluPreviewResult {
   rows: ConlluPreviewRow[];
   tokensTotal: number;
   sentences: number;
@@ -84,7 +84,7 @@ interface ConlluPreviewResult {
   malformedLines: number;
 }
 
-function parseConlluPreview(text: string, maxRows = 60): ConlluPreviewResult {
+export function parseConlluPreview(text: string, maxRows = 60): ConlluPreviewResult {
   const rows: ConlluPreviewRow[] = [];
   let tokensTotal = 0;
   let sentences = 0;

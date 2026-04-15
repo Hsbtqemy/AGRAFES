@@ -95,14 +95,20 @@ def annotate_document(
         ).fetchone()
         if row is None:
             raise ValueError(f"Document not found: doc_id={doc_id}")
+        # Exclude paratextual units (n < text_start_n) — they contain titles,
+        # headers, or front matter that should not generate token rows.
+        tsn_row = conn.execute(
+            "SELECT text_start_n FROM documents WHERE doc_id = ?", (doc_id,)
+        ).fetchone()
+        tsn = int(tsn_row[0]) if tsn_row and tsn_row[0] is not None else 1
         unit_rows = conn.execute(
             """
             SELECT unit_id, COALESCE(text_norm, text_raw, '') AS text
             FROM units
-            WHERE doc_id = ? AND unit_type = 'line'
+            WHERE doc_id = ? AND unit_type = 'line' AND n >= ?
             ORDER BY n
             """,
-            (doc_id,),
+            (doc_id, tsn),
         ).fetchall()
         return row, unit_rows
 

@@ -16,7 +16,7 @@ import { initApp, disposeApp } from "../../../tauri-app/src/app.ts";
 // ─── Sub-tab state ─────────────────────────────────────────────────────────────
 
 const LS_SUBTAB = "agrafes.explorer.subtab";
-type ExplorerTab = "concordancier" | "recherche" | "conventions";
+type ExplorerTab = "concordancier" | "recherche";
 
 let _mounted = false;
 let _switching = false;
@@ -99,7 +99,7 @@ export async function mount(
   _activeTab = "concordancier";
   try {
     const raw = localStorage.getItem(LS_SUBTAB);
-    if (raw === "concordancier" || raw === "recherche" || raw === "conventions") _activeTab = raw;
+    if (raw === "concordancier" || raw === "recherche") _activeTab = raw;
   } catch { /* ignore */ }
 
   // Give the container a definite height so flex children resolve height:100%.
@@ -128,9 +128,6 @@ export async function mount(
     </button>
     <button class="exp-subtab${_activeTab === "recherche" ? " active" : ""}" data-tab="recherche">
       &#128270; Recherche grammaticale
-    </button>
-    <button class="exp-subtab${_activeTab === "conventions" ? " active" : ""}" data-tab="conventions">
-      &#127991; Conventions
     </button>
   `;
   container.appendChild(_tabBar);
@@ -229,10 +226,6 @@ async function _mountTab(tab: ExplorerTab): Promise<void> {
     await initApp(wrap);
     _subDispose = () => { try { disposeApp(); } catch { /* ignore */ } };
     _maybeShowWelcomeHint(wrap);
-  } else if (tab === "conventions") {
-    const mod = await import("./conventionsModule.ts");
-    await mod.mount(_subContainer, _savedCtx);
-    _subDispose = () => { mod.dispose(); };
   } else {
     const mod = await import("./rechercheModule.ts");
     await mod.mount(_subContainer, _savedCtx);

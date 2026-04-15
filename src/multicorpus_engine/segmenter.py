@@ -19,6 +19,19 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 
+def _get_text_start_n(conn: sqlite3.Connection, doc_id: int) -> int | None:
+    """Return text_start_n for *doc_id*, or None if not set.
+
+    Units with n < text_start_n are paratextual (title page, notes, etc.) and
+    must be excluded from segmentation so their content and unit_role are
+    preserved intact.
+    """
+    row = conn.execute(
+        "SELECT text_start_n FROM documents WHERE doc_id = ?", (doc_id,)
+    ).fetchone()
+    return row[0] if row and row[0] is not None else None
+
+
 # ---------------------------------------------------------------------------
 # Abbreviation protection
 # ---------------------------------------------------------------------------
@@ -260,11 +273,20 @@ def resegment_document_markers(
     """
     log = run_logger or logger
 
-    rows = conn.execute(
-        "SELECT unit_id, n, text_raw, text_norm FROM units"
-        " WHERE doc_id = ? AND unit_type = 'line' ORDER BY n",
-        (doc_id,),
-    ).fetchall()
+    # Respect paratextual boundary: units with n < text_start_n are kept as-is.
+    text_start_n = _get_text_start_n(conn, doc_id)
+    if text_start_n is not None:
+        rows = conn.execute(
+            "SELECT unit_id, n, text_raw, text_norm FROM units"
+            " WHERE doc_id = ? AND unit_type = 'line' AND n >= ? ORDER BY n",
+            (doc_id, text_start_n),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT unit_id, n, text_raw, text_norm FROM units"
+            " WHERE doc_id = ? AND unit_type = 'line' ORDER BY n",
+            (doc_id,),
+        ).fetchall()
 
     if not rows:
         return SegmentationReport(
@@ -275,13 +297,27 @@ def resegment_document_markers(
             warnings=[f"No line units found for doc_id={doc_id}"],
         )
 
+    # Snapshot convention roles before deletion — single query, O(1) round-trips.
+    ns = [row["n"] for row in rows]
+    placeholders = ",".join("?" * len(ns))
+    role_map: dict[int, str] = {
+        r["n"]: r["unit_role"]
+        for r in conn.execute(
+            f"SELECT n, unit_role FROM units"
+            f" WHERE doc_id = ? AND n IN ({placeholders}) AND unit_role IS NOT NULL",
+            [doc_id, *ns],
+        ).fetchall()
+    }
+
     new_units: list[tuple] = []  # (doc_id, unit_type, n, external_id, text_raw, text_norm, meta_json)
-    global_n = 1
+    first_seg_n: dict[int, int] = {}
+    global_n = text_start_n if text_start_n is not None else 1
     units_without_marker = 0
 
     for row in rows:
         text_norm = row["text_norm"] or ""
         segments = segment_text_markers(text_norm)
+        first_seg_n[row["n"]] = global_n
         for ext_id, seg_text in segments:
             if ext_id is None:
                 units_without_marker += 1
@@ -305,12 +341,36 @@ def resegment_document_markers(
             f"{units_without_marker} unit(s) had no [N] marker — external_id left as NULL."
         )
 
-    conn.execute("DELETE FROM units WHERE doc_id = ? AND unit_type = 'line'", (doc_id,))
+    # Delete only text units (n >= text_start_n) — paratext units are preserved
+    if text_start_n is not None:
+        conn.execute(
+            "DELETE FROM units WHERE doc_id = ? AND unit_type = 'line' AND n >= ?",
+            (doc_id, text_start_n),
+        )
+    else:
+        conn.execute("DELETE FROM units WHERE doc_id = ? AND unit_type = 'line'", (doc_id,))
     conn.executemany(
         "INSERT INTO units (doc_id, unit_type, n, external_id, text_raw, text_norm, meta_json)"
         " VALUES (?, ?, ?, ?, ?, ?, ?)",
         new_units,
     )
+
+    # Re-apply convention roles on the first segment of each original unit
+    roles_reapplied = 0
+    for old_n, role in role_map.items():
+        new_n = first_seg_n.get(old_n)
+        if new_n is not None:
+            conn.execute(
+                "UPDATE units SET unit_role = ? WHERE doc_id = ? AND n = ?",
+                (role, doc_id, new_n),
+            )
+            roles_reapplied += 1
+    if roles_reapplied:
+        log.info(
+            "resegment_document_markers doc_id=%d: re-applied %d convention role(s)",
+            doc_id, roles_reapplied,
+        )
+
     conn.commit()
 
     log.info(
@@ -323,6 +383,7 @@ def resegment_document_markers(
         units_output=len(new_units),
         segment_pack="markers",
         warnings=warnings,
+        roles_reapplied=roles_reapplied,
     )
 
 
@@ -340,6 +401,7 @@ class SegmentationReport:
     units_output: int   # Sentence-level units after segmentation
     segment_pack: str
     warnings: list[str] = field(default_factory=list)
+    roles_reapplied: int = 0  # Convention roles re-applied (best-effort) after resegmentation
 
     def to_dict(self) -> dict:
         return {
@@ -348,6 +410,7 @@ class SegmentationReport:
             "units_output": self.units_output,
             "segment_pack": self.segment_pack,
             "warnings": self.warnings,
+            "roles_reapplied": self.roles_reapplied,
         }
 
 
@@ -381,29 +444,62 @@ def resegment_document(
     log = run_logger or logger
     resolved_pack = resolve_segment_pack(pack, lang)
 
-    rows = conn.execute(
-        "SELECT unit_id, n, text_raw, text_norm FROM units"
-        " WHERE doc_id = ? AND unit_type = 'line' ORDER BY n",
-        (doc_id,),
-    ).fetchall()
+    # Respect paratextual boundary: units with n < text_start_n are kept as-is.
+    text_start_n = _get_text_start_n(conn, doc_id)
+    if text_start_n is not None:
+        rows = conn.execute(
+            "SELECT unit_id, n, text_raw, text_norm FROM units"
+            " WHERE doc_id = ? AND unit_type = 'line' AND n >= ? ORDER BY n",
+            (doc_id, text_start_n),
+        ).fetchall()
+        paratext_count = conn.execute(
+            "SELECT COUNT(*) FROM units WHERE doc_id = ? AND unit_type = 'line' AND n < ?",
+            (doc_id, text_start_n),
+        ).fetchone()[0]
+    else:
+        rows = conn.execute(
+            "SELECT unit_id, n, text_raw, text_norm FROM units"
+            " WHERE doc_id = ? AND unit_type = 'line' ORDER BY n",
+            (doc_id,),
+        ).fetchall()
+        paratext_count = 0
 
     if not rows:
-        log.warning("resegment_document: no line units for doc_id=%d", doc_id)
+        log.warning("resegment_document: no text units for doc_id=%d (paratext: %d)", doc_id, paratext_count)
         return SegmentationReport(
             doc_id=doc_id,
             units_input=0,
             units_output=0,
             segment_pack=resolved_pack,
-            warnings=[f"No line units found for doc_id={doc_id}"],
+            warnings=[f"No text units found for doc_id={doc_id} (paratextual boundary: n≥{text_start_n})"],
         )
 
-    # Collect new sentence-level unit tuples
+    # Snapshot convention roles before deletion — single query, O(1) round-trips.
+    # Maps old n → role name for units that have a non-null unit_role.
+    ns = [row["n"] for row in rows]
+    placeholders = ",".join("?" * len(ns))
+    role_map: dict[int, str] = {
+        r["n"]: r["unit_role"]
+        for r in conn.execute(
+            f"SELECT n, unit_role FROM units"
+            f" WHERE doc_id = ? AND n IN ({placeholders}) AND unit_role IS NOT NULL",
+            [doc_id, *ns],
+        ).fetchall()
+    }
+
+    # Collect new sentence-level unit tuples — n values start after paratext.
+    # Also track which new n receives the first sentence of each original unit
+    # so roles can be re-applied (one original line → potentially N sentences,
+    # role assigned to the first segment only).
     new_units: list[tuple] = []  # (doc_id, unit_type, n, external_id, text_raw, text_norm, meta_json)
-    global_n = 1
+    # Maps old_n → new_n of its first produced segment (for role reapplication)
+    first_seg_n: dict[int, int] = {}
+    global_n = text_start_n if text_start_n is not None else 1
 
     for row in rows:
         text_norm = row["text_norm"] or ""
         sentences = segment_text(text_norm, lang=lang, pack=resolved_pack)
+        first_seg_n[row["n"]] = global_n
         for sent in sentences:
             new_units.append((doc_id, "line", global_n, None, sent, sent, None))
             global_n += 1
@@ -419,8 +515,14 @@ def resegment_document(
     )
     log.warning(warn)
 
-    # Delete old line units
-    conn.execute("DELETE FROM units WHERE doc_id = ? AND unit_type = 'line'", (doc_id,))
+    # Delete only text units (n >= text_start_n) — paratext units are preserved
+    if text_start_n is not None:
+        conn.execute(
+            "DELETE FROM units WHERE doc_id = ? AND unit_type = 'line' AND n >= ?",
+            (doc_id, text_start_n),
+        )
+    else:
+        conn.execute("DELETE FROM units WHERE doc_id = ? AND unit_type = 'line'", (doc_id,))
 
     # Insert new units
     conn.executemany(
@@ -428,16 +530,41 @@ def resegment_document(
         " VALUES (?, ?, ?, ?, ?, ?, ?)",
         new_units,
     )
+
+    # Re-apply convention roles on the first segment produced by each old unit
+    roles_reapplied = 0
+    for old_n, role in role_map.items():
+        new_n = first_seg_n.get(old_n)
+        if new_n is not None:
+            conn.execute(
+                "UPDATE units SET unit_role = ? WHERE doc_id = ? AND n = ?",
+                (role, doc_id, new_n),
+            )
+            roles_reapplied += 1
+    if roles_reapplied:
+        log.info(
+            "resegment_document doc_id=%d: re-applied %d convention role(s) "
+            "(best-effort, on first segment of each original unit)",
+            doc_id, roles_reapplied,
+        )
+
     conn.commit()
 
-    log.info(
-        "Resegmented doc_id=%d: %d line units → %d sentence units",
-        doc_id, len(rows), len(new_units),
-    )
+    if paratext_count:
+        log.info(
+            "Resegmented doc_id=%d: %d text units → %d sentence units (%d paratext units preserved)",
+            doc_id, len(rows), len(new_units), paratext_count,
+        )
+    else:
+        log.info(
+            "Resegmented doc_id=%d: %d line units → %d sentence units",
+            doc_id, len(rows), len(new_units),
+        )
     return SegmentationReport(
         doc_id=doc_id,
         units_input=len(rows),
         units_output=len(new_units),
         segment_pack=resolved_pack,
         warnings=[warn] if deleted_links > 0 else [],
+        roles_reapplied=roles_reapplied,
     )

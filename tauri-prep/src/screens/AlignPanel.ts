@@ -1148,6 +1148,11 @@ export class AlignPanel {
       bar.querySelector("#_inline-cancel")!.addEventListener("click", () => { restore(); resolve(false); }, { once: true });
     });
   }
+
+  dispose(): void {
+    this._pendingConfirm = null;
+    this._el = null;
+  }
 }
 
 // ─── Utilitaires ─────────────────────────────────────────────────────────────

@@ -49,6 +49,9 @@ export function showToast(msg: string, isError = false): void {
   if (!_toastEl) {
     _toastEl = document.createElement("div");
     _toastEl.id = "jc-toast";
+    _toastEl.setAttribute("role", "alert");
+    _toastEl.setAttribute("aria-live", "polite");
+    _toastEl.setAttribute("aria-atomic", "true");
     _toastEl.style.cssText = [
       "position:fixed", "bottom:1.2rem", "right:1.2rem", "z-index:9999",
       "padding:0.5rem 1rem", "border-radius:6px", "font-size:0.85rem",

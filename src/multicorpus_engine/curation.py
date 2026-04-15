@@ -134,9 +134,15 @@ def curate_document(
     """
     log = run_logger or logger
 
+    # Exclude paratextual units (n < text_start_n) — they are not part of the
+    # translational text and should not be modified by curation rules.
+    tsn_row = conn.execute(
+        "SELECT text_start_n FROM documents WHERE doc_id = ?", (doc_id,)
+    ).fetchone()
+    tsn = int(tsn_row[0]) if tsn_row and tsn_row[0] is not None else 1
     rows = conn.execute(
-        "SELECT unit_id, text_norm FROM units WHERE doc_id = ? ORDER BY n",
-        (doc_id,),
+        "SELECT unit_id, text_norm FROM units WHERE doc_id = ? AND n >= ? ORDER BY n",
+        (doc_id, tsn),
     ).fetchall()
 
     if not rows:

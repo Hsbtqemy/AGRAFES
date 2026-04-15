@@ -18,6 +18,19 @@ from typing import Any, Optional
 logger = logging.getLogger(__name__)
 
 
+def _get_text_start_n(conn: sqlite3.Connection, doc_id: int) -> int:
+    """Return the first text unit n for *doc_id* (1 if no paratextual boundary set).
+
+    Units with n < text_start_n are paratextual and must be excluded from
+    alignment so paratext is never linked to translational text.
+    """
+    row = conn.execute(
+        "SELECT text_start_n FROM documents WHERE doc_id = ?", (doc_id,)
+    ).fetchone()
+    val = row[0] if row and row[0] is not None else None
+    return int(val) if val is not None else 1
+
+
 @dataclass
 class AlignmentReport:
     """Coverage and diagnostic report for one (pivot, target) pair."""
@@ -74,21 +87,22 @@ class AlignmentReport:
 def _load_doc_lines(
     conn: sqlite3.Connection, doc_id: int
 ) -> tuple[dict[int, list[int]], list[int]]:
-    """Load all line units for a doc.
+    """Load text line units for a doc (excludes paratextual units).
 
     Returns:
         (ext_id_to_unit_ids, duplicate_ext_ids)
         ext_id_to_unit_ids: {external_id: [unit_id, ...]}  (list because dups possible)
         duplicate_ext_ids: external_ids that appear more than once
     """
+    tsn = _get_text_start_n(conn, doc_id)
     rows = conn.execute(
         """
         SELECT unit_id, external_id
         FROM units
-        WHERE doc_id = ? AND unit_type = 'line' AND external_id IS NOT NULL
+        WHERE doc_id = ? AND unit_type = 'line' AND external_id IS NOT NULL AND n >= ?
         ORDER BY n
         """,
-        (doc_id,),
+        (doc_id, tsn),
     ).fetchall()
 
     ext_map: dict[int, list[int]] = {}
@@ -102,15 +116,20 @@ def _load_doc_lines(
 
 
 def _load_doc_line_rows(conn: sqlite3.Connection, doc_id: int) -> list[sqlite3.Row]:
-    """Load all line units for a doc with unit_id, n, external_id."""
+    """Load text line units for a doc with unit_id, n, external_id.
+
+    Paratextual units (n < text_start_n) are excluded so alignment links are
+    never created between paratext and translational text.
+    """
+    tsn = _get_text_start_n(conn, doc_id)
     return conn.execute(
         """
         SELECT unit_id, n, external_id
         FROM units
-        WHERE doc_id = ? AND unit_type = 'line'
+        WHERE doc_id = ? AND unit_type = 'line' AND n >= ?
         ORDER BY n
         """,
-        (doc_id,),
+        (doc_id, tsn),
     ).fetchall()
 
 
@@ -491,19 +510,20 @@ def align_by_external_id_then_position(
 def _load_doc_lines_by_position(
     conn: sqlite3.Connection, doc_id: int
 ) -> dict[int, int]:
-    """Load line units for a doc keyed by position n.
+    """Load text line units for a doc keyed by position n.
 
-    Returns {n: unit_id} for all unit_type='line' rows.
+    Returns {n: unit_id} for text units only (n >= text_start_n).
     Used for monotone fallback alignment (ADR-013).
     """
+    tsn = _get_text_start_n(conn, doc_id)
     rows = conn.execute(
         """
         SELECT unit_id, n
         FROM units
-        WHERE doc_id = ? AND unit_type = 'line'
+        WHERE doc_id = ? AND unit_type = 'line' AND n >= ?
         ORDER BY n
         """,
-        (doc_id,),
+        (doc_id, tsn),
     ).fetchall()
     return {row["n"]: row["unit_id"] for row in rows}
 
@@ -715,14 +735,19 @@ def align_pair_by_similarity(
         threshold, pivot_doc_id, pivot_title, target_doc_id, target_title,
     )
 
+    pivot_tsn = _get_text_start_n(conn, pivot_doc_id)
+    target_tsn = _get_text_start_n(conn, target_doc_id)
+
     pivot_rows = conn.execute(
-        "SELECT unit_id, n, text_norm FROM units WHERE doc_id = ? AND unit_type = 'line' ORDER BY n",
-        (pivot_doc_id,),
+        "SELECT unit_id, n, text_norm FROM units"
+        " WHERE doc_id = ? AND unit_type = 'line' AND n >= ? ORDER BY n",
+        (pivot_doc_id, pivot_tsn),
     ).fetchall()
 
     target_rows = conn.execute(
-        "SELECT unit_id, text_norm FROM units WHERE doc_id = ? AND unit_type = 'line' ORDER BY n",
-        (target_doc_id,),
+        "SELECT unit_id, text_norm FROM units"
+        " WHERE doc_id = ? AND unit_type = 'line' AND n >= ? ORDER BY n",
+        (target_doc_id, target_tsn),
     ).fetchall()
 
     report = AlignmentReport(

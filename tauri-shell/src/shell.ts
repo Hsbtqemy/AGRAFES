@@ -2416,12 +2416,14 @@ async function _setMode(mode: Mode, opts?: { force?: boolean }): Promise<void> {
       await _renderPublicationWizard(fresh);
     } else {
       const mod = await import("./modules/constituerModule.ts");
-      _freshContainer(); // swap out spinner; prep finds #app by id
-      // Make #app height-bounded so annot-panel / flex panels can use height:100% correctly.
+      _freshContainer(); // creates container with id="app"
+      // Make container height-bounded so flex children resolve height:100%.
+      // constituerModule.mount() will remove id="app" from this element and
+      // reassign it to its internal sub-content div when prep tab is active.
       const appEl = document.getElementById("app")!;
       appEl.style.height = "calc(100vh - 44px)";
       appEl.style.minHeight = "unset";
-      appEl.style.overflowY = "auto";
+      appEl.style.overflowY = "hidden";
       await mod.mount(appEl, ctx);
       _currentDispose = () => mod.dispose();
     }

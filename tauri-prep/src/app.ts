@@ -16,10 +16,9 @@ import { ActionsScreen, type ProjectPreset } from "./screens/ActionsScreen.ts";
 import { MetadataScreen } from "./screens/MetadataScreen.ts";
 import { ExportsScreen, type ExportWorkflowPrefill } from "./screens/ExportsScreen.ts";
 import { JobCenter, showToast } from "./components/JobCenter.ts";
+import { inlineConfirm } from "./lib/inlineConfirm.ts";
 
-// ─── Project Presets store ─────────────────────────────────────────────────────
-
-const LS_PRESETS = "agrafes.prep.presets";
+// ─── Project Presets — seeds ──────────────────────────────────────────────────
 
 const SEED_PRESETS: ProjectPreset[] = [
   {
@@ -47,17 +46,6 @@ const SEED_PRESETS: ProjectPreset[] = [
     created_at: 0,
   },
 ];
-
-function _loadPresets(): ProjectPreset[] {
-  try {
-    const raw = localStorage.getItem(LS_PRESETS);
-    return raw ? JSON.parse(raw) as ProjectPreset[] : SEED_PRESETS.map(p => ({ ...p }));
-  } catch { return SEED_PRESETS.map(p => ({ ...p })); }
-}
-
-function _savePresets(presets: ProjectPreset[]): void {
-  try { localStorage.setItem(LS_PRESETS, JSON.stringify(presets)); } catch { /* */ }
-}
 
 // ─── App ──────────────────────────────────────────────────────────────────────
 // CSS lives in tauri-prep/src/ui/app.css + job-center.css (Vite-managed, P6).
@@ -87,6 +75,37 @@ export class App {
 
   /** beforeunload handler stored so dispose() can remove it cleanly. */
   private _beforeUnloadHandler: ((e: BeforeUnloadEvent) => void) | null = null;
+
+  /** In-memory cache of project presets (persisted in corpus_info.meta.presets per DB). */
+  private _presets: ProjectPreset[] = SEED_PRESETS.map(p => ({ ...p }));
+
+  /** Load presets from corpus_info.meta.presets; falls back to seed defaults. */
+  private async _loadPresetsFromDb(): Promise<void> {
+    if (!this._conn) { this._presets = SEED_PRESETS.map(p => ({ ...p })); return; }
+    try {
+      const info = await getCorpusInfo(this._conn);
+      const raw = info.meta?.presets;
+      this._presets = Array.isArray(raw) && raw.length > 0
+        ? raw as ProjectPreset[]
+        : SEED_PRESETS.map(p => ({ ...p }));
+    } catch { this._presets = SEED_PRESETS.map(p => ({ ...p })); }
+  }
+
+  /** Persist the current presets to corpus_info.meta.presets (fire-and-forget, merges meta). */
+  private _savePresetsToDb(): void {
+    if (!this._conn) return;
+    const presets = this._presets;
+    const conn = this._conn;
+    (async () => {
+      try {
+        const info = await getCorpusInfo(conn);
+        const merged = { ...info.meta, presets };
+        await updateCorpusInfo(conn, { meta: merged });
+      } catch (err) {
+        showToast(`Erreur sauvegarde presets\u00a0: ${String(err)}`, true);
+      }
+    })();
+  }
 
   async init(): Promise<void> {
     // CSS is now loaded by Vite (app.css + job-center.css) — no inline injection needed.
@@ -200,6 +219,12 @@ export class App {
     topbar.appendChild(presetsBtn);
     topbar.appendChild(corpusInfoBtn);
     topbar.appendChild(openConcordancierBtn);
+
+    const pendingConfirmBar = document.createElement("div");
+    pendingConfirmBar.id = "app-pending-confirm";
+    pendingConfirmBar.className = "audit-batch-bar";
+    pendingConfirmBar.style.display = "none";
+    topbar.appendChild(pendingConfirmBar);
 
     this._dbPathEl = dbPathEl;
     root.appendChild(topbar);
@@ -331,12 +356,18 @@ export class App {
     this._syncCurationWideClass();
   }
 
-  private _switchTab(tab: TabId): void {
+  private _switchTab(tab: TabId, force = false): void {
     if (tab === this._activeTab) return;
     const cur = this._screenControllers[this._activeTab];
-    if (cur?.hasPendingChanges?.()) {
-      const msg = cur.pendingChangesMessage?.() ?? "Des modifications non enregistrées sont détectées. Continuer ?";
-      if (!window.confirm(msg)) return;
+    if (!force && cur?.hasPendingChanges?.()) {
+      const msg = cur.pendingChangesMessage?.() ?? "Des modifications non enregistrées. Continuer ?";
+      const confirmEl = document.getElementById("app-pending-confirm") as HTMLElement | null;
+      if (confirmEl) {
+        void inlineConfirm(confirmEl, msg, { confirmLabel: "Continuer", danger: false })
+          .then(ok => { if (ok) this._switchTab(tab, true); });
+        return;
+      }
+      return;
     }
     this._screenEls[this._activeTab].classList.remove("active");
     this._tabBtns[this._activeTab].classList.remove("active");
@@ -350,7 +381,7 @@ export class App {
   }
 
   private _openExporterWithPrefill(prefill?: ExportWorkflowPrefill): void {
-    this._switchTab("exporter");
+    this._switchTab("exporter", true);
     if (this._activeTab !== "exporter") return;
     if (prefill) this._exports.applyWorkflowPrefill(prefill);
   }
@@ -676,7 +707,7 @@ export class App {
 
     const renderList = (): void => {
       body.innerHTML = "";
-      const presets = _loadPresets();
+      const presets = this._presets;
       if (presets.length === 0) {
         body.innerHTML = `<p class="presets-empty">Aucun preset. Créez-en un ou importez un fichier JSON.</p>`;
         return;
@@ -721,9 +752,8 @@ export class App {
             name: `${preset.name} (copie)`,
             created_at: Date.now(),
           };
-          const all = _loadPresets();
-          all.push(duped);
-          _savePresets(all);
+          this._presets = [...this._presets, duped];
+          this._savePresetsToDb();
           renderList();
         });
 
@@ -732,10 +762,24 @@ export class App {
         delBtn.textContent = "\u2715";
         delBtn.title = "Supprimer ce preset";
         delBtn.addEventListener("click", () => {
-          if (!confirm(`Supprimer le preset "${preset.name}" ?`)) return;
-          const all = _loadPresets().filter(p => p.id !== preset.id);
-          _savePresets(all);
-          renderList();
+          // Inline confirm: replace the row buttons temporarily
+          const confirmSpan = document.createElement("span");
+          confirmSpan.className = "inline-confirm-msg";
+          confirmSpan.style.cssText = "display:inline-flex;gap:0.35rem;align-items:center;font-size:0.82rem";
+          confirmSpan.innerHTML =
+            `<span>Supprimer « ${preset.name.replace(/&/g,"&amp;").replace(/</g,"&lt;")} » ?</span>` +
+            `<button class="btn btn-danger btn-sm" data-confirm-yes>Confirmer</button>` +
+            `<button class="btn btn-ghost btn-sm" data-confirm-no>Annuler</button>`;
+          delBtn.replaceWith(confirmSpan);
+          const yes = confirmSpan.querySelector<HTMLButtonElement>("[data-confirm-yes]")!;
+          const no  = confirmSpan.querySelector<HTMLButtonElement>("[data-confirm-no]")!;
+          yes.focus();
+          yes.addEventListener("click", () => {
+            this._presets = this._presets.filter(p => p.id !== preset.id);
+            this._savePresetsToDb();
+            renderList();
+          }, { once: true });
+          no.addEventListener("click", () => { confirmSpan.replaceWith(delBtn); }, { once: true });
         });
 
         row.appendChild(applyBtn);
@@ -768,14 +812,15 @@ export class App {
         const raw = await readTextFile(path);
         const data = JSON.parse(raw);
         const presets = Array.isArray(data) ? data as ProjectPreset[] : [data as ProjectPreset];
-        const all = _loadPresets();
+        const all = [...this._presets];
         for (const p of presets) {
           if (!p.id) p.id = `preset-${Date.now()}`;
           if (!p.name) p.name = "Preset import\u00e9";
           if (!p.created_at) p.created_at = Date.now();
           all.push(p);
         }
-        _savePresets(all);
+        this._presets = all;
+        this._savePresetsToDb();
         renderList();
         showToast(`${presets.length} preset(s) import\u00e9(s)`);
       } catch (err) {
@@ -794,9 +839,8 @@ export class App {
           defaultPath: "agrafes_presets.json",
         });
         if (!path) return;
-        const presets = _loadPresets();
-        await writeTextFile(path, JSON.stringify(presets, null, 2));
-        showToast(`Presets export\u00e9s (${presets.length})`);
+        await writeTextFile(path, JSON.stringify(this._presets, null, 2));
+        showToast(`Presets export\u00e9s (${this._presets.length})`);
       } catch (err) {
         showToast(`Erreur export : ${String(err)}`, true);
       }
@@ -907,9 +951,10 @@ export class App {
         alignment_strategy: (modal.querySelector<HTMLSelectElement>("#pe-strategy")!).value || undefined,
         created_at: draft.created_at || Date.now(),
       };
-      const all = _loadPresets().filter(p => p.id !== saved.id);
+      const all = this._presets.filter(p => p.id !== saved.id);
       all.push(saved);
-      _savePresets(all);
+      this._presets = all;
+      this._savePresetsToDb();
       overlay.remove();
       onSave();
       showToast(`Preset ${isNew ? "cr\u00e9\u00e9" : "mis \u00e0 jour"}\u00a0: ${saved.name}`);
@@ -941,11 +986,12 @@ export class App {
     this._import.setJobCenter(this._jobCenter, showToast);
     this._actions.setJobCenter(this._jobCenter, showToast);
     this._exports.setJobCenter(this._jobCenter, showToast);
-    await this._refreshTopbarDbLabel();
+    await Promise.all([this._refreshTopbarDbLabel(), this._loadPresetsFromDb()]);
   }
 
   /** Stop all background timers and remove event listeners. Called by tauri-shell on unmount. */
   dispose(): void {
+    this._actions.dispose();
     this._jobCenter?.setConn(null);
     if (this._beforeUnloadHandler) {
       window.removeEventListener("beforeunload", this._beforeUnloadHandler);

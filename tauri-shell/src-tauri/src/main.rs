@@ -41,7 +41,7 @@ async fn sidecar_fetch_loopback(
     let client = reqwest::Client::builder()
         .no_proxy()
         .connect_timeout(std::time::Duration::from_secs(5))
-        .timeout(std::time::Duration::from_secs(10))
+        .timeout(std::time::Duration::from_secs(300))
         .build()
         .map_err(|e| format!("sidecar_fetch_loopback: failed to build client: {}", e))?;
 
