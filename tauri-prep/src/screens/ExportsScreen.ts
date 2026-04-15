@@ -91,7 +91,7 @@ export class ExportsScreen {
             <h2 class="prep-screen-title" id="prep-exports-screen-title">Exporter</h2>
             <p class="exp-head-desc">Port&#233;e des documents, puis &#233;tape, produit et format &#8212; la plupart des exports passent par la zone <strong>Export unifi&#233;</strong> ci-dessous.</p>
           </div>
-          <div id="exp-state-banner" class="runtime-state prep-state-info" aria-live="polite">
+          <div id="exp-state-banner" class="prep-runtime-state prep-state-info" aria-live="polite">
             En attente de connexion sidecar…
           </div>
         </div>
@@ -1469,7 +1469,7 @@ export class ExportsScreen {
 
   private _setRuntimeState(kind: "ok" | "info" | "warn" | "error", text: string): void {
     if (!this._stateEl) return;
-    this._stateEl.className = `runtime-state state-${kind}`;
+    this._stateEl.className = `prep-runtime-state prep-state-${kind}`;
     this._stateEl.textContent = text;
   }
 

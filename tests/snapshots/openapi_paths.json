@@ -50,6 +50,7 @@
   "POST /families/{family_root_id}/align",
   "POST /families/{family_root_id}/segment",
   "POST /import",
+  "POST /import/preview",
   "POST /index",
   "POST /jobs",
   "POST /jobs/enqueue",

@@ -6,7 +6,7 @@
  *  - Per-file: mode, language, title override
  *  - Batch import : jobs async côté sidecar (plusieurs imports peuvent tourner en parallèle)
  *  - "Reconstruire l'index" button
- *  - Log pane
+ *  - Log prep-pane
  *  - Sprint 8: post-import family dialog + filename language detection
  */
 
@@ -203,7 +203,7 @@ export class ImportScreen {
             <h2 class="prep-screen-title" style="margin:0 0 4px">Importer des fichiers</h2>
             <p class="imp-head-desc">Ajoutez vos fichiers source, configurez le profil de lot, puis lancez l'import.</p>
           </div>
-          <div id="imp-state-banner" class="runtime-state prep-state-info" aria-live="polite">
+          <div id="imp-state-banner" class="prep-runtime-state prep-state-info" aria-live="polite">
             En attente de connexion sidecar…
           </div>
         </div>
@@ -375,7 +375,7 @@ export class ImportScreen {
       </div>
       </div>
 
-      <!-- Footer docked at bottom of main pane (above scrolling content) -->
+      <!-- Footer docked at bottom of main prep-pane (above scrolling content) -->
       <div class="imp-footer-bar">
         <div class="imp-footer-meta">
           <span class="hint" style="margin:0">Importe tous les fichiers en attente (profil + options ci-dessus).</span>
@@ -1135,33 +1135,33 @@ export class ImportScreen {
 
     const banner = document.createElement("div");
     banner.id = "imp-family-detect-banner";
-    banner.className = "card imp-family-banner";
+    banner.className = "card prep-imp-family-banner";
     banner.innerHTML = `
-      <div class="imp-family-banner-head">
-        <span class="imp-family-banner-icon">🔗</span>
+      <div class="prep-imp-family-banner-head">
+        <span class="prep-imp-family-banner-icon">🔗</span>
         <div>
           <strong>Familles détectées automatiquement</strong>
           <span class="chip">${groups.length} groupe${groups.length > 1 ? "s" : ""}</span>
         </div>
       </div>
-      <p class="imp-family-banner-desc">
+      <p class="prep-imp-family-banner-desc">
         Des fichiers partagent le même radical avec des suffixes de langue.
         Après l'import, ils pourront être rattachés en famille automatiquement.
       </p>
       ${groups.map((g, gi) => `
-        <div class="imp-family-group">
-          <div class="imp-family-group-head">
+        <div class="prep-imp-family-group">
+          <div class="prep-imp-family-group-head">
             Groupe ${gi + 1} — <code>${g.stem}</code>
           </div>
-          <div class="imp-family-group-files">
+          <div class="prep-imp-family-group-files">
             ${g.files.map(f => {
               const fname = f.path.replace(/\\/g, "/").split("/").pop() ?? f.path;
               return `<span class="chip">${fname} <em>[${f.lang.toUpperCase()}]</em></span>`;
             }).join("")}
           </div>
-          <div class="imp-family-group-action">
+          <div class="prep-imp-family-group-action">
             <label>Original&nbsp;:&nbsp;
-              <select class="imp-family-pivot-sel" data-group="${gi}">
+              <select class="prep-imp-family-pivot-sel" data-group="${gi}">
                 ${g.files.map(f => {
                   const fname = f.path.replace(/\\/g, "/").split("/").pop() ?? f.path;
                   return `<option value="${f.path}">${fname} [${f.lang.toUpperCase()}]</option>`;
@@ -1171,7 +1171,7 @@ export class ImportScreen {
           </div>
         </div>
       `).join("")}
-      <p class="imp-family-banner-note">
+      <p class="prep-imp-family-banner-note">
         Les relations seront proposées dans la dialog post-import de chaque fichier enfant.
       </p>
     `;
@@ -1226,7 +1226,7 @@ export class ImportScreen {
 
   private _setRuntimeState(kind: "ok" | "info" | "warn" | "error", text: string): void {
     if (!this._stateEl) return;
-    this._stateEl.className = `runtime-state state-${kind}`;
+    this._stateEl.className = `prep-runtime-state prep-state-${kind}`;
     this._stateEl.textContent = text;
   }
 

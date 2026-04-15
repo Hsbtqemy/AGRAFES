@@ -16,9 +16,13 @@ import {
   getFamilies,
   alignAudit,
   alignQuality,
+  listCollisions,
+  resolveCollisions,
+  listRuns,
   updateAlignLinkStatus,
   deleteAlignLink,
   batchUpdateAlignLinks,
+  SidecarError,
   type Conn,
   type DocumentRecord,
   type FamilyRecord,
@@ -27,8 +31,12 @@ import {
   type AlignLinkRecord,
   type AlignBatchAction,
   type AlignQualityStats,
+  type AlignQualityResponse,
+  type CollisionGroup,
+  type RunRecord,
 } from "../lib/sidecarClient.ts";
 import type { JobCenter } from "../components/JobCenter.ts";
+import { initCardAccordions } from "../lib/uiAccordions.ts";
 
 // ─── Types locaux ─────────────────────────────────────────────────────────────
 
@@ -40,9 +48,11 @@ export interface AlignPanelCallbacks {
   toast: (msg: string, isError?: boolean) => void;
   setBusy: (v: boolean) => void;
   jobCenter: () => JobCenter | null;
-  /** Appelé après run réussi (pour MAJ sélects qualité/collision dans ActionsScreen) */
-  onRunDone: (pivotId: number, targetIds: number[]) => void;
+  /** Appelé après run réussi. runId = identifiant du run créé (null si indisponible). */
+  onRunDone: (pivotId: number, targetIds: number[], runId: string | null) => void;
   onNav: (target: string) => void;
+  /** Délégué au handler export rapport d'ActionsScreen */
+  onExportReport: () => void;
 }
 
 interface RunSummary {
@@ -74,6 +84,14 @@ export class AlignPanel {
   private _selectedLinkId: number | null = null;
   private _selectedLinkIds = new Set<number>();
 
+  // Quality / Collision / Run-compare state (ex-legacy sections)
+  private _alignRunsCompareCache: RunRecord[] = [];
+  private _collOffset = 0;
+  private _collLimit = 20;
+  private _collGroups: CollisionGroup[] = [];
+  private _collHasMore = false;
+  private _collTotalCount = 0;
+
   constructor(
     conn: () => Conn | null,
     getDocs: () => DocumentRecord[],
@@ -93,6 +111,8 @@ export class AlignPanel {
     this._el = el;
     this._bindEvents(el);
     this._populateManualSelects(el);
+    this._populateQualityCollisionSelects(el);
+    initCardAccordions(el);
     void this._loadFamilies(el);
     return el;
   }
@@ -102,6 +122,7 @@ export class AlignPanel {
     this._populateManualSelects(this._el);
     this._populateFamilySelect(this._el);
     this._populateAuditSelects(this._el);
+    this._populateQualityCollisionSelects(this._el);
   }
 
   // ─── HTML template ──────────────────────────────────────────────────────────
@@ -195,14 +216,14 @@ export class AlignPanel {
     <div id="align-confirm-banner" class="prep-align-confirm-banner" style="display:none">
       <div id="align-confirm-msg" class="prep-align-confirm-msg"></div>
       <div class="prep-align-confirm-btns">
-        <button id="align-confirm-ok" class="btn btn-warning btn-sm">▶ Confirmer</button>
+        <button id="align-confirm-ok" class="btn prep-btn-warning btn-sm">▶ Confirmer</button>
         <button id="align-confirm-cancel" class="btn btn-ghost btn-sm">Annuler</button>
       </div>
     </div>
 
     <!-- Boutons lancement -->
     <div id="align-launch-btns" class="prep-align-launch-row">
-      <button id="align-run-btn" class="btn btn-warning" disabled>▶ Lancer l'alignement</button>
+      <button id="align-run-btn" class="btn prep-btn-warning" disabled>▶ Lancer l'alignement</button>
       <button id="align-recalc-btn" class="btn btn-secondary" disabled>↺ Recalcul global</button>
     </div>
 
@@ -339,6 +360,58 @@ export class AlignPanel {
 
   </div><!-- /align-v2-results -->
 </div><!-- /align-v2-layout -->
+
+<!-- ═══ Sections secondaires (qualité, collisions, runs) ═══ -->
+<section class="card" id="align-quality-card" data-collapsible="true" data-collapsed-default="true">
+  <h3>Qualit&#233; alignement <span class="prep-badge-preview">m&#233;triques</span></h3>
+  <p class="hint">Couverture et orphelins pour une paire pivot&#8596;cible.</p>
+  <div class="prep-form-row">
+    <label>Pivot<select id="align-qc-pivot"><option value="">&#8212; choisir &#8212;</option></select></label>
+    <label>Cible<select id="align-qc-target"><option value="">&#8212; choisir &#8212;</option></select></label>
+    <div style="align-self:flex-end">
+      <button id="align-qc-btn" class="btn btn-secondary btn-sm" disabled>Calculer m&#233;triques</button>
+    </div>
+  </div>
+  <div id="align-qc-result" style="display:none;margin-top:0.75rem"></div>
+</section>
+<section class="card" id="align-run-compare-card" data-collapsible="true" data-collapsed-default="true">
+  <h3>Comparer deux runs <span class="prep-badge-preview">align</span></h3>
+  <p class="hint">Historique des runs d&#8217;alignement ; comparez strat&#233;gie et indicateurs.</p>
+  <div class="prep-form-row" style="flex-wrap:wrap;gap:0.5rem;align-items:flex-end">
+    <button id="align-rc-refresh" type="button" class="btn btn-secondary btn-sm">Charger l&#8217;historique</button>
+    <label>Run A<select id="align-rc-a" aria-label="Premier run"><option value="">&#8212;</option></select></label>
+    <label>Run B<select id="align-rc-b" aria-label="Second run"><option value="">&#8212;</option></select></label>
+  </div>
+  <p id="align-rc-hint" class="hint" style="margin-top:0.5rem">Chargez l&#8217;historique, puis choisissez deux runs.</p>
+  <div id="align-rc-result" style="display:none;margin-top:0.75rem"></div>
+</section>
+<section class="card" id="align-coll-card" data-collapsible="true" data-collapsed-default="true">
+  <h3>Collisions d&#8217;alignement <span class="prep-badge-preview">r&#233;solution</span></h3>
+  <p class="hint">Un pivot ayant plusieurs liens vers le m&#234;me document cible est une collision.</p>
+  <div class="prep-form-row">
+    <label>Pivot<select id="align-coll-pivot"><option value="">&#8212; choisir &#8212;</option></select></label>
+    <label>Cible<select id="align-coll-target"><option value="">&#8212; choisir &#8212;</option></select></label>
+    <div style="align-self:flex-end">
+      <button id="align-coll-load-btn" class="btn btn-secondary btn-sm" disabled>Charger les collisions</button>
+    </div>
+  </div>
+  <div id="align-coll-result" style="display:none;margin-top:0.75rem"></div>
+  <div id="align-coll-more-wrap" style="display:none;margin-top:0.5rem;text-align:center">
+    <button id="align-coll-more-btn" class="btn btn-sm btn-secondary">Charger plus</button>
+  </div>
+</section>
+<section class="card" id="align-report-card" data-collapsible="true" data-collapsed-default="true">
+  <h3>Rapport de runs <span class="prep-badge-preview">export</span></h3>
+  <p class="hint">Exporter l&#8217;historique des runs en HTML ou JSONL.</p>
+  <div class="prep-form-row">
+    <label>Format :<select id="align-report-fmt"><option value="html">HTML</option><option value="jsonl">JSONL</option></select></label>
+    <label style="flex:1">Run ID (optionnel) :<input id="align-report-run-id" type="text" placeholder="laisser vide = tous les runs" style="width:100%;max-width:340px"/></label>
+  </div>
+  <div class="prep-btn-row" style="margin-top:0.5rem">
+    <button id="align-report-btn" class="btn btn-secondary" disabled>Enregistrer le rapport&#8230;</button>
+  </div>
+  <div id="align-report-result" style="display:none;margin-top:0.5rem;font-size:0.85rem"></div>
+</section>
     `;
   }
 
@@ -436,6 +509,23 @@ export class AlignPanel {
         else void this._focusSetStatus(el, action === "unreviewed" ? null : action as "accepted" | "rejected");
       });
     });
+
+    // ── Sections secondaires ──────────────────────────────────────────────────
+    el.querySelector("#align-qc-btn")?.addEventListener("click", () =>
+      void this._runAlignQuality(el));
+    el.querySelector("#align-coll-load-btn")?.addEventListener("click", () => {
+      this._collOffset = 0; this._collGroups = []; void this._loadCollisionsPage(el, false);
+    });
+    el.querySelector("#align-coll-more-btn")?.addEventListener("click", () =>
+      void this._loadCollisionsPage(el, true));
+    el.querySelector("#align-report-btn")?.addEventListener("click", () =>
+      this._cb.onExportReport());
+    el.querySelector("#align-rc-refresh")?.addEventListener("click", () =>
+      void this._refreshAlignRunsCompare(el));
+    el.querySelector("#align-rc-a")?.addEventListener("change", () =>
+      this._updateAlignRunCompareDiff(el));
+    el.querySelector("#align-rc-b")?.addEventListener("change", () =>
+      this._updateAlignRunCompareDiff(el));
   }
 
   // ─── Mode ───────────────────────────────────────────────────────────────────
@@ -673,7 +763,8 @@ export class AlignPanel {
       this._cb.toast(`✓ Famille alignée (${total} lien${total > 1 ? "s" : ""})`);
       this._cb.log(`✓ Famille #${famId} : ${total} liens créés · ${result.summary.aligned}/${result.summary.total_pairs} paires.`);
       void this._loadFamilies(el);
-      this._cb.onRunDone(famId, result.results.map(r => r.target_doc_id));
+      const runId = result.results.find(r => r.run_id)?.run_id ?? null;
+      this._cb.onRunDone(famId, result.results.map(r => r.target_doc_id), runId);
     } catch (err) {
       this._setRunningState(el, false);
       this._cb.log(`✗ Alignement famille : ${err instanceof Error ? err.message : String(err)}`, true);
@@ -717,6 +808,7 @@ export class AlignPanel {
         (done: { status: string; result?: unknown; error?: string }) => {
           if (done.status === "done") {
             const res = done.result as {
+              run_id?: string;
               reports?: Array<{ target_doc_id: number; links_created: number; links_skipped?: number }>;
               deleted_before?: number;
               preserved_before?: number;
@@ -737,7 +829,7 @@ export class AlignPanel {
             const n = summary.created;
             this._cb.toast(`✓ ${modeLabel} terminé (${n} lien${n > 1 ? "s" : ""})`);
             this._cb.log(`✓ ${modeLabel} : ${n} liens créés.`);
-            this._cb.onRunDone(pivId, tgtIds);
+            this._cb.onRunDone(pivId, tgtIds, res?.run_id ?? null);
           } else {
             this._setRunningState(el, false);
             this._cb.log(`✗ ${modeLabel} : ${done.error ?? done.status}`, true);
@@ -964,7 +1056,7 @@ export class AlignPanel {
     const rows = visible.map(lk => {
       const isFocused = this._selectedLinkId === lk.link_id;
       const isChecked = this._selectedLinkIds.has(lk.link_id);
-      return `<tr class="audit-row${isFocused ? " audit-row-focused" : ""}" data-link-id="${lk.link_id}">
+      return `<tr class="audit-row${isFocused ? " audit-row-focused" : ""}" data-link-id="${lk.link_id}" aria-selected="${isChecked ? "true" : "false"}">
         <td class="audit-col-check"><input type="checkbox" class="audit-row-cb" data-link-id="${lk.link_id}" ${isChecked ? "checked" : ""}></td>
         <td class="audit-col-status">${statusIcon(lk.status)}</td>
         <td class="audit-col-extid">${lk.external_id != null ? _esc(String(lk.external_id)) : ""}</td>
@@ -974,9 +1066,9 @@ export class AlignPanel {
     }).join("");
 
     wrap.innerHTML = `
-      <table class="prep-align-audit-table">
+      <table class="prep-align-audit-table" role="grid" aria-rowcount="${this._auditLinks.length}">
         <thead>
-          <tr>
+          <tr role="row">
             <th class="audit-col-check"><input type="checkbox" id="align-audit-check-all"></th>
             <th>St.</th>
             <th>ID</th>
@@ -1152,6 +1244,369 @@ export class AlignPanel {
   dispose(): void {
     this._pendingConfirm = null;
     this._el = null;
+  }
+
+  // ─── Sections secondaires : qualité, collisions, runs ────────────────────────
+
+  private _populateQualityCollisionSelects(el: HTMLElement): void {
+    const docs = this._getDocs();
+    const selIds = ["#align-qc-pivot", "#align-qc-target", "#align-coll-pivot", "#align-coll-target"];
+    for (const id of selIds) {
+      const sel = el.querySelector<HTMLSelectElement>(id);
+      if (!sel) continue;
+      const prev = sel.value;
+      sel.innerHTML = `<option value="">&#8212; choisir &#8212;</option>`;
+      for (const d of docs) {
+        const opt = document.createElement("option");
+        opt.value = String(d.doc_id);
+        opt.textContent = `${d.title} (${d.language ?? "?"})`;
+        if (String(d.doc_id) === prev) opt.selected = true;
+        sel.appendChild(opt);
+      }
+    }
+    const hasDoc = docs.length > 0;
+    const qcBtn = el.querySelector<HTMLButtonElement>("#align-qc-btn");
+    const collBtn = el.querySelector<HTMLButtonElement>("#align-coll-load-btn");
+    const reportBtn = el.querySelector<HTMLButtonElement>("#align-report-btn");
+    if (qcBtn) qcBtn.disabled = !hasDoc;
+    if (collBtn) collBtn.disabled = !hasDoc;
+    if (reportBtn) reportBtn.disabled = !hasDoc;
+  }
+
+  private async _runAlignQuality(el: HTMLElement): Promise<void> {
+    const conn = this._conn();
+    if (!conn) return;
+    const pivotSel = el.querySelector<HTMLSelectElement>("#align-qc-pivot");
+    const targetSel = el.querySelector<HTMLSelectElement>("#align-qc-target");
+    const pivot = pivotSel?.value ? parseInt(pivotSel.value) : null;
+    const target = targetSel?.value ? parseInt(targetSel.value) : null;
+    if (!pivot || !target) {
+      this._cb.log("Qualité : sélectionnez un doc pivot et un doc cible.", true);
+      return;
+    }
+    const btn = el.querySelector<HTMLButtonElement>("#align-qc-btn")!;
+    btn.disabled = true;
+    btn.textContent = "Calcul…";
+    this._cb.log(`Calcul métriques qualité pivot #${pivot} ↔ cible #${target}…`);
+    try {
+      const res: AlignQualityResponse = await alignQuality(conn, pivot, target);
+      const s = res.stats;
+      const resultEl = el.querySelector<HTMLElement>("#align-qc-result")!;
+      resultEl.style.display = "";
+      resultEl.innerHTML = `
+        <div class="prep-quality-stats-grid">
+          <div class="prep-quality-stat">
+            <span class="prep-quality-label">Couverture pivot</span>
+            <span class="prep-quality-value ${s.coverage_pct >= 90 ? "ok" : s.coverage_pct >= 60 ? "warn" : "err"}">
+              ${s.coverage_pct}% (${s.covered_pivot_units}/${s.total_pivot_units})
+            </span>
+          </div>
+          <div class="prep-quality-stat">
+            <span class="prep-quality-label">Liens total</span>
+            <span class="prep-quality-value">${s.total_links}</span>
+          </div>
+          <div class="prep-quality-stat">
+            <span class="prep-quality-label">Orphelins pivot</span>
+            <span class="prep-quality-value ${s.orphan_pivot_count === 0 ? "ok" : "warn"}">${s.orphan_pivot_count}</span>
+          </div>
+          <div class="prep-quality-stat">
+            <span class="prep-quality-label">Orphelins cible</span>
+            <span class="prep-quality-value ${s.orphan_target_count === 0 ? "ok" : "warn"}">${s.orphan_target_count}</span>
+          </div>
+          <div class="prep-quality-stat">
+            <span class="prep-quality-label">Collisions</span>
+            <span class="prep-quality-value ${s.collision_count === 0 ? "ok" : "err"}">${s.collision_count}</span>
+          </div>
+          <div class="prep-quality-stat">
+            <span class="prep-quality-label">Statuts</span>
+            <span class="prep-quality-value">
+              ✓${s.status_counts.accepted} ✗${s.status_counts.rejected} ?${s.status_counts.unreviewed}
+            </span>
+          </div>
+        </div>
+        ${res.sample_orphan_pivot.length > 0 ? `
+        <details style="margin-top:0.5rem">
+          <summary style="cursor:pointer;font-size:0.85rem;color:var(--text-muted)">
+            Exemples orphelins pivot (${res.sample_orphan_pivot.length})
+          </summary>
+          <div style="font-size:0.82rem;margin-top:0.3rem">
+            ${res.sample_orphan_pivot.map(o => `<div>[§${o.external_id ?? "?"}] ${o.text ?? ""}</div>`).join("")}
+          </div>
+        </details>` : ""}
+        ${res.sample_orphan_target.length > 0 ? `
+        <details style="margin-top:0.4rem">
+          <summary style="cursor:pointer;font-size:0.85rem;color:var(--text-muted)">
+            Exemples orphelins cible (${res.sample_orphan_target.length})
+          </summary>
+          <div style="font-size:0.82rem;margin-top:0.3rem">
+            ${res.sample_orphan_target.map(o => `<div>[§${o.external_id ?? "?"}] ${o.text ?? ""}</div>`).join("")}
+          </div>
+        </details>` : ""}
+      `;
+      // Update KPIs from quality result
+      const updKpi = (id: string, value: string, cls?: string) => {
+        const kpiEl = el.querySelector(`#${id}`);
+        if (kpiEl) { kpiEl.textContent = value; if (cls) kpiEl.className = `align-kpi-value ${cls}`; }
+      };
+      updKpi("act-kpi-coverage", `${s.coverage_pct}%`, s.coverage_pct >= 90 ? "ok" : s.coverage_pct >= 60 ? "warn" : "bad");
+      updKpi("act-kpi-orphan-p", String(s.orphan_pivot_count), s.orphan_pivot_count === 0 ? "ok" : "warn");
+      updKpi("act-kpi-orphan-t", String(s.orphan_target_count ?? 0), (s.orphan_target_count ?? 0) === 0 ? "ok" : "warn");
+      this._cb.log(`Qualité : couverture ${s.coverage_pct}%, orphelins=${s.orphan_pivot_count}p/${s.orphan_target_count}c, collisions=${s.collision_count}`);
+    } catch (err) {
+      this._cb.log(`Erreur qualité : ${err instanceof SidecarError ? err.message : String(err)}`, true);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Calculer métriques";
+    }
+  }
+
+  private async _loadCollisionsPage(el: HTMLElement, append: boolean): Promise<void> {
+    const conn = this._conn();
+    if (!conn) return;
+    const pivotSel = el.querySelector<HTMLSelectElement>("#align-coll-pivot");
+    const targetSel = el.querySelector<HTMLSelectElement>("#align-coll-target");
+    const pivotId = parseInt(pivotSel?.value ?? "");
+    const targetId = parseInt(targetSel?.value ?? "");
+    if (!pivotId || !targetId) {
+      this._cb.toast("Sélectionnez un pivot et une cible.", true);
+      return;
+    }
+    if (!append) { this._collOffset = 0; this._collGroups = []; }
+    try {
+      const res = await listCollisions(conn, {
+        pivot_doc_id: pivotId,
+        target_doc_id: targetId,
+        limit: this._collLimit,
+        offset: this._collOffset,
+      });
+      this._collTotalCount = res.total_collisions;
+      this._collGroups = append ? [...this._collGroups, ...res.collisions] : res.collisions;
+      this._collHasMore = res.has_more;
+      this._collOffset = res.next_offset;
+      this._renderCollisionTable(el, targetId);
+      this._cb.log(`Collisions : ${this._collTotalCount} groupe(s) trouvé(s).`);
+    } catch (err) {
+      this._cb.log(`Erreur collisions : ${err instanceof SidecarError ? err.message : String(err)}`, true);
+      this._cb.toast("✗ Erreur chargement collisions", true);
+    }
+  }
+
+  private _renderCollisionTable(el: HTMLElement, targetDocId: number): void {
+    const resultEl = el.querySelector<HTMLElement>("#align-coll-result");
+    const moreWrap = el.querySelector<HTMLElement>("#align-coll-more-wrap");
+    if (!resultEl) return;
+    resultEl.style.display = "";
+    if (this._collGroups.length === 0) {
+      resultEl.innerHTML = `<p class="hint">✓ Aucune collision détectée.</p>`;
+      if (moreWrap) moreWrap.style.display = "none";
+      return;
+    }
+    const header = `<p style="margin-bottom:0.5rem;font-size:0.88rem;color:var(--text-muted)">
+      ${this._collTotalCount} groupe(s) de collision — ${this._collGroups.length} affiché(s)</p>`;
+    const groupHtml = this._collGroups.map((g) => {
+      const linksHtml = g.links.map((lnk) => {
+        const badge = lnk.status === "accepted"
+          ? `<span class="prep-status-badge prep-status-ok">✅ Accepté</span>`
+          : lnk.status === "rejected"
+          ? `<span class="prep-status-badge prep-status-error">❌ Rejeté</span>`
+          : `<span class="prep-status-badge prep-status-unknown">🔵 Non révisé</span>`;
+        return `<tr>
+          <td class="prep-audit-cell-text">${lnk.target_text}</td>
+          <td>[§${lnk.target_external_id ?? "?"}]</td>
+          <td>${badge}</td>
+          <td class="prep-audit-cell-actions">
+            <button class="btn btn-sm btn-primary coll-keep-btn" data-link="${lnk.link_id}" data-group="${g.pivot_unit_id}" title="Garder">✓ Garder</button>
+            <button class="btn btn-sm btn-secondary coll-reject-btn" data-link="${lnk.link_id}" title="Rejeter">❌ Rejeter</button>
+            <button class="btn btn-sm btn-danger coll-delete-btn" data-link="${lnk.link_id}" data-group="${g.pivot_unit_id}" data-target="${targetDocId}" aria-label="Supprimer ce lien">🗑</button>
+          </td>
+        </tr>`;
+      }).join("");
+      return `<div class="collision-group" style="margin-bottom:1rem;border:1px solid var(--border);border-radius:6px;overflow:hidden">
+        <div class="collision-pivot-header" style="background:var(--surface-alt,#f5f5f5);padding:0.4rem 0.75rem;font-size:0.85rem;font-weight:600">
+          [§${g.pivot_external_id ?? "?"}] ${g.pivot_text}
+          <button class="btn btn-sm btn-danger coll-delete-others-btn" data-group="${g.pivot_unit_id}" data-target="${targetDocId}"
+            style="float:right;font-size:0.75rem" aria-label="Supprimer tous les liens de ce groupe">🗑 Tout supprimer</button>
+        </div>
+        <table class="prep-meta-table" style="margin:0;width:100%">
+          <thead><tr><th>Texte cible</th><th>Ext. id</th><th>Statut</th><th>Actions</th></tr></thead>
+          <tbody>${linksHtml}</tbody>
+        </table>
+      </div>`;
+    }).join("");
+    resultEl.innerHTML = header + groupHtml;
+    if (moreWrap) moreWrap.style.display = this._collHasMore ? "" : "none";
+    resultEl.querySelectorAll<HTMLButtonElement>(".coll-keep-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        void this._resolveCollision([{ action: "keep", link_id: parseInt(btn.dataset.link!) }], el, parseInt(btn.dataset.group!), targetDocId);
+      });
+    });
+    resultEl.querySelectorAll<HTMLButtonElement>(".coll-reject-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        void this._resolveCollision([{ action: "reject", link_id: parseInt(btn.dataset.link!) }], el, null, targetDocId);
+      });
+    });
+    resultEl.querySelectorAll<HTMLButtonElement>(".coll-delete-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        void this._resolveCollision([{ action: "delete", link_id: parseInt(btn.dataset.link!) }], el, parseInt(btn.dataset.group!), targetDocId);
+      });
+    });
+    resultEl.querySelectorAll<HTMLButtonElement>(".coll-delete-others-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const pivotUid = parseInt(btn.dataset.group!);
+        const targetDoc = parseInt(btn.dataset.target!);
+        const group = this._collGroups.find(g => g.pivot_unit_id === pivotUid);
+        if (!group) return;
+        const actions = group.links.map(lnk => ({ action: "delete" as const, link_id: lnk.link_id }));
+        void this._resolveCollision(actions, el, pivotUid, targetDoc);
+      });
+    });
+  }
+
+  private async _resolveCollision(
+    actions: Array<{ action: "keep" | "delete" | "reject" | "unreviewed"; link_id: number }>,
+    el: HTMLElement,
+    pivotUnitId: number | null,
+    targetDocId: number,
+  ): Promise<void> {
+    const conn = this._conn();
+    if (!conn) return;
+    try {
+      const res = await resolveCollisions(conn, actions);
+      if (res.errors.length > 0) {
+        this._cb.toast(`⚠ ${res.errors.length} erreur(s)`, true);
+      } else {
+        this._cb.toast(`✓ Résolution appliquée (${res.applied} modif., ${res.deleted} suppr.)`);
+      }
+      this._collOffset = 0;
+      this._collGroups = [];
+      await this._loadCollisionsPage(el, false);
+    } catch (err) {
+      this._cb.log(`Erreur résolution collision : ${err instanceof SidecarError ? err.message : String(err)}`, true);
+      this._cb.toast("✗ Erreur résolution collision", true);
+    }
+    void pivotUnitId; // consumed via group lookup in renderCollisionTable
+    void targetDocId;
+  }
+
+  private async _refreshAlignRunsCompare(el: HTMLElement): Promise<void> {
+    const conn = this._conn();
+    const hintEl = el.querySelector<HTMLElement>("#align-rc-hint");
+    const btn = el.querySelector<HTMLButtonElement>("#align-rc-refresh");
+    if (!conn) { if (hintEl) hintEl.textContent = "Aucune connexion sidecar."; return; }
+    if (btn) btn.disabled = true;
+    if (hintEl) hintEl.textContent = "Chargement…";
+    try {
+      const res = await listRuns(conn, { kind: "align", limit: 80 });
+      this._alignRunsCompareCache = res.runs ?? [];
+      const selA = el.querySelector<HTMLSelectElement>("#align-rc-a");
+      const selB = el.querySelector<HTMLSelectElement>("#align-rc-b");
+      const fill = (sel: HTMLSelectElement | null) => {
+        if (!sel) return;
+        const prev = sel.value;
+        sel.innerHTML = `<option value="">&#8212;</option>`;
+        for (const r of this._alignRunsCompareCache) {
+          const opt = document.createElement("option");
+          opt.value = r.run_id;
+          opt.textContent = this._alignRunSelectLabel(r);
+          sel.appendChild(opt);
+        }
+        if (prev && this._alignRunsCompareCache.some(x => x.run_id === prev)) sel.value = prev;
+      };
+      fill(selA);
+      fill(selB);
+      const n = this._alignRunsCompareCache.length;
+      if (hintEl) {
+        hintEl.textContent = n === 0
+          ? "Aucun run d'alignement en base. Lancez un alignement puis rechargez."
+          : `${n} run(s) — choisissez deux entrées pour comparer.`;
+      }
+      this._updateAlignRunCompareDiff(el);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (hintEl) hintEl.textContent = `Erreur : ${msg}`;
+      this._cb.log(`Runs /runs : ${msg}`, true);
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  private _alignRunSelectLabel(r: RunRecord): string {
+    const p = r.params && typeof r.params === "object" ? r.params as Record<string, unknown> : {};
+    const s = r.stats && typeof r.stats === "object" ? r.stats as Record<string, unknown> : {};
+    const strat = String(p.strategy ?? s.strategy ?? "?");
+    const piv = p.pivot_doc_id ?? s.pivot_doc_id;
+    const date = (r.created_at || "").slice(0, 10);
+    const shortId = r.run_id.length > 12 ? `${r.run_id.slice(0, 8)}…` : r.run_id;
+    return `${date} · ${strat} · pivot ${piv ?? "?"} · ${shortId}`;
+  }
+
+  private _pickAlignRunParams(r: RunRecord): Record<string, unknown> {
+    const p = r.params && typeof r.params === "object" ? r.params as Record<string, unknown> : {};
+    const s = r.stats && typeof r.stats === "object" ? r.stats as Record<string, unknown> : {};
+    return {
+      strategy: p.strategy ?? s.strategy,
+      pivot_doc_id: p.pivot_doc_id ?? s.pivot_doc_id,
+      target_doc_ids: p.target_doc_ids ?? s.target_doc_ids,
+      debug_align: p.debug_align ?? s.debug_align,
+      replace_existing: p.replace_existing ?? s.replace_existing,
+      preserve_accepted: p.preserve_accepted ?? s.preserve_accepted,
+    };
+  }
+
+  private _pickAlignRunStats(r: RunRecord): Record<string, unknown> {
+    const s = r.stats && typeof r.stats === "object" ? r.stats as Record<string, unknown> : {};
+    return {
+      total_links_created: s.total_links_created,
+      total_effective_links: s.total_effective_links,
+      deleted_before: s.deleted_before,
+      preserved_before: s.preserved_before,
+    };
+  }
+
+  private _fmtRunCell(v: unknown): string {
+    if (v === undefined || v === null) return "—";
+    if (typeof v === "object") return JSON.stringify(v);
+    return String(v);
+  }
+
+  private _updateAlignRunCompareDiff(el: HTMLElement): void {
+    const resultEl = el.querySelector<HTMLElement>("#align-rc-result");
+    if (!resultEl) return;
+    const idA = el.querySelector<HTMLSelectElement>("#align-rc-a")?.value ?? "";
+    const idB = el.querySelector<HTMLSelectElement>("#align-rc-b")?.value ?? "";
+    if (!idA || !idB || idA === idB) { resultEl.style.display = "none"; resultEl.innerHTML = ""; return; }
+    const runA = this._alignRunsCompareCache.find(x => x.run_id === idA);
+    const runB = this._alignRunsCompareCache.find(x => x.run_id === idB);
+    if (!runA || !runB) { resultEl.style.display = "none"; return; }
+    const pa = this._pickAlignRunParams(runA);
+    const pb = this._pickAlignRunParams(runB);
+    const sta = this._pickAlignRunStats(runA);
+    const stb = this._pickAlignRunStats(runB);
+    const rows: Array<{ label: string; a: unknown; b: unknown }> = [
+      { label: "run_id", a: runA.run_id, b: runB.run_id },
+      { label: "created_at", a: runA.created_at, b: runB.created_at },
+      { label: "strategy", a: pa.strategy, b: pb.strategy },
+      { label: "pivot_doc_id", a: pa.pivot_doc_id, b: pb.pivot_doc_id },
+      { label: "target_doc_ids", a: pa.target_doc_ids, b: pb.target_doc_ids },
+      { label: "debug_align", a: pa.debug_align, b: pb.debug_align },
+      { label: "replace_existing", a: pa.replace_existing, b: pb.replace_existing },
+      { label: "preserve_accepted", a: pa.preserve_accepted, b: pb.preserve_accepted },
+      { label: "total_links_created", a: sta.total_links_created, b: stb.total_links_created },
+      { label: "total_effective_links", a: sta.total_effective_links, b: stb.total_effective_links },
+      { label: "deleted_before", a: sta.deleted_before, b: stb.deleted_before },
+      { label: "preserved_before", a: sta.preserved_before, b: stb.preserved_before },
+    ];
+    let html = `<table class="prep-meta-table prep-act-run-compare-table" role="region" aria-label="Comparaison de runs"><thead><tr><th>Champ</th><th>Run A</th><th>Run B</th><th></th></tr></thead><tbody>`;
+    for (const row of rows) {
+      const sa = this._fmtRunCell(row.a);
+      const sb = this._fmtRunCell(row.b);
+      const match = sa === sb;
+      const icon = match ? '<span title="Identique">=</span>' : '<span title="Différent" style="color:var(--color-warning,#b45309)">≠</span>';
+      html += `<tr><td>${_esc(row.label)}</td><td><code>${_esc(sa)}</code></td><td><code>${_esc(sb)}</code></td><td><span aria-hidden="true">${icon}</span></td></tr>`;
+    }
+    html += `</tbody></table>`;
+    resultEl.innerHTML = html;
+    resultEl.style.display = "";
   }
 }
 

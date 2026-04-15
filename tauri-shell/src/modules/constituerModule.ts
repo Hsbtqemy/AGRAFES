@@ -80,8 +80,12 @@ const CONSTITUER_CSS = `
   overflow: hidden;
   position: relative;
 }
-.con-subcontent > * {
+/* Le wrapper direct (#con-prep-wrapper) reçoit height:100%.
+   Les enfants du prep app (topbar, prep-shell) restent en block flow normal
+   sans interférence de height:100%. */
+.con-subcontent > .con-prep-wrapper {
   height: 100%;
+  overflow: hidden;
 }
 `;
 
@@ -201,9 +205,14 @@ async function _mountTab(tab: ConstituerTab): Promise<void> {
     const dbPath = _savedCtx.getDbPath();
     if (dbPath) setCurrentDbPath(dbPath);
     // tauri-prep's App._buildUI() mounts into document.getElementById("app").
-    // Give _subContainer that id so prep finds it; the outer container's id
-    // was already removed in mount() to avoid duplicate ids.
-    _subContainer!.id = "app";
+    // We use a wrapper div (not _subContainer itself) so that the CSS rule
+    // .con-subcontent > .con-prep-wrapper { height: 100% } targets only this
+    // single child. The prep app's own children (topbar, prep-shell) then
+    // render in normal block flow without inheriting height:100%.
+    const wrapper = document.createElement("div");
+    wrapper.className = "con-prep-wrapper";
+    wrapper.id = "app";
+    _subContainer!.appendChild(wrapper);
     _prepApp = new App();
     await _prepApp.init();
     _subDispose = () => {
@@ -211,7 +220,7 @@ async function _mountTab(tab: ConstituerTab): Promise<void> {
         try { _prepApp.dispose(); } catch { /* ignore */ }
         _prepApp = null;
       }
-      if (_subContainer) _subContainer.removeAttribute("id");
+      wrapper.removeAttribute("id");
     };
   } else {
     const mod = await import("./conventionsModule.ts");

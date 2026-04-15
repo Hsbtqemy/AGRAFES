@@ -218,6 +218,11 @@ When `multicorpus serve` starts and a portfile already exists:
     - optional: `title`, `doc_role`, `resource_type`, `tei_unit`
   - returns `run_id` + importer report (`doc_id`, unit counts, warnings, etc.)
   - returns `401` if token is active and header is missing/invalid
+- `POST /import/preview`
+  - read-only: parses source file without writing to DB
+  - JSON body: `path`, `mode`, optional `limit` (default 100)
+  - returns `preview` (array of `{n, text}`) for text modes; `conllu_stats` for conllu mode
+  - no token required
 - `POST /shutdown`
   - graceful server stop
   - returns `shutting_down: true`

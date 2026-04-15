@@ -31,8 +31,8 @@ const CSS = `
   overflow: hidden;
   font-size: 0.88rem;
   font-family: system-ui, sans-serif;
-  background: #0f172a;
-  color: #e2e8f0;
+  background: #f8f9fa;
+  color: #212529;
 }
 
 /* ── Panneau gauche : rôles ── */
@@ -42,20 +42,20 @@ const CSS = `
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  border-right: 1px solid rgba(255,255,255,0.1);
-  background: #0d1b2e;
+  border-right: 1px solid #dee2e0;
+  background: #f3f8f7;
 }
 .conv-left-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0.75rem 1rem 0.5rem;
-  border-bottom: 1px solid rgba(255,255,255,0.08);
+  border-bottom: 1px solid #dee2e0;
   font-weight: 600;
   font-size: 0.82rem;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: #94a3b8;
+  color: #6c757d;
 }
 .conv-role-list {
   flex: 1;
@@ -71,51 +71,51 @@ const CSS = `
   transition: background 0.12s;
   border-left: 3px solid transparent;
 }
-.conv-role-item:hover { background: rgba(255,255,255,0.06); }
+.conv-role-item:hover { background: rgba(0,0,0,0.04); }
 .conv-role-item.active {
-  background: rgba(96,165,250,0.12);
-  border-left-color: #60a5fa;
+  background: #e8f5f3;
+  border-left-color: #0c4a46;
 }
 .conv-role-dot {
   width: 12px;
   height: 12px;
   border-radius: 50%;
   flex-shrink: 0;
-  border: 1px solid rgba(255,255,255,0.2);
+  border: 1px solid rgba(0,0,0,0.15);
 }
 .conv-role-icon { font-size: 1rem; width: 18px; text-align: center; }
 .conv-role-label { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.conv-role-name { color: #64748b; font-size: 0.75rem; font-family: monospace; }
+.conv-role-name { color: #adb5bd; font-size: 0.75rem; font-family: monospace; }
 .conv-role-actions { display: none; gap: 0.25rem; }
 .conv-role-item:hover .conv-role-actions,
 .conv-role-item.active .conv-role-actions { display: flex; }
 .conv-btn-icon {
   background: none;
   border: none;
-  color: #94a3b8;
+  color: #6c757d;
   cursor: pointer;
   padding: 2px 4px;
   border-radius: 3px;
   font-size: 0.8rem;
   line-height: 1;
 }
-.conv-btn-icon:hover { background: rgba(255,255,255,0.12); color: #fff; }
-.conv-btn-icon.danger:hover { background: rgba(239,68,68,0.2); color: #f87171; }
+.conv-btn-icon:hover { background: rgba(0,0,0,0.08); color: #212529; }
+.conv-btn-icon.danger:hover { background: rgba(220,53,69,0.1); color: #dc3545; }
 
 /* ── Add role button ── */
 .conv-add-btn {
   margin: 0.5rem;
   padding: 0.45rem 0.75rem;
-  background: rgba(96,165,250,0.15);
-  border: 1px dashed rgba(96,165,250,0.4);
+  background: #e8f5f3;
+  border: 1px dashed #0c4a46;
   border-radius: 6px;
-  color: #93c5fd;
+  color: #0c4a46;
   cursor: pointer;
   font-size: 0.82rem;
   text-align: center;
   transition: background 0.12s;
 }
-.conv-add-btn:hover { background: rgba(96,165,250,0.25); }
+.conv-add-btn:hover { background: #d5eeeb; }
 
 /* ── Panneau droit : unités ── */
 .conv-right {
@@ -129,15 +129,16 @@ const CSS = `
   align-items: center;
   gap: 0.75rem;
   padding: 0.6rem 1rem;
-  border-bottom: 1px solid rgba(255,255,255,0.08);
+  border-bottom: 1px solid #dee2e0;
   flex-shrink: 0;
   flex-wrap: wrap;
+  background: #fff;
 }
 .conv-doc-select {
-  background: #1e293b;
-  border: 1px solid rgba(255,255,255,0.15);
+  background: #fff;
+  border: 1px solid #ced4da;
   border-radius: 5px;
-  color: #e2e8f0;
+  color: #212529;
   padding: 0.3rem 0.5rem;
   font-size: 0.82rem;
   flex: 1;
@@ -145,7 +146,7 @@ const CSS = `
   max-width: 380px;
 }
 .conv-right-hint {
-  color: #64748b;
+  color: #6c757d;
   font-size: 0.8rem;
   flex: 1;
   text-align: right;
@@ -154,6 +155,7 @@ const CSS = `
   flex: 1;
   overflow-y: auto;
   padding: 0.5rem 1rem;
+  background: #fff;
 }
 .conv-unit-row {
   display: flex;
@@ -165,11 +167,11 @@ const CSS = `
   transition: background 0.1s;
   border-left: 3px solid transparent;
 }
-.conv-unit-row:hover { background: rgba(255,255,255,0.05); }
-.conv-unit-row.selected { background: rgba(96,165,250,0.1); border-left-color: #60a5fa; }
+.conv-unit-row:hover { background: #f3f8f7; }
+.conv-unit-row.selected { background: #e8f5f3; border-left-color: #0c4a46; }
 .conv-unit-row.paratext { opacity: 0.55; }
 .conv-unit-n {
-  color: #475569;
+  color: #adb5bd;
   font-size: 0.75rem;
   font-family: monospace;
   min-width: 32px;
@@ -198,76 +200,77 @@ const CSS = `
   align-items: center;
   gap: 0.75rem;
   padding: 0.5rem 1rem;
-  border-top: 1px solid rgba(255,255,255,0.08);
-  background: #0d1b2e;
+  border-top: 1px solid #dee2e0;
+  background: #f3f8f7;
   flex-shrink: 0;
   flex-wrap: wrap;
 }
 .conv-action-bar.visible { display: flex; }
-.conv-action-count { color: #94a3b8; font-size: 0.82rem; }
+.conv-action-count { color: #6c757d; font-size: 0.82rem; }
 .conv-role-pill {
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
   padding: 0.25rem 0.65rem;
   border-radius: 12px;
-  border: 1px solid rgba(255,255,255,0.15);
-  background: rgba(255,255,255,0.06);
+  border: 1px solid #ced4da;
+  background: #fff;
   cursor: pointer;
   font-size: 0.78rem;
   transition: background 0.12s;
+  color: #212529;
 }
-.conv-role-pill:hover { background: rgba(255,255,255,0.14); }
+.conv-role-pill:hover { background: #e9ecef; }
 .conv-role-pill.remove {
-  background: rgba(239,68,68,0.12);
-  border-color: rgba(239,68,68,0.3);
-  color: #f87171;
+  background: #fff5f5;
+  border-color: #f5c2c7;
+  color: #dc3545;
 }
-.conv-role-pill.remove:hover { background: rgba(239,68,68,0.22); }
+.conv-role-pill.remove:hover { background: #f8d7da; }
 .conv-text-start-btn {
   margin-left: auto;
   padding: 0.25rem 0.65rem;
-  background: rgba(168,85,247,0.15);
-  border: 1px solid rgba(168,85,247,0.4);
+  background: #f3f0ff;
+  border: 1px solid #d0bfff;
   border-radius: 5px;
-  color: #c084fc;
+  color: #6f42c1;
   cursor: pointer;
   font-size: 0.78rem;
 }
-.conv-text-start-btn:hover { background: rgba(168,85,247,0.28); }
+.conv-text-start-btn:hover { background: #e9e3ff; }
 
 /* ── Dialog modal ── */
 .conv-overlay {
   position: fixed; inset: 0;
-  background: rgba(0,0,0,0.6);
+  background: rgba(0,0,0,0.4);
   z-index: 9000;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 .conv-dialog {
-  background: #1e293b;
-  border: 1px solid rgba(255,255,255,0.15);
+  background: #fff;
+  border: 1px solid #dee2e6;
   border-radius: 10px;
   padding: 1.5rem;
   width: 360px;
   max-width: 95vw;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.15);
 }
-.conv-dialog h3 { margin: 0 0 1rem; font-size: 1rem; color: #f1f5f9; }
+.conv-dialog h3 { margin: 0 0 1rem; font-size: 1rem; color: #212529; }
 .conv-field { margin-bottom: 0.85rem; }
-.conv-field label { display: block; margin-bottom: 0.3rem; color: #94a3b8; font-size: 0.78rem; }
+.conv-field label { display: block; margin-bottom: 0.3rem; color: #6c757d; font-size: 0.78rem; }
 .conv-field input {
   width: 100%;
   box-sizing: border-box;
-  background: #0f172a;
-  border: 1px solid rgba(255,255,255,0.15);
+  background: #fff;
+  border: 1px solid #ced4da;
   border-radius: 5px;
-  color: #e2e8f0;
+  color: #212529;
   padding: 0.4rem 0.6rem;
   font-size: 0.85rem;
 }
-.conv-field input:focus { outline: 2px solid #3b82f6; border-color: transparent; }
+.conv-field input:focus { outline: 2px solid #0c4a46; border-color: transparent; }
 .conv-dialog-actions {
   display: flex;
   justify-content: flex-end;
@@ -282,21 +285,21 @@ const CSS = `
   font-size: 0.85rem;
   font-weight: 500;
 }
-.conv-dialog-btn.primary { background: #3b82f6; color: #fff; }
-.conv-dialog-btn.primary:hover { background: #2563eb; }
-.conv-dialog-btn.secondary { background: rgba(255,255,255,0.08); color: #e2e8f0; }
-.conv-dialog-btn.secondary:hover { background: rgba(255,255,255,0.14); }
+.conv-dialog-btn.primary { background: #0c4a46; color: #fff; }
+.conv-dialog-btn.primary:hover { background: #0a3d3a; }
+.conv-dialog-btn.secondary { background: #e9ecef; color: #212529; }
+.conv-dialog-btn.secondary:hover { background: #dee2e6; }
 
 /* ── États vides / erreur ── */
 .conv-empty {
   padding: 2rem 1rem;
   text-align: center;
-  color: #475569;
+  color: #6c757d;
   font-size: 0.85rem;
   line-height: 1.6;
 }
 .conv-error {
-  color: #f87171;
+  color: #dc3545;
   font-size: 0.8rem;
   margin-top: 0.5rem;
 }
@@ -340,7 +343,7 @@ export async function mount(container: HTMLElement, ctx: ShellContext): Promise<
   await _loadDocs();
 
   _unsubDbChange = ctx.onDbChange(async (newPath) => {
-    if (newPath) {
+    if (newPath && _root) {
       _conn = await ensureRunning(newPath);
       _selectedDocId = null;
       _selectedUnitIds.clear();

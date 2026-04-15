@@ -163,24 +163,24 @@ export class MetadataScreen {
 
     root.innerHTML = `
       <!-- Head card: title + state banner + KPI bar + corpus actions -->
-      <div class="card meta-screen-head">
-        <div class="meta-head-top">
+      <div class="card prep-meta-screen-head">
+        <div class="prep-meta-head-top">
           <div>
             <h2 class="prep-screen-title" style="margin:0 0 4px">Documents</h2>
-            <p class="meta-head-desc">Sélectionnez un document pour éditer ses métadonnées ou utilisez l'édition en masse.</p>
+            <p class="prep-meta-head-desc">Sélectionnez un document pour éditer ses métadonnées ou utilisez l'édition en masse.</p>
           </div>
-          <div id="meta-state-banner" class="runtime-state prep-state-info" aria-live="polite">
+          <div id="meta-state-banner" class="prep-runtime-state prep-state-info" aria-live="polite">
             En attente de connexion sidecar…
           </div>
         </div>
-        <div class="meta-head-bottom">
-          <div id="meta-kpi-bar" class="meta-kpi-bar">
-            <span id="meta-kpi-total"  class="meta-kpi">0 doc</span>
-            <span id="meta-kpi-ok"    class="meta-kpi meta-kpi-ok">0 validés</span>
-            <span id="meta-kpi-warn"  class="meta-kpi meta-kpi-warn">0 à traiter</span>
-            <span id="meta-kpi-langs" class="meta-kpi">0 langues</span>
+        <div class="prep-meta-head-bottom">
+          <div id="prep-meta-kpi-bar" class="prep-meta-kpi-bar">
+            <span id="meta-kpi-total"  class="prep-meta-kpi">0 doc</span>
+            <span id="prep-meta-kpi-ok"    class="prep-meta-kpi prep-meta-kpi-ok">0 validés</span>
+            <span id="prep-meta-kpi-warn"  class="prep-meta-kpi prep-meta-kpi-warn">0 à traiter</span>
+            <span id="meta-kpi-langs" class="prep-meta-kpi">0 langues</span>
           </div>
-          <div class="meta-head-actions">
+          <div class="prep-meta-head-actions">
             <button id="db-backup-btn" class="btn btn-secondary btn-sm">Sauvegarder la DB</button>
             <span id="db-backup-status" class="hint" style="margin:0">Aucune sauvegarde récente</span>
             <button id="validate-btn" class="btn btn-secondary btn-sm">Valider métadonnées</button>
@@ -193,23 +193,23 @@ export class MetadataScreen {
           </div>
         </div>
         <!-- Audit panel — shown after clicking "Audit corpus" -->
-        <div id="meta-audit-panel" class="meta-audit-panel" hidden></div>
+        <div id="prep-meta-audit-panel" class="prep-meta-audit-panel" hidden></div>
       </div>
 
       <!-- 2-col workspace -->
-      <div class="meta-layout">
+      <div class="prep-meta-layout">
 
         <!-- Left column: document list (not collapsible — always visible) -->
-        <section class="card meta-list-card">
-          <div class="meta-list-head">
-            <div class="meta-list-head-left">
+        <section class="card prep-meta-list-card">
+          <div class="prep-meta-list-head">
+            <div class="prep-meta-list-head-left">
               <h3 style="margin:0">Documents</h3>
-              <button id="refresh-docs-btn" class="btn btn-secondary btn-sm meta-refresh-btn"
+              <button id="refresh-docs-btn" class="btn btn-secondary btn-sm prep-meta-refresh-btn"
                 aria-label="Actualiser la liste des documents" title="Recharger la liste depuis la base">↻ Actualiser</button>
             </div>
             <span id="meta-doc-count" class="hint" style="margin:0">0 document</span>
           </div>
-          <div class="meta-list-toolbar">
+          <div class="prep-meta-list-toolbar">
             <input id="meta-doc-filter" type="text"
               placeholder="Titre, langue, #id…" class="meta-filter-input" />
             <select id="meta-status-filter" class="meta-filter-select">
@@ -222,8 +222,8 @@ export class MetadataScreen {
             <button id="meta-hierarchy-btn" class="btn btn-secondary btn-sm"
               title="Basculer entre vue liste et vue hiérarchique" aria-pressed="false">🌿 Hiérarchie</button>
           </div>
-          <div class="meta-doc-list-wrap">
-            <table class="meta-doc-table" aria-label="Documents du corpus">
+          <div class="prep-meta-doc-list-wrap">
+            <table class="prep-meta-doc-table" aria-label="Documents du corpus">
               <thead>
                 <tr>
                   <th class="col-check">
@@ -236,12 +236,12 @@ export class MetadataScreen {
                   <th class="col-status sortable-th" data-sort="status">Statut <span class="sort-ind" aria-hidden="true"></span></th>
                 </tr>
               </thead>
-              <tbody id="meta-doc-list"></tbody>
+              <tbody id="prep-meta-doc-list"></tbody>
             </table>
           </div>
-          <div id="meta-batch-bar" class="meta-batch-bar">
-            <span id="meta-batch-meta" class="meta-batch-meta">0 sélectionné</span>
-            <div class="meta-batch-actions">
+          <div id="prep-meta-batch-bar" class="prep-meta-batch-bar">
+            <span id="prep-meta-batch-meta" class="prep-meta-batch-meta">0 sélectionné</span>
+            <div class="prep-meta-batch-actions">
               <button id="meta-batch-role-btn" class="btn btn-secondary btn-sm" disabled>Définir rôle</button>
               <button id="meta-batch-delete-btn" class="btn btn-danger btn-sm" disabled>🗑 Supprimer</button>
             </div>
@@ -249,7 +249,7 @@ export class MetadataScreen {
         </section>
 
         <!-- Right column: edit panel -->
-        <section class="card meta-edit-card" data-collapsible="true">
+        <section class="card prep-meta-edit-card" data-collapsible="true">
           <h3>Édition du document sélectionné</h3>
           <div id="meta-edit-panel">
             <p class="empty-hint">Sélectionnez un document dans la liste.</p>
@@ -277,20 +277,20 @@ export class MetadataScreen {
       </section>
 
       <!-- Log (collapsed by default) -->
-      <section class="card meta-log-card" data-collapsible="true" data-collapsed-default="true">
+      <section class="card prep-meta-log-card" data-collapsible="true" data-collapsed-default="true">
         <h3>Journal des actions documents</h3>
         <div id="meta-log" class="prep-log-pane"></div>
       </section>
     `;
 
-    this._docListEl   = root.querySelector("#meta-doc-list")!;
+    this._docListEl   = root.querySelector("#prep-meta-doc-list")!;
     this._editPanelEl = root.querySelector("#meta-edit-panel")!;
     this._logEl       = root.querySelector("#meta-log")!;
     this._docCountEl  = root.querySelector("#meta-doc-count")!;
     this._stateEl     = root.querySelector("#meta-state-banner")!;
-    this._kpiBarEl    = root.querySelector("#meta-kpi-bar")!;
-    this._batchBarEl  = root.querySelector("#meta-batch-bar")!;
-    this._batchMetaEl = root.querySelector("#meta-batch-meta")!;
+    this._kpiBarEl    = root.querySelector("#prep-meta-kpi-bar")!;
+    this._batchBarEl  = root.querySelector("#prep-meta-batch-bar")!;
+    this._batchMetaEl = root.querySelector("#prep-meta-batch-meta")!;
     this._selectAllEl = root.querySelector<HTMLInputElement>("#meta-select-all")!;
 
     root.querySelector("#refresh-docs-btn")!.addEventListener("click", () => this._refreshDocList());
@@ -331,7 +331,7 @@ export class MetadataScreen {
       const v = parseInt((e.target as HTMLInputElement).value, 10);
       if (!isNaN(v) && v >= 1 && v <= 100) this._auditRatioThreshold = v;
     });
-    this._auditPanelEl = root.querySelector<HTMLElement>("#meta-audit-panel")!;
+    this._auditPanelEl = root.querySelector<HTMLElement>("#prep-meta-audit-panel")!;
     root.querySelector("#meta-hierarchy-btn")!.addEventListener("click", () => void this._toggleHierarchyView());
 
     // Sortable column headers
@@ -373,7 +373,7 @@ export class MetadataScreen {
 
   private async _refreshDocList(): Promise<void> {
     if (!this._conn) {
-      this._docListEl.innerHTML = `<tr><td colspan="6" class="meta-empty-cell">Sidecar non connecté.</td></tr>`;
+      this._docListEl.innerHTML = `<tr><td colspan="6" class="prep-meta-empty-cell">Sidecar non connecté.</td></tr>`;
       this._updateDocCount();
       this._refreshRuntimeState();
       return;
@@ -416,20 +416,20 @@ export class MetadataScreen {
       if (ind) ind.textContent = isActive ? (this._sortDir === "asc" ? " ↑" : " ↓") : " ⇅";
     });
     if (this._docs.length === 0) {
-      this._docListEl.innerHTML = `<tr><td colspan="6" class="meta-empty-cell">Aucun document.</td></tr>`;
+      this._docListEl.innerHTML = `<tr><td colspan="6" class="prep-meta-empty-cell">Aucun document.</td></tr>`;
       this._renderBatchBar();
       return;
     }
     const docs = this._filteredDocs();
     if (docs.length === 0) {
-      this._docListEl.innerHTML = `<tr><td colspan="6" class="meta-empty-cell">Aucun document ne correspond aux filtres.</td></tr>`;
+      this._docListEl.innerHTML = `<tr><td colspan="6" class="prep-meta-empty-cell">Aucun document ne correspond aux filtres.</td></tr>`;
       this._renderBatchBar();
       return;
     }
     this._docListEl.innerHTML = "";
     for (const doc of docs) {
       const tr = document.createElement("tr");
-      tr.className = "meta-doc-row";
+      tr.className = "prep-meta-doc-row";
       if (this._selectedDoc?.doc_id === doc.doc_id) tr.classList.add("is-active");
       const isChecked = this._selectedDocIds.has(doc.doc_id);
       const wfStatus = this._workflowStatus(doc);
@@ -449,8 +449,8 @@ export class MetadataScreen {
         <td class="col-lang">${this._esc(doc.language)}</td>
         <td class="col-role">${this._esc(doc.doc_role ?? "—")}</td>
         <td class="col-status">
-          <span class="wf-pill wf-${wfStatus}">${wfLabel}</span>
-          <span class="ann-pill ${annotationStatus === "annotated" ? "ann-annotated" : "ann-missing"}" title="${this._esc(annLabel)}">A</span>
+          <span class="prep-wf-pill wf-${wfStatus}">${wfLabel}</span>
+          <span class="prep-ann-pill ${annotationStatus === "annotated" ? "prep-ann-annotated" : "prep-ann-missing"}" title="${this._esc(annLabel)}">A</span>
         </td>
       `;
       tr.querySelector(".meta-row-check")!.addEventListener("click", (e) => {
@@ -559,13 +559,13 @@ export class MetadataScreen {
     const { roots, standalone, orphans } = this._buildTree();
 
     if (this._docs.length === 0) {
-      this._docListEl.innerHTML = `<tr><td colspan="6" class="meta-empty-cell">Aucun document.</td></tr>`;
+      this._docListEl.innerHTML = `<tr><td colspan="6" class="prep-meta-empty-cell">Aucun document.</td></tr>`;
       return;
     }
 
     const appendRow = (doc: DocumentRecord, depth = 0, relationLabel?: string, completionPct?: number) => {
       const tr = document.createElement("tr");
-      tr.className = "meta-doc-row";
+      tr.className = "prep-meta-doc-row";
       if (depth > 0) tr.classList.add("tree-child");
       if (this._selectedDoc?.doc_id === doc.doc_id) tr.classList.add("is-active");
       const isChecked = this._selectedDocIds.has(doc.doc_id);
@@ -596,8 +596,8 @@ export class MetadataScreen {
         <td class="col-lang">${this._esc(doc.language)}</td>
         <td class="col-role">${this._esc(doc.doc_role ?? "—")}</td>
         <td class="col-status">
-          <span class="wf-pill wf-${wfStatus}">${wfLabel}</span>
-          <span class="ann-pill ${annotationStatus === "annotated" ? "ann-annotated" : "ann-missing"}" title="${this._esc(annLabel)}">A</span>
+          <span class="prep-wf-pill wf-${wfStatus}">${wfLabel}</span>
+          <span class="prep-ann-pill ${annotationStatus === "annotated" ? "prep-ann-annotated" : "prep-ann-missing"}" title="${this._esc(annLabel)}">A</span>
         </td>
       `;
       tr.querySelector(".meta-row-check")!.addEventListener("click", (e) => {
@@ -798,7 +798,7 @@ export class MetadataScreen {
       <div class="prep-form-row">
         <label>Rôle
           <select id="edit-role">
-            ${DOC_ROLES.map(r => `<option value="${r}"${r === doc.doc_role ? " selected" : ""}>${r}</option>`).join("")}
+            ${DOC_ROLES.map(r => `<option value="${r}"${r === (doc.doc_role ?? "unknown") ? " selected" : ""}>${r}</option>`).join("")}
           </select>
         </label>
         <label>Resource type
@@ -859,16 +859,16 @@ export class MetadataScreen {
       </div>
       <div id="relations-list" style="margin-top:0.4rem"></div>
 
-      <div class="meta-preview">
-        <div class="meta-preview-head">
+      <div class="prep-meta-preview">
+        <div class="prep-meta-preview-head">
           <h4 style="font-size:0.88rem;font-weight:600;margin:0">Aperçu rapide du contenu</h4>
           <span class="hint" style="margin:0">${this._previewLimit} lignes max</span>
         </div>
         <div id="meta-preview-panel"></div>
       </div>
 
-      <div class="meta-token-editor">
-        <div class="meta-token-head">
+      <div class="prep-meta-token-editor">
+        <div class="prep-meta-token-head">
           <h4 style="font-size:0.88rem;font-weight:600;margin:0">Édition token par token</h4>
           <span class="hint" style="margin:0">Modifiez lemma / UPOS / XPOS / FEATS / MISC pour une unité.</span>
         </div>
@@ -912,7 +912,7 @@ export class MetadataScreen {
         void this._alignFamilyFlow(familyId, btn);
       });
 
-    this._editPanelEl.querySelectorAll<HTMLButtonElement>(".fam-export-pair-btn")
+    this._editPanelEl.querySelectorAll<HTMLButtonElement>(".prep-fam-export-pair-btn")
       .forEach(btn => {
         btn.addEventListener("click", () => {
           const pivotId  = Number(btn.dataset.pivot);
@@ -941,20 +941,20 @@ export class MetadataScreen {
 
     const pairRows = family.children.map(c => {
       const segIcon  = c.segmented       ? "✓" : "○";
-      const segClass = c.segmented       ? "fam-ok" : "fam-todo";
+      const segClass = c.segmented       ? "prep-fam-ok" : "prep-fam-todo";
       const alnIcon  = c.aligned_to_parent ? "✓" : "○";
-      const alnClass = c.aligned_to_parent ? "fam-ok" : "fam-todo";
+      const alnClass = c.aligned_to_parent ? "prep-fam-ok" : "prep-fam-todo";
       const childTitle = c.doc ? this._esc(this._truncateMid(c.doc.title, 28)) : `doc #${c.doc_id}`;
       const childLang  = c.doc ? this._esc(c.doc.language) : "?";
       const exportDisabled = c.aligned_to_parent ? "" : "disabled title=\"Aligner la paire d'abord\"";
       return `
-        <tr class="fam-pair-row">
-          <td class="fam-pair-lang">${childLang}</td>
-          <td class="fam-pair-title" title="${c.doc ? this._esc(c.doc.title) : ""}">${childTitle}</td>
-          <td class="fam-pair-icon ${segClass}" title="Segmenté">${segIcon}</td>
-          <td class="fam-pair-icon ${alnClass}" title="Aligné">${alnIcon}</td>
-          <td class="fam-pair-export">
-            <button class="btn btn-xs fam-export-pair-btn"
+        <tr class="prep-fam-pair-row">
+          <td class="prep-fam-pair-lang">${childLang}</td>
+          <td class="prep-fam-pair-title" title="${c.doc ? this._esc(c.doc.title) : ""}">${childTitle}</td>
+          <td class="prep-fam-pair-icon ${segClass}" title="Segmenté">${segIcon}</td>
+          <td class="prep-fam-pair-icon ${alnClass}" title="Aligné">${alnIcon}</td>
+          <td class="prep-fam-pair-export">
+            <button class="btn btn-xs prep-fam-export-pair-btn"
                     data-pivot="${family.family_id}" data-target="${c.doc_id}"
                     data-pivot-lang="${this._esc(family.parent?.language ?? 'und')}"
                     data-target-lang="${childLang}"
@@ -964,22 +964,22 @@ export class MetadataScreen {
     }).join("");
 
     const ratioWarnings = stats.ratio_warnings.length > 0
-      ? `<p class="fam-ratio-warn">⚠ ${stats.ratio_warnings.length} paire(s) avec ratio de segments suspect (&gt;15 %)</p>`
+      ? `<p class="prep-fam-ratio-warn">⚠ ${stats.ratio_warnings.length} paire(s) avec ratio de segments suspect (&gt;15 %)</p>`
       : "";
 
     return `
       <div class="prep-family-panel">
         <div class="prep-family-panel-head">
-          <span class="fam-title">📁 Famille documentaire</span>
+          <span class="prep-fam-title">📁 Famille documentaire</span>
           <span class="prep-family-pct-badge family-pct-${tier}">${stats.completion_pct} %</span>
         </div>
-        <div class="fam-stats-row">
+        <div class="prep-fam-stats-row">
           <span>${stats.total_docs} doc(s)</span>
           <span>${stats.segmented_docs}/${stats.total_docs} segmentés</span>
           <span>${stats.aligned_pairs}/${stats.total_pairs} paires alignées</span>
           <span>${stats.validated_docs} validé(s)</span>
         </div>
-        <table class="fam-pairs-table">
+        <table class="prep-fam-pairs-table">
           <thead><tr>
             <th>Langue</th><th>Traduction / Extrait</th>
             <th title="Segmenté">Seg.</th><th title="Aligné">Aln.</th><th></th>
@@ -987,7 +987,7 @@ export class MetadataScreen {
           <tbody>${pairRows}</tbody>
         </table>
         ${ratioWarnings}
-        <div class="fam-actions">
+        <div class="prep-fam-actions">
           <button id="seg-family-btn" class="btn btn-secondary btn-sm"
                   data-family-id="${family.family_id}">⟳ Segmenter la famille</button>
           <button id="aln-family-btn" class="btn btn-secondary btn-sm"
@@ -1108,7 +1108,7 @@ export class MetadataScreen {
       // Show inline confirmation before proceeding
       if (resultDiv) {
         resultDiv.innerHTML = `
-          <div class="seg-family-confirm">
+          <div class="prep-seg-family-confirm">
             <p>⚠ <strong>${alreadyDone} doc(s)</strong> déjà segmenté(s) dans cette famille.
                Resegmenter effacera les alignements existants pour ces documents.</p>
             <div class="prep-btn-row" style="gap:0.5rem;flex-wrap:wrap">
@@ -1147,7 +1147,7 @@ export class MetadataScreen {
 
     btn.disabled = true;
     btn.textContent = "⟳ Segmentation…";
-    if (resultDiv) resultDiv.innerHTML = `<p class="seg-family-loading">Segmentation en cours…</p>`;
+    if (resultDiv) resultDiv.innerHTML = `<p class="prep-seg-family-loading">Segmentation en cours…</p>`;
 
     try {
       const res = await segmentFamily(this._conn, familyRootId, { force });
@@ -1156,14 +1156,14 @@ export class MetadataScreen {
         const rows = res.results.map(r => this._segResultRow(r)).join("");
         const { segmented, skipped, errors } = res.summary;
         const parts: string[] = [];
-        if (segmented > 0) parts.push(`<span class="fam-ok">${segmented} segmenté(s)</span>`);
-        if (skipped  > 0) parts.push(`<span class="fam-todo">${skipped} ignoré(s)</span>`);
-        if (errors   > 0) parts.push(`<span class="fam-ratio-warn">${errors} erreur(s)</span>`);
+        if (segmented > 0) parts.push(`<span class="prep-fam-ok">${segmented} segmenté(s)</span>`);
+        if (skipped  > 0) parts.push(`<span class="prep-fam-todo">${skipped} ignoré(s)</span>`);
+        if (errors   > 0) parts.push(`<span class="prep-fam-ratio-warn">${errors} erreur(s)</span>`);
 
         resultDiv.innerHTML = `
-          <div class="seg-family-report">
-            <p class="seg-report-summary">${parts.join(" · ")}</p>
-            <table class="fam-pairs-table">
+          <div class="prep-seg-family-report">
+            <p class="prep-seg-report-summary">${parts.join(" · ")}</p>
+            <table class="prep-fam-pairs-table">
               <thead><tr><th>Doc</th><th>Statut</th><th>Unités</th><th>Avertissements</th></tr></thead>
               <tbody>${rows}</tbody>
             </table>
@@ -1183,7 +1183,7 @@ export class MetadataScreen {
       this._log(`✓ Famille #${familyRootId} segmentée : ${res.summary.segmented} doc(s) traité(s).`);
     } catch (err) {
       const msg = err instanceof SidecarError ? err.message : String(err);
-      if (resultDiv) resultDiv.innerHTML = `<p class="fam-ratio-warn">Erreur : ${msg}</p>`;
+      if (resultDiv) resultDiv.innerHTML = `<p class="prep-fam-ratio-warn">Erreur : ${msg}</p>`;
       this._log(`Erreur segmentation famille : ${msg}`, true);
     } finally {
       btn.disabled = false;
@@ -1195,9 +1195,9 @@ export class MetadataScreen {
     const statusLabel = r.status === "segmented" ? "✓ Segmenté"
       : r.status === "skipped" ? "— Ignoré"
       : "✕ Erreur";
-    const statusClass = r.status === "segmented" ? "fam-ok"
-      : r.status === "skipped" ? "fam-todo"
-      : "fam-ratio-warn";
+    const statusClass = r.status === "segmented" ? "prep-fam-ok"
+      : r.status === "skipped" ? "prep-fam-todo"
+      : "prep-fam-ratio-warn";
     const warns = r.warnings.length > 0
       ? `<span title="${this._esc(r.warnings.join(" | "))}">⚠ ${r.warnings.length}</span>`
       : "—";
@@ -1244,7 +1244,7 @@ export class MetadataScreen {
       const pairRows = pairs.map(p => {
         const segIcon = p.segmented ? "✓" : "⚠";
         const alnIcon = p.aligned ? "⇄" : "○";
-        const segCls  = p.segmented ? "fam-ok" : "fam-ratio-warn";
+        const segCls  = p.segmented ? "prep-fam-ok" : "prep-fam-ratio-warn";
         return `<tr>
           <td>#${familyRootId} ↔ #${p.doc_id}</td>
           <td>${this._esc(p.lang)}</td>
@@ -1255,10 +1255,10 @@ export class MetadataScreen {
       }).join("");
 
       const warnHtml = unready.length > 0
-        ? `<p class="fam-ratio-warn">⚠ ${unready.length} enfant(s) non segmenté(s) — seront ignorés (skip_unready).</p>`
+        ? `<p class="prep-fam-ratio-warn">⚠ ${unready.length} enfant(s) non segmenté(s) — seront ignorés (skip_unready).</p>`
         : "";
       const replaceHtml = alreadyAligned.length > 0
-        ? `<p class="seg-family-confirm" style="margin:4px 0">
+        ? `<p class="prep-seg-family-confirm" style="margin:4px 0">
              ${alreadyAligned.length} paire(s) déjà alignée(s). Remplacer les liens existants ?
              <label style="display:inline-flex;align-items:center;gap:4px;margin-left:6px">
                <input type="checkbox" id="aln-replace-chk"> Remplacer
@@ -1267,9 +1267,9 @@ export class MetadataScreen {
         : "";
 
       resultDiv.innerHTML = `
-        <div class="seg-family-confirm">
+        <div class="prep-seg-family-confirm">
           <p><strong>Paires à aligner (stratégie : position)</strong></p>
-          <table class="fam-pairs-table" style="margin-bottom:6px">
+          <table class="prep-fam-pairs-table" style="margin-bottom:6px">
             <thead><tr><th>Paire</th><th>Langue</th><th>Titre</th><th title="Segmenté">Seg.</th><th title="Aligné">Aln.</th></tr></thead>
             <tbody>${pairRows}</tbody>
           </table>
@@ -1307,7 +1307,7 @@ export class MetadataScreen {
 
     btn.disabled = true;
     btn.textContent = "⇄ Alignement…";
-    if (resultDiv) resultDiv.innerHTML = `<p class="seg-family-loading">Alignement en cours…</p>`;
+    if (resultDiv) resultDiv.innerHTML = `<p class="prep-seg-family-loading">Alignement en cours…</p>`;
 
     try {
       const res = await alignFamily(this._conn, familyRootId, {
@@ -1321,15 +1321,15 @@ export class MetadataScreen {
         const rows = res.results.map(r => this._alnResultRow(r)).join("");
         const { aligned, skipped, errors, total_links_created } = res.summary;
         const parts: string[] = [];
-        if (aligned > 0) parts.push(`<span class="fam-ok">${aligned} paire(s) alignée(s)</span>`);
-        if (skipped > 0) parts.push(`<span class="fam-todo">${skipped} ignorée(s)</span>`);
-        if (errors  > 0) parts.push(`<span class="fam-ratio-warn">${errors} erreur(s)</span>`);
+        if (aligned > 0) parts.push(`<span class="prep-fam-ok">${aligned} paire(s) alignée(s)</span>`);
+        if (skipped > 0) parts.push(`<span class="prep-fam-todo">${skipped} ignorée(s)</span>`);
+        if (errors  > 0) parts.push(`<span class="prep-fam-ratio-warn">${errors} erreur(s)</span>`);
         parts.push(`${total_links_created} lien(s) créé(s)`);
 
         resultDiv.innerHTML = `
-          <div class="seg-family-report">
-            <p class="seg-report-summary">${parts.join(" · ")}</p>
-            <table class="fam-pairs-table">
+          <div class="prep-seg-family-report">
+            <p class="prep-seg-report-summary">${parts.join(" · ")}</p>
+            <table class="prep-fam-pairs-table">
               <thead><tr><th>Paire</th><th>Statut</th><th>Liens</th><th>Avert.</th></tr></thead>
               <tbody>${rows}</tbody>
             </table>
@@ -1348,7 +1348,7 @@ export class MetadataScreen {
       this._log(`✓ Famille #${familyRootId} alignée : ${res.summary.total_links_created} lien(s) créé(s).`);
     } catch (err) {
       const msg = err instanceof SidecarError ? err.message : String(err);
-      if (resultDiv) resultDiv.innerHTML = `<p class="fam-ratio-warn">Erreur : ${msg}</p>`;
+      if (resultDiv) resultDiv.innerHTML = `<p class="prep-fam-ratio-warn">Erreur : ${msg}</p>`;
       this._log(`Erreur alignement famille : ${msg}`, true);
     } finally {
       btn.disabled = false;
@@ -1361,9 +1361,9 @@ export class MetadataScreen {
       : r.status === "skipped"   ? "— Ignoré"
       : r.status === "conflict"  ? "⚡ Conflit"
       : "✕ Erreur";
-    const statusClass = r.status === "aligned"  ? "fam-ok"
-      : r.status === "skipped"  ? "fam-todo"
-      : "fam-ratio-warn";
+    const statusClass = r.status === "aligned"  ? "prep-fam-ok"
+      : r.status === "skipped"  ? "prep-fam-todo"
+      : "prep-fam-ratio-warn";
     const warns = r.warnings.length > 0
       ? `<span title="${this._esc(r.warnings.join(" | "))}">⚠ ${r.warnings.length}</span>`
       : "—";
@@ -1385,7 +1385,7 @@ export class MetadataScreen {
 
     btn.disabled = true;
     btn.textContent = "Chargement…";
-    resultDiv.innerHTML = `<p class="seg-family-loading">Vérification de la curation…</p>`;
+    resultDiv.innerHTML = `<p class="prep-seg-family-loading">Vérification de la curation…</p>`;
 
     try {
       const status = await getFamilyCurationStatus(this._conn, familyRootId);
@@ -1404,7 +1404,7 @@ export class MetadataScreen {
       this._wireCurationButtons(resultDiv, familyRootId);
       btn.textContent = `📋 Curation (${status.total_pending})`;
     } catch (err) {
-      resultDiv.innerHTML = `<p class="fam-ratio-warn">Erreur curation : ${err instanceof SidecarError ? err.message : String(err)}</p>`;
+      resultDiv.innerHTML = `<p class="prep-fam-ratio-warn">Erreur curation : ${err instanceof SidecarError ? err.message : String(err)}</p>`;
       btn.textContent = "📋 Curation";
     } finally {
       btn.disabled = false;
@@ -1862,10 +1862,10 @@ export class MetadataScreen {
     const suffix = this._previewTotalLines > count ? ` / ${this._previewTotalLines} lignes` : "";
     panel.innerHTML = `
       <p class="hint" style="margin:0 0 0.35rem">Extrait affiché: ${count}${suffix}</p>
-      <div class="meta-preview-lines">
+      <div class="prep-meta-preview-lines">
         ${this._previewLines.map((line) => {
           const marker = line.external_id != null ? `[${String(line.external_id).padStart(4, "0")}]` : `[n${line.n}]`;
-          return `<div class="meta-preview-line"><span class="meta-preview-marker">${marker}</span> <span>${this._esc(line.text)}</span></div>`;
+          return `<div class="prep-meta-preview-line"><span class="prep-meta-preview-marker">${marker}</span> <span>${this._esc(line.text)}</span></div>`;
         }).join("")}
       </div>
     `;
@@ -1882,7 +1882,7 @@ export class MetadataScreen {
     const loadBtn = this._editPanelEl.querySelector<HTMLButtonElement>("#meta-token-load-btn");
     loadBtn?.addEventListener("click", () => void this._loadTokensForSelectedUnit());
 
-    const wrap = this._editPanelEl.querySelector<HTMLElement>("#meta-token-table-wrap");
+    const wrap = this._editPanelEl.querySelector<HTMLElement>("#prep-meta-token-table-wrap");
     wrap?.addEventListener("click", (ev) => {
       const btn = (ev.target as HTMLElement).closest<HTMLButtonElement>(".meta-token-save-btn");
       if (!btn) return;
@@ -1908,13 +1908,13 @@ export class MetadataScreen {
 
     const hasRows = this._tokenRows.length > 0;
     const status = this._tokenError
-      ? `<span class="meta-token-status err">${this._esc(this._tokenError)}</span>`
+      ? `<span class="prep-meta-token-status err">${this._esc(this._tokenError)}</span>`
       : hasRows
-        ? `<span class="meta-token-status ok">${this._tokenRows.length} token(s) chargé(s)</span>`
-        : `<span class="meta-token-status">Aucun token chargé.</span>`;
+        ? `<span class="prep-meta-token-status ok">${this._tokenRows.length} token(s) chargé(s)</span>`
+        : `<span class="prep-meta-token-status">Aucun token chargé.</span>`;
 
     panel.innerHTML = `
-      <div class="meta-token-toolbar">
+      <div class="prep-meta-token-toolbar">
         <label>Unité
           <select id="meta-token-unit">
             <option value="">— choisir dans l’aperçu —</option>
@@ -1926,12 +1926,12 @@ export class MetadataScreen {
         </button>
         ${status}
       </div>
-      <div id="meta-token-table-wrap" class="meta-token-table-wrap">
+      <div id="prep-meta-token-table-wrap" class="prep-meta-token-table-wrap">
         ${
           !hasRows
             ? '<p class="empty-hint">Chargez une unité pour éditer ses annotations tokenisées.</p>'
             : `
-            <table class="meta-token-table" aria-label="Édition token par token">
+            <table class="prep-meta-token-table" aria-label="Édition token par token">
               <thead>
                 <tr>
                   <th>#</th>
@@ -2085,8 +2085,8 @@ export class MetadataScreen {
         if (el) el.textContent = text;
       };
       set("meta-kpi-total", `${total} doc${total !== 1 ? "s" : ""}`);
-      set("meta-kpi-ok",    `${validated} validé${validated !== 1 ? "s" : ""}`);
-      set("meta-kpi-warn",  `${todo} à traiter`);
+      set("prep-meta-kpi-ok",    `${validated} validé${validated !== 1 ? "s" : ""}`);
+      set("prep-meta-kpi-warn",  `${todo} à traiter`);
       set("meta-kpi-langs", `${langs} langue${langs !== 1 ? "s" : ""}`);
     }
     this._refreshRuntimeState();
@@ -2221,7 +2221,7 @@ export class MetadataScreen {
 
   private _setRuntimeState(kind: "ok" | "info" | "warn" | "error", text: string): void {
     if (!this._stateEl) return;
-    this._stateEl.className = `runtime-state state-${kind}`;
+    this._stateEl.className = `prep-runtime-state prep-state-${kind}`;
     this._stateEl.textContent = text;
   }
 

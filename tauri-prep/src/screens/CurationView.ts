@@ -7,7 +7,7 @@
  *   - Local review statuses (accept/ignore/pending) + localStorage persistence
  *   - Persistent exceptions (Level 7B) + admin panel (Level 8A)
  *   - Apply history (Level 10A/10B)
- *   - Convention roles + raw pane with unit roles + text_start_n
+ *   - Convention roles + raw prep-pane with unit roles + text_start_n
  *   - Full curate apply with job tracking
  *
  * Dependency injection:
@@ -203,7 +203,7 @@ export class CurationView {
   private _lastApplyResult: CurateApplyResult | null = null;
   private _applyHistory: CurateApplyEvent[] = [];
 
-  // ── Raw pane / unit cache ───────────────────────────────────────────────────
+  // ── Raw prep-pane / unit cache ───────────────────────────────────────────────────
   private _allUnits: UnitRecord[] = [];
   private _allUnitsDocId: number | null = null;
   private _allOverrides: Map<number, string> = new Map();
@@ -339,7 +339,7 @@ export class CurationView {
                   <div class="f prep-curate-ctx-cell"><strong>Port&#233;e</strong>Document complet</div>
                   <div class="f prep-curate-ctx-cell"><strong>Aper&#231;u live</strong>Actif</div>
                 </div>
-                <div class="chip-row prep-curation-quick-rules">
+                <div class="prep-chip-row prep-curation-quick-rules">
                   <input id="act-rule-spaces" class="prep-curate-rule-input" type="checkbox" />
                   <label class="chip prep-curation-chip" for="act-rule-spaces">Espaces incoh&#233;rents</label>
                   <input id="act-rule-quotes" class="prep-curate-rule-input" type="checkbox" />
@@ -355,7 +355,7 @@ export class CurationView {
                   <input id="act-rule-numbering" class="prep-curate-rule-input" type="checkbox" />
                   <label class="chip prep-curation-chip" for="act-rule-numbering">Num&#233;rotation [n]</label>
                 </div>
-                <div class="btns prep-curate-primary-actions">
+                <div class="prep-btns prep-curate-primary-actions">
                   <button id="act-curate-reset-btn" class="btn">R&#233;initialiser</button>
                   <button id="act-preview-btn" class="btn alt" disabled>Pr&#233;visualiser maintenant</button>
                   <button id="act-curate-btn" class="btn pri" disabled>Appliquer curation</button>
@@ -405,13 +405,13 @@ export class CurationView {
                     <input id="act-fr-replace" type="text" class="prep-fr-input" placeholder="(vide&#160;= supprimer)" autocomplete="off" />
                   </label>
                 </div>
-                <div class="chip-row fr-options-row">
+                <div class="prep-chip-row fr-options-row">
                   <input id="act-fr-regex" type="checkbox" />
                   <label class="chip" for="act-fr-regex">Expression r&#233;guli&#232;re</label>
                   <input id="act-fr-nocase" type="checkbox" />
                   <label class="chip" for="act-fr-nocase">Insensible &#224; la casse</label>
                 </div>
-                <div class="btns fr-actions-row">
+                <div class="prep-btns fr-actions-row">
                   <button id="act-fr-count-btn" class="btn btn-sm btn-secondary">&#128269;&#160;Compter</button>
                   <button id="act-fr-apply-btn" class="btn btn-sm alt">&#9654;&#160;Pr&#233;visualiser</button>
                   <button id="act-fr-clear-btn" class="btn btn-sm" style="display:none">&#10005;&#160;Effacer</button>
@@ -428,7 +428,7 @@ export class CurationView {
                 <div id="act-curate-queue" class="prep-curate-queue">
                   <p class="empty-hint">Aucune action en attente.</p>
                 </div>
-                <div class="btns prep-curate-nav-actions" role="group" aria-label="Navigation entre documents">
+                <div class="prep-btns prep-curate-nav-actions" role="group" aria-label="Navigation entre documents">
                   <button id="act-curate-prev-btn" type="button" class="btn btn-secondary btn-sm" disabled
                     title="Document pr&#233;c&#233;dent dans la liste"
                     aria-label="Document pr&#233;c&#233;dent dans la liste">&#8592; Doc pr&#233;c&#233;d.</button>
@@ -446,7 +446,7 @@ export class CurationView {
                 <span id="act-preview-info" style="font-size:12px;color:var(--prep-muted,#4f5d6d)">&#8212;</span>
               </div>
               <div class="prep-preview-controls">
-                <div class="prep-preview-mode-row chip-row">
+                <div class="prep-preview-mode-row prep-chip-row">
                   <button class="prep-preview-mode-btn" data-preview-mode="diffonly" title="Afficher le texte cur&#233; avec les modifications en surbrillance">Cur&#233; seul</button>
                   <button class="prep-preview-mode-btn active" data-preview-mode="rawonly" title="Afficher le texte source uniquement (vue par d&#233;faut)">Brut seul</button>
                   <button class="prep-preview-mode-btn" data-preview-mode="sidebyside" title="Afficher le brut et le cur&#233; c&#244;te &#224; c&#244;te">C&#244;te &#224; c&#244;te</button>
@@ -477,29 +477,33 @@ export class CurationView {
                   </div>
                 </section>
                 <section class="prep-pane">
-                  <div class="prep-pane-head">Texte cur&#233; (diff)</div>
-                  <div id="act-diff-list" class="prep-diff-list doc-scroll" tabindex="0" aria-label="Texte cur&#233; avec diff&#233;rences (&#8593;&#8595; naviguer, A&#160;accepter, I&#160;ignorer, P&#160;remettre en attente)">
+                  <div class="prep-pane-head">Texte cur&#233; (diff)
+                    <span class="prep-kbd-legend" title="Raccourcis clavier" aria-label="Raccourcis clavier : fl&#232;ches naviguer, A accepter, I ignorer, P remettre en attente">
+                      <kbd>&#8593;</kbd><kbd>&#8595;</kbd>&#160;nav&#160;·&#160;<kbd>A</kbd>&#160;acc.&#160;·&#160;<kbd>I</kbd>&#160;ign.&#160;·&#160;<kbd>P</kbd>&#160;att.
+                    </span>
+                  </div>
+                  <div id="act-diff-list" class="prep-diff-list prep-doc-scroll" tabindex="0" aria-label="Texte cur&#233; avec diff&#233;rences (&#8593;&#8595; naviguer, A&#160;accepter, I&#160;ignorer, P&#160;remettre en attente)">
                     <p class="empty-hint">Aucune pr&#233;visualisation.</p>
                   </div>
                 </section>
                 <aside id="act-curate-minimap" class="prep-minimap" aria-label="Minimap des changements">
-                  <div class="mm"></div>
-                  <div class="mm"></div>
-                  <div class="mm"></div>
+                  <div class="prep-mm"></div>
+                  <div class="prep-mm"></div>
+                  <div class="prep-mm"></div>
                 </aside>
               </div>
               <div class="prep-preview-foot">
                 <div id="act-preview-stats" class="prep-preview-stats"></div>
                 <div id="act-curate-action-bar" class="prep-curate-action-bar" style="display:none">
-                  <button id="act-item-accept"  class="btn btn-sm btn-action-accept"  disabled title="Marquer cette modification comme accept&#233;e">&#10003;&#160;Accepter</button>
-                  <button id="act-item-ignore"  class="btn btn-sm btn-action-ignore"  disabled title="Ignorer cette modification (ne pas appliquer)">&#215;&#160;Ignorer</button>
-                  <button id="act-item-pending" class="btn btn-sm btn-action-pending" disabled title="Remettre en attente de d&#233;cision">&#8635;&#160;En attente</button>
+                  <button id="act-item-accept"  class="btn btn-sm prep-btn-action-accept"  disabled title="Marquer cette modification comme accept&#233;e">&#10003;&#160;Accepter</button>
+                  <button id="act-item-ignore"  class="btn btn-sm prep-btn-action-ignore"  disabled title="Ignorer cette modification (ne pas appliquer)">&#215;&#160;Ignorer</button>
+                  <button id="act-item-pending" class="btn btn-sm prep-btn-action-pending" disabled title="Remettre en attente de d&#233;cision">&#8635;&#160;En attente</button>
                   <span class="prep-action-bar-sep"></span>
-                  <button id="act-bulk-accept"  class="btn btn-sm btn-action-bulk" title="Accepter toutes les modifications visibles">&#10003;&#160;Tout accepter</button>
-                  <button id="act-bulk-ignore"  class="btn btn-sm btn-action-bulk" title="Ignorer toutes les modifications visibles">&#215;&#160;Tout ignorer</button>
+                  <button id="act-bulk-accept"  class="btn btn-sm prep-btn-action-bulk" title="Accepter toutes les modifications visibles">&#10003;&#160;Tout accepter</button>
+                  <button id="act-bulk-ignore"  class="btn btn-sm prep-btn-action-bulk" title="Ignorer toutes les modifications visibles">&#215;&#160;Tout ignorer</button>
                 </div>
                 <div class="prep-btn-row" style="margin-top:0.35rem">
-                  <button id="act-apply-after-preview-btn" class="btn btn-warning btn-sm" style="display:none">Appliquer maintenant</button>
+                  <button id="act-apply-after-preview-btn" class="btn prep-btn-warning btn-sm" style="display:none">Appliquer maintenant</button>
                   <button id="act-reindex-after-curate-btn" class="btn btn-secondary btn-sm" style="display:none" title="L'index de recherche est périmé — cliquez pour le mettre à jour">Mettre à jour l'index</button>
                 </div>
               </div>
@@ -1068,8 +1072,8 @@ export class CurationView {
   }
 
   private _applyPreviewMode(container: HTMLElement): void {
-    const rawPane  = container.querySelector<HTMLElement>("#act-preview-raw")?.closest<HTMLElement>(".pane");
-    const diffPane = container.querySelector<HTMLElement>("#act-diff-list")?.closest<HTMLElement>(".pane");
+    const rawPane  = container.querySelector<HTMLElement>("#act-preview-raw")?.closest<HTMLElement>(".prep-pane");
+    const diffPane = container.querySelector<HTMLElement>("#act-diff-list")?.closest<HTMLElement>(".prep-pane");
     if (rawPane)  rawPane.style.display  = this._previewMode === "diffonly" ? "none" : "";
     if (diffPane) diffPane.style.display = this._previewMode === "rawonly"  ? "none" : "";
     container.querySelectorAll<HTMLButtonElement>(".prep-preview-mode-btn").forEach(btn => {
@@ -1306,14 +1310,14 @@ export class CurationView {
         ? `${this._curateRestoredCount} statut(s) restauré(s) sur ${this._curateSavedCount} sauvegardé(s)`
         : `${this._curateRestoredCount} statut(s) restauré(s)`;
       const modeNote = isAllMode ? ` <em>(sélection modifiée depuis la preview)</em>` : "";
-      restoreNotice = `<div class="prep-session-restore-notice" title="Statuts restaurés depuis la session précédente">&#8635; ${countText}${modeNote} &#8212; <button class="btn-inline-link" id="act-reset-review">Réinitialiser</button></div>`;
+      restoreNotice = `<div class="prep-session-restore-notice" title="Statuts restaurés depuis la session précédente">&#8635; ${countText}${modeNote} &#8212; <button class="prep-btn-inline-link" id="act-reset-review">Réinitialiser</button></div>`;
     } else {
       const modeNote = isAllMode ? `<span class="prep-session-all-note" title="Portée globale">&#9432; Portée globale</span> &#8212; ` : "";
-      restoreNotice = `<div class="prep-session-reset-row">${modeNote}<button class="btn-inline-link" id="act-reset-review">Effacer la review sauvegardée</button></div>`;
+      restoreNotice = `<div class="prep-session-reset-row">${modeNote}<button class="prep-btn-inline-link" id="act-reset-review">Effacer la review sauvegardée</button></div>`;
     }
     el.innerHTML =
       `<div class="prep-session-counts">${chip("pending","&#9632;",sl.pending,c.pending)}${chip("accepted","&#10003;",sl.accepted,c.accepted)}${chip("ignored","&#215;",sl.ignored,c.ignored)}</div>` +
-      (af ? `<div class="prep-session-filter-note">Filtre statut actif &#8212; <button class="btn-inline-link" id="act-clear-sf">Afficher tout</button></div>` : "") +
+      (af ? `<div class="prep-session-filter-note">Filtre statut actif &#8212; <button class="prep-btn-inline-link" id="act-clear-sf">Afficher tout</button></div>` : "") +
       (() => { const n = this._curateExamples.filter(ex => ex.is_manual_override).length; return n > 0 ? `<div class="prep-session-override-note">&#9998;&#160;${n} correction(s) manuelle(s)</div>` : ""; })() +
       (() => { const n = this._curateExceptions.size; return n > 0 ? `<div class="prep-session-exception-note">🔒&#160;${n} exception(s) persistée(s)</div>` : ""; })() +
       restoreNotice;
@@ -2408,7 +2412,7 @@ export class CurationView {
             ` title="Filtrer sur : ${_escHtml(label)}${isTruncated ? " (dans l\u2019\u00e9chantillon courant)" : ""}"` +
             `>${_escHtml(label)}<span class="prep-diag-rule-count">${count}</span></span>`
           ).join("");
-        ruleChipsHtml = `<div class="prep-curate-diag curate-diag-rules"><strong>Filtrer par r&#232;gle</strong>${scopeNote}<div class="chip-row prep-diag-rule-chips" style="margin-top:5px">${chipsInner}</div></div>`;
+        ruleChipsHtml = `<div class="prep-curate-diag curate-diag-rules"><strong>Filtrer par r&#232;gle</strong>${scopeNote}<div class="prep-chip-row prep-diag-rule-chips" style="margin-top:5px">${chipsInner}</div></div>`;
       }
       diagEl.innerHTML = `
         <div class="prep-curate-diag warn curate-diag-summary"><strong>${changed} unit&#233;(s) modifi&#233;e(s)</strong>${replacements} remplacement(s) sur ${total} unit&#233;s.</div>
@@ -2440,13 +2444,13 @@ export class CurationView {
   }
 
   private _renderCurateMinimap(changed: number, total: number): void {
-    const mm = this._q("#act-curate-minimap");
-    if (!mm) return;
+    const mmEl = this._q("#act-curate-minimap");
+    if (!mmEl) return;
     const bars = 12;
     const density = total > 0 ? Math.min(changed / total, 1) : 0;
     const changedBars = Math.round(density * bars);
-    mm.innerHTML = Array.from({ length: bars }, (_, i) =>
-      `<div class="mm${i < changedBars ? " changed" : ""}"></div>`
+    mmEl.innerHTML = Array.from({ length: bars }, (_, i) =>
+      `<div class="prep-mm${i < changedBars ? " changed" : ""}"></div>`
     ).join("");
   }
 
@@ -2486,7 +2490,7 @@ export class CurationView {
     if (examples.length === 0) {
       let msg: string;
       if (this._activeRuleFilter) {
-        msg = `Aucune modification pour &#171;&#160;${_escHtml(this._activeRuleFilter)}&#160;&#187; dans cet &#233;chantillon. <button class="btn-inline-link" id="raw-pane-clear-filter">Effacer le filtre</button>`;
+        msg = `Aucune modification pour &#171;&#160;${_escHtml(this._activeRuleFilter)}&#160;&#187; dans cet &#233;chantillon. <button class="prep-btn-inline-link" id="raw-pane-clear-filter">Effacer le filtre</button>`;
       } else if (this._curateGlobalChanged === 0) {
         msg = `&#10003;&#160;Aucune modification &#8212; le document est propre avec ces r&#232;gles.`;
       } else {
@@ -2528,7 +2532,7 @@ export class CurationView {
     if (examples.length === 0) {
       let msg: string;
       if (this._activeRuleFilter) {
-        msg = `Aucune modification pour &#171;&#160;${_escHtml(this._activeRuleFilter)}&#160;&#187; dans cet &#233;chantillon. <button class="btn-inline-link" id="diff-pane-clear-filter">Effacer le filtre</button>`;
+        msg = `Aucune modification pour &#171;&#160;${_escHtml(this._activeRuleFilter)}&#160;&#187; dans cet &#233;chantillon. <button class="prep-btn-inline-link" id="diff-pane-clear-filter">Effacer le filtre</button>`;
       } else if (this._curateGlobalChanged === 0) {
         msg = `&#10003;&#160;Aucune modification &#8212; document propre.`;
       } else {
@@ -3121,13 +3125,13 @@ export class CurationView {
   private _showCurateApplyConfirm(message: string): Promise<boolean> {
     return new Promise((resolve) => {
       const bar = this._q<HTMLElement>("#act-curate-confirm-bar");
-      if (!bar) { resolve(window.confirm(message)); return; }
+      if (!bar) { resolve(false); return; }
       if (bar.style.display !== "none") { resolve(false); return; }
       const html = message.split("\n").map(line => line.trim() ? `<span>${_escHtml(line)}</span>` : "").filter(Boolean).join("<br>");
       bar.innerHTML =
         `<div class="prep-curate-confirm-body">${html}</div>` +
         `<div class="prep-curate-confirm-actions">` +
-          `<button class="btn btn-warning btn-sm" id="act-confirm-ok">Confirmer l'application</button>` +
+          `<button class="btn prep-btn-warning btn-sm" id="act-confirm-ok">Confirmer l'application</button>` +
           `<button class="btn btn-ghost btn-sm" id="act-confirm-cancel">Annuler</button>` +
         `</div>`;
       bar.style.display = "";

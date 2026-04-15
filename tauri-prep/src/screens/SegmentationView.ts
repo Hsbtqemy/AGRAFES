@@ -144,7 +144,7 @@ export class SegmentationView {
     const el = document.createElement("div");
     el.setAttribute("role", "main");
     el.setAttribute("aria-label", "Vue Segmentation");
-    el.className = "seg-panel-root";
+    el.className = "prep-seg-panel-root";
     el.innerHTML = `
       <section class="prep-acts-seg-head-card">
         <div class="prep-acts-hub-head-left">
@@ -152,19 +152,19 @@ export class SegmentationView {
           <p>S&#233;lectionnez un document pour voir l&#8217;aper&#231;u live et lancer la segmentation.</p>
         </div>
       </section>
-      <div class="seg-split-layout">
-        <div class="seg-split-list" id="act-seg-split-list">
-          <div class="seg-split-list-head">
-            <span class="seg-split-list-title">Documents</span>
-            <input type="search" id="act-seg-list-filter" class="seg-split-list-filter"
+      <div class="prep-seg-split-layout">
+        <div class="prep-seg-split-list" id="act-seg-split-list">
+          <div class="prep-seg-split-list-head">
+            <span class="prep-seg-split-list-title">Documents</span>
+            <input type="search" id="act-seg-list-filter" class="prep-seg-split-list-filter"
               placeholder="Filtrer&#8230;" autocomplete="off" />
           </div>
-          <div class="seg-split-list-scroll" id="act-seg-list-scroll">
+          <div class="prep-seg-split-list-scroll" id="act-seg-list-scroll">
             <p class="empty-hint">Chargement&#8230;</p>
           </div>
         </div>
-        <div class="seg-split-right" id="act-seg-split-right">
-          <div class="seg-right-empty">&#8592; S&#233;lectionnez un document</div>
+        <div class="prep-seg-split-right" id="act-seg-split-right">
+          <div class="prep-seg-right-empty">&#8592; S&#233;lectionnez un document</div>
         </div>
       </div>
     `;
@@ -172,12 +172,12 @@ export class SegmentationView {
     // Filter list on input
     el.querySelector<HTMLInputElement>("#act-seg-list-filter")?.addEventListener("input", (e) => {
       const q = (e.target as HTMLInputElement).value.toLowerCase();
-      el.querySelectorAll<HTMLElement>(".seg-doc-row").forEach(row => {
+      el.querySelectorAll<HTMLElement>(".prep-seg-doc-row").forEach(row => {
         const match = (row.textContent ?? "").toLowerCase().includes(q);
         row.style.display = match ? "" : "none";
       });
-      el.querySelectorAll<HTMLElement>(".seg-doc-group").forEach(grp => {
-        const visible = Array.from(grp.querySelectorAll<HTMLElement>(".seg-doc-row"))
+      el.querySelectorAll<HTMLElement>(".prep-seg-doc-group").forEach(grp => {
+        const visible = Array.from(grp.querySelectorAll<HTMLElement>(".prep-seg-doc-row"))
           .some(r => r.style.display !== "none");
         const prev = grp.previousElementSibling as HTMLElement | null;
         if (prev?.style) prev.style.display = visible ? "" : "none";
@@ -198,11 +198,11 @@ export class SegmentationView {
     void this._buildSegDocListHtml().then(html => {
       if (!scrollEl.isConnected) return;
       scrollEl.innerHTML = html;
-      scrollEl.querySelectorAll<HTMLElement>(".seg-doc-row").forEach(row => {
+      scrollEl.querySelectorAll<HTMLElement>(".prep-seg-doc-row").forEach(row => {
         row.addEventListener("click", () => {
           const docId = parseInt(row.dataset.docId ?? "", 10);
           if (!docId) return;
-          scrollEl.querySelectorAll(".seg-doc-row").forEach(r => r.classList.remove("active"));
+          scrollEl.querySelectorAll(".prep-seg-doc-row").forEach(r => r.classList.remove("active"));
           row.classList.add("active");
           this._selectedSegDocId = docId;
           const rightEl = this._q<HTMLElement>("#act-seg-split-right");
@@ -211,7 +211,7 @@ export class SegmentationView {
       });
       if (this._selectedSegDocId) {
         const prevRow = scrollEl.querySelector<HTMLElement>(
-          `.seg-doc-row[data-doc-id="${this._selectedSegDocId}"]`,
+          `.prep-seg-doc-row[data-doc-id="${this._selectedSegDocId}"]`,
         );
         prevRow?.classList.add("active");
       }
@@ -221,19 +221,19 @@ export class SegmentationView {
   private async _buildSegDocListHtml(): Promise<string> {
     const statusBadge = (d: DocumentRecord): string => {
       const s = d.workflow_status ?? "draft";
-      if (s === "validated") return `<span class="seg-doc-badge seg-badge-ok">&#10003; Valid&#233;</span>`;
-      if (s === "review")    return `<span class="seg-doc-badge seg-badge-warn">&#9203; En revue</span>`;
-      return `<span class="seg-doc-badge seg-badge-none">Brouillon</span>`;
+      if (s === "validated") return `<span class="prep-seg-doc-badge prep-seg-badge-ok">&#10003; Valid&#233;</span>`;
+      if (s === "review")    return `<span class="prep-seg-doc-badge prep-seg-badge-warn">&#9203; En revue</span>`;
+      return `<span class="prep-seg-doc-badge prep-seg-badge-none">Brouillon</span>`;
     };
 
     const docRow = (d: DocumentRecord, indent = false): string =>
-      `<div class="seg-doc-row${indent ? " seg-doc-child" : ""}" data-doc-id="${d.doc_id}">
-        <div class="seg-doc-row-main">
-          <span class="seg-doc-title" title="${_escHtml(d.title)}">${_escHtml(d.title)}</span>
-          <span class="seg-doc-lang">[${_escHtml(d.language)}]</span>
+      `<div class="prep-seg-doc-row${indent ? " prep-seg-doc-child" : ""}" data-doc-id="${d.doc_id}">
+        <div class="prep-seg-doc-row-main">
+          <span class="prep-seg-doc-title" title="${_escHtml(d.title)}">${_escHtml(d.title)}</span>
+          <span class="prep-seg-doc-lang">[${_escHtml(d.language)}]</span>
         </div>
-        <div class="seg-doc-row-foot">
-          <span class="seg-doc-units">${d.unit_count} unit&#233;s</span>
+        <div class="prep-seg-doc-row-foot">
+          <span class="prep-seg-doc-units">${d.unit_count} unit&#233;s</span>
           ${statusBadge(d)}
         </div>
       </div>`;
@@ -272,22 +272,22 @@ export class SegmentationView {
     let html = "";
     for (let fi = 0; fi < familyGroups.length; fi++) {
       const { root, children } = familyGroups[fi];
-      html += `<div class="seg-doc-group-label">
-        <span class="seg-family-pill">Famille ${fi + 1}</span>
-        <span class="seg-family-root-name" title="${_escHtml(root.title)}">${_escHtml(root.title)}</span>
+      html += `<div class="prep-seg-doc-group-label">
+        <span class="prep-seg-family-pill">Famille ${fi + 1}</span>
+        <span class="prep-seg-family-root-name" title="${_escHtml(root.title)}">${_escHtml(root.title)}</span>
       </div>`;
-      html += `<div class="seg-doc-group">`;
+      html += `<div class="prep-seg-doc-group">`;
       html += docRow(root);
       for (const child of children) html += docRow(child, true);
       html += `</div>`;
     }
     if (orphans.length > 0) {
       if (familyGroups.length > 0) {
-        html += `<div class="seg-doc-group-label">&#8212; Sans famille</div>`;
+        html += `<div class="prep-seg-doc-group-label">&#8212; Sans famille</div>`;
       } else {
-        html += `<div class="seg-doc-group-label">Tous les documents</div>`;
+        html += `<div class="prep-seg-doc-group-label">Tous les documents</div>`;
       }
-      html += `<div class="seg-doc-group">`;
+      html += `<div class="prep-seg-doc-group">`;
       for (const d of orphans) html += docRow(d);
       html += `</div>`;
     }
@@ -299,7 +299,7 @@ export class SegmentationView {
   private async _loadSegRightPanel(docId: number, rightEl: HTMLElement): Promise<void> {
     const docs = this._getDocs();
     const doc = docs.find(d => d.doc_id === docId);
-    if (!doc) { rightEl.innerHTML = `<div class="seg-right-empty">Document introuvable.</div>`; return; }
+    if (!doc) { rightEl.innerHTML = `<div class="prep-seg-right-empty">Document introuvable.</div>`; return; }
 
     this._segMarkersDetected = null;
     this._segSplitMode = "sentences";
@@ -307,64 +307,64 @@ export class SegmentationView {
     const pack = (this._q("#act-seg-pack") as HTMLSelectElement | null)?.value ?? "auto";
     const lang = (this._q("#act-seg-lang") as HTMLInputElement | null)?.value.trim() || doc.language || "fr";
     const statusBadge = doc.workflow_status === "validated"
-      ? `<span class="seg-state-chip seg-badge-ok">&#10003; Valid&#233;</span>`
+      ? `<span class="prep-seg-state-chip prep-seg-badge-ok">&#10003; Valid&#233;</span>`
       : doc.workflow_status === "review"
-      ? `<span class="seg-state-chip seg-badge-warn">&#9203; En revue</span>`
-      : `<span class="seg-state-chip seg-badge-none">Brouillon</span>`;
+      ? `<span class="prep-seg-state-chip prep-seg-badge-warn">&#9203; En revue</span>`
+      : `<span class="prep-seg-state-chip prep-seg-badge-none">Brouillon</span>`;
 
     const savedAlready = (doc.unit_count ?? 0) > 0 && doc.workflow_status !== "draft";
 
     this._unbindSegPreviewScrollSync();
 
     rightEl.innerHTML = `
-      <div class="seg-right-root" id="act-seg-right-root">
-        <div class="seg-right-header">
-          <div class="seg-right-header-main">
-            <h3 class="seg-right-doc-title">${_escHtml(doc.title)}</h3>
+      <div class="prep-seg-right-root" id="act-seg-right-root">
+        <div class="prep-seg-right-header">
+          <div class="prep-seg-right-header-main">
+            <h3 class="prep-seg-right-doc-title">${_escHtml(doc.title)}</h3>
             ${statusBadge}
           </div>
-          <div class="seg-right-header-meta">#${doc.doc_id} &middot; ${_escHtml(doc.language)} &middot; ${doc.unit_count} unit&#233;s</div>
+          <div class="prep-seg-right-header-meta">#${doc.doc_id} &middot; ${_escHtml(doc.language)} &middot; ${doc.unit_count} unit&#233;s</div>
         </div>
-        <div class="seg-strategy-bar" role="region" aria-label="Strat&#233;gie de segmentation">
-          <fieldset class="seg-strategy-fieldset">
-            <legend class="seg-strategy-legend">Strat&#233;gie</legend>
-            <div class="seg-strategy-options">
-              <label class="seg-strategy-opt">
-                <span class="seg-strategy-opt-row">
+        <div class="prep-seg-strategy-bar" role="region" aria-label="Strat&#233;gie de segmentation">
+          <fieldset class="prep-seg-strategy-fieldset">
+            <legend class="prep-seg-strategy-legend">Strat&#233;gie</legend>
+            <div class="prep-seg-strategy-options">
+              <label class="prep-seg-strategy-opt">
+                <span class="prep-seg-strategy-opt-row">
                   <input type="radio" name="act-seg-strategy" id="act-seg-strategy-sentences" value="sentences" checked />
-                  <span class="seg-strategy-opt-title">Phrases</span>
+                  <span class="prep-seg-strategy-opt-title">Phrases</span>
                 </span>
-                <span class="seg-strategy-opt-desc">D&#233;coupe automatique (ponctuation + pack)</span>
+                <span class="prep-seg-strategy-opt-desc">D&#233;coupe automatique (ponctuation + pack)</span>
               </label>
-              <label class="seg-strategy-opt">
-                <span class="seg-strategy-opt-row">
+              <label class="prep-seg-strategy-opt">
+                <span class="prep-seg-strategy-opt-row">
                   <input type="radio" name="act-seg-strategy" id="act-seg-strategy-markers" value="markers" />
-                  <span class="seg-strategy-opt-title">Balises <code>[N]</code></span>
+                  <span class="prep-seg-strategy-opt-title">Balises <code>[N]</code></span>
                 </span>
-                <span class="seg-strategy-opt-desc">D&#233;coupe sur les num&#233;ros entre crochets</span>
+                <span class="prep-seg-strategy-opt-desc">D&#233;coupe sur les num&#233;ros entre crochets</span>
               </label>
             </div>
           </fieldset>
-          <p id="act-seg-strategy-summary" class="seg-strategy-summary" aria-live="polite"></p>
+          <p id="act-seg-strategy-summary" class="prep-seg-strategy-summary" aria-live="polite"></p>
         </div>
-        <div id="act-seg-marker-banner" class="seg-marker-banner" style="display:none" aria-live="polite"></div>
-        <div class="seg-params-bar" id="act-seg-params">
-          <label class="seg-param-field">Langue
+        <div id="act-seg-marker-banner" class="prep-seg-marker-banner" style="display:none" aria-live="polite"></div>
+        <div class="prep-seg-params-bar" id="act-seg-params">
+          <label class="prep-seg-param-field">Langue
             <input id="act-seg-lang" type="text" value="${_escHtml(lang)}" maxlength="10"
-              class="seg-param-input" placeholder="fr, en&#8230;" autocomplete="off" spellcheck="false" />
+              class="prep-seg-param-input" placeholder="fr, en&#8230;" autocomplete="off" spellcheck="false" />
           </label>
-          <label class="seg-param-field"
+          <label class="prep-seg-param-field"
             title="Mode &#171; phrases &#187; uniquement : &#233;vite de couper apr&#232;s un point qui suit une abr&#233;viation (M., Dr., ann., chap., etc.). Sans effet en mode balises [N].">
-            <span class="seg-param-label-text">O&#249; couper les phrases</span>
+            <span class="prep-seg-param-label-text">O&#249; couper les phrases</span>
             <select id="act-seg-pack" class="seg-param-select" aria-describedby="act-seg-pack-hint">
               <option value="auto"${pack === "auto" ? " selected" : ""}>Auto (selon la langue)</option>
               <option value="fr_strict"${pack === "fr_strict" ? " selected" : ""}>Fran&#231;ais &#8212; liste longue d&#8217;abr&#233;viations</option>
               <option value="en_strict"${pack === "en_strict" ? " selected" : ""}>Anglais &#8212; liste longue d&#8217;abr&#233;viations</option>
               <option value="default"${pack === "default" ? " selected" : ""}>Liste courte (moins de protections)</option>
             </select>
-            <span id="act-seg-pack-hint" class="seg-param-hint">&#201;vite les fausses coupes apr&#232;s M., Dr., ann., chap.&#8230;</span>
+            <span id="act-seg-pack-hint" class="prep-seg-param-hint">&#201;vite les fausses coupes apr&#232;s M., Dr., ann., chap.&#8230;</span>
           </label>
-          <label class="seg-param-field">Calibrer sur
+          <label class="prep-seg-param-field">Calibrer sur
             <select id="act-seg-calibrate" class="seg-param-select">
               <option value="">&#8212; aucun &#8212;</option>
               ${docs.filter(d => d.doc_id !== docId).map(d =>
@@ -375,9 +375,9 @@ export class SegmentationView {
           <button type="button" class="btn btn-ghost btn-sm" id="act-seg-detect-btn"
             title="D&#233;tecter les balises [N] dans le texte">&#128270; D&#233;tecter balises</button>
         </div>
-        <details class="seg-rule-info" id="act-seg-rule-info">
-          <summary class="seg-rule-info-sum">&#9432; Moteur de d&#233;coupage</summary>
-          <div class="seg-rule-info-body">
+        <details class="prep-seg-rule-info" id="act-seg-rule-info">
+          <summary class="prep-seg-rule-info-sum">&#9432; Moteur de d&#233;coupage</summary>
+          <div class="prep-seg-rule-info-body">
             <p>Le moteur coupe sur <code>.&nbsp;!&nbsp;?</code> suivi d&#8217;un espace puis d&#8217;une <strong>lettre majuscule</strong> (ou guillemet ouvrant).</p>
             <p>&#8594; Si vos phrases d&#233;butent par une minuscule, le moteur ne les d&#233;tectera pas comme d&#233;but de phrase.</p>
             <p>&#8594; Si chaque paragraphe du document est d&#233;j&#224; une phrase, la segmentation retourne le m&#234;me nombre d&#8217;unit&#233;s.</p>
@@ -386,38 +386,38 @@ export class SegmentationView {
             <p><strong>Pr&#233;fixe avant <code>[1]</code> :</strong> le texte plac&#233; avant la premi&#232;re balise devient un segment distinct, avec <code>external_id = NULL</code>.</p>
           </div>
         </details>
-        <div class="seg-preview-section" id="act-seg-preview-section">
-          <div class="seg-preview-section-head">
-            <span class="seg-preview-section-label">Aper&#231;u live <span class="seg-preview-badge" id="act-seg-mode-badge">phrases</span></span>
-            <span id="act-seg-prev-stats" class="seg-preview-stats"></span>
+        <div class="prep-seg-preview-section" id="act-seg-preview-section">
+          <div class="prep-seg-preview-section-head">
+            <span class="prep-seg-preview-section-label">Aper&#231;u live <span class="prep-seg-preview-badge" id="act-seg-mode-badge">phrases</span></span>
+            <span id="act-seg-prev-stats" class="prep-seg-preview-stats"></span>
             <button type="button" class="btn btn-ghost btn-sm" id="act-seg-prev-refresh">&#8635;</button>
           </div>
-          <div class="seg-preview-split" id="act-seg-preview-split">
+          <div class="prep-seg-preview-split" id="act-seg-preview-split">
             <div>
-              <div class="seg-preview-col-title">Brut (<span id="act-seg-prev-raw-count">&#8212;</span> unit&#233;s)</div>
-              <div class="seg-preview-col-list" id="act-seg-prev-raw">
+              <div class="prep-seg-preview-col-title">Brut (<span id="act-seg-prev-raw-count">&#8212;</span> unit&#233;s)</div>
+              <div class="prep-seg-preview-col-list" id="act-seg-prev-raw">
                 <p class="empty-hint">Chargement&#8230;</p>
               </div>
             </div>
             <div>
-              <div class="seg-preview-col-title">Segment&#233; (<span id="act-seg-prev-seg-count">&#8212;</span> phrases)</div>
-              <div class="seg-preview-col-list" id="act-seg-prev-seg">
+              <div class="prep-seg-preview-col-title">Segment&#233; (<span id="act-seg-prev-seg-count">&#8212;</span> phrases)</div>
+              <div class="prep-seg-preview-col-list" id="act-seg-prev-seg">
                 <p class="empty-hint">En attente&#8230;</p>
               </div>
             </div>
           </div>
-          <div id="act-seg-prev-warns" class="seg-warn-list" style="display:none"></div>
+          <div id="act-seg-prev-warns" class="prep-seg-warn-list" style="display:none"></div>
         </div>
-        <div class="seg-actions-bar" id="act-seg-actions">
-          <button class="btn btn-warning" id="act-seg-btn"
+        <div class="prep-seg-actions-bar" id="act-seg-actions">
+          <button class="btn prep-btn-warning" id="act-seg-btn"
             title="Appliquer la segmentation (efface les liens d&#8217;alignement existants)">Appliquer</button>
           <button class="btn btn-secondary btn-sm" id="act-seg-validate-btn"
             title="Appliquer la segmentation puis valider le document">Appliquer + Valider</button>
           <button class="btn btn-primary btn-sm" id="act-seg-validate-only-btn"
             ${!savedAlready ? "disabled" : ""}>Valider &#10003;</button>
-          <div class="seg-actions-dest">
+          <div class="prep-seg-actions-dest">
             Apr&#232;s validation&#160;:
-            <select id="act-seg-after-validate" class="seg-param-select seg-param-select-sm">
+            <select id="act-seg-after-validate" class="seg-param-select prep-seg-param-select-sm">
               <option value="stay">Rester ici</option>
               <option value="next">Doc suivant</option>
               <option value="documents">Onglet Documents</option>
@@ -425,12 +425,12 @@ export class SegmentationView {
           </div>
         </div>
         <div id="act-seg-confirm-bar" class="audit-batch-bar" style="display:none"></div>
-        <div id="act-seg-status-banner" class="seg-status-banner" aria-live="polite"></div>
-        <div class="seg-saved-section" id="act-seg-saved-section" style="${savedAlready ? "" : "display:none"}">
-          <div class="seg-saved-head">Segments enregistr&#233;s
+        <div id="act-seg-status-banner" class="prep-seg-status-banner" aria-live="polite"></div>
+        <div class="prep-seg-saved-section" id="act-seg-saved-section" style="${savedAlready ? "" : "display:none"}">
+          <div class="prep-seg-saved-head">Segments enregistr&#233;s
             <span id="act-seg-saved-count" class="chip">${doc.unit_count}</span>
           </div>
-          <div class="seg-saved-table-wrap" id="act-seg-saved-table">
+          <div class="prep-seg-saved-table-wrap" id="act-seg-saved-table">
             ${savedAlready ? `<p class="empty-hint">Chargement des segments&#8230;</p>` : ""}
           </div>
         </div>
@@ -494,10 +494,10 @@ export class SegmentationView {
         return;
       }
       const truncNote = preview.total_lines > 200
-        ? `<p class="seg-trunc-note">Aper&#231;u &#8212; 200/${preview.total_lines} unit&#233;s (premi&#232;res lignes)</p>`
+        ? `<p class="prep-seg-trunc-note">Aper&#231;u &#8212; 200/${preview.total_lines} unit&#233;s (premi&#232;res lignes)</p>`
         : "";
       rawEl.innerHTML = truncNote + preview.lines.map(l =>
-        `<div class="seg-prev-row"><span class="seg-prev-n">${l.n}</span><span class="seg-prev-tx">${_escHtml(l.text)}</span></div>`,
+        `<div class="prep-seg-prev-row"><span class="prep-seg-prev-n">${l.n}</span><span class="prep-seg-prev-tx">${_escHtml(l.text)}</span></div>`,
       ).join("");
     } catch (err) {
       rawEl.innerHTML = `<p class="empty-hint">Impossible de charger le texte brut : ${_escHtml(err instanceof Error ? err.message : String(err))}</p>`;
@@ -523,7 +523,7 @@ export class SegmentationView {
     const statsEl = this._q<HTMLElement>("#act-seg-prev-stats");
     const segCountEl = this._q<HTMLElement>("#act-seg-prev-seg-count");
     const warnsEl = this._q<HTMLElement>("#act-seg-prev-warns");
-    const segColTitle = this._q<HTMLElement>("#act-seg-preview-split > div:nth-child(2) .seg-preview-col-title");
+    const segColTitle = this._q<HTMLElement>("#act-seg-preview-split > div:nth-child(2) .prep-seg-preview-col-title");
     if (!segEl) return;
 
     const lang = (this._q("#act-seg-lang") as HTMLInputElement | null)?.value.trim() || "fr";
@@ -570,22 +570,22 @@ export class SegmentationView {
       }
 
       const truncNote = res.units_output >= 300
-        ? `<p class="seg-trunc-note">Aper&#231;u tronqu&#233; &#224; 300 segments</p>`
+        ? `<p class="prep-seg-trunc-note">Aper&#231;u tronqu&#233; &#224; 300 segments</p>`
         : "";
 
       segEl.innerHTML = truncNote + (res.segments.length
         ? res.segments.map(s => {
             const hasId = s.external_id != null;
-            return `<div class="seg-prev-row${hasId ? " seg-prev-row-marker" : ""}">` +
-              `<span class="seg-prev-n">${hasId ? `[${s.external_id}]` : s.n}</span>` +
-              `<span class="seg-prev-tx">${_escHtml(s.text)}</span></div>`;
+            return `<div class="seg-prev-row${hasId ? " prep-seg-prev-row-marker" : ""}">` +
+              `<span class="prep-seg-prev-n">${hasId ? `[${s.external_id}]` : s.n}</span>` +
+              `<span class="prep-seg-prev-tx">${_escHtml(s.text)}</span></div>`;
           }).join("")
         : `<p class="empty-hint">Aucun segment produit.</p>`);
 
       if (warnsEl) {
         if (res.warnings.length) {
           warnsEl.style.display = "";
-          warnsEl.innerHTML = res.warnings.map(w => `<div class="seg-warn">${_escHtml(w)}</div>`).join("");
+          warnsEl.innerHTML = res.warnings.map(w => `<div class="prep-seg-warn">${_escHtml(w)}</div>`).join("");
         } else {
           warnsEl.style.display = "none";
         }
@@ -620,13 +620,13 @@ export class SegmentationView {
         const sample = report.first_markers.slice(0, 5).join(", ");
         bannerEl.style.display = "";
         bannerEl.innerHTML = `
-          <span class="seg-marker-icon">&#127991;</span>
-          <span class="seg-marker-info">
+          <span class="prep-seg-marker-icon">&#127991;</span>
+          <span class="prep-seg-marker-info">
             <strong>Balises [N] d&#233;tect&#233;es</strong> &#8212;
             ${report.marked_units}/${report.total_units} unit&#233;s marqu&#233;es
             (ex.&nbsp;: [${sample}])
           </span>
-          <button type="button" class="btn btn-sm ${this._segSplitMode === "markers" ? "btn-warning" : "btn-outline-warning"}"
+          <button type="button" class="btn btn-sm ${this._segSplitMode === "markers" ? "prep-btn-warning" : "btn-outline-warning"}"
             id="act-seg-mode-toggle">
             ${this._segSplitMode === "markers" ? "&#10003; Mode balises actif" : "Utiliser les balises"}
           </button>
@@ -642,8 +642,8 @@ export class SegmentationView {
       } else if (!silent) {
         bannerEl.style.display = "";
         bannerEl.innerHTML = `
-          <span class="seg-marker-icon seg-marker-icon-miss">&#8416;</span>
-          <span class="seg-marker-info">Aucune balise <code>[N]</code> d&#233;tect&#233;e dans ce document
+          <span class="prep-seg-marker-icon prep-seg-marker-icon-miss">&#8416;</span>
+          <span class="prep-seg-marker-info">Aucune balise <code>[N]</code> d&#233;tect&#233;e dans ce document
           (${report.total_units} unit&#233;s analys&#233;es).</span>
         `;
         setTimeout(() => { if (bannerEl) bannerEl.style.display = "none"; }, 4000);
@@ -701,32 +701,32 @@ export class SegmentationView {
       }
 
       const truncNote = preview.total_lines > 500
-        ? `<p class="seg-trunc-note">Aper&#231;u &#8212; 500/${preview.total_lines} segments</p>`
+        ? `<p class="prep-seg-trunc-note">Aper&#231;u &#8212; 500/${preview.total_lines} segments</p>`
         : "";
 
       const buildRow = (l: { n: number; text: string }, idx: number, total: number): string => {
-        const lenClass = l.text.length > 200 ? " seg-cell-len-warn" : l.text.length > 120 ? " seg-cell-len-hint" : "";
+        const lenClass = l.text.length > 200 ? " prep-seg-cell-len-warn" : l.text.length > 120 ? " prep-seg-cell-len-hint" : "";
         const mergeUpBtn   = idx > 0
-          ? `<button class="seg-action-btn seg-merge-up"   title="Fusionner avec le pr&#233;c&#233;dent" data-n="${l.n}">&#8679;</button>`
-          : `<span class="seg-action-placeholder"></span>`;
+          ? `<button class="prep-seg-action-btn prep-seg-merge-up"   title="Fusionner avec le pr&#233;c&#233;dent" data-n="${l.n}">&#8679;</button>`
+          : `<span class="prep-seg-action-placeholder"></span>`;
         const mergeDownBtn = idx < total - 1
-          ? `<button class="seg-action-btn seg-merge-down" title="Fusionner avec le suivant"     data-n="${l.n}">&#8681;</button>`
-          : `<span class="seg-action-placeholder"></span>`;
-        const splitBtn = `<button class="seg-action-btn seg-split-btn" title="Couper ce segment" data-n="${l.n}">&#9986;</button>`;
+          ? `<button class="prep-seg-action-btn prep-seg-merge-down" title="Fusionner avec le suivant"     data-n="${l.n}">&#8681;</button>`
+          : `<span class="prep-seg-action-placeholder"></span>`;
+        const splitBtn = `<button class="prep-seg-action-btn prep-seg-split-btn" title="Couper ce segment" data-n="${l.n}">&#9986;</button>`;
         return `<tr data-unit-n="${l.n}">
-          <td class="seg-cell-n">${l.n}</td>
-          <td class="seg-cell-text" title="Double-clic pour modifier le texte">${_escHtml(l.text)}</td>
+          <td class="prep-seg-cell-n">${l.n}</td>
+          <td class="prep-seg-cell-text" title="Double-clic pour modifier le texte">${_escHtml(l.text)}</td>
           <td class="seg-cell-len${lenClass}">${l.text.length}</td>
-          <td class="seg-cell-actions">${mergeUpBtn}${mergeDownBtn}${splitBtn}</td>
+          <td class="prep-seg-cell-actions">${mergeUpBtn}${mergeDownBtn}${splitBtn}</td>
         </tr>`;
       };
 
       const renderTable = (lines: { n: number; text: string }[]) => {
         const rows = lines.map((l, i) => buildRow(l, i, lines.length)).join("");
         return truncNote + `
-          <div class="seg-saved-info">${lines.length} segment(s) &middot; double-clic pour modifier</div>
-          <div class="seg-segments-scroll">
-            <table class="seg-segments-table">
+          <div class="prep-seg-saved-info">${lines.length} segment(s) &middot; double-clic pour modifier</div>
+          <div class="prep-seg-segments-scroll">
+            <table class="prep-seg-segments-table">
               <colgroup>
                 <col style="width:36px">
                 <col>
@@ -746,7 +746,7 @@ export class SegmentationView {
 
       const wireEvents = () => {
         // ── Merge up (↑) ────────────────────────────────────────────────────
-        el.querySelectorAll<HTMLButtonElement>(".seg-merge-up").forEach(btn => {
+        el.querySelectorAll<HTMLButtonElement>(".prep-seg-merge-up").forEach(btn => {
           btn.addEventListener("click", async () => {
             const n2 = parseInt(btn.dataset.n ?? "", 10);
             const idx = lines.findIndex(l => l.n === n2);
@@ -766,7 +766,7 @@ export class SegmentationView {
         });
 
         // ── Merge down (↓) ──────────────────────────────────────────────────
-        el.querySelectorAll<HTMLButtonElement>(".seg-merge-down").forEach(btn => {
+        el.querySelectorAll<HTMLButtonElement>(".prep-seg-merge-down").forEach(btn => {
           btn.addEventListener("click", async () => {
             const n1 = parseInt(btn.dataset.n ?? "", 10);
             const idx = lines.findIndex(l => l.n === n1);
@@ -786,7 +786,7 @@ export class SegmentationView {
         });
 
         // ── Split (✂) ───────────────────────────────────────────────────────
-        el.querySelectorAll<HTMLButtonElement>(".seg-split-btn").forEach(btn => {
+        el.querySelectorAll<HTMLButtonElement>(".prep-seg-split-btn").forEach(btn => {
           btn.addEventListener("click", () => {
             const unitN = parseInt(btn.dataset.n ?? "", 10);
             const lineData = lines.find(l => l.n === unitN);
@@ -798,15 +798,15 @@ export class SegmentationView {
             const splitAt = lastSpace > 0 ? lastSpace : midPoint;
 
             tr.innerHTML = `
-              <td colspan="4" class="seg-split-inline">
-                <div class="seg-split-label">&#9986; Couper le segment ${unitN} en deux&#160;:</div>
-                <div class="seg-split-fields">
-                  <textarea class="seg-split-ta seg-split-ta-a" rows="2">${_escHtml(fullText.slice(0, splitAt).trim())}</textarea>
-                  <div class="seg-split-divider">&#9660;</div>
-                  <textarea class="seg-split-ta seg-split-ta-b" rows="2">${_escHtml(fullText.slice(splitAt).trim())}</textarea>
+              <td colspan="4" class="prep-seg-split-inline">
+                <div class="prep-seg-split-label">&#9986; Couper le segment ${unitN} en deux&#160;:</div>
+                <div class="prep-seg-split-fields">
+                  <textarea class="prep-seg-split-ta seg-split-ta-a" rows="2">${_escHtml(fullText.slice(0, splitAt).trim())}</textarea>
+                  <div class="prep-seg-split-divider">&#9660;</div>
+                  <textarea class="prep-seg-split-ta seg-split-ta-b" rows="2">${_escHtml(fullText.slice(splitAt).trim())}</textarea>
                 </div>
-                <div class="seg-split-actions">
-                  <button class="btn btn-warning btn-sm seg-split-confirm">Confirmer la coupure</button>
+                <div class="prep-seg-split-actions">
+                  <button class="btn prep-btn-warning btn-sm seg-split-confirm">Confirmer la coupure</button>
                   <button class="btn btn-ghost btn-sm seg-split-cancel">Annuler</button>
                 </div>
               </td>`;
@@ -834,7 +834,7 @@ export class SegmentationView {
         });
 
         // ── Double-click inline text edit ────────────────────────────────────
-        el.querySelectorAll<HTMLTableCellElement>(".seg-cell-text").forEach(cell => {
+        el.querySelectorAll<HTMLTableCellElement>(".prep-seg-cell-text").forEach(cell => {
           cell.addEventListener("dblclick", () => {
             if (cell.querySelector("textarea")) return;
             const tr = cell.closest("tr")!;
@@ -843,7 +843,7 @@ export class SegmentationView {
             const ta = document.createElement("textarea");
             ta.rows = 2;
             ta.value = origText;
-            ta.className = "seg-cell-edit-input";
+            ta.className = "prep-seg-cell-edit-input";
             cell.innerHTML = "";
             cell.appendChild(ta);
             ta.focus(); ta.select();
@@ -854,7 +854,7 @@ export class SegmentationView {
               if (!newText || newText === origText) { cancelEdit(); return; }
               cell.innerHTML = _escHtml(newText);
               const lenCell = cell.nextElementSibling as HTMLElement | null;
-              if (lenCell && !lenCell.classList.contains("seg-cell-actions")) {
+              if (lenCell && !lenCell.classList.contains("prep-seg-cell-actions")) {
                 lenCell.textContent = String(newText.length);
               }
               const unitN = parseInt(tr.dataset.unitN ?? "", 10);
@@ -886,13 +886,13 @@ export class SegmentationView {
     const segSel = this._currentSegDocSelection();
 
     if (!this._getConn()) {
-      banner.className = "seg-status-banner seg-state-error";
+      banner.className = "prep-seg-status-banner seg-state-error";
       banner.textContent = "Sidecar indisponible.";
       if (validateOnlyBtn) validateOnlyBtn.disabled = true;
       return;
     }
     if (!segSel) {
-      banner.className = "seg-status-banner seg-state-info";
+      banner.className = "prep-seg-status-banner seg-state-info";
       banner.textContent = "S\u00e9lectionnez un document pour segmenter.";
       if (validateOnlyBtn) validateOnlyBtn.disabled = true;
       return;
@@ -902,11 +902,11 @@ export class SegmentationView {
       const warnings = this._lastSegmentReport.warnings ?? [];
       const pack = this._lastSegmentReport.segment_pack ?? "auto";
       if (this._segmentPendingValidation) {
-        banner.className = "seg-status-banner seg-state-warn";
+        banner.className = "prep-seg-status-banner seg-state-warn";
         banner.textContent =
           `Segmentation pr\u00eate sur ${segSel.docLabel}: ${this._lastSegmentReport.units_input} \u2192 ${this._lastSegmentReport.units_output} unit\u00e9s (pack ${pack})${warnings.length ? ` \u00b7 avertissements: ${warnings.length}` : ""}. Validez le document.`;
       } else {
-        banner.className = "seg-status-banner seg-state-ok";
+        banner.className = "prep-seg-status-banner seg-state-ok";
         banner.textContent =
           `Derni\u00e8re segmentation ${segSel.docLabel}: ${this._lastSegmentReport.units_input} \u2192 ${this._lastSegmentReport.units_output} unit\u00e9s (pack ${pack})${warnings.length ? ` \u00b7 avertissements: ${warnings.length}` : ""}.`;
       }
@@ -914,7 +914,7 @@ export class SegmentationView {
       return;
     }
 
-    banner.className = "seg-status-banner seg-state-info";
+    banner.className = "prep-seg-status-banner seg-state-info";
     banner.textContent = `Aucune segmentation lanc\u00e9e sur ${segSel.docLabel} dans cette session.`;
     if (validateOnlyBtn) validateOnlyBtn.disabled = true;
   }
