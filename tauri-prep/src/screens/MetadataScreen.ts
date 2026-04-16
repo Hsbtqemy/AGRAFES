@@ -738,13 +738,14 @@ export class MetadataScreen {
       return;
     }
 
-    // ── Author propagation context ──────────────────────────────────────────
+    // ── Author + work_title propagation context ─────────────────────────────
     // Parent: a doc that THIS doc is a translation/excerpt of
     const parentRel = this._relations.find(r =>
       r.relation_type === "translation_of" || r.relation_type === "excerpt_of"
     );
     const parentDoc = parentRel ? this._docs.find(d => d.doc_id === parentRel.target_doc_id) : null;
-    const parentHasAuthor = parentDoc && (parentDoc.author_lastname || parentDoc.author_firstname);
+    const parentHasShared = parentDoc &&
+      (parentDoc.author_lastname || parentDoc.author_firstname || parentDoc.work_title);
 
     // Children: docs that are translations/excerpts of THIS doc (from _allRelations if loaded)
     const childDocIds = this._allRelationsLoaded
@@ -756,26 +757,27 @@ export class MetadataScreen {
           .map(r => r.doc_id)
       : [];
 
-    const inheritHtml = parentHasAuthor
+    const inheritHtml = parentHasShared
       ? `<div class="prep-author-inherit-banner">
           <span class="prep-author-inherit-from">
             De l'original #${parentDoc!.doc_id} :
-            <strong>${this._esc([parentDoc!.author_lastname, parentDoc!.author_firstname].filter(Boolean).join(", "))}</strong>
+            ${parentDoc!.work_title ? `<em>${this._esc(parentDoc!.work_title)}</em> — ` : ""}
+            <strong>${this._esc([parentDoc!.author_lastname, parentDoc!.author_firstname].filter(Boolean).join(", ") || "—")}</strong>
           </span>
           <button id="inherit-author-btn" class="btn btn-secondary btn-sm author-inherit-btn"
-            title="Copier le nom et prénom de l'auteur depuis l'original">← Hériter</button>
+            title="Copier auteur et titre de l'œuvre depuis l'original">← Hériter</button>
         </div>`
       : "";
 
     const propagateHtml = childDocIds.length > 0
       ? `<button id="propagate-author-btn" class="btn btn-secondary btn-sm"
-            title="Appliquer le nom et prénom de l'auteur à toutes les traductions/extraits"
+            title="Appliquer auteur et titre de l'œuvre à toutes les traductions/extraits"
             data-child-ids="${childDocIds.join(",")}">
             → Propager aux ${childDocIds.length} traduction${childDocIds.length > 1 ? "s" : ""}
           </button>`
       : (this._allRelationsLoaded ? "" :
           `<button id="propagate-author-btn" class="btn btn-secondary btn-sm"
-              title="Charger les traductions et appliquer le nom et prénom de l'auteur"
+              title="Charger les traductions et appliquer auteur et titre de l'œuvre"
               data-child-ids="">→ Propager…</button>`);
 
     this._editPanelEl.innerHTML = `
@@ -1045,8 +1047,10 @@ export class MetadataScreen {
 
     const lastnameEl  = this._editPanelEl.querySelector<HTMLInputElement>("#edit-author-lastname");
     const firstnameEl = this._editPanelEl.querySelector<HTMLInputElement>("#edit-author-firstname");
+    const workTitleEl = this._editPanelEl.querySelector<HTMLInputElement>("#edit-work-title");
     if (lastnameEl)  lastnameEl.value  = parent.author_lastname  ?? "";
     if (firstnameEl) firstnameEl.value = parent.author_firstname ?? "";
+    if (workTitleEl) workTitleEl.value = parent.work_title ?? "";
 
     // Visual feedback on the button
     const btn = this._editPanelEl.querySelector<HTMLButtonElement>("#inherit-author-btn");
@@ -1085,15 +1089,20 @@ export class MetadataScreen {
       return; // let user confirm by clicking again
     }
 
-    const lastname  = this._editPanelEl.querySelector<HTMLInputElement>("#edit-author-lastname")?.value.trim() || null;
-    const firstname = this._editPanelEl.querySelector<HTMLInputElement>("#edit-author-firstname")?.value.trim() || null;
+    const lastname   = this._editPanelEl.querySelector<HTMLInputElement>("#edit-author-lastname")?.value.trim() || null;
+    const firstname  = this._editPanelEl.querySelector<HTMLInputElement>("#edit-author-firstname")?.value.trim() || null;
+    const work_title = this._editPanelEl.querySelector<HTMLInputElement>("#edit-work-title")?.value.trim() || null;
 
-    if (!lastname && !firstname) {
-      this._log("Aucun auteur renseigné sur ce document — rien à propager.", true);
+    if (!lastname && !firstname && !work_title) {
+      this._log("Aucun auteur ni titre d'œuvre renseigné — rien à propager.", true);
       return;
     }
 
-    if (!confirm(`Appliquer "${[lastname, firstname].filter(Boolean).join(", ")}" comme auteur sur ${childIds.length} document(s) enfant(s) ?`)) return;
+    const summary = [
+      work_title ? `titre "${work_title}"` : null,
+      (lastname || firstname) ? `auteur "${[lastname, firstname].filter(Boolean).join(", ")}"` : null,
+    ].filter(Boolean).join(", ");
+    if (!confirm(`Appliquer ${summary} sur ${childIds.length} document(s) enfant(s) ?`)) return;
 
     btn.disabled = true;
     btn.textContent = "Propagation…";
@@ -1102,17 +1111,18 @@ export class MetadataScreen {
         doc_id: id,
         author_lastname: lastname,
         author_firstname: firstname,
+        work_title,
       }));
       await bulkUpdateDocuments(this._conn, updates);
       // Update in-memory cache
       for (const id of childIds) {
         const idx = this._docs.findIndex(d => d.doc_id === id);
         if (idx >= 0) {
-          this._docs[idx] = { ...this._docs[idx], author_lastname: lastname, author_firstname: firstname };
+          this._docs[idx] = { ...this._docs[idx], author_lastname: lastname, author_firstname: firstname, work_title };
         }
       }
       btn.textContent = `✓ Propagé à ${childIds.length} doc(s)`;
-      this._log(`✓ Auteur propagé à ${childIds.length} document(s) enfant(s).`);
+      this._log(`✓ Auteur et titre d'œuvre propagés à ${childIds.length} document(s) enfant(s).`);
     } catch (err) {
       this._log(`Erreur propagation : ${err instanceof SidecarError ? err.message : String(err)}`, true);
       btn.disabled = false;
