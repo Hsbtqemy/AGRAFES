@@ -219,6 +219,7 @@ async function _mountTab(tab: ConstituerTab): Promise<void> {
     const wrapper = document.createElement("div");
     wrapper.className = "con-prep-wrapper";
     wrapper.id = "app";
+    wrapper.style.paddingTop = "0"; // override index.html #app { padding-top: 44px }
     _subContainer!.appendChild(wrapper);
     _prepApp = new App();
     await _prepApp.init();
