@@ -266,7 +266,10 @@ export class App {
       labelEl.textContent = LABELS[tab];
       btn.appendChild(iconEl);
       btn.appendChild(labelEl);
-      btn.addEventListener("click", () => this._switchTab(tab));
+      btn.addEventListener("click", () => {
+        this._switchTab(tab);
+        if (tab === "actions") this._actions.setSubView("hub");
+      });
       this._tabBtns[tab] = btn as HTMLButtonElement;
       nav.appendChild(btn);
 
