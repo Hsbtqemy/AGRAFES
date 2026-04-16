@@ -702,6 +702,10 @@ export class MetadataScreen {
   // ── Edit panel ──────────────────────────────────────────────────────────────
 
   private async _selectDoc(doc: DocumentRecord): Promise<void> {
+    // Nullify selectedDoc before the new assignment so _isSelectedDocDirty()
+    // returns false during the _renderDocList() → _refreshRuntimeState() call below.
+    this._selectedDoc = null;
+    if (this._editPanelEl) this._editPanelEl.innerHTML = "";
     this._selectedDoc = doc;
     this._previewDocId = doc.doc_id;
     this._previewLoading = true;
