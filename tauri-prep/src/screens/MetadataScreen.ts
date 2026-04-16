@@ -717,8 +717,15 @@ export class MetadataScreen {
     this._tokenLoading = false;
     this._tokenError = null;
     this._tokenSavingIds.clear();
+    // Render the edit panel immediately (with current relations) so the form
+    // fields exist before the async getDocRelations call. Without this, a user
+    // clicking another tab during the await would trigger a false dirty-check:
+    // _isSelectedDocDirty would see _selectedDoc.language="fr" but #edit-lang=""
+    // (edit panel still empty) and incorrectly flag unsaved changes.
+    this._relations = [];
+    this._renderEditPanel();
     this._renderDocList();
-    // Load relations
+    // Load relations and refresh the relations section once ready.
     if (this._conn) {
       try {
         const res = await getDocRelations(this._conn, doc.doc_id);
@@ -726,8 +733,8 @@ export class MetadataScreen {
       } catch {
         this._relations = [];
       }
+      this._renderRelationsList();
     }
-    this._renderEditPanel();
     void this._loadDocPreview(doc.doc_id);
   }
 
