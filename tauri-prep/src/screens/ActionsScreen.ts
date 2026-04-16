@@ -8,11 +8,9 @@ import type {
   Conn,
   DocumentRecord,
   ExportRunReportOptions,
-  ConventionRole,
 } from "../lib/sidecarClient.ts";
 import {
   listDocuments,
-  segment,
   enqueueJob,
   exportRunReport,
   SidecarError,
@@ -79,16 +77,6 @@ export class ActionsScreen {
   private _segmentationView: SegmentationView | null = null;
   // CurationView (extracted)
   private _curationView: CurationView | null = null;
-
-  // Segmentation workflow state
-  private _segmentPendingValidation = false;
-  private _lastSegmentReport: {
-    doc_id: number;
-    units_input: number;
-    units_output: number;
-    segment_pack?: string;
-    warnings?: string[];
-  } | null = null;
 
   private _wfRoot: HTMLElement | null = null;
   private static readonly LS_WF_RUN_ID = "agrafes.prep.workflow.run_id";
@@ -441,8 +429,6 @@ export class ActionsScreen {
   setConn(conn: Conn | null): void {
     this._conn = conn;
     this._docs = [];
-    this._lastSegmentReport = null;
-    this._segmentPendingValidation = false;
     if (!conn) {
       this._lastErrorMsg = null;
     }
@@ -558,10 +544,6 @@ export class ActionsScreen {
     }
     if (this._isBusy) {
       this._setRuntimeState("info", "Opération en cours…");
-      return;
-    }
-    if (this._segmentPendingValidation) {
-      this._setRuntimeState("warn", "Segmentation terminée: validez le document pour finaliser le workflow.");
       return;
     }
     if (this._lastErrorMsg) {
@@ -813,31 +795,3 @@ function _formatMaybeNumber(v: unknown): string {
   return v.toFixed(3);
 }
 
-function _isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null && !Array.isArray(v);
-}
-
-async function _copyTextToClipboard(text: string): Promise<boolean> {
-  try {
-    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-  } catch {
-    // fallback below
-  }
-  try {
-    const ta = document.createElement("textarea");
-    ta.value = text;
-    ta.setAttribute("readonly", "true");
-    ta.style.position = "fixed";
-    ta.style.opacity = "0";
-    document.body.appendChild(ta);
-    ta.select();
-    const ok = document.execCommand("copy");
-    document.body.removeChild(ta);
-    return ok;
-  } catch {
-    return false;
-  }
-}
