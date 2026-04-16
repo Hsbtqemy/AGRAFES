@@ -802,31 +802,54 @@ export async function ensureRunning(dbPath: string): Promise<Conn> {
   sidecarLog("info", `checking sidecar portfile at ${pf}`);
   const pfData = await readPortfile(pf);
   if (pfData) {
-    const host = (pfData.host as string) ?? "127.0.0.1";
-    const port = pfData.port as number;
-    const token = (pfData.token as string | null) ?? null;
-    if (typeof port === "number" && port > 0) {
-      const baseUrl = makeBaseUrl(host, port);
-      try {
-        const res = await sidecarFetch(`${baseUrl}/health`);
-        const json = (await res.json()) as Record<string, unknown>;
-        if (res.ok && json.ok === true) {
-          if (!token && json.token_required === true) {
-            sidecarLog("warn", "portfile has no token but sidecar requires one; falling through to spawn", {
-              baseUrl,
-            });
-            // Fall through to spawn so we get a fresh token from stdout
-          } else {
-            sidecarLog("info", `reusing sidecar from portfile (${baseUrl})`);
-            _conn = makeConn(baseUrl, token);
-            _connDbPath = dbPath;
-            return _conn;
-          }
+    // Verify the running sidecar serves the requested DB.
+    // The portfile is shared by all DB files in the same directory, so a sidecar
+    // started for corpus.db would otherwise be reused for agrafes_demo.db.
+    const pfDbPath = typeof pfData.db_path === "string" ? pfData.db_path : null;
+    if (pfDbPath !== null && pfDbPath !== dbPath) {
+      sidecarLog("info", `portfile serves a different DB (${pfDbPath}); shutting it down before spawning for ${dbPath}`);
+      // Best-effort graceful shutdown of the stale sidecar so it doesn't leak.
+      const staleHost = (pfData.host as string) ?? "127.0.0.1";
+      const stalePort = pfData.port as number;
+      const staleToken = (pfData.token as string | null) ?? null;
+      if (typeof stalePort === "number" && stalePort > 0) {
+        const staleUrl = makeBaseUrl(staleHost, stalePort);
+        try {
+          const staleConn = makeConn(staleUrl, staleToken);
+          await staleConn.post("/shutdown", {});
+          sidecarLog("info", `gracefully stopped stale sidecar for ${pfDbPath}`);
+        } catch {
+          // Non-fatal — the new sidecar will overwrite the portfile
         }
-        sidecarLog("warn", `portfile sidecar not healthy (${baseUrl})`, json);
-      } catch (err) {
-        sidecarLog("warn", `portfile sidecar health check failed (${baseUrl})`, errToString(err));
-        // portfile stale — fall through to spawn
+      }
+      // Fall through to spawn
+    } else {
+      const host = (pfData.host as string) ?? "127.0.0.1";
+      const port = pfData.port as number;
+      const token = (pfData.token as string | null) ?? null;
+      if (typeof port === "number" && port > 0) {
+        const baseUrl = makeBaseUrl(host, port);
+        try {
+          const res = await sidecarFetch(`${baseUrl}/health`);
+          const json = (await res.json()) as Record<string, unknown>;
+          if (res.ok && json.ok === true) {
+            if (!token && json.token_required === true) {
+              sidecarLog("warn", "portfile has no token but sidecar requires one; falling through to spawn", {
+                baseUrl,
+              });
+              // Fall through to spawn so we get a fresh token from stdout
+            } else {
+              sidecarLog("info", `reusing sidecar from portfile (${baseUrl})`);
+              _conn = makeConn(baseUrl, token);
+              _connDbPath = dbPath;
+              return _conn;
+            }
+          }
+          sidecarLog("warn", `portfile sidecar not healthy (${baseUrl})`, json);
+        } catch (err) {
+          sidecarLog("warn", `portfile sidecar health check failed (${baseUrl})`, errToString(err));
+          // portfile stale — fall through to spawn
+        }
       }
     }
   }

@@ -338,6 +338,12 @@ export class AlignPanel {
     <div id="align-focus-panel" class="prep-align-focus-panel" style="display:none">
       <div class="prep-align-focus-head">
         <strong id="align-focus-meta"></strong>
+        <div class="prep-align-focus-actions">
+          <button data-focus-action="accepted" class="btn btn-sm btn-secondary">✓ Valider</button>
+          <button data-focus-action="rejected" class="btn btn-sm btn-secondary">✗ À revoir</button>
+          <button data-focus-action="unreviewed" class="btn btn-sm btn-secondary">? Non révisé</button>
+          <button data-focus-action="delete" class="btn btn-sm btn-danger">Supprimer</button>
+        </div>
         <button id="align-focus-close" class="btn btn-ghost btn-sm">✕</button>
       </div>
       <div class="prep-align-focus-texts">
@@ -349,12 +355,6 @@ export class AlignPanel {
           <div class="prep-align-focus-text-label">Cible</div>
           <div id="align-focus-target-text" class="prep-align-focus-text"></div>
         </div>
-      </div>
-      <div class="prep-align-focus-actions">
-        <button data-focus-action="accepted" class="btn btn-sm btn-secondary">✓ Valider</button>
-        <button data-focus-action="rejected" class="btn btn-sm btn-secondary">✗ À revoir</button>
-        <button data-focus-action="unreviewed" class="btn btn-sm btn-secondary">? Non révisé</button>
-        <button data-focus-action="delete" class="btn btn-sm btn-danger">Supprimer</button>
       </div>
     </div>
 
@@ -1044,7 +1044,27 @@ export class AlignPanel {
     });
 
     if (visible.length === 0) {
-      wrap.innerHTML = `<p class="empty-hint">Aucun lien correspondant au filtre.</p>`;
+      if (this._auditLinks.length > 0) {
+        const filterLabel = this._auditQuickFilter === "review" ? "« À revoir »"
+          : this._auditQuickFilter === "unreviewed" ? "« Non révisés »"
+          : this._auditQuickFilter === "rejected" ? "« Rejetés »"
+          : null;
+        const hint = filterLabel
+          ? `Filtre ${filterLabel} actif — tous les liens chargés sont masqués.`
+          : `Aucun lien correspondant au filtre texte.`;
+        wrap.innerHTML = `<p class="empty-hint">${hint} <button class="btn btn-ghost btn-sm" id="align-filter-clear-btn">Afficher tout</button></p>`;
+        wrap.querySelector("#align-filter-clear-btn")?.addEventListener("click", () => {
+          this._auditQuickFilter = "all";
+          this._auditTextFilter = "";
+          el.querySelectorAll("[data-qf]").forEach(b => b.classList.remove("active"));
+          el.querySelector("[data-qf='all']")?.classList.add("active");
+          const textInput = el.querySelector<HTMLInputElement>("#align-audit-text");
+          if (textInput) textInput.value = "";
+          this._renderAuditTable(el);
+        });
+      } else {
+        wrap.innerHTML = `<p class="empty-hint">Aucun lien correspondant au filtre.</p>`;
+      }
       this._updateBatchBar(el); return;
     }
 

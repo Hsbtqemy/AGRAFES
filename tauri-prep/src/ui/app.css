@@ -1955,7 +1955,8 @@ code { font-family: monospace; background: var(--color-bg); padding: 0 3px; bord
 .prep-align-focus-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
   margin-bottom: 10px;
 }
 
@@ -1996,6 +1997,7 @@ code { font-family: monospace; background: var(--color-bg); padding: 0 3px; bord
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  flex: 1;
 }
 
 /* Align v2 root container */
@@ -4294,77 +4296,77 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
   margin-top: 3px;
 }
 
-/* Segmentation — stratégie (phrases vs balises) */
-.prep-seg-strategy-bar {
+/* Segmentation — config bar (stratégie + params unifiés) */
+.prep-seg-config-bar {
   margin-bottom: 12px;
   padding: 10px 14px;
   background: var(--prep-surface-elevated, #fff);
   border: 1px solid var(--prep-line, #dde3ea);
   border-radius: 6px;
 }
-.prep-seg-strategy-fieldset {
-  border: none;
-  margin: 0;
-  padding: 0;
-}
-.prep-seg-strategy-legend {
-  font-size: 0.72rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--prep-text-muted, #6c757d);
-  margin-bottom: 8px;
-  padding: 0;
-}
-.prep-seg-strategy-options {
+.prep-seg-config-row {
   display: flex;
+  align-items: flex-end;
+  gap: 16px;
   flex-wrap: wrap;
-  gap: 12px 20px;
 }
-.prep-seg-strategy-opt {
+.prep-seg-config-tabs {
   display: flex;
-  flex-direction: column;
   gap: 4px;
-  cursor: pointer;
-  font-size: 0.8rem;
-  max-width: 300px;
-}
-.prep-seg-strategy-opt-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.prep-seg-strategy-opt input {
   flex-shrink: 0;
 }
-.prep-seg-strategy-opt-title {
+.prep-seg-tab-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 13px;
+  border-radius: 20px;
+  border: 1px solid var(--prep-line, #dde3ea);
+  cursor: pointer;
+  font-size: 0.83rem;
   font-weight: 600;
+  color: var(--prep-text-muted, #6c757d);
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  user-select: none;
+}
+.prep-seg-tab-label:has(input:checked) {
+  background: var(--color-primary, #0d6efd);
+  color: #fff;
+  border-color: var(--color-primary, #0d6efd);
+}
+.prep-seg-tab-label:hover:not(:has(input:checked)) {
+  background: var(--prep-hover, #eef2f6);
   color: var(--prep-text, #212529);
 }
-.prep-seg-strategy-opt-desc {
-  font-size: 0.72rem;
-  color: var(--prep-text-muted, #6c757d);
-  line-height: 1.35;
-  padding-left: 1.45rem;
+.prep-seg-tab-label input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+.prep-seg-tab-label code {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+  font-family: inherit;
+  font-size: inherit;
+}
+.prep-seg-config-params {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+  flex: 1;
+}
+.prep-seg-config-params-group {
+  display: contents;
 }
 .prep-seg-strategy-summary {
   margin: 10px 0 0;
   font-size: 0.78rem;
   color: var(--prep-text-muted, #6c757d);
   line-height: 1.4;
-}
-
-/* Params bar */
-.prep-seg-params-bar {
-  display: flex;
-  align-items: flex-end;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 14px;
-  padding: 10px 14px;
-  background: var(--prep-sidebar-bg, #f8f9fb);
-  border: 1px solid var(--prep-line, #dde3ea);
-  border-radius: 6px;
 }
 .prep-seg-param-field {
   display: flex;

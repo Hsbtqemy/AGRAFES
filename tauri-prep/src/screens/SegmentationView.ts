@@ -325,56 +325,52 @@ export class SegmentationView {
           </div>
           <div class="prep-seg-right-header-meta">#${doc.doc_id} &middot; ${_escHtml(doc.language)} &middot; ${doc.unit_count} unit&#233;s</div>
         </div>
-        <div class="prep-seg-strategy-bar" role="region" aria-label="Strat&#233;gie de segmentation">
-          <fieldset class="prep-seg-strategy-fieldset">
-            <legend class="prep-seg-strategy-legend">Strat&#233;gie</legend>
-            <div class="prep-seg-strategy-options">
-              <label class="prep-seg-strategy-opt">
-                <span class="prep-seg-strategy-opt-row">
-                  <input type="radio" name="act-seg-strategy" id="act-seg-strategy-sentences" value="sentences" checked />
-                  <span class="prep-seg-strategy-opt-title">Phrases</span>
-                </span>
-                <span class="prep-seg-strategy-opt-desc">D&#233;coupe automatique (ponctuation + pack)</span>
+        <div class="prep-seg-config-bar" role="region" aria-label="Strat&#233;gie de segmentation">
+          <div class="prep-seg-config-row">
+            <div class="prep-seg-config-tabs" role="group" aria-label="Strat&#233;gie">
+              <label class="prep-seg-tab-label">
+                <input type="radio" name="act-seg-strategy" id="act-seg-strategy-sentences" value="sentences" checked />
+                <span>Phrases</span>
               </label>
-              <label class="prep-seg-strategy-opt">
-                <span class="prep-seg-strategy-opt-row">
-                  <input type="radio" name="act-seg-strategy" id="act-seg-strategy-markers" value="markers" />
-                  <span class="prep-seg-strategy-opt-title">Balises <code>[N]</code></span>
-                </span>
-                <span class="prep-seg-strategy-opt-desc">D&#233;coupe sur les num&#233;ros entre crochets</span>
+              <label class="prep-seg-tab-label">
+                <input type="radio" name="act-seg-strategy" id="act-seg-strategy-markers" value="markers" />
+                <span>Balises&nbsp;<code>[N]</code></span>
               </label>
             </div>
-          </fieldset>
+            <div class="prep-seg-config-params">
+              <label class="prep-seg-param-field">Langue
+                <input id="act-seg-lang" type="text" value="${_escHtml(lang)}" maxlength="10"
+                  class="prep-seg-param-input" placeholder="fr, en&#8230;" autocomplete="off" spellcheck="false" />
+              </label>
+              <div id="act-seg-params-phrases" class="prep-seg-config-params-group">
+                <label class="prep-seg-param-field"
+                  title="&#201;vite de couper apr&#232;s un point qui suit une abr&#233;viation (M., Dr., ann., chap., etc.).">
+                  <span class="prep-seg-param-label-text">O&#249; couper les phrases</span>
+                  <select id="act-seg-pack" class="seg-param-select">
+                    <option value="auto"${pack === "auto" ? " selected" : ""}>Auto (selon la langue)</option>
+                    <option value="fr_strict"${pack === "fr_strict" ? " selected" : ""}>Fran&#231;ais &#8212; liste longue d&#8217;abr&#233;viations</option>
+                    <option value="en_strict"${pack === "en_strict" ? " selected" : ""}>Anglais &#8212; liste longue d&#8217;abr&#233;viations</option>
+                    <option value="default"${pack === "default" ? " selected" : ""}>Liste courte (moins de protections)</option>
+                  </select>
+                </label>
+                <label class="prep-seg-param-field">Calibrer sur
+                  <select id="act-seg-calibrate" class="seg-param-select">
+                    <option value="">&#8212; aucun &#8212;</option>
+                    ${docs.filter(d => d.doc_id !== docId).map(d =>
+                      `<option value="${d.doc_id}">[${d.doc_id}] ${_escHtml(d.title)}</option>`
+                    ).join("")}
+                  </select>
+                </label>
+              </div>
+              <div id="act-seg-params-markers" class="prep-seg-config-params-group" style="display:none">
+                <button type="button" class="btn btn-ghost btn-sm" id="act-seg-detect-btn"
+                  title="D&#233;tecter les balises [N] dans le texte">&#128270; D&#233;tecter balises</button>
+              </div>
+            </div>
+          </div>
           <p id="act-seg-strategy-summary" class="prep-seg-strategy-summary" aria-live="polite"></p>
         </div>
         <div id="act-seg-marker-banner" class="prep-seg-marker-banner" style="display:none" aria-live="polite"></div>
-        <div class="prep-seg-params-bar" id="act-seg-params">
-          <label class="prep-seg-param-field">Langue
-            <input id="act-seg-lang" type="text" value="${_escHtml(lang)}" maxlength="10"
-              class="prep-seg-param-input" placeholder="fr, en&#8230;" autocomplete="off" spellcheck="false" />
-          </label>
-          <label class="prep-seg-param-field"
-            title="Mode &#171; phrases &#187; uniquement : &#233;vite de couper apr&#232;s un point qui suit une abr&#233;viation (M., Dr., ann., chap., etc.). Sans effet en mode balises [N].">
-            <span class="prep-seg-param-label-text">O&#249; couper les phrases</span>
-            <select id="act-seg-pack" class="seg-param-select" aria-describedby="act-seg-pack-hint">
-              <option value="auto"${pack === "auto" ? " selected" : ""}>Auto (selon la langue)</option>
-              <option value="fr_strict"${pack === "fr_strict" ? " selected" : ""}>Fran&#231;ais &#8212; liste longue d&#8217;abr&#233;viations</option>
-              <option value="en_strict"${pack === "en_strict" ? " selected" : ""}>Anglais &#8212; liste longue d&#8217;abr&#233;viations</option>
-              <option value="default"${pack === "default" ? " selected" : ""}>Liste courte (moins de protections)</option>
-            </select>
-            <span id="act-seg-pack-hint" class="prep-seg-param-hint">&#201;vite les fausses coupes apr&#232;s M., Dr., ann., chap.&#8230;</span>
-          </label>
-          <label class="prep-seg-param-field">Calibrer sur
-            <select id="act-seg-calibrate" class="seg-param-select">
-              <option value="">&#8212; aucun &#8212;</option>
-              ${docs.filter(d => d.doc_id !== docId).map(d =>
-                `<option value="${d.doc_id}">[${d.doc_id}] ${_escHtml(d.title)}</option>`
-              ).join("")}
-            </select>
-          </label>
-          <button type="button" class="btn btn-ghost btn-sm" id="act-seg-detect-btn"
-            title="D&#233;tecter les balises [N] dans le texte">&#128270; D&#233;tecter balises</button>
-        </div>
         <details class="prep-seg-rule-info" id="act-seg-rule-info">
           <summary class="prep-seg-rule-info-sum">&#9432; Moteur de d&#233;coupage</summary>
           <div class="prep-seg-rule-info-body">
@@ -666,9 +662,10 @@ export class SegmentationView {
     const badge = this._q<HTMLElement>("#act-seg-mode-badge");
     if (badge) badge.textContent = "balises [N]";
     void this._runDetectMarkers(docId, /* silent */ true);
-    const packField = this._q<HTMLElement>(".seg-param-field:nth-child(2)");
-    if (packField) packField.style.opacity = "0.4";
-    this._setSegPackSelectDisabled(true);
+    const phrasesParams = this._q<HTMLElement>("#act-seg-params-phrases");
+    const markersParams = this._q<HTMLElement>("#act-seg-params-markers");
+    if (phrasesParams) phrasesParams.style.display = "none";
+    if (markersParams) markersParams.style.display = "contents";
     this._syncSegStrategyRadios();
     void this._runSegPreview(docId);
   }
@@ -678,9 +675,10 @@ export class SegmentationView {
     const badge = this._q<HTMLElement>("#act-seg-mode-badge");
     if (badge) badge.textContent = "phrases";
     void this._runDetectMarkers(docId, /* silent */ true);
-    const packField = this._q<HTMLElement>(".seg-param-field:nth-child(2)");
-    if (packField) packField.style.opacity = "";
-    this._setSegPackSelectDisabled(false);
+    const phrasesParams = this._q<HTMLElement>("#act-seg-params-phrases");
+    const markersParams = this._q<HTMLElement>("#act-seg-params-markers");
+    if (phrasesParams) phrasesParams.style.display = "contents";
+    if (markersParams) markersParams.style.display = "none";
     this._syncSegStrategyRadios();
     void this._runSegPreview(docId);
   }
@@ -1083,14 +1081,6 @@ export class SegmentationView {
     } else {
       s.checked = true; m.checked = false;
     }
-  }
-
-  private _setSegPackSelectDisabled(disabled: boolean): void {
-    const packSel = this._q<HTMLSelectElement>("#act-seg-pack");
-    if (!packSel) return;
-    packSel.disabled = disabled;
-    if (disabled) packSel.setAttribute("aria-disabled", "true");
-    else packSel.removeAttribute("aria-disabled");
   }
 
   private _updateSegStrategySummary(): void {
