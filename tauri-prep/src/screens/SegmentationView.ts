@@ -576,7 +576,7 @@ export class SegmentationView {
       segEl.innerHTML = truncNote + (res.segments.length
         ? res.segments.map(s => {
             const hasId = s.external_id != null;
-            return `<div class="seg-prev-row${hasId ? " prep-seg-prev-row-marker" : ""}" data-source-unit="${s.source_unit_n ?? ""}">` +
+            return `<div class="prep-seg-prev-row${hasId ? " prep-seg-prev-row-marker" : ""}" data-source-unit="${s.source_unit_n ?? ""}">` +
               `<span class="prep-seg-prev-n">${hasId ? `[${s.external_id}]` : s.n}</span>` +
               `<span class="prep-seg-prev-tx">${_escHtml(s.text)}</span></div>`;
           }).join("")
@@ -716,7 +716,7 @@ export class SegmentationView {
         return `<tr data-unit-n="${l.n}">
           <td class="prep-seg-cell-n">${l.n}</td>
           <td class="prep-seg-cell-text" title="Double-clic pour modifier le texte">${_escHtml(l.text)}</td>
-          <td class="seg-cell-len${lenClass}">${l.text.length}</td>
+          <td class="prep-seg-cell-len${lenClass}">${l.text.length}</td>
           <td class="prep-seg-cell-actions">${mergeUpBtn}${mergeDownBtn}${splitBtn}</td>
         </tr>`;
       };
