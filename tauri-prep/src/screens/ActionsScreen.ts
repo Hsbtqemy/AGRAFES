@@ -90,11 +90,8 @@ export class ActionsScreen {
     warnings?: string[];
   } | null = null;
 
-  // Workflow state
-  private _wfStep = 0;
   private _wfRoot: HTMLElement | null = null;
   private static readonly LS_WF_RUN_ID = "agrafes.prep.workflow.run_id";
-  private static readonly LS_WF_STEP = "agrafes.prep.workflow.step";
   // Log + busy
   private _logEl!: HTMLElement;
   private _busyEl!: HTMLElement;
@@ -188,7 +185,6 @@ export class ActionsScreen {
     this._busyEl = root.querySelector("#act-busy")!;
 
     this._wfRoot = root;
-    this._initWorkflow(root);
     initCardAccordions(root);
     this._refreshRuntimeState();
     this._setSubViewClass(root, this._activeSubView);
@@ -260,7 +256,7 @@ export class ActionsScreen {
           <p class="prep-acts-hub-head-desc">Curation &middot; Segmentation &middot; Alignement &mdash; pilotage des op&eacute;rations de pr&eacute;paration du corpus.</p>
         </div>
         <div class="prep-acts-hub-head-tools">
-          <button class="prep-acts-hub-head-link acts-hub-head-link-accent" data-cta="segmentation-longtext">Sc&eacute;nario grand texte &nearr;</button>
+          <button class="prep-acts-hub-head-link prep-acts-hub-head-link-accent" data-cta="segmentation-longtext">Sc&eacute;nario grand texte &nearr;</button>
         </div>
       </section>
       <section class="card prep-acts-hub-docs-card">
@@ -427,7 +423,6 @@ export class ActionsScreen {
           if (runId) {
             this._alignRunId = runId;
             localStorage.setItem(ActionsScreen.LS_WF_RUN_ID, runId);
-            this._wfSyncRunId();
           }
         },
         onNav: (target) => {
@@ -458,13 +453,7 @@ export class ActionsScreen {
       this._loadDocs();
       // Restore workflow run_id from localStorage
       const savedRunId = localStorage.getItem(ActionsScreen.LS_WF_RUN_ID);
-      if (savedRunId) {
-        this._alignRunId = savedRunId;
-        this._wfSyncRunId();
-      }
-      this._wfEnableButtons(true);
-    } else {
-      this._wfEnableButtons(false);
+      if (savedRunId) this._alignRunId = savedRunId;
     }
     if (this._wfRoot) {
       this._segmentationView?.refreshDocs();
@@ -669,154 +658,6 @@ export class ActionsScreen {
     }
     if (this._alignRunId) prefill.runId = this._alignRunId;
     this._openExporterWithPrefill(prefill);
-  }
-
-  // ─── Workflow ─────────────────────────────────────────────────────────────
-
-  private _initWorkflow(root: HTMLElement): void {
-    // Restore persisted step
-    const savedStep = parseInt(localStorage.getItem(ActionsScreen.LS_WF_STEP) ?? "0", 10);
-    this._wfStep = isNaN(savedStep) ? 0 : Math.min(savedStep, 4);
-
-    // Wire step headers (accordion toggle)
-    for (let i = 0; i < 5; i++) {
-      const hdr = root.querySelector(`#wf-hdr-${i}`) as HTMLElement | null;
-      if (!hdr) continue;
-      const idx = i;
-      hdr.addEventListener("click", () => this._wfToggleStep(idx));
-      hdr.addEventListener("mouseenter", () => { hdr.style.background = "#edf2f7"; });
-      hdr.addEventListener("mouseleave", () => {
-        hdr.style.background = this._wfStep === idx ? "#d1fae5" : "#f8f9fa";
-      });
-    }
-
-    // Wire CTA buttons
-    root.querySelector("#wf-goto-align")?.addEventListener("click", () => {
-      root.querySelector("#align-run-btn")?.scrollIntoView({ behavior: "smooth" });
-    });
-    root.querySelector("#wf-quality-btn")?.addEventListener("click", () => void this._runWfQuality(root));
-    root.querySelector("#wf-coll-btn")?.addEventListener("click", () => {
-      const btn = root.querySelector<HTMLButtonElement>("#align-coll-load-btn");
-      btn?.scrollIntoView({ behavior: "smooth" });
-      setTimeout(() => btn?.click(), 400);
-    });
-    root.querySelector("#wf-audit-btn")?.addEventListener("click", () => {
-      const btn = root.querySelector<HTMLButtonElement>("#align-audit-load-btn");
-      btn?.scrollIntoView({ behavior: "smooth" });
-      setTimeout(() => btn?.click(), 400);
-    });
-    root.querySelector("#wf-report-btn")?.addEventListener("click", () => {
-      root.querySelector("#align-report-btn")?.scrollIntoView({ behavior: "smooth" });
-    });
-
-    // Open current step + sync run_id display
-    this._wfToggleStep(this._wfStep);
-    this._wfSyncRunId();
-  }
-
-  private _wfToggleStep(idx: number): void {
-    const root = this._wfRoot;
-    if (!root) return;
-    for (let i = 0; i < 5; i++) {
-      const body = root.querySelector<HTMLElement>(`#wf-body-${i}`);
-      const hdr = root.querySelector<HTMLElement>(`#wf-hdr-${i}`);
-      const tog = root.querySelector<HTMLElement>(`#wf-tog-${i}`);
-      if (!body || !hdr || !tog) continue;
-      const isActive = i === idx;
-      body.style.display = isActive ? "" : "none";
-      hdr.style.background = isActive ? "#d1fae5" : "#f8f9fa";
-      tog.textContent = isActive ? "▲" : "▼";
-      // Active step number: green
-      const num = root.querySelector<HTMLElement>(`#wf-num-${i}`);
-      if (num) {
-        num.style.background = isActive ? "var(--accent,#1a7f4e)" : "#e9ecef";
-        num.style.color = isActive ? "#fff" : "#495057";
-      }
-    }
-    this._wfStep = idx;
-    try { localStorage.setItem(ActionsScreen.LS_WF_STEP, String(idx)); } catch { /* ignore */ }
-    this._wfSyncCompactProgress(root);
-  }
-
-  private _wfSyncRunId(): void {
-    const root = this._wfRoot;
-    if (!root) return;
-    const display = root.querySelector<HTMLElement>("#wf-run-id-display");
-    if (display) {
-      display.textContent = this._alignRunId ?? "(aucun)";
-    }
-    // Also mark step 1 as done if run_id known
-    const st0 = root.querySelector<HTMLElement>("#wf-st-0");
-    if (st0) st0.textContent = this._alignRunId ? "✓ run " + this._alignRunId.slice(0, 8) + "…" : "";
-    // Sync run_id in report section
-    const reportInput = root.querySelector<HTMLInputElement>("#align-report-run-id");
-    if (reportInput && this._alignRunId) reportInput.value = this._alignRunId;
-    this._wfSyncCompactProgress(root);
-  }
-
-  private _wfSyncCompactProgress(root: HTMLElement): void {
-    for (let i = 0; i < 5; i++) {
-      const step = root.querySelector<HTMLElement>(`#wf-step-${i}`);
-      if (!step) continue;
-      step.style.opacity = i < this._wfStep ? "0.88" : "1";
-    }
-  }
-
-  private _wfEnableButtons(on: boolean): void {
-    const root = this._wfRoot;
-    if (!root) return;
-    ["wf-quality-btn", "wf-coll-btn", "wf-audit-btn", "wf-report-btn"].forEach(id => {
-      const btn = root.querySelector<HTMLButtonElement>(`#${id}`);
-      if (btn) btn.disabled = !on;
-    });
-  }
-
-  private async _runWfQuality(root: HTMLElement): Promise<void> {
-    if (!this._conn) return;
-    // Use the first available pivot/target from docs
-    const pivotSel = root.querySelector<HTMLSelectElement>("#align-qc-pivot");
-    const targetSel = root.querySelector<HTMLSelectElement>("#align-qc-target");
-    if (!pivotSel?.value || !targetSel?.value) {
-      const wfResult = root.querySelector<HTMLElement>("#wf-quality-result");
-      if (wfResult) {
-        wfResult.innerHTML = `<span style="font-size:0.82rem;color:#856404">⚠ Sélectionnez d'abord un doc pivot et cible dans la section Qualité ci-dessous.</span>`;
-      }
-      root.querySelector("#align-qc-btn")?.scrollIntoView({ behavior: "smooth" });
-      return;
-    }
-
-    const btn = root.querySelector<HTMLButtonElement>("#wf-quality-btn")!;
-    btn.disabled = true;
-    btn.textContent = "Calcul…";
-
-    const pivot = parseInt(pivotSel.value);
-    const target = parseInt(targetSel.value);
-
-    try {
-      const { alignQuality } = await import("../lib/sidecarClient.ts");
-      const res = await alignQuality(this._conn, pivot, target);
-      const s = res.stats;
-      const wfResult = root.querySelector<HTMLElement>("#wf-quality-result");
-      if (wfResult) {
-        const okClass = (v: number, good: number) => v >= good ? "color:#1a7f4e;font-weight:600" : "color:#c0392b;font-weight:600";
-        wfResult.innerHTML = `
-          <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:0.82rem;margin-bottom:6px">
-            <span>Couverture : <b style="${okClass(s.coverage_pct, 80)}">${s.coverage_pct}%</b></span>
-            <span>Liens : <b>${s.total_links}</b></span>
-            <span>Orphelins pivot : <b style="${okClass(s.orphan_pivot_count === 0 ? 1 : 0, 1)}">${s.orphan_pivot_count}</b></span>
-            <span>Collisions : <b style="${okClass(s.collision_count === 0 ? 1 : 0, 1)}">${s.collision_count}</b></span>
-          </div>`;
-      }
-      // Mark step 2 as done
-      const st1 = root.querySelector<HTMLElement>("#wf-st-1");
-      if (st1) st1.textContent = `✓ cov. ${s.coverage_pct}%`;
-      this._log(`✓ Qualité: couv. ${s.coverage_pct}%, collisions ${s.collision_count}`);
-    } catch (err) {
-      this._log(`✗ Qualité workflow: ${err instanceof SidecarError ? err.message : String(err)}`, true);
-    } finally {
-      btn.disabled = false;
-      btn.textContent = "Lancer la vérification qualité";
-    }
   }
 
   // ─── Run report export ────────────────────────────────────────────────────

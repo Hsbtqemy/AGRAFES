@@ -425,7 +425,7 @@ export class SegmentationView {
           </div>
         </div>
         <div id="act-seg-confirm-bar" class="audit-batch-bar" style="display:none"></div>
-        <div id="act-seg-status-banner" class="prep-seg-status-banner" aria-live="polite"></div>
+        <div id="act-seg-status-banner" class="prep-seg-status-banner prep-seg-status-banner prep-runtime-state prep-state-info" aria-live="polite"></div>
         <div class="prep-seg-saved-section" id="act-seg-saved-section" style="${savedAlready ? "" : "display:none"}">
           <div class="prep-seg-saved-head">Segments enregistr&#233;s
             <span id="act-seg-saved-count" class="chip">${doc.unit_count}</span>
@@ -497,7 +497,7 @@ export class SegmentationView {
         ? `<p class="prep-seg-trunc-note">Aper&#231;u &#8212; 200/${preview.total_lines} unit&#233;s (premi&#232;res lignes)</p>`
         : "";
       rawEl.innerHTML = truncNote + preview.lines.map(l =>
-        `<div class="prep-seg-prev-row"><span class="prep-seg-prev-n">${l.n}</span><span class="prep-seg-prev-tx">${_escHtml(l.text)}</span></div>`,
+        `<div class="prep-seg-prev-row" data-unit-n="${l.n}"><span class="prep-seg-prev-n">${l.n}</span><span class="prep-seg-prev-tx">${_escHtml(l.text)}</span></div>`,
       ).join("");
     } catch (err) {
       rawEl.innerHTML = `<p class="empty-hint">Impossible de charger le texte brut : ${_escHtml(err instanceof Error ? err.message : String(err))}</p>`;
@@ -576,7 +576,7 @@ export class SegmentationView {
       segEl.innerHTML = truncNote + (res.segments.length
         ? res.segments.map(s => {
             const hasId = s.external_id != null;
-            return `<div class="seg-prev-row${hasId ? " prep-seg-prev-row-marker" : ""}">` +
+            return `<div class="seg-prev-row${hasId ? " prep-seg-prev-row-marker" : ""}" data-source-unit="${s.source_unit_n ?? ""}">` +
               `<span class="prep-seg-prev-n">${hasId ? `[${s.external_id}]` : s.n}</span>` +
               `<span class="prep-seg-prev-tx">${_escHtml(s.text)}</span></div>`;
           }).join("")
@@ -886,13 +886,13 @@ export class SegmentationView {
     const segSel = this._currentSegDocSelection();
 
     if (!this._getConn()) {
-      banner.className = "prep-seg-status-banner seg-state-error";
+      banner.className = "prep-seg-status-banner prep-runtime-state prep-state-error";
       banner.textContent = "Sidecar indisponible.";
       if (validateOnlyBtn) validateOnlyBtn.disabled = true;
       return;
     }
     if (!segSel) {
-      banner.className = "prep-seg-status-banner seg-state-info";
+      banner.className = "prep-seg-status-banner prep-runtime-state prep-state-info";
       banner.textContent = "S\u00e9lectionnez un document pour segmenter.";
       if (validateOnlyBtn) validateOnlyBtn.disabled = true;
       return;
@@ -902,11 +902,11 @@ export class SegmentationView {
       const warnings = this._lastSegmentReport.warnings ?? [];
       const pack = this._lastSegmentReport.segment_pack ?? "auto";
       if (this._segmentPendingValidation) {
-        banner.className = "prep-seg-status-banner seg-state-warn";
+        banner.className = "prep-seg-status-banner prep-runtime-state prep-state-warn";
         banner.textContent =
           `Segmentation pr\u00eate sur ${segSel.docLabel}: ${this._lastSegmentReport.units_input} \u2192 ${this._lastSegmentReport.units_output} unit\u00e9s (pack ${pack})${warnings.length ? ` \u00b7 avertissements: ${warnings.length}` : ""}. Validez le document.`;
       } else {
-        banner.className = "prep-seg-status-banner seg-state-ok";
+        banner.className = "prep-seg-status-banner prep-runtime-state prep-state-ok";
         banner.textContent =
           `Derni\u00e8re segmentation ${segSel.docLabel}: ${this._lastSegmentReport.units_input} \u2192 ${this._lastSegmentReport.units_output} unit\u00e9s (pack ${pack})${warnings.length ? ` \u00b7 avertissements: ${warnings.length}` : ""}.`;
       }
@@ -914,7 +914,7 @@ export class SegmentationView {
       return;
     }
 
-    banner.className = "prep-seg-status-banner seg-state-info";
+    banner.className = "prep-seg-status-banner prep-runtime-state prep-state-info";
     banner.textContent = `Aucune segmentation lanc\u00e9e sur ${segSel.docLabel} dans cette session.`;
     if (validateOnlyBtn) validateOnlyBtn.disabled = true;
   }
@@ -1148,20 +1148,49 @@ export class SegmentationView {
     const rawEl = this._q<HTMLElement>("#act-seg-prev-raw");
     const segEl = this._q<HTMLElement>("#act-seg-prev-seg");
     if (!rawEl || !segEl) return;
+
+    // Return the unit-n of the first row whose bottom edge is below the scroll top.
+    const firstVisibleUnitN = (el: HTMLElement): number | null => {
+      const rows = el.querySelectorAll<HTMLElement>("[data-unit-n]");
+      for (const row of rows) {
+        if (row.offsetTop + row.offsetHeight > el.scrollTop) {
+          const n = parseInt(row.dataset.unitN ?? "", 10);
+          return isNaN(n) ? null : n;
+        }
+      }
+      return null;
+    };
+
+    // Return the unit-n of the first segment row whose bottom edge is below scroll top.
+    const firstVisibleSourceUnitN = (el: HTMLElement): number | null => {
+      const rows = el.querySelectorAll<HTMLElement>("[data-source-unit]");
+      for (const row of rows) {
+        if (row.offsetTop + row.offsetHeight > el.scrollTop) {
+          const n = parseInt(row.dataset.sourceUnit ?? "", 10);
+          return isNaN(n) ? null : n;
+        }
+      }
+      return null;
+    };
+
+    // Scroll targetEl so the first row matching unitN is at the top.
+    const scrollToUnitN = (targetEl: HTMLElement, unitN: number, attr: string): void => {
+      const row = targetEl.querySelector<HTMLElement>(`[${attr}="${unitN}"]`);
+      if (row) targetEl.scrollTop = row.offsetTop;
+    };
+
     this._onSegPrevRawScroll = () => {
       if (this._segPrevSyncLock) return;
       this._segPrevSyncLock = true;
-      const maxRaw = rawEl.scrollHeight - rawEl.clientHeight;
-      const ratio = maxRaw > 0 ? rawEl.scrollTop / maxRaw : 0;
-      segEl.scrollTop = ratio * Math.max(0, segEl.scrollHeight - segEl.clientHeight);
+      const unitN = firstVisibleUnitN(rawEl);
+      if (unitN !== null) scrollToUnitN(segEl, unitN, "data-source-unit");
       requestAnimationFrame(() => { this._segPrevSyncLock = false; });
     };
     this._onSegPrevSegScroll = () => {
       if (this._segPrevSyncLock) return;
       this._segPrevSyncLock = true;
-      const maxSeg = segEl.scrollHeight - segEl.clientHeight;
-      const ratio = maxSeg > 0 ? segEl.scrollTop / maxSeg : 0;
-      rawEl.scrollTop = ratio * Math.max(0, rawEl.scrollHeight - rawEl.clientHeight);
+      const unitN = firstVisibleSourceUnitN(segEl);
+      if (unitN !== null) scrollToUnitN(rawEl, unitN, "data-unit-n");
       requestAnimationFrame(() => { this._segPrevSyncLock = false; });
     };
     rawEl.addEventListener("scroll", this._onSegPrevRawScroll);
