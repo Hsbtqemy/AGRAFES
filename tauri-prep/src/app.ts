@@ -275,13 +275,13 @@ export class App {
         const treeBody = document.createElement("div");
         treeBody.className = "prep-nav-tree-body";
         treeBody.setAttribute("aria-label", "Raccourcis Actions");
-        const treeItems: Array<[string, string, string, string]> = [
-          ["Curation",     "#act-curate-card", "curation",    "◇"],
-          ["Segmentation", "#act-seg-card",    "segmentation","⌥"],
-          ["Alignement",   "#act-align-card",  "alignement",  "⇄"],
-          ["Annotation",   "#act-annot-card",  "annoter",     "◎"],
+        const treeItems: Array<[string, string, string]> = [
+          ["Curation",     "curation",    "◇"],
+          ["Segmentation", "segmentation","⌥"],
+          ["Alignement",   "alignement",  "⇄"],
+          ["Annotation",   "annoter",     "◎"],
         ];
-        for (const [label, , navKey, icon] of treeItems) {
+        for (const [label, navKey, icon] of treeItems) {
           const link = document.createElement("button");
           link.className = "prep-nav-tree-link";
           link.dataset.nav = navKey;

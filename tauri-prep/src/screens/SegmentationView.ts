@@ -425,7 +425,7 @@ export class SegmentationView {
           </div>
         </div>
         <div id="act-seg-confirm-bar" class="audit-batch-bar" style="display:none"></div>
-        <div id="act-seg-status-banner" class="prep-seg-status-banner prep-seg-status-banner prep-runtime-state prep-state-info" aria-live="polite"></div>
+        <div id="act-seg-status-banner" class="prep-seg-status-banner prep-runtime-state prep-state-info" aria-live="polite"></div>
         <div class="prep-seg-saved-section" id="act-seg-saved-section" style="${savedAlready ? "" : "display:none"}">
           <div class="prep-seg-saved-head">Segments enregistr&#233;s
             <span id="act-seg-saved-count" class="chip">${doc.unit_count}</span>
