@@ -10,7 +10,6 @@
 
 import type { ShellContext } from "../context.ts";
 import { setCurrentDbPath } from "../../../tauri-prep/src/lib/db.ts";
-import { ensureRunning, SidecarError } from "../../../tauri-prep/src/lib/sidecarClient.ts";
 import { App } from "../../../tauri-prep/src/app.ts";
 // Prep CSS is managed by Vite: bundled into this chunk automatically.
 import "../../../tauri-prep/src/ui/tokens.css";
@@ -211,30 +210,7 @@ async function _mountTab(tab: ConstituerTab): Promise<void> {
 
   if (tab === "preparer") {
     const dbPath = _savedCtx.getDbPath();
-    if (dbPath) {
-      setCurrentDbPath(dbPath);
-      // Ensure the sidecar is healthy before App.init().
-      // App.init() silently swallows ensureRunning errors (leaving _conn = null
-      // with no user feedback). This is especially critical on the first boot
-      // after a production rebuild, where the onefile sidecar may need time to
-      // extract its payload and easily exceeds App's silent 12 s timeout.
-      try {
-        await ensureRunning(dbPath);
-      } catch (err) {
-        const msg = err instanceof SidecarError ? err.message : String(err);
-        _subContainer!.innerHTML = `
-          <div style="padding:2rem;color:#c0392b;">
-            <strong>Impossible de démarrer le moteur de corpus</strong><br>
-            <code style="font-size:0.8em;word-break:break-all">${msg}</code><br>
-            <button class="btn btn-secondary" style="margin-top:1rem" id="con-retry-sidecar">Réessayer</button>
-          </div>`;
-        _subContainer!.querySelector("#con-retry-sidecar")?.addEventListener("click", () => {
-          _subContainer!.innerHTML = "";
-          void _mountTab(tab);
-        });
-        return;
-      }
-    }
+    if (dbPath) setCurrentDbPath(dbPath);
     // tauri-prep's App._buildUI() mounts into document.getElementById("app").
     // We use a wrapper div (not _subContainer itself) so that the CSS rule
     // .con-subcontent > .con-prep-wrapper { height: 100% } targets only this

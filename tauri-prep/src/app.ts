@@ -110,21 +110,22 @@ export class App {
   async init(): Promise<void> {
     // CSS is now loaded by Vite (app.css + job-center.css) — no inline injection needed.
 
-    // Try to auto-open default DB
+    // Resolve DB path synchronously, then build UI immediately so the user sees
+    // the app without waiting for the sidecar (which can take several seconds on
+    // first launch or after a DB switch). The sidecar is started in the background;
+    // screens update via setConn() once the connection is ready.
+    let dbPath: string | null = null;
     try {
-      const dbPath = await getOrCreateDefaultDbPath();
+      dbPath = await getOrCreateDefaultDbPath();
       setCurrentDbPath(dbPath);
-      this._conn = await ensureRunning(dbPath);
-    } catch {
-      // no auto-start, user can open manually
-    }
+    } catch { /* ignore — user can open manually */ }
 
     this._buildUI();
-    this._import.setConn(this._conn);
-    this._actions.setConn(this._conn);
-    this._metadata.setConn(this._conn);
-    this._exports.setConn(this._conn);
-    this._jobCenter.setConn(this._conn);
+    this._import.setConn(null);
+    this._actions.setConn(null);
+    this._metadata.setConn(null);
+    this._exports.setConn(null);
+    this._jobCenter.setConn(null);
     this._import.setJobCenter(this._jobCenter, showToast);
     this._actions.setJobCenter(this._jobCenter, showToast);
     this._metadata.setJobCenter(this._jobCenter, showToast);
@@ -133,6 +134,9 @@ export class App {
     this._exports.setJobCenter(this._jobCenter, showToast);
 
     void this._refreshTopbarDbLabel();
+
+    // Start sidecar in background — screens will refresh when connection is ready.
+    if (dbPath) void this._onDbChanged(dbPath);
 
     // RG → Prep token navigation: if shell set a pending nav target, consume it
     try {
