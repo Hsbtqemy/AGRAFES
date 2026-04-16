@@ -389,8 +389,8 @@ export class SegmentationView {
                 Aper&#231;u&#160;<span class="prep-seg-preview-badge" id="act-seg-mode-badge">phrases</span>
               </button>
               <button class="prep-seg-content-tab" role="tab" data-pane="saved"
-                ${!savedAlready ? 'disabled title="Aucun segment enregistr&#233;"' : ""}>
-                Enregistr&#233;&#160;<span id="act-seg-saved-count" class="chip">${savedAlready ? doc.unit_count : "&#8212;"}</span>
+                ${!savedAlready ? 'disabled title="Aucun segment — appliquez d\'abord la segmentation"' : 'title="Éditer les segments : fusionner, couper"'}>
+                &#9986; Modifier&#160;<span id="act-seg-saved-count" class="chip">${savedAlready ? doc.unit_count : "&#8212;"}</span>
               </button>
             </div>
             <span id="act-seg-prev-stats" class="prep-seg-preview-stats"></span>
@@ -486,6 +486,8 @@ export class SegmentationView {
     if (savedAlready) {
       const savedTableEl = rightEl.querySelector<HTMLElement>("#act-seg-saved-table");
       if (savedTableEl) void this._renderSegSavedTable(docId, savedTableEl);
+      // Doc already has segments — open on the edit pane directly.
+      this._switchContentPane("saved");
     }
 
     this._refreshSegmentationStatusUI();
@@ -674,11 +676,15 @@ export class SegmentationView {
   }
 
   private _switchContentPane(pane: "preview" | "saved"): void {
-    const previewPane = this._q<HTMLElement>("#act-seg-pane-preview");
-    const savedPane   = this._q<HTMLElement>("#act-seg-pane-saved");
+    const previewPane  = this._q<HTMLElement>("#act-seg-pane-preview");
+    const savedPane    = this._q<HTMLElement>("#act-seg-pane-saved");
+    const refreshBtn   = this._q<HTMLElement>("#act-seg-prev-refresh");
+    const statsEl      = this._q<HTMLElement>("#act-seg-prev-stats");
     if (!previewPane || !savedPane) return;
     previewPane.style.display = pane === "preview" ? "" : "none";
     savedPane.style.display   = pane === "saved"   ? "" : "none";
+    if (refreshBtn) refreshBtn.style.display = pane === "preview" ? "" : "none";
+    if (statsEl)    statsEl.style.display    = pane === "preview" ? "" : "none";
     this._root?.querySelectorAll<HTMLButtonElement>(".prep-seg-content-tab").forEach(t => {
       t.classList.toggle("active", t.dataset.pane === pane);
     });

@@ -4496,29 +4496,28 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
   display: flex;
   align-items: center;
   gap: 5px;
-  padding: 4px 12px;
+  padding: 5px 14px;
   font-size: 0.8rem;
   font-weight: 600;
   color: var(--prep-text-muted, #6c757d);
   background: none;
-  border: 1px solid transparent;
-  border-radius: 4px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
   cursor: pointer;
-  transition: background 0.1s, color 0.1s;
+  transition: color 0.1s, border-color 0.1s;
   white-space: nowrap;
 }
 .prep-seg-content-tab:hover:not(:disabled):not(.active) {
-  background: var(--prep-hover, #eef2f6);
   color: var(--prep-text, #212529);
+  border-bottom-color: var(--prep-line, #dde3ea);
 }
 .prep-seg-content-tab.active {
-  background: var(--prep-card-bg, #fff);
-  color: var(--prep-text, #212529);
-  border-color: var(--prep-line, #dde3ea);
-  border-bottom-color: var(--prep-card-bg, #fff);
+  color: var(--color-primary, #0d6efd);
+  border-bottom-color: var(--color-primary, #0d6efd);
 }
 .prep-seg-content-tab:disabled {
-  opacity: 0.45;
+  opacity: 0.4;
   cursor: not-allowed;
 }
 .prep-seg-content-tab .chip {
