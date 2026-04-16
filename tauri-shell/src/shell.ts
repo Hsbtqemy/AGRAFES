@@ -3276,9 +3276,17 @@ async function _initDemoSection(
     installBtn.textContent = "Installation\u2026";
     try {
       await _installDemo();
+      // _installDemo() resets _currentDbPath to null if demo was the active DB.
+      // Restore it so header, export wizard and rechercheModule see the correct path.
+      const demoPath = await _getDemoDbPath();
+      _currentDbPath = demoPath;
+      _persist();
+      _addToMru(demoPath);
+      _updateDbBadge();
+      _dbListeners.forEach(cb => cb(_currentDbPath));
       installBtn.style.display = "none";
       openBtn.style.display = "";
-      _showToast("D\u00e9mo install\u00e9e avec succ\u00e8s");
+      _showToast("D\u00e9mo install\u00e9e — corpus Machiavel pr\u00eat");
       // Show guide tour after fresh install
       await _renderGuidedTour(guideAnchor);
     } catch (err) {
