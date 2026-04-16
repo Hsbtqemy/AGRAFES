@@ -4251,7 +4251,7 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
   min-width: 0;
   min-height: 0;          /* allow shrink in flex context */
   overflow-y: auto;
-  padding: 16px 20px;
+  padding: 14px 16px;
 }
 .prep-seg-right-empty {
   display: flex;
@@ -4298,11 +4298,9 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
 
 /* Segmentation — config bar (stratégie + params unifiés) */
 .prep-seg-config-bar {
-  margin-bottom: 12px;
-  padding: 10px 14px;
-  background: var(--prep-surface-elevated, #fff);
-  border: 1px solid var(--prep-line, #dde3ea);
-  border-radius: 6px;
+  margin-bottom: 10px;
+  padding: 8px 0 10px;
+  border-bottom: 1px solid var(--prep-line, #dde3ea);
 }
 .prep-seg-config-row {
   display: flex;
@@ -4400,27 +4398,28 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
 
 /* Engine info disclosure */
 .prep-seg-rule-info {
-  margin-bottom: 12px;
-  border: 1px solid var(--prep-line, #dde3ea);
-  border-radius: 6px;
-  overflow: hidden;
+  margin-bottom: 10px;
+  border: none;
 }
 .prep-seg-rule-info-sum {
-  padding: 7px 12px;
+  padding: 4px 0;
   font-size: 0.78rem;
   font-weight: 600;
   cursor: pointer;
-  background: var(--prep-sidebar-bg, #f8f9fb);
+  background: none;
   color: var(--prep-text-muted, #6c757d);
   list-style: none;
 }
 .prep-seg-rule-info-sum:hover { color: var(--prep-text, #212529); }
 .prep-seg-rule-info-body {
-  padding: 8px 14px;
+  padding: 8px 12px;
+  margin-top: 4px;
   font-size: 0.78rem;
   line-height: 1.55;
   color: var(--prep-text, #212529);
-  border-top: 1px solid var(--prep-line, #dde3ea);
+  background: var(--prep-sidebar-bg, #f8f9fb);
+  border-radius: 4px;
+  border: 1px solid var(--prep-line, #dde3ea);
 }
 .prep-seg-rule-info-body p { margin: 0 0 6px; }
 .prep-seg-rule-info-body p:last-child { margin-bottom: 0; }
@@ -4473,9 +4472,9 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
   min-width: 42px;
 }
 
-/* Preview section */
+/* Preview section — no outer border, content flows in the scroll area */
 .prep-seg-preview-section {
-  margin-bottom: 16px;
+  margin-bottom: 14px;
   border: 1px solid var(--prep-line, #dde3ea);
   border-radius: 6px;
   overflow: hidden;
@@ -4484,7 +4483,7 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 14px;
+  padding: 7px 14px;
   background: var(--prep-sidebar-bg, #f8f9fb);
   border-bottom: 1px solid var(--prep-line, #dde3ea);
 }
@@ -4531,9 +4530,8 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
 }
 
 .prep-seg-preview-col-list {
-  overflow-y: auto;
-  min-height: 200px;
-  max-height: 380px;
+  /* No max-height — let the right panel handle scrolling (single scroll axis). */
+  min-height: 120px;
   padding: 4px 0;
 }
 
@@ -4623,8 +4621,7 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
   overflow: hidden;
 }
 .prep-seg-segments-scroll {
-  overflow-y: auto;
-  max-height: 400px;
+  /* No max-height — single scroll axis in the right panel. */
 }
 .prep-seg-segments-table {
   width: 100%;
@@ -4774,5 +4771,5 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
   }
   .prep-seg-preview-split { grid-template-columns: 1fr; }
   .prep-seg-preview-split > div { border-right: none; border-bottom: 1px solid var(--prep-line, #dde3ea); }
-  .prep-seg-preview-col-list { min-height: 160px; max-height: 260px; }
+  .prep-seg-preview-col-list { min-height: 120px; }
 }
