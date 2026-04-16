@@ -2762,8 +2762,10 @@ async function _renderPublicationWizard(container: HTMLElement): Promise<void> {
     container.innerHTML = `
       <div style="padding:2rem;text-align:center;color:#c0392b">
         <p>Aucune base de données sélectionnée.</p>
-        <button onclick="history.back()" style="padding:6px 14px;border-radius:5px;border:1px solid #adb5bd;background:#f8f9fa;cursor:pointer;margin-top:1rem">← Retour</button>
+        <button id="pub-wiz-back-btn" style="padding:6px 14px;border-radius:5px;border:1px solid #adb5bd;background:#f8f9fa;cursor:pointer;margin-top:1rem">← Retour</button>
       </div>`;
+    container.querySelector<HTMLButtonElement>("#pub-wiz-back-btn")!
+      .addEventListener("click", () => void _setMode("home"));
     return;
   }
 
