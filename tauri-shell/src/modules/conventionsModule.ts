@@ -243,7 +243,7 @@ const CSS = `
 .conv-overlay {
   position: fixed; inset: 0;
   background: rgba(0,0,0,0.4);
-  z-index: 9000;
+  z-index: 10000;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -310,7 +310,7 @@ const CSS = `
 let _conn: Conn | null = null;
 let _roles: UnitRole[] = [];
 let _activeRoleName: string | null = null;
-let _docs: { doc_id: number; title: string | null; language: string | null }[] = [];
+let _docs: { doc_id: number; title: string | null; language: string | null; text_start_n: number | null }[] = [];
 let _units: { unit_id: number; n: number; text_norm: string | null; unit_role: string | null; unit_type: string }[] = [];
 let _selectedDocId: number | null = null;
 let _selectedUnitIds = new Set<number>();
@@ -570,12 +570,8 @@ async function _loadUnits(): Promise<void> {
   _unitsAreaEl.innerHTML = `<div class="prep-conv-empty">Chargement…</div>`;
 
   try {
-    // Fetch text_start_n from documents list
-    const docsRes = (await _conn.get("/documents")) as {
-      documents: { doc_id: number; text_start_n: number | null }[]
-    };
-    const doc = docsRes.documents?.find(d => d.doc_id === _selectedDocId);
-    _textStartN = doc?.text_start_n ?? null;
+    // text_start_n is already in _docs (loaded by _loadDocs); no extra fetch needed.
+    _textStartN = _docs.find(d => d.doc_id === _selectedDocId)?.text_start_n ?? null;
 
     // GET /units?doc_id=N — lists all units with their role
     const unitsRes = (await _conn.get(`/units?doc_id=${_selectedDocId}`)) as {
@@ -657,7 +653,7 @@ function _renderActionBar(): void {
   _actionBarEl.classList.add("visible");
 
   const rolePills = _roles.map(r =>
-    `<button class="conv-role-pill" data-assign="${_esc(r.name)}" style="border-color:${r.color ?? "#475569"}40;color:${r.color ?? "#e2e8f0"}">
+    `<button class="conv-role-pill" data-assign="${_esc(r.name)}" style="border-color:${r.color ?? "#475569"}40;color:${r.color ?? "#374151"}">
       ${r.icon ? r.icon + " " : ""}<span>${_esc(r.label)}</span>
     </button>`
   ).join("");
@@ -686,6 +682,9 @@ function _renderActionBar(): void {
     try {
       await setDocumentTextStart(_conn, _selectedDocId, unit.n);
       _textStartN = unit.n;
+      // Keep _docs cache in sync so subsequent _loadUnits calls don't re-fetch stale value.
+      const docEntry = _docs.find(d => d.doc_id === _selectedDocId);
+      if (docEntry) docEntry.text_start_n = unit.n;
       _renderUnits();
     } catch (e) {
       alert(e instanceof Error ? e.message : String(e));

@@ -86,6 +86,13 @@ const CONSTITUER_CSS = `
 .con-subcontent > .con-prep-wrapper {
   min-height: 100%;
 }
+/* Dans le contexte shell, 82px supplémentaires sont consommés hors de .con-subcontent :
+   44px (shell header fixe) + 38px (barre sous-onglet). Le calc() de .prep-seg-split-layout
+   est conçu pour le mode autonome (100vh = toute la fenêtre). Ici la fenêtre utile
+   est 100vh - 82px, d'où la correction de +82px dans la soustraction. */
+.con-subcontent .prep-seg-split-layout {
+  height: calc(100vh - var(--prep-topbar-h, 54px) - 292px);
+}
 `;
 
 // ─── Public API ────────────────────────────────────────────────────────────────
@@ -118,8 +125,9 @@ export async function mount(
     if (raw === "preparer" || raw === "conventions") _activeTab = raw;
   } catch { /* ignore */ }
 
-  container.style.height = "100vh";
-  container.style.boxSizing = "border-box";
+  // Do NOT set height: shell navigation has already set height=calc(100vh-44px)
+  // on this element with paddingTop=44px (from _freshContainer), so the container
+  // spans the full viewport while content starts below the fixed 44px shell header.
   container.style.display = "flex";
   container.style.flexDirection = "column";
   container.style.overflow = "hidden";

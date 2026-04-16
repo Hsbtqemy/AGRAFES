@@ -1189,7 +1189,9 @@ export class CurationView {
     this._curateLog.unshift({ ts: Date.now(), kind, msg });
     if (this._curateLog.length > 10) this._curateLog.length = 10;
     const bottomPanel = this._q<HTMLDetailsElement>("#act-curate-bottom-panel");
-    if (bottomPanel && !bottomPanel.open) bottomPanel.open = true;
+    // Auto-open only for warnings — individual accept/ignore clicks (kind="apply")
+    // and previews should not force-open the panel and disrupt the review workflow.
+    if (bottomPanel && !bottomPanel.open && kind === "warn") bottomPanel.open = true;
     this._renderCurateLog();
   }
 
@@ -1206,6 +1208,17 @@ export class CurationView {
         `<div class="prep-curate-qmeta"><span>${entry.kind === "preview" ? "Prévisu" : entry.kind === "apply" ? "Application" : "⚠"}</span><span>${age}</span></div>` +
         `<div>${_escHtml(entry.msg)}</div></div>`;
     }).join("");
+    // Update the badge on the <summary> so the count is visible when the panel is collapsed.
+    const badge = this._q<HTMLElement>("#act-curate-log-badge");
+    if (badge) {
+      const warnCount = this._curateLog.filter(e => e.kind === "warn").length;
+      if (warnCount > 0) {
+        badge.textContent = String(warnCount);
+        badge.style.display = "";
+      } else {
+        badge.style.display = "none";
+      }
+    }
   }
 
   private _getStatusCounts(): { pending: number; accepted: number; ignored: number } {

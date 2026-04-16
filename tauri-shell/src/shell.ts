@@ -2427,7 +2427,10 @@ async function _setMode(mode: Mode, opts?: { force?: boolean }): Promise<void> {
       // constituerModule.mount() will remove id="app" from this element and
       // reassign it to its internal sub-content div when prep tab is active.
       const appEl = document.getElementById("app")!;
-      appEl.style.paddingTop = "0";
+      // Keep paddingTop="44px" (set by _freshContainer) so content starts below the
+      // fixed shell header. height=calc(100vh-44px) is the CONTENT area (content-box),
+      // making total rendered height = 100vh. minHeight must be unset so the flex
+      // children (sub-tab bar + con-subcontent) share the bounded height.
       appEl.style.height = "calc(100vh - 44px)";
       appEl.style.minHeight = "unset";
       appEl.style.overflowY = "hidden";
