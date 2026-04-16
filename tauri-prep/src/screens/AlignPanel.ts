@@ -874,7 +874,7 @@ export class AlignPanel {
     const banner = summary.querySelector<HTMLElement>("#align-summary-banner");
     if (banner && recalculate) {
       banner.innerHTML = s.deleted !== undefined
-        ? `<span class="stat-warn">${s.deleted} nettoyés</span> · <span class="stat-ok">${s.preserved} conservés</span>`
+        ? `<span class="stat-warn">${s.deleted} nettoyés</span> · <span class="prep-stat-ok">${s.preserved} conservés</span>`
         : "";
     } else if (banner) banner.innerHTML = "";
 
@@ -905,7 +905,7 @@ export class AlignPanel {
     if (perTarget) {
       perTarget.innerHTML = result.results.map(r => {
         const icon = r.status === "aligned" ? "✓" : r.status === "skipped" ? "⏭" : "✗";
-        const cls = r.status === "aligned" ? "stat-ok" : r.status === "error" ? "stat-err" : "";
+        const cls = r.status === "aligned" ? "prep-stat-ok" : r.status === "error" ? "stat-err" : "";
         return `<div class="prep-align-summary-row ${cls}">${icon} Doc #${r.target_doc_id} (${r.target_lang}) : ${r.links_created} liens · ${r.status}` +
           (r.warnings.length > 0 ? `<br><em>${r.warnings.map(_esc).join(" · ")}</em>` : "") +
           `</div>`;

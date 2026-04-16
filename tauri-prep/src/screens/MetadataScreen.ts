@@ -1457,7 +1457,7 @@ export class MetadataScreen {
             <td class="prep-curation-target-text" title="${this._esc(p.target_text)}">${this._esc(this._truncateMid(p.target_text, 60))}</td>
             <td class="prep-curation-changed-at" title="${this._esc(p.source_changed_at)}">${p.source_changed_at.slice(0, 10)}</td>
             <td>
-              <button class="btn btn-xs btn-ghost curation-ack-link-btn"
+              <button class="btn btn-xs btn-ghost prep-curation-ack-link-btn"
                       data-link-id="${p.link_id}">✓ Lu</button>
             </td>
           </tr>`).join("");
@@ -1467,7 +1467,7 @@ export class MetadataScreen {
             <div class="prep-curation-child-head">
               <span class="prep-curation-child-lang">${this._esc(c.language ?? "?")} · ${this._esc(c.title ?? `#${c.doc_id}`)}</span>
               <span class="prep-curation-child-count">${c.pending_count} unité(s) à revoir</span>
-              <button class="btn btn-xs curation-ack-doc-btn"
+              <button class="btn btn-xs prep-curation-ack-doc-btn"
                       data-doc-id="${c.doc_id}" data-family-id="${familyRootId}">✓ Acquitter tout</button>
             </div>
             <table class="prep-curation-pending-table">

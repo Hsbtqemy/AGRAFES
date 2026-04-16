@@ -290,7 +290,7 @@ export class ImportScreen {
                 <input type="checkbox" id="imp-check-filename" />
                 <span>Bloquer les doublons par nom de fichier</span>
               </label>
-              <div class="imp-settings-actions btn-row">
+              <div class="imp-settings-actions prep-btn-row">
                 <button type="button" id="imp-apply-defaults-btn" class="btn btn-secondary btn-sm">
                   Appliquer aux fichiers en attente
                 </button>

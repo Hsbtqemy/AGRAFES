@@ -291,7 +291,7 @@ const CSS = `
 .conv-dialog-btn.secondary:hover { background: #dee2e6; }
 
 /* ── États vides / erreur ── */
-.conv-empty {
+.prep-conv-empty {
   padding: 2rem 1rem;
   text-align: center;
   color: #6c757d;
@@ -333,7 +333,7 @@ export async function mount(container: HTMLElement, ctx: ShellContext): Promise<
 
   const dbPath = ctx.getDbPath();
   if (!dbPath) {
-    container.innerHTML = `<div class="conv-empty">Aucune base de données sélectionnée.</div>`;
+    container.innerHTML = `<div class="prep-conv-empty">Aucune base de données sélectionnée.</div>`;
     return;
   }
 
@@ -387,7 +387,7 @@ function _buildLayout(container: HTMLElement): void {
           <select class="conv-doc-select"><option value="">— Choisir un document —</option></select>
           <span class="conv-right-hint"></span>
         </div>
-        <div class="conv-units-area"><div class="conv-empty">Sélectionnez un document.</div></div>
+        <div class="conv-units-area"><div class="prep-conv-empty">Sélectionnez un document.</div></div>
         <div class="conv-action-bar"></div>
       </div>
     </div>
@@ -425,7 +425,7 @@ async function _loadRoles(): Promise<void> {
 function _renderRoles(): void {
   if (!_roleListEl) return;
   if (_roles.length === 0) {
-    _roleListEl.innerHTML = `<div class="conv-empty" style="padding:1rem;font-size:0.8rem">Aucun rôle défini.</div>`;
+    _roleListEl.innerHTML = `<div class="prep-conv-empty" style="padding:1rem;font-size:0.8rem">Aucun rôle défini.</div>`;
     return;
   }
   _roleListEl.innerHTML = _roles.map(r => `
@@ -567,7 +567,7 @@ async function _loadUnits(): Promise<void> {
     return;
   }
 
-  _unitsAreaEl.innerHTML = `<div class="conv-empty">Chargement…</div>`;
+  _unitsAreaEl.innerHTML = `<div class="prep-conv-empty">Chargement…</div>`;
 
   try {
     // Fetch text_start_n from documents list
@@ -583,7 +583,7 @@ async function _loadUnits(): Promise<void> {
     };
     _units = unitsRes.units ?? [];
   } catch (e) {
-    _unitsAreaEl.innerHTML = `<div class="conv-empty conv-error">Erreur: ${_esc(e instanceof Error ? e.message : String(e))}</div>`;
+    _unitsAreaEl.innerHTML = `<div class="prep-conv-empty conv-error">Erreur: ${_esc(e instanceof Error ? e.message : String(e))}</div>`;
     return;
   }
 
@@ -595,7 +595,7 @@ async function _loadUnits(): Promise<void> {
 function _renderUnits(): void {
   if (!_unitsAreaEl) return;
   if (_units.length === 0) {
-    _unitsAreaEl.innerHTML = `<div class="conv-empty">${_selectedDocId ? "Aucune unité trouvée." : "Sélectionnez un document."}</div>`;
+    _unitsAreaEl.innerHTML = `<div class="prep-conv-empty">${_selectedDocId ? "Aucune unité trouvée." : "Sélectionnez un document."}</div>`;
     if (_rightHintEl) _rightHintEl.textContent = "";
     return;
   }

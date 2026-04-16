@@ -368,7 +368,7 @@ export class CurationView {
                   <h2>Retouches avanc&#233;es</h2>
                 </summary>
                 <div class="prep-card-body">
-                  <div class="form-row prep-curate-advanced-row">
+                  <div class="prep-form-row prep-curate-advanced-row">
                     <label>Chercher (regex)
                       <input id="act-curate-quick-pattern" type="text" placeholder="ex: \\u2019" />
                     </label>
@@ -557,8 +557,8 @@ export class CurationView {
                 <div class="prep-exc-admin-toolbar">
                   <div class="prep-exc-admin-filters">
                     <button class="btn btn-sm prep-exc-filter-btn prep-exc-filter-active" data-exc-filter="all">Toutes</button>
-                    <button class="btn btn-sm exc-filter-btn" data-exc-filter="ignore">Ignore</button>
-                    <button class="btn btn-sm exc-filter-btn" data-exc-filter="override">Override</button>
+                    <button class="btn btn-sm prep-exc-filter-btn" data-exc-filter="ignore">Ignore</button>
+                    <button class="btn btn-sm prep-exc-filter-btn" data-exc-filter="override">Override</button>
                   </div>
                   <button class="btn btn-sm exc-admin-refresh" id="act-exc-admin-refresh" title="Actualiser la liste">&#8635;</button>
                 </div>
@@ -1343,10 +1343,10 @@ export class CurationView {
   }
 
   private _renderStatusBadge(row: HTMLElement, status: string): void {
-    const existing = row.querySelector<HTMLElement>(".diff-status-badge");
+    const existing = row.querySelector<HTMLElement>(".prep-diff-status-badge");
     if (status === "pending") { existing?.remove(); return; }
     const badge = existing ?? document.createElement("span");
-    badge.className = `diff-status-badge diff-status-${status}`;
+    badge.className = `prep-diff-status-badge diff-status-${status}`;
     badge.textContent = status === "accepted" ? "✓" : "✗";
     badge.title = CurationView._STATUS_LABEL[status] ?? status;
     if (!existing) { const firstCell = row.querySelector("td"); if (firstCell) firstCell.appendChild(badge); }
@@ -1400,10 +1400,10 @@ export class CurationView {
     if (changed === 0 || shown === 0) { el.style.display = "none"; return; }
     el.style.display = "";
     if (shown < changed) {
-      el.className = "curate-sample-info curate-sample-truncated";
+      el.className = "prep-curate-sample-info curate-sample-truncated";
       el.innerHTML = `&#9432;&#160;<strong>${shown}</strong> modification(s) affich&#233;e(s) sur <strong>${changed}</strong> au total &#8212; <span class="sample-scope-note">preview limit&#233;e &#224; ${CURATE_PREVIEW_LIMIT}&#160;exemples</span>`;
     } else {
-      el.className = "curate-sample-info curate-sample-full";
+      el.className = "prep-curate-sample-info curate-sample-full";
       el.innerHTML = `&#10003;&#160;${shown} modification(s) affich&#233;e(s) &#8212; <span class="sample-scope-note">liste compl&#232;te</span>`;
     }
   }
@@ -1655,7 +1655,7 @@ export class CurationView {
       this._hasPendingPreview = changed > 0;
       const statsEl = this._q("#act-preview-stats");
       if (statsEl) statsEl.innerHTML = changed === 0
-        ? `<span class="stat-ok">✓ Aucune modification prévue (${total} unités analysées).</span>`
+        ? `<span class="prep-stat-ok">✓ Aucune modification prévue (${total} unités analysées).</span>`
         : `<span class="stat-warn">⚠ ${changed}/${total} unité(s) modifiée(s), ${reps} remplacement(s).</span>`;
       if (infoEl) infoEl.textContent = `${total} unités · ${changed} modifiée(s)`;
       this._curateExamples = res.examples.map(ex => ({ ...ex, status: "pending" as const }));
@@ -1862,7 +1862,7 @@ export class CurationView {
         rawEl.appendChild(this._renderTextStartSeparator(textStartN));
       }
       const p = document.createElement("p");
-      p.className = "prep-raw-unit raw-unit-full";
+      p.className = "prep-raw-unit prep-raw-unit-full";
       p.dataset.unitId = String(unit.unit_id);
       p.dataset.unitN = String(unit.n);
       if (textStartN !== null && unit.n < textStartN) p.classList.add("prep-raw-unit-paratext");
@@ -1966,7 +1966,7 @@ export class CurationView {
     listEl.innerHTML = "";
     this._conventions.forEach(conv => {
       const row = document.createElement("div");
-      row.className = "conv-row";
+      row.className = "prep-conv-row";
       row.dataset.convName = conv.name;
       const swatch = document.createElement("input");
       swatch.type = "color";
@@ -1975,7 +1975,7 @@ export class CurationView {
       swatch.title = "Cliquer pour modifier la couleur";
       swatch.addEventListener("change", () => { void this._conventionUpdate(conv.name, { color: swatch.value }); });
       const labelEl = document.createElement("span");
-      labelEl.className = "conv-label";
+      labelEl.className = "prep-conv-label";
       labelEl.textContent = conv.label || conv.name;
       labelEl.title = "Double-cliquer pour modifier le label";
       labelEl.addEventListener("dblclick", () => this._conventionEditLabel(row, conv));
@@ -2278,7 +2278,7 @@ export class CurationView {
       const msg = res.count > 0 ? `✓ ${res.count} exception(s) exportée(s)` : "ℹ Aucune exception à exporter";
       if (resultEl) {
         resultEl.style.display = "";
-        resultEl.className = `exc-export-result ${res.count > 0 ? "exc-export-ok" : "exc-export-empty"}`;
+        resultEl.className = `prep-exc-export-result ${res.count > 0 ? "exc-export-ok" : "exc-export-empty"}`;
         resultEl.textContent = msg;
       }
       this._cb.log(`✓ Exceptions exportées (${fmt.toUpperCase()}) : ${res.count} → ${res.out_path}`);
@@ -2297,7 +2297,7 @@ export class CurationView {
     if (this._curateExamples.length === 0) {
       this._cb.toast?.("ℹ Aucune preview active à exporter");
       const resultEl = this._q<HTMLElement>("#act-review-export-result");
-      if (resultEl) { resultEl.style.display = ""; resultEl.className = "review-export-result review-export-empty"; resultEl.textContent = "ℹ Aucune preview active à exporter"; }
+      if (resultEl) { resultEl.style.display = ""; resultEl.className = "prep-review-export-result review-export-empty"; resultEl.textContent = "ℹ Aucune preview active à exporter"; }
       return;
     }
     const docId = this._currentCurateDocId();
@@ -2326,13 +2326,13 @@ export class CurationView {
       await writeTextFile(outPath, content);
       const count = this._curateExamples.length;
       const msg = `✓ Rapport exporté (${count} item(s))`;
-      if (resultEl) { resultEl.style.display = ""; resultEl.className = "review-export-result review-export-ok"; resultEl.textContent = msg; }
+      if (resultEl) { resultEl.style.display = ""; resultEl.className = "prep-review-export-result review-export-ok"; resultEl.textContent = msg; }
       this._cb.log(`✓ Rapport de review (${fmt.toUpperCase()}) exporté : ${count} item(s) → ${outPath}`);
       this._pushCurateLog("apply", `Rapport exporté – ${count} item(s)`);
       this._cb.toast?.(msg);
     } catch (err) {
       const msg = `✗ Erreur export rapport : ${err instanceof Error ? err.message : String(err)}`;
-      if (resultEl) { resultEl.style.display = ""; resultEl.className = "review-export-result review-export-error"; resultEl.textContent = msg; }
+      if (resultEl) { resultEl.style.display = ""; resultEl.className = "prep-review-export-result review-export-error"; resultEl.textContent = msg; }
       this._cb.log(msg, true);
       this._cb.toast?.("✗ Erreur export rapport", true);
     } finally {
@@ -2375,7 +2375,7 @@ export class CurationView {
       if (this._allUnitsDocId === docId && this._allUnits.length > 0) {
         this._renderRawPaneFull();
         const diffEl = this._q<HTMLElement>("#act-diff-list");
-        if (diffEl) diffEl.innerHTML = `<div class="stat-ok" style="margin-bottom:8px;font-size:13px">&#10003;&#160;Aucune diff&#233;rence &#8212; texte cur&#233; identique au source.</div>`;
+        if (diffEl) diffEl.innerHTML = `<div class="prep-stat-ok" style="margin-bottom:8px;font-size:13px">&#10003;&#160;Aucune diff&#233;rence &#8212; texte cur&#233; identique au source.</div>`;
       } else {
         void this._fillCuratePanesWithDocumentText(docId);
       }
@@ -2467,8 +2467,8 @@ export class CurationView {
         const empty = '<p class="empty-hint">Aucune unit&#233; disponible pour ce document.</p>';
         rawEl.innerHTML = empty; diffEl.innerHTML = empty; return;
       }
-      const bannerRaw  = `<div class="stat-ok" style="margin-bottom:8px;font-size:13px">&#10003;&#160;Aucune modification &#8212; le document est propre avec ces r&#232;gles.</div>`;
-      const bannerDiff = `<div class="stat-ok" style="margin-bottom:8px;font-size:13px">&#10003;&#160;Aucune diff&#233;rence &#8212; texte cur&#233; identique au source.</div>`;
+      const bannerRaw  = `<div class="prep-stat-ok" style="margin-bottom:8px;font-size:13px">&#10003;&#160;Aucune modification &#8212; le document est propre avec ces r&#232;gles.</div>`;
+      const bannerDiff = `<div class="prep-stat-ok" style="margin-bottom:8px;font-size:13px">&#10003;&#160;Aucune diff&#233;rence &#8212; texte cur&#233; identique au source.</div>`;
       const truncNote = preview.total_lines > preview.limit
         ? `<p class="empty-hint" style="margin:4px 0 8px;font-style:italic">Aper&#231;u &#8212; ${preview.limit}/${preview.total_lines} unit&#233;s</p>` : "";
       const linesHtml = preview.lines.map(l =>
@@ -2637,7 +2637,7 @@ export class CurationView {
     const existing = rowEl.querySelector(".prep-conv-del-confirm");
     if (existing) return;
     const confirm = document.createElement("span");
-    confirm.className = "conv-del-confirm";
+    confirm.className = "prep-conv-del-confirm";
     confirm.innerHTML =
       `<span class="prep-conv-del-warn">Supprimer ? Les unités assignées perdront ce rôle.</span>` +
       `<button class="btn btn-danger btn-xs prep-conv-del-confirm-yes">Confirmer</button>` +
@@ -2921,11 +2921,11 @@ export class CurationView {
   }
 
   private _renderOverrideBadge(row: HTMLElement, isOverride: boolean): void {
-    const existing = row.querySelector<HTMLElement>(".diff-override-badge");
+    const existing = row.querySelector<HTMLElement>(".prep-diff-override-badge");
     if (!isOverride) { existing?.remove(); return; }
     if (existing) return;
     const badge = document.createElement("span");
-    badge.className = "diff-override-badge"; badge.textContent = "✏"; badge.title = "Modifié manuellement";
+    badge.className = "prep-diff-override-badge"; badge.textContent = "✏"; badge.title = "Modifié manuellement";
     const firstCell = row.querySelector("td");
     if (firstCell) firstCell.appendChild(badge);
   }
@@ -3013,7 +3013,7 @@ export class CurationView {
   }
 
   private _renderExceptionBadge(row: HTMLElement, ex: CuratePreviewExample): void {
-    const existing = row.querySelector<HTMLElement>(".diff-exception-badge");
+    const existing = row.querySelector<HTMLElement>(".prep-diff-exception-badge");
     const hasException = ex.is_exception_ignored || ex.is_exception_override;
     if (!hasException) { existing?.remove(); return; }
     if (existing) {
@@ -3022,7 +3022,7 @@ export class CurationView {
       return;
     }
     const badge = document.createElement("span");
-    badge.className = "diff-exception-badge";
+    badge.className = "prep-diff-exception-badge";
     badge.textContent = ex.is_exception_ignored ? "🔒" : "🔒✏";
     badge.title = ex.is_exception_ignored ? "Exception persistée : ignoré durablement" : "Exception persistée : override durable";
     const firstCell = row.querySelector("td");
@@ -3035,7 +3035,7 @@ export class CurationView {
     const kindBadge = `<span class="prep-exc-kind-badge exc-kind-${exc.kind}">${exc.kind === "ignore" ? "🚫 ignore" : "✏ override"}</span>`;
     const unitText = exc.unit_text ? `<span class="prep-exc-unit-preview" title="${_escHtml(exc.unit_text)}">${_escHtml(exc.unit_text.slice(0, 80))}…</span>` : "";
     const createdAt = exc.created_at ? `<span class="prep-exc-created-at">${exc.created_at.slice(0, 16).replace("T", " ")}</span>` : "";
-    const openBtn = exc.doc_id !== undefined ? `<button class="btn btn-sm exc-row-open-curation" title="Voir cette unité dans Curation">&#x1F441;</button>` : "";
+    const openBtn = exc.doc_id !== undefined ? `<button class="btn btn-sm prep-exc-row-open-curation" title="Voir cette unité dans Curation">&#x1F441;</button>` : "";
     const isEditing = this._excAdminEditing === exc.unit_id;
     if (exc.kind === "override" && isEditing) {
       row.innerHTML = `
