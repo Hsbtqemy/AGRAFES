@@ -1052,6 +1052,16 @@ export class MetadataScreen {
     if (firstnameEl) firstnameEl.value = parent.author_firstname ?? "";
     if (workTitleEl) workTitleEl.value = parent.work_title ?? "";
 
+    // Sync _selectedDoc so dirty-check doesn't fire before the user saves.
+    if (this._selectedDoc) {
+      this._selectedDoc = {
+        ...this._selectedDoc,
+        author_lastname:  parent.author_lastname  ?? null,
+        author_firstname: parent.author_firstname ?? null,
+        work_title:       parent.work_title       ?? null,
+      };
+    }
+
     // Visual feedback on the button
     const btn = this._editPanelEl.querySelector<HTMLButtonElement>("#inherit-author-btn");
     if (btn) { btn.textContent = "✓ Hérité"; btn.disabled = true; }
