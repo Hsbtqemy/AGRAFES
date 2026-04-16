@@ -121,17 +121,7 @@ body { margin: 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Se
 .prep-main > .content.prep-curation-wide {
   padding-inline: clamp(0.35rem, 0.7vw, 0.65rem);
 }
-@media (min-width: 1200px) {
-  #prep-shell-main.nav-hidden .prep-main > .content {
-    max-width: min(100%, var(--prep-content-max-wide));
-    margin-left: 0;
-    margin-right: 0;
-    padding-inline: clamp(1.1rem, 1.6vw, 1.8rem);
-  }
-  #prep-shell-main.nav-hidden .prep-main > .content.prep-curation-wide {
-    padding-inline: clamp(0.6rem, 1vw, 1rem);
-  }
-}
+
 .prep-screen { display: none; }
 .screen.active { display: block; }
 .prep-screen-title { font-size: 1.15rem; font-weight: 700; margin: 0 0 1rem; letter-spacing: -0.01em; }
@@ -574,9 +564,7 @@ summary:focus-visible,
   min-height: var(--prep-import-footer-h, 56px);
 }
 
-#prep-shell-main.nav-hidden .prep-import-screen .imp-footer-bar {
-  left: var(--prep-nav-rail-w, 30px);
-}
+
 .prep-import-screen .imp-footer-meta {
   display: flex; align-items: center; gap: 8px;
 }
@@ -1419,11 +1407,7 @@ code { font-family: monospace; background: var(--color-bg); padding: 0 3px; bord
 .prep-diff-extid { color: var(--color-muted); font-family: monospace; white-space: nowrap; }
 /* Colonne Avant supprimée — le diff inline montre suppressions + insertions */
 .prep-diff-after { background: #f8fffe; }
-mark.prep-diff-mark { background: #b7f5c8; color: #14532d; border-radius: 2px; padding: 0 2px; font-weight: 600; }
-del.prep-diff-del { color: #b91c1c; text-decoration: line-through; opacity: 0.75; }
-/* Char-level diff — inline within a word */
-mark.prep-diff-char-ins { background: #bbf7d0; color: #14532d; border-radius: 2px; padding: 0 1px; box-shadow: 0 0 0 1px #4ade80; font-weight: 600; }
-del.prep-diff-char-del  { background: #fee2e2; color: #991b1b; text-decoration: line-through; border-radius: 2px; padding: 0 1px; opacity: 0.9; }
+
 /* Visible representation of invisible/special characters */
 /* Extra dim for truly invisible chars (ZWNJ, ZWJ, soft-hyphen, etc.) */
 
@@ -1461,13 +1445,7 @@ del.prep-diff-char-del  { background: #fee2e2; color: #991b1b; text-decoration: 
   line-height: 1.4;
   font-size: 0.84rem;
 }
-.prep-actions-screen.seg-focus-mode .prep-acts-log-section {
-  display: block;
-}
-.prep-actions-screen.seg-focus-mode #act-seg-card {
-  border-color: #9fd3cc;
-  box-shadow: 0 10px 22px rgba(15, 118, 110, 0.11);
-}
+
 @media (max-width: 1200px) {
   .prep-align-focus {
     position: static;
@@ -1929,7 +1907,7 @@ del.prep-diff-char-del  { background: #fee2e2; color: #991b1b; text-decoration: 
 }
 
 .prep-align-audit-table tbody tr:hover { background: #f5f8ff; }
-.prep-align-audit-table tbody tr.prep-audit-row-focused { background: #e8f0fe; }
+
 
 .prep-align-audit-table td {
   padding: 6px 10px;
@@ -2104,14 +2082,7 @@ del.prep-diff-char-del  { background: #fee2e2; color: #991b1b; text-decoration: 
 .prep-mm { height: 10px; border-radius: 2px; background: #d6dde8; }
 .prep-mm.changed { background: var(--prep-warn,#e6a817); }
 .prep-mm.current { background: var(--prep-accent,#0f766e); }
-/* Track prep-minimap (segmentation vnext — position layout) */
-.prep-minimap.prep-minimap-track {
-  display: block;
-  position: relative;
-  overflow: hidden;
-  padding: 0;
-  min-height: 200px;
-}
+
 /* Dynamic zone managed by JS — hide until first scroll update */
 /* Minimap click-to-scroll affordance (P18 Inc 3) */
 
@@ -2827,20 +2798,7 @@ del.prep-diff-char-del  { background: #fee2e2; color: #991b1b; text-decoration: 
    Level 10A/10B — Apply history panel
    ══════════════════════════════════════════════════════════════════════════ */
 
-.prep-apply-hist-panel > summary.prep-apply-hist-summary {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  cursor: pointer;
-  padding: 6px 10px;
-  user-select: none;
-}
-.prep-apply-hist-panel > summary.prep-apply-hist-summary h2 {
-  font-size: 12px;
-  font-weight: 600;
-  margin: 0;
-  flex: 1;
-}
+
 .prep-apply-hist-badge {
   background: #6366f1;
   color: #fff;
@@ -3209,40 +3167,7 @@ del.prep-diff-char-del  { background: #fee2e2; color: #991b1b; text-decoration: 
 
 [hidden] { display: none !important; }
 
-/* ─── P16 Inc 1: aside.seg-side collapsible settings panel ────────── */
-details.seg-side {
-  border-right: 1px solid var(--prep-line, #dde1e8);
-  background: var(--prep-surface-alt, #f8f9fa);
-  align-self: stretch;
-  min-height: 100%;
-}
-details.seg-side > summary {
-  padding: 14px 7px;
-  writing-mode: vertical-rl;
-  text-orientation: mixed;
-  transform: rotate(180deg);
-  cursor: pointer;
-  list-style: none;
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--prep-muted, #4f5d6d);
-  white-space: nowrap;
-  user-select: none;
-  transition: color 0.12s;
-}
-details.seg-side > summary::-webkit-details-marker { display: none; }
-details.seg-side > summary:hover { color: var(--prep-accent, #0f766e); }
-details.seg-side[open] > summary {
-  writing-mode: horizontal-tb;
-  transform: none;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--prep-line, #dde1e8);
-  background: #eef2f7;
-  font-size: 11.5px;
-}
-details.seg-side[open] { width: 220px; }
+
 .prep-seg-stat { border: 1px solid var(--prep-line,#dde1e8); border-radius: 8px; padding: 8px 10px; background: #fff; font-size: 12px; }
 .prep-seg-stat strong { display: block; font-size: 20px; color: var(--prep-accent-dark,#0c4a46); margin-bottom: 2px; }
 .prep-seg-warn-list { display: grid; gap: 6px; }
@@ -3574,9 +3499,6 @@ mark { background: #fff0b3; border-radius: 2px; }
 
 /* ─── 900px: run-row, form-grid, align extras ──────────────────────── */
 @media (max-width: 900px) {
-  /* seg-side: show above left col if viewport is small (force open) */
-  details.seg-side[open] { width: 100%; }
-
   /* form-grid-seg: 1 col */
 
   /* run-row: stack pivot / rail / cible */

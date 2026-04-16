@@ -566,7 +566,7 @@ export class MetadataScreen {
     const appendRow = (doc: DocumentRecord, depth = 0, relationLabel?: string, completionPct?: number) => {
       const tr = document.createElement("tr");
       tr.className = "prep-meta-doc-row";
-      if (depth > 0) tr.classList.add("tree-child");
+      if (depth > 0) tr.classList.add("prep-tree-child");
       if (this._selectedDoc?.doc_id === doc.doc_id) tr.classList.add("is-active");
       const isChecked = this._selectedDocIds.has(doc.doc_id);
       const wfStatus = this._workflowStatus(doc);
@@ -617,7 +617,7 @@ export class MetadataScreen {
 
     const appendSectionHeader = (label: string, count: number) => {
       const tr = document.createElement("tr");
-      tr.className = "tree-section-header";
+      tr.className = "prep-tree-section-header";
       tr.innerHTML = `<td colspan="6" class="prep-tree-section-label">${this._esc(label)} <span class="prep-tree-section-count">${count}</span></td>`;
       this._docListEl.appendChild(tr);
     };
