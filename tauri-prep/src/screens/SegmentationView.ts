@@ -382,27 +382,43 @@ export class SegmentationView {
             <p><strong>Pr&#233;fixe avant <code>[1]</code> :</strong> le texte plac&#233; avant la premi&#232;re balise devient un segment distinct, avec <code>external_id = NULL</code>.</p>
           </div>
         </details>
-        <div class="prep-seg-preview-section" id="act-seg-preview-section">
-          <div class="prep-seg-preview-section-head">
-            <span class="prep-seg-preview-section-label">Aper&#231;u live <span class="prep-seg-preview-badge" id="act-seg-mode-badge">phrases</span></span>
+        <div class="prep-seg-content-section" id="act-seg-content-section">
+          <div class="prep-seg-content-head">
+            <div class="prep-seg-content-tabs" role="tablist">
+              <button class="prep-seg-content-tab active" role="tab" data-pane="preview">
+                Aper&#231;u&#160;<span class="prep-seg-preview-badge" id="act-seg-mode-badge">phrases</span>
+              </button>
+              <button class="prep-seg-content-tab" role="tab" data-pane="saved"
+                ${!savedAlready ? 'disabled title="Aucun segment enregistr&#233;"' : ""}>
+                Enregistr&#233;&#160;<span id="act-seg-saved-count" class="chip">${savedAlready ? doc.unit_count : "&#8212;"}</span>
+              </button>
+            </div>
             <span id="act-seg-prev-stats" class="prep-seg-preview-stats"></span>
-            <button type="button" class="btn btn-ghost btn-sm" id="act-seg-prev-refresh">&#8635;</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="act-seg-prev-refresh"
+              title="Relancer l&#8217;aper&#231;u">&#8635;</button>
           </div>
-          <div class="prep-seg-preview-split" id="act-seg-preview-split">
-            <div>
-              <div class="prep-seg-preview-col-title">Brut (<span id="act-seg-prev-raw-count">&#8212;</span> unit&#233;s)</div>
-              <div class="prep-seg-preview-col-list" id="act-seg-prev-raw">
-                <p class="empty-hint">Chargement&#8230;</p>
+          <div id="act-seg-pane-preview" role="tabpanel">
+            <div class="prep-seg-preview-split" id="act-seg-preview-split">
+              <div>
+                <div class="prep-seg-preview-col-title">Brut (<span id="act-seg-prev-raw-count">&#8212;</span> unit&#233;s)</div>
+                <div class="prep-seg-preview-col-list" id="act-seg-prev-raw">
+                  <p class="empty-hint">Chargement&#8230;</p>
+                </div>
+              </div>
+              <div>
+                <div class="prep-seg-preview-col-title">Segment&#233; (<span id="act-seg-prev-seg-count">&#8212;</span> phrases)</div>
+                <div class="prep-seg-preview-col-list" id="act-seg-prev-seg">
+                  <p class="empty-hint">En attente&#8230;</p>
+                </div>
               </div>
             </div>
-            <div>
-              <div class="prep-seg-preview-col-title">Segment&#233; (<span id="act-seg-prev-seg-count">&#8212;</span> phrases)</div>
-              <div class="prep-seg-preview-col-list" id="act-seg-prev-seg">
-                <p class="empty-hint">En attente&#8230;</p>
-              </div>
+            <div id="act-seg-prev-warns" class="prep-seg-warn-list" style="display:none"></div>
+          </div>
+          <div id="act-seg-pane-saved" style="display:none" role="tabpanel">
+            <div id="act-seg-saved-table">
+              ${savedAlready ? `<p class="empty-hint">Chargement des segments&#8230;</p>` : ""}
             </div>
           </div>
-          <div id="act-seg-prev-warns" class="prep-seg-warn-list" style="display:none"></div>
         </div>
         <div class="prep-seg-actions-bar" id="act-seg-actions">
           <button class="btn prep-btn-warning" id="act-seg-btn"
@@ -422,14 +438,6 @@ export class SegmentationView {
         </div>
         <div id="act-seg-confirm-bar" class="audit-batch-bar" style="display:none"></div>
         <div id="act-seg-status-banner" class="prep-seg-status-banner prep-runtime-state prep-state-info" aria-live="polite"></div>
-        <div class="prep-seg-saved-section" id="act-seg-saved-section" style="${savedAlready ? "" : "display:none"}">
-          <div class="prep-seg-saved-head">Segments enregistr&#233;s
-            <span id="act-seg-saved-count" class="chip">${doc.unit_count}</span>
-          </div>
-          <div class="prep-seg-saved-table-wrap" id="act-seg-saved-table">
-            ${savedAlready ? `<p class="empty-hint">Chargement des segments&#8230;</p>` : ""}
-          </div>
-        </div>
       </div>
     `;
 
@@ -460,6 +468,14 @@ export class SegmentationView {
     rightEl.querySelector("#act-seg-btn")?.addEventListener("click", () => void this._runSegment());
     rightEl.querySelector("#act-seg-validate-btn")?.addEventListener("click", () => void this._runSegment(true));
     rightEl.querySelector("#act-seg-validate-only-btn")?.addEventListener("click", () => void this._runValidateCurrentSegDoc());
+
+    // Wire content pane tabs (Aperçu / Enregistré)
+    rightEl.querySelectorAll<HTMLButtonElement>(".prep-seg-content-tab").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const pane = btn.dataset.pane as "preview" | "saved";
+        this._switchContentPane(pane);
+      });
+    });
 
     void this._loadSegRawColumn(docId);
     void this._runSegPreview(docId);
@@ -655,6 +671,17 @@ export class SegmentationView {
         detectBtn.innerHTML = "&#128270; D&#233;tecter balises";
       }
     }
+  }
+
+  private _switchContentPane(pane: "preview" | "saved"): void {
+    const previewPane = this._q<HTMLElement>("#act-seg-pane-preview");
+    const savedPane   = this._q<HTMLElement>("#act-seg-pane-saved");
+    if (!previewPane || !savedPane) return;
+    previewPane.style.display = pane === "preview" ? "" : "none";
+    savedPane.style.display   = pane === "saved"   ? "" : "none";
+    this._root?.querySelectorAll<HTMLButtonElement>(".prep-seg-content-tab").forEach(t => {
+      t.classList.toggle("active", t.dataset.pane === pane);
+    });
   }
 
   private _activateMarkersMode(docId: number): void {
@@ -949,13 +976,14 @@ export class SegmentationView {
             segment_pack: r?.segment_pack,
             warnings: r?.warnings ?? [],
           };
-          // Refresh saved segments table and raw column
-          const savedSection = this._q<HTMLElement>("#act-seg-saved-section");
+          // Refresh saved segments table and raw column; enable & switch to saved tab
           const savedTableEl = this._q<HTMLElement>("#act-seg-saved-table");
-          const savedCount = this._q<HTMLElement>("#act-seg-saved-count");
-          if (savedSection) savedSection.style.display = "";
+          const savedCount   = this._q<HTMLElement>("#act-seg-saved-count");
+          const savedTab     = this._q<HTMLButtonElement>('[data-pane="saved"]');
           if (savedCount) savedCount.textContent = String(this._lastSegmentReport?.units_output ?? "?");
+          if (savedTab) { savedTab.disabled = false; savedTab.removeAttribute("title"); }
           if (savedTableEl) void this._renderSegSavedTable(docId, savedTableEl);
+          this._switchContentPane("saved");
           void this._loadSegRawColumn(docId);
           void this._runSegPreview(docId);
           this._populateSegDocList();
