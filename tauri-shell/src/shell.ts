@@ -1308,11 +1308,15 @@ async function _switchDb(path: string): Promise<void> {
   _persist();
   _addToMru(path);
   _updateDbBadge();
-  _dbListeners.forEach(cb => cb(_currentDbPath));
+  // NOTE: _dbListeners broadcast is deferred until after _initDb so that
+  // rechercheModule / conventionsModule don't race against the shell's own
+  // ensureRunning call (two concurrent spawns would kill each other).
 
   try {
     await _initDb(path);
     _shellLog("info", "db_switch", `DB ready: ${_pathLabel(path)}`);
+    // Notify subscribers now that the sidecar is healthy.
+    _dbListeners.forEach(cb => cb(_currentDbPath));
     if (_currentMode === "home") {
       // Home is stateless — remount immediately (no context to lose).
       _showToast(`DB active : ${_pathLabel(path)}`);
@@ -1326,6 +1330,8 @@ async function _switchDb(path: string): Promise<void> {
     }
   } catch (err) {
     _shellLog("error", "db_switch", `DB init failed: ${_pathLabel(path)}`, String(err));
+    // Still notify on failure so modules can show their own error state.
+    _dbListeners.forEach(cb => cb(_currentDbPath));
     throw err;
   } finally {
     if (dbBtn) { dbBtn.disabled = false; }
@@ -2167,11 +2173,11 @@ async function _onCreateDb(): Promise<void> {
   _persist();
   _addToMru(savePath);
   _updateDbBadge();
-  _dbListeners.forEach(cb => cb(_currentDbPath));
   _closeDbMenu();
 
-  // Immediate sidecar init (starts sidecar + applies migrations)
+  // Sidecar init first, then notify subscribers (avoids concurrent spawn race).
   await _initDb(savePath);
+  _dbListeners.forEach(cb => cb(_currentDbPath));
 
   // Re-mount if module active so module uses the new DB
   if (_currentMode !== "home") {
