@@ -312,7 +312,7 @@ export class SegmentationView {
       ? `<span class="prep-seg-state-chip prep-seg-badge-warn">&#9203; En revue</span>`
       : `<span class="prep-seg-state-chip prep-seg-badge-none">Brouillon</span>`;
 
-    const savedAlready = (doc.unit_count ?? 0) > 0 && doc.workflow_status !== "draft";
+    const savedAlready = (doc.unit_count ?? 0) > 0;
 
     this._unbindSegPreviewScrollSync();
 
@@ -715,7 +715,7 @@ export class SegmentationView {
         const splitBtn = `<button class="prep-seg-action-btn prep-seg-split-btn" title="Couper ce segment" data-n="${l.n}">&#9986;</button>`;
         return `<tr data-unit-n="${l.n}">
           <td class="prep-seg-cell-n">${l.n}</td>
-          <td class="prep-seg-cell-text" title="Double-clic pour modifier le texte">${_escHtml(l.text)}</td>
+          <td class="prep-seg-cell-text">${_escHtml(l.text)}</td>
           <td class="prep-seg-cell-len${lenClass}">${l.text.length}</td>
           <td class="prep-seg-cell-actions">${mergeUpBtn}${mergeDownBtn}${splitBtn}</td>
         </tr>`;
@@ -724,7 +724,7 @@ export class SegmentationView {
       const renderTable = (lines: { n: number; text: string }[]) => {
         const rows = lines.map((l, i) => buildRow(l, i, lines.length)).join("");
         return truncNote + `
-          <div class="prep-seg-saved-info">${lines.length} segment(s) &middot; double-clic pour modifier</div>
+          <div class="prep-seg-saved-info">${lines.length} segment(s)</div>
           <div class="prep-seg-segments-scroll">
             <table class="prep-seg-segments-table">
               <colgroup>
@@ -833,40 +833,6 @@ export class SegmentationView {
           });
         });
 
-        // ── Double-click inline text edit ────────────────────────────────────
-        el.querySelectorAll<HTMLTableCellElement>(".prep-seg-cell-text").forEach(cell => {
-          cell.addEventListener("dblclick", () => {
-            if (cell.querySelector("textarea")) return;
-            const tr = cell.closest("tr")!;
-            const origHtml = cell.innerHTML;
-            const origText = cell.textContent?.trim() ?? "";
-            const ta = document.createElement("textarea");
-            ta.rows = 2;
-            ta.value = origText;
-            ta.className = "prep-seg-cell-edit-input";
-            cell.innerHTML = "";
-            cell.appendChild(ta);
-            ta.focus(); ta.select();
-
-            const cancelEdit = () => { cell.innerHTML = origHtml; };
-            const commit = () => {
-              const newText = ta.value.trim();
-              if (!newText || newText === origText) { cancelEdit(); return; }
-              cell.innerHTML = _escHtml(newText);
-              const lenCell = cell.nextElementSibling as HTMLElement | null;
-              if (lenCell && !lenCell.classList.contains("prep-seg-cell-actions")) {
-                lenCell.textContent = String(newText.length);
-              }
-              const unitN = parseInt(tr.dataset.unitN ?? "", 10);
-              if (unitN) lines = lines.map(l => l.n === unitN ? { ...l, text: newText } : l);
-            };
-            ta.addEventListener("keydown", (e) => {
-              if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); commit(); }
-              if (e.key === "Escape") { e.preventDefault(); cancelEdit(); }
-            });
-            ta.addEventListener("blur", () => setTimeout(commit, 80));
-          });
-        });
       };
 
       wireEvents();

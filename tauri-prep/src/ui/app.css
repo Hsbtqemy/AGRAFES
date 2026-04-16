@@ -4667,15 +4667,6 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
   width: 100%;
 }
 .prep-seg-cell-text:hover { background: #eef2f6; }
-.prep-seg-cell-edit-input {
-  width: 100%;
-  padding: 2px 6px;
-  font-size: 0.8rem;
-  border: 2px solid var(--color-primary, #1a7f4e);
-  border-radius: 3px;
-  outline: none;
-  resize: vertical;
-}
 
 /* Action column: merge ↑↓ and split ✂ buttons */
 .prep-seg-cell-actions {
