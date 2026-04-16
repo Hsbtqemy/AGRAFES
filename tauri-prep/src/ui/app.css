@@ -3810,6 +3810,11 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
 }
 
 /* overflow:clip clips paint without creating a scroll container,
+   so position:sticky on .prep-curate-preview-card works vs the page scroll.
+   overflow:hidden (global rule on .prep-curate-workspace-card) would block sticky. */
+#act-curate-card {
+  overflow: clip;
+}
 /* Colonnes latérales réduites (inspiré de HIMYC : 250/1fr/220) pour donner plus de place au texte */
 #act-curate-card .prep-curate-workspace {
   grid-template-columns: minmax(220px, 0.65fr) minmax(0, 2fr) minmax(200px, 0.6fr);
