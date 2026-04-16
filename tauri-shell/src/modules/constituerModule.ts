@@ -77,15 +77,14 @@ const CONSTITUER_CSS = `
 .con-subcontent {
   flex: 1;
   min-height: 0;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   position: relative;
 }
-/* Le wrapper direct (#con-prep-wrapper) reçoit height:100%.
-   Les enfants du prep app (topbar, prep-shell) restent en block flow normal
-   sans interférence de height:100%. */
+/* Le wrapper direct (#con-prep-wrapper) prend la hauteur naturelle de son contenu ;
+   le scroll se fait au niveau de .con-subcontent. */
 .con-subcontent > .con-prep-wrapper {
-  height: 100%;
-  overflow: hidden;
+  min-height: 100%;
 }
 `;
 
@@ -95,9 +94,17 @@ export async function mount(
   container: HTMLElement,
   ctx: ShellContext
 ): Promise<void> {
+  // Defensive cleanup: if HMR reset module state without calling dispose(), the
+  // outer container may still hold stale content and lost its id="app". Clear it.
+  if (container.children.length > 0) {
+    container.innerHTML = "";
+  }
   _savedCtx = ctx;
   _switching = false;
   _prepApp = null;
+  _subDispose = null;
+  _subContainer = null;
+  _tabBar = null;
   // The shell passes container with id="app". Transfer that id to the sub-content
   // div when prep is active (tauri-prep's App._buildUI() uses getElementById("app")).
   // Remove it from the outer container to avoid duplicate ids in the DOM.
@@ -157,12 +164,12 @@ export async function mount(
 }
 
 export function dispose(): void {
+  // Always restore id="app" on the outer container — even if _mounted is false
+  // (e.g. after Vite HMR resets module-level state without calling dispose()).
+  if (_outerContainer) { _outerContainer.id = "app"; _outerContainer = null; }
   if (!_mounted) return;
   _disposeSubModule();
   try { _prepApp?.dispose(); } catch { /* ignore */ }
-  // Restore id="app" on the outer container so the shell and other modules
-  // can find it via getElementById("app") after navigation.
-  if (_outerContainer) { _outerContainer.id = "app"; _outerContainer = null; }
   _mounted = false;
   _switching = false;
   _subContainer = null;
