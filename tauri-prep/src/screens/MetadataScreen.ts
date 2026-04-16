@@ -798,6 +798,14 @@ export class MetadataScreen {
           <input id="edit-doc-date" type="text" value="${this._esc(doc.doc_date ?? "")}" placeholder="2024 ou 2024-03-15" style="max-width:130px">
         </label>
       </div>
+      <div class="prep-form-row">
+        <label style="flex:1.2">Nom du traducteur
+          <input id="edit-translator-lastname" type="text" value="${this._esc(doc.translator_lastname ?? "")}" placeholder="Dupont">
+        </label>
+        <label style="flex:1.2">Prénom du traducteur
+          <input id="edit-translator-firstname" type="text" value="${this._esc(doc.translator_firstname ?? "")}" placeholder="Jean">
+        </label>
+      </div>
       ${inheritHtml}
       <div class="prep-form-row">
         <label>Rôle
@@ -1533,6 +1541,8 @@ export class MetadataScreen {
     const author_lastname = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-author-lastname")!).value.trim() || null;
     const author_firstname = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-author-firstname")!).value.trim() || null;
     const doc_date = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-doc-date")!).value.trim() || null;
+    const translator_lastname = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-translator-lastname")!).value.trim() || null;
+    const translator_firstname = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-translator-firstname")!).value.trim() || null;
 
     const btn = this._editPanelEl.querySelector<HTMLButtonElement>("#save-doc-btn")!;
     btn.disabled = true;
@@ -1550,6 +1560,8 @@ export class MetadataScreen {
         author_lastname,
         author_firstname,
         doc_date,
+        translator_lastname,
+        translator_firstname,
       });
       const updated = res.doc;
       this._applyUpdatedDoc(updated);
@@ -2189,19 +2201,23 @@ export class MetadataScreen {
     const resourceType    = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-restype")?.value ?? "").trim();
     const workflow        = (this._editPanelEl.querySelector<HTMLSelectElement>("#edit-workflow-status")?.value ?? "draft").trim();
     const validatedRunId  = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-validated-run-id")?.value ?? "").trim();
-    const authorLastname  = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-author-lastname")?.value ?? "").trim();
-    const authorFirstname = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-author-firstname")?.value ?? "").trim();
-    const docDate         = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-doc-date")?.value ?? "").trim();
+    const authorLastname       = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-author-lastname")?.value ?? "").trim();
+    const authorFirstname      = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-author-firstname")?.value ?? "").trim();
+    const docDate              = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-doc-date")?.value ?? "").trim();
+    const translatorLastname   = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-translator-lastname")?.value ?? "").trim();
+    const translatorFirstname  = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-translator-firstname")?.value ?? "").trim();
 
-    const baseTitle           = (this._selectedDoc.title ?? "").trim();
-    const baseLanguage        = (this._selectedDoc.language ?? "").trim();
-    const baseDocRole         = (this._selectedDoc.doc_role ?? "unknown").trim();
-    const baseResourceType    = (this._selectedDoc.resource_type ?? "").trim();
-    const baseWorkflow        = this._workflowStatus(this._selectedDoc);
-    const baseValidatedRunId  = (this._selectedDoc.validated_run_id ?? "").trim();
-    const baseAuthorLastname  = (this._selectedDoc.author_lastname ?? "").trim();
-    const baseAuthorFirstname = (this._selectedDoc.author_firstname ?? "").trim();
-    const baseDocDate         = (this._selectedDoc.doc_date ?? "").trim();
+    const baseTitle              = (this._selectedDoc.title ?? "").trim();
+    const baseLanguage           = (this._selectedDoc.language ?? "").trim();
+    const baseDocRole            = (this._selectedDoc.doc_role ?? "unknown").trim();
+    const baseResourceType       = (this._selectedDoc.resource_type ?? "").trim();
+    const baseWorkflow           = this._workflowStatus(this._selectedDoc);
+    const baseValidatedRunId     = (this._selectedDoc.validated_run_id ?? "").trim();
+    const baseAuthorLastname     = (this._selectedDoc.author_lastname ?? "").trim();
+    const baseAuthorFirstname    = (this._selectedDoc.author_firstname ?? "").trim();
+    const baseDocDate            = (this._selectedDoc.doc_date ?? "").trim();
+    const baseTranslatorLastname  = (this._selectedDoc.translator_lastname ?? "").trim();
+    const baseTranslatorFirstname = (this._selectedDoc.translator_firstname ?? "").trim();
 
     return (
       title !== baseTitle ||
@@ -2212,7 +2228,9 @@ export class MetadataScreen {
       validatedRunId !== baseValidatedRunId ||
       authorLastname !== baseAuthorLastname ||
       authorFirstname !== baseAuthorFirstname ||
-      docDate !== baseDocDate
+      docDate !== baseDocDate ||
+      translatorLastname !== baseTranslatorLastname ||
+      translatorFirstname !== baseTranslatorFirstname
     );
   }
 

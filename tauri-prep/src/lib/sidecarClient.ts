@@ -49,6 +49,8 @@ export interface DocumentRecord {
   author_firstname?: string | null;
   /** Free-form date string: "2024", "2024-03", "2024-03-15", etc. */
   doc_date?: string | null;
+  translator_lastname?: string | null;
+  translator_firstname?: string | null;
   unit_count: number;
   /** First unit n that belongs to the main text (units with n < text_start_n are paratext). Null = no boundary. */
   text_start_n?: number | null;
@@ -584,6 +586,8 @@ export interface DocumentUpdateOptions {
   author_lastname?: string | null;
   author_firstname?: string | null;
   doc_date?: string | null;
+  translator_lastname?: string | null;
+  translator_firstname?: string | null;
 }
 
 export interface DocRelationRecord {

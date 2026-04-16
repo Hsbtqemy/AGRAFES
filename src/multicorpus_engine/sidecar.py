@@ -4220,7 +4220,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                    COALESCE(tc.token_count, 0) AS token_count,
                    CASE WHEN COALESCE(tc.token_count, 0) > 0 THEN 'annotated' ELSE 'missing' END AS annotation_status,
                    d.author_lastname, d.author_firstname, d.doc_date,
-                   d.text_start_n
+                   d.text_start_n,
+                   d.translator_lastname, d.translator_firstname
             FROM documents d
             LEFT JOIN (
                 SELECT doc_id, COUNT(*) AS unit_count
@@ -4256,6 +4257,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 "author_firstname": r[14],
                 "doc_date": r[15],
                 "text_start_n": r[16],
+                "translator_lastname": r[17],
+                "translator_firstname": r[18],
             }
             for r in rows
         ]
@@ -4267,6 +4270,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             "workflow_status", "validated_at", "validated_run_id",
             "author_lastname", "author_firstname", "doc_date",
             "text_start_n",
+            "translator_lastname", "translator_firstname",
         }
         cols = {
             row[1]
@@ -4298,6 +4302,10 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 self._conn().execute("ALTER TABLE documents ADD COLUMN doc_date TEXT")
             if "text_start_n" not in cols:
                 self._conn().execute("ALTER TABLE documents ADD COLUMN text_start_n INTEGER")
+            if "translator_lastname" not in cols:
+                self._conn().execute("ALTER TABLE documents ADD COLUMN translator_lastname TEXT")
+            if "translator_firstname" not in cols:
+                self._conn().execute("ALTER TABLE documents ADD COLUMN translator_firstname TEXT")
             self._conn().execute(
                 "CREATE INDEX IF NOT EXISTS idx_documents_workflow_status ON documents (workflow_status)"
             )
@@ -4390,7 +4398,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             SELECT doc_id, title, language, doc_role, resource_type,
                    workflow_status, validated_at, validated_run_id,
                    author_lastname, author_firstname, doc_date,
-                   text_start_n
+                   text_start_n,
+                   translator_lastname, translator_firstname
             FROM documents
             WHERE doc_id = ?
             """,
@@ -4450,6 +4459,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                         "author_firstname": doc_row[9],
                         "doc_date": doc_row[10],
                         "text_start_n": doc_row[11],
+                        "translator_lastname": doc_row[12],
+                        "translator_firstname": doc_row[13],
                     },
                     "lines": lines,
                     "count": len(lines),
@@ -5460,13 +5471,14 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             "title", "language", "doc_role", "resource_type",
             "workflow_status", "validated_run_id",
             "author_lastname", "author_firstname", "doc_date",
+            "translator_lastname", "translator_firstname",
         }
         updates = {k: v for k, v in body.items() if k in allowed}
         if not updates:
             self._send_error(
                 "No updatable fields provided "
                 "(allowed: title, language, doc_role, resource_type, workflow_status, validated_run_id, "
-                "author_lastname, author_firstname, doc_date)",
+                "author_lastname, author_firstname, doc_date, translator_lastname, translator_firstname)",
                 code=ERR_BAD_REQUEST,
                 http_status=400,
             )
@@ -5518,7 +5530,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             """
             SELECT doc_id, title, language, doc_role, resource_type,
                    workflow_status, validated_at, validated_run_id,
-                   author_lastname, author_firstname, doc_date
+                   author_lastname, author_firstname, doc_date,
+                   translator_lastname, translator_firstname
             FROM documents
             WHERE doc_id = ?
             """,
@@ -5536,6 +5549,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             "author_lastname": row[8],
             "author_firstname": row[9],
             "doc_date": row[10],
+            "translator_lastname": row[11],
+            "translator_firstname": row[12],
         }
         self._send_json(success_payload({"updated": 1, "doc": doc}))
 
@@ -5549,6 +5564,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             "title", "language", "doc_role", "resource_type",
             "workflow_status", "validated_run_id",
             "author_lastname", "author_firstname", "doc_date",
+            "translator_lastname", "translator_firstname",
         }
         total_updated = 0
         with self._lock():
