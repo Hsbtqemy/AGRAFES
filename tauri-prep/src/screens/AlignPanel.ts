@@ -1437,17 +1437,17 @@ export class AlignPanel {
     if (moreWrap) moreWrap.style.display = this._collHasMore ? "" : "none";
     resultEl.querySelectorAll<HTMLButtonElement>(".coll-keep-btn").forEach(btn => {
       btn.addEventListener("click", () => {
-        void this._resolveCollision([{ action: "keep", link_id: parseInt(btn.dataset.link!) }], el, parseInt(btn.dataset.group!), targetDocId);
+        void this._resolveCollision([{ action: "keep", link_id: parseInt(btn.dataset.link!) }], el);
       });
     });
     resultEl.querySelectorAll<HTMLButtonElement>(".coll-reject-btn").forEach(btn => {
       btn.addEventListener("click", () => {
-        void this._resolveCollision([{ action: "reject", link_id: parseInt(btn.dataset.link!) }], el, null, targetDocId);
+        void this._resolveCollision([{ action: "reject", link_id: parseInt(btn.dataset.link!) }], el);
       });
     });
     resultEl.querySelectorAll<HTMLButtonElement>(".coll-delete-btn").forEach(btn => {
       btn.addEventListener("click", () => {
-        void this._resolveCollision([{ action: "delete", link_id: parseInt(btn.dataset.link!) }], el, parseInt(btn.dataset.group!), targetDocId);
+        void this._resolveCollision([{ action: "delete", link_id: parseInt(btn.dataset.link!) }], el);
       });
     });
     resultEl.querySelectorAll<HTMLButtonElement>(".coll-delete-others-btn").forEach(btn => {
@@ -1457,7 +1457,7 @@ export class AlignPanel {
         const group = this._collGroups.find(g => g.pivot_unit_id === pivotUid);
         if (!group) return;
         const actions = group.links.map(lnk => ({ action: "delete" as const, link_id: lnk.link_id }));
-        void this._resolveCollision(actions, el, pivotUid, targetDoc);
+        void this._resolveCollision(actions, el);
       });
     });
   }
@@ -1465,8 +1465,6 @@ export class AlignPanel {
   private async _resolveCollision(
     actions: Array<{ action: "keep" | "delete" | "reject" | "unreviewed"; link_id: number }>,
     el: HTMLElement,
-    pivotUnitId: number | null,
-    targetDocId: number,
   ): Promise<void> {
     const conn = this._conn();
     if (!conn) return;
@@ -1484,8 +1482,6 @@ export class AlignPanel {
       this._cb.log(`Erreur résolution collision : ${err instanceof SidecarError ? err.message : String(err)}`, true);
       this._cb.toast("✗ Erreur résolution collision", true);
     }
-    void pivotUnitId; // consumed via group lookup in renderCollisionTable
-    void targetDocId;
   }
 
   private async _refreshAlignRunsCompare(el: HTMLElement): Promise<void> {

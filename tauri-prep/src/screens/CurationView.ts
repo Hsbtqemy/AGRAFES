@@ -1527,8 +1527,7 @@ export class CurationView {
     } catch { return null; }
   }
 
-  private _restoreCurateReviewState(rules: CurateRule[], currentUnitsTotal: number, currentUnitsChanged: number): number {
-    void currentUnitsChanged;
+  private _restoreCurateReviewState(rules: CurateRule[], currentUnitsTotal: number): number {
     const docId = this._currentCurateDocId() ?? null;
     const sig = CurationView._rulesSignature(rules);
     const saved = this._loadCurateReviewState(docId, sig);
@@ -1664,7 +1663,7 @@ export class CurationView {
       this._curateUnitsTotal = total;
       this._activeDiffIdx = null; this._activeRuleFilter = null; this._activeStatusFilter = null;
       this._buildRuleLabels();
-      this._curateRestoredCount = this._restoreCurateReviewState(rules, total, changed);
+      this._curateRestoredCount = this._restoreCurateReviewState(rules, total);
       const toRender = this._filteredExamples();
       this._refreshCuratePreviewPanes();
       this._renderCurateDiag(changed, total, reps);
