@@ -51,6 +51,12 @@ export interface DocumentRecord {
   doc_date?: string | null;
   translator_lastname?: string | null;
   translator_firstname?: string | null;
+  /** Titre de l'œuvre (identique VO et traduction, ex. "Les Misérables"). */
+  work_title?: string | null;
+  /** Lieu de publication (ex. "Paris"). */
+  pub_place?: string | null;
+  /** Éditeur / édition (ex. "Gallimard"). */
+  publisher?: string | null;
   unit_count: number;
   /** First unit n that belongs to the main text (units with n < text_start_n are paratext). Null = no boundary. */
   text_start_n?: number | null;
@@ -588,6 +594,12 @@ export interface DocumentUpdateOptions {
   doc_date?: string | null;
   translator_lastname?: string | null;
   translator_firstname?: string | null;
+  /** Titre de l'œuvre (identique VO et traduction, ex. "Les Misérables"). */
+  work_title?: string | null;
+  /** Lieu de publication (ex. "Paris"). */
+  pub_place?: string | null;
+  /** Éditeur / édition (ex. "Gallimard"). */
+  publisher?: string | null;
 }
 
 export interface DocRelationRecord {

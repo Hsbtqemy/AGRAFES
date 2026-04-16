@@ -780,22 +780,24 @@ export class MetadataScreen {
 
     this._editPanelEl.innerHTML = `
       <div class="prep-form-row">
-        <label style="flex:2">Titre
-          <input id="edit-title" type="text" value="${this._esc(doc.title)}">
+        <label style="flex:2">Nom du fichier
+          <input id="edit-title" type="text" value="${this._esc(doc.title)}" placeholder="hugo_miserables_fr_ch1">
         </label>
         <label>Langue
-          <input id="edit-lang" type="text" value="${this._esc(doc.language)}" style="max-width:80px">
+          <input id="edit-lang" type="text" value="${this._esc(doc.language)}" style="max-width:80px" placeholder="fr">
+        </label>
+      </div>
+      <div class="prep-form-row">
+        <label style="flex:2">Titre de l'œuvre
+          <input id="edit-work-title" type="text" value="${this._esc(doc.work_title ?? "")}" placeholder="Les Misérables">
         </label>
       </div>
       <div class="prep-form-row">
         <label style="flex:1.2">Nom de l'auteur
-          <input id="edit-author-lastname" type="text" value="${this._esc(doc.author_lastname ?? "")}" placeholder="Dupont">
+          <input id="edit-author-lastname" type="text" value="${this._esc(doc.author_lastname ?? "")}" placeholder="Hugo">
         </label>
         <label style="flex:1.2">Prénom de l'auteur
-          <input id="edit-author-firstname" type="text" value="${this._esc(doc.author_firstname ?? "")}" placeholder="Marie">
-        </label>
-        <label>Date
-          <input id="edit-doc-date" type="text" value="${this._esc(doc.doc_date ?? "")}" placeholder="2024 ou 2024-03-15" style="max-width:130px">
+          <input id="edit-author-firstname" type="text" value="${this._esc(doc.author_firstname ?? "")}" placeholder="Victor">
         </label>
       </div>
       <div class="prep-form-row">
@@ -804,6 +806,17 @@ export class MetadataScreen {
         </label>
         <label style="flex:1.2">Prénom du traducteur
           <input id="edit-translator-firstname" type="text" value="${this._esc(doc.translator_firstname ?? "")}" placeholder="Jean">
+        </label>
+      </div>
+      <div class="prep-form-row">
+        <label>Date
+          <input id="edit-doc-date" type="text" value="${this._esc(doc.doc_date ?? "")}" placeholder="2024 ou 2024-03-15" style="max-width:130px">
+        </label>
+        <label style="flex:1">Lieu de publication
+          <input id="edit-pub-place" type="text" value="${this._esc(doc.pub_place ?? "")}" placeholder="Paris">
+        </label>
+        <label style="flex:1.5">Éditeur
+          <input id="edit-publisher" type="text" value="${this._esc(doc.publisher ?? "")}" placeholder="Gallimard">
         </label>
       </div>
       ${inheritHtml}
@@ -1543,6 +1556,9 @@ export class MetadataScreen {
     const doc_date = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-doc-date")!).value.trim() || null;
     const translator_lastname = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-translator-lastname")!).value.trim() || null;
     const translator_firstname = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-translator-firstname")!).value.trim() || null;
+    const work_title = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-work-title")!).value.trim() || null;
+    const pub_place = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-pub-place")!).value.trim() || null;
+    const publisher = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-publisher")!).value.trim() || null;
 
     const btn = this._editPanelEl.querySelector<HTMLButtonElement>("#save-doc-btn")!;
     btn.disabled = true;
@@ -1562,6 +1578,9 @@ export class MetadataScreen {
         doc_date,
         translator_lastname,
         translator_firstname,
+        work_title,
+        pub_place,
+        publisher,
       });
       const updated = res.doc;
       this._applyUpdatedDoc(updated);
@@ -2206,18 +2225,24 @@ export class MetadataScreen {
     const docDate              = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-doc-date")?.value ?? "").trim();
     const translatorLastname   = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-translator-lastname")?.value ?? "").trim();
     const translatorFirstname  = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-translator-firstname")?.value ?? "").trim();
+    const workTitle            = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-work-title")?.value ?? "").trim();
+    const pubPlace             = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-pub-place")?.value ?? "").trim();
+    const publisher            = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-publisher")?.value ?? "").trim();
 
-    const baseTitle              = (this._selectedDoc.title ?? "").trim();
-    const baseLanguage           = (this._selectedDoc.language ?? "").trim();
-    const baseDocRole            = (this._selectedDoc.doc_role ?? "unknown").trim();
-    const baseResourceType       = (this._selectedDoc.resource_type ?? "").trim();
-    const baseWorkflow           = this._workflowStatus(this._selectedDoc);
-    const baseValidatedRunId     = (this._selectedDoc.validated_run_id ?? "").trim();
-    const baseAuthorLastname     = (this._selectedDoc.author_lastname ?? "").trim();
-    const baseAuthorFirstname    = (this._selectedDoc.author_firstname ?? "").trim();
-    const baseDocDate            = (this._selectedDoc.doc_date ?? "").trim();
+    const baseTitle               = (this._selectedDoc.title ?? "").trim();
+    const baseLanguage            = (this._selectedDoc.language ?? "").trim();
+    const baseDocRole             = (this._selectedDoc.doc_role ?? "unknown").trim();
+    const baseResourceType        = (this._selectedDoc.resource_type ?? "").trim();
+    const baseWorkflow            = this._workflowStatus(this._selectedDoc);
+    const baseValidatedRunId      = (this._selectedDoc.validated_run_id ?? "").trim();
+    const baseAuthorLastname      = (this._selectedDoc.author_lastname ?? "").trim();
+    const baseAuthorFirstname     = (this._selectedDoc.author_firstname ?? "").trim();
+    const baseDocDate             = (this._selectedDoc.doc_date ?? "").trim();
     const baseTranslatorLastname  = (this._selectedDoc.translator_lastname ?? "").trim();
     const baseTranslatorFirstname = (this._selectedDoc.translator_firstname ?? "").trim();
+    const baseWorkTitle           = (this._selectedDoc.work_title ?? "").trim();
+    const basePubPlace            = (this._selectedDoc.pub_place ?? "").trim();
+    const basePublisher           = (this._selectedDoc.publisher ?? "").trim();
 
     return (
       title !== baseTitle ||
@@ -2230,7 +2255,10 @@ export class MetadataScreen {
       authorFirstname !== baseAuthorFirstname ||
       docDate !== baseDocDate ||
       translatorLastname !== baseTranslatorLastname ||
-      translatorFirstname !== baseTranslatorFirstname
+      translatorFirstname !== baseTranslatorFirstname ||
+      workTitle !== baseWorkTitle ||
+      pubPlace !== basePubPlace ||
+      publisher !== basePublisher
     );
   }
 
