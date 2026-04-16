@@ -482,15 +482,6 @@ details[open] > .curate-bottom-details-summary::before { transform: rotate(90deg
   margin-bottom: 2px;
 }
 
-/* ── diff-list override for curation pane (no table, just vertical list) ─── */
-.curate-doc-scroll .diff-table {
-  font-size: 12px;
-}
-
-.curate-doc-scroll .diff-table th,
-.curate-doc-scroll .diff-table td {
-  padding: 4px 6px;
-}
 
 /* ════════════════════════════════════════════════════════════════════════════
    SEGMENTATION 2-COLUMN WORKSPACE
@@ -532,7 +523,6 @@ details[open] > .curate-bottom-details-summary::before { transform: rotate(90deg
 }
 
 /* Batch overview */
-.prep-seg-batch-overview > summary::-webkit-details-marker { display: none; }
 
 
 .seg-badge-ok {

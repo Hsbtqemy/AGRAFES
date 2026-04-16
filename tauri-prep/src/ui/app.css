@@ -317,7 +317,6 @@ summary:focus-visible,
   padding: var(--prep-sp-2, 8px) var(--prep-sp-3, 12px);
 }
 .prep-import-screen .imp-file-item-pending   { border-left: 3px solid var(--color-muted, #94a3b8); }
-.prep-import-screen .imp-file-item-importing { border-left: 3px solid var(--color-primary, #2563eb); }
 .prep-import-screen .imp-file-item-done      { border-left: 3px solid var(--color-ok, #16a34a); }
 .prep-import-screen .imp-file-item-error     { border-left: 3px solid var(--color-danger, #dc2626); }
 .prep-import-screen .imp-file-main {
@@ -810,9 +809,6 @@ summary:focus-visible,
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: #64748b;
-}
-.prep-exports-screen .prep-export-legacy-toggle-card {
-  margin-bottom: 10px;
 }
 .prep-exports-screen .exp-legacy-toggle-row {
   display: flex;
@@ -1808,8 +1804,6 @@ del.prep-diff-char-del  { background: #fee2e2; color: #991b1b; text-decoration: 
 /* ── KPI couverture (coloré dynamiquement) ── */
 .prep-align-kpi-card--ok   { border-color: #a8d5b0; background: #f0faf3; }
 .prep-align-kpi-card--ok   .prep-align-kpi-val { color: #1a7f4e; }
-.prep-align-kpi-card--warn .prep-align-kpi-val { color: #a16207; }
-.prep-align-kpi-card--err  .prep-align-kpi-val { color: #b91c1c; }
 
 /* ── Détails qualité (panel collapsible sous le résumé de run) ── */
 .prep-align-quality-details {
@@ -2069,8 +2063,8 @@ del.prep-diff-char-del  { background: #fee2e2; color: #991b1b; text-decoration: 
 .prep-curate-inner-card .prep-card-body,
 
 /* Prototype-compatible shared classes (P11) ── used across curation + seg longtext + traduction */
-.prep-chip-row, .prep-curate-chip-row { display: flex; flex-wrap: wrap; gap: 5px; }
-.chip, .prep-curate-chip {
+.prep-chip-row { display: flex; flex-wrap: wrap; gap: 5px; }
+.chip {
   display: inline-flex;
   align-items: center;
   padding: 2px 8px;
@@ -2082,34 +2076,34 @@ del.prep-diff-char-del  { background: #fee2e2; color: #991b1b; text-decoration: 
   cursor: default;
   user-select: none;
 }
-.chip.active, .prep-curate-chip.active {
+.chip.active {
   border-color: #9fd3cc;
   background: #e8f5f3;
   color: #0c4a46;
   font-weight: 600;
 }
-.prep-btns, .prep-curate-btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.prep-btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
 
 /* Preview card (curate center col + longtext right col) */
 
 /* Preview controls: 2 chip-rows */
-.prep-preview-controls, .prep-curate-preview-controls { padding: 6px 12px; border-bottom: 1px solid var(--prep-line,#dde1e8); display: flex; flex-direction: column; gap: 5px; background: #fcfdfd; flex-shrink: 0; }
+.prep-preview-controls { padding: 6px 12px; border-bottom: 1px solid var(--prep-line,#dde1e8); display: flex; flex-direction: column; gap: 5px; background: #fcfdfd; flex-shrink: 0; }
 
 /* Preview grid: 2 panes + prep-minimap */
-.prep-preview-grid, .prep-curate-preview-body { display: grid; grid-template-columns: 1fr 1fr 22px; gap: 8px; padding: 8px; overflow: hidden; flex: 1; min-height: 200px; }
-.prep-pane, .prep-curate-pane { border: 1px solid var(--prep-line,#dde1e8); border-radius: 8px; overflow: hidden; display: grid; grid-template-rows: auto 1fr; min-height: 200px; }
-.prep-pane-head, .prep-curate-pane-head { padding: 6px 10px; font-size: 12px; color: var(--prep-muted,#4f5d6d); border-bottom: 1px solid var(--prep-line,#dde1e8); background: #f8f9fa; display: flex; justify-content: space-between; align-items: center; }
+.prep-preview-grid { display: grid; grid-template-columns: 1fr 1fr 22px; gap: 8px; padding: 8px; overflow: hidden; flex: 1; min-height: 200px; }
+.prep-pane { border: 1px solid var(--prep-line,#dde1e8); border-radius: 8px; overflow: hidden; display: grid; grid-template-rows: auto 1fr; min-height: 200px; }
+.prep-pane-head { padding: 6px 10px; font-size: 12px; color: var(--prep-muted,#4f5d6d); border-bottom: 1px solid var(--prep-line,#dde1e8); background: #f8f9fa; display: flex; justify-content: space-between; align-items: center; }
 .prep-kbd-legend { font-size: 10px; color: var(--prep-muted,#4f5d6d); opacity: 0.75; }
 .prep-kbd-legend kbd { font-family: inherit; background: #e8eaed; border: 1px solid #ccc; border-radius: 3px; padding: 0 3px; font-size: 9px; line-height: 1.4; }
-.prep-doc-scroll, .prep-curate-doc-scroll { overflow-y: auto; padding: 8px 10px; font-size: 13px; line-height: 1.5; background: #fff; }
-.prep-doc-scroll p, .prep-curate-doc-scroll p { margin: 0 0 8px; }
+.prep-doc-scroll { overflow-y: auto; padding: 8px 10px; font-size: 13px; line-height: 1.5; background: #fff; }
+.prep-doc-scroll p { margin: 0 0 8px; }
 
 /* Minimap */
 /* Bucket prep-minimap (curation — grid layout) */
-.prep-minimap, .prep-curate-minimap { border: 1px solid var(--prep-line,#dde1e8); border-radius: 8px; background: #fafbfc; display: grid; align-content: start; gap: 3px; padding: 6px 4px; min-height: 200px; }
-.prep-mm, .prep-curate-mm { height: 10px; border-radius: 2px; background: #d6dde8; }
-.prep-mm.changed, .prep-curate-mm.changed { background: var(--prep-warn,#e6a817); }
-.prep-mm.current, .prep-curate-mm.current { background: var(--prep-accent,#0f766e); }
+.prep-minimap { border: 1px solid var(--prep-line,#dde1e8); border-radius: 8px; background: #fafbfc; display: grid; align-content: start; gap: 3px; padding: 6px 4px; min-height: 200px; }
+.prep-mm { height: 10px; border-radius: 2px; background: #d6dde8; }
+.prep-mm.changed { background: var(--prep-warn,#e6a817); }
+.prep-mm.current { background: var(--prep-accent,#0f766e); }
 /* Track prep-minimap (segmentation vnext — position layout) */
 .prep-minimap.prep-minimap-track {
   display: block;
@@ -2122,17 +2116,9 @@ del.prep-diff-char-del  { background: #fee2e2; color: #991b1b; text-decoration: 
 /* Minimap click-to-scroll affordance (P18 Inc 3) */
 
 /* ─── P20 Inc 1 — CSS polish résiduel ──────────────────────────────── */
-/* .prep-vo-load-more: "Afficher plus" button (VO segments pagination) */
-/* Panes inside article.preview fill height (prevents scroll truncation) */
-article.preview .prep-preview-body > .prep-pane { height: 100%; min-height: 0; }
-/* run-row: focus-within accent (keyboard / action) */
-/* doc-final-bar: ensure wrap height stays compact on all viewports */
-/* run-row gap refinement at 900px (already stacked, loosen padding) */
-@media (max-width: 900px) {
-}
 
 /* Preview footer / foot */
-.prep-preview-foot, .prep-curate-preview-footer { padding: 8px 12px; border-top: 1px solid var(--prep-line,#dde1e8); background: #f8f9fa; flex-shrink: 0; }
+.prep-preview-foot { padding: 8px 12px; border-top: 1px solid var(--prep-line,#dde1e8); background: #f8f9fa; flex-shrink: 0; }
 
 /* Review log + diagnostics */
 .prep-curate-diag-list { display: grid; gap: 8px; }
@@ -2641,10 +2627,6 @@ article.preview .prep-preview-body > .prep-pane { height: 100%; min-height: 0; }
   overflow: hidden;
 }
 
-.prep-exc-admin-panel[open] > .prep-exc-admin-summary {
-  border-bottom-color: var(--prep-border, #d4dce8);
-  background: #f8fafc;
-}
 
 /* Count badge next to summary title */
 .prep-exc-admin-count-badge {
@@ -2983,9 +2965,6 @@ article.preview .prep-preview-body > .prep-pane { height: 100%; min-height: 0; }
   cursor: default;
   white-space: nowrap;
 }
-.prep-diff-forced-forced       { color: #14532d; background: #dcfce7; border: 1px solid #86efac; }
-.prep-diff-forced-forced_ignored { color: #7c1d1d; background: #fef2f2; border: 1px solid #fca5a5; }
-.prep-diff-forced-forced_no_change { color: #78350f; background: #fef3c7; border: 1px solid #fcd34d; }
 
 /* Row tints for forced entries */
 
@@ -3079,14 +3058,8 @@ article.preview .prep-preview-body > .prep-pane { height: 100%; min-height: 0; }
 .prep-session-chip-label { font-weight: 400; font-size: 10.5px; }
 
 .prep-session-pending  { background: #fff8e1; color: #6d4c00; border-color: #ffe082; }
-.prep-session-accepted { background: #e8f5e9; color: #1b5e20; border-color: #a5d6a7; }
-.prep-session-ignored  { background: #fce4ec; color: #7f0000; border-color: #ef9a9a; }
 .prep-session-pending:hover  { background: #fff3cd; }
-.prep-session-accepted:hover { background: #c8e6c9; }
-.prep-session-ignored:hover  { background: #ffcdd2; }
 .prep-session-chip-active.prep-session-pending  { background: #f9a825; color: #fff; border-color: #f57f17; }
-.prep-session-chip-active.prep-session-accepted { background: #388e3c; color: #fff; border-color: #1b5e20; }
-.prep-session-chip-active.prep-session-ignored  { background: #c62828; color: #fff; border-color: #7f0000; }
 .prep-session-filter-note {
   font-size: 10.5px;
   color: var(--prep-muted, #6b7280);
@@ -3234,11 +3207,7 @@ article.preview .prep-preview-body > .prep-pane { height: 100%; min-height: 0; }
 #act-curate-review-log { overflow-y: auto; max-height: 200px; }
 /* ── Segmentation 2-col workspace (also in prep-vnext.css for standalone) ── */
 
-/* ─── P17 Inc 1: .prep-doc-final-bar sticky footer (seg units preview) ─── */
 [hidden] { display: none !important; }
-
-/* ─── P16 Inc 2: run-row visual list + status-rail + toggle ───────── */
-.prep-run-view-toggle .chip { cursor: pointer; }
 
 /* ─── P16 Inc 1: aside.seg-side collapsible settings panel ────────── */
 details.seg-side {
@@ -3556,7 +3525,6 @@ mark { background: #fff0b3; border-radius: 2px; }
   padding: 8px 10px;
   text-align: center;
 }
-@media (max-width: 900px) { .prep-align-kpis { grid-template-columns: repeat(3, 1fr); } }
 
 /* ─── Synthèse du run section header (P11 Inc D) ───────────────────────── */
 
@@ -3564,13 +3532,6 @@ mark { background: #fff0b3; border-radius: 2px; }
 
 /* ─── Long text hint banner ──────────────────────────────────────────────── */
 
-/* ─── Long text preview: chips + tabs + body ─────────────────────────────── */
-/* P12 — preview-tools, preview-tabs, preview-body: shared across longtext + traduction */
-/* Chips inside preview-tools are interactive */
-.prep-preview-tools .chip {
-  cursor: pointer;
-  transition: background 0.1s;
-}
 /* Stats grid in long text left col */
 .prep-seg-stat {
   border: 1px solid var(--prep-line, #dde1e8);
@@ -3730,7 +3691,7 @@ article.preview .prep-preview-foot {
 #act-seg-lt-minimap { grid-column: 3; }
 
 /* ── 3. Chips — pill shape matching mockup ──────────────────────── */
-.chip, .prep-curate-chip {
+.chip {
   border-radius: 999px;
   padding: 3px 10px;
   font-size: 11.5px;
@@ -3740,11 +3701,7 @@ article.preview .prep-preview-foot {
 button.chip { cursor: pointer; transition: background 0.12s, color 0.12s, border-color 0.12s; }
 button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outline-offset: 2px; }
 
-/* ── 4. Seg inner cards — floating depth (not used for curate rows) ── */
-.prep-seg-inner-head h3,
-/* Curate inner head: row variant (not floating card) */
-
-/* ── 5. .prep-live-note — dashed green empty state ───────────────────── */
+/* ── 5. empty-hint — dashed empty state ───────────────────────────────── */
 .empty-hint {
   color: var(--prep-muted, #4f5d6d);
   font-style: italic;
@@ -3924,13 +3881,6 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
   margin: 0 auto;
   height: 12px;
   border-radius: 3px;
-}
-#act-curate-card .prep-curate-col-left .card-head {
-  padding: 8px 10px;
-}
-#act-curate-card .prep-curate-col-left .prep-card-body {
-  padding: 10px;
-  font-size: 13px;
 }
 #act-curate-card .prep-curate-doc-field {
   margin-bottom: 6px;
@@ -4135,21 +4085,6 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
 }
 .prep-fr-input:focus { outline: 2px solid var(--prep-accent, #0f766e); outline-offset: 1px; border-color: transparent; }
 
-/* Options (regex / casse) : checkbox cachée, chip toggle comme les règles rapides */
-.prep-fr-options-row input[type="checkbox"]:checked + .chip {
-  border-color: var(--prep-line-accent, #9fd3cc);
-  background: var(--prep-accent-soft, #e8f5f3);
-  color: var(--prep-accent-dark, #0c4a46);
-  font-weight: 600;
-}
-.prep-fr-options-row .chip {
-  cursor: pointer;
-  user-select: none;
-}
-.prep-fr-options-row input[type="checkbox"]:focus-visible + .chip {
-  outline: 2px solid var(--prep-accent, #0f766e);
-  outline-offset: 2px;
-}
 
 .prep-fr-feedback {
   font-size: 0.78rem;
