@@ -1960,7 +1960,7 @@ export class CurationView {
         }
       });
       p.addEventListener("dblclick", (e: MouseEvent) => {
-        if (this._selectedUnitNs.size > 0) return;
+        if (this._selectionMode || this._selectedUnitNs.size > 0) return;
         e.stopPropagation();
         this._enterInlineEdit(p, unit);
       });
