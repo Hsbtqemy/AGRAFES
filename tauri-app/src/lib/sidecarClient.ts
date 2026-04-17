@@ -1375,8 +1375,9 @@ export async function createConvention(
   conn: Conn,
   role: { name: string; label: string; color?: string | null; icon?: string | null; sort_order?: number }
 ): Promise<UnitRole> {
-  const res = (await conn.post("/conventions", role)) as { role: UnitRole };
-  return res.role;
+  // Sidecar returns "convention" (singular) — see _handle_conventions_create
+  const res = (await conn.post("/conventions", role)) as { convention: UnitRole };
+  return res.convention;
 }
 
 export async function updateConvention(
@@ -1384,8 +1385,9 @@ export async function updateConvention(
   name: string,
   fields: { label?: string; color?: string | null; icon?: string | null; sort_order?: number }
 ): Promise<UnitRole> {
-  const res = (await conn.put(`/conventions/${encodeURIComponent(name)}`, fields)) as { role: UnitRole };
-  return res.role;
+  // Sidecar returns "convention" (singular) — see _handle_conventions_update
+  const res = (await conn.put(`/conventions/${encodeURIComponent(name)}`, fields)) as { convention: UnitRole };
+  return res.convention;
 }
 
 export async function deleteConvention(conn: Conn, name: string): Promise<void> {
