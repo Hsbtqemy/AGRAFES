@@ -2306,8 +2306,27 @@ code { font-family: monospace; background: var(--color-bg); padding: 0 3px; bord
   border-radius: 4px 4px 0 0;
   font-size: 12px;
 }
-.prep-raw-role-bar-count { font-weight: 600; color: #1d4ed8; min-width: 100px; }
+.prep-raw-role-bar-count { font-weight: 600; color: #1d4ed8; }
 .prep-raw-role-bar-label { color: #475569; }
+.prep-raw-role-bar-assign { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.prep-raw-role-mode-btn {
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  color: #475569;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+.prep-raw-role-mode-btn:hover { background: #e2e8f0; color: #1e293b; }
+.prep-raw-role-mode-btn.active {
+  background: #dbeafe;
+  border-color: #93c5fd;
+  color: #1d4ed8;
+  font-weight: 600;
+}
 .prep-raw-role-select {
   font-size: 12px;
   padding: 2px 6px;

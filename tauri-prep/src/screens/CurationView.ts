@@ -213,6 +213,7 @@ export class CurationView {
   private _conventions: ConventionRole[] = [];
   private _selectedUnitNs: Set<number> = new Set();
   private _lastSelectedN: number | null = null;
+  private _selectionMode = false;
 
   // ── Admin panel (Level 8A) ──────────────────────────────────────────────────
   private _excAdminFilter: "all" | "ignore" | "override" = "all";
@@ -289,6 +290,7 @@ export class CurationView {
     this._conventions = [];
     this._selectedUnitNs = new Set();
     this._lastSelectedN = null;
+    this._selectionMode = false;
     const _rec = this._q<HTMLElement>("#act-review-export-card");
     if (_rec) _rec.style.display = "none";
     this._renderConventionsList();
@@ -1944,7 +1946,7 @@ export class CurationView {
       p.addEventListener("click", (e: MouseEvent) => {
         if (p.classList.contains("prep-raw-unit-editing")) return;
         if ((e.target as HTMLElement).closest(".prep-raw-unit-edit-wrapper")) return;
-        if (e.ctrlKey || e.metaKey || e.shiftKey || this._selectedUnitNs.size > 0) {
+        if (this._selectionMode || e.ctrlKey || e.metaKey || e.shiftKey || this._selectedUnitNs.size > 0) {
           e.preventDefault();
           this._toggleUnitSelection(unit.n, e.shiftKey);
           return;
@@ -2738,26 +2740,51 @@ export class CurationView {
     const bar = this._q<HTMLElement>(".prep-raw-role-bar");
     if (!bar) return;
     const count = this._selectedUnitNs.size;
-    if (count === 0) { bar.style.display = "none"; return; }
-    bar.style.display = "";
+    const assignZone = bar.querySelector<HTMLElement>(".prep-raw-role-bar-assign");
+    if (assignZone) assignZone.style.display = count > 0 ? "" : "none";
     const countEl = bar.querySelector<HTMLElement>(".prep-raw-role-bar-count");
-    if (countEl) countEl.textContent = `${count} unité(s) sélectionnée(s)`;
+    if (countEl) countEl.textContent = `${count} unité(s) sélectionnée(s) —`;
+    // Keep mode button label in sync
+    const modeBtn = bar.querySelector<HTMLButtonElement>("#raw-role-mode-btn");
+    if (modeBtn) {
+      modeBtn.classList.toggle("active", this._selectionMode);
+      modeBtn.textContent = this._selectionMode ? "✓ Sélection activée" : "Sélectionner des unités";
+    }
   }
 
   private _renderRoleBar(container: HTMLElement): void {
     container.querySelector(".prep-raw-role-bar")?.remove();
     const bar = document.createElement("div");
-    bar.id = "raw-role-bar"; bar.className = "prep-raw-role-bar"; bar.style.display = "none";
+    bar.id = "raw-role-bar"; bar.className = "prep-raw-role-bar";
+    // Always visible so the mode toggle is discoverable
     const roleOptions = this._conventions.map(r =>
       `<option value="${_escHtml(r.name)}">${_escHtml(r.label || r.name)}</option>`
     ).join("");
     bar.innerHTML =
-      `<span class="prep-raw-role-bar-count"></span>` +
-      `<label class="prep-raw-role-bar-label">Assigner&nbsp;:</label>` +
-      `<select id="raw-role-select" class="prep-raw-role-select"><option value="">— choisir un rôle —</option>${roleOptions}</select>` +
-      `<button id="raw-role-assign-btn" class="btn btn-primary btn-xs">Assigner</button>` +
-      `<button id="raw-role-clear-btn" class="btn btn-secondary btn-xs">Effacer le rôle</button>` +
-      `<button id="raw-role-deselect-btn" class="btn btn-ghost btn-xs">✕ Désélectionner</button>`;
+      `<button id="raw-role-mode-btn" class="btn btn-xs prep-raw-role-mode-btn${this._selectionMode ? " active" : ""}" title="Activer le mode sélection : clic simple = sélectionner une unité">` +
+        `${this._selectionMode ? "✓ Sélection activée" : "Sélectionner des unités"}` +
+      `</button>` +
+      `<span class="prep-raw-role-bar-assign" style="display:none">` +
+        `<span class="prep-raw-role-bar-count"></span>` +
+        `<label class="prep-raw-role-bar-label">Assigner&nbsp;:</label>` +
+        `<select id="raw-role-select" class="prep-raw-role-select"><option value="">— choisir un rôle —</option>${roleOptions}</select>` +
+        `<button id="raw-role-assign-btn" class="btn btn-primary btn-xs">Assigner</button>` +
+        `<button id="raw-role-clear-btn" class="btn btn-secondary btn-xs">Effacer le rôle</button>` +
+        `<button id="raw-role-deselect-btn" class="btn btn-ghost btn-xs">✕ Tout désélectionner</button>` +
+      `</span>`;
+
+    bar.querySelector("#raw-role-mode-btn")!.addEventListener("click", () => {
+      this._selectionMode = !this._selectionMode;
+      const btn = bar.querySelector<HTMLButtonElement>("#raw-role-mode-btn")!;
+      btn.classList.toggle("active", this._selectionMode);
+      btn.textContent = this._selectionMode ? "✓ Sélection activée" : "Sélectionner des unités";
+      // If turning off, clear selection
+      if (!this._selectionMode) {
+        this._selectedUnitNs = new Set(); this._lastSelectedN = null;
+        container.querySelectorAll<HTMLElement>(".prep-raw-unit-selected").forEach(p => p.classList.remove("prep-raw-unit-selected"));
+        this._updateRoleBar();
+      }
+    });
     bar.querySelector("#raw-role-assign-btn")!.addEventListener("click", () => {
       const sel = bar.querySelector<HTMLSelectElement>("#raw-role-select");
       const role = sel?.value || null;
