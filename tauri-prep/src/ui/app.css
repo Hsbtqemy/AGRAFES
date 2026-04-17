@@ -2135,6 +2135,8 @@ code { font-family: monospace; background: var(--color-bg); padding: 0 3px; bord
 .prep-raw-override-badge { font-size: 10px; color: #16a34a; margin-right: 2px; opacity: 0.75; }
 
 /* Convention role badge on raw unit */
+/* Shared role badge — used in all panels (curation, segmentation, metadata) */
+.prep-role-badge,
 .prep-raw-role-badge {
   display: inline-block;
   font-size: 10px;
@@ -2142,12 +2144,21 @@ code { font-family: monospace; background: var(--color-bg); padding: 0 3px; bord
   padding: 0 5px;
   border-radius: 10px;
   line-height: 1.6;
-  background: var(--role-color, #6366f1);
-  color: #fff;
-  opacity: 0.9;
+  background: color-mix(in srgb, var(--role-color, #6366f1) 20%, #fff);
+  color: var(--role-color, #6366f1);
+  border: 1px solid color-mix(in srgb, var(--role-color, #6366f1) 40%, #fff);
+  opacity: 0.95;
   cursor: default;
   user-select: none;
   flex-shrink: 0;
+  vertical-align: middle;
+  margin-right: 3px;
+}
+/* Curation raw pane keeps solid background for legibility against multi-column layout */
+.prep-raw-role-badge {
+  background: var(--role-color, #6366f1);
+  color: #fff;
+  border: none;
 }
 
 /* Unit selected for role assignment */

@@ -14,6 +14,7 @@ import type { Conn } from "../lib/sidecarClient.ts";
 import {
   listDocuments,
   getDocumentPreview,
+  listConventions,
   listTokens,
   updateDocument,
   updateToken,
@@ -36,6 +37,7 @@ import {
   acknowledgeSourceChange,
   type DocumentRecord,
   type DocumentPreviewLine,
+  type ConventionRole,
   type TokenRecord,
   type DocRelationRecord,
   type CorpusAuditResult,
@@ -71,6 +73,7 @@ export class MetadataScreen {
   private _selectedDocIds: Set<number> = new Set();
   private _relations: DocRelationRecord[] = [];
   private _previewLines: DocumentPreviewLine[] = [];
+  private _conventions: ConventionRole[] = [];
   private _previewTotalLines = 0;
   private _previewLimit = 6;
   private _previewLoading = false;
@@ -1880,6 +1883,8 @@ export class MetadataScreen {
     this._previewLoading = true;
     this._previewError = null;
     this._renderPreviewPanel();
+    // Load conventions for role badges (best-effort, parallel)
+    listConventions(this._conn).then(r => { this._conventions = r; }).catch(() => {});
     try {
       const res = await getDocumentPreview(this._conn, docId, this._previewLimit);
       if (this._selectedDoc?.doc_id !== docId) return;
@@ -1927,7 +1932,7 @@ export class MetadataScreen {
       <div class="prep-meta-preview-lines">
         ${this._previewLines.map((line) => {
           const marker = line.external_id != null ? `[${String(line.external_id).padStart(4, "0")}]` : `[n${line.n}]`;
-          return `<div class="prep-meta-preview-line"><span class="prep-meta-preview-marker">${marker}</span> <span>${this._esc(line.text)}</span></div>`;
+          return `<div class="prep-meta-preview-line"><span class="prep-meta-preview-marker">${marker}</span>${_roleBadgeHtml(line.unit_role, this._conventions)} <span>${this._esc(line.text)}</span></div>`;
         }).join("")}
       </div>
     `;
@@ -2938,4 +2943,16 @@ export class MetadataScreen {
   }
 
   dispose(): void { /* nothing to clean up */ }
+}
+
+function _escHtmlMeta(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function _roleBadgeHtml(role: string | null | undefined, conventions: ConventionRole[]): string {
+  if (!role) return "";
+  const conv = conventions.find(c => c.name === role);
+  const label = _escHtmlMeta(conv?.label ?? role);
+  const color = conv?.color ?? "#64748b";
+  return `<span class="prep-role-badge" style="--role-color:${color}" title="Rôle : ${label}">${conv?.icon ? _escHtmlMeta(conv.icon) + "\u00a0" : ""}${label}</span>`;
 }

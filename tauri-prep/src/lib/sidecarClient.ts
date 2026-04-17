@@ -67,6 +67,7 @@ export interface DocumentPreviewLine {
   n: number;
   external_id?: number | null;
   text: string;
+  unit_role?: string | null;
 }
 
 export interface DocumentPreviewResponse {
