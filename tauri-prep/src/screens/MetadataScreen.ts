@@ -48,6 +48,7 @@ import {
   type BilingualPreviewPair,
   type CurationChildStatus,
   SidecarError,
+  richTextToHtml,
 } from "../lib/sidecarClient.ts";
 import { initCardAccordions } from "../lib/uiAccordions.ts";
 import type { JobCenter } from "../components/JobCenter.ts";
@@ -1935,7 +1936,7 @@ export class MetadataScreen {
       <div class="prep-meta-preview-lines">
         ${this._previewLines.map((line) => {
           const marker = line.external_id != null ? `[${String(line.external_id).padStart(4, "0")}]` : `[n${line.n}]`;
-          return `<div class="prep-meta-preview-line"><span class="prep-meta-preview-marker">${marker}</span>${_roleBadgeHtml(line.unit_role, this._conventions)} <span>${this._esc(line.text)}</span></div>`;
+          return `<div class="prep-meta-preview-line"><span class="prep-meta-preview-marker">${marker}</span>${_roleBadgeHtml(line.unit_role, this._conventions)} <span>${richTextToHtml(line.text_raw, line.text)}</span></div>`;
         }).join("")}
       </div>
     `;

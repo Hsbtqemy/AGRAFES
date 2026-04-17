@@ -23,6 +23,7 @@ import {
   splitUnit,
   listConventions,
   SidecarError,
+  richTextToHtml,
 } from "../lib/sidecarClient.ts";
 import type { JobCenter } from "../components/JobCenter.ts";
 import { inlineConfirm } from "../lib/inlineConfirm.ts";
@@ -520,7 +521,7 @@ export class SegmentationView {
         ? `<p class="prep-seg-trunc-note">Aper&#231;u &#8212; 200/${preview.total_lines} unit&#233;s (premi&#232;res lignes)</p>`
         : "";
       rawEl.innerHTML = truncNote + preview.lines.map(l =>
-        `<div class="prep-seg-prev-row" data-unit-n="${l.n}"><span class="prep-seg-prev-n">${l.n}</span>${_roleBadgeHtml(l.unit_role, this._conventions)}<span class="prep-seg-prev-tx">${_escHtml(l.text)}</span></div>`,
+        `<div class="prep-seg-prev-row" data-unit-n="${l.n}"><span class="prep-seg-prev-n">${l.n}</span>${_roleBadgeHtml(l.unit_role, this._conventions)}<span class="prep-seg-prev-tx">${richTextToHtml(l.text_raw, l.text)}</span></div>`,
       ).join("");
     } catch (err) {
       rawEl.innerHTML = `<p class="empty-hint">Impossible de charger le texte brut : ${_escHtml(err instanceof Error ? err.message : String(err))}</p>`;
@@ -744,7 +745,7 @@ export class SegmentationView {
         ? `<p class="prep-seg-trunc-note">Aper&#231;u &#8212; 500/${preview.total_lines} segments</p>`
         : "";
 
-      const buildRow = (l: { n: number; text: string; unit_role?: string | null }, idx: number, total: number): string => {
+      const buildRow = (l: { n: number; text: string; text_raw?: string | null; unit_role?: string | null }, idx: number, total: number): string => {
         const lenClass = l.text.length > 200 ? " prep-seg-cell-len-warn" : l.text.length > 120 ? " prep-seg-cell-len-hint" : "";
         const mergeUpBtn   = idx > 0
           ? `<button class="prep-seg-action-btn prep-seg-merge-up"   title="Fusionner avec le pr&#233;c&#233;dent" data-n="${l.n}">&#8679;</button>`
@@ -755,7 +756,7 @@ export class SegmentationView {
         const splitBtn = `<button class="prep-seg-action-btn prep-seg-split-btn" title="Couper ce segment" data-n="${l.n}">&#9986;</button>`;
         return `<tr data-unit-n="${l.n}">
           <td class="prep-seg-cell-n">${l.n}</td>
-          <td class="prep-seg-cell-text">${_roleBadgeHtml(l.unit_role, this._conventions)}${_escHtml(l.text)}</td>
+          <td class="prep-seg-cell-text">${_roleBadgeHtml(l.unit_role, this._conventions)}${richTextToHtml(l.text_raw, l.text)}</td>
           <td class="prep-seg-cell-len${lenClass}">${l.text.length}</td>
           <td class="prep-seg-cell-actions">${mergeUpBtn}${mergeDownBtn}${splitBtn}</td>
         </tr>`;
@@ -779,7 +780,7 @@ export class SegmentationView {
           </div>`;
       };
 
-      let lines = preview.lines.map(l => ({ n: l.n, text: l.text, unit_role: l.unit_role }));
+      let lines = preview.lines.map(l => ({ n: l.n, text: l.text, text_raw: l.text_raw, unit_role: l.unit_role }));
       el.innerHTML = renderTable(lines);
 
       const reload = () => void this._renderSegSavedTable(docId, el);
@@ -876,7 +877,7 @@ export class SegmentationView {
       };
 
       wireEvents();
-      lines = preview.lines.map(l => ({ n: l.n, text: l.text, unit_role: l.unit_role }));
+      lines = preview.lines.map(l => ({ n: l.n, text: l.text, text_raw: l.text_raw, unit_role: l.unit_role }));
     } catch (err) {
       el.innerHTML = `<p class="empty-hint" style="color:var(--color-danger)">Erreur: ${_escHtml(err instanceof Error ? err.message : String(err))}</p>`;
     }

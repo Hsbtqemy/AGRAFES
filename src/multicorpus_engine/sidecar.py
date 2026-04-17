@@ -4436,7 +4436,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         )
         line_rows = self._conn().execute(
             """
-            SELECT unit_id, n, external_id, text_norm, unit_role
+            SELECT unit_id, n, external_id, text_norm, unit_role, text_raw
             FROM units
             WHERE doc_id = ? AND unit_type = 'line'
             ORDER BY n
@@ -4451,6 +4451,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 "external_id": row[2],
                 "text": row[3],
                 "unit_role": row[4],
+                "text_raw": row[5],
             }
             for row in line_rows
         ]

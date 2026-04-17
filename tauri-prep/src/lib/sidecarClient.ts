@@ -67,6 +67,7 @@ export interface DocumentPreviewLine {
   n: number;
   external_id?: number | null;
   text: string;
+  text_raw?: string | null;
   unit_role?: string | null;
 }
 
@@ -77,6 +78,55 @@ export interface DocumentPreviewResponse {
   count: number;
   total_lines: number;
   limit: number;
+}
+
+const _HI_RE = /<hi\b([^>]*)>(.*?)<\/hi>/gs;
+const _REND_RE = /\brend=["']([^"']*)["']/;
+
+/**
+ * Convert text_raw <hi rend="…"> markup to safe HTML for display.
+ * Falls back to escaping text_norm if text_raw is absent or plain.
+ *
+ * Supported rend tokens: italic → <em>, bold → <strong>,
+ * underline → <u>, strikethrough → <s>, superscript → <sup>, subscript → <sub>.
+ */
+export function richTextToHtml(raw: string | null | undefined, fallback: string): string {
+  if (!raw || !raw.includes("<hi")) return _esc(fallback);
+  let result = "";
+  let last = 0;
+  let m: RegExpExecArray | null;
+  _HI_RE.lastIndex = 0;
+  while ((m = _HI_RE.exec(raw)) !== null) {
+    result += _esc(raw.slice(last, m.index));
+    const rend = (_REND_RE.exec(m[1]) ?? [])[1] ?? "";
+    const tokens = rend.split(/\s+/).filter(Boolean);
+    const content = _esc(m[2]);
+    result += _wrapHiTokens(tokens, content);
+    last = m.index + m[0].length;
+  }
+  result += _esc(raw.slice(last));
+  return result;
+}
+
+function _esc(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function _wrapHiTokens(tokens: string[], content: string): string {
+  const _MAP: Record<string, [string, string]> = {
+    italic:        ["<em>",     "</em>"],
+    bold:          ["<strong>", "</strong>"],
+    underline:     ["<u>",      "</u>"],
+    strikethrough: ["<s>",      "</s>"],
+    superscript:   ["<sup>",    "</sup>"],
+    subscript:     ["<sub>",    "</sub>"],
+  };
+  let open = "", close = "";
+  for (const tok of tokens) {
+    const pair = _MAP[tok];
+    if (pair) { open += pair[0]; close = pair[1] + close; }
+  }
+  return open + content + close;
 }
 
 export interface TokenRecord {
