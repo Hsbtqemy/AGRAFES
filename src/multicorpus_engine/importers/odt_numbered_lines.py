@@ -16,7 +16,7 @@ from .docx_numbered_lines import (
     _compute_file_hash,
 )
 from .import_guard import assert_not_duplicate_import
-from .odt_common import read_odt_paragraph_lines
+from .odt_common import read_odt_paragraph_rich_lines
 
 _NUMBERED_RE = re.compile(r"^\[\s*(\d+)\s*\]\s*(.+)$", re.DOTALL)
 
@@ -63,7 +63,7 @@ def import_odt_numbered_lines(
     log.info("Created document doc_id=%d title=%r", doc_id, doc_title)
 
     try:
-        paragraphs = read_odt_paragraph_lines(path)
+        paragraphs = read_odt_paragraph_rich_lines(path)
     except (FileNotFoundError, ValueError) as exc:
         conn.execute("DELETE FROM documents WHERE doc_id = ?", (doc_id,))
         conn.commit()
@@ -73,13 +73,12 @@ def import_odt_numbered_lines(
     units_to_insert: list[tuple] = []
 
     n = 0
-    for raw_para in paragraphs:
-        para = raw_para.strip()
-        if not para:
+    for rich in paragraphs:
+        if not normalize(rich).strip():
             continue
 
         n += 1
-        m = _NUMBERED_RE.match(para)
+        m = _NUMBERED_RE.match(rich)
         if m:
             ext_id = int(m.group(1))
             text_raw = m.group(2)
@@ -93,7 +92,7 @@ def import_odt_numbered_lines(
             )
             log.debug("Para n=%d ext_id=%d type=line", n, ext_id)
         else:
-            text_raw = para
+            text_raw = rich
             text_norm = normalize(text_raw)
             unit_type = "structure"
             units_to_insert.append(

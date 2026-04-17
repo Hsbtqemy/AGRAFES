@@ -433,3 +433,114 @@ def test_tei_publication_package_checksums(db_conn: sqlite3.Connection, tmp_path
             actual_hash = hashlib.sha256(actual_data).hexdigest()
             assert actual_hash == expected_hash, \
                 f"Checksum mismatch for {filename}: expected {expected_hash}, got {actual_hash}"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Rich text / inline <hi> markup propagation
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _insert_unit_with_raw(
+    db_conn: sqlite3.Connection,
+    text_raw: str,
+    text_norm: str | None = None,
+) -> int:
+    """Helper: create a minimal document + one line unit with the given text_raw.
+
+    Returns the new doc_id.
+    """
+    now = "2026-01-01T00:00:00Z"
+    cur = db_conn.execute(
+        "INSERT INTO documents (title, language, doc_role, meta_json, source_path, source_hash, created_at)"
+        " VALUES (?,?,?,?,?,?,?)",
+        ("Rich text doc", "fr", "standalone", None, None, None, now),
+    )
+    doc_id = cur.lastrowid
+    db_conn.execute(
+        "INSERT INTO units (doc_id, unit_type, n, external_id, text_raw, text_norm)"
+        " VALUES (?,?,?,?,?,?)",
+        (doc_id, "line", 1, 1, text_raw, text_norm or text_raw),
+    )
+    db_conn.commit()
+    return doc_id
+
+
+def _body_p_elements(root: ET.Element) -> list[ET.Element]:
+    """Return <p> elements inside body/div (excludes teiHeader <p> elements)."""
+    body = root.find(f".//{_ns('body')}")
+    if body is None:
+        return []
+    return body.findall(f".//{_ns('p')}")
+
+
+def test_tei_export_hi_italic(db_conn: sqlite3.Connection, tmp_path: Path) -> None:
+    """A unit with <hi rend="italic"> in text_raw must produce <hi rend="italic"> in <p>."""
+    from multicorpus_engine.exporters.tei import export_tei
+
+    text_raw = 'un <hi rend="italic">titre</hi> important'
+    doc_id = _insert_unit_with_raw(db_conn, text_raw, text_norm="un titre important")
+
+    out = tmp_path / "hi_italic.tei.xml"
+    export_tei(db_conn, doc_id=doc_id, output_path=out)
+
+    root = _load_tei(out)
+    p_elements = _body_p_elements(root)
+    assert p_elements, "Expected at least one <p> in output"
+    p = p_elements[0]
+
+    # <p> text before <hi>
+    assert p.text and "un" in p.text, f"Expected 'un' in p.text, got {p.text!r}"
+
+    # <hi rend="italic"> child
+    hi_elements = p.findall(_ns("hi"))
+    assert len(hi_elements) == 1, f"Expected 1 <hi>, got {len(hi_elements)}"
+    hi = hi_elements[0]
+    assert hi.get("rend") == "italic", f"Expected rend='italic', got {hi.get('rend')!r}"
+    assert hi.text == "titre", f"Expected hi.text='titre', got {hi.text!r}"
+
+    # tail after <hi>
+    assert hi.tail and "important" in hi.tail, f"Expected 'important' in hi.tail, got {hi.tail!r}"
+
+
+def test_tei_export_no_hi_regression(db_conn: sqlite3.Connection, tmp_path: Path) -> None:
+    """A unit without <hi> markup must export exactly as before (plain text in <p>)."""
+    from multicorpus_engine.exporters.tei import export_tei
+
+    text_raw = "Texte ordinaire sans balisage."
+    doc_id = _insert_unit_with_raw(db_conn, text_raw)
+
+    out = tmp_path / "no_hi.tei.xml"
+    export_tei(db_conn, doc_id=doc_id, output_path=out)
+
+    root = _load_tei(out)
+    p_elements = _body_p_elements(root)
+    assert p_elements, "Expected at least one <p> in output"
+    p = p_elements[0]
+
+    # No <hi> children
+    assert p.findall(_ns("hi")) == [], "Expected no <hi> children for plain text"
+    # Text content matches
+    assert p.text == text_raw, f"Expected p.text={text_raw!r}, got {p.text!r}"
+
+
+def test_tei_export_hi_bold_italic(db_conn: sqlite3.Connection, tmp_path: Path) -> None:
+    """A unit with <hi rend="bold italic"> must produce correct rend attribute."""
+    from multicorpus_engine.exporters.tei import export_tei
+
+    text_raw = 'Début <hi rend="bold italic">texte important</hi> fin.'
+    doc_id = _insert_unit_with_raw(db_conn, text_raw, text_norm="Début texte important fin.")
+
+    out = tmp_path / "hi_bold_italic.tei.xml"
+    export_tei(db_conn, doc_id=doc_id, output_path=out)
+
+    root = _load_tei(out)
+    p_elements = _body_p_elements(root)
+    assert p_elements, "Expected at least one <p> in output"
+    p = p_elements[0]
+
+    hi_elements = p.findall(_ns("hi"))
+    assert len(hi_elements) == 1, f"Expected 1 <hi>, got {len(hi_elements)}"
+    hi = hi_elements[0]
+    assert hi.get("rend") == "bold italic", f"Expected rend='bold italic', got {hi.get('rend')!r}"
+    assert hi.text == "texte important", f"Expected hi.text='texte important', got {hi.text!r}"
+    assert p.text and "Début" in p.text, f"Expected 'Début' in p.text, got {p.text!r}"
+    assert hi.tail and "fin." in hi.tail, f"Expected 'fin.' in hi.tail, got {hi.tail!r}"

@@ -35,6 +35,12 @@ _XML10_INVALID = re.compile(
 
 _STATUS_NULL_ALIASES = {"unreviewed", "null", None}
 
+# Pattern to match <hi rend="...">...</hi> inline markup in text_raw
+_HI_RE = re.compile(r'<hi\b([^>]*)>(.*?)</hi>', re.DOTALL)
+
+# Pattern to extract rend attribute value from <hi> attributes string
+_REND_ATTR_RE = re.compile(r'\brend=["\']([^"\']*)["\']')
+
 
 def strip_xml10_invalid(text: str) -> str:
     """Remove characters that are illegal in XML 1.0."""
@@ -52,6 +58,52 @@ def xml_escape(text: str) -> str:
     return text
 
 
+def _apply_rich_text(elem: ET.Element, text_raw: str) -> None:
+    """Populate `elem` with text and optional <hi> sub-elements parsed from text_raw.
+
+    text_raw may contain <hi rend="...">...</hi> markup. Plain text outside
+    <hi> tags is set as elem.text / tail of preceding child. If no <hi> tags
+    are present, sets elem.text directly (fast path).
+    """
+    if "<hi" not in text_raw:
+        # Fast path: no inline markup
+        elem.text = text_raw
+        return
+
+    last_end = 0
+    last_child: ET.Element | None = None
+
+    for m in _HI_RE.finditer(text_raw):
+        # Text before this match
+        before = strip_xml10_invalid(text_raw[last_end:m.start()])
+        if last_child is None:
+            elem.text = before or None
+        else:
+            last_child.tail = before or None
+
+        # Extract rend attribute value from the attributes string
+        attrs_str = m.group(1)
+        rend_match = _REND_ATTR_RE.search(attrs_str)
+        rend_val = strip_xml10_invalid(rend_match.group(1)) if rend_match else ""
+
+        hi_attrs: dict[str, str] = {}
+        if rend_val:
+            hi_attrs["rend"] = rend_val
+
+        hi = ET.SubElement(elem, "hi", hi_attrs)
+        hi.text = strip_xml10_invalid(m.group(2))
+
+        last_child = hi
+        last_end = m.end()
+
+    # Text after the last match
+    after = strip_xml10_invalid(text_raw[last_end:])
+    if last_child is None:
+        elem.text = after or None
+    else:
+        last_child.tail = after or None
+
+
 def _get_document(conn: sqlite3.Connection, doc_id: int) -> sqlite3.Row:
     row = conn.execute(
         "SELECT * FROM documents WHERE doc_id = ?", (doc_id,)
@@ -64,7 +116,7 @@ def _get_document(conn: sqlite3.Connection, doc_id: int) -> sqlite3.Row:
 def _get_units(conn: sqlite3.Connection, doc_id: int) -> list[sqlite3.Row]:
     return conn.execute(
         """
-        SELECT unit_id, unit_type, n, external_id, text_norm, meta_json
+        SELECT unit_id, unit_type, n, external_id, text_norm, text_raw, meta_json
         FROM units
         WHERE doc_id = ?
         ORDER BY n
@@ -479,7 +531,9 @@ def export_tei(
         unit_id = unit["unit_id"]
         n = unit["n"]
         ext_id = unit["external_id"]
-        text_norm = strip_xml10_invalid(unit["text_norm"] or "")
+        # Use text_raw for rich inline markup; fall back to text_norm if text_raw is absent
+        raw = unit["text_raw"] if unit["text_raw"] is not None else (unit["text_norm"] or "")
+        rich_text = strip_xml10_invalid(raw)
 
         if unit_type == "line":
             attrs: dict[str, str] = {
@@ -487,10 +541,10 @@ def export_tei(
                 "n": str(ext_id if ext_id is not None else n),
             }
             p = ET.SubElement(div, "p", attrs)
-            p.text = text_norm
+            _apply_rich_text(p, rich_text)
         elif unit_type == "structure" and include_structure:
             head = ET.SubElement(div, "head", {"xml:id": f"s{unit_id}"})
-            head.text = text_norm
+            _apply_rich_text(head, rich_text)
 
     # ── Alignment linkGrp (Sprint 2) ───────────────────────────────────────────
     if include_alignment:

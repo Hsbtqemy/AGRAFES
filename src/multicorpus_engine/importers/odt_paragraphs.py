@@ -12,7 +12,7 @@ from ..unicode_policy import count_sep, normalize
 from .docx_numbered_lines import ImportReport
 from .docx_paragraphs import _compute_file_hash
 from .import_guard import assert_not_duplicate_import
-from .odt_common import read_odt_paragraph_lines
+from .odt_common import read_odt_paragraph_rich_lines
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +57,7 @@ def import_odt_paragraphs(
     log.info("Created document doc_id=%d title=%r", doc_id, doc_title)
 
     try:
-        para_texts = read_odt_paragraph_lines(path)
+        para_texts = read_odt_paragraph_rich_lines(path)
     except (FileNotFoundError, ValueError) as exc:
         conn.execute("DELETE FROM documents WHERE doc_id = ?", (doc_id,))
         conn.commit()
@@ -65,9 +65,8 @@ def import_odt_paragraphs(
 
     units_to_insert: list[tuple] = []
     n = 0
-    for text in para_texts:
+    for text_raw in para_texts:
         n += 1
-        text_raw = text
         text_norm = normalize(text_raw)
         sep_count = count_sep(text_raw)
         meta = json.dumps({"sep_count": sep_count}) if sep_count > 0 else None

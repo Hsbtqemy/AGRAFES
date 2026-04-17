@@ -21,6 +21,7 @@ from typing import Optional
 from ..unicode_policy import count_sep, normalize
 from .docx_numbered_lines import ImportReport
 from .import_guard import assert_not_duplicate_import
+from .rich_text import para_to_rich_text
 
 logger = logging.getLogger(__name__)
 
@@ -89,12 +90,11 @@ def import_docx_paragraphs(
     n = 0
 
     for para in document.paragraphs:
-        text = para.text.strip()
-        if not text:
+        text_raw = para_to_rich_text(para)
+        if not normalize(text_raw).strip():
             continue  # skip blank paragraphs
 
         n += 1
-        text_raw = text
         text_norm = normalize(text_raw)
         sep_count = count_sep(text_raw)
         meta = json.dumps({"sep_count": sep_count}) if sep_count > 0 else None

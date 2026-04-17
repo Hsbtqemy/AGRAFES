@@ -6,7 +6,11 @@ See docs/DECISIONS.md ADR-003 for the full policy rationale.
 
 from __future__ import annotations
 
+import re
 import unicodedata
+
+# Matches opening and closing <hi> tags (TEI inline markup stored in text_raw)
+_HI_TAG_RE = re.compile(r"<hi\b[^>]*>|</hi>")
 
 # Characters to remove from text_norm (invisibles)
 _REMOVE_CHARS = frozenset(
@@ -53,6 +57,9 @@ def normalize(text: str) -> str:
     """
     if not text:
         return text
+
+    # 0. Strip <hi> markup (TEI inline style tags stored in text_raw)
+    text = _HI_TAG_RE.sub("", text)
 
     # 1. NFC
     text = unicodedata.normalize("NFC", text)

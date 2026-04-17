@@ -25,6 +25,7 @@ from typing import Optional
 
 from ..unicode_policy import count_sep, normalize
 from .import_guard import assert_not_duplicate_import
+from .rich_text import para_to_rich_text
 
 _NUMBERED_RE = re.compile(r"^\[\s*(\d+)\s*\]\s*(.+)$", re.DOTALL)
 
@@ -139,19 +140,19 @@ def import_docx_numbered_lines(
 
     # Parse DOCX
     document = docx.Document(str(path))
-    paragraphs = [p.text for p in document.paragraphs]
 
     external_ids: list[int] = []
     units_to_insert: list[tuple] = []
 
     n = 0
-    for raw_para in paragraphs:
-        para = raw_para.strip()
-        if not para:
+    for para in document.paragraphs:
+        rich = para_to_rich_text(para)
+        plain = normalize(rich).strip()
+        if not plain:
             continue  # skip blank paragraphs
 
         n += 1
-        m = _NUMBERED_RE.match(para)
+        m = _NUMBERED_RE.match(rich)
         if m:
             ext_id = int(m.group(1))
             text_raw = m.group(2)
@@ -165,7 +166,7 @@ def import_docx_numbered_lines(
             )
             log.debug("Para n=%d ext_id=%d type=line", n, ext_id)
         else:
-            text_raw = para
+            text_raw = rich
             text_norm = normalize(text_raw)
             unit_type = "structure"
             units_to_insert.append(
