@@ -2486,9 +2486,14 @@ export class CurationView {
       const bannerDiff = `<div class="prep-stat-ok" style="margin-bottom:8px;font-size:13px">&#10003;&#160;Aucune diff&#233;rence &#8212; texte cur&#233; identique au source.</div>`;
       const truncNote = preview.total_lines > preview.limit
         ? `<p class="empty-hint" style="margin:4px 0 8px;font-style:italic">Aper&#231;u &#8212; ${preview.limit}/${preview.total_lines} unit&#233;s</p>` : "";
-      const linesHtml = preview.lines.map(l =>
-        `<div class="prep-vo-line"><span class="prep-vo-ln">${l.n}</span><span class="prep-vo-txt">${_escHtml(l.text)}</span></div>`
-      ).join("");
+      const roleMap = new Map(this._conventions.map(r => [r.name, r]));
+      const linesHtml = preview.lines.map(l => {
+        const conv = l.unit_role ? roleMap.get(l.unit_role) : undefined;
+        const badge = conv
+          ? `<span class="prep-raw-role-badge" style="--role-color:${conv.color ?? "#64748b"}">${conv.icon ? _escHtml(conv.icon) + "\u00a0" : ""}${_escHtml(conv.label)}</span>`
+          : "";
+        return `<div class="prep-vo-line"><span class="prep-vo-ln">${l.n}</span>${badge}<span class="prep-vo-txt">${_escHtml(l.text)}</span></div>`;
+      }).join("");
       rawEl.innerHTML = bannerRaw + truncNote + linesHtml;
       diffEl.innerHTML = bannerDiff + truncNote + linesHtml;
     } catch {

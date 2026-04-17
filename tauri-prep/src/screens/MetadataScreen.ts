@@ -1883,10 +1883,13 @@ export class MetadataScreen {
     this._previewLoading = true;
     this._previewError = null;
     this._renderPreviewPanel();
-    // Load conventions for role badges (best-effort, parallel)
-    listConventions(this._conn).then(r => { this._conventions = r; }).catch(() => {});
     try {
-      const res = await getDocumentPreview(this._conn, docId, this._previewLimit);
+      // Load conventions and preview in parallel so badges are ready when the panel renders
+      const [convRes, res] = await Promise.all([
+        listConventions(this._conn).catch(() => [] as ConventionRole[]),
+        getDocumentPreview(this._conn, docId, this._previewLimit),
+      ]);
+      this._conventions = convRes;
       if (this._selectedDoc?.doc_id !== docId) return;
       this._previewDocId = docId;
       this._previewLines = res.lines ?? [];
