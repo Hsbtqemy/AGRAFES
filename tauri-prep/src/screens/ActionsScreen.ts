@@ -243,9 +243,7 @@ export class ActionsScreen {
           <h2 class="prep-acts-hub-head-title">Traitement de corpus</h2>
           <p class="prep-acts-hub-head-desc">Curation &middot; Segmentation &middot; Alignement &mdash; pilotage des op&eacute;rations de pr&eacute;paration du corpus.</p>
         </div>
-        <div class="prep-acts-hub-head-tools">
-          <button class="prep-acts-hub-head-link prep-acts-hub-head-link-accent" data-cta="segmentation-longtext">Sc&eacute;nario grand texte &nearr;</button>
-        </div>
+        <div class="prep-acts-hub-head-tools"></div>
       </section>
       <section class="card prep-acts-hub-docs-card">
         <h3 class="prep-acts-hub-docs-title">Documents du corpus</h3>
@@ -272,7 +270,6 @@ export class ActionsScreen {
           <p class="prep-acts-hub-wf-desc">D&eacute;coupage du corpus en unit&eacute;s traductionnelles pivot et cibles. G&eacute;n&egrave;re les segments pour l&rsquo;alignement automatique.</p>
           <div class="prep-acts-hub-wf-actions">
             <button class="prep-acts-hub-wf-btn" data-target="segmentation">Ouvrir &rarr;</button>
-            <button class="prep-acts-hub-wf-link" data-cta="segmentation-longtext">Grand texte &nearr;</button>
           </div>
         </div>
         <div class="card prep-acts-hub-wf-card">
@@ -304,13 +301,6 @@ export class ActionsScreen {
       btn.addEventListener("click", () => {
         const target = btn.dataset.target as SubView;
         this._switchSubViewDOM(root, target);
-      });
-    });
-    // CTA buttons (head accent + secondary wf links) → navigate with optional segMode
-    el.querySelectorAll<HTMLButtonElement>(".prep-acts-hub-head-link, .prep-acts-hub-wf-link").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const cta = btn.dataset.cta!;
-        this._switchSubViewDOM(root, cta === "segmentation-longtext" ? "segmentation" : cta as SubView);
       });
     });
     return el;
