@@ -87,6 +87,10 @@ const _REND_RE = /\brend=["']([^"']*)["']/;
  * Convert text_raw <hi rend="…"> markup to safe HTML for display.
  * Falls back to escaping text_norm if text_raw is absent or plain.
  *
+ * text_raw is already XML-escaped by the importer (& → &amp; etc.), so
+ * text segments are injected directly — no double-escaping. Only the
+ * <hi> wrapper tags are replaced by semantic HTML equivalents.
+ *
  * Supported rend tokens: italic → <em>, bold → <strong>,
  * underline → <u>, strikethrough → <s>, superscript → <sup>, subscript → <sub>.
  */
@@ -97,14 +101,15 @@ export function richTextToHtml(raw: string | null | undefined, fallback: string)
   let m: RegExpExecArray | null;
   _HI_RE.lastIndex = 0;
   while ((m = _HI_RE.exec(raw)) !== null) {
-    result += _esc(raw.slice(last, m.index));
+    // text_raw segments are already XML-escaped — inject as-is
+    result += raw.slice(last, m.index);
     const rend = (_REND_RE.exec(m[1]) ?? [])[1] ?? "";
     const tokens = rend.split(/\s+/).filter(Boolean);
-    const content = _esc(m[2]);
+    const content = m[2]; // already XML-escaped
     result += _wrapHiTokens(tokens, content);
     last = m.index + m[0].length;
   }
-  result += _esc(raw.slice(last));
+  result += raw.slice(last);
   return result;
 }
 

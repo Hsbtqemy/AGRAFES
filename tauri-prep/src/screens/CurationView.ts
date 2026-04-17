@@ -37,6 +37,7 @@ import {
   enqueueJob,
   getDocumentPreview,
   SidecarError,
+  richTextToHtml,
   type CurateException,
   listCurateExceptions,
   setCurateException,
@@ -2492,7 +2493,7 @@ export class CurationView {
         const badge = conv
           ? `<span class="prep-raw-role-badge" style="--role-color:${conv.color ?? "#64748b"}">${conv.icon ? _escHtml(conv.icon) + "\u00a0" : ""}${_escHtml(conv.label)}</span>`
           : "";
-        return `<div class="prep-vo-line"><span class="prep-vo-ln">${l.n}</span>${badge}<span class="prep-vo-txt">${_escHtml(l.text)}</span></div>`;
+        return `<div class="prep-vo-line"><span class="prep-vo-ln">${l.n}</span>${badge}<span class="prep-vo-txt">${richTextToHtml(l.text_raw, l.text)}</span></div>`;
       }).join("");
       rawEl.innerHTML = bannerRaw + truncNote + linesHtml;
       diffEl.innerHTML = bannerDiff + truncNote + linesHtml;
