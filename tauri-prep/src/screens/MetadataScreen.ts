@@ -52,7 +52,7 @@ import {
 import { initCardAccordions } from "../lib/uiAccordions.ts";
 import type { JobCenter } from "../components/JobCenter.ts";
 
-const DOC_ROLES = ["standalone", "original", "translation", "excerpt", "unknown"];
+const DOC_ROLES = ["standalone", "original", "translation", "excerpt", "primary", "unknown"];
 const RELATION_TYPES = ["translation_of", "excerpt_of"];
 const WORKFLOW_STATUS = ["draft", "review", "validated"] as const;
 type WorkflowStatus = (typeof WORKFLOW_STATUS)[number];
@@ -2266,7 +2266,10 @@ export class MetadataScreen {
 
     const baseTitle               = (this._selectedDoc.title ?? "").trim();
     const baseLanguage            = (this._selectedDoc.language ?? "").trim();
-    const baseDocRole             = (this._selectedDoc.doc_role ?? "unknown").trim();
+    // If doc_role is not in the select options, the browser picks the first option.
+    // Normalize base to match what the select actually shows.
+    const rawDocRole = (this._selectedDoc.doc_role ?? "unknown").trim();
+    const baseDocRole = DOC_ROLES.includes(rawDocRole) ? rawDocRole : DOC_ROLES[0];
     const baseResourceType        = (this._selectedDoc.resource_type ?? "").trim();
     const baseWorkflow            = this._workflowStatus(this._selectedDoc);
     const baseValidatedRunId      = (this._selectedDoc.validated_run_id ?? "").trim();
@@ -2279,27 +2282,22 @@ export class MetadataScreen {
     const basePubPlace            = (this._selectedDoc.pub_place ?? "").trim();
     const basePublisher           = (this._selectedDoc.publisher ?? "").trim();
 
-    const checks: [boolean, string, string, string][] = [
-      [title !== baseTitle,                           "title",               title,               baseTitle],
-      [language !== baseLanguage,                     "language",            language,             baseLanguage],
-      [docRole !== baseDocRole,                       "docRole",             docRole,              baseDocRole],
-      [resourceType !== baseResourceType,             "resourceType",        resourceType,         baseResourceType],
-      [workflow !== baseWorkflow,                     "workflow",            workflow,             baseWorkflow],
-      [validatedRunId !== baseValidatedRunId,         "validatedRunId",      validatedRunId,       baseValidatedRunId],
-      [authorLastname !== baseAuthorLastname,         "authorLastname",      authorLastname,       baseAuthorLastname],
-      [authorFirstname !== baseAuthorFirstname,       "authorFirstname",     authorFirstname,      baseAuthorFirstname],
-      [docDate !== baseDocDate,                       "docDate",             docDate,              baseDocDate],
-      [translatorLastname !== baseTranslatorLastname, "translatorLastname",  translatorLastname,   baseTranslatorLastname],
-      [translatorFirstname !== baseTranslatorFirstname, "translatorFirstname", translatorFirstname, baseTranslatorFirstname],
-      [workTitle !== baseWorkTitle,                   "workTitle",           workTitle,            baseWorkTitle],
-      [pubPlace !== basePubPlace,                     "pubPlace",            pubPlace,             basePubPlace],
-      [publisher !== basePublisher,                   "publisher",           publisher,            basePublisher],
-    ];
-    const dirty = checks.filter(([changed]) => changed);
-    if (dirty.length > 0) {
-      console.warn("[MetadataScreen] dirty fields:", dirty.map(([, name, form, base]) => `${name}: form=${JSON.stringify(form)} base=${JSON.stringify(base)}`));
-    }
-    return dirty.length > 0;
+    return (
+      title !== baseTitle ||
+      language !== baseLanguage ||
+      docRole !== baseDocRole ||
+      resourceType !== baseResourceType ||
+      workflow !== baseWorkflow ||
+      validatedRunId !== baseValidatedRunId ||
+      authorLastname !== baseAuthorLastname ||
+      authorFirstname !== baseAuthorFirstname ||
+      docDate !== baseDocDate ||
+      translatorLastname !== baseTranslatorLastname ||
+      translatorFirstname !== baseTranslatorFirstname ||
+      workTitle !== baseWorkTitle ||
+      pubPlace !== basePubPlace ||
+      publisher !== basePublisher
+    );
   }
 
   private _hasPendingRelationDraft(): boolean {
