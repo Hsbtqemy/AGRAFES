@@ -60,29 +60,13 @@ def read_odt_paragraph_lines(path: str | Path) -> list[str]:
     if path.suffix.lower() != ".odt":
         raise ValueError(f"Expected .odt file, got: {path}")
 
-    try:
-        with zipfile.ZipFile(path, "r") as zf:
-            try:
-                xml_bytes = zf.read("content.xml")
-            except KeyError as exc:
-                raise ValueError("Invalid ODT: missing content.xml") from exc
-    except zipfile.BadZipFile as exc:
-        raise ValueError(f"Not a valid ZIP/ODT archive: {path}") from exc
+    root = _load_odt_xml(path)
 
-    try:
-        root = ET.fromstring(xml_bytes)
-    except ET.ParseError as exc:
-        raise ValueError(f"Invalid ODT: content.xml is not valid XML: {exc}") from exc
-
-    # Restrict to office:body/office:text subtree so we ignore headers/footers if duplicated
     body: ET.Element | None = None
     for el in root.iter(f"{{{_OFFICE_NS}}}body"):
         body = el
         break
-    if body is None:
-        tree = root
-    else:
-        tree = body
+    tree = body if body is not None else root
 
     out: list[str] = []
     for elem in tree.iter():
@@ -130,7 +114,6 @@ def read_odt_paragraph_rich_lines(path: str | Path) -> list[str]:
     root = _load_odt_xml(path)
     style_map = odt_extract_style_map(root)
 
-    _OFFICE_NS = "urn:oasis:names:tc:opendocument:xmlns:office:1.0"
     body: ET.Element | None = None
     for el in root.iter(f"{{{_OFFICE_NS}}}body"):
         body = el

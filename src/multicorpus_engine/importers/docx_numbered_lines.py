@@ -152,10 +152,13 @@ def import_docx_numbered_lines(
             continue  # skip blank paragraphs
 
         n += 1
-        m = _NUMBERED_RE.match(rich)
+        # Match on plain text so a styled [n] prefix is still detected
+        m = _NUMBERED_RE.match(plain)
         if m:
             ext_id = int(m.group(1))
-            text_raw = m.group(2)
+            # Strip the plain prefix from rich to preserve styling in the content
+            prefix_len = m.start(2)
+            text_raw = rich[prefix_len:] if len(rich) >= prefix_len else m.group(2)
             text_norm = normalize(text_raw)
             sep_count = count_sep(text_raw)
             meta = json.dumps({"sep_count": sep_count}) if sep_count > 0 else None
