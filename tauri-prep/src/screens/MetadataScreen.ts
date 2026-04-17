@@ -2279,22 +2279,27 @@ export class MetadataScreen {
     const basePubPlace            = (this._selectedDoc.pub_place ?? "").trim();
     const basePublisher           = (this._selectedDoc.publisher ?? "").trim();
 
-    return (
-      title !== baseTitle ||
-      language !== baseLanguage ||
-      docRole !== baseDocRole ||
-      resourceType !== baseResourceType ||
-      workflow !== baseWorkflow ||
-      validatedRunId !== baseValidatedRunId ||
-      authorLastname !== baseAuthorLastname ||
-      authorFirstname !== baseAuthorFirstname ||
-      docDate !== baseDocDate ||
-      translatorLastname !== baseTranslatorLastname ||
-      translatorFirstname !== baseTranslatorFirstname ||
-      workTitle !== baseWorkTitle ||
-      pubPlace !== basePubPlace ||
-      publisher !== basePublisher
-    );
+    const checks: [boolean, string, string, string][] = [
+      [title !== baseTitle,                           "title",               title,               baseTitle],
+      [language !== baseLanguage,                     "language",            language,             baseLanguage],
+      [docRole !== baseDocRole,                       "docRole",             docRole,              baseDocRole],
+      [resourceType !== baseResourceType,             "resourceType",        resourceType,         baseResourceType],
+      [workflow !== baseWorkflow,                     "workflow",            workflow,             baseWorkflow],
+      [validatedRunId !== baseValidatedRunId,         "validatedRunId",      validatedRunId,       baseValidatedRunId],
+      [authorLastname !== baseAuthorLastname,         "authorLastname",      authorLastname,       baseAuthorLastname],
+      [authorFirstname !== baseAuthorFirstname,       "authorFirstname",     authorFirstname,      baseAuthorFirstname],
+      [docDate !== baseDocDate,                       "docDate",             docDate,              baseDocDate],
+      [translatorLastname !== baseTranslatorLastname, "translatorLastname",  translatorLastname,   baseTranslatorLastname],
+      [translatorFirstname !== baseTranslatorFirstname, "translatorFirstname", translatorFirstname, baseTranslatorFirstname],
+      [workTitle !== baseWorkTitle,                   "workTitle",           workTitle,            baseWorkTitle],
+      [pubPlace !== basePubPlace,                     "pubPlace",            pubPlace,             basePubPlace],
+      [publisher !== basePublisher,                   "publisher",           publisher,            basePublisher],
+    ];
+    const dirty = checks.filter(([changed]) => changed);
+    if (dirty.length > 0) {
+      console.warn("[MetadataScreen] dirty fields:", dirty.map(([, name, form, base]) => `${name}: form=${JSON.stringify(form)} base=${JSON.stringify(base)}`));
+    }
+    return dirty.length > 0;
   }
 
   private _hasPendingRelationDraft(): boolean {
