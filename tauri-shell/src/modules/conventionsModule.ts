@@ -253,14 +253,15 @@ const CSS = `
   border: 1px solid #dee2e6;
   border-radius: 10px;
   padding: 1.5rem;
-  width: 360px;
+  width: 380px;
   max-width: 95vw;
   box-shadow: 0 8px 32px rgba(0,0,0,0.15);
 }
 .conv-dialog h3 { margin: 0 0 1rem; font-size: 1rem; color: #212529; }
 .conv-field { margin-bottom: 0.85rem; }
 .conv-field label { display: block; margin-bottom: 0.3rem; color: #6c757d; font-size: 0.78rem; }
-.conv-field input {
+.conv-field input[type="text"],
+.conv-field input[type="number"] {
   width: 100%;
   box-sizing: border-box;
   background: #fff;
@@ -270,7 +271,76 @@ const CSS = `
   padding: 0.4rem 0.6rem;
   font-size: 0.85rem;
 }
-.conv-field input:focus { outline: 2px solid #0c4a46; border-color: transparent; }
+.conv-field input[type="text"]:focus,
+.conv-field input[type="number"]:focus { outline: 2px solid #0c4a46; border-color: transparent; }
+/* ── Color picker row ── */
+.conv-color-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.conv-color-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.conv-color-preset {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  transition: transform 0.1s, border-color 0.1s;
+}
+.conv-color-preset:hover { transform: scale(1.15); }
+.conv-color-preset.selected { border-color: #0c4a46; box-shadow: 0 0 0 1px #fff inset; }
+.conv-color-custom {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.conv-color-picker-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 6px;
+  border: 2px solid #dee2e6;
+  cursor: pointer;
+  padding: 2px;
+  flex-shrink: 0;
+  background: none;
+  overflow: hidden;
+  position: relative;
+}
+.conv-color-picker-btn input[type="color"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  border: none;
+  padding: 0;
+}
+.conv-color-swatch-preview {
+  width: 100%;
+  height: 100%;
+  border-radius: 4px;
+  pointer-events: none;
+}
+.conv-color-hex {
+  flex: 1;
+  box-sizing: border-box;
+  background: #fff;
+  border: 1px solid #ced4da;
+  border-radius: 5px;
+  color: #212529;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.85rem;
+  font-family: monospace;
+}
+.conv-color-hex:focus { outline: 2px solid #0c4a46; border-color: transparent; }
 .conv-dialog-actions {
   display: flex;
   justify-content: flex-end;
@@ -454,9 +524,23 @@ function _renderRoles(): void {
   });
 }
 
+const COLOR_PRESETS = [
+  "#3b82f6", "#6366f1", "#8b5cf6", "#a855f7",
+  "#ec4899", "#ef4444", "#f97316", "#f59e0b",
+  "#eab308", "#84cc16", "#22c55e", "#10b981",
+  "#14b8a6", "#06b6d4", "#0ea5e9", "#64748b",
+];
+
 function _openRoleDialog(editName: string | null): void {
   const existing = editName ? _roles.find(r => r.name === editName) ?? null : null;
   const isEdit = existing !== null;
+  const initColor = existing?.color ?? "";
+
+  const presetsHtml = COLOR_PRESETS.map(c =>
+    `<button type="button" class="conv-color-preset" data-color="${c}" style="background:${c}" title="${c}"></button>`
+  ).join("");
+
+  const pickerVal = /^#[0-9a-fA-F]{6}$/.test(initColor) ? initColor : "#3b82f6";
 
   const overlay = document.createElement("div");
   overlay.className = "conv-overlay";
@@ -472,8 +556,17 @@ function _openRoleDialog(editName: string | null): void {
         <input id="conv-f-label" type="text" value="${_esc(existing?.label ?? "")}" placeholder="ex: Titre" />
       </div>
       <div class="conv-field">
-        <label>Couleur (hex)</label>
-        <input id="conv-f-color" type="text" value="${_esc(existing?.color ?? "")}" placeholder="#3b82f6" />
+        <label>Couleur</label>
+        <div class="conv-color-row">
+          <div class="conv-color-presets">${presetsHtml}</div>
+          <div class="conv-color-custom">
+            <button type="button" class="conv-color-picker-btn" title="Ouvrir le sélecteur de couleur">
+              <div class="conv-color-swatch-preview" id="conv-swatch-preview" style="background:${_esc(initColor || pickerVal)}"></div>
+              <input type="color" id="conv-f-color-picker" value="${_esc(pickerVal)}" tabindex="-1" />
+            </button>
+            <input class="conv-color-hex" id="conv-f-color" type="text" value="${_esc(initColor)}" placeholder="#3b82f6" maxlength="7" spellcheck="false" />
+          </div>
+        </div>
       </div>
       <div class="conv-field">
         <label>Icône (emoji ou texte court)</label>
@@ -492,12 +585,45 @@ function _openRoleDialog(editName: string | null): void {
   `;
   document.body.appendChild(overlay);
 
+  const hexInput = overlay.querySelector<HTMLInputElement>("#conv-f-color")!;
+  const colorPicker = overlay.querySelector<HTMLInputElement>("#conv-f-color-picker")!;
+  const swatchPreview = overlay.querySelector<HTMLElement>("#conv-swatch-preview")!;
   const errEl = overlay.querySelector<HTMLElement>("#conv-dialog-err")!;
+
+  function _applyColor(hex: string, source: "preset" | "picker" | "text"): void {
+    const valid = /^#[0-9a-fA-F]{6}$/.test(hex);
+    if (source !== "text") hexInput.value = hex;
+    if (source !== "picker" && valid) colorPicker.value = hex;
+    swatchPreview.style.background = valid ? hex : "#e9ecef";
+    // Mark selected preset
+    overlay.querySelectorAll<HTMLElement>(".conv-color-preset").forEach(b => {
+      b.classList.toggle("selected", b.dataset.color === hex);
+    });
+  }
+
+  // Init selected state for existing color
+  if (initColor) _applyColor(initColor, "text");
+
+  // Preset clicks
+  overlay.querySelectorAll<HTMLButtonElement>(".conv-color-preset").forEach(btn => {
+    btn.addEventListener("click", () => _applyColor(btn.dataset.color!, "preset"));
+  });
+
+  // Native color picker change
+  colorPicker.addEventListener("input", () => _applyColor(colorPicker.value, "picker"));
+
+  // Hex text input
+  hexInput.addEventListener("input", () => {
+    let v = hexInput.value.trim();
+    if (v && !v.startsWith("#")) v = "#" + v;
+    _applyColor(v, "text");
+  });
+
   overlay.querySelector("#conv-dlg-cancel")!.addEventListener("click", () => overlay.remove());
   overlay.querySelector("#conv-dlg-save")!.addEventListener("click", async () => {
     const name = (overlay.querySelector<HTMLInputElement>("#conv-f-name")!.value).trim();
     const label = (overlay.querySelector<HTMLInputElement>("#conv-f-label")!.value).trim();
-    const color = (overlay.querySelector<HTMLInputElement>("#conv-f-color")!.value).trim() || null;
+    const color = hexInput.value.trim() || null;
     const icon = (overlay.querySelector<HTMLInputElement>("#conv-f-icon")!.value).trim() || null;
     const sort_order = parseInt(overlay.querySelector<HTMLInputElement>("#conv-f-sort")!.value) || 0;
 

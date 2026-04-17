@@ -1366,8 +1366,9 @@ export interface UnitRole {
 }
 
 export async function listConventions(conn: Conn): Promise<UnitRole[]> {
-  const res = (await conn.get("/conventions")) as { roles: UnitRole[] };
-  return res.roles;
+  // Sidecar returns "conventions" (not "roles") — see _handle_conventions_list
+  const res = (await conn.get("/conventions")) as { conventions: UnitRole[] };
+  return res.conventions;
 }
 
 export async function createConvention(
