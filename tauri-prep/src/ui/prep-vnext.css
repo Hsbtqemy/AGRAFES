@@ -254,6 +254,24 @@
   height: 100%;
 }
 
+/* Panel slot must fill remaining height so the annoter wrapper can inherit it */
+.prep-main:has(.actions-sub-annoter .annot-panel) .actions-screen.active .prep-acts-panel-slot {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Annoter wrapper (div[data-panel="annoter"]) fills the slot, passes height down */
+.prep-main:has(.actions-sub-annoter .annot-panel) .actions-screen.active [data-panel="annoter"] {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
 /* ════════════════════════════════════════════════════════════════════════════
    CURATION 3-COLUMN WORKSPACE
    ════════════════════════════════════════════════════════════════════════════ */
