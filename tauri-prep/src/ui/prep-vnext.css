@@ -208,7 +208,9 @@
 /* ── Main content area ───────────────────────────────────────────────────── */
 .prep-main {
   min-width: 0;
-  overflow-x: hidden;
+  /* overflow-x: clip (not hidden) — clip ne crée pas de contexte de défilement,
+     évitant le side-effect CSS qui force overflow-y:auto et bloque le scroll body. */
+  overflow-x: clip;
 }
 
 .prep-main:has(.import-screen.active) {
