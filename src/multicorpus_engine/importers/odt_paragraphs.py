@@ -52,29 +52,17 @@ def import_odt_paragraphs(
         (doc_title, language, doc_role, resource_type, str(path), source_hash, utcnow),
     )
     doc_id = cur.lastrowid
-    conn.commit()
 
     log.info("Created document doc_id=%d title=%r", doc_id, doc_title)
 
     try:
         para_texts = read_odt_paragraph_rich_lines(path)
     except (FileNotFoundError, ValueError) as exc:
-        conn.execute("DELETE FROM documents WHERE doc_id = ?", (doc_id,))
-        conn.commit()
+        conn.rollback()
         raise exc
 
     units_to_insert: list[tuple] = []
     n = 0
-    has_headings = any(level is not None for _, level in para_texts)
-
-    if has_headings:
-        conn.execute(
-            """
-            INSERT OR IGNORE INTO unit_roles (name, label, color, icon, sort_order, category)
-            VALUES ('intertitre', 'Intertitre', '#9333ea', '§', 0, 'structure')
-            """
-        )
-        conn.commit()
 
     for text_raw, heading_level in para_texts:
         n += 1
@@ -90,6 +78,14 @@ def import_odt_paragraphs(
         units_to_insert.append((doc_id, "line", n, n, text_raw, text_norm, meta, unit_role))
 
     try:
+        has_headings = any(level is not None for _, level in para_texts)
+        if has_headings:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO unit_roles (name, label, color, icon, sort_order, category)
+                VALUES ('intertitre', 'Intertitre', '#9333ea', '§', 0, 'structure')
+                """
+            )
         conn.executemany(
             """
             INSERT INTO units (doc_id, unit_type, n, external_id, text_raw, text_norm, meta_json, unit_role)
@@ -99,8 +95,7 @@ def import_odt_paragraphs(
         )
         conn.commit()
     except Exception:
-        conn.execute("DELETE FROM documents WHERE doc_id = ?", (doc_id,))
-        conn.commit()
+        conn.rollback()
         raise
 
     n_headings = sum(1 for _, level in para_texts if level is not None)

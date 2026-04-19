@@ -131,7 +131,6 @@ def import_txt_numbered_lines(
         ),
     )
     doc_id = cur.lastrowid
-    conn.commit()
 
     log.info("Created document doc_id=%d title=%r", doc_id, doc_title)
 
@@ -171,17 +170,17 @@ def import_txt_numbered_lines(
             )
             log.debug("Line n=%d type=structure", n)
 
-    # Auto-create intertitre convention if structure lines are present
-    if has_structure:
-        conn.execute(
-            """
-            INSERT OR IGNORE INTO unit_roles (name, label, color, icon, sort_order, category)
-            VALUES ('intertitre', 'Intertitre', '#9333ea', '\u00a7', 0, 'structure')
-            """
-        )
-
-    # Bulk insert
     try:
+        # Auto-create intertitre convention if structure lines are present
+        if has_structure:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO unit_roles (name, label, color, icon, sort_order, category)
+                VALUES ('intertitre', 'Intertitre', '#9333ea', '\u00a7', 0, 'structure')
+                """
+            )
+
+        # Bulk insert
         conn.executemany(
             """
             INSERT INTO units (doc_id, unit_type, n, external_id, text_raw, text_norm, meta_json, unit_role)
@@ -191,8 +190,7 @@ def import_txt_numbered_lines(
         )
         conn.commit()
     except Exception:
-        conn.execute("DELETE FROM documents WHERE doc_id = ?", (doc_id,))
-        conn.commit()
+        conn.rollback()
         raise
 
     duplicates, holes, non_monotonic = _analyze_external_ids(external_ids)

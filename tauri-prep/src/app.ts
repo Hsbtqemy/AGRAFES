@@ -499,16 +499,6 @@ export class App {
     const shellUri = this._buildShellOpenDbDeepLink(dbPath);
     const standaloneUri = this._buildStandaloneOpenDbDeepLink(dbPath);
 
-    let copied = false;
-    try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(shellUri);
-        copied = true;
-      }
-    } catch {
-      copied = false;
-    }
-
     let opened = false;
     try {
       await shellOpen(shellUri);
@@ -542,6 +532,17 @@ export class App {
     if (opened) {
       showToast("Ouverture Concordancier standalone demandée (fallback).");
       return;
+    }
+
+    // All open attempts failed — copy to clipboard as last resort
+    let copied = false;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(shellUri);
+        copied = true;
+      }
+    } catch {
+      copied = false;
     }
 
     if (copied) {

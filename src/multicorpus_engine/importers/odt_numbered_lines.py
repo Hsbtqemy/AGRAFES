@@ -58,15 +58,13 @@ def import_odt_numbered_lines(
         (doc_title, language, doc_role, resource_type, str(path), source_hash, utcnow),
     )
     doc_id = cur.lastrowid
-    conn.commit()
 
     log.info("Created document doc_id=%d title=%r", doc_id, doc_title)
 
     try:
         paragraphs = [rich for rich, _ in read_odt_paragraph_rich_lines(path)]
     except (FileNotFoundError, ValueError) as exc:
-        conn.execute("DELETE FROM documents WHERE doc_id = ?", (doc_id,))
-        conn.commit()
+        conn.rollback()
         raise exc
 
     external_ids: list[int] = []
@@ -114,8 +112,7 @@ def import_odt_numbered_lines(
         )
         conn.commit()
     except Exception:
-        conn.execute("DELETE FROM documents WHERE doc_id = ?", (doc_id,))
-        conn.commit()
+        conn.rollback()
         raise
 
     duplicates, holes, non_monotonic = _analyze_external_ids(external_ids)

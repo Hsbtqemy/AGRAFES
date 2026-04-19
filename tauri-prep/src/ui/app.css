@@ -2028,6 +2028,57 @@ code { font-family: monospace; background: var(--color-bg); padding: 0 3px; bord
 .prep-align-fp-stat  { font-size: 0.78rem; font-weight: 600; color: var(--prep-text, #1a1a2e); }
 .prep-align-fp-warn  { font-size: 0.75rem; color: #b45309; }
 
+/* ── Vue famille multi-colonnes ──────────────────────────────────────────── */
+.prep-fam-bitext { margin-top: 0.75rem; }
+.prep-fam-bitext-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0.4rem 0.75rem;
+  background: var(--prep-surface-alt, #f0f4f8);
+  border: 1px solid var(--prep-border, #dde1e8);
+  border-radius: 6px 6px 0 0;
+}
+.prep-fam-bitext-title { font-weight: 600; font-size: 0.88rem; color: var(--prep-text, #1a1a2e); }
+.prep-fam-bitext-actions { display: flex; gap: 6px; }
+
+.prep-fam-table {
+  width: 100%; border-collapse: collapse;
+  font-size: 0.82rem;
+  border: 1px solid var(--prep-border, #dde1e8);
+  border-top: none;
+}
+.prep-fam-table thead th {
+  background: var(--prep-surface-alt, #f5f7fa);
+  border: 1px solid var(--prep-border, #dde1e8);
+  padding: 0.4rem 0.6rem;
+  text-align: left; font-weight: 600; font-size: 0.78rem;
+  color: var(--prep-text-muted, #4f5d6d);
+}
+.prep-fam-col-pivot { width: 30%; min-width: 160px; }
+.prep-fam-col-child { min-width: 140px; }
+.prep-fam-col-lang  { font-weight: 400; font-size: 0.72rem; color: #6b7280; }
+
+.prep-fam-cell-pivot {
+  padding: 0.45rem 0.6rem; vertical-align: top;
+  border: 1px solid var(--prep-border, #dde1e8);
+  color: var(--prep-text, #1a1a2e); line-height: 1.4;
+}
+.prep-fam-cell {
+  padding: 0.3rem 0.5rem; vertical-align: top;
+  border: 1px solid var(--prep-border, #dde1e8);
+}
+.prep-fam-cell--orphan {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  background: #fafafa; color: #9ca3af; padding: 2px 0;
+}
+.prep-fam-orphan-dash { font-size: 1rem; color: #d1d5db; }
+
+.prep-fam-link-item { padding: 2px 0; }
+.prep-fam-link--accepted { background: #f0fdf4; border-radius: 3px; padding: 2px 4px; }
+.prep-fam-link--rejected { background: #fff1f2; border-radius: 3px; padding: 2px 4px; }
+.prep-fam-cell-text  { font-size: 0.81rem; color: #1e293b; line-height: 1.35; margin-bottom: 2px; }
+.prep-fam-cell-actions { display: flex; gap: 3px; flex-wrap: wrap; }
+.prep-fam-cell-foot  { margin-top: 4px; border-top: 1px dashed #e5e7eb; padding-top: 3px; }
+
 /* ── Responsive ── */
 @container (max-width: 640px) {
   .prep-align-bitext-head,

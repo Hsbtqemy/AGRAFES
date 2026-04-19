@@ -72,19 +72,7 @@ def import_docx_paragraphs(
         __import__("datetime").timezone.utc
     ).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    cur = conn.execute(
-        """
-        INSERT INTO documents
-            (title, language, doc_role, resource_type, meta_json, source_path, source_hash, created_at)
-        VALUES (?, ?, ?, ?, NULL, ?, ?, ?)
-        """,
-        (doc_title, language, doc_role, resource_type, str(path), source_hash, utcnow),
-    )
-    doc_id = cur.lastrowid
-    conn.commit()
-
-    log.info("Created document doc_id=%d title=%r", doc_id, doc_title)
-
+    # Parse DOCX before opening the transaction (pure I/O, no DB writes yet)
     document = docx.Document(str(path))
 
     # First pass: collect paragraphs and detect headings
@@ -102,17 +90,8 @@ def import_docx_paragraphs(
                 heading_level = 1
         para_data.append((text_raw, heading_level))
 
-    has_headings = any(level is not None for _, level in para_data)
-    if has_headings:
-        conn.execute(
-            """
-            INSERT OR IGNORE INTO unit_roles (name, label, color, icon, sort_order, category)
-            VALUES ('intertitre', 'Intertitre', '#9333ea', '§', 0, 'structure')
-            """
-        )
-        conn.commit()
-
-    units_to_insert: list[tuple] = []
+    # (unit_type, n, ext_id, text_raw, text_norm, meta, unit_role) — doc_id added after INSERT
+    units_parsed: list[tuple] = []
     n = 0
     for text_raw, heading_level in para_data:
         n += 1
@@ -125,28 +104,46 @@ def import_docx_paragraphs(
             meta_dict["heading_level"] = heading_level
         meta = json.dumps(meta_dict) if meta_dict else None
         unit_role = "intertitre" if heading_level is not None else None
-        units_to_insert.append((doc_id, "line", n, n, text_raw, text_norm, meta, unit_role))
+        units_parsed.append(("line", n, n, text_raw, text_norm, meta, unit_role))
         log.debug("Para n=%d type=line role=%s", n, unit_role)
 
+    # Single transaction: document record + units
     try:
+        cur = conn.execute(
+            """
+            INSERT INTO documents
+                (title, language, doc_role, resource_type, meta_json, source_path, source_hash, created_at)
+            VALUES (?, ?, ?, ?, NULL, ?, ?, ?)
+            """,
+            (doc_title, language, doc_role, resource_type, str(path), source_hash, utcnow),
+        )
+        doc_id = cur.lastrowid
+        log.info("Created document doc_id=%d title=%r", doc_id, doc_title)
+        has_headings = any(level is not None for _, level in para_data)
+        if has_headings:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO unit_roles (name, label, color, icon, sort_order, category)
+                VALUES ('intertitre', 'Intertitre', '#9333ea', '§', 0, 'structure')
+                """
+            )
         conn.executemany(
             """
             INSERT INTO units (doc_id, unit_type, n, external_id, text_raw, text_norm, meta_json, unit_role)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            units_to_insert,
+            [(doc_id, *row) for row in units_parsed],
         )
         conn.commit()
     except Exception:
-        conn.execute("DELETE FROM documents WHERE doc_id = ?", (doc_id,))
-        conn.commit()
+        conn.rollback()
         raise
 
     n_headings = sum(1 for _, level in para_data if level is not None)
     report = ImportReport(
         doc_id=doc_id,
-        units_total=len(units_to_insert),
-        units_line=len(units_to_insert),
+        units_total=len(units_parsed),
+        units_line=len(units_parsed),
         units_structure=0,
         duplicates=[],
         holes=[],

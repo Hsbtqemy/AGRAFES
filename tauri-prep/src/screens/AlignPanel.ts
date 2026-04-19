@@ -98,6 +98,16 @@ export class AlignPanel {
   private _orphanPivots: UnitRecord[] = [];
   private _orphansLoaded = false;
 
+  // Family review mode state
+  private _familyMode = false;
+  private _familyId: number | null = null;
+  private _familyAudits = new Map<number, AlignLinkRecord[]>(); // targetDocId → links
+  private _familyOffsets = new Map<number, number>();           // targetDocId → next offset
+  private _familyAuditHasMore = false;
+  private _familyLoading = false;
+  // Which target doc the active picker is targeting (needed in family mode)
+  private _retargetTargetDocId: number | null = null;
+
   constructor(
     conn: () => Conn | null,
     getDocs: () => DocumentRecord[],
@@ -203,6 +213,7 @@ export class AlignPanel {
           </select>
           <button id="align-family-refresh" class="btn btn-sm btn-ghost" title="Rafra&#238;chir">&#8635;</button>
           <button id="align-family-run-btn" class="btn btn-sm prep-btn-warning" disabled>&#9889; Aligner famille</button>
+          <button id="align-family-review-btn" class="btn btn-sm btn-secondary" disabled>&#9998; R&#233;viser famille</button>
         </div>
       </label>
       <div id="align-family-stats" class="prep-align-family-stats"></div>
@@ -282,6 +293,18 @@ export class AlignPanel {
     <div id="align-orphan-body"></div>
   </div>
 
+  <!-- ═══ Vue famille multi-colonnes ═══ -->
+  <div id="align-family-bitext" class="prep-fam-bitext" style="display:none">
+    <div class="prep-fam-bitext-head">
+      <span id="align-family-bitext-title" class="prep-fam-bitext-title"></span>
+      <div class="prep-fam-bitext-actions">
+        <button id="align-family-more-btn" class="btn btn-sm btn-secondary" style="display:none">Charger plus</button>
+        <button id="align-family-close-btn" class="btn btn-sm btn-ghost" title="Fermer la vue famille">&#10005; Fermer</button>
+      </div>
+    </div>
+    <div id="align-family-bitext-body"></div>
+  </div>
+
   <!-- ═══ Barre d'actions en lot ═══ -->
   <div id="align-batch-bar" class="prep-align-batch-bar" style="display:none">
     <span id="align-batch-count">0 s&#233;lectionn&#233;(s)</span>
@@ -350,6 +373,14 @@ export class AlignPanel {
       void this._loadFamilies(el));
     el.querySelector("#align-family-run-btn")?.addEventListener("click", () =>
       this._askConfirmFamily(el));
+    el.querySelector("#align-family-review-btn")?.addEventListener("click", () =>
+      void this._enterFamilyReview(el));
+    el.querySelector("#align-family-close-btn")?.addEventListener("click", () =>
+      this._exitFamilyReview(el));
+    el.querySelector("#align-family-more-btn")?.addEventListener("click", () => {
+      const fam = this._families.find(f => f.family_id === this._familyId);
+      if (fam) void this._loadFamilyAuditPage(el, fam, true);
+    });
 
     // Confirm/cancel
     el.querySelector("#align-confirm-ok")?.addEventListener("click", () => {
@@ -505,6 +536,313 @@ export class AlignPanel {
     this._updateRunBtnState(el);
   }
 
+  // ─── Mode révision famille ───────────────────────────────────────────────────
+
+  private async _enterFamilyReview(el: HTMLElement): Promise<void> {
+    const btn = el.querySelector<HTMLButtonElement>("#align-family-review-btn");
+    if (btn?.disabled) return;
+    const famId = parseInt(el.querySelector<HTMLSelectElement>("#align-family-sel")?.value ?? "");
+    if (isNaN(famId)) return;
+    const conn = this._conn();
+    if (!conn) return;
+    const fam = this._families.find(f => f.family_id === famId);
+    if (!fam) return;
+
+    if (btn) btn.disabled = true;
+    this._familyMode = true;
+    this._familyId = famId;
+    this._familyAudits.clear();
+    this._familyOffsets.clear();
+    this._familyAuditHasMore = false;
+    this._familyLoading = false;
+    this._retargetActive = null;
+    this._retargetCandidates = null;
+    this._retargetTargetDocId = null;
+
+    const normalBitext = el.querySelector<HTMLElement>("#align-bitext");
+    const familyBitext = el.querySelector<HTMLElement>("#align-family-bitext");
+    const orphanSection = el.querySelector<HTMLElement>("#align-orphan-section");
+    const batchBar = el.querySelector<HTMLElement>("#align-batch-bar");
+    if (normalBitext) normalBitext.style.display = "none";
+    if (orphanSection) orphanSection.style.display = "none";
+    if (batchBar) batchBar.style.display = "none";
+    this._selectedLinkIds.clear();
+    if (familyBitext) familyBitext.style.display = "";
+
+    const titleEl = el.querySelector<HTMLElement>("#align-family-bitext-title");
+    if (titleEl) {
+      const label = fam.parent?.title ?? `Famille #${famId}`;
+      const n = fam.children.length;
+      titleEl.textContent = `Révision famille : ${label} (${n} enfant${n > 1 ? "s" : ""})`;
+    }
+
+    await this._loadFamilyAuditPage(el, fam, false);
+  }
+
+  private _exitFamilyReview(el: HTMLElement): void {
+    this._familyMode = false;
+    this._familyId = null;
+    this._familyAudits.clear();
+    this._familyOffsets.clear();
+    this._familyLoading = false;
+    this._retargetActive = null;
+    this._retargetCandidates = null;
+    this._retargetTargetDocId = null;
+    // Re-enable review button for the still-selected family
+    this._updateRunBtnState(el);
+
+    const normalBitext = el.querySelector<HTMLElement>("#align-bitext");
+    const familyBitext = el.querySelector<HTMLElement>("#align-family-bitext");
+    if (familyBitext) familyBitext.style.display = "none";
+    if (normalBitext) normalBitext.style.display = "";
+  }
+
+  private async _loadFamilyAuditPage(el: HTMLElement, fam: FamilyRecord, append: boolean): Promise<void> {
+    if (this._familyLoading) return;
+    const conn = this._conn();
+    if (!conn) return;
+    this._familyLoading = true;
+    const moreBtn = el.querySelector<HTMLButtonElement>("#align-family-more-btn");
+    if (moreBtn) moreBtn.disabled = true;
+
+    const pivotId = fam.family_id;
+    const childIds = fam.children.map(c => c.doc_id);
+    const bodyEl = el.querySelector<HTMLElement>("#align-family-bitext-body");
+    if (!append && bodyEl) bodyEl.innerHTML = `<p class="empty-hint">&#8230; chargement</p>`;
+    if (!append) this._familyOffsets.clear();
+
+    try {
+      const responses = await Promise.all(
+        childIds.map(cid => alignAudit(conn, {
+          pivot_doc_id: pivotId,
+          target_doc_id: cid,
+          limit: 50,
+          offset: this._familyOffsets.get(cid) ?? 0,
+        }))
+      );
+      let anyHasMore = false;
+      childIds.forEach((cid, i) => {
+        const links = responses[i].links ?? [];
+        const prev = this._familyOffsets.get(cid) ?? 0;
+        this._familyOffsets.set(cid, prev + links.length);
+        if (append) {
+          this._familyAudits.set(cid, [...(this._familyAudits.get(cid) ?? []), ...links]);
+        } else {
+          this._familyAudits.set(cid, links);
+        }
+        if (responses[i].has_more) anyHasMore = true;
+      });
+      this._familyAuditHasMore = anyHasMore;
+      this._renderFamilyBitext(el, fam);
+    } catch (err) {
+      if (bodyEl) bodyEl.innerHTML = `<p class="empty-hint">Erreur : ${_esc(err instanceof Error ? err.message : String(err))}</p>`;
+      this._cb.log(`✗ Chargement famille : ${err instanceof Error ? err.message : String(err)}`, true);
+    } finally {
+      this._familyLoading = false;
+      if (moreBtn) { moreBtn.disabled = false; moreBtn.style.display = this._familyAuditHasMore ? "" : "none"; }
+    }
+  }
+
+  private _buildFamilyRows(fam: FamilyRecord): Array<{
+    pivot_unit_id: number;
+    external_id: number | null;
+    pivot_text: string;
+    cells: Map<number, AlignLinkRecord[]>;
+  }> {
+    const childIds = fam.children.map(c => c.doc_id);
+    const orderedPivotIds: number[] = [];
+    const seenPivotIds = new Set<number>();
+    for (const cid of childIds) {
+      for (const lk of this._familyAudits.get(cid) ?? []) {
+        if (!seenPivotIds.has(lk.pivot_unit_id)) {
+          orderedPivotIds.push(lk.pivot_unit_id);
+          seenPivotIds.add(lk.pivot_unit_id);
+        }
+      }
+    }
+    return orderedPivotIds.map(pid => {
+      let pivot_text = "";
+      let external_id: number | null = null;
+      const cells = new Map<number, AlignLinkRecord[]>();
+      for (const cid of childIds) {
+        const links = (this._familyAudits.get(cid) ?? []).filter(l => l.pivot_unit_id === pid);
+        cells.set(cid, links);
+        if (!pivot_text && links.length > 0) {
+          pivot_text = links[0].pivot_text ?? "";
+          external_id = links[0].external_id ?? null;
+        }
+      }
+      return { pivot_unit_id: pid, external_id, pivot_text, cells };
+    });
+  }
+
+  private _renderFamilyBitext(el: HTMLElement, fam: FamilyRecord): void {
+    const bodyEl = el.querySelector<HTMLElement>("#align-family-bitext-body");
+    if (!bodyEl) return;
+    const childIds = fam.children.map(c => c.doc_id);
+    const docs = this._getDocs();
+    const rows = this._buildFamilyRows(fam);
+
+    if (rows.length === 0) {
+      bodyEl.innerHTML = `<p class="empty-hint">Aucun lien charg&#233;. Lancez d&apos;abord un alignement automatique.</p>`;
+      const moreBtn = el.querySelector<HTMLElement>("#align-family-more-btn");
+      if (moreBtn) moreBtn.style.display = "none";
+      return;
+    }
+
+    const pivotDoc = docs.find(d => d.doc_id === fam.family_id);
+    const childHeaders = childIds.map(cid => {
+      const doc = docs.find(d => d.doc_id === cid);
+      return `<th class="prep-fam-col-child">${_esc(_trunc(doc?.title ?? `#${cid}`, 24))}<br>
+        <span class="prep-fam-col-lang">${_esc(doc?.language ?? "?")}</span></th>`;
+    }).join("");
+
+    const rowsHtml = rows.map(row => {
+      const extId = row.external_id != null
+        ? `<span class="prep-align-row-extid">[§${_esc(String(row.external_id))}]</span> ` : "";
+
+      const cellsHtml = childIds.map(cid => {
+        const links = row.cells.get(cid) ?? [];
+
+        if (links.length === 0) {
+          const isCreateOpen = this._retargetActive?.pivotUnitId === row.pivot_unit_id
+            && this._retargetActive.mode === "create"
+            && this._retargetTargetDocId === cid;
+          return `<td class="prep-fam-cell">
+            <div class="prep-fam-cell--orphan">
+              <span class="prep-fam-orphan-dash">&#8212;</span>
+              <button class="btn btn-sm btn-ghost prep-fam-orphan-link-btn${isCreateOpen ? " active" : ""}"
+                data-pivot-uid="${row.pivot_unit_id}" data-target-doc="${cid}" title="Cr&#233;er un lien">&#8629; Lier</button>
+            </div>
+            ${isCreateOpen ? this._pickerRowHtml(row.pivot_unit_id, null, row.pivot_text) : ""}
+          </td>`;
+        }
+
+        const isAddOpen = this._retargetActive?.pivotUnitId === row.pivot_unit_id
+          && this._retargetActive.mode === "add"
+          && this._retargetTargetDocId === cid;
+
+        const linksHtml = links.map(lk => {
+          const isRetargetOpen = this._retargetActive?.linkId === lk.link_id
+            && this._retargetActive.mode === "retarget";
+          const statusCls = lk.status === "accepted" ? "prep-fam-link--accepted"
+            : lk.status === "rejected" ? "prep-fam-link--rejected" : "";
+          return `<div class="prep-fam-link-item ${statusCls}">
+            <div class="prep-fam-cell-text">${_esc(_trunc(lk.target_text ?? "", 100))}</div>
+            <div class="prep-fam-cell-actions">
+              <button class="prep-align-act-btn prep-align-act-accept${lk.status === "accepted" ? " active" : ""}" data-link-id="${lk.link_id}" title="Accepter">&#10003;</button>
+              <button class="prep-align-act-btn prep-align-act-reject${lk.status === "rejected" ? " active" : ""}" data-link-id="${lk.link_id}" title="Rejeter">&#10007;</button>
+              <button class="prep-align-act-btn prep-align-act-unreview${lk.status === null ? " active" : ""}" data-link-id="${lk.link_id}" title="Non r&#233;vis&#233;">?</button>
+              <button class="prep-align-act-btn prep-align-act-delete" data-link-id="${lk.link_id}" title="Supprimer">&#128465;</button>
+              <button class="prep-align-act-btn prep-align-act-retarget${isRetargetOpen ? " active" : ""}" data-link-id="${lk.link_id}" data-pivot-uid="${lk.pivot_unit_id}" data-target-doc="${cid}" title="Changer la cible">&#9998;</button>
+            </div>
+            ${isRetargetOpen ? this._pickerRowHtml(lk.pivot_unit_id, lk.link_id, lk.pivot_text ?? "") : ""}
+          </div>`;
+        }).join("");
+
+        return `<td class="prep-fam-cell">
+          ${linksHtml}
+          <div class="prep-fam-cell-foot">
+            <button class="prep-align-act-btn prep-align-act-addtarget${isAddOpen ? " active" : ""}"
+              data-pivot-uid="${row.pivot_unit_id}" data-target-doc="${cid}" title="Ajouter une cible">&#43;</button>
+          </div>
+          ${isAddOpen ? this._pickerRowHtml(row.pivot_unit_id, null, row.pivot_text) : ""}
+        </td>`;
+      }).join("");
+
+      return `<tr data-pivot-uid="${row.pivot_unit_id}">
+        <td class="prep-fam-cell-pivot">${extId}${_esc(row.pivot_text)}</td>
+        ${cellsHtml}
+      </tr>`;
+    }).join("");
+
+    bodyEl.innerHTML = `<table class="prep-fam-table">
+      <thead><tr>
+        <th class="prep-fam-col-pivot">${_esc(_trunc(pivotDoc?.title ?? "Pivot", 24))}</th>
+        ${childHeaders}
+      </tr></thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>`;
+
+    this._bindFamilyBitextEvents(el, bodyEl, fam);
+  }
+
+  private _bindFamilyBitextEvents(el: HTMLElement, bodyEl: HTMLElement, fam: FamilyRecord): void {
+    bodyEl.querySelectorAll<HTMLButtonElement>(".prep-align-act-accept").forEach(btn =>
+      btn.addEventListener("click", () => void this._setLinkStatus(el, parseInt(btn.dataset.linkId!), "accepted")));
+    bodyEl.querySelectorAll<HTMLButtonElement>(".prep-align-act-reject").forEach(btn =>
+      btn.addEventListener("click", () => void this._setLinkStatus(el, parseInt(btn.dataset.linkId!), "rejected")));
+    bodyEl.querySelectorAll<HTMLButtonElement>(".prep-align-act-unreview").forEach(btn =>
+      btn.addEventListener("click", () => void this._setLinkStatus(el, parseInt(btn.dataset.linkId!), null)));
+    bodyEl.querySelectorAll<HTMLButtonElement>(".prep-align-act-delete").forEach(btn =>
+      btn.addEventListener("click", () => void this._deleteLink(el, parseInt(btn.dataset.linkId!))));
+
+    bodyEl.querySelectorAll<HTMLButtonElement>(".prep-align-act-retarget").forEach(btn =>
+      btn.addEventListener("click", () => {
+        const linkId = parseInt(btn.dataset.linkId!);
+        const pivotUnitId = parseInt(btn.dataset.pivotUid!);
+        const targetDoc = parseInt(btn.dataset.targetDoc!);
+        if (this._retargetActive?.linkId === linkId && this._retargetActive.mode === "retarget") {
+          this._retargetActive = null; this._retargetCandidates = null; this._retargetTargetDocId = null;
+          this._renderFamilyBitext(el, fam);
+        } else {
+          void this._activateRetarget(el, linkId, pivotUnitId, "retarget", targetDoc);
+        }
+      }));
+
+    bodyEl.querySelectorAll<HTMLButtonElement>(".prep-align-act-addtarget").forEach(btn =>
+      btn.addEventListener("click", () => {
+        const pivotUnitId = parseInt(btn.dataset.pivotUid!);
+        const targetDoc = parseInt(btn.dataset.targetDoc!);
+        if (this._retargetActive?.pivotUnitId === pivotUnitId && this._retargetActive.mode === "add" && this._retargetTargetDocId === targetDoc) {
+          this._retargetActive = null; this._retargetCandidates = null; this._retargetTargetDocId = null;
+          this._renderFamilyBitext(el, fam);
+        } else {
+          void this._activateRetarget(el, null, pivotUnitId, "add", targetDoc);
+        }
+      }));
+
+    bodyEl.querySelectorAll<HTMLButtonElement>(".prep-fam-orphan-link-btn").forEach(btn =>
+      btn.addEventListener("click", () => {
+        const pivotUnitId = parseInt(btn.dataset.pivotUid!);
+        const targetDoc = parseInt(btn.dataset.targetDoc!);
+        if (this._retargetActive?.pivotUnitId === pivotUnitId && this._retargetActive.mode === "create" && this._retargetTargetDocId === targetDoc) {
+          this._retargetActive = null; this._retargetCandidates = null; this._retargetTargetDocId = null;
+          this._renderFamilyBitext(el, fam);
+        } else {
+          void this._activateRetarget(el, null, pivotUnitId, "create", targetDoc);
+        }
+      }));
+
+    // Picker events inside family bitext (cancel + candidates)
+    bodyEl.querySelectorAll<HTMLButtonElement>(".prep-align-picker-cancel").forEach(btn =>
+      btn.addEventListener("click", () => {
+        this._retargetActive = null; this._retargetCandidates = null; this._retargetTargetDocId = null;
+        this._renderFamilyBitext(el, fam);
+      }));
+    bodyEl.querySelectorAll<HTMLElement>(".prep-align-picker-candidates").forEach(candsEl =>
+      this._bindPickerCandidateEvents(el, candsEl));
+  }
+
+  /** Dispatcher: re-render whichever bitext view is active. */
+  private _renderActiveBitext(el: HTMLElement): void {
+    if (this._familyMode) {
+      const fam = this._families.find(f => f.family_id === this._familyId);
+      if (fam) this._renderFamilyBitext(el, fam);
+    } else {
+      this._renderBitextBody(el);
+    }
+  }
+
+  /** Find a link across both normal audit and all family audits. */
+  private _findLinkInFamilyAudits(linkId: number): AlignLinkRecord | undefined {
+    for (const links of this._familyAudits.values()) {
+      const found = links.find(l => l.link_id === linkId);
+      if (found) return found;
+    }
+    return undefined;
+  }
+
   // ─── Sélects paire pivot/cible ──────────────────────────────────────────────
 
   private _populatePairSelects(el: HTMLElement): void {
@@ -535,8 +873,11 @@ export class AlignPanel {
     if (runBtn) runBtn.disabled = !pairOk;
     if (recalcBtn) recalcBtn.disabled = !pairOk;
     if (loadBtn) loadBtn.disabled = !pairOk;
+    const famVal = el.querySelector<HTMLSelectElement>("#align-family-sel")?.value ?? "";
     const famRunBtn = el.querySelector<HTMLButtonElement>("#align-family-run-btn");
-    if (famRunBtn) famRunBtn.disabled = !el.querySelector<HTMLSelectElement>("#align-family-sel")?.value;
+    if (famRunBtn) famRunBtn.disabled = !famVal;
+    const famReviewBtn = el.querySelector<HTMLButtonElement>("#align-family-review-btn");
+    if (famReviewBtn) famReviewBtn.disabled = !famVal;
     // Orphan toggle only valid after an audit load for the current pair
     const orphanBtn = el.querySelector<HTMLButtonElement>("#align-orphan-toggle");
     if (orphanBtn && !pairOk) orphanBtn.disabled = true;
@@ -1054,10 +1395,11 @@ export class AlignPanel {
     if (!conn) return;
     try {
       await updateAlignLinkStatus(conn, { link_id: linkId, status });
-      const lk = this._auditLinks.find(l => l.link_id === linkId);
+      const lk = this._auditLinks.find(l => l.link_id === linkId)
+        ?? this._findLinkInFamilyAudits(linkId);
       if (lk) lk.status = status;
-      this._renderBitextBody(el);
-      this._updateTopbarKpi(el);
+      this._renderActiveBitext(el);
+      if (!this._familyMode) this._updateTopbarKpi(el);
     } catch (err) {
       this._cb.log(`✗ Statut lien : ${err instanceof Error ? err.message : String(err)}`, true);
     }
@@ -1068,10 +1410,16 @@ export class AlignPanel {
     if (!conn) return;
     try {
       await deleteAlignLink(conn, { link_id: linkId });
-      this._auditLinks = this._auditLinks.filter(l => l.link_id !== linkId);
-      this._selectedLinkIds.delete(linkId);
-      this._renderBitextBody(el);
-      this._updateTopbarKpi(el);
+      if (this._familyMode) {
+        for (const [cid, links] of this._familyAudits) {
+          this._familyAudits.set(cid, links.filter(l => l.link_id !== linkId));
+        }
+      } else {
+        this._auditLinks = this._auditLinks.filter(l => l.link_id !== linkId);
+        this._selectedLinkIds.delete(linkId);
+        this._updateTopbarKpi(el);
+      }
+      this._renderActiveBitext(el);
     } catch (err) {
       this._cb.log(`✗ Suppression lien : ${err instanceof Error ? err.message : String(err)}`, true);
     }
@@ -1083,8 +1431,12 @@ export class AlignPanel {
   private _pickerRowHtml(pivotUnitId: number, linkId: number | null, pivotText: string): string {
     const candidates = this._retargetCandidates;
     // target_unit_ids already linked to this pivot (excluding the link being retargeted)
+    // In family mode, only look within the active target doc's audit.
+    const sourceLinks = this._familyMode && this._retargetTargetDocId !== null
+      ? (this._familyAudits.get(this._retargetTargetDocId) ?? [])
+      : this._auditLinks;
     const alreadyLinked = new Set(
-      this._auditLinks
+      sourceLinks
         .filter(l => l.pivot_unit_id === pivotUnitId && l.link_id !== linkId)
         .map(l => l.target_unit_id)
     );
@@ -1115,17 +1467,25 @@ export class AlignPanel {
     </div>`;
   }
 
-  /** Activate the retarget/create/add picker for a given pivot unit. Fetches candidates async. */
-  private async _activateRetarget(el: HTMLElement, linkId: number | null, pivotUnitId: number, mode: "retarget" | "create" | "add"): Promise<void> {
+  /** Activate the retarget/create/add picker for a given pivot unit. Fetches candidates async.
+   *  In family mode, pass targetDocId explicitly (the column's target doc).
+   */
+  private async _activateRetarget(el: HTMLElement, linkId: number | null, pivotUnitId: number, mode: "retarget" | "create" | "add", targetDocId?: number): Promise<void> {
     const conn = this._conn();
     if (!conn) return;
-    const targetId = parseInt(el.querySelector<HTMLSelectElement>("#align-target-sel")?.value ?? "");
+    const targetId = targetDocId ?? parseInt(el.querySelector<HTMLSelectElement>("#align-target-sel")?.value ?? "");
     if (isNaN(targetId)) return;
 
     this._retargetActive = { pivotUnitId, linkId, mode };
+    this._retargetTargetDocId = targetDocId ?? null;
     this._retargetCandidates = null; // trigger loading state
-    this._renderBitextBody(el);
-    if (mode === "create") this._renderOrphanPivots(el);
+    if (this._familyMode) {
+      const fam = this._families.find(f => f.family_id === this._familyId);
+      if (fam) this._renderFamilyBitext(el, fam);
+    } else {
+      this._renderBitextBody(el);
+      if (mode === "create") this._renderOrphanPivots(el);
+    }
 
     try {
       const res = await retargetCandidates(conn, { pivot_unit_id: pivotUnitId, target_doc_id: targetId, limit: 8 });
@@ -1138,11 +1498,13 @@ export class AlignPanel {
     if (this._retargetActive?.pivotUnitId !== pivotUnitId) return;
     const candsEl = el.querySelector<HTMLElement>(`#picker-cands-${pivotUnitId}`);
     if (candsEl) {
-      // Re-use _pickerRowHtml logic isn't possible here (different container), so inline:
       const candidates = this._retargetCandidates;
       const active = this._retargetActive;
+      const sourceLinks = this._familyMode && this._retargetTargetDocId !== null
+        ? (this._familyAudits.get(this._retargetTargetDocId) ?? [])
+        : this._auditLinks;
       const alreadyLinked = new Set(
-        this._auditLinks
+        sourceLinks
           .filter(l => l.pivot_unit_id === pivotUnitId && l.link_id !== (active?.linkId ?? null))
           .map(l => l.target_unit_id)
       );
@@ -1181,7 +1543,8 @@ export class AlignPanel {
     try {
       if (mode === "retarget" && linkId !== null) {
         const res = await retargetAlignLink(conn, { link_id: linkId, new_target_unit_id: targetUnitId });
-        const lk = this._auditLinks.find(l => l.link_id === linkId);
+        const lk = this._auditLinks.find(l => l.link_id === linkId)
+          ?? this._findLinkInFamilyAudits(linkId);
         if (lk) {
           const cand = this._retargetCandidates?.find(c => c.target_unit_id === targetUnitId);
           lk.target_unit_id = res.new_target_unit_id;
@@ -1191,10 +1554,12 @@ export class AlignPanel {
       } else if (mode === "create" || mode === "add") {
         const res = await createAlignLink(conn, { pivot_unit_id: pivotUnitId, target_unit_id: targetUnitId });
         const cand = this._retargetCandidates?.find(c => c.target_unit_id === targetUnitId);
-        // For "create" (orphan), find the pivot text from orphan list; for "add", find from existing links
-        const pivotText = mode === "create"
-          ? (this._orphanPivots.find(u => u.unit_id === pivotUnitId)?.text_norm ?? "")
-          : (this._auditLinks.find(l => l.pivot_unit_id === pivotUnitId)?.pivot_text ?? "");
+        const famForPivot = this._familyMode ? this._families.find(f => f.family_id === this._familyId) : undefined;
+        const pivotText = famForPivot
+          ? (this._buildFamilyRows(famForPivot).find(r => r.pivot_unit_id === pivotUnitId)?.pivot_text ?? "")
+          : mode === "create"
+            ? (this._orphanPivots.find(u => u.unit_id === pivotUnitId)?.text_norm ?? "")
+            : (this._auditLinks.find(l => l.pivot_unit_id === pivotUnitId)?.pivot_text ?? "");
         const newLink: AlignLinkRecord = {
           link_id: res.link_id,
           pivot_unit_id: pivotUnitId,
@@ -1204,9 +1569,14 @@ export class AlignPanel {
           target_text: cand?.target_text ?? "",
           status: res.status,
         };
-        this._auditLinks.push(newLink);
-        if (mode === "create") {
-          this._orphanPivots = this._orphanPivots.filter(u => u.unit_id !== pivotUnitId);
+        if (this._familyMode && this._retargetTargetDocId !== null) {
+          const existing = this._familyAudits.get(this._retargetTargetDocId) ?? [];
+          this._familyAudits.set(this._retargetTargetDocId, [...existing, newLink]);
+        } else {
+          this._auditLinks.push(newLink);
+          if (mode === "create") {
+            this._orphanPivots = this._orphanPivots.filter(u => u.unit_id !== pivotUnitId);
+          }
         }
         const hint = mode === "add" ? " — acceptez les deux liens pour valider l'alignement multiple" : "";
         this._cb.toast(`✓ Lien créé${hint}`);
@@ -1216,9 +1586,12 @@ export class AlignPanel {
     }
     this._retargetActive = null;
     this._retargetCandidates = null;
-    this._renderBitextBody(el);
-    this._renderOrphanPivots(el);
-    this._updateTopbarKpi(el);
+    this._retargetTargetDocId = null;
+    this._renderActiveBitext(el);
+    if (!this._familyMode) {
+      this._renderOrphanPivots(el);
+      this._updateTopbarKpi(el);
+    }
   }
 
   /** Bind picker row cancel + candidate buttons after bitext re-render. */
@@ -1403,6 +1776,12 @@ export class AlignPanel {
     this._pendingConfirm = null;
     this._retargetActive = null;
     this._retargetCandidates = null;
+    this._retargetTargetDocId = null;
+    this._familyMode = false;
+    this._familyId = null;
+    this._familyAudits.clear();
+    this._familyOffsets.clear();
+    this._familyLoading = false;
     this._el = null;
   }
 

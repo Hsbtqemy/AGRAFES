@@ -177,26 +177,11 @@ def import_tei(
         __import__("datetime").timezone.utc
     ).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    cur = conn.execute(
-        """
-        INSERT INTO documents
-            (title, language, doc_role, resource_type, meta_json, source_path, source_hash, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            tei_title, tei_lang, doc_role, resource_type,
-            json.dumps({"tei_unit": unit_element}),
-            str(path), source_hash, utcnow,
-        ),
-    )
-    doc_id = cur.lastrowid
-    conn.commit()
-    log.info("Created document doc_id=%d title=%r lang=%r", doc_id, tei_title, tei_lang)
-
-    # Extract elements
+    # Extract elements (in-memory XML, no I/O) — build units_parsed before opening transaction
     elements = _iter_body_elements(root, unit_element)
     external_ids: list[int] = []
-    units_to_insert: list[tuple] = []
+    # (unit_type, n, ext_id, text_raw, text_norm, meta) — doc_id added after INSERT
+    units_parsed: list[tuple] = []
     n = 0
 
     for el in elements:
@@ -220,31 +205,43 @@ def import_tei(
             ext_id = n  # fallback to sequential position
 
         external_ids.append(ext_id)
-        units_to_insert.append(
-            (doc_id, "line", n, ext_id, text_raw, text_norm, meta)
-        )
+        units_parsed.append(("line", n, ext_id, text_raw, text_norm, meta))
         log.debug("TEI %s n=%d ext_id=%d", unit_element, n, ext_id)
 
+    # Single transaction: document record + units
     try:
+        cur = conn.execute(
+            """
+            INSERT INTO documents
+                (title, language, doc_role, resource_type, meta_json, source_path, source_hash, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                tei_title, tei_lang, doc_role, resource_type,
+                json.dumps({"tei_unit": unit_element}),
+                str(path), source_hash, utcnow,
+            ),
+        )
+        doc_id = cur.lastrowid
+        log.info("Created document doc_id=%d title=%r lang=%r", doc_id, tei_title, tei_lang)
         conn.executemany(
             """
             INSERT INTO units (doc_id, unit_type, n, external_id, text_raw, text_norm, meta_json)
             VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            units_to_insert,
+            [(doc_id, *row) for row in units_parsed],
         )
         conn.commit()
     except Exception:
-        conn.execute("DELETE FROM documents WHERE doc_id = ?", (doc_id,))
-        conn.commit()
+        conn.rollback()
         raise
 
     duplicates, holes, non_monotonic = _analyze_external_ids(external_ids)
 
     report = ImportReport(
         doc_id=doc_id,
-        units_total=len(units_to_insert),
-        units_line=len(units_to_insert),
+        units_total=len(units_parsed),
+        units_line=len(units_parsed),
         units_structure=0,
         duplicates=duplicates,
         holes=holes,

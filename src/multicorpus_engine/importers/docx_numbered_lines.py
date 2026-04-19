@@ -124,25 +124,12 @@ def import_docx_numbered_lines(
         __import__("datetime").timezone.utc
     ).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    # Insert document record
-    cur = conn.execute(
-        """
-        INSERT INTO documents
-            (title, language, doc_role, resource_type, meta_json, source_path, source_hash, created_at)
-        VALUES (?, ?, ?, ?, NULL, ?, ?, ?)
-        """,
-        (doc_title, language, doc_role, resource_type, str(path), source_hash, utcnow),
-    )
-    doc_id = cur.lastrowid
-    conn.commit()
-
-    log.info("Created document doc_id=%d title=%r", doc_id, doc_title)
-
-    # Parse DOCX
+    # Parse DOCX before opening the transaction (pure I/O, no DB writes yet)
     document = docx.Document(str(path))
 
     external_ids: list[int] = []
-    units_to_insert: list[tuple] = []
+    # (unit_type, n, ext_id, text_raw, text_norm, meta) — doc_id added after INSERT
+    units_parsed: list[tuple] = []
 
     n = 0
     for para in document.paragraphs:
@@ -162,34 +149,37 @@ def import_docx_numbered_lines(
             text_norm = normalize(text_raw)
             sep_count = count_sep(text_raw)
             meta = json.dumps({"sep_count": sep_count}) if sep_count > 0 else None
-            unit_type = "line"
             external_ids.append(ext_id)
-            units_to_insert.append(
-                (doc_id, unit_type, n, ext_id, text_raw, text_norm, meta)
-            )
+            units_parsed.append(("line", n, ext_id, text_raw, text_norm, meta))
             log.debug("Para n=%d ext_id=%d type=line", n, ext_id)
         else:
             text_raw = rich
             text_norm = normalize(text_raw)
-            unit_type = "structure"
-            units_to_insert.append(
-                (doc_id, unit_type, n, None, text_raw, text_norm, None)
-            )
+            units_parsed.append(("structure", n, None, text_raw, text_norm, None))
             log.debug("Para n=%d type=structure", n)
 
-    # Bulk insert units
+    # Single transaction: document record + units
     try:
+        cur = conn.execute(
+            """
+            INSERT INTO documents
+                (title, language, doc_role, resource_type, meta_json, source_path, source_hash, created_at)
+            VALUES (?, ?, ?, ?, NULL, ?, ?, ?)
+            """,
+            (doc_title, language, doc_role, resource_type, str(path), source_hash, utcnow),
+        )
+        doc_id = cur.lastrowid
+        log.info("Created document doc_id=%d title=%r", doc_id, doc_title)
         conn.executemany(
             """
             INSERT INTO units (doc_id, unit_type, n, external_id, text_raw, text_norm, meta_json)
             VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            units_to_insert,
+            [(doc_id, *row) for row in units_parsed],
         )
         conn.commit()
     except Exception:
-        conn.execute("DELETE FROM documents WHERE doc_id = ?", (doc_id,))
-        conn.commit()
+        conn.rollback()
         raise
 
     # Build diagnostics
@@ -197,9 +187,9 @@ def import_docx_numbered_lines(
 
     report = ImportReport(
         doc_id=doc_id,
-        units_total=len(units_to_insert),
+        units_total=len(units_parsed),
         units_line=len(external_ids),
-        units_structure=len(units_to_insert) - len(external_ids),
+        units_structure=len(units_parsed) - len(external_ids),
         duplicates=duplicates,
         holes=holes,
         non_monotonic=non_monotonic,
