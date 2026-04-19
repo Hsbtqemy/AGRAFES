@@ -76,7 +76,8 @@ type CurateApplyResult = CurateApplyEvent;
 
 // ─── Curation presets ─────────────────────────────────────────────────────────
 
-const CURATE_PREVIEW_LIMIT = 50;
+const CURATE_PREVIEW_LIMIT = 500;
+const CURATE_PAGE_SIZE = 50;
 
 const CURATE_PRESETS: Record<string, { label: string; rules: CurateRule[] }> = {
   spaces: {
@@ -152,7 +153,8 @@ export interface CurationCallbacks {
   setBusy: (v: boolean) => void;
   isBusy: () => boolean;
   jobCenter?: () => JobCenter | null;
-  onNavigate?: (view: string) => void;
+  onNavigate?: (view: string, context?: { docId?: number }) => void;
+  onReloadDocs?: () => void;
   onReindex?: () => void;
   onValidateMeta?: () => void;
   getLastSegmentReport?: () => { doc_id: number; units_output: number; warnings?: string[] } | null;
@@ -177,6 +179,7 @@ export class CurationView {
   private _previewDebounceHandle: number | null = null;
   private _curateExamples: CuratePreviewExample[] = [];
   private _activeDiffIdx: number | null = null;
+  private _curatePreviewPage = 0;
   private _previewMode: "sidebyside" | "rawonly" | "diffonly" = "rawonly";
   private _previewSyncScroll = true;
   private _curateSyncLock = false;
@@ -259,6 +262,66 @@ export class CurationView {
         sel.appendChild(opt);
       }
     }
+    this._renderDocList();
+  }
+
+  private _renderDocList(): void {
+    const container = this._q<HTMLElement>("#act-curate-doc-list");
+    if (!container) return;
+    const docs = this._getDocs();
+    const sel = this._q<HTMLSelectElement>("#act-curate-doc");
+    const currentVal = sel?.value ?? "";
+    container.innerHTML = "";
+
+    const makeRow = (value: string, label: string, lang: string | null) => {
+      const row = document.createElement("div");
+      row.className = "prep-curate-doc-row";
+      row.dataset.value = value;
+      row.setAttribute("role", "option");
+      row.setAttribute("aria-selected", String(currentVal === value));
+      if (currentVal === value) row.classList.add("active");
+
+      const dot = document.createElement("span");
+      dot.className = "prep-curate-doc-row-dot";
+      row.appendChild(dot);
+
+      const title = document.createElement("span");
+      title.className = "prep-curate-doc-row-title";
+      title.textContent = label;
+      row.appendChild(title);
+
+      if (lang) {
+        const badge = document.createElement("span");
+        badge.className = "prep-curate-doc-row-lang";
+        badge.textContent = lang;
+        row.appendChild(badge);
+      }
+
+      row.addEventListener("click", () => {
+        if (!sel) return;
+        sel.value = value;
+        sel.dispatchEvent(new Event("change"));
+        this._syncDocList();
+      });
+      return row;
+    };
+
+    container.appendChild(makeRow("", "Tous les documents", null));
+    for (const doc of docs) {
+      const label = `#${doc.doc_id}\u2002${doc.title}`;
+      container.appendChild(makeRow(String(doc.doc_id), label, doc.language));
+    }
+  }
+
+  private _syncDocList(): void {
+    const container = this._q<HTMLElement>("#act-curate-doc-list");
+    if (!container) return;
+    const currentVal = this._q<HTMLSelectElement>("#act-curate-doc")?.value ?? "";
+    container.querySelectorAll<HTMLElement>(".prep-curate-doc-row").forEach(row => {
+      const active = row.dataset.value === currentVal;
+      row.classList.toggle("active", active);
+      row.setAttribute("aria-selected", String(active));
+    });
   }
 
   /** Called when docs are (re)loaded by the parent. */
@@ -295,7 +358,6 @@ export class CurationView {
     const _rec = this._q<HTMLElement>("#act-review-export-card");
     if (_rec) _rec.style.display = "none";
     this._renderConventionsList();
-    this._renderCurateQuickQueue();
     this._refreshCurateHeaderState();
     if (conn) {
       void this._loadConventions();
@@ -319,128 +381,142 @@ export class CurationView {
           <h1>Curation <span class="prep-badge-preview">pr&#233;visualisation live</span></h1>
         </div>
         <div class="prep-acts-hub-head-tools">
+          <button id="act-reload-docs-btn" class="btn btn-secondary btn-sm">&#8635;&#160;Rafra&#238;chir</button>
           <span class="prep-curate-pill" id="act-curate-mode-pill">Mode &#233;dition</span>
         </div>
       </section>
+      <div id="act-curate-diverge-banner" class="prep-curate-diverge-banner" style="display:none" role="status">
+        &#9872;&#160;<strong>text_norm a diverg&#233; de text_raw</strong> &#8212; les modifications sont visibles dans les autres panneaux.
+      </div>
       <div id="act-curate-confirm-bar" class="prep-curate-confirm-bar" style="display:none" role="alertdialog" aria-modal="false"></div>
+      <div class="prep-curate-doc-bar">
+        <select id="act-curate-doc" style="display:none"><option value="">Tous les documents</option></select>
+        <div id="act-curate-doc-list" class="prep-curate-doc-list" role="listbox" aria-label="S&#233;lectionner un document"></div>
+        <span id="act-curate-ctx-lang" style="display:none"></span>
+      </div>
       <section class="card curate-workspace-card" id="act-curate-card">
         <div class="prep-curate-workspace">
-          <div class="prep-curate-col curate-col-left">
+          <div class="prep-curate-col curate-col-left prep-curate-col-left-layout">
             <article class="prep-curate-inner-card">
               <div class="card-head">
                 <h2>Param&#232;tres curation</h2>
                 <span id="act-curate-doc-label"></span>
               </div>
               <div class="prep-card-body">
-                <label class="prep-curate-doc-field">
-                  Document :
-                  <select id="act-curate-doc"><option value="">Tous les documents</option></select>
-                </label>
-                <div id="act-curate-ctx" class="row curate-ctx-row" aria-label="Contexte du document">
-                  <div class="f prep-curate-ctx-cell"><strong>Langue pivot</strong>fr</div>
-                  <div class="f prep-curate-ctx-cell"><strong>Pack</strong>&#8212;</div>
-                  <div class="f prep-curate-ctx-cell"><strong>Port&#233;e</strong>Document complet</div>
-                  <div class="f prep-curate-ctx-cell"><strong>Aper&#231;u live</strong>Actif</div>
-                </div>
-                <div class="prep-chip-row prep-curation-quick-rules">
-                  <input id="act-rule-spaces" class="prep-curate-rule-input" type="checkbox" />
-                  <label class="chip prep-curation-chip" for="act-rule-spaces">Espaces incoh&#233;rents</label>
-                  <input id="act-rule-quotes" class="prep-curate-rule-input" type="checkbox" />
-                  <label class="chip prep-curation-chip" for="act-rule-quotes">Guillemets typographiques</label>
-                  <input id="act-punct-none" class="prep-curate-rule-input" type="radio" name="curate-punct" value="" checked />
-                  <label class="chip prep-curation-chip" for="act-punct-none" title="Aucune correction de ponctuation">Punct.&#160;&#8212;</label>
-                  <input id="act-punct-fr" class="prep-curate-rule-input" type="radio" name="curate-punct" value="fr" />
-                  <label class="chip prep-curation-chip" for="act-punct-fr" title="Typographie fran&#231;aise : espace fine ins&#233;cable avant ! ? ; :, espaces autour de &#171;&#160;&#187;">Punct.&#160;FR</label>
-                  <input id="act-punct-en" class="prep-curate-rule-input" type="radio" name="curate-punct" value="en" />
-                  <label class="chip prep-curation-chip" for="act-punct-en" title="Typographie anglaise : supprimer espace avant , ; : ! ?">Punct.&#160;EN</label>
-                  <input id="act-rule-invisibles" class="prep-curate-rule-input" type="checkbox" />
-                  <label class="chip prep-curation-chip" for="act-rule-invisibles">Contr&#244;le invisibles</label>
-                  <input id="act-rule-numbering" class="prep-curate-rule-input" type="checkbox" />
-                  <label class="chip prep-curation-chip" for="act-rule-numbering">Num&#233;rotation [n]</label>
-                </div>
-                <div class="prep-btns prep-curate-primary-actions">
-                  <button id="act-curate-reset-btn" class="btn">R&#233;initialiser</button>
-                  <button id="act-preview-btn" class="btn alt" disabled>Pr&#233;visualiser maintenant</button>
-                  <button id="act-curate-btn" class="btn pri" disabled>Appliquer curation</button>
+                <div class="prep-curation-quick-rules">
+                  <div class="prep-curate-rule-group">
+                    <span class="prep-curate-rule-group-label">Corrections</span>
+                    <div class="prep-chip-row">
+                      <input id="act-rule-spaces" class="prep-curate-rule-input" type="checkbox" />
+                      <label class="prep-curation-chip" for="act-rule-spaces">Espaces incoh&#233;rents</label>
+                      <input id="act-rule-quotes" class="prep-curate-rule-input" type="checkbox" />
+                      <label class="prep-curation-chip" for="act-rule-quotes">Guillemets typographiques</label>
+                      <input id="act-rule-invisibles" class="prep-curate-rule-input" type="checkbox" />
+                      <label class="prep-curation-chip" for="act-rule-invisibles">Contr&#244;le invisibles</label>
+                      <input id="act-rule-numbering" class="prep-curate-rule-input" type="checkbox" />
+                      <label class="prep-curation-chip" for="act-rule-numbering">Num&#233;rotation [n]</label>
+                    </div>
+                  </div>
+                  <div class="prep-curate-rule-group">
+                    <span class="prep-curate-rule-group-label">Ponctuation</span>
+                    <div class="prep-curate-segmented" role="group" aria-label="Mode de correction ponctuation">
+                      <input id="act-punct-none" class="prep-curate-rule-input" type="radio" name="curate-punct" value="" checked />
+                      <label class="prep-curate-seg-item" for="act-punct-none" title="Aucune correction de ponctuation">&#8212;</label>
+                      <input id="act-punct-fr" class="prep-curate-rule-input" type="radio" name="curate-punct" value="fr" />
+                      <label class="prep-curate-seg-item" for="act-punct-fr" title="Typographie fran&#231;aise">FR</label>
+                      <input id="act-punct-en" class="prep-curate-rule-input" type="radio" name="curate-punct" value="en" />
+                      <label class="prep-curate-seg-item" for="act-punct-en" title="Typographie anglaise">EN</label>
+                    </div>
+                  </div>
                 </div>
               </div>
             </article>
-            <article class="prep-curate-inner-card curate-stack-card">
-              <details id="act-curate-advanced" class="prep-curation-advanced">
+
+            <article class="prep-curate-inner-card" id="act-roles-card">
+              <details id="act-curate-roles" class="prep-curation-advanced">
                 <summary class="card-head prep-curate-advanced-summary">
-                  <h2>Retouches avanc&#233;es</h2>
+                  <h2>R&#244;les</h2>
                 </summary>
-                <div class="prep-card-body">
-                  <div class="prep-form-row prep-curate-advanced-row">
-                    <label>Chercher (regex)
-                      <input id="act-curate-quick-pattern" type="text" placeholder="ex: \\u2019" />
-                    </label>
-                    <label>Remplacer
-                      <input id="act-curate-quick-replacement" type="text" placeholder="ex: '" />
-                    </label>
-                    <label class="prep-curate-advanced-flags">Flags
-                      <input id="act-curate-quick-flags" type="text" value="g" maxlength="6" />
-                    </label>
-                    <div class="prep-curate-advanced-add">
-                      <button id="act-curate-add-rule-btn" class="btn btn-secondary btn-sm">+ Ajouter</button>
+                <div class="prep-card-body prep-curate-roles-body">
+                  <p class="prep-curate-roles-hint" id="act-roles-hint">Passez en <em>Texte brut</em> pour assigner des r&#244;les aux unit&#233;s.</p>
+                  <div id="act-roles-controls" style="display:none">
+                    <button id="raw-role-mode-btn" class="btn btn-xs prep-raw-role-mode-btn">Activer Conventions</button>
+                    <div class="prep-curate-roles-assign" id="act-roles-assign">
+                      <span class="prep-curate-roles-count" id="act-roles-count" style="display:none"></span>
+                      <div class="prep-curate-roles-select-row">
+                        <label class="prep-curate-roles-select-label" for="raw-role-select">R&#244;le&nbsp;:</label>
+                        <select id="raw-role-select" class="prep-raw-role-select"><option value="">&#8212; choisir &#8212;</option></select>
+                      </div>
+                      <div class="prep-curate-roles-btns">
+                        <button id="raw-role-assign-btn" class="btn btn-primary btn-xs">Assigner</button>
+                        <button id="raw-role-clear-btn" class="btn btn-secondary btn-xs">Effacer le r&#244;le</button>
+                        <button id="raw-role-deselect-btn" class="btn btn-ghost btn-xs">&#10005;&#160;D&#233;s&#233;lectionner tout</button>
+                      </div>
                     </div>
                   </div>
-                  <label class="prep-curate-json-field">R&#232;gles JSON
-                    <textarea id="act-curate-rules" rows="3" placeholder='[{"pattern":"foo","replacement":"bar","flags":"gi"}]'></textarea>
-                  </label>
-                  <p class="hint" style="margin:0.2rem 0 0">Ajout&#233;es apr&#232;s les r&#232;gles rapides.</p>
                 </div>
               </details>
             </article>
+
             <article class="prep-curate-inner-card curate-stack-card" id="act-fr-card">
-              <div class="card-head">
-                <h2>Rechercher&#160;/ Remplacer</h2>
-                <span id="act-fr-active-badge" class="prep-fr-active-badge" style="display:none">actif</span>
-              </div>
-              <div class="prep-card-body">
-                <div class="prep-fr-fields">
-                  <label class="prep-fr-field-label">
-                    <span>Chercher</span>
-                    <input id="act-fr-find" type="text" class="prep-fr-input" placeholder="ex&#160;: M.&#160;" autocomplete="off" />
-                  </label>
-                  <label class="prep-fr-field-label">
-                    <span>Remplacer par</span>
-                    <input id="act-fr-replace" type="text" class="prep-fr-input" placeholder="(vide&#160;= supprimer)" autocomplete="off" />
-                  </label>
+              <details id="act-curate-advanced" class="prep-curation-advanced">
+                <summary class="card-head prep-curate-advanced-summary">
+                  <h2>R&#232;gles avanc&#233;es <span id="act-fr-active-badge" class="prep-fr-active-badge" style="display:none">actif</span></h2>
+                </summary>
+                <div class="prep-card-body">
+                  <div class="prep-curate-adv-tabs">
+                    <button class="prep-curate-adv-tab active" data-adv-tab="fr">Trouver&#160;/&#160;Remplacer</button>
+                    <button class="prep-curate-adv-tab" data-adv-tab="regex">Regex</button>
+                  </div>
+
+                  <div class="prep-curate-adv-panel" data-adv-panel="regex" style="display:none">
+                    <div class="prep-curate-adv-regex-row">
+                      <input id="act-curate-quick-pattern" type="text" placeholder="Motif regex&#8230;" />
+                      <input id="act-curate-quick-replacement" type="text" placeholder="Remplacement" />
+                      <input id="act-curate-quick-flags" type="text" value="g" maxlength="6" style="width:3rem" title="Flags" />
+                      <button id="act-curate-add-rule-btn" class="btn btn-secondary btn-sm">+</button>
+                    </div>
+                    <label class="prep-curate-json-field">
+                      <textarea id="act-curate-rules" rows="3" placeholder='[{"pattern":"foo","replacement":"bar","flags":"gi"}]'></textarea>
+                    </label>
+                    <div class="prep-curate-adv-footer">
+                      <button id="act-curate-reset-btn" class="btn btn-secondary btn-sm">R&#233;initialiser</button>
+                    </div>
+                  </div>
+
+                  <div class="prep-curate-adv-panel" data-adv-panel="fr">
+                    <div class="prep-fr-fields">
+                      <label class="prep-fr-field-label">
+                        <span>Chercher</span>
+                        <input id="act-fr-find" type="text" class="prep-fr-input" placeholder="ex&#160;: M.&#160;" autocomplete="off" />
+                      </label>
+                      <label class="prep-fr-field-label">
+                        <span>Remplacer par</span>
+                        <input id="act-fr-replace" type="text" class="prep-fr-input" placeholder="(vide&#160;= supprimer)" autocomplete="off" />
+                      </label>
+                    </div>
+                    <div class="prep-chip-row fr-options-row">
+                      <input id="act-fr-regex" type="checkbox" />
+                      <label class="chip" for="act-fr-regex">Regex</label>
+                      <input id="act-fr-nocase" type="checkbox" />
+                      <label class="chip" for="act-fr-nocase">Insensible &#224; la casse</label>
+                    </div>
+                    <div class="prep-btns fr-actions-row">
+                      <button id="act-fr-count-btn" class="btn btn-sm btn-secondary">&#128269;&#160;Compter</button>
+                      <button id="act-fr-apply-btn" class="btn btn-sm alt">&#9654;&#160;Pr&#233;visualiser</button>
+                      <button id="act-fr-clear-btn" class="btn btn-sm" style="display:none">&#10005;&#160;Effacer</button>
+                    </div>
+                    <p id="act-fr-feedback" class="prep-fr-feedback" style="display:none"></p>
+                  </div>
                 </div>
-                <div class="prep-chip-row fr-options-row">
-                  <input id="act-fr-regex" type="checkbox" />
-                  <label class="chip" for="act-fr-regex">Expression r&#233;guli&#232;re</label>
-                  <input id="act-fr-nocase" type="checkbox" />
-                  <label class="chip" for="act-fr-nocase">Insensible &#224; la casse</label>
-                </div>
-                <div class="prep-btns fr-actions-row">
-                  <button id="act-fr-count-btn" class="btn btn-sm btn-secondary">&#128269;&#160;Compter</button>
-                  <button id="act-fr-apply-btn" class="btn btn-sm alt">&#9654;&#160;Pr&#233;visualiser</button>
-                  <button id="act-fr-clear-btn" class="btn btn-sm" style="display:none">&#10005;&#160;Effacer</button>
-                </div>
-                <p id="act-fr-feedback" class="prep-fr-feedback" style="display:none"></p>
-              </div>
+              </details>
             </article>
-            <article class="prep-curate-inner-card curate-stack-card" id="act-curate-quick-actions">
-              <div class="card-head">
-                <h2>Actions rapides</h2>
-                <span style="font-size:12px;color:var(--prep-muted,#4f5d6d)">s&#233;lection locale</span>
-              </div>
-              <div class="prep-card-body">
-                <div id="act-curate-queue" class="prep-curate-queue">
-                  <p class="empty-hint">Aucune action en attente.</p>
-                </div>
-                <div class="prep-btns prep-curate-nav-actions" role="group" aria-label="Navigation entre documents">
-                  <button id="act-curate-prev-btn" type="button" class="btn btn-secondary btn-sm" disabled
-                    title="Document pr&#233;c&#233;dent dans la liste"
-                    aria-label="Document pr&#233;c&#233;dent dans la liste">&#8592; Doc pr&#233;c&#233;d.</button>
-                  <button id="act-curate-next-btn" type="button" class="btn btn-secondary btn-sm" disabled
-                    title="Document suivant dans la liste"
-                    aria-label="Document suivant dans la liste">Doc suiv. &#8594;</button>
-                </div>
-              </div>
-            </article>
+
+            <div class="prep-curate-col-spacer"></div>
+            <div class="prep-curate-primary-actions-footer">
+              <button id="act-curate-btn" class="btn pri" disabled>Appliquer curation</button>
+              <button id="act-curate-goto-annot-btn" class="btn btn-sm" title="Ouvrir ce document dans le panneau Annotation">Voir&#160;annotation&#160;&#8599;</button>
+            </div>
           </div>
           <div class="prep-curate-col curate-col-center">
             <article class="prep-curate-inner-card curate-preview-card" id="act-preview-panel">
@@ -634,7 +710,6 @@ export class CurationView {
     this._wireEvents(el);
     this._applyPreviewMode(el);
     this._refreshCurateHeaderState();
-    this._renderCurateQuickQueue();
     initCardAccordions(el);
     this._bindCurateScrollSync();
     return el;
@@ -683,12 +758,12 @@ export class CurationView {
         this._allOverridesDocId = null;
       }
       if (newDocId !== null) void this._loadAllUnits(newDocId);
+      const divergeBanner = this._q<HTMLElement>("#act-curate-diverge-banner");
+      if (divergeBanner) divergeBanner.style.display = "none";
+      this._syncDocList();
       this._updateCurateCtx();
       this._schedulePreview(true);
     });
-
-    el.querySelector("#act-curate-prev-btn")?.addEventListener("click", () => this._navigateCurateDoc(-1));
-    el.querySelector("#act-curate-next-btn")?.addEventListener("click", () => this._navigateCurateDoc(1));
 
     // Preview mode buttons
     el.querySelectorAll<HTMLButtonElement>(".prep-preview-mode-btn").forEach(btn => {
@@ -874,16 +949,55 @@ export class CurationView {
     });
 
     // Primary action buttons
-    el.querySelector("#act-preview-btn")!.addEventListener("click", () => void this._runPreview());
     el.querySelector("#act-curate-btn")!.addEventListener("click", () => void this._runCurate());
     el.querySelector("#act-apply-after-preview-btn")!.addEventListener("click", () => void this._runCurate());
     el.querySelector("#act-reindex-after-curate-btn")!.addEventListener("click", () => this._cb.onReindex?.());
     el.querySelector("#act-meta-btn")!.addEventListener("click", () => this._cb.onValidateMeta?.());
+    el.querySelector("#act-curate-goto-annot-btn")?.addEventListener("click", () => {
+      this._cb.onNavigate?.("annoter", { docId: this._currentCurateDocId() });
+    });
+
+    // Reload docs button
+    el.querySelector("#act-reload-docs-btn")?.addEventListener("click", () => this._cb.onReloadDocs?.());
+
+    // Roles card — mode toggle + assign/clear/deselect
+    el.querySelector("#raw-role-mode-btn")?.addEventListener("click", () => {
+      this._selectionMode = !this._selectionMode;
+      const btn = el.querySelector<HTMLButtonElement>("#raw-role-mode-btn")!;
+      btn.classList.toggle("active", this._selectionMode);
+      btn.textContent = this._selectionMode ? "✓ Conventions actives" : "Activer Conventions";
+      if (!this._selectionMode) {
+        this._selectedUnitNs = new Set(); this._lastSelectedN = null;
+        el.querySelectorAll<HTMLElement>(".prep-raw-unit-selected").forEach(p => p.classList.remove("prep-raw-unit-selected"));
+        this._updateRoleBar();
+      }
+    });
+    el.querySelector("#raw-role-assign-btn")?.addEventListener("click", () => {
+      const role = el.querySelector<HTMLSelectElement>("#raw-role-select")?.value || null;
+      if (!role) { this._cb.log("Sélectionnez un rôle à assigner.", true); return; }
+      void this._applyRoleToSelected(role);
+    });
+    el.querySelector("#raw-role-clear-btn")?.addEventListener("click", () => { void this._applyRoleToSelected(null); });
+    el.querySelector("#raw-role-deselect-btn")?.addEventListener("click", () => {
+      this._selectedUnitNs = new Set(); this._lastSelectedN = null; this._updateRoleBar();
+      el.querySelectorAll<HTMLElement>(".prep-raw-unit-selected").forEach(p => p.classList.remove("prep-raw-unit-selected"));
+    });
+
+    // Advanced rules tab switching
+    el.querySelectorAll<HTMLButtonElement>(".prep-curate-adv-tab").forEach(tab => {
+      tab.addEventListener("click", () => {
+        const target = tab.dataset.advTab;
+        el.querySelectorAll<HTMLButtonElement>(".prep-curate-adv-tab").forEach(t => t.classList.toggle("active", t === tab));
+        el.querySelectorAll<HTMLElement>("[data-adv-panel]").forEach(panel => {
+          panel.style.display = panel.dataset.advPanel === target ? "" : "none";
+        });
+      });
+    });
 
     // Diagnostics "Voir segmentation" link
     el.querySelector("#act-curate-seg-link")?.addEventListener("click", (e) => {
       const btn = (e.target as HTMLElement).closest<HTMLButtonElement>("[data-action='goto-seg']");
-      if (btn) this._cb.onNavigate?.("segmentation");
+      if (btn) this._cb.onNavigate?.("segmentation", { docId: this._currentCurateDocId() });
     });
 
     // Convention form
@@ -1084,6 +1198,12 @@ export class CurationView {
     });
     const previewGrid = container.querySelector<HTMLElement>(".prep-preview-grid");
     if (previewGrid) previewGrid.dataset.previewMode = this._previewMode;
+    // Show role controls only in raw-text mode
+    const inRaw = this._previewMode === "rawonly";
+    const hint = this._q<HTMLElement>("#act-roles-hint");
+    const controls = this._q<HTMLElement>("#act-roles-controls");
+    if (hint)     hint.style.display     = inRaw ? "none" : "";
+    if (controls) controls.style.display = inRaw ? "" : "none";
   }
 
   private _currentRules(): CurateRule[] {
@@ -1129,11 +1249,11 @@ export class CurationView {
     const doc = docId !== undefined ? this._getDocs().find(d => d.doc_id === docId) : undefined;
     if (docLabelEl) docLabelEl.textContent = doc ? `#${doc.doc_id} · ${doc.title} (${doc.language})` : "Portée: tous les documents";
     if (modePillEl) {
-      if (!this._getConn()) modePillEl.textContent = "Mode hors ligne";
-      else if (this._cb.isBusy()) modePillEl.textContent = "Traitement en cours";
-      else if (this._hasPendingPreview) modePillEl.textContent = "Preview en attente";
-      else if (doc) modePillEl.textContent = `Mode document #${doc.doc_id}`;
-      else modePillEl.textContent = "Mode corpus";
+      if (!this._getConn()) modePillEl.textContent = "Hors ligne";
+      else if (this._cb.isBusy()) modePillEl.textContent = "En cours\u2026";
+      else if (this._hasPendingPreview) modePillEl.textContent = "Preview\u2026";
+      else if (doc) modePillEl.textContent = `Doc.\u00a0#${doc.doc_id}`;
+      else modePillEl.textContent = "Tous les documents";
     }
   }
 
@@ -1173,19 +1293,11 @@ export class CurationView {
   }
 
   private _updateCurateCtx(): void {
-    const el = this._q<HTMLElement>("#act-curate-ctx");
-    if (!el) return;
     const docId = this._currentCurateDocId();
     const doc = docId !== undefined ? this._getDocs().find(d => d.doc_id === docId) : undefined;
-    const pivotLabel = !doc ? "fr" : (doc.language?.toLowerCase() === "fr" ? "Fran&#231;ais (VO)" : _escHtml(doc.language ?? "fr"));
-    const scopeLabel = doc ? "Document s&#233;lectionn&#233;" : "Document complet";
-    el.innerHTML =
-      `<div class="f prep-curate-ctx-cell"><strong>Langue pivot</strong>${pivotLabel}</div>` +
-      `<div class="f prep-curate-ctx-cell"><strong>Pack</strong>&#8212;</div>` +
-      `<div class="f prep-curate-ctx-cell"><strong>Port&#233;e</strong>${scopeLabel}</div>` +
-      `<div class="f prep-curate-ctx-cell"><strong>Aper&#231;u live</strong>Actif</div>`;
+    const langEl = this._q<HTMLElement>("#act-curate-ctx-lang");
+    if (langEl) langEl.textContent = !doc ? "fr" : (doc.language ?? "fr");
     this._refreshCurateHeaderState();
-    this._renderCurateQuickQueue();
   }
 
   private _pushCurateLog(kind: "preview" | "apply" | "warn", msg: string): void {
@@ -1292,6 +1404,7 @@ export class CurationView {
   private _setStatusFilter(status: "pending" | "accepted" | "ignored" | null): void {
     this._activeStatusFilter = status;
     this._activeDiffIdx = null;
+    this._curatePreviewPage = 0;
     const filtered = this._filteredExamples();
     this._refreshCuratePreviewPanes();
     this._updateSessionSummary();
@@ -1392,6 +1505,7 @@ export class CurationView {
   private _setRuleFilter(label: string | null, panel?: HTMLElement | null): void {
     this._activeRuleFilter = label;
     this._activeDiffIdx = null;
+    this._curatePreviewPage = 0;
     const filtered = this._filteredExamples();
     this._refreshCuratePreviewPanes();
     this._updateFilterBadge(panel);
@@ -1435,6 +1549,13 @@ export class CurationView {
 
   private _setActiveDiffItem(idx: number | null, panel?: HTMLElement | null): void {
     if (this._editingManualOverride) this._editingManualOverride = false;
+    if (idx !== null) {
+      const targetPage = Math.floor(idx / CURATE_PAGE_SIZE);
+      if (targetPage !== this._curatePreviewPage) {
+        this._curatePreviewPage = targetPage;
+        this._renderDiffList(this._filteredExamples());
+      }
+    }
     this._activeDiffIdx = idx;
     const scope: Element | Document = panel ?? this._root ?? document;
     scope.querySelectorAll<HTMLElement>("tr[data-diff-idx]").forEach(tr => {
@@ -1657,6 +1778,8 @@ export class CurationView {
     if (rawEl) rawEl.innerHTML = `<p class="loading-hint">Prévisualisation en cours…</p>`;
     const diffEl0 = this._q("#act-diff-list");
     if (diffEl0) diffEl0.innerHTML = "";
+    const applyBtnEarly = this._q<HTMLButtonElement>("#act-apply-after-preview-btn");
+    if (applyBtnEarly) applyBtnEarly.style.display = "none";
     if (this._allUnitsDocId !== docId) void this._loadAllUnits(docId);
 
     try {
@@ -1677,7 +1800,7 @@ export class CurationView {
       this._curateExamples = res.examples.map(ex => ({ ...ex, status: "pending" as const }));
       this._curateGlobalChanged = changed;
       this._curateUnitsTotal = total;
-      this._activeDiffIdx = null; this._activeRuleFilter = null; this._activeStatusFilter = null;
+      this._activeDiffIdx = null; this._activeRuleFilter = null; this._activeStatusFilter = null; this._curatePreviewPage = 0;
       this._buildRuleLabels();
       this._curateRestoredCount = this._restoreCurateReviewState(rules, total);
       const toRender = this._filteredExamples();
@@ -1693,7 +1816,10 @@ export class CurationView {
       if (toRender.length > 0) this._setActiveDiffItem(0, panel ?? undefined);
       this._renderCurateMinimap(res.examples.length, total);
       const applyBtn = this._q<HTMLButtonElement>("#act-apply-after-preview-btn");
-      if (applyBtn) applyBtn.style.display = changed > 0 ? "" : "none";
+      if (applyBtn) {
+        applyBtn.textContent = changed > 0 ? `Appliquer (${changed}/${total} unités)` : "Appliquer maintenant";
+        applyBtn.style.display = changed > 0 ? "" : "none";
+      }
       const reviewExportCard = this._q<HTMLElement>("#act-review-export-card");
       if (reviewExportCard) reviewExportCard.style.display = "";
       const reindexBtn = this._q<HTMLElement>("#act-reindex-after-curate-btn");
@@ -1815,6 +1941,8 @@ export class CurationView {
           this._selectedUnitNs = new Set();
           this._lastSelectedN = null;
           this._cb.toast?.("✓ Curation appliquée");
+          const divergeBanner = this._q<HTMLElement>("#act-curate-diverge-banner");
+          if (divergeBanner) divergeBanner.style.display = "";
         } else {
           this._cb.log(`✗ Curation : ${done.error ?? done.status}`, true);
           this._pushCurateLog("warn", `Erreur : ${done.error ?? done.status}`);
@@ -1872,11 +2000,33 @@ export class CurationView {
     const textStartN: number | null = curateDocId !== undefined
       ? (this._getDocs().find(d => d.doc_id === curateDocId)?.text_start_n ?? null)
       : null;
-    this._renderRoleBar(rawEl);
+    this._renderRoleBar();
     this._allUnits.forEach(unit => {
       if (textStartN !== null && unit.n === textStartN) {
         rawEl.appendChild(this._renderTextStartSeparator(textStartN));
       }
+
+      // Structure units (headings, titles…) rendered as non-interactive markers
+      if (unit.unit_type === "structure") {
+        const role = unit.unit_role;
+        const conv = role ? roleMap.get(role) : undefined;
+        const marker = document.createElement("div");
+        marker.className = "prep-raw-unit-structure";
+        marker.dataset.unitId = String(unit.unit_id);
+        marker.dataset.unitN = String(unit.n);
+        if (conv) {
+          marker.style.setProperty("--role-color", conv.color ?? "#9333ea");
+          const badge = document.createElement("span");
+          badge.className = "prep-raw-struct-badge";
+          badge.textContent = (conv.icon ? conv.icon + "\u00a0" : "") + conv.label;
+          marker.appendChild(badge);
+          marker.appendChild(document.createTextNode("\u00a0"));
+        }
+        marker.appendChild(document.createTextNode(unit.text_norm ?? ""));
+        rawEl.appendChild(marker);
+        return;
+      }
+
       const p = document.createElement("p");
       p.className = "prep-raw-unit prep-raw-unit-full";
       p.dataset.unitId = String(unit.unit_id);
@@ -1913,7 +2063,7 @@ export class CurationView {
             `${paraCount > 0 ? `Les ${paraCount} unité(s) précédente(s) seront marquées comme paratexte.` : ""}</span>` +
             `<button class="btn btn-primary btn-xs">Confirmer</button>` +
             `<button class="btn btn-ghost btn-xs">Annuler</button>`;
-          rawEl2.insertBefore(banner, rawEl2.querySelector(".prep-raw-role-bar")?.nextSibling ?? rawEl2.firstChild);
+          rawEl2.insertBefore(banner, rawEl2.firstChild);
           const [confirmBtn, cancelBtn] = banner.querySelectorAll("button");
           cancelBtn.addEventListener("click", () => banner.remove(), { once: true });
           confirmBtn.addEventListener("click", () => { banner.remove(); void this._setTextStart(unit.n); }, { once: true });
@@ -2564,13 +2714,20 @@ export class CurationView {
       });
       return;
     }
+    const totalPages = Math.ceil(examples.length / CURATE_PAGE_SIZE);
+    const page = Math.min(this._curatePreviewPage, Math.max(0, totalPages - 1));
+    this._curatePreviewPage = page;
+    const pageStart = page * CURATE_PAGE_SIZE;
+    const pageExamples = examples.slice(pageStart, pageStart + CURATE_PAGE_SIZE);
+
     const table = document.createElement("table");
     table.className = "diff-table";
     table.setAttribute("role", "grid");
     table.setAttribute("aria-label", "Liste des modifications (&#8593;&#8595; naviguer, A&#160;accepter, I&#160;ignorer)");
     table.innerHTML = `<thead><tr role="row"><th role="columnheader" style="width:28px">#</th><th role="columnheader" style="width:72px">R&#232;gle</th><th role="columnheader">Texte cur&#233; (modifications en surbrillance)</th></tr></thead>`;
     const tbody = document.createElement("tbody");
-    examples.forEach((ex, i) => {
+    pageExamples.forEach((ex, localI) => {
+      const i = pageStart + localI;
       const tr = document.createElement("tr");
       tr.dataset.diffIdx = String(i);
       tr.className = "diff-row";
@@ -2614,6 +2771,36 @@ export class CurationView {
     table.appendChild(tbody);
     el.innerHTML = "";
     el.appendChild(table);
+
+    if (totalPages > 1) {
+      const bar = document.createElement("div");
+      bar.className = "prep-diff-pagination";
+      const prevPageBtn = document.createElement("button");
+      prevPageBtn.className = "btn btn-sm prep-diff-page-btn";
+      prevPageBtn.textContent = "← Précédents";
+      prevPageBtn.disabled = page === 0;
+      prevPageBtn.addEventListener("click", () => {
+        this._curatePreviewPage = page - 1;
+        this._activeDiffIdx = null;
+        this._renderDiffList(this._filteredExamples());
+      });
+      const pageLabel = document.createElement("span");
+      pageLabel.className = "prep-diff-page-label";
+      pageLabel.textContent = `Page ${page + 1} / ${totalPages}  (${examples.length} exemples chargés${this._curateGlobalChanged > examples.length ? ` sur ${this._curateGlobalChanged} total` : ""})`;
+      const nextPageBtn = document.createElement("button");
+      nextPageBtn.className = "btn btn-sm prep-diff-page-btn";
+      nextPageBtn.textContent = "Suivants →";
+      nextPageBtn.disabled = page >= totalPages - 1;
+      nextPageBtn.addEventListener("click", () => {
+        this._curatePreviewPage = page + 1;
+        this._activeDiffIdx = null;
+        this._renderDiffList(this._filteredExamples());
+      });
+      bar.appendChild(prevPageBtn);
+      bar.appendChild(pageLabel);
+      bar.appendChild(nextPageBtn);
+      el.appendChild(bar);
+    }
   }
 
   private _collectIgnoredUnitIds(): number[] {
@@ -2743,66 +2930,33 @@ export class CurationView {
   }
 
   private _updateRoleBar(): void {
-    const bar = this._q<HTMLElement>(".prep-raw-role-bar");
-    if (!bar) return;
     const count = this._selectedUnitNs.size;
-    const assignZone = bar.querySelector<HTMLElement>(".prep-raw-role-bar-assign");
-    if (assignZone) assignZone.style.display = count > 0 ? "" : "none";
-    const countEl = bar.querySelector<HTMLElement>(".prep-raw-role-bar-count");
-    if (countEl) countEl.textContent = `${count} unité(s) sélectionnée(s) —`;
-    // Keep mode button label in sync
-    const modeBtn = bar.querySelector<HTMLButtonElement>("#raw-role-mode-btn");
+    const hasSelection = count > 0;
+    const countEl = this._q<HTMLElement>("#act-roles-count");
+    if (countEl) {
+      countEl.style.display = hasSelection ? "" : "none";
+      countEl.textContent = `${count} unité(s) sélectionnée(s)`;
+    }
+    this._q<HTMLButtonElement>("#raw-role-assign-btn")?.toggleAttribute("disabled", !hasSelection);
+    this._q<HTMLButtonElement>("#raw-role-clear-btn")?.toggleAttribute("disabled", !hasSelection);
+    this._q<HTMLButtonElement>("#raw-role-deselect-btn")?.toggleAttribute("disabled", !hasSelection);
+    const modeBtn = this._q<HTMLButtonElement>("#raw-role-mode-btn");
     if (modeBtn) {
       modeBtn.classList.toggle("active", this._selectionMode);
-      modeBtn.textContent = this._selectionMode ? "✓ Sélection activée" : "Sélectionner des unités";
+      modeBtn.textContent = this._selectionMode ? "✓ Conventions actives" : "Activer Conventions";
     }
   }
 
-  private _renderRoleBar(container: HTMLElement): void {
-    container.querySelector(".prep-raw-role-bar")?.remove();
-    const bar = document.createElement("div");
-    bar.id = "raw-role-bar"; bar.className = "prep-raw-role-bar";
-    // Always visible so the mode toggle is discoverable
+  private _renderRoleBar(): void {
+    // Refresh the role dropdown in the left-column roles card
+    const sel = this._q<HTMLSelectElement>("#raw-role-select");
+    if (!sel) return;
+    const prev = sel.value;
     const roleOptions = this._conventions.map(r =>
       `<option value="${_escHtml(r.name)}">${_escHtml(r.label || r.name)}</option>`
     ).join("");
-    bar.innerHTML =
-      `<button id="raw-role-mode-btn" class="btn btn-xs prep-raw-role-mode-btn${this._selectionMode ? " active" : ""}" title="Activer le mode sélection : clic simple = sélectionner une unité">` +
-        `${this._selectionMode ? "✓ Sélection activée" : "Sélectionner des unités"}` +
-      `</button>` +
-      `<span class="prep-raw-role-bar-assign" style="display:none">` +
-        `<span class="prep-raw-role-bar-count"></span>` +
-        `<label class="prep-raw-role-bar-label">Assigner&nbsp;:</label>` +
-        `<select id="raw-role-select" class="prep-raw-role-select"><option value="">— choisir un rôle —</option>${roleOptions}</select>` +
-        `<button id="raw-role-assign-btn" class="btn btn-primary btn-xs">Assigner</button>` +
-        `<button id="raw-role-clear-btn" class="btn btn-secondary btn-xs">Effacer le rôle</button>` +
-        `<button id="raw-role-deselect-btn" class="btn btn-ghost btn-xs">✕ Tout désélectionner</button>` +
-      `</span>`;
-
-    bar.querySelector("#raw-role-mode-btn")!.addEventListener("click", () => {
-      this._selectionMode = !this._selectionMode;
-      const btn = bar.querySelector<HTMLButtonElement>("#raw-role-mode-btn")!;
-      btn.classList.toggle("active", this._selectionMode);
-      btn.textContent = this._selectionMode ? "✓ Sélection activée" : "Sélectionner des unités";
-      // If turning off, clear selection
-      if (!this._selectionMode) {
-        this._selectedUnitNs = new Set(); this._lastSelectedN = null;
-        container.querySelectorAll<HTMLElement>(".prep-raw-unit-selected").forEach(p => p.classList.remove("prep-raw-unit-selected"));
-        this._updateRoleBar();
-      }
-    });
-    bar.querySelector("#raw-role-assign-btn")!.addEventListener("click", () => {
-      const sel = bar.querySelector<HTMLSelectElement>("#raw-role-select");
-      const role = sel?.value || null;
-      if (!role) { this._cb.log("Sélectionnez un rôle à assigner.", true); return; }
-      void this._applyRoleToSelected(role);
-    });
-    bar.querySelector("#raw-role-clear-btn")!.addEventListener("click", () => { void this._applyRoleToSelected(null); });
-    bar.querySelector("#raw-role-deselect-btn")!.addEventListener("click", () => {
-      this._selectedUnitNs = new Set(); this._lastSelectedN = null; this._updateRoleBar();
-      container.querySelectorAll<HTMLElement>(".prep-raw-unit-selected").forEach(p => p.classList.remove("prep-raw-unit-selected"));
-    });
-    container.insertBefore(bar, container.firstChild);
+    sel.innerHTML = `<option value="">— choisir —</option>${roleOptions}`;
+    if (prev) sel.value = prev;
   }
 
   private _renderTextStartSeparator(textStartN: number): HTMLElement {

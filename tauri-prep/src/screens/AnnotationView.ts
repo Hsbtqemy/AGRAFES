@@ -57,6 +57,7 @@ export class AnnotationView {
   private _annotSearchMatches: number[] = [];
   private _annotSearchCursor = 0;
   private _annotModelOverride = "";
+  private _annotViewMode: "read" | "annotate" = "annotate";
 
   constructor(getConn: () => Conn | null) {
     this._getConn = getConn;
@@ -266,7 +267,24 @@ export class AnnotationView {
     searchWrap.appendChild(searchNext);
     searchWrap.appendChild(searchCount);
 
+    const viewToggle = document.createElement("button");
+    viewToggle.className = "annot-btn-view-toggle";
+    viewToggle.title = "Basculer entre vue lecture (prose color\u00e9e) et vue annotation (grille)";
+    const _updateToggleLabel = (): void => {
+      viewToggle.textContent = this._annotViewMode === "read" ? "\u25a6\u00a0Annoter" : "\u25a4\u00a0Lecture";
+      viewToggle.classList.toggle("annot-btn-view-toggle--read", this._annotViewMode === "read");
+    };
+    _updateToggleLabel();
+    viewToggle.addEventListener("click", () => {
+      this._annotViewMode = this._annotViewMode === "read" ? "annotate" : "read";
+      _updateToggleLabel();
+      const v = panel.querySelector<HTMLElement>(".annot-viewer");
+      const e = panel.querySelector<HTMLElement>(".annot-editor");
+      if (v && e) this._annotRenderInterlinear(v, e);
+    });
+
     toolbar.appendChild(title);
+    toolbar.appendChild(viewToggle);
     toolbar.appendChild(modelLabel);
     toolbar.appendChild(refreshBtn);
     toolbar.appendChild(runBtn);
@@ -383,8 +401,18 @@ export class AnnotationView {
     const conn = this._getConn();
     if (!conn) return;
     try {
-      const res = await conn.get(`/tokens?doc_id=${docId}`) as { tokens?: AnnotToken[] };
-      this._annotTokens = res.tokens ?? [];
+      const PAGE = 1000;
+      const all: AnnotToken[] = [];
+      let offset = 0;
+      while (true) {
+        const res = await conn.get(`/tokens?doc_id=${docId}&limit=${PAGE}&offset=${offset}`) as { tokens?: AnnotToken[] };
+        if (!this._panel) return; // disposed while loading
+        const page = res.tokens ?? [];
+        all.push(...page);
+        if (page.length < PAGE) break;
+        offset += PAGE;
+      }
+      this._annotTokens = all;
       this._annotRenderInterlinear(viewer, editor);
       // Re-apply search highlights if a query is active
       if (this._annotSearchQuery && this._panel) {
@@ -399,8 +427,9 @@ export class AnnotationView {
         this._annotApplySearchHighlights(this._panel);
         if (this._annotSearchMatches.length > 0) this._annotScrollToMatch(this._panel, 0);
       }
-    } catch {
-      viewer.innerHTML = `<p class="annot-placeholder">Aucun token \u2014 lancez l\u2019annotation spaCy d\u2019abord.</p>`;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      viewer.innerHTML = `<p class="annot-error">Erreur chargement tokens\u00a0: ${msg}</p>`;
     }
   }
 
@@ -408,8 +437,22 @@ export class AnnotationView {
 
   private _annotRenderInterlinear(viewer: HTMLElement, editor: HTMLElement): void {
     viewer.innerHTML = "";
+
+    const doc = this._annotDocs.find(d => d.doc_id === this._annotSelectedDocId);
+    if (doc) {
+      const docHeader = document.createElement("div");
+      docHeader.className = "annot-doc-header";
+      const lang = doc.language ? ` · ${_escHtml(doc.language)}` : "";
+      const tokens = this._annotTokens.length > 0 ? ` · ${this._annotTokens.length}\u00a0tokens` : "";
+      docHeader.innerHTML = `<span class="annot-doc-header-title">${_escHtml(doc.title)}</span><span class="annot-doc-header-meta">${lang}${tokens}</span>`;
+      viewer.appendChild(docHeader);
+    }
+
     if (this._annotTokens.length === 0) {
-      viewer.innerHTML = `<p class="annot-placeholder">Aucun token \u2014 lancez l\u2019annotation spaCy d\u2019abord.</p>`;
+      const p = document.createElement("p");
+      p.className = "annot-placeholder";
+      p.textContent = "Aucun token \u2014 lancez l\u2019annotation spaCy d\u2019abord.";
+      viewer.appendChild(p);
       return;
     }
 
@@ -445,6 +488,48 @@ export class AnnotationView {
       return out;
     };
 
+    // ── Read mode (prose colorée UPOS) ─────────────────────────────────────────
+    if (this._annotViewMode === "read") {
+      const prose = document.createElement("div");
+      prose.className = "annot-prose";
+      for (const [, bySent] of Array.from(byUnit.entries()).sort((a, b) => a[0] - b[0])) {
+        const para = document.createElement("p");
+        para.className = "annot-prose-unit";
+        const allTokens = Array.from(bySent.values()).flat();
+        for (let i = 0; i < allTokens.length; i++) {
+          const tok = allTokens[i];
+          const needsSpaceBefore = i > 0
+            && !PUNCT_NO_SPACE_BEFORE.has(tok.word)
+            && !PUNCT_NO_SPACE_AFTER.has(allTokens[i - 1].word);
+          if (needsSpaceBefore) para.appendChild(document.createTextNode(" "));
+          const span = document.createElement("span");
+          span.className = "annot-prose-token";
+          span.textContent = tok.word;
+          span.title = [tok.upos, tok.lemma !== tok.word ? tok.lemma : null].filter(Boolean).join(" · ") || tok.word;
+          span.dataset.tokenId = String(tok.token_id);
+          if (tok.upos && UPOS_COLORS[tok.upos]) {
+            span.style.setProperty("--upos-color", UPOS_COLORS[tok.upos]);
+            span.classList.add("annot-prose-token--colored");
+          }
+          span.addEventListener("click", () => {
+            this._annotViewMode = "annotate";
+            const toggleBtn = this._panel?.querySelector<HTMLButtonElement>(".annot-btn-view-toggle");
+            if (toggleBtn) {
+              toggleBtn.textContent = "\u25a4\u00a0Lecture";
+              toggleBtn.classList.remove("annot-btn-view-toggle--read");
+            }
+            this._annotSelectedTokenId = tok.token_id;
+            this._annotRenderInterlinear(viewer, editor);
+          });
+          para.appendChild(span);
+        }
+        prose.appendChild(para);
+      }
+      viewer.appendChild(prose);
+      return;
+    }
+
+    // ── Annotate mode (grille interlinéaire) ───────────────────────────────────
     for (const [unitN, bySent] of Array.from(byUnit.entries()).sort((a, b) => a[0] - b[0])) {
       const unitDiv = document.createElement("div");
       unitDiv.className = "annot-unit";

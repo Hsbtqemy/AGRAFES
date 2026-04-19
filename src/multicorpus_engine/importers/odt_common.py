@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import zipfile
 import xml.etree.ElementTree as ET
+import defusedxml.ElementTree as DefET
 from pathlib import Path
 
 from .rich_text import odt_extract_style_map, odt_para_to_rich_text
@@ -91,19 +92,24 @@ def _load_odt_xml(path: Path) -> ET.Element:
     except zipfile.BadZipFile as exc:
         raise ValueError(f"Not a valid ZIP/ODT archive: {path}") from exc
     try:
-        return ET.fromstring(xml_bytes)
+        return DefET.fromstring(xml_bytes)
     except ET.ParseError as exc:
         raise ValueError(f"Invalid ODT: content.xml is not valid XML: {exc}") from exc
 
 
-def read_odt_paragraph_rich_lines(path: str | Path) -> list[str]:
-    """Return non-empty paragraph rich-text strings in document order.
+_ATTR_OUTLINE_LEVEL = f"{{{_TEXT_NS}}}outline-level"
 
-    Like ``read_odt_paragraph_lines`` but preserves inline style markup
-    (italic, bold, underline, etc.) as ``<hi rend="…">`` tags in the
-    returned strings. Plain text is returned unchanged when no styling is
-    present. ``text_norm`` should be produced by passing these strings
-    through ``normalize()``, which strips the ``<hi>`` tags.
+
+def read_odt_paragraph_rich_lines(path: str | Path) -> list[tuple[str, int | None]]:
+    """Return non-empty paragraph rich-text strings with optional heading level.
+
+    Each element is ``(rich_text, heading_level_or_None)``:
+    - ``heading_level`` is 1, 2, 3… for ``text:h`` elements (from ``text:outline-level``).
+    - ``None`` for ordinary ``text:p`` paragraphs.
+
+    Preserves inline style markup as ``<hi rend="…">`` tags. Plain text is
+    returned unchanged when no styling is present. ``text_norm`` should be
+    produced via ``normalize()``, which strips the ``<hi>`` tags.
     """
     path = Path(path)
     if not path.exists():
@@ -120,14 +126,19 @@ def read_odt_paragraph_rich_lines(path: str | Path) -> list[str]:
         break
     tree = body if body is not None else root
 
-    out: list[str] = []
+    out: list[tuple[str, int | None]] = []
     for elem in tree.iter():
         if elem.tag not in (_TAG_P, _TAG_H):
             continue
         rich = odt_para_to_rich_text(elem, style_map)
-        # blank check on plain text (strip <hi> tags via a simple replacement)
         plain = _walk_text_content(elem).strip()
         if not plain:
             continue
-        out.append(rich)
+        heading_level: int | None = None
+        if elem.tag == _TAG_H:
+            try:
+                heading_level = int(elem.get(_ATTR_OUTLINE_LEVEL) or "1")
+            except ValueError:
+                heading_level = 1
+        out.append((rich, heading_level))
     return out

@@ -1,4 +1,16 @@
 .annot-panel { display: flex; flex-direction: column; gap: 0; flex: 1; min-height: 0; }
+.annot-doc-header {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px;
+  padding: 8px 0 10px; margin-bottom: 4px;
+  border-bottom: 1px solid var(--border, #e8e8e8);
+}
+.annot-doc-header-title {
+  font-size: 0.92rem; font-weight: 600; color: var(--fg, #111);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60%;
+}
+.annot-doc-header-meta {
+  font-size: 0.78rem; color: var(--color-muted, #888); white-space: nowrap;
+}
 .annot-toolbar {
   display: flex; align-items: center; gap: 12px;
   padding: 8px 12px; border-bottom: 1px solid var(--border, #ddd);
@@ -28,12 +40,12 @@
 }
 .annot-btn-refresh:hover { background: var(--bg-hover, #e8e8e8); }
 .annot-layout {
-  display: grid; grid-template-columns: 200px 1fr 220px;
-  gap: 0; flex: 1; overflow: hidden; min-height: 0; height: 100%;
+  display: grid; grid-template-columns: 200px 1fr 220px; grid-template-rows: 1fr;
+  gap: 0; flex: 1; overflow: hidden; min-height: 0;
 }
 .annot-sidebar {
   border-right: 1px solid var(--border, #ddd);
-  overflow-y: auto; padding: 8px 0;
+  overflow-y: auto; padding: 8px 0; min-height: 0;
 }
 .annot-doc-list { list-style: none; margin: 0; padding: 0; }
 .annot-doc-item {
@@ -49,7 +61,7 @@
   border-radius: 50%; color: #aaa; background: #eee;
 }
 .annot-doc-badge.annotated { color: #2e7d32; background: #c8e6c9; }
-.annot-viewer { overflow-y: auto; overflow-x: hidden; padding: 16px 16px 32px; }
+.annot-viewer { overflow-y: auto; overflow-x: hidden; padding: 16px 16px 32px; min-height: 0; }
 
 /* ── Unit block ── */
 .annot-unit {
@@ -165,7 +177,7 @@
 }
 .annot-editor {
   border-left: 1px solid var(--border, #ddd);
-  padding: 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;
+  padding: 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; min-height: 0;
 }
 .annot-editor-header { font-weight: 600; font-size: 0.85rem; margin-bottom: 4px; }
 .annot-field-label {
@@ -181,3 +193,29 @@
 .annot-placeholder { color: var(--color-muted, #888); font-size: 0.85rem; padding: 8px; }
 .annot-error { color: var(--color-danger, #c0392b); font-size: 0.85rem; padding: 8px; }
 .annot-sidebar-loading { color: var(--color-muted, #888); font-size: 0.85rem; padding: 8px; }
+
+/* ── Toggle lecture / annoter ── */
+.annot-btn-view-toggle {
+  padding: 4px 10px; border-radius: 4px; cursor: pointer;
+  border: 1px solid var(--border, #ccc); background: var(--bg-accent, #f5f5f5);
+  font-size: 0.8rem; white-space: nowrap;
+}
+.annot-btn-view-toggle:hover { background: var(--bg-hover, #e8e8e8); }
+.annot-btn-view-toggle--read {
+  background: #dce9ff; border-color: var(--color-primary, #4e9af1); color: #1a3a6e;
+}
+
+/* ── Prose view ── */
+.annot-prose { padding: 4px 0; }
+.annot-prose-unit {
+  margin: 0 0 14px; font-size: 0.95rem; line-height: 1.8;
+  color: var(--fg, #111);
+}
+.annot-prose-token { cursor: pointer; border-radius: 3px; padding: 1px 2px; }
+.annot-prose-token--colored {
+  background: color-mix(in srgb, var(--upos-color) 18%, transparent);
+}
+.annot-prose-token:hover {
+  background: color-mix(in srgb, var(--upos-color, #4e9af1) 35%, transparent);
+  outline: 1px solid var(--upos-color, #4e9af1);
+}

@@ -6,7 +6,11 @@
     <title>Concordancier Prep — AGRAFES</title>
     <style>
       *, *::before, *::after { box-sizing: border-box; }
-      body { margin: 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f0f2f5; color: #1a1a2e; }
+      html { height: 100%; }
+      body { margin: 0; height: 100%; overflow: hidden;
+             font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+             background: #f0f2f5; color: #1a1a2e; }
+      #app { height: 100%; display: flex; flex-direction: column; }
     </style>
   </head>
   <body>

@@ -114,6 +114,23 @@ class JobManager:
                 job.progress_message = "Canceled"
             return "canceled"
 
+    def cancel_all(self) -> int:
+        """Cancel all queued or running jobs (called on server shutdown).
+
+        Returns the count of jobs that were transitioned to canceled.
+        Running daemon threads will still execute but will see their status
+        is already canceled when they finish and will not overwrite it.
+        """
+        count = 0
+        with self._lock:
+            for job in self._jobs.values():
+                if job.status in ("queued", "running"):
+                    job.status = "canceled"
+                    job.finished_at = _utcnow()
+                    job.progress_message = "Canceled (server shutdown)"
+                    count += 1
+        return count
+
     def _run_job(self, job_id: str, runner: JobRunner) -> None:
         with self._lock:
             job = self._jobs[job_id]

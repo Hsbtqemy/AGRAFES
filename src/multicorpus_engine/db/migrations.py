@@ -12,8 +12,11 @@ from __future__ import annotations
 import re
 import sqlite3
 import sys
+import threading
 from pathlib import Path
 
+
+_migration_lock = threading.Lock()
 
 # Default migrations directory: repo_root/migrations/
 _REPO_MIGRATIONS_DIR = Path(__file__).parent.parent.parent.parent / "migrations"
@@ -59,19 +62,24 @@ def apply_migrations(
     )
     conn.commit()
 
-    applied = {row[0] for row in conn.execute("SELECT version FROM schema_migrations")}
+    with _migration_lock:
+        applied = {row[0] for row in conn.execute("SELECT version FROM schema_migrations")}
 
-    count = 0
-    for version, path in migrations:
-        if version in applied:
-            continue
-        sql = path.read_text(encoding="utf-8")
-        conn.executescript(sql)
-        conn.execute(
-            "INSERT INTO schema_migrations (version, applied_at) VALUES (?, datetime('now'))",
-            (version,),
-        )
-        conn.commit()
-        count += 1
+        count = 0
+        for version, path in migrations:
+            if version in applied:
+                continue
+            sql = path.read_text(encoding="utf-8")
+            try:
+                conn.executescript(sql)
+                conn.execute(
+                    "INSERT INTO schema_migrations (version, applied_at) VALUES (?, datetime('now'))",
+                    (version,),
+                )
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+            count += 1
 
-    return count
+        return count

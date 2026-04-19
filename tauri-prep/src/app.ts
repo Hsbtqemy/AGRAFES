@@ -72,6 +72,8 @@ export class App {
   private _screenEls: Record<TabId, HTMLElement> = {} as never;
   private _screenControllers: Record<TabId, GuardableScreen> = {} as never;
   private _dbPathEl!: HTMLElement;
+  private _logEl!: HTMLElement;
+  private _journalOpen = false;
 
   /** beforeunload handler stored so dispose() can remove it cleanly. */
   private _beforeUnloadHandler: ((e: BeforeUnloadEvent) => void) | null = null;
@@ -216,6 +218,13 @@ export class App {
     openConcordancierBtn.title = "Ouvrir la DB active dans AGRAFES Shell (app unifiée)";
     openConcordancierBtn.addEventListener("click", () => void this._openInConcordancier());
 
+    const journalBtn = document.createElement("button");
+    journalBtn.id = "prep-journal-btn";
+    journalBtn.className = "prep-topbar-db-btn";
+    journalBtn.textContent = "📋 Journal";
+    journalBtn.title = "Afficher le journal des opérations";
+    journalBtn.addEventListener("click", () => this._toggleJournal(root));
+
     topbar.appendChild(titleEl);
     topbar.appendChild(dbPathEl);
     topbar.appendChild(openBtn);
@@ -223,6 +232,7 @@ export class App {
     topbar.appendChild(presetsBtn);
     topbar.appendChild(corpusInfoBtn);
     topbar.appendChild(openConcordancierBtn);
+    topbar.appendChild(journalBtn);
 
     const pendingConfirmBar = document.createElement("div");
     pendingConfirmBar.id = "app-pending-confirm";
@@ -232,6 +242,24 @@ export class App {
 
     this._dbPathEl = dbPathEl;
     root.appendChild(topbar);
+
+    // ── Journal drawer (global, fixed) ────────────────────────────────────────
+    const drawer = document.createElement("div");
+    drawer.id = "prep-journal-drawer";
+    drawer.className = "prep-journal-drawer";
+    drawer.setAttribute("aria-hidden", "true");
+    drawer.setAttribute("role", "complementary");
+    drawer.setAttribute("aria-label", "Journal des opérations");
+    drawer.innerHTML = `
+      <div class="prep-journal-head">
+        <span class="prep-journal-title">Journal</span>
+        <button id="prep-journal-close" class="prep-journal-close-btn" title="Fermer">&#10005;</button>
+      </div>
+      <div id="prep-journal-log" class="prep-log-pane prep-journal-log"></div>
+    `;
+    drawer.querySelector("#prep-journal-close")?.addEventListener("click", () => this._toggleJournal(root));
+    root.appendChild(drawer);
+    this._logEl = root.querySelector("#prep-journal-log")!;
 
     // ── vNext Shell: sidebar + main grid ─────────────────────────────────────
     const shell = document.createElement("div");
@@ -361,6 +389,28 @@ export class App {
 
     main.appendChild(content);
     this._syncCurationWideClass();
+
+    // Share global log element with all screens
+    this._import.setLogEl(this._logEl);
+    this._actions.setLogEl(this._logEl);
+    this._metadata.setLogEl(this._logEl);
+    this._exports.setLogEl(this._logEl);
+  }
+
+  private _toggleJournal(root: HTMLElement): void {
+    this._journalOpen = !this._journalOpen;
+    const drawer = root.querySelector<HTMLElement>("#prep-journal-drawer");
+    const btn = root.querySelector<HTMLButtonElement>("#prep-journal-btn");
+    if (drawer) {
+      drawer.classList.toggle("open", this._journalOpen);
+      drawer.setAttribute("aria-hidden", String(!this._journalOpen));
+      if (this._journalOpen) {
+        // Scroll to bottom when opening
+        const log = drawer.querySelector<HTMLElement>("#prep-journal-log");
+        if (log) log.scrollTop = log.scrollHeight;
+      }
+    }
+    if (btn) btn.classList.toggle("active", this._journalOpen);
   }
 
   private _switchTab(tab: TabId, force = false): void {

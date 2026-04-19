@@ -18,6 +18,13 @@ import {
   updateDocument,
   getDocumentPreview,
   segmentPreview,
+  structureSections,
+  structureDiff,
+  segmentPropagatePreview,
+  applyPropagated,
+  zoneLines,
+  insertStructureUnit,
+  deleteStructureUnit,
   detectMarkers,
   mergeUnits,
   splitUnit,
@@ -25,6 +32,7 @@ import {
   SidecarError,
   richTextToHtml,
 } from "../lib/sidecarClient.ts";
+import type { StructureSection, StructureDiffSection, PropagateSection } from "../lib/sidecarClient.ts";
 import type { JobCenter } from "../components/JobCenter.ts";
 import { inlineConfirm } from "../lib/inlineConfirm.ts";
 
@@ -52,7 +60,7 @@ export interface SegmentationCallbacks {
   setBusy(v: boolean): void;
   isBusy(): boolean;
   jobCenter?(): JobCenter | null;
-  onNavigate?(target: string): void;
+  onNavigate?(target: string, context?: { docId?: number }): void;
   onOpenDocuments?(): void;
   onOpenExporter?(prefill?: SegmentExportPrefill): void;
 }
@@ -79,6 +87,27 @@ export class SegmentationView {
   private _segPreviewTimer: ReturnType<typeof setTimeout> | null = null;
   private _ltSyncLock = false;
   private _onLtRawScroll: ((e: Event) => void) | null = null;
+  // ─── Structure matcher state ───────────────────────────────────────────────
+  private _refSections: StructureSection[] = [];
+  private _tgtSections: StructureSection[] = [];
+  private _structurePairs: [number, number][] = []; // [ref_idx, tgt_idx][]
+  private _matcherInitialized = false; // true once user sees the matcher (prevents re-init on tab re-open)
+  private _matcherPendingSide: "ref" | "tgt" | null = null;
+  private _matcherPendingIdx: number | null = null;
+  private _matcherDocId: number | null = null;
+  private _matcherRefDocId: number | null = null;
+  private _lastDeletedUnit: { docId: number; n: number; text: string; role: string | null } | null = null;
+  private _undoTimer: ReturnType<typeof setTimeout> | null = null;
+  // ─── Propagate preview editable state ─────────────────────────────────────
+  private _propagateLiveSections: Array<{
+    status: string;
+    header_text: string | null;
+    header_role: string | null;
+    ref_count: number;
+    original_count: number;
+    adjusted: boolean;
+    segments: string[];
+  }> = [];
   private _onLtSegScroll: ((e: Event) => void) | null = null;
   private _segPrevSyncLock = false;
   private _onSegPrevRawScroll: ((e: Event) => void) | null = null;
@@ -112,6 +141,10 @@ export class SegmentationView {
       clearTimeout(this._segPreviewTimer);
       this._segPreviewTimer = null;
     }
+    if (this._undoTimer) {
+      clearTimeout(this._undoTimer);
+      this._undoTimer = null;
+    }
     this._unbindLongtextScrollSync();
     this._unbindSegPreviewScrollSync();
     this._root = null;
@@ -129,6 +162,20 @@ export class SegmentationView {
   refreshDocs(): void {
     this._populateSegDocList();
     this._refreshSegmentationStatusUI();
+  }
+
+  focusDoc(docId: number): void {
+    this._selectedSegDocId = docId;
+    const row = this._q<HTMLElement>(`.prep-seg-doc-row[data-doc-id="${docId}"]`);
+    if (row) {
+      this._q<HTMLElement>("#act-seg-split-left")
+        ?.querySelectorAll(".prep-seg-doc-row")
+        .forEach(r => r.classList.remove("active"));
+      row.classList.add("active");
+      row.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+    const rightEl = this._q<HTMLElement>("#act-seg-split-right");
+    if (rightEl) void this._loadSegRightPanel(docId, rightEl);
   }
 
   /** Returns the most recent segment report (for cross-view display in CurationView). */
@@ -150,14 +197,12 @@ export class SegmentationView {
     el.setAttribute("aria-label", "Vue Segmentation");
     el.className = "prep-seg-panel-root";
     el.innerHTML = `
-      <section class="prep-acts-seg-head-card">
-        <div class="prep-acts-hub-head-left">
-          <h1>Segmentation</h1>
-          <p>S&#233;lectionnez un document pour voir l&#8217;aper&#231;u live et lancer la segmentation.</p>
-        </div>
-      </section>
       <div class="prep-seg-split-layout">
         <div class="prep-seg-split-list" id="act-seg-split-list">
+          <div class="prep-seg-list-branding">
+            <h2 class="prep-seg-list-brand-title">Segmentation</h2>
+            <p class="prep-seg-list-brand-desc">S&#233;lectionnez un document pour voir l&#8217;aper&#231;u live et lancer la segmentation.</p>
+          </div>
           <div class="prep-seg-split-list-head">
             <span class="prep-seg-split-list-title">Documents</span>
             <input type="search" id="act-seg-list-filter" class="prep-seg-split-list-filter"
@@ -307,6 +352,15 @@ export class SegmentationView {
 
     this._segMarkersDetected = null;
     this._segSplitMode = "sentences";
+    this._refSections = [];
+    this._tgtSections = [];
+    this._structurePairs = [];
+    this._matcherInitialized = false;
+    this._propagateLiveSections = [];
+    this._matcherPendingSide = null;
+    this._matcherPendingIdx = null;
+    this._matcherDocId = null;
+    this._matcherRefDocId = null;
 
     // Load conventions for role badges (best-effort)
     const conn = this._getConn();
@@ -328,6 +382,7 @@ export class SegmentationView {
 
     rightEl.innerHTML = `
       <div class="prep-seg-right-root" id="act-seg-right-root">
+        <div class="prep-seg-right-scroll">
         <div class="prep-seg-right-header">
           <div class="prep-seg-right-header-main">
             <h3 class="prep-seg-right-doc-title">${_escHtml(doc.title)}</h3>
@@ -363,19 +418,20 @@ export class SegmentationView {
                     <option value="default"${pack === "default" ? " selected" : ""}>Liste courte (moins de protections)</option>
                   </select>
                 </label>
-                <label class="prep-seg-param-field">Calibrer sur
-                  <select id="act-seg-calibrate" class="seg-param-select">
-                    <option value="">&#8212; aucun &#8212;</option>
-                    ${docs.filter(d => d.doc_id !== docId).map(d =>
-                      `<option value="${d.doc_id}">[${d.doc_id}] ${_escHtml(d.title)}</option>`
-                    ).join("")}
-                  </select>
-                </label>
               </div>
               <div id="act-seg-params-markers" class="prep-seg-config-params-group" style="display:none">
                 <button type="button" class="btn btn-ghost btn-sm" id="act-seg-detect-btn"
                   title="D&#233;tecter les balises [N] dans le texte">&#128270; D&#233;tecter balises</button>
               </div>
+              <label class="prep-seg-param-field"
+                title="R&#233;f&#233;rence pour calibrer la segmentation (mode phrases) et comparer la structure (onglet Structure).">Calibrer sur
+                <select id="act-seg-calibrate" class="seg-param-select">
+                  <option value="">&#8212; aucun &#8212;</option>
+                  ${docs.filter(d => d.doc_id !== docId).map(d =>
+                    `<option value="${d.doc_id}">[${d.doc_id}] ${_escHtml(d.title)}</option>`
+                  ).join("")}
+                </select>
+              </label>
             </div>
           </div>
           <p id="act-seg-strategy-summary" class="prep-seg-strategy-summary" aria-live="polite"></p>
@@ -401,6 +457,14 @@ export class SegmentationView {
               <button class="prep-seg-content-tab" role="tab" data-pane="saved"
                 ${!savedAlready ? 'disabled title="Aucun segment — appliquez d\'abord la segmentation"' : 'title="Éditer les segments : fusionner, couper"'}>
                 &#9986; Modifier&#160;<span id="act-seg-saved-count" class="chip">${savedAlready ? doc.unit_count : "&#8212;"}</span>
+              </button>
+              <button class="prep-seg-content-tab" role="tab" data-pane="diff"
+                ${!savedAlready ? 'disabled title="Aucun segment en base"' : 'title="Comparer avant/après re-segmentation"'}>
+                &#8644;&#160;Diff
+              </button>
+              <button class="prep-seg-content-tab" role="tab" data-pane="structure"
+                title="Comparer la structure (intertitres) avec le document de référence">
+                &#9783;&#160;Structure
               </button>
             </div>
             <span id="act-seg-prev-stats" class="prep-seg-preview-stats"></span>
@@ -429,7 +493,18 @@ export class SegmentationView {
               ${savedAlready ? `<p class="empty-hint">Chargement des segments&#8230;</p>` : ""}
             </div>
           </div>
+          <div id="act-seg-pane-diff" style="display:none" role="tabpanel">
+            <div id="act-seg-diff-content">
+              <p class="empty-hint">Basculez sur l&#8217;onglet Diff pour comparer.</p>
+            </div>
+          </div>
+          <div id="act-seg-pane-structure" style="display:none" role="tabpanel">
+            <div id="act-seg-structure-content">
+              <p class="empty-hint">S&#233;lectionnez un document de r&#233;f&#233;rence dans &#171;&#160;Calibrer sur&#160;&#187; puis ouvrez cet onglet.</p>
+            </div>
+          </div>
         </div>
+        </div><!-- /.prep-seg-right-scroll -->
         <div class="prep-seg-actions-bar" id="act-seg-actions">
           <button class="btn prep-btn-warning" id="act-seg-btn"
             title="Appliquer la segmentation (efface les liens d&#8217;alignement existants)">Appliquer</button>
@@ -437,6 +512,8 @@ export class SegmentationView {
             title="Appliquer la segmentation puis valider le document">Appliquer + Valider</button>
           <button class="btn btn-primary btn-sm" id="act-seg-validate-only-btn"
             ${!savedAlready ? "disabled" : ""}>Valider &#10003;</button>
+          <button class="btn btn-sm" id="act-seg-goto-annot-btn"
+            title="Ouvrir ce document dans le panneau Annotation">Voir&#160;annotation&#160;&#8599;</button>
           <div class="prep-seg-actions-dest">
             Apr&#232;s validation&#160;:
             <select id="act-seg-after-validate" class="seg-param-select prep-seg-param-select-sm">
@@ -463,7 +540,17 @@ export class SegmentationView {
     // Wire params → debounced preview
     rightEl.querySelector("#act-seg-lang")?.addEventListener("input", () => this._scheduleSegPreview(docId));
     rightEl.querySelector("#act-seg-pack")?.addEventListener("change", () => this._scheduleSegPreview(docId));
-    rightEl.querySelector("#act-seg-calibrate")?.addEventListener("change", () => this._scheduleSegPreview(docId));
+    rightEl.querySelector("#act-seg-calibrate")?.addEventListener("change", () => {
+      this._scheduleSegPreview(docId);
+      this._structurePairs = [];
+      this._matcherInitialized = false;
+      this._matcherPendingSide = null;
+      this._matcherPendingIdx = null;
+      this._matcherDocId = null;
+      this._matcherRefDocId = null;
+      const activePane = this._root?.querySelector<HTMLButtonElement>(".prep-seg-content-tab.active")?.dataset.pane;
+      if (activePane === "structure") void this._renderStructureDiff(docId);
+    });
     rightEl.querySelector("#act-seg-prev-refresh")?.addEventListener("click", () => void this._runSegPreview(docId));
 
     rightEl.querySelectorAll<HTMLInputElement>('input[name="act-seg-strategy"]').forEach(r => {
@@ -475,15 +562,18 @@ export class SegmentationView {
     this._syncSegStrategyRadios();
 
     rightEl.querySelector("#act-seg-detect-btn")?.addEventListener("click", () => void this._runDetectMarkers(docId));
+    rightEl.querySelector("#act-seg-goto-annot-btn")?.addEventListener("click", () => {
+      this._cb.onNavigate?.("annoter", { docId });
+    });
     rightEl.querySelector("#act-seg-btn")?.addEventListener("click", () => void this._runSegment());
     rightEl.querySelector("#act-seg-validate-btn")?.addEventListener("click", () => void this._runSegment(true));
     rightEl.querySelector("#act-seg-validate-only-btn")?.addEventListener("click", () => void this._runValidateCurrentSegDoc());
 
-    // Wire content pane tabs (Aperçu / Enregistré)
+    // Wire content pane tabs (Aperçu / Enregistré / Diff)
     rightEl.querySelectorAll<HTMLButtonElement>(".prep-seg-content-tab").forEach(btn => {
       btn.addEventListener("click", () => {
-        const pane = btn.dataset.pane as "preview" | "saved";
-        this._switchContentPane(pane);
+        const pane = btn.dataset.pane as "preview" | "saved" | "diff" | "structure";
+        this._switchContentPane(pane, docId);
       });
     });
 
@@ -583,7 +673,7 @@ export class SegmentationView {
         ? ` · &#233;cart ${res.calibrate_ratio_pct}% vs doc #${res.calibrate_to}`
         : "";
       if (statsEl) {
-        statsEl.textContent = mode === "markers"
+        statsEl.innerHTML = mode === "markers"
           ? `${res.units_input} u. &#8594; ${res.units_output} segments par balise`
           : `${res.units_input} u. &#8594; ${res.units_output} phrases · r&#233;glage ${res.segment_pack}${calibrateText}`;
       }
@@ -685,19 +775,844 @@ export class SegmentationView {
     }
   }
 
-  private _switchContentPane(pane: "preview" | "saved"): void {
-    const previewPane  = this._q<HTMLElement>("#act-seg-pane-preview");
-    const savedPane    = this._q<HTMLElement>("#act-seg-pane-saved");
-    const refreshBtn   = this._q<HTMLElement>("#act-seg-prev-refresh");
-    const statsEl      = this._q<HTMLElement>("#act-seg-prev-stats");
+  private _switchContentPane(pane: "preview" | "saved" | "diff" | "structure", docId?: number): void {
+    const previewPane   = this._q<HTMLElement>("#act-seg-pane-preview");
+    const savedPane     = this._q<HTMLElement>("#act-seg-pane-saved");
+    const diffPane      = this._q<HTMLElement>("#act-seg-pane-diff");
+    const structurePane = this._q<HTMLElement>("#act-seg-pane-structure");
+    const refreshBtn    = this._q<HTMLElement>("#act-seg-prev-refresh");
+    const statsEl       = this._q<HTMLElement>("#act-seg-prev-stats");
     if (!previewPane || !savedPane) return;
-    previewPane.style.display = pane === "preview" ? "" : "none";
-    savedPane.style.display   = pane === "saved"   ? "" : "none";
+    previewPane.style.display   = pane === "preview"   ? "" : "none";
+    savedPane.style.display     = pane === "saved"     ? "" : "none";
+    if (diffPane)      diffPane.style.display      = pane === "diff"      ? "" : "none";
+    if (structurePane) structurePane.style.display = pane === "structure" ? "" : "none";
     if (refreshBtn) refreshBtn.style.display = pane === "preview" ? "" : "none";
     if (statsEl)    statsEl.style.display    = pane === "preview" ? "" : "none";
     this._root?.querySelectorAll<HTMLButtonElement>(".prep-seg-content-tab").forEach(t => {
       t.classList.toggle("active", t.dataset.pane === pane);
     });
+    if (pane === "diff" && docId != null) void this._renderSegDiff(docId);
+    if (pane === "structure" && docId != null) void this._renderStructureDiff(docId);
+  }
+
+  private async _renderSegDiff(docId: number): Promise<void> {
+    const diffEl = this._q<HTMLElement>("#act-seg-diff-content");
+    if (!diffEl) return;
+    const conn = this._getConn();
+    if (!conn) { diffEl.innerHTML = `<p class="empty-hint">Non connecté.</p>`; return; }
+
+    diffEl.innerHTML = `<p class="empty-hint">Calcul du diff&#8230;</p>`;
+    try {
+      const [savedRes, previewRes] = await Promise.all([
+        getDocumentPreview(conn, docId, 2000),
+        segmentPreview(conn, {
+          doc_id: docId,
+          mode: this._segSplitMode,
+          lang: (this._q<HTMLInputElement>("#act-seg-lang"))?.value.trim() || "fr",
+          pack: (this._q<HTMLSelectElement>("#act-seg-pack"))?.value ?? "auto",
+          limit: 2000,
+        }),
+      ]);
+
+      const before = savedRes.lines.map(l => l.text ?? "");
+      const after  = previewRes.segments.map(s => s.text ?? "");
+
+      // LCS-based diff on text arrays
+      const ops = _seqDiff(before, after);
+
+      if (ops.every(o => o.op === "eq")) {
+        diffEl.innerHTML = `<div class="prep-seg-diff-equal-note">&#10003; Aucune diff&#233;rence — la re-segmentation produirait les m&#234;mes ${before.length} segments.</div>`;
+        return;
+      }
+
+      const beforeCount = ops.filter(o => o.op !== "ins").length;
+      const afterCount  = ops.filter(o => o.op !== "del").length;
+      const addedCount  = ops.filter(o => o.op === "ins").length;
+      const removedCount = ops.filter(o => o.op === "del").length;
+
+      diffEl.innerHTML = `
+        <div class="prep-seg-diff-stats">
+          <span>${beforeCount} segments avant</span>
+          <span class="prep-seg-diff-arrow">&#8594;</span>
+          <span>${afterCount} segments apr&#232;s</span>
+          <span class="prep-seg-diff-added">+${addedCount} ajout&#233;(s)</span>
+          <span class="prep-seg-diff-removed">&#8722;${removedCount} supprim&#233;(s)</span>
+        </div>
+        <div class="prep-seg-diff-list">
+          ${ops.map((o, i) =>
+            `<div class="prep-seg-diff-row prep-seg-diff-${o.op}" data-n="${i + 1}">` +
+            `<span class="prep-seg-diff-marker">${o.op === "eq" ? "=" : o.op === "ins" ? "+" : "−"}</span>` +
+            `<span class="prep-seg-diff-text">${_escHtml(o.text)}</span></div>`
+          ).join("")}
+        </div>
+      `;
+    } catch (err) {
+      diffEl.innerHTML = `<p class="empty-hint" style="color:var(--color-danger)">Erreur diff : ${_escHtml(err instanceof Error ? err.message : String(err))}</p>`;
+    }
+  }
+
+  private async _renderStructureDiff(docId: number): Promise<void> {
+    const el = this._q<HTMLElement>("#act-seg-structure-content");
+    if (!el) return;
+    const conn = this._getConn();
+    if (!conn) { el.innerHTML = `<p class="empty-hint">Non connecté.</p>`; return; }
+
+    const calibrateRaw = (this._q("#act-seg-calibrate") as HTMLSelectElement | null)?.value ?? "";
+    if (!calibrateRaw) {
+      el.innerHTML = `<p class="empty-hint">S&#233;lectionnez un document de r&#233;f&#233;rence dans &#171;&#160;Calibrer sur&#160;&#187;.</p>`;
+      return;
+    }
+    const refDocId = parseInt(calibrateRaw, 10);
+    const docs = this._getDocs();
+    const refDoc = docs.find(d => d.doc_id === refDocId);
+    const curDoc = docs.find(d => d.doc_id === docId);
+
+    el.innerHTML = `<p class="empty-hint">Analyse de la structure&#8230;</p>`;
+    try {
+      const res = await structureSections(conn, docId, refDocId);
+      this._refSections = res.ref_sections;
+      this._tgtSections = res.target_sections;
+
+      if (res.ref_sections.length === 0 && res.target_sections.length === 0) {
+        el.innerHTML = `<p class="empty-hint">Aucune unit&#233; de structure dans ces deux documents.</p>`;
+        return;
+      }
+
+      // Init default positional pairs only on first load for this doc/ref pair
+      if (!this._matcherInitialized || this._matcherDocId !== docId || this._matcherRefDocId !== refDocId) {
+        const n = Math.min(this._refSections.length, this._tgtSections.length);
+        this._structurePairs = Array.from({ length: n }, (_, i) => [i, i] as [number, number]);
+        this._matcherPendingSide = null;
+        this._matcherPendingIdx = null;
+        this._matcherDocId = docId;
+        this._matcherRefDocId = refDocId;
+        this._matcherInitialized = true;
+      }
+
+      el.innerHTML = `
+        <div class="prep-matcher-root">
+          <div class="prep-matcher-toolbar">
+            <span class="prep-matcher-hint" id="act-matcher-hint"></span>
+            <button type="button" class="btn btn-ghost btn-sm" id="act-matcher-reset" title="Revenir à l'appariement positionnel par défaut">&#8635; Réinitialiser</button>
+          </div>
+          <div class="prep-matcher-cols">
+            <div class="prep-matcher-col-head">
+              <span class="prep-matcher-col-title">Référence — ${_escHtml(refDoc?.title ?? `#${refDocId}`)}</span>
+              <span class="prep-matcher-col-count">${res.ref_sections.length} section${res.ref_sections.length !== 1 ? "s" : ""}</span>
+            </div>
+            <div class="prep-matcher-col-head">
+              <span class="prep-matcher-col-title">Document courant — ${_escHtml(curDoc?.title ?? `#${docId}`)}</span>
+              <span class="prep-matcher-col-count">${res.target_sections.length} section${res.target_sections.length !== 1 ? "s" : ""}</span>
+            </div>
+            <div class="prep-matcher-col" id="act-matcher-ref"></div>
+            <div class="prep-matcher-col" id="act-matcher-tgt"></div>
+          </div>
+          <div id="act-matcher-undo-bar" class="prep-matcher-undo-bar" style="display:none"></div>
+          <div class="prep-matcher-footer">
+            <button type="button" class="btn btn-primary btn-sm" id="act-strucdiff-propagate-btn">
+              &#9654; Aperçu propagé
+            </button>
+          </div>
+          <div id="act-strucdiff-propagate-result"></div>
+        </div>
+      `;
+
+      this._rebuildMatcherCards();
+
+      el.querySelector("#act-matcher-reset")?.addEventListener("click", () => {
+        const n = Math.min(this._refSections.length, this._tgtSections.length);
+        this._structurePairs = Array.from({ length: n }, (_, i) => [i, i] as [number, number]);
+        this._matcherPendingSide = null;
+        this._matcherPendingIdx = null;
+        this._matcherInitialized = true; // keep initialized so re-opening the tab preserves reset state
+        this._rebuildMatcherCards();
+      });
+
+      el.querySelector("#act-strucdiff-propagate-btn")?.addEventListener("click", () => {
+        void this._runPropagatePreview(docId, refDocId);
+      });
+    } catch (err) {
+      el.innerHTML = `<p class="empty-hint" style="color:var(--color-danger)">Erreur structure : ${_escHtml(err instanceof Error ? err.message : String(err))}</p>`;
+    }
+  }
+
+  private _pairColor(pairIdx: number): string {
+    return `hsl(${Math.round((pairIdx * 137.508) % 360)}, 55%, 35%)`;
+  }
+
+  private _rebuildMatcherCards(): void {
+    const refCol = this._q<HTMLElement>("#act-matcher-ref");
+    const tgtCol = this._q<HTMLElement>("#act-matcher-tgt");
+    const hintEl = this._q<HTMLElement>("#act-matcher-hint");
+    if (!refCol || !tgtCol) return;
+
+    const cardHtml = (side: "ref" | "tgt", idx: number, section: StructureSection): string => {
+      const pairIdx = side === "ref"
+        ? this._structurePairs.findIndex(p => p[0] === idx)
+        : this._structurePairs.findIndex(p => p[1] === idx);
+      const isPending = this._matcherPendingSide === side && this._matcherPendingIdx === idx;
+
+      let badge: string;
+      let stateClass: string;
+      if (isPending) {
+        badge = `<span class="prep-matcher-badge prep-matcher-badge--pending">&#9679;</span>`;
+        stateClass = "prep-matcher-card--pending";
+      } else if (pairIdx >= 0) {
+        const color = this._pairColor(pairIdx);
+        badge = `<span class="prep-matcher-badge prep-matcher-badge--linked" style="background:${color};color:#fff">${pairIdx + 1}</span>`;
+        stateClass = "prep-matcher-card--linked";
+      } else {
+        badge = `<span class="prep-matcher-badge prep-matcher-badge--orphan">&#8212;</span>`;
+        stateClass = "prep-matcher-card--orphan";
+      }
+
+      const insertBtn = side === "ref" && pairIdx < 0
+        ? `<button type="button" class="prep-matcher-insert-btn btn btn-ghost btn-xs" data-insert-ref-idx="${idx}" title="Insérer cet intertitre dans le document cible">&#8853;</button>`
+        : side === "tgt"
+        ? `<button type="button" class="prep-matcher-insert-btn btn btn-ghost btn-xs" data-insert-tgt-idx="${idx}" title="Insérer un nouvel intertitre dans cette section">&#8853;</button>
+           <button type="button" class="prep-matcher-delete-btn btn btn-ghost btn-xs" data-delete-tgt-n="${section.n}" title="Supprimer cet intertitre du document cible">&#10005;</button>`
+        : "";
+      return `<div class="prep-matcher-card ${stateClass}" data-side="${side}" data-idx="${idx}" data-unit-role="${_escHtml(section.role ?? "")}" role="button" tabindex="0" title="${_escHtml(section.text)}">
+        ${badge}
+        <span class="prep-matcher-card-text">${_escHtml(section.text || "—")}</span>
+        <span class="prep-matcher-card-count">${section.line_count} l.</span>
+        ${insertBtn}
+      </div>`;
+    };
+
+    refCol.innerHTML = this._refSections.map((s, i) => cardHtml("ref", i, s)).join("");
+    tgtCol.innerHTML = this._tgtSections.map((s, i) => cardHtml("tgt", i, s)).join("");
+
+    if (hintEl) {
+      if (this._matcherPendingSide !== null) {
+        const pendingIsLinked = this._matcherPendingSide === "ref"
+          ? this._structurePairs.some(p => p[0] === this._matcherPendingIdx)
+          : this._structurePairs.some(p => p[1] === this._matcherPendingIdx);
+        const otherSide = this._matcherPendingSide === "ref" ? "document courant" : "référence";
+        if (pendingIsLinked) {
+          hintEl.textContent = `Section sélectionnée — cliquez sur une section de la ${otherSide} pour re-lier, ou recliquez pour délier`;
+        } else {
+          hintEl.textContent = `Section sélectionnée — cliquez sur une section de la ${otherSide} pour apparier`;
+        }
+      } else {
+        const orphanRef = this._refSections.filter((_, i) => !this._structurePairs.some(p => p[0] === i)).length;
+        const orphanTgt = this._tgtSections.filter((_, i) => !this._structurePairs.some(p => p[1] === i)).length;
+        const parts = [`${this._structurePairs.length} paire${this._structurePairs.length !== 1 ? "s" : ""}`];
+        if (orphanRef > 0) parts.push(`${orphanRef} orphelin${orphanRef !== 1 ? "s" : ""} réf`);
+        if (orphanTgt > 0) parts.push(`${orphanTgt} orphelin${orphanTgt !== 1 ? "s" : ""} cible`);
+        hintEl.textContent = parts.join(" · ") + " — cliquez une section pour la sélectionner";
+      }
+    }
+
+    [refCol, tgtCol].forEach(col => {
+      col.querySelectorAll<HTMLElement>(".prep-matcher-card").forEach(card => {
+        card.addEventListener("click", () => {
+          const side = card.dataset.side as "ref" | "tgt";
+          const idx = parseInt(card.dataset.idx ?? "0", 10);
+          this._handleMatcherClick(side, idx);
+        });
+      });
+    });
+
+    // Bind insert buttons on orphan ref cards
+    refCol.querySelectorAll<HTMLButtonElement>(".prep-matcher-insert-btn").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const rIdx = parseInt(btn.dataset.insertRefIdx ?? "0", 10);
+        if (this._matcherDocId != null) {
+          void this._openInsertZone({ side: "ref", idx: rIdx }, this._matcherDocId);
+        }
+      });
+    });
+
+    // Bind insert buttons on target cards
+    tgtCol.querySelectorAll<HTMLButtonElement>(".prep-matcher-insert-btn").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const tIdx = parseInt(btn.dataset.insertTgtIdx ?? "0", 10);
+        if (this._matcherDocId != null) {
+          void this._openInsertZone({ side: "tgt", idx: tIdx }, this._matcherDocId);
+        }
+      });
+    });
+
+    // Bind delete buttons on target cards
+    tgtCol.querySelectorAll<HTMLButtonElement>(".prep-matcher-delete-btn").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const n = parseInt(btn.dataset.deleteTgtN ?? "0", 10);
+        if (this._matcherDocId != null) {
+          void this._deleteStructureUnit(this._matcherDocId, n, btn);
+        }
+      });
+    });
+  }
+
+  private async _deleteStructureUnit(docId: number, n: number, triggerBtn: HTMLButtonElement): Promise<void> {
+    const conn = this._getConn();
+    if (!conn) return;
+    const card = triggerBtn.closest<HTMLElement>(".prep-matcher-card");
+    const label = card?.querySelector(".prep-matcher-card-text")?.textContent?.trim() ?? `n=${n}`;
+
+    // Fetch role before deleting
+    const roleAttr = card?.dataset.unitRole ?? null;
+
+    try {
+      await deleteStructureUnit(conn, docId, n);
+      // Store for undo
+      this._lastDeletedUnit = { docId, n, text: label, role: roleAttr };
+      this._matcherInitialized = false;
+      this._matcherPendingSide = null;
+      this._matcherPendingIdx = null;
+      await this._renderStructureDiff(docId);
+      this._showUndoBanner(label);
+    } catch (err) {
+      this._cb.toast?.(`Erreur suppression : ${err instanceof Error ? err.message : String(err)}`, true);
+    }
+  }
+
+  private _showUndoBanner(label: string): void {
+    const bar = this._q<HTMLElement>("#act-matcher-undo-bar");
+    if (!bar) return;
+
+    if (this._undoTimer) { clearTimeout(this._undoTimer); this._undoTimer = null; }
+
+    const DURATION = 8000;
+    bar.style.display = "";
+    bar.innerHTML = `
+      <span class="prep-matcher-undo-msg">Intertitre &#171;&#160;${_escHtml(label)}&#160;&#187; supprimé</span>
+      <span class="prep-matcher-undo-countdown" id="act-undo-countdown">8</span>
+      <button type="button" class="btn btn-ghost btn-xs prep-matcher-undo-btn" id="act-matcher-undo-btn">&#8630; Annuler</button>
+    `;
+
+    // Countdown display
+    let remaining = DURATION / 1000;
+    const countEl = bar.querySelector<HTMLElement>("#act-undo-countdown");
+    const tick = setInterval(() => {
+      remaining -= 1;
+      if (countEl) countEl.textContent = String(remaining);
+      if (remaining <= 0) clearInterval(tick);
+    }, 1000);
+
+    bar.querySelector("#act-matcher-undo-btn")?.addEventListener("click", () => {
+      clearInterval(tick);
+      this._clearUndoBanner();
+      void this._undoDeleteStructure();
+    });
+
+    this._undoTimer = setTimeout(() => {
+      clearInterval(tick);
+      this._clearUndoBanner();
+      this._lastDeletedUnit = null;
+    }, DURATION);
+  }
+
+  private _clearUndoBanner(): void {
+    if (this._undoTimer) { clearTimeout(this._undoTimer); this._undoTimer = null; }
+    const bar = this._q<HTMLElement>("#act-matcher-undo-bar");
+    if (bar) { bar.style.display = "none"; bar.innerHTML = ""; }
+  }
+
+  private async _undoDeleteStructure(): Promise<void> {
+    const saved = this._lastDeletedUnit;
+    if (!saved) return;
+    this._lastDeletedUnit = null;
+    const conn = this._getConn();
+    if (!conn) return;
+    try {
+      await insertStructureUnit(conn, saved.docId, saved.n, saved.text, saved.role ?? undefined);
+      this._matcherInitialized = false;
+      this._matcherPendingSide = null;
+      this._matcherPendingIdx = null;
+      await this._renderStructureDiff(saved.docId);
+      this._cb.toast?.(`Intertitre « ${saved.text} » restauré.`);
+    } catch (err) {
+      this._cb.toast?.(`Erreur restauration : ${err instanceof Error ? err.message : String(err)}`, true);
+    }
+  }
+
+  private _handleMatcherClick(side: "ref" | "tgt", idx: number): void {
+    const existingPairIdx = side === "ref"
+      ? this._structurePairs.findIndex(p => p[0] === idx)
+      : this._structurePairs.findIndex(p => p[1] === idx);
+    const isLinked = existingPairIdx >= 0;
+    const isPending = this._matcherPendingSide === side && this._matcherPendingIdx === idx;
+
+    // Already pending (selected) → second click = deselect (and unlink if it was linked)
+    if (isPending) {
+      if (isLinked) this._structurePairs.splice(existingPairIdx, 1);
+      this._matcherPendingSide = null;
+      this._matcherPendingIdx = null;
+      this._rebuildMatcherCards();
+      return;
+    }
+
+    // Opposite side pending → create pair (first unlink both sides if already linked)
+    if (this._matcherPendingSide !== null && this._matcherPendingSide !== side) {
+      const refIdx = this._matcherPendingSide === "ref" ? this._matcherPendingIdx! : idx;
+      const tgtIdx = this._matcherPendingSide === "tgt" ? this._matcherPendingIdx! : idx;
+      // Remove any existing pair involving either side
+      this._structurePairs = this._structurePairs.filter(
+        p => p[0] !== refIdx && p[1] !== tgtIdx
+      );
+      this._structurePairs.push([refIdx, tgtIdx]);
+      this._matcherPendingSide = null;
+      this._matcherPendingIdx = null;
+      this._rebuildMatcherCards();
+      return;
+    }
+
+    // Same side pending → reselect to a different card on the same side
+    if (this._matcherPendingSide === side) {
+      this._matcherPendingIdx = idx;
+      this._rebuildMatcherCards();
+      return;
+    }
+
+    // No pending → select this card (linked or orphan)
+    this._matcherPendingSide = side;
+    this._matcherPendingIdx = idx;
+    this._rebuildMatcherCards();
+  }
+
+  /** Open the insert modal for a ref orphan or a target section. */
+  private async _openInsertZone(source: { side: "ref"; idx: number } | { side: "tgt"; idx: number }, docId: number): Promise<void> {
+    if (!this._root) return;
+    const conn = this._getConn();
+    if (!conn) return;
+
+    // Remove any existing modal first
+    this._root.querySelector(".prep-insert-modal-backdrop")?.remove();
+
+    let prefillText = "";
+    let fromN: number | null = null;
+    let toN: number | null = null;
+
+    if (source.side === "ref") {
+      // Orphan ref section: zone = target area around where this ref section should go
+      const refSection = this._refSections[source.idx];
+      if (!refSection) return;
+      prefillText = refSection.text;
+      const sortedPairs = [...this._structurePairs].sort((a, b) => a[0] - b[0]);
+      const prevPair = [...sortedPairs].reverse().find(p => p[0] < source.idx);
+      const nextPair = sortedPairs.find(p => p[0] > source.idx);
+      fromN = prevPair != null ? this._tgtSections[prevPair[1]]?.n ?? null : null;
+      toN = nextPair != null ? this._tgtSections[nextPair[1]]?.n ?? null : null;
+    } else {
+      // Target section: zone = lines within this target section
+      const tgtSection = this._tgtSections[source.idx];
+      if (!tgtSection) return;
+      prefillText = "";
+      fromN = tgtSection.n;
+      toN = this._tgtSections[source.idx + 1]?.n ?? null;
+    }
+
+    const backdrop = document.createElement("div");
+    backdrop.className = "prep-insert-modal-backdrop";
+    backdrop.innerHTML = `
+      <div class="prep-insert-modal" role="dialog" aria-modal="true">
+        <div class="prep-insert-modal-header">
+          <span class="prep-insert-modal-title">&#8853; Insérer un intertitre</span>
+          <button type="button" class="btn btn-ghost btn-xs prep-insert-modal-close">&#10005;</button>
+        </div>
+        <div class="prep-insert-modal-body">
+          <div class="prep-insert-modal-form">
+            <label class="prep-matcher-insert-label">Texte de l'intertitre</label>
+            <input type="text" class="prep-matcher-insert-text-input prep-insert-modal-text" value="${_escHtml(prefillText)}" placeholder="Saisir le texte de l'intertitre…" />
+          </div>
+          <div class="prep-matcher-insert-lines-label">Choisissez la ligne du document cible avant laquelle insérer :</div>
+          <div class="prep-matcher-insert-lines prep-insert-modal-lines">
+            <p class="empty-hint">Chargement&#8230;</p>
+          </div>
+        </div>
+      </div>
+    `;
+    this._root.appendChild(backdrop);
+
+    const close = () => backdrop.remove();
+    backdrop.querySelector(".prep-insert-modal-close")?.addEventListener("click", close);
+    backdrop.addEventListener("click", (e) => { if (e.target === backdrop) close(); });
+    backdrop.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
+
+    const textInput = backdrop.querySelector<HTMLInputElement>(".prep-insert-modal-text");
+    textInput?.focus();
+
+    try {
+      const res = await zoneLines(conn, docId, fromN, toN);
+      const linesEl = backdrop.querySelector<HTMLElement>(".prep-insert-modal-lines");
+      if (!linesEl) return;
+
+      if (res.lines.length === 0) {
+        // Zone vide — proposer d'insérer à la position calculée (après fromN, ou en début de doc)
+        const insertN = fromN != null ? fromN + 1 : 1;
+        linesEl.innerHTML = `
+          <p class="empty-hint" style="margin-bottom:0.5rem">Aucune ligne dans cette zone.</p>
+          <div class="prep-matcher-insert-line">
+            <span class="prep-matcher-insert-line-n">${insertN}</span>
+            <span class="prep-matcher-insert-line-text" style="font-style:italic">${fromN != null ? `après la position ${fromN}` : "début du document"}</span>
+            <button type="button" class="btn btn-ghost btn-xs prep-matcher-insert-line-btn" data-before-n="${insertN}">Insérer ici</button>
+          </div>`;
+        linesEl.querySelectorAll<HTMLButtonElement>(".prep-matcher-insert-line-btn").forEach(btn => {
+          btn.addEventListener("click", async () => {
+            const beforeN = parseInt(btn.dataset.beforeN ?? "0", 10);
+            const text = textInput?.value.trim() ?? prefillText;
+            if (!text) return;
+            close();
+            await this._executeInsertStructure(docId, beforeN, text);
+          });
+        });
+        return;
+      }
+
+      linesEl.innerHTML = res.lines.map(line => `
+        <div class="prep-matcher-insert-line" data-line-n="${line.n}">
+          <span class="prep-matcher-insert-line-n">${line.n}</span>
+          <span class="prep-matcher-insert-line-text">${_escHtml(line.text)}</span>
+          <button type="button" class="btn btn-ghost btn-xs prep-matcher-insert-line-btn" data-before-n="${line.n}">Insérer avant</button>
+        </div>
+      `).join("");
+
+      linesEl.querySelectorAll<HTMLButtonElement>(".prep-matcher-insert-line-btn").forEach(btn => {
+        btn.addEventListener("click", async () => {
+          const beforeN = parseInt(btn.dataset.beforeN ?? "0", 10);
+          const text = textInput?.value.trim() ?? prefillText;
+          if (!text) return;
+          close();
+          await this._executeInsertStructure(docId, beforeN, text);
+        });
+      });
+    } catch (err) {
+      const linesEl = backdrop.querySelector<HTMLElement>(".prep-insert-modal-lines");
+      if (linesEl) linesEl.innerHTML = `<p class="empty-hint" style="color:var(--color-danger)">Erreur : ${_escHtml(err instanceof Error ? err.message : String(err))}</p>`;
+    }
+  }
+
+  /** Insert a structure unit in the DB and reload the matcher. */
+  private async _executeInsertStructure(docId: number, beforeN: number, text: string): Promise<void> {
+    const conn = this._getConn();
+    if (!conn) return;
+
+    try {
+      await insertStructureUnit(conn, docId, beforeN, text);
+      this._cb.toast?.(`Intertitre « ${text} » inséré avant la ligne ${beforeN}.`);
+      // Reset matcher state and reload
+      this._matcherInitialized = false;
+      this._matcherPendingSide = null;
+      this._matcherPendingIdx = null;
+      await this._renderStructureDiff(docId);
+    } catch (err) {
+      this._cb.toast?.(`Erreur insertion : ${err instanceof Error ? err.message : String(err)}`, true);
+    }
+  }
+
+  private async _runPropagatePreview(docId: number, refDocId: number): Promise<void> {
+    const resultEl = this._q<HTMLElement>("#act-strucdiff-propagate-result");
+    const btn = this._q<HTMLButtonElement>("#act-strucdiff-propagate-btn");
+    if (!resultEl) return;
+    const conn = this._getConn();
+    if (!conn) return;
+
+    const lang = (this._q("#act-seg-lang") as HTMLInputElement | null)?.value.trim() || "fr";
+    const pack = (this._q("#act-seg-pack") as HTMLSelectElement | null)?.value ?? "auto";
+
+    if (btn) { btn.disabled = true; btn.textContent = "Calcul…"; }
+    resultEl.innerHTML = `<p class="empty-hint">Segmentation propagée en cours&#8230;</p>`;
+
+    try {
+      const mapping = this._structurePairs.length > 0 ? this._structurePairs : undefined;
+      const res = await segmentPropagatePreview(conn, { doc_id: docId, reference_doc_id: refDocId, lang, pack, section_mapping: mapping });
+
+      // Build live editable state
+      this._propagateLiveSections = res.sections.map(s => ({
+        status: s.status,
+        header_text: s.header_text,
+        header_role: s.header_role,
+        ref_count: s.ref_count,
+        original_count: s.segments.length,
+        adjusted: s.adjusted,
+        segments: s.segments.map(seg => seg.text),
+      }));
+
+      const warns = res.warnings.length
+        ? `<div class="prep-seg-warn-list">${res.warnings.map(w => `<div class="prep-seg-warn">${_escHtml(w)}</div>`).join("")}</div>`
+        : "";
+
+      resultEl.innerHTML = `
+        <div class="prep-propagate-result-header">
+          <span class="prep-propagate-result-title">Aperçu propagé — <span data-propagate-total>${res.total_segments} phrases</span> · pack ${res.segment_pack}</span>
+          <button type="button" class="btn prep-btn-warning btn-sm" id="act-propagate-apply-btn">
+            Appliquer cette segmentation
+          </button>
+        </div>
+        ${warns}
+        <div class="prep-propagate-sections">
+          ${res.sections.map((s, i) => {
+            const headerLabel = s.header_text != null ? _escHtml(s.header_text) : `<em>avant premier intertitre</em>`;
+            const missingBadge = s.status === "missing_in_target"
+              ? `<span class="prep-strucdiff-badge prep-strucdiff-missing">&#9888; manquant dans cible</span>` : "";
+            return `
+              <details class="prep-propagate-section" open data-sec-idx="${i}">
+                <summary class="prep-propagate-section-head">
+                  <span class="prep-propagate-section-label">${headerLabel}</span>
+                  <span class="prep-propagate-section-count" data-count-sec="${i}"></span>
+                  ${missingBadge}
+                </summary>
+                <div class="prep-propagate-section-body" data-sec-body="${i}"></div>
+              </details>`;
+          }).join("")}
+        </div>
+      `;
+
+      // Render each section body with interactive edit controls
+      res.sections.forEach((_, i) => {
+        this._rebuildPropagateSectionBody(i);
+        this._updateSectionCount(i);
+      });
+
+      resultEl.querySelector("#act-propagate-apply-btn")?.addEventListener("click", () => {
+        void this._applyPropagateResult(res);
+      });
+
+    } catch (err) {
+      resultEl.innerHTML = `<p class="empty-hint" style="color:var(--color-danger)">Erreur : ${_escHtml(err instanceof Error ? err.message : String(err))}</p>`;
+    } finally {
+      if (btn) { btn.disabled = false; btn.innerHTML = "&#9654; Aperçu propagé"; }
+    }
+  }
+
+  private _rebuildPropagateSectionBody(secIdx: number): void {
+    const bodyEl = this._q<HTMLElement>(`[data-sec-body="${secIdx}"]`);
+    if (!bodyEl) return;
+    const sec = this._propagateLiveSections[secIdx];
+    if (!sec) return;
+
+    if (sec.segments.length === 0) {
+      bodyEl.innerHTML = `<div class="prep-propagate-seg-empty">Aucun segment (section manquante dans la cible).</div>`;
+      return;
+    }
+
+    bodyEl.innerHTML = sec.segments.flatMap((text, segIdx) => {
+      const segRow = `
+        <div class="prep-propagate-seg-row" data-sec-idx="${secIdx}" data-seg-idx="${segIdx}">
+          <span class="prep-propagate-seg-n">${segIdx + 1}</span>
+          <span class="prep-propagate-seg-text" title="Double-cliquez pour modifier">${_escHtml(text)}</span>
+          <div class="prep-propagate-seg-actions">
+            <button type="button" class="btn btn-ghost btn-xs prep-propagate-split-btn" title="Couper ce segment">&#247;</button>
+          </div>
+        </div>`;
+      const mergeRow = segIdx < sec.segments.length - 1 ? `
+        <div class="prep-propagate-merge-row" data-sec-idx="${secIdx}" data-before-seg-idx="${segIdx}">
+          <button type="button" class="prep-propagate-merge-btn" title="Fusionner avec le segment suivant">&#8627; fusionner</button>
+        </div>` : "";
+      return [segRow, mergeRow];
+    }).join("");
+
+    bodyEl.querySelectorAll<HTMLElement>(".prep-propagate-seg-text").forEach(el => {
+      el.addEventListener("dblclick", () => {
+        const row = el.closest<HTMLElement>(".prep-propagate-seg-row");
+        if (!row) return;
+        this._startSegmentEdit(
+          parseInt(row.dataset.secIdx ?? "0", 10),
+          parseInt(row.dataset.segIdx ?? "0", 10),
+        );
+      });
+    });
+
+    bodyEl.querySelectorAll<HTMLButtonElement>(".prep-propagate-split-btn").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const row = btn.closest<HTMLElement>(".prep-propagate-seg-row");
+        if (!row) return;
+        this._startSegmentSplit(
+          parseInt(row.dataset.secIdx ?? "0", 10),
+          parseInt(row.dataset.segIdx ?? "0", 10),
+        );
+      });
+    });
+
+    bodyEl.querySelectorAll<HTMLButtonElement>(".prep-propagate-merge-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const mrow = btn.closest<HTMLElement>(".prep-propagate-merge-row");
+        if (!mrow) return;
+        this._mergeSegments(
+          parseInt(mrow.dataset.secIdx ?? "0", 10),
+          parseInt(mrow.dataset.beforeSegIdx ?? "0", 10),
+        );
+      });
+    });
+  }
+
+  private _startSegmentEdit(secIdx: number, segIdx: number): void {
+    const bodyEl = this._q<HTMLElement>(`[data-sec-body="${secIdx}"]`);
+    if (!bodyEl) return;
+    const text = this._propagateLiveSections[secIdx]?.segments[segIdx] ?? "";
+    const row = bodyEl.querySelector<HTMLElement>(
+      `.prep-propagate-seg-row[data-sec-idx="${secIdx}"][data-seg-idx="${segIdx}"]`,
+    );
+    if (!row) return;
+
+    const editDiv = document.createElement("div");
+    editDiv.className = "prep-propagate-edit-row";
+    editDiv.innerHTML = `
+      <textarea class="prep-propagate-edit-area" rows="2">${_escHtml(text)}</textarea>
+      <div class="prep-propagate-edit-actions">
+        <button type="button" class="btn btn-primary btn-xs prep-propagate-edit-ok">&#10003; Valider</button>
+        <button type="button" class="btn btn-ghost btn-xs prep-propagate-edit-cancel">&#10005; Annuler</button>
+      </div>`;
+    row.replaceWith(editDiv);
+
+    const ta = editDiv.querySelector<HTMLTextAreaElement>("textarea");
+    ta?.focus();
+
+    const commit = () => {
+      const val = ta?.value.trim() ?? "";
+      if (!val) {
+        if (ta) ta.style.borderColor = "var(--color-danger, #dc2626)";
+        return;
+      }
+      this._propagateLiveSections[secIdx].segments[segIdx] = val;
+      this._rebuildPropagateSectionBody(secIdx);
+      this._updateSectionCount(secIdx);
+    };
+    editDiv.querySelector(".prep-propagate-edit-ok")?.addEventListener("click", commit);
+    editDiv.querySelector(".prep-propagate-edit-cancel")?.addEventListener("click", () => {
+      this._rebuildPropagateSectionBody(secIdx);
+    });
+    ta?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); commit(); }
+      if (e.key === "Escape") this._rebuildPropagateSectionBody(secIdx);
+    });
+  }
+
+  private _startSegmentSplit(secIdx: number, segIdx: number): void {
+    const bodyEl = this._q<HTMLElement>(`[data-sec-body="${secIdx}"]`);
+    if (!bodyEl) return;
+    const text = this._propagateLiveSections[secIdx]?.segments[segIdx] ?? "";
+    const row = bodyEl.querySelector<HTMLElement>(
+      `.prep-propagate-seg-row[data-sec-idx="${secIdx}"][data-seg-idx="${segIdx}"]`,
+    );
+    if (!row) return;
+
+    const [partA, partB] = _splitAtMidpoint(text);
+    const splitDiv = document.createElement("div");
+    splitDiv.className = "prep-propagate-split-row";
+    splitDiv.innerHTML = `
+      <div class="prep-propagate-split-halves">
+        <textarea class="prep-propagate-edit-area prep-propagate-split-a" rows="2">${_escHtml(partA)}</textarea>
+        <div class="prep-propagate-split-sep">&#8213; coupure &#8213;</div>
+        <textarea class="prep-propagate-edit-area prep-propagate-split-b" rows="2">${_escHtml(partB)}</textarea>
+      </div>
+      <div class="prep-propagate-edit-actions">
+        <button type="button" class="btn btn-primary btn-xs prep-propagate-split-ok">&#247; Couper</button>
+        <button type="button" class="btn btn-ghost btn-xs prep-propagate-split-cancel">&#10005; Annuler</button>
+      </div>`;
+    row.replaceWith(splitDiv);
+
+    splitDiv.querySelector<HTMLTextAreaElement>(".prep-propagate-split-a")?.focus();
+
+    splitDiv.querySelector(".prep-propagate-split-ok")?.addEventListener("click", () => {
+      const a = splitDiv.querySelector<HTMLTextAreaElement>(".prep-propagate-split-a")?.value.trim() ?? "";
+      const b = splitDiv.querySelector<HTMLTextAreaElement>(".prep-propagate-split-b")?.value.trim() ?? "";
+      const parts = [a, b].filter(s => s.length > 0);
+      if (parts.length > 0) {
+        this._propagateLiveSections[secIdx].segments.splice(segIdx, 1, ...parts);
+      }
+      this._rebuildPropagateSectionBody(secIdx);
+      this._updateSectionCount(secIdx);
+    });
+    splitDiv.querySelector(".prep-propagate-split-cancel")?.addEventListener("click", () => {
+      this._rebuildPropagateSectionBody(secIdx);
+    });
+  }
+
+  private _mergeSegments(secIdx: number, beforeSegIdx: number): void {
+    const segs = this._propagateLiveSections[secIdx]?.segments;
+    if (!segs || beforeSegIdx + 1 >= segs.length) return;
+    const merged = (segs[beforeSegIdx] + " " + segs[beforeSegIdx + 1]).replace(/\s+/g, " ").trim();
+    segs.splice(beforeSegIdx, 2, merged);
+    this._rebuildPropagateSectionBody(secIdx);
+    this._updateSectionCount(secIdx);
+  }
+
+  private _updateSectionCount(secIdx: number): void {
+    const el = this._q<HTMLElement>(`[data-count-sec="${secIdx}"]`);
+    if (!el) return;
+    const sec = this._propagateLiveSections[secIdx];
+    if (!sec) return;
+    const count = sec.segments.length;
+    const delta = count - sec.ref_count;
+    const deltaSign = delta > 0 ? "+" : "";
+    const deltaAbs = Math.abs(delta);
+    const deltaRatio = sec.ref_count > 0 ? deltaAbs / sec.ref_count : 0;
+    const deltaClass = deltaAbs === 0 ? "prep-strucdiff-delta-ok"
+      : deltaRatio > 0.15 ? "prep-strucdiff-delta-warn"
+      : "prep-strucdiff-delta-ok";
+    const deltaBadge = sec.ref_count > 0
+      ? `<span class="prep-strucdiff-delta ${deltaClass}">${deltaSign}${delta}</span>`
+      : "";
+    const isEdited = count !== sec.original_count;
+    const badge = isEdited
+      ? `<span class="prep-propagate-adj-badge prep-propagate-edited-badge">édité</span>`
+      : sec.adjusted ? `<span class="prep-propagate-adj-badge">ajusté</span>` : "";
+    el.innerHTML = sec.ref_count > 0
+      ? `${count} phrases <span class="prep-strucdiff-count-ref">(réf: ${sec.ref_count})</span> ${deltaBadge} ${badge}`
+      : `${count} phrases ${badge}`;
+
+    // Update global total
+    const total = this._propagateLiveSections.reduce((sum, s) => sum + s.segments.length, 0);
+    const totalEl = this._q<HTMLElement>("[data-propagate-total]");
+    if (totalEl) totalEl.textContent = `${total} phrases`;
+  }
+
+  private async _applyPropagateResult(res: import("../lib/sidecarClient.ts").PropagatePreviewResponse): Promise<void> {
+    const conn = this._getConn();
+    if (!conn) return;
+    const docId = res.doc_id;
+
+    if (this._propagateLiveSections.length === 0) {
+      this._cb.toast?.("Aucune section à appliquer.", true);
+      return;
+    }
+
+    // Build flat ordered unit list from the editable state
+    const units: import("../lib/sidecarClient.ts").ApplyPropagatedUnit[] = [];
+    for (const sec of this._propagateLiveSections) {
+      // Include structure unit for matched/extra sections (pre and missing_in_target have none)
+      if (sec.status !== "pre" && sec.status !== "missing_in_target" && sec.header_text) {
+        units.push({
+          type: "structure",
+          text: sec.header_text,
+          ...(sec.header_role ? { role: sec.header_role } : {}),
+        });
+      }
+      for (const text of sec.segments) {
+        if (text.trim()) units.push({ type: "line", text });
+      }
+    }
+
+    if (units.length === 0) {
+      this._cb.toast?.("Aucune unité à écrire.", true);
+      return;
+    }
+
+    const applyBtn = this._q<HTMLButtonElement>("#act-propagate-apply-btn");
+    if (applyBtn) { applyBtn.disabled = true; applyBtn.textContent = "Application…"; }
+
+    try {
+      const result = await applyPropagated(conn, docId, units);
+      this._lastSegmentReport = { doc_id: docId, units_input: 0, units_output: result.units_written };
+      this._segmentPendingValidation = true;
+      this._refreshSegmentationStatusUI();
+      this._cb.toast?.(`Segmentation propagée appliquée — ${result.units_written} unités écrites.`);
+      if (applyBtn) {
+        applyBtn.disabled = false;
+        applyBtn.innerHTML = "&#10003; Réappliquer";
+      }
+    } catch (e) {
+      this._cb.toast?.(`Erreur : ${e instanceof Error ? e.message : String(e)}`, true);
+      if (applyBtn) { applyBtn.disabled = false; applyBtn.textContent = "Appliquer cette segmentation"; }
+    }
   }
 
   private _activateMarkersMode(docId: number): void {
@@ -1245,4 +2160,39 @@ function _escHtml(s: string): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+/** LCS-based sequence diff on string arrays. Returns edit script as ops. */
+function _seqDiff(before: string[], after: string[]): Array<{ op: "eq" | "del" | "ins"; text: string }> {
+  const m = before.length, n = after.length;
+  const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = 1; i <= m; i++)
+    for (let j = 1; j <= n; j++)
+      dp[i][j] = before[i - 1] === after[j - 1] ? dp[i - 1][j - 1] + 1 : Math.max(dp[i - 1][j], dp[i][j - 1]);
+
+  const ops: Array<{ op: "eq" | "del" | "ins"; text: string }> = [];
+  let i = m, j = n;
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && before[i - 1] === after[j - 1]) {
+      ops.unshift({ op: "eq",  text: before[i - 1] }); i--; j--;
+    } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+      ops.unshift({ op: "ins", text: after[j - 1] }); j--;
+    } else {
+      ops.unshift({ op: "del", text: before[i - 1] }); i--;
+    }
+  }
+  return ops;
+}
+
+function _splitAtMidpoint(text: string): [string, string] {
+  const mid = Math.floor(text.length / 2);
+  let best = mid;
+  let bestDist = Infinity;
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === " " || text[i] === "\n") {
+      const dist = Math.abs(i - mid);
+      if (dist < bestDist) { bestDist = dist; best = i; }
+    }
+  }
+  return [text.slice(0, best).trim(), text.slice(best).trim()];
 }

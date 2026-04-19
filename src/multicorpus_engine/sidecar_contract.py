@@ -608,6 +608,114 @@ def openapi_spec() -> dict[str, Any]:
                     },
                 }
             },
+            "/segment/structure_sections": {
+                "post": {
+                    "summary": "Return structure section lists for two documents",
+                    "requestBody": {
+                        "required": True,
+                        "content": {"application/json": {"schema": {"type": "object", "properties": {
+                            "doc_id": {"type": "integer"},
+                            "reference_doc_id": {"type": "integer"},
+                        }, "required": ["doc_id", "reference_doc_id"]}}},
+                    },
+                    "responses": {
+                        "200": {"description": "Ref and target section lists"},
+                        "400": {"description": "Bad request", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                    },
+                }
+            },
+            "/segment/structure_diff": {
+                "post": {
+                    "summary": "Compare structure units between two documents",
+                    "requestBody": {
+                        "required": True,
+                        "content": {"application/json": {"schema": {"type": "object", "properties": {
+                            "doc_id": {"type": "integer"},
+                            "reference_doc_id": {"type": "integer"},
+                        }, "required": ["doc_id", "reference_doc_id"]}}},
+                    },
+                    "responses": {
+                        "200": {"description": "Structure diff with matched/missing/extra sections"},
+                        "400": {"description": "Bad request", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                    },
+                }
+            },
+            "/segment/propagate_preview": {
+                "post": {
+                    "summary": "Section-aware segmentation preview (no DB writes)",
+                    "requestBody": {
+                        "required": True,
+                        "content": {"application/json": {"schema": {"type": "object", "properties": {
+                            "doc_id": {"type": "integer"},
+                            "reference_doc_id": {"type": "integer"},
+                            "lang": {"type": "string"},
+                            "pack": {"type": "string"},
+                            "section_mapping": {"type": "array", "items": {"type": "array", "items": {"type": "integer"}}},
+                        }, "required": ["doc_id", "reference_doc_id"]}}},
+                    },
+                    "responses": {
+                        "200": {"description": "Propagated segmentation preview with per-section results"},
+                        "400": {"description": "Bad request", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                    },
+                }
+            },
+            "/segment/zone_lines": {
+                "post": {
+                    "summary": "Return raw line units in a zone bounded by n values",
+                    "requestBody": {
+                        "required": True,
+                        "content": {"application/json": {"schema": {"type": "object", "properties": {
+                            "doc_id": {"type": "integer"},
+                            "from_n": {"type": "integer"},
+                            "to_n": {"type": "integer"},
+                        }, "required": ["doc_id"]}}},
+                    },
+                    "responses": {
+                        "200": {"description": "List of line units in the zone"},
+                        "400": {"description": "Bad request", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                    },
+                }
+            },
+            "/segment/insert_structure_unit": {
+                "post": {
+                    "summary": "Insert a structure unit before a given n (token required)",
+                    "requestBody": {
+                        "required": True,
+                        "content": {"application/json": {"schema": {"type": "object", "properties": {
+                            "doc_id": {"type": "integer"},
+                            "before_n": {"type": "integer"},
+                            "text": {"type": "string"},
+                            "role": {"type": "string"},
+                        }, "required": ["doc_id", "before_n", "text"]}}},
+                    },
+                    "responses": {
+                        "200": {"description": "Inserted unit info"},
+                        "400": {"description": "Bad request", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                        "404": {"description": "Document not found", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                    },
+                }
+            },
+            "/segment/apply_propagated": {
+                "post": {
+                    "summary": "Write pre-computed propagated segmentation to DB (token required)",
+                    "requestBody": {
+                        "required": True,
+                        "content": {"application/json": {"schema": {"type": "object", "properties": {
+                            "doc_id": {"type": "integer"},
+                            "units": {"type": "array", "items": {"type": "object", "properties": {
+                                "type": {"type": "string", "enum": ["line", "structure"]},
+                                "text": {"type": "string"},
+                                "role": {"type": "string"},
+                            }, "required": ["type", "text"]}},
+                        }, "required": ["doc_id", "units"]}}},
+                    },
+                    "responses": {
+                        "200": {"description": "Units written count"},
+                        "400": {"description": "Bad request", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                        "404": {"description": "Document not found", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                    },
+                }
+            },
             "/units/merge": {
                 "post": {
                     "summary": "Merge two adjacent units into one",
@@ -668,6 +776,24 @@ def openapi_spec() -> dict[str, Any]:
                         "200": {"description": "Roles assigned", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OkResponse"}}}},
                         "400": {"description": "Bad request", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
                         "404": {"description": "Role not found", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                    },
+                }
+            },
+            "/units/update_text": {
+                "post": {
+                    "summary": "Update text_raw and/or text_norm for one unit (token required)",
+                    "requestBody": {
+                        "required": True,
+                        "content": {"application/json": {"schema": {"type": "object", "properties": {
+                            "unit_id": {"type": "integer"},
+                            "text_raw": {"type": "string", "description": "New raw text (if omitted, unchanged)"},
+                            "text_norm": {"type": "string", "description": "New normalised text (if omitted, mirrored from text_raw)"},
+                        }, "required": ["unit_id"]}}},
+                    },
+                    "responses": {
+                        "200": {"description": "Unit updated", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OkResponse"}}}},
+                        "400": {"description": "Bad request", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                        "404": {"description": "Unit not found", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
                     },
                 }
             },
@@ -1517,7 +1643,7 @@ def openapi_spec() -> dict[str, Any]:
             },
             "/db/backup": {
                 "post": {
-                    "summary": "Create a timestamped SQLite backup file (.db.bak)",
+                    "summary": "Create a SQLite backup file (timestamped .db.bak or named via out_path)",
                     "security": [{"token": []}],
                     "requestBody": {"required": False, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/DbBackupRequest"}}}},
                     "responses": {
@@ -1525,6 +1651,7 @@ def openapi_spec() -> dict[str, Any]:
                         "400": {"description": "Bad request"},
                         "401": {"description": "Unauthorized"},
                         "404": {"description": "DB file not found"},
+                        "409": {"description": "out_path already exists"},
                     },
                 }
             },
@@ -1567,6 +1694,14 @@ def openapi_spec() -> dict[str, Any]:
                 },
             },
             # ── V0.4C — Align link editing ────────────────────────────────
+            "/align/link/create": {
+                "post": {
+                    "summary": "Manually create an alignment link between two units",
+                    "security": [{"token": []}],
+                    "requestBody": {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AlignLinkCreateRequest"}}}},
+                    "responses": {"200": {"description": "Created"}, "400": {"description": "Bad request"}, "401": {"description": "Unauthorized"}, "404": {"description": "Not found"}, "409": {"description": "Conflict — link already exists"}},
+                }
+            },
             "/align/link/update_status": {
                 "post": {
                     "summary": "Update status of an alignment link",
@@ -3083,7 +3218,8 @@ def openapi_spec() -> dict[str, Any]:
                 "DbBackupRequest": {
                     "type": "object",
                     "properties": {
-                        "out_dir": {"type": "string", "description": "Optional destination directory. Default: DB directory."},
+                        "out_dir": {"type": "string", "description": "Optional destination directory. Default: DB directory. Mutually exclusive with out_path."},
+                        "out_path": {"type": "string", "description": "Exact destination file path (e.g. /path/to/corpus.db). Mutually exclusive with out_dir. Returns 409 if file exists."},
                     },
                     "additionalProperties": False,
                 },

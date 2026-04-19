@@ -139,6 +139,7 @@ def import_txt_numbered_lines(
     lines = text.splitlines()
     external_ids: list[int] = []
     units_to_insert: list[tuple] = []
+    has_structure = False
     n = 0
 
     for raw_line in lines:
@@ -157,27 +158,42 @@ def import_txt_numbered_lines(
             unit_type = "line"
             external_ids.append(ext_id)
             units_to_insert.append(
-                (doc_id, unit_type, n, ext_id, text_raw, text_norm, meta)
+                (doc_id, unit_type, n, ext_id, text_raw, text_norm, meta, None)
             )
             log.debug("Line n=%d ext_id=%d type=line", n, ext_id)
         else:
             text_raw = line
             text_norm = normalize(text_raw)
             unit_type = "structure"
+            has_structure = True
             units_to_insert.append(
-                (doc_id, unit_type, n, None, text_raw, text_norm, None)
+                (doc_id, unit_type, n, None, text_raw, text_norm, None, "intertitre")
             )
             log.debug("Line n=%d type=structure", n)
 
+    # Auto-create intertitre convention if structure lines are present
+    if has_structure:
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO unit_roles (name, label, color, icon, sort_order, category)
+            VALUES ('intertitre', 'Intertitre', '#9333ea', '\u00a7', 0, 'structure')
+            """
+        )
+
     # Bulk insert
-    conn.executemany(
-        """
-        INSERT INTO units (doc_id, unit_type, n, external_id, text_raw, text_norm, meta_json)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        """,
-        units_to_insert,
-    )
-    conn.commit()
+    try:
+        conn.executemany(
+            """
+            INSERT INTO units (doc_id, unit_type, n, external_id, text_raw, text_norm, meta_json, unit_role)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            units_to_insert,
+        )
+        conn.commit()
+    except Exception:
+        conn.execute("DELETE FROM documents WHERE doc_id = ?", (doc_id,))
+        conn.commit()
+        raise
 
     duplicates, holes, non_monotonic = _analyze_external_ids(external_ids)
 

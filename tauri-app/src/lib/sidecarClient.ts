@@ -1363,6 +1363,7 @@ export interface UnitRole {
   color: string | null;
   icon: string | null;
   sort_order: number;
+  category: "structure" | "text";
 }
 
 export async function listConventions(conn: Conn): Promise<UnitRole[]> {
@@ -1373,7 +1374,7 @@ export async function listConventions(conn: Conn): Promise<UnitRole[]> {
 
 export async function createConvention(
   conn: Conn,
-  role: { name: string; label: string; color?: string | null; icon?: string | null; sort_order?: number }
+  role: { name: string; label: string; color?: string | null; icon?: string | null; sort_order?: number; category?: "structure" | "text" }
 ): Promise<UnitRole> {
   // Sidecar returns "convention" (singular) — see _handle_conventions_create
   const res = (await conn.post("/conventions", role)) as { convention: UnitRole };
@@ -1383,7 +1384,7 @@ export async function createConvention(
 export async function updateConvention(
   conn: Conn,
   name: string,
-  fields: { label?: string; color?: string | null; icon?: string | null; sort_order?: number }
+  fields: { label?: string; color?: string | null; icon?: string | null; sort_order?: number; category?: "structure" | "text" }
 ): Promise<UnitRole> {
   // Sidecar returns "convention" (singular) — see _handle_conventions_update
   const res = (await conn.put(`/conventions/${encodeURIComponent(name)}`, fields)) as { convention: UnitRole };

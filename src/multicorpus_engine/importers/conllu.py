@@ -187,54 +187,58 @@ def import_conllu(
 
     external_ids: list[int] = []
     token_rows_total = 0
-    for n, sentence in enumerate(sentences, start=1):
-        sent_id_raw = sentence.get("sent_id_raw")
-        if isinstance(sent_id_raw, str) and sent_id_raw.isdigit():
-            external_id = int(sent_id_raw)
-        else:
-            external_id = n
-        external_ids.append(external_id)
+    try:
+        for n, sentence in enumerate(sentences, start=1):
+            sent_id_raw = sentence.get("sent_id_raw")
+            if isinstance(sent_id_raw, str) and sent_id_raw.isdigit():
+                external_id = int(sent_id_raw)
+            else:
+                external_id = n
+            external_ids.append(external_id)
 
-        unit_meta: dict[str, str] | None = None
-        if isinstance(sent_id_raw, str) and sent_id_raw:
-            unit_meta = {"conllu_sent_id": sent_id_raw}
+            unit_meta: dict[str, str] | None = None
+            if isinstance(sent_id_raw, str) and sent_id_raw:
+                unit_meta = {"conllu_sent_id": sent_id_raw}
 
-        text_raw = str(sentence.get("text_raw", ""))
-        text_norm = normalize(text_raw)
-        cur_unit = conn.execute(
-            """
-            INSERT INTO units (doc_id, unit_type, n, external_id, text_raw, text_norm, meta_json)
-            VALUES (?, 'line', ?, ?, ?, ?, ?)
-            """,
-            (
-                doc_id,
-                n,
-                external_id,
-                text_raw,
-                text_norm,
-                json.dumps(unit_meta, ensure_ascii=False) if unit_meta else None,
-            ),
-        )
-        unit_id = cur_unit.lastrowid
-
-        token_inserts: list[tuple[int, int, int, str, str | None, str | None, str | None, str | None, str | None]] = []
-        for position, tok in enumerate(sentence["tokens"], start=1):
-            _, word, lemma, upos, xpos, feats, misc = tok
-            token_inserts.append(
-                (unit_id, 1, position, word, lemma, upos, xpos, feats, misc)
+            text_raw = str(sentence.get("text_raw", ""))
+            text_norm = normalize(text_raw)
+            cur_unit = conn.execute(
+                """
+                INSERT INTO units (doc_id, unit_type, n, external_id, text_raw, text_norm, meta_json)
+                VALUES (?, 'line', ?, ?, ?, ?, ?)
+                """,
+                (
+                    doc_id,
+                    n,
+                    external_id,
+                    text_raw,
+                    text_norm,
+                    json.dumps(unit_meta, ensure_ascii=False) if unit_meta else None,
+                ),
             )
+            unit_id = cur_unit.lastrowid
 
-        conn.executemany(
-            """
-            INSERT INTO tokens
-                (unit_id, sent_id, position, word, lemma, upos, xpos, feats, misc)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            token_inserts,
-        )
-        token_rows_total += len(token_inserts)
+            token_inserts: list[tuple[int, int, int, str, str | None, str | None, str | None, str | None, str | None]] = []
+            for position, tok in enumerate(sentence["tokens"], start=1):
+                _, word, lemma, upos, xpos, feats, misc = tok
+                token_inserts.append(
+                    (unit_id, 1, position, word, lemma, upos, xpos, feats, misc)
+                )
 
-    conn.commit()
+            conn.executemany(
+                """
+                INSERT INTO tokens
+                    (unit_id, sent_id, position, word, lemma, upos, xpos, feats, misc)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                token_inserts,
+            )
+            token_rows_total += len(token_inserts)
+
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
 
     duplicates, holes, non_monotonic = _analyze_external_ids(external_ids)
     report = ImportReport(

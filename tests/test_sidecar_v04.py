@@ -698,6 +698,45 @@ def test_db_backup_sqlite_connect_error_is_400(v04_sidecar, monkeypatch) -> None
     assert payload["error"]["type"] == ERR_BAD_REQUEST
 
 
+def test_db_backup_out_path_creates_named_file(v04_sidecar, tmp_path: Path) -> None:
+    base_url, token = v04_sidecar["base_url"], v04_sidecar["token"]
+    out_path = tmp_path / "shared_corpus.db"
+    code, payload = _post(f"{base_url}/db/backup", {"out_path": str(out_path)}, token=token)
+    assert code == 200
+    assert payload["ok"] is True
+    assert Path(payload["backup_path"]) == out_path
+    assert out_path.exists()
+    assert payload["file_size_bytes"] > 0
+
+
+def test_db_backup_out_path_conflict_is_409(v04_sidecar, tmp_path: Path) -> None:
+    from multicorpus_engine.sidecar_contract import ERR_CONFLICT
+    base_url, token = v04_sidecar["base_url"], v04_sidecar["token"]
+    out_path = tmp_path / "existing.db"
+    out_path.write_bytes(b"existing")
+    code, payload = _post(f"{base_url}/db/backup", {"out_path": str(out_path)}, token=token)
+    assert code == 409
+    assert payload["error"]["type"] == ERR_CONFLICT
+
+
+def test_db_backup_out_dir_and_out_path_mutually_exclusive(v04_sidecar, tmp_path: Path) -> None:
+    base_url, token = v04_sidecar["base_url"], v04_sidecar["token"]
+    code, payload = _post(
+        f"{base_url}/db/backup",
+        {"out_dir": str(tmp_path), "out_path": str(tmp_path / "x.db")},
+        token=token,
+    )
+    assert code == 400
+    assert payload["ok"] is False
+
+
+def test_db_backup_out_path_invalid_type_is_400(v04_sidecar) -> None:
+    base_url, token = v04_sidecar["base_url"], v04_sidecar["token"]
+    code, payload = _post(f"{base_url}/db/backup", {"out_path": 42}, token=token)
+    assert code == 400
+    assert payload["ok"] is False
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # V0.4C — Alignment link editing
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -778,6 +817,19 @@ def test_align_link_update_status_requires_token(v04_sidecar) -> None:
     assert payload["error"]["type"] == ERR_UNAUTHORIZED
 
 
+def test_align_link_update_status_null_resets_to_unreviewed(v04_sidecar) -> None:
+    """status=null doit être accepté (réinitialise le lien à non-révisé)."""
+    base_url = v04_sidecar["base_url"]
+    token = v04_sidecar["token"]
+    link_id = _get_first_link_id(v04_sidecar)
+    # First accept the link
+    _post(f"{base_url}/align/link/update_status", {"link_id": link_id, "status": "accepted"}, token=token)
+    # Now reset to unreviewed via null
+    code, payload = _post(f"{base_url}/align/link/update_status", {"link_id": link_id, "status": None}, token=token)
+    assert code == 200
+    assert payload["status"] is None
+
+
 def test_align_link_update_status_missing_params_is_400(v04_sidecar) -> None:
     from multicorpus_engine.sidecar_contract import ERR_BAD_REQUEST
     code, payload = _post(f"{v04_sidecar['base_url']}/align/link/update_status", {"link_id": 1}, token=v04_sidecar["token"])
@@ -851,6 +903,39 @@ def test_align_link_retarget_nonexistent_unit_is_404(v04_sidecar) -> None:
     assert payload["error"]["type"] == ERR_NOT_FOUND
 
 
+def test_align_link_retarget_conflict_is_409(v04_sidecar) -> None:
+    """Retarget vers une cible déjà liée au même pivot → 409.
+
+    Setup : link A = pivot_X → target_Y (from fixture).
+            Create link B = pivot_X → target_Z manually.
+            Retarget link A to target_Z → UNIQUE(pivot_X, target_Z) already exists.
+    """
+    from multicorpus_engine.sidecar_contract import ERR_CONFLICT
+    base_url = v04_sidecar["base_url"]
+    token = v04_sidecar["token"]
+    # Get two existing links that have different pivots and targets
+    _, audit = _post(f"{base_url}/align/audit", {
+        "pivot_doc_id": v04_sidecar["pivot_doc_id"],
+        "target_doc_id": v04_sidecar["target_doc_id"],
+    })
+    links = audit["links"]
+    assert len(links) >= 2
+    link_a = links[0]  # pivot_X → target_Y
+    target_z_id = links[1]["target_unit_id"]  # target_Z (linked to a different pivot)
+    # Create a second link for the same pivot_X → target_Z
+    _post(f"{base_url}/align/link/create", {
+        "pivot_unit_id": link_a["pivot_unit_id"],
+        "target_unit_id": target_z_id,
+    }, token=token)
+    # Now retarget link_A to target_Z → conflict
+    code, payload = _post(f"{base_url}/align/link/retarget", {
+        "link_id": link_a["link_id"],
+        "new_target_unit_id": target_z_id,
+    }, token=token)
+    assert code == 409
+    assert payload["error"]["type"] == ERR_CONFLICT
+
+
 def test_align_link_delete(v04_sidecar) -> None:
     base_url = v04_sidecar["base_url"]
     token = v04_sidecar["token"]
@@ -879,5 +964,119 @@ def test_align_link_delete_requires_token(v04_sidecar) -> None:
 def test_align_link_delete_missing_param_is_400(v04_sidecar) -> None:
     from multicorpus_engine.sidecar_contract import ERR_BAD_REQUEST
     code, payload = _post(f"{v04_sidecar['base_url']}/align/link/delete", {}, token=v04_sidecar["token"])
+    assert code == 400
+    assert payload["error"]["type"] == ERR_BAD_REQUEST
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# V0.4C — Manual link creation
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _get_unlinked_unit_ids(v04_sidecar) -> tuple[int, int]:
+    """Delete the first link and return its (pivot_unit_id, target_unit_id) for re-creation tests."""
+    base_url = v04_sidecar["base_url"]
+    token = v04_sidecar["token"]
+    _, audit = _post(f"{base_url}/align/audit", {
+        "pivot_doc_id": v04_sidecar["pivot_doc_id"],
+        "target_doc_id": v04_sidecar["target_doc_id"],
+        "limit": 1,
+    })
+    link = audit["links"][0]
+    _post(f"{base_url}/align/link/delete", {"link_id": link["link_id"]}, token=token)
+    return link["pivot_unit_id"], link["target_unit_id"]
+
+
+def test_align_link_create(v04_sidecar) -> None:
+    base_url = v04_sidecar["base_url"]
+    token = v04_sidecar["token"]
+    pivot_uid, target_uid = _get_unlinked_unit_ids(v04_sidecar)
+
+    code, payload = _post(f"{base_url}/align/link/create", {
+        "pivot_unit_id": pivot_uid,
+        "target_unit_id": target_uid,
+    }, token=token)
+    assert code == 200, payload
+    assert payload["ok"] is True
+    assert payload["created"] == 1
+    assert payload["pivot_unit_id"] == pivot_uid
+    assert payload["target_unit_id"] == target_uid
+    assert "link_id" in payload
+    assert payload["status"] is None
+
+
+def test_align_link_create_with_status(v04_sidecar) -> None:
+    base_url = v04_sidecar["base_url"]
+    token = v04_sidecar["token"]
+    pivot_uid, target_uid = _get_unlinked_unit_ids(v04_sidecar)
+
+    code, payload = _post(f"{base_url}/align/link/create", {
+        "pivot_unit_id": pivot_uid,
+        "target_unit_id": target_uid,
+        "status": "accepted",
+    }, token=token)
+    assert code == 200, payload
+    assert payload["status"] == "accepted"
+
+
+def test_align_link_create_conflict_is_409(v04_sidecar) -> None:
+    from multicorpus_engine.sidecar_contract import ERR_CONFLICT
+    base_url = v04_sidecar["base_url"]
+    token = v04_sidecar["token"]
+    # Get an existing link's unit ids
+    _, audit = _post(f"{base_url}/align/audit", {
+        "pivot_doc_id": v04_sidecar["pivot_doc_id"],
+        "target_doc_id": v04_sidecar["target_doc_id"],
+        "limit": 1,
+    })
+    link = audit["links"][0]
+    code, payload = _post(f"{base_url}/align/link/create", {
+        "pivot_unit_id": link["pivot_unit_id"],
+        "target_unit_id": link["target_unit_id"],
+    }, token=token)
+    assert code == 409
+    assert payload["error"]["type"] == ERR_CONFLICT
+
+
+def test_align_link_create_nonexistent_pivot_is_404(v04_sidecar) -> None:
+    from multicorpus_engine.sidecar_contract import ERR_NOT_FOUND
+    code, payload = _post(f"{v04_sidecar['base_url']}/align/link/create", {
+        "pivot_unit_id": 99999,
+        "target_unit_id": 1,
+    }, token=v04_sidecar["token"])
+    assert code == 404
+    assert payload["error"]["type"] == ERR_NOT_FOUND
+
+
+def test_align_link_create_nonexistent_target_is_404(v04_sidecar) -> None:
+    from multicorpus_engine.sidecar_contract import ERR_NOT_FOUND
+    _, audit = _post(f"{v04_sidecar['base_url']}/align/audit", {
+        "pivot_doc_id": v04_sidecar["pivot_doc_id"],
+        "target_doc_id": v04_sidecar["target_doc_id"],
+        "limit": 1,
+    })
+    pivot_uid = audit["links"][0]["pivot_unit_id"]
+    code, payload = _post(f"{v04_sidecar['base_url']}/align/link/create", {
+        "pivot_unit_id": pivot_uid,
+        "target_unit_id": 99999,
+    }, token=v04_sidecar["token"])
+    assert code == 404
+    assert payload["error"]["type"] == ERR_NOT_FOUND
+
+
+def test_align_link_create_requires_token(v04_sidecar) -> None:
+    from multicorpus_engine.sidecar_contract import ERR_UNAUTHORIZED
+    code, payload = _post(f"{v04_sidecar['base_url']}/align/link/create", {
+        "pivot_unit_id": 1,
+        "target_unit_id": 2,
+    })
+    assert code == 401
+    assert payload["error"]["type"] == ERR_UNAUTHORIZED
+
+
+def test_align_link_create_missing_params_is_400(v04_sidecar) -> None:
+    from multicorpus_engine.sidecar_contract import ERR_BAD_REQUEST
+    code, payload = _post(f"{v04_sidecar['base_url']}/align/link/create", {
+        "pivot_unit_id": 1,
+    }, token=v04_sidecar["token"])
     assert code == 400
     assert payload["error"]["type"] == ERR_BAD_REQUEST

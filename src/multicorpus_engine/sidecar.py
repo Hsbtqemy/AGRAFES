@@ -598,6 +598,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 "/curate/apply-history/record",
                 # Alignment writes (previously unprotected — fixed in 1.4.1)
                 "/align",
+                "/align/link/create",
                 "/align/link/update_status", "/align/link/delete", "/align/link/retarget",
                 "/align/link/acknowledge_source_change",
                 "/align/links/batch_update",
@@ -607,6 +608,10 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 "/segment",
                 # Unit structural edits
                 "/units/merge", "/units/split",
+                "/segment/insert_structure_unit",
+                "/segment/delete_structure_unit",
+                "/segment/apply_propagated",
+                "/units/update_text",
                 # Convention / role system
                 "/conventions", "/conventions/delete",
                 "/units/set_role", "/units/bulk_set_role",
@@ -667,6 +672,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 self._handle_align_audit(body)
             elif path == "/align/quality":
                 self._handle_align_quality(body)
+            elif path == "/align/link/create":
+                self._handle_align_link_create(body)
             elif path == "/align/link/update_status":
                 self._handle_align_link_update_status(body)
             elif path == "/align/link/delete":
@@ -687,8 +694,22 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 self._handle_validate_meta(body)
             elif path == "/segment/preview":
                 self._handle_segment_preview(body)
+            elif path == "/segment/structure_diff":
+                self._handle_segment_structure_diff(body)
+            elif path == "/segment/structure_sections":
+                self._handle_segment_structure_sections(body)
+            elif path == "/segment/propagate_preview":
+                self._handle_segment_propagate_preview(body)
             elif path == "/segment/detect_markers":
                 self._handle_segment_detect_markers(body)
+            elif path == "/segment/zone_lines":
+                self._handle_segment_zone_lines(body)
+            elif path == "/segment/insert_structure_unit":
+                self._handle_segment_insert_structure_unit(body)
+            elif path == "/segment/delete_structure_unit":
+                self._handle_segment_delete_structure_unit(body)
+            elif path == "/segment/apply_propagated":
+                self._handle_segment_apply_propagated(body)
             elif path == "/units/merge":
                 self._handle_units_merge(body)
             elif path == "/units/split":
@@ -757,6 +778,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 self._handle_units_set_role(body)
             elif path == "/units/bulk_set_role":
                 self._handle_units_bulk_set_role(body)
+            elif path == "/units/update_text":
+                self._handle_units_update_text(body)
             elif path == "/documents/set_text_start":
                 self._handle_documents_set_text_start(body)
             elif path == "/shutdown":
@@ -2245,8 +2268,117 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             except Exception as exc:
                 self._send_error(str(exc), code=ERR_INTERNAL, http_status=500)
         else:
-            # Generic mode: not implemented in preview (non-conllu modes need full import)
-            self._send_json(success_payload({"mode": mode, "conllu_stats": None}))
+            try:
+                units, total = self._preview_text_units(fpath, mode, limit)
+                self._send_json(success_payload({
+                    "mode": mode,
+                    "conllu_stats": None,
+                    "units": units,
+                    "units_total": total,
+                    "truncated": total > limit,
+                }))
+            except Exception as exc:
+                self._send_error(str(exc), code=ERR_INTERNAL, http_status=500)
+
+    def _preview_text_units(
+        self, fpath: "Path", mode: str, limit: int
+    ) -> "tuple[list[dict], int]":
+        """Parse a file without writing to DB. Returns (units[:limit], total_count).
+
+        Each unit dict: { n, external_id, unit_type, text_raw }
+        Supported modes: txt_numbered_lines, docx_numbered_lines, docx_paragraphs,
+                         odt_numbered_lines, odt_paragraphs, tei.
+        """
+        import re as _re
+        from pathlib import Path as _Path
+        from multicorpus_engine.unicode_policy import normalize as _norm
+
+        _NUMBERED_RE = _re.compile(r"^\[\s*(\d+)\s*\]\s*(.+)$", _re.DOTALL)
+
+        units_all: list[dict] = []
+
+        if mode in ("txt_numbered_lines", "txt"):
+            from multicorpus_engine.importers.txt import _detect_encoding  # type: ignore[attr-defined]
+            raw_bytes = fpath.read_bytes()
+            encoding, _ = _detect_encoding(raw_bytes)
+            text = raw_bytes.decode(encoding, errors="replace")
+            n = 0
+            for raw_line in text.splitlines():
+                line = raw_line.strip()
+                if not line:
+                    continue
+                n += 1
+                m = _NUMBERED_RE.match(line)
+                if m:
+                    units_all.append({"n": n, "external_id": int(m.group(1)), "unit_type": "line", "text_raw": m.group(2)})
+                else:
+                    units_all.append({"n": n, "external_id": None, "unit_type": "structure", "text_raw": line})
+
+        elif mode in ("docx_numbered_lines", "docx_paragraphs", "docx"):
+            import docx as _docx  # type: ignore[import]
+            from multicorpus_engine.importers.rich_text import para_to_rich_text as _p2r  # type: ignore[attr-defined]
+            document = _docx.Document(str(fpath))
+            n = 0
+            for para in document.paragraphs:
+                rich = _p2r(para)
+                plain = _norm(rich).strip()
+                if not plain:
+                    continue
+                n += 1
+                if mode != "docx_paragraphs":
+                    m = _NUMBERED_RE.match(plain)
+                    if m:
+                        # Strip the [n] prefix from rich text using the plain-text match length
+                        prefix = m.group(0)[: m.start(2)]  # e.g. "[12] "
+                        text_raw = rich[len(prefix):].strip() if rich.startswith(prefix) else m.group(2)
+                        units_all.append({"n": n, "external_id": int(m.group(1)), "unit_type": "line", "text_raw": text_raw})
+                        continue
+                units_all.append({"n": n, "external_id": n, "unit_type": "line", "text_raw": rich})
+
+        elif mode in ("odt_numbered_lines", "odt_paragraphs", "odt"):
+            from multicorpus_engine.importers.odt_common import read_odt_paragraph_rich_lines as _odt  # type: ignore[attr-defined]
+            paragraphs = _odt(fpath)
+            n = 0
+            for rich in paragraphs:
+                plain = _norm(rich).strip()
+                if not plain:
+                    continue
+                n += 1
+                if mode != "odt_paragraphs":
+                    m = _NUMBERED_RE.match(plain)
+                    if m:
+                        prefix = m.group(0)[: m.start(2)]
+                        text_raw = rich[len(prefix):].strip() if rich.startswith(prefix) else m.group(2)
+                        units_all.append({"n": n, "external_id": int(m.group(1)), "unit_type": "line", "text_raw": text_raw})
+                        continue
+                units_all.append({"n": n, "external_id": n, "unit_type": "line", "text_raw": rich})
+
+        elif mode in ("tei",):
+            import xml.etree.ElementTree as _ET
+            from multicorpus_engine.importers.tei_importer import _iter_body_elements, _xmlid_to_int  # type: ignore[attr-defined]
+            _ATTR_ID = "{http://www.w3.org/XML/1998/namespace}id"
+            raw_bytes = fpath.read_bytes()
+            try:
+                text_content = raw_bytes.decode("utf-8-sig")
+            except UnicodeDecodeError:
+                text_content = raw_bytes.decode("latin-1")
+            root = _ET.fromstring(text_content)
+            elements = _iter_body_elements(root, "p")
+            n = 0
+            for el in elements:
+                text_raw = "".join(el.itertext()).strip()
+                if not text_raw:
+                    continue
+                n += 1
+                xmlid = el.get(_ATTR_ID) or el.get("id")
+                ext_id = _xmlid_to_int(xmlid) if xmlid else n
+                units_all.append({"n": n, "external_id": ext_id, "unit_type": "line", "text_raw": text_raw})
+
+        else:
+            raise ValueError(f"Preview not supported for mode '{mode}'")
+
+        total = len(units_all)
+        return units_all[:limit], total
 
     def _handle_curate_exceptions_list(self, body: dict) -> None:
         """Return all curation exceptions for a given doc_id (or all if absent).
@@ -2396,6 +2528,11 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         out_path = body.get("out_path")
         if not out_path:
             self._send_error("out_path is required", code=ERR_BAD_REQUEST, http_status=400)
+            return
+        try:
+            out_path = str(self._resolve_export_path(str(out_path)))
+        except ValueError as exc:
+            self._send_error(str(exc), code=ERR_BAD_REQUEST, http_status=400)
             return
 
         fmt = body.get("format", "json")
@@ -2614,6 +2751,11 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         out_path = body.get("out_path")
         if not out_path:
             self._send_error("out_path is required", code=ERR_BAD_REQUEST, http_status=400)
+            return
+        try:
+            out_path = str(self._resolve_export_path(str(out_path)))
+        except ValueError as exc:
+            self._send_error(str(exc), code=ERR_BAD_REQUEST, http_status=400)
             return
         fmt = body.get("format", "json")
         if fmt not in ("json", "csv"):
@@ -3109,7 +3251,9 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         orphan_pivot = total_pivot - covered_pivot
         orphan_target = total_target - covered_target
 
-        # ── Collision count: pivot_unit_id appearing in >1 link ─────────────
+        # ── Collision count: pivot with >1 link where not all are accepted ──
+        # All-accepted multi-links are intentional (user validated each one)
+        # and are not considered collisions.
         collision_row = conn.execute(
             f"""
             SELECT COUNT(*) FROM (
@@ -3118,6 +3262,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 WHERE {link_where}
                 GROUP BY pivot_unit_id
                 HAVING COUNT(*) > 1
+                  AND COUNT(CASE WHEN status = 'accepted' THEN 1 END) < COUNT(*)
             )
             """,
             link_params,
@@ -3304,6 +3449,571 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             status=202,
         )
 
+    def _handle_segment_structure_sections(self, body: dict) -> None:
+        """POST /segment/structure_sections — return independent structure section lists.
+
+        Body: { doc_id, reference_doc_id }
+        Returns: { ref_sections: [{n, text, role, line_count}], target_sections: [...] }
+        """
+        doc_id = body.get("doc_id")
+        reference_doc_id = body.get("reference_doc_id")
+        for name, val in (("doc_id", doc_id), ("reference_doc_id", reference_doc_id)):
+            if val is None:
+                self._send_error(f"{name} is required", code=ERR_BAD_REQUEST, http_status=400)
+                return
+            try:
+                int(val)
+            except (TypeError, ValueError):
+                self._send_error(f"{name} must be an integer", code=ERR_BAD_REQUEST, http_status=400)
+                return
+        doc_id = int(doc_id)
+        reference_doc_id = int(reference_doc_id)
+        conn = self._conn()
+
+        def _fetch_sections(d_id: int) -> list[dict]:
+            rows = conn.execute(
+                "SELECT n, text_raw, unit_role FROM units "
+                "WHERE doc_id = ? AND unit_type = 'structure' ORDER BY n",
+                (d_id,),
+            ).fetchall()
+            result = []
+            for i, (n, text, role) in enumerate(rows):
+                n_next = rows[i + 1][0] if i + 1 < len(rows) else None
+                if n_next is not None:
+                    lc = conn.execute(
+                        "SELECT COUNT(*) FROM units WHERE doc_id=? AND unit_type='line' AND n>? AND n<?",
+                        (d_id, n, n_next),
+                    ).fetchone()[0]
+                else:
+                    lc = conn.execute(
+                        "SELECT COUNT(*) FROM units WHERE doc_id=? AND unit_type='line' AND n>?",
+                        (d_id, n),
+                    ).fetchone()[0]
+                result.append({"n": n, "text": text or "", "role": role, "line_count": lc})
+            return result
+
+        self._send_json(success_payload({
+            "doc_id": doc_id,
+            "reference_doc_id": reference_doc_id,
+            "ref_sections": _fetch_sections(reference_doc_id),
+            "target_sections": _fetch_sections(doc_id),
+        }))
+
+    def _handle_segment_structure_diff(self, body: dict) -> None:
+        """POST /segment/structure_diff — compare structure units between two docs.
+
+        Body: { doc_id, reference_doc_id }
+
+        Returns: {
+            doc_id, reference_doc_id,
+            sections: [
+                {
+                    status: "matched" | "missing_in_target" | "extra_in_target",
+                    ref_n: int | null,        # n of the structure unit in reference
+                    ref_text: str | null,     # text of the structure unit in reference
+                    ref_role: str | null,
+                    target_n: int | null,     # n of the structure unit in target
+                    target_text: str | null,
+                    target_role: str | null,
+                    ref_line_count: int,      # nb of line units in this section in ref
+                    target_line_count: int,   # nb of line units in this section in target
+                }
+            ],
+            ref_structure_count: int,
+            target_structure_count: int,
+            matched_count: int,
+            missing_count: int,
+            extra_count: int,
+        }
+        """
+        doc_id = body.get("doc_id")
+        reference_doc_id = body.get("reference_doc_id")
+        for name, val in (("doc_id", doc_id), ("reference_doc_id", reference_doc_id)):
+            if val is None:
+                self._send_error(f"{name} is required", code=ERR_BAD_REQUEST, http_status=400)
+                return
+            try:
+                int(val)
+            except (TypeError, ValueError):
+                self._send_error(f"{name} must be an integer", code=ERR_BAD_REQUEST, http_status=400)
+                return
+        doc_id = int(doc_id)
+        reference_doc_id = int(reference_doc_id)
+
+        conn = self._conn()
+
+        def _fetch_structure(d_id: int) -> list[dict]:
+            rows = conn.execute(
+                """SELECT n, text_raw, unit_role
+                   FROM units
+                   WHERE doc_id = ? AND unit_type = 'structure'
+                   ORDER BY n""",
+                (d_id,),
+            ).fetchall()
+            return [{"n": r[0], "text": r[1] or "", "role": r[2]} for r in rows]
+
+        def _count_lines_between(d_id: int, n_from: int | None, n_to: int | None) -> int:
+            """Count line units in (n_from, n_to) exclusive bounds (None = open)."""
+            if n_from is None and n_to is None:
+                q = "SELECT COUNT(*) FROM units WHERE doc_id = ? AND unit_type = 'line'"
+                params: tuple = (d_id,)
+            elif n_from is None:
+                q = "SELECT COUNT(*) FROM units WHERE doc_id = ? AND unit_type = 'line' AND n < ?"
+                params = (d_id, n_to)
+            elif n_to is None:
+                q = "SELECT COUNT(*) FROM units WHERE doc_id = ? AND unit_type = 'line' AND n > ?"
+                params = (d_id, n_from)
+            else:
+                q = "SELECT COUNT(*) FROM units WHERE doc_id = ? AND unit_type = 'line' AND n > ? AND n < ?"
+                params = (d_id, n_from, n_to)
+            return conn.execute(q, params).fetchone()[0]
+
+        ref_structs = _fetch_structure(reference_doc_id)
+        tgt_structs = _fetch_structure(doc_id)
+
+        # Build sections list using LCS-based alignment by position index.
+        # Simpler approach: align by index (i-th ref ↔ i-th target), then
+        # mark extras or missings at the tail.
+        sections: list[dict] = []
+        r_len, t_len = len(ref_structs), len(tgt_structs)
+
+        if r_len == 0 and t_len == 0:
+            self._send_json(success_payload({
+                "doc_id": doc_id,
+                "reference_doc_id": reference_doc_id,
+                "sections": [],
+                "ref_structure_count": 0,
+                "target_structure_count": 0,
+                "matched_count": 0,
+                "missing_count": 0,
+                "extra_count": 0,
+                "no_structure": True,
+            }))
+            return
+
+        # Build sentinel arrays: add a virtual "end" sentinel for range bounds
+        def _ref_n(i: int) -> int | None:
+            return ref_structs[i]["n"] if i < r_len else None
+
+        def _tgt_n(i: int) -> int | None:
+            return tgt_structs[i]["n"] if i < t_len else None
+
+        max_idx = max(r_len, t_len)
+        for i in range(max_idx):
+            if i < r_len and i < t_len:
+                # Both sides have a structure unit at position i
+                r = ref_structs[i]
+                t = tgt_structs[i]
+                r_next_n = _ref_n(i + 1)
+                t_next_n = _tgt_n(i + 1)
+                sections.append({
+                    "status": "matched",
+                    "ref_n": r["n"],
+                    "ref_text": r["text"],
+                    "ref_role": r["role"],
+                    "target_n": t["n"],
+                    "target_text": t["text"],
+                    "target_role": t["role"],
+                    "ref_line_count": _count_lines_between(reference_doc_id, r["n"], r_next_n),
+                    "target_line_count": _count_lines_between(doc_id, t["n"], t_next_n),
+                })
+            elif i < r_len:
+                # Reference has an extra structure unit not present in target
+                r = ref_structs[i]
+                r_next_n = _ref_n(i + 1)
+                sections.append({
+                    "status": "missing_in_target",
+                    "ref_n": r["n"],
+                    "ref_text": r["text"],
+                    "ref_role": r["role"],
+                    "target_n": None,
+                    "target_text": None,
+                    "target_role": None,
+                    "ref_line_count": _count_lines_between(reference_doc_id, r["n"], r_next_n),
+                    "target_line_count": 0,
+                })
+            else:
+                # Target has an extra structure unit not present in reference
+                t = tgt_structs[i]
+                t_next_n = _tgt_n(i + 1)
+                sections.append({
+                    "status": "extra_in_target",
+                    "ref_n": None,
+                    "ref_text": None,
+                    "ref_role": None,
+                    "target_n": t["n"],
+                    "target_text": t["text"],
+                    "target_role": t["role"],
+                    "ref_line_count": 0,
+                    "target_line_count": _count_lines_between(doc_id, t["n"], t_next_n),
+                })
+
+        # Also add the implicit "before first structure" section if any lines precede it
+        first_ref_n = ref_structs[0]["n"] if ref_structs else None
+        first_tgt_n = tgt_structs[0]["n"] if tgt_structs else None
+        pre_ref = _count_lines_between(reference_doc_id, None, first_ref_n)
+        pre_tgt = _count_lines_between(doc_id, None, first_tgt_n)
+        if pre_ref > 0 or pre_tgt > 0:
+            sections.insert(0, {
+                "status": "matched",
+                "ref_n": None,
+                "ref_text": "— avant premier intertitre —",
+                "ref_role": None,
+                "target_n": None,
+                "target_text": "— avant premier intertitre —",
+                "target_role": None,
+                "ref_line_count": pre_ref,
+                "target_line_count": pre_tgt,
+            })
+
+        matched = sum(1 for s in sections if s["status"] == "matched")
+        missing = sum(1 for s in sections if s["status"] == "missing_in_target")
+        extra = sum(1 for s in sections if s["status"] == "extra_in_target")
+
+        self._send_json(success_payload({
+            "doc_id": doc_id,
+            "reference_doc_id": reference_doc_id,
+            "sections": sections,
+            "ref_structure_count": r_len,
+            "target_structure_count": t_len,
+            "matched_count": matched,
+            "missing_count": missing,
+            "extra_count": extra,
+        }))
+
+    def _handle_segment_propagate_preview(self, body: dict) -> None:
+        """POST /segment/propagate_preview — section-aware segmentation preview.
+
+        Segments the target document section by section, using reference section
+        segment counts as a target. Applies best-effort adjustments:
+          - Too many segments → merge shortest adjacent pairs
+          - Too few segments  → try splitting on secondary punctuation (; : —)
+
+        Body: { doc_id, reference_doc_id, lang?, pack? }
+
+        Returns: {
+            doc_id, reference_doc_id,
+            sections: [
+                {
+                    status: "matched" | "missing_in_target" | "extra_in_target",
+                    header_text: str | null,   # structure unit text (null = before first)
+                    header_role: str | null,
+                    ref_count: int,            # segments in reference section
+                    result_count: int,         # segments after adjustment
+                    raw_count: int,            # segments before adjustment
+                    adjusted: bool,            # whether adjustment was applied
+                    delta: int,                # result_count - ref_count
+                    segments: [{ n, text }],   # n = 1-based within section
+                }
+            ],
+            total_segments: int,
+            warnings: [str],
+        }
+        """
+        from multicorpus_engine.segmenter import segment_text, resolve_segment_pack
+        import re as _re
+
+        doc_id = body.get("doc_id")
+        reference_doc_id = body.get("reference_doc_id")
+        for name, val in (("doc_id", doc_id), ("reference_doc_id", reference_doc_id)):
+            if val is None:
+                self._send_error(f"{name} is required", code=ERR_BAD_REQUEST, http_status=400)
+                return
+            try:
+                int(val)
+            except (TypeError, ValueError):
+                self._send_error(f"{name} must be an integer", code=ERR_BAD_REQUEST, http_status=400)
+                return
+        doc_id = int(doc_id)
+        reference_doc_id = int(reference_doc_id)
+        lang = str(body.get("lang") or "und")
+        pack = str(body.get("pack") or "auto")
+        resolved_pack = resolve_segment_pack(pack, lang)
+        # Explicit section mapping: list of [ref_idx, tgt_idx] pairs (optional)
+        section_mapping_raw = body.get("section_mapping")
+        explicit_mapping: list[tuple[int, int]] | None = None
+        if section_mapping_raw is not None:
+            try:
+                explicit_mapping = [(int(p[0]), int(p[1])) for p in section_mapping_raw]
+            except (TypeError, ValueError, IndexError):
+                self._send_error("section_mapping must be a list of [ref_idx, tgt_idx] pairs",
+                                 code=ERR_BAD_REQUEST, http_status=400)
+                return
+
+        conn = self._conn()
+
+        # ── helpers ──────────────────────────────────────────────────────────
+
+        def _fetch_structure(d_id: int) -> list[dict]:
+            rows = conn.execute(
+                "SELECT n, text_raw, unit_role FROM units "
+                "WHERE doc_id = ? AND unit_type = 'structure' ORDER BY n",
+                (d_id,),
+            ).fetchall()
+            return [{"n": r[0], "text": r[1] or "", "role": r[2]} for r in rows]
+
+        def _fetch_lines_between(d_id: int, n_from: int | None, n_to: int | None) -> list[tuple[int, str]]:
+            """Fetch (n, text_norm) for line units in (n_from, n_to) exclusive."""
+            if n_from is None and n_to is None:
+                rows = conn.execute(
+                    "SELECT n, text_norm FROM units WHERE doc_id = ? AND unit_type = 'line' ORDER BY n",
+                    (d_id,),
+                ).fetchall()
+            elif n_from is None:
+                rows = conn.execute(
+                    "SELECT n, text_norm FROM units WHERE doc_id = ? AND unit_type = 'line' AND n < ? ORDER BY n",
+                    (d_id, n_to),
+                ).fetchall()
+            elif n_to is None:
+                rows = conn.execute(
+                    "SELECT n, text_norm FROM units WHERE doc_id = ? AND unit_type = 'line' AND n > ? ORDER BY n",
+                    (d_id, n_from),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT n, text_norm FROM units WHERE doc_id = ? AND unit_type = 'line' AND n > ? AND n < ? ORDER BY n",
+                    (d_id, n_from, n_to),
+                ).fetchall()
+            return [(r[0], r[1] or "") for r in rows]
+
+        def _count_ref_segments(lines: list[tuple[int, str]]) -> int:
+            count = 0
+            for _, text in lines:
+                if text.strip():
+                    count += len(segment_text(text, lang=lang, pack=resolved_pack))
+            return count
+
+        def _segment_lines(lines: list[tuple[int, str]]) -> list[str]:
+            """Run normal segmentation on a list of lines, return segment texts."""
+            segs: list[str] = []
+            for _, text in lines:
+                if not text.strip():
+                    continue
+                segs.extend(segment_text(text, lang=lang, pack=resolved_pack))
+            return segs
+
+        # Secondary-punctuation split: try splitting on ; : — (em-dash)
+        _SEC_PUNCT_RE = _re.compile(r'(?<=\w)[;:]\s+(?=\S)|(?<=\w)\s+[—–]\s+(?=\S)')
+
+        def _try_split_secondary(segs: list[str], target: int) -> list[str]:
+            """Try splitting segments on secondary punctuation to reach target count."""
+            result = list(segs)
+            attempts = 0
+            while len(result) < target and attempts < target * 3:
+                attempts += 1
+                # Find the longest segment that has secondary punctuation
+                best_i = -1
+                best_len = 0
+                for i, s in enumerate(result):
+                    if _SEC_PUNCT_RE.search(s) and len(s) > best_len:
+                        best_len = len(s)
+                        best_i = i
+                if best_i == -1:
+                    break
+                s = result[best_i]
+                m = _SEC_PUNCT_RE.search(s)
+                if not m:
+                    break
+                part_a = s[:m.start() + 1].strip()
+                part_b = s[m.end():].strip()
+                if part_a and part_b:
+                    result[best_i:best_i + 1] = [part_a, part_b]
+            return result
+
+        def _try_merge_shortest(segs: list[str], target: int) -> list[str]:
+            """Merge shortest adjacent pairs to reduce count toward target."""
+            result = list(segs)
+            while len(result) > target:
+                if len(result) < 2:
+                    break
+                # Find adjacent pair with smallest combined length
+                best_i = min(range(len(result) - 1), key=lambda i: len(result[i]) + len(result[i + 1]))
+                merged = result[best_i].rstrip() + " " + result[best_i + 1].lstrip()
+                result[best_i:best_i + 2] = [merged.strip()]
+            return result
+
+        # ── build structure boundaries for target doc ─────────────────────────
+
+        ref_structs = _fetch_structure(reference_doc_id)
+        tgt_structs = _fetch_structure(doc_id)
+        r_len, t_len = len(ref_structs), len(tgt_structs)
+
+        # Build target section boundaries: list of (header_dict, n_from, n_to)
+        def _tgt_boundaries() -> list[tuple[dict, int | None, int | None]]:
+            bounds: list[tuple[dict, int | None, int | None]] = []
+            for i in range(t_len):
+                t = tgt_structs[i]
+                n_next = tgt_structs[i + 1]["n"] if i + 1 < t_len else None
+                bounds.append((t, t["n"], n_next))
+            return bounds
+
+        def _ref_segment_count_for_section(i: int) -> int:
+            """Count segments in reference section i."""
+            if i >= r_len:
+                return 0
+            r = ref_structs[i]
+            r_next_n = ref_structs[i + 1]["n"] if i + 1 < r_len else None
+            ref_lines = _fetch_lines_between(reference_doc_id, r["n"], r_next_n)
+            return _count_ref_segments(ref_lines)
+
+        # Also handle the "before first structure" pre-section
+        result_sections: list[dict] = []
+        warnings: list[str] = []
+        total_segments = 0
+
+        # Pre-section (before first structure unit)
+        first_tgt_n = tgt_structs[0]["n"] if tgt_structs else None
+        first_ref_n = ref_structs[0]["n"] if ref_structs else None
+        pre_tgt_lines = _fetch_lines_between(doc_id, None, first_tgt_n)
+        if pre_tgt_lines:
+            pre_ref_lines = _fetch_lines_between(reference_doc_id, None, first_ref_n)
+            ref_count = _count_ref_segments(pre_ref_lines)
+            raw_segs = _segment_lines(pre_tgt_lines)
+            raw_count = len(raw_segs)
+            adjusted = False
+            segs = raw_segs
+            if ref_count > 0 and raw_count != ref_count:
+                if raw_count > ref_count:
+                    segs = _try_merge_shortest(raw_segs, ref_count)
+                else:
+                    segs = _try_split_secondary(raw_segs, ref_count)
+                adjusted = (len(segs) != raw_count)
+            result_count = len(segs)
+            total_segments += result_count
+            delta = result_count - ref_count
+            if abs(delta) > 0 and ref_count > 0 and abs(delta / ref_count) > 0.15:
+                warnings.append(f"Section avant le premier intertitre : écart {abs(delta)} phrases ({result_count} vs {ref_count} attendues).")
+            result_sections.append({
+                "status": "pre",
+                "header_text": None,
+                "header_role": None,
+                "ref_count": ref_count,
+                "raw_count": raw_count,
+                "result_count": result_count,
+                "adjusted": adjusted,
+                "delta": delta,
+                "segments": [{"n": j + 1, "text": s} for j, s in enumerate(segs)],
+            })
+
+        def _segment_section(header: dict, tgt_n_from: int | None, tgt_n_to: int | None,
+                              ref_count: int, status: str) -> dict:
+            """Segment a target section and return a result section dict."""
+            tgt_lines = _fetch_lines_between(doc_id, tgt_n_from, tgt_n_to)
+            raw_segs = _segment_lines(tgt_lines)
+            raw_count = len(raw_segs)
+            adjusted = False
+            segs = raw_segs
+            if ref_count > 0 and raw_count != ref_count:
+                if raw_count > ref_count:
+                    segs = _try_merge_shortest(raw_segs, ref_count)
+                else:
+                    segs = _try_split_secondary(raw_segs, ref_count)
+                adjusted = (len(segs) != raw_count)
+            result_count = len(segs)
+            delta = result_count - ref_count
+            if ref_count > 0 and abs(delta) > 0 and abs(delta / ref_count) > 0.15:
+                warnings.append(
+                    f"Section « {header['text'][:60]} » : écart {abs(delta)} phrases "
+                    f"({result_count} vs {ref_count} attendues)."
+                )
+            return {
+                "status": status,
+                "header_text": header["text"],
+                "header_role": header["role"],
+                "ref_count": ref_count,
+                "raw_count": raw_count,
+                "result_count": result_count,
+                "adjusted": adjusted,
+                "delta": delta,
+                "segments": [{"n": j + 1, "text": s} for j, s in enumerate(segs)],
+            }
+
+        if explicit_mapping is not None:
+            # ── Explicit mapping mode ─────────────────────────────────────────
+            mapped_ref_idxs = {p[0] for p in explicit_mapping}
+            mapped_tgt_idxs = {p[1] for p in explicit_mapping}
+
+            # Build a ref_idx → ref_count lookup
+            def _ref_count_for_idx(ref_idx: int) -> int:
+                if ref_idx >= r_len:
+                    return 0
+                r = ref_structs[ref_idx]
+                r_next_n = ref_structs[ref_idx + 1]["n"] if ref_idx + 1 < r_len else None
+                return _count_ref_segments(_fetch_lines_between(reference_doc_id, r["n"], r_next_n))
+
+            # Build tgt section boundary lookup by index
+            def _tgt_section_bounds(tgt_idx: int) -> tuple[int | None, int | None]:
+                t = tgt_structs[tgt_idx]
+                n_next = tgt_structs[tgt_idx + 1]["n"] if tgt_idx + 1 < t_len else None
+                return t["n"], n_next
+
+            # Output sections in tgt document order
+            # paired_by_tgt: tgt_idx → ref_idx
+            paired_by_tgt = {tgt_idx: ref_idx for ref_idx, tgt_idx in explicit_mapping}
+            for tgt_idx in range(t_len):
+                t = tgt_structs[tgt_idx]
+                t_n_from, t_n_to = _tgt_section_bounds(tgt_idx)
+                if tgt_idx in paired_by_tgt:
+                    ref_idx = paired_by_tgt[tgt_idx]
+                    ref_count = _ref_count_for_idx(ref_idx)
+                    sec = _segment_section(t, t_n_from, t_n_to, ref_count, "matched")
+                else:
+                    sec = _segment_section(t, t_n_from, t_n_to, 0, "extra_in_target")
+                total_segments += sec["result_count"]
+                result_sections.append(sec)
+
+            # Orphan ref sections (missing in target)
+            for ref_idx in range(r_len):
+                if ref_idx not in mapped_ref_idxs:
+                    r = ref_structs[ref_idx]
+                    ref_count = _ref_count_for_idx(ref_idx)
+                    result_sections.append({
+                        "status": "missing_in_target",
+                        "header_text": r["text"],
+                        "header_role": r["role"],
+                        "ref_count": ref_count,
+                        "raw_count": 0,
+                        "result_count": 0,
+                        "adjusted": False,
+                        "delta": -ref_count,
+                        "segments": [],
+                    })
+
+        else:
+            # ── Positional mapping mode (default) ─────────────────────────────
+            tgt_bounds = _tgt_boundaries()
+            for i, (header, n_from, n_to) in enumerate(tgt_bounds):
+                ref_count = _ref_segment_count_for_section(i)
+                status = "matched" if i < r_len else "extra_in_target"
+                sec = _segment_section(header, n_from, n_to, ref_count, status)
+                total_segments += sec["result_count"]
+                result_sections.append(sec)
+
+            # Sections missing in target (ref has them, target doesn't)
+            for i in range(t_len, r_len):
+                r = ref_structs[i]
+                ref_count = _ref_segment_count_for_section(i)
+                result_sections.append({
+                    "status": "missing_in_target",
+                    "header_text": r["text"],
+                    "header_role": r["role"],
+                    "ref_count": ref_count,
+                    "raw_count": 0,
+                    "result_count": 0,
+                    "adjusted": False,
+                    "delta": -ref_count,
+                    "segments": [],
+                })
+
+        self._send_json(success_payload({
+            "doc_id": doc_id,
+            "reference_doc_id": reference_doc_id,
+            "sections": result_sections,
+            "total_segments": total_segments,
+            "warnings": warnings,
+            "segment_pack": resolved_pack,
+        }))
+
     def _handle_segment_detect_markers(self, body: dict) -> None:
         """POST /segment/detect_markers — detect [N] markers in existing units (no writes)."""
         from multicorpus_engine.segmenter import detect_markers_in_units
@@ -3321,6 +4031,266 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         conn = self._conn()
         report = detect_markers_in_units(conn, doc_id)
         self._send_json(success_payload({"doc_id": doc_id, **report}))
+
+    def _handle_segment_zone_lines(self, body: dict) -> None:
+        """POST /segment/zone_lines — return raw line units in a zone.
+
+        Body: { doc_id, from_n?, to_n? }
+          from_n — exclusive lower bound (omit for start of document)
+          to_n   — exclusive upper bound (omit for end of document)
+        Returns: { doc_id, lines: [{ n, text }] }
+        """
+        doc_id = body.get("doc_id")
+        if doc_id is None:
+            self._send_error("doc_id is required", code=ERR_BAD_REQUEST, http_status=400)
+            return
+        try:
+            doc_id = int(doc_id)
+        except (TypeError, ValueError):
+            self._send_error("doc_id must be an integer", code=ERR_BAD_REQUEST, http_status=400)
+            return
+        from_n_raw = body.get("from_n")
+        to_n_raw = body.get("to_n")
+        try:
+            from_n = int(from_n_raw) if from_n_raw is not None else None
+            to_n = int(to_n_raw) if to_n_raw is not None else None
+        except (TypeError, ValueError):
+            self._send_error("from_n and to_n must be integers", code=ERR_BAD_REQUEST, http_status=400)
+            return
+
+        conn = self._conn()
+        if from_n is None and to_n is None:
+            rows = conn.execute(
+                "SELECT n, text_raw FROM units WHERE doc_id=? AND unit_type='line' ORDER BY n",
+                (doc_id,),
+            ).fetchall()
+        elif from_n is None:
+            rows = conn.execute(
+                "SELECT n, text_raw FROM units WHERE doc_id=? AND unit_type='line' AND n < ? ORDER BY n",
+                (doc_id, to_n),
+            ).fetchall()
+        elif to_n is None:
+            rows = conn.execute(
+                "SELECT n, text_raw FROM units WHERE doc_id=? AND unit_type='line' AND n > ? ORDER BY n",
+                (doc_id, from_n),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT n, text_raw FROM units"
+                " WHERE doc_id=? AND unit_type='line' AND n > ? AND n < ? ORDER BY n",
+                (doc_id, from_n, to_n),
+            ).fetchall()
+        lines = [{"n": int(r[0]), "text": r[1] or ""} for r in rows]
+        self._send_json(success_payload({"doc_id": doc_id, "lines": lines}))
+
+    def _handle_segment_insert_structure_unit(self, body: dict) -> None:
+        """POST /segment/insert_structure_unit — insert a structure unit before a given unit n.
+
+        Body: { doc_id, before_n, text, role? }
+          before_n — the n before which the structure unit is inserted
+                     (all units with n >= before_n are shifted by +1)
+          text     — text of the new structure unit
+          role     — optional unit_role name
+        Returns: { doc_id, inserted_n, text }
+        """
+        doc_id = body.get("doc_id")
+        before_n = body.get("before_n")
+        text = body.get("text", "")
+        role = body.get("role") or None
+
+        if doc_id is None or before_n is None:
+            self._send_error("doc_id and before_n are required", code=ERR_BAD_REQUEST, http_status=400)
+            return
+        try:
+            doc_id = int(doc_id)
+            before_n = int(before_n)
+        except (TypeError, ValueError):
+            self._send_error("doc_id and before_n must be integers", code=ERR_BAD_REQUEST, http_status=400)
+            return
+        text = (text or "").strip()
+        if not text:
+            self._send_error("text must be non-empty", code=ERR_BAD_REQUEST, http_status=400)
+            return
+
+        with self._lock():
+            conn = self._conn()
+            # Shift all units with n >= before_n to make room
+            conn.execute(
+                "UPDATE units SET n = n + 1 WHERE doc_id=? AND n >= ?",
+                (doc_id, before_n),
+            )
+            # Insert the new structure unit at before_n
+            conn.execute(
+                "INSERT INTO units"
+                " (doc_id, unit_type, n, external_id, text_raw, text_norm, unit_role, meta_json)"
+                " VALUES (?, 'structure', ?, NULL, ?, ?, ?, NULL)",
+                (doc_id, before_n, text, text, role),
+            )
+            conn.commit()
+
+        self._send_json(success_payload({
+            "doc_id": doc_id,
+            "inserted_n": before_n,
+            "text": text,
+        }))
+
+    def _handle_segment_delete_structure_unit(self, body: dict) -> None:
+        """POST /segment/delete_structure_unit — delete a structure unit at a given n.
+
+        Body: { doc_id, n }
+          Deletes the unit_type='structure' unit at position n.
+          All units with n > deleted_n are shifted down by 1.
+        Returns: { doc_id, deleted_n, text }
+        """
+        doc_id = body.get("doc_id")
+        n_raw = body.get("n")
+        if doc_id is None or n_raw is None:
+            self._send_error("doc_id and n are required", code=ERR_BAD_REQUEST, http_status=400)
+            return
+        try:
+            doc_id = int(doc_id)
+            unit_n = int(n_raw)
+        except (TypeError, ValueError):
+            self._send_error("doc_id and n must be integers", code=ERR_BAD_REQUEST, http_status=400)
+            return
+
+        with self._lock():
+            conn = self._conn()
+            row = conn.execute(
+                "SELECT text_raw FROM units WHERE doc_id=? AND n=? AND unit_type='structure'",
+                (doc_id, unit_n),
+            ).fetchone()
+            if not row:
+                self._send_error(
+                    f"Structure unit n={unit_n} not found for doc_id={doc_id}",
+                    code=ERR_NOT_FOUND, http_status=404,
+                )
+                return
+            text = row["text_raw"] or ""
+            conn.execute(
+                "DELETE FROM units WHERE doc_id=? AND n=? AND unit_type='structure'",
+                (doc_id, unit_n),
+            )
+            # Shift all subsequent units down
+            conn.execute(
+                "UPDATE units SET n = n - 1 WHERE doc_id=? AND n > ?",
+                (doc_id, unit_n),
+            )
+            conn.commit()
+
+        self._send_json(success_payload({
+            "doc_id": doc_id,
+            "deleted_n": unit_n,
+            "text": text,
+        }))
+
+    def _handle_segment_apply_propagated(self, body: dict) -> None:
+        """POST /segment/apply_propagated — write pre-computed segmentation to DB.
+
+        Body: {
+            doc_id: int,
+            units: [{"type": "line"|"structure", "text": str, "role"?: str}]
+        }
+
+        Rebuilds the text portion of the document from the supplied unit list:
+          1. Respect text_start_n (paratext units below that boundary are preserved).
+          2. Delete stale alignment_links.
+          3. Delete all units with n >= text_start_n (or all units if no boundary).
+          4. Re-insert supplied units in order starting at text_start_n (or 1).
+          5. Commit.
+
+        Returns: { doc_id, units_written, fts_stale: true }
+        """
+        doc_id = body.get("doc_id")
+        units_raw = body.get("units")
+
+        if doc_id is None:
+            self._send_error("doc_id is required", code=ERR_BAD_REQUEST, http_status=400)
+            return
+        if not isinstance(units_raw, list):
+            self._send_error("units must be a list", code=ERR_BAD_REQUEST, http_status=400)
+            return
+        try:
+            doc_id = int(doc_id)
+        except (TypeError, ValueError):
+            self._send_error("doc_id must be an integer", code=ERR_BAD_REQUEST, http_status=400)
+            return
+
+        # Validate and normalise units
+        validated: list[tuple[str, str, str | None]] = []  # (type, text, role)
+        for i, u in enumerate(units_raw):
+            if not isinstance(u, dict):
+                self._send_error(f"units[{i}] must be an object", code=ERR_BAD_REQUEST, http_status=400)
+                return
+            utype = u.get("type", "line")
+            if utype not in ("line", "structure"):
+                self._send_error(
+                    f"units[{i}].type must be 'line' or 'structure'",
+                    code=ERR_BAD_REQUEST, http_status=400,
+                )
+                return
+            text = (u.get("text") or "").strip()
+            if not text:
+                self._send_error(
+                    f"units[{i}].text must be non-empty",
+                    code=ERR_BAD_REQUEST, http_status=400,
+                )
+                return
+            role = u.get("role") or None
+            validated.append((utype, text, role))
+
+        with self._lock():
+            conn = self._conn()
+
+            # Paratext boundary
+            doc_row = conn.execute(
+                "SELECT text_start_n FROM documents WHERE doc_id = ?", (doc_id,)
+            ).fetchone()
+            if not doc_row:
+                self._send_error(
+                    f"Document doc_id={doc_id} not found",
+                    code=ERR_NOT_FOUND, http_status=404,
+                )
+                return
+            text_start_n = doc_row["text_start_n"]
+            start_n = text_start_n if text_start_n is not None else 1
+
+            # Delete stale alignment links
+            conn.execute(
+                "DELETE FROM alignment_links WHERE pivot_doc_id = ? OR target_doc_id = ?",
+                (doc_id, doc_id),
+            )
+
+            # Delete text units (preserve paratext units below text_start_n)
+            if text_start_n is not None:
+                conn.execute(
+                    "DELETE FROM units WHERE doc_id = ? AND unit_type IN ('line', 'structure') AND n >= ?",
+                    (doc_id, text_start_n),
+                )
+            else:
+                conn.execute(
+                    "DELETE FROM units WHERE doc_id = ? AND unit_type IN ('line', 'structure')",
+                    (doc_id,),
+                )
+
+            # Insert new units
+            insert_rows = [
+                (doc_id, utype, start_n + offset, None, text, text, role, None)
+                for offset, (utype, text, role) in enumerate(validated)
+            ]
+            conn.executemany(
+                "INSERT INTO units"
+                " (doc_id, unit_type, n, external_id, text_raw, text_norm, unit_role, meta_json)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                insert_rows,
+            )
+            conn.commit()
+
+        self._send_json(success_payload({
+            "doc_id": doc_id,
+            "units_written": len(validated),
+            "fts_stale": True,
+        }))
 
     def _handle_segment_preview(self, body: dict) -> None:
         """POST /segment/preview — run segmentation in-memory, no DB writes.
@@ -3626,13 +4596,34 @@ class _CorpusHandler(BaseHTTPRequestHandler):
     # Convention / role system
     # ------------------------------------------------------------------
 
+    # Names auto-assigned to 'structure' when category column is missing (pre-migration DBs).
+    _STRUCTURE_ROLE_NAMES = frozenset({
+        "titre", "intertitre", "dedicace", "epigraphe", "incipit",
+        "colophon", "preface", "postface", "note", "paratext",
+    })
+
     def _handle_conventions_list(self) -> None:
         """GET /conventions — list all unit roles defined for this corpus."""
         with self._lock():
-            rows = self._conn().execute(
-                "SELECT role_id, name, label, color, icon, sort_order, created_at"
-                " FROM unit_roles ORDER BY sort_order ASC, role_id ASC"
-            ).fetchall()
+            conn = self._conn()
+            col_names = {row[1] for row in conn.execute("PRAGMA table_info(unit_roles)").fetchall()}
+            has_cat = "category" in col_names
+            if has_cat:
+                rows = conn.execute(
+                    "SELECT role_id, name, label, color, icon, sort_order, category, created_at"
+                    " FROM unit_roles ORDER BY sort_order ASC, role_id ASC"
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT role_id, name, label, color, icon, sort_order, created_at"
+                    " FROM unit_roles ORDER BY sort_order ASC, role_id ASC"
+                ).fetchall()
+
+        def _cat(r: object) -> str:
+            if has_cat:
+                return r["category"] or "text"  # type: ignore[index]
+            return "structure" if r["name"] in self._STRUCTURE_ROLE_NAMES else "text"  # type: ignore[index]
+
         self._send_json(success_payload({
             "conventions": [
                 {
@@ -3642,6 +4633,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                     "color": r["color"],
                     "icon": r["icon"],
                     "sort_order": r["sort_order"],
+                    "category": _cat(r),
                     "created_at": r["created_at"],
                 }
                 for r in rows
@@ -3656,6 +4648,9 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         color = (body.get("color") or "#6366f1").strip()
         icon = body.get("icon")
         sort_order = body.get("sort_order", 0)
+        category = (body.get("category") or "text").strip()
+        if category not in ("structure", "text"):
+            category = "text"
 
         if not name:
             self._send_error("name is required", code=ERR_BAD_REQUEST, http_status=400)
@@ -3681,17 +4676,29 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                     code=ERR_CONFLICT, http_status=409,
                 )
                 return
-            conn.execute(
-                "INSERT INTO unit_roles (name, label, color, icon, sort_order)"
-                " VALUES (?, ?, ?, ?, ?)",
-                (name, label, color, icon, int(sort_order)),
-            )
+            col_names = {row[1] for row in conn.execute("PRAGMA table_info(unit_roles)").fetchall()}
+            if "category" in col_names:
+                conn.execute(
+                    "INSERT INTO unit_roles (name, label, color, icon, sort_order, category)"
+                    " VALUES (?, ?, ?, ?, ?, ?)",
+                    (name, label, color, icon, int(sort_order), category),
+                )
+            else:
+                conn.execute(
+                    "INSERT INTO unit_roles (name, label, color, icon, sort_order)"
+                    " VALUES (?, ?, ?, ?, ?)",
+                    (name, label, color, icon, int(sort_order)),
+                )
             conn.commit()
+            sel_cols = "role_id, name, label, color, icon, sort_order, created_at"
+            if "category" in col_names:
+                sel_cols = "role_id, name, label, color, icon, sort_order, category, created_at"
             row = conn.execute(
-                "SELECT role_id, name, label, color, icon, sort_order, created_at"
-                " FROM unit_roles WHERE name=?",
-                (name,),
+                f"SELECT {sel_cols} FROM unit_roles WHERE name=?", (name,),
             ).fetchone()
+            row_cat = row["category"] if "category" in col_names else (
+                "structure" if name in self._STRUCTURE_ROLE_NAMES else category
+            )
 
         self._send_json(success_payload({
             "convention": {
@@ -3701,6 +4708,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 "color": row["color"],
                 "icon": row["icon"],
                 "sort_order": row["sort_order"],
+                "category": row_cat,
                 "created_at": row["created_at"],
             }
         }), status=201)
@@ -3723,15 +4731,21 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 )
                 return
 
+            up_col_names = {row[1] for row in conn.execute("PRAGMA table_info(unit_roles)").fetchall()}
+            has_cat_up = "category" in up_col_names
+            updatable = ("label", "color", "icon", "sort_order") + (("category",) if has_cat_up else ())
             fields: list[str] = []
             params: list[object] = []
-            for col in ("label", "color", "icon", "sort_order"):
+            for col in updatable:
                 if col in body:
+                    val = body[col]
+                    if col == "category" and val not in ("structure", "text"):
+                        val = "text"
                     fields.append(f"{col}=?")
-                    params.append(body[col])
+                    params.append(val)
             if not fields:
                 self._send_error(
-                    "At least one of label, color, icon, sort_order must be provided",
+                    "At least one of label, color, icon, sort_order, category must be provided",
                     code=ERR_BAD_REQUEST, http_status=400,
                 )
                 return
@@ -3742,11 +4756,15 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 params,
             )
             conn.commit()
+            sel_cols_up = "role_id, name, label, color, icon, sort_order, created_at"
+            if has_cat_up:
+                sel_cols_up = "role_id, name, label, color, icon, sort_order, category, created_at"
             updated = conn.execute(
-                "SELECT role_id, name, label, color, icon, sort_order, created_at"
-                " FROM unit_roles WHERE name=?",
-                (role_name,),
+                f"SELECT {sel_cols_up} FROM unit_roles WHERE name=?", (role_name,),
             ).fetchone()
+            updated_cat = updated["category"] if has_cat_up else (
+                "structure" if role_name in self._STRUCTURE_ROLE_NAMES else "text"
+            )
 
         self._send_json(success_payload({
             "convention": {
@@ -3756,6 +4774,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 "color": updated["color"],
                 "icon": updated["icon"],
                 "sort_order": updated["sort_order"],
+                "category": updated_cat,
                 "created_at": updated["created_at"],
             }
         }))
@@ -3842,50 +4861,175 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         }))
 
     def _handle_units_bulk_set_role(self, body: dict) -> None:
-        """POST /units/bulk_set_role — assign (or clear) a role on multiple units."""
-        doc_id = body.get("doc_id")
-        unit_ns_raw = body.get("unit_ns")
-        role = body.get("role")
+        """POST /units/bulk_set_role — assign (or clear) a role on multiple units.
 
-        if doc_id is None or unit_ns_raw is None:
-            self._send_error("doc_id and unit_ns are required", code=ERR_BAD_REQUEST, http_status=400)
-            return
-        if not isinstance(unit_ns_raw, list):
-            self._send_error("unit_ns must be an array", code=ERR_BAD_REQUEST, http_status=400)
+        Accepts two calling conventions:
+          A) { unit_ids: [int, ...], role_name: str|null }   — by primary key
+          B) { doc_id: int, unit_ns: [int, ...], role: str|null }  — legacy, by (doc, n)
+        """
+        # Normalise to a unified (role, update_fn) form.
+        role: str | None
+        unit_ids_raw = body.get("unit_ids")
+        role_name_field = body.get("role_name")
+
+        if unit_ids_raw is not None:
+            # Format A — unit_ids + role_name
+            if not isinstance(unit_ids_raw, list):
+                self._send_error("unit_ids must be an array", code=ERR_BAD_REQUEST, http_status=400)
+                return
+            try:
+                unit_ids = [int(i) for i in unit_ids_raw]
+            except (TypeError, ValueError):
+                self._send_error("unit_ids values must be integers", code=ERR_BAD_REQUEST, http_status=400)
+                return
+            role = (role_name_field or "").strip() or None
+            if not unit_ids:
+                self._send_json(success_payload({"updated": 0}))
+                return
+
+            with self._lock():
+                conn = self._conn()
+                if role is not None:
+                    exists = conn.execute(
+                        "SELECT 1 FROM unit_roles WHERE name=?", (role,)
+                    ).fetchone()
+                    if not exists:
+                        self._send_error(
+                            f"Convention '{role}' not found",
+                            code=ERR_NOT_FOUND, http_status=404,
+                        )
+                        return
+                placeholders = ",".join("?" * len(unit_ids))
+                result = conn.execute(
+                    f"UPDATE units SET unit_role=? WHERE unit_id IN ({placeholders})",
+                    [role, *unit_ids],
+                )
+                conn.commit()
+        else:
+            # Format B — doc_id + unit_ns + role (legacy)
+            doc_id = body.get("doc_id")
+            unit_ns_raw = body.get("unit_ns")
+            role = body.get("role")
+
+            if doc_id is None or unit_ns_raw is None:
+                self._send_error("unit_ids (or doc_id and unit_ns) are required", code=ERR_BAD_REQUEST, http_status=400)
+                return
+            if not isinstance(unit_ns_raw, list):
+                self._send_error("unit_ns must be an array", code=ERR_BAD_REQUEST, http_status=400)
+                return
+            try:
+                doc_id = int(doc_id)
+                unit_ns = [int(n) for n in unit_ns_raw]
+            except (TypeError, ValueError):
+                self._send_error("doc_id and unit_ns values must be integers", code=ERR_BAD_REQUEST, http_status=400)
+                return
+            if not unit_ns:
+                self._send_json(success_payload({"updated": 0}))
+                return
+            role = (role or "").strip() or None
+
+            with self._lock():
+                conn = self._conn()
+                if role is not None:
+                    exists = conn.execute(
+                        "SELECT 1 FROM unit_roles WHERE name=?", (role,)
+                    ).fetchone()
+                    if not exists:
+                        self._send_error(
+                            f"Convention '{role}' not found",
+                            code=ERR_NOT_FOUND, http_status=404,
+                        )
+                        return
+                placeholders = ",".join("?" * len(unit_ns))
+                result = conn.execute(
+                    f"UPDATE units SET unit_role=? WHERE doc_id=? AND n IN ({placeholders})",
+                    [role, doc_id, *unit_ns],
+                )
+                conn.commit()
+
+        self._send_json(success_payload({"updated": result.rowcount}))
+
+    def _handle_units_update_text(self, body: dict) -> None:
+        """POST /units/update_text — update text_raw and/or text_norm for one unit.
+
+        Body: { unit_id, text_raw?, text_norm? }
+          At least one of text_raw or text_norm must be provided.
+          If only text_raw is provided, text_norm is set to the same value
+          (caller may pass both to set independently).
+        """
+        unit_id_raw = body.get("unit_id")
+        if unit_id_raw is None:
+            self._send_error("unit_id is required", code=ERR_BAD_REQUEST, http_status=400)
             return
         try:
-            doc_id = int(doc_id)
-            unit_ns = [int(n) for n in unit_ns_raw]
+            unit_id = int(unit_id_raw)
         except (TypeError, ValueError):
-            self._send_error("doc_id and unit_ns values must be integers", code=ERR_BAD_REQUEST, http_status=400)
-            return
-        if not unit_ns:
-            self._send_json(success_payload({"updated": 0}))
+            self._send_error("unit_id must be an integer", code=ERR_BAD_REQUEST, http_status=400)
             return
 
-        role = (role or "").strip() or None
+        text_raw = body.get("text_raw")
+        text_norm = body.get("text_norm")
+
+        if text_raw is None and text_norm is None:
+            self._send_error(
+                "At least one of text_raw or text_norm must be provided",
+                code=ERR_BAD_REQUEST, http_status=400,
+            )
+            return
+        for field, val in (("text_raw", text_raw), ("text_norm", text_norm)):
+            if val is not None and not isinstance(val, str):
+                self._send_error(f"{field} must be a string", code=ERR_BAD_REQUEST, http_status=400)
+                return
+
+        # If only text_raw given, mirror to text_norm
+        if text_raw is not None and text_norm is None:
+            text_norm = text_raw
+
+        updates: dict[str, str] = {}
+        if text_raw is not None:
+            updates["text_raw"] = text_raw
+        if text_norm is not None:
+            updates["text_norm"] = text_norm
+
+        set_clause = ", ".join(f"{k} = ?" for k in updates)
+        params = [*updates.values(), unit_id]
 
         with self._lock():
             conn = self._conn()
-            if role is not None:
-                exists = conn.execute(
-                    "SELECT 1 FROM unit_roles WHERE name=?", (role,)
-                ).fetchone()
-                if not exists:
-                    self._send_error(
-                        f"Convention '{role}' not found",
-                        code=ERR_NOT_FOUND, http_status=404,
-                    )
-                    return
-
-            placeholders = ",".join("?" * len(unit_ns))
-            result = conn.execute(
-                f"UPDATE units SET unit_role=? WHERE doc_id=? AND n IN ({placeholders})",
-                [role, doc_id, *unit_ns],
+            cur = conn.execute(
+                f"UPDATE units SET {set_clause} WHERE unit_id = ?",
+                params,
             )
+            if cur.rowcount == 0:
+                self._send_error(
+                    f"Unknown unit_id: {unit_id}",
+                    code=ERR_NOT_FOUND, http_status=404,
+                )
+                return
+            # Invalidate FTS entry for this unit
+            try:
+                conn.execute("DELETE FROM fts_units WHERE rowid = ?", (unit_id,))
+                if "text_norm" in updates:
+                    conn.execute(
+                        "INSERT INTO fts_units(rowid, text_norm) VALUES (?, ?)",
+                        (unit_id, updates["text_norm"]),
+                    )
+            except Exception:
+                pass  # FTS update is best-effort
             conn.commit()
+            row = conn.execute(
+                "SELECT unit_id, doc_id, n, external_id, text_raw, text_norm FROM units WHERE unit_id = ?",
+                (unit_id,),
+            ).fetchone()
 
-        self._send_json(success_payload({"updated": result.rowcount}))
+        self._send_json(success_payload({
+            "unit_id": row[0],
+            "doc_id": row[1],
+            "n": row[2],
+            "external_id": row[3],
+            "text_raw": row[4],
+            "text_norm": row[5],
+        }))
 
     def _handle_documents_set_text_start(self, body: dict) -> None:
         """POST /documents/set_text_start — set or clear the paratextual boundary.
@@ -4394,9 +5538,9 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 http_status=400,
             )
             return
-        if limit < 1 or limit > 500:
+        if limit < 1 or limit > 2000:
             self._send_error(
-                "limit must be between 1 and 500",
+                "limit must be between 1 and 2000",
                 code=ERR_BAD_REQUEST,
                 http_status=400,
             )
@@ -5748,6 +6892,11 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         if not isinstance(out_path, str) or not out_path.strip():
             self._send_error("out_path is required", code=ERR_BAD_REQUEST, http_status=400)
             return
+        try:
+            out_path_resolved = self._resolve_export_path(out_path.strip())
+        except ValueError as exc:
+            self._send_error(str(exc), code=ERR_BAD_REQUEST, http_status=400)
+            return
 
         raw_doc_ids = body.get("doc_ids")
         doc_ids: list[int] | None = None
@@ -5764,7 +6913,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         with self._lock():
             summary = export_conllu(
                 self._conn(),
-                output_path=out_path.strip(),
+                output_path=out_path_resolved,
                 doc_ids=doc_ids,
             )
 
@@ -5855,7 +7004,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                     break
                 offset = next_offset
 
-            out = export_csv(hits=hits, output_path=out_path.strip(), mode=mode, delimiter=delimiter)
+            out = export_csv(hits=hits, output_path=str(self._resolve_export_path(out_path.strip())), mode=mode, delimiter=delimiter)
 
         self._send_json(success_payload({
             "out_path": str(out),
@@ -5871,6 +7020,11 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         out_path = body.get("out_path")
         if not isinstance(out_path, str) or not out_path.strip():
             self._send_error("out_path is required", code=ERR_BAD_REQUEST, http_status=400)
+            return
+        try:
+            out_path_resolved = self._resolve_export_path(out_path.strip())
+        except ValueError as exc:
+            self._send_error(str(exc), code=ERR_BAD_REQUEST, http_status=400)
             return
 
         raw_doc_ids = body.get("doc_ids")
@@ -5888,7 +7042,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         with self._lock():
             summary = export_ske(
                 self._conn(),
-                output_path=out_path.strip(),
+                output_path=out_path_resolved,
                 doc_ids=doc_ids,
             )
 
@@ -5928,7 +7082,11 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 all_ids = [r[0] for r in self._conn().execute("SELECT doc_id FROM documents ORDER BY doc_id")]
             else:
                 all_ids = list(doc_ids)
-        out_dir_path = Path(out_dir)
+        try:
+            out_dir_path = self._resolve_export_path(out_dir)
+        except ValueError as exc:
+            self._send_error(str(exc), code=ERR_BAD_REQUEST, http_status=400)
+            return
         out_dir_path.mkdir(parents=True, exist_ok=True)
         files_created: list[str] = []
         for doc_id in all_ids:
@@ -5943,6 +7101,21 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         self._send_json(success_payload({"files_created": files_created, "count": len(files_created)}))
 
     # ── Sprint 5 helpers ──────────────────────────────────────────────────────
+
+    @staticmethod
+    def _resolve_export_path(raw: str) -> Path:
+        """Resolve an export path supplied by the client.
+
+        Converts relative paths to absolute (using cwd) and collapses any
+        ``..`` components, preventing path traversal.  Raises ``ValueError``
+        if the resolved path is the filesystem root or contains a null byte.
+        """
+        if "\x00" in raw:
+            raise ValueError("Path contains null byte")
+        resolved = Path(raw).resolve()
+        if resolved == resolved.root or str(resolved) == resolved.anchor:
+            raise ValueError(f"Refusing to export to filesystem root: {resolved}")
+        return resolved
 
     @staticmethod
     def _escape_xml(text: str) -> str:
@@ -6094,16 +7267,20 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 ])
 
         # ── Resolve output path ──────────────────────────────────────────────
-        if out_path_str:
-            out = Path(out_path_str)
-        else:
-            out_dir = Path(out_dir_str)  # type: ignore[arg-type]
-            out_dir.mkdir(parents=True, exist_ok=True)
-            if family_id_raw is not None:
-                fname = f"family_{pivot_doc_id}.tmx"
+        try:
+            if out_path_str:
+                out = self._resolve_export_path(out_path_str)
             else:
-                fname = f"doc_{pivot_doc_id}_doc_{target_doc_id_raw}.tmx"
-            out = out_dir / fname
+                out_dir = self._resolve_export_path(out_dir_str)  # type: ignore[arg-type]
+                out_dir.mkdir(parents=True, exist_ok=True)
+                if family_id_raw is not None:
+                    fname = f"family_{pivot_doc_id}.tmx"
+                else:
+                    fname = f"doc_{pivot_doc_id}_doc_{target_doc_id_raw}.tmx"
+                out = out_dir / fname
+        except ValueError as exc:
+            self._send_error(str(exc), code=ERR_BAD_REQUEST, http_status=400)
+            return
 
         out.parent.mkdir(parents=True, exist_ok=True)
         tmx_content = self._build_tmx(tu_list, srclang, API_VERSION)
@@ -6557,8 +7734,16 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 
     def _handle_db_backup(self, body: dict) -> None:
         out_dir = body.get("out_dir")
+        out_path = body.get("out_path")
+
         if out_dir is not None and not isinstance(out_dir, str):
             self._send_error("out_dir must be a string", code=ERR_BAD_REQUEST, http_status=400)
+            return
+        if out_path is not None and not isinstance(out_path, str):
+            self._send_error("out_path must be a string", code=ERR_BAD_REQUEST, http_status=400)
+            return
+        if out_dir is not None and out_path is not None:
+            self._send_error("out_dir and out_path are mutually exclusive", code=ERR_BAD_REQUEST, http_status=400)
             return
 
         raw_db_path = getattr(self.server, "db_path", None)  # type: ignore[attr-defined]
@@ -6571,25 +7756,43 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             self._send_error("Source DB file not found", code=ERR_NOT_FOUND, http_status=404)
             return
 
-        target_dir = source_db.parent if not out_dir else Path(out_dir)
-        try:
-            target_dir.mkdir(parents=True, exist_ok=True)
-        except Exception as exc:
-            self._send_error(
-                f"Unable to create backup directory: {exc}",
-                code=ERR_BAD_REQUEST,
-                http_status=400,
-            )
-            return
-
-        stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%d_%H%M%S")
-        suffix = source_db.suffix or ".db"
-        backup_base = f"{source_db.stem}_{stamp}{suffix}"
-        backup_path = target_dir / f"{backup_base}.bak"
-        collision_index = 1
-        while backup_path.exists():
-            backup_path = target_dir / f"{backup_base}_{collision_index}.bak"
-            collision_index += 1
+        if out_path is not None:
+            backup_path = Path(out_path)
+            if backup_path.exists():
+                self._send_error(
+                    f"File already exists: {backup_path}",
+                    code=ERR_CONFLICT,
+                    http_status=409,
+                )
+                return
+            try:
+                backup_path.parent.mkdir(parents=True, exist_ok=True)
+            except Exception as exc:
+                self._send_error(
+                    f"Unable to create directory: {exc}",
+                    code=ERR_BAD_REQUEST,
+                    http_status=400,
+                )
+                return
+        else:
+            target_dir = source_db.parent if not out_dir else Path(out_dir)
+            try:
+                target_dir.mkdir(parents=True, exist_ok=True)
+            except Exception as exc:
+                self._send_error(
+                    f"Unable to create backup directory: {exc}",
+                    code=ERR_BAD_REQUEST,
+                    http_status=400,
+                )
+                return
+            stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%d_%H%M%S")
+            suffix = source_db.suffix or ".db"
+            backup_base = f"{source_db.stem}_{stamp}{suffix}"
+            backup_path = target_dir / f"{backup_base}.bak"
+            collision_index = 1
+            while backup_path.exists():
+                backup_path = target_dir / f"{backup_base}_{collision_index}.bak"
+                collision_index += 1
 
         try:
             with self._lock():
@@ -6618,12 +7821,71 @@ class _CorpusHandler(BaseHTTPRequestHandler):
     # V0.4C — Alignment link editing
     # ------------------------------------------------------------------
 
+    def _handle_align_link_create(self, body: dict) -> None:
+        """POST /align/link/create — manually create an alignment link between two units."""
+        pivot_unit_id = body.get("pivot_unit_id")
+        target_unit_id = body.get("target_unit_id")
+        if pivot_unit_id is None or target_unit_id is None:
+            self._send_error("pivot_unit_id and target_unit_id are required", code=ERR_BAD_REQUEST, http_status=400)
+            return
+        status = body.get("status", None)
+        if status not in (None, "accepted", "rejected"):
+            self._send_error("status must be 'accepted', 'rejected', or null", code=ERR_VALIDATION, http_status=400)
+            return
+        conn = self._conn()
+        pivot_unit = conn.execute(
+            "SELECT unit_id, doc_id, external_id FROM units WHERE unit_id = ?", (pivot_unit_id,)
+        ).fetchone()
+        if pivot_unit is None:
+            self._send_error(f"pivot_unit_id={pivot_unit_id} does not exist", code=ERR_NOT_FOUND, http_status=404)
+            return
+        target_unit = conn.execute(
+            "SELECT unit_id, doc_id FROM units WHERE unit_id = ?", (target_unit_id,)
+        ).fetchone()
+        if target_unit is None:
+            self._send_error(f"target_unit_id={target_unit_id} does not exist", code=ERR_NOT_FOUND, http_status=404)
+            return
+        pivot_doc_id = pivot_unit["doc_id"]
+        target_doc_id = target_unit["doc_id"]
+        external_id = pivot_unit["external_id"] if pivot_unit["external_id"] is not None else 0
+        created_at = dt.datetime.now(dt.timezone.utc).isoformat()
+        try:
+            with self._lock():
+                cur = conn.execute(
+                    """INSERT INTO alignment_links
+                       (run_id, pivot_unit_id, target_unit_id, external_id,
+                        pivot_doc_id, target_doc_id, created_at, status)
+                       VALUES ('manual', ?, ?, ?, ?, ?, ?, ?)""",
+                    (pivot_unit_id, target_unit_id, external_id,
+                     pivot_doc_id, target_doc_id, created_at, status),
+                )
+                conn.commit()
+                link_id = cur.lastrowid
+        except Exception as exc:
+            if "UNIQUE constraint" in str(exc):
+                self._send_error(
+                    f"A link between pivot_unit_id={pivot_unit_id} and target_unit_id={target_unit_id} already exists",
+                    code=ERR_CONFLICT,
+                    http_status=409,
+                )
+                return
+            raise
+        self._send_json(success_payload({
+            "link_id": link_id,
+            "pivot_unit_id": pivot_unit_id,
+            "target_unit_id": target_unit_id,
+            "pivot_doc_id": pivot_doc_id,
+            "target_doc_id": target_doc_id,
+            "status": status,
+            "created": 1,
+        }))
+
     def _handle_align_link_update_status(self, body: dict) -> None:
         link_id = body.get("link_id")
-        status = body.get("status")
-        if link_id is None or status is None:
+        if link_id is None or "status" not in body:
             self._send_error("link_id and status are required", code=ERR_BAD_REQUEST, http_status=400)
             return
+        status = body.get("status")
         if status not in (None, "accepted", "rejected"):
             self._send_error("status must be 'accepted', 'rejected', or null", code=ERR_VALIDATION, http_status=400)
             return
@@ -6660,12 +7922,22 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         if unit is None:
             self._send_error(f"new_target_unit_id={new_target_unit_id} does not exist", code=ERR_NOT_FOUND, http_status=404)
             return
-        with self._lock():
-            cur = self._conn().execute(
-                "UPDATE alignment_links SET target_unit_id = ? WHERE link_id = ?",
-                (new_target_unit_id, link_id),
-            )
-            self._conn().commit()
+        try:
+            with self._lock():
+                cur = self._conn().execute(
+                    "UPDATE alignment_links SET target_unit_id = ? WHERE link_id = ?",
+                    (new_target_unit_id, link_id),
+                )
+                self._conn().commit()
+        except Exception as exc:
+            if "UNIQUE constraint" in str(exc):
+                self._send_error(
+                    f"pivot unit is already linked to target_unit_id={new_target_unit_id}",
+                    code=ERR_CONFLICT,
+                    http_status=409,
+                )
+                return
+            raise
         if cur.rowcount == 0:
             self._send_error(f"link_id={link_id} not found", code=ERR_NOT_FOUND, http_status=404)
             return
@@ -7031,15 +8303,19 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 
         conn = self._conn()
 
+        # A collision = pivot with >1 links where NOT all are accepted.
+        # All-accepted multi-links are intentional (user validated each) → not collisions.
+        _coll_having = "HAVING COUNT(*) > 1 AND COUNT(CASE WHEN status = 'accepted' THEN 1 END) < COUNT(*)"
+
         # Count total collision pivot_unit_ids (for pagination meta)
         total_row = conn.execute(
-            """
+            f"""
             SELECT COUNT(*) FROM (
                 SELECT pivot_unit_id
                 FROM alignment_links
                 WHERE pivot_doc_id = ? AND target_doc_id = ?
                 GROUP BY pivot_unit_id
-                HAVING COUNT(*) > 1
+                {_coll_having}
             )
             """,
             (pivot_doc_id, target_doc_id),
@@ -7048,12 +8324,12 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 
         # Fetch collision pivot_unit_ids for this page
         collision_pivot_rows = conn.execute(
-            """
+            f"""
             SELECT pivot_unit_id
             FROM alignment_links
             WHERE pivot_doc_id = ? AND target_doc_id = ?
             GROUP BY pivot_unit_id
-            HAVING COUNT(*) > 1
+            {_coll_having}
             ORDER BY pivot_unit_id
             LIMIT ? OFFSET ?
             """,
@@ -7304,7 +8580,15 @@ class CorpusServer:
             ):
                 self._thread.join(timeout=5.0)
 
+            # Cancel any queued/running jobs before closing the DB so that
+            # job threads see the canceled status and don't attempt further writes.
+            self._jobs.cancel_all()
+
             if self._conn is not None:
+                try:
+                    self._conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                except Exception:
+                    pass
                 self._conn.close()
                 self._conn = None
 

@@ -1,6 +1,6 @@
 # Status — Concordancier Prep (tauri-prep) V0
 
-**Last updated:** 2026-03-08 (P11 — Actions TRUE DOM parity: Inc 3 traduction native layout + vérification Inc 0/1/2)
+**Last updated:** 2026-04-19 (Annotation view — scroll, pagination tokens, vue lecture prose)
 
 Current contract/runtime reference:
 - `CONTRACT_VERSION = 1.4.6`
@@ -8,6 +8,37 @@ Current contract/runtime reference:
 - Execution plan reference: `docs/PREP_IMPLEMENTATION_PLAN.md`
 - Plan status: Phase 0–6 done; **vNext UI Pilot (P0 + P1 + P2) done**
 - Redesign plan: `docs/PREP_UI_REDESIGN_PLAN.md`
+
+---
+
+## P12 — Annotation view : scroll + pagination + vue lecture (2026-04-19) — fait
+
+### Scroll annot-viewer
+
+- **Cause racine :** la chaîne flex/grid ne bornait pas la hauteur — `overflow-y: auto` ne se déclenchait jamais.
+- `index.html` : `html/body { height: 100% }`, `#app { display: flex; flex-direction: column }` — ancre la hauteur au viewport sans calcul dynamique.
+- `prep-vnext.css` : `.prep-shell { flex: 1; min-height: 0 }` (était `min-height: 100vh`), `.prep-main { overflow-y: auto }` (scroll statique pour les vues standard), règle `:has(.actions-sub-annoter)` corrigée (`overflow: hidden` seulement, hauteur venue du flex chain).
+- Correctif sélecteur : `.actions-screen.active` → `.prep-actions-screen.active` (la classe réelle générée par `ActionsScreen.render()` est `prep-actions-screen`).
+- `annotation.css` : `.annot-layout { grid-template-rows: 1fr }` (row unique bornée), `min-height: 0` sur `.annot-sidebar`, `.annot-viewer`, `.annot-editor` (grid items ont `min-height: auto` par défaut).
+
+### Pagination tokens
+
+- `GET /tokens` a un `limit` par défaut de 200 et un maximum de 1 000.
+- `AnnotationView._annotSelectDoc()` : boucle de pagination `limit=1000 / offset` jusqu'à épuisement — tous les tokens d'un document sont chargés quel que soit leur nombre.
+- Erreur HTTP affichée verbatim (plus de message générique "lancez spaCy d'abord" sur toute erreur).
+
+### Vue lecture prose colorée UPOS
+
+- Nouveau toggle "Lecture / Annoter" dans la toolbar.
+- Mode **Lecture** : rendu prose inline, chaque token coloré selon son UPOS (`color-mix`), tooltip word · lemma · upos, clic bascule en mode Annoter sur le token cliqué.
+- Mode **Annoter** : grille interlinéaire existante (mot / badge UPOS / lemme).
+- État `_annotViewMode` persisté en mémoire (reset à la sélection d'un nouveau document).
+- CSS ajouté dans `annotation.css` : `.annot-prose`, `.annot-prose-unit`, `.annot-prose-token`, `.annot-prose-token--colored`, `.annot-btn-view-toggle`, `.annot-btn-view-toggle--read`, `.annot-doc-header`, `.annot-doc-header-title`, `.annot-doc-header-meta`.
+
+### Invariants
+
+- `npm --prefix tauri-prep run build` ✓
+- Zéro changement backend/sidecar/contrat.
 
 ---
 

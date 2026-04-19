@@ -20,6 +20,7 @@ import logging
 import re
 import sqlite3
 import xml.etree.ElementTree as ET
+import defusedxml.ElementTree as DefET
 from pathlib import Path
 from typing import Optional
 
@@ -161,7 +162,7 @@ def import_tei(
     assert_not_duplicate_import(conn, path, source_hash, check_filename=check_filename)
 
     try:
-        tree = ET.parse(str(path))
+        tree = DefET.parse(str(path))
     except ET.ParseError as exc:
         raise ValueError(f"TEI file is not valid XML: {exc}") from exc
 
@@ -224,14 +225,19 @@ def import_tei(
         )
         log.debug("TEI %s n=%d ext_id=%d", unit_element, n, ext_id)
 
-    conn.executemany(
-        """
-        INSERT INTO units (doc_id, unit_type, n, external_id, text_raw, text_norm, meta_json)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        """,
-        units_to_insert,
-    )
-    conn.commit()
+    try:
+        conn.executemany(
+            """
+            INSERT INTO units (doc_id, unit_type, n, external_id, text_raw, text_norm, meta_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            units_to_insert,
+        )
+        conn.commit()
+    except Exception:
+        conn.execute("DELETE FROM documents WHERE doc_id = ?", (doc_id,))
+        conn.commit()
+        raise
 
     duplicates, holes, non_monotonic = _analyze_external_ids(external_ids)
 

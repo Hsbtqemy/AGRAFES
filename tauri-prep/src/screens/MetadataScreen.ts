@@ -10,6 +10,7 @@
  *   - Metadata validation (POST /validate-meta)
  */
 
+import { save as dialogSave } from "@tauri-apps/plugin-dialog";
 import type { Conn } from "../lib/sidecarClient.ts";
 import {
   listDocuments,
@@ -35,6 +36,7 @@ import {
   getCorpusAudit,
   getFamilyCurationStatus,
   acknowledgeSourceChange,
+  updateUnitText,
   type DocumentRecord,
   type DocumentPreviewLine,
   type ConventionRole,
@@ -97,7 +99,7 @@ export class MetadataScreen {
   private _root!: HTMLElement;
   private _docListEl!: HTMLElement;
   private _editPanelEl!: HTMLElement;
-  private _logEl!: HTMLElement;
+  private _logEl: HTMLElement = document.createElement("div");
   private _docCountEl!: HTMLElement;
   private _stateEl!: HTMLElement;
   private _kpiBarEl!: HTMLElement;
@@ -186,6 +188,7 @@ export class MetadataScreen {
           </div>
           <div class="prep-meta-head-actions">
             <button id="db-backup-btn" class="btn btn-secondary btn-sm">Sauvegarder la DB</button>
+            <button id="db-export-btn" class="btn btn-secondary btn-sm">↗ Exporter pour partage…</button>
             <span id="db-backup-status" class="hint" style="margin:0">Aucune sauvegarde récente</span>
             <button id="validate-btn" class="btn btn-secondary btn-sm">Valider métadonnées</button>
             <button id="audit-btn" class="btn btn-secondary btn-sm">🔍 Audit corpus</button>
@@ -280,16 +283,10 @@ export class MetadataScreen {
         </div>
       </section>
 
-      <!-- Log (collapsed by default) -->
-      <section class="card prep-meta-log-card" data-collapsible="true" data-collapsed-default="true">
-        <h3>Journal des actions documents</h3>
-        <div id="meta-log" class="prep-log-pane"></div>
-      </section>
     `;
 
     this._docListEl   = root.querySelector("#prep-meta-doc-list")!;
     this._editPanelEl = root.querySelector("#meta-edit-panel")!;
-    this._logEl       = root.querySelector("#meta-log")!;
     this._docCountEl  = root.querySelector("#meta-doc-count")!;
     this._stateEl     = root.querySelector("#meta-state-banner")!;
     this._kpiBarEl    = root.querySelector("#prep-meta-kpi-bar")!;
@@ -330,6 +327,7 @@ export class MetadataScreen {
     root.querySelector("#meta-batch-delete-btn")!.addEventListener("click", () => void this._runBatchDelete());
     root.querySelector("#validate-btn")!.addEventListener("click", () => this._runValidate());
     root.querySelector("#db-backup-btn")!.addEventListener("click", () => void this._runDbBackup());
+    root.querySelector("#db-export-btn")!.addEventListener("click", () => void this._runDbExport());
     root.querySelector("#audit-btn")!.addEventListener("click", () => void this._runAudit());
     root.querySelector<HTMLInputElement>("#audit-ratio-input")?.addEventListener("change", (e) => {
       const v = parseInt((e.target as HTMLInputElement).value, 10);
@@ -1879,6 +1877,43 @@ export class MetadataScreen {
     }
   }
 
+  private async _runDbExport(): Promise<void> {
+    if (!this._conn) return;
+    const btn = this._root.querySelector<HTMLButtonElement>("#db-export-btn");
+    const status = this._root.querySelector<HTMLElement>("#db-backup-status");
+    if (!btn || btn.disabled) return;
+
+    btn.disabled = true;
+    const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    let outPath: string | null;
+    try {
+      outPath = await dialogSave({
+        title: "Exporter le corpus",
+        defaultPath: `corpus_${stamp}.db`,
+        filters: [{ name: "Base de données AGRAFES", extensions: ["db"] }],
+      });
+    } catch {
+      btn.disabled = false;
+      return;
+    }
+    if (!outPath) { btn.disabled = false; return; }
+    if (status) { status.textContent = "Export en cours…"; status.style.color = "var(--color-muted)"; }
+    try {
+      const res = await backupDatabase(this._conn, { out_path: outPath });
+      const file = res.backup_path.split(/[\\/]/).pop() ?? res.backup_path;
+      if (status) { status.textContent = `Exporté: ${file}`; status.style.color = "var(--color-ok)"; }
+      this._log(`✓ Corpus exporté: ${res.backup_path}`);
+    } catch (err) {
+      const msg = err instanceof SidecarError && err.httpStatus === 409
+        ? "Fichier déjà existant — choisissez un autre nom"
+        : (err instanceof SidecarError ? err.message : String(err));
+      if (status) { status.textContent = "Erreur d'export"; status.style.color = "var(--color-danger)"; }
+      this._log(`Erreur export corpus: ${msg}`, true);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
   private async _loadDocPreview(docId: number): Promise<void> {
     if (!this._conn) return;
     this._previewLoading = true;
@@ -1932,14 +1967,23 @@ export class MetadataScreen {
     const count = this._previewLines.length;
     const suffix = this._previewTotalLines > count ? ` / ${this._previewTotalLines} lignes` : "";
     panel.innerHTML = `
-      <p class="hint" style="margin:0 0 0.35rem">Extrait affiché: ${count}${suffix}</p>
+      <p class="hint" style="margin:0 0 0.35rem">Extrait affiché: ${count}${suffix} <span class="prep-meta-edit-hint">— cliquer sur une ligne pour modifier</span></p>
       <div class="prep-meta-preview-lines">
         ${this._previewLines.map((line) => {
           const marker = line.external_id != null ? `[${String(line.external_id).padStart(4, "0")}]` : `[n${line.n}]`;
-          return `<div class="prep-meta-preview-line"><span class="prep-meta-preview-marker">${marker}</span>${_roleBadgeHtml(line.unit_role, this._conventions)} <span>${richTextToHtml(line.text_raw, line.text)}</span></div>`;
+          const rawEscaped = this._esc(line.text_raw ?? line.text ?? "");
+          return `<div class="prep-meta-preview-line prep-meta-preview-line--editable" data-unit-id="${line.unit_id}" data-text-raw="${rawEscaped}"><span class="prep-meta-preview-marker">${marker}</span>${_roleBadgeHtml(line.unit_role, this._conventions)} <span class="prep-meta-preview-text">${richTextToHtml(line.text_raw, line.text)}</span><button class="prep-meta-edit-btn" title="Modifier ce segment" tabindex="-1">✎</button></div>`;
         }).join("")}
       </div>
     `;
+    // Inline edit delegation
+    panel.querySelector(".prep-meta-preview-lines")?.addEventListener("click", (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLElement>(".prep-meta-edit-btn");
+      const row = (e.target as HTMLElement).closest<HTMLElement>(".prep-meta-preview-line--editable");
+      if (!row || row.classList.contains("prep-meta-preview-line--editing")) return;
+      if (!btn && !(e.target as HTMLElement).closest(".prep-meta-preview-text")) return;
+      this._openInlineUnitEdit(row, panel);
+    });
     this._renderTokenEditorPanel();
   }
 
@@ -2121,12 +2165,72 @@ export class MetadataScreen {
     }
   }
 
+  // ── Inline unit text edit ────────────────────────────────────────────────────
+
+  private _openInlineUnitEdit(row: HTMLElement, panel: HTMLElement): void {
+    const unitId = Number(row.dataset.unitId);
+    if (!unitId) return;
+    const currentText = row.dataset.textRaw ?? row.querySelector(".prep-meta-preview-text")?.textContent ?? "";
+    row.classList.add("prep-meta-preview-line--editing");
+
+    row.innerHTML = `
+      <textarea class="prep-meta-inline-textarea" rows="2">${this._esc(currentText)}</textarea>
+      <div class="prep-meta-inline-footer">
+        <span class="prep-meta-edit-hint">Ctrl+Entrée · Échap</span>
+        <span class="prep-meta-inline-actions">
+          <button class="btn btn-sm btn-primary prep-meta-inline-save">Enregistrer</button>
+          <button class="btn btn-sm prep-meta-inline-cancel">Annuler</button>
+        </span>
+      </div>
+    `;
+    const textarea = row.querySelector<HTMLTextAreaElement>(".prep-meta-inline-textarea")!;
+    textarea.focus();
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+
+    const cancel = (): void => {
+      this._renderPreviewPanel();
+    };
+
+    const save = async (): Promise<void> => {
+      const conn = this._conn;
+      if (!conn) { cancel(); return; }
+      const newText = textarea.value;
+      const saveBtn = row.querySelector<HTMLButtonElement>(".prep-meta-inline-save");
+      if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = "…"; }
+      try {
+        await updateUnitText(conn, unitId, newText);
+        // Update cached preview line
+        const line = this._previewLines.find(l => l.unit_id === unitId);
+        if (line) { line.text_raw = newText; line.text = newText; }
+        this._log(`✓ Unité ${unitId} mise à jour.`);
+        this._renderPreviewPanel();
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this._log(`✗ Erreur mise à jour unité ${unitId} : ${msg}`, true);
+        cancel();
+      }
+    };
+
+    row.querySelector(".prep-meta-inline-save")?.addEventListener("click", () => void save());
+    row.querySelector(".prep-meta-inline-cancel")?.addEventListener("click", cancel);
+    textarea.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") { e.preventDefault(); cancel(); }
+      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void save(); }
+    });
+    panel.scrollTop; // force reflow
+  }
+
   // ── Helpers ─────────────────────────────────────────────────────────────────
+
+  setLogEl(el: HTMLElement): void {
+    this._logEl = el;
+  }
 
   private _log(msg: string, isError = false): void {
     const line = document.createElement("div");
     line.className = "log-line" + (isError ? " log-error" : "");
-    line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+    line.dataset.source = "documents";
+    line.textContent = `[${new Date().toLocaleTimeString()}] [Docs] ${msg}`;
     this._logEl.appendChild(line);
     this._logEl.scrollTop = this._logEl.scrollHeight;
     if (isError) {

@@ -7,18 +7,14 @@
 import type {
   Conn,
   DocumentRecord,
-  ExportRunReportOptions,
 } from "../lib/sidecarClient.ts";
 import {
   listDocuments,
   enqueueJob,
-  exportRunReport,
   SidecarError,
 } from "../lib/sidecarClient.ts";
-import { save as dialogSave } from "@tauri-apps/plugin-dialog";
 import type { JobCenter } from "../components/JobCenter.ts";
 import { initCardAccordions } from "../lib/uiAccordions.ts";
-import { escHtml as _escHtml } from "../lib/diff.ts";
 import { AlignPanel } from "./AlignPanel.ts";
 import { AnnotationView } from "./AnnotationView.ts";
 import { SegmentationView } from "./SegmentationView.ts";
@@ -81,7 +77,7 @@ export class ActionsScreen {
   private _wfRoot: HTMLElement | null = null;
   private static readonly LS_WF_RUN_ID = "agrafes.prep.workflow.run_id";
   // Log + busy
-  private _logEl!: HTMLElement;
+  private _logEl: HTMLElement = document.createElement("div");
   private _busyEl!: HTMLElement;
   private _stateEl!: HTMLElement;
   private _isBusy = false;
@@ -111,14 +107,10 @@ export class ActionsScreen {
     const header = document.createElement("div");
     header.className = "prep-acts-header";
     header.innerHTML = `
-      <div id="act-state-banner" class="prep-runtime-state prep-state-info" aria-live="polite">
-        En attente de connexion sidecar…
-      </div>
-      <button id="act-reload-docs" class="btn btn-secondary btn-sm prep-acts-reload-btn">↻ Rafraîchir docs</button>
+      <div id="act-state-banner" class="prep-runtime-state prep-state-info" aria-live="polite" style="display:none"></div>
     `;
     root.appendChild(header);
     this._stateEl = root.querySelector("#act-state-banner")!;
-    root.querySelector("#act-reload-docs")!.addEventListener("click", () => this._loadDocs());
 
     const panelSlot = document.createElement("div");
     panelSlot.className = "prep-acts-panel-slot";
@@ -130,35 +122,24 @@ export class ActionsScreen {
     const curationPanel = this._renderCurationPanel(root);
     curationPanel.dataset.panel = "curation";
     curationPanel.style.display = this._activeSubView === "curation" ? "" : "none";
-    this._prependBackBtn(curationPanel, root);
 
     const segPanel = this._renderSegmentationPanel(root);
     segPanel.dataset.panel = "segmentation";
     segPanel.style.display = this._activeSubView === "segmentation" ? "" : "none";
-    this._prependBackBtn(segPanel, root);
 
     const alignPanel = this._renderAlignementPanel(root);
     alignPanel.dataset.panel = "alignement";
     alignPanel.style.display = this._activeSubView === "alignement" ? "" : "none";
-    this._prependBackBtn(alignPanel, root);
 
     const annoterPanel = this._renderAnnoterPanel(root);
     annoterPanel.dataset.panel = "annoter";
     annoterPanel.style.display = this._activeSubView === "annoter" ? "" : "none";
-    this._prependBackBtn(annoterPanel, root);
 
     panelSlot.appendChild(hubPanel);
     panelSlot.appendChild(curationPanel);
     panelSlot.appendChild(segPanel);
     panelSlot.appendChild(alignPanel);
     panelSlot.appendChild(annoterPanel);
-
-    const logSection = document.createElement("section");
-    logSection.className = "card prep-acts-log-section";
-    logSection.setAttribute("data-collapsible", "true");
-    logSection.setAttribute("data-collapsed-default", "true");
-    logSection.innerHTML = `<h3>Journal</h3><div id="act-log" class="prep-log-pane"></div>`;
-    panelSlot.appendChild(logSection);
 
     root.appendChild(panelSlot);
 
@@ -169,7 +150,6 @@ export class ActionsScreen {
     busyOverlay.innerHTML = `<div class="prep-busy-spinner">⏳ Opération en cours…</div>`;
     root.appendChild(busyOverlay);
 
-    this._logEl = root.querySelector("#act-log")!;
     this._busyEl = root.querySelector("#act-busy")!;
 
     this._wfRoot = root;
@@ -334,7 +314,15 @@ export class ActionsScreen {
         setBusy: (v) => this._setBusy(v),
         isBusy: () => this._isBusy,
         jobCenter: () => this._jobCenter,
-        onNavigate: (target) => { if (this._wfRoot) this._switchSubViewDOM(this._wfRoot, target as Parameters<typeof this._switchSubViewDOM>[1]); },
+        onNavigate: (target, context) => {
+          if (!this._wfRoot) return;
+          this._switchSubViewDOM(this._wfRoot, target as Parameters<typeof this._switchSubViewDOM>[1]);
+          if (context?.docId != null) {
+            if (target === "segmentation") this._segmentationView?.focusDoc(context.docId);
+            if (target === "annoter") this._annotationView?.focusDoc(context.docId);
+          }
+        },
+        onReloadDocs: () => { void this._loadDocs(); },
         onReindex: () => { void this._runIndex(); },
         onValidateMeta: () => { void this._runValidateMeta(); },
         getLastSegmentReport: () => this._segmentationView?.getLastSegmentReport() ?? null,
@@ -359,7 +347,13 @@ export class ActionsScreen {
         setBusy: (v) => this._setBusy(v),
         isBusy: () => this._isBusy,
         jobCenter: () => this._jobCenter,
-        onNavigate: (target) => { if (this._wfRoot) this._switchSubViewDOM(this._wfRoot, target as Parameters<typeof this._switchSubViewDOM>[1]); },
+        onNavigate: (target, context) => {
+          if (!this._wfRoot) return;
+          this._switchSubViewDOM(this._wfRoot, target as Parameters<typeof this._switchSubViewDOM>[1]);
+          if (context?.docId != null) {
+            if (target === "annoter") this._annotationView?.focusDoc(context.docId);
+          }
+        },
         onOpenDocuments: () => this._openDocumentsTab?.(),
         onOpenExporter: (prefill) => this._openExporterTab?.(prefill),
       },
@@ -407,7 +401,6 @@ export class ActionsScreen {
           const linkEl = this._q<HTMLButtonElement>(`[data-nav="${target}"]`);
           linkEl?.click();
         },
-        onExportReport: () => void this._runExportReport(),
       },
     );
     wrapper.appendChild(this._alignPanel.render());
@@ -499,11 +492,16 @@ export class ActionsScreen {
 
   // ─── Helpers ──────────────────────────────────────────────────────────────
 
+  setLogEl(el: HTMLElement): void {
+    this._logEl = el;
+  }
+
   private _log(msg: string, isError = false): void {
     const ts = new Date().toLocaleTimeString();
     const line = document.createElement("div");
     line.className = isError ? "log-line log-error" : "log-line";
-    line.textContent = `[${ts}] ${msg}`;
+    line.dataset.source = "actions";
+    line.textContent = `[${ts}] [Actions] ${msg}`;
     this._logEl.appendChild(line);
     this._logEl.scrollTop = this._logEl.scrollHeight;
     if (isError) {
@@ -523,6 +521,7 @@ export class ActionsScreen {
   private _setRuntimeState(kind: "ok" | "info" | "warn" | "error", text: string): void {
     if (!this._stateEl) return;
     this._stateEl.className = `prep-runtime-state prep-state-${kind}`;
+    this._stateEl.style.display = kind === "ok" ? "none" : "";
     this._stateEl.textContent = text;
   }
 
@@ -552,8 +551,7 @@ export class ActionsScreen {
      "act-seg-validate-btn", "act-seg-validate-only-btn", "act-seg-focus-toggle",
      "act-seg-open-export-btn", "act-seg-lt-btn", "act-seg-lt-validate-btn", "act-seg-lt-validate-only-btn",
      "act-seg-lt-open-export-btn", "act-align-open-export-btn",
-     "act-meta-btn", "align-qc-btn", "align-coll-load-btn",
-     "align-report-btn"].forEach(id => {
+     "act-meta-btn", "align-coll-load-btn"].forEach(id => {
       const el = this._q(`#${id}`) as HTMLButtonElement | null;
       if (el) el.disabled = !on;
     });
@@ -590,7 +588,11 @@ export class ActionsScreen {
     const tbody = document.createElement("tbody");
     for (const doc of this._docs) {
       const tr = document.createElement("tr");
-      tr.innerHTML = `<td>${doc.doc_id}</td><td>${doc.title}</td><td>${doc.language}</td><td>${doc.doc_role ?? "—"}</td><td>${doc.unit_count}</td>`;
+      for (const text of [String(doc.doc_id), doc.title, doc.language, doc.doc_role ?? "—", String(doc.unit_count)]) {
+        const td = document.createElement("td");
+        td.textContent = text;
+        tr.appendChild(td);
+      }
       tbody.appendChild(tr);
     }
     table.appendChild(tbody);
@@ -630,55 +632,6 @@ export class ActionsScreen {
     }
     if (this._alignRunId) prefill.runId = this._alignRunId;
     this._openExporterWithPrefill(prefill);
-  }
-
-  // ─── Run report export ────────────────────────────────────────────────────
-
-  private async _runExportReport(): Promise<void> {
-    if (!this._conn) return;
-    const fmt = (this._q<HTMLSelectElement>("#align-report-fmt"))?.value as "html" | "jsonl" || "html";
-    const runIdRaw = (this._q<HTMLInputElement>("#align-report-run-id"))?.value.trim();
-    const ext = fmt === "html" ? "html" : "jsonl";
-    const defaultName = runIdRaw ? `run_${runIdRaw.slice(0, 8)}.${ext}` : `runs_report.${ext}`;
-
-    let outPath: string | null;
-    try {
-      outPath = await dialogSave({
-        title: "Enregistrer le rapport de runs",
-        defaultPath: defaultName,
-        filters: [{ name: fmt.toUpperCase(), extensions: [ext] }],
-      });
-    } catch {
-      return;
-    }
-    if (!outPath) return;
-
-    const resultEl = this._q<HTMLElement>("#align-report-result");
-    const btn = this._q<HTMLButtonElement>("#align-report-btn");
-    if (!btn) return;
-    btn.disabled = true;
-    btn.textContent = "Export en cours\u2026";
-
-    try {
-      const opts: ExportRunReportOptions = { out_path: outPath, format: fmt };
-      if (runIdRaw) opts.run_id = runIdRaw;
-      const res = await exportRunReport(this._conn, opts);
-
-      if (resultEl) {
-        resultEl.style.display = "";
-        resultEl.innerHTML =
-          `<span class="prep-stat-ok">✓ ${res.runs_exported} run(s) export\u00e9(s) \u2192 ` +
-          `<code>${_escHtml(res.out_path)}</code></span>`;
-      }
-      this._log(`✓ Rapport export\u00e9 : ${res.runs_exported} run(s) \u2192 ${res.out_path}`);
-      this._showToast?.(`✓ Rapport export\u00e9 (${res.runs_exported} run(s))`);
-    } catch (err) {
-      this._log(`✗ Export rapport : ${err instanceof SidecarError ? err.message : String(err)}`, true);
-      this._showToast?.("✗ Erreur export rapport", true);
-    } finally {
-      btn.disabled = false;
-      btn.textContent = "Enregistrer le rapport\u2026";
-    }
   }
 
   // ─── Validate meta + index ────────────────────────────────────────────────

@@ -45,9 +45,10 @@
 }
 
 .prep-shell {
-  display: grid;
-  grid-template-columns: var(--prep-nav-collapsed) 1fr;
-  min-height: calc(100vh - var(--prep-topbar-h, 54px));
+  display: flex;
+  align-items: stretch;
+  flex: 1;
+  min-height: 0;
   position: relative;
 }
 
@@ -55,7 +56,9 @@
 .prep-nav {
   position: relative;
   z-index: 100;
+  flex-shrink: 0;
   width: var(--prep-nav-collapsed);
+  min-height: 100vh;
   transition: width 0.22s cubic-bezier(0.4, 0, 0.2, 1),
               box-shadow 0.22s ease;
   background: var(--prep-nav-bg);
@@ -207,10 +210,10 @@
 
 /* ── Main content area ───────────────────────────────────────────────────── */
 .prep-main {
+  flex: 1;
   min-width: 0;
-  /* overflow-x: clip (not hidden) — clip ne crée pas de contexte de défilement,
-     évitant le side-effect CSS qui force overflow-y:auto et bloque le scroll body. */
   overflow-x: clip;
+  overflow-y: auto; /* scroll body des vues standards (import, docs, export) */
 }
 
 .prep-main:has(.import-screen.active) {
@@ -227,11 +230,10 @@
   padding-bottom: 0;
 }
 
-/* Annotation panel: bound height so annot-viewer can scroll vertically */
+/* Annotation panel: déléguer le scroll au viewer, bloquer le scroll de .prep-main */
 .prep-main:has(.actions-sub-annoter .annot-panel) {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - var(--prep-topbar-h, 54px));
   min-height: 0;
   overflow: hidden;
 }
@@ -245,17 +247,16 @@
   padding: 0;
 }
 
-.prep-main:has(.actions-sub-annoter .annot-panel) .actions-screen.active {
+.prep-main:has(.actions-sub-annoter .annot-panel) .prep-actions-screen.active {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  height: 100%;
 }
 
 /* Panel slot must fill remaining height so the annoter wrapper can inherit it */
-.prep-main:has(.actions-sub-annoter .annot-panel) .actions-screen.active .prep-acts-panel-slot {
+.prep-main:has(.actions-sub-annoter .annot-panel) .prep-actions-screen.active .prep-acts-panel-slot {
   flex: 1;
   min-height: 0;
   overflow: hidden;
@@ -264,7 +265,7 @@
 }
 
 /* Annoter wrapper (div[data-panel="annoter"]) fills the slot, passes height down */
-.prep-main:has(.actions-sub-annoter .annot-panel) .actions-screen.active [data-panel="annoter"] {
+.prep-main:has(.actions-sub-annoter .annot-panel) .prep-actions-screen.active [data-panel="annoter"] {
   flex: 1;
   min-height: 0;
   overflow: hidden;
@@ -586,7 +587,7 @@ details[open] > .prep-curate-bottom-details-summary::before { transform: rotate(
 
 @media (max-width: 1050px) {
   .prep-shell {
-    grid-template-columns: 1fr;
+    flex-direction: column;
   }
 
   .prep-nav {

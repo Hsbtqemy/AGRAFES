@@ -178,14 +178,19 @@ def import_docx_numbered_lines(
             log.debug("Para n=%d type=structure", n)
 
     # Bulk insert units
-    conn.executemany(
-        """
-        INSERT INTO units (doc_id, unit_type, n, external_id, text_raw, text_norm, meta_json)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        """,
-        units_to_insert,
-    )
-    conn.commit()
+    try:
+        conn.executemany(
+            """
+            INSERT INTO units (doc_id, unit_type, n, external_id, text_raw, text_norm, meta_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            units_to_insert,
+        )
+        conn.commit()
+    except Exception:
+        conn.execute("DELETE FROM documents WHERE doc_id = ?", (doc_id,))
+        conn.commit()
+        raise
 
     # Build diagnostics
     duplicates, holes, non_monotonic = _analyze_external_ids(external_ids)

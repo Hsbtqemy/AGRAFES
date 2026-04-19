@@ -45,7 +45,7 @@ export class ExportsScreen {
 
   // DOM refs
   private _root!: HTMLElement;
-  private _logEl!: HTMLElement;
+  private _logEl: HTMLElement = document.createElement("div");
   private _stateEl!: HTMLElement;
   private _docSelEl!: HTMLSelectElement;
   private _pkgDocSelEl!: HTMLSelectElement;
@@ -399,13 +399,7 @@ export class ExportsScreen {
       </div>
       </div>
 
-      <section class="card export-log-card" data-collapsible="true" data-collapsed-default="true">
-        <h3>Journal des exports</h3>
-        <div id="export-log" class="prep-log-pane"></div>
-      </section>
     `;
-
-    this._logEl = root.querySelector("#export-log")!;
     this._stateEl = root.querySelector("#exp-state-banner")!;
     this._docSelEl = root.querySelector<HTMLSelectElement>("#tei-doc-sel")!;
     this._pkgDocSelEl = root.querySelector<HTMLSelectElement>("#pkg-doc-sel")!;
@@ -1453,10 +1447,15 @@ export class ExportsScreen {
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
 
+  setLogEl(el: HTMLElement): void {
+    this._logEl = el;
+  }
+
   private _log(msg: string, isError = false): void {
     const line = document.createElement("div");
     line.className = "log-line" + (isError ? " log-error" : "");
-    line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+    line.dataset.source = "export";
+    line.textContent = `[${new Date().toLocaleTimeString()}] [Export] ${msg}`;
     this._logEl.appendChild(line);
     this._logEl.scrollTop = this._logEl.scrollHeight;
     if (isError) {
@@ -1497,5 +1496,12 @@ export class ExportsScreen {
       return;
     }
     this._setRuntimeState("ok", `${this._docs.length} document(s) disponibles pour export.`);
+  }
+
+  dispose(): void {
+    this._conn = null;
+    this._jobCenter = null;
+    this._showToast = null;
+    this._docs = [];
   }
 }

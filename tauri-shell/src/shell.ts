@@ -771,6 +771,27 @@ const SHELL_CSS = `
     40%           { opacity: 1;    transform: scale(1.15); }
   }
 
+  /* ── Home open existing section ────────────────────────────── */
+  .shell-home-open-section {
+    margin-top: 1.5rem;
+    text-align: center;
+  }
+  .shell-home-open-btn {
+    background: none;
+    border: 1px solid #b0b8c5;
+    border-radius: 7px;
+    color: #495057;
+    font-size: 0.88rem;
+    padding: 0.45rem 1.1rem;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+  }
+  .shell-home-open-btn:hover {
+    background: #e9ecef;
+    border-color: #868e96;
+    color: #1a1a2e;
+  }
+
   /* ── Home demo section ─────────────────────────────────────── */
   .shell-demo-section {
     margin-top: 2rem;
@@ -922,22 +943,38 @@ async function _isDemoInstalled(): Promise<boolean> {
   }
 }
 
-/** Déconnecte le sidecar de la démo si elle est active, supprime WAL/SHM,
- *  télécharge la DB depuis l'asset bundle et l'écrit sur disque. */
+/** Arrête le sidecar actif, supprime WAL/SHM, écrit la DB démo depuis l'asset bundle. */
 async function _installDemo(): Promise<void> {
   const demoPath = await _getDemoDbPath();
   const dir = await appDataDir();
   if (!(await exists(dir))) await mkdir(dir, { recursive: true });
 
-  // Déconnecter le sidecar si la démo est la DB active, pour éviter
-  // d'écrire sur un fichier ouvert (corrompt les shadow tables FTS5).
-  if (_currentDbPath === demoPath) {
-    _currentDbPath = null;
-    _dbListeners.forEach(cb => cb(null));
-    await new Promise(r => setTimeout(r, 500));
-  }
+  // 1. Arrêter proprement le sidecar actif via shutdownSidecar (POST /shutdown
+  //    + reset état in-memory). Les _dbListeners reçoivent null pour que les
+  //    modules lâchent leur référence conn.
+  try {
+    const { shutdownSidecar, resetConnection } = await import("../../tauri-app/src/lib/sidecarClient.ts");
+    // Récupérer la conn active si elle existe (même si le module n'est pas monté).
+    const { ensureRunning } = await import("../../tauri-app/src/lib/sidecarClient.ts");
+    if (_currentDbPath) {
+      try {
+        const conn = await Promise.race([
+          ensureRunning(_currentDbPath),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), 2000)),
+        ]);
+        await shutdownSidecar(conn);
+      } catch {
+        resetConnection();
+      }
+    } else {
+      resetConnection();
+    }
+  } catch { /* sidecarClient pas encore chargé — pas de connexion active */ }
 
-  // Télécharger la DB bundle en mémoire d'abord (avant toute modification du disque).
+  _currentDbPath = null;
+  _dbListeners.forEach(cb => cb(null));
+
+  // 2. Télécharger la DB bundle en mémoire (avant toute écriture disque).
   const resp = await window.fetch(DEMO_ASSET_URL);
   if (!resp.ok) throw new Error(`Impossible de charger la démo (${resp.status})`);
   const bytes = new Uint8Array(await resp.arrayBuffer());
@@ -945,20 +982,26 @@ async function _installDemo(): Promise<void> {
     throw new Error(`Réponse trop courte (${bytes.length} octets) — corpus démo non disponible`);
   }
 
-  // Supprimer WAL/SHM AVANT l'écriture.
-  for (const suffix of ["-wal", "-shm"]) {
-    try { await remove(demoPath + suffix); } catch { /* inexistants — OK */ }
+  // 3. Attendre disparition du portfile (process mort), max 4 s.
+  const sep = demoPath.includes("\\") ? "\\" : "/";
+  const demoDir = demoPath.includes(sep) ? demoPath.substring(0, demoPath.lastIndexOf(sep)) : ".";
+  const portfile = `${demoDir}${sep}.agrafes_sidecar.json`;
+  const deadline = Date.now() + 4000;
+  while (Date.now() < deadline) {
+    if (!(await exists(portfile))) break;
+    await new Promise(r => setTimeout(r, 150));
   }
 
-  // Écrire la nouvelle DB.
+  // 4. Supprimer WAL/SHM puis écrire la DB.
+  for (const suffix of ["-wal", "-shm"]) {
+    try { await remove(demoPath + suffix); } catch { /* OK */ }
+  }
   await writeFile(demoPath, bytes);
 
-  // Supprimer WAL/SHM APRÈS l'écriture aussi : le sidecar encore actif peut
-  // les avoir recréés pendant le délai de déconnexion. Le WAL d'une session
-  // précédente écrase les données de la main DB même si les salts diffèrent.
-  await new Promise(r => setTimeout(r, 300));
+  // 5. Supprimer WAL/SHM recréés pendant l'arrêt.
+  await new Promise(r => setTimeout(r, 150));
   for (const suffix of ["-wal", "-shm"]) {
-    try { await remove(demoPath + suffix); } catch { /* inexistants — OK */ }
+    try { await remove(demoPath + suffix); } catch { /* OK */ }
   }
 }
 
@@ -982,6 +1025,7 @@ type Mode = "home" | "explorer" | "constituer" | "publish";
 let _currentMode: Mode = "home";
 let _currentDbPath: string | null = null;
 let _currentDispose: (() => void) | null = null;
+let _switchingDb = false;
 let _navigating = false;
 /** After first successful navigation, `_setMode(m)` skips when `m` is already active (avoids full remount on repeated tab clicks). */
 let _shellNavReady = false;
@@ -1291,6 +1335,9 @@ function _buildMruSection(): HTMLElement {
 /** Switch to a different DB with loading state + module remount. */
 async function _switchDb(path: string): Promise<void> {
   if (path === _currentDbPath) { _closeDbMenu(); return; }
+  if (_switchingDb) { _showToast("Changement de DB en cours, veuillez patienter…"); return; }
+
+  _switchingDb = true;
 
   // Disable nav during switch
   const dbBtn = document.getElementById("shell-db-btn") as HTMLButtonElement | null;
@@ -1334,6 +1381,7 @@ async function _switchDb(path: string): Promise<void> {
     _dbListeners.forEach(cb => cb(_currentDbPath));
     throw err;
   } finally {
+    _switchingDb = false;
     if (dbBtn) { dbBtn.disabled = false; }
     _updateDbBadge();
     tabs.forEach(t => t.disabled = false);
@@ -3233,6 +3281,9 @@ function _renderHome(container: HTMLElement): void {
         <p>Exporter un ZIP TEI avec manifest et checksums en 5&nbsp;&eacute;tapes guid&eacute;es.</p>
       </div>
     </div>
+    <div class="shell-home-open-section">
+      <button id="shell-btn-open-existing" class="shell-home-open-btn">&#128194; Ouvrir un corpus existant&hellip;</button>
+    </div>
     <div class="shell-demo-section">
       <p class="shell-demo-hint">Ou essayez avec un corpus pr&eacute;install&eacute;&nbsp;:</p>
       <div class="shell-demo-card">
@@ -3258,6 +3309,8 @@ function _renderHome(container: HTMLElement): void {
     .addEventListener("click", () => _setMode("constituer"));
   wrap.querySelector("#shell-btn-publish")!
     .addEventListener("click", () => _setMode("publish"));
+  wrap.querySelector("#shell-btn-open-existing")!
+    .addEventListener("click", () => void _onChangeDb());
 
   // Async: check demo status + wire buttons + guided tour
   void _initDemoSection(
@@ -3285,18 +3338,12 @@ async function _initDemoSection(
     installBtn.textContent = "Installation\u2026";
     try {
       await _installDemo();
-      // _installDemo() resets _currentDbPath to null if demo was the active DB.
-      // Restore it so header, export wizard and rechercheModule see the correct path.
       const demoPath = await _getDemoDbPath();
-      _currentDbPath = demoPath;
-      _persist();
-      _addToMru(demoPath);
-      _updateDbBadge();
-      _dbListeners.forEach(cb => cb(_currentDbPath));
       installBtn.style.display = "none";
       openBtn.style.display = "";
-      _showToast("D\u00e9mo install\u00e9e — corpus Machiavel pr\u00eat");
-      // Show guide tour after fresh install
+      _showToast("D\u00e9mo install\u00e9e — ouverture\u2026");
+      await _switchDb(demoPath);
+      await _setMode("explorer", { force: true });
       await _renderGuidedTour(guideAnchor);
     } catch (err) {
       installBtn.disabled = false;
@@ -3307,8 +3354,7 @@ async function _initDemoSection(
   });
 
   openBtn.addEventListener("click", async () => {
-    // Toujours réinstaller depuis l'asset bundle.
-    // _installDemo() gère la déconnexion du sidecar et la suppression WAL/SHM.
+    // "Ouvrir Explorer" depuis la home : réinstalle (reset propre) puis ouvre.
     openBtn.disabled = true;
     const prevLabel = openBtn.textContent;
     openBtn.textContent = "Mise à jour\u2026";
@@ -3321,12 +3367,7 @@ async function _initDemoSection(
       openBtn.textContent = prevLabel;
     }
     const demoPath = await _getDemoDbPath();
-    _currentDbPath = demoPath;
-    _persist();
-    _addToMru(demoPath);
-    _updateDbBadge();
-    _dbListeners.forEach(cb => cb(_currentDbPath));
-    _showToast("DB active\u00a0: corpus d\u00e9mo");
+    await _switchDb(demoPath);
     await _setMode("explorer", { force: true });
   });
 }

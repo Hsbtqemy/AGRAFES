@@ -221,7 +221,8 @@ When `multicorpus serve` starts and a portfile already exists:
 - `POST /import/preview`
   - read-only: parses source file without writing to DB
   - JSON body: `path`, `mode`, optional `limit` (default 100)
-  - returns `preview` (array of `{n, text}`) for text modes; `conllu_stats` for conllu mode
+  - `mode=conllu` → returns `conllu_stats` (sentence/token counts + sample rows)
+  - `mode=txt_numbered_lines|docx_numbered_lines|docx_paragraphs|odt_numbered_lines|odt_paragraphs|tei` → returns `units` (array of `{n, external_id, unit_type, text_raw}`), `units_total`, `truncated`
   - no token required
 - `POST /shutdown`
   - graceful server stop
@@ -260,6 +261,7 @@ When `multicorpus serve` starts and a portfile already exists:
   - align responses are persisted in `runs` (`kind=align`, stats include `strategy`, `pairs`, debug payload when enabled)
 - `POST /align/audit`
 - `POST /align/quality`
+- `POST /align/link/create`
 - `POST /align/link/update_status`
 - `POST /align/link/delete`
 - `POST /align/link/retarget`
@@ -289,9 +291,9 @@ When `multicorpus serve` starts and a portfile already exists:
 - `POST /export/align_csv`
 - `POST /export/run_report`
 - `POST /db/backup`
-  - body: `{ out_dir?: string }`
-  - creates a timestamped backup file (`<db_stem>_<YYYYMMDD_HHMMSS><db_suffix>.bak`)
-  - if a file already exists for the same second, appends `_<n>` before `.bak`
+  - body: `{ out_dir?: string, out_path?: string }` — `out_dir` and `out_path` are mutually exclusive
+  - without `out_path`: creates a timestamped backup file (`<db_stem>_<YYYYMMDD_HHMMSS><db_suffix>.bak`) in `out_dir` (default: DB directory); appends `_<n>` on collision
+  - with `out_path`: writes to the exact path given (e.g. `corpus.db`); returns 409 if file already exists
   - returns `source_db_path`, `backup_path`, `file_size_bytes`, `created_at`
 - `GET /corpus/info`
   - returns `corpus`: `{ title?, description?, meta? (object), updated_at? }` — métadonnées de la base (une ligne par DB)
@@ -315,6 +317,7 @@ When `multicorpus serve` starts and a portfile already exists:
 - `POST /units/split` — split one unit into two; body: `{ doc_id, unit_n, text_a, text_b }`
 - `POST /units/set_role` (token required) — assign a convention role to one unit; body: `{ doc_id, unit_n, role }` (role=null to clear)
 - `POST /units/bulk_set_role` (token required) — batch assign a convention role; body: `{ doc_id, unit_ns, role }`
+- `POST /units/update_text` (token required) — update text_raw and/or text_norm for one unit; body: `{ unit_id, text_raw?, text_norm? }` (if only text_raw given, text_norm is mirrored; FTS updated automatically)
 - `GET /conventions` — list convention roles for this corpus
 - `POST /conventions` (token required) — create a role; body: `{ name, label, color?, icon?, sort_order? }`
 - `PUT /conventions/{name}` (token required) — update a role; body: `{ label?, color?, icon?, sort_order? }`
@@ -329,6 +332,26 @@ When `multicorpus serve` starts and a portfile already exists:
 - `POST /segment/detect_markers` — detect [N] markers in existing units (read-only)
   - body: `{ doc_id }`
   - response: `{ detected, total_units, marked_units, marker_ratio, sample, first_markers }`
+- `POST /segment/structure_sections` — return structure section lists for two documents
+  - body: `{ doc_id, reference_doc_id }`
+  - response: `{ ref_sections, target_sections }` — each as `[{ n, text, role, line_count }]`
+- `POST /segment/structure_diff` — compare structure units between two documents
+  - body: `{ doc_id, reference_doc_id }`
+  - response: sections with `status` (matched/missing_in_target/extra_in_target), line counts, delta
+- `POST /segment/propagate_preview` — section-aware segmentation preview (no DB writes)
+  - body: `{ doc_id, reference_doc_id, lang?, pack?, section_mapping? }`
+  - `section_mapping` — optional `[[ref_idx, tgt_idx], …]` explicit pairing; default is positional
+  - response: `{ sections: [{ status, header_text, header_role, ref_count, result_count, raw_count, adjusted, delta, segments }], total_segments, warnings, segment_pack }`
+- `POST /segment/zone_lines` — return raw line units in a zone
+  - body: `{ doc_id, from_n?, to_n? }` — bounds are exclusive
+  - response: `{ lines: [{ n, text }] }`
+- `POST /segment/insert_structure_unit` (token required) — insert a structure unit before a given position
+  - body: `{ doc_id, before_n, text, role? }` — shifts all units with n ≥ before_n
+  - response: `{ inserted_n, text }`
+- `POST /segment/apply_propagated` (token required) — write pre-computed segmentation to DB
+  - body: `{ doc_id, units: [{ type: "line"|"structure", text, role? }] }`
+  - respects `text_start_n` (paratext preserved); deletes stale alignment_links
+  - response: `{ units_written, fts_stale: true }`
 - `GET /jobs`
 - `POST /jobs`
 - `GET /jobs/{job_id}`
@@ -503,6 +526,10 @@ Workflow status semantics:
 
 ### V0.4C — Alignment link editing (token required)
 
+- `POST /align/link/create` — manually create an alignment link between two units
+  - body: `{ pivot_unit_id, target_unit_id, status? }`; validates: both units must exist; status ∈ {accepted, rejected, null}
+  - returns: `{ link_id, pivot_unit_id, target_unit_id, pivot_doc_id, target_doc_id, status, created: 1 }`
+  - 404 if either unit does not exist; 409 if a link between those units already exists
 - `POST /align/link/update_status` — set link status (`"accepted"`, `"rejected"`, or `null`)
   - body: `{ link_id, status }`; validates: status ∈ {accepted, rejected, null}
   - returns: `{ link_id, status, updated: 1 }`

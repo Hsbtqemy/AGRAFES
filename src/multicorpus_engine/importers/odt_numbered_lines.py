@@ -63,7 +63,7 @@ def import_odt_numbered_lines(
     log.info("Created document doc_id=%d title=%r", doc_id, doc_title)
 
     try:
-        paragraphs = read_odt_paragraph_rich_lines(path)
+        paragraphs = [rich for rich, _ in read_odt_paragraph_rich_lines(path)]
     except (FileNotFoundError, ValueError) as exc:
         conn.execute("DELETE FROM documents WHERE doc_id = ?", (doc_id,))
         conn.commit()
@@ -104,14 +104,19 @@ def import_odt_numbered_lines(
             )
             log.debug("Para n=%d type=structure", n)
 
-    conn.executemany(
-        """
-        INSERT INTO units (doc_id, unit_type, n, external_id, text_raw, text_norm, meta_json)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        """,
-        units_to_insert,
-    )
-    conn.commit()
+    try:
+        conn.executemany(
+            """
+            INSERT INTO units (doc_id, unit_type, n, external_id, text_raw, text_norm, meta_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            units_to_insert,
+        )
+        conn.commit()
+    except Exception:
+        conn.execute("DELETE FROM documents WHERE doc_id = ?", (doc_id,))
+        conn.commit()
+        raise
 
     duplicates, holes, non_monotonic = _analyze_external_ids(external_ids)
 

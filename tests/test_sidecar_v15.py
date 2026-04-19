@@ -203,6 +203,51 @@ class TestCollisionsResponse:
         assert "next_offset" in body
 
 
+class TestMultiLink:
+    """All-accepted multi-links are intentional and must not appear as collisions."""
+
+    def test_unreviewed_collision_detected(self, v15_sidecar):
+        """Baseline: fixture has 2 unreviewed links → 1 collision."""
+        base, _, _ = v15_sidecar
+        _, body = _post(f"{base}/align/collisions", {"pivot_doc_id": 1, "target_doc_id": 2})
+        assert body["total_collisions"] == 1
+
+    def test_all_accepted_multi_link_not_a_collision(self, v15_sidecar):
+        """Once all links for a pivot are accepted, it exits the collision list."""
+        base, token, _ = v15_sidecar
+        # Get the two collision link ids
+        _, body = _post(f"{base}/align/collisions", {"pivot_doc_id": 1, "target_doc_id": 2})
+        link_ids = [lnk["link_id"] for lnk in body["collisions"][0]["links"]]
+        assert len(link_ids) == 2
+        # Accept both
+        for lid in link_ids:
+            code, _ = _post(f"{base}/align/link/update_status", {"link_id": lid, "status": "accepted"}, token=token)
+            assert code == 200
+        # Now it should no longer be a collision
+        _, body2 = _post(f"{base}/align/collisions", {"pivot_doc_id": 1, "target_doc_id": 2})
+        assert body2["total_collisions"] == 0
+
+    def test_partially_accepted_still_collision(self, v15_sidecar):
+        """Only one link accepted (not all) → still a collision."""
+        base, token, _ = v15_sidecar
+        _, body = _post(f"{base}/align/collisions", {"pivot_doc_id": 1, "target_doc_id": 2})
+        link_ids = [lnk["link_id"] for lnk in body["collisions"][0]["links"]]
+        # Accept only one
+        _post(f"{base}/align/link/update_status", {"link_id": link_ids[0], "status": "accepted"}, token=token)
+        _, body2 = _post(f"{base}/align/collisions", {"pivot_doc_id": 1, "target_doc_id": 2})
+        assert body2["total_collisions"] == 1
+
+    def test_quality_collision_count_respects_accepted(self, v15_sidecar):
+        """collision_count in /align/quality also drops to 0 once all links accepted."""
+        base, token, _ = v15_sidecar
+        _, body = _post(f"{base}/align/collisions", {"pivot_doc_id": 1, "target_doc_id": 2})
+        link_ids = [lnk["link_id"] for lnk in body["collisions"][0]["links"]]
+        for lid in link_ids:
+            _post(f"{base}/align/link/update_status", {"link_id": lid, "status": "accepted"}, token=token)
+        _, quality = _post(f"{base}/align/quality", {"pivot_doc_id": 1, "target_doc_id": 2})
+        assert quality["stats"]["collision_count"] == 0
+
+
 class TestCollisionsResolve:
     """POST /align/collisions/resolve requires token, resolves links."""
 

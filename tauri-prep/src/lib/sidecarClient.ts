@@ -313,6 +313,169 @@ export async function detectMarkers(
   return conn.post("/segment/detect_markers", { doc_id }) as Promise<DetectMarkersResponse>;
 }
 
+export interface StructureSection {
+  n: number;
+  text: string;
+  role: string | null;
+  line_count: number;
+}
+
+export interface StructureSectionsResponse {
+  ok: boolean;
+  doc_id: number;
+  reference_doc_id: number;
+  ref_sections: StructureSection[];
+  target_sections: StructureSection[];
+}
+
+export async function structureSections(
+  conn: Conn,
+  doc_id: number,
+  reference_doc_id: number,
+): Promise<StructureSectionsResponse> {
+  return conn.post("/segment/structure_sections", { doc_id, reference_doc_id }) as Promise<StructureSectionsResponse>;
+}
+
+export interface StructureDiffSection {
+  status: "matched" | "missing_in_target" | "extra_in_target";
+  ref_n: number | null;
+  ref_text: string | null;
+  ref_role: string | null;
+  target_n: number | null;
+  target_text: string | null;
+  target_role: string | null;
+  ref_line_count: number;
+  target_line_count: number;
+}
+
+export interface StructureDiffResponse {
+  ok: boolean;
+  doc_id: number;
+  reference_doc_id: number;
+  sections: StructureDiffSection[];
+  ref_structure_count: number;
+  target_structure_count: number;
+  matched_count: number;
+  missing_count: number;
+  extra_count: number;
+  no_structure?: boolean;
+}
+
+export async function structureDiff(
+  conn: Conn,
+  doc_id: number,
+  reference_doc_id: number,
+): Promise<StructureDiffResponse> {
+  return conn.post("/segment/structure_diff", { doc_id, reference_doc_id }) as Promise<StructureDiffResponse>;
+}
+
+export interface PropagateSectionSegment {
+  n: number;
+  text: string;
+}
+
+export interface PropagateSection {
+  status: "pre" | "matched" | "extra_in_target" | "missing_in_target";
+  header_text: string | null;
+  header_role: string | null;
+  ref_count: number;
+  raw_count: number;
+  result_count: number;
+  adjusted: boolean;
+  delta: number;
+  segments: PropagateSectionSegment[];
+}
+
+export interface PropagatePreviewResponse {
+  ok: boolean;
+  doc_id: number;
+  reference_doc_id: number;
+  sections: PropagateSection[];
+  total_segments: number;
+  warnings: string[];
+  segment_pack: string;
+}
+
+export async function segmentPropagatePreview(
+  conn: Conn,
+  opts: { doc_id: number; reference_doc_id: number; lang?: string; pack?: string; section_mapping?: [number, number][] },
+): Promise<PropagatePreviewResponse> {
+  return conn.post("/segment/propagate_preview", opts) as Promise<PropagatePreviewResponse>;
+}
+
+export interface ZoneLine {
+  n: number;
+  text: string;
+}
+
+export interface ZoneLinesResponse {
+  ok: boolean;
+  doc_id: number;
+  lines: ZoneLine[];
+}
+
+export async function zoneLines(
+  conn: Conn,
+  doc_id: number,
+  from_n: number | null,
+  to_n: number | null,
+): Promise<ZoneLinesResponse> {
+  return conn.post("/segment/zone_lines", { doc_id, from_n, to_n }) as Promise<ZoneLinesResponse>;
+}
+
+export interface InsertStructureUnitResponse {
+  ok: boolean;
+  doc_id: number;
+  inserted_n: number;
+  text: string;
+}
+
+export interface ApplyPropagatedUnit {
+  type: "line" | "structure";
+  text: string;
+  role?: string;
+}
+
+export interface ApplyPropagatedResponse {
+  ok: boolean;
+  doc_id: number;
+  units_written: number;
+  fts_stale: boolean;
+}
+
+export async function applyPropagated(
+  conn: Conn,
+  doc_id: number,
+  units: ApplyPropagatedUnit[],
+): Promise<ApplyPropagatedResponse> {
+  return conn.post("/segment/apply_propagated", { doc_id, units }) as Promise<ApplyPropagatedResponse>;
+}
+
+export interface DeleteStructureUnitResponse {
+  ok: boolean;
+  doc_id: number;
+  deleted_n: number;
+  text: string;
+}
+
+export async function deleteStructureUnit(
+  conn: Conn,
+  doc_id: number,
+  n: number,
+): Promise<DeleteStructureUnitResponse> {
+  return conn.post("/segment/delete_structure_unit", { doc_id, n }) as Promise<DeleteStructureUnitResponse>;
+}
+
+export async function insertStructureUnit(
+  conn: Conn,
+  doc_id: number,
+  before_n: number,
+  text: string,
+  role?: string,
+): Promise<InsertStructureUnitResponse> {
+  return conn.post("/segment/insert_structure_unit", { doc_id, before_n, text, role }) as Promise<InsertStructureUnitResponse>;
+}
+
 // ---------------------------------------------------------------------------
 // Unit editing — merge and split
 // ---------------------------------------------------------------------------
@@ -683,6 +846,8 @@ export interface DocRelationSetOptions {
 
 export interface DbBackupOptions {
   out_dir?: string;
+  /** Exact destination path (e.g. /path/to/corpus.db). Mutually exclusive with out_dir. Returns 409 if file exists. */
+  out_path?: string;
 }
 
 export interface DbBackupResponse {
@@ -737,6 +902,22 @@ export interface ExportRunReportResponse {
 }
 
 // ─── V0.4C — Align link edit types ───────────────────────────────────────────
+
+export interface AlignLinkCreateOptions {
+  pivot_unit_id: number;
+  target_unit_id: number;
+  status?: "accepted" | "rejected" | null;
+}
+
+export interface AlignLinkCreateResponse {
+  link_id: number;
+  pivot_unit_id: number;
+  target_unit_id: number;
+  pivot_doc_id: number;
+  target_doc_id: number;
+  status: "accepted" | "rejected" | null;
+  created: number;
+}
 
 export interface AlignLinkUpdateStatusOptions {
   link_id: number;
@@ -1748,12 +1929,12 @@ export interface UnitRecord {
 }
 
 /**
- * Returns all `line` units for a document, ordered by n.
+ * Returns all units for a document (all unit_types), ordered by n.
  * No pagination — use for moderate-sized documents (≤ tens of thousands of lines).
  */
 export async function listUnits(conn: Conn, docId: number): Promise<UnitRecord[]> {
   const res = await conn.get(
-    `/units?doc_id=${encodeURIComponent(String(docId))}&unit_type=line`,
+    `/units?doc_id=${encodeURIComponent(String(docId))}`,
   ) as { units: UnitRecord[]; count: number; doc_id: number };
   return res.units;
 }
@@ -1913,9 +2094,20 @@ export interface ConlluStats {
   sample_rows: ConlluPreviewRow[];
 }
 
+export interface ImportPreviewUnit {
+  n: number;
+  external_id: string | number | null;
+  unit_type: string;
+  text_raw: string;
+}
+
 export interface ImportPreviewResponse {
   mode: string;
   conllu_stats: ConlluStats | null;
+  // text-mode fields (DOCX / ODT / TXT / TEI)
+  units?: ImportPreviewUnit[];
+  units_total?: number;
+  truncated?: boolean;
 }
 
 export async function previewImport(
@@ -2232,6 +2424,10 @@ export async function exportRunReport(conn: Conn, opts: ExportRunReportOptions):
 }
 
 // ─── V0.4C — Align link edit API ─────────────────────────────────────────────
+
+export async function createAlignLink(conn: Conn, opts: AlignLinkCreateOptions): Promise<AlignLinkCreateResponse> {
+  return conn.post("/align/link/create", opts) as Promise<AlignLinkCreateResponse>;
+}
 
 export async function updateAlignLinkStatus(conn: Conn, opts: AlignLinkUpdateStatusOptions): Promise<{ link_id: number; status: string | null; updated: number }> {
   return conn.post("/align/link/update_status", opts) as Promise<{ link_id: number; status: string | null; updated: number }>;
@@ -2675,3 +2871,15 @@ export function resetConnection(): void {
   _conn = null;
   _connDbPath = null;
 }
+
+export async function updateUnitText(
+  conn: Conn,
+  unitId: number,
+  text_raw: string,
+  text_norm?: string,
+): Promise<{ unit_id: number; doc_id: number; n: number; text_raw: string; text_norm: string }> {
+  const body: Record<string, unknown> = { unit_id: unitId, text_raw };
+  if (text_norm !== undefined) body.text_norm = text_norm;
+  return conn.post("/units/update_text", body) as Promise<{ unit_id: number; doc_id: number; n: number; text_raw: string; text_norm: string }>;
+}
+

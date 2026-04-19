@@ -166,7 +166,7 @@ export class ImportScreen {
   private _files: FileItem[] = [];
   private _root!: HTMLElement;
   private _listEl!: HTMLElement;
-  private _logEl!: HTMLElement;
+  private _logEl: HTMLElement = document.createElement("div");
   private _summaryEl!: HTMLElement;
   private _stateEl!: HTMLElement;
   private _importBtn!: HTMLButtonElement;
@@ -184,6 +184,17 @@ export class ImportScreen {
   private _conlluPreviewCursor = 0;
   private _conlluPreviewPath: string | null = null;
   private _conlluPreviewReq = 0;
+
+  // UX-14 — text (DOCX/ODT/TXT/TEI) preview
+  private _textPreviewBadgeEl!: HTMLElement;
+  private _textPreviewFileEl!: HTMLElement;
+  private _textPreviewSummaryEl!: HTMLElement;
+  private _textPreviewRowsEl!: HTMLElement;
+  private _textPreviewRefreshBtn!: HTMLButtonElement;
+  private _textPreviewNextBtn!: HTMLButtonElement;
+  private _textPreviewCursor = 0;
+  private _textPreviewPath: string | null = null;
+  private _textPreviewReq = 0;
 
   // Sprint 8 — family dialog
   private _skipFamilyDialog = false;        // "Ne plus demander" flag (session)
@@ -242,10 +253,6 @@ export class ImportScreen {
             </div>
           </div>
 
-          <section class="card" data-collapsible="true" data-collapsed-default="true">
-            <h3>Journal des imports</h3>
-            <div id="imp-log" class="prep-log-pane"></div>
-          </section>
         </div>
 
         <!-- Right column: settings + pre-check + index -->
@@ -364,6 +371,33 @@ export class ImportScreen {
             </div>
           </section>
 
+          <section class="card imp-text-preview-card" data-collapsible="true" data-collapsed-default="true">
+            <h3>Aperçu texte</h3>
+            <div class="imp-conllu-head">
+              <span id="imp-text-badge" class="chip">Aucun</span>
+              <div class="prep-btn-row">
+                <button type="button" id="imp-text-next" class="btn btn-secondary btn-sm" title="Fichier texte suivant">Suivant</button>
+                <button type="button" id="imp-text-refresh" class="btn btn-secondary btn-sm" title="Relire le fichier">Rafraîchir</button>
+              </div>
+            </div>
+            <p id="imp-text-file" class="hint imp-conllu-file">Aucun fichier texte sélectionné.</p>
+            <p id="imp-text-summary" class="hint imp-conllu-summary">Ajoutez un fichier DOCX, ODT, TXT ou TEI pour prévisualiser les unités avant l'import.</p>
+            <div class="imp-conllu-table-wrap">
+              <table class="imp-conllu-table" aria-label="Aperçu unités texte">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Type</th>
+                    <th>Texte (extrait)</th>
+                  </tr>
+                </thead>
+                <tbody id="imp-text-rows">
+                  <tr><td colspan="3" class="empty-hint">Aperçu indisponible.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
           <section class="card" data-collapsible="true" data-collapsed-default="true">
             <h3>Index FTS</h3>
             <p class="hint">Après avoir importé des documents, reconstruisez l'index pour activer la recherche.</p>
@@ -391,7 +425,6 @@ export class ImportScreen {
     `;
 
     this._listEl = root.querySelector("#imp-list")!;
-    this._logEl = root.querySelector("#imp-log")!;
     this._summaryEl = root.querySelector("#imp-summary")!;
     this._stateEl = root.querySelector("#imp-state-banner")!;
     this._importBtn = root.querySelector("#imp-import-btn")!;
@@ -402,6 +435,12 @@ export class ImportScreen {
     this._conlluRowsEl = root.querySelector("#imp-conllu-rows")!;
     this._conlluRefreshBtn = root.querySelector("#imp-conllu-refresh")!;
     this._conlluNextBtn = root.querySelector("#imp-conllu-next")!;
+    this._textPreviewBadgeEl = root.querySelector("#imp-text-badge")!;
+    this._textPreviewFileEl = root.querySelector("#imp-text-file")!;
+    this._textPreviewSummaryEl = root.querySelector("#imp-text-summary")!;
+    this._textPreviewRowsEl = root.querySelector("#imp-text-rows")!;
+    this._textPreviewRefreshBtn = root.querySelector("#imp-text-refresh")!;
+    this._textPreviewNextBtn = root.querySelector("#imp-text-next")!;
 
     root.querySelector("#imp-add-btn")!.addEventListener("click", () => this._addFiles());
     root.querySelector("#imp-clear-btn")!.addEventListener("click", () => this._clearList());
@@ -417,6 +456,16 @@ export class ImportScreen {
       this._conlluPreviewCursor = (this._conlluPreviewCursor + 1) % candidates.length;
       this._conlluPreviewPath = null;
       void this._refreshConlluPreview(true);
+    });
+    this._textPreviewRefreshBtn.addEventListener("click", () => {
+      void this._refreshTextPreview(true);
+    });
+    this._textPreviewNextBtn.addEventListener("click", () => {
+      const candidates = this._textPreviewCandidates();
+      if (candidates.length <= 1) return;
+      this._textPreviewCursor = (this._textPreviewCursor + 1) % candidates.length;
+      this._textPreviewPath = null;
+      void this._refreshTextPreview(true);
     });
 
     // Sync the two check_filename checkboxes (footer ↔ settings)
@@ -463,14 +512,17 @@ export class ImportScreen {
     initCardAccordions(root);
     this._refreshRuntimeState();
     void this._refreshConlluPreview();
+    void this._refreshTextPreview();
 
     return root;
   }
 
   setConn(conn: Conn | null): void {
     this._conn = conn;
+    this._textPreviewPath = null;
     this._updateButtons();
     this._refreshRuntimeState();
+    if (conn) void this._refreshTextPreview();
   }
 
   setJobCenter(jc: JobCenter, showToast: (msg: string, isError?: boolean) => void): void {
@@ -478,11 +530,16 @@ export class ImportScreen {
     this._showToast = showToast;
   }
 
+  setLogEl(el: HTMLElement): void {
+    this._logEl = el;
+  }
+
   private _log(msg: string, isError = false): void {
     const ts = new Date().toLocaleTimeString();
     const line = document.createElement("div");
     line.className = isError ? "log-line log-error" : "log-line";
-    line.textContent = `[${ts}] ${msg}`;
+    line.dataset.source = "import";
+    line.textContent = `[${ts}] [Import] ${msg}`;
     this._logEl.appendChild(line);
     this._logEl.scrollTop = this._logEl.scrollHeight;
     if (isError) {
@@ -636,6 +693,7 @@ export class ImportScreen {
       this._listEl.innerHTML = '<p class="empty-hint">Aucun fichier sélectionné.</p>';
       this._updatePrecheck();
       void this._refreshConlluPreview();
+      void this._refreshTextPreview();
       return;
     }
     this._listEl.innerHTML = "";
@@ -672,6 +730,7 @@ export class ImportScreen {
         const i = parseInt((e.target as HTMLElement).dataset.i!);
         this._files[i].mode = (e.target as HTMLSelectElement).value;
         void this._refreshConlluPreview(true);
+        void this._refreshTextPreview(true);
       });
     });
     this._listEl.querySelectorAll(".imp-lang-inp").forEach(el => {
@@ -697,6 +756,7 @@ export class ImportScreen {
 
     this._updatePrecheck();
     void this._refreshConlluPreview();
+    void this._refreshTextPreview();
   }
 
   private _updatePrecheck(): void {
@@ -827,6 +887,99 @@ export class ImportScreen {
       this._conlluRowsEl.innerHTML = '<tr><td colspan="5" class="empty-hint">Erreur de lecture du fichier.</td></tr>';
       this._log(
         `Aperçu CoNLL-U indisponible (${file.title}): ${err instanceof Error ? err.message : String(err)}`,
+        true,
+      );
+    }
+  }
+
+  private _textPreviewCandidates(): FileItem[] {
+    return this._files.filter(f => f.mode !== "conllu");
+  }
+
+  private _setTextPreviewEmpty(message: string, details?: string): void {
+    this._textPreviewBadgeEl.textContent = "Aucun";
+    this._textPreviewBadgeEl.className = "chip";
+    this._textPreviewFileEl.textContent = message;
+    this._textPreviewSummaryEl.textContent =
+      details ?? "Ajoutez un fichier DOCX, ODT, TXT ou TEI pour prévisualiser les unités.";
+    this._textPreviewRowsEl.innerHTML = '<tr><td colspan="3" class="empty-hint">Aperçu indisponible.</td></tr>';
+    this._textPreviewPath = null;
+    this._textPreviewNextBtn.disabled = true;
+    this._textPreviewRefreshBtn.disabled = true;
+  }
+
+  private async _refreshTextPreview(force = false): Promise<void> {
+    if (!this._textPreviewRowsEl) return;
+
+    const candidates = this._textPreviewCandidates();
+    if (candidates.length === 0) {
+      this._setTextPreviewEmpty("Aucun fichier texte sélectionné.");
+      return;
+    }
+    if (!this._conn) {
+      this._setTextPreviewEmpty(
+        candidates[0].title,
+        "Sidecar non connecté — aperçu indisponible pour les fichiers binaires.",
+      );
+      this._textPreviewBadgeEl.textContent = `0/${candidates.length}`;
+      return;
+    }
+
+    if (this._textPreviewCursor >= candidates.length) {
+      this._textPreviewCursor = 0;
+    }
+    const file = candidates[this._textPreviewCursor];
+    this._textPreviewNextBtn.disabled = candidates.length <= 1;
+    this._textPreviewRefreshBtn.disabled = false;
+    this._textPreviewBadgeEl.textContent = `${this._textPreviewCursor + 1}/${candidates.length}`;
+    this._textPreviewBadgeEl.className = "chip warn";
+    this._textPreviewFileEl.textContent = file.title;
+
+    if (!force && this._textPreviewPath === file.path) return;
+
+    const reqId = ++this._textPreviewReq;
+    this._textPreviewRowsEl.innerHTML = '<tr><td colspan="3" class="empty-hint">Chargement…</td></tr>';
+    try {
+      const res = await previewImport(this._conn, { path: file.path, mode: file.mode, limit: 50 });
+      if (reqId !== this._textPreviewReq) return;
+      this._textPreviewPath = file.path;
+
+      const units = res.units;
+      const unitsTotal = res.units_total ?? 0;
+      const truncated = res.truncated ?? false;
+
+      if (!units || units.length === 0) {
+        this._textPreviewSummaryEl.textContent = "Aucune unité détectée.";
+        this._textPreviewRowsEl.innerHTML = '<tr><td colspan="3" class="empty-hint">Aucune unité exploitable trouvée.</td></tr>';
+        return;
+      }
+
+      const pl = unitsTotal > 1 ? "s" : "";
+      const truncNote = truncated ? ` — ${units.length}/${unitsTotal} affichées` : "";
+      this._textPreviewSummaryEl.textContent = `${unitsTotal} unité${pl}${truncNote}`;
+
+      this._textPreviewRowsEl.innerHTML = "";
+      for (const unit of units) {
+        const tr = document.createElement("tr");
+        const tdId = document.createElement("td");
+        tdId.textContent = unit.external_id != null ? String(unit.external_id) : "—";
+        const tdType = document.createElement("td");
+        tdType.textContent = unit.unit_type ?? "—";
+        const tdText = document.createElement("td");
+        tdText.className = "imp-text-preview-cell";
+        const raw = unit.text_raw ?? "";
+        tdText.textContent = raw.length > 120 ? raw.slice(0, 120) + "…" : raw;
+        tdText.title = raw;
+        tr.append(tdId, tdType, tdText);
+        this._textPreviewRowsEl.appendChild(tr);
+      }
+    } catch (err) {
+      if (reqId !== this._textPreviewReq) return;
+      this._textPreviewPath = null;
+      this._textPreviewSummaryEl.textContent = "Lecture impossible du fichier.";
+      this._textPreviewRowsEl.innerHTML = '<tr><td colspan="3" class="empty-hint">Erreur de lecture du fichier.</td></tr>';
+      this._log(
+        `Aperçu texte indisponible (${file.title}): ${err instanceof Error ? err.message : String(err)}`,
         true,
       );
     }
@@ -1254,6 +1407,14 @@ export class ImportScreen {
       return;
     }
     this._setRuntimeState("ok", "Prêt: vous pouvez lancer un import ou reconstruire l'index.");
+  }
+
+  dispose(): void {
+    this._conn = null;
+    this._jobCenter = null;
+    this._showToast = null;
+    this._files = [];
+    this._corpusDocs = [];
   }
 }
 

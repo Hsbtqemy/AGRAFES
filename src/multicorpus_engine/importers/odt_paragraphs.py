@@ -65,22 +65,45 @@ def import_odt_paragraphs(
 
     units_to_insert: list[tuple] = []
     n = 0
-    for text_raw in para_texts:
+    has_headings = any(level is not None for _, level in para_texts)
+
+    if has_headings:
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO unit_roles (name, label, color, icon, sort_order, category)
+            VALUES ('intertitre', 'Intertitre', '#9333ea', '§', 0, 'structure')
+            """
+        )
+        conn.commit()
+
+    for text_raw, heading_level in para_texts:
         n += 1
         text_norm = normalize(text_raw)
         sep_count = count_sep(text_raw)
-        meta = json.dumps({"sep_count": sep_count}) if sep_count > 0 else None
-        units_to_insert.append((doc_id, "line", n, n, text_raw, text_norm, meta))
+        meta_dict: dict = {}
+        if sep_count > 0:
+            meta_dict["sep_count"] = sep_count
+        if heading_level is not None:
+            meta_dict["heading_level"] = heading_level
+        meta = json.dumps(meta_dict) if meta_dict else None
+        unit_role = "intertitre" if heading_level is not None else None
+        units_to_insert.append((doc_id, "line", n, n, text_raw, text_norm, meta, unit_role))
 
-    conn.executemany(
-        """
-        INSERT INTO units (doc_id, unit_type, n, external_id, text_raw, text_norm, meta_json)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        """,
-        units_to_insert,
-    )
-    conn.commit()
+    try:
+        conn.executemany(
+            """
+            INSERT INTO units (doc_id, unit_type, n, external_id, text_raw, text_norm, meta_json, unit_role)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            units_to_insert,
+        )
+        conn.commit()
+    except Exception:
+        conn.execute("DELETE FROM documents WHERE doc_id = ?", (doc_id,))
+        conn.commit()
+        raise
 
+    n_headings = sum(1 for _, level in para_texts if level is not None)
     report = ImportReport(
         doc_id=doc_id,
         units_total=len(units_to_insert),
@@ -90,5 +113,5 @@ def import_odt_paragraphs(
         holes=[],
         non_monotonic=[],
     )
-    log.info("Import complete: %d paragraph units", report.units_total)
+    log.info("Import complete: %d paragraph units (%d headings)", report.units_total, n_headings)
     return report

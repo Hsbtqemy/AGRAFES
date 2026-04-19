@@ -86,34 +86,63 @@ def import_docx_paragraphs(
     log.info("Created document doc_id=%d title=%r", doc_id, doc_title)
 
     document = docx.Document(str(path))
-    units_to_insert: list[tuple] = []
-    n = 0
 
+    # First pass: collect paragraphs and detect headings
+    para_data: list[tuple[str, int | None]] = []
     for para in document.paragraphs:
         text_raw = para_to_rich_text(para)
         if not normalize(text_raw).strip():
-            continue  # skip blank paragraphs
+            continue
+        heading_level: int | None = None
+        style_name = (para.style.name or "") if para.style else ""
+        if style_name.startswith("Heading"):
+            try:
+                heading_level = int(style_name.split()[-1])
+            except ValueError:
+                heading_level = 1
+        para_data.append((text_raw, heading_level))
 
+    has_headings = any(level is not None for _, level in para_data)
+    if has_headings:
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO unit_roles (name, label, color, icon, sort_order, category)
+            VALUES ('intertitre', 'Intertitre', '#9333ea', '§', 0, 'structure')
+            """
+        )
+        conn.commit()
+
+    units_to_insert: list[tuple] = []
+    n = 0
+    for text_raw, heading_level in para_data:
         n += 1
         text_norm = normalize(text_raw)
         sep_count = count_sep(text_raw)
-        meta = json.dumps({"sep_count": sep_count}) if sep_count > 0 else None
+        meta_dict: dict = {}
+        if sep_count > 0:
+            meta_dict["sep_count"] = sep_count
+        if heading_level is not None:
+            meta_dict["heading_level"] = heading_level
+        meta = json.dumps(meta_dict) if meta_dict else None
+        unit_role = "intertitre" if heading_level is not None else None
+        units_to_insert.append((doc_id, "line", n, n, text_raw, text_norm, meta, unit_role))
+        log.debug("Para n=%d type=line role=%s", n, unit_role)
 
-        # external_id = n (sequential, always monotone)
-        units_to_insert.append(
-            (doc_id, "line", n, n, text_raw, text_norm, meta)
+    try:
+        conn.executemany(
+            """
+            INSERT INTO units (doc_id, unit_type, n, external_id, text_raw, text_norm, meta_json, unit_role)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            units_to_insert,
         )
-        log.debug("Para n=%d type=line", n)
+        conn.commit()
+    except Exception:
+        conn.execute("DELETE FROM documents WHERE doc_id = ?", (doc_id,))
+        conn.commit()
+        raise
 
-    conn.executemany(
-        """
-        INSERT INTO units (doc_id, unit_type, n, external_id, text_raw, text_norm, meta_json)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        """,
-        units_to_insert,
-    )
-    conn.commit()
-
+    n_headings = sum(1 for _, level in para_data if level is not None)
     report = ImportReport(
         doc_id=doc_id,
         units_total=len(units_to_insert),
@@ -124,5 +153,5 @@ def import_docx_paragraphs(
         non_monotonic=[],
     )
 
-    log.info("Import complete: %d paragraph units", report.units_total)
+    log.info("Import complete: %d paragraph units (%d headings)", report.units_total, n_headings)
     return report

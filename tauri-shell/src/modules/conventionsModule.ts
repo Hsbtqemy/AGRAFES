@@ -1,12 +1,11 @@
 /**
  * conventionsModule.ts — Gestion des conventions (rôles d'unités).
  *
- * Deux panneaux :
- *   - Gauche : CRUD des rôles définis pour le corpus (unit_roles)
- *   - Droite : navigation document → unités → assignation de rôle
+ * Colonne gauche — deux sections :
+ *   Structure : rôles structurels (Titre, Intertitre, Dédicace…) — suggestions dormantes + rôles actifs
+ *   Texte     : rôles de contenu (vers, dialogue, citation…)     — CRUD complet
  *
- * Les rôles permettent de marquer les unités (paratext, titre, note…).
- * La borne paratextuelle (text_start_n) est aussi gérable ici.
+ * Colonne droite : navigation document → unités → assignation de rôle.
  */
 
 import type { ShellContext } from "../context.ts";
@@ -22,6 +21,27 @@ import {
   setDocumentTextStart,
 } from "../../../tauri-app/src/lib/sidecarClient.ts";
 
+// ─── Structure defaults (dormant suggestions) ─────────────────────────────────
+
+interface StructureSuggestion {
+  name: string;
+  label: string;
+  color: string;
+  icon: string;
+  sort_order: number;
+}
+
+const STRUCTURE_DEFAULTS: StructureSuggestion[] = [
+  { name: "titre",     label: "Titre",     color: "#1e40af", icon: "◈",  sort_order: 0 },
+  { name: "intertitre",label: "Intertitre",color: "#9333ea", icon: "§",  sort_order: 1 },
+  { name: "dedicace",  label: "Dédicace",  color: "#be185d", icon: "✦",  sort_order: 2 },
+  { name: "epigraphe", label: "Épigraphe", color: "#0369a1", icon: "❝",  sort_order: 3 },
+  { name: "incipit",   label: "Incipit",   color: "#047857", icon: "↳",  sort_order: 4 },
+  { name: "colophon",  label: "Colophon",  color: "#92400e", icon: "⌛", sort_order: 5 },
+  { name: "preface",   label: "Préface",   color: "#374151", icon: "»",  sort_order: 6 },
+  { name: "note",      label: "Note",      color: "#b45309", icon: "†",  sort_order: 7 },
+];
+
 // ─── CSS ──────────────────────────────────────────────────────────────────────
 
 const CSS = `
@@ -35,7 +55,7 @@ const CSS = `
   color: #212529;
 }
 
-/* ── Panneau gauche : rôles ── */
+/* ── Panneau gauche ── */
 .conv-left {
   width: 280px;
   min-width: 220px;
@@ -44,29 +64,43 @@ const CSS = `
   flex-direction: column;
   border-right: 1px solid #dee2e0;
   background: #f3f8f7;
+  overflow-y: auto;
 }
-.conv-left-header {
+
+/* Section headers */
+.conv-section-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.75rem 1rem 0.5rem;
-  border-bottom: 1px solid #dee2e0;
-  font-weight: 600;
-  font-size: 0.82rem;
+  padding: 0.6rem 1rem 0.35rem;
+  font-weight: 700;
+  font-size: 0.72rem;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.6px;
   color: #6c757d;
+  position: sticky;
+  top: 0;
+  background: #f3f8f7;
+  z-index: 1;
 }
-.conv-role-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 0.4rem 0;
+.conv-section-header--texte {
+  border-top: 1px solid #dee2e0;
+  margin-top: 0.25rem;
 }
+.conv-section-header-badge {
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: #adb5bd;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* Role items */
 .conv-role-item {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.45rem 1rem;
+  padding: 0.4rem 1rem;
   cursor: pointer;
   transition: background 0.12s;
   border-left: 3px solid transparent;
@@ -77,16 +111,16 @@ const CSS = `
   border-left-color: #0c4a46;
 }
 .conv-role-dot {
-  width: 12px;
-  height: 12px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   flex-shrink: 0;
   border: 1px solid rgba(0,0,0,0.15);
 }
-.conv-role-icon { font-size: 1rem; width: 18px; text-align: center; }
+.conv-role-icon { font-size: 0.95rem; width: 18px; text-align: center; }
 .conv-role-label { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.conv-role-name { color: #adb5bd; font-size: 0.75rem; font-family: monospace; }
-.conv-role-actions { display: none; gap: 0.25rem; }
+.conv-role-name { color: #adb5bd; font-size: 0.72rem; font-family: monospace; }
+.conv-role-actions { display: none; gap: 0.2rem; }
 .conv-role-item:hover .conv-role-actions,
 .conv-role-item.active .conv-role-actions { display: flex; }
 .conv-btn-icon {
@@ -96,22 +130,74 @@ const CSS = `
   cursor: pointer;
   padding: 2px 4px;
   border-radius: 3px;
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   line-height: 1;
 }
 .conv-btn-icon:hover { background: rgba(0,0,0,0.08); color: #212529; }
 .conv-btn-icon.danger:hover { background: rgba(220,53,69,0.1); color: #dc3545; }
 
-/* ── Add role button ── */
+/* Assign hint (shown when units are selected) */
+.conv-assign-hint {
+  height: 2.75rem;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 1rem;
+  background: #e8f5f3;
+  border-bottom: 1px solid #b6e0da;
+  font-size: 0.8rem;
+  color: #0c4a46;
+  font-weight: 500;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Assignable state — role items pulse with a "click to assign" affordance */
+.conv-role-item--assignable {
+  cursor: pointer;
+}
+.conv-role-item--assignable:hover {
+  background: #e8f5f3 !important;
+  border-left-color: #0c4a46 !important;
+}
+.conv-role-item--assignable:hover::after {
+  content: "← assigner";
+  font-size: 0.68rem;
+  color: #0c4a46;
+  margin-left: auto;
+  opacity: 0.7;
+  font-style: italic;
+}
+
+/* Dormant suggestion rows */
+.conv-role-item--dormant {
+  opacity: 0.45;
+  cursor: default;
+}
+.conv-role-item--dormant:hover { background: none; opacity: 0.6; }
+.conv-dormant-btn {
+  font-size: 0.7rem;
+  padding: 1px 7px;
+  border-radius: 10px;
+  border: 1px dashed #9ca3af;
+  background: transparent;
+  color: #6c757d;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.conv-dormant-btn:hover { background: #e8f5f3; border-color: #0c4a46; color: #0c4a46; }
+
+/* Add buttons */
 .conv-add-btn {
-  margin: 0.5rem;
-  padding: 0.45rem 0.75rem;
+  margin: 0.4rem 0.75rem;
+  padding: 0.38rem 0.65rem;
   background: #e8f5f3;
   border: 1px dashed #0c4a46;
   border-radius: 6px;
   color: #0c4a46;
   cursor: pointer;
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   text-align: center;
   transition: background 0.12s;
 }
@@ -194,7 +280,7 @@ const CSS = `
   margin-top: 2px;
 }
 
-/* ── Barre d'action en bas (unités sélectionnées) ── */
+/* ── Barre d'action en bas ── */
 .conv-action-bar {
   display: none;
   align-items: center;
@@ -273,7 +359,6 @@ const CSS = `
 }
 .conv-field input[type="text"]:focus,
 .conv-field input[type="number"]:focus { outline: 2px solid #0c4a46; border-color: transparent; }
-/* ── Color picker row ── */
 .conv-color-row {
   display: flex;
   flex-direction: column;
@@ -389,7 +474,8 @@ let _unsubDbChange: (() => void) | null = null;
 
 // DOM refs
 let _root: HTMLElement | null = null;
-let _roleListEl: HTMLElement | null = null;
+let _structListEl: HTMLElement | null = null;
+let _textListEl: HTMLElement | null = null;
 let _unitsAreaEl: HTMLElement | null = null;
 let _actionBarEl: HTMLElement | null = null;
 let _docSelectEl: HTMLSelectElement | null = null;
@@ -433,7 +519,8 @@ export function dispose(): void {
   _selectedDocId = null;
   _selectedUnitIds.clear();
   _root = null;
-  _roleListEl = null;
+  _structListEl = null;
+  _textListEl = null;
   _unitsAreaEl = null;
   _actionBarEl = null;
   _docSelectEl = null;
@@ -446,11 +533,20 @@ function _buildLayout(container: HTMLElement): void {
   container.innerHTML = `
     <div class="conv-root">
       <div class="conv-left">
-        <div class="conv-left-header">
-          <span>Rôles</span>
+        <div class="conv-assign-hint" id="conv-assign-hint">&nbsp;</div>
+        <div class="conv-section-header">
+          <span>Structure</span>
+          <span class="conv-section-header-badge" id="conv-struct-badge"></span>
         </div>
-        <div class="conv-role-list"></div>
-        <button class="conv-add-btn">+ Nouveau rôle</button>
+        <div class="conv-role-list" id="conv-struct-list"></div>
+        <button class="conv-add-btn" id="conv-add-struct">+ Autre rôle structure</button>
+
+        <div class="conv-section-header conv-section-header--texte">
+          <span>Texte</span>
+          <span class="conv-section-header-badge" id="conv-text-badge"></span>
+        </div>
+        <div class="conv-role-list" id="conv-text-list"></div>
+        <button class="conv-add-btn" id="conv-add-text">+ Nouveau rôle texte</button>
       </div>
       <div class="conv-right">
         <div class="conv-right-toolbar">
@@ -464,13 +560,15 @@ function _buildLayout(container: HTMLElement): void {
   `;
 
   _root = container.querySelector(".conv-root");
-  _roleListEl = container.querySelector(".conv-role-list");
+  _structListEl = container.querySelector("#conv-struct-list");
+  _textListEl = container.querySelector("#conv-text-list");
   _unitsAreaEl = container.querySelector(".conv-units-area");
   _actionBarEl = container.querySelector(".conv-action-bar");
   _docSelectEl = container.querySelector(".conv-doc-select");
   _rightHintEl = container.querySelector(".conv-right-hint");
 
-  container.querySelector(".conv-add-btn")!.addEventListener("click", () => _openRoleDialog(null));
+  container.querySelector("#conv-add-struct")!.addEventListener("click", () => _openRoleDialog(null, "structure"));
+  container.querySelector("#conv-add-text")!.addEventListener("click", () => _openRoleDialog(null, "text"));
 
   _docSelectEl!.addEventListener("change", () => {
     const val = _docSelectEl!.value;
@@ -480,10 +578,10 @@ function _buildLayout(container: HTMLElement): void {
   });
 }
 
-// ─── Roles CRUD ───────────────────────────────────────────────────────────────
+// ─── Roles rendering ──────────────────────────────────────────────────────────
 
 async function _loadRoles(): Promise<void> {
-  if (!_conn || !_roleListEl) return;
+  if (!_conn || !_structListEl) return;
   try {
     _roles = await listConventions(_conn);
   } catch {
@@ -493,12 +591,93 @@ async function _loadRoles(): Promise<void> {
 }
 
 function _renderRoles(): void {
-  if (!_roleListEl) return;
-  if (_roles.length === 0) {
-    _roleListEl.innerHTML = `<div class="prep-conv-empty" style="padding:1rem;font-size:0.8rem">Aucun rôle défini.</div>`;
+  _renderStructureList();
+  _renderTextList();
+}
+
+function _renderStructureList(): void {
+  if (!_structListEl) return;
+
+  const activeStructure = _roles.filter(r => (r.category ?? "text") === "structure");
+  const activeNames = new Set(activeStructure.map(r => r.name));
+  const dormant = STRUCTURE_DEFAULTS.filter(s => !activeNames.has(s.name));
+
+  const badgeEl = document.getElementById("conv-struct-badge");
+  if (badgeEl) badgeEl.textContent = activeStructure.length ? `${activeStructure.length} actif${activeStructure.length > 1 ? "s" : ""}` : "";
+
+  let html = "";
+
+  // Active structure roles
+  for (const r of activeStructure) {
+    const isActive = _activeRoleName === r.name;
+    html += `
+      <div class="conv-role-item${isActive ? " active" : ""}" data-role="${_esc(r.name)}">
+        <span class="conv-role-dot" style="background:${r.color ?? "#475569"};border-color:${r.color ?? "#475569"}"></span>
+        <span class="conv-role-icon">${r.icon ?? ""}</span>
+        <span class="conv-role-label">${_esc(r.label)}</span>
+        <span class="conv-role-name">${_esc(r.name)}</span>
+        <span class="conv-role-actions">
+          <button class="conv-btn-icon" data-action="edit" title="Modifier">✏️</button>
+        </span>
+      </div>`;
+  }
+
+  // Dormant suggestions
+  for (const s of dormant) {
+    html += `
+      <div class="conv-role-item conv-role-item--dormant">
+        <span class="conv-role-dot" style="background:${s.color}44;border-color:${s.color}66"></span>
+        <span class="conv-role-icon" style="opacity:0.4">${s.icon}</span>
+        <span class="conv-role-label">${_esc(s.label)}</span>
+        <button class="conv-dormant-btn" data-dormant="${_esc(s.name)}">Créer</button>
+      </div>`;
+  }
+
+  if (!html) {
+    html = `<div class="prep-conv-empty" style="padding:0.75rem 1rem;font-size:0.78rem">Aucun rôle structure.</div>`;
+  }
+
+  _structListEl.innerHTML = html;
+
+  // Listeners — active roles
+  _structListEl.querySelectorAll<HTMLElement>(".conv-role-item:not(.conv-role-item--dormant)").forEach(el => {
+    const name = el.dataset.role!;
+    el.addEventListener("click", (e) => {
+      const action = (e.target as HTMLElement).closest("[data-action]")?.getAttribute("data-action");
+      if (action === "edit") { e.stopPropagation(); _openRoleDialog(name, "structure"); return; }
+      if (_selectedUnitIds.size > 0) { void _assignRole(name); return; }
+      _activeRoleName = _activeRoleName === name ? null : name;
+      _renderRoles();
+      _renderActionBar();
+    });
+  });
+
+  // Listeners — dormant suggestions
+  _structListEl.querySelectorAll<HTMLElement>("[data-dormant]").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const name = (btn as HTMLElement).dataset.dormant!;
+      const def = STRUCTURE_DEFAULTS.find(s => s.name === name);
+      if (!def) return;
+      void _activateSuggestion(def);
+    });
+  });
+}
+
+function _renderTextList(): void {
+  if (!_textListEl) return;
+
+  const textRoles = _roles.filter(r => (r.category ?? "text") === "text");
+
+  const badgeEl = document.getElementById("conv-text-badge");
+  if (badgeEl) badgeEl.textContent = textRoles.length ? `${textRoles.length} rôle${textRoles.length > 1 ? "s" : ""}` : "";
+
+  if (textRoles.length === 0) {
+    _textListEl.innerHTML = `<div class="prep-conv-empty" style="padding:0.75rem 1rem;font-size:0.78rem">Aucun rôle texte.</div>`;
     return;
   }
-  _roleListEl.innerHTML = _roles.map(r => `
+
+  _textListEl.innerHTML = textRoles.map(r => `
     <div class="conv-role-item${_activeRoleName === r.name ? " active" : ""}" data-role="${_esc(r.name)}">
       <span class="conv-role-dot" style="background:${r.color ?? "#475569"};border-color:${r.color ?? "#475569"}"></span>
       <span class="conv-role-icon">${r.icon ?? ""}</span>
@@ -511,18 +690,31 @@ function _renderRoles(): void {
     </div>
   `).join("");
 
-  _roleListEl.querySelectorAll<HTMLElement>(".conv-role-item").forEach(el => {
+  _textListEl.querySelectorAll<HTMLElement>(".conv-role-item").forEach(el => {
     const name = el.dataset.role!;
     el.addEventListener("click", (e) => {
       const action = (e.target as HTMLElement).closest("[data-action]")?.getAttribute("data-action");
-      if (action === "edit") { e.stopPropagation(); _openRoleDialog(name); return; }
+      if (action === "edit") { e.stopPropagation(); _openRoleDialog(name, "text"); return; }
       if (action === "delete") { e.stopPropagation(); void _deleteRole(name); return; }
+      if (_selectedUnitIds.size > 0) { void _assignRole(name); return; }
       _activeRoleName = _activeRoleName === name ? null : name;
       _renderRoles();
       _renderActionBar();
     });
   });
 }
+
+async function _activateSuggestion(def: StructureSuggestion): Promise<void> {
+  if (!_conn) return;
+  try {
+    await createConvention(_conn, { ...def, category: "structure" });
+    await _loadRoles();
+  } catch (e) {
+    alert(e instanceof Error ? e.message : String(e));
+  }
+}
+
+// ─── Role dialog ──────────────────────────────────────────────────────────────
 
 const COLOR_PRESETS = [
   "#3b82f6", "#6366f1", "#8b5cf6", "#a855f7",
@@ -531,22 +723,24 @@ const COLOR_PRESETS = [
   "#14b8a6", "#06b6d4", "#0ea5e9", "#64748b",
 ];
 
-function _openRoleDialog(editName: string | null): void {
+function _openRoleDialog(editName: string | null, forceCategory: "structure" | "text"): void {
   const existing = editName ? _roles.find(r => r.name === editName) ?? null : null;
   const isEdit = existing !== null;
   const initColor = existing?.color ?? "";
+  const category = existing?.category ?? forceCategory;
 
   const presetsHtml = COLOR_PRESETS.map(c =>
     `<button type="button" class="conv-color-preset" data-color="${c}" style="background:${c}" title="${c}"></button>`
   ).join("");
 
   const pickerVal = /^#[0-9a-fA-F]{6}$/.test(initColor) ? initColor : "#3b82f6";
+  const sectionLabel = category === "structure" ? "Structure" : "Texte";
 
   const overlay = document.createElement("div");
   overlay.className = "conv-overlay";
   overlay.innerHTML = `
     <div class="conv-dialog">
-      <h3>${isEdit ? "Modifier le rôle" : "Nouveau rôle"}</h3>
+      <h3>${isEdit ? "Modifier le rôle" : `Nouveau rôle — ${sectionLabel}`}</h3>
       <div class="conv-field">
         <label>Identifiant (slug, immuable)</label>
         <input id="conv-f-name" type="text" value="${_esc(existing?.name ?? "")}" placeholder="ex: titre" ${isEdit ? "readonly" : ""} />
@@ -595,24 +789,17 @@ function _openRoleDialog(editName: string | null): void {
     if (source !== "text") hexInput.value = hex;
     if (source !== "picker" && valid) colorPicker.value = hex;
     swatchPreview.style.background = valid ? hex : "#e9ecef";
-    // Mark selected preset
     overlay.querySelectorAll<HTMLElement>(".conv-color-preset").forEach(b => {
       b.classList.toggle("selected", b.dataset.color === hex);
     });
   }
 
-  // Init selected state for existing color
   if (initColor) _applyColor(initColor, "text");
 
-  // Preset clicks
   overlay.querySelectorAll<HTMLButtonElement>(".conv-color-preset").forEach(btn => {
     btn.addEventListener("click", () => _applyColor(btn.dataset.color!, "preset"));
   });
-
-  // Native color picker change
   colorPicker.addEventListener("input", () => _applyColor(colorPicker.value, "picker"));
-
-  // Hex text input
   hexInput.addEventListener("input", () => {
     let v = hexInput.value.trim();
     if (v && !v.startsWith("#")) v = "#" + v;
@@ -633,13 +820,13 @@ function _openRoleDialog(editName: string | null): void {
 
     try {
       if (isEdit) {
-        await updateConvention(_conn!, name, { label, color, icon, sort_order });
+        await updateConvention(_conn!, name, { label, color, icon, sort_order, category });
       } else {
-        await createConvention(_conn!, { name, label, color, icon, sort_order });
+        await createConvention(_conn!, { name, label, color, icon, sort_order, category });
       }
       overlay.remove();
       await _loadRoles();
-      _renderUnits(); // badges may have changed
+      _renderUnits();
     } catch (e) {
       errEl.textContent = e instanceof Error ? e.message : String(e);
     }
@@ -670,7 +857,6 @@ async function _loadDocs(): Promise<void> {
     _docs = [];
   }
 
-  // Rebuild options (keep selected value if still valid)
   const prev = _selectedDocId;
   _docSelectEl.innerHTML = `<option value="">— Choisir un document —</option>` +
     _docs.map(d => `<option value="${d.doc_id}">${_esc(d.title ?? `Doc #${d.doc_id}`)} ${d.language ? `[${d.language}]` : ""}</option>`).join("");
@@ -696,10 +882,7 @@ async function _loadUnits(): Promise<void> {
   _unitsAreaEl.innerHTML = `<div class="prep-conv-empty">Chargement…</div>`;
 
   try {
-    // text_start_n is already in _docs (loaded by _loadDocs); no extra fetch needed.
     _textStartN = _docs.find(d => d.doc_id === _selectedDocId)?.text_start_n ?? null;
-
-    // GET /units?doc_id=N — lists all units with their role
     const unitsRes = (await _conn.get(`/units?doc_id=${_selectedDocId}`)) as {
       units: { unit_id: number; n: number; text_norm: string | null; unit_role: string | null; unit_type: string }[];
     };
@@ -750,9 +933,7 @@ function _renderUnits(): void {
       if ((e as MouseEvent).shiftKey && _lastClickedIdx >= 0) {
         const lo = Math.min(_lastClickedIdx, idx);
         const hi = Math.max(_lastClickedIdx, idx);
-        for (let i = lo; i <= hi; i++) {
-          _selectedUnitIds.add(_units[i].unit_id);
-        }
+        for (let i = lo; i <= hi; i++) _selectedUnitIds.add(_units[i].unit_id);
       } else {
         if (_selectedUnitIds.has(uid)) _selectedUnitIds.delete(uid);
         else _selectedUnitIds.add(uid);
@@ -769,37 +950,44 @@ function _renderUnits(): void {
 function _renderActionBar(): void {
   if (!_actionBarEl) return;
   const count = _selectedUnitIds.size;
+  const hintEl = document.getElementById("conv-assign-hint");
 
   if (count === 0) {
     _actionBarEl.classList.remove("visible");
     _actionBarEl.innerHTML = "";
+    if (hintEl) hintEl.textContent = "\u00a0";
+    _renderRoles(); // remove assignable state from role items
     return;
   }
 
-  _actionBarEl.classList.add("visible");
+  // Hint in left column — always visible, text changes
+  if (hintEl) {
+    hintEl.textContent = `${count} unité${count > 1 ? "s" : ""} sélectionnée${count > 1 ? "s" : ""} — cliquer un rôle pour assigner`;
+  }
+  // Mark role items as assignable
+  document.querySelectorAll<HTMLElement>(".conv-role-item:not(.conv-role-item--dormant)").forEach(el => {
+    el.classList.add("conv-role-item--assignable");
+  });
 
-  const rolePills = _roles.map(r =>
-    `<button class="conv-role-pill" data-assign="${_esc(r.name)}" style="border-color:${r.color ?? "#475569"}40;color:${r.color ?? "#374151"}">
-      ${r.icon ? r.icon + " " : ""}<span>${_esc(r.label)}</span>
-    </button>`
-  ).join("");
+  _actionBarEl.classList.add("visible");
 
   const textStartBtn = count === 1
     ? `<button class="conv-text-start-btn" id="conv-set-ts" title="Définir comme début du texte (après le paratexte)">⚑ Borne texte</button>`
     : "";
 
   _actionBarEl.innerHTML = `
-    <span class="conv-action-count">${count} unité${count > 1 ? "s" : ""} sélectionnée${count > 1 ? "s" : ""} :</span>
-    ${rolePills}
+    <span class="conv-action-count">${count} unité${count > 1 ? "s" : ""}</span>
     <button class="conv-role-pill remove" id="conv-clear-role">✕ Retirer rôle</button>
+    <button class="conv-role-pill" id="conv-deselect-all" style="border-color:#94a3b840;color:#64748b">✕ Désélectionner</button>
     ${textStartBtn}
   `;
 
-  _actionBarEl.querySelectorAll<HTMLElement>("[data-assign]").forEach(btn => {
-    btn.addEventListener("click", () => void _assignRole(btn.dataset.assign!));
-  });
-
   _actionBarEl.querySelector("#conv-clear-role")?.addEventListener("click", () => void _assignRole(null));
+  _actionBarEl.querySelector("#conv-deselect-all")?.addEventListener("click", () => {
+    _selectedUnitIds.clear();
+    _renderUnits();
+    _renderActionBar();
+  });
 
   _actionBarEl.querySelector("#conv-set-ts")?.addEventListener("click", async () => {
     const uid = [..._selectedUnitIds][0];
@@ -808,7 +996,6 @@ function _renderActionBar(): void {
     try {
       await setDocumentTextStart(_conn, _selectedDocId, unit.n);
       _textStartN = unit.n;
-      // Keep _docs cache in sync so subsequent _loadUnits calls don't re-fetch stale value.
       const docEntry = _docs.find(d => d.doc_id === _selectedDocId);
       if (docEntry) docEntry.text_start_n = unit.n;
       _renderUnits();
@@ -823,7 +1010,6 @@ async function _assignRole(roleName: string | null): Promise<void> {
   const ids = [..._selectedUnitIds];
   try {
     await bulkSetUnitRole(_conn, ids, roleName);
-    // Update local state
     for (const u of _units) {
       if (_selectedUnitIds.has(u.unit_id)) u.unit_role = roleName;
     }

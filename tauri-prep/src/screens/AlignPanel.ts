@@ -1,13 +1,13 @@
 /**
- * AlignPanel.ts — Panneau d'alignement refactorisé.
+ * AlignPanel.ts — Panneau d'alignement bitext.
  *
- * Améliorations :
- *  - Layout 2 colonnes : Configuration (gauche) | Audit / Résultats (droite)
- *  - Mode Famille : sélecteur famille → pivot + cibles auto-remplis
- *  - Propagation famille via POST /families/{id}/align
- *  - Plus de window.confirm : bannière de confirmation inline
- *  - Chargement automatique de l'audit dès la fin du run
- *  - Suppressions/modifications en lot sans pop-up natif
+ * Architecture :
+ *  - Topbar : sélection de paire, run, filtres, KPI de révision
+ *  - Éditeur bitext : grille pivot | cible + actions inline ✓/✗/?/🗑
+ *  - Barre d'actions en lot (sélection multiple)
+ *  - Section collisions : masquée par défaut, accessible via le badge KPI
+ *  - Familles : propagation via POST /families/{id}/align
+ *  - Confirmation inline (pas de window.confirm)
  */
 
 import {
@@ -18,9 +18,12 @@ import {
   alignQuality,
   listCollisions,
   resolveCollisions,
-  listRuns,
   updateAlignLinkStatus,
   deleteAlignLink,
+  retargetAlignLink,
+  createAlignLink,
+  retargetCandidates,
+  listUnits,
   batchUpdateAlignLinks,
   SidecarError,
   type Conn,
@@ -31,9 +34,9 @@ import {
   type AlignLinkRecord,
   type AlignBatchAction,
   type AlignQualityStats,
-  type AlignQualityResponse,
   type CollisionGroup,
-  type RunRecord,
+  type RetargetCandidate,
+  type UnitRecord,
 } from "../lib/sidecarClient.ts";
 import type { JobCenter } from "../components/JobCenter.ts";
 import { initCardAccordions } from "../lib/uiAccordions.ts";
@@ -41,7 +44,6 @@ import { initCardAccordions } from "../lib/uiAccordions.ts";
 // ─── Types locaux ─────────────────────────────────────────────────────────────
 
 type AlignStrategy = "external_id" | "external_id_then_position" | "position" | "similarity";
-type AlignMode = "famille" | "manuel";
 
 export interface AlignPanelCallbacks {
   log: (msg: string, isError?: boolean) => void;
@@ -51,8 +53,6 @@ export interface AlignPanelCallbacks {
   /** Appelé après run réussi. runId = identifiant du run créé (null si indisponible). */
   onRunDone: (pivotId: number, targetIds: number[], runId: string | null) => void;
   onNav: (target: string) => void;
-  /** Délégué au handler export rapport d'ActionsScreen */
-  onExportReport: () => void;
 }
 
 interface RunSummary {
@@ -70,27 +70,33 @@ export class AlignPanel {
   private _conn: () => Conn | null;
   private _getDocs: () => DocumentRecord[];
   private _cb: AlignPanelCallbacks;
-  private _mode: AlignMode = "famille";
   private _families: FamilyRecord[] = [];
   private _pendingConfirm: (() => void) | null = null;
   private _el: HTMLElement | null = null;
 
-  // Audit state
+  // Bitext state
   private _auditLinks: AlignLinkRecord[] = [];
   private _auditOffset = 0;
   private _auditHasMore = false;
-  private _auditQuickFilter: "all" | "review" | "unreviewed" | "rejected" = "review";
+  private _auditQuickFilter: "all" | "accepted" | "rejected" | "unreviewed" = "all";
   private _auditTextFilter = "";
-  private _selectedLinkId: number | null = null;
   private _selectedLinkIds = new Set<number>();
 
-  // Quality / Collision / Run-compare state (ex-legacy sections)
-  private _alignRunsCompareCache: RunRecord[] = [];
+  // Collision state
+  private _lastCollisionCount = 0;
   private _collOffset = 0;
   private _collLimit = 20;
   private _collGroups: CollisionGroup[] = [];
   private _collHasMore = false;
   private _collTotalCount = 0;
+
+  // Retarget / create-link picker state
+  private _retargetActive: { pivotUnitId: number; linkId: number | null; mode: "retarget" | "create" | "add" } | null = null;
+  private _retargetCandidates: RetargetCandidate[] | null = null; // null = loading
+
+  // Orphan pivot state
+  private _orphanPivots: UnitRecord[] = [];
+  private _orphansLoaded = false;
 
   constructor(
     conn: () => Conn | null,
@@ -106,12 +112,11 @@ export class AlignPanel {
 
   render(): HTMLElement {
     const el = document.createElement("div");
-    el.className = "align-v2-root";
+    el.className = "prep-align-panel-root";
     el.innerHTML = this._html();
     this._el = el;
     this._bindEvents(el);
-    this._populateManualSelects(el);
-    this._populateQualityCollisionSelects(el);
+    this._populatePairSelects(el);
     initCardAccordions(el);
     void this._loadFamilies(el);
     return el;
@@ -119,429 +124,324 @@ export class AlignPanel {
 
   refreshDocs(): void {
     if (!this._el) return;
-    this._populateManualSelects(this._el);
+    this._populatePairSelects(this._el);
     this._populateFamilySelect(this._el);
-    this._populateAuditSelects(this._el);
-    this._populateQualityCollisionSelects(this._el);
   }
 
   // ─── HTML template ──────────────────────────────────────────────────────────
 
   private _html(): string {
     return `
-<div class="prep-align-v2-layout">
+<div class="prep-align-root">
 
-  <!-- ═══ Colonne gauche : Configuration ═══ -->
-  <div class="prep-align-v2-config">
-
-    <div class="prep-align-v2-config-head">
-      <h3>Configuration du run</h3>
-      <div class="prep-align-mode-toggle" role="group" aria-label="Mode">
-        <button class="prep-align-mode-btn active" data-mode="famille">📁 Par famille</button>
-        <button class="prep-align-mode-btn" data-mode="manuel">🔧 Manuel</button>
-      </div>
-    </div>
-
-    <!-- Mode Famille -->
-    <div id="align-famille-section" class="prep-align-config-section">
-      <div class="prep-align-field-row">
-        <label class="prep-align-field-label">Famille</label>
-        <div style="display:flex;gap:6px;align-items:center">
-          <select id="align-family-sel" class="prep-align-select" style="flex:1">
-            <option value="">— choisir une famille —</option>
-          </select>
-          <button id="align-family-refresh" class="btn btn-sm btn-ghost" title="Rafraîchir">⟳</button>
-        </div>
-      </div>
-      <div id="align-family-preview" class="prep-align-family-preview" style="display:none">
-        <div class="prep-align-fp-row">
-          <span class="prep-align-fp-label">Pivot</span>
-          <span id="align-fp-pivot" class="prep-align-fp-value">—</span>
-        </div>
-        <div class="prep-align-fp-row" style="align-items:flex-start">
-          <span class="prep-align-fp-label">Cibles</span>
-          <div id="align-fp-targets" class="prep-align-fp-value" style="flex-wrap:wrap;gap:4px"></div>
-        </div>
-        <div id="align-family-stats" class="prep-align-family-stats"></div>
-      </div>
-    </div>
-
-    <!-- Mode Manuel -->
-    <div id="align-manuel-section" class="prep-align-config-section" style="display:none">
-      <div class="prep-align-field-row">
-        <label class="prep-align-field-label">Pivot</label>
-        <select id="align-pivot-sel" class="prep-align-select">
+  <!-- ═══ Barre supérieure : paire + run ═══ -->
+  <div class="prep-align-topbar">
+    <div class="prep-align-pair-group">
+      <label class="prep-align-pair-label">Pivot
+        <select id="align-pivot-sel" class="prep-align-pair-sel">
           <option value="">— choisir —</option>
         </select>
-      </div>
-      <div class="prep-align-field-row">
-        <label class="prep-align-field-label">Cible(s) <span style="font-weight:400;font-size:0.72rem">(Ctrl+clic)</span></label>
-        <select id="align-targets-sel" class="prep-align-select" multiple size="4"></select>
-      </div>
+      </label>
+      <span class="prep-align-pair-arrow" aria-hidden="true">&#8596;</span>
+      <label class="prep-align-pair-label">Cible
+        <select id="align-target-sel" class="prep-align-pair-sel">
+          <option value="">— choisir —</option>
+        </select>
+      </label>
+      <button id="align-load-btn" class="btn btn-sm btn-secondary" disabled>Charger</button>
     </div>
+    <div class="prep-align-topbar-run">
+      <button id="align-run-btn" class="btn btn-sm prep-btn-warning" disabled>&#9889; Auto-aligner</button>
+      <button id="align-run-options-toggle" class="btn btn-sm btn-ghost" title="Options d&#39;alignement">&#9881;</button>
+    </div>
+    <div class="prep-align-topbar-filters">
+      <div class="prep-align-filter-chips" role="group" aria-label="Filtre statut">
+        <button class="chip active" data-qf="all">Tout</button>
+        <button class="chip" data-qf="accepted">&#10003; Accept&#233;s</button>
+        <button class="chip" data-qf="rejected">&#10007; Rejet&#233;s</button>
+        <button class="chip" data-qf="unreviewed">? Non r&#233;vis&#233;s</button>
+      </div>
+      <input id="align-text-filter" class="prep-align-search" type="search" placeholder="Rechercher&#8230;" autocomplete="off">
+      <button id="align-audit-next-btn" class="btn btn-sm btn-ghost" title="Lien suivant &#224; revoir">&#8595; Suivant</button>
+      <button id="align-orphan-toggle" class="btn btn-sm btn-ghost" title="Afficher les segments pivot sans lien" disabled>&#9651; Orphelins</button>
+    </div>
+    <div id="align-topbar-kpi" class="prep-align-topbar-kpi" style="display:none"></div>
+  </div>
 
-    <!-- Stratégie + options (communs) -->
-    <div class="prep-align-config-section prep-align-options-section">
-      <div class="prep-align-field-row">
-        <label class="prep-align-field-label">Stratégie</label>
+  <!-- ═══ Panneau d'options run (disclosure) ═══ -->
+  <div id="align-run-options" class="prep-align-run-options" style="display:none">
+    <div class="prep-align-run-options-row">
+      <label class="prep-align-run-opt-field">Strat&#233;gie
         <select id="align-strategy-sel" class="prep-align-select">
           <option value="external_id">external_id</option>
-          <option value="external_id_then_position" selected>external_id → position (hybride)</option>
+          <option value="external_id_then_position" selected>external_id &#8594; position</option>
           <option value="position">position</option>
-          <option value="similarity">similarité</option>
+          <option value="similarity">similarit&#233;</option>
         </select>
-      </div>
-      <div id="align-sim-row" class="prep-align-field-row" style="display:none">
-        <label class="prep-align-field-label">Seuil similarité</label>
-        <input id="align-sim-threshold" type="number" class="prep-align-input-num"
-               min="0" max="1" step="0.05" value="0.8"/>
-      </div>
-      <div class="prep-align-checks-row">
-        <label class="prep-align-check-label">
-          <input id="align-preserve-accepted" type="checkbox" checked/>
-          Conserver les liens validés
-        </label>
-        <label class="prep-align-check-label">
-          <input id="align-debug-cb" type="checkbox"/>
-          Explainability debug
-        </label>
-        <label class="prep-align-check-label" id="align-skip-unready-wrap">
-          <input id="align-skip-unready" type="checkbox" checked/>
-          Ignorer les cibles non segmentées
+      </label>
+      <div id="align-sim-row" class="prep-align-run-opt-field" style="display:none">
+        <label>Seuil
+          <input id="align-sim-threshold" type="number" class="prep-align-input-num"
+                 min="0" max="1" step="0.05" value="0.8"/>
         </label>
       </div>
+      <label class="prep-align-check-label">
+        <input id="align-preserve-accepted" type="checkbox" checked/>
+        Conserver les liens valid&#233;s
+      </label>
+      <label class="prep-align-check-label">
+        <input id="align-debug-cb" type="checkbox"/>
+        Debug
+      </label>
+      <button id="align-recalc-btn" class="btn btn-sm btn-secondary" disabled>&#8635; Recalcul global</button>
     </div>
+    <div class="prep-align-run-options-row prep-align-run-options-family">
+      <label class="prep-align-run-opt-field" style="flex:1">Par famille
+        <div style="display:flex;gap:6px;align-items:center">
+          <select id="align-family-sel" class="prep-align-select" style="flex:1">
+            <option value="">&#8212; choisir une famille &#8212;</option>
+          </select>
+          <button id="align-family-refresh" class="btn btn-sm btn-ghost" title="Rafra&#238;chir">&#8635;</button>
+          <button id="align-family-run-btn" class="btn btn-sm prep-btn-warning" disabled>&#9889; Aligner famille</button>
+        </div>
+      </label>
+      <div id="align-family-stats" class="prep-align-family-stats"></div>
+    </div>
+  </div>
 
-    <!-- Bannière de confirmation inline -->
-    <div id="align-confirm-banner" class="prep-align-confirm-banner" style="display:none">
-      <div id="align-confirm-msg" class="prep-align-confirm-msg"></div>
-      <div class="prep-align-confirm-btns">
-        <button id="align-confirm-ok" class="btn prep-btn-warning btn-sm">▶ Confirmer</button>
-        <button id="align-confirm-cancel" class="btn btn-ghost btn-sm">Annuler</button>
+  <!-- ═══ Confirmation inline ═══ -->
+  <div id="align-confirm-banner" class="prep-align-confirm-banner" style="display:none">
+    <div id="align-confirm-msg" class="prep-align-confirm-msg"></div>
+    <div class="prep-align-confirm-btns">
+      <button id="align-confirm-ok" class="btn prep-btn-warning btn-sm">&#9658; Confirmer</button>
+      <button id="align-confirm-cancel" class="btn btn-ghost btn-sm">Annuler</button>
+    </div>
+  </div>
+
+  <!-- ═══ Progression ═══ -->
+  <div id="align-progress-area" class="prep-align-progress-area" style="display:none">
+    <div class="prep-align-progress-spinner">&#9203;</div>
+    <div id="align-progress-msg" class="prep-align-progress-msg">Alignement en cours&#8230;</div>
+  </div>
+
+  <!-- ═══ R&#233;sum&#233; KPI apr&#232;s run ═══ -->
+  <div id="align-summary" class="prep-align-summary" style="display:none">
+    <div class="prep-align-summary-head">
+      <span class="prep-align-summary-title">R&#233;sultats du run</span>
+      <button id="align-summary-close" class="btn btn-ghost btn-sm" title="Fermer">&#10005;</button>
+    </div>
+    <div id="align-summary-banner" class="prep-align-summary-banner"></div>
+    <div class="prep-align-kpi-row">
+      <div class="prep-align-kpi-card">
+        <div class="prep-align-kpi-val" id="align-kpi-created">&#8212;</div>
+        <div class="prep-align-kpi-lbl">Cr&#233;&#233;s</div>
+      </div>
+      <div class="prep-align-kpi-card">
+        <div class="prep-align-kpi-val" id="align-kpi-skipped">&#8212;</div>
+        <div class="prep-align-kpi-lbl">Ignor&#233;s</div>
+      </div>
+      <div class="prep-align-kpi-card prep-align-kpi-card--coverage" id="align-kpi-coverage-wrap"
+           title="Part des segments pivot ayant au moins un lien. &#8805; 90&#160;% = bon&#160;; &#8805; 60&#160;% = acceptable.">
+        <div class="prep-align-kpi-val" id="align-kpi-coverage">&#8230;</div>
+        <div class="prep-align-kpi-lbl">Couverture</div>
       </div>
     </div>
+    <div id="align-summary-per-target" class="prep-align-summary-per-target"></div>
+    <details id="align-quality-details" class="prep-align-quality-details" style="display:none">
+      <summary class="prep-align-quality-details-summary">D&#233;tails qualit&#233; &#9658;</summary>
+      <div id="align-quality-details-body" class="prep-align-quality-details-body"></div>
+    </details>
+  </div>
 
-    <!-- Boutons lancement -->
-    <div id="align-launch-btns" class="prep-align-launch-row">
-      <button id="align-run-btn" class="btn prep-btn-warning" disabled>▶ Lancer l'alignement</button>
-      <button id="align-recalc-btn" class="btn btn-secondary" disabled>↺ Recalcul global</button>
-    </div>
-
-    <!-- Progression pendant run -->
-    <div id="align-progress-area" class="prep-align-progress-area" style="display:none">
-      <div class="prep-align-progress-spinner">⏳</div>
-      <div id="align-progress-msg" class="prep-align-progress-msg">Alignement en cours…</div>
-    </div>
-
-    <!-- Résumé KPI après run -->
-    <div id="align-summary" class="prep-align-summary" style="display:none">
-      <div class="prep-align-summary-head">
-        <span class="prep-align-summary-title">Résultats du run</span>
-        <button id="align-summary-recalc" class="btn btn-ghost btn-sm">↺ Recalcul</button>
+  <!-- ═══ Éditeur bitext ═══ -->
+  <div class="prep-align-bitext" id="align-bitext">
+    <div class="prep-align-bitext-head">
+      <div class="prep-align-bitext-check">
+        <input type="checkbox" id="align-check-all" title="Tout s&#233;lectionner">
       </div>
-      <div id="align-summary-banner" class="prep-align-summary-banner"></div>
-      <div class="prep-align-kpi-row">
-        <div class="prep-align-kpi-card">
-          <div class="prep-align-kpi-val" id="align-kpi-created">—</div>
-          <div class="prep-align-kpi-lbl">Créés</div>
-        </div>
-        <div class="prep-align-kpi-card">
-          <div class="prep-align-kpi-val" id="align-kpi-skipped">—</div>
-          <div class="prep-align-kpi-lbl">Ignorés</div>
-        </div>
-        <div class="prep-align-kpi-card" id="align-kpi-effective-wrap" style="display:none">
-          <div class="prep-align-kpi-val" id="align-kpi-effective">—</div>
-          <div class="prep-align-kpi-lbl">Effectifs</div>
-        </div>
-        <div class="prep-align-kpi-card prep-align-kpi-card--coverage" id="align-kpi-coverage-wrap" title="Part des segments pivot ayant au moins un lien. ≥ 90 % = bon ; ≥ 60 % = acceptable.">
-          <div class="prep-align-kpi-val" id="align-kpi-coverage">…</div>
-          <div class="prep-align-kpi-lbl">Couverture</div>
-        </div>
-      </div>
-      <div id="align-summary-per-target" class="prep-align-summary-per-target"></div>
-      <!-- Métriques de debug (orphelins, collisions, statuts) -->
-      <details id="align-quality-details" class="prep-align-quality-details" style="display:none">
-        <summary class="prep-align-quality-details-summary">Détails qualité ▸</summary>
-        <div id="align-quality-details-body" class="prep-align-quality-details-body"></div>
-      </details>
+      <div class="prep-align-bitext-col-head" id="align-col-pivot-title">Pivot</div>
+      <div class="prep-align-bitext-col-head" id="align-col-target-title">Cible</div>
+      <div class="prep-align-bitext-col-actions"></div>
     </div>
-
-  </div><!-- /align-v2-config -->
-
-  <!-- ═══ Colonne droite : Audit / Vérification ═══ -->
-  <div class="prep-align-v2-results">
-
-    <div class="prep-align-v2-results-head">
-      <h3>Vérification des liens</h3>
-      <div class="prep-align-audit-toolbar">
-        <div class="prep-align-audit-qf-chips" role="group">
-          <button class="chip" data-qf="all">Tout</button>
-          <button class="chip active" data-qf="review">À revoir</button>
-          <button class="chip" data-qf="unreviewed">Non révisés</button>
-          <button class="chip" data-qf="rejected">Rejetés</button>
-        </div>
-        <button id="align-audit-load-btn" class="btn btn-sm btn-secondary">Charger les liens</button>
-        <button id="align-audit-next-btn" class="btn btn-sm btn-ghost">Suivant ↓</button>
-      </div>
+    <div id="align-bitext-body">
+      <p class="empty-hint">S&#233;lectionnez un pivot et une cible, puis cliquez sur Charger.</p>
     </div>
-
-    <!-- Filtres audit -->
-    <div class="prep-align-audit-filters">
-      <label class="prep-align-filter-group">
-        <span class="prep-align-field-label">Pivot</span>
-        <select id="align-audit-pivot" class="prep-align-select-sm">
-          <option value="">— —</option>
-        </select>
-      </label>
-      <label class="prep-align-filter-group">
-        <span class="prep-align-field-label">Cible</span>
-        <select id="align-audit-target" class="prep-align-select-sm">
-          <option value="">— —</option>
-        </select>
-      </label>
-      <label class="prep-align-filter-group">
-        <span class="prep-align-field-label">Statut</span>
-        <select id="align-audit-status" class="prep-align-select-sm">
-          <option value="">Tous</option>
-          <option value="unreviewed">Non révisés</option>
-          <option value="accepted">Acceptés</option>
-          <option value="rejected">Rejetés</option>
-        </select>
-      </label>
-      <label class="prep-align-filter-group">
-        <span class="prep-align-field-label">Texte</span>
-        <input id="align-audit-text" type="text" class="prep-align-input-text" placeholder="mot clé…"/>
-      </label>
-    </div>
-
-    <div id="align-audit-stats" class="prep-align-audit-stats"></div>
-
-    <!-- Tableau des liens -->
-    <div id="align-audit-table-wrap" class="prep-align-audit-table-wrap">
-      <p class="empty-hint">Lancez un alignement ou cliquez sur « Charger les liens ».</p>
-    </div>
-
-    <!-- Barre d'actions en lot -->
-    <div id="align-batch-bar" class="prep-align-batch-bar" style="display:none">
-      <span id="align-batch-count">0 sélectionné(s)</span>
-      <button id="align-batch-accept" class="btn btn-sm btn-secondary">✓ Accepter</button>
-      <button id="align-batch-reject" class="btn btn-sm btn-secondary">✗ Rejeter</button>
-      <button id="align-batch-unreview" class="btn btn-sm btn-secondary">? Non révisé</button>
-      <button id="align-batch-delete" class="btn btn-sm btn-danger">Supprimer</button>
-    </div>
-
-    <div class="prep-align-audit-load-more">
+    <div class="prep-align-bitext-foot" id="align-bitext-foot" style="display:none">
+      <span id="align-audit-stats" class="prep-align-audit-stats"></span>
       <button id="align-audit-more-btn" class="btn btn-sm btn-secondary" style="display:none">Charger plus</button>
     </div>
+  </div>
 
-    <!-- Panneau focus (correction ciblée) -->
-    <div id="align-focus-panel" class="prep-align-focus-panel" style="display:none">
-      <div class="prep-align-focus-head">
-        <strong id="align-focus-meta"></strong>
-        <div class="prep-align-focus-actions">
-          <button data-focus-action="accepted" class="btn btn-sm btn-secondary">✓ Valider</button>
-          <button data-focus-action="rejected" class="btn btn-sm btn-secondary">✗ À revoir</button>
-          <button data-focus-action="unreviewed" class="btn btn-sm btn-secondary">? Non révisé</button>
-          <button data-focus-action="delete" class="btn btn-sm btn-danger">Supprimer</button>
-        </div>
-        <button id="align-focus-close" class="btn btn-ghost btn-sm">✕</button>
-      </div>
-      <div class="prep-align-focus-texts">
-        <div class="prep-align-focus-text-block">
-          <div class="prep-align-focus-text-label">Pivot</div>
-          <div id="align-focus-pivot-text" class="prep-align-focus-text"></div>
-        </div>
-        <div class="prep-align-focus-text-block">
-          <div class="prep-align-focus-text-label">Cible</div>
-          <div id="align-focus-target-text" class="prep-align-focus-text"></div>
-        </div>
-      </div>
+  <!-- ═══ Orphelins pivot (segments sans lien) ═══ -->
+  <div id="align-orphan-section" class="prep-align-orphan-section" style="display:none">
+    <div class="prep-align-coll-section-head">
+      <span class="prep-align-coll-section-title">&#9651; Segments pivot sans lien</span>
+      <button id="align-orphan-close" class="btn btn-ghost btn-sm" title="Fermer">&#10005;</button>
     </div>
+    <p class="hint" style="margin:0.3rem 0 0.6rem">Segments du pivot qui n&#8217;ont aucun lien dans la paire active. Cliquez &#8629; pour cr&#233;er un lien.</p>
+    <div id="align-orphan-body"></div>
+  </div>
 
-  </div><!-- /align-v2-results -->
-</div><!-- /align-v2-layout -->
+  <!-- ═══ Barre d'actions en lot ═══ -->
+  <div id="align-batch-bar" class="prep-align-batch-bar" style="display:none">
+    <span id="align-batch-count">0 s&#233;lectionn&#233;(s)</span>
+    <button id="align-batch-accept" class="btn btn-sm btn-secondary">&#10003; Accepter</button>
+    <button id="align-batch-reject" class="btn btn-sm btn-secondary">&#10007; Rejeter</button>
+    <button id="align-batch-unreview" class="btn btn-sm btn-secondary">? Non r&#233;vis&#233;</button>
+    <button id="align-batch-delete" class="btn btn-sm btn-danger">Supprimer</button>
+  </div>
 
-<!-- ═══ Sections secondaires (qualité, collisions, runs) ═══ -->
-<section class="card" id="align-quality-card" data-collapsible="true" data-collapsed-default="true">
-  <h3>Qualit&#233; alignement <span class="prep-badge-preview">m&#233;triques</span></h3>
-  <p class="hint">Couverture et orphelins pour une paire pivot&#8596;cible.</p>
-  <div class="prep-form-row">
-    <label>Pivot<select id="align-qc-pivot"><option value="">&#8212; choisir &#8212;</option></select></label>
-    <label>Cible<select id="align-qc-target"><option value="">&#8212; choisir &#8212;</option></select></label>
-    <div style="align-self:flex-end">
-      <button id="align-qc-btn" class="btn btn-secondary btn-sm" disabled>Calculer m&#233;triques</button>
+  <!-- ═══ Résolution des collisions (affiché via le badge KPI) ═══ -->
+  <div id="align-coll-section" class="prep-align-coll-section" style="display:none">
+    <div class="prep-align-coll-section-head">
+      <span class="prep-align-coll-section-title">&#9888; Collisions d&#8217;alignement</span>
+      <button id="align-coll-close" class="btn btn-ghost btn-sm" title="Fermer">&#10005;</button>
+    </div>
+    <p class="hint" style="margin:0.3rem 0 0.6rem">Un pivot li&#233; &#224; plusieurs segments dans le m&#234;me document cible est une collision. La paire active est utilis&#233;e automatiquement.</p>
+    <div>
+      <button id="align-coll-load-btn" class="btn btn-secondary btn-sm">Rafra&#238;chir les collisions</button>
+    </div>
+    <div id="align-coll-result" style="display:none;margin-top:0.75rem"></div>
+    <div id="align-coll-more-wrap" style="display:none;margin-top:0.5rem;text-align:center">
+      <button id="align-coll-more-btn" class="btn btn-sm btn-secondary">Charger plus</button>
     </div>
   </div>
-  <div id="align-qc-result" style="display:none;margin-top:0.75rem"></div>
-</section>
-<section class="card" id="align-run-compare-card" data-collapsible="true" data-collapsed-default="true">
-  <h3>Comparer deux runs <span class="prep-badge-preview">align</span></h3>
-  <p class="hint">Historique des runs d&#8217;alignement ; comparez strat&#233;gie et indicateurs.</p>
-  <div class="prep-form-row" style="flex-wrap:wrap;gap:0.5rem;align-items:flex-end">
-    <button id="align-rc-refresh" type="button" class="btn btn-secondary btn-sm">Charger l&#8217;historique</button>
-    <label>Run A<select id="align-rc-a" aria-label="Premier run"><option value="">&#8212;</option></select></label>
-    <label>Run B<select id="align-rc-b" aria-label="Second run"><option value="">&#8212;</option></select></label>
-  </div>
-  <p id="align-rc-hint" class="hint" style="margin-top:0.5rem">Chargez l&#8217;historique, puis choisissez deux runs.</p>
-  <div id="align-rc-result" style="display:none;margin-top:0.75rem"></div>
-</section>
-<section class="card" id="align-coll-card" data-collapsible="true" data-collapsed-default="true">
-  <h3>Collisions d&#8217;alignement <span class="prep-badge-preview">r&#233;solution</span></h3>
-  <p class="hint">Un pivot ayant plusieurs liens vers le m&#234;me document cible est une collision.</p>
-  <div class="prep-form-row">
-    <label>Pivot<select id="align-coll-pivot"><option value="">&#8212; choisir &#8212;</option></select></label>
-    <label>Cible<select id="align-coll-target"><option value="">&#8212; choisir &#8212;</option></select></label>
-    <div style="align-self:flex-end">
-      <button id="align-coll-load-btn" class="btn btn-secondary btn-sm" disabled>Charger les collisions</button>
-    </div>
-  </div>
-  <div id="align-coll-result" style="display:none;margin-top:0.75rem"></div>
-  <div id="align-coll-more-wrap" style="display:none;margin-top:0.5rem;text-align:center">
-    <button id="align-coll-more-btn" class="btn btn-sm btn-secondary">Charger plus</button>
-  </div>
-</section>
-<section class="card" id="align-report-card" data-collapsible="true" data-collapsed-default="true">
-  <h3>Rapport de runs <span class="prep-badge-preview">export</span></h3>
-  <p class="hint">Exporter l&#8217;historique des runs en HTML ou JSONL.</p>
-  <div class="prep-form-row">
-    <label>Format :<select id="align-report-fmt"><option value="html">HTML</option><option value="jsonl">JSONL</option></select></label>
-    <label style="flex:1">Run ID (optionnel) :<input id="align-report-run-id" type="text" placeholder="laisser vide = tous les runs" style="width:100%;max-width:340px"/></label>
-  </div>
-  <div class="prep-btn-row" style="margin-top:0.5rem">
-    <button id="align-report-btn" class="btn btn-secondary" disabled>Enregistrer le rapport&#8230;</button>
-  </div>
-  <div id="align-report-result" style="display:none;margin-top:0.5rem;font-size:0.85rem"></div>
-</section>
+
+</div>
     `;
   }
 
   // ─── Event binding ──────────────────────────────────────────────────────────
 
   private _bindEvents(el: HTMLElement): void {
-    el.querySelectorAll<HTMLButtonElement>(".prep-align-mode-btn").forEach(btn => {
-      btn.addEventListener("click", () => this._setMode(btn.dataset.mode as AlignMode, el));
-    });
+    // Pair selects → enable/disable load + run buttons
+    el.querySelector("#align-pivot-sel")?.addEventListener("change", () =>
+      this._updateRunBtnState(el));
+    el.querySelector("#align-target-sel")?.addEventListener("change", () =>
+      this._updateRunBtnState(el));
 
-    el.querySelector("#align-strategy-sel")!.addEventListener("change", (e) => {
-      const v = (e.target as HTMLSelectElement).value;
-      (el.querySelector("#align-sim-row") as HTMLElement).style.display =
-        v === "similarity" ? "" : "none";
-    });
+    // Load bitext
+    el.querySelector("#align-load-btn")?.addEventListener("click", () =>
+      void this._loadAuditPage(el, false));
 
-    el.querySelector("#align-family-sel")!.addEventListener("change", () =>
-      this._onFamilyChange(el));
-    el.querySelector("#align-family-refresh")!.addEventListener("click", () =>
-      void this._loadFamilies(el));
-
-    el.querySelector("#align-run-btn")!.addEventListener("click", () =>
+    // Auto-align (run)
+    el.querySelector("#align-run-btn")?.addEventListener("click", () =>
       this._askConfirm(el, false));
-    el.querySelector("#align-recalc-btn")!.addEventListener("click", () =>
-      this._askConfirm(el, true));
-    el.querySelector("#align-summary-recalc")!.addEventListener("click", () =>
+    el.querySelector("#align-recalc-btn")?.addEventListener("click", () =>
       this._askConfirm(el, true));
 
-    el.querySelector("#align-confirm-ok")!.addEventListener("click", () => {
+    // Run options toggle
+    el.querySelector("#align-run-options-toggle")?.addEventListener("click", () => {
+      const panel = el.querySelector<HTMLElement>("#align-run-options");
+      if (panel) panel.style.display = panel.style.display === "none" ? "" : "none";
+    });
+
+    // Strategy: show/hide similarity threshold
+    el.querySelector("#align-strategy-sel")?.addEventListener("change", (e) => {
+      const v = (e.target as HTMLSelectElement).value;
+      const simRow = el.querySelector<HTMLElement>("#align-sim-row");
+      if (simRow) simRow.style.display = v === "similarity" ? "" : "none";
+    });
+
+    // Family run
+    el.querySelector("#align-family-sel")?.addEventListener("change", () =>
+      this._onFamilyChange(el));
+    el.querySelector("#align-family-refresh")?.addEventListener("click", () =>
+      void this._loadFamilies(el));
+    el.querySelector("#align-family-run-btn")?.addEventListener("click", () =>
+      this._askConfirmFamily(el));
+
+    // Confirm/cancel
+    el.querySelector("#align-confirm-ok")?.addEventListener("click", () => {
       const fn = this._pendingConfirm;
       this._pendingConfirm = null;
       this._hideConfirmBanner(el);
       fn?.();
     });
-    el.querySelector("#align-confirm-cancel")!.addEventListener("click", () => {
+    el.querySelector("#align-confirm-cancel")?.addEventListener("click", () => {
       this._pendingConfirm = null;
       this._hideConfirmBanner(el);
     });
 
-    // Pivot/target selects (mode manuel)
-    el.querySelector("#align-pivot-sel")?.addEventListener("change", () =>
-      this._updateRunBtnState(el));
-    el.querySelector("#align-targets-sel")?.addEventListener("change", () =>
-      this._updateRunBtnState(el));
+    // Summary close
+    el.querySelector("#align-summary-close")?.addEventListener("click", () => {
+      const s = el.querySelector<HTMLElement>("#align-summary");
+      if (s) s.style.display = "none";
+    });
 
-    // Audit quick-filter chips
+    // Filter chips
     el.querySelectorAll<HTMLButtonElement>("[data-qf]").forEach(btn => {
       btn.addEventListener("click", () => {
         el.querySelectorAll("[data-qf]").forEach(b => b.classList.remove("active"));
         btn.classList.add("active");
         this._auditQuickFilter = (btn.dataset.qf ?? "all") as typeof this._auditQuickFilter;
-        this._renderAuditTable(el);
+        this._renderBitextBody(el);
       });
     });
 
-    el.querySelector("#align-audit-load-btn")!.addEventListener("click", () => {
-      this._auditOffset = 0;
-      this._auditLinks = [];
-      void this._loadAuditPage(el, false);
-    });
-    el.querySelector("#align-audit-more-btn")!.addEventListener("click", () =>
-      void this._loadAuditPage(el, true));
-    el.querySelector("#align-audit-next-btn")?.addEventListener("click", () =>
-      this._focusNextException(el));
-
-    const textFilter = el.querySelector<HTMLInputElement>("#align-audit-text");
+    // Text search
+    const textFilter = el.querySelector<HTMLInputElement>("#align-text-filter");
     textFilter?.addEventListener("input", () => {
       this._auditTextFilter = textFilter.value.trim().toLowerCase();
-      this._renderAuditTable(el);
+      this._renderBitextBody(el);
     });
 
-    ["#align-audit-pivot", "#align-audit-target", "#align-audit-status"].forEach(id => {
-      el.querySelector(id)?.addEventListener("change", () => {
-        this._auditOffset = 0;
-        this._auditLinks = [];
-        void this._loadAuditPage(el, false);
+    // Load more / next
+    el.querySelector("#align-audit-more-btn")?.addEventListener("click", () =>
+      void this._loadAuditPage(el, true));
+    el.querySelector("#align-audit-next-btn")?.addEventListener("click", () =>
+      this._scrollToNextUnreviewed(el));
+
+    // Check-all (static header, bind once)
+    el.querySelector<HTMLInputElement>("#align-check-all")?.addEventListener("change", (e) => {
+      const checked = (e.target as HTMLInputElement).checked;
+      const visible = this._visibleLinks();
+      visible.forEach(lk => {
+        if (checked) this._selectedLinkIds.add(lk.link_id);
+        else this._selectedLinkIds.delete(lk.link_id);
       });
+      this._renderBitextBody(el);
+      this._updateBatchBar(el);
     });
 
-    el.querySelector("#align-batch-accept")!.addEventListener("click", () =>
+    // Batch actions
+    el.querySelector("#align-batch-accept")?.addEventListener("click", () =>
       void this._batchAction(el, "accepted"));
-    el.querySelector("#align-batch-reject")!.addEventListener("click", () =>
+    el.querySelector("#align-batch-reject")?.addEventListener("click", () =>
       void this._batchAction(el, "rejected"));
-    el.querySelector("#align-batch-unreview")!.addEventListener("click", () =>
+    el.querySelector("#align-batch-unreview")?.addEventListener("click", () =>
       void this._batchAction(el, null));
-    el.querySelector("#align-batch-delete")!.addEventListener("click", () =>
+    el.querySelector("#align-batch-delete")?.addEventListener("click", () =>
       void this._batchDeleteSelected(el));
 
-    el.querySelector("#align-focus-close")?.addEventListener("click", () =>
-      this._closeFocus(el));
-    el.querySelectorAll<HTMLButtonElement>("[data-focus-action]").forEach(btn => {
-      btn.addEventListener("click", () => {
-        const action = btn.dataset.focusAction!;
-        if (action === "delete") void this._focusDelete(el);
-        else void this._focusSetStatus(el, action === "unreviewed" ? null : action as "accepted" | "rejected");
-      });
-    });
-
-    // ── Sections secondaires ──────────────────────────────────────────────────
-    el.querySelector("#align-qc-btn")?.addEventListener("click", () =>
-      void this._runAlignQuality(el));
+    // ── Section collisions ────────────────────────────────────────────────────
     el.querySelector("#align-coll-load-btn")?.addEventListener("click", () => {
       this._collOffset = 0; this._collGroups = []; void this._loadCollisionsPage(el, false);
     });
     el.querySelector("#align-coll-more-btn")?.addEventListener("click", () =>
       void this._loadCollisionsPage(el, true));
-    el.querySelector("#align-report-btn")?.addEventListener("click", () =>
-      this._cb.onExportReport());
-    el.querySelector("#align-rc-refresh")?.addEventListener("click", () =>
-      void this._refreshAlignRunsCompare(el));
-    el.querySelector("#align-rc-a")?.addEventListener("change", () =>
-      this._updateAlignRunCompareDiff(el));
-    el.querySelector("#align-rc-b")?.addEventListener("change", () =>
-      this._updateAlignRunCompareDiff(el));
-  }
+    el.querySelector("#align-coll-close")?.addEventListener("click", () => {
+      const section = el.querySelector<HTMLElement>("#align-coll-section");
+      if (section) section.style.display = "none";
+    });
 
-  // ─── Mode ───────────────────────────────────────────────────────────────────
-
-  private _setMode(mode: AlignMode, el: HTMLElement): void {
-    this._mode = mode;
-    el.querySelectorAll<HTMLButtonElement>(".prep-align-mode-btn").forEach(btn =>
-      btn.classList.toggle("active", btn.dataset.mode === mode));
-    (el.querySelector("#align-famille-section") as HTMLElement).style.display =
-      mode === "famille" ? "" : "none";
-    (el.querySelector("#align-manuel-section") as HTMLElement).style.display =
-      mode === "manuel" ? "" : "none";
-    (el.querySelector("#align-skip-unready-wrap") as HTMLElement).style.display =
-      mode === "famille" ? "" : "none";
-    if (mode === "manuel") this._populateManualSelects(el);
-    this._updateRunBtnState(el);
+    // ── Orphan section ────────────────────────────────────────────────────────
+    el.querySelector("#align-orphan-toggle")?.addEventListener("click", () => {
+      const section = el.querySelector<HTMLElement>("#align-orphan-section");
+      if (!section) return;
+      const isOpen = section.style.display !== "none";
+      if (isOpen) {
+        section.style.display = "none";
+      } else {
+        section.style.display = "";
+        section.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        void this._loadOrphanPivots(el);
+      }
+    });
+    el.querySelector("#align-orphan-close")?.addEventListener("click", () => {
+      const section = el.querySelector<HTMLElement>("#align-orphan-section");
+      if (section) section.style.display = "none";
+    });
   }
 
   // ─── Familles ────────────────────────────────────────────────────────────────
@@ -578,74 +478,42 @@ export class AlignPanel {
 
   private _onFamilyChange(el: HTMLElement): void {
     const famId = parseInt((el.querySelector<HTMLSelectElement>("#align-family-sel"))?.value ?? "");
-    const preview = el.querySelector<HTMLElement>("#align-family-preview");
-    if (!preview) return;
-    if (isNaN(famId)) { preview.style.display = "none"; this._updateRunBtnState(el); return; }
-
-    const fam = this._families.find(f => f.family_id === famId);
-    if (!fam) { preview.style.display = "none"; return; }
-    preview.style.display = "";
-
-    const pivotEl = el.querySelector("#align-fp-pivot");
-    const targetsEl = el.querySelector("#align-fp-targets");
-    const statsEl = el.querySelector("#align-family-stats");
-
-    if (pivotEl) pivotEl.textContent = fam.parent?.title ?? `#${fam.family_id}`;
-    if (targetsEl) {
-      targetsEl.innerHTML = fam.children.map(c => {
-        const doc = c.doc;
-        const lang = doc?.language ? ` (${doc.language})` : "";
-        const seg = c.segmented
-          ? `<span class="prep-align-fp-tag-ok">✓ segmenté</span>`
-          : `<span class="prep-align-fp-tag-warn">⚠ non segmenté</span>`;
-        return `<span class="prep-align-fp-child">${_esc(doc?.title ?? `#${c.doc_id}`)}${lang} ${seg}</span>`;
-      }).join("");
+    const statsEl = el.querySelector<HTMLElement>("#align-family-stats");
+    if (isNaN(famId)) {
+      if (statsEl) statsEl.innerHTML = "";
+      this._updateRunBtnState(el);
+      return;
     }
+    const fam = this._families.find(f => f.family_id === famId);
+    if (!fam) { if (statsEl) statsEl.innerHTML = ""; return; }
     if (statsEl) {
       const { aligned_pairs, total_pairs, completion_pct } = fam.stats;
-      statsEl.innerHTML = `<span class="prep-align-fp-stat">${aligned_pairs}/${total_pairs} paires alignées · ${completion_pct.toFixed(0)} %</span>`;
-      if (fam.stats.ratio_warnings.length > 0) {
-        statsEl.innerHTML += `<span class="prep-align-fp-warn"> · ⚠ ${fam.stats.ratio_warnings.length} ratio(s) inhabituels</span>`;
-      }
+      const children = fam.children.map(c => {
+        const doc = c.doc;
+        const lang = doc?.language ? ` (${_esc(doc.language)})` : "";
+        const segTag = c.segmented
+          ? `<span class="prep-align-fp-tag-ok">✓</span>`
+          : `<span class="prep-align-fp-tag-warn">⚠</span>`;
+        return `<span class="prep-align-fp-child">${segTag} ${_esc(doc?.title ?? `#${c.doc_id}`)}${lang}</span>`;
+      }).join(" ");
+      statsEl.innerHTML =
+        `<span class="prep-align-fp-stat">${aligned_pairs}/${total_pairs} paires · ${completion_pct.toFixed(0)}%</span>` +
+        (fam.stats.ratio_warnings.length > 0
+          ? ` <span class="prep-align-fp-warn">⚠ ${fam.stats.ratio_warnings.length} ratio(s)</span>` : "") +
+        ` ${children}`;
     }
     this._updateRunBtnState(el);
   }
 
-  // ─── Mode manuel — sélects docs ─────────────────────────────────────────────
+  // ─── Sélects paire pivot/cible ──────────────────────────────────────────────
 
-  private _populateManualSelects(el: HTMLElement): void {
+  private _populatePairSelects(el: HTMLElement): void {
     const docs = this._getDocs();
-    const pivSel = el.querySelector<HTMLSelectElement>("#align-pivot-sel");
-    const tgtSel = el.querySelector<HTMLSelectElement>("#align-targets-sel");
-    if (!pivSel || !tgtSel) return;
-    const prevPiv = pivSel.value;
-    const prevTgts = Array.from(tgtSel.selectedOptions).map(o => o.value);
-    const fill = (sel: HTMLSelectElement, withEmpty: boolean) => {
-      sel.innerHTML = withEmpty ? `<option value="">— choisir —</option>` : "";
-      for (const d of docs) {
-        const opt = document.createElement("option");
-        opt.value = String(d.doc_id);
-        opt.textContent = `${d.title} (${d.language ?? "?"})`;
-        sel.appendChild(opt);
-      }
-    };
-    fill(pivSel, true);
-    fill(tgtSel, false);
-    pivSel.value = prevPiv;
-    prevTgts.forEach(v => {
-      const o = tgtSel.querySelector<HTMLOptionElement>(`option[value="${v}"]`);
-      if (o) o.selected = true;
-    });
-    this._updateRunBtnState(el);
-  }
-
-  private _populateAuditSelects(el: HTMLElement): void {
-    const docs = this._getDocs();
-    for (const id of ["#align-audit-pivot", "#align-audit-target"]) {
+    for (const id of ["#align-pivot-sel", "#align-target-sel"]) {
       const sel = el.querySelector<HTMLSelectElement>(id);
       if (!sel) continue;
       const prev = sel.value;
-      sel.innerHTML = `<option value="">— —</option>`;
+      sel.innerHTML = `<option value="">— choisir —</option>`;
       for (const d of docs) {
         const opt = document.createElement("option");
         opt.value = String(d.doc_id);
@@ -654,21 +522,24 @@ export class AlignPanel {
         sel.appendChild(opt);
       }
     }
+    this._updateRunBtnState(el);
   }
 
   private _updateRunBtnState(el: HTMLElement): void {
+    const piv = el.querySelector<HTMLSelectElement>("#align-pivot-sel")?.value;
+    const tgt = el.querySelector<HTMLSelectElement>("#align-target-sel")?.value;
+    const pairOk = !!(piv && tgt);
     const runBtn = el.querySelector<HTMLButtonElement>("#align-run-btn");
     const recalcBtn = el.querySelector<HTMLButtonElement>("#align-recalc-btn");
-    let ok = false;
-    if (this._mode === "famille") {
-      ok = !!el.querySelector<HTMLSelectElement>("#align-family-sel")?.value;
-    } else {
-      const piv = el.querySelector<HTMLSelectElement>("#align-pivot-sel")?.value;
-      const tgts = el.querySelector<HTMLSelectElement>("#align-targets-sel");
-      ok = !!(piv && tgts && tgts.selectedOptions.length > 0);
-    }
-    if (runBtn) runBtn.disabled = !ok;
-    if (recalcBtn) recalcBtn.disabled = !ok;
+    const loadBtn = el.querySelector<HTMLButtonElement>("#align-load-btn");
+    if (runBtn) runBtn.disabled = !pairOk;
+    if (recalcBtn) recalcBtn.disabled = !pairOk;
+    if (loadBtn) loadBtn.disabled = !pairOk;
+    const famRunBtn = el.querySelector<HTMLButtonElement>("#align-family-run-btn");
+    if (famRunBtn) famRunBtn.disabled = !el.querySelector<HTMLSelectElement>("#align-family-sel")?.value;
+    // Orphan toggle only valid after an audit load for the current pair
+    const orphanBtn = el.querySelector<HTMLButtonElement>("#align-orphan-toggle");
+    if (orphanBtn && !pairOk) orphanBtn.disabled = true;
   }
 
   // ─── Confirmation inline ─────────────────────────────────────────────────────
@@ -677,25 +548,17 @@ export class AlignPanel {
     const strategy = el.querySelector<HTMLSelectElement>("#align-strategy-sel")?.value ?? "?";
     const preserve = el.querySelector<HTMLInputElement>("#align-preserve-accepted")?.checked ?? true;
     const debug = el.querySelector<HTMLInputElement>("#align-debug-cb")?.checked ?? false;
-
-    let target = "";
-    if (this._mode === "famille") {
-      const famId = el.querySelector<HTMLSelectElement>("#align-family-sel")?.value;
-      const fam = this._families.find(f => String(f.family_id) === famId);
-      target = `Famille « ${fam?.parent?.title ?? `#${famId}`} » (${fam?.children.length ?? "?"} paires)`;
-    } else {
-      const pivId = el.querySelector<HTMLSelectElement>("#align-pivot-sel")?.value;
-      const tgtSel = el.querySelector<HTMLSelectElement>("#align-targets-sel");
-      const tgtIds = tgtSel ? Array.from(tgtSel.selectedOptions).map(o => o.value) : [];
-      target = `Pivot #${pivId} → cibles [${tgtIds.join(", ")}]`;
-    }
-
+    const pivId = el.querySelector<HTMLSelectElement>("#align-pivot-sel")?.value;
+    const tgtId = el.querySelector<HTMLSelectElement>("#align-target-sel")?.value;
+    const docs = this._getDocs();
+    const pivTitle = docs.find(d => String(d.doc_id) === pivId)?.title ?? `#${pivId}`;
+    const tgtTitle = docs.find(d => String(d.doc_id) === tgtId)?.title ?? `#${tgtId}`;
     const action = recalculate ? "Recalcul global" : "Alignement";
     const msgEl = el.querySelector<HTMLElement>("#align-confirm-msg");
     const banner = el.querySelector<HTMLElement>("#align-confirm-banner");
     if (msgEl) msgEl.innerHTML =
-      `<strong>${action}</strong> · ${_esc(target)}<br>
-       Stratégie : <strong>${_esc(strategy)}</strong> · 
+      `<strong>${action}</strong> · ${_esc(pivTitle)} &#8596; ${_esc(tgtTitle)}<br>
+       Stratégie : <strong>${_esc(strategy)}</strong> ·
        Liens validés : <strong>${preserve ? "conservés" : "remplacés"}</strong>` +
        (debug ? " · debug" : "");
     if (banner) {
@@ -703,6 +566,34 @@ export class AlignPanel {
       banner.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }
     this._pendingConfirm = () => void this._doRun(el, recalculate);
+  }
+
+  private _askConfirmFamily(el: HTMLElement): void {
+    const famId = el.querySelector<HTMLSelectElement>("#align-family-sel")?.value;
+    if (!famId) return;
+    const fam = this._families.find(f => String(f.family_id) === famId);
+    const label = fam?.parent?.title ?? `Famille #${famId}`;
+    const n = fam?.children.length ?? "?";
+    const strategy = (el.querySelector<HTMLSelectElement>("#align-strategy-sel")?.value ?? "external_id_then_position") as AlignStrategy;
+    const preserve = el.querySelector<HTMLInputElement>("#align-preserve-accepted")?.checked ?? true;
+    const simThreshold = parseFloat(el.querySelector<HTMLInputElement>("#align-sim-threshold")?.value ?? "0.8") || 0.8;
+    const debugAlign = el.querySelector<HTMLInputElement>("#align-debug-cb")?.checked ?? false;
+    const msgEl = el.querySelector<HTMLElement>("#align-confirm-msg");
+    const banner = el.querySelector<HTMLElement>("#align-confirm-banner");
+    if (msgEl) msgEl.innerHTML =
+      `<strong>Aligner famille</strong> · ${_esc(label)} (${n} paires)<br>
+       Stratégie : <strong>${_esc(strategy)}</strong> ·
+       Liens validés : <strong>${preserve ? "conservés" : "remplacés"}</strong>`;
+    if (banner) {
+      banner.style.display = "";
+      banner.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+    this._pendingConfirm = () => {
+      const conn = this._conn();
+      if (!conn) { this._cb.log("Pas de connexion.", true); return; }
+      this._setRunningState(el, true);
+      void this._doFamilyRun(el, conn, { strategy, simThreshold, preserveAccepted: preserve, debugAlign, skipUnready: true, recalculate: false });
+    };
   }
 
   private _hideConfirmBanner(el: HTMLElement): void {
@@ -719,15 +610,8 @@ export class AlignPanel {
     const simThreshold = parseFloat(el.querySelector<HTMLInputElement>("#align-sim-threshold")?.value ?? "0.8") || 0.8;
     const preserveAccepted = el.querySelector<HTMLInputElement>("#align-preserve-accepted")?.checked ?? true;
     const debugAlign = el.querySelector<HTMLInputElement>("#align-debug-cb")?.checked ?? false;
-    const skipUnready = el.querySelector<HTMLInputElement>("#align-skip-unready")?.checked ?? true;
-
     this._setRunningState(el, true);
-
-    if (this._mode === "famille") {
-      await this._doFamilyRun(el, conn, { strategy, simThreshold, preserveAccepted, debugAlign, skipUnready, recalculate });
-    } else {
-      await this._doManualRun(el, conn, { strategy, simThreshold, preserveAccepted, debugAlign, recalculate });
-    }
+    await this._doManualRun(el, conn, { strategy, simThreshold, preserveAccepted, debugAlign, recalculate });
   }
 
   private async _doFamilyRun(
@@ -778,10 +662,10 @@ export class AlignPanel {
     opts: { strategy: AlignStrategy; simThreshold: number; preserveAccepted: boolean; debugAlign: boolean; recalculate: boolean },
   ): Promise<void> {
     const pivId = parseInt(el.querySelector<HTMLSelectElement>("#align-pivot-sel")?.value ?? "");
-    const tgtSel = el.querySelector<HTMLSelectElement>("#align-targets-sel");
-    const tgtIds = tgtSel ? Array.from(tgtSel.selectedOptions).map(o => parseInt(o.value)) : [];
+    const tgtId = parseInt(el.querySelector<HTMLSelectElement>("#align-target-sel")?.value ?? "");
+    const tgtIds = isNaN(tgtId) ? [] : [tgtId];
     if (isNaN(pivId) || tgtIds.length === 0) {
-      this._cb.log("Sélectionnez un pivot et au moins une cible.", true);
+      this._cb.log("Sélectionnez un pivot et une cible.", true);
       this._setRunningState(el, false); return;
     }
 
@@ -849,9 +733,7 @@ export class AlignPanel {
   private _setRunningState(el: HTMLElement, running: boolean): void {
     this._cb.setBusy(running);
     const progress = el.querySelector<HTMLElement>("#align-progress-area");
-    const launchBtns = el.querySelector<HTMLElement>("#align-launch-btns");
     if (progress) progress.style.display = running ? "" : "none";
-    if (launchBtns) launchBtns.style.display = running ? "none" : "";
   }
 
   private _setProgressMsg(el: HTMLElement, msg: string): void {
@@ -867,17 +749,12 @@ export class AlignPanel {
     summary.style.display = "";
     this._setKpi(summary, "created", s.created);
     this._setKpi(summary, "skipped", s.skipped);
-    const ewrap = summary.querySelector<HTMLElement>("#align-kpi-effective-wrap");
-    if (ewrap) ewrap.style.display = (recalculate && s.effective !== undefined) ? "" : "none";
-    if (recalculate && s.effective !== undefined) this._setKpi(summary, "effective", s.effective);
-
     const banner = summary.querySelector<HTMLElement>("#align-summary-banner");
-    if (banner && recalculate) {
-      banner.innerHTML = s.deleted !== undefined
+    if (banner) {
+      banner.innerHTML = (recalculate && s.deleted !== undefined)
         ? `<span class="stat-warn">${s.deleted} nettoyés</span> · <span class="prep-stat-ok">${s.preserved} conservés</span>`
         : "";
-    } else if (banner) banner.innerHTML = "";
-
+    }
     const perTarget = summary.querySelector<HTMLElement>("#align-summary-per-target");
     if (perTarget) {
       perTarget.innerHTML = s.perTarget.map(t =>
@@ -892,7 +769,6 @@ export class AlignPanel {
     summary.style.display = "";
     this._setKpi(summary, "created", result.summary.total_links_created);
     this._setKpi(summary, "skipped", result.summary.skipped);
-    (summary.querySelector<HTMLElement>("#align-kpi-effective-wrap"))!.style.display = "none";
 
     const banner = summary.querySelector<HTMLElement>("#align-summary-banner");
     if (banner) {
@@ -921,15 +797,13 @@ export class AlignPanel {
   // ─── Auto-load audit ─────────────────────────────────────────────────────────
 
   private _autoLoadAudit(el: HTMLElement, pivotId: number, targetId: number): void {
-    const pivSel = el.querySelector<HTMLSelectElement>("#align-audit-pivot");
-    const tgtSel = el.querySelector<HTMLSelectElement>("#align-audit-target");
+    const pivSel = el.querySelector<HTMLSelectElement>("#align-pivot-sel");
+    const tgtSel = el.querySelector<HTMLSelectElement>("#align-target-sel");
     if (pivSel) pivSel.value = String(pivotId);
     if (tgtSel) tgtSel.value = String(targetId);
-    this._auditQuickFilter = "review";
+    this._auditQuickFilter = "unreviewed";
     el.querySelectorAll<HTMLElement>("[data-qf]").forEach(b =>
-      b.classList.toggle("active", b.dataset.qf === "review"));
-    this._auditOffset = 0;
-    this._auditLinks = [];
+      b.classList.toggle("active", b.dataset.qf === "unreviewed"));
     void this._loadAuditPage(el, false);
     void this._autoFetchQuality(el, pivotId, targetId);
   }
@@ -980,6 +854,8 @@ export class AlignPanel {
         `;
         detailsEl.style.display = "";
       }
+      this._lastCollisionCount = s.collision_count;
+      this._updateTopbarKpi(el);
       this._cb.log(`Qualité auto : couverture ${pct}%, orphelins=${s.orphan_pivot_count}p/${s.orphan_target_count}c`);
     } catch {
       if (coverageEl) coverageEl.textContent = "—";
@@ -991,22 +867,33 @@ export class AlignPanel {
   private async _loadAuditPage(el: HTMLElement, append: boolean): Promise<void> {
     const conn = this._conn();
     if (!conn) return;
-    const pivotId = parseInt(el.querySelector<HTMLSelectElement>("#align-audit-pivot")?.value ?? "");
-    const targetId = parseInt(el.querySelector<HTMLSelectElement>("#align-audit-target")?.value ?? "");
+    const pivotId = parseInt(el.querySelector<HTMLSelectElement>("#align-pivot-sel")?.value ?? "");
+    const targetId = parseInt(el.querySelector<HTMLSelectElement>("#align-target-sel")?.value ?? "");
     if (isNaN(pivotId) || isNaN(targetId)) {
-      const wrap = el.querySelector<HTMLElement>("#align-audit-table-wrap");
-      if (wrap) wrap.innerHTML = `<p class="empty-hint">Choisissez un pivot et une cible dans les filtres.</p>`;
+      const body = el.querySelector<HTMLElement>("#align-bitext-body");
+      if (body) body.innerHTML = `<p class="empty-hint">Choisissez un pivot et une cible, puis cliquez sur Charger.</p>`;
       return;
     }
-
-    const status = el.querySelector<HTMLSelectElement>("#align-audit-status")?.value;
-    if (!append) this._auditOffset = 0;
-
+    if (!append) {
+      this._auditOffset = 0;
+      this._lastCollisionCount = 0;
+      this._collGroups = [];
+      this._collOffset = 0;
+      this._retargetActive = null;
+      this._retargetCandidates = null;
+      this._orphanPivots = [];
+      this._orphansLoaded = false;
+      const collSection = el.querySelector<HTMLElement>("#align-coll-section");
+      if (collSection) { collSection.style.display = "none"; }
+      const collResult = el.querySelector<HTMLElement>("#align-coll-result");
+      if (collResult) { collResult.style.display = "none"; collResult.innerHTML = ""; }
+      const orphanSection = el.querySelector<HTMLElement>("#align-orphan-section");
+      if (orphanSection) { orphanSection.style.display = "none"; }
+    }
     try {
       const res = await alignAudit(conn, {
         pivot_doc_id: pivotId,
         target_doc_id: targetId,
-        status: (status || undefined) as "accepted" | "rejected" | "unreviewed" | undefined,
         limit: 50,
         offset: this._auditOffset,
       });
@@ -1015,26 +902,34 @@ export class AlignPanel {
       else this._auditLinks = links;
       this._auditHasMore = res.has_more ?? false;
       this._auditOffset += links.length;
-      this._renderAuditTable(el);
+      this._renderBitextBody(el);
       const statsEl = el.querySelector<HTMLElement>("#align-audit-stats");
-      if (statsEl) statsEl.textContent = `${this._auditLinks.length} lien(s) chargé(s)${this._auditHasMore ? " (suite disponible)" : ""}`;
+      if (statsEl) statsEl.textContent = `${this._auditLinks.length} lien(s)${this._auditHasMore ? " · suite dispo" : ""}`;
+      const foot = el.querySelector<HTMLElement>("#align-bitext-foot");
+      if (foot) foot.style.display = "";
+      // Update column header titles
+      const docs = this._getDocs();
+      const pivColHead = el.querySelector<HTMLElement>("#align-col-pivot-title");
+      const tgtColHead = el.querySelector<HTMLElement>("#align-col-target-title");
+      if (pivColHead) pivColHead.textContent = docs.find(d => d.doc_id === pivotId)?.title ?? `Pivot #${pivotId}`;
+      if (tgtColHead) tgtColHead.textContent = docs.find(d => d.doc_id === targetId)?.title ?? `Cible #${targetId}`;
+      const orphanBtn = el.querySelector<HTMLButtonElement>("#align-orphan-toggle");
+      if (orphanBtn) orphanBtn.disabled = false;
+      this._updateTopbarKpi(el);
     } catch (err) {
-      this._cb.log(`✗ Chargement audit : ${err instanceof Error ? err.message : String(err)}`, true);
+      this._cb.log(`✗ Chargement bitext : ${err instanceof Error ? err.message : String(err)}`, true);
     }
   }
 
-  // ─── Audit rendering ─────────────────────────────────────────────────────────
+  // ─── Bitext rendering ────────────────────────────────────────────────────────
 
-  private _renderAuditTable(el: HTMLElement): void {
-    const wrap = el.querySelector<HTMLElement>("#align-audit-table-wrap");
-    if (!wrap) return;
-    const textLo = this._auditTextFilter;
+  private _visibleLinks(): AlignLinkRecord[] {
     const qf = this._auditQuickFilter;
-
-    const visible = this._auditLinks.filter(lk => {
-      if (qf === "review" && lk.status === "accepted") return false;
-      if (qf === "unreviewed" && lk.status !== null) return false;
+    const textLo = this._auditTextFilter;
+    return this._auditLinks.filter(lk => {
+      if (qf === "accepted" && lk.status !== "accepted") return false;
       if (qf === "rejected" && lk.status !== "rejected") return false;
+      if (qf === "unreviewed" && lk.status !== null) return false;
       if (textLo) {
         const p = (lk.pivot_text ?? "").toLowerCase();
         const t = (lk.target_text ?? "").toLowerCase();
@@ -1042,95 +937,399 @@ export class AlignPanel {
       }
       return true;
     });
+  }
+
+  private _renderBitextBody(el: HTMLElement): void {
+    const body = el.querySelector<HTMLElement>("#align-bitext-body");
+    if (!body) return;
+    const visible = this._visibleLinks();
 
     if (visible.length === 0) {
       if (this._auditLinks.length > 0) {
-        const filterLabel = this._auditQuickFilter === "review" ? "« À revoir »"
-          : this._auditQuickFilter === "unreviewed" ? "« Non révisés »"
-          : this._auditQuickFilter === "rejected" ? "« Rejetés »"
-          : null;
-        const hint = filterLabel
-          ? `Filtre ${filterLabel} actif — tous les liens chargés sont masqués.`
-          : `Aucun lien correspondant au filtre texte.`;
-        wrap.innerHTML = `<p class="empty-hint">${hint} <button class="btn btn-ghost btn-sm" id="align-filter-clear-btn">Afficher tout</button></p>`;
-        wrap.querySelector("#align-filter-clear-btn")?.addEventListener("click", () => {
+        body.innerHTML = `<p class="empty-hint">Aucun lien avec ce filtre. <button class="btn btn-ghost btn-sm" id="align-filter-clear-btn">Afficher tout</button></p>`;
+        body.querySelector("#align-filter-clear-btn")?.addEventListener("click", () => {
           this._auditQuickFilter = "all";
           this._auditTextFilter = "";
           el.querySelectorAll("[data-qf]").forEach(b => b.classList.remove("active"));
           el.querySelector("[data-qf='all']")?.classList.add("active");
-          const textInput = el.querySelector<HTMLInputElement>("#align-audit-text");
+          const textInput = el.querySelector<HTMLInputElement>("#align-text-filter");
           if (textInput) textInput.value = "";
-          this._renderAuditTable(el);
+          this._renderBitextBody(el);
         });
       } else {
-        wrap.innerHTML = `<p class="empty-hint">Aucun lien correspondant au filtre.</p>`;
+        body.innerHTML = `<p class="empty-hint">Sélectionnez un pivot et une cible, puis cliquez sur Charger.</p>`;
       }
-      this._updateBatchBar(el); return;
+      this._updateBatchBar(el);
+      return;
     }
 
-    const statusIcon = (s: string | null) =>
-      s === "accepted" ? `<span class="prep-align-status-accepted" title="Accepté">✓</span>` :
-      s === "rejected" ? `<span class="prep-align-status-rejected" title="Rejeté">✗</span>` :
-      `<span class="prep-align-status-unreviewed" title="Non révisé">?</span>`;
+    const statusCls = (s: string | null) =>
+      s === "accepted" ? "prep-align-row--accepted" :
+      s === "rejected" ? "prep-align-row--rejected" : "prep-align-row--unreviewed";
 
-    const rows = visible.map(lk => {
-      const isFocused = this._selectedLinkId === lk.link_id;
-      const isChecked = this._selectedLinkIds.has(lk.link_id);
-      return `<tr class="audit-row${isFocused ? " audit-row-focused" : ""}" data-link-id="${lk.link_id}" aria-selected="${isChecked ? "true" : "false"}">
-        <td class="audit-col-check"><input type="checkbox" class="audit-row-cb" data-link-id="${lk.link_id}" ${isChecked ? "checked" : ""}></td>
-        <td class="audit-col-status">${statusIcon(lk.status)}</td>
-        <td class="audit-col-extid">${lk.external_id != null ? _esc(String(lk.external_id)) : ""}</td>
-        <td class="audit-col-pivot">${_esc(_trunc(lk.pivot_text ?? "", 120))}</td>
-        <td class="audit-col-target">${_esc(_trunc(lk.target_text ?? "", 120))}</td>
-      </tr>`;
-    }).join("");
-
-    wrap.innerHTML = `
-      <table class="prep-align-audit-table" role="grid" aria-rowcount="${this._auditLinks.length}">
-        <thead>
-          <tr role="row">
-            <th class="audit-col-check"><input type="checkbox" id="align-audit-check-all"></th>
-            <th>St.</th>
-            <th>ID</th>
-            <th>Pivot</th>
-            <th>Cible</th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>`;
+    const rows: string[] = [];
+    const addPickerRendered = new Set<number>(); // pivotUnitIds whose "add" picker is already in DOM
+    for (const lk of visible) {
+      const checked = this._selectedLinkIds.has(lk.link_id);
+      const extId = lk.external_id != null
+        ? `<span class="prep-align-row-extid">[§${_esc(String(lk.external_id))}]</span> ` : "";
+      const isRetargetOpen = this._retargetActive?.linkId === lk.link_id && this._retargetActive.mode === "retarget";
+      const isAddOpen = this._retargetActive?.pivotUnitId === lk.pivot_unit_id && this._retargetActive.mode === "add";
+      rows.push(`<div class="prep-align-row ${statusCls(lk.status)}" data-link-id="${lk.link_id}" role="row">
+        <div class="prep-align-row-check">
+          <input type="checkbox" class="prep-align-row-cb" data-link-id="${lk.link_id}"${checked ? " checked" : ""} aria-label="Sélectionner lien ${lk.link_id}">
+        </div>
+        <div class="prep-align-row-pivot">${extId}${_esc(lk.pivot_text ?? "")}</div>
+        <div class="prep-align-row-target">${_esc(lk.target_text ?? "")}</div>
+        <div class="prep-align-row-actions">
+          <button class="prep-align-act-btn prep-align-act-accept${lk.status === "accepted" ? " active" : ""}" data-link-id="${lk.link_id}" title="Accepter">✓</button>
+          <button class="prep-align-act-btn prep-align-act-reject${lk.status === "rejected" ? " active" : ""}" data-link-id="${lk.link_id}" title="Rejeter">✗</button>
+          <button class="prep-align-act-btn prep-align-act-unreview${lk.status === null ? " active" : ""}" data-link-id="${lk.link_id}" title="Non révisé">?</button>
+          <button class="prep-align-act-btn prep-align-act-delete" data-link-id="${lk.link_id}" title="Supprimer ce lien">🗑</button>
+          <button class="prep-align-act-btn prep-align-act-retarget${isRetargetOpen ? " active" : ""}" data-link-id="${lk.link_id}" data-pivot-uid="${lk.pivot_unit_id}" title="Changer la cible de ce lien">✎</button>
+          <button class="prep-align-act-btn prep-align-act-addtarget${isAddOpen ? " active" : ""}" data-link-id="${lk.link_id}" data-pivot-uid="${lk.pivot_unit_id}" title="Ajouter une deuxième cible à ce segment VO">➕</button>
+        </div>
+      </div>`);
+      if (isRetargetOpen) {
+        rows.push(this._pickerRowHtml(lk.pivot_unit_id, lk.link_id, lk.pivot_text ?? ""));
+      } else if (isAddOpen && !addPickerRendered.has(lk.pivot_unit_id)) {
+        rows.push(this._pickerRowHtml(lk.pivot_unit_id, null, lk.pivot_text ?? ""));
+        addPickerRendered.add(lk.pivot_unit_id);
+      }
+    }
+    body.innerHTML = rows.join("");
 
     const moreBtn = el.querySelector<HTMLElement>("#align-audit-more-btn");
     if (moreBtn) moreBtn.style.display = this._auditHasMore ? "" : "none";
 
-    wrap.querySelectorAll<HTMLElement>(".audit-row").forEach(row => {
-      row.addEventListener("click", (e) => {
-        if ((e.target as HTMLElement).tagName === "INPUT") return;
-        const lid = parseInt(row.dataset.linkId ?? "");
-        const lk = this._auditLinks.find(l => l.link_id === lid);
-        if (lk) this._openFocus(el, lk);
-      });
-    });
+    body.querySelectorAll<HTMLButtonElement>(".prep-align-act-accept").forEach(btn =>
+      btn.addEventListener("click", () => void this._setLinkStatus(el, parseInt(btn.dataset.linkId!), "accepted")));
+    body.querySelectorAll<HTMLButtonElement>(".prep-align-act-reject").forEach(btn =>
+      btn.addEventListener("click", () => void this._setLinkStatus(el, parseInt(btn.dataset.linkId!), "rejected")));
+    body.querySelectorAll<HTMLButtonElement>(".prep-align-act-unreview").forEach(btn =>
+      btn.addEventListener("click", () => void this._setLinkStatus(el, parseInt(btn.dataset.linkId!), null)));
+    body.querySelectorAll<HTMLButtonElement>(".prep-align-act-delete").forEach(btn =>
+      btn.addEventListener("click", () => void this._deleteLink(el, parseInt(btn.dataset.linkId!))));
+    body.querySelectorAll<HTMLButtonElement>(".prep-align-act-retarget").forEach(btn =>
+      btn.addEventListener("click", () => {
+        const linkId = parseInt(btn.dataset.linkId!);
+        const pivotUnitId = parseInt(btn.dataset.pivotUid!);
+        if (this._retargetActive?.linkId === linkId && this._retargetActive.mode === "retarget") {
+          this._retargetActive = null;
+          this._retargetCandidates = null;
+          this._renderBitextBody(el);
+        } else {
+          void this._activateRetarget(el, linkId, pivotUnitId, "retarget");
+        }
+      }));
+    body.querySelectorAll<HTMLButtonElement>(".prep-align-act-addtarget").forEach(btn =>
+      btn.addEventListener("click", () => {
+        const pivotUnitId = parseInt(btn.dataset.pivotUid!);
+        if (this._retargetActive?.pivotUnitId === pivotUnitId && this._retargetActive.mode === "add") {
+          this._retargetActive = null;
+          this._retargetCandidates = null;
+          this._renderBitextBody(el);
+        } else {
+          void this._activateRetarget(el, null, pivotUnitId, "add");
+        }
+      }));
 
-    wrap.querySelectorAll<HTMLInputElement>(".audit-row-cb").forEach(cb => {
+    // Picker events (re-bind after each render)
+    this._bindPickerEvents(el, body);
+
+    body.querySelectorAll<HTMLInputElement>(".prep-align-row-cb").forEach(cb => {
       cb.addEventListener("change", () => {
-        const lid = parseInt(cb.dataset.linkId ?? "");
+        const lid = parseInt(cb.dataset.linkId!);
         if (cb.checked) this._selectedLinkIds.add(lid);
         else this._selectedLinkIds.delete(lid);
         this._updateBatchBar(el);
       });
     });
 
-    const checkAll = wrap.querySelector<HTMLInputElement>("#align-audit-check-all");
-    checkAll?.addEventListener("change", () => {
-      visible.forEach(lk => {
-        if (checkAll.checked) this._selectedLinkIds.add(lk.link_id);
-        else this._selectedLinkIds.delete(lk.link_id);
-      });
-      this._renderAuditTable(el);
-      this._updateBatchBar(el);
-    });
-
     this._updateBatchBar(el);
+  }
+
+  private async _setLinkStatus(el: HTMLElement, linkId: number, status: "accepted" | "rejected" | null): Promise<void> {
+    const conn = this._conn();
+    if (!conn) return;
+    try {
+      await updateAlignLinkStatus(conn, { link_id: linkId, status });
+      const lk = this._auditLinks.find(l => l.link_id === linkId);
+      if (lk) lk.status = status;
+      this._renderBitextBody(el);
+      this._updateTopbarKpi(el);
+    } catch (err) {
+      this._cb.log(`✗ Statut lien : ${err instanceof Error ? err.message : String(err)}`, true);
+    }
+  }
+
+  private async _deleteLink(el: HTMLElement, linkId: number): Promise<void> {
+    const conn = this._conn();
+    if (!conn) return;
+    try {
+      await deleteAlignLink(conn, { link_id: linkId });
+      this._auditLinks = this._auditLinks.filter(l => l.link_id !== linkId);
+      this._selectedLinkIds.delete(linkId);
+      this._renderBitextBody(el);
+      this._updateTopbarKpi(el);
+    } catch (err) {
+      this._cb.log(`✗ Suppression lien : ${err instanceof Error ? err.message : String(err)}`, true);
+    }
+  }
+
+  // ─── Retarget / create-link picker ──────────────────────────────────────────
+
+  /** Generate the HTML for the inline candidate picker row. */
+  private _pickerRowHtml(pivotUnitId: number, linkId: number | null, pivotText: string): string {
+    const candidates = this._retargetCandidates;
+    // target_unit_ids already linked to this pivot (excluding the link being retargeted)
+    const alreadyLinked = new Set(
+      this._auditLinks
+        .filter(l => l.pivot_unit_id === pivotUnitId && l.link_id !== linkId)
+        .map(l => l.target_unit_id)
+    );
+    let content: string;
+    if (candidates === null) {
+      content = `<span class="prep-align-picker-loading">&#8230; chargement des candidats</span>`;
+    } else if (candidates.length === 0) {
+      content = `<span class="prep-align-picker-empty">Aucun candidat trouv&#233;.</span>`;
+    } else {
+      content = candidates.map(c => {
+        const conflict = alreadyLinked.has(c.target_unit_id);
+        return `<button class="prep-align-picker-cand${conflict ? " prep-align-picker-cand--conflict" : ""}"
+          data-uid="${c.target_unit_id}"
+          title="${conflict ? "Déjà lié à ce pivot — sélectionner supprimera le lien existant" : `score ${c.score.toFixed(2)} — ${_esc(c.reason)}`}"
+          ${conflict ? 'data-conflict="1"' : ""}>
+          <span class="prep-align-picker-cand-ext">[§${c.external_id ?? "?"}]</span>
+          <span class="prep-align-picker-cand-text">${_esc(c.target_text.slice(0, 120))}</span>
+          <span class="prep-align-picker-cand-score">${conflict ? "⚠ déjà lié" : `${(c.score * 100).toFixed(0)}%`}</span>
+        </button>`;
+      }).join("");
+    }
+    return `<div class="prep-align-picker-row" data-picker-for="${pivotUnitId}">
+      <div class="prep-align-picker-header">
+        <span>&#9997; Recibler : <em>${_esc(pivotText.slice(0, 60))}</em></span>
+        <button class="btn btn-ghost btn-sm prep-align-picker-cancel" data-pivot-uid="${pivotUnitId}" title="Annuler">&#10005;</button>
+      </div>
+      <div class="prep-align-picker-candidates" id="picker-cands-${pivotUnitId}">${content}</div>
+    </div>`;
+  }
+
+  /** Activate the retarget/create/add picker for a given pivot unit. Fetches candidates async. */
+  private async _activateRetarget(el: HTMLElement, linkId: number | null, pivotUnitId: number, mode: "retarget" | "create" | "add"): Promise<void> {
+    const conn = this._conn();
+    if (!conn) return;
+    const targetId = parseInt(el.querySelector<HTMLSelectElement>("#align-target-sel")?.value ?? "");
+    if (isNaN(targetId)) return;
+
+    this._retargetActive = { pivotUnitId, linkId, mode };
+    this._retargetCandidates = null; // trigger loading state
+    this._renderBitextBody(el);
+    if (mode === "create") this._renderOrphanPivots(el);
+
+    try {
+      const res = await retargetCandidates(conn, { pivot_unit_id: pivotUnitId, target_doc_id: targetId, limit: 8 });
+      this._retargetCandidates = res.candidates;
+    } catch {
+      this._retargetCandidates = [];
+    }
+
+    // Update just the candidates container if picker is still open
+    if (this._retargetActive?.pivotUnitId !== pivotUnitId) return;
+    const candsEl = el.querySelector<HTMLElement>(`#picker-cands-${pivotUnitId}`);
+    if (candsEl) {
+      // Re-use _pickerRowHtml logic isn't possible here (different container), so inline:
+      const candidates = this._retargetCandidates;
+      const active = this._retargetActive;
+      const alreadyLinked = new Set(
+        this._auditLinks
+          .filter(l => l.pivot_unit_id === pivotUnitId && l.link_id !== (active?.linkId ?? null))
+          .map(l => l.target_unit_id)
+      );
+      if (candidates.length === 0) {
+        candsEl.innerHTML = `<span class="prep-align-picker-empty">Aucun candidat trouv\u00e9.</span>`;
+      } else {
+        candsEl.innerHTML = candidates.map(c => {
+          const conflict = alreadyLinked.has(c.target_unit_id);
+          return `<button class="prep-align-picker-cand${conflict ? " prep-align-picker-cand--conflict" : ""}"
+            data-uid="${c.target_unit_id}"
+            title="${conflict ? "D\u00e9j\u00e0 li\u00e9 \u00e0 ce pivot" : `score ${c.score.toFixed(2)} \u2014 ${_esc(c.reason)}`}"
+            ${conflict ? 'data-conflict="1"' : ""}>
+            <span class="prep-align-picker-cand-ext">[§${c.external_id ?? "?"}]</span>
+            <span class="prep-align-picker-cand-text">${_esc(c.target_text.slice(0, 120))}</span>
+            <span class="prep-align-picker-cand-score">${conflict ? "\u26a0 d\u00e9j\u00e0 li\u00e9" : `${(c.score * 100).toFixed(0)}%`}</span>
+          </button>`;
+        }).join("");
+        this._bindPickerCandidateEvents(el, candsEl);
+      }
+    }
+  }
+
+  /** Bind click events on candidate buttons inside a given container. */
+  private _bindPickerCandidateEvents(el: HTMLElement, container: HTMLElement): void {
+    container.querySelectorAll<HTMLButtonElement>(".prep-align-picker-cand").forEach(btn => {
+      if (btn.dataset.conflict) { btn.disabled = true; return; }
+      btn.addEventListener("click", () => void this._doPickerSelect(el, parseInt(btn.dataset.uid!)));
+    });
+  }
+
+  /** Called when user selects a candidate in the picker. */
+  private async _doPickerSelect(el: HTMLElement, targetUnitId: number): Promise<void> {
+    const conn = this._conn();
+    if (!conn || !this._retargetActive) return;
+    const { linkId, pivotUnitId, mode } = this._retargetActive;
+    try {
+      if (mode === "retarget" && linkId !== null) {
+        const res = await retargetAlignLink(conn, { link_id: linkId, new_target_unit_id: targetUnitId });
+        const lk = this._auditLinks.find(l => l.link_id === linkId);
+        if (lk) {
+          const cand = this._retargetCandidates?.find(c => c.target_unit_id === targetUnitId);
+          lk.target_unit_id = res.new_target_unit_id;
+          if (cand) lk.target_text = cand.target_text;
+        }
+        this._cb.toast(`✓ Lien ${linkId} reciblé`);
+      } else if (mode === "create" || mode === "add") {
+        const res = await createAlignLink(conn, { pivot_unit_id: pivotUnitId, target_unit_id: targetUnitId });
+        const cand = this._retargetCandidates?.find(c => c.target_unit_id === targetUnitId);
+        // For "create" (orphan), find the pivot text from orphan list; for "add", find from existing links
+        const pivotText = mode === "create"
+          ? (this._orphanPivots.find(u => u.unit_id === pivotUnitId)?.text_norm ?? "")
+          : (this._auditLinks.find(l => l.pivot_unit_id === pivotUnitId)?.pivot_text ?? "");
+        const newLink: AlignLinkRecord = {
+          link_id: res.link_id,
+          pivot_unit_id: pivotUnitId,
+          target_unit_id: targetUnitId,
+          external_id: cand?.external_id ?? null,
+          pivot_text: pivotText,
+          target_text: cand?.target_text ?? "",
+          status: res.status,
+        };
+        this._auditLinks.push(newLink);
+        if (mode === "create") {
+          this._orphanPivots = this._orphanPivots.filter(u => u.unit_id !== pivotUnitId);
+        }
+        const hint = mode === "add" ? " — acceptez les deux liens pour valider l'alignement multiple" : "";
+        this._cb.toast(`✓ Lien créé${hint}`);
+      }
+    } catch (err) {
+      this._cb.log(`✗ ${mode === "retarget" ? "Reciblage" : "Création lien"} : ${err instanceof Error ? err.message : String(err)}`, true);
+    }
+    this._retargetActive = null;
+    this._retargetCandidates = null;
+    this._renderBitextBody(el);
+    this._renderOrphanPivots(el);
+    this._updateTopbarKpi(el);
+  }
+
+  /** Bind picker row cancel + candidate buttons after bitext re-render. */
+  private _bindPickerEvents(el: HTMLElement, body: HTMLElement): void {
+    body.querySelectorAll<HTMLButtonElement>(".prep-align-picker-cancel").forEach(btn => {
+      btn.addEventListener("click", () => {
+        this._retargetActive = null;
+        this._retargetCandidates = null;
+        this._renderBitextBody(el);
+        this._renderOrphanPivots(el);
+      });
+    });
+    body.querySelectorAll<HTMLElement>(".prep-align-picker-candidates").forEach(candsEl => {
+      this._bindPickerCandidateEvents(el, candsEl);
+    });
+  }
+
+  // ─── Orphan pivot section ────────────────────────────────────────────────────
+
+  private async _loadOrphanPivots(el: HTMLElement): Promise<void> {
+    const conn = this._conn();
+    if (!conn) return;
+    const pivotId = parseInt(el.querySelector<HTMLSelectElement>("#align-pivot-sel")?.value ?? "");
+    if (isNaN(pivotId)) return;
+    const bodyEl = el.querySelector<HTMLElement>("#align-orphan-body");
+    if (bodyEl) bodyEl.innerHTML = `<p class="hint">&#8230; chargement</p>`;
+    try {
+      const units = await listUnits(conn, pivotId);
+      const linkedIds = new Set(this._auditLinks.map(l => l.pivot_unit_id));
+      // Only text units (not structure), not already linked
+      this._orphanPivots = units.filter(u => u.unit_type === "line" && !linkedIds.has(u.unit_id));
+      this._orphansLoaded = true;
+      this._renderOrphanPivots(el);
+    } catch (err) {
+      if (bodyEl) bodyEl.innerHTML = `<p class="hint">Erreur : ${_esc(err instanceof Error ? err.message : String(err))}</p>`;
+    }
+  }
+
+  private _renderOrphanPivots(el: HTMLElement): void {
+    const bodyEl = el.querySelector<HTMLElement>("#align-orphan-body");
+    if (!bodyEl || !this._orphansLoaded) return;
+    if (this._orphanPivots.length === 0) {
+      bodyEl.innerHTML = `<p class="hint">&#10003; Aucun orphelin &#8212; tous les segments ont au moins un lien.</p>`;
+      return;
+    }
+    bodyEl.innerHTML = this._orphanPivots.map(u => {
+      const isOpen = this._retargetActive?.pivotUnitId === u.unit_id && this._retargetActive.mode === "create";
+      return `<div class="prep-align-orphan-row${isOpen ? " prep-align-orphan-row--active" : ""}" data-unit-id="${u.unit_id}">
+        <span class="prep-align-row-extid">[§${u.n}]</span>
+        <span class="prep-align-orphan-text">${_esc(u.text_norm?.slice(0, 100) ?? "")}</span>
+        <button class="btn btn-sm btn-secondary prep-align-orphan-link-btn${isOpen ? " active" : ""}" data-unit-id="${u.unit_id}" title="Créer un lien pour ce segment">&#8629; Lier</button>
+      </div>${isOpen ? this._pickerRowHtml(u.unit_id, null, u.text_norm ?? "") : ""}`;
+    }).join("");
+    bodyEl.querySelectorAll<HTMLButtonElement>(".prep-align-orphan-link-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const uid = parseInt(btn.dataset.unitId!);
+        if (this._retargetActive?.pivotUnitId === uid) {
+          this._retargetActive = null;
+          this._retargetCandidates = null;
+          this._renderOrphanPivots(el);
+        } else {
+          void this._activateRetarget(el, null, uid, "create");
+        }
+      });
+    });
+    // Bind picker events in orphan section
+    bodyEl.querySelectorAll<HTMLButtonElement>(".prep-align-picker-cancel").forEach(btn => {
+      btn.addEventListener("click", () => {
+        this._retargetActive = null;
+        this._retargetCandidates = null;
+        this._renderOrphanPivots(el);
+      });
+    });
+    bodyEl.querySelectorAll<HTMLElement>(".prep-align-picker-candidates").forEach(candsEl => {
+      this._bindPickerCandidateEvents(el, candsEl);
+    });
+  }
+
+  private _scrollToNextUnreviewed(el: HTMLElement): void {
+    const body = el.querySelector<HTMLElement>("#align-bitext-body");
+    if (!body) return;
+    const rows = Array.from(body.querySelectorAll<HTMLElement>(".prep-align-row--unreviewed"));
+    if (rows.length === 0) { this._cb.toast("Aucun lien non révisé visible."); return; }
+    rows[0].scrollIntoView({ behavior: "smooth", block: "nearest" });
+    rows[0].classList.add("prep-align-row--highlight");
+    setTimeout(() => rows[0].classList.remove("prep-align-row--highlight"), 1200);
+  }
+
+  private _updateTopbarKpi(el: HTMLElement): void {
+    const kpi = el.querySelector<HTMLElement>("#align-topbar-kpi");
+    if (!kpi) return;
+    if (this._auditLinks.length === 0) { kpi.style.display = "none"; return; }
+    const accepted = this._auditLinks.filter(l => l.status === "accepted").length;
+    const rejected = this._auditLinks.filter(l => l.status === "rejected").length;
+    const unreviewed = this._auditLinks.filter(l => l.status === null).length;
+    const collBadge = this._lastCollisionCount > 0
+      ? ` <button id="align-coll-toggle" class="prep-align-coll-badge" title="Voir et r\u00e9soudre les collisions">&#9888; ${this._lastCollisionCount} collision(s)</button>`
+      : "";
+    kpi.style.display = "";
+    kpi.innerHTML = `<span class="kpi-ok">&#10003;${accepted}</span> <span class="kpi-err">&#10007;${rejected}</span> <span class="kpi-muted">?${unreviewed}</span>${collBadge}`;
+    kpi.querySelector("#align-coll-toggle")?.addEventListener("click", () => {
+      const section = el.querySelector<HTMLElement>("#align-coll-section");
+      if (!section) return;
+      const isOpen = section.style.display !== "none";
+      section.style.display = isOpen ? "none" : "";
+      if (!isOpen) {
+        section.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        this._collOffset = 0; this._collGroups = [];
+        void this._loadCollisionsPage(el, false);
+      }
+    });
   }
 
   private _updateBatchBar(el: HTMLElement): void {
@@ -1139,69 +1338,6 @@ export class AlignPanel {
     const n = this._selectedLinkIds.size;
     if (count) count.textContent = `${n} sélectionné(s)`;
     if (bar) bar.style.display = n > 0 ? "" : "none";
-  }
-
-  // ─── Focus panel ─────────────────────────────────────────────────────────────
-
-  private _openFocus(el: HTMLElement, lk: AlignLinkRecord): void {
-    this._selectedLinkId = lk.link_id;
-    const panel = el.querySelector<HTMLElement>("#align-focus-panel");
-    if (!panel) return;
-    panel.style.display = "";
-    const meta = el.querySelector<HTMLElement>("#align-focus-meta");
-    if (meta) meta.textContent = `Lien #${lk.link_id} · ${lk.status ?? "non révisé"}`;
-    (el.querySelector("#align-focus-pivot-text") as HTMLElement).textContent = lk.pivot_text ?? "";
-    (el.querySelector("#align-focus-target-text") as HTMLElement).textContent = lk.target_text ?? "";
-    el.querySelectorAll(".audit-row").forEach(r =>
-      r.classList.toggle("audit-row-focused", (r as HTMLElement).dataset.linkId === String(lk.link_id)));
-  }
-
-  private _closeFocus(el: HTMLElement): void {
-    this._selectedLinkId = null;
-    const panel = el.querySelector<HTMLElement>("#align-focus-panel");
-    if (panel) panel.style.display = "none";
-    el.querySelectorAll(".audit-row").forEach(r => r.classList.remove("audit-row-focused"));
-  }
-
-  private async _focusSetStatus(el: HTMLElement, status: "accepted" | "rejected" | null): Promise<void> {
-    if (this._selectedLinkId == null) return;
-    const conn = this._conn();
-    if (!conn) return;
-    try {
-      await updateAlignLinkStatus(conn, { link_id: this._selectedLinkId, status });
-      const lk = this._auditLinks.find(l => l.link_id === this._selectedLinkId);
-      if (lk) lk.status = status;
-      this._renderAuditTable(el);
-      this._focusNextException(el);
-    } catch (err) {
-      this._cb.log(`✗ Mise à jour statut : ${err instanceof Error ? err.message : String(err)}`, true);
-    }
-  }
-
-  private async _focusDelete(el: HTMLElement): Promise<void> {
-    if (this._selectedLinkId == null) return;
-    const conn = this._conn();
-    if (!conn) return;
-    const confirmed = await this._inlineConfirm(el, `Supprimer le lien #${this._selectedLinkId} ?`);
-    if (!confirmed) return;
-    try {
-      await deleteAlignLink(conn, { link_id: this._selectedLinkId });
-      this._auditLinks = this._auditLinks.filter(l => l.link_id !== this._selectedLinkId);
-      this._closeFocus(el);
-      this._renderAuditTable(el);
-    } catch (err) {
-      this._cb.log(`✗ Suppression lien : ${err instanceof Error ? err.message : String(err)}`, true);
-    }
-  }
-
-  private _focusNextException(el: HTMLElement): void {
-    const reviewable = this._auditLinks.filter(l => l.status !== "accepted");
-    if (reviewable.length === 0) return;
-    const idx = this._selectedLinkId != null
-      ? reviewable.findIndex(l => l.link_id === this._selectedLinkId)
-      : -1;
-    const next = reviewable[idx + 1] ?? reviewable[0];
-    if (next) this._openFocus(el, next);
   }
 
   // ─── Batch actions ───────────────────────────────────────────────────────────
@@ -1219,7 +1355,8 @@ export class AlignPanel {
         if (lk) lk.status = status;
       });
       this._selectedLinkIds.clear();
-      this._renderAuditTable(el);
+      this._renderBitextBody(el);
+      this._updateTopbarKpi(el);
       this._cb.toast(`✓ ${ids.length} lien(s) mis à jour`);
     } catch (err) {
       this._cb.log(`✗ Action lot : ${err instanceof Error ? err.message : String(err)}`, true);
@@ -1238,7 +1375,8 @@ export class AlignPanel {
       await batchUpdateAlignLinks(conn, actions);
       this._auditLinks = this._auditLinks.filter(l => !this._selectedLinkIds.has(l.link_id));
       this._selectedLinkIds.clear();
-      this._renderAuditTable(el);
+      this._renderBitextBody(el);
+      this._updateTopbarKpi(el);
       this._cb.toast(`✓ ${ids.length} lien(s) supprimé(s)`);
     } catch (err) {
       this._cb.log(`✗ Suppression lot : ${err instanceof Error ? err.message : String(err)}`, true);
@@ -1263,132 +1401,18 @@ export class AlignPanel {
 
   dispose(): void {
     this._pendingConfirm = null;
+    this._retargetActive = null;
+    this._retargetCandidates = null;
     this._el = null;
-  }
-
-  // ─── Sections secondaires : qualité, collisions, runs ────────────────────────
-
-  private _populateQualityCollisionSelects(el: HTMLElement): void {
-    const docs = this._getDocs();
-    const selIds = ["#align-qc-pivot", "#align-qc-target", "#align-coll-pivot", "#align-coll-target"];
-    for (const id of selIds) {
-      const sel = el.querySelector<HTMLSelectElement>(id);
-      if (!sel) continue;
-      const prev = sel.value;
-      sel.innerHTML = `<option value="">&#8212; choisir &#8212;</option>`;
-      for (const d of docs) {
-        const opt = document.createElement("option");
-        opt.value = String(d.doc_id);
-        opt.textContent = `${d.title} (${d.language ?? "?"})`;
-        if (String(d.doc_id) === prev) opt.selected = true;
-        sel.appendChild(opt);
-      }
-    }
-    const hasDoc = docs.length > 0;
-    const qcBtn = el.querySelector<HTMLButtonElement>("#align-qc-btn");
-    const collBtn = el.querySelector<HTMLButtonElement>("#align-coll-load-btn");
-    const reportBtn = el.querySelector<HTMLButtonElement>("#align-report-btn");
-    if (qcBtn) qcBtn.disabled = !hasDoc;
-    if (collBtn) collBtn.disabled = !hasDoc;
-    if (reportBtn) reportBtn.disabled = !hasDoc;
-  }
-
-  private async _runAlignQuality(el: HTMLElement): Promise<void> {
-    const conn = this._conn();
-    if (!conn) return;
-    const pivotSel = el.querySelector<HTMLSelectElement>("#align-qc-pivot");
-    const targetSel = el.querySelector<HTMLSelectElement>("#align-qc-target");
-    const pivot = pivotSel?.value ? parseInt(pivotSel.value) : null;
-    const target = targetSel?.value ? parseInt(targetSel.value) : null;
-    if (!pivot || !target) {
-      this._cb.log("Qualité : sélectionnez un doc pivot et un doc cible.", true);
-      return;
-    }
-    const btn = el.querySelector<HTMLButtonElement>("#align-qc-btn")!;
-    btn.disabled = true;
-    btn.textContent = "Calcul…";
-    this._cb.log(`Calcul métriques qualité pivot #${pivot} ↔ cible #${target}…`);
-    try {
-      const res: AlignQualityResponse = await alignQuality(conn, pivot, target);
-      const s = res.stats;
-      const resultEl = el.querySelector<HTMLElement>("#align-qc-result")!;
-      resultEl.style.display = "";
-      resultEl.innerHTML = `
-        <div class="prep-quality-stats-grid">
-          <div class="prep-quality-stat">
-            <span class="prep-quality-label">Couverture pivot</span>
-            <span class="prep-quality-value ${s.coverage_pct >= 90 ? "ok" : s.coverage_pct >= 60 ? "warn" : "err"}">
-              ${s.coverage_pct}% (${s.covered_pivot_units}/${s.total_pivot_units})
-            </span>
-          </div>
-          <div class="prep-quality-stat">
-            <span class="prep-quality-label">Liens total</span>
-            <span class="prep-quality-value">${s.total_links}</span>
-          </div>
-          <div class="prep-quality-stat">
-            <span class="prep-quality-label">Orphelins pivot</span>
-            <span class="prep-quality-value ${s.orphan_pivot_count === 0 ? "ok" : "warn"}">${s.orphan_pivot_count}</span>
-          </div>
-          <div class="prep-quality-stat">
-            <span class="prep-quality-label">Orphelins cible</span>
-            <span class="prep-quality-value ${s.orphan_target_count === 0 ? "ok" : "warn"}">${s.orphan_target_count}</span>
-          </div>
-          <div class="prep-quality-stat">
-            <span class="prep-quality-label">Collisions</span>
-            <span class="prep-quality-value ${s.collision_count === 0 ? "ok" : "err"}">${s.collision_count}</span>
-          </div>
-          <div class="prep-quality-stat">
-            <span class="prep-quality-label">Statuts</span>
-            <span class="prep-quality-value">
-              ✓${s.status_counts.accepted} ✗${s.status_counts.rejected} ?${s.status_counts.unreviewed}
-            </span>
-          </div>
-        </div>
-        ${res.sample_orphan_pivot.length > 0 ? `
-        <details style="margin-top:0.5rem">
-          <summary style="cursor:pointer;font-size:0.85rem;color:var(--text-muted)">
-            Exemples orphelins pivot (${res.sample_orphan_pivot.length})
-          </summary>
-          <div style="font-size:0.82rem;margin-top:0.3rem">
-            ${res.sample_orphan_pivot.map(o => `<div>[§${o.external_id ?? "?"}] ${o.text ?? ""}</div>`).join("")}
-          </div>
-        </details>` : ""}
-        ${res.sample_orphan_target.length > 0 ? `
-        <details style="margin-top:0.4rem">
-          <summary style="cursor:pointer;font-size:0.85rem;color:var(--text-muted)">
-            Exemples orphelins cible (${res.sample_orphan_target.length})
-          </summary>
-          <div style="font-size:0.82rem;margin-top:0.3rem">
-            ${res.sample_orphan_target.map(o => `<div>[§${o.external_id ?? "?"}] ${o.text ?? ""}</div>`).join("")}
-          </div>
-        </details>` : ""}
-      `;
-      // Update KPIs from quality result
-      const updKpi = (id: string, value: string, cls?: string) => {
-        const kpiEl = el.querySelector(`#${id}`);
-        if (kpiEl) { kpiEl.textContent = value; if (cls) kpiEl.className = `align-kpi-value ${cls}`; }
-      };
-      updKpi("act-kpi-coverage", `${s.coverage_pct}%`, s.coverage_pct >= 90 ? "ok" : s.coverage_pct >= 60 ? "warn" : "bad");
-      updKpi("act-kpi-orphan-p", String(s.orphan_pivot_count), s.orphan_pivot_count === 0 ? "ok" : "warn");
-      updKpi("act-kpi-orphan-t", String(s.orphan_target_count ?? 0), (s.orphan_target_count ?? 0) === 0 ? "ok" : "warn");
-      this._cb.log(`Qualité : couverture ${s.coverage_pct}%, orphelins=${s.orphan_pivot_count}p/${s.orphan_target_count}c, collisions=${s.collision_count}`);
-    } catch (err) {
-      this._cb.log(`Erreur qualité : ${err instanceof SidecarError ? err.message : String(err)}`, true);
-    } finally {
-      btn.disabled = false;
-      btn.textContent = "Calculer métriques";
-    }
   }
 
   private async _loadCollisionsPage(el: HTMLElement, append: boolean): Promise<void> {
     const conn = this._conn();
     if (!conn) return;
-    const pivotSel = el.querySelector<HTMLSelectElement>("#align-coll-pivot");
-    const targetSel = el.querySelector<HTMLSelectElement>("#align-coll-target");
-    const pivotId = parseInt(pivotSel?.value ?? "");
-    const targetId = parseInt(targetSel?.value ?? "");
+    const pivotId = parseInt(el.querySelector<HTMLSelectElement>("#align-pivot-sel")?.value ?? "");
+    const targetId = parseInt(el.querySelector<HTMLSelectElement>("#align-target-sel")?.value ?? "");
     if (!pivotId || !targetId) {
-      this._cb.toast("Sélectionnez un pivot et une cible.", true);
+      this._cb.toast("Chargez d'abord une paire dans l'éditeur bitext.", true);
       return;
     }
     if (!append) { this._collOffset = 0; this._collGroups = []; }
@@ -1403,7 +1427,9 @@ export class AlignPanel {
       this._collGroups = append ? [...this._collGroups, ...res.collisions] : res.collisions;
       this._collHasMore = res.has_more;
       this._collOffset = res.next_offset;
+      this._lastCollisionCount = this._collTotalCount;
       this._renderCollisionTable(el, targetId);
+      this._updateTopbarKpi(el);
       this._cb.log(`Collisions : ${this._collTotalCount} groupe(s) trouvé(s).`);
     } catch (err) {
       this._cb.log(`Erreur collisions : ${err instanceof SidecarError ? err.message : String(err)}`, true);
@@ -1504,126 +1530,6 @@ export class AlignPanel {
     }
   }
 
-  private async _refreshAlignRunsCompare(el: HTMLElement): Promise<void> {
-    const conn = this._conn();
-    const hintEl = el.querySelector<HTMLElement>("#align-rc-hint");
-    const btn = el.querySelector<HTMLButtonElement>("#align-rc-refresh");
-    if (!conn) { if (hintEl) hintEl.textContent = "Aucune connexion sidecar."; return; }
-    if (btn) btn.disabled = true;
-    if (hintEl) hintEl.textContent = "Chargement…";
-    try {
-      const res = await listRuns(conn, { kind: "align", limit: 80 });
-      this._alignRunsCompareCache = res.runs ?? [];
-      const selA = el.querySelector<HTMLSelectElement>("#align-rc-a");
-      const selB = el.querySelector<HTMLSelectElement>("#align-rc-b");
-      const fill = (sel: HTMLSelectElement | null) => {
-        if (!sel) return;
-        const prev = sel.value;
-        sel.innerHTML = `<option value="">&#8212;</option>`;
-        for (const r of this._alignRunsCompareCache) {
-          const opt = document.createElement("option");
-          opt.value = r.run_id;
-          opt.textContent = this._alignRunSelectLabel(r);
-          sel.appendChild(opt);
-        }
-        if (prev && this._alignRunsCompareCache.some(x => x.run_id === prev)) sel.value = prev;
-      };
-      fill(selA);
-      fill(selB);
-      const n = this._alignRunsCompareCache.length;
-      if (hintEl) {
-        hintEl.textContent = n === 0
-          ? "Aucun run d'alignement en base. Lancez un alignement puis rechargez."
-          : `${n} run(s) — choisissez deux entrées pour comparer.`;
-      }
-      this._updateAlignRunCompareDiff(el);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      if (hintEl) hintEl.textContent = `Erreur : ${msg}`;
-      this._cb.log(`Runs /runs : ${msg}`, true);
-    } finally {
-      if (btn) btn.disabled = false;
-    }
-  }
-
-  private _alignRunSelectLabel(r: RunRecord): string {
-    const p = r.params && typeof r.params === "object" ? r.params as Record<string, unknown> : {};
-    const s = r.stats && typeof r.stats === "object" ? r.stats as Record<string, unknown> : {};
-    const strat = String(p.strategy ?? s.strategy ?? "?");
-    const piv = p.pivot_doc_id ?? s.pivot_doc_id;
-    const date = (r.created_at || "").slice(0, 10);
-    const shortId = r.run_id.length > 12 ? `${r.run_id.slice(0, 8)}…` : r.run_id;
-    return `${date} · ${strat} · pivot ${piv ?? "?"} · ${shortId}`;
-  }
-
-  private _pickAlignRunParams(r: RunRecord): Record<string, unknown> {
-    const p = r.params && typeof r.params === "object" ? r.params as Record<string, unknown> : {};
-    const s = r.stats && typeof r.stats === "object" ? r.stats as Record<string, unknown> : {};
-    return {
-      strategy: p.strategy ?? s.strategy,
-      pivot_doc_id: p.pivot_doc_id ?? s.pivot_doc_id,
-      target_doc_ids: p.target_doc_ids ?? s.target_doc_ids,
-      debug_align: p.debug_align ?? s.debug_align,
-      replace_existing: p.replace_existing ?? s.replace_existing,
-      preserve_accepted: p.preserve_accepted ?? s.preserve_accepted,
-    };
-  }
-
-  private _pickAlignRunStats(r: RunRecord): Record<string, unknown> {
-    const s = r.stats && typeof r.stats === "object" ? r.stats as Record<string, unknown> : {};
-    return {
-      total_links_created: s.total_links_created,
-      total_effective_links: s.total_effective_links,
-      deleted_before: s.deleted_before,
-      preserved_before: s.preserved_before,
-    };
-  }
-
-  private _fmtRunCell(v: unknown): string {
-    if (v === undefined || v === null) return "—";
-    if (typeof v === "object") return JSON.stringify(v);
-    return String(v);
-  }
-
-  private _updateAlignRunCompareDiff(el: HTMLElement): void {
-    const resultEl = el.querySelector<HTMLElement>("#align-rc-result");
-    if (!resultEl) return;
-    const idA = el.querySelector<HTMLSelectElement>("#align-rc-a")?.value ?? "";
-    const idB = el.querySelector<HTMLSelectElement>("#align-rc-b")?.value ?? "";
-    if (!idA || !idB || idA === idB) { resultEl.style.display = "none"; resultEl.innerHTML = ""; return; }
-    const runA = this._alignRunsCompareCache.find(x => x.run_id === idA);
-    const runB = this._alignRunsCompareCache.find(x => x.run_id === idB);
-    if (!runA || !runB) { resultEl.style.display = "none"; return; }
-    const pa = this._pickAlignRunParams(runA);
-    const pb = this._pickAlignRunParams(runB);
-    const sta = this._pickAlignRunStats(runA);
-    const stb = this._pickAlignRunStats(runB);
-    const rows: Array<{ label: string; a: unknown; b: unknown }> = [
-      { label: "run_id", a: runA.run_id, b: runB.run_id },
-      { label: "created_at", a: runA.created_at, b: runB.created_at },
-      { label: "strategy", a: pa.strategy, b: pb.strategy },
-      { label: "pivot_doc_id", a: pa.pivot_doc_id, b: pb.pivot_doc_id },
-      { label: "target_doc_ids", a: pa.target_doc_ids, b: pb.target_doc_ids },
-      { label: "debug_align", a: pa.debug_align, b: pb.debug_align },
-      { label: "replace_existing", a: pa.replace_existing, b: pb.replace_existing },
-      { label: "preserve_accepted", a: pa.preserve_accepted, b: pb.preserve_accepted },
-      { label: "total_links_created", a: sta.total_links_created, b: stb.total_links_created },
-      { label: "total_effective_links", a: sta.total_effective_links, b: stb.total_effective_links },
-      { label: "deleted_before", a: sta.deleted_before, b: stb.deleted_before },
-      { label: "preserved_before", a: sta.preserved_before, b: stb.preserved_before },
-    ];
-    let html = `<table class="prep-meta-table prep-act-run-compare-table" role="region" aria-label="Comparaison de runs"><thead><tr><th>Champ</th><th>Run A</th><th>Run B</th><th></th></tr></thead><tbody>`;
-    for (const row of rows) {
-      const sa = this._fmtRunCell(row.a);
-      const sb = this._fmtRunCell(row.b);
-      const match = sa === sb;
-      const icon = match ? '<span title="Identique">=</span>' : '<span title="Différent" style="color:var(--color-warning,#b45309)">≠</span>';
-      html += `<tr><td>${_esc(row.label)}</td><td><code>${_esc(sa)}</code></td><td><code>${_esc(sb)}</code></td><td><span aria-hidden="true">${icon}</span></td></tr>`;
-    }
-    html += `</tbody></table>`;
-    resultEl.innerHTML = html;
-    resultEl.style.display = "";
-  }
 }
 
 // ─── Utilitaires ─────────────────────────────────────────────────────────────
@@ -1634,4 +1540,53 @@ function _esc(s: string): string {
 
 function _trunc(s: string, max: number): string {
   return s.length > max ? s.slice(0, max) + "…" : s;
+}
+
+/**
+ * Render a word-level diff between two texts.
+ * Returns [pivotHtml, targetHtml] with unmatched spans wrapped in
+ * <mark class="align-diff-unmatched">.
+ * Uses a greedy longest-common-subsequence on word tokens.
+ */
+function _wordDiff(a: string, b: string): [string, string] {
+  const tokA = a.split(/(\s+)/);
+  const tokB = b.split(/(\s+)/);
+  const wordsA = tokA.filter((_, i) => i % 2 === 0);
+  const wordsB = tokB.filter((_, i) => i % 2 === 0);
+  const spacesA = tokA.filter((_, i) => i % 2 === 1);
+  const spacesB = tokB.filter((_, i) => i % 2 === 1);
+
+  // LCS on normalised words
+  const normA = wordsA.map(w => w.toLowerCase().replace(/[.,;:!?«»""'']/g, ""));
+  const normB = wordsB.map(w => w.toLowerCase().replace(/[.,;:!?«»""'']/g, ""));
+  const m = normA.length, n = normB.length;
+  const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = 1; i <= m; i++)
+    for (let j = 1; j <= n; j++)
+      dp[i][j] = normA[i - 1] === normB[j - 1] ? dp[i - 1][j - 1] + 1 : Math.max(dp[i - 1][j], dp[i][j - 1]);
+
+  // Backtrack
+  const matchedA = new Set<number>(), matchedB = new Set<number>();
+  let i = m, j = n;
+  while (i > 0 && j > 0) {
+    if (normA[i - 1] === normB[j - 1]) { matchedA.add(i - 1); matchedB.add(j - 1); i--; j--; }
+    else if (dp[i - 1][j] >= dp[i][j - 1]) i--;
+    else j--;
+  }
+
+  const renderSide = (words: string[], spaces: string[], matched: Set<number>): string => {
+    let out = "";
+    let inMark = false;
+    for (let k = 0; k < words.length; k++) {
+      const isMatch = matched.has(k);
+      if (!isMatch && !inMark)  { out += `<mark class="align-diff-unmatched">`; inMark = true; }
+      if (isMatch  &&  inMark)  { out += `</mark>`; inMark = false; }
+      out += _esc(words[k]);
+      if (k < spaces.length) out += _esc(spaces[k]);
+    }
+    if (inMark) out += `</mark>`;
+    return out;
+  };
+
+  return [renderSide(wordsA, spacesA, matchedA), renderSide(wordsB, spacesB, matchedB)];
 }

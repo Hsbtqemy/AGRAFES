@@ -3710,6 +3710,43 @@
         "summary": "Clear source_changed_at flag on alignment links (mark as reviewed)"
       }
     },
+    "/align/link/create": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlignLinkCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Created"
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "409": {
+            "description": "Conflict — link already exists"
+          }
+        },
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "summary": "Manually create an alignment link between two units"
+      }
+    },
     "/align/link/delete": {
       "post": {
         "requestBody": {
@@ -5678,6 +5715,80 @@
         "summary": "Resegment document"
       }
     },
+    "/segment/apply_propagated": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "doc_id": {
+                    "type": "integer"
+                  },
+                  "units": {
+                    "items": {
+                      "properties": {
+                        "role": {
+                          "type": "string"
+                        },
+                        "text": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "enum": [
+                            "line",
+                            "structure"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "text"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "doc_id",
+                  "units"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Units written count"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Document not found"
+          }
+        },
+        "summary": "Write pre-computed propagated segmentation to DB (token required)"
+      }
+    },
     "/segment/detect_markers": {
       "post": {
         "requestBody": {
@@ -5725,6 +5836,65 @@
         "summary": "Detect [N] markers in existing units (read-only)"
       }
     },
+    "/segment/insert_structure_unit": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "before_n": {
+                    "type": "integer"
+                  },
+                  "doc_id": {
+                    "type": "integer"
+                  },
+                  "role": {
+                    "type": "string"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "doc_id",
+                  "before_n",
+                  "text"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Inserted unit info"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Document not found"
+          }
+        },
+        "summary": "Insert a structure unit before a given n (token required)"
+      }
+    },
     "/segment/preview": {
       "post": {
         "requestBody": {
@@ -5770,6 +5940,191 @@
           }
         },
         "summary": "Preview segmentation in-memory (no DB writes)"
+      }
+    },
+    "/segment/propagate_preview": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "doc_id": {
+                    "type": "integer"
+                  },
+                  "lang": {
+                    "type": "string"
+                  },
+                  "pack": {
+                    "type": "string"
+                  },
+                  "reference_doc_id": {
+                    "type": "integer"
+                  },
+                  "section_mapping": {
+                    "items": {
+                      "items": {
+                        "type": "integer"
+                      },
+                      "type": "array"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "doc_id",
+                  "reference_doc_id"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Propagated segmentation preview with per-section results"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request"
+          }
+        },
+        "summary": "Section-aware segmentation preview (no DB writes)"
+      }
+    },
+    "/segment/structure_diff": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "doc_id": {
+                    "type": "integer"
+                  },
+                  "reference_doc_id": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "doc_id",
+                  "reference_doc_id"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Structure diff with matched/missing/extra sections"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request"
+          }
+        },
+        "summary": "Compare structure units between two documents"
+      }
+    },
+    "/segment/structure_sections": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "doc_id": {
+                    "type": "integer"
+                  },
+                  "reference_doc_id": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "doc_id",
+                  "reference_doc_id"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Ref and target section lists"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request"
+          }
+        },
+        "summary": "Return structure section lists for two documents"
+      }
+    },
+    "/segment/zone_lines": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "doc_id": {
+                    "type": "integer"
+                  },
+                  "from_n": {
+                    "type": "integer"
+                  },
+                  "to_n": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "doc_id"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "List of line units in the zone"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request"
+          }
+        },
+        "summary": "Return raw line units in a zone bounded by n values"
       }
     },
     "/shutdown": {
@@ -6379,6 +6734,69 @@
           }
         },
         "summary": "Split one unit into two"
+      }
+    },
+    "/units/update_text": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "text_norm": {
+                    "description": "New normalised text (if omitted, mirrored from text_raw)",
+                    "type": "string"
+                  },
+                  "text_raw": {
+                    "description": "New raw text (if omitted, unchanged)",
+                    "type": "string"
+                  },
+                  "unit_id": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "unit_id"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                }
+              }
+            },
+            "description": "Unit updated"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unit not found"
+          }
+        },
+        "summary": "Update text_raw and/or text_norm for one unit (token required)"
       }
     },
     "/validate-meta": {

@@ -18,7 +18,7 @@ def _safe_comment_value(value: object) -> str:
 def _conllu_field(value: object) -> str:
     if value is None:
         return "_"
-    txt = str(value).strip()
+    txt = str(value).strip().replace("\t", " ")
     return txt if txt else "_"
 
 

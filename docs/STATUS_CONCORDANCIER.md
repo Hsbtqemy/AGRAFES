@@ -1,6 +1,6 @@
 # Status — Concordancier (tauri-app) V0 → V1
 
-**Last updated:** 2026-03-01 (V1.1: query builder guards + parallel KWIC + virtualised hits)
+**Last updated:** 2026-04-19 (Shell — fix installation DB démo : shutdown propre + un seul clic)
 
 ---
 
@@ -50,6 +50,26 @@
 - [x] JS DOM cap: `VIRT_DOM_CAP = 150` — `renderResults()` keeps at most 150 cards in DOM
   When `hits.length > cap`, a `.virt-top-info` banner shows "▲ N résultats précédents non affichés"
   `state.hits` retains full list; IntersectionObserver + "Charger plus" unchanged
+
+## Shell — Fix installation DB démo (2026-04-19) — fait
+
+### Problème
+
+L'installation de la DB démo nécessitait deux clics (Installer puis Ouvrir Explorer) et provoquait un `SidecarError: Timeout waiting for sidecar startup JSON` au premier clic.
+
+### Causes
+
+1. **Sidecar non arrêté avant réinstallation** : `_installDemo()` notifiait `_dbListeners(null)` (efface l'état UI) mais n'envoyait pas `POST /shutdown` — le sidecar continuait à tourner, son portfile restait valide.
+2. **`ensureRunning` réutilisait la connexion stale** : portfile trouvé → health check OK → connexion retournée → module tente une requête → process mort entre-temps → timeout.
+3. **`_switchDb` ne navigue pas** : depuis la home, il affiche juste un toast sans ouvrir Explorer.
+
+### Fix (`tauri-shell/src/shell.ts`)
+
+- `_installDemo()` : appel `shutdownSidecar(conn)` via import dynamique du sidecarClient avant d'écrire la DB. Polling du portfile (max 4 s, intervalles 150 ms) pour confirmer l'arrêt du process. Déconnecte `_currentDbPath` quel que soit le DB actif (pas seulement si c'est la démo).
+- Handler "Installer" : appelle `_switchDb(demoPath)` (lance `_initDb` → sidecar → listeners) puis `_setMode("explorer", { force: true })` — un seul clic suffit.
+- Handler "Ouvrir Explorer" : même séquence `_switchDb` + `_setMode`.
+
+---
 
 ## Confirmed green
 
