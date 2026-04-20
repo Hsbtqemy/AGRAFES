@@ -143,12 +143,12 @@ def import_conllu(
     log = run_logger or logger
     log.info("Starting import of %s (mode=conllu)", path)
 
-    source_hash = _compute_file_hash(path)
-    assert_not_duplicate_import(conn, path, source_hash, check_filename=check_filename)
-
     _MAX_FILE_BYTES = 512 * 1024 * 1024  # 512 MiB
     if path.stat().st_size > _MAX_FILE_BYTES:
         raise ValueError(f"CoNLL-U file too large (max {_MAX_FILE_BYTES // (1024 * 1024)} MiB)")
+    source_hash = _compute_file_hash(path)
+    assert_not_duplicate_import(conn, path, source_hash, check_filename=check_filename)
+
     raw_bytes = path.read_bytes()
     try:
         text = raw_bytes.decode("utf-8-sig")
