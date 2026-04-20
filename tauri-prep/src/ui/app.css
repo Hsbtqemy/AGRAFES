@@ -1301,10 +1301,12 @@ summary:focus-visible,
 .btn.btn-active:hover { background: #3b5998; }
 
 /* Child rows — subtle left-border accent */
-.prep-meta-doc-table tr.prep-tree-child td {
+.prep-meta-doc-table tr.prep-tree-child td,
+.prep-meta-table tr.prep-tree-child td {
   background: #f8fafc;
 }
-.prep-meta-doc-table tr.prep-tree-child:hover td {
+.prep-meta-doc-table tr.prep-tree-child:hover td,
+.prep-meta-table tr.prep-tree-child:hover td {
   background: #eef2ff;
 }
 
@@ -1333,7 +1335,8 @@ summary:focus-visible,
 }
 
 /* Section separator header (indépendants / orphelins) */
-.prep-meta-doc-table tr.prep-tree-section-header td.prep-tree-section-label {
+.prep-meta-doc-table tr.prep-tree-section-header td.prep-tree-section-label,
+.prep-meta-table tr.prep-tree-section-header td.prep-tree-section-label {
   background: var(--color-surface-alt, #f1f5f9);
   font-size: 11px;
   font-weight: 700;
@@ -3489,6 +3492,15 @@ code { font-family: monospace; background: var(--color-bg); padding: 0 3px; bord
   margin: 0;
   line-height: 1.45;
 }
+
+/* Docs card header: title left, hierarchy toggle right */
+.prep-acts-hub-docs-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.prep-acts-hub-docs-header .prep-acts-hub-docs-title { margin: 0; }
 
 /* 3-column workflow grid */
 .prep-acts-hub-workspace {

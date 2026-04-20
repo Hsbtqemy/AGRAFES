@@ -7,10 +7,12 @@
 import type {
   Conn,
   DocumentRecord,
+  DocRelationRecord,
 } from "../lib/sidecarClient.ts";
 import {
   listDocuments,
   enqueueJob,
+  getAllDocRelations,
   SidecarError,
 } from "../lib/sidecarClient.ts";
 import type { JobCenter } from "../components/JobCenter.ts";
@@ -76,6 +78,11 @@ export class ActionsScreen {
 
   private _wfRoot: HTMLElement | null = null;
   private static readonly LS_WF_RUN_ID = "agrafes.prep.workflow.run_id";
+
+  // Hub hierarchy view
+  private _hubHierarchyView = false;
+  private _allRelations: DocRelationRecord[] = [];
+  private _allRelationsLoaded = false;
   // Log + busy
   private _logEl: HTMLElement = document.createElement("div");
   private _busyEl!: HTMLElement;
@@ -226,7 +233,11 @@ export class ActionsScreen {
         <div class="prep-acts-hub-head-tools"></div>
       </section>
       <section class="card prep-acts-hub-docs-card">
-        <h3 class="prep-acts-hub-docs-title">Documents du corpus</h3>
+        <div class="prep-acts-hub-docs-header">
+          <h3 class="prep-acts-hub-docs-title">Documents du corpus</h3>
+          <button id="act-hub-hierarchy-btn" class="btn btn-secondary btn-sm"
+            aria-pressed="false" title="Basculer vue hiérarchie / liste">🌿 Hiérarchie</button>
+        </div>
         <div id="act-doc-list" class="prep-acts-hub-doc-list"></div>
       </section>
       <div class="prep-acts-hub-workspace">
@@ -283,6 +294,12 @@ export class ActionsScreen {
         this._switchSubViewDOM(root, target);
       });
     });
+
+    // Hierarchy toggle
+    el.querySelector<HTMLButtonElement>("#act-hub-hierarchy-btn")?.addEventListener("click", () => {
+      void this._toggleHubHierarchyView();
+    });
+
     return el;
   }
 
@@ -412,6 +429,9 @@ export class ActionsScreen {
   setConn(conn: Conn | null): void {
     this._conn = conn;
     this._docs = [];
+    this._allRelations = [];
+    this._allRelationsLoaded = false;
+    this._hubHierarchyView = false;
     if (!conn) {
       this._lastErrorMsg = null;
     }
@@ -582,6 +602,10 @@ export class ActionsScreen {
       el.innerHTML = '<p class="empty-hint">Aucun document importé.</p>';
       return;
     }
+    if (this._hubHierarchyView) {
+      this._renderHubHierarchyList(el);
+      return;
+    }
     const table = document.createElement("table");
     table.className = "prep-meta-table";
     table.innerHTML = `<thead><tr><th>ID</th><th>Titre</th><th>Langue</th><th>Rôle</th><th>Unités</th></tr></thead>`;
@@ -597,6 +621,141 @@ export class ActionsScreen {
     }
     table.appendChild(tbody);
     el.innerHTML = "";
+    el.appendChild(table);
+  }
+
+  private async _toggleHubHierarchyView(): Promise<void> {
+    this._hubHierarchyView = !this._hubHierarchyView;
+    const btn = this._q<HTMLButtonElement>("#act-hub-hierarchy-btn");
+    if (btn) {
+      btn.setAttribute("aria-pressed", String(this._hubHierarchyView));
+      btn.classList.toggle("btn-active", this._hubHierarchyView);
+      btn.textContent = this._hubHierarchyView ? "📋 Liste" : "🌿 Hiérarchie";
+    }
+    if (this._hubHierarchyView && this._conn && !this._allRelationsLoaded) {
+      try {
+        this._allRelations = await getAllDocRelations(this._conn);
+        this._allRelationsLoaded = true;
+      } catch (err) {
+        this._log(`Erreur chargement relations : ${err instanceof SidecarError ? err.message : String(err)}`, true);
+        this._hubHierarchyView = false;
+        if (btn) { btn.setAttribute("aria-pressed", "false"); btn.classList.remove("btn-active"); btn.textContent = "🌿 Hiérarchie"; }
+        return;
+      }
+    }
+    this._renderDocList();
+  }
+
+  private _buildHubTree(): { roots: { doc: DocumentRecord; children: { doc: DocumentRecord; relationLabel: string }[] }[]; standalone: DocumentRecord[]; orphans: DocumentRecord[] } {
+    const docMap = new Map(this._docs.map(d => [d.doc_id, d]));
+    const childOf = new Map<number, { parentId: number; label: string }>();
+    const parentTo = new Map<number, { childId: number; label: string }[]>();
+
+    for (const rel of this._allRelations) {
+      if (!docMap.has(rel.doc_id)) continue;
+      childOf.set(rel.doc_id, { parentId: rel.target_doc_id, label: rel.relation_type });
+      if (!parentTo.has(rel.target_doc_id)) parentTo.set(rel.target_doc_id, []);
+      parentTo.get(rel.target_doc_id)!.push({ childId: rel.doc_id, label: rel.relation_type });
+    }
+
+    const roots: { doc: DocumentRecord; children: { doc: DocumentRecord; relationLabel: string }[] }[] = [];
+    const standalone: DocumentRecord[] = [];
+    const orphans: DocumentRecord[] = [];
+
+    for (const doc of this._docs) {
+      const childInfo = childOf.get(doc.doc_id);
+      if (childInfo) {
+        if (!docMap.has(childInfo.parentId)) orphans.push(doc);
+        continue;
+      }
+      const children = parentTo.get(doc.doc_id) ?? [];
+      if (children.length === 0) {
+        standalone.push(doc);
+      } else {
+        roots.push({
+          doc,
+          children: children
+            .map(c => ({ doc: docMap.get(c.childId)!, relationLabel: c.label }))
+            .filter(n => n.doc != null),
+        });
+      }
+    }
+    return { roots, standalone, orphans };
+  }
+
+  private _renderHubHierarchyList(el: HTMLElement): void {
+    el.innerHTML = "";
+    const { roots, standalone, orphans } = this._buildHubTree();
+
+    const table = document.createElement("table");
+    table.className = "prep-meta-table";
+    table.innerHTML = `<thead><tr><th>ID</th><th>Titre</th><th>Langue</th><th>Rôle</th><th>Unités</th></tr></thead>`;
+    const tbody = document.createElement("tbody");
+
+    const appendRow = (doc: DocumentRecord, depth = 0, relationLabel?: string): void => {
+      const tr = document.createElement("tr");
+      tr.className = "prep-meta-doc-row";
+      if (depth > 0) tr.classList.add("prep-tree-child");
+
+      const indent = depth > 0 ? `<span class="prep-tree-connector" aria-hidden="true">└</span>` : "";
+      const relBadge = relationLabel
+        ? `<span class="prep-tree-rel-badge">${_escHtml(relationLabel)}</span>`
+        : "";
+
+      const titleTd = document.createElement("td");
+      titleTd.className = "col-title tree-title-cell";
+      titleTd.style.paddingLeft = `${0.5 + depth * 1.4}rem`;
+      titleTd.innerHTML = `${indent}${relBadge}`;
+      const titleSpan = document.createElement("span");
+      titleSpan.textContent = doc.title;
+      titleTd.appendChild(titleSpan);
+
+      const idTd = document.createElement("td"); idTd.textContent = String(doc.doc_id);
+      const langTd = document.createElement("td"); langTd.textContent = doc.language;
+      const roleTd = document.createElement("td"); roleTd.textContent = doc.doc_role ?? "—";
+      const unitsTd = document.createElement("td"); unitsTd.textContent = String(doc.unit_count);
+
+      tr.appendChild(idTd);
+      tr.appendChild(titleTd);
+      tr.appendChild(langTd);
+      tr.appendChild(roleTd);
+      tr.appendChild(unitsTd);
+      tbody.appendChild(tr);
+    };
+
+    const appendSectionHeader = (label: string, count: number): void => {
+      const tr = document.createElement("tr");
+      tr.className = "prep-tree-section-header";
+      const td = document.createElement("td");
+      td.colSpan = 5;
+      td.className = "prep-tree-section-label";
+      td.textContent = `${label} `;
+      const countSpan = document.createElement("span");
+      countSpan.className = "prep-tree-section-count";
+      countSpan.textContent = String(count);
+      td.appendChild(countSpan);
+      tr.appendChild(td);
+      tbody.appendChild(tr);
+    };
+
+    if (roots.length > 0) {
+      for (const node of roots) {
+        appendRow(node.doc);
+        for (const child of node.children) {
+          appendRow(child.doc, 1, child.relationLabel);
+        }
+      }
+    }
+    if (standalone.length > 0) {
+      if (roots.length > 0) appendSectionHeader("Sans famille", standalone.length);
+      for (const doc of standalone) appendRow(doc);
+    }
+    if (orphans.length > 0) {
+      appendSectionHeader("Parent absent du corpus", orphans.length);
+      for (const doc of orphans) appendRow(doc);
+    }
+
+    table.appendChild(tbody);
     el.appendChild(table);
   }
 
@@ -736,5 +895,9 @@ export class ActionsScreen {
 function _formatMaybeNumber(v: unknown): string {
   if (typeof v !== "number" || !Number.isFinite(v)) return "n/a";
   return v.toFixed(3);
+}
+
+function _escHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
