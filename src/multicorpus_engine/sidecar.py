@@ -45,6 +45,7 @@ from urllib.request import Request, urlopen
 from urllib.parse import parse_qs, urlparse
 
 from .sidecar_contract import (
+    CONTRACT_VERSION,
     ERR_BAD_REQUEST,
     ERR_CONFLICT,
     ERR_INTERNAL,
@@ -512,6 +513,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         if path == "/health":
             self._send_json(success_payload({
                 "version": ENGINE_VERSION,
+                "contract_version": CONTRACT_VERSION,
                 "pid": getattr(self.server, "pid", os.getpid()),
                 "started_at": getattr(self.server, "started_at", None),
                 "host": getattr(self.server, "host", "127.0.0.1"),
