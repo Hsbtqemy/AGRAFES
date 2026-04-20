@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import re
+from .query import _validate_user_regex
 
 
 _VALID_ATTRS = {"word", "lemma", "pos", "upos", "xpos", "feats"}
@@ -181,6 +182,7 @@ def _parse_token_clause(raw_expr: str) -> tuple[tuple[CqlPredicate, ...], bool]:
         value = _unescape_quoted(m.group("value"))
         flag = bool(m.group("flag"))
         # Validate regex early so errors are returned as BAD_REQUEST.
+        _validate_user_regex(value)
         try:
             re.compile(value, re.IGNORECASE if flag else 0)
         except re.error as exc:
