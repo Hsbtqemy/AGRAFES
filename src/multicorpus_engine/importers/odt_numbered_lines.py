@@ -39,6 +39,10 @@ def import_odt_numbered_lines(
     if not path.exists():
         raise FileNotFoundError(f"ODT file not found: {path}")
 
+    _MAX_FILE_BYTES = 512 * 1024 * 1024  # 512 MiB
+    if path.stat().st_size > _MAX_FILE_BYTES:
+        raise ValueError(f"ODT file too large (max {_MAX_FILE_BYTES // (1024 * 1024)} MiB)")
+
     log = run_logger or logger
     log.info("Starting import of %s (mode=odt_numbered_lines)", path)
 

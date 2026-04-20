@@ -155,6 +155,10 @@ def import_tei(
     if not path.exists():
         raise FileNotFoundError(f"TEI file not found: {path}")
 
+    _MAX_FILE_BYTES = 512 * 1024 * 1024  # 512 MiB
+    if path.stat().st_size > _MAX_FILE_BYTES:
+        raise ValueError(f"TEI file too large (max {_MAX_FILE_BYTES // (1024 * 1024)} MiB)")
+
     log = run_logger or logger
     log.info("Starting import of %s (mode=tei, unit=%s)", path, unit_element)
 

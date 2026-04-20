@@ -116,7 +116,7 @@ def cmd_import(args: argparse.Namespace) -> None:
     from .runs import create_run, setup_run_logger, update_run_stats, utcnow_iso
     from .importers.docx_numbered_lines import import_docx_numbered_lines
 
-    db_path = Path(args.db)
+    db_path = Path(args.db).resolve()
     if not db_path.exists():
         _err({"error": f"DB not found: {db_path}. Run init-project first.", "created_at": utcnow_iso()})
 
@@ -267,7 +267,7 @@ def cmd_index(args: argparse.Namespace) -> None:
     from .runs import create_run, setup_run_logger, update_run_stats, utcnow_iso
     from .indexer import build_index, update_index
 
-    db_path = Path(args.db)
+    db_path = Path(args.db).resolve()
     if not db_path.exists():
         _err({"error": f"DB not found: {db_path}. Run init-project first.", "created_at": utcnow_iso()})
 
@@ -322,7 +322,7 @@ def cmd_query(args: argparse.Namespace) -> None:
     from .runs import create_run, setup_run_logger, update_run_stats, utcnow_iso
     from .query import run_query
 
-    db_path = Path(args.db)
+    db_path = Path(args.db).resolve()
     if not db_path.exists():
         _err({"error": f"DB not found: {db_path}. Run init-project first.", "created_at": utcnow_iso()})
 
@@ -429,7 +429,7 @@ def cmd_align(args: argparse.Namespace) -> None:
         add_doc_relation,
     )
 
-    db_path = Path(args.db)
+    db_path = Path(args.db).resolve()
     if not db_path.exists():
         _err({"error": f"DB not found: {db_path}. Run init-project first.", "created_at": utcnow_iso()})
 
@@ -536,7 +536,7 @@ def cmd_export(args: argparse.Namespace) -> None:
     from .exporters.jsonl_export import export_jsonl
     from .exporters.html_export import export_html
 
-    db_path = Path(args.db)
+    db_path = Path(args.db).resolve()
     if not db_path.exists():
         _err({"error": f"DB not found: {db_path}. Run init-project first.", "created_at": utcnow_iso()})
 
@@ -647,11 +647,11 @@ def cmd_curate(args: argparse.Namespace) -> None:
     from .curation import rules_from_list, curate_document, curate_all_documents
     import json as _json
 
-    db_path = Path(args.db)
+    db_path = Path(args.db).resolve()
     if not db_path.exists():
         _err({"error": f"DB not found: {db_path}. Run init-project first.", "created_at": utcnow_iso()})
 
-    rules_path = Path(args.rules)
+    rules_path = Path(args.rules).resolve()
     if not rules_path.exists():
         _err({"error": f"Rules file not found: {rules_path}", "created_at": utcnow_iso()})
 
@@ -712,7 +712,7 @@ def cmd_validate_meta(args: argparse.Namespace) -> None:
     from .runs import create_run, setup_run_logger, update_run_stats, utcnow_iso
     from .metadata import validate_document, validate_all_documents
 
-    db_path = Path(args.db)
+    db_path = Path(args.db).resolve()
     if not db_path.exists():
         _err({"error": f"DB not found: {db_path}. Run init-project first.", "created_at": utcnow_iso()})
 
@@ -758,7 +758,7 @@ def cmd_qa_report(args: argparse.Namespace) -> None:
     from .qa_report import write_qa_report
     from .runs import utcnow_iso
 
-    db_path = Path(args.db)
+    db_path = Path(args.db).resolve()
     if not db_path.exists():
         _err({"error": f"DB not found: {db_path}", "created_at": utcnow_iso()})
 
@@ -767,7 +767,7 @@ def cmd_qa_report(args: argparse.Namespace) -> None:
 
     report = write_qa_report(
         conn=conn,
-        output_path=Path(args.out),
+        output_path=Path(args.out).resolve(),
         fmt=args.fmt,
         doc_ids=args.doc_ids,
         policy=getattr(args, "policy", "lenient"),
@@ -796,7 +796,7 @@ def cmd_validate_tei(args: argparse.Namespace) -> None:
     import json as _json
 
     if getattr(args, "path", None):
-        path = Path(args.path)
+        path = Path(args.path).resolve()
         if not path.exists():
             _err({"error": f"File not found: {path}", "created_at": utcnow_iso()})
         errors = validate_tei_ids(path)
@@ -810,7 +810,7 @@ def cmd_validate_tei(args: argparse.Namespace) -> None:
             "created_at": utcnow_iso(),
         })
     else:
-        zip_path = Path(args.zip_path)
+        zip_path = Path(args.zip_path).resolve()
         if not zip_path.exists():
             _err({"error": f"ZIP not found: {zip_path}", "created_at": utcnow_iso()})
         results = validate_tei_package(zip_path)
@@ -845,7 +845,7 @@ def cmd_segment(args: argparse.Namespace) -> None:
     from .runs import create_run, setup_run_logger, update_run_stats, utcnow_iso
     from .segmenter import resegment_document
 
-    db_path = Path(args.db)
+    db_path = Path(args.db).resolve()
     if not db_path.exists():
         _err({"error": f"DB not found: {db_path}. Run init-project first.", "created_at": utcnow_iso()})
 
@@ -1128,7 +1128,7 @@ def cmd_diagnostics(args: argparse.Namespace) -> None:
     from .db.migrations import apply_migrations
     from .runs import utcnow_iso
 
-    db_path = Path(args.db)
+    db_path = Path(args.db).resolve()
     if not db_path.exists():
         _err({"error": f"DB not found: {db_path}", "created_at": utcnow_iso()})
 
@@ -1153,7 +1153,7 @@ def cmd_db_optimize(args: argparse.Namespace) -> None:
     from .db.migrations import apply_migrations
     from .runs import create_run, setup_run_logger, update_run_stats, utcnow_iso
 
-    db_path = Path(args.db)
+    db_path = Path(args.db).resolve()
     if not db_path.exists():
         _err({"error": f"DB not found: {db_path}", "created_at": utcnow_iso()})
 
@@ -1231,7 +1231,7 @@ def cmd_runs_prune(args: argparse.Namespace) -> None:
     from .db.migrations import apply_migrations
     from .runs import create_run, setup_run_logger, update_run_stats, utcnow_iso
 
-    db_path = Path(args.db)
+    db_path = Path(args.db).resolve()
     if not db_path.exists():
         _err({"error": f"DB not found: {db_path}", "created_at": utcnow_iso()})
 
