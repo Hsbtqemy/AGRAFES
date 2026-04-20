@@ -1108,7 +1108,7 @@ export class SegmentationView {
     });
 
     this._undoTimer = setTimeout(() => {
-      clearInterval(tick);
+      if (this._undoCountdownInterval) { clearInterval(this._undoCountdownInterval); this._undoCountdownInterval = null; }
       this._clearUndoBanner();
       this._lastDeletedUnit = null;
     }, DURATION);
