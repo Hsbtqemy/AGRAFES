@@ -1045,7 +1045,11 @@
         "additionalProperties": false,
         "properties": {
           "out_dir": {
-            "description": "Optional destination directory. Default: DB directory.",
+            "description": "Optional destination directory. Default: DB directory. Mutually exclusive with out_path.",
+            "type": "string"
+          },
+          "out_path": {
+            "description": "Exact destination file path (e.g. /path/to/corpus.db). Mutually exclusive with out_dir. Returns 409 if file exists.",
             "type": "string"
           }
         },
@@ -4406,6 +4410,9 @@
           },
           "404": {
             "description": "DB file not found"
+          },
+          "409": {
+            "description": "out_path already exists"
           }
         },
         "security": [
@@ -4413,7 +4420,7 @@
             "token": []
           }
         ],
-        "summary": "Create a timestamped SQLite backup file (.db.bak)"
+        "summary": "Create a SQLite backup file (timestamped .db.bak or named via out_path)"
       }
     },
     "/doc_relations": {

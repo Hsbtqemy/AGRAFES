@@ -96,6 +96,9 @@ def import_txt_numbered_lines(
     log = run_logger or logger
     log.info("Starting import of %s (mode=txt_numbered_lines)", path)
 
+    _MAX_FILE_BYTES = 512 * 1024 * 1024  # 512 MiB
+    if path.stat().st_size > _MAX_FILE_BYTES:
+        raise ValueError(f"TXT file too large (max {_MAX_FILE_BYTES // (1024 * 1024)} MiB)")
     raw_bytes = path.read_bytes()
     source_hash = hashlib.sha256(raw_bytes).hexdigest()
     assert_not_duplicate_import(conn, path, source_hash, check_filename=check_filename)

@@ -420,6 +420,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         )
 
     _MAX_BODY_SIZE = 64 * 1024 * 1024  # 64 MiB
+    _MAX_IMPORT_FILE_SIZE = 512 * 1024 * 1024  # 512 MiB — cap for in-memory file reads
 
     def _read_body(self) -> dict:
         length = int(self.headers.get("Content-Length", 0))
@@ -460,8 +461,10 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         expected = self._token()
         if expected is None:
             return True
-        provided = self.headers.get("X-Agrafes-Token")
-        if not hmac.compare_digest(provided or "", expected):
+        provided = self.headers.get("X-Agrafes-Token") or ""
+        if len(provided) > 512:
+            provided = ""  # treat oversized token as missing — avoids amplification
+        if not hmac.compare_digest(provided, expected):
             self._send_error(
                 "Missing or invalid X-Agrafes-Token",
                 code=ERR_UNAUTHORIZED,
@@ -513,7 +516,6 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 "started_at": getattr(self.server, "started_at", None),
                 "host": getattr(self.server, "host", "127.0.0.1"),
                 "port": getattr(self.server, "port", None),
-                "portfile": getattr(self.server, "portfile", None),
                 "token_required": bool(self._token()),
             }))
         elif path == "/openapi.json":
@@ -1150,14 +1152,28 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             return
         if kind == "align":
             try:
-                int(params.get("pivot_doc_id"))
+                pivot_id_enq = int(params.get("pivot_doc_id"))
                 target_ids = params.get("target_doc_ids")
                 if not isinstance(target_ids, list) or not target_ids:
                     raise ValueError
-                [int(t) for t in target_ids]
+                target_ids_int = [int(t) for t in target_ids]
             except (TypeError, ValueError):
                 self._send_error(
                     "align params.pivot_doc_id and params.target_doc_ids must be integer values",
+                    code=ERR_VALIDATION,
+                    http_status=400,
+                )
+                return
+            if pivot_id_enq in target_ids_int:
+                self._send_error(
+                    "pivot_doc_id must not appear in target_doc_ids",
+                    code=ERR_VALIDATION,
+                    http_status=400,
+                )
+                return
+            if len(target_ids_int) > 100:
+                self._send_error(
+                    "Too many target documents in align job (max 100)",
                     code=ERR_VALIDATION,
                     http_status=400,
                 )
@@ -1394,7 +1410,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                     raise ValueError("db_paths must only contain non-empty string paths")
                 path_obj = Path(raw_path).expanduser().resolve()
                 if not path_obj.exists() or not path_obj.is_file():
-                    raise ValueError(f"db_path not found: {path_obj}")
+                    raise ValueError("db_path not found or not a file")
                 resolved = str(path_obj)
                 if resolved in seen_paths:
                     continue
@@ -2210,7 +2226,14 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 
         fpath = _Path(path_str).resolve()
         if not fpath.exists():
-            self._send_error(f"File not found: {path_str}", code=ERR_NOT_FOUND, http_status=404)
+            self._send_error("File not found", code=ERR_NOT_FOUND, http_status=404)
+            return
+        if fpath.stat().st_size > self._MAX_IMPORT_FILE_SIZE:
+            self._send_error(
+                f"File too large for preview (max {self._MAX_IMPORT_FILE_SIZE // (1024 * 1024)} MiB)",
+                code=ERR_BAD_REQUEST,
+                http_status=413,
+            )
             return
 
         mode = mode.strip().lower().replace(" ", "_").replace("-", "_")
@@ -6327,6 +6350,23 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             )
             return
 
+        if pivot_doc_id in target_doc_ids:
+            self._send_error(
+                "pivot_doc_id must not appear in target_doc_ids",
+                code=ERR_BAD_REQUEST,
+                http_status=400,
+            )
+            return
+
+        _MAX_ALIGN_TARGETS = 100
+        if len(target_doc_ids) > _MAX_ALIGN_TARGETS:
+            self._send_error(
+                f"Too many target documents (max {_MAX_ALIGN_TARGETS})",
+                code=ERR_BAD_REQUEST,
+                http_status=400,
+            )
+            return
+
         strategy = body.get("strategy", "external_id")
         allowed_strategies = {"external_id", "position", "similarity", "external_id_then_position"}
         if strategy not in allowed_strategies:
@@ -7157,7 +7197,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             raise ValueError("Path contains null byte")
         resolved = Path(raw).resolve()
         if resolved == resolved.root or str(resolved) == resolved.anchor:
-            raise ValueError(f"Refusing to export to filesystem root: {resolved}")
+            raise ValueError("Cannot export to filesystem root or invalid path")
         return resolved
 
     @staticmethod
@@ -8533,6 +8573,8 @@ class CorpusServer:
     discover which port was assigned.
     """
 
+    _ALLOWED_HOSTS: frozenset[str] = frozenset({"127.0.0.1", "localhost", "::1", "[::1]"})
+
     def __init__(
         self,
         db_path: str | Path,
@@ -8540,6 +8582,11 @@ class CorpusServer:
         port: int = 8765,
         token: str | None = None,
     ) -> None:
+        if host not in self._ALLOWED_HOSTS:
+            raise ValueError(
+                f"CorpusServer host must be a loopback address (got {host!r}). "
+                f"Allowed: {', '.join(sorted(self._ALLOWED_HOSTS))}"
+            )
         self._db_path = Path(db_path)
         self._host = host
         self._port = port

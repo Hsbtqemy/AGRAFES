@@ -899,6 +899,12 @@ def cmd_serve(args: argparse.Namespace) -> None:
 
     db_path = Path(args.db)
     host = getattr(args, "host", "127.0.0.1")
+    _ALLOWED_HOSTS = {"127.0.0.1", "localhost", "::1", "[::1]"}
+    if host not in _ALLOWED_HOSTS:
+        raise SystemExit(
+            f"Error: --host must be a loopback address (got {host!r}). "
+            f"Allowed values: {', '.join(sorted(_ALLOWED_HOSTS))}"
+        )
     port = getattr(args, "port", 8765)
     token_mode = getattr(args, "token", "auto")
 
