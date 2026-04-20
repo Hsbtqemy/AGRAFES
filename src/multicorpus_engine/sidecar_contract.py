@@ -13,7 +13,7 @@ from typing import Any
 
 
 API_VERSION = "1.6.23"
-CONTRACT_VERSION = "1.6.26"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.27"  # semantic versioning for the sidecar API contract
 # 1.4.0: added export_tei_package job kind (Sprint 4 — Publication ZIP)
 # 1.4.1: ERR_CONFLICT (409) for duplicate run_id; token protection on /align, /curate, /segment
 # 1.4.2: document workflow status fields on /documents and metadata update endpoints.
@@ -77,6 +77,9 @@ CONTRACT_VERSION = "1.6.26"  # semantic versioning for the sidecar API contract
 #         POST /units/set_role — assign role to one unit. POST /units/bulk_set_role — batch assign.
 #         POST /documents/set_text_start — set paratextual boundary (text_start_n).
 # 1.6.26: GET /units?doc_id=N[&unit_type=] — list all units for a document with unit_role field.
+# 1.6.27: POST /token_query gains optional include_context_segments (bool, default false).
+#         When true, each hit gains prev_segment / next_segment with the adjacent units in the document.
+#         Each hit also gains unit_n (position of the unit in the document).
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
@@ -1914,6 +1917,11 @@ def openapi_spec() -> dict[str, Any]:
                             "default": False,
                             "description": "When true, each hit gains an `aligned` list with partner units from alignment_links.",
                         },
+                        "include_context_segments": {
+                            "type": "boolean",
+                            "default": False,
+                            "description": "When true, each hit gains `prev_segment` and `next_segment` fields with the adjacent units in the document (null if none).",
+                        },
                     },
                     "additionalProperties": False,
                 },
@@ -1978,10 +1986,29 @@ def openapi_spec() -> dict[str, Any]:
                             "type": "array",
                             "items": {"$ref": "#/components/schemas/TokenQueryToken"},
                         },
+                        "unit_n": {"type": "integer", "description": "Position (n) of the unit in the document."},
                         "aligned": {
                             "type": "array",
                             "items": {"$ref": "#/components/schemas/AlignedUnit"},
                             "description": "Partner units from alignment_links (only present when include_aligned=true).",
+                        },
+                        "prev_segment": {
+                            "nullable": True,
+                            "description": "Segment immediately before the hit unit (only present when include_context_segments=true).",
+                            "properties": {
+                                "unit_id": {"type": "integer"},
+                                "external_id": {"type": "integer", "nullable": True},
+                                "text_norm": {"type": "string"},
+                            },
+                        },
+                        "next_segment": {
+                            "nullable": True,
+                            "description": "Segment immediately after the hit unit (only present when include_context_segments=true).",
+                            "properties": {
+                                "unit_id": {"type": "integer"},
+                                "external_id": {"type": "integer", "nullable": True},
+                                "text_norm": {"type": "string"},
+                            },
                         },
                     },
                 },

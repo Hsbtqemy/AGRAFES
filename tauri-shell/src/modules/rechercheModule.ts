@@ -72,9 +72,16 @@ interface _AlignedUnit {
   status: string | null;
 }
 
+interface _ContextSegment {
+  unit_id: number;
+  external_id: number | null;
+  text_norm: string;
+}
+
 interface _Hit {
   doc_id: number;
   unit_id: number;
+  unit_n: number;
   title: string;
   language: string;
   text_norm: string;
@@ -87,6 +94,8 @@ interface _Hit {
   match?: string;
   right?: string;
   aligned?: _AlignedUnit[];
+  prev_segment?: _ContextSegment | null;
+  next_segment?: _ContextSegment | null;
 }
 
 interface _QueryParams {
@@ -294,6 +303,9 @@ function _renderShell(root: HTMLElement): void {
         </label>
         <label class="rech-filter-check rech-filter-check--aligned" title="Afficher les segments traduits liés (requiert des alignements en base)">
           <input type="checkbox" class="rech-filter-aligned"> + traductions
+        </label>
+        <label class="rech-filter-check" title="Afficher le segment précédent et le segment suivant dans le document">
+          <input type="checkbox" class="rech-filter-context-segs"> + contexte seg.
         </label>
         <div class="rech-lang-pills" hidden aria-label="Filtrer les langues affichées"></div>
       </div>
@@ -539,6 +551,7 @@ function _updatePosSelection(root: HTMLElement): void {
 
 // v2: renamed key (old "agrafes.recherche.aligned" defaulted to false — now defaults to true)
 const LS_ALIGNED = "agrafes.recherche.aligned.v2";
+const LS_CTX_SEGS = "agrafes.recherche.context_segments.v1";
 
 function _wireEvents(root: HTMLElement): void {
   const helpPan   = root.querySelector<HTMLElement>(".rech-help-panel")!;
@@ -561,6 +574,16 @@ function _wireEvents(root: HTMLElement): void {
     try { localStorage.setItem(LS_ALIGNED, alignedCb.checked ? "1" : "0"); } catch { /* ignore */ }
     const pillsWrap = root.querySelector<HTMLElement>(".rech-lang-pills");
     if (pillsWrap) pillsWrap.hidden = !alignedCb.checked;
+    if (_lastQuery) void _doSearch(root, false);
+  });
+
+  const ctxSegsCb = root.querySelector<HTMLInputElement>(".rech-filter-context-segs")!;
+  try {
+    const stored = localStorage.getItem(LS_CTX_SEGS);
+    ctxSegsCb.checked = stored === "1";
+  } catch { ctxSegsCb.checked = false; }
+  ctxSegsCb.addEventListener("change", () => {
+    try { localStorage.setItem(LS_CTX_SEGS, ctxSegsCb.checked ? "1" : "0"); } catch { /* ignore */ }
     if (_lastQuery) void _doSearch(root, false);
   });
 
@@ -838,6 +861,8 @@ async function _doSearch(root: HTMLElement, loadMore: boolean): Promise<void> {
 
   try {
     const includeAligned = alignedCb?.checked ?? false;
+    const ctxSegsCb = root.querySelector<HTMLInputElement>(".rech-filter-context-segs");
+    const includeContextSegments = ctxSegsCb?.checked ?? false;
     const payload: Record<string, unknown> = {
       cql: _lastQuery!.cql,
       mode: "kwic",
@@ -845,6 +870,7 @@ async function _doSearch(root: HTMLElement, loadMore: boolean): Promise<void> {
       limit: PAGE_SIZE,
       offset: _offset,
       include_aligned: includeAligned,
+      include_context_segments: includeContextSegments,
     };
     if (_lastQuery!.language) payload.language = _lastQuery!.language;
     if (_lastQuery!.doc_ids) payload.doc_ids = _lastQuery!.doc_ids;
@@ -1075,7 +1101,37 @@ function _buildHitCard(hit: _Hit): HTMLElement {
   if (pivot.length) kwicRow.appendChild(_buildTokenGroup(pivot, "pivot", hitCtx));
   if (right.length) kwicRow.appendChild(_buildTokenGroup(right, "right"));
 
+  // Prev segment (above KWIC) — appended before kwicRow
+  if (hit.prev_segment) {
+    const prev = document.createElement("div");
+    prev.className = "rech-ctx-seg rech-ctx-seg--prev";
+    const lbl = document.createElement("span");
+    lbl.className = "rech-ctx-seg-label";
+    lbl.textContent = hit.prev_segment.external_id != null ? `§${hit.prev_segment.external_id}` : "↑";
+    const txt = document.createElement("span");
+    txt.className = "rech-ctx-seg-text";
+    txt.textContent = hit.prev_segment.text_norm;
+    prev.appendChild(lbl);
+    prev.appendChild(txt);
+    card.appendChild(prev);
+  }
+
   if (kwicRow.hasChildNodes()) card.appendChild(kwicRow);
+
+  // Next segment (below KWIC)
+  if (hit.next_segment) {
+    const next = document.createElement("div");
+    next.className = "rech-ctx-seg rech-ctx-seg--next";
+    const lbl = document.createElement("span");
+    lbl.className = "rech-ctx-seg-label";
+    lbl.textContent = hit.next_segment.external_id != null ? `§${hit.next_segment.external_id}` : "↓";
+    const txt = document.createElement("span");
+    txt.className = "rech-ctx-seg-text";
+    txt.textContent = hit.next_segment.text_norm;
+    next.appendChild(lbl);
+    next.appendChild(txt);
+    card.appendChild(next);
+  }
 
   // Aligned translations (only when include_aligned=true and has partners)
   if (hit.aligned && hit.aligned.length > 0) {
@@ -2331,6 +2387,35 @@ const MODULE_CSS = `
   background: #d0e4ff; color: #1a4f7a; border-color: #7aaee8; opacity: 1;
 }
 .rech-lang-pill:hover { border-color: #5a8fc8; }
+
+/* ── Context segments (prev/next) ── */
+.rech-ctx-seg {
+  display: flex; align-items: baseline; gap: 8px;
+  padding: 5px 10px;
+  background: #f7f7f7;
+  border-left: 2px solid #d0d0d0;
+  font-size: 0.8rem; color: #6c757d;
+}
+.rech-ctx-seg--prev {
+  border-radius: 6px 6px 0 0;
+  margin-bottom: 0;
+  border-bottom: 1px solid #e8e8e8;
+}
+.rech-ctx-seg--next {
+  border-radius: 0 0 6px 6px;
+  margin-top: 0;
+  border-top: 1px solid #e8e8e8;
+}
+.rech-ctx-seg-label {
+  flex-shrink: 0;
+  font-size: 0.65rem; font-weight: 600;
+  color: #aaa;
+  min-width: 28px;
+}
+.rech-ctx-seg-text {
+  flex: 1; line-height: 1.4;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 
 /* ── Aligned translations block ── */
 .rech-aligned-block {

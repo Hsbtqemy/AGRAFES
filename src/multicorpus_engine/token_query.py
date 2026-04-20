@@ -138,6 +138,7 @@ def _build_hit(
     base_hit: dict[str, Any] = {
         "doc_id": int(meta["doc_id"]),
         "unit_id": int(meta["unit_id"]),
+        "unit_n": int(meta["unit_n"]),
         "external_id": meta["external_id"],
         "language": meta["language"],
         "title": meta["title"],
@@ -241,6 +242,7 @@ def _stream_groups(
             current_meta = {
                 "doc_id": int(row["doc_id"]),
                 "unit_id": int(row["unit_id"]),
+                "unit_n": int(row["unit_n"]),
                 "external_id": row["external_id"],
                 "text_norm": row["text_norm"] or "",
                 "text_raw": row["text_raw"] or "",
@@ -378,6 +380,58 @@ def _fetch_aligned(
     return result
 
 
+def _fetch_context_segments(
+    conn: sqlite3.Connection,
+    hits: list[dict[str, Any]],
+) -> None:
+    """Attach prev_segment / next_segment to each hit in-place (batch query)."""
+    if not hits:
+        return
+
+    # Collect unique (doc_id, unit_n) pairs and build lookup keys
+    pairs: list[tuple[int, int]] = []
+    seen: set[tuple[int, int]] = set()
+    for hit in hits:
+        key = (int(hit["doc_id"]), int(hit["unit_n"]))
+        if key not in seen:
+            seen.add(key)
+            pairs.append(key)
+
+    # Build a single query fetching all n-1 and n+1 candidates.
+    # SQLite doesn't support (col1, col2) IN (...) so we expand as OR clauses.
+    clauses: list[str] = []
+    flat_params: list[int] = []
+    for doc_id, unit_n in pairs:
+        clauses.append("(u.doc_id = ? AND u.n IN (?, ?))")
+        flat_params.extend([doc_id, unit_n - 1, unit_n + 1])
+
+    rows = conn.execute(
+        f"""
+        SELECT u.doc_id, u.unit_id, u.n AS unit_n, u.external_id, u.text_norm
+        FROM units u
+        WHERE ({" OR ".join(clauses)})
+          AND u.unit_type = 'line'
+        """,
+        flat_params,
+    ).fetchall()
+
+    # Index by (doc_id, unit_n)
+    seg_map: dict[tuple[int, int], dict[str, Any]] = {}
+    for r in rows:
+        seg_map[(int(r["doc_id"]), int(r["unit_n"]))] = {
+            "unit_id": int(r["unit_id"]),
+            "external_id": r["external_id"],
+            "text_norm": r["text_norm"] or "",
+        }
+
+    # Attach to hits
+    for hit in hits:
+        doc_id = int(hit["doc_id"])
+        unit_n = int(hit["unit_n"])
+        hit["prev_segment"] = seg_map.get((doc_id, unit_n - 1))
+        hit["next_segment"] = seg_map.get((doc_id, unit_n + 1))
+
+
 def run_token_query_page(
     conn: sqlite3.Connection,
     *,
@@ -389,6 +443,7 @@ def run_token_query_page(
     limit: int = 50,
     offset: int = 0,
     include_aligned: bool = False,
+    include_context_segments: bool = False,
 ) -> dict[str, Any]:
     """Run a token-level CQL query with pagination."""
     if mode not in {"segment", "kwic"}:
@@ -440,6 +495,9 @@ def run_token_query_page(
         aligned_map = _fetch_aligned(conn, page_unit_ids)
         for hit in hits:
             hit["aligned"] = aligned_map.get(hit["unit_id"], [])
+
+    if include_context_segments and hits:
+        _fetch_context_segments(conn, hits)
 
     return {
         "hits": hits,

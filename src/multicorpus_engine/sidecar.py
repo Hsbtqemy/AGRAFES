@@ -1630,6 +1630,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 raise ValueError("doc_ids must be a list of integers") from exc
 
         include_aligned = bool(body.get("include_aligned", False))
+        include_context_segments = bool(body.get("include_context_segments", False))
 
         params = {
             "cql": cql,
@@ -1640,6 +1641,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             "limit": limit,
             "offset": offset,
             "include_aligned": include_aligned,
+            "include_context_segments": include_context_segments,
         }
 
         with self._lock():
@@ -1654,6 +1656,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 limit=limit,
                 offset=offset,
                 include_aligned=include_aligned,
+                include_context_segments=include_context_segments,
             )
             hits = page["hits"]
             self._update_run_stats(
