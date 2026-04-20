@@ -63,6 +63,19 @@ logger = logging.getLogger(__name__)
 _DOC_WORKFLOW_STATUSES = {"draft", "review", "validated"}
 
 
+def _int_param(value: object, default: int) -> int:
+    """Coerce *value* to int, returning *default* on TypeError/ValueError.
+
+    Used for optional numeric body/query-string params so a malformed caller
+    gets a safe fallback (and a 400 from downstream range checks) instead of
+    an unhandled 500.
+    """
+    try:
+        return int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return default
+
+
 def sidecar_portfile_path(db_path: str | Path) -> Path:
     """Return sidecar discovery file path for a given DB path."""
     return Path(db_path).resolve().parent / ".agrafes_sidecar.json"
@@ -576,7 +589,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError):
             logger.warning("Client disconnected during do_PUT (%s) — server continues", self.path)
         except Exception as exc:  # noqa: BLE001
-            self._send_error(str(exc), code=ERR_INTERNAL, http_status=500)
+            logger.exception("Handler error on PUT %s: %s", self.path, exc)
+            self._send_error("Internal error", code=ERR_INTERNAL, http_status=500)
 
     # ------------------------------------------------------------------
     # POST dispatch
@@ -821,7 +835,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         except Exception as exc:
             logger.exception("Handler error on %s: %s", self.path, exc)
             self._send_error(
-                str(exc),
+                "Internal error",
                 code=ERR_INTERNAL,
                 http_status=500,
             )
@@ -2167,7 +2181,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 
         path_str = body.get("path")
         mode = body.get("mode", "")
-        limit = int(body.get("limit", 100))
+        limit = _int_param(body.get("limit", 100), 100)
 
         if not isinstance(path_str, str) or not path_str:
             self._send_error("path is required", code=ERR_VALIDATION, http_status=400)
@@ -2276,7 +2290,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                     },
                 }))
             except Exception as exc:
-                self._send_error(str(exc), code=ERR_INTERNAL, http_status=500)
+                logger.exception("Preview CoNLL-U error: %s", exc)
+                self._send_error("Internal error", code=ERR_INTERNAL, http_status=500)
         else:
             try:
                 units, total = self._preview_text_units(fpath, mode, limit)
@@ -2288,7 +2303,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                     "truncated": total > limit,
                 }))
             except Exception as exc:
-                self._send_error(str(exc), code=ERR_INTERNAL, http_status=500)
+                logger.exception("Preview text error: %s", exc)
+                self._send_error("Internal error", code=ERR_INTERNAL, http_status=500)
 
     def _preview_text_units(
         self, fpath: "Path", mode: str, limit: int
@@ -2704,7 +2720,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         """
         doc_id = body.get("doc_id")
         scope  = body.get("scope")
-        limit  = min(int(body.get("limit", 50)), 200)
+        limit  = min(_int_param(body.get("limit", 50), 50), 200)
 
         sql = """
             SELECT id, applied_at, scope, doc_id, doc_title,
@@ -2871,8 +2887,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             )
             return
 
-        limit_examples = int(body.get("limit_examples", 10))
-        limit_examples = max(1, min(limit_examples, 50))
+        limit_examples = max(1, min(_int_param(body.get("limit_examples", 10), 10), 50))
 
         # Level 8C: optional forced unit.  When provided, this unit is always
         # included in examples regardless of limit_examples, even if it:
@@ -3082,7 +3097,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             )
             return
 
-        limit = int(body.get("limit", 50))
+        limit = _int_param(body.get("limit", 50), 50)
         if limit < 1 or limit > 200:
             self._send_error(
                 "limit must be between 1 and 200",
@@ -3090,7 +3105,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 http_status=400,
             )
             return
-        offset = int(body.get("offset", 0))
+        offset = _int_param(body.get("offset", 0), 0)
         if offset < 0:
             self._send_error("offset must be >= 0", code=ERR_BAD_REQUEST, http_status=400)
             return
@@ -7320,7 +7335,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         fmt          = str(body.get("format", "html")).lower()
         out_path_str = body.get("out_path")
         preview_only = bool(body.get("preview_only", False))
-        preview_limit = int(body.get("preview_limit", 20))
+        preview_limit = _int_param(body.get("preview_limit", 20), 20)
 
         if pivot_doc_id_raw is None or target_doc_id_raw is None:
             self._send_error("pivot_doc_id and target_doc_id are required", code=ERR_BAD_REQUEST, http_status=400)

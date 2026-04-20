@@ -17,6 +17,9 @@ from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
+# M-08: cap similarity alignment to prevent O(P*T) DoS on pathologically large docs
+_MAX_SIMILARITY_UNITS = 5_000
+
 
 def _get_text_start_n(conn: sqlite3.Connection, doc_id: int) -> int:
     """Return the first text unit n for *doc_id* (1 if no paratextual boundary set).
@@ -761,6 +764,13 @@ def align_pair_by_similarity(
         " WHERE doc_id = ? AND unit_type = 'line' AND n >= ? ORDER BY n",
         (target_doc_id, target_tsn),
     ).fetchall()
+
+    if len(pivot_rows) > _MAX_SIMILARITY_UNITS or len(target_rows) > _MAX_SIMILARITY_UNITS:
+        raise ValueError(
+            f"align_pair_by_similarity: document too large for similarity alignment "
+            f"(pivot={len(pivot_rows)}, target={len(target_rows)}, max={_MAX_SIMILARITY_UNITS}). "
+            "Use position-based or external-id alignment instead."
+        )
 
     report = AlignmentReport(
         pivot_doc_id=pivot_doc_id,

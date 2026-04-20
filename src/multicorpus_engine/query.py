@@ -24,6 +24,26 @@ logger = logging.getLogger(__name__)
 
 _HIGHLIGHT_OPEN = "<<"
 
+# M-04: ReDoS guards for user-supplied regex patterns
+_MAX_REGEX_LEN = 500
+# Detect quantified group containing a quantifier — the main source of catastrophic
+# backtracking, e.g. (a+)+ or (\w*)*  Heuristic: a closing paren followed by a
+# quantifier where the group body itself contains a quantifier.
+_REDOS_NESTED_RE = re.compile(r"\([^()]*[+*?][^()]*\)[+*{]")
+
+
+def _validate_user_regex(pattern: str) -> None:
+    """Raise ValueError if *pattern* looks dangerous (too long or nested quantifiers)."""
+    if len(pattern) > _MAX_REGEX_LEN:
+        raise ValueError(
+            f"Regex pattern too long ({len(pattern)} chars, max {_MAX_REGEX_LEN})"
+        )
+    if _REDOS_NESTED_RE.search(pattern):
+        raise ValueError(
+            "Regex pattern contains nested quantifiers which could cause catastrophic "
+            "backtracking. Simplify the pattern."
+        )
+
 
 def _extract_literal_terms(q: str) -> list[str]:
     """Extract plain text terms from an FTS5 query for case-sensitive post-filtering.
@@ -586,6 +606,7 @@ def _run_regex_page(
     """Full-table-scan regex query.  Bypasses FTS; applies Python regex
     post-filter.  Returns an exact ``total``."""
 
+    _validate_user_regex(regex_pattern)
     try:
         flags = 0 if case_sensitive else re.IGNORECASE
         compiled = re.compile(regex_pattern, flags)

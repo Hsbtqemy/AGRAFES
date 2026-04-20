@@ -20,6 +20,23 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
+# M-05: ReDoS guards for user-supplied regex patterns
+_MAX_REGEX_LEN = 500
+_REDOS_NESTED_RE = re.compile(r"\([^()]*[+*?][^()]*\)[+*{]")
+
+
+def _validate_user_regex(pattern: str) -> None:
+    """Raise ValueError if *pattern* is too long or contains nested quantifiers."""
+    if len(pattern) > _MAX_REGEX_LEN:
+        raise ValueError(
+            f"Regex pattern too long ({len(pattern)} chars, max {_MAX_REGEX_LEN})"
+        )
+    if _REDOS_NESTED_RE.search(pattern):
+        raise ValueError(
+            "Regex pattern contains nested quantifiers which could cause catastrophic "
+            "backtracking. Simplify the pattern."
+        )
+
 
 @dataclass
 class CurationRule:
@@ -85,6 +102,7 @@ def rules_from_list(data: list[dict]) -> list[CurationRule]:
 
         pattern = item["pattern"]
         # Validate the pattern early to give a clear error
+        _validate_user_regex(pattern)
         try:
             re.compile(pattern, flags)
         except re.error as exc:

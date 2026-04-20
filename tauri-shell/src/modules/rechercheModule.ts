@@ -172,6 +172,7 @@ export function dispose(): void {
   _conn = null;
   _root = null;
   _closePopover();
+  _closeContextMenu();
 }
 
 /** Pre-fill the CQL input with *cql* and launch a search. Called by the bridge. */
@@ -1187,10 +1188,13 @@ function _openAnalyticsModal(root: HTMLElement): void {
   }
 
   overlay.appendChild(box);
-  overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
-  document.addEventListener("keydown", function esc(e) {
-    if (e.key === "Escape") { overlay.remove(); document.removeEventListener("keydown", esc); }
-  }, { once: false });
+  const _escCitation = (e: KeyboardEvent) => {
+    if (e.key === "Escape") { overlay.remove(); document.removeEventListener("keydown", _escCitation); }
+  };
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) { document.removeEventListener("keydown", _escCitation); overlay.remove(); }
+  });
+  document.addEventListener("keydown", _escCitation);
 
   document.body.appendChild(overlay);
 }

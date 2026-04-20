@@ -98,6 +98,7 @@ export class SegmentationView {
   private _matcherRefDocId: number | null = null;
   private _lastDeletedUnit: { docId: number; n: number; text: string; role: string | null } | null = null;
   private _undoTimer: ReturnType<typeof setTimeout> | null = null;
+  private _undoCountdownInterval: ReturnType<typeof setInterval> | null = null;
   // ─── Propagate preview editable state ─────────────────────────────────────
   private _propagateLiveSections: Array<{
     status: string;
@@ -144,6 +145,10 @@ export class SegmentationView {
     if (this._undoTimer) {
       clearTimeout(this._undoTimer);
       this._undoTimer = null;
+    }
+    if (this._undoCountdownInterval) {
+      clearInterval(this._undoCountdownInterval);
+      this._undoCountdownInterval = null;
     }
     this._unbindLongtextScrollSync();
     this._unbindSegPreviewScrollSync();
@@ -1089,14 +1094,15 @@ export class SegmentationView {
     // Countdown display
     let remaining = DURATION / 1000;
     const countEl = bar.querySelector<HTMLElement>("#act-undo-countdown");
-    const tick = setInterval(() => {
+    if (this._undoCountdownInterval) clearInterval(this._undoCountdownInterval);
+    this._undoCountdownInterval = setInterval(() => {
       remaining -= 1;
       if (countEl) countEl.textContent = String(remaining);
-      if (remaining <= 0) clearInterval(tick);
+      if (remaining <= 0) { clearInterval(this._undoCountdownInterval!); this._undoCountdownInterval = null; }
     }, 1000);
 
     bar.querySelector("#act-matcher-undo-btn")?.addEventListener("click", () => {
-      clearInterval(tick);
+      if (this._undoCountdownInterval) { clearInterval(this._undoCountdownInterval); this._undoCountdownInterval = null; }
       this._clearUndoBanner();
       void this._undoDeleteStructure();
     });
