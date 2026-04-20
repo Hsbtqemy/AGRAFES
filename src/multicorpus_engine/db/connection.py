@@ -8,10 +8,12 @@ def get_connection(db_path: str | Path) -> sqlite3.Connection:
     """Open a SQLite connection with sensible defaults.
 
     WAL mode for concurrent readers. Row factory so rows behave like dicts.
-    Foreign keys enforced.
+    Foreign keys enforced. synchronous=FULL ensures committed transactions
+    survive OS crashes and power loss (critical for corpus data integrity).
     """
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
+    conn.execute("PRAGMA synchronous=FULL")
     return conn

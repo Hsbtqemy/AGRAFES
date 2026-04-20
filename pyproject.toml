@@ -11,8 +11,8 @@ requires-python = ">=3.10"
 license = { text = "MIT" }
 keywords = ["corpus", "concordancer", "kwic", "nlp", "linguistics"]
 dependencies = [
-    "python-docx>=1.1.0",
-    "defusedxml>=0.7",
+    "python-docx>=1.1.0,<2.0",
+    "defusedxml>=0.7,<1.0",
 ]
 
 [project.optional-dependencies]

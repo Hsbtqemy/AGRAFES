@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import logging.handlers
 import sqlite3
 import uuid
 from datetime import datetime, timezone
@@ -89,7 +90,9 @@ def setup_run_logger(db_path: str | Path, run_id: str) -> tuple[logging.Logger, 
     logger.setLevel(logging.DEBUG)
 
     if not logger.handlers:
-        fh = logging.FileHandler(log_path, encoding="utf-8")
+        fh = logging.handlers.RotatingFileHandler(
+            log_path, maxBytes=10 * 1024 * 1024, backupCount=3, encoding="utf-8"
+        )
         fh.setLevel(logging.DEBUG)
         fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
         fh.setFormatter(fmt)

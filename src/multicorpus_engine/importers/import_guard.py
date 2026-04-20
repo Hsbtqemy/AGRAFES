@@ -45,6 +45,8 @@ def find_duplicate_import_match(
     check_filename: bool = False,
 ) -> DuplicateImportMatch | None:
     """Return duplicate match metadata if this file is already in the corpus."""
+    if not source_hash:
+        return None
     row = conn.execute(
         "SELECT doc_id FROM documents WHERE source_hash = ? LIMIT 1",
         (source_hash,),

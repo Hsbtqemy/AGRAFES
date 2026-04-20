@@ -83,7 +83,7 @@ def cmd_init_project(args: argparse.Namespace) -> None:
     from .db.migrations import apply_migrations
     from .runs import create_run, setup_run_logger, update_run_stats, utcnow_iso
 
-    db_path = Path(args.db)
+    db_path = Path(args.db).resolve()
     if db_path.exists():
         _err({"error": f"DB already exists at {db_path}", "created_at": utcnow_iso()})
 
@@ -123,10 +123,11 @@ def cmd_import(args: argparse.Namespace) -> None:
     conn = get_connection(db_path)
     apply_migrations(conn)
 
+    import_path = str(Path(args.path).resolve())
     params = {
         "mode": args.mode,
         "language": args.language,
-        "path": args.path,
+        "path": import_path,
         "title": getattr(args, "title", None),
         "doc_role": getattr(args, "doc_role", "standalone"),
         "resource_type": getattr(args, "resource_type", None),
@@ -146,7 +147,7 @@ def cmd_import(args: argparse.Namespace) -> None:
         if args.mode == "docx_numbered_lines":
             report = import_docx_numbered_lines(
                 conn=conn,
-                path=args.path,
+                path=import_path,
                 language=args.language,
                 title=getattr(args, "title", None),
                 doc_role=getattr(args, "doc_role", "standalone"),
@@ -158,7 +159,7 @@ def cmd_import(args: argparse.Namespace) -> None:
             from .importers.txt import import_txt_numbered_lines
             report = import_txt_numbered_lines(
                 conn=conn,
-                path=args.path,
+                path=import_path,
                 language=args.language,
                 title=getattr(args, "title", None),
                 doc_role=getattr(args, "doc_role", "standalone"),
@@ -170,7 +171,7 @@ def cmd_import(args: argparse.Namespace) -> None:
             from .importers.docx_paragraphs import import_docx_paragraphs
             report = import_docx_paragraphs(
                 conn=conn,
-                path=args.path,
+                path=import_path,
                 language=args.language,
                 title=getattr(args, "title", None),
                 doc_role=getattr(args, "doc_role", "standalone"),
@@ -182,7 +183,7 @@ def cmd_import(args: argparse.Namespace) -> None:
             from .importers.odt_paragraphs import import_odt_paragraphs
             report = import_odt_paragraphs(
                 conn=conn,
-                path=args.path,
+                path=import_path,
                 language=args.language,
                 title=getattr(args, "title", None),
                 doc_role=getattr(args, "doc_role", "standalone"),
@@ -194,7 +195,7 @@ def cmd_import(args: argparse.Namespace) -> None:
             from .importers.odt_numbered_lines import import_odt_numbered_lines
             report = import_odt_numbered_lines(
                 conn=conn,
-                path=args.path,
+                path=import_path,
                 language=args.language,
                 title=getattr(args, "title", None),
                 doc_role=getattr(args, "doc_role", "standalone"),
@@ -206,7 +207,7 @@ def cmd_import(args: argparse.Namespace) -> None:
             from .importers.tei_importer import import_tei
             report = import_tei(
                 conn=conn,
-                path=args.path,
+                path=import_path,
                 language=getattr(args, "language", None),
                 title=getattr(args, "title", None),
                 doc_role=getattr(args, "doc_role", "standalone"),
@@ -219,7 +220,7 @@ def cmd_import(args: argparse.Namespace) -> None:
             from .importers.conllu import import_conllu
             report = import_conllu(
                 conn=conn,
-                path=args.path,
+                path=import_path,
                 language=args.language,
                 title=getattr(args, "title", None),
                 doc_role=getattr(args, "doc_role", "standalone"),
@@ -543,7 +544,7 @@ def cmd_export(args: argparse.Namespace) -> None:
     apply_migrations(conn)
 
     fmt = args.format
-    output = Path(args.output)
+    output = Path(args.output).resolve()
     params = {"format": fmt, "output": str(output)}
     run_id = create_run(conn, "export", params)
     log, log_path = setup_run_logger(db_path, run_id)
