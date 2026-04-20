@@ -603,7 +603,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 
             _write_paths = {
                 # Core mutators
-                "/index", "/import", "/shutdown",
+                "/index", "/import", "/import/preview", "/shutdown",
                 "/annotate",
                 "/db/backup",
                 "/corpus/info",
@@ -1985,6 +1985,10 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 http_status=400,
             )
             return
+        if "\x00" in path:
+            self._send_error("Invalid path", code=ERR_VALIDATION, http_status=400)
+            return
+        path = str(Path(path).resolve())
         if mode != "tei" and (not isinstance(language, str) or not language):
             self._send_error(
                 "language is required for non-TEI import modes",
@@ -2189,8 +2193,11 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         if not isinstance(mode, str) or not mode:
             self._send_error("mode is required", code=ERR_VALIDATION, http_status=400)
             return
+        if "\x00" in path_str:
+            self._send_error("Invalid path", code=ERR_VALIDATION, http_status=400)
+            return
 
-        fpath = _Path(path_str)
+        fpath = _Path(path_str).resolve()
         if not fpath.exists():
             self._send_error(f"File not found: {path_str}", code=ERR_NOT_FOUND, http_status=404)
             return

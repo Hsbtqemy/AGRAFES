@@ -2488,7 +2488,7 @@ async function _setMode(mode: Mode, opts?: { force?: boolean }): Promise<void> {
   } catch (err) {
     console.error("[shell] navigation error:", err);
     const c = document.getElementById("app");
-    if (c) c.innerHTML = `<div style="padding:2rem;color:#c0392b">Erreur de chargement du module.<br><code>${String(err)}</code></div>`;
+    if (c) c.innerHTML = `<div style="padding:2rem;color:#c0392b">Erreur de chargement du module.<br><code>${_esc(String(err))}</code></div>`;
   } finally {
     _navigating = false;
     _shellNavReady = true;

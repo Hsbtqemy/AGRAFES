@@ -2224,7 +2224,7 @@ export class CurationView {
       this._pushCurateLog("preview", `${res.count} exception(s) persistée(s) chargée(s) dans le panneau admin`);
       this._renderExcAdminPanel();
     } catch (err) {
-      list.innerHTML = `<p class="empty-hint" style="color:#b91c1c">Erreur lors du chargement : ${String(err)}</p>`;
+      list.innerHTML = `<p class="empty-hint" style="color:#b91c1c">Erreur lors du chargement : ${_escHtml(String(err))}</p>`;
     }
   }
   private _setExcAdminFilter(f: "all" | "ignore" | "override"): void {

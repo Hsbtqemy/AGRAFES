@@ -429,7 +429,7 @@ export class AnnotationView {
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      viewer.innerHTML = `<p class="annot-error">Erreur chargement tokens\u00a0: ${msg}</p>`;
+      viewer.innerHTML = `<p class="annot-error">Erreur chargement tokens\u00a0: ${_escHtml(msg)}</p>`;
     }
   }
 
