@@ -494,6 +494,17 @@ class _CorpusHandler(BaseHTTPRequestHandler):
     # ------------------------------------------------------------------
 
     def do_GET(self) -> None:
+        try:
+            self._do_GET_inner()
+        except (BrokenPipeError, ConnectionResetError):
+            logger.warning("Client disconnected during do_GET (%s) — server continues", self.path)
+        except ValueError as exc:
+            self._send_error(str(exc), code=ERR_BAD_REQUEST, http_status=400)
+        except Exception as exc:
+            logger.exception("Handler error on GET %s: %s", self.path, exc)
+            self._send_error("Internal error", code=ERR_INTERNAL, http_status=500)
+
+    def _do_GET_inner(self) -> None:
         path = urlparse(self.path).path
         if path == "/health":
             self._send_json(success_payload({
@@ -542,15 +553,15 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             qs = parse_qs(urlparse(self.path).query)
             doc_id_str = qs.get("doc_id", [None])[0]
             self._handle_curate_exceptions_list(
-                {"doc_id": int(doc_id_str)} if doc_id_str else {}
+                {"doc_id": _int_param(doc_id_str, 0)} if doc_id_str else {}
             )
         elif path == "/curate/apply-history":
             qs = parse_qs(urlparse(self.path).query)
             doc_id_str = qs.get("doc_id", [None])[0]
             limit_str = qs.get("limit", [None])[0]
             self._handle_curate_apply_history_list({
-                "doc_id": int(doc_id_str) if doc_id_str else None,
-                "limit": int(limit_str) if limit_str else 50,
+                "doc_id": _int_param(doc_id_str, 0) if doc_id_str else None,
+                "limit": _int_param(limit_str, 50) if limit_str else 50,
             })
         elif path == "/corpus/info":
             self._handle_corpus_info_get()
