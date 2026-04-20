@@ -30,6 +30,7 @@ GET  /jobs/{job_id}  → async job status/result
 from __future__ import annotations
 
 import datetime as dt
+import hmac
 import json
 import logging
 import os
@@ -405,10 +406,19 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             status=http_status,
         )
 
+    _MAX_BODY_SIZE = 64 * 1024 * 1024  # 64 MiB
+
     def _read_body(self) -> dict:
         length = int(self.headers.get("Content-Length", 0))
         if not length:
             return {}
+        if length > self._MAX_BODY_SIZE:
+            self._send_error(
+                f"Payload too large (max {self._MAX_BODY_SIZE // (1024 * 1024)} MiB)",
+                code=ERR_BAD_REQUEST,
+                http_status=413,
+            )
+            raise ValueError("Payload too large")
         raw = self.rfile.read(length)
         try:
             payload = json.loads(raw.decode("utf-8"))
@@ -438,7 +448,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         if expected is None:
             return True
         provided = self.headers.get("X-Agrafes-Token")
-        if provided != expected:
+        if not hmac.compare_digest(provided or "", expected):
             self._send_error(
                 "Missing or invalid X-Agrafes-Token",
                 code=ERR_UNAUTHORIZED,
@@ -2354,7 +2364,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 units_all.append({"n": n, "external_id": n, "unit_type": "line", "text_raw": rich})
 
         elif mode in ("tei",):
-            import xml.etree.ElementTree as _ET
+            import defusedxml.ElementTree as _DefET
             from multicorpus_engine.importers.tei_importer import _iter_body_elements, _xmlid_to_int  # type: ignore[attr-defined]
             _ATTR_ID = "{http://www.w3.org/XML/1998/namespace}id"
             raw_bytes = fpath.read_bytes()
@@ -2362,7 +2372,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 text_content = raw_bytes.decode("utf-8-sig")
             except UnicodeDecodeError:
                 text_content = raw_bytes.decode("latin-1")
-            root = _ET.fromstring(text_content)
+            root = _DefET.fromstring(text_content)
             elements = _iter_body_elements(root, "p")
             n = 0
             for el in elements:
@@ -7351,7 +7361,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             )
             return
 
-        out = Path(out_path_str)
+        out = self._resolve_export_path(out_path_str)
         out.parent.mkdir(parents=True, exist_ok=True)
         date_str = _dt.date.today().isoformat()
         esc = self._escape_xml
@@ -7452,7 +7462,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             params,
         ).fetchall()
 
-        out = Path(out_path)
+        out = self._resolve_export_path(out_path)
         out.parent.mkdir(parents=True, exist_ok=True)
         fields = ["link_id", "external_id", "pivot_doc_id", "target_doc_id",
                   "pivot_unit_id", "target_unit_id", "pivot_text", "target_text", "status"]
@@ -7488,7 +7498,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             }
             for r in rows
         ]
-        out = Path(out_path)
+        out = self._resolve_export_path(out_path)
         out.parent.mkdir(parents=True, exist_ok=True)
         if fmt == "html":
             html_rows = "".join(
@@ -7757,7 +7767,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             return
 
         if out_path is not None:
-            backup_path = Path(out_path)
+            backup_path = self._resolve_export_path(out_path)
             if backup_path.exists():
                 self._send_error(
                     f"File already exists: {backup_path}",
@@ -7775,7 +7785,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 )
                 return
         else:
-            target_dir = source_db.parent if not out_dir else Path(out_dir)
+            target_dir = source_db.parent if not out_dir else self._resolve_export_path(out_dir)
             try:
                 target_dir.mkdir(parents=True, exist_ok=True)
             except Exception as exc:
@@ -8613,6 +8623,7 @@ class CorpusServer:
             json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
         )
+        self._portfile_path.chmod(0o600)
 
     def _remove_portfile(self) -> None:
         try:

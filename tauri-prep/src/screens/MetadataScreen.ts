@@ -1237,7 +1237,7 @@ export class MetadataScreen {
       this._log(`✓ Famille #${familyRootId} segmentée : ${res.summary.segmented} doc(s) traité(s).`);
     } catch (err) {
       const msg = err instanceof SidecarError ? err.message : String(err);
-      if (resultDiv) resultDiv.innerHTML = `<p class="prep-fam-ratio-warn">Erreur : ${msg}</p>`;
+      if (resultDiv) resultDiv.innerHTML = `<p class="prep-fam-ratio-warn">Erreur : ${_escHtmlMeta(msg)}</p>`;
       this._log(`Erreur segmentation famille : ${msg}`, true);
     } finally {
       btn.disabled = false;
@@ -1402,7 +1402,7 @@ export class MetadataScreen {
       this._log(`✓ Famille #${familyRootId} alignée : ${res.summary.total_links_created} lien(s) créé(s).`);
     } catch (err) {
       const msg = err instanceof SidecarError ? err.message : String(err);
-      if (resultDiv) resultDiv.innerHTML = `<p class="prep-fam-ratio-warn">Erreur : ${msg}</p>`;
+      if (resultDiv) resultDiv.innerHTML = `<p class="prep-fam-ratio-warn">Erreur : ${_escHtmlMeta(msg)}</p>`;
       this._log(`Erreur alignement famille : ${msg}`, true);
     } finally {
       btn.disabled = false;
@@ -1458,7 +1458,7 @@ export class MetadataScreen {
       this._wireCurationButtons(resultDiv, familyRootId);
       btn.textContent = `📋 Curation (${status.total_pending})`;
     } catch (err) {
-      resultDiv.innerHTML = `<p class="prep-fam-ratio-warn">Erreur curation : ${err instanceof SidecarError ? err.message : String(err)}</p>`;
+      resultDiv.innerHTML = `<p class="prep-fam-ratio-warn">Erreur curation : ${_escHtmlMeta(err instanceof SidecarError ? err.message : String(err))}</p>`;
       btn.textContent = "📋 Curation";
     } finally {
       btn.disabled = false;

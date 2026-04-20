@@ -42,6 +42,7 @@ export class ExportsScreen {
   private _showToast: ((msg: string, isError?: boolean) => void) | null = null;
   private _isBusy = false;
   private _lastErrorMsg: string | null = null;
+  private _pollTimerId: ReturnType<typeof setTimeout> | null = null;
 
   // DOM refs
   private _root!: HTMLElement;
@@ -1161,10 +1162,10 @@ export class ExportsScreen {
             this._v2RunBtn.disabled = false;
             this._syncV2Ui();
           } else {
-            setTimeout(() => void poll(), 1000);
+            this._pollTimerId = setTimeout(() => void poll(), 1000);
           }
         };
-        setTimeout(() => void poll(), 500);
+        this._pollTimerId = setTimeout(() => void poll(), 500);
         return;
       }
     } catch (err) {
@@ -1428,17 +1429,17 @@ export class ExportsScreen {
           banner.style.cssText = `display:block;background:${gateBg};border:1px solid ${gateColor};border-radius:4px;padding:0.4rem 0.75rem;font-size:0.83rem;color:${gateColor}`;
           const policyBadge = `<span style="font-size:0.72rem;background:rgba(0,0,0,0.08);border-radius:3px;padding:1px 5px;margin-left:0.4rem">${qaPolicy === "strict" ? "Strict" : "Lenient"}</span>`;
           banner.innerHTML = `${gateIcon} <strong>${gate === "ok" ? "Prêt pour publication" : gate === "blocking" ? "Bloquant" : "Avertissements"}</strong>${policyBadge}`
-            + (issues.length ? `<ul style="margin:0.3rem 0 0 1rem">${issues.map(i => `<li>${i}</li>`).join("")}</ul>` : "");
+            + (issues.length ? `<ul style="margin:0.3rem 0 0 1rem">${issues.map(i => `<li>${_escHtml(i)}</li>`).join("")}</ul>` : "");
           this._log(`Rapport QA exporté → ${outPath} (gate: ${gate}, politique: ${qaPolicy})`);
           btn.disabled = false;
         } else if (rec.status === "error" || rec.status === "canceled") {
           this._log(`Erreur rapport QA: ${rec.error ?? rec.status}`, true);
           btn.disabled = false;
         } else {
-          setTimeout(() => void poll(), 1000);
+          this._pollTimerId = setTimeout(() => void poll(), 1000);
         }
       };
-      setTimeout(() => void poll(), 500);
+      this._pollTimerId = setTimeout(() => void poll(), 500);
     } catch (err) {
       this._log(`Erreur rapport QA: ${err instanceof SidecarError ? err.message : String(err)}`, true);
       btn.disabled = false;
@@ -1499,6 +1500,10 @@ export class ExportsScreen {
   }
 
   dispose(): void {
+    if (this._pollTimerId !== null) {
+      clearTimeout(this._pollTimerId);
+      this._pollTimerId = null;
+    }
     this._conn = null;
     this._jobCenter = null;
     this._showToast = null;

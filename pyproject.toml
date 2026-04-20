@@ -12,6 +12,7 @@ license = { text = "MIT" }
 keywords = ["corpus", "concordancer", "kwic", "nlp", "linguistics"]
 dependencies = [
     "python-docx>=1.1.0",
+    "defusedxml>=0.7",
 ]
 
 [project.optional-dependencies]

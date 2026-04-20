@@ -612,7 +612,7 @@ function _renderStructureList(): void {
     const isActive = _activeRoleName === r.name;
     html += `
       <div class="conv-role-item${isActive ? " active" : ""}" data-role="${_esc(r.name)}">
-        <span class="conv-role-dot" style="background:${r.color ?? "#475569"};border-color:${r.color ?? "#475569"}"></span>
+        <span class="conv-role-dot" style="background:${_safeColor(r.color)};border-color:${_safeColor(r.color)}"></span>
         <span class="conv-role-icon">${r.icon ?? ""}</span>
         <span class="conv-role-label">${_esc(r.label)}</span>
         <span class="conv-role-name">${_esc(r.name)}</span>
@@ -626,7 +626,7 @@ function _renderStructureList(): void {
   for (const s of dormant) {
     html += `
       <div class="conv-role-item conv-role-item--dormant">
-        <span class="conv-role-dot" style="background:${s.color}44;border-color:${s.color}66"></span>
+        <span class="conv-role-dot" style="background:${_safeColor(s.color)}44;border-color:${_safeColor(s.color)}66"></span>
         <span class="conv-role-icon" style="opacity:0.4">${s.icon}</span>
         <span class="conv-role-label">${_esc(s.label)}</span>
         <button class="conv-dormant-btn" data-dormant="${_esc(s.name)}">Créer</button>
@@ -679,7 +679,7 @@ function _renderTextList(): void {
 
   _textListEl.innerHTML = textRoles.map(r => `
     <div class="conv-role-item${_activeRoleName === r.name ? " active" : ""}" data-role="${_esc(r.name)}">
-      <span class="conv-role-dot" style="background:${r.color ?? "#475569"};border-color:${r.color ?? "#475569"}"></span>
+      <span class="conv-role-dot" style="background:${_safeColor(r.color)};border-color:${_safeColor(r.color)}"></span>
       <span class="conv-role-icon">${r.icon ?? ""}</span>
       <span class="conv-role-label">${_esc(r.label)}</span>
       <span class="conv-role-name">${_esc(r.name)}</span>
@@ -915,7 +915,7 @@ function _renderUnits(): void {
     const isParatext = _textStartN !== null && u.n < _textStartN;
     const selected = _selectedUnitIds.has(u.unit_id);
     const badge = role
-      ? `<span class="conv-unit-badge" style="background:${role.color ?? "#374151"}22;border-color:${role.color ?? "#374151"};color:${role.color ?? "#94a3b8"}">${role.icon ? role.icon + " " : ""}${_esc(role.label)}</span>`
+      ? `<span class="conv-unit-badge" style="background:${_safeColor(role.color, "#374151")}22;border-color:${_safeColor(role.color, "#374151")};color:${_safeColor(role.color, "#94a3b8")}">${role.icon ? role.icon + " " : ""}${_esc(role.label)}</span>`
       : "";
     return `
       <div class="conv-unit-row${selected ? " selected" : ""}${isParatext ? " paratext" : ""}" data-uid="${u.unit_id}" data-n="${u.n}">
@@ -1025,6 +1025,12 @@ async function _assignRole(roleName: string | null): Promise<void> {
 
 function _esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+/** Validate that a color value is a safe CSS hex color (#RGB or #RRGGBB). Falls back to a safe default. */
+function _safeColor(color: string | null | undefined, fallback = "#475569"): string {
+  if (color && /^#[0-9a-fA-F]{3,8}$/.test(color)) return color;
+  return fallback;
 }
 
 let _cssInjected = false;

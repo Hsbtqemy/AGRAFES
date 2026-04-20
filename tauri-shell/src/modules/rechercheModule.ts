@@ -1838,7 +1838,7 @@ function _updateResultsHeader(root: HTMLElement, total: number): void {
 }
 
 function _esc(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 // ─── CSS ──────────────────────────────────────────────────────────────────────

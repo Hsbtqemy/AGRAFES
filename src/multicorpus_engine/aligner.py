@@ -242,16 +242,20 @@ def align_pair(
                 }
             )
 
-    conn.executemany(
-        """
-        INSERT OR IGNORE INTO alignment_links
-            (run_id, pivot_unit_id, target_unit_id, external_id,
-             pivot_doc_id, target_doc_id, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        """,
-        links,
-    )
-    conn.commit()
+    try:
+        conn.executemany(
+            """
+            INSERT OR IGNORE INTO alignment_links
+                (run_id, pivot_unit_id, target_unit_id, external_id,
+                 pivot_doc_id, target_doc_id, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            links,
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
 
     report.links_created = len(links)
     if protected_skipped:
@@ -443,16 +447,20 @@ def align_pair_external_id_then_position(
             )
 
     if links:
-        conn.executemany(
-            """
-            INSERT OR IGNORE INTO alignment_links
-                (run_id, pivot_unit_id, target_unit_id, external_id,
-                 pivot_doc_id, target_doc_id, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            links,
-        )
-        conn.commit()
+        try:
+            conn.executemany(
+                """
+                INSERT OR IGNORE INTO alignment_links
+                    (run_id, pivot_unit_id, target_unit_id, external_id,
+                     pivot_doc_id, target_doc_id, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                links,
+            )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
 
     if common_pos:
         msg = f"Position fallback created {len(common_pos)} link(s)"
@@ -614,16 +622,20 @@ def align_pair_by_position(
                 }
             )
 
-    conn.executemany(
-        """
-        INSERT OR IGNORE INTO alignment_links
-            (run_id, pivot_unit_id, target_unit_id, external_id,
-             pivot_doc_id, target_doc_id, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        """,
-        links,
-    )
-    conn.commit()
+    try:
+        conn.executemany(
+            """
+            INSERT OR IGNORE INTO alignment_links
+                (run_id, pivot_unit_id, target_unit_id, external_id,
+                 pivot_doc_id, target_doc_id, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            links,
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
 
     report.links_created = len(links)
     if protected_skipped:
@@ -809,16 +821,20 @@ def align_pair_by_similarity(
             report.missing_in_target.append(p_uid)
 
     if links:
-        conn.executemany(
-            """
-            INSERT OR IGNORE INTO alignment_links
-                (run_id, pivot_unit_id, target_unit_id, external_id,
-                 pivot_doc_id, target_doc_id, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            links,
-        )
-        conn.commit()
+        try:
+            conn.executemany(
+                """
+                INSERT OR IGNORE INTO alignment_links
+                    (run_id, pivot_unit_id, target_unit_id, external_id,
+                     pivot_doc_id, target_doc_id, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                links,
+            )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
 
     report.links_created = len(links)
     if report.missing_in_target:

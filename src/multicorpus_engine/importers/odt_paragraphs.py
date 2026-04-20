@@ -43,41 +43,36 @@ def import_odt_paragraphs(
         __import__("datetime").timezone.utc
     ).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    cur = conn.execute(
-        """
-        INSERT INTO documents
-            (title, language, doc_role, resource_type, meta_json, source_path, source_hash, created_at)
-        VALUES (?, ?, ?, ?, NULL, ?, ?, ?)
-        """,
-        (doc_title, language, doc_role, resource_type, str(path), source_hash, utcnow),
-    )
-    doc_id = cur.lastrowid
-
-    log.info("Created document doc_id=%d title=%r", doc_id, doc_title)
-
     try:
         para_texts = read_odt_paragraph_rich_lines(path)
-    except (FileNotFoundError, ValueError) as exc:
-        conn.rollback()
-        raise exc
 
-    units_to_insert: list[tuple] = []
-    n = 0
+        cur = conn.execute(
+            """
+            INSERT INTO documents
+                (title, language, doc_role, resource_type, meta_json, source_path, source_hash, created_at)
+            VALUES (?, ?, ?, ?, NULL, ?, ?, ?)
+            """,
+            (doc_title, language, doc_role, resource_type, str(path), source_hash, utcnow),
+        )
+        doc_id = cur.lastrowid
+        log.info("Created document doc_id=%d title=%r", doc_id, doc_title)
 
-    for text_raw, heading_level in para_texts:
-        n += 1
-        text_norm = normalize(text_raw)
-        sep_count = count_sep(text_raw)
-        meta_dict: dict = {}
-        if sep_count > 0:
-            meta_dict["sep_count"] = sep_count
-        if heading_level is not None:
-            meta_dict["heading_level"] = heading_level
-        meta = json.dumps(meta_dict) if meta_dict else None
-        unit_role = "intertitre" if heading_level is not None else None
-        units_to_insert.append((doc_id, "line", n, n, text_raw, text_norm, meta, unit_role))
+        units_to_insert: list[tuple] = []
+        n = 0
 
-    try:
+        for text_raw, heading_level in para_texts:
+            n += 1
+            text_norm = normalize(text_raw)
+            sep_count = count_sep(text_raw)
+            meta_dict: dict = {}
+            if sep_count > 0:
+                meta_dict["sep_count"] = sep_count
+            if heading_level is not None:
+                meta_dict["heading_level"] = heading_level
+            meta = json.dumps(meta_dict) if meta_dict else None
+            unit_role = "intertitre" if heading_level is not None else None
+            units_to_insert.append((doc_id, "line", n, n, text_raw, text_norm, meta, unit_role))
+
         has_headings = any(level is not None for _, level in para_texts)
         if has_headings:
             conn.execute(

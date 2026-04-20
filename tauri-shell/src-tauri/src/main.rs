@@ -85,12 +85,17 @@ async fn sidecar_fetch_loopback(
     })
 }
 
-/// Reads a text file from any path, bypassing Tauri FS scope (used to read sidecar portfiles
-/// which live next to the user's DB file, potentially outside the app data directory).
+/// Reads a sidecar portfile (`.agrafes_sidecar.json`) from any path, bypassing Tauri FS scope.
+/// Restricted to the portfile filename only — refuses to read any other file.
 #[tauri::command]
 fn read_text_file_raw(path: String) -> Result<String, String> {
-    std::fs::read_to_string(&path)
-        .map_err(|e| format!("read_text_file_raw: cannot read '{}': {}", path, e))
+    let p = std::path::Path::new(&path);
+    match p.file_name().and_then(|n| n.to_str()) {
+        Some(".agrafes_sidecar.json") => {}
+        _ => return Err("read_text_file_raw: only .agrafes_sidecar.json files may be read".to_string()),
+    }
+    std::fs::read_to_string(p)
+        .map_err(|e| format!("read_text_file_raw: cannot read portfile: {}", e))
 }
 
 /// Appends a diagnostic message under the OS user data dir, e.g.

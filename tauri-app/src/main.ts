@@ -7,8 +7,9 @@ if (!container) throw new Error("#app element not found");
 
 initApp(container).catch((err: unknown) => {
   console.error("initApp error:", err);
+  const safeErr = String(err).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   container.innerHTML = `<div style="padding:32px;color:#e63946;font-family:system-ui">
     <h2>Erreur de démarrage</h2>
-    <pre style="font-size:12px;white-space:pre-wrap">${String(err)}</pre>
+    <pre style="font-size:12px;white-space:pre-wrap">${safeErr}</pre>
   </div>`;
 });

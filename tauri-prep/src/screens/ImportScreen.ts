@@ -708,8 +708,8 @@ export class ImportScreen {
       const chipCls = this._chipClass(f.status);
       row.innerHTML = `
         <div class="imp-file-main">
-          <span class="imp-file-name" title="${f.path}">${f.title}</span>
-          <span class="chip${chipCls ? " " + chipCls : ""}">${this._statusLabel(f)}</span>
+          <span class="imp-file-name" title="${_escHtml(f.path)}">${_escHtml(f.title)}</span>
+          <span class="chip${chipCls ? " " + chipCls : ""}">${_escHtml(this._statusLabel(f))}</span>
         </div>
         <div class="imp-file-controls">
           <select class="imp-mode-sel" data-i="${i}" title="Mode d'import (filtré selon l'extension)">
@@ -988,8 +988,8 @@ export class ImportScreen {
   private _statusLabel(f: FileItem): string {
     if (f.status === "pending") return "En attente";
     if (f.status === "importing") return "Importation…";
-    if (f.status === "done") return `✓ doc_id=${f.message}`;
-    if (f.status === "error") return `✗ ${f.message}`;
+    if (f.status === "done") return `✓ doc_id=${_escHtml(String(f.message ?? ""))}`;
+    if (f.status === "error") return `✗ ${_escHtml(String(f.message ?? ""))}`;
     return "";
   }
 
@@ -1164,7 +1164,7 @@ export class ImportScreen {
           <span class="family-dialog-icon">🔗</span>
           <div>
             <div class="family-dialog-title">Rattacher à une famille ?</div>
-            <div class="family-dialog-subtitle">« ${newDocTitle} » vient d'être importé (doc #${newDocId})</div>
+            <div class="family-dialog-subtitle">« ${_escHtml(newDocTitle)} » vient d'être importé (doc #${newDocId})</div>
           </div>
         </div>
         <p class="family-dialog-desc">
@@ -1177,7 +1177,7 @@ export class ImportScreen {
             <option value="">— Aucun —</option>
             ${candidates.map(d => {
               const label = [d.title ?? `#${d.doc_id}`, d.language ? `[${d.language}]` : ""].filter(Boolean).join(" ");
-              return `<option value="${d.doc_id}">${label}</option>`;
+              return `<option value="${d.doc_id}">${_escHtml(label)}</option>`;
             }).join("")}
           </select>
         </div>
@@ -1304,12 +1304,12 @@ export class ImportScreen {
       ${groups.map((g, gi) => `
         <div class="prep-imp-family-group">
           <div class="prep-imp-family-group-head">
-            Groupe ${gi + 1} — <code>${g.stem}</code>
+            Groupe ${gi + 1} — <code>${_escHtml(g.stem)}</code>
           </div>
           <div class="prep-imp-family-group-files">
             ${g.files.map(f => {
               const fname = f.path.replace(/\\/g, "/").split("/").pop() ?? f.path;
-              return `<span class="chip">${fname} <em>[${f.lang.toUpperCase()}]</em></span>`;
+              return `<span class="chip">${_escHtml(fname)} <em>[${_escHtml(f.lang.toUpperCase())}]</em></span>`;
             }).join("")}
           </div>
           <div class="prep-imp-family-group-action">
@@ -1420,3 +1420,7 @@ export class ImportScreen {
 
 // Re-export type for inline use
 type ImportOptions = Parameters<typeof importFile>[1];
+
+function _escHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}

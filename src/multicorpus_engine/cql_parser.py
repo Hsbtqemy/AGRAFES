@@ -148,12 +148,15 @@ def _parse_quantifier(src: str, index: int) -> tuple[int, int, int]:
     m = _QUANT_RE.match(src[index:])
     if not m:
         return (1, 1, 0)
+    _MAX_REPEAT = 1000
     min_repeat = int(m.group("m"))
     max_repeat = int(m.group("n")) if m.group("n") is not None else min_repeat
     if min_repeat < 0 or max_repeat < 0:
         raise ValueError("Quantifier bounds must be >= 0")
     if max_repeat < min_repeat:
         raise ValueError("Invalid quantifier: max < min")
+    if max_repeat > _MAX_REPEAT:
+        raise ValueError(f"Quantifier too large: {max_repeat} (max {_MAX_REPEAT})")
     consumed = m.end()
     return (min_repeat, max_repeat, consumed)
 

@@ -21,7 +21,7 @@
 
 import { query, tokenQuery, queryFacets, SidecarError } from "../lib/sidecarClient";
 import { state, ALIGNED_LIMIT_DEFAULT, PAGE_LIMIT_DEFAULT, PAGE_LIMIT_ALIGNED } from "../state";
-import { elt } from "../ui/dom";
+import { elt, escapeHtml } from "../ui/dom";
 import { renderHit, VIRT_DOM_CAP } from "../ui/results";
 import { buildFtsQuery, showBuilderWarn, validateCqlSyntax } from "./search";
 import { renderChips } from "./filters";
@@ -316,7 +316,7 @@ export function renderResults(): void {
   if (hits.length === 0) {
     const empty = elt("div", { class: "empty-state" });
     if (hasActiveFilters()) {
-      empty.innerHTML = `<div class="icon">🔎</div><h3>Aucun résultat</h3><p>Aucun passage ne correspond aux filtres actifs.<br><small>${activeFiltersSummary()}</small></p>`;
+      empty.innerHTML = `<div class="icon">🔎</div><h3>Aucun résultat</h3><p>Aucun passage ne correspond aux filtres actifs.<br><small>${escapeHtml(activeFiltersSummary())}</small></p>`;
     } else {
       empty.innerHTML = `<div class="icon">🔍</div><h3>Aucun résultat</h3><p>Essayez un autre terme de recherche.</p>`;
     }

@@ -540,12 +540,14 @@ def _apply_doc_filters(
         filters.append("d.doc_role = ?")
         params.append(doc_role)
     if author:
-        filters.append("(d.author_lastname LIKE ? OR d.author_firstname LIKE ?)")
-        pat = f"%{author}%"
+        filters.append("(d.author_lastname LIKE ? ESCAPE '\\' OR d.author_firstname LIKE ? ESCAPE '\\')")
+        escaped = author.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        pat = f"%{escaped}%"
         params.extend([pat, pat])
     if title_search:
-        filters.append("d.title LIKE ?")
-        params.append(f"%{title_search}%")
+        filters.append("d.title LIKE ? ESCAPE '\\'")
+        escaped_title = title_search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        params.append(f"%{escaped_title}%")
     if doc_date_from:
         filters.append("d.doc_date >= ?")
         params.append(doc_date_from)

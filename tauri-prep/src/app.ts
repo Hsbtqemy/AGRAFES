@@ -776,17 +776,17 @@ export class App {
 
         const info = document.createElement("div");
         info.style.flex = "1";
-        info.innerHTML = `<span class="prep-preset-name">${preset.name}</span>` +
-          (preset.description ? `<span class="prep-preset-desc">${preset.description}</span>` : "");
+        info.innerHTML = `<span class="prep-preset-name">${_escHtmlApp(preset.name)}</span>` +
+          (preset.description ? `<span class="prep-preset-desc">${_escHtmlApp(preset.description)}</span>` : "");
         const chips = document.createElement("div");
         chips.className = "prep-preset-chips";
         if (preset.languages?.length) {
-          chips.innerHTML += preset.languages.map(l => `<span class="prep-preset-chip">${l}</span>`).join("");
+          chips.innerHTML += preset.languages.map(l => `<span class="prep-preset-chip">${_escHtmlApp(l)}</span>`).join("");
         }
         if (preset.alignment_strategy)
-          chips.innerHTML += `<span class="prep-preset-chip">${preset.alignment_strategy}</span>`;
+          chips.innerHTML += `<span class="prep-preset-chip">${_escHtmlApp(preset.alignment_strategy)}</span>`;
         if (preset.segmentation_pack)
-          chips.innerHTML += `<span class="prep-preset-chip">seg:${preset.segmentation_pack}</span>`;
+          chips.innerHTML += `<span class="prep-preset-chip">seg:${_escHtmlApp(preset.segmentation_pack)}</span>`;
         info.appendChild(chips);
         row.appendChild(info);
 
@@ -1056,4 +1056,8 @@ export class App {
       this._beforeUnloadHandler = null;
     }
   }
+}
+
+function _escHtmlApp(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }

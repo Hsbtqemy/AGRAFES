@@ -7,6 +7,9 @@ name: linux-manylinux-sidecar
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build-manylinux:
     runs-on: ubuntu-latest

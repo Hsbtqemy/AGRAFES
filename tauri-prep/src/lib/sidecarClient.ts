@@ -1437,10 +1437,11 @@ async function _rawPost(url: string, token: string | null, path: string, body: u
   });
   const json = (await res.json()) as Record<string, unknown>;
   if (!res.ok || json.ok === false) {
-    const msg =
+    const rawMsg =
       (json.error_message as string) ||
       (json.error as string) ||
       `HTTP ${res.status}`;
+    const msg = rawMsg.length > 300 ? rawMsg.slice(0, 300) + "…" : rawMsg;
     throw new SidecarError(msg, res.status);
   }
   return json;
@@ -1458,10 +1459,11 @@ async function _rawPut(url: string, token: string | null, path: string, body: un
   });
   const json = (await res.json()) as Record<string, unknown>;
   if (!res.ok || json.ok === false) {
-    const msg =
+    const rawMsg =
       (json.error_message as string) ||
       (json.error as string) ||
       `HTTP ${res.status}`;
+    const msg = rawMsg.length > 300 ? rawMsg.slice(0, 300) + "…" : rawMsg;
     throw new SidecarError(msg, res.status);
   }
   return json;

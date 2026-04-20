@@ -23,7 +23,7 @@ Design:
 from __future__ import annotations
 
 from collections import Counter
-import xml.etree.ElementTree as ET
+import defusedxml.ElementTree as ET
 from pathlib import Path
 
 _TEI_NS = "http://www.tei-c.org/ns/1.0"

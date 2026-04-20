@@ -1836,7 +1836,7 @@ export class AlignPanel {
           ? `<span class="prep-status-badge prep-status-error">❌ Rejeté</span>`
           : `<span class="prep-status-badge prep-status-unknown">🔵 Non révisé</span>`;
         return `<tr>
-          <td class="prep-audit-cell-text">${lnk.target_text}</td>
+          <td class="prep-audit-cell-text">${_esc(lnk.target_text ?? "")}</td>
           <td>[§${lnk.target_external_id ?? "?"}]</td>
           <td>${badge}</td>
           <td class="prep-audit-cell-actions">
@@ -1848,7 +1848,7 @@ export class AlignPanel {
       }).join("");
       return `<div class="collision-group" style="margin-bottom:1rem;border:1px solid var(--border);border-radius:6px;overflow:hidden">
         <div class="collision-pivot-header" style="background:var(--surface-alt,#f5f5f5);padding:0.4rem 0.75rem;font-size:0.85rem;font-weight:600">
-          [§${g.pivot_external_id ?? "?"}] ${g.pivot_text}
+          [§${g.pivot_external_id ?? "?"}] ${_esc(g.pivot_text ?? "")}
           <button class="btn btn-sm btn-danger coll-delete-others-btn" data-group="${g.pivot_unit_id}" data-target="${targetDocId}"
             style="float:right;font-size:0.75rem" aria-label="Supprimer tous les liens de ce groupe">🗑 Tout supprimer</button>
         </div>

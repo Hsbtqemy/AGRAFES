@@ -120,7 +120,7 @@ def export_html(
         for i, hit in enumerate(hits, 1):
             title = html.escape(hit.get("title", ""))
             lang = html.escape(hit.get("language", ""))
-            ext_id = hit.get("external_id", "")
+            ext_id = html.escape(str(hit.get("external_id", "")))
             left = html.escape(hit.get("left", ""))
             match = html.escape(hit.get("match", ""))
             right = html.escape(hit.get("right", ""))
@@ -141,7 +141,7 @@ def export_html(
         for i, hit in enumerate(hits, 1):
             title = html.escape(hit.get("title", ""))
             lang = html.escape(hit.get("language", ""))
-            ext_id = hit.get("external_id", "")
+            ext_id = html.escape(str(hit.get("external_id", "")))
             # Escape the text then convert <<markers>> to <span>
             raw_text = html.escape(hit.get("text", ""))
             # The text field uses << >> which become &lt;&lt; &gt;&gt; after escape
