@@ -974,6 +974,80 @@ le budget CI de taille reste respecté.
 
 ---
 
+## ADR-040 — Atomicité des importeurs : parsing fichier avant la transaction SQLite
+
+**Date:** 2026-04-19
+**Status:** Decided
+
+**Context**
+Les importeurs DOCX, TEI, ODT et TXT ouvraient la connexion SQLite et inséraient la
+ligne `documents` avant de parser le fichier source. Une exception levée pendant le
+parsing (fichier corrompu, XML invalide, etc.) laissait un enregistrement `documents`
+orphelin dans la DB — le `rollback()` ne pouvait pas l'annuler si le `INSERT` avait
+déjà été commis ou placé hors du bloc `try`.
+
+**Decision**
+1. Tout le parsing fichier (DOCX `docx.Document()`, TEI `DefET.parse()`, ODT, TXT)
+   est effectué **avant** l'ouverture de la transaction.
+2. La transaction commence avec `conn.execute("INSERT INTO documents …")` — aucun
+   `conn.commit()` avant ce point.
+3. `conn.executemany("INSERT INTO units …")` + `conn.commit()` sont dans le même bloc `try`.
+4. `conn.rollback()` dans le `except` couvre l'ensemble document + unités.
+5. Un seul `conn.commit()` en fin de `try` — pas de commit intermédiaire.
+
+Cette règle s'applique à tous les importeurs : `docx_numbered_lines`, `docx_paragraphs`,
+`tei_importer`, `odt_numbered_lines`, `odt_paragraphs`, `txt`, `conllu`.
+
+**Consequences**
+- Aucun document orphelin en DB en cas d'erreur de parsing.
+- Les exceptions fichier (XML invalide, DOCX corrompu) remontent proprement sans trace en DB.
+- Pattern uniforme dans tous les importeurs — plus simple à auditer.
+
+---
+
+## ADR-041 — Segments adjacents dans la recherche grammaticale : flag opt-in
+
+**Date:** 2026-04-20
+**Status:** Decided
+
+**Context**
+La recherche grammaticale (`POST /token_query`) retourne des hits avec contexte token
+(fenêtre configurable). Une demande a été formulée pour afficher le segment précédent
+et suivant de chaque hit — utile pour comprendre le contexte phrasal.
+
+Deux options :
+- **A** : Toujours inclure prev/next_segment dans chaque hit (systématique).
+- **B** : Flag opt-in `include_context_segments: bool = False` (par défaut off).
+
+**Decision**
+Option B — flag opt-in.
+
+Raisons :
+1. **Performance** : la récupération des segments adjacents nécessite une requête SQL
+   supplémentaire par page (`_fetch_context_segments`). Sur des corpus larges, ce coût
+   est non négligeable si toujours activé.
+2. **Rétrocompatibilité** : les clients existants ne voient aucun champ supplémentaire
+   par défaut — pas de breaking change.
+3. **Précision** : la requête adjacente est batched (OR-expanded, une requête pour toute
+   la page) — pas de problème N+1. Le coût n'est payé que si le flag est activé.
+
+**Implementation**
+- `run_token_query_page(… include_context_segments: bool = False)`
+- `_fetch_context_segments(conn, hits)` : batch query `(doc_id=? AND n IN (n-1, n+1)) OR …`
+  pour tous les hits de la page.
+- Chaque hit reçoit `unit_n` (position dans le document), `prev_segment?` et `next_segment?`
+  (shape : `{ unit_id, external_id, text_norm }`).
+- Contract : `sidecar_contract.py` v1.6.27, `docs/SIDECAR_API_CONTRACT.md` mis à jour.
+
+**Consequences**
+- Impact zéro sur les clients existants (flag absent → comportement identique).
+- UI : checkbox "contexte seg." dans la toolbar de recherche grammaticale, état persisté
+  dans `localStorage["agrafes.recherche.context_segments.v1"]`.
+- SQLite : pas de `(col1, col2) IN (…)` — syntax non supportée. Solution : OR-expanded
+  clauses `(u.doc_id = ? AND u.n IN (?, ?))`.
+
+---
+
 ## ADR-039 — Update check in-app via GitHub Releases API (sans auto-install)
 
 **Date:** 2026-04-14

@@ -1,6 +1,6 @@
 # Roadmap — multicorpus_engine
 
-Last updated: 2026-04-09 (CI hardening sprint + ADR-037 Windows onefile + packaging PKG-1→PKG-3A)
+Last updated: 2026-04-21 (v0.1.33 — audit sécurité 33 findings + feat #39 segments adjacents + hub hiérarchie)
 
 ## Current state (implemented)
 
@@ -89,7 +89,12 @@ Last updated: 2026-04-09 (CI hardening sprint + ADR-037 Windows onefile + packag
   - `tauri-prep` Exporter now exposes a unified V2 flow card (`jeu de données → produit → format`) with dynamic options and one launch action, including readable text exports (`TXT`/`DOCX`).
   - Export V2 scope controls hardened: explicit selection summary + empty-scope block before launch.
   - Prep hardening baseline done: focus-visible global, accordion ARIA wiring, icon-button accessibility labels on critical actions.
-- Deep-link handoff implemented from `tauri-prep` to unified shell: `agrafes-shell://open-db?mode=explorer&path=...` (startup + runtime listener, fallback manual open).
+- Deep-link handoff implemented from `tauri-prep` to unified shell: `agrafes-shell://open-db?mode=explorer&path=...` (startup + runtime listener, fallback clipboard fallback).
+- **Importeurs — atomicité (ADR-040)** : parsing fichier avant transaction SQLite dans tous les importeurs ; rollback couvre document + unités (v0.1.29).
+- **Audit sécurité externe 2026-04-19 — 33 findings résolus (v0.1.31)** : C-01→C-13 (XXE, XSS, path traversal, atomicité, timing-attack) ; M-01→M-15 (DoS, ReDoS, LIKE injection, CSS injection, fuite erreurs) ; F-01→F-05 (dispose listeners, CI permissions) ; D-09 (plafond 512 MiB importeurs). Référence : `docs/AUDIT_2026-04-19.md`.
+- **feat #39 — Segments adjacents (ADR-041, v0.1.31)** : opt-in `include_context_segments` dans `/token_query` ; chaque hit expose `prev_segment` / `next_segment` ; UI checkbox dans toolbar recherche grammaticale.
+- **Hub Actions — vue hiérarchie (v0.1.33)** : bouton bascule 🌿 Hiérarchie dans la card "Documents du corpus" du hub ActionsScreen.
+- **About dialog (v0.1.32/33)** : `GET /health` expose `contract_version` ; boîte À propos affiche Engine + Contract version en live depuis le sidecar.
 - **Concordancier V1.0 (Sprint 2.1)**: IntersectionObserver sentinel — auto load-more on scroll.
 - **Concordancier V1.1 (Sprints 2.2/2.3)**: Query builder (phrase/and/or/near) + FTS safety guards + parallel KWIC 2-column layout.
 - **Concordancier V2.4 (Sprint 2.4)**: Virtualised hits list — CSS content-visibility + JS DOM cap (VIRT_DOM_CAP=150).
@@ -107,12 +112,13 @@ Last updated: 2026-04-09 (CI hardening sprint + ADR-037 Windows onefile + packag
 
 ## Next
 
-- **CI stabilisation** : `macos-sign-notarize / sidecar` (31s failure — cause à identifier par log) ; Linux AppImage PKG-3C une fois CI vert sur `tauri-shell-build.yml`.
-- **Shell V0.x roadmap** : style dedup inter-modules, shared db-path, multi-window (voir `docs/STATUS_TAURI_SHELL.md`).
+- **CI stabilisation** : Linux AppImage PKG-3C (requires Linux runner).
+- **Shell V0.x roadmap** : style dedup inter-modules, shared db-path, multi-window.
 - **Signing prod** : macOS notarization + Windows signtool nécessitent un certificat Apple Developer / PFX réel configuré en GitHub Secrets. Scripts et workflows prêts.
+- **F-03 GitHub Actions** : épinglage des actions par SHA (supply chain hardening) — non traité (F-04 permissions ✅, F-03 SHA pinning encore ouvert).
 - Performance : monitor startup/size trade-offs over future benchmark refreshes.
 
-> **Réalisé (ne pas replanifier ici)** : panneau métadonnées hit/document (`tauri-app` Explorer) ; corpus démo first-run (`tauri-shell` + `agrafes_demo.db`) ; PKG-1→PKG-3A packaging (macOS .dmg ✅, Windows NSIS ✅) ; CI hardening (PowerShell `\`, budget sidecar, race condition manifests, manylinux désactivé). Détail : `docs/BACKLOG.md` revue 2026-04-09.
+> **Réalisé (ne pas replanifier ici)** : audit sécurité 33 findings (v0.1.31) ✅ ; feat #39 segments adjacents ✅ ; hub hiérarchie Actions ✅ ; About dialog contract_version ✅ ; panneau métadonnées hit/document ; corpus démo first-run ; PKG-1→PKG-3A packaging (macOS .dmg ✅, Windows NSIS ✅) ; CI hardening. Détail : `docs/BACKLOG.md` + `docs/AUDIT_2026-04-19.md`.
 
 ## Later
 
@@ -167,3 +173,7 @@ Last updated: 2026-04-09 (CI hardening sprint + ADR-037 Windows onefile + packag
 | V1.9.1 | CI hardening: PowerShell `\`, budget macOS 35 MB, manylinux désactivé, race condition manifests | Done |
 | V1.9.2 | Tests CoNLL-U: couverture 2→9 tests (empty nodes, BOM, duplicates, etc.) | Done |
 | V1.9.3 | Contrat API: 60 routes documentées + openapi.json synchronisé | Done |
+| V2.0.0 | Audit sécurité externe 33 findings — C/M/F/D findings résolus (v0.1.31) | Done |
+| V2.0.1 | feat #39 : segments adjacents opt-in dans recherche grammaticale (v0.1.31) | Done |
+| V2.0.2 | Hub Actions : vue hiérarchie documents (v0.1.33) | Done |
+| V2.0.3 | About dialog : contract_version live depuis /health (v0.1.32/33) | Done |
