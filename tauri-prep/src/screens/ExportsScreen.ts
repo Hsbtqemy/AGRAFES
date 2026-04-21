@@ -10,9 +10,11 @@
 import type { Conn } from "../lib/sidecarClient.ts";
 import {
   listDocuments,
+  getFamilies,
   enqueueJob,
   getJob,
   type DocumentRecord,
+  type FamilyRecord,
   SidecarError,
 } from "../lib/sidecarClient.ts";
 import { save, open } from "@tauri-apps/plugin-dialog";
@@ -38,6 +40,7 @@ export interface ExportWorkflowPrefill {
 export class ExportsScreen {
   private _conn: Conn | null = null;
   private _docs: DocumentRecord[] = [];
+  private _families: FamilyRecord[] = [];
   private _jobCenter: JobCenter | null = null;
   private _showToast: ((msg: string, isError?: boolean) => void) | null = null;
   private _isBusy = false;
@@ -67,6 +70,14 @@ export class ExportsScreen {
   private _legacyContainer!: HTMLElement;
   private _legacyToggleBtn!: HTMLButtonElement;
   private _pendingWorkflowPrefill: ExportWorkflowPrefill | null = null;
+
+  // Bilingue / TMX card
+  private _bilFamilySelEl!: HTMLSelectElement;
+  private _bilPivotSelEl!: HTMLSelectElement;
+  private _bilTargetSelEl!: HTMLSelectElement;
+  private _bilFmtEl!: HTMLSelectElement;
+  private _bilRunBtn!: HTMLButtonElement;
+  private _bilPreviewBtn!: HTMLButtonElement;
 
   setJobCenter(jc: JobCenter, showToast: (msg: string, isError?: boolean) => void): void {
     this._jobCenter = jc;
@@ -246,6 +257,41 @@ export class ExportsScreen {
         </div>
       </div>
 
+      <!-- Bilingue / TMX card -->
+      <div class="card exp-bil-card">
+        <h3>Export bilingue / TMX <span class="prep-badge-preview">TMX &middot; HTML &middot; TXT</span></h3>
+        <p class="hint">Exporte une paire de documents align&eacute;s en TMX (m&eacute;moire de traduction) ou en texte bilingue entrelac&eacute; (HTML ou TXT).</p>
+        <div class="prep-form-row">
+          <label>Famille (optionnel)
+            <select id="bil-family-sel" style="min-width:200px">
+              <option value="">— paire directe —</option>
+            </select>
+          </label>
+          <label>Pivot (original)
+            <select id="bil-pivot-sel" style="min-width:180px">
+              <option value="">— choisir —</option>
+            </select>
+          </label>
+          <label>Cible (traduction)
+            <select id="bil-target-sel" style="min-width:180px">
+              <option value="">— choisir —</option>
+            </select>
+          </label>
+          <label>Format
+            <select id="bil-fmt">
+              <option value="tmx">TMX (m&eacute;moire de traduction)</option>
+              <option value="html">Bilingue HTML</option>
+              <option value="txt">Bilingue TXT</option>
+            </select>
+          </label>
+        </div>
+        <div id="bil-preview-area" style="display:none;margin-top:0.5rem;max-height:200px;overflow-y:auto;border:1px solid #dee2e6;border-radius:4px;padding:0.5rem;font-size:0.83rem;background:#f8fafc"></div>
+        <div class="prep-btn-row" style="margin-top:0.6rem">
+          <button type="button" id="bil-preview-btn" class="btn btn-secondary btn-sm" disabled>Aper&ccedil;u</button>
+          <button type="button" id="bil-run-btn" class="btn btn-primary btn-sm" disabled>Choisir fichier et exporter&hellip;</button>
+        </div>
+      </div>
+
       <div class="card export-legacy-toggle-card">
         <div class="exp-legacy-toggle-row">
           <div>
@@ -420,6 +466,12 @@ export class ExportsScreen {
     this._v2RunBtn = root.querySelector<HTMLButtonElement>("#v2-run-btn")!;
     this._legacyContainer = root.querySelector<HTMLElement>("#exports-legacy-container")!;
     this._legacyToggleBtn = root.querySelector<HTMLButtonElement>("#exports-toggle-legacy-btn")!;
+    this._bilFamilySelEl = root.querySelector<HTMLSelectElement>("#bil-family-sel")!;
+    this._bilPivotSelEl = root.querySelector<HTMLSelectElement>("#bil-pivot-sel")!;
+    this._bilTargetSelEl = root.querySelector<HTMLSelectElement>("#bil-target-sel")!;
+    this._bilFmtEl = root.querySelector<HTMLSelectElement>("#bil-fmt")!;
+    this._bilRunBtn = root.querySelector<HTMLButtonElement>("#bil-run-btn")!;
+    this._bilPreviewBtn = root.querySelector<HTMLButtonElement>("#bil-preview-btn")!;
 
     // EXP-1: head card — run pill + back button
     const runPill = root.querySelector<HTMLElement>("#exp-run-pill");
@@ -443,6 +495,12 @@ export class ExportsScreen {
     root.querySelector("#align-csv-btn")!.addEventListener("click", () => this._runAlignCsvExport());
     root.querySelector("#report-export-btn")!.addEventListener("click", () => this._runRunReportExport());
     root.querySelector("#qa-report-btn")!.addEventListener("click", () => this._runQaReportExport());
+    this._bilFamilySelEl.addEventListener("change", () => this._onBilFamilyChange());
+    this._bilPivotSelEl.addEventListener("change", () => this._syncBilBtn());
+    this._bilTargetSelEl.addEventListener("change", () => this._syncBilBtn());
+    this._bilFmtEl.addEventListener("change", () => this._syncBilBtn());
+    this._bilPreviewBtn.addEventListener("click", () => void this._runBilPreview());
+    this._bilRunBtn.addEventListener("click", () => void this._runExportBilTmx());
 
     // Show/hide strict notice when TEI profile changes
     root.querySelector("#pkg-tei-profile")?.addEventListener("change", (e) => {
@@ -568,10 +626,14 @@ export class ExportsScreen {
     this._isBusy = true;
     this._refreshRuntimeState();
     try {
-      this._docs = await listDocuments(this._conn);
+      [this._docs, this._families] = await Promise.all([
+        listDocuments(this._conn),
+        getFamilies(this._conn).catch(() => [] as FamilyRecord[]),
+      ]);
       this._lastErrorMsg = null;
     } catch {
       this._docs = [];
+      this._families = [];
       this._lastErrorMsg = "Impossible de charger la liste des documents.";
     } finally {
       this._isBusy = false;
@@ -656,6 +718,38 @@ export class ExportsScreen {
       this._v2PivotEl.appendChild(op);
       this._v2TargetEl.appendChild(ot);
     }
+
+    // Bilingue/TMX: family selector
+    this._bilFamilySelEl.innerHTML = '<option value="">— paire directe —</option>';
+    for (const f of this._families) {
+      if (!f.parent) continue;
+      const opt = document.createElement("option");
+      opt.value = String(f.family_id);
+      opt.textContent = `#${f.family_id} ${f.parent.title} (${f.stats.total_docs} docs)`;
+      this._bilFamilySelEl.appendChild(opt);
+    }
+
+    // Bilingue/TMX: pivot + target from all docs
+    const chooseOpt = (): HTMLOptionElement => {
+      const o = document.createElement("option");
+      o.value = "";
+      o.textContent = "— choisir —";
+      return o;
+    };
+    this._bilPivotSelEl.innerHTML = "";
+    this._bilPivotSelEl.appendChild(chooseOpt());
+    this._bilTargetSelEl.innerHTML = "";
+    this._bilTargetSelEl.appendChild(chooseOpt());
+    for (const d of this._docs) {
+      const label = `#${d.doc_id} ${d.title} (${d.language})`;
+      const op = document.createElement("option");
+      op.value = String(d.doc_id);
+      op.textContent = label;
+      const ot = op.cloneNode(true) as HTMLOptionElement;
+      this._bilPivotSelEl.appendChild(op);
+      this._bilTargetSelEl.appendChild(ot);
+    }
+    this._syncBilBtn();
 
     this._renderDocTable();
     this._updateKpiStrip();
@@ -1443,6 +1537,112 @@ export class ExportsScreen {
     } catch (err) {
       this._log(`Erreur rapport QA: ${err instanceof SidecarError ? err.message : String(err)}`, true);
       btn.disabled = false;
+    }
+  }
+
+  // ── Bilingue / TMX ──────────────────────────────────────────────────────────
+
+  private _onBilFamilyChange(): void {
+    const familyId = this._bilFamilySelEl.value ? Number(this._bilFamilySelEl.value) : null;
+    if (familyId !== null) {
+      const fam = this._families.find(f => f.family_id === familyId);
+      if (fam) {
+        // Auto-select pivot = parent, target = first child
+        this._bilPivotSelEl.value = String(fam.family_id);
+        const firstChild = fam.children.find(c => c.doc !== null);
+        if (firstChild?.doc) {
+          this._bilTargetSelEl.value = String(firstChild.doc.doc_id);
+        }
+      }
+    }
+    this._syncBilBtn();
+  }
+
+  private _syncBilBtn(): void {
+    const pivot = this._bilPivotSelEl.value;
+    const target = this._bilTargetSelEl.value;
+    const ready = Boolean(pivot && target && pivot !== target);
+    this._bilRunBtn.disabled = !ready;
+    this._bilPreviewBtn.disabled = !ready || this._bilFmtEl.value === "tmx";
+  }
+
+  private async _runBilPreview(): Promise<void> {
+    if (!this._conn) return;
+    const pivot_doc_id = Number(this._bilPivotSelEl.value);
+    const target_doc_id = Number(this._bilTargetSelEl.value);
+    const previewArea = this._root.querySelector<HTMLElement>("#bil-preview-area")!;
+    previewArea.style.display = "none";
+    previewArea.innerHTML = "";
+    try {
+      const res = await this._conn.post("/export/bilingual", {
+        pivot_doc_id,
+        target_doc_id,
+        preview_only: true,
+        preview_limit: 8,
+      }) as { preview: { pivot_text: string; target_text: string }[]; pivot_lang: string; target_lang: string };
+      if (!res.preview?.length) {
+        previewArea.innerHTML = "<em>Aucune paire alignée trouvée.</em>";
+      } else {
+        const rows = res.preview.map(p =>
+          `<tr><td style="padding:2px 8px 2px 0;vertical-align:top;border-right:1px solid #dee2e6">${_escHtml(p.pivot_text)}</td>`
+          + `<td style="padding:2px 0 2px 8px;vertical-align:top">${_escHtml(p.target_text)}</td></tr>`
+        ).join("");
+        previewArea.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:0.82rem"><thead><tr>`
+          + `<th style="text-align:left;padding-bottom:4px;border-right:1px solid #dee2e6;padding-right:8px">${_escHtml(res.pivot_lang)}</th>`
+          + `<th style="text-align:left;padding-bottom:4px;padding-left:8px">${_escHtml(res.target_lang)}</th>`
+          + `</tr></thead><tbody>${rows}</tbody></table>`;
+      }
+      previewArea.style.display = "";
+    } catch (err) {
+      previewArea.innerHTML = `<em style="color:#c0392b">Erreur aperçu : ${_escHtml(err instanceof SidecarError ? err.message : String(err))}</em>`;
+      previewArea.style.display = "";
+    }
+  }
+
+  private async _runExportBilTmx(): Promise<void> {
+    if (!this._conn) return;
+    const pivot_doc_id = Number(this._bilPivotSelEl.value);
+    const target_doc_id = Number(this._bilTargetSelEl.value);
+    const fmt = this._bilFmtEl.value as "tmx" | "html" | "txt";
+    const isTmx = fmt === "tmx";
+    const ext = isTmx ? "tmx" : fmt;
+    const defaultName = `export_${pivot_doc_id}_${target_doc_id}.${ext}`;
+    const filterName = isTmx ? "TMX" : fmt === "html" ? "HTML" : "TXT";
+
+    const outPath = await save({
+      title: isTmx ? "Enregistrer le fichier TMX" : "Enregistrer le bilingue",
+      defaultPath: defaultName,
+      filters: [{ name: filterName, extensions: [ext] }],
+    });
+    if (!outPath) return;
+
+    this._bilRunBtn.disabled = true;
+    this._bilPreviewBtn.disabled = true;
+    this._log(`Export ${isTmx ? "TMX" : `bilingue ${fmt}`} → ${outPath}…`);
+    try {
+      if (isTmx) {
+        const res = await this._conn.post("/export/tmx", {
+          pivot_doc_id,
+          target_doc_id,
+          out_path: outPath,
+        }) as { tu_count: number; out_path: string };
+        this._log(`✓ ${res.tu_count} unités de traduction → ${res.out_path}`);
+        this._showToast?.(`✓ TMX : ${res.tu_count} TU`);
+      } else {
+        const res = await this._conn.post("/export/bilingual", {
+          pivot_doc_id,
+          target_doc_id,
+          format: fmt,
+          out_path: outPath,
+        }) as { pair_count: number; out_path: string };
+        this._log(`✓ ${res.pair_count} paires exportées → ${res.out_path}`);
+        this._showToast?.(`✓ Bilingue ${fmt} : ${res.pair_count} paires`);
+      }
+    } catch (err) {
+      this._log(`Erreur export bilingue/TMX : ${err instanceof SidecarError ? err.message : String(err)}`, true);
+      this._showToast?.("✗ Erreur export bilingue/TMX", true);
+    } finally {
+      this._syncBilBtn();
     }
   }
 
