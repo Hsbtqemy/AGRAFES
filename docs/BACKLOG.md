@@ -1,29 +1,29 @@
 # Backlog — multicorpus_engine
 
-Last updated: 2026-04-14 (audit onglet Constituer — voir `docs/BACKLOG_PREP_AUDIT.md`)
+Last updated: 2026-04-20 (audit sécurité ✅, feat #39 segments adjacents ✅, hub hiérarchie ✅, About dialog ✅)
 
 ## Audit onglet Constituer — ajouts 2026-04-14 (backlog dédié)
 
 > Détail complet dans [`docs/BACKLOG_PREP_AUDIT.md`](BACKLOG_PREP_AUDIT.md).
 > 14 tickets en 5 sprints (A → E), ordonnés par dépendances.
 
-| Ticket | Titre | Priorité | Effort |
-|--------|-------|----------|--------|
-| A-1 | `dispose()` sur `ActionsScreen` | Critique | M |
-| A-2 | `dispose()` sur `AlignPanel` | Haute | S |
-| A-3 | Scoper les `querySelector` globaux | Haute | L |
-| A-4 | Remplacer `window.confirm` par banners inline (9 occurrences) | Haute | L |
-| B-1 | Extraire `CurationView` depuis `ActionsScreen` (~4 500 L) | Haute | XL |
-| B-2 | Extraire `SegmentationView` depuis `ActionsScreen` | Haute | L |
-| B-3 | Extraire `AnnotationView` depuis `ActionsScreen` | Moyenne | M |
-| B-4 | Consolider alignement : AlignPanel + legacy | Haute | L |
-| C-1 | Tests Vitest — fingerprints, persistence localStorage curation | Haute | M |
-| C-2 | Tests Vitest — normalisation import + parsing CoNLL-U | Moyenne | S |
-| C-3 | Tests Vitest — diff LCS + extraction `diff.ts` | Basse | S |
-| D-1 | Persister les Presets projet en base de données | Moyenne | M |
-| D-2 | Preview CoNLL-U via sidecar (`POST /import/preview`) | Basse | M |
-| E-1 | Namespacing CSS : préfixer classes de `app.css` | Basse | L |
-| E-2 | Focus management et navigation clavier (a11y) | Moyenne | M |
+| Ticket | Titre | Priorité | Effort | Statut |
+|--------|-------|----------|--------|--------|
+| A-1 | `dispose()` sur `ActionsScreen` | Critique | M | ✅ done |
+| A-2 | `dispose()` sur `AlignPanel` | Haute | S | ✅ done |
+| A-3 | Scoper les `querySelector` globaux | Haute | L | ✅ done |
+| A-4 | Remplacer `window.confirm` par banners inline (9 occurrences) | Haute | L | ✅ done |
+| B-1 | Extraire `CurationView` depuis `ActionsScreen` (~4 500 L) | Haute | XL | ✅ done |
+| B-2 | Extraire `SegmentationView` depuis `ActionsScreen` | Haute | L | ✅ done |
+| B-3 | Extraire `AnnotationView` depuis `ActionsScreen` | Moyenne | M | ✅ done |
+| B-4 | Consolider alignement : AlignPanel + legacy | Haute | L | ✅ done |
+| C-1 | Tests Vitest — fingerprints, persistence localStorage curation | Haute | M | en attente |
+| C-2 | Tests Vitest — normalisation import + parsing CoNLL-U | Moyenne | S | en attente |
+| C-3 | Tests Vitest — diff LCS + extraction `diff.ts` | Basse | S | en attente |
+| D-1 | Persister les Presets projet en base de données | Moyenne | M | en attente |
+| D-2 | Preview CoNLL-U via sidecar (`POST /import/preview`) | Basse | M | ✅ done |
+| E-1 | Namespacing CSS : préfixer classes de `app.css` | Basse | L | ✅ done |
+| E-2 | Focus management et navigation clavier (a11y) | Moyenne | M | en attente |
 
 ---
 

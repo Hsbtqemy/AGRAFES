@@ -1,10 +1,10 @@
 # Status — Concordancier Prep (tauri-prep) V0
 
-**Last updated:** 2026-04-19 (Annotation view — scroll, pagination tokens, vue lecture prose)
+**Last updated:** 2026-04-20 (hub hiérarchie ActionsScreen, About dialog contract_version, audit sécurité 33 findings)
 
 Current contract/runtime reference:
-- `CONTRACT_VERSION = 1.4.6`
-- `docs/openapi.json` currently exposes 35 paths
+- `CONTRACT_VERSION = 1.6.27`
+- `docs/openapi.json` currently exposes 66+ paths
 - Execution plan reference: `docs/PREP_IMPLEMENTATION_PLAN.md`
 - Plan status: Phase 0–6 done; **vNext UI Pilot (P0 + P1 + P2) done**
 - Redesign plan: `docs/PREP_UI_REDESIGN_PLAN.md`

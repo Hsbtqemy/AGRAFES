@@ -8,8 +8,6 @@
 
 - [ ] `git status` — no uncommitted changes
 - [ ] `pytest -q` — all tests green
-- [ ] `node tauri-app/scripts/test_buildFtsQuery.mjs` — 26 tests green
-- [ ] `npm --prefix tauri-app run build` — ✓
 - [ ] `npm --prefix tauri-prep run build` — ✓
 - [ ] `npm --prefix tauri-shell run build` — ✓
 - [ ] `python scripts/ci_smoke_sidecar.py` — smoke test green (import/index/query/shutdown)
