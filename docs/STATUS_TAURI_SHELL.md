@@ -1,6 +1,6 @@
 # Status: AGRAFES Shell (tauri-shell/)
 
-**Current version:** v0.1.28 (2026-04-08)
+**Current version:** v0.1.33 (2026-04-21)
 
 ## What it is
 
@@ -117,6 +117,16 @@ DB change (_onChangeDb):
   6. _showToast("DB active: <basename>")
   7. If module active: setMode(_currentMode)  [re-mount with new DB]
 ```
+
+## Recent changes (v0.1.29 → v0.1.33)
+
+| Version | Date | Changement |
+|---------|------|-----------|
+| v0.1.33 | 2026-04-21 | fix TS2304 `SegmentationView` (`tick` → `_undoCountdownInterval`) |
+| v0.1.32 | 2026-04-20 | fix About dialog : `GET /health` expose `contract_version` ; fallback `APP_VERSION` mis à jour |
+| v0.1.31 | 2026-04-20 | feat #39 segments adjacents (recherche grammaticale) ; vue hiérarchie dans hub Actions ; audit sécurité 33 findings ; plafond 512 MiB importeurs |
+| v0.1.30 | 2026-04-19 | migration 018 `unit_roles.category` |
+| v0.1.29 | 2026-04-19 | navigation Prep → Concordancier (deep-link) ; atomicité importeurs (B6) |
 
 ## Child module changes
 

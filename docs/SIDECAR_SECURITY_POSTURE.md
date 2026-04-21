@@ -1,6 +1,6 @@
 # Sidecar Localhost Security Posture
 
-Last updated: 2026-04-09
+Last updated: 2026-04-21
 
 ## Scope
 
@@ -38,9 +38,23 @@ It complements:
 
 - Binding to localhost by default (`127.0.0.1`).
 - Token guard for write endpoints via `X-Agrafes-Token` when token is active.
+- Token comparison via `hmac.compare_digest` (timing-attack safe) — v0.1.31.
 - Random token generation with `--token auto`.
+- Portfile `chmod 0o600` — lisible uniquement par l'utilisateur courant — v0.1.31.
 - Stale portfile recovery (`status=running|stale|missing` + `/health` probe).
 - Read endpoints remain open by design (`/health`, `/query`, `/openapi.json`, ...).
+- `MAX_BODY_SIZE` 64 MiB cap sur les requêtes entrantes — v0.1.31.
+- `defusedxml` remplace `stdlib ET` pour le parsing TEI (XXE/billion-laughs) — v0.1.31.
+- Rust `read_text_file_raw` restreint à `.agrafes_sidecar.json` uniquement — v0.1.31.
+- Path traversal bloqué sur tous les handlers d'export via `_resolve_export_path()` — v0.1.31.
+- Atomicité SQLite : tous les importeurs et `aligner.py` wrappés dans `try/except/rollback` — v0.1.31.
+- Plafond 512 MiB sur tous les importeurs (DOCX, TEI, ODT, TXT, CoNLL-U) — v0.1.31.
+
+## Audit externe (2026-04-19 — 33 findings)
+
+Un audit externe a été conduit le 2026-04-19 et a identifié 33 vulnérabilités (C-01 à F-05).
+Toutes ont été corrigées dans les commits `audit-3` à `audit-14` et livrées en v0.1.31.
+Référence : `docs/AUDIT_2026-04-19.md`. Tous les tickets GitHub associés sont fermés.
 
 ## Token lifecycle policy
 

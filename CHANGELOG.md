@@ -5,6 +5,82 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.1.33] - 2026-04-21
+
+### Fixed
+
+- **tauri-prep** : `SegmentationView.ts` — variable `tick` inexistante dans le `setTimeout` du banner undo remplacée par `this._undoCountdownInterval` (TS2304).
+
+---
+
+## [0.1.32] - 2026-04-20
+
+### Fixed
+
+- **sidecar** : `GET /health` expose désormais `contract_version` (manquant, affiché "…" dans la boîte À propos).
+- **tauri-shell** : constante de fallback `APP_VERSION` mise à jour (était figée à `"0.1.28"`).
+
+---
+
+## [0.1.31] - 2026-04-20
+
+### Added
+
+- **feat #39** : Recherche grammaticale — segments adjacents (prev/next). Checkbox "contexte seg." dans la toolbar ; `include_context_segments` dans le body POST `/token_query` ; chaque hit inclut `unit_n`, `prev_segment`, `next_segment`.
+- **tauri-prep / ActionsScreen** : vue hiérarchie dans la card "Documents du corpus" du hub — bouton bascule 🌿 Hiérarchie / 📋 Liste, parents → enfants indentés avec badges de relation.
+
+### Security (audit 33 findings — v0.1.31)
+
+- **C-01** : Rust `read_text_file_raw` restreint à `.agrafes_sidecar.json` uniquement.
+- **C-02** : Comparaison token via `hmac.compare_digest` (protection timing-attack).
+- **C-03/C-04** : `defusedxml` remplace `stdlib ET` dans `tei_importer.py` et `tei_validate.py`.
+- **C-05** : `_resolve_export_path()` appliqué à 4 handlers d'export (path traversal).
+- **C-06** : `defusedxml>=0.7` ajouté aux dépendances dans `pyproject.toml`.
+- **C-07** : INSERT documents placé dans `try/except` dans `odt_paragraphs` + `odt_numbered_lines`.
+- **C-08→C-13** : XSS `innerHTML` corrigé dans `MetadataScreen`, `ImportScreen`, `ExportsScreen`, `AlignPanel`, `app.ts` ; `html.escape()` sur `external_id` dans `html_export.py`.
+- **F-01** : `dispose()` complété dans 7 composants (listeners non annulés).
+- **F-02** : `pollTimerId` stocké + `clearTimeout` dans `dispose()` (`ExportsScreen`).
+- **F-04** : `permissions: contents: read` ajouté dans 9 workflows CI.
+- **F-05** : `executemany`/`commit` wrappés dans `try/except/rollback` dans `aligner.py`.
+- **M-01** : `MAX_BODY_SIZE` 64 MB dans `sidecar._read_body()`.
+- **M-02→M-15** : fuite `str(exc)`, casts `int()`, ReDoS, LIKE métacaractères, CQL cap, CSS injection, échappement `"`, portfile `chmod 0o600`, DoS mémoire LIMIT, messages tronqués 300 chars.
+- **D-09** : Plafond 512 MiB sur tous les importeurs (DOCX, TEI, ODT, CoNLL-U, TXT).
+
+### Changed
+
+- **sidecar_contract.py** : `CONTRACT_VERSION = "1.6.27"` — `unit_n` + `prev_segment` + `next_segment` dans `TokenQueryHit` ; `include_context_segments` dans le body `/token_query`.
+- **Versions** : Engine **0.8.1** / Shell **0.1.31**.
+
+---
+
+## [0.1.30] - 2026-04-19
+
+### Added
+
+- **Migration 018** : `unit_roles.category` TEXT NOT NULL DEFAULT `'text'` (`'structure'|'text'`).
+
+### Changed
+
+- **Versions** : Engine **0.8.0** / Shell **0.1.30**.
+
+---
+
+## [0.1.29] - 2026-04-19
+
+### Added
+
+- **tauri-prep / app.ts** : navigation Prep → Concordancier via deep-link `agrafes-shell://open-db?mode=explorer&path=…` ; clipboard fallback si tous les `shellOpen` échouent.
+
+### Fixed
+
+- **Importeurs** (B6/atomicité) : `docx_numbered_lines`, `docx_paragraphs`, `tei_importer`, `txt` — parsing fichier déplacé avant la transaction SQLite ; un seul `conn.commit()` à la fin du bloc `try`.
+
+### Changed
+
+- **Versions** : Engine **0.8.0** / Shell **0.1.29**.
+
+---
+
 ## [0.1.28] - 2026-04-08
 
 ### Added

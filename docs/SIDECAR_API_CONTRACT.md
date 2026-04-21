@@ -1,4 +1,4 @@
-# Sidecar API Contract (v1.6.26)
+# Sidecar API Contract (v1.6.27)
 
 This document defines the persistent localhost HTTP contract for
 `multicorpus_engine` sidecar.
@@ -29,7 +29,7 @@ When `multicorpus serve` starts and a portfile already exists:
 
 ## Versioning
 
-- `api_version`: sidecar API contract version (`1.6.26`)
+- `api_version`: sidecar API contract version (`1.6.27`)
 - `version`: engine version
 
 ## Response envelope
@@ -39,8 +39,8 @@ When `multicorpus serve` starts and a portfile already exists:
 ```json
 {
   "ok": true,
-  "api_version": "1.6.26",
-  "version": "0.7.9",
+  "api_version": "1.6.27",
+  "version": "0.8.2",
   "status": "ok"
 }
 ```
@@ -50,8 +50,8 @@ When `multicorpus serve` starts and a portfile already exists:
 ```json
 {
   "ok": false,
-  "api_version": "1.6.26",
-  "version": "0.7.9",
+  "api_version": "1.6.27",
+  "version": "0.8.2",
   "status": "error",
   "error": {
     "type": "VALIDATION_ERROR",
@@ -99,7 +99,7 @@ When `multicorpus serve` starts and a portfile already exists:
 ## Required endpoints (persistent UX baseline)
 
 - `GET /health`
-  - returns `ok/status/version/pid/started_at/host/port/portfile/token_required`
+  - returns `ok/status/version/contract_version/pid/started_at/host/port/portfile/token_required`
 - `POST /query`
   - same search semantics as CLI query
   - request body (all optional except `q`):
@@ -147,15 +147,18 @@ When `multicorpus serve` starts and a portfile already exists:
     - `doc_ids?: int[]`
     - `limit: int` (default `50`, min `1`, max `200`)
     - `offset: int` (default `0`, min `0`)
+    - `include_context_segments: bool` (default `false`) — if `true`, each hit includes `prev_segment` and `next_segment`
   - response:
     - same pagination envelope as `/query`: `run_id`, `count`, `hits`, `limit`, `offset`, `next_offset`, `has_more`, `total`
     - each hit includes:
-      - parent unit metadata (`doc_id`, `unit_id`, `external_id`, `language`, `title`)
+      - parent unit metadata (`doc_id`, `unit_id`, `unit_n`, `external_id`, `language`, `title`)
       - token span metadata (`sent_id`, `start_position`, `end_position`)
       - `tokens[]` (matched token sequence)
       - `context_tokens[]` (windowed neighboring tokens)
       - `kwic`: `left/match/right` when `mode=kwic`
       - `segment`: `text` + `text_norm` when `mode=segment`
+      - `prev_segment?`: `{ unit_id, external_id, text_norm }` — segment preceding the hit unit (only if `include_context_segments=true` and exists)
+      - `next_segment?`: `{ unit_id, external_id, text_norm }` — segment following the hit unit (only if `include_context_segments=true` and exists)
 
 - `POST /token_stats`
   - frequency distribution of a token attribute over CQL hits; no auth token required
