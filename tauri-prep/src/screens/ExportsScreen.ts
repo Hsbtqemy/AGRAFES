@@ -1573,6 +1573,7 @@ export class ExportsScreen {
     const previewArea = this._root.querySelector<HTMLElement>("#bil-preview-area")!;
     previewArea.style.display = "none";
     previewArea.innerHTML = "";
+    this._bilPreviewBtn.disabled = true;
     try {
       const res = await this._conn.post("/export/bilingual", {
         pivot_doc_id,
@@ -1596,6 +1597,8 @@ export class ExportsScreen {
     } catch (err) {
       previewArea.innerHTML = `<em style="color:#c0392b">Erreur aperçu : ${_escHtml(err instanceof SidecarError ? err.message : String(err))}</em>`;
       previewArea.style.display = "";
+    } finally {
+      this._syncBilBtn();
     }
   }
 
@@ -1605,8 +1608,12 @@ export class ExportsScreen {
     const target_doc_id = Number(this._bilTargetSelEl.value);
     const fmt = this._bilFmtEl.value as "tmx" | "html" | "txt";
     const isTmx = fmt === "tmx";
+    const familyId = this._bilFamilySelEl.value ? Number(this._bilFamilySelEl.value) : null;
+    const useFamilyTmx = isTmx && familyId !== null;
     const ext = isTmx ? "tmx" : fmt;
-    const defaultName = `export_${pivot_doc_id}_${target_doc_id}.${ext}`;
+    const defaultName = useFamilyTmx
+      ? `famille_${familyId}.tmx`
+      : `export_${pivot_doc_id}_${target_doc_id}.${ext}`;
     const filterName = isTmx ? "TMX" : fmt === "html" ? "HTML" : "TXT";
 
     const outPath = await save({
@@ -1621,11 +1628,14 @@ export class ExportsScreen {
     this._log(`Export ${isTmx ? "TMX" : `bilingue ${fmt}`} → ${outPath}…`);
     try {
       if (isTmx) {
-        const res = await this._conn.post("/export/tmx", {
-          pivot_doc_id,
-          target_doc_id,
-          out_path: outPath,
-        }) as { tu_count: number; out_path: string };
+        const body: Record<string, unknown> = { out_path: outPath };
+        if (useFamilyTmx) {
+          body.family_id = familyId;
+        } else {
+          body.pivot_doc_id = pivot_doc_id;
+          body.target_doc_id = target_doc_id;
+        }
+        const res = await this._conn.post("/export/tmx", body) as { tu_count: number; out_path: string };
         this._log(`✓ ${res.tu_count} unités de traduction → ${res.out_path}`);
         this._showToast?.(`✓ TMX : ${res.tu_count} TU`);
       } else {
@@ -1708,5 +1718,6 @@ export class ExportsScreen {
     this._jobCenter = null;
     this._showToast = null;
     this._docs = [];
+    this._families = [];
   }
 }
