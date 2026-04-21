@@ -12,7 +12,7 @@
 
 ---
 
-### A-1 — Implémenter `dispose()` sur `ActionsScreen`
+### A-1 — Implémenter `dispose()` sur `ActionsScreen` ✅
 
 **Priorité :** Critique | **Effort :** M (3–5 h)
 
@@ -52,13 +52,13 @@
 3. Vérifier que `constituerModule.ts` appelle bien `_prepApp.dispose()` (déjà le cas — confirmer la chaîne).
 
 **Critères d'acceptance**
-- [ ] Naviguer Constituer → Recherche → Constituer 3× sans fuite mémoire (DevTools Memory snapshot).
-- [ ] Aucun appel HTTP sidecar observable après démontage (DevTools Network).
-- [ ] `dispose()` est idempotent (double-appel sans erreur).
+- [x] Naviguer Constituer → Recherche → Constituer 3× sans fuite mémoire (DevTools Memory snapshot).
+- [x] Aucun appel HTTP sidecar observable après démontage (DevTools Network).
+- [x] `dispose()` est idempotent (double-appel sans erreur).
 
 ---
 
-### A-2 — Implémenter `dispose()` sur `AlignPanel`
+### A-2 — Implémenter `dispose()` sur `AlignPanel` ✅
 
 **Priorité :** Haute | **Effort :** S (1–2 h)
 **Fichier :** `tauri-prep/src/screens/AlignPanel.ts`
@@ -72,8 +72,8 @@
 2. L'appeler depuis `ActionsScreen.dispose()` (→ A-1).
 
 **Critères d'acceptance**
-- [ ] Pas de référence zombie à `_el` après démontage.
-- [ ] `dispose()` idempotent.
+- [x] Pas de référence zombie à `_el` après démontage.
+- [x] `dispose()` idempotent.
 
 ---
 
@@ -113,7 +113,7 @@
 
 ---
 
-### A-4 — Remplacer les `window.confirm` résiduels par des banners inline
+### A-4 — Remplacer les `window.confirm` résiduels par des banners inline ✅
 
 **Priorité :** Haute | **Effort :** L (5–7 h)
 **Fichier :** `tauri-prep/src/screens/ActionsScreen.ts`, `tauri-prep/src/app.ts`
@@ -148,9 +148,9 @@ export function showInlineConfirm(
 | **A-4i** | app.ts L339 | Changement d'onglet pending | Topbar |
 
 **Critères d'acceptance**
-- [ ] `grep -c "window\.confirm\|if (!confirm" ActionsScreen.ts` retourne `0`.
-- [ ] Chaque action critique reste confirmable ou annulable.
-- [ ] Le bouton Confirmer reçoit le focus automatiquement à l'ouverture du banner.
+- [x] `grep -c "window\.confirm\|if (!confirm" ActionsScreen.ts` retourne `0`.
+- [x] Chaque action critique reste confirmable ou annulable.
+- [x] Le bouton Confirmer reçoit le focus automatiquement à l'ouverture du banner.
 
 ---
 
@@ -160,7 +160,7 @@ export function showInlineConfirm(
 
 ---
 
-### B-1 — Extraire `CurationView` depuis `ActionsScreen`
+### B-1 — Extraire `CurationView` depuis `ActionsScreen` ✅
 
 **Priorité :** Haute | **Effort :** XL (10–15 h)
 **Fichiers :** `tauri-prep/src/screens/ActionsScreen.ts` → nouveau `tauri-prep/src/screens/CurationView.ts`
@@ -216,14 +216,14 @@ export class CurationView {
 - `this._docs` → passer `getDocs` en getter injecté.
 
 **Critères d'acceptance**
-- [ ] `ActionsScreen.ts` perd ~4 500 lignes après extraction.
-- [ ] Curation fonctionne identiquement : preview live, apply, exceptions, historique, review persistence.
-- [ ] `CurationView.dispose()` appelé dans `ActionsScreen.dispose()`.
-- [ ] Build TypeScript sans erreur.
+- [x] `ActionsScreen.ts` perd ~4 500 lignes après extraction.
+- [x] Curation fonctionne identiquement : preview live, apply, exceptions, historique, review persistence.
+- [x] `CurationView.dispose()` appelé dans `ActionsScreen.dispose()`.
+- [x] Build TypeScript sans erreur.
 
 ---
 
-### B-2 — Extraire `SegmentationView` depuis `ActionsScreen`
+### B-2 — Extraire `SegmentationView` depuis `ActionsScreen` ✅
 
 **Priorité :** Haute | **Effort :** L (8–10 h)
 **Fichiers :** `tauri-prep/src/screens/ActionsScreen.ts` → nouveau `tauri-prep/src/screens/SegmentationView.ts`
@@ -270,13 +270,13 @@ export class SegmentationView {
 - Constantes `LS_WF_RUN_ID`, `LS_WF_STEP`, `LS_SEG_POST_VALIDATE` → fichier `constants.ts` partagé si besoin.
 
 **Critères d'acceptance**
-- [ ] Les 3 modes (unités, traduction, grand texte) fonctionnent identiquement.
-- [ ] Minimap, scroll sync, preview live, markers detection inchangés.
-- [ ] `dispose()` nettoie `_segPreviewTimer`, listeners scroll, minimap cleanups.
+- [x] Les 3 modes (unités, traduction, grand texte) fonctionnent identiquement.
+- [x] Minimap, scroll sync, preview live, markers detection inchangés.
+- [x] `dispose()` nettoie `_segPreviewTimer`, listeners scroll, minimap cleanups.
 
 ---
 
-### B-3 — Extraire `AnnotationView` depuis `ActionsScreen`
+### B-3 — Extraire `AnnotationView` depuis `ActionsScreen` ✅
 
 **Priorité :** Moyenne | **Effort :** M (4–5 h)
 **Fichiers :** `tauri-prep/src/screens/ActionsScreen.ts` → nouveau `tauri-prep/src/screens/AnnotationView.ts`
@@ -309,13 +309,13 @@ export class AnnotationView {
 - `_annotStopPoll()` doit être appelé dans `dispose()`.
 
 **Critères d'acceptance**
-- [ ] Vue interlinéaire, recherche token, éditeur, launch spaCy inchangés.
-- [ ] `dispose()` arrête le poll annotation.
-- [ ] CSS extrait dans `annotation.css`, aucun CSS inline résiduel.
+- [x] Vue interlinéaire, recherche token, éditeur, launch spaCy inchangés.
+- [x] `dispose()` arrête le poll annotation.
+- [x] CSS extrait dans `annotation.css`, aucun CSS inline résiduel.
 
 ---
 
-### B-4 — Consolider l'implémentation alignement (AlignPanel + legacy)
+### B-4 — Consolider l'implémentation alignement (AlignPanel + legacy) ✅
 
 **Priorité :** Haute | **Effort :** L (6–8 h)
 **Fichiers :** `tauri-prep/src/screens/ActionsScreen.ts`, `tauri-prep/src/screens/AlignPanel.ts`
@@ -333,10 +333,10 @@ export class AnnotationView {
 6. **Conserver la section workflow** (L2872) en l'état pour l'instant (→ voir ticket C-3 si un ticket dédié est nécessaire).
 
 **Critères d'acceptance**
-- [ ] `_renderAlignementPanel()` délègue entièrement à `AlignPanel` et fait < 50 lignes.
-- [ ] Qualité, collisions, audit, retarget, batch fonctionnent identiquement.
-- [ ] `_refreshQualityCollisionSelects()` supprimé.
-- [ ] Aucun sélect dupliqué dans le DOM alignement.
+- [x] `_renderAlignementPanel()` délègue entièrement à `AlignPanel` et fait < 50 lignes.
+- [x] Qualité, collisions, audit, retarget, batch fonctionnent identiquement.
+- [x] `_refreshQualityCollisionSelects()` supprimé.
+- [x] Aucun sélect dupliqué dans le DOM alignement.
 
 ---
 
@@ -518,7 +518,7 @@ Champ `presets` dans le JSON de la table `corpus_info` (migration 009) :
 
 ---
 
-### D-2 — Preview CoNLL-U via sidecar
+### D-2 — Preview CoNLL-U via sidecar ✅
 
 **Priorité :** Basse | **Effort :** M (3–5 h)
 **Fichiers :** `tauri-prep/src/screens/ImportScreen.ts`, `src/multicorpus_engine/sidecar.py`, `tauri-prep/src/lib/sidecarClient.ts`

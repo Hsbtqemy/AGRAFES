@@ -11,7 +11,12 @@
 > - `POST /export/token_query_csv` : ✅ prêt
 > - Vue interlinéaire (rendu token / UPOS / lemme) : ✅ faite dans ActionsScreen (réutilisable)
 > - Annotation spaCy + table `tokens` : ✅ opérationnels
-> - Shell : 4 modes (`home`, `explorer`, `constituer`, `publish`) — le 5e sera `recherche`
+> - Shell : 3 modes top-level — `recherche` intégré comme sous-onglet d'Explorer (RFT-1/RFT-2 ✅)
+>
+> **Ajout 2026-04-20 — feat #39** :
+> - Segments adjacents opt-in (`include_context_segments`) : ✅ livré v0.1.31
+>   - `prev_segment` / `next_segment` dans chaque hit ; checkbox "contexte seg." dans toolbar
+>   - ADR-041 dans `docs/DECISIONS.md`
 
 ---
 
@@ -318,7 +323,7 @@ Chaque hit s'étend pour afficher la phrase partenaire :
 > Rationnel : Explorer est un outil de corpus autonome ; la recherche grammaticale (CQL)
 > est une forme de recherche dans le corpus au même titre que le concordancier (FTS).
 
-### RFT-1 — Supprimer le mode Shell `recherche` (top-level)
+### RFT-1 — Supprimer le mode Shell `recherche` (top-level) ✅
 
 **Fichier** : `tauri-shell/src/shell.ts`
 
@@ -336,7 +341,7 @@ Chaque hit s'étend pour afficher la phrase partenaire :
 
 ---
 
-### RFT-2 — Sous-onglets "Concordancier" / "Recherche grammaticale" dans Explorer
+### RFT-2 — Sous-onglets "Concordancier" / "Recherche grammaticale" dans Explorer ✅
 
 **Fichier** : `tauri-shell/src/modules/explorerModule.ts`
 

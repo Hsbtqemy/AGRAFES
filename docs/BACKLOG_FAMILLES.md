@@ -13,21 +13,20 @@
 ### Backend
 
 - [x] `GET /doc_relations/all` — toutes les relations (déjà fait, base du calcul des familles)
-- [ ] `GET /families` — liste toutes les familles avec stats
+- [x] `GET /families` — liste toutes les familles avec stats
   - Champs par famille : `family_id`, `parent` (doc), `children[]` (doc + relation_type)
   - Stats : `total_docs`, `segmented_docs`, `aligned_pairs`, `total_pairs`, `validated_docs`, `completion_pct`
   - API version → `1.6.0`
-- [ ] Snapshot `openapi_paths.json` + `docs/SIDECAR_API_CONTRACT.md`
+- [x] Snapshot `openapi_paths.json` + `docs/SIDECAR_API_CONTRACT.md`
 
 ### Frontend
 
-- [ ] `sidecarClient.ts` : interface `FamilyRecord` + `getFamilies(conn)`
-- [ ] `MetadataScreen.ts` — vue hiérarchique :
+- [x] `sidecarClient.ts` : interface `FamilyRecord` + `getFamilies(conn)`
+- [x] `MetadataScreen.ts` — vue hiérarchique :
   - Badge statut sur chaque racine de famille (% complétion coloré)
-  - Panneau famille dans l'éditeur quand un parent est sélectionné :
-    - Récapitulatif des paires `parent ↔ enfant` avec état segmenté/aligné/validé
-    - Boutons placeholder pour Sprint 2 (`Segmenter`) et Sprint 3 (`Aligner`) — désactivés
-- [ ] CSS : badges de complétion, tableau de statut famille
+  - Panneau famille dans l'éditeur quand un parent est sélectionné
+- [x] CSS : badges de complétion, tableau de statut famille
+- [x] `ActionsScreen` hub — vue hiérarchie documents (bouton 🌿 Hiérarchie, v0.1.33)
 
 ---
 
@@ -54,25 +53,23 @@
 
 ---
 
-## Sprint 3 — Alignement guidé par les relations
+## Sprint 3 — Alignement guidé par les relations ✅
 
 > Objectif : aligner automatiquement toutes les paires d'une famille.
 
 ### Backend
 
-- [ ] `POST /align` : paramètre `from_relations=true`
-  - Déduit les paires `pivot↔target` depuis `doc_relations` (translation_of / excerpt_of)
-  - Refuse d'aligner deux enfants entre eux (garde-fou)
-- [ ] `POST /families/{family_root_id}/align`
+- [x] `POST /families/{family_root_id}/align`
   - Aligne toutes les paires `parent↔enfant` en séquence (jobs asynchrones)
   - Retourne la liste des jobs créés
-- [ ] API version → `1.6.2`
+- [x] API version → `1.6.x`
 
 ### Frontend
 
-- [ ] Bouton **"Aligner la famille"** dans le panneau famille
-- [ ] Récapitulatif des paires avant lancement : `#5 FR ↔ #7 EN`, `#5 FR ↔ #9 ES`…
-- [ ] Suivi des jobs d'alignement inline dans le panneau famille
+- [x] Bouton **"⚡ Aligner la famille"** dans `AlignPanel`
+- [x] Récapitulatif des paires avant lancement
+- [x] Suivi des jobs d'alignement inline
+- [x] Mode **"✎ Réviser famille"** — vue tabulaire multi-paires avec retarget/add/orphelins
 
 ---
 
