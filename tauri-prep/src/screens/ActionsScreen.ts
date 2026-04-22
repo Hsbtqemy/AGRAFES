@@ -235,6 +235,8 @@ export class ActionsScreen {
       <section class="card prep-acts-hub-docs-card">
         <div class="prep-acts-hub-docs-header">
           <h3 class="prep-acts-hub-docs-title">Documents du corpus</h3>
+          <button id="act-hub-refresh-btn" class="btn btn-secondary btn-sm"
+            title="Actualiser la liste des documents">↺</button>
           <button id="act-hub-hierarchy-btn" class="btn btn-secondary btn-sm"
             aria-pressed="false" title="Basculer vue hiérarchie / liste">🌿 Hiérarchie</button>
         </div>
@@ -293,6 +295,11 @@ export class ActionsScreen {
         const target = btn.dataset.target as SubView;
         this._switchSubViewDOM(root, target);
       });
+    });
+
+    // Refresh doc list
+    el.querySelector<HTMLButtonElement>("#act-hub-refresh-btn")?.addEventListener("click", () => {
+      void this._loadDocs();
     });
 
     // Hierarchy toggle
@@ -608,17 +615,17 @@ export class ActionsScreen {
     }
     const table = document.createElement("table");
     table.className = "prep-meta-table";
-    table.innerHTML = `<thead><tr><th>ID</th><th>Titre</th><th>Langue</th><th>Rôle</th><th>Unités</th></tr></thead>`;
+    table.innerHTML = `<thead><tr><th>N°</th><th>Titre</th><th>Langue</th><th>Rôle</th><th>Unités</th></tr></thead>`;
     const tbody = document.createElement("tbody");
-    for (const doc of this._docs) {
+    this._docs.forEach((doc, idx) => {
       const tr = document.createElement("tr");
-      for (const text of [String(doc.doc_id), doc.title, doc.language, doc.doc_role ?? "—", String(doc.unit_count)]) {
+      for (const text of [String(idx + 1), doc.title, doc.language, doc.doc_role ?? "—", String(doc.unit_count)]) {
         const td = document.createElement("td");
         td.textContent = text;
         tr.appendChild(td);
       }
       tbody.appendChild(tr);
-    }
+    });
     table.appendChild(tbody);
     el.innerHTML = "";
     el.appendChild(table);
@@ -689,10 +696,12 @@ export class ActionsScreen {
 
     const table = document.createElement("table");
     table.className = "prep-meta-table";
-    table.innerHTML = `<thead><tr><th>ID</th><th>Titre</th><th>Langue</th><th>Rôle</th><th>Unités</th></tr></thead>`;
+    table.innerHTML = `<thead><tr><th>N°</th><th>Titre</th><th>Langue</th><th>Rôle</th><th>Unités</th></tr></thead>`;
     const tbody = document.createElement("tbody");
 
+    let _rowNum = 0;
     const appendRow = (doc: DocumentRecord, depth = 0, relationLabel?: string): void => {
+      _rowNum++;
       const tr = document.createElement("tr");
       tr.className = "prep-meta-doc-row";
       if (depth > 0) tr.classList.add("prep-tree-child");
@@ -710,7 +719,7 @@ export class ActionsScreen {
       titleSpan.textContent = doc.title;
       titleTd.appendChild(titleSpan);
 
-      const idTd = document.createElement("td"); idTd.textContent = String(doc.doc_id);
+      const idTd = document.createElement("td"); idTd.textContent = String(_rowNum);
       const langTd = document.createElement("td"); langTd.textContent = doc.language;
       const roleTd = document.createElement("td"); roleTd.textContent = doc.doc_role ?? "—";
       const unitsTd = document.createElement("td"); unitsTd.textContent = String(doc.unit_count);

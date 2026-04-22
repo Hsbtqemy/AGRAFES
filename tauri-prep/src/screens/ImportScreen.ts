@@ -601,10 +601,12 @@ export class ImportScreen {
     }
     const ext = _extFromFileName(fileName);
     const mode = this._normalizeModeForExt(this._deriveModeFromExt(ext, defaultMode), ext);
+    const rawLang = ImportScreen._LANG_RE.exec(fileName)?.[1]?.toLowerCase() ?? null;
+    const detectedLang = rawLang && ImportScreen._KNOWN_LANG_CODES.has(rawLang) ? rawLang : null;
     this._files.push({
       path,
       mode,
-      language: defaultLang,
+      language: detectedLang ?? defaultLang,
       title: fileName,
       status: "pending",
       message: "",
@@ -1249,11 +1251,46 @@ export class ImportScreen {
   // ---------------------------------------------------------------------------
 
   /**
-   * Common language codes / abbreviations that can appear in filenames.
-   * Matches patterns like: roman_FR.docx  roman-en.docx  texte.DE.txt
+   * Matches a 2-3 letter token preceded by _ - . at the end of a filename (before extension).
+   * e.g. roman_FR.docx  roman-en.docx  texte.DE.txt
    */
   private static readonly _LANG_RE =
     /[_\-.]([A-Za-z]{2,3})(?:\.[^.]+)?$/u;
+
+  /**
+   * Whitelist of BCP-47 / ISO 639 codes accepted as language tokens in filenames.
+   * Covers ISO 639-1 (2-letter) and common ISO 639-2 (3-letter) codes.
+   * Prevents false positives (e.g. _to, _by, _of, _v2…).
+   */
+  private static readonly _KNOWN_LANG_CODES = new Set([
+    // Romance
+    "fr", "fra", "en", "eng", "es", "spa", "it", "ita", "pt", "por",
+    "ro", "ron", "rum", "ca", "cat", "oc", "oci", "la", "lat", "gl", "glg",
+    // Germanic
+    "de", "deu", "ger", "nl", "nld", "dut", "sv", "swe", "da", "dan",
+    "no", "nor", "nb", "nob", "nn", "nno", "af", "afr", "fy", "fry",
+    // Greek
+    "el", "ell", "gre",
+    // Slavic
+    "pl", "pol", "cs", "ces", "cze", "sk", "slk", "slo", "sl", "slv",
+    "ru", "rus", "uk", "ukr", "bg", "bul", "hr", "hrv", "sr", "srp",
+    "bs", "bos", "mk", "mkd",
+    // Baltic
+    "lt", "lit", "lv", "lav",
+    // Finno-Ugric
+    "fi", "fin", "hu", "hun", "et", "est",
+    // Other European
+    "eu", "eus", "baq", "is", "isl", "ice", "ga", "gle", "cy", "wel",
+    // Semitic
+    "ar", "ara", "he", "heb",
+    // CJK
+    "zh", "zho", "chi", "ja", "jpn", "ko", "kor",
+    // South/Southeast Asian
+    "hi", "hin", "bn", "ben", "ur", "urd", "fa", "fas", "per",
+    "tr", "tur", "vi", "vie", "th", "tha", "id", "ind", "ms", "msa",
+    // Other
+    "sw", "swa", "und", "mul",
+  ]);
 
   /** Groups files by common stem when they differ only in the language token.
    *  Returns an array of groups (≥2 files) that share the same stem + extension. */

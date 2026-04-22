@@ -5,6 +5,19 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.1.35] - 2026-04-22
+
+### Added
+
+- **tauri-prep / ActionsScreen** : bouton ↺ "Actualiser" dans l'en-tête "Documents du corpus" — recharge la liste depuis le sidecar sans changer de DB.
+- **tauri-prep / ImportScreen** : détection automatique de la langue depuis le nom de fichier (`roman_FR.docx` → `fr`) avec whitelist ISO 639-1/2 pour éviter les faux positifs.
+
+### Changed
+
+- **tauri-prep / MetadataScreen + ActionsScreen** : la colonne "ID" des tables documents affiche désormais un numéro séquentiel (1, 2, 3…) à la place de l'identifiant SQLite interne.
+
+---
+
 ## [0.1.34] - 2026-04-22
 
 ### Added

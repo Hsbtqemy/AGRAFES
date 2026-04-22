@@ -236,7 +236,7 @@ export class MetadataScreen {
                   <th class="col-check">
                     <input id="meta-select-all" type="checkbox" aria-label="Sélectionner tout" />
                   </th>
-                  <th class="col-id sortable-th" data-sort="id">ID <span class="sort-ind" aria-hidden="true"></span></th>
+                  <th class="col-id">N°</th>
                   <th class="col-title sortable-th" data-sort="title">Titre <span class="sort-ind" aria-hidden="true"></span></th>
                   <th class="col-lang sortable-th" data-sort="lang">Langue <span class="sort-ind" aria-hidden="true"></span></th>
                   <th class="col-role sortable-th" data-sort="role">Rôle <span class="sort-ind" aria-hidden="true"></span></th>
@@ -429,7 +429,7 @@ export class MetadataScreen {
       return;
     }
     this._docListEl.innerHTML = "";
-    for (const doc of docs) {
+    docs.forEach((doc, idx) => {
       const tr = document.createElement("tr");
       tr.className = "prep-meta-doc-row";
       if (this._selectedDoc?.doc_id === doc.doc_id) tr.classList.add("is-active");
@@ -446,7 +446,7 @@ export class MetadataScreen {
           <input class="meta-row-check" type="checkbox" data-id="${doc.doc_id}"
             ${isChecked ? "checked" : ""} aria-label="Sélectionner doc ${doc.doc_id}" />
         </td>
-        <td class="col-id">#${doc.doc_id}</td>
+        <td class="col-id">${idx + 1}</td>
         <td class="col-title" title="${this._esc(doc.title)}">${this._esc(this._truncateMid(doc.title))}</td>
         <td class="col-lang">${this._esc(doc.language)}</td>
         <td class="col-role">${this._esc(doc.doc_role ?? "—")}</td>
@@ -468,7 +468,7 @@ export class MetadataScreen {
         void this._selectDoc(doc);
       });
       this._docListEl.appendChild(tr);
-    }
+    });
     this._renderBatchBar();
     this._updateSelectAll();
   }
@@ -565,7 +565,9 @@ export class MetadataScreen {
       return;
     }
 
+    let _rowNum = 0;
     const appendRow = (doc: DocumentRecord, depth = 0, relationLabel?: string, completionPct?: number) => {
+      _rowNum++;
       const tr = document.createElement("tr");
       tr.className = "prep-meta-doc-row";
       if (depth > 0) tr.classList.add("prep-tree-child");
@@ -591,7 +593,7 @@ export class MetadataScreen {
           <input class="meta-row-check" type="checkbox" data-id="${doc.doc_id}"
             ${isChecked ? "checked" : ""} aria-label="Sélectionner doc ${doc.doc_id}" />
         </td>
-        <td class="col-id">#${doc.doc_id}</td>
+        <td class="col-id">${_rowNum}</td>
         <td class="col-title tree-title-cell" title="${this._esc(doc.title)}" style="padding-left:${0.5 + depth * 1.4}rem">
           ${indent}${relBadge}${this._esc(this._truncateMid(doc.title))}${pctBadge}
         </td>
