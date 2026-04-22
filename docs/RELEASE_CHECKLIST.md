@@ -4,6 +4,26 @@
 
 ---
 
+## 0. Version bump
+
+```bash
+python scripts/bump_version.py --engine X.Y.Z --shell X.Y.Z
+```
+
+Met à jour en une commande :
+- `pyproject.toml`
+- `src/multicorpus_engine/__init__.py`
+- `tauri-shell/src-tauri/tauri.conf.json`
+- `tauri-shell/src/shell.ts` (`APP_VERSION`)
+
+Puis rebuilder le sidecar si `--engine` a changé :
+
+```bash
+python scripts/build_sidecar.py --preset shell --format onefile
+```
+
+---
+
 ## 1. Pre-release — local
 
 - [ ] `git status` — no uncommitted changes
