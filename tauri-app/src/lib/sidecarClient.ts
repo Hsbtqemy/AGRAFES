@@ -1289,6 +1289,11 @@ export function resetConnection(): void {
   _connDbPath = null;
 }
 
+/** Return the active connection (null if no sidecar running). */
+export function getActiveConn(): Conn | null {
+  return _conn;
+}
+
 // ─── Stats (lexical frequency) ────────────────────────────────────────────────
 
 export interface StatsSlot {

@@ -1924,13 +1924,10 @@ function _openAboutDialog(): void {
   // Fetch live engine/contract version from sidecar /health (best-effort, non-blocking)
   void (async () => {
     try {
-      const portRaw = localStorage.getItem("agrafes.sidecar.port");
-      if (!portRaw) return;
-      const port = parseInt(portRaw, 10);
-      if (!port) return;
-      const resp = await fetch(`http://127.0.0.1:${port}/health`, { signal: AbortSignal.timeout(2500) });
-      if (!resp.ok) return;
-      const data = await resp.json() as Record<string, unknown>;
+      const { getActiveConn } = await import("../../tauri-app/src/lib/sidecarClient.ts");
+      const conn = getActiveConn();
+      if (!conn) return;
+      const data = await conn.get("/health") as Record<string, unknown>;
       const engineEl = document.getElementById("shell-about-engine-ver");
       const contractEl = document.getElementById("shell-about-contract-ver");
       if (engineEl) engineEl.textContent = String(data.version ?? "?");
