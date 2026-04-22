@@ -5,11 +5,18 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [Unreleased]
+## [0.1.34] - 2026-04-22
 
 ### Added
 
 - **tauri-prep / ExportsScreen** : carte "Export bilingue / TMX" — sélecteur famille (auto-remplit pivot/cible), formats TMX · HTML · TXT, aperçu inline 8 paires, export via `POST /export/tmx` (avec `family_id` pour multi-paires) et `POST /export/bilingual`. Clôture Sprint 5 Familles côté frontend.
+- **scripts** : `bump_version.py` — synchronise `pyproject.toml`, `__init__.py`, `tauri.conf.json`, `shell.ts` en une commande.
+
+### Fixed
+
+- **shell / About dialog** : Engine version et Contract version restaient à "…" — CORS bloquait le `fetch()` direct ; utilise désormais `getActiveConn().get("/health")` via le bridge Tauri.
+- **engine** : `__init__.__version__` désynchronisé avec `pyproject.toml` (0.7.9 vs 0.8.3).
+- **sidecarClient** : port non écrit dans `localStorage` sur les chemins portfile-reuse et in-memory-reuse de `ensureRunning`.
 
 ---
 
