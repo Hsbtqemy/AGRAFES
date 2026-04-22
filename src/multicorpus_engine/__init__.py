@@ -5,4 +5,4 @@ import, indexing, and querying. Tauri-ready via CLI JSON I/O.
 Increment 1: Explorer minimal (init, import DOCX numbered lines, FTS, query).
 """
 
-__version__ = "0.7.9"
+__version__ = "0.8.3"
