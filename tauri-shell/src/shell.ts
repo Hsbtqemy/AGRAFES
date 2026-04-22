@@ -1921,16 +1921,18 @@ function _openAboutDialog(): void {
   const onKey = (e: KeyboardEvent): void => { if (e.key === "Escape") { modal.remove(); document.removeEventListener("keydown", onKey); } };
   document.addEventListener("keydown", onKey);
 
-  // Fetch live engine/contract version from sidecar /health (best-effort, non-blocking)
+  // Fetch live engine/contract version via Tauri bridge (bypasses CORS, no raw fetch)
   void (async () => {
     try {
-      const portRaw = localStorage.getItem("agrafes.sidecar.port");
-      if (!portRaw) return;
-      const port = parseInt(portRaw, 10);
-      if (!port) return;
-      const resp = await fetch(`http://127.0.0.1:${port}/health`, { signal: AbortSignal.timeout(2500) });
-      if (!resp.ok) return;
-      const data = await resp.json() as Record<string, unknown>;
+      const { getActiveConn } = await import("../../tauri-app/src/lib/sidecarClient.ts");
+      // Poll briefly — dialog may open before ensureRunning completes on first nav
+      let conn = getActiveConn();
+      if (!conn) {
+        await new Promise(r => setTimeout(r, 1500));
+        conn = getActiveConn();
+      }
+      if (!conn) return;
+      const data = await conn.get("/health") as Record<string, unknown>;
       const engineEl = document.getElementById("shell-about-engine-ver");
       const contractEl = document.getElementById("shell-about-contract-ver");
       if (engineEl) engineEl.textContent = String(data.version ?? "?");
