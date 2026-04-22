@@ -785,6 +785,7 @@ export async function ensureRunning(dbPath: string): Promise<Conn> {
         }
       }
       sidecarLog("info", "reusing in-memory sidecar connection");
+      try { const m = _conn.baseUrl.match(/:(\d+)$/); if (m) localStorage.setItem("agrafes.sidecar.port", m[1]); } catch { /* */ }
       return _conn;
     } catch (err) {
       sidecarLog("warn", "in-memory sidecar connection is stale; reconnecting", errToString(err));
@@ -842,6 +843,7 @@ export async function ensureRunning(dbPath: string): Promise<Conn> {
               sidecarLog("info", `reusing sidecar from portfile (${baseUrl})`);
               _conn = makeConn(baseUrl, token);
               _connDbPath = dbPath;
+              try { localStorage.setItem("agrafes.sidecar.port", String(port)); } catch { /* */ }
               return _conn;
             }
           }
