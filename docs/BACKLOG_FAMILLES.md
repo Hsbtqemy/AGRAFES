@@ -94,27 +94,27 @@
 
 ---
 
-## Sprint 5 — Export TMX et bilingue
+## Sprint 5 — Export TMX et bilingue ✅
 
 > Objectif : exporter une paire ou une famille dans des formats d'échange standard.
 
 ### Backend
 
-- [ ] `POST /export/tmx`
+- [x] `POST /export/tmx`
   - Params : `pivot_doc_id`, `target_doc_id` (ou `family_id` pour multi-langues)
   - Génère un fichier `.tmx` (Translation Memory eXchange)
   - Retourne le chemin du fichier généré
-- [ ] `POST /export/bilingual`
+- [x] `POST /export/bilingual`
   - Params : `pivot_doc_id`, `target_doc_id`, `format` (`html` | `txt`)
   - Texte entrelacé : unité originale / unité traduite en alternance
 - [ ] TEI enrichi automatiquement : `<teiHeader>` des enfants complété depuis le parent
-- [ ] API version → `1.6.4`
+- [x] API version → `1.6.4`
 
 ### Frontend
 
-- [ ] Onglet Export : sélecteur famille → choix de la paire → format → export
+- [x] Onglet Export : sélecteur famille → choix de la paire → format → export
 - [ ] Bouton "Exporter cette paire" dans le panneau famille (Sprint 1)
-- [ ] Prévisualisation du bilingue inline avant export
+- [x] Prévisualisation du bilingue inline avant export
 
 ---
 

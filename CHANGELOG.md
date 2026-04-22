@@ -5,6 +5,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **tauri-prep / ExportsScreen** : carte "Export bilingue / TMX" — sélecteur famille (auto-remplit pivot/cible), formats TMX · HTML · TXT, aperçu inline 8 paires, export via `POST /export/tmx` (avec `family_id` pour multi-paires) et `POST /export/bilingual`. Clôture Sprint 5 Familles côté frontend.
+
+---
+
 ## [0.1.33] - 2026-04-21
 
 ### Fixed
