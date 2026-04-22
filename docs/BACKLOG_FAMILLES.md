@@ -113,7 +113,7 @@
 ### Frontend
 
 - [x] Onglet Export : sélecteur famille → choix de la paire → format → export
-- [ ] Bouton "Exporter cette paire" dans le panneau famille (Sprint 1)
+- [x] Bouton "Exporter cette paire" dans le panneau famille (Sprint 1)
 - [x] Prévisualisation du bilingue inline avant export
 
 ---
