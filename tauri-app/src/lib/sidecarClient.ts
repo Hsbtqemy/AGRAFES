@@ -975,6 +975,13 @@ async function _spawnSidecar(dbPath: string): Promise<Conn> {
 
   _conn = makeConn(baseUrl, token);
   _connDbPath = dbPath;
+
+  // Persist port so diagnostics.ts and About dialog can read it without a Conn reference.
+  try {
+    const m = baseUrl.match(/:(\d+)$/);
+    if (m) localStorage.setItem("agrafes.sidecar.port", m[1]);
+  } catch { /* localStorage unavailable in some test contexts */ }
+
   return _conn;
 }
 
