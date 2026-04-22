@@ -30,26 +30,26 @@
 
 ---
 
-## Sprint 2 — Segmentation calibrée par famille
+## Sprint 2 — Segmentation calibrée par famille ✅
 
 > Objectif : segmenter l'original puis propager la structure aux enfants.
 
 ### Backend
 
-- [ ] `POST /segment` : paramètre optionnel `calibrate_to=doc_id`
+- [x] `POST /segment` : paramètre optionnel `calibrate_to=doc_id`
   - Segmente en calant le nombre d'unités sur le doc de référence
   - Retourne `warning` si l'enfant est déjà segmenté différemment
-- [ ] `POST /families/{family_root_id}/segment`
+- [x] `POST /families/{family_root_id}/segment`
   - Segmente l'original en premier (si non segmenté)
   - Puis propage aux enfants (`calibrate_to` = parent)
   - Retourne un rapport par doc : `segmented | skipped | warning`
-- [ ] API version → `1.6.1`
+- [x] API version → `1.6.1`
 
 ### Frontend
 
-- [ ] Bouton **"Segmenter la famille"** dans le panneau famille (Sprint 1)
-- [ ] Dialog de confirmation si enfants déjà segmentés : liste les conflits doc par doc
-- [ ] Indicateurs en temps réel pendant le traitement (polling job ou progression inline)
+- [x] Bouton **"Segmenter la famille"** dans le panneau famille (`MetadataScreen._segmentFamilyFlow`)
+- [x] Dialog de confirmation si enfants déjà segmentés : liste les conflits doc par doc
+- [x] Indicateurs en temps réel pendant le traitement (polling job ou progression inline)
 
 ---
 
@@ -73,24 +73,24 @@
 
 ---
 
-## Sprint 4 — Audit enrichi par famille
+## Sprint 4 — Audit enrichi par famille ✅
 
 > Objectif : étendre `/corpus/audit` avec des checks au niveau famille.
 
 ### Backend
 
-- [ ] `GET /corpus/audit` — nouvelle section `families[]` :
+- [x] `GET /corpus/audit` — nouvelle section `families[]` :
   - Paires sans alignement (`unaligned_pairs`)
   - Docs avec relation mais non segmentés (`unsegmented_children`)
   - Ratios segments hors seuil > 15 % (`ratio_warnings`)
   - Docs orphelins (parent absent du corpus)
-- [ ] API version → `1.6.3`
+- [x] API version → `1.6.3`
 
 ### Frontend
 
-- [ ] Section "Familles" dans le panneau audit existant
-- [ ] Actions directes depuis l'audit : naviguer, segmenter, aligner
-- [ ] Seuil de ratio configurable dans l'UI (15 % par défaut)
+- [x] Section "Familles" dans le panneau audit existant (`MetadataScreen._auditFamiliesSection`)
+- [x] Actions directes depuis l'audit : segmenter (`_auditSegmentFamilies`), aligner (`_auditAlignFamilies`)
+- [x] Seuil de ratio configurable dans l'UI (15 % par défaut, input `#audit-ratio-input`)
 
 ---
 
