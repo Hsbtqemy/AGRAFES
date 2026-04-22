@@ -107,7 +107,7 @@
 - [x] `POST /export/bilingual`
   - Params : `pivot_doc_id`, `target_doc_id`, `format` (`html` | `txt`)
   - Texte entrelacé : unité originale / unité traduite en alternance
-- [ ] TEI enrichi automatiquement : `<teiHeader>` des enfants complété depuis le parent
+- ~~TEI enrichi automatiquement : `<teiHeader>` des enfants complété depuis le parent~~ — abandonné : chaque enfant a ses propres métadonnées (titre, langue, auteur) ; la relation est déjà exportée via `<listRelation>` ; le gate QA couvre les champs manquants.
 - [x] API version → `1.6.4`
 
 ### Frontend
