@@ -399,24 +399,18 @@ export class MetadataScreen {
   private _renderDocList(): void {
     this._updateDocCount();
 
-    if (this._hierarchyView) {
-      // Disable sort indicators in hierarchy mode
-      this._root.querySelectorAll<HTMLElement>("th[data-sort]").forEach(th => {
-        th.classList.remove("sort-active");
-        const ind = th.querySelector<HTMLElement>(".sort-ind");
-        if (ind) ind.textContent = "";
-      });
-      this._renderHierarchyList();
-      return;
-    }
-
-    // Refresh sort indicators on column headers
+    // Refresh sort indicators on column headers (list and hierarchy)
     this._root.querySelectorAll<HTMLElement>("th[data-sort]").forEach(th => {
       const isActive = th.dataset.sort === this._sortCol;
       th.classList.toggle("sort-active", isActive);
       const ind = th.querySelector<HTMLElement>(".sort-ind");
       if (ind) ind.textContent = isActive ? (this._sortDir === "asc" ? " ↑" : " ↓") : " ⇅";
     });
+
+    if (this._hierarchyView) {
+      this._renderHierarchyList();
+      return;
+    }
     if (this._docs.length === 0) {
       this._docListEl.innerHTML = `<tr><td colspan="6" class="prep-meta-empty-cell">Aucun document.</td></tr>`;
       this._renderBatchBar();
@@ -559,6 +553,11 @@ export class MetadataScreen {
   private _renderHierarchyList(): void {
     this._docListEl.innerHTML = "";
     const { roots, standalone, orphans } = this._buildTree();
+    const cmp = this._docComparator();
+    roots.sort((a, b) => cmp(a.doc, b.doc));
+    for (const node of roots) node.children.sort((a, b) => cmp(a.doc, b.doc));
+    standalone.sort(cmp);
+    orphans.sort(cmp);
 
     if (this._docs.length === 0) {
       this._docListEl.innerHTML = `<tr><td colspan="6" class="prep-meta-empty-cell">Aucun document.</td></tr>`;
@@ -2290,10 +2289,14 @@ export class MetadataScreen {
         return title.includes(q) || lang.includes(q) || role.includes(q) || restype.includes(q) || id.includes(q);
       });
     }
-    // Sort
+    docs = [...docs].sort(this._docComparator());
+    return docs;
+  }
+
+  private _docComparator(): (a: DocumentRecord, b: DocumentRecord) => number {
     const dir = this._sortDir === "asc" ? 1 : -1;
     const col = this._sortCol;
-    docs = [...docs].sort((a, b) => {
+    return (a, b) => {
       switch (col) {
         case "id":     return dir * (a.doc_id - b.doc_id);
         case "title":  return dir * (a.title ?? "").localeCompare(b.title ?? "", undefined, { sensitivity: "base" });
@@ -2302,8 +2305,7 @@ export class MetadataScreen {
         case "status": return dir * this._workflowStatus(a).localeCompare(this._workflowStatus(b));
         default:       return 0;
       }
-    });
-    return docs;
+    };
   }
 
   private _esc(s: string): string {

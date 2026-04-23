@@ -5,6 +5,18 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.1.36] - 2026-04-23
+
+### Added
+
+- **tauri-prep / MetadataScreen** : vue Hiérarchie triable — les en-têtes Titre / Langue / Rôle / Statut trient parents, enfants et documents indépendants ; indicateurs ↑ ↓ visibles dans les deux vues.
+
+### Fixed
+
+- **tauri-prep / ImportScreen** : dialogues "Rattacher à une famille" s'empilaient lors d'un import de plusieurs fichiers — remplacé par une file d'attente (un dialogue à la fois). "Vider" annule les dialogues en attente.
+
+---
+
 ## [0.1.35] - 2026-04-22
 
 ### Added

@@ -197,8 +197,10 @@ export class ImportScreen {
   private _textPreviewReq = 0;
 
   // Sprint 8 — family dialog
-  private _skipFamilyDialog = false;        // "Ne plus demander" flag (session)
-  private _corpusDocs: DocumentRecord[] = []; // cached corpus list for family dialog
+  private _skipFamilyDialog = false;
+  private _corpusDocs: DocumentRecord[] = [];
+  private _familyDialogQueue: Array<{ docId: number; title: string; lang: string }> = [];
+  private _familyDialogActive = false;
 
   render(): HTMLElement {
     const root = document.createElement("div");
@@ -649,6 +651,7 @@ export class ImportScreen {
 
   private _clearList(): void {
     this._files = [];
+    this._familyDialogQueue = [];
     this._renderList();
     this._updateButtons();
   }
@@ -1108,9 +1111,9 @@ export class ImportScreen {
             f.message = String(docId ?? "?");
             this._log(`✓ "${fileTitle}" → doc_id ${docId ?? "?"}`);
             this._showToast?.(`✓ Importé: ${fileTitle}`);
-            // Sprint 8: propose family link
+            // Sprint 8: propose family link (queued — one dialog at a time)
             if (typeof docId === "number" && !this._skipFamilyDialog) {
-              this._showFamilyDialog(docId, fileTitle, fileLang);
+              this._enqueueFamilyDialog(docId, fileTitle, fileLang);
             }
           } else {
             f.status = "error";
@@ -1140,6 +1143,21 @@ export class ImportScreen {
   // ---------------------------------------------------------------------------
   // Sprint 8 — family dialog
   // ---------------------------------------------------------------------------
+
+  private _enqueueFamilyDialog(docId: number, title: string, lang: string): void {
+    this._familyDialogQueue.push({ docId, title, lang });
+    if (!this._familyDialogActive) void this._drainFamilyDialogQueue();
+  }
+
+  private async _drainFamilyDialogQueue(): Promise<void> {
+    while (this._familyDialogQueue.length > 0 && !this._skipFamilyDialog) {
+      const next = this._familyDialogQueue.shift()!;
+      this._familyDialogActive = true;
+      await this._showFamilyDialog(next.docId, next.title, next.lang);
+      this._familyDialogActive = false;
+    }
+    this._familyDialogActive = false;
+  }
 
   /** Show a modal dialog after a successful import to optionally attach the
    *  new document to an existing family (creates a translation_of relation). */
@@ -1215,34 +1233,37 @@ export class ImportScreen {
       confirmBtn.disabled = !sel.value;
     });
 
-    const close = () => {
-      if (skipChk.checked) this._skipFamilyDialog = true;
-      overlay.remove();
-    };
+    await new Promise<void>((resolve) => {
+      const close = () => {
+        if (skipChk.checked) this._skipFamilyDialog = true;
+        overlay.remove();
+        resolve();
+      };
 
-    cancelBtn.addEventListener("click", close);
-    overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+      cancelBtn.addEventListener("click", close);
+      overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
 
-    confirmBtn.addEventListener("click", async () => {
-      const parentId = parseInt(sel.value, 10);
-      const relType = relSel.value as "translation_of" | "excerpt_of";
-      if (!parentId || !this._conn) { close(); return; }
-      confirmBtn.disabled = true;
-      confirmBtn.textContent = "En cours…";
-      try {
-        const res = await setDocRelation(this._conn, {
-          doc_id: newDocId,
-          relation_type: relType,
-          target_doc_id: parentId,
-        });
-        const parentTitle = candidates.find(d => d.doc_id === parentId)?.title ?? `#${parentId}`;
-        this._log(`✓ Relation « ${relType} » créée : doc #${newDocId} → doc #${parentId} « ${parentTitle} » (id=${res.id})`);
-        this._showToast?.(`✓ Rattaché à la famille de « ${parentTitle} »`);
-      } catch (err) {
-        this._log(`✗ Erreur création relation: ${err instanceof Error ? err.message : String(err)}`, true);
-        this._showToast?.("✗ Impossible de créer la relation", true);
-      }
-      close();
+      confirmBtn.addEventListener("click", async () => {
+        const parentId = parseInt(sel.value, 10);
+        const relType = relSel.value as "translation_of" | "excerpt_of";
+        if (!parentId || !this._conn) { close(); return; }
+        confirmBtn.disabled = true;
+        confirmBtn.textContent = "En cours…";
+        try {
+          const res = await setDocRelation(this._conn, {
+            doc_id: newDocId,
+            relation_type: relType,
+            target_doc_id: parentId,
+          });
+          const parentTitle = candidates.find(d => d.doc_id === parentId)?.title ?? `#${parentId}`;
+          this._log(`✓ Relation « ${relType} » créée : doc #${newDocId} → doc #${parentId} « ${parentTitle} » (id=${res.id})`);
+          this._showToast?.(`✓ Rattaché à la famille de « ${parentTitle} »`);
+        } catch (err) {
+          this._log(`✗ Erreur création relation: ${err instanceof Error ? err.message : String(err)}`, true);
+          this._showToast?.("✗ Impossible de créer la relation", true);
+        }
+        close();
+      });
     });
   }
 
