@@ -27,12 +27,15 @@ jobs:
           - os: macos-latest
             sidecar_format: onefile
             artifact_suffix: macos
+            tauri_bundles: "app,dmg"
           - os: ubuntu-latest
             sidecar_format: onedir
             artifact_suffix: linux
+            tauri_bundles: "deb,appimage"
           - os: windows-latest
             sidecar_format: onefile
             artifact_suffix: windows
+            tauri_bundles: ""
 
     steps:
       # ── 1. Checkout ──────────────────────────────────────────────────────────
@@ -68,7 +71,12 @@ jobs:
           python-version: "3.11"
           cache: "pip"
 
-      # ── 5. Linux system deps for Tauri ───────────────────────────────────────
+      # ── 5a. macOS: create-dmg ─────────────────────────────────────────────────
+      - name: Install create-dmg (macOS)
+        if: runner.os == 'macOS'
+        run: brew install create-dmg
+
+      # ── 5b. Linux system deps for Tauri ──────────────────────────────────────
       - name: Install Linux system dependencies
         if: runner.os == 'Linux'
         run: |
@@ -153,12 +161,11 @@ jobs:
       - name: Build Tauri Shell non-Windows (unsigned)
         if: runner.os != 'Windows'
         env:
-          # Disable code signing — build unsigned
           TAURI_SIGNING_PRIVATE_KEY: ""
           APPLE_SIGNING_IDENTITY: "-"
           CI: "true"
         working-directory: tauri-shell
-        run: npm run tauri build -- --bundles app,deb,appimage,nsis,dmg 2>&1 || npm run tauri build
+        run: npm run tauri build -- --bundles ${{ matrix.tauri_bundles }}
 
       # ── 9. Collect artifacts ──────────────────────────────────────────────────
       - name: Collect build artifacts (non-Windows)
