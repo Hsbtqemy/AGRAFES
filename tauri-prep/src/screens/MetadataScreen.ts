@@ -249,7 +249,11 @@ export class MetadataScreen {
           <div id="prep-meta-batch-bar" class="prep-meta-batch-bar">
             <span id="prep-meta-batch-meta" class="prep-meta-batch-meta">0 sélectionné</span>
             <div class="prep-meta-batch-actions">
-              <button id="meta-batch-role-btn" class="btn btn-secondary btn-sm" disabled>Définir rôle</button>
+              <select id="meta-batch-role-sel" class="btn btn-secondary btn-sm" disabled>
+                <option value="">— Rôle —</option>
+                ${DOC_ROLES.map(r => `<option value="${r}">${r}</option>`).join("")}
+              </select>
+              <button id="meta-batch-role-btn" class="btn btn-secondary btn-sm" disabled>Appliquer rôle</button>
               <button id="meta-batch-delete-btn" class="btn btn-danger btn-sm" disabled>🗑 Supprimer</button>
             </div>
           </div>
@@ -323,6 +327,7 @@ export class MetadataScreen {
       this._renderBatchBar();
     });
     root.querySelector("#bulk-apply-btn")!.addEventListener("click", () => this._runBulkUpdate());
+    root.querySelector("#meta-batch-role-sel")!.addEventListener("change", () => this._renderBatchBar());
     root.querySelector("#meta-batch-role-btn")!.addEventListener("click", () => void this._runBatchRoleUpdate());
     root.querySelector("#meta-batch-delete-btn")!.addEventListener("click", () => void this._runBatchDelete());
     root.querySelector("#validate-btn")!.addEventListener("click", () => this._runValidate());
@@ -683,9 +688,11 @@ export class MetadataScreen {
       else                  this._batchMetaEl.textContent = `${count} documents sélectionnés`;
     }
     if (this._batchBarEl) this._batchBarEl.classList.toggle("active", count > 0);
+    const roleSel = this._root?.querySelector<HTMLSelectElement>("#meta-batch-role-sel");
     const roleBtn = this._root?.querySelector<HTMLButtonElement>("#meta-batch-role-btn");
-    if (roleBtn) roleBtn.disabled = count < 2;
     const deleteBtn = this._root?.querySelector<HTMLButtonElement>("#meta-batch-delete-btn");
+    if (roleSel)  roleSel.disabled  = count === 0;
+    if (roleBtn)  roleBtn.disabled  = count === 0 || !roleSel?.value;
     if (deleteBtn) deleteBtn.disabled = count === 0;
   }
 
@@ -885,7 +892,8 @@ export class MetadataScreen {
             <option value="">— sélectionner —</option>
             ${this._docs
               .filter(d => d.doc_id !== doc.doc_id)
-              .map(d => `<option value="${d.doc_id}">#${d.doc_id} ${this._esc(d.title)} (${this._esc(d.language)})</option>`)
+              .sort((a, b) => (a.title ?? "").localeCompare(b.title ?? "", undefined, { sensitivity: "base" }))
+              .map(d => `<option value="${d.doc_id}">${this._esc(d.title)} (${this._esc(d.language)})</option>`)
               .join("")}
           </select>
         </label>
@@ -1669,6 +1677,21 @@ export class MetadataScreen {
         target_doc_id,
         note,
       });
+      // Auto-assign doc_role based on relation type
+      if (rel_type === "translation_of" || rel_type === "excerpt_of") {
+        const childRole  = rel_type === "translation_of" ? "translation" : "excerpt";
+        const parentRole = "original";
+        const childDoc   = this._selectedDoc;
+        const parentDoc  = this._docs.find(d => d.doc_id === target_doc_id);
+        if (!["original", "translation", "excerpt"].includes(childDoc.doc_role ?? "")) {
+          await updateDocument(this._conn, { doc_id: childDoc.doc_id, doc_role: childRole });
+          childDoc.doc_role = childRole;
+        }
+        if (parentDoc && !["original", "translation", "excerpt"].includes(parentDoc.doc_role ?? "")) {
+          await updateDocument(this._conn, { doc_id: parentDoc.doc_id, doc_role: parentRole });
+          parentDoc.doc_role = parentRole;
+        }
+      }
       const res = await getDocRelations(this._conn, this._selectedDoc.doc_id);
       this._relations = res.relations;
       this._allRelationsLoaded = false;
@@ -1741,15 +1764,10 @@ export class MetadataScreen {
   }
 
   private async _runBatchRoleUpdate(): Promise<void> {
-    if (!this._conn || this._selectedDocIds.size < 2) return;
-    const roleList = DOC_ROLES.join(" | ");
-    const chosen = prompt(`Rôle pour les ${this._selectedDocIds.size} documents sélectionnés :\n(${roleList})`);
-    if (!chosen) return;
-    const doc_role = chosen.trim();
-    if (!DOC_ROLES.includes(doc_role)) {
-      alert(`Rôle invalide : "${doc_role}"\nValeurs acceptées : ${roleList}`);
-      return;
-    }
+    if (!this._conn || this._selectedDocIds.size === 0) return;
+    const sel = this._root.querySelector<HTMLSelectElement>("#meta-batch-role-sel")!;
+    const doc_role = sel.value;
+    if (!doc_role || !DOC_ROLES.includes(doc_role)) return;
     const updates = [...this._selectedDocIds].map(doc_id => ({ doc_id, doc_role }));
     const btn = this._root.querySelector<HTMLButtonElement>("#meta-batch-role-btn")!;
     btn.disabled = true;

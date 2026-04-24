@@ -5,6 +5,24 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.1.39] - 2026-04-24
+
+### Added
+
+- **tauri-prep / ImportScreen** : rattacher un document à une famille lors de l'import attribue automatiquement un `doc_role` cohérent — `translation` ou `excerpt` pour l'enfant, `original` pour le parent (uniquement si le rôle n'était pas déjà défini).
+- **tauri-prep / MetadataScreen** : l'attribution de rôle en lot utilise désormais un `<select>` intégré à la barre de sélection — fonctionne dès 1 document sélectionné (plus de `prompt()`).
+- **tauri-prep / MetadataScreen** : définir une relation dans le panneau métadonnées attribue automatiquement un `doc_role` cohérent (même logique que l'import).
+
+### Changed
+
+- **tauri-prep / MetadataScreen** : la liste déroulante des cibles de relation est triée alphabétiquement ; le préfixe `#ID` a été retiré des labels.
+
+### Fixed
+
+- **tauri-shell / main.rs** : le sidecar reçoit désormais le signal d'arrêt avant la fermeture de la fenêtre — le hook passe de `WindowEvent::Destroyed` à `CloseRequested` avec `prevent_close()` + `window.close()` asynchrone.
+
+---
+
 ## [0.1.38] - 2026-04-24
 
 ### Added

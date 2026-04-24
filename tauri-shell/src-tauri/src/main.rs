@@ -241,23 +241,24 @@ fn main() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            if let tauri::WindowEvent::Destroyed = event {
-                // Synchronous best-effort shutdown on window destroy.
-                // We read the registry and fire a blocking reqwest call.
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                // Take the registry entry — if already None, a previous close is in
+                // flight (or no sidecar): allow the window to close immediately.
                 let state = window.state::<SidecarRegistry>();
                 let entry = {
                     let mut guard = state.0.lock().unwrap();
                     guard.take()
                 };
-                if let Some(e) = entry {
-                    // Block the thread briefly for a clean shutdown.
-                    let rt = tokio::runtime::Builder::new_current_thread()
-                        .enable_all()
-                        .build();
-                    if let Ok(rt) = rt {
-                        rt.block_on(_do_shutdown(&e.base_url, e.token.as_deref()));
-                    }
-                }
+                let Some(e) = entry else { return; };
+                // Block default close, shut down the sidecar, then close the window.
+                // The second CloseRequested triggered by window.close() will find the
+                // registry empty and pass through without prevent_default.
+                api.prevent_close();
+                let window = window.clone();
+                tauri::async_runtime::spawn(async move {
+                    _do_shutdown(&e.base_url, e.token.as_deref()).await;
+                    let _ = window.close();
+                });
             }
         })
         .plugin(tauri_plugin_shell::init())

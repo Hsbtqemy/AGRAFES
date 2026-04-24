@@ -13,7 +13,7 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { readTextFile } from "@tauri-apps/plugin-fs";
 import type { Conn } from "../lib/sidecarClient.ts";
-import { importFile, enqueueJob, SidecarError, listDocuments, setDocRelation, previewImport } from "../lib/sidecarClient.ts";
+import { importFile, enqueueJob, SidecarError, listDocuments, setDocRelation, updateDocument, previewImport } from "../lib/sidecarClient.ts";
 import type { DocumentRecord } from "../lib/sidecarClient.ts";
 import type { JobCenter } from "../components/JobCenter.ts";
 import { initCardAccordions } from "../lib/uiAccordions.ts";
@@ -1255,7 +1255,19 @@ export class ImportScreen {
             relation_type: relType,
             target_doc_id: parentId,
           });
-          const parentTitle = candidates.find(d => d.doc_id === parentId)?.title ?? `#${parentId}`;
+          const parentDoc   = candidates.find(d => d.doc_id === parentId);
+          const parentTitle = parentDoc?.title ?? `#${parentId}`;
+          // Auto-assign doc_role
+          const childRole  = relType === "translation_of" ? "translation" : "excerpt";
+          const parentRole = "original";
+          const FIXED_ROLES = ["original", "translation", "excerpt"];
+          const newDoc = this._corpusDocs.find(d => d.doc_id === newDocId);
+          if (this._conn && !FIXED_ROLES.includes(newDoc?.doc_role ?? "")) {
+            await updateDocument(this._conn, { doc_id: newDocId, doc_role: childRole }).catch(() => {});
+          }
+          if (this._conn && parentDoc && !FIXED_ROLES.includes(parentDoc.doc_role ?? "")) {
+            await updateDocument(this._conn, { doc_id: parentId, doc_role: parentRole }).catch(() => {});
+          }
           this._log(`✓ Relation « ${relType} » créée : doc #${newDocId} → doc #${parentId} « ${parentTitle} » (id=${res.id})`);
           this._showToast?.(`✓ Rattaché à la famille de « ${parentTitle} »`);
         } catch (err) {
