@@ -154,6 +154,20 @@ export class App {
       }
     } catch { /* ignore */ }
 
+    // Conventions → Prep curation navigation: if shell set a pending doc target, consume it
+    try {
+      const rawCuration = sessionStorage.getItem("agrafes:prep-curation-doc");
+      if (rawCuration) {
+        sessionStorage.removeItem("agrafes:prep-curation-doc");
+        const nav = JSON.parse(rawCuration) as { doc_id: number };
+        if (nav.doc_id) {
+          this._switchTab("actions");
+          this._actions.setSubView("curation");
+          setTimeout(() => this._actions.curationFocusDoc(nav.doc_id), 200);
+        }
+      }
+    } catch { /* ignore */ }
+
     // Store handler reference so dispose() can remove it (prevents listener leak
     // when App is re-mounted during shell navigation).
     this._beforeUnloadHandler = (event: BeforeUnloadEvent) => {

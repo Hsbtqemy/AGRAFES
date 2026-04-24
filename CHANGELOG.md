@@ -5,6 +5,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.1.37] - 2026-04-23
+
+### Added
+
+- **tauri-shell / Conventions → Préparer** : persistance de navigation — quand un document est sélectionné dans l'onglet Conventions puis qu'on revient dans Préparer, l'écran Curation s'ouvre automatiquement sur ce document.
+
+---
+
 ## [0.1.36] - 2026-04-23
 
 ### Added

@@ -464,6 +464,11 @@ export class ActionsScreen {
     this._annotationView?.focusDoc(docId, tokenId);
   }
 
+  /** Public API: called from app.ts after Conventions→Prep navigation. */
+  curationFocusDoc(docId: number): void {
+    this._curationView?.focusDoc(docId);
+  }
+
   private _annotRefreshIfVisible(): void {
     this._annotationView?.refreshIfConnected();
   }

@@ -716,6 +716,15 @@ export class CurationView {
   }
 
   /** Clean up all listeners and timers. */
+  /** Navigate to a specific document in the curation selector. */
+  focusDoc(docId: number): void {
+    const sel = this._q<HTMLSelectElement>("#act-curate-doc");
+    if (!sel) return;
+    if (sel.value === String(docId)) return;
+    sel.value = String(docId);
+    sel.dispatchEvent(new Event("change"));
+  }
+
   dispose(): void {
     this._unbindCurateScrollSync();
     if (this._previewDebounceHandle !== null) {

@@ -192,6 +192,19 @@ async function _switchTab(tab: ConstituerTab): Promise<void> {
   if (!_tabBar || !_subContainer || _switching) return;
   _switching = true;
 
+  // Persist selected conventions doc so Préparer can open Curation for it
+  if (_activeTab === "conventions" && tab === "preparer") {
+    try {
+      const { getSelectedDocId } = await import("./conventionsModule.ts");
+      const docId = getSelectedDocId();
+      if (docId !== null) {
+        sessionStorage.setItem("agrafes:prep-curation-doc", JSON.stringify({ doc_id: docId }));
+      } else {
+        sessionStorage.removeItem("agrafes:prep-curation-doc");
+      }
+    } catch { /* ignore */ }
+  }
+
   try {
     _tabBar.querySelectorAll<HTMLButtonElement>(".con-subtab").forEach(btn => {
       btn.classList.toggle("active", btn.dataset.tab === tab);

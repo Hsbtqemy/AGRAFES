@@ -483,6 +483,10 @@ let _rightHintEl: HTMLElement | null = null;
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
+export function getSelectedDocId(): number | null {
+  return _selectedDocId;
+}
+
 export async function mount(container: HTMLElement, ctx: ShellContext): Promise<void> {
   _injectCss();
   container.innerHTML = "";
