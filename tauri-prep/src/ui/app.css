@@ -2286,6 +2286,18 @@ code { font-family: monospace; background: var(--color-bg); padding: 0 3px; bord
 /* Paratext + selected */
 .prep-raw-unit-full.prep-raw-unit-paratext.prep-raw-unit-selected { background: #eff6ff; border-left-color: #3b82f6; }
 
+/* Cap notice — shown when raw pane is limited to RAW_PANE_DOM_CAP units */
+.prep-raw-cap-notice {
+  margin-top: 1rem;
+  padding: 0.4rem 0.75rem;
+  background: #f8f9fa;
+  border: 1px dashed #cbd5e1;
+  border-radius: 5px;
+  font-size: 0.78rem;
+  color: #64748b;
+  font-style: italic;
+}
+
 /* Structure units (headings, titles, interludes…) */
 .prep-raw-unit-structure {
   display: flex;

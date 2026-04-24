@@ -78,6 +78,9 @@ type CurateApplyResult = CurateApplyEvent;
 
 const CURATE_PREVIEW_LIMIT = 500;
 const CURATE_PAGE_SIZE = 50;
+// Max units rendered at once in the raw pane; keeps DOM size manageable for
+// large documents. Changed units are always rendered regardless of this cap.
+const RAW_PANE_DOM_CAP = 800;
 
 const CURATE_PRESETS: Record<string, { label: string; rules: CurateRule[] }> = {
   spaces: {
@@ -1868,6 +1871,11 @@ export class CurationView {
     }
     this._cb.setBusy(false);
     this._refreshCurateHeaderState();
+    // If doc changed while we were busy the earlier _schedulePreview was dropped;
+    // kick off a fresh preview for the now-selected document.
+    if (docId !== this._currentCurateDocId()) {
+      this._schedulePreview(true);
+    }
   }
   private async _runCurate(): Promise<void> {
     const conn = this._getConn();
@@ -1985,12 +1993,10 @@ export class CurationView {
       if (rawEl && this._previewMode === "rawonly") {
         rawEl.innerHTML = '<p class="empty-hint">Impossible de charger le texte.</p>';
       }
-      return;
     }
-    if (this._previewMode === "rawonly") {
-      const changedIds = new Set(this._curateExamples.map(e => e.unit_id));
-      this._renderRawPaneFull(changedIds.size > 0 ? changedIds : undefined);
-    }
+    // Rendering is deferred to _refreshCuratePreviewPanes after the preview
+    // completes, avoiding a double DOM rebuild (fetch render → "Prévisualisation
+    // en cours…" wipe → preview render).
   }
   private _renderRawPaneFull(changedUnitIds?: Set<number>): void {
     const rawEl = this._q<HTMLElement>("#act-preview-raw");
@@ -2005,12 +2011,27 @@ export class CurationView {
     const roleMap = new Map(this._conventions.map(r => [r.name, r]));
     rawEl.innerHTML = "";
     rawEl.dataset.fullText = "1";
+
+    // Cap DOM nodes to RAW_PANE_DOM_CAP. Changed units are always included so
+    // diff-list navigation can scroll to them; remaining slots are filled in order.
+    let unitsToRender = this._allUnits;
+    const totalUnits = this._allUnits.length;
+    if (totalUnits > RAW_PANE_DOM_CAP) {
+      const changedSet = changedUnitIds ?? new Set<number>();
+      const changed = this._allUnits.filter(u => changedSet.has(u.unit_id));
+      const rest    = this._allUnits.filter(u => !changedSet.has(u.unit_id));
+      const slots   = Math.max(0, RAW_PANE_DOM_CAP - changed.length);
+      // Merge: take first `slots` unchanged units and re-sort by n to preserve reading order
+      const combined = [...changed, ...rest.slice(0, slots)];
+      combined.sort((a, b) => a.n - b.n);
+      unitsToRender = combined;
+    }
     const curateDocId = this._currentCurateDocId();
     const textStartN: number | null = curateDocId !== undefined
       ? (this._getDocs().find(d => d.doc_id === curateDocId)?.text_start_n ?? null)
       : null;
     this._renderRoleBar();
-    this._allUnits.forEach(unit => {
+    unitsToRender.forEach(unit => {
       if (textStartN !== null && unit.n === textStartN) {
         rawEl.appendChild(this._renderTextStartSeparator(textStartN));
       }
@@ -2128,6 +2149,12 @@ export class CurationView {
     });
     if (textStartN !== null && textStartN > (this._allUnits[this._allUnits.length - 1]?.n ?? 0)) {
       rawEl.appendChild(this._renderTextStartSeparator(textStartN));
+    }
+    if (totalUnits > RAW_PANE_DOM_CAP) {
+      const notice = document.createElement("div");
+      notice.className = "prep-raw-cap-notice";
+      notice.textContent = `Affichage partiel : ${unitsToRender.length} unités sur ${totalUnits} (toutes les modifications sont incluses).`;
+      rawEl.appendChild(notice);
     }
     this._updateRoleBar();
   }
