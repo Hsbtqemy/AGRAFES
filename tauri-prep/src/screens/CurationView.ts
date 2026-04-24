@@ -195,6 +195,8 @@ export class CurationView {
   private _curateGlobalChanged = 0;
   private _activeStatusFilter: "pending" | "accepted" | "ignored" | null = null;
   private _frExtraRules: CurateRule[] = [];
+  private _frSearchHits: number[] = []; // unit_ids with search matches (Trouver mode)
+  private _frSearchHitIdx = -1;
 
   // ── Review restore counters ─────────────────────────────────────────────────
   private _curateRestoredCount = 0;
@@ -505,11 +507,16 @@ export class CurationView {
                       <label class="chip" for="act-fr-nocase">Insensible &#224; la casse</label>
                     </div>
                     <div class="prep-btns fr-actions-row">
-                      <button id="act-fr-count-btn" class="btn btn-sm btn-secondary">&#128269;&#160;Compter</button>
+                      <button id="act-fr-count-btn" class="btn btn-sm btn-secondary">&#128269;&#160;Trouver</button>
                       <button id="act-fr-apply-btn" class="btn btn-sm alt">&#9654;&#160;Pr&#233;visualiser</button>
                       <button id="act-fr-clear-btn" class="btn btn-sm" style="display:none">&#10005;&#160;Effacer</button>
                     </div>
-                    <p id="act-fr-feedback" class="prep-fr-feedback" style="display:none"></p>
+                    <div id="act-fr-feedback" class="prep-fr-feedback" style="display:none"></div>
+                    <div id="act-fr-nav" class="prep-fr-nav" style="display:none">
+                      <button id="act-fr-prev-btn" class="btn btn-xs btn-secondary" disabled>&#8592;&#160;Pr&#233;c.</button>
+                      <span id="act-fr-nav-pos" class="prep-fr-nav-pos"></span>
+                      <button id="act-fr-next-btn" class="btn btn-xs btn-secondary">Suiv.&#160;&#8594;</button>
+                    </div>
                   </div>
                 </div>
               </details>
@@ -765,6 +772,7 @@ export class CurationView {
       this._allUnitsDocId = null;
       this._selectedUnitNs = new Set();
       this._lastSelectedN = null;
+      this._frClearSearch();
       if (this._allOverridesDocId !== newDocId) {
         this._allOverrides = new Map();
         this._allOverridesDocId = null;
@@ -905,25 +913,92 @@ export class CurationView {
       if (clearBtn) clearBtn.style.display = active ? "" : "none";
     };
 
+    // ── Navigation helpers (Trouver mode) ────────────────────────────────────
+    const _frNavUpdatePos = () => {
+      const pos = el.querySelector<HTMLElement>("#act-fr-nav-pos");
+      if (pos) pos.textContent = this._frSearchHits.length > 0
+        ? `${this._frSearchHitIdx + 1} / ${this._frSearchHits.length}`
+        : "";
+      const prevBtn = el.querySelector<HTMLButtonElement>("#act-fr-prev-btn");
+      const nextBtn = el.querySelector<HTMLButtonElement>("#act-fr-next-btn");
+      if (prevBtn) prevBtn.disabled = this._frSearchHitIdx <= 0;
+      if (nextBtn) nextBtn.disabled = this._frSearchHitIdx >= this._frSearchHits.length - 1;
+    };
+    const _frScrollToHit = (idx: number) => {
+      const uid = this._frSearchHits[idx];
+      if (uid === undefined) return;
+      const rawEl = this._q<HTMLElement>("#act-preview-raw");
+      if (!rawEl) return;
+      rawEl.querySelectorAll<HTMLElement>(".prep-raw-unit-found-active")
+        .forEach(e => e.classList.remove("prep-raw-unit-found-active"));
+      const target = rawEl.querySelector<HTMLElement>(`[data-unit-id="${uid}"]`);
+      if (target) {
+        target.classList.add("prep-raw-unit-found-active");
+        target.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+      this._frSearchHitIdx = idx;
+      _frNavUpdatePos();
+    };
+
     el.querySelector("#act-fr-count-btn")?.addEventListener("click", () => {
       const re = _frGetRegex();
       const findVal = el.querySelector<HTMLInputElement>("#act-fr-find")?.value.trim() ?? "";
       if (!findVal) { _frSetFeedback("Saisir un motif à chercher.", false); return; }
       if (!re) { _frSetFeedback("Expression régulière invalide.", false); return; }
-      if (this._curateExamples.length === 0) {
-        _frSetFeedback("Lance d'abord une prévisualisation pour compter.", false); return;
+
+      const docId = this._currentCurateDocId();
+      if (docId === undefined) {
+        _frSetFeedback("Sélectionnez un document.", false); return;
       }
-      let total = 0, units = 0;
-      for (const ex of this._curateExamples) {
-        const m = ex.before.match(re);
-        if (m) { total += m.length; units++; }
+      if (this._allUnits.length === 0) {
+        _frSetFeedback("Unités en cours de chargement, réessayez dans un instant.", false); return;
       }
-      const note = this._curateExamples.length < this._curateGlobalChanged
-        ? ` (dans l'échantillon de ${this._curateExamples.length} unités)`
-        : ` sur ${this._curateExamples.length} unité(s) analysée(s)`;
-      _frSetFeedback(total > 0
-        ? `${total} occurrence(s) dans ${units} unité(s)${note}.`
-        : `Aucune occurrence trouvée${note}.`);
+
+      // Search all loaded units
+      this._frClearSearch();
+      const hits: number[] = [];
+      let totalOcc = 0;
+      for (const unit of this._allUnits) {
+        re.lastIndex = 0;
+        const matches = (unit.text_norm ?? "").match(re);
+        if (matches) { hits.push(unit.unit_id); totalOcc += matches.length; }
+      }
+      this._frSearchHits = hits;
+
+      if (hits.length === 0) {
+        _frSetFeedback(`Aucune occurrence dans ${this._allUnits.length} unités.`, false);
+        return;
+      }
+
+      // Ensure raw pane is visible and rendered
+      if (this._previewMode === "diffonly") {
+        this._previewMode = "rawonly";
+        this._applyPreviewMode(el);
+      }
+      if (!this._q("#act-preview-raw [data-unit-id]")) {
+        this._renderRawPaneFull();
+      } else {
+        this._frApplySearchHighlights();
+      }
+
+      _frSetFeedback(`${totalOcc} occurrence(s) dans ${hits.length} unité(s) sur ${this._allUnits.length} analysées.`);
+      const nav = el.querySelector<HTMLElement>("#act-fr-nav");
+      if (nav) nav.style.display = "";
+      this._frSearchHitIdx = 0;
+      _frScrollToHit(0);
+    });
+
+    el.querySelector("#act-fr-prev-btn")?.addEventListener("click", () => {
+      if (this._frSearchHitIdx > 0) _frScrollToHit(this._frSearchHitIdx - 1);
+    });
+    el.querySelector("#act-fr-next-btn")?.addEventListener("click", () => {
+      if (this._frSearchHitIdx < this._frSearchHits.length - 1)
+        _frScrollToHit(this._frSearchHitIdx + 1);
+    });
+
+    // Clear search highlights when pattern changes
+    el.querySelector<HTMLInputElement>("#act-fr-find")?.addEventListener("input", () => {
+      if (this._frSearchHits.length > 0) this._frClearSearch();
     });
 
     el.querySelector("#act-fr-apply-btn")?.addEventListener("click", () => {
@@ -950,6 +1025,7 @@ export class CurationView {
 
     el.querySelector("#act-fr-clear-btn")?.addEventListener("click", () => {
       this._frExtraRules = [];
+      this._frClearSearch();
       _frSetActive(false);
       _frSetFeedback("");
       const findEl   = el.querySelector<HTMLInputElement>("#act-fr-find");
@@ -1998,6 +2074,39 @@ export class CurationView {
     // completes, avoiding a double DOM rebuild (fetch render → "Prévisualisation
     // en cours…" wipe → preview render).
   }
+
+  // ── Trouver (search highlights) ──────────────────────────────────────────────
+
+  /** Re-apply search highlights after a raw-pane re-render. */
+  private _frApplySearchHighlights(): void {
+    if (this._frSearchHits.length === 0) return;
+    const rawEl = this._q<HTMLElement>("#act-preview-raw");
+    if (!rawEl) return;
+    const hitSet = new Set(this._frSearchHits);
+    rawEl.querySelectorAll<HTMLElement>("[data-unit-id]").forEach(unitEl => {
+      const uid = parseInt(unitEl.dataset.unitId ?? "");
+      if (hitSet.has(uid)) unitEl.classList.add("prep-raw-unit-found");
+    });
+    if (this._frSearchHitIdx >= 0 && this._frSearchHitIdx < this._frSearchHits.length) {
+      const activeUid = this._frSearchHits[this._frSearchHitIdx];
+      rawEl.querySelector<HTMLElement>(`[data-unit-id="${activeUid}"]`)
+        ?.classList.add("prep-raw-unit-found-active");
+    }
+  }
+
+  /** Clear search highlights and nav state. */
+  private _frClearSearch(): void {
+    this._frSearchHits = [];
+    this._frSearchHitIdx = -1;
+    const rawEl = this._q<HTMLElement>("#act-preview-raw");
+    if (rawEl) {
+      rawEl.querySelectorAll<HTMLElement>(".prep-raw-unit-found, .prep-raw-unit-found-active")
+        .forEach(e => e.classList.remove("prep-raw-unit-found", "prep-raw-unit-found-active"));
+    }
+    const nav = this._q<HTMLElement>("#act-fr-nav");
+    if (nav) nav.style.display = "none";
+  }
+
   private _renderRawPaneFull(changedUnitIds?: Set<number>): void {
     const rawEl = this._q<HTMLElement>("#act-preview-raw");
     if (!rawEl) return;
@@ -2157,6 +2266,7 @@ export class CurationView {
       rawEl.appendChild(notice);
     }
     this._updateRoleBar();
+    this._frApplySearchHighlights();
   }
   private _renderConventionsList(): void {
     const listEl = this._q<HTMLElement>("#act-conventions-list");

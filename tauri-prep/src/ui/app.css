@@ -4356,6 +4356,31 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
   border-radius: 4px;
   line-height: 1.4;
 }
+.prep-fr-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 5px;
+}
+.prep-fr-nav-pos {
+  font-size: 0.78rem;
+  color: var(--color-muted, #4f5d6d);
+  min-width: 3rem;
+  text-align: center;
+}
+
+/* Search hit highlight in raw pane */
+.prep-raw-unit-found {
+  background: #fef9c3 !important;
+  border-left: 3px solid #fbbf24 !important;
+  padding-left: 2px;
+}
+.prep-raw-unit-found-active {
+  background: #fde68a !important;
+  border-left: 3px solid #f59e0b !important;
+  outline: 2px solid #f59e0b;
+  outline-offset: -2px;
+}
 
 #act-curate-card .prep-curate-nav-actions {
   margin-top: 6px;
