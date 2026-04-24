@@ -5160,6 +5160,12 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
 .prep-seg-segments-scroll {
   /* No max-height — single scroll axis in the right panel. */
 }
+@keyframes prep-seg-row-flash-kf {
+  0%   { background: #d1fae5; }
+  60%  { background: #d1fae5; }
+  100% { background: transparent; }
+}
+.prep-seg-row-flash { animation: prep-seg-row-flash-kf 0.8s ease-out; }
 .prep-seg-segments-table {
   width: 100%;
   table-layout: fixed;    /* prevents columns from blowing out on long text */

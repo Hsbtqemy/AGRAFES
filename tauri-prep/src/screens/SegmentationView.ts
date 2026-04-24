@@ -1649,7 +1649,7 @@ export class SegmentationView {
 
   // ─── Saved segments table ─────────────────────────────────────────────────
 
-  private async _renderSegSavedTable(docId: number, el: HTMLElement): Promise<void> {
+  private async _renderSegSavedTable(docId: number, el: HTMLElement, scrollToN?: number): Promise<void> {
     const conn = this._getConn();
     if (!conn) return;
     el.innerHTML = `<p class="empty-hint">Chargement&#8230;</p>`;
@@ -1704,7 +1704,7 @@ export class SegmentationView {
       let lines = preview.lines.map(l => ({ n: l.n, text: l.text, text_raw: l.text_raw, unit_role: l.unit_role }));
       el.innerHTML = renderTable(lines);
 
-      const reload = () => void this._renderSegSavedTable(docId, el);
+      const reload = (targetN?: number) => void this._renderSegSavedTable(docId, el, targetN);
 
       const wireEvents = () => {
         // ── Merge up (↑) ────────────────────────────────────────────────────
@@ -1719,7 +1719,7 @@ export class SegmentationView {
             btn.disabled = true;
             try {
               await mergeUnits(conn2, { doc_id: docId, n1, n2 });
-              reload();
+              reload(n1);
             } catch (e) {
               btn.disabled = false;
               alert(`Erreur fusion : ${e instanceof Error ? e.message : String(e)}`);
@@ -1739,7 +1739,7 @@ export class SegmentationView {
             btn.disabled = true;
             try {
               await mergeUnits(conn2, { doc_id: docId, n1, n2 });
-              reload();
+              reload(n1);
             } catch (e) {
               btn.disabled = false;
               alert(`Erreur fusion : ${e instanceof Error ? e.message : String(e)}`);
@@ -1773,7 +1773,7 @@ export class SegmentationView {
                 </div>
               </td>`;
 
-            tr.querySelector(".seg-split-cancel")?.addEventListener("click", reload);
+            tr.querySelector(".seg-split-cancel")?.addEventListener("click", () => reload());
             tr.querySelector(".seg-split-confirm")?.addEventListener("click", async () => {
               const taA = tr.querySelector<HTMLTextAreaElement>(".seg-split-ta-a");
               const taB = tr.querySelector<HTMLTextAreaElement>(".seg-split-ta-b");
@@ -1787,7 +1787,7 @@ export class SegmentationView {
               if (!conn2) return;
               try {
                 await splitUnit(conn2, { doc_id: docId, unit_n: unitN, text_a: textA, text_b: textB });
-                reload();
+                reload(unitN);
               } catch (e) {
                 alert(`Erreur d\u00e9coupe : ${e instanceof Error ? e.message : String(e)}`);
               }
@@ -1798,6 +1798,15 @@ export class SegmentationView {
       };
 
       wireEvents();
+      if (scrollToN !== undefined) {
+        const scrollEl = el.querySelector<HTMLElement>(".prep-seg-segments-scroll");
+        const row = el.querySelector<HTMLElement>(`[data-unit-n="${scrollToN}"]`);
+        if (scrollEl && row) {
+          scrollEl.scrollTop = Math.max(0, row.offsetTop - scrollEl.clientHeight / 2);
+          row.classList.add("prep-seg-row-flash");
+          setTimeout(() => row.classList.remove("prep-seg-row-flash"), 800);
+        }
+      }
       lines = preview.lines.map(l => ({ n: l.n, text: l.text, text_raw: l.text_raw, unit_role: l.unit_role }));
     } catch (err) {
       el.innerHTML = `<p class="empty-hint" style="color:var(--color-danger)">Erreur: ${_escHtml(err instanceof Error ? err.message : String(err))}</p>`;
