@@ -5,6 +5,25 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.1.38] - 2026-04-24
+
+### Added
+
+- **tauri-prep / Segmentation** : tri A–Z dans le panneau gauche (boutons ID / A–Z) — familles et orphelins triés selon le même ordre.
+- **tauri-prep / Segmentation** : filtre "Segments courts" (≤ 5 car.) dans l'onglet Modifier — case à cocher, badge compteur, persistant entre merges.
+- **tauri-prep / Segmentation** : "Calibrer sur" trié alphabétiquement, famille du document actif proposée en premier (groupe optgroup + ↑ parent), avec fallback si connexion indisponible.
+- **tauri-prep / Curation** : liste de documents avec barre de filtre texte + tri ID / A–Z + groupes familiaux — mise à jour à chaque rechargement du corpus.
+
+### Fixed
+
+- **tauri-prep / Segmentation** : changer de mode (Phrases ↔ Balises) bascule maintenant automatiquement sur l'onglet Aperçu.
+- **tauri-prep / Segmentation** : merge/split ne remonte plus au début de la liste — le scroll est restauré sur la ligne concernée (avec animation flash).
+- **tauri-prep / Segmentation** : validation d'un document ne fait plus remonter la liste des documents en haut — position de scroll préservée, doc actif ramené en vue si nécessaire.
+- **tauri-prep / Curation** : l'avertissement "Quitter cet onglet" ne s'affiche plus pour une simple prévisualisation — déclenché uniquement en présence de corrections manuelles non appliquées.
+- **tauri-prep / Curation** : effacer une recherche "Trouver" ou changer de document vide également le texte de feedback périmé.
+
+---
+
 ## [0.1.37] - 2026-04-23
 
 ### Added

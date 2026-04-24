@@ -81,6 +81,8 @@ export class SegmentationView {
   private _segmentPendingValidation = false;
   private _lastSegmentReport: SegmentReport | null = null;
   private _selectedSegDocId: number | null = null;
+  private _segShortFilter = false;
+  private _segDocListSort: "id" | "alpha" = "id";
   private _conventions: ConventionRole[] = [];
   private _segMarkersDetected: DetectMarkersResponse | null = null;
   private _segSplitMode: "sentences" | "markers" = "sentences";
@@ -209,9 +211,12 @@ export class SegmentationView {
             <p class="prep-seg-list-brand-desc">S&#233;lectionnez un document pour voir l&#8217;aper&#231;u live et lancer la segmentation.</p>
           </div>
           <div class="prep-seg-split-list-head">
-            <span class="prep-seg-split-list-title">Documents</span>
             <input type="search" id="act-seg-list-filter" class="prep-seg-split-list-filter"
               placeholder="Filtrer&#8230;" autocomplete="off" />
+            <div class="prep-curate-sort-group" role="group" aria-label="Tri">
+              <button class="prep-curate-sort-btn active" data-seg-sort="id" title="Trier par identifiant">ID</button>
+              <button class="prep-curate-sort-btn" data-seg-sort="alpha" title="Trier par titre">A&#8211;Z</button>
+            </div>
           </div>
           <div class="prep-seg-split-list-scroll" id="act-seg-list-scroll">
             <p class="empty-hint">Chargement&#8230;</p>
@@ -238,17 +243,29 @@ export class SegmentationView {
         (grp as HTMLElement).style.display = visible ? "" : "none";
       });
     });
+    // Sort buttons
+    el.querySelectorAll<HTMLButtonElement>("[data-seg-sort]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        this._segDocListSort = (btn.dataset.segSort as "id" | "alpha") ?? "id";
+        el.querySelectorAll<HTMLButtonElement>("[data-seg-sort]").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        this._populateSegDocList(true);
+      });
+    });
 
     return el;
   }
 
   // ─── Doc list (left panel) ────────────────────────────────────────────────
 
-  private _populateSegDocList(): void {
+  private _populateSegDocList(keepScroll = false): void {
     const scrollEl = this._q<HTMLElement>("#act-seg-list-scroll");
     if (!scrollEl) return;
 
+    const savedScrollTop = keepScroll ? scrollEl.scrollTop : 0;
+
     scrollEl.innerHTML = `<p class="empty-hint">Chargement des familles&#8230;</p>`;
+    if (keepScroll) scrollEl.scrollTop = savedScrollTop;
     void this._buildSegDocListHtml().then(html => {
       if (!scrollEl.isConnected) return;
       scrollEl.innerHTML = html;
@@ -263,11 +280,24 @@ export class SegmentationView {
           if (rightEl) void this._loadSegRightPanel(docId, rightEl);
         });
       });
+
+      if (keepScroll) scrollEl.scrollTop = savedScrollTop;
+
       if (this._selectedSegDocId) {
         const prevRow = scrollEl.querySelector<HTMLElement>(
           `.prep-seg-doc-row[data-doc-id="${this._selectedSegDocId}"]`,
         );
-        prevRow?.classList.add("active");
+        if (prevRow) {
+          prevRow.classList.add("active");
+          // Ensure the active row is visible; scroll to it only if out of view
+          const rowTop = prevRow.offsetTop;
+          const rowBot = rowTop + prevRow.offsetHeight;
+          const visTop = scrollEl.scrollTop;
+          const visBot = visTop + scrollEl.clientHeight;
+          if (rowTop < visTop || rowBot > visBot) {
+            scrollEl.scrollTop = Math.max(0, rowTop - scrollEl.clientHeight / 2);
+          }
+        }
       }
     });
   }
@@ -307,12 +337,17 @@ export class SegmentationView {
           parentMap.get(rel.target_doc_id)!.push(rel.doc_id);
         }
 
-        const docs = this._getDocs();
+        const sortFn = (a: DocumentRecord, b: DocumentRecord) =>
+          this._segDocListSort === "alpha"
+            ? a.title.localeCompare(b.title, undefined, { sensitivity: "base" })
+            : a.doc_id - b.doc_id;
+        const docs = [...this._getDocs()].sort(sortFn);
         for (const d of docs) {
           if (!childIds.has(d.doc_id) && parentMap.has(d.doc_id)) {
             const children = (parentMap.get(d.doc_id) ?? [])
               .map(cid => docs.find(dd => dd.doc_id === cid))
               .filter(Boolean) as DocumentRecord[];
+            children.sort(sortFn);
             familyGroups.push({ root: d, children });
           } else if (!childIds.has(d.doc_id) && !parentMap.has(d.doc_id)) {
             orphans.push(d);
@@ -320,7 +355,11 @@ export class SegmentationView {
         }
       }
     } catch {
-      return this._getDocs().map(d => docRow(d)).join("");
+      const sortFn = (a: DocumentRecord, b: DocumentRecord) =>
+        this._segDocListSort === "alpha"
+          ? a.title.localeCompare(b.title, undefined, { sensitivity: "base" })
+          : a.doc_id - b.doc_id;
+      return [...this._getDocs()].sort(sortFn).map(d => docRow(d)).join("");
     }
 
     let html = "";
@@ -357,6 +396,7 @@ export class SegmentationView {
 
     this._segMarkersDetected = null;
     this._segSplitMode = "sentences";
+    this._segShortFilter = false;
     this._refSections = [];
     this._tgtSections = [];
     this._structurePairs = [];
@@ -382,6 +422,68 @@ export class SegmentationView {
       : `<span class="prep-seg-state-chip prep-seg-badge-none">Brouillon</span>`;
 
     const savedAlready = (doc.unit_count ?? 0) > 0;
+
+    // Build calibrate-select options: family members first, then others alphabetically
+    let calibrateOptions = `<option value="">&#8212; aucun &#8212;</option>`;
+    const _calibrateFallback = () => {
+      docs
+        .filter(d => d.doc_id !== docId)
+        .sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: "base" }))
+        .forEach(d => {
+          calibrateOptions += `<option value="${d.doc_id}">[${d.doc_id}] ${_escHtml(d.title)}</option>`;
+        });
+    };
+    if (!conn) {
+      _calibrateFallback();
+    } else {
+      try {
+        const { getAllDocRelations } = await import("../lib/sidecarClient.ts");
+        const relations = await getAllDocRelations(conn);
+        const otherDocs = docs.filter(d => d.doc_id !== docId);
+
+        const parentRel = relations.find(r => r.doc_id === docId);
+        const parentId = parentRel?.target_doc_id ?? null;
+        const childIds = new Set(relations.filter(r => r.target_doc_id === docId).map(r => r.doc_id));
+        const siblingIds = parentId
+          ? new Set(relations.filter(r => r.target_doc_id === parentId && r.doc_id !== docId).map(r => r.doc_id))
+          : new Set<number>();
+
+        const familyIds = new Set<number>();
+        if (parentId !== null) familyIds.add(parentId);
+        for (const id of childIds) familyIds.add(id);
+        for (const id of siblingIds) familyIds.add(id);
+
+        const familyDocs = otherDocs
+          .filter(d => familyIds.has(d.doc_id))
+          .sort((a, b) => {
+            if (a.doc_id === parentId) return -1;
+            if (b.doc_id === parentId) return 1;
+            return a.title.localeCompare(b.title, undefined, { sensitivity: "base" });
+          });
+        const restDocs = otherDocs
+          .filter(d => !familyIds.has(d.doc_id))
+          .sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: "base" }));
+
+        if (familyDocs.length > 0) {
+          calibrateOptions += `<optgroup label="Famille">`;
+          for (const d of familyDocs) {
+            const prefix = d.doc_id === parentId ? "&#8593; " : "";
+            calibrateOptions += `<option value="${d.doc_id}">${prefix}[${d.doc_id}] ${_escHtml(d.title)}</option>`;
+          }
+          calibrateOptions += `</optgroup>`;
+        }
+        if (restDocs.length > 0) {
+          const grpLabel = familyDocs.length > 0 ? "Autres documents" : "Documents";
+          calibrateOptions += `<optgroup label="${grpLabel}">`;
+          for (const d of restDocs) {
+            calibrateOptions += `<option value="${d.doc_id}">[${d.doc_id}] ${_escHtml(d.title)}</option>`;
+          }
+          calibrateOptions += `</optgroup>`;
+        }
+      } catch {
+        _calibrateFallback();
+      }
+    }
 
     this._unbindSegPreviewScrollSync();
 
@@ -431,10 +533,7 @@ export class SegmentationView {
               <label class="prep-seg-param-field"
                 title="R&#233;f&#233;rence pour calibrer la segmentation (mode phrases) et comparer la structure (onglet Structure).">Calibrer sur
                 <select id="act-seg-calibrate" class="seg-param-select">
-                  <option value="">&#8212; aucun &#8212;</option>
-                  ${docs.filter(d => d.doc_id !== docId).map(d =>
-                    `<option value="${d.doc_id}">[${d.doc_id}] ${_escHtml(d.title)}</option>`
-                  ).join("")}
+                  ${calibrateOptions}
                 </select>
               </label>
             </div>
@@ -1631,6 +1730,7 @@ export class SegmentationView {
     if (phrasesParams) phrasesParams.style.display = "none";
     if (markersParams) markersParams.style.display = "contents";
     this._syncSegStrategyRadios();
+    this._switchContentPane("preview");
     void this._runSegPreview(docId);
   }
 
@@ -1644,6 +1744,7 @@ export class SegmentationView {
     if (phrasesParams) phrasesParams.style.display = "contents";
     if (markersParams) markersParams.style.display = "none";
     this._syncSegStrategyRadios();
+    this._switchContentPane("preview");
     void this._runSegPreview(docId);
   }
 
@@ -1675,7 +1776,7 @@ export class SegmentationView {
           ? `<button class="prep-seg-action-btn prep-seg-merge-down" title="Fusionner avec le suivant"     data-n="${l.n}">&#8681;</button>`
           : `<span class="prep-seg-action-placeholder"></span>`;
         const splitBtn = `<button class="prep-seg-action-btn prep-seg-split-btn" title="Couper ce segment" data-n="${l.n}">&#9986;</button>`;
-        return `<tr data-unit-n="${l.n}">
+        return `<tr data-unit-n="${l.n}" data-len="${l.text.length}">
           <td class="prep-seg-cell-n">${l.n}</td>
           <td class="prep-seg-cell-text">${_roleBadgeHtml(l.unit_role, this._conventions)}${richTextToHtml(l.text_raw, l.text)}</td>
           <td class="prep-seg-cell-len${lenClass}">${l.text.length}</td>
@@ -1684,9 +1785,17 @@ export class SegmentationView {
       };
 
       const renderTable = (lines: { n: number; text: string }[]) => {
+        const shortCount = lines.filter(l => l.text.length <= 5).length;
         const rows = lines.map((l, i) => buildRow(l, i, lines.length)).join("");
         return truncNote + `
-          <div class="prep-seg-saved-info">${lines.length} segment(s)</div>
+          <div class="prep-seg-saved-info">
+            <span>${lines.length} segment(s)</span>
+            <label class="prep-seg-short-filter-label" title="Afficher uniquement les segments de 5 caract&#232;res ou moins">
+              <input type="checkbox" id="act-seg-filter-short" class="prep-seg-short-filter-cb" />
+              Segments courts
+              <span class="chip prep-seg-short-chip" title="${shortCount} segment(s) courts">${shortCount}</span>
+            </label>
+          </div>
           <div class="prep-seg-segments-scroll">
             <table class="prep-seg-segments-table">
               <colgroup>
@@ -1798,10 +1907,26 @@ export class SegmentationView {
       };
 
       wireEvents();
+
+      // ── Short-segment filter ───────────────────────────────────────────────
+      const applyShortFilter = (active: boolean) => {
+        this._segShortFilter = active;
+        el.querySelectorAll<HTMLElement>("tr[data-len]").forEach(tr => {
+          const len = parseInt(tr.dataset.len ?? "999", 10);
+          tr.style.display = active && len > 5 ? "none" : "";
+        });
+      };
+      const filterCb = el.querySelector<HTMLInputElement>("#act-seg-filter-short");
+      if (filterCb) {
+        filterCb.checked = this._segShortFilter;
+        if (this._segShortFilter) applyShortFilter(true);
+        filterCb.addEventListener("change", () => applyShortFilter(filterCb.checked));
+      }
+
       if (scrollToN !== undefined) {
         const scrollEl = el.querySelector<HTMLElement>(".prep-seg-segments-scroll");
         const row = el.querySelector<HTMLElement>(`[data-unit-n="${scrollToN}"]`);
-        if (scrollEl && row) {
+        if (scrollEl && row && row.style.display !== "none") {
           scrollEl.scrollTop = Math.max(0, row.offsetTop - scrollEl.clientHeight / 2);
           row.classList.add("prep-seg-row-flash");
           setTimeout(() => row.classList.remove("prep-seg-row-flash"), 800);
@@ -1932,7 +2057,7 @@ export class SegmentationView {
           this._switchContentPane("saved");
           void this._loadSegRawColumn(docId);
           void this._runSegPreview(docId);
-          this._populateSegDocList();
+          this._populateSegDocList(true);
 
           const warns = r?.warnings?.length ? ` Avertissements : ${r.warnings!.join("; ")}` : "";
           const usedPack = r?.segment_pack ? ` Pack=${r.segment_pack}.` : "";
@@ -2038,7 +2163,7 @@ export class SegmentationView {
     if (idx < 0 || idx >= docs.length - 1) return null;
     const nextDoc = docs[idx + 1];
     this._selectedSegDocId = nextDoc.doc_id;
-    this._populateSegDocList();
+    this._populateSegDocList(true);
     const rightEl = this._q<HTMLElement>("#act-seg-split-right");
     if (rightEl) void this._loadSegRightPanel(nextDoc.doc_id, rightEl);
     return nextDoc;

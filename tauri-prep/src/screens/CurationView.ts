@@ -19,6 +19,7 @@
 import type {
   Conn,
   DocumentRecord,
+  DocRelationRecord,
   CurateRule,
   CuratePreviewExample,
   UnitRecord,
@@ -224,6 +225,11 @@ export class CurationView {
   private _lastSelectedN: number | null = null;
   private _selectionMode = false;
 
+  // ── Doc list UI state ───────────────────────────────────────────────────────
+  private _docRelations: DocRelationRecord[] = [];
+  private _docListQuery = "";
+  private _docListSort: "id" | "alpha" = "id";
+
   // ── Admin panel (Level 8A) ──────────────────────────────────────────────────
   private _excAdminFilter: "all" | "ignore" | "override" = "all";
   private _excAdminAll: CurateException[] = [];
@@ -248,7 +254,7 @@ export class CurationView {
 
   /** Returns true if a preview has been run but not yet applied. */
   hasPendingChanges(): boolean {
-    return this._hasPendingPreview;
+    return this._curateExamples.some(ex => ex.is_manual_override);
   }
 
   /** Populate #act-curate-doc and #act-meta-doc from the current docs list. */
@@ -273,35 +279,73 @@ export class CurationView {
   private _renderDocList(): void {
     const container = this._q<HTMLElement>("#act-curate-doc-list");
     if (!container) return;
-    const docs = this._getDocs();
+    const allDocs = this._getDocs();
     const sel = this._q<HTMLSelectElement>("#act-curate-doc");
     const currentVal = sel?.value ?? "";
+    const query = this._docListQuery.toLowerCase().trim();
+
+    const matches = (d: DocumentRecord) =>
+      !query || d.title.toLowerCase().includes(query) || String(d.doc_id).includes(query);
+
+    const sortFn = (a: DocumentRecord, b: DocumentRecord) =>
+      this._docListSort === "alpha"
+        ? a.title.localeCompare(b.title, undefined, { sensitivity: "base" })
+        : a.doc_id - b.doc_id;
+
+    // Build family structure from cached relations
+    const childIdSet = new Set(this._docRelations.map(r => r.doc_id));
+    const parentMap = new Map<number, number[]>();
+    for (const rel of this._docRelations) {
+      if (!parentMap.has(rel.target_doc_id)) parentMap.set(rel.target_doc_id, []);
+      parentMap.get(rel.target_doc_id)!.push(rel.doc_id);
+    }
+
+    interface DocGroup { root: DocumentRecord; children: DocumentRecord[]; }
+    const groups: DocGroup[] = [];
+    const orphans: DocumentRecord[] = [];
+    const seen = new Set<number>();
+
+    for (const d of [...allDocs].sort(sortFn)) {
+      if (seen.has(d.doc_id)) continue;
+      if (!childIdSet.has(d.doc_id)) {
+        if (parentMap.has(d.doc_id)) {
+          const children = (parentMap.get(d.doc_id) ?? [])
+            .map(cid => allDocs.find(dd => dd.doc_id === cid))
+            .filter(Boolean) as DocumentRecord[];
+          children.sort(sortFn);
+          groups.push({ root: d, children });
+          seen.add(d.doc_id);
+          children.forEach(c => seen.add(c.doc_id));
+        } else {
+          orphans.push(d);
+          seen.add(d.doc_id);
+        }
+      }
+    }
+    allDocs.filter(d => !seen.has(d.doc_id)).sort(sortFn).forEach(d => orphans.push(d));
+
     container.innerHTML = "";
 
-    const makeRow = (value: string, label: string, lang: string | null) => {
+    const makeRow = (value: string, label: string, lang: string | null, isChild = false) => {
       const row = document.createElement("div");
-      row.className = "prep-curate-doc-row";
+      row.className = "prep-curate-doc-row" + (isChild ? " prep-curate-doc-row--child" : "");
       row.dataset.value = value;
       row.setAttribute("role", "option");
       row.setAttribute("aria-selected", String(currentVal === value));
       if (currentVal === value) row.classList.add("active");
-
       const dot = document.createElement("span");
       dot.className = "prep-curate-doc-row-dot";
       row.appendChild(dot);
-
-      const title = document.createElement("span");
-      title.className = "prep-curate-doc-row-title";
-      title.textContent = label;
-      row.appendChild(title);
-
+      const titleEl = document.createElement("span");
+      titleEl.className = "prep-curate-doc-row-title";
+      titleEl.textContent = label;
+      row.appendChild(titleEl);
       if (lang) {
         const badge = document.createElement("span");
         badge.className = "prep-curate-doc-row-lang";
         badge.textContent = lang;
         row.appendChild(badge);
       }
-
       row.addEventListener("click", () => {
         if (!sel) return;
         sel.value = value;
@@ -311,10 +355,43 @@ export class CurationView {
       return row;
     };
 
+    const makeFamilyHeader = (label: string) => {
+      const h = document.createElement("div");
+      h.className = "prep-curate-doc-family-header";
+      h.textContent = label;
+      return h;
+    };
+
     container.appendChild(makeRow("", "Tous les documents", null));
-    for (const doc of docs) {
-      const label = `#${doc.doc_id}\u2002${doc.title}`;
-      container.appendChild(makeRow(String(doc.doc_id), label, doc.language));
+
+    const hasFamilies = groups.length > 0;
+
+    for (const { root, children } of groups) {
+      const rootMatches = matches(root);
+      const anyChildMatches = children.some(matches);
+      if (!rootMatches && !anyChildMatches) continue;
+      container.appendChild(makeFamilyHeader(root.title));
+      container.appendChild(makeRow(String(root.doc_id), `#${root.doc_id} ${root.title}`, root.language));
+      for (const child of children) {
+        if (rootMatches || matches(child)) {
+          container.appendChild(makeRow(String(child.doc_id), `#${child.doc_id} ${child.title}`, child.language, true));
+        }
+      }
+    }
+
+    const matchingOrphans = orphans.filter(matches);
+    if (matchingOrphans.length > 0) {
+      if (hasFamilies) container.appendChild(makeFamilyHeader("Documents sans famille"));
+      for (const d of matchingOrphans) {
+        container.appendChild(makeRow(String(d.doc_id), `#${d.doc_id} ${d.title}`, d.language));
+      }
+    }
+
+    if (query && container.children.length <= 1) {
+      const hint = document.createElement("div");
+      hint.className = "prep-curate-doc-empty-hint";
+      hint.textContent = "Aucun document ne correspond.";
+      container.appendChild(hint);
     }
   }
 
@@ -333,11 +410,31 @@ export class CurationView {
   onDocsLoaded(): void {
     this.populateSelects();
     this._updateCurateCtx();
+    void this._fetchDocRelations();
+  }
+
+  private async _fetchDocRelations(): Promise<void> {
+    const conn = this._getConn();
+    if (!conn) return;
+    try {
+      const { getAllDocRelations } = await import("../lib/sidecarClient.ts");
+      this._docRelations = await getAllDocRelations(conn);
+    } catch {
+      this._docRelations = [];
+    }
+    this._renderDocList();
   }
 
   /** Called when the connection changes. Clears all curation state. */
   setConn(): void {
     const conn = this._getConn();
+    this._docRelations = [];
+    this._docListQuery = "";
+    this._docListSort = "id";
+    const filterInput = this._q<HTMLInputElement>("#act-curate-doc-filter");
+    if (filterInput) filterInput.value = "";
+    const sortBtns = this._root?.querySelectorAll<HTMLButtonElement>(".prep-curate-sort-btn");
+    sortBtns?.forEach(b => b.classList.toggle("active", b.dataset.sort === "id"));
     this._hasPendingPreview = false;
     this._curateExamples = [];
     this._activeDiffIdx = null;
@@ -396,6 +493,14 @@ export class CurationView {
       <div id="act-curate-confirm-bar" class="prep-curate-confirm-bar" style="display:none" role="alertdialog" aria-modal="false"></div>
       <div class="prep-curate-doc-bar">
         <select id="act-curate-doc" style="display:none"><option value="">Tous les documents</option></select>
+        <div class="prep-curate-doc-toolbar">
+          <input type="search" id="act-curate-doc-filter" class="prep-curate-doc-filter-input"
+            placeholder="Filtrer&#8230;" autocomplete="off" spellcheck="false" />
+          <div class="prep-curate-sort-group" role="group" aria-label="Tri">
+            <button class="prep-curate-sort-btn active" data-sort="id" title="Trier par identifiant">ID</button>
+            <button class="prep-curate-sort-btn" data-sort="alpha" title="Trier par titre">A&#8211;Z</button>
+          </div>
+        </div>
         <div id="act-curate-doc-list" class="prep-curate-doc-list" role="listbox" aria-label="S&#233;lectionner un document"></div>
         <span id="act-curate-ctx-lang" style="display:none"></span>
       </div>
@@ -761,6 +866,20 @@ export class CurationView {
         this._schedulePreview(true);
       });
     });
+    // Doc list toolbar
+    el.querySelector("#act-curate-doc-filter")?.addEventListener("input", (e) => {
+      this._docListQuery = (e.target as HTMLInputElement).value;
+      this._renderDocList();
+    });
+    el.querySelectorAll<HTMLButtonElement>(".prep-curate-sort-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        this._docListSort = (btn.dataset.sort as "id" | "alpha") ?? "id";
+        el.querySelectorAll<HTMLButtonElement>(".prep-curate-sort-btn").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        this._renderDocList();
+      });
+    });
+
     // Document selector
     el.querySelector("#act-curate-doc")!.addEventListener("change", () => {
       const newDocId = this._currentCurateDocId() ?? null;
@@ -2105,6 +2224,8 @@ export class CurationView {
     }
     const nav = this._q<HTMLElement>("#act-fr-nav");
     if (nav) nav.style.display = "none";
+    const fb = this._q<HTMLElement>("#act-fr-feedback");
+    if (fb) { fb.textContent = ""; fb.style.display = "none"; }
   }
 
   private _renderRawPaneFull(changedUnitIds?: Set<number>): void {

@@ -496,12 +496,12 @@ export class ActionsScreen {
     const curatePending = this._curationView?.hasPendingChanges() ?? false;
     const segPending = this._segmentationView?.hasPendingChanges() ?? false;
     if (curatePending && segPending) {
-      return "Prévisualisation curation et segmentation non validée en attente. Quitter cet onglet ?";
+      return "Des corrections manuelles de curation et une segmentation non validée sont en attente. Quitter cet onglet ?";
     }
     if (segPending) {
       return "Une segmentation est en attente de validation document. Quitter cet onglet ?";
     }
-    return "Une prévisualisation de curation non appliquée est en attente. Quitter cet onglet ?";
+    return "Des corrections manuelles de curation non appliquées sont en attente. Quitter cet onglet ?";
   }
 
   /** Apply a project preset to the current form fields (non-destructive). */
