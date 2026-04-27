@@ -3994,9 +3994,9 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
 }
 /* doc-scroll: hauteur augmentée grâce aux colonnes latérales réduites */
 #act-curate-card .prep-preview-grid > .prep-pane .prep-doc-scroll {
-  height: clamp(560px, 66vh, 680px);
+  height: clamp(320px, 60vh, 680px);
   max-height: 680px;
-  min-height: 560px;
+  min-height: 320px;
   overflow-y: auto;
   padding: 10px 14px;
   font-size: 13.5px;
@@ -4109,7 +4109,7 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
   font-style: italic;
 }
 .prep-curate-doc-list {
-  max-height: calc(8 * 36px + 3 * 24px);
+  max-height: calc(6 * 36px + 2 * 24px);
   overflow-y: auto;
   overscroll-behavior: contain;
 }

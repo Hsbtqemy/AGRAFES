@@ -38,6 +38,24 @@ def _validate_user_regex(pattern: str) -> None:
         )
 
 
+# Frontend presets and Find/Replace emit JS-style replacement syntax ($1, $&, $$).
+# Python's re.sub uses backslash refs, so without translation those tokens are
+# written literally into the curated text. _translate_js_replacement rewrites
+# $-prefixed forms while leaving Python-style refs (\1, \g<name>) untouched.
+_JS_BACKREF_RE = re.compile(r"\$(\$|&|\d{1,2})")
+
+
+def _translate_js_replacement(repl: str) -> str:
+    def _sub(m: re.Match[str]) -> str:
+        token = m.group(1)
+        if token == "$":
+            return "$"
+        if token == "&":
+            return r"\g<0>"
+        return rf"\g<{int(token)}>"
+    return _JS_BACKREF_RE.sub(_sub, repl)
+
+
 @dataclass
 class CurationRule:
     """A single regex substitution rule."""
@@ -110,7 +128,7 @@ def rules_from_list(data: list[dict]) -> list[CurationRule]:
 
         rules.append(CurationRule(
             pattern=pattern,
-            replacement=item["replacement"],
+            replacement=_translate_js_replacement(item["replacement"]),
             flags=flags,
             description=item.get("description", ""),
         ))

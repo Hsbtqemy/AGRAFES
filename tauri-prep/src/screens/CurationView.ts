@@ -87,7 +87,6 @@ const CURATE_PRESETS: Record<string, { label: string; rules: CurateRule[] }> = {
   spaces: {
     label: "Espaces",
     rules: [
-      { pattern: "\\u00A0", replacement: " ", description: "Non-breaking space → espace" },
       { pattern: "[ \\t]{2,}", replacement: " ", flags: "g", description: "Espaces multiples → un seul" },
       { pattern: "^\\s+|\\s+$", replacement: "", flags: "gm", description: "Trim lignes" },
     ],
@@ -97,17 +96,17 @@ const CURATE_PRESETS: Record<string, { label: string; rules: CurateRule[] }> = {
     rules: [
       { pattern: "[\u2018\u2019\u02BC]", replacement: "'", description: "Apostrophes courbes → droites" },
       { pattern: "[\u201C\u201D]", replacement: '"', description: "Guillemets anglais → droits" },
-      { pattern: "\u00AB\\s*", replacement: "\u00AB\u00A0", description: "Guillemet ouvrant + espace insécable" },
-      { pattern: "\\s*\u00BB", replacement: "\u00A0\u00BB", description: "Espace insécable + guillemet fermant" },
+      { pattern: "\u00AB[ \\t\u00A0\u202F]*", replacement: "\u00AB\u202F", flags: "g", description: "Guillemet ouvrant + espace fine insécable" },
+      { pattern: "[ \\t\u00A0\u202F]*\u00BB", replacement: "\u202F\u00BB", flags: "g", description: "Espace fine insécable + guillemet fermant" },
     ],
   },
   punctuation_fr: {
     label: "Ponctuation française",
     rules: [
-      { pattern: "[ \\t]+([!?;])", replacement: "\u202F$1", flags: "g", description: "Espace fine insécable avant ! ? ; (FR)" },
-      { pattern: "[ \\t]+:(?!\\d)", replacement: "\u202F:", flags: "g", description: "Espace fine avant : hors timecodes (FR)" },
-      { pattern: "\u00AB[ \\t]*", replacement: "\u00AB\u202F", flags: "g", description: "Espace fine après « (FR)" },
-      { pattern: "[ \\t]*\u00BB", replacement: "\u202F\u00BB", flags: "g", description: "Espace fine avant » (FR)" },
+      { pattern: "[ \\t\u00A0]+([!?;])", replacement: "\u202F$1", flags: "g", description: "Espace fine insécable avant ! ? ; (FR)" },
+      { pattern: "[ \\t\u00A0]+:(?!\\d)", replacement: "\u202F:", flags: "g", description: "Espace fine avant : hors timecodes (FR)" },
+      { pattern: "\u00AB[ \\t\u00A0\u202F]*", replacement: "\u00AB\u202F", flags: "g", description: "Espace fine après « (FR)" },
+      { pattern: "[ \\t\u00A0\u202F]*\u00BB", replacement: "\u202F\u00BB", flags: "g", description: "Espace fine avant » (FR)" },
       { pattern: "\\.{4,}", replacement: "\u2026", flags: "g", description: "Points de suspension → … (FR)" },
     ],
   },
