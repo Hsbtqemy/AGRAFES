@@ -5,6 +5,32 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.1.40] - 2026-04-27
+
+### Added
+
+- **tauri-prep / Segmentation** : le filtre « Segments courts » affiche désormais aussi les voisins immédiats (n-1 et n+1) en gris muted, pour pouvoir juger en contexte si un segment court isolé doit être fusionné. La classe `.prep-seg-row-short` (jaune) jusque-là dormante est enfin appliquée aux cibles.
+- **tauri-prep / Segmentation** : nouveau filtre « Ponctuation orpheline » — détecte les lignes commençant par `»` `)` `]` `}` `”` `’` (et `«` `‹` `›` pour les docs en allemand où la convention est inversée), typiques d'un mauvais découpage d'import numéroté. Style rose/saumon avec barre rouge à gauche, voisins en contexte. Les filtres se cumulent.
+- **scripts** : `diagnose_dollar_pollution.py` — script read-only listant les documents dont `text_norm` contient des artefacts `$N` persistés par les runs antérieurs au fix de la syntaxe de remplacement.
+
+### Changed
+
+- **multicorpus_engine / curation** : presets `spaces`, `quotes`, `punctuation_fr` réécrits pour l'idempotence et la cohérence : la règle `  → " "` retirée du preset Espaces (n'écrase plus les NBSP intentionnelles), `quotes` aligné sur la NNBSP ` ` autour de `«»`, classes étendues à `[ \t  ]*` partout pour absorber les insécables héritées sans dupliquer.
+- **multicorpus_engine / sidecar** : cap silencieux `limit_examples` 50 → 5000 sur `/curate/preview`. Le frontend envoyait déjà 500 et le bandeau annonçait « preview limitée à 500 exemples » mais le backend tronquait à 50. Maintenant cohérent.
+- **tauri-prep / curation** : `CURATE_PREVIEW_LIMIT` 500 → 5000 et `RAW_PANE_DOM_CAP` 800 → 5000 — sur les docs de plus de 800 unités, le panneau brut affichait au plus 800 lignes.
+
+### Fixed
+
+- **multicorpus_engine / curation** : `$1` `$2` `$&` `$$` (syntaxe JS) dans les replacements ne sont plus écrits littéralement dans `text_norm`. Nouveau translator `_translate_js_replacement` qui les convertit en `\g<N>`/`\g<0>`/`$` Python avant `re.sub`. Touche tous les chemins (presets, Find/Replace, JSON avancé, CLI). Les refs Python `\1`/`\g<name>` sont préservées intactes.
+- **tauri-prep / curation** : modal de confirmation « Appliquer » centrée avec backdrop, fermeture par Échap ou clic en dehors. Auparavant un bandeau inline tout en haut de la card, hors viewport quand le déclencheur (« Appliquer maintenant ») se trouvait en bas de la preview.
+- **tauri-prep / import** : modal « Rattacher à une famille ? » post-import enfin visuellement positionnée — le JS appelait `document.body.appendChild(overlay)` mais 50 lignes de CSS `.family-dialog-overlay` étaient absentes, le dialog s'affichait en flux normal en bas de page.
+- **tauri-prep / curation** : header `Modif. N/M` et footer (Accepter / Ignorer / Tout accepter / Appliquer maintenant) ne sont plus tronqués sur les fenêtres de moyenne hauteur — `.prep-doc-scroll` clamp ajusté à `(320px, 60vh, 680px)` ; breakpoint `<1400px` aligné de la même façon.
+- **tauri-prep / app** : `_showPresetEditModal` plantait à l'ouverture (`querySelector(".presets-modal-foot")` au lieu de `.prep-presets-modal-foot`, préfixe `prep-` manquant) — `foot.appendChild(saveBtn)` levait un TypeError. Modale Nouveau/Modifier preset à nouveau fonctionnelle.
+- **tauri-prep / curation** : presets `punctuation_en` et `numbering` corrigés via le translator backend ; le `[$1]` du preset Numérotation produit désormais `[1]` au lieu de `[$1]` littéral.
+- **tauri-prep** : `.audit-batch-bar` (confirmation inline lors d'un changement d'onglet avec modifs en cours) reçoit enfin une CSS — pas de cassure de layout dans la topbar quand le bandeau s'affiche.
+
+---
+
 ## [0.1.39] - 2026-04-24
 
 ### Added
