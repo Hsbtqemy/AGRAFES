@@ -3602,17 +3602,21 @@ export class CurationView {
           `</div>` +
         `</div>`;
       bar.style.display = "";
-      let onKey: ((e: KeyboardEvent) => void) | null = null;
+      // Backdrop click: NOT once:true — a click on an inner element bubbles up
+      // and would consume the listener before any backdrop click could fire.
+      // We remove it explicitly in cleanup() instead.
+      const onBackdropClick = (e: MouseEvent) => { if (e.target === bar) decide(false); };
+      const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") decide(false); };
       const cleanup = () => {
         bar.style.display = "none";
         bar.innerHTML = "";
-        if (onKey) document.removeEventListener("keydown", onKey);
+        bar.removeEventListener("click", onBackdropClick);
+        document.removeEventListener("keydown", onKey);
       };
       const decide = (ok: boolean) => { cleanup(); resolve(ok); };
       bar.querySelector("#act-confirm-ok")!.addEventListener("click", () => decide(true), { once: true });
       bar.querySelector("#act-confirm-cancel")!.addEventListener("click", () => decide(false), { once: true });
-      bar.addEventListener("click", (e) => { if (e.target === bar) decide(false); }, { once: true });
-      onKey = (e: KeyboardEvent) => { if (e.key === "Escape") decide(false); };
+      bar.addEventListener("click", onBackdropClick);
       document.addEventListener("keydown", onKey);
       bar.querySelector<HTMLButtonElement>("#act-confirm-ok")?.focus();
     });
