@@ -4579,8 +4579,8 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
     grid-template-columns: minmax(260px, 290px) 1fr;
   }
   #act-curate-card .prep-preview-grid > .prep-pane .prep-doc-scroll {
-    height: clamp(440px, 56vh, 540px);
-    min-height: 440px;
+    height: clamp(280px, 54vh, 540px);
+    min-height: 280px;
     max-height: 540px;
   }
 }
