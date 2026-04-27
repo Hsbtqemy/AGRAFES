@@ -1004,7 +1004,7 @@ export class App {
       <div class="prep-presets-modal-foot"></div>
     `;
 
-    const foot = modal.querySelector(".presets-modal-foot")!;
+    const foot = modal.querySelector(".prep-presets-modal-foot")!;
     const saveBtn = document.createElement("button");
     saveBtn.className = "btn btn-primary btn-sm";
     saveBtn.textContent = "Enregistrer";

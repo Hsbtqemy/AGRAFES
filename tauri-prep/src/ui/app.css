@@ -111,6 +111,32 @@ body { margin: 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Se
 .log-line[data-source="documents"] { color: #fcd34d; }   /* amber-300 */
 .log-line.log-error { color: #fca5a5 !important; }       /* red-300 */
 
+/* ── Inline confirm bar (audit-batch-bar) ──────────────────────────────────
+   Used by lib/inlineConfirm to show a Confirm/Cancel prompt inside a host
+   container — typically the topbar (#app-pending-confirm, for unsaved-tab
+   switch) or a panel header (#act-seg-confirm-bar). Without CSS the bar was
+   an unstyled div that injected default block content into a flex topbar. */
+.audit-batch-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.7rem;
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  color: #7c2d12;
+  margin-left: auto; /* in topbar: pushes to the right of the existing buttons */
+}
+.audit-batch-bar:empty { display: none; }
+.audit-batch-bar .inline-confirm-msg {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* ── Family dialog modal (post-import suggestion) ──────────────────────────
    The JS appends .family-dialog-overlay to <body> with no positioning, so
    without these rules the dialog rendered at the natural end of the body
