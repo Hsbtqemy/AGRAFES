@@ -82,6 +82,7 @@ export class SegmentationView {
   private _lastSegmentReport: SegmentReport | null = null;
   private _selectedSegDocId: number | null = null;
   private _segShortFilter = false;
+  private _segOrphanFilter = false;
   private _segDocListSort: "id" | "alpha" = "id";
   private _conventions: ConventionRole[] = [];
   private _segMarkersDetected: DetectMarkersResponse | null = null;
@@ -397,6 +398,7 @@ export class SegmentationView {
     this._segMarkersDetected = null;
     this._segSplitMode = "sentences";
     this._segShortFilter = false;
+    this._segOrphanFilter = false;
     this._refSections = [];
     this._tgtSections = [];
     this._structurePairs = [];
@@ -1767,6 +1769,14 @@ export class SegmentationView {
         ? `<p class="prep-seg-trunc-note">Aper&#231;u &#8212; 500/${preview.total_lines} segments</p>`
         : "";
 
+      // Language-aware detection of orphaned closing punctuation at line start —
+      // typical artefact of bad numbered-line imports where a closing mark gets
+      // left on the next line. German tolerates »...« reversed convention so we
+      // also flag « ‹ › for de-* documents.
+      const docLang = (this._getDocs().find(d => d.doc_id === docId)?.language ?? "").toLowerCase();
+      const orphanChars = docLang.startsWith("de") ? "»«‹›)\\]}”’" : "»)\\]}”’";
+      const orphanRegex = new RegExp(`^\\s*[${orphanChars}]+`);
+
       const buildRow = (l: { n: number; text: string; text_raw?: string | null; unit_role?: string | null }, idx: number, total: number): string => {
         const lenClass = l.text.length > 200 ? " prep-seg-cell-len-warn" : l.text.length > 120 ? " prep-seg-cell-len-hint" : "";
         const mergeUpBtn   = idx > 0
@@ -1776,7 +1786,8 @@ export class SegmentationView {
           ? `<button class="prep-seg-action-btn prep-seg-merge-down" title="Fusionner avec le suivant"     data-n="${l.n}">&#8681;</button>`
           : `<span class="prep-seg-action-placeholder"></span>`;
         const splitBtn = `<button class="prep-seg-action-btn prep-seg-split-btn" title="Couper ce segment" data-n="${l.n}">&#9986;</button>`;
-        return `<tr data-unit-n="${l.n}" data-len="${l.text.length}">
+        const orphanAttr = orphanRegex.test(l.text) ? ` data-orphan="1"` : "";
+        return `<tr data-unit-n="${l.n}" data-len="${l.text.length}"${orphanAttr}>
           <td class="prep-seg-cell-n">${l.n}</td>
           <td class="prep-seg-cell-text">${_roleBadgeHtml(l.unit_role, this._conventions)}${richTextToHtml(l.text_raw, l.text)}</td>
           <td class="prep-seg-cell-len${lenClass}">${l.text.length}</td>
@@ -1786,14 +1797,20 @@ export class SegmentationView {
 
       const renderTable = (lines: { n: number; text: string }[]) => {
         const shortCount = lines.filter(l => l.text.length <= 5).length;
+        const orphanCount = lines.filter(l => orphanRegex.test(l.text)).length;
         const rows = lines.map((l, i) => buildRow(l, i, lines.length)).join("");
         return truncNote + `
           <div class="prep-seg-saved-info">
             <span>${lines.length} segment(s)</span>
             <label class="prep-seg-short-filter-label" title="Afficher les segments de 5 caract&#232;res ou moins, avec leurs voisins imm&#233;diats pour faciliter la fusion">
               <input type="checkbox" id="act-seg-filter-short" class="prep-seg-short-filter-cb" />
-              Segments courts + contexte
+              Segments courts
               <span class="chip prep-seg-short-chip" title="${shortCount} segment(s) courts">${shortCount}</span>
+            </label>
+            <label class="prep-seg-short-filter-label" title="Afficher les lignes commen&#231;ant par une ponctuation fermante orpheline (signe de mauvais d&#233;coupage), avec leurs voisins">
+              <input type="checkbox" id="act-seg-filter-orphan" class="prep-seg-orphan-filter-cb" />
+              Ponctuation orpheline
+              <span class="chip prep-seg-orphan-chip" title="${orphanCount} ligne(s) suspecte(s)">${orphanCount}</span>
             </label>
           </div>
           <div class="prep-seg-segments-scroll">
@@ -1908,41 +1925,62 @@ export class SegmentationView {
 
       wireEvents();
 
-      // ── Short-segment filter ───────────────────────────────────────────────
-      // Keeps short segments (len ≤ 5) plus their immediate neighbors (n-1, n+1)
-      // so the user can see the context and decide whether to merge.
-      const applyShortFilter = (active: boolean) => {
-        this._segShortFilter = active;
+      // ── Anomaly filters (short segments + orphan punctuation) ──────────────
+      // Each active filter targets matching rows; their immediate neighbors are
+      // kept as context so the user can decide whether to merge. When both
+      // filters are on, the displayed set is the union of their targets+context.
+      const applyFilters = () => {
         const rows = Array.from(el.querySelectorAll<HTMLElement>("tr[data-len]"));
-        if (!active) {
+        const shortActive = this._segShortFilter;
+        const orphanActive = this._segOrphanFilter;
+        if (!shortActive && !orphanActive) {
           rows.forEach(tr => {
             tr.style.display = "";
-            tr.classList.remove("prep-seg-row-short", "prep-seg-row-short-context");
+            tr.classList.remove("prep-seg-row-short", "prep-seg-row-orphan", "prep-seg-row-context");
           });
           return;
         }
         const lens = rows.map(tr => parseInt(tr.dataset.len ?? "999", 10));
-        const keep = new Set<number>();
+        const orphans = rows.map(tr => tr.dataset.orphan === "1");
         const isShort = new Set<number>();
+        const isOrphan = new Set<number>();
+        const keep = new Set<number>();
         for (let i = 0; i < rows.length; i++) {
-          if (lens[i] <= 5) {
-            keep.add(i); isShort.add(i);
+          let target = false;
+          if (shortActive && lens[i] <= 5) { isShort.add(i); target = true; }
+          if (orphanActive && orphans[i]) { isOrphan.add(i); target = true; }
+          if (target) {
+            keep.add(i);
             if (i > 0) keep.add(i - 1);
             if (i < rows.length - 1) keep.add(i + 1);
           }
         }
         rows.forEach((tr, i) => {
           tr.style.display = keep.has(i) ? "" : "none";
-          tr.classList.toggle("prep-seg-row-short", isShort.has(i));
-          tr.classList.toggle("prep-seg-row-short-context", keep.has(i) && !isShort.has(i));
+          // Orphan styling wins over short when a row matches both — orphans are
+          // genuine segmentation errors, shorts may be legitimate.
+          tr.classList.toggle("prep-seg-row-orphan", isOrphan.has(i));
+          tr.classList.toggle("prep-seg-row-short", isShort.has(i) && !isOrphan.has(i));
+          tr.classList.toggle("prep-seg-row-context", keep.has(i) && !isShort.has(i) && !isOrphan.has(i));
         });
       };
-      const filterCb = el.querySelector<HTMLInputElement>("#act-seg-filter-short");
-      if (filterCb) {
-        filterCb.checked = this._segShortFilter;
-        if (this._segShortFilter) applyShortFilter(true);
-        filterCb.addEventListener("change", () => applyShortFilter(filterCb.checked));
+      const shortCb = el.querySelector<HTMLInputElement>("#act-seg-filter-short");
+      if (shortCb) {
+        shortCb.checked = this._segShortFilter;
+        shortCb.addEventListener("change", () => {
+          this._segShortFilter = shortCb.checked;
+          applyFilters();
+        });
       }
+      const orphanCb = el.querySelector<HTMLInputElement>("#act-seg-filter-orphan");
+      if (orphanCb) {
+        orphanCb.checked = this._segOrphanFilter;
+        orphanCb.addEventListener("change", () => {
+          this._segOrphanFilter = orphanCb.checked;
+          applyFilters();
+        });
+      }
+      if (this._segShortFilter || this._segOrphanFilter) applyFilters();
 
       if (scrollToN !== undefined) {
         const scrollEl = el.querySelector<HTMLElement>(".prep-seg-segments-scroll");

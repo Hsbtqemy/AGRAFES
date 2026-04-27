@@ -5253,15 +5253,35 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
 tr[data-len].prep-seg-row-short td {
   background: #fef9c3;
 }
-/* Context rows (neighbors of a short segment) shown when filter is active —
-   muted styling to distinguish them from the actual short-segment targets. */
-tr[data-len].prep-seg-row-short-context td {
+/* Orphan-punctuation rows: leading closing mark on the line, likely a bad
+   numbered-line import. Pink/salmon to flag a real segmentation error vs the
+   yellow used for short segments (which can be legitimate). */
+.prep-seg-orphan-chip {
+  background: #fee2e2;
+  color: #7f1d1d;
+  border: 1px solid #fca5a5;
+}
+.prep-seg-orphan-filter-cb:checked ~ .prep-seg-orphan-chip,
+.prep-seg-saved-info:has(.prep-seg-orphan-filter-cb:checked) .prep-seg-orphan-chip {
+  background: #fca5a5;
+  color: #1c1917;
+}
+tr[data-len].prep-seg-row-orphan td {
+  background: #fee2e2;
+}
+tr[data-len].prep-seg-row-orphan .prep-seg-cell-text {
+  border-left: 3px solid #dc2626;
+  padding-left: 6px;
+}
+/* Context rows (neighbors of a flagged segment) — muted styling to distinguish
+   them from the actual targets, regardless of which filter triggered them. */
+tr[data-len].prep-seg-row-context td {
   background: #fafbfc;
   color: var(--prep-muted, #6c757d);
   font-size: 12px;
 }
-tr[data-len].prep-seg-row-short-context .prep-seg-cell-n,
-tr[data-len].prep-seg-row-short-context .prep-seg-cell-len {
+tr[data-len].prep-seg-row-context .prep-seg-cell-n,
+tr[data-len].prep-seg-row-context .prep-seg-cell-len {
   opacity: 0.7;
 }
 .prep-seg-short-filter-cb:checked ~ .prep-seg-short-chip,
