@@ -5253,6 +5253,17 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
 tr[data-len].prep-seg-row-short td {
   background: #fef9c3;
 }
+/* Context rows (neighbors of a short segment) shown when filter is active —
+   muted styling to distinguish them from the actual short-segment targets. */
+tr[data-len].prep-seg-row-short-context td {
+  background: #fafbfc;
+  color: var(--prep-muted, #6c757d);
+  font-size: 12px;
+}
+tr[data-len].prep-seg-row-short-context .prep-seg-cell-n,
+tr[data-len].prep-seg-row-short-context .prep-seg-cell-len {
+  opacity: 0.7;
+}
 .prep-seg-short-filter-cb:checked ~ .prep-seg-short-chip,
 .prep-seg-saved-info:has(.prep-seg-short-filter-cb:checked) .prep-seg-short-chip {
   background: #fbbf24;

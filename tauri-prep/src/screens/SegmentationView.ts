@@ -1790,9 +1790,9 @@ export class SegmentationView {
         return truncNote + `
           <div class="prep-seg-saved-info">
             <span>${lines.length} segment(s)</span>
-            <label class="prep-seg-short-filter-label" title="Afficher uniquement les segments de 5 caract&#232;res ou moins">
+            <label class="prep-seg-short-filter-label" title="Afficher les segments de 5 caract&#232;res ou moins, avec leurs voisins imm&#233;diats pour faciliter la fusion">
               <input type="checkbox" id="act-seg-filter-short" class="prep-seg-short-filter-cb" />
-              Segments courts
+              Segments courts + contexte
               <span class="chip prep-seg-short-chip" title="${shortCount} segment(s) courts">${shortCount}</span>
             </label>
           </div>
@@ -1909,11 +1909,32 @@ export class SegmentationView {
       wireEvents();
 
       // ── Short-segment filter ───────────────────────────────────────────────
+      // Keeps short segments (len ≤ 5) plus their immediate neighbors (n-1, n+1)
+      // so the user can see the context and decide whether to merge.
       const applyShortFilter = (active: boolean) => {
         this._segShortFilter = active;
-        el.querySelectorAll<HTMLElement>("tr[data-len]").forEach(tr => {
-          const len = parseInt(tr.dataset.len ?? "999", 10);
-          tr.style.display = active && len > 5 ? "none" : "";
+        const rows = Array.from(el.querySelectorAll<HTMLElement>("tr[data-len]"));
+        if (!active) {
+          rows.forEach(tr => {
+            tr.style.display = "";
+            tr.classList.remove("prep-seg-row-short", "prep-seg-row-short-context");
+          });
+          return;
+        }
+        const lens = rows.map(tr => parseInt(tr.dataset.len ?? "999", 10));
+        const keep = new Set<number>();
+        const isShort = new Set<number>();
+        for (let i = 0; i < rows.length; i++) {
+          if (lens[i] <= 5) {
+            keep.add(i); isShort.add(i);
+            if (i > 0) keep.add(i - 1);
+            if (i < rows.length - 1) keep.add(i + 1);
+          }
+        }
+        rows.forEach((tr, i) => {
+          tr.style.display = keep.has(i) ? "" : "none";
+          tr.classList.toggle("prep-seg-row-short", isShort.has(i));
+          tr.classList.toggle("prep-seg-row-short-context", keep.has(i) && !isShort.has(i));
         });
       };
       const filterCb = el.querySelector<HTMLInputElement>("#act-seg-filter-short");
