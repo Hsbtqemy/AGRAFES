@@ -2952,7 +2952,7 @@ def openapi_spec() -> dict[str, Any]:
                     "properties": {
                         "doc_id": {"type": "integer"},
                         "rules": {"type": "array", "items": {"type": "object"}},
-                        "limit_examples": {"type": "integer", "minimum": 1, "maximum": 50, "default": 10},
+                        "limit_examples": {"type": "integer", "minimum": 1, "maximum": 5000, "default": 10},
                     },
                     "additionalProperties": False,
                 },

@@ -77,11 +77,11 @@ type CurateApplyResult = CurateApplyEvent;
 
 // ─── Curation presets ─────────────────────────────────────────────────────────
 
-const CURATE_PREVIEW_LIMIT = 500;
+const CURATE_PREVIEW_LIMIT = 5000;
 const CURATE_PAGE_SIZE = 50;
 // Max units rendered at once in the raw pane; keeps DOM size manageable for
 // large documents. Changed units are always rendered regardless of this cap.
-const RAW_PANE_DOM_CAP = 800;
+const RAW_PANE_DOM_CAP = 5000;
 
 const CURATE_PRESETS: Record<string, { label: string; rules: CurateRule[] }> = {
   spaces: {

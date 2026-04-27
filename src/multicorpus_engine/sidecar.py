@@ -2933,7 +2933,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             )
             return
 
-        limit_examples = max(1, min(_int_param(body.get("limit_examples", 10), 10), 50))
+        limit_examples = max(1, min(_int_param(body.get("limit_examples", 10), 10), 5000))
 
         # Level 8C: optional forced unit.  When provided, this unit is always
         # included in examples regardless of limit_examples, even if it:
