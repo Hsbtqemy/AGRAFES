@@ -3594,15 +3594,26 @@ export class CurationView {
       if (bar.style.display !== "none") { resolve(false); return; }
       const html = message.split("\n").map(line => line.trim() ? `<span>${_escHtml(line)}</span>` : "").filter(Boolean).join("<br>");
       bar.innerHTML =
-        `<div class="prep-curate-confirm-body">${html}</div>` +
-        `<div class="prep-curate-confirm-actions">` +
-          `<button class="btn prep-btn-warning btn-sm" id="act-confirm-ok">Confirmer l'application</button>` +
-          `<button class="btn btn-ghost btn-sm" id="act-confirm-cancel">Annuler</button>` +
+        `<div class="prep-curate-confirm-modal" role="document">` +
+          `<div class="prep-curate-confirm-body">${html}</div>` +
+          `<div class="prep-curate-confirm-actions">` +
+            `<button class="btn btn-ghost btn-sm" id="act-confirm-cancel">Annuler</button>` +
+            `<button class="btn prep-btn-warning btn-sm" id="act-confirm-ok">Confirmer l'application</button>` +
+          `</div>` +
         `</div>`;
       bar.style.display = "";
-      const cleanup = () => { bar.style.display = "none"; bar.innerHTML = ""; };
-      bar.querySelector("#act-confirm-ok")!.addEventListener("click", () => { cleanup(); resolve(true); }, { once: true });
-      bar.querySelector("#act-confirm-cancel")!.addEventListener("click", () => { cleanup(); resolve(false); }, { once: true });
+      let onKey: ((e: KeyboardEvent) => void) | null = null;
+      const cleanup = () => {
+        bar.style.display = "none";
+        bar.innerHTML = "";
+        if (onKey) document.removeEventListener("keydown", onKey);
+      };
+      const decide = (ok: boolean) => { cleanup(); resolve(ok); };
+      bar.querySelector("#act-confirm-ok")!.addEventListener("click", () => decide(true), { once: true });
+      bar.querySelector("#act-confirm-cancel")!.addEventListener("click", () => decide(false), { once: true });
+      bar.addEventListener("click", (e) => { if (e.target === bar) decide(false); }, { once: true });
+      onKey = (e: KeyboardEvent) => { if (e.key === "Escape") decide(false); };
+      document.addEventListener("keydown", onKey);
       bar.querySelector<HTMLButtonElement>("#act-confirm-ok")?.focus();
     });
   }

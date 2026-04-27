@@ -111,6 +111,53 @@ body { margin: 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Se
 .log-line[data-source="documents"] { color: #fcd34d; }   /* amber-300 */
 .log-line.log-error { color: #fca5a5 !important; }       /* red-300 */
 
+/* ── Family dialog modal (post-import suggestion) ──────────────────────────
+   The JS appends .family-dialog-overlay to <body> with no positioning, so
+   without these rules the dialog rendered at the natural end of the body
+   flow — i.e. "tout en bas" with no apparent context. */
+.family-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+.family-dialog {
+  background: #fff;
+  border-radius: 10px;
+  width: min(520px, 95vw);
+  max-height: 85vh;
+  overflow-y: auto;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+  padding: 1.2rem 1.4rem;
+}
+.family-dialog-header {
+  display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.5rem;
+}
+.family-dialog-icon { font-size: 1.5rem; line-height: 1; }
+.family-dialog-title { font-size: 1.05rem; font-weight: 600; color: #1e293b; }
+.family-dialog-subtitle { font-size: 0.82rem; color: var(--prep-muted, #6c757d); margin-top: 2px; }
+.family-dialog-desc { font-size: 0.9rem; color: #444; line-height: 1.5; margin: 0.5rem 0 1rem; }
+.family-dialog-field { margin-bottom: 0.8rem; }
+.family-dialog-field label { display: block; font-size: 0.82rem; font-weight: 500; margin-bottom: 0.3rem; color: #333; }
+.family-dialog-select {
+  width: 100%; padding: 0.4rem 0.5rem; font-size: 0.9rem; background: #fff;
+  border: 1px solid #c4c9d0; border-radius: 5px;
+}
+.family-dialog-select:focus { outline: 2px solid var(--prep-accent, #0f766e); outline-offset: 1px; }
+.family-dialog-actions {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 0.6rem; margin-top: 1rem; flex-wrap: wrap;
+}
+.family-dialog-skip-label {
+  display: flex; align-items: center; gap: 0.4rem;
+  font-size: 0.82rem; color: var(--prep-muted, #6c757d); cursor: pointer; user-select: none;
+}
+.family-dialog-btns { display: flex; gap: 0.4rem; }
+
 /* ── Presets modal ─────────────────────────────────────────────────────── */
 .prep-presets-overlay {
   position: fixed; inset: 0; background: rgba(0,0,0,0.4);
@@ -2403,25 +2450,41 @@ code { font-family: monospace; background: var(--color-bg); padding: 0 3px; bord
   color: #7c2d12;
   line-height: 1.5;
 }
+/* Confirm curation: centered modal overlay, always visible regardless of scroll
+   (was inline at top of card → invisible from the preview footer triggers).
+   Default display:flex; inline style="display:none" from JS hides it. */
 .prep-curate-confirm-bar {
-  padding: 12px 16px;
+  position: fixed;
+  inset: 0;
+  z-index: 9100;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+.prep-curate-confirm-modal {
   background: #fffbeb;
   border: 1px solid #fcd34d;
-  border-radius: 6px;
-  margin-bottom: 8px;
+  border-radius: 8px;
+  padding: 16px 20px;
+  width: min(560px, 95vw);
+  max-height: 85vh;
+  overflow-y: auto;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.25);
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 .prep-curate-confirm-body {
   font-size: 13px;
   color: #1e293b;
   line-height: 1.6;
   white-space: pre-wrap;
-  max-height: 200px;
+  max-height: 60vh;
   overflow-y: auto;
 }
-.prep-curate-confirm-actions { display: flex; gap: 8px; }
+.prep-curate-confirm-actions { display: flex; gap: 8px; justify-content: flex-end; }
 .prep-conv-row-editing .prep-conv-del-btn { display: none; }
 
 /* Convention add form */
