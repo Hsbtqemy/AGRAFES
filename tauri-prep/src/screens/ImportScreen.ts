@@ -1226,8 +1226,8 @@ export class ImportScreen {
         <div class="family-dialog-field">
           <label for="fam-dlg-relation-type">Type de relation</label>
           <select id="fam-dlg-relation-type" class="family-dialog-select">
-            <option value="translation_of">Traduction</option>
-            <option value="excerpt_of">Extrait</option>
+            <option value="translation_of">Traduction de</option>
+            <option value="excerpt_of">Extrait de</option>
           </select>
         </div>
         <div class="family-dialog-actions">
@@ -1260,6 +1260,17 @@ export class ImportScreen {
     };
     const checkedChildIds = (): number[] =>
       Array.from(childCbs).filter(cb => cb.checked).map(cb => parseInt(cb.value, 10));
+    const updateTypeLabels = () => {
+      // "X est une traduction de Y" en child mode → singulier+de
+      // "Y est l'original, X1/X2/... en sont des traductions" en parent mode → pluriel
+      if (currentMode() === "child") {
+        relSel.options[0].text = "Traduction de";
+        relSel.options[1].text = "Extrait de";
+      } else {
+        relSel.options[0].text = "Traductions";
+        relSel.options[1].text = "Extraits";
+      }
+    };
     const refreshConfirmState = () => {
       if (currentMode() === "child") {
         confirmBtn.disabled = !sel.value;
@@ -1276,11 +1287,14 @@ export class ImportScreen {
         const mode = currentMode();
         childBlock.style.display = mode === "child" ? "" : "none";
         parentBlock.style.display = mode === "parent" ? "" : "none";
+        updateTypeLabels();
         refreshConfirmState();
       });
     });
     sel.addEventListener("change", refreshConfirmState);
     childCbs.forEach(cb => cb.addEventListener("change", refreshConfirmState));
+    updateTypeLabels();
+    refreshConfirmState();
 
     await new Promise<void>((resolve) => {
       const close = () => {
