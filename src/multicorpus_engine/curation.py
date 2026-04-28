@@ -6,23 +6,41 @@ variants, expanding abbreviations, etc., without re-importing the source file.
 
 After curation, the FTS5 index is stale and must be rebuilt via `index`.
 
-See docs/DECISIONS.md ADR-015.
+Uses the third-party `regex` PyPI package (NOT the stdlib `re`) so user-supplied
+patterns can rely on:
+  - Unicode property classes : \\p{L}, \\p{Lu}, etc.
+  - Grapheme cluster matching : \\X
+  - POSIX character classes  : [[:alpha:]]
+The `regex` module is API-compatible with `re` for the basic forms used
+historically (compile, sub, search, finditer, IGNORECASE/MULTILINE/DOTALL).
+
+`regex.V0` is forced when compiling user patterns to avoid the implicit V1
+auto-switch (V1 changes semantics for set operations in char classes etc. —
+we want behavior consistent with the documented basic regex grammar).
+
+See docs/DECISIONS.md ADR-015 (curation engine), and the validation script
+scripts/validate_regex_migration.py used before this migration.
 """
 
 from __future__ import annotations
 
 import json
 import logging
-import re
 import sqlite3
 from dataclasses import dataclass, field
 from typing import Optional
+
+import regex as re  # third-party `regex` PyPI — drop-in superset of stdlib `re`
 
 logger = logging.getLogger(__name__)
 
 # M-05: ReDoS guards for user-supplied regex patterns
 _MAX_REGEX_LEN = 500
 _REDOS_NESTED_RE = re.compile(r"\([^()]*[+*?][^()]*\)[+*{]")
+
+# Force V0 mode to avoid silent V1 auto-switch on patterns using V1 features
+# (e.g. set operations in char classes). See validation script docstring.
+_USER_REGEX_FLAGS = re.V0
 
 
 def _validate_user_regex(pattern: str) -> None:
@@ -66,7 +84,10 @@ class CurationRule:
     description: str = "" # Human-readable label (optional, for reporting)
 
     def compiled(self) -> re.Pattern:
-        return re.compile(self.pattern, self.flags)
+        # OR-in V0 to lock semantics — avoids the regex module's silent V1 switch
+        # when the pattern contains V1-specific syntax (set ops in char classes,
+        # etc.). See module docstring + scripts/validate_regex_migration.py.
+        return re.compile(self.pattern, self.flags | _USER_REGEX_FLAGS)
 
 
 @dataclass
