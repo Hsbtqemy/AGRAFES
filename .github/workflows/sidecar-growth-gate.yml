@@ -56,10 +56,17 @@ jobs:
 
       - name: Check for override trailer
         id: override
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -eu
-          # Le head commit de la PR contient-il le trailer ?
-          MSG=$(git log -1 --format=%B HEAD)
+          # Sur pull_request event, HEAD est un merge commit synthétique sans
+          # message utilisateur. Il faut inspecter les vrais commits de la PR
+          # via la plage base..head. On scanne TOUS les commits de la PR
+          # plutôt que seulement le head — un dev peut placer le trailer sur
+          # n'importe quel commit (souvent celui qui décrit le motif d'urgence).
+          MSG=$(git log --format=%B "$BASE_SHA..$HEAD_SHA")
           if echo "$MSG" | grep -qE '^Sidecar-Growth-Override:[[:space:]]*\S+'; then
             REASON=$(echo "$MSG" | grep -E '^Sidecar-Growth-Override:' | head -1 | sed 's/^Sidecar-Growth-Override:[[:space:]]*//')
             echo "override=true" >> "$GITHUB_OUTPUT"
