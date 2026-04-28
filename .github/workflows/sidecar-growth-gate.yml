@@ -1,0 +1,96 @@
+name: Sidecar growth gate
+
+# Mécanisme : empêche `sidecar.py` de continuer à grossir indéfiniment
+# par PRs incrémentales sous le radar.
+#
+# Mesure : croissance NETTE (insertions - deletions) sur fenêtre glissante
+# 90 jours, mesurée via git log --numstat. Seuil : 500 lignes.
+#
+# Override d'urgence : commit trailer `Sidecar-Growth-Override: <motif>` dans
+# le dernier commit (typiquement un CVE ou un fix sécurité critique).
+# Tracé en clair dans l'historique git, auditable, sans secret CI.
+#
+# Exemple de commit autorisé à dépasser :
+#
+#     fix(security): patch CVE-2026-XXXX dans curate handler
+#
+#     Sidecar-Growth-Override: CVE-2026-XXXX requires immediate fix,
+#     refactor scheduled in v0.2.0
+#
+# Volontairement en `add - del` (croissance nette) plutôt que `add + del`
+# (churn). On veut limiter la croissance, pas pénaliser les vrais refactors
+# qui suppriment plus qu'ils n'ajoutent.
+
+on:
+  pull_request:
+    paths:
+      - 'src/multicorpus_engine/sidecar.py'
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  growth-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history requis pour --since
+
+      - name: Compute net growth on sliding 90-day window
+        id: growth
+        run: |
+          set -eu
+          THRESHOLD=500
+          DAYS=90
+          FILE=src/multicorpus_engine/sidecar.py
+
+          GROWTH=$(git log --numstat --since="$DAYS days ago" -- "$FILE" \
+            | awk 'NF==3 {add+=$1; del+=$2} END {print (add-del)+0}')
+
+          echo "growth=$GROWTH" >> "$GITHUB_OUTPUT"
+          echo "threshold=$THRESHOLD" >> "$GITHUB_OUTPUT"
+          echo "days=$DAYS" >> "$GITHUB_OUTPUT"
+          echo "Sidecar net growth over last $DAYS days: $GROWTH lines (threshold: $THRESHOLD)"
+
+      - name: Check for override trailer
+        id: override
+        run: |
+          set -eu
+          # Le head commit de la PR contient-il le trailer ?
+          MSG=$(git log -1 --format=%B HEAD)
+          if echo "$MSG" | grep -qE '^Sidecar-Growth-Override:[[:space:]]*\S+'; then
+            REASON=$(echo "$MSG" | grep -E '^Sidecar-Growth-Override:' | head -1 | sed 's/^Sidecar-Growth-Override:[[:space:]]*//')
+            echo "override=true" >> "$GITHUB_OUTPUT"
+            echo "reason=$REASON" >> "$GITHUB_OUTPUT"
+            echo "::warning::Sidecar-Growth-Override invoked: $REASON"
+          else
+            echo "override=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Gate decision
+        run: |
+          set -eu
+          GROWTH="${{ steps.growth.outputs.growth }}"
+          THRESHOLD="${{ steps.growth.outputs.threshold }}"
+          DAYS="${{ steps.growth.outputs.days }}"
+          OVERRIDE="${{ steps.override.outputs.override }}"
+
+          if [ "$GROWTH" -le "$THRESHOLD" ]; then
+            echo "✓ Sidecar growth ($GROWTH lines / $DAYS d) sous le seuil ($THRESHOLD). OK."
+            exit 0
+          fi
+
+          if [ "$OVERRIDE" = "true" ]; then
+            echo "⚠ Seuil dépassé ($GROWTH > $THRESHOLD) mais override autorisé."
+            echo "   Motif : ${{ steps.override.outputs.reason }}"
+            echo "   Le refactor reste obligatoire après ce fix d'urgence."
+            exit 0
+          fi
+
+          echo "::error::sidecar.py a grossi de $GROWTH lignes nettes sur les $DAYS derniers jours (seuil $THRESHOLD)."
+          echo "::error::Un refactor de découpage par domaines (routers) est requis avant d'ajouter de nouvelles features."
+          echo "::error::Override d'urgence : ajouter au commit le trailer 'Sidecar-Growth-Override: <motif>' (typiquement un CVE)."
+          echo "::error::Voir CONTRIBUTING.md § Sidecar growth gate pour le détail."
+          exit 1
