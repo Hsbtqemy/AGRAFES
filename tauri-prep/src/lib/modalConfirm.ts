@@ -6,6 +6,11 @@
  * its blocking semantics are not guaranteed across platforms — leading to
  * cases where the action proceeds even after the user clicked Cancel).
  *
+ * Tracking issue : https://github.com/Hsbtqemy/AGRAFES/issues/40
+ * (upstream tauri-apps/tauri issue à ouvrir plus tard pour solliciter un fix
+ * ou une mise à jour de la doc côté Tauri 2.x ; en attendant, ce helper est
+ * la référence interne).
+ *
  * Returns a Promise<boolean> that resolves true if confirmed, false if
  * cancelled (via button, Escape, or backdrop click).
  */
