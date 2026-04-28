@@ -1280,7 +1280,7 @@ async function readPortfile(portfile: string): Promise<Record<string, unknown> |
   try {
     // Use the raw Rust command to bypass Tauri FS scope restrictions.
     // Portfiles live next to the user's DB file which can be anywhere on disk.
-    const raw = await invoke<string>("read_text_file_raw", { path: portfile });
+    const raw = await invoke<string>("read_sidecar_portfile", { path: portfile });
     return JSON.parse(raw) as Record<string, unknown>;
   } catch {
     return null;

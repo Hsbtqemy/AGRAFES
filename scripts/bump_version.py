@@ -70,6 +70,17 @@ def bump_shell(version: str, dry_run: bool) -> None:
         f'let APP_VERSION = "{version}"',
         dry_run,
     )
+    # Align package.json with tauri.conf.json — historiquement drifté (le
+    # tauri.conf était la version « livrée », package.json oublié). L'alignement
+    # évite npm publish accidentel avec version périmée + confusion outils
+    # (certaines CI lisent package.json pour le tagging).
+    _replace(
+        ROOT / "tauri-shell/package.json",
+        r'"version": "[^"]+"',
+        f'"version": "{version}"',
+        dry_run,
+    )
+
 
 
 def main() -> None:

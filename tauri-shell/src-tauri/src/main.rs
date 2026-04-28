@@ -86,16 +86,17 @@ async fn sidecar_fetch_loopback(
 }
 
 /// Reads a sidecar portfile (`.agrafes_sidecar.json`) from any path, bypassing Tauri FS scope.
-/// Restricted to the portfile filename only — refuses to read any other file.
+/// Strictly restricted to the portfile filename only — refuses to read any other file.
+/// Renamed from the misleading `read_text_file_raw` (which suggested a generic file read).
 #[tauri::command]
-fn read_text_file_raw(path: String) -> Result<String, String> {
+fn read_sidecar_portfile(path: String) -> Result<String, String> {
     let p = std::path::Path::new(&path);
     match p.file_name().and_then(|n| n.to_str()) {
         Some(".agrafes_sidecar.json") => {}
-        _ => return Err("read_text_file_raw: only .agrafes_sidecar.json files may be read".to_string()),
+        _ => return Err("read_sidecar_portfile: only .agrafes_sidecar.json files may be read".to_string()),
     }
     std::fs::read_to_string(p)
-        .map_err(|e| format!("read_text_file_raw: cannot read portfile: {}", e))
+        .map_err(|e| format!("read_sidecar_portfile: cannot read portfile: {}", e))
 }
 
 /// Appends a diagnostic message under the OS user data dir, e.g.
@@ -268,7 +269,7 @@ fn main() {
         .plugin(tauri_plugin_deep_link::init())
         .invoke_handler(tauri::generate_handler![
             sidecar_fetch_loopback,
-            read_text_file_raw,
+            read_sidecar_portfile,
             write_sidecar_log,
             register_sidecar,
             shutdown_sidecar_cmd,

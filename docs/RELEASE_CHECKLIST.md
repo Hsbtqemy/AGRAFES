@@ -76,7 +76,11 @@ Run via `macos-sign-notarize.yml` or `release.yml` CI workflows (require Apple c
 
 ## 5. Post-release
 
-- [ ] Tag pushed: `git tag vX.Y.Z && git push --tags`
+- [ ] Tag **signed** and pushed: `git tag -s vX.Y.Z -m "release vX.Y.Z" && git push origin vX.Y.Z`
+  - GPG signature obligatoire depuis v0.1.41 — défense supplémentaire contre tag spoofing.
+  - Configuration GPG : `git config user.signingkey <KEY_ID>` + `git config commit.gpgsign true` (recommandé).
+  - Si pas de clé GPG configurée localement : `git tag` sans `-s` reste accepté pour l'instant (warning), mais à corriger dès que possible.
+  - Vérifier la signature d'un tag : `git tag -v vX.Y.Z`.
 - [ ] GitHub Release created with:
   - Binary attachments (sidecar + Tauri .dmg/.deb/.msi)
   - CHANGELOG excerpt for this version
