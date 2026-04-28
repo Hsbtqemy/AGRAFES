@@ -108,7 +108,7 @@ Le script flag les patterns persistés en DB qui ont un comportement différent 
 
 ## Modal & dialog dans le frontend
 
-**Ne jamais utiliser** `window.confirm()`, `window.alert()`, `window.prompt()` natifs — non fiables cross-platform sur Tauri 2 (cf. [docs/TAURI_UPSTREAM_ISSUE_DRAFT.md](docs/TAURI_UPSTREAM_ISSUE_DRAFT.md)).
+**Ne jamais utiliser** `window.confirm()`, `window.alert()`, `window.prompt()` natifs — non fiables cross-platform sur Tauri 2 (cf. [issue #40](https://github.com/Hsbtqemy/AGRAFES/issues/40)).
 
 À la place :
 
