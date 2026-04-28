@@ -53,6 +53,7 @@ import {
   richTextToHtml,
 } from "../lib/sidecarClient.ts";
 import { initCardAccordions } from "../lib/uiAccordions.ts";
+import { modalConfirm } from "../lib/modalConfirm.ts";
 import type { JobCenter } from "../components/JobCenter.ts";
 
 const DOC_ROLES = ["standalone", "original", "translation", "excerpt", "primary", "unknown"];
@@ -1130,7 +1131,12 @@ export class MetadataScreen {
       work_title ? `titre "${work_title}"` : null,
       (lastname || firstname) ? `auteur "${[lastname, firstname].filter(Boolean).join(", ")}"` : null,
     ].filter(Boolean).join(", ");
-    if (!confirm(`Appliquer ${summary} sur ${childIds.length} document(s) enfant(s) ?`)) return;
+    const ok = await modalConfirm({
+      message: `Appliquer ${summary} sur ${childIds.length} document(s) enfant(s) ?`,
+      confirmLabel: "Appliquer",
+      danger: false,
+    });
+    if (!ok) return;
 
     btn.disabled = true;
     btn.textContent = "Propagation…";
@@ -1712,7 +1718,12 @@ export class MetadataScreen {
 
   private async _deleteRelation(id: number): Promise<void> {
     if (!this._conn || !this._selectedDoc) return;
-    if (!confirm("Supprimer cette relation ?")) return;
+    const ok = await modalConfirm({
+      message: "Supprimer cette relation ?",
+      confirmLabel: "Supprimer",
+      danger: true,
+    });
+    if (!ok) return;
     try {
       await deleteDocRelation(this._conn, id);
       this._relations = this._relations.filter(r => r.id !== id);
@@ -1742,7 +1753,8 @@ export class MetadataScreen {
     if (!doc_role && !resource_type) return;
 
     const msg = `Appliquer ${doc_role ? `doc_role="${doc_role}"` : ""} ${resource_type ? `resource_type="${resource_type}"` : ""} à ${this._docs.length} documents ?`;
-    if (!confirm(msg)) return;
+    const ok = await modalConfirm({ message: msg, confirmLabel: "Appliquer", danger: false });
+    if (!ok) return;
 
     const updates = this._docs.map(d => ({
       doc_id: d.doc_id,
@@ -1787,9 +1799,12 @@ export class MetadataScreen {
     const ids = [...this._selectedDocIds];
     const n = ids.length;
     const label = n === 1 ? "ce document" : `ces ${n} documents`;
-    const confirmed = confirm(
-      `Supprimer ${label} du corpus ?\n\nCette action est irréversible : toutes les unités, les alignements et les relations associés seront également supprimés.`
-    );
+    const confirmed = await modalConfirm({
+      title: `Supprimer ${label} ?`,
+      message: `Cette action est irréversible : toutes les unités, les alignements et les relations associés seront également supprimés.`,
+      confirmLabel: "Supprimer",
+      danger: true,
+    });
     if (!confirmed) return;
 
     const btn = this._root?.querySelector<HTMLButtonElement>("#meta-batch-delete-btn");

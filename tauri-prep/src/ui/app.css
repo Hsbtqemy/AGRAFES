@@ -111,6 +111,48 @@ body { margin: 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Se
 .log-line[data-source="documents"] { color: #fcd34d; }   /* amber-300 */
 .log-line.log-error { color: #fca5a5 !important; }       /* red-300 */
 
+/* ── Generic modal confirm dialog (lib/modalConfirm.ts) ──────────────────── */
+.prep-modal-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9200;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+.prep-modal-confirm {
+  background: #fff;
+  border-radius: 10px;
+  width: min(480px, 95vw);
+  max-height: 85vh;
+  overflow-y: auto;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+  padding: 1.2rem 1.4rem;
+}
+.prep-modal-confirm-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #1e293b;
+  margin-bottom: 0.5rem;
+}
+.prep-modal-confirm-body {
+  font-size: 0.9rem;
+  color: #334155;
+  line-height: 1.55;
+  margin-bottom: 1rem;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+.prep-modal-confirm-body div { margin-bottom: 0.25rem; }
+.prep-modal-confirm-body div:last-child { margin-bottom: 0; }
+.prep-modal-confirm-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
 /* ── Inline confirm bar (audit-batch-bar) ──────────────────────────────────
    Used by lib/inlineConfirm to show a Confirm/Cancel prompt inside a host
    container — typically the topbar (#app-pending-confirm, for unsaved-tab
