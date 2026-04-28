@@ -69,6 +69,9 @@ export function modalConfirm(opts: {
     overlay.addEventListener("click", onBackdropClick);
     document.addEventListener("keydown", onKey);
 
-    okBtn.focus();
+    // For destructive actions, focus Cancel by default — pressing Enter
+    // reflexively must NOT trigger the destructive operation.
+    if (danger) cancelBtn.focus();
+    else okBtn.focus();
   });
 }
