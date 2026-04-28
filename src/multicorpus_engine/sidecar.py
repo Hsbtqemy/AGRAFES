@@ -4403,11 +4403,13 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 
         lang = str(body.get("lang") or "und")
         pack = str(body.get("pack") or "auto")
-        limit = body.get("limit", 300)
+        limit = body.get("limit", 5000)
         try:
             limit = int(limit)
         except (TypeError, ValueError):
-            limit = 300
+            limit = 5000
+        # Upper cap: aligned with /curate/preview limit_examples for consistency.
+        limit = max(1, min(limit, 5000))
 
         conn = self._conn()
         units = conn.execute(

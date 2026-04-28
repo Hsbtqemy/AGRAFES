@@ -2298,7 +2298,9 @@ def openapi_spec() -> dict[str, Any]:
                         },
                         "limit": {
                             "type": "integer",
-                            "default": 300,
+                            "default": 5000,
+                            "minimum": 1,
+                            "maximum": 5000,
                             "description": "Maximum number of segments returned.",
                         },
                         "calibrate_to": {

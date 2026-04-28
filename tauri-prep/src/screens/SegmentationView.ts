@@ -768,7 +768,7 @@ export class SegmentationView {
         pack: string;
         limit: number;
         calibrate_to?: number;
-      } = { doc_id: docId, mode, lang, pack, limit: 300 };
+      } = { doc_id: docId, mode, lang, pack, limit: 5000 };
       if (mode === "sentences" && Number.isInteger(calibrateTo)) {
         previewPayload.calibrate_to = calibrateTo;
       }
@@ -789,8 +789,8 @@ export class SegmentationView {
           : `Segment&#233; (<span id="act-seg-prev-seg-count">${res.units_output}</span> phrases)`;
       }
 
-      const truncNote = res.units_output >= 300
-        ? `<p class="prep-seg-trunc-note">Aper&#231;u tronqu&#233; &#224; 300 segments</p>`
+      const truncNote = res.units_output >= 5000
+        ? `<p class="prep-seg-trunc-note">Aper&#231;u tronqu&#233; &#224; 5000 segments</p>`
         : "";
 
       segEl.innerHTML = truncNote + (res.segments.length

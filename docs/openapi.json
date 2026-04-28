@@ -2555,8 +2555,10 @@
             "type": "string"
           },
           "limit": {
-            "default": 300,
+            "default": 5000,
             "description": "Maximum number of segments returned.",
+            "maximum": 5000,
+            "minimum": 1,
             "type": "integer"
           },
           "mode": {
