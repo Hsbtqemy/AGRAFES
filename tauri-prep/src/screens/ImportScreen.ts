@@ -1176,6 +1176,19 @@ export class ImportScreen {
       .filter(d => d.doc_id !== newDocId)
       .sort((a, b) => (a.title ?? "").localeCompare(b.title ?? ""));
 
+    const hasCandidates = candidates.length > 0;
+    const candidateOptions = candidates.map(d => {
+      const label = [d.title ?? `#${d.doc_id}`, d.language ? `[${d.language}]` : ""].filter(Boolean).join(" ");
+      return `<option value="${d.doc_id}">${_escHtml(label)}</option>`;
+    }).join("");
+    const candidateCheckboxes = candidates.map(d => {
+      const label = [d.title ?? `#${d.doc_id}`, d.language ? `[${d.language}]` : ""].filter(Boolean).join(" ");
+      return `<label class="family-dialog-child-row">
+        <input type="checkbox" class="family-dialog-child-cb" value="${d.doc_id}" />
+        <span class="family-dialog-child-label">${_escHtml(label)}</span>
+      </label>`;
+    }).join("");
+
     const overlay = document.createElement("div");
     overlay.className = "family-dialog-overlay";
     overlay.innerHTML = `
@@ -1187,25 +1200,34 @@ export class ImportScreen {
             <div class="family-dialog-subtitle">« ${_escHtml(newDocTitle)} » vient d'être importé (doc #${newDocId})</div>
           </div>
         </div>
-        <p class="family-dialog-desc">
-          Ce document est-il la traduction ou l'extrait d'un document existant&nbsp;?<br>
-          Si oui, sélectionnez le document original ci-dessous.
-        </p>
-        <div class="family-dialog-field">
+        <fieldset class="family-dialog-mode">
+          <label class="family-dialog-mode-row">
+            <input type="radio" name="fam-dlg-mode" value="child" checked />
+            <span><strong>Ce document est issu d'un autre</strong> — c'est une traduction ou un extrait d'un document existant.</span>
+          </label>
+          <label class="family-dialog-mode-row" ${hasCandidates ? "" : 'data-disabled="1"'}>
+            <input type="radio" name="fam-dlg-mode" value="parent" ${hasCandidates ? "" : "disabled"} />
+            <span><strong>Ce document est l'original</strong> — d'autres documents existants en sont des traductions ou des extraits.</span>
+          </label>
+        </fieldset>
+        <div class="family-dialog-field" data-fam-block="child">
           <label for="fam-dlg-parent-sel">Document original (parent)</label>
           <select id="fam-dlg-parent-sel" class="family-dialog-select">
             <option value="">— Aucun —</option>
-            ${candidates.map(d => {
-              const label = [d.title ?? `#${d.doc_id}`, d.language ? `[${d.language}]` : ""].filter(Boolean).join(" ");
-              return `<option value="${d.doc_id}">${_escHtml(label)}</option>`;
-            }).join("")}
+            ${candidateOptions}
           </select>
+        </div>
+        <div class="family-dialog-field" data-fam-block="parent" style="display:none">
+          <label>Documents enfants (cochez ceux à rattacher)</label>
+          <div class="family-dialog-children-list">
+            ${hasCandidates ? candidateCheckboxes : '<p class="family-dialog-empty">Aucun autre document dans le corpus.</p>'}
+          </div>
         </div>
         <div class="family-dialog-field">
           <label for="fam-dlg-relation-type">Type de relation</label>
           <select id="fam-dlg-relation-type" class="family-dialog-select">
-            <option value="translation_of">Traduction de</option>
-            <option value="excerpt_of">Extrait de</option>
+            <option value="translation_of">Traduction</option>
+            <option value="excerpt_of">Extrait</option>
           </select>
         </div>
         <div class="family-dialog-actions">
@@ -1228,10 +1250,37 @@ export class ImportScreen {
     const confirmBtn = overlay.querySelector<HTMLButtonElement>("#fam-dlg-confirm-btn")!;
     const cancelBtn = overlay.querySelector<HTMLButtonElement>("#fam-dlg-cancel-btn")!;
     const skipChk = overlay.querySelector<HTMLInputElement>("#fam-dlg-skip-session")!;
+    const childBlock = overlay.querySelector<HTMLElement>('[data-fam-block="child"]')!;
+    const parentBlock = overlay.querySelector<HTMLElement>('[data-fam-block="parent"]')!;
+    const childCbs = overlay.querySelectorAll<HTMLInputElement>(".family-dialog-child-cb");
 
-    sel.addEventListener("change", () => {
-      confirmBtn.disabled = !sel.value;
+    const currentMode = (): "child" | "parent" => {
+      const checked = overlay.querySelector<HTMLInputElement>('input[name="fam-dlg-mode"]:checked');
+      return (checked?.value === "parent") ? "parent" : "child";
+    };
+    const checkedChildIds = (): number[] =>
+      Array.from(childCbs).filter(cb => cb.checked).map(cb => parseInt(cb.value, 10));
+    const refreshConfirmState = () => {
+      if (currentMode() === "child") {
+        confirmBtn.disabled = !sel.value;
+        confirmBtn.textContent = "Créer la relation";
+      } else {
+        const n = checkedChildIds().length;
+        confirmBtn.disabled = n === 0;
+        confirmBtn.textContent = n <= 1 ? "Créer la relation" : `Créer les ${n} relations`;
+      }
+    };
+
+    overlay.querySelectorAll<HTMLInputElement>('input[name="fam-dlg-mode"]').forEach(radio => {
+      radio.addEventListener("change", () => {
+        const mode = currentMode();
+        childBlock.style.display = mode === "child" ? "" : "none";
+        parentBlock.style.display = mode === "parent" ? "" : "none";
+        refreshConfirmState();
+      });
     });
+    sel.addEventListener("change", refreshConfirmState);
+    childCbs.forEach(cb => cb.addEventListener("change", refreshConfirmState));
 
     await new Promise<void>((resolve) => {
       const close = () => {
@@ -1244,32 +1293,71 @@ export class ImportScreen {
       overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
 
       confirmBtn.addEventListener("click", async () => {
-        const parentId = parseInt(sel.value, 10);
         const relType = relSel.value as "translation_of" | "excerpt_of";
-        if (!parentId || !this._conn) { close(); return; }
+        const FIXED_ROLES = ["original", "translation", "excerpt"];
+        if (!this._conn) { close(); return; }
+        const conn = this._conn;
         confirmBtn.disabled = true;
         confirmBtn.textContent = "En cours…";
+
         try {
-          const res = await setDocRelation(this._conn, {
-            doc_id: newDocId,
-            relation_type: relType,
-            target_doc_id: parentId,
-          });
-          const parentDoc   = candidates.find(d => d.doc_id === parentId);
-          const parentTitle = parentDoc?.title ?? `#${parentId}`;
-          // Auto-assign doc_role
-          const childRole  = relType === "translation_of" ? "translation" : "excerpt";
-          const parentRole = "original";
-          const FIXED_ROLES = ["original", "translation", "excerpt"];
-          const newDoc = this._corpusDocs.find(d => d.doc_id === newDocId);
-          if (this._conn && !FIXED_ROLES.includes(newDoc?.doc_role ?? "")) {
-            await updateDocument(this._conn, { doc_id: newDocId, doc_role: childRole }).catch(() => {});
+          if (currentMode() === "child") {
+            // Mode actuel : new doc devient enfant d'un parent existant.
+            const parentId = parseInt(sel.value, 10);
+            if (!parentId) { close(); return; }
+            const res = await setDocRelation(conn, {
+              doc_id: newDocId,
+              relation_type: relType,
+              target_doc_id: parentId,
+            });
+            const parentDoc   = candidates.find(d => d.doc_id === parentId);
+            const parentTitle = parentDoc?.title ?? `#${parentId}`;
+            const childRole  = relType === "translation_of" ? "translation" : "excerpt";
+            const newDoc = this._corpusDocs.find(d => d.doc_id === newDocId);
+            if (!FIXED_ROLES.includes(newDoc?.doc_role ?? "")) {
+              await updateDocument(conn, { doc_id: newDocId, doc_role: childRole }).catch(() => {});
+            }
+            if (parentDoc && !FIXED_ROLES.includes(parentDoc.doc_role ?? "")) {
+              await updateDocument(conn, { doc_id: parentId, doc_role: "original" }).catch(() => {});
+            }
+            this._log(`✓ Relation « ${relType} » créée : doc #${newDocId} → doc #${parentId} « ${parentTitle} » (id=${res.id})`);
+            this._showToast?.(`✓ Rattaché à la famille de « ${parentTitle} »`);
+          } else {
+            // Mode reverse : new doc devient parent de N documents existants.
+            const childIds = checkedChildIds();
+            if (childIds.length === 0) { close(); return; }
+            const childRole = relType === "translation_of" ? "translation" : "excerpt";
+            let okCount = 0;
+            const errors: string[] = [];
+            for (const childId of childIds) {
+              try {
+                await setDocRelation(conn, {
+                  doc_id: childId,
+                  relation_type: relType,
+                  target_doc_id: newDocId,
+                });
+                okCount += 1;
+                const childDoc = this._corpusDocs.find(d => d.doc_id === childId);
+                if (childDoc && !FIXED_ROLES.includes(childDoc.doc_role ?? "")) {
+                  await updateDocument(conn, { doc_id: childId, doc_role: childRole }).catch(() => {});
+                }
+              } catch (err) {
+                errors.push(`#${childId} : ${err instanceof Error ? err.message : String(err)}`);
+              }
+            }
+            // New doc devient parent → original (sauf rôle déjà fixé)
+            const newDoc = this._corpusDocs.find(d => d.doc_id === newDocId);
+            if (!FIXED_ROLES.includes(newDoc?.doc_role ?? "")) {
+              await updateDocument(conn, { doc_id: newDocId, doc_role: "original" }).catch(() => {});
+            }
+            if (errors.length === 0) {
+              this._log(`✓ ${okCount} document(s) rattaché(s) à doc #${newDocId} « ${newDocTitle} » (${relType})`);
+              this._showToast?.(`✓ ${okCount} document(s) rattaché(s) à « ${newDocTitle} »`);
+            } else {
+              this._log(`⚠ ${okCount}/${childIds.length} relations créées — erreurs : ${errors.join("; ")}`, true);
+              this._showToast?.(`⚠ ${okCount}/${childIds.length} relations créées`, true);
+            }
           }
-          if (this._conn && parentDoc && !FIXED_ROLES.includes(parentDoc.doc_role ?? "")) {
-            await updateDocument(this._conn, { doc_id: parentId, doc_role: parentRole }).catch(() => {});
-          }
-          this._log(`✓ Relation « ${relType} » créée : doc #${newDocId} → doc #${parentId} « ${parentTitle} » (id=${res.id})`);
-          this._showToast?.(`✓ Rattaché à la famille de « ${parentTitle} »`);
         } catch (err) {
           this._log(`✗ Erreur création relation: ${err instanceof Error ? err.message : String(err)}`, true);
           this._showToast?.("✗ Impossible de créer la relation", true);

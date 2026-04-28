@@ -226,6 +226,69 @@ body { margin: 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Se
 }
 .family-dialog-btns { display: flex; gap: 0.4rem; }
 
+/* Mode toggle (child of vs parent of) */
+.family-dialog-mode {
+  border: 1px solid var(--prep-line, #dde1e8);
+  border-radius: 6px;
+  padding: 0.5rem 0.7rem;
+  margin-bottom: 0.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.family-dialog-mode-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  line-height: 1.4;
+}
+.family-dialog-mode-row[data-disabled="1"] {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.family-dialog-mode-row input[type="radio"] {
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+.family-dialog-mode-row strong { color: #1e293b; }
+
+/* Children list (parent mode) */
+.family-dialog-children-list {
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--prep-line, #dde1e8);
+  border-radius: 5px;
+  padding: 0.3rem 0;
+  background: #fff;
+}
+.family-dialog-child-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0.6rem;
+  cursor: pointer;
+  font-size: 0.86rem;
+}
+.family-dialog-child-row:hover { background: var(--color-surface-alt, #f8f9fa); }
+.family-dialog-child-cb { flex-shrink: 0; cursor: pointer; }
+.family-dialog-child-label {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.family-dialog-empty {
+  padding: 0.6rem;
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--prep-muted, #6c757d);
+  font-style: italic;
+  text-align: center;
+}
+
 /* ── Presets modal ─────────────────────────────────────────────────────── */
 .prep-presets-overlay {
   position: fixed; inset: 0; background: rgba(0,0,0,0.4);
