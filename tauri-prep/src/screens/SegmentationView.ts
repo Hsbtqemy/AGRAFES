@@ -812,7 +812,22 @@ export class SegmentationView {
       }
       this._updateSegStrategySummary();
     } catch (err) {
-      segEl.innerHTML = `<p class="empty-hint" style="color:var(--color-danger)">Erreur preview: ${_escHtml(err instanceof Error ? err.message : String(err))}</p>`;
+      const msg = err instanceof Error ? err.message : String(err);
+      // Special-case: doc exists but has no segmentable lines (failed import,
+      // text stuck in a single 'structure' unit). Suggest reimport instead of
+      // a raw error message.
+      const noLines = /no segmentable line units/i.test(msg);
+      if (noLines) {
+        segEl.innerHTML = `
+          <div class="prep-seg-import-broken">
+            <strong>Ce document n'a pas de lignes segmentables.</strong>
+            <p>Probablement un import partiellement échoué — tout le texte est dans une seule unité de structure (cas typique : DOCX en tableau 2 colonnes que l'import en lignes numérotées ne sait pas lire).</p>
+            <p>Solution : retourner dans <strong>Importer</strong>, supprimer ce document et le réimporter (essayer le mode <em>Paragraphes</em> si <em>Lignes numérotées [n]</em> ne fonctionne pas).</p>
+            <p class="prep-seg-import-broken-detail">${_escHtml(msg)}</p>
+          </div>`;
+      } else {
+        segEl.innerHTML = `<p class="empty-hint" style="color:var(--color-danger)">Erreur preview: ${_escHtml(msg)}</p>`;
+      }
       this._updateSegStrategySummary();
     }
   }

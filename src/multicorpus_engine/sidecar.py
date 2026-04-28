@@ -4412,14 +4412,35 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         limit = max(1, min(limit, 5000))
 
         conn = self._conn()
+        # Distinguish "doc not found" from "doc exists but has no segmentable lines"
+        # — the second case typically means a partially-failed import where the
+        # whole text landed in a single 'structure' unit.
+        doc_exists = conn.execute(
+            "SELECT 1 FROM documents WHERE doc_id = ?", (doc_id,)
+        ).fetchone() is not None
+        if not doc_exists:
+            self._send_error(
+                f"Document doc_id={doc_id} not found",
+                code=ERR_NOT_FOUND, http_status=404,
+            )
+            return
         units = conn.execute(
             "SELECT n, text_norm FROM units WHERE doc_id = ? AND unit_type = 'line' ORDER BY n",
             (doc_id,),
         ).fetchall()
 
         if not units:
+            other_count = conn.execute(
+                "SELECT COUNT(*) FROM units WHERE doc_id = ?", (doc_id,)
+            ).fetchone()[0]
+            hint = (
+                f" Document has {other_count} non-line unit(s) — likely a failed import"
+                f" (text stored as a single 'structure' block). Re-import is required."
+                if other_count > 0
+                else " Document has no units at all."
+            )
             self._send_error(
-                f"No units found for doc_id={doc_id}",
+                f"Document doc_id={doc_id} has no segmentable line units.{hint}",
                 code=ERR_NOT_FOUND, http_status=404,
             )
             return

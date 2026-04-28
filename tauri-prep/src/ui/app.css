@@ -111,6 +111,29 @@ body { margin: 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Se
 .log-line[data-source="documents"] { color: #fcd34d; }   /* amber-300 */
 .log-line.log-error { color: #fca5a5 !important; }       /* red-300 */
 
+/* ── Segmentation : doc with no line units (failed import) ───────────────── */
+.prep-seg-import-broken {
+  padding: 12px 16px;
+  margin: 12px;
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #7c2d12;
+  line-height: 1.55;
+}
+.prep-seg-import-broken strong { color: #9a3412; }
+.prep-seg-import-broken p { margin: 0.5rem 0; }
+.prep-seg-import-broken-detail {
+  font-family: monospace;
+  font-size: 11px;
+  color: var(--prep-muted, #6c757d);
+  background: #fff;
+  border-radius: 4px;
+  padding: 4px 8px;
+  word-break: break-word;
+}
+
 /* ── Generic modal confirm dialog (lib/modalConfirm.ts) ──────────────────── */
 .prep-modal-confirm-overlay {
   position: fixed;
