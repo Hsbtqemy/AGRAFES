@@ -1092,3 +1092,25 @@ Cette synthèse **ne remplace pas** les sous-sections détaillées ci-dessous ; 
 - Implémenter selon la décision
 
 **Priorité** : P3 — cohérence UX, pas urgent
+
+---
+
+#### F5 — Validation regex au boot du sidecar (post-migration `re` → `regex`)
+
+**Contexte** : depuis v0.1.41, `curation.py` utilise `regex` (PyPI) au lieu de stdlib `re`. La migration a été validée sur la DB de l'utilisateur principal via [scripts/validate_regex_migration.py](../scripts/validate_regex_migration.py) — 0 patterns custom à auditer. **Mais c'est un instantané d'une seule DB**, pas une garantie que toutes les DBs utilisateurs sont safe. Si un autre utilisateur a stocké un pattern dans `corpus_info.meta_json` qui se comporte différemment entre `re` et `regex.V0`, le bug apparaîtra silencieusement au prochain bump (mauvaise curation, sans erreur visible).
+
+**Travail proposé** :
+- Au démarrage du sidecar (après ouverture de la DB), lancer un appel passif à la logique de `validate_regex_migration.py` sur la DB ouverte.
+- Si patterns flaggés : log WARN explicite avec les détails (pattern, raison du flag, recommandation).
+- Optionnellement : exposer la liste via `GET /diagnostics` ou un endpoint dédié, pour que le menu "?" Shell puisse l'afficher.
+- Ne PAS bloquer le boot — juste signaler. L'utilisateur décide d'auditer ou non.
+
+**Critères d'acceptation** :
+- Sidecar démarre normalement même si patterns flaggés.
+- Logs sidecar contiennent un WARN listant les patterns à auditer.
+- Logique de détection partagée entre le script standalone et le code sidecar (factoriser dans `multicorpus_engine.curation` ou un module dédié `multicorpus_engine.diagnostics_regex`).
+- Tests : un fixture DB avec un pattern POSIX `[[:alpha:]]` confirme que le WARN se déclenche.
+
+**Priorité** : P3 — défensif. Le risque est faible (patterns custom sont rares en pratique) mais le coût d'implémentation aussi (~30 min de boot-time logic + ~1h pour factoriser proprement). À programmer si on observe un cas réel ou avant de migrer d'autres modules vers `regex`.
+
+**Référence** : [HANDOFF_SHELL.md](../HANDOFF_SHELL.md), [CONTRIBUTING.md § Curation regex](../CONTRIBUTING.md#curation-regex-depuis-v0141), [scripts/validate_regex_migration.py](../scripts/validate_regex_migration.py).
