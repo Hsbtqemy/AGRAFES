@@ -48,17 +48,25 @@ export function filterApplyHistoryByScope(
  * Merge in-memory session events with events fetched from the DB.
  *
  * Rules :
- *   - Events present in DB (matched by applied_at timestamp) are kept from
- *     the DB version. This handles the race where a session event was
+ *   - The scope filter applies to DB events ONLY. Session events are
+ *     volatile (lost on reload, only persisted via background recordApplyHistory)
+ *     and the original UI always showed them all regardless of scope. We
+ *     preserve that behavior — fixing this asymmetry is a follow-up
+ *     decision, NOT a refactor concern.
+ *   - Events present in filtered DB (matched by applied_at timestamp) are
+ *     kept from the DB version. Handles the race where a session event was
  *     persisted between the unshift and the next list refresh.
- *   - Events session-only (timestamp not in DB) are kept as session events
- *     and appear FIRST in the result (most recent local activity).
- *   - The combined list is then truncated to `cap` entries.
+ *   - Session-only events (applied_at not in filtered DB times) appear FIRST.
+ *   - The combined list is truncated to `cap` entries.
+ *
+ * NOTE: choix par défaut — préserver le comportement original (asymétrique).
+ * Si on veut filtrer session par scope aussi, faire un follow-up commit avec
+ * justification UX explicite, pas dans cette extraction.
  *
  * @param sessionEvents  Events from the in-memory session (typically prepended
- *                       by the apply flow, may have id=null)
+ *                       by the apply flow, may have id=undefined)
  * @param dbEvents       Events from POST /curate/apply-history (canonical)
- * @param options        scope filter + cap
+ * @param options        scope filter (applied to DB only) + cap
  * @returns              Merged, deduplicated, capped list
  */
 export function mergeApplyHistory(
@@ -70,8 +78,7 @@ export function mergeApplyHistory(
   const cap = options.cap ?? 50;
   const filteredDb = filterApplyHistoryByScope(dbEvents, scope);
   const dbTimes = new Set(filteredDb.map((e) => e.applied_at));
-  const filteredSession = filterApplyHistoryByScope(sessionEvents, scope);
-  const sessionOnly = filteredSession.filter((e) => !dbTimes.has(e.applied_at));
+  const sessionOnly = sessionEvents.filter((e) => !dbTimes.has(e.applied_at));
   return [...sessionOnly, ...filteredDb].slice(0, cap);
 }
 

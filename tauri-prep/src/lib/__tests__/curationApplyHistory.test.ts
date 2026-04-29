@@ -110,8 +110,11 @@ describe("mergeApplyHistory — invariants", () => {
     expect(merged[2].applied_at).toBe("T_db1");
   });
 
-  // Invariant 5 : filtrage par scope
-  it("Invariant 5 — scope='doc' filtre session ET db", () => {
+  // Invariant 5 : filtrage par scope sur DB uniquement (préserve comportement
+  // original asymétrique — session events sont volatiles, UX a toujours
+  // montré tous les events session quel que soit le filtre. Si on veut
+  // changer ça, follow-up séparé.)
+  it("Invariant 5 — scope='doc' filtre DB uniquement, pas session", () => {
     const session = [
       makeEvent({ id: undefined, applied_at: "T_s_doc", scope: "doc" }),
       makeEvent({ id: undefined, applied_at: "T_s_all", scope: "all" }),
@@ -121,7 +124,8 @@ describe("mergeApplyHistory — invariants", () => {
       makeEvent({ id: 2, applied_at: "T_db_all", scope: "all" }),
     ];
     const merged = mergeApplyHistory(session, db, { scope: "doc" });
-    expect(merged.map(e => e.applied_at)).toEqual(["T_s_doc", "T_db_doc"]);
+    // Les 2 events session apparaissent (asymétrie préservée), DB filtrée.
+    expect(merged.map(e => e.applied_at)).toEqual(["T_s_doc", "T_s_all", "T_db_doc"]);
   });
 
   it("Invariant 5 bis — scope='' (vide) ne filtre rien", () => {
