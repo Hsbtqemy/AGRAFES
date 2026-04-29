@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  buildMinimapHtml,
+  formatMinimap,
   formatNoChangesDiag,
   formatChangesSummary,
   formatTruncationNotice,
@@ -9,37 +9,37 @@ import {
   formatImpactNotice,
 } from "../curationDiagPanel.ts";
 
-// ─── buildMinimapHtml ────────────────────────────────────────────────────────
+// ─── formatMinimap ────────────────────────────────────────────────────────
 
-describe("buildMinimapHtml", () => {
+describe("formatMinimap", () => {
   it("Invariant 1 — total=0 → 0 changed bars", () => {
-    const html = buildMinimapHtml(5, 0);
+    const html = formatMinimap(5, 0);
     expect((html.match(/changed/g) || [])).toHaveLength(0);
   });
 
   it("Invariant 2 — changed >= total → tous bars changed", () => {
-    const html = buildMinimapHtml(100, 50);  // density capped à 1
+    const html = formatMinimap(100, 50);  // density capped à 1
     expect((html.match(/changed/g) || [])).toHaveLength(12);
   });
 
   it("Invariant 3 — changedBars = round(density * bars)", () => {
     // density = 5/10 = 0.5, bars=12 → round(6) = 6
-    const html = buildMinimapHtml(5, 10);
+    const html = formatMinimap(5, 10);
     expect((html.match(/changed/g) || [])).toHaveLength(6);
   });
 
   it("Invariant 4 — bars total = paramètre (default 12)", () => {
-    const html = buildMinimapHtml(0, 100);
+    const html = formatMinimap(0, 100);
     expect((html.match(/<div class="prep-mm/g) || [])).toHaveLength(12);
   });
 
   it("Invariant 4 — bars custom respecté", () => {
-    const html = buildMinimapHtml(10, 20, 5);
+    const html = formatMinimap(10, 20, 5);
     expect((html.match(/<div class="prep-mm/g) || [])).toHaveLength(5);
   });
 
   it("changed=0 → 0 changed bars", () => {
-    const html = buildMinimapHtml(0, 100);
+    const html = formatMinimap(0, 100);
     expect((html.match(/changed/g) || [])).toHaveLength(0);
   });
 });

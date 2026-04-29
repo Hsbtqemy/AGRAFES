@@ -7,10 +7,10 @@
  * assigning to innerHTML and wiring click/keydown listeners.
  *
  * Invariants protégés par les tests __tests__/curationDiagPanel.test.ts :
- *   1. buildMinimapHtml : total=0 → 0 changed bars (density=0)
- *   2. buildMinimapHtml : changed>=total → density capped 1 → all bars changed
- *   3. buildMinimapHtml : changedBars = Math.round(density * bars)
- *   4. buildMinimapHtml : nombre total de bars = paramètre bars (default 12)
+ *   1. formatMinimap : total=0 → 0 changed bars (density=0)
+ *   2. formatMinimap : changed>=total → density capped 1 → all bars changed
+ *   3. formatMinimap : changedBars = Math.round(density * bars)
+ *   4. formatMinimap : nombre total de bars = paramètre bars (default 12)
  *   5. formatNoChangesDiag : message standard avec total inséré
  *   6. formatChangesSummary : nombres bruts injectés (pas d'escape — purs nombres)
  *   7. formatTruncationNotice : retourne "" si shown >= totalChanged
@@ -32,7 +32,7 @@ import { escHtml } from "./diff.ts";
  * @param total    Total units in the document (0 → all bars empty)
  * @param bars     Total bars rendered (default 12)
  */
-export function buildMinimapHtml(changed: number, total: number, bars: number = 12): string {
+export function formatMinimap(changed: number, total: number, bars: number = 12): string {
   const density = total > 0 ? Math.min(changed / total, 1) : 0;
   const changedBars = Math.round(density * bars);
   return Array.from({ length: bars }, (_, i) =>

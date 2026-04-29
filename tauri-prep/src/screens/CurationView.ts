@@ -79,7 +79,7 @@ import {
 } from "../lib/curationCounters.ts";
 import { buildSampleInfo } from "../lib/curationSampleInfo.ts";
 import {
-  buildMinimapHtml,
+  formatMinimap,
   formatNoChangesDiag,
   formatChangesSummary,
   formatTruncationNotice,
@@ -2824,7 +2824,7 @@ export class CurationView {
   private _renderCurateMinimap(changed: number, total: number): void {
     const mmEl = this._q("#act-curate-minimap");
     if (!mmEl) return;
-    mmEl.innerHTML = buildMinimapHtml(changed, total);
+    mmEl.innerHTML = formatMinimap(changed, total);
   }
 
   private async _fillCuratePanesWithDocumentText(docId: number): Promise<void> {

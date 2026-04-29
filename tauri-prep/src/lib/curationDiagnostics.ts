@@ -5,6 +5,10 @@
  * No DOM manipulation, no I/O. Renders to HTML strings — caller is responsible
  * for assigning to `container.innerHTML`.
  *
+ * Note pragmatique : `appendCurateLogEntry` lit `Date.now()` pour estampiller
+ * la création — pas strictement pur. `formatCurateLogEntry` reste déterministe
+ * en prenant `now` en paramètre (testable sans mock du temps).
+ *
  * Invariants protégés par les tests __tests__/curationDiagnostics.test.ts :
  *   1. appendCurateLogEntry : ordre LIFO (newest first via unshift)
  *   2. appendCurateLogEntry : cap respecté (default 10) ; troncature en queue
