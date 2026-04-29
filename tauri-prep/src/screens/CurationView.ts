@@ -77,6 +77,7 @@ import {
   countManualOverrides,
   hasAnyManualOverride,
 } from "../lib/curationCounters.ts";
+import { buildSampleInfo } from "../lib/curationSampleInfo.ts";
 
 // ─── Curation review persistence ──────────────────────────────────────────────
 
@@ -1669,19 +1670,20 @@ export class CurationView {
   }
 
   private _updateSampleInfo(): void {
+    // HTML/className délégué au helper pur (testé dans
+    // __tests__/curationSampleInfo.test.ts). Reste DOM-bound :
+    // mute display + className + innerHTML selon le résultat.
     const el = this._q<HTMLElement>("#act-curate-sample-info");
     if (!el) return;
-    const shown = this._curateExamples.length;
-    const changed = this._curateGlobalChanged;
-    if (changed === 0 || shown === 0) { el.style.display = "none"; return; }
+    const banner = buildSampleInfo(
+      this._curateExamples.length,
+      this._curateGlobalChanged,
+      CURATE_PREVIEW_LIMIT,
+    );
+    if (!banner) { el.style.display = "none"; return; }
     el.style.display = "";
-    if (shown < changed) {
-      el.className = "prep-curate-sample-info curate-sample-truncated";
-      el.innerHTML = `&#9432;&#160;<strong>${shown}</strong> modification(s) affich&#233;e(s) sur <strong>${changed}</strong> au total &#8212; <span class="sample-scope-note">preview limit&#233;e &#224; ${CURATE_PREVIEW_LIMIT}&#160;exemples</span>`;
-    } else {
-      el.className = "prep-curate-sample-info curate-sample-full";
-      el.innerHTML = `&#10003;&#160;${shown} modification(s) affich&#233;e(s) &#8212; <span class="sample-scope-note">liste compl&#232;te</span>`;
-    }
+    el.className = banner.className;
+    el.innerHTML = banner.html;
   }
 
   private _updateFilterBadge(panel?: HTMLElement | null): void {
