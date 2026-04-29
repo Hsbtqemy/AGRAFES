@@ -45,7 +45,7 @@ Cette tension doit être nommée dans toute proposition de refonte.
 | **SegmentationView** | 2412 | Mature, en évolution | Filtres anomalies récents (segments courts + ponct. orpheline). Pas d'undo merge/split. | Élevée |
 | **CurationView** | **3651** | Mature, décomposée en lib/* (post-v0.1.41) | Le bug `$1` (v0.1.40), le clipping layout (v0.1.40), le confirm bar mal positionné (v0.1.40) — tous tombés en cascade. La décomposition en 9 modules purs sous `lib/curation*.ts` (Phase 1-5e, ~280 tests Vitest) a réduit la fragilité par taille. | Élevée |
 | **AlignPanel** | 1971 | Mature | Famille review mode rodé. Collisions encore complexes à résoudre pour un débutant. | Moyenne |
-| **AnnotationView** | 818 | Mature, utile en fin de pipeline | Étape finale de la préparation avant passage au concordancier (Explorer). Pas de feature work récent — pas par manque de valeur, mais parce que les frictions amont (Import → Segmentation → Curation) consomment l'essentiel des sessions. | Faible (rarement atteinte, pas inutile) |
+| **AnnotationView** | 818 | Mature, **efficace** | Étape finale avant passage au concordancier. Travail = relecture/vérification rapide pour clore proprement. Le temps passé court y est un **signal positif** (workflow efficient), pas un manque d'engagement. Toutes les frictions du pipeline sont en amont (Import/Segmentation/Curation). | Faible en durée, indispensable en finalité |
 | **MetadataScreen** | 3106 | Mature | Tous les `confirm()` natifs remplacés par modalConfirm v0.1.41. Bulk update et batch role rodés. | Moyenne |
 | **ExportsScreen** | 1723 | Mature, peu touchée | TEI/TMX/CSV/SKE/JSONL stables. QA gate optionnel intégré. | Moyenne (en fin de pipeline) |
 | **ActionsScreen** | 917 | Hub/dispatcher post-refactor | A perdu sa logique métier (extraite vers CurationView, SegmentationView, AnnotationView). Reste utile pour reindex FTS. | Faible |
@@ -362,10 +362,12 @@ Reconstitué depuis [docs/BACKLOG_PREP_AUDIT.md](docs/BACKLOG_PREP_AUDIT.md), [d
 
 - Multi-window Tauri pour isolation de pannes JS (Prep crash → Explorer survit) : à mesurer avant d'investir.
 - CSS Modules / Shadow DOM : long, pas urgent. Backlog passif.
-<!-- AnnotationView : à conserver. Utile comme étape finale avant passage au
-     concordancier. Faible usage = friction amont (import/segment/curation),
-     pas absence de valeur. Les écrans peu utilisés ne sont pas des écrans
-     inutiles dans ce pipeline ; le workflow est séquentiel. -->
+<!-- AnnotationView : à conserver. Étape finale efficace (relecture/vérification
+     rapide avant concordancier). Le temps passé court = signal positif de
+     workflow efficient, pas désengagement. Toutes les frictions du pipeline
+     sont en amont (Import/Segmentation/Curation) — c'est là que doivent aller
+     les efforts de réduction de friction, pas vers la suppression d'écrans
+     finaux qui marchent bien. -->
 
 ---
 
