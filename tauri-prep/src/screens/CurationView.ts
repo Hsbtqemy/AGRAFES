@@ -87,6 +87,18 @@ import {
   formatGotoFirstAction,
   formatImpactNotice,
 } from "../lib/curationDiagPanel.ts";
+import {
+  formatDiffEmptyMessage,
+  formatDiffStatusBadge,
+  formatDiffOverrideBadge,
+  formatDiffExceptionBadge,
+  formatDiffForcedBadge,
+  getRuleLabelsForExample,
+  formatDiffRuleBadges,
+  getDiffRowClasses,
+  formatDiffPaginationLabel,
+  formatDiffRowTitle,
+} from "../lib/curationDiffList.ts";
 
 // ─── Curation review persistence ──────────────────────────────────────────────
 
@@ -2896,15 +2908,7 @@ export class CurationView {
     const el = this._q<HTMLElement>("#act-diff-list");
     if (!el) return;
     if (examples.length === 0) {
-      let msg: string;
-      if (this._activeRuleFilter) {
-        msg = `Aucune modification pour &#171;&#160;${_escHtml(this._activeRuleFilter)}&#160;&#187; dans cet &#233;chantillon. <button class="prep-btn-inline-link" id="diff-pane-clear-filter">Effacer le filtre</button>`;
-      } else if (this._curateGlobalChanged === 0) {
-        msg = `&#10003;&#160;Aucune modification &#8212; document propre.`;
-      } else {
-        msg = `Aucun exemple dans cet &#233;chantillon.`;
-      }
-      el.innerHTML = `<p class="empty-hint" style="padding:8px">${msg}</p>`;
+      el.innerHTML = formatDiffEmptyMessage(this._activeRuleFilter, this._curateGlobalChanged);
       el.querySelector<HTMLElement>("#diff-pane-clear-filter")?.addEventListener("click", () => {
         this._setRuleFilter(null, this._q<HTMLElement>("#act-preview-panel"));
       });
@@ -2929,28 +2933,15 @@ export class CurationView {
       tr.className = "diff-row";
       tr.setAttribute("role", "row");
       tr.setAttribute("aria-selected", "false");
-      const ruleCount = [...new Set((ex.matched_rule_ids ?? []).map(idx => this._curateRuleLabels[idx] ?? `r${idx + 1}`))].length;
-      tr.title = ruleCount > 1 ? `Modification par ${ruleCount} règles — cliquer pour sélectionner` : "Cliquer pour sélectionner cette modification";
-      const ruleLabels = [...new Set((ex.matched_rule_ids ?? []).map(idx => this._curateRuleLabels[idx] ?? `r${idx + 1}`))];
-      const ruleBadgeHtml = ruleLabels.length
-        ? ruleLabels.map(l => `<span class="prep-diff-rule-badge">${_escHtml(l)}</span>`).join(" ")
-        : `<span class="prep-diff-rule-badge prep-diff-rule-badge-unknown">—</span>`;
+      const ruleLabels = getRuleLabelsForExample(ex, this._curateRuleLabels);
+      tr.title = formatDiffRowTitle(ruleLabels.length);
+      const ruleBadgeHtml = formatDiffRuleBadges(ruleLabels);
       const st = ex.status ?? "pending";
-      if (st !== "pending") tr.classList.add(`diff-${st}`);
-      const statusBadgeHtml = st !== "pending"
-        ? `<span class="prep-diff-status-badge prep-diff-status-${st}" title="${_escHtml(CurationView._STATUS_LABEL[st] ?? st)}">${st === "accepted" ? "✓" : "✗"}</span>`
-        : "";
-      const overrideBadgeHtml = ex.is_manual_override ? `<span class="prep-diff-override-badge" title="Modifié manuellement">✏</span>` : "";
-      const exceptionBadgeHtml = (ex.is_exception_ignored || ex.is_exception_override)
-        ? `<span class="prep-diff-exception-badge" title="${ex.is_exception_ignored ? "Exception persistée : ignoré durablement" : "Exception persistée : override durable"}">🔒</span>` : "";
-      const forcedReason = ex.preview_reason;
-      const forcedBadgeHtml = forcedReason && forcedReason !== "standard"
-        ? `<span class="prep-diff-forced-badge prep-diff-forced-${forcedReason}" title="${forcedReason === "forced" ? "Ouverture ciblée depuis Exceptions" : forcedReason === "forced_ignored" ? "Ouverture ciblée — neutralisée par exception ignore" : "Ouverture ciblée — aucune modification active"}">↗</span>` : "";
-      if (forcedReason && forcedReason !== "standard") {
-        tr.classList.add("diff-forced-row");
-        if (forcedReason === "forced_ignored")   tr.classList.add("diff-forced-ignored");
-        if (forcedReason === "forced_no_change") tr.classList.add("diff-forced-no-change");
-      }
+      for (const cls of getDiffRowClasses(ex)) tr.classList.add(cls);
+      const statusBadgeHtml = formatDiffStatusBadge(st, CurationView._STATUS_LABEL[st] ?? st);
+      const overrideBadgeHtml = formatDiffOverrideBadge(ex.is_manual_override);
+      const exceptionBadgeHtml = formatDiffExceptionBadge(ex.is_exception_ignored, ex.is_exception_override);
+      const forcedBadgeHtml = formatDiffForcedBadge(ex.preview_reason);
       const effectiveAfter = ex.manual_after ?? ex.after;
       const showBefore = ex.before !== effectiveAfter;
       const beforeHtml = showBefore ? `<span class="prep-diff-before-hint">${_renderSpecialChars(_escHtml(ex.before))}</span>` : "";
@@ -3004,7 +2995,7 @@ export class CurationView {
       });
       const pageLabel = document.createElement("span");
       pageLabel.className = "prep-diff-page-label";
-      pageLabel.textContent = `Page ${page + 1} / ${totalPages}  (${examples.length} exemples chargés${this._curateGlobalChanged > examples.length ? ` sur ${this._curateGlobalChanged} total` : ""})`;
+      pageLabel.textContent = formatDiffPaginationLabel(page, totalPages, examples.length, this._curateGlobalChanged);
       const nextPageBtn = document.createElement("button");
       nextPageBtn.className = "btn btn-sm prep-diff-page-btn";
       nextPageBtn.textContent = "Suivants →";
