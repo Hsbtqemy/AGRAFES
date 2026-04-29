@@ -416,6 +416,12 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         http_status: int,
         details: object | None = None,
     ) -> None:
+        # Flag for telemetry _track_stage : a 4xx/5xx response within a stage
+        # handler is now distinguishable from a normal completion. The flag is
+        # request-scoped (BaseHTTPRequestHandler is one instance per
+        # connection ; with HTTP keep-alive instances are reused, but
+        # _track_stage resets the flag on enter, so prior requests don't leak).
+        self._last_was_error = True
         self._send_json(
             error_payload(message, code=code, details=details),
             status=http_status,
@@ -454,21 +460,27 @@ class _CorpusHandler(BaseHTTPRequestHandler):
     def _track_stage(self, stage: str, doc_id: int | None = None):
         """Context manager: measures duration + emits stage_completed telemetry.
 
-        Wraps a stage handler block. On normal exit, emits success=True.
-        On unhandled exception, emits success=False and re-raises.
+        Wraps a stage handler block. Three outcomes :
+          - Normal exit, no _send_error called → success=True
+          - _send_error called (4xx/5xx, validation refused) → success=False
+          - Unhandled exception → success=False and re-raises
 
-        NOTE: choix par défaut — un handler qui appelle self._send_error (4xx)
-        sans raiser est compté comme success=True (le moteur a fait son job
-        de validation). Si on veut distinguer 2xx vs 4xx dans la télémétrie,
-        instrumenter _send_error pour set un flag self._last_send_was_error
-        et le lire ici. Pas critique pour l'instant — les 4xx sont rares
-        sur les stages eux-mêmes.
+        The flag self._last_was_error is reset on enter and read on exit.
+        Set to True by _send_error. This works because BaseHTTPRequestHandler
+        instances are connection-local ; with keep-alive a single instance
+        may handle multiple requests sequentially, but _track_stage's reset
+        scopes the flag to the current stage call.
         """
         import time as _time
         t0 = _time.perf_counter()
+        # Reset flag — defensive against prior requests on same instance
+        self._last_was_error = False
         success = True
         try:
             yield
+            # No exception : check if handler called _send_error
+            if getattr(self, "_last_was_error", False):
+                success = False
         except Exception:
             success = False
             raise
@@ -8692,6 +8704,16 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         Schema validation is minimal: `event` is required and must be a
         non-empty string. Any other field is forwarded as payload.
 
+        Reserved keys are stripped from the payload before forwarding to
+        emit_event :
+          - "event", "ts" : would override our canonical fields (defense in
+            depth — emit_event also strips them).
+          - "db_path", "event_name" : positional argument names of emit_event ;
+            if forwarded as kwargs they would raise TypeError "multiple
+            values for keyword argument" (caught by emit_event's swallow,
+            but resulting in silent event loss). Strip here so events
+            actually get persisted.
+
         Always returns 204 No Content (telemetry must never block the caller).
         """
         from multicorpus_engine.telemetry import emit_event
@@ -8702,8 +8724,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             self.send_response(204)
             self.end_headers()
             return
-        # Strip the 'event' key from the payload to avoid duplicating it
-        payload = {k: v for k, v in body.items() if k != "event"}
+        _RESERVED_KEYS = {"event", "ts", "db_path", "event_name"}
+        payload = {k: v for k, v in body.items() if k not in _RESERVED_KEYS}
         db_path = getattr(self.server, "db_path", None)
         if isinstance(db_path, str) and db_path:
             emit_event(db_path, event_name.strip(), **payload)
