@@ -37,6 +37,7 @@ import os
 import secrets
 import sqlite3
 import threading
+from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Optional
@@ -449,6 +450,41 @@ class _CorpusHandler(BaseHTTPRequestHandler):
     def _lock(self) -> threading.Lock:
         return self.server.lock  # type: ignore[attr-defined]
 
+    @contextmanager
+    def _track_stage(self, stage: str, doc_id: int | None = None):
+        """Context manager: measures duration + emits stage_completed telemetry.
+
+        Wraps a stage handler block. On normal exit, emits success=True.
+        On unhandled exception, emits success=False and re-raises.
+
+        NOTE: choix par défaut — un handler qui appelle self._send_error (4xx)
+        sans raiser est compté comme success=True (le moteur a fait son job
+        de validation). Si on veut distinguer 2xx vs 4xx dans la télémétrie,
+        instrumenter _send_error pour set un flag self._last_send_was_error
+        et le lire ici. Pas critique pour l'instant — les 4xx sont rares
+        sur les stages eux-mêmes.
+        """
+        import time as _time
+        t0 = _time.perf_counter()
+        success = True
+        try:
+            yield
+        except Exception:
+            success = False
+            raise
+        finally:
+            try:
+                from multicorpus_engine.telemetry import emit_event
+                duration_ms = int((_time.perf_counter() - t0) * 1000)
+                db_path = getattr(self.server, "db_path", None)
+                if isinstance(db_path, str) and db_path:
+                    payload = {"stage": stage, "duration_ms": duration_ms, "success": success}
+                    if doc_id is not None:
+                        payload["doc_id"] = doc_id
+                    emit_event(db_path, "stage_completed", **payload)
+            except Exception:  # noqa: BLE001
+                pass  # telemetry must never propagate
+
     def _jobs(self) -> JobManager:
         return self.server.jobs  # type: ignore[attr-defined]
 
@@ -684,13 +720,15 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             elif path == "/index":
                 self._handle_index(body)
             elif path == "/import":
-                self._handle_import(body)
+                with self._track_stage("import"):
+                    self._handle_import(body)
             elif path == "/import/preview":
                 self._handle_import_preview(body)
             elif path == "/annotate":
                 self._handle_annotate(body)
             elif path == "/curate":
-                self._handle_curate(body)
+                with self._track_stage("curate", doc_id=body.get("doc_id") if isinstance(body, dict) else None):
+                    self._handle_curate(body)
             elif path == "/curate/preview":
                 self._handle_curate_preview(body)
             elif path == "/curate/exceptions":
@@ -754,7 +792,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             elif path == "/units/split":
                 self._handle_units_split(body)
             elif path == "/segment":
-                self._handle_segment(body)
+                with self._track_stage("segment", doc_id=body.get("doc_id") if isinstance(body, dict) else None):
+                    self._handle_segment(body)
             elif path.startswith("/families/") and path.endswith("/segment"):
                 parts = path.split("/")  # ['', 'families', '{id}', 'segment']
                 if len(parts) == 4:
@@ -776,7 +815,12 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 else:
                     self._send_error("Unknown route: " + path, code=ERR_NOT_FOUND, http_status=404)
             elif path == "/align":
-                self._handle_align(body)
+                # NOTE: doc_id absent for cross-corpus runs ; pass pivot if available
+                _align_doc = None
+                if isinstance(body, dict):
+                    _align_doc = body.get("pivot_doc_id") or body.get("doc_id")
+                with self._track_stage("align", doc_id=_align_doc):
+                    self._handle_align(body)
             elif path == "/documents/update":
                 self._handle_documents_update(body)
             elif path == "/documents/bulk_update":
@@ -789,22 +833,26 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 self._handle_doc_relations_set(body)
             elif path == "/doc_relations/delete":
                 self._handle_doc_relations_delete(body)
-            elif path == "/export/tei":
-                self._handle_export_tei(body)
-            elif path == "/export/conllu":
-                self._handle_export_conllu(body)
-            elif path == "/export/token_query_csv":
-                self._handle_export_token_query_csv(body)
-            elif path == "/export/ske":
-                self._handle_export_ske(body)
-            elif path == "/export/tmx":
-                self._handle_export_tmx(body)
-            elif path == "/export/bilingual":
-                self._handle_export_bilingual(body)
-            elif path == "/export/align_csv":
-                self._handle_export_align_csv(body)
-            elif path == "/export/run_report":
-                self._handle_export_run_report(body)
+            elif path.startswith("/export/"):
+                # All export sub-routes share the "export" stage label for telemetry.
+                # doc_id is optional (some exports are corpus-level).
+                _export_doc = body.get("doc_id") if isinstance(body, dict) else None
+                _export_handlers = {
+                    "/export/tei": self._handle_export_tei,
+                    "/export/conllu": self._handle_export_conllu,
+                    "/export/token_query_csv": self._handle_export_token_query_csv,
+                    "/export/ske": self._handle_export_ske,
+                    "/export/tmx": self._handle_export_tmx,
+                    "/export/bilingual": self._handle_export_bilingual,
+                    "/export/align_csv": self._handle_export_align_csv,
+                    "/export/run_report": self._handle_export_run_report,
+                }
+                _handler = _export_handlers.get(path)
+                if _handler is None:
+                    self._send_error(f"Unknown route: {path}", code=ERR_NOT_FOUND, http_status=404)
+                else:
+                    with self._track_stage("export", doc_id=_export_doc):
+                        _handler(body)
             elif path == "/db/backup":
                 self._handle_db_backup(body)
             elif path == "/corpus/info":
@@ -823,6 +871,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 self._handle_documents_set_text_start(body)
             elif path == "/shutdown":
                 self._handle_shutdown()
+            elif path == "/telemetry":
+                self._handle_telemetry(body)
             elif path == "/jobs":
                 self._handle_job_submit(body)
             elif path == "/jobs/enqueue":
@@ -3115,6 +3165,17 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 })
                 forced_unit_injected = True
 
+        # Telemetry : cap reached if we returned exactly limit_examples or
+        # there are units_changed beyond what was sampled.
+        if len(examples) >= limit_examples and units_changed > len(examples):
+            try:
+                from multicorpus_engine.telemetry import emit_event
+                _db = getattr(self.server, "db_path", None)
+                if isinstance(_db, str) and _db:
+                    emit_event(_db, "cap_hit", cap_name="curate_preview_5000",
+                               actual_count=units_changed, doc_id=doc_id)
+            except Exception:  # noqa: BLE001
+                pass
         self._send_json(success_payload({
             "doc_id": doc_id,
             "stats": {
@@ -4526,6 +4587,17 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         if calibrate_to is not None:
             payload["calibrate_to"] = calibrate_to
             payload["calibrate_ratio_pct"] = calibrate_ratio_pct
+        # Telemetry : cap reached if we hit the limit (seg_n increments past
+        # limit just before breaking out of both loops).
+        if len(segments) >= limit:
+            try:
+                from multicorpus_engine.telemetry import emit_event
+                _db = getattr(self.server, "db_path", None)
+                if isinstance(_db, str) and _db:
+                    emit_event(_db, "cap_hit", cap_name="segment_preview_5000",
+                               actual_count=len(segments), doc_id=doc_id)
+            except Exception:  # noqa: BLE001
+                pass
         self._send_json(success_payload(payload))
 
     def _handle_units_merge(self, body: dict) -> None:
@@ -6931,6 +7003,29 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             self._send_error("doc_ids must be a list of integers", code=ERR_BAD_REQUEST, http_status=400)
             return
         placeholders = ",".join("?" * len(doc_ids))
+
+        # Telemetry preview: collect had_curation/had_alignment BEFORE delete
+        # for each doc_id — emitted after the delete commits (one event per doc).
+        # NOTE: choix par défaut — un event par doc supprimé. Si le batch est
+        # large (rare), ça génère N lignes NDJSON. Acceptable pour le volume
+        # d'usage actuel.
+        _telemetry_pre: list[dict] = []
+        try:
+            _conn_pre = self._conn()
+            for did in doc_ids:
+                had_cur = _conn_pre.execute(
+                    "SELECT 1 FROM curation_apply_history WHERE doc_id = ? LIMIT 1",
+                    (did,),
+                ).fetchone() is not None
+                had_align = _conn_pre.execute(
+                    "SELECT 1 FROM alignment_links WHERE pivot_doc_id = ? OR target_doc_id = ? LIMIT 1",
+                    (did, did),
+                ).fetchone() is not None
+                _telemetry_pre.append({
+                    "doc_id": did, "had_curation": had_cur, "had_alignment": had_align,
+                })
+        except Exception:  # noqa: BLE001
+            pass  # telemetry must never block the delete
         deleted = 0
         with self._lock():
             conn = self._conn()
@@ -6980,6 +7075,15 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             cur = conn.execute(f"DELETE FROM documents WHERE doc_id IN ({placeholders})", doc_ids)
             deleted = cur.rowcount
             conn.commit()
+        # Telemetry : emit one doc_deleted event per doc, post-commit
+        try:
+            from multicorpus_engine.telemetry import emit_event
+            _db = getattr(self.server, "db_path", None)
+            if isinstance(_db, str) and _db:
+                for entry in _telemetry_pre:
+                    emit_event(_db, "doc_deleted", **entry)
+        except Exception:  # noqa: BLE001
+            pass
         self._send_json(success_payload({"deleted": deleted, "doc_ids": doc_ids}))
 
     def _handle_doc_relations_delete(self, body: dict) -> None:
@@ -8576,6 +8680,37 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 name="SidecarShutdown",
             ).start()
 
+    def _handle_telemetry(self, body: dict) -> None:
+        """POST /telemetry — append a telemetry event to the local NDJSON.
+
+        SECURITY NOTE : this endpoint is intentionally NOT token-protected.
+        It comes from the local frontend (loopback-only HTTP) and the worst
+        an attacker on the local machine could do is pollute the local
+        NDJSON. Acceptable trade-off : keeps frontend code simple (no token
+        plumbing for fire-and-forget telemetry).
+
+        Schema validation is minimal: `event` is required and must be a
+        non-empty string. Any other field is forwarded as payload.
+
+        Always returns 204 No Content (telemetry must never block the caller).
+        """
+        from multicorpus_engine.telemetry import emit_event
+        event_name = body.get("event")
+        if not isinstance(event_name, str) or not event_name.strip():
+            # Even on bad input, don't error — just drop. Telemetry is
+            # best-effort by contract.
+            self.send_response(204)
+            self.end_headers()
+            return
+        # Strip the 'event' key from the payload to avoid duplicating it
+        payload = {k: v for k, v in body.items() if k != "event"}
+        db_path = getattr(self.server, "db_path", None)
+        if isinstance(db_path, str) and db_path:
+            emit_event(db_path, event_name.strip(), **payload)
+        # 204 No Content : no body, fire-and-forget contract
+        self.send_response(204)
+        self.end_headers()
+
 
 # ---------------------------------------------------------------------------
 # Server class
@@ -8672,6 +8807,20 @@ class CorpusServer:
             self.actual_port,
             self._db_path,
         )
+        # Telemetry meta-event: marks the start of a session in the NDJSON.
+        # Useful for offline analysis to delimit sessions.
+        try:
+            from multicorpus_engine import __version__ as _engine_ver
+            from multicorpus_engine.telemetry import emit_event as _emit
+            _emit(
+                self._db_path,
+                "sidecar_started",
+                version=_engine_ver,
+                db_path=str(self._db_path),
+                port=self.actual_port,
+            )
+        except Exception:  # noqa: BLE001
+            pass  # telemetry must never block startup
 
     def join(self) -> None:
         """Block until the server thread exits (call after start())."""

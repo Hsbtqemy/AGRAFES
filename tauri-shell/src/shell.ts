@@ -1567,6 +1567,31 @@ export async function initShell(): Promise<void> {
     } catch { /* ignore */ }
     void _setMode("constituer");
   });
+
+  // Bridge (chantier 2) : Curation diff jump → Segmentation focused on unit.
+  // Shell agit en simple relais : switch mode constituer puis re-dispatch un
+  // event pour prep qui possède le Conn et fait le travail (focus unit + emit
+  // stage_returned via telemetry helper).
+  window.addEventListener("agrafes:open-segmentation-unit", (e: Event) => {
+    const detail = (e as CustomEvent<{ docId: number; unitN: number }>).detail;
+    if (!detail || typeof detail.docId !== "number" || typeof detail.unitN !== "number") return;
+    void (async () => {
+      // Store target so prep can pick it up if mounting takes time
+      try {
+        sessionStorage.setItem("agrafes:seg-unit-nav", JSON.stringify(detail));
+      } catch { /* ignore */ }
+      // Switch to Constituer mode (mounts prep app)
+      await _setMode("constituer");
+      // After mount, re-dispatch the event prep listens to (constituerModule
+      // installs the listener at mount time, so the event is received).
+      // Brief delay so prep has time to install its listener.
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent("agrafes:prep-focus-segment-unit", {
+          detail: { docId: detail.docId, unitN: detail.unitN },
+        }));
+      }, 150);
+    })();
+  });
   document.body.dataset.mode = startMode;
   await _setMode(startMode);
   await _initDeepLinkRuntimeListener();
@@ -1699,6 +1724,99 @@ function _openDiagnosticsModal(): void {
     if (!_lastDiagText) return;
     void _exportDiagnosticFile(_lastDiagText);
   });
+}
+
+async function _openTelemetryModal(): Promise<void> {
+  const existing = document.getElementById("shell-telemetry-modal");
+  if (existing) { existing.remove(); return; }
+
+  const modal = document.createElement("div");
+  modal.id = "shell-telemetry-modal";
+  modal.className = "shell-about-modal"; // reuse overlay
+  modal.innerHTML = `
+    <div class="shell-diag-box" role="dialog" aria-modal="true" aria-label="Télémétrie locale">
+      <div class="shell-diag-header">
+        <span class="shell-diag-title">📊 Télémétrie locale</span>
+        <button class="shell-about-close" id="shell-tel-close" aria-label="Fermer">✕</button>
+      </div>
+      <div class="shell-diag-body shell-diag-loading" id="shell-tel-body">
+        Lecture du fichier .agrafes_telemetry.ndjson…
+      </div>
+      <div class="shell-diag-footer" id="shell-tel-footer" style="display:none">
+        <button class="shell-diag-btn" id="shell-tel-export">💾 Exporter NDJSON brut…</button>
+        <button class="shell-diag-btn" id="shell-tel-close2">Fermer</button>
+      </div>
+    </div>
+  `;
+  modal.addEventListener("click", (e) => { if (e.target === modal) modal.remove(); });
+  modal.querySelector("#shell-tel-close")!.addEventListener("click", () => modal.remove());
+  modal.querySelector("#shell-tel-close2")!.addEventListener("click", () => modal.remove());
+  document.body.appendChild(modal);
+
+  const onKey = (e: KeyboardEvent): void => {
+    if (e.key === "Escape") { modal.remove(); document.removeEventListener("keydown", onKey); }
+  };
+  document.addEventListener("keydown", onKey);
+
+  const bodyEl = modal.querySelector<HTMLElement>("#shell-tel-body")!;
+  const footerEl = modal.querySelector<HTMLElement>("#shell-tel-footer")!;
+  let _ndjsonRaw = "";
+
+  if (!_currentDbPath) {
+    bodyEl.className = "shell-diag-body";
+    bodyEl.textContent = "Aucune base ouverte — impossible de localiser le fichier de télémétrie.";
+    footerEl.style.display = "none";
+    return;
+  }
+
+  // Compute path: <db_dir>/.agrafes_telemetry.ndjson
+  const dbDir = _currentDbPath.replace(/\\/g, "/").replace(/\/[^/]+$/, "");
+  const telemetryPath = `${dbDir}/.agrafes_telemetry.ndjson`;
+
+  void (async () => {
+    try {
+      _ndjsonRaw = await invoke<string>("read_telemetry_ndjson", { path: telemetryPath });
+      const { parseTelemetryNdjson, aggregateTelemetry, formatTelemetryStats } = await import("./diagnostics.ts");
+      const { records, parseErrors } = parseTelemetryNdjson(_ndjsonRaw);
+      const stats = aggregateTelemetry(records, parseErrors);
+      bodyEl.className = "shell-diag-body";
+      bodyEl.textContent = formatTelemetryStats(stats);
+      footerEl.style.display = "";
+    } catch (err) {
+      bodyEl.className = "shell-diag-body";
+      const msg = String(err);
+      // File not found = no telemetry yet, normal case
+      if (msg.toLowerCase().includes("cannot read") || msg.toLowerCase().includes("no such file")) {
+        bodyEl.textContent = "Aucun événement de télémétrie pour cette base (fichier non créé).";
+      } else {
+        bodyEl.textContent = `Erreur lecture télémétrie :\n${msg}`;
+      }
+      footerEl.style.display = "";
+    }
+  })();
+
+  modal.querySelector("#shell-tel-export")!.addEventListener("click", () => {
+    if (!_ndjsonRaw) return;
+    void _exportTelemetryFile(_ndjsonRaw);
+  });
+}
+
+async function _exportTelemetryFile(content: string): Promise<void> {
+  try {
+    const { save } = await import("@tauri-apps/plugin-dialog");
+    const outPath = await save({
+      title: "Exporter télémétrie AGRAFES",
+      defaultPath: `agrafes-telemetry-${new Date().toISOString().slice(0, 10)}.ndjson`,
+      filters: [{ name: "NDJSON", extensions: ["ndjson"] }],
+    });
+    if (!outPath) return;
+    const { writeTextFile } = await import("@tauri-apps/plugin-fs");
+    await writeTextFile(outPath, content);
+    _showToast("Télémétrie exportée", 2500);
+    _shellLog("info", "telemetry", `Telemetry NDJSON exported`);
+  } catch (err) {
+    _showToast(`Erreur export : ${String(err)}`, 4000);
+  }
 }
 
 async function _exportDiagnosticFile(text: string): Promise<void> {
@@ -2057,6 +2175,7 @@ function _buildHeader(): void {
   };
 
   supportMenu.appendChild(_mkSupportItem("🔍 Diagnostic système…", () => _openDiagnosticsModal()));
+  supportMenu.appendChild(_mkSupportItem("📊 Télémétrie locale…", () => void _openTelemetryModal()));
   supportMenu.appendChild(_mkSupportItem("📋 Exporter logs…", () => void _exportLogBundle()));
   supportMenu.appendChild(_mkSupportItem("⬆ Vérifier les mises à jour…", () => void _checkUpdates()));
   supportMenu.appendChild((() => { const s = document.createElement("div"); s.className = "shell-support-menu-sep"; return s; })());

@@ -1311,6 +1311,29 @@ def openapi_spec() -> dict[str, Any]:
                     },
                 }
             },
+            "/telemetry": {
+                "post": {
+                    "summary": "Append a telemetry event to the local NDJSON (fire-and-forget, no auth)",
+                    "description": (
+                        "Local-only telemetry. Events are appended to "
+                        "<db_dir>/.agrafes_telemetry.ndjson. No network egress, "
+                        "no token required (loopback-only sidecar). Body must "
+                        "include `event` (string); any other fields are "
+                        "forwarded as payload. Always returns 204."
+                    ),
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/TelemetryRequest"},
+                            }
+                        },
+                    },
+                    "responses": {
+                        "204": {"description": "Event accepted (or silently dropped on bad input)"},
+                    },
+                }
+            },
             "/jobs": {
                 "get": {
                     "summary": "List async jobs",
@@ -2616,6 +2639,23 @@ def openapi_spec() -> dict[str, Any]:
                             },
                         },
                     ]
+                },
+                "TelemetryRequest": {
+                    "type": "object",
+                    "additionalProperties": True,
+                    "required": ["event"],
+                    "properties": {
+                        "event": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Event name (e.g. stage_completed, cap_hit, error_user_facing).",
+                        },
+                    },
+                    "description": (
+                        "Free-form telemetry event payload. `event` is the only required "
+                        "field; any additional fields (doc_id, stage, duration_ms, etc.) "
+                        "are appended verbatim to the NDJSON record."
+                    ),
                 },
                 "JobRecord": {
                     "type": "object",

@@ -316,3 +316,168 @@ export function formatDiagnosticsText(diag: Diag): string {
 
   return lines.join("\n");
 }
+
+// ── Telemetry NDJSON aggregation (PURE — testable in Node) ──────────────────
+
+export interface TelemetryRecord {
+  ts: string;
+  event: string;
+  // Free-form payload fields; we use string/number/bool/null
+  [key: string]: unknown;
+}
+
+export interface TelemetryStats {
+  total_events: number;
+  by_event: Record<string, number>;
+  by_stage: Record<string, { completed: number; success: number; avg_duration_ms: number }>;
+  caps_hit: Array<{ cap_name: string; count: number }>;
+  top_errors: Array<{ error_class: string; count: number }>;
+  parse_errors: number;
+  first_ts: string | null;
+  last_ts: string | null;
+}
+
+/**
+ * Parse an NDJSON string into telemetry records. Robust to malformed lines:
+ * any line that fails JSON.parse is counted but not blocking.
+ */
+export function parseTelemetryNdjson(content: string): { records: TelemetryRecord[]; parseErrors: number } {
+  const records: TelemetryRecord[] = [];
+  let parseErrors = 0;
+  for (const raw of content.split("\n")) {
+    const line = raw.trim();
+    if (!line) continue;
+    try {
+      const obj = JSON.parse(line);
+      if (obj && typeof obj === "object" && typeof obj.event === "string") {
+        records.push(obj as TelemetryRecord);
+      } else {
+        parseErrors++;
+      }
+    } catch {
+      parseErrors++;
+    }
+  }
+  return { records, parseErrors };
+}
+
+/**
+ * Aggregate telemetry records into stats. Pure function; no I/O.
+ */
+export function aggregateTelemetry(records: TelemetryRecord[], parseErrors = 0): TelemetryStats {
+  const stats: TelemetryStats = {
+    total_events: records.length,
+    by_event: {},
+    by_stage: {},
+    caps_hit: [],
+    top_errors: [],
+    parse_errors: parseErrors,
+    first_ts: null,
+    last_ts: null,
+  };
+
+  // Per-event counters
+  const stageDurations: Record<string, number[]> = {};
+  const stageSuccess: Record<string, number> = {};
+  const capsCount: Record<string, number> = {};
+  const errorsCount: Record<string, number> = {};
+
+  for (const rec of records) {
+    stats.by_event[rec.event] = (stats.by_event[rec.event] || 0) + 1;
+
+    if (typeof rec.ts === "string") {
+      if (stats.first_ts === null || rec.ts < stats.first_ts) stats.first_ts = rec.ts;
+      if (stats.last_ts === null || rec.ts > stats.last_ts) stats.last_ts = rec.ts;
+    }
+
+    if (rec.event === "stage_completed") {
+      const stage = String(rec.stage ?? "unknown");
+      const dur = typeof rec.duration_ms === "number" ? rec.duration_ms : 0;
+      const success = rec.success === true;
+      if (!stageDurations[stage]) stageDurations[stage] = [];
+      stageDurations[stage].push(dur);
+      if (success) stageSuccess[stage] = (stageSuccess[stage] || 0) + 1;
+    } else if (rec.event === "cap_hit") {
+      const cap = String(rec.cap_name ?? "unknown");
+      capsCount[cap] = (capsCount[cap] || 0) + 1;
+    } else if (rec.event === "error_user_facing") {
+      const cls = String(rec.error_class ?? "unknown");
+      errorsCount[cls] = (errorsCount[cls] || 0) + 1;
+    }
+  }
+
+  // Build by_stage
+  for (const stage of Object.keys(stageDurations)) {
+    const durs = stageDurations[stage];
+    const completed = durs.length;
+    const success = stageSuccess[stage] || 0;
+    const avg = completed > 0 ? Math.round(durs.reduce((a, b) => a + b, 0) / completed) : 0;
+    stats.by_stage[stage] = { completed, success, avg_duration_ms: avg };
+  }
+
+  // caps_hit sorted by count desc
+  stats.caps_hit = Object.entries(capsCount)
+    .map(([cap_name, count]) => ({ cap_name, count }))
+    .sort((a, b) => b.count - a.count);
+
+  // top_errors: top 5 by count desc
+  stats.top_errors = Object.entries(errorsCount)
+    .map(([error_class, count]) => ({ error_class, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
+
+  return stats;
+}
+
+/**
+ * Format telemetry stats as a markdown-friendly text block. Used by the
+ * Shell diagnostic UI. Honest about empty cases ("no events yet").
+ */
+export function formatTelemetryStats(stats: TelemetryStats): string {
+  const lines: string[] = [];
+  if (stats.total_events === 0) {
+    lines.push("Aucun événement de télémétrie enregistré pour cette base.");
+    if (stats.parse_errors > 0) {
+      lines.push(`(${stats.parse_errors} ligne(s) malformée(s) ignorée(s))`);
+    }
+    return lines.join("\n");
+  }
+
+  lines.push(`Total : ${stats.total_events} événement(s)`);
+  if (stats.first_ts && stats.last_ts) {
+    lines.push(`Période : ${stats.first_ts} → ${stats.last_ts}`);
+  }
+  lines.push("");
+
+  lines.push("── Répartition par event ──");
+  Object.entries(stats.by_event)
+    .sort((a, b) => b[1] - a[1])
+    .forEach(([ev, n]) => lines.push(`  ${ev.padEnd(24)} ${n}`));
+  lines.push("");
+
+  if (Object.keys(stats.by_stage).length > 0) {
+    lines.push("── Stages (durée moyenne, succès) ──");
+    Object.entries(stats.by_stage).forEach(([stage, s]) => {
+      lines.push(`  ${stage.padEnd(12)} ${s.completed} run(s) · ${s.avg_duration_ms} ms moy. · ${s.success}/${s.completed} succès`);
+    });
+    lines.push("");
+  }
+
+  if (stats.caps_hit.length > 0) {
+    lines.push("── Caps atteints ──");
+    stats.caps_hit.forEach(c => lines.push(`  ${c.cap_name.padEnd(24)} ${c.count}×`));
+    lines.push("");
+  }
+
+  if (stats.top_errors.length > 0) {
+    lines.push("── Top erreurs utilisateur ──");
+    stats.top_errors.forEach(e => lines.push(`  ${e.error_class.padEnd(24)} ${e.count}×`));
+    lines.push("");
+  }
+
+  if (stats.parse_errors > 0) {
+    lines.push(`(${stats.parse_errors} ligne(s) malformée(s) ignorée(s))`);
+  }
+
+  return lines.join("\n");
+}

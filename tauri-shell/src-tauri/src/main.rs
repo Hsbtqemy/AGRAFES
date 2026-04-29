@@ -99,6 +99,32 @@ fn read_sidecar_portfile(path: String) -> Result<String, String> {
         .map_err(|e| format!("read_sidecar_portfile: cannot read portfile: {}", e))
 }
 
+/// Reads the local telemetry NDJSON file (`.agrafes_telemetry.ndjson`).
+/// Companion of `read_sidecar_portfile` — same pattern, different whitelist.
+/// The NDJSON lives next to the DB. Bounded read (max 5 MiB) to avoid
+/// loading huge files into the webview if the file grows unexpectedly.
+#[tauri::command]
+fn read_telemetry_ndjson(path: String) -> Result<String, String> {
+    let p = std::path::Path::new(&path);
+    match p.file_name().and_then(|n| n.to_str()) {
+        Some(".agrafes_telemetry.ndjson") => {}
+        _ => return Err("read_telemetry_ndjson: only .agrafes_telemetry.ndjson files may be read".to_string()),
+    }
+    // Bounded read: 5 MiB. Telemetry NDJSON is expected to stay small (~100 bytes/event).
+    const MAX_BYTES: u64 = 5 * 1024 * 1024;
+    let metadata = std::fs::metadata(p)
+        .map_err(|e| format!("read_telemetry_ndjson: cannot stat: {}", e))?;
+    if metadata.len() > MAX_BYTES {
+        return Err(format!(
+            "read_telemetry_ndjson: file too large ({} bytes, max {})",
+            metadata.len(),
+            MAX_BYTES
+        ));
+    }
+    std::fs::read_to_string(p)
+        .map_err(|e| format!("read_telemetry_ndjson: cannot read: {}", e))
+}
+
 /// Appends a diagnostic message under the OS user data dir, e.g.
 /// `%APPDATA%\com.agrafes.shell\` (Windows) or `~/Library/Application Support/com.agrafes.shell/` (macOS).
 /// Avoids a cwd-relative path (previous fallback created `src-tauri/sidecar-debug.log` and caused `cargo watch` rebuild loops in dev).
@@ -270,6 +296,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             sidecar_fetch_loopback,
             read_sidecar_portfile,
+            read_telemetry_ndjson,
             write_sidecar_log,
             register_sidecar,
             shutdown_sidecar_cmd,

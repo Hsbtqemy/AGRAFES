@@ -56,6 +56,7 @@ import type { JobCenter } from "../components/JobCenter.ts";
 import { initCardAccordions } from "../lib/uiAccordions.ts";
 import { escHtml as _escHtml, renderSpecialChars as _renderSpecialChars, highlightChanges as _highlightChanges } from "../lib/diff.ts";
 import { rulesSignature as _rulesSignature, sampleFingerprint as _sampleFingerprint, sampleTextFingerprint as _sampleTextFingerprint } from "../lib/curationFingerprint.ts";
+import { reportEvent, reportUserError } from "../lib/telemetry.ts";
 
 // ─── Curation review persistence ──────────────────────────────────────────────
 
@@ -2062,6 +2063,8 @@ export class CurationView {
       const rawElErr = this._q("#act-preview-raw");
       if (rawElErr) rawElErr.innerHTML = `<p class="prep-diag-v warn" style="margin:0"><strong>Erreur prévisualisation</strong>${_escHtml(msg)}</p>`;
       if (!silent) { this._cb.log(`✗ Prévisualisation : ${msg}`, true); this._pushCurateLog("warn", `Erreur prévisu : ${msg}`); }
+      reportUserError(this._getConn(), err instanceof SidecarError ? "SidecarError" : "Error",
+                      { stage: "curate", doc_id: this._currentCurateDocId() ?? undefined });
     }
     this._cb.setBusy(false);
     this._refreshCurateHeaderState();
@@ -2158,6 +2161,8 @@ export class CurationView {
           this._cb.log(`✗ Curation : ${done.error ?? done.status}`, true);
           this._pushCurateLog("warn", `Erreur : ${done.error ?? done.status}`);
           this._cb.toast?.("✗ Erreur curation", true);
+          reportUserError(this._getConn(), "JobError",
+                          { stage: "curate", doc_id: this._currentCurateDocId() ?? undefined });
         }
         this._cb.setBusy(false);
         this._refreshCurateHeaderState();
@@ -2166,6 +2171,8 @@ export class CurationView {
       const msg = err instanceof SidecarError ? err.message : String(err);
       this._cb.log(`✗ Curation : ${msg}`, true);
       this._pushCurateLog("warn", `Erreur soumission : ${msg}`);
+      reportUserError(this._getConn(), err instanceof SidecarError ? "SidecarError" : "Error",
+                      { stage: "curate", doc_id: this._currentCurateDocId() ?? undefined });
       this._cb.setBusy(false);
       this._refreshCurateHeaderState();
     }
@@ -2254,6 +2261,13 @@ export class CurationView {
       const combined = [...changed, ...rest.slice(0, slots)];
       combined.sort((a, b) => a.n - b.n);
       unitsToRender = combined;
+      // Telemetry : DOM raw pane cap hit. Useful for triggering virtual
+      // scrolling work if signal grows over time.
+      reportEvent(this._getConn(), "cap_hit", {
+        cap_name: "dom_raw_pane_5000",
+        actual_count: totalUnits,
+        doc_id: this._currentCurateDocId() ?? null,
+      });
     }
     const curateDocId = this._currentCurateDocId();
     const textStartN: number | null = curateDocId !== undefined
@@ -3024,14 +3038,36 @@ export class CurationView {
       const effectiveAfter = ex.manual_after ?? ex.after;
       const showBefore = ex.before !== effectiveAfter;
       const beforeHtml = showBefore ? `<span class="prep-diff-before-hint">${_renderSpecialChars(_escHtml(ex.before))}</span>` : "";
+      // Jump-to-segment button: ouvre Segmentation focalisé sur cette unit
+      // (chantier 2 — pattern de retour amont). Émet stage_returned via le
+      // listener Shell.
+      const jumpBtnHtml = `<button class="prep-diff-jump-btn" type="button"
+        title="Voir cette unité dans Segmentation (retour amont)"
+        aria-label="Ouvrir l'unité ${ex.external_id ?? i + 1} dans la vue Segmentation"
+        data-unit-n="${ex.external_id ?? ""}">✂</button>`;
       tr.innerHTML =
-        `<td class="prep-diff-extid">${ex.external_id ?? i + 1}${statusBadgeHtml}${overrideBadgeHtml}${exceptionBadgeHtml}${forcedBadgeHtml}</td>` +
+        `<td class="prep-diff-extid">${ex.external_id ?? i + 1}${statusBadgeHtml}${overrideBadgeHtml}${exceptionBadgeHtml}${forcedBadgeHtml}${jumpBtnHtml}</td>` +
         `<td class="prep-diff-rule-cell">${ruleBadgeHtml}</td>` +
         `<td class="diff-after${ex.is_manual_override ? " prep-diff-after-overridden" : ""}">${beforeHtml}${_highlightChanges(ex.before, effectiveAfter)}</td>`;
-      tr.addEventListener("click", () => {
+      tr.addEventListener("click", (evt) => {
+        // Ne pas activer la sélection si le clic vient du bouton jump
+        if ((evt.target as HTMLElement)?.classList.contains("prep-diff-jump-btn")) return;
         const panel = tr.closest<HTMLElement>("#act-preview-panel") ?? undefined;
         this._setActiveDiffItem(i, panel);
       });
+      // Wire jump button — émet l'event que Shell écoute pour switch + focus.
+      const jumpBtn = tr.querySelector<HTMLButtonElement>(".prep-diff-jump-btn");
+      if (jumpBtn) {
+        jumpBtn.addEventListener("click", (evt) => {
+          evt.stopPropagation();
+          const docId = this._currentCurateDocId();
+          const unitN = ex.external_id;  // external_id correspond au n du segment
+          if (docId === undefined || unitN === null || unitN === undefined) return;
+          window.dispatchEvent(new CustomEvent("agrafes:open-segmentation-unit", {
+            detail: { docId, unitN },
+          }));
+        });
+      }
       tbody.appendChild(tr);
     });
     table.appendChild(tbody);
