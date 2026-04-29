@@ -72,6 +72,11 @@ import {
   type CurateLogEntry,
 } from "../lib/curationDiagnostics.ts";
 import { filterExamples, getRuleStats } from "../lib/curationFiltering.ts";
+import {
+  getStatusCounts,
+  countManualOverrides,
+  hasAnyManualOverride,
+} from "../lib/curationCounters.ts";
 
 // ─── Curation review persistence ──────────────────────────────────────────────
 
@@ -212,7 +217,7 @@ export class CurationView {
 
   /** Returns true if a preview has been run but not yet applied. */
   hasPendingChanges(): boolean {
-    return this._curateExamples.some(ex => ex.is_manual_override);
+    return hasAnyManualOverride(this._curateExamples);
   }
 
   /** Populate #act-curate-doc and #act-meta-doc from the current docs list. */
@@ -1492,14 +1497,7 @@ export class CurationView {
   }
 
   private _getStatusCounts(): { pending: number; accepted: number; ignored: number } {
-    let pending = 0, accepted = 0, ignored = 0;
-    for (const ex of this._curateExamples) {
-      const s = ex.status ?? "pending";
-      if (s === "accepted") accepted++;
-      else if (s === "ignored") ignored++;
-      else pending++;
-    }
-    return { pending, accepted, ignored };
+    return getStatusCounts(this._curateExamples);
   }
 
   private _setItemStatus(status: NonNullable<CuratePreviewExample["status"]>): void {
@@ -1602,7 +1600,7 @@ export class CurationView {
     el.innerHTML =
       `<div class="prep-session-counts">${chip("pending","&#9632;",sl.pending,c.pending)}${chip("accepted","&#10003;",sl.accepted,c.accepted)}${chip("ignored","&#215;",sl.ignored,c.ignored)}</div>` +
       (af ? `<div class="prep-session-filter-note">Filtre statut actif &#8212; <button class="prep-btn-inline-link" id="act-clear-sf">Afficher tout</button></div>` : "") +
-      (() => { const n = this._curateExamples.filter(ex => ex.is_manual_override).length; return n > 0 ? `<div class="prep-session-override-note">&#9998;&#160;${n} correction(s) manuelle(s)</div>` : ""; })() +
+      (() => { const n = countManualOverrides(this._curateExamples); return n > 0 ? `<div class="prep-session-override-note">&#9998;&#160;${n} correction(s) manuelle(s)</div>` : ""; })() +
       (() => { const n = this._curateExceptions.size; return n > 0 ? `<div class="prep-session-exception-note">🔒&#160;${n} exception(s) persistée(s)</div>` : ""; })() +
       restoreNotice;
     el.querySelectorAll<HTMLElement>("[data-sf]").forEach(chip => {
