@@ -58,6 +58,7 @@ import { escHtml as _escHtml, renderSpecialChars as _renderSpecialChars, highlig
 import { rulesSignature as _rulesSignature, sampleFingerprint as _sampleFingerprint, sampleTextFingerprint as _sampleTextFingerprint } from "../lib/curationFingerprint.ts";
 import { reportEvent, reportUserError } from "../lib/telemetry.ts";
 import { CURATE_PRESETS, parseAdvancedCurateRules, getPunctLangFromValue } from "../lib/curationPresets.ts";
+import { mergeApplyHistory, formatApplyHistoryList, type ApplyHistoryScope } from "../lib/curationApplyHistory.ts";
 
 // ─── Curation review persistence ──────────────────────────────────────────────
 
@@ -2734,16 +2735,17 @@ export class CurationView {
     const listEl = this._q<HTMLElement>("#act-apply-hist-list");
     if (!listEl) return;
     const scopeEl = this._q<HTMLSelectElement>("#act-apply-hist-scope");
-    const scopeFilter = scopeEl?.value ?? "";
+    const scopeFilter = (scopeEl?.value ?? "") as ApplyHistoryScope;
     listEl.innerHTML = `<p class="empty-hint" style="opacity:.6">Chargement\u2026</p>`;
     try {
       const res = await listApplyHistory(conn, { limit: 50 });
-      let events = (res.events ?? []) as CurateApplyEvent[];
-      if (scopeFilter === "doc") events = events.filter(e => e.scope === "doc");
-      else if (scopeFilter === "all") events = events.filter(e => e.scope === "all");
-      const dbTimes = new Set(events.map(e => e.applied_at));
-      const sessionOnly = this._applyHistory.filter(e => !dbTimes.has(e.applied_at));
-      const merged = [...sessionOnly, ...events].slice(0, 50);
+      const dbEvents = (res.events ?? []) as CurateApplyEvent[];
+      // Merge + filter + cap delegated to the pure helper (testé dans
+      // __tests__/curationApplyHistory.test.ts).
+      const merged = mergeApplyHistory(this._applyHistory, dbEvents, {
+        scope: scopeFilter,
+        cap: 50,
+      });
       this._renderApplyHistoryPanel(listEl, merged);
       const badge = this._q<HTMLElement>("#act-apply-hist-badge");
       if (badge) { badge.textContent = String(merged.length); badge.style.display = merged.length ? "" : "none"; }
@@ -3634,17 +3636,8 @@ export class CurationView {
   }
 
   private _renderApplyHistoryPanel(container: HTMLElement, events: CurateApplyEvent[]): void {
-    if (!events.length) { container.innerHTML = `<p class="empty-hint">Aucun apply enregistr\u00e9.</p>`; return; }
-    const rows = events.map(e => {
-      const ts = e.applied_at ? new Date(e.applied_at).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" }) : "\u2014";
-      const scope  = e.scope === "doc" ? "Document" : "Corpus";
-      const docLbl = e.doc_title ? e.doc_title : (e.doc_id != null ? `#${e.doc_id}` : "\u2014");
-      const modified = e.units_modified ?? 0; const skipped = e.units_skipped ?? 0;
-      const extras = [e.ignored_count != null && e.ignored_count > 0 ? `${e.ignored_count}\u00a0ign.` : "", e.manual_override_count != null && e.manual_override_count > 0 ? `${e.manual_override_count}\u00a0man.` : ""].filter(Boolean).join(" / ");
-      const sessionMark = e.id == null ? " apply-hist-row--session" : "";
-      return `<div class="prep-apply-hist-row${sessionMark}"><span class="prep-apply-hist-ts">${ts}</span><span class="prep-apply-hist-scope-badge apply-hist-scope--${e.scope}">${scope}</span><span class="prep-apply-hist-doc" title="${e.doc_title ?? ""}">${docLbl}</span><span class="prep-apply-hist-counts">${modified}\u00a0mod. / ${skipped}\u00a0saut.</span>${extras ? `<span class="prep-apply-hist-extras">${extras}</span>` : ""}</div>`;
-    });
-    container.innerHTML = rows.join("");
+    // Delegated to the pure helper (testé dans __tests__/curationApplyHistory.test.ts).
+    container.innerHTML = formatApplyHistoryList(events);
   }
 
   private _renderContextDetail(ex: CuratePreviewExample | null): void {
