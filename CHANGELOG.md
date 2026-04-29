@@ -5,6 +5,23 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased]
+
+### Changed
+
+- **tauri-prep / curation** : décomposition de `screens/CurationView.ts` (3795 → 3651 lignes) en 9 modules purs sous `tauri-prep/src/lib/curation*.ts`. Aucun changement comportemental. Les helpers sont sans DOM/IO, testables isolément, suivent un même pattern (header `Invariants protégés`, fonctions `format*`/`get*`/`build*`). Modules : `curationPresets`, `curationApplyHistory`, `curationExceptionsAdmin`, `curationDiagnostics`, `curationFiltering`, `curationCounters`, `curationSampleInfo`, `curationDiagPanel`, `curationDiffList`. CurationView conserve l'orchestration DOM, les state mutations et l'event wiring ; les calculs et rendus HTML sont délégués.
+
+### Added
+
+- **tauri-prep / lib** : 298 tests Vitest (vs 110 avant la décomposition) couvrant ~100 invariants explicites — chaque test cite l'invariant qu'il protège. Couverture régressions accrue sur les chemins critiques (filtres rule/status, escape HTML sur contenu utilisateur, edge cases empty/truncated, dedup rules, idempotence presets).
+
+### Fixed
+
+- **tauri-prep / curation** : `formatApplyHistoryRow` n'escapait pas `event.doc_title` (dans le texte ET l'attribut `title`) — bug latent identique au comportement legacy de `CurationView`. Aligné sur `formatExcAdminRow` qui escape déjà. Risque réel faible (doc_title vient de filenames imports) mais defensive coding standard.
+- **tauri-prep / curation** : preset `quotes` — règles « Apostrophes courbes → droites » et « Guillemets anglais → droits » avaient un flag `g` manquant. Le test d'idempotence (Phase 1) a surfacé la divergence : sans `g`, `String.replace` ne matche que la première occurrence côté JS. Backend non affecté (translator ré-attaque le pattern complet).
+
+---
+
 ## [0.1.41] - 2026-04-29
 
 Cette version cumule les fixes UX, robustesse, dette technique et nouveau pipeline d'instrumentation locale depuis v0.1.40.

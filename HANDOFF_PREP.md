@@ -43,7 +43,7 @@ Cette tension doit être nommée dans toute proposition de refonte.
 |-------|-----|----------|---------------------|-----------------|
 | **ImportScreen** | 1598 | Mature | DOCX en tableaux 2-colonnes non lus (workaround utilisateur). Family dialog v0.1.41 enfin symétrique (parent mode). | Élevée — point d'entrée |
 | **SegmentationView** | 2412 | Mature, en évolution | Filtres anomalies récents (segments courts + ponct. orpheline). Pas d'undo merge/split. | Élevée |
-| **CurationView** | **3750** | Mature mais **fragile** par taille | Le plus gros écran. Le bug `$1` (v0.1.40), le clipping layout (v0.1.40), le confirm bar mal positionné (v0.1.40) — tous tombés en cascade ce mois-ci. | Élevée |
+| **CurationView** | **3651** | Mature, décomposée en lib/* (post-v0.1.41) | Le bug `$1` (v0.1.40), le clipping layout (v0.1.40), le confirm bar mal positionné (v0.1.40) — tous tombés en cascade. La décomposition en 9 modules purs sous `lib/curation*.ts` (Phase 1-5e, ~280 tests Vitest) a réduit la fragilité par taille. | Élevée |
 | **AlignPanel** | 1971 | Mature | Famille review mode rodé. Collisions encore complexes à résoudre pour un débutant. | Moyenne |
 | **AnnotationView** | 818 | **Dormant** | Pas de feature work depuis ~3 mois. Annotation lexicale unitaire fonctionne mais limitée. | Faible (utilisée par 0 utilisateur connu ?) |
 | **MetadataScreen** | 3106 | Mature | Tous les `confirm()` natifs remplacés par modalConfirm v0.1.41. Bulk update et batch role rodés. | Moyenne |
@@ -52,7 +52,19 @@ Cette tension doit être nommée dans toute proposition de refonte.
 
 ### Le cas CurationView
 
-3750 lignes dans un seul fichier, c'est le candidat refactor le plus évident côté frontend (équivalent du `sidecar.py` côté moteur). Un découpage par responsabilités : `CurationPresets`, `CurationPreview`, `CurationReview`, `CurationExceptions`, `CurationApplyHistory`. Pas urgent mais à faire avant la prochaine grosse feature curation.
+Historiquement 3795 lignes dans un seul fichier, candidat refactor évident côté frontend. La **décomposition par responsabilités est faite** (post-v0.1.41) : 9 modules purs sous `tauri-prep/src/lib/curation*.ts` couverts par ~280 tests Vitest, sans changement comportemental. CurationView passe à 3651 lignes (l'orchestration DOM/event reste, les calculs et rendus HTML sont délégués) :
+
+- `curationPresets` (presets built-in + parsers)
+- `curationApplyHistory` (filter/merge/format des events apply)
+- `curationExceptionsAdmin` (CRUD exceptions persistées)
+- `curationDiagnostics` (journal log)
+- `curationFiltering` (filter examples + rule stats)
+- `curationCounters` (status/override counts)
+- `curationSampleInfo` (banner truncated/full)
+- `curationDiagPanel` (minimap + diag header)
+- `curationDiffList` (diff badges + classes + pagination)
+
+Les modules suivent un même pattern : header `Invariants protégés`, fonctions pures sans DOM/IO, tests numérotés par invariant.
 
 ---
 
@@ -196,7 +208,7 @@ Dans `corpus_info.meta_json` (singleton de la DB). Format approximatif :
 }
 ```
 
-Les presets **built-in** vivent dans le code TS ([CurationView.ts:86-150](tauri-prep/src/screens/CurationView.ts#L86)) et sont compilés au build, jamais persistés. Seuls les presets **custom utilisateur** sont en DB.
+Les presets **built-in** vivent dans le code TS ([curationPresets.ts](tauri-prep/src/lib/curationPresets.ts)) et sont compilés au build, jamais persistés. Seuls les presets **custom utilisateur** sont en DB.
 
 C'est ce qui rend [scripts/validate_regex_migration.py](scripts/validate_regex_migration.py) pertinent uniquement pour les DBs où des utilisateurs ont créé des presets custom — sur la DB de référence : 0 patterns custom, donc migration `re`→`regex` PyPI sans risque.
 
@@ -302,7 +314,7 @@ Justification : éviter les faux positifs (deux docs avec le même radical mais 
 
 4. **Reindex FTS oublié**. Après une curation massive, l'index FTS est périmé. Le banner « Mettre à jour l'index » apparaît mais discret. Faudrait un état explicite « index OK / périmé » sur chaque doc.
 
-5. **CurationView 3750 lignes** = friction interne (pour moi) mais aussi pour l'utilisateur car les chargements peuvent être lents quand on bascule sur cet onglet. Pas de virtualization du DOM en place.
+5. **CurationView 3651 lignes** (3795 avant la décomposition Phase 1-5e). Friction réduite pour les contributeurs grâce à l'extraction en 9 modules purs sous `lib/curation*.ts`, mais l'écran reste lent à charger sur les gros corpus — pas de virtualization du DOM en place, et la décomposition n'a pas changé les coûts de rendu.
 
 6. **Visibilité du flag `source_changed_at`**. Un traducteur qui revient sur AlignPanel après une curation source ne voit pas immédiatement que les unités pivots ont changé. Le mécanisme existe en DB, l'UI le montre dans le panneau audit mais pas en page d'accueil de l'écran.
 
@@ -338,7 +350,7 @@ Reconstitué depuis [docs/BACKLOG_PREP_AUDIT.md](docs/BACKLOG_PREP_AUDIT.md), [d
 
 ### Idées non encore en backlog formel
 
-- **Découpage CurationView en sous-modules** (analogue à F1-style refactor) : `CurationPresets`, `CurationPreview`, `CurationReview`, `CurationExceptions`, `CurationApplyHistory`. ~3-5 jours de travail. À faire avant la prochaine grosse feature curation.
+- ~~**Découpage CurationView en sous-modules**~~ ✅ **Fait post-v0.1.41** : 9 modules purs sous `lib/curation*.ts` (Presets, ApplyHistory, ExceptionsAdmin, Diagnostics, Filtering, Counters, SampleInfo, DiagPanel, DiffList). 298 tests Vitest. Voir § 2 « Le cas CurationView ».
 - **Workflow visualization** entre écrans : un fil d'Ariane qui montre où on en est dans Import → Segment → Curate → Align → Export, et ce qui reste à faire.
 - **Etat « index FTS périmé »** affiché sur chaque doc dans MetadataScreen (chip rouge ou warning).
 - **Réversibilité partielle** : permettre de rollback un `curate_apply_history` entry. Faisable techniquement (on a les unités modifiées, on peut restaurer text_norm depuis text_raw + reapply), gain UX significatif.
