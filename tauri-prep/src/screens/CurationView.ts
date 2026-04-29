@@ -71,6 +71,7 @@ import {
   countCurateWarnings,
   type CurateLogEntry,
 } from "../lib/curationDiagnostics.ts";
+import { filterExamples, getRuleStats } from "../lib/curationFiltering.ts";
 
 // ─── Curation review persistence ──────────────────────────────────────────────
 
@@ -1636,24 +1637,17 @@ export class CurationView {
   }
 
   private _filteredExamples(): CuratePreviewExample[] {
-    return this._curateExamples.filter(ex => {
-      const ruleOk = !this._activeRuleFilter ||
-        (ex.matched_rule_ids ?? []).some(idx => (this._curateRuleLabels[idx] ?? "") === this._activeRuleFilter);
-      const statusOk = !this._activeStatusFilter || (ex.status ?? "pending") === this._activeStatusFilter;
-      return ruleOk && statusOk;
-    });
+    // Délégué au helper pur (testé dans __tests__/curationFiltering.test.ts).
+    return filterExamples(
+      this._curateExamples,
+      this._activeRuleFilter,
+      this._activeStatusFilter,
+      this._curateRuleLabels,
+    );
   }
 
   private _getRuleStats(): Map<string, number> {
-    const map = new Map<string, number>();
-    for (const ex of this._curateExamples) {
-      const seen = new Set<string>();
-      for (const idx of (ex.matched_rule_ids ?? [])) {
-        const label = this._curateRuleLabels[idx] ?? `règle ${idx + 1}`;
-        if (!seen.has(label)) { seen.add(label); map.set(label, (map.get(label) ?? 0) + 1); }
-      }
-    }
-    return map;
+    return getRuleStats(this._curateExamples, this._curateRuleLabels);
   }
 
   private _setRuleFilter(label: string | null, panel?: HTMLElement | null): void {
