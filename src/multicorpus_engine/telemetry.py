@@ -89,15 +89,22 @@ def emit_event(db_path: str | Path, event_name: str, **payload: Any) -> None:
 
     `event_name` is required; `payload` is merged into the JSON object.
     Any non-JSON-serializable values in payload are coerced via str().
+
+    Reserved keys ("ts", "event") in payload are dropped silently — the
+    canonical fields are always our generated values. This prevents a
+    malicious or careless caller (e.g. from POST /telemetry) from poisoning
+    the timestamp or event name.
     """
     if not event_name or not isinstance(event_name, str):
         return
     try:
         target = telemetry_path(db_path)
+        # Strip reserved keys from payload — caller cannot override ts/event.
+        clean_payload = {k: v for k, v in payload.items() if k not in ("ts", "event")}
         record: dict[str, Any] = {
             "ts": _utc_now_iso(),
             "event": event_name,
-            **payload,
+            **clean_payload,
         }
         line = json.dumps(record, ensure_ascii=False, separators=(",", ":"), default=str)
         _append_locked(target, line)

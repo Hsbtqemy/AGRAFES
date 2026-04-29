@@ -194,13 +194,25 @@ export class SegmentationView {
    * highlights it for ~2s. If the doc is not yet segmented (no saved
    * pane available), shows an info toast.
    *
-   * Note : await internal renders (table can be loaded async) via
-   * MutationObserver-style polling — short timeout, then bail.
+   * Resilient to async loading : the right panel may not be mounted yet
+   * (focusDoc → _loadSegRightPanel is async), so we poll for the saved
+   * tab to exist before attempting to click it. Same poll for the row
+   * once the table renders.
    */
   async focusUnit(unitN: number): Promise<void> {
-    // 1. Activate "saved" sub-pane via tab click
-    const savedTab = this._q<HTMLButtonElement>('.prep-seg-content-tab[data-pane="saved"]');
-    if (!savedTab) return;
+    // 1. Wait for the saved tab to exist (right panel may still be loading)
+    const start = Date.now();
+    const TIMEOUT_MS = 2000;
+    let savedTab: HTMLButtonElement | null = null;
+    while (Date.now() - start < TIMEOUT_MS) {
+      savedTab = this._q<HTMLButtonElement>('.prep-seg-content-tab[data-pane="saved"]');
+      if (savedTab) break;
+      await new Promise(r => setTimeout(r, 50));
+    }
+    if (!savedTab) {
+      this._cb.toast?.("Panneau Segmentation non disponible — réessayer.", true);
+      return;
+    }
     if (savedTab.disabled) {
       // Not yet segmented — saved pane unavailable
       this._cb.toast?.("Cette unité n'est pas encore segmentée.", false);
@@ -208,10 +220,9 @@ export class SegmentationView {
     }
     if (!savedTab.classList.contains("active")) savedTab.click();
 
-    // 2. Wait for the saved table to render the row. Poll up to ~1.5s.
-    const start = Date.now();
+    // 2. Wait for the saved table to render the requested row.
     let row: HTMLElement | null = null;
-    while (Date.now() - start < 1500) {
+    while (Date.now() - start < TIMEOUT_MS) {
       row = this._q<HTMLElement>(`tr[data-unit-n="${unitN}"]`);
       if (row) break;
       await new Promise(r => setTimeout(r, 50));

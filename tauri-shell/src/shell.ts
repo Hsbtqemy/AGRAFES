@@ -1572,19 +1572,21 @@ export async function initShell(): Promise<void> {
   // Shell agit en simple relais : switch mode constituer puis re-dispatch un
   // event pour prep qui possède le Conn et fait le travail (focus unit + emit
   // stage_returned via telemetry helper).
+  //
+  // Le délai de 150ms après _setMode est défensif : _setMode est awaitable et
+  // devrait avoir mount prep avec son listener en place, mais des opérations
+  // async pendantes (CSS injection, dynamic import) peuvent retarder
+  // l'installation du listener. 150ms est sous le seuil perceptuel et couvre
+  // les cas observés. Si le listener n'est pas là, l'event est silencieusement
+  // perdu — pas d'impact fonctionnel sauf que le bouton ✂ ne fait rien.
+  // Amélioration possible : avoir prep dispatcher un agrafes:prep-ready et
+  // Shell attendre dessus avant de dispatcher. Pas implémenté dans cette
+  // session — over-engineering pour le risque actuel.
   window.addEventListener("agrafes:open-segmentation-unit", (e: Event) => {
     const detail = (e as CustomEvent<{ docId: number; unitN: number }>).detail;
     if (!detail || typeof detail.docId !== "number" || typeof detail.unitN !== "number") return;
     void (async () => {
-      // Store target so prep can pick it up if mounting takes time
-      try {
-        sessionStorage.setItem("agrafes:seg-unit-nav", JSON.stringify(detail));
-      } catch { /* ignore */ }
-      // Switch to Constituer mode (mounts prep app)
       await _setMode("constituer");
-      // After mount, re-dispatch the event prep listens to (constituerModule
-      // installs the listener at mount time, so the event is received).
-      // Brief delay so prep has time to install its listener.
       setTimeout(() => {
         window.dispatchEvent(new CustomEvent("agrafes:prep-focus-segment-unit", {
           detail: { docId: detail.docId, unitN: detail.unitN },
