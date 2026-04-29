@@ -409,6 +409,27 @@ export class App {
     this._actions.setLogEl(this._logEl);
     this._metadata.setLogEl(this._logEl);
     this._exports.setLogEl(this._logEl);
+
+    // Bridge (chantier 2 — retour amont) : Shell → focus Segmentation on unit.
+    // Émet stage_returned (curate → segment) en télémétrie.
+    window.addEventListener("agrafes:prep-focus-segment-unit", (e: Event) => {
+      const detail = (e as CustomEvent<{ docId: number; unitN: number }>).detail;
+      if (!detail || typeof detail.docId !== "number" || typeof detail.unitN !== "number") return;
+      // Switch to actions tab, then focus segmentation on unit
+      this._switchTab("actions", true);
+      void this._actions.focusSegmentationOnUnit(detail.docId, detail.unitN);
+      // Telemetry: stage_returned (fire-and-forget)
+      void (async () => {
+        try {
+          const { reportEvent } = await import("./lib/telemetry.ts");
+          reportEvent(this._conn, "stage_returned", {
+            doc_id: detail.docId,
+            from_stage: "curate",
+            to_stage: "segment",
+          });
+        } catch { /* swallow */ }
+      })();
+    });
   }
 
   private _toggleJournal(root: HTMLElement): void {

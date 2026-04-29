@@ -5,6 +5,33 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **multicorpus_engine / telemetry** : nouveau module `telemetry.py` — instrumentation locale en NDJSON `<db_dir>/.agrafes_telemetry.ndjson`, append-only, fire-and-forget. Aucun envoi réseau. Lock fichier (`fcntl` POSIX / `msvcrt` Windows) pour gérer la concurrence rare entre sidecars sur DBs adjacentes.
+- **multicorpus_engine / sidecar** : endpoint `POST /telemetry` (no-auth, loopback-only — risque limité). Schéma `TelemetryRequest` ajouté à `sidecar_contract.py`. Renvoie 204 No Content. Body silencieusement droppé si malformé (contrat fire-and-forget).
+- **multicorpus_engine / sidecar** : 5 events instrumentés + 1 meta-event :
+  - `sidecar_started` (au boot, avec version + db_path + port)
+  - `stage_completed` (import/segment/curate/align/export — duration_ms, success, doc_id quand pertinent) via context manager `_track_stage`
+  - `cap_hit` sur `/segment/preview` et `/curate/preview` quand le cap 5000 est atteint
+  - `doc_deleted` (avec had_curation et had_alignment dérivés en lecture pré-delete)
+- **tauri-prep / lib** : nouveau module `telemetry.ts` — `reportEvent(conn, event, payload)` et `reportUserError(conn, errClass, ctx)`. Fire-and-forget, fetch errors swallowed.
+- **tauri-prep / curation** : instrumentation `cap_hit` (DOM raw pane 5000) + `error_user_facing` aux 3 sites principaux d'erreur (preview, apply, submit) avec classification `SidecarError` / `JobError` / `Error`.
+- **tauri-prep / curation** : bouton « ✂ » sur chaque ligne de la diff list — émet `agrafes:open-segmentation-unit` qui navigue vers Segmentation focalisé sur l'unit. Pattern de retour amont (chantier 2) — émet `stage_returned` (curate → segment) en télémétrie.
+- **tauri-prep / segmentation** : nouvelle méthode `SegmentationView.focusUnit(unitN)` — switch sub-pane Modifier, scroll vers la ligne, applique highlight CSS 2s. Toast info si le doc n'est pas encore segmenté.
+- **tauri-prep / app** : listener `agrafes:prep-focus-segment-unit` qui pilote le switch tab + focus + telemetry. Méthode publique `ActionsScreen.focusSegmentationOnUnit(docId, unitN)`.
+- **tauri-shell / Rust** : nouvelle commande `read_telemetry_ndjson` (whitelist filename strict, lecture bornée à 5 MiB), pendant de `read_sidecar_portfile`.
+- **tauri-shell / shell.ts** : entrée menu support « 📊 Télémétrie locale… » qui ouvre un modal lisant + agrégeant le NDJSON. Bouton « Exporter NDJSON brut… » via dialog plugin. Fermeture Échap + clic backdrop.
+- **tauri-shell / diagnostics.ts** : trois nouvelles fonctions pures `parseTelemetryNdjson`, `aggregateTelemetry`, `formatTelemetryStats`. Robustes aux lignes malformées, payloads incomplets, types incorrects.
+- **tauri-shell / scripts** : `test_telemetry_aggregate.mjs` — 40 tests Node.js purs sur les fonctions d'agrégation, suit le pattern existant `test_diagnostics.mjs`.
+
+### Changed
+
+- **tauri-prep / curation** : la classe diff row reçoit maintenant un bouton inline en colonne extid (avec stop-propagation pour ne pas activer la sélection au clic du bouton). CSS `.prep-diff-jump-btn` discret au repos, contrasté au hover. Animation `prep-seg-row-highlight` 2s pour signaler la ligne ciblée par focusUnit.
+
+---
+
 ## [0.1.40] - 2026-04-27
 
 ### Added

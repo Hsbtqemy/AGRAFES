@@ -186,6 +186,47 @@ export class SegmentationView {
     if (rightEl) void this._loadSegRightPanel(docId, rightEl);
   }
 
+  /**
+   * Focus a specific unit in the saved-segments table. Used by the
+   * Curation → Segmentation jump (chantier 2).
+   *
+   * Switches to the "Modifier" (saved) sub-pane, scrolls to the row,
+   * highlights it for ~2s. If the doc is not yet segmented (no saved
+   * pane available), shows an info toast.
+   *
+   * Note : await internal renders (table can be loaded async) via
+   * MutationObserver-style polling — short timeout, then bail.
+   */
+  async focusUnit(unitN: number): Promise<void> {
+    // 1. Activate "saved" sub-pane via tab click
+    const savedTab = this._q<HTMLButtonElement>('.prep-seg-content-tab[data-pane="saved"]');
+    if (!savedTab) return;
+    if (savedTab.disabled) {
+      // Not yet segmented — saved pane unavailable
+      this._cb.toast?.("Cette unité n'est pas encore segmentée.", false);
+      return;
+    }
+    if (!savedTab.classList.contains("active")) savedTab.click();
+
+    // 2. Wait for the saved table to render the row. Poll up to ~1.5s.
+    const start = Date.now();
+    let row: HTMLElement | null = null;
+    while (Date.now() - start < 1500) {
+      row = this._q<HTMLElement>(`tr[data-unit-n="${unitN}"]`);
+      if (row) break;
+      await new Promise(r => setTimeout(r, 50));
+    }
+    if (!row) {
+      this._cb.toast?.(`Unité n=${unitN} introuvable dans le tableau segmenté.`, true);
+      return;
+    }
+
+    // 3. Scroll + highlight (CSS animation 2s, classe auto-removed via JS)
+    row.scrollIntoView({ block: "center", behavior: "smooth" });
+    row.classList.add("prep-seg-row-highlight");
+    setTimeout(() => row?.classList.remove("prep-seg-row-highlight"), 2000);
+  }
+
   /** Returns the most recent segment report (for cross-view display in CurationView). */
   getLastSegmentReport(): { doc_id: number; units_output: number; warnings?: string[] } | null {
     return this._lastSegmentReport;

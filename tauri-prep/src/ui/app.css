@@ -1715,6 +1715,48 @@ code { font-family: monospace; background: var(--color-bg); padding: 0 3px; bord
 
 /* Diff table */
 .prep-diff-extid { color: var(--color-muted); font-family: monospace; white-space: nowrap; }
+
+/* Jump-to-segment button (chantier 2 : retour amont Curation → Segmentation).
+   Discret, opacité réduite à l'état repos, prend le contraste au hover. */
+.prep-diff-jump-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-left: 4px;
+  padding: 0;
+  font-size: 11px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--prep-muted, #6c757d);
+  cursor: pointer;
+  border-radius: 3px;
+  opacity: 0.55;
+  transition: opacity 0.12s, background 0.12s, color 0.12s, border-color 0.12s;
+}
+.prep-diff-jump-btn:hover {
+  opacity: 1;
+  background: var(--color-surface-alt, #f0f4f8);
+  color: var(--prep-accent, #0f766e);
+  border-color: var(--prep-line, #dde1e8);
+}
+.prep-diff-jump-btn:focus-visible {
+  outline: 2px solid var(--prep-accent, #0f766e);
+  outline-offset: 1px;
+  opacity: 1;
+}
+
+/* Highlight transitoire (~2s) sur la ligne ciblée par focusUnit. Couleur
+   accent secondaire — pas un jaune fluo, juste un signal de localisation. */
+@keyframes prep-seg-row-highlight-anim {
+  0%   { background-color: rgba(15, 118, 110, 0.20); }
+  50%  { background-color: rgba(15, 118, 110, 0.12); }
+  100% { background-color: transparent; }
+}
+tr[data-unit-n].prep-seg-row-highlight td {
+  animation: prep-seg-row-highlight-anim 2s ease-out;
+}
 .prep-diff-pagination {
   display: flex; align-items: center; gap: 10px; justify-content: center;
   padding: 8px 0 4px; border-top: 1px solid var(--border, #ddd); margin-top: 4px;

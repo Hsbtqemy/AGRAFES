@@ -176,6 +176,21 @@ export class ActionsScreen {
     if (this._root) this._switchSubViewDOM(this._root, view);
   }
 
+  /**
+   * Public API (chantier 2 — retour amont) : ouvre la sub-view Segmentation
+   * sur le doc demandé et focus une unit précise. Utilisé par le listener
+   * agrafes:prep-focus-segment-unit dans app.ts.
+   */
+  async focusSegmentationOnUnit(docId: number, unitN: number): Promise<void> {
+    this.setSubView("segmentation");
+    const seg = this._segmentationView;
+    if (!seg) return;
+    seg.focusDoc(docId);
+    // Attendre un cycle de render avant focus de l'unit
+    await new Promise(r => setTimeout(r, 50));
+    await seg.focusUnit(unitN);
+  }
+
   private _loadSubViewPref(): void {
     try {
       const saved = localStorage.getItem(ActionsScreen.LS_ACTIVE_SUB) as SubView | null;
