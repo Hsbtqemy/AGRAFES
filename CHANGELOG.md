@@ -5,6 +5,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **multicorpus_engine** : nouveau module `regex_boot_audit.py` — audit compile-only des patterns regex custom persistés dans `corpus_info.meta_json`. Appelé au boot du `CorpusServer` après `sidecar_started`, log WARN si un pattern flag positif (POSIX/Unicode property classes, divergence `re` vs `regex.V0`). Defensive : try/except global, ne bloque jamais le démarrage du sidecar. 19 tests pytest. Ferme l'angle mort « ma DB ≠ leur DB » identifié dans HANDOFF_PREP § 7 (F5). La version full avec sample diff sur `text_norm` reste `scripts/validate_regex_migration.py` pour audits pré-migration.
+
+---
+
 ## [0.1.42] - 2026-04-29
 
 ### Changed

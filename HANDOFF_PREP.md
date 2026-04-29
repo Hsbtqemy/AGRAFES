@@ -345,7 +345,7 @@ Reconstitué depuis [docs/BACKLOG_PREP_AUDIT.md](docs/BACKLOG_PREP_AUDIT.md), [d
 ### Issues actives (P1-P2)
 
 - **F4 — Index FTS arbitrage** ([BACKLOG.md#F4](docs/BACKLOG.md)) : un seul bouton « Mettre à jour l'index » avec état visible (indexé/à mettre à jour), ou automatisation post-curation. Pas tranché.
-- **F5 — Validation regex au boot du sidecar** ([BACKLOG.md#F5](docs/BACKLOG.md)) : invocation passive de `validate_regex_migration.py` au startup, log WARN si pattern flag positif. Défensif, ferme l'angle mort « ma DB ≠ leur DB ».
+- ~~**F5 — Validation regex au boot du sidecar**~~ ✅ **Fait post-v0.1.42** : nouveau module `multicorpus_engine/regex_boot_audit.py` (compile-only, jamais raise) appelé après `sidecar_started` dans `CorpusServer.start`. Log WARN avec status (`POSIX_USAGE`/`RE_ONLY_FAIL`/`REGEX_ONLY_FAIL`/`BOTH_FAIL`) + pattern + flags si patterns custom flagués. 19 tests pytest. La version full (sample diff) reste `scripts/validate_regex_migration.py` pour audits pré-migration.
 - **C-1, C-2, C-3 — Tests Vitest** ([BACKLOG_PREP_AUDIT.md](docs/BACKLOG_PREP_AUDIT.md)) : tests unitaires sur fingerprint curation (C-1 fait), import normalisation (C-2 en attente), diff LCS (C-3 en attente).
 
 ### Idées non encore en backlog formel

@@ -8844,6 +8844,21 @@ class CorpusServer:
         except Exception:  # noqa: BLE001
             pass  # telemetry must never block startup
 
+        # F5 — Boot-time regex audit on persisted custom patterns.
+        # Compile-only, never raises. Logs WARN if any pattern is flagged
+        # for review (POSIX/Unicode signals or compile divergence between
+        # `re` and `regex.V0`). Cf. HANDOFF_PREP § 7.
+        try:
+            from multicorpus_engine.regex_boot_audit import (
+                audit_persisted_patterns,
+                format_audit_warning,
+            )
+            _audits = audit_persisted_patterns(self._db_path)
+            if _audits:
+                logger.warning("%s", format_audit_warning(_audits))
+        except Exception:  # noqa: BLE001
+            pass  # audit must never block startup
+
     def join(self) -> None:
         """Block until the server thread exits (call after start())."""
         if self._thread is not None:
