@@ -59,6 +59,12 @@ import { rulesSignature as _rulesSignature, sampleFingerprint as _sampleFingerpr
 import { reportEvent, reportUserError } from "../lib/telemetry.ts";
 import { CURATE_PRESETS, parseAdvancedCurateRules, getPunctLangFromValue } from "../lib/curationPresets.ts";
 import { mergeApplyHistory, formatApplyHistoryList, type ApplyHistoryScope } from "../lib/curationApplyHistory.ts";
+import {
+  filterExceptions,
+  buildExcDocOptions,
+  formatExcAdminList,
+  type ExcKindFilter,
+} from "../lib/curationExceptionsAdmin.ts";
 
 // ─── Curation review persistence ──────────────────────────────────────────────
 
@@ -2458,6 +2464,10 @@ export class CurationView {
     this._renderExcAdminPanel();
   }
   private _renderExcAdminPanel(): void {
+    // Filter/group/format délégués au helper pur (testé dans
+    // __tests__/curationExceptionsAdmin.test.ts). Reste DOM-bound :
+    // mise à jour du badge et reconstruction conditionnelle du <select>
+    // doc-filter (préserver la valeur courante quand la liste change).
     const list = this._q<HTMLElement>("#act-exc-admin-list");
     const badge = this._q<HTMLElement>("#act-exc-admin-badge");
     if (!list) return;
@@ -2465,17 +2475,14 @@ export class CurationView {
     if (badge) { badge.textContent = String(all.length); badge.style.display = all.length > 0 ? "inline-flex" : "none"; }
     const docSel = this._q<HTMLSelectElement>("#act-exc-doc-filter");
     if (docSel) {
-      const knownDocs = new Map<number, string>();
-      for (const exc of all) {
-        if (exc.doc_id !== undefined) knownDocs.set(exc.doc_id, exc.doc_title || `Document #${exc.doc_id}`);
-      }
+      const knownDocs = buildExcDocOptions(all);
       const existingDocIds = new Set(Array.from(docSel.options).slice(1).map(o => parseInt(o.value)));
       const newDocIds = new Set(knownDocs.keys());
       const needsRebuild = existingDocIds.size !== newDocIds.size || [...newDocIds].some(id => !existingDocIds.has(id));
       if (needsRebuild) {
         const currentVal = docSel.value;
         docSel.innerHTML = `<option value="">Tous les documents</option>`;
-        for (const [docId, docTitle] of [...knownDocs.entries()].sort((a, b) => a[0] - b[0])) {
+        for (const [docId, docTitle] of knownDocs) {
           const opt = document.createElement("option");
           opt.value = String(docId);
           opt.textContent = docTitle;
@@ -2484,30 +2491,12 @@ export class CurationView {
         if (currentVal) docSel.value = currentVal;
       }
     }
-    let filtered = this._excAdminFilter === "all" ? all : all.filter(e => e.kind === this._excAdminFilter);
-    if (this._excAdminDocFilter > 0) filtered = filtered.filter(e => e.doc_id === this._excAdminDocFilter);
-    if (all.length === 0) { list.innerHTML = `<p class="empty-hint">Aucune exception persistée.</p>`; return; }
-    if (filtered.length === 0) { list.innerHTML = `<p class="empty-hint">Aucun résultat pour ce filtre.</p>`; return; }
-    const byDoc = new Map<string, typeof filtered>();
-    for (const exc of filtered) {
-      const key = exc.doc_id !== undefined ? String(exc.doc_id) : "?";
-      if (!byDoc.has(key)) byDoc.set(key, []);
-      byDoc.get(key)!.push(exc);
-    }
-    const frag = document.createDocumentFragment();
-    for (const [, rows] of byDoc) {
-      const firstRow = rows[0];
-      const showDocHead = this._excAdminDocFilter === 0 && firstRow.doc_title !== undefined;
-      if (showDocHead) {
-        const docHead = document.createElement("div");
-        docHead.className = "prep-exc-admin-doc-head";
-        docHead.textContent = firstRow.doc_title || `Document #${firstRow.doc_id ?? "?"}`;
-        frag.appendChild(docHead);
-      }
-      for (const exc of rows) frag.appendChild(this._buildExcAdminRow(exc));
-    }
-    list.innerHTML = "";
-    list.appendChild(frag);
+    const filtered = filterExceptions(all, this._excAdminFilter as ExcKindFilter, this._excAdminDocFilter);
+    list.innerHTML = formatExcAdminList(filtered, {
+      editingUnitId: this._excAdminEditing,
+      showDocHeads: this._excAdminDocFilter === 0,
+      totalIsEmpty: all.length === 0,
+    });
   }
   private async _excAdminDelete(unitId: number): Promise<void> {
     const conn = this._getConn();
@@ -3473,39 +3462,6 @@ export class CurationView {
     badge.title = ex.is_exception_ignored ? "Exception persistée : ignoré durablement" : "Exception persistée : override durable";
     const firstCell = row.querySelector("td");
     if (firstCell) firstCell.appendChild(badge);
-  }
-
-  private _buildExcAdminRow(exc: CurateException): HTMLElement {
-    const row = document.createElement("div");
-    row.className = "prep-exc-admin-row"; row.dataset.excUnitId = String(exc.unit_id);
-    const kindBadge = `<span class="prep-exc-kind-badge exc-kind-${exc.kind}">${exc.kind === "ignore" ? "🚫 ignore" : "✏ override"}</span>`;
-    const unitText = exc.unit_text ? `<span class="prep-exc-unit-preview" title="${_escHtml(exc.unit_text)}">${_escHtml(exc.unit_text.slice(0, 80))}…</span>` : "";
-    const createdAt = exc.created_at ? `<span class="prep-exc-created-at">${exc.created_at.slice(0, 16).replace("T", " ")}</span>` : "";
-    const openBtn = exc.doc_id !== undefined ? `<button class="btn btn-sm prep-exc-row-open-curation" title="Voir cette unité dans Curation">&#x1F441;</button>` : "";
-    const isEditing = this._excAdminEditing === exc.unit_id;
-    if (exc.kind === "override" && isEditing) {
-      row.innerHTML = `
-        <div class="prep-exc-row-meta">${kindBadge}<span class="prep-exc-unit-id">unité&nbsp;${exc.unit_id}</span>${createdAt}</div>
-        ${unitText ? `<div class="prep-exc-unit-preview-block">${unitText}</div>` : ""}
-        <div class="prep-exc-row-edit-block">
-          <label class="prep-exc-edit-label">Texte override :</label>
-          <textarea class="prep-exc-edit-textarea" id="exc-edit-${exc.unit_id}" rows="3">${_escHtml(exc.override_text ?? "")}</textarea>
-          <div class="prep-exc-edit-actions">
-            <button class="btn btn-sm btn-primary prep-exc-row-edit-save">Enregistrer</button>
-            <button class="btn btn-sm prep-exc-row-edit-cancel">Annuler</button>
-          </div>
-        </div>`;
-    } else {
-      const overrideText = exc.kind === "override" && exc.override_text ? `<div class="prep-exc-override-text">${_escHtml(exc.override_text)}</div>` : "";
-      const editBtn = exc.kind === "override" ? `<button class="btn btn-sm prep-exc-row-edit-start" title="Modifier le texte override">✎</button>` : "";
-      row.innerHTML = `
-        <div class="prep-exc-row-meta">${kindBadge}<span class="prep-exc-unit-id">unité&nbsp;${exc.unit_id}</span>${createdAt}
-          <div class="prep-exc-row-actions">${openBtn}${editBtn}<button class="btn btn-sm prep-exc-row-delete" title="Supprimer cette exception">✕</button></div>
-        </div>
-        ${unitText ? `<div class="prep-exc-unit-preview-block">${unitText}</div>` : ""}
-        ${overrideText}`;
-    }
-    return row;
   }
 
   private _buildReviewReportPayload(): object {
