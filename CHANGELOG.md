@@ -5,10 +5,21 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [Unreleased]
+## [0.1.41] - 2026-04-29
+
+Cette version cumule les fixes UX, robustesse, dette technique et nouveau pipeline d'instrumentation locale depuis v0.1.40.
 
 ### Added
 
+- **multicorpus_engine / curation** : migration de stdlib `re` vers `regex` (PyPI). Débloque les classes Unicode `\p{L}`, `\X`, et POSIX `[[:alpha:]]` dans les patterns custom. `regex.V0` forcé en compile pour éviter le silent V1 auto-switch. Script `scripts/validate_regex_migration.py` audite les patterns persistés en DB avant migration. Ajout dépendance `regex>=2023.0` dans pyproject.toml.
+- **tauri-prep / lib** : nouveau helper `lib/modalConfirm.ts` — modal centré générique remplaçant `window.confirm()` natif (non fiable sur Tauri 2 WebView, cf. issue #40). Helper `inlineConfirm.ts` existant aussi rebranché. Focus sur Annuler par défaut pour les actions destructives (`danger: true`).
+- **tauri-prep / import** : family dialog post-import enrichi — toggle « ce document est issu d'un autre » (mode child existant) / « ce document est l'original » (nouveau, mode parent). Le mode parent permet de sélectionner N docs existants comme enfants en un seul pass via cases à cocher. Auto-assign `doc_role` symétrique dans les deux directions.
+- **tauri-prep / segmentation** : nouveau filtre « Ponctuation orpheline » — détecte les lignes commençant par `»` `)` `]` `}` `”` `’` (et `«` `‹` `›` pour les docs en allemand). Style rose/saumon avec barre rouge à gauche, voisins immédiats en contexte. Les filtres « Segments courts » et « Ponctuation orpheline » se cumulent.
+- **scripts** : `validate_regex_migration.py` — vérifie chaque pattern persisté dans `corpus_info.meta_json` avant migration `re` → `regex`. Détecte POSIX/Unicode classes, échecs de compile, divergences sample-based.
+- **CI** : nouveau workflow `.github/workflows/sidecar-growth-gate.yml` — gate de croissance fenêtre glissante 90j sur `sidecar.py`. Override par commit trailer `Sidecar-Growth-Override: <motif>`. Documenté dans `CONTRIBUTING.md`.
+- **docs** : `CONTRIBUTING.md` créé — règles branches/commits/release/tests, sidecar growth gate, curation regex migration, conventions modal/CSS namespacing.
+- **docs** : `HANDOFF_SHELL.md` et `HANDOFF_PREP.md` — briefings pour intervenants externes (Claude Code Web ou humain).
+- **multicorpus_engine / telemetry** : nouveau module `telemetry.py` — instrumentation locale en NDJSON `<db_dir>/.agrafes_telemetry.ndjson`, append-only, fire-and-forget. Aucun envoi réseau. Lock fichier (`fcntl` POSIX / `msvcrt` Windows) pour gérer la concurrence rare entre sidecars sur DBs adjacentes.
 - **multicorpus_engine / telemetry** : nouveau module `telemetry.py` — instrumentation locale en NDJSON `<db_dir>/.agrafes_telemetry.ndjson`, append-only, fire-and-forget. Aucun envoi réseau. Lock fichier (`fcntl` POSIX / `msvcrt` Windows) pour gérer la concurrence rare entre sidecars sur DBs adjacentes.
 - **multicorpus_engine / sidecar** : endpoint `POST /telemetry` (no-auth, loopback-only — risque limité). Schéma `TelemetryRequest` ajouté à `sidecar_contract.py`. Renvoie 204 No Content. Body silencieusement droppé si malformé (contrat fire-and-forget).
 - **multicorpus_engine / sidecar** : 5 events instrumentés + 1 meta-event :
@@ -29,8 +40,18 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Changed
 
 - **tauri-prep / curation** : la classe diff row reçoit maintenant un bouton inline en colonne extid (avec stop-propagation pour ne pas activer la sélection au clic du bouton). CSS `.prep-diff-jump-btn` discret au repos, contrasté au hover. Animation `prep-seg-row-highlight` 2s pour signaler la ligne ciblée par focusUnit.
+- **multicorpus_engine / sidecar** : cap `/segment/preview` aligné de 300 à 5000, cohérent avec `/curate/preview`. Le frontend envoyait déjà 5000 mais le backend tronquait silencieusement.
+- **tauri-shell / Rust** : commande `read_text_file_raw` renommée en `read_sidecar_portfile` — le nom mentait sur la portée réelle (whitelist d'un seul fichier `.agrafes_sidecar.json`). Cohérent avec le nouveau `read_telemetry_ndjson`.
+- **scripts/bump_version.py** : aligne désormais aussi `tauri-shell/package.json` (était drifté à 0.1.28 vs tauri.conf.json à 0.1.40).
+- **docs/RELEASE_CHECKLIST.md** : `git tag -s` (signature GPG) obligatoire à partir de cette release.
 
----
+### Fixed
+
+- **tauri-prep / metadata** : suppression de document continuait même après clic « Annuler » sur le confirm — `window.confirm()` natif non fiable sur Tauri 2 WebView (cf. issue #40 ouverte sur le repo). Remplacé par `modalConfirm` déterministe dans les 4 sites (suppression batch, suppression relation, propagation parent→enfants, bulk update).
+- **tauri-prep / segmentation** : message erreur preview « No units found » distingue maintenant 3 cas — doc inexistant (404 explicite), doc avec 0 line units mais N autres (hint « probable failed import + suggestion réimport »), doc OK. Hint UI dédié pour le cas DOCX en table 2-colonnes que l'importer ne sait pas lire.
+- **scripts/build / package.json** : alignement Shell `package.json` (0.1.28 → 0.1.41) géré par `bump_version.py`.
+- **multicorpus_engine / telemetry** : `emit_event` strip les clés réservées `ts`/`event` du payload — empêche un caller de poison les valeurs canoniques. `_handle_telemetry` strip aussi `db_path`/`event_name` (positionnels d'`emit_event`) pour éviter perte silencieuse d'event sur TypeError.
+- **multicorpus_engine / sidecar** : context manager `_track_stage` distingue maintenant 2xx (success=true), 4xx (success=false via flag `_send_error`), exception non rattrapée (success=false + re-raise). Analytics télémétrie plus honnête.
 
 ## [0.1.40] - 2026-04-27
 

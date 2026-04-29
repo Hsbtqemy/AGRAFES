@@ -1849,7 +1849,7 @@ const RELEASES_URL = "https://github.com/Hsbtqemy/AGRAFES/releases";
 const GITHUB_API_LATEST = "https://api.github.com/repos/Hsbtqemy/AGRAFES/releases/latest";
 
 // App version: initialized from tauri.conf.json at runtime, fallback to build-time constant.
-let APP_VERSION = "0.1.40";
+let APP_VERSION = "0.1.41";
 (async () => {
   try {
     const { getVersion } = await import("@tauri-apps/api/app").catch(() => ({ getVersion: null as null }));
