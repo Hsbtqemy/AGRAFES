@@ -85,6 +85,61 @@ describe("CURATE_PRESETS — comportement JS-side", () => {
   });
 });
 
+// ─── CURATE_PRESETS — invariant idempotence ─────────────────────────────────
+// Invariant non-négociable (cf. HANDOFF_PREP § 5) : appliquer un preset deux
+// fois doit donner le même résultat qu'une fois. Sinon le pipeline oscille
+// et la curation devient impossible à raisonner.
+//
+// Note : on teste ici les patterns CÔTÉ JS uniquement (donc replacement
+// littéral, pas de translator $→\g<>). Pour les presets sans backreference
+// l'idempotence est testable directement. Pour ceux avec backreference (FR,
+// EN), le replacement JS « $1 » ne fait PAS la backreference côté JS — c'est
+// le translator backend qui s'en charge. On les exclut donc des tests
+// d'idempotence ici (le backend a ses propres tests).
+
+function applyPresetJs(text: string, presetKey: string): string {
+  const preset = CURATE_PRESETS[presetKey];
+  let out = text;
+  for (const rule of preset.rules) {
+    out = out.replace(new RegExp(rule.pattern, rule.flags ?? ""), rule.replacement);
+  }
+  return out;
+}
+
+describe("CURATE_PRESETS — idempotence (apply 2× = apply 1×)", () => {
+  // Presets sans backreference : testables directement côté JS.
+  const idempotentPresets = ["spaces", "quotes", "invisibles"];
+
+  for (const key of idempotentPresets) {
+    it(`${key} — idempotent sur texte typique`, () => {
+      const samples = [
+        "Hello world",
+        "Foo  bar  baz",   // doubles espaces
+        "« Madone »",      // guillemets FR avec espaces variés (NBSP + space)
+        "‘word’ \"another\"",
+        "Texte avec​zero-width﻿ et BOM",
+      ];
+      for (const src of samples) {
+        const once = applyPresetJs(src, key);
+        const twice = applyPresetJs(once, key);
+        expect(twice, `${key}: «${src}» → 1× ≠ 2×`).toBe(once);
+      }
+    });
+  }
+
+  it("quotes — la NNBSP insérée n'est pas re-réinsérée au 2e pass", () => {
+    // Cas spécifique : le preset quotes met du NNBSP autour des chevrons.
+    // Si la classe de match ne contenait QUE NBSP (sans NNBSP), le 2e pass
+    // verrait «   mot   » et essaierait de matcher « avec aucun
+    // espace puis   → re-replacement → doublon.
+    const src = "«Madone»";
+    const once = applyPresetJs(src, "quotes");
+    const twice = applyPresetJs(once, "quotes");
+    expect(once).toBe("« Madone »");
+    expect(twice).toBe(once);
+  });
+});
+
 // ─── CURATE_PRESETS — réversibilité spaces n'écrase pas les NBSP ─────────────
 // Invariant explicite (cf. HANDOFF_PREP § 5 décisions héritées) : le preset
 // `spaces` ne doit JAMAIS détruire les NBSP intentionnelles. Cf. fix v0.1.40.

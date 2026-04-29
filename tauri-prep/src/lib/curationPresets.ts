@@ -50,8 +50,8 @@ export const CURATE_PRESETS: Record<string, CuratePreset> = {
   quotes: {
     label: "Apostrophes et guillemets",
     rules: [
-      { pattern: "[‘’ʼ]", replacement: "'", description: "Apostrophes courbes → droites" },
-      { pattern: "[“”]", replacement: '"', description: "Guillemets anglais → droits" },
+      { pattern: "[‘’ʼ]", replacement: "'", flags: "g", description: "Apostrophes courbes → droites" },
+      { pattern: "[“”]", replacement: '"', flags: "g", description: "Guillemets anglais → droits" },
       { pattern: "«[ \\t  ]*", replacement: "« ", flags: "g", description: "Guillemet ouvrant + espace fine insécable" },
       { pattern: "[ \\t  ]*»", replacement: " »", flags: "g", description: "Espace fine insécable + guillemet fermant" },
     ],
