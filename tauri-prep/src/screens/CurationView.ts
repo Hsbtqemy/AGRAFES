@@ -57,6 +57,7 @@ import { initCardAccordions } from "../lib/uiAccordions.ts";
 import { escHtml as _escHtml, renderSpecialChars as _renderSpecialChars, highlightChanges as _highlightChanges } from "../lib/diff.ts";
 import { rulesSignature as _rulesSignature, sampleFingerprint as _sampleFingerprint, sampleTextFingerprint as _sampleTextFingerprint } from "../lib/curationFingerprint.ts";
 import { reportEvent, reportUserError } from "../lib/telemetry.ts";
+import { CURATE_PRESETS, parseAdvancedCurateRules, getPunctLangFromValue } from "../lib/curationPresets.ts";
 
 // ─── Curation review persistence ──────────────────────────────────────────────
 
@@ -84,70 +85,13 @@ const CURATE_PAGE_SIZE = 50;
 // large documents. Changed units are always rendered regardless of this cap.
 const RAW_PANE_DOM_CAP = 5000;
 
-const CURATE_PRESETS: Record<string, { label: string; rules: CurateRule[] }> = {
-  spaces: {
-    label: "Espaces",
-    rules: [
-      { pattern: "[ \\t]{2,}", replacement: " ", flags: "g", description: "Espaces multiples → un seul" },
-      { pattern: "^\\s+|\\s+$", replacement: "", flags: "gm", description: "Trim lignes" },
-    ],
-  },
-  quotes: {
-    label: "Apostrophes et guillemets",
-    rules: [
-      { pattern: "[\u2018\u2019\u02BC]", replacement: "'", description: "Apostrophes courbes → droites" },
-      { pattern: "[\u201C\u201D]", replacement: '"', description: "Guillemets anglais → droits" },
-      { pattern: "\u00AB[ \\t\u00A0\u202F]*", replacement: "\u00AB\u202F", flags: "g", description: "Guillemet ouvrant + espace fine insécable" },
-      { pattern: "[ \\t\u00A0\u202F]*\u00BB", replacement: "\u202F\u00BB", flags: "g", description: "Espace fine insécable + guillemet fermant" },
-    ],
-  },
-  punctuation_fr: {
-    label: "Ponctuation française",
-    rules: [
-      { pattern: "[ \\t\u00A0]+([!?;])", replacement: "\u202F$1", flags: "g", description: "Espace fine insécable avant ! ? ; (FR)" },
-      { pattern: "[ \\t\u00A0]+:(?!\\d)", replacement: "\u202F:", flags: "g", description: "Espace fine avant : hors timecodes (FR)" },
-      { pattern: "\u00AB[ \\t\u00A0\u202F]*", replacement: "\u00AB\u202F", flags: "g", description: "Espace fine après « (FR)" },
-      { pattern: "[ \\t\u00A0\u202F]*\u00BB", replacement: "\u202F\u00BB", flags: "g", description: "Espace fine avant » (FR)" },
-      { pattern: "\\.{4,}", replacement: "\u2026", flags: "g", description: "Points de suspension → … (FR)" },
-    ],
-  },
-  punctuation_en: {
-    label: "Ponctuation anglaise",
-    rules: [
-      { pattern: "\\s+([,;:!?])", replacement: "$1", flags: "g", description: "Supprimer espace avant ponctuation (EN)" },
-      { pattern: "([.!?])([A-ZÀ-Ÿ])", replacement: "$1 $2", flags: "g", description: "Espace après ponctuation terminale (EN)" },
-      { pattern: "\\.{4,}", replacement: "\u2026", flags: "g", description: "Points de suspension → … (EN)" },
-    ],
-  },
-  /** @deprecated — conservé pour compatibilité presets projets ; utiliser punctuation_en */
-  punctuation: {
-    label: "Ponctuation",
-    rules: [
-      { pattern: "\\s+([,;:!?])", replacement: "$1", flags: "g", description: "Supprimer espace avant ponctuation" },
-      { pattern: "([.!?])([A-ZÀ-Ÿ])", replacement: "$1 $2", flags: "g", description: "Espace après ponctuation terminale" },
-      { pattern: "\\.{4,}", replacement: "\u2026", flags: "g", description: "Points de suspension multiples → …" },
-    ],
-  },
-  invisibles: {
-    label: "Contrôle invisibles",
-    rules: [
-      { pattern: "\\u200B|\\u200C|\\u200D|\\uFEFF", replacement: "", flags: "g", description: "Supprimer espaces de largeur nulle et BOM" },
-      { pattern: "\\u00AD", replacement: "", flags: "g", description: "Supprimer tirets conditionnels" },
-      { pattern: "[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\\u007F]", replacement: "", flags: "g", description: "Supprimer caractères de contrôle" },
-    ],
-  },
-  numbering: {
-    label: "Numérotation [n]",
-    rules: [
-      { pattern: "^(\\d+)\\.\\s+", replacement: "[$1] ", flags: "m", description: "Normaliser numérotation décimale [n]" },
-      { pattern: "^([ivxlcdmIVXLCDM]+)\\.\\s+", replacement: "[$1] ", flags: "m", description: "Normaliser numérotation romaine [n]" },
-    ],
-  },
-  custom: {
-    label: "Règles personnalisées",
-    rules: [],
-  },
-};
+// CURATE_PRESETS et parseAdvancedCurateRules extraits vers ../lib/curationPresets.ts
+// (Phase 1 du chantier de décomposition CurationView, cf. HANDOFF_PREP § 7).
+// Tests : ../lib/__tests__/curationPresets.test.ts
+//
+// La classe CurationView importe CURATE_PRESETS (lecture seule) ; elle ne le
+// modifie jamais. Si un preset built-in doit changer, le faire dans le module
+// pur — pas ici, pas dupliqué.
 
 // ─── Callbacks interface ───────────────────────────────────────────────────────
 
@@ -1351,16 +1295,14 @@ export class CurationView {
   }
 
   private _getPunctLang(): "fr" | "en" | "" {
+    // Lit le DOM puis délègue la validation/typage au helper pur.
     const el = this._q<HTMLInputElement>('input[name="curate-punct"]:checked');
-    const v = el?.value ?? "";
-    return (v === "fr" || v === "en") ? v : "";
+    return getPunctLangFromValue(el?.value);
   }
 
   private _parseAdvancedCurateRules(raw: string): CurateRule[] {
-    const trimmed = raw.trim();
-    if (!trimmed) return [];
-    try { const p = JSON.parse(trimmed); return Array.isArray(p) ? (p as CurateRule[]) : []; }
-    catch { return []; }
+    // Délégué au helper pur (testé dans __tests__/curationPresets.test.ts).
+    return parseAdvancedCurateRules(raw);
   }
 
   private _addAdvancedCurateRule(): void {
