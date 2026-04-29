@@ -65,6 +65,12 @@ import {
   formatExcAdminList,
   type ExcKindFilter,
 } from "../lib/curationExceptionsAdmin.ts";
+import {
+  appendCurateLogEntry,
+  formatCurateLog,
+  countCurateWarnings,
+  type CurateLogEntry,
+} from "../lib/curationDiagnostics.ts";
 
 // ─── Curation review persistence ──────────────────────────────────────────────
 
@@ -130,7 +136,7 @@ export class CurationView {
 
   // ── Preview state ───────────────────────────────────────────────────────────
   private _hasPendingPreview = false;
-  private _curateLog: Array<{ ts: number; kind: "preview" | "apply" | "warn"; msg: string }> = [];
+  private _curateLog: CurateLogEntry[] = [];
   private _previewDebounceHandle: number | null = null;
   private _curateExamples: CuratePreviewExample[] = [];
   private _activeDiffIdx: number | null = null;
@@ -1457,8 +1463,9 @@ export class CurationView {
   }
 
   private _pushCurateLog(kind: "preview" | "apply" | "warn", msg: string): void {
-    this._curateLog.unshift({ ts: Date.now(), kind, msg });
-    if (this._curateLog.length > 10) this._curateLog.length = 10;
+    // Append + cap délégué au helper pur (testé dans
+    // __tests__/curationDiagnostics.test.ts).
+    this._curateLog = appendCurateLogEntry(this._curateLog, kind, msg);
     const bottomPanel = this._q<HTMLDetailsElement>("#act-curate-bottom-panel");
     // Auto-open only for warnings — individual accept/ignore clicks (kind="apply")
     // and previews should not force-open the panel and disrupt the review workflow.
@@ -1469,20 +1476,11 @@ export class CurationView {
   private _renderCurateLog(): void {
     const el = this._q<HTMLElement>("#act-curate-review-log");
     if (!el) return;
-    if (this._curateLog.length === 0) { el.innerHTML = `<p class="empty-hint" style="padding:10px">Aucune action enregistr&#233;e.</p>`; return; }
-    const now = Date.now();
-    el.innerHTML = this._curateLog.map(entry => {
-      const diffS = Math.round((now - entry.ts) / 1000);
-      const age = diffS < 60 ? `il y a ${diffS} s` : new Date(entry.ts).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
-      const kindClass = entry.kind === "warn" ? "prep-curate-log-warn" : entry.kind === "apply" ? "prep-curate-log-apply" : "";
-      return `<div class="prep-curate-qitem ${kindClass}">` +
-        `<div class="prep-curate-qmeta"><span>${entry.kind === "preview" ? "Prévisu" : entry.kind === "apply" ? "Application" : "⚠"}</span><span>${age}</span></div>` +
-        `<div>${_escHtml(entry.msg)}</div></div>`;
-    }).join("");
+    el.innerHTML = formatCurateLog(this._curateLog, Date.now());
     // Update the badge on the <summary> so the count is visible when the panel is collapsed.
     const badge = this._q<HTMLElement>("#act-curate-log-badge");
     if (badge) {
-      const warnCount = this._curateLog.filter(e => e.kind === "warn").length;
+      const warnCount = countCurateWarnings(this._curateLog);
       if (warnCount > 0) {
         badge.textContent = String(warnCount);
         badge.style.display = "";
