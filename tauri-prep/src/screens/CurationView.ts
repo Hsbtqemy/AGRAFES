@@ -78,6 +78,15 @@ import {
   hasAnyManualOverride,
 } from "../lib/curationCounters.ts";
 import { buildSampleInfo } from "../lib/curationSampleInfo.ts";
+import {
+  buildMinimapHtml,
+  formatNoChangesDiag,
+  formatChangesSummary,
+  formatTruncationNotice,
+  formatRuleChips,
+  formatGotoFirstAction,
+  formatImpactNotice,
+} from "../lib/curationDiagPanel.ts";
 
 // ─── Curation review persistence ──────────────────────────────────────────────
 
@@ -2765,30 +2774,17 @@ export class CurationView {
     const diagEl = this._q<HTMLElement>("#act-curate-diag");
     if (!diagEl) return;
     if (changed === 0) {
-      diagEl.innerHTML = `<div class="prep-curate-diag"><strong>✓ Aucune modification</strong>${total} unités analysées, corpus propre.</div>`;
+      diagEl.innerHTML = formatNoChangesDiag(total);
     } else {
       const shown = this._curateExamples.length;
       const isTruncated = shown < this._curateGlobalChanged;
       const ruleStats = this._getRuleStats();
-      const truncationHtml = isTruncated
-        ? `<div class="prep-curate-diag curate-diag-notice">&#9432;&#160;Preview limit&#233;e &#224; ${shown}&#160;exemples sur&#160;${this._curateGlobalChanged} modifications r&#233;elles. Les compteurs par r&#232;gle ci-dessous concernent uniquement l&#8217;&#233;chantillon affich&#233;.</div>`
-        : "";
-      let ruleChipsHtml = "";
-      if (ruleStats.size > 0) {
-        const scopeNote = isTruncated ? `<span class="prep-diag-scope-note">dans l&#8217;&#233;chantillon courant</span>` : "";
-        const chipsInner = [...ruleStats.entries()].sort((a, b) => b[1] - a[1])
-          .map(([label, count]) =>
-            `<span class="chip prep-curate-diag-rule-chip" data-rule-label="${_escHtml(label)}" role="button" tabindex="0"` +
-            ` title="Filtrer sur : ${_escHtml(label)}${isTruncated ? " (dans l\u2019\u00e9chantillon courant)" : ""}"` +
-            `>${_escHtml(label)}<span class="prep-diag-rule-count">${count}</span></span>`
-          ).join("");
-        ruleChipsHtml = `<div class="prep-curate-diag curate-diag-rules"><strong>Filtrer par r&#232;gle</strong>${scopeNote}<div class="prep-chip-row prep-diag-rule-chips" style="margin-top:5px">${chipsInner}</div></div>`;
-      }
-      diagEl.innerHTML = `
-        <div class="prep-curate-diag warn curate-diag-summary"><strong>${changed} unit&#233;(s) modifi&#233;e(s)</strong>${replacements} remplacement(s) sur ${total} unit&#233;s.</div>
-        ${shown > 0 ? `<div class="prep-curate-diag curate-diag-action" id="act-diag-goto-first" role="button" tabindex="0"><strong>&#8594; Premi&#232;re modification</strong><span style="font-size:11px;color:var(--prep-muted)">${shown} exemple(s) &#8212; cliquer pour naviguer</span></div>` : ""}
-        ${truncationHtml}${ruleChipsHtml}
-        <div class="prep-curate-diag"><strong>Impact segmentation</strong>V&#233;rifiez la preview avant d&#8217;appliquer.</div>`;
+      diagEl.innerHTML =
+        formatChangesSummary(changed, total, replacements) +
+        formatGotoFirstAction(shown) +
+        formatTruncationNotice(shown, this._curateGlobalChanged) +
+        formatRuleChips(ruleStats, isTruncated) +
+        formatImpactNotice();
       if (shown > 0) {
         const gotoBtn = diagEl.querySelector<HTMLElement>("#act-diag-goto-first");
         gotoBtn?.addEventListener("click", () => { const panel = this._q<HTMLElement>("#act-preview-panel") ?? undefined; this._setRuleFilter(null, panel); this._q("#act-diff-list")?.scrollIntoView({ behavior: "smooth", block: "nearest" }); });
@@ -2816,12 +2812,7 @@ export class CurationView {
   private _renderCurateMinimap(changed: number, total: number): void {
     const mmEl = this._q("#act-curate-minimap");
     if (!mmEl) return;
-    const bars = 12;
-    const density = total > 0 ? Math.min(changed / total, 1) : 0;
-    const changedBars = Math.round(density * bars);
-    mmEl.innerHTML = Array.from({ length: bars }, (_, i) =>
-      `<div class="prep-mm${i < changedBars ? " changed" : ""}"></div>`
-    ).join("");
+    mmEl.innerHTML = buildMinimapHtml(changed, total);
   }
 
   private async _fillCuratePanesWithDocumentText(docId: number): Promise<void> {
