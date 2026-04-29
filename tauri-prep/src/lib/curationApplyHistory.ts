@@ -18,6 +18,7 @@
  *   7. Session marker : event sans id reçoit la classe "apply-hist-row--session"
  */
 import type { CurateApplyEvent } from "./sidecarClient.ts";
+import { escHtml } from "./diff.ts";
 
 /** Scope filter values accepted by the UI dropdown. Empty string = no filter. */
 export type ApplyHistoryScope = "doc" | "all" | "";
@@ -105,7 +106,7 @@ export function formatApplyHistoryRow(event: CurateApplyEvent): string {
     : "—";
   const scopeLabel = event.scope === "doc" ? "Document" : "Corpus";
   const docLbl = event.doc_title
-    ? event.doc_title
+    ? escHtml(event.doc_title)
     : event.doc_id != null
       ? `#${event.doc_id}`
       : "—";
@@ -125,7 +126,7 @@ export function formatApplyHistoryRow(event: CurateApplyEvent): string {
     `<div class="prep-apply-hist-row${sessionMark}">` +
     `<span class="prep-apply-hist-ts">${ts}</span>` +
     `<span class="prep-apply-hist-scope-badge apply-hist-scope--${event.scope}">${scopeLabel}</span>` +
-    `<span class="prep-apply-hist-doc" title="${event.doc_title ?? ""}">${docLbl}</span>` +
+    `<span class="prep-apply-hist-doc" title="${escHtml(event.doc_title ?? "")}">${docLbl}</span>` +
     `<span class="prep-apply-hist-counts">${modified} mod. / ${skipped} saut.</span>` +
     (extras
       ? `<span class="prep-apply-hist-extras">${extras}</span>`

@@ -217,6 +217,18 @@ describe("formatApplyHistoryRow — invariants markup", () => {
     expect(html).toContain("2 man.");
   });
 
+  it("Invariant 8 — escape HTML sur doc_title (texte ET attribut title)", () => {
+    // Aligne le comportement sur formatExcAdminRow (Phase 3). Defensive coding :
+    // doc_title vient de filenames imports, peu probable d'avoir du HTML mais
+    // pas impossible. Cohérence avec les autres modules curation/lib.
+    const ev = makeEvent({ doc_title: '<script>alert("x")</script>' });
+    const html = formatApplyHistoryRow(ev);
+    expect(html).not.toContain("<script>");
+    expect(html).toContain("&lt;script&gt;");
+    // Vérifier l'attribut title aussi (les " sont escape en &quot;)
+    expect(html).toContain("&quot;x&quot;");
+  });
+
   it("ignored_count ET manual_override_count > 0 → joined par ' / '", () => {
     const html = formatApplyHistoryRow(makeEvent({ ignored_count: 3, manual_override_count: 2 }));
     expect(html).toContain("3 ign. / 2 man.");
