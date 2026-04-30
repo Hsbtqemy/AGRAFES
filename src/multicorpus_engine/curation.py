@@ -28,7 +28,7 @@ import json
 import logging
 import sqlite3
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Callable, Optional
 
 import regex as re  # third-party `regex` PyPI — drop-in superset of stdlib `re`
 
@@ -100,6 +100,7 @@ class CurationReport:
     units_skipped: int = 0   # units excluded by selective apply (ignored_unit_ids)
     rules_matched: list[str] = field(default_factory=list)  # descriptions of rules that fired
     warnings: list[str] = field(default_factory=list)
+    action_id: Optional[int] = None  # set when a Mode-A undo recorder ran
 
     def to_dict(self) -> dict:
         return {
@@ -109,7 +110,19 @@ class CurationReport:
             "units_skipped": self.units_skipped,
             "rules_matched": self.rules_matched,
             "warnings": self.warnings,
+            "action_id": self.action_id,
         }
+
+
+# Callback signature for the Mode-A undo recorder.
+# Called inside curate_document's transaction, *before* the UPDATE, with the
+# list of units about to change. Each tuple is (unit_id, text_norm_before,
+# text_norm_after). The callback must INSERT prep_action_history +
+# prep_action_unit_snapshots (no commit) and return action_id, or None to
+# skip recording for this doc.
+CurationActionRecorder = Callable[
+    [int, list[tuple[int, str, str]]], Optional[int]
+]
 
 
 def apply_rules(text: str, rules: list[CurationRule]) -> str:
@@ -163,6 +176,7 @@ def curate_document(
     skip_unit_ids: Optional[set[int]] = None,
     manual_overrides: Optional[dict[int, str]] = None,
     run_logger: Optional[logging.Logger] = None,
+    record_action: Optional[CurationActionRecorder] = None,
 ) -> CurationReport:
     """Apply curation rules to all units of doc_id.
 
@@ -276,7 +290,21 @@ def curate_document(
                     rules_fired.add(rule.description or rule.pattern)
             log.debug("Curated unit_id=%d", unit_id)
 
+    action_id: Optional[int] = None
     if updates:
+        # Mode A undo recorder: called *before* the UPDATE, in the same tx.
+        # Builds (unit_id, text_norm_before, text_norm_after) triples from the
+        # rows we already loaded — no extra DB round-trip.
+        if record_action is not None:
+            unit_to_before = {
+                int(row["unit_id"]): (row["text_norm"] or "") for row in rows
+            }
+            triples = [
+                (int(unit_id), unit_to_before[int(unit_id)], curated)
+                for curated, unit_id in updates
+            ]
+            action_id = record_action(doc_id, triples)
+
         conn.executemany(
             "UPDATE units SET text_norm = ? WHERE unit_id = ?",
             updates,
@@ -304,6 +332,7 @@ def curate_document(
         units_modified=modified,
         units_skipped=skipped,
         rules_matched=sorted(rules_fired),
+        action_id=action_id,
     )
 
 
@@ -313,11 +342,17 @@ def curate_all_documents(
     skip_unit_ids: Optional[set[int]] = None,
     manual_overrides: Optional[dict[int, str]] = None,
     run_logger: Optional[logging.Logger] = None,
+    record_action: Optional[CurationActionRecorder] = None,
 ) -> list[CurationReport]:
     """Apply curation rules to every document in the DB.
 
-    skip_unit_ids: forwarded to curate_document — see its docstring.
+    skip_unit_ids:    forwarded to curate_document — see its docstring.
     manual_overrides: forwarded to curate_document — see its docstring.
+    record_action:    forwarded to curate_document. The same callback is reused
+                      across all docs; it is responsible for emitting one
+                      prep_action_history entry per doc that had modifications.
+                      No-op docs do not get an entry (see CurationReport.action_id
+                      remaining None).
 
     Returns one CurationReport per document.
     """
@@ -326,6 +361,7 @@ def curate_all_documents(
     ]
     return [
         curate_document(conn, doc_id, rules, skip_unit_ids=skip_unit_ids,
-                        manual_overrides=manual_overrides, run_logger=run_logger)
+                        manual_overrides=manual_overrides, run_logger=run_logger,
+                        record_action=record_action)
         for doc_id in doc_ids
     ]

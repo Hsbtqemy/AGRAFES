@@ -3481,6 +3481,11 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             curate_document,
             rules_from_list,
         )
+        from multicorpus_engine.action_history import (
+            ACTION_CURATION_APPLY,
+            insert_unit_snapshots,
+            record_prep_action,
+        )
 
         rules = rules_from_list(body.get("rules", []))
         doc_id = body.get("doc_id")
@@ -3505,23 +3510,81 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             if _parsed:
                 manual_overrides = _parsed
 
+        # Mode A undo: optional context the frontend wants attached to the
+        # prep_action_history row. Stored verbatim under context_json.apply_context.
+        # rules_signature is sourced from the body too (frontend already computes
+        # it for localStorage review invalidation).
+        apply_context_in = body.get("apply_context")
+        apply_context = apply_context_in if isinstance(apply_context_in, dict) else None
+        rules_signature = body.get("rules_signature")
+        if rules_signature is not None and not isinstance(rules_signature, str):
+            rules_signature = str(rules_signature)
+
+        rules_count = len(rules)
+
+        # Build the recorder closure. Called inside curate_document's tx, before
+        # the UPDATE, with the list of (unit_id, before, after) triples for
+        # units about to change. Inserts prep_action_history + snapshots
+        # without committing; commit happens at the end of curate_document.
+        def _recorder_for(conn):
+            def _record(d_id: int, triples: list[tuple[int, str, str]]) -> int | None:
+                if not triples:
+                    return None
+                description = (
+                    f"Apply {rules_count} règle{'s' if rules_count > 1 else ''} · "
+                    f"{len(triples)} unité{'s' if len(triples) > 1 else ''} modifiée"
+                    f"{'s' if len(triples) > 1 else ''}"
+                )
+                context: dict = {
+                    "rules_count":     rules_count,
+                    "rules_signature": rules_signature,
+                    "scope":           "all" if doc_id is None else "doc",
+                }
+                if apply_context is not None:
+                    context["apply_context"] = apply_context
+                action_id = record_prep_action(
+                    conn,
+                    doc_id=d_id,
+                    action_type=ACTION_CURATION_APPLY,
+                    description=description,
+                    context=context,
+                )
+                insert_unit_snapshots(
+                    conn,
+                    action_id,
+                    [
+                        {"unit_id": uid, "text_norm_before": before}
+                        for (uid, before, _after) in triples
+                    ],
+                )
+                return action_id
+            return _record
+
         with self._lock():
+            conn = self._conn()
+            recorder = _recorder_for(conn)
             if doc_id is not None:
-                reports = [curate_document(self._conn(), doc_id, rules,
+                reports = [curate_document(conn, doc_id, rules,
                                            skip_unit_ids=skip_unit_ids,
-                                           manual_overrides=manual_overrides)]
+                                           manual_overrides=manual_overrides,
+                                           record_action=recorder)]
             else:
-                reports = curate_all_documents(self._conn(), rules,
+                reports = curate_all_documents(conn, rules,
                                                skip_unit_ids=skip_unit_ids,
-                                               manual_overrides=manual_overrides)
+                                               manual_overrides=manual_overrides,
+                                               record_action=recorder)
         total_modified = sum(r.units_modified for r in reports)
         total_skipped  = sum(r.units_skipped  for r in reports)
+        action_ids = [r.action_id for r in reports if r.action_id is not None]
         self._send_json(success_payload({
-            "docs_curated": len(reports),
+            "docs_curated":   len(reports),
             "units_modified": total_modified,
-            "units_skipped": total_skipped,
-            "fts_stale": total_modified > 0,
-            "results": [r.to_dict() for r in reports],
+            "units_skipped":  total_skipped,
+            "fts_stale":      total_modified > 0,
+            "results":        [r.to_dict() for r in reports],
+            "action_ids":     action_ids,
+            # Convenience for scope='doc' callers — null if no action recorded.
+            "action_id":      action_ids[0] if doc_id is not None and action_ids else None,
         }))
 
     def _handle_validate_meta(self, body: dict) -> None:
