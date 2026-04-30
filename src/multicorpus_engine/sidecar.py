@@ -4701,14 +4701,22 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             self._send_error(f"n1 and n2 must be adjacent (got n1={n1}, n2={n2})", code=ERR_BAD_REQUEST, http_status=400)
             return
 
+        from multicorpus_engine.action_history import (
+            ACTION_MERGE_UNITS,
+            insert_unit_snapshots,
+            record_prep_action,
+        )
+
         with self._lock():
             conn = self._conn()
             row1 = conn.execute(
-                "SELECT unit_id, text_raw, text_norm FROM units WHERE doc_id=? AND n=? AND unit_type='line'",
+                "SELECT unit_id, text_raw, text_norm, unit_role, meta_json FROM units"
+                " WHERE doc_id=? AND n=? AND unit_type='line'",
                 (doc_id, n1),
             ).fetchone()
             row2 = conn.execute(
-                "SELECT unit_id, text_raw, text_norm FROM units WHERE doc_id=? AND n=? AND unit_type='line'",
+                "SELECT unit_id, text_raw, text_norm, unit_role, meta_json FROM units"
+                " WHERE doc_id=? AND n=? AND unit_type='line'",
                 (doc_id, n2),
             ).fetchone()
             if not row1 or not row2:
@@ -4724,6 +4732,43 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             # Delete alignment links for both units (keyed by unit_id, not n)
             uid1 = int(row1["unit_id"])
             uid2 = int(row2["unit_id"])
+
+            # Mode A undo: snapshot both originals BEFORE the mutation. The
+            # merged unit reuses uid1; uid2 is deleted, so context_json carries
+            # the unit_n information needed to recreate it on undo.
+            action_id = record_prep_action(
+                conn,
+                doc_id=doc_id,
+                action_type=ACTION_MERGE_UNITS,
+                description=f"Fusion u.{n1} + u.{n2}",
+                context={
+                    "merged_unit_ids": [uid1, uid2],
+                    "kept_unit_id":    uid1,        # uid that survives, now holds merged text
+                    "deleted_unit_id": uid2,        # uid removed by this action
+                    "n1": n1, "n2": n2,
+                },
+            )
+            insert_unit_snapshots(
+                conn,
+                action_id,
+                [
+                    {
+                        "unit_id":          uid1,
+                        "text_raw_before":  row1["text_raw"],
+                        "text_norm_before": row1["text_norm"] or "",
+                        "unit_role_before": row1["unit_role"],
+                        "meta_json_before": row1["meta_json"],
+                    },
+                    {
+                        "unit_id":          uid2,
+                        "text_raw_before":  row2["text_raw"],
+                        "text_norm_before": row2["text_norm"] or "",
+                        "unit_role_before": row2["unit_role"],
+                        "meta_json_before": row2["meta_json"],
+                    },
+                ],
+            )
+
             conn.execute(
                 "DELETE FROM alignment_links WHERE"
                 " pivot_unit_id IN (?,?) OR target_unit_id IN (?,?)",
@@ -4748,10 +4793,11 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             conn.commit()
 
         self._send_json(success_payload({
-            "doc_id": doc_id,
-            "merged_n": n1,
+            "doc_id":    doc_id,
+            "merged_n":  n1,
             "deleted_n": n2,
-            "text": merged_norm,
+            "text":      merged_norm,
+            "action_id": action_id,
         }))
 
     def _handle_units_split(self, body: dict) -> None:
@@ -4783,10 +4829,17 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             self._send_error("text_a and text_b must be non-empty", code=ERR_BAD_REQUEST, http_status=400)
             return
 
+        from multicorpus_engine.action_history import (
+            ACTION_SPLIT_UNIT,
+            insert_unit_snapshots,
+            record_prep_action,
+        )
+
         with self._lock():
             conn = self._conn()
             row = conn.execute(
-                "SELECT unit_id, external_id FROM units WHERE doc_id=? AND n=? AND unit_type='line'",
+                "SELECT unit_id, external_id, text_raw, text_norm, unit_role, meta_json"
+                " FROM units WHERE doc_id=? AND n=? AND unit_type='line'",
                 (doc_id, unit_n),
             ).fetchone()
             if not row:
@@ -4798,6 +4851,12 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 
             # Delete alignment links for this unit (keyed by unit_id, not n)
             uid = int(row["unit_id"])
+            external_id_before = row["external_id"]
+            text_raw_before    = row["text_raw"]
+            text_norm_before   = row["text_norm"] or ""
+            unit_role_before   = row["unit_role"]
+            meta_json_before   = row["meta_json"]
+
             conn.execute(
                 "DELETE FROM alignment_links WHERE"
                 " pivot_unit_id=? OR target_unit_id=?",
@@ -4817,20 +4876,53 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             )
 
             # Insert new unit at n+1 with text_b
-            conn.execute(
+            cur = conn.execute(
                 "INSERT INTO units (doc_id, unit_type, n, external_id, text_raw, text_norm, meta_json)"
                 " VALUES (?, 'line', ?, NULL, ?, ?, NULL)",
                 (doc_id, unit_n + 1, text_b, text_b),
+            )
+            new_uid = int(cur.lastrowid)
+
+            # Mode A undo: record action + snapshot of the original unit. The
+            # newly-inserted unit has no "before" state — undo will delete it
+            # using created_unit_id from context_json, then restore the kept
+            # unit from snapshot.
+            action_id = record_prep_action(
+                conn,
+                doc_id=doc_id,
+                action_type=ACTION_SPLIT_UNIT,
+                description=f"Coupure u.{unit_n}",
+                context={
+                    "split_unit_id":      uid,
+                    "split_unit_n":       unit_n,
+                    "created_unit_id":    new_uid,
+                    "created_unit_n":     unit_n + 1,
+                    "external_id_before": external_id_before,
+                },
+            )
+            insert_unit_snapshots(
+                conn,
+                action_id,
+                [
+                    {
+                        "unit_id":          uid,
+                        "text_raw_before":  text_raw_before,
+                        "text_norm_before": text_norm_before,
+                        "unit_role_before": unit_role_before,
+                        "meta_json_before": meta_json_before,
+                    },
+                ],
             )
 
             conn.commit()
 
         self._send_json(success_payload({
-            "doc_id": doc_id,
-            "unit_n": unit_n,
+            "doc_id":     doc_id,
+            "unit_n":     unit_n,
             "new_unit_n": unit_n + 1,
-            "text_a": text_a,
-            "text_b": text_b,
+            "text_a":     text_a,
+            "text_b":     text_b,
+            "action_id":  action_id,
         }))
 
     # ------------------------------------------------------------------
@@ -5342,6 +5434,11 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 
     def _handle_segment(self, body: dict) -> None:
         from multicorpus_engine.segmenter import resegment_document
+        from multicorpus_engine.action_history import (
+            ACTION_RESEGMENT,
+            insert_unit_snapshots,
+            record_prep_action,
+        )
 
         doc_id = body.get("doc_id")
         if doc_id is None:
@@ -5372,11 +5469,80 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 return
 
         with self._lock():
+            conn = self._conn()
+
+            # Mode A undo: only record an action when there were already line
+            # units to be replaced (re-segmenting). First-time segmentation
+            # of a doc with zero existing line units has nothing to undo to —
+            # the recorder's len(new_units) > 0 check is necessary but not
+            # sufficient (it would still record the first segmentation as
+            # "undo-able to nothing"). We gate on len(units_before) > 0.
+            def _resegment_recorder(payload: dict) -> int | None:
+                units_before = payload["units_before"]
+                if not units_before:
+                    return None
+                d_id      = payload["doc_id"]
+                created   = payload["created_unit_ids"]
+                new_n     = payload["new_units_n"]
+                pack_used = payload["pack"]
+                action_id = record_prep_action(
+                    conn,
+                    doc_id=d_id,
+                    action_type=ACTION_RESEGMENT,
+                    description=(
+                        f"Resegmentation · {len(units_before)} → "
+                        f"{len(created)} unités"
+                    ),
+                    context={
+                        "pack":                     pack_used,
+                        "lang":                     payload["lang"],
+                        "text_start_n":             payload["text_start_n"],
+                        "calibrate_to":             calibrate_to,
+                        "units_deleted_after_ids":  [u["unit_id"] for u in units_before],
+                        "units_created_after_json": [
+                            {"unit_id": uid, "n": n}
+                            for uid, n in zip(created, new_n)
+                        ],
+                        "units_before":             [
+                            {
+                                "unit_id":     u["unit_id"],
+                                "n":           u["n"],
+                                "external_id": u["external_id"],
+                                "text_raw":    u["text_raw"],
+                                "text_norm":   u["text_norm"],
+                                "unit_role":   u["unit_role"],
+                                "meta_json":   u["meta_json"],
+                            }
+                            for u in units_before
+                        ],
+                    },
+                )
+                # Snapshots for the deleted units. The undo path will use
+                # context_json.units_before to reconstruct the rows since the
+                # snapshot table only carries text_raw/text_norm/role/meta —
+                # n and external_id live in context_json.
+                insert_unit_snapshots(
+                    conn,
+                    action_id,
+                    [
+                        {
+                            "unit_id":          u["unit_id"],
+                            "text_raw_before":  u["text_raw"],
+                            "text_norm_before": u["text_norm"] or "",
+                            "unit_role_before": u["unit_role"],
+                            "meta_json_before": u["meta_json"],
+                        }
+                        for u in units_before
+                    ],
+                )
+                return action_id
+
             report = resegment_document(
-                self._conn(),
+                conn,
                 doc_id=doc_id,
                 lang=lang or "und",
                 pack=pack,
+                record_action=_resegment_recorder,
             )
             # Ratio check against reference document
             calibrate_ratio_pct: int | None = None
@@ -5402,6 +5568,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         if calibrate_to is not None:
             payload["calibrate_to"] = calibrate_to
             payload["calibrate_ratio_pct"] = calibrate_ratio_pct
+        # report.action_id is already in the dict via to_dict()
         self._send_json(success_payload(payload))
 
     def _handle_family_segment(self, family_root_id: int, body: dict) -> None:

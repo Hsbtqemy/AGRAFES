@@ -14,7 +14,7 @@ import logging
 import re
 import sqlite3
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Any, Callable, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -402,6 +402,7 @@ class SegmentationReport:
     segment_pack: str
     warnings: list[str] = field(default_factory=list)
     roles_reapplied: int = 0  # Convention roles re-applied (best-effort) after resegmentation
+    action_id: Optional[int] = None  # set when a Mode-A undo recorder ran
 
     def to_dict(self) -> dict:
         return {
@@ -411,7 +412,24 @@ class SegmentationReport:
             "segment_pack": self.segment_pack,
             "warnings": self.warnings,
             "roles_reapplied": self.roles_reapplied,
+            "action_id": self.action_id,
         }
+
+
+# Callback signature for the Mode-A undo recorder. Invoked inside
+# resegment_document's transaction, *after* the DELETE/INSERT but *before*
+# commit. The payload dict carries:
+#   doc_id           : int
+#   pack             : str (resolved)
+#   lang             : str
+#   text_start_n     : int | None
+#   units_before     : list[dict] — pre-mutation snapshot of every text unit
+#                      that was deleted; each has unit_id, n, external_id,
+#                      text_raw, text_norm, unit_role, meta_json
+#   created_unit_ids : list[int] — newly inserted unit_ids in n-order
+#   new_units_n      : list[int] — n values matching created_unit_ids
+# Must return action_id (int) or None to skip recording.
+ResegmentActionRecorder = Callable[[dict[str, Any]], Optional[int]]
 
 
 # ---------------------------------------------------------------------------
@@ -425,6 +443,7 @@ def resegment_document(
     lang: str = "und",
     pack: str | None = None,
     run_logger: Optional[logging.Logger] = None,
+    record_action: Optional[ResegmentActionRecorder] = None,
 ) -> SegmentationReport:
     """Replace line units in *doc_id* with sentence-segmented units.
 
@@ -445,10 +464,13 @@ def resegment_document(
     resolved_pack = resolve_segment_pack(pack, lang)
 
     # Respect paratextual boundary: units with n < text_start_n are kept as-is.
+    # We grab full unit fields here so the Mode A undo recorder can rebuild
+    # the deleted units identically on undo (text_raw, external_id, role, meta).
     text_start_n = _get_text_start_n(conn, doc_id)
     if text_start_n is not None:
         rows = conn.execute(
-            "SELECT unit_id, n, text_raw, text_norm FROM units"
+            "SELECT unit_id, n, external_id, text_raw, text_norm, unit_role, meta_json"
+            " FROM units"
             " WHERE doc_id = ? AND unit_type = 'line' AND n >= ? ORDER BY n",
             (doc_id, text_start_n),
         ).fetchall()
@@ -458,7 +480,8 @@ def resegment_document(
         ).fetchone()[0]
     else:
         rows = conn.execute(
-            "SELECT unit_id, n, text_raw, text_norm FROM units"
+            "SELECT unit_id, n, external_id, text_raw, text_norm, unit_role, meta_json"
+            " FROM units"
             " WHERE doc_id = ? AND unit_type = 'line' ORDER BY n",
             (doc_id,),
         ).fetchall()
@@ -548,6 +571,45 @@ def resegment_document(
             doc_id, roles_reapplied,
         )
 
+    # Mode A undo recorder: invoked before commit so snapshot + mutation share
+    # one transaction. We re-query the freshly-inserted units to get their
+    # unit_ids (executemany doesn't expose lastrowid per row).
+    action_id: Optional[int] = None
+    if record_action is not None and len(new_units) > 0:
+        if text_start_n is not None:
+            new_rows = conn.execute(
+                "SELECT unit_id, n FROM units"
+                " WHERE doc_id = ? AND unit_type = 'line' AND n >= ? ORDER BY n",
+                (doc_id, text_start_n),
+            ).fetchall()
+        else:
+            new_rows = conn.execute(
+                "SELECT unit_id, n FROM units"
+                " WHERE doc_id = ? AND unit_type = 'line' ORDER BY n",
+                (doc_id,),
+            ).fetchall()
+        units_before_payload = [
+            {
+                "unit_id":     int(r["unit_id"]),
+                "n":           int(r["n"]),
+                "external_id": r["external_id"],
+                "text_raw":    r["text_raw"],
+                "text_norm":   r["text_norm"],
+                "unit_role":   r["unit_role"],
+                "meta_json":   r["meta_json"],
+            }
+            for r in rows
+        ]
+        action_id = record_action({
+            "doc_id":            doc_id,
+            "pack":              resolved_pack,
+            "lang":              lang,
+            "text_start_n":      text_start_n,
+            "units_before":      units_before_payload,
+            "created_unit_ids":  [int(r["unit_id"]) for r in new_rows],
+            "new_units_n":       [int(r["n"]) for r in new_rows],
+        })
+
     conn.commit()
 
     if paratext_count:
@@ -567,4 +629,5 @@ def resegment_document(
         segment_pack=resolved_pack,
         warnings=[warn] if deleted_links > 0 else [],
         roles_reapplied=roles_reapplied,
+        action_id=action_id,
     )

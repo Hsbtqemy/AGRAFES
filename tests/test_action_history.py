@@ -181,6 +181,72 @@ def test_curate_document_records_action_when_units_change(
     assert other == 0
 
 
+def test_resegment_document_invokes_recorder_with_full_payload(
+    db_conn: sqlite3.Connection,
+) -> None:
+    from multicorpus_engine.action_history import (
+        ACTION_RESEGMENT,
+        insert_unit_snapshots,
+        record_prep_action,
+    )
+    from multicorpus_engine.segmenter import resegment_document
+
+    doc_id, _ = _seed_doc_with_units(
+        db_conn,
+        ["Phrase un. Phrase deux.", "Et trois ?"],
+    )
+
+    captured: dict = {}
+
+    def recorder(payload: dict) -> int:
+        captured.update(payload)
+        action_id = record_prep_action(
+            db_conn,
+            doc_id=payload["doc_id"],
+            action_type=ACTION_RESEGMENT,
+            description=(
+                f"Resegmentation · {len(payload['units_before'])} → "
+                f"{len(payload['created_unit_ids'])} unités"
+            ),
+            context={"pack": payload["pack"], "lang": payload["lang"]},
+        )
+        insert_unit_snapshots(
+            db_conn,
+            action_id,
+            [
+                {
+                    "unit_id":          u["unit_id"],
+                    "text_raw_before":  u["text_raw"],
+                    "text_norm_before": u["text_norm"] or "",
+                    "unit_role_before": u["unit_role"],
+                    "meta_json_before": u["meta_json"],
+                }
+                for u in payload["units_before"]
+            ],
+        )
+        return action_id
+
+    report = resegment_document(
+        db_conn, doc_id=doc_id, lang="fr", pack="auto",
+        record_action=recorder,
+    )
+    assert report.action_id is not None
+    assert report.units_input == 2
+    # 2 input lines → 3 segments expected ("Phrase un.", "Phrase deux.", "Et trois ?")
+    assert report.units_output >= 2
+
+    assert captured["doc_id"] == doc_id
+    assert len(captured["units_before"]) == 2
+    assert len(captured["created_unit_ids"]) == report.units_output
+    assert len(captured["new_units_n"]) == report.units_output
+
+    snap_count = db_conn.execute(
+        "SELECT COUNT(*) FROM prep_action_unit_snapshots WHERE action_id = ?",
+        (report.action_id,),
+    ).fetchone()[0]
+    assert snap_count == 2
+
+
 def test_curate_document_skips_recording_when_no_changes(
     db_conn: sqlite3.Connection,
 ) -> None:
