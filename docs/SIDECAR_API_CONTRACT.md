@@ -318,6 +318,8 @@ When `multicorpus serve` starts and a portfile already exists:
   - response includes `segment_pack` (resolved pack actually used)
 - `POST /units/merge` — merge two adjacent units into one; body: `{ doc_id, n1, n2 }` (n2 must be n1+1)
 - `POST /units/split` — split one unit into two; body: `{ doc_id, unit_n, text_a, text_b }`
+- `POST /prep/undo/eligibility` (read-only, no token) — return the latest undo-able action for a doc; body: `{ doc_id }`. Response: `{ eligible, reason?, action_id?, action_type?, description?, performed_at?, warnings? }`. `action_type` ∈ `{curation_apply, merge_units, split_unit, resegment}`. `reason` ∈ `{no_action, no_snapshots, structural_dependency, unit_diverged, latest_already_reverted}`.
+- `POST /prep/undo` (token required) — atomically revert the latest undo-able action of a doc; body: `{ doc_id }`. Response: `{ undo_action_id, reverted_action_id, reverted_action_type, units_restored, alignments_reflagged, fts_stale }`. Returns 409 with `code=BAD_REQUEST` and message `Undo not eligible: <reason>` when ineligible. Forward-only — actions recorded before migration 019 are not undo-able.
 - `POST /units/set_role` (token required) — assign a convention role to one unit; body: `{ doc_id, unit_n, role }` (role=null to clear)
 - `POST /units/bulk_set_role` (token required) — batch assign a convention role; body: `{ doc_id, unit_ns, role }`
 - `POST /units/update_text` (token required) — update text_raw and/or text_norm for one unit; body: `{ unit_id, text_raw?, text_norm? }` (if only text_raw given, text_norm is mirrored; FTS updated automatically)

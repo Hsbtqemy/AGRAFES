@@ -2768,6 +2768,21 @@
           }
         ]
       },
+      "TelemetryRequest": {
+        "additionalProperties": true,
+        "description": "Free-form telemetry event payload. `event` is the only required field; any additional fields (doc_id, stage, duration_ms, etc.) are appended verbatim to the NDJSON record.",
+        "properties": {
+          "event": {
+            "description": "Event name (e.g. stage_completed, cap_hit, error_user_facing).",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "event"
+        ],
+        "type": "object"
+      },
       "TokenCollocateRow": {
         "properties": {
           "corpus_freq": {
@@ -5631,6 +5646,154 @@
         "summary": "OpenAPI contract"
       }
     },
+    "/prep/undo": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "doc_id": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "doc_id"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "alignments_reflagged": {
+                      "type": "integer"
+                    },
+                    "fts_stale": {
+                      "type": "boolean"
+                    },
+                    "reverted_action_id": {
+                      "type": "integer"
+                    },
+                    "reverted_action_type": {
+                      "type": "string"
+                    },
+                    "undo_action_id": {
+                      "type": "integer"
+                    },
+                    "units_restored": {
+                      "type": "integer"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Undo outcome"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Undo not eligible at execution time"
+          }
+        },
+        "summary": "Atomically revert the latest undo-able action of a doc (Mode A, token required)"
+      }
+    },
+    "/prep/undo/eligibility": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "doc_id": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "doc_id"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "action_id": {
+                      "type": "integer"
+                    },
+                    "action_type": {
+                      "description": "curation_apply | merge_units | split_unit | resegment",
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "eligible": {
+                      "type": "boolean"
+                    },
+                    "performed_at": {
+                      "type": "string"
+                    },
+                    "reason": {
+                      "description": "no_action | no_snapshots | structural_dependency | unit_diverged | latest_already_reverted",
+                      "type": "string"
+                    },
+                    "warnings": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Eligibility payload"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request"
+          }
+        },
+        "summary": "Check whether the latest undo-able action of a doc can be reverted (Mode A)"
+      }
+    },
     "/query": {
       "post": {
         "requestBody": {
@@ -6212,6 +6375,27 @@
           }
         },
         "summary": "Gracefully stop sidecar process"
+      }
+    },
+    "/telemetry": {
+      "post": {
+        "description": "Local-only telemetry. Events are appended to <db_dir>/.agrafes_telemetry.ndjson. No network egress, no token required (loopback-only sidecar). Body must include `event` (string); any other fields are forwarded as payload. Always returns 204.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TelemetryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Event accepted (or silently dropped on bad input)"
+          }
+        },
+        "summary": "Append a telemetry event to the local NDJSON (fire-and-forget, no auth)"
       }
     },
     "/token_collocates": {

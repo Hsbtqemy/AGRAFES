@@ -3431,6 +3431,16 @@ tr[data-unit-n].prep-seg-row-highlight td {
 .prep-btn-action-ignore:hover  { background: #ffcdd2; }
 .prep-btn-action-pending:hover { background: #fff3cd; }
 .prep-btn-action-bulk:hover    { background: #e8e8e8; }
+
+/* Mode A undo button (CurationView + SegmentationView "↶ Annuler"). */
+.prep-btn-undo {
+  background: #f3eef7;
+  color: #4a3868;
+  border: 1.5px solid #c8b8d8;
+  font-weight: 500;
+}
+.prep-btn-undo:hover:not(:disabled) { background: #e7dcef; border-color: #b29bcf; }
+.prep-btn-undo:disabled             { opacity: 0.55; cursor: not-allowed; }
 /* Highlight the button matching the current item's status */
 .btn-action-accept.action-active  { background: #388e3c; color: #fff; border-color: #1b5e20; }
 .btn-action-ignore.action-active  { background: #c62828; color: #fff; border-color: #7f0000; }

@@ -747,6 +747,52 @@ def openapi_spec() -> dict[str, Any]:
                     },
                 }
             },
+            "/prep/undo/eligibility": {
+                "post": {
+                    "summary": "Check whether the latest undo-able action of a doc can be reverted (Mode A)",
+                    "requestBody": {
+                        "required": True,
+                        "content": {"application/json": {"schema": {"type": "object", "properties": {
+                            "doc_id": {"type": "integer"},
+                        }, "required": ["doc_id"]}}},
+                    },
+                    "responses": {
+                        "200": {"description": "Eligibility payload", "content": {"application/json": {"schema": {"type": "object", "properties": {
+                            "eligible":     {"type": "boolean"},
+                            "reason":       {"type": "string", "description": "no_action | no_snapshots | structural_dependency | unit_diverged | latest_already_reverted"},
+                            "action_id":    {"type": "integer"},
+                            "action_type":  {"type": "string", "description": "curation_apply | merge_units | split_unit | resegment"},
+                            "description": {"type": "string"},
+                            "performed_at": {"type": "string"},
+                            "warnings":     {"type": "array", "items": {"type": "string"}},
+                        }}}}},
+                        "400": {"description": "Bad request", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                    },
+                }
+            },
+            "/prep/undo": {
+                "post": {
+                    "summary": "Atomically revert the latest undo-able action of a doc (Mode A, token required)",
+                    "requestBody": {
+                        "required": True,
+                        "content": {"application/json": {"schema": {"type": "object", "properties": {
+                            "doc_id": {"type": "integer"},
+                        }, "required": ["doc_id"]}}},
+                    },
+                    "responses": {
+                        "200": {"description": "Undo outcome", "content": {"application/json": {"schema": {"type": "object", "properties": {
+                            "undo_action_id":       {"type": "integer"},
+                            "reverted_action_id":   {"type": "integer"},
+                            "reverted_action_type": {"type": "string"},
+                            "units_restored":       {"type": "integer"},
+                            "alignments_reflagged": {"type": "integer"},
+                            "fts_stale":            {"type": "boolean"},
+                        }}}}},
+                        "400": {"description": "Bad request", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                        "409": {"description": "Undo not eligible at execution time", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                    },
+                }
+            },
             "/units/set_role": {
                 "post": {
                     "summary": "Assign a convention role to a unit (token required)",
