@@ -29,12 +29,20 @@ import {
   mergeUnits,
   splitUnit,
   listConventions,
+  prepUndoEligibility,
+  prepUndo,
   SidecarError,
   richTextToHtml,
 } from "../lib/sidecarClient.ts";
 import type { StructureSection, StructureDiffSection, PropagateSection } from "../lib/sidecarClient.ts";
 import type { JobCenter } from "../components/JobCenter.ts";
 import { inlineConfirm } from "../lib/inlineConfirm.ts";
+import {
+  formatUndoActionLabel,
+  formatUndoTooltip,
+  isUndoDisabled,
+  type UndoEligibility,
+} from "../lib/prepUndo.ts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -672,6 +680,9 @@ export class SegmentationView {
             ${!savedAlready ? "disabled" : ""}>Valider &#10003;</button>
           <button class="btn btn-sm" id="act-seg-goto-annot-btn"
             title="Ouvrir ce document dans le panneau Annotation">Voir&#160;annotation&#160;&#8599;</button>
+          <!-- Mode A undo (raccourci clavier reporté à une session ultérieure si l'usage révèle le besoin). -->
+          <button class="btn btn-sm prep-btn-undo" id="act-seg-undo-btn"
+            title="" disabled>&#8634; Annuler</button>
           <div class="prep-seg-actions-dest">
             Apr&#232;s validation&#160;:
             <select id="act-seg-after-validate" class="seg-param-select prep-seg-param-select-sm">
@@ -725,6 +736,12 @@ export class SegmentationView {
     });
     rightEl.querySelector("#act-seg-btn")?.addEventListener("click", () => void this._runSegment());
     rightEl.querySelector("#act-seg-validate-btn")?.addEventListener("click", () => void this._runSegment(true));
+    // Mode A undo button — initial state + click handler.
+    rightEl.querySelector("#act-seg-undo-btn")?.addEventListener("click", () => {
+      const sel = this._currentSegDocSelection();
+      if (sel) void this._handleUndoClick(sel.docId);
+    });
+    void this._refreshUndoButton(this._currentSegDocSelection()?.docId ?? null);
     rightEl.querySelector("#act-seg-validate-only-btn")?.addEventListener("click", () => void this._runValidateCurrentSegDoc());
 
     // Wire content pane tabs (Aperçu / Enregistré / Diff)
@@ -1897,7 +1914,10 @@ export class SegmentationView {
       let lines = preview.lines.map(l => ({ n: l.n, text: l.text, text_raw: l.text_raw, unit_role: l.unit_role }));
       el.innerHTML = renderTable(lines);
 
-      const reload = (targetN?: number) => void this._renderSegSavedTable(docId, el, targetN);
+      const reload = (targetN?: number) => {
+        void this._renderSegSavedTable(docId, el, targetN);
+        void this._refreshUndoButton(docId);
+      };
 
       const wireEvents = () => {
         // ── Merge up (↑) ────────────────────────────────────────────────────
@@ -2184,6 +2204,7 @@ export class SegmentationView {
           void this._loadSegRawColumn(docId);
           void this._runSegPreview(docId);
           this._populateSegDocList(true);
+          void this._refreshUndoButton(docId);
 
           const warns = r?.warnings?.length ? ` Avertissements : ${r.warnings!.join("; ")}` : "";
           const usedPack = r?.segment_pack ? ` Pack=${r.segment_pack}.` : "";
@@ -2406,6 +2427,63 @@ export class SegmentationView {
       this._onLtSegScroll = null;
     }
     this._ltSyncLock = false;
+  }
+
+  // ─── Mode A undo (Annuler button) ────────────────────────────────────────
+  // Backbone : table prep_action_history (cf. migration 019). Le bouton est
+  // rafraîchi à l'ouverture du panneau, après chaque merge/split (via reload),
+  // après chaque resegment réussie, et après chaque undo. Pas de raccourci
+  // clavier en V1.
+
+  private async _refreshUndoButton(docId: number | null): Promise<void> {
+    const btn = this._q<HTMLButtonElement>("#act-seg-undo-btn");
+    if (!btn) return;
+    const conn = this._getConn();
+    if (!conn || docId == null) {
+      btn.disabled = true;
+      btn.textContent = "↶ Annuler";
+      btn.title = "Aucune action à annuler.";
+      return;
+    }
+    let elig: UndoEligibility;
+    try {
+      elig = await prepUndoEligibility(conn, docId);
+    } catch (err) {
+      // Silent fallback — undo unavailability shouldn't break the UI.
+      btn.disabled = true;
+      btn.textContent = "↶ Annuler";
+      btn.title = `Undo indisponible : ${err instanceof Error ? err.message : String(err)}`;
+      return;
+    }
+    btn.disabled = isUndoDisabled(elig);
+    btn.textContent = formatUndoActionLabel(elig);
+    btn.title = formatUndoTooltip(elig);
+  }
+
+  private async _handleUndoClick(docId: number): Promise<void> {
+    const conn = this._getConn();
+    if (!conn) return;
+    const btn = this._q<HTMLButtonElement>("#act-seg-undo-btn");
+    if (btn) btn.disabled = true;
+    try {
+      const res = await prepUndo(conn, docId);
+      // Refresh saved table + raw column to reflect the restored state.
+      const savedTableEl = this._q<HTMLElement>("#act-seg-saved-table");
+      if (savedTableEl) void this._renderSegSavedTable(docId, savedTableEl);
+      void this._loadSegRawColumn(docId);
+      void this._runSegPreview(docId);
+      this._cb.log(
+        `↶ Annulation : ${res.reverted_action_type} — ${res.units_restored} unité(s) restaurée(s)`
+      );
+      if (res.fts_stale) this._cb.log("⚠ Index FTS périmé.");
+    } catch (err) {
+      this._cb.log(
+        `✗ Annulation : ${err instanceof Error ? err.message : String(err)}`,
+        true,
+      );
+    } finally {
+      void this._refreshUndoButton(docId);
+    }
   }
 
 }

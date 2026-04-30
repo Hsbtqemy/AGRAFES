@@ -2127,6 +2127,46 @@ export async function curate(conn: Conn, opts: CurateOptions): Promise<CurateRes
   return conn.post("/curate", opts) as Promise<CurateResponse>;
 }
 
+// ---------------------------------------------------------------------------
+// Prep undo (Mode A) — backbone : table prep_action_history (migration 019)
+// ---------------------------------------------------------------------------
+export interface PrepUndoEligibilityResponse {
+  eligible: boolean;
+  reason?: string;
+  action_id?: number;
+  action_type?: "curation_apply" | "merge_units" | "split_unit" | "resegment" | "undo";
+  description?: string;
+  performed_at?: string;
+  warnings?: string[];
+}
+
+export interface PrepUndoResponse {
+  undo_action_id: number;
+  reverted_action_id: number;
+  reverted_action_type:
+    | "curation_apply"
+    | "merge_units"
+    | "split_unit"
+    | "resegment";
+  units_restored: number;
+  alignments_reflagged: number;
+  fts_stale: boolean;
+}
+
+export async function prepUndoEligibility(
+  conn: Conn,
+  doc_id: number,
+): Promise<PrepUndoEligibilityResponse> {
+  return conn.post("/prep/undo/eligibility", { doc_id }) as Promise<PrepUndoEligibilityResponse>;
+}
+
+export async function prepUndo(
+  conn: Conn,
+  doc_id: number,
+): Promise<PrepUndoResponse> {
+  return conn.post("/prep/undo", { doc_id }) as Promise<PrepUndoResponse>;
+}
+
 export async function segment(conn: Conn, opts: SegmentOptions): Promise<SegmentResponse> {
   return conn.post("/segment", opts) as Promise<SegmentResponse>;
 }

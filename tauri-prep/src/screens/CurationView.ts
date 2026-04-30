@@ -49,7 +49,15 @@ import {
   listApplyHistory,
   exportApplyHistory,
   type ExportApplyHistoryOptions,
+  prepUndoEligibility,
+  prepUndo,
 } from "../lib/sidecarClient.ts";
+import {
+  formatUndoActionLabel,
+  formatUndoTooltip,
+  isUndoDisabled,
+  type UndoEligibility,
+} from "../lib/prepUndo.ts";
 import { save as dialogSave } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
 import type { JobCenter } from "../components/JobCenter.ts";
@@ -684,6 +692,8 @@ export class CurationView {
                 <div class="prep-btn-row" style="margin-top:0.35rem">
                   <button id="act-apply-after-preview-btn" class="btn prep-btn-warning btn-sm" style="display:none">Appliquer maintenant</button>
                   <button id="act-reindex-after-curate-btn" class="btn btn-secondary btn-sm" style="display:none" title="L'index de recherche est périmé — cliquez pour le mettre à jour">Mettre à jour l'index</button>
+                  <!-- Mode A undo (raccourci clavier reporté à une session ultérieure si l'usage révèle le besoin). -->
+                  <button id="act-curate-undo-btn" class="btn btn-sm prep-btn-undo" title="" disabled>&#8634; Annuler</button>
                 </div>
               </div>
             </article>
@@ -887,6 +897,7 @@ export class CurationView {
       this._syncDocList();
       this._updateCurateCtx();
       this._schedulePreview(true);
+      void this._refreshUndoButton(newDocId);
     });
 
     // Preview mode buttons
@@ -956,6 +967,10 @@ export class CurationView {
     // Review actions
     el.querySelector("#act-bulk-accept")?.addEventListener("click",  () => this._bulkSetStatus("accepted"));
     el.querySelector("#act-bulk-ignore")?.addEventListener("click",  () => this._bulkSetStatus("ignored"));
+
+    // Mode A undo button — initial state + click handler.
+    el.querySelector("#act-curate-undo-btn")?.addEventListener("click", () => void this._handleUndoClick());
+    void this._refreshUndoButton(this._currentCurateDocId() ?? null);
 
     // JSON rules textarea
     el.querySelector("#act-curate-rules")!.addEventListener("input", () => {
@@ -2119,6 +2134,8 @@ export class CurationView {
           this._cb.toast?.("✓ Curation appliquée");
           const divergeBanner = this._q<HTMLElement>("#act-curate-diverge-banner");
           if (divergeBanner) divergeBanner.style.display = "";
+          // Mode A: refresh undo button now that an action is undo-able.
+          void this._refreshUndoButton(docId ?? null);
         } else {
           this._cb.log(`✗ Curation : ${done.error ?? done.status}`, true);
           this._pushCurateLog("warn", `Erreur : ${done.error ?? done.status}`);
@@ -3647,5 +3664,58 @@ export class CurationView {
       this._cb.log(`⚠ Export historique apply\u00a0: ${err}`, true);
     }
   }
+
+  // Mode A undo (Annuler button) - backbone: prep_action_history (migration 019).
+  private async _refreshUndoButton(docId: number | null): Promise<void> {
+    const btn = this._q<HTMLButtonElement>("#act-curate-undo-btn");
+    if (!btn) return;
+    const conn = this._getConn();
+    if (!conn || docId == null) {
+      btn.disabled = true;
+      btn.textContent = "\u21B6 Annuler";
+      btn.title = "Aucune action a annuler.";
+      return;
+    }
+    let elig: UndoEligibility;
+    try {
+      elig = await prepUndoEligibility(conn, docId);
+    } catch (err) {
+      btn.disabled = true;
+      btn.textContent = "\u21B6 Annuler";
+      btn.title = `Undo indisponible : ${err instanceof Error ? err.message : String(err)}`;
+      return;
+    }
+    btn.disabled = isUndoDisabled(elig);
+    btn.textContent = formatUndoActionLabel(elig);
+    btn.title = formatUndoTooltip(elig);
+  }
+
+  private async _handleUndoClick(): Promise<void> {
+    const docId = this._currentCurateDocId();
+    if (docId == null) return;
+    const conn = this._getConn();
+    if (!conn) return;
+    const btn = this._q<HTMLButtonElement>("#act-curate-undo-btn");
+    if (btn) btn.disabled = true;
+    try {
+      const res = await prepUndo(conn, docId);
+      this._cb.log(`\u21B6 Annulation : ${res.reverted_action_type} - ${res.units_restored} unite(s) restauree(s)`);
+      if (res.fts_stale) {
+        this._cb.log("\u26A0 Index FTS perime.");
+        const reBtn = this._q("#act-reindex-after-curate-btn") as HTMLElement | null;
+        if (reBtn) reBtn.style.display = "";
+      }
+      this._cb.toast?.("\u21B6 Action annulee");
+      this._allUnits = [];
+      this._allUnitsDocId = null;
+      this._hasPendingPreview = false;
+      this._refreshCurateHeaderState();
+    } catch (err) {
+      this._cb.log(`\u2717 Annulation : ${err instanceof Error ? err.message : String(err)}`, true);
+    } finally {
+      void this._refreshUndoButton(docId);
+    }
+  }
+
 }
 
