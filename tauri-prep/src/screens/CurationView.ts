@@ -56,6 +56,9 @@ import {
   formatUndoActionLabel,
   formatUndoTooltip,
   isUndoDisabled,
+  buttonStateFromEligibility,
+  transitionEvent,
+  type UndoButtonState,
   type UndoEligibility,
 } from "../lib/prepUndo.ts";
 import { save as dialogSave } from "@tauri-apps/plugin-dialog";
@@ -3666,6 +3669,26 @@ export class CurationView {
   }
 
   // Mode A undo (Annuler button) - backbone: prep_action_history (migration 019).
+  // Soak instrumentation : eligible_view / unavailable_view emis sur transition
+  // d'etat (anti-bruit, cf. prepUndo.transitionEvent).
+  private _lastUndoButtonState: UndoButtonState | undefined = undefined;
+
+  private _emitUndoTransition(
+    next: UndoButtonState,
+    docId: number | null,
+  ): void {
+    const ev = transitionEvent(this._lastUndoButtonState, next);
+    this._lastUndoButtonState = next;
+    if (!ev) return;
+    const conn = this._getConn();
+    if (!conn) return;
+    reportEvent(conn, ev.event, {
+      ...ev.payload,
+      screen: "curation",
+      ...(docId != null ? { doc_id: docId } : {}),
+    });
+  }
+
   private async _refreshUndoButton(docId: number | null): Promise<void> {
     const btn = this._q<HTMLButtonElement>("#act-curate-undo-btn");
     if (!btn) return;
@@ -3674,6 +3697,7 @@ export class CurationView {
       btn.disabled = true;
       btn.textContent = "\u21B6 Annuler";
       btn.title = "Aucune action a annuler.";
+      this._emitUndoTransition({ kind: "idle" }, docId);
       return;
     }
     let elig: UndoEligibility;
@@ -3683,11 +3707,16 @@ export class CurationView {
       btn.disabled = true;
       btn.textContent = "\u21B6 Annuler";
       btn.title = `Undo indisponible : ${err instanceof Error ? err.message : String(err)}`;
+      this._emitUndoTransition(
+        { kind: "unavailable", reason: "fetch_error" },
+        docId,
+      );
       return;
     }
     btn.disabled = isUndoDisabled(elig);
     btn.textContent = formatUndoActionLabel(elig);
     btn.title = formatUndoTooltip(elig);
+    this._emitUndoTransition(buttonStateFromEligibility(elig), docId);
   }
 
   private async _handleUndoClick(): Promise<void> {

@@ -41,8 +41,12 @@ import {
   formatUndoActionLabel,
   formatUndoTooltip,
   isUndoDisabled,
+  buttonStateFromEligibility,
+  transitionEvent,
+  type UndoButtonState,
   type UndoEligibility,
 } from "../lib/prepUndo.ts";
+import { reportEvent } from "../lib/telemetry.ts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -2435,6 +2439,26 @@ export class SegmentationView {
   // après chaque resegment réussie, et après chaque undo. Pas de raccourci
   // clavier en V1.
 
+  // Soak instrumentation : eligible_view / unavailable_view emis sur transition
+  // d'etat (anti-bruit, cf. prepUndo.transitionEvent).
+  private _lastUndoButtonState: UndoButtonState | undefined = undefined;
+
+  private _emitUndoTransition(
+    next: UndoButtonState,
+    docId: number | null,
+  ): void {
+    const ev = transitionEvent(this._lastUndoButtonState, next);
+    this._lastUndoButtonState = next;
+    if (!ev) return;
+    const conn = this._getConn();
+    if (!conn) return;
+    reportEvent(conn, ev.event, {
+      ...ev.payload,
+      screen: "segmentation",
+      ...(docId != null ? { doc_id: docId } : {}),
+    });
+  }
+
   private async _refreshUndoButton(docId: number | null): Promise<void> {
     const btn = this._q<HTMLButtonElement>("#act-seg-undo-btn");
     if (!btn) return;
@@ -2443,6 +2467,7 @@ export class SegmentationView {
       btn.disabled = true;
       btn.textContent = "↶ Annuler";
       btn.title = "Aucune action à annuler.";
+      this._emitUndoTransition({ kind: "idle" }, docId);
       return;
     }
     let elig: UndoEligibility;
@@ -2453,11 +2478,16 @@ export class SegmentationView {
       btn.disabled = true;
       btn.textContent = "↶ Annuler";
       btn.title = `Undo indisponible : ${err instanceof Error ? err.message : String(err)}`;
+      this._emitUndoTransition(
+        { kind: "unavailable", reason: "fetch_error" },
+        docId,
+      );
       return;
     }
     btn.disabled = isUndoDisabled(elig);
     btn.textContent = formatUndoActionLabel(elig);
     btn.title = formatUndoTooltip(elig);
+    this._emitUndoTransition(buttonStateFromEligibility(elig), docId);
   }
 
   private async _handleUndoClick(docId: number): Promise<void> {

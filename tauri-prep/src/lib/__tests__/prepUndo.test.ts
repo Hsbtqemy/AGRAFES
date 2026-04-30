@@ -124,3 +124,128 @@ describe("isUndoDisabled", () => {
     expect(isUndoDisabled({ eligible: true })).toBe(false);
   });
 });
+
+// ─── Soak transition helpers (pure) ────────────────────────────────────────
+
+import {
+  buttonStateFromEligibility,
+  transitionEvent,
+  type UndoButtonState,
+} from "../prepUndo.ts";
+
+describe("buttonStateFromEligibility", () => {
+  it("null/undefined → idle", () => {
+    expect(buttonStateFromEligibility(null)).toEqual({ kind: "idle" });
+    expect(buttonStateFromEligibility(undefined)).toEqual({ kind: "idle" });
+  });
+
+  it("eligible:false sans reason → unavailable reason='unknown'", () => {
+    expect(buttonStateFromEligibility({ eligible: false }))
+      .toEqual({ kind: "unavailable", reason: "unknown" });
+  });
+
+  it("eligible:false avec reason → unavailable avec reason", () => {
+    expect(buttonStateFromEligibility({ eligible: false, reason: "no_action" }))
+      .toEqual({ kind: "unavailable", reason: "no_action" });
+  });
+
+  it("eligible:true avec action_id+action_type → eligible", () => {
+    expect(buttonStateFromEligibility({
+      eligible: true,
+      action_id: 42,
+      action_type: "curation_apply",
+    })).toEqual({
+      kind: "eligible",
+      action_type: "curation_apply",
+      action_id: 42,
+    });
+  });
+
+  it("eligible:true sans action_id → idle (cas dégénéré, jamais émis)", () => {
+    expect(buttonStateFromEligibility({ eligible: true }))
+      .toEqual({ kind: "idle" });
+  });
+});
+
+describe("transitionEvent", () => {
+  // Anti-bruit central : aucune émission si l'état n'a pas changé matériellement.
+
+  it("idle → idle : null (mount sans doc)", () => {
+    expect(transitionEvent({ kind: "idle" }, { kind: "idle" })).toBe(null);
+  });
+
+  it("undefined → idle : null", () => {
+    expect(transitionEvent(undefined, { kind: "idle" })).toBe(null);
+  });
+
+  it("idle → eligible : eligible_view émis", () => {
+    const ev = transitionEvent(
+      { kind: "idle" },
+      { kind: "eligible", action_type: "merge_units", action_id: 7 },
+    );
+    expect(ev).toEqual({
+      event: "prep_undo_eligible_view",
+      payload: { action_type: "merge_units", action_id: 7 },
+    });
+  });
+
+  it("eligible identique → null (re-render)", () => {
+    const prev: UndoButtonState = { kind: "eligible", action_type: "merge_units", action_id: 7 };
+    const next: UndoButtonState = { kind: "eligible", action_type: "merge_units", action_id: 7 };
+    expect(transitionEvent(prev, next)).toBe(null);
+  });
+
+  it("eligible avec action_id différent → eligible_view émis (action sous-jacente changée)", () => {
+    const prev: UndoButtonState = { kind: "eligible", action_type: "merge_units", action_id: 7 };
+    const next: UndoButtonState = { kind: "eligible", action_type: "curation_apply", action_id: 8 };
+    const ev = transitionEvent(prev, next);
+    expect(ev?.event).toBe("prep_undo_eligible_view");
+    expect(ev?.payload.action_id).toBe(8);
+    expect(ev?.payload.action_type).toBe("curation_apply");
+  });
+
+  it("idle → unavailable : unavailable_view émis", () => {
+    const ev = transitionEvent(
+      { kind: "idle" },
+      { kind: "unavailable", reason: "no_action" },
+    );
+    expect(ev).toEqual({
+      event: "prep_undo_unavailable_view",
+      payload: { reason: "no_action" },
+    });
+  });
+
+  it("unavailable avec reason identique → null", () => {
+    const prev: UndoButtonState = { kind: "unavailable", reason: "no_action" };
+    const next: UndoButtonState = { kind: "unavailable", reason: "no_action" };
+    expect(transitionEvent(prev, next)).toBe(null);
+  });
+
+  it("unavailable avec reason différente → unavailable_view émis", () => {
+    const prev: UndoButtonState = { kind: "unavailable", reason: "no_action" };
+    const next: UndoButtonState = { kind: "unavailable", reason: "structural_dependency" };
+    const ev = transitionEvent(prev, next);
+    expect(ev?.event).toBe("prep_undo_unavailable_view");
+    expect(ev?.payload.reason).toBe("structural_dependency");
+  });
+
+  it("eligible → unavailable → eligible : 3 events distincts (transitions matérielles)", () => {
+    const s0: UndoButtonState = { kind: "eligible", action_type: "curation_apply", action_id: 1 };
+    const s1: UndoButtonState = { kind: "unavailable", reason: "no_action" };
+    const s2: UndoButtonState = { kind: "eligible", action_type: "merge_units", action_id: 2 };
+
+    expect(transitionEvent(undefined, s0)?.event).toBe("prep_undo_eligible_view");
+    expect(transitionEvent(s0, s1)?.event).toBe("prep_undo_unavailable_view");
+    expect(transitionEvent(s1, s2)?.event).toBe("prep_undo_eligible_view");
+  });
+
+  it("eligible → idle : null (pas d'event en idle, anti-bruit)", () => {
+    const prev: UndoButtonState = { kind: "eligible", action_type: "curation_apply", action_id: 1 };
+    expect(transitionEvent(prev, { kind: "idle" })).toBe(null);
+  });
+
+  it("unavailable → idle : null", () => {
+    const prev: UndoButtonState = { kind: "unavailable", reason: "no_action" };
+    expect(transitionEvent(prev, { kind: "idle" })).toBe(null);
+  });
+});

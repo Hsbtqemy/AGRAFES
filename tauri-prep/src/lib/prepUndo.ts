@@ -184,3 +184,104 @@ export function formatUndoUnavailableReason(reason: string | undefined): string 
 export function isUndoDisabled(eligibility: UndoEligibility | null | undefined): boolean {
   return !eligibility || !eligibility.eligible;
 }
+
+// ─── Soak instrumentation : transition events (pure) ───────────────────────
+//
+// Trois events à émettre pour le soak Mode A :
+//   - prep_undo_eligible_view   : bouton visible et activé
+//   - prep_undo_unavailable_view: bouton grisé avec une raison
+//   - stage_returned (existant) : clic effectif (couvre l'usage réel)
+//
+// Anti-bruit : on ne ré-émet pas à chaque re-render. Une émission a lieu
+// uniquement quand l'état du bouton **change** par rapport au dernier état
+// émis (transition de kind, ou changement de action_id / reason).
+//
+// La logique est *pure* — elle prend l'état précédent et l'éligibilité
+// courante, retourne soit le prochain état + un payload d'event à émettre,
+// soit le prochain état sans event. Le caller (view) décide d'appeler
+// reportEvent. Les tests vivent dans __tests__/prepUndo.test.ts.
+
+export type UndoButtonState =
+  | { kind: "idle" }
+  | { kind: "eligible"; action_type: PrepActionType; action_id: number }
+  | { kind: "unavailable"; reason: string };
+
+/**
+ * Mappe une UndoEligibility (ou son absence : conn null, doc null, fetch error)
+ * vers l'état du bouton tel qu'il sera rendu. Pure.
+ *
+ * - eligibility null/undefined → idle (mount initial, conn manquante, etc.)
+ * - eligibility.eligible === false sans reason → unavailable avec reason="unknown"
+ * - eligibility.eligible === true mais action_id manquant → idle (cas dégénéré)
+ */
+export function buttonStateFromEligibility(
+  eligibility: UndoEligibility | null | undefined,
+): UndoButtonState {
+  if (!eligibility) return { kind: "idle" };
+  if (eligibility.eligible) {
+    if (eligibility.action_id == null || eligibility.action_type == null) {
+      return { kind: "idle" };
+    }
+    return {
+      kind: "eligible",
+      action_type: eligibility.action_type,
+      action_id: eligibility.action_id,
+    };
+  }
+  return { kind: "unavailable", reason: eligibility.reason ?? "unknown" };
+}
+
+export type UndoTransitionEvent = {
+  event: "prep_undo_eligible_view" | "prep_undo_unavailable_view";
+  payload: Record<string, unknown>;
+};
+
+/**
+ * Compare l'état précédent au nouvel état. Retourne l'event à émettre, ou
+ * null si rien n'a changé matériellement (pas d'émission).
+ *
+ * Règles :
+ *   - prev=undefined OR prev.kind !== next.kind → émettre (sauf si next=idle)
+ *   - prev.kind === next.kind === "eligible" et action_id différent → émettre
+ *     (l'action sous-jacente annulable a changé)
+ *   - prev.kind === next.kind === "eligible" et action_id identique → null
+ *   - prev.kind === next.kind === "unavailable" et reason différente → émettre
+ *   - prev.kind === next.kind === "unavailable" et reason identique → null
+ *   - next.kind === "idle" → null (jamais d'event en idle)
+ */
+export function transitionEvent(
+  prev: UndoButtonState | undefined,
+  next: UndoButtonState,
+): UndoTransitionEvent | null {
+  if (next.kind === "idle") return null;
+
+  if (next.kind === "eligible") {
+    if (
+      prev &&
+      prev.kind === "eligible" &&
+      prev.action_id === next.action_id
+    ) {
+      return null;
+    }
+    return {
+      event: "prep_undo_eligible_view",
+      payload: {
+        action_type: next.action_type,
+        action_id:   next.action_id,
+      },
+    };
+  }
+
+  // next.kind === "unavailable"
+  if (
+    prev &&
+    prev.kind === "unavailable" &&
+    prev.reason === next.reason
+  ) {
+    return null;
+  }
+  return {
+    event: "prep_undo_unavailable_view",
+    payload: { reason: next.reason },
+  };
+}
