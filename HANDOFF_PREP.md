@@ -72,6 +72,14 @@ Les modules suivent un même pattern : header `Invariants protégés`, fonctions
 
 Le workflow nominal (`Import → Segmentation → Curation → Alignement → Export`) est dans le HANDOFF_SHELL. Voici ce qui se passe **réellement** quand un utilisateur travaille :
 
+### Évolution de pratique : pourquoi segment-first
+
+Historiquement les contributeurs travaillaient sur du brut (DOCX/TXT issus d'OCR), avec quelques scripts Python en Jupyter. La **curation venait avant la segmentation** parce qu'il fallait d'abord vérifier que l'océrisation avait bien tenu, que les accents et caractères spécifiques à la langue étaient corrects, avant qu'on puisse parler de structure. Segmenter sur du texte abîmé n'avait pas de sens.
+
+Le contexte a changé : la majorité des sources arrivent aujourd'hui déjà nettoyées (corpus accumulé, sources édités), et l'app rend la **lecture en table de segments** beaucoup plus lisible que les éditeurs externes. La curation devient utile *au niveau du segment*, pas au niveau du paragraphe brut. D'où l'ordre actuel `Segmentation → Curation`, qui exploite cette lisibilité pour cibler les retouches typographiques fines.
+
+**Aucun ordre n'est bloquant** : techniquement on peut /curate sur des units-ligne post-import, puis /segment ensuite. Le seul piège connu est que la **resegmentation post-curation écrase `text_raw`** avec la phrase segmentée (cf. § 4) — donc on perd la version pré-segmentation. Pour les cas OCR-lourds qui curent d'abord, c'est souvent une feature (on veut figer le nettoyé). Pour les autres, Mode A undo permet de revenir au pré-resegment dans les 14 dernières actions ; au-delà, seule la réimport restaure le source. Une mitigation plus durable (colonne `text_source` immuable, jamais écrasée par resegment) est listée § 7.
+
 ### Workflow A — Le cas heureux (rare)
 
 1. Import DOCX numéroté en FR → ✓
@@ -377,6 +385,7 @@ Reconstitué depuis [docs/BACKLOG_PREP_AUDIT.md](docs/BACKLOG_PREP_AUDIT.md), [d
 - **Workflow visualization** entre écrans : un fil d'Ariane qui montre où on en est dans Import → Segment → Curate → Align → Export, et ce qui reste à faire.
 - **Etat « index FTS périmé »** affiché sur chaque doc dans MetadataScreen (chip rouge ou warning).
 - **Réversibilité partielle** : permettre de rollback un `curate_apply_history` entry. Faisable techniquement (on a les unités modifiées, on peut restaurer text_norm depuis text_raw + reapply), gain UX significatif.
+- **Colonne `text_source` immuable** : conserver le texte de l'import original dans une colonne dédiée jamais écrasée par resegment (qui aujourd'hui écrit la phrase segmentée dans `text_raw`, cf. § 1 et § 4). Mitige la friction « curate-first puis resegment perd l'original » pour les utilisateurs qui ne veulent pas figer leur curation dans `text_raw`. Coût : migration + thread dans imports/resegment/merge/split + UI display. À considérer si le pattern curate-first revient assez souvent pour que Mode A ne suffise pas.
 - **Tutoriel intégré** ou tour guidé au premier lancement.
 - **Annotation lexicale richer** (si on décide de réveiller AnnotationView) : lemma, POS, dépendances depuis CoNLL-U import.
 - **DOCX-table support** dans `docx_numbered_lines` : itérer `document.tables` cellule par cellule. ~30 lignes d'extension. Décision actuelle : workaround utilisateur, à reconsidérer si pattern récurrent.

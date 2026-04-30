@@ -324,9 +324,14 @@ export class App {
         const treeBody = document.createElement("div");
         treeBody.className = "prep-nav-tree-body";
         treeBody.setAttribute("aria-label", "Raccourcis Actions");
+        // Order matches the documented pipeline (HANDOFF_PREP § 1) :
+        // Segmentation → Curation → Alignement → Annotation.
+        // (L'ordre historique « curation d'abord » venait des pratiques
+        //  pre-app sur du brut OCR ; sur du texte généralement déjà nettoyé,
+        //  segmenter d'abord rend la curation locale plus lisible.)
         const treeItems: Array<[string, string, string]> = [
-          ["Curation",     "curation",    "◇"],
           ["Segmentation", "segmentation","⌥"],
+          ["Curation",     "curation",    "◇"],
           ["Alignement",   "alignement",  "⇄"],
           ["Annotation",   "annoter",     "◎"],
         ];
