@@ -699,6 +699,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 "/segment/delete_structure_unit",
                 "/segment/apply_propagated",
                 "/units/update_text",
+                # Prep undo (Mode A)
+                "/prep/undo",
                 # Convention / role system
                 "/conventions", "/conventions/delete",
                 "/units/set_role", "/units/bulk_set_role",
@@ -803,6 +805,10 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 self._handle_units_merge(body)
             elif path == "/units/split":
                 self._handle_units_split(body)
+            elif path == "/prep/undo/eligibility":
+                self._handle_prep_undo_eligibility(body)
+            elif path == "/prep/undo":
+                self._handle_prep_undo(body)
             elif path == "/segment":
                 with self._track_stage("segment", doc_id=body.get("doc_id") if isinstance(body, dict) else None):
                     self._handle_segment(body)
@@ -4710,13 +4716,13 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         with self._lock():
             conn = self._conn()
             row1 = conn.execute(
-                "SELECT unit_id, text_raw, text_norm, unit_role, meta_json FROM units"
-                " WHERE doc_id=? AND n=? AND unit_type='line'",
+                "SELECT unit_id, external_id, text_raw, text_norm, unit_role, meta_json"
+                " FROM units WHERE doc_id=? AND n=? AND unit_type='line'",
                 (doc_id, n1),
             ).fetchone()
             row2 = conn.execute(
-                "SELECT unit_id, text_raw, text_norm, unit_role, meta_json FROM units"
-                " WHERE doc_id=? AND n=? AND unit_type='line'",
+                "SELECT unit_id, external_id, text_raw, text_norm, unit_role, meta_json"
+                " FROM units WHERE doc_id=? AND n=? AND unit_type='line'",
                 (doc_id, n2),
             ).fetchone()
             if not row1 or not row2:
@@ -4742,10 +4748,12 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 action_type=ACTION_MERGE_UNITS,
                 description=f"Fusion u.{n1} + u.{n2}",
                 context={
-                    "merged_unit_ids": [uid1, uid2],
-                    "kept_unit_id":    uid1,        # uid that survives, now holds merged text
-                    "deleted_unit_id": uid2,        # uid removed by this action
+                    "merged_unit_ids":          [uid1, uid2],
+                    "kept_unit_id":             uid1,        # uid that survives, now holds merged text
+                    "deleted_unit_id":          uid2,        # uid removed by this action
                     "n1": n1, "n2": n2,
+                    "kept_external_id_before":    row1["external_id"],
+                    "deleted_external_id_before": row2["external_id"],
                 },
             )
             insert_unit_snapshots(
@@ -4924,6 +4932,67 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             "text_b":     text_b,
             "action_id":  action_id,
         }))
+
+    # ------------------------------------------------------------------
+    # Prep undo (Mode A)
+    # ------------------------------------------------------------------
+
+    def _handle_prep_undo_eligibility(self, body: dict) -> None:
+        """POST /prep/undo/eligibility — read-only check.
+
+        Body: { doc_id }
+        Response: { eligible, reason?, action_id?, action_type?, description?, ... }
+        """
+        from multicorpus_engine.undo import compute_eligibility
+
+        doc_id_raw = body.get("doc_id")
+        if doc_id_raw is None:
+            self._send_error("doc_id is required", code=ERR_BAD_REQUEST, http_status=400)
+            return
+        try:
+            doc_id = int(doc_id_raw)
+        except (TypeError, ValueError):
+            self._send_error("doc_id must be an integer", code=ERR_BAD_REQUEST, http_status=400)
+            return
+
+        with self._lock():
+            payload = compute_eligibility(self._conn(), doc_id)
+        self._send_json(success_payload(payload))
+
+    def _handle_prep_undo(self, body: dict) -> None:
+        """POST /prep/undo — revert the latest undo-able action for a doc.
+
+        Body: { doc_id }
+        Response: { undo_action_id, reverted_action_id, reverted_action_type,
+                    units_restored, alignments_reflagged, fts_stale }
+        """
+        from multicorpus_engine.undo import UndoError, execute_undo
+
+        doc_id_raw = body.get("doc_id")
+        if doc_id_raw is None:
+            self._send_error("doc_id is required", code=ERR_BAD_REQUEST, http_status=400)
+            return
+        try:
+            doc_id = int(doc_id_raw)
+        except (TypeError, ValueError):
+            self._send_error("doc_id must be an integer", code=ERR_BAD_REQUEST, http_status=400)
+            return
+
+        with self._lock():
+            conn = self._conn()
+            try:
+                payload = execute_undo(conn, doc_id)
+            except UndoError as exc:
+                conn.rollback()
+                self._send_error(
+                    f"Undo not eligible: {exc.reason}",
+                    code=ERR_BAD_REQUEST,
+                    http_status=409,
+                )
+                return
+            conn.commit()
+
+        self._send_json(success_payload(payload))
 
     # ------------------------------------------------------------------
     # Convention / role system
