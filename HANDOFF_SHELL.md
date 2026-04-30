@@ -317,6 +317,7 @@ UI monolithique — éléments montrés/masqués via class `hidden` :
 | Segmentation | `POST /segment`, `POST /segment/preview` (cap 5000), `POST /segment/detect_markers`, `POST /segment/propagate_preview` |
 | Curation | `POST /curate`, `POST /curate/preview` (cap 5000), `GET/POST /curate/exceptions`, `GET /curate/apply-history` |
 | Édition unitaire | `POST /units/merge`, `POST /units/split`, `POST /units/set_role` |
+| Prep undo (Mode A) | `POST /prep/undo/eligibility` (read-only), `POST /prep/undo` (write) |
 | Alignement | `POST /align`, `POST /align/audit`, `POST /align/quality`, `POST /align/link/{create,update_status,delete,retarget,acknowledge_source_change}`, `POST /align/collisions/resolve` |
 | Métadonnées | `POST /documents/update`, `POST /documents/bulk_update`, `POST /documents/delete` |
 | Familles | `GET /families`, `GET /doc_relations/all`, `POST /doc_relations/{set,delete}` |

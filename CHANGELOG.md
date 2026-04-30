@@ -9,6 +9,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- **prep / undo Mode A** : bouton « ↶ Annuler » dans CurationView et SegmentationView, qui annule la dernière action destructive du document courant (curation apply, fusion d'unités, coupure d'unité, resegmentation). Backbone : nouvelle table `prep_action_history` + snapshots par unité ([migration 019](migrations/019_prep_action_history.sql)), endpoints `/prep/undo/eligibility` et `/prep/undo`, module pur `tauri-prep/src/lib/prepUndo.ts` (17 tests Vitest). Tous les chemins (mutation + snapshot + history + flip reverted) tiennent dans une transaction unique. **Forward-only** : les actions antérieures à cette release ne sont pas annulables. Mode B (rollback historique d'une action ancienne via panneau d'historique) reste reporté à une V2 si l'usage révèle le besoin.
 - **multicorpus_engine** : nouveau module `regex_boot_audit.py` — audit compile-only des patterns regex custom persistés dans `corpus_info.meta_json`. Appelé au boot du `CorpusServer` après `sidecar_started`, log WARN si un pattern flag positif (POSIX/Unicode property classes, divergence `re` vs `regex.V0`). Defensive : try/except global, ne bloque jamais le démarrage du sidecar. 19 tests pytest. Ferme l'angle mort « ma DB ≠ leur DB » identifié dans HANDOFF_PREP § 7 (F5). La version full avec sample diff sur `text_norm` reste `scripts/validate_regex_migration.py` pour audits pré-migration.
 
 ---

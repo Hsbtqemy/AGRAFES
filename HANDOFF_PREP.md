@@ -276,13 +276,35 @@ Justification :
 
 Coût : si l'utilisateur change de machine, perd ses décisions en cours. Acceptable.
 
-### Pas d'undo automatique
+### Undo : Mode A pour les 4 destructives, pas plus
 
-Aucune action mutante n'a d'undo intégré. Réversibilité = réimporter depuis le source.
+**Mise à jour 2026-04-30** : depuis le chantier
+[BACKLOG_ROLLBACK_CURATION.md](docs/BACKLOG_ROLLBACK_CURATION.md), un undo
+immédiat (Mode A) existe pour **4 actions** :
 
-Justification : implémenter un undo serveur cohérent (undo curate, undo apply, undo merge unit, undo split unit, undo retarget align...) est très lourd. Le coût ne se justifie pas tant que la réimport reste praticable.
+- `curation_apply` (POST /curate)
+- `merge_units` (POST /units/merge)
+- `split_unit` (POST /units/split)
+- `resegment` (POST /segment quand le doc avait déjà des unités)
 
-Limite : plus le corpus avance dans le pipeline (curation + align + annotations + métadonnées), plus la réimport est destructive (perd tout l'aval). À ce stade, c'est une **vraie friction**.
+Implémentation : table `prep_action_history` + snapshots par unité
+([migration 019](migrations/019_prep_action_history.sql)), endpoints
+`/prep/undo/eligibility` et `/prep/undo`, bouton « ↶ Annuler » dans
+CurationView et SegmentationView. Forward-only — les actions antérieures
+à v0.1.43 ne sont pas annulables.
+
+Mode B (rollback historique d'une action ancienne via panneau d'historique)
+reste explicitement reporté à une V2 si l'usage révèle le besoin.
+
+Hors scope V1 (donc toujours non-undo-able) : manual override individuel,
+bulk role assign, structure insert/delete, retarget align, mutations
+metadata/exports. Réversibilité de ces actions = réimporter depuis le
+source (cf. friction Tier S #2).
+
+Justification du périmètre V1 : les 4 actions ciblées concentrent l'écrasante
+majorité des « j'ai cassé un état stable, je dois tout retraiter » signalés.
+Étendre au-delà demanderait des choix non-triviaux (ex. retargets en cascade)
+qui ne se justifient pas tant que la friction n'est pas mesurée.
 
 ### `doc_role` auto-assigné
 
@@ -330,7 +352,7 @@ Justification : éviter les faux positifs (deux docs avec le même radical mais 
 
 ### Tier C — Cosmétique / faible impact
 
-11. **AnnotationView dormant** mais toujours dans le menu, peut dérouter.
+11. **AnnotationView** — étape finale efficace (relecture rapide avant concordancier). Le temps passé court y est un signal positif, pas un manque d'engagement. Pas une friction, listé ici uniquement pour mémoire.
 
 12. **Filename-based language detection** de l'import a des faux positifs si le filename a des suffixes sémantiques (ex. `_v2`, `_to_review`). Déjà mitigé par whitelist BCP-47 mais imparfait.
 
