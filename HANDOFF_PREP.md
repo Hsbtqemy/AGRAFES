@@ -366,6 +366,7 @@ Reconstitué depuis [docs/BACKLOG_PREP_AUDIT.md](docs/BACKLOG_PREP_AUDIT.md), [d
 
 ### Issues actives (P1-P2)
 
+- **Soak Mode A undo** (en cours, fenêtre 2026-04-30 → 2026-05-14) : 3 events télémétrie instrumentés (eligible_view, unavailable_view, stage_returned), script d'analyse [scripts/analyze_undo_soak.py](scripts/analyze_undo_soak.py). Protocole et arbre de décision : [docs/SOAK_MODE_A.md](docs/SOAK_MODE_A.md). Décision Mode B / élargir / soaker plus à prendre une fois le rapport disponible.
 - **F4 — Index FTS arbitrage** ([BACKLOG.md#F4](docs/BACKLOG.md)) : un seul bouton « Mettre à jour l'index » avec état visible (indexé/à mettre à jour), ou automatisation post-curation. Pas tranché.
 - ~~**F5 — Validation regex au boot du sidecar**~~ ✅ **Fait post-v0.1.42** : nouveau module `multicorpus_engine/regex_boot_audit.py` (compile-only, jamais raise) appelé après `sidecar_started` dans `CorpusServer.start`. Log WARN avec status (`POSIX_USAGE`/`RE_ONLY_FAIL`/`REGEX_ONLY_FAIL`/`BOTH_FAIL`) + pattern + flags si patterns custom flagués. 19 tests pytest. La version full (sample diff) reste `scripts/validate_regex_migration.py` pour audits pré-migration.
 - **C-1, C-2, C-3 — Tests Vitest** ([BACKLOG_PREP_AUDIT.md](docs/BACKLOG_PREP_AUDIT.md)) : tests unitaires sur fingerprint curation (C-1 fait), import normalisation (C-2 en attente), diff LCS (C-3 en attente).
