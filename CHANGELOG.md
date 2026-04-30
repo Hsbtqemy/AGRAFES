@@ -7,10 +7,25 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+---
+
+## [0.1.43] - 2026-04-30
+
 ### Added
 
-- **prep / undo Mode A** : bouton « ↶ Annuler » dans CurationView et SegmentationView, qui annule la dernière action destructive du document courant (curation apply, fusion d'unités, coupure d'unité, resegmentation). Backbone : nouvelle table `prep_action_history` + snapshots par unité ([migration 019](migrations/019_prep_action_history.sql)), endpoints `/prep/undo/eligibility` et `/prep/undo`, module pur `tauri-prep/src/lib/prepUndo.ts` (17 tests Vitest). Tous les chemins (mutation + snapshot + history + flip reverted) tiennent dans une transaction unique. **Forward-only** : les actions antérieures à cette release ne sont pas annulables. Mode B (rollback historique d'une action ancienne via panneau d'historique) reste reporté à une V2 si l'usage révèle le besoin.
+- **prep / undo Mode A** : bouton « ↶ Annuler » dans CurationView et SegmentationView, qui annule la dernière action destructive du document courant (curation apply, fusion d'unités, coupure d'unité, resegmentation). Backbone : nouvelle table `prep_action_history` + snapshots par unité ([migration 019](migrations/019_prep_action_history.sql)), endpoints `/prep/undo/eligibility` et `/prep/undo`, module pur `tauri-prep/src/lib/prepUndo.ts` (33 tests Vitest dont 16 pour les transitions soak). Tous les chemins (mutation + snapshot + history + flip reverted) tiennent dans une transaction unique. **Forward-only** : les actions antérieures à cette release ne sont pas annulables. Mode B (rollback historique d'une action ancienne via panneau d'historique) reste reporté à une V2 si l'usage révèle le besoin.
+- **prep / soak instrumentation** : 2 events télémétrie supplémentaires (`prep_undo_eligible_view`, `prep_undo_unavailable_view`) émis sur transition matérielle du bouton Annuler (anti-bruit assuré côté pur dans `prepUndo.transitionEvent`). Couplé au `stage_returned` existant, donne un triplet voulu / disponible / bloqué pour mesurer Mode A avant d'engager Mode B. Script d'analyse stdlib-only [scripts/analyze_undo_soak.py](scripts/analyze_undo_soak.py) avec 9 tests pytest et une recommandation calculée selon 4 seuils. Protocole et arbre de décision dans [docs/SOAK_MODE_A.md](docs/SOAK_MODE_A.md).
 - **multicorpus_engine** : nouveau module `regex_boot_audit.py` — audit compile-only des patterns regex custom persistés dans `corpus_info.meta_json`. Appelé au boot du `CorpusServer` après `sidecar_started`, log WARN si un pattern flag positif (POSIX/Unicode property classes, divergence `re` vs `regex.V0`). Defensive : try/except global, ne bloque jamais le démarrage du sidecar. 19 tests pytest. Ferme l'angle mort « ma DB ≠ leur DB » identifié dans HANDOFF_PREP § 7 (F5). La version full avec sample diff sur `text_norm` reste `scripts/validate_regex_migration.py` pour audits pré-migration.
+
+### Changed
+
+- **tauri-prep** : sous-menu Actions réordonné en `Segmentation → Curation → Alignement → Annotation` pour aligner sur le pipeline documenté en HANDOFF_PREP § 1. Ajout d'un encart § 3 « Évolution de pratique : pourquoi segment-first » qui nomme la transition (curation-d'abord venait du brut OCR à vérifier ; sources généralement déjà nettoyées + lecture en table de segments rendent la curation locale plus utile). Aucun ordre n'est bloquant ; la friction « resegmentation post-curation écrase `text_raw` » est listée § 7 backlog comme ticket futur (colonne `text_source` immuable).
+- **HANDOFF_PREP § 5** « Pas d'undo automatique » → « Undo : Mode A pour les 4 destructives, pas plus », précise le périmètre V1 et les actions hors-scope (manual override individuel, bulk role, retarget align…).
+- **API contract** : nouveaux endpoints `/prep/undo/eligibility` et `/prep/undo` dans `docs/SIDECAR_API_CONTRACT.md`, `docs/openapi.json` (regen via `scripts/export_openapi.py`), `tests/snapshots/openapi_paths.json`.
+
+### Fixed
+
+- **HANDOFF_PREP § 6 Tier C #11** : `AnnotationView` qualifié à tort de « dormant » → « étape finale efficace » (le temps passé court y est un signal positif de workflow efficient, pas un manque d'engagement).
 
 ---
 
