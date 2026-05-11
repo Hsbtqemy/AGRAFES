@@ -480,7 +480,7 @@ export class CurationView {
           <h1>Curation <span class="prep-badge-preview">pr&#233;visualisation live</span></h1>
         </div>
         <div class="prep-acts-hub-head-tools">
-          <button id="act-reload-docs-btn" class="btn btn-secondary btn-sm">&#8635;&#160;Rafra&#238;chir</button>
+          <button id="act-reload-docs-btn" class="btn btn-secondary btn-sm" title="Re-charger la liste des documents depuis la base">&#8635;&#160;Actualiser</button>
           <span class="prep-curate-pill" id="act-curate-mode-pill">Mode &#233;dition</span>
         </div>
       </section>
