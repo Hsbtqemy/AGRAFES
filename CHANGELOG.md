@@ -9,6 +9,25 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.2.0] - 2026-05-11
+
+### Out of MVP
+
+Bump symbolique 0.1.x → 0.2.0. Au cumul depuis 0.1.0 (octobre 2025), AGRAFES n'est plus une preview : pipeline prep complet (Import → Segmentation → Curation → Alignement → Annotation → Export) ; concordancier avec CQL ; familles documentaires ; corpus QA gate ; **Mode A undo** sur les 4 actions destructives ; **DOCX bilingue 2-col** lisible (Tier S #1 fermé) ; soak télémétrie pour décider sur données plutôt qu'intuition ; ~400 tests pytest + 343 tests Vitest ; contract OpenAPI gelé. Le pas 0.1.x → 0.2.0 marque la sortie de la phase MVP, pas une rupture d'API (forward-only sur toutes les évolutions récentes).
+
+### Added
+
+- **prep / Annotation** : nouveau toggle de tri A-Z / ID dans la sidebar de la vue Annotation (qui n'avait aucun tri exposé jusqu'ici — ordre `doc_id` brut). Utilise `compareDocsByTitle` du helper docSort partagé, A-Z par défaut.
+- **prep / refresh buttons** : un bouton « ↻ Actualiser » sur chaque panneau Prep — Import, Documents, Actions hub, Curation, Segmentation, Alignement, Annotation, Exporter. 8 boutons visuellement homogènes (`btn btn-secondary btn-sm`), même glyph, même label. Friction « repasser par Actions hub pour rafraîchir une sous-vue » fermée. Sur ActionsScreen, le helper canonique `_loadDocs()` propage à toutes les sous-vues via `onDocsLoaded` / `refreshDocs` / `refreshIfConnected`.
+
+### Changed
+
+- **prep / tri par défaut** : A-Z devient le tri par défaut dans CurationView, SegmentationView et AnnotationView (était `doc_id` ascendant). Le bouton A-Z passe en première position dans le toggle, classe `active` initiale. Cohérent avec le retour utilisateur : un corpus de N documents importés à différents moments a des `doc_id` non-séquentiels — l'ordre alpha est plus intuitif.
+- **prep / CurationView refresh label** : `↻ Rafraîchir` → `↻ Actualiser` pour cohérence avec les autres écrans.
+- **prep / AnnotationView refresh label** : ajout du label visible « Actualiser » à côté du glyph (avant : glyph seul).
+
+---
+
 ## [0.1.44] - 2026-05-11
 
 ### Added
