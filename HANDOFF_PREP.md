@@ -334,7 +334,7 @@ Justification : éviter les faux positifs (deux docs avec le même radical mais 
 
 ### Tier S — Blocants
 
-1. **DOCX bilingue en tableau 2-colonnes non lu par l'importer** ([docx_numbered_lines.py](src/multicorpus_engine/importers/docx_numbered_lines.py)). 4 fichiers du corpus utilisateur affectés. Décision actuelle : workaround utilisateur (préparer le DOCX en flux unique). Friction réelle si tu as 50 fichiers à traiter.
+1. ~~**DOCX bilingue en tableau 2-colonnes non lu par l'importer**~~ ✅ **Fait post-v0.1.43** : nouveau paramètre `column_index` sur `import_docx_numbered_lines` ([docx_numbered_lines.py](src/multicorpus_engine/importers/docx_numbered_lines.py), commits `959930d` + `756584a`). Quand fourni (entier ≥ 1), itère le body en ordre du document et extrait la cellule de cette colonne (1-based) de chaque table — paragraphes aplatis. Cas pathologiques gérés explicitement (table plus étroite, cellule fusionnée venant d'une colonne inférieure, sous-table imbriquée, colonne sans `[N]` dominante, 0 unité extraite) → compteurs dédiés dans `ImportReport` + warnings actionnables, plus de « 0 line units » silencieux. UI : champ optionnel « col » dans la ligne du fichier, visible uniquement pour `docx_numbered_lines`. Pas de famille auto-créée. 9 tests pytest.
 
 2. **Réimportation = perte des aval** (segmentation, curation, alignement, annotations, métadonnées). Le seul moyen de revenir à un état propre. Coût croissant avec l'avancement du pipeline. Pas de solution simple — un undo serveur partiel serait possible mais lourd.
 

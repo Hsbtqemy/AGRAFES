@@ -2280,6 +2280,18 @@ def openapi_spec() -> dict[str, Any]:
                                 "newly imported document to this parent document id."
                             ),
                         },
+                        "column_index": {
+                            "type": "integer",
+                            "nullable": True,
+                            "minimum": 1,
+                            "description": (
+                                "For mode=docx_numbered_lines ONLY. 1-based index of the "
+                                "table column to extract (e.g., 1 for original column or 2 "
+                                "for the translation column in a 2-col bilingual DOCX). "
+                                "Default null = legacy behavior (tables ignored, paragraphs "
+                                "only). Ignored silently by other import modes."
+                            ),
+                        },
                     },
                     "additionalProperties": False,
                 },

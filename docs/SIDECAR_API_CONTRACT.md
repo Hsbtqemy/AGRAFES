@@ -219,7 +219,8 @@ When `multicorpus serve` starts and a portfile already exists:
     - `path`: source file path
     - `language` required except TEI mode
     - optional: `title`, `doc_role`, `resource_type`, `tei_unit`
-  - returns `run_id` + importer report (`doc_id`, unit counts, warnings, etc.)
+    - optional `column_index` (integer ≥ 1) — **`mode=docx_numbered_lines` only**. Extracts the cell at this column (1-based) of every table in the body, paragraphs flattened. Default null = tables ignored (legacy). Ignored silently for other modes.
+  - returns `run_id` + importer report (`doc_id`, unit counts, warnings, plus `tables_processed`/`rows_skipped_short`/`nested_tables_skipped` when `column_index` was set)
   - returns `401` if token is active and header is missing/invalid
 - `POST /import/preview`
   - read-only: parses source file without writing to DB

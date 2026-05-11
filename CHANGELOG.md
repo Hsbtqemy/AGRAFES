@@ -7,6 +7,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **prep / DOCX tables** : nouveau paramètre `column_index` sur l'importer `docx_numbered_lines` et l'endpoint `POST /import`. Quand l'utilisateur a un DOCX bilingue (corpus original/traduction côte à côte dans une table 2-col), il indique `column_index=1` ou `=2` pour extraire la colonne voulue — auparavant ces fichiers retournaient « 0 line units » sans diagnostic. Cas pathologiques surfacés dans `ImportReport` (tables_processed, rows_skipped_short, nested_tables_skipped, + 5 warnings actionnables : table trop étroite, cellule fusionnée, sous-table imbriquée, colonne sans `[N]` dominante, extraction vide). UI : champ « col » optionnel dans la ligne d'import, affiché uniquement quand mode=`docx_numbered_lines`. 9 tests pytest. **Ferme la friction Tier S #1** de HANDOFF_PREP § 6.
+
 ### Changed
 
 - **prep / tri docs** : nouveau helper pur `tauri-prep/src/lib/docSort.ts` (compareDocsByTitle) centralise le comparateur (locale FR, insensible casse+accents, `numeric:true` pour ordonner "Doc 2" avant "Doc 10", tie-break stable sur doc_id). Appliqué dans CurationView, SegmentationView, MetadataScreen, ImportScreen — qui avaient 3 variantes coexistantes (`localeCompare` nu, avec `undefined`, avec `"fr"`). 8 tests Vitest.
