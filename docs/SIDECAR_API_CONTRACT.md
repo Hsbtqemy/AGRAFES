@@ -232,6 +232,11 @@ When `multicorpus serve` starts and a portfile already exists:
   - graceful server stop
   - returns `shutting_down: true`
   - returns `401` if token is active and header is missing/invalid
+- `POST /telemetry` (no token — fire-and-forget local-only)
+  - body: `{ event: <string>, ...payload }` — `event` required and non-empty.
+  - appends `{ts, event, ...payload}` à `<db_dir>/.agrafes_telemetry.ndjson`. Reserved keys (`ts`, `event`, `db_path`, `event_name`) stripped from payload before persistence.
+  - returns `204 No Content` toujours, même en cas d'échec d'écriture (telemetry ne doit jamais bloquer le caller).
+  - **non token-protected** par design : loopback-only + impact maximal d'un attaquant local = polluer le NDJSON. Cf. note de sécurité dans `_handle_telemetry`.
 
 ## Additional endpoints (already available)
 

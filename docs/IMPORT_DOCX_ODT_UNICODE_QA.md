@@ -162,12 +162,42 @@ Warnings (concaténés dans `ImportReport.warnings`) :
 
 ### Tests
 
-`tests/test_docx_numbered_lines_tables.py` (9 cas) couvre :
+`tests/test_docx_numbered_lines_tables.py` (10 cas) couvre :
 - extraction col 1 et col 2 d'une table 2-col,
 - `column_index=2` sur table 1-col (rows_skipped_short),
 - cellule fusionnée horizontalement (dedup par identité d'objet `Cell`),
+- cellule fusionnée verticalement (dedup par `id(cell._tc)` + détection
+  XML du marqueur `<w:vMerge>` en défense secondaire),
 - table imbriquée ignorée avec warning,
 - colonne majoritairement sans `[N]` (warning),
 - `column_index=None` régression (comportement legacy intact),
 - paragraphes top-level + tables intercalés en ordre document,
 - `column_index < 1` → `ValueError`.
+
+### Périmètre V1 — limites connues à flagger
+
+Le paramètre `column_index` n'est implémenté que pour **`mode=docx_numbered_lines`**.
+Les autres importers de la même famille ont chacun un comportement différent
+face à un fichier où le texte est dans une table multi-colonnes :
+
+| Importer | Comportement actuel sur table 2-col bilingue | Friction |
+|---|---|---|
+| `docx_numbered_lines` | ✅ Géré via `column_index` (cette session) | — |
+| `docx_paragraphs` | ⚠ Même bug que `docx_numbered_lines` avant ce fix : `document.paragraphs` ignore les tables → 0 paragraphes importés silencieusement. | Tier S potentiel si quelqu'un l'utilise pour du bilingue (rare en pratique car cet importer cible des paragraphes non numérotés). |
+| `odt_numbered_lines` | ⚠ Comportement différent : `tree.iter()` walke TOUT, donc les paragraphes des cellules sont importés — mais **interleavés** (row 1 col 1, row 1 col 2, row 2 col 1…). Sur un ODT bilingue 2-col, l'utilisateur obtient un doc mixte avec les deux langues mélangées. | Friction silencieuse : pas d'erreur, mais texte incohérent. |
+| `odt_paragraphs` | Idem ODT numbered_lines — walke tout, interleave. | Idem. |
+| `tei` | Pas concerné (TEI a sa propre structure XML). | — |
+| `txt`, `conllu` | Pas de notion de table. | — |
+
+**Décision V1** : on documente, on n'étend pas. Raisons :
+- `docx_paragraphs` est rarement utilisé sur du bilingue (les corpus
+  bilingues sont numérotés).
+- ODT bilingues 2-col sont moins fréquents que DOCX dans le pipeline actuel.
+- Étendre demanderait : helper de walk équivalent à `_iter_body_blocks` pour
+  ODT (à base de namespaces `text:p` / `table:table`), validation par
+  importer, tests dédiés.
+
+À reprendre dans une future session si un utilisateur signale la friction
+sur ODT ou `docx_paragraphs`. L'infra est extensible — `column_index`
+peut s'ajouter aux autres importers avec le même contrat (1-based, null =
+legacy).

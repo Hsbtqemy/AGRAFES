@@ -9,7 +9,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
-- **prep / DOCX tables** : nouveau paramètre `column_index` sur l'importer `docx_numbered_lines` et l'endpoint `POST /import`. Quand l'utilisateur a un DOCX bilingue (corpus original/traduction côte à côte dans une table 2-col), il indique `column_index=1` ou `=2` pour extraire la colonne voulue — auparavant ces fichiers retournaient « 0 line units » sans diagnostic. Cas pathologiques surfacés dans `ImportReport` (tables_processed, rows_skipped_short, nested_tables_skipped, + 5 warnings actionnables : table trop étroite, cellule fusionnée, sous-table imbriquée, colonne sans `[N]` dominante, extraction vide). UI : champ « col » optionnel dans la ligne d'import, affiché uniquement quand mode=`docx_numbered_lines`. 9 tests pytest. **Ferme la friction Tier S #1** de HANDOFF_PREP § 6.
+- **prep / DOCX tables** : nouveau paramètre `column_index` sur l'importer `docx_numbered_lines` et l'endpoint `POST /import`. Quand l'utilisateur a un DOCX bilingue (corpus original/traduction côte à côte dans une table 2-col), il indique `column_index=1` ou `=2` pour extraire la colonne voulue — auparavant ces fichiers retournaient « 0 line units » sans diagnostic. Cas pathologiques surfacés dans `ImportReport` (tables_processed, rows_skipped_short, nested_tables_skipped, + 5 warnings actionnables : table trop étroite, cellule fusionnée H ou V, sous-table imbriquée, colonne sans `[N]` dominante, extraction vide). Dedup vMerge robuste par `id(cell._tc)` + détection XML `<w:vMerge>` en défense secondaire. UI : champ « col » optionnel dans la ligne d'import, affiché uniquement quand mode=`docx_numbered_lines`. 10 tests pytest. **Ferme la friction Tier S #1** de HANDOFF_PREP § 6 pour `docx_numbered_lines`. Frictions analogues sur `docx_paragraphs` / `odt_numbered_lines` / `odt_paragraphs` documentées comme limites V1 dans `docs/IMPORT_DOCX_ODT_UNICODE_QA.md` § 8.
 
 ### Changed
 
@@ -18,6 +18,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- **docs / SIDECAR_API_CONTRACT** : ajoute `POST /telemetry` qui était routé dans le sidecar mais absent du contract doc depuis sa création (test `test_contract_docs_sync.py` rouge depuis 3 sessions, maintenant vert).
 - **tauri-shell / Conventions** : la liste déroulante « Choisir un document » est triée alphabétiquement (locale FR, insensible à la casse et aux accents), au lieu de l'ordre `doc_id` ascendant brut renvoyé par `/documents`. Les docs sans titre tombent en fin via leur fallback `Doc #<id>`.
 - **prep / Segmentation onglet Modifier** : la table « segments enregistrés » plafonnait à 500, contre 5000 pour les autres aperçus (curate/segment preview) depuis la convention preview v0.1.40. Aligné sur 5000.
 - **sidecar `/documents/preview`** : cap runtime passé de 2000 à 5000 pour la même convention. Schéma OpenAPI (`sidecar_contract.openapi_spec()`) et `docs/SIDECAR_API_CONTRACT.md` également mis à jour (étaient encore en drift `1..20` depuis la création de l'endpoint).
