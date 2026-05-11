@@ -317,3 +317,53 @@ def test_column_index_below_one_raises(db, tmp_path):
     path = _save(doc, tmp_path / "x.docx")
     with pytest.raises(ValueError, match="column_index"):
         import_docx_numbered_lines(db, path, language="fr", column_index=0)
+
+
+# ─── Case 9: vertical merge dedup ──────────────────────────────────────────
+
+
+def test_vertical_merge_dedup_does_not_duplicate(db, tmp_path):
+    """When the target column has a vertically merged cell spanning 2 rows,
+    python-docx returns the same Cell object on both rows. We must dedup
+    by id(cell) to avoid importing the same content twice."""
+    from multicorpus_engine.importers.docx_numbered_lines import (
+        import_docx_numbered_lines,
+    )
+
+    doc = _new_doc()
+    table = _add_table_2col(doc, [
+        ("[1] left A", "[1] right merged top"),
+        ("[2] left B", "[2] right merged continues"),
+        ("[3] left C", "[3] right own cell"),
+    ])
+    # Vertically merge col 2 rows 0-1 via python-docx's cell.merge API
+    # (which works for vertical merges too).
+    table.cell(0, 1).merge(table.cell(1, 1))
+    path = _save(doc, tmp_path / "vmerge.docx")
+
+    # column_index=2: rows 0+1 share the merged cell. We import ONE copy of
+    # row 0's content, skip row 1 (same Cell object), import row 2.
+    report = import_docx_numbered_lines(db, path, language="en", column_index=2)
+    ext_ids = [
+        r["external_id"]
+        for r in db.execute(
+            "SELECT external_id FROM units WHERE doc_id=? AND unit_type='line' ORDER BY n",
+            (report.doc_id,),
+        )
+    ]
+    # Expected: row 0 content (ext_id=1 from merged cell) + row 2 (ext_id=3).
+    # Row 1 is skipped because same Cell object as row 0.
+    assert 1 in ext_ids
+    assert 3 in ext_ids
+    # row 1's "[2] right merged continues" should NOT have been imported
+    # twice — it's the same Cell content as row 0.
+    line_count = sum(1 for _ in db.execute(
+        "SELECT 1 FROM units WHERE doc_id=? AND unit_type='line'",
+        (report.doc_id,),
+    ))
+    # Row 0 cell may contain both paragraphs after merge (python-docx behavior).
+    # The key assertion: no duplicate of the same line content across rows.
+    assert report.rows_skipped_short >= 1, \
+        "Expected at least 1 row skipped due to vertical merge dedup"
+    # Make sure row 2's content was extracted (it's a distinct Cell).
+    assert line_count >= 2

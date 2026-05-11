@@ -124,6 +124,29 @@ def _iter_body_blocks(document):
             yield Table(child, document)
 
 
+def _is_vmerge_continuation(cell) -> bool:
+    """True if *cell* is a vertical-merge CONTINUATION (not the start).
+
+    In WordML, a vMerge has the start cell tagged ``<w:vMerge w:val="restart"/>``
+    and continuation cells tagged ``<w:vMerge/>`` (absent val = continue).
+    python-docx ``cell.merge`` sometimes leaves stale paragraph content
+    in continuation cells, so simple ``id(cell)`` dedup is insufficient.
+    We inspect the XML directly. Defensive : returns False on any error.
+    """
+    try:
+        from docx.oxml.ns import qn
+        tc_pr = cell._tc.tcPr
+        if tc_pr is None:
+            return False
+        vmerge = tc_pr.find(qn("w:vMerge"))
+        if vmerge is None:
+            return False
+        val = vmerge.get(qn("w:val"))
+        return val != "restart"
+    except Exception:
+        return False
+
+
 def _analyze_external_ids(external_ids: list[int]) -> tuple[list[int], list[int], list[int]]:
     """Return (duplicates, holes, non_monotonic) from a sequence of external_ids."""
     seen: dict[int, int] = {}
@@ -254,13 +277,20 @@ def import_docx_numbered_lines(
                 log.debug("Top-level para n=%d type=%s", n, unit[0])
             elif isinstance(block, _DocxTable):
                 tables_processed += 1
+                # Per-table dedup pour cellules fusionnées verticalement (vMerge) :
+                # python-docx alloue un nouveau wrapper Cell par accès, donc
+                # id(cell) varie. En revanche `cell._tc` (l'élément lxml sous-
+                # jacent) est partagé entre rows pour un vMerge — c'est la
+                # clé stable. Sans dedup, on importerait N fois le contenu
+                # d'une cellule fusionnée sur N lignes.
+                seen_target_tcs: set[int] = set()
                 for row_idx, row in enumerate(block.rows):
                     cells = row.cells
                     if target_idx >= len(cells):
                         rows_skipped_short += 1
                         continue
                     target_cell = cells[target_idx]
-                    # Horizontal merge from a lower column: same Cell object
+                    # Horizontal merge from a lower column: same Cell wrapper
                     # appears at an earlier index. Skip rather than dupliquer
                     # le contenu d'une cellule fusionnée venant de col 1.
                     if target_idx > 0 and any(
@@ -268,6 +298,18 @@ def import_docx_numbered_lines(
                     ):
                         rows_skipped_short += 1
                         continue
+                    # Vertical merge dedup via _tc element identity (primary).
+                    tc_key = id(target_cell._tc)
+                    if tc_key in seen_target_tcs:
+                        rows_skipped_short += 1
+                        continue
+                    # Defense secondaire : si une variante de python-docx
+                    # alloue des _tc distincts par row malgré le vMerge, le
+                    # marqueur XML est notre filet.
+                    if _is_vmerge_continuation(target_cell):
+                        rows_skipped_short += 1
+                        continue
+                    seen_target_tcs.add(tc_key)
                     # Nested table inside the target cell — skip, warning.
                     if target_cell.tables:
                         nested_tables_skipped += len(target_cell.tables)
