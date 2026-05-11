@@ -7,6 +7,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **tauri-shell / Conventions** : la liste déroulante « Choisir un document » est triée alphabétiquement (locale FR, insensible à la casse et aux accents), au lieu de l'ordre `doc_id` ascendant brut renvoyé par `/documents`. Les docs sans titre tombent en fin via leur fallback `Doc #<id>`.
+- **prep / Segmentation onglet Modifier** : la table « segments enregistrés » plafonnait à 500, contre 5000 pour les autres aperçus (curate/segment preview) depuis la convention preview v0.1.40. Aligné sur 5000.
+- **sidecar `/documents/preview`** : cap runtime passé de 2000 à 5000 pour la même convention. Schéma OpenAPI (`sidecar_contract.openapi_spec()`) et `docs/SIDECAR_API_CONTRACT.md` également mis à jour (étaient encore en drift `1..20` depuis la création de l'endpoint).
+- **`.gitignore`** : ignore aussi `/node_modules/` à la racine (cache vitest transient qui apparaît si on lance `npx vitest` depuis la racine du repo).
+
 ---
 
 ## [0.1.43] - 2026-04-30

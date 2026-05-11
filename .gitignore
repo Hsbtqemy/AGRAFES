@@ -52,6 +52,7 @@ bench/results/
 tauri-app/node_modules/
 tauri-prep/node_modules/
 tauri-shell/node_modules/
+/node_modules/
 tauri-app/src-tauri/target/
 tauri-prep/src-tauri/target/
 tauri-shell/src-tauri/target/
