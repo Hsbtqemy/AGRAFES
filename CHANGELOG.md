@@ -7,6 +7,11 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **prep / tri docs** : nouveau helper pur `tauri-prep/src/lib/docSort.ts` (compareDocsByTitle) centralise le comparateur (locale FR, insensible casse+accents, `numeric:true` pour ordonner "Doc 2" avant "Doc 10", tie-break stable sur doc_id). Appliqué dans CurationView, SegmentationView, MetadataScreen, ImportScreen — qui avaient 3 variantes coexistantes (`localeCompare` nu, avec `undefined`, avec `"fr"`). 8 tests Vitest.
+- **prep / AlignPanel** : les dropdowns pivot/cible de `_populatePairSelects` sont désormais triés alphabétiquement par titre (utilisaient l'ordre `doc_id` brut). Même friction que celle observée sur Conventions, traitée ici en passant.
+
 ### Fixed
 
 - **tauri-shell / Conventions** : la liste déroulante « Choisir un document » est triée alphabétiquement (locale FR, insensible à la casse et aux accents), au lieu de l'ordre `doc_id` ascendant brut renvoyé par `/documents`. Les docs sans titre tombent en fin via leur fallback `Doc #<id>`.
