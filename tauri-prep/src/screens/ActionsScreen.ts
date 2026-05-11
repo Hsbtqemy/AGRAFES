@@ -244,7 +244,7 @@ export class ActionsScreen {
         <div class="prep-acts-hub-head-left">
           <h2 class="prep-acts-hub-head-title">
             Traitement de corpus
-            <button type="button" id="act-hub-refresh-corpus-btn" class="prep-refresh-btn"
+            <button type="button" id="act-hub-refresh-corpus-btn" class="btn btn-secondary btn-sm"
                     title="Re-charger la liste des documents et propager aux sous-vues (Curation, Segmentation, Alignement, Annotation)"
                     style="margin-left:0.6rem;vertical-align:middle">&#8634; Actualiser</button>
           </h2>
@@ -406,6 +406,7 @@ export class ActionsScreen {
         },
         onOpenDocuments: () => this._openDocumentsTab?.(),
         onOpenExporter: (prefill) => this._openExporterTab?.(prefill),
+        onReloadDocs: () => { void this._loadDocs(); },
       },
     );
     this._segmentationView.render(wrapper);
@@ -422,7 +423,11 @@ export class ActionsScreen {
     headSection.className = "prep-acts-seg-head-card";
     headSection.innerHTML = `
       <div class="prep-acts-hub-head-left">
-        <h1>Alignement</h1>
+        <h1>Alignement
+          <button type="button" id="act-align-reload-docs-btn" class="btn btn-secondary btn-sm"
+                  title="Re-charger la liste des documents depuis la base"
+                  style="margin-left:0.5rem;vertical-align:middle">&#8635; Actualiser</button>
+        </h1>
         <p>L'alignement crée des correspondances segment à segment entre un document pivot et ses traductions.</p>
       </div>
       <div class="prep-acts-hub-head-tools">
@@ -430,6 +435,9 @@ export class ActionsScreen {
       </div>`;
     this._bindHeadNavLinks(headSection, root);
     headSection.querySelector("#act-align-open-export-btn")?.addEventListener("click", () => this._openAlignmentExportPrefill());
+    headSection.querySelector("#act-align-reload-docs-btn")?.addEventListener("click", () => {
+      if (this._conn) void this._loadDocs();
+    });
     wrapper.appendChild(headSection);
 
     // ── AlignPanel : 2-col + famille + audit + qualité + collisions + runs ──

@@ -3436,20 +3436,6 @@ tr[data-unit-n].prep-seg-row-highlight td {
 .prep-btn-action-pending:hover { background: #fff3cd; }
 .prep-btn-action-bulk:hover    { background: #e8e8e8; }
 
-/* Refresh button — chaque écran Prep expose un bouton "↻ Actualiser" qui
-   force un re-fetch de la liste des docs et un re-render. Cohérence visuelle
-   à travers Import / Documents / Actions / Exporter. */
-.prep-refresh-btn {
-  background: #f0f4f8;
-  color: #2a4a6b;
-  border: 1.5px solid #b8c8d6;
-  font-size: 12px;
-  padding: 4px 10px;
-  cursor: pointer;
-}
-.prep-refresh-btn:hover:not(:disabled) { background: #e2ebf3; border-color: #98b0c8; }
-.prep-refresh-btn:disabled             { opacity: 0.55; cursor: progress; }
-
 /* Mode A undo button (CurationView + SegmentationView "↶ Annuler"). */
 .prep-btn-undo {
   background: #f3eef7;

@@ -102,7 +102,7 @@ export class ExportsScreen {
           <div>
             <h2 class="prep-screen-title" id="prep-exports-screen-title">
               Exporter
-              <button type="button" id="exp-refresh-btn" class="prep-refresh-btn"
+              <button type="button" id="exp-refresh-btn" class="btn btn-secondary btn-sm"
                       title="Re-charger la liste des documents et l'état d'export depuis la base"
                       style="margin-left:0.6rem;vertical-align:middle">&#8634; Actualiser</button>
             </h2>

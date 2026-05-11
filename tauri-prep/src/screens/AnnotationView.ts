@@ -168,8 +168,8 @@ export class AnnotationView {
 
     const refreshBtn = document.createElement("button");
     refreshBtn.className = "annot-btn-refresh";
-    refreshBtn.title = "Rafra\u00eechir la liste des documents";
-    refreshBtn.textContent = "\u21bb";
+    refreshBtn.title = "Re-charger la liste des documents depuis la base";
+    refreshBtn.textContent = "\u21bb Actualiser";
     refreshBtn.addEventListener("click", () => {
       const sidebar = panel.querySelector<HTMLElement>(".annot-sidebar");
       const viewer  = panel.querySelector<HTMLElement>(".annot-viewer");

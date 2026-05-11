@@ -76,6 +76,12 @@ export interface SegmentationCallbacks {
   onNavigate?(target: string, context?: { docId?: number }): void;
   onOpenDocuments?(): void;
   onOpenExporter?(prefill?: SegmentExportPrefill): void;
+  /**
+   * Force un re-fetch de la liste des docs côté ActionsScreen et propage
+   * aux sous-vues. Branché sur le bouton « ↻ Actualiser » du header
+   * SegmentationView. Cohérent avec le onReloadDocs de CurationView.
+   */
+  onReloadDocs?(): void;
 }
 
 // ─── SegmentationView ─────────────────────────────────────────────────────────
@@ -273,7 +279,12 @@ export class SegmentationView {
       <div class="prep-seg-split-layout">
         <div class="prep-seg-split-list" id="act-seg-split-list">
           <div class="prep-seg-list-branding">
-            <h2 class="prep-seg-list-brand-title">Segmentation</h2>
+            <h2 class="prep-seg-list-brand-title">
+              Segmentation
+              <button type="button" id="act-seg-reload-docs-btn" class="btn btn-secondary btn-sm"
+                      title="Re-charger la liste des documents depuis la base"
+                      style="margin-left:0.5rem;vertical-align:middle">&#8635; Actualiser</button>
+            </h2>
             <p class="prep-seg-list-brand-desc">S&#233;lectionnez un document pour voir l&#8217;aper&#231;u live et lancer la segmentation.</p>
           </div>
           <div class="prep-seg-split-list-head">
@@ -294,6 +305,11 @@ export class SegmentationView {
       </div>
     `;
 
+    // « ↻ Actualiser » — force un re-fetch des docs côté ActionsScreen,
+    // qui propage en re-rendering la liste via _populateSegDocList.
+    el.querySelector<HTMLButtonElement>("#act-seg-reload-docs-btn")?.addEventListener("click", () => {
+      this._cb.onReloadDocs?.();
+    });
     // Filter list on input
     el.querySelector<HTMLInputElement>("#act-seg-list-filter")?.addEventListener("input", (e) => {
       const q = (e.target as HTMLInputElement).value.toLowerCase();

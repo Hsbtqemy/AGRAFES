@@ -176,7 +176,7 @@ export class MetadataScreen {
           <div>
             <h2 class="prep-screen-title" style="margin:0 0 4px">
               Documents
-              <button type="button" id="meta-refresh-btn" class="prep-refresh-btn"
+              <button type="button" id="meta-refresh-btn" class="btn btn-secondary btn-sm"
                       title="Re-charger la liste des documents depuis la base"
                       style="margin-left:0.6rem;vertical-align:middle">↻ Actualiser</button>
             </h2>
