@@ -29,6 +29,12 @@ from .rich_text import para_to_rich_text
 
 _NUMBERED_RE = re.compile(r"^\[\s*(\d+)\s*\]\s*(.+)$", re.DOTALL)
 
+# Si >50% des paragraphes d'une colonne demandée ne matchent pas `[N]`,
+# emit a warning. Seuil minimum d'échantillon : 5 paragraphes pour éviter
+# les faux positifs sur de petites tables. Constants figées ici.
+COLUMN_UNNUMBERED_RATIO_THRESHOLD = 0.5
+COLUMN_UNNUMBERED_MIN_SAMPLE = 5
+
 logger = logging.getLogger(__name__)
 
 
@@ -42,6 +48,11 @@ class ImportReport:
     holes: list[int] = field(default_factory=list)
     non_monotonic: list[int] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    # Statistiques d'extraction par table (renseignées seulement si column_index
+    # est fourni à l'import — sinon valent 0).
+    tables_processed: int = 0
+    rows_skipped_short: int = 0
+    nested_tables_skipped: int = 0
 
     def to_dict(self) -> dict:
         return {
@@ -53,6 +64,9 @@ class ImportReport:
             "holes": self.holes,
             "non_monotonic": self.non_monotonic,
             "warnings": self.warnings,
+            "tables_processed": self.tables_processed,
+            "rows_skipped_short": self.rows_skipped_short,
+            "nested_tables_skipped": self.nested_tables_skipped,
         }
 
 
@@ -62,6 +76,52 @@ def _compute_file_hash(path: Path) -> str:
         for chunk in iter(lambda: f.read(65536), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def _paragraph_to_unit(
+    para,
+    n: int,
+) -> tuple | None:
+    """Convert one DOCX paragraph to a unit tuple, or None if blank.
+
+    Returns ``(unit_type, n, ext_id_or_None, text_raw, text_norm, meta_or_None)``.
+    Reused for both top-level paragraphs and cell paragraphs so the
+    matching logic stays in one place.
+    """
+    rich = para_to_rich_text(para)
+    plain = normalize(rich).strip()
+    if not plain:
+        return None
+    m = _NUMBERED_RE.match(plain)
+    if m:
+        ext_id = int(m.group(1))
+        prefix_len = m.start(2)
+        text_raw = rich[prefix_len:] if len(rich) >= prefix_len else m.group(2)
+        text_norm = normalize(text_raw)
+        sep_count = count_sep(text_raw)
+        meta = json.dumps({"sep_count": sep_count}) if sep_count > 0 else None
+        return ("line", n, ext_id, text_raw, text_norm, meta)
+    text_raw = rich
+    text_norm = normalize(text_raw)
+    return ("structure", n, None, text_raw, text_norm, None)
+
+
+def _iter_body_blocks(document):
+    """Yield each top-level Paragraph or Table in document order.
+
+    python-docx's ``Document.paragraphs`` skips paragraphs nested inside
+    tables — we walk the body XML directly via lxml so column_index
+    extraction can reach table content.
+    """
+    from docx.oxml.ns import qn
+    from docx.table import Table
+    from docx.text.paragraph import Paragraph
+    body = document.element.body
+    for child in body.iterchildren():
+        if child.tag == qn("w:p"):
+            yield Paragraph(child, document)
+        elif child.tag == qn("w:tbl"):
+            yield Table(child, document)
 
 
 def _analyze_external_ids(external_ids: list[int]) -> tuple[list[int], list[int], list[int]]:
@@ -99,11 +159,21 @@ def import_docx_numbered_lines(
     run_id: Optional[str] = None,
     run_logger: Optional[logging.Logger] = None,
     check_filename: bool = False,
+    column_index: Optional[int] = None,
 ) -> ImportReport:
     """Import a DOCX file using the numbered-lines convention.
 
     Creates one row in `documents` and one row per paragraph in `units`.
     Returns an ImportReport with diagnostics.
+
+    ``column_index`` controls table handling:
+      - ``None`` (default) → tables are skipped entirely (legacy behavior).
+      - ``>= 1`` → walk the body in document order; for each table, extract
+        the cell at column ``column_index`` (1-based) and flatten its
+        paragraphs. Pathological cases (table with fewer columns, merged
+        cells coming from a lower column, nested sub-tables) are surfaced
+        in ``ImportReport.warnings`` / new counters instead of failing
+        silently.
     """
     try:
         import docx  # python-docx
@@ -128,6 +198,10 @@ def import_docx_numbered_lines(
         __import__("datetime").timezone.utc
     ).strftime("%Y-%m-%dT%H:%M:%SZ")
 
+    # Validate column_index early so the user gets a clear error.
+    if column_index is not None and column_index < 1:
+        raise ValueError(f"column_index must be >= 1 (got {column_index})")
+
     # Parse DOCX before opening the transaction (pure I/O, no DB writes yet)
     document = docx.Document(str(path))
 
@@ -135,32 +209,85 @@ def import_docx_numbered_lines(
     # (unit_type, n, ext_id, text_raw, text_norm, meta) — doc_id added after INSERT
     units_parsed: list[tuple] = []
 
-    n = 0
-    for para in document.paragraphs:
-        rich = para_to_rich_text(para)
-        plain = normalize(rich).strip()
-        if not plain:
-            continue  # skip blank paragraphs
+    # Per-table extraction counters (renseignés seulement quand column_index est set).
+    tables_processed = 0
+    rows_skipped_short = 0
+    nested_tables_skipped = 0
+    # Pour le warning « colonne sans [N] dominante » — on suit séparément les
+    # paragraphes extraits depuis les cellules de la colonne demandée.
+    col_paragraphs_total = 0
+    col_paragraphs_line = 0
 
+    n = 0
+
+    def _append_unit(unit: tuple) -> None:
+        nonlocal n
         n += 1
-        # Match on plain text so a styled [n] prefix is still detected
-        m = _NUMBERED_RE.match(plain)
-        if m:
-            ext_id = int(m.group(1))
-            # Strip the plain prefix from rich to preserve styling in the content
-            prefix_len = m.start(2)
-            text_raw = rich[prefix_len:] if len(rich) >= prefix_len else m.group(2)
-            text_norm = normalize(text_raw)
-            sep_count = count_sep(text_raw)
-            meta = json.dumps({"sep_count": sep_count}) if sep_count > 0 else None
-            external_ids.append(ext_id)
-            units_parsed.append(("line", n, ext_id, text_raw, text_norm, meta))
-            log.debug("Para n=%d ext_id=%d type=line", n, ext_id)
-        else:
-            text_raw = rich
-            text_norm = normalize(text_raw)
-            units_parsed.append(("structure", n, None, text_raw, text_norm, None))
-            log.debug("Para n=%d type=structure", n)
+        # Override the n placeholder produced by the helper with the live counter.
+        unit = (unit[0], n, *unit[2:])
+        units_parsed.append(unit)
+        if unit[0] == "line":
+            external_ids.append(unit[2])
+
+    if column_index is None:
+        # Legacy path — tables are skipped (python-docx Document.paragraphs
+        # already ignores them). Unchanged behavior.
+        for para in document.paragraphs:
+            unit = _paragraph_to_unit(para, 0)  # n re-attributed by _append_unit
+            if unit is None:
+                continue
+            _append_unit(unit)
+            log.debug("Para n=%d type=%s", n, unit[0])
+    else:
+        # Column extraction — walk body in document order, dive into tables
+        # at the requested column. Edge cases produce warnings + counters,
+        # never silent data loss.
+        from docx.table import Table as _DocxTable
+        from docx.text.paragraph import Paragraph as _DocxParagraph
+        target_idx = column_index - 1
+        for block in _iter_body_blocks(document):
+            if isinstance(block, _DocxParagraph):
+                unit = _paragraph_to_unit(block, 0)
+                if unit is None:
+                    continue
+                _append_unit(unit)
+                log.debug("Top-level para n=%d type=%s", n, unit[0])
+            elif isinstance(block, _DocxTable):
+                tables_processed += 1
+                for row_idx, row in enumerate(block.rows):
+                    cells = row.cells
+                    if target_idx >= len(cells):
+                        rows_skipped_short += 1
+                        continue
+                    target_cell = cells[target_idx]
+                    # Horizontal merge from a lower column: same Cell object
+                    # appears at an earlier index. Skip rather than dupliquer
+                    # le contenu d'une cellule fusionnée venant de col 1.
+                    if target_idx > 0 and any(
+                        cells[i] is target_cell for i in range(target_idx)
+                    ):
+                        rows_skipped_short += 1
+                        continue
+                    # Nested table inside the target cell — skip, warning.
+                    if target_cell.tables:
+                        nested_tables_skipped += len(target_cell.tables)
+                        log.warning(
+                            "Nested table in table %d row %d col %d — skipped",
+                            tables_processed, row_idx + 1, column_index,
+                        )
+                    for para in target_cell.paragraphs:
+                        unit = _paragraph_to_unit(para, 0)
+                        if unit is None:
+                            continue
+                        col_paragraphs_total += 1
+                        if unit[0] == "line":
+                            col_paragraphs_line += 1
+                        _append_unit(unit)
+                        log.debug(
+                            "Table %d row %d col %d para n=%d type=%s",
+                            tables_processed, row_idx + 1, column_index,
+                            n, unit[0],
+                        )
 
     # Single transaction: document record + units
     try:
@@ -197,6 +324,9 @@ def import_docx_numbered_lines(
         duplicates=duplicates,
         holes=holes,
         non_monotonic=non_monotonic,
+        tables_processed=tables_processed,
+        rows_skipped_short=rows_skipped_short,
+        nested_tables_skipped=nested_tables_skipped,
     )
 
     if duplicates:
@@ -211,6 +341,46 @@ def import_docx_numbered_lines(
         msg = f"Non-monotonic external_id(s): {non_monotonic}"
         report.warnings.append(msg)
         log.warning(msg)
+
+    # Column-index warnings — transform "0 line units" silence into actionable signal.
+    if column_index is not None:
+        if rows_skipped_short > 0:
+            msg = (
+                f"{rows_skipped_short} ligne(s) sur {tables_processed} table(s) ignorée(s) : "
+                f"colonne {column_index} absente (table plus étroite ou cellule fusionnée "
+                f"venant d'une colonne précédente)."
+            )
+            report.warnings.append(msg)
+            log.warning(msg)
+        if nested_tables_skipped > 0:
+            msg = (
+                f"{nested_tables_skipped} sous-table(s) imbriquée(s) ignorée(s) — "
+                f"leur contenu n'a pas été importé."
+            )
+            report.warnings.append(msg)
+            log.warning(msg)
+        if len(external_ids) == 0 and tables_processed > 0:
+            msg = (
+                f"0 unité ligne extraite de {tables_processed} table(s) à la colonne "
+                f"{column_index}. Vérifier : la colonne contient-elle bien des "
+                f"paragraphes numérotés `[N]` ?"
+            )
+            report.warnings.append(msg)
+            log.warning(msg)
+        elif (
+            col_paragraphs_total >= COLUMN_UNNUMBERED_MIN_SAMPLE
+            and (col_paragraphs_total - col_paragraphs_line) / col_paragraphs_total
+                > COLUMN_UNNUMBERED_RATIO_THRESHOLD
+        ):
+            pct = round(
+                100.0 * (col_paragraphs_total - col_paragraphs_line) / col_paragraphs_total
+            )
+            msg = (
+                f"{pct}% des paragraphes de la colonne {column_index} ne portent pas "
+                f"de numérotation `[N]`. Êtes-vous sûr d'avoir choisi la bonne colonne ?"
+            )
+            report.warnings.append(msg)
+            log.warning(msg)
 
     log.info(
         "Import complete: %d units (%d line, %d structure)",
