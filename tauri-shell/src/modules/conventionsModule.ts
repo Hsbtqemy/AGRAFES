@@ -861,6 +861,15 @@ async function _loadDocs(): Promise<void> {
     _docs = [];
   }
 
+  // Trier par titre alphabétique (locale FR, insensible à la casse et aux
+  // accents). Docs sans titre tombent en fin via `Doc #<id>` comme fallback
+  // de tri pour rester déterministes.
+  _docs.sort((a, b) => {
+    const ta = (a.title ?? `Doc #${a.doc_id}`).toString();
+    const tb = (b.title ?? `Doc #${b.doc_id}`).toString();
+    return ta.localeCompare(tb, "fr", { sensitivity: "base" });
+  });
+
   const prev = _selectedDocId;
   _docSelectEl.innerHTML = `<option value="">— Choisir un document —</option>` +
     _docs.map(d => `<option value="${d.doc_id}">${_esc(d.title ?? `Doc #${d.doc_id}`)} ${d.language ? `[${d.language}]` : ""}</option>`).join("");
