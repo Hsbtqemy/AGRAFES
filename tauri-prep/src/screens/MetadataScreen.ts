@@ -54,7 +54,7 @@ import {
 } from "../lib/sidecarClient.ts";
 import { initCardAccordions } from "../lib/uiAccordions.ts";
 import { modalConfirm } from "../lib/modalConfirm.ts";
-import { compareDocsByTitle } from "../lib/docSort.ts";
+import { compareDocsByTitle, compareLocale } from "../lib/docSort.ts";
 import type { JobCenter } from "../components/JobCenter.ts";
 
 const DOC_ROLES = ["standalone", "original", "translation", "excerpt", "primary", "unknown"];
@@ -2334,9 +2334,9 @@ export class MetadataScreen {
       switch (col) {
         case "id":     return dir * (a.doc_id - b.doc_id);
         case "title":  return dir * compareDocsByTitle(a, b);
-        case "lang":   return dir * (a.language ?? "").localeCompare(b.language ?? "", undefined, { sensitivity: "base" });
-        case "role":   return dir * (a.doc_role ?? "").localeCompare(b.doc_role ?? "", undefined, { sensitivity: "base" });
-        case "status": return dir * this._workflowStatus(a).localeCompare(this._workflowStatus(b));
+        case "lang":   return dir * compareLocale(a.language, b.language);
+        case "role":   return dir * compareLocale(a.doc_role, b.doc_role);
+        case "status": return dir * compareLocale(this._workflowStatus(a), this._workflowStatus(b));
         default:       return 0;
       }
     };

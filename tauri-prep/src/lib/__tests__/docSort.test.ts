@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { compareDocsByTitle, type DocLike } from "../docSort.ts";
+import { compareDocsByTitle, compareLocale, type DocLike } from "../docSort.ts";
 
 const d = (doc_id: number, title: string | null | undefined): DocLike =>
   ({ doc_id, title });
@@ -74,5 +74,30 @@ describe("compareDocsByTitle", () => {
     expect(r1).toBe(r2);
     expect(a.title).toBe("Foo");
     expect(b.title).toBe("Bar");
+  });
+});
+
+describe("compareLocale", () => {
+  it("trie alphabétique FR insensible casse+accents", () => {
+    const arr = ["Zola", "abricot", "Éluard"];
+    arr.sort(compareLocale);
+    expect(arr).toEqual(["abricot", "Éluard", "Zola"]);
+  });
+
+  it("null/undefined traité comme chaîne vide (vient en tête)", () => {
+    expect(compareLocale(null, "abc")).toBeLessThan(0);
+    expect(compareLocale("abc", undefined)).toBeGreaterThan(0);
+    expect(compareLocale(null, undefined)).toBe(0);
+  });
+
+  it("respecte numeric:true (Doc 2 avant Doc 10)", () => {
+    const arr = ["Doc 10", "Doc 2", "Doc 1"];
+    arr.sort(compareLocale);
+    expect(arr).toEqual(["Doc 1", "Doc 2", "Doc 10"]);
+  });
+
+  it("strings égales → 0 (pas de tie-break ici, c'est au caller)", () => {
+    expect(compareLocale("foo", "foo")).toBe(0);
+    expect(compareLocale("Foo", "foo")).toBe(0); // sensitivity base
   });
 });

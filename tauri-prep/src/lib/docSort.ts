@@ -40,3 +40,17 @@ export function compareDocsByTitle<T extends DocLike>(a: T, b: T): number {
   const cmp = _COLLATOR.compare(ta, tb);
   return cmp !== 0 ? cmp : a.doc_id - b.doc_id;
 }
+
+/**
+ * Compare deux chaînes via le même Collator (locale FR, sensitivity base,
+ * numeric:true). Utilisable pour trier n'importe quel champ string —
+ * notamment lang/role/status d'un doc dans une table column-sortable.
+ *
+ * Null/undefined comparé comme chaîne vide.
+ */
+export function compareLocale(
+  a: string | null | undefined,
+  b: string | null | undefined,
+): number {
+  return _COLLATOR.compare(a ?? "", b ?? "");
+}
