@@ -40,6 +40,7 @@ import {
 } from "../lib/sidecarClient.ts";
 import type { JobCenter } from "../components/JobCenter.ts";
 import { initCardAccordions } from "../lib/uiAccordions.ts";
+import { compareDocsByTitle } from "../lib/docSort.ts";
 
 // ─── Types locaux ─────────────────────────────────────────────────────────────
 
@@ -846,7 +847,10 @@ export class AlignPanel {
   // ─── Sélects paire pivot/cible ──────────────────────────────────────────────
 
   private _populatePairSelects(el: HTMLElement): void {
-    const docs = this._getDocs();
+    // Tri alphabétique par titre (helper docSort) pour cohérence avec
+    // CurationView / SegmentationView / MetadataScreen / ImportScreen /
+    // tauri-shell Conventions. Plus de doc_id ascendant brut.
+    const docs = [...this._getDocs()].sort(compareDocsByTitle);
     for (const id of ["#align-pivot-sel", "#align-target-sel"]) {
       const sel = el.querySelector<HTMLSelectElement>(id);
       if (!sel) continue;

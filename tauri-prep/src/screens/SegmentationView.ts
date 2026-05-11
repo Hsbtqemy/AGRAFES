@@ -47,6 +47,7 @@ import {
   type UndoEligibility,
 } from "../lib/prepUndo.ts";
 import { reportEvent } from "../lib/telemetry.ts";
+import { compareDocsByTitle } from "../lib/docSort.ts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -404,7 +405,7 @@ export class SegmentationView {
 
         const sortFn = (a: DocumentRecord, b: DocumentRecord) =>
           this._segDocListSort === "alpha"
-            ? a.title.localeCompare(b.title, undefined, { sensitivity: "base" })
+            ? compareDocsByTitle(a, b)
             : a.doc_id - b.doc_id;
         const docs = [...this._getDocs()].sort(sortFn);
         for (const d of docs) {
@@ -422,7 +423,7 @@ export class SegmentationView {
     } catch {
       const sortFn = (a: DocumentRecord, b: DocumentRecord) =>
         this._segDocListSort === "alpha"
-          ? a.title.localeCompare(b.title, undefined, { sensitivity: "base" })
+          ? compareDocsByTitle(a, b)
           : a.doc_id - b.doc_id;
       return [...this._getDocs()].sort(sortFn).map(d => docRow(d)).join("");
     }
@@ -494,7 +495,7 @@ export class SegmentationView {
     const _calibrateFallback = () => {
       docs
         .filter(d => d.doc_id !== docId)
-        .sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: "base" }))
+        .sort(compareDocsByTitle)
         .forEach(d => {
           calibrateOptions += `<option value="${d.doc_id}">[${d.doc_id}] ${_escHtml(d.title)}</option>`;
         });

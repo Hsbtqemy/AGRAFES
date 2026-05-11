@@ -54,6 +54,7 @@ import {
 } from "../lib/sidecarClient.ts";
 import { initCardAccordions } from "../lib/uiAccordions.ts";
 import { modalConfirm } from "../lib/modalConfirm.ts";
+import { compareDocsByTitle } from "../lib/docSort.ts";
 import type { JobCenter } from "../components/JobCenter.ts";
 
 const DOC_ROLES = ["standalone", "original", "translation", "excerpt", "primary", "unknown"];
@@ -893,7 +894,7 @@ export class MetadataScreen {
             <option value="">— sélectionner —</option>
             ${this._docs
               .filter(d => d.doc_id !== doc.doc_id)
-              .sort((a, b) => (a.title ?? "").localeCompare(b.title ?? "", undefined, { sensitivity: "base" }))
+              .sort(compareDocsByTitle)
               .map(d => `<option value="${d.doc_id}">${this._esc(d.title)} (${this._esc(d.language)})</option>`)
               .join("")}
           </select>

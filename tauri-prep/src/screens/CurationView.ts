@@ -67,6 +67,7 @@ import type { JobCenter } from "../components/JobCenter.ts";
 import { initCardAccordions } from "../lib/uiAccordions.ts";
 import { escHtml as _escHtml, renderSpecialChars as _renderSpecialChars, highlightChanges as _highlightChanges } from "../lib/diff.ts";
 import { rulesSignature as _rulesSignature, sampleFingerprint as _sampleFingerprint, sampleTextFingerprint as _sampleTextFingerprint } from "../lib/curationFingerprint.ts";
+import { compareDocsByTitle } from "../lib/docSort.ts";
 import { reportEvent, reportUserError } from "../lib/telemetry.ts";
 import { CURATE_PRESETS, parseAdvancedCurateRules, getPunctLangFromValue } from "../lib/curationPresets.ts";
 import { mergeApplyHistory, formatApplyHistoryList, type ApplyHistoryScope } from "../lib/curationApplyHistory.ts";
@@ -285,7 +286,7 @@ export class CurationView {
 
     const sortFn = (a: DocumentRecord, b: DocumentRecord) =>
       this._docListSort === "alpha"
-        ? a.title.localeCompare(b.title, undefined, { sensitivity: "base" })
+        ? compareDocsByTitle(a, b)
         : a.doc_id - b.doc_id;
 
     // Build family structure from cached relations

@@ -17,6 +17,7 @@ import { importFile, enqueueJob, SidecarError, listDocuments, setDocRelation, up
 import type { DocumentRecord } from "../lib/sidecarClient.ts";
 import type { JobCenter } from "../components/JobCenter.ts";
 import { initCardAccordions } from "../lib/uiAccordions.ts";
+import { compareDocsByTitle } from "../lib/docSort.ts";
 
 /** Normalise un chemin pour détecter les doublons (séparateurs + casse + préfixe long Windows). */
 export function normalizeImportPath(p: string): string {
@@ -1174,7 +1175,7 @@ export class ImportScreen {
     // Filter out the newly imported doc itself and sort by title
     const candidates = this._corpusDocs
       .filter(d => d.doc_id !== newDocId)
-      .sort((a, b) => (a.title ?? "").localeCompare(b.title ?? ""));
+      .sort(compareDocsByTitle);
 
     const hasCandidates = candidates.length > 0;
     const candidateOptions = candidates.map(d => {

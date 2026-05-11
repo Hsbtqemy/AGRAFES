@@ -861,13 +861,16 @@ async function _loadDocs(): Promise<void> {
     _docs = [];
   }
 
-  // Trier par titre alphabétique (locale FR, insensible à la casse et aux
-  // accents). Docs sans titre tombent en fin via `Doc #<id>` comme fallback
-  // de tri pour rester déterministes.
+  // Trier par titre alphabétique (locale FR, insensible casse+accents,
+  // numeric:true pour ordonner "Doc 2" avant "Doc 10" dans le fallback).
+  // Convention identique au helper docSort de tauri-prep — non importé ici
+  // pour éviter la dépendance cross-package (5 lignes inline > setup partagé).
+  // Tie-breaker stable sur doc_id pour les titres égaux.
   _docs.sort((a, b) => {
-    const ta = (a.title ?? `Doc #${a.doc_id}`).toString();
-    const tb = (b.title ?? `Doc #${b.doc_id}`).toString();
-    return ta.localeCompare(tb, "fr", { sensitivity: "base" });
+    const ta = a.title ?? `Doc #${a.doc_id}`;
+    const tb = b.title ?? `Doc #${b.doc_id}`;
+    const cmp = ta.localeCompare(tb, "fr", { sensitivity: "base", numeric: true });
+    return cmp !== 0 ? cmp : a.doc_id - b.doc_id;
   });
 
   const prev = _selectedDocId;
