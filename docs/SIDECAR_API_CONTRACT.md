@@ -487,7 +487,7 @@ Response now includes pagination fields: `total`, `limit`, `offset`, `has_more`,
   - `token_count`: integer — nombre de tokens annotés pour ce document
   - `annotation_status`: `missing|annotated`
 - `GET /documents/preview?doc_id=N&limit=M` — mini aperçu du contenu (read-only)
-  - `limit` optionnel, défaut `6`, bornes `1..20`
+  - `limit` optionnel, défaut `6`, bornes `1..5000` (aligné convention preview v0.1.40)
   - retourne les premières unités `line` triées par `n`:
     - `lines: [{ unit_id, n, external_id|null, text }]`
     - `count`, `total_lines`, `limit`

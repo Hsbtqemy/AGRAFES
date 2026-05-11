@@ -1845,7 +1845,11 @@ export class SegmentationView {
     if (!conn) return;
     el.innerHTML = `<p class="empty-hint">Chargement&#8230;</p>`;
     try {
-      const preview = await getDocumentPreview(conn, docId, 500);
+      // Cap aligné sur la convention preview v0.1.40 (5000) — voir HANDOFF_SHELL.
+      // Sans cap, le DOM craque sur les très gros docs ; 5000 couvre largement
+      // les corpus typiques.
+      const PREVIEW_CAP = 5000;
+      const preview = await getDocumentPreview(conn, docId, PREVIEW_CAP);
       const countEl = this._q<HTMLElement>("#act-seg-saved-count");
       if (countEl) countEl.textContent = String(preview.total_lines);
       if (!preview.lines.length) {
@@ -1853,8 +1857,8 @@ export class SegmentationView {
         return;
       }
 
-      const truncNote = preview.total_lines > 500
-        ? `<p class="prep-seg-trunc-note">Aper&#231;u &#8212; 500/${preview.total_lines} segments</p>`
+      const truncNote = preview.total_lines > PREVIEW_CAP
+        ? `<p class="prep-seg-trunc-note">Aper&#231;u &#8212; ${PREVIEW_CAP}/${preview.total_lines} segments</p>`
         : "";
 
       // Language-aware detection of orphaned closing punctuation at line start —
