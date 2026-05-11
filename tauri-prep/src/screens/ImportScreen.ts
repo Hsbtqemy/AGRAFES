@@ -160,6 +160,12 @@ interface FileItem {
   title: string;
   status: "pending" | "importing" | "done" | "error";
   message: string;
+  /**
+   * For `docx_numbered_lines` ONLY — 1-based index of the column to extract
+   * from tables (DOCX bilingue 2-col). Undefined = legacy behavior (tables
+   * ignored).
+   */
+  column_index?: number;
 }
 
 export class ImportScreen {
@@ -712,6 +718,15 @@ export class ImportScreen {
       row.className = `imp-file-item imp-file-item-${f.status}`;
       row.dataset.index = String(i);
       const chipCls = this._chipClass(f.status);
+      // Column-index input : visible uniquement pour docx_numbered_lines.
+      // Si le DOCX contient les textes dans une table multi-colonnes (bilingue
+      // 2-col typique), indiquer la colonne à extraire. Vide = comportement
+      // legacy (tables ignorées).
+      const colCtrl = f.mode === "docx_numbered_lines"
+        ? `<input class="imp-col-inp" type="number" min="1" step="1" data-i="${i}"
+                  value="${f.column_index ?? ""}" placeholder="col"
+                  title="Colonne du tableau à extraire (1 = première). Laisser vide pour ignorer les tables." />`
+        : "";
       row.innerHTML = `
         <div class="imp-file-main">
           <span class="imp-file-name" title="${_escHtml(f.path)}">${_escHtml(f.title)}</span>
@@ -723,6 +738,7 @@ export class ImportScreen {
               .map((opt) => `<option value="${opt.value}"${f.mode === opt.value ? " selected" : ""}>${opt.label}</option>`)
               .join("")}
           </select>
+          ${colCtrl}
           <input class="imp-lang-inp" type="text" value="${f.language}" maxlength="10" placeholder="lang" data-i="${i}" />
           <input class="imp-title-inp" type="text" value="${f.title}" placeholder="titre" data-i="${i}" />
           <button class="btn btn-sm imp-remove-btn" data-i="${i}" aria-label="Retirer ce fichier de la liste" title="Retirer ce fichier de la liste">✕</button>
@@ -735,8 +751,27 @@ export class ImportScreen {
       (el as HTMLSelectElement).addEventListener("change", (e) => {
         const i = parseInt((e.target as HTMLElement).dataset.i!);
         this._files[i].mode = (e.target as HTMLSelectElement).value;
+        // Clear column_index quand on quitte docx_numbered_lines — il n'a
+        // pas de sens hors de ce mode et le backend l'ignore mais autant
+        // ne pas garder de valeur fantôme.
+        if (this._files[i].mode !== "docx_numbered_lines") {
+          this._files[i].column_index = undefined;
+        }
+        this._renderList();
         void this._refreshConlluPreview(true);
         void this._refreshTextPreview(true);
+      });
+    });
+    this._listEl.querySelectorAll(".imp-col-inp").forEach(el => {
+      (el as HTMLInputElement).addEventListener("input", (e) => {
+        const i = parseInt((e.target as HTMLElement).dataset.i!);
+        const raw = (e.target as HTMLInputElement).value.trim();
+        if (raw === "") {
+          this._files[i].column_index = undefined;
+        } else {
+          const n = parseInt(raw, 10);
+          this._files[i].column_index = Number.isFinite(n) && n >= 1 ? n : undefined;
+        }
       });
     });
     this._listEl.querySelectorAll(".imp-lang-inp").forEach(el => {
@@ -1099,6 +1134,9 @@ export class ImportScreen {
           language: f.language || "und",
           title: f.title,
           check_filename: checkFilename,
+          ...(f.mode === "docx_numbered_lines" && f.column_index
+            ? { column_index: f.column_index }
+            : {}),
         });
         submitted++;
         this._log(`Job soumis pour "${f.title}" (${job.job_id.slice(0, 8)}…)`);
@@ -1107,10 +1145,34 @@ export class ImportScreen {
         this._jobCenter?.trackJob(job.job_id, `Import: ${f.title}`, (done) => {
           finished++;
           if (done.status === "done") {
-            const docId = (done.result as { doc_id?: number } | undefined)?.doc_id;
+            const result = done.result as {
+              doc_id?: number;
+              units_line?: number;
+              tables_processed?: number;
+              rows_skipped_short?: number;
+              nested_tables_skipped?: number;
+              warnings?: string[];
+            } | undefined;
+            const docId = result?.doc_id;
             f.status = "done";
             f.message = String(docId ?? "?");
             this._log(`✓ "${fileTitle}" → doc_id ${docId ?? "?"}`);
+            // Surface table extraction stats when column_index was used.
+            if ((result?.tables_processed ?? 0) > 0) {
+              const t = result!.tables_processed;
+              const u = result!.units_line ?? 0;
+              const skipped = result!.rows_skipped_short ?? 0;
+              const nested = result!.nested_tables_skipped ?? 0;
+              const skipNote = skipped > 0 ? `, ${skipped} ligne(s) ignorée(s)` : "";
+              const nestedNote = nested > 0 ? `, ${nested} sous-table(s) ignorée(s)` : "";
+              this._log(
+                `  ↳ ${t} table(s) traitée(s), ${u} unité(s) extraite(s)${skipNote}${nestedNote}`
+              );
+            }
+            // Surface importer warnings (esp. column-index hints).
+            for (const w of result?.warnings ?? []) {
+              this._log(`  ⚠ ${w}`, true);
+            }
             this._showToast?.(`✓ Importé: ${fileTitle}`);
             // Sprint 8: propose family link (queued — one dialog at a time)
             if (typeof docId === "number" && !this._skipFamilyDialog) {

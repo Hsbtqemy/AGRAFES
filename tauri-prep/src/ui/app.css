@@ -597,6 +597,10 @@ summary:focus-visible,
   width: 4.25rem;
   flex: 0 0 auto;
 }
+.prep-import-screen .imp-col-inp {
+  width: 3.5rem;
+  flex: 0 0 auto;
+}
 .prep-import-screen .imp-title-inp {
   flex: 1 1 8rem;
   min-width: 6rem;

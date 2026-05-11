@@ -2059,6 +2059,28 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         resource_type = body.get("resource_type")
         tei_unit = body.get("tei_unit", "p")
         check_filename = bool(body.get("check_filename", False))
+
+        # column_index : specific to docx_numbered_lines for 2-col table extraction.
+        # Validated here, forwarded only to that importer ; ignored silently for
+        # other modes (the param has no meaning outside DOCX-tables).
+        column_index_raw = body.get("column_index")
+        column_index: int | None = None
+        if column_index_raw is not None:
+            try:
+                column_index = int(column_index_raw)
+            except (TypeError, ValueError):
+                self._send_error(
+                    "column_index must be an integer >= 1 or null",
+                    code=ERR_VALIDATION, http_status=400,
+                )
+                return
+            if column_index < 1:
+                self._send_error(
+                    "column_index must be >= 1",
+                    code=ERR_VALIDATION, http_status=400,
+                )
+                return
+
         family_root_doc_id = body.get("family_root_doc_id")
         if family_root_doc_id is not None:
             try:
@@ -2105,6 +2127,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             "doc_role": doc_role,
             "resource_type": resource_type,
             "tei_unit": tei_unit,
+            "column_index": column_index,
         }
 
         try:
@@ -2121,6 +2144,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                         resource_type=resource_type,
                         run_id=run_id,
                         check_filename=check_filename,
+                        column_index=column_index,
                     )
                 elif mode == "txt_numbered_lines":
                     from multicorpus_engine.importers.txt import import_txt_numbered_lines
@@ -9438,6 +9462,16 @@ class CorpusServer:
             resource_type = params.get("resource_type")
             tei_unit = params.get("tei_unit", "p")
             check_filename = bool(params.get("check_filename", False))
+            # column_index forwarded to docx_numbered_lines only (cf. _handle_import).
+            _ci_raw = params.get("column_index")
+            column_index: int | None = None
+            if _ci_raw is not None:
+                try:
+                    _ci_val = int(_ci_raw)
+                    if _ci_val >= 1:
+                        column_index = _ci_val
+                except (TypeError, ValueError):
+                    pass  # silently ignore — the sync handler validates at intake
 
             if not mode or not path_str:
                 raise ValueError("import job requires params.mode and params.path")
@@ -9454,6 +9488,7 @@ class CorpusServer:
                         conn, path=file_path, language=language,
                         title=title, doc_role=doc_role, resource_type=resource_type,
                         check_filename=check_filename,
+                        column_index=column_index,
                     )
                 elif mode == "txt_numbered_lines":
                     from multicorpus_engine.importers.txt import import_txt_numbered_lines

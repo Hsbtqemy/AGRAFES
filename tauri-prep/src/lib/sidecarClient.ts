@@ -531,6 +531,13 @@ export interface ImportOptions {
   check_filename?: boolean;
   /** When set, creates a translation_of relation to this parent after import. */
   family_root_doc_id?: number;
+  /**
+   * For `docx_numbered_lines` ONLY — 1-based index of the column to extract
+   * from tables (typical case: DOCX bilingue 2-col, set to 1 for the original
+   * column or 2 for the translation). Leave undefined to keep the legacy
+   * behavior (tables ignored). Ignored silently by other importers.
+   */
+  column_index?: number;
 }
 
 export interface ImportResponse {
@@ -542,6 +549,12 @@ export interface ImportResponse {
   relation_created?: boolean;
   /** Id of the doc_relations row (new or pre-existing). */
   relation_id?: number;
+  /** Number of tables walked (>= 0 when column_index was set). */
+  tables_processed?: number;
+  /** Rows where the requested column did not exist (table too narrow / merged). */
+  rows_skipped_short?: number;
+  /** Nested sub-tables skipped during extraction. */
+  nested_tables_skipped?: number;
 }
 
 export interface IndexResponse {
