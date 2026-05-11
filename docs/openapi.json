@@ -4719,13 +4719,13 @@
             }
           },
           {
-            "description": "Maximum number of preview lines",
+            "description": "Maximum number of preview lines (aligned on v0.1.40 preview cap convention)",
             "in": "query",
             "name": "limit",
             "required": false,
             "schema": {
               "default": 6,
-              "maximum": 20,
+              "maximum": 5000,
               "minimum": 1,
               "type": "integer"
             }

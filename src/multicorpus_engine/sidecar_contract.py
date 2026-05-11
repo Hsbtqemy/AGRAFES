@@ -1074,8 +1074,8 @@ def openapi_spec() -> dict[str, Any]:
                             "name": "limit",
                             "in": "query",
                             "required": False,
-                            "schema": {"type": "integer", "minimum": 1, "maximum": 20, "default": 6},
-                            "description": "Maximum number of preview lines",
+                            "schema": {"type": "integer", "minimum": 1, "maximum": 5000, "default": 6},
+                            "description": "Maximum number of preview lines (aligned on v0.1.40 preview cap convention)",
                         },
                     ],
                     "responses": {
