@@ -220,7 +220,12 @@ export class ImportScreen {
       <div class="card imp-head-card">
         <div class="imp-head-top">
           <div>
-            <h2 class="prep-screen-title" style="margin:0 0 4px">Importer des fichiers</h2>
+            <h2 class="prep-screen-title" style="margin:0 0 4px">
+              Importer des fichiers
+              <button type="button" id="imp-refresh-btn" class="prep-refresh-btn"
+                      title="Re-charger la liste des documents du corpus depuis la base (vérification doublons, candidats famille)"
+                      style="margin-left:0.6rem;vertical-align:middle">↻ Actualiser</button>
+            </h2>
             <p class="imp-head-desc">Ajoutez vos fichiers source, configurez le profil de lot, puis lancez l'import.</p>
           </div>
           <div id="imp-state-banner" class="prep-runtime-state prep-state-info" aria-live="polite">
@@ -452,6 +457,7 @@ export class ImportScreen {
     this._textPreviewNextBtn = root.querySelector("#imp-text-next")!;
 
     root.querySelector("#imp-add-btn")!.addEventListener("click", () => this._addFiles());
+    root.querySelector("#imp-refresh-btn")?.addEventListener("click", () => void this._refreshCorpus());
     root.querySelector("#imp-clear-btn")!.addEventListener("click", () => this._clearList());
     this._importBtn.addEventListener("click", () => this._runImport());
     this._indexBtn.addEventListener("click", () => this._runIndex());
@@ -532,6 +538,28 @@ export class ImportScreen {
     this._updateButtons();
     this._refreshRuntimeState();
     if (conn) void this._refreshTextPreview();
+  }
+
+  /**
+   * Bouton « ↻ Actualiser » — force un re-fetch du corpus côté DB pour
+   * que la vérification de doublons par nom de fichier (cf. _runImport)
+   * et les candidats famille pre-import voient les derniers ajouts faits
+   * depuis d'autres panneaux. Ne touche pas à _files (le lot d'import en
+   * cours est préservé).
+   */
+  private async _refreshCorpus(): Promise<void> {
+    if (!this._conn) return;
+    const btn = this._root?.querySelector<HTMLButtonElement>("#imp-refresh-btn");
+    if (btn) btn.disabled = true;
+    try {
+      this._corpusDocs = await listDocuments(this._conn);
+      this._renderList();
+      this._showToast?.(`✓ Corpus rafraîchi (${this._corpusDocs.length} doc${this._corpusDocs.length > 1 ? "s" : ""})`);
+    } catch (err) {
+      this._showToast?.(`✗ Échec rafraîchissement : ${err instanceof Error ? err.message : String(err)}`, true);
+    } finally {
+      if (btn) btn.disabled = false;
+    }
   }
 
   setJobCenter(jc: JobCenter, showToast: (msg: string, isError?: boolean) => void): void {

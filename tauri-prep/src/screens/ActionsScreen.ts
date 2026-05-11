@@ -242,7 +242,12 @@ export class ActionsScreen {
     el.innerHTML = `
       <section class="prep-acts-hub-head-card">
         <div class="prep-acts-hub-head-left">
-          <h2 class="prep-acts-hub-head-title">Traitement de corpus</h2>
+          <h2 class="prep-acts-hub-head-title">
+            Traitement de corpus
+            <button type="button" id="act-hub-refresh-corpus-btn" class="prep-refresh-btn"
+                    title="Re-charger la liste des documents et propager aux sous-vues (Curation, Segmentation, Alignement, Annotation)"
+                    style="margin-left:0.6rem;vertical-align:middle">&#8634; Actualiser</button>
+          </h2>
           <p class="prep-acts-hub-head-desc">Curation &middot; Segmentation &middot; Alignement &mdash; pilotage des op&eacute;rations de pr&eacute;paration du corpus.</p>
         </div>
         <div class="prep-acts-hub-head-tools"></div>
@@ -315,6 +320,12 @@ export class ActionsScreen {
     // Refresh doc list
     el.querySelector<HTMLButtonElement>("#act-hub-refresh-btn")?.addEventListener("click", () => {
       void this._loadDocs();
+    });
+    // Refresh + propagate to sub-views (Curation, Segmentation, Align, Annotation)
+    // via setConn(this._conn) — l'entrée canonique qui re-tire les docs et
+    // ré-émet aux extracted views.
+    el.querySelector<HTMLButtonElement>("#act-hub-refresh-corpus-btn")?.addEventListener("click", () => {
+      if (this._conn) this.setConn(this._conn);
     });
 
     // Hierarchy toggle

@@ -174,7 +174,12 @@ export class MetadataScreen {
       <div class="card prep-meta-screen-head">
         <div class="prep-meta-head-top">
           <div>
-            <h2 class="prep-screen-title" style="margin:0 0 4px">Documents</h2>
+            <h2 class="prep-screen-title" style="margin:0 0 4px">
+              Documents
+              <button type="button" id="meta-refresh-btn" class="prep-refresh-btn"
+                      title="Re-charger la liste des documents depuis la base"
+                      style="margin-left:0.6rem;vertical-align:middle">↻ Actualiser</button>
+            </h2>
             <p class="prep-meta-head-desc">Sélectionnez un document pour éditer ses métadonnées ou utilisez l'édition en masse.</p>
           </div>
           <div id="meta-state-banner" class="prep-runtime-state prep-state-info" aria-live="polite">
@@ -301,6 +306,7 @@ export class MetadataScreen {
     this._selectAllEl = root.querySelector<HTMLInputElement>("#meta-select-all")!;
 
     root.querySelector("#refresh-docs-btn")!.addEventListener("click", () => this._refreshDocList());
+    root.querySelector("#meta-refresh-btn")?.addEventListener("click", () => this._refreshDocList());
     root.querySelector("#meta-doc-filter")!.addEventListener("input", (e) => {
       this._docFilter = ((e.target as HTMLInputElement).value ?? "").trim().toLowerCase();
       this._renderDocList();

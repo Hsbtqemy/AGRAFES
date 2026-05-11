@@ -100,7 +100,12 @@ export class ExportsScreen {
       <div class="card exp-head-card">
         <div class="exp-head-top">
           <div>
-            <h2 class="prep-screen-title" id="prep-exports-screen-title">Exporter</h2>
+            <h2 class="prep-screen-title" id="prep-exports-screen-title">
+              Exporter
+              <button type="button" id="exp-refresh-btn" class="prep-refresh-btn"
+                      title="Re-charger la liste des documents et l'état d'export depuis la base"
+                      style="margin-left:0.6rem;vertical-align:middle">&#8634; Actualiser</button>
+            </h2>
             <p class="exp-head-desc">Port&#233;e des documents, puis &#233;tape, produit et format &#8212; la plupart des exports passent par la zone <strong>Export unifi&#233;</strong> ci-dessous.</p>
           </div>
           <div id="exp-state-banner" class="prep-runtime-state prep-state-info" aria-live="polite">
@@ -481,6 +486,9 @@ export class ExportsScreen {
     }
     root.querySelector<HTMLButtonElement>(".exp-back-btn")?.addEventListener("click", () => {
       document.querySelector<HTMLElement>('.prep-nav-tree-link[data-nav="alignement"]')?.click();
+    });
+    root.querySelector<HTMLButtonElement>("#exp-refresh-btn")?.addEventListener("click", () => {
+      void this._refreshDocs();
     });
 
     root.querySelector("#v2-run-btn")!.addEventListener("click", () => this._runUnifiedExport());
