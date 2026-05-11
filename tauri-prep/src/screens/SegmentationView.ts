@@ -102,7 +102,7 @@ export class SegmentationView {
   private _selectedSegDocId: number | null = null;
   private _segShortFilter = false;
   private _segOrphanFilter = false;
-  private _segDocListSort: "id" | "alpha" = "id";
+  private _segDocListSort: "id" | "alpha" = "alpha";
   private _conventions: ConventionRole[] = [];
   private _segMarkersDetected: DetectMarkersResponse | null = null;
   private _segSplitMode: "sentences" | "markers" = "sentences";
@@ -291,8 +291,8 @@ export class SegmentationView {
             <input type="search" id="act-seg-list-filter" class="prep-seg-split-list-filter"
               placeholder="Filtrer&#8230;" autocomplete="off" />
             <div class="prep-curate-sort-group" role="group" aria-label="Tri">
-              <button class="prep-curate-sort-btn active" data-seg-sort="id" title="Trier par identifiant">ID</button>
-              <button class="prep-curate-sort-btn" data-seg-sort="alpha" title="Trier par titre">A&#8211;Z</button>
+              <button class="prep-curate-sort-btn active" data-seg-sort="alpha" title="Trier par titre">A&#8211;Z</button>
+              <button class="prep-curate-sort-btn" data-seg-sort="id" title="Trier par identifiant">ID</button>
             </div>
           </div>
           <div class="prep-seg-split-list-scroll" id="act-seg-list-scroll">

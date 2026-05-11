@@ -225,7 +225,7 @@ export class CurationView {
   // ── Doc list UI state ───────────────────────────────────────────────────────
   private _docRelations: DocRelationRecord[] = [];
   private _docListQuery = "";
-  private _docListSort: "id" | "alpha" = "id";
+  private _docListSort: "id" | "alpha" = "alpha";
 
   // ── Admin panel (Level 8A) ──────────────────────────────────────────────────
   private _excAdminFilter: "all" | "ignore" | "override" = "all";
@@ -427,11 +427,11 @@ export class CurationView {
     const conn = this._getConn();
     this._docRelations = [];
     this._docListQuery = "";
-    this._docListSort = "id";
+    this._docListSort = "alpha";
     const filterInput = this._q<HTMLInputElement>("#act-curate-doc-filter");
     if (filterInput) filterInput.value = "";
     const sortBtns = this._root?.querySelectorAll<HTMLButtonElement>(".prep-curate-sort-btn");
-    sortBtns?.forEach(b => b.classList.toggle("active", b.dataset.sort === "id"));
+    sortBtns?.forEach(b => b.classList.toggle("active", b.dataset.sort === "alpha"));
     this._hasPendingPreview = false;
     this._curateExamples = [];
     this._activeDiffIdx = null;
@@ -494,8 +494,8 @@ export class CurationView {
           <input type="search" id="act-curate-doc-filter" class="prep-curate-doc-filter-input"
             placeholder="Filtrer&#8230;" autocomplete="off" spellcheck="false" />
           <div class="prep-curate-sort-group" role="group" aria-label="Tri">
-            <button class="prep-curate-sort-btn active" data-sort="id" title="Trier par identifiant">ID</button>
-            <button class="prep-curate-sort-btn" data-sort="alpha" title="Trier par titre">A&#8211;Z</button>
+            <button class="prep-curate-sort-btn active" data-sort="alpha" title="Trier par titre">A&#8211;Z</button>
+            <button class="prep-curate-sort-btn" data-sort="id" title="Trier par identifiant">ID</button>
           </div>
         </div>
         <div id="act-curate-doc-list" class="prep-curate-doc-list" role="listbox" aria-label="S&#233;lectionner un document"></div>

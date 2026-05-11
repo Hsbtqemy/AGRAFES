@@ -14,6 +14,7 @@
 import "../ui/annotation.css";
 import type { Conn } from "../lib/sidecarClient.ts";
 import { SidecarError } from "../lib/sidecarClient.ts";
+import { compareDocsByTitle } from "../lib/docSort.ts";
 
 // ─── Local types ──────────────────────────────────────────────────────────────
 
@@ -49,6 +50,9 @@ export class AnnotationView {
   private _panel: HTMLElement | null = null;
   private _annotDocs: AnnotDoc[] = [];
   private _annotSelectedDocId: number | null = null;
+  // Tri de la liste docs sidebar : A-Z par défaut (cohérent avec Curation/
+  // Segmentation post v0.1.44+1). Voir _annotRenderDocList.
+  private _annotDocListSort: "id" | "alpha" = "alpha";
   private _annotTokens: AnnotToken[] = [];
   private _annotSelectedTokenId: number | null = null;
   private _annotJobPoll: ReturnType<typeof setInterval> | null = null;
@@ -356,9 +360,40 @@ export class AnnotationView {
       sidebar.innerHTML = `<p class="annot-placeholder">Aucun document.</p>`;
       return;
     }
+    // ── Sort toggle A-Z / ID (A-Z par défaut, même pattern que Curation/Seg) ──
+    const sortBar = document.createElement("div");
+    sortBar.className = "prep-curate-sort-group annot-doc-sort-group";
+    sortBar.setAttribute("role", "group");
+    sortBar.setAttribute("aria-label", "Tri de la liste");
+    const mkBtn = (mode: "alpha" | "id", label: string, title: string): HTMLButtonElement => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "prep-curate-sort-btn" + (this._annotDocListSort === mode ? " active" : "");
+      b.dataset.annotSort = mode;
+      b.title = title;
+      b.textContent = label;
+      b.addEventListener("click", () => {
+        if (this._annotDocListSort === mode) return;
+        this._annotDocListSort = mode;
+        this._annotRenderDocList(sidebar, viewer, editor);
+      });
+      return b;
+    };
+    sortBar.appendChild(mkBtn("alpha", "A–Z", "Trier par titre"));
+    sortBar.appendChild(mkBtn("id",    "ID",    "Trier par identifiant"));
+    sidebar.appendChild(sortBar);
+
+    // Sort docs according to current mode. compareDocsByTitle gère
+    // null/undefined + tie-break stable sur doc_id.
+    const sortedDocs = [...this._annotDocs].sort((a, b) =>
+      this._annotDocListSort === "alpha"
+        ? compareDocsByTitle(a, b)
+        : a.doc_id - b.doc_id,
+    );
+
     const ul = document.createElement("ul");
     ul.className = "annot-doc-list";
-    for (const doc of this._annotDocs) {
+    for (const doc of sortedDocs) {
       const li = document.createElement("li");
       li.className = "annot-doc-item" + (doc.doc_id === this._annotSelectedDocId ? " selected" : "");
       li.dataset.docId = String(doc.doc_id);
