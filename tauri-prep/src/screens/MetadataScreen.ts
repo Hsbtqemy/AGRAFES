@@ -2333,7 +2333,7 @@ export class MetadataScreen {
     return (a, b) => {
       switch (col) {
         case "id":     return dir * (a.doc_id - b.doc_id);
-        case "title":  return dir * (a.title ?? "").localeCompare(b.title ?? "", undefined, { sensitivity: "base" });
+        case "title":  return dir * compareDocsByTitle(a, b);
         case "lang":   return dir * (a.language ?? "").localeCompare(b.language ?? "", undefined, { sensitivity: "base" });
         case "role":   return dir * (a.doc_role ?? "").localeCompare(b.doc_role ?? "", undefined, { sensitivity: "base" });
         case "status": return dir * this._workflowStatus(a).localeCompare(this._workflowStatus(b));

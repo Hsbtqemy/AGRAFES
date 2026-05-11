@@ -525,11 +525,11 @@ export class SegmentationView {
           .sort((a, b) => {
             if (a.doc_id === parentId) return -1;
             if (b.doc_id === parentId) return 1;
-            return a.title.localeCompare(b.title, undefined, { sensitivity: "base" });
+            return compareDocsByTitle(a, b);
           });
         const restDocs = otherDocs
           .filter(d => !familyIds.has(d.doc_id))
-          .sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: "base" }));
+          .sort(compareDocsByTitle);
 
         if (familyDocs.length > 0) {
           calibrateOptions += `<optgroup label="Famille">`;
