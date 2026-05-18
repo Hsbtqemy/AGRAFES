@@ -7,10 +7,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+---
+
+## [0.2.1] - 2026-05-18
+
 ### Fixed
 
 - **prep / export TMX** : l'export TMX crashait systématiquement avec un `NameError`. `_CorpusHandler._build_tmx` référençait `SidecarHandler._escape_xml` — ancien nom de la classe handler, jamais mis à jour lors du renommage en `_CorpusHandler`. Comme `_build_tmx` est une staticmethod (référence via le nom de classe, pas `self`), l'erreur ne se déclenchait qu'à l'exécution, et les tests TMX vivant dans les `test_sidecar_*.py` (sidecar live) ne tournent pas dans tous les environnements → le bug a shippé silencieusement. Corrigé + 2 tests de régression dans `test_exporters_e2e.py` qui appellent la staticmethod directement (sans serveur).
-- **prep / exporters — couverture** : `test_exporters_e2e.py` ajoute la couverture e2e qui manquait pour `ske_export`, `conllu_export` et `readable_text` (txt + docx) — aucun test direct jusque-là.
+- **prep / exporters — couverture** : `test_exporters_e2e.py` ajoute la couverture e2e qui manquait pour `ske_export`, `conllu_export` et `readable_text` (txt + docx) — aucun test direct jusque-là. Passe ruff `F821` sur tout `multicorpus_engine` : aucun autre nom non défini — le `NameError` TMX était unique.
 
 ---
 
