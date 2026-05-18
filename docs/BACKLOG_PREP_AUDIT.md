@@ -348,6 +348,8 @@ export class AnnotationView {
 
 ### C-1 — Tests Vitest : logique pure de curation (fingerprints, persistence)
 
+> ✅ **FAIT** — couvert par `tauri-prep/src/lib/__tests__/curationFingerprint.test.ts` et `curationReview.test.ts`.
+
 **Priorité :** Haute | **Effort :** M (4–6 h)
 **Prérequis :** B-1
 **Fichier :** nouveau `tauri-prep/src/screens/__tests__/CurationView.test.ts`
@@ -401,6 +403,8 @@ Ajouter dans `vite.config.ts` (ou `vitest.config.ts`) : `test: { environment: "j
 
 ### C-2 — Tests Vitest : normalisation d'import et parsing CoNLL-U
 
+> ✅ **FAIT** — `tauri-prep/src/screens/__tests__/ImportScreen.test.ts` (32 tests). `normalizeImportPath`, `modeOptionsForExt`, `parseConlluPreview` sont exportés en named exports ; tous les cas de la checklist ci-dessous sont couverts.
+
 **Priorité :** Moyenne | **Effort :** S (2–3 h)
 **Fichier :** nouveau `tauri-prep/src/screens/__tests__/ImportScreen.test.ts`
 
@@ -435,6 +439,8 @@ Ajouter dans `vite.config.ts` (ou `vitest.config.ts`) : `test: { environment: "j
 ---
 
 ### C-3 — Tests Vitest : diff LCS + extraction dans `diff.ts`
+
+> ✅ **FAIT** — `tauri-prep/src/lib/diff.ts` extrait (exports `escHtml`, `renderSpecialChars`, `highlightChanges`, `highlightChangesWordLevel`, importés par CurationView), couvert par `diff.test.ts` (21 tests).
 
 **Priorité :** Basse | **Effort :** S (2–3 h)
 **Fichier :** nouveau `tauri-prep/src/lib/diff.ts` + `tauri-prep/src/lib/__tests__/diff.test.ts`
@@ -475,6 +481,8 @@ Ajouter dans `vite.config.ts` (ou `vitest.config.ts`) : `test: { environment: "j
 ---
 
 ### D-1 — Persister les Presets projet en base de données
+
+> ✅ **FAIT** — les presets projet sont persistés dans `corpus_info.meta.presets` (par DB), via `_loadPresetsFromDb`/`_savePresetsToDb` dans `tauri-prep/src/app.ts` (lecture/écriture `getCorpusInfo`/`updateCorpusInfo`, merge non destructif dans `meta`). Pas de table dédiée — le design retenu réutilise `corpus_info.meta_json`, exactement ce que recommandait la spec.
 
 **Priorité :** Moyenne | **Effort :** M (4–6 h)
 **Fichiers :** `tauri-prep/src/app.ts`, `tauri-prep/src/lib/sidecarClient.ts`, `src/multicorpus_engine/sidecar.py`
@@ -661,6 +669,8 @@ Il n'existe pas d'endpoint UPDATE pour les conventions. Le nom étant la clé FK
 ---
 
 ### E-2 — Accessibilité : focus management et navigation clavier
+
+> ✅ **FAIT** — restitution du focus après fermeture de sous-vue (`ActionsScreen` `_lastFocusedBtn`), navigation clavier de la liste de diff (flèches + `a`/`i`/`p`, `aria-selected` sur les lignes), focus sur les bannières de confirmation, toasts sur un élément `role="alert" aria-live="polite"` unique (`JobCenter`), et `role="grid"` + `aria-rowcount` sur la table d'audit d'alignement (`AlignPanel`, post-v0.2.5).
 
 **Priorité :** Moyenne | **Effort :** M (4–5 h)
 **Fichiers :** `tauri-prep/src/screens/ActionsScreen.ts` (ou `CurationView.ts` après B-1), `tauri-prep/src/screens/ImportScreen.ts`

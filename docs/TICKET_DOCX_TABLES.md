@@ -1,5 +1,11 @@
 # Mission : Support DOCX bilingue 2-colonnes dans `docx_numbered_lines`
 
+> ✅ **LIVRÉ (post-v0.1.43)** — le paramètre `column_index` est implémenté dans
+> `src/multicorpus_engine/importers/docx_numbered_lines.py` : walker en ordre
+> document `_iter_body_blocks`, extraction par colonne, dedup des fusions H/V,
+> sous-tables ignorées, warning « >50 % non numérotées », compteurs dédiés dans
+> `ImportReport`. Tier S #1 de HANDOFF_PREP clos. Ticket conservé pour archive.
+
 Tu interviens sur le repo AGRAFES (branche `development`, post v0.1.43).
 
 Lis [HANDOFF_SHELL.md](../HANDOFF_SHELL.md) et [HANDOFF_PREP.md](../HANDOFF_PREP.md)

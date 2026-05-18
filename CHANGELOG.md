@@ -7,6 +7,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **prep / a11y — table d'audit d'alignement** : la liste des liens d'alignement à réviser (AlignPanel) expose désormais `role="grid"` et `aria-rowcount` sur son conteneur (les lignes portaient déjà `role="row"`). Dernier point ouvert du chantier E-2 (accessibilité — focus management et navigation clavier), désormais clos.
+
 ---
 
 ## [0.2.5] - 2026-05-18

@@ -17,13 +17,13 @@ Last updated: 2026-04-20 (audit sécurité ✅, feat #39 segments adjacents ✅,
 | B-2 | Extraire `SegmentationView` depuis `ActionsScreen` | Haute | L | ✅ done |
 | B-3 | Extraire `AnnotationView` depuis `ActionsScreen` | Moyenne | M | ✅ done |
 | B-4 | Consolider alignement : AlignPanel + legacy | Haute | L | ✅ done |
-| C-1 | Tests Vitest — fingerprints, persistence localStorage curation | Haute | M | en attente |
-| C-2 | Tests Vitest — normalisation import + parsing CoNLL-U | Moyenne | S | en attente |
-| C-3 | Tests Vitest — diff LCS + extraction `diff.ts` | Basse | S | en attente |
-| D-1 | Persister les Presets projet en base de données | Moyenne | M | en attente |
+| C-1 | Tests Vitest — fingerprints, persistence localStorage curation | Haute | M | ✅ done (`curationFingerprint.test.ts`, `curationReview.test.ts`) |
+| C-2 | Tests Vitest — normalisation import + parsing CoNLL-U | Moyenne | S | ✅ done (`screens/__tests__/ImportScreen.test.ts`, 32 tests) |
+| C-3 | Tests Vitest — diff LCS + extraction `diff.ts` | Basse | S | ✅ done (`lib/diff.ts` extrait + `diff.test.ts`, 21 tests) |
+| D-1 | Persister les Presets projet en base de données | Moyenne | M | ✅ done (`corpus_info.meta.presets`, `app.ts` `_loadPresetsFromDb`/`_savePresetsToDb`) |
 | D-2 | Preview CoNLL-U via sidecar (`POST /import/preview`) | Basse | M | ✅ done |
 | E-1 | Namespacing CSS : préfixer classes de `app.css` | Basse | L | ✅ done |
-| E-2 | Focus management et navigation clavier (a11y) | Moyenne | M | en attente |
+| E-2 | Focus management et navigation clavier (a11y) | Moyenne | M | ✅ done (focus restitution, nav clavier diff-list, `role="grid"`/`aria-rowcount` audit alignement) |
 
 ---
 

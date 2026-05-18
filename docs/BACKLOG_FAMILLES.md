@@ -190,7 +190,7 @@
 ## Ordre d'exécution recommandé
 
 ```
-Sprint 1  ████████████████████  Familles/statut      ← EN COURS
+Sprint 1  ████████████████████  Familles/statut      ← TERMINÉ
 Sprint 2  ░░░░░░░░░░░░░░░░░░░░  Segmentation calibrée
 Sprint 3  ░░░░░░░░░░░░░░░░░░░░  Alignement guidé
 Sprint 4  ░░░░░░░░░░░░░░░░░░░░  Audit famille
