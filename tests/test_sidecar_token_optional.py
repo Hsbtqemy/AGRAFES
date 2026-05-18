@@ -468,7 +468,16 @@ def test_forced_kill_process_recovers_via_stale_portfile(tmp_path: Path) -> None
 
     assert first.returncode != 0
     assert first_stderr == ""
-    _parse_single_json(first_stdout, "serve-forced-kill-first")
+    # `serve` émet son JSON de démarrage (cmd_serve → _ok) JUSTE APRÈS
+    # server.start(). Or le portfile et /health sont déjà prêts à ce
+    # moment-là : un consommateur qui attend portfile+health (comme ce
+    # test) peut tuer le process AVANT que le thread principal atteigne
+    # _ok. Un process « tué brutalement » peut donc légitimement n'avoir
+    # rien flushé sur stdout. Ce test vérifie la RÉCUPÉRATION via portfile
+    # stale (assertions ci-dessous), pas le timing stdout — on tolère donc
+    # un stdout vide, mais on valide le JSON s'il est présent.
+    if first_stdout.strip():
+        _parse_single_json(first_stdout, "serve-forced-kill-first")
 
     # After abrupt kill, status should see stale state from lingering portfile.
     stale_status = _run_cli(["status", "--db", str(db_path)])

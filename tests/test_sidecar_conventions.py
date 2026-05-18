@@ -576,9 +576,16 @@ class TestTextStartNIntegration:
     def test_annotation_excludes_paratext(self, tmp_path):
         """annotate_document must not create tokens for paratextual units."""
         try:
-            import spacy as _spacy  # noqa: F401
+            import spacy as _spacy
         except ImportError:
             pytest.skip("spaCy not installed")
+        # spaCy installé ≠ modèle téléchargé. annotate_document charge
+        # fr_core_news_md ; sans le modèle, on skip (extra NLP optionnel)
+        # plutôt que de hard-fail le test.
+        try:
+            _spacy.load("fr_core_news_md")
+        except OSError:
+            pytest.skip("spaCy model 'fr_core_news_md' not installed")
 
         from multicorpus_engine.db.connection import get_connection
         from multicorpus_engine.db.migrations import apply_migrations
