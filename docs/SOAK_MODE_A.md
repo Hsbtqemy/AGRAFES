@@ -83,3 +83,37 @@ Le soak n'est pas un oracle. Si après 21 jours on est toujours dans le cas
 4, accepter de décider sur intuition + cas vécus (« je me souviens d'avoir
 voulu undo X et n'avoir pas pu »). L'instrumentation n'est qu'une aide ;
 le jugement reste à toi.
+
+---
+
+## Résultat du soak — fenêtre 2026-04-30 → 2026-05-18 (19 jours)
+
+Rapport `analyze_undo_soak.py` sur le NDJSON réel :
+
+| Signal | Valeur |
+|---|---|
+| `prep_undo_eligible_view` | 98 (segmentation 94 · curation 4) |
+| `prep_undo_unavailable_view` | 26 — **tous `no_action`** |
+| `stage_returned (undo)` | **0** |
+| Frustration réelle (hors `no_action`) | **0** |
+
+**Verdict : Mode A peu utilisé.** Le bouton « ↶ Annuler » a été disponible
+98 fois, jamais cliqué, en 19 jours. Aucun signal de frustration réelle
+(`structural_dependency` / `unit_diverged` = 0).
+
+**Décisions :**
+
+1. **Mode B : non.** Confirmé par les données — Mode B serait prématuré.
+   On attend un signal explicite (demande utilisateur, friction vécue).
+2. **Mode A : on garde.** 0 clic ≠ 0 valeur (cf. principe « usage faible
+   ≠ valeur faible »). Aucune frustration, coût de maintenance nul : c'est
+   une assurance qui n'a simplement pas eu à servir sur cette fenêtre. La
+   retirer serait une sur-réaction.
+3. **Discoverabilité** — 94 des 98 `eligible_view` sont en Segmentation :
+   l'utilisateur fait bien des merge/split/resegment, mais ne clique jamais
+   undo. Soit ces actions sont faites délibérément et correctement (rien à
+   annuler), soit l'affordance passe inaperçue. Piste légère si on veut
+   creuser : rendre le bouton plus visible quand une action vient d'être
+   faite. Pas prioritaire — pas de friction mesurée.
+
+Soak clos. Réouvrir si une demande de rollback explicite apparaît.

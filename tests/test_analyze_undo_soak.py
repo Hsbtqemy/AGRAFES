@@ -89,6 +89,7 @@ def test_recommend_used_when_thresholds_met(m) -> None:
         "undo_click_count":  10,
         "eligible_count":    50,
         "unavailable_count": 0,
+        "unavailable_by_reason": {},
     }
     rec = m.recommend(stats, soak_days=14)
     assert "Mode A est utilisé" in rec
@@ -99,6 +100,7 @@ def test_recommend_low_when_few_clicks_and_soak_long(m) -> None:
         "undo_click_count":  1,
         "eligible_count":    3,
         "unavailable_count": 0,
+        "unavailable_by_reason": {},
     }
     rec = m.recommend(stats, soak_days=14)
     assert "peu utilisé" in rec
@@ -109,19 +111,44 @@ def test_recommend_ambiguous_otherwise(m) -> None:
         "undo_click_count":  3,
         "eligible_count":    10,
         "unavailable_count": 0,
+        "unavailable_by_reason": {},
     }
     rec = m.recommend(stats, soak_days=14)
     assert "ambigu" in rec.lower() or "prolonger" in rec.lower()
 
 
-def test_recommend_frustration_when_unavailable_dominates(m) -> None:
-    stats = {
+def test_recommend_frustration_only_on_real_reasons(m) -> None:
+    """structural_dependency / unit_diverged comptent comme frustration ;
+    no_action est neutre et ne déclenche PAS le verdict frustration."""
+    frustrated = {
         "undo_click_count":  1,
         "eligible_count":    10,
-        "unavailable_count": 12,  # > 5 AND > clicks
+        "unavailable_count": 12,
+        "unavailable_by_reason": {"structural_dependency": 8, "unit_diverged": 4},
     }
-    rec = m.recommend(stats, soak_days=14)
-    assert "FRUSTRATION" in rec
+    assert "FRUSTRATION" in m.recommend(frustrated, soak_days=14)
+
+
+def test_recommend_no_action_is_not_frustration(m) -> None:
+    """Régression : 24 unavailable_view tous no_action + 0 clic ne doit PAS
+    donner « FRUSTRATION » — c'est le cas « peu utilisé » (cas réel du soak
+    Mode A, fenêtre 2026-04-30 → 2026-05-14)."""
+    soak_real = {
+        "undo_click_count":  0,
+        "eligible_count":    98,
+        "unavailable_count": 24,
+        "unavailable_by_reason": {"no_action": 24},
+    }
+    rec = m.recommend(soak_real, soak_days=15)
+    assert "FRUSTRATION" not in rec
+    assert "peu utilisé" in rec
+
+
+def test_frustration_count_excludes_no_action(m) -> None:
+    assert m.frustration_count({"unavailable_by_reason": {"no_action": 24}}) == 0
+    assert m.frustration_count(
+        {"unavailable_by_reason": {"no_action": 5, "structural_dependency": 3}}
+    ) == 3
 
 
 # ─── main() ────────────────────────────────────────────────────────────────

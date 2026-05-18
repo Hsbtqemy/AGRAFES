@@ -169,20 +169,35 @@ def aggregate(
     }
 
 
+def frustration_count(stats: dict) -> int:
+    """Nombre d'unavailable_view qui traduisent une VRAIE frustration.
+
+    `no_action` (« rien à annuler maintenant ») est l'état neutre par défaut
+    du bouton — il ne compte PAS comme frustration. Seules les raisons
+    structural_dependency / unit_diverged / latest_already_reverted
+    traduisent « j'ai voulu annuler et je n'ai pas pu ».
+    """
+    return sum(
+        v for reason, v in stats["unavailable_by_reason"].items()
+        if reason != "no_action"
+    )
+
+
 def recommend(stats: dict, soak_days: int) -> str:
     """Compute the recommendation string from aggregated stats + soak length."""
-    clicks  = stats["undo_click_count"]
-    elig    = stats["eligible_count"]
-    unavail = stats["unavailable_count"]
+    clicks      = stats["undo_click_count"]
+    elig        = stats["eligible_count"]
+    frustration = frustration_count(stats)
 
     if (
-        unavail > THRESHOLD_FRUSTRATION_MIN_UNAVAIL
-        and unavail > clicks
+        frustration > THRESHOLD_FRUSTRATION_MIN_UNAVAIL
+        and frustration > clicks
     ):
         return (
             "FRUSTRATION DÉTECTÉE — examiner les reasons dominantes "
-            "(no_action est neutre ; structural_dependency / unit_diverged "
-            "indiquent un besoin frustré qui justifie d'élargir le périmètre)."
+            "(structural_dependency / unit_diverged indiquent un besoin "
+            "frustré qui justifie d'élargir le périmètre Mode A ou d'engager "
+            "Mode B). `no_action` est exclu de ce signal (état neutre)."
         )
 
     if clicks >= THRESHOLD_USED_CLICKS and elig >= THRESHOLD_USED_ELIGIBLE:
@@ -258,9 +273,11 @@ def render_report(
         lines.append(
             "Ratio click / eligible_view : N/A (aucune éligibilité observée)"
         )
+    _frustration = frustration_count(stats)
+    _no_action = stats["unavailable_by_reason"].get("no_action", 0)
     lines.append(
-        f"Frustration apparente       : {stats['unavailable_count']} events "
-        "unavailable_view (utilisateur regardant un bouton grisé)"
+        f"Frustration réelle          : {_frustration} events unavailable_view "
+        f"hors no_action ({_no_action} no_action exclus — état neutre)"
     )
     lines.append("")
     lines.append("— Recommandation —")
@@ -272,7 +289,23 @@ def _fmt_breakdown(d: dict) -> str:
     return ", ".join(f"{k} {v}" for k, v in sorted(d.items()))
 
 
+def _configure_stdout_utf8() -> None:
+    """Windows : stdout en UTF-8. Le rapport contient des caractères non-ASCII
+    (« → », tirets typographiques) que la console cp1252 ne sait pas encoder —
+    sans ça le script crashe sur UnicodeEncodeError au lieu de sortir le
+    rapport."""
+    if sys.platform != "win32":
+        return
+    reconfigure = getattr(sys.stdout, "reconfigure", None)
+    if callable(reconfigure):
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except (OSError, ValueError, AttributeError):
+            pass
+
+
 def main(argv: list[str]) -> int:
+    _configure_stdout_utf8()
     args = parse_args(argv)
 
     ndjson_path = (args.db_dir / NDJSON_FILENAME).resolve()
