@@ -218,6 +218,9 @@ export class ActionsScreen {
       else link.removeAttribute("aria-current");
     });
     this._setSubViewClass(root, view);
+    // Notifier la sous-vue Alignement pour rafraîchir sa bannière
+    // « source modifiée » (DOM persistant → render() ne se rejoue pas).
+    if (view === "alignement") this._alignPanel?.onActivated();
     // Restore focus to the hub card button that launched this sub-view
     if (view === "hub" && this._lastFocusedBtn) {
       const btn = this._lastFocusedBtn;

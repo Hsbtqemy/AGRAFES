@@ -143,6 +143,16 @@ export class AlignPanel {
   }
 
   /**
+   * Appelé par ActionsScreen quand la sous-vue Alignement (re)devient
+   * visible. Les sous-vues sont du DOM persistant (toggle display), donc
+   * render() ne se rejoue pas — sans ce hook, la bannière « source
+   * modifiée » resterait figée après une curation faite ailleurs.
+   */
+  onActivated(): void {
+    void this._refreshSourceChangedBanner();
+  }
+
+  /**
    * Bannière d'accueil « source modifiée » (Tier A #6) : un traducteur voit
    * immédiatement, sans ouvrir une paire ni l'audit, qu'il y a des liens
    * d'alignement dont la source pivot a changé depuis l'alignement. Le
