@@ -670,7 +670,9 @@ Il n'existe pas d'endpoint UPDATE pour les conventions. Le nom étant la clé FK
 
 ### E-2 — Accessibilité : focus management et navigation clavier
 
-> ✅ **FAIT** — restitution du focus après fermeture de sous-vue (`ActionsScreen` `_lastFocusedBtn`), navigation clavier de la liste de diff (flèches + `a`/`i`/`p`, `aria-selected` sur les lignes), focus sur les bannières de confirmation, toasts sur un élément `role="alert" aria-live="polite"` unique (`JobCenter`), et `role="grid"` + `aria-rowcount` sur la table d'audit d'alignement (`AlignPanel`, post-v0.2.5).
+> ⚠️ **QUASI-FAIT** — restitution du focus après fermeture de sous-vue (`ActionsScreen` `_lastFocusedBtn`), navigation clavier de la liste de diff (flèches + `a`/`i`/`p`, `aria-selected` sur les lignes), focus sur les bannières de confirmation, toasts sur un élément `role="alert" aria-live="polite"` unique (`JobCenter`).
+>
+> **Reste l'item 4** — « `role="grid"` sur la table d'audit d'alignement ». **Re-scopé** : ce n'est PAS un one-liner. Le conteneur `#align-bitext-body` mêle des lignes `.prep-align-row` (qui portent `role="row"` mais sans `role="gridcell"` sur leurs cellules) et des picker-rows `_pickerRowHtml` insérées sans rôle — une grille ARIA dont les enfants ne sont pas tous des `row`/`rowgroup` est invalide et peut dégrader l'expérience lecteur d'écran. Une vraie grille exige : `gridcell` sur chaque cellule de ligne, traitement des picker-rows (réutilisées dans la vue famille non-grille), donc une passe multi-vues. À reprendre comme chantier dédié si l'a11y devient prioritaire — un `role="grid"` posé seul a été tenté puis reverté (verdict : pire que rien).
 
 **Priorité :** Moyenne | **Effort :** M (4–5 h)
 **Fichiers :** `tauri-prep/src/screens/ActionsScreen.ts` (ou `CurationView.ts` après B-1), `tauri-prep/src/screens/ImportScreen.ts`

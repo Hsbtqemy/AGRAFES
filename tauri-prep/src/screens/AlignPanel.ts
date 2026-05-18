@@ -1358,9 +1358,6 @@ export class AlignPanel {
     const visible = this._visibleLinks();
 
     if (visible.length === 0) {
-      // État vide : pas une grille — retirer le rôle d'un rendu précédent.
-      body.removeAttribute("role");
-      body.removeAttribute("aria-rowcount");
       if (this._auditLinks.length > 0) {
         body.innerHTML = `<p class="empty-hint">Aucun lien avec ce filtre. <button class="btn btn-ghost btn-sm" id="align-filter-clear-btn">Afficher tout</button></p>`;
         body.querySelector("#align-filter-clear-btn")?.addEventListener("click", () => {
@@ -1414,14 +1411,6 @@ export class AlignPanel {
       }
     }
     body.innerHTML = rows.join("");
-
-    // a11y (E-2) : la liste de liens d'alignement est une grille. Les lignes
-    // portent déjà role="row" ; on déclare le conteneur comme grille et on
-    // expose le nombre total de lignes (−1 = inconnu tant qu'il reste des
-    // pages à charger, convention ARIA).
-    body.setAttribute("role", "grid");
-    body.setAttribute("aria-label", "Liens d'alignement à réviser");
-    body.setAttribute("aria-rowcount", this._auditHasMore ? "-1" : String(visible.length));
 
     const moreBtn = el.querySelector<HTMLElement>("#align-audit-more-btn");
     if (moreBtn) moreBtn.style.display = this._auditHasMore ? "" : "none";
