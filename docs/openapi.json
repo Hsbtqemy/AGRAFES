@@ -4022,6 +4022,16 @@
         "summary": "Suggest candidate target units for retargeting an alignment link"
       }
     },
+    "/align/source_changed_summary": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "{ total: int, docs: [{target_doc_id, target_title, count}] } — drives the AlignPanel landing banner"
+          }
+        },
+        "summary": "Global summary of alignment links whose pivot source changed since alignment (source_changed_at not null)"
+      }
+    },
     "/annotate": {
       "post": {
         "requestBody": {

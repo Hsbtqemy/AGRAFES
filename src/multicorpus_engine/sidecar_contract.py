@@ -1574,6 +1574,23 @@ def openapi_spec() -> dict[str, Any]:
                     "responses": {"200": {"description": "Families with stats"}},
                 }
             },
+            "/align/source_changed_summary": {
+                "get": {
+                    "summary": (
+                        "Global summary of alignment links whose pivot source "
+                        "changed since alignment (source_changed_at not null)"
+                    ),
+                    "responses": {
+                        "200": {
+                            "description": (
+                                "{ total: int, docs: [{target_doc_id, "
+                                "target_title, count}] } — drives the AlignPanel "
+                                "landing banner"
+                            ),
+                        },
+                    },
+                }
+            },
             "/families/{family_root_id}/segment": {
                 "post": {
                     "summary": "Segment all documents in a family (parent first, then children)",

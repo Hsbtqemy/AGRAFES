@@ -143,6 +143,37 @@ def _get_doc_title(conn: sqlite3.Connection, doc_id: int) -> str:
     return row["title"] if row else f"doc_{doc_id}"
 
 
+def source_changed_summary(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Global summary of alignment links whose pivot source changed.
+
+    A link carries ``source_changed_at`` (non-null) when the text of its
+    pivot unit changed after the link was created — typically by a curation
+    apply or a Mode A undo. The aligned translation may then need review.
+
+    Returns ``{ "total": int, "docs": [{target_doc_id, target_title, count}] }``
+    with ``docs`` sorted by descending count. Pure read ; no mutation.
+    """
+    rows = conn.execute(
+        """
+        SELECT al.target_doc_id, d.title AS target_title, COUNT(*) AS cnt
+        FROM alignment_links al
+        LEFT JOIN documents d ON d.doc_id = al.target_doc_id
+        WHERE al.source_changed_at IS NOT NULL
+        GROUP BY al.target_doc_id
+        ORDER BY cnt DESC, al.target_doc_id
+        """
+    ).fetchall()
+    docs = [
+        {
+            "target_doc_id": r["target_doc_id"],
+            "target_title": r["target_title"],
+            "count": int(r["cnt"]),
+        }
+        for r in rows
+    ]
+    return {"total": sum(d["count"] for d in docs), "docs": docs}
+
+
 def align_pair(
     conn: sqlite3.Connection,
     pivot_doc_id: int,

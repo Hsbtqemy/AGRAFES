@@ -9,6 +9,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- **prep / AlignPanel — bannière « source modifiée »** : la page d'accueil d'AlignPanel affiche désormais une bannière ambrée quand des liens d'alignement ont une source pivot modifiée depuis l'alignement (curation apply ou Mode A undo qui reflague `source_changed_at`). Un traducteur voit le signal dès l'ouverture de l'écran, sans avoir à sélectionner une paire ni ouvrir l'audit — c'était la friction Tier A #6 de HANDOFF_PREP. Nouvel endpoint `GET /align/source_changed_summary` (helper pur `aligner.source_changed_summary`, 3 tests pytest). Le détail unité par unité + l'acquittement restent dans Documents → Curation.
 - **prep / chip « index FTS périmé »** : MetadataScreen affiche un chip ambré « ⚠ Index » sur chaque document dont l'index de recherche est périmé (≥ 1 unité ligne absente ou divergente dans `fts_units`). Adresse la friction Tier A #4 de HANDOFF_PREP — l'utilisateur voit désormais quels docs ont besoin d'une réindexation, sans dépendre du banner contextuel. La staleness est **dérivée en direct** (`indexer.stale_doc_ids`, comparaison `units` ↔ `fts_units`) — pas de flag persisté, donc impossible de désynchroniser ; aucune migration ni instrumentation des handlers de mutation. Le champ `fts_stale` est exposé par `GET /documents`. 6 tests pytest.
 
 ---

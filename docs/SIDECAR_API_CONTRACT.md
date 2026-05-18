@@ -270,6 +270,7 @@ When `multicorpus serve` starts and a portfile already exists:
   - align responses are persisted in `runs` (`kind=align`, stats include `strategy`, `pairs`, debug payload when enabled)
 - `POST /align/audit`
 - `POST /align/quality`
+- `GET /align/source_changed_summary` — résumé global des liens dont la source pivot a changé depuis l'alignement (`source_changed_at` non nul). Réponse : `{ total, docs: [{target_doc_id, target_title, count}] }`. Read-only, no token. Alimente la bannière d'accueil d'AlignPanel.
 - `POST /align/link/create`
 - `POST /align/link/update_status`
 - `POST /align/link/delete`

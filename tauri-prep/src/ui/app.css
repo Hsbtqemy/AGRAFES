@@ -1848,6 +1848,20 @@ tr[data-unit-n].prep-seg-row-highlight td {
 }
 
 /* ── Barre supérieure ── */
+/* Bannière « source modifiée » — accueil AlignPanel (Tier A #6). */
+.prep-align-src-changed-banner {
+  margin-bottom: 8px;
+  padding: 8px 12px;
+  background: #fbe6c8;
+  color: #6b4400;
+  border: 1px solid #e6c272;
+  border-radius: 6px;
+  font-size: 0.86rem;
+  line-height: 1.4;
+}
+.prep-align-src-changed-icon { font-size: 1rem; }
+.prep-align-src-changed-hint { color: #8a6a2a; font-size: 0.8rem; }
+
 .prep-align-topbar {
   display: flex;
   flex-wrap: wrap;

@@ -2928,6 +2928,18 @@ export async function acknowledgeSourceChange(
   return conn.post("/align/link/acknowledge_source_change", opts) as Promise<{ acknowledged: number }>;
 }
 
+/** Global summary of alignment links whose pivot source changed since alignment. */
+export interface AlignSourceChangedSummary {
+  total: number;
+  docs: { target_doc_id: number; target_title: string | null; count: number }[];
+}
+
+export async function getAlignSourceChangedSummary(
+  conn: Conn,
+): Promise<AlignSourceChangedSummary> {
+  return conn.get("/align/source_changed_summary") as Promise<AlignSourceChangedSummary>;
+}
+
 export function resetConnection(): void {
   _conn = null;
   _connDbPath = null;

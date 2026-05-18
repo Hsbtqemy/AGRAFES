@@ -595,6 +595,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 self._send_error(400, "BAD_REQUEST", "Invalid family_root_id in path")
                 return
             self._handle_family_curation_status(fam_root_id)
+        elif path == "/align/source_changed_summary":
+            self._handle_align_source_changed_summary()
         elif path == "/jobs":
             self._handle_jobs_list()
         elif path == "/runs":
@@ -8546,6 +8548,21 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 
         else:
             self._send_error("Provide link_ids or target_doc_id", code=ERR_BAD_REQUEST, http_status=400)
+
+    def _handle_align_source_changed_summary(self) -> None:
+        """GET /align/source_changed_summary — résumé global des liens
+        d'alignement dont la source pivot a changé depuis l'alignement
+        (``source_changed_at IS NOT NULL``).
+
+        Alimente la bannière de la page d'accueil d'AlignPanel : un
+        traducteur voit immédiatement, sans avoir à ouvrir une paire ou
+        l'audit, qu'il y a des sources modifiées à revoir.
+
+        Réponse : ``{ total: int, docs: [{target_doc_id, target_title, count}] }``
+        — `docs` trié par count décroissant.
+        """
+        from multicorpus_engine.aligner import source_changed_summary
+        self._send_json(success_payload(source_changed_summary(self._conn())))
 
     def _handle_family_curation_status(self, family_root_id: int) -> None:
         """GET /families/{family_root_id}/curation_status

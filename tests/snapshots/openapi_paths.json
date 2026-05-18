@@ -1,4 +1,5 @@
 [
+  "GET /align/source_changed_summary",
   "GET /conventions",
   "GET /corpus/audit",
   "GET /corpus/info",

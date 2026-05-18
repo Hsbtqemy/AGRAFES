@@ -346,7 +346,7 @@ Justification : éviter les faux positifs (deux docs avec le même radical mais 
 
 5. **CurationView 3651 lignes** (3795 avant la décomposition Phase 1-5e). Friction réduite pour les contributeurs grâce à l'extraction en 9 modules purs sous `lib/curation*.ts`, mais l'écran reste lent à charger sur les gros corpus — pas de virtualization du DOM en place, et la décomposition n'a pas changé les coûts de rendu.
 
-6. **Visibilité du flag `source_changed_at`**. Un traducteur qui revient sur AlignPanel après une curation source ne voit pas immédiatement que les unités pivots ont changé. Le mécanisme existe en DB, l'UI le montre dans le panneau audit mais pas en page d'accueil de l'écran.
+6. ~~**Visibilité du flag `source_changed_at`**~~ ✅ **Adressé post-v0.2.2** : bannière ambrée en page d'accueil d'AlignPanel — « N liens d'alignement sur M documents ont une source pivot modifiée depuis l'alignement ». Visible dès l'ouverture de l'écran, sans avoir à ouvrir une paire ni l'audit. Endpoint `GET /align/source_changed_summary` (helper pur `aligner.source_changed_summary`). Le détail unité par unité + l'acquittement restent dans Documents → Curation (déjà en place).
 
 ### Tier B — Annoyances
 

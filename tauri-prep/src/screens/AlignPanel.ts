@@ -25,6 +25,7 @@ import {
   retargetCandidates,
   listUnits,
   batchUpdateAlignLinks,
+  getAlignSourceChangedSummary,
   SidecarError,
   type Conn,
   type DocumentRecord,
@@ -130,6 +131,7 @@ export class AlignPanel {
     this._populatePairSelects(el);
     initCardAccordions(el);
     void this._loadFamilies(el);
+    void this._refreshSourceChangedBanner();
     return el;
   }
 
@@ -137,6 +139,41 @@ export class AlignPanel {
     if (!this._el) return;
     this._populatePairSelects(this._el);
     this._populateFamilySelect(this._el);
+    void this._refreshSourceChangedBanner();
+  }
+
+  /**
+   * Bannière d'accueil « source modifiée » (Tier A #6) : un traducteur voit
+   * immédiatement, sans ouvrir une paire ni l'audit, qu'il y a des liens
+   * d'alignement dont la source pivot a changé depuis l'alignement. Le
+   * détail + l'acquittement vivent dans l'écran Documents → Curation.
+   */
+  private async _refreshSourceChangedBanner(): Promise<void> {
+    const banner = this._el?.querySelector<HTMLElement>("#align-source-changed-banner");
+    if (!banner) return;
+    const conn = this._conn();
+    if (!conn) { banner.style.display = "none"; return; }
+    try {
+      const summary = await getAlignSourceChangedSummary(conn);
+      if (summary.total <= 0) {
+        banner.style.display = "none";
+        banner.innerHTML = "";
+        return;
+      }
+      const docCount = summary.docs.length;
+      const liens = `${summary.total} lien${summary.total > 1 ? "s" : ""} d'alignement`;
+      const docs = `${docCount} document${docCount > 1 ? "s" : ""}`;
+      banner.innerHTML =
+        `<span class="prep-align-src-changed-icon" aria-hidden="true">&#9888;</span> `
+        + `<strong>${liens}</strong> sur ${docs} ont une source pivot modifiée `
+        + `depuis l'alignement — la traduction alignée est peut-être à revoir. `
+        + `<span class="prep-align-src-changed-hint">Détail et acquittement : `
+        + `onglet Documents &#8594; bouton « Curation ».</span>`;
+      banner.style.display = "";
+    } catch {
+      // best-effort : la bannière ne doit jamais casser l'écran.
+      banner.style.display = "none";
+    }
   }
 
   // ─── HTML template ──────────────────────────────────────────────────────────
@@ -144,6 +181,9 @@ export class AlignPanel {
   private _html(): string {
     return `
 <div class="prep-align-root">
+
+  <!-- ═══ Bannière « source modifiée » (Tier A #6) ═══ -->
+  <div id="align-source-changed-banner" class="prep-align-src-changed-banner" style="display:none" role="status"></div>
 
   <!-- ═══ Barre supérieure : paire + run ═══ -->
   <div class="prep-align-topbar">
