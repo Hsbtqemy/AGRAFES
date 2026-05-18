@@ -60,6 +60,12 @@ export interface DocumentRecord {
   unit_count: number;
   /** First unit n that belongs to the main text (units with n < text_start_n are paratext). Null = no boundary. */
   text_start_n?: number | null;
+  /**
+   * True when the FTS index is stale for this doc — at least one line unit
+   * is absent from / divergent in `fts_units`. Dérivé côté backend
+   * (indexer.stale_doc_ids), pas un flag persisté.
+   */
+  fts_stale?: boolean;
 }
 
 export interface DocumentPreviewLine {

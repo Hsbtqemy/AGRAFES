@@ -1236,6 +1236,10 @@
             "nullable": true,
             "type": "string"
           },
+          "fts_stale": {
+            "description": "True when the FTS index is stale for this doc (>= 1 line unit absent/divergent in fts_units). Derived live, not a persisted flag.",
+            "type": "boolean"
+          },
           "language": {
             "type": "string"
           },

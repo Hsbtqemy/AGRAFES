@@ -460,6 +460,9 @@ export class MetadataScreen {
         <td class="col-status">
           <span class="prep-wf-pill wf-${wfStatus}">${wfLabel}</span>
           <span class="prep-ann-pill ${annotationStatus === "annotated" ? "prep-ann-annotated" : "prep-ann-missing"}" title="${this._esc(annLabel)}">A</span>
+          ${doc.fts_stale
+            ? `<span class="prep-fts-stale-pill" title="Index de recherche périmé pour ce document — relancez l'indexation (écran Actions) pour des résultats de concordancier à jour.">&#9888; Index</span>`
+            : ""}
         </td>
       `;
       tr.querySelector(".meta-row-check")!.addEventListener("click", (e) => {
@@ -614,6 +617,9 @@ export class MetadataScreen {
         <td class="col-status">
           <span class="prep-wf-pill wf-${wfStatus}">${wfLabel}</span>
           <span class="prep-ann-pill ${annotationStatus === "annotated" ? "prep-ann-annotated" : "prep-ann-missing"}" title="${this._esc(annLabel)}">A</span>
+          ${doc.fts_stale
+            ? `<span class="prep-fts-stale-pill" title="Index de recherche périmé pour ce document — relancez l'indexation (écran Actions) pour des résultats de concordancier à jour.">&#9888; Index</span>`
+            : ""}
         </td>
       `;
       tr.querySelector(".meta-row-check")!.addEventListener("click", (e) => {

@@ -7,6 +7,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **prep / chip « index FTS périmé »** : MetadataScreen affiche un chip ambré « ⚠ Index » sur chaque document dont l'index de recherche est périmé (≥ 1 unité ligne absente ou divergente dans `fts_units`). Adresse la friction Tier A #4 de HANDOFF_PREP — l'utilisateur voit désormais quels docs ont besoin d'une réindexation, sans dépendre du banner contextuel. La staleness est **dérivée en direct** (`indexer.stale_doc_ids`, comparaison `units` ↔ `fts_units`) — pas de flag persisté, donc impossible de désynchroniser ; aucune migration ni instrumentation des handlers de mutation. Le champ `fts_stale` est exposé par `GET /documents`. 6 tests pytest.
+
 ---
 
 ## [0.2.2] - 2026-05-18

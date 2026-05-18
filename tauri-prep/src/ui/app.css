@@ -451,6 +451,23 @@ summary:focus-visible,
 .prep-ann-annotated { background: #d4edda; color: #14532d; }
 .prep-ann-missing { background: #eef1f4; color: #6b7280; }
 
+/* FTS index stale chip (MetadataScreen col-status) — warning ambré. */
+.prep-fts-stale-pill {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.25rem;
+  padding: 0 0.4rem;
+  height: 1.1rem;
+  border-radius: 999px;
+  background: #fbe6c8;
+  color: #8a5800;
+  border: 1px solid #e6c272;
+  font-size: 0.64rem;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+
 /* Log pane */
 .prep-log-pane { background: #1a1a2e; color: #c8d6e5; font-family: monospace; font-size: 0.78rem;
   padding: 0.6rem 0.75rem; border-radius: var(--radius); height: 160px; overflow-y: auto; }

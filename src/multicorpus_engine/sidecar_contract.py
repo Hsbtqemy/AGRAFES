@@ -2845,6 +2845,14 @@ def openapi_spec() -> dict[str, Any]:
                             "type": "string",
                             "enum": ["missing", "annotated"],
                         },
+                        "fts_stale": {
+                            "type": "boolean",
+                            "description": (
+                                "True when the FTS index is stale for this doc "
+                                "(>= 1 line unit absent/divergent in fts_units). "
+                                "Derived live, not a persisted flag."
+                            ),
+                        },
                     },
                     "additionalProperties": False,
                 },

@@ -5881,6 +5881,9 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             ORDER BY d.doc_id
             """
         ).fetchall()
+        # FTS staleness dérivée (pas de flag persisté) — cf. indexer.stale_doc_ids.
+        from multicorpus_engine.indexer import stale_doc_ids
+        stale_ids = stale_doc_ids(self._conn())
         documents = [
             {
                 "doc_id": r[0],
@@ -5905,6 +5908,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 "work_title": r[19],
                 "pub_place": r[20],
                 "publisher": r[21],
+                "fts_stale": r[0] in stale_ids,
             }
             for r in rows
         ]

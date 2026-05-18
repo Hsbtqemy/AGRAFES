@@ -222,3 +222,34 @@ def update_index(
     }
     logger.info("Incremental FTS sync complete: %s", stats)
     return stats
+
+
+def stale_doc_ids(conn: sqlite3.Connection) -> set[int]:
+    """Return the set of doc_ids whose FTS index is stale.
+
+    A document is stale when at least one of its ``line`` units is either
+    absent from ``fts_units`` or has a ``text_norm`` that diverges from the
+    indexed value — the exact criterion ``update_index`` uses to decide what
+    to (re)index. Derived live from ``units`` ↔ ``fts_units`` ; no persisted
+    flag, so it cannot drift out of sync with reality.
+
+    A document with zero line units is never reported stale (nothing to
+    index). Orphan ``fts_units`` rows (units deleted) are a global cleanup
+    concern handled by ``update_index``'s prune step, not a per-doc signal.
+    """
+    try:
+        rows = conn.execute(
+            """
+            SELECT DISTINCT u.doc_id
+            FROM units u
+            LEFT JOIN fts_units f ON f.rowid = u.unit_id
+            WHERE u.unit_type = 'line'
+              AND (f.rowid IS NULL OR f.text_norm <> u.text_norm)
+            """
+        ).fetchall()
+    except sqlite3.Error as exc:
+        # fts_units missing/unusable → treat everything as "not stale" rather
+        # than crash the documents list. A reindex recreates the table.
+        logger.warning("stale_doc_ids: FTS query failed (%s)", exc)
+        return set()
+    return {int(r[0]) for r in rows}
