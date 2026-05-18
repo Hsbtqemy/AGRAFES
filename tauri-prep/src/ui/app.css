@@ -2681,6 +2681,49 @@ tr[data-unit-n].prep-seg-row-highlight td {
   color: #7c2d12;
   line-height: 1.5;
 }
+/* Next-step contextual banner (HANDOFF Tier A #3 — fil d'Ariane workflow). */
+.prep-nextstep-banner {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 8px 14px;
+  margin: 8px 0;
+  background: #eff6ff;
+  border: 1px solid #60a5fa;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #1e3a5f;
+}
+.prep-nextstep-headline {
+  font-weight: 600;
+}
+.prep-nextstep-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.prep-nextstep-btn-primary {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+.prep-nextstep-btn-primary:hover {
+  background: #1d4ed8;
+}
+.prep-nextstep-dismiss {
+  margin-left: auto;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: #64748b;
+  padding: 2px 6px;
+  line-height: 1;
+}
+.prep-nextstep-dismiss:hover {
+  color: #1e3a5f;
+}
 /* Confirm curation: centered modal overlay, always visible regardless of scroll
    (was inline at top of card → invisible from the preview footer triggers).
    Default display:flex; inline style="display:none" from JS hides it. */

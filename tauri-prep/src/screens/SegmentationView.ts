@@ -37,6 +37,8 @@ import {
 import type { StructureSection, StructureDiffSection, PropagateSection } from "../lib/sidecarClient.ts";
 import type { JobCenter } from "../components/JobCenter.ts";
 import { inlineConfirm } from "../lib/inlineConfirm.ts";
+import { computeNextSteps, type PrepNavTarget } from "../lib/prepNextStep.ts";
+import { NextStepBanner } from "../components/NextStepBanner.ts";
 import {
   formatUndoActionLabel,
   formatUndoTooltip,
@@ -93,6 +95,8 @@ export class SegmentationView {
   // ─── Dependencies ─────────────────────────────────────────────────────────
   private readonly _getConn: () => Conn | null;
   private readonly _getDocs: () => DocumentRecord[];
+  /** Bandeau « étape suivante » (HANDOFF Tier A #3) — recréé à chaque rebuild du panneau droit. */
+  private _segNextStepBanner: NextStepBanner | null = null;
   private readonly _cb: SegmentationCallbacks;
 
   // ─── State ────────────────────────────────────────────────────────────────
@@ -764,6 +768,9 @@ export class SegmentationView {
     });
     void this._refreshUndoButton(this._currentSegDocSelection()?.docId ?? null);
     rightEl.querySelector("#act-seg-validate-only-btn")?.addEventListener("click", () => void this._runValidateCurrentSegDoc());
+    // Bandeau « étape suivante » (HANDOFF Tier A #3) — inséré après le banner de statut.
+    this._segNextStepBanner = new NextStepBanner((target) => this._navigateNextStep(target));
+    rightEl.querySelector("#act-seg-status-banner")?.after(this._segNextStepBanner.element);
 
     // Wire content pane tabs (Aperçu / Enregistré / Diff)
     rightEl.querySelectorAll<HTMLButtonElement>(".prep-seg-content-tab").forEach(btn => {
@@ -2260,6 +2267,16 @@ export class SegmentationView {
 
   // ─── Validate ─────────────────────────────────────────────────────────────
 
+  /** Cible du bandeau « étape suivante » → délègue aux callbacks de navigation. */
+  private _navigateNextStep(target: PrepNavTarget): void {
+    if (target === "export") {
+      this._cb.onOpenExporter?.();
+      return;
+    }
+    if (target === "reindex") return; // non produit par segment_validate
+    this._cb.onNavigate?.(target, { docId: this._currentSegDocSelection()?.docId });
+  }
+
   private async _runValidateCurrentSegDoc(): Promise<void> {
     if (this._cb.isBusy()) return;
     const segSel = this._currentSegDocSelection();
@@ -2306,6 +2323,13 @@ export class SegmentationView {
         }
       } else if (postValidate === "stay") {
         this._cb.log("\u2192 Reste sur l'onglet Actions.");
+        // Bandeau \u00ab \u00e9tape suivante \u00bb (HANDOFF Tier A #3) \u2014 uniquement quand
+        // l'utilisateur reste sur place (sinon il navigue d\u00e9j\u00e0 ailleurs).
+        const _nsDoc = this._getDocs().find(d => d.doc_id === docId);
+        this._segNextStepBanner?.show(computeNextSteps({
+          completed: "segment_validate",
+          hasRelations: ["original", "translation", "excerpt"].includes(_nsDoc?.doc_role ?? ""),
+        }));
       } else {
         this._cb.onOpenDocuments?.();
       }

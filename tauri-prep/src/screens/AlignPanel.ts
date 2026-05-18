@@ -42,6 +42,8 @@ import {
 import type { JobCenter } from "../components/JobCenter.ts";
 import { initCardAccordions } from "../lib/uiAccordions.ts";
 import { compareDocsByTitle } from "../lib/docSort.ts";
+import { computeNextSteps, type PrepNavTarget } from "../lib/prepNextStep.ts";
+import { NextStepBanner } from "../components/NextStepBanner.ts";
 
 // ─── Types locaux ─────────────────────────────────────────────────────────────
 
@@ -55,6 +57,8 @@ export interface AlignPanelCallbacks {
   /** Appelé après run réussi. runId = identifiant du run créé (null si indisponible). */
   onRunDone: (pivotId: number, targetIds: number[], runId: string | null) => void;
   onNav: (target: string) => void;
+  /** Ouvre l'onglet Exporter (cible « export » du bandeau étape suivante). */
+  onOpenExporter?: () => void;
 }
 
 interface RunSummary {
@@ -72,6 +76,8 @@ export class AlignPanel {
   private _conn: () => Conn | null;
   private _getDocs: () => DocumentRecord[];
   private _cb: AlignPanelCallbacks;
+  /** Bandeau « étape suivante » (HANDOFF Tier A #3). */
+  private _nextStepBanner: NextStepBanner | null = null;
   private _families: FamilyRecord[] = [];
   private _pendingConfirm: (() => void) | null = null;
   private _el: HTMLElement | null = null;
@@ -132,7 +138,17 @@ export class AlignPanel {
     initCardAccordions(el);
     void this._loadFamilies(el);
     void this._refreshSourceChangedBanner();
+    // Bandeau « étape suivante » (HANDOFF Tier A #3) — après la bannière
+    // « source modifiée », masqué tant qu'aucun run n'a réussi.
+    this._nextStepBanner = new NextStepBanner((target) => this._navigateNextStep(target));
+    el.querySelector("#align-source-changed-banner")?.after(this._nextStepBanner.element);
     return el;
+  }
+
+  /** Cible du bandeau « étape suivante » → délègue aux callbacks de navigation. */
+  private _navigateNextStep(target: PrepNavTarget): void {
+    if (target === "export") this._cb.onOpenExporter?.();
+    else this._cb.onNav(target);
   }
 
   refreshDocs(): void {
@@ -1109,6 +1125,8 @@ export class AlignPanel {
             this._cb.toast(`✓ ${modeLabel} terminé (${n} lien${n > 1 ? "s" : ""})`);
             this._cb.log(`✓ ${modeLabel} : ${n} liens créés.`);
             this._cb.onRunDone(pivId, tgtIds, res?.run_id ?? null);
+            // Bandeau « étape suivante » (HANDOFF Tier A #3).
+            this._nextStepBanner?.show(computeNextSteps({ completed: "align_run" }));
           } else {
             this._setRunningState(el, false);
             this._cb.log(`✗ ${modeLabel} : ${done.error ?? done.status}`, true);

@@ -68,6 +68,8 @@ import { initCardAccordions } from "../lib/uiAccordions.ts";
 import { escHtml as _escHtml, renderSpecialChars as _renderSpecialChars, highlightChanges as _highlightChanges } from "../lib/diff.ts";
 import { rulesSignature as _rulesSignature, sampleFingerprint as _sampleFingerprint, sampleTextFingerprint as _sampleTextFingerprint } from "../lib/curationFingerprint.ts";
 import { compareDocsByTitle } from "../lib/docSort.ts";
+import { computeNextSteps, type PrepNavTarget } from "../lib/prepNextStep.ts";
+import { NextStepBanner } from "../components/NextStepBanner.ts";
 import { reportEvent, reportUserError } from "../lib/telemetry.ts";
 import { CURATE_PRESETS, parseAdvancedCurateRules, getPunctLangFromValue } from "../lib/curationPresets.ts";
 import { mergeApplyHistory, formatApplyHistoryList, type ApplyHistoryScope } from "../lib/curationApplyHistory.ts";
@@ -158,6 +160,8 @@ export interface CurationCallbacks {
   onReloadDocs?: () => void;
   onReindex?: () => void;
   onValidateMeta?: () => void;
+  /** Ouvre l'onglet Exporter (cible « export » du bandeau étape suivante). */
+  onOpenExporter?: () => void;
   getLastSegmentReport?: () => { doc_id: number; units_output: number; warnings?: string[] } | null;
 }
 
@@ -179,6 +183,7 @@ export class CurationView {
   private _curateLog: CurateLogEntry[] = [];
   private _previewDebounceHandle: number | null = null;
   private _curateExamples: CuratePreviewExample[] = [];
+  private _nextStepBanner: NextStepBanner | null = null;
   private _activeDiffIdx: number | null = null;
   private _curatePreviewPage = 0;
   private _previewMode: "sidebyside" | "rawonly" | "diffonly" = "rawonly";
@@ -898,6 +903,7 @@ export class CurationView {
       if (newDocId !== null) void this._loadAllUnits(newDocId);
       const divergeBanner = this._q<HTMLElement>("#act-curate-diverge-banner");
       if (divergeBanner) divergeBanner.style.display = "none";
+      this._nextStepBanner?.hide();
       this._syncDocList();
       this._updateCurateCtx();
       this._schedulePreview(true);
@@ -1158,6 +1164,11 @@ export class CurationView {
       this._autoSwitchPreviewMode(el);
       this._schedulePreview(true);
     });
+
+    // Bandeau « étape suivante » (HANDOFF Tier A #3) — inséré juste après la
+    // bannière de divergence, masqué tant qu'aucun apply n'a réussi.
+    this._nextStepBanner = new NextStepBanner((target) => this._navigateNextStep(target));
+    el.querySelector("#act-curate-diverge-banner")?.after(this._nextStepBanner.element);
 
     // Primary action buttons
     el.querySelector("#act-curate-btn")!.addEventListener("click", () => void this._runCurate());
@@ -2140,6 +2151,16 @@ export class CurationView {
           if (divergeBanner) divergeBanner.style.display = "";
           // Mode A: refresh undo button now that an action is undo-able.
           void this._refreshUndoButton(docId ?? null);
+          // Bandeau « étape suivante » (HANDOFF Tier A #3).
+          const _nsDoc = docId != null ? this._getDocs().find(d => d.doc_id === docId) : undefined;
+          const _nsHasRelations = docId == null
+            ? this._getDocs().length > 1
+            : ["original", "translation", "excerpt"].includes(_nsDoc?.doc_role ?? "");
+          this._nextStepBanner?.show(computeNextSteps({
+            completed: "curation_apply",
+            ftsStale: !!r?.fts_stale,
+            hasRelations: _nsHasRelations,
+          }));
         } else {
           this._cb.log(`✗ Curation : ${done.error ?? done.status}`, true);
           this._pushCurateLog("warn", `Erreur : ${done.error ?? done.status}`);
@@ -2160,6 +2181,20 @@ export class CurationView {
       this._refreshCurateHeaderState();
     }
   }
+  /** Cible du bandeau « étape suivante » → délègue aux callbacks de navigation. */
+  private _navigateNextStep(target: PrepNavTarget): void {
+    switch (target) {
+      case "reindex": this._cb.onReindex?.(); break;
+      case "export": this._cb.onOpenExporter?.(); break;
+      case "segmentation":
+      case "curation":
+      case "alignement":
+      case "annoter":
+        this._cb.onNavigate?.(target, { docId: this._currentCurateDocId() });
+        break;
+    }
+  }
+
   private async _loadAllUnits(docId: number): Promise<void> {
     const conn = this._getConn();
     if (!conn) return;
@@ -3736,6 +3771,8 @@ export class CurationView {
         if (reBtn) reBtn.style.display = "";
       }
       this._cb.toast?.("\u21B6 Action annulee");
+      // L'action est revert\u00E9e \u2192 la suggestion d'\u00E9tape suivante n'a plus de sens.
+      this._nextStepBanner?.hide();
       this._allUnits = [];
       this._allUnitsDocId = null;
       this._hasPendingPreview = false;

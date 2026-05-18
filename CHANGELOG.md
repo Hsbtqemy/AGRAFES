@@ -9,6 +9,18 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.2.4] - 2026-05-18
+
+### Added
+
+- **prep / bandeau « étape suivante »** : après une action de pipeline réussie (curation appliquée, segmentation validée, alignement terminé), un bandeau bleu non-bloquant propose l'étape suivante logique avec un bouton de navigation directe. Adresse la friction HANDOFF_PREP Tier A #3 — « l'utilisateur termine sa curation, puis ne sait pas s'il doit aller à Aligner, à Métadonnées, ou à Reindex FTS ». Les suggestions dépendent de l'état réel observé : après curation, si l'index FTS est périmé → réindexer en priorité ; si le document a des traductions → vérifier l'alignement ; sinon → exporter. Après segmentation → curation (workflow segment-first). Après alignement → export. Le pipeline n'étant pas linéaire ni bloquant (HANDOFF §3), le bandeau *suggère* sans rien contraindre et est masquable. Calcul pur `lib/prepNextStep.ts` (`computeNextSteps`, 10 tests Vitest), rendu `components/NextStepBanner.ts`.
+
+### Internal
+
+- **HANDOFF_PREP #5 corrigé** : la friction « CurationView lente à charger — pas de virtualization du DOM » était périmée. Les listes lourdes sont déjà bornées (liste de diff paginée à 50 lignes, file de documents à 3 items) ; aucune lenteur frontend n'a été mesurée. Item reclassé en friction de lisibilité du fichier pour les contributeurs, pas de perf utilisateur.
+
+---
+
 ## [0.2.3] - 2026-05-18
 
 ### Added

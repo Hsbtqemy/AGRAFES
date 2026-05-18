@@ -378,6 +378,7 @@ export class ActionsScreen {
         onReloadDocs: () => { void this._loadDocs(); },
         onReindex: () => { void this._runIndex(); },
         onValidateMeta: () => { void this._runValidateMeta(); },
+        onOpenExporter: () => this._openExporterTab?.(),
         getLastSegmentReport: () => this._segmentationView?.getLastSegmentReport() ?? null,
       },
     );
@@ -462,6 +463,7 @@ export class ActionsScreen {
           const linkEl = this._q<HTMLButtonElement>(`[data-nav="${target}"]`);
           linkEl?.click();
         },
+        onOpenExporter: () => this._openAlignmentExportPrefill(),
       },
     );
     wrapper.appendChild(this._alignPanel.render());
