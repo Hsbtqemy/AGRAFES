@@ -29,7 +29,6 @@ from multicorpus_engine.action_history import (
     ACTION_RESEGMENT,
     ACTION_SPLIT_UNIT,
     ACTION_UNDO,
-    insert_unit_snapshots,
     record_prep_action,
 )
 
