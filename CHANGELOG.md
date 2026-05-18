@@ -7,6 +7,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+---
+
+## [0.2.3] - 2026-05-18
+
 ### Added
 
 - **prep / AlignPanel — bannière « source modifiée »** : la page d'accueil d'AlignPanel affiche désormais une bannière ambrée quand des liens d'alignement ont une source pivot modifiée depuis l'alignement (curation apply ou Mode A undo qui reflague `source_changed_at`). Un traducteur voit le signal dès l'ouverture de l'écran, sans avoir à sélectionner une paire ni ouvrir l'audit — c'était la friction Tier A #6 de HANDOFF_PREP. Nouvel endpoint `GET /align/source_changed_summary` (helper pur `aligner.source_changed_summary`, 3 tests pytest). Le détail unité par unité + l'acquittement restent dans Documents → Curation.
