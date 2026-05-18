@@ -7689,7 +7689,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         tu_list: list of TUs; each TU is a list of (lang, text) tuples.
         """
         import datetime as _dt
-        esc = SidecarHandler._escape_xml
+        esc = _CorpusHandler._escape_xml
         stamp = _dt.datetime.now(_dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         lines = [
             '<?xml version="1.0" encoding="UTF-8"?>',

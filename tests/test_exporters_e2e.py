@@ -150,3 +150,39 @@ def test_readable_text_export_docx(annotated_corpus, db_conn, tmp_path):
     d = _docx.Document(str(files[0]))
     full = "\n".join(p.text for p in d.paragraphs)
     assert "chat" in full and "pleut" in full
+
+
+# ─── TMX builder (sidecar inline export) ────────────────────────────────────
+
+
+def test_build_tmx_produces_valid_tmx() -> None:
+    """Regression : _build_tmx référençait `SidecarHandler` (classe renommée
+    `_CorpusHandler`) → NameError silencieux sur tout export TMX. Ce test
+    appelle la staticmethod directement, sans serveur."""
+    from multicorpus_engine.sidecar import _CorpusHandler
+
+    tu_list = [
+        [("fr", "Bonjour le monde."), ("en", "Hello world.")],
+        [("fr", "Le chat dort."), ("en", "The cat sleeps.")],
+    ]
+    tmx = _CorpusHandler._build_tmx(tu_list, "fr", "1.6.27")
+
+    assert tmx.startswith('<?xml version="1.0" encoding="UTF-8"?>')
+    assert '<tmx version="1.4">' in tmx
+    assert tmx.count("<tu tuid=") == 2
+    assert '<tuv xml:lang="fr">' in tmx
+    assert '<tuv xml:lang="en">' in tmx
+    assert "<seg>Hello world.</seg>" in tmx
+    assert tmx.rstrip().endswith("</tmx>")
+
+
+def test_build_tmx_escapes_xml_special_chars() -> None:
+    """Le contenu des segments doit être échappé (pas de TMX malformé)."""
+    from multicorpus_engine.sidecar import _CorpusHandler
+
+    tu_list = [[("fr", 'Il dit "<bonjour>" & partit'), ("en", "x")]]
+    tmx = _CorpusHandler._build_tmx(tu_list, "fr", "1.0")
+    assert "&amp;" in tmx
+    assert "&lt;bonjour&gt;" in tmx
+    assert "&quot;" in tmx
+    assert "<bonjour>" not in tmx  # raw angle brackets must not leak
