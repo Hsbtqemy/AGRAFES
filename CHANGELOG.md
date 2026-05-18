@@ -7,6 +7,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **prep / import DOCX `column_index`** : le dedup des cellules fusionnées verticalement (vMerge) utilisait `id(cell._tc)` comme clé. Les proxies lxml étant GC-ables, `id()` est réutilisé après collecte → un `_tc` non fusionné pouvait hériter d'un `id()` déjà vu → ligne skippée à tort (« colonne absente »). Bug non-déterministe (dépend du GC), introduit dans le chantier DOCX 2-col (commit `c5abb9f`, présent en v0.2.0/v0.2.1). Corrigé : dedup par identité d'élément (`is`) avec conservation des références — le proxy lxml reste vivant tant qu'il est référencé, donc `is` est stable. Découvert parce que le test `test_column_mostly_unnumbered_triggers_warning` échouait en suite complète (pression GC) mais passait isolé.
+
 ---
 
 ## [0.2.1] - 2026-05-18
