@@ -2350,17 +2350,13 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 malformed_lines = 0
                 sample_rows: list[dict] = []
 
-                current_sent = 0
+                # First pass : token + skip counters only. Sentence counting
+                # is done in the dedicated "Recount sentences" pass below.
                 for raw_line in text.splitlines():
                     line = raw_line.strip()
                     if not line:
-                        if tokens_total > (sentences_total * 0):  # flush sentence
-                            pass
                         continue
                     if line.startswith("#"):
-                        if not line.startswith("# sent_id"):
-                            pass
-                        # count sentence starts via blank-line resets
                         continue
                     cols = raw_line.split("\t")
                     if len(cols) != 10:
@@ -4167,8 +4163,9 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 
         if explicit_mapping is not None:
             # ── Explicit mapping mode ─────────────────────────────────────────
+            # mapped_ref_idxs sert au repérage des sections ref orphelines.
+            # Le côté cible est couvert par paired_by_tgt (cf. boucle de sortie).
             mapped_ref_idxs = {p[0] for p in explicit_mapping}
-            mapped_tgt_idxs = {p[1] for p in explicit_mapping}
 
             # Build a ref_idx → ref_count lookup
             def _ref_count_for_idx(ref_idx: int) -> int:
