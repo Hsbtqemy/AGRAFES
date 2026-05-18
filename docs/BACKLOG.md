@@ -1079,9 +1079,11 @@ Cette synthèse **ne remplace pas** les sous-sections détaillées ci-dessous ; 
 
 ---
 
-#### F4 — Index FTS : arbitrage "un seul bouton" vs actions séparées
+#### F4 — Index FTS : arbitrage "un seul bouton" vs actions séparées — ✅ FAIT (post-v0.2.4)
 
-**Contexte** : l'indexation FTS est actuellement exposée via plusieurs actions selon les contextes (indexer tout, réindexer un doc, etc.). L'utilisateur ne comprend pas toujours quand réindexer est nécessaire ni ce que ça fait.
+**Livré** : la vue Documents (MetadataScreen) est devenue le point d'arbitrage unique de l'index FTS — bouton d'en-tête « Mettre à jour l'index » avec état global agrégé (« ✓ Index à jour » / « ⚠ Mettre à jour l'index (N documents) »), chip « ⚠ Index » par document rendu cliquable, et réglage opt-in « Auto après curation » (réindexation automatique non bloquante après une curation qui périme l'index). Helper pur `tauri-prep/src/lib/prepIndexStatus.ts` (6 tests Vitest). Les boutons Import/Curation restent comme raccourcis contextuels. Cf. HANDOFF_PREP Tier A #4.
+
+**Contexte (historique)** : l'indexation FTS était exposée via plusieurs actions selon les contextes (indexer tout, réindexer un doc, etc.). L'utilisateur ne comprenait pas toujours quand réindexer était nécessaire ni ce que ça faisait.
 
 **Travail de cadrage** :
 - Recenser toutes les surfaces où un bouton d'indexation apparaît dans Prep et le shell

@@ -70,6 +70,7 @@ import { rulesSignature as _rulesSignature, sampleFingerprint as _sampleFingerpr
 import { compareDocsByTitle } from "../lib/docSort.ts";
 import { computeNextSteps, type PrepNavTarget } from "../lib/prepNextStep.ts";
 import { NextStepBanner } from "../components/NextStepBanner.ts";
+import { isAutoReindexEnabled } from "../lib/prepIndexStatus.ts";
 import { reportEvent, reportUserError } from "../lib/telemetry.ts";
 import { CURATE_PRESETS, parseAdvancedCurateRules, getPunctLangFromValue } from "../lib/curationPresets.ts";
 import { mergeApplyHistory, formatApplyHistoryList, type ApplyHistoryScope } from "../lib/curationApplyHistory.ts";
@@ -2134,11 +2135,21 @@ export class CurationView {
           }
           this._updateApplyResultUI();
           this._invalidateCurateReviewAfterApply(docId ?? null);
+          // F4 — opt-in « réindexer auto après curation ». Si activé, on
+          // enclenche directement le job de réindexation (asynchrone, non
+          // bloquant) ; sinon on expose le bouton manuel comme avant.
+          const _autoReindexed = !!r?.fts_stale && isAutoReindexEnabled();
           if (r?.fts_stale) {
-            this._cb.log("⚠ Index FTS périmé.");
-            this._pushCurateLog("warn", "Index de recherche périmé — cliquez sur « Mettre à jour l'index »");
-            const btn = this._q("#act-reindex-after-curate-btn") as HTMLElement | null;
-            if (btn) btn.style.display = "";
+            if (_autoReindexed) {
+              this._cb.log("⚠ Index FTS périmé — réindexation automatique lancée (réglage « Auto après curation »).");
+              this._pushCurateLog("apply", "Index périmé → réindexation auto lancée");
+              this._cb.onReindex?.();
+            } else {
+              this._cb.log("⚠ Index FTS périmé.");
+              this._pushCurateLog("warn", "Index de recherche périmé — cliquez sur « Mettre à jour l'index »");
+              const btn = this._q("#act-reindex-after-curate-btn") as HTMLElement | null;
+              if (btn) btn.style.display = "";
+            }
           }
           this._hasPendingPreview = false;
           this._allOverrides = new Map();
@@ -2158,7 +2169,8 @@ export class CurationView {
             : ["original", "translation", "excerpt"].includes(_nsDoc?.doc_role ?? "");
           this._nextStepBanner?.show(computeNextSteps({
             completed: "curation_apply",
-            ftsStale: !!r?.fts_stale,
+            // Si la réindexation auto a déjà été lancée, ne pas la resuggérer.
+            ftsStale: !!r?.fts_stale && !_autoReindexed,
             hasRelations: _nsHasRelations,
           }));
         } else {

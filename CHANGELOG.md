@@ -9,6 +9,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.2.5] - 2026-05-18
+
+### Added
+
+- **prep / arbitrage de l'index FTS (HANDOFF F4)** : la vue Documents (MetadataScreen) devient le point unique de pilotage de l'index de recherche. Un bouton d'en-tête « Mettre à jour l'index » affiche l'état global agrégé — « ✓ Index à jour » (inactif) ou « ⚠ Mettre à jour l'index (N documents) » — et reconstruit l'index via un job asynchrone non bloquant. Le chip « ⚠ Index » par document, jusqu'ici en lecture seule, devient **cliquable** et déclenche la même réindexation. Nouveau réglage opt-in « Auto après curation » : quand il est coché, une curation qui rend l'index périmé enclenche automatiquement la réindexation en arrière-plan (réglage persisté en localStorage, lu par CurationView). Helper pur `lib/prepIndexStatus.ts` (6 tests Vitest). Adresse la friction HANDOFF_PREP Tier A #4 / backlog F4.
+
+---
+
 ## [0.2.4] - 2026-05-18
 
 ### Added

@@ -466,6 +466,29 @@ summary:focus-visible,
   font-weight: 700;
   line-height: 1;
   white-space: nowrap;
+  cursor: pointer;
+  font-family: inherit;
+}
+.prep-fts-stale-pill:hover {
+  background: #f5d49c;
+}
+/* Bouton unique « Mettre à jour l'index » en état périmé (HANDOFF F4). */
+.prep-meta-reindex-stale {
+  background: #fff7ed;
+  border-color: #fb923c;
+  color: #7c2d12;
+  font-weight: 600;
+}
+.prep-meta-reindex-stale:hover {
+  background: #ffedd5;
+}
+.prep-meta-auto-reindex-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.72rem;
+  color: var(--prep-muted, #4f5d6d);
+  white-space: nowrap;
 }
 
 /* Log pane */

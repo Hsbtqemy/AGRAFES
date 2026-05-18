@@ -33,6 +33,7 @@ import {
   backupDatabase,
   validateMeta,
   annotate,
+  enqueueJob,
   getCorpusAudit,
   getFamilyCurationStatus,
   acknowledgeSourceChange,
@@ -55,6 +56,11 @@ import {
 import { initCardAccordions } from "../lib/uiAccordions.ts";
 import { modalConfirm } from "../lib/modalConfirm.ts";
 import { compareDocsByTitle, compareLocale } from "../lib/docSort.ts";
+import {
+  indexButtonState,
+  isAutoReindexEnabled,
+  setAutoReindexEnabled,
+} from "../lib/prepIndexStatus.ts";
 import type { JobCenter } from "../components/JobCenter.ts";
 
 const DOC_ROLES = ["standalone", "original", "translation", "excerpt", "primary", "unknown"];
@@ -199,6 +205,11 @@ export class MetadataScreen {
             <span id="db-backup-status" class="hint" style="margin:0">Aucune sauvegarde récente</span>
             <button id="validate-btn" class="btn btn-secondary btn-sm">Valider métadonnées</button>
             <button id="audit-btn" class="btn btn-secondary btn-sm">🔍 Audit corpus</button>
+            <button id="meta-reindex-btn" class="btn btn-secondary btn-sm" disabled>✓ Index à jour</button>
+            <label class="prep-meta-auto-reindex-label"
+                   title="Réindexer automatiquement l'index FTS après chaque curation appliquée (job asynchrone, non bloquant)">
+              <input type="checkbox" id="meta-auto-reindex" /> Auto après curation
+            </label>
             <label class="audit-ratio-label" title="Seuil d'avertissement pour le ratio de segments parent/enfant">
               Seuil ratio
               <input id="audit-ratio-input" type="number" min="1" max="100" value="15"
@@ -342,12 +353,31 @@ export class MetadataScreen {
     root.querySelector("#db-backup-btn")!.addEventListener("click", () => void this._runDbBackup());
     root.querySelector("#db-export-btn")!.addEventListener("click", () => void this._runDbExport());
     root.querySelector("#audit-btn")!.addEventListener("click", () => void this._runAudit());
+    root.querySelector("#meta-reindex-btn")!.addEventListener("click", () => void this._runReindex());
+    const autoReindexCb = root.querySelector<HTMLInputElement>("#meta-auto-reindex");
+    if (autoReindexCb) {
+      autoReindexCb.checked = isAutoReindexEnabled();
+      autoReindexCb.addEventListener("change", () => setAutoReindexEnabled(autoReindexCb.checked));
+    }
     root.querySelector<HTMLInputElement>("#audit-ratio-input")?.addEventListener("change", (e) => {
       const v = parseInt((e.target as HTMLInputElement).value, 10);
       if (!isNaN(v) && v >= 1 && v <= 100) this._auditRatioThreshold = v;
     });
     this._auditPanelEl = root.querySelector<HTMLElement>("#prep-meta-audit-panel")!;
     root.querySelector("#meta-hierarchy-btn")!.addEventListener("click", () => void this._toggleHierarchyView());
+
+    // Chip « ⚠ Index » cliquable (HANDOFF F4) — délégué : vaut pour la vue
+    // liste comme la vue hiérarchie (toutes deux rendues dans _docListEl).
+    // Phase de capture : intercepte AVANT le listener de sélection de ligne
+    // (qui est en phase de bulle sur le <tr>), sinon le clic sélectionnerait
+    // aussi le document.
+    this._docListEl.addEventListener("click", (e) => {
+      const chip = (e.target as HTMLElement).closest(".prep-fts-stale-pill");
+      if (chip) {
+        e.stopPropagation();
+        void this._runReindex();
+      }
+    }, true);
 
     // Sortable column headers
     root.querySelectorAll<HTMLElement>("th[data-sort]").forEach(th => {
@@ -409,8 +439,59 @@ export class MetadataScreen {
     this._renderDocList();
   }
 
+  /** Met à jour le bouton unique « Mettre à jour l'index » (HANDOFF F4). */
+  private _refreshIndexButton(): void {
+    const btn = this._root.querySelector<HTMLButtonElement>("#meta-reindex-btn");
+    if (!btn) return;
+    const staleCount = this._docs.filter(d => d.fts_stale).length;
+    const st = indexButtonState(staleCount);
+    btn.textContent = st.label;
+    btn.title = st.title;
+    btn.disabled = st.disabled || this._isBusy || !this._conn;
+    btn.classList.toggle("prep-meta-reindex-stale", st.stale);
+  }
+
+  /**
+   * Réindexation FTS (HANDOFF F4) — point d'arbitrage unique. Reconstruit
+   * l'index global via un job asynchrone, jamais bloquant. Déclenché par le
+   * bouton d'en-tête ou par un clic sur le chip « ⚠ Index » d'un document.
+   */
+  private async _runReindex(): Promise<void> {
+    if (!this._conn) return;
+    const btn = this._root.querySelector<HTMLButtonElement>("#meta-reindex-btn");
+    if (btn) btn.disabled = true;
+    try {
+      const job = await enqueueJob(this._conn, "index", {});
+      this._log("⏳ Reconstruction de l'index FTS soumise (job asynchrone)…");
+      this._showToast?.("⏳ Réindexation FTS lancée");
+      if (this._jobCenter) {
+        this._jobCenter.trackJob(job.job_id, "Rebuild index FTS", (done) => {
+          if (done.status === "done") {
+            const n = (done.result as { units_indexed?: number } | undefined)?.units_indexed ?? "?";
+            this._log(`✓ Index FTS reconstruit — ${n} unités indexées.`);
+            this._showToast?.(`✓ Index FTS reconstruit (${n} unités)`);
+          } else if (done.status === "canceled") {
+            this._log("↩ Réindexation FTS annulée.", true);
+          } else {
+            this._log(`✗ Réindexation FTS : ${done.error ?? done.status}`, true);
+            this._showToast?.("✗ Erreur réindexation FTS", true);
+          }
+          void this._refreshDocList();
+        });
+      } else {
+        // Pas de JobCenter (cas dégradé) : on ne peut pas suivre le job —
+        // ré-active le bouton tout de suite plutôt que de le figer.
+        this._refreshIndexButton();
+      }
+    } catch (err) {
+      this._log(`✗ Réindexation FTS : ${err instanceof SidecarError ? err.message : String(err)}`, true);
+      this._refreshIndexButton();
+    }
+  }
+
   private _renderDocList(): void {
     this._updateDocCount();
+    this._refreshIndexButton();
 
     // Refresh sort indicators on column headers (list and hierarchy)
     this._root.querySelectorAll<HTMLElement>("th[data-sort]").forEach(th => {
@@ -461,7 +542,7 @@ export class MetadataScreen {
           <span class="prep-wf-pill wf-${wfStatus}">${wfLabel}</span>
           <span class="prep-ann-pill ${annotationStatus === "annotated" ? "prep-ann-annotated" : "prep-ann-missing"}" title="${this._esc(annLabel)}">A</span>
           ${doc.fts_stale
-            ? `<span class="prep-fts-stale-pill" title="Index de recherche périmé pour ce document — relancez l'indexation (écran Actions) pour des résultats de concordancier à jour.">&#9888; Index</span>`
+            ? `<button type="button" class="prep-fts-stale-pill" title="Index de recherche périmé — cliquez pour reconstruire l'index FTS (job asynchrone, non bloquant).">&#9888; Index</button>`
             : ""}
         </td>
       `;
@@ -618,7 +699,7 @@ export class MetadataScreen {
           <span class="prep-wf-pill wf-${wfStatus}">${wfLabel}</span>
           <span class="prep-ann-pill ${annotationStatus === "annotated" ? "prep-ann-annotated" : "prep-ann-missing"}" title="${this._esc(annLabel)}">A</span>
           ${doc.fts_stale
-            ? `<span class="prep-fts-stale-pill" title="Index de recherche périmé pour ce document — relancez l'indexation (écran Actions) pour des résultats de concordancier à jour.">&#9888; Index</span>`
+            ? `<button type="button" class="prep-fts-stale-pill" title="Index de recherche périmé — cliquez pour reconstruire l'index FTS (job asynchrone, non bloquant).">&#9888; Index</button>`
             : ""}
         </td>
       `;
