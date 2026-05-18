@@ -12,6 +12,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **prep / AlignPanel — bannière « source modifiée »** : la page d'accueil d'AlignPanel affiche désormais une bannière ambrée quand des liens d'alignement ont une source pivot modifiée depuis l'alignement (curation apply ou Mode A undo qui reflague `source_changed_at`). Un traducteur voit le signal dès l'ouverture de l'écran, sans avoir à sélectionner une paire ni ouvrir l'audit — c'était la friction Tier A #6 de HANDOFF_PREP. Nouvel endpoint `GET /align/source_changed_summary` (helper pur `aligner.source_changed_summary`, 3 tests pytest). Le détail unité par unité + l'acquittement restent dans Documents → Curation.
 - **prep / chip « index FTS périmé »** : MetadataScreen affiche un chip ambré « ⚠ Index » sur chaque document dont l'index de recherche est périmé (≥ 1 unité ligne absente ou divergente dans `fts_units`). Adresse la friction Tier A #4 de HANDOFF_PREP — l'utilisateur voit désormais quels docs ont besoin d'une réindexation, sans dépendre du banner contextuel. La staleness est **dérivée en direct** (`indexer.stale_doc_ids`, comparaison `units` ↔ `fts_units`) — pas de flag persisté, donc impossible de désynchroniser ; aucune migration ni instrumentation des handlers de mutation. Le champ `fts_stale` est exposé par `GET /documents`. 6 tests pytest.
 
+### Fixed
+
+- **scripts / analyze_undo_soak** : deux bugs découverts en lançant le rapport de soak sur le NDJSON réel. (1) Crash `UnicodeEncodeError` sur console Windows cp1252 (le rapport contient « → ») — corrigé via reconfiguration UTF-8 de stdout. (2) L'heuristique « frustration détectée » comptait *tous* les `unavailable_view`, y compris `no_action` qui est l'état neutre (« rien à annuler ») — d'où un faux verdict « FRUSTRATION » sur des données qui relevaient en réalité de « peu utilisé ». Corrigée : `frustration_count()` n'agrège que les vraies raisons de blocage (`structural_dependency`, `unit_diverged`…). Soak Mode A clos sur cette base : peu utilisé, Mode B reporté (cf. `docs/SOAK_MODE_A.md`).
+
 ---
 
 ## [0.2.2] - 2026-05-18
