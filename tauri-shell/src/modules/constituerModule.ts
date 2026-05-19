@@ -1,11 +1,12 @@
 /**
- * constituerModule.ts — Shell wrapper for Prep + Conventions.
+ * constituerModule.ts — Shell wrapper for the Prep app.
  *
- * Two sub-tabs:
- *   - "preparer"    → tauri-prep (App)
- *   - "conventions" → conventionsModule (rôles d'unités + text_start_n)
- *
- * Sub-tab state is persisted in localStorage.
+ * Historiquement, ce module portait deux sous-onglets (« préparer » / «
+ * conventions »). Les conventions (rôles d'unités) ont été fusionnées dans la
+ * sous-vue Segmentation de prep (onglet « Rôles ») — cf. ticket
+ * TICKET_CONVENTIONS_IN_SEGMENTATION. « préparer » étant devenu l'unique
+ * contenu, la barre de sous-onglets a été supprimée : `constituer` monte
+ * désormais directement l'app prep.
  */
 
 import type { ShellContext } from "../context.ts";
@@ -19,61 +20,17 @@ import "../../../tauri-prep/src/ui/prep-vnext.css";
 import "../../../tauri-prep/src/ui/app.css";
 import "../../../tauri-prep/src/ui/job-center.css";
 
-// ─── Sub-tab state ─────────────────────────────────────────────────────────────
-
-const LS_SUBTAB = "agrafes.constituer.subtab";
-type ConstituerTab = "preparer" | "conventions";
+// ─── Module state ──────────────────────────────────────────────────────────────
 
 let _mounted = false;
-let _switching = false;
-let _activeTab: ConstituerTab = "preparer";
-let _subDispose: (() => void) | null = null;
-let _subContainer: HTMLElement | null = null;
-let _tabBar: HTMLElement | null = null;
-let _savedCtx: ShellContext | null = null;
 let _prepApp: App | null = null;
 let _outerContainer: HTMLElement | null = null;
 
 // ─── CSS ───────────────────────────────────────────────────────────────────────
 
 const CONSTITUER_CSS = `
-/* ── Sub-tab bar (green accent matching "constituer" mode) ── */
-.con-subtab-bar {
-  display: flex;
-  height: 38px;
-  background: #0d3d27;
-  border-top: 1px solid rgba(255,255,255,0.10);
-  border-bottom: 2px solid rgba(255,255,255,0.13);
-  padding: 0 0.5rem;
-  gap: 0;
-  align-items: stretch;
-  flex-shrink: 0;
-}
-.con-subtab {
-  background: none;
-  border: none;
-  border-bottom: 3px solid transparent;
-  color: rgba(255,255,255,0.72);
-  font-size: 0.82rem;
-  font-weight: 500;
-  padding: 0 1.1rem;
-  cursor: pointer;
-  transition: color 0.14s, border-color 0.14s, background 0.14s;
-  white-space: nowrap;
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-}
-.con-subtab:hover {
-  color: #fff;
-  background: rgba(255,255,255,0.09);
-}
-.con-subtab.active {
-  color: #fff;
-  font-weight: 700;
-  border-bottom-color: #4ade80;
-  background: rgba(74,222,128,0.10);
-}
+/* Le wrapper direct (#con-prep-wrapper) prend la hauteur naturelle de son
+   contenu ; le scroll se fait au niveau de .con-subcontent. */
 .con-subcontent {
   flex: 1;
   min-height: 0;
@@ -81,17 +38,15 @@ const CONSTITUER_CSS = `
   overflow-y: auto;
   position: relative;
 }
-/* Le wrapper direct (#con-prep-wrapper) prend la hauteur naturelle de son contenu ;
-   le scroll se fait au niveau de .con-subcontent. */
 .con-subcontent > .con-prep-wrapper {
   min-height: 100%;
 }
-/* Dans le contexte shell, 82px supplémentaires sont consommés hors de .con-subcontent :
-   44px (shell header fixe) + 38px (barre sous-onglet). Le calc() de .prep-seg-split-layout
-   est conçu pour le mode autonome (100vh = toute la fenêtre). Ici la fenêtre utile
-   est 100vh - 82px, d'où la correction de +82px dans la soustraction. */
+/* Dans le contexte shell, 44px sont consommés hors de .con-subcontent par le
+   header shell fixe (la barre de sous-onglets de 38px ayant été supprimée).
+   Le calc() de .prep-seg-split-layout est conçu pour le mode autonome
+   (100vh = toute la fenêtre) ; ici la fenêtre utile est 100vh - 44px. */
 .con-subcontent .prep-seg-split-layout {
-  height: calc(100vh - var(--prep-topbar-h, 54px) - 292px);
+  height: calc(100vh - var(--prep-topbar-h, 54px) - 254px);
 }
 `;
 
@@ -106,68 +61,46 @@ export async function mount(
   if (container.children.length > 0) {
     container.innerHTML = "";
   }
-  _savedCtx = ctx;
-  _switching = false;
   _prepApp = null;
-  _subDispose = null;
-  _subContainer = null;
-  _tabBar = null;
+
   // The shell passes container with id="app". Transfer that id to the sub-content
-  // div when prep is active (tauri-prep's App._buildUI() uses getElementById("app")).
-  // Remove it from the outer container to avoid duplicate ids in the DOM.
+  // div so tauri-prep's App._buildUI() (uses getElementById("app")) mounts there.
   _outerContainer = container;
   container.removeAttribute("id");
 
-  // Read persisted sub-tab
-  _activeTab = "preparer";
-  try {
-    const raw = localStorage.getItem(LS_SUBTAB);
-    if (raw === "preparer" || raw === "conventions") _activeTab = raw;
-  } catch { /* ignore */ }
-
   // Do NOT set height: shell navigation has already set height=calc(100vh-44px)
-  // on this element with paddingTop=44px (from _freshContainer), so the container
-  // spans the full viewport while content starts below the fixed 44px shell header.
+  // on this element with paddingTop=44px (from _freshContainer).
   container.style.display = "flex";
   container.style.flexDirection = "column";
   container.style.overflow = "hidden";
 
-  // Inject sub-tab CSS once
-  if (!document.getElementById("con-subtab-css")) {
+  // Inject layout CSS once
+  if (!document.getElementById("con-layout-css")) {
     const style = document.createElement("style");
-    style.id = "con-subtab-css";
+    style.id = "con-layout-css";
     style.textContent = CONSTITUER_CSS;
     document.head.appendChild(style);
   }
 
-  // Sub-tab bar
-  _tabBar = document.createElement("div");
-  _tabBar.className = "con-subtab-bar";
-  _tabBar.innerHTML = `
-    <button class="con-subtab${_activeTab === "preparer" ? " active" : ""}" data-tab="preparer">
-      &#128196; Préparer
-    </button>
-    <button class="con-subtab${_activeTab === "conventions" ? " active" : ""}" data-tab="conventions">
-      &#127991; Conventions
-    </button>
-  `;
-  container.appendChild(_tabBar);
+  // Sub-content area — single wrapper, no sub-tab bar.
+  const subContainer = document.createElement("div");
+  subContainer.className = "con-subcontent";
+  container.appendChild(subContainer);
 
-  // Sub-content area
-  _subContainer = document.createElement("div");
-  _subContainer.className = "con-subcontent";
-  container.appendChild(_subContainer);
+  const dbPath = ctx.getDbPath();
+  if (dbPath) setCurrentDbPath(dbPath);
 
-  // Wire tab clicks
-  _tabBar.querySelectorAll<HTMLButtonElement>(".con-subtab").forEach(btn => {
-    btn.addEventListener("click", () => {
-      const tab = btn.dataset.tab as ConstituerTab;
-      if (tab === _activeTab || _switching) return;
-      void _switchTab(tab);
-    });
-  });
+  // tauri-prep's App._buildUI() mounts into document.getElementById("app").
+  // We use a wrapper div so that .con-subcontent > .con-prep-wrapper { height:
+  // 100% } targets only this single child.
+  const wrapper = document.createElement("div");
+  wrapper.className = "con-prep-wrapper";
+  wrapper.id = "app";
+  wrapper.style.paddingTop = "0"; // override index.html #app { padding-top: 44px }
+  subContainer.appendChild(wrapper);
 
-  await _mountTab(_activeTab);
+  _prepApp = new App();
+  await _prepApp.init();
   _mounted = true;
 }
 
@@ -176,91 +109,7 @@ export function dispose(): void {
   // (e.g. after Vite HMR resets module-level state without calling dispose()).
   if (_outerContainer) { _outerContainer.id = "app"; _outerContainer = null; }
   if (!_mounted) return;
-  _disposeSubModule();
   try { _prepApp?.dispose(); } catch { /* ignore */ }
-  _mounted = false;
-  _switching = false;
-  _subContainer = null;
-  _tabBar = null;
-  _savedCtx = null;
   _prepApp = null;
-}
-
-// ─── Internal helpers ──────────────────────────────────────────────────────────
-
-async function _switchTab(tab: ConstituerTab): Promise<void> {
-  if (!_tabBar || !_subContainer || _switching) return;
-  _switching = true;
-
-  // Persist selected conventions doc so Préparer can open Curation for it
-  if (_activeTab === "conventions" && tab === "preparer") {
-    try {
-      const { getSelectedDocId } = await import("./conventionsModule.ts");
-      const docId = getSelectedDocId();
-      if (docId !== null) {
-        sessionStorage.setItem("agrafes:prep-curation-doc", JSON.stringify({ doc_id: docId }));
-      } else {
-        sessionStorage.removeItem("agrafes:prep-curation-doc");
-      }
-    } catch { /* ignore */ }
-  }
-
-  try {
-    _tabBar.querySelectorAll<HTMLButtonElement>(".con-subtab").forEach(btn => {
-      btn.classList.toggle("active", btn.dataset.tab === tab);
-      btn.disabled = true;
-    });
-
-    _activeTab = tab;
-    try { localStorage.setItem(LS_SUBTAB, tab); } catch { /* ignore */ }
-
-    _disposeSubModule();
-    _subContainer.innerHTML = "";
-
-    await _mountTab(tab);
-  } finally {
-    _tabBar?.querySelectorAll<HTMLButtonElement>(".con-subtab").forEach(btn => {
-      btn.disabled = false;
-    });
-    _switching = false;
-  }
-}
-
-async function _mountTab(tab: ConstituerTab): Promise<void> {
-  if (!_subContainer || !_savedCtx) return;
-
-  if (tab === "preparer") {
-    const dbPath = _savedCtx.getDbPath();
-    if (dbPath) setCurrentDbPath(dbPath);
-    // tauri-prep's App._buildUI() mounts into document.getElementById("app").
-    // We use a wrapper div (not _subContainer itself) so that the CSS rule
-    // .con-subcontent > .con-prep-wrapper { height: 100% } targets only this
-    // single child. The prep app's own children (topbar, prep-shell) then
-    // render in normal block flow without inheriting height:100%.
-    const wrapper = document.createElement("div");
-    wrapper.className = "con-prep-wrapper";
-    wrapper.id = "app";
-    wrapper.style.paddingTop = "0"; // override index.html #app { padding-top: 44px }
-    _subContainer!.appendChild(wrapper);
-    _prepApp = new App();
-    await _prepApp.init();
-    _subDispose = () => {
-      if (_prepApp) {
-        try { _prepApp.dispose(); } catch { /* ignore */ }
-        _prepApp = null;
-      }
-      wrapper.removeAttribute("id");
-    };
-  } else {
-    const mod = await import("./conventionsModule.ts");
-    await mod.mount(_subContainer, _savedCtx);
-    _subDispose = () => { mod.dispose(); };
-  }
-}
-
-function _disposeSubModule(): void {
-  if (_subDispose) {
-    try { _subDispose(); } catch { /* ignore */ }
-    _subDispose = null;
-  }
+  _mounted = false;
 }

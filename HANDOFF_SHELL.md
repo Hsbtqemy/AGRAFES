@@ -80,9 +80,8 @@ tauri-shell/
 │   ├── styleRegistry.ts                  gestion CSS dynamique
 │   └── modules/
 │       ├── explorerModule.ts             onglet Explorer (concordancier + recherche)
-│       ├── constituerModule.ts           onglet Constituer (prep + conventions)
-│       ├── rechercheModule.ts            sub-tab Recherche grammaticale CQL
-│       └── conventionsModule.ts          sub-tab Conventions (rôles d'unités)
+│       ├── constituerModule.ts           onglet Constituer (monte directement l'app prep)
+│       └── rechercheModule.ts            sub-tab Recherche grammaticale CQL
 ├── src-tauri/                            BACKEND RUST
 │   ├── tauri.conf.json
 │   ├── tauri.windows.conf.json           NSIS perMachine override Windows
@@ -132,9 +131,10 @@ Entry point ~2200 lignes. Responsabilités :
 | Module | Sub-tabs | Source réutilisée |
 |--------|----------|-------------------|
 | [explorerModule.ts](tauri-shell/src/modules/explorerModule.ts) | concordancier · recherche | `tauri-app/initApp/disposeApp` |
-| [constituerModule.ts](tauri-shell/src/modules/constituerModule.ts) | preparer · conventions | `tauri-prep/App` (instanciée) + `conventionsModule` |
+| [constituerModule.ts](tauri-shell/src/modules/constituerModule.ts) | aucun (monte directement l'app prep) | `tauri-prep/App` (instanciée) |
 | [rechercheModule.ts](tauri-shell/src/modules/rechercheModule.ts) | CQL builder + KWIC + stats + collocations | `tauri-app/features/search.ts` (validator) |
-| [conventionsModule.ts](tauri-shell/src/modules/conventionsModule.ts) | CRUD conventions + `text_start_n` | sidecar `/conventions/*` |
+
+> Le sous-onglet « conventions » a été retiré post-v0.2.4 : la gestion des rôles d'unités est désormais l'onglet « Rôles » de la sous-vue Segmentation de prep (cf. CHANGELOG, HANDOFF_PREP Tier B #7). `conventionsModule.ts` a été supprimé.
 
 **Bridges** :
 - Event `agrafes:open-prep-token` : Explorer émet vers Shell pour ouvrir Prep sur un doc.

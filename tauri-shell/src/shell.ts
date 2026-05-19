@@ -1356,7 +1356,7 @@ async function _switchDb(path: string): Promise<void> {
   _addToMru(path);
   _updateDbBadge();
   // NOTE: _dbListeners broadcast is deferred until after _initDb so that
-  // rechercheModule / conventionsModule don't race against the shell's own
+  // rechercheModule / constituerModule don't race against the shell's own
   // ensureRunning call (two concurrent spawns would kill each other).
 
   try {
@@ -1849,7 +1849,7 @@ const RELEASES_URL = "https://github.com/Hsbtqemy/AGRAFES/releases";
 const GITHUB_API_LATEST = "https://api.github.com/repos/Hsbtqemy/AGRAFES/releases/latest";
 
 // App version: initialized from tauri.conf.json at runtime, fallback to build-time constant.
-let APP_VERSION = "0.2.5";
+let APP_VERSION = "0.2.6";
 (async () => {
   try {
     const { getVersion } = await import("@tauri-apps/api/app").catch(() => ({ getVersion: null as null }));

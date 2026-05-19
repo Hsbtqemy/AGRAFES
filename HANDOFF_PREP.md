@@ -42,13 +42,13 @@ Cette tension doit être nommée dans toute proposition de refonte.
 | Écran | LOC | Maturité | Pain points connus | Fréquence usage |
 |-------|-----|----------|---------------------|-----------------|
 | **ImportScreen** | 1598 | Mature | DOCX en tableaux 2-colonnes non lus (workaround utilisateur). Family dialog v0.1.41 enfin symétrique (parent mode). | Élevée — point d'entrée |
-| **SegmentationView** | 2412 | Mature, en évolution | Filtres anomalies récents (segments courts + ponct. orpheline). Pas d'undo merge/split. | Élevée |
+| **SegmentationView** | 2667 | Mature, en évolution | Filtres anomalies récents (segments courts + ponct. orpheline). Pas d'undo merge/split. Onglet « Rôles » ajouté post-v0.2.5 (conventions fusionnées depuis le Shell — cf. Tier B #7) : orchestration DOM déléguée à `components/RolesPane.ts`, logique pure dans `lib/conventionsRoles.ts` + `lib/conventionsUnitList.ts` (+28 tests). | Élevée |
 | **CurationView** | **3651** | Mature, décomposée en lib/* (post-v0.1.41) | Le bug `$1` (v0.1.40), le clipping layout (v0.1.40), le confirm bar mal positionné (v0.1.40) — tous tombés en cascade. La décomposition en 9 modules purs sous `lib/curation*.ts` (Phase 1-5e, ~280 tests Vitest) a réduit la fragilité par taille. | Élevée |
 | **AlignPanel** | 1971 | Mature | Famille review mode rodé. Collisions encore complexes à résoudre pour un débutant. | Moyenne |
 | **AnnotationView** | 818 | Mature, **efficace** | Étape finale avant passage au concordancier. Travail = relecture/vérification rapide pour clore proprement. Le temps passé court y est un **signal positif** (workflow efficient), pas un manque d'engagement. Toutes les frictions du pipeline sont en amont (Import/Segmentation/Curation). | Faible en durée, indispensable en finalité |
 | **MetadataScreen** | 3106 | Mature | Tous les `confirm()` natifs remplacés par modalConfirm v0.1.41. Bulk update et batch role rodés. | Moyenne |
 | **ExportsScreen** | 1723 | Mature, peu touchée | TEI/TMX/CSV/SKE/JSONL stables. QA gate optionnel intégré. | Moyenne (en fin de pipeline) |
-| **ActionsScreen** | 917 | Hub/dispatcher post-refactor | A perdu sa logique métier (extraite vers CurationView, SegmentationView, AnnotationView). Reste utile pour reindex FTS. | Faible |
+| **ActionsScreen** | 969 | Hub/dispatcher post-refactor | A perdu sa logique métier (extraite vers CurationView, SegmentationView, AnnotationView). Reste utile pour reindex FTS. Expose `segFocusDocRoles` (navigation entrante vers l'onglet « Rôles »). | Faible |
 
 ### Le cas CurationView
 
@@ -123,7 +123,7 @@ Durée : 10-15 min. Le piège est qu'on **oublie de communiquer** aux personnes 
 - **Doc avec 0 line units** → 100% d'abandon avant v0.1.41 (le message d'erreur ne pointait nulle part). Depuis v0.1.41 : redirection vers Import, ~70% de récupération espérée.
 - **Curation `$1`** → v0.1.40 critical bug, polluait silencieusement `text_norm`. Pré-fix : zéro abandon car invisible. Post-fix : aucune occurrence.
 - **Family dialog asymétrique** (avant v0.1.41) → l'utilisateur qui importait l'original APRÈS la traduction ne pouvait pas créer la famille au moment de l'import → devait passer par MetadataScreen. Friction modérée mais non-bloquante.
-- **Conventions/rôles d'unités** → la moitié des utilisateurs ne sait pas que ça existe. Visibilité dans Shell tab Conventions, mais pas mis en avant.
+- **Conventions/rôles d'unités** → la moitié des utilisateurs ne savait pas que ça existe (cause racine = placement hors-flux dans le Shell). Depuis post-v0.2.5 : fusionné dans la sous-vue Segmentation comme onglet « Rôles » — visibilité dans le flux de travail (cf. Tier B #7 résolu).
 
 ---
 
@@ -350,7 +350,7 @@ Justification : éviter les faux positifs (deux docs avec le même radical mais 
 
 ### Tier B — Annoyances
 
-7. **Conventions/rôles d'unités sous-utilisés**. Beaucoup d'utilisateurs ne savent pas que c'est faisable. Manque d'introduction.
+7. ~~**Conventions/rôles d'unités sous-utilisés**~~ ✅ **Résolu post-v0.2.5**. Cause racine identifiée (mai 2026) : pas un manque d'introduction, un **problème de placement** — les conventions vivaient dans un module Shell séparé (sous-onglet « conventions » de `constituerModule`), seul élément du workflow hors du flux prep. Correctif livré : le module Shell `conventionsModule` a été fusionné dans la sous-vue Segmentation comme onglet de contenu « Rôles » (barre `prep-seg-content-tab`), document partagé avec le reste de la sous-vue. Un champ de recherche filtre les unités candidates du doc courant (insensible casse/accents) — adresse le second frein (repérage manuel). Le sous-onglet Shell a été supprimé (`constituer` monte directement l'app prep). Cf. [docs/TICKET_CONVENTIONS_IN_SEGMENTATION.md](docs/TICKET_CONVENTIONS_IN_SEGMENTATION.md).
 
 8. **Pas de batch undo / rollback**. Si on apply une mauvaise curation sur 1000 unités, le seul retour en arrière est manual ou réimport.
 
@@ -374,6 +374,7 @@ Reconstitué depuis [docs/BACKLOG_PREP_AUDIT.md](docs/BACKLOG_PREP_AUDIT.md), [d
 
 ### Issues actives (P1-P2)
 
+- ~~**Conventions dans la Segmentation**~~ ✅ **Fait post-v0.2.5** ([docs/TICKET_CONVENTIONS_IN_SEGMENTATION.md](docs/TICKET_CONVENTIONS_IN_SEGMENTATION.md)) : module Shell `conventionsModule` fusionné dans la sous-vue Segmentation (onglet « Rôles »), champ de recherche filtrant les unités candidates du doc courant. Logique pure extraite dans `lib/conventionsRoles.ts` + `lib/conventionsUnitList.ts` (28 tests Vitest), orchestration DOM dans `components/RolesPane.ts` — SegmentationView ne gagne que +255 lignes. Sous-onglet Shell supprimé. Adresse la friction Tier B #7.
 - **Soak Mode A undo** (en cours, fenêtre 2026-04-30 → 2026-05-14) : 3 events télémétrie instrumentés (eligible_view, unavailable_view, stage_returned), script d'analyse [scripts/analyze_undo_soak.py](scripts/analyze_undo_soak.py). Protocole et arbre de décision : [docs/SOAK_MODE_A.md](docs/SOAK_MODE_A.md). Décision Mode B / élargir / soaker plus à prendre une fois le rapport disponible.
 - ~~**F4 — Index FTS arbitrage**~~ ✅ **Fait post-v0.2.4** : la vue Documents (MetadataScreen) est le point d'arbitrage unique — bouton d'en-tête « Mettre à jour l'index » avec état global agrégé, chip « ⚠ Index » cliquable, et réglage opt-in « Auto après curation » (réindexation auto non bloquante). Helper pur `lib/prepIndexStatus.ts`, 6 tests Vitest. Les deux branches du « pas tranché » ont été retenues ensemble (bouton à état *et* automatisation opt-in).
 - ~~**F5 — Validation regex au boot du sidecar**~~ ✅ **Fait post-v0.1.42** : nouveau module `multicorpus_engine/regex_boot_audit.py` (compile-only, jamais raise) appelé après `sidecar_started` dans `CorpusServer.start`. Log WARN avec status (`POSIX_USAGE`/`RE_ONLY_FAIL`/`REGEX_ONLY_FAIL`/`BOTH_FAIL`) + pattern + flags si patterns custom flagués. 19 tests pytest. La version full (sample diff) reste `scripts/validate_regex_migration.py` pour audits pré-migration.

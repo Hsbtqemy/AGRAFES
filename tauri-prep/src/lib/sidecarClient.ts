@@ -1967,6 +1967,8 @@ export interface ConventionRole {
   color: string | null;
   icon: string | null;
   sort_order: number;
+  /** "structure" (titre, intertitre…) vs "text" (vers, dialogue…). Sidecar default = "text". */
+  category?: "structure" | "text";
 }
 
 /** Returns all convention roles defined for this corpus, ordered by sort_order. */
@@ -1978,17 +1980,17 @@ export async function listConventions(conn: Conn): Promise<ConventionRole[]> {
 /** Create a new convention role. Throws on name conflict (409). */
 export async function createConvention(
   conn: Conn,
-  options: { name: string; label: string; color?: string; icon?: string; sort_order?: number },
+  options: { name: string; label: string; color?: string | null; icon?: string | null; sort_order?: number; category?: "structure" | "text" },
 ): Promise<ConventionRole> {
   const res = await conn.post("/conventions", options) as { convention: ConventionRole };
   return res.convention;
 }
 
-/** Update label, color, icon or sort_order of an existing convention. */
+/** Update label, color, icon, sort_order or category of an existing convention. */
 export async function updateConvention(
   conn: Conn,
   name: string,
-  patch: { label?: string; color?: string; icon?: string; sort_order?: number },
+  patch: { label?: string; color?: string | null; icon?: string | null; sort_order?: number; category?: "structure" | "text" },
 ): Promise<ConventionRole> {
   const res = await conn.put(`/conventions/${encodeURIComponent(name)}`, patch) as { convention: ConventionRole };
   return res.convention;
@@ -2032,6 +2034,30 @@ export async function setTextStart(
     doc_id: docId,
     text_start_n: textStartN,
   }) as Promise<{ updated: number }>;
+}
+
+/**
+ * Assigns (or clears) a convention role on units identified by primary key.
+ * Pass roleName=null to clear the role. Used by the Roles tab of SegmentationView.
+ */
+export async function bulkSetUnitRole(
+  conn: Conn,
+  unitIds: number[],
+  roleName: string | null,
+): Promise<{ updated: number }> {
+  return conn.post("/units/bulk_set_role", {
+    unit_ids: unitIds,
+    role_name: roleName ?? "",
+  }) as Promise<{ updated: number }>;
+}
+
+/** Alias of setTextStart kept for naming parity with the ported conventions module. */
+export async function setDocumentTextStart(
+  conn: Conn,
+  docId: number,
+  textStartN: number | null,
+): Promise<{ updated: number }> {
+  return setTextStart(conn, docId, textStartN);
 }
 
 export async function getDocumentPreview(

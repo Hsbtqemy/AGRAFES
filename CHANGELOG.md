@@ -7,6 +7,19 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+---
+
+## [0.2.6] - 2026-05-19
+
+### Added
+
+- **prep / conventions fusionnées dans la Segmentation (onglet « Rôles »)** : le module Shell `conventionsModule` (gestion des rôles d'unités — Titre, Intertitre, vers, dialogue… — et de la borne paratexte/texte `text_start_n`) a été retiré du Shell et fusionné dans la sous-vue Segmentation de prep comme un nouvel onglet de contenu « Rôles » (barre `prep-seg-content-tab`, après « Structure »). L'onglet réutilise le document déjà sélectionné dans Segmentation — pas de second sélecteur. Le catalogue de rôles (CRUD créer/éditer/supprimer, couleurs, icônes — action rare) passe dans un panneau repliable fermé par défaut ; l'assignation de rôle (action fréquente) est la surface principale. Adresse la friction HANDOFF_PREP Tier B #7 : les conventions étaient sous-utilisées par **problème de placement** (seul élément du workflow hors du flux prep). La logique pure est extraite dans `lib/conventionsRoles.ts` (catalogue : défauts Structure, partition par catégorie, validation du formulaire) et `lib/conventionsUnitList.ts` (recherche/filtrage, paratexte, badges, compteurs) — 28 tests Vitest ; l'orchestration DOM est isolée dans `components/RolesPane.ts`, SegmentationView ne gagnant que +255 lignes.
+- **prep / recherche d'unités candidates** : l'onglet « Rôles » offre un champ de recherche qui filtre la liste d'unités du document courant sur correspondance textuelle, insensible à la casse et aux accents (helper pur `foldText` + `filterUnits`). Indicateur « N/M unités · K avec rôle ». L'assignation reste manuelle (la recherche ne fait que réduire la liste aux candidats) — pas d'assignation en masse automatique, pas de recherche cross-corpus en V1.
+
+### Changed
+
+- **shell / `constituer` monte directement l'app prep** : avec le retrait du sous-onglet « conventions », « préparer » devient l'unique contenu de `constituerModule` — la barre de sous-onglets (38 px) a été supprimée et l'app prep est montée directement. Le `calc()` de hauteur de `.prep-seg-split-layout` est ajusté en conséquence. Les deep-links/navigation entrante qui ciblaient les conventions ouvrent désormais Actions → Segmentation → onglet « Rôles » (`ActionsScreen.segFocusDocRoles`).
+
 ### Fixed
 
 - **prep / a11y — structure tabulaire de l'audit d'alignement (E-2)** : la liste des liens d'alignement à réviser (AlignPanel) expose désormais une structure tabulaire ARIA complète et valide — `role="table"` sur le conteneur, `role="row"` sur les lignes (déjà présent), `role="cell"` sur chaque cellule, y compris les picker-rows de reciblage rendues en mode ligne de table. Choix de `role="table"` plutôt que `role="grid"` : `grid` impliquerait le pattern de navigation clavier grille (flèches cellule à cellule) non implémenté ; `table` expose la structure aux lecteurs d'écran sans promettre une interaction absente. Clôt le dernier point ouvert du chantier E-2 (accessibilité).

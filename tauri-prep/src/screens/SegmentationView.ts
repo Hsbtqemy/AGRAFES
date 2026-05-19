@@ -36,6 +36,7 @@ import {
 } from "../lib/sidecarClient.ts";
 import type { StructureSection, StructureDiffSection, PropagateSection } from "../lib/sidecarClient.ts";
 import type { JobCenter } from "../components/JobCenter.ts";
+import { RolesPane } from "../components/RolesPane.ts";
 import { inlineConfirm } from "../lib/inlineConfirm.ts";
 import { computeNextSteps, type PrepNavTarget } from "../lib/prepNextStep.ts";
 import { NextStepBanner } from "../components/NextStepBanner.ts";
@@ -108,6 +109,8 @@ export class SegmentationView {
   private _segOrphanFilter = false;
   private _segDocListSort: "id" | "alpha" = "alpha";
   private _conventions: ConventionRole[] = [];
+  /** Onglet « Rôles » — orchestration DOM déléguée (cf. RolesPane + lib/conventions*). */
+  private _rolesPane: RolesPane | null = null;
   private _segMarkersDetected: DetectMarkersResponse | null = null;
   private _segSplitMode: "sentences" | "markers" = "sentences";
   private _segPreviewTimer: ReturnType<typeof setTimeout> | null = null;
@@ -178,6 +181,8 @@ export class SegmentationView {
     }
     this._unbindLongtextScrollSync();
     this._unbindSegPreviewScrollSync();
+    this._rolesPane?.dispose();
+    this._rolesPane = null;
     this._root = null;
   }
 
@@ -207,6 +212,22 @@ export class SegmentationView {
     }
     const rightEl = this._q<HTMLElement>("#act-seg-split-right");
     if (rightEl) void this._loadSegRightPanel(docId, rightEl);
+  }
+
+  /**
+   * Ouvre l'onglet « Rôles » du panneau droit. Utilisé par la navigation
+   * entrante (ex. deep-link Conventions, désormais fusionné dans Segmentation).
+   * Résilient au chargement async : poll sur le bouton d'onglet.
+   */
+  async focusRolesTab(): Promise<void> {
+    const start = Date.now();
+    let rolesTab: HTMLButtonElement | null = null;
+    while (Date.now() - start < 3000) {
+      rolesTab = this._q<HTMLButtonElement>('.prep-seg-content-tab[data-pane="roles"]');
+      if (rolesTab) break;
+      await new Promise(r => setTimeout(r, 60));
+    }
+    if (rolesTab && !rolesTab.classList.contains("active")) rolesTab.click();
   }
 
   /**
@@ -493,6 +514,10 @@ export class SegmentationView {
     this._matcherPendingIdx = null;
     this._matcherDocId = null;
     this._matcherRefDocId = null;
+    // L'onglet Rôles est recréé avec le panneau droit (rightEl.innerHTML est
+    // remplacé) — le RolesPane précédent pointe vers un nœud détaché.
+    this._rolesPane?.dispose();
+    this._rolesPane = null;
 
     // Load conventions for role badges (best-effort)
     const conn = this._getConn();
@@ -657,6 +682,10 @@ export class SegmentationView {
                 title="Comparer la structure (intertitres) avec le document de référence">
                 &#9783;&#160;Structure
               </button>
+              <button class="prep-seg-content-tab" role="tab" data-pane="roles"
+                title="Assigner des rôles d'unité (conventions) et chercher des unités candidates">
+                &#127991;&#160;R&#244;les
+              </button>
             </div>
             <span id="act-seg-prev-stats" class="prep-seg-preview-stats"></span>
             <button type="button" class="btn btn-ghost btn-sm" id="act-seg-prev-refresh"
@@ -693,6 +722,9 @@ export class SegmentationView {
             <div id="act-seg-structure-content">
               <p class="empty-hint">S&#233;lectionnez un document de r&#233;f&#233;rence dans &#171;&#160;Calibrer sur&#160;&#187; puis ouvrez cet onglet.</p>
             </div>
+          </div>
+          <div id="act-seg-pane-roles" style="display:none" role="tabpanel">
+            <div id="act-seg-roles-content"></div>
           </div>
         </div>
         </div><!-- /.prep-seg-right-scroll -->
@@ -775,7 +807,7 @@ export class SegmentationView {
     // Wire content pane tabs (Aperçu / Enregistré / Diff)
     rightEl.querySelectorAll<HTMLButtonElement>(".prep-seg-content-tab").forEach(btn => {
       btn.addEventListener("click", () => {
-        const pane = btn.dataset.pane as "preview" | "saved" | "diff" | "structure";
+        const pane = btn.dataset.pane as "preview" | "saved" | "diff" | "structure" | "roles";
         this._switchContentPane(pane, docId);
       });
     });
@@ -993,11 +1025,12 @@ export class SegmentationView {
     }
   }
 
-  private _switchContentPane(pane: "preview" | "saved" | "diff" | "structure", docId?: number): void {
+  private _switchContentPane(pane: "preview" | "saved" | "diff" | "structure" | "roles", docId?: number): void {
     const previewPane   = this._q<HTMLElement>("#act-seg-pane-preview");
     const savedPane     = this._q<HTMLElement>("#act-seg-pane-saved");
     const diffPane      = this._q<HTMLElement>("#act-seg-pane-diff");
     const structurePane = this._q<HTMLElement>("#act-seg-pane-structure");
+    const rolesPane     = this._q<HTMLElement>("#act-seg-pane-roles");
     const refreshBtn    = this._q<HTMLElement>("#act-seg-prev-refresh");
     const statsEl       = this._q<HTMLElement>("#act-seg-prev-stats");
     if (!previewPane || !savedPane) return;
@@ -1005,6 +1038,7 @@ export class SegmentationView {
     savedPane.style.display     = pane === "saved"     ? "" : "none";
     if (diffPane)      diffPane.style.display      = pane === "diff"      ? "" : "none";
     if (structurePane) structurePane.style.display = pane === "structure" ? "" : "none";
+    if (rolesPane)     rolesPane.style.display     = pane === "roles"     ? "" : "none";
     if (refreshBtn) refreshBtn.style.display = pane === "preview" ? "" : "none";
     if (statsEl)    statsEl.style.display    = pane === "preview" ? "" : "none";
     this._root?.querySelectorAll<HTMLButtonElement>(".prep-seg-content-tab").forEach(t => {
@@ -1012,6 +1046,26 @@ export class SegmentationView {
     });
     if (pane === "diff" && docId != null) void this._renderSegDiff(docId);
     if (pane === "structure" && docId != null) void this._renderStructureDiff(docId);
+    if (pane === "roles" && docId != null) void this._renderRolesPane(docId);
+  }
+
+  /**
+   * Onglet « Rôles » — délègue l'orchestration DOM à RolesPane (logique pure
+   * dans lib/conventions*). Le document est partagé avec le reste de la
+   * sous-vue Segmentation : pas de second sélecteur de document.
+   */
+  private async _renderRolesPane(docId: number): Promise<void> {
+    const host = this._q<HTMLElement>("#act-seg-roles-content");
+    if (!host) return;
+    if (!this._rolesPane) {
+      this._rolesPane = new RolesPane(
+        host,
+        () => this._getConn(),
+        (msg) => this._cb.toast?.(msg, true),
+      );
+    }
+    const doc = this._getDocs().find(d => d.doc_id === docId);
+    await this._rolesPane.setDocument(docId, doc?.text_start_n ?? null);
   }
 
   private async _renderSegDiff(docId: number): Promise<void> {

@@ -191,6 +191,19 @@ export class ActionsScreen {
     await seg.focusUnit(unitN);
   }
 
+  /**
+   * Ouvre la sub-view Segmentation sur le doc demandé et bascule sur l'onglet
+   * « Rôles ». Remplace l'ancien sous-onglet Conventions du Shell, désormais
+   * fusionné dans Segmentation.
+   */
+  async segFocusDocRoles(docId: number): Promise<void> {
+    this.setSubView("segmentation");
+    const seg = this._segmentationView;
+    if (!seg) return;
+    seg.focusDoc(docId);
+    await seg.focusRolesTab();
+  }
+
   private _loadSubViewPref(): void {
     try {
       const saved = localStorage.getItem(ActionsScreen.LS_ACTIVE_SUB) as SubView | null;

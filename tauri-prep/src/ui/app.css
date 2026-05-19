@@ -6326,3 +6326,399 @@ tr[data-len].prep-seg-row-context .prep-seg-cell-len {
   color: var(--color-primary, #0f766e);
   border-color: var(--color-primary, #0f766e);
 }
+
+/* ===========================================================================
+   Onglet "Roles" de SegmentationView - conventions d'unites.
+   Portage du module Shell conventionsModule.ts (CSS conv-* -> prep-conv-*).
+   =========================================================================== */
+
+.prep-conv-root {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.88rem;
+  color: #212529;
+}
+
+/* -- Panneau catalogue repliable (surface secondaire) -- */
+.prep-conv-catalogue {
+  border: 1px solid #dee2e0;
+  border-radius: 8px;
+  background: #f3f8f7;
+  margin-bottom: 0.85rem;
+  overflow: hidden;
+}
+.prep-conv-catalogue-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.55rem 0.85rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #0c4a46;
+  text-align: left;
+}
+.prep-conv-catalogue-head:hover { background: rgba(0,0,0,0.04); }
+.prep-conv-catalogue-caret { transition: transform 0.15s; font-size: 0.75rem; }
+.prep-conv-catalogue[data-open="true"] .prep-conv-catalogue-caret { transform: rotate(90deg); }
+.prep-conv-catalogue-hint {
+  margin-left: auto;
+  font-size: 0.74rem;
+  font-weight: 400;
+  color: #6c757d;
+}
+.prep-conv-catalogue-body { display: none; padding: 0.25rem 0 0.5rem; }
+.prep-conv-catalogue[data-open="true"] .prep-conv-catalogue-body { display: block; }
+
+.prep-conv-cat-cols { display: flex; gap: 0.75rem; flex-wrap: wrap; padding: 0 0.5rem; }
+.prep-conv-cat-col { flex: 1; min-width: 220px; }
+
+.prep-conv-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.4rem 0.5rem 0.3rem;
+  font-weight: 700;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #6c757d;
+}
+.prep-conv-section-header-badge {
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: #adb5bd;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.prep-conv-role-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  cursor: pointer;
+  transition: background 0.12s;
+  border-left: 3px solid transparent;
+  border-radius: 4px;
+}
+.prep-conv-role-item:hover { background: rgba(0,0,0,0.04); }
+.prep-conv-role-item.active {
+  background: #e8f5f3;
+  border-left-color: #0c4a46;
+}
+.prep-conv-role-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  border: 1px solid rgba(0,0,0,0.15);
+}
+.prep-conv-role-icon { font-size: 0.95rem; width: 18px; text-align: center; }
+.prep-conv-role-label { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.prep-conv-role-name { color: #adb5bd; font-size: 0.72rem; font-family: monospace; }
+.prep-conv-role-actions { display: none; gap: 0.2rem; }
+.prep-conv-role-item:hover .prep-conv-role-actions,
+.prep-conv-role-item.active .prep-conv-role-actions { display: flex; }
+.prep-conv-btn-icon {
+  background: none;
+  border: none;
+  color: #6c757d;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-size: 0.75rem;
+  line-height: 1;
+}
+.prep-conv-btn-icon:hover { background: rgba(0,0,0,0.08); color: #212529; }
+.prep-conv-btn-icon.danger:hover { background: rgba(220,53,69,0.1); color: #dc3545; }
+
+.prep-conv-role-item--assignable { cursor: pointer; }
+.prep-conv-role-item--assignable:hover {
+  background: #e8f5f3 !important;
+  border-left-color: #0c4a46 !important;
+}
+.prep-conv-role-item--assignable:hover::after {
+  content: "\2190 assigner";
+  font-size: 0.68rem;
+  color: #0c4a46;
+  margin-left: auto;
+  opacity: 0.7;
+  font-style: italic;
+}
+
+.prep-conv-role-item--dormant { opacity: 0.45; cursor: default; }
+.prep-conv-role-item--dormant:hover { background: none; opacity: 0.6; }
+.prep-conv-dormant-btn {
+  font-size: 0.7rem;
+  padding: 1px 7px;
+  border-radius: 10px;
+  border: 1px dashed #9ca3af;
+  background: transparent;
+  color: #6c757d;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.prep-conv-dormant-btn:hover { background: #e8f5f3; border-color: #0c4a46; color: #0c4a46; }
+
+.prep-conv-add-btn {
+  margin: 0.4rem 0.5rem;
+  padding: 0.34rem 0.65rem;
+  background: #e8f5f3;
+  border: 1px dashed #0c4a46;
+  border-radius: 6px;
+  color: #0c4a46;
+  cursor: pointer;
+  font-size: 0.76rem;
+  text-align: center;
+  transition: background 0.12s;
+}
+.prep-conv-add-btn:hover { background: #d5eeeb; }
+
+/* -- Toolbar : recherche de candidats -- */
+.prep-conv-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+.prep-conv-search {
+  flex: 1;
+  min-width: 200px;
+  max-width: 420px;
+  background: #fff;
+  border: 1px solid #ced4da;
+  border-radius: 5px;
+  color: #212529;
+  padding: 0.34rem 0.6rem;
+  font-size: 0.84rem;
+}
+.prep-conv-search:focus { outline: 2px solid #0c4a46; border-color: transparent; }
+.prep-conv-search-stats { color: #6c757d; font-size: 0.78rem; }
+
+/* -- Liste d'unites -- */
+.prep-conv-assign-hint {
+  display: none;
+  align-items: center;
+  padding: 0.4rem 0.65rem;
+  margin-bottom: 0.4rem;
+  background: #e8f5f3;
+  border: 1px solid #b6e0da;
+  border-radius: 5px;
+  font-size: 0.8rem;
+  color: #0c4a46;
+  font-weight: 500;
+}
+.prep-conv-assign-hint.visible { display: flex; }
+.prep-conv-units-area {
+  border: 1px solid #dee2e0;
+  border-radius: 6px;
+  background: #fff;
+  padding: 0.4rem 0.5rem;
+  max-height: 460px;
+  overflow-y: auto;
+}
+.prep-conv-unit-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.32rem 0.5rem;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background 0.1s;
+  border-left: 3px solid transparent;
+}
+.prep-conv-unit-row:hover { background: #f3f8f7; }
+.prep-conv-unit-row.selected { background: #e8f5f3; border-left-color: #0c4a46; }
+.prep-conv-unit-row.paratext { opacity: 0.55; }
+.prep-conv-unit-n {
+  color: #adb5bd;
+  font-size: 0.75rem;
+  font-family: monospace;
+  min-width: 32px;
+  text-align: right;
+  padding-top: 2px;
+  flex-shrink: 0;
+}
+.prep-conv-unit-text {
+  flex: 1;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.prep-conv-unit-badge {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  padding: 1px 6px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  margin-top: 2px;
+}
+
+/* -- Barre d'action en bas -- */
+.prep-conv-action-bar {
+  display: none;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.65rem;
+  margin-top: 0.5rem;
+  border: 1px solid #dee2e0;
+  border-radius: 6px;
+  background: #f3f8f7;
+  flex-wrap: wrap;
+}
+.prep-conv-action-bar.visible { display: flex; }
+.prep-conv-action-count { color: #6c757d; font-size: 0.82rem; }
+.prep-conv-role-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.25rem 0.65rem;
+  border-radius: 12px;
+  border: 1px solid #ced4da;
+  background: #fff;
+  cursor: pointer;
+  font-size: 0.78rem;
+  transition: background 0.12s;
+  color: #212529;
+}
+.prep-conv-role-pill:hover { background: #e9ecef; }
+.prep-conv-role-pill.remove {
+  background: #fff5f5;
+  border-color: #f5c2c7;
+  color: #dc3545;
+}
+.prep-conv-role-pill.remove:hover { background: #f8d7da; }
+.prep-conv-text-start-btn {
+  margin-left: auto;
+  padding: 0.25rem 0.65rem;
+  background: #f3f0ff;
+  border: 1px solid #d0bfff;
+  border-radius: 5px;
+  color: #6f42c1;
+  cursor: pointer;
+  font-size: 0.78rem;
+}
+.prep-conv-text-start-btn:hover { background: #e9e3ff; }
+
+/* -- Dialog modal (catalogue CRUD) -- */
+.prep-conv-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.prep-conv-dialog {
+  background: #fff;
+  border: 1px solid #dee2e6;
+  border-radius: 10px;
+  padding: 1.5rem;
+  width: 380px;
+  max-width: 95vw;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+}
+.prep-conv-dialog h3 { margin: 0 0 1rem; font-size: 1rem; color: #212529; }
+.prep-conv-field { margin-bottom: 0.85rem; }
+.prep-conv-field label { display: block; margin-bottom: 0.3rem; color: #6c757d; font-size: 0.78rem; }
+.prep-conv-field input[type="text"],
+.prep-conv-field input[type="number"] {
+  width: 100%;
+  box-sizing: border-box;
+  background: #fff;
+  border: 1px solid #ced4da;
+  border-radius: 5px;
+  color: #212529;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.85rem;
+}
+.prep-conv-field input[type="text"]:focus,
+.prep-conv-field input[type="number"]:focus { outline: 2px solid #0c4a46; border-color: transparent; }
+.prep-conv-color-row { display: flex; flex-direction: column; gap: 0.5rem; }
+.prep-conv-color-presets { display: flex; flex-wrap: wrap; gap: 5px; }
+.prep-conv-color-preset {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  transition: transform 0.1s, border-color 0.1s;
+}
+.prep-conv-color-preset:hover { transform: scale(1.15); }
+.prep-conv-color-preset.selected { border-color: #0c4a46; box-shadow: 0 0 0 1px #fff inset; }
+.prep-conv-color-custom { display: flex; align-items: center; gap: 0.5rem; }
+.prep-conv-color-picker-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 6px;
+  border: 2px solid #dee2e6;
+  cursor: pointer;
+  padding: 2px;
+  flex-shrink: 0;
+  background: none;
+  overflow: hidden;
+  position: relative;
+}
+.prep-conv-color-picker-btn input[type="color"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  border: none;
+  padding: 0;
+}
+.prep-conv-color-swatch-preview {
+  width: 100%;
+  height: 100%;
+  border-radius: 4px;
+  pointer-events: none;
+}
+.prep-conv-color-hex {
+  flex: 1;
+  box-sizing: border-box;
+  background: #fff;
+  border: 1px solid #ced4da;
+  border-radius: 5px;
+  color: #212529;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.85rem;
+  font-family: monospace;
+}
+.prep-conv-color-hex:focus { outline: 2px solid #0c4a46; border-color: transparent; }
+.prep-conv-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+}
+.prep-conv-dialog-btn {
+  padding: 0.4rem 1rem;
+  border-radius: 5px;
+  border: none;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+.prep-conv-dialog-btn.primary { background: #0c4a46; color: #fff; }
+.prep-conv-dialog-btn.primary:hover { background: #0a3d3a; }
+.prep-conv-dialog-btn.secondary { background: #e9ecef; color: #212529; }
+.prep-conv-dialog-btn.secondary:hover { background: #dee2e6; }
+
+/* -- Etats vides / erreur -- */
+.prep-conv-empty {
+  padding: 2rem 1rem;
+  text-align: center;
+  color: #6c757d;
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+.prep-conv-error { color: #dc3545; font-size: 0.8rem; margin-top: 0.5rem; }
