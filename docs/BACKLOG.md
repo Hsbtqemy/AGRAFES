@@ -23,7 +23,7 @@ Last updated: 2026-04-20 (audit sécurité ✅, feat #39 segments adjacents ✅,
 | D-1 | Persister les Presets projet en base de données | Moyenne | M | ✅ done (`corpus_info.meta.presets`, `app.ts` `_loadPresetsFromDb`/`_savePresetsToDb`) |
 | D-2 | Preview CoNLL-U via sidecar (`POST /import/preview`) | Basse | M | ✅ done |
 | E-1 | Namespacing CSS : préfixer classes de `app.css` | Basse | L | ✅ done |
-| E-2 | Focus management et navigation clavier (a11y) | Moyenne | M | ⚠️ quasi-fait (focus restitution, nav clavier diff-list, `aria-selected`, toasts `aria-live`). Reste l'item 4 « `role="grid"` sur l'audit alignement » : nécessite une vraie passe grille — voir note BACKLOG_PREP_AUDIT |
+| E-2 | Focus management et navigation clavier (a11y) | Moyenne | M | ✅ done (focus restitution, nav clavier diff-list, `aria-selected`, toasts `aria-live`, structure `role="table"`/`row`/`cell` sur l'audit alignement) |
 
 ---
 

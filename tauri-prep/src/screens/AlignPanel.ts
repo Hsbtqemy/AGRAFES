@@ -1358,6 +1358,10 @@ export class AlignPanel {
     const visible = this._visibleLinks();
 
     if (visible.length === 0) {
+      // État vide : contenu non tabulaire (message) — retirer le rôle table
+      // posé par un rendu précédent.
+      body.removeAttribute("role");
+      body.removeAttribute("aria-label");
       if (this._auditLinks.length > 0) {
         body.innerHTML = `<p class="empty-hint">Aucun lien avec ce filtre. <button class="btn btn-ghost btn-sm" id="align-filter-clear-btn">Afficher tout</button></p>`;
         body.querySelector("#align-filter-clear-btn")?.addEventListener("click", () => {
@@ -1389,12 +1393,12 @@ export class AlignPanel {
       const isRetargetOpen = this._retargetActive?.linkId === lk.link_id && this._retargetActive.mode === "retarget";
       const isAddOpen = this._retargetActive?.pivotUnitId === lk.pivot_unit_id && this._retargetActive.mode === "add";
       rows.push(`<div class="prep-align-row ${statusCls(lk.status)}" data-link-id="${lk.link_id}" role="row">
-        <div class="prep-align-row-check">
+        <div class="prep-align-row-check" role="cell">
           <input type="checkbox" class="prep-align-row-cb" data-link-id="${lk.link_id}"${checked ? " checked" : ""} aria-label="Sélectionner lien ${lk.link_id}">
         </div>
-        <div class="prep-align-row-pivot">${extId}${_esc(lk.pivot_text ?? "")}</div>
-        <div class="prep-align-row-target">${_esc(lk.target_text ?? "")}</div>
-        <div class="prep-align-row-actions">
+        <div class="prep-align-row-pivot" role="cell">${extId}${_esc(lk.pivot_text ?? "")}</div>
+        <div class="prep-align-row-target" role="cell">${_esc(lk.target_text ?? "")}</div>
+        <div class="prep-align-row-actions" role="cell">
           <button class="prep-align-act-btn prep-align-act-accept${lk.status === "accepted" ? " active" : ""}" data-link-id="${lk.link_id}" title="Accepter">✓</button>
           <button class="prep-align-act-btn prep-align-act-reject${lk.status === "rejected" ? " active" : ""}" data-link-id="${lk.link_id}" title="Rejeter">✗</button>
           <button class="prep-align-act-btn prep-align-act-unreview${lk.status === null ? " active" : ""}" data-link-id="${lk.link_id}" title="Non révisé">?</button>
@@ -1404,13 +1408,21 @@ export class AlignPanel {
         </div>
       </div>`);
       if (isRetargetOpen) {
-        rows.push(this._pickerRowHtml(lk.pivot_unit_id, lk.link_id, lk.pivot_text ?? ""));
+        rows.push(this._pickerRowHtml(lk.pivot_unit_id, lk.link_id, lk.pivot_text ?? "", true));
       } else if (isAddOpen && !addPickerRendered.has(lk.pivot_unit_id)) {
-        rows.push(this._pickerRowHtml(lk.pivot_unit_id, null, lk.pivot_text ?? ""));
+        rows.push(this._pickerRowHtml(lk.pivot_unit_id, null, lk.pivot_text ?? "", true));
         addPickerRendered.add(lk.pivot_unit_id);
       }
     }
     body.innerHTML = rows.join("");
+
+    // a11y (E-2) : la liste de liens d'alignement est une table (structure
+    // tabulaire div-based). On expose `role="table"` — et non `role="grid"`,
+    // qui impliquerait le pattern de navigation clavier grille non implémenté.
+    // Les lignes portent `role="row"`, leurs cellules `role="cell"` ; les
+    // picker-rows rendues ici le sont en mode `asTableRow` (cf. _pickerRowHtml).
+    body.setAttribute("role", "table");
+    body.setAttribute("aria-label", "Liens d'alignement à réviser");
 
     const moreBtn = el.querySelector<HTMLElement>("#align-audit-more-btn");
     if (moreBtn) moreBtn.style.display = this._auditHasMore ? "" : "none";
@@ -1500,7 +1512,14 @@ export class AlignPanel {
   // ─── Retarget / create-link picker ──────────────────────────────────────────
 
   /** Generate the HTML for the inline candidate picker row. */
-  private _pickerRowHtml(pivotUnitId: number, linkId: number | null, pivotText: string): string {
+  /**
+   * @param asTableRow quand true, la picker-row est rendue comme une ligne de
+   *   table ARIA (`role="row"` + cellules `role="cell"`) — requis lorsqu'elle
+   *   est insérée directement dans le conteneur `role="table"` de l'audit
+   *   d'alignement (E-2). Ailleurs (vues famille `<table>` HTML native, liste
+   *   d'orphelins) elle reste un simple `<div>` sans rôle.
+   */
+  private _pickerRowHtml(pivotUnitId: number, linkId: number | null, pivotText: string, asTableRow = false): string {
     const candidates = this._retargetCandidates;
     // target_unit_ids already linked to this pivot (excluding the link being retargeted)
     // In family mode, only look within the active target doc's audit.
@@ -1530,12 +1549,14 @@ export class AlignPanel {
         </button>`;
       }).join("");
     }
-    return `<div class="prep-align-picker-row" data-picker-for="${pivotUnitId}">
-      <div class="prep-align-picker-header">
+    const rowRole = asTableRow ? ' role="row"' : "";
+    const cellRole = asTableRow ? ' role="cell"' : "";
+    return `<div class="prep-align-picker-row" data-picker-for="${pivotUnitId}"${rowRole}>
+      <div class="prep-align-picker-header"${cellRole}>
         <span>&#9997; Recibler : <em>${_esc(pivotText.slice(0, 60))}</em></span>
         <button class="btn btn-ghost btn-sm prep-align-picker-cancel" data-pivot-uid="${pivotUnitId}" title="Annuler">&#10005;</button>
       </div>
-      <div class="prep-align-picker-candidates" id="picker-cands-${pivotUnitId}">${content}</div>
+      <div class="prep-align-picker-candidates" id="picker-cands-${pivotUnitId}"${cellRole}>${content}</div>
     </div>`;
   }
 

@@ -7,6 +7,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **prep / a11y — structure tabulaire de l'audit d'alignement (E-2)** : la liste des liens d'alignement à réviser (AlignPanel) expose désormais une structure tabulaire ARIA complète et valide — `role="table"` sur le conteneur, `role="row"` sur les lignes (déjà présent), `role="cell"` sur chaque cellule, y compris les picker-rows de reciblage rendues en mode ligne de table. Choix de `role="table"` plutôt que `role="grid"` : `grid` impliquerait le pattern de navigation clavier grille (flèches cellule à cellule) non implémenté ; `table` expose la structure aux lecteurs d'écran sans promettre une interaction absente. Clôt le dernier point ouvert du chantier E-2 (accessibilité).
+
 ---
 
 ## [0.2.5] - 2026-05-18
