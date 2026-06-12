@@ -114,7 +114,7 @@ def cmd_import(args: argparse.Namespace) -> None:
     from .db.connection import get_connection
     from .db.migrations import apply_migrations
     from .runs import create_run, setup_run_logger, update_run_stats, utcnow_iso
-    from .importers.docx_numbered_lines import import_docx_numbered_lines
+    from .importers.dispatch import dispatch_import
 
     db_path = Path(args.db).resolve()
     if not db_path.exists():
@@ -144,97 +144,18 @@ def cmd_import(args: argparse.Namespace) -> None:
                 "created_at": utcnow_iso(),
             })
 
-        if args.mode == "docx_numbered_lines":
-            report = import_docx_numbered_lines(
-                conn=conn,
-                path=import_path,
-                language=args.language,
-                title=getattr(args, "title", None),
-                doc_role=getattr(args, "doc_role", "standalone"),
-                resource_type=getattr(args, "resource_type", None),
-                run_id=run_id,
-                run_logger=log,
-            )
-        elif args.mode == "txt_numbered_lines":
-            from .importers.txt import import_txt_numbered_lines
-            report = import_txt_numbered_lines(
-                conn=conn,
-                path=import_path,
-                language=args.language,
-                title=getattr(args, "title", None),
-                doc_role=getattr(args, "doc_role", "standalone"),
-                resource_type=getattr(args, "resource_type", None),
-                run_id=run_id,
-                run_logger=log,
-            )
-        elif args.mode == "docx_paragraphs":
-            from .importers.docx_paragraphs import import_docx_paragraphs
-            report = import_docx_paragraphs(
-                conn=conn,
-                path=import_path,
-                language=args.language,
-                title=getattr(args, "title", None),
-                doc_role=getattr(args, "doc_role", "standalone"),
-                resource_type=getattr(args, "resource_type", None),
-                run_id=run_id,
-                run_logger=log,
-            )
-        elif args.mode == "odt_paragraphs":
-            from .importers.odt_paragraphs import import_odt_paragraphs
-            report = import_odt_paragraphs(
-                conn=conn,
-                path=import_path,
-                language=args.language,
-                title=getattr(args, "title", None),
-                doc_role=getattr(args, "doc_role", "standalone"),
-                resource_type=getattr(args, "resource_type", None),
-                run_id=run_id,
-                run_logger=log,
-            )
-        elif args.mode == "odt_numbered_lines":
-            from .importers.odt_numbered_lines import import_odt_numbered_lines
-            report = import_odt_numbered_lines(
-                conn=conn,
-                path=import_path,
-                language=args.language,
-                title=getattr(args, "title", None),
-                doc_role=getattr(args, "doc_role", "standalone"),
-                resource_type=getattr(args, "resource_type", None),
-                run_id=run_id,
-                run_logger=log,
-            )
-        elif args.mode == "tei":
-            from .importers.tei_importer import import_tei
-            report = import_tei(
-                conn=conn,
-                path=import_path,
-                language=getattr(args, "language", None),
-                title=getattr(args, "title", None),
-                doc_role=getattr(args, "doc_role", "standalone"),
-                resource_type=getattr(args, "resource_type", None),
-                unit_element=getattr(args, "tei_unit", "p"),
-                run_id=run_id,
-                run_logger=log,
-            )
-        elif args.mode == "conllu":
-            from .importers.conllu import import_conllu
-            report = import_conllu(
-                conn=conn,
-                path=import_path,
-                language=args.language,
-                title=getattr(args, "title", None),
-                doc_role=getattr(args, "doc_role", "standalone"),
-                resource_type=getattr(args, "resource_type", None),
-                run_id=run_id,
-                run_logger=log,
-            )
-        else:
-            _err({
-                "run_id": run_id,
-                "error": f"Unknown import mode: {args.mode!r}",
-                "created_at": utcnow_iso(),
-            })
-            return
+        report = dispatch_import(
+            conn,
+            mode=args.mode,
+            path=import_path,
+            language=args.language,
+            title=getattr(args, "title", None),
+            doc_role=getattr(args, "doc_role", "standalone"),
+            resource_type=getattr(args, "resource_type", None),
+            tei_unit=getattr(args, "tei_unit", "p"),
+            run_id=run_id,
+            run_logger=log,
+        )
 
         stats = report.to_dict()
         update_run_stats(conn, run_id, stats)
@@ -255,6 +176,83 @@ def cmd_import(args: argparse.Namespace) -> None:
     except Exception as exc:
         log.error("Import failed: %s\n%s", exc, traceback.format_exc())
         _err({"run_id": run_id, "error": str(exc), "created_at": utcnow_iso()})
+
+
+# ---------------------------------------------------------------------------
+# import-remote (WebDAV / ShareDocs)
+# ---------------------------------------------------------------------------
+
+def _resolve_webdav_auth(explicit: str) -> tuple[str, dict]:
+    """Resolve the auth mode + Authorization header from --auth and env vars.
+
+    Credentials come only from the environment, never from the CLI line or the
+    db: ``AGRAFES_WEBDAV_TOKEN`` (bearer) or ``AGRAFES_WEBDAV_USER`` +
+    ``AGRAFES_WEBDAV_PASSWORD`` (basic). Raises ``ValueError`` on invalid combos.
+    """
+    import os
+
+    from .remote.webdav import build_auth_header
+
+    token = os.environ.get("AGRAFES_WEBDAV_TOKEN")
+    user = os.environ.get("AGRAFES_WEBDAV_USER")
+    password = os.environ.get("AGRAFES_WEBDAV_PASSWORD")
+
+    mode = explicit
+    if mode == "auto":
+        if token:
+            mode = "bearer"
+        elif user and password is not None:
+            mode = "basic"
+        else:
+            mode = "anonymous"
+    return mode, build_auth_header(mode, user=user, password=password, token=token)
+
+
+def cmd_import_remote(args: argparse.Namespace) -> None:
+    from .db.connection import get_connection
+    from .db.migrations import apply_migrations
+    from .runs import utcnow_iso
+    from .remote import webdav
+    from .remote.ingest import ingest_remote_folder
+
+    db_path = Path(args.db).resolve()
+    if not db_path.exists():
+        _err({"error": f"DB not found: {db_path}. Run init-project first.", "created_at": utcnow_iso()})
+
+    # Non-TEI modes require --language (mirrors `import`).
+    if args.mode != "tei" and not args.language:
+        _err({"error": "--language is required for this import mode", "created_at": utcnow_iso()})
+
+    try:
+        auth_mode, auth_header = _resolve_webdav_auth(args.auth)
+    except ValueError as exc:
+        _err({"error": str(exc), "created_at": utcnow_iso()})
+
+    conn = get_connection(db_path)
+    apply_migrations(conn)
+
+    try:
+        report = ingest_remote_folder(
+            conn,
+            db_path,
+            url=args.url,
+            mode=args.mode,
+            language=args.language,
+            include=args.include,
+            doc_role=args.doc_role,
+            resource_type=args.resource_type,
+            auth_header=auth_header,
+            max_file_mb=args.max_file_mb,
+        )
+    except webdav.WebdavAuthError as exc:
+        _err({"error": str(exc), "hint": "check AGRAFES_WEBDAV_* environment variables", "created_at": utcnow_iso()})
+    except webdav.WebdavNotFound as exc:
+        _err({"error": str(exc), "created_at": utcnow_iso()})
+    except webdav.WebdavError as exc:
+        _err({"error": str(exc), "created_at": utcnow_iso()})
+
+    # Per-file errors are reported but do not fail the batch (design §9).
+    _ok({"auth_mode": auth_mode, "created_at": utcnow_iso(), **report})
 
 
 # ---------------------------------------------------------------------------
@@ -1383,6 +1381,55 @@ def build_parser() -> argparse.ArgumentParser:
         help="TEI unit element: 'p' (paragraphs, default) or 's' (sentences)",
     )
     p_import.set_defaults(func=cmd_import)
+
+    # import-remote (WebDAV / ShareDocs)
+    p_import_remote = sub.add_parser(
+        "import-remote",
+        help="Batch-import every matching file in a WebDAV folder (e.g. ShareDocs)",
+    )
+    p_import_remote.add_argument("--db", required=True)
+    p_import_remote.add_argument("--url", required=True, help="WebDAV folder (collection) URL")
+    p_import_remote.add_argument(
+        "--mode",
+        required=True,
+        choices=[
+            "docx_numbered_lines",
+            "txt_numbered_lines",
+            "docx_paragraphs",
+            "odt_paragraphs",
+            "odt_numbered_lines",
+            "tei",
+            "conllu",
+        ],
+        help="Import mode applied to every matching file",
+    )
+    p_import_remote.add_argument("--language", default=None, help="ISO language code (required except for tei)")
+    p_import_remote.add_argument(
+        "--include",
+        default=None,
+        help="Glob to filter filenames (default: files matching the --mode extension)",
+    )
+    p_import_remote.add_argument(
+        "--auth",
+        default="auto",
+        choices=["auto", "basic", "bearer", "anonymous"],
+        help="Auth mode. 'auto' reads AGRAFES_WEBDAV_TOKEN or AGRAFES_WEBDAV_USER/PASSWORD",
+    )
+    p_import_remote.add_argument(
+        "--doc-role",
+        dest="doc_role",
+        default="standalone",
+        choices=["original", "translation", "excerpt", "standalone", "unknown"],
+    )
+    p_import_remote.add_argument("--resource-type", dest="resource_type", default=None)
+    p_import_remote.add_argument(
+        "--max-file-mb",
+        dest="max_file_mb",
+        type=float,
+        default=200.0,
+        help="Skip files larger than this size, in MiB (default 200)",
+    )
+    p_import_remote.set_defaults(func=cmd_import_remote)
 
     # index
     p_index = sub.add_parser("index", help="Rebuild/update the FTS5 index")
