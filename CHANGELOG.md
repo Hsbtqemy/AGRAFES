@@ -7,6 +7,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **prep / ingestion distante WebDAV — `import-remote` (ShareDocs, Phase 1)** : nouvelle sous-commande CLI `multicorpus import-remote --url <dossier-webdav> --mode <mode>` qui parcourt un dossier WebDAV (validé contre ShareDocs Huma-Num — Nextcloud/SabreDAV) et ingère en lot tous les fichiers correspondant au mode (extension dérivée du `--mode`, surchargeable via `--include`). Chaque fichier est téléchargé en temporaire, **dédupliqué par `source_hash`** (les ré-exécutions sont idempotentes), importé via le pipeline existant (1 run/fichier), puis sa provenance `source_path` est fixée à l'URL distante. Les erreurs par fichier sont reportées **sans interrompre le lot** ; garde de taille `--max-file-mb` (200 par défaut). Client WebDAV **stdlib pur** (`urllib` + `defusedxml`, aucune nouvelle dépendance) limité à PROPFIND (Depth:1) + GET ; **TLS toujours vérifié** ; credentials lus uniquement dans l'environnement (`AGRAFES_WEBDAV_TOKEN`, ou `AGRAFES_WEBDAV_USER`/`AGRAFES_WEBDAV_PASSWORD`), **jamais persistés** en db/runs/logs. Refactor préalable : le dispatch `mode → importer` est centralisé dans `importers/dispatch.py` (`dispatch_import`), désormais point unique partagé par `import` et `import-remote`. La db reste strictement locale (pas de partage de db par WebDAV — cf. `docs/DESIGN_sharedocs_ingestion.md`). Phases 2 (endpoints sidecar) et 3 (UI Prep) à suivre. 21 nouveaux tests (client WebDAV + batch).
+
 ---
 
 ## [0.2.6] - 2026-05-19
