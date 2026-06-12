@@ -1,0 +1,199 @@
+"""Unit tests for the stdlib WebDAV client (multicorpus_engine.remote.webdav).
+
+Network is mocked at ``urlopen``; no real server is contacted.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from unittest import mock
+from urllib.error import HTTPError, URLError
+
+import pytest
+
+from multicorpus_engine.remote import webdav
+
+
+# A SabreDAV/Nextcloud-style 207 multistatus: the collection itself (self),
+# one file, and one subfolder. hrefs are server-absolute and percent-encoded.
+_MULTISTATUS = b"""<?xml version="1.0" encoding="utf-8"?>
+<d:multistatus xmlns:d="DAV:">
+  <d:response>
+    <d:href>/remote.php/dav/files/user/folder/</d:href>
+    <d:propstat>
+      <d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop>
+      <d:status>HTTP/1.1 200 OK</d:status>
+    </d:propstat>
+  </d:response>
+  <d:response>
+    <d:href>/remote.php/dav/files/user/folder/Le%20texte.docx</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:resourcetype/>
+        <d:getcontentlength>1234</d:getcontentlength>
+        <d:getlastmodified>Mon, 01 Jun 2026 10:00:00 GMT</d:getlastmodified>
+        <d:getcontenttype>application/vnd.openxmlformats</d:getcontenttype>
+      </d:prop>
+      <d:status>HTTP/1.1 200 OK</d:status>
+    </d:propstat>
+  </d:response>
+  <d:response>
+    <d:href>/remote.php/dav/files/user/folder/sub/</d:href>
+    <d:propstat>
+      <d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop>
+      <d:status>HTTP/1.1 200 OK</d:status>
+    </d:propstat>
+  </d:response>
+</d:multistatus>
+"""
+
+_URL = "https://dav.example/remote.php/dav/files/user/folder/"
+
+
+class _FakeResp:
+    """Minimal context-manager response with chunked read + headers."""
+
+    def __init__(self, body: bytes = b"", headers: dict | None = None):
+        self._body = body
+        self.headers = headers or {}
+
+    def read(self, n: int = -1) -> bytes:
+        if n is None or n < 0:
+            data, self._body = self._body, b""
+            return data
+        data, self._body = self._body[:n], self._body[n:]
+        return data
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+# --- auth header construction ---------------------------------------------------
+
+def test_build_auth_header_basic():
+    h = webdav.build_auth_header("basic", user="alice", password="secret")
+    assert h["Authorization"].startswith("Basic ")
+
+
+def test_build_auth_header_bearer():
+    assert webdav.build_auth_header("bearer", token="tok") == {"Authorization": "Bearer tok"}
+
+
+def test_build_auth_header_anonymous():
+    assert webdav.build_auth_header("anonymous") == {}
+
+
+@pytest.mark.parametrize("kwargs", [
+    {"user": "alice"},          # basic without password
+    {"password": "x"},          # basic without user
+])
+def test_build_auth_header_basic_incomplete(kwargs):
+    with pytest.raises(ValueError):
+        webdav.build_auth_header("basic", **kwargs)
+
+
+def test_build_auth_header_bearer_missing_token():
+    with pytest.raises(ValueError):
+        webdav.build_auth_header("bearer")
+
+
+# --- propfind -------------------------------------------------------------------
+
+def test_propfind_lists_children_excluding_self():
+    captured = {}
+
+    def _fake_urlopen(req, timeout=None):
+        captured["method"] = req.method
+        return _FakeResp(_MULTISTATUS)
+
+    with mock.patch.object(webdav, "urlopen", _fake_urlopen):
+        entries = webdav.propfind(_URL, auth_header={})
+
+    assert captured["method"] == "PROPFIND"
+    # self collection excluded → file + subfolder remain
+    assert len(entries) == 2
+    by_name = {e.name: e for e in entries}
+
+    docx = by_name["Le texte.docx"]  # percent-decoded name
+    assert docx.is_dir is False
+    assert docx.size == 1234
+    assert docx.content_type == "application/vnd.openxmlformats"
+    # href resolved to an absolute URL against the request
+    assert docx.href == "https://dav.example/remote.php/dav/files/user/folder/Le%20texte.docx"
+
+    assert by_name["sub"].is_dir is True
+
+
+def test_propfind_on_a_file_raises():
+    # A PROPFIND whose only (self) entry is not a collection → url is a file.
+    body = b"""<?xml version="1.0"?>
+    <d:multistatus xmlns:d="DAV:">
+      <d:response>
+        <d:href>/remote.php/dav/files/user/folder/a.docx</d:href>
+        <d:propstat>
+          <d:prop><d:resourcetype/><d:getcontentlength>10</d:getcontentlength></d:prop>
+          <d:status>HTTP/1.1 200 OK</d:status>
+        </d:propstat>
+      </d:response>
+    </d:multistatus>"""
+    url = "https://dav.example/remote.php/dav/files/user/folder/a.docx"
+    with mock.patch.object(webdav, "urlopen", lambda req, timeout=None: _FakeResp(body)):
+        with pytest.raises(webdav.WebdavError):
+            webdav.propfind(url, auth_header={})
+
+
+# --- error mapping --------------------------------------------------------------
+
+@pytest.mark.parametrize("code,exc_type", [
+    (401, webdav.WebdavAuthError),
+    (403, webdav.WebdavAuthError),
+    (404, webdav.WebdavNotFound),
+    (500, webdav.WebdavError),
+])
+def test_http_errors_are_mapped(code, exc_type):
+    def _raise(req, timeout=None):
+        raise HTTPError(req.full_url, code, "boom", {}, None)
+
+    with mock.patch.object(webdav, "urlopen", _raise):
+        with pytest.raises(exc_type):
+            webdav.propfind(_URL, auth_header={})
+
+
+def test_network_error_is_mapped():
+    def _raise(req, timeout=None):
+        raise URLError("no route")
+
+    with mock.patch.object(webdav, "urlopen", _raise):
+        with pytest.raises(webdav.WebdavError):
+            webdav.propfind(_URL, auth_header={})
+
+
+# --- download -------------------------------------------------------------------
+
+def test_download_writes_file(tmp_path: Path):
+    dest = tmp_path / "out.bin"
+    payload = b"hello world"
+    with mock.patch.object(webdav, "urlopen", lambda req, timeout=None: _FakeResp(payload, {"Content-Length": str(len(payload))})):
+        written = webdav.download("https://dav.example/f", dest, auth_header={})
+    assert written == len(payload)
+    assert dest.read_bytes() == payload
+
+
+def test_download_rejects_oversize_declared(tmp_path: Path):
+    dest = tmp_path / "out.bin"
+    with mock.patch.object(webdav, "urlopen", lambda req, timeout=None: _FakeResp(b"x" * 100, {"Content-Length": "100"})):
+        with pytest.raises(webdav.WebdavTooLarge):
+            webdav.download("https://dav.example/f", dest, auth_header={}, max_bytes=10)
+    assert not dest.exists()
+
+
+def test_download_rejects_oversize_streamed_without_header(tmp_path: Path):
+    dest = tmp_path / "out.bin"
+    # No Content-Length → the streaming guard must catch it and remove the partial.
+    with mock.patch.object(webdav, "urlopen", lambda req, timeout=None: _FakeResp(b"x" * 100, {})):
+        with pytest.raises(webdav.WebdavTooLarge):
+            webdav.download("https://dav.example/f", dest, auth_header={}, max_bytes=10)
+    assert not dest.exists()
