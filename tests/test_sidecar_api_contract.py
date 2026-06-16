@@ -1300,8 +1300,13 @@ def test_align_hybrid_external_id_then_position_via_sidecar(sidecar_base_url: st
     assert payload["strategy"] == "external_id_then_position"
     assert len(payload["reports"]) == 1
     report = payload["reports"][0]
-    assert report["links_created"] >= 1
-    assert "links_skipped" in report
+    # Shared sidecar DB: an earlier test (external_id strategy) already aligned
+    # this same pair, so this hybrid re-align legitimately inserts 0 NEW links —
+    # links_created now counts real insertions, not candidates (audit N-03). Assert
+    # the hybrid strategy ran and processed the pivot, not that THIS run created.
+    assert isinstance(report["links_created"], int) and report["links_created"] >= 0
+    assert report["links_skipped"] >= 0
+    assert report["links_created"] + report["links_skipped"] >= 1
 
 
 def test_align_debug_payload_when_requested(sidecar_base_url: str) -> None:
