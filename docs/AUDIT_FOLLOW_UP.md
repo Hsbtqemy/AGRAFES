@@ -43,12 +43,10 @@ le §6 de l'audit 2026-06-12 ; « — » = non priorisé explicitement.
 | A-02 | 🟠 | P0-1 | 🟦 partiel | `/import/preview` réimplémente les importers (`sidecar.py:2458`). Le router `dispatch_import` (branche `feat/sharedocs-ingestion-p1`) unifie l'**import** mais pas le **preview** |
 | A-03 | 🟠 | P0-1 | ⬜ ouvert | 66 blocs de validation manuelle (pas de validateur de schéma) |
 | A-04 | 🟡 | P2-13 | ⬜ ouvert | Attributs dynamiques non typés sur `HTTPServer` |
-| Q-01 | 🟠 | P0-2 | ⬜ ouvert | Aucune config lint/typage (ruff/mypy/eslint), zéro en CI |
 | Q-02 | 🟠 | P0-1 | ⬜ ouvert | Fonctions géantes ; `_build_hits` vs `_build_hits_regex` (~70 l. dupliquées) |
 | Q-03 | 🟡 | — | ⬜ ouvert | `_compute_file_hash` redéfini dans 5 importers ; dup DOCX/ODT |
 | Q-04 | 🟡 | P2-13 | ⬜ ouvert | Typage hétérogène ; pas de TypedDict pour les shapes de contrat |
 | Q-05 | 🟡 | — | ⬜ ouvert | Matcher CQL : pas de cap global documenté (gardes présentes) |
-| T-01 | 🔴 | P0-2 | ⬜ ouvert | Pas de seuil de couverture (addopts/CI/release-gate) |
 | T-02 | 🟠 | P0-3 | ⬜ ouvert | Branches cœur `telemetry.py` / `curation.py` sans test direct |
 | T-03 | 🟡 | P1-6 | ⬜ ouvert | 11 fichiers de tests versionnés à isoler sous `tests/contracts/` |
 | T-04 | 🟡 | — | ⬜ ouvert | Fragilités timing (23 `time.sleep`) ; 8 tests exigent `NO_PROXY` en local |
@@ -67,10 +65,12 @@ le §6 de l'audit 2026-06-12 ; « — » = non priorisé explicitement.
 | D-03 | 🟠 | P2-10 | ⬜ ouvert | 267 artefacts trackés sans index (`audit/`, `artifacts/`) |
 | D-05 | 🟡 | P2-12 | ⬜ ouvert | Aucun guide utilisateur final |
 | D-06 | 🟡 | P1-7 | ⬜ ouvert | `API_VERSION` (1.6.23) vs `CONTRACT_VERSION` (1.6.27) — distinction non documentée |
-| N-01 | 🟠 | P0-2 | ⬜ ouvert | Dependabot ne couvre que `github-actions` (npm/pip/cargo absents) |
 | N-04 | 🟡 | P2-14 | 🔵 connu/assumé | Resegmentation écrase `text_raw` + supprime les liens (dette HANDOFF) ; à arbitrer en ADR |
 | N-06 | 🟡 | P2-9 | ⬜ ouvert | `tauri-fixture` sans lockfiles ; CI en `npm install` |
 | N-08 | 🟢 | — | ⬜ ouvert | Divers mineurs (sémantique reflag cible, lock télémétrie Windows, release-gate 3.12, etc.) |
+| DEP-1\* | 🟢 | — | 🔵 suivi dependabot | `esbuild`/`vite`/`postcss` (devDeps, **non embarqués**) — vulns *dev-only* (CORS serveur de dev esbuild ; postcss = CSS maison). « high » contextuel = faible. Correctif = `vite@8` (major) via PR dependabot. Découvert en câblant N-01. |
+
+\*Item dérivé (pas un finding d'audit), tracé pour ne pas perdre un « high » connu.
 
 ---
 
