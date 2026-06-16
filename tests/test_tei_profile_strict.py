@@ -21,7 +21,6 @@ import zipfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-import pytest
 
 
 NS = {"tei": "http://www.tei-c.org/ns/1.0"}
@@ -173,7 +172,8 @@ def test_parcolab_like_no_encoding_desc(db_conn: sqlite3.Connection, tmp_path: P
 def test_manifest_includes_validation_summary(db_conn: sqlite3.Connection, tmp_path: Path) -> None:
     from multicorpus_engine.exporters.tei_package import export_tei_package
     from multicorpus_engine.importers.txt import import_txt_numbered_lines
-    import os, tempfile
+    import os
+    import tempfile
 
     with tempfile.NamedTemporaryFile(suffix=".txt", delete=False, mode="w", encoding="utf-8") as f:
         f.write("[1] Bonjour.\n[2] Au revoir.\n")
@@ -201,7 +201,8 @@ def test_manifest_includes_validation_summary(db_conn: sqlite3.Connection, tmp_p
 def test_manifest_validation_summary_counts(db_conn: sqlite3.Connection, tmp_path: Path) -> None:
     """Empty doc title → warning emitted → validation_summary counts it."""
     from multicorpus_engine.exporters.tei_package import export_tei_package
-    import os, tempfile
+    import os
+    import tempfile
 
     with tempfile.NamedTemporaryFile(suffix=".txt", delete=False, mode="w", encoding="utf-8") as f:
         f.write("[1] Bonjour.\n")
@@ -238,7 +239,6 @@ def test_strict_profile_with_strict_policy_gate(db_conn: sqlite3.Connection) -> 
         ("", "fr", "source"),
     )
     db_conn.commit()
-    doc_id = db_conn.execute("SELECT last_insert_rowid()").fetchone()[0]
 
     report_strict = generate_qa_report(db_conn, policy="strict")
     # Empty title → meta_error → blocking in strict

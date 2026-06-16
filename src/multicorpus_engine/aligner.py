@@ -9,7 +9,6 @@ Charter section 9: align_by_external_id.
 
 from __future__ import annotations
 
-import json
 import logging
 import sqlite3
 from dataclasses import dataclass, field

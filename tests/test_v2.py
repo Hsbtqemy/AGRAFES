@@ -27,7 +27,6 @@ def test_txt_import_numbered_lines(
 ) -> None:
     """TXT importer must extract [n] lines as line units."""
     from multicorpus_engine.importers.txt import import_txt_numbered_lines
-    from multicorpus_engine.indexer import build_index
 
     path = _write_txt(tmp_path / "doc.txt", [
         "Introduction",

@@ -1,5 +1,6 @@
 version: 2
 updates:
+  # GitHub Actions (pre-existing) ───────────────────────────────────────────
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
@@ -11,5 +12,58 @@ updates:
       - "ci"
     groups:
       actions:
+        patterns:
+          - "*"
+
+  # Python engine (audit N-01) ──────────────────────────────────────────────
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "python"
+    groups:
+      pip:
+        patterns:
+          - "*"
+
+  # Tauri frontends — npm (audit N-01) ──────────────────────────────────────
+  - package-ecosystem: "npm"
+    directories:
+      - "/tauri-prep"
+      - "/tauri-app"
+      - "/tauri-shell"
+      - "/tauri-fixture"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "npm"
+    groups:
+      npm:
+        patterns:
+          - "*"
+
+  # Tauri backends — cargo (audit N-01) ─────────────────────────────────────
+  - package-ecosystem: "cargo"
+    directories:
+      - "/tauri-prep/src-tauri"
+      - "/tauri-app/src-tauri"
+      - "/tauri-shell/src-tauri"
+      - "/tauri-fixture/src-tauri"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "rust"
+    groups:
+      cargo:
         patterns:
           - "*"

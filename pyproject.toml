@@ -23,6 +23,7 @@ txt = [
 dev = [
     "pytest>=7.4",
     "pytest-cov>=4.1",
+    "ruff>=0.14,<0.15",         # lint gate (CI) — see [tool.ruff]
     "charset-normalizer>=3.0",  # CI: avoid encoding fallback to cp1252 on UTF-8 fixtures
 ]
 packaging = [
@@ -47,3 +48,24 @@ where = ["src"]
 testpaths = ["tests"]
 addopts = "-v"
 pythonpath = ["src"]
+
+# ── Lint (audit Q-01) ────────────────────────────────────────────────────────
+# Conservative, high-signal set: ruff defaults (pyflakes F + a slice of
+# pycodestyle E4/E7/E9 — import/statement/syntax errors). Style-only noise is
+# left out for now; widen toward I (imports), B, UP as the codebase is cleaned.
+[tool.ruff]
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
+ignore = ["E741"]  # ambiguous single-letter names — style, not a bug class here
+
+# ── Coverage (audit T-01) ────────────────────────────────────────────────────
+# CI runs: pytest --cov=src/multicorpus_engine --cov-fail-under=35
+# 35 is a *proven lower bound* (the non-sidecar suite alone hits 36%; the full CI
+# suite is higher since sidecar.py is only exercised by the sidecar tests). Raise
+# it toward (observed CI coverage − 2) after the first gated CI run. The threshold
+# lives in CI, not here, so local `pytest --cov` on a subset never trips the floor.
+[tool.coverage.run]
+source = ["src/multicorpus_engine"]
+branch = false

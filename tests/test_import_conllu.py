@@ -142,7 +142,7 @@ def test_import_conllu_non_numeric_sent_id_falls_back_to_n(
         ),
     )
 
-    report = import_conllu(conn=db_conn, path=conllu, language="en")
+    import_conllu(conn=db_conn, path=conllu, language="en")
 
     rows = db_conn.execute(
         "SELECT external_id, meta_json FROM units ORDER BY n"

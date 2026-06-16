@@ -5,7 +5,6 @@ Tests do NOT run npm/pytest/node — only the output-parsing helpers.
 from __future__ import annotations
 
 import importlib.util
-import sys
 from pathlib import Path
 
 # Load release_gate module without executing main()

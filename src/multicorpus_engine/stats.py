@@ -14,7 +14,7 @@ from __future__ import annotations
 import re
 import sqlite3
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Optional
 
 _WORD_RE = re.compile(r"[^\W\d_]+", re.UNICODE)

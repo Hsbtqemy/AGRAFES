@@ -21,7 +21,6 @@ import zipfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-import pytest
 
 
 NS = {"tei": "http://www.tei-c.org/ns/1.0"}
@@ -156,7 +155,8 @@ def test_parcolab_subtitle(db_conn: sqlite3.Connection, tmp_path: Path) -> None:
 def test_package_tei_profile_in_manifest(db_conn: sqlite3.Connection, tmp_path: Path) -> None:
     from multicorpus_engine.exporters.tei_package import export_tei_package
     from multicorpus_engine.importers.txt import import_txt_numbered_lines
-    import os, tempfile
+    import os
+    import tempfile
 
     with tempfile.NamedTemporaryFile(suffix=".txt", delete=False, mode="w", encoding="utf-8") as f:
         f.write("[1] Bonjour.\n[2] Au revoir.\n")
