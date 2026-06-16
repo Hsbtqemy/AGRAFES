@@ -6,9 +6,7 @@
  * Focus automatique sur le bouton Confirmer.
  */
 
-function _esc(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
+import { safeHtml, raw, setHtml } from "./safeHtml.ts";
 
 /**
  * Affiche un banner de confirmation inline dans `container`.
@@ -35,21 +33,21 @@ export function inlineConfirm(
     const savedDisplay = container.style.display;
 
     const restore = (answer: boolean) => {
-      container.innerHTML    = original;
+      setHtml(container, raw(original));  // restore previously-captured DOM
       container.style.display = savedDisplay;
       resolve(answer);
     };
 
     container.style.display = "";
-    container.innerHTML = `
-      <span class="inline-confirm-msg">${_esc(message)}</span>
+    setHtml(container, safeHtml`
+      <span class="inline-confirm-msg">${message}</span>
       <button class="btn btn-sm ${danger ? "btn-danger" : "btn-primary"}" data-inline-ok>
-        ${_esc(confirmLabel)}
+        ${confirmLabel}
       </button>
       <button class="btn btn-sm btn-ghost" data-inline-cancel>
-        ${_esc(cancelLabel)}
+        ${cancelLabel}
       </button>
-    `;
+    `);
 
     const okBtn     = container.querySelector<HTMLButtonElement>("[data-inline-ok]")!;
     const cancelBtn = container.querySelector<HTMLButtonElement>("[data-inline-cancel]")!;
