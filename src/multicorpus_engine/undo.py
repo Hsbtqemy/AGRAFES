@@ -220,7 +220,12 @@ def _undo_merge_units(
             kept_uid,
         ),
     )
-    return {"units_restored": 2, "alignments_reflagged": 0, "fts_stale": True}
+    # The kept unit's text reverted and the deleted unit was re-created. Any
+    # alignment_links still pointing at them (e.g. created by a re-align run
+    # between the merge and this undo) must be flagged as stale. In the common
+    # case the forward merge already deleted those links, so this is a no-op.
+    reflagged = _reflag_alignment_links(conn, [kept_uid, deleted_uid])
+    return {"units_restored": 2, "alignments_reflagged": reflagged, "fts_stale": True}
 
 
 def _undo_split_unit(
@@ -257,6 +262,14 @@ def _undo_split_unit(
             split_uid,
         ),
     )
+    # The created unit may have acquired alignment_links if a re-align ran
+    # between the split and this undo. alignment_links has no ON DELETE CASCADE
+    # and FKs are enforced, so the unit DELETE below would raise an
+    # IntegrityError; clear its links first, exactly as the forward split does.
+    conn.execute(
+        "DELETE FROM alignment_links WHERE pivot_unit_id=? OR target_unit_id=?",
+        (created_uid, created_uid),
+    )
     # Delete the unit created by the split (was inserted at split_n+1).
     conn.execute("DELETE FROM units WHERE unit_id=?", (created_uid,))
     # Shift everything with n >= split_n + 2 down by 1 to close the gap.
@@ -264,7 +277,9 @@ def _undo_split_unit(
         "UPDATE units SET n = n - 1 WHERE doc_id=? AND n >= ?",
         (doc_id, split_n + 2),
     )
-    return {"units_restored": 1, "alignments_reflagged": 0, "fts_stale": True}
+    # The restored unit's text reverted; flag any links still pointing at it.
+    reflagged = _reflag_alignment_links(conn, [split_uid])
+    return {"units_restored": 1, "alignments_reflagged": reflagged, "fts_stale": True}
 
 
 def _undo_resegment(
@@ -283,6 +298,16 @@ def _undo_resegment(
     if created:
         ph = ",".join("?" * len(created))
         ids = [int(c["unit_id"]) for c in created]
+        # The created units may carry alignment_links from a re-align run after
+        # the resegment (reseg → align → undo reseg). alignment_links has no
+        # ON DELETE CASCADE and FKs are enforced, so clear them before the unit
+        # DELETE to avoid an IntegrityError — same guard as _undo_split_unit
+        # (audit N-02, 2026-06-12).
+        conn.execute(
+            f"DELETE FROM alignment_links"
+            f" WHERE pivot_unit_id IN ({ph}) OR target_unit_id IN ({ph})",
+            ids + ids,
+        )
         conn.execute(
             f"DELETE FROM units WHERE unit_id IN ({ph})",
             ids,
