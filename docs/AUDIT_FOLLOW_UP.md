@@ -55,7 +55,7 @@ le §6 de l'audit 2026-06-12 ; « — » = non priorisé explicitement.
 | T-05 | 🟠 | — | ⬜ ouvert | E2E Tauri quasi inexistant (pas de Playwright/WebDriver) |
 | S-01 | 🟡 | P1-8 | ⬜ ouvert | Pas de validation `Host`/`Origin` (DNS rebinding théorique, lecture seule) |
 | S-02 | 🟡 | P1-8 | ⬜ ouvert | Race POSIX sur le portfile (`O_EXCL`/umask absents) |
-| S-03 | 🟡 | P0-2 | ⬜ ouvert | 384 `innerHTML` ; mitigé en pratique, mais aucune règle lint anti-régression |
+| S-03 | 🟡 | P0-2 | 🟦 partiel | Sink type-safe `setHtml`/`safeHtml\`\`` + ESLint no-unsanitized (prep) ; 3 fichiers migrés, `f858c78`. Aucun vrai XSS trouvé (escapers tous vérifiés). **Reste** : 92 sites des 4 écrans géants + app/shell + job CI bloquant. Décision de reprise en attente (grind complet vs suppressions pour les géants). |
 | S-04 | 🟡 | P1-8 | ⬜ ouvert | `exporters/tei.py` importe `xml.etree` non défusé (risque nul aujourd'hui) |
 | U-01 | 🟠 | P1-4 | ⬜ ouvert | `sidecarClient.ts` dupliqué/divergent ; le shell importe **les deux** clients |
 | U-02 | 🟠 | P2-11 | ⬜ ouvert | Écrans Prep monolithiques (Curation ~3 800 l., Metadata ~3 200 l.) |
