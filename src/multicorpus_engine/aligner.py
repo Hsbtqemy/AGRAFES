@@ -9,7 +9,6 @@ Charter section 9: align_by_external_id.
 
 from __future__ import annotations
 
-import json
 import logging
 import sqlite3
 from dataclasses import dataclass, field
@@ -277,7 +276,7 @@ def align_pair(
             )
 
     try:
-        conn.executemany(
+        cur = conn.executemany(
             """
             INSERT OR IGNORE INTO alignment_links
                 (run_id, pivot_unit_id, target_unit_id, external_id,
@@ -291,7 +290,10 @@ def align_pair(
         conn.rollback()
         raise
 
-    report.links_created = len(links)
+    # INSERT OR IGNORE silently drops duplicate (pivot,target) pairs; count the
+    # rows actually inserted, not the candidates, so a re-align without purge
+    # does not report phantom links (and links_skipped stays consistent).
+    report.links_created = max(int(cur.rowcount or 0), 0) if links else 0
     if protected_skipped:
         msg = f"{protected_skipped} lien(s) protÃ©gÃ©(s) ignorÃ©(s) pendant l'alignement"
         report.warnings.append(msg)
@@ -482,7 +484,7 @@ def align_pair_external_id_then_position(
 
     if links:
         try:
-            conn.executemany(
+            cur = conn.executemany(
                 """
                 INSERT OR IGNORE INTO alignment_links
                     (run_id, pivot_unit_id, target_unit_id, external_id,
@@ -505,7 +507,10 @@ def align_pair_external_id_then_position(
         report.warnings.append(msg)
         log.info(msg)
 
-    report.links_created = len(links)
+    # INSERT OR IGNORE silently drops duplicate (pivot,target) pairs; count the
+    # rows actually inserted, not the candidates, so a re-align without purge
+    # does not report phantom links (and links_skipped stays consistent).
+    report.links_created = max(int(cur.rowcount or 0), 0) if links else 0
     if debug:
         report.debug = {
             "strategy": "external_id_then_position",
@@ -657,7 +662,7 @@ def align_pair_by_position(
             )
 
     try:
-        conn.executemany(
+        cur = conn.executemany(
             """
             INSERT OR IGNORE INTO alignment_links
                 (run_id, pivot_unit_id, target_unit_id, external_id,
@@ -671,7 +676,10 @@ def align_pair_by_position(
         conn.rollback()
         raise
 
-    report.links_created = len(links)
+    # INSERT OR IGNORE silently drops duplicate (pivot,target) pairs; count the
+    # rows actually inserted, not the candidates, so a re-align without purge
+    # does not report phantom links (and links_skipped stays consistent).
+    report.links_created = max(int(cur.rowcount or 0), 0) if links else 0
     if protected_skipped:
         msg = f"{protected_skipped} lien(s) protÃ©gÃ©(s) ignorÃ©(s) pendant l'alignement"
         report.warnings.append(msg)
@@ -863,7 +871,7 @@ def align_pair_by_similarity(
 
     if links:
         try:
-            conn.executemany(
+            cur = conn.executemany(
                 """
                 INSERT OR IGNORE INTO alignment_links
                     (run_id, pivot_unit_id, target_unit_id, external_id,
@@ -877,7 +885,10 @@ def align_pair_by_similarity(
             conn.rollback()
             raise
 
-    report.links_created = len(links)
+    # INSERT OR IGNORE silently drops duplicate (pivot,target) pairs; count the
+    # rows actually inserted, not the candidates, so a re-align without purge
+    # does not report phantom links (and links_skipped stays consistent).
+    report.links_created = max(int(cur.rowcount or 0), 0) if links else 0
     if report.missing_in_target:
         msg = (
             f"{len(report.missing_in_target)} pivot unit(s) unmatched"

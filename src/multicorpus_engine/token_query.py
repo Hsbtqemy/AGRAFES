@@ -7,7 +7,7 @@ from typing import Any, Optional
 import re
 import sqlite3
 
-from .cql_parser import CqlQuery, CqlTokenSpec, parse_cql_query
+from .cql_parser import CqlQuery, parse_cql_query
 
 
 @dataclass(frozen=True)

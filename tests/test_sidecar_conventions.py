@@ -438,7 +438,6 @@ class TestTextStartNIntegration:
 
     def test_segmentation_preserves_paratext(self, cv_sidecar):
         """Resegmentation must not touch units with n < text_start_n."""
-        import sqlite3 as _sqlite3
         base, token, server = cv_sidecar
 
         # Set boundary: n=1,2,3 are paratext
@@ -509,7 +508,7 @@ class TestTextStartNIntegration:
         conn.execute("UPDATE documents SET text_start_n=3 WHERE doc_id=2")
         conn.commit()
 
-        report = align_pair(conn, pivot_doc_id=1, target_doc_id=2, run_id="test-tsn")
+        align_pair(conn, pivot_doc_id=1, target_doc_id=2, run_id="test-tsn")
         conn.commit()
 
         # Check alignment_links — none should reference n=1 or n=2

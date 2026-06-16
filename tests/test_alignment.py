@@ -310,3 +310,36 @@ def test_doc_relations_created(
     assert row["relation_type"] == "translation_of"
     assert row["doc_id"] == bilingual_corpus["en_doc_id"]
     assert row["target_doc_id"] == bilingual_corpus["fr_doc_id"]
+
+
+def test_align_links_created_excludes_ignored_duplicates(
+    db_conn: sqlite3.Connection,
+    bilingual_corpus: dict,
+) -> None:
+    """N-02 audit fix: links_created must count rows actually inserted, not
+    candidates. Re-aligning without purge hits INSERT OR IGNORE (unique index
+    on (pivot_unit_id, target_unit_id)) → 0 real insertions on the second run.
+    """
+    from multicorpus_engine.aligner import align_by_external_id
+
+    first = align_by_external_id(
+        conn=db_conn,
+        pivot_doc_id=bilingual_corpus["fr_doc_id"],
+        target_doc_ids=[bilingual_corpus["en_doc_id"]],
+        run_id="dup-run-a",
+    )[0]
+    assert first.links_created == 3
+
+    # Re-run without purging: every candidate collides → nothing inserted.
+    second = align_by_external_id(
+        conn=db_conn,
+        pivot_doc_id=bilingual_corpus["fr_doc_id"],
+        target_doc_ids=[bilingual_corpus["en_doc_id"]],
+        run_id="dup-run-b",
+    )[0]
+    assert second.links_created == 0
+    # links_skipped is derived from links_created — it must stay consistent.
+    assert second.to_dict()["links_skipped"] == second.pivot_line_count
+
+    total = db_conn.execute("SELECT COUNT(*) FROM alignment_links").fetchone()[0]
+    assert total == 3  # no phantom duplicates were added

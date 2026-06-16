@@ -119,7 +119,6 @@ def test_curate_preview_returns_stats_and_examples(v03_sidecar) -> None:
 
 def test_curate_preview_does_not_modify_db(v03_sidecar) -> None:
     """Verify that /curate/preview is a pure dry-run — DB units unchanged after preview."""
-    from multicorpus_engine.db.connection import get_connection
 
     base_url = v03_sidecar["base_url"]
     doc_id = v03_sidecar["pivot_doc_id"]

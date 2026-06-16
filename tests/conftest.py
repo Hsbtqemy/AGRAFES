@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import io
 import sqlite3
-import tempfile
 from pathlib import Path
 
 import pytest

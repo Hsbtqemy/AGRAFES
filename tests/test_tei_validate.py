@@ -6,7 +6,6 @@ import sqlite3
 import zipfile
 from pathlib import Path
 
-import pytest
 
 from multicorpus_engine.utils.tei_validate import validate_tei_ids, validate_tei_package
 
@@ -229,7 +228,8 @@ def test_validate_tei_package_with_alignment(db_conn: sqlite3.Connection, tmp_pa
     from multicorpus_engine.importers.txt import import_txt_numbered_lines
     from multicorpus_engine.exporters.tei_package import export_tei_package
     from multicorpus_engine.runs import create_run
-    import datetime, uuid
+    import datetime
+    import uuid
 
     pivot_txt = tmp_path / "pv.txt"
     pivot_txt.write_text("[1] Un.\n[2] Deux.\n", encoding="utf-8")

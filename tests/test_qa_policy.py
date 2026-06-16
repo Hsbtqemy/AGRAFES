@@ -19,7 +19,6 @@ import json
 import sqlite3
 from pathlib import Path
 
-import pytest
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -240,7 +239,7 @@ def test_write_qa_report_strict_policy(db_conn: sqlite3.Connection, tmp_path: Pa
     from multicorpus_engine.qa_report import write_qa_report
 
     out = tmp_path / "strict_report.json"
-    result = write_qa_report(db_conn, out, fmt="json", policy="strict")
+    write_qa_report(db_conn, out, fmt="json", policy="strict")
     assert out.exists()
     data = json.loads(out.read_text("utf-8"))
     assert data.get("policy_used") == "strict"

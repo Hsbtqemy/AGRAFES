@@ -150,6 +150,12 @@ class JobManager:
             with self._lock:
                 job = self._jobs[job_id]
                 if job.status == "canceled":
+                    # Known limitation (audit N-05, 2026-06-12): if a shutdown
+                    # cancel_all() lands AFTER the runner committed but BEFORE this
+                    # block, the job is reported "canceled" while its effects are
+                    # already in the DB. Data stays consistent; only the status
+                    # label is wrong. A faithful fix needs the runner to signal
+                    # whether it committed — out of scope for a targeted patch.
                     return  # don't overwrite a cancel that arrived during execution
                 job.status = "done"
                 job.progress_pct = 100

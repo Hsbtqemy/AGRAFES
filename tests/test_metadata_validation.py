@@ -5,14 +5,12 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-import pytest
 
 _REPO_ROOT = Path(__file__).parent.parent
 _MIGRATIONS_DIR = _REPO_ROOT / "migrations"
 
 
 def _make_conn() -> sqlite3.Connection:
-    from multicorpus_engine.db.connection import get_connection
     from multicorpus_engine.db.migrations import apply_migrations
 
     conn = sqlite3.connect(":memory:")

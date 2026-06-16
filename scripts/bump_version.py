@@ -15,7 +15,9 @@ Fichiers mis à jour :
 
     Shell (--shell) :
         tauri-shell/src-tauri/tauri.conf.json   "version": "X.Y.Z"
+        tauri-shell/src-tauri/Cargo.toml        version = "X.Y.Z"
         tauri-shell/src/shell.ts                let APP_VERSION = "X.Y.Z"
+        tauri-shell/package.json                "version": "X.Y.Z"
 """
 
 import argparse
@@ -62,6 +64,15 @@ def bump_shell(version: str, dry_run: bool) -> None:
         ROOT / "tauri-shell/src-tauri/tauri.conf.json",
         r'"version": "[^"]+"',
         f'"version": "{version}"',
+        dry_run,
+    )
+    # Cargo.toml [package] version — anchored at line start so it never touches
+    # dependency `version` keys (those are `name = { version = ... }`). Was drifted
+    # historically (bump_version oubliait Cargo.toml → audit N-07, 2026-06-12).
+    _replace(
+        ROOT / "tauri-shell/src-tauri/Cargo.toml",
+        r'(?m)^version = "[^"]+"',
+        f'version = "{version}"',
         dry_run,
     )
     _replace(

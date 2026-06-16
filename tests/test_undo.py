@@ -419,3 +419,258 @@ def test_undo_marks_action_reverted_and_inserts_undo_entry(
     assert history[0]["reverted_by_id"] == payload["undo_action_id"]
     assert history[1]["action_type"] == "undo"
     assert history[1]["reverted"] == 0
+
+
+# ---------------------------------------------------------------------------
+# N-02 (audit 2026-06-12): undo of merge/split must re-flag alignment links
+# that survive the action (e.g. created by a re-align between the action and
+# the undo), because the restored unit's text reverts.
+# ---------------------------------------------------------------------------
+
+
+def _add_link(
+    conn: sqlite3.Connection,
+    pivot_uid: int,
+    target_uid: int,
+    *,
+    pivot_doc: int,
+    target_doc: int,
+    ext_id: int = 1,
+    run_id: str = "rerun",
+) -> None:
+    """Insert an alignment_link with source_changed_at left NULL (not flagged)."""
+    conn.execute(
+        "INSERT INTO alignment_links"
+        " (run_id, pivot_unit_id, target_unit_id, external_id,"
+        "  pivot_doc_id, target_doc_id, created_at)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (run_id, pivot_uid, target_uid, ext_id, pivot_doc, target_doc,
+         "2026-06-16T00:00:00Z"),
+    )
+
+
+def test_undo_merge_reflags_links_created_after_merge(
+    db_conn: sqlite3.Connection,
+) -> None:
+    """A link added on the kept unit after the merge must be flagged on undo."""
+    from multicorpus_engine.action_history import (
+        ACTION_MERGE_UNITS,
+        insert_unit_snapshots,
+        record_prep_action,
+    )
+    from multicorpus_engine.undo import execute_undo
+
+    doc_id, _ = _seed_doc(db_conn, ["Phrase un.", "Phrase deux.", "Phrase trois."])
+    tgt_doc, [t1] = _seed_doc(db_conn, ["Target line."])
+
+    n1, n2 = 1, 2
+    row1 = db_conn.execute(
+        "SELECT unit_id, external_id, text_raw, text_norm, unit_role, meta_json"
+        " FROM units WHERE doc_id=? AND n=? AND unit_type='line'", (doc_id, n1),
+    ).fetchone()
+    row2 = db_conn.execute(
+        "SELECT unit_id, external_id, text_raw, text_norm, unit_role, meta_json"
+        " FROM units WHERE doc_id=? AND n=? AND unit_type='line'", (doc_id, n2),
+    ).fetchone()
+    uid1, uid2 = int(row1["unit_id"]), int(row2["unit_id"])
+
+    action_id = record_prep_action(
+        db_conn, doc_id=doc_id, action_type=ACTION_MERGE_UNITS,
+        description=f"Fusion u.{n1} + u.{n2}",
+        context={
+            "merged_unit_ids": [uid1, uid2], "kept_unit_id": uid1,
+            "deleted_unit_id": uid2, "n1": n1, "n2": n2,
+            "kept_external_id_before": row1["external_id"],
+            "deleted_external_id_before": row2["external_id"],
+        },
+    )
+    insert_unit_snapshots(
+        db_conn, action_id,
+        [
+            {"unit_id": uid1, "text_raw_before": row1["text_raw"],
+             "text_norm_before": row1["text_norm"], "unit_role_before": row1["unit_role"],
+             "meta_json_before": row1["meta_json"]},
+            {"unit_id": uid2, "text_raw_before": row2["text_raw"],
+             "text_norm_before": row2["text_norm"], "unit_role_before": row2["unit_role"],
+             "meta_json_before": row2["meta_json"]},
+        ],
+    )
+    # Forward merge (mirrors the handler): deletes both units' links, merges
+    # text into uid1, deletes uid2, renumbers.
+    db_conn.execute(
+        "DELETE FROM alignment_links WHERE pivot_unit_id IN (?,?) OR target_unit_id IN (?,?)",
+        (uid1, uid2, uid1, uid2),
+    )
+    merged_raw = (row1["text_raw"] or "").rstrip() + " " + (row2["text_raw"] or "").lstrip()
+    merged_norm = (row1["text_norm"] or "").rstrip() + " " + (row2["text_norm"] or "").lstrip()
+    db_conn.execute(
+        "UPDATE units SET text_raw=?, text_norm=? WHERE doc_id=? AND n=?",
+        (merged_raw, merged_norm, doc_id, n1),
+    )
+    db_conn.execute("DELETE FROM units WHERE doc_id=? AND n=?", (doc_id, n2))
+    db_conn.execute("UPDATE units SET n = n - 1 WHERE doc_id=? AND n > ?", (doc_id, n2))
+    # Re-align AFTER the merge: a fresh link on the kept (merged) unit.
+    _add_link(db_conn, uid1, t1, pivot_doc=doc_id, target_doc=tgt_doc)
+    db_conn.commit()
+
+    pre = db_conn.execute(
+        "SELECT source_changed_at FROM alignment_links WHERE pivot_unit_id=?", (uid1,),
+    ).fetchone()
+    assert pre["source_changed_at"] is None  # not flagged yet
+
+    payload = execute_undo(db_conn, doc_id)
+    db_conn.commit()
+
+    assert payload["alignments_reflagged"] == 1
+    post = db_conn.execute(
+        "SELECT source_changed_at FROM alignment_links WHERE pivot_unit_id=?", (uid1,),
+    ).fetchone()
+    assert post["source_changed_at"] is not None
+
+
+def test_undo_split_reflags_and_is_fk_safe_after_realign(
+    db_conn: sqlite3.Connection,
+) -> None:
+    """Undo of a split must (a) not FK-fail when the created unit has links,
+    and (b) re-flag links surviving on the restored unit."""
+    from multicorpus_engine.action_history import (
+        ACTION_SPLIT_UNIT,
+        insert_unit_snapshots,
+        record_prep_action,
+    )
+    from multicorpus_engine.undo import execute_undo
+
+    doc_id, _ = _seed_doc(db_conn, ["Phrase A B C.", "Phrase suivante."])
+    tgt_doc, [t1] = _seed_doc(db_conn, ["Target line."])
+    before = _snapshot_units(db_conn, doc_id)
+
+    unit_n, text_a, text_b = 1, "Phrase A", "B C."
+    row = db_conn.execute(
+        "SELECT unit_id, external_id, text_raw, text_norm, unit_role, meta_json"
+        " FROM units WHERE doc_id=? AND n=? AND unit_type='line'", (doc_id, unit_n),
+    ).fetchone()
+    uid = int(row["unit_id"])
+
+    # Forward split (mirrors the handler): delete the unit's links, shift, write
+    # text_a + NULL external_id, insert the new unit at n+1.
+    db_conn.execute(
+        "DELETE FROM alignment_links WHERE pivot_unit_id=? OR target_unit_id=?", (uid, uid),
+    )
+    db_conn.execute("UPDATE units SET n = n + 1 WHERE doc_id=? AND n > ?", (doc_id, unit_n))
+    db_conn.execute(
+        "UPDATE units SET text_raw=?, text_norm=?, external_id=NULL WHERE doc_id=? AND n=?",
+        (text_a, text_a, doc_id, unit_n),
+    )
+    cur = db_conn.execute(
+        "INSERT INTO units (doc_id, unit_type, n, external_id, text_raw, text_norm, meta_json)"
+        " VALUES (?, 'line', ?, NULL, ?, ?, NULL)",
+        (doc_id, unit_n + 1, text_b, text_b),
+    )
+    new_uid = int(cur.lastrowid)
+
+    action_id = record_prep_action(
+        db_conn, doc_id=doc_id, action_type=ACTION_SPLIT_UNIT,
+        description=f"Coupure u.{unit_n}",
+        context={
+            "split_unit_id": uid, "split_unit_n": unit_n,
+            "created_unit_id": new_uid, "created_unit_n": unit_n + 1,
+            "external_id_before": row["external_id"],
+        },
+    )
+    insert_unit_snapshots(
+        db_conn, action_id,
+        [{"unit_id": uid, "text_raw_before": row["text_raw"],
+          "text_norm_before": row["text_norm"], "unit_role_before": row["unit_role"],
+          "meta_json_before": row["meta_json"]}],
+    )
+    # Re-align AFTER the split: links on BOTH the restored unit and the created
+    # one. The link on the created unit is what would FK-fail the unit DELETE.
+    _add_link(db_conn, uid, t1, pivot_doc=doc_id, target_doc=tgt_doc, ext_id=1)
+    _add_link(db_conn, new_uid, t1, pivot_doc=doc_id, target_doc=tgt_doc, ext_id=2)
+    db_conn.commit()
+
+    payload = execute_undo(db_conn, doc_id)  # must not raise IntegrityError
+    db_conn.commit()
+
+    # Restored unit's link re-flagged; created unit's link gone with the unit.
+    assert payload["alignments_reflagged"] == 1
+    flagged = db_conn.execute(
+        "SELECT source_changed_at FROM alignment_links WHERE pivot_unit_id=?", (uid,),
+    ).fetchone()
+    assert flagged is not None and flagged["source_changed_at"] is not None
+    orphan = db_conn.execute(
+        "SELECT COUNT(*) FROM alignment_links WHERE pivot_unit_id=? OR target_unit_id=?",
+        (new_uid, new_uid),
+    ).fetchone()[0]
+    assert orphan == 0
+    assert _snapshot_units(db_conn, doc_id) == before
+
+
+def test_undo_resegment_is_fk_safe_after_realign(
+    db_conn: sqlite3.Connection,
+) -> None:
+    """Undo of a resegment must not FK-fail when a re-align created links on the
+    resegment-created units (reseg → align → undo reseg). Same bug class as the
+    split-undo FK guard; surfaced during the review pass on the N-02 fix.
+    """
+    from multicorpus_engine.action_history import (
+        ACTION_RESEGMENT,
+        insert_unit_snapshots,
+        record_prep_action,
+    )
+    from multicorpus_engine.segmenter import resegment_document
+    from multicorpus_engine.undo import execute_undo
+
+    doc_id, _ = _seed_doc(db_conn, ["Phrase un. Phrase deux.", "Et trois ?"])
+    tgt_doc, [t1] = _seed_doc(db_conn, ["Target line."])
+    before = _snapshot_units(db_conn, doc_id)
+
+    created_ids: list[int] = []
+
+    def recorder(payload):
+        units_before = payload["units_before"]
+        if not units_before:
+            return None
+        created_ids.extend(payload["created_unit_ids"])
+        action_id = record_prep_action(
+            db_conn, doc_id=payload["doc_id"], action_type=ACTION_RESEGMENT,
+            description=f"Reseg {len(units_before)} → {len(payload['created_unit_ids'])}",
+            context={
+                "pack": payload["pack"], "lang": payload["lang"],
+                "text_start_n": payload["text_start_n"],
+                "units_deleted_after_ids": [u["unit_id"] for u in units_before],
+                "units_created_after_json": [
+                    {"unit_id": uid, "n": n}
+                    for uid, n in zip(payload["created_unit_ids"], payload["new_units_n"])
+                ],
+                "units_before": units_before,
+            },
+        )
+        insert_unit_snapshots(
+            db_conn, action_id,
+            [{"unit_id": u["unit_id"], "text_raw_before": u["text_raw"],
+              "text_norm_before": u["text_norm"] or "",
+              "unit_role_before": u["unit_role"], "meta_json_before": u["meta_json"]}
+             for u in units_before],
+        )
+        return action_id
+
+    resegment_document(
+        db_conn, doc_id=doc_id, lang="fr", pack="auto", record_action=recorder,
+    )
+    assert created_ids, "resegment should have created at least one unit"
+
+    # Re-align AFTER the resegment: a link on a resegment-created unit. This is
+    # what would FK-fail the unit DELETE during undo without the guard.
+    _add_link(db_conn, created_ids[0], t1, pivot_doc=doc_id, target_doc=tgt_doc)
+    db_conn.commit()
+
+    execute_undo(db_conn, doc_id)  # must not raise IntegrityError
+    db_conn.commit()
+
+    orphan = db_conn.execute(
+        "SELECT COUNT(*) FROM alignment_links WHERE pivot_unit_id=? OR target_unit_id=?",
+        (created_ids[0], created_ids[0]),
+    ).fetchone()[0]
+    assert orphan == 0
+    assert _snapshot_units(db_conn, doc_id) == before

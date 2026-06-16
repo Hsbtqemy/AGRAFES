@@ -180,7 +180,6 @@ def validate_tei_ids(
             }
     """
     path = Path(path)
-    errors: list[dict] = []
 
     try:
         tree = ET.parse(str(path))

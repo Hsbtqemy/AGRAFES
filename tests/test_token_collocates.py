@@ -6,7 +6,6 @@ Uses an in-memory SQLite DB seeded with minimal CoNLL-U-style token data
 
 from __future__ import annotations
 
-import math
 import sqlite3
 from pathlib import Path
 
@@ -20,7 +19,6 @@ _MIGRATIONS_DIR = _REPO_ROOT / "migrations"
 
 def _make_conn() -> sqlite3.Connection:
     """Fresh in-memory DB with all migrations applied."""
-    from multicorpus_engine.db.connection import get_connection
     from multicorpus_engine.db.migrations import apply_migrations
 
     conn = sqlite3.connect(":memory:")

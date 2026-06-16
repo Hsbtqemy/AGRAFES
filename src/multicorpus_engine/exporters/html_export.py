@@ -7,7 +7,6 @@ All dynamic content is escaped via html.escape() — no XSS risk.
 from __future__ import annotations
 
 import html
-import json
 from pathlib import Path
 
 

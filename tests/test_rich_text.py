@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import xml.etree.ElementTree as ET
 from types import SimpleNamespace
-from unittest.mock import MagicMock
 
-import pytest
 
 from multicorpus_engine.importers.rich_text import (
     _NS,
