@@ -29,7 +29,7 @@ le §6 de l'audit 2026-06-12 ; « — » = non priorisé explicitement.
 | N-05 | 🟡 | P1-5 | 📝 documenté | Race statut de job au shutdown : commentaire `sidecar_jobs.py` (~ligne 152). Fix fidèle = signal de commit côté runner, hors périmètre. `ae78207` |
 | N-07 | 🟡 | P1-5 | ✅ corrigé | `bump_version.py` met à jour le `Cargo.toml` du shell (regex ancrée) + resync `0.1.28 → 0.2.6`. `ae78207` |
 | Q-01 | 🟠 | P0-2 | ✅ corrigé | `[tool.ruff]` (E4/E7/E9/F, E741 ignoré) + job CI `lint` ; 57 violations résorbées (46 autofix, 5 vars, 1 dead). `1b12520` |
-| T-01 | 🔴 | P0-2 | ✅ corrigé | Gate `--cov-fail-under=35` (plancher prouvé, à ratcheter) dans le step pytest CI. `1b12520` |
+| T-01 | 🔴 | P0-2 | ✅ corrigé | Gate `--cov-fail-under=60` dans le step pytest CI (ratcheté depuis 35 ; couverture réelle CI = 61,94 %). `1b12520` |
 | N-01 | 🟠 | P0-2 | ✅ corrigé | `dependabot.yml` étendu à pip/npm/cargo (4 apps + `src-tauri`), groupé hebdo. `1b12520` |
 | — | — | — | ✅ bonus | CI déclenchée aussi sur `development` (les gates ne tiraient que sur `main`). `1b12520` |
 | D-04 | 🟡 | P1-7 | ✅ corrigé | **Ce fichier** (vue inverse finding→statut→commit) |
