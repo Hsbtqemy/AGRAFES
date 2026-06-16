@@ -68,7 +68,7 @@ le §6 de l'audit 2026-06-12 ; « — » = non priorisé explicitement.
 | N-04 | 🟡 | P2-14 | 🔵 connu/assumé | Resegmentation écrase `text_raw` + supprime les liens (dette HANDOFF) ; à arbitrer en ADR |
 | N-06 | 🟡 | P2-9 | ⬜ ouvert | `tauri-fixture` sans lockfiles ; CI en `npm install` |
 | N-08 | 🟢 | — | ⬜ ouvert | Divers mineurs (sémantique reflag cible, lock télémétrie Windows, release-gate 3.12, etc.) |
-| DEP-1\* | 🟢 | — | 🔵 suivi dependabot | `esbuild`/`vite`/`postcss` (devDeps, **non embarqués**) — vulns *dev-only* (CORS serveur de dev esbuild ; postcss = CSS maison). « high » contextuel = faible. Correctif = `vite@8` (major) via PR dependabot. Découvert en câblant N-01. |
+| DEP-1\* | 🟢 | — | ✅ corrigé | `esbuild`/`vite`/`postcss` (devDeps, non embarqués) soldées par l'upgrade **vite 5→8** (PR #42). vite 8 (rolldown) embarque l'esbuild patché ; `npm audit` = 0 sur les 3 apps. Découvert en câblant N-01. |
 
 \*Item dérivé (pas un finding d'audit), tracé pour ne pas perdre un « high » connu.
 
