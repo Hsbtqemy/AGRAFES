@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Optional
 from urllib.error import HTTPError, URLError
 from urllib.parse import unquote, urljoin, urlsplit
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 import defusedxml.ElementTree as ET
 
@@ -127,6 +127,45 @@ def _same_origin(base: str, other: str) -> bool:
         and (b.hostname or "").lower() == (o.hostname or "").lower()
         and _port(b) == _port(o)
     )
+
+
+class _AuthStrippingRedirectHandler(HTTPRedirectHandler):
+    """Follow redirects, but drop the ``Authorization`` header on cross-origin hops.
+
+    urllib's default handler re-sends every request header — including
+    ``Authorization`` — to the redirect target, even when it points to a
+    different host. A malicious/compromised WebDAV server could thus 30x the
+    download GET to an attacker host and harvest the credentials. We strip
+    ``Authorization`` whenever the next URL is not same-origin with the request
+    being redirected; legitimate same-origin redirects (e.g. a Nextcloud
+    trailing-slash 301) keep it and still work.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        new = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if new is not None and not _same_origin(req.full_url, newurl):
+            new.headers = {
+                k: v for k, v in new.headers.items() if k.lower() != "authorization"
+            }
+            new.unredirected_hdrs = {
+                k: v for k, v in new.unredirected_hdrs.items() if k.lower() != "authorization"
+            }
+            log.warning(
+                "WebDAV: stripped Authorization on cross-origin redirect %s -> %s",
+                req.full_url, newurl,
+            )
+        return new
+
+
+# Module HTTP opener: follows redirects but strips credentials on cross-origin
+# hops (see _AuthStrippingRedirectHandler). Every WebDAV request goes through it
+# via the urlopen() wrapper below (which is also the test seam).
+_OPENER = build_opener(_AuthStrippingRedirectHandler())
+
+
+def urlopen(req: Request, timeout: int):
+    """Open *req* through the credential-stripping opener (test seam)."""
+    return _OPENER.open(req, timeout=timeout)
 
 
 def propfind(url: str, *, auth_header: dict, timeout: int = DEFAULT_TIMEOUT) -> list[RemoteEntry]:
