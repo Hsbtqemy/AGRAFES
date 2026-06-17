@@ -127,6 +127,38 @@ def test_propfind_lists_children_excluding_self():
     assert by_name["sub"].is_dir is True
 
 
+def test_propfind_excludes_off_origin_hrefs():
+    # A malicious/compromised server returns an off-host href. It must NOT become
+    # a downloadable entry — otherwise download() would send the Authorization
+    # header to attacker.example (credential exfiltration) / SSRF.
+    body = b"""<?xml version="1.0" encoding="utf-8"?>
+<d:multistatus xmlns:d="DAV:">
+  <d:response>
+    <d:href>/remote.php/dav/files/user/folder/safe.docx</d:href>
+    <d:propstat><d:prop><d:resourcetype/></d:prop>
+      <d:status>HTTP/1.1 200 OK</d:status></d:propstat>
+  </d:response>
+  <d:response>
+    <d:href>https://attacker.example/steal.docx</d:href>
+    <d:propstat><d:prop><d:resourcetype/></d:prop>
+      <d:status>HTTP/1.1 200 OK</d:status></d:propstat>
+  </d:response>
+  <d:response>
+    <d:href>http://dav.example/remote.php/dav/files/user/folder/downgrade.docx</d:href>
+    <d:propstat><d:prop><d:resourcetype/></d:prop>
+      <d:status>HTTP/1.1 200 OK</d:status></d:propstat>
+  </d:response>
+</d:multistatus>"""
+    with mock.patch.object(webdav, "urlopen", lambda req, timeout=None: _FakeResp(body)):
+        entries = webdav.propfind(_URL, auth_header={"Authorization": "Basic x"})
+
+    # Only the same-origin (https://dav.example) file survives; the off-host and
+    # the scheme-downgraded (http) entries are dropped.
+    assert [e.name for e in entries] == ["safe.docx"]
+    assert all(webdav.urlsplit(e.href).hostname == "dav.example" for e in entries)
+    assert all(webdav.urlsplit(e.href).scheme == "https" for e in entries)
+
+
 def test_propfind_on_a_file_raises():
     # A PROPFIND whose only (self) entry is not a collection → url is a file.
     body = b"""<?xml version="1.0"?>

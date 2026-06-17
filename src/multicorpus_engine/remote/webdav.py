@@ -12,6 +12,7 @@ docs/DESIGN_sharedocs_ingestion.md §3.
 from __future__ import annotations
 
 import base64
+import logging
 import socket
 from dataclasses import dataclass
 from pathlib import Path
@@ -25,6 +26,8 @@ import defusedxml.ElementTree as ET
 _DAV = "DAV:"
 _CHUNK = 4 * 1024 * 1024  # 4 MiB — mirrors the importers' streaming reads
 DEFAULT_TIMEOUT = 30
+
+log = logging.getLogger(__name__)
 
 # Minimal PROPFIND body: request only the props we surface.
 _PROPFIND_BODY = (
@@ -105,6 +108,27 @@ def _open(req: Request, timeout: int):
         raise WebdavError(f"WebDAV network error for {req.full_url}: {exc}") from exc
 
 
+def _same_origin(base: str, other: str) -> bool:
+    """True if *other* shares *base*'s scheme/host/port (default ports normalized).
+
+    Used to refuse off-host hrefs before issuing any auth-bearing request, so a
+    malicious/compromised server cannot redirect the client (and its credentials)
+    to an arbitrary host.
+    """
+    b, o = urlsplit(base), urlsplit(other)
+
+    def _port(p) -> Optional[int]:
+        if p.port is not None:
+            return p.port
+        return {"https": 443, "http": 80}.get(p.scheme)
+
+    return (
+        b.scheme == o.scheme
+        and (b.hostname or "").lower() == (o.hostname or "").lower()
+        and _port(b) == _port(o)
+    )
+
+
 def propfind(url: str, *, auth_header: dict, timeout: int = DEFAULT_TIMEOUT) -> list[RemoteEntry]:
     """List the immediate children of the collection at *url* (``Depth: 1``).
 
@@ -131,6 +155,14 @@ def propfind(url: str, *, auth_header: dict, timeout: int = DEFAULT_TIMEOUT) -> 
             continue
         href_raw = href_el.text.strip()
         abs_url = urljoin(url, href_raw)
+        # Security: only ever follow same-origin hrefs. A malicious/compromised
+        # server could return an off-host href; downloading it would send the
+        # Authorization header to an arbitrary host (credential exfiltration) and
+        # could SSRF the client into internal networks. Off-origin entries are
+        # dropped here, before any auth-bearing GET in download().
+        if not _same_origin(url, abs_url):
+            log.warning("WebDAV: skipping off-origin href %r (base %s)", abs_url, url)
+            continue
         prop = _first_prop(resp_el)
         is_dir = _is_collection(prop)
 
