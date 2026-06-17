@@ -9,6 +9,9 @@ from urllib.request import Request, urlopen
 
 import pytest
 
+from tests.conftest import make_docx
+from tests.support_odt import make_odt_bytes
+
 
 # ─── HTTP helpers ─────────────────────────────────────────────────────────────
 
@@ -186,7 +189,7 @@ def test_preview_nonexistent_file_returns_404(preview_sidecar):
 
 
 def test_preview_non_conllu_mode_returns_null_stats(preview_sidecar):
-    """Non-conllu mode → ok=True, conllu_stats=None (no text preview implemented)."""
+    """Non-conllu mode → ok=True, conllu_stats=None, and a units payload (A-02)."""
     base_url, tmp_path = preview_sidecar
     f = tmp_path / "doc.txt"
     f.write_text("Hello world\n", encoding="utf-8")
@@ -197,3 +200,82 @@ def test_preview_non_conllu_mode_returns_null_stats(preview_sidecar):
     assert code == 200
     assert body["ok"] is True
     assert body["conllu_stats"] is None
+    # A non-numbered line is a structure unit (not a line) — the preview now
+    # surfaces that, exactly like the import.
+    assert body["units"] == [
+        {"n": 1, "external_id": None, "unit_type": "structure", "text_raw": "Hello world"},
+    ]
+    assert body["units_total"] == 1
+    assert body["truncated"] is False
+
+
+# ─── A-02: text-mode preview goes through parse_<mode> over HTTP ────────────────
+# These exercise the sidecar dispatch wiring per mode (the parse output itself is
+# pinned in tests/importers/test_parse_layer.py). Expected payloads are what
+# parse_<mode>() produces, so preview MUST equal import.
+
+def test_txt_preview_units(preview_sidecar):
+    base_url, tmp_path = preview_sidecar
+    f = tmp_path / "d.txt"
+    f.write_text("[1] alpha\nTitre\n[2] beta\n", encoding="utf-8")
+    code, body = _post(f"{base_url}/import/preview", {"path": str(f), "mode": "txt", "limit": 2})
+    assert code == 200, body
+    assert body["units"] == [
+        {"n": 1, "external_id": 1, "unit_type": "line", "text_raw": "alpha"},
+        {"n": 2, "external_id": None, "unit_type": "structure", "text_raw": "Titre"},
+    ]
+    assert body["units_total"] == 3
+    assert body["truncated"] is True   # 3 > limit 2
+
+
+def test_docx_preview_units_labels_structure(preview_sidecar):
+    # Pins the A-02 fix: a non-numbered docx paragraph is "structure"/None
+    # (the old preview wrongly reported it as "line"/external_id=n).
+    base_url, tmp_path = preview_sidecar
+    f = tmp_path / "d.docx"
+    f.write_bytes(make_docx(["Intro", "[1] Bonjour.", "[2] Le chat¤le chien."]))
+    code, body = _post(f"{base_url}/import/preview", {"path": str(f), "mode": "docx_numbered_lines"})
+    assert code == 200, body
+    assert body["units"] == [
+        {"n": 1, "external_id": None, "unit_type": "structure", "text_raw": "Intro"},
+        {"n": 2, "external_id": 1, "unit_type": "line", "text_raw": "Bonjour."},
+        {"n": 3, "external_id": 2, "unit_type": "line", "text_raw": "Le chat¤le chien."},
+    ]
+
+
+def test_odt_preview_units_not_broken(preview_sidecar):
+    # Pins the A-02 fix: the old ODT preview iterated (rich, level) tuples into
+    # normalize() and 500'd. Going through parse_odt_numbered_lines fixes it.
+    base_url, tmp_path = preview_sidecar
+    f = tmp_path / "d.odt"
+    f.write_bytes(make_odt_bytes(["Intro", "[1] Bonjour.", "[2] Le monde."]))
+    code, body = _post(f"{base_url}/import/preview", {"path": str(f), "mode": "odt_numbered_lines"})
+    assert code == 200, body
+    assert body["units"] == [
+        {"n": 1, "external_id": None, "unit_type": "structure", "text_raw": "Intro"},
+        {"n": 2, "external_id": 1, "unit_type": "line", "text_raw": "Bonjour."},
+        {"n": 3, "external_id": 2, "unit_type": "line", "text_raw": "Le monde."},
+    ]
+
+
+def test_tei_preview_units_xmlid_fallback(preview_sidecar):
+    # Pins the A-02 fix: external_id falls back to n when xml:id has no trailing
+    # digit (the old preview left it None).
+    base_url, tmp_path = preview_sidecar
+    f = tmp_path / "d.xml"
+    f.write_bytes(
+        b'<?xml version="1.0" encoding="UTF-8"?>\n'
+        b'<TEI xmlns="http://www.tei-c.org/ns/1.0">\n'
+        b"  <teiHeader><fileDesc><titleStmt><title>T</title></titleStmt></fileDesc></teiHeader>\n"
+        b'  <text xml:lang="fr"><body>\n'
+        b'    <p xml:id="p5">Premier.</p>\n'
+        b"    <p>Deuxieme.</p>\n"
+        b"  </body></text>\n"
+        b"</TEI>\n"
+    )
+    code, body = _post(f"{base_url}/import/preview", {"path": str(f), "mode": "tei"})
+    assert code == 200, body
+    assert body["units"] == [
+        {"n": 1, "external_id": 5, "unit_type": "line", "text_raw": "Premier."},
+        {"n": 2, "external_id": 2, "unit_type": "line", "text_raw": "Deuxieme."},
+    ]
