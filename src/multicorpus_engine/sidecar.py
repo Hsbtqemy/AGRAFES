@@ -2115,91 +2115,12 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 
         if mode == "conllu":
             try:
-                raw_bytes = fpath.read_bytes()
-                try:
-                    text = raw_bytes.decode("utf-8-sig")
-                except UnicodeDecodeError:
-                    text = raw_bytes.decode("latin-1")
-
-                sentences_total = 0
-                tokens_total = 0
-                skipped_ranges = 0
-                skipped_empty_nodes = 0
-                malformed_lines = 0
-                sample_rows: list[dict] = []
-
-                # First pass : token + skip counters only. Sentence counting
-                # is done in the dedicated "Recount sentences" pass below.
-                for raw_line in text.splitlines():
-                    line = raw_line.strip()
-                    if not line:
-                        continue
-                    if line.startswith("#"):
-                        continue
-                    cols = raw_line.split("\t")
-                    if len(cols) != 10:
-                        malformed_lines += 1
-                        continue
-                    token_id = cols[0].strip()
-                    if "-" in token_id:
-                        skipped_ranges += 1
-                        continue
-                    if "." in token_id:
-                        skipped_empty_nodes += 1
-                        continue
-                    tokens_total += 1
-
-                # Recount sentences (blank-line delimited blocks with tokens)
-                sentences_total = 0
-                in_sentence = False
-                has_tokens = False
-                sample_sent = 0
-                sample_rows = []
-
-                for raw_line in text.splitlines():
-                    line = raw_line.strip()
-                    if not line:
-                        if has_tokens:
-                            sentences_total += 1
-                        in_sentence = False
-                        has_tokens = False
-                        continue
-                    if line.startswith("#"):
-                        if not in_sentence:
-                            in_sentence = True
-                            sample_sent += 1
-                        continue
-                    cols = raw_line.split("\t")
-                    if len(cols) != 10:
-                        continue
-                    token_id = cols[0].strip()
-                    if "-" in token_id or "." in token_id:
-                        continue
-                    has_tokens = True
-                    if len(sample_rows) < limit:
-                        lemma = cols[2].strip()
-                        upos = cols[3].strip()
-                        sample_rows.append({
-                            "sent": sample_sent,
-                            "id": token_id,
-                            "form": cols[1].strip(),
-                            "lemma": "\u2014" if lemma == "_" else lemma,
-                            "upos": "\u2014" if upos == "_" else upos,
-                        })
-
-                if has_tokens:
-                    sentences_total += 1
-
+                # A-02: lenient preview scan lives in the importer module, next to
+                # the strict parser - no reimplementation here.
+                from multicorpus_engine.importers.conllu import preview_conllu
                 self._send_json(success_payload({
                     "mode": mode,
-                    "conllu_stats": {
-                        "sentences": sentences_total,
-                        "tokens": tokens_total,
-                        "skipped_ranges": skipped_ranges,
-                        "skipped_empty_nodes": skipped_empty_nodes,
-                        "malformed_lines": malformed_lines,
-                        "sample_rows": sample_rows,
-                    },
+                    "conllu_stats": preview_conllu(fpath, limit),
                 }))
             except Exception as exc:
                 logger.exception("Preview CoNLL-U error: %s", exc)
@@ -2226,96 +2147,33 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         Each unit dict: { n, external_id, unit_type, text_raw }
         Supported modes: txt_numbered_lines, docx_numbered_lines, docx_paragraphs,
                          odt_numbered_lines, odt_paragraphs, tei.
+
+        A-02: every mode goes through the importer's own ``parse_<mode>`` so the
+        preview shows EXACTLY what an import would write — no parsing is
+        reimplemented here.
         """
-        import re as _re
-        from multicorpus_engine.unicode_policy import normalize as _norm
-
-        _NUMBERED_RE = _re.compile(r"^\[\s*(\d+)\s*\]\s*(.+)$", _re.DOTALL)
-
-        units_all: list[dict] = []
+        from multicorpus_engine.importers import (
+            docx_numbered_lines, docx_paragraphs,
+            odt_numbered_lines, odt_paragraphs, tei_importer, txt,
+        )
+        from multicorpus_engine.importers.parsed import to_preview
 
         if mode in ("txt_numbered_lines", "txt"):
-            from multicorpus_engine.importers.txt import _detect_encoding  # type: ignore[attr-defined]
-            raw_bytes = fpath.read_bytes()
-            encoding, _ = _detect_encoding(raw_bytes)
-            text = raw_bytes.decode(encoding, errors="replace")
-            n = 0
-            for raw_line in text.splitlines():
-                line = raw_line.strip()
-                if not line:
-                    continue
-                n += 1
-                m = _NUMBERED_RE.match(line)
-                if m:
-                    units_all.append({"n": n, "external_id": int(m.group(1)), "unit_type": "line", "text_raw": m.group(2)})
-                else:
-                    units_all.append({"n": n, "external_id": None, "unit_type": "structure", "text_raw": line})
-
-        elif mode in ("docx_numbered_lines", "docx_paragraphs", "docx"):
-            import docx as _docx  # type: ignore[import]
-            from multicorpus_engine.importers.rich_text import para_to_rich_text as _p2r  # type: ignore[attr-defined]
-            document = _docx.Document(str(fpath))
-            n = 0
-            for para in document.paragraphs:
-                rich = _p2r(para)
-                plain = _norm(rich).strip()
-                if not plain:
-                    continue
-                n += 1
-                if mode != "docx_paragraphs":
-                    m = _NUMBERED_RE.match(plain)
-                    if m:
-                        # Strip the [n] prefix from rich text using the plain-text match length
-                        prefix = m.group(0)[: m.start(2)]  # e.g. "[12] "
-                        text_raw = rich[len(prefix):].strip() if rich.startswith(prefix) else m.group(2)
-                        units_all.append({"n": n, "external_id": int(m.group(1)), "unit_type": "line", "text_raw": text_raw})
-                        continue
-                units_all.append({"n": n, "external_id": n, "unit_type": "line", "text_raw": rich})
-
-        elif mode in ("odt_numbered_lines", "odt_paragraphs", "odt"):
-            from multicorpus_engine.importers.odt_common import read_odt_paragraph_rich_lines as _odt  # type: ignore[attr-defined]
-            paragraphs = _odt(fpath)
-            n = 0
-            for rich in paragraphs:
-                plain = _norm(rich).strip()
-                if not plain:
-                    continue
-                n += 1
-                if mode != "odt_paragraphs":
-                    m = _NUMBERED_RE.match(plain)
-                    if m:
-                        prefix = m.group(0)[: m.start(2)]
-                        text_raw = rich[len(prefix):].strip() if rich.startswith(prefix) else m.group(2)
-                        units_all.append({"n": n, "external_id": int(m.group(1)), "unit_type": "line", "text_raw": text_raw})
-                        continue
-                units_all.append({"n": n, "external_id": n, "unit_type": "line", "text_raw": rich})
-
-        elif mode in ("tei",):
-            import defusedxml.ElementTree as _DefET
-            from multicorpus_engine.importers.tei_importer import _iter_body_elements, _xmlid_to_int  # type: ignore[attr-defined]
-            _ATTR_ID = "{http://www.w3.org/XML/1998/namespace}id"
-            raw_bytes = fpath.read_bytes()
-            try:
-                text_content = raw_bytes.decode("utf-8-sig")
-            except UnicodeDecodeError:
-                text_content = raw_bytes.decode("latin-1")
-            root = _DefET.fromstring(text_content)
-            elements = _iter_body_elements(root, "p")
-            n = 0
-            for el in elements:
-                text_raw = "".join(el.itertext()).strip()
-                if not text_raw:
-                    continue
-                n += 1
-                xmlid = el.get(_ATTR_ID) or el.get("id")
-                ext_id = _xmlid_to_int(xmlid) if xmlid else n
-                units_all.append({"n": n, "external_id": ext_id, "unit_type": "line", "text_raw": text_raw})
-
+            parsed = txt.parse_txt_numbered_lines(fpath)
+        elif mode in ("docx_numbered_lines", "docx"):
+            parsed = docx_numbered_lines.parse_docx_numbered_lines(fpath)
+        elif mode == "docx_paragraphs":
+            parsed = docx_paragraphs.parse_docx_paragraphs(fpath)
+        elif mode in ("odt_numbered_lines", "odt"):
+            parsed = odt_numbered_lines.parse_odt_numbered_lines(fpath)
+        elif mode == "odt_paragraphs":
+            parsed = odt_paragraphs.parse_odt_paragraphs(fpath)
+        elif mode == "tei":
+            parsed = tei_importer.parse_tei(fpath)
         else:
             raise ValueError(f"Preview not supported for mode '{mode}'")
 
-        total = len(units_all)
-        return units_all[:limit], total
+        return to_preview(parsed.units, limit)
 
     def _handle_curate_exceptions_list(self, body: dict) -> None:
         """Return all curation exceptions for a given doc_id (or all if absent).

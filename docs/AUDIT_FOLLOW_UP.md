@@ -31,6 +31,8 @@ le §6 de l'audit 2026-06-12 ; « — » = non priorisé explicitement.
 | Q-01 | 🟠 | P0-2 | ✅ corrigé | `[tool.ruff]` (E4/E7/E9/F, E741 ignoré) + job CI `lint` ; 57 violations résorbées (46 autofix, 5 vars, 1 dead). `1b12520` |
 | T-01 | 🔴 | P0-2 | ✅ corrigé | Gate `--cov-fail-under=60` dans le step pytest CI (ratcheté depuis 35 ; couverture réelle CI = 61,94 %). `1b12520` |
 | N-01 | 🟠 | P0-2 | ✅ corrigé | `dependabot.yml` étendu à pip/npm/cargo (4 apps + `src-tauri`), groupé hebdo. `1b12520` |
+| A-02 | 🟠 | P0-1 | ✅ corrigé | `/import/preview` ne réimplémente plus les importers : chaque mode passe par `parse_<mode>() -> ParsedDoc` + `to_preview()` (txt/docx×2/odt×2/tei), preview CoNLL-U *lenient* déplacé dans `conllu.preview_conllu`. `sidecar.py` −142 l. Corrige 3 divergences preview↔import (strip préfixe docx, fallback ext_id TEI, preview ODT cassé). PR #47, tests `test_parse_layer.py` (équivalence preview==import) |
+| Q-03 | 🟡 | — | ✅ corrigé | `file_sha256` unique dans `parsed.py` ; les 7 importers l'utilisent (suppression des 5 `_compute_file_hash` + 2 cross-imports docx→odt). PR #47 |
 | — | — | — | ✅ bonus | CI déclenchée aussi sur `development` (les gates ne tiraient que sur `main`). `1b12520` |
 | D-04 | 🟡 | P1-7 | ✅ corrigé | **Ce fichier** (vue inverse finding→statut→commit) |
 | A-05 | — | — | ❌ retiré | Réfuté en passe 2 : les index secondaires existent (`003_alignment.sql`, `012_tokens.sql`) |
@@ -40,11 +42,9 @@ le §6 de l'audit 2026-06-12 ; « — » = non priorisé explicitement.
 | ID | Sév | Prio | Statut | Constat (résumé) |
 |----|-----|------|--------|------------------|
 | A-01 | 🔴 | P0-1 | ⬜ ouvert | `sidecar.py` monolithe (9 961 l., 93 handlers, pas de couche services) |
-| A-02 | 🟠 | P0-1 | 🟦 partiel | `/import/preview` réimplémente les importers (`sidecar.py:2458`). Le router `dispatch_import` (branche `feat/sharedocs-ingestion-p1`) unifie l'**import** mais pas le **preview** |
 | A-03 | 🟠 | P0-1 | ⬜ ouvert | 66 blocs de validation manuelle (pas de validateur de schéma) |
 | A-04 | 🟡 | P2-13 | ⬜ ouvert | Attributs dynamiques non typés sur `HTTPServer` |
 | Q-02 | 🟠 | P0-1 | ⬜ ouvert | Fonctions géantes ; `_build_hits` vs `_build_hits_regex` (~70 l. dupliquées) |
-| Q-03 | 🟡 | — | ⬜ ouvert | `_compute_file_hash` redéfini dans 5 importers ; dup DOCX/ODT |
 | Q-04 | 🟡 | P2-13 | ⬜ ouvert | Typage hétérogène ; pas de TypedDict pour les shapes de contrat |
 | Q-05 | 🟡 | — | ⬜ ouvert | Matcher CQL : pas de cap global documenté (gardes présentes) |
 | T-02 | 🟠 | P0-3 | ⬜ ouvert | Branches cœur `telemetry.py` / `curation.py` sans test direct |

@@ -16,11 +16,59 @@ from .docx_numbered_lines import (
 )
 from .import_guard import assert_not_duplicate_import
 from .odt_common import read_odt_paragraph_rich_lines
-from .parsed import file_sha256
+from .parsed import ParsedDoc, ParsedUnit, file_sha256
 
 _NUMBERED_RE = re.compile(r"^\[\s*(\d+)\s*\]\s*(.+)$", re.DOTALL)
 
 logger = logging.getLogger(__name__)
+
+
+def parse_odt_numbered_lines(
+    path: str | Path,
+    run_logger: Optional[logging.Logger] = None,
+) -> ParsedDoc:
+    """Parse an ODT (numbered-lines ``[n]`` convention) into units WITHOUT touching
+    the DB. Shared by ``import_odt_numbered_lines`` (write path) and the sidecar
+    ``/import/preview`` so the parsing lives in exactly one place (A-02). Raises
+    ``FileNotFoundError`` / ``ValueError`` like the importer did.
+    """
+    path = Path(path)
+    if not path.exists():
+        raise FileNotFoundError(f"ODT file not found: {path}")
+
+    _MAX_FILE_BYTES = 512 * 1024 * 1024  # 512 MiB
+    if path.stat().st_size > _MAX_FILE_BYTES:
+        raise ValueError(f"ODT file too large (max {_MAX_FILE_BYTES // (1024 * 1024)} MiB)")
+
+    source_hash = file_sha256(path)
+
+    units: list[ParsedUnit] = []
+    n = 0
+    for rich, _heading_level in read_odt_paragraph_rich_lines(path):
+        plain = normalize(rich).strip()
+        if not plain:
+            continue
+        n += 1
+        # Match on plain text so a styled [n] prefix is still detected.
+        m = _NUMBERED_RE.match(plain)
+        if m:
+            ext_id = int(m.group(1))
+            # Strip the plain prefix from rich to preserve styling in the content.
+            prefix_len = m.start(2)
+            text_raw = rich[prefix_len:] if len(rich) >= prefix_len else m.group(2)
+            text_norm = normalize(text_raw)
+            sep_count = count_sep(text_raw)
+            meta = json.dumps({"sep_count": sep_count}) if sep_count > 0 else None
+            units.append(ParsedUnit(
+                n=n, unit_type="line", text_raw=text_raw, text_norm=text_norm,
+                external_id=ext_id, meta_json=meta,
+            ))
+        else:
+            units.append(ParsedUnit(
+                n=n, unit_type="structure", text_raw=rich, text_norm=normalize(rich),
+            ))
+
+    return ParsedDoc(units=units, doc_meta={}, source_hash=source_hash)
 
 
 def import_odt_numbered_lines(
@@ -36,78 +84,42 @@ def import_odt_numbered_lines(
 ) -> ImportReport:
     """Import an ODT file using the numbered-lines ``[n]`` convention (see ADR-001)."""
     path = Path(path)
-    if not path.exists():
-        raise FileNotFoundError(f"ODT file not found: {path}")
-
-    _MAX_FILE_BYTES = 512 * 1024 * 1024  # 512 MiB
-    if path.stat().st_size > _MAX_FILE_BYTES:
-        raise ValueError(f"ODT file too large (max {_MAX_FILE_BYTES // (1024 * 1024)} MiB)")
-
     log = run_logger or logger
     log.info("Starting import of %s (mode=odt_numbered_lines)", path)
 
-    source_hash = file_sha256(path)
-    assert_not_duplicate_import(conn, path, source_hash, check_filename=check_filename)
+    parsed = parse_odt_numbered_lines(path, run_logger=run_logger)
+    assert_not_duplicate_import(conn, path, parsed.source_hash, check_filename=check_filename)
     doc_title = title or path.stem
     utcnow = __import__("datetime").datetime.now(
         __import__("datetime").timezone.utc
     ).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    external_ids: list[int] = []
-    units_to_insert: list[tuple] = []
+    external_ids: list[int] = [
+        u.external_id for u in parsed.units
+        if u.unit_type == "line" and u.external_id is not None
+    ]
 
     try:
-        paragraphs = [rich for rich, _ in read_odt_paragraph_rich_lines(path)]
-
         cur = conn.execute(
             """
             INSERT INTO documents
                 (title, language, doc_role, resource_type, meta_json, source_path, source_hash, created_at)
             VALUES (?, ?, ?, ?, NULL, ?, ?, ?)
             """,
-            (doc_title, language, doc_role, resource_type, str(path), source_hash, utcnow),
+            (doc_title, language, doc_role, resource_type, str(path), parsed.source_hash, utcnow),
         )
         doc_id = cur.lastrowid
         log.info("Created document doc_id=%d title=%r", doc_id, doc_title)
-
-        n = 0
-        for rich in paragraphs:
-            plain = normalize(rich).strip()
-            if not plain:
-                continue
-
-            n += 1
-            # Match on plain text so a styled [n] prefix is still detected
-            m = _NUMBERED_RE.match(plain)
-            if m:
-                ext_id = int(m.group(1))
-                # Strip the plain prefix from rich to preserve styling in the content
-                prefix_len = m.start(2)
-                text_raw = rich[prefix_len:] if len(rich) >= prefix_len else m.group(2)
-                text_norm = normalize(text_raw)
-                sep_count = count_sep(text_raw)
-                meta = json.dumps({"sep_count": sep_count}) if sep_count > 0 else None
-                unit_type = "line"
-                external_ids.append(ext_id)
-                units_to_insert.append(
-                    (doc_id, unit_type, n, ext_id, text_raw, text_norm, meta)
-                )
-                log.debug("Para n=%d ext_id=%d type=line", n, ext_id)
-            else:
-                text_raw = rich
-                text_norm = normalize(text_raw)
-                unit_type = "structure"
-                units_to_insert.append(
-                    (doc_id, unit_type, n, None, text_raw, text_norm, None)
-                )
-                log.debug("Para n=%d type=structure", n)
 
         conn.executemany(
             """
             INSERT INTO units (doc_id, unit_type, n, external_id, text_raw, text_norm, meta_json)
             VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            units_to_insert,
+            [
+                (doc_id, u.unit_type, u.n, u.external_id, u.text_raw, u.text_norm, u.meta_json)
+                for u in parsed.units
+            ],
         )
         conn.commit()
     except Exception:
@@ -118,9 +130,9 @@ def import_odt_numbered_lines(
 
     report = ImportReport(
         doc_id=doc_id,
-        units_total=len(units_to_insert),
+        units_total=len(parsed.units),
         units_line=len(external_ids),
-        units_structure=len(units_to_insert) - len(external_ids),
+        units_structure=len(parsed.units) - len(external_ids),
         duplicates=duplicates,
         holes=holes,
         non_monotonic=non_monotonic,

@@ -27,7 +27,7 @@ from ..unicode_policy import count_sep, normalize
 from .import_guard import assert_not_duplicate_import
 import json
 from .docx_numbered_lines import ImportReport, _analyze_external_ids
-from .parsed import file_sha256
+from .parsed import ParsedDoc, ParsedUnit, file_sha256
 from ..utils.tei_validate import validate_tei_tree, summarize_tei_validation
 
 _TEI_NS = "http://www.tei-c.org/ns/1.0"
@@ -112,6 +112,76 @@ def _get_lang(root: ET.Element) -> Optional[str]:
     return lang or None
 
 
+def parse_tei(
+    path: str | Path,
+    unit_element: str = "p",
+    run_logger: Optional[logging.Logger] = None,
+) -> ParsedDoc:
+    """Parse a TEI XML file (extract <p>/<s> as line units) WITHOUT touching the DB.
+
+    Shared by ``import_tei`` (write path) and the sidecar ``/import/preview`` so the
+    element walk, the xml:id→external_id mapping (numeric suffix, fallback to the
+    sequential position) and TEI validation live in exactly one place (A-02).
+    Header-derived title/lang and validation issues are returned in
+    ``ParsedDoc.stats`` for the writer to apply/report. Raises ``ValueError`` /
+    ``FileNotFoundError`` like the importer did.
+    """
+    if unit_element not in ("p", "s"):
+        raise ValueError(f"unit_element must be 'p' or 's', got {unit_element!r}")
+
+    path = Path(path)
+    if not path.exists():
+        raise FileNotFoundError(f"TEI file not found: {path}")
+
+    _MAX_FILE_BYTES = 512 * 1024 * 1024  # 512 MiB
+    if path.stat().st_size > _MAX_FILE_BYTES:
+        raise ValueError(f"TEI file too large (max {_MAX_FILE_BYTES // (1024 * 1024)} MiB)")
+
+    source_hash = file_sha256(path)
+
+    try:
+        tree = DefET.parse(str(path))
+    except ET.ParseError as exc:
+        raise ValueError(f"TEI file is not valid XML: {exc}") from exc
+
+    root = tree.getroot()
+    tei_validation_issues = validate_tei_tree(root, source_path=str(path))
+
+    elements = _iter_body_elements(root, unit_element)
+    units: list[ParsedUnit] = []
+    n = 0
+    for el in elements:
+        # Get all text content (including tail text of children)
+        raw_text = "".join(el.itertext()).strip()
+        if not raw_text:
+            continue  # skip empty elements
+        n += 1
+        text_raw = raw_text
+        text_norm = normalize(text_raw)
+        sep_count = count_sep(text_raw)
+        meta = json.dumps({"sep_count": sep_count}) if sep_count > 0 else None
+        # external_id from xml:id numeric suffix, fallback to sequential position.
+        xmlid = el.get(_ATTR_ID) or el.get("id")
+        ext_id: Optional[int] = _xmlid_to_int(xmlid) if xmlid else None
+        if ext_id is None:
+            ext_id = n
+        units.append(ParsedUnit(
+            n=n, unit_type="line", text_raw=text_raw, text_norm=text_norm,
+            external_id=ext_id, meta_json=meta,
+        ))
+
+    return ParsedDoc(
+        units=units,
+        doc_meta={"tei_unit": unit_element},
+        source_hash=source_hash,
+        stats={
+            "header_title": _get_title(root),
+            "header_lang": _get_lang(root),
+            "validation_issues": tei_validation_issues,
+        },
+    )
+
+
 def import_tei(
     conn: sqlite3.Connection,
     path: str | Path,
@@ -140,69 +210,29 @@ def import_tei(
     Returns:
         ImportReport with diagnostics.
     """
-    if unit_element not in ("p", "s"):
-        raise ValueError(f"unit_element must be 'p' or 's', got {unit_element!r}")
-
     path = Path(path)
-    if not path.exists():
-        raise FileNotFoundError(f"TEI file not found: {path}")
-
-    _MAX_FILE_BYTES = 512 * 1024 * 1024  # 512 MiB
-    if path.stat().st_size > _MAX_FILE_BYTES:
-        raise ValueError(f"TEI file too large (max {_MAX_FILE_BYTES // (1024 * 1024)} MiB)")
-
     log = run_logger or logger
     log.info("Starting import of %s (mode=tei, unit=%s)", path, unit_element)
 
-    source_hash = file_sha256(path)
-    assert_not_duplicate_import(conn, path, source_hash, check_filename=check_filename)
+    parsed = parse_tei(path, unit_element=unit_element, run_logger=run_logger)
+    assert_not_duplicate_import(conn, path, parsed.source_hash, check_filename=check_filename)
+    source_hash = parsed.source_hash
+    tei_validation_issues = parsed.stats["validation_issues"]
 
-    try:
-        tree = DefET.parse(str(path))
-    except ET.ParseError as exc:
-        raise ValueError(f"TEI file is not valid XML: {exc}") from exc
-
-    root = tree.getroot()
-    tei_validation_issues = validate_tei_tree(root, source_path=str(path))
-
-    # Resolve title and language from TEI header if not supplied
-    tei_title = title or _get_title(root) or path.stem
-    tei_lang = language or _get_lang(root) or "und"  # und = undetermined
+    # Resolve title and language: explicit arg > TEI header > fallback.
+    tei_title = title or parsed.stats["header_title"] or path.stem
+    tei_lang = language or parsed.stats["header_lang"] or "und"  # und = undetermined
 
     utcnow = __import__("datetime").datetime.now(
         __import__("datetime").timezone.utc
     ).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    # Extract elements (in-memory XML, no I/O) — build units_parsed before opening transaction
-    elements = _iter_body_elements(root, unit_element)
-    external_ids: list[int] = []
-    # (unit_type, n, ext_id, text_raw, text_norm, meta) — doc_id added after INSERT
-    units_parsed: list[tuple] = []
-    n = 0
-
-    for el in elements:
-        # Get all text content (including tail text of children)
-        raw_text = "".join(el.itertext()).strip()
-        if not raw_text:
-            continue  # skip empty elements
-
-        n += 1
-        text_raw = raw_text
-        text_norm = normalize(text_raw)
-        sep_count = count_sep(text_raw)
-        meta = json.dumps({"sep_count": sep_count}) if sep_count > 0 else None
-
-        # external_id from xml:id numeric suffix
-        xmlid = el.get(_ATTR_ID) or el.get("id")
-        ext_id: Optional[int] = None
-        if xmlid:
-            ext_id = _xmlid_to_int(xmlid)
-        if ext_id is None:
-            ext_id = n  # fallback to sequential position
-
-        external_ids.append(ext_id)
-        units_parsed.append(("line", n, ext_id, text_raw, text_norm, meta))
-        log.debug("TEI %s n=%d ext_id=%d", unit_element, n, ext_id)
+    # Project parsed units onto DB-insert tuples (doc_id added after INSERT).
+    external_ids: list[int] = [u.external_id for u in parsed.units]
+    units_parsed: list[tuple] = [
+        (u.unit_type, u.n, u.external_id, u.text_raw, u.text_norm, u.meta_json)
+        for u in parsed.units
+    ]
 
     # Single transaction: document record + units
     try:
