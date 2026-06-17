@@ -25,6 +25,7 @@ from typing import Optional
 from ..unicode_policy import count_sep, normalize
 from .import_guard import assert_not_duplicate_import
 from .docx_numbered_lines import ImportReport, _analyze_external_ids
+from .parsed import ParsedDoc, ParsedUnit
 
 _NUMBERED_RE = re.compile(r"^\[\s*(\d+)\s*\]\s*(.+)$")
 
@@ -69,6 +70,64 @@ def _detect_encoding(data: bytes) -> tuple[str, str]:
         return ("latin-1", "latin-1-fallback")
 
 
+def parse_txt_numbered_lines(
+    path: str | Path,
+    run_logger: Optional[logging.Logger] = None,
+) -> ParsedDoc:
+    """Parse a numbered-lines TXT file into units WITHOUT touching the DB.
+
+    Shared by ``import_txt_numbered_lines`` (write path) and the sidecar
+    ``/import/preview`` so the parsing logic lives in exactly one place (A-02).
+    Raises ``FileNotFoundError`` / ``ValueError`` like the importer did.
+    """
+    path = Path(path)
+    if not path.exists():
+        raise FileNotFoundError(f"TXT file not found: {path}")
+
+    _MAX_FILE_BYTES = 512 * 1024 * 1024  # 512 MiB
+    if path.stat().st_size > _MAX_FILE_BYTES:
+        raise ValueError(f"TXT file too large (max {_MAX_FILE_BYTES // (1024 * 1024)} MiB)")
+    raw_bytes = path.read_bytes()
+    source_hash = hashlib.sha256(raw_bytes).hexdigest()
+    encoding, enc_method = _detect_encoding(raw_bytes)
+
+    # Encoding fallback: only the run_logger (CLI run log) — never the module
+    # logger (would hit stderr in the sidecar).
+    if enc_method in ("cp1252-fallback", "latin-1-fallback") and run_logger is not None:
+        run_logger.warning("Encoding detection fell back to %s for %s", encoding, path.name)
+
+    text = raw_bytes.decode(encoding, errors="replace")
+
+    units: list[ParsedUnit] = []
+    n = 0
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue  # skip blank lines
+        n += 1
+        m = _NUMBERED_RE.match(line)
+        if m:
+            ext_id = int(m.group(1))
+            text_raw = m.group(2)
+            sep_count = count_sep(text_raw)
+            meta = json.dumps({"sep_count": sep_count}) if sep_count > 0 else None
+            units.append(ParsedUnit(
+                n=n, unit_type="line", text_raw=text_raw, text_norm=normalize(text_raw),
+                external_id=ext_id, meta_json=meta,
+            ))
+        else:
+            units.append(ParsedUnit(
+                n=n, unit_type="structure", text_raw=line, text_norm=normalize(line),
+                unit_role="intertitre",
+            ))
+
+    return ParsedDoc(
+        units=units,
+        doc_meta={"encoding": encoding, "enc_method": enc_method},
+        source_hash=source_hash,
+    )
+
+
 def import_txt_numbered_lines(
     conn: sqlite3.Connection,
     path: str | Path,
@@ -89,29 +148,13 @@ def import_txt_numbered_lines(
     Returns an ImportReport with diagnostics (same as docx_numbered_lines).
     """
     path = Path(path)
-    if not path.exists():
-        raise FileNotFoundError(f"TXT file not found: {path}")
-
     log = run_logger or logger
     log.info("Starting import of %s (mode=txt_numbered_lines)", path)
 
-    _MAX_FILE_BYTES = 512 * 1024 * 1024  # 512 MiB
-    if path.stat().st_size > _MAX_FILE_BYTES:
-        raise ValueError(f"TXT file too large (max {_MAX_FILE_BYTES // (1024 * 1024)} MiB)")
-    raw_bytes = path.read_bytes()
-    source_hash = hashlib.sha256(raw_bytes).hexdigest()
-    assert_not_duplicate_import(conn, path, source_hash, check_filename=check_filename)
-    encoding, enc_method = _detect_encoding(raw_bytes)
-
-    # Encoding fallback: do not use module logger (would go to stderr in sidecar).
-    # Only run_logger (CLI run log file) and structured stats_json.
-    if enc_method in ("cp1252-fallback", "latin-1-fallback"):
-        if run_logger is not None:
-            run_logger.warning(
-                "Encoding detection fell back to %s for %s", encoding, path.name
-            )
-
-    text = raw_bytes.decode(encoding, errors="replace")
+    parsed = parse_txt_numbered_lines(path, run_logger=run_logger)
+    assert_not_duplicate_import(conn, path, parsed.source_hash, check_filename=check_filename)
+    encoding = parsed.doc_meta["encoding"]
+    enc_method = parsed.doc_meta["enc_method"]
     log.info("Decoded %s as %s (method=%s)", path.name, encoding, enc_method)
 
     doc_title = title or path.stem
@@ -128,49 +171,24 @@ def import_txt_numbered_lines(
         """,
         (
             doc_title, language, doc_role, resource_type,
-            json.dumps({"encoding": encoding, "enc_method": enc_method}),
-            str(path), source_hash, utcnow,
+            json.dumps(parsed.doc_meta),
+            str(path), parsed.source_hash, utcnow,
         ),
     )
     doc_id = cur.lastrowid
 
     log.info("Created document doc_id=%d title=%r", doc_id, doc_title)
 
-    # Parse lines
-    lines = text.splitlines()
-    external_ids: list[int] = []
-    units_to_insert: list[tuple] = []
-    has_structure = False
-    n = 0
-
-    for raw_line in lines:
-        line = raw_line.strip()
-        if not line:
-            continue  # skip blank lines
-
-        n += 1
-        m = _NUMBERED_RE.match(line)
-        if m:
-            ext_id = int(m.group(1))
-            text_raw = m.group(2)
-            text_norm = normalize(text_raw)
-            sep_count = count_sep(text_raw)
-            meta = json.dumps({"sep_count": sep_count}) if sep_count > 0 else None
-            unit_type = "line"
-            external_ids.append(ext_id)
-            units_to_insert.append(
-                (doc_id, unit_type, n, ext_id, text_raw, text_norm, meta, None)
-            )
-            log.debug("Line n=%d ext_id=%d type=line", n, ext_id)
-        else:
-            text_raw = line
-            text_norm = normalize(text_raw)
-            unit_type = "structure"
-            has_structure = True
-            units_to_insert.append(
-                (doc_id, unit_type, n, None, text_raw, text_norm, None, "intertitre")
-            )
-            log.debug("Line n=%d type=structure", n)
+    # Project parsed units onto DB rows (doc_id assigned now).
+    external_ids: list[int] = [
+        u.external_id for u in parsed.units
+        if u.unit_type == "line" and u.external_id is not None
+    ]
+    has_structure = any(u.unit_type == "structure" for u in parsed.units)
+    units_to_insert: list[tuple] = [
+        (doc_id, u.unit_type, u.n, u.external_id, u.text_raw, u.text_norm, u.meta_json, u.unit_role)
+        for u in parsed.units
+    ]
 
     try:
         # Auto-create intertitre convention if structure lines are present
