@@ -7,7 +7,6 @@ Imports a CoNLL-U file into:
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import sqlite3
@@ -17,16 +16,9 @@ from typing import Optional
 from ..unicode_policy import normalize
 from .docx_numbered_lines import ImportReport, _analyze_external_ids
 from .import_guard import assert_not_duplicate_import
+from .parsed import file_sha256
 
 logger = logging.getLogger(__name__)
-
-
-def _compute_file_hash(path: Path) -> str:
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(65536), b""):
-            h.update(chunk)
-    return h.hexdigest()
 
 
 def _clean_field(value: str) -> str | None:
@@ -119,6 +111,101 @@ def _parse_conllu(text: str) -> tuple[list[dict], dict[str, int]]:
     return sentences, stats
 
 
+def preview_conllu(path: str | Path, limit: int) -> dict:
+    """Lenient read-only scan of a CoNLL-U file for ``/import/preview`` (A-02).
+
+    Unlike the strict :func:`import_conllu` / :func:`_parse_conllu` — which raise on
+    a malformed 10-column row — the preview COUNTS malformed lines and never raises,
+    so the UI can surface problems before the user commits to an import. Decoding is
+    also lenient (utf-8-sig, then latin-1) where the importer would reject non-UTF-8.
+
+    Returns the ``conllu_stats`` dict: ``sentences``, ``tokens``, ``skipped_ranges``,
+    ``skipped_empty_nodes``, ``malformed_lines`` and ``sample_rows[:limit]`` (each
+    ``{sent, id, form, lemma, upos}``).
+    """
+    path = Path(path)
+    raw_bytes = path.read_bytes()
+    try:
+        text = raw_bytes.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        text = raw_bytes.decode("latin-1")
+
+    tokens_total = 0
+    skipped_ranges = 0
+    skipped_empty_nodes = 0
+    malformed_lines = 0
+
+    # First pass: token + skip counters only. Sentence counting happens below.
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith("#"):
+            continue
+        cols = raw_line.split("\t")
+        if len(cols) != 10:
+            malformed_lines += 1
+            continue
+        token_id = cols[0].strip()
+        if "-" in token_id:
+            skipped_ranges += 1
+            continue
+        if "." in token_id:
+            skipped_empty_nodes += 1
+            continue
+        tokens_total += 1
+
+    # Second pass: sentences (blank-line delimited blocks with tokens) + sample.
+    sentences_total = 0
+    in_sentence = False
+    has_tokens = False
+    sample_sent = 0
+    sample_rows: list[dict] = []
+
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            if has_tokens:
+                sentences_total += 1
+            in_sentence = False
+            has_tokens = False
+            continue
+        if line.startswith("#"):
+            if not in_sentence:
+                in_sentence = True
+                sample_sent += 1
+            continue
+        cols = raw_line.split("\t")
+        if len(cols) != 10:
+            continue
+        token_id = cols[0].strip()
+        if "-" in token_id or "." in token_id:
+            continue
+        has_tokens = True
+        if len(sample_rows) < limit:
+            lemma = cols[2].strip()
+            upos = cols[3].strip()
+            sample_rows.append({
+                "sent": sample_sent,
+                "id": token_id,
+                "form": cols[1].strip(),
+                "lemma": "—" if lemma == "_" else lemma,
+                "upos": "—" if upos == "_" else upos,
+            })
+
+    if has_tokens:
+        sentences_total += 1
+
+    return {
+        "sentences": sentences_total,
+        "tokens": tokens_total,
+        "skipped_ranges": skipped_ranges,
+        "skipped_empty_nodes": skipped_empty_nodes,
+        "malformed_lines": malformed_lines,
+        "sample_rows": sample_rows,
+    }
+
+
 def import_conllu(
     conn: sqlite3.Connection,
     path: str | Path,
@@ -146,7 +233,7 @@ def import_conllu(
     _MAX_FILE_BYTES = 512 * 1024 * 1024  # 512 MiB
     if path.stat().st_size > _MAX_FILE_BYTES:
         raise ValueError(f"CoNLL-U file too large (max {_MAX_FILE_BYTES // (1024 * 1024)} MiB)")
-    source_hash = _compute_file_hash(path)
+    source_hash = file_sha256(path)
     assert_not_duplicate_import(conn, path, source_hash, check_filename=check_filename)
 
     raw_bytes = path.read_bytes()
