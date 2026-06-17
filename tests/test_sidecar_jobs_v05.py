@@ -268,6 +268,44 @@ def test_enqueue_import_job_runs(v05_env: dict) -> None:
     assert "doc_id" in done["result"]
 
 
+def test_enqueue_import_job_attaches_to_family(v05_env: dict) -> None:
+    # Regression: importing into a family inserts a doc_relations row, whose
+    # created_at column is NOT NULL with no default. The job-path INSERT used to
+    # omit created_at, so the relation step raised and the whole job errored.
+    family_root = v05_env["doc_id"]  # the fixture's V05Doc
+    txt_path = v05_env["tmp_path"] / "child.txt"
+    txt_path.write_text("[1] Child line.\n[2] Another child line.\n", encoding="utf-8")
+    code, p = _http(
+        "POST", f"{v05_env['base_url']}/jobs/enqueue",
+        {
+            "kind": "import",
+            "params": {
+                "mode": "txt_numbered_lines",
+                "path": str(txt_path),
+                "language": "en",
+                "title": "FamilyChild",
+                "family_root_doc_id": family_root,
+            },
+        },
+        token=v05_env["token"],
+    )
+    assert code == 202
+    job = _wait_job(v05_env["base_url"], p["job"]["job_id"])
+    assert job["status"] == "done", job          # was "error" before the fix
+    result = job["result"]
+    assert result["relation_created"] is True
+    new_doc_id = result["doc_id"]
+
+    # The relation row exists and carries a non-empty created_at (the bug's crux).
+    code, rels = _http("GET", f"{v05_env['base_url']}/doc_relations?doc_id={new_doc_id}")
+    assert code == 200
+    rows = rels["relations"]
+    assert len(rows) == 1
+    assert rows[0]["relation_type"] == "translation_of"
+    assert rows[0]["target_doc_id"] == family_root
+    assert rows[0]["created_at"]                  # non-empty -> NOT NULL satisfied
+
+
 def test_enqueue_align_job_runs(v05_env: dict) -> None:
     # Import a second doc to align against
     txt_path = v05_env["tmp_path"] / "doc_en.txt"
