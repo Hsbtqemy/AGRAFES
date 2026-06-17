@@ -14,7 +14,6 @@ Rules (see docs/DECISIONS.md ADR-001, ADR-002, ADR-003):
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import re
@@ -25,6 +24,7 @@ from typing import Optional
 
 from ..unicode_policy import count_sep, normalize
 from .import_guard import assert_not_duplicate_import
+from .parsed import ParsedDoc, ParsedUnit, file_sha256
 from .rich_text import para_to_rich_text
 
 _NUMBERED_RE = re.compile(r"^\[\s*(\d+)\s*\]\s*(.+)$", re.DOTALL)
@@ -68,14 +68,6 @@ class ImportReport:
             "rows_skipped_short": self.rows_skipped_short,
             "nested_tables_skipped": self.nested_tables_skipped,
         }
-
-
-def _compute_file_hash(path: Path) -> str:
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(65536), b""):
-            h.update(chunk)
-    return h.hexdigest()
 
 
 def _paragraph_to_unit(
@@ -172,31 +164,17 @@ def _analyze_external_ids(external_ids: list[int]) -> tuple[list[int], list[int]
     return duplicates, holes, non_monotonic
 
 
-def import_docx_numbered_lines(
-    conn: sqlite3.Connection,
+def parse_docx_numbered_lines(
     path: str | Path,
-    language: str,
-    title: Optional[str] = None,
-    doc_role: str = "standalone",
-    resource_type: Optional[str] = None,
-    run_id: Optional[str] = None,
-    run_logger: Optional[logging.Logger] = None,
-    check_filename: bool = False,
     column_index: Optional[int] = None,
-) -> ImportReport:
-    """Import a DOCX file using the numbered-lines convention.
+    run_logger: Optional[logging.Logger] = None,
+) -> ParsedDoc:
+    """Parse a DOCX (numbered-lines convention) into units WITHOUT touching the DB.
 
-    Creates one row in `documents` and one row per paragraph in `units`.
-    Returns an ImportReport with diagnostics.
-
-    ``column_index`` controls table handling:
-      - ``None`` (default) → tables are skipped entirely (legacy behavior).
-      - ``>= 1`` → walk the body in document order; for each table, extract
-        the cell at column ``column_index`` (1-based) and flatten its
-        paragraphs. Pathological cases (table with fewer columns, merged
-        cells coming from a lower column, nested sub-tables) are surfaced
-        in ``ImportReport.warnings`` / new counters instead of failing
-        silently.
+    Shared by ``import_docx_numbered_lines`` (write path) and the sidecar
+    ``/import/preview`` so the parsing — including the column_index table walk and
+    its vMerge dedup — lives in exactly one place (A-02). Raises
+    ``ImportError`` / ``FileNotFoundError`` / ``ValueError`` like the importer did.
     """
     try:
         import docx  # python-docx
@@ -212,32 +190,21 @@ def import_docx_numbered_lines(
         raise ValueError(f"DOCX file too large (max {_MAX_FILE_BYTES // (1024 * 1024)} MiB)")
 
     log = run_logger or logger
-    log.info("Starting import of %s (mode=docx_numbered_lines)", path)
-
-    source_hash = _compute_file_hash(path)
-    assert_not_duplicate_import(conn, path, source_hash, check_filename=check_filename)
-    doc_title = title or path.stem
-    utcnow = __import__("datetime").datetime.now(
-        __import__("datetime").timezone.utc
-    ).strftime("%Y-%m-%dT%H:%M:%SZ")
+    source_hash = file_sha256(path)
 
     # Validate column_index early so the user gets a clear error.
     if column_index is not None and column_index < 1:
         raise ValueError(f"column_index must be >= 1 (got {column_index})")
 
-    # Parse DOCX before opening the transaction (pure I/O, no DB writes yet)
     document = docx.Document(str(path))
 
-    external_ids: list[int] = []
-    # (unit_type, n, ext_id, text_raw, text_norm, meta) — doc_id added after INSERT
+    # (unit_type, n, ext_id, text_raw, text_norm, meta) — doc_id added by the writer.
     units_parsed: list[tuple] = []
 
     # Per-table extraction counters (renseignés seulement quand column_index est set).
     tables_processed = 0
     rows_skipped_short = 0
     nested_tables_skipped = 0
-    # Pour le warning « colonne sans [N] dominante » — on suit séparément les
-    # paragraphes extraits depuis les cellules de la colonne demandée.
     col_paragraphs_total = 0
     col_paragraphs_line = 0
 
@@ -247,10 +214,7 @@ def import_docx_numbered_lines(
         nonlocal n
         n += 1
         # Override the n placeholder produced by the helper with the live counter.
-        unit = (unit[0], n, *unit[2:])
-        units_parsed.append(unit)
-        if unit[0] == "line":
-            external_ids.append(unit[2])
+        units_parsed.append((unit[0], n, *unit[2:]))
 
     if column_index is None:
         # Legacy path — tables are skipped (python-docx Document.paragraphs
@@ -332,6 +296,81 @@ def import_docx_numbered_lines(
                             tables_processed, row_idx + 1, column_index,
                             n, unit[0],
                         )
+
+    units = [
+        ParsedUnit(
+            n=u[1], unit_type=u[0], text_raw=u[3], text_norm=u[4],
+            external_id=u[2], meta_json=u[5],
+        )
+        for u in units_parsed
+    ]
+    return ParsedDoc(
+        units=units,
+        doc_meta={},
+        source_hash=source_hash,
+        stats={
+            "tables_processed": tables_processed,
+            "rows_skipped_short": rows_skipped_short,
+            "nested_tables_skipped": nested_tables_skipped,
+            "col_paragraphs_total": col_paragraphs_total,
+            "col_paragraphs_line": col_paragraphs_line,
+        },
+    )
+
+
+def import_docx_numbered_lines(
+    conn: sqlite3.Connection,
+    path: str | Path,
+    language: str,
+    title: Optional[str] = None,
+    doc_role: str = "standalone",
+    resource_type: Optional[str] = None,
+    run_id: Optional[str] = None,
+    run_logger: Optional[logging.Logger] = None,
+    check_filename: bool = False,
+    column_index: Optional[int] = None,
+) -> ImportReport:
+    """Import a DOCX file using the numbered-lines convention.
+
+    Creates one row in `documents` and one row per paragraph in `units`.
+    Returns an ImportReport with diagnostics.
+
+    ``column_index`` controls table handling:
+      - ``None`` (default) → tables are skipped entirely (legacy behavior).
+      - ``>= 1`` → walk the body in document order; for each table, extract
+        the cell at column ``column_index`` (1-based) and flatten its
+        paragraphs. Pathological cases (table with fewer columns, merged
+        cells coming from a lower column, nested sub-tables) are surfaced
+        in ``ImportReport.warnings`` / new counters instead of failing
+        silently.
+    """
+    path = Path(path)
+    log = run_logger or logger
+    log.info("Starting import of %s (mode=docx_numbered_lines)", path)
+
+    parsed = parse_docx_numbered_lines(path, column_index=column_index, run_logger=run_logger)
+    assert_not_duplicate_import(conn, path, parsed.source_hash, check_filename=check_filename)
+    source_hash = parsed.source_hash
+    doc_title = title or path.stem
+    utcnow = __import__("datetime").datetime.now(
+        __import__("datetime").timezone.utc
+    ).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    # Project parsed units onto DB-insert tuples (doc_id added below) + diagnostics.
+    units_parsed: list[tuple] = [
+        (u.unit_type, u.n, u.external_id, u.text_raw, u.text_norm, u.meta_json)
+        for u in parsed.units
+    ]
+    external_ids: list[int] = [
+        u.external_id for u in parsed.units
+        if u.unit_type == "line" and u.external_id is not None
+    ]
+    s = parsed.stats
+    tables_processed = s["tables_processed"]
+    rows_skipped_short = s["rows_skipped_short"]
+    nested_tables_skipped = s["nested_tables_skipped"]
+    col_paragraphs_total = s["col_paragraphs_total"]
+    col_paragraphs_line = s["col_paragraphs_line"]
 
     # Single transaction: document record + units
     try:

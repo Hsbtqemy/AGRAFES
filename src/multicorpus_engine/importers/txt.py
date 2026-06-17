@@ -32,14 +32,6 @@ _NUMBERED_RE = re.compile(r"^\[\s*(\d+)\s*\]\s*(.+)$")
 logger = logging.getLogger(__name__)
 
 
-def _compute_file_hash(path: Path) -> str:
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(65536), b""):
-            h.update(chunk)
-    return h.hexdigest()
-
-
 def _detect_encoding(data: bytes) -> tuple[str, str]:
     """Detect text encoding from BOM or charset-normalizer.
 

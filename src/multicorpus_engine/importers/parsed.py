@@ -9,8 +9,20 @@ This removes the duplicate parsing the preview used to reimplement (A-02).
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Optional
+
+
+def file_sha256(path: str | Path) -> str:
+    """Streaming SHA-256 of a file (audit Q-03: one definition, was duplicated in
+    5 importers as ``_compute_file_hash``)."""
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
 
 @dataclass
@@ -33,6 +45,7 @@ class ParsedDoc:
     units: list[ParsedUnit] = field(default_factory=list)
     doc_meta: dict[str, Any] = field(default_factory=dict)  # -> document.meta_json
     source_hash: str = ""
+    stats: dict[str, Any] = field(default_factory=dict)  # parse-derived diagnostics (e.g. docx tables)
 
 
 def to_preview(units: list[ParsedUnit], limit: int) -> tuple[list[dict], int]:
