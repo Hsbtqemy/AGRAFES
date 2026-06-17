@@ -5,9 +5,11 @@ Network is mocked at ``urlopen``; no real server is contacted.
 
 from __future__ import annotations
 
+import email.message
 from pathlib import Path
 from unittest import mock
 from urllib.error import HTTPError, URLError
+from urllib.request import Request
 
 import pytest
 
@@ -229,3 +231,53 @@ def test_download_rejects_oversize_streamed_without_header(tmp_path: Path):
         with pytest.raises(webdav.WebdavTooLarge):
             webdav.download("https://dav.example/f", dest, auth_header={}, max_bytes=10)
     assert not dest.exists()
+
+
+# --- redirect credential stripping ----------------------------------------------
+# urllib's default redirect handler re-sends Authorization to the redirect target,
+# even cross-host. _AuthStrippingRedirectHandler must drop it on any non-same-origin
+# hop so a malicious 30x cannot exfiltrate the WebDAV credentials.
+
+_SRC = "https://dav.example/folder/a.docx"
+
+
+def _do_redirect(new_url: str, *, method: str = "GET", code: int = 302):
+    handler = webdav._AuthStrippingRedirectHandler()
+    req = Request(_SRC, method=method, headers={"Authorization": "Basic SECRET", "Depth": "1"})
+    return handler.redirect_request(req, None, code, "Found", email.message.Message(), new_url)
+
+
+def _has_auth(req) -> bool:
+    return any(k.lower() == "authorization" for k in req.headers) or any(
+        k.lower() == "authorization" for k in req.unredirected_hdrs
+    )
+
+
+@pytest.mark.parametrize("new_url", [
+    "https://attacker.example/steal",          # different host
+    "http://dav.example/folder/a.docx",        # scheme downgrade https -> http
+    "https://dav.example:8443/folder/a.docx",  # different port
+])
+def test_redirect_strips_auth_cross_origin(new_url):
+    new = _do_redirect(new_url)
+    assert new is not None
+    assert not _has_auth(new), f"Authorization leaked to {new_url}"
+
+
+def test_redirect_keeps_auth_same_origin():
+    # A legitimate same-origin redirect (e.g. trailing-slash 301) keeps credentials.
+    new = _do_redirect("https://dav.example/folder/other.docx")
+    assert _has_auth(new)
+
+
+def test_redirect_strips_only_auth_not_other_headers():
+    new = _do_redirect("https://attacker.example/x")
+    assert not _has_auth(new)
+    assert any(k.lower() == "depth" for k in new.headers)  # non-sensitive header survives
+
+
+def test_module_opener_wires_the_auth_stripping_handler():
+    # Guards that production requests actually go through the hardened handler.
+    assert any(
+        isinstance(h, webdav._AuthStrippingRedirectHandler) for h in webdav._OPENER.handlers
+    )
