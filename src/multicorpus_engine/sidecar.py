@@ -9216,8 +9216,8 @@ class CorpusServer:
                                 result["relation_id"] = existing[0]
                             else:
                                 cur = conn.execute(
-                                    """INSERT INTO doc_relations (doc_id, relation_type, target_doc_id)
-                                       VALUES (?, 'translation_of', ?)""",
+                                    """INSERT INTO doc_relations (doc_id, relation_type, target_doc_id, created_at)
+                                       VALUES (?, 'translation_of', ?, datetime('now'))""",
                                     (new_doc_id, family_root_doc_id),
                                 )
                                 conn.commit()
