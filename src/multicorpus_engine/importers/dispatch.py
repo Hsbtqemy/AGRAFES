@@ -42,6 +42,7 @@ def dispatch_import(
     column_index: Optional[int] = None,
     run_id: Optional[str] = None,
     run_logger: Optional[logging.Logger] = None,
+    check_filename: bool = False,
 ):
     """Route to the importer for *mode* and return its ``ImportReport``.
 
@@ -58,6 +59,7 @@ def dispatch_import(
             conn=conn, path=path, language=language, title=title,
             doc_role=doc_role, resource_type=resource_type,
             column_index=column_index, run_id=run_id, run_logger=run_logger,
+            check_filename=check_filename,
         )
     if mode == "txt_numbered_lines":
         from .txt import import_txt_numbered_lines
@@ -65,6 +67,7 @@ def dispatch_import(
             conn=conn, path=path, language=language, title=title,
             doc_role=doc_role, resource_type=resource_type,
             run_id=run_id, run_logger=run_logger,
+            check_filename=check_filename,
         )
     if mode == "docx_paragraphs":
         from .docx_paragraphs import import_docx_paragraphs
@@ -72,6 +75,7 @@ def dispatch_import(
             conn=conn, path=path, language=language, title=title,
             doc_role=doc_role, resource_type=resource_type,
             run_id=run_id, run_logger=run_logger,
+            check_filename=check_filename,
         )
     if mode == "odt_paragraphs":
         from .odt_paragraphs import import_odt_paragraphs
@@ -79,6 +83,7 @@ def dispatch_import(
             conn=conn, path=path, language=language, title=title,
             doc_role=doc_role, resource_type=resource_type,
             run_id=run_id, run_logger=run_logger,
+            check_filename=check_filename,
         )
     if mode == "odt_numbered_lines":
         from .odt_numbered_lines import import_odt_numbered_lines
@@ -86,6 +91,7 @@ def dispatch_import(
             conn=conn, path=path, language=language, title=title,
             doc_role=doc_role, resource_type=resource_type,
             run_id=run_id, run_logger=run_logger,
+            check_filename=check_filename,
         )
     if mode == "tei":
         from .tei_importer import import_tei
@@ -93,6 +99,7 @@ def dispatch_import(
             conn=conn, path=path, language=language, title=title,
             doc_role=doc_role, resource_type=resource_type,
             unit_element=tei_unit, run_id=run_id, run_logger=run_logger,
+            check_filename=check_filename,
         )
     if mode == "conllu":
         from .conllu import import_conllu
@@ -100,5 +107,6 @@ def dispatch_import(
             conn=conn, path=path, language=language, title=title,
             doc_role=doc_role, resource_type=resource_type,
             run_id=run_id, run_logger=run_logger,
+            check_filename=check_filename,
         )
     raise ValueError(f"Unknown import mode: {mode!r}")
