@@ -15,6 +15,8 @@
  * cancelled (via button, Escape, or backdrop click).
  */
 
+import { safeHtml, raw, setHtml } from "./safeHtml.ts";
+
 function _esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
@@ -45,14 +47,14 @@ export function modalConfirm(opts: {
     const danger = opts.danger !== false;
     const confirmCls = danger ? "btn-danger" : "btn-primary";
 
-    dialog.innerHTML = `
-      ${titleHtml}
-      <div class="prep-modal-confirm-body">${bodyHtml}</div>
+    setHtml(dialog, safeHtml`
+      ${raw(titleHtml)}
+      <div class="prep-modal-confirm-body">${raw(bodyHtml)}</div>
       <div class="prep-modal-confirm-actions">
-        <button class="btn btn-ghost btn-sm" data-mc-cancel>${_esc(opts.cancelLabel ?? "Annuler")}</button>
-        <button class="btn ${confirmCls} btn-sm" data-mc-ok>${_esc(opts.confirmLabel ?? "Confirmer")}</button>
+        <button class="btn btn-ghost btn-sm" data-mc-cancel>${opts.cancelLabel ?? "Annuler"}</button>
+        <button class="btn ${confirmCls} btn-sm" data-mc-ok>${opts.confirmLabel ?? "Confirmer"}</button>
       </div>
-    `;
+    `);
     overlay.appendChild(dialog);
     document.body.appendChild(overlay);
 

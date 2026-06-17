@@ -20,7 +20,6 @@ import json
 import sqlite3
 from pathlib import Path
 
-import pytest
 
 from multicorpus_engine.regex_boot_audit import (
     PatternAudit,

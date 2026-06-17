@@ -24,7 +24,6 @@ scripts/validate_regex_migration.py used before this migration.
 
 from __future__ import annotations
 
-import json
 import logging
 import sqlite3
 from dataclasses import dataclass, field

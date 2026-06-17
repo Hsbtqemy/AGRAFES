@@ -8,7 +8,6 @@ import sqlite3
 import zipfile
 from pathlib import Path
 
-import pytest
 
 
 def _make_package(db_conn: sqlite3.Connection, tmp_path: Path) -> tuple[Path, dict]:

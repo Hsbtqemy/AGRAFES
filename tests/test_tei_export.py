@@ -6,7 +6,6 @@ import sqlite3
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-import pytest
 
 _TEI_NS = "http://www.tei-c.org/ns/1.0"
 _XML_NS = "http://www.w3.org/XML/1998/namespace"
@@ -184,7 +183,8 @@ def _make_aligned_db(db_conn: sqlite3.Connection, tmp_path: Path) -> tuple[int, 
         )
     }
 
-    import datetime, uuid
+    import datetime
+    import uuid
     run_id = str(uuid.uuid4())
     now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     create_run(db_conn, "align", {"mode": "test"}, run_id=run_id)
@@ -240,7 +240,8 @@ def test_tei_export_alignment_status_filter(db_conn: sqlite3.Connection, tmp_pat
     from multicorpus_engine.exporters.tei import export_tei
     from multicorpus_engine.runs import create_run
 
-    import datetime, uuid
+    import datetime
+    import uuid
 
     pivot_txt = tmp_path / "pv2.txt"
     pivot_txt.write_text("[1] Un.\n[2] Deux.\n", encoding="utf-8")
@@ -412,7 +413,8 @@ def test_tei_publication_package_checksums(db_conn: sqlite3.Connection, tmp_path
     """Checksums in the ZIP must match the actual TEI file contents."""
     from multicorpus_engine.importers.txt import import_txt_numbered_lines
     from multicorpus_engine.exporters.tei_package import export_tei_package
-    import hashlib, zipfile
+    import hashlib
+    import zipfile
 
     txt = tmp_path / "chk.txt"
     txt.write_text("[1] Hello.\n", encoding="utf-8")

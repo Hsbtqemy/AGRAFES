@@ -791,7 +791,6 @@ def cmd_validate_tei(args: argparse.Namespace) -> None:
     """Validate a TEI XML file or publication package ZIP for xml:id referential integrity."""
     from .utils.tei_validate import validate_tei_ids, validate_tei_package, summarize_tei_validation
     from .runs import utcnow_iso
-    import json as _json
 
     if getattr(args, "path", None):
         path = Path(args.path).resolve()

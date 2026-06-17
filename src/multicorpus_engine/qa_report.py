@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import re
 import sqlite3
-import unicodedata
 from pathlib import Path
 from typing import Optional
 

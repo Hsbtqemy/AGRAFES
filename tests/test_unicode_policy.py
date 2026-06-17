@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
 from multicorpus_engine.unicode_policy import normalize, text_display, count_sep
 
 

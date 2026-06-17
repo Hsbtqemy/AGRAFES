@@ -19,7 +19,6 @@ import json
 import sqlite3
 from pathlib import Path
 
-import pytest
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -169,7 +168,8 @@ def test_metadata_readiness_missing_title(db_conn: sqlite3.Connection) -> None:
 def test_gate_status_no_blocking_on_clean_corpus(db_conn: sqlite3.Connection) -> None:
     """A clean doc (title, language, contiguous IDs) should have no blocking issues."""
     from multicorpus_engine.importers.txt import import_txt_numbered_lines
-    import tempfile, os
+    import tempfile
+    import os
 
     with tempfile.NamedTemporaryFile(suffix=".txt", delete=False, mode="w", encoding="utf-8") as f:
         f.write("[1] Bonjour.\n[2] Au revoir.\n")

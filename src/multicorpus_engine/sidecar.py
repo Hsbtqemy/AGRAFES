@@ -523,7 +523,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         return True
 
     def _create_run(self, kind: str, params: dict, run_id: str | None = None) -> str:
-        from multicorpus_engine.runs import RunIdConflictError, create_run
+        from multicorpus_engine.runs import create_run
 
         return create_run(self._conn(), kind, params, run_id=run_id)
 
@@ -2452,7 +2452,6 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                          odt_numbered_lines, odt_paragraphs, tei.
         """
         import re as _re
-        from pathlib import Path as _Path
         from multicorpus_engine.unicode_policy import normalize as _norm
 
         _NUMBERED_RE = _re.compile(r"^\[\s*(\d+)\s*\]\s*(.+)$", _re.DOTALL)
@@ -8755,7 +8754,6 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         1. external_id match between pivot and target units → score=1.0
         2. Neighbours ±window from anchor (current target or pivot ext_id) → score 1/(1+Δ)
         """
-        import json as _json
 
         pivot_unit_id = body.get("pivot_unit_id")
         target_doc_id = body.get("target_doc_id")

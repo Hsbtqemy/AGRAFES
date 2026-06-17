@@ -8,6 +8,7 @@
 
 import type { Conn, JobRecord } from "../lib/sidecarClient.ts";
 import { getJob, cancelJob as apiCancelJob } from "../lib/sidecarClient.ts";
+import { raw, setHtml } from "../lib/safeHtml.ts";
 
 type DoneCallback = (job: JobRecord) => void;
 
@@ -213,7 +214,7 @@ export class JobCenter {
     }
 
     html += `</div>`;
-    this._panelEl.innerHTML = html;
+    setHtml(this._panelEl, raw(html));  // built above; all dynamic parts via _esc
 
     this._panelEl.querySelectorAll<HTMLButtonElement>(".jc-cancel-btn").forEach(btn => {
       btn.addEventListener("click", () => { void this._doCancel(btn.dataset.id!); });

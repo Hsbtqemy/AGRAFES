@@ -13,7 +13,6 @@ import sqlite3
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-import pytest
 
 
 _TEI_NS = "http://www.tei-c.org/ns/1.0"
