@@ -1,0 +1,200 @@
+# Notes de design — Connecteur d'ingestion ShareDocs (WebDAV)
+
+> Statut : décisions figées, prêtes à transformer en ticket(s).
+> Date : 2026-06-12. Cible : `multicorpus-engine` v0.3.x.
+
+## 1. Cadre & périmètre
+
+**But.** Tirer des documents source depuis un dépôt **ShareDocs Huma-Num**
+(Nextcloud / SabreDAV, WebDAV) pour alimenter la db locale via le pipeline
+d'import existant. C'est de l'**ingestion en entrée** : la db reste strictement
+locale.
+
+**Hors périmètre — décision explicite.** On ne partage **pas** la db SQLite via
+WebDAV. Le plugin Madbot fait du GET/PUT de fichier entier (pas un montage FS) ;
+combiné au mode WAL et à l'absence de `LOCK`, cela donne du *last-writer-wins*
+silencieux et un risque de snapshot incohérent. La collaboration multi-utilisateur
+est un sujet séparé (serveur, ou handoff sérialisé assumé), pas un effet de bord
+de ce connecteur.
+
+**Choix cadrants validés.**
+
+| Axe | Décision | Raison |
+|-----|----------|--------|
+| Dépendances | **stdlib `urllib` uniquement** | Besoin réel = lister + télécharger. Le sidecar fait déjà du HTTP stdlib ([sidecar.py:44-46](../src/multicorpus_engine/sidecar.py#L44)). Pas de `webdav4`/`httpx` dans le bundle PyInstaller. |
+| Périmètre v1 | **CLI + endpoint sidecar + UI Prep** | Couvre aussi les utilisateurs non-CLI. Découpé en 3 phases livrables. |
+| Granularité | **Dossier / batch** | Le vrai gain : pointer un dossier ShareDocs et ingérer tout le corpus d'un coup. |
+| XML | **`defusedxml`** pour parser le PROPFIND | Déjà une dépendance ; protège contre XXE. |
+| Credentials | **Jamais persistés** (db / runs / logs / portfile / télémétrie) | Voir §6. |
+
+## 2. Point d'intégration
+
+`cmd_import` ([cli.py:113](../src/multicorpus_engine/cli.py#L113)) résout `--path`
+vers **un fichier local unique**, puis dispatche par `--mode` vers l'importer, qui
+ouvre le chemin lui-même. Le branchement propre :
+
+1. **Résoudre la source distante → fichier temporaire** avant le dispatch.
+2. **Réutiliser le dispatch existant** sans toucher aux importers.
+3. **Tracer la provenance** : `source_path` = URL distante, `source_hash` = hash
+   des octets téléchargés (identique au cas local, cf. ADR-011).
+
+### Refactor préalable (bloquant)
+
+Extraire le if/elif `mode → importer` ([cli.py:147-237](../src/multicorpus_engine/cli.py#L147))
+dans un helper unique :
+
+```
+multicorpus_engine/importers/dispatch.py
+    dispatch_import(conn, mode, path, *, language, title, doc_role,
+                    resource_type, tei_unit, run_id, run_logger) -> Report
+```
+
+- `cmd_import` se réduit à un appel à ce helper.
+- **Vérifier si `sidecar._handle_import` possède sa propre copie du dispatch** et
+  l'unifier sur le même helper (sinon trois sites à maintenir).
+- Le helper devient le point d'appel commun pour `import`, `import-remote` (CLI) et
+  `POST /import-remote` (sidecar).
+
+## 3. Client WebDAV stdlib
+
+Module : `multicorpus_engine/remote/webdav.py`. Pas de classe lourde : deux
+opérations.
+
+### 3.1 PROPFIND (lister un dossier)
+
+```
+Request(url, method="PROPFIND",
+        headers={"Depth": "1", "Content-Type": "application/xml", **auth},
+        data=PROPFIND_BODY)
+```
+
+- Réponse `207 Multi-Status`, parsée avec **`defusedxml.ElementTree`** (namespace
+  `DAV:`).
+- Par entrée `<d:response>` : `href`, `getcontentlength`, `getlastmodified`,
+  `getcontenttype`, `getetag`, et `resourcetype` (présence de `<d:collection/>` =
+  dossier).
+- **Gotchas tranchés :**
+  - Les `href` sont **percent-encodés** et souvent **absolus côté serveur**
+    (`/remote.php/dav/files/user/...`) → résoudre contre `scheme://host` de l'URL
+    de base ; décoder pour l'affichage, ré-encoder pour les requêtes.
+  - La **première entrée** d'un listing Depth:1 est le dossier lui-même → la
+    sauter (match `href == chemin demandé`).
+  - **`Depth` strictement `"1"`** — jamais `infinity` (pas de listing récursif
+    massif).
+  - Mapping erreurs : `401` → message d'auth clair ; `404` → dossier introuvable ;
+    timeout → message réseau. Pas de stacktrace brute remontée à l'UI.
+
+### 3.2 GET (télécharger)
+
+- `Request(file_url, headers=auth)`, streaming par chunks (4 MiB) vers un fichier
+  temp.
+- **Contrôle d'intégrité = taille seule** (Content-Length vs octets écrits),
+  comme Madbot. Pas d'ETag (opaque, non garanti = hash de contenu).
+- Garde `--max-file-mb` (défaut **200**) : au-delà → skip + report, pas de
+  remplissage disque.
+
+### 3.3 Authentification
+
+- Modes : `basic` (`Authorization: Basic base64(user:pass)`), `bearer`
+  (`Authorization: Bearer <token>`), `anonymous` (aucun header).
+- **TLS vérifié systématiquement.** Pas de `--insecure` en v1 (footgun).
+- Résolution CLI (env) :
+  - `AGRAFES_WEBDAV_TOKEN` présent → `bearer`
+  - sinon `AGRAFES_WEBDAV_USER` + `AGRAFES_WEBDAV_PASSWORD` → `basic`
+  - sinon `anonymous`
+  - `--auth {auto,basic,bearer,anonymous}` peut forcer le mode (`auto` = ci-dessus).
+
+## 4. Flux batch (cœur métier)
+
+1. **PROPFIND** le dossier → entrées.
+2. **Filtre** : garder les fichiers (pas les collections) correspondant à
+   l'extension dérivée du `--mode` (`docx_* → *.docx`, `odt_* → *.odt`,
+   `txt_* → *.txt`, `tei → *.xml`, `conllu → *.conllu`), surchargeable via
+   `--include "<glob>"`. Les non-correspondants → `skipped-filtered` (reporté).
+3. **Dédup** : pour chaque fichier retenu, télécharger → calculer le hash (même
+   helper `_compute_file_hash` que les importers) → si un `documents.source_hash`
+   identique existe déjà, **`skipped-duplicate`** (pas de run vide créé). Aligné
+   sur la sémantique ADR-011.
+4. **Import** : appeler `dispatch_import(...)` sur le fichier temp.
+   - **Un run par fichier** (modèle 1-fichier-1-run inchangé) ; chaque doc reste
+     traçable. Le batch agrège les `run_id`.
+   - **Provenance** : après import, `UPDATE documents SET source_path = <url>
+     WHERE doc_id = <renvoyé>`. Le `source_hash` (octets) reste tel quel. Évite de
+     modifier la signature de chaque importer.
+5. **Robustesse** : une erreur de download ou d'import sur un fichier est
+   **reportée et n'interrompt pas le batch** (continue au suivant).
+6. **Temp** : `tempfile.mkdtemp()` par batch, nettoyé en `finally`
+   (`shutil.rmtree`). **Noms de fichiers temp générés** — ne jamais construire un
+   chemin local à partir du nom serveur (garde contre la traversée de chemin).
+
+### Report batch (JSON, style `_ok`/`_err` existant)
+
+Par fichier : `status` ∈ {`imported`, `skipped-duplicate`, `skipped-filtered`,
+`skipped-oversize`, `error`}, `source_url`, `doc_id`, `run_id`, `source_hash`,
+compteurs (lignes/unités), `error` éventuel. Plus un agrégat (totaux par statut).
+
+## 5. Phasage (livrable incrémental)
+
+**Phase 1 — CLI ✅ LIVRÉ** (branche `feat/sharedocs-ingestion-p1`) **— validable en headless contre ShareDocs.**
+- Refactor `dispatch_import`.
+- `remote/webdav.py` (PROPFIND + GET + auth).
+- Sous-commande `import-remote` :
+  ```
+  multicorpus import-remote --db <db> --url <folder-url> --mode <mode>
+      [--language fr] [--include "*.docx"] [--auth auto]
+      [--doc-role ...] [--resource-type ...] [--max-file-mb 200]
+  ```
+  → report batch JSON.
+
+**Phase 2 — Sidecar.**
+- `POST /webdav/list` (body : url + creds) → listing (name, href, is_dir, size,
+  modified, content_type). **Hors write-lock** (réseau lecture seule), pas de
+  blocage des écritures db.
+- `POST /import-remote` (body : url, mode, language, include, creds, doc_role,
+  resource_type, max_file_mb) → **sous `_track_stage("import-remote")` + write
+  lock** (écrit en db). Progression par fichier via **`JobManager`** (réutilise la
+  mécanique de `POST /import`). Renvoie le report batch.
+- Ajouter les deux routes à la liste autorisée du `do_POST`
+  ([sidecar.py:671](../src/multicorpus_engine/sidecar.py#L671)).
+- `runs.params` ne stocke **que** `url` + `mode` (jamais les creds).
+
+**Phase 3 — UI Prep.**
+- Écran « Importer depuis ShareDocs » :
+  - Formulaire : URL de base, mode d'auth, champs creds.
+  - « Connecter » → `POST /webdav/list` → vue dossier navigable (nom, type,
+    taille, modifié).
+  - Sélection dossier → choix `mode` + `language` + filtre `include` → « Importer ».
+  - `POST /import-remote` → barre de progression (événements `JobManager`) → table
+    de report par fichier.
+  - **Creds : en mémoire pour la session uniquement**, jamais sur disque/db (v1).
+    Re-saisie à la session suivante. Compromis UX assumé ; keychain OS = évolution
+    ultérieure.
+
+## 6. Sécurité (tranché)
+
+- `defusedxml` obligatoire pour le PROPFIND (XXE).
+- TLS vérifié, pas d'opt-out.
+- **Credentials jamais écrits** : db, `runs.params`, logs de run, logs de requête
+  sidecar (exclure les champs auth du body loggé), portfile, événements télémétrie.
+- Creds CLI via env ; creds UI via body POST sur `127.0.0.1` uniquement, en mémoire.
+- Garde traversée de chemin (noms temp générés) ; `Depth: 1` strict ; garde taille.
+
+## 7. Tests
+
+- **Unitaires client WebDAV** : `urlopen` mocké, échantillons XML `207`
+  multistatus (s'inspirer des fixtures `test_canonical` de Madbot). Asserts :
+  parsing entrées, skip du dossier-self, résolution des href, construction header
+  auth (basic/bearer/anon), mapping `401`/`404`/timeout.
+- **Unitaires batch** : dossier mixte (docx/odt/txt/xml + un `.pdf` parasite) →
+  filtre ; `skipped-duplicate` (hash match) ; erreur de download sur un fichier
+  → continue ; `skipped-oversize` ; provenance `source_path == url`.
+- **Intégration (opt-in, gated, skip en CI)** contre ShareDocs Huma-Num, creds via
+  env — calquée sur le test d'intégration gated de Madbot.
+
+## 8. À confirmer au moment du ticket (résiduel)
+
+- Forme exacte des événements de progression `JobManager` (`sidecar_jobs.py`) pour
+  câbler la barre UI — à lire en phase 2/3.
+- Le `Report` de chaque importer expose-t-il bien `doc_id` (pour l'UPDATE
+  `source_path`) ? À vérifier importer par importer.
+- `sidecar._handle_import` duplique-t-il le dispatch ? → à unifier dans le refactor §2.
