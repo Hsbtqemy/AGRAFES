@@ -7,7 +7,6 @@ Imports a CoNLL-U file into:
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import sqlite3
@@ -17,16 +16,9 @@ from typing import Optional
 from ..unicode_policy import normalize
 from .docx_numbered_lines import ImportReport, _analyze_external_ids
 from .import_guard import assert_not_duplicate_import
+from .parsed import file_sha256
 
 logger = logging.getLogger(__name__)
-
-
-def _compute_file_hash(path: Path) -> str:
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(65536), b""):
-            h.update(chunk)
-    return h.hexdigest()
 
 
 def _clean_field(value: str) -> str | None:
@@ -146,7 +138,7 @@ def import_conllu(
     _MAX_FILE_BYTES = 512 * 1024 * 1024  # 512 MiB
     if path.stat().st_size > _MAX_FILE_BYTES:
         raise ValueError(f"CoNLL-U file too large (max {_MAX_FILE_BYTES // (1024 * 1024)} MiB)")
-    source_hash = _compute_file_hash(path)
+    source_hash = file_sha256(path)
     assert_not_duplicate_import(conn, path, source_hash, check_filename=check_filename)
 
     raw_bytes = path.read_bytes()

@@ -15,7 +15,6 @@ Design decisions (ADR-014):
 
 from __future__ import annotations
 
-import hashlib
 import logging
 import re
 import sqlite3
@@ -28,6 +27,7 @@ from ..unicode_policy import count_sep, normalize
 from .import_guard import assert_not_duplicate_import
 import json
 from .docx_numbered_lines import ImportReport, _analyze_external_ids
+from .parsed import file_sha256
 from ..utils.tei_validate import validate_tei_tree, summarize_tei_validation
 
 _TEI_NS = "http://www.tei-c.org/ns/1.0"
@@ -38,14 +38,6 @@ _ATTR_LANG = f"{{{_XML_NS}}}lang"
 _ATTR_ID = f"{{{_XML_NS}}}id"
 
 logger = logging.getLogger(__name__)
-
-
-def _compute_file_hash(path: Path) -> str:
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(65536), b""):
-            h.update(chunk)
-    return h.hexdigest()
 
 
 def _xmlid_to_int(xmlid: str) -> Optional[int]:
@@ -162,7 +154,7 @@ def import_tei(
     log = run_logger or logger
     log.info("Starting import of %s (mode=tei, unit=%s)", path, unit_element)
 
-    source_hash = _compute_file_hash(path)
+    source_hash = file_sha256(path)
     assert_not_duplicate_import(conn, path, source_hash, check_filename=check_filename)
 
     try:

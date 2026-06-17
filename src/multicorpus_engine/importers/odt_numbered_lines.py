@@ -13,10 +13,10 @@ from ..unicode_policy import count_sep, normalize
 from .docx_numbered_lines import (
     ImportReport,
     _analyze_external_ids,
-    _compute_file_hash,
 )
 from .import_guard import assert_not_duplicate_import
 from .odt_common import read_odt_paragraph_rich_lines
+from .parsed import file_sha256
 
 _NUMBERED_RE = re.compile(r"^\[\s*(\d+)\s*\]\s*(.+)$", re.DOTALL)
 
@@ -46,7 +46,7 @@ def import_odt_numbered_lines(
     log = run_logger or logger
     log.info("Starting import of %s (mode=odt_numbered_lines)", path)
 
-    source_hash = _compute_file_hash(path)
+    source_hash = file_sha256(path)
     assert_not_duplicate_import(conn, path, source_hash, check_filename=check_filename)
     doc_title = title or path.stem
     utcnow = __import__("datetime").datetime.now(
