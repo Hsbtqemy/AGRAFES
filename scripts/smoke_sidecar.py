@@ -32,6 +32,7 @@ from pathlib import Path
 CHECKS: list[tuple[str, str]] = [
     ("/conventions", "conventions"),       # conventions_service
     ("/doc_relations/all", "relations"),   # doc_relations_service
+    ("/documents", "documents"),           # documents_service
 ]
 
 

@@ -62,8 +62,6 @@ from . import __version__ as ENGINE_VERSION
 
 logger = logging.getLogger(__name__)
 
-_DOC_WORKFLOW_STATUSES = {"draft", "review", "validated"}
-
 
 def _int_param(value: object, default: int) -> int:
     """Coerce *value* to int, returning *default* on TypeError/ValueError.
@@ -5334,68 +5332,12 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         self._send_json(success_payload({"units": units, "count": len(units), "doc_id": doc_id}))
 
     def _handle_documents(self) -> None:
+        # Thin adapter over the documents service (audit P0-1 / A-01). Read — no
+        # write-lock. Schema backfill stays here (manages schema + takes the lock).
+        from multicorpus_engine.services.documents_service import list_documents
         self._ensure_document_workflow_columns()
         self._ensure_tokens_table()
-        rows = self._conn().execute(
-            """
-            SELECT d.doc_id, d.title, d.language, d.doc_role, d.resource_type,
-                   d.workflow_status, d.validated_at, d.validated_run_id,
-                   d.source_path, d.source_hash,
-                   COALESCE(uc.unit_count, 0) AS unit_count,
-                   COALESCE(tc.token_count, 0) AS token_count,
-                   CASE WHEN COALESCE(tc.token_count, 0) > 0 THEN 'annotated' ELSE 'missing' END AS annotation_status,
-                   d.author_lastname, d.author_firstname, d.doc_date,
-                   d.text_start_n,
-                   d.translator_lastname, d.translator_firstname,
-                   d.work_title, d.pub_place, d.publisher
-            FROM documents d
-            LEFT JOIN (
-                SELECT doc_id, COUNT(*) AS unit_count
-                FROM units
-                WHERE unit_type = 'line'
-                GROUP BY doc_id
-            ) uc ON uc.doc_id = d.doc_id
-            LEFT JOIN (
-                SELECT u.doc_id, COUNT(t.token_id) AS token_count
-                FROM units u
-                JOIN tokens t ON t.unit_id = u.unit_id
-                GROUP BY u.doc_id
-            ) tc ON tc.doc_id = d.doc_id
-            ORDER BY d.doc_id
-            """
-        ).fetchall()
-        # FTS staleness dérivée (pas de flag persisté) — cf. indexer.stale_doc_ids.
-        from multicorpus_engine.indexer import stale_doc_ids
-        stale_ids = stale_doc_ids(self._conn())
-        documents = [
-            {
-                "doc_id": r[0],
-                "title": r[1],
-                "language": r[2],
-                "doc_role": r[3],
-                "resource_type": r[4],
-                "workflow_status": r[5],
-                "validated_at": r[6],
-                "validated_run_id": r[7],
-                "source_path": r[8],
-                "source_hash": r[9],
-                "unit_count": r[10],
-                "token_count": r[11],
-                "annotation_status": r[12],
-                "author_lastname": r[13],
-                "author_firstname": r[14],
-                "doc_date": r[15],
-                "text_start_n": r[16],
-                "translator_lastname": r[17],
-                "translator_firstname": r[18],
-                "work_title": r[19],
-                "pub_place": r[20],
-                "publisher": r[21],
-                "fts_stale": r[0] in stale_ids,
-            }
-            for r in rows
-        ]
-        self._send_json(success_payload({"documents": documents, "count": len(documents)}))
+        self._send_json(success_payload(list_documents(self._conn())))
 
     def _ensure_document_workflow_columns(self) -> None:
         """Backfill optional document columns when running against legacy DB schemas."""
@@ -6608,163 +6550,42 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         self._send_json(success_payload({"families": families, "count": len(families)}))
 
     def _handle_documents_update(self, body: dict) -> None:
+        # Thin adapter over the documents service. Per-type error mapping keeps the
+        # endpoint's mixed wire codes (BAD_REQUEST shape vs VALIDATION_ERROR rules).
+        from multicorpus_engine.services.documents_service import update_document
+        from multicorpus_engine.services.errors import (
+            BadRequestError, NotFoundError, ValidationError,
+        )
         self._ensure_document_workflow_columns()
-        doc_id = body.get("doc_id")
-        if doc_id is None:
-            self._send_error("doc_id is required", code=ERR_BAD_REQUEST, http_status=400)
+        try:
+            with self._lock():
+                data = update_document(self._conn(), body)
+        except BadRequestError as exc:
+            self._send_error(exc.message, code=ERR_BAD_REQUEST, http_status=exc.http_status)
             return
-        allowed = {
-            "title", "language", "doc_role", "resource_type",
-            "workflow_status", "validated_run_id",
-            "author_lastname", "author_firstname", "doc_date",
-            "translator_lastname", "translator_firstname",
-            "work_title", "pub_place", "publisher",
-        }
-        updates = {k: v for k, v in body.items() if k in allowed}
-        if not updates:
-            self._send_error(
-                "No updatable fields provided "
-                "(allowed: title, language, doc_role, resource_type, workflow_status, validated_run_id, "
-                "author_lastname, author_firstname, doc_date, translator_lastname, translator_firstname, "
-                "work_title, pub_place, publisher)",
-                code=ERR_BAD_REQUEST,
-                http_status=400,
-            )
+        except ValidationError as exc:
+            self._send_error(exc.message, code=ERR_VALIDATION, http_status=exc.http_status, details=exc.details)
             return
-
-        workflow_status = updates.get("workflow_status")
-        if workflow_status is not None:
-            if not isinstance(workflow_status, str) or workflow_status not in _DOC_WORKFLOW_STATUSES:
-                self._send_error(
-                    "workflow_status must be one of: draft, review, validated",
-                    code=ERR_VALIDATION,
-                    http_status=400,
-                    details={"supported_values": sorted(_DOC_WORKFLOW_STATUSES)},
-                )
-                return
-            if workflow_status == "validated":
-                updates.setdefault("validated_at", utcnow_iso())
-                if "validated_run_id" in updates and updates["validated_run_id"] is not None:
-                    if not isinstance(updates["validated_run_id"], str) or not updates["validated_run_id"].strip():
-                        self._send_error(
-                            "validated_run_id must be a non-empty string or null",
-                            code=ERR_VALIDATION,
-                            http_status=400,
-                        )
-                        return
-                    updates["validated_run_id"] = updates["validated_run_id"].strip()
-            else:
-                # Leaving validated state clears validation metadata.
-                updates["validated_at"] = None
-                updates["validated_run_id"] = None
-        elif "validated_run_id" in updates:
-            self._send_error(
-                "validated_run_id can only be set when workflow_status='validated'",
-                code=ERR_VALIDATION,
-                http_status=400,
-            )
+        except NotFoundError as exc:
+            self._send_error(exc.message, code=ERR_NOT_FOUND, http_status=exc.http_status)
             return
-
-        set_clause = ", ".join(f"{k} = ?" for k in updates)
-        params = list(updates.values()) + [doc_id]
-        with self._lock():
-            cur = self._conn().execute(f"UPDATE documents SET {set_clause} WHERE doc_id = ?", params)
-            self._conn().commit()
-            rows_updated = cur.rowcount
-        if rows_updated == 0:
-            self._send_error(f"Document doc_id={doc_id} not found", code=ERR_NOT_FOUND, http_status=404)
-            return
-        row = self._conn().execute(
-            """
-            SELECT doc_id, title, language, doc_role, resource_type,
-                   workflow_status, validated_at, validated_run_id,
-                   author_lastname, author_firstname, doc_date,
-                   translator_lastname, translator_firstname,
-                   work_title, pub_place, publisher
-            FROM documents
-            WHERE doc_id = ?
-            """,
-            (doc_id,),
-        ).fetchone()
-        doc = {
-            "doc_id": row[0],
-            "title": row[1],
-            "language": row[2],
-            "doc_role": row[3],
-            "resource_type": row[4],
-            "workflow_status": row[5],
-            "validated_at": row[6],
-            "validated_run_id": row[7],
-            "author_lastname": row[8],
-            "author_firstname": row[9],
-            "doc_date": row[10],
-            "translator_lastname": row[11],
-            "translator_firstname": row[12],
-            "work_title": row[13],
-            "pub_place": row[14],
-            "publisher": row[15],
-        }
-        self._send_json(success_payload({"updated": 1, "doc": doc}))
+        self._send_json(success_payload(data))
 
     def _handle_documents_bulk_update(self, body: dict) -> None:
+        # Thin adapter over the documents service.
+        from multicorpus_engine.services.documents_service import bulk_update_documents
+        from multicorpus_engine.services.errors import BadRequestError, ValidationError
         self._ensure_document_workflow_columns()
-        updates_list = body.get("updates")
-        if not isinstance(updates_list, list) or not updates_list:
-            self._send_error("updates must be a non-empty list of {doc_id, ...fields}", code=ERR_BAD_REQUEST, http_status=400)
+        try:
+            with self._lock():
+                data = bulk_update_documents(self._conn(), body)
+        except BadRequestError as exc:
+            self._send_error(exc.message, code=ERR_BAD_REQUEST, http_status=exc.http_status)
             return
-        allowed = {
-            "title", "language", "doc_role", "resource_type",
-            "workflow_status", "validated_run_id",
-            "author_lastname", "author_firstname", "doc_date",
-            "translator_lastname", "translator_firstname",
-            "work_title", "pub_place", "publisher",
-        }
-        total_updated = 0
-        with self._lock():
-            for item in updates_list:
-                doc_id = item.get("doc_id")
-                if doc_id is None:
-                    continue
-                fields = {k: v for k, v in item.items() if k in allowed}
-                if not fields:
-                    continue
-                workflow_status = fields.get("workflow_status")
-                if workflow_status is not None:
-                    if not isinstance(workflow_status, str) or workflow_status not in _DOC_WORKFLOW_STATUSES:
-                        self._send_error(
-                            "workflow_status must be one of: draft, review, validated",
-                            code=ERR_VALIDATION,
-                            http_status=400,
-                            details={"supported_values": sorted(_DOC_WORKFLOW_STATUSES)},
-                        )
-                        return
-                    if workflow_status == "validated":
-                        fields.setdefault("validated_at", utcnow_iso())
-                        if "validated_run_id" in fields and fields["validated_run_id"] is not None:
-                            if not isinstance(fields["validated_run_id"], str) or not fields["validated_run_id"].strip():
-                                self._send_error(
-                                    "validated_run_id must be a non-empty string or null",
-                                    code=ERR_VALIDATION,
-                                    http_status=400,
-                                )
-                                return
-                            fields["validated_run_id"] = fields["validated_run_id"].strip()
-                    else:
-                        fields["validated_at"] = None
-                        fields["validated_run_id"] = None
-                elif "validated_run_id" in fields:
-                    self._send_error(
-                        "validated_run_id can only be set when workflow_status='validated'",
-                        code=ERR_VALIDATION,
-                        http_status=400,
-                    )
-                    return
-                set_clause = ", ".join(f"{k} = ?" for k in fields)
-                params = list(fields.values()) + [doc_id]
-                cur = self._conn().execute(f"UPDATE documents SET {set_clause} WHERE doc_id = ?", params)
-                total_updated += cur.rowcount
-            self._conn().commit()
-        self._send_json(success_payload({"updated": total_updated}))
+        except ValidationError as exc:
+            self._send_error(exc.message, code=ERR_VALIDATION, http_status=exc.http_status, details=exc.details)
+            return
+        self._send_json(success_payload(data))
 
     def _handle_doc_relations_set(self, body: dict) -> None:
         # Thin adapter over the doc_relations service (write — owns the lock).
@@ -6779,97 +6600,27 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         self._send_json(success_payload(data))
 
     def _handle_documents_delete(self, body: dict) -> None:
-        """POST /documents/delete — supprime un ou plusieurs documents et toutes leurs données liées."""
-        doc_ids = body.get("doc_ids")
-        if not isinstance(doc_ids, list) or not doc_ids:
-            self._send_error("doc_ids (non-empty list) is required", code=ERR_BAD_REQUEST, http_status=400)
-            return
-        if not all(isinstance(d, int) for d in doc_ids):
-            self._send_error("doc_ids must be a list of integers", code=ERR_BAD_REQUEST, http_status=400)
-            return
-        placeholders = ",".join("?" * len(doc_ids))
-
-        # Telemetry preview: collect had_curation/had_alignment BEFORE delete
-        # for each doc_id — emitted after the delete commits (one event per doc).
-        # NOTE: choix par défaut — un event par doc supprimé. Si le batch est
-        # large (rare), ça génère N lignes NDJSON. Acceptable pour le volume
-        # d'usage actuel.
-        _telemetry_pre: list[dict] = []
+        # Thin adapter over the documents service. The cascade is DB-pure (service);
+        # the doc_deleted telemetry emit (needs self.server.db_path) stays here.
+        from multicorpus_engine.services.documents_service import delete_documents
+        from multicorpus_engine.services.errors import BadRequestError
         try:
-            _conn_pre = self._conn()
-            for did in doc_ids:
-                had_cur = _conn_pre.execute(
-                    "SELECT 1 FROM curation_apply_history WHERE doc_id = ? LIMIT 1",
-                    (did,),
-                ).fetchone() is not None
-                had_align = _conn_pre.execute(
-                    "SELECT 1 FROM alignment_links WHERE pivot_doc_id = ? OR target_doc_id = ? LIMIT 1",
-                    (did, did),
-                ).fetchone() is not None
-                _telemetry_pre.append({
-                    "doc_id": did, "had_curation": had_cur, "had_alignment": had_align,
-                })
-        except Exception:  # noqa: BLE001
-            pass  # telemetry must never block the delete
-        deleted = 0
-        with self._lock():
-            conn = self._conn()
-
-            # 1. Collect unit_ids before deletion (needed for FTS cleanup)
-            unit_ids: list[int] = [
-                row[0] for row in conn.execute(
-                    f"SELECT unit_id FROM units WHERE doc_id IN ({placeholders})", doc_ids
-                ).fetchall()
-            ]
-
-            # 2. alignment_links — uses pivot_doc_id / target_doc_id directly
-            conn.execute(
-                f"DELETE FROM alignment_links"
-                f" WHERE pivot_doc_id IN ({placeholders}) OR target_doc_id IN ({placeholders})",
-                doc_ids + doc_ids,
-            )
-
-            # 3. FTS index — must happen BEFORE units are deleted (rowid = unit_id)
-            if unit_ids:
-                fts_ph = ",".join("?" * len(unit_ids))
-                try:
-                    conn.execute(f"DELETE FROM fts_units WHERE rowid IN ({fts_ph})", unit_ids)
-                except Exception:
-                    pass  # FTS table may not exist
-
-            # 4. Units — curation_exceptions cascade automatically (ON DELETE CASCADE)
-            conn.execute(f"DELETE FROM units WHERE doc_id IN ({placeholders})", doc_ids)
-
-            # 5. Doc relations
-            conn.execute(
-                f"DELETE FROM doc_relations"
-                f" WHERE doc_id IN ({placeholders}) OR target_doc_id IN ({placeholders})",
-                doc_ids + doc_ids,
-            )
-
-            # 6. Curation apply history (doc_id without FK — orphaned history rows)
-            try:
-                conn.execute(
-                    f"DELETE FROM curation_apply_history WHERE doc_id IN ({placeholders})",
-                    doc_ids,
-                )
-            except Exception:
-                pass  # table may not exist in older DBs
-
-            # 8. Documents
-            cur = conn.execute(f"DELETE FROM documents WHERE doc_id IN ({placeholders})", doc_ids)
-            deleted = cur.rowcount
-            conn.commit()
-        # Telemetry : emit one doc_deleted event per doc, post-commit
+            with self._lock():
+                data, telemetry_entries = delete_documents(self._conn(), body)
+        except BadRequestError as exc:
+            self._send_error(exc.message, code=ERR_BAD_REQUEST, http_status=exc.http_status)
+            return
+        # Telemetry: one doc_deleted event per doc, post-commit. Server-coupled
+        # (self.server.db_path) so it stays in the adapter; never blocks the delete.
         try:
             from multicorpus_engine.telemetry import emit_event
             _db = getattr(self.server, "db_path", None)
             if isinstance(_db, str) and _db:
-                for entry in _telemetry_pre:
+                for entry in telemetry_entries:
                     emit_event(_db, "doc_deleted", **entry)
         except Exception:  # noqa: BLE001
             pass
-        self._send_json(success_payload({"deleted": deleted, "doc_ids": doc_ids}))
+        self._send_json(success_payload(data))
 
     def _handle_doc_relations_delete(self, body: dict) -> None:
         # Thin adapter over the doc_relations service (write — owns the lock).

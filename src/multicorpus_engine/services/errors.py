@@ -34,6 +34,15 @@ class ValidationError(ServiceError):
     http_status = 400
 
 
+class BadRequestError(ServiceError):
+    """Malformed request shape (missing/blank required field, wrong type). Maps to
+    ERR_BAD_REQUEST / 400. Distinct from ValidationError so an endpoint that
+    historically returned both BAD_REQUEST (shape) and VALIDATION_ERROR (domain
+    rules) stays byte-identical."""
+
+    http_status = 400
+
+
 class NotFoundError(ServiceError):
     """A referenced entity does not exist. Maps to ERR_NOT_FOUND / 404."""
 
