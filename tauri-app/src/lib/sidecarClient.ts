@@ -1261,10 +1261,7 @@ export async function queryFacets(
   return conn.post("/query/facets", payload) as Promise<QueryFacetsResponse>;
 }
 
-export async function importFile(
-  conn: Conn,
-  opts: ImportOptions
-): Promise<ImportResponse> {
+export async function importFile(conn: Conn, opts: ImportOptions): Promise<ImportResponse> {
   return conn.post("/import", opts) as Promise<ImportResponse>;
 }
 
@@ -1423,44 +1420,6 @@ export async function fetchStatsCompare(
 
 // ─── Conventions (unit roles) ─────────────────────────────────────────────────
 
-export interface UnitRole {
-  name: string;
-  label: string;
-  color: string | null;
-  icon: string | null;
-  sort_order: number;
-  category: "structure" | "text";
-}
-
-export async function listConventions(conn: Conn): Promise<UnitRole[]> {
-  // Sidecar returns "conventions" (not "roles") — see _handle_conventions_list
-  const res = (await conn.get("/conventions")) as { conventions: UnitRole[] };
-  return res.conventions;
-}
-
-export async function createConvention(
-  conn: Conn,
-  role: { name: string; label: string; color?: string | null; icon?: string | null; sort_order?: number; category?: "structure" | "text" }
-): Promise<UnitRole> {
-  // Sidecar returns "convention" (singular) — see _handle_conventions_create
-  const res = (await conn.post("/conventions", role)) as { convention: UnitRole };
-  return res.convention;
-}
-
-export async function updateConvention(
-  conn: Conn,
-  name: string,
-  fields: { label?: string; color?: string | null; icon?: string | null; sort_order?: number; category?: "structure" | "text" }
-): Promise<UnitRole> {
-  // Sidecar returns "convention" (singular) — see _handle_conventions_update
-  const res = (await conn.put(`/conventions/${encodeURIComponent(name)}`, fields)) as { convention: UnitRole };
-  return res.convention;
-}
-
-export async function deleteConvention(conn: Conn, name: string): Promise<void> {
-  await conn.post("/conventions/delete", { name });
-}
-
 export async function setUnitRole(
   conn: Conn,
   unitId: number,
@@ -1469,18 +1428,3 @@ export async function setUnitRole(
   await conn.post("/units/set_role", { unit_id: unitId, role_name: roleName });
 }
 
-export async function bulkSetUnitRole(
-  conn: Conn,
-  unitIds: number[],
-  roleName: string | null
-): Promise<void> {
-  await conn.post("/units/bulk_set_role", { unit_ids: unitIds, role_name: roleName });
-}
-
-export async function setDocumentTextStart(
-  conn: Conn,
-  docId: number,
-  textStartN: number | null
-): Promise<void> {
-  await conn.post("/documents/set_text_start", { doc_id: docId, text_start_n: textStartN });
-}

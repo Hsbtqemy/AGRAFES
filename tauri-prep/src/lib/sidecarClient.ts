@@ -2895,11 +2895,10 @@ export async function shutdownSidecar(conn: Conn): Promise<void> {
   _notifyRustRegistry(null);
 }
 
-/** Returns the active connection info (base_url + token) or null. Used by the
- *  Rust layer to POST /shutdown on window close. */
-export function getActiveConn(): { baseUrl: string; token: string | null } | null {
-  if (!_conn) return null;
-  return { baseUrl: _conn.baseUrl, token: _conn.token };
+/** Returns the active connection (or null). Used by the Rust layer to
+ *  POST /shutdown on window close. */
+export function getActiveConn(): Conn | null {
+  return _conn;
 }
 
 /** Push the current connection info to the Rust SidecarRegistry so it can
