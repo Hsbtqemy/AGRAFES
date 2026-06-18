@@ -383,23 +383,38 @@ def _fetch_aligned_units(
     return result
 
 
-def _build_hits(
+def _build_hits_core(
     conn: sqlite3.Connection,
-    rows: list[sqlite3.Row],
+    rows,
     *,
-    q: str,
     mode: str,
     window: int,
     include_aligned: bool,
     aligned_limit: Optional[int],
     all_occurrences: bool,
+    highlight_segment,
+    kwic_all,
+    kwic_single,
+    coerce_text_norm: bool,
+    log_hits: bool,
 ) -> list[dict[str, Any]]:
+    """Shared hit-building loop for the exact and regex variants (audit Q-02).
+
+    The two callers differed only by (a) their matcher functions — exact string
+    vs pre-compiled regex, passed here as ``highlight_segment`` / ``kwic_all`` /
+    ``kwic_single`` — (b) whether a NULL ``text_norm`` is coerced to ``""``
+    (``coerce_text_norm``), and (c) whether per-hit debug logs are emitted
+    (``log_hits``). Everything else (the loop, the hit dict, the aligned fetch,
+    the mode dispatch) now lives here once instead of being duplicated.
+    """
     hits: list[dict[str, Any]] = []
     for row in rows:
         unit_id = row["unit_id"]
         d_id = row["doc_id"]
         ext_id = row["external_id"]
         text_norm = row["text_norm"]
+        if coerce_text_norm:
+            text_norm = text_norm or ""
         lang = row["language"]
         title = row["title"]
 
@@ -410,93 +425,21 @@ def _build_hits(
                 "external_id": ext_id,
                 "language": lang,
                 "title": title,
-                "text": _highlight_segment(text_norm, q),
-                "text_norm": text_norm,
-            }
-            if include_aligned:
-                hit["aligned"] = _fetch_aligned_units(
-                    conn,
-                    unit_id,
-                    aligned_limit=aligned_limit,
-                )
-            hits.append(hit)
-            logger.debug("Hit: unit_id=%d ext_id=%s", unit_id, ext_id)
-            continue
-
-        if mode == "kwic":
-            if all_occurrences:
-                occurrences = _all_kwic_windows(text_norm, q, window)
-            else:
-                occurrences = [_kwic_windows(text_norm, q, window)]
-
-            for left, match, right in occurrences:
-                occ_hit: dict[str, Any] = {
-                    "doc_id": d_id,
-                    "unit_id": unit_id,
-                    "external_id": ext_id,
-                    "language": lang,
-                    "title": title,
-                    "left": left,
-                    "match": match,
-                    "right": right,
-                    "text_norm": text_norm,
-                }
-                if include_aligned:
-                    occ_hit["aligned"] = _fetch_aligned_units(
-                        conn,
-                        unit_id,
-                        aligned_limit=aligned_limit,
-                    )
-                hits.append(occ_hit)
-                logger.debug("Hit (occurrence): unit_id=%d match=%r", unit_id, match)
-            continue
-
-        raise ValueError(f"Unknown query mode: {mode!r}. Expected 'segment' or 'kwic'.")
-
-    return hits
-
-
-def _build_hits_regex(
-    conn: sqlite3.Connection,
-    rows: list,
-    *,
-    compiled: "re.Pattern[str]",
-    mode: str,
-    window: int,
-    include_aligned: bool,
-    aligned_limit: Optional[int],
-    all_occurrences: bool,
-) -> list[dict[str, Any]]:
-    """Like _build_hits but uses a pre-compiled regex for highlighting/KWIC."""
-    hits: list[dict[str, Any]] = []
-    for row in rows:
-        unit_id = row["unit_id"]
-        d_id = row["doc_id"]
-        ext_id = row["external_id"]
-        text_norm = row["text_norm"] or ""
-        lang = row["language"]
-        title = row["title"]
-
-        if mode == "segment":
-            hit: dict[str, Any] = {
-                "doc_id": d_id,
-                "unit_id": unit_id,
-                "external_id": ext_id,
-                "language": lang,
-                "title": title,
-                "text": _highlight_segment_regex(text_norm, compiled),
+                "text": highlight_segment(text_norm),
                 "text_norm": text_norm,
             }
             if include_aligned:
                 hit["aligned"] = _fetch_aligned_units(conn, unit_id, aligned_limit=aligned_limit)
             hits.append(hit)
+            if log_hits:
+                logger.debug("Hit: unit_id=%d ext_id=%s", unit_id, ext_id)
             continue
 
         if mode == "kwic":
             if all_occurrences:
-                occurrences = _all_kwic_windows_regex(text_norm, compiled, window)
+                occurrences = kwic_all(text_norm, window)
             else:
-                occurrences = [_kwic_windows_regex(text_norm, compiled, window)]
+                occurrences = [kwic_single(text_norm, window)]
 
             for left, match, right in occurrences:
                 occ_hit: dict[str, Any] = {
@@ -513,11 +456,68 @@ def _build_hits_regex(
                 if include_aligned:
                     occ_hit["aligned"] = _fetch_aligned_units(conn, unit_id, aligned_limit=aligned_limit)
                 hits.append(occ_hit)
+                if log_hits:
+                    logger.debug("Hit (occurrence): unit_id=%d match=%r", unit_id, match)
             continue
 
         raise ValueError(f"Unknown query mode: {mode!r}. Expected 'segment' or 'kwic'.")
 
     return hits
+
+
+def _build_hits(
+    conn: sqlite3.Connection,
+    rows: list[sqlite3.Row],
+    *,
+    q: str,
+    mode: str,
+    window: int,
+    include_aligned: bool,
+    aligned_limit: Optional[int],
+    all_occurrences: bool,
+) -> list[dict[str, Any]]:
+    return _build_hits_core(
+        conn,
+        rows,
+        mode=mode,
+        window=window,
+        include_aligned=include_aligned,
+        aligned_limit=aligned_limit,
+        all_occurrences=all_occurrences,
+        highlight_segment=lambda tn: _highlight_segment(tn, q),
+        kwic_all=lambda tn, w: _all_kwic_windows(tn, q, w),
+        kwic_single=lambda tn, w: _kwic_windows(tn, q, w),
+        coerce_text_norm=False,
+        log_hits=True,
+    )
+
+
+def _build_hits_regex(
+    conn: sqlite3.Connection,
+    rows: list,
+    *,
+    compiled: "re.Pattern[str]",
+    mode: str,
+    window: int,
+    include_aligned: bool,
+    aligned_limit: Optional[int],
+    all_occurrences: bool,
+) -> list[dict[str, Any]]:
+    """Like _build_hits but uses a pre-compiled regex for highlighting/KWIC."""
+    return _build_hits_core(
+        conn,
+        rows,
+        mode=mode,
+        window=window,
+        include_aligned=include_aligned,
+        aligned_limit=aligned_limit,
+        all_occurrences=all_occurrences,
+        highlight_segment=lambda tn: _highlight_segment_regex(tn, compiled),
+        kwic_all=lambda tn, w: _all_kwic_windows_regex(tn, compiled, w),
+        kwic_single=lambda tn, w: _kwic_windows_regex(tn, compiled, w),
+        coerce_text_norm=True,
+        log_hits=False,
+    )
 
 
 def _apply_doc_filters(
