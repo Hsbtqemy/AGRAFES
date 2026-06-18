@@ -5164,283 +5164,40 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         )
 
     def _handle_tokens_list(self, qs: dict[str, list[str]]) -> None:
-        """GET /tokens?doc_id=&unit_id=&limit=&offset= — list token rows for manual edits."""
+        # Thin adapter over the tokens service (audit P0-1 / A-01). Read — no
+        # write-lock. Schema backfill stays here; query string parsed here.
+        from multicorpus_engine.services.tokens_service import list_tokens
+        from multicorpus_engine.services.errors import BadRequestError
         self._ensure_tokens_table()
-
-        doc_id_raw = (qs.get("doc_id") or [None])[0]
-        if doc_id_raw is None:
-            self._send_error(
-                "doc_id query param is required",
-                code=ERR_BAD_REQUEST,
-                http_status=400,
-            )
-            return
         try:
-            doc_id = int(doc_id_raw)
-        except (TypeError, ValueError):
-            self._send_error(
-                "doc_id must be an integer",
-                code=ERR_BAD_REQUEST,
-                http_status=400,
+            data = list_tokens(
+                self._conn(),
+                (qs.get("doc_id") or [None])[0],
+                (qs.get("unit_id") or [None])[0],
+                (qs.get("limit") or ["200"])[0],
+                (qs.get("offset") or ["0"])[0],
             )
+        except BadRequestError as exc:
+            self._send_error(exc.message, code=ERR_BAD_REQUEST, http_status=exc.http_status)
             return
-        if doc_id <= 0:
-            self._send_error(
-                "doc_id must be a positive integer",
-                code=ERR_BAD_REQUEST,
-                http_status=400,
-            )
-            return
-
-        unit_id_raw = (qs.get("unit_id") or [None])[0]
-        unit_id: int | None = None
-        if unit_id_raw is not None:
-            try:
-                unit_id = int(unit_id_raw)
-            except (TypeError, ValueError):
-                self._send_error(
-                    "unit_id must be an integer",
-                    code=ERR_BAD_REQUEST,
-                    http_status=400,
-                )
-                return
-            if unit_id <= 0:
-                self._send_error(
-                    "unit_id must be a positive integer",
-                    code=ERR_BAD_REQUEST,
-                    http_status=400,
-                )
-                return
-
-        limit_raw = (qs.get("limit") or ["200"])[0]
-        offset_raw = (qs.get("offset") or ["0"])[0]
-        try:
-            limit = int(limit_raw)
-            offset = int(offset_raw)
-        except (TypeError, ValueError):
-            self._send_error(
-                "limit and offset must be integers",
-                code=ERR_BAD_REQUEST,
-                http_status=400,
-            )
-            return
-        if limit < 1 or limit > 1000:
-            self._send_error(
-                "limit must be between 1 and 1000",
-                code=ERR_BAD_REQUEST,
-                http_status=400,
-            )
-            return
-        if offset < 0:
-            self._send_error(
-                "offset must be >= 0",
-                code=ERR_BAD_REQUEST,
-                http_status=400,
-            )
-            return
-
-        filters = ["u.doc_id = ?"]
-        params: list[object] = [doc_id]
-        if unit_id is not None:
-            filters.append("t.unit_id = ?")
-            params.append(unit_id)
-        where_sql = " AND ".join(filters)
-
-        total = int(
-            self._conn()
-            .execute(
-                f"""
-                SELECT COUNT(*)
-                FROM tokens t
-                JOIN units u ON u.unit_id = t.unit_id
-                WHERE {where_sql}
-                """,
-                params,
-            )
-            .fetchone()[0]
-            or 0
-        )
-        rows = self._conn().execute(
-            f"""
-            SELECT
-                t.token_id,
-                u.doc_id,
-                t.unit_id,
-                u.n AS unit_n,
-                u.external_id,
-                t.sent_id,
-                t.position,
-                t.word,
-                t.lemma,
-                t.upos,
-                t.xpos,
-                t.feats,
-                t.misc
-            FROM tokens t
-            JOIN units u ON u.unit_id = t.unit_id
-            WHERE {where_sql}
-            ORDER BY u.n, t.sent_id, t.position
-            LIMIT ? OFFSET ?
-            """,
-            [*params, limit, offset],
-        ).fetchall()
-        tokens = [
-            {
-                "token_id": r[0],
-                "doc_id": r[1],
-                "unit_id": r[2],
-                "unit_n": r[3],
-                "external_id": r[4],
-                "sent_id": r[5],
-                "position": r[6],
-                "word": r[7],
-                "lemma": r[8],
-                "upos": r[9],
-                "xpos": r[10],
-                "feats": r[11],
-                "misc": r[12],
-            }
-            for r in rows
-        ]
-        count = len(tokens)
-        has_more = (offset + count) < total
-        next_offset = offset + limit if has_more else None
-
-        self._send_json(
-            success_payload(
-                {
-                    "doc_id": doc_id,
-                    "unit_id": unit_id,
-                    "tokens": tokens,
-                    "count": count,
-                    "total": total,
-                    "limit": limit,
-                    "offset": offset,
-                    "next_offset": next_offset,
-                    "has_more": has_more,
-                }
-            )
-        )
+        self._send_json(success_payload(data))
 
     def _handle_tokens_update(self, body: dict) -> None:
-        """POST /tokens/update — update token annotations for one token row."""
+        # Thin adapter over the tokens service (write — owns the lock). Schema
+        # backfill stays here.
+        from multicorpus_engine.services.tokens_service import update_token
+        from multicorpus_engine.services.errors import BadRequestError, NotFoundError
         self._ensure_tokens_table()
-
-        token_id_raw = body.get("token_id")
-        if token_id_raw is None:
-            self._send_error(
-                "token_id is required",
-                code=ERR_BAD_REQUEST,
-                http_status=400,
-            )
-            return
         try:
-            token_id = int(token_id_raw)
-        except (TypeError, ValueError):
-            self._send_error(
-                "token_id must be an integer",
-                code=ERR_BAD_REQUEST,
-                http_status=400,
-            )
+            with self._lock():
+                data = update_token(self._conn(), body)
+        except BadRequestError as exc:
+            self._send_error(exc.message, code=ERR_BAD_REQUEST, http_status=exc.http_status)
             return
-        if token_id <= 0:
-            self._send_error(
-                "token_id must be a positive integer",
-                code=ERR_BAD_REQUEST,
-                http_status=400,
-            )
+        except NotFoundError as exc:
+            self._send_error(exc.message, code=ERR_NOT_FOUND, http_status=exc.http_status)
             return
-
-        allowed = ("word", "lemma", "upos", "xpos", "feats", "misc")
-        updates: dict[str, object] = {}
-        for key in allowed:
-            if key not in body:
-                continue
-            value = body.get(key)
-            if value is None:
-                updates[key] = None
-            elif isinstance(value, str):
-                updates[key] = value
-            else:
-                self._send_error(
-                    f"{key} must be a string or null",
-                    code=ERR_BAD_REQUEST,
-                    http_status=400,
-                )
-                return
-        if not updates:
-            self._send_error(
-                "No updatable token fields provided (allowed: word, lemma, upos, xpos, feats, misc)",
-                code=ERR_BAD_REQUEST,
-                http_status=400,
-            )
-            return
-
-        set_clause = ", ".join(f"{field} = ?" for field in updates)
-        params = [*updates.values(), token_id]
-
-        with self._lock():
-            cur = self._conn().execute(
-                f"UPDATE tokens SET {set_clause} WHERE token_id = ?",
-                params,
-            )
-            self._conn().commit()
-            updated = cur.rowcount
-
-        if updated == 0:
-            self._send_error(
-                f"Unknown token_id: {token_id}",
-                code=ERR_NOT_FOUND,
-                http_status=404,
-            )
-            return
-
-        row = self._conn().execute(
-            """
-            SELECT
-                t.token_id,
-                u.doc_id,
-                t.unit_id,
-                u.n AS unit_n,
-                u.external_id,
-                t.sent_id,
-                t.position,
-                t.word,
-                t.lemma,
-                t.upos,
-                t.xpos,
-                t.feats,
-                t.misc
-            FROM tokens t
-            JOIN units u ON u.unit_id = t.unit_id
-            WHERE t.token_id = ?
-            """,
-            (token_id,),
-        ).fetchone()
-        if row is None:
-            self._send_error(
-                f"Unknown token_id: {token_id}",
-                code=ERR_NOT_FOUND,
-                http_status=404,
-            )
-            return
-
-        token = {
-            "token_id": row[0],
-            "doc_id": row[1],
-            "unit_id": row[2],
-            "unit_n": row[3],
-            "external_id": row[4],
-            "sent_id": row[5],
-            "position": row[6],
-            "word": row[7],
-            "lemma": row[8],
-            "upos": row[9],
-            "xpos": row[10],
-            "feats": row[11],
-            "misc": row[12],
-        }
-        self._send_json(success_payload({"updated": 1, "token": token}))
+        self._send_json(success_payload(data))
 
     def _handle_unit_context(self, qs: dict[str, list[str]]) -> None:
         """GET /unit/context?unit_id=N&window=N — reading window around a unit.
