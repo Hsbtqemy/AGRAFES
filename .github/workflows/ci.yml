@@ -126,8 +126,10 @@ jobs:
       - name: Build tauri-app
         run: npm --prefix tauri-app run build
 
-      - name: Run JS unit tests (buildFtsQuery)
-        run: node tauri-app/scripts/test_buildFtsQuery.mjs
+      # T-03: replaces the ad-hoc node test (which tested a *copy* of buildFtsQuery)
+      # with vitest importing the real features/search.ts (+ happy-dom).
+      - name: Run tauri-app unit tests (vitest)
+        run: npm --prefix tauri-app test
 
   # ── Shell app TypeScript build ──────────────────────────────────────────────
   build-shell:
