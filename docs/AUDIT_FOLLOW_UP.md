@@ -38,6 +38,7 @@ le §6 de l'audit 2026-06-12 ; « — » = non priorisé explicitement.
 | — | — | — | ✅ bonus | CI déclenchée aussi sur `development` (les gates ne tiraient que sur `main`). `1b12520` |
 | — | — | — | ✅ bonus | Tests front **gatés en CI** : les 394 tests Vitest de Prep existaient mais ne tournaient jamais (seul `build` tournait). Jobs Vitest prep/app/shell ajoutés dans `ci.yml` + `smoke.yml` ; `.mjs` ad-hoc (qui testaient des copies inline) migrés vers du Vitest important le vrai code. PR #59→#63. |
 | D-04 | 🟡 | P1-7 | ✅ corrigé | **Ce fichier** (vue inverse finding→statut→commit) |
+| T-02 | 🟠 | P0-3 | ✅ corrigé | Suites dédiées `test_telemetry.py` (13) + `test_curation.py` (35) important le vrai code (étaient testés seulement indirectement). `curation.py` **100 %** ; coverage projet 61,94 %→66,82 %. PR #65 |
 | A-05 | — | — | ❌ retiré | Réfuté en passe 2 : les index secondaires existent (`003_alignment.sql`, `012_tokens.sql`) |
 
 ### Ouverts
@@ -50,7 +51,6 @@ le §6 de l'audit 2026-06-12 ; « — » = non priorisé explicitement.
 | Q-02 | 🟠 | P0-1 | 🟦 partiel | Fonctions géantes : `_handle_import` 242 l → adapter ~15 l (A-01 #46) ; **`_build_hits`/`_build_hits_regex` dédupliqués** via `_build_hits_core` partagé (paramétré matchers + `coerce_text_norm` + `log_hits` ; byte-identique, logs inclus) — le chemin regex, jamais testé, gagne une couverture directe. Reste : `_handle_query` 221 l (délégateur, laissé avec les autres). |
 | Q-04 | 🟡 | P2-13 | ⬜ ouvert | Typage hétérogène ; pas de TypedDict pour les shapes de contrat |
 | Q-05 | 🟡 | — | ⬜ ouvert | Matcher CQL : pas de cap global documenté (gardes présentes) |
-| T-02 | 🟠 | P0-3 | ⬜ ouvert | Branches cœur `telemetry.py` / `curation.py` sans test direct |
 | T-03 | 🟡 | P1-6 | ⬜ ouvert | 11 fichiers de tests versionnés à isoler sous `tests/contracts/` |
 | T-04 | 🟡 | — | ⬜ ouvert | Fragilités timing (23 `time.sleep`) ; 8 tests exigent `NO_PROXY` en local |
 | T-05 | 🟠 | — | ⬜ ouvert | E2E Tauri quasi inexistant (pas de Playwright/WebDriver). Mitigation partielle : render-smoke DOM (happy-dom) côté shell — `styleRegistry`, `diagnostics`, `telemetry` (PR #61→#63) ; **≠ vrai E2E**, qui reste ouvert. |
@@ -58,7 +58,7 @@ le §6 de l'audit 2026-06-12 ; « — » = non priorisé explicitement.
 | S-02 | 🟡 | P1-8 | ⬜ ouvert | Race POSIX sur le portfile (`O_EXCL`/umask absents) |
 | S-03 | 🟡 | P0-2 | 🟦 partiel | Sink type-safe `setHtml`/`safeHtml\`\`` + ESLint no-unsanitized (prep) ; 3 fichiers migrés, `f858c78`. Aucun vrai XSS trouvé (escapers tous vérifiés). **Reste** : 92 sites des 4 écrans géants + app/shell + job CI bloquant. Décision de reprise en attente (grind complet vs suppressions pour les géants). |
 | S-04 | 🟡 | P1-8 | ⬜ ouvert | `exporters/tei.py` importe `xml.etree` non défusé (risque nul aujourd'hui) |
-| U-01 | 🟠 | P1-4 | ⬜ ouvert | `sidecarClient.ts` dupliqué/divergent ; le shell importe **les deux** clients |
+| U-01 | 🟠 | P1-4 | 🟦 partiel | `sidecarClient.ts` dupliqué/divergent (app 1434 l. / prep 2984 l. ; 25 symboles communs, 17 divergents). **PR1a** : 9 types réconciliés byte-identiques — app adopte les canoniques prep (`Conn`, `DocumentRecord`, `ImportOptions`, `ImportResponse`, `TokenRecord`, `FamilyStats`, `FamilyRecord` + support `FamilyChildEntry`/`FamilyRatioWarning`), `tsc`/builds verts, zéro changement runtime. Reste : PR1b (fonctions divergentes — `getActiveConn`, `listConventions`, conventions CRUD, `ensureRunning`… + helpers prep-only) puis PR2 (extraction byte-identique du cœur → le shell ne bundlera plus qu'un chunk client). |
 | U-02 | 🟠 | P2-11 | ⬜ ouvert | Écrans Prep monolithiques (Curation ~3 800 l., Metadata ~3 200 l.) |
 | U-03 | 🟡 | P2-11 | 🟦 partiel | `tauri-app` : 14 tests Vitest (happy-dom) sur le **vrai** `features/search.ts` (`buildFtsQuery`/`isSimpleInput`), gatés en CI (PR #60). Reste : couverture large des 8 112 l. (concordancier, état, rendu). |
 | U-04 | 🟡 | P2-12 | ⬜ ouvert | Signalisation de statut fragmentée entre READMEs |
