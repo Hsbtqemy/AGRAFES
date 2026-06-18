@@ -56,12 +56,18 @@ export interface QueryHit {
 
 export interface TokenRecord {
   token_id: number;
+  doc_id: number;
+  unit_id: number;
+  unit_n: number;
+  external_id: number | null;
+  sent_id: number;
   position: number;
-  word?: string | null;
-  lemma?: string | null;
-  upos?: string | null;
-  xpos?: string | null;
-  feats?: string | null;
+  word: string | null;
+  lemma: string | null;
+  upos: string | null;
+  xpos: string | null;
+  feats: string | null;
+  misc: string | null;
 }
 
 export interface AlignedUnit {
@@ -161,19 +167,41 @@ export interface ImportOptions {
     | "docx_paragraphs"
     | "odt_paragraphs"
     | "odt_numbered_lines"
-    | "tei";
+    | "tei"
+    | "conllu";
   path: string;
   language?: string;
   title?: string;
   doc_role?: string;
   resource_type?: string;
+  tei_unit?: "p" | "s";
+  check_filename?: boolean;
+  /** When set, creates a translation_of relation to this parent after import. */
+  family_root_doc_id?: number;
+  /**
+   * For `docx_numbered_lines` ONLY — 1-based index of the column to extract
+   * from tables (typical case: DOCX bilingue 2-col, set to 1 for the original
+   * column or 2 for the translation). Leave undefined to keep the legacy
+   * behavior (tables ignored). Ignored silently by other importers.
+   */
+  column_index?: number;
 }
 
 export interface ImportResponse {
   ok: boolean;
   doc_id: number;
-  units_line: number;
-  units_total: number;
+  units_line?: number;
+  units_total?: number;
+  /** True when a translation_of relation was freshly inserted. */
+  relation_created?: boolean;
+  /** Id of the doc_relations row (new or pre-existing). */
+  relation_id?: number;
+  /** Number of tables walked (>= 0 when column_index was set). */
+  tables_processed?: number;
+  /** Rows where the requested column did not exist (table too narrow / merged). */
+  rows_skipped_short?: number;
+  /** Nested sub-tables skipped during extraction. */
+  nested_tables_skipped?: number;
 }
 
 export interface IndexResponse {
@@ -187,9 +215,38 @@ export interface DocumentRecord {
   language: string;
   doc_role: string | null;
   resource_type: string | null;
+  workflow_status?: "draft" | "review" | "validated";
+  validated_at?: string | null;
+  validated_run_id?: string | null;
+  /** Absolute path recorded at import (for duplicate detection in Prep). */
   source_path?: string | null;
+  /** SHA-256 hex of source file at import. */
   source_hash?: string | null;
+  /** Number of token rows available for this document. */
+  token_count?: number;
+  /** Lightweight annotation state derived from token presence. */
+  annotation_status?: "missing" | "annotated";
+  author_lastname?: string | null;
+  author_firstname?: string | null;
+  /** Free-form date string: "2024", "2024-03", "2024-03-15", etc. */
+  doc_date?: string | null;
+  translator_lastname?: string | null;
+  translator_firstname?: string | null;
+  /** Titre de l'œuvre (identique VO et traduction, ex. "Les Misérables"). */
+  work_title?: string | null;
+  /** Lieu de publication (ex. "Paris"). */
+  pub_place?: string | null;
+  /** Éditeur / édition (ex. "Gallimard"). */
+  publisher?: string | null;
   unit_count: number;
+  /** First unit n that belongs to the main text (units with n < text_start_n are paratext). Null = no boundary. */
+  text_start_n?: number | null;
+  /**
+   * True when the FTS index is stale for this doc — at least one line unit
+   * is absent from / divergent in `fts_units`. Dérivé côté backend
+   * (indexer.stale_doc_ids), pas un flag persisté.
+   */
+  fts_stale?: boolean;
 }
 
 export interface QueryFacetsOptions {
@@ -261,12 +318,9 @@ export interface UnitContextResponse {
 export interface Conn {
   baseUrl: string;
   token: string | null;
-  /** POST a write operation (injects token header if present). */
   post(path: string, body: unknown): Promise<unknown>;
-  /** PUT a write operation (injects token header if present). */
-  put(path: string, body: unknown): Promise<unknown>;
-  /** POST a read-only operation (no token required). */
   get(path: string): Promise<unknown>;
+  put(path: string, body: unknown): Promise<unknown>;
 }
 
 // ─── Internal state ───────────────────────────────────────────────────────────
@@ -1225,19 +1279,11 @@ export async function listDocuments(conn: Conn): Promise<DocumentRecord[]> {
 
 // ─── Document families ────────────────────────────────────────────────────────
 
-export interface FamilyChild {
-  doc_id: number;
-  relation_type: string;
-  doc: {
-    doc_id: number;
-    title: string | null;
-    language: string | null;
-    doc_role: string | null;
-    workflow_status: string | null;
-  } | null;
-  segmented: boolean;
-  seg_count: number;
-  aligned_to_parent: boolean;
+export interface FamilyRatioWarning {
+  child_doc_id: number;
+  parent_segs: number;
+  child_segs: number;
+  ratio_pct: number;
 }
 
 export interface FamilyStats {
@@ -1246,18 +1292,24 @@ export interface FamilyStats {
   parent_seg_count: number;
   aligned_pairs: number;
   total_pairs: number;
+  validated_docs: number;
   completion_pct: number;
+  ratio_warnings: FamilyRatioWarning[];
+}
+
+export interface FamilyChildEntry {
+  doc_id: number;
+  relation_type: string;
+  doc: DocumentRecord | null;
+  segmented: boolean;
+  seg_count: number;
+  aligned_to_parent: boolean;
 }
 
 export interface FamilyRecord {
   family_id: number;
-  parent: {
-    doc_id: number;
-    title: string | null;
-    language: string | null;
-    doc_role: string | null;
-  } | null;
-  children: FamilyChild[];
+  parent: DocumentRecord | null;
+  children: FamilyChildEntry[];
   stats: FamilyStats;
 }
 
