@@ -155,6 +155,10 @@ jobs:
       - name: Build tauri-shell
         run: npm --prefix tauri-shell run build
 
+      # T-03 / T-05: render-smoke for styleRegistry (real source, happy-dom).
+      - name: Run tauri-shell unit tests (vitest)
+        run: npm --prefix tauri-shell test
+
   # ── Sidecar binary build sanity check ─────────────────────────────────────
   build-sidecar-check:
     name: Sidecar binary build (Linux sanity)

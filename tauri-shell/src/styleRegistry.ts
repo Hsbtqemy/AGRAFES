@@ -7,7 +7,8 @@
  * output bundle.
  *
  * Kept as a utility library because:
- * 1. The 20 unit tests (test_style_registry.mjs) document the idempotency contract.
+ * 1. src/__tests__/styleRegistry.test.ts documents the idempotency contract
+ *    (vitest + happy-dom render-smoke).
  * 2. Runtime CSS injection may be needed for future features (dynamic theming,
  *    external stylesheet loading, P8+ modules that can't rely on static Vite imports).
  * 3. Zero build cost when unused.
