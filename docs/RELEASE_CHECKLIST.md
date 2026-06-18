@@ -214,7 +214,7 @@ Les binaires non signés (Sprint 1) restent utilisables.
 
 ### Pre-release
 - [ ] `npm --prefix tauri-shell run build` vert
-- [ ] `node tauri-shell/scripts/test_diagnostics.mjs` 42 tests verts
+- [ ] `npm --prefix tauri-shell test` vert (diagnostics, telemetry, styleRegistry)
 - [ ] Modal diagnostic s'ouvre depuis le menu "?" dans le header Shell
 - [ ] Bouton "Exporter…" produit un fichier `.txt` lisible (aucun chemin sensible en clair)
 - [ ] Bouton "Copier" copie le texte dans le presse-papiers

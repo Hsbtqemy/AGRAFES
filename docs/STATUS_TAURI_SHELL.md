@@ -163,7 +163,7 @@ Le résidu laissé en P6 (`const PREP_CSS = ""; // remove in P7`) et le commenta
 **Choix : Option A — Conserver comme bibliothèque utilitaire.**
 
 Raisons :
-- 20 tests unitaires documentent le contrat d'idempotence (`test_style_registry.mjs`).
+- Des tests unitaires documentent le contrat d'idempotence (`src/__tests__/styleRegistry.test.ts`, Vitest + happy-dom).
 - Vite tree-shake le module si aucun code de production ne l'importe → coût build nul.
 - Réutilisable pour des usages futurs (injection de thèmes runtime, modules P8+).
 - JSDoc mis à jour pour refléter le statut "aucun consommateur actif en prod".
@@ -799,7 +799,7 @@ Opens a resizable modal displaying a live system diagnostic report.
 |------|------|
 | `tauri-shell/src/diagnostics.ts` | New module — `collectDiagnostics()`, `formatDiagnosticsText()`, `redactPath()` |
 | `tauri-shell/src/shell.ts` | Support menu, `_openDiagnosticsModal()`, `_exportDiagnosticFile()` |
-| `tauri-shell/scripts/test_diagnostics.mjs` | 42 Node.js unit tests for pure functions |
+| `tauri-shell/src/__tests__/` | Vitest unit tests (diagnostics, telemetry, styleRegistry) |
 
 ### Security invariants
 - No network calls (sidecar probe is localhost-only, 2.5 s timeout)
