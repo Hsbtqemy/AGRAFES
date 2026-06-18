@@ -207,3 +207,6 @@ jobs:
             echo "ERROR: executable does not exist at $EXE_PATH"
             exit 1
           fi
+
+      - name: Smoke-run sidecar binary (serve + /health + service endpoints)
+        run: python scripts/smoke_sidecar.py /tmp/sidecar-ci-check/sidecar-manifest.json
