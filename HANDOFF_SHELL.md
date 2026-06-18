@@ -95,7 +95,7 @@ tauri-shell/
 │       ├── multicorpus-windows-x64.exe
 │       └── sidecar-manifest.json         généré par CI (sha256 + version)
 ├── scripts/
-│   ├── prepare_sidecar.sh                copie le binaire sidecar (dev)
+│   ├── prepare_sidecar.sh                build le binaire sidecar (dev)
 │   └── prepare_sidecar.ps1               idem (Windows)
 └── public/                               assets
 ```
@@ -255,7 +255,7 @@ UI monolithique — éléments montrés/masqués via class `hidden` :
   - `cql` : flag pour endpoint `/token_query`
   - **Détection passthrough** : si input contient `AND|OR|NOT|NEAR` ou guillemets, transformation contournée.
 - **`validateCqlSyntax(raw)`** — parse léger, détecte `[token_predicate]` (word/lemma/pos/upos/xpos/feats), quantificateurs `{m,n}`, `within s`. Ne valide pas la sémantique regex (déléguée à Python).
-- Tests : [tauri-app/scripts/test_buildFtsQuery.mjs](tauri-app/scripts/test_buildFtsQuery.mjs) — exhaustifs Node.js ESM.
+- Tests : [tauri-app/src/features/__tests__/search.test.ts](tauri-app/src/features/__tests__/search.test.ts) — Vitest + happy-dom.
 
 ### 4.4 KWIC display + alignés + familles
 
@@ -565,7 +565,7 @@ Le trade-off reste défendable au stade actuel (cadence release mensuelle, équi
 ### 14.5 Bug ou feature Concordancier (recherche)
 - `tauri-app/src/features/<file>.ts` (search.ts pour query building, query.ts pour orchestration)
 - UI : `tauri-app/src/ui/buildUI.ts` ou `results.ts`
-- Tests : `tauri-app/scripts/test_buildFtsQuery.mjs`
+- Tests : `npm --prefix tauri-app test`
 - Test : `npm --prefix tauri-app run dev` (standalone) ou rebuild Shell
 
 ### 14.6 Bug moteur / sidecar

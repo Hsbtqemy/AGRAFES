@@ -202,8 +202,8 @@ Le JS est allégé ; le CSS est désormais un asset à part entière (cache brow
 
 ### Invariants post-P6
 
-- `node tauri-shell/scripts/test_style_registry.mjs` → 20/20
-- `node tauri-app/scripts/test_buildFtsQuery.mjs` → 26/26
+- `npm --prefix tauri-shell test` → vert (styleRegistry + diagnostics + telemetry)
+- `npm --prefix tauri-app test` → vert (buildFtsQuery, isSimpleInput)
 - `npm --prefix tauri-prep run build` → vert
 - `npm --prefix tauri-shell run build` → vert
 

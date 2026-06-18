@@ -163,7 +163,7 @@ Le résidu laissé en P6 (`const PREP_CSS = ""; // remove in P7`) et le commenta
 **Choix : Option A — Conserver comme bibliothèque utilitaire.**
 
 Raisons :
-- 20 tests unitaires documentent le contrat d'idempotence (`test_style_registry.mjs`).
+- Des tests unitaires documentent le contrat d'idempotence (`src/__tests__/styleRegistry.test.ts`, Vitest + happy-dom).
 - Vite tree-shake le module si aucun code de production ne l'importe → coût build nul.
 - Réutilisable pour des usages futurs (injection de thèmes runtime, modules P8+).
 - JSDoc mis à jour pour refléter le statut "aucun consommateur actif en prod".
