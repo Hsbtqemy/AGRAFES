@@ -30,7 +30,8 @@ from pathlib import Path
 
 # (path, expected key in the JSON body) — one public GET per extracted service.
 CHECKS: list[tuple[str, str]] = [
-    ("/conventions", "conventions"),  # conventions_service
+    ("/conventions", "conventions"),       # conventions_service
+    ("/doc_relations/all", "relations"),   # doc_relations_service
 ]
 
 

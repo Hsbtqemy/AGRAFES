@@ -6432,41 +6432,25 @@ class _CorpusHandler(BaseHTTPRequestHandler):
     # ------------------------------------------------------------------
 
     def _handle_doc_relations_get(self) -> None:
+        # Thin adapter over the doc_relations service (audit P0-1 / A-01). Read —
+        # no write-lock (matches the original). The query string is transport, so
+        # the adapter extracts doc_id; the service validates it.
+        from multicorpus_engine.services.doc_relations_service import get_doc_relations
+        from multicorpus_engine.services.errors import ValidationError
         qs = parse_qs(urlparse(self.path).query)
-        doc_id_str = (qs.get("doc_id") or [None])[0]
-        if doc_id_str is None:
-            self._send_error("doc_id query param is required", code=ERR_BAD_REQUEST, http_status=400)
-            return
+        doc_id_raw = (qs.get("doc_id") or [None])[0]
         try:
-            doc_id = int(doc_id_str)
-        except ValueError:
-            self._send_error("doc_id must be an integer", code=ERR_BAD_REQUEST, http_status=400)
+            data = get_doc_relations(self._conn(), doc_id_raw)
+        except ValidationError as exc:
+            self._send_error(exc.message, code=ERR_BAD_REQUEST, http_status=exc.http_status)
             return
-        rows = self._conn().execute(
-            "SELECT id, doc_id, relation_type, target_doc_id, note, created_at FROM doc_relations WHERE doc_id = ? ORDER BY id",
-            (doc_id,),
-        ).fetchall()
-        relations = [
-            {"id": r[0], "doc_id": r[1], "relation_type": r[2], "target_doc_id": r[3], "note": r[4], "created_at": r[5]}
-            for r in rows
-        ]
-        self._send_json(success_payload({"doc_id": doc_id, "relations": relations, "count": len(relations)}))
+        self._send_json(success_payload(data))
 
     def _handle_doc_relations_all(self) -> None:
-        """GET /doc_relations/all — return every doc_relation row in the corpus.
-
-        Used by the frontend to build the hierarchy view of documents without
-        issuing one request per document.
-        """
-        rows = self._conn().execute(
-            "SELECT id, doc_id, relation_type, target_doc_id, note, created_at"
-            " FROM doc_relations ORDER BY doc_id, id"
-        ).fetchall()
-        relations = [
-            {"id": r[0], "doc_id": r[1], "relation_type": r[2], "target_doc_id": r[3], "note": r[4], "created_at": r[5]}
-            for r in rows
-        ]
-        self._send_json(success_payload({"relations": relations, "count": len(relations)}))
+        # GET /doc_relations/all — every relation in the corpus (frontend hierarchy
+        # view). Read — no write-lock.
+        from multicorpus_engine.services.doc_relations_service import list_all_doc_relations
+        self._send_json(success_payload(list_all_doc_relations(self._conn())))
 
     def _handle_families(self) -> None:
         """GET /families — list all document families (parent + children + completion stats).
@@ -6783,34 +6767,16 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         self._send_json(success_payload({"updated": total_updated}))
 
     def _handle_doc_relations_set(self, body: dict) -> None:
-        doc_id = body.get("doc_id")
-        relation_type = body.get("relation_type")
-        target_doc_id = body.get("target_doc_id")
-        if doc_id is None or not relation_type or target_doc_id is None:
-            self._send_error("doc_id, relation_type, and target_doc_id are required", code=ERR_BAD_REQUEST, http_status=400)
+        # Thin adapter over the doc_relations service (write — owns the lock).
+        from multicorpus_engine.services.doc_relations_service import set_doc_relation
+        from multicorpus_engine.services.errors import ValidationError
+        try:
+            with self._lock():
+                data = set_doc_relation(self._conn(), body)
+        except ValidationError as exc:
+            self._send_error(exc.message, code=ERR_BAD_REQUEST, http_status=exc.http_status)
             return
-        note = body.get("note")
-        with self._lock():
-            existing = self._conn().execute(
-                "SELECT id FROM doc_relations WHERE doc_id = ? AND relation_type = ? AND target_doc_id = ?",
-                (doc_id, relation_type, target_doc_id),
-            ).fetchone()
-            if existing:
-                self._conn().execute(
-                    "UPDATE doc_relations SET note = ? WHERE id = ?",
-                    (note, existing[0]),
-                )
-                rel_id = existing[0]
-                action = "updated"
-            else:
-                cur = self._conn().execute(
-                    "INSERT INTO doc_relations (doc_id, relation_type, target_doc_id, note, created_at) VALUES (?, ?, ?, ?, datetime('now'))",
-                    (doc_id, relation_type, target_doc_id, note),
-                )
-                rel_id = cur.lastrowid
-                action = "created"
-            self._conn().commit()
-        self._send_json(success_payload({"action": action, "id": rel_id, "doc_id": doc_id, "relation_type": relation_type, "target_doc_id": target_doc_id}))
+        self._send_json(success_payload(data))
 
     def _handle_documents_delete(self, body: dict) -> None:
         """POST /documents/delete — supprime un ou plusieurs documents et toutes leurs données liées."""
@@ -6906,14 +6872,16 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         self._send_json(success_payload({"deleted": deleted, "doc_ids": doc_ids}))
 
     def _handle_doc_relations_delete(self, body: dict) -> None:
-        rel_id = body.get("id")
-        if rel_id is None:
-            self._send_error("id is required", code=ERR_BAD_REQUEST, http_status=400)
+        # Thin adapter over the doc_relations service (write — owns the lock).
+        from multicorpus_engine.services.doc_relations_service import delete_doc_relation
+        from multicorpus_engine.services.errors import ValidationError
+        try:
+            with self._lock():
+                data = delete_doc_relation(self._conn(), body)
+        except ValidationError as exc:
+            self._send_error(exc.message, code=ERR_BAD_REQUEST, http_status=exc.http_status)
             return
-        with self._lock():
-            cur = self._conn().execute("DELETE FROM doc_relations WHERE id = ?", (rel_id,))
-            self._conn().commit()
-        self._send_json(success_payload({"deleted": cur.rowcount}))
+        self._send_json(success_payload(data))
 
     # ------------------------------------------------------------------
     # V0.4B — Exports
