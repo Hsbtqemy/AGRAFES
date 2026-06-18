@@ -4655,212 +4655,60 @@ class _CorpusHandler(BaseHTTPRequestHandler):
     # ------------------------------------------------------------------
 
     # Names auto-assigned to 'structure' when category column is missing (pre-migration DBs).
-    _STRUCTURE_ROLE_NAMES = frozenset({
-        "titre", "intertitre", "dedicace", "epigraphe", "incipit",
-        "colophon", "preface", "postface", "note", "paratext",
-    })
-
     def _handle_conventions_list(self) -> None:
-        """GET /conventions — list all unit roles defined for this corpus."""
+        # Thin adapter over the conventions service (audit P0-1 / A-01).
+        from multicorpus_engine.services.conventions_service import list_conventions
         with self._lock():
-            conn = self._conn()
-            col_names = {row[1] for row in conn.execute("PRAGMA table_info(unit_roles)").fetchall()}
-            has_cat = "category" in col_names
-            if has_cat:
-                rows = conn.execute(
-                    "SELECT role_id, name, label, color, icon, sort_order, category, created_at"
-                    " FROM unit_roles ORDER BY sort_order ASC, role_id ASC"
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    "SELECT role_id, name, label, color, icon, sort_order, created_at"
-                    " FROM unit_roles ORDER BY sort_order ASC, role_id ASC"
-                ).fetchall()
-
-        def _cat(r: object) -> str:
-            if has_cat:
-                return r["category"] or "text"  # type: ignore[index]
-            return "structure" if r["name"] in self._STRUCTURE_ROLE_NAMES else "text"  # type: ignore[index]
-
+            conventions = list_conventions(self._conn())
         self._send_json(success_payload({
-            "conventions": [
-                {
-                    "role_id": r["role_id"],
-                    "name": r["name"],
-                    "label": r["label"],
-                    "color": r["color"],
-                    "icon": r["icon"],
-                    "sort_order": r["sort_order"],
-                    "category": _cat(r),
-                    "created_at": r["created_at"],
-                }
-                for r in rows
-            ],
-            "count": len(rows),
+            "conventions": conventions,
+            "count": len(conventions),
         }))
 
     def _handle_conventions_create(self, body: dict) -> None:
-        """POST /conventions — create a new unit role."""
-        name = (body.get("name") or "").strip()
-        label = (body.get("label") or "").strip()
-        color = (body.get("color") or "#6366f1").strip()
-        icon = body.get("icon")
-        sort_order = body.get("sort_order", 0)
-        category = (body.get("category") or "text").strip()
-        if category not in ("structure", "text"):
-            category = "text"
-
-        if not name:
-            self._send_error("name is required", code=ERR_BAD_REQUEST, http_status=400)
+        # Thin adapter over the conventions service. ValidationError keeps this
+        # endpoint's historic BAD_REQUEST code (not VALIDATION_ERROR).
+        from multicorpus_engine.services.conventions_service import create_convention
+        from multicorpus_engine.services.errors import ConflictError, ValidationError
+        try:
+            with self._lock():
+                convention = create_convention(self._conn(), body)
+        except ValidationError as exc:
+            self._send_error(exc.message, code=ERR_BAD_REQUEST, http_status=exc.http_status)
             return
-        if not label:
-            self._send_error("label is required", code=ERR_BAD_REQUEST, http_status=400)
+        except ConflictError as exc:
+            self._send_error(exc.message, code=ERR_CONFLICT, http_status=exc.http_status)
             return
-        if not name.replace("_", "").replace("-", "").isalnum():
-            self._send_error(
-                "name must contain only letters, digits, hyphens and underscores",
-                code=ERR_BAD_REQUEST, http_status=400,
-            )
-            return
-
-        with self._lock():
-            conn = self._conn()
-            existing = conn.execute(
-                "SELECT role_id FROM unit_roles WHERE name=?", (name,)
-            ).fetchone()
-            if existing:
-                self._send_error(
-                    f"Convention '{name}' already exists",
-                    code=ERR_CONFLICT, http_status=409,
-                )
-                return
-            col_names = {row[1] for row in conn.execute("PRAGMA table_info(unit_roles)").fetchall()}
-            if "category" in col_names:
-                conn.execute(
-                    "INSERT INTO unit_roles (name, label, color, icon, sort_order, category)"
-                    " VALUES (?, ?, ?, ?, ?, ?)",
-                    (name, label, color, icon, int(sort_order), category),
-                )
-            else:
-                conn.execute(
-                    "INSERT INTO unit_roles (name, label, color, icon, sort_order)"
-                    " VALUES (?, ?, ?, ?, ?)",
-                    (name, label, color, icon, int(sort_order)),
-                )
-            conn.commit()
-            sel_cols = "role_id, name, label, color, icon, sort_order, created_at"
-            if "category" in col_names:
-                sel_cols = "role_id, name, label, color, icon, sort_order, category, created_at"
-            row = conn.execute(
-                f"SELECT {sel_cols} FROM unit_roles WHERE name=?", (name,),
-            ).fetchone()
-            row_cat = row["category"] if "category" in col_names else (
-                "structure" if name in self._STRUCTURE_ROLE_NAMES else category
-            )
-
-        self._send_json(success_payload({
-            "convention": {
-                "role_id": row["role_id"],
-                "name": row["name"],
-                "label": row["label"],
-                "color": row["color"],
-                "icon": row["icon"],
-                "sort_order": row["sort_order"],
-                "category": row_cat,
-                "created_at": row["created_at"],
-            }
-        }), status=201)
+        self._send_json(success_payload({"convention": convention}), status=201)
 
     def _handle_conventions_update(self, role_name: str, body: dict) -> None:
-        """PUT /conventions/<name> — update label, color, icon, sort_order of a role."""
-        if not role_name:
-            self._send_error("role name required in path", code=ERR_BAD_REQUEST, http_status=400)
+        # Thin adapter over the conventions service.
+        from multicorpus_engine.services.conventions_service import update_convention
+        from multicorpus_engine.services.errors import NotFoundError, ValidationError
+        try:
+            with self._lock():
+                convention = update_convention(self._conn(), role_name, body)
+        except ValidationError as exc:
+            self._send_error(exc.message, code=ERR_BAD_REQUEST, http_status=exc.http_status)
             return
-
-        with self._lock():
-            conn = self._conn()
-            row = conn.execute(
-                "SELECT role_id FROM unit_roles WHERE name=?", (role_name,)
-            ).fetchone()
-            if not row:
-                self._send_error(
-                    f"Convention '{role_name}' not found",
-                    code=ERR_NOT_FOUND, http_status=404,
-                )
-                return
-
-            up_col_names = {row[1] for row in conn.execute("PRAGMA table_info(unit_roles)").fetchall()}
-            has_cat_up = "category" in up_col_names
-            updatable = ("label", "color", "icon", "sort_order") + (("category",) if has_cat_up else ())
-            fields: list[str] = []
-            params: list[object] = []
-            for col in updatable:
-                if col in body:
-                    val = body[col]
-                    if col == "category" and val not in ("structure", "text"):
-                        val = "text"
-                    fields.append(f"{col}=?")
-                    params.append(val)
-            if not fields:
-                self._send_error(
-                    "At least one of label, color, icon, sort_order, category must be provided",
-                    code=ERR_BAD_REQUEST, http_status=400,
-                )
-                return
-
-            params.append(role_name)
-            conn.execute(
-                f"UPDATE unit_roles SET {', '.join(fields)} WHERE name=?",
-                params,
-            )
-            conn.commit()
-            sel_cols_up = "role_id, name, label, color, icon, sort_order, created_at"
-            if has_cat_up:
-                sel_cols_up = "role_id, name, label, color, icon, sort_order, category, created_at"
-            updated = conn.execute(
-                f"SELECT {sel_cols_up} FROM unit_roles WHERE name=?", (role_name,),
-            ).fetchone()
-            updated_cat = updated["category"] if has_cat_up else (
-                "structure" if role_name in self._STRUCTURE_ROLE_NAMES else "text"
-            )
-
-        self._send_json(success_payload({
-            "convention": {
-                "role_id": updated["role_id"],
-                "name": updated["name"],
-                "label": updated["label"],
-                "color": updated["color"],
-                "icon": updated["icon"],
-                "sort_order": updated["sort_order"],
-                "category": updated_cat,
-                "created_at": updated["created_at"],
-            }
-        }))
+        except NotFoundError as exc:
+            self._send_error(exc.message, code=ERR_NOT_FOUND, http_status=exc.http_status)
+            return
+        self._send_json(success_payload({"convention": convention}))
 
     def _handle_conventions_delete(self, body: dict) -> None:
-        """POST /conventions/delete — delete a role; units with that role become NULL."""
-        name = (body.get("name") or "").strip()
-        if not name:
-            self._send_error("name is required", code=ERR_BAD_REQUEST, http_status=400)
+        # Thin adapter over the conventions service.
+        from multicorpus_engine.services.conventions_service import delete_convention
+        from multicorpus_engine.services.errors import NotFoundError, ValidationError
+        try:
+            with self._lock():
+                name = delete_convention(self._conn(), body)
+        except ValidationError as exc:
+            self._send_error(exc.message, code=ERR_BAD_REQUEST, http_status=exc.http_status)
             return
-
-        with self._lock():
-            conn = self._conn()
-            row = conn.execute(
-                "SELECT role_id FROM unit_roles WHERE name=?", (name,)
-            ).fetchone()
-            if not row:
-                self._send_error(
-                    f"Convention '{name}' not found",
-                    code=ERR_NOT_FOUND, http_status=404,
-                )
-                return
-            # ON DELETE SET NULL handles units automatically via FK
-            # but SQLite FK support may be off; clear manually to be safe
-            conn.execute("UPDATE units SET unit_role=NULL WHERE unit_role=?", (name,))
-            conn.execute("DELETE FROM unit_roles WHERE name=?", (name,))
-            conn.commit()
-
+        except NotFoundError as exc:
+            self._send_error(exc.message, code=ERR_NOT_FOUND, http_status=exc.http_status)
+            return
         self._send_json(success_payload({"deleted": name}))
 
     def _handle_units_set_role(self, body: dict) -> None:
