@@ -41,7 +41,7 @@ le §6 de l'audit 2026-06-12 ; « — » = non priorisé explicitement.
 
 | ID | Sév | Prio | Statut | Constat (résumé) |
 |----|-----|------|--------|------------------|
-| A-01 | 🔴 | P0-1 | 🟦 partiel | `sidecar.py` monolithe. Couche `services/` amorcée : `import_service` (tranche-1a, #46) + `conventions_service` (CRUD unit_roles + `ConflictError`). Handlers→adapters fins (lock + map erreurs + envelope, réponses byte-identiques). Domaines restants : align/segment/curate/export/documents/doc_relations… |
+| A-01 | 🔴 | P0-1 | 🟦 partiel | `sidecar.py` monolithe. Couche `services/` : `import_service` (#46) + `conventions_service` (#50, +`ConflictError`) + `doc_relations_service` (CRUD relations de famille). Handlers→adapters fins (lock pour les writes, map erreurs, envelope ; réponses byte-identiques). Filet : smoke-run binaire en CI (#51) frappe un GET par couche service. Domaines restants : align/segment/curate/export/documents… |
 | A-03 | 🟠 | P0-1 | ⬜ ouvert | 66 blocs de validation manuelle (pas de validateur de schéma) |
 | A-04 | 🟡 | P2-13 | ⬜ ouvert | Attributs dynamiques non typés sur `HTTPServer` |
 | Q-02 | 🟠 | P0-1 | ⬜ ouvert | Fonctions géantes ; `_build_hits` vs `_build_hits_regex` (~70 l. dupliquées) |
