@@ -12,9 +12,11 @@ d'un coup d'œil si un item est clos sans avoir à lancer un `git log -S`.
 d'un finding (au même titre que le CHANGELOG). Les priorités (P0/P1/P2) reprennent
 le §6 de l'audit 2026-06-12 ; « — » = non priorisé explicitement.
 
-> État des correctifs ci-dessous : commit `ae78207` est sur la branche
-> `fix/audit-business-logic` (depuis `development` à `373524b`), **en attente de
-> merge** dans `development` à la rédaction de ce fichier.
+> **Mise à jour 2026-06-18.** Tous les correctifs ci-dessous sont **mergés** dans
+> `dev` (branche par défaut depuis la normalisation `main`/`dev`). Le commit
+> `ae78207` (findings métier) a été intégré via la PR #41. Cette révision
+> réconcilie le tracker avec la série tests front (PR #59→#63) et les chiffres
+> A-01 réels.
 
 ---
 
@@ -34,6 +36,7 @@ le §6 de l'audit 2026-06-12 ; « — » = non priorisé explicitement.
 | A-02 | 🟠 | P0-1 | ✅ corrigé | `/import/preview` ne réimplémente plus les importers : chaque mode passe par `parse_<mode>() -> ParsedDoc` + `to_preview()` (txt/docx×2/odt×2/tei), preview CoNLL-U *lenient* déplacé dans `conllu.preview_conllu`. `sidecar.py` −142 l. Corrige 3 divergences preview↔import (strip préfixe docx, fallback ext_id TEI, preview ODT cassé). PR #47, tests `test_parse_layer.py` (équivalence preview==import) |
 | Q-03 | 🟡 | — | ✅ corrigé | `file_sha256` unique dans `parsed.py` ; les 7 importers l'utilisent (suppression des 5 `_compute_file_hash` + 2 cross-imports docx→odt). PR #47 |
 | — | — | — | ✅ bonus | CI déclenchée aussi sur `development` (les gates ne tiraient que sur `main`). `1b12520` |
+| — | — | — | ✅ bonus | Tests front **gatés en CI** : les 394 tests Vitest de Prep existaient mais ne tournaient jamais (seul `build` tournait). Jobs Vitest prep/app/shell ajoutés dans `ci.yml` + `smoke.yml` ; `.mjs` ad-hoc (qui testaient des copies inline) migrés vers du Vitest important le vrai code. PR #59→#63. |
 | D-04 | 🟡 | P1-7 | ✅ corrigé | **Ce fichier** (vue inverse finding→statut→commit) |
 | A-05 | — | — | ❌ retiré | Réfuté en passe 2 : les index secondaires existent (`003_alignment.sql`, `012_tokens.sql`) |
 
@@ -41,7 +44,7 @@ le §6 de l'audit 2026-06-12 ; « — » = non priorisé explicitement.
 
 | ID | Sév | Prio | Statut | Constat (résumé) |
 |----|-----|------|--------|------------------|
-| A-01 | 🔴 | P0-1 | 🟦 partiel (point d'arrêt) | `sidecar.py` monolithe (9961→~8600 l). Couche `services/` (7 domaines) : `import` (#46) + `conventions` (#50) + `doc_relations` (#52) + `documents` (#53, +`BadRequestError`) + `curate`-CRUD (#54) + `units` (#55) + `tokens` (list/update). Handlers→adapters fins (lock writes, map erreurs typées→codes, envelope ; byte-identiques). Couplé laissé en adapter (assumé) : backfill schéma `_ensure_*`, télémétrie `doc_deleted`. Filet : smoke-run binaire en CI (#51) = 1 GET/couche, gate de croissance rendu informatif (#56). **Point d'arrêt assumé** : tous les domaines à logique DB réelle sont extraits. **Non extraits (volontaire)** : `export` + `query`/`token_query`/`stats` (délégateurs — la logique est déjà dans `exporters/`/`query.py`/`token_query.py`/`cql_parser`, extraction = simple déplacement de validation) ; `units/merge`+`split`, `curate_preview`/`*_export`, `align`/`segment`/`jobs` (à état/couplés). |
+| A-01 | 🔴 | P0-1 | 🟦 partiel (point d'arrêt) | `sidecar.py` monolithe (9961→8523 l). Couche `services/` (7 domaines) : `import` (#46) + `conventions` (#50) + `doc_relations` (#52) + `documents` (#53, +`BadRequestError`) + `curate`-CRUD (#54) + `units` (#55) + `tokens` (list/update). Handlers→adapters fins (lock writes, map erreurs typées→codes, envelope ; byte-identiques). Couplé laissé en adapter (assumé) : backfill schéma `_ensure_*`, télémétrie `doc_deleted`. Filet : smoke-run binaire en CI (#51) = 1 GET/couche, gate de croissance rendu informatif (#56). **Point d'arrêt assumé** : tous les domaines à logique DB réelle sont extraits. **Non extraits (volontaire)** : `export` + `query`/`token_query`/`stats` (délégateurs — la logique est déjà dans `exporters/`/`query.py`/`token_query.py`/`cql_parser`, extraction = simple déplacement de validation) ; `units/merge`+`split`, `curate_preview`/`*_export`, `align`/`segment`/`jobs` (à état/couplés). |
 | A-03 | 🟠 | P0-1 | ⬜ ouvert | 66 blocs de validation manuelle (pas de validateur de schéma) |
 | A-04 | 🟡 | P2-13 | ⬜ ouvert | Attributs dynamiques non typés sur `HTTPServer` |
 | Q-02 | 🟠 | P0-1 | 🟦 partiel | Fonctions géantes : `_handle_import` 242 l → adapter ~15 l (A-01 #46) ; **`_build_hits`/`_build_hits_regex` dédupliqués** via `_build_hits_core` partagé (paramétré matchers + `coerce_text_norm` + `log_hits` ; byte-identique, logs inclus) — le chemin regex, jamais testé, gagne une couverture directe. Reste : `_handle_query` 221 l (délégateur, laissé avec les autres). |
@@ -50,14 +53,14 @@ le §6 de l'audit 2026-06-12 ; « — » = non priorisé explicitement.
 | T-02 | 🟠 | P0-3 | ⬜ ouvert | Branches cœur `telemetry.py` / `curation.py` sans test direct |
 | T-03 | 🟡 | P1-6 | ⬜ ouvert | 11 fichiers de tests versionnés à isoler sous `tests/contracts/` |
 | T-04 | 🟡 | — | ⬜ ouvert | Fragilités timing (23 `time.sleep`) ; 8 tests exigent `NO_PROXY` en local |
-| T-05 | 🟠 | — | ⬜ ouvert | E2E Tauri quasi inexistant (pas de Playwright/WebDriver) |
+| T-05 | 🟠 | — | ⬜ ouvert | E2E Tauri quasi inexistant (pas de Playwright/WebDriver). Mitigation partielle : render-smoke DOM (happy-dom) côté shell — `styleRegistry`, `diagnostics`, `telemetry` (PR #61→#63) ; **≠ vrai E2E**, qui reste ouvert. |
 | S-01 | 🟡 | P1-8 | ⬜ ouvert | Pas de validation `Host`/`Origin` (DNS rebinding théorique, lecture seule) |
 | S-02 | 🟡 | P1-8 | ⬜ ouvert | Race POSIX sur le portfile (`O_EXCL`/umask absents) |
 | S-03 | 🟡 | P0-2 | 🟦 partiel | Sink type-safe `setHtml`/`safeHtml\`\`` + ESLint no-unsanitized (prep) ; 3 fichiers migrés, `f858c78`. Aucun vrai XSS trouvé (escapers tous vérifiés). **Reste** : 92 sites des 4 écrans géants + app/shell + job CI bloquant. Décision de reprise en attente (grind complet vs suppressions pour les géants). |
 | S-04 | 🟡 | P1-8 | ⬜ ouvert | `exporters/tei.py` importe `xml.etree` non défusé (risque nul aujourd'hui) |
 | U-01 | 🟠 | P1-4 | ⬜ ouvert | `sidecarClient.ts` dupliqué/divergent ; le shell importe **les deux** clients |
 | U-02 | 🟠 | P2-11 | ⬜ ouvert | Écrans Prep monolithiques (Curation ~3 800 l., Metadata ~3 200 l.) |
-| U-03 | 🟡 | P2-11 | ⬜ ouvert | `tauri-app` : 0 test pour 8 112 l. TS |
+| U-03 | 🟡 | P2-11 | 🟦 partiel | `tauri-app` : 14 tests Vitest (happy-dom) sur le **vrai** `features/search.ts` (`buildFtsQuery`/`isSimpleInput`), gatés en CI (PR #60). Reste : couverture large des 8 112 l. (concordancier, état, rendu). |
 | U-04 | 🟡 | P2-12 | ⬜ ouvert | Signalisation de statut fragmentée entre READMEs |
 | U-05 | 🟡 | — | ⬜ ouvert | i18n absent (chaînes FR en dur) — non bloquant |
 | D-01 | 🟠 | P1-7 | ⬜ ouvert | ROADMAP/BACKLOG figés au 20-21 avril (dérive ~29 j) |
@@ -87,6 +90,6 @@ d'audit correspondant.
 | B6 — rollback import | 2026-04-19 | ✅ corrigé | ADR-040, try/except/rollback dans les importers |
 | C-01 (AGRAFES-3) — lecture fichier arbitraire côté Rust | 2026-04-19 | ✅ corrigé | `read_sidecar_portfile` whitelisté, commit `0c4dc78` |
 | Bloc C-01→C-13 / M-01→M-15 / F-01→F-05 / D-09 (33 findings) | 2026-04-19 | 🔎 voir CHANGELOG | « 33 findings résolus (v0.1.31) » (ROADMAP) — statut individuel à tracer ici au besoin |
-| M-01 — zéro test frontend | 2026-03-26 | 🟦 partiel | 18 fichiers Vitest (Prep) ; reste ouvert pour `tauri-app` (→ U-03 2026-06-12) |
+| M-01 — zéro test frontend | 2026-03-26 | 🟦 partiel | Vitest Prep (20 fichiers, 394 tests) + `tauri-app` (14) + `tauri-shell` (28), **tous gatés en CI** (PR #59→#63) ; reste la couverture large de `tauri-app` (→ U-03) |
 | W-01 / W-02 — monolithes | 2026-03-26 | 🟦 partiel | Extractions côté Prep faites ; `sidecar.py` + écrans géants demeurent (→ A-01, U-02) |
 | F-03 — épinglage GitHub Actions par SHA | 2026-04-19 | ⬜ ouvert | Non traité (F-04 permissions ✅) — cf. ROADMAP « Next » |
