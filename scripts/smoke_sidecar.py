@@ -34,6 +34,7 @@ CHECKS: list[tuple[str, str]] = [
     ("/doc_relations/all", "relations"),   # doc_relations_service
     ("/documents", "documents"),           # documents_service
     ("/curate/exceptions", "exceptions"),  # curate_service
+    ("/units?doc_id=1", "units"),          # units_service
 ]
 
 
