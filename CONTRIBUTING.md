@@ -43,7 +43,7 @@ Voir [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) pour la procédure c
 
 - **Engine** : `pytest -q` à la racine. Smoke E2E : `python scripts/ci_smoke_sidecar.py`.
 - **tauri-prep** : `npm --prefix tauri-prep run test` (Vitest).
-- **tauri-app** : `node tauri-app/scripts/test_buildFtsQuery.mjs` (tests purs Node).
+- **tauri-app** : `npm --prefix tauri-app test` (Vitest + happy-dom).
 - **tauri-shell** : `node tauri-shell/scripts/test_diagnostics.mjs` (idem).
 
 Les PRs ne sont mergées que si les workflows CI sont verts.
