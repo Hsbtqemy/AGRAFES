@@ -242,6 +242,17 @@ def test_curate_document_manual_override(db_conn: sqlite3.Connection) -> None:
     assert _text(db_conn, u1) == "MANUAL"
 
 
+def test_curate_document_manual_override_identical_no_write(db_conn: sqlite3.Connection) -> None:
+    doc = _add_doc(db_conn)
+    u1 = _add_unit(db_conn, doc, 1, "same")
+    report = curate_document(
+        db_conn, doc, [CurationRule(pattern="x", replacement="y")],
+        manual_overrides={u1: "same"},
+    )
+    assert report.units_modified == 0
+    assert _text(db_conn, u1) == "same"
+
+
 def test_curate_document_persistent_ignore_skips(db_conn: sqlite3.Connection) -> None:
     doc = _add_doc(db_conn)
     u1 = _add_unit(db_conn, doc, 1, "aaa")
