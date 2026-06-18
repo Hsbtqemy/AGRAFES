@@ -15,4 +15,10 @@ export default defineConfig(async () => ({
       ignored: ["**/src-tauri/**"],
     },
   },
+  // Vitest: happy-dom so DOM-touching pure logic (e.g. buildFtsQuery ->
+  // showBuilderWarn) runs headless. T-03 front-end coverage.
+  test: {
+    environment: "happy-dom",
+    include: ["src/**/__tests__/**/*.test.ts"],
+  },
 }));

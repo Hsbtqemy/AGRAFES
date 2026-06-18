@@ -85,8 +85,11 @@ jobs:
       - name: Build tauri-shell
         run: npm --prefix tauri-shell run build
 
-      - name: Run FTS query unit tests
-        run: node tauri-app/scripts/test_buildFtsQuery.mjs
+      - name: Run tauri-prep unit tests (vitest)
+        run: npm --prefix tauri-prep test
+
+      - name: Run tauri-app unit tests (vitest)
+        run: npm --prefix tauri-app test
 
   # ── 3. Python unit tests (mirrors ci.yml, duplicated here for smoke gate) ───
   python-tests:

@@ -141,7 +141,7 @@ python scripts/release_gate.py --skip-demo    # skip demo DB gates
 | Étape | Description | Réussite si |
 |---|---|---|
 | 1. pytest | Suite complète en mode quiet | 0 failed, 0 errors |
-| 2. FTS tests | `node tauri-app/scripts/test_buildFtsQuery.mjs` | 0 failed |
+| 2. Front tests | `npm --prefix tauri-prep test` + `npm --prefix tauri-app test` (Vitest) | 0 failed |
 | 3. npm builds | shell, app, prep | `✓ built in` présent, no ERROR |
 | 4a. Demo DB | Create/verify `agrafes_demo.db` | DB créée |
 | 4b. QA strict | `write_qa_report(policy='strict')` sur démo | gate_status ≠ blocking |
