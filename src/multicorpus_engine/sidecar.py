@@ -4522,230 +4522,50 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         self._send_json(success_payload({"deleted": name}))
 
     def _handle_units_set_role(self, body: dict) -> None:
-        """POST /units/set_role — assign (or clear) a convention role on one unit."""
-        doc_id = body.get("doc_id")
-        unit_n_raw = body.get("unit_n")
-        role = body.get("role")  # None or "" → clear
-
-        if doc_id is None or unit_n_raw is None:
-            self._send_error("doc_id and unit_n are required", code=ERR_BAD_REQUEST, http_status=400)
-            return
+        # Thin adapter over the units service (audit P0-1 / A-01).
+        from multicorpus_engine.services.units_service import set_unit_role
+        from multicorpus_engine.services.errors import BadRequestError, NotFoundError
         try:
-            doc_id = int(doc_id)
-            unit_n = int(unit_n_raw)
-        except (TypeError, ValueError):
-            self._send_error("doc_id and unit_n must be integers", code=ERR_BAD_REQUEST, http_status=400)
+            with self._lock():
+                data = set_unit_role(self._conn(), body)
+        except BadRequestError as exc:
+            self._send_error(exc.message, code=ERR_BAD_REQUEST, http_status=exc.http_status)
             return
-
-        role = (role or "").strip() or None  # normalise empty string → None
-
-        with self._lock():
-            conn = self._conn()
-            # Validate role exists if provided
-            if role is not None:
-                exists = conn.execute(
-                    "SELECT 1 FROM unit_roles WHERE name=?", (role,)
-                ).fetchone()
-                if not exists:
-                    self._send_error(
-                        f"Convention '{role}' not found",
-                        code=ERR_NOT_FOUND, http_status=404,
-                    )
-                    return
-
-            row = conn.execute(
-                "SELECT unit_id FROM units WHERE doc_id=? AND n=?",
-                (doc_id, unit_n),
-            ).fetchone()
-            if not row:
-                self._send_error(
-                    f"Unit n={unit_n} not found for doc_id={doc_id}",
-                    code=ERR_NOT_FOUND, http_status=404,
-                )
-                return
-
-            conn.execute(
-                "UPDATE units SET unit_role=? WHERE doc_id=? AND n=?",
-                (role, doc_id, unit_n),
-            )
-            conn.commit()
-
-        self._send_json(success_payload({
-            "doc_id": doc_id,
-            "unit_n": unit_n,
-            "unit_role": role,
-        }))
+        except NotFoundError as exc:
+            self._send_error(exc.message, code=ERR_NOT_FOUND, http_status=exc.http_status)
+            return
+        self._send_json(success_payload(data))
 
     def _handle_units_bulk_set_role(self, body: dict) -> None:
-        """POST /units/bulk_set_role — assign (or clear) a role on multiple units.
-
-        Accepts two calling conventions:
-          A) { unit_ids: [int, ...], role_name: str|null }   — by primary key
-          B) { doc_id: int, unit_ns: [int, ...], role: str|null }  — legacy, by (doc, n)
-        """
-        # Normalise to a unified (role, update_fn) form.
-        role: str | None
-        unit_ids_raw = body.get("unit_ids")
-        role_name_field = body.get("role_name")
-
-        if unit_ids_raw is not None:
-            # Format A — unit_ids + role_name
-            if not isinstance(unit_ids_raw, list):
-                self._send_error("unit_ids must be an array", code=ERR_BAD_REQUEST, http_status=400)
-                return
-            try:
-                unit_ids = [int(i) for i in unit_ids_raw]
-            except (TypeError, ValueError):
-                self._send_error("unit_ids values must be integers", code=ERR_BAD_REQUEST, http_status=400)
-                return
-            role = (role_name_field or "").strip() or None
-            if not unit_ids:
-                self._send_json(success_payload({"updated": 0}))
-                return
-
+        # Thin adapter over the units service. Supports both calling conventions
+        # (unit_ids+role_name, or legacy doc_id+unit_ns+role) inside the service.
+        from multicorpus_engine.services.units_service import bulk_set_unit_role
+        from multicorpus_engine.services.errors import BadRequestError, NotFoundError
+        try:
             with self._lock():
-                conn = self._conn()
-                if role is not None:
-                    exists = conn.execute(
-                        "SELECT 1 FROM unit_roles WHERE name=?", (role,)
-                    ).fetchone()
-                    if not exists:
-                        self._send_error(
-                            f"Convention '{role}' not found",
-                            code=ERR_NOT_FOUND, http_status=404,
-                        )
-                        return
-                placeholders = ",".join("?" * len(unit_ids))
-                result = conn.execute(
-                    f"UPDATE units SET unit_role=? WHERE unit_id IN ({placeholders})",
-                    [role, *unit_ids],
-                )
-                conn.commit()
-        else:
-            # Format B — doc_id + unit_ns + role (legacy)
-            doc_id = body.get("doc_id")
-            unit_ns_raw = body.get("unit_ns")
-            role = body.get("role")
-
-            if doc_id is None or unit_ns_raw is None:
-                self._send_error("unit_ids (or doc_id and unit_ns) are required", code=ERR_BAD_REQUEST, http_status=400)
-                return
-            if not isinstance(unit_ns_raw, list):
-                self._send_error("unit_ns must be an array", code=ERR_BAD_REQUEST, http_status=400)
-                return
-            try:
-                doc_id = int(doc_id)
-                unit_ns = [int(n) for n in unit_ns_raw]
-            except (TypeError, ValueError):
-                self._send_error("doc_id and unit_ns values must be integers", code=ERR_BAD_REQUEST, http_status=400)
-                return
-            if not unit_ns:
-                self._send_json(success_payload({"updated": 0}))
-                return
-            role = (role or "").strip() or None
-
-            with self._lock():
-                conn = self._conn()
-                if role is not None:
-                    exists = conn.execute(
-                        "SELECT 1 FROM unit_roles WHERE name=?", (role,)
-                    ).fetchone()
-                    if not exists:
-                        self._send_error(
-                            f"Convention '{role}' not found",
-                            code=ERR_NOT_FOUND, http_status=404,
-                        )
-                        return
-                placeholders = ",".join("?" * len(unit_ns))
-                result = conn.execute(
-                    f"UPDATE units SET unit_role=? WHERE doc_id=? AND n IN ({placeholders})",
-                    [role, doc_id, *unit_ns],
-                )
-                conn.commit()
-
-        self._send_json(success_payload({"updated": result.rowcount}))
+                data = bulk_set_unit_role(self._conn(), body)
+        except BadRequestError as exc:
+            self._send_error(exc.message, code=ERR_BAD_REQUEST, http_status=exc.http_status)
+            return
+        except NotFoundError as exc:
+            self._send_error(exc.message, code=ERR_NOT_FOUND, http_status=exc.http_status)
+            return
+        self._send_json(success_payload(data))
 
     def _handle_units_update_text(self, body: dict) -> None:
-        """POST /units/update_text — update text_raw and/or text_norm for one unit.
-
-        Body: { unit_id, text_raw?, text_norm? }
-          At least one of text_raw or text_norm must be provided.
-          If only text_raw is provided, text_norm is set to the same value
-          (caller may pass both to set independently).
-        """
-        unit_id_raw = body.get("unit_id")
-        if unit_id_raw is None:
-            self._send_error("unit_id is required", code=ERR_BAD_REQUEST, http_status=400)
-            return
+        # Thin adapter over the units service (write — owns the lock).
+        from multicorpus_engine.services.units_service import update_unit_text
+        from multicorpus_engine.services.errors import BadRequestError, NotFoundError
         try:
-            unit_id = int(unit_id_raw)
-        except (TypeError, ValueError):
-            self._send_error("unit_id must be an integer", code=ERR_BAD_REQUEST, http_status=400)
+            with self._lock():
+                data = update_unit_text(self._conn(), body)
+        except BadRequestError as exc:
+            self._send_error(exc.message, code=ERR_BAD_REQUEST, http_status=exc.http_status)
             return
-
-        text_raw = body.get("text_raw")
-        text_norm = body.get("text_norm")
-
-        if text_raw is None and text_norm is None:
-            self._send_error(
-                "At least one of text_raw or text_norm must be provided",
-                code=ERR_BAD_REQUEST, http_status=400,
-            )
+        except NotFoundError as exc:
+            self._send_error(exc.message, code=ERR_NOT_FOUND, http_status=exc.http_status)
             return
-        for field, val in (("text_raw", text_raw), ("text_norm", text_norm)):
-            if val is not None and not isinstance(val, str):
-                self._send_error(f"{field} must be a string", code=ERR_BAD_REQUEST, http_status=400)
-                return
-
-        # If only text_raw given, mirror to text_norm
-        if text_raw is not None and text_norm is None:
-            text_norm = text_raw
-
-        updates: dict[str, str] = {}
-        if text_raw is not None:
-            updates["text_raw"] = text_raw
-        if text_norm is not None:
-            updates["text_norm"] = text_norm
-
-        set_clause = ", ".join(f"{k} = ?" for k in updates)
-        params = [*updates.values(), unit_id]
-
-        with self._lock():
-            conn = self._conn()
-            cur = conn.execute(
-                f"UPDATE units SET {set_clause} WHERE unit_id = ?",
-                params,
-            )
-            if cur.rowcount == 0:
-                self._send_error(
-                    f"Unknown unit_id: {unit_id}",
-                    code=ERR_NOT_FOUND, http_status=404,
-                )
-                return
-            # Invalidate FTS entry for this unit
-            try:
-                conn.execute("DELETE FROM fts_units WHERE rowid = ?", (unit_id,))
-                if "text_norm" in updates:
-                    conn.execute(
-                        "INSERT INTO fts_units(rowid, text_norm) VALUES (?, ?)",
-                        (unit_id, updates["text_norm"]),
-                    )
-            except Exception:
-                pass  # FTS update is best-effort
-            conn.commit()
-            row = conn.execute(
-                "SELECT unit_id, doc_id, n, external_id, text_raw, text_norm FROM units WHERE unit_id = ?",
-                (unit_id,),
-            ).fetchone()
-
-        self._send_json(success_payload({
-            "unit_id": row[0],
-            "doc_id": row[1],
-            "n": row[2],
-            "external_id": row[3],
-            "text_raw": row[4],
-            "text_norm": row[5],
-        }))
+        self._send_json(success_payload(data))
 
     def _handle_documents_set_text_start(self, body: dict) -> None:
         """POST /documents/set_text_start — set or clear the paratextual boundary.
@@ -5104,44 +4924,18 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         }))
 
     def _handle_units_list(self, qs: dict) -> None:
-        """GET /units?doc_id=N[&unit_type=line] — list units for a document with their role."""
+        # Thin adapter over the units service. Read — no write-lock (matches the
+        # original). Query string is transport; the service validates doc_id.
+        from multicorpus_engine.services.units_service import list_units
+        from multicorpus_engine.services.errors import BadRequestError
         doc_id_str = qs.get("doc_id", [None])[0]
-        if not doc_id_str:
-            self._send_error("doc_id is required", code=ERR_BAD_REQUEST, http_status=400)
-            return
-        try:
-            doc_id = int(doc_id_str)
-        except (TypeError, ValueError):
-            self._send_error("doc_id must be an integer", code=ERR_BAD_REQUEST, http_status=400)
-            return
-
         unit_type = qs.get("unit_type", [None])[0]  # optional filter
-
-        conn = self._conn()
-        if unit_type:
-            rows = conn.execute(
-                "SELECT unit_id, n, text_norm, unit_type, unit_role"
-                " FROM units WHERE doc_id=? AND unit_type=? ORDER BY n",
-                (doc_id, unit_type),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                "SELECT unit_id, n, text_norm, unit_type, unit_role"
-                " FROM units WHERE doc_id=? ORDER BY n",
-                (doc_id,),
-            ).fetchall()
-
-        units = [
-            {
-                "unit_id": r[0],
-                "n": r[1],
-                "text_norm": r[2],
-                "unit_type": r[3],
-                "unit_role": r[4],
-            }
-            for r in rows
-        ]
-        self._send_json(success_payload({"units": units, "count": len(units), "doc_id": doc_id}))
+        try:
+            data = list_units(self._conn(), doc_id_str, unit_type)
+        except BadRequestError as exc:
+            self._send_error(exc.message, code=ERR_BAD_REQUEST, http_status=exc.http_status)
+            return
+        self._send_json(success_payload(data))
 
     def _handle_documents(self) -> None:
         # Thin adapter over the documents service (audit P0-1 / A-01). Read — no
