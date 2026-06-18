@@ -799,7 +799,7 @@ Opens a resizable modal displaying a live system diagnostic report.
 |------|------|
 | `tauri-shell/src/diagnostics.ts` | New module — `collectDiagnostics()`, `formatDiagnosticsText()`, `redactPath()` |
 | `tauri-shell/src/shell.ts` | Support menu, `_openDiagnosticsModal()`, `_exportDiagnosticFile()` |
-| `tauri-shell/scripts/test_diagnostics.mjs` | 42 Node.js unit tests for pure functions |
+| `tauri-shell/src/__tests__/` | Vitest unit tests (diagnostics, telemetry, styleRegistry) |
 
 ### Security invariants
 - No network calls (sidecar probe is localhost-only, 2.5 s timeout)

@@ -78,6 +78,7 @@ tauri-shell/
 │   ├── context.ts                        SharedContext (DB path)
 │   ├── diagnostics.ts                    collectDiagnostics + formatDiagnosticsText (purs, testables)
 │   ├── styleRegistry.ts                  gestion CSS dynamique
+│   ├── __tests__/                        tests Vitest (diagnostics, telemetry, styleRegistry)
 │   └── modules/
 │       ├── explorerModule.ts             onglet Explorer (concordancier + recherche)
 │       ├── constituerModule.ts           onglet Constituer (monte directement l'app prep)
@@ -94,8 +95,8 @@ tauri-shell/
 │       ├── multicorpus-windows-x64.exe
 │       └── sidecar-manifest.json         généré par CI (sha256 + version)
 ├── scripts/
-│   ├── test_diagnostics.mjs              42 tests purs Node.js
-│   └── test_style_registry.mjs           idem
+│   ├── prepare_sidecar.sh                copie le binaire sidecar (dev)
+│   └── prepare_sidecar.ps1               idem (Windows)
 └── public/                               assets
 ```
 
@@ -445,8 +446,8 @@ Le trade-off reste défendable au stade actuel (cadence release mensuelle, équi
 |-----------|-----------|----------------|
 | moteur (Python) | pytest | `tests/test_v21.py` (rules_from_list), `tests/test_sidecar_v03.py` (par endpoint avec fixture `v03_sidecar`), `tests/test_sidecar_api_contract.py`, `tests/test_v21.py` (concordancer), `scripts/ci_smoke_sidecar.py` (E2E) |
 | tauri-prep | Vitest + tests Vitest dans `__tests__/` | curationFingerprint, curationReview |
-| tauri-app | Tests purs Node.js | [scripts/test_buildFtsQuery.mjs](tauri-app/scripts/test_buildFtsQuery.mjs) |
-| tauri-shell | Tests purs Node.js (pas de Vitest) | [scripts/test_diagnostics.mjs](tauri-shell/scripts/test_diagnostics.mjs) (42 tests), [scripts/test_style_registry.mjs](tauri-shell/scripts/test_style_registry.mjs) |
+| tauri-app | Vitest + happy-dom | [src/features/__tests__/search.test.ts](tauri-app/src/features/__tests__/search.test.ts) (buildFtsQuery, isSimpleInput) |
+| tauri-shell | Vitest + happy-dom | [src/__tests__/](tauri-shell/src/__tests__/) — diagnostics, telemetry, styleRegistry |
 | E2E Shell | Workflow CI dédié | `.github/workflows/tauri-e2e-fixture` |
 
 **`ci_smoke_sidecar.py`** : crée DB temp → spawn sidecar via subprocess → lit portfile → wait `/health` → import 3-unit fixture → rebuild FTS → query "needle" → list documents → `/shutdown` → assert. Tourne en CI matrix Ubuntu/macOS sans secrets.
@@ -593,7 +594,7 @@ Le trade-off reste défendable au stade actuel (cadence release mensuelle, équi
 
 ### 14.10 Bug diagnostic Shell (menu "?")
 - `tauri-shell/src/diagnostics.ts` (purs)
-- Tests : `node tauri-shell/scripts/test_diagnostics.mjs`
+- Tests : `npm --prefix tauri-shell test`
 
 ### 14.11 Modif workflow CI
 - `.github/workflows/tauri-shell-build.yml` (build matrix)
