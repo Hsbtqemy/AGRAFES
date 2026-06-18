@@ -91,6 +91,9 @@ jobs:
       - name: Run tauri-app unit tests (vitest)
         run: npm --prefix tauri-app test
 
+      - name: Run tauri-shell unit tests (vitest)
+        run: npm --prefix tauri-shell test
+
   # ── 3. Python unit tests (mirrors ci.yml, duplicated here for smoke gate) ───
   python-tests:
     name: Python tests
