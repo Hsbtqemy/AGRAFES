@@ -137,7 +137,10 @@ describe("aggregateTelemetry", () => {
         { event: "stage_completed", stage: "x", success: "not-bool", duration_ms: "nope" }, // wrong types
       ]),
     );
-    expect(s.by_stage.unknown ?? s.by_stage.x).toBeDefined();
+    // Both fallback buckets must exist: the stage-less record → "unknown",
+    // the present-but-wrong-typed record → "x" (with safe 0ms / not-success).
+    expect(s.by_stage.unknown).toEqual({ completed: 1, success: 0, avg_duration_ms: 0 });
+    expect(s.by_stage.x).toEqual({ completed: 1, success: 0, avg_duration_ms: 0 });
     expect(s.caps_hit.find((c) => c.cap_name === "unknown")).toBeDefined();
     expect(s.top_errors.find((e) => e.error_class === "unknown")).toBeDefined();
   });
