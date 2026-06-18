@@ -100,7 +100,9 @@ describe("formatDiagnosticsText", () => {
     expect(txt).toContain("2.00 MB");
     expect(txt).toContain("3 (1 pinned)");
     expect(txt).toContain("## Preferences");
-    expect(txt).toContain("strict");
+    // Full line, not bare "strict" — that substring also appears in
+    // "TEI profile : parcolab_strict", so it would pass even if qa_policy broke.
+    expect(txt).toContain("QA policy        : strict");
     expect(txt).not.toContain("Collection Errors");
     expect(txt).not.toContain("Session Log");
     expect(txt).toContain("End of diagnostic report");
