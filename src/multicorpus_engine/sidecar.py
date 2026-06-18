@@ -2174,134 +2174,38 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         return to_preview(parsed.units, limit)
 
     def _handle_curate_exceptions_list(self, body: dict) -> None:
-        """Return all curation exceptions for a given doc_id (or all if absent).
-
-        Enriched for Level 8A: response now includes doc_id, doc_title and
-        unit_text (truncated to 200 chars) for each exception row, so the
-        admin panel can display useful context without extra queries.
-        """
-        doc_id = body.get("doc_id")
+        # Thin adapter over the curate service (audit P0-1 / A-01).
+        from multicorpus_engine.services.curate_service import list_exceptions
         with self._lock():
-            conn = self._conn()
-            if doc_id is not None:
-                rows = conn.execute(
-                    """
-                    SELECT ce.id, ce.unit_id, ce.kind, ce.override_text, ce.note, ce.created_at,
-                           u.doc_id,
-                           COALESCE(d.title, '') AS doc_title,
-                           SUBSTR(u.text_norm, 1, 200)  AS unit_text
-                    FROM curation_exceptions ce
-                    JOIN units u    ON u.unit_id = ce.unit_id
-                    JOIN documents d ON d.doc_id  = u.doc_id
-                    WHERE u.doc_id = ?
-                    ORDER BY ce.unit_id
-                    """,
-                    (int(doc_id),),
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    """
-                    SELECT ce.id, ce.unit_id, ce.kind, ce.override_text, ce.note, ce.created_at,
-                           u.doc_id,
-                           COALESCE(d.title, '') AS doc_title,
-                           SUBSTR(u.text_norm, 1, 200)  AS unit_text
-                    FROM curation_exceptions ce
-                    JOIN units u    ON u.unit_id = ce.unit_id
-                    JOIN documents d ON d.doc_id  = u.doc_id
-                    ORDER BY u.doc_id, ce.unit_id
-                    """
-                ).fetchall()
-        exceptions = [
-            {
-                "id": row[0],
-                "unit_id": row[1],
-                "kind": row[2],
-                "override_text": row[3],
-                "note": row[4],
-                "created_at": row[5],
-                "doc_id": row[6],
-                "doc_title": row[7] or None,
-                "unit_text": row[8] or None,
-            }
-            for row in rows
-        ]
-        self._send_json(success_payload({"exceptions": exceptions, "count": len(exceptions)}))
+            data = list_exceptions(self._conn(), body)
+        self._send_json(success_payload(data))
 
     def _handle_curate_exceptions_set(self, body: dict) -> None:
-        """Create or replace a curation exception for a unit_id.
-
-        Required fields: unit_id (int), kind ('ignore' | 'override')
-        When kind = 'override': override_text (str, non-empty) is required.
-        Optional: note (str)
-        """
-        unit_id = body.get("unit_id")
-        kind = body.get("kind")
-        if unit_id is None or kind not in ("ignore", "override"):
-            self._send_error(
-                "unit_id (int) and kind ('ignore'|'override') are required",
-                code=ERR_BAD_REQUEST,
-                http_status=400,
-            )
+        # Thin adapter over the curate service.
+        from multicorpus_engine.services.curate_service import set_exception
+        from multicorpus_engine.services.errors import BadRequestError, NotFoundError
+        try:
+            with self._lock():
+                data = set_exception(self._conn(), body)
+        except BadRequestError as exc:
+            self._send_error(exc.message, code=ERR_BAD_REQUEST, http_status=exc.http_status)
             return
-        unit_id = int(unit_id)
-        override_text = body.get("override_text")
-        if kind == "override" and not override_text:
-            self._send_error(
-                "override_text is required when kind = 'override'",
-                code=ERR_BAD_REQUEST,
-                http_status=400,
-            )
+        except NotFoundError as exc:
+            self._send_error(exc.message, code=ERR_NOT_FOUND, http_status=exc.http_status)
             return
-        note = body.get("note")
-        with self._lock():
-            conn = self._conn()
-            # Verify unit exists
-            row = conn.execute(
-                "SELECT unit_id FROM units WHERE unit_id = ?", (unit_id,)
-            ).fetchone()
-            if not row:
-                self._send_error(
-                    f"unit_id {unit_id} not found",
-                    code=ERR_NOT_FOUND,
-                    http_status=404,
-                )
-                return
-            conn.execute(
-                """
-                INSERT INTO curation_exceptions (unit_id, kind, override_text, note, created_at)
-                VALUES (?, ?, ?, ?, datetime('now'))
-                ON CONFLICT(unit_id) DO UPDATE SET
-                    kind = excluded.kind,
-                    override_text = excluded.override_text,
-                    note = excluded.note,
-                    created_at = excluded.created_at
-                """,
-                (unit_id, kind, override_text, note),
-            )
-            conn.commit()
-        self._send_json(success_payload({
-            "unit_id": unit_id,
-            "kind": kind,
-            "override_text": override_text,
-            "note": note,
-            "action": "set",
-        }))
+        self._send_json(success_payload(data))
 
     def _handle_curate_exceptions_delete(self, body: dict) -> None:
-        """Delete the curation exception for a unit_id (if any)."""
-        unit_id = body.get("unit_id")
-        if unit_id is None:
-            self._send_error("unit_id is required", code=ERR_BAD_REQUEST, http_status=400)
+        # Thin adapter over the curate service.
+        from multicorpus_engine.services.curate_service import delete_exception
+        from multicorpus_engine.services.errors import BadRequestError
+        try:
+            with self._lock():
+                data = delete_exception(self._conn(), body)
+        except BadRequestError as exc:
+            self._send_error(exc.message, code=ERR_BAD_REQUEST, http_status=exc.http_status)
             return
-        unit_id = int(unit_id)
-        with self._lock():
-            conn = self._conn()
-            cur = conn.execute(
-                "DELETE FROM curation_exceptions WHERE unit_id = ?", (unit_id,)
-            )
-            conn.commit()
-            deleted = cur.rowcount
-        self._send_json(success_payload({"unit_id": unit_id, "deleted": deleted > 0}))
+        self._send_json(success_payload(data))
 
     def _handle_curate_exceptions_export(self, body: dict) -> None:
         """Export curation exceptions to JSON or CSV.
@@ -2426,110 +2330,18 @@ class _CorpusHandler(BaseHTTPRequestHandler):
     # ─── Apply-history endpoints (Level 10A/10B) ──────────────────────────────
 
     def _handle_curate_apply_history_record(self, body: dict) -> None:
-        """Insert one apply event into curation_apply_history.
-
-        Called by the frontend immediately after each successful curation job.
-        All fields sourced from the frontend session — the sidecar trusts them.
-        """
-        scope = body.get("scope", "all")
-        if scope not in ("doc", "all"):
-            scope = "all"
-
-        doc_id = body.get("doc_id")
-        if doc_id is not None:
-            doc_id = int(doc_id)
-
-        # Coerce integer-like booleans
-        def _int(v, default=None):
-            try:
-                return int(v)
-            except (TypeError, ValueError):
-                return default
-
+        # Thin adapter over the curate service.
+        from multicorpus_engine.services.curate_service import record_apply_history
         with self._lock():
-            conn = self._conn()
-            cur = conn.execute(
-                """
-                INSERT INTO curation_apply_history
-                  (applied_at, scope, doc_id, doc_title,
-                   docs_curated, units_modified, units_skipped,
-                   ignored_count, manual_override_count,
-                   preview_displayed_count, preview_units_changed, preview_truncated)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    body.get("applied_at") or "unknown",
-                    scope,
-                    doc_id,
-                    body.get("doc_title"),
-                    _int(body.get("docs_curated"), 0),
-                    _int(body.get("units_modified"), 0),
-                    _int(body.get("units_skipped"), 0),
-                    _int(body.get("ignored_count")),
-                    _int(body.get("manual_override_count")),
-                    _int(body.get("preview_displayed_count")),
-                    _int(body.get("preview_units_changed")),
-                    1 if body.get("preview_truncated") else 0,
-                ),
-            )
-            conn.commit()
-            new_id = cur.lastrowid
-
-        self._send_json(success_payload({"id": new_id}))
+            data = record_apply_history(self._conn(), body)
+        self._send_json(success_payload(data))
 
     def _handle_curate_apply_history_list(self, body: dict) -> None:
-        """List recent apply events, optionally filtered by doc_id or scope.
-
-        Query-string / body params:
-          doc_id (int | None) — filter to that document; None = all
-          scope  (str | None) — 'doc' | 'all' | None (no filter)
-          limit  (int)        — max rows returned (default 50, max 200)
-        """
-        doc_id = body.get("doc_id")
-        scope  = body.get("scope")
-        limit  = min(_int_param(body.get("limit", 50), 50), 200)
-
-        sql = """
-            SELECT id, applied_at, scope, doc_id, doc_title,
-                   docs_curated, units_modified, units_skipped,
-                   ignored_count, manual_override_count,
-                   preview_displayed_count, preview_units_changed, preview_truncated
-            FROM curation_apply_history
-        """
-        conditions, params = [], []
-        if doc_id is not None:
-            conditions.append("doc_id = ?")
-            params.append(int(doc_id))
-        if scope is not None:
-            conditions.append("scope = ?")
-            params.append(scope)
-        if conditions:
-            sql += " WHERE " + " AND ".join(conditions)
-        sql += " ORDER BY applied_at DESC LIMIT ?"
-        params.append(limit)
-
+        # Thin adapter over the curate service.
+        from multicorpus_engine.services.curate_service import list_apply_history
         with self._lock():
-            rows = self._conn().execute(sql, params).fetchall()
-
-        events = [
-            {
-                "id":                      row[0],
-                "applied_at":              row[1],
-                "scope":                   row[2],
-                "doc_id":                  row[3],
-                "doc_title":               row[4],
-                "docs_curated":            row[5],
-                "units_modified":          row[6],
-                "units_skipped":           row[7],
-                "ignored_count":           row[8],
-                "manual_override_count":   row[9],
-                "preview_displayed_count": row[10],
-                "preview_units_changed":   row[11],
-                "preview_truncated":       bool(row[12]),
-            }
-            for row in rows
-        ]
-        self._send_json(success_payload({"events": events, "count": len(events)}))
+            data = list_apply_history(self._conn(), body)
+        self._send_json(success_payload(data))
 
     def _handle_curate_apply_history_export(self, body: dict) -> None:
         """Export apply history to JSON or CSV.

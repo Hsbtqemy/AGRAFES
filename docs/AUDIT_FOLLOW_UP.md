@@ -41,7 +41,7 @@ le §6 de l'audit 2026-06-12 ; « — » = non priorisé explicitement.
 
 | ID | Sév | Prio | Statut | Constat (résumé) |
 |----|-----|------|--------|------------------|
-| A-01 | 🔴 | P0-1 | 🟦 partiel | `sidecar.py` monolithe. Couche `services/` : `import` (#46) + `conventions` (#50, +`ConflictError`) + `doc_relations` (#52) + `documents` (CRUD métadonnées/workflow, +`BadRequestError`, split télémétrie). Handlers→adapters fins (lock pour writes, map erreurs typées→codes, envelope ; réponses byte-identiques). Couplé laissé en adapter (assumé) : backfill schéma `_ensure_*`, emit télémétrie `doc_deleted`. Filet : smoke-run binaire en CI (#51) frappe un GET par couche service. Domaines restants : align/segment/curate/export… |
+| A-01 | 🔴 | P0-1 | 🟦 partiel | `sidecar.py` monolithe. Couche `services/` : `import` (#46) + `conventions` (#50) + `doc_relations` (#52) + `documents` (#53, +`BadRequestError`) + `curate`-CRUD (exceptions + apply_history). Handlers→adapters fins (lock writes, map erreurs typées→codes, envelope ; byte-identiques). Couplé laissé en adapter (assumé) : backfill schéma `_ensure_*`, télémétrie `doc_deleted`. Filet : smoke-run binaire en CI (#51) = 1 GET/couche. **Écarté** : `export` (lock incohérent par handler + valeur faible, format déjà dans `exporters/`). Restants : `units`, `query`/`token`/`stats` ; `curate_preview`/`*_export` (couplés/volumineux) et `align`/`segment`/`jobs` (à état/couplés) laissés. |
 | A-03 | 🟠 | P0-1 | ⬜ ouvert | 66 blocs de validation manuelle (pas de validateur de schéma) |
 | A-04 | 🟡 | P2-13 | ⬜ ouvert | Attributs dynamiques non typés sur `HTTPServer` |
 | Q-02 | 🟠 | P0-1 | ⬜ ouvert | Fonctions géantes ; `_build_hits` vs `_build_hits_regex` (~70 l. dupliquées) |
