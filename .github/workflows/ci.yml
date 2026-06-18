@@ -115,6 +115,11 @@ jobs:
       - name: Build tauri-prep
         run: npm --prefix tauri-prep run build
 
+      # T-03: the 394 tauri-prep vitest tests existed but were never run in CI —
+      # only `build` was. Gate them now (deps already installed above).
+      - name: Run tauri-prep unit tests (vitest)
+        run: npm --prefix tauri-prep test
+
       - name: Install tauri-app deps
         run: npm --prefix tauri-app ci
 
