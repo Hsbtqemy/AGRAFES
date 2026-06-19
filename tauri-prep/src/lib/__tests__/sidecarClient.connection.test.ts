@@ -298,3 +298,77 @@ describe("ensureRunning (spawn / cold start)", () => {
   // worth the flakiness; PR2 only changes the *post*-spawn token/registry/port
   // logic, which the happy-path test above already guards.
 });
+
+// ─── Transport (conn.get / conn.post) — HTTP semantics PR2 will share ─────────
+//
+// makeConn is the one connection function where prep is a *superset* of app
+// (app inlines the HTTP; prep extracts _rawGet/_rawPost/_rawPut + adds
+// reconnect-once). PR2 makes app adopt prep's transport, so these pin the
+// semantics that must survive: JSON envelope, SidecarError mapping, token
+// header, and the reconnect-once behaviour app gains.
+
+describe("connection transport", () => {
+  /** Establish a live _conn (portfile reuse) with the given token. */
+  async function connect(token: string): Promise<Conn> {
+    wireSidecar({ ...PORTFILE, token });
+    return ensureRunning("/data/corpus.db");
+  }
+
+  /** Route invoke: portfile + /health always healthy; other URLs via `onFetch`. */
+  function routeFetch(onFetch: (url: string, args: Record<string, unknown>) => unknown): void {
+    vi.mocked(invoke).mockImplementation(async (cmd: string, args) => {
+      if (cmd === "read_sidecar_portfile") return JSON.stringify(PORTFILE);
+      if (cmd === "sidecar_fetch_loopback") {
+        const a = (args ?? {}) as Record<string, unknown>;
+        const url = String(a.url ?? "");
+        if (url.endsWith("/health")) {
+          return { status: 200, ok: true, body: JSON.stringify({ ok: true, token_required: false }) };
+        }
+        return onFetch(url, a);
+      }
+      return undefined;
+    });
+  }
+
+  it("returns the parsed JSON envelope on success", async () => {
+    const conn = await connect("abc");
+    routeFetch(() => ({ status: 200, ok: true, body: JSON.stringify({ ok: true, value: 42 }) }));
+
+    await expect(conn.post("/echo", { a: 1 })).resolves.toEqual({ ok: true, value: 42 });
+  });
+
+  it("maps a non-ok response to SidecarError (message + status)", async () => {
+    const conn = await connect("abc");
+    routeFetch(() => ({ status: 409, ok: false, body: JSON.stringify({ ok: false, error_message: "conflict" }) }));
+
+    const err = (await conn.post("/x", {}).catch((e) => e)) as SidecarError;
+    expect(err).toBeInstanceOf(SidecarError);
+    expect(err.message).toBe("conflict");
+    expect(err.httpStatus).toBe(409);
+  });
+
+  it("injects the X-Agrafes-Token header when a token is present", async () => {
+    const conn = await connect("secret-tok");
+    let seenHeaders: Record<string, string> | undefined;
+    routeFetch((_url, args) => {
+      seenHeaders = args.headers as Record<string, string>;
+      return { status: 200, ok: true, body: JSON.stringify({ ok: true }) };
+    });
+
+    await conn.get("/whoami");
+    expect(seenHeaders?.["X-Agrafes-Token"]).toBe("secret-tok");
+  });
+
+  it("reconnects once after a network error, then retries the call", async () => {
+    const conn = await connect("abc");
+    let dataAttempts = 0;
+    routeFetch(() => {
+      dataAttempts += 1;
+      if (dataAttempts === 1) throw new Error("ECONNREFUSED"); // transport-level failure
+      return { status: 200, ok: true, body: JSON.stringify({ ok: true, recovered: true }) };
+    });
+
+    await expect(conn.post("/x", {})).resolves.toEqual({ ok: true, recovered: true });
+    expect(dataAttempts).toBe(2); // failed once → reconnect → retried once
+  });
+});
