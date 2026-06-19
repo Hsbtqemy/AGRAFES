@@ -263,7 +263,7 @@ describe("ensureRunning (spawn / cold start)", () => {
   it("spawns a sidecar when no portfile exists and connects from startup JSON", async () => {
     wireSidecar(null); // no portfile → fall through to spawn
     const cmd = makeFakeCommand({
-      host: "127.0.0.1", port: 8765, token: "abc", portfile: "/data/.agrafes_sidecar.json",
+      host: "127.0.0.1", port: 8765, token: "  abc  ", portfile: "/data/.agrafes_sidecar.json",
     });
     vi.mocked(Command.sidecar).mockReturnValue(cmd as never);
 
@@ -272,7 +272,7 @@ describe("ensureRunning (spawn / cold start)", () => {
     expect(vi.mocked(Command.sidecar)).toHaveBeenCalledTimes(1);
     expect(cmd.spawn).toHaveBeenCalledTimes(1);
     expect(conn.baseUrl).toBe("http://127.0.0.1:8765");
-    expect(conn.token).toBe("abc"); // parseToken from startup payload
+    expect(conn.token).toBe("abc"); // parseToken trims the startup-payload token
     expect(getActiveConn()).toBe(conn);
     expect(vi.mocked(invoke)).toHaveBeenCalledWith("register_sidecar", {
       baseUrl: "http://127.0.0.1:8765",
