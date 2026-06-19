@@ -1,10 +1,12 @@
 /**
- * Connection-layer integration tests for sidecarClient.ts (audit T-05).
+ * Connection-layer integration tests for shared/sidecarCore.ts (audit T-05).
  *
- * These pin the behaviour of the sidecar *connection* logic — the code that
- * U-01 must later unify across tauri-app and tauri-prep (PR2). The module
- * imports Tauri plugins at top level, so we mock them and drive the connection
- * paths through the Rust command seam (everything funnels through invoke):
+ * These pin the behaviour of the shared sidecar *connection* core (U-01) that
+ * both tauri-app (Explorer) and tauri-prep (Constituer) import — tested here
+ * directly against sidecarCore, independent of either client, so the suite
+ * still applies if Explorer ever ships standalone. The module imports Tauri
+ * plugins at top level, so we mock them and drive the connection paths through
+ * the Rust command seam (everything funnels through invoke):
  *   - invoke("read_sidecar_portfile")  → portfile JSON      (readPortfile)
  *   - invoke("sidecar_fetch_loopback") → {status,ok,body}   (sidecarFetch; the
  *     loopback backend mode is "tauri_only", so HTTP goes via this command)
@@ -15,7 +17,7 @@
  * DB-switch), and the *spawn* (cold-start) path — happy path (startup JSON →
  * connect, token parsed, registry notified) + killing a prior child before
  * re-spawn — via a fake Command (makeFakeCommand). Together these guard both
- * sides (reuse + spawn) of PR2's ensureRunning/shutdownSidecar superset merge.
+ * sides (reuse + spawn) of the shared connection lifecycle.
  *
  * Still NOT covered (documented gap): spawn-failure (leaves the startup-JSON
  * reader's ~12 s timeout pending — see note at the spawn block), the
@@ -48,7 +50,7 @@ import {
   resetConnection,
   SidecarError,
   shutdownSidecar,
-} from "../sidecarClient";
+} from "../../../../shared/sidecarCore";
 
 /**
  * Wire the invoke() seam: portfile payload, loopback /health response, and
@@ -337,13 +339,11 @@ describe("ensureRunning (spawn / cold start)", () => {
   // logic, which the happy-path test above already guards.
 });
 
-// ─── Transport (conn.get / conn.post) — HTTP semantics PR2 will share ─────────
+// ─── Transport (conn.get / conn.post) — shared HTTP semantics ─────────────────
 //
-// makeConn is the one connection function where prep is a *superset* of app
-// (app inlines the HTTP; prep extracts _rawGet/_rawPost/_rawPut + adds
-// reconnect-once). PR2 makes app adopt prep's transport, so these pin the
-// semantics that must survive: JSON envelope, SidecarError mapping, token
-// header, and the reconnect-once behaviour app gains.
+// makeConn's transport (in shared/sidecarCore, _rawGet/_rawPost/_rawPut) is what
+// every endpoint in both clients relies on. These pin the semantics that must
+// hold: JSON envelope, SidecarError mapping, token header, and reconnect-once.
 
 describe("connection transport", () => {
   /** Establish a live _conn (portfile reuse) with the given token. */
