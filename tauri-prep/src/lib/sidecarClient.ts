@@ -1598,6 +1598,8 @@ export async function ensureRunning(dbPath: string): Promise<Conn> {
         }
       }
       sidecarLog("info", "reusing in-memory sidecar connection");
+      const reusedPort = _conn.baseUrl.match(/:(\d+)$/);
+      if (reusedPort) _persistSidecarPort(Number(reusedPort[1]));
       return _conn;
     } catch (err) {
       sidecarLog("warn", "in-memory sidecar connection is stale; reconnecting", errToString(err));

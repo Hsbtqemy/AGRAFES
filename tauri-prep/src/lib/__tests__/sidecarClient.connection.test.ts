@@ -262,6 +262,14 @@ describe("ensureRunning (in-memory reuse)", () => {
     expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("read_sidecar_portfile", expect.anything());
   });
 
+  it("re-persists the port on in-memory reuse (survives a cleared store)", async () => {
+    wireSidecar(PORTFILE);
+    await ensureRunning("/data/corpus.db"); // establishes + persists port 8765
+    localStorage.clear();                   // simulate the key being lost mid-session
+    await ensureRunning("/data/corpus.db"); // in-memory reuse re-writes it
+    expect(localStorage.getItem("agrafes.sidecar.port")).toBe("8765");
+  });
+
   it("drops the cached connection when the DB path changes", async () => {
     // Guards the "wrong DB" prevention: a connection cached for one corpus must
     // not be reused for another. (The portfile is shared per-directory.)
