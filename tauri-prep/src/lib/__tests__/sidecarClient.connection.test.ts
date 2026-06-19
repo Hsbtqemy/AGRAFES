@@ -11,19 +11,18 @@
  *   - invoke("register_sidecar")       → registry notify     (_notifyRustRegistry)
  *
  * Covered: pure URL helpers, SidecarError, getActiveConn/resetConnection,
- * shutdownSidecar, and ensureRunning's *reuse* paths (portfile + in-memory +
- * DB-switch), incl. the token-parsing and registry-notify behaviour PR2 will
- * merge. These guard the reuse-path side of PR2's superset merge.
+ * shutdownSidecar, ensureRunning's *reuse* paths (portfile + in-memory +
+ * DB-switch), and the *spawn* (cold-start) path — happy path (startup JSON →
+ * connect, token parsed, registry notified) + killing a prior child before
+ * re-spawn — via a fake Command (makeFakeCommand). Together these guard both
+ * sides (reuse + spawn) of PR2's ensureRunning/shutdownSidecar superset merge.
  *
- * NOT covered (documented gap) — these ensureRunning branches all fall through
- * to a process spawn, which needs a Command.sidecar/stdout harness:
- *   - spawn path (_spawnSidecar)
- *   - portfile serves a different DB (stale-shutdown + spawn)
- *   - unhealthy portfile / token_required-without-token fall-through
- * PR2 also touches the spawn-path port-write + registry calls, so those remain
- * unguarded until the spawn harness exists. resetConnection() does not clear
- * _spawnedChild, but no test here spawns, so it stays null (relevant only when
- * the spawn harness is added).
+ * Still NOT covered (documented gap): spawn-failure (leaves the startup-JSON
+ * reader's ~12 s timeout pending — see note at the spawn block), the
+ * different-DB portfile stale-shutdown path, and unhealthy / token-required
+ * fall-throughs. Note: spawn tests set the module-level _spawnedChild, which
+ * resetConnection() does not clear — harmless across the reuse tests (they
+ * never spawn).
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -35,6 +34,9 @@ vi.mock("@tauri-apps/api/path", () => ({ resolveResource: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 import { invoke } from "@tauri-apps/api/core";
+import { resolveResource } from "@tauri-apps/api/path";
+import { exists } from "@tauri-apps/plugin-fs";
+import { Command } from "@tauri-apps/plugin-shell";
 
 import {
   type Conn,
@@ -70,10 +72,32 @@ function wireSidecar(
 
 const PORTFILE = { host: "127.0.0.1", port: 8765, token: "abc", db_path: "/data/corpus.db" };
 
+/**
+ * Build a fake Tauri Command for the spawn path. The startup JSON is emitted to
+ * the stdout reader (registered by _readFirstJsonFromCommand before spawn) as
+ * soon as spawn() is called, mirroring the real sidecar printing its port/token.
+ */
+function makeFakeCommand(startup: Record<string, unknown>) {
+  let stdoutCb: ((c: string) => void) | undefined;
+  const child = { pid: 4242, kill: vi.fn().mockResolvedValue(undefined) };
+  return {
+    _child: child,
+    stdout: { on: (ev: string, cb: (c: string) => void) => { if (ev === "data") stdoutCb = cb; } },
+    stderr: { on: vi.fn() },
+    on: vi.fn(),
+    spawn: vi.fn(async () => {
+      stdoutCb?.(JSON.stringify(startup)); // sidecar prints startup payload
+      return child;
+    }),
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   resetConnection();
   wireSidecar(null);
+  vi.mocked(resolveResource).mockResolvedValue("/fake/sidecar");
+  vi.mocked(exists).mockResolvedValue(false);
 });
 
 // ─── Pure URL helpers ─────────────────────────────────────────────────────────
@@ -231,4 +255,46 @@ describe("ensureRunning (in-memory reuse)", () => {
     expect(connB.baseUrl).toBe("http://127.0.0.1:9999");
     expect(getActiveConn()).toBe(connB);
   });
+});
+
+// ─── ensureRunning — spawn (cold start) ───────────────────────────────────────
+
+describe("ensureRunning (spawn / cold start)", () => {
+  it("spawns a sidecar when no portfile exists and connects from startup JSON", async () => {
+    wireSidecar(null); // no portfile → fall through to spawn
+    const cmd = makeFakeCommand({
+      host: "127.0.0.1", port: 8765, token: "  abc  ", portfile: "/data/.agrafes_sidecar.json",
+    });
+    vi.mocked(Command.sidecar).mockReturnValue(cmd as never);
+
+    const conn = await ensureRunning("/data/corpus.db");
+
+    expect(vi.mocked(Command.sidecar)).toHaveBeenCalledTimes(1);
+    expect(cmd.spawn).toHaveBeenCalledTimes(1);
+    expect(conn.baseUrl).toBe("http://127.0.0.1:8765");
+    expect(conn.token).toBe("abc"); // parseToken trims the startup-payload token
+    expect(getActiveConn()).toBe(conn);
+    expect(vi.mocked(invoke)).toHaveBeenCalledWith("register_sidecar", {
+      baseUrl: "http://127.0.0.1:8765",
+      token: "abc",
+    });
+  });
+
+  it("kills a previously-spawned child before spawning a new one", async () => {
+    const cmd1 = makeFakeCommand({ host: "127.0.0.1", port: 8765, token: "a", portfile: "/a/.agrafes_sidecar.json" });
+    const cmd2 = makeFakeCommand({ host: "127.0.0.1", port: 8766, token: "b", portfile: "/b/.agrafes_sidecar.json" });
+    vi.mocked(Command.sidecar).mockReturnValueOnce(cmd1 as never).mockReturnValueOnce(cmd2 as never);
+
+    await ensureRunning("/a/corpus.db");                  // spawn 1 → _spawnedChild = child1
+    const conn2 = await ensureRunning("/b/corpus.db");    // DB change → spawn 2, kills child1
+
+    expect(cmd1._child.kill).toHaveBeenCalledTimes(1);
+    expect(conn2.baseUrl).toBe("http://127.0.0.1:8766");
+  });
+
+  // NOTE: a spawn-failure case is intentionally omitted — when command.spawn()
+  // rejects, _spawnSidecar throws before awaiting the startup-JSON reader, which
+  // leaves that reader's ~12 s timeout timer pending (floating rejection). Not
+  // worth the flakiness; PR2 only changes the *post*-spawn token/registry/port
+  // logic, which the happy-path test above already guards.
 });
