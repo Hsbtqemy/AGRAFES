@@ -1,10 +1,12 @@
 /**
- * Connection-layer integration tests for sidecarClient.ts (audit T-05).
+ * Connection-layer integration tests for shared/sidecarCore.ts (audit T-05).
  *
- * These pin the behaviour of the sidecar *connection* logic — the code that
- * U-01 must later unify across tauri-app and tauri-prep (PR2). The module
- * imports Tauri plugins at top level, so we mock them and drive the connection
- * paths through the Rust command seam (everything funnels through invoke):
+ * These pin the behaviour of the shared sidecar *connection* core (U-01) that
+ * both tauri-app (Explorer) and tauri-prep (Constituer) import — tested here
+ * directly against sidecarCore, independent of either client, so the suite
+ * still applies if Explorer ever ships standalone. The module imports Tauri
+ * plugins at top level, so we mock them and drive the connection paths through
+ * the Rust command seam (everything funnels through invoke):
  *   - invoke("read_sidecar_portfile")  → portfile JSON      (readPortfile)
  *   - invoke("sidecar_fetch_loopback") → {status,ok,body}   (sidecarFetch; the
  *     loopback backend mode is "tauri_only", so HTTP goes via this command)
@@ -48,7 +50,7 @@ import {
   resetConnection,
   SidecarError,
   shutdownSidecar,
-} from "../sidecarClient";
+} from "../../../../shared/sidecarCore";
 
 /**
  * Wire the invoke() seam: portfile payload, loopback /health response, and
