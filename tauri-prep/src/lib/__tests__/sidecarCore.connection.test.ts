@@ -17,7 +17,7 @@
  * DB-switch), and the *spawn* (cold-start) path — happy path (startup JSON →
  * connect, token parsed, registry notified) + killing a prior child before
  * re-spawn — via a fake Command (makeFakeCommand). Together these guard both
- * sides (reuse + spawn) of PR2's ensureRunning/shutdownSidecar superset merge.
+ * sides (reuse + spawn) of the shared connection lifecycle.
  *
  * Still NOT covered (documented gap): spawn-failure (leaves the startup-JSON
  * reader's ~12 s timeout pending — see note at the spawn block), the
@@ -339,13 +339,11 @@ describe("ensureRunning (spawn / cold start)", () => {
   // logic, which the happy-path test above already guards.
 });
 
-// ─── Transport (conn.get / conn.post) — HTTP semantics PR2 will share ─────────
+// ─── Transport (conn.get / conn.post) — shared HTTP semantics ─────────────────
 //
-// makeConn is the one connection function where prep is a *superset* of app
-// (app inlines the HTTP; prep extracts _rawGet/_rawPost/_rawPut + adds
-// reconnect-once). PR2 makes app adopt prep's transport, so these pin the
-// semantics that must survive: JSON envelope, SidecarError mapping, token
-// header, and the reconnect-once behaviour app gains.
+// makeConn's transport (in shared/sidecarCore, _rawGet/_rawPost/_rawPut) is what
+// every endpoint in both clients relies on. These pin the semantics that must
+// hold: JSON envelope, SidecarError mapping, token header, and reconnect-once.
 
 describe("connection transport", () => {
   /** Establish a live _conn (portfile reuse) with the given token. */
