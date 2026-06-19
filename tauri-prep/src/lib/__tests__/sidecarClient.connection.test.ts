@@ -92,9 +92,21 @@ function makeFakeCommand(startup: Record<string, unknown>) {
   };
 }
 
+// prep's vitest environment is "node" (no DOM), so localStorage is absent —
+// the port-persistence path no-ops there via its try/catch. Provide a minimal
+// in-memory stub so the port-write is observable in these tests.
+const _localStore: Record<string, string> = {};
+vi.stubGlobal("localStorage", {
+  getItem: (k: string): string | null => (k in _localStore ? _localStore[k] : null),
+  setItem: (k: string, v: string): void => { _localStore[k] = v; },
+  removeItem: (k: string): void => { delete _localStore[k]; },
+  clear: (): void => { for (const k of Object.keys(_localStore)) delete _localStore[k]; },
+});
+
 beforeEach(() => {
   vi.clearAllMocks();
   resetConnection();
+  localStorage.clear();
   wireSidecar(null);
   vi.mocked(resolveResource).mockResolvedValue("/fake/sidecar");
   vi.mocked(exists).mockResolvedValue(false);
@@ -228,6 +240,14 @@ describe("ensureRunning (portfile reuse)", () => {
 
     expect(conn.baseUrl).toBe("http://127.0.0.1:7000");
   });
+
+  it("persists the port to localStorage for the shell diagnostics", async () => {
+    wireSidecar({ ...PORTFILE, port: 7321 });
+
+    await ensureRunning("/data/corpus.db");
+
+    expect(localStorage.getItem("agrafes.sidecar.port")).toBe("7321");
+  });
 });
 
 describe("ensureRunning (in-memory reuse)", () => {
@@ -290,6 +310,16 @@ describe("ensureRunning (spawn / cold start)", () => {
 
     expect(cmd1._child.kill).toHaveBeenCalledTimes(1);
     expect(conn2.baseUrl).toBe("http://127.0.0.1:8766");
+  });
+
+  it("persists the spawned port to localStorage", async () => {
+    wireSidecar(null);
+    const cmd = makeFakeCommand({ host: "127.0.0.1", port: 9123, token: "t", portfile: "/data/.agrafes_sidecar.json" });
+    vi.mocked(Command.sidecar).mockReturnValue(cmd as never);
+
+    await ensureRunning("/data/corpus.db");
+
+    expect(localStorage.getItem("agrafes.sidecar.port")).toBe("9123");
   });
 
   // NOTE: a spawn-failure case is intentionally omitted — when command.spawn()
