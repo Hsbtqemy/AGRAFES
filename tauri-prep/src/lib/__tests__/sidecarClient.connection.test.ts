@@ -316,14 +316,15 @@ describe("connection transport", () => {
 
   /** Route invoke: portfile + /health always healthy; other URLs via `onFetch`. */
   function routeFetch(onFetch: (url: string, args: Record<string, unknown>) => unknown): void {
-    vi.mocked(invoke).mockImplementation(async (cmd: string, args?: Record<string, unknown>) => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string, args) => {
       if (cmd === "read_sidecar_portfile") return JSON.stringify(PORTFILE);
       if (cmd === "sidecar_fetch_loopback") {
-        const url = String((args ?? {}).url ?? "");
+        const a = (args ?? {}) as Record<string, unknown>;
+        const url = String(a.url ?? "");
         if (url.endsWith("/health")) {
           return { status: 200, ok: true, body: JSON.stringify({ ok: true, token_required: false }) };
         }
-        return onFetch(url, args ?? {});
+        return onFetch(url, a);
       }
       return undefined;
     });
@@ -340,7 +341,7 @@ describe("connection transport", () => {
     const conn = await connect("abc");
     routeFetch(() => ({ status: 409, ok: false, body: JSON.stringify({ ok: false, error_message: "conflict" }) }));
 
-    const err = await conn.post("/x", {}).catch((e) => e);
+    const err = (await conn.post("/x", {}).catch((e) => e)) as SidecarError;
     expect(err).toBeInstanceOf(SidecarError);
     expect(err.message).toBe("conflict");
     expect(err.httpStatus).toBe(409);
