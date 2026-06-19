@@ -11,10 +11,19 @@
  *   - invoke("register_sidecar")       → registry notify     (_notifyRustRegistry)
  *
  * Covered: pure URL helpers, SidecarError, getActiveConn/resetConnection,
- * shutdownSidecar, and ensureRunning's reuse paths (portfile + in-memory),
- * incl. the token-parsing and registry-notify behaviour PR2 will merge.
- * Not covered (documented gap): the spawn path (_spawnSidecar → Command.sidecar
- * + child stdout) — needs a process-spawn harness, deferred.
+ * shutdownSidecar, and ensureRunning's *reuse* paths (portfile + in-memory +
+ * DB-switch), incl. the token-parsing and registry-notify behaviour PR2 will
+ * merge. These guard the reuse-path side of PR2's superset merge.
+ *
+ * NOT covered (documented gap) — these ensureRunning branches all fall through
+ * to a process spawn, which needs a Command.sidecar/stdout harness:
+ *   - spawn path (_spawnSidecar)
+ *   - portfile serves a different DB (stale-shutdown + spawn)
+ *   - unhealthy portfile / token_required-without-token fall-through
+ * PR2 also touches the spawn-path port-write + registry calls, so those remain
+ * unguarded until the spawn harness exists. resetConnection() does not clear
+ * _spawnedChild, but no test here spawns, so it stays null (relevant only when
+ * the spawn harness is added).
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -207,5 +216,19 @@ describe("ensureRunning (in-memory reuse)", () => {
 
     expect(second).toBe(first); // same cached Conn instance
     expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("read_sidecar_portfile", expect.anything());
+  });
+
+  it("drops the cached connection when the DB path changes", async () => {
+    // Guards the "wrong DB" prevention: a connection cached for one corpus must
+    // not be reused for another. (The portfile is shared per-directory.)
+    wireSidecar({ ...PORTFILE, db_path: "/data/a.db" });
+    const connA = await ensureRunning("/data/a.db");
+
+    wireSidecar({ host: "127.0.0.1", port: 9999, token: "b", db_path: "/data/b.db" });
+    const connB = await ensureRunning("/data/b.db");
+
+    expect(connB).not.toBe(connA);
+    expect(connB.baseUrl).toBe("http://127.0.0.1:9999");
+    expect(getActiveConn()).toBe(connB);
   });
 });
