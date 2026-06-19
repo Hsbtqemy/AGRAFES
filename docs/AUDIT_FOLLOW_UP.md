@@ -40,6 +40,7 @@ le §6 de l'audit 2026-06-12 ; « — » = non priorisé explicitement.
 | D-04 | 🟡 | P1-7 | ✅ corrigé | **Ce fichier** (vue inverse finding→statut→commit) |
 | T-02 | 🟠 | P0-3 | ✅ corrigé | Suites dédiées `test_telemetry.py` (13) + `test_curation.py` (35) important le vrai code (étaient testés seulement indirectement). `curation.py` **100 %** ; coverage projet 61,94 %→66,82 %. PR #65 |
 | A-05 | — | — | ❌ retiré | Réfuté en passe 2 : les index secondaires existent (`003_alignment.sql`, `012_tokens.sql`) |
+| D-01 | 🟠 | P1-7 | ✅ corrigé | `ROADMAP.md` remis à niveau 2026-06-19 (forward roadmap ancrée sur cet audit + historique préservé + table phases étendue) ; `BACKLOG*.md` réconciliés — conventions CRUD F-1/F-2 (livré via onglet Rôles) et `POST /token_stats` SP-3.1 marqués ✅ avec preuve. Archivage CHANGELOG suivi séparément (D-02). |
 
 ### Ouverts
 
@@ -63,7 +64,6 @@ le §6 de l'audit 2026-06-12 ; « — » = non priorisé explicitement.
 | U-03 | 🟡 | P2-11 | 🟦 partiel | `tauri-app` : 14 tests Vitest (happy-dom) sur le **vrai** `features/search.ts` (`buildFtsQuery`/`isSimpleInput`), gatés en CI (PR #60). Reste : couverture large des 8 112 l. (concordancier, état, rendu). |
 | U-04 | 🟡 | P2-12 | ⬜ ouvert | Signalisation de statut fragmentée entre READMEs |
 | U-05 | 🟡 | — | ⬜ ouvert | i18n absent (chaînes FR en dur) — non bloquant |
-| D-01 | 🟠 | P1-7 | ⬜ ouvert | ROADMAP/BACKLOG figés au 20-21 avril (dérive ~29 j) |
 | D-02 | 🟠 | P1-7 | ⬜ ouvert | CHANGELOG 1 942 lignes sans archivage |
 | D-03 | 🟠 | P2-10 | ⬜ ouvert | 267 artefacts trackés sans index (`audit/`, `artifacts/`) |
 | D-05 | 🟡 | P2-12 | ⬜ ouvert | Aucun guide utilisateur final |

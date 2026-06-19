@@ -563,13 +563,15 @@ retour : {
 
 ---
 
-## Sprint F — Conventions (gestion UI + moteur)
+## Sprint F — Conventions (gestion UI + moteur) ✅ LIVRÉ
 
 > Indépendant des autres sprints. Prérequis fonctionnel pour l'usage réel des rôles de convention.
+>
+> **✅ Livré — réconciliation 2026-06-19 (finding D-01).** F-1 et F-2 ont été réalisés via l'onglet « Rôles » de la vue Segmentation (catalogue de rôles : CRUD créer/éditer/supprimer + couleurs/icônes), et non dans le panneau Curation initialement envisagé. Implémentation : `tauri-prep/src/components/RolesPane.ts` + helpers purs `lib/conventionsRoles.ts` ; `createConvention`/`updateConvention`/`deleteConvention` dans `sidecarClient.ts` ; endpoint `POST /conventions/update` livré côté sidecar. Spécs ci-dessous conservées pour trace.
 
 ---
 
-### F-1 — Interface de gestion des conventions (créer / supprimer)
+### F-1 — Interface de gestion des conventions (créer / supprimer) ✅ Livré (onglet Rôles)
 
 **Priorité :** Haute | **Effort :** M (3–5 h)
 **Fichiers :** `tauri-prep/src/screens/ActionsScreen.ts`, `tauri-prep/src/ui/app.css`
@@ -599,7 +601,7 @@ export async function deleteConvention(conn, name: string): Promise<{ deleted: s
 
 ---
 
-### F-2 — Modifier label, couleur, icône d'une convention (UPDATE)
+### F-2 — Modifier label, couleur, icône d'une convention (UPDATE) ✅ Livré (POST /conventions/update + onglet Rôles)
 
 **Priorité :** Moyenne | **Effort :** M (3–4 h)
 **Fichiers :** `src/multicorpus_engine/sidecar.py`, `tauri-prep/src/lib/sidecarClient.ts`, `tauri-prep/src/screens/ActionsScreen.ts`

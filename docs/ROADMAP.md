@@ -1,8 +1,70 @@
 # Roadmap — multicorpus_engine
 
-Last updated: 2026-04-21 (v0.1.33 — audit sécurité 33 findings + feat #39 segments adjacents + hub hiérarchie)
+> **Dernière mise à jour : 2026-06-19** — remise à niveau post-audit (`docs/AUDIT_2026-06-12.md`), qui clôt le finding **D-01** (« ROADMAP/BACKLOG figés au 20-21 avril »). Suivi fin finding→statut→commit : **`docs/AUDIT_FOLLOW_UP.md`** ; idées produit détaillées : **`docs/BACKLOG*.md`** ; chantiers cadrés : `TICKET_*`/`DESIGN_*`. L'historique des incréments livrés est conservé plus bas (§ Historique).
 
-## Current state (implemented)
+## État au 2026-06-19
+
+Moteur jugé **techniquement sain et bien gouverné** par l'audit du 12 juin (notes B+/A- ; 1 seul finding réfuté sur 23). Les trois P0 de l'audit sont **traités ou volontairement arrêtés** : filet CI relevé (lint + couverture + dependabot), correctifs métier livrés, et l'extraction du monolithe `sidecar.py` (A-01) menée jusqu'à un point d'arrêt assumé (7 services). Restent surtout des chantiers **P1/P2** (pilotage, sécurité mineure, dette front) et deux chantiers produit vivants : l'unification du client sidecar (U-01) et l'ingestion ShareDocs/WebDAV.
+
+> **Note (passe de vérification code, 2026-06-19).** Une revue item-par-item des 6 `BACKLOG*.md` confrontés au code a montré qu'ils étaient **fortement périmés** : la quasi-totalité des items « ouverts » sont en réalité livrés. La liste « à venir » ci-dessous est donc recalée sur l'**état réel du code**, pas sur les statuts déclarés des backlogs (détail en § Réconciliation backlogs).
+
+## Réalisé depuis v0.2.6 / audit 2026-06-12
+
+- **A-01 — extraction services sidecar** (point d'arrêt assumé 2026-06-18) : 7 domaines sortis en `services/` (`import`, `conventions`, `doc_relations`, `documents`, `curate`, `units`, `tokens`) ; handlers→adaptateurs fins ; `sidecar.py` 9961→8523 l.
+- **Filet CI relevé** (P0-2) : `[tool.ruff]` + job lint (Q-01) ; gate couverture `--cov-fail-under=60` (T-01) ; dependabot étendu npm/pip/cargo (N-01) ; 394+ tests Vitest front enfin gatés en CI ; vite 5→8 (solde DEP-1).
+- **Tests cœur** (T-02) : suites directes `telemetry.py` + `curation.py` (100 %).
+- **Correctifs métier** (P1-5) : re-flag des liens undo merge/split/resegment (N-02), `links_created` via rowcount (N-03), `bump_version.py` → Cargo.toml shell (N-07), race statut job documentée (N-05).
+- **WebDAV/ShareDocs — Phase 1** : sous-commande CLI `import-remote` (client stdlib, dédup, dispatch unifié). P2/P3 à venir.
+- **S-03 (partiel)** : sink `setHtml`/`safeHtml` + ESLint no-unsanitized (3 fichiers prep).
+- **Pilotage** : `AUDIT_FOLLOW_UP.md` créé (D-04) ; ce rafraîchissement (D-01).
+
+## En cours
+
+- **U-01 — unification du client sidecar** (branche `refactor/u01-prep-canonical`, audit P1-4) : `sidecarClient.ts` app/prep, divergence ramenée 25→2 (PR1a/PR1b/PR2a) + tests d'intégration connexion/transport (T-05 partiel). Reste **PR2b** (l'app adopte le sous-système connexion de prep, byte-identique → divergence 2→0) puis **PR2c** (extraction `shared/` → un seul chunk client dans le shell).
+
+## Court terme (prochaines tranches)
+
+- **★ Export ODT** (priorité) : l'import ODT existe, l'export non (`exporters/readable_text.py` ne gère que `{txt, docx}`). Ajouter `export_readable_odt` pour rétablir la symétrie import/export. Vérifié absent du code.
+- **★ Dette doc — cadrages manquants** (priorité) : écrire `docs/cadrage/METADONNEES_DOCUMENT.md` (D1 — la validation `/validate-meta` est livrée, seule la note de cadrage manque) et `docs/cadrage/IMPORT_RATIO.md` (D2 — décision + calibration du seuil de ratio d'import ; à ce jour ni logique ni doc).
+- **WebDAV/ShareDocs P2 — endpoints sidecar** (`POST /webdav/list`, `POST /import-remote`) puis **P3 — UI Prep**. P2 débloqué (le dispatch dont il dépendait est déjà unifié) ; **P3 à séquencer après U-01** (touche `sidecarClient.ts`). Réf. `DESIGN_sharedocs_ingestion.md`, tickets P2/P3.
+- **Sécurité mineure** (P1-8, ~½ j) : validation `Host`/`Origin` (S-01), portfile `O_CREAT|O_EXCL|0o600` (S-02), `defusedxml` dans `exporters/tei.py` (S-04).
+- **S-03 — décision XSS lint** (P0-2 résiduel) : trancher grind complet (92 sites des 4 écrans géants + app/shell) vs suppressions ciblées, puis job ESLint bloquant.
+- **Pilotage** (P1-7) : archivage du CHANGELOG (D-02, 1 942 l.) ; documenter `API_VERSION` vs `CONTRACT_VERSION` (D-06).
+- **Tests** (P1-6) : isoler les 11 fichiers versionnés sous `tests/contracts/` (T-03).
+
+## Moyen / long terme
+
+- **Rollback curation — superseded** : le cas « annuler l'apply qu'on vient de faire » est livré (Mode A undo : `prep_action_history`/migration 019, `undo.py`, `POST /prep/undo`, bouton « ↺ Annuler » dans CurationView), et couvre même merge/split/resegment. Reliquat **non livré, priorité basse** = « Mode B » (rollback d'un apply *arbitraire* de l'historique + gardes `structural_change`/`text_norm_diverged` + UI par ligne) ; schéma déjà prêt. Cf. `BACKLOG_ROLLBACK_CURATION.md`.
+- **Analytics Concordancier — reste la distribution temporelle** : phase 1 (tri KWIC + dispersion) et collocations (`/token_collocates`) **livrées** ; seul manque le `group_by` année/`doc_date` dans `token_stats` (F2 phase 2).
+- **Dette front** : `CurationView`/`SegmentationView`/`AnnotationView` **déjà extraits** d'`ActionsScreen` (U-02 partiel) ; les vues résultantes restent volumineuses (Curation/Metadata) → découpe au fil de l'eau. Couverture Vitest large `tauri-app` (U-03) ; render-smoke DOM différés (T-05).
+- **Finitions & décisions UX (mineur)** : coloration syntaxique du champ CQL (seule vraie feature CQL non livrée, effort faible) ; SP-2.1 — navigation pivot→Prep **actée comme voulue** (cohérent avec F3), éventuel +deep-link Explorer optionnel ; D3 — harmoniser le badge « Source modifiée » dans le concordancier shell (optionnel).
+- **Typage** : TypedDict pour les shapes de contrat (Q-04), attributs `HTTPServer` typés (A-04), mypy progressif (exclure sidecar.py au début) ; cap global documenté du matcher CQL (Q-05).
+- **Pilotage/doc** : index des ~267 artefacts trackés (D-03) ; guide utilisateur final (D-05) ; bandeau de statut `tauri-app/README` (U-04).
+- **Dette assumée à arbitrer en ADR** : resegmentation écrase `text_raw` + supprime les liens (N-04).
+- **Divers** : lockfiles + `npm ci` pour `tauri-fixture` (N-06) ; fragilités timing des tests sidecar (T-04, 23 `time.sleep`) ; i18n (U-05, non bloquant).
+- **Shell P9** : multi-fenêtre (Explorer + Constituer), hot-swap DB sans redémarrage sidecar, dépréciation des apps standalone `tauri-app`/`tauri-prep`.
+- **Distribution / supply chain** : AppImage Linux PKG-3C ; signing prod (cert Apple Developer + PFX en Secrets, scripts/workflows prêts) ; épinglage GitHub Actions par SHA (F-03).
+- **Moteur (horizon)** : stratégie d'indexation incrémentale au-delà du rebuild ; packs de segmentation par langue enrichis ; workspace multi-projets + commandes de maintenance corpus ; extensions de profil TEI (ancres, apparat, métadonnées riches).
+
+## Parqué — décision assumée (ne pas replanifier)
+
+- **A-01 — poursuite de l'extraction sidecar** : arrêt volontaire. Les domaines à logique DB réelle sont sortis ; restent des délégateurs (`export`/`query`/`token_query`/`stats` — logique déjà ailleurs) et des handlers à état/couplés (`units/merge`+`split`, `curate_preview`/`*_export`, `align`/`segment`/`jobs`). Réf. `AUDIT_FOLLOW_UP.md`.
+
+## Réconciliation backlogs (passe de vérification code, 2026-06-19)
+
+Vérification item-par-item des 6 `BACKLOG*.md` contre le code : ils étaient **fortement périmés**, la quasi-totalité des items « ouverts » sont livrés. Re-balisés `✅ Livré` / superseded dans les fichiers concernés lors de cette passe :
+
+- **Conventions — CRUD UI** (`BACKLOG_PREP_AUDIT.md` F-1/F-2) : livré via l'onglet « Rôles » (`components/RolesPane.ts` ; `create/update/deleteConvention`).
+- **`POST /token_stats`** (`BACKLOG_RECHERCHE_GRAMMATICALE.md` SP-3.1) : livré (`_handle_token_stats` → `token_stats.run_token_stats`).
+- **Rollback curation** (`BACKLOG_ROLLBACK_CURATION.md`) : bandeau « superseded par Mode A undo » + reliquat Mode B (cf. Moyen/long terme).
+
+Également **confirmés livrés** par la passe mais **pas encore re-balisés ligne à ligne** dans `BACKLOG.md` (nettoyage cosmétique restant) : quick-wins Q1-Q4, UX U1-U3, décisions D1/D4/D5, features F1/F3/F5, toute la couche tokens/annotation/POS/CoNLL-U, recherche fédérée multi-DB (Model C), export TMX/bilingue, namespacing CSS E-1. Genuinement ouverts (vérifiés absents) : Export ODT, cadrages D1/D2, distribution temporelle (F2 ph.2), coloration CQL, Shell P9 (multi-fenêtre / hot-swap DB / dépréciation standalone).
+
+---
+
+## Historique
+
+### Current state (implemented)
 
 - Core DB + migrations + run logging are in place and idempotent.
 - Importers implemented: `docx_numbered_lines`, `txt_numbered_lines`, `docx_paragraphs`, `tei`.
@@ -59,7 +121,7 @@ Last updated: 2026-04-21 (v0.1.33 — audit sécurité 33 findings + feat #39 se
   - async jobs `kind=index` with `params.incremental`
   - design note `docs/INCREMENTAL_INDEXING.md`
 
-## Now (v0.6.1 → tauri-prep)
+### Détail des incréments livrés (Prep, Concordancier, Shell)
 
 - All core engine increments done (V1.0–V2.8): importers, query, alignment, exports, sidecar, packaging.
 - **Tauri UI "Concordancier" V0** done: search-first desktop app (`tauri-app/`), V0.1 aligned view, V0.2 pagination.
@@ -110,24 +172,9 @@ Last updated: 2026-04-21 (v0.1.33 — audit sécurité 33 findings + feat #39 se
 - Keep sidecar optional and non-blocking for CLI-first workflows.
 - Maintain deterministic, lightweight regression tests (no heavy corpus fixtures).
 
-## Next
+> Les anciennes sections « Next » / « Later » (avril) ont été refondues dans la roadmap à venir, en tête de fichier. Items reportés tels quels : AppImage PKG-3C, signing prod, F-03 SHA pinning, multi-fenêtre, indexation incrémentale avancée, packs de segmentation enrichis, workspace multi-projets, extensions de profil TEI.
 
-- **CI stabilisation** : Linux AppImage PKG-3C (requires Linux runner).
-- **Shell V0.x roadmap** : style dedup inter-modules, shared db-path, multi-window.
-- **Signing prod** : macOS notarization + Windows signtool nécessitent un certificat Apple Developer / PFX réel configuré en GitHub Secrets. Scripts et workflows prêts.
-- **F-03 GitHub Actions** : épinglage des actions par SHA (supply chain hardening) — non traité (F-04 permissions ✅, F-03 SHA pinning encore ouvert).
-- Performance : monitor startup/size trade-offs over future benchmark refreshes.
-
-> **Réalisé (ne pas replanifier ici)** : audit sécurité 33 findings (v0.1.31) ✅ ; feat #39 segments adjacents ✅ ; hub hiérarchie Actions ✅ ; About dialog contract_version ✅ ; panneau métadonnées hit/document ; corpus démo first-run ; PKG-1→PKG-3A packaging (macOS .dmg ✅, Windows NSIS ✅) ; CI hardening. Détail : `docs/BACKLOG.md` + `docs/AUDIT_2026-04-19.md`.
-
-## Later
-
-- Incremental indexing strategy (beyond full rebuild) with correctness guarantees and explicit flags.
-- Richer segmentation quality by language (additional packs + evaluation fixtures and quality metrics).
-- Multi-project workspace/registry and corpus-level maintenance commands.
-- TEI import/export profile extensions (anchors, apparatus, richer metadata mapping).
-
-## Phases
+### Phases — incréments livrés
 
 | Phase | Scope | Status |
 |-------|-------|--------|
@@ -177,3 +224,9 @@ Last updated: 2026-04-21 (v0.1.33 — audit sécurité 33 findings + feat #39 se
 | V2.0.1 | feat #39 : segments adjacents opt-in dans recherche grammaticale (v0.1.31) | Done |
 | V2.0.2 | Hub Actions : vue hiérarchie documents (v0.1.33) | Done |
 | V2.0.3 | About dialog : contract_version live depuis /health (v0.1.32/33) | Done |
+| V2.1.0 | Audit 2026-06-12 : filet CI (ruff + couverture 60 % + dependabot) + tests cœur (Q-01/T-01/N-01/T-02) | Done |
+| V2.1.1 | A-01 : extraction de 7 services sidecar (point d'arrêt assumé, sidecar.py 9961→8523 l.) | Done |
+| V2.1.2 | Correctifs métier audit : undo reflag, links_created via rowcount, bump Cargo.toml (N-02/N-03/N-07) | Done |
+| V2.1.3 | WebDAV/ShareDocs Phase 1 : CLI `import-remote` (stdlib, dédup, dispatch unifié) | Done |
+| V2.1.4 | U-01 : sidecarClient app/prep — divergence 25→2 (PR1a/1b/2a) + tests connexion/transport | En cours |
+| D-01 | Pilotage : ROADMAP/BACKLOG remis à niveau post-audit + AUDIT_FOLLOW_UP.md (D-04) | Done |
