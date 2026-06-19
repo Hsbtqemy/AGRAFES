@@ -17,6 +17,9 @@ build/sidecar_pyinstaller/
 coverage.xml
 htmlcov/
 
+# vitest / JS coverage
+coverage/
+
 # Env
 .env
 .venv/
