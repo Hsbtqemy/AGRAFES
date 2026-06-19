@@ -1287,6 +1287,15 @@ function parseToken(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+/** Persist the sidecar port so diagnostics.ts / About can read it without a Conn. */
+function _persistSidecarPort(port: number): void {
+  try {
+    localStorage.setItem("agrafes.sidecar.port", String(port));
+  } catch {
+    /* localStorage unavailable in some contexts */
+  }
+}
+
 function portfilePath(dbPath: string): string {
   const sep = dbPath.includes("/") ? "/" : "\\";
   const dir = dbPath.includes(sep)
@@ -1589,6 +1598,8 @@ export async function ensureRunning(dbPath: string): Promise<Conn> {
         }
       }
       sidecarLog("info", "reusing in-memory sidecar connection");
+      const reusedPort = _conn.baseUrl.match(/:(\d+)$/);
+      if (reusedPort) _persistSidecarPort(Number(reusedPort[1]));
       return _conn;
     } catch (err) {
       sidecarLog("warn", "in-memory sidecar connection is stale; reconnecting", errToString(err));
@@ -1650,6 +1661,7 @@ export async function ensureRunning(dbPath: string): Promise<Conn> {
               });
               _conn = makeConn(baseUrl, token);
               _connDbPath = dbPath;
+              _persistSidecarPort(port);
               _notifyRustRegistry(_conn);
               return _conn;
             }
@@ -1808,6 +1820,7 @@ async function _spawnSidecar(dbPath: string): Promise<Conn> {
 
   _conn = makeConn(baseUrl, token);
   _connDbPath = dbPath;
+  _persistSidecarPort(port);
   _notifyRustRegistry(_conn);
   return _conn;
 }
