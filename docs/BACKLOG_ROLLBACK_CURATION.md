@@ -1,5 +1,14 @@
 # Backlog — Rollback partiel d'un apply de curation
 
+> **⚠️ Largement SUPERSEDED — réconciliation 2026-06-19 (finding D-01).**
+> Le cas d'usage principal de ce backlog (« annuler l'apply de curation qu'on vient de faire ») est **livré** par le **Mode A undo** : table `prep_action_history` + `prep_action_unit_snapshots` (migration `019_prep_action_history.sql`), exécuteur `src/multicorpus_engine/undo.py` (`compute_eligibility` / `execute_undo` → `_undo_curation_apply` avec restauration `text_norm`, re-flag des liens, `fts_stale`), endpoints `POST /prep/undo` + `/prep/undo/eligibility`, capture des snapshots via `curation.py` (`CurationActionRecorder`), et bouton **« ↺ Annuler »** dans `CurationView` (`prepUndo.ts`, testé). Le Mode A va même **au-delà** : il couvre aussi merge / split / resegment.
+>
+> **Reliquat réellement non livré = « Mode B » (rollback historique ciblé)** — le schéma de la migration 019 est explicitement prévu pour, sans changement : (1) annuler un apply *arbitraire* de l'historique (pas seulement le dernier — Mode A est strictement latest-only) ; (2) gardes d'éligibilité `structural_change` / `text_norm_diverged` (inutiles en latest-only) ; (3) UI par ligne dans le panneau « Historique des apply » (bouton + badge « annulé »). **Valeur plus faible, priorité basse.** Cf. `undo.py`, `migrations/019_prep_action_history.sql`.
+>
+> Les sections ci-dessous sont conservées pour trace ; ne les replanifier que pour le Mode B.
+
+---
+
 > Initiative issue de [HANDOFF_PREP.md § 7](../HANDOFF_PREP.md) « Réversibilité partielle ».
 > Objectif : permettre d'annuler une entrée `curate_apply_history` donnée et restaurer
 > les `text_norm` à leur état pré-apply, quand c'est encore cohérent.

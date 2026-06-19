@@ -154,7 +154,9 @@ Réutiliser la palette UPOS et le rendu cellule déjà écrits dans `ActionsScre
 
 > Panneau latéral droit affichant les fréquences calculées sur les hits courants.
 
-### SP-3.1 — Backend `POST /token_stats`
+### SP-3.1 — Backend `POST /token_stats` ✅ Livré
+
+> **✅ Livré — réconciliation 2026-06-19 (finding D-01).** L'endpoint existe : `_handle_token_stats` ([sidecar.py:1758](../src/multicorpus_engine/sidecar.py#L1758), route enregistrée `sidecar.py:724`) délègue à `token_stats.run_token_stats` (`src/multicorpus_engine/token_stats.py`). Spéc ci-dessous conservée pour trace.
 
 **Fichier** : `src/multicorpus_engine/sidecar.py` + nouveau `token_stats.py`
 
