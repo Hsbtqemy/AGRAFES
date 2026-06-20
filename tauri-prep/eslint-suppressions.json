@@ -1,9 +1,4 @@
 {
-  "src/screens/AlignPanel.ts": {
-    "no-unsanitized/property": {
-      "count": 17
-    }
-  },
   "src/screens/CurationView.ts": {
     "no-unsanitized/property": {
       "count": 31
