@@ -38,7 +38,7 @@ import secrets
 import sqlite3
 import threading
 from contextlib import contextmanager
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
 from pathlib import Path
 from typing import Optional
 from urllib.error import URLError
@@ -545,7 +545,13 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         try:
-            self._do_GET_inner()
+            # /health and /openapi.json touch no DB → keep them lock-free so they
+            # stay responsive even when a DB handler holds the lock (R-01b).
+            if urlparse(self.path).path in ("/health", "/openapi.json"):
+                self._do_GET_inner()
+            else:
+                with self._lock():
+                    self._do_GET_inner()
         except (BrokenPipeError, ConnectionResetError):
             logger.warning("Client disconnected during do_GET (%s) — server continues", self.path)
         except ValueError as exc:
@@ -644,11 +650,12 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             if not self._require_token_for_write():
                 return
 
-            if path.startswith("/conventions/"):
-                role_name = path[len("/conventions/"):]
-                self._handle_conventions_update(role_name, body)
-            else:
-                self._send_error("not found", code="NOT_FOUND", http_status=404)
+            with self._lock():  # serialize DB dispatch (R-01b)
+                if path.startswith("/conventions/"):
+                    role_name = path[len("/conventions/"):]
+                    self._handle_conventions_update(role_name, body)
+                else:
+                    self._send_error("not found", code="NOT_FOUND", http_status=404)
         except (BrokenPipeError, ConnectionResetError):
             logger.warning("Client disconnected during do_PUT (%s) — server continues", self.path)
         except Exception as exc:  # noqa: BLE001
@@ -660,6 +667,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
     # ------------------------------------------------------------------
 
     def do_POST(self) -> None:
+        _lock_held = False
         try:
             body = self._read_body()
             path = urlparse(self.path).path
@@ -716,6 +724,15 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             )
             if (path in _write_paths or _is_cancel) and not self._require_token_for_write():
                 return
+
+            # /shutdown touches no DB → keep it lock-free so it stays responsive even
+            # when a DB handler holds the lock (R-01b). Everything below dispatches
+            # under the lock (RLock → inner `with self._lock()` blocks just re-enter).
+            if path == "/shutdown":
+                self._handle_shutdown()
+                return
+            self._lock().acquire()
+            _lock_held = True
 
             if path == "/query":
                 self._handle_query(body)
@@ -887,8 +904,6 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 self._handle_units_update_text(body)
             elif path == "/documents/set_text_start":
                 self._handle_documents_set_text_start(body)
-            elif path == "/shutdown":
-                self._handle_shutdown()
             elif path == "/telemetry":
                 self._handle_telemetry(body)
             elif path == "/jobs":
@@ -922,6 +937,9 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 code=ERR_INTERNAL,
                 http_status=500,
             )
+        finally:
+            if _lock_held:
+                self._lock().release()
 
     # ------------------------------------------------------------------
     # Jobs
@@ -7704,10 +7722,17 @@ class CorpusServer:
         apply_migrations(self._conn)
 
         bind_port = _find_free_port(self._host) if self._port == 0 else self._port
-        self._httpd = HTTPServer((self._host, bind_port), _CorpusHandler)
+        # R-01b — threaded server so a handler blocked on slow/locked DB I/O can't
+        # freeze /health and /shutdown. DB *dispatch* is serialized by the global
+        # RLock at the do_GET/do_POST/do_PUT level (see those methods), preserving
+        # the single-threaded "one DB request at a time" semantics; only /health,
+        # /openapi.json and /shutdown run lock-free. daemon_threads: a stuck request
+        # thread must never block process exit. Cf. docs/TICKET_R01B_SIDECAR_THREADING.md.
+        self._httpd = ThreadingHTTPServer((self._host, bind_port), _CorpusHandler)
+        self._httpd.daemon_threads = True
         self._started_at = utcnow_iso()
         self._httpd.conn = self._conn  # type: ignore[attr-defined]
-        self._httpd.lock = threading.Lock()  # type: ignore[attr-defined]
+        self._httpd.lock = threading.RLock()  # reentrant: dispatch-level lock + inner with self._lock()
         self._httpd.jobs = self._jobs  # type: ignore[attr-defined]
         self._httpd.job_runner = self._run_async_job  # type: ignore[attr-defined]
         self._httpd.pid = self._pid  # type: ignore[attr-defined]
