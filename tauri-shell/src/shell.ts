@@ -22,6 +22,7 @@ import { getCurrent as getCurrentDeepLinks, onOpenUrl } from "@tauri-apps/plugin
 import { appDataDir } from "@tauri-apps/api/path";
 import { invoke } from "@tauri-apps/api/core";
 import type { ShellContext } from "./context.ts";
+import { isCloudSyncedPath } from "./cloudSync.ts";
 
 // ─── CSS ─────────────────────────────────────────────────────────────────────
 
@@ -1333,6 +1334,20 @@ function _buildMruSection(): HTMLElement {
 }
 
 /** Switch to a different DB with loading state + module remount. */
+/** R-01 P3 — toast d'avertissement si `path` est sous un dossier cloud-sync (OneDrive…).
+ *  Renvoie `true` si synchronisé (l'appelant peut alors sauter son toast de succès). */
+function _warnIfCloudSynced(path: string): boolean {
+  const cloud = isCloudSyncedPath(path);
+  if (cloud.synced) {
+    _showToast(
+      `⚠️ Base dans ${cloud.provider} : la synchronisation peut verrouiller le ` +
+      `fichier et bloquer l'app. Recommandé : copier la base hors du dossier synchronisé.`,
+      9000,
+    );
+  }
+  return cloud.synced;
+}
+
 async function _switchDb(path: string): Promise<void> {
   if (path === _currentDbPath) { _closeDbMenu(); return; }
   if (_switchingDb) { _showToast("Changement de DB en cours, veuillez patienter…"); return; }
@@ -1359,6 +1374,10 @@ async function _switchDb(path: string): Promise<void> {
   // rechercheModule / constituerModule don't race against the shell's own
   // ensureRunning call (two concurrent spawns would kill each other).
 
+  // R-01 P3 — avertir AVANT l'ouverture (visible même si l'ouverture traîne/échoue, le
+  // cas même qu'on veut signaler) ; le toast de succès est sauté pour ne pas le masquer.
+  const _cloudSynced = _warnIfCloudSynced(path);
+
   try {
     await _initDb(path);
     _shellLog("info", "db_switch", `DB ready: ${_pathLabel(path)}`);
@@ -1366,13 +1385,13 @@ async function _switchDb(path: string): Promise<void> {
     _dbListeners.forEach(cb => cb(_currentDbPath));
     if (_currentMode === "home") {
       // Home is stateless — remount immediately (no context to lose).
-      _showToast(`DB active : ${_pathLabel(path)}`);
+      if (!_cloudSynced) _showToast(`DB active : ${_pathLabel(path)}`);
     } else {
       // Non-home module is mounted: defer remount so the user keeps scroll/context.
       // A banner lets them choose when to refresh.
       _pendingDbRemount = true;
       _updateDbBadge(); // shows ⚠ suffix while remount is pending
-      _showToast(`DB changée : ${_pathLabel(path)}`);
+      if (!_cloudSynced) _showToast(`DB changée : ${_pathLabel(path)}`);
       _showDbChangeBanner(_pathLabel(path));
     }
   } catch (err) {
@@ -2345,6 +2364,9 @@ async function _onCreateDb(): Promise<void> {
   _addToMru(savePath);
   _updateDbBadge();
   _closeDbMenu();
+
+  // R-01 P3 — créer une base dans un dossier synchronisé (OneDrive…) est le même risque.
+  _warnIfCloudSynced(savePath);
 
   // Sidecar init first, then notify subscribers (avoids concurrent spawn race).
   await _initDb(savePath);

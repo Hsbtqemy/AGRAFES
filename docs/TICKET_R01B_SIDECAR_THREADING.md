@@ -153,5 +153,6 @@ Estimation : **~+25-40 lignes nettes** sur `sidecar.py` (extractions `_do_POST_i
 - **`/jobs/<id>` polling** pendant un job long : **OK** — le worker prend `self._httpd.lock`
   *par écriture* (`with lock`, pas sur toute la durée du job) et le statut est lu via le
   lock propre du JobManager (pas le DB) ; le polling passe donc entre deux écritures.
-- **Garde environnementale P3** (orthogonale) : avertir si la DB est sous un dossier
-  cloud-sync (OneDrive) — réduit la fréquence du déclencheur à la source.
+- **Garde environnementale P3** (orthogonale) : **✅ implémentée** — le shell avertit
+  (toast) si la DB est sous un dossier cloud-sync (OneDrive/Dropbox/Google Drive/iCloud),
+  via `tauri-shell/src/cloudSync.ts`. Réduit la fréquence du déclencheur à la source.
