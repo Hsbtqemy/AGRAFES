@@ -53,6 +53,7 @@ import {
   SidecarError,
   richTextToHtml,
 } from "../lib/sidecarClient.ts";
+import { setHtml, raw } from "../lib/safeHtml.ts";
 import { initCardAccordions } from "../lib/uiAccordions.ts";
 import { modalConfirm } from "../lib/modalConfirm.ts";
 import { compareDocsByTitle, compareLocale } from "../lib/docSort.ts";
@@ -175,7 +176,7 @@ export class MetadataScreen {
     root.className = "screen actions-screen";
     this._root = root;
 
-    root.innerHTML = `
+    setHtml(root, raw(`
       <!-- Head card: title + state banner + KPI bar + corpus actions -->
       <div class="card prep-meta-screen-head">
         <div class="prep-meta-head-top">
@@ -305,7 +306,7 @@ export class MetadataScreen {
         </div>
       </section>
 
-    `;
+    `));
 
     this._docListEl   = root.querySelector("#prep-meta-doc-list")!;
     this._editPanelEl = root.querySelector("#meta-edit-panel")!;
@@ -529,7 +530,7 @@ export class MetadataScreen {
       const annLabel = annotationStatus === "annotated"
         ? `Annoté${tokenCount > 0 ? ` (${tokenCount})` : ""}`
         : "Non annoté";
-      tr.innerHTML = `
+      setHtml(tr, raw(`
         <td class="col-check">
           <input class="meta-row-check" type="checkbox" data-id="${doc.doc_id}"
             ${isChecked ? "checked" : ""} aria-label="Sélectionner doc ${doc.doc_id}" />
@@ -545,7 +546,7 @@ export class MetadataScreen {
             ? `<button type="button" class="prep-fts-stale-pill" title="Index de recherche périmé — cliquez pour reconstruire l'index FTS (job asynchrone, non bloquant).">&#9888; Index</button>`
             : ""}
         </td>
-      `;
+      `));
       tr.querySelector(".meta-row-check")!.addEventListener("click", (e) => {
         e.stopPropagation();
         const cb = e.target as HTMLInputElement;
@@ -684,7 +685,7 @@ export class MetadataScreen {
         ? `<span class="prep-family-pct-badge family-pct-${this._completionTier(completionPct)}"
               title="Famille : ${completionPct} % traité">${completionPct} %</span>`
         : "";
-      tr.innerHTML = `
+      setHtml(tr, raw(`
         <td class="col-check">
           <input class="meta-row-check" type="checkbox" data-id="${doc.doc_id}"
             ${isChecked ? "checked" : ""} aria-label="Sélectionner doc ${doc.doc_id}" />
@@ -702,7 +703,7 @@ export class MetadataScreen {
             ? `<button type="button" class="prep-fts-stale-pill" title="Index de recherche périmé — cliquez pour reconstruire l'index FTS (job asynchrone, non bloquant).">&#9888; Index</button>`
             : ""}
         </td>
-      `;
+      `));
       tr.querySelector(".meta-row-check")!.addEventListener("click", (e) => {
         e.stopPropagation();
         const cb = e.target as HTMLInputElement;
@@ -721,7 +722,7 @@ export class MetadataScreen {
     const appendSectionHeader = (label: string, count: number) => {
       const tr = document.createElement("tr");
       tr.className = "prep-tree-section-header";
-      tr.innerHTML = `<td colspan="6" class="prep-tree-section-label">${this._esc(label)} <span class="prep-tree-section-count">${count}</span></td>`;
+      setHtml(tr, raw(`<td colspan="6" class="prep-tree-section-label">${this._esc(label)} <span class="prep-tree-section-count">${count}</span></td>`));
       this._docListEl.appendChild(tr);
     };
 
@@ -892,7 +893,7 @@ export class MetadataScreen {
               title="Charger les traductions et appliquer auteur et titre de l'œuvre"
               data-child-ids="">→ Propager…</button>`);
 
-    this._editPanelEl.innerHTML = `
+    setHtml(this._editPanelEl, raw(`
       <div class="prep-form-row">
         <label style="flex:2">Nom du fichier
           <input id="edit-title" type="text" value="${this._esc(doc.title)}" placeholder="hugo_miserables_fr_ch1">
@@ -1014,7 +1015,7 @@ export class MetadataScreen {
         </div>
         <div id="meta-token-editor-panel"></div>
       </div>
-    `;
+    `));
 
     this._renderRelationsList();
     this._renderPreviewPanel();
@@ -1270,7 +1271,7 @@ export class MetadataScreen {
     if (alreadyDone > 0) {
       // Show inline confirmation before proceeding
       if (resultDiv) {
-        resultDiv.innerHTML = `
+        setHtml(resultDiv, raw(`
           <div class="prep-seg-family-confirm">
             <p>⚠ <strong>${alreadyDone} doc(s)</strong> déjà segmenté(s) dans cette famille.
                Resegmenter effacera les alignements existants pour ces documents.</p>
@@ -1279,7 +1280,7 @@ export class MetadataScreen {
               <button id="seg-force-btn" class="btn btn-danger btn-sm">Re-segmenter tout</button>
               <button id="seg-cancel-btn" class="btn btn-ghost btn-sm">Annuler</button>
             </div>
-          </div>`;
+          </div>`));
 
         resultDiv.querySelector("#seg-skip-btn")?.addEventListener("click", async () => {
           resultDiv.innerHTML = "";
@@ -1323,14 +1324,14 @@ export class MetadataScreen {
         if (skipped  > 0) parts.push(`<span class="prep-fam-todo">${skipped} ignoré(s)</span>`);
         if (errors   > 0) parts.push(`<span class="prep-fam-ratio-warn">${errors} erreur(s)</span>`);
 
-        resultDiv.innerHTML = `
+        setHtml(resultDiv, raw(`
           <div class="prep-seg-family-report">
             <p class="prep-seg-report-summary">${parts.join(" · ")}</p>
             <table class="prep-fam-pairs-table">
               <thead><tr><th>Doc</th><th>Statut</th><th>Unités</th><th>Avertissements</th></tr></thead>
               <tbody>${rows}</tbody>
             </table>
-          </div>`;
+          </div>`));
       }
 
       // Refresh family panel data
@@ -1429,7 +1430,7 @@ export class MetadataScreen {
            </p>`
         : "";
 
-      resultDiv.innerHTML = `
+      setHtml(resultDiv, raw(`
         <div class="prep-seg-family-confirm">
           <p><strong>Paires à aligner (stratégie : position)</strong></p>
           <table class="prep-fam-pairs-table" style="margin-bottom:6px">
@@ -1442,7 +1443,7 @@ export class MetadataScreen {
             <button id="aln-confirm-btn" class="btn btn-primary btn-sm">⇄ Lancer l'alignement</button>
             <button id="aln-cancel-btn" class="btn btn-ghost btn-sm">Annuler</button>
           </div>
-        </div>`;
+        </div>`));
 
       resultDiv.querySelector("#aln-cancel-btn")?.addEventListener("click", () => {
         resultDiv.innerHTML = "";
@@ -1489,14 +1490,14 @@ export class MetadataScreen {
         if (errors  > 0) parts.push(`<span class="prep-fam-ratio-warn">${errors} erreur(s)</span>`);
         parts.push(`${total_links_created} lien(s) créé(s)`);
 
-        resultDiv.innerHTML = `
+        setHtml(resultDiv, raw(`
           <div class="prep-seg-family-report">
             <p class="prep-seg-report-summary">${parts.join(" · ")}</p>
             <table class="prep-fam-pairs-table">
               <thead><tr><th>Paire</th><th>Statut</th><th>Liens</th><th>Avert.</th></tr></thead>
               <tbody>${rows}</tbody>
             </table>
-          </div>`;
+          </div>`));
       }
 
       // Refresh family data
@@ -1563,7 +1564,7 @@ export class MetadataScreen {
         return;
       }
 
-      resultDiv.innerHTML = this._curationStatusHtml(status.children, familyRootId);
+      setHtml(resultDiv, raw(this._curationStatusHtml(status.children, familyRootId)));
       this._wireCurationButtons(resultDiv, familyRootId);
       btn.textContent = `📋 Curation (${status.total_pending})`;
     } catch (err) {
@@ -1580,7 +1581,7 @@ export class MetadataScreen {
       .map(c => {
         const rows = c.pending.map(p => `
           <tr class="prep-curation-pending-row">
-            <td class="prep-curation-ext-id">[§${p.external_id}]</td>
+            <td class="prep-curation-ext-id">[§${this._esc(String(p.external_id))}]</td>
             <td class="prep-curation-pivot-text" title="${this._esc(p.pivot_text)}">${this._esc(this._truncateMid(p.pivot_text, 60))}</td>
             <td class="prep-curation-target-text" title="${this._esc(p.target_text)}">${this._esc(this._truncateMid(p.target_text, 60))}</td>
             <td class="prep-curation-changed-at" title="${this._esc(p.source_changed_at)}">${p.source_changed_at.slice(0, 10)}</td>
@@ -1669,13 +1670,13 @@ export class MetadataScreen {
         "padding:0.3rem 0.5rem;border-radius:4px;background:#f8f9fa",
         "border:1px solid var(--color-border);margin-bottom:0.3rem",
       ].join(";");
-      row.innerHTML = `
+      setHtml(row, raw(`
         <span style="font-weight:600;color:#4a6fa5;white-space:nowrap">${this._esc(rel.relation_type)}</span>
         <span style="color:var(--color-muted)">→</span>
         <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${targetLabel}</span>
         ${rel.note ? `<span style="font-style:italic;color:var(--color-muted);font-size:0.78rem">${this._esc(rel.note)}</span>` : ""}
         <button class="btn btn-danger btn-sm del-rel-btn" data-id="${rel.id}" aria-label="Supprimer cette relation" title="Supprimer cette relation">✕</button>
-      `;
+      `));
       row.querySelector(".del-rel-btn")!.addEventListener("click", () => this._deleteRelation(rel.id));
       container.appendChild(row);
     }
@@ -2082,7 +2083,7 @@ export class MetadataScreen {
       return;
     }
     if (this._previewError) {
-      panel.innerHTML = `<p class="empty-hint" style="color:var(--color-danger)">Aperçu indisponible: ${this._esc(this._previewError)}</p>`;
+      setHtml(panel, raw(`<p class="empty-hint" style="color:var(--color-danger)">Aperçu indisponible: ${this._esc(this._previewError)}</p>`));
       this._renderTokenEditorPanel();
       return;
     }
@@ -2094,7 +2095,7 @@ export class MetadataScreen {
 
     const count = this._previewLines.length;
     const suffix = this._previewTotalLines > count ? ` / ${this._previewTotalLines} lignes` : "";
-    panel.innerHTML = `
+    setHtml(panel, raw(`
       <p class="hint" style="margin:0 0 0.35rem">Extrait affiché: ${count}${suffix} <span class="prep-meta-edit-hint">— cliquer sur une ligne pour modifier</span></p>
       <div class="prep-meta-preview-lines">
         ${this._previewLines.map((line) => {
@@ -2103,7 +2104,7 @@ export class MetadataScreen {
           return `<div class="prep-meta-preview-line prep-meta-preview-line--editable" data-unit-id="${line.unit_id}" data-text-raw="${rawEscaped}"><span class="prep-meta-preview-marker">${marker}</span>${_roleBadgeHtml(line.unit_role, this._conventions)} <span class="prep-meta-preview-text">${richTextToHtml(line.text_raw, line.text)}</span><button class="prep-meta-edit-btn" title="Modifier ce segment" tabindex="-1">✎</button></div>`;
         }).join("")}
       </div>
-    `;
+    `));
     // Inline edit delegation
     panel.querySelector(".prep-meta-preview-lines")?.addEventListener("click", (e) => {
       const btn = (e.target as HTMLElement).closest<HTMLElement>(".prep-meta-edit-btn");
@@ -2156,7 +2157,7 @@ export class MetadataScreen {
         ? `<span class="prep-meta-token-status ok">${this._tokenRows.length} token(s) chargé(s)</span>`
         : `<span class="prep-meta-token-status">Aucun token chargé.</span>`;
 
-    panel.innerHTML = `
+    setHtml(panel, raw(`
       <div class="prep-meta-token-toolbar">
         <label>Unité
           <select id="meta-token-unit">
@@ -2209,7 +2210,7 @@ export class MetadataScreen {
             `
         }
       </div>
-    `;
+    `));
     this._bindTokenEditorEvents();
   }
 
@@ -2301,7 +2302,7 @@ export class MetadataScreen {
     const currentText = row.dataset.textRaw ?? row.querySelector(".prep-meta-preview-text")?.textContent ?? "";
     row.classList.add("prep-meta-preview-line--editing");
 
-    row.innerHTML = `
+    setHtml(row, raw(`
       <textarea class="prep-meta-inline-textarea" rows="2">${this._esc(currentText)}</textarea>
       <div class="prep-meta-inline-footer">
         <span class="prep-meta-edit-hint">Ctrl+Entrée · Échap</span>
@@ -2310,7 +2311,7 @@ export class MetadataScreen {
           <button class="btn btn-sm prep-meta-inline-cancel">Annuler</button>
         </span>
       </div>
-    `;
+    `));
     const textarea = row.querySelector<HTMLTextAreaElement>(".prep-meta-inline-textarea")!;
     textarea.focus();
     textarea.setSelectionRange(textarea.value.length, textarea.value.length);
@@ -2675,10 +2676,10 @@ export class MetadataScreen {
 
     const summary = document.createElement("summary");
     summary.className = "audit-section-summary";
-    summary.innerHTML = `
+    setHtml(summary, raw(`
       <span class="audit-section-label">📁 Familles documentaires</span>
       <span class="audit-issue-badge">${fam.total_family_issues}</span>
-      <span class="audit-section-meta">(seuil ratio : ${fam.ratio_threshold_pct} %)</span>`;
+      <span class="audit-section-meta">(seuil ratio : ${fam.ratio_threshold_pct} %)</span>`));
     details.appendChild(summary);
 
     const body = document.createElement("div");
@@ -2805,7 +2806,7 @@ export class MetadataScreen {
     // Suggested default out_path (desktop or documents folder heuristic)
     const suggestedPath = `export_${pivotLang}_${targetLang}_${pivotId}_${targetId}`;
 
-    container.innerHTML = `
+    setHtml(container, raw(`
       <div class="prep-export-pair-dialog">
         <div class="prep-export-pair-head">
           <strong>↗ Exporter la paire #${pivotId} ↔ #${targetId}</strong>
@@ -2833,7 +2834,7 @@ export class MetadataScreen {
           <div id="export-preview-area" style="margin-top:0.5rem"></div>
           <div id="export-status" style="font-size:0.8rem;margin-top:0.4rem"></div>
         </div>
-      </div>`;
+      </div>`));
 
     const formatSel  = container.querySelector<HTMLSelectElement>("#export-format-sel")!;
     const outInput   = container.querySelector<HTMLInputElement>("#export-out-path")!;
@@ -2870,9 +2871,9 @@ export class MetadataScreen {
           preview_limit: 15,
         });
         statusEl.textContent = `${res.pair_count} paires alignées.`;
-        previewArea.innerHTML = this._renderBilingualPreview(
+        setHtml(previewArea, raw(this._renderBilingualPreview(
           res.preview ?? [], pivotLang, targetLang, res.pair_count,
-        );
+        )));
       } catch (err) {
         statusEl.textContent = `Erreur : ${err instanceof SidecarError ? err.message : String(err)}`;
       }
@@ -2893,7 +2894,7 @@ export class MetadataScreen {
             target_doc_id: targetId,
             out_path: outPath,
           });
-          statusEl.innerHTML = `✅ TMX enregistré : <code>${this._esc(res.out_path)}</code> · ${res.tu_count} TU(s)`;
+          setHtml(statusEl, raw(`✅ TMX enregistré : <code>${this._esc(res.out_path)}</code> · ${res.tu_count} TU(s)`));
         } else {
           const res = await exportBilingual(this._conn!, {
             pivot_doc_id: pivotId,
@@ -2901,7 +2902,7 @@ export class MetadataScreen {
             format: fmt as "html" | "txt",
             out_path: outPath,
           });
-          statusEl.innerHTML = `✅ Fichier enregistré : <code>${this._esc(res.out_path ?? "")}</code> · ${res.pair_count} paires`;
+          setHtml(statusEl, raw(`✅ Fichier enregistré : <code>${this._esc(res.out_path ?? "")}</code> · ${res.pair_count} paires`));
         }
       } catch (err) {
         statusEl.textContent = `Erreur : ${err instanceof SidecarError ? err.message : String(err)}`;
