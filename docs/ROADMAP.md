@@ -1,10 +1,10 @@
 # Roadmap — multicorpus_engine
 
-> **Dernière mise à jour : 2026-06-19** — remise à niveau post-audit (`docs/AUDIT_2026-06-12.md`), qui clôt le finding **D-01** (« ROADMAP/BACKLOG figés au 20-21 avril »). Suivi fin finding→statut→commit : **`docs/AUDIT_FOLLOW_UP.md`** ; idées produit détaillées : **`docs/BACKLOG*.md`** ; chantiers cadrés : `TICKET_*`/`DESIGN_*`. L'historique des incréments livrés est conservé plus bas (§ Historique).
+> **Dernière mise à jour : 2026-06-20** — recalage post-clôture **U-01** (cœur connexion partagé extrait, #72/#73/#75) ; précédente remise à niveau post-audit le 2026-06-19 (`docs/AUDIT_2026-06-12.md`), qui clôt le finding **D-01** (« ROADMAP/BACKLOG figés au 20-21 avril »). Suivi fin finding→statut→commit : **`docs/AUDIT_FOLLOW_UP.md`** ; idées produit détaillées : **`docs/BACKLOG*.md`** ; chantiers cadrés : `TICKET_*`/`DESIGN_*`. L'historique des incréments livrés est conservé plus bas (§ Historique).
 
-## État au 2026-06-19
+## État au 2026-06-20
 
-Moteur jugé **techniquement sain et bien gouverné** par l'audit du 12 juin (notes B+/A- ; 1 seul finding réfuté sur 23). Les trois P0 de l'audit sont **traités ou volontairement arrêtés** : filet CI relevé (lint + couverture + dependabot), correctifs métier livrés, et l'extraction du monolithe `sidecar.py` (A-01) menée jusqu'à un point d'arrêt assumé (7 services). Restent surtout des chantiers **P1/P2** (pilotage, sécurité mineure, dette front) et deux chantiers produit vivants : l'unification du client sidecar (U-01) et l'ingestion ShareDocs/WebDAV.
+Moteur jugé **techniquement sain et bien gouverné** par l'audit du 12 juin (notes B+/A- ; 1 seul finding réfuté sur 23). Les trois P0 de l'audit sont **traités ou volontairement arrêtés** : filet CI relevé (lint + couverture + dependabot), correctifs métier livrés, et l'extraction du monolithe `sidecar.py` (A-01) menée jusqu'à un point d'arrêt assumé (7 services). **U-01 (unification du client sidecar) est désormais clos** (divergence connexion 2→0, cœur partagé `shared/sidecarCore.ts`). Restent surtout des chantiers **P1/P2** (pilotage, sécurité mineure, dette front) et un chantier produit vivant : l'ingestion ShareDocs/WebDAV (P2/P3, **P3 débloqué** par la clôture d'U-01).
 
 > **Note (passe de vérification code, 2026-06-19).** Une revue item-par-item des 6 `BACKLOG*.md` confrontés au code a montré qu'ils étaient **fortement périmés** : la quasi-totalité des items « ouverts » sont en réalité livrés. La liste « à venir » ci-dessous est donc recalée sur l'**état réel du code**, pas sur les statuts déclarés des backlogs (détail en § Réconciliation backlogs).
 
@@ -16,17 +16,18 @@ Moteur jugé **techniquement sain et bien gouverné** par l'audit du 12 juin (no
 - **Correctifs métier** (P1-5) : re-flag des liens undo merge/split/resegment (N-02), `links_created` via rowcount (N-03), `bump_version.py` → Cargo.toml shell (N-07), race statut job documentée (N-05).
 - **WebDAV/ShareDocs — Phase 1** : sous-commande CLI `import-remote` (client stdlib, dédup, dispatch unifié). P2/P3 à venir.
 - **S-03 (partiel)** : sink `setHtml`/`safeHtml` + ESLint no-unsanitized (3 fichiers prep).
+- **U-01 — unification du client sidecar** (audit P1-4, **clos** #66→#75) : `sidecarClient.ts` app/prep, divergence ramenée **25→0** (PR1a/PR1b/PR2a/PR2bc) ; cœur connexion extrait dans **`shared/sidecarCore.ts`** (neutre) — app + prep l'importent, un seul chunk `sidecarCore` + un seul `_conn` dans le shell (vérifié au bundle), Explorer-standalone préservé. Couvert par les tests d'intégration connexion/transport (T-05 partiel) repointés sur le cœur partagé.
 - **Pilotage** : `AUDIT_FOLLOW_UP.md` créé (D-04) ; ce rafraîchissement (D-01).
 
 ## En cours
 
-- **U-01 — unification du client sidecar** (branche `refactor/u01-prep-canonical`, audit P1-4) : `sidecarClient.ts` app/prep, divergence ramenée 25→2 (PR1a/PR1b/PR2a) + tests d'intégration connexion/transport (T-05 partiel). Reste **PR2b** (l'app adopte le sous-système connexion de prep, byte-identique → divergence 2→0) puis **PR2c** (extraction `shared/` → un seul chunk client dans le shell).
+- *Aucun chantier en vol.* `dev` est propre ; prochaine tranche à choisir dans « Court terme » ci-dessous.
 
 ## Court terme (prochaines tranches)
 
 - **★ Export ODT** (priorité) : l'import ODT existe, l'export non (`exporters/readable_text.py` ne gère que `{txt, docx}`). Ajouter `export_readable_odt` pour rétablir la symétrie import/export. Vérifié absent du code.
 - **★ Dette doc — cadrages manquants** (priorité) : écrire `docs/cadrage/METADONNEES_DOCUMENT.md` (D1 — la validation `/validate-meta` est livrée, seule la note de cadrage manque) et `docs/cadrage/IMPORT_RATIO.md` (D2 — décision + calibration du seuil de ratio d'import ; à ce jour ni logique ni doc).
-- **WebDAV/ShareDocs P2 — endpoints sidecar** (`POST /webdav/list`, `POST /import-remote`) puis **P3 — UI Prep**. P2 débloqué (le dispatch dont il dépendait est déjà unifié) ; **P3 à séquencer après U-01** (touche `sidecarClient.ts`). Réf. `DESIGN_sharedocs_ingestion.md`, tickets P2/P3.
+- **WebDAV/ShareDocs P2 — endpoints sidecar** (`POST /webdav/list`, `POST /import-remote`) puis **P3 — UI Prep**. P2 débloqué (le dispatch dont il dépendait est déjà unifié) ; **P3 désormais débloqué** aussi (touche `sidecarClient.ts`, qui n'évolue plus depuis la clôture d'U-01). Réf. `DESIGN_sharedocs_ingestion.md`, tickets P2/P3.
 - **Sécurité mineure** (P1-8, ~½ j) : validation `Host`/`Origin` (S-01), portfile `O_CREAT|O_EXCL|0o600` (S-02), `defusedxml` dans `exporters/tei.py` (S-04).
 - **S-03 — décision XSS lint** (P0-2 résiduel) : trancher grind complet (92 sites des 4 écrans géants + app/shell) vs suppressions ciblées, puis job ESLint bloquant.
 - **Pilotage** (P1-7) : archivage du CHANGELOG (D-02, 1 942 l.) ; documenter `API_VERSION` vs `CONTRACT_VERSION` (D-06).
@@ -228,5 +229,5 @@ Vérification item-par-item des 6 `BACKLOG*.md` contre le code : ils étaient **
 | V2.1.1 | A-01 : extraction de 7 services sidecar (point d'arrêt assumé, sidecar.py 9961→8523 l.) | Done |
 | V2.1.2 | Correctifs métier audit : undo reflag, links_created via rowcount, bump Cargo.toml (N-02/N-03/N-07) | Done |
 | V2.1.3 | WebDAV/ShareDocs Phase 1 : CLI `import-remote` (stdlib, dédup, dispatch unifié) | Done |
-| V2.1.4 | U-01 : sidecarClient app/prep — divergence 25→2 (PR1a/1b/2a) + tests connexion/transport | En cours |
+| V2.1.4 | U-01 : sidecarClient app/prep — divergence 25→0 + cœur partagé `shared/sidecarCore.ts` (PR1a/1b/2a/2bc, #66→#75) | Done |
 | D-01 | Pilotage : ROADMAP/BACKLOG remis à niveau post-audit + AUDIT_FOLLOW_UP.md (D-04) | Done |
