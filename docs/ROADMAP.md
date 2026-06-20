@@ -30,7 +30,7 @@ Moteur jugé **techniquement sain et bien gouverné** par l'audit du 12 juin (no
 - **WebDAV/ShareDocs P2 — endpoints sidecar** (`POST /webdav/list`, `POST /import-remote`) puis **P3 — UI Prep**. P2 débloqué (le dispatch dont il dépendait est déjà unifié) ; **P3 désormais débloqué** aussi (touche `sidecarClient.ts`, qui n'évolue plus depuis la clôture d'U-01). Réf. `DESIGN_sharedocs_ingestion.md`, tickets P2/P3.
 - **Sécurité mineure** (P1-8, ~½ j) : validation `Host`/`Origin` (S-01), portfile `O_CREAT|O_EXCL|0o600` (S-02), `defusedxml` dans `exporters/tei.py` (S-04).
 - **S-03 — décision XSS lint** (P0-2 résiduel) : trancher grind complet (92 sites des 4 écrans géants + app/shell) vs suppressions ciblées, puis job ESLint bloquant.
-- **Pilotage** (P1-7) : archivage du CHANGELOG (D-02, 1 942 l.) ; documenter `API_VERSION` vs `CONTRACT_VERSION` (D-06).
+- **Pilotage** (P1-7) : ~~archivage du CHANGELOG (D-02)~~ **✅ fait** (scindé → `docs/CHANGELOG_ARCHIVE.md`) ; reste : documenter `API_VERSION` vs `CONTRACT_VERSION` (D-06).
 - **Tests** (P1-6) : isoler les 11 fichiers versionnés sous `tests/contracts/` (T-03).
 
 ## Moyen / long terme

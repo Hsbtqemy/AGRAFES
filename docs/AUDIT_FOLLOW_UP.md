@@ -64,7 +64,7 @@ le §6 de l'audit 2026-06-12 ; « — » = non priorisé explicitement.
 | U-03 | 🟡 | P2-11 | 🟦 partiel | `tauri-app` : 14 tests Vitest (happy-dom) sur le **vrai** `features/search.ts` (`buildFtsQuery`/`isSimpleInput`), gatés en CI (PR #60). Reste : couverture large des 8 112 l. (concordancier, état, rendu). |
 | U-04 | 🟡 | P2-12 | ⬜ ouvert | Signalisation de statut fragmentée entre READMEs |
 | U-05 | 🟡 | — | ⬜ ouvert | i18n absent (chaînes FR en dur) — non bloquant |
-| D-02 | 🟠 | P1-7 | ⬜ ouvert | CHANGELOG 1 942 lignes sans archivage |
+| D-02 | 🟠 | P1-7 | ✅ corrigé | CHANGELOG scindé : courant **1951→557 l.** (`[Unreleased]` + semver [0.1.12]→[0.2.6]) ; l'historique antérieur (schéma « V… » + incréments [0.1.0]→[0.6.1]) déplacé dans **`docs/CHANGELOG_ARCHIVE.md`** (1406 l.) + pointeur. Intégrité vérifiée (82 sections = 35 + 47, 0 perdue). |
 | D-03 | 🟠 | P2-10 | ⬜ ouvert | 267 artefacts trackés sans index (`audit/`, `artifacts/`) |
 | D-05 | 🟡 | P2-12 | ⬜ ouvert | Aucun guide utilisateur final |
 | D-06 | 🟡 | P1-7 | ⬜ ouvert | `API_VERSION` (1.6.23) vs `CONTRACT_VERSION` (1.6.27) — distinction non documentée |
