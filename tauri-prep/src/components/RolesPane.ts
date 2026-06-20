@@ -36,6 +36,7 @@ import {
   summarizeUnits,
 } from "../lib/conventionsUnitList.ts";
 import { modalConfirm } from "../lib/modalConfirm.ts";
+import { setHtml, raw } from "../lib/safeHtml.ts";
 
 const COLOR_PRESETS = [
   "#3b82f6", "#6366f1", "#8b5cf6", "#a855f7",
@@ -242,7 +243,7 @@ export class RolesPane {
       if (!html) {
         html = `<div class="prep-conv-empty" style="padding:0.6rem;font-size:0.78rem">Aucun r&#244;le structure.</div>`;
       }
-      structListEl.innerHTML = html;
+      setHtml(structListEl, raw(html));
       this._wireRoleItems(structListEl, "structure");
       structListEl.querySelectorAll<HTMLElement>("[data-dormant]").forEach((btn) => {
         btn.addEventListener("click", (e) => {
@@ -254,9 +255,9 @@ export class RolesPane {
     }
 
     if (textListEl) {
-      textListEl.innerHTML = text.length
+      setHtml(textListEl, raw(text.length
         ? text.map((r) => this._roleItemHtml(r, false)).join("")
-        : `<div class="prep-conv-empty" style="padding:0.6rem;font-size:0.78rem">Aucun r&#244;le texte.</div>`;
+        : `<div class="prep-conv-empty" style="padding:0.6rem;font-size:0.78rem">Aucun r&#244;le texte.</div>`));
       this._wireRoleItems(textListEl, "text");
     }
   }
@@ -325,7 +326,7 @@ export class RolesPane {
       return;
     }
 
-    area.innerHTML = filtered
+    setHtml(area, raw(filtered
       .map((u) => {
         const badge = resolveRoleBadge(u.unit_role, this._roles);
         const selected = this._selectedUnitIds.has(u.unit_id);
@@ -340,7 +341,7 @@ export class RolesPane {
             ${badgeHtml}
           </div>`;
       })
-      .join("");
+      .join("")));
 
     area.querySelectorAll<HTMLElement>(".prep-conv-unit-row").forEach((el, idx) => {
       el.addEventListener("click", (e) => {
@@ -389,12 +390,12 @@ export class RolesPane {
       ? `<button class="prep-conv-text-start-btn" id="prep-conv-set-ts" title="D&#233;finir comme d&#233;but du texte (apr&#232;s le paratexte)">&#9873; Borne texte</button>`
       : "";
     bar.classList.add("visible");
-    bar.innerHTML = `
+    setHtml(bar, raw(`
       <span class="prep-conv-action-count">${count} unité${count > 1 ? "s" : ""}</span>
       <button class="prep-conv-role-pill remove" id="prep-conv-clear-role">&#10005; Retirer r&#244;le</button>
       <button class="prep-conv-role-pill" id="prep-conv-deselect">&#10005; D&#233;s&#233;lectionner</button>
       ${textStartBtn}
-    `;
+    `));
     bar.querySelector("#prep-conv-clear-role")?.addEventListener("click", () => void this._assignRole(null));
     bar.querySelector("#prep-conv-deselect")?.addEventListener("click", () => {
       this._selectedUnitIds.clear();
@@ -484,7 +485,7 @@ export class RolesPane {
 
     const overlay = document.createElement("div");
     overlay.className = "prep-conv-overlay";
-    overlay.innerHTML = `
+    setHtml(overlay, raw(`
       <div class="prep-conv-dialog">
         <h3>${isEdit ? "Modifier le rôle" : `Nouveau rôle — ${sectionLabel}`}</h3>
         <div class="prep-conv-field">
@@ -522,7 +523,7 @@ export class RolesPane {
           <button class="prep-conv-dialog-btn primary" id="prep-conv-dlg-save">Enregistrer</button>
         </div>
       </div>
-    `;
+    `));
     document.body.appendChild(overlay);
 
     const hexInput = overlay.querySelector<HTMLInputElement>("#prep-conv-f-color")!;

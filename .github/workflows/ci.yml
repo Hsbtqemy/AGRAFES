@@ -112,6 +112,14 @@ jobs:
       - name: Install tauri-prep deps
         run: npm --prefix tauri-prep ci
 
+      # S-03 (XSS gate): eslint-plugin-no-unsanitized blocks any NEW innerHTML/
+      # outerHTML assignment that doesn't go through the safeHtml`` sink. The 89
+      # pre-existing sites in the 4 giant screens are grandfathered in
+      # tauri-prep/eslint-suppressions.json (native bulk suppressions) and burn
+      # down via `npm run lint:prune`; new code cannot regress.
+      - name: Lint tauri-prep (XSS gate — no-unsanitized, S-03)
+        run: npm --prefix tauri-prep run lint
+
       - name: Build tauri-prep
         run: npm --prefix tauri-prep run build
 

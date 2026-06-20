@@ -17,6 +17,7 @@ import { MetadataScreen } from "./screens/MetadataScreen.ts";
 import { ExportsScreen, type ExportWorkflowPrefill } from "./screens/ExportsScreen.ts";
 import { JobCenter, showToast } from "./components/JobCenter.ts";
 import { inlineConfirm } from "./lib/inlineConfirm.ts";
+import { setHtml, appendHtml, raw } from "./lib/safeHtml.ts";
 
 // ─── Project Presets — seeds ──────────────────────────────────────────────────
 
@@ -651,14 +652,14 @@ export class App {
     root.querySelector(".prep-init-error")?.remove();
     const banner = document.createElement("div");
     banner.className = "prep-init-error";
-    banner.innerHTML = `
+    setHtml(banner, raw(`
       <span style="color:#856404;font-size:1.1rem">&#9888;</span>
       <span style="font-weight:600;color:#856404;white-space:nowrap">Impossible d&rsquo;initialiser la DB</span>
       <code class="prep-init-error-detail">${msg.replace(/&/g,"&amp;").replace(/</g,"&lt;")}</code>
       <button id="prep-retry-btn" class="prep-topbar-db-btn">R&eacute;essayer</button>
       <button id="prep-change-btn" class="prep-topbar-db-btn">Choisir un autre&hellip;</button>
       <button id="prep-dismiss-btn" class="prep-topbar-db-btn">&times;</button>
-    `;
+    `));
     // Insert after topbar
     root.querySelector(".prep-topbar")?.insertAdjacentElement("afterend", banner);
     banner.querySelector("#prep-retry-btn")?.addEventListener("click", () => {
@@ -821,12 +822,12 @@ export class App {
 
         const info = document.createElement("div");
         info.style.flex = "1";
-        info.innerHTML = `<span class="prep-preset-name">${_escHtmlApp(preset.name)}</span>` +
-          (preset.description ? `<span class="prep-preset-desc">${_escHtmlApp(preset.description)}</span>` : "");
+        setHtml(info, raw(`<span class="prep-preset-name">${_escHtmlApp(preset.name)}</span>` +
+          (preset.description ? `<span class="prep-preset-desc">${_escHtmlApp(preset.description)}</span>` : "")));
         const chips = document.createElement("div");
         chips.className = "prep-preset-chips";
         if (preset.languages?.length) {
-          chips.innerHTML += preset.languages.map(l => `<span class="prep-preset-chip">${_escHtmlApp(l)}</span>`).join("");
+          appendHtml(chips, raw(preset.languages.map(l => `<span class="prep-preset-chip">${_escHtmlApp(l)}</span>`).join("")));
         }
         if (preset.alignment_strategy)
           chips.innerHTML += `<span class="prep-preset-chip">${_escHtmlApp(preset.alignment_strategy)}</span>`;
@@ -869,10 +870,10 @@ export class App {
           const confirmSpan = document.createElement("span");
           confirmSpan.className = "inline-confirm-msg";
           confirmSpan.style.cssText = "display:inline-flex;gap:0.35rem;align-items:center;font-size:0.82rem";
-          confirmSpan.innerHTML =
+          setHtml(confirmSpan, raw(
             `<span>Supprimer « ${preset.name.replace(/&/g,"&amp;").replace(/</g,"&lt;")} » ?</span>` +
             `<button class="btn btn-danger btn-sm" data-confirm-yes>Confirmer</button>` +
-            `<button class="btn btn-ghost btn-sm" data-confirm-no>Annuler</button>`;
+            `<button class="btn btn-ghost btn-sm" data-confirm-no>Annuler</button>`));
           delBtn.replaceWith(confirmSpan);
           const yes = confirmSpan.querySelector<HTMLButtonElement>("[data-confirm-yes]")!;
           const no  = confirmSpan.querySelector<HTMLButtonElement>("[data-confirm-no]")!;
@@ -983,26 +984,26 @@ export class App {
     modal.className = "prep-presets-modal";
     overlay.appendChild(modal);
 
-    modal.innerHTML = `
+    setHtml(modal, raw(`
       <div class="prep-presets-modal-head">
         <h3>${isNew ? "Nouveau preset" : "Modifier preset"}</h3>
       </div>
       <div class="prep-presets-modal-body">
         <label style="display:flex;flex-direction:column;gap:0.2rem;margin-bottom:0.5rem;font-size:0.85rem">
-          Nom <input id="pe-name" type="text" value="${draft.name}" style="padding:0.25rem 0.4rem;border:1px solid #dee2e6;border-radius:4px" />
+          Nom <input id="pe-name" type="text" value="${_escHtmlApp(draft.name)}" style="padding:0.25rem 0.4rem;border:1px solid #dee2e6;border-radius:4px" />
         </label>
         <label style="display:flex;flex-direction:column;gap:0.2rem;margin-bottom:0.5rem;font-size:0.85rem">
-          Description <input id="pe-desc" type="text" value="${draft.description ?? ""}" style="padding:0.25rem 0.4rem;border:1px solid #dee2e6;border-radius:4px" />
+          Description <input id="pe-desc" type="text" value="${_escHtmlApp(draft.description ?? "")}" style="padding:0.25rem 0.4rem;border:1px solid #dee2e6;border-radius:4px" />
         </label>
         <label style="display:flex;flex-direction:column;gap:0.2rem;margin-bottom:0.5rem;font-size:0.85rem">
-          Langues (séparées par virgule) <input id="pe-langs" type="text" value="${(draft.languages ?? []).join(",")}" style="padding:0.25rem 0.4rem;border:1px solid #dee2e6;border-radius:4px" />
+          Langues (séparées par virgule) <input id="pe-langs" type="text" value="${_escHtmlApp((draft.languages ?? []).join(","))}" style="padding:0.25rem 0.4rem;border:1px solid #dee2e6;border-radius:4px" />
         </label>
         <label style="display:flex;flex-direction:column;gap:0.2rem;margin-bottom:0.5rem;font-size:0.85rem">
-          Langue pivot <input id="pe-pivot" type="text" value="${draft.pivot_language ?? ""}" style="padding:0.25rem 0.4rem;border:1px solid #dee2e6;border-radius:4px;width:80px" />
+          Langue pivot <input id="pe-pivot" type="text" value="${_escHtmlApp(draft.pivot_language ?? "")}" style="padding:0.25rem 0.4rem;border:1px solid #dee2e6;border-radius:4px;width:80px" />
         </label>
         <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:0.5rem">
           <label style="display:flex;flex-direction:column;gap:0.2rem;font-size:0.85rem">Langue segmentation
-            <input id="pe-seg-lang" type="text" value="${draft.segmentation_lang ?? ""}" style="padding:0.25rem 0.4rem;border:1px solid #dee2e6;border-radius:4px;width:80px" />
+            <input id="pe-seg-lang" type="text" value="${_escHtmlApp(draft.segmentation_lang ?? "")}" style="padding:0.25rem 0.4rem;border:1px solid #dee2e6;border-radius:4px;width:80px" />
           </label>
           <label style="display:flex;flex-direction:column;gap:0.2rem;font-size:0.85rem">Pack segmentation
             <select id="pe-seg-pack" style="padding:0.25rem 0.4rem;border:1px solid #dee2e6;border-radius:4px">
@@ -1033,7 +1034,7 @@ export class App {
         </div>
       </div>
       <div class="prep-presets-modal-foot"></div>
-    `;
+    `));
 
     const foot = modal.querySelector(".prep-presets-modal-foot")!;
     const saveBtn = document.createElement("button");

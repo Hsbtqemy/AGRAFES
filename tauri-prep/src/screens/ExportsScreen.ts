@@ -20,6 +20,7 @@ import {
 import { save, open } from "@tauri-apps/plugin-dialog";
 import type { JobCenter } from "../components/JobCenter.ts";
 import { initCardAccordions } from "../lib/uiAccordions.ts";
+import { setHtml, raw } from "../lib/safeHtml.ts";
 
 function _escHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -835,18 +836,18 @@ export class ExportsScreen {
         default:          return "—";
       }
     };
-    body.innerHTML = this._docs.map(d => {
+    setHtml(body, raw(this._docs.map(d => {
       const sel = selectedIds.includes(d.doc_id);
       const title = d.title.length > 40 ? d.title.slice(0, 40) + "…" : d.title;
       return `<tr class="exp-doc-row" data-doc-id="${d.doc_id}">
         <td><input type="checkbox" class="exp-doc-check" data-doc-id="${d.doc_id}"${sel ? " checked" : ""}></td>
         <td class="exp-doc-id">${d.doc_id}</td>
         <td class="exp-doc-title" title="${_escHtml(d.title)}">${_escHtml(title)}</td>
-        <td class="exp-doc-lang">${d.language}</td>
-        <td class="exp-doc-role">${d.doc_role ?? "—"}</td>
+        <td class="exp-doc-lang">${_escHtml(d.language)}</td>
+        <td class="exp-doc-role">${_escHtml(d.doc_role ?? "—")}</td>
         <td><span class="chip">${statusLabel(d)}</span></td>
       </tr>`;
-    }).join("");
+    }).join("")));
     body.querySelectorAll<HTMLInputElement>(".exp-doc-check").forEach(cb => {
       cb.addEventListener("change", () => this._onDocCheckChange(Number(cb.dataset.docId), cb.checked));
     });
@@ -1530,8 +1531,8 @@ export class ExportsScreen {
           const issues = [...blocking, ...warnings];
           banner.style.cssText = `display:block;background:${gateBg};border:1px solid ${gateColor};border-radius:4px;padding:0.4rem 0.75rem;font-size:0.83rem;color:${gateColor}`;
           const policyBadge = `<span style="font-size:0.72rem;background:rgba(0,0,0,0.08);border-radius:3px;padding:1px 5px;margin-left:0.4rem">${qaPolicy === "strict" ? "Strict" : "Lenient"}</span>`;
-          banner.innerHTML = `${gateIcon} <strong>${gate === "ok" ? "Prêt pour publication" : gate === "blocking" ? "Bloquant" : "Avertissements"}</strong>${policyBadge}`
-            + (issues.length ? `<ul style="margin:0.3rem 0 0 1rem">${issues.map(i => `<li>${_escHtml(i)}</li>`).join("")}</ul>` : "");
+          setHtml(banner, raw(`${gateIcon} <strong>${gate === "ok" ? "Prêt pour publication" : gate === "blocking" ? "Bloquant" : "Avertissements"}</strong>${policyBadge}`
+            + (issues.length ? `<ul style="margin:0.3rem 0 0 1rem">${issues.map(i => `<li>${_escHtml(i)}</li>`).join("")}</ul>` : "")));
           this._log(`Rapport QA exporté → ${outPath} (gate: ${gate}, politique: ${qaPolicy})`);
           btn.disabled = false;
         } else if (rec.status === "error" || rec.status === "canceled") {
@@ -1596,10 +1597,10 @@ export class ExportsScreen {
           `<tr><td style="padding:2px 8px 2px 0;vertical-align:top;border-right:1px solid #dee2e6">${_escHtml(p.pivot_text)}</td>`
           + `<td style="padding:2px 0 2px 8px;vertical-align:top">${_escHtml(p.target_text)}</td></tr>`
         ).join("");
-        previewArea.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:0.82rem"><thead><tr>`
+        setHtml(previewArea, raw(`<table style="width:100%;border-collapse:collapse;font-size:0.82rem"><thead><tr>`
           + `<th style="text-align:left;padding-bottom:4px;border-right:1px solid #dee2e6;padding-right:8px">${_escHtml(res.pivot_lang)}</th>`
           + `<th style="text-align:left;padding-bottom:4px;padding-left:8px">${_escHtml(res.target_lang)}</th>`
-          + `</tr></thead><tbody>${rows}</tbody></table>`;
+          + `</tr></thead><tbody>${rows}</tbody></table>`));
       }
       previewArea.style.display = "";
     } catch (err) {

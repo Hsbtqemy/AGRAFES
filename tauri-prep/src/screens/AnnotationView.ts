@@ -15,6 +15,7 @@ import "../ui/annotation.css";
 import type { Conn } from "../lib/sidecarClient.ts";
 import { SidecarError } from "../lib/sidecarClient.ts";
 import { compareDocsByTitle } from "../lib/docSort.ts";
+import { setHtml, raw } from "../lib/safeHtml.ts";
 
 // ─── Local types ──────────────────────────────────────────────────────────────
 
@@ -479,7 +480,7 @@ export class AnnotationView {
       docHeader.className = "annot-doc-header";
       const lang = doc.language ? ` · ${_escHtml(doc.language)}` : "";
       const tokens = this._annotTokens.length > 0 ? ` · ${this._annotTokens.length}\u00a0tokens` : "";
-      docHeader.innerHTML = `<span class="annot-doc-header-title">${_escHtml(doc.title)}</span><span class="annot-doc-header-meta">${lang}${tokens}</span>`;
+      setHtml(docHeader, raw(`<span class="annot-doc-header-title">${_escHtml(doc.title)}</span><span class="annot-doc-header-meta">${lang}${tokens}</span>`));
       viewer.appendChild(docHeader);
     }
 
@@ -574,9 +575,9 @@ export class AnnotationView {
 
       const unitHeader = document.createElement("div");
       unitHeader.className = "annot-unit-header";
-      unitHeader.innerHTML =
+      setHtml(unitHeader, raw(
         `<span class="annot-unit-n">\u00a7${unitN}</span>` +
-        `<span class="annot-unit-plain">${_escHtml(plainText)}</span>`;
+        `<span class="annot-unit-plain">${_escHtml(plainText)}</span>`));
       unitDiv.appendChild(unitHeader);
 
       const sentEntries = Array.from(bySent.entries()).sort((a, b) => a[0] - b[0]);
@@ -648,7 +649,7 @@ export class AnnotationView {
       "ADJ","ADP","ADV","AUX","CCONJ","DET","INTJ","NOUN","NUM",
       "PART","PRON","PROPN","PUNCT","SCONJ","SYM","VERB","X",
     ];
-    editor.innerHTML = `
+    setHtml(editor, raw(`
       <div class="annot-editor-header">Token #${tok.token_id}</div>
       <label class="annot-field-label">Mot
         <input class="annot-field" data-field="word" value="${_escHtml(tok.word)}">
@@ -673,7 +674,7 @@ export class AnnotationView {
       </label>
       <button class="annot-btn-save">Enregistrer</button>
       <span class="annot-save-status"></span>
-    `;
+    `));
     editor.querySelector(".annot-btn-save")!.addEventListener("click", () => {
       void this._annotSaveField(tok, editor);
     });

@@ -18,6 +18,7 @@ import type { DocumentRecord } from "../lib/sidecarClient.ts";
 import type { JobCenter } from "../components/JobCenter.ts";
 import { initCardAccordions } from "../lib/uiAccordions.ts";
 import { compareDocsByTitle } from "../lib/docSort.ts";
+import { setHtml, raw } from "../lib/safeHtml.ts";
 
 /** Normalise un chemin pour détecter les doublons (séparateurs + casse + préfixe long Windows). */
 export function normalizeImportPath(p: string): string {
@@ -214,7 +215,7 @@ export class ImportScreen {
     root.className = "screen prep-import-screen prep-import-screen--layout";
     this._root = root;
 
-    root.innerHTML = `
+    setHtml(root, raw(`
       <div class="imp-scroll">
       <!-- Head card + stepper -->
       <div class="card imp-head-card">
@@ -436,7 +437,7 @@ export class ImportScreen {
           <button id="imp-import-btn" class="btn btn-primary" title="Importer tous les fichiers en attente" aria-label="Importer tous les fichiers en attente" disabled>⬆ Importer</button>
         </div>
       </div>
-    `;
+    `));
 
     this._listEl = root.querySelector("#imp-list")!;
     this._summaryEl = root.querySelector("#imp-summary")!;
@@ -755,7 +756,7 @@ export class ImportScreen {
                   value="${f.column_index ?? ""}" placeholder="col"
                   title="Colonne du tableau à extraire (1 = première). Laisser vide pour ignorer les tables." />`
         : "";
-      row.innerHTML = `
+      setHtml(row, raw(`
         <div class="imp-file-main">
           <span class="imp-file-name" title="${_escHtml(f.path)}">${_escHtml(f.title)}</span>
           <span class="chip${chipCls ? " " + chipCls : ""}">${_escHtml(this._statusLabel(f))}</span>
@@ -767,11 +768,11 @@ export class ImportScreen {
               .join("")}
           </select>
           ${colCtrl}
-          <input class="imp-lang-inp" type="text" value="${f.language}" maxlength="10" placeholder="lang" data-i="${i}" />
-          <input class="imp-title-inp" type="text" value="${f.title}" placeholder="titre" data-i="${i}" />
+          <input class="imp-lang-inp" type="text" value="${_escHtml(f.language)}" maxlength="10" placeholder="lang" data-i="${i}" />
+          <input class="imp-title-inp" type="text" value="${_escHtml(f.title)}" placeholder="titre" data-i="${i}" />
           <button class="btn btn-sm imp-remove-btn" data-i="${i}" aria-label="Retirer ce fichier de la liste" title="Retirer ce fichier de la liste">✕</button>
         </div>
-      `;
+      `));
       this._listEl.appendChild(row);
     });
 
@@ -1282,7 +1283,7 @@ export class ImportScreen {
 
     const overlay = document.createElement("div");
     overlay.className = "family-dialog-overlay";
-    overlay.innerHTML = `
+    setHtml(overlay, raw(`
       <div class="family-dialog">
         <div class="family-dialog-header">
           <span class="family-dialog-icon">🔗</span>
@@ -1332,7 +1333,7 @@ export class ImportScreen {
           </div>
         </div>
       </div>
-    `;
+    `));
 
     document.body.appendChild(overlay);
 
@@ -1552,7 +1553,7 @@ export class ImportScreen {
     const banner = document.createElement("div");
     banner.id = "imp-family-detect-banner";
     banner.className = "card prep-imp-family-banner";
-    banner.innerHTML = `
+    setHtml(banner, raw(`
       <div class="prep-imp-family-banner-head">
         <span class="prep-imp-family-banner-icon">🔗</span>
         <div>
@@ -1580,7 +1581,7 @@ export class ImportScreen {
               <select class="prep-imp-family-pivot-sel" data-group="${gi}">
                 ${g.files.map(f => {
                   const fname = f.path.replace(/\\/g, "/").split("/").pop() ?? f.path;
-                  return `<option value="${f.path}">${fname} [${f.lang.toUpperCase()}]</option>`;
+                  return `<option value="${_escHtml(f.path)}">${_escHtml(fname)} [${_escHtml(f.lang.toUpperCase())}]</option>`;
                 }).join("")}
               </select>
             </label>
@@ -1590,7 +1591,7 @@ export class ImportScreen {
       <p class="prep-imp-family-banner-note">
         Les relations seront proposées dans la dialog post-import de chaque fichier enfant.
       </p>
-    `;
+    `));
 
     const workspace = this._root?.querySelector(".imp-workspace");
     if (workspace) workspace.insertAdjacentElement("beforebegin", banner);

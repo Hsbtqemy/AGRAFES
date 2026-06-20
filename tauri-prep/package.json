@@ -10,7 +10,9 @@
     "tauri": "tauri",
     "test": "node_modules/.bin/vitest run",
     "test:watch": "node_modules/.bin/vitest",
-    "test:coverage": "node_modules/.bin/vitest run --coverage"
+    "test:coverage": "node_modules/.bin/vitest run --coverage",
+    "lint": "eslint \"src/**/*.ts\"",
+    "lint:prune": "eslint \"src/**/*.ts\" --prune-suppressions"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.0.0",
