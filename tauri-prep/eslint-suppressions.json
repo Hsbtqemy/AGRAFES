@@ -4,11 +4,6 @@
       "count": 31
     }
   },
-  "src/screens/MetadataScreen.ts": {
-    "no-unsanitized/property": {
-      "count": 20
-    }
-  },
   "src/screens/SegmentationView.ts": {
     "no-unsanitized/property": {
       "count": 21
