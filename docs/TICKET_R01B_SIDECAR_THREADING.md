@@ -99,6 +99,11 @@ Estimation : **~+25-40 lignes nettes** sur `sidecar.py` (extractions `_do_POST_i
   (`sidecar.py:7840,7850`) → jobs (threads worker) et requêtes (threads de requête) se
   sérialisent via le même lock, exactement comme aujourd'hui. Le `RLock` ne change ça
   que pour le thread qui détient déjà (réentrance), jamais entre threads distincts.
+- **Pas de deadlock** (vérifié à l'impl) : aucun handler n'attend un thread/job —
+  `JobManager.submit` est fire-and-forget (`thread.start()` + `return`, aucun `.join()`),
+  le dict des jobs est géré par un lock *propre* au JobManager (pas le lock serveur), et
+  aucun handler ne fait `.wait()`/`.join()`/`.result()`. Le cycle « handler tient le lock
+  ∧ attend un job ∧ job attend le lock » ne peut donc pas se former.
 - **Pas de streaming** : un seul `self.wfile.write` dans tout le fichier → réponses JSON
   one-shot. Envelopper le dispatch ne tient donc **pas** le lock pendant une réponse
   longue (il n'y en a pas).
@@ -138,13 +143,15 @@ Estimation : **~+25-40 lignes nettes** sur `sidecar.py` (extractions `_do_POST_i
 
 ## 7. Résiduel à confirmer au moment du ticket
 
-- **Exports sous lock** : `/export/*` lit la DB **et** écrit le fichier sous le dispatch
-  lock → bloque les autres requêtes DB pendant l'écriture disque. Mesurer ; si gênant,
-  ne tenir le lock que pour la lecture DB (relâcher avant l'I/O disque). Probablement non
-  nécessaire en pratique.
-- **`/jobs/<id>` polling** pendant un job long : la lecture du statut passe sous le
-  dispatch lock ; un job qui tient le lock longtemps (write) retarderait le polling.
-  Vérifier que les jobs relâchent le lock entre étapes (déjà le cas via `with lock` par
-  écriture, pas sur toute la durée du job — à confirmer).
+- **I/O sous lock (exports, import, envoi réponse)** : le dispatch tient le lock sur
+  **toute** la durée du handler — lecture DB, parsing/écriture fichier (`/import`,
+  `/export/*`) et envoi de la réponse compris. **Ce n'est pas une régression** : l'ancien
+  serveur mono-thread sérialisait déjà tout pareil (la boucle `serve` restait occupée
+  jusqu'au retour du handler). C'est plutôt une **opportunité d'optimisation** future
+  (faire *mieux* que l'ancien) : ne tenir le lock que pour l'accès DB et le relâcher avant
+  l'I/O fichier/réseau. Non nécessaire pour un usage local mono-utilisateur.
+- **`/jobs/<id>` polling** pendant un job long : **OK** — le worker prend `self._httpd.lock`
+  *par écriture* (`with lock`, pas sur toute la durée du job) et le statut est lu via le
+  lock propre du JobManager (pas le DB) ; le polling passe donc entre deux écritures.
 - **Garde environnementale P3** (orthogonale) : avertir si la DB est sous un dossier
   cloud-sync (OneDrive) — réduit la fréquence du déclencheur à la source.
