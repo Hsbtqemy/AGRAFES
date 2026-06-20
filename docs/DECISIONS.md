@@ -1083,10 +1083,10 @@ Implémenter une vérification légère sans auto-install :
 - Path vers `tauri-plugin-updater` reste ouvert : il suffira de configurer les secrets
   de signing et un endpoint JSON pour migrer.
 
-## ADR-042 — Filet de reap des sidecars orphelins (R-01) — P0+P1 livré, threading (P2) différé
+## ADR-042 — Filet de reap des sidecars orphelins (R-01)
 
 **Date:** 2026-06-20
-**Status:** Décidé — P0+P1 livrés ; **P2 (`ThreadingHTTPServer`) différé** (voir ci-dessous)
+**Status:** Décidé & livré — P0+P1, puis **P2 implémenté** (RLock au dispatch) via `docs/TICKET_R01B_SIDECAR_THREADING.md`
 
 **Context**
 Trouvé en testant le shell : ouvrir une DB en mauvais état (vieux WAL non
@@ -1141,6 +1141,10 @@ reportés. `sidecar.py` reste donc inchangé dans ce lot.
   environnementale P3 (avertir) envisagée, non implémentée.
 
 **Consequences**
-- `sidecar.py` **inchangé** (P2 reverté) ; contrat OpenAPI inchangé.
-- P2 (threading) reste un chantier ouvert (R-01b) avec le design ci-dessus pour
-  le rendre thread-safe avant de l'activer.
+- P0+P1 livrés en premier (#76, `sidecar.py` alors inchangé) ; **P2 implémenté
+  ensuite** par sérialisation au dispatch (`RLock` + carve-out `/health`/`/openapi.json`/
+  `/shutdown`, `sidecar.py` net +25 l) — cf. `docs/TICKET_R01B_SIDECAR_THREADING.md`.
+  Contrat OpenAPI inchangé.
+- Sémantique de concurrence DB préservée (un accès à la fois) ; seule la responsivité
+  de `/health`+`/shutdown` sous handler bloqué change. La dette lecture-vs-job
+  préexistante est résorbée (tout le dispatch sous lock).

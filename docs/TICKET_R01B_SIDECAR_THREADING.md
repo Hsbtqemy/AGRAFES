@@ -1,4 +1,8 @@
-# Mission (future) : `/health` & `/shutdown` non-bloquants sous handler figé — R-01b
+# R-01b : `/health` & `/shutdown` non-bloquants sous handler figé
+
+> **Statut : ✅ implémenté** (approche A ci-dessous) — `RLock` au dispatch +
+> `ThreadingHTTPServer` + `daemon_threads`, `sidecar.py` net +25 l ; 3 tests de
+> concurrence + 195 tests in-process verts. Cette note reste la référence de design.
 
 Note de cadrage (figée **avant** ouverture du ticket). Suite directe du finding
 **R-01b** (`docs/AUDIT_FOLLOW_UP.md`) et de l'**ADR-042** (`docs/DECISIONS.md`), qui

@@ -89,7 +89,7 @@ adversariale (voir R-01b).
 | ID | Sév | Statut | Constat (résumé) + preuve |
 |----|-----|--------|---------------------------|
 | R-01a | 🟠 | ✅ corrigé | **Mauvais header de token au shutdown Rust.** `_do_shutdown` envoyait `X-Sidecar-Token` (`main.rs:251`), le serveur attend `X-Agrafes-Token` (`sidecar.py:511`) et `/shutdown` est write-path protégé (`sidecar.py:669`). Les 2 chemins de fermeture (`beforeunload`→`shutdown_sidecar_cmd` `shell.ts:1616`, et `WindowEvent::CloseRequested` `main.rs:286`) y passaient → **401 systématique → fuite d'un sidecar à chaque fermeture/reload** (pas seulement quand hung). Dérive depuis `a7d2a79`. **Fix P0** : header → `X-Agrafes-Token`. Vérifié par smoke headless (mauvais header → 401 + vivant ; bon header → 200 + arrêt). |
-| R-01b | 🟠 | ⬜ différé | **Serveur mono-thread.** `HTTPServer` et non `ThreadingHTTPServer` (`sidecar.py:7707`) → un handler bloqué (recovery WAL OneDrive) fige `/health` **et** `/shutdown`. **P2 (`ThreadingHTTPServer`) tenté puis reverté** : une passe adversariale a montré que plusieurs lectures partagent la connexion **hors lock** (`_handle_documents`, `_handle_doc_relations_all`, `_handle_align_source_changed_summary` — commentaires « Read — no write-lock »), sûres **uniquement** parce que le serveur mono-thread sérialise les requêtes ; le threading y introduit une **race SQLite** (« recursive use of cursors »). Faire P2 correctement = sérialisation au dispatch (`RLock`, carve-out `/health`+`/shutdown`) **ou** connexions par thread → cadré dans **`docs/TICKET_R01B_SIDECAR_THREADING.md`** (approche A retenue : RLock au dispatch). Mitigé entre-temps : R-01c (single-flight → pas de storm) + R-01d (PID-reap d'un process coincé à la fermeture). |
+| R-01b | 🟠 | ✅ corrigé | **Serveur mono-thread.** `HTTPServer` figeait `/health` **et** `/shutdown` sous un handler bloqué (recovery WAL OneDrive). Une 1ʳᵉ tentative de `ThreadingHTTPServer` naïf a été **revertée** (passe adversariale : ~lectures partagent la connexion **hors lock**, sûres seulement en mono-thread → race « recursive use of cursors »). **Fix (approche A du cadrage)** : `ThreadingHTTPServer` + `daemon_threads` ; lock global `Lock`→**`RLock`** ; **sérialisation au dispatch** dans `do_GET/POST/PUT` (carve-out lock-free de `/health`, `/openapi.json`, `/shutdown`) → un seul accès DB à la fois (pas de race), mais `/health`+`/shutdown` restent vifs sous handler bloqué. Cadrage : **`docs/TICKET_R01B_SIDECAR_THREADING.md`** ; `sidecar.py` net **+25 l**. Vérif : 3 tests de concurrence (`/health` vif sous lock tenu + réentrance RLock) + **195 tests in-process** verts (reads/POST/PUT/contrat). |
 | R-01c | 🟠 | ✅ corrigé | **Spawn non-sérialisé + child non-tué sur échec.** `_spawnedChild` est une variable unique (`sidecarCore.ts:36`) ; sur `!healthy` le child était abandonné sans kill (`sidecarCore.ts:784`). L'écran Constituer tire 4 GET en parallèle → 4 `reconnect→re-spawn` concurrents (`sidecarCore.ts:541-552`) → course sur l'unique handle → **orphelins multiples (le storm)**. **Fix P1** : kill-on-failed-spawn (tous chemins post-spawn) + **single-flight** (une seule tentative de spawn concurrente par DB). 2 tests vitest. Vérifié en live (1 seul spawn à l'ouverture du corpus démo). |
 | R-01d | 🟡 | ✅ corrigé | **Aucun reap niveau OS.** Le Rust ne tuait que par HTTP ; rien ne récupérait un process quand `/shutdown` échoue/timeout, alors que le portfile porte le `pid`. **Fix P1** : `register_sidecar` transmet le `pid` ; `_do_shutdown` **force-kill par PID** (`taskkill /F /T` / `kill -9`) en secours si le POST échoue/timeout. Couvre **spawn** (pid bootstrap → `/T` tue l'arbre) **et reuse** (pid worker lu du portfile → le bootstrap parent s'arrête en cascade) ; reap OS **vérifié headless** (kill du worker → cascade → 0 process). Vérifié en live (0 orphelin après fermeture d'une fenêtre avec sidecar actif). |
 
@@ -97,14 +97,11 @@ Déclencheur environnemental (R-01, hors périmètre code) : DB sous dossier clo
 (**OneDrive**) + WAL périmé. Garde P3 envisagée (avertir si DB sous cloud-sync) — non
 implémentée pour l'instant.
 
-**Dette adjacente (préexistante, à traiter avec R-01b).** La cause de R-01b — des
-handlers de lecture touchent la connexion SQLite partagée **hors `self._lock()`** —
-existe **déjà aujourd'hui** via le `JobManager` (écritures sur threads worker
-concurrentes des lectures de requêtes). Mono-thread + mode SQLite « serialized »
-bornent l'impact à des erreurs occasionnelles (« recursive use of cursors ») plutôt
-qu'à de la corruption, mais le fix propre de R-01b (RLock au dispatch **ou** connexions
-par thread) doit couvrir **tous** les sites `self._conn()` (132), pas seulement
-introduire le threading.
+**Dette adjacente — résorbée par R-01b.** La cause de R-01b — des handlers de lecture
+touchaient la connexion SQLite partagée **hors `self._lock()`** — existait déjà via le
+`JobManager` (écritures sur threads worker concurrentes des lectures de requêtes). Le
+fix R-01b met **tout le dispatch DB sous le lock** (RLock au niveau `do_GET/POST/PUT`),
+donc les 132 `self._conn()` sont désormais sérialisés — lecture-vs-job comprise.
 
 ---
 
