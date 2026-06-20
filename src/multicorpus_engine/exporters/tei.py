@@ -23,6 +23,11 @@ from __future__ import annotations
 import json as _json
 import re
 import sqlite3
+# S-04 — write-only exporter: this module only *builds* and *serialises* XML from
+# trusted internal DB rows (no parsing of untrusted input → no XXE/entity surface),
+# so stdlib `xml.etree` is appropriate. `defusedxml` only hardens *parsing* (and does
+# not expose the Element/SubElement build API); untrusted XML *parsing* lives in the
+# importers / tei_validate, which already use `defusedxml.ElementTree`.
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Optional
