@@ -520,7 +520,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             hostname = raw[: raw.find("]") + 1] if "]" in raw else raw
         else:
             hostname = raw.rsplit(":", 1)[0] if ":" in raw else raw
-        if hostname not in ("127.0.0.1", "localhost", "::1", "[::1]"):
+        # DNS hostnames are case-insensitive → fold before comparing.
+        if hostname.lower() not in ("127.0.0.1", "localhost", "::1", "[::1]"):
             self._send_error(
                 "Host header not allowed (loopback only)",
                 code=ERR_FORBIDDEN,

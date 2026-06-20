@@ -45,10 +45,11 @@ def test_loopback_host_is_accepted(tmp_path: Path) -> None:
         # urllib sets Host: 127.0.0.1:<port> by default → allowed.
         with urlopen(f"{base}/health", timeout=3) as resp:
             assert resp.status == 200
-        # An explicit `localhost` Host is allowed too.
-        req = Request(f"{base}/health", headers={"Host": f"localhost:{server.actual_port}"})
-        with urlopen(req, timeout=3) as resp:
-            assert resp.status == 200
+        # An explicit `localhost` Host is allowed too — and case-insensitively.
+        for host in (f"localhost:{server.actual_port}", f"LOCALHOST:{server.actual_port}"):
+            req = Request(f"{base}/health", headers={"Host": host})
+            with urlopen(req, timeout=3) as resp:
+                assert resp.status == 200
     finally:
         server.shutdown()
 
