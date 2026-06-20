@@ -238,7 +238,21 @@ describe("ensureRunning (portfile reuse)", () => {
     expect(vi.mocked(invoke)).toHaveBeenCalledWith("register_sidecar", {
       baseUrl: "http://127.0.0.1:8765",
       token: "abc",
-      pid: null, // portfile reuse — no child spawned on this path
+      pid: null, // reuse + this portfile carries no pid
+    });
+  });
+
+  it("registers the portfile pid so the reap fallback covers reused sidecars (R-01d)", async () => {
+    // A sidecar adopted via portfile (not spawned this session) has no _spawnedChild
+    // handle; without the portfile pid the Rust PID-kill fallback couldn't reap it.
+    wireSidecar({ ...PORTFILE, pid: 9999 });
+
+    await ensureRunning("/data/corpus.db");
+
+    expect(vi.mocked(invoke)).toHaveBeenCalledWith("register_sidecar", {
+      baseUrl: "http://127.0.0.1:8765",
+      token: "abc",
+      pid: 9999,
     });
   });
 

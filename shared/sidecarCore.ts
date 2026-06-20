@@ -24,6 +24,9 @@ export function utf8DecodeStream(chunk: Uint8Array, decoder: TextDecoder): strin
 export interface Conn {
   baseUrl: string;
   token: string | null;
+  /** Sidecar PID for the Rust reap fallback (R-01d): the spawned child (bootstrap)
+   *  on the spawn path, or the portfile pid on the reuse path. Null if unknown. */
+  pid?: number | null;
   post(path: string, body: unknown): Promise<unknown>;
   get(path: string): Promise<unknown>;
   put(path: string, body: unknown): Promise<unknown>;
@@ -515,10 +518,11 @@ export async function _rawGet(url: string, token: string | null, path: string): 
   return json;
 }
 
-export function makeConn(baseUrl: string, token: string | null): Conn {
+export function makeConn(baseUrl: string, token: string | null, pid: number | null = null): Conn {
   return {
     baseUrl,
     token,
+    pid,
     async post(path: string, body: unknown): Promise<unknown> {
       try {
         return await _rawPost(baseUrl, token, path, body);
@@ -612,7 +616,7 @@ async function _ensureRunning(dbPath: string): Promise<Conn> {
         const freshToken = pfData ? parseToken(pfData.token) : null;
         if (freshToken !== null) {
           sidecarLog("info", "recovered missing token from portfile; refreshing connection");
-          _conn = makeConn(_conn.baseUrl, freshToken);
+          _conn = makeConn(_conn.baseUrl, freshToken, _conn.pid ?? null);
           _connDbPath = dbPath;
         }
       }
@@ -678,7 +682,7 @@ async function _ensureRunning(dbPath: string): Promise<Conn> {
                 tokenPresent: token !== null,
                 tokenLength: token?.length ?? 0,
               });
-              _conn = makeConn(baseUrl, token);
+              _conn = makeConn(baseUrl, token, typeof pfData.pid === "number" ? pfData.pid : null);
               _connDbPath = dbPath;
               _persistSidecarPort(port);
               _notifyRustRegistry(_conn);
@@ -857,7 +861,7 @@ export async function _spawnSidecar(dbPath: string): Promise<Conn> {
     tokenLength: token?.length ?? 0,
   });
 
-  _conn = makeConn(baseUrl, token);
+  _conn = makeConn(baseUrl, token, _spawnedChild?.pid ?? null);
   _connDbPath = dbPath;
   _persistSidecarPort(port);
   _notifyRustRegistry(_conn);
@@ -1001,7 +1005,7 @@ export function _notifyRustRegistry(conn: Conn | null): void {
       void invoke("register_sidecar", {
         baseUrl: conn.baseUrl,
         token: conn.token ?? null,
-        pid: _spawnedChild?.pid ?? null,
+        pid: conn.pid ?? _spawnedChild?.pid ?? null,
       });
     } else {
       void invoke("register_sidecar", { baseUrl: "", token: null, pid: null });
