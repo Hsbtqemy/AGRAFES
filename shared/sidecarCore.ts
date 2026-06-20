@@ -582,7 +582,24 @@ export class SidecarError extends Error {
   }
 }
 
-export async function ensureRunning(dbPath: string): Promise<Conn> {
+/** In-flight ensureRunning per DB — coalesces concurrent callers so parallel
+ *  failing requests don't each spawn a sidecar (R-01c, the spawn-storm). */
+const _ensureInFlight = new Map<string, Promise<Conn>>();
+
+export function ensureRunning(dbPath: string): Promise<Conn> {
+  const existing = _ensureInFlight.get(dbPath);
+  if (existing) {
+    sidecarLog("info", `ensureRunning coalesced onto in-flight spawn (db=${dbPath})`);
+    return existing;
+  }
+  const p = _ensureRunning(dbPath).finally(() => {
+    _ensureInFlight.delete(dbPath);
+  });
+  _ensureInFlight.set(dbPath, p);
+  return p;
+}
+
+async function _ensureRunning(dbPath: string): Promise<Conn> {
   sidecarLog("info", `ensureRunning called (db=${dbPath})`);
 
   // 1. Reuse live in-memory connection — only if it serves the same DB
@@ -759,13 +776,27 @@ export async function _spawnSidecar(dbPath: string): Promise<Conn> {
   });
   sidecarLog("info", `sidecar spawned (pid=${child.pid}) after ${Date.now() - spawnStartedAt}ms`);
 
-  const started = await firstJsonPromise;
+  let started: Record<string, unknown>;
+  try {
+    started = await firstJsonPromise;
+  } catch (err) {
+    // Reap the child if it never emitted a valid startup payload (R-01c).
+    if (_spawnedChild === child) {
+      try { await child.kill(); } catch { /* ignore */ }
+      _spawnedChild = null;
+    }
+    throw err;
+  }
   sidecarLog("info", "startup payload selected", started);
 
   const host = (started.host as string) ?? "127.0.0.1";
   const port = parseStartupPort(started.port);
   if (port === null) {
     sidecarLog("error", "startup payload rejected (invalid port)", started);
+    if (_spawnedChild === child) {
+      try { await child.kill(); } catch { /* ignore */ }
+      _spawnedChild = null;
+    }
     throw new SidecarError("Sidecar startup payload missing valid port");
   }
 
@@ -782,6 +813,12 @@ export async function _spawnSidecar(dbPath: string): Promise<Conn> {
     intervalMs: SIDECAR_HEALTH_POLL_INTERVAL_MS,
   });
   if (!healthy) {
+    // Don't leak the unhealthy child (R-01c) — kill before bailing so a wedged
+    // startup can't pile up orphans across reconnect retries.
+    if (_spawnedChild === child) {
+      try { await _spawnedChild.kill(); } catch { /* ignore */ }
+      _spawnedChild = null;
+    }
     throw new SidecarError(
       `Sidecar did not become healthy within timeout (${SIDECAR_HEALTH_TIMEOUT_MS}ms)`
     );
@@ -959,9 +996,15 @@ export function getActiveConn(): Conn | null {
 export function _notifyRustRegistry(conn: Conn | null): void {
   try {
     if (conn) {
-      void invoke("register_sidecar", { baseUrl: conn.baseUrl, token: conn.token ?? null });
+      // pid = the spawned child (PyInstaller bootstrap) so Rust can tree-kill it
+      // as a reap fallback (R-01d); null on the portfile-reuse path.
+      void invoke("register_sidecar", {
+        baseUrl: conn.baseUrl,
+        token: conn.token ?? null,
+        pid: _spawnedChild?.pid ?? null,
+      });
     } else {
-      void invoke("register_sidecar", { baseUrl: "", token: null });
+      void invoke("register_sidecar", { baseUrl: "", token: null, pid: null });
     }
   } catch { /* best-effort */ }
 }

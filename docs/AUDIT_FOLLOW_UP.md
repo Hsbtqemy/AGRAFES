@@ -77,6 +77,28 @@ le §6 de l'audit 2026-06-12 ; « — » = non priorisé explicitement.
 
 ---
 
+## Découvert hors audit — runtime (2026-06-20)
+
+Trouvé en testant le shell desktop : ouvrir une DB en mauvais état (vieux WAL non
+checkpointé, dossier **OneDrive** qui verrouille le fichier) figeait le sidecar et
+laissait une **pile de `multicorpus.exe` orphelins** que la machinerie de cleanup
+ne récupérait pas. Investigation au code → **4 causes racines** (toutes vérifiées),
+puis durcissement **P0+P1 livré** ; **P2 (serveur threadé) différé** après une passe
+adversariale (voir R-01b).
+
+| ID | Sév | Statut | Constat (résumé) + preuve |
+|----|-----|--------|---------------------------|
+| R-01a | 🟠 | ✅ corrigé | **Mauvais header de token au shutdown Rust.** `_do_shutdown` envoyait `X-Sidecar-Token` (`main.rs:251`), le serveur attend `X-Agrafes-Token` (`sidecar.py:511`) et `/shutdown` est write-path protégé (`sidecar.py:669`). Les 2 chemins de fermeture (`beforeunload`→`shutdown_sidecar_cmd` `shell.ts:1616`, et `WindowEvent::CloseRequested` `main.rs:286`) y passaient → **401 systématique → fuite d'un sidecar à chaque fermeture/reload** (pas seulement quand hung). Dérive depuis `a7d2a79`. **Fix P0** : header → `X-Agrafes-Token`. Vérifié par smoke headless (mauvais header → 401 + vivant ; bon header → 200 + arrêt). |
+| R-01b | 🟠 | ⬜ différé | **Serveur mono-thread.** `HTTPServer` et non `ThreadingHTTPServer` (`sidecar.py:7707`) → un handler bloqué (recovery WAL OneDrive) fige `/health` **et** `/shutdown`. **P2 (`ThreadingHTTPServer`) tenté puis reverté** : une passe adversariale a montré que plusieurs lectures partagent la connexion **hors lock** (`_handle_documents`, `_handle_doc_relations_all`, `_handle_align_source_changed_summary` — commentaires « Read — no write-lock »), sûres **uniquement** parce que le serveur mono-thread sérialise les requêtes ; le threading y introduit une **race SQLite** (« recursive use of cursors »). Faire P2 correctement = sérialisation au dispatch (`RLock`, carve-out `/health`+`/shutdown`) **ou** connexions par thread → **ticket + ADR séparés**. Mitigé entre-temps : R-01c (single-flight → pas de storm) + R-01d (PID-reap d'un process coincé à la fermeture). |
+| R-01c | 🟠 | ✅ corrigé | **Spawn non-sérialisé + child non-tué sur échec.** `_spawnedChild` est une variable unique (`sidecarCore.ts:36`) ; sur `!healthy` le child était abandonné sans kill (`sidecarCore.ts:784`). L'écran Constituer tire 4 GET en parallèle → 4 `reconnect→re-spawn` concurrents (`sidecarCore.ts:541-552`) → course sur l'unique handle → **orphelins multiples (le storm)**. **Fix P1** : kill-on-failed-spawn (tous chemins post-spawn) + **single-flight** (une seule tentative de spawn concurrente par DB). 2 tests vitest. Vérifié en live (1 seul spawn à l'ouverture du corpus démo). |
+| R-01d | 🟡 | ✅ corrigé | **Aucun reap niveau OS.** Le Rust ne tuait que par HTTP ; rien ne récupérait un process quand `/shutdown` échoue/timeout, alors que le portfile porte le `pid`. **Fix P1** : `register_sidecar` transmet le `pid` ; `_do_shutdown` **force-kill par PID** (`taskkill /F /T` / `kill -9`) en secours si le POST échoue. Vérifié en live (0 orphelin après fermeture d'une fenêtre avec sidecar actif). |
+
+Déclencheur environnemental (R-01, hors périmètre code) : DB sous dossier cloud-sync
+(**OneDrive**) + WAL périmé. Garde P3 envisagée (avertir si DB sous cloud-sync) — non
+implémentée pour l'instant.
+
+---
+
 ## Audits antérieurs — échantillon vérifié (pas un ré-audit exhaustif)
 
 Statuts repris du §7 « Suivi des audits précédents » de `AUDIT_2026-06-12.md`

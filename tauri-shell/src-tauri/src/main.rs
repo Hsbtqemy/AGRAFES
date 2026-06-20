@@ -207,18 +207,45 @@ struct SidecarRegistry(Arc<Mutex<Option<SidecarEntry>>>);
 struct SidecarEntry {
     base_url: String,
     token: Option<String>,
+    /// PID of the spawned sidecar (bootstrap process), used as a reap fallback
+    /// when graceful /shutdown fails (R-01d). None on the portfile-reuse path.
+    pid: Option<u32>,
 }
 
 /// Called by JS whenever a sidecar connection is established or changes.
-/// Stores base_url + token so Rust can POST /shutdown on close.
+/// Stores base_url + token (+ pid) so Rust can POST /shutdown on close and
+/// force-kill the process if the graceful shutdown doesn't take.
 #[tauri::command]
 fn register_sidecar(
     base_url: String,
     token: Option<String>,
+    pid: Option<u32>,
     state: tauri::State<SidecarRegistry>,
 ) {
     let mut guard = state.0.lock().unwrap();
-    *guard = Some(SidecarEntry { base_url, token });
+    *guard = Some(SidecarEntry { base_url, token, pid });
+}
+
+/// Force-kills a sidecar process tree by PID (reap fallback, R-01d).
+/// Best-effort: a dead/unknown PID just yields a harmless error.
+fn _kill_pid(pid: Option<u32>) {
+    let Some(pid) = pid else { return };
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        // /T kills the whole tree: the PyInstaller bootstrap PID + its Python worker child.
+        let _ = std::process::Command::new("taskkill")
+            .args(["/F", "/T", "/PID", &pid.to_string()])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output();
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = std::process::Command::new("kill")
+            .args(["-9", &pid.to_string()])
+            .output();
+    }
 }
 
 /// Called by JS on beforeunload — best-effort synchronous shutdown.
@@ -230,12 +257,12 @@ async fn shutdown_sidecar_cmd(state: tauri::State<'_, SidecarRegistry>) -> Resul
         guard.take()
     };
     if let Some(e) = entry {
-        _do_shutdown(&e.base_url, e.token.as_deref()).await;
+        _do_shutdown(&e.base_url, e.token.as_deref(), e.pid).await;
     }
     Ok(())
 }
 
-async fn _do_shutdown(base_url: &str, token: Option<&str>) {
+async fn _do_shutdown(base_url: &str, token: Option<&str>, pid: Option<u32>) {
     let url = format!("{}/shutdown", base_url.trim_end_matches('/'));
     let client = match reqwest::Client::builder()
         .no_proxy()
@@ -244,13 +271,23 @@ async fn _do_shutdown(base_url: &str, token: Option<&str>) {
         .build()
     {
         Ok(c) => c,
-        Err(_) => return,
+        Err(_) => {
+            _kill_pid(pid);
+            return;
+        }
     };
     let mut req = client.post(&url).header("Content-Type", "application/json").body("{}");
     if let Some(tok) = token {
-        req = req.header("X-Sidecar-Token", tok);
+        // Server enforces `X-Agrafes-Token` on write paths (incl. /shutdown);
+        // sending the wrong header name 401s and leaks the sidecar (R-01a).
+        req = req.header("X-Agrafes-Token", tok);
     }
-    let _ = req.send().await; // best-effort
+    let graceful_ok = matches!(req.send().await, Ok(resp) if resp.status().is_success());
+    // Reap fallback (R-01d): if graceful /shutdown didn't take (401, timeout, or
+    // a wedged single-thread handler), force-kill by PID so it can't leak.
+    if !graceful_ok {
+        _kill_pid(pid);
+    }
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
@@ -283,7 +320,7 @@ fn main() {
                 api.prevent_close();
                 let window = window.clone();
                 tauri::async_runtime::spawn(async move {
-                    _do_shutdown(&e.base_url, e.token.as_deref()).await;
+                    _do_shutdown(&e.base_url, e.token.as_deref(), e.pid).await;
                     let _ = window.close();
                 });
             }

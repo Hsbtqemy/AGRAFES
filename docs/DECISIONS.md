@@ -1082,3 +1082,65 @@ Implémenter une vérification légère sans auto-install :
 - Aucune dépendance CI supplémentaire.
 - Path vers `tauri-plugin-updater` reste ouvert : il suffira de configurer les secrets
   de signing et un endpoint JSON pour migrer.
+
+## ADR-042 — Filet de reap des sidecars orphelins (R-01) — P0+P1 livré, threading (P2) différé
+
+**Date:** 2026-06-20
+**Status:** Décidé — P0+P1 livrés ; **P2 (`ThreadingHTTPServer`) différé** (voir ci-dessous)
+
+**Context**
+Trouvé en testant le shell : ouvrir une DB en mauvais état (vieux WAL non
+checkpointé, dossier **OneDrive** qui verrouille le fichier SQLite) figeait le
+sidecar et laissait une pile de `multicorpus.exe` orphelins. Quatre causes
+racines (cf. `AUDIT_FOLLOW_UP.md` R-01) :
+- **R-01a** — le shutdown gracieux côté Rust (`main.rs::_do_shutdown`) envoyait le
+  mauvais header (`X-Sidecar-Token` au lieu de `X-Agrafes-Token`) → `/shutdown`
+  401 → **fuite à chaque fermeture**.
+- **R-01b** — le serveur était un `http.server.HTTPServer` **mono-thread** : un
+  handler bloqué sur de l'I/O DB lente/verrouillée figeait aussi `/health` et
+  `/shutdown`, rendant le process à la fois « malsain » (le client re-spawn) et
+  non-tuable par HTTP.
+- **R-01c** — `_spawnedChild` (un seul handle) et l'absence de kill sur spawn raté :
+  les 4 GET parallèles de l'écran Constituer déclenchaient autant de
+  `reconnect→re-spawn` concurrents → orphelins multiples (le « spawn-storm »).
+- **R-01d** — aucun reap niveau OS quand le shutdown HTTP échoue.
+
+**Decision**
+Filet en couches. **P0+P1 livrés** :
+1. **R-01a** — corriger le header de shutdown Rust (`X-Sidecar-Token` →
+   `X-Agrafes-Token`) → le shutdown gracieux reprend à la fermeture.
+2. **R-01c** — côté client (`shared/sidecarCore.ts`) : **single-flight** sur
+   `ensureRunning` (une seule tentative de spawn concurrente par DB → supprime le
+   spawn-storm) + kill du child sur tout échec de spawn.
+3. **R-01d** — `register_sidecar` transmet le `pid` ; `_do_shutdown` **force-kill
+   par PID** (`taskkill /F /T` / `kill -9`) si le `/shutdown` gracieux échoue/timeout.
+
+**P2 (R-01b) — différé après revue.** Passer le serveur en `ThreadingHTTPServer`
+rendrait `/health`/`/shutdown` (lock-free) vifs sous un handler bloqué. Mais une
+passe adversariale a montré que le code suppose **« une requête à la fois »** :
+de nombreux handlers de lecture touchent la connexion partagée **hors `self._lock()`**
+(`_handle_documents`, `_handle_doc_relations_all`, `_handle_align_source_changed_summary`,
+…), sûrs uniquement parce que le serveur mono-thread sérialise les requêtes. Le
+threading y introduirait une **race SQLite** (accès concurrent à une même
+`sqlite3.Connection` → « recursive use of cursors »). Le rendre correct demande soit
+une **sérialisation au dispatch** (lock → `RLock`, carve-out `/health`+`/shutdown`,
+le reste sous lock — équivalent au comportement mono-thread d'origine + fast-path
+santé), soit des **connexions par thread** (`threading.local`, refonte du cycle de
+vie connexion : backup, migrations, runs). Les deux méritent leur propre PR + revue →
+reportés. `sidecar.py` reste donc inchangé dans ce lot.
+
+**Pourquoi P0+P1 suffisent pour l'instant**
+- La fuite réelle (orphelins) est éliminée : header corrigé (plus de fuite à la
+  fermeture) + PID-reap (process coincé tué à la fermeture) + single-flight (plus de
+  storm). **Vérifié en live** : 1 spawn propre à l'ouverture du corpus démo, 0
+  orphelin après fermeture d'une fenêtre avec sidecar actif ; + smoke headless du
+  binaire (mauvais header → 401 + vivant ; bon header → 200 + arrêt propre).
+- Sans P2, un handler bloqué peut encore figer `/health` transitoirement, mais le
+  single-flight empêche le storm et le PID-reap récupère le process à la fermeture.
+- Déclencheur de fond = DB sous dossier cloud-sync (OneDrive) + WAL périmé ; garde
+  environnementale P3 (avertir) envisagée, non implémentée.
+
+**Consequences**
+- `sidecar.py` **inchangé** (P2 reverté) ; contrat OpenAPI inchangé.
+- P2 (threading) reste un chantier ouvert (R-01b) avec le design ci-dessus pour
+  le rendre thread-safe avant de l'activer.
