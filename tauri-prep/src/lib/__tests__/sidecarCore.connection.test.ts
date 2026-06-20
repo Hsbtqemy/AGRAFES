@@ -48,6 +48,7 @@ import {
   makeBaseUrl,
   normalizeLoopbackHost,
   resetConnection,
+  SIDECAR_STARTUP_JSON_TIMEOUT_MS,
   SidecarError,
   shutdownSidecar,
 } from "../../../../shared/sidecarCore";
@@ -91,6 +92,19 @@ function makeFakeCommand(startup: Record<string, unknown>) {
       stdoutCb?.(JSON.stringify(startup)); // sidecar prints startup payload
       return child;
     }),
+  };
+}
+
+/** Like makeFakeCommand but never emits a startup payload — drives the
+ *  startup-JSON timeout (reap-on-failed-spawn, R-01c). */
+function makeSilentCommand() {
+  const child = { pid: 5151, kill: vi.fn().mockResolvedValue(undefined) };
+  return {
+    _child: child,
+    stdout: { on: vi.fn() }, // never delivers "data" → no startup JSON
+    stderr: { on: vi.fn() },
+    on: vi.fn(),
+    spawn: vi.fn(async () => child),
   };
 }
 
@@ -198,7 +212,7 @@ describe("shutdownSidecar", () => {
 
     expect(post).toHaveBeenCalledWith("/shutdown", {});
     expect(getActiveConn()).toBeNull();
-    expect(vi.mocked(invoke)).toHaveBeenCalledWith("register_sidecar", { baseUrl: "", token: null });
+    expect(vi.mocked(invoke)).toHaveBeenCalledWith("register_sidecar", { baseUrl: "", token: null, pid: null });
   });
 
   it("swallows a failing /shutdown (best-effort) and still clears state", async () => {
@@ -224,6 +238,21 @@ describe("ensureRunning (portfile reuse)", () => {
     expect(vi.mocked(invoke)).toHaveBeenCalledWith("register_sidecar", {
       baseUrl: "http://127.0.0.1:8765",
       token: "abc",
+      pid: null, // reuse + this portfile carries no pid
+    });
+  });
+
+  it("registers the portfile pid so the reap fallback covers reused sidecars (R-01d)", async () => {
+    // A sidecar adopted via portfile (not spawned this session) has no _spawnedChild
+    // handle; without the portfile pid the Rust PID-kill fallback couldn't reap it.
+    wireSidecar({ ...PORTFILE, pid: 9999 });
+
+    await ensureRunning("/data/corpus.db");
+
+    expect(vi.mocked(invoke)).toHaveBeenCalledWith("register_sidecar", {
+      baseUrl: "http://127.0.0.1:8765",
+      token: "abc",
+      pid: 9999,
     });
   });
 
@@ -307,6 +336,7 @@ describe("ensureRunning (spawn / cold start)", () => {
     expect(vi.mocked(invoke)).toHaveBeenCalledWith("register_sidecar", {
       baseUrl: "http://127.0.0.1:8765",
       token: "abc",
+      pid: 4242, // makeFakeCommand's child pid — registered for the reap fallback
     });
   });
 
@@ -332,11 +362,42 @@ describe("ensureRunning (spawn / cold start)", () => {
     expect(localStorage.getItem("agrafes.sidecar.port")).toBe("9123");
   });
 
-  // NOTE: a spawn-failure case is intentionally omitted — when command.spawn()
-  // rejects, _spawnSidecar throws before awaiting the startup-JSON reader, which
-  // leaves that reader's ~12 s timeout timer pending (floating rejection). Not
-  // worth the flakiness; PR2 only changes the *post*-spawn token/registry/port
-  // logic, which the happy-path test above already guards.
+  it("coalesces concurrent ensureRunning calls for the same DB into one spawn (R-01c)", async () => {
+    wireSidecar(null); // no portfile → both calls would spawn without single-flight
+    const cmd = makeFakeCommand({ host: "127.0.0.1", port: 8765, token: "t", portfile: "/data/.agrafes_sidecar.json" });
+    vi.mocked(Command.sidecar).mockReturnValue(cmd as never);
+
+    // Fire two concurrently (mirrors the 4 parallel screen-load GETs that drove
+    // the spawn-storm): the second must ride the first's in-flight promise.
+    const [a, b] = await Promise.all([
+      ensureRunning("/data/corpus.db"),
+      ensureRunning("/data/corpus.db"),
+    ]);
+
+    expect(a).toBe(b);                                            // same coalesced Conn
+    expect(vi.mocked(Command.sidecar)).toHaveBeenCalledTimes(1);  // ONE spawn, not two
+    expect(cmd.spawn).toHaveBeenCalledTimes(1);
+  });
+
+  it("reaps the spawned child when no startup payload ever arrives (R-01c)", async () => {
+    vi.useFakeTimers();
+    try {
+      wireSidecar(null);
+      const cmd = makeSilentCommand();
+      vi.mocked(Command.sidecar).mockReturnValue(cmd as never);
+
+      const p = ensureRunning("/data/corpus.db");
+      p.catch(() => { /* expected rejection — avoid unhandled */ });
+
+      // Drive the startup-JSON timeout; the post-spawn catch must reap the child.
+      await vi.advanceTimersByTimeAsync(SIDECAR_STARTUP_JSON_TIMEOUT_MS + 100);
+
+      await expect(p).rejects.toThrow();
+      expect(cmd._child.kill).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 // ─── Transport (conn.get / conn.post) — shared HTTP semantics ─────────────────
