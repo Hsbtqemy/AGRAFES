@@ -49,6 +49,7 @@ from .sidecar_contract import (
     CONTRACT_VERSION,
     ERR_BAD_REQUEST,
     ERR_CONFLICT,
+    ERR_FORBIDDEN,
     ERR_INTERNAL,
     ERR_NOT_FOUND,
     ERR_UNAUTHORIZED,
@@ -504,6 +505,30 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             return token
         return None
 
+    def _check_host(self) -> bool:
+        """Reject requests whose Host header is not a loopback name (S-01).
+
+        The socket already binds to loopback; this is defense-in-depth against DNS
+        rebinding (a browser tricked into hitting 127.0.0.1 with a foreign Host).
+        A missing Host (HTTP/1.0) is allowed — the connection is loopback-bound.
+        """
+        raw = (self.headers.get("Host") or "").strip()
+        if not raw:
+            return True
+        # Strip the port, handling IPv6 literals ([::1]:port).
+        if raw.startswith("["):
+            hostname = raw[: raw.find("]") + 1] if "]" in raw else raw
+        else:
+            hostname = raw.rsplit(":", 1)[0] if ":" in raw else raw
+        if hostname not in ("127.0.0.1", "localhost", "::1", "[::1]"):
+            self._send_error(
+                "Host header not allowed (loopback only)",
+                code=ERR_FORBIDDEN,
+                http_status=403,
+            )
+            return False
+        return True
+
     def _require_token_for_write(self) -> bool:
         expected = self._token()
         if expected is None:
@@ -545,6 +570,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         try:
+            if not self._check_host():
+                return
             # /health and /openapi.json touch no DB → keep them lock-free so they
             # stay responsive even when a DB handler holds the lock (R-01b).
             if urlparse(self.path).path in ("/health", "/openapi.json"):
@@ -644,6 +671,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 
     def do_PUT(self) -> None:
         try:
+            if not self._check_host():
+                return
             body = self._read_body()
             path = urlparse(self.path).path
 
@@ -669,6 +698,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         _lock_held = False
         try:
+            if not self._check_host():
+                return
             body = self._read_body()
             path = urlparse(self.path).path
 
@@ -7841,11 +7872,23 @@ class CorpusServer:
         }
         if self._token:
             payload["token"] = self._token
-        self._portfile_path.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
-        self._portfile_path.chmod(0o600)
+        data = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
+        # S-02 — create with 0o600 *at creation* (no window where the file has default
+        # umask perms before a later chmod) and O_EXCL so we never write into a file we
+        # didn't create. We own this path, so a stale portfile is removed first.
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+        try:
+            fd = os.open(self._portfile_path, flags, 0o600)
+        except FileExistsError:
+            os.unlink(self._portfile_path)
+            fd = os.open(self._portfile_path, flags, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(data)
+        # Enforce exact mode on POSIX (no-op-ish on Windows); harmless if already 0o600.
+        try:
+            self._portfile_path.chmod(0o600)
+        except OSError:
+            pass
 
     def _remove_portfile(self) -> None:
         try:
