@@ -44,6 +44,7 @@ import { initCardAccordions } from "../lib/uiAccordions.ts";
 import { compareDocsByTitle } from "../lib/docSort.ts";
 import { computeNextSteps, type PrepNavTarget } from "../lib/prepNextStep.ts";
 import { NextStepBanner } from "../components/NextStepBanner.ts";
+import { setHtml, raw } from "../lib/safeHtml.ts";
 
 // ─── Types locaux ─────────────────────────────────────────────────────────────
 
@@ -131,7 +132,7 @@ export class AlignPanel {
   render(): HTMLElement {
     const el = document.createElement("div");
     el.className = "prep-align-panel-root";
-    el.innerHTML = this._html();
+    setHtml(el, raw(this._html()));
     this._el = el;
     this._bindEvents(el);
     this._populatePairSelects(el);
@@ -189,12 +190,12 @@ export class AlignPanel {
       const docCount = summary.docs.length;
       const liens = `${summary.total} lien${summary.total > 1 ? "s" : ""} d'alignement`;
       const docs = `${docCount} document${docCount > 1 ? "s" : ""}`;
-      banner.innerHTML =
+      setHtml(banner, raw(
         `<span class="prep-align-src-changed-icon" aria-hidden="true">&#9888;</span> `
         + `<strong>${liens}</strong> sur ${docs} ont une source pivot modifiée `
         + `depuis l'alignement — la traduction alignée est peut-être à revoir. `
         + `<span class="prep-align-src-changed-hint">Détail et acquittement : `
-        + `onglet Documents &#8594; bouton « Curation ».</span>`;
+        + `onglet Documents &#8594; bouton « Curation ».</span>`));
       banner.style.display = "";
     } catch {
       // best-effort : la bannière ne doit jamais casser l'écran.
@@ -594,11 +595,11 @@ export class AlignPanel {
           : `<span class="prep-align-fp-tag-warn">⚠</span>`;
         return `<span class="prep-align-fp-child">${segTag} ${_esc(doc?.title ?? `#${c.doc_id}`)}${lang}</span>`;
       }).join(" ");
-      statsEl.innerHTML =
+      setHtml(statsEl, raw(
         `<span class="prep-align-fp-stat">${aligned_pairs}/${total_pairs} paires · ${completion_pct.toFixed(0)}%</span>` +
         (fam.stats.ratio_warnings.length > 0
           ? ` <span class="prep-align-fp-warn">⚠ ${fam.stats.ratio_warnings.length} ratio(s)</span>` : "") +
-        ` ${children}`;
+        ` ${children}`));
     }
     this._updateRunBtnState(el);
   }
@@ -823,13 +824,13 @@ export class AlignPanel {
       </tr>`;
     }).join("");
 
-    bodyEl.innerHTML = `<table class="prep-fam-table">
+    setHtml(bodyEl, raw(`<table class="prep-fam-table">
       <thead><tr>
         <th class="prep-fam-col-pivot">${_esc(_trunc(pivotDoc?.title ?? "Pivot", 24))}</th>
         ${childHeaders}
       </tr></thead>
       <tbody>${rowsHtml}</tbody>
-    </table>`;
+    </table>`));
 
     this._bindFamilyBitextEvents(el, bodyEl, fam);
   }
@@ -967,11 +968,11 @@ export class AlignPanel {
     const action = recalculate ? "Recalcul global" : "Alignement";
     const msgEl = el.querySelector<HTMLElement>("#align-confirm-msg");
     const banner = el.querySelector<HTMLElement>("#align-confirm-banner");
-    if (msgEl) msgEl.innerHTML =
+    if (msgEl) setHtml(msgEl, raw(
       `<strong>${action}</strong> · ${_esc(pivTitle)} &#8596; ${_esc(tgtTitle)}<br>
        Stratégie : <strong>${_esc(strategy)}</strong> ·
        Liens validés : <strong>${preserve ? "conservés" : "remplacés"}</strong>` +
-       (debug ? " · debug" : "");
+       (debug ? " · debug" : "")));
     if (banner) {
       banner.style.display = "";
       banner.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -991,10 +992,10 @@ export class AlignPanel {
     const debugAlign = el.querySelector<HTMLInputElement>("#align-debug-cb")?.checked ?? false;
     const msgEl = el.querySelector<HTMLElement>("#align-confirm-msg");
     const banner = el.querySelector<HTMLElement>("#align-confirm-banner");
-    if (msgEl) msgEl.innerHTML =
+    if (msgEl) setHtml(msgEl, raw(
       `<strong>Aligner famille</strong> · ${_esc(label)} (${n} paires)<br>
        Stratégie : <strong>${_esc(strategy)}</strong> ·
-       Liens validés : <strong>${preserve ? "conservés" : "remplacés"}</strong>`;
+       Liens validés : <strong>${preserve ? "conservés" : "remplacés"}</strong>`));
     if (banner) {
       banner.style.display = "";
       banner.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -1164,15 +1165,15 @@ export class AlignPanel {
     this._setKpi(summary, "skipped", s.skipped);
     const banner = summary.querySelector<HTMLElement>("#align-summary-banner");
     if (banner) {
-      banner.innerHTML = (recalculate && s.deleted !== undefined)
+      setHtml(banner, raw((recalculate && s.deleted !== undefined)
         ? `<span class="stat-warn">${s.deleted} nettoyés</span> · <span class="prep-stat-ok">${s.preserved} conservés</span>`
-        : "";
+        : ""));
     }
     const perTarget = summary.querySelector<HTMLElement>("#align-summary-per-target");
     if (perTarget) {
-      perTarget.innerHTML = s.perTarget.map(t =>
+      setHtml(perTarget, raw(s.perTarget.map(t =>
         `<div class="prep-align-summary-row">→ Doc #${t.doc_id} : <strong>${t.created}</strong> créés, ${t.skipped} ignorés</div>`
-      ).join("");
+      ).join("")));
     }
   }
 
@@ -1186,19 +1187,19 @@ export class AlignPanel {
     const banner = summary.querySelector<HTMLElement>("#align-summary-banner");
     if (banner) {
       const { aligned, total_pairs, errors } = result.summary;
-      banner.innerHTML = `${aligned}/${total_pairs} paires` +
-        (errors > 0 ? ` · <span class="stat-err">${errors} erreur(s)</span>` : "");
+      setHtml(banner, raw(`${aligned}/${total_pairs} paires` +
+        (errors > 0 ? ` · <span class="stat-err">${errors} erreur(s)</span>` : "")));
     }
 
     const perTarget = summary.querySelector<HTMLElement>("#align-summary-per-target");
     if (perTarget) {
-      perTarget.innerHTML = result.results.map(r => {
+      setHtml(perTarget, raw(result.results.map(r => {
         const icon = r.status === "aligned" ? "✓" : r.status === "skipped" ? "⏭" : "✗";
         const cls = r.status === "aligned" ? "prep-stat-ok" : r.status === "error" ? "stat-err" : "";
-        return `<div class="prep-align-summary-row ${cls}">${icon} Doc #${r.target_doc_id} (${r.target_lang}) : ${r.links_created} liens · ${r.status}` +
+        return `<div class="prep-align-summary-row ${cls}">${icon} Doc #${r.target_doc_id} (${_esc(r.target_lang)}) : ${r.links_created} liens · ${_esc(r.status)}` +
           (r.warnings.length > 0 ? `<br><em>${r.warnings.map(_esc).join(" · ")}</em>` : "") +
           `</div>`;
-      }).join("");
+      }).join("")));
     }
   }
 
@@ -1244,7 +1245,7 @@ export class AlignPanel {
       }
       // Populate details panel
       if (detailsEl && detailsBody) {
-        detailsBody.innerHTML = `
+        setHtml(detailsBody, raw(`
           <div class="prep-align-qd-grid">
             <span class="prep-align-qd-label" title="Segments pivot sans aucun lien">Orphelins pivot</span>
             <span class="prep-align-qd-val ${s.orphan_pivot_count === 0 ? "ok" : "warn"}">${s.orphan_pivot_count}</span>
@@ -1261,10 +1262,10 @@ export class AlignPanel {
           <div class="prep-align-qd-orphans">
             <div class="prep-align-qd-orphans-label">Exemples orphelins pivot :</div>
             ${res.sample_orphan_pivot.slice(0, 3).map(o =>
-              `<div class="prep-align-qd-orphan">[§${o.external_id ?? "?"}] ${o.text?.slice(0, 80) ?? ""}</div>`
+              `<div class="prep-align-qd-orphan">[§${_esc(String(o.external_id ?? "?"))}] ${_esc(o.text?.slice(0, 80) ?? "")}</div>`
             ).join("")}
           </div>` : ""}
-        `;
+        `));
         detailsEl.style.display = "";
       }
       this._lastCollisionCount = s.collision_count;
@@ -1414,7 +1415,7 @@ export class AlignPanel {
         addPickerRendered.add(lk.pivot_unit_id);
       }
     }
-    body.innerHTML = rows.join("");
+    setHtml(body, raw(rows.join("")));
 
     // a11y (E-2) : la liste de liens d'alignement est une table (structure
     // tabulaire div-based). On expose `role="table"` — et non `role="grid"`,
@@ -1543,7 +1544,7 @@ export class AlignPanel {
           data-uid="${c.target_unit_id}"
           title="${conflict ? "Déjà lié à ce pivot — sélectionner supprimera le lien existant" : `score ${c.score.toFixed(2)} — ${_esc(c.reason)}`}"
           ${conflict ? 'data-conflict="1"' : ""}>
-          <span class="prep-align-picker-cand-ext">[§${c.external_id ?? "?"}]</span>
+          <span class="prep-align-picker-cand-ext">[§${_esc(String(c.external_id ?? "?"))}]</span>
           <span class="prep-align-picker-cand-text">${_esc(c.target_text.slice(0, 120))}</span>
           <span class="prep-align-picker-cand-score">${conflict ? "⚠ déjà lié" : `${(c.score * 100).toFixed(0)}%`}</span>
         </button>`;
@@ -1604,17 +1605,17 @@ export class AlignPanel {
       if (candidates.length === 0) {
         candsEl.innerHTML = `<span class="prep-align-picker-empty">Aucun candidat trouv\u00e9.</span>`;
       } else {
-        candsEl.innerHTML = candidates.map(c => {
+        setHtml(candsEl, raw(candidates.map(c => {
           const conflict = alreadyLinked.has(c.target_unit_id);
           return `<button class="prep-align-picker-cand${conflict ? " prep-align-picker-cand--conflict" : ""}"
             data-uid="${c.target_unit_id}"
             title="${conflict ? "D\u00e9j\u00e0 li\u00e9 \u00e0 ce pivot" : `score ${c.score.toFixed(2)} \u2014 ${_esc(c.reason)}`}"
             ${conflict ? 'data-conflict="1"' : ""}>
-            <span class="prep-align-picker-cand-ext">[§${c.external_id ?? "?"}]</span>
+            <span class="prep-align-picker-cand-ext">[§${_esc(String(c.external_id ?? "?"))}]</span>
             <span class="prep-align-picker-cand-text">${_esc(c.target_text.slice(0, 120))}</span>
             <span class="prep-align-picker-cand-score">${conflict ? "\u26a0 d\u00e9j\u00e0 li\u00e9" : `${(c.score * 100).toFixed(0)}%`}</span>
           </button>`;
-        }).join("");
+        }).join("")));
         this._bindPickerCandidateEvents(el, candsEl);
       }
     }
@@ -1730,14 +1731,14 @@ export class AlignPanel {
       bodyEl.innerHTML = `<p class="hint">&#10003; Aucun orphelin &#8212; tous les segments ont au moins un lien.</p>`;
       return;
     }
-    bodyEl.innerHTML = this._orphanPivots.map(u => {
+    setHtml(bodyEl, raw(this._orphanPivots.map(u => {
       const isOpen = this._retargetActive?.pivotUnitId === u.unit_id && this._retargetActive.mode === "create";
       return `<div class="prep-align-orphan-row${isOpen ? " prep-align-orphan-row--active" : ""}" data-unit-id="${u.unit_id}">
         <span class="prep-align-row-extid">[§${u.n}]</span>
         <span class="prep-align-orphan-text">${_esc(u.text_norm?.slice(0, 100) ?? "")}</span>
         <button class="btn btn-sm btn-secondary prep-align-orphan-link-btn${isOpen ? " active" : ""}" data-unit-id="${u.unit_id}" title="Créer un lien pour ce segment">&#8629; Lier</button>
       </div>${isOpen ? this._pickerRowHtml(u.unit_id, null, u.text_norm ?? "") : ""}`;
-    }).join("");
+    }).join("")));
     bodyEl.querySelectorAll<HTMLButtonElement>(".prep-align-orphan-link-btn").forEach(btn => {
       btn.addEventListener("click", () => {
         const uid = parseInt(btn.dataset.unitId!);
@@ -1784,7 +1785,7 @@ export class AlignPanel {
       ? ` <button id="align-coll-toggle" class="prep-align-coll-badge" title="Voir et r\u00e9soudre les collisions">&#9888; ${this._lastCollisionCount} collision(s)</button>`
       : "";
     kpi.style.display = "";
-    kpi.innerHTML = `<span class="kpi-ok">&#10003;${accepted}</span> <span class="kpi-err">&#10007;${rejected}</span> <span class="kpi-muted">?${unreviewed}</span>${collBadge}`;
+    setHtml(kpi, raw(`<span class="kpi-ok">&#10003;${accepted}</span> <span class="kpi-err">&#10007;${rejected}</span> <span class="kpi-muted">?${unreviewed}</span>${collBadge}`));
     kpi.querySelector("#align-coll-toggle")?.addEventListener("click", () => {
       const section = el.querySelector<HTMLElement>("#align-coll-section");
       if (!section) return;
@@ -1855,7 +1856,7 @@ export class AlignPanel {
       const bar = el.querySelector<HTMLElement>("#align-batch-bar");
       if (!bar) { resolve(true); return; }
       const original = bar.innerHTML;
-      const restore = () => { bar.innerHTML = original; this._updateBatchBar(el); };
+      const restore = () => { setHtml(bar, raw(original)); this._updateBatchBar(el); };
       bar.innerHTML = `<span class="prep-align-del-confirm-msg">${_esc(msg)}</span>
         <button class="btn btn-sm btn-danger" id="_inline-ok">Confirmer</button>
         <button class="btn btn-sm btn-ghost" id="_inline-cancel">Annuler</button>`;
@@ -1941,7 +1942,7 @@ export class AlignPanel {
       }).join("");
       return `<div class="collision-group" style="margin-bottom:1rem;border:1px solid var(--border);border-radius:6px;overflow:hidden">
         <div class="collision-pivot-header" style="background:var(--surface-alt,#f5f5f5);padding:0.4rem 0.75rem;font-size:0.85rem;font-weight:600">
-          [§${g.pivot_external_id ?? "?"}] ${_esc(g.pivot_text ?? "")}
+          [§${_esc(String(g.pivot_external_id ?? "?"))}] ${_esc(g.pivot_text ?? "")}
           <button class="btn btn-sm btn-danger coll-delete-others-btn" data-group="${g.pivot_unit_id}" data-target="${targetDocId}"
             style="float:right;font-size:0.75rem" aria-label="Supprimer tous les liens de ce groupe">🗑 Tout supprimer</button>
         </div>
@@ -1951,7 +1952,7 @@ export class AlignPanel {
         </table>
       </div>`;
     }).join("");
-    resultEl.innerHTML = header + groupHtml;
+    setHtml(resultEl, raw(header + groupHtml));
     if (moreWrap) moreWrap.style.display = this._collHasMore ? "" : "none";
     resultEl.querySelectorAll<HTMLButtonElement>(".coll-keep-btn").forEach(btn => {
       btn.addEventListener("click", () => {
@@ -2007,7 +2008,9 @@ export class AlignPanel {
 // ─── Utilitaires ─────────────────────────────────────────────────────────────
 
 function _esc(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  // S-03 — escape " too so the helper is safe in double-quoted attribute contexts,
+  // not only in text content (& < > "). Keeps parity with the other prep escapers.
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 function _trunc(s: string, max: number): string {
