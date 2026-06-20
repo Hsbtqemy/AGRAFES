@@ -22,6 +22,7 @@ import { getCurrent as getCurrentDeepLinks, onOpenUrl } from "@tauri-apps/plugin
 import { appDataDir } from "@tauri-apps/api/path";
 import { invoke } from "@tauri-apps/api/core";
 import type { ShellContext } from "./context.ts";
+import { isCloudSyncedPath } from "./cloudSync.ts";
 
 // ─── CSS ─────────────────────────────────────────────────────────────────────
 
@@ -1374,6 +1375,17 @@ async function _switchDb(path: string): Promise<void> {
       _updateDbBadge(); // shows ⚠ suffix while remount is pending
       _showToast(`DB changée : ${_pathLabel(path)}`);
       _showDbChangeBanner(_pathLabel(path));
+    }
+    // R-01 P3 — avertir si la base est dans un dossier synchronisé (OneDrive…) : la
+    // synchro peut verrouiller le fichier SQLite et figer le sidecar. Toast affiché en
+    // dernier → il remplace le toast de succès et reste visible.
+    const _cloud = isCloudSyncedPath(path);
+    if (_cloud.synced) {
+      _showToast(
+        `⚠️ Base dans ${_cloud.provider} : la synchronisation peut verrouiller le ` +
+        `fichier et bloquer l'app. Recommandé : copier la base hors du dossier synchronisé.`,
+        9000,
+      );
     }
   } catch (err) {
     _shellLog("error", "db_switch", `DB init failed: ${_pathLabel(path)}`, String(err));

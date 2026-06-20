@@ -94,8 +94,11 @@ adversariale (voir R-01b).
 | R-01d | 🟡 | ✅ corrigé | **Aucun reap niveau OS.** Le Rust ne tuait que par HTTP ; rien ne récupérait un process quand `/shutdown` échoue/timeout, alors que le portfile porte le `pid`. **Fix P1** : `register_sidecar` transmet le `pid` ; `_do_shutdown` **force-kill par PID** (`taskkill /F /T` / `kill -9`) en secours si le POST échoue/timeout. Couvre **spawn** (pid bootstrap → `/T` tue l'arbre) **et reuse** (pid worker lu du portfile → le bootstrap parent s'arrête en cascade) ; reap OS **vérifié headless** (kill du worker → cascade → 0 process). Vérifié en live (0 orphelin après fermeture d'une fenêtre avec sidecar actif). |
 
 Déclencheur environnemental (R-01, hors périmètre code) : DB sous dossier cloud-sync
-(**OneDrive**) + WAL périmé. Garde P3 envisagée (avertir si DB sous cloud-sync) — non
-implémentée pour l'instant.
+(**OneDrive**) + WAL périmé. **Garde P3 — ✅ implémentée** : le shell détecte à
+l'ouverture si la base est sous un dossier synchronisé connu (OneDrive, Dropbox,
+Google Drive, iCloud, macOS CloudStorage) via `isCloudSyncedPath` (heuristique pure,
+testée) et affiche un **toast d'avertissement** non bloquant dans `_switchDb`
+(recommande de copier la base hors du dossier synchronisé).
 
 **Dette adjacente — résorbée par R-01b.** La cause de R-01b — des handlers de lecture
 touchaient la connexion SQLite partagée **hors `self._lock()`** — existait déjà via le
