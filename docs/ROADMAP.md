@@ -15,7 +15,7 @@ Moteur jugé **techniquement sain et bien gouverné** par l'audit du 12 juin (no
 - **Tests cœur** (T-02) : suites directes `telemetry.py` + `curation.py` (100 %).
 - **Correctifs métier** (P1-5) : re-flag des liens undo merge/split/resegment (N-02), `links_created` via rowcount (N-03), `bump_version.py` → Cargo.toml shell (N-07), race statut job documentée (N-05).
 - **WebDAV/ShareDocs — Phase 1** : sous-commande CLI `import-remote` (client stdlib, dédup, dispatch unifié). P2/P3 à venir.
-- **S-03 (partiel)** : sink `setHtml`/`safeHtml` + ESLint no-unsanitized (3 fichiers prep).
+- **S-03 (phase 1)** : sink `setHtml`/`safeHtml` + ESLint no-unsanitized **bloquant en CI** (prep) ; traîne (21 sites/6 fichiers) migrée byte-identique, 89 géants *grandfathered* via bulk suppressions natives ESLint 10 (`eslint-suppressions.json`).
 - **U-01 — unification du client sidecar** (audit P1-4, **clos** #66→#75) : `sidecarClient.ts` app/prep, divergence ramenée **25→0** (PR1a/PR1b/PR2a/PR2bc) ; cœur connexion extrait dans **`shared/sidecarCore.ts`** (neutre) — app + prep l'importent, un seul chunk `sidecarCore` + un seul `_conn` dans le shell (vérifié au bundle), Explorer-standalone préservé. Couvert par les tests d'intégration connexion/transport (T-05 partiel) repointés sur le cœur partagé.
 - **Pilotage** : `AUDIT_FOLLOW_UP.md` créé (D-04) ; ce rafraîchissement (D-01).
 
@@ -29,7 +29,7 @@ Moteur jugé **techniquement sain et bien gouverné** par l'audit du 12 juin (no
 - **★ Dette doc — cadrages manquants** (priorité) : écrire `docs/cadrage/METADONNEES_DOCUMENT.md` (D1 — la validation `/validate-meta` est livrée, seule la note de cadrage manque) et `docs/cadrage/IMPORT_RATIO.md` (D2 — décision + calibration du seuil de ratio d'import ; à ce jour ni logique ni doc).
 - **WebDAV/ShareDocs P2 — endpoints sidecar** (`POST /webdav/list`, `POST /import-remote`) puis **P3 — UI Prep**. P2 débloqué (le dispatch dont il dépendait est déjà unifié) ; **P3 désormais débloqué** aussi (touche `sidecarClient.ts`, qui n'évolue plus depuis la clôture d'U-01). Réf. `DESIGN_sharedocs_ingestion.md`, tickets P2/P3.
 - ~~**Sécurité mineure** (P1-8)~~ **✅ fait** : garde `Host` loopback / DNS-rebinding (S-01), portfile `O_EXCL|0o600` (S-02), `exporters/tei.py` confirmé write-only (S-04, pas de surface XXE).
-- **S-03 — décision XSS lint** (P0-2 résiduel) : trancher grind complet (92 sites des 4 écrans géants + app/shell) vs suppressions ciblées, puis job ESLint bloquant.
+- **S-03 — burndown XSS lint** (P0-2 résiduel) : ~~job ESLint bloquant~~ **✅ fait (phase 1)**. Reste : résorber les 89 sites *grandfathered* des 4 écrans géants (par écran, avec approfondissement de l'échappement, via `npm run lint:prune`) + créer la config no-unsanitized pour app & shell (phase 2).
 - **Pilotage** (P1-7) : ~~archivage du CHANGELOG (D-02)~~ **✅ fait** (scindé → `docs/CHANGELOG_ARCHIVE.md`) ; reste : documenter `API_VERSION` vs `CONTRACT_VERSION` (D-06).
 - **Tests** (P1-6) : isoler les 11 fichiers versionnés sous `tests/contracts/` (T-03).
 

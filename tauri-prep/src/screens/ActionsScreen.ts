@@ -17,6 +17,7 @@ import {
 } from "../lib/sidecarClient.ts";
 import type { JobCenter } from "../components/JobCenter.ts";
 import { initCardAccordions } from "../lib/uiAccordions.ts";
+import { setHtml, raw } from "../lib/safeHtml.ts";
 import { AlignPanel } from "./AlignPanel.ts";
 import { AnnotationView } from "./AnnotationView.ts";
 import { SegmentationView } from "./SegmentationView.ts";
@@ -771,7 +772,7 @@ export class ActionsScreen {
       const titleTd = document.createElement("td");
       titleTd.className = "col-title tree-title-cell";
       titleTd.style.paddingLeft = `${0.5 + depth * 1.4}rem`;
-      titleTd.innerHTML = `${indent}${relBadge}`;
+      setHtml(titleTd, raw(`${indent}${relBadge}`));
       const titleSpan = document.createElement("span");
       titleSpan.textContent = doc.title;
       titleTd.appendChild(titleSpan);

@@ -1,0 +1,22 @@
+{
+  "src/screens/AlignPanel.ts": {
+    "no-unsanitized/property": {
+      "count": 17
+    }
+  },
+  "src/screens/CurationView.ts": {
+    "no-unsanitized/property": {
+      "count": 31
+    }
+  },
+  "src/screens/MetadataScreen.ts": {
+    "no-unsanitized/property": {
+      "count": 20
+    }
+  },
+  "src/screens/SegmentationView.ts": {
+    "no-unsanitized/property": {
+      "count": 21
+    }
+  }
+}
