@@ -17,8 +17,11 @@
 
 import { safeHtml, raw, setHtml } from "./safeHtml.ts";
 
+// Escapes & < > " — parity with the other prep escapers (S-03). modalConfirm
+// renders title/message in text context today, but " is escaped too so this
+// shared primitive stays attribute-safe if its template ever changes.
 function _esc(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 export function modalConfirm(opts: {
