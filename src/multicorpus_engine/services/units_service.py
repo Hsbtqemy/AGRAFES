@@ -16,6 +16,7 @@ import sqlite3
 from typing import Any, Optional
 
 from .errors import BadRequestError, NotFoundError
+from .validation import Field, validate
 
 
 def _role_exists(conn: sqlite3.Connection, role: str) -> bool:
@@ -56,21 +57,21 @@ def list_units(
     return {"units": units, "count": len(units), "doc_id": doc_id}
 
 
+_SET_ROLE_SCHEMA = (
+    Field("doc_id", int, coerce=True, error=BadRequestError),
+    Field("unit_n", int, coerce=True, error=BadRequestError),
+)
+
+
 def set_unit_role(conn: sqlite3.Connection, body: dict) -> dict[str, Any]:
     """Assign (or clear) a convention role on one unit (POST /units/set_role).
 
     Raises BadRequestError (missing/non-int ids) or NotFoundError (role or unit).
     """
-    doc_id = body.get("doc_id")
-    unit_n_raw = body.get("unit_n")
+    ids = validate(body, _SET_ROLE_SCHEMA)
+    doc_id = ids["doc_id"]
+    unit_n = ids["unit_n"]
     role = body.get("role")  # None or "" -> clear
-    if doc_id is None or unit_n_raw is None:
-        raise BadRequestError("doc_id and unit_n are required")
-    try:
-        doc_id = int(doc_id)
-        unit_n = int(unit_n_raw)
-    except (TypeError, ValueError):
-        raise BadRequestError("doc_id and unit_n must be integers")
 
     role = (role or "").strip() or None  # normalise empty string -> None
 
@@ -144,6 +145,9 @@ def bulk_set_unit_role(conn: sqlite3.Connection, body: dict) -> dict[str, Any]:
     return {"updated": result.rowcount}
 
 
+_UPDATE_TEXT_SCHEMA = (Field("unit_id", int, coerce=True, error=BadRequestError),)
+
+
 def update_unit_text(conn: sqlite3.Connection, body: dict) -> dict[str, Any]:
     """Update text_raw and/or text_norm for one unit (POST /units/update_text).
 
@@ -151,13 +155,7 @@ def update_unit_text(conn: sqlite3.Connection, body: dict) -> dict[str, Any]:
     is mirrored to text_norm. Reindexes FTS (best-effort). Raises BadRequestError
     or NotFoundError (unknown unit_id).
     """
-    unit_id_raw = body.get("unit_id")
-    if unit_id_raw is None:
-        raise BadRequestError("unit_id is required")
-    try:
-        unit_id = int(unit_id_raw)
-    except (TypeError, ValueError):
-        raise BadRequestError("unit_id must be an integer")
+    unit_id = validate(body, _UPDATE_TEXT_SCHEMA)["unit_id"]
 
     text_raw = body.get("text_raw")
     text_norm = body.get("text_norm")
