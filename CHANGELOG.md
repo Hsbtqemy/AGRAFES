@@ -14,6 +14,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+- **docs / versioning du contrat sidecar (D-06)** : section *Versioning* de [`docs/SIDECAR_API_CONTRACT.md`](docs/SIDECAR_API_CONTRACT.md) réécrite — elle confondait `api_version` avec la version du contrat et donnait des valeurs fausses (`api_version: "1.6.27"`, `version: "0.8.2"`). Clarifié en 3 champs distincts : `api_version` (= `API_VERSION`, version d'implémentation runtime), `version` (= `API_VERSION` dans l'enveloppe, mais **version moteur** sur `/health`), et `contract_version` (= `CONTRACT_VERSION`, **source de vérité** du contrat, gelée en CI). Exemples corrigés pour refléter ce que le code émet réellement. Dérive signalée (`API_VERSION` 1.6.23 < `CONTRACT_VERSION` 1.6.27, bumps 1.6.24–1.6.27 oubliés) → réconciliation code laissée à un ticket séparé. Docs-only.
 - **docs / archivage du CHANGELOG (D-02)** : le CHANGELOG (1 951 l.) est scindé — le courant garde `[Unreleased]` + les releases semver ([0.1.12]→[0.2.6], 557 l.) ; l'historique antérieur (schéma de versions « V… » V0→V1.9 et incréments [0.1.0]→[0.6.1]) est déplacé dans [`docs/CHANGELOG_ARCHIVE.md`](docs/CHANGELOG_ARCHIVE.md) avec un pointeur. Intégrité vérifiée (82 sections, 0 perdue).
 
 ### Fixed

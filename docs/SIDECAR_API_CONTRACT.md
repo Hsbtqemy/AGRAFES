@@ -29,8 +29,24 @@ When `multicorpus serve` starts and a portfile already exists:
 
 ## Versioning
 
-- `api_version`: sidecar API contract version (`1.6.27`)
-- `version`: engine version
+Three **independent** version fields surface in sidecar responses — do not conflate them
+(all but the engine version are defined in `sidecar_contract.py`):
+
+| Field | Backed by | Meaning | Where it appears |
+|---|---|---|---|
+| `api_version` | `API_VERSION` | Runtime version of the sidecar **API implementation**. | every response envelope; `/openapi.json` → `info.version`; TMX export provenance |
+| `version` (envelope) | `API_VERSION` | In the **generic envelope**, identical to `api_version`. **Exception:** on `/health` it is overridden with the **engine package version** (`ENGINE_VERSION` = `multicorpus_engine.__version__`). | response envelope; `/health` (engine version) |
+| `contract_version` / `x-contract-version` | `CONTRACT_VERSION` | Semver of the **API contract surface** (endpoints + payload shapes). Bumped on any contract change, enforced by the contract-freeze CI gate, and carries a per-version changelog in `sidecar_contract.py`. | `/health` (`contract_version`); `/openapi.json` (`x-contract-version`); TEI package provenance |
+
+**Source of truth for "which contract does this build speak" = `CONTRACT_VERSION`.**
+
+> ⚠️ **Known drift (D-06).** `API_VERSION` (`1.6.23`) lags `CONTRACT_VERSION` (`1.6.27`):
+> the `API_VERSION` bump was skipped for the contract changes 1.6.24–1.6.27. The two
+> share a numbering scheme and were historically bumped together. Until reconciled, rely
+> on `CONTRACT_VERSION` for contract identity; `api_version` is the loosely-maintained
+> implementation version. Reconciliation options (separate ticket — touches the response
+> envelope ⇒ requires `export_openapi.py` regen + contract-freeze): bump both in lockstep,
+> or derive `api_version` from `CONTRACT_VERSION` (single source).
 
 ## Response envelope
 
@@ -39,8 +55,8 @@ When `multicorpus serve` starts and a portfile already exists:
 ```json
 {
   "ok": true,
-  "api_version": "1.6.27",
-  "version": "0.8.2",
+  "api_version": "1.6.23",
+  "version": "1.6.23",
   "status": "ok"
 }
 ```
@@ -50,8 +66,8 @@ When `multicorpus serve` starts and a portfile already exists:
 ```json
 {
   "ok": false,
-  "api_version": "1.6.27",
-  "version": "0.8.2",
+  "api_version": "1.6.23",
+  "version": "1.6.23",
   "status": "error",
   "error": {
     "type": "VALIDATION_ERROR",

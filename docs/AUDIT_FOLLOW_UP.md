@@ -67,7 +67,7 @@ le §6 de l'audit 2026-06-12 ; « — » = non priorisé explicitement.
 | D-02 | 🟠 | P1-7 | ✅ corrigé | CHANGELOG scindé : courant **1951→557 l.** (`[Unreleased]` + semver [0.1.12]→[0.2.6]) ; l'historique antérieur (schéma « V… » + incréments [0.1.0]→[0.6.1]) déplacé dans **`docs/CHANGELOG_ARCHIVE.md`** (1406 l.) + pointeur. Intégrité vérifiée (82 sections = 35 + 47, 0 perdue). |
 | D-03 | 🟠 | P2-10 | ⬜ ouvert | 267 artefacts trackés sans index (`audit/`, `artifacts/`) |
 | D-05 | 🟡 | P2-12 | ⬜ ouvert | Aucun guide utilisateur final |
-| D-06 | 🟡 | P1-7 | ⬜ ouvert | `API_VERSION` (1.6.23) vs `CONTRACT_VERSION` (1.6.27) — distinction non documentée |
+| D-06 | 🟡 | P1-7 | ✅ documenté | Section *Versioning* de `docs/SIDECAR_API_CONTRACT.md` réécrite : 3 champs distincts (`api_version`=`API_VERSION` impl runtime ; `version` envelope=`API_VERSION`, mais engine version sur `/health` ; `contract_version`=`CONTRACT_VERSION`, source de vérité du contrat). Exemples d'enveloppe corrigés (disaient `1.6.27`/`0.8.2`, le code émet `API_VERSION`). **Dérive signalée** : `API_VERSION` 1.6.23 < `CONTRACT_VERSION` 1.6.27 (bumps 1.6.24–1.6.27 oubliés) → réconciliation code = ticket séparé (touche l'enveloppe ⇒ contract-freeze). |
 | N-04 | 🟡 | P2-14 | 🔵 connu/assumé | Resegmentation écrase `text_raw` + supprime les liens (dette HANDOFF) ; à arbitrer en ADR |
 | N-06 | 🟡 | P2-9 | ⬜ ouvert | `tauri-fixture` sans lockfiles ; CI en `npm install` |
 | N-08 | 🟢 | — | ⬜ ouvert | Divers mineurs (sémantique reflag cible, lock télémétrie Windows, release-gate 3.12, etc.) |
