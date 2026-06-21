@@ -2325,12 +2325,6 @@ function _updateDbBadge(): void {
   }
 }
 
-// ─── Utilities ────────────────────────────────────────────────────────────────
-
-function _escHtml(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
 // ─── DB menu helpers ──────────────────────────────────────────────────────────
 
 function _toggleDbMenu(): void {

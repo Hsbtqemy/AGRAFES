@@ -1,0 +1,17 @@
+{
+  "src/modules/explorerModule.ts": {
+    "no-unsanitized/property": {
+      "count": 1
+    }
+  },
+  "src/modules/rechercheModule.ts": {
+    "no-unsanitized/property": {
+      "count": 3
+    }
+  },
+  "src/shell.ts": {
+    "no-unsanitized/property": {
+      "count": 13
+    }
+  }
+}
