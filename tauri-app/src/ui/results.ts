@@ -8,6 +8,7 @@
 import type { QueryHit, AlignedUnit } from "../lib/sidecarClient";
 import { state } from "../state";
 import { elt, escapeHtml } from "./dom";
+import { setHtml, raw as rawHtml } from "../lib/safeHtml";
 
 // ─── Dependency injection (breaks circular: results ↔ metaPanel / query) ─────
 
@@ -294,8 +295,11 @@ export function renderParallelHit(hit: QueryHit, mode: "segment" | "kwic"): HTML
     } else {
       raw = [hit.left ?? "", hit.match ?? "", hit.right ?? ""].filter(Boolean).join(" ");
     }
-    textDiv.innerHTML = escapeHtml(raw)
-      .replace(/&lt;&lt;(.*?)&gt;&gt;/g, '<span class="highlight">$1</span>');
+    // escapeHtml() neutralises all markup first; only the `<<…>>` sentinels
+    // (now `&lt;&lt;…&gt;&gt;`) are turned into highlight spans → vouched safe.
+    setHtml(textDiv, rawHtml(
+      escapeHtml(raw).replace(/&lt;&lt;(.*?)&gt;&gt;/g, '<span class="highlight">$1</span>'),
+    ));
     pivotCol.appendChild(textDiv);
   }
 
@@ -392,8 +396,10 @@ export function renderHit(hit: QueryHit, mode: "segment" | "kwic", showAligned: 
   } else {
     const textDiv = elt("div", { class: "result-text" });
     const raw = hit.text ?? hit.text_norm ?? "";
-    textDiv.innerHTML = escapeHtml(raw)
-      .replace(/&lt;&lt;(.*?)&gt;&gt;/g, '<span class="highlight">$1</span>');
+    // See renderParallelHit: escape-all then sentinel→span is vouched safe.
+    setHtml(textDiv, rawHtml(
+      escapeHtml(raw).replace(/&lt;&lt;(.*?)&gt;&gt;/g, '<span class="highlight">$1</span>'),
+    ));
     card.appendChild(textDiv);
   }
 

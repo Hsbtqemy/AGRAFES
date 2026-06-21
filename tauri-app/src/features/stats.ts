@@ -13,6 +13,7 @@
 
 import { state } from "../state";
 import { elt } from "../ui/dom";
+import { setHtml, raw as rawHtml } from "../lib/safeHtml";
 import {
   fetchLexicalStats, fetchStatsCompare,
   type StatsSlot, type StatsResult, type StatsCompareResult, type StatsWord, type StatsCompareWord,
@@ -54,7 +55,7 @@ function _readLabel(prefix: string): string {
 }
 
 function _escHtml(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 function _barHtml(pct: number, cls = "stats-bar-a"): string {
@@ -73,25 +74,25 @@ export function populateStatsSelects(): void {
 
     if (langSel) {
       const langs = [...new Set(state.docs.map(d => d.language).filter(Boolean))].sort();
-      langSel.innerHTML = `<option value="">Toutes</option>` +
-        langs.map(l => `<option value="${_escHtml(l)}">${_escHtml(l)}</option>`).join("");
+      setHtml(langSel, rawHtml(`<option value="">Toutes</option>` +
+        langs.map(l => `<option value="${_escHtml(l)}">${_escHtml(l)}</option>`).join("")));
     }
     if (roleSel) {
       const roles = [...new Set(state.docs.map(d => d.doc_role).filter(Boolean) as string[])].sort();
-      roleSel.innerHTML = `<option value="">Tous</option>` +
-        roles.map(r => `<option value="${_escHtml(r)}">${_escHtml(r)}</option>`).join("");
+      setHtml(roleSel, rawHtml(`<option value="">Tous</option>` +
+        roles.map(r => `<option value="${_escHtml(r)}">${_escHtml(r)}</option>`).join("")));
     }
     if (restypeSel) {
       const types = [...new Set(state.docs.map(d => d.resource_type).filter(Boolean) as string[])].sort();
-      restypeSel.innerHTML = `<option value="">Tous</option>` +
-        types.map(t => `<option value="${_escHtml(t)}">${_escHtml(t)}</option>`).join("");
+      setHtml(restypeSel, rawHtml(`<option value="">Tous</option>` +
+        types.map(t => `<option value="${_escHtml(t)}">${_escHtml(t)}</option>`).join("")));
     }
     if (famSel) {
-      famSel.innerHTML = `<option value="">Toutes familles</option>` +
+      setHtml(famSel, rawHtml(`<option value="">Toutes familles</option>` +
         state.families.map(f => {
           const label = f.parent?.title ?? `Famille #${f.family_id}`;
           return `<option value="${f.family_id}">${_escHtml(label)}</option>`;
-        }).join("");
+        }).join("")));
     }
   });
 }
@@ -255,14 +256,14 @@ export async function runStats(): Promise<void> {
       const result = await fetchStatsCompare(state.conn, slotA, slotB, labelA, labelB);
       _lastCompare = result;
       _lastResult = null;
-      resultArea.innerHTML = _renderCompareStats(result);
+      setHtml(resultArea, rawHtml(_renderCompareStats(result)));
     } else {
       const slotA = _readSlot("a");
       const labelA = _readLabel("a");
       const result = await fetchLexicalStats(state.conn, slotA, labelA);
       _lastResult = result;
       _lastCompare = null;
-      resultArea.innerHTML = _renderSingleStats(result);
+      setHtml(resultArea, rawHtml(_renderSingleStats(result)));
     }
 
     // Wire export buttons
