@@ -62,10 +62,13 @@ class Field:
     required missing — or blank, for ``strip``ped strings — yields
              ``"<name> is required"``.
     enum     if set, value must be a member: ``"<name> must be one of: …"``.
-    min/max  numeric bound on the value, or — for ``str`` — a length bound.
+    min/max  numeric bound on the value, or — for ``str`` / list / tuple / dict —
+             a length / size bound.
     default  value injected when the field is absent and not required.
     coerce   ``int(value)`` coercion; failure yields ``"<name> must be an integer"``.
     strip    strip ``str`` values (and, when ``required``, treat blank as missing).
+    items    for a list / tuple, the required element type:
+             ``"<name> must be a list of …s"``.
     error    typed error class to raise (``ValidationError`` or ``BadRequestError``).
     """
 
@@ -78,6 +81,7 @@ class Field:
     default: Any = _UNSET
     coerce: bool = False
     strip: bool = False
+    items: type | tuple[type, ...] | None = None
     error: type[ServiceError] = ValidationError
 
 
@@ -138,13 +142,20 @@ def validate(
             raise f.error(f"{f.name} must be one of: {', '.join(str(x) for x in f.enum)}")
 
         if f.min is not None or f.max is not None:
-            is_str = isinstance(value, str)
-            measure = len(value) if is_str else value
-            unit = " characters" if is_str else ""
+            if isinstance(value, str):
+                measure, unit = len(value), " characters"
+            elif isinstance(value, (list, tuple, dict)):
+                measure, unit = len(value), " items"
+            else:
+                measure, unit = value, ""
             if f.min is not None and measure < f.min:
                 raise f.error(f"{f.name} must be >= {_fmt_num(f.min)}{unit}")
             if f.max is not None and measure > f.max:
                 raise f.error(f"{f.name} must be <= {_fmt_num(f.max)}{unit}")
+
+        if f.items is not None and isinstance(value, (list, tuple)):
+            if not all(isinstance(x, f.items) for x in value):
+                raise f.error(f"{f.name} must be a list of {_type_label(f.items)}s")
 
         out[f.name] = value
 

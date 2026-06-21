@@ -18,6 +18,7 @@ from typing import Any
 from ..indexer import stale_doc_ids
 from ..runs import utcnow_iso
 from .errors import BadRequestError, NotFoundError, ValidationError
+from .validation import Field, validate
 
 DOC_WORKFLOW_STATUSES = {"draft", "review", "validated"}
 
@@ -123,15 +124,16 @@ def _coerce_workflow_fields(fields: dict) -> None:
         raise ValidationError("validated_run_id can only be set when workflow_status='validated'")
 
 
+_UPDATE_DOC_SCHEMA = (Field("doc_id", required=True, error=BadRequestError),)
+
+
 def update_document(conn: sqlite3.Connection, body: dict) -> dict[str, Any]:
     """Update one document's metadata (POST /documents/update).
 
     Raises BadRequestError (no doc_id / no fields), ValidationError (workflow rules)
     or NotFoundError (unknown doc_id).
     """
-    doc_id = body.get("doc_id")
-    if doc_id is None:
-        raise BadRequestError("doc_id is required")
+    doc_id = validate(body, _UPDATE_DOC_SCHEMA)["doc_id"]
     updates = {k: v for k, v in body.items() if k in _UPDATABLE}
     if not updates:
         raise BadRequestError(_NO_FIELDS_MSG)
@@ -156,6 +158,9 @@ def update_document(conn: sqlite3.Connection, body: dict) -> dict[str, Any]:
     return {"updated": 1, "doc": doc}
 
 
+_BULK_UPDATE_SCHEMA = (Field("updates", list, required=True, min=1, error=BadRequestError),)
+
+
 def bulk_update_documents(conn: sqlite3.Connection, body: dict) -> dict[str, Any]:
     """Update many documents in one transaction (POST /documents/bulk_update).
 
@@ -164,9 +169,7 @@ def bulk_update_documents(conn: sqlite3.Connection, body: dict) -> dict[str, Any
     mid-loop leaves the earlier UPDATEs uncommitted — preserved verbatim from the
     original handler.
     """
-    updates_list = body.get("updates")
-    if not isinstance(updates_list, list) or not updates_list:
-        raise BadRequestError("updates must be a non-empty list of {doc_id, ...fields}")
+    updates_list = validate(body, _BULK_UPDATE_SCHEMA)["updates"]
 
     total_updated = 0
     for item in updates_list:
@@ -185,6 +188,11 @@ def bulk_update_documents(conn: sqlite3.Connection, body: dict) -> dict[str, Any
     return {"updated": total_updated}
 
 
+_DELETE_DOCS_SCHEMA = (
+    Field("doc_ids", list, required=True, min=1, items=int, error=BadRequestError),
+)
+
+
 def delete_documents(conn: sqlite3.Connection, body: dict) -> tuple[dict[str, Any], list[dict]]:
     """Delete documents + all linked data (POST /documents/delete).
 
@@ -192,11 +200,7 @@ def delete_documents(conn: sqlite3.Connection, body: dict) -> tuple[dict[str, An
     ``doc_deleted`` telemetry (server-coupled) post-commit. Raises BadRequestError
     on a bad ``doc_ids`` payload.
     """
-    doc_ids = body.get("doc_ids")
-    if not isinstance(doc_ids, list) or not doc_ids:
-        raise BadRequestError("doc_ids (non-empty list) is required")
-    if not all(isinstance(d, int) for d in doc_ids):
-        raise BadRequestError("doc_ids must be a list of integers")
+    doc_ids = validate(body, _DELETE_DOCS_SCHEMA)["doc_ids"]
     placeholders = ",".join("?" * len(doc_ids))
 
     # Telemetry preview: collect had_curation/had_alignment BEFORE delete.

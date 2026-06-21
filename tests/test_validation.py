@@ -159,6 +159,41 @@ def test_str_too_long():
     assert e.value.message == "s must be <= 5 characters"
 
 
+# ─── collection length bounds + items (phase 2) ───────────────────────────────
+
+def test_list_length_within():
+    assert validate({"xs": [1, 2]}, (Field("xs", list, min=1, max=3),)) == {"xs": [1, 2]}
+
+
+def test_list_empty_below_min():
+    with pytest.raises(ValidationError) as e:
+        validate({"xs": []}, (Field("xs", list, min=1),))
+    assert e.value.message == "xs must be >= 1 items"
+
+
+def test_list_above_max():
+    with pytest.raises(ValidationError) as e:
+        validate({"xs": [1, 2, 3, 4]}, (Field("xs", list, max=3),))
+    assert e.value.message == "xs must be <= 3 items"
+
+
+def test_items_element_type_ok():
+    assert validate({"ids": [1, 2, 3]}, (Field("ids", list, items=int),)) == {"ids": [1, 2, 3]}
+
+
+def test_items_element_type_rejected():
+    with pytest.raises(ValidationError) as e:
+        validate({"ids": [1, "x", 3]}, (Field("ids", list, items=int),))
+    assert e.value.message == "ids must be a list of integers"
+
+
+def test_items_ignored_for_non_list():
+    # items only applies to list/tuple; a non-list value is type-rejected first.
+    with pytest.raises(ValidationError) as e:
+        validate({"ids": "nope"}, (Field("ids", list, items=int),))
+    assert e.value.message == "ids must be an array"
+
+
 # ─── coercion ─────────────────────────────────────────────────────────────────
 
 def test_coerce_string_to_int():
@@ -251,3 +286,35 @@ def test_proof_conventions_missing_name():
     with pytest.raises(ValidationError) as e:
         validate({"label": "y"}, _CONV_SCHEMA)
     assert e.value.message == "name is required"
+
+
+# ─── proof-endpoint schemas (phase 2 — documents, BadRequestError) ────────────
+
+def test_proof_doc_update_requires_doc_id():
+    with pytest.raises(BadRequestError) as e:
+        validate({}, (Field("doc_id", required=True, error=BadRequestError),))
+    assert e.value.message == "doc_id is required"
+
+
+def test_proof_doc_update_doc_id_any_type():
+    # doc_id is presence-only (type=object) — any non-null value passes.
+    schema = (Field("doc_id", required=True, error=BadRequestError),)
+    assert validate({"doc_id": 7}, schema) == {"doc_id": 7}
+
+
+def test_proof_bulk_updates_non_empty_list():
+    schema = (Field("updates", list, required=True, min=1, error=BadRequestError),)
+    assert validate({"updates": [{"doc_id": 1}]}, schema) == {"updates": [{"doc_id": 1}]}
+    with pytest.raises(BadRequestError):
+        validate({"updates": []}, schema)
+    with pytest.raises(BadRequestError):
+        validate({"updates": "x"}, schema)
+
+
+def test_proof_delete_doc_ids_list_of_ints():
+    schema = (Field("doc_ids", list, required=True, min=1, items=int, error=BadRequestError),)
+    assert validate({"doc_ids": [1, 2]}, schema) == {"doc_ids": [1, 2]}
+    with pytest.raises(BadRequestError):
+        validate({"doc_ids": []}, schema)
+    with pytest.raises(BadRequestError):
+        validate({"doc_ids": [1, "x"]}, schema)
