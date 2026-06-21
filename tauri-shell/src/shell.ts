@@ -2712,7 +2712,7 @@ function _openPresetsModal(): void {
               <span style="font-weight:600">${_esc(p.name)}</span>
               ${p.description ? `<span style="color:#6c757d;margin-left:0.4rem">${_esc(p.description)}</span>` : ""}
               <div style="font-size:0.75rem;color:#adb5bd">
-                ${p.languages?.join(", ") ?? ""}${p.alignment_strategy ? ` · ${p.alignment_strategy}` : ""}
+                ${_esc(p.languages?.join(", ") ?? "")}${p.alignment_strategy ? ` · ${_esc(p.alignment_strategy)}` : ""}
               </div>
             </div>
             <button class="shell-preset-del" data-id="${p.id}" style="border:none;background:none;color:#c0392b;cursor:pointer;font-size:0.95rem;padding:2px 5px" title="Supprimer">✕</button>
