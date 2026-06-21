@@ -4,6 +4,7 @@
  */
 
 import { state } from "../state";
+import { setHtml, raw as rawHtml } from "../lib/safeHtml";
 
 // ─── FTS query builder ────────────────────────────────────────────────────────
 
@@ -222,7 +223,9 @@ export function updateFtsPreview(raw: string): void {
       .replace(/\[\]/g, '<span class="cql-op">[]</span>')
       .replace(/\{\s*\d+\s*(?:,\s*\d+\s*)?\}/g, (m) => `<span class="cql-flag">${m}</span>`)
       .replace(/\bwithin\s+s\b/gi, '<span class="cql-op">within s</span>');
-    code.innerHTML = withOps;
+    // User input is esc()-escaped (& < >) before any span markup is injected;
+    // only controlled syntax-colour spans are added → vouched safe.
+    setHtml(code, rawHtml(withOps));
     bar.style.display = "";
   } else {
     if (label) label.textContent = "FTS :";

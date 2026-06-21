@@ -131,6 +131,13 @@ jobs:
       - name: Install tauri-app deps
         run: npm --prefix tauri-app ci
 
+      # S-03 phase 2 (XSS gate): same no-unsanitized guard as tauri-prep, now on
+      # the concordancier (KWIC / document text / user query highlight). Every
+      # dynamic innerHTML goes through the safeHtml`` sink (lib/safeHtml.ts) — no
+      # baseline, the gate is fully strict from the start; new code cannot regress.
+      - name: Lint tauri-app (XSS gate — no-unsanitized, S-03)
+        run: npm --prefix tauri-app run lint
+
       - name: Build tauri-app
         run: npm --prefix tauri-app run build
 
