@@ -2075,15 +2075,18 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 
     def _handle_index(self, body: dict) -> None:
         from multicorpus_engine.indexer import build_index, update_index
+        from multicorpus_engine.services.errors import ValidationError
+        from multicorpus_engine.services.validation import Field, validate
 
-        incremental = bool(body.get("incremental", False))
-        if "incremental" in body and not isinstance(body.get("incremental"), bool):
-            self._send_error(
-                "incremental must be a boolean when provided",
-                code=ERR_VALIDATION,
-                http_status=400,
-            )
+        # A-03: structural validation via declarative schema. The validator raises
+        # the typed error; the handler maps it to the historical wire code (here
+        # ERR_VALIDATION) — same catch→_send_error shape as _handle_import.
+        try:
+            clean = validate(body, (Field("incremental", bool, required=False, default=False),))
+        except ValidationError as exc:
+            self._send_error(exc.message, code=ERR_VALIDATION, http_status=400)
             return
+        incremental = clean["incremental"]
 
         with self._lock():
             run_id = self._create_run("index", {"incremental": incremental})

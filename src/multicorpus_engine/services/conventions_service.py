@@ -19,6 +19,7 @@ import sqlite3
 from typing import Any
 
 from .errors import ConflictError, NotFoundError, ValidationError
+from .validation import Field, validate
 
 # Role names treated as "structure" when the unit_roles table predates the
 # `category` column (schema tolerance). Canonical home for this set.
@@ -72,13 +73,20 @@ def list_conventions(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     return [_project(r, _cat(r)) for r in rows]
 
 
+_CREATE_CONVENTION_SCHEMA = (
+    Field("name", str, strip=True),
+    Field("label", str, strip=True),
+)
+
+
 def create_convention(conn: sqlite3.Connection, body: dict) -> dict[str, Any]:
     """Create a new unit role (POST /conventions). Returns the created convention.
 
     Raises ValidationError (bad input) or ConflictError (name already exists).
     """
-    name = (body.get("name") or "").strip()
-    label = (body.get("label") or "").strip()
+    clean = validate(body, _CREATE_CONVENTION_SCHEMA)
+    name = clean["name"]
+    label = clean["label"]
     color = (body.get("color") or "#6366f1").strip()
     icon = body.get("icon")
     sort_order = body.get("sort_order", 0)
@@ -86,10 +94,8 @@ def create_convention(conn: sqlite3.Connection, body: dict) -> dict[str, Any]:
     if category not in ("structure", "text"):
         category = "text"
 
-    if not name:
-        raise ValidationError("name is required")
-    if not label:
-        raise ValidationError("label is required")
+    # Format rule (alnum + hyphen + underscore) stays inline — out of the
+    # structural validator's scope (it has no pattern/regex facet).
     if not name.replace("_", "").replace("-", "").isalnum():
         raise ValidationError(
             "name must contain only letters, digits, hyphens and underscores"
