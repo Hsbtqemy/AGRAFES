@@ -55,6 +55,46 @@ def test_optional_present_null_is_type_checked():
     assert e.value.message == "incremental must be a boolean"
 
 
+# ─── nullable (optional field where null is valid) ────────────────────────────
+
+def test_nullable_present_null_kept():
+    assert validate({"x": None}, (Field("x", str, required=False, nullable=True),)) == {"x": None}
+
+
+def test_nullable_absent_omitted():
+    assert validate({}, (Field("x", str, required=False, nullable=True),)) == {}
+
+
+def test_nullable_present_value_kept():
+    assert validate({"x": "hi"}, (Field("x", str, required=False, nullable=True),)) == {"x": "hi"}
+
+
+def test_nullable_present_wrong_type_rejected():
+    with pytest.raises(ValidationError) as e:
+        validate({"x": 5}, (Field("x", str, required=False, nullable=True),))
+    assert e.value.message == "x must be a string"
+
+
+def test_nullable_does_not_override_required():
+    with pytest.raises(ValidationError) as e:
+        validate({"x": None}, (Field("x", str, required=True, nullable=True),))
+    assert e.value.message == "x is required"
+
+
+def test_proof_token_update_schema():
+    # phase 4 (tokens): token_id coerce-int positive + nullable annotation fields.
+    schema = (
+        Field("token_id", int, coerce=True, min=1, error=BadRequestError),
+        Field("lemma", str, required=False, nullable=True, error=BadRequestError),
+    )
+    assert validate({"token_id": "5", "lemma": None}, schema) == {"token_id": 5, "lemma": None}
+    assert validate({"token_id": 5}, schema) == {"token_id": 5}
+    with pytest.raises(BadRequestError):
+        validate({"token_id": 0}, schema)  # not positive (min=1)
+    with pytest.raises(BadRequestError):
+        validate({"token_id": 5, "lemma": 9}, schema)  # lemma non-str
+
+
 # ─── strip (required non-blank string) ────────────────────────────────────────
 
 def test_strip_trims_value():
