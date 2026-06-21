@@ -17,6 +17,7 @@ import sqlite3
 from typing import Any, Optional
 
 from .errors import ValidationError
+from .validation import Field, validate
 
 _SELECT_COLS = "id, doc_id, relation_type, target_doc_id, note, created_at"
 
@@ -63,6 +64,13 @@ def set_doc_relation(conn: sqlite3.Connection, body: dict) -> dict[str, Any]:
 
     Upsert on (doc_id, relation_type, target_doc_id): if it exists, only the note
     is updated. Raises ValidationError if any of the three keys is missing.
+
+    NOTE: this guard stays inline (not migrated to the A-03 validator). It is a
+    *combined* cross-field check whose ``relation_type`` arm is a loose ``not x``
+    truthy test, not a structural type/presence check — declaring it as a
+    ``Field(str, strip=True)`` would tighten it (rejecting whitespace-only /
+    non-string values that the legacy guard accepts, flipping 200 -> 400) and so
+    would NOT be byte-identical. Combined/truthy guards are explicitly left inline.
     """
     doc_id = body.get("doc_id")
     relation_type = body.get("relation_type")
@@ -94,12 +102,13 @@ def set_doc_relation(conn: sqlite3.Connection, body: dict) -> dict[str, Any]:
     }
 
 
+_DELETE_RELATION_SCHEMA = (Field("id", required=True),)
+
+
 def delete_doc_relation(conn: sqlite3.Connection, body: dict) -> dict[str, Any]:
     """Delete a relation by id (POST /doc_relations/delete). Raises ValidationError
     if ``id`` is missing. Returns the number of rows deleted (0 if no match)."""
-    rel_id = body.get("id")
-    if rel_id is None:
-        raise ValidationError("id is required")
+    rel_id = validate(body, _DELETE_RELATION_SCHEMA)["id"]
     cur = conn.execute("DELETE FROM doc_relations WHERE id = ?", (rel_id,))
     conn.commit()
     return {"deleted": cur.rowcount}
