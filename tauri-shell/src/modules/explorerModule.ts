@@ -12,6 +12,7 @@
 import type { ShellContext } from "../context.ts";
 import { setCurrentDbPath } from "../../../tauri-app/src/lib/db.ts";
 import { initApp, disposeApp } from "../../../tauri-app/src/app.ts";
+import { setHtml, raw as rawHtml } from "../../../tauri-prep/src/lib/safeHtml.ts";
 
 // ─── Sub-tab state ─────────────────────────────────────────────────────────────
 
@@ -122,14 +123,14 @@ export async function mount(
   // Sub-tab bar
   _tabBar = document.createElement("div");
   _tabBar.className = "exp-subtab-bar";
-  _tabBar.innerHTML = `
+  setHtml(_tabBar, rawHtml(`
     <button class="exp-subtab${_activeTab === "concordancier" ? " active" : ""}" data-tab="concordancier">
       &#128269; Concordancier
     </button>
     <button class="exp-subtab${_activeTab === "recherche" ? " active" : ""}" data-tab="recherche">
       &#128270; Recherche grammaticale
     </button>
-  `;
+  `));
   container.appendChild(_tabBar);
 
   // Sub-content area

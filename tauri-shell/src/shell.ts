@@ -23,6 +23,7 @@ import { appDataDir } from "@tauri-apps/api/path";
 import { invoke } from "@tauri-apps/api/core";
 import type { ShellContext } from "./context.ts";
 import { isCloudSyncedPath } from "./cloudSync.ts";
+import { setHtml, raw as rawHtml, safeHtml } from "../../tauri-prep/src/lib/safeHtml.ts";
 
 // ─── CSS ─────────────────────────────────────────────────────────────────────
 
@@ -1290,7 +1291,7 @@ function _buildMruSection(): HTMLElement {
     const nameBtn = document.createElement("button");
     nameBtn.className = "shell-mru-name";
     nameBtn.title = entry.path;
-    nameBtn.innerHTML = `${entry.pinned ? "📌 " : ""}${_esc(entry.label)}${entry.missing ? ' <span class="shell-mru-missing-badge">introuvable</span>' : ""}`;
+    setHtml(nameBtn, rawHtml(`${entry.pinned ? "📌 " : ""}${_esc(entry.label)}${entry.missing ? ' <span class="shell-mru-missing-badge">introuvable</span>' : ""}`));
     nameBtn.addEventListener("click", () => {
       _closeDbMenu();
       if (entry.missing) {
@@ -1986,7 +1987,7 @@ function _showUpdatesModal(opts: UpdateModalOpts): void {
       <button class="shell-diag-btn" id="shell-upd-close">Fermer</button>`;
   }
 
-  modal.innerHTML = `
+  setHtml(modal, rawHtml(`
     <div class="shell-diag-box" role="dialog" aria-modal="true" style="min-width:340px;max-width:520px">
       <div class="shell-diag-header">
         <span class="shell-diag-title">⬆ Mises à jour</span>
@@ -1994,7 +1995,7 @@ function _showUpdatesModal(opts: UpdateModalOpts): void {
       </div>
       <div style="padding:1rem 1.25rem;font-size:0.84rem;color:#2d3748">${bodyHtml}</div>
       <div class="shell-diag-footer">${footerHtml}</div>
-    </div>`;
+    </div>`));
 
   modal.addEventListener("click", (e) => { if (e.target === modal) modal.remove(); });
   modal.querySelector("#shell-upd-x")?.addEventListener("click", () => modal.remove());
@@ -2026,7 +2027,7 @@ function _openAboutDialog(): void {
   const modal = document.createElement("div");
   modal.id = "shell-about-modal";
   modal.className = "shell-about-modal";
-  modal.innerHTML = `
+  setHtml(modal, rawHtml(`
     <div class="shell-about-box" role="dialog" aria-modal="true" aria-label="À propos d'AGRAFES">
       <button class="shell-about-close" id="shell-about-close" aria-label="Fermer">✕</button>
       <div class="shell-about-title">AGRAFES</div>
@@ -2049,7 +2050,7 @@ function _openAboutDialog(): void {
         </button>
       </div>
     </div>
-  `;
+  `));
 
   modal.addEventListener("click", (e) => { if (e.target === modal) modal.remove(); });
   modal.querySelector("#shell-about-close")!.addEventListener("click", () => modal.remove());
@@ -2103,7 +2104,7 @@ function _openShortcutsPanel(): void {
   const modal = document.createElement("div");
   modal.id = "shell-shortcuts-modal";
   modal.className = "shell-about-modal";
-  modal.innerHTML = `
+  setHtml(modal, rawHtml(`
     <div class="shell-shortcuts-box" role="dialog" aria-modal="true" aria-label="Raccourcis clavier">
       <button class="shell-about-close" id="shell-shortcuts-close" aria-label="Fermer">✕</button>
       <div class="shell-about-title" style="font-size:1.05rem;margin-bottom:1rem">⌨ Raccourcis clavier</div>
@@ -2114,7 +2115,7 @@ function _openShortcutsPanel(): void {
         Les raccourcis numériques fonctionnent également sans modificateur depuis l'accueil.
       </div>
     </div>
-  `;
+  `));
 
   modal.addEventListener("click", (e) => { if (e.target === modal) modal.remove(); });
   modal.querySelector("#shell-shortcuts-close")!.addEventListener("click", () => modal.remove());
@@ -2284,7 +2285,7 @@ function _makeTab(label: string, shortcut: string, mode: Mode): HTMLButtonElemen
   const btn = document.createElement("button");
   btn.className = "shell-tab";
   btn.dataset.mode = mode;
-  btn.innerHTML = `${label}<span class="shell-tab-badge">${shortcut}</span>`;
+  setHtml(btn, safeHtml`${label}<span class="shell-tab-badge">${shortcut}</span>`);
   btn.addEventListener("click", () => _setMode(mode));
   return btn;
 }
@@ -2703,7 +2704,7 @@ function _openPresetsModal(): void {
 
   const _refresh = (): void => {
     const presets = _loadGlobalPresets();
-    listEl.innerHTML = presets.length === 0
+    setHtml(listEl, rawHtml(presets.length === 0
       ? `<p style="color:#6c757d;font-size:0.85rem;padding:0.5rem 0">Aucun preset global. Créez-en dans Constituer (tab Actions) puis migrez ici.</p>`
       : presets.map(p => `
           <div class="shell-preset-row" data-id="${p.id}" style="display:flex;align-items:center;gap:0.5rem;padding:0.4rem 0;border-bottom:1px solid #eee;font-size:0.83rem">
@@ -2716,7 +2717,7 @@ function _openPresetsModal(): void {
             </div>
             <button class="shell-preset-del" data-id="${p.id}" style="border:none;background:none;color:#c0392b;cursor:pointer;font-size:0.95rem;padding:2px 5px" title="Supprimer">✕</button>
           </div>
-        `).join("");
+        `).join("")));
     listEl.querySelectorAll(".shell-preset-del").forEach(btn => {
       btn.addEventListener("click", (e) => {
         const id = (e.currentTarget as HTMLElement).dataset.id!;
@@ -3005,13 +3006,13 @@ async function _renderPublicationWizard(container: HTMLElement): Promise<void> {
   };
 
   const render = async (): Promise<void> => {
-    wrap.innerHTML = `
+    setHtml(wrap, rawHtml(`
       <h2 style="font-size:1.3rem;font-weight:700;margin:0 0 1rem;color:#1a1a2e">
         📦 Assistant de publication
       </h2>
       ${renderProgress(state.step)}
       <div id="wizard-body"></div>
-    `;
+    `));
 
     const body = wrap.querySelector<HTMLElement>("#wizard-body")!;
 
@@ -3044,7 +3045,7 @@ async function _renderPublicationWizard(container: HTMLElement): Promise<void> {
       const docOpts = state.docs.map(d =>
         `<option value="${d.doc_id}">#${d.doc_id} ${_esc(d.title)} (${_esc(d.language)})</option>`
       ).join("");
-      body.innerHTML = `
+      setHtml(body, rawHtml(`
         <div style="background:#fff;border-radius:8px;border:1px solid #dde1e8;padding:1.5rem">
           <h3 style="margin:0 0 0.75rem;font-size:1rem">Sélection des documents</h3>
           ${state.error ? `<p style="color:#c0392b;font-size:0.83rem">${_esc(state.error)}</p>` : ""}
@@ -3058,7 +3059,7 @@ async function _renderPublicationWizard(container: HTMLElement): Promise<void> {
             <button id="wiz-back2" class="wiz-btn-sec">← Retour</button>
             <button id="wiz-next2" class="wiz-btn-primary">Suivant → Options</button>
           </div>
-        </div>`;
+        </div>`));
       body.querySelector("#wiz-back2")!.addEventListener("click", () => { state.step = 1; void render(); });
       body.querySelector("#wiz-next2")!.addEventListener("click", () => {
         const sel = body.querySelector<HTMLSelectElement>("#wiz-doc-sel")!;
@@ -3072,7 +3073,7 @@ async function _renderPublicationWizard(container: HTMLElement): Promise<void> {
       const docLabel = state.docIds === null
         ? `Tous (${state.docs.length}) documents`
         : `${state.docIds.length} document(s) sélectionné(s)`;
-      body.innerHTML = `
+      setHtml(body, rawHtml(`
         <div style="background:#fff;border-radius:8px;border:1px solid #dde1e8;padding:1.5rem">
           <h3 style="margin:0 0 0.75rem;font-size:1rem">Options d'export</h3>
           <p style="font-size:0.82rem;color:#6c757d;margin:0 0 1rem">Portée: <strong>${_esc(docLabel)}</strong></p>
@@ -3114,7 +3115,7 @@ async function _renderPublicationWizard(container: HTMLElement): Promise<void> {
             <button id="wiz-back3" class="wiz-btn-sec">← Retour</button>
             <button id="wiz-next3" class="wiz-btn-primary">Suivant → Exporter</button>
           </div>
-        </div>`;
+        </div>`));
       body.querySelector("#wiz-back3")!.addEventListener("click", () => { state.step = 2; void render(); });
       body.querySelector("#wiz-next3")!.addEventListener("click", () => {
         state.includeStructure = (body.querySelector<HTMLInputElement>("#wiz-include-struct")!).checked;
@@ -3141,7 +3142,7 @@ async function _renderPublicationWizard(container: HTMLElement): Promise<void> {
       const docLabel = state.docIds === null
         ? `Tous (${state.docs.length}) documents`
         : `${state.docIds.length} document(s)`;
-      body.innerHTML = `
+      setHtml(body, rawHtml(`
         <div style="background:#fff;border-radius:8px;border:1px solid #dde1e8;padding:1.5rem">
           <h3 style="margin:0 0 0.75rem;font-size:1rem">Export du package</h3>
           <div style="font-size:0.83rem;color:#495057;margin-bottom:1rem;line-height:1.6">
@@ -3159,7 +3160,7 @@ async function _renderPublicationWizard(container: HTMLElement): Promise<void> {
             <button id="wiz-back4" class="wiz-btn-sec">← Retour</button>
             <button id="wiz-launch" class="wiz-btn-primary">Choisir fichier et lancer…</button>
           </div>
-        </div>`;
+        </div>`));
 
       body.querySelector("#wiz-back4")!.addEventListener("click", () => { state.step = 3; void render(); });
       body.querySelector("#wiz-launch")!.addEventListener("click", async () => {
@@ -3229,7 +3230,7 @@ async function _renderPublicationWizard(container: HTMLElement): Promise<void> {
       const zipPath = (state.result?.zip_path as string | undefined) ?? "";
       const docCount = (state.result?.doc_count as number | undefined) ?? 0;
       const warns = (state.result?.warnings as unknown[] | undefined) ?? [];
-      body.innerHTML = `
+      setHtml(body, rawHtml(`
         <div style="background:#f0fff4;border:1px solid #c6efce;border-radius:8px;padding:1.5rem">
           <h3 style="margin:0 0 0.75rem;font-size:1rem;color:#1a7f4e">✓ Package créé</h3>
           <p style="font-size:0.84rem;margin:0 0 0.5rem"><b>${docCount}</b> document(s) exporté(s)</p>
@@ -3240,7 +3241,7 @@ async function _renderPublicationWizard(container: HTMLElement): Promise<void> {
           </button>
           <button id="wiz-restart" class="wiz-btn-sec">Nouvelle publication</button>
           <button id="wiz-home" class="wiz-btn-primary" style="margin-left:0.5rem">← Accueil</button>
-        </div>`;
+        </div>`));
       body.querySelector("#wiz-copy-path")!.addEventListener("click", () => {
         navigator.clipboard?.writeText(zipPath).catch(() => {});
         _showToast("Chemin copié");
@@ -3347,7 +3348,7 @@ async function _renderGuidedTour(container: HTMLElement): Promise<void> {
 
   const allDone = step >= STEPS.length;
 
-  guideSection.innerHTML = `
+  setHtml(guideSection, rawHtml(`
     <div class="shell-guide-card">
       <div class="shell-guide-title">🎯 Guide rapide — ${allDone ? "Terminé !" : `Étape ${Math.min(step + 1, STEPS.length)} / ${STEPS.length}`}</div>
       <div class="shell-guide-steps">
@@ -3370,7 +3371,7 @@ async function _renderGuidedTour(container: HTMLElement): Promise<void> {
         <button class="shell-guide-reset" id="guide-reset-btn">Réinitialiser le guide</button>
       </div>
     </div>
-  `;
+  `));
 
   // Wire step buttons
   STEPS.forEach((s, i) => {
@@ -3518,13 +3519,13 @@ function _showSidecarOverlay(label = "Démarrage du moteur…"): void {
   const el = document.createElement("div");
   el.id = "shell-sidecar-overlay";
   el.className = "shell-sidecar-overlay";
-  el.innerHTML = `
+  setHtml(el, safeHtml`
     <div class="shell-sidecar-card">
       <div class="shell-sidecar-spinner"></div>
       <div class="shell-sidecar-label">${label}</div>
       <div class="shell-sidecar-sub">Cela peut prendre quelques secondes</div>
     </div>
-  `;
+  `);
   document.body.appendChild(el);
 }
 
