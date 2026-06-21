@@ -13,6 +13,7 @@ import type {
   DetectMarkersResponse,
   ConventionRole,
 } from "../lib/sidecarClient.ts";
+import { safeColor } from "../lib/conventionsRoles.ts";
 import {
   enqueueJob,
   updateDocument,
@@ -51,6 +52,7 @@ import {
 } from "../lib/prepUndo.ts";
 import { reportEvent } from "../lib/telemetry.ts";
 import { compareDocsByTitle } from "../lib/docSort.ts";
+import { setHtml, raw } from "../lib/safeHtml.ts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -375,7 +377,7 @@ export class SegmentationView {
     if (keepScroll) scrollEl.scrollTop = savedScrollTop;
     void this._buildSegDocListHtml().then(html => {
       if (!scrollEl.isConnected) return;
-      scrollEl.innerHTML = html;
+      setHtml(scrollEl, raw(html));
       scrollEl.querySelectorAll<HTMLElement>(".prep-seg-doc-row").forEach(row => {
         row.addEventListener("click", () => {
           const docId = parseInt(row.dataset.docId ?? "", 10);
@@ -599,7 +601,7 @@ export class SegmentationView {
 
     this._unbindSegPreviewScrollSync();
 
-    rightEl.innerHTML = `
+    setHtml(rightEl, raw(`
       <div class="prep-seg-right-root" id="act-seg-right-root">
         <div class="prep-seg-right-scroll">
         <div class="prep-seg-right-header">
@@ -752,7 +754,7 @@ export class SegmentationView {
         <div id="act-seg-confirm-bar" class="audit-batch-bar" style="display:none"></div>
         <div id="act-seg-status-banner" class="prep-seg-status-banner prep-runtime-state prep-state-info" aria-live="polite"></div>
       </div>
-    `;
+    `));
 
     // Restore after-validate pref
     const afterSel = rightEl.querySelector<HTMLSelectElement>("#act-seg-after-validate");
@@ -845,9 +847,9 @@ export class SegmentationView {
       const truncNote = preview.total_lines > 200
         ? `<p class="prep-seg-trunc-note">Aper&#231;u &#8212; 200/${preview.total_lines} unit&#233;s (premi&#232;res lignes)</p>`
         : "";
-      rawEl.innerHTML = truncNote + preview.lines.map(l =>
+      setHtml(rawEl, raw(truncNote + preview.lines.map(l =>
         `<div class="prep-seg-prev-row" data-unit-n="${l.n}"><span class="prep-seg-prev-n">${l.n}</span>${_roleBadgeHtml(l.unit_role, this._conventions)}<span class="prep-seg-prev-tx">${richTextToHtml(l.text_raw, l.text)}</span></div>`,
-      ).join("");
+      ).join("")));
     } catch (err) {
       rawEl.innerHTML = `<p class="empty-hint">Impossible de charger le texte brut : ${_escHtml(err instanceof Error ? err.message : String(err))}</p>`;
     }
@@ -908,33 +910,33 @@ export class SegmentationView {
         ? ` · &#233;cart ${res.calibrate_ratio_pct}% vs doc #${res.calibrate_to}`
         : "";
       if (statsEl) {
-        statsEl.innerHTML = mode === "markers"
+        setHtml(statsEl, raw(mode === "markers"
           ? `${res.units_input} u. &#8594; ${res.units_output} segments par balise`
-          : `${res.units_input} u. &#8594; ${res.units_output} phrases · r&#233;glage ${res.segment_pack}${calibrateText}`;
+          : `${res.units_input} u. &#8594; ${res.units_output} phrases · r&#233;glage ${res.segment_pack}${calibrateText}`));
       }
       if (segColTitle) {
-        segColTitle.innerHTML = mode === "markers"
+        setHtml(segColTitle, raw(mode === "markers"
           ? `Balises [N] (<span id="act-seg-prev-seg-count">${res.units_output}</span> segments)`
-          : `Segment&#233; (<span id="act-seg-prev-seg-count">${res.units_output}</span> phrases)`;
+          : `Segment&#233; (<span id="act-seg-prev-seg-count">${res.units_output}</span> phrases)`));
       }
 
       const truncNote = res.units_output >= 5000
         ? `<p class="prep-seg-trunc-note">Aper&#231;u tronqu&#233; &#224; 5000 segments</p>`
         : "";
 
-      segEl.innerHTML = truncNote + (res.segments.length
+      setHtml(segEl, raw(truncNote + (res.segments.length
         ? res.segments.map(s => {
             const hasId = s.external_id != null;
             return `<div class="prep-seg-prev-row${hasId ? " prep-seg-prev-row-marker" : ""}" data-source-unit="${s.source_unit_n ?? ""}">` +
-              `<span class="prep-seg-prev-n">${hasId ? `[${s.external_id}]` : s.n}</span>` +
+              `<span class="prep-seg-prev-n">${hasId ? `[${_escHtml(String(s.external_id))}]` : s.n}</span>` +
               `<span class="prep-seg-prev-tx">${_escHtml(s.text)}</span></div>`;
           }).join("")
-        : `<p class="empty-hint">Aucun segment produit.</p>`);
+        : `<p class="empty-hint">Aucun segment produit.</p>`)));
 
       if (warnsEl) {
         if (res.warnings.length) {
           warnsEl.style.display = "";
-          warnsEl.innerHTML = res.warnings.map(w => `<div class="prep-seg-warn">${_escHtml(w)}</div>`).join("");
+          setHtml(warnsEl, raw(res.warnings.map(w => `<div class="prep-seg-warn">${_escHtml(w)}</div>`).join("")));
         } else {
           warnsEl.style.display = "none";
         }
@@ -983,7 +985,7 @@ export class SegmentationView {
       if (report.detected) {
         const sample = report.first_markers.slice(0, 5).join(", ");
         bannerEl.style.display = "";
-        bannerEl.innerHTML = `
+        setHtml(bannerEl, raw(`
           <span class="prep-seg-marker-icon">&#127991;</span>
           <span class="prep-seg-marker-info">
             <strong>Balises [N] d&#233;tect&#233;es</strong> &#8212;
@@ -994,7 +996,7 @@ export class SegmentationView {
             id="act-seg-mode-toggle">
             ${this._segSplitMode === "markers" ? "&#10003; Mode balises actif" : "Utiliser les balises"}
           </button>
-        `;
+        `));
         bannerEl.querySelector("#act-seg-mode-toggle")?.addEventListener("click", () => {
           if (this._segSplitMode === "markers") {
             this._deactivateMarkersMode(docId);
@@ -1005,11 +1007,11 @@ export class SegmentationView {
         this._syncSegStrategyRadios();
       } else if (!silent) {
         bannerEl.style.display = "";
-        bannerEl.innerHTML = `
+        setHtml(bannerEl, raw(`
           <span class="prep-seg-marker-icon prep-seg-marker-icon-miss">&#8416;</span>
           <span class="prep-seg-marker-info">Aucune balise <code>[N]</code> d&#233;tect&#233;e dans ce document
           (${report.total_units} unit&#233;s analys&#233;es).</span>
-        `;
+        `));
         setTimeout(() => { if (bannerEl) bannerEl.style.display = "none"; }, 4000);
       }
     } catch (err) {
@@ -1094,7 +1096,7 @@ export class SegmentationView {
       const ops = _seqDiff(before, after);
 
       if (ops.every(o => o.op === "eq")) {
-        diffEl.innerHTML = `<div class="prep-seg-diff-equal-note">&#10003; Aucune diff&#233;rence — la re-segmentation produirait les m&#234;mes ${before.length} segments.</div>`;
+        setHtml(diffEl, raw(`<div class="prep-seg-diff-equal-note">&#10003; Aucune diff&#233;rence — la re-segmentation produirait les m&#234;mes ${before.length} segments.</div>`));
         return;
       }
 
@@ -1103,7 +1105,7 @@ export class SegmentationView {
       const addedCount  = ops.filter(o => o.op === "ins").length;
       const removedCount = ops.filter(o => o.op === "del").length;
 
-      diffEl.innerHTML = `
+      setHtml(diffEl, raw(`
         <div class="prep-seg-diff-stats">
           <span>${beforeCount} segments avant</span>
           <span class="prep-seg-diff-arrow">&#8594;</span>
@@ -1118,7 +1120,7 @@ export class SegmentationView {
             `<span class="prep-seg-diff-text">${_escHtml(o.text)}</span></div>`
           ).join("")}
         </div>
-      `;
+      `));
     } catch (err) {
       diffEl.innerHTML = `<p class="empty-hint" style="color:var(--color-danger)">Erreur diff : ${_escHtml(err instanceof Error ? err.message : String(err))}</p>`;
     }
@@ -1162,7 +1164,7 @@ export class SegmentationView {
         this._matcherInitialized = true;
       }
 
-      el.innerHTML = `
+      setHtml(el, raw(`
         <div class="prep-matcher-root">
           <div class="prep-matcher-toolbar">
             <span class="prep-matcher-hint" id="act-matcher-hint"></span>
@@ -1188,7 +1190,7 @@ export class SegmentationView {
           </div>
           <div id="act-strucdiff-propagate-result"></div>
         </div>
-      `;
+      `));
 
       this._rebuildMatcherCards();
 
@@ -1253,8 +1255,8 @@ export class SegmentationView {
       </div>`;
     };
 
-    refCol.innerHTML = this._refSections.map((s, i) => cardHtml("ref", i, s)).join("");
-    tgtCol.innerHTML = this._tgtSections.map((s, i) => cardHtml("tgt", i, s)).join("");
+    setHtml(refCol, raw(this._refSections.map((s, i) => cardHtml("ref", i, s)).join("")));
+    setHtml(tgtCol, raw(this._tgtSections.map((s, i) => cardHtml("tgt", i, s)).join("")));
 
     if (hintEl) {
       if (this._matcherPendingSide !== null) {
@@ -1519,13 +1521,13 @@ export class SegmentationView {
       if (res.lines.length === 0) {
         // Zone vide — proposer d'insérer à la position calculée (après fromN, ou en début de doc)
         const insertN = fromN != null ? fromN + 1 : 1;
-        linesEl.innerHTML = `
+        setHtml(linesEl, raw(`
           <p class="empty-hint" style="margin-bottom:0.5rem">Aucune ligne dans cette zone.</p>
           <div class="prep-matcher-insert-line">
             <span class="prep-matcher-insert-line-n">${insertN}</span>
             <span class="prep-matcher-insert-line-text" style="font-style:italic">${fromN != null ? `après la position ${fromN}` : "début du document"}</span>
             <button type="button" class="btn btn-ghost btn-xs prep-matcher-insert-line-btn" data-before-n="${insertN}">Insérer ici</button>
-          </div>`;
+          </div>`));
         linesEl.querySelectorAll<HTMLButtonElement>(".prep-matcher-insert-line-btn").forEach(btn => {
           btn.addEventListener("click", async () => {
             const beforeN = parseInt(btn.dataset.beforeN ?? "0", 10);
@@ -1538,13 +1540,13 @@ export class SegmentationView {
         return;
       }
 
-      linesEl.innerHTML = res.lines.map(line => `
+      setHtml(linesEl, raw(res.lines.map(line => `
         <div class="prep-matcher-insert-line" data-line-n="${line.n}">
           <span class="prep-matcher-insert-line-n">${line.n}</span>
           <span class="prep-matcher-insert-line-text">${_escHtml(line.text)}</span>
           <button type="button" class="btn btn-ghost btn-xs prep-matcher-insert-line-btn" data-before-n="${line.n}">Insérer avant</button>
         </div>
-      `).join("");
+      `).join("")));
 
       linesEl.querySelectorAll<HTMLButtonElement>(".prep-matcher-insert-line-btn").forEach(btn => {
         btn.addEventListener("click", async () => {
@@ -1611,7 +1613,7 @@ export class SegmentationView {
         ? `<div class="prep-seg-warn-list">${res.warnings.map(w => `<div class="prep-seg-warn">${_escHtml(w)}</div>`).join("")}</div>`
         : "";
 
-      resultEl.innerHTML = `
+      setHtml(resultEl, raw(`
         <div class="prep-propagate-result-header">
           <span class="prep-propagate-result-title">Aperçu propagé — <span data-propagate-total>${res.total_segments} phrases</span> · pack ${res.segment_pack}</span>
           <button type="button" class="btn prep-btn-warning btn-sm" id="act-propagate-apply-btn">
@@ -1635,7 +1637,7 @@ export class SegmentationView {
               </details>`;
           }).join("")}
         </div>
-      `;
+      `));
 
       // Render each section body with interactive edit controls
       res.sections.forEach((_, i) => {
@@ -1665,7 +1667,7 @@ export class SegmentationView {
       return;
     }
 
-    bodyEl.innerHTML = sec.segments.flatMap((text, segIdx) => {
+    setHtml(bodyEl, raw(sec.segments.flatMap((text, segIdx) => {
       const segRow = `
         <div class="prep-propagate-seg-row" data-sec-idx="${secIdx}" data-seg-idx="${segIdx}">
           <span class="prep-propagate-seg-n">${segIdx + 1}</span>
@@ -1679,7 +1681,7 @@ export class SegmentationView {
           <button type="button" class="prep-propagate-merge-btn" title="Fusionner avec le segment suivant">&#8627; fusionner</button>
         </div>` : "";
       return [segRow, mergeRow];
-    }).join("");
+    }).join("")));
 
     bodyEl.querySelectorAll<HTMLElement>(".prep-propagate-seg-text").forEach(el => {
       el.addEventListener("dblclick", () => {
@@ -1828,9 +1830,9 @@ export class SegmentationView {
     const badge = isEdited
       ? `<span class="prep-propagate-adj-badge prep-propagate-edited-badge">édité</span>`
       : sec.adjusted ? `<span class="prep-propagate-adj-badge">ajusté</span>` : "";
-    el.innerHTML = sec.ref_count > 0
+    setHtml(el, raw(sec.ref_count > 0
       ? `${count} phrases <span class="prep-strucdiff-count-ref">(réf: ${sec.ref_count})</span> ${deltaBadge} ${badge}`
-      : `${count} phrases ${badge}`;
+      : `${count} phrases ${badge}`));
 
     // Update global total
     const total = this._propagateLiveSections.reduce((sum, s) => sum + s.segments.length, 0);
@@ -1998,7 +2000,7 @@ export class SegmentationView {
       };
 
       let lines = preview.lines.map(l => ({ n: l.n, text: l.text, text_raw: l.text_raw, unit_role: l.unit_role }));
-      el.innerHTML = renderTable(lines);
+      setHtml(el, raw(renderTable(lines)));
 
       const reload = (targetN?: number) => {
         void this._renderSegSavedTable(docId, el, targetN);
@@ -2058,7 +2060,7 @@ export class SegmentationView {
             const lastSpace = fullText.lastIndexOf(" ", midPoint);
             const splitAt = lastSpace > 0 ? lastSpace : midPoint;
 
-            tr.innerHTML = `
+            setHtml(tr, raw(`
               <td colspan="4" class="prep-seg-split-inline">
                 <div class="prep-seg-split-label">&#9986; Couper le segment ${unitN} en deux&#160;:</div>
                 <div class="prep-seg-split-fields">
@@ -2070,7 +2072,7 @@ export class SegmentationView {
                   <button class="btn prep-btn-warning btn-sm seg-split-confirm">Confirmer la coupure</button>
                   <button class="btn btn-ghost btn-sm seg-split-cancel">Annuler</button>
                 </div>
-              </td>`;
+              </td>`));
 
             tr.querySelector(".seg-split-cancel")?.addEventListener("click", () => reload());
             tr.querySelector(".seg-split-confirm")?.addEventListener("click", async () => {
@@ -2623,7 +2625,7 @@ function _roleBadgeHtml(role: string | null | undefined, conventions: Convention
   if (!role) return "";
   const conv = conventions.find(c => c.name === role);
   const label = _escHtml(conv?.label ?? role);
-  const color = conv?.color ?? "#64748b";
+  const color = safeColor(conv?.color, "#64748b");
   return `<span class="prep-role-badge" style="--role-color:${color}" title="Rôle : ${label}">${conv?.icon ? _escHtml(conv.icon) + "\u00a0" : ""}${label}</span>`;
 }
 

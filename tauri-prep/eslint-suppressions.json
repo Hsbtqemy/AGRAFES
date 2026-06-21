@@ -3,10 +3,5 @@
     "no-unsanitized/property": {
       "count": 31
     }
-  },
-  "src/screens/SegmentationView.ts": {
-    "no-unsanitized/property": {
-      "count": 21
-    }
   }
 }
