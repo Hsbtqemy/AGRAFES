@@ -1956,7 +1956,7 @@ function _showUpdatesModal(opts: UpdateModalOpts): void {
       <p style="text-align:center;font-size:1.3rem;margin-bottom:0.5rem">✅</p>
       <p style="text-align:center;font-weight:600;color:#155724">Vous êtes à jour</p>
       <p style="text-align:center;color:#6c757d;font-size:0.82rem;margin-top:0.35rem">
-        Version installée : <strong>v${opts.currentVersion}</strong> — dernière version disponible : <strong>v${opts.latestVersion}</strong>
+        Version installée : <strong>v${_esc(opts.currentVersion)}</strong> — dernière version disponible : <strong>v${_esc(opts.latestVersion)}</strong>
       </p>`;
     footerHtml = `<button class="shell-diag-btn" id="shell-upd-close">Fermer</button>`;
   } else if (opts.state === "available") {
@@ -1969,11 +1969,11 @@ function _showUpdatesModal(opts: UpdateModalOpts): void {
       <p style="text-align:center;font-size:1.3rem;margin-bottom:0.5rem">⬆️</p>
       <p style="text-align:center;font-weight:600;color:#856404">Nouvelle version disponible</p>
       <p style="text-align:center;color:#6c757d;font-size:0.82rem;margin-top:0.35rem">
-        Installée : <strong>v${opts.currentVersion}</strong> → Disponible : <strong>v${opts.latestVersion}</strong>${date ? ` (${date})` : ""}
+        Installée : <strong>v${_esc(opts.currentVersion)}</strong> → Disponible : <strong>v${_esc(opts.latestVersion)}</strong>${date ? ` (${date})` : ""}
       </p>
       ${notes}`;
     footerHtml = `
-      <button class="shell-diag-btn shell-diag-btn-primary" id="shell-upd-download">⬇ Télécharger v${opts.latestVersion}</button>
+      <button class="shell-diag-btn shell-diag-btn-primary" id="shell-upd-download">⬇ Télécharger v${_esc(opts.latestVersion)}</button>
       <button class="shell-diag-btn" id="shell-upd-close">Plus tard</button>`;
   } else {
     bodyHtml = `
