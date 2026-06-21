@@ -7,12 +7,26 @@ and a minimal fixture DOCX generated programmatically.
 from __future__ import annotations
 
 import io
+import os
 import sqlite3
 from pathlib import Path
 
 import pytest
 
 from tests.support_odt import make_odt_bytes
+
+# T-04 — loopback sidecar HTTP must bypass any system proxy. Otherwise urllib
+# routes 127.0.0.1/localhost through HTTP(S)_PROXY and the sidecar tests fail
+# locally (the documented "needs NO_PROXY=127.0.0.1,localhost" artefact; CI has
+# no proxy, so this is a no-op there). Set here — conftest is imported before any
+# test module — so no test needs a manual NO_PROXY in its environment. Additive:
+# pre-existing no_proxy entries are preserved.
+for _proxy_var in ("NO_PROXY", "no_proxy"):
+    _entries = [h.strip() for h in os.environ.get(_proxy_var, "").split(",") if h.strip()]
+    for _host in ("127.0.0.1", "localhost", "::1"):
+        if _host not in _entries:
+            _entries.append(_host)
+    os.environ[_proxy_var] = ",".join(_entries)
 
 # We need the migrations directory path at test time.
 _REPO_ROOT = Path(__file__).parent.parent
