@@ -31,7 +31,7 @@ Moteur jugé **techniquement sain et bien gouverné** par l'audit du 12 juin (no
 - ~~**Sécurité mineure** (P1-8)~~ **✅ fait** : garde `Host` loopback / DNS-rebinding (S-01), portfile `O_EXCL|0o600` (S-02), `exporters/tei.py` confirmé write-only (S-04, pas de surface XXE).
 - ~~**S-03 — burndown XSS lint**~~ **✅ CLOS** (#80→#88) : prep (phase 1 + 4 géants, baseline 89→0) **+ phase 2** `tauri-app` (#86) & `tauri-shell` (#87) + fix prep #88. Les 3 front-ends ont une garde `no-unsanitized` stricte en CI, aucune baseline. Voir `docs/TICKET_S03_PHASE2_APP_SHELL.md`.
 - ~~**Pilotage** (P1-7)~~ **✅ fait** : ~~archivage du CHANGELOG (D-02)~~ (scindé → `docs/CHANGELOG_ARCHIVE.md`) ; ~~documenter `API_VERSION` vs `CONTRACT_VERSION` (D-06)~~ (section *Versioning* de `SIDECAR_API_CONTRACT.md` réécrite + dérive 1.6.23/1.6.27 signalée).
-- ~~**Tests** (P1-6) : isoler les 11 fichiers versionnés sous `tests/contracts/` (T-03).~~ **✅ fait** (`git mv` → `tests/contracts/`, discovery + 225 tests collectés vérifiés). Reste T-04 (fragilités timing).
+- ~~**Tests** (P1-6) : isoler les 11 fichiers versionnés sous `tests/contracts/` (T-03).~~ **✅ fait** (`git mv` → `tests/contracts/`, discovery + 225 tests collectés vérifiés). ~~Reste T-04~~ **✅ T-04 fait** (NO_PROXY centralisé en conftest ; les 26 `time.sleep` sont du polling à condition+timeout déjà robuste, re-classifié).
 
 ## Moyen / long terme
 
@@ -42,7 +42,7 @@ Moteur jugé **techniquement sain et bien gouverné** par l'audit du 12 juin (no
 - **Typage** : TypedDict pour les shapes de contrat (Q-04), attributs `HTTPServer` typés (A-04), mypy progressif (exclure sidecar.py au début) ; cap global documenté du matcher CQL (Q-05).
 - **Pilotage/doc** : index des ~267 artefacts trackés (D-03) ; guide utilisateur final (D-05) ; bandeau de statut `tauri-app/README` (U-04).
 - **Dette assumée à arbitrer en ADR** : resegmentation écrase `text_raw` + supprime les liens (N-04).
-- **Divers** : lockfiles + `npm ci` pour `tauri-fixture` (N-06) ; fragilités timing des tests sidecar (T-04, 23 `time.sleep`) ; i18n (U-05, non bloquant).
+- **Divers** : lockfiles + `npm ci` pour `tauri-fixture` (N-06) ; ~~fragilités timing des tests sidecar (T-04)~~ **✅ fait** (NO_PROXY centralisé ; sleeps = polling déjà robuste) ; i18n (U-05, non bloquant).
 - **Shell P9** : multi-fenêtre (Explorer + Constituer), hot-swap DB sans redémarrage sidecar, dépréciation des apps standalone `tauri-app`/`tauri-prep`.
 - **Distribution / supply chain** : AppImage Linux PKG-3C ; signing prod (cert Apple Developer + PFX en Secrets, scripts/workflows prêts) ; épinglage GitHub Actions par SHA (F-03).
 - **Moteur (horizon)** : stratégie d'indexation incrémentale au-delà du rebuild ; packs de segmentation par langue enrichis ; workspace multi-projets + commandes de maintenance corpus ; extensions de profil TEI (ancres, apparat, métadonnées riches).
