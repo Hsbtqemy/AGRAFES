@@ -73,3 +73,36 @@ Héberger les schémas `Field` dans `sidecar_contract.py` permettrait, à terme,
 - ~66 blocs structurels migrés vers des schémas déclaratifs ; checks sémantiques laissés aux services.
 - `error_code` **byte-identique** par endpoint (contract-freeze + tests endpoint verts en CI).
 - `sidecar.py` net ≤ 0 ligne ajoutée (idéalement réduit) ; **aucune** nouvelle dépendance runtime.
+
+## 8. Clôture (2026-06-21) — livré, et pourquoi on s'arrête là
+
+**Statut : CLOS.** Le socle est livré, la couche service est migrée, la viabilité
+sur un handler `sidecar.py` est **prouvée en CI**. La traîne des handlers inline est
+**délibérément laissée en backlog** — un finding chiffré pendant la migration montre
+qu'aller plus loin *field-by-field* irait à l'encontre du but du ticket.
+
+### Livré (mergé dans `dev`)
+
+| Lot | PR | Contenu |
+|----|----|---------|
+| 1 — socle + 2 preuves | #94 | `services/validation.py` (`Field` + `validate`, **stdlib pur**, 0 dépendance) + tests ; preuves `conventions_service` (drop-in service) **et** `/index` (handler inline catch→`_send_error`) |
+| 2 | #95 | facettes `items` + bornes-collections ; `documents_service` |
+| 3 | #96 | coerce-int ids ; `units_service` |
+| 4 | #97 | facette `nullable` ; `tokens_service` |
+| 5 | #98 | `doc_relations_service` (`delete_doc_relation` ; `set_doc_relation` laissé inline — garde combiné cross-field + truthy) |
+| 6 — preuve sidecar | #99 | handlers inline `_handle_export_conllu`/`_handle_export_ske` (`out_path`), byte-identique vérifié contre les tests wire CI |
+
+Facettes du valideur : `type` / `required` / `enum` / bornes (num **et** longueur str/collections) / `coerce` int / `default` / `strip` / `items` / `nullable` ; lève `ValidationError`/`BadRequestError` typées, jamais de code wire ; **0 nouvelle dépendance**.
+
+### Pourquoi la traîne sidecar n'est PAS poursuivie (révision du §7)
+
+Le §7 visait « ~66 blocs migrés » et « `sidecar.py` net ≤ 0 ligne ». **Mesuré au lot 6 : migrer un garde *mono-champ* est line-POSITIF** — #99 = **net +26 lignes** sur `sidecar.py` pour 2 handlers (imports locaux + `try/except` + commentaire A-03 > le garde inline de 4 lignes). Grinder la traîne field-by-field **gonflerait** `sidecar.py` au lieu de le réduire : cela contredit l'objectif. Les objectifs chiffrés du §7 (« ~66 blocs », « net ≤ 0 ») sont donc **abandonnés sciemment** au profit de l'intégrité (ne pas net-ajouter du code pour cocher une case).
+
+### Réouvrir un jour ? Deux seules voies à gain réel (sinon, ne pas toucher)
+
+1. **Handlers « gras »** (≥ 3-4 `isinstance`) où un schéma collapse en **net-négatif** — viser ceux-là uniquement, pas les gardes à 1 champ. (Le bloc params-de-jobs est gras mais **conditionnel** → à expertiser, probablement pas un bon candidat.)
+2. **Helper partagé** : DRY les **8** gardes `out_path` identiques derrière un `_require_out_path(body)` (réduit les lignes sans schéma par handler).
+
+### Invariants confirmés
+
+`error_code` byte-identique sur tous les endpoints touchés (contract-freeze + tests wire verts en CI) ; messages non figés (seul le `error_code` l'est) ; périmètre strictement **structurel** (sémantique → services). Méthode capitalisée pour réutilisation hors A-03.
