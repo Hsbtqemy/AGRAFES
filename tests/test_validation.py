@@ -358,3 +358,35 @@ def test_proof_delete_doc_ids_list_of_ints():
         validate({"doc_ids": []}, schema)
     with pytest.raises(BadRequestError):
         validate({"doc_ids": [1, "x"]}, schema)
+
+
+# ─── proof-endpoint schemas (phase 3 — sidecar export handlers) ────────────────
+# /export/conllu + /export/ske out_path guard. Legacy:
+#   if not isinstance(out_path, str) or not out_path.strip(): -> "out_path is required"
+# then the handler uses out_path.strip(). The schema below is byte-identical on the
+# wire CODE (ERR_BAD_REQUEST) and on the value used (stripped). The only divergence
+# is the MESSAGE on a non-string value ("must be a string" vs the legacy blanket
+# "is required") — messages are not frozen by the contract; the error_code is.
+
+_EXPORT_OUT_PATH_SCHEMA = (Field("out_path", str, required=True, strip=True, error=BadRequestError),)
+
+
+def test_proof_export_out_path_absent_blank_null_required():
+    # Absent / null / empty / whitespace-only all map to the legacy "is required".
+    for body in ({}, {"out_path": None}, {"out_path": ""}, {"out_path": "   "}):
+        with pytest.raises(BadRequestError) as e:
+            validate(body, _EXPORT_OUT_PATH_SCHEMA)
+        assert e.value.message == "out_path is required"
+
+
+def test_proof_export_out_path_stripped_value_used():
+    # The returned value is stripped — matching the legacy out_path.strip() usage.
+    assert validate({"out_path": "  /tmp/x.conllu  "}, _EXPORT_OUT_PATH_SCHEMA) == {
+        "out_path": "/tmp/x.conllu"
+    }
+
+
+def test_proof_export_out_path_non_string_still_bad_request():
+    # Non-string is rejected with the same wire code (message differs — not frozen).
+    with pytest.raises(BadRequestError):
+        validate({"out_path": 123}, _EXPORT_OUT_PATH_SCHEMA)
