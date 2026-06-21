@@ -1,6 +1,6 @@
 """Direct unit tests for curation.py (audit T-02).
 
-`rules_from_list` had some coverage in test_v21.py; the rest of the engine did
+`rules_from_list` had some coverage in tests/contracts/test_v21.py; the rest of the engine did
 not. These tests cover the pure helpers (ReDoS/length guard, JS→Python
 replacement translation, apply_rules) and — the real core — curate_document's
 5-level priority logic, paratextual exclusion, the Mode-A undo recorder

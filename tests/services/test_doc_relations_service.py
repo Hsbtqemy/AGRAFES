@@ -1,7 +1,7 @@
 """Direct unit tests for the doc_relations service (audit P0-1 / A-01).
 
 Exercises the extracted doc_relations CRUD without any HTTP server. The sidecar
-HTTP adapters are covered end-to-end by tests/test_sidecar_v04.py (set/get/delete)
+HTTP adapters are covered end-to-end by tests/contracts/test_sidecar_v04.py (set/get/delete)
 and the binary smoke (/doc_relations/all) in CI.
 """
 
