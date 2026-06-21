@@ -15,6 +15,7 @@ import sqlite3
 from typing import Any, Optional
 
 from .errors import BadRequestError, NotFoundError
+from .validation import Field, validate
 
 # Token projection shared by list + update (JOIN units for doc_id / unit_n / external_id).
 _TOKEN_SELECT = """
@@ -103,31 +104,21 @@ def list_tokens(
     }
 
 
+_TOKEN_UPDATE_SCHEMA = (
+    Field("token_id", int, coerce=True, min=1, error=BadRequestError),
+    *(Field(k, str, required=False, nullable=True, error=BadRequestError) for k in _TOKEN_UPDATABLE),
+)
+
+
 def update_token(conn: sqlite3.Connection, body: dict) -> dict[str, Any]:
     """Update annotation fields of one token (POST /tokens/update).
 
     Raises BadRequestError (bad token_id, non-string field, no fields) or
     NotFoundError (unknown token_id).
     """
-    token_id_raw = body.get("token_id")
-    if token_id_raw is None:
-        raise BadRequestError("token_id is required")
-    try:
-        token_id = int(token_id_raw)
-    except (TypeError, ValueError):
-        raise BadRequestError("token_id must be an integer")
-    if token_id <= 0:
-        raise BadRequestError("token_id must be a positive integer")
-
-    updates: dict[str, object] = {}
-    for key in _TOKEN_UPDATABLE:
-        if key not in body:
-            continue
-        value = body.get(key)
-        if value is None or isinstance(value, str):
-            updates[key] = value
-        else:
-            raise BadRequestError(f"{key} must be a string or null")
+    clean = validate(body, _TOKEN_UPDATE_SCHEMA)
+    token_id = clean["token_id"]
+    updates: dict[str, object] = {k: clean[k] for k in _TOKEN_UPDATABLE if k in clean}
     if not updates:
         raise BadRequestError(
             "No updatable token fields provided (allowed: word, lemma, upos, xpos, feats, misc)"

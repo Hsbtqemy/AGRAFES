@@ -67,6 +67,10 @@ class Field:
     default  value injected when the field is absent and not required.
     coerce   ``int(value)`` coercion; failure yields ``"<name> must be an integer"``.
     strip    strip ``str`` values (and, when ``required``, treat blank as missing).
+    nullable for an OPTIONAL field, a present ``null`` is valid and kept as
+             ``None`` (an absent key stays absent). Without it, a present ``null``
+             on an optional field is type-checked — i.e. rejected (the legacy
+             ``isinstance``-guard default).
     items    for a list / tuple, the required element type:
              ``"<name> must be a list of …s"``.
     error    typed error class to raise (``ValidationError`` or ``BadRequestError``).
@@ -81,6 +85,7 @@ class Field:
     default: Any = _UNSET
     coerce: bool = False
     strip: bool = False
+    nullable: bool = False
     items: type | tuple[type, ...] | None = None
     error: type[ServiceError] = ValidationError
 
@@ -122,8 +127,13 @@ def validate(
             continue
 
         value = body.get(f.name)
-        if value is None and f.required:
-            raise f.error(f"{f.name} is required")
+        if value is None:
+            if f.required:
+                raise f.error(f"{f.name} is required")
+            if f.nullable:
+                out[f.name] = None
+                continue
+            # optional + non-nullable: fall through so the type check rejects null.
 
         if f.strip and isinstance(value, str):
             value = value.strip()
