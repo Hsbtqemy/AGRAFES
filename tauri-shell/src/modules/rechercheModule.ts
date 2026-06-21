@@ -8,6 +8,7 @@
 import type { ShellContext } from "../context.ts";
 import { validateCqlSyntax } from "../../../tauri-app/src/features/search.ts";
 import { ensureRunning, SidecarError, type Conn } from "../../../tauri-prep/src/lib/sidecarClient.ts";
+import { setHtml, raw as rawHtml } from "../../../tauri-prep/src/lib/safeHtml.ts";
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -205,7 +206,7 @@ async function _connect(dbPath: string, root: HTMLElement): Promise<void> {
 // ─── Shell layout ─────────────────────────────────────────────────────────────
 
 function _renderShell(root: HTMLElement): void {
-  root.innerHTML = `
+  setHtml(root, rawHtml(`
     <div class="rech-toolbar">
       <div class="rech-toolbar-top">
         <span class="rech-title">Recherche grammaticale</span>
@@ -415,7 +416,7 @@ function _renderShell(root: HTMLElement): void {
         </div>
       </div>
     </div>
-  `;
+  `));
 
   _wireEvents(root);
 }
@@ -1077,10 +1078,10 @@ function _buildHitCard(hit: _Hit): HTMLElement {
   // Header: doc title + position info
   const header = document.createElement("div");
   header.className = "rech-hit-header";
-  header.innerHTML =
+  setHtml(header, rawHtml(
     `<span class="rech-hit-doc">${_esc(hit.title)}</span>` +
     `<span class="rech-hit-lang">${_esc(hit.language || "")}</span>` +
-    `<span class="rech-hit-loc" title="Segment ${hit.unit_id}${hit.sent_id > 1 ? ` \u2014 phrase\u202f${hit.sent_id} dans ce segment` : ""}">seg.\u202f${hit.unit_id}${hit.sent_id > 1 ? `\u202f\u00b7\u202fph.\u202f${hit.sent_id}` : ""}</span>`;
+    `<span class="rech-hit-loc" title="Segment ${hit.unit_id}${hit.sent_id > 1 ? ` \u2014 phrase\u202f${hit.sent_id} dans ce segment` : ""}">seg.\u202f${hit.unit_id}${hit.sent_id > 1 ? `\u202f\u00b7\u202fph.\u202f${hit.sent_id}` : ""}</span>`));
   card.appendChild(header);
 
   // Interlinear KWIC row
@@ -1696,9 +1697,9 @@ function _renderCollocates(root: HTMLElement): void {
   if (!body) return;
 
   if (_collRows.length === 0) {
-    body.innerHTML = `<div class="rech-coll-hint">${
+    setHtml(body, rawHtml(`<div class="rech-coll-hint">${
       _lastQuery ? "Aucune collocation trouvée." : "Lancez une recherche pour voir les collocations."
-    }</div>`;
+    }</div>`));
     return;
   }
 

@@ -167,6 +167,13 @@ jobs:
       - name: Install tauri-shell deps
         run: npm --prefix tauri-shell ci
 
+      # S-03 phase 2 (XSS gate): no-unsanitized guard on the shell's OWN src only
+      # (shell.ts, modules/*). The prep/app source it imports at source level is
+      # already guarded in those packages, so the `src/**/*.ts` glob excludes
+      # them. Dynamic innerHTML goes through the safeHtml`` sink reused from prep.
+      - name: Lint tauri-shell (XSS gate — no-unsanitized, S-03)
+        run: npm --prefix tauri-shell run lint
+
       - name: Build tauri-shell
         run: npm --prefix tauri-shell run build
 
