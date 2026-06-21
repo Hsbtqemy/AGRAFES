@@ -7,7 +7,8 @@ from pathlib import Path
 
 import pytest
 
-FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures" / "tei"
+# tests/contracts/ → fixtures live one level up under tests/fixtures/
+FIXTURES_DIR = Path(__file__).resolve().parent.parent / "fixtures" / "tei"
 
 
 # ===========================================================================

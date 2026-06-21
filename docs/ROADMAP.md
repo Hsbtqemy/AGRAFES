@@ -31,7 +31,7 @@ Moteur jugé **techniquement sain et bien gouverné** par l'audit du 12 juin (no
 - ~~**Sécurité mineure** (P1-8)~~ **✅ fait** : garde `Host` loopback / DNS-rebinding (S-01), portfile `O_EXCL|0o600` (S-02), `exporters/tei.py` confirmé write-only (S-04, pas de surface XXE).
 - ~~**S-03 — burndown XSS lint**~~ **✅ CLOS** (#80→#88) : prep (phase 1 + 4 géants, baseline 89→0) **+ phase 2** `tauri-app` (#86) & `tauri-shell` (#87) + fix prep #88. Les 3 front-ends ont une garde `no-unsanitized` stricte en CI, aucune baseline. Voir `docs/TICKET_S03_PHASE2_APP_SHELL.md`.
 - ~~**Pilotage** (P1-7)~~ **✅ fait** : ~~archivage du CHANGELOG (D-02)~~ (scindé → `docs/CHANGELOG_ARCHIVE.md`) ; ~~documenter `API_VERSION` vs `CONTRACT_VERSION` (D-06)~~ (section *Versioning* de `SIDECAR_API_CONTRACT.md` réécrite + dérive 1.6.23/1.6.27 signalée).
-- **Tests** (P1-6) : isoler les 11 fichiers versionnés sous `tests/contracts/` (T-03).
+- ~~**Tests** (P1-6) : isoler les 11 fichiers versionnés sous `tests/contracts/` (T-03).~~ **✅ fait** (`git mv` → `tests/contracts/`, discovery + 225 tests collectés vérifiés). Reste T-04 (fragilités timing).
 
 ## Moyen / long terme
 
