@@ -6056,13 +6056,23 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 
     def _handle_export_conllu(self, body: dict) -> None:
         from multicorpus_engine.exporters.conllu_export import export_conllu
+        from multicorpus_engine.services.errors import BadRequestError
+        from multicorpus_engine.services.validation import Field, validate
 
-        out_path = body.get("out_path")
-        if not isinstance(out_path, str) or not out_path.strip():
-            self._send_error("out_path is required", code=ERR_BAD_REQUEST, http_status=400)
+        # A-03: structural validation via declarative schema (same catch→_send_error
+        # shape as _handle_index). out_path is required + stripped, and the stripped
+        # value is exactly what the handler uses below — so strip=True is
+        # byte-identical here (no strip/use trap). doc_ids stays inline: it is a
+        # *coercing* list ([int(x) …]), not an isinstance(items) check.
+        try:
+            out_path = validate(
+                body, (Field("out_path", str, required=True, strip=True, error=BadRequestError),)
+            )["out_path"]
+        except BadRequestError as exc:
+            self._send_error(exc.message, code=ERR_BAD_REQUEST, http_status=400)
             return
         try:
-            out_path_resolved = self._resolve_export_path(out_path.strip())
+            out_path_resolved = self._resolve_export_path(out_path)
         except ValueError as exc:
             self._send_error(str(exc), code=ERR_BAD_REQUEST, http_status=400)
             return
@@ -6185,13 +6195,21 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 
     def _handle_export_ske(self, body: dict) -> None:
         from multicorpus_engine.exporters.ske_export import export_ske
+        from multicorpus_engine.services.errors import BadRequestError
+        from multicorpus_engine.services.validation import Field, validate
 
-        out_path = body.get("out_path")
-        if not isinstance(out_path, str) or not out_path.strip():
-            self._send_error("out_path is required", code=ERR_BAD_REQUEST, http_status=400)
+        # A-03: structural validation via declarative schema (mirrors
+        # _handle_export_conllu). strip=True is byte-identical — the stripped value
+        # is the one used. doc_ids stays inline (coercing list).
+        try:
+            out_path = validate(
+                body, (Field("out_path", str, required=True, strip=True, error=BadRequestError),)
+            )["out_path"]
+        except BadRequestError as exc:
+            self._send_error(exc.message, code=ERR_BAD_REQUEST, http_status=400)
             return
         try:
-            out_path_resolved = self._resolve_export_path(out_path.strip())
+            out_path_resolved = self._resolve_export_path(out_path)
         except ValueError as exc:
             self._send_error(str(exc), code=ERR_BAD_REQUEST, http_status=400)
             return
