@@ -114,6 +114,8 @@ import {
   formatDiffPaginationLabel,
   formatDiffRowTitle,
 } from "../lib/curationDiffList.ts";
+import { setHtml, appendHtml, raw } from "../lib/safeHtml.ts";
+import { safeColor } from "../lib/conventionsRoles.ts";
 
 // ─── Curation review persistence ──────────────────────────────────────────────
 
@@ -1493,14 +1495,14 @@ export class CurationView {
     const currentId = this._currentCurateDocId();
     const currentIdx = this._curateDocIndex(currentId);
     if (currentIdx < 0) {
-      queueEl.innerHTML = `<div class="prep-curate-qitem"><div class="prep-curate-qmeta"><span>File locale</span><span>${docs.length} doc(s)</span></div><div>Aucun document cibl&#233;. Utilisez <strong>Suivant</strong> pour d&#233;marrer la revue locale.</div></div>`;
+      setHtml(queueEl, raw(`<div class="prep-curate-qitem"><div class="prep-curate-qmeta"><span>File locale</span><span>${docs.length} doc(s)</span></div><div>Aucun document cibl&#233;. Utilisez <strong>Suivant</strong> pour d&#233;marrer la revue locale.</div></div>`));
       if (prevBtn) prevBtn.disabled = true;
       if (nextBtn) nextBtn.disabled = false;
       return;
     }
     const start = Math.max(0, currentIdx - 1);
     const end = Math.min(docs.length, currentIdx + 2);
-    queueEl.innerHTML = docs.slice(start, end).map((doc, offset) => {
+    setHtml(queueEl, raw(docs.slice(start, end).map((doc, offset) => {
       const idx = start + offset;
       const state = idx === currentIdx ? "Document actif" : idx < currentIdx ? "D&#233;j&#224; revu" : "Suivant";
       const role = doc.doc_role ? `${_escHtml(doc.doc_role)} · ` : "";
@@ -1508,7 +1510,7 @@ export class CurationView {
         `<div class="prep-curate-qmeta"><span>#${doc.doc_id} · ${_escHtml(doc.language)}</span><span>${state}</span></div>` +
         `<div>${_escHtml(doc.title)}</div>` +
         `<div style="font-size:11px;color:var(--prep-muted,#4f5d6d)">${role}${doc.unit_count} unit&#233;s</div></div>`;
-    }).join("");
+    }).join("")));
     if (prevBtn) prevBtn.disabled = currentIdx <= 0;
     if (nextBtn) nextBtn.disabled = currentIdx >= docs.length - 1;
   }
@@ -1535,7 +1537,7 @@ export class CurationView {
   private _renderCurateLog(): void {
     const el = this._q<HTMLElement>("#act-curate-review-log");
     if (!el) return;
-    el.innerHTML = formatCurateLog(this._curateLog, Date.now());
+    setHtml(el, raw(formatCurateLog(this._curateLog, Date.now())));
     // Update the badge on the <summary> so the count is visible when the panel is collapsed.
     const badge = this._q<HTMLElement>("#act-curate-log-badge");
     if (badge) {
@@ -1650,12 +1652,12 @@ export class CurationView {
       const modeNote = isAllMode ? `<span class="prep-session-all-note" title="Portée globale">&#9432; Portée globale</span> &#8212; ` : "";
       restoreNotice = `<div class="prep-session-reset-row">${modeNote}<button class="prep-btn-inline-link" id="act-reset-review">Effacer la review sauvegardée</button></div>`;
     }
-    el.innerHTML =
+    setHtml(el, raw(
       `<div class="prep-session-counts">${chip("pending","&#9632;",sl.pending,c.pending)}${chip("accepted","&#10003;",sl.accepted,c.accepted)}${chip("ignored","&#215;",sl.ignored,c.ignored)}</div>` +
       (af ? `<div class="prep-session-filter-note">Filtre statut actif &#8212; <button class="prep-btn-inline-link" id="act-clear-sf">Afficher tout</button></div>` : "") +
       (() => { const n = countManualOverrides(this._curateExamples); return n > 0 ? `<div class="prep-session-override-note">&#9998;&#160;${n} correction(s) manuelle(s)</div>` : ""; })() +
       (() => { const n = this._curateExceptions.size; return n > 0 ? `<div class="prep-session-exception-note">🔒&#160;${n} exception(s) persistée(s)</div>` : ""; })() +
-      restoreNotice;
+      restoreNotice));
     el.querySelectorAll<HTMLElement>("[data-sf]").forEach(chip => {
       chip.addEventListener("click", () => { const sf = chip.dataset.sf as "pending"|"accepted"|"ignored"; this._setStatusFilter(this._activeStatusFilter === sf ? null : sf); });
       chip.addEventListener("keydown", e => { if ((e as KeyboardEvent).key === "Enter") chip.click(); });
@@ -1735,7 +1737,7 @@ export class CurationView {
     if (!banner) { el.style.display = "none"; return; }
     el.style.display = "";
     el.className = banner.className;
-    el.innerHTML = banner.html;
+    setHtml(el, raw(banner.html));
   }
 
   private _updateFilterBadge(panel?: HTMLElement | null): void {
@@ -1797,9 +1799,9 @@ export class CurationView {
     if (!this._lastApplyResult) { noteEl.style.display = "none"; return; }
     const r = this._lastApplyResult;
     noteEl.style.display = "";
-    noteEl.innerHTML = `<strong>Dernier apply</strong> : ${r.units_modified} unité(s) modifiée(s)` +
+    setHtml(noteEl, raw(`<strong>Dernier apply</strong> : ${r.units_modified} unité(s) modifiée(s)` +
       (r.doc_id !== null ? ` (doc #${r.doc_id})` : " (corpus)") +
-      ` — ${new Date(r.applied_at ?? Date.now()).toLocaleTimeString("fr-FR")}`;
+      ` — ${new Date(r.applied_at ?? Date.now()).toLocaleTimeString("fr-FR")}`));
   }
   // ── FNV-1a helpers ────────────────────────────────────────────────────────
 
@@ -1993,9 +1995,9 @@ export class CurationView {
       const reps    = res.stats.replacements_total;
       this._hasPendingPreview = changed > 0;
       const statsEl = this._q("#act-preview-stats");
-      if (statsEl) statsEl.innerHTML = changed === 0
+      if (statsEl) setHtml(statsEl, raw(changed === 0
         ? `<span class="prep-stat-ok">✓ Aucune modification prévue (${total} unités analysées).</span>`
-        : `<span class="stat-warn">⚠ ${changed}/${total} unité(s) modifiée(s), ${reps} remplacement(s).</span>`;
+        : `<span class="stat-warn">⚠ ${changed}/${total} unité(s) modifiée(s), ${reps} remplacement(s).</span>`));
       if (infoEl) infoEl.textContent = `${total} unités · ${changed} modifiée(s)`;
       this._curateExamples = res.examples.map(ex => ({ ...ex, status: "pending" as const }));
       this._curateGlobalChanged = changed;
@@ -2036,7 +2038,7 @@ export class CurationView {
           const excIgnored = [...this._curateExceptions.values()].filter(e => e.kind === "ignore").length;
           if (excIgnored > 0) {
             const s = this._q("#act-preview-stats");
-            if (s) s.innerHTML += ` <span class="stat-exc">🔒 ${excIgnored} unité(s) silencée(s) par exception.</span>`;
+            if (s) appendHtml(s, raw(` <span class="stat-exc">🔒 ${excIgnored} unité(s) silencée(s) par exception.</span>`));
           }
         }
       }).catch(() => { /* non-critical */ });
@@ -2361,11 +2363,11 @@ export class CurationView {
           const banner = document.createElement("div");
           banner.className = "prep-raw-tsn-confirm";
           const paraCount = unit.n - 1;
-          banner.innerHTML =
+          setHtml(banner, raw(
             `<span>Définir l'unité ${unit.n} comme début du texte ? ` +
             `${paraCount > 0 ? `Les ${paraCount} unité(s) précédente(s) seront marquées comme paratexte.` : ""}</span>` +
             `<button class="btn btn-primary btn-xs">Confirmer</button>` +
-            `<button class="btn btn-ghost btn-xs">Annuler</button>`;
+            `<button class="btn btn-ghost btn-xs">Annuler</button>`));
           rawEl2.insertBefore(banner, rawEl2.firstChild);
           const [confirmBtn, cancelBtn] = banner.querySelectorAll("button");
           cancelBtn.addEventListener("click", () => banner.remove(), { once: true });
@@ -2573,11 +2575,11 @@ export class CurationView {
       }
     }
     const filtered = filterExceptions(all, this._excAdminFilter as ExcKindFilter, this._excAdminDocFilter);
-    list.innerHTML = formatExcAdminList(filtered, {
+    setHtml(list, raw(formatExcAdminList(filtered, {
       editingUnitId: this._excAdminEditing,
       showDocHeads: this._excAdminDocFilter === 0,
       totalIsEmpty: all.length === 0,
-    });
+    })));
   }
   private async _excAdminDelete(unitId: number): Promise<void> {
     const conn = this._getConn();
@@ -2854,17 +2856,17 @@ export class CurationView {
     const diagEl = this._q<HTMLElement>("#act-curate-diag");
     if (!diagEl) return;
     if (changed === 0) {
-      diagEl.innerHTML = formatNoChangesDiag(total);
+      setHtml(diagEl, raw(formatNoChangesDiag(total)));
     } else {
       const shown = this._curateExamples.length;
       const isTruncated = shown < this._curateGlobalChanged;
       const ruleStats = this._getRuleStats();
-      diagEl.innerHTML =
+      setHtml(diagEl, raw(
         formatChangesSummary(changed, total, replacements) +
         formatGotoFirstAction(shown) +
         formatTruncationNotice(shown, this._curateGlobalChanged) +
         formatRuleChips(ruleStats, isTruncated) +
-        formatImpactNotice();
+        formatImpactNotice()));
       if (shown > 0) {
         const gotoBtn = diagEl.querySelector<HTMLElement>("#act-diag-goto-first");
         gotoBtn?.addEventListener("click", () => { const panel = this._q<HTMLElement>("#act-preview-panel") ?? undefined; this._setRuleFilter(null, panel); this._q("#act-diff-list")?.scrollIntoView({ behavior: "smooth", block: "nearest" }); });
@@ -2882,7 +2884,7 @@ export class CurationView {
       const r = this._cb.getLastSegmentReport?.();
       if (r) {
         segLinkEl.style.display = "";
-        segLinkEl.innerHTML = `<button class="prep-acts-hub-head-link" data-action="goto-seg" style="font-size:11.5px">&#9654; Voir segmentation (${r.units_output} unités${r.warnings?.length ? ` · ${r.warnings.length} avertissements` : ""})</button>`;
+        setHtml(segLinkEl, raw(`<button class="prep-acts-hub-head-link" data-action="goto-seg" style="font-size:11.5px">&#9654; Voir segmentation (${r.units_output} unités${r.warnings?.length ? ` · ${r.warnings.length} avertissements` : ""})</button>`));
       } else {
         segLinkEl.style.display = "none";
       }
@@ -2892,7 +2894,7 @@ export class CurationView {
   private _renderCurateMinimap(changed: number, total: number): void {
     const mmEl = this._q("#act-curate-minimap");
     if (!mmEl) return;
-    mmEl.innerHTML = formatMinimap(changed, total);
+    setHtml(mmEl, raw(formatMinimap(changed, total)));
   }
 
   private async _fillCuratePanesWithDocumentText(docId: number): Promise<void> {
@@ -2907,7 +2909,7 @@ export class CurationView {
       const preview = await getDocumentPreview(conn, docId, 300);
       if (!preview.lines.length) {
         const empty = '<p class="empty-hint">Aucune unit&#233; disponible pour ce document.</p>';
-        rawEl.innerHTML = empty; diffEl.innerHTML = empty; return;
+        setHtml(rawEl, raw(empty)); setHtml(diffEl, raw(empty)); return;
       }
       const bannerRaw  = `<div class="prep-stat-ok" style="margin-bottom:8px;font-size:13px">&#10003;&#160;Aucune modification &#8212; le document est propre avec ces r&#232;gles.</div>`;
       const bannerDiff = `<div class="prep-stat-ok" style="margin-bottom:8px;font-size:13px">&#10003;&#160;Aucune diff&#233;rence &#8212; texte cur&#233; identique au source.</div>`;
@@ -2917,15 +2919,15 @@ export class CurationView {
       const linesHtml = preview.lines.map(l => {
         const conv = l.unit_role ? roleMap.get(l.unit_role) : undefined;
         const badge = conv
-          ? `<span class="prep-raw-role-badge" style="--role-color:${conv.color ?? "#64748b"}">${conv.icon ? _escHtml(conv.icon) + "\u00a0" : ""}${_escHtml(conv.label)}</span>`
+          ? `<span class="prep-raw-role-badge" style="--role-color:${safeColor(conv.color, "#64748b")}">${conv.icon ? _escHtml(conv.icon) + "\u00a0" : ""}${_escHtml(conv.label)}</span>`
           : "";
         return `<div class="prep-vo-line"><span class="prep-vo-ln">${l.n}</span>${badge}<span class="prep-vo-txt">${richTextToHtml(l.text_raw, l.text)}</span></div>`;
       }).join("");
-      rawEl.innerHTML = bannerRaw + truncNote + linesHtml;
-      diffEl.innerHTML = bannerDiff + truncNote + linesHtml;
+      setHtml(rawEl, raw(bannerRaw + truncNote + linesHtml));
+      setHtml(diffEl, raw(bannerDiff + truncNote + linesHtml));
     } catch {
       const err = '<p class="empty-hint">Impossible de charger le texte.</p>';
-      rawEl.innerHTML = err; diffEl.innerHTML = err;
+      setHtml(rawEl, raw(err)); setHtml(diffEl, raw(err));
     }
   }
 
@@ -2942,7 +2944,7 @@ export class CurationView {
       } else {
         msg = `Aucun exemple disponible dans cet &#233;chantillon.`;
       }
-      el.innerHTML = `<p class="empty-hint">${msg}</p>`;
+      setHtml(el, raw(`<p class="empty-hint">${msg}</p>`));
       el.querySelector<HTMLElement>("#raw-pane-clear-filter")?.addEventListener("click", () => {
         this._setRuleFilter(null, this._q<HTMLElement>("#act-preview-panel"));
       });
@@ -2976,7 +2978,7 @@ export class CurationView {
     const el = this._q<HTMLElement>("#act-diff-list");
     if (!el) return;
     if (examples.length === 0) {
-      el.innerHTML = formatDiffEmptyMessage(this._activeRuleFilter, this._curateGlobalChanged);
+      setHtml(el, raw(formatDiffEmptyMessage(this._activeRuleFilter, this._curateGlobalChanged)));
       el.querySelector<HTMLElement>("#diff-pane-clear-filter")?.addEventListener("click", () => {
         this._setRuleFilter(null, this._q<HTMLElement>("#act-preview-panel"));
       });
@@ -3018,12 +3020,12 @@ export class CurationView {
       // listener Shell.
       const jumpBtnHtml = `<button class="prep-diff-jump-btn" type="button"
         title="Voir cette unité dans Segmentation (retour amont)"
-        aria-label="Ouvrir l'unité ${ex.external_id ?? i + 1} dans la vue Segmentation"
-        data-unit-n="${ex.external_id ?? ""}">✂</button>`;
-      tr.innerHTML =
-        `<td class="prep-diff-extid">${ex.external_id ?? i + 1}${statusBadgeHtml}${overrideBadgeHtml}${exceptionBadgeHtml}${forcedBadgeHtml}${jumpBtnHtml}</td>` +
+        aria-label="Ouvrir l'unité ${_escHtml(String(ex.external_id ?? i + 1))} dans la vue Segmentation"
+        data-unit-n="${_escHtml(String(ex.external_id ?? ""))}">✂</button>`;
+      setHtml(tr, raw(
+        `<td class="prep-diff-extid">${_escHtml(String(ex.external_id ?? i + 1))}${statusBadgeHtml}${overrideBadgeHtml}${exceptionBadgeHtml}${forcedBadgeHtml}${jumpBtnHtml}</td>` +
         `<td class="prep-diff-rule-cell">${ruleBadgeHtml}</td>` +
-        `<td class="diff-after${ex.is_manual_override ? " prep-diff-after-overridden" : ""}">${beforeHtml}${_highlightChanges(ex.before, effectiveAfter)}</td>`;
+        `<td class="diff-after${ex.is_manual_override ? " prep-diff-after-overridden" : ""}">${beforeHtml}${_highlightChanges(ex.before, effectiveAfter)}</td>`));
       tr.addEventListener("click", (evt) => {
         // Ne pas activer la sélection si le clic vient du bouton jump
         if ((evt.target as HTMLElement)?.classList.contains("prep-diff-jump-btn")) return;
@@ -3232,7 +3234,7 @@ export class CurationView {
     const roleOptions = this._conventions.map(r =>
       `<option value="${_escHtml(r.name)}">${_escHtml(r.label || r.name)}</option>`
     ).join("");
-    sel.innerHTML = `<option value="">— choisir —</option>${roleOptions}`;
+    setHtml(sel, raw(`<option value="">— choisir —</option>${roleOptions}`));
     if (prev) sel.value = prev;
   }
 
@@ -3319,7 +3321,7 @@ export class CurationView {
       const changedIds = new Set(this._curateExamples.map(e => e.unit_id));
       this._renderRawPaneFull(changedIds.size > 0 ? changedIds : undefined);
     };
-    const cancel = () => { unitEl.classList.remove("prep-raw-unit-editing"); unitEl.innerHTML = originalContent; };
+    const cancel = () => { unitEl.classList.remove("prep-raw-unit-editing"); setHtml(unitEl, raw(originalContent)); };
     saveBtn.addEventListener("click", save);
     cancelBtn.addEventListener("click", cancel);
     ta.addEventListener("keydown", (e: KeyboardEvent) => {
@@ -3362,7 +3364,7 @@ export class CurationView {
     const row = (panel ?? this._root)?.querySelector<HTMLElement>(`tr[data-diff-idx="${this._activeDiffIdx}"]`);
     if (row) {
       const afterCell = row.querySelector<HTMLElement>(".diff-after");
-      if (afterCell) afterCell.innerHTML = _highlightChanges(ex.before, ex.manual_after ?? ex.after);
+      if (afterCell) setHtml(afterCell, raw(_highlightChanges(ex.before, ex.manual_after ?? ex.after)));
       this._renderOverrideBadge(row, ex.is_manual_override ?? false);
       this._renderStatusBadge(row, ex.status ?? "pending");
       const st = ex.status ?? "pending";
@@ -3392,7 +3394,7 @@ export class CurationView {
     const row = (panel ?? this._root)?.querySelector<HTMLElement>(`tr[data-diff-idx="${this._activeDiffIdx}"]`);
     if (row) {
       const afterCell = row.querySelector<HTMLElement>(".diff-after");
-      if (afterCell) afterCell.innerHTML = _highlightChanges(ex.before, ex.after);
+      if (afterCell) setHtml(afterCell, raw(_highlightChanges(ex.before, ex.after)));
       this._renderOverrideBadge(row, false);
     }
   }
@@ -3571,14 +3573,14 @@ export class CurationView {
       if (!bar) { resolve(false); return; }
       if (bar.style.display !== "none") { resolve(false); return; }
       const html = message.split("\n").map(line => line.trim() ? `<span>${_escHtml(line)}</span>` : "").filter(Boolean).join("<br>");
-      bar.innerHTML =
+      setHtml(bar, raw(
         `<div class="prep-curate-confirm-modal" role="document">` +
           `<div class="prep-curate-confirm-body">${html}</div>` +
           `<div class="prep-curate-confirm-actions">` +
             `<button class="btn btn-ghost btn-sm" id="act-confirm-cancel">Annuler</button>` +
             `<button class="btn prep-btn-warning btn-sm" id="act-confirm-ok">Confirmer l'application</button>` +
           `</div>` +
-        `</div>`;
+        `</div>`));
       bar.style.display = "";
       // Backdrop click: NOT once:true — a click on an inner element bubbles up
       // and would consume the listener before any backdrop click could fire.
@@ -3635,7 +3637,7 @@ export class CurationView {
 
   private _renderApplyHistoryPanel(container: HTMLElement, events: CurateApplyEvent[]): void {
     // Delegated to the pure helper (testé dans __tests__/curationApplyHistory.test.ts).
-    container.innerHTML = formatApplyHistoryList(events);
+    setHtml(container, raw(formatApplyHistoryList(events)));
   }
 
   private _renderContextDetail(ex: CuratePreviewExample | null): void {
@@ -3654,12 +3656,12 @@ export class CurationView {
     const ctxBeforeHtml = ctxBefore ? `<div class="prep-ctx-row ctx-before"><span class="prep-ctx-label">Avant</span><span class="prep-ctx-text">${_escHtml(trim(ctxBefore))}</span></div>` : "";
     const ctxAfterHtml  = ctxAfter  ? `<div class="prep-ctx-row ctx-after"><span class="prep-ctx-label">Après</span><span class="prep-ctx-text">${_escHtml(trim(ctxAfter))}</span></div>`  : "";
     if (this._editingManualOverride) {
-      body.innerHTML =
+      setHtml(body, raw(
         ctxBeforeHtml +
         `<div class="prep-ctx-row ctx-current"><span class="prep-ctx-label ctx-label-cur">Original</span><span class="prep-ctx-text ctx-original">${_escHtml(ex.before)}</span></div>` +
         `<div class="prep-ctx-row ctx-edit-row"><span class="prep-ctx-label ctx-label-edit">Résultat</span><span class="prep-ctx-edit-area"><textarea id="act-manual-override-input" class="prep-ctx-override-textarea" rows="3" spellcheck="true">${_escHtml(effectiveAfter)}</textarea><span class="prep-ctx-edit-hint">Proposition automatique : <em>${_escHtml(ex.after)}</em></span></span></div>` +
         `<div class="prep-ctx-edit-actions"><button class="btn btn-sm btn-primary" id="act-override-save">Enregistrer</button><button class="btn btn-sm btn-secondary" id="act-override-cancel">Annuler</button>${ex.is_manual_override ? `<button class="btn btn-sm" id="act-override-revert" title="Revenir à la proposition automatique">&#8617; Automatique</button>` : ""}</div>` +
-        ctxAfterHtml;
+        ctxAfterHtml));
     } else {
       const overrideBadgeHtml = ex.is_manual_override
         ? `<span class="prep-ctx-override-badge" title="Ce résultat a été corrigé manuellement. Proposition automatique : ${_escHtml(ex.after)}">✏ Édité manuellement</span>` : "";
@@ -3669,12 +3671,12 @@ export class CurationView {
       const forcedReason = ex.preview_reason;
       const forcedNoteHtml = forcedReason && forcedReason !== "standard"
         ? `<div class="prep-ctx-forced-note ctx-forced-${forcedReason}">${forcedReason === "forced" ? "↗ Ouverture ciblée depuis le panneau Exceptions." : forcedReason === "forced_ignored" ? "↗ Ouverture ciblée — cette unité est <strong>neutralisée par une exception ignore</strong>. Elle n'est pas appliquée." : "↗ Ouverture ciblée — aucune modification active avec les règles courantes."}</div>` : "";
-      body.innerHTML =
+      setHtml(body, raw(
         ctxBeforeHtml +
         `<div class="prep-ctx-row ctx-current"><span class="prep-ctx-label ctx-label-cur">${forcedReason === "forced_no_change" ? "Inchangé" : forcedReason === "forced_ignored" ? "Neutralisé" : "Modifié"}</span><span class="prep-ctx-modification"><span class="prep-ctx-diff-before">${_escHtml(ex.before)}</span><span class="prep-ctx-arrow">&#8594;</span><span class="prep-ctx-diff-after${ex.is_manual_override ? " ctx-manual-override" : ""}">${_highlightChanges(ex.before, effectiveAfter)}</span></span></div>` +
         ctxAfterHtml + forcedNoteHtml +
         `<div class="prep-ctx-edit-actions">${overrideBadgeHtml}<button class="btn btn-sm" id="act-override-edit" title="Modifier manuellement le résultat de cette modification">&#9998; Éditer</button>${ex.is_manual_override ? `<button class="btn btn-sm" id="act-override-revert" title="Annuler la correction manuelle et utiliser la proposition automatique">&#8617; Proposition auto</button>` : ""}</div>` +
-        `<div class="prep-ctx-exception-actions">${exceptionBadgeHtml}${!hasException ? `<button class="btn btn-sm prep-ctx-exception-btn" id="act-exc-ignore" title="Ne plus jamais appliquer de curation sur cette unité, même lors des prochaines sessions">🔒 Toujours ignorer</button><button class="btn btn-sm prep-ctx-exception-btn" id="act-exc-override" title="Appliquer durablement le résultat actuel comme correction permanente de cette unité">🔒 Conserver cette correction</button>` : `<button class="btn btn-sm prep-ctx-exception-btn prep-ctx-exception-btn-delete" id="act-exc-delete" title="Supprimer l'exception persistée — la curation automatique sera réactivée pour cette unité">🔓 Supprimer l'exception</button>`}</div>`;
+        `<div class="prep-ctx-exception-actions">${exceptionBadgeHtml}${!hasException ? `<button class="btn btn-sm prep-ctx-exception-btn" id="act-exc-ignore" title="Ne plus jamais appliquer de curation sur cette unité, même lors des prochaines sessions">🔒 Toujours ignorer</button><button class="btn btn-sm prep-ctx-exception-btn" id="act-exc-override" title="Appliquer durablement le résultat actuel comme correction permanente de cette unité">🔒 Conserver cette correction</button>` : `<button class="btn btn-sm prep-ctx-exception-btn prep-ctx-exception-btn-delete" id="act-exc-delete" title="Supprimer l'exception persistée — la curation automatique sera réactivée pour cette unité">🔓 Supprimer l'exception</button>`}</div>`));
     }
     body.querySelector<HTMLButtonElement>("#act-override-edit")?.addEventListener("click", () => this._enterEditMode());
     body.querySelector<HTMLButtonElement>("#act-override-save")?.addEventListener("click", () => { const ta = body.querySelector<HTMLTextAreaElement>("#act-manual-override-input"); if (ta) this._saveManualOverride(ta.value); });
