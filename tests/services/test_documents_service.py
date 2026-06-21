@@ -3,7 +3,7 @@
 Exercises the extracted documents CRUD without any HTTP server. The migrated
 schema already has the workflow columns + tokens table, so list_documents works
 without the adapter's legacy backfill. HTTP adapters stay covered by
-tests/test_sidecar_v04.py / test_sidecar_api_contract.py + the binary smoke
+tests/contracts/test_sidecar_v04.py / test_sidecar_api_contract.py + the binary smoke
 (GET /documents).
 """
 
