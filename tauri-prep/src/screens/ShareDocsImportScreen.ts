@@ -108,7 +108,6 @@ export class ShareDocsImportScreen {
 
   /** In-memory credentials — never persisted (Phase 3 decision). */
   private _auth: WebdavAuth = { mode: "anonymous" };
-  private _baseUrl = "";
   private _currentUrl = "";
   private _history: string[] = [];
   private _entries: RemoteEntry[] = [];
@@ -222,7 +221,6 @@ export class ShareDocsImportScreen {
       this._showToast?.("Identifiants incomplets pour ce mode d'authentification", true);
       return;
     }
-    this._baseUrl = url;
     this._history = [];
     await this._browse(url);
   }
@@ -287,14 +285,16 @@ export class ShareDocsImportScreen {
       this._log(`▶ Import lancé — ${decodeURIComponent(this._currentUrl)} (${mode})`);
       this._jobCenter?.trackJob(job.job_id, `ShareDocs : ${folderLabel(this._currentUrl)}`, (done) => {
         if (importBtn) importBtn.disabled = false;
-        if (done.status === "done") {
+        if (done.status === "done" && done.result) {
           this._report = done.result as unknown as ImportRemoteReport;
           this._renderReport();
           const summary = summarizeReport(this._report);
           this._showToast?.(`✓ ${summary}`);
           this._log(`✓ ${summary}`);
         } else {
-          const msg = done.error || "Import distant interrompu";
+          const msg =
+            done.error ||
+            (done.status === "done" ? "Import terminé sans rapport" : "Import distant interrompu");
           this._showToast?.(`✗ ${msg}`, true);
           this._log(`✗ ${msg}`, true);
         }
@@ -359,7 +359,7 @@ export class ShareDocsImportScreen {
     if (section) section.style.display = "";
 
     const r = this._report;
-    const rows = r.files.map((f) => {
+    const rows = (r.files ?? []).map((f) => {
       const kind = statusBadgeKind(f.status);
       const detail =
         f.status === "error" ? (f.error ?? "") : f.doc_id != null ? `doc #${f.doc_id}` : "";
