@@ -26,6 +26,7 @@ import {
   folderLabel,
   formatRemoteSize,
   isImportRemoteReport,
+  languageRequiredForMode,
   normalizeFolderUrl,
   safeDecodeUrl,
   sortRemoteEntries,
@@ -165,7 +166,7 @@ export class ShareDocsImportScreen {
             <label class="prep-sd-field"><span>Mode d'import</span>
               <select id="prep-sd-mode">${MODE_OPTIONS}</select>
             </label>
-            <label class="prep-sd-field"><span>Langue (ISO, optionnel)</span><input type="text" id="prep-sd-language" placeholder="fr" /></label>
+            <label class="prep-sd-field"><span>Langue (ISO, requise sauf TEI)</span><input type="text" id="prep-sd-language" placeholder="fr" /></label>
             <label class="prep-sd-field"><span>Filtre (glob, optionnel)</span><input type="text" id="prep-sd-include" placeholder="*.docx" /></label>
             <button type="button" id="prep-sd-import-btn" class="prep-sd-btn prep-sd-btn--primary">Importer ce dossier</button>
           </div>
@@ -273,6 +274,10 @@ export class ShareDocsImportScreen {
     }
     const language = this._root?.querySelector<HTMLInputElement>("#prep-sd-language")?.value.trim() || undefined;
     const include = this._root?.querySelector<HTMLInputElement>("#prep-sd-include")?.value.trim() || undefined;
+    if (languageRequiredForMode(mode) && !language) {
+      this._showToast?.("La langue (ISO) est requise pour ce mode d'import (seul TEI peut l'omettre)", true);
+      return;
+    }
     this._auth = this._readAuthFromForm();
     if (!authIsComplete(this._auth)) {
       this._showToast?.("Identifiants incomplets pour ce mode d'authentification", true);

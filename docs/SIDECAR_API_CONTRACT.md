@@ -254,6 +254,7 @@ Three **independent** version fields surface in sidecar responses — do not con
 - `POST /import-remote` (token required) — batch-ingest a WebDAV folder (ShareDocs ingestion, Phase 2)
   - **asynchronous**: enqueues a `JobManager` job and returns `{ job }` (202); poll `GET /jobs/<id>` for per-file progress + the final batch report
   - body: `{ url, mode, language?, include?, auth?, doc_role?, resource_type?, max_file_mb? }` (`mode` = same values as `/import`)
+  - `language` is **required for every mode except `tei`** (rejected with `400` otherwise — mirrors the CLI `import-remote` guard); `max_file_mb` null/absent → default 200 MiB cap
   - per file the *download* runs outside the write-lock; only the DB section (dedup + import + provenance) is serialized under it
   - batch report per file: `status ∈ {imported, skipped-duplicate, skipped-filtered, skipped-oversize, error}`, `source_url`, `doc_id`, `run_id`, `source_hash`, counts
   - **credentials (`auth`) are NEVER placed in the job params** (which `/jobs/<id>` exposes) nor persisted anywhere — captured in the runner closure, memory only

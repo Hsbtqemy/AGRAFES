@@ -2326,6 +2326,19 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             )
             return
 
+        # Language is required for every mode except TEI (which carries its own
+        # xml:lang) — mirrors the CLI `import-remote` guard. Without it every file
+        # fails per-file on the documents.language NOT NULL constraint (cryptic),
+        # so reject up front with a clear message.
+        language = body.get("language")
+        if norm_mode != "tei" and not (isinstance(language, str) and language.strip()):
+            self._send_error(
+                "language is required for this import mode (only TEI may omit it)",
+                code=ERR_VALIDATION,
+                http_status=400,
+            )
+            return
+
         try:
             auth_header = self._build_webdav_auth_header(body.get("auth"))
         except ValueError as exc:

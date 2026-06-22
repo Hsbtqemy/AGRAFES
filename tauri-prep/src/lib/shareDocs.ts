@@ -32,6 +32,15 @@ export function buildWebdavAuth(
   return { mode: "anonymous" };
 }
 
+/**
+ * Whether an import mode requires a language. Every mode except TEI (which
+ * carries its own xml:lang) needs one — without it a non-TEI import fails on the
+ * `documents.language` NOT NULL constraint. Mirrors the CLI / sidecar guard.
+ */
+export function languageRequiredForMode(mode: string): boolean {
+  return mode !== "tei";
+}
+
 /** Client-side mirror of the server's auth requirement, for an early UX guard. */
 export function authIsComplete(auth: WebdavAuth): boolean {
   if (auth.mode === "basic") return Boolean(auth.user && auth.password);

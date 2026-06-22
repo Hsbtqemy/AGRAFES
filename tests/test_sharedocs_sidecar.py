@@ -285,6 +285,26 @@ def test_import_remote_unknown_mode_returns_400(tmp_path: Path) -> None:
     assert payload["ok"] is False
 
 
+def test_import_remote_non_tei_requires_language(tmp_path: Path) -> None:
+    """A non-TEI import without a language is rejected up front with a clear 400,
+    rather than failing per-file on the documents.language NOT NULL constraint
+    (mirrors the CLI guard; found via visual verification)."""
+    server = _server(tmp_path)
+    base = f"http://127.0.0.1:{server.actual_port}"
+    try:
+        # non-TEI, no language → 400 (no job enqueued)
+        st_no_lang, p1 = _post(base, "/import-remote", {"url": _BASE, "mode": "docx_numbered_lines"})
+        # TEI may omit the language → passes validation (propfind mocked empty)
+        with mock.patch.object(webdav, "propfind", return_value=[]):
+            st_tei, p2 = _post(base, "/import-remote", {"url": _BASE, "mode": "tei"})
+    finally:
+        server.shutdown()
+    assert st_no_lang == 400
+    assert p1["ok"] is False
+    assert "language" in p1["error"]["message"].lower()
+    assert st_tei == 202, p2
+
+
 def test_import_remote_rejects_non_http_scheme(tmp_path: Path) -> None:
     """A bad URL scheme is refused synchronously with 400 — never enqueued as a
     job (so it can't surface late as a job error)."""
