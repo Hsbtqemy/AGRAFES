@@ -19,7 +19,7 @@ import type {
   WebdavAuth,
   WebdavAuthMode,
 } from "../lib/sidecarClient.ts";
-import { webdavList, importRemote } from "../lib/sidecarClient.ts";
+import { webdavList, importRemote, deleteDocuments } from "../lib/sidecarClient.ts";
 import type { JobCenter } from "../components/JobCenter.ts";
 import { setHtml, appendHtml, raw, safeHtml } from "../lib/safeHtml.ts";
 import {
@@ -27,6 +27,8 @@ import {
   authSecret,
   buildNextcloudRoot,
   buildWebdavAuth,
+  detectFormatFromName,
+  fileMatchesMode,
   folderLabel,
   formatRemoteSize,
   groupSelectionForImport,
@@ -124,6 +126,10 @@ const SHAREDOCS_CSS = `
   .prep-sharedocs-screen .prep-sd-sel-list { font-size: 0.76rem; color: var(--color-muted); margin: 0 0 0.6rem;
     max-height: 110px; overflow: auto; }
   .prep-sharedocs-screen .prep-sd-sel-list ul { margin: 0.2rem 0; padding-left: 1.1rem; }
+  .prep-sharedocs-screen .prep-sd-fmt { color: var(--color-muted); font-size: 0.72rem; }
+  .prep-sharedocs-screen .prep-sd-mismatch { color: #856404; background: #fff3cd; border-radius: 4px;
+    padding: 0 0.3rem; font-size: 0.72rem; font-weight: 600; }
+  .prep-sharedocs-screen .prep-sd-sel-confirm, .prep-sharedocs-screen .prep-sd-report-confirm { margin: 0.4rem 0; }
 `;
 
 function ensureStyles(): void {
@@ -224,6 +230,7 @@ export class ShareDocsImportScreen {
             <button type="button" id="prep-sd-sel-import" class="prep-sd-btn prep-sd-btn--primary">Importer la sélection</button>
           </div>
           <div id="prep-sd-sel-list" class="prep-sd-sel-list"></div>
+          <div id="prep-sd-sel-confirm" class="prep-sd-sel-confirm"></div>
           <div class="prep-sd-import-controls">
             <label class="prep-sd-field"><span>Mode d'import</span>
               <select id="prep-sd-mode">${MODE_OPTIONS}</select>
@@ -251,6 +258,7 @@ export class ShareDocsImportScreen {
     root.querySelector("#prep-sd-entries")?.addEventListener("change", (ev) => this._onEntryCheck(ev));
     root.querySelector("#prep-sd-sel-clear")?.addEventListener("click", () => this._clearSelection());
     root.querySelector("#prep-sd-sel-import")?.addEventListener("click", () => void this._importSelection());
+    root.querySelector("#prep-sd-mode")?.addEventListener("change", () => this._updateSelectionUi());
     root.querySelector("#prep-sd-forget-btn")?.addEventListener("click", () => void this._forget());
 
     this._updateConnectBtn();
@@ -592,12 +600,21 @@ export class ShareDocsImportScreen {
       if (n === 0) {
         setHtml(list, raw(""));
       } else {
-        // Show the parent folder too — the cart spans folders, so a bare name
-        // (e.g. two "a.docx" in different folders) would be ambiguous.
-        const items = [...this._selected.values()].map(
-          (it) =>
-            safeHtml`<li>${it.is_dir ? "📁" : "📄"} ${it.name} — ${folderLabel(it.parentUrl)}</li>`,
-        );
+        // Show the parent folder (the cart spans folders → bare names are ambiguous)
+        // and, per file, the detected format with a ⚠ when it does not match the
+        // chosen mode's format (that file would error). Folders carry no flag — a
+        // whole-folder import filters by extension server-side anyway.
+        const mode = root.querySelector<HTMLSelectElement>("#prep-sd-mode")?.value ?? "";
+        const items = [...this._selected.values()].map((it) => {
+          if (it.is_dir) {
+            return safeHtml`<li>📁 ${it.name} — ${folderLabel(it.parentUrl)}</li>`;
+          }
+          const fmt = detectFormatFromName(it.name);
+          const tag = fileMatchesMode(it.name, mode)
+            ? safeHtml`<span class="prep-sd-fmt">${fmt}</span>`
+            : safeHtml`<span class="prep-sd-mismatch" title="Format incompatible avec le mode choisi — ce fichier échouera">⚠ ${fmt}</span>`;
+          return safeHtml`<li>📄 ${it.name} — ${folderLabel(it.parentUrl)} ${tag}</li>`;
+        });
         setHtml(list, safeHtml`<ul>${items}</ul>`);
       }
     }
@@ -622,15 +639,34 @@ export class ShareDocsImportScreen {
     if (!form) return;
     const { mode, language, include } = form;
 
-    const groups = groupSelectionForImport([...this._selected.values()]);
+    // Disable the trigger for the whole async flow (confirm + submissions) so a
+    // double-click can't open a second inlineConfirm on the same container.
     const importBtn = this._root?.querySelector<HTMLButtonElement>("#prep-sd-sel-import");
     if (importBtn) importBtn.disabled = true;
 
-    this._report = null;
-    this._renderReport();
-    this._log(`▶ Import de la sélection — ${groups.length} lot(s)`);
-
     try {
+      // Warn (don't silently drop) when explicitly-selected files are of a format the
+      // chosen mode can't import — they would be reported as per-file errors.
+      const mismatched = [...this._selected.values()].filter(
+        (it) => !it.is_dir && !fileMatchesMode(it.name, mode),
+      );
+      if (mismatched.length > 0) {
+        const confirmEl = this._root?.querySelector<HTMLElement>("#prep-sd-sel-confirm");
+        if (confirmEl) {
+          const ok = await inlineConfirm(
+            confirmEl,
+            `${mismatched.length} fichier(s) d'un autre format que « ${mode} » échoueront (reportés en erreur). Importer quand même ?`,
+            { confirmLabel: "Importer quand même", danger: false },
+          );
+          if (!ok) return;
+        }
+      }
+
+      const groups = groupSelectionForImport([...this._selected.values()]);
+      this._report = null;
+      this._renderReport();
+      this._log(`▶ Import de la sélection — ${groups.length} lot(s)`);
+
       for (const g of groups) {
         const job = await importRemote(this._conn, {
           url: g.url,
@@ -749,6 +785,64 @@ export class ShareDocsImportScreen {
         <tbody>${rows}</tbody>
       </table>`,
     );
+
+    // "Annuler cet import" — only the docs ACTUALLY imported by this batch (never
+    // skipped-duplicate, whose doc_id is a pre-existing document).
+    const importedCount = (r.files ?? []).filter(
+      (f) => f.status === "imported" && f.doc_id != null,
+    ).length;
+    if (importedCount > 0) {
+      appendHtml(
+        host,
+        safeHtml`<div class="prep-sd-report-actions">
+          <button type="button" id="prep-sd-undo-btn" class="prep-sd-btn prep-sd-btn--ghost">Annuler cet import (${importedCount} document${importedCount > 1 ? "s" : ""})</button>
+        </div>
+        <div id="prep-sd-report-confirm" class="prep-sd-report-confirm"></div>`,
+      );
+      host
+        .querySelector<HTMLButtonElement>("#prep-sd-undo-btn")
+        ?.addEventListener("click", () => void this._undoImport());
+    }
+  }
+
+  /**
+   * Undo a batch import: delete the documents this batch created. Only files with
+   * `status === "imported"` are removed — `skipped-duplicate` entries point at a
+   * pre-existing document and must NOT be deleted. Confirmed (destructive).
+   */
+  private async _undoImport(): Promise<void> {
+    if (!this._conn || !this._report) return;
+    const ids = (this._report.files ?? [])
+      .filter((f) => f.status === "imported" && f.doc_id != null)
+      .map((f) => f.doc_id as number);
+    if (ids.length === 0) return;
+
+    // Disable the trigger during the (async) confirm + delete so a double-click
+    // can't open a second confirm on the same container.
+    const btn = this._root?.querySelector<HTMLButtonElement>("#prep-sd-undo-btn");
+    if (btn) btn.disabled = true;
+    try {
+      const confirmEl = this._root?.querySelector<HTMLElement>("#prep-sd-report-confirm");
+      if (confirmEl) {
+        const ok = await inlineConfirm(
+          confirmEl,
+          `Supprimer définitivement les ${ids.length} document(s) importés par ce lot ? (Les doublons ignorés ne sont pas touchés.)`,
+          { confirmLabel: "Supprimer", danger: true },
+        );
+        if (!ok) return;
+      }
+      const res = await deleteDocuments(this._conn, ids);
+      this._showToast?.(`✓ Lot annulé — ${res.deleted} document(s) supprimé(s)`);
+      this._log(`✓ Import annulé — ${res.deleted} document(s) supprimé(s)`);
+      this._report = null;
+      this._renderReport();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this._showToast?.(`✗ Annulation : ${msg}`, true);
+      this._log(`✗ Annulation : ${msg}`, true);
+    } finally {
+      if (btn) btn.disabled = false;
+    }
   }
 
   // ─── Helpers ────────────────────────────────────────────────────────────────

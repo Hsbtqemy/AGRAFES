@@ -41,6 +41,42 @@ export function languageRequiredForMode(mode: string): boolean {
   return mode !== "tei";
 }
 
+/** Import format implied by a file extension or targeted by an import mode (P4D). */
+export type ImportFormat = "docx" | "odt" | "txt" | "tei" | "conllu" | "unknown";
+
+/** Format implied by a filename extension (selection info — never parses content). */
+export function detectFormatFromName(name: string): ImportFormat {
+  const n = (name ?? "").trim().toLowerCase();
+  if (n.endsWith(".docx")) return "docx";
+  if (n.endsWith(".odt")) return "odt";
+  if (n.endsWith(".txt")) return "txt";
+  if (n.endsWith(".xml") || n.endsWith(".tei")) return "tei";
+  if (n.endsWith(".conllu")) return "conllu";
+  return "unknown";
+}
+
+/** Format an import mode targets (e.g. `docx_numbered_lines` → "docx"). */
+export function modeFormat(mode: string): ImportFormat {
+  const m = (mode ?? "").trim();
+  if (m.startsWith("docx")) return "docx";
+  if (m.startsWith("odt")) return "odt";
+  if (m.startsWith("txt")) return "txt";
+  if (m === "tei") return "tei";
+  if (m === "conllu") return "conllu";
+  return "unknown";
+}
+
+/**
+ * Whether *name*'s format is compatible with the chosen import *mode*. Only the
+ * **format** is checked (extension) — NOT the segmentation style (numbered vs
+ * paragraphs), which can't be known without parsing. An unknown extension is a
+ * mismatch (it would error at import).
+ */
+export function fileMatchesMode(name: string, mode: string): boolean {
+  const f = detectFormatFromName(name);
+  return f !== "unknown" && f === modeFormat(mode);
+}
+
 /** Client-side mirror of the server's auth requirement, for an early UX guard. */
 export function authIsComplete(auth: WebdavAuth): boolean {
   if (auth.mode === "basic") return Boolean(auth.user && auth.password);
