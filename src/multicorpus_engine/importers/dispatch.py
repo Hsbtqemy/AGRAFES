@@ -29,6 +29,17 @@ IMPORT_MODES = (
 )
 
 
+def normalize_import_mode(mode: str) -> str:
+    """Canonicalise a user-supplied import mode string.
+
+    Lower-cases and maps spaces/hyphens to underscores so e.g. ``"odt paragraphs"``
+    or ``"ODT-Paragraphs"`` resolve to ``"odt_paragraphs"``. Single source for the
+    normalisation shared by the sidecar import / import-preview / import-remote
+    handlers and the async import job runner.
+    """
+    return mode.strip().lower().replace(" ", "_").replace("-", "_")
+
+
 def dispatch_import(
     conn: sqlite3.Connection,
     *,

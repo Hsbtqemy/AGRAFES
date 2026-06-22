@@ -62,6 +62,7 @@ from .sidecar_contract import (
     openapi_spec,
     success_payload,
 )
+from .importers.dispatch import IMPORT_MODES, normalize_import_mode
 from .sidecar_jobs import JobManager
 from . import __version__ as ENGINE_VERSION
 
@@ -2180,7 +2181,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             )
             return
 
-        mode = mode.strip().lower().replace(" ", "_").replace("-", "_")
+        mode = normalize_import_mode(mode)
 
         if mode == "conllu":
             try:
@@ -2303,7 +2304,6 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         file's *download* stays outside the lock and only its DB section runs
         under the sidecar write-lock (passed as ``critical_section``).
         """
-        from .importers.dispatch import IMPORT_MODES
         from .remote import ingest, webdav
 
         url = body.get("url")
@@ -2316,7 +2316,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         if not isinstance(mode, str) or not mode.strip():
             self._send_error("mode is required", code=ERR_VALIDATION, http_status=400)
             return
-        norm_mode = mode.strip().lower().replace(" ", "_").replace("-", "_")
+        norm_mode = normalize_import_mode(mode)
         if norm_mode not in IMPORT_MODES:
             self._send_error(
                 f"Unsupported import mode: {mode!r}",
@@ -2332,16 +2332,19 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             self._send_error(str(exc), code=ERR_VALIDATION, http_status=400)
             return
 
-        max_file_mb = body.get("max_file_mb", 200.0)
-        if max_file_mb is not None:
-            try:
-                max_file_mb = float(max_file_mb)
-            except (TypeError, ValueError):
-                self._send_error("max_file_mb must be a number", code=ERR_VALIDATION, http_status=400)
-                return
-            if max_file_mb <= 0:
-                self._send_error("max_file_mb must be > 0", code=ERR_VALIDATION, http_status=400)
-                return
+        # Treat an explicit null the same as an absent key → the default cap, so a
+        # client can never silently disable the per-file size guard with max_file_mb=null.
+        max_file_mb = body.get("max_file_mb")
+        if max_file_mb is None:
+            max_file_mb = 200.0
+        try:
+            max_file_mb = float(max_file_mb)
+        except (TypeError, ValueError):
+            self._send_error("max_file_mb must be a number", code=ERR_VALIDATION, http_status=400)
+            return
+        if max_file_mb <= 0:
+            self._send_error("max_file_mb must be > 0", code=ERR_VALIDATION, http_status=400)
+            return
 
         # Params are EXPOSED verbatim by /jobs/<id> → never put auth here (§D2),
         # same contract as runs.params (url + mode + non-secret options only).
@@ -2362,10 +2365,10 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         def runner(job_id, kind, job_params, progress_cb):
             # auth_header is captured from the closure — never read from params.
             def _progress(info: dict) -> None:
-                total = info.get("total") or 1
+                total = info.get("total") or 1  # already >= 1, guards a zero-file batch
                 idx = info.get("index", 0)
                 # Map file index onto 5..95 %; 100 % is set after the batch returns.
-                pct = 5 + int(90 * idx / max(total, 1))
+                pct = 5 + int(90 * idx / total)
                 progress_cb(pct, f"{info.get('name')}: {info.get('status')} ({idx}/{total})")
 
             progress_cb(2, "Listing remote folder")
@@ -8322,7 +8325,7 @@ class CorpusServer:
             mode = params.get("mode")
             # Normalise legacy/malformed mode values (e.g. "odt paragraphs" → "odt_paragraphs")
             if isinstance(mode, str):
-                mode = mode.strip().lower().replace(" ", "_").replace("-", "_")
+                mode = normalize_import_mode(mode)
             path_str = params.get("path")
             language = params.get("language") or "und"
             title = params.get("title")

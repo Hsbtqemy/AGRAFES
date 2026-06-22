@@ -253,6 +253,27 @@ def test_import_remote_never_leaks_credentials(tmp_path: Path) -> None:
         server.shutdown()
 
 
+def test_import_remote_null_max_file_mb_falls_back_to_default_cap(tmp_path: Path) -> None:
+    """An explicit max_file_mb=null must NOT disable the size guard — it falls back
+    to the 200 MiB default (regression guard for the review finding)."""
+    server = _server(tmp_path)
+    base = f"http://127.0.0.1:{server.actual_port}"
+    try:
+        with mock.patch.object(webdav, "propfind", return_value=[]):  # empty folder → fast job
+            status, payload = _post(base, "/import-remote", {
+                "url": _BASE,
+                "mode": "docx_numbered_lines",
+                "language": "fr",
+                "max_file_mb": None,
+            })
+            assert status == 202, payload
+            job = _poll_job(base, payload["job"]["job_id"])
+        assert job["status"] == "done", job
+        assert job["params"]["max_file_mb"] == 200.0
+    finally:
+        server.shutdown()
+
+
 def test_import_remote_unknown_mode_returns_400(tmp_path: Path) -> None:
     server = _server(tmp_path)
     base = f"http://127.0.0.1:{server.actual_port}"
