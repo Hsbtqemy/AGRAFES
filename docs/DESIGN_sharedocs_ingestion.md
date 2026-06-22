@@ -185,7 +185,7 @@ Trois améliorations post-P3, découpées en 3 tickets phasés (front-end + Rust
 un seul incrément moteur/contrat en P4C) :
 - **P4A ✅ implémenté** — persistance opt-in des identifiants via **trousseau OS**
   (assouplit §6) + clarté du formulaire (URL, modes, note mot-de-passe-d'application/humanID).
-- **P4B** — navigation : préremplissage racine / preset Huma-Num.
+- **P4B ✅ implémenté** — navigation : préremplissage racine / preset Huma-Num.
 - **P4C ✅ implémenté** — **sélection multiple accumulative** (panier inter-dossiers)
   couvrant dossiers ET fichiers (étend la granularité §1) ; ajoute `hrefs` au contrat
   `POST /import-remote` (1.6.29) + `only_hrefs` dans `remote/ingest.py`.
