@@ -17,6 +17,12 @@ le §6 de l'audit 2026-06-12 ; « — » = non priorisé explicitement.
 > `ae78207` (findings métier) a été intégré via la PR #41. Cette révision
 > réconcilie le tracker avec la série tests front (PR #59→#63) et les chiffres
 > A-01 réels.
+>
+> **Mise à jour 2026-06-22.** Recalage après la vague de validation : **A-03 clos**
+> (valideur déclaratif `services/validation.py`, 6 lots #94→#99, clôture #100) et
+> **A-03B clos** (dérivation OpenAPI single-source, #101) — les deux passent en
+> *Traités*. La ligne A-03 « ⬜ ouvert / 66 blocs » de la section *Ouverts* était
+> périmée (elle décrivait encore l'avant-projet) et a été retirée.
 
 ---
 
@@ -35,6 +41,8 @@ le §6 de l'audit 2026-06-12 ; « — » = non priorisé explicitement.
 | N-01 | 🟠 | P0-2 | ✅ corrigé | `dependabot.yml` étendu à pip/npm/cargo (4 apps + `src-tauri`), groupé hebdo. `1b12520` |
 | A-02 | 🟠 | P0-1 | ✅ corrigé | `/import/preview` ne réimplémente plus les importers : chaque mode passe par `parse_<mode>() -> ParsedDoc` + `to_preview()` (txt/docx×2/odt×2/tei), preview CoNLL-U *lenient* déplacé dans `conllu.preview_conllu`. `sidecar.py` −142 l. Corrige 3 divergences preview↔import (strip préfixe docx, fallback ext_id TEI, preview ODT cassé). PR #47, tests `test_parse_layer.py` (équivalence preview==import) |
 | Q-03 | 🟡 | — | ✅ corrigé | `file_sha256` unique dans `parsed.py` ; les 7 importers l'utilisent (suppression des 5 `_compute_file_hash` + 2 cross-imports docx→odt). PR #47 |
+| A-03 | 🟠 | P0-1 | ✅ corrigé | Valideur de schéma **déclaratif** `services/validation.py` (`Field`+`validate`, **stdlib pur** — pas de pydantic/jsonschema) remplaçant les blocs de validation manuelle ; invariant **`error_code` byte-identique** par endpoint. **6 lots** : socle + 2 preuves (#94), `documents_service` + facettes items/bornes-collections (#95), `units_service` coerce-int id (#96), facette `nullable` + `tokens_service` (#97), `doc_relations_service` (#98), 1ʳᵉ preuve handler **inline** sidecar (`out_path` export conllu/ske, #99). **Clôturé #100** (§8 `TICKET_A03_SCHEMA_VALIDATION.md`) : **finding line-négatif** — migrer un garde *mono-champ* de `sidecar.py` coûte des lignes (imports + try/except) ⇒ la traîne sidecar field-by-field reste un **backlog assumé** (gain réel seulement sur handlers multi-champs ou helper partagé). Le valideur est l'outil de référence pour toute nouvelle validation structurelle. |
+| A-03B | 🟠 | P0-1 | ✅ corrigé | **Dérivation OpenAPI single-source** : le `requestBody` de `/index` (`IndexRequest`) est **généré** du même tuple `Field` que la validation, via `field_schema_to_openapi()` (`services/request_schemas.py`). `Field` gagne `description` (pure métadonnée — `validate()` l'ignore). **Byte-identique** (contract-freeze vert, `docs/openapi.json` + snapshot inchangés) ; 26 tests générateur. **Pilote = `/index`** ; extension **gatée** sur la complétude + le typage des `Field` (les autres schémas migrés sont presence-only/partiels → dériveraient une régression du contrat). #101, §7 `TICKET_A03B_OPENAPI_FROM_FIELD.md`. |
 | — | — | — | ✅ bonus | CI déclenchée aussi sur `development` (les gates ne tiraient que sur `main`). `1b12520` |
 | — | — | — | ✅ bonus | Tests front **gatés en CI** : les 394 tests Vitest de Prep existaient mais ne tournaient jamais (seul `build` tournait). Jobs Vitest prep/app/shell ajoutés dans `ci.yml` + `smoke.yml` ; `.mjs` ad-hoc (qui testaient des copies inline) migrés vers du Vitest important le vrai code. PR #59→#63. |
 | D-04 | 🟡 | P1-7 | ✅ corrigé | **Ce fichier** (vue inverse finding→statut→commit) |
@@ -47,7 +55,6 @@ le §6 de l'audit 2026-06-12 ; « — » = non priorisé explicitement.
 | ID | Sév | Prio | Statut | Constat (résumé) |
 |----|-----|------|--------|------------------|
 | A-01 | 🔴 | P0-1 | 🟦 partiel (point d'arrêt) | `sidecar.py` monolithe (9961→8523 l). Couche `services/` (7 domaines) : `import` (#46) + `conventions` (#50) + `doc_relations` (#52) + `documents` (#53, +`BadRequestError`) + `curate`-CRUD (#54) + `units` (#55) + `tokens` (list/update). Handlers→adapters fins (lock writes, map erreurs typées→codes, envelope ; byte-identiques). Couplé laissé en adapter (assumé) : backfill schéma `_ensure_*`, télémétrie `doc_deleted`. Filet : smoke-run binaire en CI (#51) = 1 GET/couche, gate de croissance rendu informatif (#56). **Point d'arrêt assumé** : tous les domaines à logique DB réelle sont extraits. **Non extraits (volontaire)** : `export` + `query`/`token_query`/`stats` (délégateurs — la logique est déjà dans `exporters/`/`query.py`/`token_query.py`/`cql_parser`, extraction = simple déplacement de validation) ; `units/merge`+`split`, `curate_preview`/`*_export`, `align`/`segment`/`jobs` (à état/couplés). |
-| A-03 | 🟠 | P0-1 | ⬜ ouvert | 66 blocs de validation manuelle (pas de validateur de schéma) |
 | A-04 | 🟡 | P2-13 | ⬜ ouvert | Attributs dynamiques non typés sur `HTTPServer` |
 | Q-02 | 🟠 | P0-1 | 🟦 partiel | Fonctions géantes : `_handle_import` 242 l → adapter ~15 l (A-01 #46) ; **`_build_hits`/`_build_hits_regex` dédupliqués** via `_build_hits_core` partagé (paramétré matchers + `coerce_text_norm` + `log_hits` ; byte-identique, logs inclus) — le chemin regex, jamais testé, gagne une couverture directe. Reste : `_handle_query` 221 l (délégateur, laissé avec les autres). |
 | Q-04 | 🟡 | P2-13 | ⬜ ouvert | Typage hétérogène ; pas de TypedDict pour les shapes de contrat |
