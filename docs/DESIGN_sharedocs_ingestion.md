@@ -315,3 +315,43 @@ un seul incrément moteur/contrat en P4C) :
 - Trousseau dans **prep standalone** / **macOS** / **Linux** (ajout de features
   `keyring` ultérieur).
 - Sélection fichier-par-fichier **en CLI**.
+
+## 10. Addendum — sécurité d'import par lot (P4D, suivi)
+
+> Motivé par le risque « casser des imports en sélectionnant en lot des fichiers
+> dont on n'est pas sûr ». **Front-only**, réutilise `deleteDocuments` +
+> `inlineConfirm`. Aucun changement moteur/contrat.
+
+### 10.1 Constat
+
+L'import est déjà **additif** (n'écrase jamais l'existant), **dédupliqué** par
+`source_hash` (idempotent), un **mauvais format = erreur per-file sans écriture**,
+et **réversible** (`POST /documents/delete`). Le seul risque *silencieux* : un
+fichier au **bon format mais mauvais style** (numéroté vs paragraphes) → importé
+mal segmenté, sans erreur — **indétectable sans parser**. Décision v1 : pas de
+dry-run (préventif coûteux) ; on combine **info de sélection** (visibilité) +
+**annulation de lot** (récupération).
+
+### 10.2 Info de sélection
+
+- Helpers purs `detectFormatFromName` (extension → format), `modeFormat`,
+  `fileMatchesMode` (format **seul**).
+- Panier : format affiché par fichier + **drapeau ⚠** si le format ≠ celui du mode
+  choisi (sync au changement de mode). **N'attrape que les formats incompatibles**
+  (qui erroneront), **pas** le style — copie honnête.
+- À l'import : `inlineConfirm` si des fichiers d'un autre format sont sélectionnés
+  (avertit, **n'écarte pas en silence** ce qui a été coché).
+
+### 10.3 Annulation de lot
+
+- Bouton **« Annuler cet import (N documents) »** sur le rapport → `deleteDocuments(ids)`.
+- ⚠️ N'efface **QUE** les `status === "imported"` — **jamais** les
+  `skipped-duplicate` (leur `doc_id` pointe un document préexistant). Confirmé
+  (destructif).
+
+### 10.4 Hors périmètre P4D
+
+- **Dry-run / aperçu avant écriture** (préventif) — si le besoin se confirme à
+  l'usage (annulations fréquentes).
+- Heuristiques de qualité dans le rapport (ex. `units_line == 0` pour un mode
+  numéroté).

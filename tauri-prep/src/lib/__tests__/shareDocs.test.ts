@@ -4,6 +4,8 @@ import {
   authSecret,
   buildNextcloudRoot,
   buildWebdavAuth,
+  detectFormatFromName,
+  fileMatchesMode,
   folderLabel,
   formatRemoteSize,
   groupSelectionForImport,
@@ -11,6 +13,7 @@ import {
   keyringAccount,
   languageRequiredForMode,
   mergeReports,
+  modeFormat,
   normalizeFolderUrl,
   safeDecodeUrl,
   sortRemoteEntries,
@@ -250,6 +253,35 @@ describe("buildNextcloudRoot", () => {
   });
   it("returns empty when the host cannot be parsed (catch branch)", () => {
     expect(buildNextcloudRoot("has spaces .fr", "alice")).toBe("");
+  });
+});
+
+describe("format detection (P4D)", () => {
+  it("detectFormatFromName maps known extensions (case-insensitive), else unknown", () => {
+    expect(detectFormatFromName("a.docx")).toBe("docx");
+    expect(detectFormatFromName("A.DOCX")).toBe("docx");
+    expect(detectFormatFromName("b.odt")).toBe("odt");
+    expect(detectFormatFromName("c.txt")).toBe("txt");
+    expect(detectFormatFromName("d.xml")).toBe("tei");
+    expect(detectFormatFromName("d2.tei")).toBe("tei");
+    expect(detectFormatFromName("e.conllu")).toBe("conllu");
+    expect(detectFormatFromName("f.pdf")).toBe("unknown");
+    expect(detectFormatFromName("noext")).toBe("unknown");
+  });
+  it("modeFormat maps a mode to its format", () => {
+    expect(modeFormat("docx_numbered_lines")).toBe("docx");
+    expect(modeFormat("docx_paragraphs")).toBe("docx");
+    expect(modeFormat("odt_paragraphs")).toBe("odt");
+    expect(modeFormat("txt_numbered_lines")).toBe("txt");
+    expect(modeFormat("tei")).toBe("tei");
+    expect(modeFormat("conllu")).toBe("conllu");
+  });
+  it("fileMatchesMode checks format only (style ignored), unknown = mismatch", () => {
+    expect(fileMatchesMode("a.docx", "docx_numbered_lines")).toBe(true);
+    expect(fileMatchesMode("a.docx", "docx_paragraphs")).toBe(true); // style not checked
+    expect(fileMatchesMode("a.odt", "docx_numbered_lines")).toBe(false);
+    expect(fileMatchesMode("a.pdf", "docx_numbered_lines")).toBe(false); // unknown extension
+    expect(fileMatchesMode("x.xml", "tei")).toBe(true);
   });
 });
 
