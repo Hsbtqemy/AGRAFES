@@ -25,6 +25,7 @@ import { setHtml, appendHtml, raw, safeHtml } from "../lib/safeHtml.ts";
 import {
   authIsComplete,
   authSecret,
+  buildNextcloudRoot,
   buildWebdavAuth,
   folderLabel,
   formatRemoteSize,
@@ -108,6 +109,7 @@ const SHAREDOCS_CSS = `
   .prep-sharedocs-screen .prep-sd-badge--error { background: #f8d7da; color: #721c24; }
   .prep-sharedocs-screen .prep-sd-badge--muted { background: #e9ecef; color: #495057; }
   .prep-sharedocs-screen .prep-sd-help { font-size: 0.74rem; color: var(--color-muted); margin: 0.15rem 0 0; }
+  .prep-sharedocs-screen .prep-sd-preset-btn { margin: 0.4rem 0 0.2rem; font-size: 0.78rem; }
   .prep-sharedocs-screen .prep-sd-remember { display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem;
     margin: 0.2rem 0 0.7rem; }
   .prep-sharedocs-screen .prep-sd-remember input { width: auto; }
@@ -173,6 +175,9 @@ export class ShareDocsImportScreen {
           </label>
           <p class="prep-sd-help">Adresse WebDAV du <strong>dossier</strong> à importer (pas un fichier).
             Sur ShareDocs / Nextcloud, c'est le lien <code>…/remote.php/dav/files/&lt;vous&gt;/&lt;dossier&gt;/</code>.</p>
+          <button type="button" id="prep-sd-preset-btn" class="prep-sd-btn prep-sd-btn--ghost prep-sd-preset-btn">↧ Préremplir l'URL racine (Huma-Num / Nextcloud)</button>
+          <p class="prep-sd-help">Astuce : mets juste le <strong>serveur</strong> dans le champ URL (ex. <code>dav.huma-num.fr</code>)
+            et ton identifiant ci-dessous, puis ce bouton construit l'URL racine de ton espace — tu navigues ensuite jusqu'au dossier voulu.</p>
           <label class="prep-sd-field"><span>Authentification</span>
             <select id="prep-sd-auth-mode">
               <option value="anonymous">Anonyme — dépôt public</option>
@@ -235,6 +240,7 @@ export class ShareDocsImportScreen {
     );
 
     root.querySelector("#prep-sd-auth-mode")?.addEventListener("change", () => this._onAuthModeChange());
+    root.querySelector("#prep-sd-preset-btn")?.addEventListener("click", () => this._prefillUrlFromPreset());
     root.querySelector("#prep-sd-connect-btn")?.addEventListener("click", () => void this._connect());
     root.querySelector("#prep-sd-up-btn")?.addEventListener("click", () => void this._goUp());
     root.querySelector("#prep-sd-import-btn")?.addEventListener("click", () => void this._runImport());
@@ -266,6 +272,26 @@ export class ShareDocsImportScreen {
   }
 
   // ─── Connection / browsing ──────────────────────────────────────────────────
+
+  /**
+   * P4B preset: rebuild the URL field as the Nextcloud personal root from whatever
+   * host the user typed there + their identifiant. A pure saisie aid — the field
+   * stays editable and the connector remains generic WebDAV.
+   */
+  private _prefillUrlFromPreset(): void {
+    const urlEl = this._root?.querySelector<HTMLInputElement>("#prep-sd-url");
+    const user = this._root?.querySelector<HTMLInputElement>("#prep-sd-user")?.value ?? "";
+    const root = buildNextcloudRoot(urlEl?.value ?? "", user);
+    if (!root) {
+      this._showToast?.(
+        "Renseigne le serveur (champ URL) et ton identifiant pour préremplir l'URL racine",
+        true,
+      );
+      return;
+    }
+    if (urlEl) urlEl.value = root;
+    this._showToast?.("URL racine préremplie — navigue jusqu'au dossier voulu");
+  }
 
   private async _connect(): Promise<void> {
     if (!this._conn) {

@@ -131,6 +131,29 @@ export function statusLabel(status: RemoteFileStatus): string {
   }
 }
 
+/**
+ * Build the Nextcloud / ShareDocs personal WebDAV root for *hostOrUrl* + *user*
+ * (P4B preset). *hostOrUrl* may be a bare host ("dav.huma-num.fr"), a full URL, or
+ * a deep URL — only its origin is kept (scheme defaults to https). Returns
+ * `<origin>/remote.php/dav/files/<user>/`, or "" when either input is empty or the
+ * host is unparseable (the caller then keeps the field untouched). The result is a
+ * plain saisie aid — the connector stays generic WebDAV (no Nextcloud coupling).
+ */
+export function buildNextcloudRoot(hostOrUrl: string, user: string): string {
+  const h = (hostOrUrl ?? "").trim();
+  const u = (user ?? "").trim();
+  if (!h || !u) return "";
+  let origin: string;
+  try {
+    const withScheme = /^https?:\/\//i.test(h) ? h : `https://${h}`;
+    origin = new URL(withScheme).origin;
+  } catch {
+    return "";
+  }
+  if (!origin || origin === "null") return "";
+  return `${origin}/remote.php/dav/files/${encodeURIComponent(u)}/`;
+}
+
 /** Normalize a folder URL so it ends with exactly one trailing slash (collection). */
 export function normalizeFolderUrl(url: string): string {
   const trimmed = (url ?? "").trim();

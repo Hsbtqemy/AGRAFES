@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   authIsComplete,
   authSecret,
+  buildNextcloudRoot,
   buildWebdavAuth,
   folderLabel,
   formatRemoteSize,
@@ -217,6 +218,37 @@ describe("summarizeReport", () => {
     expect(summarizeReport({ ...base, total: 2, skipped_filtered: 2 })).toBe(
       "2 fichiers : 0 importé, 2 filtrés",
     );
+  });
+});
+
+describe("buildNextcloudRoot", () => {
+  it("bare host defaults to https and builds the personal WebDAV root", () => {
+    expect(buildNextcloudRoot("dav.huma-num.fr", "alice")).toBe(
+      "https://dav.huma-num.fr/remote.php/dav/files/alice/",
+    );
+  });
+  it("keeps an explicit scheme (http stays http)", () => {
+    expect(buildNextcloudRoot("http://localhost:8080", "bob")).toBe(
+      "http://localhost:8080/remote.php/dav/files/bob/",
+    );
+  });
+  it("reduces a deep URL to its origin", () => {
+    expect(buildNextcloudRoot("https://srv/some/deep/path", "u")).toBe(
+      "https://srv/remote.php/dav/files/u/",
+    );
+  });
+  it("percent-encodes the identifier in the path segment", () => {
+    expect(buildNextcloudRoot("srv", "a b@x")).toBe(
+      "https://srv/remote.php/dav/files/a%20b%40x/",
+    );
+  });
+  it("returns empty when host or user is missing/blank", () => {
+    expect(buildNextcloudRoot("", "alice")).toBe("");
+    expect(buildNextcloudRoot("srv", "  ")).toBe("");
+    expect(buildNextcloudRoot("   ", "alice")).toBe("");
+  });
+  it("returns empty when the host cannot be parsed (catch branch)", () => {
+    expect(buildNextcloudRoot("has spaces .fr", "alice")).toBe("");
   });
 });
 
