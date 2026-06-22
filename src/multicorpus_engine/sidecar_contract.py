@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
+
 
 API_VERSION = "1.6.23"
 CONTRACT_VERSION = "1.6.27"  # semantic versioning for the sidecar API contract
@@ -2254,19 +2256,12 @@ def openapi_spec() -> dict[str, Any]:
                         },
                     ]
                 },
-                "IndexRequest": {
-                    "type": "object",
-                    "properties": {
-                        "incremental": {
-                            "type": "boolean",
-                            "description": (
-                                "If true, runs incremental FTS sync (insert/refresh/prune) "
-                                "instead of full rebuild."
-                            ),
-                        },
-                    },
-                    "additionalProperties": False,
-                },
+                # A-03B pilot: derived from the canonical INDEX_SCHEMA (single
+                # source shared with _handle_index). Byte-identical to the former
+                # hand-written schema — see services/request_schemas.py.
+                "IndexRequest": field_schema_to_openapi(
+                    INDEX_SCHEMA, additional_properties=False, include_default=False
+                ),
                 "ImportRequest": {
                     "type": "object",
                     "required": ["mode", "path"],

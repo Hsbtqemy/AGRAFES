@@ -2076,13 +2076,16 @@ class _CorpusHandler(BaseHTTPRequestHandler):
     def _handle_index(self, body: dict) -> None:
         from multicorpus_engine.indexer import build_index, update_index
         from multicorpus_engine.services.errors import ValidationError
-        from multicorpus_engine.services.validation import Field, validate
+        from multicorpus_engine.services.request_schemas import INDEX_SCHEMA
+        from multicorpus_engine.services.validation import validate
 
         # A-03: structural validation via declarative schema. The validator raises
         # the typed error; the handler maps it to the historical wire code (here
         # ERR_VALIDATION) — same catch→_send_error shape as _handle_import.
+        # A-03B: INDEX_SCHEMA is the single source — the same tuple also derives the
+        # OpenAPI IndexRequest in sidecar_contract.py (validation ⇄ contract can't drift).
         try:
-            clean = validate(body, (Field("incremental", bool, required=False, default=False),))
+            clean = validate(body, INDEX_SCHEMA)
         except ValidationError as exc:
             self._send_error(exc.message, code=ERR_VALIDATION, http_status=400)
             return
