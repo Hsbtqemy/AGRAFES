@@ -25,6 +25,10 @@ GET  /jobs           → list async jobs
 GET  /runs           → list persisted runs (SQLite ``runs`` table)
 POST /jobs           → enqueue async job {kind, params?}
 GET  /jobs/{job_id}  → async job status/result
+POST /webdav/list    → browse a WebDAV folder (PROPFIND); body: {url, auth?}
+POST /import-remote  → batch-ingest a WebDAV folder (async job); body:
+                        {url, mode, language?, include?, auth?, doc_role?,
+                        resource_type?, max_file_mb?} → {job}
 """
 
 from __future__ import annotations
@@ -58,6 +62,7 @@ from .sidecar_contract import (
     openapi_spec,
     success_payload,
 )
+from .importers.dispatch import IMPORT_MODES, normalize_import_mode
 from .sidecar_jobs import JobManager
 from . import __version__ as ENGINE_VERSION
 
@@ -747,6 +752,10 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 "/documents/set_text_start",
                 # Async jobs
                 "/jobs/enqueue",
+                # ShareDocs / WebDAV ingestion (Phase 2) — writes via async job.
+                # NB: /webdav/list is read-only (PROPFIND) → NOT here, dispatched
+                # lock-free below alongside /shutdown.
+                "/import-remote",
             }
             # /jobs/<uuid>/cancel is also a write path (token required)
             _is_cancel = (
@@ -762,6 +771,11 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             # under the lock (RLock → inner `with self._lock()` blocks just re-enter).
             if path == "/shutdown":
                 self._handle_shutdown()
+                return
+            # /webdav/list is a read-only PROPFIND (no DB) → keep it lock-free too,
+            # so browsing a remote folder never blocks db writes (P2 §D4).
+            if path == "/webdav/list":
+                self._handle_webdav_list(body)
                 return
             self._lock().acquire()
             _lock_held = True
@@ -787,6 +801,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                     self._handle_import(body)
             elif path == "/import/preview":
                 self._handle_import_preview(body)
+            elif path == "/import-remote":
+                self._handle_import_remote(body)
             elif path == "/annotate":
                 self._handle_annotate(body)
             elif path == "/curate":
@@ -2165,7 +2181,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             )
             return
 
-        mode = mode.strip().lower().replace(" ", "_").replace("-", "_")
+        mode = normalize_import_mode(mode)
 
         if mode == "conllu":
             try:
@@ -2192,6 +2208,201 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             except Exception as exc:
                 logger.exception("Preview text error: %s", exc)
                 self._send_error("Internal error", code=ERR_INTERNAL, http_status=500)
+
+    # ------------------------------------------------------------------
+    # ShareDocs / WebDAV remote ingestion (Phase 2)
+    # ------------------------------------------------------------------
+
+    def _build_webdav_auth_header(self, auth: object) -> dict:
+        """Build the outbound WebDAV ``Authorization`` header from a request body.
+
+        *auth* is the request's ``auth`` object (``{mode, user?, password?,
+        token?}``) or ``None``. Returns ``{}`` for anonymous / missing auth.
+        Raises ``ValueError`` on malformed input. The credentials are used only
+        in-memory to build this header for the outbound request — never written
+        to the DB, ``runs.params``, job params, logs, or telemetry (P2 §D2/§6).
+        """
+        from .remote import webdav
+
+        if auth is None:
+            return {}
+        if not isinstance(auth, dict):
+            raise ValueError("auth must be an object")
+        mode = auth.get("mode", "anonymous")
+        if not isinstance(mode, str):
+            raise ValueError("auth.mode must be a string")
+        # build_auth_header raises ValueError for an unknown mode or missing creds.
+        return webdav.build_auth_header(
+            mode,
+            user=auth.get("user"),
+            password=auth.get("password"),
+            token=auth.get("token"),
+        )
+
+    def _handle_webdav_list(self, body: dict) -> None:
+        """POST /webdav/list — browse a WebDAV collection (PROPFIND, ``Depth: 1``).
+
+        Read-only network operation (no DB) → dispatched **lock-free** via the
+        carve-out in ``do_POST`` (like ``/shutdown``), so it never blocks db
+        writes. No token (read, consistent with ``/query``). Credentials arrive
+        in the body on loopback and feed the ``Authorization`` header only;
+        they are never persisted or logged.
+
+        Body: ``{url, auth?: {mode, user?, password?, token?}}``
+        Response: ``{entries: [{name, href, is_dir, size, modified, content_type}]}``
+        """
+        from .remote import webdav
+
+        url = body.get("url")
+        try:
+            webdav.validate_remote_url(url)  # http/https only — blocks file://, ftp://, …
+            auth_header = self._build_webdav_auth_header(body.get("auth"))
+        except ValueError as exc:
+            self._send_error(str(exc), code=ERR_VALIDATION, http_status=400)
+            return
+
+        try:
+            entries = webdav.propfind(url, auth_header=auth_header)
+        except webdav.WebdavAuthError as exc:
+            self._send_error(str(exc), code=ERR_UNAUTHORIZED, http_status=401)
+            return
+        except webdav.WebdavNotFound as exc:
+            self._send_error(str(exc), code=ERR_NOT_FOUND, http_status=404)
+            return
+        except webdav.WebdavError as exc:
+            # Network / protocol failure reaching the upstream server → 502.
+            self._send_error(str(exc), code=ERR_INTERNAL, http_status=502)
+            return
+
+        self._send_json(success_payload({
+            "entries": [
+                {
+                    "name": e.name,
+                    "href": e.href,
+                    "is_dir": e.is_dir,
+                    "size": e.size,
+                    "modified": e.modified,
+                    "content_type": e.content_type,
+                }
+                for e in entries
+            ]
+        }))
+
+    def _handle_import_remote(self, body: dict) -> None:
+        """POST /import-remote — batch-ingest a WebDAV folder (async job).
+
+        Enqueues a ``JobManager`` job and returns ``{job}`` (202); the UI polls
+        ``/jobs/<id>`` for per-file progress and the final batch report (P2 §D1).
+
+        **Credential isolation (§D2):** ``/jobs/<id>`` exposes ``params``
+        verbatim, so ``auth`` is **never** placed in the job params. The
+        ``Authorization`` header is built here and captured in the runner closure
+        (memory only). The exposed ``params`` carry only ``url``+``mode`` (+ the
+        non-secret import options), the same rule as ``runs.params``.
+
+        **Lock granularity (§D3):** the runner runs on a worker thread; each
+        file's *download* stays outside the lock and only its DB section runs
+        under the sidecar write-lock (passed as ``critical_section``).
+        """
+        from .remote import ingest, webdav
+
+        url = body.get("url")
+        mode = body.get("mode")
+        try:
+            webdav.validate_remote_url(url)  # http/https only — reject before enqueue
+        except ValueError as exc:
+            self._send_error(str(exc), code=ERR_VALIDATION, http_status=400)
+            return
+        if not isinstance(mode, str) or not mode.strip():
+            self._send_error("mode is required", code=ERR_VALIDATION, http_status=400)
+            return
+        norm_mode = normalize_import_mode(mode)
+        if norm_mode not in IMPORT_MODES:
+            self._send_error(
+                f"Unsupported import mode: {mode!r}",
+                code=ERR_VALIDATION,
+                http_status=400,
+                details={"supported_modes": list(IMPORT_MODES)},
+            )
+            return
+
+        # Language is required for every mode except TEI (which carries its own
+        # xml:lang) — mirrors the CLI `import-remote` guard. Without it every file
+        # fails per-file on the documents.language NOT NULL constraint (cryptic),
+        # so reject up front with a clear message.
+        language = body.get("language")
+        if norm_mode != "tei" and not (isinstance(language, str) and language.strip()):
+            self._send_error(
+                "language is required for this import mode (only TEI may omit it)",
+                code=ERR_VALIDATION,
+                http_status=400,
+            )
+            return
+
+        try:
+            auth_header = self._build_webdav_auth_header(body.get("auth"))
+        except ValueError as exc:
+            self._send_error(str(exc), code=ERR_VALIDATION, http_status=400)
+            return
+
+        # Treat an explicit null the same as an absent key → the default cap, so a
+        # client can never silently disable the per-file size guard with max_file_mb=null.
+        max_file_mb = body.get("max_file_mb")
+        if max_file_mb is None:
+            max_file_mb = 200.0
+        try:
+            max_file_mb = float(max_file_mb)
+        except (TypeError, ValueError):
+            self._send_error("max_file_mb must be a number", code=ERR_VALIDATION, http_status=400)
+            return
+        if max_file_mb <= 0:
+            self._send_error("max_file_mb must be > 0", code=ERR_VALIDATION, http_status=400)
+            return
+
+        # Params are EXPOSED verbatim by /jobs/<id> → never put auth here (§D2),
+        # same contract as runs.params (url + mode + non-secret options only).
+        params = {
+            "url": url,
+            "mode": norm_mode,
+            "language": body.get("language"),
+            "include": body.get("include"),
+            "doc_role": body.get("doc_role", "standalone"),
+            "resource_type": body.get("resource_type"),
+            "max_file_mb": max_file_mb,
+        }
+
+        conn = self._conn()
+        lock = self._lock()
+        db_path = getattr(self.server, "db_path", None)
+
+        def runner(job_id, kind, job_params, progress_cb):
+            # auth_header is captured from the closure — never read from params.
+            def _progress(info: dict) -> None:
+                total = info.get("total") or 1  # already >= 1, guards a zero-file batch
+                idx = info.get("index", 0)
+                # Map file index onto 5..95 %; 100 % is set after the batch returns.
+                pct = 5 + int(90 * idx / total)
+                progress_cb(pct, f"{info.get('name')}: {info.get('status')} ({idx}/{total})")
+
+            progress_cb(2, "Listing remote folder")
+            report = ingest.ingest_remote_folder(
+                conn, db_path,
+                url=job_params["url"],
+                mode=job_params["mode"],
+                language=job_params.get("language"),
+                include=job_params.get("include"),
+                doc_role=job_params.get("doc_role", "standalone"),
+                resource_type=job_params.get("resource_type"),
+                auth_header=auth_header,
+                max_file_mb=job_params.get("max_file_mb"),
+                progress=_progress,
+                critical_section=lock,
+            )
+            progress_cb(100, "Import completed")
+            return report
+
+        job = self._jobs().submit(kind="import-remote", params=params, runner=runner)
+        self._send_json(success_payload({"job": job.to_dict()}, status="accepted"), status=202)
 
     def _preview_text_units(
         self, fpath: "Path", mode: str, limit: int
@@ -8127,7 +8338,7 @@ class CorpusServer:
             mode = params.get("mode")
             # Normalise legacy/malformed mode values (e.g. "odt paragraphs" → "odt_paragraphs")
             if isinstance(mode, str):
-                mode = mode.strip().lower().replace(" ", "_").replace("-", "_")
+                mode = normalize_import_mode(mode)
             path_str = params.get("path")
             language = params.get("language") or "und"
             title = params.get("title")

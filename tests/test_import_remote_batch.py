@@ -151,3 +151,87 @@ def test_blocking_propfind_error_propagates(db):
                 conn, db_path, url=_BASE, mode="docx_numbered_lines",
                 language="fr", auth_header={},
             )
+
+
+# --- Phase 2 additive params: progress + critical_section ----------------------
+
+
+def test_progress_called_once_per_file(db):
+    conn, db_path = db
+    a = _make_docx_bytes(["[1] Bonjour."])
+    entries = [_entry("a.docx", len(a)), _entry("note.pdf", 10)]
+    payloads = {_BASE + "a.docx": a}
+
+    events: list[dict] = []
+    report = _run(conn, db_path, entries, payloads, progress=events.append)
+
+    assert report["imported"] == 1
+    assert [e["index"] for e in events] == [1, 2]  # one call per file, 1-based
+    assert all(e["total"] == 2 for e in events)
+    statuses = {e["name"]: e["status"] for e in events}
+    assert statuses == {"a.docx": "imported", "note.pdf": "skipped-filtered"}
+
+
+def test_critical_section_wraps_db_section_after_download(db):
+    """The DB section runs under the critical section; the download stays outside
+    it (P2 §D3 — never hold the write-lock during network I/O)."""
+    conn, db_path = db
+    a = _make_docx_bytes(["[1] Bonjour."])
+    entries = [_entry("a.docx", len(a))]
+    payloads = {_BASE + "a.docx": a}
+
+    log: list[str] = []
+
+    class _TrackingCM:
+        def __enter__(self):
+            log.append("cm_enter")
+            return self
+
+        def __exit__(self, *exc):
+            log.append("cm_exit")
+            return False
+
+    def _dl(url, dest_path, *, auth_header, max_bytes=None, timeout=30):
+        log.append("download")
+        Path(dest_path).write_bytes(payloads[url])
+        return len(payloads[url])
+
+    with mock.patch.object(ingest.webdav, "propfind", return_value=entries), \
+         mock.patch.object(ingest.webdav, "download", _dl):
+        report = ingest.ingest_remote_folder(
+            conn, db_path, url=_BASE, mode="docx_numbered_lines",
+            language="fr", auth_header={}, critical_section=_TrackingCM(),
+        )
+
+    assert report["imported"] == 1
+    # Download completes BEFORE the DB critical section is entered, and the
+    # section is closed before the file is done.
+    assert log == ["download", "cm_enter", "cm_exit"]
+
+
+def test_runs_params_never_contain_credentials(db):
+    """The Authorization header is used to fetch but is never written to
+    runs.params_json (§D2/§6) — only url + mode are persisted."""
+    conn, db_path = db
+    a = _make_docx_bytes(["[1] Bonjour."])
+    entries = [_entry("a.docx", len(a))]
+    payloads = {_BASE + "a.docx": a}
+    secret_auth = {"Authorization": "Basic c2VjcmV0OnBhc3N3b3Jk"}  # secret:password
+
+    with mock.patch.object(ingest.webdav, "propfind", return_value=entries), \
+         mock.patch.object(ingest.webdav, "download", _download_from(payloads)):
+        report = ingest.ingest_remote_folder(
+            conn, db_path, url=_BASE, mode="docx_numbered_lines",
+            language="fr", auth_header=secret_auth,
+        )
+
+    assert report["imported"] == 1
+    rows = conn.execute(
+        "SELECT params_json FROM runs WHERE kind = 'import-remote'"
+    ).fetchall()
+    assert rows
+    for (params_json,) in rows:
+        blob = params_json or ""
+        assert "Authorization" not in blob
+        assert "Basic" not in blob
+        assert "c2VjcmV0" not in blob  # base64 of the secret

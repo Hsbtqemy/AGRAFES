@@ -102,6 +102,62 @@ def test_build_auth_header_bearer_missing_token():
         webdav.build_auth_header("bearer")
 
 
+# --- URL scheme guard -----------------------------------------------------------
+
+@pytest.mark.parametrize("url", [
+    "https://dav.example/folder/",
+    "http://dav.example:8080/folder/",
+    "HTTPS://DAV.EXAMPLE/Folder/",  # scheme is case-insensitive
+])
+def test_validate_remote_url_accepts_http_https(url):
+    webdav.validate_remote_url(url)  # must not raise
+
+
+@pytest.mark.parametrize("url", [
+    "file:///etc/passwd",
+    "file://C:/Windows/secret.txt",
+    "ftp://dav.example/folder/",
+    "gopher://dav.example/",
+    "https:///no-host/path",   # scheme ok but no host
+    "dav.example/folder",      # no scheme
+    "",
+    "   ",
+    None,
+])
+def test_validate_remote_url_rejects_unsupported(url):
+    with pytest.raises(ValueError):
+        webdav.validate_remote_url(url)
+
+
+def test_propfind_rejects_file_scheme_before_opening():
+    # The guard must fire before any urlopen — a bad scheme never reaches the opener.
+    called = {"n": 0}
+
+    def _should_not_be_called(req, timeout=None):
+        called["n"] += 1
+        return _FakeResp(b"")
+
+    with mock.patch.object(webdav, "urlopen", _should_not_be_called):
+        with pytest.raises(ValueError):
+            webdav.propfind("file:///etc/passwd", auth_header={})
+    assert called["n"] == 0
+
+
+def test_download_rejects_file_scheme_before_opening(tmp_path: Path):
+    dest = tmp_path / "out.bin"
+    called = {"n": 0}
+
+    def _should_not_be_called(req, timeout=None):
+        called["n"] += 1
+        return _FakeResp(b"")
+
+    with mock.patch.object(webdav, "urlopen", _should_not_be_called):
+        with pytest.raises(ValueError):
+            webdav.download("file:///etc/passwd", dest, auth_header={})
+    assert called["n"] == 0
+    assert not dest.exists()
+
+
 # --- propfind -------------------------------------------------------------------
 
 def test_propfind_lists_children_excluding_self():

@@ -250,6 +250,9 @@ def cmd_import_remote(args: argparse.Namespace) -> None:
         _err({"error": str(exc), "created_at": utcnow_iso()})
     except webdav.WebdavError as exc:
         _err({"error": str(exc), "created_at": utcnow_iso()})
+    except ValueError as exc:
+        # e.g. validate_remote_url rejecting a non-http(s) --url (file://, …).
+        _err({"error": str(exc), "created_at": utcnow_iso()})
 
     # Per-file errors are reported but do not fail the batch (design §9).
     _ok({"auth_mode": auth_mode, "created_at": utcnow_iso(), **report})

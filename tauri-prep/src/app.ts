@@ -12,6 +12,7 @@ import { open as dialogOpen, save as dialogSave } from "@tauri-apps/plugin-dialo
 import { open as shellOpen } from "@tauri-apps/plugin-shell";
 import { writeTextFile, readTextFile } from "@tauri-apps/plugin-fs";
 import { ImportScreen } from "./screens/ImportScreen.ts";
+import { ShareDocsImportScreen } from "./screens/ShareDocsImportScreen.ts";
 import { ActionsScreen, type ProjectPreset } from "./screens/ActionsScreen.ts";
 import { MetadataScreen } from "./screens/MetadataScreen.ts";
 import { ExportsScreen, type ExportWorkflowPrefill } from "./screens/ExportsScreen.ts";
@@ -51,7 +52,7 @@ const SEED_PRESETS: ProjectPreset[] = [
 // ─── App ──────────────────────────────────────────────────────────────────────
 // CSS lives in tauri-prep/src/ui/app.css + job-center.css (Vite-managed, P6).
 
-const TABS = ["import", "documents", "actions", "exporter"] as const;
+const TABS = ["import", "shareDocs", "documents", "actions", "exporter"] as const;
 type TabId = typeof TABS[number];
 
 type GuardableScreen = {
@@ -64,6 +65,7 @@ export class App {
   private _activeTab: TabId = "import";
 
   private _import!: ImportScreen;
+  private _shareDocs!: ShareDocsImportScreen;
   private _actions!: ActionsScreen;
   private _metadata!: MetadataScreen;
   private _exports!: ExportsScreen;
@@ -125,11 +127,13 @@ export class App {
 
     this._buildUI();
     this._import.setConn(null);
+    this._shareDocs.setConn(null);
     this._actions.setConn(null);
     this._metadata.setConn(null);
     this._exports.setConn(null);
     this._jobCenter.setConn(null);
     this._import.setJobCenter(this._jobCenter, showToast);
+    this._shareDocs.setJobCenter(this._jobCenter, showToast);
     this._actions.setJobCenter(this._jobCenter, showToast);
     this._metadata.setJobCenter(this._jobCenter, showToast);
     this._actions.setOnOpenDocuments(() => this._switchTab("documents"));
@@ -295,12 +299,14 @@ export class App {
     // Tab links in sidebar
     const LABELS: Record<TabId, string> = {
       import: "Importer",
+      shareDocs: "ShareDocs",
       documents: "Documents",
       actions: "Actions",
       exporter: "Exporter",
     };
     const ICONS: Record<TabId, string> = {
       import: "⊕",
+      shareDocs: "☁",
       documents: "≡",
       actions: "◈",
       exporter: "⊗",
@@ -387,11 +393,13 @@ export class App {
     main.appendChild(this._jobCenter.render());
 
     this._import = new ImportScreen();
+    this._shareDocs = new ShareDocsImportScreen();
     this._actions = new ActionsScreen();
     this._metadata = new MetadataScreen();
     this._exports = new ExportsScreen();
     this._screenControllers = {
       import: this._import as GuardableScreen,
+      shareDocs: this._shareDocs as GuardableScreen,
       documents: this._metadata,
       actions: this._actions,
       exporter: this._exports as GuardableScreen,
@@ -399,6 +407,7 @@ export class App {
 
     const screenMap: Record<TabId, () => HTMLElement> = {
       import: () => this._import.render(),
+      shareDocs: () => this._shareDocs.render(),
       documents: () => this._metadata.render(),
       actions: () => this._actions.render(),
       exporter: () => this._exports.render(),
@@ -417,6 +426,7 @@ export class App {
 
     // Share global log element with all screens
     this._import.setLogEl(this._logEl);
+    this._shareDocs.setLogEl(this._logEl);
     this._actions.setLogEl(this._logEl);
     this._metadata.setLogEl(this._logEl);
     this._exports.setLogEl(this._logEl);
@@ -1083,11 +1093,13 @@ export class App {
       console.error("db-changed: sidecar failed", err instanceof SidecarError ? err.message : err);
     }
     this._import.setConn(this._conn);
+    this._shareDocs.setConn(this._conn);
     this._actions.setConn(this._conn);
     this._metadata.setConn(this._conn);
     this._exports.setConn(this._conn);
     this._jobCenter.setConn(this._conn);
     this._import.setJobCenter(this._jobCenter, showToast);
+    this._shareDocs.setJobCenter(this._jobCenter, showToast);
     this._actions.setJobCenter(this._jobCenter, showToast);
     this._exports.setJobCenter(this._jobCenter, showToast);
     await Promise.all([this._refreshTopbarDbLabel(), this._loadPresetsFromDb()]);

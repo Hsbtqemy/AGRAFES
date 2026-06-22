@@ -67,6 +67,33 @@ class RemoteEntry:
     content_type: Optional[str]
 
 
+_ALLOWED_SCHEMES = ("http", "https")
+
+
+def validate_remote_url(url: str) -> None:
+    """Reject any URL the WebDAV client must never fetch.
+
+    Only ``http`` / ``https`` URLs **with a host** are allowed. This blocks
+    ``file://``, ``ftp://`` and similar schemes: urllib's default opener (used by
+    :data:`_OPENER`) wires ``FileHandler`` / ``FTPHandler``, so an unchecked
+    ``file:///…`` GET in :func:`download` would read a local file
+    (local-file-read / SSRF). Called at the top of :func:`propfind` and
+    :func:`download` so **every** caller — CLI ``import-remote`` and the sidecar
+    routes — is covered before any network or filesystem access.
+
+    Raises ``ValueError`` on an unsupported URL (mapped to a 400 by the sidecar).
+    """
+    if not isinstance(url, str) or not url.strip():
+        raise ValueError("url is required")
+    parts = urlsplit(url.strip())
+    if parts.scheme.lower() not in _ALLOWED_SCHEMES:
+        raise ValueError(
+            f"Unsupported URL scheme {(parts.scheme or '(none)')!r}: only http/https are allowed"
+        )
+    if not parts.hostname:
+        raise ValueError("url must include a host")
+
+
 def build_auth_header(
     mode: str,
     *,
@@ -173,8 +200,9 @@ def propfind(url: str, *, auth_header: dict, timeout: int = DEFAULT_TIMEOUT) -> 
 
     The collection's own entry (the *self* entry) is excluded from the result.
     Raises ``WebdavError`` (or a subclass) on failure, including when *url* points
-    to a file rather than a collection.
+    to a file rather than a collection; ``ValueError`` for an unsupported URL.
     """
+    validate_remote_url(url)
     headers = {"Depth": "1", "Content-Type": "application/xml", **auth_header}
     req = Request(url, method="PROPFIND", data=_PROPFIND_BODY, headers=headers)
     with _open(req, timeout) as resp:
@@ -236,8 +264,9 @@ def download(
     """Stream the file at *url* into *dest_path*. Returns the number of bytes written.
 
     Raises ``WebdavTooLarge`` (without leaving a partial file) when the declared
-    or streamed size exceeds *max_bytes*.
+    or streamed size exceeds *max_bytes*; ``ValueError`` for an unsupported URL.
     """
+    validate_remote_url(url)
     dest_path = Path(dest_path)
     req = Request(url, method="GET", headers=dict(auth_header))
     with _open(req, timeout) as resp:

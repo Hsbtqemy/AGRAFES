@@ -1,4 +1,4 @@
-# Sidecar API Contract (v1.6.27)
+# Sidecar API Contract (v1.6.28)
 
 This document defines the persistent localhost HTTP contract for
 `multicorpus_engine` sidecar.
@@ -103,13 +103,14 @@ Three **independent** version fields surface in sidecar responses — do not con
   - rotate token by restarting sidecar on DB switch/recovery
 - Token-protected write endpoints:
   - `POST /import`
+  - `POST /import-remote`
   - `POST /annotate`
   - `POST /index`
   - `POST /db/backup`
   - `POST /corpus/info`
   - `POST /tokens/update`
   - `POST /shutdown`
-- Read endpoints (`/health`, `/query`, `/token_query`, `/token_stats`, `/token_collocates`, `/openapi.json`) do not require token.
+- Read endpoints (`/health`, `/query`, `/token_query`, `/token_stats`, `/token_collocates`, `/webdav/list`, `/openapi.json`) do not require token.
 - Threat model and operational policy: `docs/SIDECAR_SECURITY_POSTURE.md`.
 
 ## Required endpoints (persistent UX baseline)
@@ -244,6 +245,20 @@ Three **independent** version fields surface in sidecar responses — do not con
   - `mode=conllu` → returns `conllu_stats` (sentence/token counts + sample rows)
   - `mode=txt_numbered_lines|docx_numbered_lines|docx_paragraphs|odt_numbered_lines|odt_paragraphs|tei` → returns `units` (array of `{n, external_id, unit_type, text_raw}`), `units_total`, `truncated`
   - no token required
+- `POST /webdav/list` — browse a WebDAV folder (ShareDocs ingestion, Phase 2)
+  - read-only PROPFIND (`Depth: 1`); **no token**, dispatched **lock-free** (never blocks DB writes)
+  - body: `{ url, auth?: { mode: anonymous|basic|bearer, user?, password?, token? } }`
+  - response: `{ entries: [{ name, href, is_dir, size, modified, content_type }] }` (the folder's own self entry is excluded)
+  - errors: `401` WebDAV auth failed · `404` folder not found · `502` upstream network/protocol error
+  - **credentials are loopback-only and never persisted** (not in DB / runs.params / logs / telemetry)
+- `POST /import-remote` (token required) — batch-ingest a WebDAV folder (ShareDocs ingestion, Phase 2)
+  - **asynchronous**: enqueues a `JobManager` job and returns `{ job }` (202); poll `GET /jobs/<id>` for per-file progress + the final batch report
+  - body: `{ url, mode, language?, include?, auth?, doc_role?, resource_type?, max_file_mb? }` (`mode` = same values as `/import`)
+  - `language` is **required for every mode except `tei`** (rejected with `400` otherwise — mirrors the CLI `import-remote` guard); `max_file_mb` null/absent → default 200 MiB cap
+  - per file the *download* runs outside the write-lock; only the DB section (dedup + import + provenance) is serialized under it
+  - batch report per file: `status ∈ {imported, skipped-duplicate, skipped-filtered, skipped-oversize, error}`, `source_url`, `doc_id`, `run_id`, `source_hash`, counts
+  - **credentials (`auth`) are NEVER placed in the job params** (which `/jobs/<id>` exposes) nor persisted anywhere — captured in the runner closure, memory only
+  - returns `401` if token is active and header is missing/invalid
 - `POST /shutdown`
   - graceful server stop
   - returns `shutting_down: true`

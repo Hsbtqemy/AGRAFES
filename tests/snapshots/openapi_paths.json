@@ -52,6 +52,7 @@
   "POST /families/{family_root_id}/align",
   "POST /families/{family_root_id}/segment",
   "POST /import",
+  "POST /import-remote",
   "POST /import/preview",
   "POST /index",
   "POST /jobs",
@@ -81,5 +82,6 @@
   "POST /units/split",
   "POST /units/update_text",
   "POST /validate-meta",
+  "POST /webdav/list",
   "PUT /conventions/{name}"
 ]
