@@ -271,6 +271,57 @@ export function groupSelectionForImport(items: SelectedRemoteItem[]): ImportGrou
   return groups;
 }
 
+/**
+ * A remote file resolved for import with its per-file detected params (Phase 5).
+ * `mode`/`language` come from importDetect (extension → mode, name → langue).
+ */
+export interface DetectedImportFile {
+  href: string;
+  name: string;
+  parentUrl: string;
+  mode: string;
+  language: string;
+}
+
+/**
+ * A single /import-remote submission grouped by (parentUrl, mode, language). Unlike
+ * {@link ImportGroup} (P4C, one mode for the whole cart), each group here carries its
+ * own detected mode + language, so a bilingual / mixed-format folder fans out into
+ * several submissions (DESIGN §11.3).
+ */
+export interface DetectedImportGroup {
+  url: string;
+  hrefs: string[];
+  mode: string;
+  language: string;
+  label: string;
+}
+
+/**
+ * Group per-file-detected files into import submissions keyed by
+ * (parentUrl, mode, language) — one `import-remote` call per group, each sending
+ * the group's `hrefs`. Insertion order of first occurrence is preserved. Files must
+ * already be filtered (unknown extensions dropped upstream).
+ */
+export function groupDetectedFiles(files: DetectedImportFile[]): DetectedImportGroup[] {
+  const byKey = new Map<string, DetectedImportGroup>();
+  for (const f of files) {
+    const key = `${f.parentUrl} ${f.mode} ${f.language}`;
+    let g = byKey.get(key);
+    if (!g) {
+      g = { url: f.parentUrl, hrefs: [], mode: f.mode, language: f.language, label: "" };
+      byKey.set(key, g);
+    }
+    g.hrefs.push(f.href);
+  }
+  const groups = [...byKey.values()];
+  for (const g of groups) {
+    const n = g.hrefs.length;
+    g.label = `${folderLabel(g.url)} · ${g.mode} · ${g.language} (${n} fichier${n > 1 ? "s" : ""})`;
+  }
+  return groups;
+}
+
 /** Merge two batch reports (P4C aggregates the reports of several submissions). */
 export function mergeReports(
   a: ImportRemoteReport | null,

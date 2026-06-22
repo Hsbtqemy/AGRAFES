@@ -9,6 +9,7 @@ import {
   folderLabel,
   formatRemoteSize,
   groupSelectionForImport,
+  groupDetectedFiles,
   isImportRemoteReport,
   keyringAccount,
   languageRequiredForMode,
@@ -382,6 +383,74 @@ describe("groupSelectionForImport", () => {
 
   it("empty cart → no groups", () => {
     expect(groupSelectionForImport([])).toEqual([]);
+  });
+});
+
+describe("groupDetectedFiles (Phase 5)", () => {
+  const file = (href: string, name: string, parentUrl: string, mode: string, language: string) => ({
+    href, name, parentUrl, mode, language,
+  });
+
+  it("regroupe les fichiers de mêmes (parent, mode, langue) en un seul lot", () => {
+    const groups = groupDetectedFiles([
+      file("https://x/d/a.docx", "a.docx", "https://x/d/", "docx_numbered_lines", "fr"),
+      file("https://x/d/b.docx", "b.docx", "https://x/d/", "docx_numbered_lines", "fr"),
+    ]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toMatchObject({
+      url: "https://x/d/",
+      mode: "docx_numbered_lines",
+      language: "fr",
+      hrefs: ["https://x/d/a.docx", "https://x/d/b.docx"],
+    });
+  });
+
+  it("dossier bilingue (même parent) → un lot par langue", () => {
+    const groups = groupDetectedFiles([
+      file("https://x/d/roman_fr.docx", "roman_fr.docx", "https://x/d/", "docx_numbered_lines", "fr"),
+      file("https://x/d/roman_en.docx", "roman_en.docx", "https://x/d/", "docx_numbered_lines", "en"),
+    ]);
+    expect(groups).toHaveLength(2);
+    expect(groups.map((g) => g.language).sort()).toEqual(["en", "fr"]);
+    expect(groups.every((g) => g.hrefs.length === 1)).toBe(true);
+  });
+
+  it("formats mixtes (même parent, même langue) → un lot par mode", () => {
+    const groups = groupDetectedFiles([
+      file("https://x/d/a.docx", "a.docx", "https://x/d/", "docx_numbered_lines", "fr"),
+      file("https://x/d/b.txt", "b.txt", "https://x/d/", "txt_numbered_lines", "fr"),
+    ]);
+    expect(groups).toHaveLength(2);
+    expect(groups.map((g) => g.mode).sort()).toEqual(["docx_numbered_lines", "txt_numbered_lines"]);
+  });
+
+  it("sépare aussi par dossier parent", () => {
+    const groups = groupDetectedFiles([
+      file("https://x/d1/a.docx", "a.docx", "https://x/d1/", "docx_numbered_lines", "fr"),
+      file("https://x/d2/b.docx", "b.docx", "https://x/d2/", "docx_numbered_lines", "fr"),
+    ]);
+    expect(groups).toHaveLength(2);
+    expect(groups.map((g) => g.url).sort()).toEqual(["https://x/d1/", "https://x/d2/"]);
+  });
+
+  it("préserve l'ordre de première apparition", () => {
+    const groups = groupDetectedFiles([
+      file("https://x/d/a.txt", "a.txt", "https://x/d/", "txt_numbered_lines", "fr"),
+      file("https://x/d/b.docx", "b.docx", "https://x/d/", "docx_numbered_lines", "fr"),
+    ]);
+    expect(groups.map((g) => g.mode)).toEqual(["txt_numbered_lines", "docx_numbered_lines"]);
+  });
+
+  it("label : dossier · mode · langue + compte pluralisé", () => {
+    const groups = groupDetectedFiles([
+      file("https://x/d/a.docx", "a.docx", "https://x/d/", "docx_numbered_lines", "fr"),
+      file("https://x/d/b.docx", "b.docx", "https://x/d/", "docx_numbered_lines", "fr"),
+    ]);
+    expect(groups[0].label).toBe("d · docx_numbered_lines · fr (2 fichiers)");
+  });
+
+  it("liste vide → aucun lot", () => {
+    expect(groupDetectedFiles([])).toEqual([]);
   });
 });
 

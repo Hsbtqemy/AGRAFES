@@ -86,6 +86,19 @@ export function normalizeModeForExt(mode: string, ext: string): string {
   return deriveModeFromExt(ext, WP_DEFAULT_NUMBERED);
 }
 
+/** Extensions qu'un import sait router (celles que {@link deriveModeFromExt} traite). */
+const KNOWN_IMPORT_EXTS = new Set(["docx", "odt", "txt", "conllu", "conll", "xml", "tei"]);
+
+/**
+ * Vrai si l'extension correspond à un format importable. Source de vérité unique
+ * du tri « connu / inconnu » — alignée sur {@link deriveModeFromExt} : un fichier
+ * dont l'extension est inconnue est ignoré (ni importé, ni en erreur), cf. Phase 5
+ * (DESIGN §11.3). Remplace le `detectFormatFromName(...) === "unknown"` divergent.
+ */
+export function isKnownImportExt(ext: string): boolean {
+  return KNOWN_IMPORT_EXTS.has(ext.toLowerCase());
+}
+
 /**
  * Matches a 2-3 letter token preceded by _ - . at the end of a filename (before extension).
  * e.g. roman_FR.docx  roman-en.docx  texte.DE.txt

@@ -6,6 +6,7 @@ import {
   modeOptionsForExt,
   deriveModeFromExt,
   normalizeModeForExt,
+  isKnownImportExt,
   detectLanguageFromName,
   LANG_RE,
   KNOWN_LANG_CODES,
@@ -165,6 +166,32 @@ describe("normalizeModeForExt", () => {
 
   it("mode incompatible sur .txt → txt_numbered_lines", () => {
     expect(normalizeModeForExt("docx_numbered_lines", "txt")).toBe("txt_numbered_lines");
+  });
+});
+
+// ─── isKnownImportExt ───────────────────────────────────────────────────────
+
+describe("isKnownImportExt", () => {
+  it("reconnaît tous les formats importables", () => {
+    for (const ext of ["docx", "odt", "txt", "conllu", "conll", "xml", "tei"]) {
+      expect(isKnownImportExt(ext)).toBe(true);
+    }
+  });
+
+  it("casse insensible", () => {
+    expect(isKnownImportExt("DOCX")).toBe(true);
+    expect(isKnownImportExt("TEI")).toBe(true);
+  });
+
+  it("extension inconnue ou vide → false", () => {
+    expect(isKnownImportExt("pdf")).toBe(false);
+    expect(isKnownImportExt("")).toBe(false);
+  });
+
+  it("aligné sur deriveModeFromExt (.conll reconnu des deux côtés)", () => {
+    // garde-fou anti-divergence : .conll est routé en mode ET reconnu connu.
+    expect(isKnownImportExt("conll")).toBe(true);
+    expect(deriveModeFromExt("conll", WP_DEFAULT_NUMBERED)).toBe("conllu");
   });
 });
 
