@@ -109,3 +109,105 @@ par fichier via `JobManager`. Retourner le report batch.
 # Livrable attendu
 3-4 commits + résumé : ce qui marche, fuites de creds vérifiées absentes, `// NOTE:`,
 recommandation pour la Phase 3 (UI).
+
+---
+
+# Addendum 2026-06-22 — décision async + recalage post-R-01b / A-03B
+
+> **Pourquoi cet addendum.** Le corps ci-dessus a été figé le 2026-06-12. Depuis,
+> **R-01b** (2026-06-20) a changé le *threading* du sidecar — `do_POST` acquiert
+> désormais un **RLock global** pour tout le dispatch DB sauf `/shutdown`
+> ([sidecar.py:766](../src/multicorpus_engine/sidecar.py#L766)) — et **A-03/A-03B**
+> ont introduit le valideur déclaratif + le générateur de contrat. Trois hypothèses
+> du corps ne tiennent plus telles quelles. **Décisions tranchées (priment sur le
+> corps en cas de conflit) :** base de branche = **`dev`** (pas `development`).
+
+## D1 — `/import-remote` est **asynchrone** (job `JobManager`), pas un POST synchrone
+
+Le corps dit « sous `_track_stage("import-remote")` + write-lock … progression par
+fichier via `JobManager` (calquer `/import`) ». **Problème :** le `/import`
+synchrone émet *un seul* `stage_completed` via `_track_stage` (télémétrie), **pas**
+du `JobManager` ; et tenir le **lock global** (R-01b) pendant tout un batch
+(N téléchargements réseau + imports = minutes) **gèle** `/query`, `/index`, etc.
+
+**Décision :** `/import-remote` **enqueue un job `JobManager`** et renvoie
+`{job_id}` ; l'UI (P3) poll `/jobs/<id>` pour la progression par fichier + le report
+final. Pas de gel du sidecar, progression *live* native, P3 réutilise le polling de
+l'import async classique. `_track_stage` n'est **pas** le bon mécanisme ici.
+
+## D2 — Creds : ne **jamais** les mettre dans `params` de job (fuite par le statut)
+
+[`JobRecord.to_dict()`](../src/multicorpus_engine/sidecar_jobs.py#L36) **expose
+`params` verbatim**, et l'UI lit `/jobs/<id>` → `to_dict()`. Mettre `auth` dans les
+params le **renverrait à chaque poll de statut**. Donc :
+
+- `submit("import-remote", params={url, mode, language, include, doc_role,
+  resource_type, max_file_mb}, runner=…)` — **`params` SANS `auth`** (sûr à exposer,
+  même règle que `runs.params` = url+mode).
+- L'`auth_header` (via `webdav.build_auth_header`) est construit dans le handler et
+  **capturé dans la closure `runner`** — mémoire seule, jamais persisté ni exposé.
+- ⇒ **handler dédié `POST /import-remote`** (qui sépare `auth`→closure de
+  `params`→exposés), **PAS** le générique `POST /jobs/enqueue {kind, params}` (qui
+  passerait `auth` dans `params` → fuite). Le test L4 doit asserter que
+  `/jobs/<id>` ne contient **jamais** `auth`, en plus de `runs.params`.
+
+## D3 — Granularité du lock dans le runner : **DB sous lock, download hors lock, par fichier**
+
+Le runner tourne sur un thread worker concurrent des autres handlers → il doit
+sérialiser les écritures DB sous le RLock R-01b. Mais tenir le lock pendant les
+**téléchargements** réintroduit le gel de D1. **Décision :** par fichier, le
+*download* reste **hors** lock et seule la **section DB** (dédup `SELECT` + import +
+`UPDATE … source_path`) passe **sous** lock.
+
+→ `remote/ingest.py:ingest_remote_folder()` gagne **deux paramètres optionnels
+additifs** (le corps autorise un ajustement de signature minimal, noté) :
+- `progress: Callable[[dict], None] | None` — appelé par fichier
+  (`{index, total, name, status}`) ; le runner le branche sur le `progress_cb` du
+  `JobManager`.
+- `critical_section: ContextManager | None` — CM enveloppant **uniquement** les ops
+  DB de `_process_one` ; le sidecar fournit `self._lock()`, la CLI laisse `None`
+  (no-op). Si la séparation download/DB dans `_process_one` est trop intriquée pour
+  un CM propre, fallback acceptable : lock par fichier autour de tout `_process_one`
+  (tient le lock pendant le download de CE fichier seulement, pas tout le batch) +
+  `// NOTE:` le raffinement.
+
+## D4 — `/webdav/list` : **carve-out lock-free explicite** (pas juste « hors `_write_paths` »)
+
+Post-R-01b, `do_POST` prend le RLock pour **tout sauf `/shutdown`** avant de
+dispatcher. `/webdav/list` ne touche **pas** la DB (PROPFIND réseau → JSON) → il doit
+être branché **avant** `self._lock().acquire()`, en cas lock-free dédié **comme
+`/shutdown`** ([sidecar.py:763-766](../src/multicorpus_engine/sidecar.py#L763)). Le
+mettre simplement « pas dans `_write_paths` » ne suffit plus (il prendrait quand même
+le lock). Pas de token (lecture, cohérent avec `/query`).
+
+## D5 — Contrat : schémas **écrits à la main** (hors générateur A-03B)
+
+A-03B dérive un `requestBody` d'un schéma `Field`, mais **ne gère pas les objets
+imbriqués** ; `auth: {mode, user?, password?, token?}` en est un. Donc les schémas
+des 2 routes sont **écrits à la main** dans `sidecar_contract.py` (cohérent avec le
+reste du contrat), `additionalProperties` au choix d'auteur. Régénérer
+`openapi.json` **+ le snapshot** `tests/snapshots/openapi_paths.json` (2 paths
+ajoutés — l'ajout fait échouer le contract-freeze jusqu'à regen+commit, c'est
+nominal). Documenter dans le schéma `auth` que les creds ne sont **jamais
+persistés**.
+
+## Récap des deltas au périmètre du corps
+
+| Point du corps | Statut après addendum |
+|---|---|
+| `/import-remote` synchrone sous write-lock | **Remplacé** par job async `JobManager` (D1) |
+| « progression via `JobManager` en calquant `/import` » | Calquer le chemin **async** `/jobs/enqueue`, pas le `/import` synchrone (D1) |
+| Ajouter `/import-remote` à `_write_paths` | **Tient** (token requis) ; le handler enqueue + renvoie `{job_id}` |
+| Ajouter `/webdav/list` aux routes POST | **Préciser** : carve-out lock-free avant l'acquire du lock (D4) |
+| `auth` dans le body | **Préciser** : jamais dans `params` de job → closure (D2) |
+| Tests creds (`runs.params`) | **Étendre** : asserter aussi `/jobs/<id>` sans `auth` (D2) |
+| Reste (filtre/dédup/provenance/report) | **Inchangé** — déjà dans `remote/ingest.py` |
+
+## Ordre d'exécution révisé
+1. Lire `sidecar_jobs.py` (`submit`/`_run_job`/`progress_cb`) + un kind de job async
+   existant (ex. import) pour la forme du runner. 2. `remote/ingest.py` : +`progress`
+   +`critical_section` (additifs, defaults no-op ; tests CLI verts inchangés).
+   3. L1 `/webdav/list` (carve-out lock-free, D4). 4. L2 `/import-remote` (handler
+   dédié → `submit` job, params sans auth, runner-closure, D2+D3). 5. L3
+   contrat/openapi écrits main + regen freeze (D5). 6. L4 tests (dont non-fuite
+   `/jobs/<id>` + per-file lock). 7. L5 doc + cocher Phase 2 dans le DESIGN.
