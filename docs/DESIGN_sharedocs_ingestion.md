@@ -165,7 +165,10 @@ async + carve-out lock-free + creds en closure) — voir
   non secrètes) — l'`auth` n'est **jamais** persisté (capturé dans la closure du
   runner), vérifié par test sur `runs.params_json` **et** `/jobs/<id>`.
 
-**Phase 3 — UI Prep.**
+**Phase 3 — UI Prep ✅ LIVRÉ.** Onglet « ShareDocs » dans `tauri-prep`
+(`screens/ShareDocsImportScreen.ts` + logique pure `lib/shareDocs.ts` + bindings
+`webdavList`/`importRemote`). Progression réutilise le Job Center
+(`/jobs/<id>`). Creds en mémoire de session seulement.
 - Écran « Importer depuis ShareDocs » :
   - Formulaire : URL de base, mode d'auth, champs creds.
   - « Connecter » → `POST /webdav/list` → vue dossier navigable (nom, type,

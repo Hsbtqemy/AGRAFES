@@ -30,12 +30,14 @@ Ce document ne décrit pas le contrat sidecar ni les détails API.
 
 Tabbar runtime actuelle (`tauri-prep`):
 - `Importer`
+- `ShareDocs`
 - `Documents`
 - `Actions`
 - `Exporter`
 
 Note:
 - `Projet` est porté par la topbar et l'écran d'entrée (ouvrir/créer DB, état sidecar, handoff), pas par un onglet dédié.
+- `ShareDocs` est un **point d'entrée d'import alternatif** (ingestion d'un dossier WebDAV / ShareDocs Huma-Num), parallèle à `Importer` (fichiers locaux). Flux : connexion (URL + auth en mémoire de session) → navigation du dossier distant → import de lot via job async (progression Job Center) → rapport par fichier. La base reste strictement locale ; aucune logique métier côté front (filtre/dédup/provenance = backend). Cf. `docs/DESIGN_sharedocs_ingestion.md`.
 
 Règle:
 - un seul écran actif à la fois,
