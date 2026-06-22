@@ -1,10 +1,12 @@
 import { describe, it, expect } from "vitest";
 import {
   authIsComplete,
+  authSecret,
   buildWebdavAuth,
   folderLabel,
   formatRemoteSize,
   isImportRemoteReport,
+  keyringAccount,
   languageRequiredForMode,
   normalizeFolderUrl,
   safeDecodeUrl,
@@ -213,5 +215,38 @@ describe("summarizeReport", () => {
     expect(summarizeReport({ ...base, total: 2, skipped_filtered: 2 })).toBe(
       "2 fichiers : 0 importé, 2 filtrés",
     );
+  });
+});
+
+describe("keyringAccount", () => {
+  it("keys by origin|mode|user (port and path stripped to origin)", () => {
+    expect(keyringAccount("https://dav.example:8443/files/x/dir/", "basic", "alice")).toBe(
+      "https://dav.example:8443|basic|alice",
+    );
+  });
+  it("trims the username and tolerates an empty one (bearer)", () => {
+    expect(keyringAccount("https://dav.example/d/", "bearer", "  ")).toBe(
+      "https://dav.example|bearer|",
+    );
+  });
+  it("distinct origins do not collide", () => {
+    const a = keyringAccount("https://a.example/d/", "basic", "u");
+    const b = keyringAccount("https://b.example/d/", "basic", "u");
+    expect(a).not.toBe(b);
+  });
+  it("falls back to the trimmed raw URL when unparseable", () => {
+    expect(keyringAccount("not a url", "basic", "u")).toBe("not a url|basic|u");
+  });
+});
+
+describe("authSecret", () => {
+  it("basic → password, bearer → token", () => {
+    expect(authSecret({ mode: "basic", user: "u", password: "pw" })).toBe("pw");
+    expect(authSecret({ mode: "bearer", token: "tok" })).toBe("tok");
+  });
+  it("anonymous and empty secrets → null", () => {
+    expect(authSecret({ mode: "anonymous" })).toBeNull();
+    expect(authSecret({ mode: "basic", user: "u", password: "" })).toBeNull();
+    expect(authSecret({ mode: "bearer", token: "" })).toBeNull();
   });
 });

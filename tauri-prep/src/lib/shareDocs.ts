@@ -48,6 +48,33 @@ export function authIsComplete(auth: WebdavAuth): boolean {
   return true; // anonymous needs nothing
 }
 
+/**
+ * Stable OS-keychain account key for a remembered ShareDocs credential (Phase 4A).
+ * Keyed by server origin + auth mode + username so distinct servers/accounts never
+ * collide. Only the secret (password / token) is ever stored under this key — the
+ * non-secret fields live in localStorage. Falls back to the trimmed raw URL when the
+ * URL is unparsable, so the key stays deterministic. See DESIGN §9.2.
+ */
+export function keyringAccount(url: string, mode: WebdavAuthMode, user: string): string {
+  let origin: string;
+  try {
+    origin = new URL(url).origin;
+  } catch {
+    origin = (url ?? "").trim();
+  }
+  return `${origin}|${mode}|${(user ?? "").trim()}`;
+}
+
+/**
+ * The secret to store in the keychain for this auth, or null when there is none
+ * (anonymous, or an empty secret). Basic → password, bearer → token.
+ */
+export function authSecret(auth: WebdavAuth): string | null {
+  if (auth.mode === "basic") return auth.password ? auth.password : null;
+  if (auth.mode === "bearer") return auth.token ? auth.token : null;
+  return null;
+}
+
 /** Human-readable file size; the server may report null (size unknown). */
 export function formatRemoteSize(bytes: number | null | undefined): string {
   if (bytes == null) return "—";

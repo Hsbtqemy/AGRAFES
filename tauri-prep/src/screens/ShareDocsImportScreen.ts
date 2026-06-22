@@ -6,8 +6,10 @@
  * JobCenter → table de rapport par fichier.
  *
  * Aucune logique métier côté front : filtre/dédup/provenance vivent dans le
- * backend (Phases 1-2). Les identifiants restent en mémoire de session
- * uniquement — jamais écrits sur disque / localStorage / config (décision §6/P3).
+ * backend (Phases 1-2). Persistance des identifiants (Phase 4A, opt-in « Se
+ * souvenir ») : les champs non-secrets (URL, mode, identifiant) vont dans
+ * localStorage ; le secret (mot de passe / jeton) va au trousseau OS via
+ * credentialStore. Le clair sur disque reste interdit. Cf. DESIGN §9.2.
  */
 
 import type {
@@ -22,10 +24,12 @@ import type { JobCenter } from "../components/JobCenter.ts";
 import { setHtml, appendHtml, raw, safeHtml } from "../lib/safeHtml.ts";
 import {
   authIsComplete,
+  authSecret,
   buildWebdavAuth,
   folderLabel,
   formatRemoteSize,
   isImportRemoteReport,
+  keyringAccount,
   languageRequiredForMode,
   normalizeFolderUrl,
   safeDecodeUrl,
@@ -34,6 +38,14 @@ import {
   statusLabel,
   summarizeReport,
 } from "../lib/shareDocs.ts";
+import {
+  clearLastConn,
+  loadLastConn,
+  saveLastConn,
+  secureDelete,
+  secureGet,
+  secureSet,
+} from "../lib/credentialStore.ts";
 
 const IMPORT_MODES: Array<{ value: string; label: string }> = [
   { value: "docx_numbered_lines", label: "DOCX — lignes numérotées [N]" },
@@ -92,6 +104,12 @@ const SHAREDOCS_CSS = `
   .prep-sharedocs-screen .prep-sd-badge--warn { background: #fff3cd; color: #856404; }
   .prep-sharedocs-screen .prep-sd-badge--error { background: #f8d7da; color: #721c24; }
   .prep-sharedocs-screen .prep-sd-badge--muted { background: #e9ecef; color: #495057; }
+  .prep-sharedocs-screen .prep-sd-help { font-size: 0.74rem; color: var(--color-muted); margin: 0.15rem 0 0; }
+  .prep-sharedocs-screen .prep-sd-remember { display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem;
+    margin: 0.2rem 0 0.7rem; }
+  .prep-sharedocs-screen .prep-sd-remember input { width: auto; }
+  .prep-sharedocs-screen .prep-sd-forget { background: none; border: none; color: var(--color-primary, #2f5fd6);
+    cursor: pointer; font-size: 0.74rem; padding: 0; text-decoration: underline; }
 `;
 
 function ensureStyles(): void {
@@ -109,13 +127,17 @@ export class ShareDocsImportScreen {
   private _logEl: HTMLElement | null = null;
   private _root: HTMLElement | null = null;
 
-  /** In-memory credentials — never persisted (Phase 3 decision). */
+  /** Working credentials (memory). The non-secret parts may be persisted to
+   *  localStorage and the secret to the OS keychain when "remember" is on (P4A). */
   private _auth: WebdavAuth = { mode: "anonymous" };
   private _currentUrl = "";
   private _history: string[] = [];
   private _entries: RemoteEntry[] = [];
   private _report: ImportRemoteReport | null = null;
   private _busy = false;
+  /** True while the remembered secret is being read from the keychain at mount —
+   *  keeps "Connecter" disabled so a fast click can't connect with an empty field. */
+  private _loadingSecret = false;
 
   render(): HTMLElement {
     ensureStyles();
@@ -137,21 +159,33 @@ export class ShareDocsImportScreen {
             <input type="text" id="prep-sd-url" autocomplete="off" spellcheck="false"
               placeholder="https://serveur/remote.php/dav/files/utilisateur/dossier/" />
           </label>
+          <p class="prep-sd-help">Adresse WebDAV du <strong>dossier</strong> à importer (pas un fichier).
+            Sur ShareDocs / Nextcloud, c'est le lien <code>…/remote.php/dav/files/&lt;vous&gt;/&lt;dossier&gt;/</code>.</p>
           <label class="prep-sd-field"><span>Authentification</span>
             <select id="prep-sd-auth-mode">
-              <option value="anonymous">Anonyme</option>
+              <option value="anonymous">Anonyme — dépôt public</option>
               <option value="basic">Identifiant + mot de passe</option>
-              <option value="bearer">Jeton (Bearer)</option>
+              <option value="bearer">Jeton d'accès (Bearer)</option>
             </select>
           </label>
           <div id="prep-sd-basic-fields" class="prep-sd-creds" style="display:none">
             <label class="prep-sd-field"><span>Identifiant</span><input type="text" id="prep-sd-user" autocomplete="off" /></label>
             <label class="prep-sd-field"><span>Mot de passe</span><input type="password" id="prep-sd-password" autocomplete="off" /></label>
+            <p class="prep-sd-note">ShareDocs Huma-Num via humanID / 2FA : le mot de passe de connexion habituel est
+              souvent refusé en WebDAV. Générez un « mot de passe d'application » dans Nextcloud
+              (Réglages → Sécurité → Mots de passe d'application) et collez-le ici.</p>
           </div>
           <div id="prep-sd-bearer-fields" class="prep-sd-creds" style="display:none">
             <label class="prep-sd-field"><span>Jeton</span><input type="password" id="prep-sd-token" autocomplete="off" /></label>
           </div>
-          <p class="prep-sd-note">🔒 Les identifiants restent en mémoire pour cette session uniquement — jamais écrits sur le disque.</p>
+          <label class="prep-sd-remember">
+            <input type="checkbox" id="prep-sd-remember" />
+            <span>Se souvenir de mes identifiants (chiffrés par le système)</span>
+          </label>
+          <p class="prep-sd-note">🔒 Si « Se souvenir » est coché, le secret est conservé dans le trousseau du système
+            (jamais en clair sur le disque) ; sinon il n'est gardé que pour cette session.
+            <button type="button" id="prep-sd-forget-btn" class="prep-sd-forget">Oublier les identifiants mémorisés</button>
+          </p>
           <button type="button" id="prep-sd-connect-btn" class="prep-sd-btn prep-sd-btn--primary">Connecter</button>
         </section>
 
@@ -185,8 +219,10 @@ export class ShareDocsImportScreen {
     root.querySelector("#prep-sd-up-btn")?.addEventListener("click", () => void this._goUp());
     root.querySelector("#prep-sd-import-btn")?.addEventListener("click", () => void this._runImport());
     root.querySelector("#prep-sd-entries")?.addEventListener("click", (ev) => this._onEntryClick(ev));
+    root.querySelector("#prep-sd-forget-btn")?.addEventListener("click", () => void this._forget());
 
     this._updateConnectBtn();
+    void this._prefillFromStorage();
     return root;
   }
 
@@ -225,11 +261,112 @@ export class ShareDocsImportScreen {
       return;
     }
     this._history = [];
-    await this._browse(url);
+    const ok = await this._browse(url);
+    if (ok) await this._persistConnection(url);
   }
 
-  private async _browse(url: string, recordHistory = false): Promise<void> {
-    if (!this._conn || this._busy) return;
+  // ─── Persistance des identifiants (Phase 4A) ────────────────────────────────
+
+  /**
+   * Au montage : préremplir les champs non-secrets depuis localStorage, puis le
+   * secret depuis le trousseau OS si « Se souvenir » était actif. Best-effort —
+   * ne lève jamais (trousseau indisponible ⇒ champ secret laissé vide).
+   */
+  private async _prefillFromStorage(): Promise<void> {
+    const last = loadLastConn();
+    const root = this._root;
+    if (!last || !root) return;
+    const set = (sel: string, val: string) => {
+      const el = root.querySelector<HTMLInputElement>(sel);
+      if (el) el.value = val;
+    };
+    set("#prep-sd-url", last.url);
+    const modeEl = root.querySelector<HTMLSelectElement>("#prep-sd-auth-mode");
+    if (modeEl) modeEl.value = last.mode;
+    set("#prep-sd-user", last.user);
+    const rememberEl = root.querySelector<HTMLInputElement>("#prep-sd-remember");
+    if (rememberEl) rememberEl.checked = last.remember;
+    this._onAuthModeChange();
+
+    if (!last.remember || last.mode === "anonymous") return;
+    // Keep "Connecter" disabled while the remembered secret loads from the keychain,
+    // so a fast click can't fire a connect with the secret field still empty. The
+    // flag is honoured by _updateConnectBtn(), so a concurrent setConn() can't
+    // re-enable the button mid-read.
+    this._loadingSecret = true;
+    this._updateConnectBtn();
+    try {
+      const secret = await secureGet(keyringAccount(last.url, last.mode, last.user));
+      // Only fill if the field is still empty — never clobber a value the user may
+      // have typed during the (async) keychain read.
+      const secretEl = root.querySelector<HTMLInputElement>(
+        last.mode === "basic" ? "#prep-sd-password" : "#prep-sd-token",
+      );
+      if (secret && secretEl && !secretEl.value) secretEl.value = secret;
+    } finally {
+      this._loadingSecret = false;
+      this._updateConnectBtn();
+    }
+  }
+
+  /**
+   * Après une connexion réussie : si « Se souvenir » est coché, persister les
+   * champs non-secrets (localStorage) + le secret (trousseau OS) ; sinon oublier
+   * toute trace précédente pour ce compte. Jamais de secret en clair sur disque.
+   */
+  private async _persistConnection(url: string): Promise<void> {
+    const remember =
+      this._root?.querySelector<HTMLInputElement>("#prep-sd-remember")?.checked ?? false;
+    const user = this._auth.mode === "basic" ? (this._auth.user ?? "") : "";
+    const account = keyringAccount(url, this._auth.mode, user);
+    if (!remember) {
+      clearLastConn();
+      await secureDelete(account);
+      return;
+    }
+    saveLastConn({ url, mode: this._auth.mode, user, remember: true });
+    const secret = authSecret(this._auth);
+    if (secret) {
+      const stored = await secureSet(account, secret);
+      if (!stored) {
+        this._showToast?.(
+          "Préférences mémorisées, mais le secret n'a pas pu être stocké (trousseau indisponible)",
+          true,
+        );
+      }
+    }
+  }
+
+  /** « Oublier » : purge le trousseau + localStorage + vide les champs secret. */
+  private async _forget(): Promise<void> {
+    const last = loadLastConn();
+    clearLastConn();
+    if (last && last.mode !== "anonymous") {
+      await secureDelete(keyringAccount(last.url, last.mode, last.user));
+    }
+    // Also forget the account currently typed in the form, in case it differs.
+    const url = normalizeFolderUrl(
+      this._root?.querySelector<HTMLInputElement>("#prep-sd-url")?.value ?? "",
+    );
+    const formAuth = this._readAuthFromForm();
+    if (url && formAuth.mode !== "anonymous") {
+      const user = formAuth.mode === "basic" ? (formAuth.user ?? "") : "";
+      await secureDelete(keyringAccount(url, formAuth.mode, user));
+    }
+    const root = this._root;
+    if (root) {
+      const rememberEl = root.querySelector<HTMLInputElement>("#prep-sd-remember");
+      if (rememberEl) rememberEl.checked = false;
+      for (const sel of ["#prep-sd-password", "#prep-sd-token"]) {
+        const el = root.querySelector<HTMLInputElement>(sel);
+        if (el) el.value = "";
+      }
+    }
+    this._showToast?.("Identifiants ShareDocs oubliés");
+  }
+
+  private async _browse(url: string, recordHistory = false): Promise<boolean> {
+    if (!this._conn || this._busy) return false;
     // Push history only once navigation actually starts (after the guards) so a
     // no-op browse (busy / no connection) can never corrupt the back-stack.
     if (recordHistory && this._currentUrl) this._history.push(this._currentUrl);
@@ -240,10 +377,12 @@ export class ShareDocsImportScreen {
       this._entries = sortRemoteEntries(entries);
       this._renderEntries();
       this._log(`✓ ${entries.length} élément(s) — ${safeDecodeUrl(url)}`);
+      return true;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this._showToast?.(`✗ ${msg}`, true);
       this._log(`✗ ${msg}`, true);
+      return false;
     } finally {
       this._setBusy(false);
     }
@@ -428,7 +567,7 @@ export class ShareDocsImportScreen {
 
   private _updateConnectBtn(): void {
     const btn = this._root?.querySelector<HTMLButtonElement>("#prep-sd-connect-btn");
-    if (btn) btn.disabled = !this._conn || this._busy;
+    if (btn) btn.disabled = !this._conn || this._busy || this._loadingSecret;
   }
 
   private _log(msg: string, isError = false): void {
