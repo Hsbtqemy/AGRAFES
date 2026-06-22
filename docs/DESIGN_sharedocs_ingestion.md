@@ -146,17 +146,24 @@ compteurs (lignes/unités), `error` éventuel. Plus un agrégat (totaux par stat
   ```
   → report batch JSON.
 
-**Phase 2 — Sidecar.**
-- `POST /webdav/list` (body : url + creds) → listing (name, href, is_dir, size,
-  modified, content_type). **Hors write-lock** (réseau lecture seule), pas de
-  blocage des écritures db.
-- `POST /import-remote` (body : url, mode, language, include, creds, doc_role,
-  resource_type, max_file_mb) → **sous `_track_stage("import-remote")` + write
-  lock** (écrit en db). Progression par fichier via **`JobManager`** (réutilise la
-  mécanique de `POST /import`). Renvoie le report batch.
-- Ajouter les deux routes à la liste autorisée du `do_POST`
-  ([sidecar.py:671](../src/multicorpus_engine/sidecar.py#L671)).
-- `runs.params` ne stocke **que** `url` + `mode` (jamais les creds).
+**Phase 2 — Sidecar ✅ LIVRÉ** (contrat 1.6.28). *Recalé par l'addendum P2 (job
+async + carve-out lock-free + creds en closure) — voir
+`TICKET_SHAREDOCS_INGESTION_P2_SIDECAR.md`.*
+- `POST /webdav/list` (body : url + auth) → listing (name, href, is_dir, size,
+  modified, content_type). **Lecture seule réseau, sans token, dispatché
+  lock-free** (carve-out avant l'acquire du lock, comme `/shutdown`) → ne bloque
+  jamais les écritures db. Erreurs : 401 (auth), 404 (dossier), 502 (réseau).
+- `POST /import-remote` (body : url, mode, language, include, auth, doc_role,
+  resource_type, max_file_mb) → **asynchrone** : *enqueue* un job **`JobManager`**
+  (token requis) et renvoie `{job}` (202) ; l'UI poll `/jobs/<id>` pour la
+  progression par fichier + le report batch. Sur le thread worker, le *download*
+  reste **hors** write-lock ; seule la section DB (dédup + import + provenance)
+  passe sous le lock (`remote/ingest.py` gagne `progress` + `critical_section`).
+- Les deux routes câblées dans `do_POST` (`/import-remote` dans `_write_paths` ;
+  `/webdav/list` en carve-out lock-free).
+- `runs.params` / `params` de job ne stockent **que** `url` + `mode` (+ options
+  non secrètes) — l'`auth` n'est **jamais** persisté (capturé dans la closure du
+  runner), vérifié par test sur `runs.params_json` **et** `/jobs/<id>`.
 
 **Phase 3 — UI Prep.**
 - Écran « Importer depuis ShareDocs » :
