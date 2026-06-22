@@ -74,6 +74,12 @@ class Field:
     items    for a list / tuple, the required element type:
              ``"<name> must be a list of …s"``.
     error    typed error class to raise (``ValidationError`` or ``BadRequestError``).
+    description
+             optional human-readable text. **Pure metadata** — ``validate()``
+             ignores it entirely; it is consumed only by the OpenAPI generator
+             (``services.request_schemas.field_schema_to_openapi``) so a single
+             ``Field`` schema can be the source for both validation and the
+             contract ``requestBody`` (audit A-03B).
     """
 
     name: str
@@ -88,6 +94,7 @@ class Field:
     nullable: bool = False
     items: type | tuple[type, ...] | None = None
     error: type[ServiceError] = ValidationError
+    description: str | None = None
 
 
 def validate(
