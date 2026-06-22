@@ -125,6 +125,50 @@ fn read_telemetry_ndjson(path: String) -> Result<String, String> {
         .map_err(|e| format!("read_telemetry_ndjson: cannot read: {}", e))
 }
 
+// ─── Secure credential store (OS keychain) ───────────────────────────────────
+// Backs the ShareDocs "remember credentials" feature (Phase 4A). The secret
+// (WebDAV password / bearer token) lives in the OS keychain (Windows Credential
+// Manager via the `keyring` crate) — never in plaintext on disk. Non-secret
+// fields (URL, username, auth mode) stay in the webview's localStorage. The JS
+// wrapper (credentialStore.ts) treats any Err here as "degrade to memory-only",
+// so a missing/locked keychain never breaks the connection flow.
+// See docs/DESIGN_sharedocs_ingestion.md §9.2.
+
+/// Read a secret from the OS keychain. `Ok(None)` = no entry yet (the common
+/// "nothing remembered" case); `Err` only on a real backend failure.
+#[tauri::command]
+fn keyring_get(service: String, account: String) -> Result<Option<String>, String> {
+    let entry = keyring::Entry::new(&service, &account)
+        .map_err(|e| format!("keyring_get: {}", e))?;
+    match entry.get_password() {
+        Ok(secret) => Ok(Some(secret)),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(e) => Err(format!("keyring_get: {}", e)),
+    }
+}
+
+/// Store (or replace) a secret in the OS keychain.
+#[tauri::command]
+fn keyring_set(service: String, account: String, secret: String) -> Result<(), String> {
+    let entry = keyring::Entry::new(&service, &account)
+        .map_err(|e| format!("keyring_set: {}", e))?;
+    entry
+        .set_password(&secret)
+        .map_err(|e| format!("keyring_set: {}", e))
+}
+
+/// Remove a secret from the OS keychain. A missing entry is success (idempotent
+/// "forget").
+#[tauri::command]
+fn keyring_delete(service: String, account: String) -> Result<(), String> {
+    let entry = keyring::Entry::new(&service, &account)
+        .map_err(|e| format!("keyring_delete: {}", e))?;
+    match entry.delete_credential() {
+        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+        Err(e) => Err(format!("keyring_delete: {}", e)),
+    }
+}
+
 /// Appends a diagnostic message under the OS user data dir, e.g.
 /// `%APPDATA%\com.agrafes.shell\` (Windows) or `~/Library/Application Support/com.agrafes.shell/` (macOS).
 /// Avoids a cwd-relative path (previous fallback created `src-tauri/sidecar-debug.log` and caused `cargo watch` rebuild loops in dev).
@@ -338,6 +382,9 @@ fn main() {
             register_sidecar,
             shutdown_sidecar_cmd,
             fetch_github_latest_release,
+            keyring_get,
+            keyring_set,
+            keyring_delete,
         ])
         .run(tauri::generate_context!())
         .expect("error while running AGRAFES Shell application");

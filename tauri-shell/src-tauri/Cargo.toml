@@ -21,6 +21,10 @@ serde_json = "1"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 tokio = { version = "1", features = ["rt", "time"] }
 dirs = "6"
+# OS keychain for ShareDocs "remember credentials" (Phase 4A). `windows-native`
+# enables the Windows Credential Manager backend (the shipped target); add
+# `apple-native` / `sync-secret-service` when macOS/Linux builds are needed.
+keyring = { version = "3", features = ["windows-native"] }
 
 [features]
 default = ["custom-protocol"]
