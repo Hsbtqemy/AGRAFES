@@ -1909,6 +1909,52 @@
           }
         ]
       },
+      "ImportRemoteRequest": {
+        "properties": {
+          "auth": {
+            "$ref": "#/components/schemas/WebdavAuth"
+          },
+          "doc_role": {
+            "type": "string"
+          },
+          "include": {
+            "description": "Optional glob (e.g. '*.docx') overriding the mode's default extension filter",
+            "type": "string"
+          },
+          "language": {
+            "type": "string"
+          },
+          "max_file_mb": {
+            "default": 200,
+            "description": "Per-file size cap (MiB); files above are reported skipped-oversize",
+            "type": "number"
+          },
+          "mode": {
+            "enum": [
+              "docx_numbered_lines",
+              "txt_numbered_lines",
+              "docx_paragraphs",
+              "odt_paragraphs",
+              "odt_numbered_lines",
+              "tei",
+              "conllu"
+            ],
+            "type": "string"
+          },
+          "resource_type": {
+            "type": "string"
+          },
+          "url": {
+            "description": "WebDAV folder (collection) URL",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "mode"
+        ],
+        "type": "object"
+      },
       "ImportRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2384,6 +2430,38 @@
             "type": "object"
           }
         ]
+      },
+      "RemoteEntry": {
+        "properties": {
+          "content_type": {
+            "nullable": true,
+            "type": "string"
+          },
+          "href": {
+            "description": "Absolute URL of the entry (same-origin with the request)",
+            "type": "string"
+          },
+          "is_dir": {
+            "type": "boolean"
+          },
+          "modified": {
+            "nullable": true,
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "size": {
+            "nullable": true,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "href",
+          "is_dir"
+        ],
+        "type": "object"
       },
       "RetargetCandidate": {
         "properties": {
@@ -3592,6 +3670,69 @@
             "type": "object"
           }
         ]
+      },
+      "WebdavAuth": {
+        "description": "WebDAV credentials. Sent in the request body on loopback only and used solely to build the outbound Authorization header. NEVER persisted: not in the DB, runs.params, job params (/jobs/<id>), request logs, or telemetry.",
+        "properties": {
+          "mode": {
+            "default": "anonymous",
+            "enum": [
+              "anonymous",
+              "basic",
+              "bearer"
+            ],
+            "type": "string"
+          },
+          "password": {
+            "description": "Password (mode=basic)",
+            "type": "string"
+          },
+          "token": {
+            "description": "Bearer token (mode=bearer)",
+            "type": "string"
+          },
+          "user": {
+            "description": "Username (mode=basic)",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "WebdavListRequest": {
+        "properties": {
+          "auth": {
+            "$ref": "#/components/schemas/WebdavAuth"
+          },
+          "url": {
+            "description": "WebDAV collection (folder) URL",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "type": "object"
+      },
+      "WebdavListResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BaseResponse"
+          },
+          {
+            "properties": {
+              "entries": {
+                "items": {
+                  "$ref": "#/components/schemas/RemoteEntry"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "entries"
+            ],
+            "type": "object"
+          }
+        ]
       }
     }
   },
@@ -3599,7 +3740,7 @@
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
     "version": "1.6.23",
-    "x-contract-version": "1.6.27"
+    "x-contract-version": "1.6.28"
   },
   "openapi": "3.0.3",
   "paths": {
@@ -5299,6 +5440,59 @@
           }
         },
         "summary": "Import a document into corpus DB"
+      }
+    },
+    "/import-remote": {
+      "post": {
+        "description": "Enqueues a JobManager job that browses the folder and imports every matching file (dedup by content hash, provenance = remote URL). Returns {job}; poll /jobs/<id> for per-file progress and the batch report. Credentials (auth) are NEVER placed in the job params and are not persisted anywhere — only used in-memory to reach the server.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportRemoteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobAcceptedResponse"
+                }
+              }
+            },
+            "description": "Import job accepted"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized (missing/invalid token)"
+          }
+        },
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "summary": "Batch-ingest a WebDAV folder as an async job (token required)"
       }
     },
     "/import/preview": {
@@ -7088,6 +7282,74 @@
           }
         },
         "summary": "Validate metadata"
+      }
+    },
+    "/webdav/list": {
+      "post": {
+        "description": "Lists the immediate children of a WebDAV folder. Read-only network operation (no DB) → dispatched lock-free, never blocks db writes. Credentials in the body are loopback-only and never persisted.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebdavListRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebdavListResponse"
+                }
+              }
+            },
+            "description": "Folder entries"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "WebDAV authentication failed"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Folder not found"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream WebDAV network/protocol error"
+          }
+        },
+        "summary": "Browse a WebDAV collection (PROPFIND, Depth:1) — read-only, no token"
       }
     }
   },

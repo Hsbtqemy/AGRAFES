@@ -15,7 +15,7 @@ from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
 API_VERSION = "1.6.23"
-CONTRACT_VERSION = "1.6.27"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.28"  # semantic versioning for the sidecar API contract
 # 1.4.0: added export_tei_package job kind (Sprint 4 — Publication ZIP)
 # 1.4.1: ERR_CONFLICT (409) for duplicate run_id; token protection on /align, /curate, /segment
 # 1.4.2: document workflow status fields on /documents and metadata update endpoints.
@@ -82,6 +82,11 @@ CONTRACT_VERSION = "1.6.27"  # semantic versioning for the sidecar API contract
 # 1.6.27: POST /token_query gains optional include_context_segments (bool, default false).
 #         When true, each hit gains prev_segment / next_segment with the adjacent units in the document.
 #         Each hit also gains unit_n (position of the unit in the document).
+# 1.6.28: ShareDocs / WebDAV ingestion — Phase 2 (sidecar).
+#         POST /webdav/list — browse a WebDAV collection (PROPFIND, Depth:1); read-only, no token.
+#         POST /import-remote — batch-ingest a WebDAV folder as an async job (token required) → {job}.
+#         Credentials (auth object) are body-only on loopback, used to build the Authorization
+#         header, and NEVER persisted (DB / runs.params / job params / logs / telemetry).
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
@@ -1866,6 +1871,44 @@ def openapi_spec() -> dict[str, Any]:
                     },
                 }
             },
+            # ── ShareDocs / WebDAV ingestion — Phase 2 ───────────────────────
+            "/webdav/list": {
+                "post": {
+                    "summary": "Browse a WebDAV collection (PROPFIND, Depth:1) — read-only, no token",
+                    "description": (
+                        "Lists the immediate children of a WebDAV folder. Read-only network "
+                        "operation (no DB) → dispatched lock-free, never blocks db writes. "
+                        "Credentials in the body are loopback-only and never persisted."
+                    ),
+                    "requestBody": {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/WebdavListRequest"}}}},
+                    "responses": {
+                        "200": {"description": "Folder entries", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/WebdavListResponse"}}}},
+                        "400": {"description": "Bad request", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                        "401": {"description": "WebDAV authentication failed", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                        "404": {"description": "Folder not found", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                        "502": {"description": "Upstream WebDAV network/protocol error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                    },
+                }
+            },
+            "/import-remote": {
+                "post": {
+                    "summary": "Batch-ingest a WebDAV folder as an async job (token required)",
+                    "description": (
+                        "Enqueues a JobManager job that browses the folder and imports every "
+                        "matching file (dedup by content hash, provenance = remote URL). Returns "
+                        "{job}; poll /jobs/<id> for per-file progress and the batch report. "
+                        "Credentials (auth) are NEVER placed in the job params and are not "
+                        "persisted anywhere — only used in-memory to reach the server."
+                    ),
+                    "security": [{"token": []}],
+                    "requestBody": {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ImportRemoteRequest"}}}},
+                    "responses": {
+                        "202": {"description": "Import job accepted", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/JobAcceptedResponse"}}}},
+                        "400": {"description": "Bad request", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                        "401": {"description": "Unauthorized (missing/invalid token)", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                    },
+                }
+            },
         },
         "components": {
             "schemas": {
@@ -2804,6 +2847,88 @@ def openapi_spec() -> dict[str, Any]:
                         "created_at": {"type": "string"},
                         "params": {"type": "object", "nullable": True},
                         "stats": {"type": "object", "nullable": True},
+                    },
+                },
+                # ── ShareDocs / WebDAV ingestion — Phase 2 ───────────────────
+                "WebdavAuth": {
+                    "type": "object",
+                    "description": (
+                        "WebDAV credentials. Sent in the request body on loopback only and used "
+                        "solely to build the outbound Authorization header. NEVER persisted: not in "
+                        "the DB, runs.params, job params (/jobs/<id>), request logs, or telemetry."
+                    ),
+                    "properties": {
+                        "mode": {"type": "string", "enum": ["anonymous", "basic", "bearer"], "default": "anonymous"},
+                        "user": {"type": "string", "description": "Username (mode=basic)"},
+                        "password": {"type": "string", "description": "Password (mode=basic)"},
+                        "token": {"type": "string", "description": "Bearer token (mode=bearer)"},
+                    },
+                },
+                "RemoteEntry": {
+                    "type": "object",
+                    "required": ["name", "href", "is_dir"],
+                    "properties": {
+                        "name": {"type": "string"},
+                        "href": {"type": "string", "description": "Absolute URL of the entry (same-origin with the request)"},
+                        "is_dir": {"type": "boolean"},
+                        "size": {"type": "integer", "nullable": True},
+                        "modified": {"type": "string", "nullable": True},
+                        "content_type": {"type": "string", "nullable": True},
+                    },
+                },
+                "WebdavListRequest": {
+                    "type": "object",
+                    "required": ["url"],
+                    "properties": {
+                        "url": {"type": "string", "description": "WebDAV collection (folder) URL"},
+                        "auth": {"$ref": "#/components/schemas/WebdavAuth"},
+                    },
+                },
+                "WebdavListResponse": {
+                    "allOf": [
+                        {"$ref": "#/components/schemas/BaseResponse"},
+                        {
+                            "type": "object",
+                            "required": ["entries"],
+                            "properties": {
+                                "entries": {
+                                    "type": "array",
+                                    "items": {"$ref": "#/components/schemas/RemoteEntry"},
+                                },
+                            },
+                        },
+                    ]
+                },
+                "ImportRemoteRequest": {
+                    "type": "object",
+                    "required": ["url", "mode"],
+                    "properties": {
+                        "url": {"type": "string", "description": "WebDAV folder (collection) URL"},
+                        "mode": {
+                            "type": "string",
+                            "enum": [
+                                "docx_numbered_lines",
+                                "txt_numbered_lines",
+                                "docx_paragraphs",
+                                "odt_paragraphs",
+                                "odt_numbered_lines",
+                                "tei",
+                                "conllu",
+                            ],
+                        },
+                        "language": {"type": "string"},
+                        "include": {
+                            "type": "string",
+                            "description": "Optional glob (e.g. '*.docx') overriding the mode's default extension filter",
+                        },
+                        "auth": {"$ref": "#/components/schemas/WebdavAuth"},
+                        "doc_role": {"type": "string"},
+                        "resource_type": {"type": "string"},
+                        "max_file_mb": {
+                            "type": "number",
+                            "default": 200,
+                            "description": "Per-file size cap (MiB); files above are reported skipped-oversize",
+                        },
                     },
                 },
                 "RunsListResponse": {
