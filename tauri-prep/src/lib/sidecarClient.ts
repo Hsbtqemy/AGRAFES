@@ -1207,6 +1207,91 @@ export async function importFile(conn: Conn, opts: ImportOptions): Promise<Impor
   return conn.post("/import", opts) as Promise<ImportResponse>;
 }
 
+// ─── ShareDocs / WebDAV ingestion (Phase 3) ───────────────────────────────────
+// Credentials live in component state only (memory). They are sent in the body
+// on each call and never persisted to disk / localStorage / config.
+
+export type WebdavAuthMode = "anonymous" | "basic" | "bearer";
+
+export interface WebdavAuth {
+  mode: WebdavAuthMode;
+  user?: string;
+  password?: string;
+  token?: string;
+}
+
+export interface RemoteEntry {
+  name: string;
+  href: string;
+  is_dir: boolean;
+  size: number | null;
+  modified: string | null;
+  content_type: string | null;
+}
+
+export interface ImportRemoteOptions {
+  url: string;
+  mode: string;
+  language?: string;
+  include?: string;
+  auth?: WebdavAuth;
+  doc_role?: string;
+  resource_type?: string;
+  max_file_mb?: number;
+}
+
+export type RemoteFileStatus =
+  | "imported"
+  | "skipped-duplicate"
+  | "skipped-filtered"
+  | "skipped-oversize"
+  | "error";
+
+export interface RemoteFileResult {
+  source_url: string;
+  name: string;
+  status: RemoteFileStatus;
+  doc_id: number | null;
+  run_id?: string;
+  source_hash?: string;
+  units_total?: number | null;
+  units_line?: number | null;
+  size?: number | null;
+  error?: string;
+}
+
+/** Batch report returned as the async job's `result` when /import-remote finishes. */
+export interface ImportRemoteReport {
+  url: string;
+  mode: string;
+  total: number;
+  imported: number;
+  skipped_duplicate: number;
+  skipped_filtered: number;
+  skipped_oversize: number;
+  errors: number;
+  files: RemoteFileResult[];
+}
+
+/** Browse a WebDAV collection (PROPFIND, Depth:1). Read-only, no token. */
+export async function webdavList(
+  conn: Conn,
+  opts: { url: string; auth?: WebdavAuth }
+): Promise<RemoteEntry[]> {
+  const res = (await conn.post("/webdav/list", opts)) as { entries: RemoteEntry[] };
+  return res.entries;
+}
+
+/**
+ * Start a batch ingestion of a WebDAV folder. Returns the async job; poll it via
+ * {@link getJob} (or hand the id to JobCenter) — the final `result` is an
+ * {@link ImportRemoteReport}.
+ */
+export async function importRemote(conn: Conn, opts: ImportRemoteOptions): Promise<JobRecord> {
+  const res = (await conn.post("/import-remote", opts)) as { job: JobRecord };
+  return res.job;
+}
+
 // ─── Import preview ───────────────────────────────────────────────────────────
 
 export interface ConlluPreviewRow {
