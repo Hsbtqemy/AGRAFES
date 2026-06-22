@@ -180,15 +180,22 @@ async + carve-out lock-free + creds en closure) — voir
     Re-saisie à la session suivante. Compromis UX assumé ; keychain OS = évolution
     ultérieure.
 
-**Phase 4 — Persistance, navigation, sélection ⏳ FIGÉ (addendum §9, 2026-06-22).**
-Trois améliorations post-P3, découpées en 3 tickets phasés (front-end + Rust shell ;
-un seul incrément moteur/contrat en P4C) :
-- **P4A ✅ implémenté** — persistance opt-in des identifiants via **trousseau OS**
-  (assouplit §6) + clarté du formulaire (URL, modes, note mot-de-passe-d'application/humanID).
-- **P4B ✅ implémenté** — navigation : préremplissage racine / preset Huma-Num.
-- **P4C ✅ implémenté** — **sélection multiple accumulative** (panier inter-dossiers)
-  couvrant dossiers ET fichiers (étend la granularité §1) ; ajoute `hrefs` au contrat
-  `POST /import-remote` (1.6.29) + `only_hrefs` dans `remote/ingest.py`.
+**Phase 4 — Persistance, navigation, sélection, sécurité ✅ LIVRÉ** (mergé dans `dev`
+via #104 + #105 ; addenda §9 et §10). Front-end + Rust shell ; un seul incrément
+moteur/contrat (P4C) :
+- **P4A ✅** — persistance opt-in des identifiants via **trousseau OS** (assouplit §6)
+  + clarté du formulaire (note mot-de-passe-d'application/humanID).
+- **P4B ✅** — navigation : préremplissage racine / preset Huma-Num.
+- **P4C ✅** — **sélection multiple accumulative** (panier inter-dossiers, dossiers ET
+  fichiers ; étend la granularité §1) ; `hrefs` au contrat `POST /import-remote`
+  (1.6.29) + `only_hrefs` dans `remote/ingest.py`.
+- **P4D ✅** — sécurité de la sélection (info format + drapeau par fichier,
+  **annulation de lot**) + refacto `_guardedRun` (addendum §10).
+
+**Phase 5 — Détection par fichier (format + langue) ⏳ FIGÉ (addendum §11, ticket P5).**
+Porter la détection de l'import local (`ImportScreen`) dans ShareDocs : chaque fichier
+importé avec **son** format (extension) et **sa** langue (nom). Front-only, aucun
+changement moteur/contrat. Familles (source↔traduction) différées en Phase 6.
 
 ## 6. Sécurité (tranché)
 
@@ -355,3 +362,84 @@ dry-run (préventif coûteux) ; on combine **info de sélection** (visibilité) 
   l'usage (annulations fréquentes).
 - Heuristiques de qualité dans le rapport (ex. `units_line == 0` pour un mode
   numéroté).
+
+## 11. Addendum — détection par fichier (réutilisation de l'import local) — Phase 5
+
+> **But** : un import ShareDocs par lot doit se comporter comme le **menu Import
+> local** — chaque fichier importé avec **son** format et **sa** langue, déduits du
+> nom/extension. On **réutilise la détection existante de `ImportScreen`** (une
+> seule source de vérité), on ne la réinvente pas. **Front-only**, aucun changement
+> moteur/contrat. Forks tranchés : **familles différées**, **dossiers cochés étendus
+> + routés**.
+
+### 11.1 Motivation
+
+Dossiers hétérogènes — formats mélangés, et surtout **texte + traduction bilingue
+dans un même dossier**. Le `single-mode`/`single-language` de l'import par lot
+(P3/P4C) taguait tout pareil (langue/format faux pour les fichiers non conformes).
+L'import local résout déjà ça **par fichier** ; on le porte dans ShareDocs.
+
+### 11.2 Module partagé (refactor préalable, sans changement de comportement)
+
+Extraire de `ImportScreen` vers **`tauri-prep/src/lib/importDetect.ts`** (pur,
+testable) :
+
+- `extFromFileName(name)`, `deriveModeFromExt(ext, defaultProfile)`,
+  `normalizeModeForExt(mode, ext)`, `modeOptionsForExt(ext)` ;
+- `detectLanguageFromName(name, fallback)` + `LANG_RE` + `KNOWN_LANG_CODES` ;
+- constantes de profil `WP_DEFAULT_NUMBERED` / `WP_DEFAULT_PARAGRAPHS`.
+
+Refactorer `ImportScreen` pour consommer ce module **à l'identique** (tests de
+non-régression). `detectFamilyGroups` **reste** dans `ImportScreen` (familles
+différées, §11.6).
+
+### 11.3 ShareDocs — détection + groupement
+
+- **Formulaire** : « Mode d'import » → **« Profil par défaut »** (sélecteur de
+  **style** : lignes numérotées / paragraphes, comme le menu Import — le **format**
+  vient de l'extension) ; « Langue » → **« Langue par défaut (si non détectée) »**.
+- **Aplatir en liste de fichiers** :
+  - « Importer ce dossier » → les fichiers de `_entries` (dossier courant) ;
+  - « Importer la sélection » → fichiers cochés tels quels **+** chaque **dossier
+    coché → `webdavList` (PROPFIND Depth:1)** pour récupérer ses fichiers (fork
+    « étendre + router »).
+- **Ignorer les extensions non reconnues** (`detectFormatFromName === "unknown"`),
+  comptées dans un récap (ni import ni erreur).
+- Par fichier : `mode = normalizeModeForExt(deriveModeFromExt(ext, profilDéfaut), ext)`,
+  `language = detectLanguageFromName(name, langueDéfaut)`.
+- **Grouper par `(parentUrl, mode, language)`** → **un `import-remote` par groupe**
+  (`hrefs` + `mode` + `language`), suivi Job Center, **rapports agrégés** (P4C/P4D).
+
+### 11.4 UI
+
+- Panier : afficher le **(mode, langue) détectés** par fichier → **remplace** le
+  drapeau ⚠ « format incompatible » de P4D (on **route** au lieu de signaler).
+- **Récap avant import** : « N fichiers → G lots (formats/langues) ; M ignorés
+  (extension non reconnue) ». `inlineConfirm` si `M > 0` ou si des dossiers doivent
+  être étendus (PROPFIND réseau).
+- **Annulation de lot** (P4D) conservée telle quelle.
+
+### 11.5 Sécurité / robustesse
+
+- Les PROPFIND d'expansion réutilisent la garde **same-origin** existante de
+  `webdav`. Les `hrefs` restent **intersectés au listing** côté backend (P4C) → un
+  href non listé n'est jamais téléchargé.
+- Une erreur de PROPFIND sur un dossier coché est **reportée et n'interrompt pas**
+  le reste de la soumission.
+
+### 11.6 Hors périmètre Phase 5
+
+- **Familles / lien source↔traduction** (différé) : `detectFamilyGroups` +
+  relations `translation_of` post-import, comme le dialogue post-import du menu
+  Import. À porter ensuite vers le parcours d'alignement.
+- **Édition (mode, langue) par fichier avant import** (grille éditable comme le menu
+  Import) : v1 = détection + **affichage** ; une détection erronée se rattrape en
+  **post-import** (édition métadonnées) ou via l'**annulation de lot**.
+- Détection du **style** numéroté/paragraphes (reste un défaut — non détectable
+  sans parser) ; auto-détection de `resource_type`/`doc_role` (non détectés même en
+  local).
+
+### 11.7 Backend
+
+**Aucun changement** : réutilise `hrefs` + `mode`/`language` par appel ; contrat
+`1.6.29` inchangé.
