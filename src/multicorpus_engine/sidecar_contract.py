@@ -15,7 +15,7 @@ from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
 API_VERSION = "1.6.23"
-CONTRACT_VERSION = "1.6.28"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.29"  # semantic versioning for the sidecar API contract
 # 1.4.0: added export_tei_package job kind (Sprint 4 — Publication ZIP)
 # 1.4.1: ERR_CONFLICT (409) for duplicate run_id; token protection on /align, /curate, /segment
 # 1.4.2: document workflow status fields on /documents and metadata update endpoints.
@@ -87,6 +87,9 @@ CONTRACT_VERSION = "1.6.28"  # semantic versioning for the sidecar API contract
 #         POST /import-remote — batch-ingest a WebDAV folder as an async job (token required) → {job}.
 #         Credentials (auth object) are body-only on loopback, used to build the Authorization
 #         header, and NEVER persisted (DB / runs.params / job params / logs / telemetry).
+# 1.6.29: POST /import-remote gains optional `hrefs` (array) — explicit file selection (P4C).
+#         Intersected with the folder PROPFIND listing (an unlisted href is ignored, never
+#         fetched); bypasses the `include` glob. Omit to import the whole folder.
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
@@ -2920,6 +2923,12 @@ def openapi_spec() -> dict[str, Any]:
                         "include": {
                             "type": "string",
                             "description": "Optional glob (e.g. '*.docx') overriding the mode's default extension filter",
+                        },
+                        "hrefs": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "nullable": True,
+                            "description": "Explicit file hrefs to import (P4C). Intersected with the folder listing (an unlisted href is ignored), bypasses the include glob. Omit to import the whole folder.",
                         },
                         "auth": {"$ref": "#/components/schemas/WebdavAuth"},
                         "doc_role": {"type": "string"},

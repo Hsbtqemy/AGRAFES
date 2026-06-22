@@ -67,6 +67,7 @@ def ingest_remote_folder(
     mode: str,
     language: Optional[str] = None,
     include: Optional[str] = None,
+    only_hrefs: Optional[set[str]] = None,
     doc_role: str = "standalone",
     resource_type: Optional[str] = None,
     auth_header: dict,
@@ -80,6 +81,11 @@ def ingest_remote_folder(
     Raises ``webdav.WebdavError`` (or a subclass) only for *blocking* failures
     (e.g. the folder PROPFIND itself fails). Per-file failures are captured in the
     report and never abort the batch.
+
+    *only_hrefs* (optional, P4C explicit selection) restricts the batch to the
+    given file hrefs, **intersected with the PROPFIND listing** — an href the
+    server did not list is ignored (never fetched). The glob/extension filter is
+    bypassed for the selection (the user picked these files deliberately).
 
     *progress* (optional) is invoked once per file with ``{index, total, name,
     status}`` so a caller (the sidecar job runner) can surface live per-file
@@ -96,6 +102,14 @@ def ingest_remote_folder(
 
     entries = webdav.propfind(url, auth_header=auth_header)
     files = [e for e in entries if not e.is_dir]
+    # Explicit selection (P4C): keep only the chosen files, **intersected with the
+    # trusted PROPFIND listing** — we never download a client-supplied href the
+    # server did not list, so the same-origin / SSRF guard of webdav.propfind stays
+    # intact. The glob/extension filter is then bypassed (the user picked these
+    # files deliberately); an incompatible file simply errors per-file at import.
+    explicit = only_hrefs is not None
+    if explicit:
+        files = [e for e in files if e.href in only_hrefs]
     total = len(files)
 
     results: list[dict] = []
@@ -108,6 +122,7 @@ def ingest_remote_folder(
                 doc_role=doc_role, resource_type=resource_type,
                 auth_header=auth_header, max_bytes=max_bytes, tmpdir=tmpdir,
                 critical_section=critical_section,
+                explicit=explicit,
             )
             results.append(res)
             if logger is not None:
@@ -134,11 +149,13 @@ def _process_one(
     max_bytes: Optional[int],
     tmpdir: Path,
     critical_section: Optional[AbstractContextManager] = None,
+    explicit: bool = False,
 ) -> dict:
     base = {"source_url": entry.href, "name": entry.name, "doc_id": None}
 
-    # 1. Extension / glob filter.
-    if not _matches(entry.name, mode, include):
+    # 1. Extension / glob filter — skipped for an explicit P4C selection (the user
+    #    chose this file; a mode-incompatible file errors per-file at import below).
+    if not explicit and not _matches(entry.name, mode, include):
         return {**base, "status": "skipped-filtered"}
 
     # 2. Oversize pre-check (when the server declared a size).
