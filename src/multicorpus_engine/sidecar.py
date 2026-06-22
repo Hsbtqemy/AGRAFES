@@ -2359,13 +2359,31 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             self._send_error("max_file_mb must be > 0", code=ERR_VALIDATION, http_status=400)
             return
 
+        # Optional explicit file selection (P4C). When present, must be a non-empty
+        # array of strings; the batch is then restricted to these hrefs (intersected
+        # with the folder listing inside ingest — an unlisted href is never fetched).
+        hrefs = body.get("hrefs")
+        if hrefs is not None and (
+            not isinstance(hrefs, list)
+            or not hrefs
+            or not all(isinstance(h, str) and h.strip() for h in hrefs)
+        ):
+            self._send_error(
+                "hrefs, when provided, must be a non-empty array of strings",
+                code=ERR_VALIDATION,
+                http_status=400,
+            )
+            return
+
         # Params are EXPOSED verbatim by /jobs/<id> → never put auth here (§D2),
         # same contract as runs.params (url + mode + non-secret options only).
+        # hrefs are file URLs (non-secret), so they may be exposed in params.
         params = {
             "url": url,
             "mode": norm_mode,
             "language": body.get("language"),
             "include": body.get("include"),
+            "hrefs": hrefs,
             "doc_role": body.get("doc_role", "standalone"),
             "resource_type": body.get("resource_type"),
             "max_file_mb": max_file_mb,
@@ -2391,6 +2409,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 mode=job_params["mode"],
                 language=job_params.get("language"),
                 include=job_params.get("include"),
+                only_hrefs=set(job_params["hrefs"]) if job_params.get("hrefs") else None,
                 doc_role=job_params.get("doc_role", "standalone"),
                 resource_type=job_params.get("resource_type"),
                 auth_header=auth_header,

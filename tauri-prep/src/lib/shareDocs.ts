@@ -48,6 +48,33 @@ export function authIsComplete(auth: WebdavAuth): boolean {
   return true; // anonymous needs nothing
 }
 
+/**
+ * Stable OS-keychain account key for a remembered ShareDocs credential (Phase 4A).
+ * Keyed by server origin + auth mode + username so distinct servers/accounts never
+ * collide. Only the secret (password / token) is ever stored under this key — the
+ * non-secret fields live in localStorage. Falls back to the trimmed raw URL when the
+ * URL is unparsable, so the key stays deterministic. See DESIGN §9.2.
+ */
+export function keyringAccount(url: string, mode: WebdavAuthMode, user: string): string {
+  let origin: string;
+  try {
+    origin = new URL(url).origin;
+  } catch {
+    origin = (url ?? "").trim();
+  }
+  return `${origin}|${mode}|${(user ?? "").trim()}`;
+}
+
+/**
+ * The secret to store in the keychain for this auth, or null when there is none
+ * (anonymous, or an empty secret). Basic → password, bearer → token.
+ */
+export function authSecret(auth: WebdavAuth): string | null {
+  if (auth.mode === "basic") return auth.password ? auth.password : null;
+  if (auth.mode === "bearer") return auth.token ? auth.token : null;
+  return null;
+}
+
 /** Human-readable file size; the server may report null (size unknown). */
 export function formatRemoteSize(bytes: number | null | undefined): string {
   if (bytes == null) return "—";
@@ -104,6 +131,46 @@ export function statusLabel(status: RemoteFileStatus): string {
   }
 }
 
+/**
+ * Build the Nextcloud / ShareDocs personal WebDAV root for *hostOrUrl* + *user*
+ * (P4B preset). *hostOrUrl* may be a bare host ("dav.huma-num.fr"), a full URL, or
+ * a deep URL — only its origin is kept (scheme defaults to https). Returns
+ * `<origin>/remote.php/dav/files/<user>/`, or "" when either input is empty or the
+ * host is unparseable (the caller then keeps the field untouched). The result is a
+ * plain saisie aid — the connector stays generic WebDAV (no Nextcloud coupling).
+ */
+export function buildNextcloudRoot(hostOrUrl: string, user: string): string {
+  const h = (hostOrUrl ?? "").trim();
+  const u = (user ?? "").trim();
+  if (!h || !u) return "";
+  let origin: string;
+  try {
+    const withScheme = /^https?:\/\//i.test(h) ? h : `https://${h}`;
+    origin = new URL(withScheme).origin;
+  } catch {
+    return "";
+  }
+  if (!origin || origin === "null") return "";
+  return `${origin}/remote.php/dav/files/${encodeURIComponent(u)}/`;
+}
+
+/**
+ * True when *value* already carries a non-root path (e.g. a deep folder URL),
+ * as opposed to a bare host / root. Used by the P4B preset to confirm before it
+ * would overwrite a path the user already typed. Tolerant: a bare host or an
+ * unparseable value is "no path" (false).
+ */
+export function urlHasPath(value: string): boolean {
+  const v = (value ?? "").trim();
+  if (!v) return false;
+  try {
+    const withScheme = /^https?:\/\//i.test(v) ? v : `https://${v}`;
+    return new URL(withScheme).pathname.length > 1; // "/" → none; "/foo" → deep
+  } catch {
+    return false;
+  }
+}
+
 /** Normalize a folder URL so it ends with exactly one trailing slash (collection). */
 export function normalizeFolderUrl(url: string): string {
   const trimmed = (url ?? "").trim();
@@ -120,6 +187,71 @@ export function folderLabel(url: string): string {
   } catch {
     return url;
   }
+}
+
+/** One item in the ShareDocs selection cart (P4C). */
+export interface SelectedRemoteItem {
+  href: string;
+  name: string;
+  parentUrl: string;
+  is_dir: boolean;
+}
+
+/** A single /import-remote submission derived from the cart. */
+export interface ImportGroup {
+  url: string;
+  hrefs?: string[];
+  label: string;
+}
+
+/**
+ * Group a selection cart into import submissions (P4C). Each selected folder
+ * becomes a whole-folder import (no `hrefs`); the remaining selected files are
+ * grouped by parent folder into an `hrefs` submission. A file directly inside a
+ * selected folder is dropped — the folder import already covers it. Because
+ * import-remote is Depth:1, a file in a *sub*-folder of a selected folder is NOT
+ * covered and is therefore kept.
+ */
+export function groupSelectionForImport(items: SelectedRemoteItem[]): ImportGroup[] {
+  const folders = items.filter((i) => i.is_dir);
+  const selectedFolderHrefs = new Set(folders.map((f) => f.href));
+  const groups: ImportGroup[] = folders.map((f) => ({ url: f.href, label: f.name }));
+
+  const byParent = new Map<string, SelectedRemoteItem[]>();
+  for (const it of items) {
+    if (it.is_dir) continue;
+    if (selectedFolderHrefs.has(it.parentUrl)) continue; // covered by a selected folder
+    const arr = byParent.get(it.parentUrl) ?? [];
+    arr.push(it);
+    byParent.set(it.parentUrl, arr);
+  }
+  for (const [parentUrl, files] of byParent) {
+    groups.push({
+      url: parentUrl,
+      hrefs: files.map((f) => f.href),
+      label: `${folderLabel(parentUrl)} (${files.length} fichier${files.length > 1 ? "s" : ""})`,
+    });
+  }
+  return groups;
+}
+
+/** Merge two batch reports (P4C aggregates the reports of several submissions). */
+export function mergeReports(
+  a: ImportRemoteReport | null,
+  b: ImportRemoteReport,
+): ImportRemoteReport {
+  if (!a) return b;
+  return {
+    url: a.url,
+    mode: a.mode,
+    total: a.total + b.total,
+    imported: a.imported + b.imported,
+    skipped_duplicate: a.skipped_duplicate + b.skipped_duplicate,
+    skipped_filtered: a.skipped_filtered + b.skipped_filtered,
+    skipped_oversize: a.skipped_oversize + b.skipped_oversize,
+    errors: a.errors + b.errors,
+    files: [...a.files, ...b.files],
+  };
 }
 
 /** Folders first, then files, each alphabetical (locale-aware, case-insensitive). */

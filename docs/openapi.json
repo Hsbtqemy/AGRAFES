@@ -1917,6 +1917,14 @@
           "doc_role": {
             "type": "string"
           },
+          "hrefs": {
+            "description": "Explicit file hrefs to import (P4C). Intersected with the folder listing (an unlisted href is ignored), bypasses the include glob. Omit to import the whole folder.",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          },
           "include": {
             "description": "Optional glob (e.g. '*.docx') overriding the mode's default extension filter",
             "type": "string"
@@ -3740,7 +3748,7 @@
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
     "version": "1.6.23",
-    "x-contract-version": "1.6.28"
+    "x-contract-version": "1.6.29"
   },
   "openapi": "3.0.3",
   "paths": {

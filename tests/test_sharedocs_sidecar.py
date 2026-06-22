@@ -337,3 +337,50 @@ def test_import_remote_job_errors_when_listing_fails(tmp_path: Path) -> None:
         assert job["error"]  # message captured, not silently swallowed
     finally:
         server.shutdown()
+
+
+def test_import_remote_with_hrefs_restricts_to_selection(tmp_path: Path) -> None:
+    """POST hrefs (P4C) → only the selected files are imported, intersected with
+    the listing server-side (the handler threads hrefs → only_hrefs)."""
+    server = _server(tmp_path)
+    base = f"http://127.0.0.1:{server.actual_port}"
+    a = _make_docx_bytes(["[1] A."])
+    b = _make_docx_bytes(["[1] B."])
+    entries = [_entry("a.docx", len(a)), _entry("b.docx", len(b))]
+    payloads = {_BASE + "a.docx": a, _BASE + "b.docx": b}
+
+    try:
+        with mock.patch.object(webdav, "propfind", return_value=entries), \
+             mock.patch.object(webdav, "download", _download_from(payloads)):
+            status, payload = _post(base, "/import-remote", {
+                "url": _BASE,
+                "mode": "docx_numbered_lines",
+                "language": "fr",
+                "hrefs": [_BASE + "a.docx"],
+            })
+            assert status == 202, payload
+            job = _poll_job(base, payload["job"]["job_id"])
+
+        assert job["status"] == "done", job
+        report = job["result"]
+        assert report["total"] == 1
+        assert report["imported"] == 1
+        assert {f["name"] for f in report["files"]} == {"a.docx"}  # b.docx excluded
+    finally:
+        server.shutdown()
+
+
+def test_import_remote_rejects_empty_hrefs(tmp_path: Path) -> None:
+    """An empty hrefs array is rejected with 400 (avoids a confusing no-op job)."""
+    server = _server(tmp_path)
+    base = f"http://127.0.0.1:{server.actual_port}"
+    try:
+        status, payload = _post(base, "/import-remote", {
+            "url": _BASE,
+            "mode": "docx_numbered_lines",
+            "language": "fr",
+            "hrefs": [],
+        })
+        assert status == 400, payload
+    finally:
+        server.shutdown()

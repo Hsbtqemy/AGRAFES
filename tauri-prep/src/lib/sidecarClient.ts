@@ -1234,6 +1234,9 @@ export interface ImportRemoteOptions {
   mode: string;
   language?: string;
   include?: string;
+  /** Explicit file selection (P4C): import only these hrefs (intersected with the
+   *  folder listing server-side). Omit to import the whole folder. */
+  hrefs?: string[];
   auth?: WebdavAuth;
   doc_role?: string;
   resource_type?: string;

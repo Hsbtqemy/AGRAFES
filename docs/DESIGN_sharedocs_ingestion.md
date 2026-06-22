@@ -25,7 +25,7 @@ de ce connecteur.
 | Périmètre v1 | **CLI + endpoint sidecar + UI Prep** | Couvre aussi les utilisateurs non-CLI. Découpé en 3 phases livrables. |
 | Granularité | **Dossier / batch** | Le vrai gain : pointer un dossier ShareDocs et ingérer tout le corpus d'un coup. |
 | XML | **`defusedxml`** pour parser le PROPFIND | Déjà une dépendance ; protège contre XXE. |
-| Credentials | **Jamais persistés** (db / runs / logs / portfile / télémétrie) | Voir §6. |
+| Credentials | **Jamais persistés** (db / runs / logs / portfile / télémétrie) | Voir §6. **(assoupli en Phase 4 — secret en trousseau OS opt-in ; cf. §9.)** |
 
 ## 2. Point d'intégration
 
@@ -180,12 +180,25 @@ async + carve-out lock-free + creds en closure) — voir
     Re-saisie à la session suivante. Compromis UX assumé ; keychain OS = évolution
     ultérieure.
 
+**Phase 4 — Persistance, navigation, sélection ⏳ FIGÉ (addendum §9, 2026-06-22).**
+Trois améliorations post-P3, découpées en 3 tickets phasés (front-end + Rust shell ;
+un seul incrément moteur/contrat en P4C) :
+- **P4A ✅ implémenté** — persistance opt-in des identifiants via **trousseau OS**
+  (assouplit §6) + clarté du formulaire (URL, modes, note mot-de-passe-d'application/humanID).
+- **P4B ✅ implémenté** — navigation : préremplissage racine / preset Huma-Num.
+- **P4C ✅ implémenté** — **sélection multiple accumulative** (panier inter-dossiers)
+  couvrant dossiers ET fichiers (étend la granularité §1) ; ajoute `hrefs` au contrat
+  `POST /import-remote` (1.6.29) + `only_hrefs` dans `remote/ingest.py`.
+
 ## 6. Sécurité (tranché)
 
 - `defusedxml` obligatoire pour le PROPFIND (XXE).
 - TLS vérifié, pas d'opt-out.
 - **Credentials jamais écrits** : db, `runs.params`, logs de run, logs de requête
   sidecar (exclure les champs auth du body loggé), portfile, événements télémétrie.
+  **⚠️ Assoupli en Phase 4 (§9.2)** : le secret (mot de passe / jeton) peut être
+  persisté **dans le trousseau OS** (opt-in « Se souvenir ») ; le clair sur disque
+  (db / `localStorage` / config) reste interdit, et l'auth reste hors `runs.params`.
 - Creds CLI via env ; creds UI via body POST sur `127.0.0.1` uniquement, en mémoire.
 - Garde traversée de chemin (noms temp générés) ; `Depth: 1` strict ; garde taille.
 
@@ -208,3 +221,97 @@ async + carve-out lock-free + creds en closure) — voir
 - Le `Report` de chaque importer expose-t-il bien `doc_id` (pour l'UPDATE
   `source_path`) ? À vérifier importer par importer.
 - `sidecar._handle_import` duplique-t-il le dispatch ? → à unifier dans le refactor §2.
+
+## 9. Addendum Phase 4 — persistance, navigation, sélection (figé 2026-06-22)
+
+> Retours d'usage post-Phase 3. Trois améliorations, **3 tickets phasés** P4A → P4B →
+> P4C, chacun livrable/testable seul. **Tout est front-end + Rust shell, sauf P4C**
+> qui ajoute un unique petit incrément moteur/contrat. Ni `sidecar.py` ni la croissance
+> du sidecar ne sont impactés.
+
+### 9.1 Supersessions assumées
+
+- **§6 « credentials jamais persistés »** → assoupli : le secret peut être stocké
+  **dans le trousseau OS** (opt-in). Le clair sur disque reste interdit. *Pourquoi :*
+  l'outil est mono-utilisateur sur poste perso, et le **mot de passe d'application
+  Nextcloud n'est affiché qu'une seule fois** à sa création — en mémoire-seule,
+  l'utilisateur doit en **régénérer un à chaque session** (chemin long). Persister
+  ramène ce chemin à « une fois dans la vie ».
+- **§1 granularité « dossier/batch »** → étendue : « dossier **ou** sélection
+  explicite ». Le batch dossier reste le défaut ; la sélection est additive.
+
+### 9.2 P4A — Persistance des identifiants + clarté du formulaire
+
+- **Stockage secret = trousseau OS** via la crate Rust **`keyring`** (Windows
+  Credential Manager ; features mac/Linux ajoutables plus tard). Trois commandes
+  Tauri dans **`tauri-shell/src-tauri/src/main.rs`** : `keyring_get(service, account)
+  -> Option<String>`, `keyring_set(service, account, secret)`, `keyring_delete(...)`,
+  enregistrées dans `generate_handler!`. Même pattern que `read_sidecar_portfile`.
+- **Clé** : service `agrafes.sharedocs`, compte `origin|mode|user`
+  (`origin` = `scheme://host[:port]`) → plusieurs serveurs/comptes mémorisés sans
+  collision.
+- **Non-secret en `localStorage`** : dernier `{url, mode, user, remember}` (pattern
+  Prep existant). **L'identifiant est non-secret** ; **seuls** `password`/`token` vont
+  au trousseau.
+- **Wrapper JS** `tauri-prep/src/lib/credentialStore.ts` : `secureGet/Set/Delete`
+  enveloppant `invoke(...)` en **try/catch → repli gracieux mémoire-seule + toast**
+  si la commande/trousseau est indisponible (prep standalone, Linux sans libsecret).
+  Jamais de crash.
+- **Sauvegarde uniquement après un “Connecter” réussi** (PROPFIND 200) — on ne
+  mémorise jamais un secret faux. Préremplissage du dernier au montage. Lien
+  **« Oublier »** → purge trousseau + `localStorage`.
+- **Clarté** : ligne d'aide sous l'URL ; modes relabellés ; **note sous le mode basic**
+  expliquant le mot de passe d'application Nextcloud / humanID-2FA.
+- **Périmètre v1** : shell uniquement. Prep standalone dégrade en mémoire-seule.
+
+### 9.3 P4B — Navigation
+
+- Conserver le champ URL + un bouton **« Préremplir (ShareDocs Huma-Num) »** qui
+  *template* `https://<hôte>/remote.php/dav/files/<identifiant>/` à partir du serveur
+  et de l'identifiant saisis (champ **éditable** ensuite — **aucun couplage Nextcloud
+  en dur** dans la logique d'import).
+- Navigation existante conservée (clic dossier = entrer, « ← Retour », fil d'Ariane).
+
+### 9.4 P4C — Sélection multiple accumulative + incrément backend
+
+- **Modèle de sélection = panier accumulatif inter-dossiers** : une `Map` keyée par
+  `href`, **persistante pendant la navigation**. Chaque item retient
+  `{href, name, parentUrl, is_dir, size?}`.
+- **UI** : **colonne de cases à cocher distincte** du lien de dossier (clic sur le nom
+  = naviguer ; case = sélectionner/désélectionner). Badge **compteur** + panneau pour
+  voir/vider le panier. Au re-rendu d'un dossier déjà visité, **refléter l'état coché**
+  depuis le panier.
+- **Deux actions conservées** : « Importer ce dossier entier » (sans `hrefs`) et
+  « Importer la sélection (N) ».
+- **Soumission de la sélection** : **grouper le panier par dossier parent**, puis
+  - items **dossier** sélectionnés → `import-remote(folderUrl)` (appel existant) ;
+  - items **fichiers** sélectionnés → `import-remote(parentUrl, hrefs=[…fichiers de ce parent])` ;
+  - une soumission **Job Center** par groupe ; report agrégé côté écran.
+  - **Dédup** : si un dossier **et** des fichiers de ce dossier sont cochés, l'import
+    du dossier prime (les fichiers redondants sont ignorés) — le signaler dans l'UI.
+- **Un seul `mode` + `language` (+ `include`) pour toute la soumission** (v1).
+- **Contrat** : `POST /import-remote` gagne **`hrefs: list[str]` optionnel**. Régénérer
+  `docs/openapi.json` + `tests/snapshots/openapi_paths.json` (`scripts/export_openapi.py`)
+  et committer — sinon contract-freeze rouge. Ajouter un champ ne *retire* pas
+  d'endpoint : c'est une régénération, pas une rupture.
+- **Backend** `remote/ingest.py` — `ingest_remote_folder(..., only_hrefs: set[str] | None = None)` :
+  après `files = [e for e in entries if not e.is_dir]`,
+  `if only_hrefs is not None: files = [e for e in files if e.href in only_hrefs]`.
+  **Sécurité (clé)** : `only_hrefs` **filtre le listing PROPFIND de confiance** — on ne
+  fetch jamais une URL brute fournie par le client. La garantie same-origin existante
+  (`webdav.py`) tient sans ajout. Les `hrefs` explicites **court-circuitent le glob
+  `include`** (l'utilisateur a choisi exactement ces fichiers) ; un fichier de mode
+  incompatible → **erreur per-file reportée**, pas de crash.
+- **Persistance** : `hrefs` (des URLs, non-secret) admissibles dans `runs.params` /
+  params de job ; l'`auth` reste **hors** params (inchangé).
+- **CLI** : **pas** de `--href` en v1 (la sélection est une affordance UI ; la CLI
+  garde ses globs `--include`).
+
+### 9.5 Hors périmètre Phase 4
+
+- **Nextcloud Login Flow v2** (SSO navigateur → jeton automatique) — supprimerait même
+  la 1re génération de mot de passe d'application, mais couple à Nextcloud : évolution
+  future séparée.
+- Trousseau dans **prep standalone** / **macOS** / **Linux** (ajout de features
+  `keyring` ultérieur).
+- Sélection fichier-par-fichier **en CLI**.

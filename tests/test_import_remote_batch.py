@@ -235,3 +235,69 @@ def test_runs_params_never_contain_credentials(db):
         assert "Authorization" not in blob
         assert "Basic" not in blob
         assert "c2VjcmV0" not in blob  # base64 of the secret
+
+
+# --- Phase 4C: explicit file selection (only_hrefs) ----------------------------
+
+
+def test_only_hrefs_restricts_batch_to_selection(db):
+    conn, db_path = db
+    a = _make_docx_bytes(["[1] A."])
+    b = _make_docx_bytes(["[1] B."])
+    c = _make_docx_bytes(["[1] C."])
+    entries = [_entry("a.docx", len(a)), _entry("b.docx", len(b)), _entry("c.docx", len(c))]
+    payloads = {_BASE + "a.docx": a, _BASE + "b.docx": b, _BASE + "c.docx": c}
+
+    report = _run(conn, db_path, entries, payloads,
+                  only_hrefs={_BASE + "a.docx", _BASE + "c.docx"})
+
+    assert report["total"] == 2  # b.docx is not even in the batch
+    assert report["imported"] == 2
+    assert {r["name"] for r in report["files"]} == {"a.docx", "c.docx"}
+
+
+def test_only_hrefs_unknown_href_is_ignored_and_never_fetched(db):
+    """An href not present in the PROPFIND listing is dropped — never downloaded
+    (same-origin / SSRF guard: only_hrefs filters the trusted listing, P4C §9.4)."""
+    conn, db_path = db
+    a = _make_docx_bytes(["[1] A."])
+    entries = [_entry("a.docx", len(a))]
+    payloads = {_BASE + "a.docx": a}
+    fetched: list[str] = []
+
+    def _dl(url, dest_path, *, auth_header, max_bytes=None, timeout=30):
+        fetched.append(url)
+        Path(dest_path).write_bytes(payloads[url])
+        return len(payloads[url])
+
+    ghost = _BASE + "ghost.docx"
+    with mock.patch.object(ingest.webdav, "propfind", return_value=entries), \
+         mock.patch.object(ingest.webdav, "download", _dl):
+        report = ingest.ingest_remote_folder(
+            conn, db_path, url=_BASE, mode="docx_numbered_lines",
+            language="fr", auth_header={}, only_hrefs={_BASE + "a.docx", ghost},
+        )
+
+    assert report["total"] == 1
+    assert report["imported"] == 1
+    assert fetched == [_BASE + "a.docx"]  # ghost never fetched
+
+
+def test_only_hrefs_bypasses_extension_filter(db):
+    """An explicit selection imports the chosen file even if its name does not match
+    the mode's extension (the user picked it deliberately); the same file is
+    skipped-filtered without an explicit selection."""
+    conn, db_path = db
+    data = _make_docx_bytes(["[1] Bonjour."])  # real docx bytes, non-.docx name
+    entries = [_entry("note.pdf", len(data))]
+    payloads = {_BASE + "note.pdf": data}
+
+    # Sanity: without a selection, the glob/extension filter drops it.
+    base = _run(conn, db_path, entries, payloads)
+    assert base["skipped_filtered"] == 1
+    assert base["imported"] == 0
+
+    # With an explicit selection, the glob is bypassed → it is imported.
+    report = _run(conn, db_path, entries, payloads, only_hrefs={_BASE + "note.pdf"})
+    assert report["imported"] == 1
+    assert report["skipped_filtered"] == 0

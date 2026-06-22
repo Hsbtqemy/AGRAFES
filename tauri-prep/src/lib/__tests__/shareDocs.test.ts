@@ -1,17 +1,23 @@
 import { describe, it, expect } from "vitest";
 import {
   authIsComplete,
+  authSecret,
+  buildNextcloudRoot,
   buildWebdavAuth,
   folderLabel,
   formatRemoteSize,
+  groupSelectionForImport,
   isImportRemoteReport,
+  keyringAccount,
   languageRequiredForMode,
+  mergeReports,
   normalizeFolderUrl,
   safeDecodeUrl,
   sortRemoteEntries,
   statusBadgeKind,
   statusLabel,
   summarizeReport,
+  urlHasPath,
 } from "../shareDocs.ts";
 import type { ImportRemoteReport, RemoteEntry } from "../sidecarClient.ts";
 
@@ -213,5 +219,165 @@ describe("summarizeReport", () => {
     expect(summarizeReport({ ...base, total: 2, skipped_filtered: 2 })).toBe(
       "2 fichiers : 0 importé, 2 filtrés",
     );
+  });
+});
+
+describe("buildNextcloudRoot", () => {
+  it("bare host defaults to https and builds the personal WebDAV root", () => {
+    expect(buildNextcloudRoot("dav.huma-num.fr", "alice")).toBe(
+      "https://dav.huma-num.fr/remote.php/dav/files/alice/",
+    );
+  });
+  it("keeps an explicit scheme (http stays http)", () => {
+    expect(buildNextcloudRoot("http://localhost:8080", "bob")).toBe(
+      "http://localhost:8080/remote.php/dav/files/bob/",
+    );
+  });
+  it("reduces a deep URL to its origin", () => {
+    expect(buildNextcloudRoot("https://srv/some/deep/path", "u")).toBe(
+      "https://srv/remote.php/dav/files/u/",
+    );
+  });
+  it("percent-encodes the identifier in the path segment", () => {
+    expect(buildNextcloudRoot("srv", "a b@x")).toBe(
+      "https://srv/remote.php/dav/files/a%20b%40x/",
+    );
+  });
+  it("returns empty when host or user is missing/blank", () => {
+    expect(buildNextcloudRoot("", "alice")).toBe("");
+    expect(buildNextcloudRoot("srv", "  ")).toBe("");
+    expect(buildNextcloudRoot("   ", "alice")).toBe("");
+  });
+  it("returns empty when the host cannot be parsed (catch branch)", () => {
+    expect(buildNextcloudRoot("has spaces .fr", "alice")).toBe("");
+  });
+});
+
+describe("urlHasPath", () => {
+  it("bare host or root → no path", () => {
+    expect(urlHasPath("dav.huma-num.fr")).toBe(false);
+    expect(urlHasPath("https://srv")).toBe(false);
+    expect(urlHasPath("https://srv/")).toBe(false);
+  });
+  it("a deep URL → has a path", () => {
+    expect(urlHasPath("dav.huma-num.fr/foo")).toBe(true);
+    expect(urlHasPath("https://srv/remote.php/dav/files/alice/")).toBe(true);
+  });
+  it("empty / blank / unparseable → false", () => {
+    expect(urlHasPath("")).toBe(false);
+    expect(urlHasPath("   ")).toBe(false);
+    expect(urlHasPath("has spaces .fr")).toBe(false);
+  });
+});
+
+describe("keyringAccount", () => {
+  it("keys by origin|mode|user (port and path stripped to origin)", () => {
+    expect(keyringAccount("https://dav.example:8443/files/x/dir/", "basic", "alice")).toBe(
+      "https://dav.example:8443|basic|alice",
+    );
+  });
+  it("trims the username and tolerates an empty one (bearer)", () => {
+    expect(keyringAccount("https://dav.example/d/", "bearer", "  ")).toBe(
+      "https://dav.example|bearer|",
+    );
+  });
+  it("distinct origins do not collide", () => {
+    const a = keyringAccount("https://a.example/d/", "basic", "u");
+    const b = keyringAccount("https://b.example/d/", "basic", "u");
+    expect(a).not.toBe(b);
+  });
+  it("falls back to the trimmed raw URL when unparseable", () => {
+    expect(keyringAccount("not a url", "basic", "u")).toBe("not a url|basic|u");
+  });
+});
+
+describe("authSecret", () => {
+  it("basic → password, bearer → token", () => {
+    expect(authSecret({ mode: "basic", user: "u", password: "pw" })).toBe("pw");
+    expect(authSecret({ mode: "bearer", token: "tok" })).toBe("tok");
+  });
+  it("anonymous and empty secrets → null", () => {
+    expect(authSecret({ mode: "anonymous" })).toBeNull();
+    expect(authSecret({ mode: "basic", user: "u", password: "" })).toBeNull();
+    expect(authSecret({ mode: "bearer", token: "" })).toBeNull();
+  });
+});
+
+describe("groupSelectionForImport", () => {
+  const item = (href: string, name: string, parentUrl: string, is_dir: boolean) => ({
+    href, name, parentUrl, is_dir,
+  });
+
+  it("each selected folder → a whole-folder import (no hrefs)", () => {
+    const groups = groupSelectionForImport([
+      item("https://x/A/", "A", "https://x/", true),
+      item("https://x/B/", "B", "https://x/", true),
+    ]);
+    expect(groups).toEqual([
+      { url: "https://x/A/", label: "A" },
+      { url: "https://x/B/", label: "B" },
+    ]);
+  });
+
+  it("files grouped by parent → one hrefs submission per parent", () => {
+    const groups = groupSelectionForImport([
+      item("https://x/d1/a.docx", "a.docx", "https://x/d1/", false),
+      item("https://x/d1/b.docx", "b.docx", "https://x/d1/", false),
+      item("https://x/d2/c.docx", "c.docx", "https://x/d2/", false),
+    ]);
+    expect(groups).toHaveLength(2);
+    expect(groups.find((g) => g.url === "https://x/d1/")?.hrefs).toEqual([
+      "https://x/d1/a.docx",
+      "https://x/d1/b.docx",
+    ]);
+    expect(groups.find((g) => g.url === "https://x/d2/")?.hrefs).toEqual([
+      "https://x/d2/c.docx",
+    ]);
+  });
+
+  it("a file directly inside a selected folder is dropped (folder covers it)", () => {
+    const groups = groupSelectionForImport([
+      item("https://x/A/", "A", "https://x/", true),
+      item("https://x/A/inside.docx", "inside.docx", "https://x/A/", false),
+      item("https://x/other/keep.docx", "keep.docx", "https://x/other/", false),
+    ]);
+    expect(groups).toHaveLength(2);
+    expect(groups.some((g) => g.url === "https://x/A/" && !g.hrefs)).toBe(true);
+    expect(groups.find((g) => g.url === "https://x/other/")?.hrefs).toEqual([
+      "https://x/other/keep.docx",
+    ]);
+  });
+
+  it("empty cart → no groups", () => {
+    expect(groupSelectionForImport([])).toEqual([]);
+  });
+});
+
+describe("mergeReports", () => {
+  const rep = (over: Partial<ImportRemoteReport>): ImportRemoteReport => ({
+    url: "https://x/", mode: "docx_numbered_lines",
+    total: 0, imported: 0, skipped_duplicate: 0, skipped_filtered: 0,
+    skipped_oversize: 0, errors: 0, files: [], ...over,
+  });
+
+  it("null base returns the second report unchanged", () => {
+    const b = rep({ total: 2, imported: 2 });
+    expect(mergeReports(null, b)).toBe(b);
+  });
+
+  it("sums counts and concatenates files", () => {
+    const a = rep({
+      total: 2, imported: 1, errors: 1,
+      files: [{ source_url: "u1", name: "a", status: "imported", doc_id: 1 }],
+    });
+    const b = rep({
+      total: 1, imported: 1,
+      files: [{ source_url: "u2", name: "b", status: "imported", doc_id: 2 }],
+    });
+    const m = mergeReports(a, b);
+    expect(m.total).toBe(3);
+    expect(m.imported).toBe(2);
+    expect(m.errors).toBe(1);
+    expect(m.files.map((f) => f.name)).toEqual(["a", "b"]);
   });
 });
