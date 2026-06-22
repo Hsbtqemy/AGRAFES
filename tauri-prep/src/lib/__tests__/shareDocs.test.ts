@@ -5,9 +5,11 @@ import {
   buildWebdavAuth,
   folderLabel,
   formatRemoteSize,
+  groupSelectionForImport,
   isImportRemoteReport,
   keyringAccount,
   languageRequiredForMode,
+  mergeReports,
   normalizeFolderUrl,
   safeDecodeUrl,
   sortRemoteEntries,
@@ -248,5 +250,84 @@ describe("authSecret", () => {
     expect(authSecret({ mode: "anonymous" })).toBeNull();
     expect(authSecret({ mode: "basic", user: "u", password: "" })).toBeNull();
     expect(authSecret({ mode: "bearer", token: "" })).toBeNull();
+  });
+});
+
+describe("groupSelectionForImport", () => {
+  const item = (href: string, name: string, parentUrl: string, is_dir: boolean) => ({
+    href, name, parentUrl, is_dir,
+  });
+
+  it("each selected folder → a whole-folder import (no hrefs)", () => {
+    const groups = groupSelectionForImport([
+      item("https://x/A/", "A", "https://x/", true),
+      item("https://x/B/", "B", "https://x/", true),
+    ]);
+    expect(groups).toEqual([
+      { url: "https://x/A/", label: "A" },
+      { url: "https://x/B/", label: "B" },
+    ]);
+  });
+
+  it("files grouped by parent → one hrefs submission per parent", () => {
+    const groups = groupSelectionForImport([
+      item("https://x/d1/a.docx", "a.docx", "https://x/d1/", false),
+      item("https://x/d1/b.docx", "b.docx", "https://x/d1/", false),
+      item("https://x/d2/c.docx", "c.docx", "https://x/d2/", false),
+    ]);
+    expect(groups).toHaveLength(2);
+    expect(groups.find((g) => g.url === "https://x/d1/")?.hrefs).toEqual([
+      "https://x/d1/a.docx",
+      "https://x/d1/b.docx",
+    ]);
+    expect(groups.find((g) => g.url === "https://x/d2/")?.hrefs).toEqual([
+      "https://x/d2/c.docx",
+    ]);
+  });
+
+  it("a file directly inside a selected folder is dropped (folder covers it)", () => {
+    const groups = groupSelectionForImport([
+      item("https://x/A/", "A", "https://x/", true),
+      item("https://x/A/inside.docx", "inside.docx", "https://x/A/", false),
+      item("https://x/other/keep.docx", "keep.docx", "https://x/other/", false),
+    ]);
+    expect(groups).toHaveLength(2);
+    expect(groups.some((g) => g.url === "https://x/A/" && !g.hrefs)).toBe(true);
+    expect(groups.find((g) => g.url === "https://x/other/")?.hrefs).toEqual([
+      "https://x/other/keep.docx",
+    ]);
+  });
+
+  it("empty cart → no groups", () => {
+    expect(groupSelectionForImport([])).toEqual([]);
+  });
+});
+
+describe("mergeReports", () => {
+  const rep = (over: Partial<ImportRemoteReport>): ImportRemoteReport => ({
+    url: "https://x/", mode: "docx_numbered_lines",
+    total: 0, imported: 0, skipped_duplicate: 0, skipped_filtered: 0,
+    skipped_oversize: 0, errors: 0, files: [], ...over,
+  });
+
+  it("null base returns the second report unchanged", () => {
+    const b = rep({ total: 2, imported: 2 });
+    expect(mergeReports(null, b)).toBe(b);
+  });
+
+  it("sums counts and concatenates files", () => {
+    const a = rep({
+      total: 2, imported: 1, errors: 1,
+      files: [{ source_url: "u1", name: "a", status: "imported", doc_id: 1 }],
+    });
+    const b = rep({
+      total: 1, imported: 1,
+      files: [{ source_url: "u2", name: "b", status: "imported", doc_id: 2 }],
+    });
+    const m = mergeReports(a, b);
+    expect(m.total).toBe(3);
+    expect(m.imported).toBe(2);
+    expect(m.errors).toBe(1);
+    expect(m.files.map((f) => f.name)).toEqual(["a", "b"]);
   });
 });

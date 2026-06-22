@@ -149,6 +149,71 @@ export function folderLabel(url: string): string {
   }
 }
 
+/** One item in the ShareDocs selection cart (P4C). */
+export interface SelectedRemoteItem {
+  href: string;
+  name: string;
+  parentUrl: string;
+  is_dir: boolean;
+}
+
+/** A single /import-remote submission derived from the cart. */
+export interface ImportGroup {
+  url: string;
+  hrefs?: string[];
+  label: string;
+}
+
+/**
+ * Group a selection cart into import submissions (P4C). Each selected folder
+ * becomes a whole-folder import (no `hrefs`); the remaining selected files are
+ * grouped by parent folder into an `hrefs` submission. A file directly inside a
+ * selected folder is dropped — the folder import already covers it. Because
+ * import-remote is Depth:1, a file in a *sub*-folder of a selected folder is NOT
+ * covered and is therefore kept.
+ */
+export function groupSelectionForImport(items: SelectedRemoteItem[]): ImportGroup[] {
+  const folders = items.filter((i) => i.is_dir);
+  const selectedFolderHrefs = new Set(folders.map((f) => f.href));
+  const groups: ImportGroup[] = folders.map((f) => ({ url: f.href, label: f.name }));
+
+  const byParent = new Map<string, SelectedRemoteItem[]>();
+  for (const it of items) {
+    if (it.is_dir) continue;
+    if (selectedFolderHrefs.has(it.parentUrl)) continue; // covered by a selected folder
+    const arr = byParent.get(it.parentUrl) ?? [];
+    arr.push(it);
+    byParent.set(it.parentUrl, arr);
+  }
+  for (const [parentUrl, files] of byParent) {
+    groups.push({
+      url: parentUrl,
+      hrefs: files.map((f) => f.href),
+      label: `${folderLabel(parentUrl)} (${files.length} fichier${files.length > 1 ? "s" : ""})`,
+    });
+  }
+  return groups;
+}
+
+/** Merge two batch reports (P4C aggregates the reports of several submissions). */
+export function mergeReports(
+  a: ImportRemoteReport | null,
+  b: ImportRemoteReport,
+): ImportRemoteReport {
+  if (!a) return b;
+  return {
+    url: a.url,
+    mode: a.mode,
+    total: a.total + b.total,
+    imported: a.imported + b.imported,
+    skipped_duplicate: a.skipped_duplicate + b.skipped_duplicate,
+    skipped_filtered: a.skipped_filtered + b.skipped_filtered,
+    skipped_oversize: a.skipped_oversize + b.skipped_oversize,
+    errors: a.errors + b.errors,
+    files: [...a.files, ...b.files],
+  };
+}
+
 /** Folders first, then files, each alphabetical (locale-aware, case-insensitive). */
 export function sortRemoteEntries(entries: RemoteEntry[]): RemoteEntry[] {
   return [...entries].sort((a, b) => {
