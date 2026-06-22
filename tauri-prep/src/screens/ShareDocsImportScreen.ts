@@ -285,9 +285,44 @@ export class ShareDocsImportScreen {
   // ─── Connection / browsing ──────────────────────────────────────────────────
 
   /**
+   * Run *op* with *triggerSel* disabled for its **whole** duration, optionally
+   * gated by an inlineConfirm. Disabling the trigger across the entire async flow
+   * (confirm + op) prevents a double-click from re-entering — in particular from
+   * opening a second inlineConfirm on the same container (which would capture the
+   * first banner as its "original" and restore a stale one). A missing confirm
+   * container is treated as "no confirm needed" (proceed). Used by every
+   * button→async-confirm flow on this screen so the guard can't be forgotten.
+   */
+  private async _guardedRun(
+    triggerSel: string,
+    op: () => Promise<void> | void,
+    confirm?: {
+      containerSel: string;
+      message: string;
+      opts?: { confirmLabel?: string; cancelLabel?: string; danger?: boolean };
+    },
+  ): Promise<void> {
+    const btn = this._root?.querySelector<HTMLButtonElement>(triggerSel);
+    if (btn) btn.disabled = true;
+    try {
+      if (confirm) {
+        const container = this._root?.querySelector<HTMLElement>(confirm.containerSel);
+        if (container) {
+          const ok = await inlineConfirm(container, confirm.message, confirm.opts);
+          if (!ok) return;
+        }
+      }
+      await op();
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  /**
    * P4B preset: rebuild the URL field as the Nextcloud personal root from whatever
    * host the user typed there + their identifiant. A pure saisie aid — the field
-   * stays editable and the connector remains generic WebDAV.
+   * stays editable and the connector remains generic WebDAV. Confirms before
+   * overwriting a field that already holds a deep path (footgun guard).
    */
   private async _prefillUrlFromPreset(): Promise<void> {
     const urlEl = this._root?.querySelector<HTMLInputElement>("#prep-sd-url");
@@ -301,30 +336,24 @@ export class ShareDocsImportScreen {
       );
       return;
     }
-    // Footgun guard: only confirm when the field already holds a real path (a deep
-    // URL the user typed) — a bare host is overwritten silently. The confirm never
-    // fires on the intended flow (host-only → root).
-    const confirmEl = this._root?.querySelector<HTMLElement>("#prep-sd-preset-confirm");
-    if (urlHasPath(current) && current.trim() !== root && confirmEl) {
-      // Disable the trigger during the (async) confirm so a double-click can't open
-      // a second inlineConfirm on the same container (which would capture the first
-      // banner as its "original" and restore a stale banner — corrupting the UI).
-      const btn = this._root?.querySelector<HTMLButtonElement>("#prep-sd-preset-btn");
-      if (btn) btn.disabled = true;
-      let ok: boolean;
-      try {
-        ok = await inlineConfirm(
-          confirmEl,
-          "Le champ URL contient déjà un chemin — le remplacer par l'URL racine ?",
-          { confirmLabel: "Remplacer", danger: false },
-        );
-      } finally {
-        if (btn) btn.disabled = false;
-      }
-      if (!ok) return;
-    }
-    if (urlEl) urlEl.value = root;
-    this._showToast?.("URL racine préremplie — navigue jusqu'au dossier voulu");
+    const overwrite = () => {
+      if (urlEl) urlEl.value = root;
+      this._showToast?.("URL racine préremplie — navigue jusqu'au dossier voulu");
+    };
+    // Confirm only when the field already holds a real path (a deep URL the user
+    // typed); a bare host → root is overwritten silently.
+    const needsConfirm = urlHasPath(current) && current.trim() !== root;
+    await this._guardedRun(
+      "#prep-sd-preset-btn",
+      overwrite,
+      needsConfirm
+        ? {
+            containerSel: "#prep-sd-preset-confirm",
+            message: "Le champ URL contient déjà un chemin — le remplacer par l'URL racine ?",
+            opts: { confirmLabel: "Remplacer", danger: false },
+          }
+        : undefined,
+    );
   }
 
   private async _connect(): Promise<void> {
@@ -635,73 +664,67 @@ export class ShareDocsImportScreen {
    */
   private async _importSelection(): Promise<void> {
     if (!this._conn || this._selected.size === 0) return;
+    const conn = this._conn;
     const form = this._readImportForm();
     if (!form) return;
     const { mode, language, include } = form;
 
-    // Disable the trigger for the whole async flow (confirm + submissions) so a
-    // double-click can't open a second inlineConfirm on the same container.
-    const importBtn = this._root?.querySelector<HTMLButtonElement>("#prep-sd-sel-import");
-    if (importBtn) importBtn.disabled = true;
+    // Warn (don't silently drop) when explicitly-selected files are of a format the
+    // chosen mode can't import — they would be reported as per-file errors.
+    const mismatched = [...this._selected.values()].filter(
+      (it) => !it.is_dir && !fileMatchesMode(it.name, mode),
+    );
 
-    try {
-      // Warn (don't silently drop) when explicitly-selected files are of a format the
-      // chosen mode can't import — they would be reported as per-file errors.
-      const mismatched = [...this._selected.values()].filter(
-        (it) => !it.is_dir && !fileMatchesMode(it.name, mode),
-      );
-      if (mismatched.length > 0) {
-        const confirmEl = this._root?.querySelector<HTMLElement>("#prep-sd-sel-confirm");
-        if (confirmEl) {
-          const ok = await inlineConfirm(
-            confirmEl,
-            `${mismatched.length} fichier(s) d'un autre format que « ${mode} » échoueront (reportés en erreur). Importer quand même ?`,
-            { confirmLabel: "Importer quand même", danger: false },
-          );
-          if (!ok) return;
-        }
-      }
-
-      const groups = groupSelectionForImport([...this._selected.values()]);
-      this._report = null;
-      this._renderReport();
-      this._log(`▶ Import de la sélection — ${groups.length} lot(s)`);
-
-      for (const g of groups) {
-        const job = await importRemote(this._conn, {
-          url: g.url,
-          mode,
-          language,
-          include,
-          hrefs: g.hrefs,
-          auth: this._auth,
-        });
-        this._jobCenter?.trackJob(job.job_id, `ShareDocs : ${g.label}`, (done) => {
-          const result = done.result;
-          if (done.status === "done" && isImportRemoteReport(result)) {
-            this._report = mergeReports(this._report, result);
-            this._renderReport();
-            this._showToast?.(`✓ ${summarizeReport(this._report)}`);
-            this._log(`✓ ${g.label} — ${summarizeReport(result)}`);
-          } else {
-            const msg =
-              done.error ||
-              (done.status === "done"
-                ? "Import terminé sans rapport exploitable"
-                : "Import distant interrompu");
-            this._showToast?.(`✗ ${g.label} : ${msg}`, true);
-            this._log(`✗ ${g.label} : ${msg}`, true);
+    await this._guardedRun(
+      "#prep-sd-sel-import",
+      async () => {
+        const groups = groupSelectionForImport([...this._selected.values()]);
+        this._report = null;
+        this._renderReport();
+        this._log(`▶ Import de la sélection — ${groups.length} lot(s)`);
+        try {
+          for (const g of groups) {
+            const job = await importRemote(conn, {
+              url: g.url,
+              mode,
+              language,
+              include,
+              hrefs: g.hrefs,
+              auth: this._auth,
+            });
+            this._jobCenter?.trackJob(job.job_id, `ShareDocs : ${g.label}`, (done) => {
+              const result = done.result;
+              if (done.status === "done" && isImportRemoteReport(result)) {
+                this._report = mergeReports(this._report, result);
+                this._renderReport();
+                this._showToast?.(`✓ ${summarizeReport(this._report)}`);
+                this._log(`✓ ${g.label} — ${summarizeReport(result)}`);
+              } else {
+                const msg =
+                  done.error ||
+                  (done.status === "done"
+                    ? "Import terminé sans rapport exploitable"
+                    : "Import distant interrompu");
+                this._showToast?.(`✗ ${g.label} : ${msg}`, true);
+                this._log(`✗ ${g.label} : ${msg}`, true);
+              }
+            });
           }
-        });
-      }
-      this._clearSelection();
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      this._showToast?.(`✗ ${msg}`, true);
-      this._log(`✗ ${msg}`, true);
-    } finally {
-      if (importBtn) importBtn.disabled = false;
-    }
+          this._clearSelection();
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          this._showToast?.(`✗ ${msg}`, true);
+          this._log(`✗ ${msg}`, true);
+        }
+      },
+      mismatched.length > 0
+        ? {
+            containerSel: "#prep-sd-sel-confirm",
+            message: `${mismatched.length} fichier(s) d'un autre format que « ${mode} » échoueront (reportés en erreur). Importer quand même ?`,
+            opts: { confirmLabel: "Importer quand même", danger: false },
+          }
+        : undefined,
+    );
   }
 
   // ─── Rendering ──────────────────────────────────────────────────────────────
@@ -812,37 +835,33 @@ export class ShareDocsImportScreen {
    */
   private async _undoImport(): Promise<void> {
     if (!this._conn || !this._report) return;
+    const conn = this._conn;
     const ids = (this._report.files ?? [])
       .filter((f) => f.status === "imported" && f.doc_id != null)
       .map((f) => f.doc_id as number);
     if (ids.length === 0) return;
 
-    // Disable the trigger during the (async) confirm + delete so a double-click
-    // can't open a second confirm on the same container.
-    const btn = this._root?.querySelector<HTMLButtonElement>("#prep-sd-undo-btn");
-    if (btn) btn.disabled = true;
-    try {
-      const confirmEl = this._root?.querySelector<HTMLElement>("#prep-sd-report-confirm");
-      if (confirmEl) {
-        const ok = await inlineConfirm(
-          confirmEl,
-          `Supprimer définitivement les ${ids.length} document(s) importés par ce lot ? (Les doublons ignorés ne sont pas touchés.)`,
-          { confirmLabel: "Supprimer", danger: true },
-        );
-        if (!ok) return;
-      }
-      const res = await deleteDocuments(this._conn, ids);
-      this._showToast?.(`✓ Lot annulé — ${res.deleted} document(s) supprimé(s)`);
-      this._log(`✓ Import annulé — ${res.deleted} document(s) supprimé(s)`);
-      this._report = null;
-      this._renderReport();
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      this._showToast?.(`✗ Annulation : ${msg}`, true);
-      this._log(`✗ Annulation : ${msg}`, true);
-    } finally {
-      if (btn) btn.disabled = false;
-    }
+    await this._guardedRun(
+      "#prep-sd-undo-btn",
+      async () => {
+        try {
+          const res = await deleteDocuments(conn, ids);
+          this._showToast?.(`✓ Lot annulé — ${res.deleted} document(s) supprimé(s)`);
+          this._log(`✓ Import annulé — ${res.deleted} document(s) supprimé(s)`);
+          this._report = null;
+          this._renderReport();
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          this._showToast?.(`✗ Annulation : ${msg}`, true);
+          this._log(`✗ Annulation : ${msg}`, true);
+        }
+      },
+      {
+        containerSel: "#prep-sd-report-confirm",
+        message: `Supprimer définitivement les ${ids.length} document(s) importés par ce lot ? (Les doublons ignorés ne sont pas touchés.)`,
+        opts: { confirmLabel: "Supprimer", danger: true },
+      },
+    );
   }
 
   // ─── Helpers ────────────────────────────────────────────────────────────────
