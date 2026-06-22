@@ -17,6 +17,7 @@ import {
   statusBadgeKind,
   statusLabel,
   summarizeReport,
+  urlHasPath,
 } from "../shareDocs.ts";
 import type { ImportRemoteReport, RemoteEntry } from "../sidecarClient.ts";
 
@@ -249,6 +250,23 @@ describe("buildNextcloudRoot", () => {
   });
   it("returns empty when the host cannot be parsed (catch branch)", () => {
     expect(buildNextcloudRoot("has spaces .fr", "alice")).toBe("");
+  });
+});
+
+describe("urlHasPath", () => {
+  it("bare host or root → no path", () => {
+    expect(urlHasPath("dav.huma-num.fr")).toBe(false);
+    expect(urlHasPath("https://srv")).toBe(false);
+    expect(urlHasPath("https://srv/")).toBe(false);
+  });
+  it("a deep URL → has a path", () => {
+    expect(urlHasPath("dav.huma-num.fr/foo")).toBe(true);
+    expect(urlHasPath("https://srv/remote.php/dav/files/alice/")).toBe(true);
+  });
+  it("empty / blank / unparseable → false", () => {
+    expect(urlHasPath("")).toBe(false);
+    expect(urlHasPath("   ")).toBe(false);
+    expect(urlHasPath("has spaces .fr")).toBe(false);
   });
 });
 

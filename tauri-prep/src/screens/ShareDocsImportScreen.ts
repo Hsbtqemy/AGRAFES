@@ -41,7 +41,9 @@ import {
   statusBadgeKind,
   statusLabel,
   summarizeReport,
+  urlHasPath,
 } from "../lib/shareDocs.ts";
+import { inlineConfirm } from "../lib/inlineConfirm.ts";
 import {
   clearLastConn,
   loadLastConn,
@@ -176,6 +178,7 @@ export class ShareDocsImportScreen {
           <p class="prep-sd-help">Adresse WebDAV du <strong>dossier</strong> à importer (pas un fichier).
             Sur ShareDocs / Nextcloud, c'est le lien <code>…/remote.php/dav/files/&lt;vous&gt;/&lt;dossier&gt;/</code>.</p>
           <button type="button" id="prep-sd-preset-btn" class="prep-sd-btn prep-sd-btn--ghost prep-sd-preset-btn">↧ Préremplir l'URL racine (Huma-Num / Nextcloud)</button>
+          <div id="prep-sd-preset-confirm" class="prep-sd-preset-confirm"></div>
           <p class="prep-sd-help">Astuce : mets juste le <strong>serveur</strong> dans le champ URL (ex. <code>dav.huma-num.fr</code>)
             et ton identifiant ci-dessous, puis ce bouton construit l'URL racine de ton espace — tu navigues ensuite jusqu'au dossier voulu.</p>
           <label class="prep-sd-field"><span>Authentification</span>
@@ -240,7 +243,7 @@ export class ShareDocsImportScreen {
     );
 
     root.querySelector("#prep-sd-auth-mode")?.addEventListener("change", () => this._onAuthModeChange());
-    root.querySelector("#prep-sd-preset-btn")?.addEventListener("click", () => this._prefillUrlFromPreset());
+    root.querySelector("#prep-sd-preset-btn")?.addEventListener("click", () => void this._prefillUrlFromPreset());
     root.querySelector("#prep-sd-connect-btn")?.addEventListener("click", () => void this._connect());
     root.querySelector("#prep-sd-up-btn")?.addEventListener("click", () => void this._goUp());
     root.querySelector("#prep-sd-import-btn")?.addEventListener("click", () => void this._runImport());
@@ -278,16 +281,39 @@ export class ShareDocsImportScreen {
    * host the user typed there + their identifiant. A pure saisie aid — the field
    * stays editable and the connector remains generic WebDAV.
    */
-  private _prefillUrlFromPreset(): void {
+  private async _prefillUrlFromPreset(): Promise<void> {
     const urlEl = this._root?.querySelector<HTMLInputElement>("#prep-sd-url");
     const user = this._root?.querySelector<HTMLInputElement>("#prep-sd-user")?.value ?? "";
-    const root = buildNextcloudRoot(urlEl?.value ?? "", user);
+    const current = urlEl?.value ?? "";
+    const root = buildNextcloudRoot(current, user);
     if (!root) {
       this._showToast?.(
         "Renseigne le serveur (champ URL) et ton identifiant pour préremplir l'URL racine",
         true,
       );
       return;
+    }
+    // Footgun guard: only confirm when the field already holds a real path (a deep
+    // URL the user typed) — a bare host is overwritten silently. The confirm never
+    // fires on the intended flow (host-only → root).
+    const confirmEl = this._root?.querySelector<HTMLElement>("#prep-sd-preset-confirm");
+    if (urlHasPath(current) && current.trim() !== root && confirmEl) {
+      // Disable the trigger during the (async) confirm so a double-click can't open
+      // a second inlineConfirm on the same container (which would capture the first
+      // banner as its "original" and restore a stale banner — corrupting the UI).
+      const btn = this._root?.querySelector<HTMLButtonElement>("#prep-sd-preset-btn");
+      if (btn) btn.disabled = true;
+      let ok: boolean;
+      try {
+        ok = await inlineConfirm(
+          confirmEl,
+          "Le champ URL contient déjà un chemin — le remplacer par l'URL racine ?",
+          { confirmLabel: "Remplacer", danger: false },
+        );
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+      if (!ok) return;
     }
     if (urlEl) urlEl.value = root;
     this._showToast?.("URL racine préremplie — navigue jusqu'au dossier voulu");

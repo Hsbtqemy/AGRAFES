@@ -154,6 +154,23 @@ export function buildNextcloudRoot(hostOrUrl: string, user: string): string {
   return `${origin}/remote.php/dav/files/${encodeURIComponent(u)}/`;
 }
 
+/**
+ * True when *value* already carries a non-root path (e.g. a deep folder URL),
+ * as opposed to a bare host / root. Used by the P4B preset to confirm before it
+ * would overwrite a path the user already typed. Tolerant: a bare host or an
+ * unparseable value is "no path" (false).
+ */
+export function urlHasPath(value: string): boolean {
+  const v = (value ?? "").trim();
+  if (!v) return false;
+  try {
+    const withScheme = /^https?:\/\//i.test(v) ? v : `https://${v}`;
+    return new URL(withScheme).pathname.length > 1; // "/" → none; "/foo" → deep
+  } catch {
+    return false;
+  }
+}
+
 /** Normalize a folder URL so it ends with exactly one trailing slash (collection). */
 export function normalizeFolderUrl(url: string): string {
   const trimmed = (url ?? "").trim();
