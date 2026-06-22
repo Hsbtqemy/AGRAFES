@@ -4,7 +4,9 @@ import {
   buildWebdavAuth,
   folderLabel,
   formatRemoteSize,
+  isImportRemoteReport,
   normalizeFolderUrl,
+  safeDecodeUrl,
   sortRemoteEntries,
   statusBadgeKind,
   statusLabel,
@@ -122,6 +124,41 @@ describe("sortRemoteEntries", () => {
     const copy = [...input];
     sortRemoteEntries(input);
     expect(input).toEqual(copy);
+  });
+});
+
+describe("safeDecodeUrl", () => {
+  it("decodes valid percent-encoding", () => {
+    expect(safeDecodeUrl("Le%20Corpus")).toBe("Le Corpus");
+  });
+  it("returns the raw string on a malformed escape instead of throwing", () => {
+    expect(safeDecodeUrl("https://x/100%discount")).toBe("https://x/100%discount");
+    expect(safeDecodeUrl("%")).toBe("%");
+  });
+});
+
+describe("isImportRemoteReport", () => {
+  it("accepts a well-formed report", () => {
+    expect(
+      isImportRemoteReport({
+        url: "x",
+        mode: "y",
+        total: 1,
+        imported: 1,
+        skipped_duplicate: 0,
+        skipped_filtered: 0,
+        skipped_oversize: 0,
+        errors: 0,
+        files: [],
+      }),
+    ).toBe(true);
+  });
+  it("rejects shape drift (missing counts or files)", () => {
+    expect(isImportRemoteReport(null)).toBe(false);
+    expect(isImportRemoteReport(undefined)).toBe(false);
+    expect(isImportRemoteReport({})).toBe(false);
+    expect(isImportRemoteReport({ total: 1, imported: 1 })).toBe(false); // no files[]
+    expect(isImportRemoteReport({ total: "1", imported: 1, files: [] })).toBe(false); // total not number
   });
 });
 

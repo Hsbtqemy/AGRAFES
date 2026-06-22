@@ -1278,8 +1278,9 @@ export async function webdavList(
   conn: Conn,
   opts: { url: string; auth?: WebdavAuth }
 ): Promise<RemoteEntry[]> {
-  const res = (await conn.post("/webdav/list", opts)) as { entries: RemoteEntry[] };
-  return res.entries;
+  const res = (await conn.post("/webdav/list", opts)) as { entries?: RemoteEntry[] };
+  // Defensive: a 200 with an unexpected body must not crash the caller's spread.
+  return Array.isArray(res?.entries) ? res.entries : [];
 }
 
 /**

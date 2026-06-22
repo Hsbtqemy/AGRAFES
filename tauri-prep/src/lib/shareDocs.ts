@@ -120,3 +120,31 @@ export function sortRemoteEntries(entries: RemoteEntry[]): RemoteEntry[] {
     return a.name.localeCompare(b.name, undefined, { sensitivity: "base", numeric: true });
   });
 }
+
+/**
+ * decodeURIComponent that never throws — a server-supplied href may contain a
+ * lone '%' (legal in some WebDAV hrefs) which would otherwise raise URIError and
+ * abort rendering of an otherwise-valid listing. Falls back to the raw string.
+ */
+export function safeDecodeUrl(url: string): string {
+  try {
+    return decodeURIComponent(url);
+  } catch {
+    return url;
+  }
+}
+
+/**
+ * Structural guard for an async job's `result` before treating it as a batch
+ * report — the job result is typed `Record<string, unknown>`, so a shape drift
+ * (older sidecar, partial result) must not surface as "undefined fichier".
+ */
+export function isImportRemoteReport(x: unknown): x is ImportRemoteReport {
+  if (!x || typeof x !== "object") return false;
+  const r = x as Record<string, unknown>;
+  return (
+    typeof r.total === "number" &&
+    typeof r.imported === "number" &&
+    Array.isArray(r.files)
+  );
+}
