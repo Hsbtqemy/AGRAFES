@@ -45,25 +45,30 @@ donc requalifié en **ratio de divergence traduction↔source**.
 
 ## Source unique (centralisation)
 
-Le seuil était codé en dur (`> 0.15`) dans **7 emplacements** de `sidecar.py`. Tous
-remplacés par la constante module **`SEGMENT_RATIO_WARN_THRESHOLD`** (source unique) :
+Le seuil **fixe** était codé en dur (`> 0.15`) dans **7 emplacements** de `sidecar.py`.
+Tous remplacés par la constante module **`SEGMENT_RATIO_WARN_THRESHOLD`** (source unique) :
 
 1. Propagation de structure — section « pré-intertitre ».
 2. Propagation de structure — section nommée.
-3. Segmentation calibrée (`calibrate_to`) — deux chemins.
-4. Audit familles (`/corpus/audit` → `ratio_warnings`).
-5. Job d'import avec `calibrate_to`.
-6. Segmentation de famille (`_add_ratio_warning`).
+3. Segmentation calibrée (`calibrate_to`) — chemin 1.
+4. Segmentation calibrée (`calibrate_to`) — chemin 2.
+5. Segmentation de famille (`_add_ratio_warning`).
+6. Liste des familles (`GET /families` → `ratio_warnings`).
+7. Job d'import avec `calibrate_to`.
 
-Changer le défaut = **une ligne**.
+Changer le défaut **fixe** = **une ligne**.
 
-## Configurabilité de l'audit (clarification)
+## Seuil configurable de l'audit (distinct, à ne pas confondre)
 
-L'audit familles expose un **seuil réglable côté UI** (input `#audit-ratio-input`,
-15 % par défaut). Ce réglage **filtre l'affichage** côté client ; le moteur, lui, émet
-les `ratio_warnings` au seuil canonique `SEGMENT_RATIO_WARN_THRESHOLD`. Les deux ne sont
-**pas** fusionnés (l'UI garde sa liberté de filtrage) ; le défaut UI doit rester aligné
-sur la constante moteur.
+`GET /corpus/audit` a son **propre seuil, configurable par requête** :
+`ratio_threshold_pct` (défaut 15, clampé 1-100 ; UI : input `#audit-ratio-input` →
+`getCorpusAudit(conn, pct)`). Ses `ratio_warnings` sont comparées à **ce paramètre**
+(`ratio_pct > ratio_threshold_pct`), **pas** à `SEGMENT_RATIO_WARN_THRESHOLD`. C'est
+**délibéré** : l'audit est la surface **exploratoire/réglable** (l'utilisateur teste
+plusieurs seuils), tandis que les 7 contrôles ci-dessus émettent au seuil **fixe** de
+la constante. Les deux **défaut à 15 %** mais restent **séparés** ; garder le défaut de
+l'audit aligné sur la constante (le dériver de la constante serait une amélioration de
+cohérence, en suivi).
 
 ## Non-objectifs (hors périmètre C6)
 
