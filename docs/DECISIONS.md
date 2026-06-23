@@ -1191,11 +1191,25 @@ l'import, **jamais réécrit** par curate / resegment / merge / split.
 - **Dénormalisation assumée** : N segments d'une même ligne partagent une chaîne source
   (stockage modéré ; la valeur = récupérabilité). 
 - Coût étalé en **phases** :
-  - **P1** — migration 020 `text_source` + tous les importeurs le peuplent (`= text_raw`).
-    Fallback `NULL → text_raw`. Aucun autre comportement changé.
-  - **P2** — resegment / split / merge **propagent** `text_source` (héritage / concat)
-    au lieu de le perdre.
-  - **P3** — UI : exposer l'original quand `text_source ≠ text_raw` ; (option) export du
-    texte source.
+  - **P0** (préparatoire) — **centraliser l'insertion des unités** : extraire un helper
+    partagé `insert_units(conn, doc_id, units)` (aligné sur le dataclass `ParsedUnit`)
+    consommé par les **7 importeurs** + segmenter + undo, qui dupliquent aujourd'hui
+    `INSERT INTO units` (shapes quasi-uniformes : `…, meta_json` ± `unit_role`). Refactor
+    **iso-comportement** (couvert par les tests d'import/segmentation/undo) ; rend P1
+    ajoutable en **un seul** point au lieu de 7 (anti-dérive). Nettoyage net en soi.
+  - **P1** — migration 020 `text_source` + peuplement à l'import (`= text_raw`) via le
+    helper P0. Lignes **existantes laissées `NULL`** (un doc déjà resegmenté a perdu son
+    original ; backfiller `text_raw` capturerait le faux original) → fallback `text_raw`
+    au read = comportement actuel. **Aucun site de lecture changé** (rien ne lit
+    `text_source` avant P3).
+  - **P2** — resegment / split / merge **propagent** `text_source` (héritage pour
+    split/resegment ; **concat** au merge, séparateur à trancher) au lieu de le perdre.
+  - **P3** — UI : exposer l'original au niveau **ligne/groupe** quand `text_source ≠
+    text_raw` (les N segments d'une ligne partagent la source) ; (option) export du texte
+    source ; fallback `COALESCE(text_source, text_raw)` aux sites de lecture.
+- **Relation à Mode A undo** : l'undo snapshot déjà l'état pré-resegment (borné à 14
+  actions) ; `text_source` en est le complément **permanent ancré à l'import**, pas un
+  doublon. **Hors périmètre** : `external_id`/`alignment_links` restent perdus à la
+  resegmentation (l'alignement est refait) — le fix préserve le **texte**, pas les liens.
 - Le finding **N-04** passe de « dette assumée » à « **résolu** » une fois P1-P3 livrées.
 - Aucun changement de contrat tant que `text_source` n'est pas exposé en sortie (P3).
