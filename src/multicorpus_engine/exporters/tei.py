@@ -32,11 +32,11 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Optional
 
+from ..xml_text import strip_xml10_invalid
 
-# Characters invalid in XML 1.0 (as a compiled pattern to strip)
-_XML10_INVALID = re.compile(
-    r"[^\x09\x0A\x0D\x20-\uD7FF\uE000-\uFFFD\U00010000-\U0010FFFF]"
-)
+
+# XML 1.0 escaping / invalid-char stripping is shared (multicorpus_engine.xml_text) \u2014
+# `strip_xml10_invalid` and `xml_escape` are imported above.
 
 _STATUS_NULL_ALIASES = {"unreviewed", "null", None}
 
@@ -45,22 +45,6 @@ _HI_RE = re.compile(r'<hi\b([^>]*)>(.*?)</hi>', re.DOTALL)
 
 # Pattern to extract rend attribute value from <hi> attributes string
 _REND_ATTR_RE = re.compile(r'\brend=["\']([^"\']*)["\']')
-
-
-def strip_xml10_invalid(text: str) -> str:
-    """Remove characters that are illegal in XML 1.0."""
-    return _XML10_INVALID.sub("", text)
-
-
-def xml_escape(text: str) -> str:
-    """Escape XML special characters and strip XML 1.0 invalid chars."""
-    text = strip_xml10_invalid(text)
-    text = text.replace("&", "&amp;")
-    text = text.replace("<", "&lt;")
-    text = text.replace(">", "&gt;")
-    text = text.replace('"', "&quot;")
-    text = text.replace("'", "&apos;")
-    return text
 
 
 def _apply_rich_text(elem: ET.Element, text_raw: str) -> None:

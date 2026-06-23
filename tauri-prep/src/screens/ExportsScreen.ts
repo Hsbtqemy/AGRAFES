@@ -29,7 +29,7 @@ function _escHtml(s: string): string {
 export interface ExportWorkflowPrefill {
   stage?: "alignment" | "publication" | "segmentation" | "curation" | "runs" | "qa";
   product?: "aligned_table" | "tei_xml" | "tei_package" | "run_report" | "qa_report" | "readable_text";
-  format?: "csv" | "tsv" | "tei_dir" | "zip" | "jsonl" | "html" | "json" | "txt" | "docx";
+  format?: "csv" | "tsv" | "tei_dir" | "zip" | "jsonl" | "html" | "json" | "txt" | "docx" | "odt";
   docIds?: number[];
   pivotDocId?: number;
   targetDocId?: number;
@@ -954,6 +954,7 @@ export class ExportsScreen {
       readable_text: [
         { value: "txt", label: "TXT" },
         { value: "docx", label: "DOCX" },
+        { value: "odt", label: "ODT" },
       ],
     };
     const formats = formatByProduct[product] ?? [];
@@ -1159,7 +1160,7 @@ export class ExportsScreen {
       }
 
       if (product === "readable_text") {
-        const exportFmt = format === "docx" ? "docx" : "txt";
+        const exportFmt = format === "docx" || format === "odt" ? format : "txt";
         const outDir = await open({ directory: true, title: `Choisir le dossier de sortie (${exportFmt.toUpperCase()})` });
         if (!outDir || typeof outDir !== "string") return;
         const params: Record<string, unknown> = { out_dir: outDir, format: exportFmt };

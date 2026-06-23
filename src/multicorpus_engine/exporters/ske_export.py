@@ -10,9 +10,12 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+from ..xml_text import strip_xml10_invalid
+
 
 def _attr_escape(value: object) -> str:
     text = "" if value is None else str(value)
+    text = strip_xml10_invalid(text)  # drop XML-1.0-illegal control chars (shared)
     return (
         text.replace("&", "&amp;")
         .replace("<", "&lt;")

@@ -64,6 +64,7 @@ from .sidecar_contract import (
 )
 from .importers.dispatch import IMPORT_MODES, normalize_import_mode
 from .sidecar_jobs import JobManager
+from .xml_text import strip_xml10_invalid
 from . import __version__ as ENGINE_VERSION
 
 logger = logging.getLogger(__name__)
@@ -1407,9 +1408,9 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             return
         if kind == "export_readable_text":
             export_fmt = str(params.get("format", "txt")).strip().lower()
-            if export_fmt not in {"txt", "docx"}:
+            if export_fmt not in {"txt", "docx", "odt"}:
                 self._send_error(
-                    "export_readable_text params.format must be 'txt' or 'docx'",
+                    "export_readable_text params.format must be 'txt', 'docx' or 'odt'",
                     code=ERR_VALIDATION,
                     http_status=400,
                 )
@@ -6539,9 +6540,14 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 
     @staticmethod
     def _escape_xml(text: str) -> str:
-        """Escape special characters for XML text content / attribute values."""
+        """Escape special characters for XML text content / attribute values.
+
+        Strips XML-1.0-invalid control chars first (shared `strip_xml10_invalid`) so a
+        verbatim segment cannot produce a malformed TMX (strict XML re-parsed by CAT
+        tools). Apostrophes are intentionally not escaped (unnecessary in double-quoted
+        attributes / content, keeps French text readable)."""
         return (
-            str(text)
+            strip_xml10_invalid(str(text))
             .replace("&", "&amp;")
             .replace("<", "&lt;")
             .replace(">", "&gt;")
@@ -8624,8 +8630,8 @@ class CorpusServer:
             if not out_dir:
                 raise ValueError("export_readable_text job requires params.out_dir")
             export_fmt = str(params.get("format", "txt")).strip().lower()
-            if export_fmt not in {"txt", "docx"}:
-                raise ValueError("export_readable_text params.format must be 'txt' or 'docx'")
+            if export_fmt not in {"txt", "docx", "odt"}:
+                raise ValueError("export_readable_text params.format must be 'txt', 'docx' or 'odt'")
 
             doc_ids = params.get("doc_ids")
             include_structure = bool(params.get("include_structure", False))
