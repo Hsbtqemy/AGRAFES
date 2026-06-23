@@ -8,6 +8,7 @@ import {
   normalizeModeForExt,
   isKnownImportExt,
   detectLanguageFromName,
+  detectLanguageToken,
   LANG_RE,
   KNOWN_LANG_CODES,
 } from "../importDetect.ts";
@@ -224,6 +225,27 @@ describe("detectLanguageFromName", () => {
 
   it("aucun séparateur de langue → fallback", () => {
     expect(detectLanguageFromName("plainname.docx", "fr")).toBe("fr");
+  });
+});
+
+// ─── detectLanguageToken ────────────────────────────────────────────────────
+
+describe("detectLanguageToken", () => {
+  it("token connu détecté (minuscule)", () => {
+    expect(detectLanguageToken("roman_FR.docx")).toBe("fr");
+    expect(detectLanguageToken("texte.de.txt")).toBe("de");
+    expect(detectLanguageToken("roman_lat.xml")).toBe("lat");
+  });
+
+  it("aucun token / hors whitelist / faux positif → null (pas de fallback)", () => {
+    expect(detectLanguageToken("plainname.xml")).toBeNull();
+    expect(detectLanguageToken("roman_xx.xml")).toBeNull();
+    expect(detectLanguageToken("roman_v2.docx")).toBeNull();
+  });
+
+  it("detectLanguageFromName en dérive (token ?? fallback)", () => {
+    expect(detectLanguageFromName("plainname.xml", "und")).toBe("und");
+    expect(detectLanguageFromName("roman_lat.xml", "und")).toBe("lat");
   });
 });
 

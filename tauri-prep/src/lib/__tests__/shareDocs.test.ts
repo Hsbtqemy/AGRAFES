@@ -302,9 +302,9 @@ describe("authSecret", () => {
 // (parent, mode, langue)).
 
 describe("groupDetectedFiles (Phase 5)", () => {
-  const file = (href: string, name: string, parentUrl: string, mode: string, language: string) => ({
-    href, name, parentUrl, mode, language,
-  });
+  const file = (
+    href: string, name: string, parentUrl: string, mode: string, language: string | undefined,
+  ) => ({ href, name, parentUrl, mode, language });
 
   it("regroupe les fichiers de mêmes (parent, mode, langue) en un seul lot", () => {
     const groups = groupDetectedFiles([
@@ -362,6 +362,19 @@ describe("groupDetectedFiles (Phase 5)", () => {
       file("https://x/d/b.docx", "b.docx", "https://x/d/", "docx_numbered_lines", "fr"),
     ]);
     expect(groups[0].label).toBe("d · docx_numbered_lines · fr (2 fichiers)");
+  });
+
+  it("TEI sans langue (xml:lang) : regroupe par langue undefined, label « xml:lang »", () => {
+    const groups = groupDetectedFiles([
+      file("https://x/d/a.xml", "a.xml", "https://x/d/", "tei", undefined),
+      file("https://x/d/b.xml", "b.xml", "https://x/d/", "tei", undefined),
+      file("https://x/d/roman_lat.xml", "roman_lat.xml", "https://x/d/", "tei", "lat"),
+    ]);
+    expect(groups).toHaveLength(2);
+    const auto = groups.find((g) => g.language === undefined);
+    expect(auto?.hrefs).toEqual(["https://x/d/a.xml", "https://x/d/b.xml"]);
+    expect(auto?.label).toBe("d · tei · xml:lang (2 fichiers)");
+    expect(groups.find((g) => g.language === "lat")?.hrefs).toEqual(["https://x/d/roman_lat.xml"]);
   });
 
   it("liste vide → aucun lot", () => {

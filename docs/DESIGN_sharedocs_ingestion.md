@@ -470,12 +470,15 @@ Trois écarts par rapport au plan §11.1-11.7, tranchés en cours d'implémentat
    utilise « Importer ce dossier ». L'expansion (`webdavList` Depth:1 par dossier
    coché) reste en suivi (cf. `// NOTE:` dans `ShareDocsImportScreen._importSelection`).
 
-3. **Langue des fichiers TEI.** La langue par fichier (`detectLanguageFromName(nom,
-   défaut)`) est envoyée pour **tous** les fichiers, TEI compris — **identique à
-   l'import local** ([`ImportScreen`], `language: f.language || "und"`). Or
-   `tei_importer.py` fait `tei_lang = language or header_lang or "und"` → la langue
-   passée **écrase le `xml:lang`** du document. Donc un TEI sans token de langue dans
-   son nom est importé avec la langue par défaut (« fr »), comme en import local. C'est
-   un écart vs l'**ancien** ShareDocs (qui autorisait une langue vide pour TEI), assumé
-   pour **rester cohérent avec le menu Import local** (mandat du ticket) ; une
-   détection erronée se rattrape en post-import ou via l'annulation de lot (§11.6).
+3. **Langue des fichiers TEI — `xml:lang` préservé.** `tei_importer.py` fait
+   `tei_lang = language or header_lang or "und"` : une langue passée **écrase** le
+   `xml:lang` du document. Pour ne pas imposer une langue par défaut à un format
+   auto-descriptif, ShareDocs n'envoie une langue pour un fichier **TEI** que si son
+   **nom encode explicitement un token** de langue connu (ex. `roman_lat.xml` → `lat`,
+   qui prime alors volontairement) ; **sinon `language` est `undefined`** et l'importeur
+   **garde le `xml:lang`** du document (helper `detectLanguageToken`, sans repli). Les
+   autres formats (DOCX/ODT/TXT/CoNLL-U), qui n'ont pas de langue intrinsèque, reçoivent
+   toujours la langue détectée **ou** le défaut. ⚠️ **Écart délibéré vs l'import local**,
+   qui force encore le défaut pour TEI (`language: f.language || "und"`, `ImportScreen`) —
+   le menu local mérite le même correctif en suivi pour converger sur le bon
+   comportement. Le panier affiche « `tei · xml:lang` » pour un TEI sans token.

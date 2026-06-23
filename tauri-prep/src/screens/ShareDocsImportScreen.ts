@@ -27,6 +27,7 @@ import {
   WP_DEFAULT_PARAGRAPHS,
   deriveModeFromExt,
   detectLanguageFromName,
+  detectLanguageToken,
   extFromFileName,
   isKnownImportExt,
   normalizeModeForExt,
@@ -571,7 +572,14 @@ export class ShareDocsImportScreen {
     const ext = extFromFileName(name);
     if (!isKnownImportExt(ext)) return null;
     const mode = normalizeModeForExt(deriveModeFromExt(ext, profile), ext);
-    const language = detectLanguageFromName(name, defaultLanguage);
+    // TEI porte son propre xml:lang : ne pas l'écraser avec la langue par défaut —
+    // n'envoyer une langue que si le nom encode explicitement un token (qui prime
+    // alors volontairement) ; sinon undefined → l'importeur garde le xml:lang
+    // (DESIGN §11.8). Les autres formats ont besoin d'une langue → détectée ou défaut.
+    const language =
+      mode === "tei"
+        ? (detectLanguageToken(name) ?? undefined)
+        : detectLanguageFromName(name, defaultLanguage);
     return { href, name, parentUrl, mode, language };
   }
 
@@ -697,8 +705,9 @@ export class ShareDocsImportScreen {
         return safeHtml`<li>📁 ${it.name} — ${folderLabel(it.parentUrl)} <span class="prep-sd-fmt">(dossier — ouvrir puis « Importer ce dossier »)</span></li>`;
       }
       const det = this._detectFile(it.name, it.href, it.parentUrl, profile, defaultLanguage);
+      // langue undefined = TEI sans token → le xml:lang du document fait foi.
       const tag = det
-        ? safeHtml`<span class="prep-sd-fmt">${det.mode} · ${det.language}</span>`
+        ? safeHtml`<span class="prep-sd-fmt">${det.mode} · ${det.language ?? "xml:lang"}</span>`
         : safeHtml`<span class="prep-sd-mismatch" title="Extension non reconnue — ce fichier sera ignoré">⚠ ignoré</span>`;
       return safeHtml`<li>📄 ${it.name} — ${folderLabel(it.parentUrl)} ${tag}</li>`;
     });

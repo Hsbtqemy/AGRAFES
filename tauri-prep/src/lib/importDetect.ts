@@ -141,11 +141,22 @@ export const KNOWN_LANG_CODES = new Set([
 ]);
 
 /**
- * Langue déduite du nom de fichier (suffixe `_fr` / `-en` / `.de` …), validée
- * contre {@link KNOWN_LANG_CODES} pour éviter les faux positifs (`_v2`, `_to`…).
- * Retourne *fallback* quand aucun code de langue connu n'est détecté.
+ * Code de langue **explicitement** encodé dans le nom de fichier (suffixe `_fr` /
+ * `-en` / `.de` …), validé contre {@link KNOWN_LANG_CODES} pour éviter les faux
+ * positifs (`_v2`, `_to`…). Retourne `null` quand aucun code connu n'est présent —
+ * au contraire de {@link detectLanguageFromName}, qui retombe sur un défaut. Utile
+ * pour les formats auto-descriptifs (TEI/`xml:lang`) où l'absence de token doit
+ * laisser le document décider, plutôt que d'imposer une langue par défaut.
+ */
+export function detectLanguageToken(name: string): string | null {
+  const raw = LANG_RE.exec(name)?.[1]?.toLowerCase() ?? null;
+  return raw && KNOWN_LANG_CODES.has(raw) ? raw : null;
+}
+
+/**
+ * Langue déduite du nom de fichier (via {@link detectLanguageToken}), ou *fallback*
+ * quand aucun code de langue connu n'est détecté.
  */
 export function detectLanguageFromName(name: string, fallback: string): string {
-  const raw = LANG_RE.exec(name)?.[1]?.toLowerCase() ?? null;
-  return raw && KNOWN_LANG_CODES.has(raw) ? raw : fallback;
+  return detectLanguageToken(name) ?? fallback;
 }

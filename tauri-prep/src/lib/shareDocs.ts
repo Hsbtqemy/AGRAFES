@@ -191,25 +191,28 @@ export interface SelectedRemoteItem {
 /**
  * A remote file resolved for import with its per-file detected params (Phase 5).
  * `mode`/`language` come from importDetect (extension → mode, name → langue).
+ * `language` is **undefined** for a TEI file whose name carries no language token —
+ * the document's own `xml:lang` is then authoritative (DESIGN §11.8).
  */
 export interface DetectedImportFile {
   href: string;
   name: string;
   parentUrl: string;
   mode: string;
-  language: string;
+  language: string | undefined;
 }
 
 /**
  * A single /import-remote submission grouped by (parentUrl, mode, language) — each
  * group carries its own detected mode + language, so a bilingual / mixed-format
- * folder fans out into several submissions (DESIGN §11.3).
+ * folder fans out into several submissions (DESIGN §11.3). `language` undefined →
+ * omitted from the request (TEI keeps its `xml:lang`).
  */
 export interface DetectedImportGroup {
   url: string;
   hrefs: string[];
   mode: string;
-  language: string;
+  language: string | undefined;
   label: string;
 }
 
@@ -235,7 +238,7 @@ export function groupDetectedFiles(files: DetectedImportFile[]): DetectedImportG
   const groups = [...byKey.values()];
   for (const g of groups) {
     const n = g.hrefs.length;
-    g.label = `${folderLabel(g.url)} · ${g.mode} · ${g.language} (${n} fichier${n > 1 ? "s" : ""})`;
+    g.label = `${folderLabel(g.url)} · ${g.mode} · ${g.language ?? "xml:lang"} (${n} fichier${n > 1 ? "s" : ""})`;
   }
   return groups;
 }
