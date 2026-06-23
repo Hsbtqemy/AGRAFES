@@ -495,7 +495,12 @@ Trois écarts par rapport au plan §11.1-11.7, tranchés en cours d'implémentat
    placeholder « `xml:lang` » (vide = le document décide ; renseigner = forcer). Le panier
    ShareDocs affiche « `tei · xml:lang` » pour un TEI sans token.
 
-## 12. Addendum — familles à l'import ShareDocs (Phase 6, figé 2026-06-23)
+## 12. Addendum — familles à l'import ShareDocs (Phase 6, ✅ livré 2026-06-23)
+
+**Livraison** : P6A (module partagé `familyDetect` + `ImportScreen` délègue) et P6B
+(détection + bannière hybride + barrière `_submitGroups.onComplete` + câblage
+`_wireFamilies` via `resolveFamilyRelations` pur) livrés sur `feat/sharedocs-p6-families`.
+Conforme aux décisions §12.2. Front-only, aucun changement moteur/contrat.
 
 > Brancher la création de relations `translation_of` à l'import ShareDocs, comme le
 > dialogue post-import du menu Import **local** (Sprint 8 du système familles). **Le
