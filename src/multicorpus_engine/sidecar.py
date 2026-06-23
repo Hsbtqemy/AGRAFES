@@ -69,6 +69,12 @@ from . import __version__ as ENGINE_VERSION
 
 logger = logging.getLogger(__name__)
 
+# Seuil d'avertissement de divergence du nombre de segments/unités entre une traduction
+# et son pivot/référence (`abs(child - ref) / ref`). **Advisory, jamais bloquant.**
+# Source unique des 7 contrôles segment-ratio (segmentation calibrée, propagation de
+# structure, audit familles). Cf. docs/cadrage/IMPORT_RATIO.md (C6).
+SEGMENT_RATIO_WARN_THRESHOLD = 0.15
+
 
 def _int_param(value: object, default: int) -> int:
     """Coerce *value* to int, returning *default* on TypeError/ValueError.
@@ -3846,7 +3852,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             result_count = len(segs)
             total_segments += result_count
             delta = result_count - ref_count
-            if abs(delta) > 0 and ref_count > 0 and abs(delta / ref_count) > 0.15:
+            if abs(delta) > 0 and ref_count > 0 and abs(delta / ref_count) > SEGMENT_RATIO_WARN_THRESHOLD:
                 warnings.append(f"Section avant le premier intertitre : écart {abs(delta)} phrases ({result_count} vs {ref_count} attendues).")
             result_sections.append({
                 "status": "pre",
@@ -3876,7 +3882,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 adjusted = (len(segs) != raw_count)
             result_count = len(segs)
             delta = result_count - ref_count
-            if ref_count > 0 and abs(delta) > 0 and abs(delta / ref_count) > 0.15:
+            if ref_count > 0 and abs(delta) > 0 and abs(delta / ref_count) > SEGMENT_RATIO_WARN_THRESHOLD:
                 warnings.append(
                     f"Section « {header['text'][:60]} » : écart {abs(delta)} phrases "
                     f"({result_count} vs {ref_count} attendues)."
@@ -4401,7 +4407,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             if ref_count > 0:
                 ratio = abs(len(segments) - ref_count) / ref_count
                 calibrate_ratio_pct = round(ratio * 100)
-                if ratio > 0.15:
+                if ratio > SEGMENT_RATIO_WARN_THRESHOLD:
                     warnings.append(
                         f"Le nombre de segments diffère de {calibrate_ratio_pct}\u202f% "
                         f"par rapport au document de référence #{calibrate_to} "
@@ -5045,7 +5051,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 if ref_count > 0:
                     ratio = abs(report.units_output - ref_count) / ref_count
                     calibrate_ratio_pct = round(ratio * 100)
-                    if ratio > 0.15:
+                    if ratio > SEGMENT_RATIO_WARN_THRESHOLD:
                         calibrate_warning = (
                             f"Le nombre de segments diffère de {calibrate_ratio_pct}\u202f% "
                             f"par rapport au document de référence #{calibrate_to} "
@@ -5135,7 +5141,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 return entry
             ratio = abs(child_count - ref) / ref
             entry["calibrate_ratio_pct"] = round(ratio * 100)
-            if ratio > 0.15:
+            if ratio > SEGMENT_RATIO_WARN_THRESHOLD:
                 entry["warnings"] = list(entry.get("warnings", [])) + [
                     f"Segment count differs by {round(ratio * 100)} % from parent "
                     f"({ref} units) — doc #{doc_id} has {child_count} units"
@@ -6154,7 +6160,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                     child_segs = seg_counts.get(c["doc_id"], 0)
                     if child_segs > 0:
                         ratio = abs(child_segs - parent_segs) / parent_segs
-                        if ratio > 0.15:
+                        if ratio > SEGMENT_RATIO_WARN_THRESHOLD:
                             ratio_warnings.append({
                                 "child_doc_id": c["doc_id"],
                                 "parent_segs": parent_segs,
@@ -8348,7 +8354,7 @@ class CorpusServer:
                         ).fetchone()[0]
                         if ref_count > 0:
                             ratio = abs(report.units_output - ref_count) / ref_count
-                            if ratio > 0.15:
+                            if ratio > SEGMENT_RATIO_WARN_THRESHOLD:
                                 report.warnings.append(
                                     f"Ratio warning: {report.units_output} segments vs "
                                     f"{ref_count} in reference doc #{calibrate_to} "
