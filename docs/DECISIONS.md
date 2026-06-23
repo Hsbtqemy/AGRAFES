@@ -1256,9 +1256,19 @@ l'import, **jamais réécrit** par curate / resegment / merge / split.
     `UnitRecord` (sidecarClient). **Export** : sélecteur « Source du texte » (normalisé /
     brut / **source**) dans l'écran Exports → `source_field` au job `export_readable_text`.
     6 tests Vitest (helper). Surface unique assumée (segmentation) ; les aperçus
-    curation/métadonnées pourront recevoir le même repli en suivi si besoin. **P2c** (le
-    chemin de propagation `apply_propagated` ne préserve pas encore `text_source` — décision
-    de granularité section-vs-ligne) reste ouvert, hors P3.
+    curation/métadonnées pourront recevoir le même repli en suivi si besoin.
+  - **P2c (propagation `apply_propagated`) — décidé : limite documentée (2026-06-23)**.
+    Ce chemin re-segmente le texte **par section** *et* le front expose un **éditeur de
+    segments interactif** (éditer / couper / fusionner) entre `propagate_preview` et apply :
+    un nouveau segment n'a donc **pas de ligne parente nette** d'où hériter `text_source`.
+    Le préserver fidèlement imposerait de **rejouer tout le modèle d'héritage P2/P2b dans
+    l'éditeur front** (TS) — **disproportionné** pour ce chemin avancé/rare. **Tranché :**
+    `apply_propagated` laisse `text_source` **NULL** (sûr : les lecteurs retombent sur
+    `text_raw`, le repli ne s'affiche pas pour ces docs ; un réimport restaure l'original).
+    Choix gravé en commentaire dans le handler pour qu'il ne soit pas « corrigé » comme un
+    oubli. Les options écartées : (a) original **au niveau section** = chaque segment
+    afficherait toute la section (grossier, faible valeur) ; (c) reconstruction du mapping
+    ligne→segment = fragile.
 - **Relation à Mode A undo** : l'undo snapshot déjà l'état pré-resegment (borné à 14
   actions) ; `text_source` en est le complément **permanent ancré à l'import**, pas un
   doublon. **Hors périmètre** : `external_id`/`alignment_links` restent perdus à la

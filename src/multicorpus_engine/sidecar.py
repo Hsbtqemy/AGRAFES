@@ -4245,7 +4245,15 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                     (doc_id,),
                 )
 
-            # Insert new units
+            # Insert new units. text_source is deliberately left NULL here (ADR-043
+            # P2c, decided 2026-06-23 = documented limitation): unlike resegment /
+            # merge / split, the propagation re-segments SECTION text and the front
+            # exposes an interactive segment editor (edit / split / merge) between
+            # preview and apply, so a new segment has no clean parent line to inherit
+            # text_source from. Preserving it faithfully would mean replaying the
+            # whole P2/P2b inheritance model in the front editor — disproportionate
+            # for this path. NULL is safe: readers fall back to text_raw and the
+            # "voir l'original d'import" fold simply does not show for these docs.
             insert_rows = [
                 (doc_id, utype, start_n + offset, None, text, text, role, None)
                 for offset, (utype, text, role) in enumerate(validated)
