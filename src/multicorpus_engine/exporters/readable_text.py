@@ -1,15 +1,61 @@
-"""Readable text exporters (TXT / DOCX) for prepared corpus documents."""
+"""Readable text exporters (TXT / DOCX / ODT) for prepared corpus documents."""
 
 from __future__ import annotations
 
 import re
 import sqlite3
+import zipfile
 from pathlib import Path
 from typing import Any
+from xml.sax.saxutils import escape
 
 
-_VALID_FORMATS = {"txt", "docx"}
+_VALID_FORMATS = {"txt", "docx", "odt"}
 _VALID_SOURCE_FIELDS = {"text_norm", "text_raw"}
+
+# ── ODT (OpenDocument Text) generation — stdlib only ──────────────────────────
+# DOCX export uses python-docx; ODT has no project dependency (engine stays near
+# stdlib), so we emit a minimal valid ODF 1.2 package by hand: a ZIP with an
+# uncompressed `mimetype` first entry, a manifest, and `content.xml` carrying
+# `text:h` (title) + `text:p` (lines) — the exact shape the ODT importer reads
+# back (`importers/odt_common.py`), so exports round-trip.
+_ODT_MIMETYPE = "application/vnd.oasis.opendocument.text"
+
+_ODT_MANIFEST = (
+    '<?xml version="1.0" encoding="UTF-8"?>\n'
+    '<manifest:manifest '
+    'xmlns:manifest="urn:oasis:names:tc:opendocument:xmlns:manifest:1.0" '
+    'manifest:version="1.2">'
+    f'<manifest:file-entry manifest:full-path="/" manifest:media-type="{_ODT_MIMETYPE}"/>'
+    '<manifest:file-entry manifest:full-path="content.xml" manifest:media-type="text/xml"/>'
+    '</manifest:manifest>'
+)
+
+
+def _odt_content_xml(heading: str, lines: list[str]) -> str:
+    """Build content.xml: heading as `text:h`, each line as a `text:p`."""
+    body = [f'<text:h text:outline-level="1">{escape(heading)}</text:h>']
+    body.extend(f"<text:p>{escape(line)}</text:p>" for line in lines)
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<office:document-content '
+        'xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" '
+        'xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" '
+        'office:version="1.2"><office:body><office:text>'
+        + "".join(body)
+        + "</office:text></office:body></office:document-content>"
+    )
+
+
+def _write_odt(dest: Path, heading: str, lines: list[str]) -> None:
+    """Write a minimal valid .odt package (ZIP) for one document."""
+    with zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED) as zf:
+        # `mimetype` must be the first entry and STORED (uncompressed) per ODF spec.
+        info = zipfile.ZipInfo("mimetype")
+        info.compress_type = zipfile.ZIP_STORED
+        zf.writestr(info, _ODT_MIMETYPE)
+        zf.writestr("META-INF/manifest.xml", _ODT_MANIFEST)
+        zf.writestr("content.xml", _odt_content_xml(heading, lines))
 
 
 def _slugify(text: str) -> str:
@@ -88,13 +134,13 @@ def export_readable_text(
     include_external_id: bool = True,
     source_field: str = "text_norm",
 ) -> dict[str, Any]:
-    """Export selected documents as readable TXT or DOCX files.
+    """Export selected documents as readable TXT, DOCX or ODT files.
 
     Args:
         conn: SQLite connection.
         out_dir: Destination directory.
         doc_ids: Selected document IDs (None -> all docs).
-        fmt: "txt" or "docx".
+        fmt: "txt", "docx" or "odt".
         include_structure: Include `unit_type='structure'` rows when true.
         include_external_id: Prefix line units with `[0001]` style anchors.
         source_field: `text_norm` (default) or `text_raw`.
@@ -133,6 +179,8 @@ def export_readable_text(
                 for line in rendered_lines:
                     f.write(line)
                     f.write("\n")
+        elif fmt_norm == "odt":
+            _write_odt(dest, f"{title} [{language}]", rendered_lines)
         else:
             try:
                 import docx  # python-docx

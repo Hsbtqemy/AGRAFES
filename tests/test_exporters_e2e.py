@@ -152,6 +152,59 @@ def test_readable_text_export_docx(annotated_corpus, db_conn, tmp_path):
     assert "chat" in full and "pleut" in full
 
 
+def test_readable_text_export_odt(annotated_corpus, db_conn, tmp_path):
+    import zipfile
+
+    from multicorpus_engine.exporters.readable_text import export_readable_text
+    from multicorpus_engine.importers.odt_common import read_odt_paragraph_lines
+
+    out_dir = tmp_path / "readable_odt"
+    summary = export_readable_text(db_conn, out_dir=out_dir, doc_ids=None, fmt="odt")
+
+    assert summary["count"] == 1
+    assert summary["format"] == "odt"
+    files = list(out_dir.glob("*.odt"))
+    assert len(files) == 1
+
+    # Valid ODF package: `mimetype` first/stored, content.xml present.
+    with zipfile.ZipFile(files[0]) as zf:
+        names = zf.namelist()
+        assert names[0] == "mimetype"
+        assert zf.read("mimetype").decode("ascii") == "application/vnd.oasis.opendocument.text"
+        assert zf.getinfo("mimetype").compress_type == zipfile.ZIP_STORED
+        assert "content.xml" in names and "META-INF/manifest.xml" in names
+
+    # Round-trips through the ODT importer (heading + line units).
+    lines = read_odt_paragraph_lines(files[0])
+    assert lines[0] == "Corpus E2E [fr]"  # title heading
+    body = "\n".join(lines)
+    assert "chat" in body and "pleut" in body
+
+
+def test_readable_text_export_odt_escapes_xml(db_conn, tmp_path):
+    """Title/lines with XML metacharacters must not break content.xml."""
+    from multicorpus_engine.exporters.readable_text import export_readable_text
+    from multicorpus_engine.importers.odt_common import read_odt_paragraph_lines
+
+    db_conn.execute(
+        "INSERT INTO documents (doc_id, title, language, created_at) VALUES (1, ?, 'fr', '2026-01-01')",
+        ("A & B <tag>",),
+    )
+    db_conn.execute(
+        "INSERT INTO units (doc_id, n, unit_type, external_id, text_raw, text_norm) "
+        "VALUES (1, 1, 'line', 1, ?, ?)",
+        ("x < y & z", "x < y & z"),
+    )
+    db_conn.commit()
+
+    out_dir = tmp_path / "odt_escape"
+    export_readable_text(db_conn, out_dir=out_dir, doc_ids=[1], fmt="odt", include_external_id=False)
+    f = next(out_dir.glob("*.odt"))
+    lines = read_odt_paragraph_lines(f)  # parses content.xml — fails if escaping is wrong
+    assert lines[0] == "A & B <tag> [fr]"
+    assert "x < y & z" in lines
+
+
 # ─── TMX builder (sidecar inline export) ────────────────────────────────────
 
 

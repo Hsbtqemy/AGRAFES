@@ -1407,9 +1407,9 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             return
         if kind == "export_readable_text":
             export_fmt = str(params.get("format", "txt")).strip().lower()
-            if export_fmt not in {"txt", "docx"}:
+            if export_fmt not in {"txt", "docx", "odt"}:
                 self._send_error(
-                    "export_readable_text params.format must be 'txt' or 'docx'",
+                    "export_readable_text params.format must be 'txt', 'docx' or 'odt'",
                     code=ERR_VALIDATION,
                     http_status=400,
                 )
@@ -8624,8 +8624,8 @@ class CorpusServer:
             if not out_dir:
                 raise ValueError("export_readable_text job requires params.out_dir")
             export_fmt = str(params.get("format", "txt")).strip().lower()
-            if export_fmt not in {"txt", "docx"}:
-                raise ValueError("export_readable_text params.format must be 'txt' or 'docx'")
+            if export_fmt not in {"txt", "docx", "odt"}:
+                raise ValueError("export_readable_text params.format must be 'txt', 'docx' or 'odt'")
 
             doc_ids = params.get("doc_ids")
             include_structure = bool(params.get("include_structure", False))
