@@ -21,6 +21,28 @@ _VALID_SOURCE_FIELDS = {"text_norm", "text_raw"}
 # back (`importers/odt_common.py`), so exports round-trip.
 _ODT_MIMETYPE = "application/vnd.oasis.opendocument.text"
 
+
+def _xml_safe(text: str) -> str:
+    """Drop characters illegal in XML 1.0 so hand-built content.xml stays well-formed.
+
+    `escape()` only neutralises & < > ; verbatim `text_raw` could carry control
+    characters that would make content.xml ill-formed — silent corruption, since
+    (unlike DOCX via python-docx) nothing else would reject them. Allowed code
+    points: 0x09, 0x0A, 0x0D, 0x20-0xD7FF, 0xE000-0xFFFD, 0x10000-0x10FFFF.
+    """
+    out: list[str] = []
+    for ch in text:
+        cp = ord(ch)
+        if (
+            cp in (0x09, 0x0A, 0x0D)
+            or 0x20 <= cp <= 0xD7FF
+            or 0xE000 <= cp <= 0xFFFD
+            or 0x10000 <= cp <= 0x10FFFF
+        ):
+            out.append(ch)
+    return "".join(out)
+
+
 _ODT_MANIFEST = (
     '<?xml version="1.0" encoding="UTF-8"?>\n'
     '<manifest:manifest '
@@ -34,8 +56,8 @@ _ODT_MANIFEST = (
 
 def _odt_content_xml(heading: str, lines: list[str]) -> str:
     """Build content.xml: heading as `text:h`, each line as a `text:p`."""
-    body = [f'<text:h text:outline-level="1">{escape(heading)}</text:h>']
-    body.extend(f"<text:p>{escape(line)}</text:p>" for line in lines)
+    body = [f'<text:h text:outline-level="1">{escape(_xml_safe(heading))}</text:h>']
+    body.extend(f"<text:p>{escape(_xml_safe(line))}</text:p>" for line in lines)
     return (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<office:document-content '
@@ -200,4 +222,3 @@ def export_readable_text(
         "format": fmt_norm,
         "files_created": files_created,
     }
-

@@ -205,6 +205,30 @@ def test_readable_text_export_odt_escapes_xml(db_conn, tmp_path):
     assert "x < y & z" in lines
 
 
+def test_readable_text_export_odt_strips_control_chars(db_conn, tmp_path):
+    """Control chars illegal in XML 1.0 are dropped so content.xml stays well-formed."""
+    from multicorpus_engine.exporters.readable_text import export_readable_text
+    from multicorpus_engine.importers.odt_common import read_odt_paragraph_lines
+
+    bad = "a" + chr(0) + "b" + chr(7) + "c"  # NUL + BEL — illegal in XML 1.0
+    db_conn.execute(
+        "INSERT INTO documents (doc_id, title, language, created_at) VALUES (1, 'T', 'fr', '2026-01-01')"
+    )
+    db_conn.execute(
+        "INSERT INTO units (doc_id, n, unit_type, external_id, text_raw, text_norm) "
+        "VALUES (1, 1, 'line', 1, ?, ?)",
+        (bad, bad),
+    )
+    db_conn.commit()
+
+    out_dir = tmp_path / "odt_ctrl"
+    export_readable_text(db_conn, out_dir=out_dir, doc_ids=[1], fmt="odt", include_external_id=False)
+    f = next(out_dir.glob("*.odt"))
+    lines = read_odt_paragraph_lines(f)  # raises if content.xml is ill-formed
+    assert lines[0] == "T [fr]"
+    assert "abc" in lines  # control chars dropped, surrounding text kept
+
+
 # ─── TMX builder (sidecar inline export) ────────────────────────────────────
 
 
