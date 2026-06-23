@@ -263,3 +263,16 @@ def test_build_tmx_escapes_xml_special_chars() -> None:
     assert "&lt;bonjour&gt;" in tmx
     assert "&quot;" in tmx
     assert "<bonjour>" not in tmx  # raw angle brackets must not leak
+
+
+def test_build_tmx_strips_control_chars() -> None:
+    """Control chars illegal in XML 1.0 must be stripped → TMX stays well-formed."""
+    import xml.etree.ElementTree as ET
+
+    from multicorpus_engine.sidecar import _CorpusHandler
+
+    tu_list = [[("fr", "a" + chr(0x00) + "b"), ("en", "c" + chr(0x07) + "d")]]
+    tmx = _CorpusHandler._build_tmx(tu_list, "fr", "1.0")
+    ET.fromstring(tmx)  # raises if the document is malformed
+    assert chr(0x00) not in tmx and chr(0x07) not in tmx
+    assert "<seg>ab</seg>" in tmx and "<seg>cd</seg>" in tmx
