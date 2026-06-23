@@ -157,6 +157,14 @@ def export_readable_text(
         include_external_id: Prefix line units with `[0001]` style anchors.
         source_field: `text_norm` (default), `text_raw`, or `text_source`
             (verbatim import original; COALESCE fallback to `text_raw`).
+
+    Note: with `source_field="text_source"`, the N segments produced by a
+    resegmentation all inherit the *same* parent line as their import original
+    (ADR-043, line-level granularity), so the export emits that line **once per
+    segment** — a faithful per-unit dump, not a de-duplicated reconstruction.
+    Collapsing consecutive-equal sources is intentionally *not* done: without a
+    source-line id (deferred in ADR-043) it would also drop genuine repeated
+    lines (e.g. a refrain), losing data.
     """
 
     fmt_norm = str(fmt or "txt").strip().lower()
