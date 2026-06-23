@@ -277,13 +277,13 @@ def resegment_document_markers(
     text_start_n = _get_text_start_n(conn, doc_id)
     if text_start_n is not None:
         rows = conn.execute(
-            "SELECT unit_id, n, text_raw, text_norm FROM units"
+            "SELECT unit_id, n, text_raw, text_norm, text_source FROM units"
             " WHERE doc_id = ? AND unit_type = 'line' AND n >= ? ORDER BY n",
             (doc_id, text_start_n),
         ).fetchall()
     else:
         rows = conn.execute(
-            "SELECT unit_id, n, text_raw, text_norm FROM units"
+            "SELECT unit_id, n, text_raw, text_norm, text_source FROM units"
             " WHERE doc_id = ? AND unit_type = 'line' ORDER BY n",
             (doc_id,),
         ).fetchall()
@@ -309,19 +309,23 @@ def resegment_document_markers(
         ).fetchall()
     }
 
-    new_units: list[tuple] = []  # (doc_id, unit_type, n, external_id, text_raw, text_norm, meta_json)
+    # (doc_id, unit_type, n, external_id, text_raw, text_norm, meta_json, text_source)
+    new_units: list[tuple] = []
     first_seg_n: dict[int, int] = {}
     global_n = text_start_n if text_start_n is not None else 1
     units_without_marker = 0
 
     for row in rows:
         text_norm = row["text_norm"] or ""
+        # text_source propagated from the parent line (ADR-043 P2) — its original import
+        # text, or text_raw when the parent has none captured (legacy).
+        src = row["text_source"] if row["text_source"] is not None else (row["text_raw"] or "")
         segments = segment_text_markers(text_norm)
         first_seg_n[row["n"]] = global_n
         for ext_id, seg_text in segments:
             if ext_id is None:
                 units_without_marker += 1
-            new_units.append((doc_id, "line", global_n, ext_id, seg_text, seg_text, None))
+            new_units.append((doc_id, "line", global_n, ext_id, seg_text, seg_text, None, src))
             global_n += 1
 
     warnings: list[str] = []
@@ -350,8 +354,8 @@ def resegment_document_markers(
     else:
         conn.execute("DELETE FROM units WHERE doc_id = ? AND unit_type = 'line'", (doc_id,))
     conn.executemany(
-        "INSERT INTO units (doc_id, unit_type, n, external_id, text_raw, text_norm, meta_json)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO units (doc_id, unit_type, n, external_id, text_raw, text_norm, meta_json, text_source)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         new_units,
     )
 
@@ -469,7 +473,7 @@ def resegment_document(
     text_start_n = _get_text_start_n(conn, doc_id)
     if text_start_n is not None:
         rows = conn.execute(
-            "SELECT unit_id, n, external_id, text_raw, text_norm, unit_role, meta_json"
+            "SELECT unit_id, n, external_id, text_raw, text_norm, unit_role, meta_json, text_source"
             " FROM units"
             " WHERE doc_id = ? AND unit_type = 'line' AND n >= ? ORDER BY n",
             (doc_id, text_start_n),
@@ -480,7 +484,7 @@ def resegment_document(
         ).fetchone()[0]
     else:
         rows = conn.execute(
-            "SELECT unit_id, n, external_id, text_raw, text_norm, unit_role, meta_json"
+            "SELECT unit_id, n, external_id, text_raw, text_norm, unit_role, meta_json, text_source"
             " FROM units"
             " WHERE doc_id = ? AND unit_type = 'line' ORDER BY n",
             (doc_id,),
@@ -514,17 +518,21 @@ def resegment_document(
     # Also track which new n receives the first sentence of each original unit
     # so roles can be re-applied (one original line → potentially N sentences,
     # role assigned to the first segment only).
-    new_units: list[tuple] = []  # (doc_id, unit_type, n, external_id, text_raw, text_norm, meta_json)
+    # (doc_id, unit_type, n, external_id, text_raw, text_norm, meta_json, text_source)
+    new_units: list[tuple] = []
     # Maps old_n → new_n of its first produced segment (for role reapplication)
     first_seg_n: dict[int, int] = {}
     global_n = text_start_n if text_start_n is not None else 1
 
     for row in rows:
         text_norm = row["text_norm"] or ""
+        # text_source propagated from the parent line (ADR-043 P2): its original import
+        # text, or text_raw when none was captured (legacy).
+        src = row["text_source"] if row["text_source"] is not None else (row["text_raw"] or "")
         sentences = segment_text(text_norm, lang=lang, pack=resolved_pack)
         first_seg_n[row["n"]] = global_n
         for sent in sentences:
-            new_units.append((doc_id, "line", global_n, None, sent, sent, None))
+            new_units.append((doc_id, "line", global_n, None, sent, sent, None, src))
             global_n += 1
 
     # Delete stale alignment_links
@@ -549,8 +557,8 @@ def resegment_document(
 
     # Insert new units
     conn.executemany(
-        "INSERT INTO units (doc_id, unit_type, n, external_id, text_raw, text_norm, meta_json)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO units (doc_id, unit_type, n, external_id, text_raw, text_norm, meta_json, text_source)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         new_units,
     )
 
@@ -597,6 +605,7 @@ def resegment_document(
                 "text_norm":   r["text_norm"],
                 "unit_role":   r["unit_role"],
                 "meta_json":   r["meta_json"],
+                "text_source": r["text_source"],  # restored on undo (ADR-043 P2)
             }
             for r in rows
         ]

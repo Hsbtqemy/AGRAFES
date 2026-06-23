@@ -330,12 +330,15 @@ def _undo_resegment(
             text_norm = s["text_norm_before"]
             unit_role = s["unit_role_before"]
             meta_json = s["meta_json_before"]
+        # text_source lives only in the context JSON snapshot (no *_before column),
+        # so restore it from there regardless of the snapshot-table branch (ADR-043 P2).
+        text_source = u.get("text_source")
         conn.execute(
             """
             INSERT INTO units
               (unit_id, doc_id, unit_type, n, external_id,
-               text_raw, text_norm, meta_json, unit_role)
-            VALUES (?, ?, 'line', ?, ?, ?, ?, ?, ?)
+               text_raw, text_norm, meta_json, unit_role, text_source)
+            VALUES (?, ?, 'line', ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 uid,
@@ -346,6 +349,7 @@ def _undo_resegment(
                 text_norm or "",
                 meta_json,
                 unit_role,
+                text_source,
             ),
         )
 
