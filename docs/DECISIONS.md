@@ -1199,11 +1199,12 @@ l'import, **jamais réécrit** par curate / resegment / merge / split.
     lieu de 7). `segmenter`/`undo` **hors P0** (leur écriture est le chemin resegment =
     P2, pas l'import). Refactor **iso-comportement** (47 tests d'import + test direct du
     helper).
-  - **P1** — migration 020 `text_source` + peuplement à l'import (`= text_raw`) via le
-    helper P0. Lignes **existantes laissées `NULL`** (un doc déjà resegmenté a perdu son
-    original ; backfiller `text_raw` capturerait le faux original) → fallback `text_raw`
-    au read = comportement actuel. **Aucun site de lecture changé** (rien ne lit
-    `text_source` avant P3).
+  - **P1** — **✅ livré**. Migration 020 (`text_source TEXT`, nullable) + peuplement à
+    l'import (`= text_raw`) via `insert_units` (6 importeurs) **+** l'importeur CoNLL-U
+    (insert bespoke) — 2 points, comme prévu. Lignes **existantes laissées `NULL`** (un
+    doc déjà resegmenté a perdu son original ; backfiller `text_raw` capturerait le faux)
+    → fallback `text_raw` au read. **Aucun site de lecture changé** (rien ne lit
+    `text_source` avant P3). Recovery-only (pas FTS, pas requêté).
   - **P2** — resegment / split / merge **propagent** `text_source` (héritage pour
     split/resegment ; **concat** au merge, séparateur à trancher) au lieu de le perdre.
   - **P3** — UI : exposer l'original au niveau **ligne/groupe** quand `text_source ≠

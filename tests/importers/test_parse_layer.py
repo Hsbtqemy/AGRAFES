@@ -275,11 +275,39 @@ def test_insert_units_writes_all_columns(db_conn) -> None:
     )
     db_conn.commit()
     rows = db_conn.execute(
-        "SELECT n, unit_type, external_id, text_raw, text_norm, meta_json, unit_role"
+        "SELECT n, unit_type, external_id, text_raw, text_norm, meta_json, unit_role, text_source"
         " FROM units WHERE doc_id = ? ORDER BY n",
         (doc_id,),
     ).fetchall()
+    # text_source is set to text_raw at import (ADR-043, P1).
     assert [tuple(r) for r in rows] == [
-        (1, "line", 10, "a", "a", '{"k":1}', "intertitre"),
-        (2, "line", None, "b", "b", None, None),  # unit_role defaults to NULL (7-col parity)
+        (1, "line", 10, "a", "a", '{"k":1}', "intertitre", "a"),
+        (2, "line", None, "b", "b", None, None, "b"),  # unit_role NULL (parity), text_source = text_raw
     ]
+
+
+def test_text_source_equals_text_raw_at_import_docx(db_conn, tmp_path) -> None:
+    """ParsedDoc importer path (via insert_units): text_source captured = text_raw."""
+    p = tmp_path / "d.docx"
+    p.write_bytes(make_docx(["[1] Le chat dort.", "[2] Il pleut."]))
+    import_docx_numbered_lines(conn=db_conn, path=p, language="fr", title="D")
+    rows = db_conn.execute(
+        "SELECT text_raw, text_source FROM units WHERE unit_type = 'line' ORDER BY n"
+    ).fetchall()
+    assert rows
+    assert all(r["text_source"] == r["text_raw"] for r in rows)
+
+
+def test_text_source_equals_text_raw_at_import_conllu(db_conn, tmp_path) -> None:
+    """CoNLL-U importer path (bespoke per-row insert): text_source captured = text_raw."""
+    p = tmp_path / "d.conllu"
+    p.write_text(
+        "# sent_id = 1\n# text = Bonjour.\n1\tBonjour\tbonjour\tINTJ\t_\t_\t0\troot\t_\t_\n\n",
+        encoding="utf-8",
+    )
+    import_conllu(conn=db_conn, path=p, language="fr")
+    rows = db_conn.execute(
+        "SELECT text_raw, text_source FROM units WHERE unit_type = 'line' ORDER BY n"
+    ).fetchall()
+    assert rows
+    assert all(r["text_source"] == r["text_raw"] for r in rows)

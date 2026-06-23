@@ -54,15 +54,18 @@ def insert_units(conn: sqlite3.Connection, doc_id: int, units: list[ParsedUnit])
     path (was duplicated across the importers as ad-hoc ``INSERT INTO units``).
 
     One ``executemany`` covering all columns ; ``unit_role`` defaults to ``NULL`` when the
-    importer didn't set it (byte-identical to the former 7-column inserts). The caller
-    owns the transaction (no commit/rollback here). This is the single place where a new
-    per-unit column (e.g. ``text_source``, ADR-043) gets wired at import.
+    importer didn't set it. The caller owns the transaction (no commit/rollback here).
+
+    ``text_source`` (ADR-043) is set to ``text_raw`` here — the verbatim import text,
+    captured once and never overwritten by curate/resegment/merge/split.
     """
     conn.executemany(
-        "INSERT INTO units (doc_id, unit_type, n, external_id, text_raw, text_norm, meta_json, unit_role)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO units"
+        " (doc_id, unit_type, n, external_id, text_raw, text_norm, meta_json, unit_role, text_source)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
-            (doc_id, u.unit_type, u.n, u.external_id, u.text_raw, u.text_norm, u.meta_json, u.unit_role)
+            (doc_id, u.unit_type, u.n, u.external_id, u.text_raw, u.text_norm,
+             u.meta_json, u.unit_role, u.text_raw)
             for u in units
         ],
     )
