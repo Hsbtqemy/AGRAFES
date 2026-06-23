@@ -4475,12 +4475,12 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         with self._lock():
             conn = self._conn()
             row1 = conn.execute(
-                "SELECT unit_id, external_id, text_raw, text_norm, unit_role, meta_json"
+                "SELECT unit_id, external_id, text_raw, text_norm, unit_role, meta_json, text_source"
                 " FROM units WHERE doc_id=? AND n=? AND unit_type='line'",
                 (doc_id, n1),
             ).fetchone()
             row2 = conn.execute(
-                "SELECT unit_id, external_id, text_raw, text_norm, unit_role, meta_json"
+                "SELECT unit_id, external_id, text_raw, text_norm, unit_role, meta_json, text_source"
                 " FROM units WHERE doc_id=? AND n=? AND unit_type='line'",
                 (doc_id, n2),
             ).fetchone()
@@ -4493,6 +4493,13 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 
             merged_raw = (row1["text_raw"] or "").rstrip() + " " + (row2["text_raw"] or "").lstrip()
             merged_norm = (row1["text_norm"] or "").rstrip() + " " + (row2["text_norm"] or "").lstrip()
+            # ADR-043 P2b: the merged unit's verbatim import original is the
+            # concatenation of each input's original, with the same " " separator
+            # used for text_raw. COALESCE(text_source, text_raw): a unit whose
+            # text_source is NULL (pristine import) contributes its text_raw.
+            src1 = row1["text_source"] if row1["text_source"] is not None else (row1["text_raw"] or "")
+            src2 = row2["text_source"] if row2["text_source"] is not None else (row2["text_raw"] or "")
+            merged_source = src1.rstrip() + " " + src2.lstrip()
 
             # Delete alignment links for both units (keyed by unit_id, not n)
             uid1 = int(row1["unit_id"])
@@ -4520,18 +4527,20 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 action_id,
                 [
                     {
-                        "unit_id":          uid1,
-                        "text_raw_before":  row1["text_raw"],
-                        "text_norm_before": row1["text_norm"] or "",
-                        "unit_role_before": row1["unit_role"],
-                        "meta_json_before": row1["meta_json"],
+                        "unit_id":            uid1,
+                        "text_raw_before":    row1["text_raw"],
+                        "text_norm_before":   row1["text_norm"] or "",
+                        "unit_role_before":   row1["unit_role"],
+                        "meta_json_before":   row1["meta_json"],
+                        "text_source_before": row1["text_source"],
                     },
                     {
-                        "unit_id":          uid2,
-                        "text_raw_before":  row2["text_raw"],
-                        "text_norm_before": row2["text_norm"] or "",
-                        "unit_role_before": row2["unit_role"],
-                        "meta_json_before": row2["meta_json"],
+                        "unit_id":            uid2,
+                        "text_raw_before":    row2["text_raw"],
+                        "text_norm_before":   row2["text_norm"] or "",
+                        "unit_role_before":   row2["unit_role"],
+                        "meta_json_before":   row2["meta_json"],
+                        "text_source_before": row2["text_source"],
                     },
                 ],
             )
@@ -4542,10 +4551,10 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 (uid1, uid2, uid1, uid2),
             )
 
-            # Update unit n1 with merged text
+            # Update unit n1 with merged text + merged import original (ADR-043 P2b)
             conn.execute(
-                "UPDATE units SET text_raw=?, text_norm=? WHERE doc_id=? AND n=?",
-                (merged_raw, merged_norm, doc_id, n1),
+                "UPDATE units SET text_raw=?, text_norm=?, text_source=? WHERE doc_id=? AND n=?",
+                (merged_raw, merged_norm, merged_source, doc_id, n1),
             )
 
             # Delete unit n2
@@ -4605,7 +4614,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         with self._lock():
             conn = self._conn()
             row = conn.execute(
-                "SELECT unit_id, external_id, text_raw, text_norm, unit_role, meta_json"
+                "SELECT unit_id, external_id, text_raw, text_norm, unit_role, meta_json, text_source"
                 " FROM units WHERE doc_id=? AND n=? AND unit_type='line'",
                 (doc_id, unit_n),
             ).fetchone()
@@ -4618,11 +4627,17 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 
             # Delete alignment links for this unit (keyed by unit_id, not n)
             uid = int(row["unit_id"])
-            external_id_before = row["external_id"]
-            text_raw_before    = row["text_raw"]
-            text_norm_before   = row["text_norm"] or ""
-            unit_role_before   = row["unit_role"]
-            meta_json_before   = row["meta_json"]
+            external_id_before  = row["external_id"]
+            text_raw_before     = row["text_raw"]
+            text_norm_before    = row["text_norm"] or ""
+            unit_role_before    = row["unit_role"]
+            meta_json_before    = row["meta_json"]
+            text_source_before  = row["text_source"]
+            # ADR-043 P2b: both halves inherit the split line's verbatim import
+            # original. COALESCE(text_source, text_raw): a pristine line (NULL
+            # text_source) contributes its text_raw as the original both halves
+            # descend from.
+            inherited_source = text_source_before if text_source_before is not None else (text_raw_before or "")
 
             conn.execute(
                 "DELETE FROM alignment_links WHERE"
@@ -4636,17 +4651,17 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 (doc_id, unit_n),
             )
 
-            # Update the original unit with text_a
+            # Update the original unit with text_a, keeping the inherited original
             conn.execute(
-                "UPDATE units SET text_raw=?, text_norm=?, external_id=NULL WHERE doc_id=? AND n=?",
-                (text_a, text_a, doc_id, unit_n),
+                "UPDATE units SET text_raw=?, text_norm=?, external_id=NULL, text_source=? WHERE doc_id=? AND n=?",
+                (text_a, text_a, inherited_source, doc_id, unit_n),
             )
 
-            # Insert new unit at n+1 with text_b
+            # Insert new unit at n+1 with text_b, inheriting the same original
             cur = conn.execute(
-                "INSERT INTO units (doc_id, unit_type, n, external_id, text_raw, text_norm, meta_json)"
-                " VALUES (?, 'line', ?, NULL, ?, ?, NULL)",
-                (doc_id, unit_n + 1, text_b, text_b),
+                "INSERT INTO units (doc_id, unit_type, n, external_id, text_raw, text_norm, meta_json, text_source)"
+                " VALUES (?, 'line', ?, NULL, ?, ?, NULL, ?)",
+                (doc_id, unit_n + 1, text_b, text_b, inherited_source),
             )
             new_uid = int(cur.lastrowid)
 
@@ -4672,11 +4687,12 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 action_id,
                 [
                     {
-                        "unit_id":          uid,
-                        "text_raw_before":  text_raw_before,
-                        "text_norm_before": text_norm_before,
-                        "unit_role_before": unit_role_before,
-                        "meta_json_before": meta_json_before,
+                        "unit_id":            uid,
+                        "text_raw_before":    text_raw_before,
+                        "text_norm_before":   text_norm_before,
+                        "unit_role_before":   unit_role_before,
+                        "meta_json_before":   meta_json_before,
+                        "text_source_before": text_source_before,
                     },
                 ],
             )

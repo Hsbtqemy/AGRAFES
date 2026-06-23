@@ -114,7 +114,7 @@ def _load_snapshots(
     rows = conn.execute(
         """
         SELECT unit_id, text_raw_before, text_norm_before,
-               unit_role_before, meta_json_before
+               unit_role_before, meta_json_before, text_source_before
         FROM prep_action_unit_snapshots
         WHERE action_id = ?
         """,
@@ -122,11 +122,12 @@ def _load_snapshots(
     ).fetchall()
     return [
         {
-            "unit_id":          int(r["unit_id"]),
-            "text_raw_before":  r["text_raw_before"],
-            "text_norm_before": r["text_norm_before"],
-            "unit_role_before": r["unit_role_before"],
-            "meta_json_before": r["meta_json_before"],
+            "unit_id":            int(r["unit_id"]),
+            "text_raw_before":    r["text_raw_before"],
+            "text_norm_before":   r["text_norm_before"],
+            "unit_role_before":   r["unit_role_before"],
+            "meta_json_before":   r["meta_json_before"],
+            "text_source_before": r["text_source_before"],
         }
         for r in rows
     ]
@@ -192,8 +193,8 @@ def _undo_merge_units(
         """
         INSERT INTO units
           (unit_id, doc_id, unit_type, n, external_id,
-           text_raw, text_norm, meta_json, unit_role)
-        VALUES (?, ?, 'line', ?, ?, ?, ?, ?, ?)
+           text_raw, text_norm, meta_json, unit_role, text_source)
+        VALUES (?, ?, 'line', ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             deleted_uid, doc_id, n2, deleted_ext,
@@ -201,14 +202,16 @@ def _undo_merge_units(
             snap_deleted["text_norm_before"],
             snap_deleted["meta_json_before"],
             snap_deleted["unit_role_before"],
+            snap_deleted.get("text_source_before"),
         ),
     )
-    # Restore the kept unit's text + role + meta. external_id was unchanged
-    # by merge but we restore it explicitly to handle quirky pre-action states.
+    # Restore the kept unit's text + role + meta + import original (ADR-043 P2b).
+    # external_id was unchanged by merge but we restore it explicitly to handle
+    # quirky pre-action states.
     conn.execute(
         """
         UPDATE units SET text_raw=?, text_norm=?, external_id=?,
-                         unit_role=?, meta_json=?
+                         unit_role=?, meta_json=?, text_source=?
          WHERE unit_id=?
         """,
         (
@@ -217,6 +220,7 @@ def _undo_merge_units(
             kept_ext,
             snap_kept["unit_role_before"],
             snap_kept["meta_json_before"],
+            snap_kept.get("text_source_before"),
             kept_uid,
         ),
     )
@@ -246,11 +250,12 @@ def _undo_split_unit(
             f"split undo: missing snapshot for split unit {split_uid}",
         )
 
-    # Restore the kept (split) unit from snapshot, including external_id.
+    # Restore the kept (split) unit from snapshot, including external_id and
+    # the verbatim import original (ADR-043 P2b).
     conn.execute(
         """
         UPDATE units SET text_raw=?, text_norm=?, external_id=?,
-                         unit_role=?, meta_json=?
+                         unit_role=?, meta_json=?, text_source=?
          WHERE unit_id=?
         """,
         (
@@ -259,6 +264,7 @@ def _undo_split_unit(
             ext_id_before,
             snap["unit_role_before"],
             snap["meta_json_before"],
+            snap.get("text_source_before"),
             split_uid,
         ),
     )
