@@ -81,6 +81,8 @@ def insert_unit_snapshots(
       - text_raw_before (str | None, optional — pass when the action mutates text_raw)
       - unit_role_before (str | None, optional)
       - meta_json_before (str | None, optional — already serialized JSON or None)
+      - text_source_before (str | None, optional — pass when the action mutates
+        text_source, e.g. merge/split; migration 021, ADR-043 P2b)
     """
     rows = [
         (
@@ -90,6 +92,7 @@ def insert_unit_snapshots(
             s["text_norm_before"],
             s.get("unit_role_before"),
             s.get("meta_json_before"),
+            s.get("text_source_before"),
         )
         for s in snapshots
     ]
@@ -99,8 +102,8 @@ def insert_unit_snapshots(
         """
         INSERT INTO prep_action_unit_snapshots
           (action_id, unit_id, text_raw_before, text_norm_before,
-           unit_role_before, meta_json_before)
-        VALUES (?, ?, ?, ?, ?, ?)
+           unit_role_before, meta_json_before, text_source_before)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
         rows,
     )

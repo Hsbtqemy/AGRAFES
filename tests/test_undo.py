@@ -439,6 +439,160 @@ def test_resegment_markers_propagates_text_source(db_conn: sqlite3.Connection) -
     assert all(r["text_source"] == "ORIG" for r in rows)
 
 
+def _text_source_by_n(conn: sqlite3.Connection, doc_id: int) -> list:
+    return [
+        r["text_source"]
+        for r in conn.execute(
+            "SELECT text_source FROM units WHERE doc_id=? AND unit_type='line' ORDER BY n",
+            (doc_id,),
+        )
+    ]
+
+
+def test_merge_concats_and_undo_restores_text_source(
+    db_conn: sqlite3.Connection,
+) -> None:
+    """ADR-043 P2b — merge concatenates the import originals (COALESCE(text_source,
+    text_raw) for pristine inputs); undo restores each unit's text_source."""
+    from multicorpus_engine.action_history import (
+        ACTION_MERGE_UNITS,
+        insert_unit_snapshots,
+        record_prep_action,
+    )
+    from multicorpus_engine.undo import execute_undo
+
+    doc_id, _ = _seed_doc(
+        db_conn, ["Phrase un.", "Phrase deux.", "Phrase trois."],
+    )
+    # Unit 1 carries a distinct import original; units 2 & 3 stay pristine (NULL).
+    db_conn.execute(
+        "UPDATE units SET text_source='ORIG-UN' WHERE doc_id=? AND n=1", (doc_id,)
+    )
+    db_conn.commit()
+    before_src = _text_source_by_n(db_conn, doc_id)
+    assert before_src == ["ORIG-UN", None, None]
+
+    # Replay merge of n1=1, n2=2 via the same SQL the handler runs (ADR-043 P2b).
+    n1, n2 = 1, 2
+    row1 = db_conn.execute(
+        "SELECT unit_id, external_id, text_raw, text_norm, unit_role, meta_json, text_source"
+        " FROM units WHERE doc_id=? AND n=? AND unit_type='line'", (doc_id, n1),
+    ).fetchone()
+    row2 = db_conn.execute(
+        "SELECT unit_id, external_id, text_raw, text_norm, unit_role, meta_json, text_source"
+        " FROM units WHERE doc_id=? AND n=? AND unit_type='line'", (doc_id, n2),
+    ).fetchone()
+    uid1, uid2 = int(row1["unit_id"]), int(row2["unit_id"])
+    merged_raw  = (row1["text_raw"]  or "").rstrip() + " " + (row2["text_raw"]  or "").lstrip()
+    merged_norm = (row1["text_norm"] or "").rstrip() + " " + (row2["text_norm"] or "").lstrip()
+    src1 = row1["text_source"] if row1["text_source"] is not None else (row1["text_raw"] or "")
+    src2 = row2["text_source"] if row2["text_source"] is not None else (row2["text_raw"] or "")
+    merged_source = src1.rstrip() + " " + src2.lstrip()
+
+    action_id = record_prep_action(
+        db_conn, doc_id=doc_id, action_type=ACTION_MERGE_UNITS,
+        description="merge",
+        context={
+            "merged_unit_ids": [uid1, uid2], "kept_unit_id": uid1,
+            "deleted_unit_id": uid2, "n1": n1, "n2": n2,
+            "kept_external_id_before": row1["external_id"],
+            "deleted_external_id_before": row2["external_id"],
+        },
+    )
+    insert_unit_snapshots(
+        db_conn, action_id,
+        [
+            {"unit_id": uid1, "text_raw_before": row1["text_raw"],
+             "text_norm_before": row1["text_norm"], "unit_role_before": row1["unit_role"],
+             "meta_json_before": row1["meta_json"], "text_source_before": row1["text_source"]},
+            {"unit_id": uid2, "text_raw_before": row2["text_raw"],
+             "text_norm_before": row2["text_norm"], "unit_role_before": row2["unit_role"],
+             "meta_json_before": row2["meta_json"], "text_source_before": row2["text_source"]},
+        ],
+    )
+    db_conn.execute(
+        "UPDATE units SET text_raw=?, text_norm=?, text_source=? WHERE doc_id=? AND n=?",
+        (merged_raw, merged_norm, merged_source, doc_id, n1),
+    )
+    db_conn.execute("DELETE FROM units WHERE doc_id=? AND n=?", (doc_id, n2))
+    db_conn.execute("UPDATE units SET n=n-1 WHERE doc_id=? AND n>?", (doc_id, n2))
+    db_conn.commit()
+
+    after_src = _text_source_by_n(db_conn, doc_id)
+    # n1 now holds "ORIG-UN" + " " + (pristine n2 fell back to its text_raw).
+    assert after_src == ["ORIG-UN Phrase deux.", None]
+
+    execute_undo(db_conn, doc_id)
+    db_conn.commit()
+    assert _text_source_by_n(db_conn, doc_id) == before_src
+
+
+def test_split_inherits_and_undo_restores_text_source(
+    db_conn: sqlite3.Connection,
+) -> None:
+    """ADR-043 P2b — both split halves inherit the line's import original; undo
+    restores the single unit's text_source."""
+    from multicorpus_engine.action_history import (
+        ACTION_SPLIT_UNIT,
+        insert_unit_snapshots,
+        record_prep_action,
+    )
+    from multicorpus_engine.undo import execute_undo
+
+    doc_id, _ = _seed_doc(db_conn, ["Phrase A B C.", "Phrase suivante."])
+    db_conn.execute(
+        "UPDATE units SET text_source='ORIG-FULL' WHERE doc_id=? AND n=1", (doc_id,)
+    )
+    db_conn.commit()
+    before_src = _text_source_by_n(db_conn, doc_id)
+    assert before_src == ["ORIG-FULL", None]
+
+    unit_n, text_a, text_b = 1, "Phrase A", "B C."
+    row = db_conn.execute(
+        "SELECT unit_id, external_id, text_raw, text_norm, unit_role, meta_json, text_source"
+        " FROM units WHERE doc_id=? AND n=? AND unit_type='line'", (doc_id, unit_n),
+    ).fetchone()
+    uid = int(row["unit_id"])
+    text_source_before = row["text_source"]
+    inherited_source = text_source_before if text_source_before is not None else (row["text_raw"] or "")
+
+    db_conn.execute("UPDATE units SET n=n+1 WHERE doc_id=? AND n>?", (doc_id, unit_n))
+    db_conn.execute(
+        "UPDATE units SET text_raw=?, text_norm=?, external_id=NULL, text_source=? WHERE doc_id=? AND n=?",
+        (text_a, text_a, inherited_source, doc_id, unit_n),
+    )
+    cur = db_conn.execute(
+        "INSERT INTO units (doc_id, unit_type, n, external_id, text_raw, text_norm, meta_json, text_source)"
+        " VALUES (?, 'line', ?, NULL, ?, ?, NULL, ?)",
+        (doc_id, unit_n + 1, text_b, text_b, inherited_source),
+    )
+    new_uid = int(cur.lastrowid)
+
+    action_id = record_prep_action(
+        db_conn, doc_id=doc_id, action_type=ACTION_SPLIT_UNIT,
+        description="split",
+        context={
+            "split_unit_id": uid, "split_unit_n": unit_n,
+            "created_unit_id": new_uid, "created_unit_n": unit_n + 1,
+            "external_id_before": row["external_id"],
+        },
+    )
+    insert_unit_snapshots(
+        db_conn, action_id,
+        [{"unit_id": uid, "text_raw_before": row["text_raw"],
+          "text_norm_before": row["text_norm"], "unit_role_before": row["unit_role"],
+          "meta_json_before": row["meta_json"], "text_source_before": row["text_source"]}],
+    )
+    db_conn.commit()
+
+    # Both halves descend from the same original; the untouched line stays pristine.
+    assert _text_source_by_n(db_conn, doc_id) == ["ORIG-FULL", "ORIG-FULL", None]
+
+    execute_undo(db_conn, doc_id)
+    db_conn.commit()
+    assert _text_source_by_n(db_conn, doc_id) == before_src
+
+
 # ---------------------------------------------------------------------------
 # Negative cases
 # ---------------------------------------------------------------------------

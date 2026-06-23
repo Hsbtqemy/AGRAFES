@@ -1210,10 +1210,13 @@ l'import, **jamais réécrit** par curate / resegment / merge / split.
     (héritage : `COALESCE(parent.text_source, parent.text_raw)`) ; l'**undo** de
     resegment le **restaure** (capturé dans le snapshot JSON `units_before`, pas de
     migration). `markers` n'a pas d'undo (forward seul).
-  - **P2b (merge / split)** — à venir. merge **concatène** les sources (séparateur aligné
-    sur `text_raw`, c.-à-d. `" "`) ; split fait **hériter**. Leur undo restaure via les
-    colonnes `*_before` de `prep_action_history` → nécessite une **migration 021**
-    (`text_source_before`). Séparé car couplage forward↔undo + migration.
+  - **P2b (merge / split) — ✅ livré**. **Migration 021** ajoute `text_source_before`
+    à `prep_action_unit_snapshots`. merge **concatène** les originaux des deux unités
+    (`COALESCE(text_source, text_raw)` par entrée, séparateur `" "` aligné sur `text_raw`)
+    et l'écrit sur l'unité conservée ; split fait **hériter** le même original aux deux
+    moitiés (`COALESCE(text_source, text_raw)` de la ligne coupée). L'**undo** des deux
+    restaure `text_source` via la colonne `*_before` du snapshot (NULL ⇒ NULL, donc une
+    fusion/coupure de lignes vierges reste réversible sans clobber).
   - **P3** — UI : exposer l'original au niveau **ligne/groupe** quand `text_source ≠
     text_raw` (les N segments d'une ligne partagent la source) ; (option) export du texte
     source ; fallback `COALESCE(text_source, text_raw)` aux sites de lecture.
