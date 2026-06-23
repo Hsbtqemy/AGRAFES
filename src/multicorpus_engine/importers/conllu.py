@@ -294,8 +294,8 @@ def import_conllu(
             text_norm = normalize(text_raw)
             cur_unit = conn.execute(
                 """
-                INSERT INTO units (doc_id, unit_type, n, external_id, text_raw, text_norm, meta_json)
-                VALUES (?, 'line', ?, ?, ?, ?, ?)
+                INSERT INTO units (doc_id, unit_type, n, external_id, text_raw, text_norm, meta_json, text_source)
+                VALUES (?, 'line', ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     doc_id,
@@ -304,6 +304,7 @@ def import_conllu(
                     text_raw,
                     text_norm,
                     json.dumps(unit_meta, ensure_ascii=False) if unit_meta else None,
+                    text_raw,  # text_source = verbatim import text (ADR-043)
                 ),
             )
             unit_id = cur_unit.lastrowid
