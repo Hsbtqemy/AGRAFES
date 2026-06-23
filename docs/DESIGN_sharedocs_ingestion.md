@@ -192,10 +192,13 @@ moteur/contrat (P4C) :
 - **P4D ✅** — sécurité de la sélection (info format + drapeau par fichier,
   **annulation de lot**) + refacto `_guardedRun` (addendum §10).
 
-**Phase 5 — Détection par fichier (format + langue) ⏳ FIGÉ (addendum §11, ticket P5).**
-Porter la détection de l'import local (`ImportScreen`) dans ShareDocs : chaque fichier
-importé avec **son** format (extension) et **sa** langue (nom). Front-only, aucun
-changement moteur/contrat. Familles (source↔traduction) différées en Phase 6.
+**Phase 5 — Détection par fichier (format + langue) ✅ LIVRÉ** (branche
+`feat/sharedocs-p5-detection` ; addendum §11, ticket P5). La détection de l'import
+local (`ImportScreen`) est extraite dans `lib/importDetect.ts` (**source unique**,
+réutilisée par l'import local ET ShareDocs) : chaque fichier importé avec **son**
+format (extension) et **sa** langue (nom). Front-only, aucun changement moteur/contrat.
+**Écarts assumés à la livraison : voir §11.8.** Familles (source↔traduction) différées
+en Phase 6.
 
 ## 6. Sécurité (tranché)
 
@@ -443,3 +446,36 @@ différées, §11.6).
 
 **Aucun changement** : réutilise `hrefs` + `mode`/`language` par appel ; contrat
 `1.6.29` inchangé.
+
+### 11.8 Livraison — écarts assumés vs le cadrage
+
+Trois écarts par rapport au plan §11.1-11.7, tranchés en cours d'implémentation :
+
+1. **Champ glob `include` retiré** (et non « profil/langue »). Découverte : dès qu'un
+   appel `/import-remote` porte des `hrefs` (ce que Phase 5 fait **toujours**), le
+   backend **bypasse le glob ET le filtre par extension** (`remote/ingest.py`, mode
+   *explicit*). Garder le champ en aurait fait un **no-op silencieux**. Le besoin
+   « sous-ensemble » est couvert par le **panier P4C** (cocher les fichiers voulus) et
+   par le filtrage côté client des extensions inconnues. Le tri connu/inconnu vit
+   désormais dans `importDetect.isKnownImportExt` (source unique, alignée sur la
+   dérivation de mode — corrige une divergence `.conll`). Les helpers P4D devenus
+   morts (`detectFormatFromName`/`modeFormat`/`fileMatchesMode`, et le groupement P4C
+   `groupSelectionForImport`) sont **retirés**, remplacés par `groupDetectedFiles`
+   (groupement par `(parentUrl, mode, langue)`).
+
+2. **Expansion PROPFIND des dossiers cochés différée** (§11.3 « étendre + router »).
+   « Importer ce dossier » et les **fichiers** cochés bénéficient de la détection par
+   fichier ; un **dossier coché** dans « Importer la sélection » est **signalé puis
+   ignoré** (récap + `inlineConfirm`, jamais en silence) — l'utilisateur l'ouvre et
+   utilise « Importer ce dossier ». L'expansion (`webdavList` Depth:1 par dossier
+   coché) reste en suivi (cf. `// NOTE:` dans `ShareDocsImportScreen._importSelection`).
+
+3. **Langue des fichiers TEI.** La langue par fichier (`detectLanguageFromName(nom,
+   défaut)`) est envoyée pour **tous** les fichiers, TEI compris — **identique à
+   l'import local** ([`ImportScreen`], `language: f.language || "und"`). Or
+   `tei_importer.py` fait `tei_lang = language or header_lang or "und"` → la langue
+   passée **écrase le `xml:lang`** du document. Donc un TEI sans token de langue dans
+   son nom est importé avec la langue par défaut (« fr »), comme en import local. C'est
+   un écart vs l'**ancien** ShareDocs (qui autorisait une langue vide pour TEI), assumé
+   pour **rester cohérent avec le menu Import local** (mandat du ticket) ; une
+   détection erronée se rattrape en post-import ou via l'annulation de lot (§11.6).
