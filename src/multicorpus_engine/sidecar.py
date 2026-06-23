@@ -1423,9 +1423,9 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 return
             if "source_field" in params:
                 source_field = str(params.get("source_field", "text_norm")).strip()
-                if source_field not in {"text_norm", "text_raw"}:
+                if source_field not in {"text_norm", "text_raw", "text_source"}:
                     self._send_error(
-                        "export_readable_text params.source_field must be 'text_norm' or 'text_raw'",
+                        "export_readable_text params.source_field must be 'text_norm', 'text_raw' or 'text_source'",
                         code=ERR_VALIDATION,
                         http_status=400,
                     )
@@ -5422,7 +5422,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         )
         line_rows = self._conn().execute(
             """
-            SELECT unit_id, n, external_id, text_norm, unit_role, text_raw
+            SELECT unit_id, n, external_id, text_norm, unit_role, text_raw, text_source
             FROM units
             WHERE doc_id = ? AND unit_type = 'line'
             ORDER BY n
@@ -5438,6 +5438,9 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 "text": row[3],
                 "unit_role": row[4],
                 "text_raw": row[5],
+                # ADR-043 P3: verbatim import original (raw column value, nullable).
+                # The UI reveals it when text_source != text_raw.
+                "text_source": row[6],
             }
             for row in line_rows
         ]
@@ -8659,8 +8662,8 @@ class CorpusServer:
             include_structure = bool(params.get("include_structure", False))
             include_external_id = bool(params.get("include_external_id", True))
             source_field = str(params.get("source_field", "text_norm"))
-            if source_field not in {"text_norm", "text_raw"}:
-                raise ValueError("export_readable_text params.source_field must be 'text_norm' or 'text_raw'")
+            if source_field not in {"text_norm", "text_raw", "text_source"}:
+                raise ValueError("export_readable_text params.source_field must be 'text_norm', 'text_raw' or 'text_source'")
 
             progress_cb(10, f"Exporting readable text ({export_fmt})")
             with lock:

@@ -1217,9 +1217,36 @@ l'import, **jamais réécrit** par curate / resegment / merge / split.
     moitiés (`COALESCE(text_source, text_raw)` de la ligne coupée). L'**undo** des deux
     restaure `text_source` via la colonne `*_before` du snapshot (NULL ⇒ NULL, donc une
     fusion/coupure de lignes vierges reste réversible sans clobber).
-  - **P3** — UI : exposer l'original au niveau **ligne/groupe** quand `text_source ≠
-    text_raw` (les N segments d'une ligne partagent la source) ; (option) export du texte
-    source ; fallback `COALESCE(text_source, text_raw)` aux sites de lecture.
+  - **P3 — cadré (2026-06-23)**. Exposition lecture + export. **Périmètre tranché** :
+    **Prep + export**, **pas** le concordancier (Explorer/`/query` sert à *chercher*, pas
+    à *recouvrer* — y exposer l'original serait du bruit). **Gel des décisions** :
+    - **Sites de lecture** : `GET /units` gagne `text_source` **et** `text_raw` (il ne
+      renvoyait que `text_norm`) ; `GET /documents/preview` gagne `text_source` (il renvoie
+      déjà `text_raw`). On renvoie la **valeur brute** de la colonne (nullable), pas un
+      `COALESCE` : le client a besoin de comparer `text_source` à `text_raw`.
+    - **Garde d'affichage** : montrer l'original ssi `text_source != null && text_source !=
+      text_raw` (verbatim-vs-verbatim). Comparer à `text_raw`, **jamais** à `text_norm`
+      (sinon faux positif sur chaque ligne curatée). Une fusion de lignes vierges
+      (`text_source == text_raw`) ne déclenche donc rien. Garde en **un helper client**.
+    - **Forme UI** : **repli inline** « ⌖ voir l'original d'import » sous l'unité concernée
+      (zéro bruit par défaut, détail à la demande). Granularité **par unité** (chaque
+      segment d'une ligne coupée montre sa propre source — héritée, donc identique entre
+      moitiés) ; le regroupement « N segments → 1 source » est cosmétique et **différé**.
+      Écrans : là où les unités sont listées/éditées (curation, segmentation).
+    - **Export** : `export_readable_text` `source_field` accepte `"text_source"` =
+      `COALESCE(text_source, text_raw)` (une ligne vierge exporte quand même son texte, pas
+      du vide) ; option exposée à l'endpoint export + écran Exports.
+    - **Contrat** : champs **additifs nullable** + nouvelle valeur d'enum `source_field` →
+      bump `CONTRACT_VERSION` + régénération `openapi.json`/snapshot.
+    - **Découpage** : **P3a** backend (read endpoints + export + contrat) ; **P3b** front
+      (repli inline + option export). CI scopes séparés (python / TS).
+  - **P3a (backend) — ✅ livré**. `GET /units` renvoie `text_raw` + `text_source` (valeurs
+    brutes nullable) ; `GET /documents/preview` renvoie `text_source` (+ `text_raw`/`unit_role`
+    déjà émis, désormais documentés au contrat). `export_readable_text` `source_field` accepte
+    `"text_source"` = `COALESCE(text_source, text_raw)` (validé inline aux 2 sites du job).
+    Contrat bumpé **1.6.30** + `openapi.json` régénéré (champs additifs ; snapshot des paths
+    inchangé). Tests : `list_units` expose brut text_raw/text_source, export text_source avec
+    fallback vierge, rejet d'un `source_field` inconnu. **P3b (front)** à suivre.
 - **Relation à Mode A undo** : l'undo snapshot déjà l'état pré-resegment (borné à 14
   actions) ; `text_source` en est le complément **permanent ancré à l'import**, pas un
   doublon. **Hors périmètre** : `external_id`/`alignment_links` restent perdus à la

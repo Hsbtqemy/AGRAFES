@@ -135,6 +135,76 @@ def test_readable_text_export_txt(annotated_corpus, db_conn, tmp_path):
     assert "chat" in body and "pleut" in body
 
 
+def test_readable_text_export_source_field_text_source(db_conn, tmp_path):
+    """ADR-043 P3 — source_field='text_source' exports the verbatim import
+    original, with COALESCE fallback to text_raw for pristine lines."""
+    from multicorpus_engine.exporters.readable_text import export_readable_text
+
+    db_conn.execute(
+        "INSERT INTO documents (doc_id, title, language, created_at) VALUES (1, 'D', 'fr', '2026-01-01')"
+    )
+    # Line 1: a destructive op left text_raw rewritten, text_source = the original.
+    db_conn.execute(
+        "INSERT INTO units (doc_id, n, unit_type, external_id, text_raw, text_norm, text_source)"
+        " VALUES (1, 1, 'line', 1, 'segment courant', 'segment courant', 'PHRASE ORIGINALE')"
+    )
+    # Line 2: pristine (NULL text_source) -> must fall back to text_raw, never blank.
+    db_conn.execute(
+        "INSERT INTO units (doc_id, n, unit_type, external_id, text_raw, text_norm, text_source)"
+        " VALUES (1, 2, 'line', 2, 'ligne vierge', 'ligne vierge', NULL)"
+    )
+    db_conn.commit()
+
+    out_dir = tmp_path / "src"
+    export_readable_text(
+        db_conn, out_dir=out_dir, doc_ids=[1], fmt="txt",
+        include_external_id=False, source_field="text_source",
+    )
+    body = next(out_dir.glob("*.txt")).read_text(encoding="utf-8")
+    assert "PHRASE ORIGINALE" in body          # original surfaced, not the segment
+    assert "segment courant" not in body
+    assert "ligne vierge" in body              # pristine line fell back to text_raw
+
+
+def test_readable_text_export_rejects_unknown_source_field(db_conn, tmp_path):
+    from multicorpus_engine.exporters.readable_text import export_readable_text
+
+    with pytest.raises(ValueError):
+        export_readable_text(db_conn, out_dir=tmp_path / "x", fmt="txt", source_field="nope")
+
+
+def test_readable_text_export_source_repeats_per_segment(db_conn, tmp_path):
+    """ADR-043 P3 — resegmented segments share one parent text_source, so the
+    source export emits that parent line once PER SEGMENT (documented per-unit
+    behaviour). Collapsing is intentionally not done (would drop real duplicate
+    lines). This test pins the repetition so it can't regress silently."""
+    from multicorpus_engine.exporters.readable_text import export_readable_text
+
+    db_conn.execute(
+        "INSERT INTO documents (doc_id, title, language, created_at) VALUES (1, 'D', 'fr', '2026-01-01')"
+    )
+    # Post-resegment state: 3 segments of one line, all inheriting the same
+    # verbatim parent as their text_source.
+    for n, seg in ((1, "A."), (2, "B."), (3, "C.")):
+        db_conn.execute(
+            "INSERT INTO units (doc_id, n, unit_type, external_id, text_raw, text_norm, text_source)"
+            " VALUES (1, ?, 'line', NULL, ?, ?, 'A. B. C.')",
+            (n, seg, seg),
+        )
+    db_conn.commit()
+
+    out_dir = tmp_path / "rep"
+    export_readable_text(
+        db_conn, out_dir=out_dir, doc_ids=[1], fmt="txt",
+        include_external_id=False, source_field="text_source",
+    )
+    body = next(out_dir.glob("*.txt")).read_text(encoding="utf-8")
+    # Content lines (after the "# D [fr]" header + blank line) are the parent
+    # source emitted once per segment, not the segmented text_raw, not collapsed.
+    content = [ln for ln in body.splitlines() if ln and not ln.startswith("# ")]
+    assert content == ["A. B. C.", "A. B. C.", "A. B. C."]
+
+
 def test_readable_text_export_docx(annotated_corpus, db_conn, tmp_path):
     from multicorpus_engine.exporters.readable_text import export_readable_text
 

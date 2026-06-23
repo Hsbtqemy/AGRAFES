@@ -12,7 +12,9 @@ from ..xml_text import xml_escape
 
 
 _VALID_FORMATS = {"txt", "docx", "odt"}
-_VALID_SOURCE_FIELDS = {"text_norm", "text_raw"}
+# text_source = verbatim import original (ADR-043). Rendered as COALESCE(text_source,
+# text_raw) so a pristine line (NULL text_source) still exports its text, not blank.
+_VALID_SOURCE_FIELDS = {"text_norm", "text_raw", "text_source"}
 
 # ── ODT (OpenDocument Text) generation — stdlib only ──────────────────────────
 # DOCX export uses python-docx; ODT has no project dependency (engine stays near
@@ -97,7 +99,7 @@ def _load_doc_units(
     if include_structure:
         rows = conn.execute(
             """
-            SELECT unit_type, n, external_id, text_raw, text_norm
+            SELECT unit_type, n, external_id, text_raw, text_norm, text_source
             FROM units
             WHERE doc_id = ?
             ORDER BY n
@@ -107,7 +109,7 @@ def _load_doc_units(
     else:
         rows = conn.execute(
             """
-            SELECT unit_type, n, external_id, text_raw, text_norm
+            SELECT unit_type, n, external_id, text_raw, text_norm, text_source
             FROM units
             WHERE doc_id = ? AND unit_type = 'line'
             ORDER BY n
@@ -123,7 +125,12 @@ def _render_unit_text(
     source_field: str,
     include_external_id: bool,
 ) -> str:
-    text = row[source_field] or ""
+    if source_field == "text_source":
+        # COALESCE: pristine lines (NULL text_source) fall back to their text_raw
+        # so the export never emits blank lines (ADR-043 P3).
+        text = row["text_source"] or row["text_raw"] or ""
+    else:
+        text = row[source_field] or ""
     if include_external_id and row["external_id"] is not None:
         return f"[{int(row['external_id']):04d}] {text}"
     return str(text)
@@ -148,14 +155,23 @@ def export_readable_text(
         fmt: "txt", "docx" or "odt".
         include_structure: Include `unit_type='structure'` rows when true.
         include_external_id: Prefix line units with `[0001]` style anchors.
-        source_field: `text_norm` (default) or `text_raw`.
+        source_field: `text_norm` (default), `text_raw`, or `text_source`
+            (verbatim import original; COALESCE fallback to `text_raw`).
+
+    Note: with `source_field="text_source"`, the N segments produced by a
+    resegmentation all inherit the *same* parent line as their import original
+    (ADR-043, line-level granularity), so the export emits that line **once per
+    segment** — a faithful per-unit dump, not a de-duplicated reconstruction.
+    Collapsing consecutive-equal sources is intentionally *not* done: without a
+    source-line id (deferred in ADR-043) it would also drop genuine repeated
+    lines (e.g. a refrain), losing data.
     """
 
     fmt_norm = str(fmt or "txt").strip().lower()
     if fmt_norm not in _VALID_FORMATS:
         raise ValueError(f"Unsupported readable text format: {fmt!r}")
     if source_field not in _VALID_SOURCE_FIELDS:
-        raise ValueError("source_field must be 'text_norm' or 'text_raw'")
+        raise ValueError("source_field must be 'text_norm', 'text_raw' or 'text_source'")
 
     out_path = Path(out_dir)
     out_path.mkdir(parents=True, exist_ok=True)
