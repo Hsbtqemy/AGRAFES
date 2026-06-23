@@ -1148,3 +1148,68 @@ reportés. `sidecar.py` reste donc inchangé dans ce lot.
 - Sémantique de concurrence DB préservée (un accès à la fois) ; seule la responsivité
   de `/health`+`/shutdown` sous handler bloqué change. La dette lecture-vs-job
   préexistante est résorbée (tout le dispatch sous lock).
+
+---
+
+## ADR-043 — `text_source` immuable : préserver le texte d'import original (N-04)
+
+**Date:** 2026-06-23
+**Status:** Décidé (arbitrage N-04) — implémentation **phasée** à suivre
+
+**Context**
+`resegment_document` / `resegment_document_markers` (et, dans une moindre mesure,
+merge/split) réinsèrent les unités avec `text_raw = text_norm = phrase segmentée`,
+`external_id = NULL`, `meta_json = NULL`, et **suppriment tous les `alignment_links`**
+du document (avec warning). Le `text_raw` **verbatim** d'origine est donc perdu :
+l'invariant « `text_raw` = texte d'import verbatim » est violé. Conséquence concrète —
+« curer puis resegmenter » fige la curation comme **seule** copie ; au-delà de la
+fenêtre Mode A undo (14 dernières actions), seul le **réimport** restaure l'original.
+Dette connue et assumée (HANDOFF_PREP §1/§4/§7, finding **N-04**).
+
+**Decision**
+Introduire une colonne **`units.text_source` (TEXT, immuable)** = le texte verbatim de
+l'import, **jamais réécrit** par curate / resegment / merge / split.
+
+- **Granularité = ligne d'origine** (tranché). `text_source` capture le texte de l'unité
+  **telle qu'importée**. Quand une ligne est resegmentée/splittée en N unités, les N
+  descendants **héritent du même `text_source`** (le texte de la ligne parente). On ne
+  tente **pas** de reconstruire un « source par phrase » — impossible, la ligne importée
+  n'était pas pré-découpée. À la **fusion** (merge), `text_source` = **concaténation**
+  des sources fusionnées.
+- **Invariant** : posé **une seule fois à l'import** (`text_source = text_raw`) puis
+  **propagé** (jamais recalculé) à travers resegment/split/merge ; curate ne le touche
+  jamais.
+- **Legacy** : colonne **nullable** ; `NULL` = source non capturée (documents importés
+  avant la migration) → **fallback `text_raw`** à l'affichage/export.
+- **alignment_links** : restent supprimés à la resegmentation (les ancres `external_id`
+  changent) — `text_source` **ne les restaure pas**. Ce volet reste couvert par le
+  warning + Mode A undo ; l'ADR **préserve le texte**, pas les liens (hors périmètre).
+
+**Consequences**
+- L'original d'import reste **toujours récupérable** (affichage « original », export,
+  re-curation depuis la source) — la friction « curate-first puis resegment » disparaît.
+- **Dénormalisation assumée** : N segments d'une même ligne partagent une chaîne source
+  (stockage modéré ; la valeur = récupérabilité). 
+- Coût étalé en **phases** :
+  - **P0** (préparatoire) — **centraliser l'insertion des unités** : extraire un helper
+    partagé `insert_units(conn, doc_id, units)` (aligné sur le dataclass `ParsedUnit`)
+    consommé par les **7 importeurs** + segmenter + undo, qui dupliquent aujourd'hui
+    `INSERT INTO units` (shapes quasi-uniformes : `…, meta_json` ± `unit_role`). Refactor
+    **iso-comportement** (couvert par les tests d'import/segmentation/undo) ; rend P1
+    ajoutable en **un seul** point au lieu de 7 (anti-dérive). Nettoyage net en soi.
+  - **P1** — migration 020 `text_source` + peuplement à l'import (`= text_raw`) via le
+    helper P0. Lignes **existantes laissées `NULL`** (un doc déjà resegmenté a perdu son
+    original ; backfiller `text_raw` capturerait le faux original) → fallback `text_raw`
+    au read = comportement actuel. **Aucun site de lecture changé** (rien ne lit
+    `text_source` avant P3).
+  - **P2** — resegment / split / merge **propagent** `text_source` (héritage pour
+    split/resegment ; **concat** au merge, séparateur à trancher) au lieu de le perdre.
+  - **P3** — UI : exposer l'original au niveau **ligne/groupe** quand `text_source ≠
+    text_raw` (les N segments d'une ligne partagent la source) ; (option) export du texte
+    source ; fallback `COALESCE(text_source, text_raw)` aux sites de lecture.
+- **Relation à Mode A undo** : l'undo snapshot déjà l'état pré-resegment (borné à 14
+  actions) ; `text_source` en est le complément **permanent ancré à l'import**, pas un
+  doublon. **Hors périmètre** : `external_id`/`alignment_links` restent perdus à la
+  resegmentation (l'alignement est refait) — le fix préserve le **texte**, pas les liens.
+- Le finding **N-04** passe de « dette assumée » à « **résolu** » une fois P1-P3 livrées.
+- Aucun changement de contrat tant que `text_source` n'est pas exposé en sortie (P3).
