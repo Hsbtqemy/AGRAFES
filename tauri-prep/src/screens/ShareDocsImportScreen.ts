@@ -19,13 +19,14 @@ import type {
   WebdavAuth,
   WebdavAuthMode,
 } from "../lib/sidecarClient.ts";
-import { webdavList, importRemote, deleteDocuments } from "../lib/sidecarClient.ts";
+import { webdavList, importRemote, deleteDocuments, setDocRelation } from "../lib/sidecarClient.ts";
 import type { JobCenter } from "../components/JobCenter.ts";
 import { setHtml, appendHtml, raw, safeHtml } from "../lib/safeHtml.ts";
 import {
   WP_DEFAULT_NUMBERED,
   WP_DEFAULT_PARAGRAPHS,
 } from "../lib/importDetect.ts";
+import { detectFamilyGroups, pickDefaultPivot, type FamilyGroup } from "../lib/familyDetect.ts";
 import {
   authIsComplete,
   authSecret,
@@ -35,6 +36,7 @@ import {
   detectImportFile,
   type DetectedImportFile,
   type DetectedImportGroup,
+  type FamilyLinkChoice,
   folderLabel,
   formatRemoteSize,
   groupDetectedFiles,
@@ -42,6 +44,7 @@ import {
   keyringAccount,
   mergeReports,
   normalizeFolderUrl,
+  resolveFamilyRelations,
   routeEntriesToImport,
   safeDecodeUrl,
   type SelectedRemoteItem,
@@ -121,6 +124,16 @@ const SHAREDOCS_CSS = `
   .prep-sharedocs-screen .prep-sd-mismatch { color: #856404; background: #fff3cd; border-radius: 4px;
     padding: 0 0.3rem; font-size: 0.72rem; font-weight: 600; }
   .prep-sharedocs-screen .prep-sd-sel-confirm, .prep-sharedocs-screen .prep-sd-report-confirm { margin: 0.4rem 0; }
+  .prep-sharedocs-screen .prep-sd-fam-panel { background: #f3eefb; border: 1px solid #d9c9f0; border-radius: 6px;
+    padding: 0.6rem 0.7rem; margin: 0.4rem 0; }
+  .prep-sharedocs-screen .prep-sd-fam-head { font-weight: 600; font-size: 0.82rem; margin: 0 0 0.2rem; }
+  .prep-sharedocs-screen .prep-sd-fam-sub { font-size: 0.74rem; color: var(--color-muted); margin: 0 0 0.5rem; }
+  .prep-sharedocs-screen .prep-sd-fam-group { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;
+    font-size: 0.8rem; margin: 0.25rem 0; }
+  .prep-sharedocs-screen .prep-sd-fam-link { display: flex; align-items: center; gap: 0.35rem; }
+  .prep-sharedocs-screen .prep-sd-fam-link input { width: auto; }
+  .prep-sharedocs-screen .prep-sd-fam-pivot { display: flex; align-items: center; gap: 0.35rem; }
+  .prep-sharedocs-screen .prep-sd-fam-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem; }
 `;
 
 function ensureStyles(): void {
@@ -575,11 +588,28 @@ export class ShareDocsImportScreen {
    * track each in the Job Center, aggregate the per-batch reports into a single one.
    * Returns false if enqueuing a group threw (network/sidecar) — the caller can then
    * keep the selection cart for a retry rather than clearing it.
+   *
+   * `onComplete` (Phase 6) : **barrière de complétion** — appelé une seule fois avec le
+   * rapport agrégé quand **tous** les jobs enquêtés du lot sont terminés (succès **ou**
+   * échec). Sert au câblage des familles, qui exige tous les `doc_id`. Non appelé si
+   * l'enqueue d'un lot a échoué (la batterie est incomplète → on ne lie pas).
    */
-  private async _submitGroups(conn: Conn, groups: DetectedImportGroup[]): Promise<boolean> {
+  private async _submitGroups(
+    conn: Conn,
+    groups: DetectedImportGroup[],
+    onComplete?: (report: ImportRemoteReport | null) => void,
+  ): Promise<boolean> {
     this._report = null;
     this._renderReport();
     this._log(`▶ Import — ${groups.length} lot(s)`);
+    let enqueued = 0;
+    let completed = 0;
+    let allEnqueued = false;
+    const maybeComplete = () => {
+      if (onComplete && allEnqueued && enqueued > 0 && completed === enqueued) {
+        onComplete(this._report);
+      }
+    };
     try {
       for (const g of groups) {
         const job = await importRemote(conn, {
@@ -589,6 +619,7 @@ export class ShareDocsImportScreen {
           hrefs: g.hrefs,
           auth: this._auth,
         });
+        enqueued += 1;
         this._jobCenter?.trackJob(job.job_id, `ShareDocs : ${g.label}`, (done) => {
           const result = done.result;
           if (done.status === "done" && isImportRemoteReport(result)) {
@@ -605,8 +636,12 @@ export class ShareDocsImportScreen {
             this._showToast?.(`✗ ${g.label} : ${msg}`, true);
             this._log(`✗ ${g.label} : ${msg}`, true);
           }
+          completed += 1;
+          maybeComplete();
         });
       }
+      allEnqueued = true;
+      maybeComplete(); // défensif : si tous les jobs ont fini avant la fin de la boucle
       return true;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -614,6 +649,198 @@ export class ShareDocsImportScreen {
       this._log(`✗ ${msg}`, true);
       return false;
     }
+  }
+
+  /**
+   * Flux d'import partagé (« Importer ce dossier » et « Importer la sélection ») avec
+   * gestion des **familles** (Phase 6). Détecte les familles sur l'ensemble résolu ;
+   * si présentes → bannière hybride (pivot heuristique modifiable, décochable) ; sinon
+   * → `inlineConfirm` standard quand il y a des notes. À l'import, câble les relations
+   * `translation_of` après la barrière de fin de lot.
+   */
+  private async _runImportFlow(opts: {
+    conn: Conn;
+    files: DetectedImportFile[];
+    notes: string[];
+    defaultLanguage: string;
+    triggerSel: string;
+    confirmSel: string;
+    onSuccess?: () => void;
+  }): Promise<void> {
+    const { conn, files, notes, defaultLanguage, triggerSel, confirmSel } = opts;
+    const groups = groupDetectedFiles(files);
+    const familyGroups = detectFamilyGroups(files.map((f) => f.href));
+    const summary = `${files.length} fichier(s) → ${groups.length} lot(s)${
+      notes.length ? " ; " + notes.join(" ; ") : ""
+    }`;
+
+    await this._guardedRun(triggerSel, async () => {
+      let choices: FamilyLinkChoice[] = [];
+      if (familyGroups.length > 0) {
+        const res = await this._confirmFamilies(confirmSel, familyGroups, summary, defaultLanguage);
+        if (res === null) return; // annulé
+        choices = res;
+      } else if (notes.length > 0) {
+        const container = this._root?.querySelector<HTMLElement>(confirmSel);
+        if (container) {
+          const ok = await inlineConfirm(container, `${summary}. Importer ?`, {
+            confirmLabel: "Importer",
+            danger: false,
+          });
+          if (!ok) return;
+        }
+      }
+      const ok = await this._submitGroups(
+        conn,
+        groups,
+        choices.length > 0
+          ? (report) => {
+              void this._wireFamilies(conn, report, choices);
+            }
+          : undefined,
+      );
+      if (ok) opts.onSuccess?.();
+    });
+  }
+
+  /**
+   * Bannière hybride de liaison des familles (Phase 6, §12.2.1). Rend un panneau dans
+   * `confirmSel` (pattern `inlineConfirm`) : par famille, une case « Lier » (cochée) et
+   * un sélecteur d'original **pré-sélectionné par heuristique** (`pickDefaultPivot`) mais
+   * modifiable. Résout : `null` (annuler), `[]` (importer sans lier), ou les choix
+   * (groupes cochés). Restaure le contenu original du conteneur à la résolution.
+   */
+  private _confirmFamilies(
+    confirmSel: string,
+    familyGroups: FamilyGroup[],
+    summary: string,
+    defaultLanguage: string,
+  ): Promise<FamilyLinkChoice[] | null> {
+    const container = this._root?.querySelector<HTMLElement>(confirmSel);
+    if (!container) return Promise.resolve([]); // pas de conteneur → importer sans lier
+    const baseName = (s: string) => s.replace(/\\/g, "/").split("/").pop() ?? s;
+
+    return new Promise((resolve) => {
+      const original = container.innerHTML;
+      const savedDisplay = container.style.display;
+      const onKey = (e: KeyboardEvent) => {
+        if (e.key === "Escape") restore(null);
+      };
+      const restore = (answer: FamilyLinkChoice[] | null) => {
+        document.removeEventListener("keydown", onKey);
+        setHtml(container, raw(original));
+        container.style.display = savedDisplay;
+        resolve(answer);
+      };
+
+      const rows = familyGroups.map((g, gi) => {
+        const options = g.files.map(
+          (f) => safeHtml`<option value="${f.path}">${baseName(f.path)} · ${f.lang}</option>`,
+        );
+        return safeHtml`
+          <div class="prep-sd-fam-group">
+            <label class="prep-sd-fam-link">
+              <input type="checkbox" class="prep-sd-fam-check" data-fam="${String(gi)}" checked />
+              Lier « ${baseName(g.stem)} »
+            </label>
+            <label class="prep-sd-fam-pivot">Original :
+              <select class="prep-sd-fam-select" data-fam="${String(gi)}">${options}</select>
+            </label>
+          </div>`;
+      });
+
+      container.style.display = "";
+      setHtml(
+        container,
+        safeHtml`
+        <div class="prep-sd-fam-panel">
+          <p class="prep-sd-fam-head">🔗 ${String(familyGroups.length)} famille(s) détectée(s) — ${summary}</p>
+          <p class="prep-sd-fam-sub">Choisissez l'original de chaque famille (les autres seront liés « traduction de »). Modifiable ensuite dans Métadonnées.</p>
+          ${rows}
+          <div class="prep-sd-fam-actions">
+            <button type="button" class="prep-sd-btn prep-sd-btn--primary" data-fam-ok>Importer + lier</button>
+            <button type="button" class="prep-sd-btn prep-sd-btn--ghost" data-fam-nolink>Importer sans lier</button>
+            <button type="button" class="prep-sd-btn prep-sd-btn--ghost" data-fam-cancel>Annuler</button>
+          </div>
+        </div>`,
+      );
+
+      // Pré-sélection du pivot par heuristique (après rendu — robuste vs attribut `selected`).
+      container.querySelectorAll<HTMLSelectElement>(".prep-sd-fam-select").forEach((sel) => {
+        const gi = Number(sel.dataset.fam);
+        sel.value = pickDefaultPivot(familyGroups[gi], defaultLanguage).path;
+      });
+
+      container.querySelector<HTMLButtonElement>("[data-fam-ok]")?.addEventListener(
+        "click",
+        () => {
+          const choices: FamilyLinkChoice[] = [];
+          familyGroups.forEach((g, gi) => {
+            const check = container.querySelector<HTMLInputElement>(
+              `.prep-sd-fam-check[data-fam="${gi}"]`,
+            );
+            if (!check?.checked) return;
+            const sel = container.querySelector<HTMLSelectElement>(
+              `.prep-sd-fam-select[data-fam="${gi}"]`,
+            );
+            const pivotKey = sel?.value || pickDefaultPivot(g, defaultLanguage).path;
+            const childKeys = g.files.map((f) => f.path).filter((k) => k !== pivotKey);
+            choices.push({ pivotKey, childKeys });
+          });
+          restore(choices);
+        },
+        { once: true },
+      );
+      container
+        .querySelector<HTMLButtonElement>("[data-fam-nolink]")
+        ?.addEventListener("click", () => restore([]), { once: true });
+      container
+        .querySelector<HTMLButtonElement>("[data-fam-cancel]")
+        ?.addEventListener("click", () => restore(null), { once: true });
+      document.addEventListener("keydown", onKey);
+    });
+  }
+
+  /**
+   * Crée les relations `translation_of` après la barrière de fin de lot (Phase 6, §12.3).
+   * Résout les choix contre le rapport agrégé (`resolveFamilyRelations`, pur) puis appelle
+   * `setDocRelation` (upsert idempotent) par paire ; échec par paire reporté, non bloquant.
+   * Récap final (créées / non liées / familles sans original importé).
+   */
+  private async _wireFamilies(
+    conn: Conn,
+    report: ImportRemoteReport | null,
+    choices: FamilyLinkChoice[],
+  ): Promise<void> {
+    if (!report) {
+      this._showToast?.("Import terminé sans rapport — relations de famille non créées.", true);
+      return;
+    }
+    const plan = resolveFamilyRelations(choices, report);
+    let created = 0;
+    let failed = 0;
+    for (const rel of plan.relations) {
+      try {
+        await setDocRelation(conn, {
+          doc_id: rel.childDocId,
+          relation_type: "translation_of",
+          target_doc_id: rel.pivotDocId,
+        });
+        created += 1;
+      } catch (err) {
+        failed += 1;
+        const msg = err instanceof Error ? err.message : String(err);
+        this._log(`✗ relation famille (doc ${rel.childDocId} → ${rel.pivotDocId}) : ${msg}`, true);
+      }
+    }
+    const parts = [`${created} relation(s) « traduction de » créée(s)`];
+    const notLinked = plan.unlinkedMembers + failed;
+    if (notLinked > 0) parts.push(`${notLinked} non liée(s)`);
+    if (plan.unlinkableGroups > 0) parts.push(`${plan.unlinkableGroups} famille(s) sans original importé`);
+    const recap = `🔗 ${parts.join(" ; ")}`;
+    const isWarn = failed > 0 || plan.unlinkableGroups > 0 || plan.unlinkedMembers > 0;
+    this._showToast?.(recap, isWarn);
+    this._log(recap, isWarn);
   }
 
   private async _runImport(): Promise<void> {
@@ -641,21 +868,14 @@ export class ShareDocsImportScreen {
       );
       return;
     }
-    const groups = groupDetectedFiles(files);
-
-    await this._guardedRun(
-      "#prep-sd-import-btn",
-      async () => {
-        await this._submitGroups(conn, groups);
-      },
-      ignored > 0
-        ? {
-            containerSel: "#prep-sd-import-confirm",
-            message: `${files.length} fichier(s) → ${groups.length} lot(s) ; ${ignored} ignoré(s) (extension non reconnue). Importer ?`,
-            opts: { confirmLabel: "Importer", danger: false },
-          }
-        : undefined,
-    );
+    await this._runImportFlow({
+      conn,
+      files,
+      notes: ignored > 0 ? [`${ignored} ignoré(s) (extension non reconnue)`] : [],
+      defaultLanguage: form.defaultLanguage,
+      triggerSel: "#prep-sd-import-btn",
+      confirmSel: "#prep-sd-import-confirm",
+    });
   }
 
   // ─── Sélection multiple (panier, P4C) ───────────────────────────────────────
@@ -800,27 +1020,20 @@ export class ShareDocsImportScreen {
       this._showToast?.(why, true);
       return;
     }
-    const groups = groupDetectedFiles(deduped);
-
     const notes: string[] = [];
     if (ignored > 0) notes.push(`${ignored} ignoré(s) (extension non reconnue)`);
     if (subfolders > 0) notes.push(`${subfolders} sous-dossier(s) non développé(s)`);
     if (failed.length > 0) notes.push(`${failed.length} dossier(s) illisible(s) ignoré(s)`);
 
-    await this._guardedRun(
-      "#prep-sd-sel-import",
-      async () => {
-        const ok = await this._submitGroups(conn, groups);
-        if (ok) this._clearSelection();
-      },
-      notes.length > 0
-        ? {
-            containerSel: "#prep-sd-sel-confirm",
-            message: `${deduped.length} fichier(s) → ${groups.length} lot(s) ; ${notes.join(" ; ")}. Importer ?`,
-            opts: { confirmLabel: "Importer", danger: false },
-          }
-        : undefined,
-    );
+    await this._runImportFlow({
+      conn,
+      files: deduped,
+      notes,
+      defaultLanguage: form.defaultLanguage,
+      triggerSel: "#prep-sd-sel-import",
+      confirmSel: "#prep-sd-sel-confirm",
+      onSuccess: () => this._clearSelection(),
+    });
   }
 
   // ─── Rendering ──────────────────────────────────────────────────────────────

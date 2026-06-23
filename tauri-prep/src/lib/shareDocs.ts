@@ -316,6 +316,65 @@ export function dedupeDetectedFiles(files: DetectedImportFile[]): DetectedImport
   return out;
 }
 
+/**
+ * Choix de liaison d'une famille décidé dans la bannière (Phase 6) : l'original (pivot)
+ * et ses traductions, identifiés par leur **clé** = `source_url`/href (unique, évite les
+ * collisions de noms entre dossiers). Seuls les groupes que l'utilisateur a laissés
+ * cochés produisent un choix ; `childKeys` exclut déjà le pivot.
+ */
+export interface FamilyLinkChoice {
+  pivotKey: string;
+  childKeys: string[];
+}
+
+/** Plan de relations résolu contre le rapport d'import : paires liables + comptes d'écarts. */
+export interface FamilyRelationPlan {
+  /** Relations `translation_of` à créer (enfant → pivot), doc_ids résolus. */
+  relations: Array<{ childDocId: number; pivotDocId: number; childKey: string }>;
+  /** Membres écartés faute de `doc_id` (import échoué). */
+  unlinkedMembers: number;
+  /** Groupes non liables car le pivot n'a pas de `doc_id`. */
+  unlinkableGroups: number;
+}
+
+/**
+ * Résout les choix de familles contre le rapport d'import agrégé (Phase 6, §12.3) :
+ * mappe chaque clé (`source_url`) → `doc_id` (renseigné pour `imported` **et**
+ * `skipped-duplicate`), puis produit les relations `translation_of` enfant→pivot
+ * liables. Pivot sans doc_id → groupe ignoré (`unlinkableGroups`) ; membre sans doc_id
+ * → écarté (`unlinkedMembers`). Pur : la création réelle (`setDocRelation`) est faite
+ * par l'appelant.
+ */
+export function resolveFamilyRelations(
+  choices: FamilyLinkChoice[],
+  report: ImportRemoteReport,
+): FamilyRelationPlan {
+  const docIdByKey = new Map<string, number>();
+  for (const f of report.files) {
+    if (typeof f.doc_id === "number") docIdByKey.set(f.source_url, f.doc_id);
+  }
+  const relations: FamilyRelationPlan["relations"] = [];
+  let unlinkedMembers = 0;
+  let unlinkableGroups = 0;
+  for (const c of choices) {
+    const pivotDocId = docIdByKey.get(c.pivotKey);
+    if (pivotDocId === undefined) {
+      unlinkableGroups += 1;
+      continue;
+    }
+    for (const childKey of c.childKeys) {
+      const childDocId = docIdByKey.get(childKey);
+      if (childDocId === undefined) {
+        unlinkedMembers += 1;
+        continue;
+      }
+      if (childDocId === pivotDocId) continue; // garde-fou (clé pivot dans childKeys)
+      relations.push({ childDocId, pivotDocId, childKey });
+    }
+  }
+  return { relations, unlinkedMembers, unlinkableGroups };
+}
+
 /** Merge two batch reports (P4C aggregates the reports of several submissions). */
 export function mergeReports(
   a: ImportRemoteReport | null,

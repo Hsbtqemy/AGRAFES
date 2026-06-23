@@ -6,6 +6,7 @@ import {
   buildWebdavAuth,
   dedupeDetectedFiles,
   detectImportFile,
+  resolveFamilyRelations,
   folderLabel,
   formatRemoteSize,
   groupDetectedFiles,
@@ -460,6 +461,95 @@ describe("groupDetectedFiles (Phase 5)", () => {
 
   it("liste vide → aucun lot", () => {
     expect(groupDetectedFiles([])).toEqual([]);
+  });
+});
+
+describe("resolveFamilyRelations (Phase 6)", () => {
+  // Construit un rapport import-remote minimal à partir de (source_url, doc_id|null).
+  const report = (files: Array<[string, number | null]>): ImportRemoteReport => ({
+    url: "https://x/", mode: "docx_numbered_lines",
+    total: files.length, imported: 0, skipped_duplicate: 0, skipped_filtered: 0,
+    skipped_oversize: 0, errors: 0,
+    files: files.map(([source_url, doc_id]) => ({
+      source_url, name: source_url.split("/").pop() ?? source_url,
+      status: doc_id === null ? "error" : "imported", doc_id,
+    })),
+  });
+
+  it("famille pivot+2 traductions toutes importées → 2 relations enfant→pivot", () => {
+    const plan = resolveFamilyRelations(
+      [{ pivotKey: "https://x/roman_fr.docx", childKeys: ["https://x/roman_en.docx", "https://x/roman_de.docx"] }],
+      report([["https://x/roman_fr.docx", 1], ["https://x/roman_en.docx", 2], ["https://x/roman_de.docx", 3]]),
+    );
+    expect(plan.relations).toEqual([
+      { childDocId: 2, pivotDocId: 1, childKey: "https://x/roman_en.docx" },
+      { childDocId: 3, pivotDocId: 1, childKey: "https://x/roman_de.docx" },
+    ]);
+    expect(plan.unlinkedMembers).toBe(0);
+    expect(plan.unlinkableGroups).toBe(0);
+  });
+
+  it("membre skipped-duplicate (doc_id présent) → lié normalement", () => {
+    // skipped-duplicate porte un doc_id dans le rapport → liable.
+    const r = report([["https://x/roman_fr.docx", 1], ["https://x/roman_en.docx", 7]]);
+    r.files[1].status = "skipped-duplicate";
+    const plan = resolveFamilyRelations(
+      [{ pivotKey: "https://x/roman_fr.docx", childKeys: ["https://x/roman_en.docx"] }],
+      r,
+    );
+    expect(plan.relations).toEqual([{ childDocId: 7, pivotDocId: 1, childKey: "https://x/roman_en.docx" }]);
+  });
+
+  it("membre en erreur (doc_id null) → écarté, compté unlinkedMembers", () => {
+    const plan = resolveFamilyRelations(
+      [{ pivotKey: "https://x/roman_fr.docx", childKeys: ["https://x/roman_en.docx", "https://x/roman_de.docx"] }],
+      report([["https://x/roman_fr.docx", 1], ["https://x/roman_en.docx", 2], ["https://x/roman_de.docx", null]]),
+    );
+    expect(plan.relations).toEqual([{ childDocId: 2, pivotDocId: 1, childKey: "https://x/roman_en.docx" }]);
+    expect(plan.unlinkedMembers).toBe(1);
+    expect(plan.unlinkableGroups).toBe(0);
+  });
+
+  it("pivot sans doc_id → groupe non liable, aucune relation", () => {
+    const plan = resolveFamilyRelations(
+      [{ pivotKey: "https://x/roman_fr.docx", childKeys: ["https://x/roman_en.docx"] }],
+      report([["https://x/roman_fr.docx", null], ["https://x/roman_en.docx", 2]]),
+    );
+    expect(plan.relations).toEqual([]);
+    expect(plan.unlinkableGroups).toBe(1);
+    expect(plan.unlinkedMembers).toBe(0);
+  });
+
+  it("plusieurs familles indépendantes", () => {
+    const plan = resolveFamilyRelations(
+      [
+        { pivotKey: "https://x/a_fr.docx", childKeys: ["https://x/a_en.docx"] },
+        { pivotKey: "https://x/b_en.docx", childKeys: ["https://x/b_fr.docx"] },
+      ],
+      report([
+        ["https://x/a_fr.docx", 1], ["https://x/a_en.docx", 2],
+        ["https://x/b_en.docx", 3], ["https://x/b_fr.docx", 4],
+      ]),
+    );
+    expect(plan.relations).toEqual([
+      { childDocId: 2, pivotDocId: 1, childKey: "https://x/a_en.docx" },
+      { childDocId: 4, pivotDocId: 3, childKey: "https://x/b_fr.docx" },
+    ]);
+  });
+
+  it("clé absente du rapport → membre écarté (unlinkedMembers)", () => {
+    const plan = resolveFamilyRelations(
+      [{ pivotKey: "https://x/roman_fr.docx", childKeys: ["https://x/absent.docx"] }],
+      report([["https://x/roman_fr.docx", 1]]),
+    );
+    expect(plan.relations).toEqual([]);
+    expect(plan.unlinkedMembers).toBe(1);
+  });
+
+  it("choix vide → plan vide", () => {
+    expect(resolveFamilyRelations([], report([["https://x/a.docx", 1]]))).toEqual({
+      relations: [], unlinkedMembers: 0, unlinkableGroups: 0,
+    });
   });
 });
 

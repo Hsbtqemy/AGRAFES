@@ -494,3 +494,94 @@ Trois écarts par rapport au plan §11.1-11.7, tranchés en cours d'implémentat
    (au lieu de `"und"`) pour un TEI au champ vide. Le champ langue d'un TEI affiche le
    placeholder « `xml:lang` » (vide = le document décide ; renseigner = forcer). Le panier
    ShareDocs affiche « `tei · xml:lang` » pour un TEI sans token.
+
+## 12. Addendum — familles à l'import ShareDocs (Phase 6, ✅ livré 2026-06-23)
+
+**Livraison** : P6A (module partagé `familyDetect` + `ImportScreen` délègue) et P6B
+(détection + bannière hybride + barrière `_submitGroups.onComplete` + câblage
+`_wireFamilies` via `resolveFamilyRelations` pur) livrés sur `feat/sharedocs-p6-families`.
+Conforme aux décisions §12.2. Front-only, aucun changement moteur/contrat.
+
+> Brancher la création de relations `translation_of` à l'import ShareDocs, comme le
+> dialogue post-import du menu Import **local** (Sprint 8 du système familles). **Le
+> système familles est déjà entièrement construit** (`docs/BACKLOG_FAMILLES.md`
+> Sprints 1-8, vérifiés au code : `/families`, segment/align/audit par famille, export
+> TMX/bilingue, concordancier cross-famille, curation propagée). Phase 6 est le **seul
+> maillon manquant côté ShareDocs** : aujourd'hui un import par lot ne crée aucune
+> relation. **Front-only, aucun changement moteur/contrat** — réutilise
+> `POST /doc_relations/set`.
+
+### 12.1 Briques réutilisées (vérifiées au code)
+
+- **Détection** : `ImportScreen.detectFamilyGroups(paths)` — groupe par **radical** (nom
+  sans le token de langue) et retient les groupes de **≥2 fichiers** même radical /
+  langues différentes. À **extraire** dans un module pur partagé (même protocole que
+  `importDetect`, §11.2) ; l'import local délègue ensuite (convergence, sans changement
+  de comportement).
+- **Relation** : `setDocRelation({doc_id, relation_type, target_doc_id})` →
+  `POST /doc_relations/set`, **upsert idempotent** sur `(doc_id, relation_type,
+  target_doc_id)` (ré-import sûr — `action` = `created`/`updated`). Convention :
+  `doc_id` = enfant (traduction), `target_doc_id` = pivot (original).
+- **Mapping fichier → doc_id** : le rapport `import-remote` expose par fichier
+  `{name, source_url, doc_id, status}` ; `doc_id` est renseigné pour `imported`
+  **et** `skipped-duplicate` → un membre déjà présent au corpus reste liable.
+
+### 12.2 Décisions figées
+
+1. **Choix du pivot — hybride.** Bannière pré-import listant les familles détectées ;
+   pivot **pré-sélectionné par heuristique** (langue par défaut du formulaire si présente
+   dans le groupe, sinon 1ʳᵉ langue alphabétique) mais **sélecteur modifiable** par groupe ;
+   case par groupe pour **importer sans lier**. Câblage automatique après import. La
+   correction reste **toujours** possible dans MetadataScreen (panneau famille, Sprint 1).
+2. **Type de relation** : `translation_of` **uniquement** (un groupe « même radical,
+   langues différentes » = traductions ; `excerpt_of` n'est pas détectable par token de nom).
+3. **Portée** : tout le lot d'import, **multi-dossiers** (le panier P4C est cross-dossier ;
+   l'utilisateur a sélectionné les fichiers ensemble). La détection tourne sur l'ensemble
+   **résolu** (après expansion des dossiers cochés, §11.8 #2).
+4. **Familles partielles** : un membre en erreur (pas de `doc_id`) → câbler les paires
+   restantes et **signaler** au récap ; ne pas abandonner le groupe entier (cohérent avec
+   « les erreurs n'interrompent pas le lot »). Si le **pivot** n'a pas de doc_id → groupe
+   non liable, signalé.
+5. **Membres `skipped-duplicate`** : liés normalement (doc_id connu, upsert idempotent).
+
+### 12.3 Flux
+
+1. **Détection** : `detectFamilyGroups(noms résolus)` → groupes `(radical, membres
+   {nom, langue})`. Bannière pré-import (pivot heuristique éditable, décochable).
+2. **Import du lot** (inchangé) : un `import-remote` par groupe `(parent, mode, langue)`,
+   suivi Job Center, rapports agrégés.
+3. **Câblage — après la barrière de fin de lot** (tous les jobs terminés, rapport agrégé) :
+   pour chaque famille cochée, résoudre `nom → doc_id` via le rapport, puis pour chaque
+   membre ≠ pivot ayant un doc_id : `setDocRelation({doc_id: membre, relation_type:
+   "translation_of", target_doc_id: pivot})`.
+4. **Récap** : « N relation(s) créée(s) ; M membre(s) non liés (import échoué / pivot
+   manquant) » ajouté au rapport de lot.
+
+### 12.4 UI
+
+- Bannière pré-import « 🔗 N familles détectées » (réutilise le rendu de la bannière
+  locale `_renderFamilyDetectionBanner`, **namespacée `prep-sd-*`**), au-dessus des
+  boutons d'import. Boutons : « Importer + lier » / « Importer sans lier ».
+- Le récap de relations s'ajoute au rapport de lot existant.
+
+### 12.5 Sécurité / robustesse
+
+- Aucune surface réseau nouvelle (relations locales via `/doc_relations/set`).
+- Câblage **après** la barrière de fin de lot → pas de course sur les `doc_id` ; idempotent.
+- Échec d'un `setDocRelation` reporté par groupe, n'interrompt pas les autres.
+
+### 12.6 Hors périmètre Phase 6
+
+- **Rattachement à une famille *existante*** (pivot hors lot, déjà au corpus) : la v1 ne
+  lie qu'**au sein du lot** ; le rattachement à un parent pré-existant se fait dans
+  MetadataScreen (déjà construit).
+- `excerpt_of` automatique ; segmentation/alignement auto post-liaison (l'utilisateur
+  lance « Segmenter / Aligner la famille » depuis MetadataScreen / AlignPanel, déjà
+  construits).
+
+### 12.7 Tests
+
+- Vitest : `detectFamilyGroups` extrait (radical/token, seuil ≥2, langues) ; heuristique
+  de pivot ; mapping `nom → doc_id` depuis un rapport agrégé fixture (mêlant `imported`,
+  `skipped-duplicate`, `error`) ; construction des appels `setDocRelation` (pivot exclu,
+  membres sans doc_id exclus). Non-régression de la bannière locale.

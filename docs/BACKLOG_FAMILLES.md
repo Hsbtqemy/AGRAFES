@@ -189,16 +189,25 @@
 
 ## Ordre d'exécution recommandé
 
+> **État réel (vérifié au code 2026-06-23)** : les Sprints 1-8 sont **tous livrés** —
+> endpoints `/families`, `/families/{id}/segment|align|curation_status`, `/export/tmx`,
+> `/export/bilingual`, query `include_aligned`/`family_id`, `acknowledge_source_change`
+> présents dans `sidecar.py`. (La barre ci-dessous montrait à tort seuls les Sprints 1 & 8.)
+
 ```
-Sprint 1  ████████████████████  Familles/statut      ← TERMINÉ
-Sprint 2  ░░░░░░░░░░░░░░░░░░░░  Segmentation calibrée
-Sprint 3  ░░░░░░░░░░░░░░░░░░░░  Alignement guidé
-Sprint 4  ░░░░░░░░░░░░░░░░░░░░  Audit famille
-Sprint 5  ░░░░░░░░░░░░░░░░░░░░  Export TMX/bilingue
-Sprint 6  ░░░░░░░░░░░░░░░░░░░░  Concordancier cross-famille
-Sprint 7  ░░░░░░░░░░░░░░░░░░░░  Curation propagée
-Sprint 8  ████████████████████  Import groupé        ← TERMINÉ
+Sprint 1  ████████████████████  Familles/statut             ← LIVRÉ
+Sprint 2  ████████████████████  Segmentation calibrée       ← LIVRÉ
+Sprint 3  ████████████████████  Alignement guidé            ← LIVRÉ
+Sprint 4  ████████████████████  Audit famille               ← LIVRÉ
+Sprint 5  ████████████████████  Export TMX/bilingue         ← LIVRÉ
+Sprint 6  ████████████████████  Concordancier cross-famille ← LIVRÉ
+Sprint 7  ████████████████████  Curation propagée           ← LIVRÉ
+Sprint 8  ████████████████████  Import groupé (local)       ← LIVRÉ
 ```
+
+> **Reste** côté **ShareDocs** : porter la création de relations à l'import par lot
+> (auto-détection + `translation_of` post-import), comme le Sprint 8 le fait pour
+> l'import local — cf. `DESIGN_sharedocs_ingestion.md` §12 (Phase 6).
 
 ---
 

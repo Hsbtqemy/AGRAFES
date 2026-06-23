@@ -27,8 +27,8 @@ import {
   deriveModeFromExt,
   normalizeModeForExt,
   detectLanguageForMode,
-  LANG_RE,
 } from "../lib/importDetect.ts";
+import { detectFamilyGroups, type FamilyGroup } from "../lib/familyDetect.ts";
 
 /** Normalise un chemin pour détecter les doublons (séparateurs + casse + préfixe long Windows). */
 export function normalizeImportPath(p: string): string {
@@ -1430,34 +1430,11 @@ export class ImportScreen {
   // ---------------------------------------------------------------------------
   // Sprint 8 — filename language detection
   // ---------------------------------------------------------------------------
-
-  /** Groups files by common stem when they differ only in the language token.
-   *  Returns an array of groups (≥2 files) that share the same stem + extension. */
-  static detectFamilyGroups(paths: string[]): Array<{ stem: string; files: Array<{ path: string; lang: string }> }> {
-    const byNorm = new Map<string, Array<{ path: string; lang: string }>>();
-
-    for (const p of paths) {
-      const fname = p.replace(/\\/g, "/").split("/").pop() ?? p;
-      const m = fname.match(LANG_RE);
-      if (!m) continue;
-      const lang = m[1].toLowerCase();
-      const ext = fname.split(".").pop()?.toLowerCase() ?? "";
-      // Stem = everything before the language token
-      const stem = fname.slice(0, fname.length - m[0].length) + "." + ext;
-      const key = stem.toLowerCase();
-      if (!byNorm.has(key)) byNorm.set(key, []);
-      byNorm.get(key)!.push({ path: p, lang });
-    }
-
-    const groups: Array<{ stem: string; files: Array<{ path: string; lang: string }> }> = [];
-    for (const [stem, files] of byNorm) {
-      if (files.length >= 2) groups.push({ stem, files });
-    }
-    return groups;
-  }
+  // La détection de familles (radical + token de langue) vit désormais dans le module
+  // pur partagé `lib/familyDetect.ts` (réutilisé par ShareDocs — Phase 6). Cf. DESIGN §12.
 
   /** Render the family-proposal banner inside the screen root when groups are detected. */
-  private _renderFamilyDetectionBanner(groups: ReturnType<typeof ImportScreen.detectFamilyGroups>): void {
+  private _renderFamilyDetectionBanner(groups: FamilyGroup[]): void {
     const existing = this._root?.querySelector("#imp-family-detect-banner");
     if (existing) existing.remove();
     if (groups.length === 0) return;
@@ -1514,7 +1491,7 @@ export class ImportScreen {
     const paths = this._files
       .filter(f => f.status === "pending")
       .map(f => f.path);
-    const groups = ImportScreen.detectFamilyGroups(paths);
+    const groups = detectFamilyGroups(paths);
     this._renderFamilyDetectionBanner(groups);
   }
 
