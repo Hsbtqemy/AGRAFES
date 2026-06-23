@@ -13,6 +13,13 @@ import type {
   WebdavAuth,
   WebdavAuthMode,
 } from "./sidecarClient.ts";
+import {
+  deriveModeFromExt,
+  detectLanguageForMode,
+  extFromFileName,
+  isKnownImportExt,
+  normalizeModeForExt,
+} from "./importDetect.ts";
 
 /**
  * Build the auth object from raw form fields, keeping only the fields relevant to
@@ -217,6 +224,54 @@ export interface DetectedImportGroup {
 }
 
 /**
+ * Per-file import params (mode + langue) dérivés d'un nom de fichier distant — réutilise
+ * la détection de l'import local (importDetect, source unique). Retourne `null` quand
+ * l'extension n'est pas un format importable : le fichier est alors ignoré (ni importé,
+ * ni en erreur), cf. DESIGN §11.3. La langue suit `detectLanguageForMode` : `undefined`
+ * pour un TEI sans token (le `xml:lang` du document fait foi).
+ */
+export function detectImportFile(
+  name: string,
+  href: string,
+  parentUrl: string,
+  profile: string,
+  defaultLanguage: string,
+): DetectedImportFile | null {
+  const ext = extFromFileName(name);
+  if (!isKnownImportExt(ext)) return null;
+  const mode = normalizeModeForExt(deriveModeFromExt(ext, profile), ext);
+  const language = detectLanguageForMode(mode, name, defaultLanguage);
+  return { href, name, parentUrl, mode, language };
+}
+
+/**
+ * Route les entrées d'un dossier WebDAV (Depth:1) en fichiers importables détectés.
+ * **Non-récursif** : les sous-dossiers sont comptés (`subfolders`) puis ignorés. Les
+ * extensions inconnues sont comptées (`ignored`) sans erreur. Source unique du routage,
+ * partagée par l'import « ce dossier » et l'expansion des dossiers cochés (Phase 5).
+ */
+export function routeEntriesToImport(
+  entries: RemoteEntry[],
+  parentUrl: string,
+  profile: string,
+  defaultLanguage: string,
+): { files: DetectedImportFile[]; ignored: number; subfolders: number } {
+  const files: DetectedImportFile[] = [];
+  let ignored = 0;
+  let subfolders = 0;
+  for (const e of entries) {
+    if (e.is_dir) {
+      subfolders += 1;
+      continue;
+    }
+    const det = detectImportFile(e.name, e.href, parentUrl, profile, defaultLanguage);
+    if (det) files.push(det);
+    else ignored += 1;
+  }
+  return { files, ignored, subfolders };
+}
+
+/**
  * Group per-file-detected files into import submissions keyed by
  * (parentUrl, mode, language) — one `import-remote` call per group, each sending
  * the group's `hrefs`. Insertion order of first occurrence is preserved. Files must
@@ -241,6 +296,24 @@ export function groupDetectedFiles(files: DetectedImportFile[]): DetectedImportG
     g.label = `${folderLabel(g.url)} · ${g.mode} · ${g.language ?? "xml:lang"} (${n} fichier${n > 1 ? "s" : ""})`;
   }
   return groups;
+}
+
+/**
+ * Dedup detected files by `href`, preserving first occurrence (Phase 5 — expansion
+ * des dossiers cochés). A file can surface twice : coché directement **et** découvert
+ * via l'expansion PROPFIND de son dossier parent lui aussi coché. Sans dédup, son
+ * `href` apparaîtrait deux fois dans le même groupe → double import. Le premier vu
+ * gagne (le fichier explicitement coché est traité avant l'expansion).
+ */
+export function dedupeDetectedFiles(files: DetectedImportFile[]): DetectedImportFile[] {
+  const seen = new Set<string>();
+  const out: DetectedImportFile[] = [];
+  for (const f of files) {
+    if (seen.has(f.href)) continue;
+    seen.add(f.href);
+    out.push(f);
+  }
+  return out;
 }
 
 /** Merge two batch reports (P4C aggregates the reports of several submissions). */

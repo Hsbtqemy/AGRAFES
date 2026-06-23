@@ -26,7 +26,7 @@ import {
   modeOptionsForExt,
   deriveModeFromExt,
   normalizeModeForExt,
-  detectLanguageFromName,
+  detectLanguageForMode,
   LANG_RE,
 } from "../lib/importDetect.ts";
 
@@ -587,7 +587,9 @@ export class ImportScreen {
     this._files.push({
       path,
       mode,
-      language: detectLanguageFromName(fileName, defaultLang),
+      // TEI sans token de langue → champ vide = le xml:lang du document fait foi
+      // (DESIGN §11.8, aligné sur ShareDocs). Les autres formats : détecté ou défaut.
+      language: detectLanguageForMode(mode, fileName, defaultLang) ?? "",
       title: fileName,
       status: "pending",
       message: "",
@@ -652,7 +654,9 @@ export class ImportScreen {
       const base = file.path.split(/[/\\]/u).pop() ?? "";
       const ext = extFromFileName(base);
       file.mode = normalizeModeForExt(deriveModeFromExt(ext, defaultMode), ext);
-      file.language = defaultLang;
+      // Ne pas imposer le défaut à un TEI sans token : laisser le xml:lang décider
+      // (champ vide), cohérent avec _tryAddSingle (DESIGN §11.8).
+      file.language = detectLanguageForMode(file.mode, base, defaultLang) ?? "";
       touched += 1;
     }
     this._renderList();
@@ -711,7 +715,10 @@ export class ImportScreen {
               .join("")}
           </select>
           ${colCtrl}
-          <input class="imp-lang-inp" type="text" value="${_escHtml(f.language)}" maxlength="10" placeholder="lang" data-i="${i}" />
+          <input class="imp-lang-inp" type="text" value="${_escHtml(f.language)}" maxlength="10"
+                 placeholder="${f.mode === "tei" ? "xml:lang" : "lang"}"
+                 title="${f.mode === "tei" ? "TEI : laisser vide pour conserver le xml:lang du document ; renseigner pour forcer une langue." : "Code de langue (ex. fr, en)."}"
+                 data-i="${i}" />
           <input class="imp-title-inp" type="text" value="${_escHtml(f.title)}" placeholder="titre" data-i="${i}" />
           <button class="btn btn-sm imp-remove-btn" data-i="${i}" aria-label="Retirer ce fichier de la liste" title="Retirer ce fichier de la liste">✕</button>
         </div>
@@ -1100,10 +1107,13 @@ export class ImportScreen {
       f.status = "importing";
       this._renderList();
       try {
+        // TEI au champ vide → ne pas forcer "und" : l'importeur garde le xml:lang du
+        // document (DESIGN §11.8). Les autres formats retombent sur "und" si vide.
+        const fileLang = f.mode === "tei" ? f.language || undefined : f.language || "und";
         const job = await enqueueJob(this._conn!, "import", {
           mode: f.mode,
           path: f.path,
-          language: f.language || "und",
+          language: fileLang,
           title: f.title,
           check_filename: checkFilename,
           ...(f.mode === "docx_numbered_lines" && f.column_index
@@ -1112,7 +1122,6 @@ export class ImportScreen {
         });
         submitted++;
         this._log(`Job soumis pour "${f.title}" (${job.job_id.slice(0, 8)}…)`);
-        const fileLang = f.language || "und";
         const fileTitle = f.title;
         this._jobCenter?.trackJob(job.job_id, `Import: ${f.title}`, (done) => {
           finished++;
@@ -1148,7 +1157,9 @@ export class ImportScreen {
             this._showToast?.(`✓ Importé: ${fileTitle}`);
             // Sprint 8: propose family link (queued — one dialog at a time)
             if (typeof docId === "number" && !this._skipFamilyDialog) {
-              this._enqueueFamilyDialog(docId, fileTitle, fileLang);
+              // fileLang peut être undefined (TEI sans token → langue résolue côté
+              // importeur depuis xml:lang) ; le dialog familles n'a qu'un indice.
+              this._enqueueFamilyDialog(docId, fileTitle, fileLang ?? "und");
             }
           } else {
             f.status = "error";

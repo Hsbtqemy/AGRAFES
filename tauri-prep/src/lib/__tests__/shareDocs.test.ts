@@ -4,6 +4,8 @@ import {
   authSecret,
   buildNextcloudRoot,
   buildWebdavAuth,
+  dedupeDetectedFiles,
+  detectImportFile,
   folderLabel,
   formatRemoteSize,
   groupDetectedFiles,
@@ -11,6 +13,7 @@ import {
   keyringAccount,
   mergeReports,
   normalizeFolderUrl,
+  routeEntriesToImport,
   safeDecodeUrl,
   sortRemoteEntries,
   statusBadgeKind,
@@ -300,6 +303,84 @@ describe("authSecret", () => {
 // NOTE: groupSelectionForImport (groupement P4C par dossier/parent, un mode pour tout
 // le panier) a été remplacé en Phase 5 par groupDetectedFiles (groupement par
 // (parent, mode, langue)).
+
+describe("detectImportFile (Phase 5)", () => {
+  it("DOCX → mode dérivé du profil + langue (token ou défaut)", () => {
+    expect(detectImportFile("roman.docx", "https://x/d/roman.docx", "https://x/d/", "wp_numbered", "fr"))
+      .toEqual({
+        href: "https://x/d/roman.docx",
+        name: "roman.docx",
+        parentUrl: "https://x/d/",
+        mode: "docx_numbered_lines",
+        language: "fr",
+      });
+  });
+
+  it("TEI sans token → language undefined (xml:lang fait foi)", () => {
+    const d = detectImportFile("texte.xml", "https://x/d/texte.xml", "https://x/d/", "wp_numbered", "fr");
+    expect(d?.mode).toBe("tei");
+    expect(d?.language).toBeUndefined();
+  });
+
+  it("TEI avec token → langue forcée (roman_lat.xml → lat)", () => {
+    const d = detectImportFile("roman_lat.xml", "https://x/d/roman_lat.xml", "https://x/d/", "wp_numbered", "fr");
+    expect(d?.language).toBe("lat");
+  });
+
+  it("extension inconnue → null (ignoré, ni importé ni en erreur)", () => {
+    expect(detectImportFile("notes.pdf", "https://x/d/notes.pdf", "https://x/d/", "wp_numbered", "fr")).toBeNull();
+  });
+});
+
+describe("routeEntriesToImport (Phase 5 — expansion des dossiers)", () => {
+  it("trie fichiers détectés / inconnus / sous-dossiers (non récursif)", () => {
+    const entries: RemoteEntry[] = [
+      entry("a.docx", false),
+      entry("b.txt", false),
+      entry("notes.pdf", false), // inconnu → ignored
+      entry("sub", true),        // sous-dossier → subfolders, non développé
+    ];
+    const r = routeEntriesToImport(entries, "https://dav.example/folder/", "wp_numbered", "fr");
+    expect(r.files.map((f) => f.name)).toEqual(["a.docx", "b.txt"]);
+    expect(r.ignored).toBe(1);
+    expect(r.subfolders).toBe(1);
+  });
+
+  it("le parentUrl des fichiers est celui passé (le dossier développé)", () => {
+    const r = routeEntriesToImport([entry("a.docx", false)], "https://dav.example/folder/", "wp_numbered", "fr");
+    expect(r.files[0].parentUrl).toBe("https://dav.example/folder/");
+  });
+
+  it("dossier vide → aucun fichier, compteurs à 0", () => {
+    expect(routeEntriesToImport([], "https://x/d/", "wp_numbered", "fr")).toEqual({
+      files: [], ignored: 0, subfolders: 0,
+    });
+  });
+});
+
+describe("dedupeDetectedFiles (Phase 5)", () => {
+  const file = (href: string, name: string) =>
+    ({ href, name, parentUrl: "https://x/d/", mode: "docx_numbered_lines", language: "fr" });
+
+  it("supprime les href en double, garde la première occurrence", () => {
+    const out = dedupeDetectedFiles([
+      file("https://x/d/a.docx", "a.docx"),
+      file("https://x/d/b.docx", "b.docx"),
+      file("https://x/d/a.docx", "a-bis.docx"), // même href → écarté
+    ]);
+    expect(out.map((f) => f.href)).toEqual(["https://x/d/a.docx", "https://x/d/b.docx"]);
+    expect(out.map((f) => f.name)).toEqual(["a.docx", "b.docx"]); // première gagne
+  });
+
+  it("liste sans doublon → inchangée", () => {
+    const input = [file("https://x/d/a.docx", "a.docx"), file("https://x/d/b.docx", "b.docx")];
+    expect(dedupeDetectedFiles(input)).toEqual(input);
+  });
+
+  it("liste vide → vide", () => {
+    expect(dedupeDetectedFiles([])).toEqual([]);
+  });
+});
 
 describe("groupDetectedFiles (Phase 5)", () => {
   const file = (

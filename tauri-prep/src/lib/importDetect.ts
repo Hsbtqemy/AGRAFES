@@ -160,3 +160,22 @@ export function detectLanguageToken(name: string): string | null {
 export function detectLanguageFromName(name: string, fallback: string): string {
   return detectLanguageToken(name) ?? fallback;
 }
+
+/**
+ * Langue à affecter à un fichier **selon son mode d'import** — source unique
+ * partagée par l'import local et ShareDocs (DESIGN §11.8).
+ *
+ * - **TEI** : format auto-descriptif (`xml:lang`). On ne renvoie une langue que si le
+ *   nom encode un token explicite (`roman_lat.xml` → `lat`, qui prime alors
+ *   volontairement) ; sinon `undefined`, et l'importeur **garde le `xml:lang`** du
+ *   document plutôt qu'un défaut imposé.
+ * - **Autres formats** (DOCX/ODT/TXT/CoNLL-U) : pas de langue intrinsèque → langue
+ *   détectée dans le nom **ou** le défaut.
+ */
+export function detectLanguageForMode(
+  mode: string,
+  name: string,
+  fallback: string,
+): string | undefined {
+  return mode === "tei" ? (detectLanguageToken(name) ?? undefined) : detectLanguageFromName(name, fallback);
+}

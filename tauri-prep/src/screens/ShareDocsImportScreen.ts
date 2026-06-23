@@ -25,18 +25,14 @@ import { setHtml, appendHtml, raw, safeHtml } from "../lib/safeHtml.ts";
 import {
   WP_DEFAULT_NUMBERED,
   WP_DEFAULT_PARAGRAPHS,
-  deriveModeFromExt,
-  detectLanguageFromName,
-  detectLanguageToken,
-  extFromFileName,
-  isKnownImportExt,
-  normalizeModeForExt,
 } from "../lib/importDetect.ts";
 import {
   authIsComplete,
   authSecret,
   buildNextcloudRoot,
   buildWebdavAuth,
+  dedupeDetectedFiles,
+  detectImportFile,
   type DetectedImportFile,
   type DetectedImportGroup,
   folderLabel,
@@ -46,6 +42,7 @@ import {
   keyringAccount,
   mergeReports,
   normalizeFolderUrl,
+  routeEntriesToImport,
   safeDecodeUrl,
   type SelectedRemoteItem,
   sortRemoteEntries,
@@ -569,18 +566,8 @@ export class ShareDocsImportScreen {
     profile: string,
     defaultLanguage: string,
   ): DetectedImportFile | null {
-    const ext = extFromFileName(name);
-    if (!isKnownImportExt(ext)) return null;
-    const mode = normalizeModeForExt(deriveModeFromExt(ext, profile), ext);
-    // TEI porte son propre xml:lang : ne pas l'écraser avec la langue par défaut —
-    // n'envoyer une langue que si le nom encode explicitement un token (qui prime
-    // alors volontairement) ; sinon undefined → l'importeur garde le xml:lang
-    // (DESIGN §11.8). Les autres formats ont besoin d'une langue → détectée ou défaut.
-    const language =
-      mode === "tei"
-        ? (detectLanguageToken(name) ?? undefined)
-        : detectLanguageFromName(name, defaultLanguage);
-    return { href, name, parentUrl, mode, language };
+    // Délègue à la fonction pure partagée (testée en isolation, source unique).
+    return detectImportFile(name, href, parentUrl, profile, defaultLanguage);
   }
 
   /**
@@ -636,17 +623,15 @@ export class ShareDocsImportScreen {
     const conn = this._conn;
     const parentUrl = this._currentUrl;
 
-    // Détection par fichier sur le dossier courant (les sous-dossiers se parcourent,
-    // ils ne s'importent pas ici). Les extensions inconnues sont ignorées mais
-    // comptées (jamais en erreur) — DESIGN §11.3.
-    const files: DetectedImportFile[] = [];
-    let ignored = 0;
-    for (const e of this._entries) {
-      if (e.is_dir) continue;
-      const det = this._detectFile(e.name, e.href, parentUrl, form.profile, form.defaultLanguage);
-      if (det) files.push(det);
-      else ignored += 1;
-    }
+    // Détection par fichier sur le dossier courant (les sous-dossiers ne s'importent
+    // pas ici). Les extensions inconnues sont ignorées mais comptées (jamais en
+    // erreur) — DESIGN §11.3. Routage partagé avec l'expansion des dossiers cochés.
+    const { files, ignored } = routeEntriesToImport(
+      this._entries,
+      parentUrl,
+      form.profile,
+      form.defaultLanguage,
+    );
     if (files.length === 0) {
       this._showToast?.(
         ignored > 0
@@ -694,15 +679,15 @@ export class ShareDocsImportScreen {
     }
     // Per fichier : afficher le (mode, langue) détectés avec lequel il sera importé
     // (remplace le drapeau ⚠ de P4D — on route par fichier au lieu de signaler). Le
-    // parent est affiché car le panier s'étend sur plusieurs dossiers. Un dossier
-    // coché est signalé comme non développé (expansion différée — cf. _importSelection).
+    // parent est affiché car le panier s'étend sur plusieurs dossiers. Un dossier coché
+    // est développé à l'import (PROPFIND Depth:1, non récursif — cf. _importSelection).
     const profile =
       root.querySelector<HTMLSelectElement>("#prep-sd-profile")?.value || WP_DEFAULT_NUMBERED;
     const defaultLanguage =
       root.querySelector<HTMLInputElement>("#prep-sd-language")?.value.trim() || "fr";
     const items = [...this._selected.values()].map((it) => {
       if (it.is_dir) {
-        return safeHtml`<li>📁 ${it.name} — ${folderLabel(it.parentUrl)} <span class="prep-sd-fmt">(dossier — ouvrir puis « Importer ce dossier »)</span></li>`;
+        return safeHtml`<li>📁 ${it.name} — ${folderLabel(it.parentUrl)} <span class="prep-sd-fmt">(dossier — son contenu sera développé à l'import)</span></li>`;
       }
       const det = this._detectFile(it.name, it.href, it.parentUrl, profile, defaultLanguage);
       // langue undefined = TEI sans token → le xml:lang du document fait foi.
@@ -723,22 +708,55 @@ export class ShareDocsImportScreen {
   }
 
   /**
-   * Import the cart (Phase 5) : détection par fichier sur les fichiers cochés,
-   * groupement par (parent, mode, langue) → un /import-remote par lot (chacun avec
-   * son `hrefs`), suivi Job Center, rapports agrégés. Vide le panier au lancement.
-   *
-   * NOTE: l'expansion des DOSSIERS cochés (PROPFIND Depth:1 par dossier coché) est
-   * différée (suivi Phase 5). Pour l'instant un dossier coché est signalé puis ignoré :
-   * l'utilisateur l'ouvre et utilise « Importer ce dossier ».
+   * Develop a checked folder via one PROPFIND (Depth:1) and detect its **files**
+   * (Phase 5 — expansion des dossiers cochés). **Non-récursif** : les sous-dossiers
+   * d'un dossier coché sont comptés puis ignorés (cohérent avec « Importer ce dossier »,
+   * lui-même non récursif). Une erreur de PROPFIND est **reportée, jamais bloquante**
+   * (DESIGN §11.3) : le dossier est signalé dans `failed` et l'import continue.
+   */
+  private async _expandFolders(
+    conn: Conn,
+    folders: SelectedRemoteItem[],
+    form: { profile: string; defaultLanguage: string },
+  ): Promise<{ files: DetectedImportFile[]; ignored: number; subfolders: number; failed: string[] }> {
+    const files: DetectedImportFile[] = [];
+    let ignored = 0;
+    let subfolders = 0;
+    const failed: string[] = [];
+    for (const folder of folders) {
+      try {
+        const entries = await webdavList(conn, { url: folder.href, auth: this._auth });
+        // Non-récursif : les sous-dossiers sont comptés puis ignorés (routeEntriesToImport).
+        const routed = routeEntriesToImport(entries, folder.href, form.profile, form.defaultLanguage);
+        files.push(...routed.files);
+        ignored += routed.ignored;
+        subfolders += routed.subfolders;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this._log(`✗ Dossier « ${folder.name} » non développé : ${msg}`, true);
+        failed.push(folder.name);
+      }
+    }
+    return { files, ignored, subfolders, failed };
+  }
+
+  /**
+   * Import the cart (Phase 5) : détection par fichier sur les fichiers cochés **et**
+   * sur le contenu des DOSSIERS cochés (développés par un PROPFIND Depth:1 chacun) ;
+   * dédup par href ; groupement par (parent, mode, langue) → un /import-remote par lot
+   * (chacun avec son `hrefs`), suivi Job Center, rapports agrégés. Vide le panier au
+   * lancement. Les sous-dossiers d'un dossier coché ne sont pas développés (non récursif).
    */
   private async _importSelection(): Promise<void> {
-    if (!this._conn || this._selected.size === 0) return;
+    if (!this._conn || this._selected.size === 0 || this._busy) return;
     const conn = this._conn;
     const form = this._readImportForm();
     if (!form) return;
 
     const items = [...this._selected.values()];
     const folders = items.filter((it) => it.is_dir);
+
+    // 1) Fichiers cochés directement.
     const files: DetectedImportFile[] = [];
     let ignored = 0;
     for (const it of items) {
@@ -747,22 +765,47 @@ export class ShareDocsImportScreen {
       if (det) files.push(det);
       else ignored += 1;
     }
-    if (files.length === 0) {
-      this._showToast?.(
-        folders.length > 0
-          ? "Sélection sans fichier importable — ouvre les dossiers cochés puis « Importer ce dossier »."
-          : `Aucun fichier importable dans la sélection — ${ignored} ignoré(s) (extension non reconnue).`,
-        true,
-      );
+
+    // 2) Expansion des dossiers cochés (PROPFIND par dossier — IO, donc avant le
+    //    `_guardedRun` qui ne sert qu'à la confirmation + verrou bouton).
+    let subfolders = 0;
+    const failed: string[] = [];
+    if (folders.length > 0) {
+      const btn = this._root?.querySelector<HTMLButtonElement>("#prep-sd-sel-import");
+      if (btn) btn.disabled = true;
+      this._setBusy(true);
+      this._log(`▶ Développement de ${folders.length} dossier(s) coché(s)…`);
+      try {
+        const exp = await this._expandFolders(conn, folders, form);
+        files.push(...exp.files);
+        ignored += exp.ignored;
+        subfolders = exp.subfolders;
+        failed.push(...exp.failed);
+      } finally {
+        this._setBusy(false);
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    // 3) Dédup (un fichier coché peut aussi remonter via l'expansion de son dossier).
+    const deduped = dedupeDetectedFiles(files);
+
+    if (deduped.length === 0) {
+      const why =
+        failed.length > 0
+          ? `${failed.length} dossier(s) illisible(s) ; aucun fichier importable.`
+          : folders.length > 0
+            ? "Dossiers cochés sans fichier importable (sous-dossiers et extensions inconnues exclus)."
+            : `Aucun fichier importable dans la sélection — ${ignored} ignoré(s) (extension non reconnue).`;
+      this._showToast?.(why, true);
       return;
     }
-    const groups = groupDetectedFiles(files);
+    const groups = groupDetectedFiles(deduped);
 
     const notes: string[] = [];
     if (ignored > 0) notes.push(`${ignored} ignoré(s) (extension non reconnue)`);
-    if (folders.length > 0) {
-      notes.push(`${folders.length} dossier(s) coché(s) non importé(s) ici (ouvre-les puis « Importer ce dossier »)`);
-    }
+    if (subfolders > 0) notes.push(`${subfolders} sous-dossier(s) non développé(s)`);
+    if (failed.length > 0) notes.push(`${failed.length} dossier(s) illisible(s) ignoré(s)`);
 
     await this._guardedRun(
       "#prep-sd-sel-import",
@@ -773,7 +816,7 @@ export class ShareDocsImportScreen {
       notes.length > 0
         ? {
             containerSel: "#prep-sd-sel-confirm",
-            message: `${files.length} fichier(s) → ${groups.length} lot(s) ; ${notes.join(" ; ")}. Importer ?`,
+            message: `${deduped.length} fichier(s) → ${groups.length} lot(s) ; ${notes.join(" ; ")}. Importer ?`,
             opts: { confirmLabel: "Importer", danger: false },
           }
         : undefined,

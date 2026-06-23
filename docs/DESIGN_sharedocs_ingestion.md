@@ -463,22 +463,34 @@ Trois écarts par rapport au plan §11.1-11.7, tranchés en cours d'implémentat
    `groupSelectionForImport`) sont **retirés**, remplacés par `groupDetectedFiles`
    (groupement par `(parentUrl, mode, langue)`).
 
-2. **Expansion PROPFIND des dossiers cochés différée** (§11.3 « étendre + router »).
-   « Importer ce dossier » et les **fichiers** cochés bénéficient de la détection par
-   fichier ; un **dossier coché** dans « Importer la sélection » est **signalé puis
-   ignoré** (récap + `inlineConfirm`, jamais en silence) — l'utilisateur l'ouvre et
-   utilise « Importer ce dossier ». L'expansion (`webdavList` Depth:1 par dossier
-   coché) reste en suivi (cf. `// NOTE:` dans `ShareDocsImportScreen._importSelection`).
+2. **Expansion PROPFIND des dossiers cochés — ✅ levé en suivi P5** (§11.3
+   « étendre + router »). Un **dossier coché** dans « Importer la sélection » est désormais
+   **développé** à l'import : `_importSelection` lance un `webdavList` (PROPFIND
+   `Depth:1`) **par dossier coché**, route ses **fichiers** via la fonction pure
+   partagée `routeEntriesToImport` (extraite de l'import « ce dossier »), puis fusionne
+   avec les fichiers directement cochés et **déduplique par `href`** (`dedupeDetectedFiles`
+   — un fichier peut être coché *et* remonter via son dossier parent). **Non-récursif**
+   (décision figée) : les sous-dossiers d'un dossier coché sont **comptés puis ignorés**
+   (cohérent avec « Importer ce dossier », lui-même non récursif) et signalés au récap.
+   Une **erreur de PROPFIND par dossier est reportée, jamais bloquante** (le dossier est
+   listé « illisible » dans la confirmation, l'import continue). L'étiquette du panier
+   passe de « ouvrir puis Importer ce dossier » à « son contenu sera développé à
+   l'import ». Front-only, aucun changement moteur/contrat.
 
 3. **Langue des fichiers TEI — `xml:lang` préservé.** `tei_importer.py` fait
    `tei_lang = language or header_lang or "und"` : une langue passée **écrase** le
    `xml:lang` du document. Pour ne pas imposer une langue par défaut à un format
-   auto-descriptif, ShareDocs n'envoie une langue pour un fichier **TEI** que si son
-   **nom encode explicitement un token** de langue connu (ex. `roman_lat.xml` → `lat`,
-   qui prime alors volontairement) ; **sinon `language` est `undefined`** et l'importeur
-   **garde le `xml:lang`** du document (helper `detectLanguageToken`, sans repli). Les
-   autres formats (DOCX/ODT/TXT/CoNLL-U), qui n'ont pas de langue intrinsèque, reçoivent
-   toujours la langue détectée **ou** le défaut. ⚠️ **Écart délibéré vs l'import local**,
-   qui force encore le défaut pour TEI (`language: f.language || "und"`, `ImportScreen`) —
-   le menu local mérite le même correctif en suivi pour converger sur le bon
-   comportement. Le panier affiche « `tei · xml:lang` » pour un TEI sans token.
+   auto-descriptif, on n'envoie une langue pour un fichier **TEI** que si son **nom
+   encode explicitement un token** de langue connu (ex. `roman_lat.xml` → `lat`, qui
+   prime alors volontairement) ; **sinon `language` est `undefined`** et l'importeur
+   **garde le `xml:lang`** du document. Les autres formats (DOCX/ODT/TXT/CoNLL-U), qui
+   n'ont pas de langue intrinsèque, reçoivent toujours la langue détectée **ou** le défaut.
+   Cette règle vit dans la fonction pure partagée **`detectLanguageForMode(mode, name,
+   fallback)`** (importDetect).
+   **✅ Convergence import local levée en suivi P5** : l'ancien écart (l'import local
+   forçait encore `language: f.language || "und"` pour TEI) est **corrigé** — `ImportScreen`
+   pré-remplit le champ langue d'un TEI via le token uniquement (vide si aucun), le
+   « profil de lot » n'impose plus le défaut à un TEI, et la soumission envoie `undefined`
+   (au lieu de `"und"`) pour un TEI au champ vide. Le champ langue d'un TEI affiche le
+   placeholder « `xml:lang` » (vide = le document décide ; renseigner = forcer). Le panier
+   ShareDocs affiche « `tei · xml:lang` » pour un TEI sans token.

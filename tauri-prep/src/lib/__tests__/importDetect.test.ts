@@ -9,6 +9,7 @@ import {
   isKnownImportExt,
   detectLanguageFromName,
   detectLanguageToken,
+  detectLanguageForMode,
   LANG_RE,
   KNOWN_LANG_CODES,
 } from "../importDetect.ts";
@@ -246,6 +247,40 @@ describe("detectLanguageToken", () => {
   it("detectLanguageFromName en dérive (token ?? fallback)", () => {
     expect(detectLanguageFromName("plainname.xml", "und")).toBe("und");
     expect(detectLanguageFromName("roman_lat.xml", "und")).toBe("lat");
+  });
+});
+
+// ─── detectLanguageForMode (langue selon le mode — source unique #3) ─────────
+
+describe("detectLanguageForMode", () => {
+  it("TEI sans token → undefined (le xml:lang du document fait foi)", () => {
+    expect(detectLanguageForMode("tei", "roman.xml", "fr")).toBeUndefined();
+    expect(detectLanguageForMode("tei", "plainname.tei", "und")).toBeUndefined();
+  });
+
+  it("TEI avec token explicite → ce token (prime volontairement sur le xml:lang)", () => {
+    expect(detectLanguageForMode("tei", "roman_lat.xml", "fr")).toBe("lat");
+    expect(detectLanguageForMode("tei", "texte.de.xml", "fr")).toBe("de");
+  });
+
+  it("TEI : faux positif non promu en langue (reste undefined)", () => {
+    expect(detectLanguageForMode("tei", "roman_v2.xml", "fr")).toBeUndefined();
+    expect(detectLanguageForMode("tei", "roman_xx.xml", "fr")).toBeUndefined();
+  });
+
+  it("format non-TEI sans token → langue par défaut (jamais undefined)", () => {
+    expect(detectLanguageForMode("docx_numbered_lines", "roman.docx", "fr")).toBe("fr");
+    expect(detectLanguageForMode("txt_numbered_lines", "notes.txt", "en")).toBe("en");
+    expect(detectLanguageForMode("conllu", "corpus.conllu", "fr")).toBe("fr");
+  });
+
+  it("format non-TEI avec token → token détecté", () => {
+    expect(detectLanguageForMode("docx_paragraphs", "roman_en.docx", "fr")).toBe("en");
+  });
+
+  it("seul le mode tei active la sémantique xml:lang (pas l'extension .xml d'un autre mode)", () => {
+    // garde-fou : un mode non-tei décide toujours d'une langue, même si bizarrement nommé .xml
+    expect(detectLanguageForMode("txt_numbered_lines", "data.xml", "fr")).toBe("fr");
   });
 });
 
