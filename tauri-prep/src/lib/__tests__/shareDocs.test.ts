@@ -9,7 +9,6 @@ import {
   groupDetectedFiles,
   isImportRemoteReport,
   keyringAccount,
-  languageRequiredForMode,
   mergeReports,
   normalizeFolderUrl,
   safeDecodeUrl,
@@ -54,16 +53,6 @@ describe("buildWebdavAuth", () => {
 
   it("missing fields default to empty strings (not undefined)", () => {
     expect(buildWebdavAuth("basic", {})).toEqual({ mode: "basic", user: "", password: "" });
-  });
-});
-
-describe("languageRequiredForMode", () => {
-  it("requires a language for non-TEI modes", () => {
-    expect(languageRequiredForMode("docx_numbered_lines")).toBe(true);
-    expect(languageRequiredForMode("conllu")).toBe(true);
-  });
-  it("does not require a language for TEI", () => {
-    expect(languageRequiredForMode("tei")).toBe(false);
   });
 });
 

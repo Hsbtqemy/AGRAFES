@@ -32,15 +32,6 @@ export function buildWebdavAuth(
   return { mode: "anonymous" };
 }
 
-/**
- * Whether an import mode requires a language. Every mode except TEI (which
- * carries its own xml:lang) needs one — without it a non-TEI import fails on the
- * `documents.language` NOT NULL constraint. Mirrors the CLI / sidecar guard.
- */
-export function languageRequiredForMode(mode: string): boolean {
-  return mode !== "tei";
-}
-
 /** Client-side mirror of the server's auth requirement, for an early UX guard. */
 export function authIsComplete(auth: WebdavAuth): boolean {
   if (auth.mode === "basic") return Boolean(auth.user && auth.password);
@@ -231,7 +222,9 @@ export interface DetectedImportGroup {
 export function groupDetectedFiles(files: DetectedImportFile[]): DetectedImportGroup[] {
   const byKey = new Map<string, DetectedImportGroup>();
   for (const f of files) {
-    const key = `${f.parentUrl}|${f.mode}|${f.language}`;
+    // Delimiter-safe key: language is a free-text default that could contain any
+    // char, so join via JSON rather than a literal separator (no collision).
+    const key = JSON.stringify([f.parentUrl, f.mode, f.language]);
     let g = byKey.get(key);
     if (!g) {
       g = { url: f.parentUrl, hrefs: [], mode: f.mode, language: f.language, label: "" };
