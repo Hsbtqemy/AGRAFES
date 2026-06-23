@@ -357,6 +357,88 @@ def test_undo_resegment_restores_all_units(db_conn: sqlite3.Connection) -> None:
     assert restored == before, f"resegment undo failed.\nbefore={before}\nrestored={restored}"
 
 
+def test_resegment_propagates_and_undo_restores_text_source(
+    db_conn: sqlite3.Connection,
+) -> None:
+    """ADR-043 P2 — resegment inherits the parent line's text_source on its segments;
+    undo restores it."""
+    from multicorpus_engine.action_history import (
+        ACTION_RESEGMENT,
+        insert_unit_snapshots,
+        record_prep_action,
+    )
+    from multicorpus_engine.segmenter import resegment_document
+    from multicorpus_engine.undo import execute_undo
+
+    doc_id, _ = _seed_doc(db_conn, ["Phrase un. Phrase deux."])
+    # Simulate an import-captured original (P1) distinct from the segmented text_raw.
+    db_conn.execute("UPDATE units SET text_source = 'IMPORT-ORIGINAL' WHERE doc_id = ?", (doc_id,))
+    db_conn.commit()
+
+    def recorder(payload):
+        units_before = payload["units_before"]
+        if not units_before:
+            return None
+        action_id = record_prep_action(
+            db_conn, doc_id=payload["doc_id"], action_type=ACTION_RESEGMENT,
+            description="reseg",
+            context={
+                "pack": payload["pack"], "lang": payload["lang"],
+                "text_start_n": payload["text_start_n"],
+                "units_deleted_after_ids": [u["unit_id"] for u in units_before],
+                "units_created_after_json": [
+                    {"unit_id": uid, "n": n}
+                    for uid, n in zip(payload["created_unit_ids"], payload["new_units_n"])
+                ],
+                "units_before": units_before,
+            },
+        )
+        insert_unit_snapshots(
+            db_conn, action_id,
+            [{"unit_id": u["unit_id"], "text_raw_before": u["text_raw"],
+              "text_norm_before": u["text_norm"] or "", "unit_role_before": u["unit_role"],
+              "meta_json_before": u["meta_json"]} for u in units_before],
+        )
+        return action_id
+
+    resegment_document(db_conn, doc_id=doc_id, lang="fr", pack="auto", record_action=recorder)
+    db_conn.commit()
+
+    seg = db_conn.execute(
+        "SELECT text_raw, text_source FROM units WHERE doc_id=? AND unit_type='line' ORDER BY n",
+        (doc_id,),
+    ).fetchall()
+    assert len(seg) >= 2  # the line split into ≥2 sentences
+    assert all(r["text_source"] == "IMPORT-ORIGINAL" for r in seg)  # inherited from parent
+    assert any(r["text_raw"] != "IMPORT-ORIGINAL" for r in seg)     # text_raw = segmented sentence
+
+    execute_undo(db_conn, doc_id)
+    db_conn.commit()
+    restored = db_conn.execute(
+        "SELECT text_source FROM units WHERE doc_id=? AND unit_type='line' ORDER BY n",
+        (doc_id,),
+    ).fetchall()
+    assert [r["text_source"] for r in restored] == ["IMPORT-ORIGINAL"]  # restored on undo
+
+
+def test_resegment_markers_propagates_text_source(db_conn: sqlite3.Connection) -> None:
+    """ADR-043 P2 — the marker-based resegmenter also propagates text_source."""
+    from multicorpus_engine.segmenter import resegment_document_markers
+
+    doc_id, _ = _seed_doc(db_conn, ["[1] Un. [2] Deux."])
+    db_conn.execute("UPDATE units SET text_source = 'ORIG' WHERE doc_id = ?", (doc_id,))
+    db_conn.commit()
+
+    resegment_document_markers(db_conn, doc_id=doc_id)
+    db_conn.commit()
+
+    rows = db_conn.execute(
+        "SELECT text_source FROM units WHERE doc_id=? AND unit_type='line'", (doc_id,)
+    ).fetchall()
+    assert len(rows) >= 2
+    assert all(r["text_source"] == "ORIG" for r in rows)
+
+
 # ---------------------------------------------------------------------------
 # Negative cases
 # ---------------------------------------------------------------------------

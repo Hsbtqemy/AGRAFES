@@ -1205,8 +1205,15 @@ l'import, **jamais réécrit** par curate / resegment / merge / split.
     doc déjà resegmenté a perdu son original ; backfiller `text_raw` capturerait le faux)
     → fallback `text_raw` au read. **Aucun site de lecture changé** (rien ne lit
     `text_source` avant P3). Recovery-only (pas FTS, pas requêté).
-  - **P2** — resegment / split / merge **propagent** `text_source` (héritage pour
-    split/resegment ; **concat** au merge, séparateur à trancher) au lieu de le perdre.
+  - **P2 (resegment) — ✅ livré**. Les deux resegmenteurs (`resegment_document` +
+    `resegment_document_markers`) **propagent** `text_source` aux segments produits
+    (héritage : `COALESCE(parent.text_source, parent.text_raw)`) ; l'**undo** de
+    resegment le **restaure** (capturé dans le snapshot JSON `units_before`, pas de
+    migration). `markers` n'a pas d'undo (forward seul).
+  - **P2b (merge / split)** — à venir. merge **concatène** les sources (séparateur aligné
+    sur `text_raw`, c.-à-d. `" "`) ; split fait **hériter**. Leur undo restaure via les
+    colonnes `*_before` de `prep_action_history` → nécessite une **migration 021**
+    (`text_source_before`). Séparé car couplage forward↔undo + migration.
   - **P3** — UI : exposer l'original au niveau **ligne/groupe** quand `text_source ≠
     text_raw` (les N segments d'une ligne partagent la source) ; (option) export du texte
     source ; fallback `COALESCE(text_source, text_raw)` aux sites de lecture.
