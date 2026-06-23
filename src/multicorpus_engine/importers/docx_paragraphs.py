@@ -20,7 +20,7 @@ from typing import Optional
 from ..unicode_policy import count_sep, normalize
 from .docx_numbered_lines import ImportReport
 from .import_guard import assert_not_duplicate_import
-from .parsed import ParsedDoc, ParsedUnit, file_sha256
+from .parsed import ParsedDoc, ParsedUnit, file_sha256, insert_units
 from .rich_text import para_to_rich_text
 
 logger = logging.getLogger(__name__)
@@ -146,13 +146,7 @@ def import_docx_paragraphs(
                 VALUES ('intertitre', 'Intertitre', '#9333ea', '§', 0, 'structure')
                 """
             )
-        conn.executemany(
-            """
-            INSERT INTO units (doc_id, unit_type, n, external_id, text_raw, text_norm, meta_json, unit_role)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            [(doc_id, *row) for row in units_parsed],
-        )
+        insert_units(conn, doc_id, parsed.units)
         conn.commit()
     except Exception:
         conn.rollback()

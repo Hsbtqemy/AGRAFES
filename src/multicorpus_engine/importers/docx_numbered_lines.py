@@ -24,7 +24,7 @@ from typing import Optional
 
 from ..unicode_policy import count_sep, normalize
 from .import_guard import assert_not_duplicate_import
-from .parsed import ParsedDoc, ParsedUnit, file_sha256
+from .parsed import ParsedDoc, ParsedUnit, file_sha256, insert_units
 from .rich_text import para_to_rich_text
 
 _NUMBERED_RE = re.compile(r"^\[\s*(\d+)\s*\]\s*(.+)$", re.DOTALL)
@@ -384,13 +384,7 @@ def import_docx_numbered_lines(
         )
         doc_id = cur.lastrowid
         log.info("Created document doc_id=%d title=%r", doc_id, doc_title)
-        conn.executemany(
-            """
-            INSERT INTO units (doc_id, unit_type, n, external_id, text_raw, text_norm, meta_json)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            [(doc_id, *row) for row in units_parsed],
-        )
+        insert_units(conn, doc_id, parsed.units)
         conn.commit()
     except Exception:
         conn.rollback()

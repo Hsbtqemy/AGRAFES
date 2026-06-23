@@ -12,7 +12,7 @@ from ..unicode_policy import count_sep, normalize
 from .docx_numbered_lines import ImportReport
 from .import_guard import assert_not_duplicate_import
 from .odt_common import read_odt_paragraph_rich_lines
-from .parsed import ParsedDoc, ParsedUnit, file_sha256
+from .parsed import ParsedDoc, ParsedUnit, file_sha256, insert_units
 
 logger = logging.getLogger(__name__)
 
@@ -102,16 +102,7 @@ def import_odt_paragraphs(
                 VALUES ('intertitre', 'Intertitre', '#9333ea', '§', 0, 'structure')
                 """
             )
-        conn.executemany(
-            """
-            INSERT INTO units (doc_id, unit_type, n, external_id, text_raw, text_norm, meta_json, unit_role)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            [
-                (doc_id, u.unit_type, u.n, u.external_id, u.text_raw, u.text_norm, u.meta_json, u.unit_role)
-                for u in parsed.units
-            ],
-        )
+        insert_units(conn, doc_id, parsed.units)
         conn.commit()
     except Exception:
         conn.rollback()

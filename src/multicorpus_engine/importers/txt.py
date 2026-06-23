@@ -25,7 +25,7 @@ from typing import Optional
 from ..unicode_policy import count_sep, normalize
 from .import_guard import assert_not_duplicate_import
 from .docx_numbered_lines import ImportReport, _analyze_external_ids
-from .parsed import ParsedDoc, ParsedUnit
+from .parsed import ParsedDoc, ParsedUnit, insert_units
 
 _NUMBERED_RE = re.compile(r"^\[\s*(\d+)\s*\]\s*(.+)$")
 
@@ -192,14 +192,8 @@ def import_txt_numbered_lines(
                 """
             )
 
-        # Bulk insert
-        conn.executemany(
-            """
-            INSERT INTO units (doc_id, unit_type, n, external_id, text_raw, text_norm, meta_json, unit_role)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            units_to_insert,
-        )
+        # Bulk insert (units write path centralised in parsed.insert_units)
+        insert_units(conn, doc_id, parsed.units)
         conn.commit()
     except Exception:
         conn.rollback()
