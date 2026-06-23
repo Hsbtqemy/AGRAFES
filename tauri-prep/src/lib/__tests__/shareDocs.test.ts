@@ -4,17 +4,16 @@ import {
   authSecret,
   buildNextcloudRoot,
   buildWebdavAuth,
-  detectFormatFromName,
-  fileMatchesMode,
+  dedupeDetectedFiles,
+  detectImportFile,
   folderLabel,
   formatRemoteSize,
-  groupSelectionForImport,
+  groupDetectedFiles,
   isImportRemoteReport,
   keyringAccount,
-  languageRequiredForMode,
   mergeReports,
-  modeFormat,
   normalizeFolderUrl,
+  routeEntriesToImport,
   safeDecodeUrl,
   sortRemoteEntries,
   statusBadgeKind,
@@ -57,16 +56,6 @@ describe("buildWebdavAuth", () => {
 
   it("missing fields default to empty strings (not undefined)", () => {
     expect(buildWebdavAuth("basic", {})).toEqual({ mode: "basic", user: "", password: "" });
-  });
-});
-
-describe("languageRequiredForMode", () => {
-  it("requires a language for non-TEI modes", () => {
-    expect(languageRequiredForMode("docx_numbered_lines")).toBe(true);
-    expect(languageRequiredForMode("conllu")).toBe(true);
-  });
-  it("does not require a language for TEI", () => {
-    expect(languageRequiredForMode("tei")).toBe(false);
   });
 });
 
@@ -256,34 +245,10 @@ describe("buildNextcloudRoot", () => {
   });
 });
 
-describe("format detection (P4D)", () => {
-  it("detectFormatFromName maps known extensions (case-insensitive), else unknown", () => {
-    expect(detectFormatFromName("a.docx")).toBe("docx");
-    expect(detectFormatFromName("A.DOCX")).toBe("docx");
-    expect(detectFormatFromName("b.odt")).toBe("odt");
-    expect(detectFormatFromName("c.txt")).toBe("txt");
-    expect(detectFormatFromName("d.xml")).toBe("tei");
-    expect(detectFormatFromName("d2.tei")).toBe("tei");
-    expect(detectFormatFromName("e.conllu")).toBe("conllu");
-    expect(detectFormatFromName("f.pdf")).toBe("unknown");
-    expect(detectFormatFromName("noext")).toBe("unknown");
-  });
-  it("modeFormat maps a mode to its format", () => {
-    expect(modeFormat("docx_numbered_lines")).toBe("docx");
-    expect(modeFormat("docx_paragraphs")).toBe("docx");
-    expect(modeFormat("odt_paragraphs")).toBe("odt");
-    expect(modeFormat("txt_numbered_lines")).toBe("txt");
-    expect(modeFormat("tei")).toBe("tei");
-    expect(modeFormat("conllu")).toBe("conllu");
-  });
-  it("fileMatchesMode checks format only (style ignored), unknown = mismatch", () => {
-    expect(fileMatchesMode("a.docx", "docx_numbered_lines")).toBe(true);
-    expect(fileMatchesMode("a.docx", "docx_paragraphs")).toBe(true); // style not checked
-    expect(fileMatchesMode("a.odt", "docx_numbered_lines")).toBe(false);
-    expect(fileMatchesMode("a.pdf", "docx_numbered_lines")).toBe(false); // unknown extension
-    expect(fileMatchesMode("x.xml", "tei")).toBe(true);
-  });
-});
+// NOTE: la détection de format (detectFormatFromName / modeFormat / fileMatchesMode,
+// drapeau ⚠ de P4D) a été retirée en Phase 5 — le tri connu/inconnu vit désormais
+// dans importDetect.isKnownImportExt (voir importDetect.test.ts) et le routage par
+// fichier remplace le contrôle de compatibilité mode↔format.
 
 describe("urlHasPath", () => {
   it("bare host or root → no path", () => {
@@ -335,53 +300,166 @@ describe("authSecret", () => {
   });
 });
 
-describe("groupSelectionForImport", () => {
-  const item = (href: string, name: string, parentUrl: string, is_dir: boolean) => ({
-    href, name, parentUrl, is_dir,
+// NOTE: groupSelectionForImport (groupement P4C par dossier/parent, un mode pour tout
+// le panier) a été remplacé en Phase 5 par groupDetectedFiles (groupement par
+// (parent, mode, langue)).
+
+describe("detectImportFile (Phase 5)", () => {
+  it("DOCX → mode dérivé du profil + langue (token ou défaut)", () => {
+    expect(detectImportFile("roman.docx", "https://x/d/roman.docx", "https://x/d/", "wp_numbered", "fr"))
+      .toEqual({
+        href: "https://x/d/roman.docx",
+        name: "roman.docx",
+        parentUrl: "https://x/d/",
+        mode: "docx_numbered_lines",
+        language: "fr",
+      });
   });
 
-  it("each selected folder → a whole-folder import (no hrefs)", () => {
-    const groups = groupSelectionForImport([
-      item("https://x/A/", "A", "https://x/", true),
-      item("https://x/B/", "B", "https://x/", true),
-    ]);
-    expect(groups).toEqual([
-      { url: "https://x/A/", label: "A" },
-      { url: "https://x/B/", label: "B" },
-    ]);
+  it("TEI sans token → language undefined (xml:lang fait foi)", () => {
+    const d = detectImportFile("texte.xml", "https://x/d/texte.xml", "https://x/d/", "wp_numbered", "fr");
+    expect(d?.mode).toBe("tei");
+    expect(d?.language).toBeUndefined();
   });
 
-  it("files grouped by parent → one hrefs submission per parent", () => {
-    const groups = groupSelectionForImport([
-      item("https://x/d1/a.docx", "a.docx", "https://x/d1/", false),
-      item("https://x/d1/b.docx", "b.docx", "https://x/d1/", false),
-      item("https://x/d2/c.docx", "c.docx", "https://x/d2/", false),
+  it("TEI avec token → langue forcée (roman_lat.xml → lat)", () => {
+    const d = detectImportFile("roman_lat.xml", "https://x/d/roman_lat.xml", "https://x/d/", "wp_numbered", "fr");
+    expect(d?.language).toBe("lat");
+  });
+
+  it("extension inconnue → null (ignoré, ni importé ni en erreur)", () => {
+    expect(detectImportFile("notes.pdf", "https://x/d/notes.pdf", "https://x/d/", "wp_numbered", "fr")).toBeNull();
+  });
+});
+
+describe("routeEntriesToImport (Phase 5 — expansion des dossiers)", () => {
+  it("trie fichiers détectés / inconnus / sous-dossiers (non récursif)", () => {
+    const entries: RemoteEntry[] = [
+      entry("a.docx", false),
+      entry("b.txt", false),
+      entry("notes.pdf", false), // inconnu → ignored
+      entry("sub", true),        // sous-dossier → subfolders, non développé
+    ];
+    const r = routeEntriesToImport(entries, "https://dav.example/folder/", "wp_numbered", "fr");
+    expect(r.files.map((f) => f.name)).toEqual(["a.docx", "b.txt"]);
+    expect(r.ignored).toBe(1);
+    expect(r.subfolders).toBe(1);
+  });
+
+  it("le parentUrl des fichiers est celui passé (le dossier développé)", () => {
+    const r = routeEntriesToImport([entry("a.docx", false)], "https://dav.example/folder/", "wp_numbered", "fr");
+    expect(r.files[0].parentUrl).toBe("https://dav.example/folder/");
+  });
+
+  it("dossier vide → aucun fichier, compteurs à 0", () => {
+    expect(routeEntriesToImport([], "https://x/d/", "wp_numbered", "fr")).toEqual({
+      files: [], ignored: 0, subfolders: 0,
+    });
+  });
+});
+
+describe("dedupeDetectedFiles (Phase 5)", () => {
+  const file = (href: string, name: string) =>
+    ({ href, name, parentUrl: "https://x/d/", mode: "docx_numbered_lines", language: "fr" });
+
+  it("supprime les href en double, garde la première occurrence", () => {
+    const out = dedupeDetectedFiles([
+      file("https://x/d/a.docx", "a.docx"),
+      file("https://x/d/b.docx", "b.docx"),
+      file("https://x/d/a.docx", "a-bis.docx"), // même href → écarté
+    ]);
+    expect(out.map((f) => f.href)).toEqual(["https://x/d/a.docx", "https://x/d/b.docx"]);
+    expect(out.map((f) => f.name)).toEqual(["a.docx", "b.docx"]); // première gagne
+  });
+
+  it("liste sans doublon → inchangée", () => {
+    const input = [file("https://x/d/a.docx", "a.docx"), file("https://x/d/b.docx", "b.docx")];
+    expect(dedupeDetectedFiles(input)).toEqual(input);
+  });
+
+  it("liste vide → vide", () => {
+    expect(dedupeDetectedFiles([])).toEqual([]);
+  });
+});
+
+describe("groupDetectedFiles (Phase 5)", () => {
+  const file = (
+    href: string, name: string, parentUrl: string, mode: string, language: string | undefined,
+  ) => ({ href, name, parentUrl, mode, language });
+
+  it("regroupe les fichiers de mêmes (parent, mode, langue) en un seul lot", () => {
+    const groups = groupDetectedFiles([
+      file("https://x/d/a.docx", "a.docx", "https://x/d/", "docx_numbered_lines", "fr"),
+      file("https://x/d/b.docx", "b.docx", "https://x/d/", "docx_numbered_lines", "fr"),
+    ]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toMatchObject({
+      url: "https://x/d/",
+      mode: "docx_numbered_lines",
+      language: "fr",
+      hrefs: ["https://x/d/a.docx", "https://x/d/b.docx"],
+    });
+  });
+
+  it("dossier bilingue (même parent) → un lot par langue", () => {
+    const groups = groupDetectedFiles([
+      file("https://x/d/roman_fr.docx", "roman_fr.docx", "https://x/d/", "docx_numbered_lines", "fr"),
+      file("https://x/d/roman_en.docx", "roman_en.docx", "https://x/d/", "docx_numbered_lines", "en"),
     ]);
     expect(groups).toHaveLength(2);
-    expect(groups.find((g) => g.url === "https://x/d1/")?.hrefs).toEqual([
-      "https://x/d1/a.docx",
-      "https://x/d1/b.docx",
-    ]);
-    expect(groups.find((g) => g.url === "https://x/d2/")?.hrefs).toEqual([
-      "https://x/d2/c.docx",
-    ]);
+    expect(groups.map((g) => g.language).sort()).toEqual(["en", "fr"]);
+    expect(groups.every((g) => g.hrefs.length === 1)).toBe(true);
   });
 
-  it("a file directly inside a selected folder is dropped (folder covers it)", () => {
-    const groups = groupSelectionForImport([
-      item("https://x/A/", "A", "https://x/", true),
-      item("https://x/A/inside.docx", "inside.docx", "https://x/A/", false),
-      item("https://x/other/keep.docx", "keep.docx", "https://x/other/", false),
+  it("formats mixtes (même parent, même langue) → un lot par mode", () => {
+    const groups = groupDetectedFiles([
+      file("https://x/d/a.docx", "a.docx", "https://x/d/", "docx_numbered_lines", "fr"),
+      file("https://x/d/b.txt", "b.txt", "https://x/d/", "txt_numbered_lines", "fr"),
     ]);
     expect(groups).toHaveLength(2);
-    expect(groups.some((g) => g.url === "https://x/A/" && !g.hrefs)).toBe(true);
-    expect(groups.find((g) => g.url === "https://x/other/")?.hrefs).toEqual([
-      "https://x/other/keep.docx",
-    ]);
+    expect(groups.map((g) => g.mode).sort()).toEqual(["docx_numbered_lines", "txt_numbered_lines"]);
   });
 
-  it("empty cart → no groups", () => {
-    expect(groupSelectionForImport([])).toEqual([]);
+  it("sépare aussi par dossier parent", () => {
+    const groups = groupDetectedFiles([
+      file("https://x/d1/a.docx", "a.docx", "https://x/d1/", "docx_numbered_lines", "fr"),
+      file("https://x/d2/b.docx", "b.docx", "https://x/d2/", "docx_numbered_lines", "fr"),
+    ]);
+    expect(groups).toHaveLength(2);
+    expect(groups.map((g) => g.url).sort()).toEqual(["https://x/d1/", "https://x/d2/"]);
+  });
+
+  it("préserve l'ordre de première apparition", () => {
+    const groups = groupDetectedFiles([
+      file("https://x/d/a.txt", "a.txt", "https://x/d/", "txt_numbered_lines", "fr"),
+      file("https://x/d/b.docx", "b.docx", "https://x/d/", "docx_numbered_lines", "fr"),
+    ]);
+    expect(groups.map((g) => g.mode)).toEqual(["txt_numbered_lines", "docx_numbered_lines"]);
+  });
+
+  it("label : dossier · mode · langue + compte pluralisé", () => {
+    const groups = groupDetectedFiles([
+      file("https://x/d/a.docx", "a.docx", "https://x/d/", "docx_numbered_lines", "fr"),
+      file("https://x/d/b.docx", "b.docx", "https://x/d/", "docx_numbered_lines", "fr"),
+    ]);
+    expect(groups[0].label).toBe("d · docx_numbered_lines · fr (2 fichiers)");
+  });
+
+  it("TEI sans langue (xml:lang) : regroupe par langue undefined, label « xml:lang »", () => {
+    const groups = groupDetectedFiles([
+      file("https://x/d/a.xml", "a.xml", "https://x/d/", "tei", undefined),
+      file("https://x/d/b.xml", "b.xml", "https://x/d/", "tei", undefined),
+      file("https://x/d/roman_lat.xml", "roman_lat.xml", "https://x/d/", "tei", "lat"),
+    ]);
+    expect(groups).toHaveLength(2);
+    const auto = groups.find((g) => g.language === undefined);
+    expect(auto?.hrefs).toEqual(["https://x/d/a.xml", "https://x/d/b.xml"]);
+    expect(auto?.label).toBe("d · tei · xml:lang (2 fichiers)");
+    expect(groups.find((g) => g.language === "lat")?.hrefs).toEqual(["https://x/d/roman_lat.xml"]);
+  });
+
+  it("liste vide → aucun lot", () => {
+    expect(groupDetectedFiles([])).toEqual([]);
   });
 });
 

@@ -19,6 +19,16 @@ import type { JobCenter } from "../components/JobCenter.ts";
 import { initCardAccordions } from "../lib/uiAccordions.ts";
 import { compareDocsByTitle } from "../lib/docSort.ts";
 import { setHtml, raw } from "../lib/safeHtml.ts";
+import {
+  WP_DEFAULT_NUMBERED,
+  WP_DEFAULT_PARAGRAPHS,
+  extFromFileName,
+  modeOptionsForExt,
+  deriveModeFromExt,
+  normalizeModeForExt,
+  detectLanguageForMode,
+  LANG_RE,
+} from "../lib/importDetect.ts";
 
 /** Normalise un chemin pour détecter les doublons (séparateurs + casse + préfixe long Windows). */
 export function normalizeImportPath(p: string): string {
@@ -28,46 +38,8 @@ export function normalizeImportPath(p: string): string {
   return s;
 }
 
-const IMPORT_MODE_OPTIONS: Array<{ value: FileItem["mode"]; label: string }> = [
-  { value: "docx_numbered_lines", label: "DOCX lignes numérotées [n]" },
-  { value: "txt_numbered_lines", label: "TXT lignes numérotées [n]" },
-  { value: "docx_paragraphs", label: "DOCX paragraphes" },
-  { value: "odt_numbered_lines", label: "ODT lignes numérotées [n]" },
-  { value: "odt_paragraphs", label: "ODT paragraphes" },
-  { value: "tei", label: "TEI XML" },
-  { value: "conllu", label: "CoNLL-U annoté (.conllu)" },
-];
-
-/** Profil de lot : intention commune DOCX/ODT (BACKLOG — Import traitement de texte). */
-const WP_DEFAULT_PARAGRAPHS = "wp_paragraphs";
-const WP_DEFAULT_NUMBERED = "wp_numbered";
-
-function _extFromFileName(fileName: string): string {
-  const base = fileName.split(/[/\\]/u).pop() ?? fileName;
-  if (!base.includes(".")) return "";
-  return base.split(".").pop()?.toLowerCase() ?? "";
-}
-
-/** Modes d’import proposés pour une extension (évite TEI/TXT sur DOCX, etc.). */
-export function modeOptionsForExt(ext: string): Array<{ value: string; label: string }> {
-  const e = ext.toLowerCase();
-  if (e === "docx") {
-    return [
-      { value: "docx_paragraphs", label: "Paragraphes" },
-      { value: "docx_numbered_lines", label: "Lignes numérotées [n]" },
-    ];
-  }
-  if (e === "odt") {
-    return [
-      { value: "odt_paragraphs", label: "Paragraphes" },
-      { value: "odt_numbered_lines", label: "Lignes numérotées [n]" },
-    ];
-  }
-  if (e === "txt") return [{ value: "txt_numbered_lines", label: "TXT lignes numérotées [n]" }];
-  if (e === "conllu" || e === "conll") return [{ value: "conllu", label: "CoNLL-U annoté" }];
-  if (e === "xml" || e === "tei") return [{ value: "tei", label: "TEI XML" }];
-  return IMPORT_MODE_OPTIONS.slice();
-}
+// Détection format/langue d'import (extension → mode, nom → langue) extraite dans
+// lib/importDetect.ts (source de vérité unique, partagée avec ShareDocs — Phase 5).
 
 interface ConlluPreviewRow {
   sent: number;
@@ -596,33 +568,6 @@ export class ImportScreen {
     this._refreshRuntimeState();
   }
 
-  private _deriveModeFromExt(ext: string, defaultMode: string): string {
-    const e = ext.toLowerCase();
-    if (e === "xml" || e === "tei") return "tei";
-    if (e === "txt") return "txt_numbered_lines";
-    if (e === "conllu" || e === "conll") return "conllu";
-    if (e === "docx") {
-      if (defaultMode === WP_DEFAULT_PARAGRAPHS) return "docx_paragraphs";
-      if (defaultMode === WP_DEFAULT_NUMBERED) return "docx_numbered_lines";
-      if (defaultMode.startsWith("docx_")) return defaultMode;
-      return "docx_numbered_lines";
-    }
-    if (e === "odt") {
-      if (defaultMode === WP_DEFAULT_PARAGRAPHS) return "odt_paragraphs";
-      if (defaultMode === WP_DEFAULT_NUMBERED) return "odt_numbered_lines";
-      if (defaultMode.startsWith("odt_")) return defaultMode;
-      return "odt_paragraphs";
-    }
-    return defaultMode;
-  }
-
-  /** Si le mode stocké ne correspond pas à l’extension (ex. TEI sur .docx), corrige. */
-  private _normalizeModeForExt(mode: string, ext: string): string {
-    const allowed = new Set(modeOptionsForExt(ext).map(o => o.value));
-    if (allowed.has(mode)) return mode;
-    return this._deriveModeFromExt(ext, WP_DEFAULT_NUMBERED);
-  }
-
   /**
    * Ajoute un fichier à la file s'il n'y est pas déjà (même chemin normalisé).
    * @returns "added" | "dup_queue"
@@ -637,14 +582,14 @@ export class ImportScreen {
     if (this._files.some((f) => normalizeImportPath(f.path) === norm)) {
       return "dup_queue";
     }
-    const ext = _extFromFileName(fileName);
-    const mode = this._normalizeModeForExt(this._deriveModeFromExt(ext, defaultMode), ext);
-    const rawLang = ImportScreen._LANG_RE.exec(fileName)?.[1]?.toLowerCase() ?? null;
-    const detectedLang = rawLang && ImportScreen._KNOWN_LANG_CODES.has(rawLang) ? rawLang : null;
+    const ext = extFromFileName(fileName);
+    const mode = normalizeModeForExt(deriveModeFromExt(ext, defaultMode), ext);
     this._files.push({
       path,
       mode,
-      language: detectedLang ?? defaultLang,
+      // TEI sans token de langue → champ vide = le xml:lang du document fait foi
+      // (DESIGN §11.8, aligné sur ShareDocs). Les autres formats : détecté ou défaut.
+      language: detectLanguageForMode(mode, fileName, defaultLang) ?? "",
       title: fileName,
       status: "pending",
       message: "",
@@ -707,9 +652,11 @@ export class ImportScreen {
     for (const file of this._files) {
       if (file.status !== "pending") continue;
       const base = file.path.split(/[/\\]/u).pop() ?? "";
-      const ext = _extFromFileName(base);
-      file.mode = this._normalizeModeForExt(this._deriveModeFromExt(ext, defaultMode), ext);
-      file.language = defaultLang;
+      const ext = extFromFileName(base);
+      file.mode = normalizeModeForExt(deriveModeFromExt(ext, defaultMode), ext);
+      // Ne pas imposer le défaut à un TEI sans token : laisser le xml:lang décider
+      // (champ vide), cohérent avec _tryAddSingle (DESIGN §11.8).
+      file.language = detectLanguageForMode(file.mode, base, defaultLang) ?? "";
       touched += 1;
     }
     this._renderList();
@@ -739,8 +686,8 @@ export class ImportScreen {
     }
     this._listEl.innerHTML = "";
     this._files.forEach((f, i) => {
-      const ext = _extFromFileName(f.title);
-      const normMode = this._normalizeModeForExt(f.mode, ext);
+      const ext = extFromFileName(f.title);
+      const normMode = normalizeModeForExt(f.mode, ext);
       if (normMode !== f.mode) f.mode = normMode;
       const modeOpts = modeOptionsForExt(ext);
       const row = document.createElement("div");
@@ -768,7 +715,10 @@ export class ImportScreen {
               .join("")}
           </select>
           ${colCtrl}
-          <input class="imp-lang-inp" type="text" value="${_escHtml(f.language)}" maxlength="10" placeholder="lang" data-i="${i}" />
+          <input class="imp-lang-inp" type="text" value="${_escHtml(f.language)}" maxlength="10"
+                 placeholder="${f.mode === "tei" ? "xml:lang" : "lang"}"
+                 title="${f.mode === "tei" ? "TEI : laisser vide pour conserver le xml:lang du document ; renseigner pour forcer une langue." : "Code de langue (ex. fr, en)."}"
+                 data-i="${i}" />
           <input class="imp-title-inp" type="text" value="${_escHtml(f.title)}" placeholder="titre" data-i="${i}" />
           <button class="btn btn-sm imp-remove-btn" data-i="${i}" aria-label="Retirer ce fichier de la liste" title="Retirer ce fichier de la liste">✕</button>
         </div>
@@ -1157,10 +1107,13 @@ export class ImportScreen {
       f.status = "importing";
       this._renderList();
       try {
+        // TEI au champ vide → ne pas forcer "und" : l'importeur garde le xml:lang du
+        // document (DESIGN §11.8). Les autres formats retombent sur "und" si vide.
+        const fileLang = f.mode === "tei" ? f.language || undefined : f.language || "und";
         const job = await enqueueJob(this._conn!, "import", {
           mode: f.mode,
           path: f.path,
-          language: f.language || "und",
+          language: fileLang,
           title: f.title,
           check_filename: checkFilename,
           ...(f.mode === "docx_numbered_lines" && f.column_index
@@ -1169,7 +1122,6 @@ export class ImportScreen {
         });
         submitted++;
         this._log(`Job soumis pour "${f.title}" (${job.job_id.slice(0, 8)}…)`);
-        const fileLang = f.language || "und";
         const fileTitle = f.title;
         this._jobCenter?.trackJob(job.job_id, `Import: ${f.title}`, (done) => {
           finished++;
@@ -1205,7 +1157,9 @@ export class ImportScreen {
             this._showToast?.(`✓ Importé: ${fileTitle}`);
             // Sprint 8: propose family link (queued — one dialog at a time)
             if (typeof docId === "number" && !this._skipFamilyDialog) {
-              this._enqueueFamilyDialog(docId, fileTitle, fileLang);
+              // fileLang peut être undefined (TEI sans token → langue résolue côté
+              // importeur depuis xml:lang) ; le dialog familles n'a qu'un indice.
+              this._enqueueFamilyDialog(docId, fileTitle, fileLang ?? "und");
             }
           } else {
             f.status = "error";
@@ -1477,48 +1431,6 @@ export class ImportScreen {
   // Sprint 8 — filename language detection
   // ---------------------------------------------------------------------------
 
-  /**
-   * Matches a 2-3 letter token preceded by _ - . at the end of a filename (before extension).
-   * e.g. roman_FR.docx  roman-en.docx  texte.DE.txt
-   */
-  private static readonly _LANG_RE =
-    /[_\-.]([A-Za-z]{2,3})(?:\.[^.]+)?$/u;
-
-  /**
-   * Whitelist of BCP-47 / ISO 639 codes accepted as language tokens in filenames.
-   * Covers ISO 639-1 (2-letter) and common ISO 639-2 (3-letter) codes.
-   * Prevents false positives (e.g. _to, _by, _of, _v2…).
-   */
-  private static readonly _KNOWN_LANG_CODES = new Set([
-    // Romance
-    "fr", "fra", "en", "eng", "es", "spa", "it", "ita", "pt", "por",
-    "ro", "ron", "rum", "ca", "cat", "oc", "oci", "la", "lat", "gl", "glg",
-    // Germanic
-    "de", "deu", "ger", "nl", "nld", "dut", "sv", "swe", "da", "dan",
-    "no", "nor", "nb", "nob", "nn", "nno", "af", "afr", "fy", "fry",
-    // Greek
-    "el", "ell", "gre",
-    // Slavic
-    "pl", "pol", "cs", "ces", "cze", "sk", "slk", "slo", "sl", "slv",
-    "ru", "rus", "uk", "ukr", "bg", "bul", "hr", "hrv", "sr", "srp",
-    "bs", "bos", "mk", "mkd",
-    // Baltic
-    "lt", "lit", "lv", "lav",
-    // Finno-Ugric
-    "fi", "fin", "hu", "hun", "et", "est",
-    // Other European
-    "eu", "eus", "baq", "is", "isl", "ice", "ga", "gle", "cy", "wel",
-    // Semitic
-    "ar", "ara", "he", "heb",
-    // CJK
-    "zh", "zho", "chi", "ja", "jpn", "ko", "kor",
-    // South/Southeast Asian
-    "hi", "hin", "bn", "ben", "ur", "urd", "fa", "fas", "per",
-    "tr", "tur", "vi", "vie", "th", "tha", "id", "ind", "ms", "msa",
-    // Other
-    "sw", "swa", "und", "mul",
-  ]);
-
   /** Groups files by common stem when they differ only in the language token.
    *  Returns an array of groups (≥2 files) that share the same stem + extension. */
   static detectFamilyGroups(paths: string[]): Array<{ stem: string; files: Array<{ path: string; lang: string }> }> {
@@ -1526,7 +1438,7 @@ export class ImportScreen {
 
     for (const p of paths) {
       const fname = p.replace(/\\/g, "/").split("/").pop() ?? p;
-      const m = fname.match(ImportScreen._LANG_RE);
+      const m = fname.match(LANG_RE);
       if (!m) continue;
       const lang = m[1].toLowerCase();
       const ext = fname.split(".").pop()?.toLowerCase() ?? "";

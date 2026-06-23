@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
   normalizeImportPath,
-  modeOptionsForExt,
   parseConlluPreview,
 } from "../ImportScreen.ts";
 
@@ -38,71 +37,9 @@ describe("normalizeImportPath", () => {
   });
 });
 
-// ─── modeOptionsForExt ───────────────────────────────────────────────────────
-
-describe("modeOptionsForExt", () => {
-  it(".docx → 2 options (paragraphes + lignes numérotées)", () => {
-    const opts = modeOptionsForExt("docx");
-    expect(opts).toHaveLength(2);
-    expect(opts.map(o => o.value)).toContain("docx_paragraphs");
-    expect(opts.map(o => o.value)).toContain("docx_numbered_lines");
-  });
-
-  it(".odt → 2 options", () => {
-    const opts = modeOptionsForExt("odt");
-    expect(opts).toHaveLength(2);
-    expect(opts.map(o => o.value)).toContain("odt_paragraphs");
-    expect(opts.map(o => o.value)).toContain("odt_numbered_lines");
-  });
-
-  it(".txt → 1 option TXT lignes numérotées", () => {
-    const opts = modeOptionsForExt("txt");
-    expect(opts).toHaveLength(1);
-    expect(opts[0].value).toBe("txt_numbered_lines");
-  });
-
-  it(".conllu → 1 option CoNLL-U", () => {
-    const opts = modeOptionsForExt("conllu");
-    expect(opts).toHaveLength(1);
-    expect(opts[0].value).toBe("conllu");
-  });
-
-  it(".conll → 1 option CoNLL-U (alias)", () => {
-    const opts = modeOptionsForExt("conll");
-    expect(opts).toHaveLength(1);
-    expect(opts[0].value).toBe("conllu");
-  });
-
-  it(".xml → 1 option TEI", () => {
-    const opts = modeOptionsForExt("xml");
-    expect(opts).toHaveLength(1);
-    expect(opts[0].value).toBe("tei");
-  });
-
-  it(".tei → 1 option TEI", () => {
-    const opts = modeOptionsForExt("tei");
-    expect(opts).toHaveLength(1);
-    expect(opts[0].value).toBe("tei");
-  });
-
-  it("extension inconnue → toutes les options (> 2)", () => {
-    const opts = modeOptionsForExt("pdf");
-    expect(opts.length).toBeGreaterThan(2);
-  });
-
-  it("casse insensible (.DOCX ≡ .docx)", () => {
-    expect(modeOptionsForExt("DOCX")).toEqual(modeOptionsForExt("docx"));
-  });
-
-  it("chaque option a value et label non vides", () => {
-    for (const ext of ["docx", "odt", "txt", "conllu", "xml", "tei", "pdf"]) {
-      for (const opt of modeOptionsForExt(ext)) {
-        expect(opt.value).toBeTruthy();
-        expect(opt.label).toBeTruthy();
-      }
-    }
-  });
-});
+// NOTE: la couverture de `modeOptionsForExt` a migré vers
+// `lib/__tests__/importDetect.test.ts` (la fonction vit désormais dans le module
+// pur `lib/importDetect.ts`, partagé avec ShareDocs — Phase 5).
 
 // ─── parseConlluPreview ───────────────────────────────────────────────────────
 

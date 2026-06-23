@@ -23,20 +23,26 @@ import { webdavList, importRemote, deleteDocuments } from "../lib/sidecarClient.
 import type { JobCenter } from "../components/JobCenter.ts";
 import { setHtml, appendHtml, raw, safeHtml } from "../lib/safeHtml.ts";
 import {
+  WP_DEFAULT_NUMBERED,
+  WP_DEFAULT_PARAGRAPHS,
+} from "../lib/importDetect.ts";
+import {
   authIsComplete,
   authSecret,
   buildNextcloudRoot,
   buildWebdavAuth,
-  detectFormatFromName,
-  fileMatchesMode,
+  dedupeDetectedFiles,
+  detectImportFile,
+  type DetectedImportFile,
+  type DetectedImportGroup,
   folderLabel,
   formatRemoteSize,
-  groupSelectionForImport,
+  groupDetectedFiles,
   isImportRemoteReport,
   keyringAccount,
-  languageRequiredForMode,
   mergeReports,
   normalizeFolderUrl,
+  routeEntriesToImport,
   safeDecodeUrl,
   type SelectedRemoteItem,
   sortRemoteEntries,
@@ -54,21 +60,6 @@ import {
   secureGet,
   secureSet,
 } from "../lib/credentialStore.ts";
-
-const IMPORT_MODES: Array<{ value: string; label: string }> = [
-  { value: "docx_numbered_lines", label: "DOCX — lignes numérotées [N]" },
-  { value: "txt_numbered_lines", label: "TXT — lignes numérotées [N]" },
-  { value: "docx_paragraphs", label: "DOCX — paragraphes" },
-  { value: "odt_paragraphs", label: "ODT — paragraphes" },
-  { value: "odt_numbered_lines", label: "ODT — lignes numérotées [N]" },
-  { value: "tei", label: "TEI (XML)" },
-  { value: "conllu", label: "CoNLL-U" },
-];
-
-// Static, no user input → safe to embed in the raw() skeleton.
-const MODE_OPTIONS = IMPORT_MODES.map(
-  (m) => `<option value="${m.value}">${m.label}</option>`,
-).join("");
 
 const SHAREDOCS_CSS = `
   .prep-sharedocs-screen .prep-sd-wrap { max-width: 860px; margin: 0 auto; padding: 1rem 1.25rem 3rem; }
@@ -222,7 +213,8 @@ export class ShareDocsImportScreen {
             <code id="prep-sd-current-url" class="prep-sd-current-url"></code>
           </div>
           <p class="prep-sd-help">Coche des dossiers et/ou des fichiers (la sélection se conserve quand tu navigues),
-            puis « Importer la sélection ». « Importer ce dossier » ingère tout le dossier courant (filtré par le mode / le glob).</p>
+            puis « Importer la sélection ». « Importer ce dossier » ingère le dossier courant : chaque fichier est
+            importé avec son format (extension) et sa langue (nom du fichier) ; les extensions inconnues sont ignorées.</p>
           <div id="prep-sd-entries" class="prep-sd-entries"></div>
           <div id="prep-sd-selection" class="prep-sd-selection" style="display:none">
             <span id="prep-sd-sel-count" class="prep-sd-sel-count"></span>
@@ -232,13 +224,16 @@ export class ShareDocsImportScreen {
           <div id="prep-sd-sel-list" class="prep-sd-sel-list"></div>
           <div id="prep-sd-sel-confirm" class="prep-sd-sel-confirm"></div>
           <div class="prep-sd-import-controls">
-            <label class="prep-sd-field"><span>Mode d'import</span>
-              <select id="prep-sd-mode">${MODE_OPTIONS}</select>
+            <label class="prep-sd-field"><span>Profil par défaut (style)</span>
+              <select id="prep-sd-profile">
+                <option value="${WP_DEFAULT_NUMBERED}" selected>Lignes numérotées [n]</option>
+                <option value="${WP_DEFAULT_PARAGRAPHS}">Paragraphes</option>
+              </select>
             </label>
-            <label class="prep-sd-field"><span>Langue (ISO, requise sauf TEI)</span><input type="text" id="prep-sd-language" placeholder="fr" /></label>
-            <label class="prep-sd-field"><span>Filtre (glob, optionnel)</span><input type="text" id="prep-sd-include" placeholder="*.docx" /></label>
+            <label class="prep-sd-field"><span>Langue par défaut (si non détectée)</span><input type="text" id="prep-sd-language" placeholder="fr" /></label>
             <button type="button" id="prep-sd-import-btn" class="prep-sd-btn prep-sd-btn--primary">Importer ce dossier</button>
           </div>
+          <div id="prep-sd-import-confirm" class="prep-sd-sel-confirm"></div>
         </section>
 
         <section class="prep-sd-card" id="prep-sd-report-section" style="display:none">
@@ -258,7 +253,8 @@ export class ShareDocsImportScreen {
     root.querySelector("#prep-sd-entries")?.addEventListener("change", (ev) => this._onEntryCheck(ev));
     root.querySelector("#prep-sd-sel-clear")?.addEventListener("click", () => this._clearSelection());
     root.querySelector("#prep-sd-sel-import")?.addEventListener("click", () => void this._importSelection());
-    root.querySelector("#prep-sd-mode")?.addEventListener("change", () => this._updateSelectionUi());
+    root.querySelector("#prep-sd-profile")?.addEventListener("change", () => this._updateSelectionUi());
+    root.querySelector("#prep-sd-language")?.addEventListener("input", () => this._updateSelectionUi());
     root.querySelector("#prep-sd-forget-btn")?.addEventListener("click", () => void this._forget());
 
     this._updateConnectBtn();
@@ -538,77 +534,128 @@ export class ShareDocsImportScreen {
   // ─── Import ─────────────────────────────────────────────────────────────────
 
   /**
-   * Read + validate the shared import controls (mode / language / include) and the
-   * auth form. Shows a toast and returns null on any problem. Also refreshes
-   * `this._auth` from the form. Shared by "Importer ce dossier" and "Importer la
-   * sélection".
+   * Read + validate the shared *defaults* (profil de segmentation par défaut + langue
+   * par défaut) and the auth form. Shows a toast and returns null on a problem. Also
+   * refreshes `this._auth`. Shared by "Importer ce dossier" and "Importer la
+   * sélection". The per-file format + langue are derived later (importDetect) ; ces
+   * deux valeurs ne sont que les replis (profil = style ; langue si non détectée).
    */
-  private _readImportForm(): { mode: string; language?: string; include?: string } | null {
-    const mode = this._root?.querySelector<HTMLSelectElement>("#prep-sd-mode")?.value ?? "";
-    if (!mode) {
-      this._showToast?.("Choisissez un mode d'import", true);
-      return null;
-    }
-    const language = this._root?.querySelector<HTMLInputElement>("#prep-sd-language")?.value.trim() || undefined;
-    const include = this._root?.querySelector<HTMLInputElement>("#prep-sd-include")?.value.trim() || undefined;
-    if (languageRequiredForMode(mode) && !language) {
-      this._showToast?.("La langue (ISO) est requise pour ce mode d'import (seul TEI peut l'omettre)", true);
-      return null;
-    }
+  private _readImportForm(): { profile: string; defaultLanguage: string } | null {
+    const profile =
+      this._root?.querySelector<HTMLSelectElement>("#prep-sd-profile")?.value || WP_DEFAULT_NUMBERED;
+    const defaultLanguage =
+      this._root?.querySelector<HTMLInputElement>("#prep-sd-language")?.value.trim() || "fr";
     this._auth = this._readAuthFromForm();
     if (!authIsComplete(this._auth)) {
       this._showToast?.("Identifiants incomplets pour ce mode d'authentification", true);
       return null;
     }
-    return { mode, language, include };
+    return { profile, defaultLanguage };
+  }
+
+  /**
+   * Per-file import params (mode + langue) dérivés d'un nom de fichier distant, en
+   * réutilisant la détection de l'import local (importDetect — source unique).
+   * Retourne null quand l'extension n'est pas un format importable : le fichier est
+   * alors ignoré (ni importé, ni en erreur), cf. DESIGN §11.3.
+   */
+  private _detectFile(
+    name: string,
+    href: string,
+    parentUrl: string,
+    profile: string,
+    defaultLanguage: string,
+  ): DetectedImportFile | null {
+    // Délègue à la fonction pure partagée (testée en isolation, source unique).
+    return detectImportFile(name, href, parentUrl, profile, defaultLanguage);
+  }
+
+  /**
+   * Submit one /import-remote per group (each carries its own mode/language/hrefs),
+   * track each in the Job Center, aggregate the per-batch reports into a single one.
+   * Returns false if enqueuing a group threw (network/sidecar) — the caller can then
+   * keep the selection cart for a retry rather than clearing it.
+   */
+  private async _submitGroups(conn: Conn, groups: DetectedImportGroup[]): Promise<boolean> {
+    this._report = null;
+    this._renderReport();
+    this._log(`▶ Import — ${groups.length} lot(s)`);
+    try {
+      for (const g of groups) {
+        const job = await importRemote(conn, {
+          url: g.url,
+          mode: g.mode,
+          language: g.language,
+          hrefs: g.hrefs,
+          auth: this._auth,
+        });
+        this._jobCenter?.trackJob(job.job_id, `ShareDocs : ${g.label}`, (done) => {
+          const result = done.result;
+          if (done.status === "done" && isImportRemoteReport(result)) {
+            this._report = mergeReports(this._report, result);
+            this._renderReport();
+            this._showToast?.(`✓ ${summarizeReport(this._report)}`);
+            this._log(`✓ ${g.label} — ${summarizeReport(result)}`);
+          } else {
+            const msg =
+              done.error ||
+              (done.status === "done"
+                ? "Import terminé sans rapport exploitable"
+                : "Import distant interrompu");
+            this._showToast?.(`✗ ${g.label} : ${msg}`, true);
+            this._log(`✗ ${g.label} : ${msg}`, true);
+          }
+        });
+      }
+      return true;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this._showToast?.(`✗ ${msg}`, true);
+      this._log(`✗ ${msg}`, true);
+      return false;
+    }
   }
 
   private async _runImport(): Promise<void> {
     if (!this._conn || !this._currentUrl) return;
     const form = this._readImportForm();
     if (!form) return;
-    const { mode, language, include } = form;
+    const conn = this._conn;
+    const parentUrl = this._currentUrl;
 
-    const importBtn = this._root?.querySelector<HTMLButtonElement>("#prep-sd-import-btn");
-    if (importBtn) importBtn.disabled = true;
-    try {
-      const job = await importRemote(this._conn, {
-        url: this._currentUrl,
-        mode,
-        language,
-        include,
-        auth: this._auth,
-      });
-      // The Job Center now owns the progress UI — re-enable immediately rather
-      // than from onDone, which is not guaranteed to fire (a dropped connection
-      // or a job that never reaches a terminal state would otherwise leave the
-      // button stuck disabled).
-      if (importBtn) importBtn.disabled = false;
-      this._report = null;
-      this._renderReport();
-      this._log(`▶ Import lancé — ${safeDecodeUrl(this._currentUrl)} (${mode})`);
-      this._jobCenter?.trackJob(job.job_id, `ShareDocs : ${folderLabel(this._currentUrl)}`, (done) => {
-        const result = done.result;
-        if (done.status === "done" && isImportRemoteReport(result)) {
-          this._report = result;
-          this._renderReport();
-          const summary = summarizeReport(this._report);
-          this._showToast?.(`✓ ${summary}`);
-          this._log(`✓ ${summary}`);
-        } else {
-          const msg =
-            done.error ||
-            (done.status === "done" ? "Import terminé sans rapport exploitable" : "Import distant interrompu");
-          this._showToast?.(`✗ ${msg}`, true);
-          this._log(`✗ ${msg}`, true);
-        }
-      });
-    } catch (err) {
-      if (importBtn) importBtn.disabled = false;
-      const msg = err instanceof Error ? err.message : String(err);
-      this._showToast?.(`✗ ${msg}`, true);
-      this._log(`✗ ${msg}`, true);
+    // Détection par fichier sur le dossier courant (les sous-dossiers ne s'importent
+    // pas ici). Les extensions inconnues sont ignorées mais comptées (jamais en
+    // erreur) — DESIGN §11.3. Routage partagé avec l'expansion des dossiers cochés.
+    const { files, ignored } = routeEntriesToImport(
+      this._entries,
+      parentUrl,
+      form.profile,
+      form.defaultLanguage,
+    );
+    if (files.length === 0) {
+      this._showToast?.(
+        ignored > 0
+          ? `Aucun fichier importable — ${ignored} ignoré(s) (extension non reconnue).`
+          : "Aucun fichier à importer dans ce dossier.",
+        true,
+      );
+      return;
     }
+    const groups = groupDetectedFiles(files);
+
+    await this._guardedRun(
+      "#prep-sd-import-btn",
+      async () => {
+        await this._submitGroups(conn, groups);
+      },
+      ignored > 0
+        ? {
+            containerSel: "#prep-sd-import-confirm",
+            message: `${files.length} fichier(s) → ${groups.length} lot(s) ; ${ignored} ignoré(s) (extension non reconnue). Importer ?`,
+            opts: { confirmLabel: "Importer", danger: false },
+          }
+        : undefined,
+    );
   }
 
   // ─── Sélection multiple (panier, P4C) ───────────────────────────────────────
@@ -625,28 +672,31 @@ export class ShareDocsImportScreen {
     const importBtn = root.querySelector<HTMLButtonElement>("#prep-sd-sel-import");
     if (importBtn) importBtn.textContent = `Importer la sélection (${n})`;
     const list = root.querySelector<HTMLElement>("#prep-sd-sel-list");
-    if (list) {
-      if (n === 0) {
-        setHtml(list, raw(""));
-      } else {
-        // Show the parent folder (the cart spans folders → bare names are ambiguous)
-        // and, per file, the detected format with a ⚠ when it does not match the
-        // chosen mode's format (that file would error). Folders carry no flag — a
-        // whole-folder import filters by extension server-side anyway.
-        const mode = root.querySelector<HTMLSelectElement>("#prep-sd-mode")?.value ?? "";
-        const items = [...this._selected.values()].map((it) => {
-          if (it.is_dir) {
-            return safeHtml`<li>📁 ${it.name} — ${folderLabel(it.parentUrl)}</li>`;
-          }
-          const fmt = detectFormatFromName(it.name);
-          const tag = fileMatchesMode(it.name, mode)
-            ? safeHtml`<span class="prep-sd-fmt">${fmt}</span>`
-            : safeHtml`<span class="prep-sd-mismatch" title="Format incompatible avec le mode choisi — ce fichier échouera">⚠ ${fmt}</span>`;
-          return safeHtml`<li>📄 ${it.name} — ${folderLabel(it.parentUrl)} ${tag}</li>`;
-        });
-        setHtml(list, safeHtml`<ul>${items}</ul>`);
-      }
+    if (!list) return;
+    if (n === 0) {
+      setHtml(list, raw(""));
+      return;
     }
+    // Per fichier : afficher le (mode, langue) détectés avec lequel il sera importé
+    // (remplace le drapeau ⚠ de P4D — on route par fichier au lieu de signaler). Le
+    // parent est affiché car le panier s'étend sur plusieurs dossiers. Un dossier coché
+    // est développé à l'import (PROPFIND Depth:1, non récursif — cf. _importSelection).
+    const profile =
+      root.querySelector<HTMLSelectElement>("#prep-sd-profile")?.value || WP_DEFAULT_NUMBERED;
+    const defaultLanguage =
+      root.querySelector<HTMLInputElement>("#prep-sd-language")?.value.trim() || "fr";
+    const items = [...this._selected.values()].map((it) => {
+      if (it.is_dir) {
+        return safeHtml`<li>📁 ${it.name} — ${folderLabel(it.parentUrl)} <span class="prep-sd-fmt">(dossier — son contenu sera développé à l'import)</span></li>`;
+      }
+      const det = this._detectFile(it.name, it.href, it.parentUrl, profile, defaultLanguage);
+      // langue undefined = TEI sans token → le xml:lang du document fait foi.
+      const tag = det
+        ? safeHtml`<span class="prep-sd-fmt">${det.mode} · ${det.language ?? "xml:lang"}</span>`
+        : safeHtml`<span class="prep-sd-mismatch" title="Extension non reconnue — ce fichier sera ignoré">⚠ ignoré</span>`;
+      return safeHtml`<li>📄 ${it.name} — ${folderLabel(it.parentUrl)} ${tag}</li>`;
+    });
+    setHtml(list, safeHtml`<ul>${items}</ul>`);
   }
 
   private _clearSelection(): void {
@@ -658,70 +708,116 @@ export class ShareDocsImportScreen {
   }
 
   /**
-   * Import the cart: one /import-remote per selected folder + one per parent folder
-   * of selected files (with `hrefs`), each tracked in the Job Center; the per-batch
-   * reports are merged into a single aggregated report. Clears the cart on success.
+   * Develop a checked folder via one PROPFIND (Depth:1) and detect its **files**
+   * (Phase 5 — expansion des dossiers cochés). **Non-récursif** : les sous-dossiers
+   * d'un dossier coché sont comptés puis ignorés (cohérent avec « Importer ce dossier »,
+   * lui-même non récursif). Une erreur de PROPFIND est **reportée, jamais bloquante**
+   * (DESIGN §11.3) : le dossier est signalé dans `failed` et l'import continue.
+   */
+  private async _expandFolders(
+    conn: Conn,
+    folders: SelectedRemoteItem[],
+    form: { profile: string; defaultLanguage: string },
+  ): Promise<{ files: DetectedImportFile[]; ignored: number; subfolders: number; failed: string[] }> {
+    const files: DetectedImportFile[] = [];
+    let ignored = 0;
+    let subfolders = 0;
+    const failed: string[] = [];
+    for (const folder of folders) {
+      try {
+        const entries = await webdavList(conn, { url: folder.href, auth: this._auth });
+        // Non-récursif : les sous-dossiers sont comptés puis ignorés (routeEntriesToImport).
+        const routed = routeEntriesToImport(entries, folder.href, form.profile, form.defaultLanguage);
+        files.push(...routed.files);
+        ignored += routed.ignored;
+        subfolders += routed.subfolders;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this._log(`✗ Dossier « ${folder.name} » non développé : ${msg}`, true);
+        failed.push(folder.name);
+      }
+    }
+    return { files, ignored, subfolders, failed };
+  }
+
+  /**
+   * Import the cart (Phase 5) : détection par fichier sur les fichiers cochés **et**
+   * sur le contenu des DOSSIERS cochés (développés par un PROPFIND Depth:1 chacun) ;
+   * dédup par href ; groupement par (parent, mode, langue) → un /import-remote par lot
+   * (chacun avec son `hrefs`), suivi Job Center, rapports agrégés. Vide le panier au
+   * lancement. Les sous-dossiers d'un dossier coché ne sont pas développés (non récursif).
    */
   private async _importSelection(): Promise<void> {
-    if (!this._conn || this._selected.size === 0) return;
+    if (!this._conn || this._selected.size === 0 || this._busy) return;
     const conn = this._conn;
     const form = this._readImportForm();
     if (!form) return;
-    const { mode, language, include } = form;
 
-    // Warn (don't silently drop) when explicitly-selected files are of a format the
-    // chosen mode can't import — they would be reported as per-file errors.
-    const mismatched = [...this._selected.values()].filter(
-      (it) => !it.is_dir && !fileMatchesMode(it.name, mode),
-    );
+    const items = [...this._selected.values()];
+    const folders = items.filter((it) => it.is_dir);
+
+    // 1) Fichiers cochés directement.
+    const files: DetectedImportFile[] = [];
+    let ignored = 0;
+    for (const it of items) {
+      if (it.is_dir) continue;
+      const det = this._detectFile(it.name, it.href, it.parentUrl, form.profile, form.defaultLanguage);
+      if (det) files.push(det);
+      else ignored += 1;
+    }
+
+    // 2) Expansion des dossiers cochés (PROPFIND par dossier — IO, donc avant le
+    //    `_guardedRun` qui ne sert qu'à la confirmation + verrou bouton).
+    let subfolders = 0;
+    const failed: string[] = [];
+    if (folders.length > 0) {
+      const btn = this._root?.querySelector<HTMLButtonElement>("#prep-sd-sel-import");
+      if (btn) btn.disabled = true;
+      this._setBusy(true);
+      this._log(`▶ Développement de ${folders.length} dossier(s) coché(s)…`);
+      try {
+        const exp = await this._expandFolders(conn, folders, form);
+        files.push(...exp.files);
+        ignored += exp.ignored;
+        subfolders = exp.subfolders;
+        failed.push(...exp.failed);
+      } finally {
+        this._setBusy(false);
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    // 3) Dédup (un fichier coché peut aussi remonter via l'expansion de son dossier).
+    const deduped = dedupeDetectedFiles(files);
+
+    if (deduped.length === 0) {
+      const why =
+        failed.length > 0
+          ? `${failed.length} dossier(s) illisible(s) ; aucun fichier importable.`
+          : folders.length > 0
+            ? "Dossiers cochés sans fichier importable (sous-dossiers et extensions inconnues exclus)."
+            : `Aucun fichier importable dans la sélection — ${ignored} ignoré(s) (extension non reconnue).`;
+      this._showToast?.(why, true);
+      return;
+    }
+    const groups = groupDetectedFiles(deduped);
+
+    const notes: string[] = [];
+    if (ignored > 0) notes.push(`${ignored} ignoré(s) (extension non reconnue)`);
+    if (subfolders > 0) notes.push(`${subfolders} sous-dossier(s) non développé(s)`);
+    if (failed.length > 0) notes.push(`${failed.length} dossier(s) illisible(s) ignoré(s)`);
 
     await this._guardedRun(
       "#prep-sd-sel-import",
       async () => {
-        const groups = groupSelectionForImport([...this._selected.values()]);
-        this._report = null;
-        this._renderReport();
-        this._log(`▶ Import de la sélection — ${groups.length} lot(s)`);
-        try {
-          for (const g of groups) {
-            const job = await importRemote(conn, {
-              url: g.url,
-              mode,
-              language,
-              include,
-              hrefs: g.hrefs,
-              auth: this._auth,
-            });
-            this._jobCenter?.trackJob(job.job_id, `ShareDocs : ${g.label}`, (done) => {
-              const result = done.result;
-              if (done.status === "done" && isImportRemoteReport(result)) {
-                this._report = mergeReports(this._report, result);
-                this._renderReport();
-                this._showToast?.(`✓ ${summarizeReport(this._report)}`);
-                this._log(`✓ ${g.label} — ${summarizeReport(result)}`);
-              } else {
-                const msg =
-                  done.error ||
-                  (done.status === "done"
-                    ? "Import terminé sans rapport exploitable"
-                    : "Import distant interrompu");
-                this._showToast?.(`✗ ${g.label} : ${msg}`, true);
-                this._log(`✗ ${g.label} : ${msg}`, true);
-              }
-            });
-          }
-          this._clearSelection();
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          this._showToast?.(`✗ ${msg}`, true);
-          this._log(`✗ ${msg}`, true);
-        }
+        const ok = await this._submitGroups(conn, groups);
+        if (ok) this._clearSelection();
       },
-      mismatched.length > 0
+      notes.length > 0
         ? {
             containerSel: "#prep-sd-sel-confirm",
-            message: `${mismatched.length} fichier(s) d'un autre format que « ${mode} » échoueront (reportés en erreur). Importer quand même ?`,
-            opts: { confirmLabel: "Importer quand même", danger: false },
+            message: `${deduped.length} fichier(s) → ${groups.length} lot(s) ; ${notes.join(" ; ")}. Importer ?`,
+            opts: { confirmLabel: "Importer", danger: false },
           }
         : undefined,
     );

@@ -13,6 +13,13 @@ import type {
   WebdavAuth,
   WebdavAuthMode,
 } from "./sidecarClient.ts";
+import {
+  deriveModeFromExt,
+  detectLanguageForMode,
+  extFromFileName,
+  isKnownImportExt,
+  normalizeModeForExt,
+} from "./importDetect.ts";
 
 /**
  * Build the auth object from raw form fields, keeping only the fields relevant to
@@ -30,51 +37,6 @@ export function buildWebdavAuth(
     return { mode, token: (fields.token ?? "").trim() };
   }
   return { mode: "anonymous" };
-}
-
-/**
- * Whether an import mode requires a language. Every mode except TEI (which
- * carries its own xml:lang) needs one — without it a non-TEI import fails on the
- * `documents.language` NOT NULL constraint. Mirrors the CLI / sidecar guard.
- */
-export function languageRequiredForMode(mode: string): boolean {
-  return mode !== "tei";
-}
-
-/** Import format implied by a file extension or targeted by an import mode (P4D). */
-export type ImportFormat = "docx" | "odt" | "txt" | "tei" | "conllu" | "unknown";
-
-/** Format implied by a filename extension (selection info — never parses content). */
-export function detectFormatFromName(name: string): ImportFormat {
-  const n = (name ?? "").trim().toLowerCase();
-  if (n.endsWith(".docx")) return "docx";
-  if (n.endsWith(".odt")) return "odt";
-  if (n.endsWith(".txt")) return "txt";
-  if (n.endsWith(".xml") || n.endsWith(".tei")) return "tei";
-  if (n.endsWith(".conllu")) return "conllu";
-  return "unknown";
-}
-
-/** Format an import mode targets (e.g. `docx_numbered_lines` → "docx"). */
-export function modeFormat(mode: string): ImportFormat {
-  const m = (mode ?? "").trim();
-  if (m.startsWith("docx")) return "docx";
-  if (m.startsWith("odt")) return "odt";
-  if (m.startsWith("txt")) return "txt";
-  if (m === "tei") return "tei";
-  if (m === "conllu") return "conllu";
-  return "unknown";
-}
-
-/**
- * Whether *name*'s format is compatible with the chosen import *mode*. Only the
- * **format** is checked (extension) — NOT the segmentation style (numbered vs
- * paragraphs), which can't be known without parsing. An unknown extension is a
- * mismatch (it would error at import).
- */
-export function fileMatchesMode(name: string, mode: string): boolean {
-  const f = detectFormatFromName(name);
-  return f !== "unknown" && f === modeFormat(mode);
 }
 
 /** Client-side mirror of the server's auth requirement, for an early UX guard. */
@@ -233,42 +195,125 @@ export interface SelectedRemoteItem {
   is_dir: boolean;
 }
 
-/** A single /import-remote submission derived from the cart. */
-export interface ImportGroup {
+/**
+ * A remote file resolved for import with its per-file detected params (Phase 5).
+ * `mode`/`language` come from importDetect (extension → mode, name → langue).
+ * `language` is **undefined** for a TEI file whose name carries no language token —
+ * the document's own `xml:lang` is then authoritative (DESIGN §11.8).
+ */
+export interface DetectedImportFile {
+  href: string;
+  name: string;
+  parentUrl: string;
+  mode: string;
+  language: string | undefined;
+}
+
+/**
+ * A single /import-remote submission grouped by (parentUrl, mode, language) — each
+ * group carries its own detected mode + language, so a bilingual / mixed-format
+ * folder fans out into several submissions (DESIGN §11.3). `language` undefined →
+ * omitted from the request (TEI keeps its `xml:lang`).
+ */
+export interface DetectedImportGroup {
   url: string;
-  hrefs?: string[];
+  hrefs: string[];
+  mode: string;
+  language: string | undefined;
   label: string;
 }
 
 /**
- * Group a selection cart into import submissions (P4C). Each selected folder
- * becomes a whole-folder import (no `hrefs`); the remaining selected files are
- * grouped by parent folder into an `hrefs` submission. A file directly inside a
- * selected folder is dropped — the folder import already covers it. Because
- * import-remote is Depth:1, a file in a *sub*-folder of a selected folder is NOT
- * covered and is therefore kept.
+ * Per-file import params (mode + langue) dérivés d'un nom de fichier distant — réutilise
+ * la détection de l'import local (importDetect, source unique). Retourne `null` quand
+ * l'extension n'est pas un format importable : le fichier est alors ignoré (ni importé,
+ * ni en erreur), cf. DESIGN §11.3. La langue suit `detectLanguageForMode` : `undefined`
+ * pour un TEI sans token (le `xml:lang` du document fait foi).
  */
-export function groupSelectionForImport(items: SelectedRemoteItem[]): ImportGroup[] {
-  const folders = items.filter((i) => i.is_dir);
-  const selectedFolderHrefs = new Set(folders.map((f) => f.href));
-  const groups: ImportGroup[] = folders.map((f) => ({ url: f.href, label: f.name }));
+export function detectImportFile(
+  name: string,
+  href: string,
+  parentUrl: string,
+  profile: string,
+  defaultLanguage: string,
+): DetectedImportFile | null {
+  const ext = extFromFileName(name);
+  if (!isKnownImportExt(ext)) return null;
+  const mode = normalizeModeForExt(deriveModeFromExt(ext, profile), ext);
+  const language = detectLanguageForMode(mode, name, defaultLanguage);
+  return { href, name, parentUrl, mode, language };
+}
 
-  const byParent = new Map<string, SelectedRemoteItem[]>();
-  for (const it of items) {
-    if (it.is_dir) continue;
-    if (selectedFolderHrefs.has(it.parentUrl)) continue; // covered by a selected folder
-    const arr = byParent.get(it.parentUrl) ?? [];
-    arr.push(it);
-    byParent.set(it.parentUrl, arr);
+/**
+ * Route les entrées d'un dossier WebDAV (Depth:1) en fichiers importables détectés.
+ * **Non-récursif** : les sous-dossiers sont comptés (`subfolders`) puis ignorés. Les
+ * extensions inconnues sont comptées (`ignored`) sans erreur. Source unique du routage,
+ * partagée par l'import « ce dossier » et l'expansion des dossiers cochés (Phase 5).
+ */
+export function routeEntriesToImport(
+  entries: RemoteEntry[],
+  parentUrl: string,
+  profile: string,
+  defaultLanguage: string,
+): { files: DetectedImportFile[]; ignored: number; subfolders: number } {
+  const files: DetectedImportFile[] = [];
+  let ignored = 0;
+  let subfolders = 0;
+  for (const e of entries) {
+    if (e.is_dir) {
+      subfolders += 1;
+      continue;
+    }
+    const det = detectImportFile(e.name, e.href, parentUrl, profile, defaultLanguage);
+    if (det) files.push(det);
+    else ignored += 1;
   }
-  for (const [parentUrl, files] of byParent) {
-    groups.push({
-      url: parentUrl,
-      hrefs: files.map((f) => f.href),
-      label: `${folderLabel(parentUrl)} (${files.length} fichier${files.length > 1 ? "s" : ""})`,
-    });
+  return { files, ignored, subfolders };
+}
+
+/**
+ * Group per-file-detected files into import submissions keyed by
+ * (parentUrl, mode, language) — one `import-remote` call per group, each sending
+ * the group's `hrefs`. Insertion order of first occurrence is preserved. Files must
+ * already be filtered (unknown extensions dropped upstream).
+ */
+export function groupDetectedFiles(files: DetectedImportFile[]): DetectedImportGroup[] {
+  const byKey = new Map<string, DetectedImportGroup>();
+  for (const f of files) {
+    // Delimiter-safe key: language is a free-text default that could contain any
+    // char, so join via JSON rather than a literal separator (no collision).
+    const key = JSON.stringify([f.parentUrl, f.mode, f.language]);
+    let g = byKey.get(key);
+    if (!g) {
+      g = { url: f.parentUrl, hrefs: [], mode: f.mode, language: f.language, label: "" };
+      byKey.set(key, g);
+    }
+    g.hrefs.push(f.href);
+  }
+  const groups = [...byKey.values()];
+  for (const g of groups) {
+    const n = g.hrefs.length;
+    g.label = `${folderLabel(g.url)} · ${g.mode} · ${g.language ?? "xml:lang"} (${n} fichier${n > 1 ? "s" : ""})`;
   }
   return groups;
+}
+
+/**
+ * Dedup detected files by `href`, preserving first occurrence (Phase 5 — expansion
+ * des dossiers cochés). A file can surface twice : coché directement **et** découvert
+ * via l'expansion PROPFIND de son dossier parent lui aussi coché. Sans dédup, son
+ * `href` apparaîtrait deux fois dans le même groupe → double import. Le premier vu
+ * gagne (le fichier explicitement coché est traité avant l'expansion).
+ */
+export function dedupeDetectedFiles(files: DetectedImportFile[]): DetectedImportFile[] {
+  const seen = new Set<string>();
+  const out: DetectedImportFile[] = [];
+  for (const f of files) {
+    if (seen.has(f.href)) continue;
+    seen.add(f.href);
+    out.push(f);
+  }
+  return out;
 }
 
 /** Merge two batch reports (P4C aggregates the reports of several submissions). */

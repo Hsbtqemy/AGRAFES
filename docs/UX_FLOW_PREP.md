@@ -37,7 +37,7 @@ Tabbar runtime actuelle (`tauri-prep`):
 
 Note:
 - `Projet` est porté par la topbar et l'écran d'entrée (ouvrir/créer DB, état sidecar, handoff), pas par un onglet dédié.
-- `ShareDocs` est un **point d'entrée d'import alternatif** (ingestion d'un dossier WebDAV / ShareDocs Huma-Num), parallèle à `Importer` (fichiers locaux). Flux : connexion (URL + auth en mémoire de session) → navigation du dossier distant → import de lot via job async (progression Job Center) → rapport par fichier. La base reste strictement locale ; aucune logique métier côté front (filtre/dédup/provenance = backend). Cf. `docs/DESIGN_sharedocs_ingestion.md`.
+- `ShareDocs` est un **point d'entrée d'import alternatif** (ingestion d'un dossier WebDAV / ShareDocs Huma-Num), parallèle à `Importer` (fichiers locaux). Flux : connexion (URL — préremplissage racine Huma-Num — + auth, **persistable via le trousseau OS** avec « Se souvenir », sinon mémoire de session) → navigation du dossier distant → **sélection multiple inter-dossiers** (cases à cocher, dossiers et fichiers) ou import du dossier courant → import de lot via job async (progression Job Center) → rapport par fichier, avec **« Annuler cet import »**. La base reste strictement locale ; aucune logique métier côté front (filtre/dédup/provenance = backend). **À venir (Phase 5, conçue) : détection du format + de la langue par fichier**, comme le menu Import. Cf. `docs/DESIGN_sharedocs_ingestion.md` (§9-§11).
 
 Règle:
 - un seul écran actif à la fois,
