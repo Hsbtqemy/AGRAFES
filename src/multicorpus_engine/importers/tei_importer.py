@@ -27,7 +27,7 @@ from ..unicode_policy import count_sep, normalize
 from .import_guard import assert_not_duplicate_import
 import json
 from .docx_numbered_lines import ImportReport, _analyze_external_ids
-from .parsed import ParsedDoc, ParsedUnit, file_sha256
+from .parsed import ParsedDoc, ParsedUnit, file_sha256, insert_units
 from ..utils.tei_validate import validate_tei_tree, summarize_tei_validation
 
 _TEI_NS = "http://www.tei-c.org/ns/1.0"
@@ -227,12 +227,7 @@ def import_tei(
         __import__("datetime").timezone.utc
     ).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    # Project parsed units onto DB-insert tuples (doc_id added after INSERT).
     external_ids: list[int] = [u.external_id for u in parsed.units]
-    units_parsed: list[tuple] = [
-        (u.unit_type, u.n, u.external_id, u.text_raw, u.text_norm, u.meta_json)
-        for u in parsed.units
-    ]
 
     # Single transaction: document record + units
     try:
@@ -250,13 +245,7 @@ def import_tei(
         )
         doc_id = cur.lastrowid
         log.info("Created document doc_id=%d title=%r lang=%r", doc_id, tei_title, tei_lang)
-        conn.executemany(
-            """
-            INSERT INTO units (doc_id, unit_type, n, external_id, text_raw, text_norm, meta_json)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            [(doc_id, *row) for row in units_parsed],
-        )
+        insert_units(conn, doc_id, parsed.units)
         conn.commit()
     except Exception:
         conn.rollback()
@@ -266,8 +255,8 @@ def import_tei(
 
     report = ImportReport(
         doc_id=doc_id,
-        units_total=len(units_parsed),
-        units_line=len(units_parsed),
+        units_total=len(parsed.units),
+        units_line=len(parsed.units),
         units_structure=0,
         duplicates=duplicates,
         holes=holes,

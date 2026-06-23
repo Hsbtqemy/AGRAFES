@@ -16,7 +16,7 @@ from .docx_numbered_lines import (
 )
 from .import_guard import assert_not_duplicate_import
 from .odt_common import read_odt_paragraph_rich_lines
-from .parsed import ParsedDoc, ParsedUnit, file_sha256
+from .parsed import ParsedDoc, ParsedUnit, file_sha256, insert_units
 
 _NUMBERED_RE = re.compile(r"^\[\s*(\d+)\s*\]\s*(.+)$", re.DOTALL)
 
@@ -111,16 +111,7 @@ def import_odt_numbered_lines(
         doc_id = cur.lastrowid
         log.info("Created document doc_id=%d title=%r", doc_id, doc_title)
 
-        conn.executemany(
-            """
-            INSERT INTO units (doc_id, unit_type, n, external_id, text_raw, text_norm, meta_json)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            [
-                (doc_id, u.unit_type, u.n, u.external_id, u.text_raw, u.text_norm, u.meta_json)
-                for u in parsed.units
-            ],
-        )
+        insert_units(conn, doc_id, parsed.units)
         conn.commit()
     except Exception:
         conn.rollback()

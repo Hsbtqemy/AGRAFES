@@ -1191,12 +1191,14 @@ l'import, **jamais réécrit** par curate / resegment / merge / split.
 - **Dénormalisation assumée** : N segments d'une même ligne partagent une chaîne source
   (stockage modéré ; la valeur = récupérabilité). 
 - Coût étalé en **phases** :
-  - **P0** (préparatoire) — **centraliser l'insertion des unités** : extraire un helper
-    partagé `insert_units(conn, doc_id, units)` (aligné sur le dataclass `ParsedUnit`)
-    consommé par les **7 importeurs** + segmenter + undo, qui dupliquent aujourd'hui
-    `INSERT INTO units` (shapes quasi-uniformes : `…, meta_json` ± `unit_role`). Refactor
-    **iso-comportement** (couvert par les tests d'import/segmentation/undo) ; rend P1
-    ajoutable en **un seul** point au lieu de 7 (anti-dérive). Nettoyage net en soi.
+  - **P0** (préparatoire) — **✅ livré**. Helper partagé `insert_units(conn, doc_id,
+    units: list[ParsedUnit])` (`importers/parsed.py`) consommé par les **6 importeurs**
+    qui dupliquaient `INSERT INTO units` (docx×2, odt×2, tei, txt). `conllu` reste
+    **bespoke** (insère l'unité **puis** ses tokens via `lastrowid` par unité —
+    incompatible avec un bulk `executemany`) → P1 l'ajoutera séparément (**2 points** au
+    lieu de 7). `segmenter`/`undo` **hors P0** (leur écriture est le chemin resegment =
+    P2, pas l'import). Refactor **iso-comportement** (47 tests d'import + test direct du
+    helper).
   - **P1** — migration 020 `text_source` + peuplement à l'import (`= text_raw`) via le
     helper P0. Lignes **existantes laissées `NULL`** (un doc déjà resegmenté a perdu son
     original ; backfiller `text_raw` capturerait le faux original) → fallback `text_raw`

@@ -20,7 +20,7 @@ from typing import Optional
 from ..unicode_policy import count_sep, normalize
 from .docx_numbered_lines import ImportReport
 from .import_guard import assert_not_duplicate_import
-from .parsed import ParsedDoc, ParsedUnit, file_sha256
+from .parsed import ParsedDoc, ParsedUnit, file_sha256, insert_units
 from .rich_text import para_to_rich_text
 
 logger = logging.getLogger(__name__)
@@ -120,10 +120,6 @@ def import_docx_paragraphs(
         __import__("datetime").timezone.utc
     ).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    units_parsed: list[tuple] = [
-        (u.unit_type, u.n, u.external_id, u.text_raw, u.text_norm, u.meta_json, u.unit_role)
-        for u in parsed.units
-    ]
     has_headings = any(u.unit_role == "intertitre" for u in parsed.units)
     n_headings = sum(1 for u in parsed.units if u.unit_role == "intertitre")
 
@@ -146,13 +142,7 @@ def import_docx_paragraphs(
                 VALUES ('intertitre', 'Intertitre', '#9333ea', '§', 0, 'structure')
                 """
             )
-        conn.executemany(
-            """
-            INSERT INTO units (doc_id, unit_type, n, external_id, text_raw, text_norm, meta_json, unit_role)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            [(doc_id, *row) for row in units_parsed],
-        )
+        insert_units(conn, doc_id, parsed.units)
         conn.commit()
     except Exception:
         conn.rollback()
@@ -160,8 +150,8 @@ def import_docx_paragraphs(
 
     report = ImportReport(
         doc_id=doc_id,
-        units_total=len(units_parsed),
-        units_line=len(units_parsed),
+        units_total=len(parsed.units),
+        units_line=len(parsed.units),
         units_structure=0,
         duplicates=[],
         holes=[],

@@ -13,7 +13,7 @@ import sqlite3
 
 import pytest
 
-from multicorpus_engine.importers.parsed import ParsedDoc, to_preview
+from multicorpus_engine.importers.parsed import ParsedDoc, ParsedUnit, insert_units, to_preview
 from multicorpus_engine.importers.txt import (
     import_txt_numbered_lines,
     parse_txt_numbered_lines,
@@ -248,3 +248,38 @@ def test_preview_conllu_sample_limit(tmp_path) -> None:
     stats = preview_conllu(p, limit=2)
     assert len(stats["sample_rows"]) == 2   # capped at limit
     assert stats["tokens"] == 3             # counts are unaffected by the sample cap
+
+
+# --------------------------------------------------------------------------- #
+# insert_units: shared units write path (P0 — single source of truth, ADR-043)
+# --------------------------------------------------------------------------- #
+def test_insert_units_writes_all_columns(db_conn) -> None:
+    cur = db_conn.execute(
+        "INSERT INTO documents (title, language, created_at) VALUES ('T', 'fr', '2026-01-01')"
+    )
+    doc_id = cur.lastrowid
+    # unit_role has an FK to unit_roles(name) — the role must exist first (as the
+    # *_paragraphs/txt importers do via INSERT OR IGNORE before inserting units).
+    db_conn.execute(
+        "INSERT INTO unit_roles (name, label, color, icon, sort_order, category)"
+        " VALUES ('intertitre', 'Intertitre', '#9333ea', '§', 0, 'structure')"
+    )
+    insert_units(
+        db_conn,
+        doc_id,
+        [
+            ParsedUnit(n=1, unit_type="line", text_raw="a", text_norm="a",
+                       external_id=10, meta_json='{"k":1}', unit_role="intertitre"),
+            ParsedUnit(n=2, unit_type="line", text_raw="b", text_norm="b"),  # defaults None
+        ],
+    )
+    db_conn.commit()
+    rows = db_conn.execute(
+        "SELECT n, unit_type, external_id, text_raw, text_norm, meta_json, unit_role"
+        " FROM units WHERE doc_id = ? ORDER BY n",
+        (doc_id,),
+    ).fetchall()
+    assert [tuple(r) for r in rows] == [
+        (1, "line", 10, "a", "a", '{"k":1}', "intertitre"),
+        (2, "line", None, "b", "b", None, None),  # unit_role defaults to NULL (7-col parity)
+    ]
