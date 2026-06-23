@@ -227,12 +227,7 @@ def import_tei(
         __import__("datetime").timezone.utc
     ).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    # Project parsed units onto DB-insert tuples (doc_id added after INSERT).
     external_ids: list[int] = [u.external_id for u in parsed.units]
-    units_parsed: list[tuple] = [
-        (u.unit_type, u.n, u.external_id, u.text_raw, u.text_norm, u.meta_json)
-        for u in parsed.units
-    ]
 
     # Single transaction: document record + units
     try:
@@ -260,8 +255,8 @@ def import_tei(
 
     report = ImportReport(
         doc_id=doc_id,
-        units_total=len(units_parsed),
-        units_line=len(units_parsed),
+        units_total=len(parsed.units),
+        units_line=len(parsed.units),
         units_structure=0,
         duplicates=duplicates,
         holes=holes,

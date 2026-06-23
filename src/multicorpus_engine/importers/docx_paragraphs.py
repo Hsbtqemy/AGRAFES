@@ -120,10 +120,6 @@ def import_docx_paragraphs(
         __import__("datetime").timezone.utc
     ).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    units_parsed: list[tuple] = [
-        (u.unit_type, u.n, u.external_id, u.text_raw, u.text_norm, u.meta_json, u.unit_role)
-        for u in parsed.units
-    ]
     has_headings = any(u.unit_role == "intertitre" for u in parsed.units)
     n_headings = sum(1 for u in parsed.units if u.unit_role == "intertitre")
 
@@ -154,8 +150,8 @@ def import_docx_paragraphs(
 
     report = ImportReport(
         doc_id=doc_id,
-        units_total=len(units_parsed),
-        units_line=len(units_parsed),
+        units_total=len(parsed.units),
+        units_line=len(parsed.units),
         units_structure=0,
         duplicates=[],
         holes=[],

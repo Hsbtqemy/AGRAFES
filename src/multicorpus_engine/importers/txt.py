@@ -177,10 +177,6 @@ def import_txt_numbered_lines(
         if u.unit_type == "line" and u.external_id is not None
     ]
     has_structure = any(u.unit_type == "structure" for u in parsed.units)
-    units_to_insert: list[tuple] = [
-        (doc_id, u.unit_type, u.n, u.external_id, u.text_raw, u.text_norm, u.meta_json, u.unit_role)
-        for u in parsed.units
-    ]
 
     try:
         # Auto-create intertitre convention if structure lines are present
@@ -203,9 +199,9 @@ def import_txt_numbered_lines(
 
     report = ImportReport(
         doc_id=doc_id,
-        units_total=len(units_to_insert),
+        units_total=len(parsed.units),
         units_line=len(external_ids),
-        units_structure=len(units_to_insert) - len(external_ids),
+        units_structure=len(parsed.units) - len(external_ids),
         duplicates=duplicates,
         holes=holes,
         non_monotonic=non_monotonic,

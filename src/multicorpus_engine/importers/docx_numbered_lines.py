@@ -356,11 +356,6 @@ def import_docx_numbered_lines(
         __import__("datetime").timezone.utc
     ).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    # Project parsed units onto DB-insert tuples (doc_id added below) + diagnostics.
-    units_parsed: list[tuple] = [
-        (u.unit_type, u.n, u.external_id, u.text_raw, u.text_norm, u.meta_json)
-        for u in parsed.units
-    ]
     external_ids: list[int] = [
         u.external_id for u in parsed.units
         if u.unit_type == "line" and u.external_id is not None
@@ -395,9 +390,9 @@ def import_docx_numbered_lines(
 
     report = ImportReport(
         doc_id=doc_id,
-        units_total=len(units_parsed),
+        units_total=len(parsed.units),
         units_line=len(external_ids),
-        units_structure=len(units_parsed) - len(external_ids),
+        units_structure=len(parsed.units) - len(external_ids),
         duplicates=duplicates,
         holes=holes,
         non_monotonic=non_monotonic,
