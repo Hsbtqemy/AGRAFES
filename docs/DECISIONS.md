@@ -1247,6 +1247,18 @@ l'import, **jamais réécrit** par curate / resegment / merge / split.
     Contrat bumpé **1.6.30** + `openapi.json` régénéré (champs additifs ; snapshot des paths
     inchangé). Tests : `list_units` expose brut text_raw/text_source, export text_source avec
     fallback vierge, rejet d'un `source_field` inconnu. **P3b (front)** à suivre.
+  - **P3b (front) — ✅ livré**. Helper pur `hasImportOriginal({text_raw, text_source})`
+    (garde `text_source != null && text_source !== text_raw`, comparé au verbatim, pas au
+    `text_norm`) dans `tauri-prep/src/lib/importOriginal.ts`. **Repli inline** (`<details>`
+    natif, sans handler JS) « ⌖ voir l'original d'import » dans le **tableau de segments**
+    de `SegmentationView` — surface où atterrissent resegment **et** merge/split, donc les
+    3 ops destructives. Champs `text_raw`/`text_source` ajoutés à `DocumentPreviewLine` +
+    `UnitRecord` (sidecarClient). **Export** : sélecteur « Source du texte » (normalisé /
+    brut / **source**) dans l'écran Exports → `source_field` au job `export_readable_text`.
+    6 tests Vitest (helper). Surface unique assumée (segmentation) ; les aperçus
+    curation/métadonnées pourront recevoir le même repli en suivi si besoin. **P2c** (le
+    chemin de propagation `apply_propagated` ne préserve pas encore `text_source` — décision
+    de granularité section-vs-ligne) reste ouvert, hors P3.
 - **Relation à Mode A undo** : l'undo snapshot déjà l'état pré-resegment (borné à 14
   actions) ; `text_source` en est le complément **permanent ancré à l'import**, pas un
   doublon. **Hors périmètre** : `external_id`/`alignment_links` restent perdus à la

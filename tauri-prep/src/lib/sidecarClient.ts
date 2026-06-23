@@ -88,6 +88,8 @@ export interface DocumentPreviewLine {
   text: string;
   text_raw?: string | null;
   unit_role?: string | null;
+  /** Verbatim import original (ADR-043 P3); null when never destructively rewritten. */
+  text_source?: string | null;
 }
 
 export interface DocumentPreviewResponse {
@@ -1032,6 +1034,10 @@ export interface UnitRecord {
   text_norm: string | null;
   unit_type: string;
   unit_role: string | null;
+  /** Current verbatim text (ADR-043 P3). */
+  text_raw?: string | null;
+  /** Verbatim import original (ADR-043 P3); null when never destructively rewritten. */
+  text_source?: string | null;
 }
 
 /**

@@ -39,6 +39,7 @@ import type { StructureSection, StructureDiffSection, PropagateSection } from ".
 import type { JobCenter } from "../components/JobCenter.ts";
 import { RolesPane } from "../components/RolesPane.ts";
 import { inlineConfirm } from "../lib/inlineConfirm.ts";
+import { hasImportOriginal } from "../lib/importOriginal.ts";
 import { computeNextSteps, type PrepNavTarget } from "../lib/prepNextStep.ts";
 import { NextStepBanner } from "../components/NextStepBanner.ts";
 import {
@@ -1949,7 +1950,7 @@ export class SegmentationView {
       const orphanChars = docLang.startsWith("de") ? "»«‹›)\\]}”’" : "»)\\]}”’";
       const orphanRegex = new RegExp(`^\\s*[${orphanChars}]+`);
 
-      const buildRow = (l: { n: number; text: string; text_raw?: string | null; unit_role?: string | null }, idx: number, total: number): string => {
+      const buildRow = (l: { n: number; text: string; text_raw?: string | null; unit_role?: string | null; text_source?: string | null }, idx: number, total: number): string => {
         const lenClass = l.text.length > 200 ? " prep-seg-cell-len-warn" : l.text.length > 120 ? " prep-seg-cell-len-hint" : "";
         const mergeUpBtn   = idx > 0
           ? `<button class="prep-seg-action-btn prep-seg-merge-up"   title="Fusionner avec le pr&#233;c&#233;dent" data-n="${l.n}">&#8679;</button>`
@@ -1959,9 +1960,14 @@ export class SegmentationView {
           : `<span class="prep-seg-action-placeholder"></span>`;
         const splitBtn = `<button class="prep-seg-action-btn prep-seg-split-btn" title="Couper ce segment" data-n="${l.n}">&#9986;</button>`;
         const orphanAttr = orphanRegex.test(l.text) ? ` data-orphan="1"` : "";
+        // ADR-043 P3: when a destructive op rewrote this line, offer to reveal
+        // the verbatim import original via a native <details> fold (no JS handler).
+        const sourceFold = hasImportOriginal(l)
+          ? `<details class="prep-seg-source"><summary class="prep-seg-source-sum" title="Texte tel qu'import&#233;, avant red&#233;coupage / fusion">&#8982;&#160;voir l'original d'import</summary><div class="prep-seg-source-txt">${richTextToHtml(l.text_source, l.text_source ?? "")}</div></details>`
+          : "";
         return `<tr data-unit-n="${l.n}" data-len="${l.text.length}"${orphanAttr}>
           <td class="prep-seg-cell-n">${l.n}</td>
-          <td class="prep-seg-cell-text">${_roleBadgeHtml(l.unit_role, this._conventions)}${richTextToHtml(l.text_raw, l.text)}</td>
+          <td class="prep-seg-cell-text">${_roleBadgeHtml(l.unit_role, this._conventions)}${richTextToHtml(l.text_raw, l.text)}${sourceFold}</td>
           <td class="prep-seg-cell-len${lenClass}">${l.text.length}</td>
           <td class="prep-seg-cell-actions">${mergeUpBtn}${mergeDownBtn}${splitBtn}</td>
         </tr>`;
@@ -1999,7 +2005,7 @@ export class SegmentationView {
           </div>`;
       };
 
-      let lines = preview.lines.map(l => ({ n: l.n, text: l.text, text_raw: l.text_raw, unit_role: l.unit_role }));
+      let lines = preview.lines.map(l => ({ n: l.n, text: l.text, text_raw: l.text_raw, unit_role: l.unit_role, text_source: l.text_source }));
       setHtml(el, raw(renderTable(lines)));
 
       const reload = (targetN?: number) => {
@@ -2166,7 +2172,7 @@ export class SegmentationView {
           setTimeout(() => row.classList.remove("prep-seg-row-flash"), 800);
         }
       }
-      lines = preview.lines.map(l => ({ n: l.n, text: l.text, text_raw: l.text_raw, unit_role: l.unit_role }));
+      lines = preview.lines.map(l => ({ n: l.n, text: l.text, text_raw: l.text_raw, unit_role: l.unit_role, text_source: l.text_source }));
     } catch (err) {
       el.innerHTML = `<p class="empty-hint" style="color:var(--color-danger)">Erreur: ${_escHtml(err instanceof Error ? err.message : String(err))}</p>`;
     }
