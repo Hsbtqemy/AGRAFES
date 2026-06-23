@@ -37,21 +37,27 @@ def list_units(
     except (TypeError, ValueError):
         raise BadRequestError("doc_id must be an integer")
 
+    # text_raw + text_source are emitted so the UI can detect a destructive
+    # rewrite (text_source != text_raw) and offer to reveal the import original
+    # (ADR-043 P3). Raw column values, nullable — the display gate lives client-side.
     if unit_type:
         rows = conn.execute(
-            "SELECT unit_id, n, text_norm, unit_type, unit_role"
+            "SELECT unit_id, n, text_norm, unit_type, unit_role, text_raw, text_source"
             " FROM units WHERE doc_id=? AND unit_type=? ORDER BY n",
             (doc_id, unit_type),
         ).fetchall()
     else:
         rows = conn.execute(
-            "SELECT unit_id, n, text_norm, unit_type, unit_role"
+            "SELECT unit_id, n, text_norm, unit_type, unit_role, text_raw, text_source"
             " FROM units WHERE doc_id=? ORDER BY n",
             (doc_id,),
         ).fetchall()
 
     units = [
-        {"unit_id": r[0], "n": r[1], "text_norm": r[2], "unit_type": r[3], "unit_role": r[4]}
+        {
+            "unit_id": r[0], "n": r[1], "text_norm": r[2], "unit_type": r[3],
+            "unit_role": r[4], "text_raw": r[5], "text_source": r[6],
+        }
         for r in rows
     ]
     return {"units": units, "count": len(units), "doc_id": doc_id}

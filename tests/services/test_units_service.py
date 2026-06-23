@@ -56,6 +56,22 @@ def test_list_units(db_conn: sqlite3.Connection) -> None:
     assert list_units(db_conn, str(doc_id), "structure")["count"] == 0
 
 
+def test_list_units_exposes_text_raw_and_source(db_conn: sqlite3.Connection) -> None:
+    """ADR-043 P3 — list_units emits raw text_raw + text_source so the UI can
+    gate the "show original" reveal on text_source != text_raw."""
+    doc_id, unit_ids = _mk_doc_units(db_conn, 2)
+    # Unit 1 carries a distinct import original (as a destructive op would leave);
+    # unit 2 stays pristine (NULL text_source).
+    db_conn.execute(
+        "UPDATE units SET text_source='IMPORT-ORIG' WHERE unit_id=?", (unit_ids[0],)
+    )
+    db_conn.commit()
+    units = {u["n"]: u for u in list_units(db_conn, str(doc_id), "line")["units"]}
+    # Raw column values surfaced verbatim (no COALESCE server-side).
+    assert units[1]["text_raw"] == "t1" and units[1]["text_source"] == "IMPORT-ORIG"
+    assert units[2]["text_raw"] == "t2" and units[2]["text_source"] is None
+
+
 @pytest.mark.parametrize("raw", [None, "", "abc"])
 def test_list_units_bad_doc_id(db_conn: sqlite3.Connection, raw) -> None:
     with pytest.raises(BadRequestError):

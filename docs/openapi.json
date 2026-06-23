@@ -1159,8 +1159,20 @@
           "text": {
             "type": "string"
           },
+          "text_raw": {
+            "nullable": true,
+            "type": "string"
+          },
+          "text_source": {
+            "nullable": true,
+            "type": "string"
+          },
           "unit_id": {
             "type": "integer"
+          },
+          "unit_role": {
+            "nullable": true,
+            "type": "string"
           }
         },
         "required": [
@@ -3748,7 +3760,7 @@
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
     "version": "1.6.23",
-    "x-contract-version": "1.6.29"
+    "x-contract-version": "1.6.30"
   },
   "openapi": "3.0.3",
   "paths": {
@@ -6930,6 +6942,14 @@
                             "type": "integer"
                           },
                           "text_norm": {
+                            "nullable": true,
+                            "type": "string"
+                          },
+                          "text_raw": {
+                            "nullable": true,
+                            "type": "string"
+                          },
+                          "text_source": {
                             "nullable": true,
                             "type": "string"
                           },
