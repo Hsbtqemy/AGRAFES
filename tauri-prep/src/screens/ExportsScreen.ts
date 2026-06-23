@@ -204,6 +204,16 @@ export class ExportsScreen {
               </label>
             </div>
 
+            <div id="v2-readable-options" class="prep-form-row" style="margin-top:0.4rem;display:none">
+              <label>Source du texte
+                <select id="v2-readable-source-field" style="min-width:200px">
+                  <option value="text_norm" selected>Texte normalis&#233; (par d&#233;faut)</option>
+                  <option value="text_raw">Texte brut (mise en forme)</option>
+                  <option value="text_source">Texte source (original d'import)</option>
+                </select>
+              </label>
+            </div>
+
             <div id="v2-align-options" class="prep-form-row" style="margin-top:0.4rem;display:none">
               <label>Pivot (optionnel)
                 <select id="v2-align-pivot" style="min-width:170px">
@@ -966,6 +976,7 @@ export class ExportsScreen {
     const isPending = productPending || formatPending;
 
     const teiOptions = this._root.querySelector<HTMLElement>("#v2-tei-options");
+    const readableOptions = this._root.querySelector<HTMLElement>("#v2-readable-options");
     const alignOptions = this._root.querySelector<HTMLElement>("#v2-align-options");
     const pkgOptions = this._root.querySelector<HTMLElement>("#v2-package-options");
     const runOptions = this._root.querySelector<HTMLElement>("#v2-run-options");
@@ -975,6 +986,7 @@ export class ExportsScreen {
     const summaryHint = this._root.querySelector<HTMLElement>("#v2-summary-hint");
 
     if (teiOptions) teiOptions.style.display = product === "tei_xml" ? "flex" : "none";
+    if (readableOptions) readableOptions.style.display = product === "readable_text" ? "flex" : "none";
     if (v2TeiRelationTypeEl) v2TeiRelationTypeEl.disabled = product !== "tei_xml";
     if (alignOptions) alignOptions.style.display = product === "aligned_table" ? "flex" : "none";
     if (pkgOptions) pkgOptions.style.display = product === "tei_package" ? "flex" : "none";
@@ -1165,6 +1177,9 @@ export class ExportsScreen {
         if (!outDir || typeof outDir !== "string") return;
         const params: Record<string, unknown> = { out_dir: outDir, format: exportFmt };
         if (doc_ids) params.doc_ids = doc_ids;
+        // ADR-043 P3: optional source-field choice (text_norm default / text_raw / text_source).
+        const sourceField = this._root?.querySelector<HTMLSelectElement>("#v2-readable-source-field")?.value;
+        if (sourceField && sourceField !== "text_norm") params.source_field = sourceField;
 
         this._log(`Export V2 texte lisible (${exportFmt.toUpperCase()}) → ${outDir}…`);
         const job = await enqueueJob(this._conn, "export_readable_text", params);

@@ -5715,6 +5715,28 @@ tr[data-len].prep-seg-row-context .prep-seg-cell-len {
 }
 .prep-seg-cell-text:hover { background: #eef2f6; }
 
+/* ADR-043 P3: inline fold revealing the verbatim import original (when a
+   destructive op rewrote text_raw). Native <details>, no JS. */
+.prep-seg-source { margin-top: 3px; }
+.prep-seg-source-sum {
+  display: inline-block;
+  cursor: pointer;
+  font-size: 0.74rem;
+  color: var(--color-text-muted, #667085);
+  user-select: none;
+}
+.prep-seg-source-sum:hover { color: var(--color-accent, #2563eb); }
+.prep-seg-source-txt {
+  margin-top: 2px;
+  padding: 3px 8px;
+  border-left: 2px solid var(--color-border, #d0d5dd);
+  background: #f7f9fb;
+  color: var(--color-text-muted, #475467);
+  font-size: 0.82rem;
+  line-height: 1.4;
+  white-space: pre-wrap;
+}
+
 /* Action column: merge ↑↓ and split ✂ buttons */
 .prep-seg-cell-actions {
   white-space: nowrap;
