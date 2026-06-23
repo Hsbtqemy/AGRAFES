@@ -578,8 +578,10 @@ export class ShareDocsImportScreen {
   /**
    * Submit one /import-remote per group (each carries its own mode/language/hrefs),
    * track each in the Job Center, aggregate the per-batch reports into a single one.
+   * Returns false if enqueuing a group threw (network/sidecar) — the caller can then
+   * keep the selection cart for a retry rather than clearing it.
    */
-  private async _submitGroups(conn: Conn, groups: DetectedImportGroup[]): Promise<void> {
+  private async _submitGroups(conn: Conn, groups: DetectedImportGroup[]): Promise<boolean> {
     this._report = null;
     this._renderReport();
     this._log(`▶ Import — ${groups.length} lot(s)`);
@@ -610,10 +612,12 @@ export class ShareDocsImportScreen {
           }
         });
       }
+      return true;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this._showToast?.(`✗ ${msg}`, true);
       this._log(`✗ ${msg}`, true);
+      return false;
     }
   }
 
@@ -648,7 +652,9 @@ export class ShareDocsImportScreen {
 
     await this._guardedRun(
       "#prep-sd-import-btn",
-      () => this._submitGroups(conn, groups),
+      async () => {
+        await this._submitGroups(conn, groups);
+      },
       ignored > 0
         ? {
             containerSel: "#prep-sd-import-confirm",
@@ -752,8 +758,8 @@ export class ShareDocsImportScreen {
     await this._guardedRun(
       "#prep-sd-sel-import",
       async () => {
-        await this._submitGroups(conn, groups);
-        this._clearSelection();
+        const ok = await this._submitGroups(conn, groups);
+        if (ok) this._clearSelection();
       },
       notes.length > 0
         ? {
