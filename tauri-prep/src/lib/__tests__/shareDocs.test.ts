@@ -4,17 +4,13 @@ import {
   authSecret,
   buildNextcloudRoot,
   buildWebdavAuth,
-  detectFormatFromName,
-  fileMatchesMode,
   folderLabel,
   formatRemoteSize,
-  groupSelectionForImport,
   groupDetectedFiles,
   isImportRemoteReport,
   keyringAccount,
   languageRequiredForMode,
   mergeReports,
-  modeFormat,
   normalizeFolderUrl,
   safeDecodeUrl,
   sortRemoteEntries,
@@ -257,34 +253,10 @@ describe("buildNextcloudRoot", () => {
   });
 });
 
-describe("format detection (P4D)", () => {
-  it("detectFormatFromName maps known extensions (case-insensitive), else unknown", () => {
-    expect(detectFormatFromName("a.docx")).toBe("docx");
-    expect(detectFormatFromName("A.DOCX")).toBe("docx");
-    expect(detectFormatFromName("b.odt")).toBe("odt");
-    expect(detectFormatFromName("c.txt")).toBe("txt");
-    expect(detectFormatFromName("d.xml")).toBe("tei");
-    expect(detectFormatFromName("d2.tei")).toBe("tei");
-    expect(detectFormatFromName("e.conllu")).toBe("conllu");
-    expect(detectFormatFromName("f.pdf")).toBe("unknown");
-    expect(detectFormatFromName("noext")).toBe("unknown");
-  });
-  it("modeFormat maps a mode to its format", () => {
-    expect(modeFormat("docx_numbered_lines")).toBe("docx");
-    expect(modeFormat("docx_paragraphs")).toBe("docx");
-    expect(modeFormat("odt_paragraphs")).toBe("odt");
-    expect(modeFormat("txt_numbered_lines")).toBe("txt");
-    expect(modeFormat("tei")).toBe("tei");
-    expect(modeFormat("conllu")).toBe("conllu");
-  });
-  it("fileMatchesMode checks format only (style ignored), unknown = mismatch", () => {
-    expect(fileMatchesMode("a.docx", "docx_numbered_lines")).toBe(true);
-    expect(fileMatchesMode("a.docx", "docx_paragraphs")).toBe(true); // style not checked
-    expect(fileMatchesMode("a.odt", "docx_numbered_lines")).toBe(false);
-    expect(fileMatchesMode("a.pdf", "docx_numbered_lines")).toBe(false); // unknown extension
-    expect(fileMatchesMode("x.xml", "tei")).toBe(true);
-  });
-});
+// NOTE: la détection de format (detectFormatFromName / modeFormat / fileMatchesMode,
+// drapeau ⚠ de P4D) a été retirée en Phase 5 — le tri connu/inconnu vit désormais
+// dans importDetect.isKnownImportExt (voir importDetect.test.ts) et le routage par
+// fichier remplace le contrôle de compatibilité mode↔format.
 
 describe("urlHasPath", () => {
   it("bare host or root → no path", () => {
@@ -336,55 +308,9 @@ describe("authSecret", () => {
   });
 });
 
-describe("groupSelectionForImport", () => {
-  const item = (href: string, name: string, parentUrl: string, is_dir: boolean) => ({
-    href, name, parentUrl, is_dir,
-  });
-
-  it("each selected folder → a whole-folder import (no hrefs)", () => {
-    const groups = groupSelectionForImport([
-      item("https://x/A/", "A", "https://x/", true),
-      item("https://x/B/", "B", "https://x/", true),
-    ]);
-    expect(groups).toEqual([
-      { url: "https://x/A/", label: "A" },
-      { url: "https://x/B/", label: "B" },
-    ]);
-  });
-
-  it("files grouped by parent → one hrefs submission per parent", () => {
-    const groups = groupSelectionForImport([
-      item("https://x/d1/a.docx", "a.docx", "https://x/d1/", false),
-      item("https://x/d1/b.docx", "b.docx", "https://x/d1/", false),
-      item("https://x/d2/c.docx", "c.docx", "https://x/d2/", false),
-    ]);
-    expect(groups).toHaveLength(2);
-    expect(groups.find((g) => g.url === "https://x/d1/")?.hrefs).toEqual([
-      "https://x/d1/a.docx",
-      "https://x/d1/b.docx",
-    ]);
-    expect(groups.find((g) => g.url === "https://x/d2/")?.hrefs).toEqual([
-      "https://x/d2/c.docx",
-    ]);
-  });
-
-  it("a file directly inside a selected folder is dropped (folder covers it)", () => {
-    const groups = groupSelectionForImport([
-      item("https://x/A/", "A", "https://x/", true),
-      item("https://x/A/inside.docx", "inside.docx", "https://x/A/", false),
-      item("https://x/other/keep.docx", "keep.docx", "https://x/other/", false),
-    ]);
-    expect(groups).toHaveLength(2);
-    expect(groups.some((g) => g.url === "https://x/A/" && !g.hrefs)).toBe(true);
-    expect(groups.find((g) => g.url === "https://x/other/")?.hrefs).toEqual([
-      "https://x/other/keep.docx",
-    ]);
-  });
-
-  it("empty cart → no groups", () => {
-    expect(groupSelectionForImport([])).toEqual([]);
-  });
-});
+// NOTE: groupSelectionForImport (groupement P4C par dossier/parent, un mode pour tout
+// le panier) a été remplacé en Phase 5 par groupDetectedFiles (groupement par
+// (parent, mode, langue)).
 
 describe("groupDetectedFiles (Phase 5)", () => {
   const file = (href: string, name: string, parentUrl: string, mode: string, language: string) => ({
