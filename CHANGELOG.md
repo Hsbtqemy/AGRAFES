@@ -7,6 +7,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.2.7] - 2026-06-24
+
 ### Added
 
 - **prep — repli « voir l'original d'import » + export du texte source (ADR-043 P3b, front)** : l'UI Prep **expose** désormais l'original verbatim d'import (`text_source`, posé en P1-P2b et servi en P3a). **Repli inline** : dans le **tableau de segments** de `SegmentationView` (la surface où atterrissent resegment **et** merge/split — les 3 opérations destructives), chaque ligne dont l'original diffère du texte courant gagne un `<details>` natif **« ⌖ voir l'original d'import »** (sans handler JS) qui déplie le texte tel qu'importé. **Garde d'affichage** dans un helper pur testé `hasImportOriginal({text_raw, text_source})` (`tauri-prep/src/lib/importOriginal.ts`) : repli affiché **ssi** `text_source != null && text_source !== text_raw` — comparé au **verbatim** (`text_raw`), jamais au `text_norm` (sinon faux positif sur chaque ligne curatée) ; une ligne vierge (`text_source` NULL) ou une fusion de lignes identiques ne déclenche rien. **Export** : l'écran Exports gagne un sélecteur **« Source du texte »** (normalisé par défaut / brut / **source**) qui passe `source_field` au job `export_readable_text` (le `text_source` retombe sur `text_raw` pour les lignes vierges, cf. P3a). Champs `text_raw`/`text_source` ajoutés aux types `DocumentPreviewLine` + `UnitRecord` (`sidecarClient`). **Front-only, aucun changement moteur/contrat** (P3a a déjà livré l'API). 6 tests Vitest (helper : différence, égalité, NULL, undefined, comparaison verbatim). Surface unique **assumée** (segmentation, la plus à risque) ; les aperçus curation/métadonnées pourront recevoir le même repli en suivi. Cf. `docs/DECISIONS.md` ADR-043 P3.
