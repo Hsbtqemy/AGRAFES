@@ -665,8 +665,12 @@ function _wireEvents(root: HTMLElement): void {
       cqlInput.style.height = Math.min(cqlInput.scrollHeight, 120) + "px";
       _renderCqlHighlight(root);
     });
-    // Keep the overlay aligned when the (capped-height) textarea scrolls.
-    cqlInput.addEventListener("scroll", () => _renderCqlHighlight(root));
+    // Keep the overlay aligned when the (capped-height) textarea scrolls —
+    // sync scroll only, no re-tokenise (the content is unchanged here).
+    cqlInput.addEventListener("scroll", () => {
+      const layer = root.querySelector<HTMLElement>(".rech-cql-hl-layer");
+      if (layer) { layer.scrollTop = cqlInput.scrollTop; layer.scrollLeft = cqlInput.scrollLeft; }
+    });
     cqlInput.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void _doSearch(root, false); }
     });
