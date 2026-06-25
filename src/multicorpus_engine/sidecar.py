@@ -1835,7 +1835,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 
         Body fields:
             cql        (str, required)  — CQL query string
-            group_by   (str, default "lemma") — lemma | upos | xpos | word | feats
+            group_by   (str, default "lemma") — lemma | upos | xpos | word | feats | year
             language   (str, optional)
             doc_ids    (list[int], optional)
             limit      (int, default 50, max 200)
@@ -1851,7 +1851,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             return
 
         group_by = str(body.get("group_by", "lemma")).strip().lower()
-        allowed_group_by = ("lemma", "upos", "xpos", "word", "feats")
+        allowed_group_by = ("lemma", "upos", "xpos", "word", "feats", "year")
         if group_by not in allowed_group_by:
             self._send_error(
                 f"group_by must be one of {allowed_group_by!r}",

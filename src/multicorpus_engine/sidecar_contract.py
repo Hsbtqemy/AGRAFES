@@ -15,7 +15,7 @@ from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
 API_VERSION = "1.6.23"
-CONTRACT_VERSION = "1.6.30"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.31"  # semantic versioning for the sidecar API contract
 # 1.4.0: added export_tei_package job kind (Sprint 4 — Publication ZIP)
 # 1.4.1: ERR_CONFLICT (409) for duplicate run_id; token protection on /align, /curate, /segment
 # 1.4.2: document workflow status fields on /documents and metadata update endpoints.
@@ -93,6 +93,10 @@ CONTRACT_VERSION = "1.6.30"  # semantic versioning for the sidecar API contract
 #         Raw nullable column values so the UI can reveal the verbatim import original when
 #         text_source != text_raw. (export source_field gains 'text_source' — validated inline,
 #         not part of the frozen job schema.)
+# 1.6.31: POST /token_stats group_by gains 'year' (F2 — diachronic distribution). Year rows are
+#         counted per hit, bucketed by the matched document's leading-4-digit doc_date (undated →
+#         '(sans date)', sorted chronologically), and gain tokens_in_period + freq_per_10k
+#         (normalised occurrences / 10k tokens of that year). Additive nullable row fields.
 #         Intersected with the folder PROPFIND listing (an unlisted href is ignored, never
 #         fetched); bypasses the `include` glob. Omit to import the whole folder.
 
@@ -2189,7 +2193,7 @@ def openapi_spec() -> dict[str, Any]:
                         "cql": {"type": "string", "description": "CQL query string"},
                         "group_by": {
                             "type": "string",
-                            "enum": ["lemma", "upos", "xpos", "word", "feats"],
+                            "enum": ["lemma", "upos", "xpos", "word", "feats", "year"],
                             "default": "lemma",
                         },
                         "language": {"type": "string", "nullable": True},
@@ -2209,6 +2213,9 @@ def openapi_spec() -> dict[str, Any]:
                         "value": {"type": "string"},
                         "count": {"type": "integer"},
                         "pct": {"type": "number"},
+                        # group_by="year" only: per-period denominator + normalised freq.
+                        "tokens_in_period": {"type": "integer", "nullable": True},
+                        "freq_per_10k": {"type": "number", "nullable": True},
                     },
                 },
                 "TokenStatsResponse": {
