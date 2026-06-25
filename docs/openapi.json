@@ -3361,7 +3361,8 @@
               "upos",
               "xpos",
               "word",
-              "feats"
+              "feats",
+              "year"
             ],
             "type": "string"
           },
@@ -3419,8 +3420,16 @@
           "count": {
             "type": "integer"
           },
+          "freq_per_10k": {
+            "nullable": true,
+            "type": "number"
+          },
           "pct": {
             "type": "number"
+          },
+          "tokens_in_period": {
+            "nullable": true,
+            "type": "integer"
           },
           "value": {
             "type": "string"
@@ -3760,7 +3769,7 @@
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
     "version": "1.6.23",
-    "x-contract-version": "1.6.30"
+    "x-contract-version": "1.6.31"
   },
   "openapi": "3.0.3",
   "paths": {

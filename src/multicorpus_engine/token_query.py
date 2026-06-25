@@ -207,6 +207,7 @@ def _stream_groups(
             u.n AS unit_n,
             d.language,
             d.title,
+            d.doc_date,
             t.sent_id,
             t.position,
             t.token_id,
@@ -248,6 +249,7 @@ def _stream_groups(
                 "text_raw": row["text_raw"] or "",
                 "language": row["language"],
                 "title": row["title"],
+                "doc_date": row["doc_date"],
             }
             current_tokens = []
 

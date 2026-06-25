@@ -7,6 +7,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **engine + contrat — distribution temporelle dans `token_stats` (F2a, backend)** : `POST /token_stats` `group_by` gagne la valeur **`"year"`** → distribution **diachronique** d'un motif CQL (comment sa fréquence varie dans le temps), dernière brique manquante du volet analytics du concordancier (tri KWIC + dispersion + collocations déjà livrés). **Source de date** : `documents.doc_date` (texte libre `"2024"`/`"2024-03"`/`"2024-03-15"`/NULL) **bucketé par l'année à 4 chiffres en tête** (`^\d{4}`) ; non-daté → bucket **`(sans date)`**. **Comptage par hit** (une occurrence par match, attribuée à l'année du doc — un span multi-token ne gonfle pas son année), **tri chronologique**. **Les deux métriques** par ligne : `count` (brut) **et** `freq_per_10k` (= `count / tokens_in_period * 10000`, fréquence relative comparable entre années) avec `tokens_in_period` (dénominateur = tous les tokens du périmètre pour cette année, obtenu **gratuitement** depuis les mêmes streams — aucune requête supplémentaire). `TokenStatsRow` gagne les champs **additifs nullable** `tokens_in_period` + `freq_per_10k` (présents seulement pour `year`) ; `CONTRACT_VERSION` 1.6.30 → **1.6.31** + `openapi.json` régénéré (snapshot des paths inchangé). Tests : bucketing des 3 formats de date + NULL, comptage par hit, tri chrono, normalisation + dénominateur, non-régression du chemin attribut (per-token). **Rendu front (histogramme temporel) = F2b**. Cf. `docs/cadrage/DISTRIBUTION_TEMPORELLE.md`.
+
 ## [0.2.7] - 2026-06-24
 
 ### Added
