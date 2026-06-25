@@ -16,6 +16,7 @@ import {
   type YearStatsRow,
   type YearMetric,
 } from "./yearChart.ts";
+import { cqlToHtml } from "./cqlHighlight.ts";
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -268,13 +269,16 @@ function _renderShell(root: HTMLElement): void {
       <!-- CQL panel (advanced) -->
       <div class="rech-quick-panel rech-quick-panel--cql" hidden>
         <div class="rech-toolbar-query">
-          <textarea
-            class="rech-cql-input"
-            rows="1"
-            spellcheck="false"
-            placeholder='ex. [upos="VERB"]  ou  [upos="DET"][upos="NOUN"]'
-            aria-label="Requête CQL"
-          ></textarea>
+          <div class="rech-cql-hl-wrap">
+            <div class="rech-cql-hl-layer" aria-hidden="true"></div>
+            <textarea
+              class="rech-cql-input"
+              rows="1"
+              spellcheck="false"
+              placeholder='ex. [upos="VERB"]  ou  [upos="DET"][upos="NOUN"]'
+              aria-label="Requête CQL"
+            ></textarea>
+          </div>
           <button class="rech-btn-search">Rechercher</button>
           <button class="rech-btn-help" title="Aide CQL" aria-label="Aide sur la syntaxe CQL">?</button>
         </div>
@@ -659,10 +663,14 @@ function _wireEvents(root: HTMLElement): void {
     cqlInput.addEventListener("input", () => {
       cqlInput.style.height = "auto";
       cqlInput.style.height = Math.min(cqlInput.scrollHeight, 120) + "px";
+      _renderCqlHighlight(root);
     });
+    // Keep the overlay aligned when the (capped-height) textarea scrolls.
+    cqlInput.addEventListener("scroll", () => _renderCqlHighlight(root));
     cqlInput.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void _doSearch(root, false); }
     });
+    _renderCqlHighlight(root);
   }
 
   // ── All "Rechercher" buttons ──
@@ -812,6 +820,7 @@ function _prefillAndSearch(root: HTMLElement, cql: string): void {
   // Trigger auto-resize
   input.style.height = "auto";
   input.style.height = Math.min(input.scrollHeight, 120) + "px";
+  _renderCqlHighlight(root);
   // Scroll toolbar into view
   root.querySelector(".rech-toolbar")?.scrollIntoView({ block: "nearest" });
   void _doSearch(root, false);
@@ -1084,6 +1093,16 @@ async function _renderDispersionChart(root: HTMLElement, hits: _Hit[]): Promise<
     },
   });
   (canvas as HTMLCanvasElement & { _chartInstance?: import("chart.js").Chart })._chartInstance = instance;
+}
+
+/** Repaint the CQL highlight overlay from the textarea's current value + scroll. */
+function _renderCqlHighlight(root: HTMLElement): void {
+  const ta = root.querySelector<HTMLTextAreaElement>(".rech-cql-input");
+  const layer = root.querySelector<HTMLElement>(".rech-cql-hl-layer");
+  if (!ta || !layer) return;
+  setHtml(layer, rawHtml(cqlToHtml(ta.value)));
+  layer.scrollTop = ta.scrollTop;
+  layer.scrollLeft = ta.scrollLeft;
 }
 
 type _ChartCanvas = HTMLCanvasElement & { _chartInstance?: import("chart.js").Chart };
@@ -2043,15 +2062,38 @@ const MODULE_CSS = `
 .rech-toolbar-query {
   display: flex; gap: 8px; align-items: flex-start;
 }
-.rech-cql-input {
-  flex: 1; resize: none; overflow: hidden;
+/* CQL input with a syntax-highlight overlay: a coloured layer sits behind a
+   transparent-text textarea. Both share the exact box model so glyphs align. */
+.rech-cql-hl-wrap { flex: 1; position: relative; display: flex; min-width: 0; }
+.rech-cql-input,
+.rech-cql-hl-layer {
   font-family: "JetBrains Mono", "Fira Mono", monospace;
-  font-size: 0.88rem; padding: 7px 10px;
-  border: 1px solid var(--border, #ccc); border-radius: 5px;
-  background: var(--bg, #fff); color: inherit;
-  line-height: 1.5; min-height: 36px;
+  font-size: 0.88rem; line-height: 1.5;
+  padding: 7px 10px;
+  border: 1px solid transparent; border-radius: 5px;
+  box-sizing: border-box; margin: 0;
+  white-space: pre-wrap; word-break: break-word;
 }
+.rech-cql-input {
+  flex: 1; width: 100%; resize: none; overflow: hidden; min-height: 36px;
+  border-color: var(--border, #ccc);
+  background: transparent; color: transparent; caret-color: var(--text, #222);
+  position: relative; z-index: 1;
+}
+.rech-cql-input::placeholder { color: #999; }
 .rech-cql-input:focus { outline: 2px solid var(--accent, #7b3fa0); outline-offset: -1px; }
+.rech-cql-hl-layer {
+  position: absolute; inset: 0; z-index: 0;
+  pointer-events: none; overflow: hidden;
+  color: var(--text, #222); background: var(--bg, #fff);
+}
+.cqlhl-bracket { color: #8a8a8a; }
+.cqlhl-attr    { color: #7b3fa0; font-weight: 600; }
+.cqlhl-op      { color: #c0392b; }
+.cqlhl-string  { color: #1e7a46; }
+.cqlhl-flag    { color: #b8860b; }
+.cqlhl-quant   { color: #2b6cb0; }
+.cqlhl-keyword { color: #b5651d; font-weight: 600; }
 .rech-btn-search {
   padding: 7px 16px; border-radius: 5px; cursor: pointer;
   background: var(--accent, #7b3fa0); color: #fff;
