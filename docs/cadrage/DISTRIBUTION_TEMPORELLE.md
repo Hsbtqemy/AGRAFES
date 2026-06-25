@@ -1,7 +1,8 @@
 # Cadrage — distribution temporelle (`token_stats` `group_by="year"`) — F2
 
-> Statut : **F2a (backend) livré** ; F2b (rendu front dans le concordancier) à suivre.
-> Réf. ROADMAP « Analytics Concordancier — distribution temporelle » (F2 phase 2).
+> Statut : **F2 complet** — F2a (backend `token_stats group_by="year"`, #120) **+**
+> F2b (histogramme Chart.js dans le module Recherche du shell, #121) livrés.
+> Réf. ROADMAP « Analytics Concordancier — distribution temporelle » (clos).
 
 ## Besoin
 
