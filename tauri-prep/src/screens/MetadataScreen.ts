@@ -26,8 +26,6 @@ import {
   getFamilies,
   segmentFamily,
   alignFamily,
-  exportTmx,
-  exportBilingual,
   setDocRelation,
   deleteDocRelation,
   backupDatabase,
@@ -46,7 +44,6 @@ import {
   type FamilyRecord,
   type FamilySegmentDocResult,
   type FamilyAlignPairResult,
-  type BilingualPreviewPair,
   type CurationChildStatus,
   SidecarError,
   richTextToHtml,
@@ -62,6 +59,7 @@ import {
 } from "../lib/prepIndexStatus.ts";
 import type { JobCenter } from "../components/JobCenter.ts";
 import { CorpusAuditPanel } from "../components/CorpusAuditPanel.ts";
+import { openExportPairDialog } from "../components/ExportPairDialog.ts";
 
 const DOC_ROLES = ["standalone", "original", "translation", "excerpt", "primary", "unknown"];
 const RELATION_TYPES = ["translation_of", "excerpt_of"];
@@ -1070,7 +1068,13 @@ export class MetadataScreen {
           const targetId = Number(btn.dataset.target);
           const pivotLang  = btn.dataset.pivotLang  ?? "und";
           const targetLang = btn.dataset.targetLang ?? "und";
-          void this._showExportPairDialog(pivotId, targetId, pivotLang, targetLang);
+          const container = this._editPanelEl.querySelector<HTMLDivElement>("#export-pair-dialog");
+          if (!container) return;
+          void openExportPairDialog({
+            container,
+            getConn: () => this._conn,
+            pivotId, targetId, pivotLang, targetLang,
+          });
         });
       });
 
@@ -2598,151 +2602,6 @@ export class MetadataScreen {
     } finally {
       if (btn) { btn.disabled = false; btn.textContent = "🔍 Audit corpus"; }
     }
-  }
-
-  // ── Sprint 5: export par paire ───────────────────────────────────────────────
-
-  private async _showExportPairDialog(
-    pivotId: number,
-    targetId: number,
-    pivotLang: string,
-    targetLang: string,
-  ): Promise<void> {
-    if (!this._conn) return;
-    const container = this._editPanelEl.querySelector<HTMLDivElement>("#export-pair-dialog");
-    if (!container) return;
-
-    // Suggested default out_path (desktop or documents folder heuristic)
-    const suggestedPath = `export_${pivotLang}_${targetLang}_${pivotId}_${targetId}`;
-
-    setHtml(container, raw(`
-      <div class="prep-export-pair-dialog">
-        <div class="prep-export-pair-head">
-          <strong>↗ Exporter la paire #${pivotId} ↔ #${targetId}</strong>
-          <button id="export-close-btn" class="audit-close-btn" title="Fermer">✕</button>
-        </div>
-        <div class="prep-export-pair-body">
-          <div class="prep-form-row" style="flex-wrap:wrap;gap:0.5rem">
-            <label>Format
-              <select id="export-format-sel" style="width:90px">
-                <option value="html">HTML</option>
-                <option value="txt">TXT</option>
-                <option value="tmx">TMX</option>
-              </select>
-            </label>
-            <label style="flex:2">Chemin de sortie
-              <input id="export-out-path" type="text"
-                     placeholder="${suggestedPath}.html"
-                     style="width:100%;font-size:0.8rem">
-            </label>
-          </div>
-          <div class="prep-btn-row" style="gap:0.5rem;margin-top:0.4rem">
-            <button id="export-preview-btn" class="btn btn-secondary btn-sm">👁 Prévisualiser</button>
-            <button id="export-save-btn" class="btn btn-primary btn-sm">↗ Enregistrer</button>
-          </div>
-          <div id="export-preview-area" style="margin-top:0.5rem"></div>
-          <div id="export-status" style="font-size:0.8rem;margin-top:0.4rem"></div>
-        </div>
-      </div>`));
-
-    const formatSel  = container.querySelector<HTMLSelectElement>("#export-format-sel")!;
-    const outInput   = container.querySelector<HTMLInputElement>("#export-out-path")!;
-    const previewArea = container.querySelector<HTMLDivElement>("#export-preview-area")!;
-    const statusEl   = container.querySelector<HTMLDivElement>("#export-status")!;
-
-    // Update placeholder when format changes
-    formatSel.addEventListener("change", () => {
-      const ext = formatSel.value === "tmx" ? "tmx" : formatSel.value;
-      if (!outInput.value || outInput.value === outInput.placeholder) {
-        outInput.placeholder = `${suggestedPath}.${ext}`;
-        outInput.value = "";
-      }
-    });
-
-    container.querySelector("#export-close-btn")?.addEventListener("click", () => {
-      container.innerHTML = "";
-    });
-
-    container.querySelector("#export-preview-btn")?.addEventListener("click", async () => {
-      const fmt = formatSel.value;
-      if (fmt === "tmx") {
-        statusEl.textContent = "Prévisualisation non disponible pour TMX — utilisez Enregistrer.";
-        return;
-      }
-      statusEl.textContent = "Chargement de la prévisualisation…";
-      previewArea.innerHTML = "";
-      try {
-        const res = await exportBilingual(this._conn!, {
-          pivot_doc_id: pivotId,
-          target_doc_id: targetId,
-          format: fmt as "html" | "txt",
-          preview_only: true,
-          preview_limit: 15,
-        });
-        statusEl.textContent = `${res.pair_count} paires alignées.`;
-        setHtml(previewArea, raw(this._renderBilingualPreview(
-          res.preview ?? [], pivotLang, targetLang, res.pair_count,
-        )));
-      } catch (err) {
-        statusEl.textContent = `Erreur : ${err instanceof SidecarError ? err.message : String(err)}`;
-      }
-    });
-
-    container.querySelector("#export-save-btn")?.addEventListener("click", async () => {
-      const fmt     = formatSel.value;
-      const outPath = outInput.value.trim();
-      if (!outPath) {
-        statusEl.textContent = "⚠ Indiquez un chemin de sortie.";
-        return;
-      }
-      statusEl.textContent = "Export en cours…";
-      try {
-        if (fmt === "tmx") {
-          const res = await exportTmx(this._conn!, {
-            pivot_doc_id: pivotId,
-            target_doc_id: targetId,
-            out_path: outPath,
-          });
-          setHtml(statusEl, raw(`✅ TMX enregistré : <code>${this._esc(res.out_path)}</code> · ${res.tu_count} TU(s)`));
-        } else {
-          const res = await exportBilingual(this._conn!, {
-            pivot_doc_id: pivotId,
-            target_doc_id: targetId,
-            format: fmt as "html" | "txt",
-            out_path: outPath,
-          });
-          setHtml(statusEl, raw(`✅ Fichier enregistré : <code>${this._esc(res.out_path ?? "")}</code> · ${res.pair_count} paires`));
-        }
-      } catch (err) {
-        statusEl.textContent = `Erreur : ${err instanceof SidecarError ? err.message : String(err)}`;
-      }
-    });
-  }
-
-  private _renderBilingualPreview(
-    pairs: BilingualPreviewPair[],
-    srcLang: string,
-    tgtLang: string,
-    totalCount: number,
-  ): string {
-    if (pairs.length === 0) return `<p class="empty-hint">Aucune paire alignée.</p>`;
-    const rows = pairs.map(p => `
-      <tr>
-        <td>${this._esc(p.pivot_text)}</td>
-        <td>${this._esc(p.target_text)}</td>
-      </tr>`).join("");
-    const more = totalCount > pairs.length
-      ? `<p class="hint" style="margin:4px 0">… et ${totalCount - pairs.length} paire(s) de plus.</p>`
-      : "";
-    return `
-      <table class="prep-bilingual-preview-table">
-        <thead><tr>
-          <th>${this._esc(srcLang)}</th>
-          <th>${this._esc(tgtLang)}</th>
-        </tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-      ${more}`;
   }
 
   private async _auditSegmentFamilies(familyRootIds: number[]): Promise<void> {
