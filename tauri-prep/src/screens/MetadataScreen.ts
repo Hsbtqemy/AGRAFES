@@ -43,11 +43,9 @@ import {
   type ConventionRole,
   type TokenRecord,
   type DocRelationRecord,
-  type CorpusAuditResult,
   type FamilyRecord,
   type FamilySegmentDocResult,
   type FamilyAlignPairResult,
-  type FamilyAuditData,
   type BilingualPreviewPair,
   type CurationChildStatus,
   SidecarError,
@@ -63,6 +61,7 @@ import {
   setAutoReindexEnabled,
 } from "../lib/prepIndexStatus.ts";
 import type { JobCenter } from "../components/JobCenter.ts";
+import { CorpusAuditPanel } from "../components/CorpusAuditPanel.ts";
 
 const DOC_ROLES = ["standalone", "original", "translation", "excerpt", "primary", "unknown"];
 const RELATION_TYPES = ["translation_of", "excerpt_of"];
@@ -118,8 +117,7 @@ export class MetadataScreen {
   private _isBusy = false;
   private _lastErrorMsg: string | null = null;
   private _lastRefreshAt = 0;
-  private _auditResult: CorpusAuditResult | null = null;
-  private _auditPanelEl!: HTMLElement;
+  private _auditPanel!: CorpusAuditPanel;
   private _auditRatioThreshold = 15;
   private _sortCol: SortCol = "id";
   private _sortDir: "asc" | "desc" = "asc";
@@ -364,7 +362,19 @@ export class MetadataScreen {
       const v = parseInt((e.target as HTMLInputElement).value, 10);
       if (!isNaN(v) && v >= 1 && v <= 100) this._auditRatioThreshold = v;
     });
-    this._auditPanelEl = root.querySelector<HTMLElement>("#prep-meta-audit-panel")!;
+    this._auditPanel = new CorpusAuditPanel(
+      root.querySelector<HTMLElement>("#prep-meta-audit-panel")!,
+      {
+        getDoc: (id) => this._docs.find(d => d.doc_id === id),
+        hasFamilies: () => this._families.length > 0,
+        isSelected: (id) => this._selectedDocIds.has(id),
+        selectIds: (ids) => this._auditSelectIds(ids),
+        toggleOne: (id, checked) => this._auditToggleOne(id, checked),
+        navToDoc: (id) => this._auditNavToDoc(id),
+        segmentFamilies: (roots) => void this._auditSegmentFamilies(roots),
+        alignFamilies: (roots) => void this._auditAlignFamilies(roots),
+      },
+    );
     root.querySelector("#meta-hierarchy-btn")!.addEventListener("click", () => void this._toggleHierarchyView());
 
     // Chip « ⚠ Index » cliquable (HANDOFF F4) — délégué : vaut pour la vue
@@ -1911,7 +1921,7 @@ export class MetadataScreen {
       this._log(`✓ ${res.deleted} document(s) supprimé(s).`);
       await this._refreshDocList();
       // Si le panneau d'audit est ouvert, le relancer pour refléter les suppressions
-      if (this._auditPanelEl && !this._auditPanelEl.hidden) {
+      if (this._auditPanel.isOpen()) {
         await this._runAudit();
       }
     } catch (err) {
@@ -2581,214 +2591,13 @@ export class MetadataScreen {
     const btn = this._root.querySelector<HTMLButtonElement>("#audit-btn");
     if (btn) { btn.disabled = true; btn.textContent = "Audit en cours…"; }
     try {
-      this._auditResult = await getCorpusAudit(this._conn, this._auditRatioThreshold);
-      this._renderAuditPanel();
+      this._auditPanel.render(await getCorpusAudit(this._conn, this._auditRatioThreshold));
     } catch (err) {
       this._lastErrorMsg = err instanceof SidecarError ? err.message : String(err);
       this._refreshRuntimeState();
     } finally {
       if (btn) { btn.disabled = false; btn.textContent = "🔍 Audit corpus"; }
     }
-  }
-
-  private _renderAuditPanel(): void {
-    const panel = this._auditPanelEl;
-    if (!panel) return;
-    const r = this._auditResult;
-    if (!r) { panel.hidden = true; return; }
-
-    panel.innerHTML = "";
-    panel.hidden = false;
-
-    // ── Header ────────────────────────────────────────────────────────────────
-    const header = document.createElement("div");
-    header.className = r.total_issues === 0 ? "audit-header audit-header-ok" : "audit-header audit-header-warn";
-
-    const headerText = document.createElement("span");
-    headerText.textContent = r.total_issues === 0
-      ? `✅ Corpus sain — ${r.total_docs} document(s), aucun problème détecté.`
-      : `⚠️ ${r.total_issues} problème(s) sur ${r.total_docs} document(s)`;
-
-    const closeBtn = document.createElement("button");
-    closeBtn.className = "audit-close-btn";
-    closeBtn.title = "Fermer";
-    closeBtn.textContent = "✕";
-    closeBtn.addEventListener("click", () => { panel.hidden = true; this._auditResult = null; });
-
-    header.appendChild(headerText);
-    header.appendChild(closeBtn);
-    panel.appendChild(header);
-
-    // ── Sections ──────────────────────────────────────────────────────────────
-    if (r.missing_fields.length > 0) {
-      panel.appendChild(this._auditSimpleSection(
-        "Champs manquants",
-        r.missing_fields.map(e => ({ docId: e.doc_id, extra: e.missing.join(", ") })),
-      ));
-    }
-    if (r.empty_documents.length > 0) {
-      panel.appendChild(this._auditSimpleSection(
-        "Documents vides (0 unité importée)",
-        r.empty_documents.map(e => ({ docId: e.doc_id, extra: "" })),
-      ));
-    }
-    if (r.duplicate_hashes.length > 0) {
-      panel.appendChild(this._auditGroupSection(
-        "Doublons de contenu (même fichier importé plusieurs fois)",
-        r.duplicate_hashes.map(g => ({ label: `hash ${g.hash_prefix}…`, ids: g.doc_ids })),
-      ));
-    }
-    if (r.duplicate_filenames.length > 0) {
-      panel.appendChild(this._auditGroupSection(
-        "Doublons de nom de fichier",
-        r.duplicate_filenames.map(g => ({ label: g.filename, ids: g.doc_ids })),
-      ));
-    }
-    if (r.duplicate_titles.length > 0) {
-      panel.appendChild(this._auditGroupSection(
-        "Doublons de titre",
-        r.duplicate_titles.map(g => ({ label: `«${g.title}»`, ids: g.doc_ids })),
-      ));
-    }
-
-    // ── Families section ─────────────────────────────────────────────────
-    if (r.families && r.families.total_family_issues > 0) {
-      panel.appendChild(this._auditFamiliesSection(r.families));
-    } else if (r.families && r.families.total_family_issues === 0 && (
-      r.families.orphan_docs.length + r.families.unsegmented_children.length +
-      r.families.unaligned_pairs.length + r.families.ratio_warnings.length
-    ) === 0) {
-      // All families healthy — show positive badge only if there are any relations
-      const anyFamilies = this._families.length > 0;
-      if (anyFamilies) {
-        const ok = document.createElement("div");
-        ok.className = "audit-family-ok";
-        ok.textContent = `✅ Toutes les familles documentaires sont en ordre (seuil ratio : ${r.families.ratio_threshold_pct} %)`;
-        panel.appendChild(ok);
-      }
-    }
-  }
-
-  private _auditFamiliesSection(fam: FamilyAuditData): HTMLDetailsElement {
-    const details = document.createElement("details");
-    details.className = "audit-section audit-section-family";
-    details.open = true;
-
-    const summary = document.createElement("summary");
-    summary.className = "audit-section-summary";
-    setHtml(summary, raw(`
-      <span class="audit-section-label">📁 Familles documentaires</span>
-      <span class="audit-issue-badge">${fam.total_family_issues}</span>
-      <span class="audit-section-meta">(seuil ratio : ${fam.ratio_threshold_pct} %)</span>`));
-    details.appendChild(summary);
-
-    const body = document.createElement("div");
-    body.className = "audit-section-body";
-
-    // Orphan docs
-    if (fam.orphan_docs.length > 0) {
-      body.appendChild(this._auditFamSubsection(
-        `Docs orphelins — parent absent du corpus (${fam.orphan_docs.length})`,
-        fam.orphan_docs.map(e => ({
-          docId: e.child_id,
-          extra: `parent attendu : #${e.parent_id}`,
-          actionNav: e.child_id,
-        })),
-        null, null,
-      ));
-    }
-
-    // Unsegmented children
-    if (fam.unsegmented_children.length > 0) {
-      const familyRootIds = [...new Set(fam.unsegmented_children.map(e => e.parent_id))];
-      body.appendChild(this._auditFamSubsection(
-        `Docs non segmentés dans une famille (${fam.unsegmented_children.length})`,
-        fam.unsegmented_children.map(e => ({
-          docId: e.child_id,
-          extra: `${!e.child_segmented ? "enfant non segmenté" : "parent non segmenté"}`,
-          actionNav: e.parent_id,
-        })),
-        { label: "Segmenter les familles", action: () => void this._auditSegmentFamilies(familyRootIds) },
-        null,
-      ));
-    }
-
-    // Unaligned pairs
-    if (fam.unaligned_pairs.length > 0) {
-      const familyRootIds = [...new Set(fam.unaligned_pairs.map(e => e.parent_id))];
-      body.appendChild(this._auditFamSubsection(
-        `Paires segmentées mais non alignées (${fam.unaligned_pairs.length})`,
-        fam.unaligned_pairs.map(e => ({
-          docId: e.child_id,
-          extra: `#${e.parent_id} ↔ #${e.child_id} · ${e.parent_segs} vs ${e.child_segs} seg.`,
-          actionNav: e.parent_id,
-        })),
-        null,
-        { label: "Aligner les familles", action: () => void this._auditAlignFamilies(familyRootIds) },
-      ));
-    }
-
-    // Ratio warnings
-    if (fam.ratio_warnings.length > 0) {
-      body.appendChild(this._auditFamSubsection(
-        `Ratios de segments suspects > ${fam.ratio_threshold_pct} % (${fam.ratio_warnings.length})`,
-        fam.ratio_warnings.map(e => ({
-          docId: e.child_id,
-          extra: `±${e.ratio_pct} % · #${e.parent_id}: ${e.parent_segs} seg. | #${e.child_id}: ${e.child_segs} seg.`,
-          actionNav: e.parent_id,
-        })),
-        null, null,
-      ));
-    }
-
-    details.appendChild(body);
-    return details;
-  }
-
-  private _auditFamSubsection(
-    title: string,
-    items: { docId: number; extra: string; actionNav: number }[],
-    segAction: { label: string; action: () => void } | null,
-    alnAction: { label: string; action: () => void } | null,
-  ): HTMLElement {
-    const wrap = document.createElement("div");
-    wrap.className = "audit-fam-subsection";
-
-    const head = document.createElement("div");
-    head.className = "audit-fam-subsection-head";
-
-    const titleEl = document.createElement("span");
-    titleEl.className = "audit-fam-subsection-title";
-    titleEl.textContent = title;
-    head.appendChild(titleEl);
-
-    if (segAction) {
-      const btn = document.createElement("button");
-      btn.className = "btn btn-secondary btn-xs";
-      btn.textContent = `⟳ ${segAction.label}`;
-      btn.addEventListener("click", segAction.action);
-      head.appendChild(btn);
-    }
-    if (alnAction) {
-      const btn = document.createElement("button");
-      btn.className = "btn btn-secondary btn-xs";
-      btn.textContent = `⇄ ${alnAction.label}`;
-      btn.addEventListener("click", alnAction.action);
-      head.appendChild(btn);
-    }
-    wrap.appendChild(head);
-
-    items.forEach(item => {
-      const row = this._auditDocRow(item.docId, item.extra, undefined);
-      // Override nav button to go to parent (family root)
-      const navBtn = row.querySelector<HTMLButtonElement>(".audit-doc-nav-btn");
-      if (navBtn) {
-        navBtn.title = `Ouvrir le document parent #${item.actionNav}`;
-        navBtn.onclick = () => this._auditNavToDoc(item.actionNav);
-      }
-      wrap.appendChild(row);
-    });
-    return wrap;
   }
 
   // ── Sprint 5: export par paire ───────────────────────────────────────────────
@@ -2960,7 +2769,12 @@ export class MetadataScreen {
 
   // ── Audit helpers ─────────────────────────────────────────────────────────
 
-  private _auditSelectIds(ids: number[], feedbackBtn?: HTMLButtonElement): void {
+  /**
+   * Toggle a group of ids in the shared selection and refresh the doc list /
+   * batch bar. Returns the new "is now selected" state so the audit panel can
+   * sync its own checkboxes and button labels (it owns that DOM).
+   */
+  private _auditSelectIds(ids: number[]): boolean {
     // Toggle: if all ids are already selected → deselect, otherwise select all
     const allSelected = ids.every(id => this._selectedDocIds.has(id));
     if (allSelected) {
@@ -2969,25 +2783,21 @@ export class MetadataScreen {
       ids.forEach(id => this._selectedDocIds.add(id));
     }
 
-    // Update checkboxes inside the audit panel without rebuilding it
-    this._auditPanelEl?.querySelectorAll<HTMLInputElement>(".audit-doc-check").forEach(cb => {
-      const id = Number(cb.dataset.docId);
-      if (id && ids.includes(id)) cb.checked = this._selectedDocIds.has(id);
-    });
-
-    // Update button label to reflect current state
-    if (feedbackBtn) {
-      const isNowSelected = !allSelected;
-      feedbackBtn.textContent = isNowSelected
-        ? (ids.length === 1 ? "Désélectionner" : "Tout désélectionner")
-        : (ids.length === 1 ? "Sélectionner" : "Tout sélectionner");
-    }
-
     this._renderDocList();
     this._renderBatchBar();
 
     // Scroll so the user sees the batch bar when selecting
     if (!allSelected) this._batchBarEl?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+
+    return !allSelected;
+  }
+
+  /** Add/remove a single doc from the shared selection (one audit-row checkbox). */
+  private _auditToggleOne(docId: number, checked: boolean): void {
+    if (checked) this._selectedDocIds.add(docId);
+    else this._selectedDocIds.delete(docId);
+    this._renderBatchBar();
+    if (checked) this._batchBarEl?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
 
   private _auditNavToDoc(docId: number): void {
@@ -2997,192 +2807,6 @@ export class MetadataScreen {
     this._renderDocList();
     this._renderEditPanel();
     this._editPanelEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  }
-
-  /** One doc row: [ ☐ ] [#id] [title…………] [lang · role] [→] */
-  private _auditDocRow(docId: number, extra: string, onToggle?: () => void): HTMLElement {
-    const doc = this._docs.find(d => d.doc_id === docId);
-    const title = doc?.title ?? `doc #${docId}`;
-    const lang  = doc?.language ?? "";
-    const role  = doc?.doc_role ?? "";
-
-    const row = document.createElement("div");
-    row.className = "audit-doc-row";
-
-    const cb = document.createElement("input");
-    cb.type = "checkbox";
-    cb.className = "audit-doc-check";
-    cb.dataset.docId = String(docId);
-    cb.checked = this._selectedDocIds.has(docId);
-    cb.title = "Ajouter / retirer de la sélection";
-    cb.addEventListener("change", () => {
-      if (cb.checked) this._selectedDocIds.add(docId);
-      else            this._selectedDocIds.delete(docId);
-      this._renderBatchBar();
-      if (cb.checked) this._batchBarEl?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-      onToggle?.();
-    });
-
-    const idBadge = document.createElement("span");
-    idBadge.className = "audit-doc-id-badge";
-    idBadge.textContent = `#${docId}`;
-
-    const titleEl = document.createElement("span");
-    titleEl.className = "audit-doc-title-cell";
-    titleEl.textContent = this._truncateMid(title, 44);
-    titleEl.title = title;
-
-    const metaEl = document.createElement("span");
-    metaEl.className = "audit-doc-meta";
-    metaEl.textContent = extra || [lang, role].filter(Boolean).join(" · ");
-
-    const navBtn = document.createElement("button");
-    navBtn.className = "audit-doc-nav-btn";
-    navBtn.textContent = "→";
-    navBtn.title = `Ouvrir la fiche du document #${docId}`;
-    navBtn.addEventListener("click", () => this._auditNavToDoc(docId));
-
-    row.appendChild(cb);
-    row.appendChild(idBadge);
-    row.appendChild(titleEl);
-    row.appendChild(metaEl);
-    row.appendChild(navBtn);
-    return row;
-  }
-
-  /** Section with one row per document (missing fields, empty docs). */
-  private _auditSimpleSection(
-    title: string,
-    items: { docId: number; extra: string }[],
-  ): HTMLDetailsElement {
-    const allIds = items.map(i => i.docId);
-    const details = document.createElement("details");
-    details.className = "audit-section";
-    details.open = items.length <= 15;
-
-    const summary = this._auditSummary(title, items.length,
-      `${items.length} document${items.length > 1 ? "s" : ""}`, allIds);
-    details.appendChild(summary);
-
-    const body = document.createElement("div");
-    body.className = "audit-section-body";
-    items.forEach(item => body.appendChild(this._auditDocRow(item.docId, item.extra)));
-    details.appendChild(body);
-    return details;
-  }
-
-  /** Section with group cards (duplicate hashes / filenames / titles). */
-  private _auditGroupSection(
-    title: string,
-    groups: { label: string; ids: number[] }[],
-  ): HTMLDetailsElement {
-    const PAGE = 20;
-    const totalDocs = groups.reduce((s, g) => s + g.ids.length, 0);
-    const allIds = groups.flatMap(g => g.ids);
-
-    const details = document.createElement("details");
-    details.className = "audit-section";
-    details.open = groups.length <= 5;
-
-    const summary = this._auditSummary(title, groups.length,
-      `${groups.length} groupe${groups.length > 1 ? "s" : ""} · ${totalDocs} documents`, allIds);
-    details.appendChild(summary);
-
-    const body = document.createElement("div");
-    body.className = "audit-section-body";
-
-    const makeCard = (g: { label: string; ids: number[] }): HTMLElement => {
-      const card = document.createElement("div");
-      card.className = "audit-group-card";
-
-      const head = document.createElement("div");
-      head.className = "audit-group-head";
-
-      const labelEl = document.createElement("span");
-      labelEl.className = "audit-group-label";
-      labelEl.textContent = g.label;
-      labelEl.title = g.label;
-
-      const countEl = document.createElement("span");
-      countEl.className = "audit-group-count";
-      countEl.textContent = `${g.ids.length} copie${g.ids.length > 1 ? "s" : ""}`;
-
-      const selBtn = document.createElement("button");
-      selBtn.className = "audit-sel-btn audit-sel-btn-sm";
-      selBtn.textContent = "Sélectionner";
-      selBtn.title = "Ajouter ce groupe à la sélection (puis Supprimer dans la barre)";
-      const updateSelBtn = () => {
-        const allSel = g.ids.every(id => this._selectedDocIds.has(id));
-        selBtn.textContent = allSel ? "Tout désélectionner" : "Sélectionner";
-      };
-      selBtn.addEventListener("click", () => { this._auditSelectIds(g.ids, selBtn); updateSelBtn(); });
-
-      head.appendChild(labelEl);
-      head.appendChild(countEl);
-      head.appendChild(selBtn);
-      card.appendChild(head);
-
-      g.ids.forEach(id => card.appendChild(this._auditDocRow(id, "", updateSelBtn)));
-      return card;
-    };
-
-    const firstPage = groups.slice(0, PAGE);
-    const rest = groups.slice(PAGE);
-    firstPage.forEach(g => body.appendChild(makeCard(g)));
-
-    if (rest.length > 0) {
-      let offset = 0;
-      const moreBtn = document.createElement("button");
-      moreBtn.className = "audit-show-more-btn";
-      const updateMoreBtn = () => {
-        const remaining = rest.length - offset;
-        moreBtn.textContent = `Afficher ${Math.min(PAGE, remaining)} groupe${remaining > 1 ? "s" : ""} de plus… (${remaining} restant${remaining > 1 ? "s" : ""})`;
-      };
-      updateMoreBtn();
-      moreBtn.addEventListener("click", () => {
-        const batch = rest.slice(offset, offset + PAGE);
-        batch.forEach(g => body.insertBefore(makeCard(g), moreBtn));
-        offset += batch.length;
-        if (offset >= rest.length) moreBtn.remove();
-        else updateMoreBtn();
-      });
-      body.appendChild(moreBtn);
-    }
-
-    details.appendChild(body);
-    return details;
-  }
-
-  /** Shared <summary> element for audit sections. */
-  private _auditSummary(title: string, count: number, metaText: string, allIds: number[]): HTMLElement {
-    const summary = document.createElement("summary");
-    summary.className = "audit-section-head";
-
-    const badge = document.createElement("span");
-    badge.className = "audit-badge audit-badge-warn";
-    badge.textContent = String(count);
-
-    const titleEl = document.createElement("strong");
-    titleEl.textContent = title;
-
-    const meta = document.createElement("span");
-    meta.className = "audit-section-meta";
-    meta.textContent = metaText;
-
-    const selAllBtn = document.createElement("button");
-    selAllBtn.className = "audit-sel-btn";
-    selAllBtn.textContent = "Tout sélectionner";
-    selAllBtn.title = "Ajouter tous ces documents à la sélection pour action groupée";
-    selAllBtn.addEventListener("click", e => {
-      e.stopPropagation(); // prevent <details> toggle
-      this._auditSelectIds(allIds, selAllBtn);
-    });
-
-    summary.appendChild(badge);
-    summary.appendChild(titleEl);
-    summary.appendChild(meta);
-    summary.appendChild(selAllBtn);
-    return summary;
   }
 
   dispose(): void { /* nothing to clean up */ }
