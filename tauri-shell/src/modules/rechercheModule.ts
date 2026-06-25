@@ -1147,8 +1147,9 @@ async function _renderYearChart(root: HTMLElement): Promise<void> {
         tooltip: {
           callbacks: {
             title: (items) => labels[items[0].dataIndex] ?? "",
-            label: () => "",
-            afterBody: (items) => yearTooltipLines(rows[items[0].dataIndex]),
+            // Both metrics in the body; returning the lines from `label` (vs an
+            // empty label + afterBody) avoids a blank leading tooltip line.
+            label: (item) => yearTooltipLines(rows[item.dataIndex]),
           },
         },
       },
@@ -2597,6 +2598,9 @@ const MODULE_CSS = `
 }
 
 /* ── Temporal distribution (group_by=year) ── */
+/* .rech-stats-bars sets display:flex, which (author rule) overrides the UA
+   [hidden] default — so hiding it for the year view needs an explicit rule. */
+.rech-stats-bars[hidden] { display: none; }
 .rech-stats-year-wrap[hidden] { display: none; }
 .rech-stats-year-wrap {
   display: flex; flex-direction: column; gap: 6px; margin-top: 4px;
