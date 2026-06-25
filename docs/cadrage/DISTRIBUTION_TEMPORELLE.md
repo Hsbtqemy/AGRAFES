@@ -31,6 +31,11 @@ distribution temporelle était la dernière brique manquante.
     **comparable entre années** (le vrai signal diachronique, que les comptes bruts
     seuls masquent quand la composition du corpus varie).
 - **Tri chronologique** (pas par count) ; `(sans date)` en dernier.
+- **`limit` ne tronque pas la série `year`** : la distribution temporelle est
+  renvoyée **complète** (un corpus diachronique s'étale souvent au-delà du cap par
+  défaut, et le tri chronologique ferait que `[:limit]` couperait les années les
+  **plus récentes** — histogramme trompeur). Les buckets année sont naturellement
+  bornés par l'empan du corpus. `limit` reste actif pour les `group_by` attribut.
 - **Lignes émises** : uniquement les années **avec ≥1 hit** (cohérent avec le
   comportement des autres `group_by`). Les années où le corpus existe mais sans
   occurrence (freq=0) ne sont pas listées — leur affichage en « creux » est un choix

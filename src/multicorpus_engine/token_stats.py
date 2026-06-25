@@ -70,7 +70,8 @@ def run_token_stats(
     doc_ids:
         Restrict to these document IDs (optional).
     limit:
-        Maximum number of rows to return (1–200).
+        Maximum number of rows to return (1–200). **Not applied to**
+        ``group_by="year"``, which returns the complete chronological series.
 
     Returns
     -------
@@ -116,7 +117,12 @@ def run_token_stats(
                 total_pivot_tokens += len(m.indices)
                 year_hits[year] = year_hits.get(year, 0) + 1
 
-        ordered = sorted(year_hits, key=_year_sort_key)[:limit]
+        # The temporal series is returned in FULL: `limit` does not truncate it.
+        # A diachronic corpus often spans more years than the default cap, and the
+        # chronological sort means [:limit] would silently drop the most recent
+        # years — a misleading histogram. Year buckets are naturally bounded by the
+        # corpus date range, so completeness is safe.
+        ordered = sorted(year_hits, key=_year_sort_key)
         rows = [
             {
                 "value": year,

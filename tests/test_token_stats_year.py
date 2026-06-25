@@ -104,6 +104,13 @@ def test_year_attribute_branch_unaffected(conn: sqlite3.Connection) -> None:
     assert "tokens_in_period" not in out["rows"][0]  # year-only field
 
 
+def test_year_limit_does_not_truncate_series(conn: sqlite3.Connection) -> None:
+    # The full chronological series must come back even with a tiny limit —
+    # truncating a diachronic series would drop its most recent years.
+    out = run_token_stats(conn, cql='[lemma="chat"]', group_by="year", limit=1)
+    assert [r["value"] for r in out["rows"]] == ["1850", "1900", "(sans date)"]
+
+
 def test_year_rejects_unknown_group_by(conn: sqlite3.Connection) -> None:
     with pytest.raises(ValueError):
         run_token_stats(conn, cql='[lemma="chat"]', group_by="decade")
