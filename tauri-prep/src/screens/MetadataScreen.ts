@@ -34,9 +34,6 @@ import {
   type DocumentRecord,
   type DocRelationRecord,
   type FamilyRecord,
-  type FamilySegmentDocResult,
-  type FamilyAlignPairResult,
-  type CurationChildStatus,
   SidecarError,
 } from "../lib/sidecarClient.ts";
 import { setHtml, raw } from "../lib/safeHtml.ts";
@@ -52,6 +49,7 @@ import type { JobCenter } from "../components/JobCenter.ts";
 import { CorpusAuditPanel } from "../components/CorpusAuditPanel.ts";
 import { openExportPairDialog } from "../components/ExportPairDialog.ts";
 import { UnitInspectorPanel } from "../components/UnitInspectorPanel.ts";
+import { familyPanelHtml, segResultRow, alnResultRow, curationStatusHtml } from "../components/familyView.ts";
 
 const DOC_ROLES = ["standalone", "original", "translation", "excerpt", "primary", "unknown"];
 const RELATION_TYPES = ["translation_of", "excerpt_of"];
@@ -951,7 +949,7 @@ export class MetadataScreen {
         ${propagateHtml}
       </div>
 
-      ${this._familyPanelHtml(doc)}
+      ${familyPanelHtml(doc, this._families)}
 
       <h4 style="font-size:0.88rem;font-weight:600;margin:0.5rem 0 0.3rem">Relations documentaires</h4>
       <p style="font-size:0.78rem;color:var(--color-muted);margin:0 0 0.5rem">
@@ -1058,85 +1056,6 @@ export class MetadataScreen {
         void this._curationFamilyFlow(familyId, btn);
       });
 
-  }
-
-  private _familyPanelHtml(doc: DocumentRecord): string {
-    const family = this._families.find(f => f.family_id === doc.doc_id);
-    if (!family) return "";
-
-    const { stats } = family;
-    const tier = this._completionTier(stats.completion_pct);
-
-    const pairRows = family.children.map(c => {
-      const segIcon  = c.segmented       ? "✓" : "○";
-      const segClass = c.segmented       ? "prep-fam-ok" : "prep-fam-todo";
-      const alnIcon  = c.aligned_to_parent ? "✓" : "○";
-      const alnClass = c.aligned_to_parent ? "prep-fam-ok" : "prep-fam-todo";
-      const childTitle = c.doc ? this._esc(this._truncateMid(c.doc.title, 28)) : `doc #${c.doc_id}`;
-      const childLang  = c.doc ? this._esc(c.doc.language) : "?";
-      const exportDisabled = c.aligned_to_parent ? "" : "disabled title=\"Aligner la paire d'abord\"";
-      return `
-        <tr class="prep-fam-pair-row">
-          <td class="prep-fam-pair-lang">${childLang}</td>
-          <td class="prep-fam-pair-title" title="${c.doc ? this._esc(c.doc.title) : ""}">${childTitle}</td>
-          <td class="prep-fam-pair-icon ${segClass}" title="Segmenté">${segIcon}</td>
-          <td class="prep-fam-pair-icon ${alnClass}" title="Aligné">${alnIcon}</td>
-          <td class="prep-fam-pair-export">
-            <button class="btn btn-xs prep-fam-export-pair-btn"
-                    data-pivot="${family.family_id}" data-target="${c.doc_id}"
-                    data-pivot-lang="${this._esc(family.parent?.language ?? 'und')}"
-                    data-target-lang="${childLang}"
-                    ${exportDisabled}>↗ Export</button>
-          </td>
-        </tr>`;
-    }).join("");
-
-    const ratioWarnings = stats.ratio_warnings.length > 0
-      ? `<p class="prep-fam-ratio-warn">⚠ ${stats.ratio_warnings.length} paire(s) avec ratio de segments suspect (&gt;15 %)</p>`
-      : "";
-
-    return `
-      <div class="prep-family-panel">
-        <div class="prep-family-panel-head">
-          <span class="prep-fam-title">📁 Famille documentaire</span>
-          <span class="prep-family-pct-badge family-pct-${tier}">${stats.completion_pct} %</span>
-        </div>
-        <div class="prep-fam-stats-row">
-          <span>${stats.total_docs} doc(s)</span>
-          <span>${stats.segmented_docs}/${stats.total_docs} segmentés</span>
-          <span>${stats.aligned_pairs}/${stats.total_pairs} paires alignées</span>
-          <span>${stats.validated_docs} validé(s)</span>
-        </div>
-        <table class="prep-fam-pairs-table">
-          <thead><tr>
-            <th>Langue</th><th>Traduction / Extrait</th>
-            <th title="Segmenté">Seg.</th><th title="Aligné">Aln.</th><th></th>
-          </tr></thead>
-          <tbody>${pairRows}</tbody>
-        </table>
-        ${ratioWarnings}
-        <div class="prep-fam-actions">
-          <button id="seg-family-btn" class="btn btn-secondary btn-sm"
-                  data-family-id="${family.family_id}">⟳ Segmenter la famille</button>
-          <button id="aln-family-btn" class="btn btn-secondary btn-sm"
-                  data-family-id="${family.family_id}"
-                  data-pairs="${this._esc(JSON.stringify(family.children.map(c => ({
-                    doc_id: c.doc_id,
-                    lang: c.doc?.language ?? "?",
-                    title: c.doc?.title ?? `#${c.doc_id}`,
-                    segmented: c.segmented,
-                    aligned: c.aligned_to_parent,
-                    relation_type: c.relation_type,
-                  }))))}"
-                  >⇄ Aligner la famille</button>
-          <button id="curation-family-btn" class="btn btn-secondary btn-sm"
-                  data-family-id="${family.family_id}">📋 Curation</button>
-        </div>
-        <div id="seg-family-result"></div>
-        <div id="aln-family-result"></div>
-        <div id="curation-family-result"></div>
-        <div id="export-pair-dialog"></div>
-      </div>`;
   }
 
   private _inheritAuthorFromParent(): void {
@@ -1304,7 +1223,7 @@ export class MetadataScreen {
       const res = await segmentFamily(this._conn, familyRootId, { force });
 
       if (resultDiv) {
-        const rows = res.results.map(r => this._segResultRow(r)).join("");
+        const rows = res.results.map(r => segResultRow(r)).join("");
         const { segmented, skipped, errors } = res.summary;
         const parts: string[] = [];
         if (segmented > 0) parts.push(`<span class="prep-fam-ok">${segmented} segmenté(s)</span>`);
@@ -1340,27 +1259,6 @@ export class MetadataScreen {
       btn.disabled = false;
       btn.textContent = "⟳ Segmenter la famille";
     }
-  }
-
-  private _segResultRow(r: FamilySegmentDocResult): string {
-    const statusLabel = r.status === "segmented" ? "✓ Segmenté"
-      : r.status === "skipped" ? "— Ignoré"
-      : "✕ Erreur";
-    const statusClass = r.status === "segmented" ? "prep-fam-ok"
-      : r.status === "skipped" ? "prep-fam-todo"
-      : "prep-fam-ratio-warn";
-    const warns = r.warnings.length > 0
-      ? `<span title="${this._esc(r.warnings.join(" | "))}">⚠ ${r.warnings.length}</span>`
-      : "—";
-    const ratio = r.calibrate_ratio_pct != null
-      ? ` <em>(±${r.calibrate_ratio_pct} %)</em>` : "";
-    return `
-      <tr>
-        <td>#${r.doc_id}</td>
-        <td class="${statusClass}">${statusLabel}</td>
-        <td>${r.units_input} → ${r.units_output}${ratio}</td>
-        <td>${warns}</td>
-      </tr>`;
   }
 
   // ── Sprint 3: family alignment flow ─────────────────────────────────────────
@@ -1469,7 +1367,7 @@ export class MetadataScreen {
       });
 
       if (resultDiv) {
-        const rows = res.results.map(r => this._alnResultRow(r)).join("");
+        const rows = res.results.map(r => alnResultRow(r)).join("");
         const { aligned, skipped, errors, total_links_created } = res.summary;
         const parts: string[] = [];
         if (aligned > 0) parts.push(`<span class="prep-fam-ok">${aligned} paire(s) alignée(s)</span>`);
@@ -1507,26 +1405,6 @@ export class MetadataScreen {
     }
   }
 
-  private _alnResultRow(r: FamilyAlignPairResult): string {
-    const statusLabel = r.status === "aligned"   ? "✓ Aligné"
-      : r.status === "skipped"   ? "— Ignoré"
-      : r.status === "conflict"  ? "⚡ Conflit"
-      : "✕ Erreur";
-    const statusClass = r.status === "aligned"  ? "prep-fam-ok"
-      : r.status === "skipped"  ? "prep-fam-todo"
-      : "prep-fam-ratio-warn";
-    const warns = r.warnings.length > 0
-      ? `<span title="${this._esc(r.warnings.join(" | "))}">⚠ ${r.warnings.length}</span>`
-      : "—";
-    return `
-      <tr>
-        <td>#${r.pivot_doc_id} ↔ #${r.target_doc_id} (${this._esc(r.target_lang)})</td>
-        <td class="${statusClass}">${statusLabel}</td>
-        <td>${r.links_created}</td>
-        <td>${warns}</td>
-      </tr>`;
-  }
-
   // ── Sprint 7 — Curation propagée ──────────────────────────────────────────
 
   private async _curationFamilyFlow(familyRootId: number, btn: HTMLButtonElement): Promise<void> {
@@ -1551,7 +1429,7 @@ export class MetadataScreen {
         return;
       }
 
-      setHtml(resultDiv, raw(this._curationStatusHtml(status.children, familyRootId)));
+      setHtml(resultDiv, raw(curationStatusHtml(status.children, familyRootId)));
       this._wireCurationButtons(resultDiv, familyRootId);
       btn.textContent = `📋 Curation (${status.total_pending})`;
     } catch (err) {
@@ -1560,50 +1438,6 @@ export class MetadataScreen {
     } finally {
       btn.disabled = false;
     }
-  }
-
-  private _curationStatusHtml(children: CurationChildStatus[], familyRootId: number): string {
-    const sections = children
-      .filter(c => c.pending_count > 0)
-      .map(c => {
-        const rows = c.pending.map(p => `
-          <tr class="prep-curation-pending-row">
-            <td class="prep-curation-ext-id">[§${this._esc(String(p.external_id))}]</td>
-            <td class="prep-curation-pivot-text" title="${this._esc(p.pivot_text)}">${this._esc(this._truncateMid(p.pivot_text, 60))}</td>
-            <td class="prep-curation-target-text" title="${this._esc(p.target_text)}">${this._esc(this._truncateMid(p.target_text, 60))}</td>
-            <td class="prep-curation-changed-at" title="${this._esc(p.source_changed_at)}">${p.source_changed_at.slice(0, 10)}</td>
-            <td>
-              <button class="btn btn-xs btn-ghost prep-curation-ack-link-btn"
-                      data-link-id="${p.link_id}">✓ Lu</button>
-            </td>
-          </tr>`).join("");
-
-        return `
-          <div class="prep-curation-child-block">
-            <div class="prep-curation-child-head">
-              <span class="prep-curation-child-lang">${this._esc(c.language ?? "?")} · ${this._esc(c.title ?? `#${c.doc_id}`)}</span>
-              <span class="prep-curation-child-count">${c.pending_count} unité(s) à revoir</span>
-              <button class="btn btn-xs prep-curation-ack-doc-btn"
-                      data-doc-id="${c.doc_id}" data-family-id="${familyRootId}">✓ Acquitter tout</button>
-            </div>
-            <table class="prep-curation-pending-table">
-              <thead><tr>
-                <th>§</th><th>Texte original (pivot)</th><th>Traduction en cours</th>
-                <th>Modifié le</th><th></th>
-              </tr></thead>
-              <tbody>${rows}</tbody>
-            </table>
-          </div>`;
-      }).join("");
-
-    return `
-      <div class="prep-curation-status-block">
-        <div class="prep-curation-status-head">
-          ⚠ <strong>${children.reduce((s, c) => s + c.pending_count, 0)}</strong>
-          unité(s) de traductions à revoir après modification des originaux
-        </div>
-        ${sections}
-      </div>`;
   }
 
   private _wireCurationButtons(container: HTMLElement, familyRootId: number): void {
