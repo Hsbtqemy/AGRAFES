@@ -9,6 +9,13 @@ import type { ShellContext } from "../context.ts";
 import { validateCqlSyntax } from "../../../tauri-app/src/features/search.ts";
 import { ensureRunning, SidecarError, type Conn } from "../../../tauri-prep/src/lib/sidecarClient.ts";
 import { setHtml, raw as rawHtml } from "../../../tauri-prep/src/lib/safeHtml.ts";
+import {
+  yearChartData,
+  yearMetricLabel,
+  yearTooltipLines,
+  type YearStatsRow,
+  type YearMetric,
+} from "./yearChart.ts";
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -25,7 +32,7 @@ let _lastQuery: _QueryParams | null = null;
 let _loading = false;
 
 // Stats (server-side, covers all hits — not just loaded page)
-let _statsRows: Array<{ value: string; count: number; pct: number }> = [];
+let _statsRows: YearStatsRow[] = [];
 let _statsTotalPivot = 0;
 let _statsLoading = false;
 // Monotonic counter — incremented on every new query so in-flight stats
@@ -380,9 +387,19 @@ function _renderShell(root: HTMLElement): void {
                 <option value="lemma">Lemme</option>
                 <option value="upos">UPOS</option>
                 <option value="word">Forme</option>
+                <option value="year">Année</option>
               </select>
             </div>
             <div class="rech-stats-bars"></div>
+            <div class="rech-stats-year-wrap" hidden>
+              <label class="rech-stats-year-metric-label">Mesure
+                <select class="rech-stats-year-metric">
+                  <option value="count">Occurrences</option>
+                  <option value="freq">Fr&#233;quence /10k</option>
+                </select>
+              </label>
+              <canvas class="rech-stats-year-chart"></canvas>
+            </div>
             <div class="rech-stats-reset" hidden>
               <button class="rech-btn-reset-filter">Tout afficher</button>
             </div>
@@ -683,6 +700,11 @@ function _wireEvents(root: HTMLElement): void {
     root.querySelector<HTMLElement>(".rech-stats-reset")!.hidden = true;
     void _fetchStats(root, groupSel.value);
   });
+
+  // Temporal metric toggle (occurrences ⇄ freq/10k): re-render the chart only,
+  // no refetch — the year rows already carry both metrics.
+  root.querySelector<HTMLSelectElement>(".rech-stats-year-metric")
+    ?.addEventListener("change", () => { void _renderYearChart(root); });
 
   // Reset stats filter
   resetBtn.addEventListener("click", () => {
@@ -1062,6 +1084,81 @@ async function _renderDispersionChart(root: HTMLElement, hits: _Hit[]): Promise<
     },
   });
   (canvas as HTMLCanvasElement & { _chartInstance?: import("chart.js").Chart })._chartInstance = instance;
+}
+
+type _ChartCanvas = HTMLCanvasElement & { _chartInstance?: import("chart.js").Chart };
+
+/** Tear down the temporal histogram (e.g. when switching away from group_by="year"). */
+function _destroyYearChart(root: HTMLElement): void {
+  const canvas = root.querySelector<_ChartCanvas>(".rech-stats-year-chart");
+  if (canvas?._chartInstance) {
+    canvas._chartInstance.destroy();
+    canvas._chartInstance = undefined;
+  }
+}
+
+/**
+ * Temporal distribution histogram (F2b): vertical Chart.js bars, years on the
+ * X-axis. The metric toggle switches bar height between raw occurrences and the
+ * normalised freq/10k; both stay visible in the tooltip.
+ */
+async function _renderYearChart(root: HTMLElement): Promise<void> {
+  const canvas = root.querySelector<_ChartCanvas>(".rech-stats-year-chart");
+  if (!canvas) return;
+  if (_statsRows.length === 0) { _destroyYearChart(root); return; }
+
+  const metric = (root.querySelector<HTMLSelectElement>(".rech-stats-year-metric")?.value
+    ?? "count") as YearMetric;
+  const rows = _statsRows;
+
+  let Chart: typeof import("chart.js").Chart;
+  try {
+    const mod = await import("chart.js/auto");
+    Chart = mod.default;
+  } catch {
+    return;
+  }
+
+  if (canvas._chartInstance) canvas._chartInstance.destroy();
+
+  const { labels, data } = yearChartData(rows, metric);
+  const chartH = 200;
+  canvas.style.height = chartH + "px";
+  canvas.height = chartH;
+
+  canvas._chartInstance = new Chart(canvas, {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [{
+        label: yearMetricLabel(metric),
+        data,
+        backgroundColor: "rgba(123,63,160,0.55)",
+        borderColor: "rgba(123,63,160,1)",
+        borderWidth: 1,
+        borderRadius: 3,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: (items) => labels[items[0].dataIndex] ?? "",
+            // Both metrics in the body; returning the lines from `label` (vs an
+            // empty label + afterBody) avoids a blank leading tooltip line.
+            label: (item) => yearTooltipLines(rows[item.dataIndex]),
+          },
+        },
+      },
+      scales: {
+        x: { ticks: { font: { size: 10 }, autoSkip: false } },
+        y: { beginAtZero: true, ticks: { font: { size: 10 } } },
+      },
+    },
+  });
 }
 
 function _pivotTokens(hit: _Hit): _Token[] {
@@ -1554,7 +1651,7 @@ async function _fetchStats(root: HTMLElement, groupBy: string): Promise<void> {
 
     const res = await _conn.post("/token_stats", payload) as {
       total_pivot_tokens?: number;
-      rows?: Array<{ value: string; count: number; pct: number }>;
+      rows?: YearStatsRow[];
     };
 
     // Discard if a new query was started while this was in-flight
@@ -1583,8 +1680,21 @@ function _renderStats(root: HTMLElement): void {
   const bars        = root.querySelector<HTMLElement>(".rech-stats-bars")!;
   const groupBy     = root.querySelector<HTMLSelectElement>(".rech-stats-group-by")!.value;
   const statsFilter = root.dataset.statsFilter ?? "";
+  const yearWrap    = root.querySelector<HTMLElement>(".rech-stats-year-wrap");
 
   bars.innerHTML = "";
+
+  // Temporal distribution (group_by="year"): a Chart.js histogram over years
+  // instead of the categorical bar list (which sorts by count + filters hits).
+  if (groupBy === "year") {
+    bars.hidden = true;
+    if (yearWrap) yearWrap.hidden = _statsRows.length === 0;
+    void _renderYearChart(root);
+    return;
+  }
+  bars.hidden = false;
+  if (yearWrap) yearWrap.hidden = true;
+  _destroyYearChart(root);
 
   if (_statsRows.length === 0) return;
 
@@ -2483,6 +2593,24 @@ const MODULE_CSS = `
   color: #6c757d; margin-bottom: 6px;
 }
 .rech-dispersion-chart {
+  width: 100% !important;
+  display: block;
+}
+
+/* ── Temporal distribution (group_by=year) ── */
+/* .rech-stats-bars sets display:flex, which (author rule) overrides the UA
+   [hidden] default — so hiding it for the year view needs an explicit rule. */
+.rech-stats-bars[hidden] { display: none; }
+.rech-stats-year-wrap[hidden] { display: none; }
+.rech-stats-year-wrap {
+  display: flex; flex-direction: column; gap: 6px; margin-top: 4px;
+}
+.rech-stats-year-metric-label {
+  font-size: 0.72rem; color: #6c757d;
+  display: flex; align-items: center; gap: 6px;
+}
+.rech-stats-year-metric-label select { font-size: 0.72rem; padding: 1px 4px; }
+.rech-stats-year-chart {
   width: 100% !important;
   display: block;
 }
