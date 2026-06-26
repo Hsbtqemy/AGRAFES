@@ -75,6 +75,7 @@ import { reportEvent, reportUserError } from "../lib/telemetry.ts";
 import { CURATE_PRESETS, parseAdvancedCurateRules, getPunctLangFromValue } from "../lib/curationPresets.ts";
 import { mergeApplyHistory, formatApplyHistoryList, type ApplyHistoryScope } from "../lib/curationApplyHistory.ts";
 import { buildReviewReportPayload, buildReviewReportCsv } from "../lib/curationReviewReport.ts";
+import { buildApplyConfirmMessage } from "../lib/curationApplyConfirm.ts";
 import {
   filterExceptions,
   buildExcDocOptions,
@@ -3570,36 +3571,12 @@ export class CurationView {
   }
 
   private _buildApplyConfirmMessage(label: string, ignoredUnitIds: number[], manualOverrides: Array<{ unit_id: number; text: string }> = []): string {
-    const hasReview = this._curateExamples.length > 0;
-    const isTruncated = this._curateExamples.length < this._curateGlobalChanged;
-    const counts = hasReview ? this._getStatusCounts() : null;
-    let msg = `Appliquer la curation sur ${label} ?\nCette opération modifie text_norm en base.\n`;
-    if (hasReview && counts) {
-      msg += `\nRésumé de la session de review :\n  • Acceptées    : ${counts.accepted}\n  • En attente   : ${counts.pending}\n  • Ignorées     : ${counts.ignored}`;
-      if (counts.ignored > 0) msg += ` → ne seront PAS appliquées`;
-      msg += `\n`;
-      if (isTruncated) {
-        const unreviewed = this._curateGlobalChanged - this._curateExamples.length;
-        msg += `\n⚠ Attention — preview partielle :\n  ${unreviewed} modification(s) hors échantillon n'ont pas été examinées.\n  Elles seront appliquées normalement (aucun statut local disponible).\n  Seules les ${ignoredUnitIds.length} unités ignorées dans l'échantillon seront exclues.`;
-      } else {
-        if (counts.ignored > 0) msg += `\nL'application exclura ${counts.ignored} unité(s) ignorée(s).`;
-        else msg += `\nToutes les modifications seront appliquées (aucune ignorée).`;
-      }
-    } else {
-      msg += `\nAucune review locale — toutes les modifications seront appliquées.`;
-    }
-    const docId = this._currentCurateDocId();
-    if (docId === undefined) msg += `\n\n📌 Toutes les sessions de review sauvegardées par document seront effacées après application.`;
-    else msg += `\n\n📌 La session de review sauvegardée pour ce document sera effacée après application.`;
-    if (manualOverrides.length > 0) {
-      const fromExamplesIds = new Set(this._curateExamples.filter(ex => ex.is_manual_override === true && ex.manual_after != null && ex.unit_id !== undefined).map(ex => ex.unit_id));
-      const diffCount = manualOverrides.filter(o => fromExamplesIds.has(o.unit_id)).length;
-      const rawCount = manualOverrides.length - diffCount;
-      if (rawCount > 0 && diffCount > 0) msg += `\n✏ ${manualOverrides.length} correction(s) manuelle(s) : ${diffCount} via panneau diff, ${rawCount} directement dans le texte.`;
-      else if (rawCount > 0) msg += `\n✏ ${rawCount} correction(s) saisie(s) directement dans le panneau texte.`;
-      else msg += `\n✏ ${manualOverrides.length} correction(s) manuelle(s) seront appliquées à la place de la proposition automatique.`;
-    }
-    return msg;
+    return buildApplyConfirmMessage({
+      label, ignoredUnitIds, manualOverrides,
+      examples: this._curateExamples,
+      globalChanged: this._curateGlobalChanged,
+      currentDocId: this._currentCurateDocId(),
+    });
   }
 
   private _renderApplyHistoryPanel(container: HTMLElement, events: CurateApplyEvent[]): void {
