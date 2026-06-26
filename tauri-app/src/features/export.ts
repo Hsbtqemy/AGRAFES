@@ -13,17 +13,17 @@ export type ExportFormat = "jsonl-simple" | "jsonl-parallel" | "csv-flat" | "csv
 
 // ─── Serializers ──────────────────────────────────────────────────────────────
 
-function escCsv(val: string | number | null | undefined): string {
+export function escCsv(val: string | number | null | undefined): string {
   const s = val == null ? "" : String(val);
   if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
   return s;
 }
 
-function toJsonlSimple(hits: QueryHit[]): string {
+export function toJsonlSimple(hits: QueryHit[]): string {
   return hits.map(h => JSON.stringify(h)).join("\n");
 }
 
-function toJsonlParallel(hits: QueryHit[]): string {
+export function toJsonlParallel(hits: QueryHit[]): string {
   return hits.map(h => JSON.stringify({
     pivot: {
       doc_id: h.doc_id, title: h.title, language: h.language,
@@ -38,7 +38,7 @@ function toJsonlParallel(hits: QueryHit[]): string {
   })).join("\n");
 }
 
-function toCsvFlat(hits: QueryHit[]): string {
+export function toCsvFlat(hits: QueryHit[]): string {
   const maxAl = hits.reduce((m, h) => Math.max(m, (h.aligned ?? []).length), 0);
   const header = ["doc_id", "title", "language", "unit_id", "external_id",
     "text", "left", "match", "right"];
@@ -61,7 +61,7 @@ function toCsvFlat(hits: QueryHit[]): string {
   return [header.join(","), ...rows].join("\r\n");
 }
 
-function toCsvLong(hits: QueryHit[]): string {
+export function toCsvLong(hits: QueryHit[]): string {
   const header = [
     "pivot_doc_id", "pivot_title", "pivot_lang", "pivot_unit_id", "pivot_ext_id",
     "pivot_text", "pivot_left", "pivot_match", "pivot_right",
@@ -97,7 +97,7 @@ function toCsvLong(hits: QueryHit[]): string {
  * identified by "LANG · title" and containing the aligned text.
  * When a hit has no aligned unit for a given child, the cell is empty.
  */
-function toCsvFamily(hits: QueryHit[]): string {
+export function toCsvFamily(hits: QueryHit[]): string {
   // Collect all unique child document keys (doc_id|lang|title)
   const childKeySet = new Set<string>();
   const childKeyOrder: string[] = [];
