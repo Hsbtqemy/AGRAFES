@@ -53,7 +53,7 @@ interface HitStats {
 }
 
 /** Compute per-document and per-language counts from the loaded hits. O(n). */
-function computeHitStats(hits: QueryHit[]): HitStats {
+export function computeHitStats(hits: QueryHit[]): HitStats {
   const docCountMap = new Map<number, DocStat>();
   const langSet = new Set<string>();
   for (const h of hits) {
@@ -77,7 +77,7 @@ function computeHitStats(hits: QueryHit[]): HitStats {
  * Primary key: doc_id. Secondary key: external_id (document position) or unit_id.
  * Returns the original array unchanged in "natural" mode (no copy cost).
  */
-function applySortToHits(hits: QueryHit[]): QueryHit[] {
+export function applySortToHits(hits: QueryHit[]): QueryHit[] {
   if (state.sortMode !== "by-doc") return hits;
   return [...hits].sort((a, b) => {
     if (a.doc_id !== b.doc_id) return a.doc_id - b.doc_id;
@@ -118,7 +118,7 @@ function _openFederationFilterEditor(): void {
 }
 
 /** Returns true if any documentary filter is currently active. */
-function hasActiveFilters(): boolean {
+export function hasActiveFilters(): boolean {
   return !!(
     state.filterLangs.length > 0 || state.filterRole || state.filterDocIds !== null ||
     state.filterResourceType || state.filterFamilyId !== null ||
@@ -142,7 +142,7 @@ function _resolveCqlDocIds(): number[] | undefined {
 }
 
 /** Builds a short summary of active filters for display. */
-function activeFiltersSummary(): string {
+export function activeFiltersSummary(): string {
   const parts: string[] = [];
   if (state.filterLangs.length > 0) parts.push(`Langue : ${state.filterLangs.join(", ")}`);
   if (state.filterRole) parts.push(`Rôle : ${state.filterRole}`);
