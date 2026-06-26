@@ -70,6 +70,7 @@ import { rulesSignature as _rulesSignature, sampleFingerprint as _sampleFingerpr
 import { compareDocsByTitle } from "../lib/docSort.ts";
 import { computeNextSteps, type PrepNavTarget } from "../lib/prepNextStep.ts";
 import { NextStepBanner } from "../components/NextStepBanner.ts";
+import { showCurateApplyConfirm } from "../components/CurateApplyConfirmDialog.ts";
 import { isAutoReindexEnabled } from "../lib/prepIndexStatus.ts";
 import { reportEvent, reportUserError } from "../lib/telemetry.ts";
 import { CURATE_PRESETS, parseAdvancedCurateRules, getPunctLangFromValue } from "../lib/curationPresets.ts";
@@ -3536,38 +3537,7 @@ export class CurationView {
   }
 
   private _showCurateApplyConfirm(message: string): Promise<boolean> {
-    return new Promise((resolve) => {
-      const bar = this._q<HTMLElement>("#act-curate-confirm-bar");
-      if (!bar) { resolve(false); return; }
-      if (bar.style.display !== "none") { resolve(false); return; }
-      const html = message.split("\n").map(line => line.trim() ? `<span>${_escHtml(line)}</span>` : "").filter(Boolean).join("<br>");
-      setHtml(bar, raw(
-        `<div class="prep-curate-confirm-modal" role="document">` +
-          `<div class="prep-curate-confirm-body">${html}</div>` +
-          `<div class="prep-curate-confirm-actions">` +
-            `<button class="btn btn-ghost btn-sm" id="act-confirm-cancel">Annuler</button>` +
-            `<button class="btn prep-btn-warning btn-sm" id="act-confirm-ok">Confirmer l'application</button>` +
-          `</div>` +
-        `</div>`));
-      bar.style.display = "";
-      // Backdrop click: NOT once:true — a click on an inner element bubbles up
-      // and would consume the listener before any backdrop click could fire.
-      // We remove it explicitly in cleanup() instead.
-      const onBackdropClick = (e: MouseEvent) => { if (e.target === bar) decide(false); };
-      const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") decide(false); };
-      const cleanup = () => {
-        bar.style.display = "none";
-        bar.innerHTML = "";
-        bar.removeEventListener("click", onBackdropClick);
-        document.removeEventListener("keydown", onKey);
-      };
-      const decide = (ok: boolean) => { cleanup(); resolve(ok); };
-      bar.querySelector("#act-confirm-ok")!.addEventListener("click", () => decide(true), { once: true });
-      bar.querySelector("#act-confirm-cancel")!.addEventListener("click", () => decide(false), { once: true });
-      bar.addEventListener("click", onBackdropClick);
-      document.addEventListener("keydown", onKey);
-      bar.querySelector<HTMLButtonElement>("#act-confirm-ok")?.focus();
-    });
+    return showCurateApplyConfirm(this._q<HTMLElement>("#act-curate-confirm-bar"), message);
   }
 
   private _buildApplyConfirmMessage(label: string, ignoredUnitIds: number[], manualOverrides: Array<{ unit_id: number; text: string }> = []): string {
