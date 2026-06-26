@@ -74,6 +74,7 @@ import { isAutoReindexEnabled } from "../lib/prepIndexStatus.ts";
 import { reportEvent, reportUserError } from "../lib/telemetry.ts";
 import { CURATE_PRESETS, parseAdvancedCurateRules, getPunctLangFromValue } from "../lib/curationPresets.ts";
 import { mergeApplyHistory, formatApplyHistoryList, type ApplyHistoryScope } from "../lib/curationApplyHistory.ts";
+import { buildReviewReportPayload, buildReviewReportCsv } from "../lib/curationReviewReport.ts";
 import {
   filterExceptions,
   buildExcDocOptions,
@@ -3511,60 +3512,26 @@ export class CurationView {
   private _buildReviewReportPayload(): object {
     const docId = this._currentCurateDocId() ?? null;
     const docTitle = docId !== null ? (this._getDocs().find(d => d.doc_id === docId)?.title ?? null) : null;
-    const items = this._curateExamples;
-    const pending  = items.filter(e => (e.status ?? "pending") === "pending").length;
-    const accepted = items.filter(e => e.status === "accepted").length;
-    const ignored  = items.filter(e => e.status === "ignored").length;
-    const manuals  = items.filter(e => e.is_manual_override).length;
-    const isTruncated = this._curateGlobalChanged > items.length;
-    const notes: string[] = [];
-    if (isTruncated) notes.push(`Preview tronquée : ${items.length} item(s) affichés sur ${this._curateGlobalChanged} modifications réelles dans le document.`);
-    notes.push("Ce rapport reflète uniquement la session courante (en mémoire). Les décisions ne survivent pas à un rechargement sans restauration localStorage.");
-    return {
-      exported_at: new Date().toISOString(),
-      report_type: "curation_review_session",
-      doc_id: docId, doc_title: docTitle,
-      sample: { displayed: items.length, units_changed: this._curateGlobalChanged, units_total: this._curateUnitsTotal, truncated: isTruncated },
-      summary: { pending, accepted, ignored, manual_overrides: manuals },
-      rules: [...this._curateRuleLabels],
-      items: items.map(ex => {
-        const persistentExc = ex.unit_id !== undefined ? (this._curateExceptions.get(ex.unit_id) ?? null) : null;
-        return {
-          unit_id: ex.unit_id ?? null, unit_index: ex.unit_index ?? null,
-          status: ex.status ?? "pending", before: ex.before, after: ex.after,
-          effective_after: ex.is_manual_override ? (ex.manual_after ?? ex.after) : ex.after,
-          is_manual_override: ex.is_manual_override ?? false,
-          matched_rules: (ex.matched_rule_ids ?? []).map(idx => this._curateRuleLabels[idx] ?? `règle ${idx + 1}`),
-          preview_reason: ex.preview_reason ?? "standard",
-          context_before: ex.context_before ?? null, context_after: ex.context_after ?? null,
-          persistent_exception: persistentExc ? { kind: persistentExc.kind, text: persistentExc.override_text ?? null } : null,
-        };
-      }),
-      last_apply_result: this._lastApplyResult, notes,
-    };
+    return buildReviewReportPayload({
+      docId, docTitle,
+      examples: this._curateExamples,
+      globalChanged: this._curateGlobalChanged,
+      unitsTotal: this._curateUnitsTotal,
+      ruleLabels: this._curateRuleLabels,
+      exceptions: this._curateExceptions,
+      lastApplyResult: this._lastApplyResult,
+      exportedAt: new Date().toISOString(),
+    });
   }
 
   private _buildReviewReportCsv(): string {
-    const cols = ["unit_id","unit_index","status","is_manual_override","before","after","effective_after","matched_rules","preview_reason","context_before","context_after","persistent_exception_kind"];
-    const escape = (v: unknown): string => {
-      const s = v == null ? "" : String(v);
-      return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s;
-    };
-    const rows: string[] = [cols.join(",")];
-    for (const ex of this._curateExamples) {
-      const persistentExc = ex.unit_id !== undefined ? (this._curateExceptions.get(ex.unit_id) ?? null) : null;
-      rows.push([
-        ex.unit_id ?? "", ex.unit_index ?? "", ex.status ?? "pending",
-        ex.is_manual_override ? "true" : "false",
-        escape(ex.before), escape(ex.after),
-        escape(ex.is_manual_override ? (ex.manual_after ?? ex.after) : ex.after),
-        escape((ex.matched_rule_ids ?? []).map(idx => this._curateRuleLabels[idx] ?? `r${idx + 1}`).join("; ")),
-        ex.preview_reason ?? "standard",
-        escape(ex.context_before ?? ""), escape(ex.context_after ?? ""),
-        persistentExc?.kind ?? "",
-      ].join(","));
-    }
-    return rows.join("\n");
+    // CSV ne consulte que examples/exceptions/ruleLabels — on ne reconstruit
+    // donc PAS docId/docTitle/exportedAt ici (l'original ne les touchait pas).
+    return buildReviewReportCsv({
+      examples: this._curateExamples,
+      exceptions: this._curateExceptions,
+      ruleLabels: this._curateRuleLabels,
+    });
   }
 
   private _showCurateApplyConfirm(message: string): Promise<boolean> {
