@@ -78,6 +78,7 @@ import { mergeApplyHistory, formatApplyHistoryList, type ApplyHistoryScope } fro
 import { buildReviewReportPayload, buildReviewReportCsv } from "../lib/curationReviewReport.ts";
 import { buildApplyConfirmMessage } from "../lib/curationApplyConfirm.ts";
 import { formatSessionSummary } from "../lib/curationSessionSummary.ts";
+import { collectIgnoredUnitIds, collectManualOverrides } from "../lib/curationApplyInputs.ts";
 import {
   filterExceptions,
   buildExcDocOptions,
@@ -3071,17 +3072,11 @@ export class CurationView {
   }
 
   private _collectIgnoredUnitIds(): number[] {
-    return this._curateExamples.filter(ex => ex.status === "ignored").map(ex => ex.unit_id);
+    return collectIgnoredUnitIds(this._curateExamples);
   }
 
   private _collectManualOverrides(): Array<{ unit_id: number; text: string }> {
-    const fromExamples = this._curateExamples
-      .filter(ex => ex.is_manual_override === true && ex.manual_after != null && ex.unit_id !== undefined)
-      .map(ex => ({ unit_id: ex.unit_id, text: ex.manual_after! }));
-    const sampleIds = new Set(fromExamples.map(o => o.unit_id));
-    const fromRaw: Array<{ unit_id: number; text: string }> = [];
-    this._allOverrides.forEach((text, uid) => { if (!sampleIds.has(uid)) fromRaw.push({ unit_id: uid, text }); });
-    return [...fromExamples, ...fromRaw];
+    return collectManualOverrides(this._curateExamples, this._allOverrides);
   }
 
   private _conventionEditLabel(row: HTMLElement, conv: ConventionRole): void {
