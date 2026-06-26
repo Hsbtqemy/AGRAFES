@@ -77,6 +77,7 @@ import { CURATE_PRESETS, parseAdvancedCurateRules, getPunctLangFromValue } from 
 import { mergeApplyHistory, formatApplyHistoryList, type ApplyHistoryScope } from "../lib/curationApplyHistory.ts";
 import { buildReviewReportPayload, buildReviewReportCsv } from "../lib/curationReviewReport.ts";
 import { buildApplyConfirmMessage } from "../lib/curationApplyConfirm.ts";
+import { formatSessionSummary } from "../lib/curationSessionSummary.ts";
 import {
   filterExceptions,
   buildExcDocOptions,
@@ -1635,32 +1636,16 @@ export class CurationView {
     const total = this._curateExamples.length;
     if (total === 0) { el.style.display = "none"; return; }
     el.style.display = "";
-    const c = this._getStatusCounts();
-    const af = this._activeStatusFilter;
-    const sl = CurationView._STATUS_LABEL;
-    const chip = (key: "pending" | "accepted" | "ignored", icon: string, label: string, count: number) =>
-      `<span class="prep-session-chip prep-session-${key}${af === key ? " prep-session-chip-active" : ""}"` +
-      ` data-sf="${key}" role="button" tabindex="0" title="${af === key ? "Effacer ce filtre" : `Filtrer : ${label}`}">` +
-      `${icon}&#160;<strong>${count}</strong>&#160;<span class="prep-session-chip-label">${label}</span></span>`;
-    const docId = this._currentCurateDocId() ?? null;
-    const isAllMode = docId === null;
-    let restoreNotice: string;
-    if (this._curateRestoredCount > 0) {
-      const countText = this._curateSavedCount > this._curateRestoredCount
-        ? `${this._curateRestoredCount} statut(s) restauré(s) sur ${this._curateSavedCount} sauvegardé(s)`
-        : `${this._curateRestoredCount} statut(s) restauré(s)`;
-      const modeNote = isAllMode ? ` <em>(sélection modifiée depuis la preview)</em>` : "";
-      restoreNotice = `<div class="prep-session-restore-notice" title="Statuts restaurés depuis la session précédente">&#8635; ${countText}${modeNote} &#8212; <button class="prep-btn-inline-link" id="act-reset-review">Réinitialiser</button></div>`;
-    } else {
-      const modeNote = isAllMode ? `<span class="prep-session-all-note" title="Portée globale">&#9432; Portée globale</span> &#8212; ` : "";
-      restoreNotice = `<div class="prep-session-reset-row">${modeNote}<button class="prep-btn-inline-link" id="act-reset-review">Effacer la review sauvegardée</button></div>`;
-    }
-    setHtml(el, raw(
-      `<div class="prep-session-counts">${chip("pending","&#9632;",sl.pending,c.pending)}${chip("accepted","&#10003;",sl.accepted,c.accepted)}${chip("ignored","&#215;",sl.ignored,c.ignored)}</div>` +
-      (af ? `<div class="prep-session-filter-note">Filtre statut actif &#8212; <button class="prep-btn-inline-link" id="act-clear-sf">Afficher tout</button></div>` : "") +
-      (() => { const n = countManualOverrides(this._curateExamples); return n > 0 ? `<div class="prep-session-override-note">&#9998;&#160;${n} correction(s) manuelle(s)</div>` : ""; })() +
-      (() => { const n = this._curateExceptions.size; return n > 0 ? `<div class="prep-session-exception-note">🔒&#160;${n} exception(s) persistée(s)</div>` : ""; })() +
-      restoreNotice));
+    setHtml(el, raw(formatSessionSummary({
+      counts: this._getStatusCounts(),
+      activeStatusFilter: this._activeStatusFilter,
+      statusLabels: CurationView._STATUS_LABEL,
+      isAllMode: (this._currentCurateDocId() ?? null) === null,
+      restoredCount: this._curateRestoredCount,
+      savedCount: this._curateSavedCount,
+      manualOverrideCount: countManualOverrides(this._curateExamples),
+      exceptionCount: this._curateExceptions.size,
+    })));
     el.querySelectorAll<HTMLElement>("[data-sf]").forEach(chip => {
       chip.addEventListener("click", () => { const sf = chip.dataset.sf as "pending"|"accepted"|"ignored"; this._setStatusFilter(this._activeStatusFilter === sf ? null : sf); });
       chip.addEventListener("keydown", e => { if ((e as KeyboardEvent).key === "Enter") chip.click(); });
