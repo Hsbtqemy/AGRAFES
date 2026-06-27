@@ -20,6 +20,7 @@ import { initCardAccordions } from "../lib/uiAccordions.ts";
 import { setHtml, raw } from "../lib/safeHtml.ts";
 import { escHtml as _escHtml } from "../lib/diff.ts";
 import { actionsHubTemplate } from "../lib/actionsHubTemplate.ts";
+import { buildMetadataTree } from "../lib/metadataTree.ts";
 import { AlignPanel } from "./AlignPanel.ts";
 import { AnnotationView } from "./AnnotationView.ts";
 import { SegmentationView } from "./SegmentationView.ts";
@@ -644,46 +645,9 @@ export class ActionsScreen {
     this._renderDocList();
   }
 
-  private _buildHubTree(): { roots: { doc: DocumentRecord; children: { doc: DocumentRecord; relationLabel: string }[] }[]; standalone: DocumentRecord[]; orphans: DocumentRecord[] } {
-    const docMap = new Map(this._docs.map(d => [d.doc_id, d]));
-    const childOf = new Map<number, { parentId: number; label: string }>();
-    const parentTo = new Map<number, { childId: number; label: string }[]>();
-
-    for (const rel of this._allRelations) {
-      if (!docMap.has(rel.doc_id)) continue;
-      childOf.set(rel.doc_id, { parentId: rel.target_doc_id, label: rel.relation_type });
-      if (!parentTo.has(rel.target_doc_id)) parentTo.set(rel.target_doc_id, []);
-      parentTo.get(rel.target_doc_id)!.push({ childId: rel.doc_id, label: rel.relation_type });
-    }
-
-    const roots: { doc: DocumentRecord; children: { doc: DocumentRecord; relationLabel: string }[] }[] = [];
-    const standalone: DocumentRecord[] = [];
-    const orphans: DocumentRecord[] = [];
-
-    for (const doc of this._docs) {
-      const childInfo = childOf.get(doc.doc_id);
-      if (childInfo) {
-        if (!docMap.has(childInfo.parentId)) orphans.push(doc);
-        continue;
-      }
-      const children = parentTo.get(doc.doc_id) ?? [];
-      if (children.length === 0) {
-        standalone.push(doc);
-      } else {
-        roots.push({
-          doc,
-          children: children
-            .map(c => ({ doc: docMap.get(c.childId)!, relationLabel: c.label }))
-            .filter(n => n.doc != null),
-        });
-      }
-    }
-    return { roots, standalone, orphans };
-  }
-
   private _renderHubHierarchyList(el: HTMLElement): void {
     el.innerHTML = "";
-    const { roots, standalone, orphans } = this._buildHubTree();
+    const { roots, standalone, orphans } = buildMetadataTree(this._docs, this._allRelations);
 
     const table = document.createElement("table");
     table.className = "prep-meta-table";
