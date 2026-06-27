@@ -55,6 +55,7 @@ import { reportEvent } from "../lib/telemetry.ts";
 import { compareDocsByTitle } from "../lib/docSort.ts";
 import { setHtml, raw } from "../lib/safeHtml.ts";
 import { segRightPanelHtml } from "../lib/segmentationRightPanel.ts";
+import { formatSegDocListHtml, formatSegDocListFlat } from "../lib/segDocList.ts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -414,88 +415,17 @@ export class SegmentationView {
   }
 
   private async _buildSegDocListHtml(): Promise<string> {
-    const statusBadge = (d: DocumentRecord): string => {
-      const s = d.workflow_status ?? "draft";
-      if (s === "validated") return `<span class="prep-seg-doc-badge prep-seg-badge-ok">&#10003; Valid&#233;</span>`;
-      if (s === "review")    return `<span class="prep-seg-doc-badge prep-seg-badge-warn">&#9203; En revue</span>`;
-      return `<span class="prep-seg-doc-badge prep-seg-badge-none">Brouillon</span>`;
-    };
-
-    const docRow = (d: DocumentRecord, indent = false): string =>
-      `<div class="prep-seg-doc-row${indent ? " prep-seg-doc-child" : ""}" data-doc-id="${d.doc_id}">
-        <div class="prep-seg-doc-row-main">
-          <span class="prep-seg-doc-title" title="${_escHtml(d.title)}">${_escHtml(d.title)}</span>
-          <span class="prep-seg-doc-lang">[${_escHtml(d.language)}]</span>
-        </div>
-        <div class="prep-seg-doc-row-foot">
-          <span class="prep-seg-doc-units">${d.unit_count} unit&#233;s</span>
-          ${statusBadge(d)}
-        </div>
-      </div>`;
-
-    let familyGroups: Array<{ root: DocumentRecord; children: DocumentRecord[] }> = [];
-    const orphans: DocumentRecord[] = [];
+    // Markup pur délégué à lib/segDocList ; la vue garde le fetch des relations de
+    // famille + la garde de connexion (no-conn → liste vide ; échec fetch → plat).
+    const conn = this._getConn();
+    if (!conn) return `<p class="empty-hint">Aucun document.</p>`;
     try {
       const { getAllDocRelations } = await import("../lib/sidecarClient.ts");
-      const conn = this._getConn();
-      if (conn) {
-        const relations = await getAllDocRelations(conn);
-        const childIds = new Set(relations.map(r => r.doc_id));
-        const parentMap = new Map<number, number[]>();
-
-        for (const rel of relations) {
-          if (!parentMap.has(rel.target_doc_id)) parentMap.set(rel.target_doc_id, []);
-          parentMap.get(rel.target_doc_id)!.push(rel.doc_id);
-        }
-
-        const sortFn = (a: DocumentRecord, b: DocumentRecord) =>
-          this._segDocListSort === "alpha"
-            ? compareDocsByTitle(a, b)
-            : a.doc_id - b.doc_id;
-        const docs = [...this._getDocs()].sort(sortFn);
-        for (const d of docs) {
-          if (!childIds.has(d.doc_id) && parentMap.has(d.doc_id)) {
-            const children = (parentMap.get(d.doc_id) ?? [])
-              .map(cid => docs.find(dd => dd.doc_id === cid))
-              .filter(Boolean) as DocumentRecord[];
-            children.sort(sortFn);
-            familyGroups.push({ root: d, children });
-          } else if (!childIds.has(d.doc_id) && !parentMap.has(d.doc_id)) {
-            orphans.push(d);
-          }
-        }
-      }
+      const relations = await getAllDocRelations(conn);
+      return formatSegDocListHtml(this._getDocs(), relations, this._segDocListSort);
     } catch {
-      const sortFn = (a: DocumentRecord, b: DocumentRecord) =>
-        this._segDocListSort === "alpha"
-          ? compareDocsByTitle(a, b)
-          : a.doc_id - b.doc_id;
-      return [...this._getDocs()].sort(sortFn).map(d => docRow(d)).join("");
+      return formatSegDocListFlat(this._getDocs(), this._segDocListSort);
     }
-
-    let html = "";
-    for (let fi = 0; fi < familyGroups.length; fi++) {
-      const { root, children } = familyGroups[fi];
-      html += `<div class="prep-seg-doc-group-label">
-        <span class="prep-seg-family-pill">Famille ${fi + 1}</span>
-        <span class="prep-seg-family-root-name" title="${_escHtml(root.title)}">${_escHtml(root.title)}</span>
-      </div>`;
-      html += `<div class="prep-seg-doc-group">`;
-      html += docRow(root);
-      for (const child of children) html += docRow(child, true);
-      html += `</div>`;
-    }
-    if (orphans.length > 0) {
-      if (familyGroups.length > 0) {
-        html += `<div class="prep-seg-doc-group-label">&#8212; Sans famille</div>`;
-      } else {
-        html += `<div class="prep-seg-doc-group-label">Tous les documents</div>`;
-      }
-      html += `<div class="prep-seg-doc-group">`;
-      for (const d of orphans) html += docRow(d);
-      html += `</div>`;
-    }
-    return html || `<p class="empty-hint">Aucun document.</p>`;
   }
 
   // ─── Right panel ──────────────────────────────────────────────────────────
