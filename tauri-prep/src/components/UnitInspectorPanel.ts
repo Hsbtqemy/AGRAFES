@@ -15,6 +15,8 @@
  */
 
 import { setHtml, raw } from "../lib/safeHtml.ts";
+import { escHtml as esc, escHtml as escHtmlMeta } from "../lib/diff.ts";
+import { truncateMid } from "../lib/textTruncate.ts";
 import {
   getDocumentPreview,
   listConventions,
@@ -38,21 +40,8 @@ export interface UnitInspectorDeps {
   showToast(msg: string, isError?: boolean): void;
 }
 
-function esc(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
 
-/** Middle-truncate long titles: "Lorem ipsum…sit amet" — preserves start and end. */
-function truncateMid(text: string, maxChars = 42): string {
-  if (!text || text.length <= maxChars) return text;
-  const tail = Math.max(8, Math.floor(maxChars * 0.35));
-  const head = maxChars - tail - 1; // 1 for the ellipsis
-  return text.slice(0, head) + "…" + text.slice(-tail);
-}
 
-function escHtmlMeta(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
 
 function roleBadgeHtml(role: string | null | undefined, conventions: ConventionRole[]): string {
   if (!role) return "";

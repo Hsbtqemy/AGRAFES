@@ -8,6 +8,7 @@
  */
 
 import type { Conn } from "../lib/sidecarClient.ts";
+import { escHtml as _escHtml } from "../lib/diff.ts";
 import {
   listDocuments,
   getFamilies,
@@ -24,9 +25,6 @@ import { setHtml, raw } from "../lib/safeHtml.ts";
 import { exportsScreenTemplate } from "../lib/exportsScreenTemplate.ts";
 import { productsForStage, formatsForProduct } from "../lib/exportV2Options.ts";
 
-function _escHtml(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
 
 export interface ExportWorkflowPrefill {
   stage?: "alignment" | "publication" | "segmentation" | "curation" | "runs" | "qa";

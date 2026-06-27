@@ -12,6 +12,7 @@
  */
 
 import type { Conn, ConventionRole, UnitRecord } from "../lib/sidecarClient.ts";
+import { escHtml as esc } from "../lib/diff.ts";
 import {
   listConventions,
   createConvention,
@@ -45,13 +46,6 @@ const COLOR_PRESETS = [
   "#14b8a6", "#06b6d4", "#0ea5e9", "#64748b",
 ];
 
-function esc(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
 
 export class RolesPane {
   private readonly _root: HTMLElement;
