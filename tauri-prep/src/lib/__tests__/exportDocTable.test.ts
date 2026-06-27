@@ -18,6 +18,14 @@ describe("buildExportDocTableRows", () => {
     expect(buildExportDocTableRows([doc({ doc_id: 7 })], [3])).not.toContain("checked>");
   });
 
+  it("joins one row per doc and applies selectedIds per row", () => {
+    const html = buildExportDocTableRows([doc({ doc_id: 1 }), doc({ doc_id: 2 })], [1]);
+    expect((html.match(/class="exp-doc-row"/g) ?? []).length).toBe(2);
+    expect(html).toContain('data-doc-id="1" checked>');
+    expect(html).toContain('data-doc-id="2"');
+    expect(html).not.toContain('data-doc-id="2" checked>');
+  });
+
   it("maps each workflow_status to the export label scheme (own, not workflowLabel)", () => {
     expect(buildExportDocTableRows([doc({ workflow_status: "validated" })], [])).toContain(">Validé<");
     expect(buildExportDocTableRows([doc({ workflow_status: "review" })], [])).toContain(">Révision<");
