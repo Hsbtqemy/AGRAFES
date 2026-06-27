@@ -24,6 +24,7 @@ import { initCardAccordions } from "../lib/uiAccordions.ts";
 import { setHtml, raw } from "../lib/safeHtml.ts";
 import { exportsScreenTemplate } from "../lib/exportsScreenTemplate.ts";
 import { productsForStage, formatsForProduct } from "../lib/exportV2Options.ts";
+import { buildExportDocTableRows } from "../lib/exportDocTable.ts";
 
 
 export interface ExportWorkflowPrefill {
@@ -472,26 +473,7 @@ export class ExportsScreen {
     }
     if (emptyHint) emptyHint.style.display = "none";
     if (grid) grid.style.display = "";
-    const statusLabel = (d: DocumentRecord): string => {
-      switch (d.workflow_status) {
-        case "validated": return "Validé";
-        case "review":    return "Révision";
-        case "draft":     return "Brouillon";
-        default:          return "—";
-      }
-    };
-    setHtml(body, raw(this._docs.map(d => {
-      const sel = selectedIds.includes(d.doc_id);
-      const title = d.title.length > 40 ? d.title.slice(0, 40) + "…" : d.title;
-      return `<tr class="exp-doc-row" data-doc-id="${d.doc_id}">
-        <td><input type="checkbox" class="exp-doc-check" data-doc-id="${d.doc_id}"${sel ? " checked" : ""}></td>
-        <td class="exp-doc-id">${d.doc_id}</td>
-        <td class="exp-doc-title" title="${_escHtml(d.title)}">${_escHtml(title)}</td>
-        <td class="exp-doc-lang">${_escHtml(d.language)}</td>
-        <td class="exp-doc-role">${_escHtml(d.doc_role ?? "—")}</td>
-        <td><span class="chip">${statusLabel(d)}</span></td>
-      </tr>`;
-    }).join("")));
+    setHtml(body, raw(buildExportDocTableRows(this._docs, selectedIds)));
     body.querySelectorAll<HTMLInputElement>(".exp-doc-check").forEach(cb => {
       cb.addEventListener("change", () => this._onDocCheckChange(Number(cb.dataset.docId), cb.checked));
     });
