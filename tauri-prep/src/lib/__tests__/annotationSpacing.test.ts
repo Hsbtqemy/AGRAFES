@@ -20,6 +20,13 @@ describe("needsSpaceBefore", () => {
       expect(needsSpaceBefore(p, "mot")).toBe(false);
     }
   });
+
+  it("treats curly apostrophes as no-space on BOTH sides (dual membership)", () => {
+    for (const ap of ["’", "‘"]) {
+      expect(needsSpaceBefore("mot", ap)).toBe(false); // no space before '
+      expect(needsSpaceBefore(ap, "mot")).toBe(false); // no space after  '
+    }
+  });
 });
 
 describe("tokensToPlain", () => {
