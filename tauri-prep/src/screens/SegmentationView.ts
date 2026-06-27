@@ -50,6 +50,7 @@ import { compareDocsByTitle } from "../lib/docSort.ts";
 import { setHtml, raw } from "../lib/safeHtml.ts";
 import { escHtml as _escHtml } from "../lib/diff.ts";
 import { segRightPanelHtml } from "../lib/segmentationRightPanel.ts";
+import { seqDiff } from "../lib/seqDiff.ts";
 import { formatSegDocListHtml, formatSegDocListFlat } from "../lib/segDocList.ts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -831,7 +832,7 @@ export class SegmentationView {
       const after  = previewRes.segments.map(s => s.text ?? "");
 
       // LCS-based diff on text arrays
-      const ops = _seqDiff(before, after);
+      const ops = seqDiff(before, after);
 
       if (ops.every(o => o.op === "eq")) {
         setHtml(diffEl, raw(`<div class="prep-seg-diff-equal-note">&#10003; Aucune diff&#233;rence — la re-segmentation produirait les m&#234;mes ${before.length} segments.</div>`));
@@ -1592,26 +1593,3 @@ function _roleBadgeHtml(role: string | null | undefined, conventions: Convention
   const color = safeColor(conv?.color, "#64748b");
   return `<span class="prep-role-badge" style="--role-color:${color}" title="Rôle : ${label}">${conv?.icon ? _escHtml(conv.icon) + "\u00a0" : ""}${label}</span>`;
 }
-
-/** LCS-based sequence diff on string arrays. Returns edit script as ops. */
-function _seqDiff(before: string[], after: string[]): Array<{ op: "eq" | "del" | "ins"; text: string }> {
-  const m = before.length, n = after.length;
-  const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
-  for (let i = 1; i <= m; i++)
-    for (let j = 1; j <= n; j++)
-      dp[i][j] = before[i - 1] === after[j - 1] ? dp[i - 1][j - 1] + 1 : Math.max(dp[i - 1][j], dp[i][j - 1]);
-
-  const ops: Array<{ op: "eq" | "del" | "ins"; text: string }> = [];
-  let i = m, j = n;
-  while (i > 0 || j > 0) {
-    if (i > 0 && j > 0 && before[i - 1] === after[j - 1]) {
-      ops.unshift({ op: "eq",  text: before[i - 1] }); i--; j--;
-    } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
-      ops.unshift({ op: "ins", text: after[j - 1] }); j--;
-    } else {
-      ops.unshift({ op: "del", text: before[i - 1] }); i--;
-    }
-  }
-  return ops;
-}
-
