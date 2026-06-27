@@ -17,6 +17,7 @@ import type { Conn } from "../lib/sidecarClient.ts";
 import { SidecarError } from "../lib/sidecarClient.ts";
 import { compareDocsByTitle } from "../lib/docSort.ts";
 import { setHtml, raw } from "../lib/safeHtml.ts";
+import { needsSpaceBefore, tokensToPlain } from "../lib/annotationSpacing.ts";
 
 // ─── Local types ──────────────────────────────────────────────────────────────
 
@@ -511,20 +512,6 @@ export class AnnotationView {
       SYM: "#999", X: "#bbb",
     };
 
-    const PUNCT_NO_SPACE_BEFORE = new Set([".", ",", ":", ";", "!", "?", ")", "]", "}", "\u00bb", "\u2019", "\u2018"]);
-    const PUNCT_NO_SPACE_AFTER  = new Set(["(", "[", "{", "\u00ab", "\u2018", "\u2019"]);
-    const tokensToPlain = (tokens: AnnotToken[]): string => {
-      let out = "";
-      for (let i = 0; i < tokens.length; i++) {
-        const word = tokens[i].word;
-        const needsSpaceBefore = i > 0
-          && !PUNCT_NO_SPACE_BEFORE.has(word)
-          && !PUNCT_NO_SPACE_AFTER.has(tokens[i - 1].word);
-        out += (needsSpaceBefore ? " " : "") + word;
-      }
-      return out;
-    };
-
     // ── Read mode (prose colorée UPOS) ─────────────────────────────────────────
     if (this._annotViewMode === "read") {
       const prose = document.createElement("div");
@@ -535,10 +522,8 @@ export class AnnotationView {
         const allTokens = Array.from(bySent.values()).flat();
         for (let i = 0; i < allTokens.length; i++) {
           const tok = allTokens[i];
-          const needsSpaceBefore = i > 0
-            && !PUNCT_NO_SPACE_BEFORE.has(tok.word)
-            && !PUNCT_NO_SPACE_AFTER.has(allTokens[i - 1].word);
-          if (needsSpaceBefore) para.appendChild(document.createTextNode(" "));
+          const needsSpace = i > 0 && needsSpaceBefore(allTokens[i - 1].word, tok.word);
+          if (needsSpace) para.appendChild(document.createTextNode(" "));
           const span = document.createElement("span");
           span.className = "annot-prose-token";
           span.textContent = tok.word;
