@@ -22,6 +22,7 @@ import type { JobCenter } from "../components/JobCenter.ts";
 import { initCardAccordions } from "../lib/uiAccordions.ts";
 import { setHtml, raw } from "../lib/safeHtml.ts";
 import { exportsScreenTemplate } from "../lib/exportsScreenTemplate.ts";
+import { productsForStage, formatsForProduct } from "../lib/exportV2Options.ts";
 
 function _escHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -545,31 +546,8 @@ export class ExportsScreen {
     if (!this._root) return;
 
     const stage = this._v2StageEl.value;
-    const productByStage: Record<string, Array<{ value: string; label: string; pending?: boolean }>> = {
-      alignment: [
-        { value: "aligned_table", label: "Tableau segments alignés" },
-        { value: "tei_xml", label: "TEI XML (documents sélectionnés)" },
-      ],
-      publication: [
-        { value: "tei_package", label: "Package publication TEI (ZIP)" },
-      ],
-      segmentation: [
-        { value: "tei_xml", label: "TEI XML (segments validés)" },
-        { value: "readable_text", label: "Texte lisible" },
-      ],
-      curation: [
-        { value: "tei_xml", label: "TEI XML (texte revu)" },
-        { value: "readable_text", label: "Texte lisible" },
-      ],
-      runs: [
-        { value: "run_report", label: "Rapport des runs" },
-      ],
-      qa: [
-        { value: "qa_report", label: "Rapport QA corpus" },
-      ],
-    };
 
-    const products = productByStage[stage] ?? productByStage.alignment;
+    const products = productsForStage(stage);
     const product = this._setSelectOptions(
       this._v2ProductEl,
       products.map(p => ({ value: p.value, label: p.label })),
@@ -577,32 +555,7 @@ export class ExportsScreen {
     const productMeta = products.find(p => p.value === product);
     const productPending = Boolean(productMeta?.pending);
 
-    const formatByProduct: Record<string, Array<{ value: string; label: string; pending?: boolean }>> = {
-      aligned_table: [
-        { value: "csv", label: "CSV" },
-        { value: "tsv", label: "TSV" },
-      ],
-      tei_xml: [
-        { value: "tei_dir", label: "Dossier TEI (un fichier/doc)" },
-      ],
-      tei_package: [
-        { value: "zip", label: "ZIP" },
-      ],
-      run_report: [
-        { value: "jsonl", label: "JSONL" },
-        { value: "html", label: "HTML" },
-      ],
-      qa_report: [
-        { value: "json", label: "JSON" },
-        { value: "html", label: "HTML" },
-      ],
-      readable_text: [
-        { value: "txt", label: "TXT" },
-        { value: "docx", label: "DOCX" },
-        { value: "odt", label: "ODT" },
-      ],
-    };
-    const formats = formatByProduct[product] ?? [];
+    const formats = formatsForProduct(product);
     const format = this._setSelectOptions(
       this._v2FormatEl,
       formats.map(f => ({ value: f.value, label: f.label })),
