@@ -54,6 +54,9 @@ import {
 import { reportEvent } from "../lib/telemetry.ts";
 import { compareDocsByTitle } from "../lib/docSort.ts";
 import { setHtml, raw } from "../lib/safeHtml.ts";
+import { segRightPanelHtml } from "../lib/segmentationRightPanel.ts";
+import { formatSegDocListHtml, formatSegDocListFlat } from "../lib/segDocList.ts";
+import { segStructureMatcherHtml } from "../lib/segStructureMatcher.ts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -413,88 +416,17 @@ export class SegmentationView {
   }
 
   private async _buildSegDocListHtml(): Promise<string> {
-    const statusBadge = (d: DocumentRecord): string => {
-      const s = d.workflow_status ?? "draft";
-      if (s === "validated") return `<span class="prep-seg-doc-badge prep-seg-badge-ok">&#10003; Valid&#233;</span>`;
-      if (s === "review")    return `<span class="prep-seg-doc-badge prep-seg-badge-warn">&#9203; En revue</span>`;
-      return `<span class="prep-seg-doc-badge prep-seg-badge-none">Brouillon</span>`;
-    };
-
-    const docRow = (d: DocumentRecord, indent = false): string =>
-      `<div class="prep-seg-doc-row${indent ? " prep-seg-doc-child" : ""}" data-doc-id="${d.doc_id}">
-        <div class="prep-seg-doc-row-main">
-          <span class="prep-seg-doc-title" title="${_escHtml(d.title)}">${_escHtml(d.title)}</span>
-          <span class="prep-seg-doc-lang">[${_escHtml(d.language)}]</span>
-        </div>
-        <div class="prep-seg-doc-row-foot">
-          <span class="prep-seg-doc-units">${d.unit_count} unit&#233;s</span>
-          ${statusBadge(d)}
-        </div>
-      </div>`;
-
-    let familyGroups: Array<{ root: DocumentRecord; children: DocumentRecord[] }> = [];
-    const orphans: DocumentRecord[] = [];
+    // Markup pur délégué à lib/segDocList ; la vue garde le fetch des relations de
+    // famille + la garde de connexion (no-conn → liste vide ; échec fetch → plat).
+    const conn = this._getConn();
+    if (!conn) return `<p class="empty-hint">Aucun document.</p>`;
     try {
       const { getAllDocRelations } = await import("../lib/sidecarClient.ts");
-      const conn = this._getConn();
-      if (conn) {
-        const relations = await getAllDocRelations(conn);
-        const childIds = new Set(relations.map(r => r.doc_id));
-        const parentMap = new Map<number, number[]>();
-
-        for (const rel of relations) {
-          if (!parentMap.has(rel.target_doc_id)) parentMap.set(rel.target_doc_id, []);
-          parentMap.get(rel.target_doc_id)!.push(rel.doc_id);
-        }
-
-        const sortFn = (a: DocumentRecord, b: DocumentRecord) =>
-          this._segDocListSort === "alpha"
-            ? compareDocsByTitle(a, b)
-            : a.doc_id - b.doc_id;
-        const docs = [...this._getDocs()].sort(sortFn);
-        for (const d of docs) {
-          if (!childIds.has(d.doc_id) && parentMap.has(d.doc_id)) {
-            const children = (parentMap.get(d.doc_id) ?? [])
-              .map(cid => docs.find(dd => dd.doc_id === cid))
-              .filter(Boolean) as DocumentRecord[];
-            children.sort(sortFn);
-            familyGroups.push({ root: d, children });
-          } else if (!childIds.has(d.doc_id) && !parentMap.has(d.doc_id)) {
-            orphans.push(d);
-          }
-        }
-      }
+      const relations = await getAllDocRelations(conn);
+      return formatSegDocListHtml(this._getDocs(), relations, this._segDocListSort);
     } catch {
-      const sortFn = (a: DocumentRecord, b: DocumentRecord) =>
-        this._segDocListSort === "alpha"
-          ? compareDocsByTitle(a, b)
-          : a.doc_id - b.doc_id;
-      return [...this._getDocs()].sort(sortFn).map(d => docRow(d)).join("");
+      return formatSegDocListFlat(this._getDocs(), this._segDocListSort);
     }
-
-    let html = "";
-    for (let fi = 0; fi < familyGroups.length; fi++) {
-      const { root, children } = familyGroups[fi];
-      html += `<div class="prep-seg-doc-group-label">
-        <span class="prep-seg-family-pill">Famille ${fi + 1}</span>
-        <span class="prep-seg-family-root-name" title="${_escHtml(root.title)}">${_escHtml(root.title)}</span>
-      </div>`;
-      html += `<div class="prep-seg-doc-group">`;
-      html += docRow(root);
-      for (const child of children) html += docRow(child, true);
-      html += `</div>`;
-    }
-    if (orphans.length > 0) {
-      if (familyGroups.length > 0) {
-        html += `<div class="prep-seg-doc-group-label">&#8212; Sans famille</div>`;
-      } else {
-        html += `<div class="prep-seg-doc-group-label">Tous les documents</div>`;
-      }
-      html += `<div class="prep-seg-doc-group">`;
-      for (const d of orphans) html += docRow(d);
-      html += `</div>`;
-    }
-    return html || `<p class="empty-hint">Aucun document.</p>`;
   }
 
   // ─── Right panel ──────────────────────────────────────────────────────────
@@ -602,160 +534,7 @@ export class SegmentationView {
 
     this._unbindSegPreviewScrollSync();
 
-    setHtml(rightEl, raw(`
-      <div class="prep-seg-right-root" id="act-seg-right-root">
-        <div class="prep-seg-right-scroll">
-        <div class="prep-seg-right-header">
-          <div class="prep-seg-right-header-main">
-            <h3 class="prep-seg-right-doc-title">${_escHtml(doc.title)}</h3>
-            ${statusBadge}
-          </div>
-          <div class="prep-seg-right-header-meta">#${doc.doc_id} &middot; ${_escHtml(doc.language)} &middot; ${doc.unit_count} unit&#233;s</div>
-        </div>
-        <div class="prep-seg-config-bar" role="region" aria-label="Strat&#233;gie de segmentation">
-          <div class="prep-seg-config-row">
-            <div class="prep-seg-config-tabs" role="group" aria-label="Strat&#233;gie">
-              <label class="prep-seg-tab-label">
-                <input type="radio" name="act-seg-strategy" id="act-seg-strategy-sentences" value="sentences" checked />
-                <span>Phrases</span>
-              </label>
-              <label class="prep-seg-tab-label">
-                <input type="radio" name="act-seg-strategy" id="act-seg-strategy-markers" value="markers" />
-                <span>Balises&nbsp;<code>[N]</code></span>
-              </label>
-            </div>
-            <div class="prep-seg-config-params">
-              <label class="prep-seg-param-field">Langue
-                <input id="act-seg-lang" type="text" value="${_escHtml(lang)}" maxlength="10"
-                  class="prep-seg-param-input" placeholder="fr, en&#8230;" autocomplete="off" spellcheck="false" />
-              </label>
-              <div id="act-seg-params-phrases" class="prep-seg-config-params-group">
-                <label class="prep-seg-param-field"
-                  title="&#201;vite de couper apr&#232;s un point qui suit une abr&#233;viation (M., Dr., ann., chap., etc.).">
-                  <span class="prep-seg-param-label-text">O&#249; couper les phrases</span>
-                  <select id="act-seg-pack" class="seg-param-select">
-                    <option value="auto"${pack === "auto" ? " selected" : ""}>Auto (selon la langue)</option>
-                    <option value="fr_strict"${pack === "fr_strict" ? " selected" : ""}>Fran&#231;ais &#8212; liste longue d&#8217;abr&#233;viations</option>
-                    <option value="en_strict"${pack === "en_strict" ? " selected" : ""}>Anglais &#8212; liste longue d&#8217;abr&#233;viations</option>
-                    <option value="default"${pack === "default" ? " selected" : ""}>Liste courte (moins de protections)</option>
-                  </select>
-                </label>
-              </div>
-              <div id="act-seg-params-markers" class="prep-seg-config-params-group" style="display:none">
-                <button type="button" class="btn btn-ghost btn-sm" id="act-seg-detect-btn"
-                  title="D&#233;tecter les balises [N] dans le texte">&#128270; D&#233;tecter balises</button>
-              </div>
-              <label class="prep-seg-param-field"
-                title="R&#233;f&#233;rence pour calibrer la segmentation (mode phrases) et comparer la structure (onglet Structure).">Calibrer sur
-                <select id="act-seg-calibrate" class="seg-param-select">
-                  ${calibrateOptions}
-                </select>
-              </label>
-            </div>
-          </div>
-          <p id="act-seg-strategy-summary" class="prep-seg-strategy-summary" aria-live="polite"></p>
-        </div>
-        <div id="act-seg-marker-banner" class="prep-seg-marker-banner" style="display:none" aria-live="polite"></div>
-        <details class="prep-seg-rule-info" id="act-seg-rule-info">
-          <summary class="prep-seg-rule-info-sum">&#9432; Moteur de d&#233;coupage</summary>
-          <div class="prep-seg-rule-info-body">
-            <p>Le moteur coupe sur <code>.&nbsp;!&nbsp;?</code> suivi d&#8217;un espace puis d&#8217;une <strong>lettre majuscule</strong> (ou guillemet ouvrant).</p>
-            <p>&#8594; Si vos phrases d&#233;butent par une minuscule, le moteur ne les d&#233;tectera pas comme d&#233;but de phrase.</p>
-            <p>&#8594; Si chaque paragraphe du document est d&#233;j&#224; une phrase, la segmentation retourne le m&#234;me nombre d&#8217;unit&#233;s.</p>
-            <p><strong>O&#249; couper les phrases :</strong> les options <em>Fran&#231;ais / Anglais &#8212; liste longue</em> ajoutent des abr&#233;viations prot&#233;g&#233;es (ann., chap., etc.) pour &#233;viter les faux d&#233;coupages apr&#232;s un point.</p>
-            <p><strong>Mode balises :</strong> utilisez-le si des motifs <code>[N]</code> sont encore dans <em>le texte des unit&#233;s</em> (ex. import en paragraphes / blocs). Chaque balise devient un <code>external_id</code> pour l&#8217;alignement. Si le document a d&#233;j&#224; &#233;t&#233; import&#233; en <em>lignes num&#233;rot&#233;es [n]</em>, les IDs sont d&#233;j&#224; port&#233;s par les unit&#233;s et ce mode apporte souvent peu de diff&#233;rence.</p>
-            <p><strong>Pr&#233;fixe avant <code>[1]</code> :</strong> le texte plac&#233; avant la premi&#232;re balise devient un segment distinct, avec <code>external_id = NULL</code>.</p>
-          </div>
-        </details>
-        <div class="prep-seg-content-section" id="act-seg-content-section">
-          <div class="prep-seg-content-head">
-            <div class="prep-seg-content-tabs" role="tablist">
-              <button class="prep-seg-content-tab active" role="tab" data-pane="preview">
-                Aper&#231;u&#160;<span class="prep-seg-preview-badge" id="act-seg-mode-badge">phrases</span>
-              </button>
-              <button class="prep-seg-content-tab" role="tab" data-pane="saved"
-                ${!savedAlready ? 'disabled title="Aucun segment — appliquez d\'abord la segmentation"' : 'title="Éditer les segments : fusionner, couper"'}>
-                &#9986; Modifier&#160;<span id="act-seg-saved-count" class="chip">${savedAlready ? doc.unit_count : "&#8212;"}</span>
-              </button>
-              <button class="prep-seg-content-tab" role="tab" data-pane="diff"
-                ${!savedAlready ? 'disabled title="Aucun segment en base"' : 'title="Comparer avant/après re-segmentation"'}>
-                &#8644;&#160;Diff
-              </button>
-              <button class="prep-seg-content-tab" role="tab" data-pane="structure"
-                title="Comparer la structure (intertitres) avec le document de référence">
-                &#9783;&#160;Structure
-              </button>
-              <button class="prep-seg-content-tab" role="tab" data-pane="roles"
-                title="Assigner des rôles d'unité (conventions) et chercher des unités candidates">
-                &#127991;&#160;R&#244;les
-              </button>
-            </div>
-            <span id="act-seg-prev-stats" class="prep-seg-preview-stats"></span>
-            <button type="button" class="btn btn-ghost btn-sm" id="act-seg-prev-refresh"
-              title="Relancer l&#8217;aper&#231;u">&#8635;</button>
-          </div>
-          <div id="act-seg-pane-preview" role="tabpanel">
-            <div class="prep-seg-preview-split" id="act-seg-preview-split">
-              <div>
-                <div class="prep-seg-preview-col-title">Brut (<span id="act-seg-prev-raw-count">&#8212;</span> unit&#233;s)</div>
-                <div class="prep-seg-preview-col-list" id="act-seg-prev-raw">
-                  <p class="empty-hint">Chargement&#8230;</p>
-                </div>
-              </div>
-              <div>
-                <div class="prep-seg-preview-col-title">Segment&#233; (<span id="act-seg-prev-seg-count">&#8212;</span> phrases)</div>
-                <div class="prep-seg-preview-col-list" id="act-seg-prev-seg">
-                  <p class="empty-hint">En attente&#8230;</p>
-                </div>
-              </div>
-            </div>
-            <div id="act-seg-prev-warns" class="prep-seg-warn-list" style="display:none"></div>
-          </div>
-          <div id="act-seg-pane-saved" style="display:none" role="tabpanel">
-            <div id="act-seg-saved-table">
-              ${savedAlready ? `<p class="empty-hint">Chargement des segments&#8230;</p>` : ""}
-            </div>
-          </div>
-          <div id="act-seg-pane-diff" style="display:none" role="tabpanel">
-            <div id="act-seg-diff-content">
-              <p class="empty-hint">Basculez sur l&#8217;onglet Diff pour comparer.</p>
-            </div>
-          </div>
-          <div id="act-seg-pane-structure" style="display:none" role="tabpanel">
-            <div id="act-seg-structure-content">
-              <p class="empty-hint">S&#233;lectionnez un document de r&#233;f&#233;rence dans &#171;&#160;Calibrer sur&#160;&#187; puis ouvrez cet onglet.</p>
-            </div>
-          </div>
-          <div id="act-seg-pane-roles" style="display:none" role="tabpanel">
-            <div id="act-seg-roles-content"></div>
-          </div>
-        </div>
-        </div><!-- /.prep-seg-right-scroll -->
-        <div class="prep-seg-actions-bar" id="act-seg-actions">
-          <button class="btn prep-btn-warning" id="act-seg-btn"
-            title="Appliquer la segmentation (efface les liens d&#8217;alignement existants)">Appliquer</button>
-          <button class="btn btn-secondary btn-sm" id="act-seg-validate-btn"
-            title="Appliquer la segmentation puis valider le document">Appliquer + Valider</button>
-          <button class="btn btn-primary btn-sm" id="act-seg-validate-only-btn"
-            ${!savedAlready ? "disabled" : ""}>Valider &#10003;</button>
-          <button class="btn btn-sm" id="act-seg-goto-annot-btn"
-            title="Ouvrir ce document dans le panneau Annotation">Voir&#160;annotation&#160;&#8599;</button>
-          <!-- Mode A undo (raccourci clavier reporté à une session ultérieure si l'usage révèle le besoin). -->
-          <button class="btn btn-sm prep-btn-undo" id="act-seg-undo-btn"
-            title="" disabled>&#8634; Annuler</button>
-          <div class="prep-seg-actions-dest">
-            Apr&#232;s validation&#160;:
-            <select id="act-seg-after-validate" class="seg-param-select prep-seg-param-select-sm">
-              <option value="stay">Rester ici</option>
-              <option value="next">Doc suivant</option>
-              <option value="documents">Onglet Documents</option>
-            </select>
-          </div>
-        </div>
-        <div id="act-seg-confirm-bar" class="audit-batch-bar" style="display:none"></div>
-        <div id="act-seg-status-banner" class="prep-seg-status-banner prep-runtime-state prep-state-info" aria-live="polite"></div>
-      </div>
-    `));
+    setHtml(rightEl, raw(segRightPanelHtml(doc, { lang, pack, statusBadge, calibrateOptions, savedAlready })));
 
     // Restore after-validate pref
     const afterSel = rightEl.querySelector<HTMLSelectElement>("#act-seg-after-validate");
@@ -1165,33 +944,7 @@ export class SegmentationView {
         this._matcherInitialized = true;
       }
 
-      setHtml(el, raw(`
-        <div class="prep-matcher-root">
-          <div class="prep-matcher-toolbar">
-            <span class="prep-matcher-hint" id="act-matcher-hint"></span>
-            <button type="button" class="btn btn-ghost btn-sm" id="act-matcher-reset" title="Revenir à l'appariement positionnel par défaut">&#8635; Réinitialiser</button>
-          </div>
-          <div class="prep-matcher-cols">
-            <div class="prep-matcher-col-head">
-              <span class="prep-matcher-col-title">Référence — ${_escHtml(refDoc?.title ?? `#${refDocId}`)}</span>
-              <span class="prep-matcher-col-count">${res.ref_sections.length} section${res.ref_sections.length !== 1 ? "s" : ""}</span>
-            </div>
-            <div class="prep-matcher-col-head">
-              <span class="prep-matcher-col-title">Document courant — ${_escHtml(curDoc?.title ?? `#${docId}`)}</span>
-              <span class="prep-matcher-col-count">${res.target_sections.length} section${res.target_sections.length !== 1 ? "s" : ""}</span>
-            </div>
-            <div class="prep-matcher-col" id="act-matcher-ref"></div>
-            <div class="prep-matcher-col" id="act-matcher-tgt"></div>
-          </div>
-          <div id="act-matcher-undo-bar" class="prep-matcher-undo-bar" style="display:none"></div>
-          <div class="prep-matcher-footer">
-            <button type="button" class="btn btn-primary btn-sm" id="act-strucdiff-propagate-btn">
-              &#9654; Aperçu propagé
-            </button>
-          </div>
-          <div id="act-strucdiff-propagate-result"></div>
-        </div>
-      `));
+      setHtml(el, raw(segStructureMatcherHtml(refDoc, refDocId, curDoc, docId, res)));
 
       this._rebuildMatcherCards();
 
