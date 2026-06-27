@@ -38,6 +38,19 @@ describe("seqDiff", () => {
     expect(ops.filter(o => o.op === "eq").map(o => o.text)).toEqual(["the", "brown", "fox"]);
   });
 
+  it("pins the exact op sequence for a substitution (guards the tie-break / rendered order)", () => {
+    // The reconstruction invariants below allow ANY valid script; this is the one
+    // case that pins the tie-break (prefer ins when dp[i][j-1] >= dp[i-1][j]), i.e.
+    // the exact order the re-segmentation diff UI renders. A future edit flipping
+    // >= to > would reorder del/ins here and must fail loudly, not silently.
+    expect(seqDiff(["a", "b", "c"], ["a", "x", "c"])).toEqual([
+      { op: "eq", text: "a" },
+      { op: "del", text: "b" },
+      { op: "ins", text: "x" },
+      { op: "eq", text: "c" },
+    ]);
+  });
+
   it("produces an edit script that reconstructs both inputs", () => {
     const cases: Array<[string[], string[]]> = [
       [["a", "b", "c"], ["a", "x", "c"]],
