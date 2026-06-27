@@ -30,6 +30,12 @@ describe("buildPickerRowHtml", () => {
     const html = buildPickerRowHtml({ pivotUnitId: 1, pivotText: "p", asTableRow: false, candidates: [cand(7)], alreadyLinked: new Set([7]) });
     expect(html).toContain("prep-align-picker-cand--conflict");
     expect(html).toContain('data-conflict="1"');
+    // Pin the LONG conflict tooltip (its distinctive ASCII tail). This is the
+    // documented drift vs _activateRetarget's shorter inline variant — a future
+    // "fix" that shortens it must update this test deliberately, not silently.
+    expect(html).toContain("supprimera le lien existant");
+    // A conflicting candidate shows no percentage score (replaced by the warning).
+    expect(html).not.toContain("%");
   });
 
   it("adds ARIA row/cell roles only when asTableRow is true", () => {
