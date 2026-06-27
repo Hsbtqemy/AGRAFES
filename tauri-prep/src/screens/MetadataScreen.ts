@@ -56,10 +56,9 @@ import { familyPanelHtml, segResultRow, alnResultRow, curationStatusHtml } from 
 import { DOC_ROLES } from "../lib/docRoles.ts";
 import { metadataScreenTemplate } from "../lib/metadataScreenTemplate.ts";
 import { buildMetadataTree } from "../lib/metadataTree.ts";
+import { WORKFLOW_STATUS, type WorkflowStatus, normalizeWorkflowStatus, workflowLabel } from "../lib/workflowStatus.ts";
 
 const RELATION_TYPES = ["translation_of", "excerpt_of"];
-const WORKFLOW_STATUS = ["draft", "review", "validated"] as const;
-type WorkflowStatus = (typeof WORKFLOW_STATUS)[number];
 type SortCol = "id" | "title" | "lang" | "role" | "status";
 
 export class MetadataScreen {
@@ -1774,14 +1773,12 @@ export class MetadataScreen {
 
 
   private _workflowStatus(doc: DocumentRecord): WorkflowStatus {
-    if (doc.workflow_status === "review" || doc.workflow_status === "validated") return doc.workflow_status;
-    return "draft";
+    return normalizeWorkflowStatus(doc.workflow_status);
   }
 
   private _workflowStatusFromForm(): WorkflowStatus {
-    const raw = (this._editPanelEl.querySelector<HTMLSelectElement>("#edit-workflow-status")?.value ?? "draft") as WorkflowStatus;
-    if (raw === "review" || raw === "validated") return raw;
-    return "draft";
+    const raw = this._editPanelEl.querySelector<HTMLSelectElement>("#edit-workflow-status")?.value;
+    return normalizeWorkflowStatus(raw);
   }
 
   private _validatedRunIdFromForm(): string | undefined {
@@ -1790,9 +1787,7 @@ export class MetadataScreen {
   }
 
   private _workflowLabel(status: WorkflowStatus): string {
-    if (status === "review") return "À revoir";
-    if (status === "validated") return "Validé";
-    return "Brouillon";
+    return workflowLabel(status);
   }
 
   private _applyUpdatedDoc(updated: DocumentRecord): void {
