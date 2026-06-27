@@ -52,17 +52,12 @@ import { UnitInspectorPanel } from "../components/UnitInspectorPanel.ts";
 import { familyPanelHtml, segResultRow, alnResultRow, curationStatusHtml } from "../components/familyView.ts";
 import { DOC_ROLES } from "../lib/docRoles.ts";
 import { metadataScreenTemplate } from "../lib/metadataScreenTemplate.ts";
+import { buildMetadataTree } from "../lib/metadataTree.ts";
 
 const RELATION_TYPES = ["translation_of", "excerpt_of"];
 const WORKFLOW_STATUS = ["draft", "review", "validated"] as const;
 type WorkflowStatus = (typeof WORKFLOW_STATUS)[number];
 type SortCol = "id" | "title" | "lang" | "role" | "status";
-
-interface TreeNode {
-  doc: DocumentRecord;
-  children: TreeNode[];
-  relationLabel?: string; // e.g. "translation_of"
-}
 
 export class MetadataScreen {
   private _conn: Conn | null = null;
@@ -462,54 +457,9 @@ export class MetadataScreen {
     this._renderDocList();
   }
 
-  private _buildTree(): { roots: TreeNode[]; standalone: DocumentRecord[]; orphans: DocumentRecord[] } {
-    const docMap = new Map(this._docs.map(d => [d.doc_id, d]));
-    // childId → { parentId, relationLabel }
-    const childOf = new Map<number, { parentId: number; label: string }>();
-    // parentId → [{ childId, label }]
-    const parentTo = new Map<number, { childId: number; label: string }[]>();
-
-    for (const rel of this._allRelations) {
-      // rel.doc_id is "child", rel.target_doc_id is "parent"
-      if (!docMap.has(rel.doc_id)) continue;
-      childOf.set(rel.doc_id, { parentId: rel.target_doc_id, label: rel.relation_type });
-      if (!parentTo.has(rel.target_doc_id)) parentTo.set(rel.target_doc_id, []);
-      parentTo.get(rel.target_doc_id)!.push({ childId: rel.doc_id, label: rel.relation_type });
-    }
-
-    const roots: TreeNode[] = [];
-    const standalone: DocumentRecord[] = [];
-    const orphans: DocumentRecord[] = [];
-
-    for (const doc of this._docs) {
-      const childInfo = childOf.get(doc.doc_id);
-      if (childInfo) {
-        // This doc is a child — only show it under its parent
-        if (!docMap.has(childInfo.parentId)) {
-          orphans.push(doc); // parent missing from corpus
-        }
-        continue; // will be rendered as child of parent
-      }
-      // Not a child — check if it has children
-      const children = parentTo.get(doc.doc_id) ?? [];
-      if (children.length === 0) {
-        standalone.push(doc);
-      } else {
-        roots.push({
-          doc,
-          children: children
-            .map(c => ({ doc: docMap.get(c.childId)!, relationLabel: c.label, children: [] }))
-            .filter(n => n.doc != null),
-        });
-      }
-    }
-
-    return { roots, standalone, orphans };
-  }
-
   private _renderHierarchyList(): void {
     this._docListEl.innerHTML = "";
-    const { roots, standalone, orphans } = this._buildTree();
+    const { roots, standalone, orphans } = buildMetadataTree(this._docs, this._allRelations);
     const cmp = this._docComparator();
     roots.sort((a, b) => cmp(a.doc, b.doc));
     for (const node of roots) node.children.sort((a, b) => cmp(a.doc, b.doc));
