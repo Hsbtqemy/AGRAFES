@@ -46,6 +46,14 @@ describe("buildFamilyDetectionBannerHtml", () => {
     expect(html).toContain('value="roman_en.docx"');
   });
 
+  it("keeps the FULL path in the option value while displaying the basename", () => {
+    // Load-bearing distinction: the pivot value must be the full path (used to
+    // identify the file), but the option text shows the basename only.
+    const html = buildFamilyDetectionBannerHtml([grp("roman", [["sub/dir/roman_fr.docx", "fr"]])]);
+    expect(html).toContain('value="sub/dir/roman_fr.docx"');
+    expect(html).toContain(">roman_fr.docx [FR]</option>");
+  });
+
   it("HTML-escapes the stem, filename and option value", () => {
     const html = buildFamilyDetectionBannerHtml([grp("<x>", [['a"b<.docx', "fr"]])]);
     expect(html).toContain("&lt;x&gt;");
