@@ -18,6 +18,7 @@ import {
 import type { JobCenter } from "../components/JobCenter.ts";
 import { initCardAccordions } from "../lib/uiAccordions.ts";
 import { setHtml, raw } from "../lib/safeHtml.ts";
+import { escHtml as _escHtml } from "../lib/diff.ts";
 import { actionsHubTemplate } from "../lib/actionsHubTemplate.ts";
 import { AlignPanel } from "./AlignPanel.ts";
 import { AnnotationView } from "./AnnotationView.ts";
@@ -891,12 +892,4 @@ export class ActionsScreen {
 
 // ─── Utility helpers ──────────────────────────────────────────────────────────
 
-function _formatMaybeNumber(v: unknown): string {
-  if (typeof v !== "number" || !Number.isFinite(v)) return "n/a";
-  return v.toFixed(3);
-}
-
-function _escHtml(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
 

@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   normalizeImportPath,
   parseConlluPreview,
-} from "../ImportScreen.ts";
+} from "../importConllu.ts";
 
 // ─── normalizeImportPath ──────────────────────────────────────────────────────
 

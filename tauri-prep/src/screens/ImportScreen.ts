@@ -19,6 +19,7 @@ import type { JobCenter } from "../components/JobCenter.ts";
 import { initCardAccordions } from "../lib/uiAccordions.ts";
 import { compareDocsByTitle } from "../lib/docSort.ts";
 import { setHtml, raw } from "../lib/safeHtml.ts";
+import { escHtml as _escHtml } from "../lib/diff.ts";
 import { importScreenTemplate } from "../lib/importScreenTemplate.ts";
 import {
   extFromFileName,
@@ -28,102 +29,11 @@ import {
   detectLanguageForMode,
 } from "../lib/importDetect.ts";
 import { detectFamilyGroups, type FamilyGroup } from "../lib/familyDetect.ts";
+import { normalizeImportPath, parseConlluPreview } from "../lib/importConllu.ts";
 
-/** Normalise un chemin pour détecter les doublons (séparateurs + casse + préfixe long Windows). */
-export function normalizeImportPath(p: string): string {
-  let s = p.replace(/\\/g, "/").replace(/\/+$/u, "").toLowerCase();
-  // \\?\C:\... → //?/c:/... après replace
-  if (s.startsWith("//?/")) s = s.slice(4);
-  return s;
-}
 
 // Détection format/langue d'import (extension → mode, nom → langue) extraite dans
 // lib/importDetect.ts (source de vérité unique, partagée avec ShareDocs — Phase 5).
-
-interface ConlluPreviewRow {
-  sent: number;
-  id: string;
-  form: string;
-  lemma: string;
-  upos: string;
-}
-
-export interface ConlluPreviewResult {
-  rows: ConlluPreviewRow[];
-  tokensTotal: number;
-  sentences: number;
-  skippedRanges: number;
-  skippedEmptyNodes: number;
-  malformedLines: number;
-}
-
-export function parseConlluPreview(text: string, maxRows = 60): ConlluPreviewResult {
-  const rows: ConlluPreviewRow[] = [];
-  let tokensTotal = 0;
-  let sentences = 0;
-  let skippedRanges = 0;
-  let skippedEmptyNodes = 0;
-  let malformedLines = 0;
-  let currentSentence = 0;
-  let hasTokenInCurrentSentence = false;
-
-  const finalizeSentence = () => {
-    if (hasTokenInCurrentSentence) {
-      sentences += 1;
-      hasTokenInCurrentSentence = false;
-    }
-  };
-
-  for (const rawLine of text.split(/\r?\n/u)) {
-    const line = rawLine.trim();
-    if (!line) {
-      finalizeSentence();
-      continue;
-    }
-    if (line.startsWith("#")) continue;
-
-    const cols = rawLine.split("\t");
-    if (cols.length !== 10) {
-      malformedLines += 1;
-      continue;
-    }
-    const tokenId = cols[0].trim();
-    if (tokenId.includes("-")) {
-      skippedRanges += 1;
-      continue;
-    }
-    if (tokenId.includes(".")) {
-      skippedEmptyNodes += 1;
-      continue;
-    }
-
-    if (!hasTokenInCurrentSentence) {
-      currentSentence = sentences + 1;
-      hasTokenInCurrentSentence = true;
-    }
-
-    tokensTotal += 1;
-    if (rows.length < maxRows) {
-      rows.push({
-        sent: currentSentence,
-        id: tokenId || "—",
-        form: cols[1]?.trim() || "—",
-        lemma: cols[2]?.trim() && cols[2].trim() !== "_" ? cols[2].trim() : "—",
-        upos: cols[3]?.trim() && cols[3].trim() !== "_" ? cols[3].trim() : "—",
-      });
-    }
-  }
-  finalizeSentence();
-
-  return {
-    rows,
-    tokensTotal,
-    sentences,
-    skippedRanges,
-    skippedEmptyNodes,
-    malformedLines,
-  };
-}
 
 interface FileItem {
   path: string;
@@ -1351,6 +1261,3 @@ export class ImportScreen {
 // Re-export type for inline use
 type ImportOptions = Parameters<typeof importFile>[1];
 
-function _escHtml(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}

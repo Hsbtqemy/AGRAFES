@@ -9,6 +9,7 @@
  */
 
 import { setHtml, raw } from "../lib/safeHtml.ts";
+import { escHtml as esc } from "../lib/diff.ts";
 import {
   exportBilingual,
   exportTmx,
@@ -28,9 +29,6 @@ export interface ExportPairDialogOptions {
   targetLang: string;
 }
 
-function esc(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
 
 function renderBilingualPreview(
   pairs: BilingualPreviewPair[],

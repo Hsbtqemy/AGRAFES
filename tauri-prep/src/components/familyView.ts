@@ -17,26 +17,12 @@ import type {
   FamilyAlignPairResult,
   CurationChildStatus,
 } from "../lib/sidecarClient.ts";
+import { escHtml as esc } from "../lib/diff.ts";
+import { truncateMid } from "../lib/textTruncate.ts";
+import { completionTier } from "../lib/completionTier.ts";
 
-function esc(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
 
-/** Middle-truncate long titles: "Lorem ipsum…sit amet" — preserves start and end. */
-function truncateMid(text: string, maxChars = 42): string {
-  if (!text || text.length <= maxChars) return text;
-  const tail = Math.max(8, Math.floor(maxChars * 0.35));
-  const head = maxChars - tail - 1; // 1 for the ellipsis
-  return text.slice(0, head) + "…" + text.slice(-tail);
-}
 
-function completionTier(pct: number): string {
-  if (pct === 0)   return "none";
-  if (pct < 40)    return "low";
-  if (pct < 80)    return "mid";
-  if (pct < 100)   return "high";
-  return "done";
-}
 
 /** The family panel embedded in the edit panel for a doc that roots a family. */
 export function familyPanelHtml(doc: DocumentRecord, families: FamilyRecord[]): string {

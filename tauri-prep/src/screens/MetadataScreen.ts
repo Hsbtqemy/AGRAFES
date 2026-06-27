@@ -11,6 +11,9 @@
  */
 
 import { save as dialogSave } from "@tauri-apps/plugin-dialog";
+import { escHtml as _escHtmlMeta } from "../lib/diff.ts";
+import { truncateMid } from "../lib/textTruncate.ts";
+import { completionTier } from "../lib/completionTier.ts";
 import type { Conn } from "../lib/sidecarClient.ts";
 import {
   listDocuments,
@@ -390,7 +393,7 @@ export class MetadataScreen {
             ${isChecked ? "checked" : ""} aria-label="Sélectionner doc ${doc.doc_id}" />
         </td>
         <td class="col-id">${idx + 1}</td>
-        <td class="col-title" title="${this._esc(doc.title)}">${this._esc(this._truncateMid(doc.title))}</td>
+        <td class="col-title" title="${this._esc(doc.title)}">${this._esc(truncateMid(doc.title))}</td>
         <td class="col-lang">${this._esc(doc.language)}</td>
         <td class="col-role">${this._esc(doc.doc_role ?? "—")}</td>
         <td class="col-status">
@@ -491,7 +494,7 @@ export class MetadataScreen {
         ? `<span class="prep-tree-rel-badge">${this._esc(this._relLabel(relationLabel))}</span>`
         : "";
       const pctBadge = completionPct !== undefined
-        ? `<span class="prep-family-pct-badge family-pct-${this._completionTier(completionPct)}"
+        ? `<span class="prep-family-pct-badge family-pct-${completionTier(completionPct)}"
               title="Famille : ${completionPct} % traité">${completionPct} %</span>`
         : "";
       setHtml(tr, raw(`
@@ -501,7 +504,7 @@ export class MetadataScreen {
         </td>
         <td class="col-id">${_rowNum}</td>
         <td class="col-title tree-title-cell" title="${this._esc(doc.title)}" style="padding-left:${0.5 + depth * 1.4}rem">
-          ${indent}${relBadge}${this._esc(this._truncateMid(doc.title))}${pctBadge}
+          ${indent}${relBadge}${this._esc(truncateMid(doc.title))}${pctBadge}
         </td>
         <td class="col-lang">${this._esc(doc.language)}</td>
         <td class="col-role">${this._esc(doc.doc_role ?? "—")}</td>
@@ -568,13 +571,6 @@ export class MetadataScreen {
   }
 
   /** CSS tier for a completion percentage: none | low | mid | high | done. */
-  private _completionTier(pct: number): string {
-    if (pct === 0)   return "none";
-    if (pct < 40)    return "low";
-    if (pct < 80)    return "mid";
-    if (pct < 100)   return "high";
-    return "done";
-  }
 
   /** Human-readable label for a relation type. */
   private _relLabel(rel: string): string {
@@ -1118,7 +1114,7 @@ export class MetadataScreen {
         return `<tr>
           <td>#${familyRootId} ↔ #${p.doc_id}</td>
           <td>${this._esc(p.lang)}</td>
-          <td title="${this._esc(p.title)}">${this._esc(this._truncateMid(p.title, 25))}</td>
+          <td title="${this._esc(p.title)}">${this._esc(truncateMid(p.title, 25))}</td>
           <td class="${segCls}">${segIcon}</td>
           <td>${alnIcon}</td>
         </tr>`;
@@ -1776,13 +1772,6 @@ export class MetadataScreen {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
 
-  /** Middle-truncate long titles: "Lorem ipsum…sit amet" — preserves start and end. */
-  private _truncateMid(text: string, maxChars = 42): string {
-    if (!text || text.length <= maxChars) return text;
-    const tail = Math.max(8, Math.floor(maxChars * 0.35));
-    const head = maxChars - tail - 1; // 1 for the ellipsis
-    return text.slice(0, head) + "…" + text.slice(-tail);
-  }
 
   private _workflowStatus(doc: DocumentRecord): WorkflowStatus {
     if (doc.workflow_status === "review" || doc.workflow_status === "validated") return doc.workflow_status;
@@ -1993,6 +1982,3 @@ export class MetadataScreen {
   dispose(): void { /* nothing to clean up */ }
 }
 
-function _escHtmlMeta(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}

@@ -12,6 +12,7 @@
  */
 
 import "../ui/annotation.css";
+import { escHtml as _escHtml } from "../lib/diff.ts";
 import type { Conn } from "../lib/sidecarClient.ts";
 import { SidecarError } from "../lib/sidecarClient.ts";
 import { compareDocsByTitle } from "../lib/docSort.ts";
@@ -845,10 +846,3 @@ export class AnnotationView {
 
 // ─── Module-level helpers ─────────────────────────────────────────────────────
 
-function _escHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
