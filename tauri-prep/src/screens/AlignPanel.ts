@@ -42,6 +42,7 @@ import { compareDocsByTitle } from "../lib/docSort.ts";
 import { computeNextSteps, type PrepNavTarget } from "../lib/prepNextStep.ts";
 import { NextStepBanner } from "../components/NextStepBanner.ts";
 import { AlignCollisionPanel } from "../components/AlignCollisionPanel.ts";
+import { buildPickerRowHtml } from "../lib/alignPickerRow.ts";
 import { setHtml, raw } from "../lib/safeHtml.ts";
 import { alignPanelTemplate } from "../lib/alignPanelTemplate.ts";
 
@@ -1326,33 +1327,7 @@ export class AlignPanel {
         .filter(l => l.pivot_unit_id === pivotUnitId && l.link_id !== linkId)
         .map(l => l.target_unit_id)
     );
-    let content: string;
-    if (candidates === null) {
-      content = `<span class="prep-align-picker-loading">&#8230; chargement des candidats</span>`;
-    } else if (candidates.length === 0) {
-      content = `<span class="prep-align-picker-empty">Aucun candidat trouv&#233;.</span>`;
-    } else {
-      content = candidates.map(c => {
-        const conflict = alreadyLinked.has(c.target_unit_id);
-        return `<button class="prep-align-picker-cand${conflict ? " prep-align-picker-cand--conflict" : ""}"
-          data-uid="${c.target_unit_id}"
-          title="${conflict ? "Déjà lié à ce pivot — sélectionner supprimera le lien existant" : `score ${c.score.toFixed(2)} — ${_esc(c.reason)}`}"
-          ${conflict ? 'data-conflict="1"' : ""}>
-          <span class="prep-align-picker-cand-ext">[§${_esc(String(c.external_id ?? "?"))}]</span>
-          <span class="prep-align-picker-cand-text">${_esc(c.target_text.slice(0, 120))}</span>
-          <span class="prep-align-picker-cand-score">${conflict ? "⚠ déjà lié" : `${(c.score * 100).toFixed(0)}%`}</span>
-        </button>`;
-      }).join("");
-    }
-    const rowRole = asTableRow ? ' role="row"' : "";
-    const cellRole = asTableRow ? ' role="cell"' : "";
-    return `<div class="prep-align-picker-row" data-picker-for="${pivotUnitId}"${rowRole}>
-      <div class="prep-align-picker-header"${cellRole}>
-        <span>&#9997; Recibler : <em>${_esc(pivotText.slice(0, 60))}</em></span>
-        <button class="btn btn-ghost btn-sm prep-align-picker-cancel" data-pivot-uid="${pivotUnitId}" title="Annuler">&#10005;</button>
-      </div>
-      <div class="prep-align-picker-candidates" id="picker-cands-${pivotUnitId}"${cellRole}>${content}</div>
-    </div>`;
+    return buildPickerRowHtml({ pivotUnitId, pivotText, asTableRow, candidates, alreadyLinked });
   }
 
   /** Activate the retarget/create/add picker for a given pivot unit. Fetches candidates async.
