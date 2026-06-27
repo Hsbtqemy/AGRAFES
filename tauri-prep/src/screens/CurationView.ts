@@ -44,9 +44,6 @@ import {
   setCurateException,
   deleteCurateException,
   recordApplyHistory,
-  listApplyHistory,
-  exportApplyHistory,
-  type ExportApplyHistoryOptions,
   prepUndoEligibility,
   prepUndo,
 } from "../lib/sidecarClient.ts";
@@ -72,12 +69,12 @@ import { showCurateApplyConfirm } from "../components/CurateApplyConfirmDialog.t
 import { isAutoReindexEnabled } from "../lib/prepIndexStatus.ts";
 import { reportEvent, reportUserError } from "../lib/telemetry.ts";
 import { CURATE_PRESETS, parseAdvancedCurateRules, getPunctLangFromValue } from "../lib/curationPresets.ts";
-import { mergeApplyHistory, formatApplyHistoryList, type ApplyHistoryScope } from "../lib/curationApplyHistory.ts";
 import { buildReviewReportPayload, buildReviewReportCsv } from "../lib/curationReviewReport.ts";
 import { buildApplyConfirmMessage } from "../lib/curationApplyConfirm.ts";
 import { formatSessionSummary } from "../lib/curationSessionSummary.ts";
 import { collectIgnoredUnitIds, collectManualOverrides } from "../lib/curationApplyInputs.ts";
 import { CurateExceptionsAdminPanel } from "../components/CurateExceptionsAdminPanel.ts";
+import { CurateApplyHistoryPanel } from "../components/CurateApplyHistoryPanel.ts";
 import {
   appendCurateLogEntry,
   formatCurateLog,
@@ -236,6 +233,8 @@ export class CurationView {
 
   // ── Admin panel (Level 8A) — extracted to CurateExceptionsAdminPanel (U-02) ──
   private _excPanel: CurateExceptionsAdminPanel | null = null;
+  // ── Apply-history panel — extracted to CurateApplyHistoryPanel (U-02) ──
+  private _applyHistPanel: CurateApplyHistoryPanel | null = null;
 
   // ── Constructor ─────────────────────────────────────────────────────────────
 
@@ -909,14 +908,16 @@ export class CurationView {
     el.querySelector("#act-review-export-json")?.addEventListener("click", () => void this._runExportReviewReport("json"));
     el.querySelector("#act-review-export-csv")?.addEventListener("click",  () => void this._runExportReviewReport("csv"));
 
-    // Apply history panel
-    el.querySelector<HTMLDetailsElement>("#act-apply-hist-panel")?.addEventListener("toggle", (e) => {
-      if ((e.target as HTMLDetailsElement).open) void this._loadApplyHistoryPanel();
-    });
-    el.querySelector("#act-apply-hist-refresh")?.addEventListener("click", () => void this._loadApplyHistoryPanel());
-    el.querySelector("#act-apply-hist-scope")?.addEventListener("change", () => void this._loadApplyHistoryPanel());
-    el.querySelector("#act-apply-hist-export-json")?.addEventListener("click", () => void this._runApplyHistoryExport("json"));
-    el.querySelector("#act-apply-hist-export-csv")?.addEventListener("click",  () => void this._runApplyHistoryExport("csv"));
+    // ── Apply history panel — extracted component (U-02) ───────────────────
+    const applyHistRoot = el.querySelector<HTMLDetailsElement>("#act-apply-hist-panel");
+    if (applyHistRoot) {
+      this._applyHistPanel = new CurateApplyHistoryPanel(applyHistRoot, {
+        getConn: () => this._getConn(),
+        getSessionEvents: () => this._applyHistory,
+        log: (m, e) => this._cb.log(m, e),
+      });
+      this._applyHistPanel.mount();
+    }
   }
 
   // ────────────────────────────────────────────────────────────────────────────
@@ -2269,31 +2270,6 @@ export class CurationView {
       if (btnCsv)  btnCsv.disabled = false;
     }
   }
-  private async _loadApplyHistoryPanel(): Promise<void> {
-    const conn = this._getConn();
-    if (!conn) return;
-    const listEl = this._q<HTMLElement>("#act-apply-hist-list");
-    if (!listEl) return;
-    const scopeEl = this._q<HTMLSelectElement>("#act-apply-hist-scope");
-    const scopeFilter = (scopeEl?.value ?? "") as ApplyHistoryScope;
-    listEl.innerHTML = `<p class="empty-hint" style="opacity:.6">Chargement\u2026</p>`;
-    try {
-      const res = await listApplyHistory(conn, { limit: 50 });
-      const dbEvents = (res.events ?? []) as CurateApplyEvent[];
-      // Merge + filter + cap delegated to the pure helper (testé dans
-      // __tests__/curationApplyHistory.test.ts).
-      const merged = mergeApplyHistory(this._applyHistory, dbEvents, {
-        scope: scopeFilter,
-        cap: 50,
-      });
-      this._renderApplyHistoryPanel(listEl, merged);
-      const badge = this._q<HTMLElement>("#act-apply-hist-badge");
-      if (badge) { badge.textContent = String(merged.length); badge.style.display = merged.length ? "" : "none"; }
-    } catch (err) {
-      listEl.innerHTML = `<p class="empty-hint error-hint">Erreur lors du chargement.</p>`;
-      this._cb.log(`⚠ Historique apply : ${err}`, true);
-    }
-  }
   private _refreshCuratePreviewPanes(): void {
     const filtered = this._filteredExamples();
     const docId = this._currentCurateDocId();
@@ -3008,11 +2984,6 @@ export class CurationView {
     });
   }
 
-  private _renderApplyHistoryPanel(container: HTMLElement, events: CurateApplyEvent[]): void {
-    // Delegated to the pure helper (testé dans __tests__/curationApplyHistory.test.ts).
-    setHtml(container, raw(formatApplyHistoryList(events)));
-  }
-
   private _renderContextDetail(ex: CuratePreviewExample | null): void {
     const card = this._q<HTMLElement>("#act-curate-context-card");
     const body = this._q<HTMLElement>("#act-curate-context");
@@ -3058,37 +3029,6 @@ export class CurationView {
     body.querySelector<HTMLButtonElement>("#act-exc-ignore")?.addEventListener("click", () => { this._setExceptionIgnore(ex); });
     body.querySelector<HTMLButtonElement>("#act-exc-override")?.addEventListener("click", () => { this._setExceptionOverride(ex); });
     body.querySelector<HTMLButtonElement>("#act-exc-delete")?.addEventListener("click", () => { this._deleteException(ex); });
-  }
-
-  private async _runApplyHistoryExport(format: "json" | "csv"): Promise<void> {
-    const conn = this._getConn();
-    if (!conn) return;
-    const resultEl = this._q<HTMLElement>("#act-apply-hist-export-result");
-    const scopeEl  = this._q<HTMLSelectElement>("#act-apply-hist-scope");
-    const scopeFilter = scopeEl?.value ?? "";
-    if (resultEl) { resultEl.textContent = ""; resultEl.style.display = "none"; }
-    const today = new Date().toISOString().slice(0, 10);
-    const defaultName = `curation_apply_history_${scopeFilter || "all"}_${today}.${format}`;
-    const outPath = await dialogSave({
-      title: "Exporter l\u2019historique des apply",
-      defaultPath: defaultName,
-      filters: [{ name: format.toUpperCase(), extensions: [format] }],
-    });
-    if (!outPath) return;
-    try {
-      const opts: ExportApplyHistoryOptions = { out_path: outPath, format };
-      const res = await exportApplyHistory(conn, opts);
-      if (resultEl) {
-        resultEl.textContent = res.count
-          ? `Export\u00e9\u00a0: ${res.count}\u00a0\u00e9v\u00e9nement(s) \u2192 ${outPath}`
-          : "Aucun \u00e9v\u00e9nement \u00e0 exporter.";
-        resultEl.className = res.count ? "apply-hist-export-result ok" : "apply-hist-export-result empty";
-        resultEl.style.display = "";
-      }
-    } catch (err) {
-      if (resultEl) { resultEl.textContent = `Erreur export\u00a0: ${err}`; resultEl.className = "prep-apply-hist-export-result error"; resultEl.style.display = ""; }
-      this._cb.log(`⚠ Export historique apply\u00a0: ${err}`, true);
-    }
   }
 
   // Mode A undo (Annuler button) - backbone: prep_action_history (migration 019).
