@@ -56,6 +56,7 @@ import { compareDocsByTitle } from "../lib/docSort.ts";
 import { setHtml, raw } from "../lib/safeHtml.ts";
 import { segRightPanelHtml } from "../lib/segmentationRightPanel.ts";
 import { formatSegDocListHtml, formatSegDocListFlat } from "../lib/segDocList.ts";
+import { segStructureMatcherHtml } from "../lib/segStructureMatcher.ts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -943,33 +944,7 @@ export class SegmentationView {
         this._matcherInitialized = true;
       }
 
-      setHtml(el, raw(`
-        <div class="prep-matcher-root">
-          <div class="prep-matcher-toolbar">
-            <span class="prep-matcher-hint" id="act-matcher-hint"></span>
-            <button type="button" class="btn btn-ghost btn-sm" id="act-matcher-reset" title="Revenir à l'appariement positionnel par défaut">&#8635; Réinitialiser</button>
-          </div>
-          <div class="prep-matcher-cols">
-            <div class="prep-matcher-col-head">
-              <span class="prep-matcher-col-title">Référence — ${_escHtml(refDoc?.title ?? `#${refDocId}`)}</span>
-              <span class="prep-matcher-col-count">${res.ref_sections.length} section${res.ref_sections.length !== 1 ? "s" : ""}</span>
-            </div>
-            <div class="prep-matcher-col-head">
-              <span class="prep-matcher-col-title">Document courant — ${_escHtml(curDoc?.title ?? `#${docId}`)}</span>
-              <span class="prep-matcher-col-count">${res.target_sections.length} section${res.target_sections.length !== 1 ? "s" : ""}</span>
-            </div>
-            <div class="prep-matcher-col" id="act-matcher-ref"></div>
-            <div class="prep-matcher-col" id="act-matcher-tgt"></div>
-          </div>
-          <div id="act-matcher-undo-bar" class="prep-matcher-undo-bar" style="display:none"></div>
-          <div class="prep-matcher-footer">
-            <button type="button" class="btn btn-primary btn-sm" id="act-strucdiff-propagate-btn">
-              &#9654; Aperçu propagé
-            </button>
-          </div>
-          <div id="act-strucdiff-propagate-result"></div>
-        </div>
-      `));
+      setHtml(el, raw(segStructureMatcherHtml(refDoc, refDocId, curDoc, docId, res)));
 
       this._rebuildMatcherCards();
 
