@@ -10,7 +10,6 @@
 import type {
   Conn,
   DocumentRecord,
-  DetectMarkersResponse,
   ConventionRole,
 } from "../lib/sidecarClient.ts";
 import { safeColor } from "../lib/conventionsRoles.ts";
@@ -49,6 +48,7 @@ import {
 import { reportEvent } from "../lib/telemetry.ts";
 import { compareDocsByTitle } from "../lib/docSort.ts";
 import { setHtml, raw } from "../lib/safeHtml.ts";
+import { escHtml as _escHtml } from "../lib/diff.ts";
 import { segRightPanelHtml } from "../lib/segmentationRightPanel.ts";
 import { formatSegDocListHtml, formatSegDocListFlat } from "../lib/segDocList.ts";
 
@@ -113,12 +113,8 @@ export class SegmentationView {
   private _rolesPane: RolesPane | null = null;
   // Structure matcher (extracted to SegStructureMatcherPanel, U-02)
   private _matcherPanel: SegStructureMatcherPanel | null = null;
-  private _segMarkersDetected: DetectMarkersResponse | null = null;
   private _segSplitMode: "sentences" | "markers" = "sentences";
   private _segPreviewTimer: ReturnType<typeof setTimeout> | null = null;
-  private _ltSyncLock = false;
-  private _onLtRawScroll: ((e: Event) => void) | null = null;
-  private _onLtSegScroll: ((e: Event) => void) | null = null;
   private _segPrevSyncLock = false;
   private _onSegPrevRawScroll: ((e: Event) => void) | null = null;
   private _onSegPrevSegScroll: ((e: Event) => void) | null = null;
@@ -162,7 +158,6 @@ export class SegmentationView {
       this._segPreviewTimer = null;
     }
     this._matcherPanel?.dispose();
-    this._unbindLongtextScrollSync();
     this._unbindSegPreviewScrollSync();
     this._rolesPane?.dispose();
     this._rolesPane = null;
@@ -414,7 +409,6 @@ export class SegmentationView {
     const doc = docs.find(d => d.doc_id === docId);
     if (!doc) { rightEl.innerHTML = `<div class="prep-seg-right-empty">Document introuvable.</div>`; return; }
 
-    this._segMarkersDetected = null;
     this._segSplitMode = "sentences";
     this._segShortFilter = false;
     this._segOrphanFilter = false;
@@ -723,7 +717,6 @@ export class SegmentationView {
 
     try {
       const report = await detectMarkers(conn, docId);
-      this._segMarkersDetected = report;
 
       if (!bannerEl) return;
 
@@ -1505,22 +1498,6 @@ export class SegmentationView {
     this._segPrevSyncLock = false;
   }
 
-  private _unbindLongtextScrollSync(): void {
-    const el = this._root;
-    if (!el) return;
-    const rawEl = el.querySelector<HTMLElement>("#act-seg-lt-raw-scroll");
-    const segEl = el.querySelector<HTMLElement>("#act-seg-lt-seg-scroll");
-    if (rawEl && this._onLtRawScroll) {
-      rawEl.removeEventListener("scroll", this._onLtRawScroll);
-      this._onLtRawScroll = null;
-    }
-    if (segEl && this._onLtSegScroll) {
-      segEl.removeEventListener("scroll", this._onLtSegScroll);
-      this._onLtSegScroll = null;
-    }
-    this._ltSyncLock = false;
-  }
-
   // ─── Mode A undo (Annuler button) ────────────────────────────────────────
   // Backbone : table prep_action_history (cf. migration 019). Le bouton est
   // rafraîchi à l'ouverture du panneau, après chaque merge/split (via reload),
@@ -1614,14 +1591,6 @@ function _roleBadgeHtml(role: string | null | undefined, conventions: Convention
   const label = _escHtml(conv?.label ?? role);
   const color = safeColor(conv?.color, "#64748b");
   return `<span class="prep-role-badge" style="--role-color:${color}" title="Rôle : ${label}">${conv?.icon ? _escHtml(conv.icon) + "\u00a0" : ""}${label}</span>`;
-}
-
-function _escHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
 }
 
 /** LCS-based sequence diff on string arrays. Returns edit script as ops. */
