@@ -53,6 +53,13 @@ describe("buildContextDetailHtml", () => {
     expect(html).not.toContain('id="act-exc-ignore"');
   });
 
+  it("labels a persisted override 'Override durable' and escapes exception_override in its title", () => {
+    const html = buildContextDetailHtml(ex({ is_exception_override: true, exception_override: "<x>" }), false);
+    expect(html).toContain("Override durable");
+    expect(html).toContain("&lt;x&gt;"); // exception_override escaped into the badge title
+    expect(html).toContain('id="act-exc-delete"');
+  });
+
   it("renders the Avant/Après context rows only when context text is present", () => {
     const withCtx = buildContextDetailHtml(ex({ context_before: "ctxB", context_after: "ctxA" }), false);
     expect(withCtx).toContain("ctx-before");
