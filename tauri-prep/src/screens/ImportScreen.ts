@@ -29,6 +29,8 @@ import {
   detectLanguageForMode,
 } from "../lib/importDetect.ts";
 import { detectFamilyGroups, type FamilyGroup } from "../lib/familyDetect.ts";
+import { buildFamilyDetectionBannerHtml } from "../lib/importFamilyDetectionTemplate.ts";
+import { importStatusLabel } from "../lib/importStatusLabel.ts";
 import { normalizeImportPath, parseConlluPreview } from "../lib/importConllu.ts";
 
 
@@ -393,7 +395,7 @@ export class ImportScreen {
       setHtml(row, raw(`
         <div class="imp-file-main">
           <span class="imp-file-name" title="${_escHtml(f.path)}">${_escHtml(f.title)}</span>
-          <span class="chip${chipCls ? " " + chipCls : ""}">${_escHtml(this._statusLabel(f))}</span>
+          <span class="chip${chipCls ? " " + chipCls : ""}">${_escHtml(importStatusLabel(f))}</span>
         </div>
         <div class="imp-file-controls">
           <select class="imp-mode-sel" data-i="${i}" title="Mode d'import (filtré selon l'extension)">
@@ -690,14 +692,6 @@ export class ImportScreen {
         true,
       );
     }
-  }
-
-  private _statusLabel(f: FileItem): string {
-    if (f.status === "pending") return "En attente";
-    if (f.status === "importing") return "Importation…";
-    if (f.status === "done") return `✓ doc_id=${_escHtml(String(f.message ?? ""))}`;
-    if (f.status === "error") return `✗ ${_escHtml(String(f.message ?? ""))}`;
-    return "";
   }
 
   private async _runImport(): Promise<void> {
@@ -1129,45 +1123,7 @@ export class ImportScreen {
     const banner = document.createElement("div");
     banner.id = "imp-family-detect-banner";
     banner.className = "card prep-imp-family-banner";
-    setHtml(banner, raw(`
-      <div class="prep-imp-family-banner-head">
-        <span class="prep-imp-family-banner-icon">🔗</span>
-        <div>
-          <strong>Familles détectées automatiquement</strong>
-          <span class="chip">${groups.length} groupe${groups.length > 1 ? "s" : ""}</span>
-        </div>
-      </div>
-      <p class="prep-imp-family-banner-desc">
-        Des fichiers partagent le même radical avec des suffixes de langue.
-        Après l'import, ils pourront être rattachés en famille automatiquement.
-      </p>
-      ${groups.map((g, gi) => `
-        <div class="prep-imp-family-group">
-          <div class="prep-imp-family-group-head">
-            Groupe ${gi + 1} — <code>${_escHtml(g.stem)}</code>
-          </div>
-          <div class="prep-imp-family-group-files">
-            ${g.files.map(f => {
-              const fname = f.path.replace(/\\/g, "/").split("/").pop() ?? f.path;
-              return `<span class="chip">${_escHtml(fname)} <em>[${_escHtml(f.lang.toUpperCase())}]</em></span>`;
-            }).join("")}
-          </div>
-          <div class="prep-imp-family-group-action">
-            <label>Original&nbsp;:&nbsp;
-              <select class="prep-imp-family-pivot-sel" data-group="${gi}">
-                ${g.files.map(f => {
-                  const fname = f.path.replace(/\\/g, "/").split("/").pop() ?? f.path;
-                  return `<option value="${_escHtml(f.path)}">${_escHtml(fname)} [${_escHtml(f.lang.toUpperCase())}]</option>`;
-                }).join("")}
-              </select>
-            </label>
-          </div>
-        </div>
-      `).join("")}
-      <p class="prep-imp-family-banner-note">
-        Les relations seront proposées dans la dialog post-import de chaque fichier enfant.
-      </p>
-    `));
+    setHtml(banner, raw(buildFamilyDetectionBannerHtml(groups)));
 
     const workspace = this._root?.querySelector(".imp-workspace");
     if (workspace) workspace.insertAdjacentElement("beforebegin", banner);
