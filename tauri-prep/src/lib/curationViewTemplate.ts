@@ -277,27 +277,7 @@ export function curationViewTemplate(): string {
               <p class="hint review-export-hint">Items de l&#8217;&#233;chantillon courant, statuts et d&#233;cisions.</p>
             </div>
             <details class="prep-exc-admin-panel" id="act-exc-admin-panel"></details>
-            <details class="prep-apply-hist-panel" id="act-apply-hist-panel">
-              <summary class="prep-curate-bottom-details-summary">
-                Historique des apply <span id="act-apply-hist-badge" class="prep-apply-hist-badge" style="display:none">0</span>
-              </summary>
-              <div style="padding:6px 10px 10px">
-                <div class="prep-apply-hist-toolbar">
-                  <select id="act-apply-hist-scope" class="prep-apply-hist-scope-select" title="Filtrer par portée">
-                    <option value="">Tous</option>
-                    <option value="doc">Document</option>
-                    <option value="all">Corpus</option>
-                  </select>
-                  <button class="btn btn-sm apply-hist-refresh" id="act-apply-hist-refresh" title="Actualiser">&#8635;</button>
-                  <button class="btn btn-sm apply-hist-export-btn" id="act-apply-hist-export-json" title="Exporter en JSON">JSON</button>
-                  <button class="btn btn-sm apply-hist-export-btn" id="act-apply-hist-export-csv" title="Exporter en CSV">CSV</button>
-                </div>
-                <div id="act-apply-hist-list" class="prep-apply-hist-list" aria-live="polite">
-                  <p class="empty-hint">Ouvrez ce panneau pour charger l&#8217;historique.</p>
-                </div>
-                <span id="act-apply-hist-export-result" class="prep-apply-hist-export-result" style="display:none"></span>
-              </div>
-            </details>
+            <details class="prep-apply-hist-panel" id="act-apply-hist-panel"></details>
           </div>
         </div>
       </details>
