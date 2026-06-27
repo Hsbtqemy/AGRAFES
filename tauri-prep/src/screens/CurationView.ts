@@ -43,8 +43,6 @@ import {
   listCurateExceptions,
   setCurateException,
   deleteCurateException,
-  exportCurateExceptions,
-  type ExportCurateExceptionsOptions,
   recordApplyHistory,
   listApplyHistory,
   exportApplyHistory,
@@ -79,12 +77,7 @@ import { buildReviewReportPayload, buildReviewReportCsv } from "../lib/curationR
 import { buildApplyConfirmMessage } from "../lib/curationApplyConfirm.ts";
 import { formatSessionSummary } from "../lib/curationSessionSummary.ts";
 import { collectIgnoredUnitIds, collectManualOverrides } from "../lib/curationApplyInputs.ts";
-import {
-  filterExceptions,
-  buildExcDocOptions,
-  formatExcAdminList,
-  type ExcKindFilter,
-} from "../lib/curationExceptionsAdmin.ts";
+import { CurateExceptionsAdminPanel } from "../components/CurateExceptionsAdminPanel.ts";
 import {
   appendCurateLogEntry,
   formatCurateLog,
@@ -240,11 +233,8 @@ export class CurationView {
   private _docListQuery = "";
   private _docListSort: "id" | "alpha" = "alpha";
 
-  // ── Admin panel (Level 8A) ──────────────────────────────────────────────────
-  private _excAdminFilter: "all" | "ignore" | "override" = "all";
-  private _excAdminAll: CurateException[] = [];
-  private _excAdminEditing: number | null = null;
-  private _excAdminDocFilter: number = 0;
+  // ── Admin panel (Level 8A) — extracted to CurateExceptionsAdminPanel (U-02) ──
+  private _excPanel: CurateExceptionsAdminPanel | null = null;
 
   // ── Constructor ─────────────────────────────────────────────────────────────
 
@@ -755,35 +745,7 @@ export class CurationView {
               </div>
               <p class="hint review-export-hint">Items de l&#8217;&#233;chantillon courant, statuts et d&#233;cisions.</p>
             </div>
-            <details class="prep-exc-admin-panel" id="act-exc-admin-panel">
-              <summary class="prep-curate-bottom-details-summary">
-                Exceptions persistées <span id="act-exc-admin-badge" class="prep-exc-admin-count-badge" style="display:none">0</span>
-              </summary>
-              <div style="padding:6px 10px 10px">
-                <div class="prep-exc-admin-toolbar">
-                  <div class="prep-exc-admin-filters">
-                    <button class="btn btn-sm prep-exc-filter-btn prep-exc-filter-active" data-exc-filter="all">Toutes</button>
-                    <button class="btn btn-sm prep-exc-filter-btn" data-exc-filter="ignore">Ignore</button>
-                    <button class="btn btn-sm prep-exc-filter-btn" data-exc-filter="override">Override</button>
-                  </div>
-                  <button class="btn btn-sm exc-admin-refresh" id="act-exc-admin-refresh" title="Actualiser la liste">&#8635;</button>
-                </div>
-                <div class="prep-exc-admin-doc-filter-row">
-                  <select id="act-exc-doc-filter" class="prep-exc-doc-filter-select">
-                    <option value="">Tous les documents</option>
-                  </select>
-                </div>
-                <div class="prep-exc-admin-export-row">
-                  <span class="prep-exc-export-label">Exporter&nbsp;:</span>
-                  <button class="btn btn-sm exc-export-btn" id="act-exc-export-json" title="Exporter en JSON">JSON</button>
-                  <button class="btn btn-sm exc-export-btn" id="act-exc-export-csv" title="Exporter en CSV">CSV</button>
-                  <span id="act-exc-export-result" class="prep-exc-export-result" style="display:none"></span>
-                </div>
-                <div id="act-exc-admin-list" class="prep-exc-admin-list" aria-live="polite">
-                  <p class="empty-hint">Ouvrez ce panneau apr&#232;s une pr&#233;visualisation.</p>
-                </div>
-              </div>
-            </details>
+            <details class="prep-exc-admin-panel" id="act-exc-admin-panel"></details>
             <details class="prep-apply-hist-panel" id="act-apply-hist-panel">
               <summary class="prep-curate-bottom-details-summary">
                 Historique des apply <span id="act-apply-hist-badge" class="prep-apply-hist-badge" style="display:none">0</span>
@@ -1244,46 +1206,20 @@ export class CurationView {
     el.querySelector("#act-conv-name")!.addEventListener("input", _convInputChange);
     el.querySelector("#act-conv-label")!.addEventListener("input", _convInputChange);
 
-    // ── Exceptions admin panel (Level 8A) ──────────────────────────────────
-    el.querySelector("#act-exc-admin-refresh")?.addEventListener("click", () => {
-      void this._loadExceptionsAdminPanel();
-    });
-    el.querySelector<HTMLDetailsElement>("#act-exc-admin-panel")?.addEventListener("toggle", (e) => {
-      const det = e.target as HTMLDetailsElement;
-      if (det.open && this._excAdminAll.length === 0) void this._loadExceptionsAdminPanel();
-    });
-    el.querySelectorAll<HTMLButtonElement>(".prep-exc-filter-btn").forEach(btn => {
-      btn.addEventListener("click", () => {
-        const filter = btn.dataset.excFilter as "all" | "ignore" | "override" | undefined;
-        if (filter) this._setExcAdminFilter(filter);
+    // ── Exceptions admin panel (Level 8A) — extracted component (U-02) ──────
+    const excRoot = el.querySelector<HTMLDetailsElement>("#act-exc-admin-panel");
+    if (excRoot) {
+      this._excPanel = new CurateExceptionsAdminPanel(excRoot, {
+        getConn: () => this._getConn(),
+        log: (m, e) => this._cb.log(m, e),
+        toast: (m, e) => this._cb.toast?.(m, e),
+        pushLog: (k, m) => this._pushCurateLog(k, m),
+        onExceptionDeleted: (id) => this._onExceptionDeleted(id),
+        onExceptionUpdated: (id, t) => this._onExceptionUpdated(id, t),
+        openInCuration: (exc) => this._excAdminOpenInCuration(exc),
       });
-    });
-    el.querySelector("#act-exc-admin-list")?.addEventListener("click", async (e) => {
-      const target = e.target as HTMLElement;
-      const row = target.closest<HTMLElement>("[data-exc-unit-id]");
-      if (!row) return;
-      const unitId = parseInt(row.dataset.excUnitId ?? "0");
-      if (!unitId) return;
-      if (target.closest(".prep-exc-row-delete")) {
-        await this._excAdminDelete(unitId);
-      } else if (target.closest(".prep-exc-row-edit-start")) {
-        this._excAdminEnterEdit(unitId);
-      } else if (target.closest(".prep-exc-row-edit-save")) {
-        await this._excAdminSaveEdit(unitId);
-      } else if (target.closest(".prep-exc-row-edit-cancel")) {
-        this._excAdminCancelEdit(unitId);
-      } else if (target.closest(".prep-exc-row-open-curation")) {
-        const exc = this._excAdminAll.find(e => e.unit_id === unitId);
-        if (exc) await this._excAdminOpenInCuration(exc);
-      }
-    });
-    el.querySelector<HTMLSelectElement>("#act-exc-doc-filter")?.addEventListener("change", (e) => {
-      const val = (e.target as HTMLSelectElement).value;
-      this._excAdminDocFilter = val ? parseInt(val) : 0;
-      this._renderExcAdminPanel();
-    });
-    el.querySelector("#act-exc-export-json")?.addEventListener("click", () => void this._runExcAdminExport("json"));
-    el.querySelector("#act-exc-export-csv")?.addEventListener("click",  () => void this._runExcAdminExport("csv"));
+      this._excPanel.mount();
+    }
 
     // Review export
     el.querySelector("#act-review-export-json")?.addEventListener("click", () => void this._runExportReviewReport("json"));
@@ -2031,14 +1967,8 @@ export class CurationView {
           }
         }
       }).catch(() => { /* non-critical */ });
-      // Level 8A: refresh admin panel if open
-      const adminPanel = this._q<HTMLDetailsElement>("#act-exc-admin-panel");
-      if (adminPanel?.open) {
-        this._loadExceptionsAdminPanel().catch(() => { /* non-critical */ });
-      } else {
-        const badge = this._q<HTMLElement>("#act-exc-admin-badge");
-        if (badge && this._curateExceptions.size > 0) { badge.textContent = String(this._curateExceptions.size); badge.style.display = "inline-flex"; }
-      }
+      // Level 8A: reflect on the exceptions admin panel (extracted component, U-02)
+      this._excPanel?.refreshAfterPreview(this._curateExceptions.size);
     } catch (err) {
       this._forcedPreviewUnitId = null;
       this._hasPendingPreview = false;
@@ -2512,114 +2442,23 @@ export class CurationView {
       this._renderRawPaneFull(changedIds.size > 0 ? changedIds : undefined);
     }
   }
-  private async _loadExceptionsAdminPanel(): Promise<void> {
-    const conn = this._getConn();
-    if (!conn) return;
-    const list = this._q<HTMLElement>("#act-exc-admin-list");
-    if (!list) return;
-    list.innerHTML = `<p class="empty-hint prep-exc-admin-loading">Chargement…</p>`;
-    try {
-      const res = await listCurateExceptions(conn);
-      this._excAdminAll = res.exceptions;
-      this._excAdminEditing = null;
-      this._pushCurateLog("preview", `${res.count} exception(s) persistée(s) chargée(s) dans le panneau admin`);
-      this._renderExcAdminPanel();
-    } catch (err) {
-      list.innerHTML = `<p class="empty-hint" style="color:#b91c1c">Erreur lors du chargement : ${_escHtml(String(err))}</p>`;
-    }
+  /** Reflect an admin-deleted exception onto the live preview state + session summary. */
+  private _onExceptionDeleted(unitId: number): void {
+    this._curateExceptions.delete(unitId);
+    const ex = this._curateExamples.find(e => e.unit_id === unitId);
+    if (ex) { ex.is_exception_ignored = false; ex.is_exception_override = false; ex.exception_override = undefined; }
+    this._updateSessionSummary();
   }
-  private _setExcAdminFilter(f: "all" | "ignore" | "override"): void {
-    this._excAdminFilter = f;
-    this._root?.querySelectorAll<HTMLButtonElement>(".prep-exc-filter-btn").forEach(btn => {
-      btn.classList.toggle("prep-exc-filter-active", btn.dataset.excFilter === f);
-    });
-    this._renderExcAdminPanel();
+
+  /** Reflect an admin-updated override onto the live preview state + session summary. */
+  private _onExceptionUpdated(unitId: number, overrideText: string): void {
+    const sessionExc = this._curateExceptions.get(unitId);
+    if (sessionExc) this._curateExceptions.set(unitId, { ...sessionExc, override_text: overrideText });
+    const ex = this._curateExamples.find(e => e.unit_id === unitId);
+    if (ex) ex.exception_override = overrideText;
+    this._updateSessionSummary();
   }
-  private _renderExcAdminPanel(): void {
-    // Filter/group/format délégués au helper pur (testé dans
-    // __tests__/curationExceptionsAdmin.test.ts). Reste DOM-bound :
-    // mise à jour du badge et reconstruction conditionnelle du <select>
-    // doc-filter (préserver la valeur courante quand la liste change).
-    const list = this._q<HTMLElement>("#act-exc-admin-list");
-    const badge = this._q<HTMLElement>("#act-exc-admin-badge");
-    if (!list) return;
-    const all = this._excAdminAll;
-    if (badge) { badge.textContent = String(all.length); badge.style.display = all.length > 0 ? "inline-flex" : "none"; }
-    const docSel = this._q<HTMLSelectElement>("#act-exc-doc-filter");
-    if (docSel) {
-      const knownDocs = buildExcDocOptions(all);
-      const existingDocIds = new Set(Array.from(docSel.options).slice(1).map(o => parseInt(o.value)));
-      const newDocIds = new Set(knownDocs.keys());
-      const needsRebuild = existingDocIds.size !== newDocIds.size || [...newDocIds].some(id => !existingDocIds.has(id));
-      if (needsRebuild) {
-        const currentVal = docSel.value;
-        docSel.innerHTML = `<option value="">Tous les documents</option>`;
-        for (const [docId, docTitle] of knownDocs) {
-          const opt = document.createElement("option");
-          opt.value = String(docId);
-          opt.textContent = docTitle;
-          docSel.appendChild(opt);
-        }
-        if (currentVal) docSel.value = currentVal;
-      }
-    }
-    const filtered = filterExceptions(all, this._excAdminFilter as ExcKindFilter, this._excAdminDocFilter);
-    setHtml(list, raw(formatExcAdminList(filtered, {
-      editingUnitId: this._excAdminEditing,
-      showDocHeads: this._excAdminDocFilter === 0,
-      totalIsEmpty: all.length === 0,
-    })));
-  }
-  private async _excAdminDelete(unitId: number): Promise<void> {
-    const conn = this._getConn();
-    if (!conn) return;
-    try {
-      await deleteCurateException(conn, unitId);
-      this._excAdminAll = this._excAdminAll.filter(e => e.unit_id !== unitId);
-      this._curateExceptions.delete(unitId);
-      const ex = this._curateExamples.find(e => e.unit_id === unitId);
-      if (ex) { ex.is_exception_ignored = false; ex.is_exception_override = false; ex.exception_override = undefined; }
-      this._cb.log(`🔓 Exception persistée supprimée (panneau admin) – unité ${unitId}.`);
-      this._pushCurateLog("apply", `Exception supprimée via admin – unité ${unitId}`);
-      this._renderExcAdminPanel();
-      this._updateSessionSummary();
-    } catch (err) {
-      this._cb.log(`✗ Erreur lors de la suppression de l'exception ${unitId} : ${String(err)}`, true);
-    }
-  }
-  private _excAdminEnterEdit(unitId: number): void {
-    this._excAdminEditing = unitId;
-    this._renderExcAdminPanel();
-    const ta = this._q<HTMLTextAreaElement>(`#exc-edit-${unitId}`);
-    ta?.focus();
-  }
-  private async _excAdminSaveEdit(unitId: number): Promise<void> {
-    const conn = this._getConn();
-    if (!conn) return;
-    const ta = this._q<HTMLTextAreaElement>(`#exc-edit-${unitId}`);
-    const newText = ta?.value.trim() ?? "";
-    if (!newText) { this._cb.log("⚠ Le texte override ne peut pas être vide.", true); return; }
-    try {
-      await setCurateException(conn, { unit_id: unitId, kind: "override", override_text: newText });
-      const idx = this._excAdminAll.findIndex(e => e.unit_id === unitId);
-      if (idx >= 0) this._excAdminAll[idx] = { ...this._excAdminAll[idx], override_text: newText };
-      const sessionExc = this._curateExceptions.get(unitId);
-      if (sessionExc) this._curateExceptions.set(unitId, { ...sessionExc, override_text: newText });
-      const ex = this._curateExamples.find(e => e.unit_id === unitId);
-      if (ex) ex.exception_override = newText;
-      this._excAdminEditing = null;
-      this._cb.log(`🔒 Override persisté mis à jour – unité ${unitId}.`);
-      this._pushCurateLog("apply", `Override persisté mis à jour via admin – unité ${unitId}`);
-      this._renderExcAdminPanel();
-      this._updateSessionSummary();
-    } catch (err) {
-      this._cb.log(`✗ Erreur lors de la mise à jour de l'override : ${String(err)}`, true);
-    }
-  }
-  private _excAdminCancelEdit(unitId: number): void {
-    if (this._excAdminEditing === unitId) this._excAdminEditing = null;
-    this._renderExcAdminPanel();
-  }
+
   private async _excAdminOpenInCuration(exc: CurateException): Promise<void> {
     if (exc.doc_id === undefined) {
       this._cb.log("⚠ Impossible d'ouvrir dans Curation : doc_id inconnu pour cette exception.", true);
@@ -2697,50 +2536,6 @@ export class CurationView {
     if (!found) {
       this._cb.log(`⚠ Unité ${targetUnitId} introuvable même en mode ciblé. Elle a peut-être été supprimée ou le document a changé.`);
       this._pushCurateLog("warn", `Unité ${targetUnitId} introuvable (doc ${exc.doc_id})`);
-    }
-  }
-  private async _runExcAdminExport(fmt: "json" | "csv"): Promise<void> {
-    const conn = this._getConn();
-    if (!conn) return;
-    const docId = this._excAdminDocFilter > 0 ? this._excAdminDocFilter : undefined;
-    const today = new Date().toISOString().slice(0, 10);
-    const scopeTag = docId ? `doc_${docId}` : "all";
-    const defaultName = `curation_exceptions_${scopeTag}_${today}.${fmt}`;
-    let outPath: string | null;
-    try {
-      outPath = await dialogSave({
-        title: "Exporter les exceptions de curation",
-        defaultPath: defaultName,
-        filters: fmt === "json" ? [{ name: "JSON", extensions: ["json"] }] : [{ name: "CSV", extensions: ["csv"] }],
-      });
-    } catch { return; }
-    if (!outPath) return;
-    const resultEl = this._q<HTMLElement>("#act-exc-export-result");
-    const btnJson = this._q<HTMLButtonElement>("#act-exc-export-json");
-    const btnCsv  = this._q<HTMLButtonElement>("#act-exc-export-csv");
-    if (btnJson) btnJson.disabled = true;
-    if (btnCsv)  btnCsv.disabled = true;
-    if (resultEl) { resultEl.style.display = "none"; resultEl.textContent = ""; }
-    try {
-      const opts: ExportCurateExceptionsOptions = { out_path: outPath, format: fmt };
-      if (docId !== undefined) opts.doc_id = docId;
-      const res = await exportCurateExceptions(conn, opts);
-      const msg = res.count > 0 ? `✓ ${res.count} exception(s) exportée(s)` : "ℹ Aucune exception à exporter";
-      if (resultEl) {
-        resultEl.style.display = "";
-        resultEl.className = `prep-exc-export-result ${res.count > 0 ? "exc-export-ok" : "exc-export-empty"}`;
-        resultEl.textContent = msg;
-      }
-      this._cb.log(`✓ Exceptions exportées (${fmt.toUpperCase()}) : ${res.count} → ${res.out_path}`);
-      this._cb.toast?.(msg);
-    } catch (err) {
-      const msg = `✗ Erreur export : ${err instanceof SidecarError ? err.message : String(err)}`;
-      if (resultEl) { resultEl.style.display = ""; resultEl.className = "prep-exc-export-result exc-export-error"; resultEl.textContent = msg; }
-      this._cb.log(msg, true);
-      this._cb.toast?.("✗ Erreur export exceptions", true);
-    } finally {
-      if (btnJson) btnJson.disabled = false;
-      if (btnCsv)  btnCsv.disabled = false;
     }
   }
   private async _runExportReviewReport(fmt: "json" | "csv"): Promise<void> {
