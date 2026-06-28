@@ -35,8 +35,12 @@ def test_pathological_cql_aborts_fast() -> None:
     start = time.monotonic()
     with pytest.raises(CqlComplexityError):
         _find_matches(_tokens(100), specs)
-    # Was ~114 s before the cap; the budget aborts well under a second.
-    assert time.monotonic() - start < 5.0
+    # Was ~114 s before the cap. The step budget aborts in well under a second in
+    # production; this bound is deliberately generous because CI runs the matcher
+    # under coverage instrumentation (~10-20x slower — counting the budget takes
+    # ~10-15 s there). The point is that it *terminates* — a regression removing
+    # the cap would blow far past 60 s (or hang).
+    assert time.monotonic() - start < 60.0
 
 
 def test_complexity_error_is_value_error() -> None:
