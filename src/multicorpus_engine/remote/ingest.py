@@ -194,6 +194,11 @@ def _process_one(
         try:
             report = dispatch_import(
                 conn, mode=mode, path=str(tmp_path), language=language,
+                # Title from the ORIGINAL remote name, not the generated temp file
+                # (the local path is a mkstemp `tmpXXXX` for the path-traversal guard;
+                # without this the doc would be titled `tmpXXXX`). Matches a local
+                # import of the same filename (importers default to `path.stem`).
+                title=Path(entry.name).stem,
                 doc_role=doc_role, resource_type=resource_type,
                 run_id=run_id, run_logger=log,
             )

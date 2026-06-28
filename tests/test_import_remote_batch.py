@@ -84,6 +84,23 @@ def test_filters_non_matching_and_imports(db):
     assert sorted(paths) == [_BASE + "a.docx", _BASE + "b.docx"]
 
 
+def test_doc_title_uses_original_remote_name_not_temp(db):
+    """The imported doc is titled from the ORIGINAL remote filename, not the
+    generated mkstemp temp path. Regression: WebDAV imports showed up titled
+    `tmpXXXX` because the importer derived the title from the local temp file."""
+    conn, db_path = db
+    a = _make_docx_bytes(["[1] Bonjour.", "[2] Monde."])
+    entries = [_entry("Mon Roman.docx", len(a))]
+    payloads = {_BASE + "Mon Roman.docx": a}
+
+    report = _run(conn, db_path, entries, payloads)
+    assert report["imported"] == 1
+
+    titles = [r["title"] for r in conn.execute("SELECT title FROM documents").fetchall()]
+    assert titles == ["Mon Roman"]  # original stem, identical to a local import
+    assert not titles[0].startswith("tmp")
+
+
 def test_rerun_is_idempotent_via_dedup(db):
     conn, db_path = db
     a = _make_docx_bytes(["[1] Bonjour.", "[2] Monde."])
