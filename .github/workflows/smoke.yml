@@ -2,9 +2,9 @@ name: Smoke tests (no secrets)
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   pull_request:
-    branches: [main]
+    branches: [main, dev]
   workflow_dispatch:
 
 # Cancel in-progress runs for the same ref

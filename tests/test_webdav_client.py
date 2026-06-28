@@ -129,6 +129,49 @@ def test_validate_remote_url_rejects_unsupported(url):
         webdav.validate_remote_url(url)
 
 
+@pytest.mark.parametrize("url", [
+    "http://127.0.0.1/dav",
+    "http://10.0.0.5/dav",
+    "http://192.168.1.10/dav",
+    "http://172.16.5.4/dav",
+    "http://169.254.169.254/latest/meta-data/",  # cloud metadata endpoint
+    "http://[::1]/dav",
+    "http://localhost/dav",
+    "http://0.0.0.0/",
+])
+def test_validate_remote_url_blocks_internal_targets(url):
+    """SSRF guard: loopback / private / link-local IP literals + localhost (audit SID-04)."""
+    with pytest.raises(ValueError):
+        webdav.validate_remote_url(url)
+
+
+@pytest.mark.parametrize("url", [
+    "http://8.8.8.8/dav",
+    "https://93.184.216.34/remote.php/dav",  # public IP literals → no DNS, no raise
+])
+def test_validate_remote_url_allows_public_ip_literals(url):
+    webdav.validate_remote_url(url)  # must not raise
+
+
+@pytest.mark.parametrize("url", [
+    "http://2130706433/dav",          # decimal int = 127.0.0.1
+    "http://0x7f000001/dav",          # hex = 127.0.0.1
+    "http://0177.0.0.1/dav",          # octal = 127.0.0.1
+    "http://127.1/dav",               # short form = 127.0.0.1
+    "http://10.1/dav",                # short form = 10.0.0.1
+    "http://2852039166/latest/",      # decimal = 169.254.169.254 (metadata)
+    "http://localhost./dav",          # trailing dot
+])
+def test_validate_remote_url_blocks_obfuscated_ipv4(url):
+    """SSRF guard also covers legacy/obfuscated IPv4 encodings (audit SID-04, revue adverse).
+
+    `ipaddress` rejects these as literals but glibc getaddrinfo resolves them to the
+    encoded internal IP — canonicalised network-free via inet_aton.
+    """
+    with pytest.raises(ValueError):
+        webdav.validate_remote_url(url)
+
+
 def test_propfind_rejects_file_scheme_before_opening():
     # The guard must fire before any urlopen — a bad scheme never reaches the opener.
     called = {"n": 0}

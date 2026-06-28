@@ -902,10 +902,13 @@ def cmd_serve(args: argparse.Namespace) -> None:
     host = getattr(args, "host", "127.0.0.1")
     _ALLOWED_HOSTS = {"127.0.0.1", "localhost", "::1", "[::1]"}
     if host not in _ALLOWED_HOSTS:
-        raise SystemExit(
-            f"Error: --host must be a loopback address (got {host!r}). "
-            f"Allowed values: {', '.join(sorted(_ALLOWED_HOSTS))}"
-        )
+        # Emit the one-JSON-object error contract (was raise SystemExit(str) →
+        # plain text on stderr + no JSON on stdout). _err() prints + exits 1.
+        _err({
+            "error": f"--host must be a loopback address (got {host!r}). "
+                     f"Allowed values: {', '.join(sorted(_ALLOWED_HOSTS))}",
+            "command": "serve",
+        })
     port = getattr(args, "port", 8765)
     token_mode = getattr(args, "token", "auto")
 

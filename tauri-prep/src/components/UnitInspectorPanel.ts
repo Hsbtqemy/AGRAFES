@@ -17,6 +17,7 @@
 import { setHtml, raw } from "../lib/safeHtml.ts";
 import { escHtml as esc, escHtml as escHtmlMeta } from "../lib/diff.ts";
 import { truncateMid } from "../lib/textTruncate.ts";
+import { safeColor } from "../lib/conventionsRoles.ts";
 import {
   getDocumentPreview,
   listConventions,
@@ -47,7 +48,7 @@ function roleBadgeHtml(role: string | null | undefined, conventions: ConventionR
   if (!role) return "";
   const conv = conventions.find(c => c.name === role);
   const label = escHtmlMeta(conv?.label ?? role);
-  const color = conv?.color ?? "#64748b";
+  const color = safeColor(conv?.color, "#64748b");  // SEC-02: no raw color in CSS
   const nbsp = String.fromCharCode(0xa0);
   return `<span class="prep-role-badge" style="--role-color:${color}" title="Rôle : ${label}">${conv?.icon ? escHtmlMeta(conv.icon) + nbsp : ""}${label}</span>`;
 }

@@ -12,6 +12,7 @@ docs/DESIGN_sharedocs_ingestion.md §3.
 from __future__ import annotations
 
 import base64
+import ipaddress
 import logging
 import socket
 from dataclasses import dataclass
@@ -70,6 +71,48 @@ class RemoteEntry:
 _ALLOWED_SCHEMES = ("http", "https")
 
 
+def _ip_is_internal(ip: ipaddress._BaseAddress) -> bool:
+    return bool(
+        ip.is_loopback or ip.is_private or ip.is_link_local
+        or ip.is_reserved or ip.is_multicast or ip.is_unspecified
+    )
+
+
+def _host_is_internal(hostname: str) -> bool:
+    """True if *hostname* targets a loopback / private / link-local address.
+
+    Blocks the direct-target SSRF vector — loopback / private / link-local IPs,
+    incl. the cloud metadata endpoint ``169.254.169.254`` — **without resolving
+    DNS**, keeping this a pure, network-free check (it runs at the top of every
+    propfind/download). Covers the obfuscated-IPv4 bypass class (decimal-int,
+    hex, octal, short forms like ``2130706433`` / ``0x7f000001`` / ``127.1``),
+    which ``ipaddress`` rejects as literals but glibc ``getaddrinfo`` would
+    resolve to the encoded internal IP — canonicalised here via ``inet_aton``.
+
+    A genuine *DNS name* that resolves to an internal address is still not caught
+    (defence-in-depth out of scope: the sidecar is loopback-only and carries no
+    ambient credentials; resolving here would add a network round-trip +
+    DNS-rebinding TOCTOU to a validator).
+    """
+    h = hostname.strip().strip("[]").rstrip(".").lower()
+    if h == "localhost" or h.endswith(".localhost"):
+        return True
+    try:
+        return _ip_is_internal(ipaddress.ip_address(h))
+    except ValueError:
+        pass  # not a canonical IP literal — try the obfuscated IPv4 forms below
+    # inet_aton accepts decimal-int / hex / octal / short IPv4 (and raises on a
+    # real DNS name), so this stays network-free while closing the bypass class.
+    try:
+        canon = socket.inet_ntoa(socket.inet_aton(h))
+    except OSError:
+        return False  # genuine DNS name → not resolved (see docstring)
+    try:
+        return _ip_is_internal(ipaddress.ip_address(canon))
+    except ValueError:
+        return False
+
+
 def validate_remote_url(url: str) -> None:
     """Reject any URL the WebDAV client must never fetch.
 
@@ -92,6 +135,11 @@ def validate_remote_url(url: str) -> None:
         )
     if not parts.hostname:
         raise ValueError("url must include a host")
+    if _host_is_internal(parts.hostname):
+        raise ValueError(
+            "url host points to a loopback / private / link-local address (blocked "
+            "to prevent SSRF to internal services)"
+        )
 
 
 def build_auth_header(
