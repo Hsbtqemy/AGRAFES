@@ -87,6 +87,14 @@ au SHA, il **faut ajouter l'input explicite** :
 
 Sans ça, le canal installé dépendrait silencieusement du défaut du commit pinné.
 
+> **Limite connue (Dependabot)** : la dtolnay est commentée `# stable` (une *branche*,
+> pas un semver) → Dependabot ne sait **pas** la bumper automatiquement, contrairement
+> aux pins commentés `# vX.Y.Z`. Conséquence : le *code de l'action* reste figé au SHA
+> jusqu'à une mise à jour manuelle, mais le **canal Rust reste à jour** (sélectionné par
+> `toolchain: stable` au runtime). Compromis assumé : pinner (immuable, sûr) prime sur
+> l'auto-bump pour cette action à faible churn. Re-pinner à la main périodiquement via
+> `gh api repos/dtolnay/rust-toolchain/commits/stable --jq .sha`.
+
 ## 5. Vérification (critères d'acceptation)
 
 1. **Complétude** : `grep -rE "uses:\s*[^ ]+@(v[0-9]|stable|main|master)" .github/workflows/`
