@@ -62,6 +62,19 @@ dans le fichier d'audit, §4.
 > le fix atomique impose de passer l'URL distante à `dispatch_import` et aux
 > 7 importeurs (hors périmètre du lot ponctuel) — reste ⬜. Tous les autres
 > findings de la passe restent ⬜.
+>
+> **Passe de revue adverse (même jour, commit de suivi)** — deux incomplétudes des
+> correctifs ci-dessus, refermées : (a) **SID-02 était une classe**, pas un cas
+> isolé — l'auth d'écriture par match exact laissait **6 routes mutatrices sans
+> token** : `/curate/exceptions/set|delete`, `/export/tmx|bilingual`, et surtout
+> `/families/{id}/segment|align` (resegment / ré-alignement **destructifs**). Set
+> extrait au niveau module (`_WRITE_PATHS`) + prédicat pur **testable**
+> `_post_requires_write_token` couvrant aussi les routes à segment dynamique ;
+> 32 tests (`test_sidecar_write_paths.py`). (b) **QRY-02** contournable par **espace
+> de tête** avant `=` (`" =1+1"`, NBSP) — corrigé (inspection du 1ᵉʳ caractère
+> non-blanc). Reviewer adverse a aussi confirmé **0 bug/régression** sur les 7
+> correctifs et **0 autre appel `_send_error` positionnel** (SID-01, 303 appels
+> scannés).
 
 ### Ouverts — Correction & intégrité (moteur)
 
@@ -78,7 +91,7 @@ dans le fichier d'audit, §4.
 | ID | Sév | Prio | Statut | Constat (résumé) |
 |----|-----|------|--------|------------------|
 | QRY-01 ✔ | 🔴 | P0-2 | ✅ corrigé | **DoS algorithmique CQL** : récursion exponentielle (`seen` ne déduplique qu'aux feuilles), cap `_MAX_REPEAT` par-quantifieur seulement. `[]{0,30}×4` sur 100 tokens = **114 s**. Exposé via `/token_query`/`/token_stats`/`/token_collocates`. Aggrave Q-05. `token_query.py:57` / `cql_parser.py:152`. |
-| QRY-02 ✔ | 🟠 | P0-4 | ✅ corrigé | **Injection de formule CSV** : `export_csv` n'échappe pas les cellules `= + - @ \t \r` (titres/textes attaquant-contrôlables). `csv_export.py:35`. |
+| QRY-02 ✔ | 🟠 | P0-4 | ✅ corrigé | **Injection de formule CSV** : neutralisation par préfixe `'`. Étendu (revue adverse) : inspection du **1ᵉʳ caractère non-blanc** → contournement par espace/NBSP de tête fermé. `csv_export.py`. |
 | QRY-03 | 🟠 | P0-4 | ✅ corrigé | **XSS rapport QA HTML** : `render_qa_report_html` interpole title/language/gates en f-strings bruts (vs `html.escape` ailleurs). `qa_report.py:360-405`. |
 | QRY-04 | 🟠 | P1-11 | ⬜ ouvert | Contrat CLI rompu : `serve --host` invalide fait `raise SystemExit(str)` → aucun JSON sur stdout. `cli.py:905,1746`. |
 | QRY-05 | 🟡 | P2-19 | ⬜ ouvert | Backref JS `$NN` toujours mappé `\g<NN>` même si le groupe n'existe pas → preset Find/Replace JS valide casse. `curation.py:62`. |
@@ -92,11 +105,11 @@ dans le fichier d'audit, §4.
 | ID | Sév | Prio | Statut | Constat (résumé) |
 |----|-----|------|--------|------------------|
 | SID-01 ✔ | 🔴 | P0-1 | ✅ corrigé | `_send_error(400, "BAD_REQUEST", "…")` en positionnel (code/http_status keyword-only) → `TypeError` → **500 au lieu de 400** sur `/families/{id}/curation_status` id non-entier. `sidecar.py:639` (sig. `:422`). |
-| SID-02 / SEC-01 ✔ | 🟠 | P0-3 | ✅ corrigé | `/jobs` POST enqueue index/curate/segment (mutateurs) mais **absent de `_write_paths`** → mute la DB **sans token**. `sidecar.py:719,1102`. |
+| SID-02 / SEC-01 ✔ | 🟠 | P0-3 | ✅ corrigé | `/jobs` était absent de `_write_paths` → mutation DB **sans token**. **Étendu (revue adverse) : classe entière** — 6 routes mutatrices passaient à travers le match exact (`/curate/exceptions/set\|delete`, `/export/tmx\|bilingual`, `/families/{id}/segment\|align`). Set extrait (`_WRITE_PATHS`) + prédicat testable `_post_requires_write_token`. `sidecar.py:406,459,807` ; `test_sidecar_write_paths.py`. |
 | SID-03 | 🟠 | P0-6 | ✅ corrigé | Mutations multi-statements non atomiques sans rollback (`delete_documents`, `bulk_update_documents`) sur connexion partagée ; 1 seul `rollback()` dans tout le sidecar. `documents_service.py:164-262` / `connection.py:14`. |
 | SID-04 | 🟠 | P1-7 | ⬜ ouvert | SSRF : `validate_remote_url` n'interdit pas loopback/RFC1918/link-local/169.254.169.254 ; `/webdav/list` lock-free sans token. `webdav.py:73`. |
 | SID-05 | 🟠 | P0-6 | ⬜ ouvert (différé) | Provenance ShareDocs non atomique : import commit puis UPDATE `source_path` 2ᵉ commit ; crash entre → `source_path = tmp_path`. **Différé du lot P0** : fix atomique = passer l'URL distante à `dispatch_import` + aux 7 importeurs (la fenêtre de crash ne se ferme pas sans cela). `ingest.py:195-208`. |
-| SID-06 | 🟠 | P1-13 | ⬜ ouvert | 11 routes hors OpenAPI dont mutatrices `/curate/exceptions/*`, `/curate/apply-history/*` ; le gate ne voit que le snapshot. `sidecar.py:798`. |
+| SID-06 | 🟠 | P1-13 | 🟦 partiel | 11 routes hors OpenAPI ; le contract-freeze ne voit que le snapshot. **Volet auth refermé** (extension SID-02 : `/curate/exceptions/set\|delete` etc. désormais dans `_WRITE_PATHS` — l'audit les disait à tort déjà protégées). Reste le **volet documentation contrat** (routes absentes de l'OpenAPI). `sidecar.py`. |
 | SID-07 | 🟡 | P2-19 | ⬜ ouvert | `code="EXPORT_WRITE_ERROR"` hors catalogue `ERR_*`/`ErrorResponse`. `sidecar.py:2612,2742`. |
 | SID-08 | 🟡 | P2-15 | ⬜ ouvert | Champ `version` ambigu : `/health`=ENGINE (0.2.7), reste=API (1.6.23). Non documenté. `sidecar.py:607`. |
 | SID-09 | 🟡 | P0-1/A-01 | ⬜ ouvert | A-03 résiduel : `validate()` sur 3 endpoints, ~22 handlers en validation manuelle (dette assumée « pilote »). `request_schemas.py:127`. |
