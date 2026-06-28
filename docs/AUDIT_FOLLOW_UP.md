@@ -150,7 +150,7 @@ dans le fichier d'audit, §4.
 | FE-05 | 🟠 | P1-12 | ✅ corrigé | Dialogues natifs supprimés : 4 `alert` SegmentationView → `this._cb.log(…, true)` ; `alert` preset `app.ts` prep → `showToast` ; `window.confirm` export `tauri-app` → modal promise-based `confirmModal` (CSS `.modal-overlay`, 4 tests happy-dom). |
 | FE-06 | 🟡 | P2-18 | ⬜ ouvert | (= U-03) `tauri-app` non testé sur `ui/dom.ts` (1788 l.), results/metaPanel/stats/docSelector/importFlow. |
 | FE-07 | 🟡 | — | ⬜ ouvert | (= U-05) i18n absent (FR en dur). |
-| FE-08 | 🟡 | P2-19 | ⬜ ouvert | Listeners `window` non retirés dans `prep/app.ts` (faible : mono-instance). `app.ts:188,436`. |
+| FE-08 | 🟡 | P2-19 | ✅ corrigé | Écouteur `window` `agrafes:prep-focus-segment-unit` (anonyme) jamais retiré dans `App.dispose()` → fuite au re-montage prep dans le shell (la note d'origine « mono-instance » était fausse : le shell re-crée `App`). Stocké en champ `_focusSegmentHandler` + retiré dans `dispose()`. Trouvé en revue adverse P2. `app.ts:436`. |
 | FE-09 | 🟢 | — | ❌ écarté | « Dual sidecarClient state » = faux positif : un seul `_conn` partagé via `shared/sidecarCore.ts`. |
 | FE-10 | 🟢 | — | ❌ écarté | Handlers async `MetadataScreen` « sans try/catch » surévalués : les méthodes appelées ont leur propre `try`. |
 

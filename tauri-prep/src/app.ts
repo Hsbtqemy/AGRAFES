@@ -80,6 +80,7 @@ export class App {
 
   /** beforeunload handler stored so dispose() can remove it cleanly. */
   private _beforeUnloadHandler: ((e: BeforeUnloadEvent) => void) | null = null;
+  private _focusSegmentHandler: ((e: Event) => void) | null = null;
 
   /** In-memory cache of project presets (persisted in corpus_info.meta.presets per DB). */
   private _presets: ProjectPreset[] = SEED_PRESETS.map(p => ({ ...p }));
@@ -433,7 +434,10 @@ export class App {
 
     // Bridge (chantier 2 — retour amont) : Shell → focus Segmentation on unit.
     // Émet stage_returned (curate → segment) en télémétrie.
-    window.addEventListener("agrafes:prep-focus-segment-unit", (e: Event) => {
+    // Stored in a field so dispose() can remove it — a fresh App is created on
+    // every prep re-mount in the shell, so an anonymous listener would leak and
+    // pin the dead instance (audit FE-08, same class as FE-02).
+    this._focusSegmentHandler = (e: Event) => {
       const detail = (e as CustomEvent<{ docId: number; unitN: number }>).detail;
       if (!detail || typeof detail.docId !== "number" || typeof detail.unitN !== "number") return;
       // Switch to actions tab, then focus segmentation on unit
@@ -450,7 +454,8 @@ export class App {
           });
         } catch { /* swallow */ }
       })();
-    });
+    };
+    window.addEventListener("agrafes:prep-focus-segment-unit", this._focusSegmentHandler);
   }
 
   private _toggleJournal(root: HTMLElement): void {
@@ -1112,6 +1117,10 @@ export class App {
     if (this._beforeUnloadHandler) {
       window.removeEventListener("beforeunload", this._beforeUnloadHandler);
       this._beforeUnloadHandler = null;
+    }
+    if (this._focusSegmentHandler) {
+      window.removeEventListener("agrafes:prep-focus-segment-unit", this._focusSegmentHandler);
+      this._focusSegmentHandler = null;
     }
   }
 }
