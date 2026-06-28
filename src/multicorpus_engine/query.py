@@ -23,6 +23,7 @@ from typing import Any, Optional
 logger = logging.getLogger(__name__)
 
 _HIGHLIGHT_OPEN = "<<"
+_HIGHLIGHT_CLOSE = ">>"
 
 # M-04: ReDoS guards for user-supplied regex patterns
 _MAX_REGEX_LEN = 500
@@ -90,7 +91,6 @@ def proximity_query(terms: list[str], distance: int = 5) -> str:
         raise ValueError("proximity_query requires at least 2 terms")
     joined = " ".join(terms)
     return f"NEAR({joined}, {distance})"
-_HIGHLIGHT_CLOSE = ">>"
 
 
 def _highlight_segment(text: str, query: str) -> str:
@@ -575,10 +575,13 @@ def _apply_doc_filters(
         filters.append("d.doc_date <= ?")
         params.append(doc_date_to)
     if source_ext:
-        # Match by file extension (case-insensitive via LIKE)
+        # Match by file extension. Escape LIKE wildcards so an extension that
+        # happens to contain % or _ is matched literally — consistent with the
+        # author/title filters above (QRY-07).
         ext = source_ext if source_ext.startswith(".") else f".{source_ext}"
-        filters.append("d.source_path LIKE ?")
-        params.append(f"%{ext}")
+        escaped_ext = ext.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        filters.append("d.source_path LIKE ? ESCAPE '\\'")
+        params.append(f"%{escaped_ext}")
 
 
 def _run_regex_page(

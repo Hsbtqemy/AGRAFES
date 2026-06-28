@@ -62,14 +62,30 @@ def _validate_user_regex(pattern: str) -> None:
 _JS_BACKREF_RE = re.compile(r"\$(\$|&|\d{1,2})")
 
 
-def _translate_js_replacement(repl: str) -> str:
+def _translate_js_replacement(repl: str, ngroups: int = 99) -> str:
+    """Rewrite JS-style replacement tokens ($1, $&, $$) to Python's \\g<n> form.
+
+    *ngroups* is the number of capture groups in the matching pattern. A ``$NN``
+    that refers to a non-existent group must NOT become ``\\g<NN>`` — Python raises
+    "invalid group reference" at substitution time, which crashes an otherwise valid
+    JS Find/Replace preset (QRY-05). JS semantics: a two-digit ``$nn`` whose value
+    exceeds the group count falls back to the single leading digit plus a literal
+    trailing digit; otherwise the token is left verbatim, exactly as a browser would.
+    """
     def _sub(m: re.Match[str]) -> str:
         token = m.group(1)
         if token == "$":
             return "$"
         if token == "&":
             return r"\g<0>"
-        return rf"\g<{int(token)}>"
+        n = int(token)
+        if 1 <= n <= ngroups:
+            return rf"\g<{n}>"
+        if len(token) == 2:
+            first = int(token[0])
+            if 1 <= first <= ngroups:
+                return rf"\g<{first}>{token[1]}"
+        return m.group(0)  # no such group → leave "$NN" literal, like JS
     return _JS_BACKREF_RE.sub(_sub, repl)
 
 
@@ -155,13 +171,13 @@ def rules_from_list(data: list[dict]) -> list[CurationRule]:
         # Validate the pattern early to give a clear error
         _validate_user_regex(pattern)
         try:
-            re.compile(pattern, flags)
+            compiled = re.compile(pattern, flags)
         except re.error as exc:
             raise ValueError(f"Invalid regex pattern {pattern!r}: {exc}") from exc
 
         rules.append(CurationRule(
             pattern=pattern,
-            replacement=_translate_js_replacement(item["replacement"]),
+            replacement=_translate_js_replacement(item["replacement"], compiled.groups),
             flags=flags,
             description=item.get("description", ""),
         ))

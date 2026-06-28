@@ -78,6 +78,35 @@ def test_list_units_bad_doc_id(db_conn: sqlite3.Connection, raw) -> None:
         list_units(db_conn, raw, None)
 
 
+# --- update_unit_text FTS guard (ENG-04) ---------------------------------------
+def test_update_text_does_not_index_structure_unit(db_conn: sqlite3.Connection) -> None:
+    """ENG-04: editing a 'structure' unit must never (re)insert it into FTS —
+    only 'line' units are indexed. The DELETE still runs so any stale row clears."""
+    doc_id, _ = _mk_doc_units(db_conn, 1)
+    cur = db_conn.execute(
+        "INSERT INTO units (doc_id, unit_type, n, text_raw, text_norm)"
+        " VALUES (?, 'structure', 99, 'heading', 'heading')",
+        (doc_id,),
+    )
+    struct_id = cur.lastrowid
+    db_conn.commit()
+    update_unit_text(db_conn, {"unit_id": struct_id, "text_norm": "new heading"})
+    count = db_conn.execute(
+        "SELECT COUNT(*) FROM fts_units WHERE rowid = ?", (struct_id,)
+    ).fetchone()[0]
+    assert count == 0
+
+
+def test_update_text_reindexes_line_unit(db_conn: sqlite3.Connection) -> None:
+    """Companion to ENG-04: a 'line' unit IS still (re)indexed after an edit."""
+    _, unit_ids = _mk_doc_units(db_conn, 1)
+    update_unit_text(db_conn, {"unit_id": unit_ids[0], "text_norm": "bonjour"})
+    row = db_conn.execute(
+        "SELECT text_norm FROM fts_units WHERE rowid = ?", (unit_ids[0],)
+    ).fetchone()
+    assert row is not None and row[0] == "bonjour"
+
+
 # --- set_unit_role --------------------------------------------------------------
 def test_set_unit_role_set_and_clear(db_conn: sqlite3.Connection) -> None:
     doc_id, _ = _mk_doc_units(db_conn, 2)

@@ -135,6 +135,28 @@ def test_parse_tei_xmlid_and_fallback(tmp_path) -> None:
     assert parsed.doc_meta == {"tei_unit": "p"}
 
 
+def test_parse_tei_nested_same_tag_not_double_counted(tmp_path) -> None:
+    """ENG-05: a <p> nested inside another <p> must yield exactly ONE unit. The
+    outer element's itertext() already includes the inner text, so emitting the
+    inner element as its own unit would duplicate that text."""
+    p = tmp_path / "nested.xml"
+    p.write_bytes(
+        (
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<TEI xmlns="http://www.tei-c.org/ns/1.0">\n'
+            '  <text xml:lang="fr"><body>\n'
+            "    <p>Outer start <p>inner</p> outer end.</p>\n"
+            "    <p>Standalone.</p>\n"
+            "  </body></text>\n"
+            "</TEI>\n"
+        ).encode("utf-8")
+    )
+    parsed = parse_tei(p)
+    texts = [u.text_raw for u in parsed.units]
+    # Only the two OUTERMOST <p> become units; the inner <p> is not emitted again.
+    assert texts == ["Outer start inner outer end.", "Standalone."]
+
+
 # --------------------------------------------------------------------------- #
 # A-02 core guarantee: preview projection == what import writes to the DB
 # --------------------------------------------------------------------------- #

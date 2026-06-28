@@ -61,11 +61,10 @@ select = ["E4", "E7", "E9", "F"]
 ignore = ["E741"]  # ambiguous single-letter names — style, not a bug class here
 
 # ── Coverage (audit T-01) ────────────────────────────────────────────────────
-# CI runs: pytest --cov=src/multicorpus_engine --cov-fail-under=35
-# 35 is a *proven lower bound* (the non-sidecar suite alone hits 36%; the full CI
-# suite is higher since sidecar.py is only exercised by the sidecar tests). Raise
-# it toward (observed CI coverage − 2) after the first gated CI run. The threshold
-# lives in CI, not here, so local `pytest --cov` on a subset never trips the floor.
+# CI runs: pytest --cov=src/multicorpus_engine --cov-fail-under=60 (OPS-04).
+# The 60% floor lives in the CI workflow (.github/workflows/ci.yml), not here, so a
+# local `pytest --cov` on a subset never trips it. The full CI suite — including the
+# sidecar tests that exercise sidecar.py — clears 60%.
 [tool.coverage.run]
 source = ["src/multicorpus_engine"]
 branch = false

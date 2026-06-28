@@ -23,7 +23,7 @@ class JobRecord:
     job_id: str
     kind: str
     params: dict[str, Any]
-    status: str = "queued"  # queued | running | done | error
+    status: str = "queued"  # queued | running | done | error | canceled
     progress_pct: int = 0
     progress_message: str | None = None
     result: dict[str, Any] | None = None
