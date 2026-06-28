@@ -39,8 +39,10 @@ setFilterDocCallback((docId: number) => {
 
 // ─── Entrypoint ───────────────────────────────────────────────────────────────
 
+let _disposeBuildUI: (() => void) | null = null;
+
 export async function initApp(container: HTMLElement): Promise<void> {
-  buildUI(container);
+  _disposeBuildUI = buildUI(container);
 
   const startup = await resolveInitialDbPath();
   const dbPath = startup.path;
@@ -68,6 +70,8 @@ export async function initApp(container: HTMLElement): Promise<void> {
 
 /** Disconnect the IntersectionObserver and clear module-level resources. Called by tauri-shell on unmount. */
 export function disposeApp(): void {
+  _disposeBuildUI?.();
+  _disposeBuildUI = null;
   disposeQuery();
   disposeBootstrap();
 }

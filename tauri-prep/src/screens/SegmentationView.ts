@@ -1004,7 +1004,7 @@ export class SegmentationView {
               reload(n1);
             } catch (e) {
               btn.disabled = false;
-              alert(`Erreur fusion : ${e instanceof Error ? e.message : String(e)}`);
+              this._cb.log(`Erreur fusion : ${e instanceof Error ? e.message : String(e)}`, true);
             }
           });
         });
@@ -1024,7 +1024,7 @@ export class SegmentationView {
               reload(n1);
             } catch (e) {
               btn.disabled = false;
-              alert(`Erreur fusion : ${e instanceof Error ? e.message : String(e)}`);
+              this._cb.log(`Erreur fusion : ${e instanceof Error ? e.message : String(e)}`, true);
             }
           });
         });
@@ -1062,7 +1062,7 @@ export class SegmentationView {
               const textA = taA?.value.trim() ?? "";
               const textB = taB?.value.trim() ?? "";
               if (!textA || !textB) {
-                alert("Les deux parties doivent \u00eatre non-vides.");
+                this._cb.log("Les deux parties doivent \u00eatre non-vides.", true);
                 return;
               }
               const conn2 = this._getConn();
@@ -1071,7 +1071,7 @@ export class SegmentationView {
                 await splitUnit(conn2, { doc_id: docId, unit_n: unitN, text_a: textA, text_b: textB });
                 reload(unitN);
               } catch (e) {
-                alert(`Erreur d\u00e9coupe : ${e instanceof Error ? e.message : String(e)}`);
+                this._cb.log(`Erreur d\u00e9coupe : ${e instanceof Error ? e.message : String(e)}`, true);
               }
             });
           });

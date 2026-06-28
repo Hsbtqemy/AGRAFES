@@ -6,6 +6,7 @@ import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
 import type { QueryHit, AlignedUnit } from "../lib/sidecarClient";
 import { state } from "../state";
+import { confirmModal } from "../ui/confirmModal";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -148,11 +149,12 @@ export async function exportHits(format: ExportFormat): Promise<void> {
 
   if (state.hasMore) {
     const totalLabel = typeof state.total === "number" ? ` (${state.total} au total)` : "";
-    const proceed = window.confirm(
+    const proceed = await confirmModal(
       `Attention : l'export portera sur ${state.hits.length} résultat(s) actuellement chargé(s)${totalLabel}, ` +
       `pas nécessairement sur l'ensemble des résultats disponibles.\n\n` +
       `Utilisez le bouton "Charger plus" ou faites défiler jusqu'en bas pour en charger davantage avant d'exporter.\n\n` +
-      `Continuer l'export partiel ?`
+      `Continuer l'export partiel ?`,
+      { confirmLabel: "Exporter quand même", cancelLabel: "Annuler" },
     );
     if (!proceed) return;
   }
