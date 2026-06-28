@@ -165,26 +165,30 @@ def bulk_update_documents(conn: sqlite3.Connection, body: dict) -> dict[str, Any
     """Update many documents in one transaction (POST /documents/bulk_update).
 
     Items with no doc_id or no updatable field are skipped. Raises BadRequestError
-    (bad list) or ValidationError (workflow rules). NOTE: a ValidationError raised
-    mid-loop leaves the earlier UPDATEs uncommitted — preserved verbatim from the
-    original handler.
+    (bad list) or ValidationError (workflow rules). Atomic: a ValidationError raised
+    mid-loop rolls the whole batch back (audit SID-03 — the original handler left
+    the earlier UPDATEs dangling in an uncommitted transaction on the shared conn).
     """
     updates_list = validate(body, _BULK_UPDATE_SCHEMA)["updates"]
 
     total_updated = 0
-    for item in updates_list:
-        doc_id = item.get("doc_id")
-        if doc_id is None:
-            continue
-        fields = {k: v for k, v in item.items() if k in _UPDATABLE}
-        if not fields:
-            continue
-        _coerce_workflow_fields(fields)
-        set_clause = ", ".join(f"{k} = ?" for k in fields)
-        params = list(fields.values()) + [doc_id]
-        cur = conn.execute(f"UPDATE documents SET {set_clause} WHERE doc_id = ?", params)
-        total_updated += cur.rowcount
-    conn.commit()
+    try:
+        for item in updates_list:
+            doc_id = item.get("doc_id")
+            if doc_id is None:
+                continue
+            fields = {k: v for k, v in item.items() if k in _UPDATABLE}
+            if not fields:
+                continue
+            _coerce_workflow_fields(fields)
+            set_clause = ", ".join(f"{k} = ?" for k in fields)
+            params = list(fields.values()) + [doc_id]
+            cur = conn.execute(f"UPDATE documents SET {set_clause} WHERE doc_id = ?", params)
+            total_updated += cur.rowcount
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     return {"updated": total_updated}
 
 
@@ -220,43 +224,50 @@ def delete_documents(conn: sqlite3.Connection, body: dict) -> tuple[dict[str, An
     except Exception:  # noqa: BLE001
         pass  # telemetry must never block the delete
 
-    # 1. Collect unit_ids before deletion (needed for FTS cleanup).
-    unit_ids: list[int] = [
-        row[0] for row in conn.execute(
-            f"SELECT unit_id FROM units WHERE doc_id IN ({placeholders})", doc_ids
-        ).fetchall()
-    ]
-    # 2. alignment_links — pivot_doc_id / target_doc_id directly.
-    conn.execute(
-        f"DELETE FROM alignment_links"
-        f" WHERE pivot_doc_id IN ({placeholders}) OR target_doc_id IN ({placeholders})",
-        doc_ids + doc_ids,
-    )
-    # 3. FTS index — BEFORE units are deleted (rowid = unit_id).
-    if unit_ids:
-        fts_ph = ",".join("?" * len(unit_ids))
-        try:
-            conn.execute(f"DELETE FROM fts_units WHERE rowid IN ({fts_ph})", unit_ids)
-        except Exception:
-            pass  # FTS table may not exist
-    # 4. Units — curation_exceptions cascade automatically (ON DELETE CASCADE).
-    conn.execute(f"DELETE FROM units WHERE doc_id IN ({placeholders})", doc_ids)
-    # 5. Doc relations.
-    conn.execute(
-        f"DELETE FROM doc_relations"
-        f" WHERE doc_id IN ({placeholders}) OR target_doc_id IN ({placeholders})",
-        doc_ids + doc_ids,
-    )
-    # 6. Curation apply history (doc_id without FK — orphaned rows).
+    # Atomic cascade: any failure mid-way rolls the whole delete back rather than
+    # leaving partial deletions dangling in an uncommitted transaction on the
+    # shared connection (audit SID-03).
     try:
+        # 1. Collect unit_ids before deletion (needed for FTS cleanup).
+        unit_ids: list[int] = [
+            row[0] for row in conn.execute(
+                f"SELECT unit_id FROM units WHERE doc_id IN ({placeholders})", doc_ids
+            ).fetchall()
+        ]
+        # 2. alignment_links — pivot_doc_id / target_doc_id directly.
         conn.execute(
-            f"DELETE FROM curation_apply_history WHERE doc_id IN ({placeholders})", doc_ids
+            f"DELETE FROM alignment_links"
+            f" WHERE pivot_doc_id IN ({placeholders}) OR target_doc_id IN ({placeholders})",
+            doc_ids + doc_ids,
         )
+        # 3. FTS index — BEFORE units are deleted (rowid = unit_id).
+        if unit_ids:
+            fts_ph = ",".join("?" * len(unit_ids))
+            try:
+                conn.execute(f"DELETE FROM fts_units WHERE rowid IN ({fts_ph})", unit_ids)
+            except Exception:
+                pass  # FTS table may not exist
+        # 4. Units — curation_exceptions cascade automatically (ON DELETE CASCADE).
+        conn.execute(f"DELETE FROM units WHERE doc_id IN ({placeholders})", doc_ids)
+        # 5. Doc relations.
+        conn.execute(
+            f"DELETE FROM doc_relations"
+            f" WHERE doc_id IN ({placeholders}) OR target_doc_id IN ({placeholders})",
+            doc_ids + doc_ids,
+        )
+        # 6. Curation apply history (doc_id without FK — orphaned rows).
+        try:
+            conn.execute(
+                f"DELETE FROM curation_apply_history WHERE doc_id IN ({placeholders})", doc_ids
+            )
+        except Exception:
+            pass  # table may not exist in older DBs
+        # 7. Documents.
+        cur = conn.execute(f"DELETE FROM documents WHERE doc_id IN ({placeholders})", doc_ids)
+        deleted = cur.rowcount
+        conn.commit()
     except Exception:
-        pass  # table may not exist in older DBs
-    # 7. Documents.
-    cur = conn.execute(f"DELETE FROM documents WHERE doc_id IN ({placeholders})", doc_ids)
-    deleted = cur.rowcount
-    conn.commit()
+        conn.rollback()
+        raise
 
     return {"deleted": deleted, "doc_ids": doc_ids}, telemetry_pre

@@ -239,6 +239,44 @@ def test_csv_export_kwic(
     assert rows[0]["match"].lower() == "bonjour"
 
 
+def test_csv_export_neutralizes_formula_injection(tmp_path: Path) -> None:
+    """Cells beginning with a spreadsheet formula trigger get a leading quote (audit QRY-02)."""
+    from multicorpus_engine.exporters.csv_export import export_csv
+
+    hits = [{
+        "doc_id": 1, "unit_id": 2, "external_id": "1", "language": "fr",
+        "title": "=cmd|'/c calc'!A1", "text_norm": "+SUM(A1)", "text": "-2+3",
+    }]
+    out = tmp_path / "inj.csv"
+    export_csv(hits=hits, output_path=out, mode="segment")
+
+    with open(out, encoding="utf-8", newline="") as f:
+        rows = list(csv.DictReader(f))
+
+    assert rows[0]["title"] == "'=cmd|'/c calc'!A1"
+    assert rows[0]["text_norm"] == "'+SUM(A1)"
+    assert rows[0]["text"] == "'-2+3"
+
+
+def test_csv_export_neutralizes_leading_whitespace_formula(tmp_path: Path) -> None:
+    """Whitespace before a formula trigger is still neutralised (audit QRY-02)."""
+    from multicorpus_engine.exporters.csv_export import export_csv
+
+    hits = [{
+        "doc_id": 1, "unit_id": 2, "external_id": "1", "language": "fr",
+        "title": " =1+1", "text_norm": " =2", "text": "normal -dash inside",
+    }]
+    out = tmp_path / "ws.csv"
+    export_csv(hits=hits, output_path=out, mode="segment")
+
+    with open(out, encoding="utf-8", newline="") as f:
+        rows = list(csv.DictReader(f))
+
+    assert rows[0]["title"] == "' =1+1"              # leading space + '=' neutralised
+    assert rows[0]["text_norm"] == "' =2"       # leading space + '=' neutralised
+    assert rows[0]["text"] == "normal -dash inside"  # '-' not at start → untouched
+
+
 def test_tsv_export_uses_tab_delimiter(
     db_conn: sqlite3.Connection,
     corpus: dict,

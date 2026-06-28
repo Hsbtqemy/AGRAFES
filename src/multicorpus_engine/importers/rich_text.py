@@ -281,7 +281,6 @@ def _walk_odt_elem(
 
 def odt_para_to_rich_text(
     elem: ET.Element,
-    ns: dict[str, str],
     style_map: dict[str, frozenset[str]] | None = None,
 ) -> str:
     """Convert an ODT ``text:p`` or ``text:h`` element to a rich-text string.
@@ -293,8 +292,6 @@ def odt_para_to_rich_text(
     ----------
     elem:
         The ``text:p`` / ``text:h`` ``Element``.
-    ns:
-        Namespace prefix-to-URI mapping (typically :data:`_NS`).
     style_map:
         Optional pre-built style map.  If ``None``, an empty mapping is used
         (all spans treated as unstyled).

@@ -281,7 +281,7 @@ class TestOdtParaToRichText:
         """A paragraph with no text:span → plain text, no markup."""
         root = _build_odt_content_xml("", "<text:p>hello world</text:p>")
         para = _get_para(root)
-        result = odt_para_to_rich_text(para, _NS, {})
+        result = odt_para_to_rich_text(para, {})
         assert result == "hello world"
 
     def test_span_italic(self):
@@ -295,7 +295,7 @@ class TestOdtParaToRichText:
         root = _build_odt_content_xml(styles, body)
         para = _get_para(root)
         style_map = odt_extract_style_map(root)
-        result = odt_para_to_rich_text(para, _NS, style_map)
+        result = odt_para_to_rich_text(para, style_map)
         assert result == 'before <hi rend="italic">em</hi> after'
 
     def test_span_bold(self):
@@ -308,7 +308,7 @@ class TestOdtParaToRichText:
         root = _build_odt_content_xml(styles, body)
         para = _get_para(root)
         style_map = odt_extract_style_map(root)
-        result = odt_para_to_rich_text(para, _NS, style_map)
+        result = odt_para_to_rich_text(para, style_map)
         assert result == '<hi rend="bold">strong</hi>'
 
     def test_span_unknown_style_plain(self):
@@ -316,7 +316,7 @@ class TestOdtParaToRichText:
         body = '<text:p><text:span text:style-name="Unknown">text</text:span></text:p>'
         root = _build_odt_content_xml("", body)
         para = _get_para(root)
-        result = odt_para_to_rich_text(para, _NS, {})
+        result = odt_para_to_rich_text(para, {})
         assert result == "text"
 
     def test_text_s_spaces(self):
@@ -324,21 +324,21 @@ class TestOdtParaToRichText:
         body = '<text:p>a<text:s text:c="3"/>b</text:p>'
         root = _build_odt_content_xml("", body)
         para = _get_para(root)
-        result = odt_para_to_rich_text(para, _NS, {})
+        result = odt_para_to_rich_text(para, {})
         assert result == "a   b"
 
     def test_text_tab(self):
         body = '<text:p>a<text:tab/>b</text:p>'
         root = _build_odt_content_xml("", body)
         para = _get_para(root)
-        result = odt_para_to_rich_text(para, _NS, {})
+        result = odt_para_to_rich_text(para, {})
         assert result == "a\tb"
 
     def test_text_line_break(self):
         body = '<text:p>a<text:line-break/>b</text:p>'
         root = _build_odt_content_xml("", body)
         para = _get_para(root)
-        result = odt_para_to_rich_text(para, _NS, {})
+        result = odt_para_to_rich_text(para, {})
         assert result == "a\nb"
 
     def test_xml_escape_in_plain(self):
@@ -346,7 +346,7 @@ class TestOdtParaToRichText:
         body = '<text:p>rock &amp; roll</text:p>'
         root = _build_odt_content_xml("", body)
         para = _get_para(root)
-        result = odt_para_to_rich_text(para, _NS, {})
+        result = odt_para_to_rich_text(para, {})
         # ET parses &amp; back to &; our code re-escapes it
         assert result == "rock &amp; roll"
 
@@ -355,7 +355,7 @@ class TestOdtParaToRichText:
         body = '<text:p><text:span text:style-name="X">text</text:span></text:p>'
         root = _build_odt_content_xml("", body)
         para = _get_para(root)
-        result = odt_para_to_rich_text(para, _NS, None)
+        result = odt_para_to_rich_text(para, None)
         assert result == "text"
 
     def test_consecutive_same_style_merged_odt(self):
@@ -374,7 +374,7 @@ class TestOdtParaToRichText:
         root = _build_odt_content_xml(styles, body)
         para = _get_para(root)
         style_map = odt_extract_style_map(root)
-        result = odt_para_to_rich_text(para, _NS, style_map)
+        result = odt_para_to_rich_text(para, style_map)
         assert result == '<hi rend="italic">ab</hi>'
 
 

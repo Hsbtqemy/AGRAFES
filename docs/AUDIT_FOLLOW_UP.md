@@ -32,6 +32,138 @@ le §6 de l'audit 2026-06-12 ; « — » = non priorisé explicitement.
 > comportement-préservant est fait, le résidu (tables de constantes + cœurs
 > interactifs) est hors périmètre = tickets dédiés. Méthode + bilan en mémoire de
 > session (`u02-prep-decomposition-method`).
+>
+> **Mise à jour 2026-06-28.** Nouvel audit général (`AUDIT_2026-06-28.md`, base
+> `docs/smoke-u02-progress`, post-v0.2.7) — 6 agents par domaine + contre-vérification
+> manuelle des findings tête d'affiche. Section dédiée ci-dessous. Cette passe, plus
+> orientée *correction* qu'architecture, ouvre **~40 findings neufs** dont **2 🔴**
+> (DoS CQL `QRY-01`, mauvais code HTTP `SID-01`) et un cluster sécurité/intégrité 🟠
+> *local mais exploitable* — **tous ouverts** (aucun correctif appliqué). Elle confirme
+> par ailleurs **clos dans le code** (pas seulement le tracker) la quasi-totalité des
+> findings 2026-06-12 : A-02, A-03/A-03B, Q-01, Q-02, Q-03, T-01→T-03, N-01→N-04, N-07,
+> S-01→S-04, U-01, C-01, R-01a→d, ADR-039, F-04, DEP-1, D-02, D-04. Elle **re-confirme
+> ouverts** A-01, A-04, Q-04, U-02, U-04, N-05, N-06, N-08, F-03, T-05, D-03, D-05.
+> **Aggravations** : `Q-05`→`QRY-01` (DoS reproduit 114 s), `D-06`→`OPS-03` (drift contrat
+> 1.6.23 vs 1.6.31, +8 patches), roleBadge drift→`SEC-02`/`FE-01`.
+
+---
+
+## Audit 2026-06-28 (post-v0.2.7, base `docs/smoke-u02-progress`) — `AUDIT_2026-06-28.md`
+
+Findings **neufs** de la passe du 2026-06-28. Tous **⬜ ouverts** (aucun correctif appliqué
+— l'audit est en lecture seule). « ✔ » = re-vérifié manuellement dans le code au-delà de
+l'agent. Priorités = §6 de `AUDIT_2026-06-28.md` (P0 = correctifs ponctuels immédiats ;
+P1 = durcissement sécurité/intégrité ; P2 = fond de panier). Détail + preuve `fichier:ligne`
+dans le fichier d'audit, §4.
+
+> **Lot P0 corrigé le 2026-06-28** (même commit que cette transcription) :
+> **ENG-01, QRY-01, QRY-02, QRY-03, SID-01, SID-02, SID-03** → ✅ corrigé
+> (correctif + test de régression + CHANGELOG `[Unreleased]`). **SID-05 différé** :
+> le fix atomique impose de passer l'URL distante à `dispatch_import` et aux
+> 7 importeurs (hors périmètre du lot ponctuel) — reste ⬜. Tous les autres
+> findings de la passe restent ⬜.
+>
+> **Passe de revue adverse (même jour, commit de suivi)** — deux incomplétudes des
+> correctifs ci-dessus, refermées : (a) **SID-02 était une classe**, pas un cas
+> isolé — l'auth d'écriture par match exact laissait **6 routes mutatrices sans
+> token** : `/curate/exceptions/set|delete`, `/export/tmx|bilingual`, et surtout
+> `/families/{id}/segment|align` (resegment / ré-alignement **destructifs**). Set
+> extrait au niveau module (`_WRITE_PATHS`) + prédicat pur **testable**
+> `_post_requires_write_token` couvrant aussi les routes à segment dynamique ;
+> 32 tests (`test_sidecar_write_paths.py`). (b) **QRY-02** contournable par **espace
+> de tête** avant `=` (`" =1+1"`, NBSP) — corrigé (inspection du 1ᵉʳ caractère
+> non-blanc). Reviewer adverse a aussi confirmé **0 bug/régression** sur les 7
+> correctifs et **0 autre appel `_send_error` positionnel** (SID-01, 303 appels
+> scannés).
+
+### Ouverts — Correction & intégrité (moteur)
+
+| ID | Sév | Prio | Statut | Constat (résumé) |
+|----|-----|------|--------|------------------|
+| ENG-01 ✔ | 🟠 | P0-5 | ✅ corrigé | Styles inline ODT perdus à l'import : `odt_para_to_rich_text(elem, style_map)` en 2-positionnel → `style_map` lié au param `ns` (mort), vrai param `None`→`{}` ; **tous** les imports ODT perdent `<hi rend>`. Tests masquent (forme 3-args). `odt_common.py:133` / `rich_text.py:282`. |
+| ENG-02 | 🟡 | P2-19 | ⬜ ouvert | Préfixe `[n]` désaligné plain vs rich (`prefix_len = m.start(2)` calc. sur plain, appliqué à `text_raw` rich). `docx_numbered_lines.py:90` / `odt_numbered_lines.py:57`. |
+| ENG-03 | 🟡 | P2-19 | ⬜ ouvert | merge/split ne renvoient pas `fts_stale` ; merge laisse une ligne FTS orpheline que `stale_doc_ids()` n'attrape pas (détectée par diagnostics). `sidecar.py:4556,4650` / `indexer.py:245`. |
+| ENG-04 | 🟢 | P2-19 | ⬜ ouvert | `update_unit_text` peut indexer en FTS une unité `structure` (pas de contrôle `unit_type`). `units_service.py:189`. |
+| ENG-05 | 🟢 | P2-19 | ⬜ ouvert | TEI `<p>`/`<s>` imbriqués comptés 2× (texte dupliqué ; très rare). `tei_importer.py:60,155`. |
+
+### Ouverts — Requête / curation / export / CLI
+
+| ID | Sév | Prio | Statut | Constat (résumé) |
+|----|-----|------|--------|------------------|
+| QRY-01 ✔ | 🔴 | P0-2 | ✅ corrigé | **DoS algorithmique CQL** : récursion exponentielle (`seen` ne déduplique qu'aux feuilles), cap `_MAX_REPEAT` par-quantifieur seulement. `[]{0,30}×4` sur 100 tokens = **114 s**. Exposé via `/token_query`/`/token_stats`/`/token_collocates`. Aggrave Q-05. `token_query.py:57` / `cql_parser.py:152`. |
+| QRY-02 ✔ | 🟠 | P0-4 | ✅ corrigé | **Injection de formule CSV** : neutralisation par préfixe `'`. Étendu (revue adverse) : inspection du **1ᵉʳ caractère non-blanc** → contournement par espace/NBSP de tête fermé. `csv_export.py`. |
+| QRY-03 | 🟠 | P0-4 | ✅ corrigé | **XSS rapport QA HTML** : `render_qa_report_html` interpole title/language/gates en f-strings bruts (vs `html.escape` ailleurs). `qa_report.py:360-405`. |
+| QRY-04 | 🟠 | P1-11 | ⬜ ouvert | Contrat CLI rompu : `serve --host` invalide fait `raise SystemExit(str)` → aucun JSON sur stdout. `cli.py:905,1746`. |
+| QRY-05 | 🟡 | P2-19 | ⬜ ouvert | Backref JS `$NN` toujours mappé `\g<NN>` même si le groupe n'existe pas → preset Find/Replace JS valide casse. `curation.py:62`. |
+| QRY-06 | 🟡 | P2-19 | ⬜ ouvert | Garde ReDoS incomplet (`(a|a)*`, `(a|ab)*`, `((a)*)*` non détectés) ; filet réel = `_MAX_REGEX_LEN`. `query.py:32` / `curation.py:38`. |
+| QRY-07 | 🟡 | P2-19 | ⬜ ouvert | `source_ext` : `LIKE "%"+ext` non échappé (vs author/title qui échappent + `ESCAPE`). Sémantique LIKE incohérente, pas SQLi. `query.py:577`. |
+| QRY-08 | 🟢 | P2-19 | ⬜ ouvert | `rules_fired` : détection regex sans flags V0 + recompilation pattern×unité. `curation.py:287`. |
+| QRY-09 | 🟢 | P2-19 | ⬜ ouvert | `_HIGHLIGHT_CLOSE` déclaré au milieu d'un corps de fonction. `query.py:25,93`. |
+
+### Ouverts — Sidecar / services / contrat
+
+| ID | Sév | Prio | Statut | Constat (résumé) |
+|----|-----|------|--------|------------------|
+| SID-01 ✔ | 🔴 | P0-1 | ✅ corrigé | `_send_error(400, "BAD_REQUEST", "…")` en positionnel (code/http_status keyword-only) → `TypeError` → **500 au lieu de 400** sur `/families/{id}/curation_status` id non-entier. `sidecar.py:639` (sig. `:422`). |
+| SID-02 / SEC-01 ✔ | 🟠 | P0-3 | ✅ corrigé | `/jobs` était absent de `_write_paths` → mutation DB **sans token**. **Étendu (revue adverse) : classe entière** — 6 routes mutatrices passaient à travers le match exact (`/curate/exceptions/set\|delete`, `/export/tmx\|bilingual`, `/families/{id}/segment\|align`). Set extrait (`_WRITE_PATHS`) + prédicat testable `_post_requires_write_token`. `sidecar.py:406,459,807` ; `test_sidecar_write_paths.py`. |
+| SID-03 | 🟠 | P0-6 | ✅ corrigé | Mutations multi-statements non atomiques sans rollback (`delete_documents`, `bulk_update_documents`) sur connexion partagée ; 1 seul `rollback()` dans tout le sidecar. `documents_service.py:164-262` / `connection.py:14`. |
+| SID-04 | 🟠 | P1-7 | ⬜ ouvert | SSRF : `validate_remote_url` n'interdit pas loopback/RFC1918/link-local/169.254.169.254 ; `/webdav/list` lock-free sans token. `webdav.py:73`. |
+| SID-05 | 🟠 | P0-6 | ⬜ ouvert (différé) | Provenance ShareDocs non atomique : import commit puis UPDATE `source_path` 2ᵉ commit ; crash entre → `source_path = tmp_path`. **Différé du lot P0** : fix atomique = passer l'URL distante à `dispatch_import` + aux 7 importeurs (la fenêtre de crash ne se ferme pas sans cela). `ingest.py:195-208`. |
+| SID-06 | 🟠 | P1-13 | 🟦 partiel | 11 routes hors OpenAPI ; le contract-freeze ne voit que le snapshot. **Volet auth refermé** (extension SID-02 : `/curate/exceptions/set\|delete` etc. désormais dans `_WRITE_PATHS` — l'audit les disait à tort déjà protégées). Reste le **volet documentation contrat** (routes absentes de l'OpenAPI). `sidecar.py`. |
+| SID-07 | 🟡 | P2-19 | ⬜ ouvert | `code="EXPORT_WRITE_ERROR"` hors catalogue `ERR_*`/`ErrorResponse`. `sidecar.py:2612,2742`. |
+| SID-08 | 🟡 | P2-15 | ⬜ ouvert | Champ `version` ambigu : `/health`=ENGINE (0.2.7), reste=API (1.6.23). Non documenté. `sidecar.py:607`. |
+| SID-09 | 🟡 | P0-1/A-01 | ⬜ ouvert | A-03 résiduel : `validate()` sur 3 endpoints, ~22 handlers en validation manuelle (dette assumée « pilote »). `request_schemas.py:127`. |
+| SID-10 | 🟡 | P2-19 | ⬜ ouvert | `_lock()` annoté `Lock` mais c'est un `RLock`. `sidecar.py:467` vs `8060`. |
+| SID-11 | 🟡 | P2-19 | ⬜ ouvert | `JobRecord` docstring 4 statuts (omet `canceled`). `sidecar_jobs.py:26`. |
+| SID-12 | 🟡 | P2-19 | ⬜ ouvert | Coerce-int dupliqué/incohérent (`_int_or` vs `validate` vs `int()` nu). `curate_service.py:32,52`. |
+| SID-13 | 🟡 | P2-19 | ⬜ ouvert | OpenAPI `security:[{"token":[]}]` mais `components` sans `securitySchemes` → `$ref` morts. `sidecar_contract.py:1879`. |
+| SID-14 | 🟡 | P2-19 | ⬜ ouvert | Timeout WebDAV fixe (30 s) non configurable, per-read (pas de budget total). `webdav.py:28` / `ingest.py:103`. |
+| SID-15 | 🟡 | P2-19 | ⬜ ouvert | Pic disque ShareDocs (temp non purgés par fichier, `rmtree` global en fin). `ingest.py:116`. |
+| SID-16 | 🟢 | P2-19 | ⬜ ouvert | Commentaire changelog égaré (sémantique 1.6.29 collée à 1.6.31). `sidecar_contract.py:100`. |
+
+### Ouverts — Sécurité transverse & Rust
+
+| ID | Sév | Prio | Statut | Constat (résumé) |
+|----|-----|------|--------|------------------|
+| SEC-02 / FE-01 | 🟠 | P1-8 | ⬜ ouvert | roleBadge drift : `UnitInspectorPanel` injecte `--role-color:${color}` **sans `safeColor`** ; couleur non validée serveur (create+update verbatim). `UnitInspectorPanel.ts:50` / `conventions_service.py:90,154`. |
+| SEC-03 | 🟡 | P2-19 | ⬜ ouvert | Aucune CSP dans les 4 `tauri.conf.json` (défense en profondeur, critique surtout pour le shell). `tauri-shell/src-tauri/tauri.conf.json:24`. |
+| SEC-04 | 🟡 | P2-19 | ⬜ ouvert | Portfile `0o600` non effectif sur Windows (token hérite de l'ACL parent ; même-utilisateur). `sidecar.py:8170`. |
+| SEC-05 | 🟢 | P2-19 | ⬜ ouvert | `register_sidecar` (Rust) fait confiance à `base_url` JS pour `/shutdown` (théorique : appelant déjà détenteur du token). `main.rs:262`. |
+| SEC-06 | 🟢 | P2-19 | ⬜ ouvert | `sidecar_fetch_loopback` recopie headers JS sans allowlist (host loopback → impact ~nul). `main.rs:59`. |
+| SEC-07 | 🟢 | P2-19 | ⬜ ouvert | `serve --token <secret-littéral>` persiste verbatim dans `runs.params` (mode `auto` du shell = sûr). `cli.py:915`. |
+| SEC-08 | 🟢 | — | 🔵 connu | `richTextToHtml` réinjecte `<hi>` sans ré-échapper, sûr sous l'invariant ADR « text_raw XML-échappé à l'import ». `sidecarClient.ts:118`. |
+
+### Ouverts — Front-ends
+
+| ID | Sév | Prio | Statut | Constat (résumé) |
+|----|-----|------|--------|------------------|
+| FE-02 | 🟠 | P1-9 | ⬜ ouvert | Fuite de 3 listeners `document` dans l'Explorer (`disposeApp` ne les retire pas) → accumulation à chaque re-montage dans le shell. `buildUI.ts:285,846,976`. |
+| FE-03 | 🟠 | P2-17 | ⬜ ouvert | CSS non préfixé massif `tauri-app` (~30+ classes hors `app-*`) → collision dans la webview shell. `buildUI.ts:281` etc. |
+| FE-04 | 🟠 | P2-17 | ⬜ ouvert | CSS non préfixé massif `tauri-prep` (~90 classes hors `prep-*` ; `col-*` collisionne `col-head` app). `AnnotationView.ts`, `MetadataScreen.ts`. |
+| FE-05 | 🟠 | P1-12 | ⬜ ouvert | 5 dialogues natifs (violation convention) : `alert` ×5 + `window.confirm`. `app.ts:1055`, `SegmentationView.ts:1007`, `tauri-app/.../export.ts:151`. |
+| FE-06 | 🟡 | P2-18 | ⬜ ouvert | (= U-03) `tauri-app` non testé sur `ui/dom.ts` (1788 l.), results/metaPanel/stats/docSelector/importFlow. |
+| FE-07 | 🟡 | — | ⬜ ouvert | (= U-05) i18n absent (FR en dur). |
+| FE-08 | 🟡 | P2-19 | ⬜ ouvert | Listeners `window` non retirés dans `prep/app.ts` (faible : mono-instance). `app.ts:188,436`. |
+| FE-09 | 🟢 | — | ❌ écarté | « Dual sidecarClient state » = faux positif : un seul `_conn` partagé via `shared/sidecarCore.ts`. |
+| FE-10 | 🟢 | — | ❌ écarté | Handlers async `MetadataScreen` « sans try/catch » surévalués : les méthodes appelées ont leur propre `try`. |
+
+### Ouverts — CI/CD, build, supply chain, gouvernance
+
+| ID | Sév | Prio | Statut | Constat (résumé) |
+|----|-----|------|--------|------------------|
+| OPS-01 | 🟠 | P1-10 | ⬜ ouvert | Growth-gate `sidecar.py` rendu non bloquant (`::warning::` + `exit 0`) → seuil 500 l. informatif, gate contournable. `sidecar-growth-gate.yml:99`. |
+| OPS-02 | 🟠 | P1-10 | ⬜ ouvert | `smoke.yml` (et `release-gate.yml`) `main`-only alors que `dev` est la branche PR par défaut → PR vers `dev` sans smoke. `smoke.yml:3`. |
+| OPS-03 | 🟡 | P2-15 | ⬜ ouvert | Drift `API_VERSION` (1.6.23) vs `CONTRACT_VERSION` (1.6.31) **aggravé** à 8 patches (était 1.6.27). Aggrave D-06. `sidecar_contract.py:17`. |
+| OPS-04 | 🟡 | P2-19 | ⬜ ouvert | Commentaire `pyproject.toml` périmé (gate 35 « proven lower bound » vs CI 60). `pyproject.toml:64`. |
+| OPS-05 | 🟡 | P2-19 | ⬜ ouvert | CHANGELOG courant recrû à 607 l. (557 après archivage D-02). |
+
+**Rappels — antérieurs re-confirmés ouverts par cette passe** (déjà tracés ci-dessous / en
+2026-06-12, non dupliqués ici) : `A-01` (sidecar 8 885 l., point d'arrêt), `A-04`, `Q-04`,
+`U-02` (point d'arrêt), `U-04`, `N-05`, `N-06`, `N-08`, `F-03` (SHA-pinning), `T-05` (driver
+E2E), `D-03`, `D-05`.
+
+**Trou de tests transversal.** 23 modules moteur sans `test_<module>.py` direct ; prioriser
+`aligner`, `importers/dispatch`, `db/connection`, `sidecar_contract` (logique centrale).
 
 ---
 

@@ -395,6 +395,90 @@ def _run_alignment_strategy(
 # ---------------------------------------------------------------------------
 
 
+# ── POST write-path authorization (audit SID-02) ─────────────────────────────
+# Exact-match POST routes that mutate server state (DB rows or files on disk) and
+# therefore require the write token when the server runs with --token. Dynamically
+# dispatched mutators (/jobs/<uuid>/cancel, /families/<id>/{segment,align}) cannot
+# live in an exact set — they are handled by _post_requires_write_token() below.
+# This set is the single source of truth for the do_POST token gate; any new
+# mutating POST route MUST be added here (or to the predicate) or it ships
+# unauthenticated.
+_WRITE_PATHS = frozenset({
+    # Core mutators
+    "/index", "/import", "/import/preview", "/shutdown",
+    "/annotate",
+    "/db/backup",
+    "/corpus/info",
+    # Document / relation writes
+    "/documents/update", "/documents/bulk_update", "/documents/delete",
+    "/doc_relations/set", "/doc_relations/delete",
+    # Exports (write to disk)
+    "/export/tei", "/export/align_csv", "/export/run_report",
+    "/export/conllu",
+    "/export/token_query_csv",
+    "/export/ske",
+    "/export/tmx", "/export/bilingual",
+    "/curate/exceptions/export",
+    "/curate/apply-history/export",
+    "/tokens/update",
+    # Apply history record (writes to DB)
+    "/curate/apply-history/record",
+    # Alignment writes (previously unprotected — fixed in 1.4.1)
+    "/align",
+    "/align/link/create",
+    "/align/link/update_status", "/align/link/delete", "/align/link/retarget",
+    "/align/link/acknowledge_source_change",
+    "/align/links/batch_update",
+    "/align/collisions/resolve",
+    # Other DB-mutating operations (fixed in 1.4.1)
+    "/curate",
+    "/segment",
+    # Curation exceptions — set/delete write the DB (were missing → token bypass, SID-02)
+    "/curate/exceptions/set", "/curate/exceptions/delete",
+    # Unit structural edits
+    "/units/merge", "/units/split",
+    "/segment/insert_structure_unit",
+    "/segment/delete_structure_unit",
+    "/segment/apply_propagated",
+    "/units/update_text",
+    # Prep undo (Mode A)
+    "/prep/undo",
+    # Convention / role system
+    "/conventions", "/conventions/delete",
+    "/units/set_role", "/units/bulk_set_role",
+    "/documents/set_text_start",
+    # Async jobs — both /jobs (submit) and /jobs/enqueue start DB-mutating
+    # background work (index/curate/segment). /jobs was missing → bypass (SID-02).
+    "/jobs", "/jobs/enqueue",
+    # ShareDocs / WebDAV ingestion (Phase 2) — writes via async job.
+    # NB: /webdav/list is read-only (PROPFIND) → NOT here, dispatched lock-free.
+    "/import-remote",
+})
+
+
+def _post_requires_write_token(path: str) -> bool:
+    """Whether a POST to *path* mutates server state and must carry the write token.
+
+    Covers the exact-match routes in :data:`_WRITE_PATHS` plus the dynamically
+    dispatched mutators the exact set cannot see (audit SID-02):
+    ``/jobs/<uuid>/cancel`` and ``/families/<id>/segment`` / ``/families/<id>/align``
+    (the latter two resegment / re-align — destructive DB writes).
+    """
+    if path in _WRITE_PATHS:
+        return True
+    # /jobs/<uuid>/cancel
+    if path.startswith("/jobs/") and path.endswith("/cancel") and path.count("/") == 3:
+        return True
+    # /families/<id>/segment and /families/<id>/align
+    if (
+        path.startswith("/families/")
+        and (path.endswith("/segment") or path.endswith("/align"))
+        and path.count("/") == 3
+    ):
+        return True
+    return False
+
+
 class _CorpusHandler(BaseHTTPRequestHandler):
     """Request handler for the corpus sidecar API."""
 
@@ -636,7 +720,11 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             try:
                 fam_root_id = int(parts[2])
             except (IndexError, ValueError):
-                self._send_error(400, "BAD_REQUEST", "Invalid family_root_id in path")
+                self._send_error(
+                    "Invalid family_root_id in path",
+                    code="BAD_REQUEST",
+                    http_status=400,
+                )
                 return
             self._handle_family_curation_status(fam_root_id)
         elif path == "/align/source_changed_summary":
@@ -716,62 +804,16 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             body = self._read_body()
             path = urlparse(self.path).path
 
-            _write_paths = {
-                # Core mutators
-                "/index", "/import", "/import/preview", "/shutdown",
-                "/annotate",
-                "/db/backup",
-                "/corpus/info",
-                # Document / relation writes
-                "/documents/update", "/documents/bulk_update", "/documents/delete",
-                "/doc_relations/set", "/doc_relations/delete",
-                # Exports (write to disk)
-                "/export/tei", "/export/align_csv", "/export/run_report",
-                "/export/conllu",
-                "/export/token_query_csv",
-                "/export/ske",
-                "/curate/exceptions/export",
-                "/curate/apply-history/export",
-                "/tokens/update",
-                # Apply history record (writes to DB)
-                "/curate/apply-history/record",
-                # Alignment writes (previously unprotected — fixed in 1.4.1)
-                "/align",
-                "/align/link/create",
-                "/align/link/update_status", "/align/link/delete", "/align/link/retarget",
-                "/align/link/acknowledge_source_change",
-                "/align/links/batch_update",
-                "/align/collisions/resolve",
-                # Other DB-mutating operations (fixed in 1.4.1)
-                "/curate",
-                "/segment",
-                # Unit structural edits
-                "/units/merge", "/units/split",
-                "/segment/insert_structure_unit",
-                "/segment/delete_structure_unit",
-                "/segment/apply_propagated",
-                "/units/update_text",
-                # Prep undo (Mode A)
-                "/prep/undo",
-                # Convention / role system
-                "/conventions", "/conventions/delete",
-                "/units/set_role", "/units/bulk_set_role",
-                "/documents/set_text_start",
-                # Async jobs
-                "/jobs/enqueue",
-                # ShareDocs / WebDAV ingestion (Phase 2) — writes via async job.
-                # NB: /webdav/list is read-only (PROPFIND) → NOT here, dispatched
-                # lock-free below alongside /shutdown.
-                "/import-remote",
-            }
-            # /jobs/<uuid>/cancel is also a write path (token required)
+            if _post_requires_write_token(path) and not self._require_token_for_write():
+                return
+
+            # /jobs/<uuid>/cancel routing flag (the token gate above already covers it
+            # via _post_requires_write_token); recomputed here for dispatch below.
             _is_cancel = (
                 path.startswith("/jobs/")
                 and path.endswith("/cancel")
                 and path.count("/") == 3
             )
-            if (path in _write_paths or _is_cancel) and not self._require_token_for_write():
-                return
 
             # /shutdown touches no DB → keep it lock-free so it stays responsive even
             # when a DB handler holds the lock (R-01b). Everything below dispatches
