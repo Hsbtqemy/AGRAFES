@@ -16,6 +16,22 @@ import pytest
 docx = pytest.importorskip("docx")
 
 
+# ─── ENG-02: [n] prefix stripped from rich, not by the plain offset ──────────
+def test_paragraph_to_unit_strips_marker_despite_leading_whitespace(monkeypatch) -> None:
+    """ENG-02: leading whitespace (or any normalize length change) shifts the
+    plain-text offset; slicing the rich text by it leaks the closing ']'. The
+    marker must be re-matched on rich.lstrip()."""
+    from multicorpus_engine.importers import docx_numbered_lines as mod
+
+    # rich has two leading spaces → plain ("[1] hello") offset 4 would slice
+    # rich="  [1] hello" at "] hello" (marker leakage). The fix yields "hello".
+    monkeypatch.setattr(mod, "para_to_rich_text", lambda para: "  [1] hello")
+    result = mod._paragraph_to_unit(object(), 1)
+    assert result is not None
+    unit_type, _n, ext_id, text_raw, _text_norm, _meta = result
+    assert (unit_type, ext_id, text_raw) == ("line", 1, "hello")
+
+
 # ─── Fixtures: synthetic DOCX builders ──────────────────────────────────────
 
 

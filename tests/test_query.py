@@ -5,6 +5,34 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+from multicorpus_engine.query import _apply_doc_filters
+
+
+# ── QRY-07: source_ext LIKE escaping ──────────────────────────────────────────
+def _filters_for_ext(ext: str) -> tuple[list[str], list]:
+    filters: list[str] = []
+    params: list = []
+    _apply_doc_filters(
+        filters, params,
+        language=None, doc_id=None, doc_ids=None, resource_type=None,
+        doc_role=None, author=None, title_search=None,
+        doc_date_from=None, doc_date_to=None, source_ext=ext,
+    )
+    return filters, params
+
+
+def test_source_ext_filter_uses_escape_clause() -> None:
+    """QRY-07: the source_ext LIKE clause carries an ESCAPE, like author/title."""
+    filters, params = _filters_for_ext("docx")
+    assert filters == ["d.source_path LIKE ? ESCAPE '\\'"]
+    assert params == ["%.docx"]
+
+
+def test_source_ext_filter_escapes_like_wildcards() -> None:
+    """QRY-07: % and _ in the extension are escaped so they match literally."""
+    _, params = _filters_for_ext("a_b%c")
+    # leading '.' is prepended; the wildcards are backslash-escaped
+    assert params == ["%.a\\_b\\%c"]
 
 
 def _setup_corpus(db_conn: sqlite3.Connection, simple_docx: Path) -> None:
