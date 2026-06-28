@@ -1,14 +1,16 @@
 # F-03 : épingler les GitHub Actions au SHA (supply-chain)
 
-> **Statut : 🟦 partiel — Option B livrée (3 actions tierces), Option A restante.**
-> Finding **F-03** de l'audit (`docs/AUDIT_FOLLOW_UP.md`). Lot **indépendant** des PR
-> P0–P3 (ne touche que `.github/workflows/`), **entièrement vérifiable** (un mauvais SHA
-> casse la CI → détecté immédiatement), **sans QA visuelle**.
+> **Statut : ✅ complet (Option B PR #166 + Option A empilée).** Finding **F-03** de
+> l'audit (`docs/AUDIT_FOLLOW_UP.md`). Lot **indépendant** des PR P0–P3 (ne touche que
+> `.github/workflows/`), **sans QA visuelle**.
 >
-> **Fait (Option B)** : `dtolnay/rust-toolchain` (×3, + `with: toolchain: stable`),
-> `softprops/action-gh-release` (×2), `Swatinem/rust-cache` (×2) épinglés au SHA — les
-> 7 occurrences tierces (le gros du risque). **Reste (Option A)** : les 6 actions
-> first-party `actions/*` (77 occurrences) — best-practice, à pinner dans un second lot.
+> **Option B** (PR #166) : `dtolnay/rust-toolchain` (×3, + `with: toolchain: stable`),
+> `softprops/action-gh-release` (×2), `Swatinem/rust-cache` (×2) — 7 occurrences tierces
+> (le gros du risque), dans des workflows **tag/dispatch-only** (non exercés par la CI PR).
+>
+> **Option A** (ce lot) : les 6 actions first-party `actions/*` — **77 occurrences** —
+> épinglées au SHA. Contrairement à B, elles vivent surtout dans `ci.yml`/`smoke.yml`
+> (**PR-déclenchés**) → **réellement exécutées et validées par la CI de ce PR**.
 
 Note de cadrage figée **avant** ouverture du ticket.
 
@@ -84,6 +86,14 @@ au SHA, il **faut ajouter l'input explicite** :
 ```
 
 Sans ça, le canal installé dépendrait silencieusement du défaut du commit pinné.
+
+> **Limite connue (Dependabot)** : la dtolnay est commentée `# stable` (une *branche*,
+> pas un semver) → Dependabot ne sait **pas** la bumper automatiquement, contrairement
+> aux pins commentés `# vX.Y.Z`. Conséquence : le *code de l'action* reste figé au SHA
+> jusqu'à une mise à jour manuelle, mais le **canal Rust reste à jour** (sélectionné par
+> `toolchain: stable` au runtime). Compromis assumé : pinner (immuable, sûr) prime sur
+> l'auto-bump pour cette action à faible churn. Re-pinner à la main périodiquement via
+> `gh api repos/dtolnay/rust-toolchain/commits/stable --jq .sha`.
 
 ## 5. Vérification (critères d'acceptation)
 
