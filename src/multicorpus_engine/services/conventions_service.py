@@ -15,6 +15,7 @@ the supplied (coerced) input category.
 
 from __future__ import annotations
 
+import re
 import sqlite3
 from typing import Any
 
@@ -73,6 +74,23 @@ def list_conventions(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     return [_project(r, _cat(r)) for r in rows]
 
 
+_HEX_COLOR_RE = re.compile(r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
+
+
+def _validate_color(color: object) -> str:
+    """Return a clean hex color, or raise ValidationError.
+
+    Convention colors are injected into a CSS custom property (``--role-color``)
+    in the front-ends; restricting them to ``#RGB`` / ``#RRGGBB`` at the source
+    closes CSS-injection / attribute-breakout via a hostile color (audit SEC-02,
+    paired with the front-end ``safeColor`` guard).
+    """
+    c = (str(color) if color is not None else "").strip()
+    if not _HEX_COLOR_RE.match(c):
+        raise ValidationError("color must be a hex value like #6366f1 or #abc")
+    return c
+
+
 _CREATE_CONVENTION_SCHEMA = (
     Field("name", str, strip=True),
     Field("label", str, strip=True),
@@ -87,7 +105,7 @@ def create_convention(conn: sqlite3.Connection, body: dict) -> dict[str, Any]:
     clean = validate(body, _CREATE_CONVENTION_SCHEMA)
     name = clean["name"]
     label = clean["label"]
-    color = (body.get("color") or "#6366f1").strip()
+    color = _validate_color(body.get("color") or "#6366f1")
     icon = body.get("icon")
     sort_order = body.get("sort_order", 0)
     category = (body.get("category") or "text").strip()
@@ -159,6 +177,8 @@ def update_convention(
             val = body[col]
             if col == "category" and val not in ("structure", "text"):
                 val = "text"
+            if col == "color":
+                val = _validate_color(val)
             fields.append(f"{col}=?")
             params.append(val)
     if not fields:

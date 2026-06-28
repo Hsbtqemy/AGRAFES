@@ -38,6 +38,23 @@ def test_create_returns_convention(db_conn: sqlite3.Connection) -> None:
     assert conv["created_at"]                     # NOT NULL default populated
 
 
+def test_create_rejects_non_hex_color(db_conn: sqlite3.Connection) -> None:
+    """Convention color is restricted to hex at the source (audit SEC-02 / roleBadge)."""
+    with pytest.raises(ValidationError):
+        create_convention(db_conn, {"name": "evil", "label": "X", "color": '#x" onload=alert(1)'})
+
+
+def test_create_accepts_short_and_long_hex(db_conn: sqlite3.Connection) -> None:
+    assert create_convention(db_conn, {"name": "c3", "label": "X", "color": "#abc"})["color"] == "#abc"
+    assert create_convention(db_conn, {"name": "c6", "label": "X", "color": "#A1B2C3"})["color"] == "#A1B2C3"
+
+
+def test_update_rejects_non_hex_color(db_conn: sqlite3.Connection) -> None:
+    create_convention(db_conn, {"name": "upd", "label": "X"})
+    with pytest.raises(ValidationError):
+        update_convention(db_conn, "upd", {"color": "red; background:url(x)"})
+
+
 def test_create_conflict(db_conn: sqlite3.Connection) -> None:
     create_convention(db_conn, {"name": "dup", "label": "Dup"})
     with pytest.raises(ConflictError):

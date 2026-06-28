@@ -35,6 +35,15 @@ def _parse_single_json(stdout: str) -> dict:
     return payload
 
 
+def test_serve_invalid_host_emits_single_json_error(tmp_path: Path) -> None:
+    """`serve --host <non-loopback>` emits ONE JSON error object, not plain text (audit QRY-04)."""
+    proc = _run_cli(["serve", "--db", str(tmp_path / "x.db"), "--host", "8.8.8.8"])
+    assert proc.returncode == 1
+    payload = _parse_single_json(proc.stdout)
+    assert payload["status"] == "error"
+    assert "loopback" in payload["error"].lower()
+
+
 def test_cli_smoke_flow_returns_single_json_object(tmp_path: Path) -> None:
     """Smoke: init/import/index/query(segment+kwic) keeps strict JSON contract."""
     db_path = tmp_path / "smoke.db"

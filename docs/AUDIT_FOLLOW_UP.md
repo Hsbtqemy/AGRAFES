@@ -75,6 +75,13 @@ dans le fichier d'audit, §4.
 > non-blanc). Reviewer adverse a aussi confirmé **0 bug/régression** sur les 7
 > correctifs et **0 autre appel `_send_error` positionnel** (SID-01, 303 appels
 > scannés).
+>
+> **Lot P1 (commit suivant)** : **SID-04** (SSRF — IP internes bloquées),
+> **QRY-04** (contrat CLI `serve --host`), **SEC-02/FE-01** (couleur convention :
+> validation hex serveur + `safeColor` front → drift roleBadge résorbé) → ✅ ;
+> **OPS-02** smoke sur `dev` (🟦 — `release-gate` laissé). **OPS-01** laissé
+> `📝 documenté` (gate informatif assumé). **Différé** (lot front suivant) :
+> FE-02 (fuite listeners), FE-05 (dialogues natifs), FE-03/04 (CSS non préfixé).
 
 ### Ouverts — Correction & intégrité (moteur)
 
@@ -93,7 +100,7 @@ dans le fichier d'audit, §4.
 | QRY-01 ✔ | 🔴 | P0-2 | ✅ corrigé | **DoS algorithmique CQL** : récursion exponentielle (`seen` ne déduplique qu'aux feuilles), cap `_MAX_REPEAT` par-quantifieur seulement. `[]{0,30}×4` sur 100 tokens = **114 s**. Exposé via `/token_query`/`/token_stats`/`/token_collocates`. Aggrave Q-05. `token_query.py:57` / `cql_parser.py:152`. |
 | QRY-02 ✔ | 🟠 | P0-4 | ✅ corrigé | **Injection de formule CSV** : neutralisation par préfixe `'`. Étendu (revue adverse) : inspection du **1ᵉʳ caractère non-blanc** → contournement par espace/NBSP de tête fermé. `csv_export.py`. |
 | QRY-03 | 🟠 | P0-4 | ✅ corrigé | **XSS rapport QA HTML** : `render_qa_report_html` interpole title/language/gates en f-strings bruts (vs `html.escape` ailleurs). `qa_report.py:360-405`. |
-| QRY-04 | 🟠 | P1-11 | ⬜ ouvert | Contrat CLI rompu : `serve --host` invalide fait `raise SystemExit(str)` → aucun JSON sur stdout. `cli.py:905,1746`. |
+| QRY-04 | 🟠 | P1-11 | ✅ corrigé | `serve --host` invalide émet l'objet JSON d'erreur via `_err` (était `raise SystemExit(str)` → pas de JSON). `cli.py` ; test `test_cli_contract.py::test_serve_invalid_host_emits_single_json_error`. |
 | QRY-05 | 🟡 | P2-19 | ⬜ ouvert | Backref JS `$NN` toujours mappé `\g<NN>` même si le groupe n'existe pas → preset Find/Replace JS valide casse. `curation.py:62`. |
 | QRY-06 | 🟡 | P2-19 | ⬜ ouvert | Garde ReDoS incomplet (`(a|a)*`, `(a|ab)*`, `((a)*)*` non détectés) ; filet réel = `_MAX_REGEX_LEN`. `query.py:32` / `curation.py:38`. |
 | QRY-07 | 🟡 | P2-19 | ⬜ ouvert | `source_ext` : `LIKE "%"+ext` non échappé (vs author/title qui échappent + `ESCAPE`). Sémantique LIKE incohérente, pas SQLi. `query.py:577`. |
@@ -107,7 +114,7 @@ dans le fichier d'audit, §4.
 | SID-01 ✔ | 🔴 | P0-1 | ✅ corrigé | `_send_error(400, "BAD_REQUEST", "…")` en positionnel (code/http_status keyword-only) → `TypeError` → **500 au lieu de 400** sur `/families/{id}/curation_status` id non-entier. `sidecar.py:639` (sig. `:422`). |
 | SID-02 / SEC-01 ✔ | 🟠 | P0-3 | ✅ corrigé | `/jobs` était absent de `_write_paths` → mutation DB **sans token**. **Étendu (revue adverse) : classe entière** — 6 routes mutatrices passaient à travers le match exact (`/curate/exceptions/set\|delete`, `/export/tmx\|bilingual`, `/families/{id}/segment\|align`). Set extrait (`_WRITE_PATHS`) + prédicat testable `_post_requires_write_token`. `sidecar.py:406,459,807` ; `test_sidecar_write_paths.py`. |
 | SID-03 | 🟠 | P0-6 | ✅ corrigé | Mutations multi-statements non atomiques sans rollback (`delete_documents`, `bulk_update_documents`) sur connexion partagée ; 1 seul `rollback()` dans tout le sidecar. `documents_service.py:164-262` / `connection.py:14`. |
-| SID-04 | 🟠 | P1-7 | ⬜ ouvert | SSRF : `validate_remote_url` n'interdit pas loopback/RFC1918/link-local/169.254.169.254 ; `/webdav/list` lock-free sans token. `webdav.py:73`. |
+| SID-04 | 🟠 | P1-7 | ✅ corrigé | SSRF : `validate_remote_url` rejette les **IP littérales** loopback/privées/link-local (incl. `169.254.169.254`) + `localhost`, **sans résolution DNS** (validateur pur). Nom DNS→IP interne = hors périmètre (défense-en-profondeur, sidecar loopback-only). `webdav.py` ; tests `test_webdav_client.py`. |
 | SID-05 | 🟠 | P0-6 | ⬜ ouvert (différé) | Provenance ShareDocs non atomique : import commit puis UPDATE `source_path` 2ᵉ commit ; crash entre → `source_path = tmp_path`. **Différé du lot P0** : fix atomique = passer l'URL distante à `dispatch_import` + aux 7 importeurs (la fenêtre de crash ne se ferme pas sans cela). `ingest.py:195-208`. |
 | SID-06 | 🟠 | P1-13 | 🟦 partiel | 11 routes hors OpenAPI ; le contract-freeze ne voit que le snapshot. **Volet auth refermé** (extension SID-02 : `/curate/exceptions/set\|delete` etc. désormais dans `_WRITE_PATHS` — l'audit les disait à tort déjà protégées). Reste le **volet documentation contrat** (routes absentes de l'OpenAPI). `sidecar.py`. |
 | SID-07 | 🟡 | P2-19 | ⬜ ouvert | `code="EXPORT_WRITE_ERROR"` hors catalogue `ERR_*`/`ErrorResponse`. `sidecar.py:2612,2742`. |
@@ -125,7 +132,7 @@ dans le fichier d'audit, §4.
 
 | ID | Sév | Prio | Statut | Constat (résumé) |
 |----|-----|------|--------|------------------|
-| SEC-02 / FE-01 | 🟠 | P1-8 | ⬜ ouvert | roleBadge drift : `UnitInspectorPanel` injecte `--role-color:${color}` **sans `safeColor`** ; couleur non validée serveur (create+update verbatim). `UnitInspectorPanel.ts:50` / `conventions_service.py:90,154`. |
+| SEC-02 / FE-01 | 🟠 | P1-8 | ✅ corrigé | roleBadge drift **résorbé** : serveur valide la couleur en hex (`conventions_service` create+update → `ValidationError` sinon) ; front `UnitInspectorPanel` passe par `safeColor` (comme les 2 autres renderers). `conventions_service.py` / `UnitInspectorPanel.ts:50` ; tests `test_conventions_service.py`. |
 | SEC-03 | 🟡 | P2-19 | ⬜ ouvert | Aucune CSP dans les 4 `tauri.conf.json` (défense en profondeur, critique surtout pour le shell). `tauri-shell/src-tauri/tauri.conf.json:24`. |
 | SEC-04 | 🟡 | P2-19 | ⬜ ouvert | Portfile `0o600` non effectif sur Windows (token hérite de l'ACL parent ; même-utilisateur). `sidecar.py:8170`. |
 | SEC-05 | 🟢 | P2-19 | ⬜ ouvert | `register_sidecar` (Rust) fait confiance à `base_url` JS pour `/shutdown` (théorique : appelant déjà détenteur du token). `main.rs:262`. |
@@ -151,8 +158,8 @@ dans le fichier d'audit, §4.
 
 | ID | Sév | Prio | Statut | Constat (résumé) |
 |----|-----|------|--------|------------------|
-| OPS-01 | 🟠 | P1-10 | ⬜ ouvert | Growth-gate `sidecar.py` rendu non bloquant (`::warning::` + `exit 0`) → seuil 500 l. informatif, gate contournable. `sidecar-growth-gate.yml:99`. |
-| OPS-02 | 🟠 | P1-10 | ⬜ ouvert | `smoke.yml` (et `release-gate.yml`) `main`-only alors que `dev` est la branche PR par défaut → PR vers `dev` sans smoke. `smoke.yml:3`. |
+| OPS-01 | 🟠 | P1-10 | 📝 documenté | Growth-gate non bloquant **par choix documenté** (`::warning::` + commentaire : les PR de réduction A-01 passaient elles-mêmes au rouge, fenêtre 90 j dominée par la croissance historique). À re-durcir (`exit 1`) une fois le net 90 j confirmé sous le seuil — décision de politique CI, laissée en l'état. `sidecar-growth-gate.yml:99`. |
+| OPS-02 | 🟠 | P1-10 | 🟦 partiel | `smoke.yml` tire désormais sur `[main, dev]` (✅). `release-gate.yml` laissé `main`-only (gate de *release*, lourd sur PR dev — à arbitrer). `smoke.yml:4`. |
 | OPS-03 | 🟡 | P2-15 | ⬜ ouvert | Drift `API_VERSION` (1.6.23) vs `CONTRACT_VERSION` (1.6.31) **aggravé** à 8 patches (était 1.6.27). Aggrave D-06. `sidecar_contract.py:17`. |
 | OPS-04 | 🟡 | P2-19 | ⬜ ouvert | Commentaire `pyproject.toml` périmé (gate 35 « proven lower bound » vs CI 60). `pyproject.toml:64`. |
 | OPS-05 | 🟡 | P2-19 | ⬜ ouvert | CHANGELOG courant recrû à 607 l. (557 après archivage D-02). |

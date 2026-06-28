@@ -12,6 +12,7 @@ docs/DESIGN_sharedocs_ingestion.md §3.
 from __future__ import annotations
 
 import base64
+import ipaddress
 import logging
 import socket
 from dataclasses import dataclass
@@ -70,6 +71,33 @@ class RemoteEntry:
 _ALLOWED_SCHEMES = ("http", "https")
 
 
+def _ip_is_internal(ip: ipaddress._BaseAddress) -> bool:
+    return bool(
+        ip.is_loopback or ip.is_private or ip.is_link_local
+        or ip.is_reserved or ip.is_multicast or ip.is_unspecified
+    )
+
+
+def _host_is_internal(hostname: str) -> bool:
+    """True if *hostname* is a loopback name or an internal IP **literal**.
+
+    Blocks the direct-target SSRF vector — loopback / private / link-local IPs,
+    incl. the cloud metadata endpoint ``169.254.169.254`` — **without resolving
+    DNS**, keeping this a pure, network-free check (it runs at the top of every
+    propfind/download). A DNS name that *resolves* to an internal address is not
+    caught here: that is defence-in-depth out of scope (the sidecar is
+    loopback-only and the client carries no ambient credentials), and resolving
+    here would add a network round-trip + DNS-rebinding TOCTOU to a validator.
+    """
+    h = hostname.strip().strip("[]").lower()
+    if h == "localhost" or h.endswith(".localhost"):
+        return True
+    try:
+        return _ip_is_internal(ipaddress.ip_address(h))
+    except ValueError:
+        return False  # DNS name — not resolved (see docstring)
+
+
 def validate_remote_url(url: str) -> None:
     """Reject any URL the WebDAV client must never fetch.
 
@@ -92,6 +120,11 @@ def validate_remote_url(url: str) -> None:
         )
     if not parts.hostname:
         raise ValueError("url must include a host")
+    if _host_is_internal(parts.hostname):
+        raise ValueError(
+            "url host points to a loopback / private / link-local address (blocked "
+            "to prevent SSRF to internal services)"
+        )
 
 
 def build_auth_header(
