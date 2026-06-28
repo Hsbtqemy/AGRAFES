@@ -15,6 +15,7 @@ Zero stderr output. All findings returned as structured data.
 
 from __future__ import annotations
 
+import html
 import re
 import sqlite3
 from pathlib import Path
@@ -357,8 +358,8 @@ def render_qa_report_html(report: dict) -> str:
     gate_icon = {"ok": "🟢", "warning": "🟡", "blocking": "🔴"}.get(gate_status, "⚪")
     gate_label = {"ok": "Prêt pour publication", "warning": "Avertissements — vérifier avant publication", "blocking": "Bloquant — corrections requises"}.get(gate_status, gate_status)
 
-    blocking_html = "".join(f"<li style='color:#c0392b'>{b}</li>" for b in gates.get("blocking", []))
-    warnings_html = "".join(f"<li style='color:#b8590a'>{w}</li>" for w in gates.get("warnings", []))
+    blocking_html = "".join(f"<li style='color:#c0392b'>{html.escape(str(b))}</li>" for b in gates.get("blocking", []))
+    warnings_html = "".join(f"<li style='color:#b8590a'>{html.escape(str(w))}</li>" for w in gates.get("warnings", []))
 
     summary = report.get("summary", {})
 
@@ -381,9 +382,9 @@ def render_qa_report_html(report: dict) -> str:
         for c in report.get("metadata_readiness", []):
             rows += f"""<tr>
               <td>#{c['doc_id']}</td>
-              <td>{c.get('title','')[:40] or '<em style="color:#c0392b">manquant</em>'}</td>
-              <td>{c.get('language','') or '<em style="color:#c0392b">manquant</em>'}</td>
-              <td>{', '.join(c.get('missing_fields',[])) or '—'}</td>
+              <td>{html.escape((c.get('title') or '')[:40]) or '<em style="color:#c0392b">manquant</em>'}</td>
+              <td>{html.escape(c.get('language') or '') or '<em style="color:#c0392b">manquant</em>'}</td>
+              <td>{', '.join(html.escape(str(x)) for x in c.get('missing_fields',[])) or '—'}</td>
               <td>{_severity_badge(c['severity'])}</td>
             </tr>"""
         return rows

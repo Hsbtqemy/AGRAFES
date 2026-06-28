@@ -54,6 +54,22 @@ def _token_matches(token: dict[str, Any], spec: _CompiledTokenSpec) -> bool:
     return True
 
 
+#: Hard ceiling on matcher recursion steps per token stream. Guards against the
+#: exponential backtracking blow-up of pathological CQL — e.g. several unbounded
+#: quantified wildcards in a row (``[]{0,30}[]{0,30}…``), which under the global
+#: write-lock would otherwise freeze the whole sidecar for minutes (audit QRY-01).
+#: Generous enough for any legitimate query; a stream that needs more is rejected.
+_MAX_MATCH_STEPS = 1_000_000
+
+
+class CqlComplexityError(ValueError):
+    """CQL matching exceeded the complexity budget (pathological query).
+
+    Subclasses :class:`ValueError` so it flows through the same handling as a CQL
+    parse/validation error (sidecar → HTTP 400, CLI → error envelope).
+    """
+
+
 def _find_matches(
     tokens: list[dict[str, Any]],
     specs: list[_CompiledTokenSpec],
@@ -61,8 +77,16 @@ def _find_matches(
     """Sliding-window/backtracking matcher for quantifiers and wildcards."""
     matches: list[_TokenMatch] = []
     seen: set[tuple[int, int, tuple[int, ...]]] = set()
+    steps = 0
 
     def rec(pattern_idx: int, cursor: int, matched_idx: tuple[int, ...]) -> None:
+        nonlocal steps
+        steps += 1
+        if steps > _MAX_MATCH_STEPS:
+            raise CqlComplexityError(
+                "CQL query too complex to evaluate (matcher step budget exceeded). "
+                "Tighten the quantifiers or add predicates to narrow the search."
+            )
         if pattern_idx >= len(specs):
             if not matched_idx:
                 return

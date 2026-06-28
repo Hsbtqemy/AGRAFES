@@ -636,7 +636,11 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             try:
                 fam_root_id = int(parts[2])
             except (IndexError, ValueError):
-                self._send_error(400, "BAD_REQUEST", "Invalid family_root_id in path")
+                self._send_error(
+                    "Invalid family_root_id in path",
+                    code="BAD_REQUEST",
+                    http_status=400,
+                )
                 return
             self._handle_family_curation_status(fam_root_id)
         elif path == "/align/source_changed_summary":
@@ -757,8 +761,10 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 "/conventions", "/conventions/delete",
                 "/units/set_role", "/units/bulk_set_role",
                 "/documents/set_text_start",
-                # Async jobs
-                "/jobs/enqueue",
+                # Async jobs — both /jobs (submit) and /jobs/enqueue start
+                # DB-mutating background work (index/curate/segment). /jobs was
+                # missing here → token bypass on writes (audit SID-02).
+                "/jobs", "/jobs/enqueue",
                 # ShareDocs / WebDAV ingestion (Phase 2) — writes via async job.
                 # NB: /webdav/list is read-only (PROPFIND) → NOT here, dispatched
                 # lock-free below alongside /shutdown.

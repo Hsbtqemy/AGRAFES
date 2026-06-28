@@ -195,6 +195,17 @@ def test_html_report_contains_headings(db_conn: sqlite3.Connection) -> None:
     report = generate_qa_report(db_conn)
     html = render_qa_report_html(report)
     assert "Intégrité import" in html or "int" in html.lower()
+
+
+def test_html_report_escapes_malicious_metadata(db_conn: sqlite3.Connection) -> None:
+    """Doc title is HTML-escaped in the QA report (audit QRY-03 — XSS)."""
+    from multicorpus_engine.qa_report import generate_qa_report, render_qa_report_html
+
+    _populate_doc(db_conn, title="<script>alert(1)</script>", lang="fr")
+    report = generate_qa_report(db_conn)
+    html = render_qa_report_html(report)
+    assert "<script>alert(1)</script>" not in html
+    assert "&lt;script&gt;" in html
     assert "alignement" in html.lower() or "Alignement" in html
     assert "<!DOCTYPE html>" in html
     assert "<table" in html

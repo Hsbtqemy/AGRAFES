@@ -130,6 +130,19 @@ def test_bulk_update_bad_workflow_status(db_conn: sqlite3.Connection) -> None:
         bulk_update_documents(db_conn, {"updates": [{"doc_id": a, "workflow_status": "bogus"}]})
 
 
+def test_bulk_update_is_atomic_on_midbatch_failure(db_conn: sqlite3.Connection) -> None:
+    """A failure mid-batch rolls back the earlier UPDATEs (audit SID-03)."""
+    a, b = _mk_doc(db_conn, "A"), _mk_doc(db_conn, "B")
+    with pytest.raises(ValidationError):
+        bulk_update_documents(db_conn, {"updates": [
+            {"doc_id": a, "title": "CHANGED"},           # applied first…
+            {"doc_id": b, "workflow_status": "bogus"},   # …then this fails → rollback all
+        ]})
+    # The first UPDATE must not have persisted (would read "CHANGED" without the fix).
+    title = db_conn.execute("SELECT title FROM documents WHERE doc_id = ?", (a,)).fetchone()[0]
+    assert title == "A"
+
+
 # --- delete ---------------------------------------------------------------------
 def test_delete_removes_doc_units_relations(db_conn: sqlite3.Connection) -> None:
     a, b = _mk_doc(db_conn, "A"), _mk_doc(db_conn, "B")
