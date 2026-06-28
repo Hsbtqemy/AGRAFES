@@ -89,14 +89,18 @@ Sans ça, le canal installé dépendrait silencieusement du défaut du commit pi
 
 1. **Complétude** : `grep -rE "uses:\s*[^ ]+@(v[0-9]|stable|main|master)" .github/workflows/`
    ne retourne **plus rien** (tous les `uses:` sont `@<sha40>  # comment`).
-2. **YAML valide** + **CI verte** : un mauvais SHA casse *immédiatement* le job qui
-   l'utilise → la CI est le filet. Pousser sur une branche et vérifier que **tous** les
-   jobs résolvent leurs actions.
-3. **Workflows release/sign** (`release.yml`, `macos-sign-*.yml`, `windows-sign*.yml`,
-   `release-gate.yml`) : déclenchés sur **tag/release**, donc **non exercés par une PR
-   `dev`**. Relire leurs SHA **à la main** avec un soin particulier (ce sont les plus
-   sensibles et ceux que la CI de PR ne couvre pas). Option : un push de tag de test sur
-   un fork, ou validation au prochain cycle de release.
+2. **YAML valide** : GitHub **parse** tout workflow modifié à l'ouverture du PR (un YAML
+   cassé apparaît en erreur de workflow), donc la syntaxe est validée même sans exécution.
+   Pour les actions présentes dans des workflows **PR-déclenchés** (`ci.yml`, `smoke.yml` —
+   c'est-à-dire surtout les `actions/*` de l'**Option A**), la CI de PR **exécute**
+   réellement les jobs → un mauvais SHA y casse immédiatement.
+3. **⚠️ Angle mort des actions tierces (Option B)** : les 7 occurrences tierces vivent
+   **uniquement** dans des workflows **`tag`/`workflow_dispatch`-only** —
+   `tauri-shell-build.yml`, `tauri-e2e-fixture.yml`, `release.yml`, `macos-sign-notarize.yml`.
+   **Aucun ne tourne sur une PR `dev`** → la CI de PR ne les **exécute pas**. Relire leurs
+   SHA **à la main** (fait) ; validation réelle au **prochain push de tag** (release) ou via
+   un `workflow_dispatch`. ⚠️ Ne **pas** dispatcher `tauri-shell-build` sur une branche : son
+   step `softprops` utilise `tag_name: github.ref_name` **sans garde de tag** → release bidon.
 4. **Dependabot** : aucune modif requise (`github-actions` déjà couvert). Vérifier après
    coup qu'un éventuel PR Dependabot cible bien le commentaire de version.
 
