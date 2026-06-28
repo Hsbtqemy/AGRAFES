@@ -14,8 +14,12 @@ from typing import Any
 from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
-API_VERSION = "1.6.23"
-CONTRACT_VERSION = "1.6.31"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.32"  # semantic versioning for the sidecar API contract
+# SID-08 / OPS-03: the API version IS the contract version — derived, never a
+# second hand-maintained literal, so the two can no longer drift. /health reports
+# the *engine* version under `version` (it predates the sidecar); every other
+# endpoint's `version` / `api_version` reports this API/contract version.
+API_VERSION = CONTRACT_VERSION
 # 1.4.0: added export_tei_package job kind (Sprint 4 — Publication ZIP)
 # 1.4.1: ERR_CONFLICT (409) for duplicate run_id; token protection on /align, /curate, /segment
 # 1.4.2: document workflow status fields on /documents and metadata update endpoints.
@@ -88,6 +92,8 @@ CONTRACT_VERSION = "1.6.31"  # semantic versioning for the sidecar API contract
 #         Credentials (auth object) are body-only on loopback, used to build the Authorization
 #         header, and NEVER persisted (DB / runs.params / job params / logs / telemetry).
 # 1.6.29: POST /import-remote gains optional `hrefs` (array) — explicit file selection (P4C).
+#         Intersected with the folder PROPFIND listing (an unlisted href is ignored, never
+#         fetched); bypasses the `include` glob. Omit to import the whole folder.
 # 1.6.30: ADR-043 P3 — GET /units items gain `text_raw` + `text_source`; GET /documents/preview
 #         lines gain `text_source` (and document the already-emitted `text_raw`/`unit_role`).
 #         Raw nullable column values so the UI can reveal the verbatim import original when
@@ -97,8 +103,9 @@ CONTRACT_VERSION = "1.6.31"  # semantic versioning for the sidecar API contract
 #         counted per hit, bucketed by the matched document's leading-4-digit doc_date (undated →
 #         '(sans date)', sorted chronologically), and gain tokens_in_period + freq_per_10k
 #         (normalised occurrences / 10k tokens of that year). Additive nullable row fields.
-#         Intersected with the folder PROPFIND listing (an unlisted href is ignored, never
-#         fetched); bypasses the `include` glob. Omit to import the whole folder.
+# 1.6.32: POST /units/merge & POST /units/split responses gain `fts_stale` (boolean, additive) —
+#         both mutate indexed text so the client must reindex; merge also prunes the deleted
+#         unit's orphan FTS row server-side (ENG-03).
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
@@ -1876,7 +1883,7 @@ def openapi_spec() -> dict[str, Any]:
             "/align/collisions/resolve": {
                 "post": {
                     "summary": "Batch-resolve collision links (keep/delete/reject/unreviewed) — token required",
-                    "security": [{"ApiKeyAuth": []}],
+                    "security": [{"token": []}],
                     "requestBody": {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CollisionResolveRequest"}}}},
                     "responses": {
                         "200": {"description": "Batch result"},
@@ -1925,6 +1932,20 @@ def openapi_spec() -> dict[str, Any]:
             },
         },
         "components": {
+            "securitySchemes": {
+                # SID-13: define the scheme every `security: [{"token": []}]` refers
+                # to, otherwise those references dangle. Write endpoints require the
+                # loopback write token in the X-Agrafes-Token header (--token auto).
+                "token": {
+                    "type": "apiKey",
+                    "in": "header",
+                    "name": "X-Agrafes-Token",
+                    "description": (
+                        "Write-operation token. Required by mutating endpoints when the "
+                        "sidecar is started with --token auto; sent in the X-Agrafes-Token header."
+                    ),
+                },
+            },
             "schemas": {
                 "BaseResponse": {
                     "type": "object",
@@ -2486,6 +2507,7 @@ def openapi_spec() -> dict[str, Any]:
                                 "merged_n": {"type": "integer"},
                                 "deleted_n": {"type": "integer"},
                                 "text": {"type": "string"},
+                                "fts_stale": {"type": "boolean"},
                             },
                         },
                     ]
@@ -2513,6 +2535,7 @@ def openapi_spec() -> dict[str, Any]:
                                 "new_unit_n": {"type": "integer"},
                                 "text_a": {"type": "string"},
                                 "text_b": {"type": "string"},
+                                "fts_stale": {"type": "boolean"},
                             },
                         },
                     ]

@@ -76,10 +76,24 @@ def _iter_body_elements(root: ET.Element, unit_tag_local: str) -> list[ET.Elemen
     body_el = text_el.find(f".//{body_tag}")
     search_root = body_el if body_el is not None else text_el
 
-    # Collect all matching elements anywhere in the body
+    # Collect matching elements anywhere in the body, but only the OUTERMOST of any
+    # nested same-tag run (ENG-05): an outer <p>/<s> already yields the inner one's
+    # text through itertext(), so emitting the inner element too would duplicate text.
+    parent_of: dict[int, ET.Element] = {
+        id(child): parent for parent in search_root.iter() for child in parent
+    }
+
+    def _nested_in_match(el: ET.Element) -> bool:
+        p = parent_of.get(id(el))
+        while p is not None:
+            if local(p.tag) == unit_tag_local:
+                return True
+            p = parent_of.get(id(p))
+        return False
+
     return [
         el for el in search_root.iter()
-        if local(el.tag) == unit_tag_local
+        if local(el.tag) == unit_tag_local and not _nested_in_match(el)
     ]
 
 

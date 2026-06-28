@@ -87,8 +87,17 @@ def _paragraph_to_unit(
     m = _NUMBERED_RE.match(plain)
     if m:
         ext_id = int(m.group(1))
-        prefix_len = m.start(2)
-        text_raw = rich[prefix_len:] if len(rich) >= prefix_len else m.group(2)
+        # ENG-02: m.start(2) is an offset into `plain` (normalized + stripped);
+        # slicing `rich` by it misaligns whenever normalize/strip changed the prefix
+        # length. Re-match the marker against the lstripped rich text to strip exactly
+        # the [n] prefix while preserving styling; fall back to the plain offset only
+        # if the rich marker doesn't match (e.g. normalize rewrote the brackets).
+        m_rich = _NUMBERED_RE.match(rich.lstrip())
+        if m_rich:
+            text_raw = m_rich.group(2)
+        else:
+            prefix_len = m.start(2)
+            text_raw = rich[prefix_len:] if len(rich) >= prefix_len else m.group(2)
         text_norm = normalize(text_raw)
         sep_count = count_sep(text_raw)
         meta = json.dumps({"sep_count": sep_count}) if sep_count > 0 else None

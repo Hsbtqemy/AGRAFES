@@ -99,6 +99,30 @@ def test_translate_js_replacement(repl: str, expected: str) -> None:
     assert curation._translate_js_replacement(repl) == expected
 
 
+@pytest.mark.parametrize(
+    "repl,ngroups,expected",
+    [
+        ("$1", 1, r"\g<1>"),
+        ("$2", 1, "$2"),       # QRY-05: no group 2 → literal (was \g<2> → re.error)
+        ("$12", 1, r"\g<1>2"),  # JS two-digit fallback: group 1 then literal '2'
+        ("$2", 2, r"\g<2>"),
+        ("$&", 0, r"\g<0>"),   # whole-match ref is independent of the group count
+    ],
+)
+def test_translate_js_replacement_respects_group_count(
+    repl: str, ngroups: int, expected: str
+) -> None:
+    assert curation._translate_js_replacement(repl, ngroups) == expected
+
+
+def test_rules_from_list_leaves_unknown_backref_literal() -> None:
+    # Pattern has 1 group; $2 has no matching group. It must be left literal (QRY-05)
+    # so the rule neither crashes at substitution time nor mangles the curated text.
+    rule = rules_from_list([{"pattern": "(a)", "replacement": "$2"}])[0]
+    assert rule.replacement == "$2"
+    assert apply_rules("a", [rule]) == "$2"
+
+
 # ── apply_rules / CurationRule / CurationReport ───────────────────────────────
 
 

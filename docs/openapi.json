@@ -3589,6 +3589,9 @@
               "doc_id": {
                 "type": "integer"
               },
+              "fts_stale": {
+                "type": "boolean"
+              },
               "merged_n": {
                 "type": "integer"
               },
@@ -3641,6 +3644,9 @@
             "properties": {
               "doc_id": {
                 "type": "integer"
+              },
+              "fts_stale": {
+                "type": "boolean"
               },
               "new_unit_n": {
                 "type": "integer"
@@ -3763,13 +3769,21 @@
           }
         ]
       }
+    },
+    "securitySchemes": {
+      "token": {
+        "description": "Write-operation token. Required by mutating endpoints when the sidecar is started with --token auto; sent in the X-Agrafes-Token header.",
+        "in": "header",
+        "name": "X-Agrafes-Token",
+        "type": "apiKey"
+      }
     }
   },
   "info": {
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
-    "version": "1.6.23",
-    "x-contract-version": "1.6.31"
+    "version": "1.6.32",
+    "x-contract-version": "1.6.32"
   },
   "openapi": "3.0.3",
   "paths": {
@@ -3915,7 +3929,7 @@
         },
         "security": [
           {
-            "ApiKeyAuth": []
+            "token": []
           }
         ],
         "summary": "Batch-resolve collision links (keep/delete/reject/unreviewed) — token required"

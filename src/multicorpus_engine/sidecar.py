@@ -3,7 +3,7 @@
 Provides a minimal HTTP server (stdlib only, no external deps) that wraps the
 multicorpus_engine Python API over localhost HTTP.  A single persistent SQLite
 connection is shared across all requests; write operations are protected by a
-threading.Lock.
+reentrant threading.RLock.
 
 Supports `port=0` for OS-assigned port — useful in tests and when the default
 port is already in use.
@@ -548,7 +548,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
     def _conn(self) -> sqlite3.Connection:
         return self.server.conn  # type: ignore[attr-defined]
 
-    def _lock(self) -> threading.Lock:
+    def _lock(self) -> threading.RLock:  # reentrant: see SidecarServer.__init__
         return self.server.lock  # type: ignore[attr-defined]
 
     @contextmanager
@@ -2651,7 +2651,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         except OSError as exc:
             self._send_error(
                 f"Could not write export file: {exc}",
-                code="EXPORT_WRITE_ERROR",
+                code=ERR_INTERNAL,
                 http_status=500,
             )
             return
@@ -2781,7 +2781,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         except OSError as exc:
             self._send_error(
                 f"Could not write export file: {exc}",
-                code="EXPORT_WRITE_ERROR",
+                code=ERR_INTERNAL,
                 http_status=500,
             )
             return
@@ -4610,6 +4610,16 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             # Delete unit n2
             conn.execute("DELETE FROM units WHERE doc_id=? AND n=?", (doc_id, n2))
 
+            # ENG-03: drop the deleted unit's FTS row so it can't linger as an
+            # orphan. stale_doc_ids() only inspects live units, so it would never
+            # flag this row; a search could otherwise still match the vanished
+            # unit until the next full reindex. Best-effort (missing FTS table
+            # must not fail the merge).
+            try:
+                conn.execute("DELETE FROM fts_units WHERE rowid = ?", (uid2,))
+            except Exception:
+                pass
+
             # Renumber all units with n > n2 (shift down by 1)
             conn.execute(
                 "UPDATE units SET n = n - 1 WHERE doc_id=? AND n > ?",
@@ -4623,6 +4633,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             "merged_n":  n1,
             "deleted_n": n2,
             "text":      merged_norm,
+            "fts_stale": True,  # ENG-03: merged unit's text_norm changed → reindex
             "action_id": action_id,
         }))
 
@@ -4755,6 +4766,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             "new_unit_n": unit_n + 1,
             "text_a":     text_a,
             "text_b":     text_b,
+            "fts_stale":  True,  # ENG-03: split rewrote/added units → reindex
             "action_id":  action_id,
         }))
 

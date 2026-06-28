@@ -185,14 +185,20 @@ def update_unit_text(conn: sqlite3.Connection, body: dict) -> dict[str, Any]:
     cur = conn.execute(f"UPDATE units SET {set_clause} WHERE unit_id = ?", params)
     if cur.rowcount == 0:
         raise NotFoundError(f"Unknown unit_id: {unit_id}")
-    # Invalidate / refresh FTS entry for this unit (best-effort).
+    # Invalidate / refresh FTS entry for this unit (best-effort). Only ``line``
+    # units are indexed: never (re)insert a ``structure`` unit into FTS (ENG-04).
+    # The DELETE runs unconditionally so any stale/orphan row is still cleared.
     try:
         conn.execute("DELETE FROM fts_units WHERE rowid = ?", (unit_id,))
         if "text_norm" in updates:
-            conn.execute(
-                "INSERT INTO fts_units(rowid, text_norm) VALUES (?, ?)",
-                (unit_id, updates["text_norm"]),
-            )
+            ut = conn.execute(
+                "SELECT unit_type FROM units WHERE unit_id = ?", (unit_id,)
+            ).fetchone()
+            if ut is not None and ut[0] == "line":
+                conn.execute(
+                    "INSERT INTO fts_units(rowid, text_norm) VALUES (?, ?)",
+                    (unit_id, updates["text_norm"]),
+                )
     except Exception:
         pass  # FTS update is best-effort
     conn.commit()
