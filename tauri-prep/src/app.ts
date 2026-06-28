@@ -1052,7 +1052,7 @@ export class App {
     saveBtn.textContent = "Enregistrer";
     saveBtn.addEventListener("click", () => {
       const nameVal = (modal.querySelector<HTMLInputElement>("#pe-name")!).value.trim();
-      if (!nameVal) { alert("Le nom est requis."); return; }
+      if (!nameVal) { showToast("Le nom est requis.", true); return; }
       const saved: ProjectPreset = {
         ...draft,
         name: nameVal,

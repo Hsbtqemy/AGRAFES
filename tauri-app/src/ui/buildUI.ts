@@ -18,8 +18,16 @@ import { closeMetaPanel } from "../features/metaPanel";
 import { doOpenDb } from "../bootstrap";
 import { buildStatsPanel, toggleStatsPanel } from "../features/stats";
 
-export function buildUI(container: HTMLElement): void {
+export function buildUI(container: HTMLElement): () => void {
   injectStyles();
+
+  // Track document-level listeners so the host (shell) can remove them on unmount —
+  // they would otherwise accumulate on every Explorer re-mount (audit FE-02).
+  const _docListeners: Array<[string, EventListener, AddEventListenerOptions | undefined]> = [];
+  const onDoc = (type: string, handler: EventListener, opts?: AddEventListenerOptions): void => {
+    document.addEventListener(type, handler, opts);
+    _docListeners.push([type, handler, opts]);
+  };
 
   // ── Topbar ──
   const topbar = elt("div", { class: "topbar" });
@@ -282,7 +290,7 @@ export function buildUI(container: HTMLElement): void {
     e.stopPropagation();
     langDropdown.classList.toggle("hidden");
   });
-  document.addEventListener("click", (e) => {
+  onDoc("click", (e) => {
     if (!fg1.contains(e.target as Node)) langDropdown.classList.add("hidden");
   }, { capture: false });
   fg1.appendChild(langBtn);
@@ -843,7 +851,7 @@ export function buildUI(container: HTMLElement): void {
     });
   });
 
-  document.addEventListener("click", closeAllPanels);
+  onDoc("click", closeAllPanels);
 
   // ── Export ───────────────────────────────────────────────────────────────────
   exportBtn.addEventListener("click", (e) => {
@@ -973,8 +981,8 @@ export function buildUI(container: HTMLElement): void {
 
   metaCloseX.addEventListener("click", closeMetaPanel);
   metaBackdrop.addEventListener("click", closeMetaPanel);
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") closeMetaPanel();
+  onDoc("keydown", (e) => {
+    if ((e as KeyboardEvent).key === "Escape") closeMetaPanel();
   });
 
   confirmBtn.addEventListener("click", () => {
@@ -992,4 +1000,11 @@ export function buildUI(container: HTMLElement): void {
     document.getElementById("import-modal-error")!.innerHTML = "";
     void doImport(filePath, mode, lang, title, docRole, resourceType);
   });
+
+  return () => {
+    for (const [type, handler, opts] of _docListeners) {
+      document.removeEventListener(type, handler, opts);
+    }
+    _docListeners.length = 0;
+  };
 }

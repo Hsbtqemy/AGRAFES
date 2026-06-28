@@ -144,10 +144,10 @@ dans le fichier d'audit, §4.
 
 | ID | Sév | Prio | Statut | Constat (résumé) |
 |----|-----|------|--------|------------------|
-| FE-02 | 🟠 | P1-9 | ⬜ ouvert | Fuite de 3 listeners `document` dans l'Explorer (`disposeApp` ne les retire pas) → accumulation à chaque re-montage dans le shell. `buildUI.ts:285,846,976`. |
-| FE-03 | 🟠 | P2-17 | ⬜ ouvert | CSS non préfixé massif `tauri-app` (~30+ classes hors `app-*`) → collision dans la webview shell. `buildUI.ts:281` etc. |
-| FE-04 | 🟠 | P2-17 | ⬜ ouvert | CSS non préfixé massif `tauri-prep` (~90 classes hors `prep-*` ; `col-*` collisionne `col-head` app). `AnnotationView.ts`, `MetadataScreen.ts`. |
-| FE-05 | 🟠 | P1-12 | ⬜ ouvert | 5 dialogues natifs (violation convention) : `alert` ×5 + `window.confirm`. `app.ts:1055`, `SegmentationView.ts:1007`, `tauri-app/.../export.ts:151`. |
+| FE-02 | 🟠 | P1-9 | ✅ corrigé | `buildUI` (`tauri-app`) retourne un disposer (helper `onDoc` traçant les 3 écouteurs `document`) que `disposeApp` appelle au démontage → plus d'accumulation au re-montage Explorer. `buildUI.ts` / `app.ts` ; `tsc` + 81 tests app verts. |
+| FE-03 | 🟠 | P2-17 | ⬜ ouvert (différé) | CSS non préfixé massif `tauri-app` (~30+ hors `app-*`). **Différé = ticket dédié** : renommage mécanique massif à fort risque visuel, hors périmètre d'un lot sans QA visuelle. |
+| FE-04 | 🟠 | P2-17 | ⬜ ouvert (différé) | CSS non préfixé massif `tauri-prep` (~90 hors `prep-*` ; `col-*` collisionne `col-head` app). **Différé = ticket dédié** (idem FE-03). |
+| FE-05 | 🟠 | P1-12 | ✅ corrigé | Dialogues natifs supprimés : 4 `alert` SegmentationView → `this._cb.log(…, true)` ; `alert` preset `app.ts` prep → `showToast` ; `window.confirm` export `tauri-app` → modal promise-based `confirmModal` (CSS `.modal-overlay`, 4 tests happy-dom). |
 | FE-06 | 🟡 | P2-18 | ⬜ ouvert | (= U-03) `tauri-app` non testé sur `ui/dom.ts` (1788 l.), results/metaPanel/stats/docSelector/importFlow. |
 | FE-07 | 🟡 | — | ⬜ ouvert | (= U-05) i18n absent (FR en dur). |
 | FE-08 | 🟡 | P2-19 | ⬜ ouvert | Listeners `window` non retirés dans `prep/app.ts` (faible : mono-instance). `app.ts:188,436`. |
