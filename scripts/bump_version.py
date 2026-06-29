@@ -16,6 +16,7 @@ Fichiers mis à jour :
     Shell (--shell) :
         tauri-shell/src-tauri/tauri.conf.json   "version": "X.Y.Z"
         tauri-shell/src-tauri/Cargo.toml        version = "X.Y.Z"
+        tauri-shell/src-tauri/Cargo.lock        [[package]] agrafes-shell -> version
         tauri-shell/src/shell.ts                let APP_VERSION = "X.Y.Z"
         tauri-shell/package.json                "version": "X.Y.Z"
 """
@@ -75,6 +76,16 @@ def bump_shell(version: str, dry_run: bool) -> None:
         f'version = "{version}"',
         dry_run,
     )
+    # Cargo.lock — the shell crate's OWN version entry only, anchored on the
+    # `name = "agrafes-shell"` line so a dependency's `version` is never touched.
+    # Without this, Cargo.lock drifted behind Cargo.toml (was 0.2.6 at the 0.2.8
+    # release) → a `cargo build --locked`/`--frozen` at release time would fail.
+    _replace(
+        ROOT / "tauri-shell/src-tauri/Cargo.lock",
+        r'(?m)^(name = "agrafes-shell"\nversion = ")[^"]+(")',
+        rf'\g<1>{version}\g<2>',
+        dry_run,
+    )
     _replace(
         ROOT / "tauri-shell/src/shell.ts",
         r'let APP_VERSION = "[^"]+"',
@@ -95,6 +106,13 @@ def bump_shell(version: str, dry_run: bool) -> None:
 
 
 def main() -> None:
+    # Windows consoles default to cp1252 → the ✓/→/~ chars printed below raise
+    # UnicodeEncodeError (forced `PYTHONUTF8=1` before this fix). Force UTF-8
+    # stdout; no-op where already UTF-8.
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[attr-defined]
+    except (AttributeError, ValueError):
+        pass
     parser = argparse.ArgumentParser(description="Bumpe les versions du projet AGRAFES.")
     parser.add_argument("--engine", metavar="X.Y.Z", help="Nouvelle version engine (pyproject + __init__)")
     parser.add_argument("--shell", metavar="X.Y.Z", help="Nouvelle version shell (tauri.conf.json + shell.ts)")
