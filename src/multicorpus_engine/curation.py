@@ -33,9 +33,17 @@ import regex as re  # third-party `regex` PyPI — drop-in superset of stdlib `r
 
 logger = logging.getLogger(__name__)
 
-# M-05: ReDoS guards for user-supplied regex patterns
+# M-05: ReDoS guards for user-supplied regex patterns. The structural checks are a
+# **best-effort heuristic** — they cannot catch every catastrophic-backtracking
+# pattern (notably overlapping alternation like `(a|a)*`, left uncaught on purpose
+# to avoid false-positives on legitimate `(a|b)*`). The real safety net is
+# `_MAX_REGEX_LEN`, which caps pattern size and so bounds the worst case.
 _MAX_REGEX_LEN = 500
+# A quantified group whose body itself contains a quantifier — e.g. `(a+)+`, `(\w*)*`.
 _REDOS_NESTED_RE = re.compile(r"\([^()]*[+*?][^()]*\)[+*{]")
+# A quantified group containing a quantified sub-group — e.g. `((a)*)*`, `((ab)+)+`
+# (one level of nesting the pattern above misses; QRY-06).
+_REDOS_NESTED_GROUP_RE = re.compile(r"\([^()]*\([^()]*\)[+*?][^()]*\)[+*{]")
 
 # Force V0 mode to avoid silent V1 auto-switch on patterns using V1 features
 # (e.g. set operations in char classes). See validation script docstring.
@@ -48,7 +56,7 @@ def _validate_user_regex(pattern: str) -> None:
         raise ValueError(
             f"Regex pattern too long ({len(pattern)} chars, max {_MAX_REGEX_LEN})"
         )
-    if _REDOS_NESTED_RE.search(pattern):
+    if _REDOS_NESTED_RE.search(pattern) or _REDOS_NESTED_GROUP_RE.search(pattern):
         raise ValueError(
             "Regex pattern contains nested quantifiers which could cause catastrophic "
             "backtracking. Simplify the pattern."

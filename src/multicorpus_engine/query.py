@@ -25,12 +25,17 @@ logger = logging.getLogger(__name__)
 _HIGHLIGHT_OPEN = "<<"
 _HIGHLIGHT_CLOSE = ">>"
 
-# M-04: ReDoS guards for user-supplied regex patterns
+# M-04: ReDoS guards for user-supplied regex patterns. The structural checks are a
+# **best-effort heuristic** — they cannot catch every catastrophic-backtracking
+# pattern (notably overlapping alternation like (a|a)*, left uncaught on purpose to
+# avoid false-positives on legitimate (a|b)*). The real safety net is _MAX_REGEX_LEN,
+# which caps pattern size and so bounds the worst case.
 _MAX_REGEX_LEN = 500
-# Detect quantified group containing a quantifier — the main source of catastrophic
-# backtracking, e.g. (a+)+ or (\w*)*  Heuristic: a closing paren followed by a
-# quantifier where the group body itself contains a quantifier.
+# A quantified group whose body itself contains a quantifier — e.g. (a+)+ or (\w*)*.
 _REDOS_NESTED_RE = re.compile(r"\([^()]*[+*?][^()]*\)[+*{]")
+# A quantified group containing a quantified sub-group — e.g. ((a)*)* or ((ab)+)+
+# (one level of nesting the pattern above misses; QRY-06).
+_REDOS_NESTED_GROUP_RE = re.compile(r"\([^()]*\([^()]*\)[+*?][^()]*\)[+*{]")
 
 
 def _validate_user_regex(pattern: str) -> None:
@@ -39,7 +44,7 @@ def _validate_user_regex(pattern: str) -> None:
         raise ValueError(
             f"Regex pattern too long ({len(pattern)} chars, max {_MAX_REGEX_LEN})"
         )
-    if _REDOS_NESTED_RE.search(pattern):
+    if _REDOS_NESTED_RE.search(pattern) or _REDOS_NESTED_GROUP_RE.search(pattern):
         raise ValueError(
             "Regex pattern contains nested quantifiers which could cause catastrophic "
             "backtracking. Simplify the pattern."

@@ -80,6 +80,21 @@ def test_validate_user_regex_allows_simple_group_quantifier() -> None:
     curation._validate_user_regex("(ab)+")  # not a nested quantifier → ok
 
 
+def test_validate_user_regex_rejects_double_nested_group() -> None:
+    # QRY-06: a quantified group containing a quantified sub-group, e.g. ((a)*)*
+    with pytest.raises(ValueError, match="nested quantifiers"):
+        curation._validate_user_regex("((a)*)*")
+    with pytest.raises(ValueError, match="nested quantifiers"):
+        curation._validate_user_regex("((ab)+)+")
+
+
+def test_validate_user_regex_allows_disjoint_alternation() -> None:
+    # QRY-06: the heuristic must not false-positive on legitimate patterns —
+    # disjoint alternation and a nested but non-quantified group are both fine.
+    curation._validate_user_regex("(a|b)*")
+    curation._validate_user_regex("(a(b)c)+")
+
+
 # ── _translate_js_replacement ─────────────────────────────────────────────────
 
 
