@@ -161,7 +161,7 @@ jobs:
           path: tauri-fixture/src-tauri/binaries
 
       - name: Install fixture dependencies
-        run: npm --prefix tauri-fixture install
+        run: npm --prefix tauri-fixture ci
 
       - name: Prepare fixture frontend dist
         run: |
