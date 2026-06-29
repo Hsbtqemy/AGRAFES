@@ -26,6 +26,7 @@ import { renderHit, VIRT_DOM_CAP } from "../ui/results";
 import { buildFtsQuery, showBuilderWarn, validateCqlSyntax } from "./search";
 import { renderChips } from "./filters";
 import { syncDocSelectorUI, saveDocSelectorState } from "./docSelector";
+import { toggleStatsPanel } from "./stats";
 import type { QueryHit, FacetDocEntry } from "../lib/sidecarClient";
 
 /** Set filterDocIds to a single-doc restriction and sync the selector UI. */
@@ -603,6 +604,8 @@ export function disposeQuery(): void {
 // ─── Search ───────────────────────────────────────────────────────────────────
 
 export async function doSearch(rawQ: string): Promise<void> {
+  // Running a query returns the user to the results view (exit the stats full-screen panel).
+  toggleStatsPanel(false);
   const isRegex = state.builderMode === "regex";
   const isCql = state.builderMode === "cql";
   const trimmed = rawQ.trim();
