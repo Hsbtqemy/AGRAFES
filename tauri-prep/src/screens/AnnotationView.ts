@@ -174,7 +174,7 @@ export class AnnotationView {
     modelLabel.appendChild(modelSelect);
 
     const refreshBtn = document.createElement("button");
-    refreshBtn.className = "annot-btn-refresh";
+    refreshBtn.className = "btn btn-secondary";
     refreshBtn.title = "Re-charger la liste des documents depuis la base";
     refreshBtn.textContent = "\u21bb Actualiser";
     refreshBtn.addEventListener("click", () => {
@@ -185,7 +185,7 @@ export class AnnotationView {
     });
 
     const runBtn = document.createElement("button");
-    runBtn.className = "annot-btn-run";
+    runBtn.className = "btn btn-primary";
     runBtn.title = "Lancer l\u2019annotation spaCy sur le document s\u00e9lectionn\u00e9";
     runBtn.textContent = "Annoter \u25b6";
     runBtn.addEventListener("click", () => void this._annotRunJob(panel));
@@ -205,13 +205,13 @@ export class AnnotationView {
     searchInput.setAttribute("aria-label", "Rechercher dans les annotations");
 
     const searchPrev = document.createElement("button");
-    searchPrev.className = "annot-search-nav";
+    searchPrev.className = "btn btn-sm btn-ghost";
     searchPrev.textContent = "\u25c4";
     searchPrev.title = "Occurrence pr\u00e9c\u00e9dente";
     searchPrev.disabled = true;
 
     const searchNext = document.createElement("button");
-    searchNext.className = "annot-search-nav";
+    searchNext.className = "btn btn-sm btn-ghost";
     searchNext.textContent = "\u25ba";
     searchNext.title = "Occurrence suivante";
     searchNext.disabled = true;
@@ -275,11 +275,11 @@ export class AnnotationView {
     searchWrap.appendChild(searchCount);
 
     const viewToggle = document.createElement("button");
-    viewToggle.className = "annot-btn-view-toggle";
+    viewToggle.className = "btn btn-ghost annot-btn-view-toggle";
     viewToggle.title = "Basculer entre vue lecture (prose color\u00e9e) et vue annotation (grille)";
     const _updateToggleLabel = (): void => {
       viewToggle.textContent = this._annotViewMode === "read" ? "\u25a6\u00a0Annoter" : "\u25a4\u00a0Lecture";
-      viewToggle.classList.toggle("annot-btn-view-toggle--read", this._annotViewMode === "read");
+      viewToggle.classList.toggle("btn-active", this._annotViewMode === "read");
     };
     _updateToggleLabel();
     viewToggle.addEventListener("click", () => {
@@ -538,7 +538,7 @@ export class AnnotationView {
             const toggleBtn = this._panel?.querySelector<HTMLButtonElement>(".annot-btn-view-toggle");
             if (toggleBtn) {
               toggleBtn.textContent = "\u25a4\u00a0Lecture";
-              toggleBtn.classList.remove("annot-btn-view-toggle--read");
+              toggleBtn.classList.remove("btn-active");
             }
             this._annotSelectedTokenId = tok.token_id;
             this._annotRenderInterlinear(viewer, editor);
@@ -658,7 +658,7 @@ export class AnnotationView {
       <label class="annot-field-label">Misc
         <input class="annot-field" data-field="misc" value="${_escHtml(tok.misc ?? "")}">
       </label>
-      <button class="annot-btn-save">Enregistrer</button>
+      <button class="btn btn-primary annot-btn-save">Enregistrer</button>
       <span class="annot-save-status"></span>
     `));
     editor.querySelector(".annot-btn-save")!.addEventListener("click", () => {

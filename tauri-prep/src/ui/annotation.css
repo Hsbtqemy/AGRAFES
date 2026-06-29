@@ -16,13 +16,7 @@
   padding: 8px 12px; border-bottom: 1px solid var(--border, #ddd);
 }
 .annot-title { margin: 0; font-size: 1rem; font-weight: 600; flex: 1; }
-.annot-btn-run, .annot-btn-save {
-  padding: 4px 12px; border-radius: 4px; cursor: pointer;
-  border: 1px solid var(--border, #ccc); background: var(--bg-accent, #f5f5f5);
-  font-size: 0.85rem;
-}
-.annot-btn-run:hover:not(:disabled), .annot-btn-save:hover { background: var(--bg-hover, #e8e8e8); }
-.annot-btn-run:disabled { opacity: 0.55; cursor: default; }
+/* Boutons toolbar/éditeur (Annoter, Enregistrer) : style-maison .btn / .btn-primary (app.css). */
 .annot-status { font-size: 0.8rem; color: var(--color-muted, #888); min-width: 120px; }
 .annot-model-label {
   display: flex; align-items: center; gap: 5px;
@@ -33,12 +27,7 @@
   border-radius: 4px; font-size: 0.8rem; background: var(--bg, #fff); color: inherit;
   max-width: 180px;
 }
-.annot-btn-refresh {
-  padding: 4px 8px; border-radius: 4px; cursor: pointer;
-  border: 1px solid var(--border, #ccc); background: var(--bg-accent, #f5f5f5);
-  font-size: 0.9rem; line-height: 1;
-}
-.annot-btn-refresh:hover { background: var(--bg-hover, #e8e8e8); }
+/* Actualiser : style-maison .btn / .btn-secondary (app.css). */
 .annot-layout {
   display: grid; grid-template-columns: 200px 1fr 220px; grid-template-rows: 1fr;
   gap: 0; flex: 1; overflow: hidden; min-height: 0;
@@ -144,12 +133,7 @@
   font-size: 0.82rem; background: var(--bg, #fff); color: inherit;
 }
 .annot-search-input:focus { outline: 2px solid var(--color-primary, #4e9af1); outline-offset: 1px; }
-.annot-search-nav {
-  padding: 2px 7px; border-radius: 4px; border: 1px solid var(--border, #ccc);
-  background: var(--bg-accent, #f5f5f5); cursor: pointer; font-size: 0.75rem;
-}
-.annot-search-nav:disabled { opacity: 0.4; cursor: default; }
-.annot-search-nav:not(:disabled):hover { background: var(--bg-hover, #ebebeb); }
+/* Navigation recherche ◀ ▶ : style-maison .btn .btn-sm .btn-ghost (app.css). */
 .annot-search-count {
   font-size: 0.72rem; color: var(--color-muted, #888); white-space: nowrap; min-width: 52px;
 }
@@ -195,15 +179,8 @@
 .annot-sidebar-loading { color: var(--color-muted, #888); font-size: 0.85rem; padding: 8px; }
 
 /* ── Toggle lecture / annoter ── */
-.annot-btn-view-toggle {
-  padding: 4px 10px; border-radius: 4px; cursor: pointer;
-  border: 1px solid var(--border, #ccc); background: var(--bg-accent, #f5f5f5);
-  font-size: 0.8rem; white-space: nowrap;
-}
-.annot-btn-view-toggle:hover { background: var(--bg-hover, #e8e8e8); }
-.annot-btn-view-toggle--read {
-  background: #dce9ff; border-color: var(--color-primary, #4e9af1); color: #1a3a6e;
-}
+/* Toggle Lecture/Annoter : style-maison .btn .btn-ghost + .btn-active en mode lecture (app.css).
+   La classe .annot-btn-view-toggle reste comme hook de sélecteur (JS). */
 
 /* ── Prose view ── */
 .annot-prose { padding: 4px 0; }
