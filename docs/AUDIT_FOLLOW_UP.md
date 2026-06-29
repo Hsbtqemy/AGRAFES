@@ -122,10 +122,10 @@ dans le fichier d'audit, §4.
 | SID-09 | 🟡 | P0-1/A-01 | ⬜ ouvert | A-03 résiduel : `validate()` sur 3 endpoints, ~22 handlers en validation manuelle (dette assumée « pilote »). `request_schemas.py:127`. |
 | SID-10 | 🟡 | P2-19 | ✅ corrigé (P3) | `_lock()` annoté `threading.RLock` (+ docstring module corrigée « reentrant threading.RLock »). `sidecar.py`. |
 | SID-11 | 🟡 | P2-19 | ✅ corrigé (P3) | `JobRecord.status` : `canceled` ajouté au commentaire des statuts. `sidecar_jobs.py`. |
-| SID-12 | 🟡 | P2-19 | ⬜ ouvert | Coerce-int dupliqué/incohérent (`_int_or` vs `validate` vs `int()` nu). `curate_service.py:32,52`. |
+| SID-12 | 🟡 | P2-19 | ✅ corrigé (P4) | Coerce-int unifié : helper `_req_int(value, field)` (→ `BadRequestError`/400) pour les 5 `int()` nus (qui levaient `ValueError`→**500** non rattrapé par l'adaptateur) ; `_int_or` reste pour les optionnels-avec-défaut. Tests : `test_curate_service.py` (non-int unit_id/doc_id → BadRequestError sur set/delete/list/record). `curate_service.py`. |
 | SID-13 | 🟡 | P2-19 | ✅ corrigé (P3) | `components.securitySchemes.token` (apiKey, header `X-Agrafes-Token`) ajouté ; `/align/collisions/resolve` unifié `ApiKeyAuth`→`token` (référence aussi pendante). `openapi.json` régénéré. `sidecar_contract.py`. |
-| SID-14 | 🟡 | P2-19 | ⬜ ouvert | Timeout WebDAV fixe (30 s) non configurable, per-read (pas de budget total). `webdav.py:28` / `ingest.py:103`. |
-| SID-15 | 🟡 | P2-19 | ⬜ ouvert | Pic disque ShareDocs (temp non purgés par fichier, `rmtree` global en fin). `ingest.py:116`. |
+| SID-14 | 🟡 | P2-19 | ✅ corrigé (P4) | Timeout WebDAV **configurable** : `DEFAULT_TIMEOUT` dérive de `AGRAFES_WEBDAV_TIMEOUT` (helper `_resolve_default_timeout`, clamp ≥1, fallback 30) — `propfind`/`download` l'héritent. Le caractère **per-read** (vs budget total) est **assumé et documenté** (borne une connexion bloquée ; le total est borné par `max_bytes`). Tests : `test_webdav_client.py` (env/garbage/clamp/défaut). `webdav.py`. |
+| SID-15 | 🟡 | P2-19 | ✅ corrigé (P4) | Pic disque ShareDocs résorbé : purge du temp **par fichier** dans la boucle de `ingest_remote_folder` (working-set ≈1 fichier ; le `rmtree` global devient un filet). Test : `test_import_remote_batch.py::test_temp_freed_per_file_so_disk_does_not_grow` (compte tmpdir = `[1,1,1]` ; sans fix `[1,2,3]`). `ingest.py`. |
 | SID-16 | 🟢 | P2-19 | ✅ corrigé (P3) | Les 2 lignes de sémantique `hrefs` (1.6.29) remontées sous leur entrée ; nouvelle entrée 1.6.32 ajoutée. `sidecar_contract.py`. |
 
 ### Ouverts — Sécurité transverse & Rust
