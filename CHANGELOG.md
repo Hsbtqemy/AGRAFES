@@ -7,6 +7,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **outillage — `bump_version.py` met aussi à jour `Cargo.lock`** : le bump `--shell` ne touchait que `Cargo.toml`, laissant le `[[package]] agrafes-shell` de `Cargo.lock` dériver (constaté à **0.2.6** lors de la release 0.2.8) — un `cargo build --locked`/`--frozen` au tag de release aurait échoué. Ajout d'un remplacement ancré sur la ligne `name = "agrafes-shell"` (ne touche jamais la version d'une dépendance). Aussi : `sys.stdout.reconfigure(utf-8)` au démarrage pour que les caractères `✓`/`→` n'explosent plus sur une console Windows cp1252 (plus besoin de `PYTHONUTF8=1`).
+
 ## [0.2.8] - 2026-06-29
 
 ### Added
