@@ -16,6 +16,7 @@ import { ShareDocsImportScreen } from "./screens/ShareDocsImportScreen.ts";
 import { ActionsScreen, type ProjectPreset } from "./screens/ActionsScreen.ts";
 import { MetadataScreen } from "./screens/MetadataScreen.ts";
 import { ExportsScreen, type ExportWorkflowPrefill } from "./screens/ExportsScreen.ts";
+import { SettingsScreen } from "./screens/SettingsScreen.ts";
 import { JobCenter, showToast } from "./components/JobCenter.ts";
 import { inlineConfirm } from "./lib/inlineConfirm.ts";
 import { setHtml, appendHtml, raw } from "./lib/safeHtml.ts";
@@ -52,7 +53,7 @@ const SEED_PRESETS: ProjectPreset[] = [
 // ─── App ──────────────────────────────────────────────────────────────────────
 // CSS lives in tauri-prep/src/ui/app.css + job-center.css (Vite-managed, P6).
 
-const TABS = ["import", "shareDocs", "documents", "actions", "exporter"] as const;
+const TABS = ["import", "shareDocs", "documents", "actions", "exporter", "settings"] as const;
 type TabId = typeof TABS[number];
 
 type GuardableScreen = {
@@ -69,6 +70,7 @@ export class App {
   private _actions!: ActionsScreen;
   private _metadata!: MetadataScreen;
   private _exports!: ExportsScreen;
+  private _settings!: SettingsScreen;
   private _jobCenter!: JobCenter;
 
   private _tabBtns: Record<TabId, HTMLButtonElement> = {} as never;
@@ -132,6 +134,7 @@ export class App {
     this._actions.setConn(null);
     this._metadata.setConn(null);
     this._exports.setConn(null);
+    this._settings.setConn(null);
     this._jobCenter.setConn(null);
     this._import.setJobCenter(this._jobCenter, showToast);
     this._shareDocs.setJobCenter(this._jobCenter, showToast);
@@ -304,6 +307,7 @@ export class App {
       documents: "Documents",
       actions: "Actions",
       exporter: "Exporter",
+      settings: "Paramètres",
     };
     const ICONS: Record<TabId, string> = {
       import: "⊕",
@@ -311,6 +315,7 @@ export class App {
       documents: "≡",
       actions: "◈",
       exporter: "⊗",
+      settings: "⚙",
     };
     for (const tab of TABS) {
       const btn = document.createElement("button");
@@ -398,12 +403,14 @@ export class App {
     this._actions = new ActionsScreen();
     this._metadata = new MetadataScreen();
     this._exports = new ExportsScreen();
+    this._settings = new SettingsScreen();
     this._screenControllers = {
       import: this._import as GuardableScreen,
       shareDocs: this._shareDocs as GuardableScreen,
       documents: this._metadata,
       actions: this._actions,
       exporter: this._exports as GuardableScreen,
+      settings: this._settings as GuardableScreen,
     };
 
     const screenMap: Record<TabId, () => HTMLElement> = {
@@ -412,6 +419,7 @@ export class App {
       documents: () => this._metadata.render(),
       actions: () => this._actions.render(),
       exporter: () => this._exports.render(),
+      settings: () => this._settings.render(),
     };
 
     for (const tab of TABS) {
@@ -1102,6 +1110,7 @@ export class App {
     this._actions.setConn(this._conn);
     this._metadata.setConn(this._conn);
     this._exports.setConn(this._conn);
+    this._settings.setConn(this._conn);
     this._jobCenter.setConn(this._conn);
     this._import.setJobCenter(this._jobCenter, showToast);
     this._shareDocs.setJobCenter(this._jobCenter, showToast);
@@ -1113,6 +1122,7 @@ export class App {
   /** Stop all background timers and remove event listeners. Called by tauri-shell on unmount. */
   dispose(): void {
     this._actions.dispose();
+    this._settings?.setConn(null);
     this._jobCenter?.setConn(null);
     if (this._beforeUnloadHandler) {
       window.removeEventListener("beforeunload", this._beforeUnloadHandler);
