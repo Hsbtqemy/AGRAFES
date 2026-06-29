@@ -72,6 +72,33 @@ def test_set_exception_unit_not_found(db_conn: sqlite3.Connection) -> None:
         set_exception(db_conn, {"unit_id": 99999, "kind": "ignore"})
 
 
+# --- SID-12: non-int integer fields raise BadRequestError (400), not a bare
+#     ValueError/TypeError (which the adapter would surface as a 500). ---
+def test_set_exception_non_int_unit_id_is_bad_request(db_conn: sqlite3.Connection) -> None:
+    with pytest.raises(BadRequestError):
+        set_exception(db_conn, {"unit_id": "abc", "kind": "ignore"})
+
+
+def test_delete_exception_non_int_unit_id_is_bad_request(db_conn: sqlite3.Connection) -> None:
+    with pytest.raises(BadRequestError):
+        delete_exception(db_conn, {"unit_id": "x"})
+
+
+def test_list_exceptions_non_int_doc_id_is_bad_request(db_conn: sqlite3.Connection) -> None:
+    with pytest.raises(BadRequestError):
+        list_exceptions(db_conn, {"doc_id": "nope"})
+
+
+def test_list_apply_history_non_int_doc_id_is_bad_request(db_conn: sqlite3.Connection) -> None:
+    with pytest.raises(BadRequestError):
+        list_apply_history(db_conn, {"doc_id": "nope"})
+
+
+def test_record_apply_history_non_int_doc_id_is_bad_request(db_conn: sqlite3.Connection) -> None:
+    with pytest.raises(BadRequestError):
+        record_apply_history(db_conn, {"scope": "doc", "doc_id": "nope"})
+
+
 def test_list_exceptions_enriched_and_filtered(db_conn: sqlite3.Connection) -> None:
     doc_id, unit_id = _mk_unit(db_conn, text="bonjour")
     set_exception(db_conn, {"unit_id": unit_id, "kind": "ignore"})

@@ -301,3 +301,29 @@ def test_only_hrefs_bypasses_extension_filter(db):
     report = _run(conn, db_path, entries, payloads, only_hrefs={_BASE + "note.pdf"})
     assert report["imported"] == 1
     assert report["skipped_filtered"] == 0
+
+
+# --- SID-15: per-file temp purge keeps disk ~1 file, not the whole batch ---
+def test_temp_freed_per_file_so_disk_does_not_grow(db):
+    conn, db_path = db
+    payloads = {_BASE + f"d{i}.docx": _make_docx_bytes([f"[1] line {i}"]) for i in range(1, 4)}
+    entries = [_entry(f"d{i}.docx", len(payloads[_BASE + f"d{i}.docx"])) for i in range(1, 4)]
+    counts: list[int] = []
+
+    def _recording_download(url, dest_path, *, auth_header, max_bytes=None, timeout=30):
+        # At download time only the CURRENT file's freshly-mkstemp'd temp should be
+        # present; previous files' temps must already be purged (SID-15). Without the
+        # per-file cleanup this count would grow 1 → 2 → 3 across the batch.
+        counts.append(len(list(Path(dest_path).parent.iterdir())))
+        Path(dest_path).write_bytes(payloads[url])
+        return len(payloads[url])
+
+    with mock.patch.object(ingest.webdav, "propfind", return_value=entries), \
+         mock.patch.object(ingest.webdav, "download", _recording_download):
+        report = ingest.ingest_remote_folder(
+            conn, db_path, url=_BASE, mode="docx_numbered_lines",
+            language="fr", auth_header={},
+        )
+
+    assert report["imported"] == 3
+    assert counts == [1, 1, 1]

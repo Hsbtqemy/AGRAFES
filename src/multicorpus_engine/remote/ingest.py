@@ -125,6 +125,13 @@ def ingest_remote_folder(
                 explicit=explicit,
             )
             results.append(res)
+            # SID-15: free this file's downloaded temp immediately so the working-set
+            # disk usage stays ~1 file rather than growing to the whole batch. Only
+            # _process_one writes to tmpdir and the loop is sequential, so clearing it
+            # here removes exactly the temp just created; the global rmtree in the
+            # `finally` below remains as a safety net.
+            for leftover in tmpdir.iterdir():
+                leftover.unlink(missing_ok=True)
             if logger is not None:
                 logger.info("import-remote %s -> %s", entry.name, res["status"])
             if progress is not None:

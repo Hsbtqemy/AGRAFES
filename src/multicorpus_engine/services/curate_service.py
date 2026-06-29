@@ -30,10 +30,21 @@ _EXC_SELECT = (
 
 
 def _int_or(value: object, default: int | None) -> int | None:
+    """Coerce an OPTIONAL integer, falling back to *default* on a bad/absent value."""
     try:
         return int(value)  # type: ignore[arg-type]
     except (TypeError, ValueError):
         return default
+
+
+def _req_int(value: object, field: str) -> int:
+    """Coerce a REQUIRED integer (SID-12): a non-int value raises BadRequestError
+    (-> 400) rather than letting a bare int() raise ValueError/TypeError, which the
+    adapter (catching only BadRequestError/NotFoundError) would surface as a 500."""
+    try:
+        return int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        raise BadRequestError(f"{field} must be an integer") from None
 
 
 def _exc_row(row: tuple) -> dict[str, Any]:
@@ -49,7 +60,7 @@ def list_exceptions(conn: sqlite3.Connection, body: dict) -> dict[str, Any]:
     doc_id = body.get("doc_id")
     if doc_id is not None:
         rows = conn.execute(
-            _EXC_SELECT + " WHERE u.doc_id = ? ORDER BY ce.unit_id", (int(doc_id),)
+            _EXC_SELECT + " WHERE u.doc_id = ? ORDER BY ce.unit_id", (_req_int(doc_id, "doc_id"),)
         ).fetchall()
     else:
         rows = conn.execute(_EXC_SELECT + " ORDER BY u.doc_id, ce.unit_id").fetchall()
@@ -67,7 +78,7 @@ def set_exception(conn: sqlite3.Connection, body: dict) -> dict[str, Any]:
     kind = body.get("kind")
     if unit_id is None or kind not in ("ignore", "override"):
         raise BadRequestError("unit_id (int) and kind ('ignore'|'override') are required")
-    unit_id = int(unit_id)
+    unit_id = _req_int(unit_id, "unit_id")
     override_text = body.get("override_text")
     if kind == "override" and not override_text:
         raise BadRequestError("override_text is required when kind = 'override'")
@@ -104,7 +115,7 @@ def delete_exception(conn: sqlite3.Connection, body: dict) -> dict[str, Any]:
     unit_id = body.get("unit_id")
     if unit_id is None:
         raise BadRequestError("unit_id is required")
-    unit_id = int(unit_id)
+    unit_id = _req_int(unit_id, "unit_id")
     cur = conn.execute("DELETE FROM curation_exceptions WHERE unit_id = ?", (unit_id,))
     conn.commit()
     return {"unit_id": unit_id, "deleted": cur.rowcount > 0}
@@ -120,7 +131,7 @@ def record_apply_history(conn: sqlite3.Connection, body: dict) -> dict[str, Any]
         scope = "all"
     doc_id = body.get("doc_id")
     if doc_id is not None:
-        doc_id = int(doc_id)
+        doc_id = _req_int(doc_id, "doc_id")
 
     cur = conn.execute(
         """
@@ -167,7 +178,7 @@ def list_apply_history(conn: sqlite3.Connection, body: dict) -> dict[str, Any]:
     params: list[object] = []
     if doc_id is not None:
         conditions.append("doc_id = ?")
-        params.append(int(doc_id))
+        params.append(_req_int(doc_id, "doc_id"))
     if scope is not None:
         conditions.append("scope = ?")
         params.append(scope)

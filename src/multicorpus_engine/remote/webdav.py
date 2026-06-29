@@ -14,6 +14,7 @@ from __future__ import annotations
 import base64
 import ipaddress
 import logging
+import os
 import socket
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,7 +27,23 @@ import defusedxml.ElementTree as ET
 
 _DAV = "DAV:"
 _CHUNK = 4 * 1024 * 1024  # 4 MiB — mirrors the importers' streaming reads
-DEFAULT_TIMEOUT = 30
+
+def _resolve_default_timeout() -> int:
+    """Socket timeout (s) for every PROPFIND/GET, from AGRAFES_WEBDAV_TIMEOUT (SID-14).
+
+    Configurable so the sidecar can raise it at launch for slow shares; a malformed
+    value falls back to 30 s, and values are clamped to >= 1. NOTE: this is a
+    *per-read* timeout (urllib semantics) — it bounds a stalled connection, not the
+    total wall-clock of a large transfer (which ``max_bytes`` bounds instead).
+    """
+    try:
+        return max(1, int(os.environ.get("AGRAFES_WEBDAV_TIMEOUT", "30")))
+    except (TypeError, ValueError):
+        return 30
+
+
+# Default for `propfind`/`download`'s ``timeout=`` parameter (resolved at import).
+DEFAULT_TIMEOUT = _resolve_default_timeout()
 
 log = logging.getLogger(__name__)
 

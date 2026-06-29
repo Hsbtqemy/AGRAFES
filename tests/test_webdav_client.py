@@ -380,3 +380,24 @@ def test_module_opener_wires_the_auth_stripping_handler():
     assert any(
         isinstance(h, webdav._AuthStrippingRedirectHandler) for h in webdav._OPENER.handlers
     )
+
+
+# --- SID-14: configurable per-read timeout via AGRAFES_WEBDAV_TIMEOUT ---
+def test_default_timeout_resolves_from_env(monkeypatch):
+    monkeypatch.setenv("AGRAFES_WEBDAV_TIMEOUT", "7")
+    assert webdav._resolve_default_timeout() == 7
+
+
+def test_default_timeout_falls_back_on_garbage(monkeypatch):
+    monkeypatch.setenv("AGRAFES_WEBDAV_TIMEOUT", "not-a-number")
+    assert webdav._resolve_default_timeout() == 30
+
+
+def test_default_timeout_clamped_to_at_least_one(monkeypatch):
+    monkeypatch.setenv("AGRAFES_WEBDAV_TIMEOUT", "0")
+    assert webdav._resolve_default_timeout() == 1
+
+
+def test_default_timeout_default_is_30(monkeypatch):
+    monkeypatch.delenv("AGRAFES_WEBDAV_TIMEOUT", raising=False)
+    assert webdav._resolve_default_timeout() == 30
