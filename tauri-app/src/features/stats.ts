@@ -27,7 +27,7 @@ let _lastCompare: StatsCompareResult | null = null;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function _readSlot(prefix: string): StatsSlot {
+export function _readSlot(prefix: string): StatsSlot {
   const docIdsRaw = (document.getElementById(`stats-${prefix}-doc-ids`) as HTMLInputElement | null)?.value.trim();
   const docIds = docIdsRaw
     ? docIdsRaw.split(",").map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n))
@@ -58,7 +58,7 @@ function _escHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-function _barHtml(pct: number, cls = "stats-bar-a"): string {
+export function _barHtml(pct: number, cls = "stats-bar-a"): string {
   const w = Math.min(100, pct * 5).toFixed(1); // scale: 20% = full bar
   return `<span class="stats-bar-wrap"><span class="${cls}" style="width:${w}%"></span></span>`;
 }
@@ -151,7 +151,7 @@ function _renderSingleStats(r: StatsResult): string {
     + _renderWordTable(r.rare_words, `Top ${r.rare_words.length} mots les plus rares`, "rare");
 }
 
-function _renderCompareStats(r: StatsCompareResult): string {
+export function _renderCompareStats(r: StatsCompareResult): string {
   const summaryHtml = `
     <div class="stats-compare-summaries">
       <div class="stats-compare-col stats-compare-a">
