@@ -14,7 +14,8 @@
 import "../ui/annotation.css";
 import { escHtml as _escHtml } from "../lib/diff.ts";
 import type { Conn } from "../lib/sidecarClient.ts";
-import { SidecarError } from "../lib/sidecarClient.ts";
+import { SidecarError, listModels, downloadModel, getJob } from "../lib/sidecarClient.ts";
+import { modelForLanguage, type ModelInfo } from "../lib/models.ts";
 import { compareDocsByTitle } from "../lib/docSort.ts";
 import { setHtml, raw } from "../lib/safeHtml.ts";
 import { needsSpaceBefore, tokensToPlain } from "../lib/annotationSpacing.ts";
@@ -60,6 +61,9 @@ export class AnnotationView {
   private _annotSelectedTokenId: number | null = null;
   private _annotJobPoll: ReturnType<typeof setInterval> | null = null;
   private _annotJobId: string | null = null;
+  // Phase 4 — in-context spaCy model download (separate poll from the annotate job).
+  private _annotModelPoll: ReturnType<typeof setInterval> | null = null;
+  private _annotModelJobId: string | null = null;
   private _annotSearchQuery = "";
   private _annotSearchMatches: number[] = [];
   private _annotSearchCursor = 0;
@@ -92,6 +96,7 @@ export class AnnotationView {
 
   dispose(): void {
     this._annotStopPoll();
+    this._annotStopModelPoll();
     this._panel = null;
   }
 
@@ -299,6 +304,13 @@ export class AnnotationView {
     toolbar.appendChild(searchWrap);
     panel.appendChild(toolbar);
 
+    // In-context spaCy model band (Phase 4): shown when the selected doc's language
+    // model is not installed, offering a one-click download. Hidden by default.
+    const modelBand = document.createElement("div");
+    modelBand.className = "annot-model-band";
+    modelBand.style.display = "none";
+    panel.appendChild(modelBand);
+
     // ── Layout: sidebar + viewer + editor ────────────────────────────────────
     const layout = document.createElement("div");
     layout.className = "annot-layout";
@@ -452,6 +464,7 @@ export class AnnotationView {
       }
       this._annotTokens = all;
       this._annotRenderInterlinear(viewer, editor);
+      void this._annotCheckModel(); // Phase 4: prompt to download the model if missing
       // Re-apply search highlights if a query is active
       if (this._annotSearchQuery && this._panel) {
         this._annotSearchMatches = this._annotTokens
@@ -779,6 +792,91 @@ export class AnnotationView {
     } catch {
       // transient error — keep polling
     }
+  }
+
+  // ─── In-context model download (Phase 4) ──────────────────────────────────
+  private async _annotCheckModel(): Promise<void> {
+    const panel = this._panel;
+    const conn = this._getConn();
+    if (!panel || !conn) return;
+    const band = panel.querySelector<HTMLElement>(".annot-model-band");
+    if (!band) return;
+    const doc = this._annotDocs.find(d => d.doc_id === this._annotSelectedDocId);
+    if (!doc) { band.style.display = "none"; return; }
+    let models: ModelInfo[];
+    try {
+      models = await listModels(conn);
+    } catch {
+      return; // best effort — never block annotation on the check
+    }
+    if (!this._panel) return; // disposed while loading
+    const model = modelForLanguage(doc.language, models);
+    if (!model || model.installed) { band.style.display = "none"; return; }
+    this._annotRenderModelBand(band, model);
+  }
+
+  private _annotRenderModelBand(band: HTMLElement, model: ModelInfo): void {
+    band.style.display = "";
+    band.replaceChildren();
+    const msg = document.createElement("span");
+    msg.className = "annot-model-band-msg";
+    msg.textContent =
+      `⚠ Modèle « ${model.name} » requis pour annoter cette langue ` +
+      `(~${model.approx_size_mb} Mo).`;
+    const btn = document.createElement("button");
+    btn.className = "btn btn-primary btn-sm";
+    btn.textContent = "↓ Télécharger";
+    btn.addEventListener("click", () => void this._annotDownloadModel(model.name, band, btn));
+    band.appendChild(msg);
+    band.appendChild(btn);
+  }
+
+  private async _annotDownloadModel(name: string, band: HTMLElement, btn: HTMLButtonElement): Promise<void> {
+    const conn = this._getConn();
+    if (!conn || this._annotModelJobId !== null) return;
+    btn.disabled = true;
+    btn.textContent = "Téléchargement…";
+    try {
+      const job = await downloadModel(conn, name);
+      this._annotModelJobId = job.job_id ?? null;
+      if (!this._annotModelJobId) throw new Error("Pas de job_id dans la réponse");
+      this._annotModelPoll = setInterval(() => { void this._annotPollModel(band, btn); }, 1000);
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = "↓ Réessayer";
+      const m = band.querySelector<HTMLElement>(".annot-model-band-msg");
+      if (m) m.textContent = `✗ ${err instanceof SidecarError ? err.message : String(err)}`;
+    }
+  }
+
+  private async _annotPollModel(band: HTMLElement, btn: HTMLButtonElement): Promise<void> {
+    const conn = this._getConn();
+    if (!conn || !this._annotModelJobId) return;
+    try {
+      const job = await getJob(conn, this._annotModelJobId);
+      if (job.status === "running" && job.progress_message) {
+        btn.textContent = job.progress_message;
+      } else if (job.status === "done") {
+        this._annotStopModelPoll();
+        band.style.display = "none";
+      } else if (job.status === "error" || job.status === "canceled") {
+        this._annotStopModelPoll();
+        btn.disabled = false;
+        btn.textContent = "↓ Réessayer";
+        const m = band.querySelector<HTMLElement>(".annot-model-band-msg");
+        if (m) m.textContent = `✗ ${job.error ?? "Échec du téléchargement"}`;
+      }
+    } catch {
+      // transient — keep polling
+    }
+  }
+
+  private _annotStopModelPoll(): void {
+    if (this._annotModelPoll !== null) {
+      clearInterval(this._annotModelPoll);
+      this._annotModelPoll = null;
+    }
+    this._annotModelJobId = null;
   }
 
   // ─── Search helpers ───────────────────────────────────────────────────────
