@@ -7,6 +7,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-06-29
+
+### Fixed
+
+- **shell — home & chrome rendus dé-stylés au démarrage (CSS du design-system chargée trop tard)** : le shell n'a aucune CSS propre ; tout le design-system de Prep (`tokens`/`base`/`components`/`prep-vnext`/`app`/`job-center.css`) était importé **uniquement dans `constituerModule.ts`**, lui-même **chargé paresseusement** (`await import(...)`). Conséquence : au boot sur l'écran d'accueil — et tant que l'utilisateur n'avait pas ouvert « Constituer » au moins une fois — **le home, la barre d'onglets et l'Explorer s'affichaient sans aucune mise en forme** (titres/boutons en style navigateur brut). Visible dans le binaire packagé 0.3.0 ; non détecté par la CI (la QA visuelle du shell n'est pas automatisée) ni par `tauri dev` quand on ouvrait d'abord Constituer ou l'Explorer (le concordancier s'auto-style). **Correctif** : ces 6 imports CSS sont déplacés vers l'entrée du shell (`src/main.ts`), donc bundlés dans le chunk principal et chargés via `<link>` **dès le premier rendu** (vérifié : `index-*.css` passe de chunk lazy à chunk principal ; 50 tests shell verts ; confirmation visuelle du home stylé en `tauri dev`). Le `styleRegistry` reste disponible pour de l'injection runtime future.
+
 ## [0.3.0] - 2026-06-29
 
 ### Added

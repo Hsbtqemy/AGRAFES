@@ -12,13 +12,9 @@
 import type { ShellContext } from "../context.ts";
 import { setCurrentDbPath } from "../../../tauri-prep/src/lib/db.ts";
 import { App } from "../../../tauri-prep/src/app.ts";
-// Prep CSS is managed by Vite: bundled into this chunk automatically.
-import "../../../tauri-prep/src/ui/tokens.css";
-import "../../../tauri-prep/src/ui/base.css";
-import "../../../tauri-prep/src/ui/components.css";
-import "../../../tauri-prep/src/ui/prep-vnext.css";
-import "../../../tauri-prep/src/ui/app.css";
-import "../../../tauri-prep/src/ui/job-center.css";
+// Prep design-system CSS is imported EAGERLY at the shell entry (src/main.ts) so
+// the whole shell — including the home screen and Explorer — is styled from first
+// paint, not only after this lazily-imported module loads. Do not re-import it here.
 
 // ─── Module state ──────────────────────────────────────────────────────────────
 
