@@ -206,17 +206,15 @@ def _process_one(
                 # without this the doc would be titled `tmpXXXX`). Matches a local
                 # import of the same filename (importers default to `path.stem`).
                 title=Path(entry.name).stem,
+                # Provenance: the importer writes source_path = the remote URL inside
+                # its own (single) import transaction, so there is no follow-up UPDATE
+                # and no crash window that could leave source_path = tmp_path (SID-05).
+                source_path=entry.href,
                 doc_role=doc_role, resource_type=resource_type,
                 run_id=run_id, run_logger=log,
             )
             stats = report.to_dict()
             doc_id = stats.get("doc_id")
-            # Provenance: replace the temp path with the remote URL (source_hash stays).
-            if doc_id:
-                conn.execute(
-                    "UPDATE documents SET source_path = ? WHERE doc_id = ?", (entry.href, doc_id)
-                )
-                conn.commit()
             update_run_stats(conn, run_id, {**stats, "source_url": entry.href})
             return {
                 **base,
