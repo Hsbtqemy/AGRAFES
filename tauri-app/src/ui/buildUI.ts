@@ -630,6 +630,7 @@ export function buildUI(container: HTMLElement): () => void {
   });
 
   segBtn.addEventListener("click", () => {
+    toggleStatsPanel(false);  // exit the stats full-screen view
     if (state.mode === "segment") return;
     state.mode = "segment";
     segBtn.classList.add("app-active");
@@ -638,6 +639,7 @@ export function buildUI(container: HTMLElement): () => void {
     if (state.currentQuery || state.regexPattern) void doSearch(state.currentQuery || state.regexPattern);
   });
   kwicBtn.addEventListener("click", () => {
+    toggleStatsPanel(false);  // exit the stats full-screen view
     if (state.mode === "kwic") return;
     state.mode = "kwic";
     kwicBtn.classList.add("app-active");

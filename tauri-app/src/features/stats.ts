@@ -392,12 +392,19 @@ export function toggleStatsPanel(forceOpen?: boolean): void {
   const isOpen = !panel.classList.contains("hidden");
   const shouldOpen = forceOpen !== undefined ? forceOpen : !isOpen;
 
+  // Stats is a full-screen view (tab-like): opening it hides the results area so
+  // the panel takes the whole space instead of squashing/overlaying the results;
+  // closing it brings the results back. The two are mutually exclusive.
+  const results = document.getElementById("results-area");
+
   if (shouldOpen) {
     panel.classList.remove("hidden");
+    if (results) results.style.display = "none";
     btn?.classList.add("app-active");
     populateStatsSelects();
   } else {
     panel.classList.add("hidden");
+    if (results) results.style.display = "";
     btn?.classList.remove("app-active");
   }
 }
