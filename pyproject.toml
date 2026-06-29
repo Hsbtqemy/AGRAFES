@@ -30,6 +30,7 @@ packaging = [
     "pyinstaller>=6.0",
     "charset-normalizer>=3.0",  # embed for sidecar binary TXT import
     "spacy>=3.7",               # bundled into sidecar (annotation feature)
+    "click>=8.1",               # spaCy CLI (`spacy download`) AND `import spacy` need click; recent typer no longer pulls it transitively (release.yml build + runtime annotation)
 ]
 nlp = [
     "spacy>=3.7",
