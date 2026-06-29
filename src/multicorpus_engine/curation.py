@@ -253,6 +253,10 @@ def curate_document(
     skipped = 0
     rules_fired: set[str] = set()
     updates: list[tuple] = []
+    # QRY-08: compile each rule once with V0 semantics (as apply_rules does via
+    # compiled()) — keeps rules_matched consistent with what actually fired, and
+    # avoids recompiling every pattern for each modified unit.
+    compiled_rules = [(rule, rule.compiled()) for rule in rules]
 
     for row in rows:
         unit_id = row["unit_id"]
@@ -300,8 +304,8 @@ def curate_document(
         if curated != original:
             updates.append((curated, unit_id))
             modified += 1
-            for rule in rules:
-                if re.search(rule.pattern, original, flags=rule.flags):
+            for rule, pattern in compiled_rules:
+                if pattern.search(original):
                     rules_fired.add(rule.description or rule.pattern)
             log.debug("Curated unit_id=%d", unit_id)
 
