@@ -16,6 +16,14 @@
   padding: 8px 12px; border-bottom: 1px solid var(--border, #ddd);
 }
 .annot-title { margin: 0; font-size: 1rem; font-weight: 600; flex: 1; }
+
+/* In-context model download band (Phase 4) — shown when the doc's language model is absent. */
+.annot-model-band {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 6px 12px; border-bottom: 1px solid #ffe082; background: #fff8e1;
+  font-size: 0.82rem; color: #7a5b00;
+}
+.annot-model-band-msg { flex: 1; min-width: 220px; }
 /* Boutons toolbar/éditeur (Annoter, Enregistrer) : style-maison .btn / .btn-primary (app.css). */
 .annot-status { font-size: 0.8rem; color: var(--color-muted, #888); min-width: 120px; }
 .annot-model-label {

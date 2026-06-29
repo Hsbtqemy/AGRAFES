@@ -23,6 +23,7 @@ import {
   SidecarError,
 } from "../../../shared/sidecarCore";
 import type { Conn } from "../../../shared/sidecarCore";
+import type { ModelInfo } from "./models";
 
 // Re-export the shared connection API so existing `from "./sidecarClient"` imports keep working.
 export {
@@ -36,6 +37,7 @@ export {
   SidecarError,
 };
 export type { Conn };
+export type { ModelInfo };
 
 /** Force le flush immédiat du pipe stdout sous Windows (évite les blocages). */
 
@@ -1423,6 +1425,25 @@ export async function annotate(
 export async function getJob(conn: Conn, jobId: string): Promise<JobRecord> {
   const res = (await conn.get(`/jobs/${jobId}`)) as { job: JobRecord };
   return res.job;
+}
+
+// ─── spaCy model management (Phase 2 sidecar endpoints) ──────────────────────
+
+export async function listModels(conn: Conn): Promise<ModelInfo[]> {
+  const res = (await conn.get("/models")) as { models: ModelInfo[] };
+  return res.models;
+}
+
+export async function downloadModel(conn: Conn, model: string): Promise<JobRecord> {
+  const res = (await conn.post("/models/download", { model })) as {
+    job: JobRecord;
+    status?: string;
+  };
+  return res.job;
+}
+
+export async function removeModel(conn: Conn, model: string): Promise<{ name: string }> {
+  return conn.post("/models/remove", { model }) as Promise<{ name: string }>;
 }
 
 export async function curatePreview(
