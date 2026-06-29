@@ -10,6 +10,11 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Fixed
 
 - **outillage — `bump_version.py` met aussi à jour `Cargo.lock`** : le bump `--shell` ne touchait que `Cargo.toml`, laissant le `[[package]] agrafes-shell` de `Cargo.lock` dériver (constaté à **0.2.6** lors de la release 0.2.8) — un `cargo build --locked`/`--frozen` au tag de release aurait échoué. Ajout d'un remplacement ancré sur la ligne `name = "agrafes-shell"` (ne touche jamais la version d'une dépendance). Aussi : `sys.stdout.reconfigure(utf-8)` au démarrage pour que les caractères `✓`/`→` n'explosent plus sur une console Windows cp1252 (plus besoin de `PYTHONUTF8=1`).
+- **QRY-08 — `rules_matched` cohérent avec l'application** : la détection des règles « qui ont matché » faisait un `re.search(pattern, flags=rule.flags)` **brut** (sans le `V0` que `compiled()`/`apply_rules` verrouillent) et recompilait chaque motif pour chaque unité modifiée. Désormais : compilation **une seule fois** par règle via `compiled()` (V0) → `rules_matched` reflète exactement ce qui a été appliqué (plus de divergence si `regex.DEFAULT_VERSION` bascule en V1) et moins de recompilations. Test : `test_curation.py` (motif set-op `[\w&&\d]` sous `DEFAULT_VERSION=V1`).
+
+### Security
+
+- **SEC-04 — portfile : DACL restreinte à l'utilisateur courant sur Windows** : le portfile (qui porte le token loopback) est créé en `0o600`, mode quasi inopérant sous Windows (héritage de l'ACL du dossier parent). Durcissement best-effort via `icacls /inheritance:r /grant:r <user>:F` (outil intégré, aucune dépendance) appelé après l'écriture ; ne fait jamais échouer la création du portfile. Helper `_restrict_file_to_current_user` injectable + testé (`test_portfile_acl.py`). Défense en profondeur (la menace résiduelle reste un process même-utilisateur).
 
 ## [0.2.8] - 2026-06-29
 

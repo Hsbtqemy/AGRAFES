@@ -94,6 +94,42 @@ def sidecar_portfile_path(db_path: str | Path) -> Path:
     return Path(db_path).resolve().parent / ".agrafes_sidecar.json"
 
 
+def _restrict_file_to_current_user(
+    path: Path, *, is_windows: Optional[bool] = None, run=None
+) -> bool:
+    """SEC-04 — tighten *path*'s DACL to the current user on Windows.
+
+    The portfile is created with POSIX mode 0o600, but on Windows that is a near
+    no-op (the file inherits the parent directory's ACL), leaving the loopback
+    token readable per the parent's permissions. Restrict it to the current user
+    via the built-in ``icacls`` (no new dependency). Best-effort: never raises;
+    returns True only when the icacls call was attempted. ``is_windows``/``run``
+    are injectable for testing.
+    """
+    if is_windows is None:
+        is_windows = os.name == "nt"
+    if not is_windows:
+        return False
+    try:
+        import getpass
+        import subprocess
+
+        runner = run if run is not None else subprocess.run
+        runner(
+            [
+                "icacls", str(path),
+                "/inheritance:r",
+                "/grant:r", f"{getpass.getuser()}:F",
+            ],
+            capture_output=True,
+            check=False,
+            timeout=10,
+        )
+        return True
+    except Exception:
+        return False
+
+
 def _find_free_port(host: str = "127.0.0.1") -> int:
     """Pick a free TCP port avoiding Windows-excluded ranges (e.g. 50000-50059).
 
@@ -8237,6 +8273,8 @@ class CorpusServer:
             self._portfile_path.chmod(0o600)
         except OSError:
             pass
+        # SEC-04 — the POSIX mode is a near no-op on Windows; tighten the DACL there.
+        _restrict_file_to_current_user(self._portfile_path)
 
     def _remove_portfile(self) -> None:
         try:

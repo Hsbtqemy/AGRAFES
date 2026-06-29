@@ -227,6 +227,23 @@ def test_curate_document_reports_fired_rules_sorted(db_conn: sqlite3.Connection)
     assert report.rules_matched == ["alpha-rule", "zeta-rule"]  # sorted, only fired
 
 
+def test_rules_matched_uses_v0_even_if_regex_default_is_v1(
+    db_conn: sqlite3.Connection, monkeypatch
+) -> None:
+    """QRY-08: rules_matched must reflect what apply_rules (V0) actually changed.
+    The old detection used a bare ``re.search(pattern, flags=rule.flags)`` which,
+    when the regex module's DEFAULT_VERSION is V1, diverges from the V0-locked
+    apply_rules — reporting a wrong set of fired rules."""
+    monkeypatch.setattr(curation.re, "DEFAULT_VERSION", curation.re.V1)
+    doc = _add_doc(db_conn)
+    _add_unit(db_conn, doc, 1, "abc")
+    # `[\w&&\d]` — V0: any of \w / & / \d (matches the letters); V1: \w ∩ \d (digits).
+    rule = CurationRule(pattern=r"[\w&&\d]", replacement="X", description="setop")
+    report = curate_document(db_conn, doc, [rule])
+    assert report.units_modified == 1            # apply_rules (V0) changed "abc"
+    assert report.rules_matched == ["setop"]     # detection (V0) agrees; was [] before
+
+
 # ── curate_document: priority levels ──────────────────────────────────────────
 
 
