@@ -153,3 +153,15 @@ def test_query_language_filter(
     # Querying with wrong language returns no hits
     hits_en = run_query(db_conn, q="Bonjour", mode="segment", language="en")
     assert len(hits_en) == 0
+
+
+def test_query_validate_user_regex_rejects_double_nested_group() -> None:
+    # QRY-06: query.py carries its own copy of the ReDoS guard (kept in sync with
+    # curation.py) — it must also reject ((a)*)* yet allow disjoint alternation.
+    import pytest
+
+    from multicorpus_engine.query import _validate_user_regex
+
+    with pytest.raises(ValueError, match="nested quantifiers"):
+        _validate_user_regex("((a)*)*")
+    _validate_user_regex("(a|b)*")  # legitimate → must not raise
