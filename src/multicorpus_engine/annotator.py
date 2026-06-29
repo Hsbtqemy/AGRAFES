@@ -56,13 +56,31 @@ def _load_model(model_name: str):
             "`pip install .[nlp]`."
         ) from exc
 
+    # A model downloaded on demand (services/models_service) is extracted as a data
+    # dir but has no installed distribution metadata, so spacy.load(name) — which
+    # resolves packages via metadata (is_package) — can't find it. Load it by PATH.
+    try:
+        from .paths import model_data_dir
+
+        data_dir = model_data_dir(model_name)
+        if data_dir is not None:
+            return spacy.load(data_dir)
+    except Exception:  # pragma: no cover - best effort, fall through to load-by-name
+        pass
+
     try:
         return spacy.load(model_name)
     except Exception as exc:  # pragma: no cover - model availability depends on env
         raise RuntimeError(
             f"spaCy model not available: {model_name!r}. "
-            f"Install it with `python -m spacy download {model_name}`."
+            f"Download it from AGRAFES settings, or run "
+            f"`python -m spacy download {model_name}`."
         ) from exc
+
+
+def clear_model_cache() -> None:
+    """Drop cached spaCy pipelines (call after installing/removing a model)."""
+    _load_model.cache_clear()
 
 
 def annotate_document(
