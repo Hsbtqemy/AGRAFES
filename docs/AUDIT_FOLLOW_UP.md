@@ -161,7 +161,7 @@ dans le fichier d'audit, §4.
 | OPS-02 | 🟠 | P1-10 | 🟦 partiel | `smoke.yml` tire désormais sur `[main, dev]` (✅). `release-gate.yml` laissé `main`-only (gate de *release*, lourd sur PR dev — à arbitrer). `smoke.yml:4`. |
 | OPS-03 | 🟡 | P2-15 | ✅ corrigé (P3) | `API_VERSION = CONTRACT_VERSION` (dérivé, plus un 2ᵉ littéral maintenu à la main) → drift structurellement impossible. CONTRACT_VERSION 1.6.31→1.6.32 ; `openapi.json` régénéré. `sidecar_contract.py`. |
 | OPS-04 | 🟡 | P2-19 | ✅ corrigé (P3) | Commentaire `pyproject.toml` corrigé (gate CI = **60**, plus le 35 périmé). `pyproject.toml`. |
-| OPS-05 | 🟡 | P2-19 | ⬜ ouvert (différé) | CHANGELOG recrû (632 l.). **Différé du lot P3** : churn récurrent (le fichier regrossit à chaque feature) ; l'archivage (~100 l. à déplacer vers `docs/CHANGELOG_ARCHIVE.md` + cutoff + footer à mettre à jour) polluerait un PR de correctifs code — à traiter en passe d'archivage dédiée. |
+| OPS-05 | 🟡 | P2-19 | ✅ corrigé | Archivage CHANGELOG en **PR dédié** (cutoff = frontière de minor) : la **série [0.1.x]** (0.1.12→0.1.44, 27 versions) sort vers `docs/CHANGELOG_ARCHIVE.md` ; le changelog courant ne garde que `[Unreleased]` + la série courante `[0.2.x]` → **650 → 209 l.** Vérifié : 0 version en double, 36 versions conservées au total, footer + intro d'archive mis à jour. |
 
 **Rappels — antérieurs re-confirmés ouverts par cette passe** (déjà tracés ci-dessous / en
 2026-06-12, non dupliqués ici) : `A-01` (sidecar 8 885 l., point d'arrêt), `A-04`, `Q-04`,
