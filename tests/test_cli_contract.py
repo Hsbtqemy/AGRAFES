@@ -273,3 +273,13 @@ def test_cli_db_optimize_and_runs_prune(tmp_path: Path) -> None:
     ).fetchone()[0]
     conn.close()
     assert int(remaining_query_runs) == 0
+
+
+def test_serve_token_label_redacts_literal_secret() -> None:
+    """SEC-07: a literal --token value must never be persisted verbatim in
+    runs.params; only the mode keyword or the placeholder 'custom' is stored."""
+    from multicorpus_engine.cli import _safe_token_label
+
+    assert _safe_token_label("auto") == "auto"
+    assert _safe_token_label("off") == "off"
+    assert _safe_token_label("super-secret-token") == "custom"

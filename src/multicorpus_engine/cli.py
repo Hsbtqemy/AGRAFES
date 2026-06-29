@@ -891,6 +891,16 @@ def cmd_segment(args: argparse.Namespace) -> None:
 # serve
 # ---------------------------------------------------------------------------
 
+def _safe_token_label(token_mode: str) -> str:
+    """Non-sensitive descriptor of the token mode for runs.params (SEC-07).
+
+    ``--token`` accepts ``auto``/``off`` or a **literal** secret; persisting that
+    literal verbatim in the DB would leak it at rest. Map any non-keyword value to
+    ``"custom"`` so the run record notes *that* a token was set, not *which*.
+    """
+    return token_mode if token_mode in ("auto", "off") else "custom"
+
+
 def cmd_serve(args: argparse.Namespace) -> None:
     """Start the sidecar HTTP API server (or report already-running state)."""
     from .db.connection import get_connection
@@ -915,7 +925,7 @@ def cmd_serve(args: argparse.Namespace) -> None:
     conn = get_connection(db_path)
     apply_migrations(conn)
 
-    run_id = create_run(conn, "serve", {"host": host, "port": port, "token": token_mode})
+    run_id = create_run(conn, "serve", {"host": host, "port": port, "token": _safe_token_label(token_mode)})
     log, log_path = setup_run_logger(db_path, run_id)
 
     server = None
