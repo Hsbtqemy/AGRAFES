@@ -10,6 +10,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Added
 
 - **tests — couverture `tauri-app` : panneau de statistiques lexicales (FE-06/U-03)** : `features/stats.ts` (concordancier) était non testé. Ajout de `stats.logic.test.ts` (10 cas, happy-dom) couvrant la logique pure (rendu de la table comparée — ratio `∞`/`—`/`x.xx`, échappement HTML, largeur de barre), le parseur de filtres DOM `_readSlot` (liste de doc-ids, clamp `top_n` à [5, 500]), le peuplement des `<select>` depuis l'état (dédup + tri), et le build/toggle du panneau. 3 helpers internes exportés pour test (pattern `buildFtsQuery`). Total `tauri-app` : 81 → **91** tests.
+- **tests — couverture `tauri-app` : rendu des résultats KWIC/parallèle (FE-06/U-03)** : `ui/results.ts` (cartes de résultats du concordancier) était non testé. Ajout de `results.logic.test.ts` (15 cas) : `_matchToCql` (KWIC → CQL, échappement `"`/`\`), `hitPlainText` (strip `<<`/`>>`, fallback KWIC), `parseAlignedGroupKey` (parse + fallback clé malformée), `groupAlignedUnits`/`sortedAlignedGroupEntries` (regroupement + tri groupes puis items : `external_id` asc nulls-last, `unit_id`), `appendSourceChangedBadge` (date tronquée 10 car., conditionnel), `buildCitationText` (citation multi-langue), et un **render-smoke `renderHit`** dont le test **anti-XSS du highlight** (texte piégé `<img onerror>` échappé ; seuls les sentinelles `<<…>>` deviennent des `<span class="highlight">`). 3 helpers internes exportés pour test. Total `tauri-app` : 91 → **106** tests.
 
 ### Fixed
 
