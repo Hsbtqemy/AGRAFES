@@ -7,6 +7,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-06-29
+
 ### Added
 
 - **prep — écran Paramètres + gestionnaire de modèles spaCy (Phase 3, UI-B)** : nouvel onglet **« Paramètres »** (`SettingsScreen`, icône ⚙) dans la nav Prep, hébergeant un composant **réutilisable** `ModelManager` : liste des 9 modèles avec statut (Installé · version / Absent), **Télécharger** (job + progression dans le bouton) et **Supprimer**, modèles **partagés entre tous les corpus**. Réutilise les méthodes client + `lib/models.ts` de la Phase 4 ; nouveau helper pur `describeModel` (libellés de ligne). Boutons au **style-maison** `btn btn-primary/secondary btn-sm` ; polls nettoyés à la déconnexion/`dispose` (classe FE-08). Câblage `app.ts` (TABS/LABELS/ICONS/screenMap/`setConn`). **3 tests** `describeModel` ; tsc + vite build + **723 tests** prep + eslint verts. **Phase 3 de [`docs/DESIGN_spacy_model_download.md`](docs/DESIGN_spacy_model_download.md)** — complète l'UI (A *et* B). QA visuelle = rebuild du sidecar requis.
