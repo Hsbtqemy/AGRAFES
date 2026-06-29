@@ -4021,8 +4021,8 @@
   "info": {
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
-    "version": "1.6.32",
-    "x-contract-version": "1.6.32"
+    "version": "1.6.33",
+    "x-contract-version": "1.6.33"
   },
   "openapi": "3.0.3",
   "paths": {
@@ -6658,6 +6658,177 @@
           }
         ],
         "summary": "Cancel a queued or running job (best-effort; idempotent)"
+      }
+    },
+    "/models": {
+      "get": {
+        "description": "Catalog of supported spaCy models with install state (filesystem-only, no DB) → dispatched lock-free, never blocks db writes.",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "models": {
+                      "items": {
+                        "properties": {
+                          "approx_size_mb": {
+                            "type": "integer"
+                          },
+                          "installed": {
+                            "type": "boolean"
+                          },
+                          "language": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "version": {
+                            "nullable": true,
+                            "type": "string"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Model list"
+          }
+        },
+        "summary": "List known spaCy models with install status"
+      }
+    },
+    "/models/download": {
+      "post": {
+        "description": "Enqueues a JobManager job that downloads the model wheel from the official Explosion GitHub releases (https) and installs it into the user models dir. Returns {job}; poll /jobs/<id> for progress. Model name is restricted to a fixed allowlist.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "model": {
+                    "description": "Model name, e.g. fr_core_news_md",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "model"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobAcceptedResponse"
+                }
+              }
+            },
+            "description": "Download job accepted"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request (unknown/blank model)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized (missing/invalid token)"
+          }
+        },
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "summary": "Download + install a spaCy model as an async job (token required)"
+      }
+    },
+    "/models/remove": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "model": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "model"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Model removed"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request (unknown/blank model)"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Model not installed"
+          }
+        },
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "summary": "Remove an installed spaCy model (token required)"
       }
     },
     "/openapi.json": {

@@ -489,6 +489,9 @@ _WRITE_PATHS = frozenset({
     # ShareDocs / WebDAV ingestion (Phase 2) — writes via async job.
     # NB: /webdav/list is read-only (PROPFIND) → NOT here, dispatched lock-free.
     "/import-remote",
+    # spaCy model management — download (async job) + remove both mutate the user
+    # models dir. NB: GET /models is read-only → NOT here, dispatched lock-free.
+    "/models/download", "/models/remove",
 })
 
 
@@ -707,7 +710,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 return
             # /health and /openapi.json touch no DB → keep them lock-free so they
             # stay responsive even when a DB handler holds the lock (R-01b).
-            if urlparse(self.path).path in ("/health", "/openapi.json"):
+            if urlparse(self.path).path in ("/health", "/openapi.json", "/models"):
                 self._do_GET_inner()
             else:
                 with self._lock():
@@ -734,6 +737,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             }))
         elif path == "/openapi.json":
             self._send_json(openapi_spec())
+        elif path == "/models":
+            self._handle_models_list()
         elif path == "/documents":
             self._handle_documents()
         elif path == "/documents/preview":
@@ -861,6 +866,15 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             # so browsing a remote folder never blocks db writes (P2 §D4).
             if path == "/webdav/list":
                 self._handle_webdav_list(body)
+                return
+            # /models/* touch only the filesystem models dir (+ network for the
+            # download job) → keep them lock-free so a multi-minute model download
+            # never blocks db writes. The write-token gate above still covers them.
+            if path == "/models/download":
+                self._handle_models_download(body)
+                return
+            if path == "/models/remove":
+                self._handle_models_remove(body)
                 return
             self._lock().acquire()
             _lock_held = True
@@ -2507,6 +2521,64 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 
         job = self._jobs().submit(kind="import-remote", params=params, runner=runner)
         self._send_json(success_payload({"job": job.to_dict()}, status="accepted"), status=202)
+
+    # ── spaCy model management (Phase 2; logic in services/models_service) ─────
+    def _handle_models_list(self) -> None:
+        """GET /models — catalog + install status (filesystem-only, lock-free)."""
+        from multicorpus_engine.services import models_service as _ms
+
+        self._send_json(success_payload({"models": _ms.list_models()}))
+
+    def _handle_models_download(self, body: dict) -> None:
+        """POST /models/download — download + install a model as an async job.
+
+        Filesystem + network only (no DB) → dispatched lock-free; the install runs on
+        a JobManager worker thread. Returns {job} (202); the UI polls /jobs/<id>.
+        """
+        from multicorpus_engine.services import models_service as _ms
+
+        model = body.get("model")
+        if not isinstance(model, str) or not model.strip():
+            self._send_error("model is required", code=ERR_VALIDATION, http_status=400)
+            return
+        model = model.strip()
+        if model not in _ms.MODEL_CATALOG:
+            self._send_error(
+                f"unknown model: {model!r}",
+                code=ERR_VALIDATION,
+                http_status=400,
+                details={"allowed": sorted(_ms.MODEL_CATALOG)},
+            )
+            return
+
+        def runner(job_id, kind, job_params, progress_cb):
+            return _ms.install_model(job_params["model"], progress_cb=progress_cb)
+
+        job = self._jobs().submit(kind="models-download", params={"model": model}, runner=runner)
+        self._send_json(success_payload({"job": job.to_dict()}, status="accepted"), status=202)
+
+    def _handle_models_remove(self, body: dict) -> None:
+        """POST /models/remove — remove an installed model (filesystem-only, lock-free)."""
+        from multicorpus_engine.services import models_service as _ms
+        from multicorpus_engine.services.errors import (
+            BadRequestError,
+            NotFoundError,
+            ValidationError,
+        )
+
+        model = body.get("model")
+        if not isinstance(model, str) or not model.strip():
+            self._send_error("model is required", code=ERR_VALIDATION, http_status=400)
+            return
+        try:
+            result = _ms.remove_model(model.strip())
+        except (ValidationError, BadRequestError) as exc:
+            self._send_error(exc.message, code=ERR_VALIDATION, http_status=exc.http_status)
+            return
+        except NotFoundError as exc:
+            self._send_error(exc.message, code=ERR_NOT_FOUND, http_status=exc.http_status)
+            return
+        self._send_json(success_payload(result))
 
     def _preview_text_units(
         self, fpath: "Path", mode: str, limit: int
