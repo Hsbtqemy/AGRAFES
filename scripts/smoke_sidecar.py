@@ -36,6 +36,7 @@ CHECKS: list[tuple[str, str]] = [
     ("/curate/exceptions", "exceptions"),  # curate_service
     ("/units?doc_id=1", "units"),          # units_service
     ("/tokens?doc_id=1", "tokens"),        # tokens_service
+    ("/models", "models"),                 # models_service (spaCy model catalog)
 ]
 
 

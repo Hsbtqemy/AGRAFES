@@ -14,7 +14,7 @@ from typing import Any
 from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
-CONTRACT_VERSION = "1.6.32"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.33"  # semantic versioning for the sidecar API contract
 # SID-08 / OPS-03: the API version IS the contract version — derived, never a
 # second hand-maintained literal, so the two can no longer drift. /health reports
 # the *engine* version under `version` (it predates the sidecar); every other
@@ -106,6 +106,10 @@ API_VERSION = CONTRACT_VERSION
 # 1.6.32: POST /units/merge & POST /units/split responses gain `fts_stale` (boolean, additive) —
 #         both mutate indexed text so the client must reindex; merge also prunes the deleted
 #         unit's orphan FTS row server-side (ENG-03).
+# 1.6.33: spaCy model management (on-demand download) — GET /models (catalog + install status;
+#         filesystem-only, lock-free); POST /models/download (async job → {job}, token required;
+#         allowlisted model, wheel from Explosion GitHub releases over https); POST /models/remove
+#         (token required). Engine logic in services/models_service (Phase 2 of the design note).
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
@@ -1927,6 +1931,56 @@ def openapi_spec() -> dict[str, Any]:
                         "202": {"description": "Import job accepted", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/JobAcceptedResponse"}}}},
                         "400": {"description": "Bad request", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
                         "401": {"description": "Unauthorized (missing/invalid token)", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                    },
+                }
+            },
+            # ── spaCy model management (on-demand download) ──────────────────
+            "/models": {
+                "get": {
+                    "summary": "List known spaCy models with install status",
+                    "description": (
+                        "Catalog of supported spaCy models with install state (filesystem-only, "
+                        "no DB) → dispatched lock-free, never blocks db writes."
+                    ),
+                    "responses": {
+                        "200": {"description": "Model list", "content": {"application/json": {"schema": {"type": "object", "properties": {
+                            "models": {"type": "array", "items": {"type": "object", "properties": {
+                                "name": {"type": "string"}, "language": {"type": "string"},
+                                "approx_size_mb": {"type": "integer"}, "installed": {"type": "boolean"},
+                                "version": {"type": "string", "nullable": True}}}}}}}}},
+                    },
+                }
+            },
+            "/models/download": {
+                "post": {
+                    "summary": "Download + install a spaCy model as an async job (token required)",
+                    "description": (
+                        "Enqueues a JobManager job that downloads the model wheel from the official "
+                        "Explosion GitHub releases (https) and installs it into the user models dir. "
+                        "Returns {job}; poll /jobs/<id> for progress. Model name is restricted to a "
+                        "fixed allowlist."
+                    ),
+                    "security": [{"token": []}],
+                    "requestBody": {"required": True, "content": {"application/json": {"schema": {
+                        "type": "object", "required": ["model"], "properties": {
+                            "model": {"type": "string", "description": "Model name, e.g. fr_core_news_md"}}}}}},
+                    "responses": {
+                        "202": {"description": "Download job accepted", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/JobAcceptedResponse"}}}},
+                        "400": {"description": "Bad request (unknown/blank model)", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                        "401": {"description": "Unauthorized (missing/invalid token)", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                    },
+                }
+            },
+            "/models/remove": {
+                "post": {
+                    "summary": "Remove an installed spaCy model (token required)",
+                    "security": [{"token": []}],
+                    "requestBody": {"required": True, "content": {"application/json": {"schema": {
+                        "type": "object", "required": ["model"], "properties": {"model": {"type": "string"}}}}}},
+                    "responses": {
+                        "200": {"description": "Model removed", "content": {"application/json": {"schema": {"type": "object", "properties": {"name": {"type": "string"}}}}}},
+                        "400": {"description": "Bad request (unknown/blank model)", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                        "404": {"description": "Model not installed", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
                     },
                 }
             },
