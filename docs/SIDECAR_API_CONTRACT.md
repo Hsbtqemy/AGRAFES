@@ -109,8 +109,10 @@ Three **independent** version fields surface in sidecar responses — do not con
   - `POST /db/backup`
   - `POST /corpus/info`
   - `POST /tokens/update`
+  - `POST /models/download`
+  - `POST /models/remove`
   - `POST /shutdown`
-- Read endpoints (`/health`, `/query`, `/token_query`, `/token_stats`, `/token_collocates`, `/webdav/list`, `/openapi.json`) do not require token.
+- Read endpoints (`/health`, `/query`, `/token_query`, `/token_stats`, `/token_collocates`, `/webdav/list`, `/models`, `/openapi.json`) do not require token.
 - Threat model and operational policy: `docs/SIDECAR_SECURITY_POSTURE.md`.
 
 ## Required endpoints (persistent UX baseline)
@@ -260,6 +262,10 @@ Three **independent** version fields surface in sidecar responses — do not con
   - batch report per file: `status ∈ {imported, skipped-duplicate, skipped-filtered, skipped-oversize, error}`, `source_url`, `doc_id`, `run_id`, `source_hash`, counts
   - **credentials (`auth`) are NEVER placed in the job params** (which `/jobs/<id>` exposes) nor persisted anywhere — captured in the runner closure, memory only
   - returns `401` if token is active and header is missing/invalid
+- spaCy model management (on-demand download, Phase 2)
+  - `GET /models` — catalog of the supported models + install status (**no token**; filesystem-only → dispatched **lock-free**, never blocks DB writes)
+  - `POST /models/download` (token required) — **asynchronous**: enqueues a `JobManager` job and returns `{ job }` (202); poll `GET /jobs/<id>` for progress. Body `{ model }` (name restricted to a fixed **allowlist**, else `400`). Downloads the wheel from the official Explosion GitHub releases (https) into the shared user models dir.
+  - `POST /models/remove` (token required) — body `{ model }`; `404` if the model is not installed
 - `POST /shutdown`
   - graceful server stop
   - returns `shutting_down: true`
