@@ -1930,6 +1930,172 @@ def openapi_spec() -> dict[str, Any]:
                     },
                 }
             },
+            # ── SID-06 — routes servies jusque-là absentes de l'OpenAPI ──────
+            "/unit/context": {
+                "get": {
+                    "summary": "Reading window of line units centred on a unit (each tagged is_current)",
+                    "parameters": [
+                        {"name": "unit_id", "in": "query", "required": True, "schema": {"type": "integer"}},
+                        {"name": "window", "in": "query", "required": False, "schema": {"type": "integer", "default": 3, "minimum": 1, "maximum": 10}},
+                    ],
+                    "responses": {
+                        "200": {"description": "Context window", "content": {"application/json": {"schema": {"type": "object", "properties": {
+                            "doc_id": {"type": "integer"}, "unit_id": {"type": "integer"}, "unit_index": {"type": "integer"},
+                            "total_units": {"type": "integer"}, "window_before": {"type": "integer"}, "window_after": {"type": "integer"},
+                            "items": {"type": "array", "items": {"type": "object", "properties": {"unit_id": {"type": "integer"}, "text": {"type": "string"}, "is_current": {"type": "boolean"}}}},
+                        }}}}},
+                        "400": {"description": "Bad request", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                        "404": {"description": "Unit not found", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                    },
+                }
+            },
+            "/curate/exceptions": {
+                "get": {
+                    "summary": "List curation exceptions (optionally filtered by doc_id)",
+                    "parameters": [{"name": "doc_id", "in": "query", "required": False, "schema": {"type": "integer"}}],
+                    "responses": {"200": {"description": "Exceptions list", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CurateExceptionsListResponse"}}}}},
+                },
+                "post": {
+                    "summary": "List curation exceptions (body variant; optionally filtered by doc_id)",
+                    "requestBody": {"required": False, "content": {"application/json": {"schema": {"type": "object", "properties": {"doc_id": {"type": "integer"}}}}}},
+                    "responses": {"200": {"description": "Exceptions list", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CurateExceptionsListResponse"}}}}},
+                },
+            },
+            "/curate/exceptions/set": {
+                "post": {
+                    "summary": "Create or replace (upsert) a curation exception for a unit — token required",
+                    "security": [{"token": []}],
+                    "requestBody": {"required": True, "content": {"application/json": {"schema": {
+                        "type": "object", "required": ["unit_id", "kind"], "properties": {
+                            "unit_id": {"type": "integer"}, "kind": {"type": "string", "enum": ["ignore", "override"]},
+                            "override_text": {"type": "string", "description": "Required when kind=override"}, "note": {"type": "string"}}}}}},
+                    "responses": {
+                        "200": {"description": "Exception set", "content": {"application/json": {"schema": {"type": "object", "properties": {
+                            "unit_id": {"type": "integer"}, "kind": {"type": "string"}, "override_text": {"type": "string", "nullable": True},
+                            "note": {"type": "string", "nullable": True}, "action": {"type": "string"}}}}}},
+                        "400": {"description": "Bad request", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                        "404": {"description": "Unit not found", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                    },
+                }
+            },
+            "/curate/exceptions/delete": {
+                "post": {
+                    "summary": "Delete the curation exception for a unit — token required",
+                    "security": [{"token": []}],
+                    "requestBody": {"required": True, "content": {"application/json": {"schema": {"type": "object", "required": ["unit_id"], "properties": {"unit_id": {"type": "integer"}}}}}},
+                    "responses": {
+                        "200": {"description": "Deletion result", "content": {"application/json": {"schema": {"type": "object", "properties": {"unit_id": {"type": "integer"}, "deleted": {"type": "boolean"}}}}}},
+                        "400": {"description": "Bad request", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                    },
+                }
+            },
+            "/curate/exceptions/export": {
+                "post": {
+                    "summary": "Export curation exceptions to a JSON/CSV file (whole corpus or one doc) — token required",
+                    "security": [{"token": []}],
+                    "requestBody": {"required": True, "content": {"application/json": {"schema": {
+                        "type": "object", "required": ["out_path"], "properties": {
+                            "out_path": {"type": "string"}, "format": {"type": "string", "enum": ["json", "csv"], "default": "json"}, "doc_id": {"type": "integer"}}}}}},
+                    "responses": {
+                        "200": {"description": "Export result", "content": {"application/json": {"schema": {"type": "object", "properties": {"out_path": {"type": "string"}, "count": {"type": "integer"}, "format": {"type": "string"}}}}}},
+                        "400": {"description": "Bad request", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                        "500": {"description": "Could not write export file", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                    },
+                }
+            },
+            "/curate/apply-history": {
+                "get": {
+                    "summary": "List recent curation apply-history events (optionally filtered by doc_id)",
+                    "parameters": [
+                        {"name": "doc_id", "in": "query", "required": False, "schema": {"type": "integer"}},
+                        {"name": "limit", "in": "query", "required": False, "schema": {"type": "integer", "default": 50}},
+                    ],
+                    "responses": {"200": {"description": "Apply-history events", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CurateApplyHistoryListResponse"}}}}},
+                },
+                "post": {
+                    "summary": "List recent curation apply-history events (body variant)",
+                    "requestBody": {"required": False, "content": {"application/json": {"schema": {"type": "object", "properties": {
+                        "doc_id": {"type": "integer"}, "scope": {"type": "string", "enum": ["doc", "all"]}, "limit": {"type": "integer", "default": 50, "maximum": 200}}}}}},
+                    "responses": {"200": {"description": "Apply-history events", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CurateApplyHistoryListResponse"}}}}},
+                },
+            },
+            "/curate/apply-history/record": {
+                "post": {
+                    "summary": "Insert one curation apply event into apply-history — token required",
+                    "security": [{"token": []}],
+                    "requestBody": {"required": True, "content": {"application/json": {"schema": {"type": "object", "properties": {
+                        "scope": {"type": "string", "enum": ["doc", "all"], "default": "all"}, "doc_id": {"type": "integer"}, "doc_title": {"type": "string"},
+                        "applied_at": {"type": "string"}, "docs_curated": {"type": "integer"}, "units_modified": {"type": "integer"}, "units_skipped": {"type": "integer"},
+                        "ignored_count": {"type": "integer", "nullable": True}, "manual_override_count": {"type": "integer", "nullable": True},
+                        "preview_displayed_count": {"type": "integer", "nullable": True}, "preview_units_changed": {"type": "integer", "nullable": True},
+                        "preview_truncated": {"type": "boolean"}}}}}},
+                    "responses": {"200": {"description": "Recorded", "content": {"application/json": {"schema": {"type": "object", "properties": {"id": {"type": "integer"}}}}}}},
+                }
+            },
+            "/curate/apply-history/export": {
+                "post": {
+                    "summary": "Export apply-history (<=1000 most recent) to a JSON/CSV file — token required",
+                    "security": [{"token": []}],
+                    "requestBody": {"required": True, "content": {"application/json": {"schema": {
+                        "type": "object", "required": ["out_path"], "properties": {
+                            "out_path": {"type": "string"}, "format": {"type": "string", "enum": ["json", "csv"], "default": "json"}, "doc_id": {"type": "integer"}}}}}},
+                    "responses": {
+                        "200": {"description": "Export result", "content": {"application/json": {"schema": {"type": "object", "properties": {"out_path": {"type": "string"}, "count": {"type": "integer"}, "format": {"type": "string"}}}}}},
+                        "400": {"description": "Bad request", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                        "500": {"description": "Could not write export file", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                    },
+                }
+            },
+            "/query/facets": {
+                "post": {
+                    "summary": "Lightweight facet summary for a query (counts + top docs, no hit content)",
+                    "requestBody": {"required": True, "content": {"application/json": {"schema": {"type": "object", "properties": {
+                        "q": {"type": "string"}, "language": {"type": "string"}, "doc_id": {"type": "integer"}, "doc_ids": {"type": "array", "items": {"type": "integer"}},
+                        "resource_type": {"type": "string"}, "doc_role": {"type": "string"}, "author": {"type": "string"}, "title_search": {"type": "string"},
+                        "doc_date_from": {"type": "string"}, "doc_date_to": {"type": "string"}, "source_ext": {"type": "string"},
+                        "top_docs_limit": {"type": "integer", "default": 10, "minimum": 1, "maximum": 50}}}}}},
+                    "responses": {
+                        "200": {"description": "Facet summary", "content": {"application/json": {"schema": {"type": "object", "properties": {
+                            "total_hits": {"type": "integer"}, "distinct_docs": {"type": "integer"}, "distinct_langs": {"type": "integer"},
+                            "top_docs": {"type": "array", "items": {"type": "object", "properties": {"doc_id": {"type": "integer"}, "title": {"type": "string"}, "language": {"type": "string", "nullable": True}, "count": {"type": "integer"}}}}}}}}},
+                        "400": {"description": "Bad request", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                    },
+                }
+            },
+            "/stats/lexical": {
+                "post": {
+                    "summary": "Lexical frequency stats for one slot (filter set)",
+                    "requestBody": {"required": True, "content": {"application/json": {"schema": {"type": "object", "properties": {
+                        "slot": {"$ref": "#/components/schemas/StatsSlot"}, "label": {"type": "string"}}}}}},
+                    "responses": {"200": {"description": "Lexical stats", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/LexicalStatsResult"}}}}},
+                }
+            },
+            "/stats/compare": {
+                "post": {
+                    "summary": "Compare lexical frequency distributions of two slots A and B",
+                    "requestBody": {"required": True, "content": {"application/json": {"schema": {"type": "object", "properties": {
+                        "a": {"$ref": "#/components/schemas/StatsSlot"}, "b": {"$ref": "#/components/schemas/StatsSlot"},
+                        "label_a": {"type": "string", "default": "A"}, "label_b": {"type": "string", "default": "B"}}}}}},
+                    "responses": {"200": {"description": "Comparison", "content": {"application/json": {"schema": {"type": "object", "properties": {
+                        "label_a": {"type": "string"}, "label_b": {"type": "string"},
+                        "summary_a": {"$ref": "#/components/schemas/LexicalStatsResult"}, "summary_b": {"$ref": "#/components/schemas/LexicalStatsResult"},
+                        "comparison": {"type": "array", "items": {"type": "object", "properties": {
+                            "word": {"type": "string"}, "count_a": {"type": "integer"}, "count_b": {"type": "integer"},
+                            "freq_a": {"type": "number"}, "freq_b": {"type": "number"}, "ratio": {"type": "number", "nullable": True}}}}}}}}}},
+                }
+            },
+            "/segment/delete_structure_unit": {
+                "post": {
+                    "summary": "Delete the structure unit at position n and shift later units down — token required",
+                    "security": [{"token": []}],
+                    "requestBody": {"required": True, "content": {"application/json": {"schema": {"type": "object", "required": ["doc_id", "n"], "properties": {"doc_id": {"type": "integer"}, "n": {"type": "integer"}}}}}},
+                    "responses": {
+                        "200": {"description": "Deletion result", "content": {"application/json": {"schema": {"type": "object", "properties": {"doc_id": {"type": "integer"}, "deleted_n": {"type": "integer"}, "text": {"type": "string"}}}}}},
+                        "400": {"description": "Bad request", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                        "404": {"description": "Structure unit not found", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                    },
+                }
+            },
         },
         "components": {
             "securitySchemes": {
@@ -1947,6 +2113,77 @@ def openapi_spec() -> dict[str, Any]:
                 },
             },
             "schemas": {
+                # ── SID-06 — schémas partagés des routes nouvellement documentées ──
+                "StatsSlot": {
+                    "type": "object",
+                    "description": "Filter set selecting the units a lexical-stats slot is computed over.",
+                    "properties": {
+                        "doc_ids": {"type": "array", "items": {"type": "integer"}},
+                        "language": {"type": "string"},
+                        "doc_role": {"type": "string"},
+                        "resource_type": {"type": "string"},
+                        "family_id": {"type": "integer"},
+                        "top_n": {"type": "integer", "default": 50, "minimum": 1, "maximum": 500},
+                        "min_length": {"type": "integer", "default": 2, "minimum": 1},
+                    },
+                },
+                "LexicalStatsResult": {
+                    "type": "object",
+                    "properties": {
+                        "label": {"type": "string"},
+                        "total_tokens": {"type": "integer"},
+                        "vocabulary_size": {"type": "integer"},
+                        "total_units": {"type": "integer"},
+                        "total_docs": {"type": "integer"},
+                        "avg_tokens_per_unit": {"type": "number"},
+                        "top_words": {"type": "array", "items": {"type": "object", "properties": {
+                            "word": {"type": "string"}, "count": {"type": "integer"}, "freq_pct": {"type": "number"}}}},
+                        "rare_words": {"type": "array", "items": {"type": "object", "properties": {
+                            "word": {"type": "string"}, "count": {"type": "integer"}, "freq_pct": {"type": "number"}}}},
+                    },
+                },
+                "CurateExceptionsListResponse": {
+                    "type": "object",
+                    "required": ["exceptions", "count"],
+                    "properties": {
+                        "count": {"type": "integer"},
+                        "exceptions": {"type": "array", "items": {"type": "object", "properties": {
+                            "id": {"type": "integer"}, "unit_id": {"type": "integer"}, "kind": {"type": "string"},
+                            "override_text": {"type": "string", "nullable": True}, "note": {"type": "string", "nullable": True},
+                            "created_at": {"type": "string"}, "doc_id": {"type": "integer"},
+                            "doc_title": {"type": "string", "nullable": True}, "unit_text": {"type": "string", "nullable": True}}}},
+                    },
+                },
+                "CurateApplyHistoryListResponse": {
+                    "type": "object",
+                    "required": ["events", "count"],
+                    "properties": {
+                        "count": {"type": "integer"},
+                        "events": {"type": "array", "items": {"type": "object", "properties": {
+                            "id": {"type": "integer"}, "applied_at": {"type": "string"}, "scope": {"type": "string"},
+                            "doc_id": {"type": "integer", "nullable": True}, "doc_title": {"type": "string", "nullable": True},
+                            "docs_curated": {"type": "integer"}, "units_modified": {"type": "integer"}, "units_skipped": {"type": "integer"},
+                            "ignored_count": {"type": "integer", "nullable": True}, "manual_override_count": {"type": "integer", "nullable": True},
+                            "preview_displayed_count": {"type": "integer", "nullable": True}, "preview_units_changed": {"type": "integer", "nullable": True},
+                            "preview_truncated": {"type": "boolean"}}}},
+                    },
+                },
+                # Pre-existing dangling $refs (même classe que SID-13) — définis ici
+                # à l'occasion de SID-06 : `OkResponse` (8 réfs : conventions/roles,
+                # set_role, set_text_start…) et `AlignLinkCreateRequest` (1 réf).
+                "OkResponse": {
+                    "allOf": [{"$ref": "#/components/schemas/BaseResponse"}],
+                    "description": "Generic success envelope (ok + api_version + version + status, plus endpoint-specific data).",
+                },
+                "AlignLinkCreateRequest": {
+                    "type": "object",
+                    "required": ["pivot_unit_id", "target_unit_id"],
+                    "properties": {
+                        "pivot_unit_id": {"type": "integer"},
+                        "target_unit_id": {"type": "integer"},
+                        "status": {"type": "string", "enum": ["accepted", "rejected"], "nullable": True},
+                    },
+                },
                 "BaseResponse": {
                     "type": "object",
                     "required": ["ok", "api_version", "version", "status"],

@@ -170,6 +170,29 @@
         ],
         "type": "object"
       },
+      "AlignLinkCreateRequest": {
+        "properties": {
+          "pivot_unit_id": {
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "accepted",
+              "rejected"
+            ],
+            "nullable": true,
+            "type": "string"
+          },
+          "target_unit_id": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "pivot_unit_id",
+          "target_unit_id"
+        ],
+        "type": "object"
+      },
       "AlignLinkDeleteRequest": {
         "properties": {
           "link_id": {
@@ -892,6 +915,122 @@
             "type": "object"
           }
         ]
+      },
+      "CurateApplyHistoryListResponse": {
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "events": {
+            "items": {
+              "properties": {
+                "applied_at": {
+                  "type": "string"
+                },
+                "doc_id": {
+                  "nullable": true,
+                  "type": "integer"
+                },
+                "doc_title": {
+                  "nullable": true,
+                  "type": "string"
+                },
+                "docs_curated": {
+                  "type": "integer"
+                },
+                "id": {
+                  "type": "integer"
+                },
+                "ignored_count": {
+                  "nullable": true,
+                  "type": "integer"
+                },
+                "manual_override_count": {
+                  "nullable": true,
+                  "type": "integer"
+                },
+                "preview_displayed_count": {
+                  "nullable": true,
+                  "type": "integer"
+                },
+                "preview_truncated": {
+                  "type": "boolean"
+                },
+                "preview_units_changed": {
+                  "nullable": true,
+                  "type": "integer"
+                },
+                "scope": {
+                  "type": "string"
+                },
+                "units_modified": {
+                  "type": "integer"
+                },
+                "units_skipped": {
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "events",
+          "count"
+        ],
+        "type": "object"
+      },
+      "CurateExceptionsListResponse": {
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "exceptions": {
+            "items": {
+              "properties": {
+                "created_at": {
+                  "type": "string"
+                },
+                "doc_id": {
+                  "type": "integer"
+                },
+                "doc_title": {
+                  "nullable": true,
+                  "type": "string"
+                },
+                "id": {
+                  "type": "integer"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "note": {
+                  "nullable": true,
+                  "type": "string"
+                },
+                "override_text": {
+                  "nullable": true,
+                  "type": "string"
+                },
+                "unit_id": {
+                  "type": "integer"
+                },
+                "unit_text": {
+                  "nullable": true,
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "exceptions",
+          "count"
+        ],
+        "type": "object"
       },
       "CuratePreviewExample": {
         "additionalProperties": false,
@@ -2281,6 +2420,71 @@
           }
         ]
       },
+      "LexicalStatsResult": {
+        "properties": {
+          "avg_tokens_per_unit": {
+            "type": "number"
+          },
+          "label": {
+            "type": "string"
+          },
+          "rare_words": {
+            "items": {
+              "properties": {
+                "count": {
+                  "type": "integer"
+                },
+                "freq_pct": {
+                  "type": "number"
+                },
+                "word": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "top_words": {
+            "items": {
+              "properties": {
+                "count": {
+                  "type": "integer"
+                },
+                "freq_pct": {
+                  "type": "number"
+                },
+                "word": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "total_docs": {
+            "type": "integer"
+          },
+          "total_tokens": {
+            "type": "integer"
+          },
+          "total_units": {
+            "type": "integer"
+          },
+          "vocabulary_size": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "OkResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BaseResponse"
+          }
+        ],
+        "description": "Generic success envelope (ok + api_version + version + status, plus endpoint-specific data)."
+      },
       "QueryRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2875,6 +3079,41 @@
             "type": "object"
           }
         ]
+      },
+      "StatsSlot": {
+        "description": "Filter set selecting the units a lexical-stats slot is computed over.",
+        "properties": {
+          "doc_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "doc_role": {
+            "type": "string"
+          },
+          "family_id": {
+            "type": "integer"
+          },
+          "language": {
+            "type": "string"
+          },
+          "min_length": {
+            "default": 2,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "resource_type": {
+            "type": "string"
+          },
+          "top_n": {
+            "default": 50,
+            "maximum": 500,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "type": "object"
       },
       "TelemetryRequest": {
         "additionalProperties": true,
@@ -4594,6 +4833,541 @@
         "summary": "Apply curation rules"
       }
     },
+    "/curate/apply-history": {
+      "get": {
+        "parameters": [
+          {
+            "in": "query",
+            "name": "doc_id",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurateApplyHistoryListResponse"
+                }
+              }
+            },
+            "description": "Apply-history events"
+          }
+        },
+        "summary": "List recent curation apply-history events (optionally filtered by doc_id)"
+      },
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "doc_id": {
+                    "type": "integer"
+                  },
+                  "limit": {
+                    "default": 50,
+                    "maximum": 200,
+                    "type": "integer"
+                  },
+                  "scope": {
+                    "enum": [
+                      "doc",
+                      "all"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurateApplyHistoryListResponse"
+                }
+              }
+            },
+            "description": "Apply-history events"
+          }
+        },
+        "summary": "List recent curation apply-history events (body variant)"
+      }
+    },
+    "/curate/apply-history/export": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "doc_id": {
+                    "type": "integer"
+                  },
+                  "format": {
+                    "default": "json",
+                    "enum": [
+                      "json",
+                      "csv"
+                    ],
+                    "type": "string"
+                  },
+                  "out_path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "out_path"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "count": {
+                      "type": "integer"
+                    },
+                    "format": {
+                      "type": "string"
+                    },
+                    "out_path": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Export result"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Could not write export file"
+          }
+        },
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "summary": "Export apply-history (<=1000 most recent) to a JSON/CSV file — token required"
+      }
+    },
+    "/curate/apply-history/record": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "applied_at": {
+                    "type": "string"
+                  },
+                  "doc_id": {
+                    "type": "integer"
+                  },
+                  "doc_title": {
+                    "type": "string"
+                  },
+                  "docs_curated": {
+                    "type": "integer"
+                  },
+                  "ignored_count": {
+                    "nullable": true,
+                    "type": "integer"
+                  },
+                  "manual_override_count": {
+                    "nullable": true,
+                    "type": "integer"
+                  },
+                  "preview_displayed_count": {
+                    "nullable": true,
+                    "type": "integer"
+                  },
+                  "preview_truncated": {
+                    "type": "boolean"
+                  },
+                  "preview_units_changed": {
+                    "nullable": true,
+                    "type": "integer"
+                  },
+                  "scope": {
+                    "default": "all",
+                    "enum": [
+                      "doc",
+                      "all"
+                    ],
+                    "type": "string"
+                  },
+                  "units_modified": {
+                    "type": "integer"
+                  },
+                  "units_skipped": {
+                    "type": "integer"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "id": {
+                      "type": "integer"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Recorded"
+          }
+        },
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "summary": "Insert one curation apply event into apply-history — token required"
+      }
+    },
+    "/curate/exceptions": {
+      "get": {
+        "parameters": [
+          {
+            "in": "query",
+            "name": "doc_id",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurateExceptionsListResponse"
+                }
+              }
+            },
+            "description": "Exceptions list"
+          }
+        },
+        "summary": "List curation exceptions (optionally filtered by doc_id)"
+      },
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "doc_id": {
+                    "type": "integer"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurateExceptionsListResponse"
+                }
+              }
+            },
+            "description": "Exceptions list"
+          }
+        },
+        "summary": "List curation exceptions (body variant; optionally filtered by doc_id)"
+      }
+    },
+    "/curate/exceptions/delete": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "unit_id": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "unit_id"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "deleted": {
+                      "type": "boolean"
+                    },
+                    "unit_id": {
+                      "type": "integer"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Deletion result"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request"
+          }
+        },
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "summary": "Delete the curation exception for a unit — token required"
+      }
+    },
+    "/curate/exceptions/export": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "doc_id": {
+                    "type": "integer"
+                  },
+                  "format": {
+                    "default": "json",
+                    "enum": [
+                      "json",
+                      "csv"
+                    ],
+                    "type": "string"
+                  },
+                  "out_path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "out_path"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "count": {
+                      "type": "integer"
+                    },
+                    "format": {
+                      "type": "string"
+                    },
+                    "out_path": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Export result"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Could not write export file"
+          }
+        },
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "summary": "Export curation exceptions to a JSON/CSV file (whole corpus or one doc) — token required"
+      }
+    },
+    "/curate/exceptions/set": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "ignore",
+                      "override"
+                    ],
+                    "type": "string"
+                  },
+                  "note": {
+                    "type": "string"
+                  },
+                  "override_text": {
+                    "description": "Required when kind=override",
+                    "type": "string"
+                  },
+                  "unit_id": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "unit_id",
+                  "kind"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "action": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "note": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "override_text": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "unit_id": {
+                      "type": "integer"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Exception set"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unit not found"
+          }
+        },
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "summary": "Create or replace (upsert) a curation exception for a unit — token required"
+      }
+    },
     "/curate/preview": {
       "post": {
         "requestBody": {
@@ -6098,6 +6872,119 @@
         "summary": "Run query"
       }
     },
+    "/query/facets": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "author": {
+                    "type": "string"
+                  },
+                  "doc_date_from": {
+                    "type": "string"
+                  },
+                  "doc_date_to": {
+                    "type": "string"
+                  },
+                  "doc_id": {
+                    "type": "integer"
+                  },
+                  "doc_ids": {
+                    "items": {
+                      "type": "integer"
+                    },
+                    "type": "array"
+                  },
+                  "doc_role": {
+                    "type": "string"
+                  },
+                  "language": {
+                    "type": "string"
+                  },
+                  "q": {
+                    "type": "string"
+                  },
+                  "resource_type": {
+                    "type": "string"
+                  },
+                  "source_ext": {
+                    "type": "string"
+                  },
+                  "title_search": {
+                    "type": "string"
+                  },
+                  "top_docs_limit": {
+                    "default": 10,
+                    "maximum": 50,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "distinct_docs": {
+                      "type": "integer"
+                    },
+                    "distinct_langs": {
+                      "type": "integer"
+                    },
+                    "top_docs": {
+                      "items": {
+                        "properties": {
+                          "count": {
+                            "type": "integer"
+                          },
+                          "doc_id": {
+                            "type": "integer"
+                          },
+                          "language": {
+                            "nullable": true,
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "total_hits": {
+                      "type": "integer"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Facet summary"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request"
+          }
+        },
+        "summary": "Lightweight facet summary for a query (counts + top docs, no hit content)"
+      }
+    },
     "/runs": {
       "get": {
         "parameters": [
@@ -6257,6 +7144,81 @@
           }
         },
         "summary": "Write pre-computed propagated segmentation to DB (token required)"
+      }
+    },
+    "/segment/delete_structure_unit": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "doc_id": {
+                    "type": "integer"
+                  },
+                  "n": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "doc_id",
+                  "n"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "deleted_n": {
+                      "type": "integer"
+                    },
+                    "doc_id": {
+                      "type": "integer"
+                    },
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Deletion result"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structure unit not found"
+          }
+        },
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "summary": "Delete the structure unit at position n and shift later units down — token required"
       }
     },
     "/segment/detect_markers": {
@@ -6634,6 +7596,125 @@
         "summary": "Gracefully stop sidecar process"
       }
     },
+    "/stats/compare": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "a": {
+                    "$ref": "#/components/schemas/StatsSlot"
+                  },
+                  "b": {
+                    "$ref": "#/components/schemas/StatsSlot"
+                  },
+                  "label_a": {
+                    "default": "A",
+                    "type": "string"
+                  },
+                  "label_b": {
+                    "default": "B",
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "comparison": {
+                      "items": {
+                        "properties": {
+                          "count_a": {
+                            "type": "integer"
+                          },
+                          "count_b": {
+                            "type": "integer"
+                          },
+                          "freq_a": {
+                            "type": "number"
+                          },
+                          "freq_b": {
+                            "type": "number"
+                          },
+                          "ratio": {
+                            "nullable": true,
+                            "type": "number"
+                          },
+                          "word": {
+                            "type": "string"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "label_a": {
+                      "type": "string"
+                    },
+                    "label_b": {
+                      "type": "string"
+                    },
+                    "summary_a": {
+                      "$ref": "#/components/schemas/LexicalStatsResult"
+                    },
+                    "summary_b": {
+                      "$ref": "#/components/schemas/LexicalStatsResult"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Comparison"
+          }
+        },
+        "summary": "Compare lexical frequency distributions of two slots A and B"
+      }
+    },
+    "/stats/lexical": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "label": {
+                    "type": "string"
+                  },
+                  "slot": {
+                    "$ref": "#/components/schemas/StatsSlot"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LexicalStatsResult"
+                }
+              }
+            },
+            "description": "Lexical stats"
+          }
+        },
+        "summary": "Lexical frequency stats for one slot (filter set)"
+      }
+    },
     "/telemetry": {
       "post": {
         "description": "Local-only telemetry. Events are appended to <db_dir>/.agrafes_telemetry.ndjson. No network egress, no token required (loopback-only sidecar). Body must include `event` (string); any other fields are forwarded as payload. Always returns 204.",
@@ -6919,6 +8000,101 @@
           }
         },
         "summary": "Update a token row (manual annotation edit)"
+      }
+    },
+    "/unit/context": {
+      "get": {
+        "parameters": [
+          {
+            "in": "query",
+            "name": "unit_id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "window",
+            "required": false,
+            "schema": {
+              "default": 3,
+              "maximum": 10,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "doc_id": {
+                      "type": "integer"
+                    },
+                    "items": {
+                      "items": {
+                        "properties": {
+                          "is_current": {
+                            "type": "boolean"
+                          },
+                          "text": {
+                            "type": "string"
+                          },
+                          "unit_id": {
+                            "type": "integer"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "total_units": {
+                      "type": "integer"
+                    },
+                    "unit_id": {
+                      "type": "integer"
+                    },
+                    "unit_index": {
+                      "type": "integer"
+                    },
+                    "window_after": {
+                      "type": "integer"
+                    },
+                    "window_before": {
+                      "type": "integer"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Context window"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unit not found"
+          }
+        },
+        "summary": "Reading window of line units centred on a unit (each tagged is_current)"
       }
     },
     "/units": {

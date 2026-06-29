@@ -838,6 +838,30 @@ SELECT unit_id, text_norm FROM units WHERE doc_id = ? AND unit_type = 'line' AND
 SELECT unit_id, text_norm FROM units WHERE doc_id = ? AND unit_type = 'line' AND n > ? ORDER BY n ASC LIMIT 1;
 ```
 
+## Curation exceptions, apply-history, stats & facets (SID-06 — documentation)
+
+Routes servies de longue date par le sidecar mais qui manquaient à l'OpenAPI/au
+contrat. Schémas req/resp détaillés dans `docs/openapi.json` ; résumé ici.
+
+**Exceptions de curation** (`curation_exceptions`)
+- `GET /curate/exceptions` (query `doc_id?`) / `POST /curate/exceptions` (body `doc_id?`) — **lecture** : liste les exceptions (jointes aux unités/documents), filtrables par document.
+- `POST /curate/exceptions/set` — **écriture (token)** : crée/remplace (upsert sur `unit_id`) une exception. Body `unit_id`, `kind` (`ignore`|`override`), `override_text` (requis si `override`), `note?`.
+- `POST /curate/exceptions/delete` — **écriture (token)** : supprime l'exception d'un `unit_id`.
+- `POST /curate/exceptions/export` — **écriture (token)** : exporte les exceptions vers un fichier `json`/`csv` (`out_path`, `format?`, `doc_id?`).
+
+**Historique d'application de curation** (`curation_apply_history`)
+- `GET /curate/apply-history` (query `doc_id?`, `limit?`) / `POST /curate/apply-history` (body `doc_id?`, `scope?`, `limit?`) — **lecture** : derniers événements d'application.
+- `POST /curate/apply-history/record` — **écriture (token)** : insère un événement (champs de stats fournis par le front).
+- `POST /curate/apply-history/export` — **écriture (token)** : exporte l'historique (≤1000) vers `json`/`csv`.
+
+**Statistiques lexicales & facettes** (lecture, sans token)
+- `POST /query/facets` — résumé de facettes d'une requête (compteurs + top docs, sans contenu des hits).
+- `POST /stats/lexical` — stats de fréquence lexicale pour un *slot* (jeu de filtres).
+- `POST /stats/compare` — comparaison des distributions de deux slots A et B.
+
+**Segmentation**
+- `POST /segment/delete_structure_unit` — **écriture (token)** : supprime l'unité `structure` à la position `n` d'un document et décale les suivantes.
+
 ## Shutdown semantics
 
 - `/shutdown` triggers graceful server shutdown.
