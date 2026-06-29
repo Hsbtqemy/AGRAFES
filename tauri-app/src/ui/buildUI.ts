@@ -49,29 +49,29 @@ export function buildUI(container: HTMLElement): () => void {
     placeholder: "Rechercher dans le corpus (FTS5)…",
     autocomplete: "off",
   }) as HTMLInputElement;
-  const searchBtn = elt("button", { class: "btn btn-primary", id: "search-btn", disabled: "disabled", title: "Sidecar en cours de démarrage…" }, "Chercher");
+  const searchBtn = elt("button", { class: "app-btn app-btn-primary", id: "search-btn", disabled: "disabled", title: "Sidecar en cours de démarrage…" }, "Chercher");
   searchRow.appendChild(searchInput);
   searchRow.appendChild(searchBtn);
   toolbar.appendChild(searchRow);
 
   // Mode toggle
   const modeGroup = elt("div", { class: "mode-group" });
-  const segBtn = elt("button", { class: "btn btn-secondary active", id: "mode-seg" }, "Segment");
-  const kwicBtn = elt("button", { class: "btn btn-secondary", id: "mode-kwic" }, "KWIC");
+  const segBtn = elt("button", { class: "app-btn app-btn-secondary app-active", id: "mode-seg" }, "Segment");
+  const kwicBtn = elt("button", { class: "app-btn app-btn-secondary", id: "mode-kwic" }, "KWIC");
   modeGroup.appendChild(segBtn);
   modeGroup.appendChild(kwicBtn);
   toolbar.appendChild(modeGroup);
 
   const alignedToggleBtn = elt(
     "button",
-    { class: "btn btn-secondary aligned-toggle", id: "aligned-toggle-btn", type: "button" },
+    { class: "app-btn app-btn-secondary aligned-toggle", id: "aligned-toggle-btn", type: "button" },
     "Alignés: off"
   ) as HTMLButtonElement;
   toolbar.appendChild(alignedToggleBtn);
 
   const parallelToggleBtn = elt(
     "button",
-    { class: "btn btn-secondary", id: "parallel-toggle-btn", type: "button", style: "display:none" },
+    { class: "app-btn app-btn-secondary", id: "parallel-toggle-btn", type: "button", style: "display:none" },
     "Parallèle: off"
   ) as HTMLButtonElement;
   toolbar.appendChild(parallelToggleBtn);
@@ -79,7 +79,7 @@ export function buildUI(container: HTMLElement): () => void {
   const sourceChangedBtn = elt(
     "button",
     {
-      class: "btn btn-ghost source-changed-btn",
+      class: "app-btn app-btn-ghost source-changed-btn",
       id: "source-changed-btn",
       type: "button",
       title: "Montrer uniquement les unités dont la source a changé (curation propagée)",
@@ -93,7 +93,7 @@ export function buildUI(container: HTMLElement): () => void {
   const caseSensBtn = elt(
     "button",
     {
-      class: "btn btn-ghost case-sensitive-btn",
+      class: "app-btn app-btn-ghost case-sensitive-btn",
       id: "case-sensitive-btn",
       type: "button",
       title: "Respecter la casse (post-filtre sur text_raw)",
@@ -112,14 +112,14 @@ export function buildUI(container: HTMLElement): () => void {
   toolbar.appendChild(windowCtrl);
 
   // Filter + Builder + Help + Import + OpenDB + Reset buttons
-  const filterBtn = elt("button", { class: "btn btn-ghost", id: "filter-btn" }, "⚙ Filtres");
-  const builderBtn = elt("button", { class: "btn btn-ghost", id: "builder-btn" }, "✏ Requête");
-  const statsBtn = elt("button", { class: "btn btn-ghost", id: "stats-btn", title: "Statistiques lexicales (fréquences, comparaison A/B)" }, "📊 Stats");
+  const filterBtn = elt("button", { class: "app-btn app-btn-ghost", id: "filter-btn" }, "⚙ Filtres");
+  const builderBtn = elt("button", { class: "app-btn app-btn-ghost", id: "builder-btn" }, "✏ Requête");
+  const statsBtn = elt("button", { class: "app-btn app-btn-ghost", id: "stats-btn", title: "Statistiques lexicales (fréquences, comparaison A/B)" }, "📊 Stats");
 
   // Help popover
   const helpWrap = elt("div", { class: "help-wrap" });
   const helpBtn = elt("button", {
-    class: "btn btn-ghost",
+    class: "app-btn app-btn-ghost",
     id: "help-btn",
     title: "Aide sur la syntaxe FTS5",
     style: "padding:4px 8px;font-size:0.85rem",
@@ -237,21 +237,21 @@ export function buildUI(container: HTMLElement): () => void {
   `;
   helpWrap.appendChild(helpBtn);
   helpWrap.appendChild(helpPopover);
-  const importBtn = elt("button", { class: "btn btn-ghost", id: "import-btn" }, "⬆ Importer…");
-  const reindexBtn = elt("button", { class: "btn btn-ghost", id: "reindex-btn", title: "Reconstruire l'index FTS5 (à faire après import ou modification du corpus)" }, "⟳ Réindexer");
-  const openDbBtn = elt("button", { class: "btn btn-ghost", id: "open-db-btn" }, "📂 Ouvrir DB…");
-  const resetBtn = elt("button", { class: "btn btn-ghost", id: "reset-btn", title: "Effacer la recherche et tous les filtres" }, "✕ Réinitialiser");
+  const importBtn = elt("button", { class: "app-btn app-btn-ghost", id: "import-btn" }, "⬆ Importer…");
+  const reindexBtn = elt("button", { class: "app-btn app-btn-ghost", id: "reindex-btn", title: "Reconstruire l'index FTS5 (à faire après import ou modification du corpus)" }, "⟳ Réindexer");
+  const openDbBtn = elt("button", { class: "app-btn app-btn-ghost", id: "open-db-btn" }, "📂 Ouvrir DB…");
+  const resetBtn = elt("button", { class: "app-btn app-btn-ghost", id: "reset-btn", title: "Effacer la recherche et tous les filtres" }, "✕ Réinitialiser");
 
   // History dropdown
   const histWrap = elt("div", { class: "hist-wrap" });
-  const histBtn = elt("button", { class: "btn btn-ghost", id: "hist-btn", title: "Historique des recherches" }, "\uD83D\uDD52 Hist.");
+  const histBtn = elt("button", { class: "app-btn app-btn-ghost", id: "hist-btn", title: "Historique des recherches" }, "\uD83D\uDD52 Hist.");
   const histPanel = elt("div", { class: "hist-panel", id: "hist-panel" });
   histWrap.appendChild(histBtn);
   histWrap.appendChild(histPanel);
 
   // Export dropdown
   const exportWrap = elt("div", { class: "export-wrap" });
-  const exportBtn = elt("button", { class: "btn btn-ghost", id: "export-btn", title: "Exporter les résultats chargés" }, "\u2B07 Export");
+  const exportBtn = elt("button", { class: "app-btn app-btn-ghost", id: "export-btn", title: "Exporter les résultats chargés" }, "\u2B07 Export");
   const exportMenu = elt("div", { class: "export-menu", id: "export-menu" });
   const exportJsonlSimpleBtn  = elt("button", { class: "export-menu-item" }, "JSONL — simple");
   const exportJsonlParallelBtn = elt("button", { class: "export-menu-item" }, "JSONL — parallèle (pivot+aligned)");
@@ -379,7 +379,7 @@ export function buildUI(container: HTMLElement): () => void {
   const federatedActions = elt("div", { style: "display:flex;align-items:center;gap:6px" });
   const federatedBrowseBtn = elt(
     "button",
-    { class: "btn btn-secondary", type: "button", style: "padding:3px 8px;font-size:12px" },
+    { class: "app-btn app-btn-secondary", type: "button", style: "padding:3px 8px;font-size:12px" },
     "Ajouter DB…",
   ) as HTMLButtonElement;
   federatedActions.appendChild(federatedBrowseBtn);
@@ -491,7 +491,7 @@ export function buildUI(container: HTMLElement): () => void {
   pathGroup.appendChild(elt("label", {}, "Fichier source"));
   const pathRow = elt("div", { style: "display:flex;gap:8px" });
   const pathInput = elt("input", { type: "text", class: "form-input", id: "import-path-input", placeholder: "/chemin/vers/fichier.docx", style: "flex:1" }) as HTMLInputElement;
-  const browseBtn = elt("button", { class: "btn btn-secondary", id: "import-browse-btn" }, "Parcourir…");
+  const browseBtn = elt("button", { class: "app-btn app-btn-secondary", id: "import-browse-btn" }, "Parcourir…");
   pathRow.appendChild(pathInput);
   pathRow.appendChild(browseBtn);
   pathGroup.appendChild(pathRow);
@@ -558,8 +558,8 @@ export function buildUI(container: HTMLElement): () => void {
   modal.appendChild(modalBody);
 
   const modalActions = elt("div", { class: "modal-actions" });
-  const cancelBtn = elt("button", { class: "btn btn-secondary", id: "import-cancel-btn" }, "Annuler");
-  const confirmBtn = elt("button", { class: "btn btn-primary", id: "import-confirm-btn" }, "Importer");
+  const cancelBtn = elt("button", { class: "app-btn app-btn-secondary", id: "import-cancel-btn" }, "Annuler");
+  const confirmBtn = elt("button", { class: "app-btn app-btn-primary", id: "import-confirm-btn" }, "Importer");
   modalActions.appendChild(cancelBtn);
   modalActions.appendChild(confirmBtn);
   modal.appendChild(modalActions);
@@ -570,7 +570,7 @@ export function buildUI(container: HTMLElement): () => void {
   const metaPanel = elt("div", { class: "meta-panel", id: "meta-panel" });
   const metaPanelHead = elt("div", { class: "meta-panel-head" });
   metaPanelHead.appendChild(elt("h4", {}, "Métadonnées"));
-  const metaCloseX = elt("button", { class: "btn btn-secondary", style: "padding:2px 8px;font-size:12px", type: "button" }, "✕") as HTMLButtonElement;
+  const metaCloseX = elt("button", { class: "app-btn app-btn-secondary", style: "padding:2px 8px;font-size:12px", type: "button" }, "✕") as HTMLButtonElement;
   metaPanelHead.appendChild(metaCloseX);
   metaPanel.appendChild(metaPanelHead);
   metaPanel.appendChild(elt("div", { class: "meta-body", id: "meta-body" }));
@@ -605,7 +605,7 @@ export function buildUI(container: HTMLElement): () => void {
 
   const refreshAlignedToggle = (): void => {
     alignedToggleBtn.textContent = state.showAligned ? "Alignés: on" : "Alignés: off";
-    alignedToggleBtn.classList.toggle("active", state.showAligned);
+    alignedToggleBtn.classList.toggle("app-active", state.showAligned);
   };
   refreshAlignedToggle();
 
@@ -632,16 +632,16 @@ export function buildUI(container: HTMLElement): () => void {
   segBtn.addEventListener("click", () => {
     if (state.mode === "segment") return;
     state.mode = "segment";
-    segBtn.classList.add("active");
-    kwicBtn.classList.remove("active");
+    segBtn.classList.add("app-active");
+    kwicBtn.classList.remove("app-active");
     (document.getElementById("window-ctrl") as HTMLElement).style.display = "none";
     if (state.currentQuery || state.regexPattern) void doSearch(state.currentQuery || state.regexPattern);
   });
   kwicBtn.addEventListener("click", () => {
     if (state.mode === "kwic") return;
     state.mode = "kwic";
-    kwicBtn.classList.add("active");
-    segBtn.classList.remove("active");
+    kwicBtn.classList.add("app-active");
+    segBtn.classList.remove("app-active");
     (document.getElementById("window-ctrl") as HTMLElement).style.display = "flex";
     if (state.currentQuery || state.regexPattern) void doSearch(state.currentQuery || state.regexPattern);
   });
@@ -653,13 +653,13 @@ export function buildUI(container: HTMLElement): () => void {
 
   const refreshParallelToggle = (): void => {
     parallelToggleBtn.textContent = state.showParallel ? "Parallèle: on" : "Parallèle: off";
-    parallelToggleBtn.classList.toggle("active", state.showParallel);
+    parallelToggleBtn.classList.toggle("app-active", state.showParallel);
     parallelToggleBtn.style.display = state.showAligned ? "" : "none";
   };
   refreshParallelToggle();
 
   const refreshSourceChangedToggle = (): void => {
-    sourceChangedBtn.classList.toggle("active", state.filterSourceChanged);
+    sourceChangedBtn.classList.toggle("app-active", state.filterSourceChanged);
     sourceChangedBtn.style.display = state.showAligned ? "" : "none";
     // Apply/remove CSS class on results-area for the post-filter
     document.getElementById("results-area")?.classList.toggle("filter-source-changed", state.filterSourceChanged);
@@ -697,7 +697,7 @@ export function buildUI(container: HTMLElement): () => void {
 
   caseSensBtn.addEventListener("click", () => {
     state.caseSensitive = !state.caseSensitive;
-    caseSensBtn.classList.toggle("active", state.caseSensitive);
+    caseSensBtn.classList.toggle("app-active", state.caseSensitive);
     caseSensBtn.title = state.caseSensitive
       ? "Casse respectée — cliquer pour désactiver"
       : "Respecter la casse (post-filtre sur text_raw)";
@@ -707,13 +707,13 @@ export function buildUI(container: HTMLElement): () => void {
   filterBtn.addEventListener("click", () => {
     state.showFilters = !state.showFilters;
     filterDrawer.classList.toggle("hidden", !state.showFilters);
-    filterBtn.classList.toggle("active", state.showFilters);
+    filterBtn.classList.toggle("app-active", state.showFilters);
   });
 
   builderBtn.addEventListener("click", () => {
     state.showBuilder = !state.showBuilder;
     builderPanel.classList.toggle("hidden", !state.showBuilder);
-    builderBtn.classList.toggle("active", state.showBuilder);
+    builderBtn.classList.toggle("app-active", state.showBuilder);
   });
 
   statsBtn.addEventListener("click", () => toggleStatsPanel());
@@ -797,7 +797,7 @@ export function buildUI(container: HTMLElement): () => void {
     // Uncheck all lang checkboxes and reset button label
     document.querySelectorAll<HTMLInputElement>("#filter-lang-checkboxes input[type=checkbox]").forEach(cb => { cb.checked = false; });
     const langBtnEl = document.getElementById("filter-lang-btn");
-    if (langBtnEl) { langBtnEl.textContent = "Langue ▾"; langBtnEl.classList.remove("active"); }
+    if (langBtnEl) { langBtnEl.textContent = "Langue ▾"; langBtnEl.classList.remove("app-active"); }
     roleSel.value = "";
     restypeSel.value = "";
     familySel.value = "";
@@ -814,30 +814,30 @@ export function buildUI(container: HTMLElement): () => void {
 
   // ── History ──────────────────────────────────────────────────────────────────
   const closeAllPanels = (): void => {
-    histPanel.classList.remove("open");
-    exportMenu.classList.remove("open");
-    helpPopover.classList.remove("open");
+    histPanel.classList.remove("app-open");
+    exportMenu.classList.remove("app-open");
+    helpPopover.classList.remove("app-open");
   };
 
   histBtn.addEventListener("click", (e) => {
     e.stopPropagation();
-    exportMenu.classList.remove("open");
-    helpPopover.classList.remove("open");
-    histPanel.classList.toggle("open");
-    if (histPanel.classList.contains("open")) renderHistPanel(histPanel, searchInput);
+    exportMenu.classList.remove("app-open");
+    helpPopover.classList.remove("app-open");
+    histPanel.classList.toggle("app-open");
+    if (histPanel.classList.contains("app-open")) renderHistPanel(histPanel, searchInput);
   });
 
   // ── Help popover ──────────────────────────────────────────────────────────────
   helpBtn.addEventListener("click", (e) => {
     e.stopPropagation();
-    histPanel.classList.remove("open");
-    exportMenu.classList.remove("open");
-    helpPopover.classList.toggle("open");
+    histPanel.classList.remove("app-open");
+    exportMenu.classList.remove("app-open");
+    helpPopover.classList.toggle("app-open");
   });
 
   helpPopover.querySelector("#help-close-btn")?.addEventListener("click", (e) => {
     e.stopPropagation();
-    helpPopover.classList.remove("open");
+    helpPopover.classList.remove("app-open");
   });
 
   helpPopover.querySelectorAll<HTMLButtonElement>(".help-ex-copy").forEach(btn => {
@@ -846,7 +846,7 @@ export function buildUI(container: HTMLElement): () => void {
       const q = btn.getAttribute("data-q") ?? "";
       searchInput.value = q;
       updateFtsPreview(q);
-      helpPopover.classList.remove("open");
+      helpPopover.classList.remove("app-open");
       searchInput.focus();
     });
   });
@@ -856,24 +856,24 @@ export function buildUI(container: HTMLElement): () => void {
   // ── Export ───────────────────────────────────────────────────────────────────
   exportBtn.addEventListener("click", (e) => {
     e.stopPropagation();
-    histPanel.classList.remove("open");
-    exportMenu.classList.toggle("open");
+    histPanel.classList.remove("app-open");
+    exportMenu.classList.toggle("app-open");
   });
 
   exportJsonlSimpleBtn.addEventListener("click", () => {
-    exportMenu.classList.remove("open"); void exportHits("jsonl-simple");
+    exportMenu.classList.remove("app-open"); void exportHits("jsonl-simple");
   });
   exportJsonlParallelBtn.addEventListener("click", () => {
-    exportMenu.classList.remove("open"); void exportHits("jsonl-parallel");
+    exportMenu.classList.remove("app-open"); void exportHits("jsonl-parallel");
   });
   exportCsvFlatBtn.addEventListener("click", () => {
-    exportMenu.classList.remove("open"); void exportHits("csv-flat");
+    exportMenu.classList.remove("app-open"); void exportHits("csv-flat");
   });
   exportCsvLongBtn.addEventListener("click", () => {
-    exportMenu.classList.remove("open"); void exportHits("csv-long");
+    exportMenu.classList.remove("app-open"); void exportHits("csv-long");
   });
   exportCsvFamilyBtn.addEventListener("click", () => {
-    exportMenu.classList.remove("open"); void exportHits("csv-family");
+    exportMenu.classList.remove("app-open"); void exportHits("csv-family");
   });
 
   // ── Reset ────────────────────────────────────────────────────────────────────
@@ -899,7 +899,7 @@ export function buildUI(container: HTMLElement): () => void {
     state.filterFederatedDbPaths = [];
     document.querySelectorAll<HTMLInputElement>("#filter-lang-checkboxes input[type=checkbox]").forEach(cb => { cb.checked = false; });
     const langBtnReset = document.getElementById("filter-lang-btn");
-    if (langBtnReset) { langBtnReset.textContent = "Langue ▾"; langBtnReset.classList.remove("active"); }
+    if (langBtnReset) { langBtnReset.textContent = "Langue ▾"; langBtnReset.classList.remove("app-active"); }
     roleSel.value = "";
     restypeSel.value = "";
     familySel.value = "";
@@ -923,9 +923,9 @@ export function buildUI(container: HTMLElement): () => void {
     closeMetaPanel();
     state.showFilters = false;
     filterDrawer.classList.add("hidden");
-    filterBtn.classList.remove("active");
-    histPanel.classList.remove("open");
-    exportMenu.classList.remove("open");
+    filterBtn.classList.remove("app-active");
+    histPanel.classList.remove("app-open");
+    exportMenu.classList.remove("app-open");
     renderChips();
     renderResults();
   });

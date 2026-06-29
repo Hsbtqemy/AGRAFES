@@ -132,7 +132,7 @@ function _updateLangBtnLabel(): void {
   btn.textContent = state.filterLangs.length === 0
     ? "Langue ▾"
     : `Langue : ${state.filterLangs.join(", ")} ▾`;
-  btn.classList.toggle("active", state.filterLangs.length > 0);
+  btn.classList.toggle("app-active", state.filterLangs.length > 0);
 }
 
 function fillSelect(id: string, values: string[], currentVal: string): void {
@@ -155,9 +155,9 @@ export function renderChips(): void {
   bar.innerHTML = "";
 
   const add = (label: string, value: string, clear: () => void): void => {
-    const chip = elt("div", { class: "chip" });
+    const chip = elt("div", { class: "app-chip" });
     chip.appendChild(document.createTextNode(`${label}: ${value}`));
-    const removeBtn = elt("button", { class: "chip-remove", title: "Supprimer ce filtre", type: "button" }, "\u00d7") as HTMLButtonElement;
+    const removeBtn = elt("button", { class: "app-chip-remove", title: "Supprimer ce filtre", type: "button" }, "\u00d7") as HTMLButtonElement;
     removeBtn.addEventListener("click", () => { clear(); renderChips(); });
     chip.appendChild(removeBtn);
     bar.appendChild(chip);
@@ -169,7 +169,7 @@ export function renderChips(): void {
       // Uncheck all lang checkboxes
       document.querySelectorAll<HTMLInputElement>("#filter-lang-checkboxes input[type=checkbox]").forEach(cb => { cb.checked = false; });
       const btn = document.getElementById("filter-lang-btn");
-      if (btn) { btn.textContent = "Langue ▾"; btn.classList.remove("active"); }
+      if (btn) { btn.textContent = "Langue ▾"; btn.classList.remove("app-active"); }
     });
   }
   if (state.filterRole) add("Rôle", state.filterRole, () => {
@@ -203,9 +203,9 @@ export function renderChips(): void {
     const n = state.filterDocIds.length;
     if (n === 0) {
       // Nothing selected — warn the user
-      const chip = elt("div", { class: "chip chip--warn" });
+      const chip = elt("div", { class: "app-chip app-chip--warn" });
       chip.appendChild(document.createTextNode("Docs: aucun sélectionné ⚠"));
-      const removeBtn = elt("button", { class: "chip-remove", title: "Sélectionner tous les documents", type: "button" }, "\u00d7") as HTMLButtonElement;
+      const removeBtn = elt("button", { class: "app-chip-remove", title: "Sélectionner tous les documents", type: "button" }, "\u00d7") as HTMLButtonElement;
       removeBtn.addEventListener("click", () => {
         clearDocSelector(state.dbPath ?? "");
         renderChips();

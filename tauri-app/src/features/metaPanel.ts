@@ -40,13 +40,13 @@ export function openMetaPanel(hit: QueryHit): void {
 
   _renderPanelContent(hit, body, foot);
 
-  panel.classList.add("open");
-  backdrop.classList.add("open");
+  panel.classList.add("app-open");
+  backdrop.classList.add("app-open");
 }
 
 export function closeMetaPanel(): void {
-  document.getElementById("meta-panel")?.classList.remove("open");
-  document.getElementById("meta-backdrop")?.classList.remove("open");
+  document.getElementById("meta-panel")?.classList.remove("app-open");
+  document.getElementById("meta-backdrop")?.classList.remove("app-open");
   markActiveCard(null);
   _currentUnitId = null;
 }
@@ -186,7 +186,7 @@ function _renderPanelContent(hit: QueryHit, body: HTMLElement, foot: HTMLElement
   foot.innerHTML = "";
 
   // Primary: filter + search in this document
-  const filterDocBtn = elt("button", { class: "btn btn-primary", type: "button" }, "Chercher dans ce document") as HTMLButtonElement;
+  const filterDocBtn = elt("button", { class: "app-btn app-btn-primary", type: "button" }, "Chercher dans ce document") as HTMLButtonElement;
   filterDocBtn.title = `Limiter la recherche au document #${hit.doc_id}`;
   filterDocBtn.addEventListener("click", () => {
     _setDocFilter([hit.doc_id]);
@@ -196,7 +196,7 @@ function _renderPanelContent(hit: QueryHit, body: HTMLElement, foot: HTMLElement
   });
 
   // Secondary: copy pivot text (reads excerptDiv at click time to get full text)
-  const copyTextBtn = elt("button", { class: "btn btn-secondary", type: "button" }, "Copier le texte") as HTMLButtonElement;
+  const copyTextBtn = elt("button", { class: "app-btn app-btn-secondary", type: "button" }, "Copier le texte") as HTMLButtonElement;
   copyTextBtn.title = "Copier l'extrait dans le presse-papier";
   copyTextBtn.addEventListener("click", () => {
     const text = (body.querySelector("#meta-excerpt-content") as HTMLElement | null)
@@ -207,7 +207,7 @@ function _renderPanelContent(hit: QueryHit, body: HTMLElement, foot: HTMLElement
     });
   });
 
-  const closeBtn = elt("button", { class: "btn btn-ghost", type: "button" }, "Fermer") as HTMLButtonElement;
+  const closeBtn = elt("button", { class: "app-btn app-btn-ghost", type: "button" }, "Fermer") as HTMLButtonElement;
   closeBtn.addEventListener("click", closeMetaPanel);
 
   foot.appendChild(filterDocBtn);
@@ -215,7 +215,7 @@ function _renderPanelContent(hit: QueryHit, body: HTMLElement, foot: HTMLElement
 
   // Citation button: pivot + all aligned units (only shown in parallel mode)
   if (alignedUnits.length > 0) {
-    const copyCitBtn = elt("button", { class: "btn btn-secondary", type: "button" }, "📄 Copier la citation") as HTMLButtonElement;
+    const copyCitBtn = elt("button", { class: "app-btn app-btn-secondary", type: "button" }, "📄 Copier la citation") as HTMLButtonElement;
     copyCitBtn.title = "Copier le pivot et toutes les traductions alignées";
     copyCitBtn.addEventListener("click", () => {
       const pivotText = (body.querySelector("#meta-excerpt-content") as HTMLElement | null)

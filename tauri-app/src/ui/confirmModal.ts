@@ -30,12 +30,12 @@ export function confirmModal(
     });
     const cancelBtn = elt(
       "button",
-      { class: "btn btn-ghost", type: "button" },
+      { class: "app-btn app-btn-ghost", type: "button" },
       opts.cancelLabel ?? "Annuler",
     );
     const okBtn = elt(
       "button",
-      { class: "btn btn-primary", type: "button" },
+      { class: "app-btn app-btn-primary", type: "button" },
       opts.confirmLabel ?? "Confirmer",
     );
 

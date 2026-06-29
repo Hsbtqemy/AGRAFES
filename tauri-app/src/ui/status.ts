@@ -51,8 +51,8 @@ export function showToast(msg: string, durationMs = 3000): void {
     document.body.appendChild(toast);
   }
   toast.textContent = msg;
-  toast.classList.add("visible");
+  toast.classList.add("app-visible");
   clearTimeout((toast as HTMLElement & { _timer?: ReturnType<typeof setTimeout> })._timer);
   (toast as HTMLElement & { _timer?: ReturnType<typeof setTimeout> })._timer =
-    setTimeout(() => toast!.classList.remove("visible"), durationMs);
+    setTimeout(() => toast!.classList.remove("app-visible"), durationMs);
 }

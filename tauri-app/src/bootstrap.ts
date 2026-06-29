@@ -110,7 +110,7 @@ export async function startSidecar(dbPath: string): Promise<void> {
       const errDiv = elt("div", { class: "error-banner" });
       const errMsg = elt("span");
       errMsg.textContent = `Impossible de démarrer le sidecar : ${state.statusMsg}`;
-      const retryBtn = elt("button", { class: "btn btn-secondary", style: "margin-left:12px;font-size:12px;" }, "Réessayer");
+      const retryBtn = elt("button", { class: "app-btn app-btn-secondary", style: "margin-left:12px;font-size:12px;" }, "Réessayer");
       retryBtn.addEventListener("click", () => {
         if (state.dbPath) void startSidecar(state.dbPath);
       });
