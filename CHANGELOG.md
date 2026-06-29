@@ -7,6 +7,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-06-29
+
+### Fixed
+
+- **shell — interface entièrement dé-stylée dans le binaire packagé (CSP à nonce bloquant les styles inline)** : cause racine du rendu brut observé en 0.3.0/0.3.1. Tauri **injecte un `nonce` dans la CSP** au build de production ; or, par spec CSP, **dès qu'un nonce est présent dans `style-src`, le `'unsafe-inline'` est ignoré** → tous les styles **inline** étaient bloqués : le `<style>` injecté par `injectStyles()` (concordancier), le `<style>` de base de l'`index.html`, et tous les `element.style.…` que le shell et Prep utilisent pour la mise en page. Résultat : home, chrome et Explorer rendus en HTML brut. **Invisible en `tauri dev`** (qui utilise `devCsp`, sans nonce injecté) — ce qui avait produit un faux « vert » lors de la vérif 0.3.1. **Correctif** : `app.security.dangerousDisableAssetCspModification: ["style-src"]` dans `tauri.conf.json` → Tauri n'ajoute plus de nonce à `style-src`, donc `'unsafe-inline'` redevient effectif pour les styles ; **`script-src` reste durci par nonce** (sécurité des scripts inchangée). **Vérifié dans un vrai build packagé** (`tauri build --debug`, DevTools activés temporairement) : plus aucune violation CSP en console, interface stylée confirmée. Complète le correctif 0.3.1 (chargement eager du design-system, nécessaire mais insuffisant — le blocage CSP était le vrai verrou).
+
 ## [0.3.1] - 2026-06-29
 
 ### Fixed
