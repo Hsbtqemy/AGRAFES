@@ -639,7 +639,8 @@ body {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: 70vh;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
 }
 .stats-panel.hidden { display: none; }
