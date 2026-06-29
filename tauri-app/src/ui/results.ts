@@ -46,7 +46,7 @@ export const VIRT_DOM_CAP = 150;
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /** Extract plain text from a hit (strips << >> markers, works in both modes). */
-function hitPlainText(hit: QueryHit): string {
+export function hitPlainText(hit: QueryHit): string {
   if (hit.text ?? hit.text_norm) {
     return (hit.text ?? hit.text_norm ?? "").replace(/<<|>>/g, "").trim();
   }
@@ -149,7 +149,7 @@ function makeGroupCopyBtn(text: string, lang: string): HTMLButtonElement {
 }
 
 /** Build a formatted plain-text citation: pivot + all aligned groups. */
-function buildCitationText(hit: QueryHit): string {
+export function buildCitationText(hit: QueryHit): string {
   const pivotText = hitPlainText(hit);
   const pivotRef = hit.external_id != null ? ` §${hit.external_id}` : "";
   const pivotLang = (hit.language ?? "?").toUpperCase();
@@ -190,7 +190,7 @@ function makeCitationBtn(hit: QueryHit): HTMLButtonElement {
  * Build a minimal CQL query from a KWIC match string.
  * Single word → [word="w"]  |  Multi-word → [word="w1"][word="w2"]…
  */
-function _matchToCql(match: string): string {
+export function _matchToCql(match: string): string {
   const words = match.trim().split(/\s+/).filter(Boolean);
   if (words.length === 0) return '[word=""]';
   return words
