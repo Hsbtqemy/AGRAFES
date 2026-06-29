@@ -7,6 +7,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.2.8] - 2026-06-29
+
 ### Added
 
 - **prep / tests — render-smoke happy-dom pour les écrans monolithiques (T-05, socle décompo U-02)** : `tauri-prep` gagne l'**infrastructure de render-smoke DOM** (happy-dom en devDep, opt-in **par fichier** via le docblock `// @vitest-environment happy-dom` — l'environnement par défaut du paquet reste `node`, donc **zéro impact** sur les tests existants). Deux **tests de caractérisation** montent les vrais écrans **sans connexion sidecar** (`getConn → null`) — `render()` construit alors son DOM statique sans aucun appel réseau — et vérifient qu'ils rendent leur structure clé et se démontent proprement : `CurationView.render.test.ts` (3802 l.) et `MetadataScreen.render.test.ts` (3201 l.). **But** : un filet de sécurité avant toute **décomposition** de ces deux écrans U-02 (on ne pouvait pas refactorer en confiance sans render-tests). Ne réduit pas encore les monolithes — c'est le **socle qui dé-risque** la suite. 570 tests prep verts (563 + 7).
