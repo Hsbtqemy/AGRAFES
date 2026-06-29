@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from functools import lru_cache
 import sqlite3
-import sys
 import threading
 
 
@@ -57,18 +56,16 @@ def _load_model(model_name: str):
             "`pip install .[nlp]`."
         ) from exc
 
-    # Make a user-downloaded model (not pip-installed) importable by name. AGRAFES
-    # downloads models on demand into a user-level dir (services/models_service);
-    # putting that dir on sys.path reproduces the pip-installed load path.
+    # A model downloaded on demand (services/models_service) is extracted as a data
+    # dir but has no installed distribution metadata, so spacy.load(name) — which
+    # resolves packages via metadata (is_package) — can't find it. Load it by PATH.
     try:
-        from .paths import spacy_models_dir
+        from .paths import model_data_dir
 
-        models_dir = spacy_models_dir(create=False)
-        if (models_dir / model_name).is_dir():
-            path = str(models_dir)
-            if path not in sys.path:
-                sys.path.insert(0, path)
-    except Exception:  # pragma: no cover - best effort
+        data_dir = model_data_dir(model_name)
+        if data_dir is not None:
+            return spacy.load(data_dir)
+    except Exception:  # pragma: no cover - best effort, fall through to load-by-name
         pass
 
     try:

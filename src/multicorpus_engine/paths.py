@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
+from typing import Optional
 
 _APP_DIRNAME = "AGRAFES"
 _MODELS_SUBDIR = "spacy-models"
@@ -47,3 +48,20 @@ def spacy_models_dir(*, create: bool = True) -> Path:
     if create:
         path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def model_data_dir(name: str, models_dir: Optional[Path] = None) -> Optional[Path]:
+    """Resolve the loadable spaCy *data* directory for a downloaded model, or ``None``.
+
+    A downloaded model is laid out as ``<models_dir>/<name>/<name>-<version>/`` (the
+    data dir, with ``config.cfg``). Callers must ``spacy.load(<that path>)`` rather
+    than ``spacy.load(name)``: a model that was extracted (not pip-installed) has no
+    distribution metadata, so spaCy's load-by-name (``is_package``) cannot find it.
+    """
+    base = (models_dir or spacy_models_dir(create=False)) / name
+    if not base.is_dir():
+        return None
+    for data in sorted(base.glob(f"{name}-*")):
+        if data.is_dir() and (data / "config.cfg").is_file():
+            return data
+    return None

@@ -119,19 +119,29 @@ def _installed_spacy_version() -> str:
         return ""
 
 
+def _minor_version(version: str) -> str:
+    parts = version.split(".")
+    return ".".join(parts[:2]) if len(parts) >= 2 else version
+
+
 def _lookup_compat(compat: object, spacy_version: str, name: str) -> Optional[str]:
-    """Defensively read spaCy's compatibility.json: {"spacy": {ver: {model: [v,...]}}}."""
+    """Read spaCy's compatibility.json: ``{"spacy": {ver: {model: [v, ...]}}}``.
+
+    The table is keyed by the **minor** version (``"3.8"``), not the patch version
+    (``"3.8.14"``) — so try the exact key first (covers dev/rc keys like
+    ``"3.7.0.dev0"``), then fall back to the ``major.minor`` key.
+    """
     if not isinstance(compat, dict):
         return None
     table = compat.get("spacy")
     if not isinstance(table, dict):
         return None
-    entry = table.get(spacy_version)
-    if not isinstance(entry, dict):
-        return None
-    versions = entry.get(name)
-    if isinstance(versions, list) and versions:
-        return str(versions[0])
+    for key in (spacy_version, _minor_version(spacy_version)):
+        entry = table.get(key)
+        if isinstance(entry, dict):
+            versions = entry.get(name)
+            if isinstance(versions, list) and versions:
+                return str(versions[0])
     return None
 
 

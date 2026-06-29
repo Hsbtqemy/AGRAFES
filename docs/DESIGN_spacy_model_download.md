@@ -62,25 +62,27 @@ Aujourd'hui [`annotator._load_model`](../src/multicorpus_engine/annotator.py#L50
 `spacy.load(model_name)` **par nom de paquet** (lru_cache 8) → dans l'app figée, un modèle
 non importable lève l'erreur « install with python -m spacy download ».
 
-**Changement** — résolution à deux niveaux (le dossier utilisateur gagne) :
+**Changement** — charger un modèle téléchargé **par chemin de données** (le dossier user gagne) :
 
 ```python
 @lru_cache(maxsize=8)
 def _load_model(model_name: str):
     import spacy
-    models_dir = spacy_models_dir()
-    # 1. Modèle téléchargé par l'utilisateur : le rendre importable puis charger par nom
-    if (models_dir / model_name).is_dir():
-        if str(models_dir) not in sys.path:
-            sys.path.insert(0, str(models_dir))
-    # 2. spacy.load gère le cas paquet (dev/bundlé) ET le cas sys.path ci-dessus
-    return spacy.load(model_name)   # erreur typée inchangée si introuvable
+    # Un modèle téléchargé n'a PAS de *.dist-info, donc spacy.load(model_name) — qui
+    # résout les paquets via les métadonnées de distribution (is_package) — ne le
+    # trouve pas. On le charge par CHEMIN vers son dossier de données versionné.
+    data_dir = model_data_dir(model_name)        # <models_dir>/<name>/<name>-<ver>/
+    if data_dir is not None:
+        return spacy.load(data_dir)
+    return spacy.load(model_name)                # paquet pip-installé / bundlé (dev)
 ```
 
-- On extrait le **paquet** `{name}/` du wheel dans `<models_dir>/` puis on charge **par nom**
-  via `sys.path` → reproduit exactement la sémantique pip-installée (gère le sous-dossier de
-  données versionné `{name}-{ver}/` tout seul). Alternative écartée : `spacy.load(<chemin du
-  dossier de données>)` (oblige à localiser le sous-dossier versionné).
+- **Décision corrigée à l'implémentation (passe adverse)** : charger **par chemin**
+  (`spacy.load(<data_dir>)`), **pas** par nom via `sys.path`. Approche `sys.path` testée et
+  **rejetée** : un modèle juste extrait n'a pas de `*.dist-info`, et `is_package` de spaCy
+  passe par les **métadonnées de distribution** → `sys.path` + `spacy.load(name)` échoue en
+  `E050`. `paths.model_data_dir()` localise le sous-dossier `{name}-{ver}/` (celui qui contient
+  `config.cfg`). Validé bout en bout (download réel `xx_ent_wiki_sm` → inférence NER OK).
 - Ajouter **`clear_model_cache()`** (vide le `lru_cache`) appelé après install/suppression,
   sinon un modèle fraîchement téléchargé reste « introuvable » jusqu'au redémarrage.
 
@@ -90,8 +92,9 @@ Un modèle spaCy est versionné pour matcher la version de la lib. Le sidecar fi
 de spaCy précise → il faut le **bon** modèle.
 
 1. **Résoudre** : lire `https://raw.githubusercontent.com/explosion/spacy-models/master/compatibility.json`
-   (`urllib`, https), chercher la version de modèle compatible avec `spacy.about.__version__`.
-   *(Schéma exact à confirmer à l'implémentation ; prévoir un parseur défensif.)*
+   (`urllib`, https). **Schéma confirmé** : `{"spacy": {"<major.minor>": {"<model>": ["<ver>", …]}}}`
+   — la table est clée par version **mineure** (`"3.8"`), **pas** patch (`"3.8.14"`) : essayer la
+   clé exacte (couvre les builds dev/rc) puis `major.minor`. Parseur défensif (sinon fallback).
 2. **Fallback épinglé** : une table `{model: version}` bakée dans le code pour la version de
    spaCy embarquée — pour rester fonctionnel hors-ligne partiel / si le schéma JSON change.
 3. **URL wheel** : `https://github.com/explosion/spacy-models/releases/download/{name}-{ver}/{name}-{ver}-py3-none-any.whl`.

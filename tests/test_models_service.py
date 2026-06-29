@@ -85,13 +85,23 @@ def test_list_models_empty(tmp_path):
 # ─── Version resolution ─────────────────────────────────────────────────────
 
 def test_resolve_version_from_compat_table():
-    compat = {"spacy": {"3.8.14": {MODEL: ["3.8.0", "3.7.0"]}}}
+    # The real compatibility.json keys by MINOR version ("3.8"), not patch ("3.8.14").
+    # Use a model version distinct from the pinned fallback (3.8.0) so this test FAILS
+    # if live resolution silently falls back instead of reading the table.
+    compat = {"spacy": {"3.8": {MODEL: ["3.8.7", "3.7.0"]}}}
     plan = ms.resolve_download(MODEL, spacy_version="3.8.14", fetch_compat=lambda: compat)
-    assert plan["version"] == "3.8.0"
+    assert plan["version"] == "3.8.7"
     assert plan["url"] == (
         f"https://github.com/explosion/spacy-models/releases/download/"
-        f"{MODEL}-3.8.0/{MODEL}-3.8.0-py3-none-any.whl"
+        f"{MODEL}-3.8.7/{MODEL}-3.8.7-py3-none-any.whl"
     )
+
+
+def test_resolve_version_prefers_exact_key_for_dev_builds():
+    # Dev/rc spaCy versions appear as exact keys (e.g. "3.7.0.dev0"); exact wins over minor.
+    compat = {"spacy": {"3.7.0.dev0": {MODEL: ["3.7.9"]}, "3.7": {MODEL: ["3.7.0"]}}}
+    plan = ms.resolve_download(MODEL, spacy_version="3.7.0.dev0", fetch_compat=lambda: compat)
+    assert plan["version"] == "3.7.9"
 
 
 def test_resolve_version_falls_back_to_pinned_when_compat_unusable():
@@ -128,6 +138,17 @@ def test_install_then_remove_model(tmp_path):
     assert ms.remove_model(MODEL, tmp_path) == {"name": MODEL}
     assert not (tmp_path / MODEL).exists()
     assert not (tmp_path / f".{MODEL}.json").exists()
+
+
+def test_model_data_dir_resolves_after_install(tmp_path):
+    # The annotator loads a downloaded model by PATH to its data dir (it has no
+    # distribution metadata, so spacy.load(name) can't find it).
+    ms.install_model(MODEL, tmp_path, fetch_compat=lambda: {}, open_url=_opener(_wheel_bytes(MODEL, VERSION)))
+    data = paths.model_data_dir(MODEL, tmp_path)
+    assert data == tmp_path / MODEL / f"{MODEL}-{VERSION}"
+    assert (data / "config.cfg").is_file()
+    # A non-installed model resolves to None.
+    assert paths.model_data_dir("en_core_web_md", tmp_path) is None
 
 
 def test_install_is_atomic_overwrite(tmp_path):
