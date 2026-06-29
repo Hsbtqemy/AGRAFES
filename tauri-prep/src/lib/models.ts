@@ -30,3 +30,20 @@ export function modelForLanguage(
   }
   return models.find((m) => m.language === "mul") ?? null;
 }
+
+export interface ModelRow {
+  name: string;
+  sizeLabel: string;
+  statusLabel: string;
+  installed: boolean;
+}
+
+/** Display fields for one model row (ModelManager / Paramètres). Pure → unit-tested. */
+export function describeModel(m: ModelInfo): ModelRow {
+  return {
+    name: m.name,
+    sizeLabel: `~${m.approx_size_mb} Mo`,
+    statusLabel: m.installed ? (m.version ? `Installé · ${m.version}` : "Installé") : "Absent",
+    installed: m.installed,
+  };
+}

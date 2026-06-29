@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { modelForLanguage, type ModelInfo } from "../models";
+import { describeModel, modelForLanguage, type ModelInfo } from "../models";
 
 const M = (name: string, language: string, installed = false): ModelInfo => ({
   name,
@@ -42,5 +42,28 @@ describe("modelForLanguage", () => {
 
   it("no multilingual model and unknown language → null", () => {
     expect(modelForLanguage("zz", [M("fr_core_news_md", "fr")])).toBeNull();
+  });
+});
+
+describe("describeModel", () => {
+  it("installed with version → 'Installé · <version>'", () => {
+    const m: ModelInfo = { ...M("fr_core_news_md", "fr", true), version: "3.8.0" };
+    expect(describeModel(m)).toEqual({
+      name: "fr_core_news_md",
+      sizeLabel: "~40 Mo",
+      statusLabel: "Installé · 3.8.0",
+      installed: true,
+    });
+  });
+
+  it("installed without a known version → 'Installé'", () => {
+    expect(describeModel(M("en_core_web_md", "en", true)).statusLabel).toBe("Installé");
+  });
+
+  it("absent → 'Absent' + size label", () => {
+    const r = describeModel(M("de_core_news_md", "de", false));
+    expect(r.statusLabel).toBe("Absent");
+    expect(r.sizeLabel).toBe("~40 Mo");
+    expect(r.installed).toBe(false);
   });
 });
