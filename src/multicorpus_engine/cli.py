@@ -1346,6 +1346,32 @@ def cmd_runs_prune(args: argparse.Namespace) -> None:
 
 
 # ---------------------------------------------------------------------------
+# models (spaCy model management)
+# ---------------------------------------------------------------------------
+
+def cmd_models(args: argparse.Namespace) -> None:
+    from .services import models_service as ms
+    from .services.errors import ServiceError
+
+    action = getattr(args, "models_action", None)
+    try:
+        if action == "list":
+            _ok({"models": ms.list_models()})
+        elif action == "download":
+            def _cb(pct: int, message: str | None = None) -> None:
+                print(f"[{pct:>3}%] {message or ''}", file=sys.stderr)
+                sys.stderr.flush()
+
+            _ok(ms.install_model(args.name, progress_cb=_cb))
+        elif action == "remove":
+            _ok(ms.remove_model(args.name))
+        else:
+            _err({"error": f"unknown models action: {action!r}"})
+    except ServiceError as exc:
+        _err({"error": str(exc), "details": exc.details})
+
+
+# ---------------------------------------------------------------------------
 # Parser
 # ---------------------------------------------------------------------------
 
@@ -1746,6 +1772,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_shutdown.add_argument("--db", required=True)
     p_shutdown.set_defaults(func=cmd_shutdown)
+
+    # models
+    p_models = sub.add_parser("models", help="Manage spaCy models (list/download/remove)")
+    m_sub = p_models.add_subparsers(dest="models_action", required=True)
+    m_sub.add_parser("list", help="List known models and install status").set_defaults(func=cmd_models)
+    p_mdl = m_sub.add_parser("download", help="Download + install a spaCy model")
+    p_mdl.add_argument("name", help="Model name, e.g. fr_core_news_md")
+    p_mdl.set_defaults(func=cmd_models)
+    p_mrm = m_sub.add_parser("remove", help="Remove an installed spaCy model")
+    p_mrm.add_argument("name", help="Model name, e.g. fr_core_news_md")
+    p_mrm.set_defaults(func=cmd_models)
 
     return parser
 

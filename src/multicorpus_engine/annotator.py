@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 import sqlite3
+import sys
 import threading
 
 
@@ -56,13 +57,33 @@ def _load_model(model_name: str):
             "`pip install .[nlp]`."
         ) from exc
 
+    # Make a user-downloaded model (not pip-installed) importable by name. AGRAFES
+    # downloads models on demand into a user-level dir (services/models_service);
+    # putting that dir on sys.path reproduces the pip-installed load path.
+    try:
+        from .paths import spacy_models_dir
+
+        models_dir = spacy_models_dir(create=False)
+        if (models_dir / model_name).is_dir():
+            path = str(models_dir)
+            if path not in sys.path:
+                sys.path.insert(0, path)
+    except Exception:  # pragma: no cover - best effort
+        pass
+
     try:
         return spacy.load(model_name)
     except Exception as exc:  # pragma: no cover - model availability depends on env
         raise RuntimeError(
             f"spaCy model not available: {model_name!r}. "
-            f"Install it with `python -m spacy download {model_name}`."
+            f"Download it from AGRAFES settings, or run "
+            f"`python -m spacy download {model_name}`."
         ) from exc
+
+
+def clear_model_cache() -> None:
+    """Drop cached spaCy pipelines (call after installing/removing a model)."""
+    _load_model.cache_clear()
 
 
 def annotate_document(
