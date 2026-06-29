@@ -92,7 +92,7 @@ body {
 }
 .status-dot.starting { background: var(--warning); animation: pulse 1s infinite; }
 .status-dot.ready    { background: var(--success); }
-.status-dot.error    { background: var(--danger); }
+.status-dot.app-error    { background: var(--danger); }
 .status-dot.idle     { background: rgba(255,255,255,.4); }
 
 @keyframes pulse {
@@ -133,7 +133,7 @@ body {
 .search-input:focus { border-color: var(--brand); }
 .search-row #search-btn { flex-shrink: 0; }
 
-.btn {
+.app-btn {
   padding: 8px 14px;
   border: 1.5px solid transparent;
   border-radius: var(--radius);
@@ -144,21 +144,21 @@ body {
   white-space: nowrap;
 }
 
-.btn-primary { background: var(--brand); color: #fff; }
-.btn-primary:hover { background: var(--brand-dark); }
-.btn-primary:disabled { background: #a8b6f7; cursor: not-allowed; }
+.app-btn-primary { background: var(--brand); color: #fff; }
+.app-btn-primary:hover { background: var(--brand-dark); }
+.app-btn-primary:disabled { background: #a8b6f7; cursor: not-allowed; }
 
-.btn-secondary { background: var(--surface2); color: var(--text); border-color: var(--border); }
-.btn-secondary:hover { background: var(--border); }
-.btn-secondary.active { background: var(--brand); color: #fff; border-color: var(--brand); }
+.app-btn-secondary { background: var(--surface2); color: var(--text); border-color: var(--border); }
+.app-btn-secondary:hover { background: var(--border); }
+.app-btn-secondary.app-active { background: var(--brand); color: #fff; border-color: var(--brand); }
 
-.btn-ghost { background: transparent; color: var(--text-muted); border-color: var(--border); }
-.btn-ghost:hover { background: var(--surface2); color: var(--text); }
+.app-btn-ghost { background: transparent; color: var(--text-muted); border-color: var(--border); }
+.app-btn-ghost:hover { background: var(--surface2); color: var(--text); }
 
 .mode-group { display: flex; gap: 0; }
-.mode-group .btn { border-radius: 0; border-right-width: 0; }
-.mode-group .btn:first-child { border-radius: var(--radius) 0 0 var(--radius); }
-.mode-group .btn:last-child  { border-radius: 0 var(--radius) var(--radius) 0; border-right-width: 1.5px; }
+.mode-group .app-btn { border-radius: 0; border-right-width: 0; }
+.mode-group .app-btn:first-child { border-radius: var(--radius) 0 0 var(--radius); }
+.mode-group .app-btn:last-child  { border-radius: 0 var(--radius) var(--radius) 0; border-right-width: 1.5px; }
 
 .window-control {
   display: flex;
@@ -274,7 +274,7 @@ body {
   color: var(--text-muted);
   font-style: italic;
 }
-.chip--warn {
+.app-chip--warn {
   border-color: #e67e22;
   color: #e67e22;
   background: #fff8f0;
@@ -362,7 +362,7 @@ body {
   padding: 4px 9px;
   font-size: 0.85rem;
 }
-.case-sensitive-btn.active {
+.case-sensitive-btn.app-active {
   background: color-mix(in srgb, var(--brand) 12%, var(--surface));
   color: var(--brand);
   border-color: var(--brand);
@@ -443,7 +443,7 @@ body {
 }
 
 .source-changed-btn { font-size: 0.78rem; }
-.source-changed-btn.active {
+.source-changed-btn.app-active {
   background: #fef9c3;
   border-color: #fde68a;
   color: #92400e;
@@ -598,7 +598,7 @@ body {
   color: var(--text, #1e293b);
 }
 .filter-lang-btn:hover { border-color: var(--brand, #2563eb); }
-.filter-lang-btn.active { border-color: var(--brand, #2563eb); background: #eff6ff; color: var(--brand, #2563eb); font-weight: 600; }
+.filter-lang-btn.app-active { border-color: var(--brand, #2563eb); background: #eff6ff; color: var(--brand, #2563eb); font-weight: 600; }
 .filter-lang-dropdown {
   position: absolute;
   top: calc(100% + 4px);
@@ -791,7 +791,7 @@ body {
   display: none;
   min-width: 300px;
 }
-.hist-panel.open, .export-menu.open { display: block; }
+.hist-panel.app-open, .export-menu.app-open { display: block; }
 .export-menu { min-width: 140px; }
 .hist-panel-header {
   display: flex;
@@ -849,7 +849,7 @@ body {
   padding: 0;
   font-size: 0.82rem;
 }
-.help-popover.open { display: block; }
+.help-popover.app-open { display: block; }
 .help-popover-head {
   display: flex; align-items: center; justify-content: space-between;
   padding: 8px 12px 6px; border-bottom: 1px solid #e9ecef;
@@ -922,7 +922,7 @@ body {
   flex-wrap: wrap;
   flex-shrink: 0;
 }
-.chip {
+.app-chip {
   display: inline-flex;
   align-items: center;
   gap: 3px;
@@ -933,7 +933,7 @@ body {
   font-size: 11px;
   white-space: nowrap;
 }
-.chip-remove {
+.app-chip-remove {
   background: none;
   border: none;
   color: #1e4a80;
@@ -944,14 +944,14 @@ body {
   display: flex;
   align-items: center;
 }
-.chip-remove:hover { color: #c0392b; }
+.app-chip-remove:hover { color: #c0392b; }
 
 /* ─── Metadata side panel ─── */
 .meta-backdrop {
   position: fixed; inset: 0; background: rgba(0,0,0,0.18); z-index: 200;
   display: none; cursor: default;
 }
-.meta-backdrop.open { display: block; }
+.meta-backdrop.app-open { display: block; }
 .meta-panel {
   position: fixed; top: 0; right: 0; width: 340px; max-width: 95vw; height: 100vh;
   background: var(--surface); border-left: 1px solid var(--border);
@@ -959,7 +959,7 @@ body {
   display: flex; flex-direction: column; z-index: 201;
   transform: translateX(110%); transition: transform 0.22s ease;
 }
-.meta-panel.open { transform: translateX(0); }
+.meta-panel.app-open { transform: translateX(0); }
 .meta-panel-head {
   display: flex; align-items: center; justify-content: space-between;
   padding: 10px 14px; border-bottom: 1px solid var(--border);
@@ -1103,7 +1103,7 @@ body {
   pointer-events: none;
   z-index: 9999;
 }
-.app-toast.visible {
+.app-toast.app-visible {
   opacity: 1;
   transform: translateY(0);
 }
@@ -1182,7 +1182,7 @@ body {
   border-color: var(--brand);
   color: var(--brand);
 }
-.sort-toggle-btn.active {
+.sort-toggle-btn.app-active {
   background: var(--brand);
   color: #fff;
   border-color: var(--brand);
@@ -1758,11 +1758,11 @@ body {
   cursor: pointer;
   transition: background 0.1s, color 0.1s;
 }
-.meta-reader-win-btn:hover:not(.active) {
+.meta-reader-win-btn:hover:not(.app-active) {
   border-color: var(--brand);
   color: var(--brand);
 }
-.meta-reader-win-btn.active {
+.meta-reader-win-btn.app-active {
   background: var(--brand);
   color: #fff;
   border-color: var(--brand);

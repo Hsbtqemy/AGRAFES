@@ -415,7 +415,7 @@ export function renderHit(hit: QueryHit, mode: "segment" | "kwic", showAligned: 
     const expanded = state.expandedAlignedUnitIds.has(hit.unit_id);
     const toggle = elt(
       "button",
-      { class: "btn btn-secondary", type: "button" },
+      { class: "app-btn app-btn-secondary", type: "button" },
       expanded ? "Masquer traductions" : "Afficher traductions"
     ) as HTMLButtonElement;
     toggle.addEventListener("click", () => {

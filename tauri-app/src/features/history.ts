@@ -101,14 +101,14 @@ export function renderHistPanel(panel: HTMLElement, searchInput: HTMLInputElemen
   const header = elt("div", { class: "hist-panel-header" });
   header.appendChild(document.createTextNode("Historique des recherches"));
   const headerBtns = elt("div", { style: "display:flex;gap:4px" });
-  const clearBtn = elt("button", { class: "btn btn-ghost", style: "font-size:0.75rem;padding:2px 8px" }, "Vider");
+  const clearBtn = elt("button", { class: "app-btn app-btn-ghost", style: "font-size:0.75rem;padding:2px 8px" }, "Vider");
   clearBtn.title = "Effacer l'historique (garde les favoris ⭐)";
   clearBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     clearHistory();
     renderHistPanel(panel, searchInput);
   });
-  const clearAllBtn = elt("button", { class: "btn btn-ghost", style: "font-size:0.75rem;padding:2px 8px" }, "Tout effacer");
+  const clearAllBtn = elt("button", { class: "app-btn app-btn-ghost", style: "font-size:0.75rem;padding:2px 8px" }, "Tout effacer");
   clearAllBtn.title = "Effacer tout l'historique y compris les favoris";
   clearAllBtn.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -161,7 +161,7 @@ export function renderHistPanel(panel: HTMLElement, searchInput: HTMLInputElemen
 
       row.addEventListener("click", (e) => {
         if ((e.target as HTMLElement).closest(".hist-pin-btn")) return;
-        panel.classList.remove("open");
+        panel.classList.remove("app-open");
         searchInput.value = item.raw;
         state.filterLangs = item.filters.lang ? item.filters.lang.split(",").filter(Boolean) : [];
         state.filterRole = item.filters.role;

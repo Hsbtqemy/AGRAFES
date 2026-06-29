@@ -33,7 +33,7 @@ function resetFilters(): void {
 }
 
 const bar = (): HTMLElement => document.getElementById("chips-bar")!;
-const chips = (): HTMLElement[] => Array.from(bar().querySelectorAll<HTMLElement>(".chip"));
+const chips = (): HTMLElement[] => Array.from(bar().querySelectorAll<HTMLElement>(".app-chip"));
 
 beforeEach(() => {
   document.body.replaceChildren();
@@ -88,7 +88,7 @@ describe("renderChips", () => {
   it("sélection de docs vide → chip d'avertissement (chip--warn)", () => {
     state.filterDocIds = [];
     renderChips();
-    const warn = bar().querySelector(".chip--warn");
+    const warn = bar().querySelector(".app-chip--warn");
     expect(warn).not.toBeNull();
     expect(warn!.textContent).toContain("aucun sélectionné");
   });
@@ -97,7 +97,7 @@ describe("renderChips", () => {
     state.filterRole = "source";
     renderChips();
     expect(chips()).toHaveLength(1);
-    bar().querySelector<HTMLButtonElement>(".chip-remove")!.click();
+    bar().querySelector<HTMLButtonElement>(".app-chip-remove")!.click();
     expect(state.filterRole).toBe("");
     expect(chips()).toHaveLength(0);
     expect(bar().style.display).toBe("none");

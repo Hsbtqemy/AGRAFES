@@ -359,7 +359,7 @@ export function buildStatsPanel(): HTMLElement {
   controls.appendChild(compareRow);
 
   // Run button
-  const runBtn = elt("button", { class: "btn btn-primary stats-run-btn", id: "stats-run-btn", type: "button" }, "▶ Calculer") as HTMLButtonElement;
+  const runBtn = elt("button", { class: "app-btn app-btn-primary stats-run-btn", id: "stats-run-btn", type: "button" }, "▶ Calculer") as HTMLButtonElement;
   runBtn.addEventListener("click", () => void runStats());
   controls.appendChild(runBtn);
 
@@ -394,10 +394,10 @@ export function toggleStatsPanel(forceOpen?: boolean): void {
 
   if (shouldOpen) {
     panel.classList.remove("hidden");
-    btn?.classList.add("active");
+    btn?.classList.add("app-active");
     populateStatsSelects();
   } else {
     panel.classList.add("hidden");
-    btn?.classList.remove("active");
+    btn?.classList.remove("app-active");
   }
 }

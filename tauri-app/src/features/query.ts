@@ -108,7 +108,7 @@ function _isFederationActive(opts?: { isCqlMode?: boolean; inFamilyMode?: boolea
 function _openFederationFilterEditor(): void {
   state.showFilters = true;
   document.getElementById("filter-drawer")?.classList.remove("hidden");
-  document.getElementById("filter-btn")?.classList.add("active");
+  document.getElementById("filter-btn")?.classList.add("app-active");
   const textarea = document.getElementById("filter-federated-dbs") as HTMLTextAreaElement | null;
   if (textarea) {
     textarea.scrollIntoView({ block: "nearest" });
@@ -275,7 +275,7 @@ function appendFooter(area: HTMLElement): void {
     const wrap = elt("div", { class: "load-more-wrap" });
     const btn = elt(
       "button",
-      { class: "btn btn-secondary load-more-btn", type: "button" },
+      { class: "app-btn app-btn-secondary load-more-btn", type: "button" },
       "Charger plus"
     ) as HTMLButtonElement;
     btn.addEventListener("click", () => { void doLoadMore(); });
