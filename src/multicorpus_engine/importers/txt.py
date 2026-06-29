@@ -130,6 +130,7 @@ def import_txt_numbered_lines(
     run_id: Optional[str] = None,
     run_logger: Optional[logging.Logger] = None,
     check_filename: bool = False,
+    source_path: Optional[str] = None,
 ) -> ImportReport:
     """Import a plain-text file using the numbered-lines convention.
 
@@ -164,7 +165,7 @@ def import_txt_numbered_lines(
         (
             doc_title, language, doc_role, resource_type,
             json.dumps(parsed.doc_meta),
-            str(path), parsed.source_hash, utcnow,
+            (source_path if source_path is not None else str(path)), parsed.source_hash, utcnow,
         ),
     )
     doc_id = cur.lastrowid

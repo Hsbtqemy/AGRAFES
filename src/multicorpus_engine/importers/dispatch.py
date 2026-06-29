@@ -54,11 +54,18 @@ def dispatch_import(
     run_id: Optional[str] = None,
     run_logger: Optional[logging.Logger] = None,
     check_filename: bool = False,
+    source_path: Optional[str] = None,
 ):
     """Route to the importer for *mode* and return its ``ImportReport``.
 
     The ``ImportReport`` exposes ``doc_id`` (via ``to_dict()``), which callers
     use to attach provenance after the import.
+
+    *source_path* overrides the value stored in ``documents.source_path`` (default
+    ``None`` → the local *path*). Callers that import from a temp copy (e.g.
+    ShareDocs/WebDAV, which downloads to a throwaway ``mkstemp``) pass the real
+    remote URL so provenance is written **inside the import's own transaction** —
+    no follow-up UPDATE, hence no crash window leaving a temp path (SID-05).
 
     Raises ``ValueError`` for an unknown *mode*. ``column_index`` and ``tei_unit``
     are only meaningful for ``docx_numbered_lines`` and ``tei`` respectively; they
@@ -71,6 +78,7 @@ def dispatch_import(
             doc_role=doc_role, resource_type=resource_type,
             column_index=column_index, run_id=run_id, run_logger=run_logger,
             check_filename=check_filename,
+            source_path=source_path,
         )
     if mode == "txt_numbered_lines":
         from .txt import import_txt_numbered_lines
@@ -79,6 +87,7 @@ def dispatch_import(
             doc_role=doc_role, resource_type=resource_type,
             run_id=run_id, run_logger=run_logger,
             check_filename=check_filename,
+            source_path=source_path,
         )
     if mode == "docx_paragraphs":
         from .docx_paragraphs import import_docx_paragraphs
@@ -87,6 +96,7 @@ def dispatch_import(
             doc_role=doc_role, resource_type=resource_type,
             run_id=run_id, run_logger=run_logger,
             check_filename=check_filename,
+            source_path=source_path,
         )
     if mode == "odt_paragraphs":
         from .odt_paragraphs import import_odt_paragraphs
@@ -95,6 +105,7 @@ def dispatch_import(
             doc_role=doc_role, resource_type=resource_type,
             run_id=run_id, run_logger=run_logger,
             check_filename=check_filename,
+            source_path=source_path,
         )
     if mode == "odt_numbered_lines":
         from .odt_numbered_lines import import_odt_numbered_lines
@@ -103,6 +114,7 @@ def dispatch_import(
             doc_role=doc_role, resource_type=resource_type,
             run_id=run_id, run_logger=run_logger,
             check_filename=check_filename,
+            source_path=source_path,
         )
     if mode == "tei":
         from .tei_importer import import_tei
@@ -111,6 +123,7 @@ def dispatch_import(
             doc_role=doc_role, resource_type=resource_type,
             unit_element=tei_unit, run_id=run_id, run_logger=run_logger,
             check_filename=check_filename,
+            source_path=source_path,
         )
     if mode == "conllu":
         from .conllu import import_conllu
@@ -119,5 +132,6 @@ def dispatch_import(
             doc_role=doc_role, resource_type=resource_type,
             run_id=run_id, run_logger=run_logger,
             check_filename=check_filename,
+            source_path=source_path,
         )
     raise ValueError(f"Unknown import mode: {mode!r}")

@@ -207,6 +207,7 @@ def import_tei(
     run_id: Optional[str] = None,
     run_logger: Optional[logging.Logger] = None,
     check_filename: bool = False,
+    source_path: Optional[str] = None,
 ) -> ImportReport:
     """Import a TEI XML file, extracting <p> or <s> elements as line units.
 
@@ -254,7 +255,7 @@ def import_tei(
             (
                 tei_title, tei_lang, doc_role, resource_type,
                 json.dumps({"tei_unit": unit_element}),
-                str(path), source_hash, utcnow,
+                (source_path if source_path is not None else str(path)), source_hash, utcnow,
             ),
         )
         doc_id = cur.lastrowid

@@ -67,6 +67,7 @@ def import_odt_paragraphs(
     run_id: Optional[str] = None,
     run_logger: Optional[logging.Logger] = None,
     check_filename: bool = False,
+    source_path: Optional[str] = None,
 ) -> ImportReport:
     """Import an ODT file — every non-empty ``text:p`` / ``text:h`` becomes a line unit."""
     path = Path(path)
@@ -90,7 +91,7 @@ def import_odt_paragraphs(
                 (title, language, doc_role, resource_type, meta_json, source_path, source_hash, created_at)
             VALUES (?, ?, ?, ?, NULL, ?, ?, ?)
             """,
-            (doc_title, language, doc_role, resource_type, str(path), parsed.source_hash, utcnow),
+            (doc_title, language, doc_role, resource_type, (source_path if source_path is not None else str(path)), parsed.source_hash, utcnow),
         )
         doc_id = cur.lastrowid
         log.info("Created document doc_id=%d title=%r", doc_id, doc_title)

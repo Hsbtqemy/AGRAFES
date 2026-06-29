@@ -14,6 +14,7 @@ import pytest
 
 from multicorpus_engine.db.connection import get_connection
 from multicorpus_engine.db.migrations import apply_migrations
+from multicorpus_engine.importers.dispatch import dispatch_import
 from multicorpus_engine.remote import ingest, webdav
 
 _MIGRATIONS = Path(__file__).parent.parent / "migrations"
@@ -99,6 +100,85 @@ def test_doc_title_uses_original_remote_name_not_temp(db):
     titles = [r["title"] for r in conn.execute("SELECT title FROM documents").fetchall()]
     assert titles == ["Mon Roman"]  # original stem, identical to a local import
     assert not titles[0].startswith("tmp")
+
+
+# --- SID-05: atomic provenance (source_path written in the import transaction) ---
+
+
+def test_dispatch_source_path_override_is_stored_else_local_path(db):
+    """SID-05 mechanism: ``dispatch_import(..., source_path=URL)`` stores the
+    override in ``documents.source_path`` (written in the importer's own INSERT),
+    while the default ``None`` keeps the local path — local imports unchanged."""
+    conn, db_path = db
+    local = db_path.parent / "Mon Doc.txt"
+    local.write_text("[1] Bonjour.\n[2] Monde.\n", encoding="utf-8")
+    dispatch_import(
+        conn, mode="txt_numbered_lines", path=str(local), language="fr",
+        source_path="https://dav.example/folder/Mon Doc.txt",
+    )
+
+    # Default (no override) keeps the local path — different bytes so the
+    # content-hash dedup guard does not fire.
+    other = db_path.parent / "Autre.txt"
+    other.write_text("[1] Un autre contenu entierement.\n", encoding="utf-8")
+    dispatch_import(
+        conn, mode="txt_numbered_lines", path=str(other), language="fr",
+    )
+
+    rows = {r["title"]: r["source_path"]
+            for r in conn.execute("SELECT title, source_path FROM documents")}
+    assert rows["Mon Doc"] == "https://dav.example/folder/Mon Doc.txt"
+    assert rows["Autre"] == str(other)
+
+
+class _CrashAfterImportCommit:
+    """Connection proxy that simulates a process crash on the first commit AFTER
+    a document row has been committed: it discards the still-open transaction
+    (as a real crash loses uncommitted work) and raises. Proves SID-05 — the
+    provenance must already be durable at that point, not pending a 2nd commit."""
+
+    def __init__(self, real):
+        self._real = real
+        self._doc_committed = False
+
+    def commit(self):
+        if self._doc_committed:
+            self._real.rollback()  # lose the uncommitted txn, as a crash would
+            raise RuntimeError("simulated crash right after the import commit")
+        self._real.commit()
+        if self._real.execute("SELECT COUNT(*) FROM documents").fetchone()[0] > 0:
+            self._doc_committed = True
+
+    def __getattr__(self, name):
+        return getattr(self._real, name)
+
+
+def test_provenance_survives_crash_after_import_commit(db):
+    """SID-05: the remote URL is written inside the importer's transaction, so a
+    crash on the NEXT commit can never leave ``source_path`` = the throwaway temp
+    path. The old two-phase code (import-commit, then a separate UPDATE + commit)
+    left the temp path here; the atomic version keeps the remote URL."""
+    conn, db_path = db
+    a = _make_docx_bytes(["[1] Bonjour.", "[2] Monde."])
+    entries = [_entry("Mon Roman.docx", len(a))]
+    payloads = {_BASE + "Mon Roman.docx": a}
+    crashy = _CrashAfterImportCommit(conn)
+
+    with mock.patch.object(ingest.webdav, "propfind", return_value=entries), \
+         mock.patch.object(ingest.webdav, "download", _download_from(payloads)):
+        report = ingest.ingest_remote_folder(
+            crashy, db_path, url=_BASE, mode="docx_numbered_lines",
+            language="fr", auth_header={},
+        )
+
+    # The post-import commit crashed -> the file is reported as an error...
+    assert report["errors"] == 1
+    # ...but the document the importer already committed must carry the REMOTE
+    # URL as provenance, never the temp path.
+    rows = conn.execute("SELECT source_path FROM documents").fetchall()
+    assert len(rows) == 1
+    assert rows[0]["source_path"] == _BASE + "Mon Roman.docx"
+    assert "agrafes_webdav_" not in rows[0]["source_path"]
 
 
 def test_rerun_is_idempotent_via_dedup(db):

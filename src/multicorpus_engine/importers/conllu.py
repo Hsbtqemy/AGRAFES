@@ -216,6 +216,7 @@ def import_conllu(
     run_id: Optional[str] = None,
     run_logger: Optional[logging.Logger] = None,
     check_filename: bool = False,
+    source_path: Optional[str] = None,
 ) -> ImportReport:
     """Import a CoNLL-U file.
 
@@ -268,7 +269,7 @@ def import_conllu(
             doc_role,
             resource_type,
             json.dumps(doc_meta, ensure_ascii=False),
-            str(path),
+            (source_path if source_path is not None else str(path)),
             source_hash,
             utcnow,
         ),
