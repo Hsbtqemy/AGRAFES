@@ -13,7 +13,9 @@ export class SettingsScreen {
 
   render(): HTMLElement {
     const root = document.createElement("div");
-    root.className = "prep-settings";
+    // `screen` is required: app.css shows the active tab via `.screen.active { display:block }`
+    // (the generic `.prep-screen` only sets display:none). Without it the tab stays hidden.
+    root.className = "screen prep-settings";
     this._root = root;
 
     const title = document.createElement("h2");

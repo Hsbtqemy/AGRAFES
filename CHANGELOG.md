@@ -7,6 +7,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-06-30
+
+### Fixed
+
+- **prep — écran « Paramètres » vide (classe `screen` manquante sur la racine)** : l'onglet Paramètres (hôte du gestionnaire de modèles spaCy, Phase 3) s'affichait **entièrement vide**. Cause : `app.css` révèle l'onglet actif via `.screen.active { display: block }` (le générique `.prep-screen` ne fait que `display: none`). Les six autres écrans donnent à leur racine `className = "screen …"`, mais `SettingsScreen.render()` posait `"prep-settings"` **sans `screen`** → jamais matché par `.screen.active` → l'écran restait `display:none` même actif. Bug présent depuis l'introduction de l'écran (0.3.0), **indépendant de la CSP** (reproductible aussi dans `tauri-prep` seul). **Correctif** : racine en `"screen prep-settings"` + **render-test** `SettingsScreen.render.test.ts` qui assert la présence de la classe `screen` (aurait échoué avant). Vérifié dans un build packagé local : l'écran affiche bien titre + section + gestionnaire de modèles.
+
 ## [0.3.2] - 2026-06-29
 
 ### Fixed
