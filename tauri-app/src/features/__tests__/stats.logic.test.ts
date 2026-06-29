@@ -55,9 +55,11 @@ describe("_renderCompareStats", () => {
       { word: "y", count_a: 0, freq_a: 0, count_b: 2, freq_b: 1, ratio: 0 },
       { word: "z", count_a: 4, freq_a: 2, count_b: 2, freq_b: 1, ratio: 2 },
     ]));
-    expect(html).toContain("∞");
-    expect(html).toContain("—");
-    expect(html).toContain("2.00");
+    // Target the ratio cell exactly — `toContain("2.00")` alone would false-pass
+    // on the freq cell "2.000" (which contains "2.00").
+    expect(html).toContain('stats-ratio-inf">∞');
+    expect(html).toContain('stats-ratio-b">—');
+    expect(html).toContain('stats-ratio-a">2.00<');
   });
 
   it("escapes HTML in words", () => {
