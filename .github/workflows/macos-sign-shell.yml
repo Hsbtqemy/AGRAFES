@@ -116,17 +116,29 @@ jobs:
             APP_PATH=$(find unsigned-shell -name "AGRAFESShell" -o -name "agrafes-shell" | head -1)
           fi
           echo "Signing: $APP_PATH"
+          ENTITLEMENTS="tauri-shell/src-tauri/entitlements.plist"
+          # Sign inside-out. The PyInstaller sidecar `multicorpus` runs as a
+          # SEPARATE process and must carry disable-library-validation on its OWN
+          # signature, or it dies at launch loading the python.org Python.framework
+          # (different Team ID). `--deep` re-signs nested code but does NOT reliably
+          # apply entitlements to it, so we sign the sidecar explicitly first.
+          SIDECAR="$APP_PATH/Contents/MacOS/multicorpus"
+          if [ -f "$SIDECAR" ]; then
+            echo "Signing sidecar: $SIDECAR"
+            codesign \
+              --sign "$MACOS_SIGN_IDENTITY" \
+              --force \
+              --options runtime \
+              --timestamp \
+              --entitlements "$ENTITLEMENTS" \
+              "$SIDECAR"
+          fi
           codesign \
             --sign "$MACOS_SIGN_IDENTITY" \
             --force \
-            --deep \
             --options runtime \
-            --entitlements tauri-shell/src-tauri/entitlements.plist 2>/dev/null || \
-          codesign \
-            --sign "$MACOS_SIGN_IDENTITY" \
-            --force \
-            --deep \
-            --options runtime \
+            --timestamp \
+            --entitlements "$ENTITLEMENTS" \
             "$APP_PATH"
           codesign --verify --deep --strict "$APP_PATH" && echo "✅ Code signature valid"
 

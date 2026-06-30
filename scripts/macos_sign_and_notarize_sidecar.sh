@@ -7,7 +7,12 @@ set -euo pipefail
 #   scripts/macos_sign_and_notarize_sidecar.sh \
 #     --binary tauri/src-tauri/binaries/multicorpus-aarch64-apple-darwin \
 #     --identity "Developer ID Application: Example Corp (TEAMID)" \
+#     [--entitlements tauri-shell/src-tauri/entitlements.plist] \
 #     [--allow-unsigned]
+#
+# Pass --entitlements for PyInstaller sidecars: the embedded Python.framework is
+# signed by a different Team ID, so disable-library-validation is required or the
+# sidecar dies at launch (code=255) under hardened runtime / library validation.
 #
 # Secrets (environment):
 #   Preferred notarytool API key mode:
@@ -22,6 +27,7 @@ set -euo pipefail
 BINARY=""
 IDENTITY="${MACOS_SIGN_IDENTITY:-}"
 ALLOW_UNSIGNED=0
+ENTITLEMENTS=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -31,6 +37,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --identity)
       IDENTITY="${2:-}"
+      shift 2
+      ;;
+    --entitlements)
+      ENTITLEMENTS="${2:-}"
       shift 2
       ;;
     --allow-unsigned)
@@ -74,7 +84,19 @@ if ! command -v xcrun >/dev/null 2>&1; then
 fi
 
 echo "Signing sidecar: ${BINARY}"
-codesign --force --options runtime --timestamp --sign "${IDENTITY}" "${BINARY}"
+CODESIGN_ARGS=(--force --options runtime --timestamp --sign "${IDENTITY}")
+if [[ -n "${ENTITLEMENTS}" ]]; then
+  if [[ ! -f "${ENTITLEMENTS}" ]]; then
+    echo "Entitlements file not found: ${ENTITLEMENTS}" >&2
+    exit 2
+  fi
+  # Required for PyInstaller sidecars under hardened runtime: the embedded
+  # Python.framework is signed by a different Team ID and would otherwise be
+  # rejected by library validation. See tauri-shell/src-tauri/entitlements.plist.
+  echo "Applying entitlements: ${ENTITLEMENTS}"
+  CODESIGN_ARGS+=(--entitlements "${ENTITLEMENTS}")
+fi
+codesign "${CODESIGN_ARGS[@]}" "${BINARY}"
 codesign --verify --verbose --strict "${BINARY}"
 codesign --display --verbose=2 "${BINARY}" || true
 spctl -a -t exec -vv "${BINARY}" || true
