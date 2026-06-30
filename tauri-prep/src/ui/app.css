@@ -6626,6 +6626,68 @@ tr[data-len].prep-seg-row-context .prep-seg-cell-len {
   font-size: 0.78rem;
 }
 .prep-conv-text-start-btn:hover { background: #e9e3ff; }
+.prep-conv-text-start-sep {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.4rem 0 0.2rem;
+  padding: 0.3rem 0.6rem;
+  border-top: 2px solid #6f42c1;
+  background: #f3f0ff;
+  border-radius: 5px;
+}
+.prep-conv-text-start-sep-label { color: #6f42c1; font-weight: 600; font-size: 0.8rem; }
+.prep-conv-text-start-clear {
+  margin-left: auto;
+  padding: 0.15rem 0.5rem;
+  background: #fff5f5;
+  border: 1px solid #f5c2c7;
+  border-radius: 12px;
+  color: #dc3545;
+  cursor: pointer;
+  font-size: 0.72rem;
+}
+.prep-conv-text-start-clear:hover { background: #f8d7da; }
+
+/* ── Refonte T0 : canvas texte central (prep-canvas-*) — cf. docs/DESIGN_prep_text_canvas.md ── */
+.prep-canvas-proto-launch {
+  margin-top: 0.75rem; padding: 0.4rem 0.8rem; border: 1px dashed #a855f7;
+  border-radius: 6px; background: #faf5ff; color: #7e22ce; cursor: pointer; font-size: 0.85rem;
+}
+.prep-canvas-proto-launch:hover { background: #f3e8ff; }
+.prep-canvas-root {
+  container-type: inline-size;
+  display: flex; flex-direction: column; gap: 0.5rem; height: 100%; min-height: 0;
+}
+.prep-canvas-statestrip {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem;
+  padding: 0.4rem 0.6rem; border: 1px solid #e2e8f0; border-radius: 6px; background: #f8fafc;
+}
+.prep-canvas-state-empty { color: #94a3b8; font-size: 0.85rem; }
+.prep-canvas-chip {
+  display: inline-flex; align-items: center; padding: 0.1rem 0.5rem;
+  border-radius: 12px; font-size: 0.75rem; font-weight: 600;
+  border: 1px solid #cbd5e1; background: #fff; color: #475569;
+}
+.prep-canvas-chip--ok    { border-color: #86efac; background: #f0fdf4; color: #166534; }
+.prep-canvas-chip--warn  { border-color: #fcd34d; background: #fffbeb; color: #92400e; }
+.prep-canvas-chip--draft { border-color: #cbd5e1; background: #f8fafc; color: #64748b; }
+.prep-canvas-toolbar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; padding: 0.3rem 0;
+}
+.prep-canvas-doc-label { font-size: 0.8rem; color: #475569; display: inline-flex; align-items: center; gap: 0.4rem; }
+.prep-canvas-doc { max-width: min(360px, 60vw); padding: 0.25rem 0.4rem; }
+.prep-canvas-modes { display: inline-flex; gap: 0.25rem; margin-left: auto; }
+.prep-canvas-modebtn {
+  padding: 0.25rem 0.7rem; border: 1px solid #cbd5e1; border-radius: 14px;
+  background: #fff; color: #334155; cursor: pointer; font-size: 0.78rem;
+}
+.prep-canvas-modebtn.active { background: #6f42c1; border-color: #6f42c1; color: #fff; }
+.prep-canvas-modebtn:disabled { opacity: 0.5; cursor: not-allowed; }
+/* Le corps EST le scroll central unique : on relâche le cap interne de RolesPane. */
+.prep-canvas-body { flex: 1; min-height: 0; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 6px; }
+.prep-canvas-body .prep-conv-root { height: 100%; }
+.prep-canvas-body .prep-conv-units-area { max-height: none; }
 
 /* -- Dialog modal (catalogue CRUD) -- */
 .prep-conv-overlay {

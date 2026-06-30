@@ -320,7 +320,7 @@ export class RolesPane {
       return;
     }
 
-    setHtml(area, raw(filtered
+    const rowsHtml = filtered
       .map((u) => {
         const badge = resolveRoleBadge(u.unit_role, this._roles);
         const selected = this._selectedUnitIds.has(u.unit_id);
@@ -328,14 +328,23 @@ export class RolesPane {
         const badgeHtml = badge
           ? `<span class="prep-conv-unit-badge" style="background:${safeColor(badge.color, "#374151")}22;border-color:${safeColor(badge.color, "#374151")};color:${safeColor(badge.color, "#94a3b8")}">${badge.icon ? esc(badge.icon) + " " : ""}${esc(badge.label)}</span>`
           : "";
-        return `
+        const marker = this._textStartN !== null && u.n === this._textStartN
+          ? this._textStartMarkerHtml()
+          : "";
+        return `${marker}
           <div class="prep-conv-unit-row${selected ? " selected" : ""}${para ? " paratext" : ""}" data-uid="${u.unit_id}">
             <span class="prep-conv-unit-n">${u.n}</span>
             <span class="prep-conv-unit-text">${esc(u.text_norm ?? "")}</span>
             ${badgeHtml}
           </div>`;
       })
-      .join("")));
+      .join("");
+    // Keep the boundary visible/clearable even when its unit is filtered out of view.
+    const boundaryInView = this._textStartN !== null && filtered.some((u) => u.n === this._textStartN);
+    const topMarker = this._textStartN !== null && !boundaryInView
+      ? this._textStartMarkerHtml(" — hors recherche")
+      : "";
+    setHtml(area, raw(topMarker + rowsHtml));
 
     area.querySelectorAll<HTMLElement>(".prep-conv-unit-row").forEach((el, idx) => {
       el.addEventListener("click", (e) => {
@@ -353,6 +362,17 @@ export class RolesPane {
         this._renderActionBar();
       });
     });
+
+    area.querySelector<HTMLButtonElement>(".prep-conv-text-start-clear")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      void this._setTextStart(null);
+    });
+  }
+
+  /** Explicit "start of text" marker shown before the boundary unit (and as a
+   *  fallback header when that unit is filtered out of view). */
+  private _textStartMarkerHtml(suffix = ""): string {
+    return `<div class="prep-conv-text-start-sep"><span class="prep-conv-text-start-sep-label">&#9873; D&#233;but du texte (unit&#233; ${this._textStartN})${esc(suffix)}</span><button type="button" class="prep-conv-text-start-clear" title="Retirer la borne (tout redevient texte)">&#10005; Retirer la borne</button></div>`;
   }
 
   // ─── Action bar ─────────────────────────────────────────────────────────
@@ -418,15 +438,21 @@ export class RolesPane {
     }
   }
 
-  private async _setTextStart(): Promise<void> {
+  private async _setTextStart(nArg?: number | null): Promise<void> {
     const conn = this._getConn();
     if (!conn || this._docId === null) return;
-    const uid = [...this._selectedUnitIds][0];
-    const unit = this._units.find((u) => u.unit_id === uid);
-    if (!unit) return;
+    let n: number | null;
+    if (nArg !== undefined) {
+      n = nArg;
+    } else {
+      const uid = [...this._selectedUnitIds][0];
+      const unit = this._units.find((u) => u.unit_id === uid);
+      if (!unit) return;
+      n = unit.n;
+    }
     try {
-      await setDocumentTextStart(conn, this._docId, unit.n);
-      this._textStartN = unit.n;
+      await setDocumentTextStart(conn, this._docId, n);
+      this._textStartN = n;
       this._renderUnits();
     } catch (e) {
       this._onError(e instanceof Error ? e.message : String(e));

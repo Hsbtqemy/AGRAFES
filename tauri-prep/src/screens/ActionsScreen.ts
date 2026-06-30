@@ -25,6 +25,7 @@ import { AlignPanel } from "./AlignPanel.ts";
 import { AnnotationView } from "./AnnotationView.ts";
 import { SegmentationView } from "./SegmentationView.ts";
 import { CurationView } from "./CurationView.ts";
+import { TextCanvasView } from "./TextCanvasView.ts";
 
 // ─── Project Presets (shared type) ───────────────────────────────────────────
 
@@ -57,7 +58,7 @@ interface ActionsExportPrefill {
 
 // ─── Sub-view type ────────────────────────────────────────────────
 
-type SubView = "hub" | "curation" | "segmentation" | "alignement" | "annoter";
+type SubView = "hub" | "texte" | "curation" | "segmentation" | "alignement" | "annoter";
 
 // ─── ActionsScreen ────────────────────────────────────────────────────────────
 
@@ -79,6 +80,8 @@ export class ActionsScreen {
   private _segmentationView: SegmentationView | null = null;
   // CurationView (extracted)
   private _curationView: CurationView | null = null;
+  // TextCanvasView (refonte T0 — canvas texte central, cohabite avec le legacy)
+  private _textCanvasView: TextCanvasView | null = null;
 
   private _wfRoot: HTMLElement | null = null;
   private static readonly LS_WF_RUN_ID = "agrafes.prep.workflow.run_id";
@@ -146,11 +149,16 @@ export class ActionsScreen {
     annoterPanel.dataset.panel = "annoter";
     annoterPanel.style.display = this._activeSubView === "annoter" ? "" : "none";
 
+    const textePanel = this._renderTexteCanvasPanel(root);
+    textePanel.dataset.panel = "texte";
+    textePanel.style.display = this._activeSubView === "texte" ? "" : "none";
+
     panelSlot.appendChild(hubPanel);
     panelSlot.appendChild(curationPanel);
     panelSlot.appendChild(segPanel);
     panelSlot.appendChild(alignPanel);
     panelSlot.appendChild(annoterPanel);
+    panelSlot.appendChild(textePanel);
 
     root.appendChild(panelSlot);
 
@@ -211,7 +219,7 @@ export class ActionsScreen {
   private _loadSubViewPref(): void {
     try {
       const saved = localStorage.getItem(ActionsScreen.LS_ACTIVE_SUB) as SubView | null;
-      if (saved === "hub" || saved === "curation" || saved === "segmentation" || saved === "alignement" || saved === "annoter") {
+      if (saved === "hub" || saved === "texte" || saved === "curation" || saved === "segmentation" || saved === "alignement" || saved === "annoter") {
         this._activeSubView = saved;
       }
     } catch { /* ignore */ }
@@ -283,6 +291,15 @@ export class ActionsScreen {
     el.querySelector<HTMLButtonElement>("#act-hub-hierarchy-btn")?.addEventListener("click", () => {
       void this._toggleHubHierarchyView();
     });
+
+    // T0 (refonte « texte central ») — accès prototype au canvas unifié.
+    // Cohabite avec les écrans legacy ; cf. docs/DESIGN_prep_text_canvas.md.
+    const protoBtn = document.createElement("button");
+    protoBtn.type = "button";
+    protoBtn.className = "prep-canvas-proto-launch";
+    protoBtn.textContent = "🧪 Canvas Texte (prototype)";
+    protoBtn.addEventListener("click", () => this._switchSubViewDOM(root, "texte"));
+    el.appendChild(protoBtn);
 
     return el;
   }
@@ -365,6 +382,20 @@ export class ActionsScreen {
     return wrapper;
   }
 
+  private _renderTexteCanvasPanel(_root: HTMLElement): HTMLElement {
+    const wrapper = document.createElement("div");
+    this._textCanvasView = new TextCanvasView(
+      () => this._conn,
+      () => this._docs,
+      {
+        log: (msg, isError) => this._log(msg, isError),
+        toast: (msg, isError) => this._showToast?.(msg, isError),
+      },
+    );
+    this._textCanvasView.render(wrapper);
+    return wrapper;
+  }
+
   private _renderAlignementPanel(root: HTMLElement): HTMLElement {
     const wrapper = document.createElement("div");
     wrapper.setAttribute("role", "main");
@@ -440,6 +471,7 @@ export class ActionsScreen {
     }
     if (this._wfRoot) {
       this._segmentationView?.refreshDocs();
+      this._textCanvasView?.refreshDocs();
     }
     this._refreshRuntimeState();
     // Refresh annotation panel if it was rendered before conn was available.
@@ -586,6 +618,7 @@ export class ActionsScreen {
       this._alignPanel?.refreshDocs();
       this._segmentationView?.refreshDocs();
       this._annotationView?.refreshIfConnected();
+      this._textCanvasView?.refreshDocs();
       this._log(`${this._docs.length} document(s) chargé(s).`);
       this._refreshRuntimeState();
     } catch (err) {
