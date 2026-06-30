@@ -161,6 +161,21 @@ const SHELL_CSS = `
   .shell-db-trigger--pending .shell-db-trigger-name {
     color: #fcd34d;
   }
+  /* Démarrage du sidecar : spinner à la place de l'icône + libellé en cours */
+  .shell-db-trigger-spinner {
+    display: none;
+    width: 11px;
+    height: 11px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: #c4b5fd;
+    border-radius: 50%;
+    flex-shrink: 0;
+    animation: shell-db-spin 0.7s linear infinite;
+  }
+  .shell-db-trigger--loading .shell-db-trigger-spinner { display: inline-block; }
+  .shell-db-trigger--loading .shell-db-trigger-icon { display: none; }
+  .shell-db-trigger--loading .shell-db-trigger-name { color: #c4b5fd; font-style: italic; }
+  @keyframes shell-db-spin { to { transform: rotate(360deg); } }
 
   /* Legacy: .shell-db-badge no longer rendered (badge merged into trigger) */
   .shell-db-badge { display: none; }
@@ -1615,6 +1630,11 @@ export async function initShell(): Promise<void> {
     })();
   });
   document.body.dataset.mode = startMode;
+  // Pré-démarrer le moteur au boot si une base est restaurée : le spinner du
+  // bouton DB s'affiche pendant l'extraction du sidecar (~30 s au 1er lancement),
+  // au lieu de laisser le module afficher « Sidecar indisponible ». L'ensureRunning
+  // du module se coalescera/réutilisera ce démarrage. (_initDb gère ses erreurs.)
+  if (_currentDbPath) await _initDb(_currentDbPath);
   await _setMode(startMode);
   await _initDeepLinkRuntimeListener();
 
@@ -2226,6 +2246,10 @@ function _buildHeader(): void {
   triggerIcon.setAttribute("aria-hidden", "true");
   triggerIcon.textContent = "🗄";
 
+  const triggerSpinner = document.createElement("span");
+  triggerSpinner.className = "shell-db-trigger-spinner";
+  triggerSpinner.setAttribute("aria-hidden", "true");
+
   const triggerName = document.createElement("span");
   triggerName.className = "shell-db-trigger-name";
   if (_currentDbPath) {
@@ -2241,6 +2265,7 @@ function _buildHeader(): void {
   triggerChevron.textContent = "▾";
 
   menuTrigger.appendChild(triggerIcon);
+  menuTrigger.appendChild(triggerSpinner);
   menuTrigger.appendChild(triggerName);
   menuTrigger.appendChild(triggerChevron);
   if (_currentDbPath) menuTrigger.title = _currentDbPath;
@@ -2378,8 +2403,10 @@ async function _onCreateDb(): Promise<void> {
 async function _initDb(dbPath: string): Promise<void> {
   const btn = document.getElementById("shell-db-btn") as HTMLButtonElement | null;
   if (btn) {
+    btn.classList.add("shell-db-trigger--loading");
     const nameEl = btn.querySelector<HTMLElement>(".shell-db-trigger-name");
-    if (nameEl) nameEl.textContent = "Initialisation\u2026";
+    if (nameEl) nameEl.textContent = "D\u00e9marrage du moteur\u2026";
+    btn.title = "D\u00e9marrage du moteur de recherche \u2014 le 1er lancement peut prendre ~30 s";
     btn.disabled = true;
   }
   _clearInitError();
@@ -2397,7 +2424,7 @@ async function _initDb(dbPath: string): Promise<void> {
     _shellLog("error", "sidecar", `Sidecar health failure for DB: ${_pathLabel(dbPath)}`, String(err));
     _showInitError(dbPath, String(err));
   } finally {
-    if (btn) { btn.disabled = false; }
+    if (btn) { btn.disabled = false; btn.classList.remove("shell-db-trigger--loading"); }
     _updateDbBadge();
   }
 }
