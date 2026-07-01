@@ -10,6 +10,7 @@ See docs/DECISIONS.md ADR-017.
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import sqlite3
@@ -320,12 +321,17 @@ def resegment_document_markers(
         # text_source propagated from the parent line (ADR-043 P2) — its original import
         # text, or text_raw when the parent has none captured (legacy).
         src = row["text_source"] if row["text_source"] is not None else (row["text_raw"] or "")
+        # R2.1 — persist the coarse anchor (parent_n = source ordinal), same as
+        # resegment_document. Meaningful when source units are paragraphs; trivial
+        # (all share one parent) when splitting a single blob — a better coarse grain
+        # from ¤/blank-line cues comes with R2.2.
+        parent_meta = json.dumps({"parent_n": row["n"]})
         segments = segment_text_markers(text_norm)
         first_seg_n[row["n"]] = global_n
         for ext_id, seg_text in segments:
             if ext_id is None:
                 units_without_marker += 1
-            new_units.append((doc_id, "line", global_n, ext_id, seg_text, seg_text, None, src))
+            new_units.append((doc_id, "line", global_n, ext_id, seg_text, seg_text, parent_meta, src))
             global_n += 1
 
     warnings: list[str] = []
@@ -529,10 +535,17 @@ def resegment_document(
         # text_source propagated from the parent line (ADR-043 P2): its original import
         # text, or text_raw when none was captured (legacy).
         src = row["text_source"] if row["text_source"] is not None else (row["text_raw"] or "")
+        # R2.1 (refonte deux-grains) — persist the coarse anchor: every sentence born
+        # from this source line records its parent's ordinal (parent_n = the source n).
+        # It's a *logical* key, not a FK — the source unit is deleted below, so we keep
+        # the position, not the unit_id. Enables two-level (paragraph ⊃ sentence)
+        # grouping + the bounded aligner (R3) without a migration. Undo is unaffected:
+        # the snapshot restores the pre-resegment units with their original meta_json.
+        parent_meta = json.dumps({"parent_n": row["n"]})
         sentences = segment_text(text_norm, lang=lang, pack=resolved_pack)
         first_seg_n[row["n"]] = global_n
         for sent in sentences:
-            new_units.append((doc_id, "line", global_n, None, sent, sent, None, src))
+            new_units.append((doc_id, "line", global_n, None, sent, sent, parent_meta, src))
             global_n += 1
 
     # Delete stale alignment_links
