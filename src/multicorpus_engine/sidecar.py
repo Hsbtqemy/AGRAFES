@@ -492,6 +492,7 @@ _WRITE_PATHS = frozenset({
     # Convention / role system
     "/conventions", "/conventions/delete",
     "/units/set_role", "/units/bulk_set_role",
+    "/units/set_status", "/units/bulk_set_status",
     "/documents/set_text_start",
     # Async jobs — both /jobs (submit) and /jobs/enqueue start DB-mutating
     # background work (index/curate/segment). /jobs was missing → bypass (SID-02).
@@ -1060,6 +1061,10 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 self._handle_units_set_role(body)
             elif path == "/units/bulk_set_role":
                 self._handle_units_bulk_set_role(body)
+            elif path == "/units/set_status":
+                self._handle_units_set_status(body)
+            elif path == "/units/bulk_set_status":
+                self._handle_units_bulk_set_status(body)
             elif path == "/units/update_text":
                 self._handle_units_update_text(body)
             elif path == "/documents/set_text_start":
@@ -5040,6 +5045,38 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         try:
             with self._lock():
                 data = bulk_set_unit_role(self._conn(), body)
+        except BadRequestError as exc:
+            self._send_error(exc.message, code=ERR_BAD_REQUEST, http_status=exc.http_status)
+            return
+        except NotFoundError as exc:
+            self._send_error(exc.message, code=ERR_NOT_FOUND, http_status=exc.http_status)
+            return
+        self._send_json(success_payload(data))
+
+    def _handle_units_set_status(self, body: dict) -> None:
+        # Thin adapter over the units service (R4.1). unit_status is the
+        # translation-status axis (non_traduit/ajout), orthogonal to unit_role.
+        from multicorpus_engine.services.units_service import set_unit_status
+        from multicorpus_engine.services.errors import BadRequestError, NotFoundError
+        try:
+            with self._lock():
+                data = set_unit_status(self._conn(), body)
+        except BadRequestError as exc:
+            self._send_error(exc.message, code=ERR_BAD_REQUEST, http_status=exc.http_status)
+            return
+        except NotFoundError as exc:
+            self._send_error(exc.message, code=ERR_NOT_FOUND, http_status=exc.http_status)
+            return
+        self._send_json(success_payload(data))
+
+    def _handle_units_bulk_set_status(self, body: dict) -> None:
+        # Thin adapter over the units service (R4.1). Supports both calling
+        # conventions (unit_ids, or doc_id+unit_ns) inside the service.
+        from multicorpus_engine.services.units_service import bulk_set_unit_status
+        from multicorpus_engine.services.errors import BadRequestError, NotFoundError
+        try:
+            with self._lock():
+                data = bulk_set_unit_status(self._conn(), body)
         except BadRequestError as exc:
             self._send_error(exc.message, code=ERR_BAD_REQUEST, http_status=exc.http_status)
             return

@@ -370,6 +370,8 @@ Three **independent** version fields surface in sidecar responses — do not con
 - `POST /prep/undo` (token required) — atomically revert the latest undo-able action of a doc; body: `{ doc_id }`. Response: `{ undo_action_id, reverted_action_id, reverted_action_type, units_restored, alignments_reflagged, fts_stale }`. Returns 409 with `code=BAD_REQUEST` and message `Undo not eligible: <reason>` when ineligible. Forward-only — actions recorded before migration 019 are not undo-able.
 - `POST /units/set_role` (token required) — assign a convention role to one unit; body: `{ doc_id, unit_n, role }` (role=null to clear)
 - `POST /units/bulk_set_role` (token required) — batch assign a convention role; body: `{ doc_id, unit_ns, role }`
+- `POST /units/set_status` (token required) — set the translation status of one unit (R4.1); body: `{ doc_id, unit_n, status }` where `status` ∈ `{non_traduit, ajout}` or null to clear. Orthogonal to `unit_role`.
+- `POST /units/bulk_set_status` (token required) — batch set translation status; body: `{ doc_id, unit_ns, status }` or `{ unit_ids, status }`
 - `POST /units/update_text` (token required) — update text_raw and/or text_norm for one unit; body: `{ unit_id, text_raw?, text_norm? }` (if only text_raw given, text_norm is mirrored; FTS updated automatically)
 - `GET /conventions` — list convention roles for this corpus
 - `POST /conventions` (token required) — create a role; body: `{ name, label, color?, icon?, sort_order? }`
