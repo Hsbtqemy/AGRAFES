@@ -4021,8 +4021,8 @@
   "info": {
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
-    "version": "1.6.34",
-    "x-contract-version": "1.6.34"
+    "version": "1.6.35",
+    "x-contract-version": "1.6.35"
   },
   "openapi": "3.0.3",
   "paths": {
@@ -8396,6 +8396,11 @@
                       "items": {
                         "properties": {
                           "n": {
+                            "type": "integer"
+                          },
+                          "parent_n": {
+                            "description": "Coarse paragraph anchor (meta_json.parent_n, R2.3); null when not fine-segmented",
+                            "nullable": true,
                             "type": "integer"
                           },
                           "text_norm": {

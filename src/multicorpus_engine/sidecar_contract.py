@@ -14,7 +14,7 @@ from typing import Any
 from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
-CONTRACT_VERSION = "1.6.34"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.35"  # semantic versioning for the sidecar API contract
 # SID-08 / OPS-03: the API version IS the contract version — derived, never a
 # second hand-maintained literal, so the two can no longer drift. /health reports
 # the *engine* version under `version` (it predates the sidecar); every other
@@ -113,6 +113,10 @@ API_VERSION = CONTRACT_VERSION
 # 1.6.34: GET /documents/stats — per-doc stage stats (line/structure/external_id/parent/aligned
 #         counts + max/avg text length) for the canvas state strip (refonte R1.2). Read-only,
 #         logic in services/documents_service.document_stats.
+# 1.6.35: GET /units items gain `parent_n` (integer, nullable) — the coarse paragraph anchor
+#         (meta_json.parent_n, populated by resegmentation R2.1) so the canvas can group
+#         sentences under their ¶ (refonte R2.3). Additive nullable field; null when the doc
+#         was never fine-segmented. Read straight out of meta_json via json_extract.
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
@@ -1250,6 +1254,7 @@ def openapi_spec() -> dict[str, Any]:
                                                         "unit_role": {"type": "string", "nullable": True},
                                                         "text_raw": {"type": "string", "nullable": True},
                                                         "text_source": {"type": "string", "nullable": True},
+                                                        "parent_n": {"type": "integer", "nullable": True, "description": "Coarse paragraph anchor (meta_json.parent_n, R2.3); null when not fine-segmented"},
                                                     },
                                                 },
                                             },

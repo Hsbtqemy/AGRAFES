@@ -40,16 +40,22 @@ def list_units(
     # text_raw + text_source are emitted so the UI can detect a destructive
     # rewrite (text_source != text_raw) and offer to reveal the import original
     # (ADR-043 P3). Raw column values, nullable — the display gate lives client-side.
+    # parent_n (R2.3, refonte deux-grains) is the coarse paragraph anchor persisted in
+    # meta_json by resegmentation (R2.1). Read straight out of the JSON with
+    # json_extract so the canvas can group sentences under their ¶ client-side; null
+    # when the doc was never fine-segmented (each line is then its own coarse block).
+    _COLS = (
+        "unit_id, n, text_norm, unit_type, unit_role, text_raw, text_source,"
+        " json_extract(meta_json, '$.parent_n') AS parent_n"
+    )
     if unit_type:
         rows = conn.execute(
-            "SELECT unit_id, n, text_norm, unit_type, unit_role, text_raw, text_source"
-            " FROM units WHERE doc_id=? AND unit_type=? ORDER BY n",
+            f"SELECT {_COLS} FROM units WHERE doc_id=? AND unit_type=? ORDER BY n",
             (doc_id, unit_type),
         ).fetchall()
     else:
         rows = conn.execute(
-            "SELECT unit_id, n, text_norm, unit_type, unit_role, text_raw, text_source"
-            " FROM units WHERE doc_id=? ORDER BY n",
+            f"SELECT {_COLS} FROM units WHERE doc_id=? ORDER BY n",
             (doc_id,),
         ).fetchall()
 
@@ -57,6 +63,7 @@ def list_units(
         {
             "unit_id": r[0], "n": r[1], "text_norm": r[2], "unit_type": r[3],
             "unit_role": r[4], "text_raw": r[5], "text_source": r[6],
+            "parent_n": r[7],
         }
         for r in rows
     ]
