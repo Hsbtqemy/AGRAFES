@@ -10,6 +10,13 @@
 
 Conséquence, dans la discipline de la [note blob](DESIGN_R2_3_blob_two_grain.md) §0 : **ne pas coder sans cas réel.** Le préalable au ticket est **un exemple concret** issu du curage d'un vrai corpus (« ici l'aligneur a produit deux 1-1 alors que c'est un 1-2 que je veux grouper », ou l'inverse). Sans ça, l'éditeur résout un problème hypothétique — la [décision figée D2 de R3](DESIGN_R3_sentence_alignment.md) l'a justement sorti du périmètre pour cette raison.
 
+**Cas réels trouvés (2026-07-01, corpus GRAFE) — et ils réorientent la conclusion.** Pipeline réel passé sur 13 œuvres (cf. [`DESIGN_R3_sentence_alignment.md`](DESIGN_R3_sentence_alignment.md) D1bis, *preuve indicative*). Deux enseignements qui **affaiblissent l'éditeur manuel** au profit de l'escape-hatch de l'aligneur :
+
+1. **Les vrais cas de curage sont des `1-3`, pas des « 1-1 mal groupés ».** Le motif dominant est *le traducteur éclate une phrase source en trois* (vérifié à la main sur Le Clézio, seg [283]/[426] : « No, I don't think so. » / « Mam didn't like cigar smoke. » orphelinées d'un bead auto). Or fabriquer ce `1-3` à la main = « ajouter une cible » (lien `run_id='manual'`) **puis le fusionner dans un bead auto** (`run_id=<run>`) → **exactement le piège inter-runs du §4** : le MVP (a) « refuser la fusion inter-runs » **ne résout pas** ces cas. Le réel prouve que le §4 est central.
+2. **Le besoin est systématique et concentré, pas idiosyncratique.** 0 sur 4 œuvres à parité de phrases, **92 sur Simenon-Vacances** seul (~183 au total, ~1 %, queue lourde pilotée par le style de traduction). Corriger 92 beads au clic est absurde : un motif systématique se traite **dans l'aligneur** (cap `≤2` rendu **paramétrique**, priors calés par corpus — escape-hatch D1bis), **pas** par un éditeur manuel.
+
+→ **Reco affinée : l'éditeur manuel reste différé et devient secondaire** ; s'il faut adresser les `1-3`, la réponse data-fondée est l'**escape-hatch paramétrique de `length_bounded`**, pas cet éditeur. L'éditeur ne se justifie plus que pour l'**idiosyncratique** (un regroupement ponctuel que l'aligneur ne saurait généraliser) — cas résiduel, non chiffré ici. **C'est un corpus situé dans le temps, un parmi de nombreux à venir : indicatif, non décisif.**
+
 ## 1. Le problème
 
 Un **bead** groupe les liens 1-1 qui forment ensemble une correspondance N-M (une phrase VO ↔ deux phrases traduites, etc.). L'aligneur `length_bounded` (R3.2) les pose automatiquement. Le curateur, lui, ne peut aujourd'hui que : accepter / rejeter / supprimer / recibler / ajouter un lien — **jamais toucher au groupement `bead_id`**. Trois gestes manquent :
@@ -59,7 +66,7 @@ Trois issues, par coût croissant :
 - **D1 — Deux verbes seulement : Grouper / Dégrouper.** La ré-attribution passe par scinder+regrouper ou le retarget existant. **Reco : pas de 3ᵉ opération.**
 - **D2 — API : étendre `/align/links/batch_update`, pas de route neuve.** Ajouter deux `action` additifs à l'enum — `set_bead` (poser un `bead_id`) / `clear_bead` (NULL) — à côté de `set_status`/`delete`. Contrat **additif** (enum de champ, pas de route → **snapshot/`.md` inchangés**, seul `openapi.json` + `sidecar_contract.py` bougent ; cf. [`reference_sidecar_endpoint_doc_sync`]). **Reco : action additive.**
 - **D3 — Numérotation du `bead_id` de fusion : `MAX(bead_id)+1` scopé au `run_id` visé.** Calculé côté serveur dans la transaction, jamais fourni par le front (évite les courses). **Reco : serveur, scopé run.**
-- **D4 — Fusion bornée au même `run_id` (le point dur §4).** MVP = issue (a) : refuser/ désactiver la fusion inter-runs, la signaler. **Reco : (a).**
+- **D4 — Fusion bornée au même `run_id` (le point dur §4).** MVP = issue (a) : refuser/ désactiver la fusion inter-runs, la signaler. **⚠️ Mais le réel (§0) montre que (a) ne couvre PAS les cas observés** : le motif dominant = fondre un orphelin (lien `run_id='manual'`) dans un bead auto (`run_id=<run>`), soit précisément une fusion **inter-runs**. Donc si on adresse ces `1-3`, (a) est insuffisant → il faut (b)/(c) — ou, mieux, **les traiter en amont dans l'aligneur** (escape-hatch D1bis) et ne garder l'éditeur que pour l'idiosyncratique intra-run. **Reco : (a) pour l'intra-run ; l'inter-run passe par l'aligneur, pas par l'éditeur.**
 - **D5 — Invariant de collision préservé, testé sur les 3 sites.** Tout test de l'éditeur vérifie qu'un bead fusionné **n'apparaît plus** comme collision (`/align/collisions`, `/align/quality`, `qa-report`) et qu'un dégroupage **réapparaît** comme collision si les cibles divergent. **Reco : test des 3 sites.**
 - **D6 — Logique hors `sidecar.py` (growth-gate).** La validation « même run + même pivot + bead frais » vit dans un petit service (`services/align_links_service.py` à créer, ou l'extension de la future extraction du batch handler) ; le handler reste adaptateur. **Reco : service.**
 - **D7 — Migration : aucune.** `bead_id` existe. **Reco : zéro migration.**
@@ -76,7 +83,7 @@ Trois issues, par coût croissant :
 
 ## 7. Questions ouvertes (à trancher avant ticket)
 
-1. **§0** — a-t-on un **cas de curage réel** qui justifie l'éditeur, ou reste-t-il hypothétique ? (préalable au ticket, comme le producteur du blob).
-2. **D4** — la fusion **inter-runs** est-elle un besoin réel (fusionner du manuel avec de l'auto) ? Si oui, (b) ou (c) — trancher le coût.
+1. **§0 — ✅ répondu (2026-07-01)** : cas réels trouvés (GRAFE), mais ils pointent vers l'**escape-hatch de l'aligneur**, pas vers l'éditeur manuel (voir §0). Question résiduelle : reste-t-il un besoin **idiosyncratique intra-run** qui justifierait quand même l'éditeur ? — non chiffré à ce jour.
+2. **D4 — le réel tranche à moitié** : la fusion **inter-runs** *est* le besoin dominant (orphelin manuel ↔ bead auto), mais il se traite mieux dans l'aligneur. Reste : y a-t-il un besoin de fusion **inter-runs purement manuel** (deux liens manuels de sessions différentes) ? Si oui, (b)/(c).
 3. **D8** — veut-on à terme un **statut de bead** (accepter/rejeter le groupe d'un geste, distinct de la sélection multiple) ?
 4. Un dégroupage doit-il **supprimer** les liens redondants d'un 2-2 (les paires positionnelles p2↔t2) ou seulement retirer le `bead_id` ? (le MVP retire le `bead_id`, ne supprime rien.)
