@@ -4,7 +4,7 @@
 > Consolide trois notes de design : [`DESIGN_prep_text_canvas.md`](DESIGN_prep_text_canvas.md) (refonte UI, **colonne vertébrale**), [`DESIGN_peritext_conventions.md`](DESIGN_peritext_conventions.md) (+ [grounding](DESIGN_peritext_conventions_grounding.md)) (segmentation 2-grain & alignement), [`DESIGN_metadata_templates_filtering.md`](DESIGN_metadata_templates_filtering.md) (métadonnées).
 > Complète, sans la remplacer, [`ROADMAP.md`](ROADMAP.md) (tracker moteur/gouvernance, historique livré). Ici = le **plan produit/UX à venir**.
 >
-> **Avancement (2026-07-01).** **R1 et R2 livrés** (commits R1.2 `c859cad`/`7d0e9bc` · R2.1 `ec208b9` · R2.2 `c06490a` · R2.3 `ae85a1f`). Prochain jalon = **R3** (alignement à la phrase). Queues différées, assumées : R2.2 *contrôles front* (ordre des indices figé en dur) et R2.3 *cas blob 2-grains* (attend la re-lecture `source_path`).
+> **Avancement (2026-07-01).** **R1 et R2 livrés** ; **R3.1 + R3.2 livrés** (branche `refonte`, PR #195). R3.2 = aligneur hiérarchique 2 étages `length_bounded` (DP `gale_church.py`), migration 022 `bead_id`, contrat 1.6.36, exclusion collision same-bead, front (option + marqueur de bead). Prochain = **R3.3** (méthode par lot + éditeur de beads ; l'option de stratégie et la provenance `explain` sont déjà là). Queues différées : R2.2 *contrôles front*, R2.3 *cas blob 2-grains* (attend `source_path`). L'**éditeur de beads manuel** est volontairement différé.
 
 ## 1. Principe directeur
 
@@ -52,9 +52,9 @@ But : matérialiser la hiérarchie **paragraphe ⊃ phrase** (représentation = 
 
 But : des liens phrase↔phrase fiables, par-clé **ou** par-algorithme.
 
-- **R3.1** Garde-fous anti-dérive : pré-vol compteurs (réutilise `SEGMENT_RATIO_WARN_THRESHOLD`) + post-check d'ancres (extension `qa_report.py`) — **[MOTEUR]**.
-- **R3.2** Aligneur par longueurs borné par ancre (`align_pair_by_length`, type Gale-Church, stdlib) + dispatch — **[MIXTE]** : moteur (`aligner.py` + CLI + sidecar `_run_alignment_strategy`) → **contrat** (nouvelle stratégie) ; front (`AlignPanel` option + revue). **Dépend de R2.1** (ancre parent).
-- **R3.3** UX choix de méthode par texte/lot + affichage de la provenance d'un lien — **[FRONT]** (coexistence auto/manuel déjà câblée côté moteur : `protected_pairs`).
+- **R3.1** Garde-fous anti-dérive — **[MOTEUR]**. ✅ *fait* — post-check `_check_anchor_consistency` (`qa_report.py`, gate `anchor_drift`). Le *pré-vol* a fondu en **avertissement post-alignement** porté par l'étage ¶ de R3.2 (décision C — l'aligneur hiérarchique absorbe l'écart de cardinalité).
+- **R3.2** Aligneur par longueurs borné par ancre + dispatch — **[MIXTE]**. ✅ *fait* — aligneur **hiérarchique 2 étages** `align_by_length_bounded` (DP pure `gale_church.py`) ; beads N-M persistés (**migration 022 `bead_id`**) ; dispatch `length_bounded` (`_run_alignment_strategy` + CLI, **contrat 1.6.36**) ; exclusion collision same-bead ; front (option `<select>` + marqueur de bead). **Dépend de R2.1** (ancre `parent_n`).
+- **R3.3** UX choix de méthode par texte/lot + affichage de la provenance d'un lien — **[FRONT]** (coexistence auto/manuel déjà câblée : `protected_pairs`). 🟡 *partiel* : l'option de stratégie et la provenance (`explain`) sont là ; reste **méthode par lot** + **éditeur de beads manuel** (différé).
 
 ### R4 — Conventions / péritexte propres
 
@@ -88,7 +88,7 @@ But : enrichir les notices et **retirer le legacy** une fois la parité atteinte
 |---|---|---|---|---|---|
 | R1 ✅ | R1.1·R1.3·R1.4 | R1.2 (read) | oui (read-only, 1.6.34) | non | non |
 | R2 ✅ | R2.3 | R2.1·R2.2 | oui (R2.3 : `parent_n` /units, 1.6.35) | non | **oui** |
-| R3 | R3.3 | R3.1·R3.2 | oui (R3.2) | non | **oui** |
+| R3 🟡 | R3.3 (partiel) | R3.1·R3.2 ✅ | oui (1.6.36) | **022 (bead_id)** | **oui** |
 | R4 | filtres/aperçus | R4.1·R4.2·R4.3 | oui (×3) | **022 (R4.1)** | oui |
 | R5 | R5.1·R5.2 | — | **non** | non | non |
 | R6 | R6.4 | R6.1·R6.2·R6.3 | oui | **R6.1·R6.2** | non |
@@ -113,7 +113,7 @@ But : enrichir les notices et **retirer le legacy** une fois la parité atteinte
 | segmentation A0 (stade) | prep_text_canvas §10 | **R1.1** (fait) |
 | segmentation A1 (parent) **=** péritexte « parent persist » | doublon | **R2.1** (un seul item, fait) |
 | segmentation A2/A3 | prep_text_canvas §10 | **R2.2 / R2.3** (faits ; blob 2-grains différé) |
-| péritexte T4 (garde-fous) / T6 (aligneur) | peritext | **R3.1 / R3.2** |
+| péritexte T4 (garde-fous) / T6 (aligneur) | peritext | **R3.1 / R3.2** (faits) |
 | péritexte T1 (statut) / T2 (lift) / T3 (concordancier) | peritext | **R4.1 / R4.2 / R4.3** |
 | canvas T1 (curation) / T2 (annotation) | prep_text_canvas §7 | **R5.1 / R5.2** |
 | métadonnées M1 / M2 / M3 | metadata | **R6.1 / R6.2 / R6.3** |
