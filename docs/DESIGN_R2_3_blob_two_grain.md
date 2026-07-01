@@ -4,6 +4,14 @@
 > Queue différée de R2.3 ([`ROADMAP_REFONTE.md`](ROADMAP_REFONTE.md) §R2.3 · [`DESIGN_prep_text_canvas.md`](DESIGN_prep_text_canvas.md) §148/§157).
 > Dépend du modèle 2-grain (R2.1 `parent_n` livré) et réutilise `resegment_document` / `coarse_grain`.
 
+## 0. Prérequis — ⚠️ pas de producteur actuel (vérifié 2026-07-01)
+
+**Avant de coder, ce point bloque.** Les 7 modes d'import (`importers/dispatch.py` : `docx_numbered_lines`, `txt_numbered_lines`, `docx_paragraphs`, `odt_paragraphs`, `odt_numbered_lines`, `tei`, `conllu`) **découpent tous** en lignes/paragraphes — **aucun ne produit un blob multi-¶**. Un doc mono-unité ne peut donc venir que d'un source *réellement* mono-paragraphe (→ rien à extraire, c'est un ¶ légitime), d'un état DB legacy, ou d'un **futur mode d'import « brut/whole-file »** (à créer).
+
+Conséquence : **coder le split ¶ maintenant serait spéculatif.** Deux préalables au ticket : (i) un **exemple réel** de blob (comment les docs « brut 1 unité-blob » de la base ont-ils été créés ?), **ou** (ii) décider d'ajouter un **mode d'import blob** dont ce split serait le complément naturel.
+
+Fait utile confirmé : **`normalize()` préserve les `\n`** (unicode_policy — les LF ne sont pas strippés). Donc *si* un blob portait des sauts de ligne, `text_norm`/`text_source` les gardent → le split (a) « lignes vides » est faisable en base.
+
 ## 1. Le problème
 
 Un document **« blob »** = importé en **une seule unité** (ou en unités beaucoup plus grosses que le paragraphe) alors que sa source portait **deux niveaux de structure** (paragraphes ⊃ phrases). C'est un stade réel : les corpus coexistent à *tous* les stades, dont « brut (1 unité-blob) » ([`DESIGN_peritext_conventions.md`](DESIGN_peritext_conventions.md) §13). Le but (DESIGN_prep_text_canvas §148) : **« extraire fin + grossier en un seul passage quand le balisage porte les deux »**.
