@@ -830,6 +830,8 @@ export interface AlignLinkRecord {
   pivot_text: string;
   target_text: string;
   status: "accepted" | "rejected" | null;
+  /** Groups the 1-1 links of one N-M bead (length_bounded strategy, R3.2); null for plain 1-1. */
+  bead_id?: number | null;
   /** Present when include_explain=true */
   explain?: AlignExplain;
 }

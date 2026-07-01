@@ -2243,6 +2243,10 @@ tr[data-unit-n].prep-seg-row-highlight td {
 .prep-align-row--accepted { border-left-color: #16a34a; background: #f0fdf4; }
 .prep-align-row--rejected { border-left-color: #dc2626; background: #fef2f2; }
 .prep-align-row--unreviewed { border-left-color: #d1d5db; }
+/* R3.2 — a link of an N-M bead: a thin inner accent (independent of the status
+   border-left) marks it as an intentional 1-2/2-1 group, not a collision. */
+.prep-align-row--bead { box-shadow: inset 2px 0 0 #7c3aed; }
+.prep-align-bead-chip { font-size: 0.7rem; opacity: 0.7; vertical-align: baseline; }
 .prep-align-row--highlight { animation: flash-row 1.2s ease; }
 @keyframes flash-row {
   0%, 100% { background: inherit; }

@@ -1186,13 +1186,19 @@ export class AlignPanel {
       const checked = this._selectedLinkIds.has(lk.link_id);
       const extId = lk.external_id != null
         ? `<span class="prep-align-row-extid">[§${_esc(String(lk.external_id))}]</span> ` : "";
+      // R3.2 — a link belonging to an N-M bead (1-2/2-1) carries a bead_id; mark it so
+      // a translation split/merge reads as an intentional group, not a collision.
+      const isBead = lk.bead_id != null;
+      const beadCls = isBead ? " prep-align-row--bead" : "";
+      const beadChip = isBead
+        ? `<span class="prep-align-bead-chip" title="Lien d'un bead (regroupement 1-2/2-1)">&#128279;</span> ` : "";
       const isRetargetOpen = this._retargetActive?.linkId === lk.link_id && this._retargetActive.mode === "retarget";
       const isAddOpen = this._retargetActive?.pivotUnitId === lk.pivot_unit_id && this._retargetActive.mode === "add";
-      rows.push(`<div class="prep-align-row ${statusCls(lk.status)}" data-link-id="${lk.link_id}" role="row">
+      rows.push(`<div class="prep-align-row ${statusCls(lk.status)}${beadCls}" data-link-id="${lk.link_id}" role="row">
         <div class="prep-align-row-check" role="cell">
           <input type="checkbox" class="prep-align-row-cb" data-link-id="${lk.link_id}"${checked ? " checked" : ""} aria-label="Sélectionner lien ${lk.link_id}">
         </div>
-        <div class="prep-align-row-pivot" role="cell">${extId}${_esc(lk.pivot_text ?? "")}</div>
+        <div class="prep-align-row-pivot" role="cell">${beadChip}${extId}${_esc(lk.pivot_text ?? "")}</div>
         <div class="prep-align-row-target" role="cell">${_esc(lk.target_text ?? "")}</div>
         <div class="prep-align-row-actions" role="cell">
           <button class="prep-align-act-btn prep-align-act-accept${lk.status === "accepted" ? " active" : ""}" data-link-id="${lk.link_id}" title="Accepter">✓</button>
