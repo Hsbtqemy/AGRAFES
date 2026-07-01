@@ -60,7 +60,7 @@ But : des liens phrase↔phrase fiables, par-clé **ou** par-algorithme.
 
 But : axe statut + lift des marqueurs + concordancier qui affiche les rôles.
 
-- **R4.1** `units.unit_status` (`non_traduit`/`ajout`) — **[MOTEUR]** : **migration 023** + routes dédiées `/units/set_status` (+bulk) + filtre `query` → **contrat (3 artefacts)** ; **[FRONT]** filtre UI. 🟢 *décisions figées* → note prête-à-ticket [`DESIGN_R4_1_unit_status.md`](DESIGN_R4_1_unit_status.md) (axe orthogonal au rôle ; découplé de R4.2 lift / R4.3 concordancier ; pas d'auto-pont orphelin→statut).
+- **R4.1** `units.unit_status` (`non_traduit`/`ajout`) — **[MOTEUR]** + **[FRONT]**. ✅ *fait* — **migration 023** ; `units_service.set_unit_status`/`bulk` + routes dédiées `/units/set_status` (+bulk, contrat **1.6.37**) ; `unit_status` exposé par GET /units ; **filtre `query`** (FTS + regex + CLI `--unit-status`, contrat **1.6.38**) ; **filtre concordancier** (`#filter-unitstatus-sel` + chip + history). Axe **orthogonal au rôle**, enum validé en service (escape-hatch). Décisions : [`DESIGN_R4_1_unit_status.md`](DESIGN_R4_1_unit_status.md). Découplé de R4.2 (lift) / R4.3 (affichage) ; **pas** d'auto-pont orphelin→statut (populé par R4.2 ou curation).
 - **R4.2** Lift marqueurs `[T]/[Ch]/…` → rôles (passe post-import idempotente) — **[MIXTE]** : `marker_lift.py` (hors `sidecar.py`, growth-gate) + `POST /lift/markers` → **contrat** ; front = bouton + aperçu.
 - **R4.3** Concordancier affiche rôle + valeur — **[MIXTE]** : `query.py` `LEFT JOIN unit_roles` + champs hits → **contrat** ; `tauri-app` `results.ts` (`appendRoleBadge`, fallback cellule vide).
 
