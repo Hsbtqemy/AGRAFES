@@ -384,12 +384,22 @@ def _run_alignment_strategy(
     from multicorpus_engine.aligner import (
         align_by_external_id,
         align_by_external_id_then_position,
+        align_by_length_bounded,
         align_by_position,
         align_by_similarity,
     )
 
     if strategy == "position":
         return align_by_position(
+            conn,
+            pivot_doc_id=pivot_doc_id,
+            target_doc_ids=target_doc_ids,
+            run_id=run_id,
+            debug=debug_align,
+            protected_pairs_by_target=protected_pairs_by_target,
+        )
+    if strategy == "length_bounded":
+        return align_by_length_bounded(
             conn,
             pivot_doc_id=pivot_doc_id,
             target_doc_ids=target_doc_ids,
@@ -1417,7 +1427,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 )
                 return
             strategy = params.get("strategy", "external_id")
-            allowed_strategies = {"external_id", "position", "similarity", "external_id_then_position"}
+            allowed_strategies = {"external_id", "position", "similarity", "external_id_then_position", "length_bounded"}
             if strategy not in allowed_strategies:
                 self._send_error(
                     f"Unsupported align strategy: {strategy!r}",
@@ -3166,7 +3176,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             f"""
             SELECT al.link_id, al.external_id, al.pivot_unit_id, al.target_unit_id,
                    pu.text_norm AS pivot_text, tu.text_norm AS target_text,
-                   al.status, al.run_id
+                   al.status, al.run_id, al.bead_id
             FROM alignment_links al
             JOIN units pu ON pu.unit_id = al.pivot_unit_id
             JOIN units tu ON tu.unit_id = al.target_unit_id
@@ -3221,6 +3231,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 notes.append("linked by ordinal position")
             elif strategy == "similarity":
                 notes.append("linked by text similarity")
+            elif strategy == "length_bounded":
+                notes.append("linked by length-bounded Gale–Church (paragraph-anchored)")
             if row_run_id:
                 notes.append(f"run_id={row_run_id}")
             notes.append(f"strategy source: {src}")
@@ -3236,6 +3248,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 "pivot_text": r[4],
                 "target_text": r[5],
                 "status": r[6],
+                "bead_id": r[8],
             }
             explain = _make_explain(r[7], r[1])
             if explain is not None:
@@ -5837,7 +5850,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 
         # ── Validate params ─────────────────────────────────────────────────
         strategy = str(body.get("strategy", "position"))
-        allowed_strategies = {"external_id", "position", "similarity", "external_id_then_position"}
+        allowed_strategies = {"external_id", "position", "similarity", "external_id_then_position", "length_bounded"}
         if strategy not in allowed_strategies:
             self._send_error(
                 f"Unsupported align strategy: {strategy!r}",
@@ -6093,7 +6106,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             return
 
         strategy = body.get("strategy", "external_id")
-        allowed_strategies = {"external_id", "position", "similarity", "external_id_then_position"}
+        allowed_strategies = {"external_id", "position", "similarity", "external_id_then_position", "length_bounded"}
         if strategy not in allowed_strategies:
             self._send_error(
                 f"Unsupported align strategy: {strategy!r}",
@@ -8710,7 +8723,7 @@ class CorpusServer:
                 raise ValueError("align job requires params.pivot_doc_id and params.target_doc_ids")
 
             strategy = params.get("strategy", "external_id")
-            allowed_strategies = {"external_id", "position", "similarity", "external_id_then_position"}
+            allowed_strategies = {"external_id", "position", "similarity", "external_id_then_position", "length_bounded"}
             if strategy not in allowed_strategies:
                 raise ValueError(
                     f"Unsupported align strategy: {strategy!r}. "

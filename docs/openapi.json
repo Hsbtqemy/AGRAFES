@@ -207,6 +207,11 @@
       "AlignLinkRecord": {
         "additionalProperties": false,
         "properties": {
+          "bead_id": {
+            "description": "Groups the 1-1 links of one N-M bead (length_bounded strategy, R3.2); null for plain 1-1 / legacy / manual links.",
+            "nullable": true,
+            "type": "integer"
+          },
           "explain": {
             "description": "Present when include_explain=true.",
             "nullable": true,
@@ -467,7 +472,8 @@
               "external_id",
               "position",
               "similarity",
-              "external_id_then_position"
+              "external_id_then_position",
+              "length_bounded"
             ],
             "type": "string"
           },
@@ -1871,7 +1877,8 @@
               "external_id",
               "position",
               "similarity",
-              "external_id_then_position"
+              "external_id_then_position",
+              "length_bounded"
             ],
             "type": "string"
           }
@@ -4021,8 +4028,8 @@
   "info": {
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
-    "version": "1.6.35",
-    "x-contract-version": "1.6.35"
+    "version": "1.6.36",
+    "x-contract-version": "1.6.36"
   },
   "openapi": "3.0.3",
   "paths": {

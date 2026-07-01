@@ -425,6 +425,7 @@ def cmd_align(args: argparse.Namespace) -> None:
     from .aligner import (
         align_by_external_id,
         align_by_external_id_then_position,
+        align_by_length_bounded,
         align_by_position,
         align_by_similarity,
         add_doc_relation,
@@ -473,6 +474,15 @@ def cmd_align(args: argparse.Namespace) -> None:
             )
         elif strategy == "external_id_then_position":
             reports = align_by_external_id_then_position(
+                conn=conn,
+                pivot_doc_id=args.pivot_doc_id,
+                target_doc_ids=target_ids,
+                run_id=run_id,
+                debug=bool(getattr(args, "debug_align", False)),
+                run_logger=log,
+            )
+        elif strategy == "length_bounded":
+            reports = align_by_length_bounded(
                 conn=conn,
                 pivot_doc_id=args.pivot_doc_id,
                 target_doc_ids=target_ids,
@@ -1554,12 +1564,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_align.add_argument(
         "--strategy",
         dest="strategy",
-        choices=["external_id", "position", "similarity", "external_id_then_position"],
+        choices=["external_id", "position", "similarity", "external_id_then_position", "length_bounded"],
         default="external_id",
         help=(
             "Alignment strategy: 'external_id' (default), 'position' (monotone),"
-            " 'similarity' (edit-distance greedy), or"
-            " 'external_id_then_position' (hybrid fallback)"
+            " 'similarity' (edit-distance greedy),"
+            " 'external_id_then_position' (hybrid fallback), or"
+            " 'length_bounded' (Gale–Church by length, bounded by the ¶ anchor)"
         ),
     )
     p_align.add_argument(

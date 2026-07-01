@@ -14,7 +14,7 @@ from typing import Any
 from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
-CONTRACT_VERSION = "1.6.35"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.36"  # semantic versioning for the sidecar API contract
 # SID-08 / OPS-03: the API version IS the contract version — derived, never a
 # second hand-maintained literal, so the two can no longer drift. /health reports
 # the *engine* version under `version` (it predates the sidecar); every other
@@ -117,6 +117,10 @@ API_VERSION = CONTRACT_VERSION
 #         (meta_json.parent_n, populated by resegmentation R2.1) so the canvas can group
 #         sentences under their ¶ (refonte R2.3). Additive nullable field; null when the doc
 #         was never fine-segmented. Read straight out of meta_json via json_extract.
+# 1.6.36: alignment `strategy` enum gains `length_bounded` (Gale–Church by length, bounded by
+#         the ¶ anchor — refonte R3.2), accepted by /align + /jobs/enqueue align. AlignLinkRecord
+#         (GET /align/audit) gains `bead_id` (integer, nullable) — groups the 1-1 links of one
+#         N-M bead; null for plain 1-1 / legacy / manual links. Both additive.
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
@@ -3009,7 +3013,7 @@ def openapi_spec() -> dict[str, Any]:
                     "properties": {
                         "strategy": {
                             "type": "string", "default": "position",
-                            "enum": ["external_id", "position", "similarity", "external_id_then_position"],
+                            "enum": ["external_id", "position", "similarity", "external_id_then_position", "length_bounded"],
                         },
                         "sim_threshold": {"type": "number", "minimum": 0.0, "maximum": 1.0, "default": 0.8},
                         "replace_existing": {"type": "boolean", "default": False,
@@ -3545,7 +3549,7 @@ def openapi_spec() -> dict[str, Any]:
                         },
                         "strategy": {
                             "type": "string",
-                            "enum": ["external_id", "position", "similarity", "external_id_then_position"],
+                            "enum": ["external_id", "position", "similarity", "external_id_then_position", "length_bounded"],
                             "default": "external_id",
                         },
                         "relation_type": {
@@ -3735,6 +3739,7 @@ def openapi_spec() -> dict[str, Any]:
                         "pivot_text": {"type": "string"},
                         "target_text": {"type": "string"},
                         "status": {"type": "string", "nullable": True, "enum": ["accepted", "rejected"]},
+                        "bead_id": {"type": "integer", "nullable": True, "description": "Groups the 1-1 links of one N-M bead (length_bounded strategy, R3.2); null for plain 1-1 / legacy / manual links."},
                         "explain": {
                             "type": "object",
                             "nullable": True,
