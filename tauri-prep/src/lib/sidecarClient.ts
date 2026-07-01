@@ -1053,6 +1053,34 @@ export async function listUnits(conn: Conn, docId: number): Promise<UnitRecord[]
   return res.units;
 }
 
+/** Per-document stage stats for the canvas state strip (GET /documents/stats, refonte R1.2). */
+export interface DocumentStats {
+  doc_id: number;
+  /** unit_type='line' count. */
+  line_count: number;
+  /** unit_type='structure' count. */
+  structure_count: number;
+  /** line units carrying an external_id (numbered → key-alignable). */
+  external_id_count: number;
+  /** line units carrying a coarse parent pointer (meta_json.parent_n — populated by R2). */
+  parent_count: number;
+  /** alignment_links touching this doc (pivot or target). */
+  aligned_count: number;
+  /** max / avg text_raw length over line units (grossier vs fin heuristic). */
+  max_text_len: number;
+  avg_text_len: number;
+}
+
+/**
+ * Fetch per-document stage stats (grain / numbering / alignment / parent presence)
+ * for the canvas state strip. Read-only. Throws on 400 (bad doc_id) / 404 (unknown).
+ */
+export async function getDocumentStats(conn: Conn, docId: number): Promise<DocumentStats> {
+  return await conn.get(
+    `/documents/stats?doc_id=${encodeURIComponent(String(docId))}`,
+  ) as DocumentStats;
+}
+
 /** A convention role (unit_role) as returned by GET /conventions. */
 export interface ConventionRole {
   name: string;

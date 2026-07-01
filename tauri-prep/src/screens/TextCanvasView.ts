@@ -10,7 +10,8 @@
  * curation. Cohabite avec les écrans legacy — rien retiré.
  */
 
-import type { Conn, DocumentRecord } from "../lib/sidecarClient.ts";
+import type { Conn, DocumentRecord, DocumentStats } from "../lib/sidecarClient.ts";
+import { getDocumentStats } from "../lib/sidecarClient.ts";
 import { escHtml as esc } from "../lib/diff.ts";
 import { setHtml, raw } from "../lib/safeHtml.ts";
 import { RolesPane } from "../components/RolesPane.ts";
@@ -30,6 +31,7 @@ export class TextCanvasView {
   private _root: HTMLElement | null = null;
   private _rolesPane: RolesPane | null = null;
   private _docId: number | null = null;
+  private _stats: DocumentStats | null = null;
   private _mode: CanvasMode = "roles";
 
   constructor(
@@ -88,7 +90,9 @@ export class TextCanvasView {
   refreshDocs(): void {
     const sel = this._root?.querySelector<HTMLSelectElement>("#prep-canvas-doc");
     if (!sel) return;
-    const docs = this._getDocs();
+    const docs = [...this._getDocs()].sort((a, b) =>
+      (a.title ?? "").localeCompare(b.title ?? "", "fr", { numeric: true, sensitivity: "base" }),
+    );
     const opts = docs
       .map((d) => `<option value="${d.doc_id}">${esc(d.title)} (${esc(d.language ?? "?")})</option>`)
       .join("");
@@ -103,8 +107,20 @@ export class TextCanvasView {
 
   private async _focusDoc(docId: number | null): Promise<void> {
     this._docId = docId;
+    this._stats = null;
     const doc = this._getDocs().find((d) => d.doc_id === docId) ?? null;
     this._renderStateStrip();
+    if (docId !== null) {
+      const conn = this._getConn();
+      if (conn) {
+        try {
+          this._stats = await getDocumentStats(conn, docId);
+        } catch {
+          this._stats = null; // le bandeau retombe sur unit_count (R1.1)
+        }
+        this._renderStateStrip();
+      }
+    }
     if (this._rolesPane) {
       await this._rolesPane.setDocument(docId, doc?.text_start_n ?? null);
     }
@@ -133,18 +149,37 @@ export class TextCanvasView {
     const wfClass = wf === "validated" ? "ok" : wf === "review" ? "warn" : "draft";
     const stale = doc.fts_stale === true;
     const ts = doc.text_start_n;
-    // A0 — conscience du stade (DESIGN_prep_text_canvas.md §10). Dérivation front-pure
-    // depuis unit_count (déjà au contrat) : Brut (≈1 unité) vs Segmenté (N unités). Les
-    // signaux plus fins (grossier/fin, parent ¶, aligné) viendront avec l'expo de stats
-    // par doc, en même temps qu'A1 (persistance du parent).
-    const uc = typeof doc.unit_count === "number" ? doc.unit_count : null;
-    const stageLabel = uc === null ? "Stade : ?" : uc <= 1 ? "Brut (non segmenté)" : `Segmenté · ${uc} unités`;
-    const stageClass = uc === null ? "draft" : uc <= 1 ? "warn" : "ok";
-    setHtml(el, raw(
-      `<span class="prep-canvas-chip prep-canvas-chip--${stageClass}">${stageLabel}</span>` +
-      `<span class="prep-canvas-chip prep-canvas-chip--${wfClass}">${wfLabel}</span>` +
-      `<span class="prep-canvas-chip prep-canvas-chip--${stale ? "warn" : "ok"}">Index ${stale ? "⚠ périmé" : "à jour"}</span>` +
-      `<span class="prep-canvas-chip">${ts != null ? `Borne : unité ${ts}` : "Borne : non posée"}</span>`,
-    ));
+    // A0/R1.2 — conscience du stade. Sans stats (pas encore chargées) on retombe sur
+    // unit_count (R1.1) ; avec les stats (GET /documents/stats) on enrichit : grain
+    // fin/grossier, numérotation, alignement, présence du parent ¶.
+    const st = this._stats && this._stats.doc_id === doc.doc_id ? this._stats : null;
+    const lineCount = st ? st.line_count
+      : (typeof doc.unit_count === "number" ? doc.unit_count : null);
+    const chip = (cls: string, label: string): string =>
+      `<span class="prep-canvas-chip${cls ? ` prep-canvas-chip--${cls}` : ""}">${label}</span>`;
+
+    const chips: string[] = [];
+    if (lineCount === null) {
+      chips.push(chip("draft", "Stade : ?"));
+    } else if (lineCount <= 1) {
+      chips.push(chip("warn", "Brut (non segmenté)"));
+    } else {
+      const grain = st ? (st.avg_text_len > 240 ? "unités ¶" : "phrases") : "unités";
+      chips.push(chip("ok", `Segmenté · ${lineCount} ${grain}`));
+    }
+    if (st && st.line_count > 1) {
+      if (st.parent_count > 0) chips.push(chip("ok", `Hiérarchie ¶ (${st.parent_count})`));
+      const num = st.external_id_count === 0 ? { c: "draft", l: "Non numéroté" }
+        : st.external_id_count >= st.line_count ? { c: "ok", l: "Numéroté" }
+        : { c: "ok", l: "Numéroté (partiel)" };
+      chips.push(chip(num.c, num.l));
+      chips.push(st.aligned_count > 0
+        ? chip("ok", `Aligné (${st.aligned_count})`)
+        : chip("draft", "Non aligné"));
+    }
+    chips.push(chip(wfClass, wfLabel));
+    chips.push(chip(stale ? "warn" : "ok", `Index ${stale ? "⚠ périmé" : "à jour"}`));
+    chips.push(chip("", ts != null ? `Borne : unité ${ts}` : "Borne : non posée"));
+    setHtml(el, raw(chips.join("")));
   }
 }
