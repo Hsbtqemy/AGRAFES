@@ -36,6 +36,7 @@ import {
   resolveRoleBadge,
   summarizeUnits,
 } from "../lib/conventionsUnitList.ts";
+import { deriveCoarseBlocks, blockIndexByUnitId } from "../lib/coarseGrain.ts";
 import { modalConfirm } from "../lib/modalConfirm.ts";
 import { setHtml, raw } from "../lib/safeHtml.ts";
 
@@ -320,6 +321,14 @@ export class RolesPane {
       return;
     }
 
+    // R2.3 — coarse grain (paragraph ⊃ sentence). Blocks are derived over the *full*
+    // unit list so anchors/sizes stay correct under search filtering; grouped rows are
+    // indented and a ¶ separator opens each multi-sentence paragraph. Separators use a
+    // distinct class, so the `.prep-conv-unit-row` NodeList (and its shift-range index)
+    // stays aligned with `filtered`.
+    const blocks = deriveCoarseBlocks(this._units);
+    const blockIdx = blockIndexByUnitId(blocks);
+    let prevBi = -1;
     const rowsHtml = filtered
       .map((u) => {
         const badge = resolveRoleBadge(u.unit_role, this._roles);
@@ -331,10 +340,21 @@ export class RolesPane {
         const marker = this._textStartN !== null && u.n === this._textStartN
           ? this._textStartMarkerHtml()
           : "";
-        return `${marker}
-          <div class="prep-conv-unit-row${selected ? " selected" : ""}${para ? " paratext" : ""}" data-uid="${u.unit_id}">
+        const bi = blockIdx.get(u.unit_id) ?? -1;
+        const block = bi >= 0 ? blocks[bi] : null;
+        const grouped = block !== null && block.kind === "sentence-grouped" && block.fineCount > 1;
+        const sep = grouped && bi !== prevBi
+          ? `<div class="prep-conv-para-sep"><span class="prep-conv-para-label">&#182; ${block!.fineCount} phrases</span></div>`
+          : "";
+        prevBi = bi;
+        const fineHint = block !== null && block.kind === "composite"
+          ? `<span class="prep-conv-unit-fine" title="Segments &#164; (grain fin déjà présent)">&#164;${block.fineCount}</span>`
+          : "";
+        return `${marker}${sep}
+          <div class="prep-conv-unit-row${selected ? " selected" : ""}${para ? " paratext" : ""}${grouped ? " prep-conv-unit-row--grouped" : ""}" data-uid="${u.unit_id}">
             <span class="prep-conv-unit-n">${u.n}</span>
             <span class="prep-conv-unit-text">${esc(u.text_norm ?? "")}</span>
+            ${fineHint}
             ${badgeHtml}
           </div>`;
       })

@@ -1040,6 +1040,8 @@ export interface UnitRecord {
   text_raw?: string | null;
   /** Verbatim import original (ADR-043 P3); null when never destructively rewritten. */
   text_source?: string | null;
+  /** Coarse paragraph anchor (meta_json.parent_n, R2.3); null when not fine-segmented. */
+  parent_n?: number | null;
 }
 
 /**
