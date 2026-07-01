@@ -91,6 +91,44 @@ def test_length_bounded_warns_when_not_fine_segmented(db: sqlite3.Connection) ->
     assert any("paragraph grain" in w for w in report.warnings)
 
 
+def _sent_text(conn: sqlite3.Connection, doc_id: int, n: int, text: str, parent_n: int) -> int:
+    cur = conn.execute(
+        "INSERT INTO units (doc_id, unit_type, n, text_raw, text_norm, meta_json)"
+        " VALUES (?, 'line', ?, ?, ?, ?)",
+        (doc_id, n, text, text, json.dumps({"parent_n": parent_n})),
+    )
+    conn.commit()
+    return cur.lastrowid  # type: ignore[return-value]
+
+
+def test_length_bounded_on_realistic_prose(db: sqlite3.Connection) -> None:
+    """End-to-end on prose-shaped lengths: a FR sentence split into two EN sentences
+    aligns as a 1-2 bead, its neighbours as plain 1-1 — the validated real-prose case."""
+    piv = _doc(db, "FR", "fr")
+    tgt = _doc(db, "EN", "en")
+    _sent_text(db, piv, 1, "Le soleil se levait sur la ville endormie.", 1)
+    s2 = _sent_text(db, piv, 2, "Les rues etaient encore desertes et silencieuses.", 1)
+    _sent_text(db, piv, 3, "Il marcha longtemps sans but precis.", 2)
+    _sent_text(db, tgt, 1, "The sun was rising over the sleeping city.", 1)
+    t2 = _sent_text(db, tgt, 2, "The streets were still deserted.", 1)     # s2 split →
+    t3 = _sent_text(db, tgt, 3, "and utterly silent.", 1)                  # → t2 + t3
+    _sent_text(db, tgt, 4, "He walked for a long time with no particular aim.", 2)
+
+    report = align_pair_by_length(db, piv, tgt, "run-prose")
+    assert report.links_created == 4
+
+    rows = db.execute(
+        "SELECT pivot_unit_id, target_unit_id, bead_id FROM alignment_links"
+    ).fetchall()
+    s2_links = [r for r in rows if r["pivot_unit_id"] == s2]
+    assert len(s2_links) == 2                                     # the 1-2 split
+    assert s2_links[0]["bead_id"] is not None
+    assert s2_links[0]["bead_id"] == s2_links[1]["bead_id"]       # one bead
+    assert {r["target_unit_id"] for r in s2_links} == {t2, t3}
+    # the two neighbours are plain 1-1 (no bead)
+    assert sum(1 for r in rows if r["bead_id"] is None) == 2
+
+
 def test_length_bounded_preserves_protected(db: sqlite3.Connection) -> None:
     piv = _doc(db, "P", "fr")
     tgt = _doc(db, "T", "en")
