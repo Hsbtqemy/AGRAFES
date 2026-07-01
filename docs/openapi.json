@@ -207,6 +207,11 @@
       "AlignLinkRecord": {
         "additionalProperties": false,
         "properties": {
+          "bead_id": {
+            "description": "Groups the 1-1 links of one N-M bead (length_bounded strategy, R3.2); null for plain 1-1 / legacy / manual links.",
+            "nullable": true,
+            "type": "integer"
+          },
           "explain": {
             "description": "Present when include_explain=true.",
             "nullable": true,
@@ -467,7 +472,8 @@
               "external_id",
               "position",
               "similarity",
-              "external_id_then_position"
+              "external_id_then_position",
+              "length_bounded"
             ],
             "type": "string"
           },
@@ -1871,7 +1877,8 @@
               "external_id",
               "position",
               "similarity",
-              "external_id_then_position"
+              "external_id_then_position",
+              "length_bounded"
             ],
             "type": "string"
           }
@@ -2562,6 +2569,15 @@
             "type": "string"
           },
           "resource_type": {
+            "type": "string"
+          },
+          "unit_status": {
+            "description": "R4.1 — restrict hits to units with this translation status; omit for all.",
+            "enum": [
+              "non_traduit",
+              "ajout"
+            ],
+            "nullable": true,
             "type": "string"
           },
           "window": {
@@ -4021,8 +4037,8 @@
   "info": {
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
-    "version": "1.6.34",
-    "x-contract-version": "1.6.34"
+    "version": "1.6.38",
+    "x-contract-version": "1.6.38"
   },
   "openapi": "3.0.3",
   "paths": {
@@ -8398,6 +8414,11 @@
                           "n": {
                             "type": "integer"
                           },
+                          "parent_n": {
+                            "description": "Coarse paragraph anchor (meta_json.parent_n, R2.3); null when not fine-segmented",
+                            "nullable": true,
+                            "type": "integer"
+                          },
                           "text_norm": {
                             "nullable": true,
                             "type": "string"
@@ -8414,6 +8435,15 @@
                             "type": "integer"
                           },
                           "unit_role": {
+                            "nullable": true,
+                            "type": "string"
+                          },
+                          "unit_status": {
+                            "description": "Translation status axis (R4.1), orthogonal to unit_role; null = normal/translated",
+                            "enum": [
+                              "non_traduit",
+                              "ajout"
+                            ],
                             "nullable": true,
                             "type": "string"
                           },
@@ -8510,6 +8540,70 @@
           }
         },
         "summary": "Assign a convention role to multiple units at once (token required)"
+      }
+    },
+    "/units/bulk_set_status": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "doc_id": {
+                    "type": "integer"
+                  },
+                  "status": {
+                    "description": "Translation status, or null to clear",
+                    "enum": [
+                      "non_traduit",
+                      "ajout"
+                    ],
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "unit_ids": {
+                    "description": "Alternative to doc_id+unit_ns: units by primary key",
+                    "items": {
+                      "type": "integer"
+                    },
+                    "type": "array"
+                  },
+                  "unit_ns": {
+                    "items": {
+                      "type": "integer"
+                    },
+                    "type": "array"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                }
+              }
+            },
+            "description": "Statuses set"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request (unknown status value)"
+          }
+        },
+        "summary": "Set the translation status of multiple units at once (token required)"
       }
     },
     "/units/merge": {
@@ -8620,6 +8714,74 @@
           }
         },
         "summary": "Assign a convention role to a unit (token required)"
+      }
+    },
+    "/units/set_status": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "doc_id": {
+                    "type": "integer"
+                  },
+                  "status": {
+                    "description": "Translation status, or null to clear",
+                    "enum": [
+                      "non_traduit",
+                      "ajout"
+                    ],
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "unit_n": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "doc_id",
+                  "unit_n"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                }
+              }
+            },
+            "description": "Status set"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request (unknown status value)"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unit not found"
+          }
+        },
+        "summary": "Set the translation status of a unit (token required)"
       }
     },
     "/units/split": {

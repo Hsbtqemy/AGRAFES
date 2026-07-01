@@ -19,6 +19,8 @@ import { RolesPane } from "../components/RolesPane.ts";
 export interface TextCanvasCallbacks {
   log: (msg: string, isError?: boolean) => void;
   toast: (msg: string, isError?: boolean) => void;
+  /** Re-fetch the document list from the sidecar (host owns the shared list). */
+  onReloadDocs?: () => void | Promise<void>;
 }
 
 type CanvasMode = "roles" | "curation" | "annoter";
@@ -33,6 +35,12 @@ export class TextCanvasView {
   private _docId: number | null = null;
   private _stats: DocumentStats | null = null;
   private _mode: CanvasMode = "roles";
+  private _menuOpen = false;
+  /** Bound outside-click handler; attached only while the doc menu is open. */
+  private readonly _onOutsideClick = (e: MouseEvent): void => {
+    const sel = this._root?.querySelector<HTMLElement>("#prep-canvas-doc-select");
+    if (sel && !sel.contains(e.target as Node)) this._closeMenu();
+  };
 
   constructor(
     getConn: () => Conn | null,
@@ -52,9 +60,21 @@ export class TextCanvasView {
     setHtml(wrapper, raw(`
       <div class="prep-canvas-statestrip" id="prep-canvas-state" aria-live="polite"></div>
       <div class="prep-canvas-toolbar">
-        <label class="prep-canvas-doc-label">Document
-          <select class="prep-canvas-doc" id="prep-canvas-doc"></select>
-        </label>
+        <div class="prep-canvas-doc-picker">
+          <span class="prep-canvas-doc-label" id="prep-canvas-doc-label">Document</span>
+          <div class="prep-canvas-doc-select" id="prep-canvas-doc-select">
+            <button type="button" class="prep-canvas-doc-trigger" id="prep-canvas-doc-trigger"
+                    aria-haspopup="listbox" aria-expanded="false"
+                    aria-labelledby="prep-canvas-doc-label prep-canvas-doc-trigger">
+              <span class="prep-canvas-doc-trigger-text" id="prep-canvas-doc-trigger-text">&#8212; choisir un document &#8212;</span>
+              <span class="prep-canvas-doc-caret" aria-hidden="true">&#9662;</span>
+            </button>
+            <div class="prep-canvas-doc-menu" id="prep-canvas-doc-menu" role="listbox"
+                 aria-label="Documents" hidden></div>
+          </div>
+          <button type="button" class="prep-canvas-reload" id="prep-canvas-reload"
+                  title="Recharger la liste des documents depuis la base">&#8635; Actualiser</button>
+        </div>
         <div class="prep-canvas-modes" role="group" aria-label="Couche active">
           <button type="button" class="prep-canvas-modebtn active" data-mode="roles" aria-pressed="true">R&#244;les</button>
           <button type="button" class="prep-canvas-modebtn" data-mode="curation" disabled title="à venir (T1)">Curation</button>
@@ -70,10 +90,31 @@ export class TextCanvasView {
       this._rolesPane.mount();
     }
 
-    const sel = wrapper.querySelector<HTMLSelectElement>("#prep-canvas-doc");
-    sel?.addEventListener("change", () => {
-      const v = sel.value ? parseInt(sel.value, 10) : null;
-      void this._focusDoc(Number.isNaN(v as number) ? null : v);
+    const trigger = wrapper.querySelector<HTMLButtonElement>("#prep-canvas-doc-trigger");
+    trigger?.addEventListener("click", () => this._toggleMenu());
+    trigger?.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowDown" || e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        this._openMenu();
+      } else if (e.key === "Escape") {
+        this._closeMenu();
+      }
+    });
+    const menu = wrapper.querySelector<HTMLElement>("#prep-canvas-doc-menu");
+    menu?.addEventListener("keydown", (e) => this._onMenuKeydown(e));
+
+    const reloadBtn = wrapper.querySelector<HTMLButtonElement>("#prep-canvas-reload");
+    reloadBtn?.addEventListener("click", async () => {
+      if (!this._cb.onReloadDocs) return;
+      reloadBtn.disabled = true;
+      try {
+        await this._cb.onReloadDocs(); // host re-fetches + calls back refreshDocs()
+        // Re-focus the current doc so its stats + units reflect any change
+        // (e.g. a resegmentation that populated parent_n) rather than stale caches.
+        if (this._docId !== null) await this._focusDoc(this._docId);
+      } finally {
+        reloadBtn.disabled = false;
+      }
     });
 
     wrapper.querySelectorAll<HTMLButtonElement>(".prep-canvas-modebtn").forEach((btn) => {
@@ -86,29 +127,135 @@ export class TextCanvasView {
     this.refreshDocs();
   }
 
-  /** Repopulate the document selector from the current docs list and re-focus. */
+  /** Repopulate the custom document dropdown from the current docs list. */
   refreshDocs(): void {
-    const sel = this._root?.querySelector<HTMLSelectElement>("#prep-canvas-doc");
-    if (!sel) return;
-    const docs = [...this._getDocs()].sort((a, b) =>
-      (a.title ?? "").localeCompare(b.title ?? "", "fr", { numeric: true, sensitivity: "base" }),
-    );
-    const opts = docs
-      .map((d) => `<option value="${d.doc_id}">${esc(d.title)} (${esc(d.language ?? "?")})</option>`)
-      .join("");
-    setHtml(sel, raw(`<option value="">— choisir un document —</option>${opts}`));
-    if (this._docId !== null && docs.some((d) => d.doc_id === this._docId)) {
-      sel.value = String(this._docId);
-    } else {
+    const menu = this._root?.querySelector<HTMLElement>("#prep-canvas-doc-menu");
+    if (!menu) return;
+    const docs = this._sortedDocs();
+    // Drop the current focus if its doc vanished from the list.
+    if (this._docId !== null && !docs.some((d) => d.doc_id === this._docId)) {
       this._docId = null;
     }
+    const optHtml = docs
+      .map((d) => {
+        const on = d.doc_id === this._docId;
+        return `<button type="button" class="prep-canvas-doc-opt${on ? " selected" : ""}" role="option"
+                aria-selected="${on}" data-doc="${d.doc_id}">${esc(d.title)}
+                <span class="prep-canvas-doc-opt-lang">${esc(d.language ?? "?")}</span></button>`;
+      })
+      .join("");
+    setHtml(menu, raw(
+      `<button type="button" class="prep-canvas-doc-opt prep-canvas-doc-opt--none" role="option"
+               aria-selected="${this._docId === null}" data-doc="">&#8212; choisir un document &#8212;</button>`
+      + optHtml,
+    ));
+    menu.querySelectorAll<HTMLButtonElement>(".prep-canvas-doc-opt").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const docAttr = btn.dataset.doc;
+        const id = docAttr ? parseInt(docAttr, 10) : null;
+        this._selectDoc(Number.isNaN(id as number) ? null : id);
+      });
+    });
+    this._syncTriggerText();
     this._renderStateStrip();
+  }
+
+  private _sortedDocs(): DocumentRecord[] {
+    return [...this._getDocs()].sort((a, b) =>
+      (a.title ?? "").localeCompare(b.title ?? "", "fr", { numeric: true, sensitivity: "base" }),
+    );
+  }
+
+  /** Reflect the current selection in the closed trigger's label. */
+  private _syncTriggerText(): void {
+    const el = this._root?.querySelector<HTMLElement>("#prep-canvas-doc-trigger-text");
+    if (!el) return;
+    const doc = this._getDocs().find((d) => d.doc_id === this._docId) ?? null;
+    el.textContent = doc
+      ? `${doc.title} (${doc.language ?? "?"})`
+      : "— choisir un document —";
+    el.classList.toggle("prep-canvas-doc-trigger-text--placeholder", doc === null);
+  }
+
+  /** Reflect the current selection in the menu's option highlight (without rebuilding). */
+  private _syncMenuSelection(): void {
+    const menu = this._root?.querySelector<HTMLElement>("#prep-canvas-doc-menu");
+    menu?.querySelectorAll<HTMLButtonElement>(".prep-canvas-doc-opt").forEach((btn) => {
+      const docAttr = btn.dataset.doc;
+      const id = docAttr ? parseInt(docAttr, 10) : null;
+      const on = id === this._docId;
+      btn.classList.toggle("selected", on);
+      btn.setAttribute("aria-selected", String(on));
+    });
+  }
+
+  // ─── Custom document dropdown ──────────────────────────────────────────────
+
+  private _toggleMenu(): void {
+    if (this._menuOpen) this._closeMenu();
+    else this._openMenu();
+  }
+
+  private _openMenu(): void {
+    if (this._menuOpen) return;
+    const menu = this._root?.querySelector<HTMLElement>("#prep-canvas-doc-menu");
+    const trigger = this._root?.querySelector<HTMLButtonElement>("#prep-canvas-doc-trigger");
+    if (!menu || !trigger) return;
+    this._menuOpen = true;
+    menu.hidden = false;
+    trigger.setAttribute("aria-expanded", "true");
+    document.addEventListener("click", this._onOutsideClick);
+    // Focus the selected option (or the first) for keyboard navigation.
+    const sel = menu.querySelector<HTMLButtonElement>(".prep-canvas-doc-opt.selected")
+      ?? menu.querySelector<HTMLButtonElement>(".prep-canvas-doc-opt");
+    sel?.focus();
+  }
+
+  private _closeMenu(): void {
+    if (!this._menuOpen) return;
+    this._menuOpen = false;
+    const menu = this._root?.querySelector<HTMLElement>("#prep-canvas-doc-menu");
+    const trigger = this._root?.querySelector<HTMLButtonElement>("#prep-canvas-doc-trigger");
+    if (menu) menu.hidden = true;
+    trigger?.setAttribute("aria-expanded", "false");
+    document.removeEventListener("click", this._onOutsideClick);
+  }
+
+  private _selectDoc(docId: number | null): void {
+    this._closeMenu();
+    this._root?.querySelector<HTMLButtonElement>("#prep-canvas-doc-trigger")?.focus();
+    void this._focusDoc(docId);
+  }
+
+  private _onMenuKeydown(e: KeyboardEvent): void {
+    const menu = e.currentTarget as HTMLElement;
+    const opts = Array.from(menu.querySelectorAll<HTMLButtonElement>(".prep-canvas-doc-opt"));
+    const idx = opts.indexOf(document.activeElement as HTMLButtonElement);
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      opts[Math.min(idx + 1, opts.length - 1)]?.focus();
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      opts[Math.max(idx - 1, 0)]?.focus();
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      opts[0]?.focus();
+    } else if (e.key === "End") {
+      e.preventDefault();
+      opts[opts.length - 1]?.focus();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      this._closeMenu();
+      this._root?.querySelector<HTMLButtonElement>("#prep-canvas-doc-trigger")?.focus();
+    }
   }
 
   private async _focusDoc(docId: number | null): Promise<void> {
     this._docId = docId;
     this._stats = null;
     const doc = this._getDocs().find((d) => d.doc_id === docId) ?? null;
+    this._syncTriggerText();
+    this._syncMenuSelection();
     this._renderStateStrip();
     if (docId !== null) {
       const conn = this._getConn();

@@ -623,7 +623,7 @@ export interface SegmentResponse {
 export interface AlignOptions {
   pivot_doc_id: number;
   target_doc_ids: number[];
-  strategy?: "external_id" | "position" | "similarity" | "external_id_then_position";
+  strategy?: "external_id" | "position" | "similarity" | "external_id_then_position" | "length_bounded";
   debug_align?: boolean;
   /** If true, clear previous links for this pivot↔target scope before re-running alignment. */
   replace_existing?: boolean;
@@ -830,6 +830,8 @@ export interface AlignLinkRecord {
   pivot_text: string;
   target_text: string;
   status: "accepted" | "rejected" | null;
+  /** Groups the 1-1 links of one N-M bead (length_bounded strategy, R3.2); null for plain 1-1. */
+  bead_id?: number | null;
   /** Present when include_explain=true */
   explain?: AlignExplain;
 }
@@ -1040,6 +1042,8 @@ export interface UnitRecord {
   text_raw?: string | null;
   /** Verbatim import original (ADR-043 P3); null when never destructively rewritten. */
   text_source?: string | null;
+  /** Coarse paragraph anchor (meta_json.parent_n, R2.3); null when not fine-segmented. */
+  parent_n?: number | null;
 }
 
 /**
@@ -1598,7 +1602,7 @@ export async function segmentFamily(
 // ─── Sprint 3 — Alignement famille ───────────────────────────────────────────
 
 export interface FamilyAlignOptions {
-  strategy?: "external_id" | "position" | "similarity" | "external_id_then_position";
+  strategy?: "external_id" | "position" | "similarity" | "external_id_then_position" | "length_bounded";
   sim_threshold?: number;
   /** Delete previous links before aligning */
   replace_existing?: boolean;

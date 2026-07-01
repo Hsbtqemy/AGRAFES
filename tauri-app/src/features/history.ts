@@ -20,6 +20,8 @@ export interface HistoryItem {
     lang: string;
     role: string;
     resourceType: string;
+    /** R4.1 translation-status filter; optional for backward-compat with old entries. */
+    unitStatus?: string;
     federatedDbPaths?: string[];
     /** @deprecated use docIds */ docId?: string;
     docIds: number[] | null;
@@ -45,6 +47,7 @@ export function saveToHistory(raw: string, fts: string): void {
       lang: state.filterLangs.join(","),
       role: state.filterRole,
       resourceType: state.filterResourceType,
+      unitStatus: state.filterUnitStatus,
       federatedDbPaths: state.filterFederatedDbPaths,
       docIds: state.filterDocIds,
     },
@@ -148,6 +151,7 @@ export function renderHistPanel(panel: HTMLElement, searchInput: HTMLInputElemen
       if (item.filters.lang) chips.push(`lang:${item.filters.lang}`);
       if (item.filters.role) chips.push(`rôle:${item.filters.role}`);
       if (item.filters.resourceType) chips.push(`type:${item.filters.resourceType}`);
+      if (item.filters.unitStatus) chips.push(`statut:${item.filters.unitStatus}`);
       if ((item.filters.federatedDbPaths?.length ?? 0) > 0) {
         chips.push(`fédéré:+${item.filters.federatedDbPaths!.length}`);
       }
@@ -166,6 +170,7 @@ export function renderHistPanel(panel: HTMLElement, searchInput: HTMLInputElemen
         state.filterLangs = item.filters.lang ? item.filters.lang.split(",").filter(Boolean) : [];
         state.filterRole = item.filters.role;
         state.filterResourceType = item.filters.resourceType;
+        state.filterUnitStatus = item.filters.unitStatus ?? "";
         // Restore docIds — cast to permissive type to handle legacy entries
         const f = item.filters as { lang: string; role: string; resourceType: string; docId?: string; docIds?: number[] | null };
         if (f.docIds !== undefined) {

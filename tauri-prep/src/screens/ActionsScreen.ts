@@ -390,6 +390,7 @@ export class ActionsScreen {
       {
         log: (msg, isError) => this._log(msg, isError),
         toast: (msg, isError) => this._showToast?.(msg, isError),
+        onReloadDocs: () => this._loadDocs(),
       },
     );
     this._textCanvasView.render(wrapper);

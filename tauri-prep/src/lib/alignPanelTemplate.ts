@@ -56,6 +56,7 @@ export function alignPanelTemplate(): string {
           <option value="external_id_then_position" selected>external_id &#8594; position</option>
           <option value="position">position</option>
           <option value="similarity">similarit&#233;</option>
+          <option value="length_bounded">longueurs &#182; (Gale&#8211;Church)</option>
         </select>
       </label>
       <div id="align-sim-row" class="prep-align-run-opt-field" style="display:none">

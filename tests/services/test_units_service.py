@@ -15,8 +15,10 @@ import pytest
 from multicorpus_engine.services.errors import BadRequestError, NotFoundError
 from multicorpus_engine.services.units_service import (
     bulk_set_unit_role,
+    bulk_set_unit_status,
     list_units,
     set_unit_role,
+    set_unit_status,
     update_unit_text,
 )
 
@@ -197,3 +199,74 @@ def test_update_text_bad_request(db_conn: sqlite3.Connection, body: dict) -> Non
 def test_update_text_unknown_unit(db_conn: sqlite3.Connection) -> None:
     with pytest.raises(NotFoundError):
         update_unit_text(db_conn, {"unit_id": 99999, "text_raw": "x"})
+
+
+# --- unit_status (R4.1) ---------------------------------------------------------
+def test_list_units_exposes_unit_status(db_conn: sqlite3.Connection) -> None:
+    """R4.1 — list_units emits the translation-status axis (null by default)."""
+    doc_id, _ = _mk_doc_units(db_conn, 2)
+    set_unit_status(db_conn, {"doc_id": doc_id, "unit_n": 1, "status": "non_traduit"})
+    units = {u["n"]: u for u in list_units(db_conn, str(doc_id), "line")["units"]}
+    assert units[1]["unit_status"] == "non_traduit"
+    assert units[2]["unit_status"] is None  # default
+
+
+def test_set_unit_status_set_and_clear(db_conn: sqlite3.Connection) -> None:
+    doc_id, _ = _mk_doc_units(db_conn, 2)
+    out = set_unit_status(db_conn, {"doc_id": doc_id, "unit_n": 1, "status": "ajout"})
+    assert out == {"doc_id": doc_id, "unit_n": 1, "unit_status": "ajout"}
+    # clear (empty string -> None)
+    out2 = set_unit_status(db_conn, {"doc_id": doc_id, "unit_n": 1, "status": ""})
+    assert out2["unit_status"] is None
+
+
+def test_set_unit_status_bad_enum(db_conn: sqlite3.Connection) -> None:
+    """An unknown enum value is a client error (BadRequestError), not NotFound."""
+    doc_id, _ = _mk_doc_units(db_conn, 1)
+    with pytest.raises(BadRequestError):
+        set_unit_status(db_conn, {"doc_id": doc_id, "unit_n": 1, "status": "ghost"})
+
+
+@pytest.mark.parametrize("body", [
+    {"unit_n": 1},                       # missing doc_id
+    {"doc_id": "x", "unit_n": 1},        # non-int doc_id
+])
+def test_set_unit_status_bad_request(db_conn: sqlite3.Connection, body: dict) -> None:
+    with pytest.raises(BadRequestError):
+        set_unit_status(db_conn, body)
+
+
+def test_set_unit_status_unit_not_found(db_conn: sqlite3.Connection) -> None:
+    doc_id, _ = _mk_doc_units(db_conn, 1)
+    with pytest.raises(NotFoundError):
+        set_unit_status(db_conn, {"doc_id": doc_id, "unit_n": 99, "status": "ajout"})
+
+
+def test_bulk_set_status_format_a(db_conn: sqlite3.Connection) -> None:
+    _, unit_ids = _mk_doc_units(db_conn, 3)
+    out = bulk_set_unit_status(db_conn, {"unit_ids": unit_ids, "status": "non_traduit"})
+    assert out == {"updated": 3}
+
+
+def test_bulk_set_status_format_b(db_conn: sqlite3.Connection) -> None:
+    doc_id, _ = _mk_doc_units(db_conn, 2)
+    out = bulk_set_unit_status(db_conn, {"doc_id": doc_id, "unit_ns": [1, 2], "status": None})
+    assert out == {"updated": 2}
+
+
+def test_bulk_set_status_empty_is_noop(db_conn: sqlite3.Connection) -> None:
+    assert bulk_set_unit_status(db_conn, {"unit_ids": []}) == {"updated": 0}
+    assert bulk_set_unit_status(db_conn, {"doc_id": 1, "unit_ns": []}) == {"updated": 0}
+
+
+def test_bulk_set_status_bad_enum(db_conn: sqlite3.Connection) -> None:
+    _, unit_ids = _mk_doc_units(db_conn, 1)
+    with pytest.raises(BadRequestError):
+        bulk_set_unit_status(db_conn, {"unit_ids": unit_ids, "status": "ghost"})
+
+
+def test_bulk_set_status_bad_request(db_conn: sqlite3.Connection) -> None:
+    with pytest.raises(BadRequestError):
+        bulk_set_unit_status(db_conn, {"unit_ids": "nope"})
+    with pytest.raises(BadRequestError):
+        bulk_set_unit_status(db_conn, {})  # neither format

@@ -610,6 +610,7 @@ def _run_regex_page(
     limit: Optional[int],
     offset: int,
     case_sensitive: bool,
+    unit_status: Optional[str] = None,
 ) -> dict[str, Any]:
     """Full-table-scan regex query.  Bypasses FTS; applies Python regex
     post-filter.  Returns an exact ``total``."""
@@ -632,6 +633,10 @@ def _run_regex_page(
         doc_date_from=doc_date_from, doc_date_to=doc_date_to,
         source_ext=source_ext,
     )
+    # R4.1 — unit-level translation-status filter (non_traduit/ajout).
+    if unit_status:
+        filters.append("u.unit_status = ?")
+        params.append(unit_status)
 
     where_clause = " AND ".join(filters)
     sql = f"""
@@ -698,6 +703,7 @@ def run_query_page(
     offset: int = 0,
     case_sensitive: bool = False,
     regex_pattern: Optional[str] = None,
+    unit_status: Optional[str] = None,
 ) -> dict[str, Any]:
     """Run an FTS or regex query and return a paginated payload.
 
@@ -746,6 +752,7 @@ def run_query_page(
             limit=limit,
             offset=offset,
             case_sensitive=case_sensitive,
+            unit_status=unit_status,
         )
 
     # ── FTS path ──────────────────────────────────────────────────────────────
@@ -770,6 +777,10 @@ def run_query_page(
         doc_date_from=doc_date_from, doc_date_to=doc_date_to,
         source_ext=source_ext,
     )
+    # R4.1 — unit-level translation-status filter (non_traduit/ajout).
+    if unit_status:
+        filters.append("u.unit_status = ?")
+        params.append(unit_status)
 
     where_clause = " AND ".join(filters)
     base_sql = f"""
@@ -959,6 +970,7 @@ def run_query(
     include_aligned: bool = False,
     aligned_limit: Optional[int] = None,
     all_occurrences: bool = False,
+    unit_status: Optional[str] = None,
 ) -> list[dict]:
     """Run an FTS query and return a list of hit dicts.
 
@@ -991,6 +1003,7 @@ def run_query(
         include_aligned=include_aligned,
         aligned_limit=aligned_limit,
         all_occurrences=all_occurrences,
+        unit_status=unit_status,
         limit=None,
         offset=0,
     )

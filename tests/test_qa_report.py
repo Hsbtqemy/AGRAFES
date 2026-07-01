@@ -50,15 +50,16 @@ def _insert_align_link(
     pivot_unit: int, target_unit: int,
     status: str | None = None,
     run_id: str = "run-test",
+    bead_id: int | None = None,
 ) -> None:
     global _link_ext_id_seq
     _link_ext_id_seq += 1
     conn.execute(
         """INSERT INTO alignment_links
            (pivot_doc_id, target_doc_id, pivot_unit_id, target_unit_id,
-            run_id, external_id, created_at, status)
-           VALUES (?,?,?,?,?,?,datetime('now'),?)""",
-        (pivot_doc, target_doc, pivot_unit, target_unit, run_id, _link_ext_id_seq, status),
+            run_id, external_id, created_at, status, bead_id)
+           VALUES (?,?,?,?,?,?,datetime('now'),?,?)""",
+        (pivot_doc, target_doc, pivot_unit, target_unit, run_id, _link_ext_id_seq, status, bead_id),
     )
     conn.commit()
 
@@ -145,6 +146,22 @@ def test_alignment_qa_collision(db_conn: sqlite3.Connection) -> None:
     pairs = _check_alignment_pairs(db_conn)
     assert pairs[0]["collisions"] == 1
     assert pairs[0]["severity"] == "warning"
+
+
+def test_alignment_qa_bead_is_not_a_collision(db_conn: sqlite3.Connection) -> None:
+    """A 1-2 sentence bead (pivot → 2 targets sharing a bead_id, R3.2) is intentional
+    and must NOT be counted as a collision — unlike two distinct-bead links."""
+    d1 = _populate_doc(db_conn, "Pivot", "fr")
+    d2 = _populate_doc(db_conn, "Target", "en")
+    p = _insert_unit(db_conn, d1, 1, 1)
+    t1 = _insert_unit(db_conn, d2, 1, 1)
+    t2 = _insert_unit(db_conn, d2, 2, 2)
+    _insert_align_link(db_conn, d1, d2, p, t1, run_id="r1", bead_id=5)
+    _insert_align_link(db_conn, d1, d2, p, t2, run_id="r1", bead_id=5)  # same bead → one
+
+    from multicorpus_engine.qa_report import _check_alignment_pairs
+    pairs = _check_alignment_pairs(db_conn)
+    assert pairs[0]["collisions"] == 0
 
 
 # ── Test 6: metadata readiness — missing title → blocking ─────────────────────
@@ -251,3 +268,92 @@ def test_write_qa_report_html(db_conn: sqlite3.Connection, tmp_path: Path) -> No
     content = out.read_text("utf-8")
     assert "<!DOCTYPE html>" in content
     assert "<table" in content
+
+
+# ── R3.1: anchor consistency (structural role drift on links) ─────────────────
+
+def _insert_role(conn: sqlite3.Connection, name: str, category: str = "structure") -> None:
+    conn.execute(
+        "INSERT OR IGNORE INTO unit_roles (name, label, category) VALUES (?,?,?)",
+        (name, name.title(), category),
+    )
+    conn.commit()
+
+
+def _insert_unit_role(
+    conn: sqlite3.Connection, doc_id: int, n: int, ext_id: int, role: str, text: str = "Titre.",
+) -> int:
+    conn.execute(
+        "INSERT INTO units (doc_id, n, unit_type, external_id, text_raw, text_norm, unit_role)"
+        " VALUES (?,?,?,?,?,?,?)",
+        (doc_id, n, "line", ext_id, text, text, role),
+    )
+    conn.commit()
+    return conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+
+def test_anchor_consistency_flags_structural_role_mismatch(db_conn: sqlite3.Connection) -> None:
+    """A structural heading linked to a body line (no role) = anchor drift."""
+    from multicorpus_engine.qa_report import _check_anchor_consistency
+
+    _insert_role(db_conn, "intertitre", "structure")
+    d1 = _populate_doc(db_conn, "Pivot", "fr")
+    d2 = _populate_doc(db_conn, "Target", "en")
+    p = _insert_unit_role(db_conn, d1, 1, 1, "intertitre")
+    t = _insert_unit(db_conn, d2, 1, 1)  # no role → drift
+    _insert_align_link(db_conn, d1, d2, p, t)
+
+    res = _check_anchor_consistency(db_conn)
+    assert len(res) == 1
+    assert res[0]["links_checked"] == 1
+    assert res[0]["inconsistency_count"] == 1
+    assert res[0]["severity"] == "warning"
+    inc = res[0]["inconsistencies"][0]
+    assert inc["pivot_role"] == "intertitre"
+    assert inc["target_role"] is None
+
+
+def test_anchor_consistency_ignores_matching_and_text_roles(db_conn: sqlite3.Connection) -> None:
+    """Matching structural roles are consistent; a *text*-category role mismatch is
+    legitimate (not an anchor) and must NOT be flagged."""
+    from multicorpus_engine.qa_report import _check_anchor_consistency
+
+    _insert_role(db_conn, "intertitre", "structure")
+    _insert_role(db_conn, "vers", "text")
+    d1 = _populate_doc(db_conn, "Pivot", "fr")
+    d2 = _populate_doc(db_conn, "Target", "en")
+    # matching structural role → consistent
+    p1 = _insert_unit_role(db_conn, d1, 1, 1, "intertitre")
+    t1 = _insert_unit_role(db_conn, d2, 1, 1, "intertitre")
+    _insert_align_link(db_conn, d1, d2, p1, t1)
+    # text-category role vs no role → legitimate, not flagged
+    p2 = _insert_unit_role(db_conn, d1, 2, 2, "vers")
+    t2 = _insert_unit(db_conn, d2, 2, 2)
+    _insert_align_link(db_conn, d1, d2, p2, t2)
+
+    res = _check_anchor_consistency(db_conn)
+    assert len(res) == 1
+    assert res[0]["links_checked"] == 2
+    assert res[0]["inconsistency_count"] == 0
+    assert res[0]["severity"] == "ok"
+
+
+def test_anchor_consistency_in_report_and_strict_gate(db_conn: sqlite3.Connection) -> None:
+    """The drift surfaces in the report summary and escalates to blocking under strict."""
+    from multicorpus_engine.qa_report import generate_qa_report
+
+    _insert_role(db_conn, "intertitre", "structure")
+    d1 = _populate_doc(db_conn, "Pivot", "fr")
+    d2 = _populate_doc(db_conn, "Target", "en")
+    p = _insert_unit_role(db_conn, d1, 1, 1, "intertitre")
+    t = _insert_unit(db_conn, d2, 1, 1)
+    _insert_align_link(db_conn, d1, d2, p, t)
+
+    lenient = generate_qa_report(db_conn, policy="lenient")
+    assert "anchor_consistency" in lenient
+    assert lenient["summary"]["anchor_inconsistencies"] == 1
+    assert not lenient["gates"]["blocking"]  # drift is only a warning in lenient
+
+    strict = generate_qa_report(db_conn, policy="strict")
+    assert strict["gates"]["status"] == "blocking"
+    assert any("anchor drift" in b for b in strict["gates"]["blocking"])

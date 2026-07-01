@@ -158,13 +158,17 @@ def _check_alignment_pairs(conn: sqlite3.Connection) -> list[dict]:
         orphan_pivot = piv_total - row[3]
         orphan_target = tgt_total - row[4]
 
-        # Collision count: pivot units linked to >1 target
+        # Collision count: pivot units linked to >1 *distinct bead*. Links sharing a
+        # bead_id (an intentional N-M sentence bead, R3.2) count as one — a 1-2 split
+        # is not a collision. bead key = COALESCE(run#bead, per-link) so null-bead
+        # (legacy/manual/plain-1-1) rows each count individually.
         try:
             collisions = conn.execute(
                 """SELECT COUNT(*) FROM (
                     SELECT pivot_unit_id FROM alignment_links
                     WHERE pivot_doc_id=? AND target_doc_id=?
-                    GROUP BY pivot_unit_id HAVING COUNT(*)>1)""",
+                    GROUP BY pivot_unit_id
+                    HAVING COUNT(DISTINCT COALESCE(run_id || '#' || bead_id, 'L' || link_id)) > 1)""",
                 (piv_id, tgt_id),
             ).fetchone()[0] or 0
         except Exception:
@@ -195,6 +199,70 @@ def _check_alignment_pairs(conn: sqlite3.Connection) -> list[dict]:
     return results
 
 
+def _check_anchor_consistency(conn: sqlite3.Connection) -> list[dict]:
+    """QA R3.1 — flag alignment links whose pivot/target *structural* role diverges.
+
+    For each link, compare the structural role (``unit_roles.category='structure'``)
+    of the pivot unit vs the target unit. A mismatch — a heading linked to a body
+    line, or two different structural markers — is a localised alignment drift that
+    *crosses an anchor*. Links where neither side carries a structural role (the
+    common case) are consistent and never flagged; this keeps false positives low
+    but only catches drift that touches an anchor (design §5b, assumed limit).
+    Aggregated per pivot→target pair. Robust to older DBs (missing tables → []).
+    """
+    try:
+        rows = conn.execute(
+            """
+            SELECT al.pivot_doc_id, al.target_doc_id, al.link_id,
+                   al.pivot_unit_id, al.target_unit_id,
+                   pu.unit_role AS pivot_role, tu.unit_role AS target_role,
+                   pr.category AS pivot_cat, tr.category AS target_cat
+            FROM alignment_links al
+            JOIN units pu ON pu.unit_id = al.pivot_unit_id
+            JOIN units tu ON tu.unit_id = al.target_unit_id
+            LEFT JOIN unit_roles pr ON pr.name = pu.unit_role
+            LEFT JOIN unit_roles tr ON tr.name = tu.unit_role
+            ORDER BY al.pivot_doc_id, al.target_doc_id, al.link_id
+            """,
+        ).fetchall()
+    except Exception:
+        return []
+
+    pairs: dict[tuple[int, int], dict] = {}
+    for r in rows:
+        key = (r["pivot_doc_id"], r["target_doc_id"])
+        entry = pairs.get(key)
+        if entry is None:
+            entry = {
+                "pivot_doc_id": r["pivot_doc_id"],
+                "target_doc_id": r["target_doc_id"],
+                "links_checked": 0,
+                "inconsistencies": [],
+            }
+            pairs[key] = entry
+        entry["links_checked"] += 1
+        # Only structural roles anchor; a text-category role mismatch is legitimate.
+        pivot_struct = r["pivot_role"] if r["pivot_cat"] == "structure" else None
+        target_struct = r["target_role"] if r["target_cat"] == "structure" else None
+        if pivot_struct != target_struct:
+            entry["inconsistencies"].append({
+                "link_id": r["link_id"],
+                "pivot_unit_id": r["pivot_unit_id"],
+                "target_unit_id": r["target_unit_id"],
+                "pivot_role": pivot_struct,
+                "target_role": target_struct,
+            })
+
+    results = []
+    for entry in pairs.values():
+        count = len(entry["inconsistencies"])
+        entry["inconsistency_count"] = count
+        entry["inconsistencies"] = entry["inconsistencies"][:50]  # cap for readability
+        entry["severity"] = "warning" if count > 0 else "ok"
+        results.append(entry)
+    return results
+
+
 # ── Report assembly ───────────────────────────────────────────────────────────
 
 # ── Policy definitions ────────────────────────────────────────────────────────
@@ -210,6 +278,7 @@ POLICY_RULES: dict[str, dict[str, str]] = {
     "meta_warning":      {"lenient": "warning",  "strict": "blocking"},   # ← strict escalates
     "align_error":       {"lenient": "blocking", "strict": "blocking"},
     "align_collision":   {"lenient": "warning",  "strict": "blocking"},   # ← strict: collisions block
+    "anchor_drift":      {"lenient": "warning",  "strict": "blocking"},   # ← strict: role drift blocks
     "relation_issue":    {"lenient": "warning",  "strict": "blocking"},   # ← strict: dangling relations block
 }
 
@@ -269,6 +338,7 @@ def generate_qa_report(
     import_checks = [_check_import_integrity(conn, d) for d in doc_ids]
     meta_checks = [_check_metadata_readiness(conn, d) for d in doc_ids]
     align_checks = _check_alignment_pairs(conn)
+    anchor_checks = _check_anchor_consistency(conn)
 
     # Summary
     docs_ok = sum(1 for c in import_checks if c["severity"] == "ok")
@@ -282,6 +352,7 @@ def generate_qa_report(
     align_warning = sum(1 for a in align_checks if a["severity"] == "warning")
     align_error = sum(1 for a in align_checks if a["severity"] == "error")
     align_collisions = sum(a.get("collisions", 0) for a in align_checks)
+    anchor_inconsistencies = sum(a.get("inconsistency_count", 0) for a in anchor_checks)
     relation_issues = sum(
         len(c.get("relation_issues", [])) for c in meta_checks
     )
@@ -302,6 +373,8 @@ def generate_qa_report(
                   f"{align_error} alignment pair(s) with <50% coverage")
     _apply_policy("align_collision", align_collisions, policy, blocking, warnings_gate,
                   f"{align_collisions} alignment collision(s) detected")
+    _apply_policy("anchor_drift", anchor_inconsistencies, policy, blocking, warnings_gate,
+                  f"{anchor_inconsistencies} alignment link(s) with inconsistent structural role (anchor drift)")
     _apply_policy("relation_issue", relation_issues, policy, blocking, warnings_gate,
                   f"{relation_issues} dangling relation target(s)")
 
@@ -324,6 +397,8 @@ def generate_qa_report(
             "align_warning": align_warning,
             "align_error": align_error,
             "align_collisions": align_collisions,
+            "anchor_pairs_checked": len(anchor_checks),
+            "anchor_inconsistencies": anchor_inconsistencies,
             "relation_issues": relation_issues,
         },
         "gates": {
@@ -335,6 +410,7 @@ def generate_qa_report(
         "import_integrity": import_checks,
         "metadata_readiness": meta_checks,
         "alignment_qa": align_checks,
+        "anchor_consistency": anchor_checks,
     }
 
 
@@ -405,6 +481,23 @@ def render_qa_report_html(report: dict) -> str:
             </tr>"""
         return rows or "<tr><td colspan='9' style='color:#6c757d;font-style:italic'>Aucun alignement trouvé</td></tr>"
 
+    def _anchor_rows() -> str:
+        rows = ""
+        for a in report.get("anchor_consistency", []):
+            sample = ", ".join(
+                f"#{i['link_id']} ({i['pivot_role'] or '∅'}↔{i['target_role'] or '∅'})"
+                for i in a.get("inconsistencies", [])[:5]
+            )
+            rows += f"""<tr>
+              <td>#{a['pivot_doc_id']}</td>
+              <td>#{a['target_doc_id']}</td>
+              <td>{a['links_checked']}</td>
+              <td>{a['inconsistency_count']}</td>
+              <td style="font-size:0.75rem;color:#6c757d">{html.escape(sample)}</td>
+              <td>{_severity_badge(a['severity'])}</td>
+            </tr>"""
+        return rows or "<tr><td colspan='6' style='color:#6c757d;font-style:italic'>Aucun lien à rôle structurel incohérent</td></tr>"
+
     return f"""<!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -443,6 +536,7 @@ def render_qa_report_html(report: dict) -> str:
   <span class="stat">Méta ⚠: {summary.get('meta_warning',0)}</span>
   <span class="stat">Méta ✗: {summary.get('meta_error',0)}</span>
   <span class="stat">Paires align: {summary.get('align_pairs_checked',0)}</span>
+  <span class="stat">Dérive ancre: {summary.get('anchor_inconsistencies',0)}</span>
 </div>
 
 <h2>Intégrité import</h2>
@@ -461,6 +555,12 @@ def render_qa_report_html(report: dict) -> str:
 <table>
   <thead><tr><th>Pivot</th><th>Cible</th><th>Liens</th><th>Couv. pivot</th><th>Couv. cible</th><th>Orphelins</th><th>Collisions</th><th>A/NR/R</th><th>Statut</th></tr></thead>
   <tbody>{_align_rows()}</tbody>
+</table>
+
+<h2>Cohérence d'ancre (rôles structurels)</h2>
+<table>
+  <thead><tr><th>Pivot</th><th>Cible</th><th>Liens vérifiés</th><th>Incohérences</th><th>Exemples</th><th>Statut</th></tr></thead>
+  <tbody>{_anchor_rows()}</tbody>
 </table>
 </body>
 </html>"""

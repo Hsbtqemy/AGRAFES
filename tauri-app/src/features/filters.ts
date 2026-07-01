@@ -93,6 +93,14 @@ export function populateFilterDropdowns(): void {
   populateLangCheckboxes(langs);
   fillSelect("filter-role-sel", roles, state.filterRole);
   fillSelect("filter-restype-sel", resTypes, state.filterResourceType);
+  // unit_status has fixed options (built in buildUI) — just restore the value.
+  const statusSel = document.getElementById("filter-unitstatus-sel") as HTMLSelectElement | null;
+  if (statusSel) statusSel.value = state.filterUnitStatus;
+}
+
+/** Human label for a unit_status value (R4.1). */
+export function unitStatusLabel(status: string): string {
+  return status === "non_traduit" ? "Non traduit" : status === "ajout" ? "Ajout" : status;
 }
 
 /** Rebuild the language checkbox list and restore selected state. */
@@ -175,6 +183,11 @@ export function renderChips(): void {
   if (state.filterRole) add("Rôle", state.filterRole, () => {
     state.filterRole = "";
     const s = document.getElementById("filter-role-sel") as HTMLSelectElement | null;
+    if (s) s.value = "";
+  });
+  if (state.filterUnitStatus) add("Statut", unitStatusLabel(state.filterUnitStatus), () => {
+    state.filterUnitStatus = "";
+    const s = document.getElementById("filter-unitstatus-sel") as HTMLSelectElement | null;
     if (s) s.value = "";
   });
   if (state.filterResourceType) add("Type", state.filterResourceType, () => {

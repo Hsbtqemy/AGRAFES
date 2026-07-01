@@ -384,12 +384,22 @@ def _run_alignment_strategy(
     from multicorpus_engine.aligner import (
         align_by_external_id,
         align_by_external_id_then_position,
+        align_by_length_bounded,
         align_by_position,
         align_by_similarity,
     )
 
     if strategy == "position":
         return align_by_position(
+            conn,
+            pivot_doc_id=pivot_doc_id,
+            target_doc_ids=target_doc_ids,
+            run_id=run_id,
+            debug=debug_align,
+            protected_pairs_by_target=protected_pairs_by_target,
+        )
+    if strategy == "length_bounded":
+        return align_by_length_bounded(
             conn,
             pivot_doc_id=pivot_doc_id,
             target_doc_ids=target_doc_ids,
@@ -482,6 +492,7 @@ _WRITE_PATHS = frozenset({
     # Convention / role system
     "/conventions", "/conventions/delete",
     "/units/set_role", "/units/bulk_set_role",
+    "/units/set_status", "/units/bulk_set_status",
     "/documents/set_text_start",
     # Async jobs — both /jobs (submit) and /jobs/enqueue start DB-mutating
     # background work (index/curate/segment). /jobs was missing → bypass (SID-02).
@@ -1050,6 +1061,10 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 self._handle_units_set_role(body)
             elif path == "/units/bulk_set_role":
                 self._handle_units_bulk_set_role(body)
+            elif path == "/units/set_status":
+                self._handle_units_set_status(body)
+            elif path == "/units/bulk_set_status":
+                self._handle_units_bulk_set_status(body)
             elif path == "/units/update_text":
                 self._handle_units_update_text(body)
             elif path == "/documents/set_text_start":
@@ -1417,7 +1432,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 )
                 return
             strategy = params.get("strategy", "external_id")
-            allowed_strategies = {"external_id", "position", "similarity", "external_id_then_position"}
+            allowed_strategies = {"external_id", "position", "similarity", "external_id_then_position", "length_bounded"}
             if strategy not in allowed_strategies:
                 self._send_error(
                     f"Unsupported align strategy: {strategy!r}",
@@ -1707,6 +1722,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             "doc_date_from": body.get("doc_date_from") or None,
             "doc_date_to": body.get("doc_date_to") or None,
             "source_ext": body.get("source_ext") or None,
+            "unit_status": body.get("unit_status") or None,
             "include_aligned": include_aligned_raw,
             "aligned_limit": aligned_limit,
             "all_occurrences": body.get("all_occurrences", False),
@@ -1732,6 +1748,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             "doc_date_from": params["doc_date_from"],
             "doc_date_to": params["doc_date_to"],
             "source_ext": params["source_ext"],
+            "unit_status": params["unit_status"],
             "include_aligned": params["include_aligned"],
             "aligned_limit": params["aligned_limit"],
             "all_occurrences": params["all_occurrences"],
@@ -3166,7 +3183,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             f"""
             SELECT al.link_id, al.external_id, al.pivot_unit_id, al.target_unit_id,
                    pu.text_norm AS pivot_text, tu.text_norm AS target_text,
-                   al.status, al.run_id
+                   al.status, al.run_id, al.bead_id
             FROM alignment_links al
             JOIN units pu ON pu.unit_id = al.pivot_unit_id
             JOIN units tu ON tu.unit_id = al.target_unit_id
@@ -3221,6 +3238,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 notes.append("linked by ordinal position")
             elif strategy == "similarity":
                 notes.append("linked by text similarity")
+            elif strategy == "length_bounded":
+                notes.append("linked by length-bounded Gale–Church (paragraph-anchored)")
             if row_run_id:
                 notes.append(f"run_id={row_run_id}")
             notes.append(f"strategy source: {src}")
@@ -3236,6 +3255,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 "pivot_text": r[4],
                 "target_text": r[5],
                 "status": r[6],
+                "bead_id": r[8],
             }
             explain = _make_explain(r[7], r[1])
             if explain is not None:
@@ -3312,9 +3332,10 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         orphan_pivot = total_pivot - covered_pivot
         orphan_target = total_target - covered_target
 
-        # ── Collision count: pivot with >1 link where not all are accepted ──
-        # All-accepted multi-links are intentional (user validated each one)
-        # and are not considered collisions.
+        # ── Collision count: pivot with >1 *distinct bead* where not all accepted ──
+        # All-accepted multi-links are intentional (user validated each one) and are
+        # not collisions; links sharing a bead_id (an N-M sentence bead, R3.2) also
+        # count as one, so a 1-2 split is never a collision.
         collision_row = conn.execute(
             f"""
             SELECT COUNT(*) FROM (
@@ -3322,7 +3343,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 FROM alignment_links al
                 WHERE {link_where}
                 GROUP BY pivot_unit_id
-                HAVING COUNT(*) > 1
+                HAVING COUNT(DISTINCT COALESCE(run_id || '#' || bead_id, 'L' || link_id)) > 1
                   AND COUNT(CASE WHEN status = 'accepted' THEN 1 END) < COUNT(*)
             )
             """,
@@ -5034,6 +5055,38 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             return
         self._send_json(success_payload(data))
 
+    def _handle_units_set_status(self, body: dict) -> None:
+        # Thin adapter over the units service (R4.1). unit_status is the
+        # translation-status axis (non_traduit/ajout), orthogonal to unit_role.
+        from multicorpus_engine.services.units_service import set_unit_status
+        from multicorpus_engine.services.errors import BadRequestError, NotFoundError
+        try:
+            with self._lock():
+                data = set_unit_status(self._conn(), body)
+        except BadRequestError as exc:
+            self._send_error(exc.message, code=ERR_BAD_REQUEST, http_status=exc.http_status)
+            return
+        except NotFoundError as exc:
+            self._send_error(exc.message, code=ERR_NOT_FOUND, http_status=exc.http_status)
+            return
+        self._send_json(success_payload(data))
+
+    def _handle_units_bulk_set_status(self, body: dict) -> None:
+        # Thin adapter over the units service (R4.1). Supports both calling
+        # conventions (unit_ids, or doc_id+unit_ns) inside the service.
+        from multicorpus_engine.services.units_service import bulk_set_unit_status
+        from multicorpus_engine.services.errors import BadRequestError, NotFoundError
+        try:
+            with self._lock():
+                data = bulk_set_unit_status(self._conn(), body)
+        except BadRequestError as exc:
+            self._send_error(exc.message, code=ERR_BAD_REQUEST, http_status=exc.http_status)
+            return
+        except NotFoundError as exc:
+            self._send_error(exc.message, code=ERR_NOT_FOUND, http_status=exc.http_status)
+            return
+        self._send_json(success_payload(data))
+
     def _handle_units_update_text(self, body: dict) -> None:
         # Thin adapter over the units service (write — owns the lock).
         from multicorpus_engine.services.units_service import update_unit_text
@@ -5837,7 +5890,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 
         # ── Validate params ─────────────────────────────────────────────────
         strategy = str(body.get("strategy", "position"))
-        allowed_strategies = {"external_id", "position", "similarity", "external_id_then_position"}
+        allowed_strategies = {"external_id", "position", "similarity", "external_id_then_position", "length_bounded"}
         if strategy not in allowed_strategies:
             self._send_error(
                 f"Unsupported align strategy: {strategy!r}",
@@ -6093,7 +6146,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             return
 
         strategy = body.get("strategy", "external_id")
-        allowed_strategies = {"external_id", "position", "similarity", "external_id_then_position"}
+        allowed_strategies = {"external_id", "position", "similarity", "external_id_then_position", "length_bounded"}
         if strategy not in allowed_strategies:
             self._send_error(
                 f"Unsupported align strategy: {strategy!r}",
@@ -7957,9 +8010,14 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 
         conn = self._conn()
 
-        # A collision = pivot with >1 links where NOT all are accepted.
-        # All-accepted multi-links are intentional (user validated each) → not collisions.
-        _coll_having = "HAVING COUNT(*) > 1 AND COUNT(CASE WHEN status = 'accepted' THEN 1 END) < COUNT(*)"
+        # A collision = pivot with >1 *distinct bead* where NOT all are accepted.
+        # All-accepted multi-links are intentional (user validated each) → not collisions;
+        # links sharing a bead_id (an N-M sentence bead, R3.2) also count as one bead, so
+        # a 1-2 split is never flagged.
+        _coll_having = (
+            "HAVING COUNT(DISTINCT COALESCE(run_id || '#' || bead_id, 'L' || link_id)) > 1"
+            " AND COUNT(CASE WHEN status = 'accepted' THEN 1 END) < COUNT(*)"
+        )
 
         # Count total collision pivot_unit_ids (for pagination meta)
         total_row = conn.execute(
@@ -8710,7 +8768,7 @@ class CorpusServer:
                 raise ValueError("align job requires params.pivot_doc_id and params.target_doc_ids")
 
             strategy = params.get("strategy", "external_id")
-            allowed_strategies = {"external_id", "position", "similarity", "external_id_then_position"}
+            allowed_strategies = {"external_id", "position", "similarity", "external_id_then_position", "length_bounded"}
             if strategy not in allowed_strategies:
                 raise ValueError(
                     f"Unsupported align strategy: {strategy!r}. "

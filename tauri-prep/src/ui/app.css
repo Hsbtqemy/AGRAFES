@@ -2243,6 +2243,12 @@ tr[data-unit-n].prep-seg-row-highlight td {
 .prep-align-row--accepted { border-left-color: #16a34a; background: #f0fdf4; }
 .prep-align-row--rejected { border-left-color: #dc2626; background: #fef2f2; }
 .prep-align-row--unreviewed { border-left-color: #d1d5db; }
+/* R3.2 — a link of an N-M bead: a thin inner accent (independent of the status
+   border-left) marks it as an intentional 1-2/2-1 group, not a collision. */
+.prep-align-row--bead { box-shadow: inset 2px 0 0 #7c3aed; }
+.prep-align-bead-chip { font-size: 0.7rem; opacity: 0.7; vertical-align: baseline; }
+/* R3.3 — advisory aligner warnings surfaced in the run summary (D4/D7). */
+.prep-align-summary-warn { color: #b45309; font-style: italic; font-size: 0.82rem; }
 .prep-align-row--highlight { animation: flash-row 1.2s ease; }
 @keyframes flash-row {
   0%, 100% { background: inherit; }
@@ -2379,6 +2385,9 @@ tr[data-unit-n].prep-seg-row-highlight td {
 .prep-fam-link-item { padding: 2px 0; }
 .prep-fam-link--accepted { background: #f0fdf4; border-radius: 3px; padding: 2px 4px; }
 .prep-fam-link--rejected { background: #fff1f2; border-radius: 3px; padding: 2px 4px; }
+/* R3.2/R3.3 — a family link belonging to an N-M bead: same violet accent as the
+   single-pair .prep-align-row--bead, so the grouping reads consistently. */
+.prep-fam-link--bead { box-shadow: inset 2px 0 0 #7c3aed; padding-left: 4px; }
 .prep-fam-cell-text  { font-size: 0.81rem; color: #1e293b; line-height: 1.35; margin-bottom: 2px; }
 .prep-fam-cell-actions { display: flex; gap: 3px; flex-wrap: wrap; }
 .prep-fam-cell-foot  { margin-top: 4px; border-top: 1px dashed #e5e7eb; padding-top: 3px; }
@@ -6581,6 +6590,37 @@ tr[data-len].prep-seg-row-context .prep-seg-cell-len {
   margin-top: 2px;
 }
 
+/* -- R2.3 : grain grossier (paragraphe ⊃ phrase) -- */
+.prep-conv-para-sep {
+  display: flex;
+  align-items: center;
+  margin: 0.5rem 0 0.1rem;
+  padding-left: 0.5rem;
+}
+.prep-conv-para-label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #7a8a87;
+  text-transform: uppercase;
+}
+/* Phrases d'un même paragraphe : liseré + retrait pour rendre la hiérarchie visible. */
+.prep-conv-unit-row--grouped {
+  margin-left: 0.6rem;
+  border-left: 2px solid #d5e3e0;
+}
+.prep-conv-unit-row--grouped.selected { border-left-color: #0c4a46; }
+.prep-conv-unit-fine {
+  flex-shrink: 0;
+  font-size: 0.68rem;
+  font-family: monospace;
+  color: #94a3b8;
+  padding: 1px 5px;
+  border: 1px solid #e2e8e6;
+  border-radius: 8px;
+  margin-top: 2px;
+}
+
 /* -- Barre d'action en bas -- */
 .prep-conv-action-bar {
   display: none;
@@ -6675,8 +6715,48 @@ tr[data-len].prep-seg-row-context .prep-seg-cell-len {
 .prep-canvas-toolbar {
   display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; padding: 0.3rem 0;
 }
-.prep-canvas-doc-label { font-size: 0.8rem; color: #475569; display: inline-flex; align-items: center; gap: 0.4rem; }
-.prep-canvas-doc { max-width: min(360px, 60vw); padding: 0.25rem 0.4rem; }
+.prep-canvas-doc-picker { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.prep-canvas-doc-label { font-size: 0.8rem; color: #475569; font-weight: 500; }
+.prep-canvas-doc-trigger, .prep-canvas-reload {
+  height: 30px; box-sizing: border-box; font-size: 0.8rem; border-radius: 6px;
+  border: 1px solid #cbd5e1; background: #fff; color: #334155; cursor: pointer;
+}
+/* Custom document dropdown (replaces the native <select>, whose popup escaped the
+   viewport). The menu is absolutely positioned with an internal scroll, so it is
+   always bounded by max-height and never overflows the screen. */
+.prep-canvas-doc-select { position: relative; display: inline-block; }
+.prep-canvas-doc-trigger {
+  display: inline-flex; align-items: center; gap: 0.4rem; padding: 0 0.5rem;
+  max-width: min(320px, 52vw);
+}
+.prep-canvas-doc-trigger:hover { background: #f8fafc; }
+.prep-canvas-doc-trigger-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prep-canvas-doc-trigger-text--placeholder { color: #94a3b8; }
+.prep-canvas-doc-caret { color: #94a3b8; font-size: 0.7rem; flex-shrink: 0; }
+.prep-canvas-doc-menu {
+  position: absolute; top: calc(100% + 4px); left: 0; z-index: 50;
+  min-width: 100%; max-width: min(440px, 72vw);
+  max-height: min(50vh, 360px); overflow-y: auto;
+  background: #fff; border: 1px solid #cbd5e1; border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.14); padding: 0.25rem;
+}
+.prep-canvas-doc-menu[hidden] { display: none; }
+.prep-canvas-doc-opt {
+  display: flex; justify-content: space-between; align-items: center; gap: 0.6rem;
+  width: 100%; text-align: left; padding: 0.35rem 0.55rem; border: none;
+  background: transparent; border-radius: 4px; cursor: pointer; font-size: 0.8rem;
+  color: #334155;
+}
+.prep-canvas-doc-opt:hover, .prep-canvas-doc-opt:focus-visible { background: #f1f5f9; outline: none; }
+.prep-canvas-doc-opt.selected { background: #ede9fe; color: #5b21b6; font-weight: 600; }
+.prep-canvas-doc-opt--none { color: #94a3b8; font-style: italic; }
+.prep-canvas-doc-opt-lang { font-size: 0.7rem; color: #94a3b8; flex-shrink: 0; }
+.prep-canvas-reload {
+  display: inline-flex; align-items: center; gap: 0.3rem; padding: 0 0.7rem;
+  white-space: nowrap;
+}
+.prep-canvas-reload:hover:not(:disabled) { background: #f1f5f9; }
+.prep-canvas-reload:disabled { opacity: 0.5; cursor: progress; }
 .prep-canvas-modes { display: inline-flex; gap: 0.25rem; margin-left: auto; }
 .prep-canvas-modebtn {
   padding: 0.25rem 0.7rem; border: 1px solid #cbd5e1; border-radius: 14px;

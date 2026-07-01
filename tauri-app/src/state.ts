@@ -24,6 +24,8 @@ export interface AppState {
   /** Selected language codes. Empty array = no filter (all languages). */
   filterLangs: string[];
   filterRole: string;
+  /** R4.1 — translation-status filter ("" = all, else non_traduit/ajout). */
+  filterUnitStatus: string;
   /** null = all documents (no filter); number[] = restrict to these doc_ids. */
   filterDocIds: number[] | null;
   filterResourceType: string;
@@ -94,6 +96,7 @@ export const state: AppState = {
   window: 10,
   filterLangs: [],
   filterRole: "",
+  filterUnitStatus: "",
   filterDocIds: null,
   filterResourceType: "",
   filterFamilyId: null,

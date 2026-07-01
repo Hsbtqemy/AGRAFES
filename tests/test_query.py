@@ -165,3 +165,52 @@ def test_query_validate_user_regex_rejects_double_nested_group() -> None:
     with pytest.raises(ValueError, match="nested quantifiers"):
         _validate_user_regex("((a)*)*")
     _validate_user_regex("(a|b)*")  # legitimate → must not raise
+
+
+# ── R4.1: unit_status filter ──────────────────────────────────────────────────
+def _mk_indexed_status_doc(db_conn: sqlite3.Connection) -> int:
+    """Three FTS-indexed line units all containing 'mot'; caller sets statuses."""
+    from multicorpus_engine.indexer import build_index
+
+    cur = db_conn.execute(
+        "INSERT INTO documents (title, language, doc_role, created_at)"
+        " VALUES ('D', 'fr', 'standalone', datetime('now'))"
+    )
+    doc_id = cur.lastrowid
+    for i in range(1, 4):
+        db_conn.execute(
+            "INSERT INTO units (doc_id, unit_type, n, external_id, text_raw, text_norm)"
+            " VALUES (?, 'line', ?, ?, ?, ?)",
+            (doc_id, i, i, f"mot {i}", f"mot {i}"),
+        )
+    db_conn.commit()
+    build_index(db_conn)
+    return doc_id
+
+
+def test_query_filters_by_unit_status_fts(db_conn: sqlite3.Connection) -> None:
+    """R4.1 — the FTS path restricts hits to units of the given translation status."""
+    from multicorpus_engine.query import run_query_page
+
+    doc_id = _mk_indexed_status_doc(db_conn)
+    db_conn.execute("UPDATE units SET unit_status='non_traduit' WHERE doc_id=? AND n=1", (doc_id,))
+    db_conn.execute("UPDATE units SET unit_status='ajout' WHERE doc_id=? AND n=2", (doc_id,))
+    db_conn.commit()
+
+    assert len(run_query_page(db_conn, q="mot")["hits"]) == 3  # unfiltered
+    nt = run_query_page(db_conn, q="mot", unit_status="non_traduit")["hits"]
+    assert len(nt) == 1 and nt[0]["external_id"] == 1
+    aj = run_query_page(db_conn, q="mot", unit_status="ajout")["hits"]
+    assert len(aj) == 1 and aj[0]["external_id"] == 2
+
+
+def test_query_filters_by_unit_status_regex(db_conn: sqlite3.Connection) -> None:
+    """R4.1 — the regex (full-scan) path applies the same unit_status filter."""
+    from multicorpus_engine.query import run_query_page
+
+    doc_id = _mk_indexed_status_doc(db_conn)
+    db_conn.execute("UPDATE units SET unit_status='non_traduit' WHERE doc_id=? AND n=1", (doc_id,))
+    db_conn.commit()
+
+    res = run_query_page(db_conn, q="", regex_pattern="mot", unit_status="non_traduit")["hits"]
+    assert len(res) == 1 and res[0]["external_id"] == 1

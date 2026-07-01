@@ -23,6 +23,25 @@ def _role_exists(conn: sqlite3.Connection, role: str) -> bool:
     return conn.execute("SELECT 1 FROM unit_roles WHERE name=?", (role,)).fetchone() is not None
 
 
+# R4.1 — translation-status axis. Fixed enum (not a FK, unlike unit_role): validated
+# here so adding a value later is a service-only change (migration 023 has no CHECK).
+_VALID_UNIT_STATUS = frozenset({"non_traduit", "ajout"})
+
+
+def _norm_status(raw: Any) -> Optional[str]:
+    """Normalise a status input: empty/None -> None (clear); else validate the enum.
+
+    Raises BadRequestError on an unknown value (a bad enum is a client error, not a
+    missing resource — contrast unit_role which raises NotFoundError on unknown FK).
+    """
+    status = (raw or "").strip() or None
+    if status is not None and status not in _VALID_UNIT_STATUS:
+        raise BadRequestError(
+            f"invalid unit_status '{status}' (expected one of {sorted(_VALID_UNIT_STATUS)} or null)"
+        )
+    return status
+
+
 def list_units(
     conn: sqlite3.Connection, doc_id_raw: Optional[str], unit_type: Optional[str]
 ) -> dict[str, Any]:
@@ -40,23 +59,33 @@ def list_units(
     # text_raw + text_source are emitted so the UI can detect a destructive
     # rewrite (text_source != text_raw) and offer to reveal the import original
     # (ADR-043 P3). Raw column values, nullable — the display gate lives client-side.
+    # parent_n (R2.3, refonte deux-grains) is the coarse paragraph anchor persisted in
+    # meta_json by resegmentation (R2.1). Read straight out of the JSON with
+    # json_extract so the canvas can group sentences under their ¶ client-side; null
+    # when the doc was never fine-segmented (each line is then its own coarse block).
+    # unit_status (R4.1) is the translation-status axis (non_traduit/ajout/NULL),
+    # orthogonal to unit_role; emitted so the canvas/concordancer can filter and badge
+    # it without re-fetching. NULL when never marked (the default).
+    _COLS = (
+        "unit_id, n, text_norm, unit_type, unit_role, unit_status, text_raw, text_source,"
+        " json_extract(meta_json, '$.parent_n') AS parent_n"
+    )
     if unit_type:
         rows = conn.execute(
-            "SELECT unit_id, n, text_norm, unit_type, unit_role, text_raw, text_source"
-            " FROM units WHERE doc_id=? AND unit_type=? ORDER BY n",
+            f"SELECT {_COLS} FROM units WHERE doc_id=? AND unit_type=? ORDER BY n",
             (doc_id, unit_type),
         ).fetchall()
     else:
         rows = conn.execute(
-            "SELECT unit_id, n, text_norm, unit_type, unit_role, text_raw, text_source"
-            " FROM units WHERE doc_id=? ORDER BY n",
+            f"SELECT {_COLS} FROM units WHERE doc_id=? ORDER BY n",
             (doc_id,),
         ).fetchall()
 
     units = [
         {
             "unit_id": r[0], "n": r[1], "text_norm": r[2], "unit_type": r[3],
-            "unit_role": r[4], "text_raw": r[5], "text_source": r[6],
+            "unit_role": r[4], "unit_status": r[5], "text_raw": r[6], "text_source": r[7],
+            "parent_n": r[8],
         }
         for r in rows
     ]
@@ -146,6 +175,86 @@ def bulk_set_unit_role(conn: sqlite3.Connection, body: dict) -> dict[str, Any]:
     result = conn.execute(
         f"UPDATE units SET unit_role=? WHERE doc_id=? AND n IN ({placeholders})",
         [role, doc_id, *unit_ns],
+    )
+    conn.commit()
+    return {"updated": result.rowcount}
+
+
+_SET_STATUS_SCHEMA = (
+    Field("doc_id", int, coerce=True, error=BadRequestError),
+    Field("unit_n", int, coerce=True, error=BadRequestError),
+)
+
+
+def set_unit_status(conn: sqlite3.Connection, body: dict) -> dict[str, Any]:
+    """Set (or clear) the translation status on one unit (POST /units/set_status).
+
+    ``status`` is one of {'non_traduit','ajout'} or null/'' to clear. Mirror of
+    ``set_unit_role`` but validates a fixed enum (BadRequestError) instead of an FK.
+    Raises BadRequestError (missing/non-int ids, bad enum) or NotFoundError (unit).
+    """
+    ids = validate(body, _SET_STATUS_SCHEMA)
+    doc_id = ids["doc_id"]
+    unit_n = ids["unit_n"]
+    status = _norm_status(body.get("status"))
+
+    row = conn.execute(
+        "SELECT unit_id FROM units WHERE doc_id=? AND n=?", (doc_id, unit_n)
+    ).fetchone()
+    if not row:
+        raise NotFoundError(f"Unit n={unit_n} not found for doc_id={doc_id}")
+
+    conn.execute("UPDATE units SET unit_status=? WHERE doc_id=? AND n=?", (status, doc_id, unit_n))
+    conn.commit()
+    return {"doc_id": doc_id, "unit_n": unit_n, "unit_status": status}
+
+
+def bulk_set_unit_status(conn: sqlite3.Connection, body: dict) -> dict[str, Any]:
+    """Set (or clear) the translation status on many units (POST /units/bulk_set_status).
+
+    Two calling conventions, like ``bulk_set_unit_role``:
+      A) {unit_ids: [int], status: str|null}   — by primary key
+      B) {doc_id: int, unit_ns: [int], status: str|null}  — by (doc, n)
+    Raises BadRequestError. Empty id list -> {"updated": 0}.
+    """
+    status = _norm_status(body.get("status"))
+    unit_ids_raw = body.get("unit_ids")
+    if unit_ids_raw is not None:
+        # Format A — unit_ids
+        if not isinstance(unit_ids_raw, list):
+            raise BadRequestError("unit_ids must be an array")
+        try:
+            unit_ids = [int(i) for i in unit_ids_raw]
+        except (TypeError, ValueError):
+            raise BadRequestError("unit_ids values must be integers")
+        if not unit_ids:
+            return {"updated": 0}
+        placeholders = ",".join("?" * len(unit_ids))
+        result = conn.execute(
+            f"UPDATE units SET unit_status=? WHERE unit_id IN ({placeholders})",
+            [status, *unit_ids],
+        )
+        conn.commit()
+        return {"updated": result.rowcount}
+
+    # Format B — doc_id + unit_ns
+    doc_id = body.get("doc_id")
+    unit_ns_raw = body.get("unit_ns")
+    if doc_id is None or unit_ns_raw is None:
+        raise BadRequestError("unit_ids (or doc_id and unit_ns) are required")
+    if not isinstance(unit_ns_raw, list):
+        raise BadRequestError("unit_ns must be an array")
+    try:
+        doc_id = int(doc_id)
+        unit_ns = [int(n) for n in unit_ns_raw]
+    except (TypeError, ValueError):
+        raise BadRequestError("doc_id and unit_ns values must be integers")
+    if not unit_ns:
+        return {"updated": 0}
+    placeholders = ",".join("?" * len(unit_ns))
+    result = conn.execute(
+        f"UPDATE units SET unit_status=? WHERE doc_id=? AND n IN ({placeholders})",
+        [status, doc_id, *unit_ns],
     )
     conn.commit()
     return {"updated": result.rowcount}
