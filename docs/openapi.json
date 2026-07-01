@@ -2571,6 +2571,15 @@
           "resource_type": {
             "type": "string"
           },
+          "unit_status": {
+            "description": "R4.1 — restrict hits to units with this translation status; omit for all.",
+            "enum": [
+              "non_traduit",
+              "ajout"
+            ],
+            "nullable": true,
+            "type": "string"
+          },
           "window": {
             "default": 10,
             "type": "integer"
@@ -4028,8 +4037,8 @@
   "info": {
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
-    "version": "1.6.37",
-    "x-contract-version": "1.6.37"
+    "version": "1.6.38",
+    "x-contract-version": "1.6.38"
   },
   "openapi": "3.0.3",
   "paths": {

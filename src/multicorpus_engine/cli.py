@@ -344,6 +344,7 @@ def cmd_query(args: argparse.Namespace) -> None:
         "doc_id": getattr(args, "doc_id", None),
         "resource_type": getattr(args, "resource_type", None),
         "doc_role": getattr(args, "doc_role", None),
+        "unit_status": getattr(args, "unit_status", None),
         "include_aligned": include_aligned,
         "all_occurrences": all_occurrences,
     }
@@ -360,6 +361,7 @@ def cmd_query(args: argparse.Namespace) -> None:
             doc_id=getattr(args, "doc_id", None),
             resource_type=getattr(args, "resource_type", None),
             doc_role=getattr(args, "doc_role", None),
+            unit_status=getattr(args, "unit_status", None),
             include_aligned=include_aligned,
             all_occurrences=all_occurrences,
         )
@@ -1507,6 +1509,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_query.add_argument("--doc-id", dest="doc_id", type=int, default=None)
     p_query.add_argument("--resource-type", dest="resource_type", default=None)
     p_query.add_argument("--doc-role", dest="doc_role", default=None)
+    p_query.add_argument(
+        "--unit-status",
+        dest="unit_status",
+        default=None,
+        choices=["non_traduit", "ajout"],
+        help="Restrict hits to units with this translation status (R4.1)",
+    )
     p_query.add_argument(
         "--include-aligned",
         dest="include_aligned",
