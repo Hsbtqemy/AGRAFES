@@ -65,6 +65,6 @@ Une **seule** fonction DP pure `gale_church_beads(longueurs_A, longueurs_B) → 
 
 **Figé avec l'humain** : **B** (beads N-M persistés via `bead_id`) + **C** (aligneur hiérarchique à deux étages ; pré-vol → avertissement). Plus D1 caractères · D3 `external_id`=position · D6 `length_bounded` · D7 dégradation signalée · D8 WORKCOPY.
 
-**Seule limite posée** : l'**éditeur de beads manuel** (fusion/scission/ré-attribution au clic) est **différé R3.3+** — les données restent fidèles sans lui.
+**Seule limite posée** : l'**éditeur de beads manuel** (fusion/scission/ré-attribution au clic) est **différé R3.3+** — les données restent fidèles sans lui. Cadré dans sa propre note : [`DESIGN_R3_3_bead_editor.md`](DESIGN_R3_3_bead_editor.md) (dont le point dur : la fusion est bornée au même `run_id` par la clé de collision).
 
 **Reste ouvert (au fil de R3.2, non bloquant)** : introduit-on un **seuil de confiance** de la DP pour marquer certains liens « à revoir », ou tous naissent `status=NULL` (non revus) comme aujourd'hui ? — hérité de [`DESIGN_peritext_conventions.md`](DESIGN_peritext_conventions.md) §8.4.
