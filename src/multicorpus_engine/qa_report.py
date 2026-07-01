@@ -158,13 +158,17 @@ def _check_alignment_pairs(conn: sqlite3.Connection) -> list[dict]:
         orphan_pivot = piv_total - row[3]
         orphan_target = tgt_total - row[4]
 
-        # Collision count: pivot units linked to >1 target
+        # Collision count: pivot units linked to >1 *distinct bead*. Links sharing a
+        # bead_id (an intentional N-M sentence bead, R3.2) count as one — a 1-2 split
+        # is not a collision. bead key = COALESCE(run#bead, per-link) so null-bead
+        # (legacy/manual/plain-1-1) rows each count individually.
         try:
             collisions = conn.execute(
                 """SELECT COUNT(*) FROM (
                     SELECT pivot_unit_id FROM alignment_links
                     WHERE pivot_doc_id=? AND target_doc_id=?
-                    GROUP BY pivot_unit_id HAVING COUNT(*)>1)""",
+                    GROUP BY pivot_unit_id
+                    HAVING COUNT(DISTINCT COALESCE(run_id || '#' || bead_id, 'L' || link_id)) > 1)""",
                 (piv_id, tgt_id),
             ).fetchone()[0] or 0
         except Exception:

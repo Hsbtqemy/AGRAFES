@@ -50,15 +50,16 @@ def _insert_align_link(
     pivot_unit: int, target_unit: int,
     status: str | None = None,
     run_id: str = "run-test",
+    bead_id: int | None = None,
 ) -> None:
     global _link_ext_id_seq
     _link_ext_id_seq += 1
     conn.execute(
         """INSERT INTO alignment_links
            (pivot_doc_id, target_doc_id, pivot_unit_id, target_unit_id,
-            run_id, external_id, created_at, status)
-           VALUES (?,?,?,?,?,?,datetime('now'),?)""",
-        (pivot_doc, target_doc, pivot_unit, target_unit, run_id, _link_ext_id_seq, status),
+            run_id, external_id, created_at, status, bead_id)
+           VALUES (?,?,?,?,?,?,datetime('now'),?,?)""",
+        (pivot_doc, target_doc, pivot_unit, target_unit, run_id, _link_ext_id_seq, status, bead_id),
     )
     conn.commit()
 
@@ -145,6 +146,22 @@ def test_alignment_qa_collision(db_conn: sqlite3.Connection) -> None:
     pairs = _check_alignment_pairs(db_conn)
     assert pairs[0]["collisions"] == 1
     assert pairs[0]["severity"] == "warning"
+
+
+def test_alignment_qa_bead_is_not_a_collision(db_conn: sqlite3.Connection) -> None:
+    """A 1-2 sentence bead (pivot → 2 targets sharing a bead_id, R3.2) is intentional
+    and must NOT be counted as a collision — unlike two distinct-bead links."""
+    d1 = _populate_doc(db_conn, "Pivot", "fr")
+    d2 = _populate_doc(db_conn, "Target", "en")
+    p = _insert_unit(db_conn, d1, 1, 1)
+    t1 = _insert_unit(db_conn, d2, 1, 1)
+    t2 = _insert_unit(db_conn, d2, 2, 2)
+    _insert_align_link(db_conn, d1, d2, p, t1, run_id="r1", bead_id=5)
+    _insert_align_link(db_conn, d1, d2, p, t2, run_id="r1", bead_id=5)  # same bead → one
+
+    from multicorpus_engine.qa_report import _check_alignment_pairs
+    pairs = _check_alignment_pairs(db_conn)
+    assert pairs[0]["collisions"] == 0
 
 
 # ── Test 6: metadata readiness — missing title → blocking ─────────────────────
