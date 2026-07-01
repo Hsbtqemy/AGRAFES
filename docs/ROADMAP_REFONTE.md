@@ -3,6 +3,8 @@
 > Statut : **plan consolidé — à dérouler par tranches**. Date : 2026-06-30.
 > Consolide trois notes de design : [`DESIGN_prep_text_canvas.md`](DESIGN_prep_text_canvas.md) (refonte UI, **colonne vertébrale**), [`DESIGN_peritext_conventions.md`](DESIGN_peritext_conventions.md) (+ [grounding](DESIGN_peritext_conventions_grounding.md)) (segmentation 2-grain & alignement), [`DESIGN_metadata_templates_filtering.md`](DESIGN_metadata_templates_filtering.md) (métadonnées).
 > Complète, sans la remplacer, [`ROADMAP.md`](ROADMAP.md) (tracker moteur/gouvernance, historique livré). Ici = le **plan produit/UX à venir**.
+>
+> **Avancement (2026-07-01).** **R1 et R2 livrés** (commits R1.2 `c859cad`/`7d0e9bc` · R2.1 `ec208b9` · R2.2 `c06490a` · R2.3 `ae85a1f`). Prochain jalon = **R3** (alignement à la phrase). Queues différées, assumées : R2.2 *contrôles front* (ordre des indices figé en dur) et R2.3 *cas blob 2-grains* (attend la re-lecture `source_path`).
 
 ## 1. Principe directeur
 
@@ -16,7 +18,7 @@
 | Couche / vue | État | Capacité moteur requise | Dominante |
 |---|---|---|---|
 | **Rôles** | ✅ dans le canvas | — (CRUD conventions déjà là) | front |
-| **Segmentation 2-grain** | 🟡 A0 stade (minimal) | parent persist · établir grossier · stats/doc | mixte |
+| **Segmentation 2-grain** | ✅ persist + dérivé + ¶ (R2) | parent persist · établir grossier · stats/doc | mixte |
 | **Alignement** (vue séparée) | ✅ par-clé/position | garde-fous · aligneur longueurs (par-algo) | moteur |
 | **Curation** (surimpression) | ❌ couche | — (`lib/curation*` déjà extraits) | front |
 | **Annotation** (tokens) | ❌ couche | — (spaCy déjà câblé ; friction amont) | front |
@@ -32,9 +34,9 @@ Légende des tags : **[FRONT]** = TypeScript/Tauri, contrat inchangé · **[MOTE
 But : le canvas devient un vrai poste de travail (conscience d'état + Rôles soignés).
 
 - **R1.1** Chip de stade minimal (Brut vs Segmenté · N) — **[FRONT]** ✅ *fait* (dérive `unit_count`).
-- **R1.2** Stade complet : grossier/fin · parent ¶ · aligné — **[MOTEUR]** *(lecture seule)* : exposer des **stats par doc** (`has_external_id`, `has_parent`, `n_aligned`, `max_len`). Endpoint read-only → **contrat** (§4). Logique en `services/`.
-- **R1.3** Rendu des chips enrichis + bandeau d'état permanent — **[FRONT]** (étend `TextCanvasView._renderStateStrip`).
-- **R1.4** Polish couche Rôles dans le canvas — **[FRONT]**.
+- **R1.2** Stade complet : grossier/fin · parent ¶ · aligné — **[MOTEUR]** *(lecture seule)* : exposer des **stats par doc** (`has_external_id`, `has_parent`, `n_aligned`, `max_len`). Endpoint read-only → **contrat** (§4). Logique en `services/`. ✅ *fait* — `GET /documents/stats` (`documents_service.document_stats`, contrat 1.6.34).
+- **R1.3** Rendu des chips enrichis + bandeau d'état permanent — **[FRONT]** (étend `TextCanvasView._renderStateStrip`). ✅ *fait*.
+- **R1.4** Polish couche Rôles dans le canvas — **[FRONT]**. ✅ *fait* (couche Rôles opérationnelle dans le canvas).
 
 > Stat de R1.2 est **partagée avec R2** (visualisation hiérarchique) → la livrer une fois, l'exploiter deux fois.
 
@@ -42,9 +44,9 @@ But : le canvas devient un vrai poste de travail (conscience d'état + Rôles so
 
 But : matérialiser la hiérarchie **paragraphe ⊃ phrase** (représentation = pointeur parent `meta_json.parent_*`, sans migration).
 
-- **R2.1** Persister le parent à la segmentation fine — **[MOTEUR]** : `resegment_document` remplit `meta_json.parent_*` au lieu de `None` ([grounding §3](DESIGN_peritext_conventions_grounding.md), `segmenter.py:535`). **Pas de migration, pas de contrat** (écriture interne) ; undo déjà couvert.
-- **R2.2** Établir le grain grossier depuis **indices pluggables** (séparateurs présents `¤`, lignes vides, rôles structurels, re-lecture `source_path`) — **[MIXTE]** : dérivation moteur (réutiliser `/segment/structure_sections` avant de coder neuf) + contrôles front. Endpoint éventuel → contrat.
-- **R2.3** Visualisation hiérarchique (phrases groupées sous ¶) + cas blob 2-grains — **[FRONT]** (consomme le parent exposé en R1.2).
+- **R2.1** Persister le parent à la segmentation fine — **[MOTEUR]** : `resegment_document` remplit `meta_json.parent_*` au lieu de `None` ([grounding §3](DESIGN_peritext_conventions_grounding.md), `segmenter.py:535`). **Pas de migration, pas de contrat** (écriture interne) ; undo déjà couvert. ✅ *fait* — `segmenter.py:544`/`:328` écrivent `{"parent_n": …}` (clé *logique* : `parent_n` seul, **pas** `parent_unit_id`, l'unité source étant supprimée).
+- **R2.2** Établir le grain grossier depuis **indices pluggables** (séparateurs présents `¤`, lignes vides, rôles structurels, re-lecture `source_path`) — **[MIXTE]** : dérivation moteur (réutiliser `/segment/structure_sections` avant de coder neuf) + contrôles front. Endpoint éventuel → contrat. ✅ *fait (voie A)* — `coarse_grain.derive_coarse_blocks` (pur, hors sidecar.py). **Décision figée** : sections ≠ paragraphes → intertitres/structure *classés*, jamais fusionnés (le seul indice qui regroupe est `parent_n`) ; `¤` = intra-¶ (bloc composite, `fine_count`). **Différés** : les *contrôles front* (ordre des indices figé en dur) et la re-lecture `source_path` (hors DB).
+- **R2.3** Visualisation hiérarchique (phrases groupées sous ¶) + cas blob 2-grains — **[FRONT]** (consomme le parent exposé en R1.2). ✅ *fait* — lib pure `coarseGrain` (miroir moteur) + regroupement ¶ dans RolesPane. **Correction vs plan** : le parent n'est pas lu via `structure_sections` mais exposé comme champ `parent_n` sur `GET /units` (**contrat 1.6.35** — additif, read-only). **Différé** : le *cas blob 2-grains* (attend `source_path`).
 
 ### R3 — Alignement à la phrase *(livrable contrastif ; dépend R2)*
 
@@ -84,8 +86,8 @@ But : enrichir les notices et **retirer le legacy** une fois la parité atteinte
 
 | Phase | Front | Moteur | Contrat ? | Migration ? | WORKCOPY ? |
 |---|---|---|---|---|---|
-| R1 | R1.1·R1.3·R1.4 | R1.2 (read) | oui (read-only) | non | non |
-| R2 | R2.3 | R2.1·R2.2 | R2.2 éventuel | non | **oui** |
+| R1 ✅ | R1.1·R1.3·R1.4 | R1.2 (read) | oui (read-only, 1.6.34) | non | non |
+| R2 ✅ | R2.3 | R2.1·R2.2 | oui (R2.3 : `parent_n` /units, 1.6.35) | non | **oui** |
 | R3 | R3.3 | R3.1·R3.2 | oui (R3.2) | non | **oui** |
 | R4 | filtres/aperçus | R4.1·R4.2·R4.3 | oui (×3) | **022 (R4.1)** | oui |
 | R5 | R5.1·R5.2 | — | **non** | non | non |
@@ -109,8 +111,8 @@ But : enrichir les notices et **retirer le legacy** une fois la parité atteinte
 |---|---|---|
 | canvas T0 (coquille + Rôles) | prep_text_canvas | **R1** (socle, fait) |
 | segmentation A0 (stade) | prep_text_canvas §10 | **R1.1** (fait) |
-| segmentation A1 (parent) **=** péritexte « parent persist » | doublon | **R2.1** (un seul item) |
-| segmentation A2/A3 | prep_text_canvas §10 | **R2.2 / R2.3** |
+| segmentation A1 (parent) **=** péritexte « parent persist » | doublon | **R2.1** (un seul item, fait) |
+| segmentation A2/A3 | prep_text_canvas §10 | **R2.2 / R2.3** (faits ; blob 2-grains différé) |
 | péritexte T4 (garde-fous) / T6 (aligneur) | peritext | **R3.1 / R3.2** |
 | péritexte T1 (statut) / T2 (lift) / T3 (concordancier) | peritext | **R4.1 / R4.2 / R4.3** |
 | canvas T1 (curation) / T2 (annotation) | prep_text_canvas §7 | **R5.1 / R5.2** |
