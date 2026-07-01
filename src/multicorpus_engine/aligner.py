@@ -9,15 +9,24 @@ Charter section 9: align_by_external_id.
 
 from __future__ import annotations
 
+import datetime
 import logging
 import sqlite3
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
+from .coarse_grain import derive_coarse_blocks
+from .gale_church import gale_church_beads
+
 logger = logging.getLogger(__name__)
 
 # M-08: cap similarity alignment to prevent O(P*T) DoS on pathologically large docs
 _MAX_SIMILARITY_UNITS = 5_000
+
+# R3.2 — above this fraction of unpaired paragraphs the length aligner warns that the
+# two docs may not be translations. Advisory only (mirrors sidecar's
+# SEGMENT_RATIO_WARN_THRESHOLD = 0.15); never blocks (design D4).
+_PARA_UNPAIRED_WARN = 0.15
 
 
 def _get_text_start_n(conn: sqlite3.Connection, doc_id: int) -> int:
@@ -337,6 +346,207 @@ def align_by_external_id(
             run_logger=run_logger,
         )
         reports.append(report)
+    return reports
+
+
+# ── Length-bounded (Gale–Church) strategy — R3.2 (refonte deux-grains) ─────────
+
+def _load_length_blocks(
+    conn: sqlite3.Connection, doc_id: int
+) -> list[list[tuple[int, int, int]]]:
+    """Ordered coarse blocks of a doc for length alignment.
+
+    Each block is the list of its ``(unit_id, n, char_len)`` line members, paratext
+    excluded. Grouping reuses ``coarse_grain.derive_coarse_blocks`` (group by
+    ``parent_n`` when fine-segmented, else one line = one block), so a doc that was
+    never fine-segmented degrades to line-grain blocks of a single sentence.
+    Structure units contribute no line member and are dropped.
+    """
+    tsn = _get_text_start_n(conn, doc_id)
+    rows = conn.execute(
+        """
+        SELECT unit_id, n, unit_type, unit_role, meta_json, text_norm
+        FROM units WHERE doc_id = ? AND n >= ? ORDER BY n
+        """,
+        (doc_id, tsn),
+    ).fetchall()
+    by_n = {
+        r["n"]: (r["unit_id"], r["n"], len(r["text_norm"] or ""))
+        for r in rows if r["unit_type"] == "line"
+    }
+    units = [
+        {
+            "n": r["n"], "unit_type": r["unit_type"], "unit_role": r["unit_role"],
+            "meta_json": r["meta_json"], "text_raw": r["text_norm"],
+        }
+        for r in rows
+    ]
+    blocks: list[list[tuple[int, int, int]]] = []
+    for b in derive_coarse_blocks(units):
+        members = [by_n[n] for n in b["member_ns"] if n in by_n]
+        if members:
+            blocks.append(members)
+    return blocks
+
+
+def _doc_is_fine_segmented(conn: sqlite3.Connection, doc_id: int) -> bool:
+    return conn.execute(
+        "SELECT 1 FROM units WHERE doc_id = ? AND unit_type = 'line'"
+        " AND meta_json LIKE '%\"parent_n\"%' LIMIT 1",
+        (doc_id,),
+    ).fetchone() is not None
+
+
+def align_pair_by_length(
+    conn: sqlite3.Connection,
+    pivot_doc_id: int,
+    target_doc_id: int,
+    run_id: str,
+    debug: bool = False,
+    protected_pairs: set[tuple[int, int]] | None = None,
+    run_logger: Optional[logging.Logger] = None,
+) -> AlignmentReport:
+    """Align a pair by the two-tier length-bounded (Gale–Church) strategy (R3.2).
+
+    Paragraph tier aligns coarse blocks by total character length; the sentence tier
+    then aligns the sentences *within* each 1-1 paragraph bead. An N-M sentence bead
+    (1-2/2-1/2-2) is materialised as several 1-1 links sharing a ``bead_id``; ¶ and
+    sentence gaps (1-0/0-1) stay orphans (no link). ``external_id`` records the pivot
+    sentence's position ``n`` (design D3). Degrades to line grain when a doc is not
+    fine-segmented. Honours ``protected_pairs`` (accepted links preserved).
+    """
+    log = run_logger or logger
+    utcnow = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    pivot_title = _get_doc_title(conn, pivot_doc_id)
+    target_title = _get_doc_title(conn, target_doc_id)
+
+    pivot_blocks = _load_length_blocks(conn, pivot_doc_id)
+    target_blocks = _load_length_blocks(conn, target_doc_id)
+
+    report = AlignmentReport(
+        pivot_doc_id=pivot_doc_id,
+        target_doc_id=target_doc_id,
+        pivot_title=pivot_title,
+        target_title=target_title,
+        pivot_line_count=sum(len(b) for b in pivot_blocks),
+        target_line_count=sum(len(b) for b in target_blocks),
+    )
+
+    if not _doc_is_fine_segmented(conn, pivot_doc_id) or not _doc_is_fine_segmented(conn, target_doc_id):
+        report.warnings.append(
+            "Alignment at paragraph grain: a document is not fine-segmented "
+            "(resegment to sentences for finer links)."
+        )
+
+    protected_pivots = {p for (p, _t) in protected_pairs} if protected_pairs else set()
+    protected_targets = {t for (_p, t) in protected_pairs} if protected_pairs else set()
+
+    # ── Paragraph tier ──
+    para_beads = gale_church_beads(
+        [sum(m[2] for m in blk) for blk in pivot_blocks],
+        [sum(m[2] for m in blk) for blk in target_blocks],
+    )
+    para_gaps = sum(1 for pb in para_beads if not pb["a"] or not pb["b"])
+    denom = max(len(pivot_blocks), len(target_blocks), 1)
+    if para_gaps / denom > _PARA_UNPAIRED_WARN:
+        report.warnings.append(
+            f"{para_gaps}/{denom} paragraph(s) unpaired ({round(para_gaps / denom * 100)}%) — "
+            "verify the two documents are translations of each other."
+        )
+
+    # ── Sentence tier (within each paragraph bead) ──
+    links: list[tuple] = []
+    bead_counter = 0
+    protected_skipped = 0
+    sample_links: list[dict[str, Any]] = []
+    for pb in para_beads:
+        p_sents = [s for i in pb["a"] for s in pivot_blocks[i]]
+        t_sents = [s for j in pb["b"] for s in target_blocks[j]]
+        if not p_sents or not t_sents:
+            continue  # paragraph gap → whole side orphaned
+        for sb in gale_church_beads([m[2] for m in p_sents], [m[2] for m in t_sents]):
+            p_units = [p_sents[i] for i in sb["a"]]
+            t_units = [t_sents[j] for j in sb["b"]]
+            if not p_units or not t_units:
+                continue  # sentence gap → orphan
+            bead_counter += 1
+            multi = len(p_units) > 1 or len(t_units) > 1
+            bid = bead_counter if multi else None
+            npu, ntu = len(p_units), len(t_units)
+            # Materialise an N-M bead as 1-1 links: pair positionally, repeating the
+            # shorter side's last unit (1-2 → p↔t1,p↔t2 ; 2-1 → p1↔t,p2↔t ; 2-2 → p1↔t1,p2↔t2).
+            for k in range(max(npu, ntu)):
+                pu_id, pu_n, _pl = p_units[min(k, npu - 1)]
+                tu_id = t_units[min(k, ntu - 1)][0]
+                if pu_id in protected_pivots or tu_id in protected_targets:
+                    protected_skipped += 1
+                    continue
+                links.append(
+                    (run_id, pu_id, tu_id, pu_n, pivot_doc_id, target_doc_id, utcnow, bid)
+                )
+                if debug and len(sample_links) < 20:
+                    sample_links.append({
+                        "phase": "length_bounded", "pivot_unit_id": pu_id,
+                        "target_unit_id": tu_id, "external_id": pu_n, "bead_id": bid,
+                    })
+
+    try:
+        cur = conn.executemany(
+            """
+            INSERT OR IGNORE INTO alignment_links
+                (run_id, pivot_unit_id, target_unit_id, external_id,
+                 pivot_doc_id, target_doc_id, created_at, bead_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            links,
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+
+    report.links_created = max(int(cur.rowcount or 0), 0) if links else 0
+    if protected_skipped:
+        msg = f"{protected_skipped} lien(s) protégé(s) ignoré(s) pendant l'alignement"
+        report.warnings.append(msg)
+        log.info(msg)
+    if debug:
+        report.debug = {
+            "strategy": "length_bounded",
+            "paragraph_beads": len(para_beads),
+            "paragraph_gaps": para_gaps,
+            "sentence_beads": bead_counter,
+            "sample_links": sample_links,
+        }
+    log.info(
+        "Length alignment complete: %d links created (%.1f%% coverage)",
+        report.links_created, report.coverage_pct,
+    )
+    return report
+
+
+def align_by_length_bounded(
+    conn: sqlite3.Connection,
+    pivot_doc_id: int,
+    target_doc_ids: list[int],
+    run_id: str,
+    debug: bool = False,
+    protected_pairs_by_target: dict[int, set[tuple[int, int]]] | None = None,
+    run_logger: Optional[logging.Logger] = None,
+) -> list[AlignmentReport]:
+    """Align pivot against one or more targets with the length-bounded strategy."""
+    reports: list[AlignmentReport] = []
+    for target_doc_id in target_doc_ids:
+        reports.append(align_pair_by_length(
+            conn=conn,
+            pivot_doc_id=pivot_doc_id,
+            target_doc_id=target_doc_id,
+            run_id=run_id,
+            debug=debug,
+            protected_pairs=(protected_pairs_by_target or {}).get(target_doc_id),
+            run_logger=run_logger,
+        ))
     return reports
 
 
