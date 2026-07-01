@@ -16,6 +16,7 @@ import pytest
 from multicorpus_engine.services.documents_service import (
     bulk_update_documents,
     delete_documents,
+    document_stats,
     list_documents,
     update_document,
 )
@@ -53,6 +54,62 @@ def test_list_shapes_each_row(db_conn: sqlite3.Connection) -> None:
     assert doc["fts_stale"] is False
     for key in ("doc_id", "source_path", "source_hash", "text_start_n", "publisher"):
         assert key in doc
+
+
+# --- stats (R1.2 — canvas stage strip) ------------------------------------------
+def _mk_line(
+    conn: sqlite3.Connection,
+    doc_id: int,
+    n: int,
+    text: str = "x",
+    external_id: int | None = None,
+    meta_json: str | None = None,
+) -> None:
+    conn.execute(
+        "INSERT INTO units (doc_id, unit_type, n, external_id, text_raw, text_norm, meta_json)"
+        " VALUES (?, 'line', ?, ?, ?, ?, ?)",
+        (doc_id, n, external_id, text, text, meta_json),
+    )
+    conn.commit()
+
+
+def test_stats_requires_doc_id(db_conn: sqlite3.Connection) -> None:
+    for bad in (None, "", "   "):
+        with pytest.raises(BadRequestError):
+            document_stats(db_conn, bad)
+
+
+def test_stats_rejects_non_integer(db_conn: sqlite3.Connection) -> None:
+    with pytest.raises(BadRequestError):
+        document_stats(db_conn, "abc")
+
+
+def test_stats_unknown_doc(db_conn: sqlite3.Connection) -> None:
+    with pytest.raises(NotFoundError):
+        document_stats(db_conn, 999999)
+
+
+def test_stats_shapes_counts(db_conn: sqlite3.Connection) -> None:
+    d = _mk_doc(db_conn, "Doc")
+    _mk_line(db_conn, d, 1, "Bonjour le monde.", external_id=5)
+    _mk_line(db_conn, d, 2, "Court.", external_id=6, meta_json='{"parent_n": 1}')
+    _mk_line(db_conn, d, 3, "Sans id.")
+    db_conn.execute(
+        "INSERT INTO units (doc_id, unit_type, n, text_raw, text_norm)"
+        " VALUES (?, 'structure', 99, 'H', 'H')",
+        (d,),
+    )
+    db_conn.commit()
+
+    out = document_stats(db_conn, str(d))
+    assert out["doc_id"] == d
+    assert out["line_count"] == 3
+    assert out["structure_count"] == 1
+    assert out["external_id_count"] == 2
+    assert out["parent_count"] == 1          # only the meta_json parent_n row
+    assert out["aligned_count"] == 0
+    assert out["max_text_len"] == len("Bonjour le monde.")
+    assert out["avg_text_len"] > 0
 
 
 # --- update ---------------------------------------------------------------------

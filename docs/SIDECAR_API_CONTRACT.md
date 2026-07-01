@@ -281,6 +281,9 @@ Three **independent** version fields surface in sidecar responses — do not con
 - `GET /openapi.json`
 - `GET /documents`
 - `GET /documents/preview?doc_id=N&limit=M`
+- `GET /documents/stats?doc_id=N`
+  - per-doc stage stats for the canvas state strip (refonte R1.2): `line_count`, `structure_count`, `external_id_count`, `parent_count` (from `meta_json.parent_n`), `aligned_count`, `max_text_len`, `avg_text_len`.
+  - `doc_id` required. Read-only; no auth token required. 400 on bad/missing `doc_id`, 404 on unknown document.
 - `GET /units?doc_id=N[&unit_type=line]`
   - returns all units for a document: `unit_id`, `n`, `text_norm`, `unit_type`, `unit_role` (nullable).
   - `doc_id` required, `unit_type` optional filter. Read-only; no auth token required.

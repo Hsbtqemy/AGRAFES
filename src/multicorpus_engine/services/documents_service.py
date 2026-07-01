@@ -100,6 +100,58 @@ def list_documents(conn: sqlite3.Connection) -> dict[str, Any]:
     return {"documents": documents, "count": len(documents)}
 
 
+_STATS_LINE_SQL = """
+    SELECT COUNT(*) AS line_count,
+           COALESCE(SUM(CASE WHEN external_id IS NOT NULL THEN 1 ELSE 0 END), 0) AS external_id_count,
+           COALESCE(SUM(CASE WHEN meta_json LIKE '%"parent_n"%' THEN 1 ELSE 0 END), 0) AS parent_count,
+           COALESCE(MAX(LENGTH(text_raw)), 0) AS max_text_len,
+           COALESCE(CAST(ROUND(AVG(LENGTH(text_raw))) AS INTEGER), 0) AS avg_text_len
+    FROM units
+    WHERE doc_id = ? AND unit_type = 'line'
+"""
+
+
+def document_stats(conn: sqlite3.Connection, doc_id_str: Any) -> dict[str, Any]:
+    """Per-document stage stats for the canvas state strip (GET /documents/stats, R1.2).
+
+    Read-only. Lets the front derive a document's *stage* (brut / grossier / fin /
+    aligné) and the presence of the coarse parent grain without loading every unit:
+    line/structure counts, external_id coverage (numbered → key-alignable), parent
+    pointer count (``meta_json.parent_n`` — populated by R2), alignment-link count,
+    and text-length stats (grossier vs fin). Raises BadRequestError (missing/invalid
+    doc_id) or NotFoundError (unknown doc_id) — the codes the GET adapter maps.
+    """
+    if doc_id_str is None or str(doc_id_str).strip() == "":
+        raise BadRequestError("doc_id query parameter is required")
+    try:
+        doc_id = int(doc_id_str)
+    except (TypeError, ValueError):
+        raise BadRequestError("doc_id must be an integer")
+
+    if conn.execute("SELECT 1 FROM documents WHERE doc_id = ?", (doc_id,)).fetchone() is None:
+        raise NotFoundError(f"Document doc_id={doc_id} not found")
+
+    line = conn.execute(_STATS_LINE_SQL, (doc_id,)).fetchone()
+    structure_count = conn.execute(
+        "SELECT COUNT(*) FROM units WHERE doc_id = ? AND unit_type = 'structure'", (doc_id,)
+    ).fetchone()[0]
+    aligned_count = conn.execute(
+        "SELECT COUNT(*) FROM alignment_links WHERE pivot_doc_id = ? OR target_doc_id = ?",
+        (doc_id, doc_id),
+    ).fetchone()[0]
+
+    return {
+        "doc_id": doc_id,
+        "line_count": line[0],
+        "external_id_count": line[1],
+        "parent_count": line[2],
+        "max_text_len": line[3],
+        "avg_text_len": line[4],
+        "structure_count": structure_count,
+        "aligned_count": aligned_count,
+    }
+
+
 def _coerce_workflow_fields(fields: dict) -> None:
     """Validate + normalise workflow_status / validated_run_id in-place (shared by
     update and bulk_update). Raises ValidationError on any rule violation."""

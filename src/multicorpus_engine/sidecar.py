@@ -744,6 +744,9 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         elif path == "/documents/preview":
             qs = parse_qs(urlparse(self.path).query)
             self._handle_documents_preview(qs)
+        elif path == "/documents/stats":
+            qs = parse_qs(urlparse(self.path).query)
+            self._handle_document_stats(qs)
         elif path == "/tokens":
             qs = parse_qs(urlparse(self.path).query)
             self._handle_tokens_list(qs)
@@ -5423,6 +5426,22 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         self._ensure_document_workflow_columns()
         self._ensure_tokens_table()
         self._send_json(success_payload(list_documents(self._conn())))
+
+    def _handle_document_stats(self, qs: dict) -> None:
+        # Thin adapter over the documents service (R1.2 — per-doc stage stats).
+        # Read — no write-lock. doc_id validated by the service.
+        from multicorpus_engine.services.documents_service import document_stats
+        from multicorpus_engine.services.errors import BadRequestError, NotFoundError
+        doc_id_str = qs.get("doc_id", [None])[0]
+        try:
+            data = document_stats(self._conn(), doc_id_str)
+        except BadRequestError as exc:
+            self._send_error(exc.message, code=ERR_BAD_REQUEST, http_status=exc.http_status)
+            return
+        except NotFoundError as exc:
+            self._send_error(exc.message, code=ERR_NOT_FOUND, http_status=exc.http_status)
+            return
+        self._send_json(success_payload(data))
 
     def _ensure_document_workflow_columns(self) -> None:
         """Backfill optional document columns when running against legacy DB schemas."""

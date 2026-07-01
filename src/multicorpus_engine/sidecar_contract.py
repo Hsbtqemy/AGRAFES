@@ -14,7 +14,7 @@ from typing import Any
 from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
-CONTRACT_VERSION = "1.6.33"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.34"  # semantic versioning for the sidecar API contract
 # SID-08 / OPS-03: the API version IS the contract version — derived, never a
 # second hand-maintained literal, so the two can no longer drift. /health reports
 # the *engine* version under `version` (it predates the sidecar); every other
@@ -110,6 +110,9 @@ API_VERSION = CONTRACT_VERSION
 #         filesystem-only, lock-free); POST /models/download (async job → {job}, token required;
 #         allowlisted model, wheel from Explosion GitHub releases over https); POST /models/remove
 #         (token required). Engine logic in services/models_service (Phase 2 of the design note).
+# 1.6.34: GET /documents/stats — per-doc stage stats (line/structure/external_id/parent/aligned
+#         counts + max/avg text length) for the canvas state strip (refonte R1.2). Read-only,
+#         logic in services/documents_service.document_stats.
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
@@ -1115,6 +1118,67 @@ def openapi_spec() -> dict[str, Any]:
                             "content": {
                                 "application/json": {
                                     "schema": {"$ref": "#/components/schemas/DocumentPreviewResponse"},
+                                }
+                            },
+                        },
+                        "400": {
+                            "description": "Bad request",
+                            "content": {
+                                "application/json": {
+                                    "schema": {"$ref": "#/components/schemas/ErrorResponse"},
+                                }
+                            },
+                        },
+                        "404": {
+                            "description": "Document not found",
+                            "content": {
+                                "application/json": {
+                                    "schema": {"$ref": "#/components/schemas/ErrorResponse"},
+                                }
+                            },
+                        },
+                        "500": {
+                            "description": "Internal error",
+                            "content": {
+                                "application/json": {
+                                    "schema": {"$ref": "#/components/schemas/ErrorResponse"},
+                                }
+                            },
+                        },
+                    },
+                }
+            },
+            "/documents/stats": {
+                "get": {
+                    "summary": "Per-document stage stats for the canvas state strip",
+                    "parameters": [
+                        {
+                            "name": "doc_id",
+                            "in": "query",
+                            "required": True,
+                            "schema": {"type": "integer"},
+                            "description": "Document identifier",
+                        },
+                    ],
+                    "responses": {
+                        "200": {
+                            "description": "Document stage stats",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "ok": {"type": "boolean"},
+                                            "doc_id": {"type": "integer"},
+                                            "line_count": {"type": "integer"},
+                                            "structure_count": {"type": "integer"},
+                                            "external_id_count": {"type": "integer"},
+                                            "parent_count": {"type": "integer"},
+                                            "aligned_count": {"type": "integer"},
+                                            "max_text_len": {"type": "integer"},
+                                            "avg_text_len": {"type": "integer"},
+                                        },
+                                    },
                                 }
                             },
                         },

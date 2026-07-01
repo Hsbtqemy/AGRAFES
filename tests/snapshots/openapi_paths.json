@@ -9,6 +9,7 @@
   "GET /doc_relations/all",
   "GET /documents",
   "GET /documents/preview",
+  "GET /documents/stats",
   "GET /families",
   "GET /families/{family_root_id}/curation_status",
   "GET /health",
