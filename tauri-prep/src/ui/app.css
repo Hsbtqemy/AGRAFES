@@ -2247,6 +2247,8 @@ tr[data-unit-n].prep-seg-row-highlight td {
    border-left) marks it as an intentional 1-2/2-1 group, not a collision. */
 .prep-align-row--bead { box-shadow: inset 2px 0 0 #7c3aed; }
 .prep-align-bead-chip { font-size: 0.7rem; opacity: 0.7; vertical-align: baseline; }
+/* R3.3 — advisory aligner warnings surfaced in the run summary (D4/D7). */
+.prep-align-summary-warn { color: #b45309; font-style: italic; font-size: 0.82rem; }
 .prep-align-row--highlight { animation: flash-row 1.2s ease; }
 @keyframes flash-row {
   0%, 100% { background: inherit; }
@@ -2383,6 +2385,9 @@ tr[data-unit-n].prep-seg-row-highlight td {
 .prep-fam-link-item { padding: 2px 0; }
 .prep-fam-link--accepted { background: #f0fdf4; border-radius: 3px; padding: 2px 4px; }
 .prep-fam-link--rejected { background: #fff1f2; border-radius: 3px; padding: 2px 4px; }
+/* R3.2/R3.3 — a family link belonging to an N-M bead: same violet accent as the
+   single-pair .prep-align-row--bead, so the grouping reads consistently. */
+.prep-fam-link--bead { box-shadow: inset 2px 0 0 #7c3aed; padding-left: 4px; }
 .prep-fam-cell-text  { font-size: 0.81rem; color: #1e293b; line-height: 1.35; margin-bottom: 2px; }
 .prep-fam-cell-actions { display: flex; gap: 3px; flex-wrap: wrap; }
 .prep-fam-cell-foot  { margin-top: 4px; border-top: 1px dashed #e5e7eb; padding-top: 3px; }

@@ -54,7 +54,7 @@ But : des liens phrase↔phrase fiables, par-clé **ou** par-algorithme.
 
 - **R3.1** Garde-fous anti-dérive — **[MOTEUR]**. ✅ *fait* — post-check `_check_anchor_consistency` (`qa_report.py`, gate `anchor_drift`). Le *pré-vol* a fondu en **avertissement post-alignement** porté par l'étage ¶ de R3.2 (décision C — l'aligneur hiérarchique absorbe l'écart de cardinalité).
 - **R3.2** Aligneur par longueurs borné par ancre + dispatch — **[MIXTE]**. ✅ *fait* — aligneur **hiérarchique 2 étages** `align_by_length_bounded` (DP pure `gale_church.py`) ; beads N-M persistés (**migration 022 `bead_id`**) ; dispatch `length_bounded` (`_run_alignment_strategy` + CLI, **contrat 1.6.36**) ; exclusion collision same-bead ; front (option `<select>` + marqueur de bead). **Dépend de R2.1** (ancre `parent_n`).
-- **R3.3** UX choix de méthode par texte/lot + affichage de la provenance d'un lien — **[FRONT]** (coexistence auto/manuel déjà câblée : `protected_pairs`). 🟡 *partiel* : l'option de stratégie et la provenance (`explain`) sont là ; reste **méthode par lot** + **éditeur de beads manuel** (différé).
+- **R3.3** UX choix de méthode par texte/lot + affichage de la provenance d'un lien — **[FRONT]** (coexistence auto/manuel déjà câblée : `protected_pairs`). ✅ *fait* — sélecteur de stratégie **partagé paire ⇄ famille** (donc « méthode par lot » = le run famille lit le même `#align-strategy-sel`) ; provenance (`explain`) ; **parité du marqueur de bead** dans la vue famille multi-colonnes (`prep-fam-link--bead`) ; **avertissements advisory de l'aligneur** (D4 « X % de ¶ non appariés », D7 « grain ¶ ») désormais **remontés dans le résumé de run paire** (ils l'étaient déjà côté famille). Pur front, zéro contrat/migration. **Seul différé : l'éditeur de beads manuel** (fusion/scission au clic — [`DESIGN_R3_sentence_alignment.md`](DESIGN_R3_sentence_alignment.md) D2 : hors périmètre R3.3, les données restent fidèles sans lui).
 
 ### R4 — Conventions / péritexte propres
 
@@ -88,7 +88,7 @@ But : enrichir les notices et **retirer le legacy** une fois la parité atteinte
 |---|---|---|---|---|---|
 | R1 ✅ | R1.1·R1.3·R1.4 | R1.2 (read) | oui (read-only, 1.6.34) | non | non |
 | R2 ✅ | R2.3 | R2.1·R2.2 | oui (R2.3 : `parent_n` /units, 1.6.35) | non | **oui** |
-| R3 🟡 | R3.3 (partiel) | R3.1·R3.2 ✅ | oui (1.6.36) | **022 (bead_id)** | **oui** |
+| R3 ✅ | éditeur de beads (différé) | R3.1·R3.2·R3.3 ✅ | oui (1.6.36) | **022 (bead_id)** | **oui** |
 | R4 | filtres/aperçus | R4.1·R4.2·R4.3 | oui (×3) | **022 (R4.1)** | oui |
 | R5 | R5.1·R5.2 | — | **non** | non | non |
 | R6 | R6.4 | R6.1·R6.2·R6.3 | oui | **R6.1·R6.2** | non |

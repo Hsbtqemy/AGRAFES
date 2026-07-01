@@ -68,7 +68,7 @@ interface RunSummary {
   deleted?: number;
   preserved?: number;
   effective?: number;
-  perTarget: Array<{ doc_id: number; created: number; skipped: number }>;
+  perTarget: Array<{ doc_id: number; created: number; skipped: number; warnings?: string[] }>;
 }
 
 // ─── AlignPanel ───────────────────────────────────────────────────────────────
@@ -595,8 +595,15 @@ export class AlignPanel {
             && this._retargetActive.mode === "retarget";
           const statusCls = lk.status === "accepted" ? "prep-fam-link--accepted"
             : lk.status === "rejected" ? "prep-fam-link--rejected" : "";
-          return `<div class="prep-fam-link-item ${statusCls}">
-            <div class="prep-fam-cell-text">${_esc(_trunc(lk.target_text ?? "", 100))}</div>
+          // R3.2/R3.3 — parity with the single-pair bitext: a link of an N-M bead
+          // (1-2/2-1) carries a bead_id → mark it so a translation split/merge reads
+          // as an intentional group in the family view too, not a stray extra cell.
+          const isBead = lk.bead_id != null;
+          const beadCls = isBead ? " prep-fam-link--bead" : "";
+          const beadChip = isBead
+            ? `<span class="prep-align-bead-chip" title="Lien d'un bead (regroupement 1-2/2-1)">&#128279;</span> ` : "";
+          return `<div class="prep-fam-link-item ${statusCls}${beadCls}">
+            <div class="prep-fam-cell-text">${beadChip}${_esc(_trunc(lk.target_text ?? "", 100))}</div>
             <div class="prep-fam-cell-actions">
               <button class="prep-align-act-btn prep-align-act-accept${lk.status === "accepted" ? " active" : ""}" data-link-id="${lk.link_id}" title="Accepter">&#10003;</button>
               <button class="prep-align-act-btn prep-align-act-reject${lk.status === "rejected" ? " active" : ""}" data-link-id="${lk.link_id}" title="Rejeter">&#10007;</button>
@@ -905,7 +912,7 @@ export class AlignPanel {
           if (done.status === "done") {
             const res = done.result as {
               run_id?: string;
-              reports?: Array<{ target_doc_id: number; links_created: number; links_skipped?: number }>;
+              reports?: Array<{ target_doc_id: number; links_created: number; links_skipped?: number; warnings?: string[] }>;
               deleted_before?: number;
               preserved_before?: number;
               total_effective_links?: number;
@@ -917,7 +924,7 @@ export class AlignPanel {
               deleted: opts.recalculate ? Number(res?.deleted_before ?? 0) : undefined,
               preserved: opts.recalculate ? Number(res?.preserved_before ?? 0) : undefined,
               effective: opts.recalculate ? Number(res?.total_effective_links ?? 0) : undefined,
-              perTarget: reports.map(r => ({ doc_id: r.target_doc_id, created: r.links_created, skipped: r.links_skipped ?? 0 })),
+              perTarget: reports.map(r => ({ doc_id: r.target_doc_id, created: r.links_created, skipped: r.links_skipped ?? 0, warnings: r.warnings ?? [] })),
             };
             this._setRunningState(el, false);
             this._showManualRunSummary(el, summary, opts.recalculate);
@@ -972,7 +979,13 @@ export class AlignPanel {
     const perTarget = summary.querySelector<HTMLElement>("#align-summary-per-target");
     if (perTarget) {
       setHtml(perTarget, raw(s.perTarget.map(t =>
-        `<div class="prep-align-summary-row">→ Doc #${t.doc_id} : <strong>${t.created}</strong> créés, ${t.skipped} ignorés</div>`
+        `<div class="prep-align-summary-row">→ Doc #${t.doc_id} : <strong>${t.created}</strong> créés, ${t.skipped} ignorés` +
+        // R3.3 — surface the aligner's advisory warnings (D4 « X % de ¶ non appariés »,
+        // D7 « alignement au grain ¶ ») in the pair path too; the family summary already
+        // shows them, the single-pair path silently dropped them.
+        (t.warnings && t.warnings.length > 0
+          ? `<br><em class="prep-align-summary-warn">${t.warnings.map(_esc).join(" · ")}</em>` : "") +
+        `</div>`
       ).join("")));
     }
   }
