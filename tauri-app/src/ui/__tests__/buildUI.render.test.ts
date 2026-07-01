@@ -50,6 +50,7 @@ describe("buildUI render-smoke", () => {
     expect(drawer).not.toBeNull();
     expect(drawer!.classList.contains("hidden")).toBe(true);
     expect(c.querySelector("#filter-role-sel")).not.toBeNull();
+    expect(c.querySelector("#filter-unitstatus-sel")).not.toBeNull();
     expect(c.querySelector("#filter-family-sel")).not.toBeNull();
     expect(c.querySelector("#filter-author")).not.toBeNull();
     expect(c.querySelector("#filter-source-ext")).not.toBeNull();

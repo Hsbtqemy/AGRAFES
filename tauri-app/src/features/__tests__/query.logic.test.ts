@@ -34,6 +34,7 @@ function resetState(): void {
   state.filterLangs = [];
   state.filterRole = "";
   state.filterResourceType = "";
+  state.filterUnitStatus = "";
   state.filterFamilyId = null;
   state.filterFamilyPivotOnly = false;
   state.filterDocIds = null;
@@ -128,6 +129,7 @@ describe("hasActiveFilters", () => {
 
   it.each([
     ["filterRole", () => { state.filterRole = "source"; }],
+    ["filterUnitStatus", () => { state.filterUnitStatus = "non_traduit"; }],
     ["filterLangs", () => { state.filterLangs = ["fr"]; }],
     ["filterDocIds (même vide)", () => { state.filterDocIds = []; }],
     ["filterAuthor", () => { state.filterAuthor = "Hugo"; }],

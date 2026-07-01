@@ -105,6 +105,8 @@ export interface QueryOptions {
   dbPaths?: string[];
   doc_role?: string;
   resource_type?: string;
+  /** R4.1 — restrict hits to units of this translation status (non_traduit/ajout). */
+  unit_status?: string;
   includeAligned?: boolean;
   alignedLimit?: number;
   include_aligned?: boolean;
@@ -351,6 +353,7 @@ export async function query(
   }
   if (opts.doc_role) payload.doc_role = opts.doc_role;
   if (opts.resource_type) payload.resource_type = opts.resource_type;
+  if (opts.unit_status) payload.unit_status = opts.unit_status;
   if (includeAligned) payload.include_aligned = true;
   if (includeAligned && opts.alignedLimit !== undefined) {
     payload.aligned_limit = opts.alignedLimit;

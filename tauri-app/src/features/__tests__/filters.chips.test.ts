@@ -24,6 +24,7 @@ function resetFilters(): void {
   state.filterLangs = [];
   state.filterRole = "";
   state.filterResourceType = "";
+  state.filterUnitStatus = "";
   state.filterFamilyId = null;
   state.filterFamilyPivotOnly = false;
   state.filterDocIds = null;
@@ -56,6 +57,22 @@ describe("renderChips", () => {
     expect(chips()).toHaveLength(1);
     expect(chips()[0].textContent).toContain("Rôle: source");
     expect(bar().style.display).toBe("");
+  });
+
+  it("filtre statut (R4.1) → chip 'Statut: Non traduit' (libellé humain)", () => {
+    state.filterUnitStatus = "non_traduit";
+    renderChips();
+    expect(chips()).toHaveLength(1);
+    expect(chips()[0].textContent).toContain("Statut: Non traduit");
+    expect(bar().style.display).toBe("");
+  });
+
+  it("chip statut × → vide state.filterUnitStatus et re-rend", () => {
+    state.filterUnitStatus = "ajout";
+    renderChips();
+    bar().querySelector<HTMLButtonElement>(".app-chip-remove")!.click();
+    expect(state.filterUnitStatus).toBe("");
+    expect(chips()).toHaveLength(0);
   });
 
   it("plusieurs filtres → une chip chacun (langue, rôle, type)", () => {

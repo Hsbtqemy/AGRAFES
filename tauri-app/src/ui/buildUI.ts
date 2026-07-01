@@ -308,6 +308,13 @@ export function buildUI(container: HTMLElement): () => void {
   restypeSel.innerHTML = `<option value="">Tous</option>`;
   fg2b.appendChild(restypeSel);
 
+  // R4.1 — translation-status filter (fixed enum, not derived from docs).
+  const fg2c = elt("div", { class: "filter-group" });
+  fg2c.appendChild(elt("label", {}, "Statut trad."));
+  const statusSel = elt("select", { class: "filter-select", id: "filter-unitstatus-sel" }) as HTMLSelectElement;
+  statusSel.innerHTML = `<option value="">Tous</option><option value="non_traduit">Non traduit</option><option value="ajout">Ajout</option>`;
+  fg2c.appendChild(statusSel);
+
   const docSelectorMount = elt("div", { id: "doc-selector-mount", class: "doc-sel-mount" });
 
   const fgFam = elt("div", { class: "filter-group filter-group--family" });
@@ -392,6 +399,7 @@ export function buildUI(container: HTMLElement): () => void {
   filterDrawer.appendChild(fg1);
   filterDrawer.appendChild(fg2);
   filterDrawer.appendChild(fg2b);
+  filterDrawer.appendChild(fg2c);
   filterDrawer.appendChild(fgFam);
   filterDrawer.appendChild(fgAuthor);
   filterDrawer.appendChild(fgTitle);
@@ -723,6 +731,7 @@ export function buildUI(container: HTMLElement): () => void {
   // lang checkboxes are wired in populateLangCheckboxes (called after docs load)
   roleSel.addEventListener("change", () => { state.filterRole = roleSel.value; renderChips(); });
   restypeSel.addEventListener("change", () => { state.filterResourceType = restypeSel.value; renderChips(); });
+  statusSel.addEventListener("change", () => { state.filterUnitStatus = statusSel.value; renderChips(); });
 
   const applyTextFilter = (key: "filterAuthor" | "filterTitleSearch" | "filterDateFrom" | "filterDateTo", val: string) => {
     state[key] = val;
@@ -788,6 +797,7 @@ export function buildUI(container: HTMLElement): () => void {
     state.filterLangs = [];
     state.filterRole = "";
     state.filterResourceType = "";
+    state.filterUnitStatus = "";
     state.filterFamilyId = null;
     state.filterFamilyPivotOnly = false;
     state.filterAuthor = "";
@@ -802,6 +812,7 @@ export function buildUI(container: HTMLElement): () => void {
     if (langBtnEl) { langBtnEl.textContent = "Langue ▾"; langBtnEl.classList.remove("app-active"); }
     roleSel.value = "";
     restypeSel.value = "";
+    statusSel.value = "";
     familySel.value = "";
     pivotOnlyCb.checked = false;
     authorInput.value = "";
@@ -891,6 +902,7 @@ export function buildUI(container: HTMLElement): () => void {
     state.filterLangs = [];
     state.filterRole = "";
     state.filterResourceType = "";
+    state.filterUnitStatus = "";
     state.filterFamilyId = null;
     state.filterFamilyPivotOnly = false;
     state.filterAuthor = "";
@@ -904,6 +916,7 @@ export function buildUI(container: HTMLElement): () => void {
     if (langBtnReset) { langBtnReset.textContent = "Langue ▾"; langBtnReset.classList.remove("app-active"); }
     roleSel.value = "";
     restypeSel.value = "";
+    statusSel.value = "";
     familySel.value = "";
     pivotOnlyCb.checked = false;
     authorInput.value = "";

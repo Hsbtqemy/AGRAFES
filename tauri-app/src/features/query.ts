@@ -24,7 +24,7 @@ import { state, ALIGNED_LIMIT_DEFAULT, PAGE_LIMIT_DEFAULT, PAGE_LIMIT_ALIGNED } 
 import { elt, escapeHtml } from "../ui/dom";
 import { renderHit, VIRT_DOM_CAP } from "../ui/results";
 import { buildFtsQuery, showBuilderWarn, validateCqlSyntax } from "./search";
-import { renderChips } from "./filters";
+import { renderChips, unitStatusLabel } from "./filters";
 import { syncDocSelectorUI, saveDocSelectorState } from "./docSelector";
 import { toggleStatsPanel } from "./stats";
 import type { QueryHit, FacetDocEntry } from "../lib/sidecarClient";
@@ -122,7 +122,7 @@ function _openFederationFilterEditor(): void {
 export function hasActiveFilters(): boolean {
   return !!(
     state.filterLangs.length > 0 || state.filterRole || state.filterDocIds !== null ||
-    state.filterResourceType || state.filterFamilyId !== null ||
+    state.filterResourceType || state.filterUnitStatus || state.filterFamilyId !== null ||
     state.filterAuthor || state.filterTitleSearch ||
     state.filterDateFrom || state.filterDateTo || state.filterSourceExt ||
     _isFederationActive()
@@ -148,6 +148,7 @@ export function activeFiltersSummary(): string {
   if (state.filterLangs.length > 0) parts.push(`Langue : ${state.filterLangs.join(", ")}`);
   if (state.filterRole) parts.push(`Rôle : ${state.filterRole}`);
   if (state.filterResourceType) parts.push(`Type : ${state.filterResourceType}`);
+  if (state.filterUnitStatus) parts.push(`Statut : ${unitStatusLabel(state.filterUnitStatus)}`);
   if (state.filterFamilyId !== null) {
     const fam = state.families.find(f => f.family_id === state.filterFamilyId);
     const label = fam?.parent?.title ?? `Famille #${state.filterFamilyId}`;
@@ -695,6 +696,7 @@ export async function fetchQueryPage(append: boolean): Promise<void> {
           language: state.filterLangs.length > 0 ? state.filterLangs : undefined,
           doc_role: state.filterRole || undefined,
           resource_type: state.filterResourceType || undefined,
+          unit_status: state.filterUnitStatus || undefined,
           author: state.filterAuthor || undefined,
           title_search: state.filterTitleSearch || undefined,
           doc_date_from: state.filterDateFrom || undefined,
