@@ -623,7 +623,7 @@ export interface SegmentResponse {
 export interface AlignOptions {
   pivot_doc_id: number;
   target_doc_ids: number[];
-  strategy?: "external_id" | "position" | "similarity" | "external_id_then_position";
+  strategy?: "external_id" | "position" | "similarity" | "external_id_then_position" | "length_bounded";
   debug_align?: boolean;
   /** If true, clear previous links for this pivot↔target scope before re-running alignment. */
   replace_existing?: boolean;
@@ -1602,7 +1602,7 @@ export async function segmentFamily(
 // ─── Sprint 3 — Alignement famille ───────────────────────────────────────────
 
 export interface FamilyAlignOptions {
-  strategy?: "external_id" | "position" | "similarity" | "external_id_then_position";
+  strategy?: "external_id" | "position" | "similarity" | "external_id_then_position" | "length_bounded";
   sim_threshold?: number;
   /** Delete previous links before aligning */
   replace_existing?: boolean;

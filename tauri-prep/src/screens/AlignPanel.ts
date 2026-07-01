@@ -48,7 +48,7 @@ import { alignPanelTemplate } from "../lib/alignPanelTemplate.ts";
 
 // ─── Types locaux ─────────────────────────────────────────────────────────────
 
-type AlignStrategy = "external_id" | "external_id_then_position" | "position" | "similarity";
+type AlignStrategy = "external_id" | "external_id_then_position" | "position" | "similarity" | "length_bounded";
 
 export interface AlignPanelCallbacks {
   log: (msg: string, isError?: boolean) => void;
