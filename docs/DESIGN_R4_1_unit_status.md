@@ -1,6 +1,6 @@
 # Note de design — R4.1 : axe `unit_status` (`non_traduit` / `ajout`) au niveau unité
 
-> Statut : **intention de design — décisions à figer avant ticket**. Date : 2026-07-01.
+> Statut : **✅ implémenté** (2026-07-01) — migration 023 + `set_status`/`bulk` + filtre `query`/CLI + filtre concordancier. Commits `9d35f74` (socle moteur) · `e2df6ef` (query) · `19c9f50` (concordancier). Décisions ci-dessous **figées**. Reste hors R4.1 : R4.2 (lift des marqueurs, qui *peuple* l'axe) · R4.3 (affichage concordancier).
 > Phase R4.1 de [`ROADMAP_REFONTE.md`](ROADMAP_REFONTE.md) §R4 · implémente le **T1** de [`DESIGN_peritext_conventions.md`](DESIGN_peritext_conventions.md) §8/§9 (« axe statut au niveau unité + filtre »).
 > Suite thématique de R3 : R3 **produit** des orphelins (beads 1-0/0-1) ; R4.1 leur **donne un sens** (statut). S'appuie sur le modèle existant, aucune dépendance neuve.
 
