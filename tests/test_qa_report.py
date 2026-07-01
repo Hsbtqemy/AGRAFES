@@ -251,3 +251,92 @@ def test_write_qa_report_html(db_conn: sqlite3.Connection, tmp_path: Path) -> No
     content = out.read_text("utf-8")
     assert "<!DOCTYPE html>" in content
     assert "<table" in content
+
+
+# ── R3.1: anchor consistency (structural role drift on links) ─────────────────
+
+def _insert_role(conn: sqlite3.Connection, name: str, category: str = "structure") -> None:
+    conn.execute(
+        "INSERT OR IGNORE INTO unit_roles (name, label, category) VALUES (?,?,?)",
+        (name, name.title(), category),
+    )
+    conn.commit()
+
+
+def _insert_unit_role(
+    conn: sqlite3.Connection, doc_id: int, n: int, ext_id: int, role: str, text: str = "Titre.",
+) -> int:
+    conn.execute(
+        "INSERT INTO units (doc_id, n, unit_type, external_id, text_raw, text_norm, unit_role)"
+        " VALUES (?,?,?,?,?,?,?)",
+        (doc_id, n, "line", ext_id, text, text, role),
+    )
+    conn.commit()
+    return conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+
+def test_anchor_consistency_flags_structural_role_mismatch(db_conn: sqlite3.Connection) -> None:
+    """A structural heading linked to a body line (no role) = anchor drift."""
+    from multicorpus_engine.qa_report import _check_anchor_consistency
+
+    _insert_role(db_conn, "intertitre", "structure")
+    d1 = _populate_doc(db_conn, "Pivot", "fr")
+    d2 = _populate_doc(db_conn, "Target", "en")
+    p = _insert_unit_role(db_conn, d1, 1, 1, "intertitre")
+    t = _insert_unit(db_conn, d2, 1, 1)  # no role → drift
+    _insert_align_link(db_conn, d1, d2, p, t)
+
+    res = _check_anchor_consistency(db_conn)
+    assert len(res) == 1
+    assert res[0]["links_checked"] == 1
+    assert res[0]["inconsistency_count"] == 1
+    assert res[0]["severity"] == "warning"
+    inc = res[0]["inconsistencies"][0]
+    assert inc["pivot_role"] == "intertitre"
+    assert inc["target_role"] is None
+
+
+def test_anchor_consistency_ignores_matching_and_text_roles(db_conn: sqlite3.Connection) -> None:
+    """Matching structural roles are consistent; a *text*-category role mismatch is
+    legitimate (not an anchor) and must NOT be flagged."""
+    from multicorpus_engine.qa_report import _check_anchor_consistency
+
+    _insert_role(db_conn, "intertitre", "structure")
+    _insert_role(db_conn, "vers", "text")
+    d1 = _populate_doc(db_conn, "Pivot", "fr")
+    d2 = _populate_doc(db_conn, "Target", "en")
+    # matching structural role → consistent
+    p1 = _insert_unit_role(db_conn, d1, 1, 1, "intertitre")
+    t1 = _insert_unit_role(db_conn, d2, 1, 1, "intertitre")
+    _insert_align_link(db_conn, d1, d2, p1, t1)
+    # text-category role vs no role → legitimate, not flagged
+    p2 = _insert_unit_role(db_conn, d1, 2, 2, "vers")
+    t2 = _insert_unit(db_conn, d2, 2, 2)
+    _insert_align_link(db_conn, d1, d2, p2, t2)
+
+    res = _check_anchor_consistency(db_conn)
+    assert len(res) == 1
+    assert res[0]["links_checked"] == 2
+    assert res[0]["inconsistency_count"] == 0
+    assert res[0]["severity"] == "ok"
+
+
+def test_anchor_consistency_in_report_and_strict_gate(db_conn: sqlite3.Connection) -> None:
+    """The drift surfaces in the report summary and escalates to blocking under strict."""
+    from multicorpus_engine.qa_report import generate_qa_report
+
+    _insert_role(db_conn, "intertitre", "structure")
+    d1 = _populate_doc(db_conn, "Pivot", "fr")
+    d2 = _populate_doc(db_conn, "Target", "en")
+    p = _insert_unit_role(db_conn, d1, 1, 1, "intertitre")
+    t = _insert_unit(db_conn, d2, 1, 1)
+    _insert_align_link(db_conn, d1, d2, p, t)
+
+    lenient = generate_qa_report(db_conn, policy="lenient")
+    assert "anchor_consistency" in lenient
+    assert lenient["summary"]["anchor_inconsistencies"] == 1
+    assert not lenient["gates"]["blocking"]  # drift is only a warning in lenient
+
+    strict = generate_qa_report(db_conn, policy="strict")
+    assert strict["gates"]["status"] == "blocking"
+    assert any("anchor drift" in b for b in strict["gates"]["blocking"])
