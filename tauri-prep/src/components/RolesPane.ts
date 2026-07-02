@@ -37,15 +37,9 @@ import {
   validateRoleForm,
   type StructureSuggestion,
 } from "../lib/conventionsRoles.ts";
-import {
-  filterUnits,
-  isParatext,
-  resolveRoleBadge,
-  summarizeUnits,
-} from "../lib/conventionsUnitList.ts";
-import { deriveCoarseBlocks, blockIndexByUnitId } from "../lib/coarseGrain.ts";
 import { modalConfirm } from "../lib/modalConfirm.ts";
 import { setHtml, raw } from "../lib/safeHtml.ts";
+import { CanvasUnitList } from "./CanvasUnitList.ts";
 
 const COLOR_PRESETS = [
   "#3b82f6", "#6366f1", "#8b5cf6", "#a855f7",
@@ -65,11 +59,10 @@ export class RolesPane {
   private _units: UnitRecord[] = [];
   private _docId: number | null = null;
   private _textStartN: number | null = null;
-  private _selectedUnitIds = new Set<number>();
-  private _searchQuery = "";
   private _catalogueOpen = false;
-  private _lastClickedIdx = -1;
   private _loaded = false;
+  /** Shared unit-list base (R5.1a): owns the units DOM + selection + search. */
+  private _list: CanvasUnitList | null = null;
 
   constructor(root: HTMLElement, getConn: () => Conn | null, onError: (msg: string) => void) {
     this._root = root;
@@ -137,14 +130,23 @@ export class RolesPane {
     this._q("#prep-conv-add-text")?.addEventListener("click", () => this._openRoleDialog(null, "text"));
     this._q("#prep-conv-lift-btn")?.addEventListener("click", () => void this._openLiftPreview());
 
+    // The units DOM + selection + search live in the shared base (R5.1a). The roles
+    // mode drives it via hooks: selection change → rebuild the roles action bar; the
+    // text-start "remove boundary" click → clear the boundary; stats → toolbar.
+    const area = this._q<HTMLElement>("#prep-conv-units-area");
+    if (area) {
+      this._list = new CanvasUnitList(area, {
+        onSelectionChange: () => this._renderActionBar(),
+        onClearTextStart: () => void this._setTextStart(null),
+        onStats: (t) => {
+          const s = this._q("#prep-conv-search-stats");
+          if (s) s.textContent = t;
+        },
+      });
+    }
+
     const searchEl = this._q<HTMLInputElement>("#prep-conv-search");
-    searchEl?.addEventListener("input", () => {
-      this._searchQuery = searchEl.value;
-      // L'ancre du shift-clic indexe la liste *filtrée* — la recherche change
-      // cette liste, donc l'ancre devient invalide : la réinitialiser.
-      this._lastClickedIdx = -1;
-      this._renderUnits();
-    });
+    searchEl?.addEventListener("input", () => this._list?.setSearch(searchEl.value));
   }
 
   /**
@@ -155,8 +157,8 @@ export class RolesPane {
     this.mount();
     this._docId = docId;
     this._textStartN = textStartN;
-    this._selectedUnitIds.clear();
-    this._lastClickedIdx = -1;
+    this._list?.setData({ docId, textStartN });
+    this._list?.clearSelectionQuiet();
     if (!this._loaded) await this._loadRoles();
     await this._loadUnits();
   }
@@ -170,7 +172,7 @@ export class RolesPane {
   dispose(): void {
     this._roles = [];
     this._units = [];
-    this._selectedUnitIds.clear();
+    this._list?.reset();
     this._docId = null;
     this._loaded = false;
   }
@@ -186,6 +188,7 @@ export class RolesPane {
     } catch {
       this._roles = [];
     }
+    this._list?.setData({ roles: this._roles });
     this._renderCatalogue();
   }
 
@@ -194,7 +197,8 @@ export class RolesPane {
     const conn = this._getConn();
     if (this._docId === null || !conn) {
       this._units = [];
-      this._renderUnits();
+      this._list?.setData({ units: [], roles: this._roles, docId: this._docId, textStartN: this._textStartN });
+      this._list?.render();
       this._renderActionBar();
       return;
     }
@@ -210,9 +214,9 @@ export class RolesPane {
       this._units = [];
       return;
     }
-    this._selectedUnitIds.clear();
-    this._renderUnits();
-    this._renderActionBar();
+    this._list?.setData({ units: this._units, roles: this._roles, docId: this._docId, textStartN: this._textStartN });
+    // clears selection + renders the units + fires onSelectionChange → _renderActionBar
+    this._list?.clearSelection();
   }
 
   // ─── Catalogue rendering ────────────────────────────────────────────────
@@ -294,117 +298,9 @@ export class RolesPane {
         if (action === "edit") { e.stopPropagation(); this._openRoleDialog(name, category); return; }
         if (action === "delete") { e.stopPropagation(); void this._deleteRole(name); return; }
         // Body click = assign role to the current selection (assignable affordance).
-        if (this._selectedUnitIds.size > 0) void this._assignRole(name);
+        if ((this._list?.getSelection().size ?? 0) > 0) void this._assignRole(name);
       });
     });
-  }
-
-  // ─── Units rendering ────────────────────────────────────────────────────
-
-  private get _filteredUnits(): UnitRecord[] {
-    return filterUnits(this._units, this._searchQuery);
-  }
-
-  private _renderUnits(): void {
-    const area = this._q("#prep-conv-units-area");
-    const statsEl = this._q("#prep-conv-search-stats");
-    if (!area) return;
-
-    if (this._docId === null) {
-      area.innerHTML = `<div class="prep-conv-empty">S&#233;lectionnez un document.</div>`;
-      if (statsEl) statsEl.textContent = "";
-      return;
-    }
-
-    const filtered = this._filteredUnits;
-    const summary = summarizeUnits(this._units, filtered);
-    if (statsEl) {
-      statsEl.textContent = this._searchQuery.trim()
-        ? `${summary.matched}/${summary.total} unités · ${summary.withRole} avec rôle`
-        : `${summary.total} unités · ${summary.withRole} avec rôle`;
-    }
-
-    if (this._units.length === 0) {
-      area.innerHTML = `<div class="prep-conv-empty">Aucune unit&#233; dans ce document.</div>`;
-      return;
-    }
-    if (filtered.length === 0) {
-      area.innerHTML = `<div class="prep-conv-empty">Aucune unit&#233; ne correspond &#224; la recherche.</div>`;
-      return;
-    }
-
-    // R2.3 — coarse grain (paragraph ⊃ sentence). Blocks are derived over the *full*
-    // unit list so anchors/sizes stay correct under search filtering; grouped rows are
-    // indented and a ¶ separator opens each multi-sentence paragraph. Separators use a
-    // distinct class, so the `.prep-conv-unit-row` NodeList (and its shift-range index)
-    // stays aligned with `filtered`.
-    const blocks = deriveCoarseBlocks(this._units);
-    const blockIdx = blockIndexByUnitId(blocks);
-    let prevBi = -1;
-    const rowsHtml = filtered
-      .map((u) => {
-        const badge = resolveRoleBadge(u.unit_role, this._roles);
-        const selected = this._selectedUnitIds.has(u.unit_id);
-        const para = isParatext(u.n, this._textStartN);
-        const badgeHtml = badge
-          ? `<span class="prep-conv-unit-badge" style="background:${safeColor(badge.color, "#374151")}22;border-color:${safeColor(badge.color, "#374151")};color:${safeColor(badge.color, "#94a3b8")}">${badge.icon ? esc(badge.icon) + " " : ""}${esc(badge.label)}</span>`
-          : "";
-        const marker = this._textStartN !== null && u.n === this._textStartN
-          ? this._textStartMarkerHtml()
-          : "";
-        const bi = blockIdx.get(u.unit_id) ?? -1;
-        const block = bi >= 0 ? blocks[bi] : null;
-        const grouped = block !== null && block.kind === "sentence-grouped" && block.fineCount > 1;
-        const sep = grouped && bi !== prevBi
-          ? `<div class="prep-conv-para-sep"><span class="prep-conv-para-label">&#182; ${block!.fineCount} phrases</span></div>`
-          : "";
-        prevBi = bi;
-        const fineHint = block !== null && block.kind === "composite"
-          ? `<span class="prep-conv-unit-fine" title="Segments &#164; (grain fin déjà présent)">&#164;${block.fineCount}</span>`
-          : "";
-        return `${marker}${sep}
-          <div class="prep-conv-unit-row${selected ? " selected" : ""}${para ? " paratext" : ""}${grouped ? " prep-conv-unit-row--grouped" : ""}" data-uid="${u.unit_id}">
-            <span class="prep-conv-unit-n">${u.n}</span>
-            <span class="prep-conv-unit-text">${esc(u.text_norm ?? "")}</span>
-            ${fineHint}
-            ${badgeHtml}
-          </div>`;
-      })
-      .join("");
-    // Keep the boundary visible/clearable even when its unit is filtered out of view.
-    const boundaryInView = this._textStartN !== null && filtered.some((u) => u.n === this._textStartN);
-    const topMarker = this._textStartN !== null && !boundaryInView
-      ? this._textStartMarkerHtml(" — hors recherche")
-      : "";
-    setHtml(area, raw(topMarker + rowsHtml));
-
-    area.querySelectorAll<HTMLElement>(".prep-conv-unit-row").forEach((el, idx) => {
-      el.addEventListener("click", (e) => {
-        const uid = parseInt(el.dataset.uid!, 10);
-        if ((e as MouseEvent).shiftKey && this._lastClickedIdx >= 0) {
-          const lo = Math.min(this._lastClickedIdx, idx);
-          const hi = Math.max(this._lastClickedIdx, idx);
-          for (let i = lo; i <= hi; i++) this._selectedUnitIds.add(filtered[i].unit_id);
-        } else {
-          if (this._selectedUnitIds.has(uid)) this._selectedUnitIds.delete(uid);
-          else this._selectedUnitIds.add(uid);
-          this._lastClickedIdx = idx;
-        }
-        this._renderUnits();
-        this._renderActionBar();
-      });
-    });
-
-    area.querySelector<HTMLButtonElement>(".prep-conv-text-start-clear")?.addEventListener("click", (e) => {
-      e.stopPropagation();
-      void this._setTextStart(null);
-    });
-  }
-
-  /** Explicit "start of text" marker shown before the boundary unit (and as a
-   *  fallback header when that unit is filtered out of view). */
-  private _textStartMarkerHtml(suffix = ""): string {
-    return `<div class="prep-conv-text-start-sep"><span class="prep-conv-text-start-sep-label">&#9873; D&#233;but du texte (unit&#233; ${this._textStartN})${esc(suffix)}</span><button type="button" class="prep-conv-text-start-clear" title="Retirer la borne (tout redevient texte)">&#10005; Retirer la borne</button></div>`;
   }
 
   // ─── Action bar ─────────────────────────────────────────────────────────
@@ -413,7 +309,7 @@ export class RolesPane {
     const bar = this._q("#prep-conv-action-bar");
     const hint = this._q("#prep-conv-assign-hint");
     if (!bar) return;
-    const count = this._selectedUnitIds.size;
+    const count = this._list?.getSelection().size ?? 0;
 
     // Mark role items as assignable when units are selected.
     this._root.querySelectorAll<HTMLElement>(".prep-conv-role-item:not(.prep-conv-role-item--dormant)").forEach((el) => {
@@ -443,11 +339,7 @@ export class RolesPane {
       ${textStartBtn}
     `));
     bar.querySelector("#prep-conv-clear-role")?.addEventListener("click", () => void this._assignRole(null));
-    bar.querySelector("#prep-conv-deselect")?.addEventListener("click", () => {
-      this._selectedUnitIds.clear();
-      this._renderUnits();
-      this._renderActionBar();
-    });
+    bar.querySelector("#prep-conv-deselect")?.addEventListener("click", () => this._list?.clearSelection());
     bar.querySelector("#prep-conv-set-ts")?.addEventListener("click", () => void this._setTextStart());
   }
 
@@ -455,16 +347,13 @@ export class RolesPane {
 
   private async _assignRole(roleName: string | null): Promise<void> {
     const conn = this._getConn();
-    if (!conn || this._selectedUnitIds.size === 0) return;
-    const ids = [...this._selectedUnitIds];
+    const sel = this._list?.getSelection();
+    if (!conn || !sel || sel.size === 0) return;
+    const ids = [...sel];
     try {
       await bulkSetUnitRole(conn, ids, roleName);
-      for (const u of this._units) {
-        if (this._selectedUnitIds.has(u.unit_id)) u.unit_role = roleName;
-      }
-      this._selectedUnitIds.clear();
-      this._renderUnits();
-      this._renderActionBar();
+      this._list?.setUnitsRole(ids, roleName);   // mutates the shared units + re-renders badges
+      this._list?.clearSelection();              // clears + renders + onSelectionChange → action bar
     } catch (e) {
       this._onError(e instanceof Error ? e.message : String(e));
     }
@@ -477,7 +366,7 @@ export class RolesPane {
     if (nArg !== undefined) {
       n = nArg;
     } else {
-      const uid = [...this._selectedUnitIds][0];
+      const uid = [...(this._list?.getSelection() ?? [])][0];
       const unit = this._units.find((u) => u.unit_id === uid);
       if (!unit) return;
       n = unit.n;
@@ -485,7 +374,8 @@ export class RolesPane {
     try {
       await setDocumentTextStart(conn, this._docId, n);
       this._textStartN = n;
-      this._renderUnits();
+      this._list?.setData({ textStartN: n });
+      this._list?.render();
     } catch (e) {
       this._onError(e instanceof Error ? e.message : String(e));
     }
@@ -724,7 +614,7 @@ export class RolesPane {
         }
         overlay.remove();
         await this._loadRoles();
-        this._renderUnits();
+        this._list?.render();
       } catch (e) {
         errEl.textContent = e instanceof Error ? e.message : String(e);
       }
