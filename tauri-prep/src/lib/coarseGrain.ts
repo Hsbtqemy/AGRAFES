@@ -17,8 +17,10 @@
  */
 import type { UnitRecord } from "./sidecarClient.ts";
 
-/** Roles that mark a heading line (its own coarse block), vs péritext content roles. */
-export const STRUCTURAL_ROLES = new Set<string>(["intertitre"]);
+/** Roles that mark a heading line (its own coarse block), vs péritext content roles.
+ *  ReadonlySet (FE-02): a shared module-level default must not be mutable by importers
+ *  — `STRUCTURAL_ROLES.add(...)` is now a compile error, mirroring the Python frozenset. */
+export const STRUCTURAL_ROLES: ReadonlySet<string> = new Set<string>(["intertitre"]);
 
 export type CoarseKind = "sentence-grouped" | "composite" | "line" | "heading";
 
@@ -53,14 +55,14 @@ function countSep(text: string | null | undefined): number {
  */
 export function deriveCoarseBlocks(
   units: UnitRecord[],
-  structuralRoles: Set<string> = STRUCTURAL_ROLES,
+  structuralRoles: ReadonlySet<string> = STRUCTURAL_ROLES,
 ): CoarseBlock[] {
   const rows = [...units].sort((a, b) => a.n - b.n);
   const anchored = rows.some((u) => u.unit_type === "line" && u.parent_n != null);
   return anchored ? blocksAnchored(rows, structuralRoles) : blocksDerived(rows, structuralRoles);
 }
 
-function blocksAnchored(rows: UnitRecord[], structuralRoles: Set<string>): CoarseBlock[] {
+function blocksAnchored(rows: UnitRecord[], structuralRoles: ReadonlySet<string>): CoarseBlock[] {
   const byAnchor = new Map<number, CoarseBlock>();
   const order: number[] = [];
   for (const u of rows) {
@@ -88,7 +90,7 @@ function blocksAnchored(rows: UnitRecord[], structuralRoles: Set<string>): Coars
   return order.map((a) => byAnchor.get(a)!);
 }
 
-function blocksDerived(rows: UnitRecord[], structuralRoles: Set<string>): CoarseBlock[] {
+function blocksDerived(rows: UnitRecord[], structuralRoles: ReadonlySet<string>): CoarseBlock[] {
   const blocks: CoarseBlock[] = [];
   for (const u of rows) {
     if (u.unit_type === "structure") {

@@ -28,6 +28,32 @@ def _line(n: int, text: str = "x", *, role: str | None = None, meta: dict | None
     }
 
 
+# --- FE-02: value-based parent_n (mirror of coarseGrain.ts) ----------------------
+
+def test_explicit_null_parent_n_is_derived_not_mega_block() -> None:
+    """An explicit {"parent_n": null} is value-null → derived singletons, mirroring
+    coarseGrain.ts. RED on the old key-presence detection (all lines folded into one
+    None-keyed mega-block)."""
+    blocks = derive_coarse_blocks([
+        _line(1, meta={"parent_n": None}),
+        _line(2, meta={"parent_n": None}),
+    ])
+    assert [b["anchor_n"] for b in blocks] == [1, 2]
+    assert all(b["kind"] == "line" and b["fine_count"] == 1 for b in blocks)
+
+
+def test_mixed_null_parent_n_falls_back_to_own_n() -> None:
+    """Within an anchored doc, a null parent_n line falls back to its own n (a singleton),
+    not into a None block. RED on old (the null line keyed None)."""
+    blocks = derive_coarse_blocks([
+        _line(1, meta={"parent_n": 1}),
+        _line(2, meta={"parent_n": 1}),     # same ¶ as line 1
+        _line(3, meta={"parent_n": None}),  # null → own n (3)
+    ])
+    assert [b["anchor_n"] for b in blocks] == [1, 3]
+    assert next(b for b in blocks if b["anchor_n"] == 1)["member_ns"] == [1, 2]
+
+
 # --- derived regime (no parent_n) ------------------------------------------------
 
 def test_docx_paragraphs_one_line_one_block() -> None:

@@ -78,7 +78,11 @@ def derive_coarse_blocks(
     """
     rows = sorted(units, key=lambda u: u["n"])
     lines = [u for u in rows if u.get("unit_type") == "line"]
-    anchored = any("parent_n" in _parse_meta(u.get("meta_json")) for u in lines)
+    # FE-02: detect the anchored regime by a *non-null* parent_n (value-based), mirroring
+    # coarseGrain.ts. Key-presence would treat an explicit {"parent_n": null} as anchored
+    # and fold every such line into one None-keyed mega-block — the TS side (saner) makes
+    # it a derived singleton. Keep the two implementations byte-for-byte equivalent.
+    anchored = any(_parse_meta(u.get("meta_json")).get("parent_n") is not None for u in lines)
 
     if anchored:
         return _blocks_anchored(rows, structural_roles)
@@ -95,12 +99,14 @@ def _blocks_anchored(
         if u.get("unit_type") != "line":
             continue  # structure units carry no fine content in the anchored regime
         meta = _parse_meta(u.get("meta_json"))
-        # ALN-04 (documented limit): a unit lacking parent_n falls back to its own n,
-        # which shares the domain of parent_n values — so a unit *inserted after*
-        # resegmentation (no meta) could land in another paragraph's block by n-collision.
-        # Not reachable today (fine-segmentation stamps parent_n on every line); revisit
-        # if a post-resegment insert path is added.
-        anchor = meta.get("parent_n", u["n"])
+        # FE-02: a null (or absent) parent_n falls back to the line's own n — value-based,
+        # matching coarseGrain.ts. ALN-04 (documented limit): that fallback n shares the
+        # domain of parent_n values, so a unit *inserted after* resegmentation (no meta)
+        # could land in another paragraph's block by n-collision. Not reachable today
+        # (fine-segmentation stamps parent_n on every line); revisit if a post-resegment
+        # insert path is added.
+        pn = meta.get("parent_n")
+        anchor = pn if pn is not None else u["n"]
         block = blocks.get(anchor)
         if block is None:
             role = u.get("unit_role")

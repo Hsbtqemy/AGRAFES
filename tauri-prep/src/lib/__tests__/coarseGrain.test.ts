@@ -43,6 +43,29 @@ describe("deriveCoarseBlocks — derived regime", () => {
   });
 });
 
+// ─── FE-02: value-based parent_n (mirror of coarse_grain.py) ──────────────────
+
+describe("deriveCoarseBlocks — null parent_n is value-null (mirror)", () => {
+  it("treats explicit null parent_n as derived singletons, not a mega-block", () => {
+    const blocks = deriveCoarseBlocks([
+      line(1, { parent_n: null }),
+      line(2, { parent_n: null }),
+    ]);
+    expect(blocks.map((b) => b.anchorN)).toEqual([1, 2]);
+    expect(blocks.every((b) => b.kind === "line" && b.fineCount === 1)).toBe(true);
+  });
+
+  it("a null parent_n within an anchored doc falls back to its own n", () => {
+    const blocks = deriveCoarseBlocks([
+      line(1, { parent_n: 1 }),
+      line(2, { parent_n: 1 }),      // same ¶ as line 1
+      line(3, { parent_n: null }),   // null → own n (3)
+    ]);
+    expect(blocks.map((b) => b.anchorN)).toEqual([1, 3]);
+    expect(blocks.find((b) => b.anchorN === 1)!.memberNs).toEqual([1, 2]);
+  });
+});
+
 // ─── anchored regime (parent_n present) ───────────────────────────────────────
 
 describe("deriveCoarseBlocks — anchored regime", () => {
