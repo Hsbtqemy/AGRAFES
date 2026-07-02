@@ -1,6 +1,6 @@
 # Note de design — R4.2 : lift des marqueurs inline → rôle / statut
 
-> Statut : **décisions figées — prête-à-ticket** (2026-07-02). Table de correspondance figée (data-backed) ; mécanisme idempotent/non-clobber tranché avec l'humain (déclencheur = marqueur encore dans `text_norm`).
+> Statut : **implémenté** (moteur + front, 2026-07-02) — cf. [`ROADMAP_REFONTE.md`](ROADMAP_REFONTE.md) §R4.2. Table de correspondance figée (data-backed) ; mécanisme idempotent/non-clobber tranché avec l'humain (déclencheur = marqueur encore dans `text_norm`).
 > Phase R4.2 de [`ROADMAP_REFONTE.md`](ROADMAP_REFONTE.md) §R4 · implémente le **T2** de [`DESIGN_peritext_conventions.md`](DESIGN_peritext_conventions.md) §3/§8.
 > Dépend de **R4.1** (axe `unit_status` livré) + `unit_role` (014). C'est la passe qui **peuple** l'axe posé par R4.1 → rend le filtre concordancier démontrable sur les corpus réels.
 
@@ -64,7 +64,7 @@ Le lift **n'agit que sur une unité `line` dont le `text_norm` contient encore u
 - **Migration : aucune.** Réutilise `unit_role` (014) + `unit_status` (023).
 - **Contrat : additif** — 1 route neuve `POST /lift/markers` → `sidecar_contract.py` + `openapi.json` + **snapshot** + **`.md`** (`test_contract_docs_sync`). `_write_paths` gagne la route (apply mute).
 - **Growth-gate** : tout dans `marker_lift.py` (+ éventuel `services/`), handler adaptateur mince.
-- **Front** : bouton « Lifter les marqueurs » + aperçu du diff (Prep) — réutilise le pattern job/preview existant.
+- **Front** : ✅ bouton « Lifter les marqueurs » + **aperçu dry-run** (synthèse + conflits + diff `text_norm` par unité + apply) dans `RolesPane` (donc visible onglet Rôles **et** TextCanvasView) ; logique d'affichage pure et testée dans `tauri-prep/src/lib/markerLift.ts` ; client `liftMarkers` (`sidecarClient.ts`). Overlay réutilise `prep-conv-*` (namespacé).
 - **Risque principal** : la corruption de gloses éditoriales — **neutralisé par D1 (allowlist)**. Secondaire : la réindexation FTS (best-effort, comme update_text).
 
 ## 6. Preuve corpus (2026-07-02) — 65 fichiers .txt (M-GW + GRAFE FrEn)

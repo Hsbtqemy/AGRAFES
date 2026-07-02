@@ -1185,6 +1185,57 @@ export async function setDocumentTextStart(
   return setTextStart(conn, docId, textStartN);
 }
 
+/** One change row of a marker-lift pass (R4.2). Mirrors LiftReport.changes. */
+export interface LiftChange {
+  n: number;
+  unit_id: number;
+  role: string | null;
+  status: string | null;
+  text_norm_before: string | null;
+  text_norm_after: string;
+}
+
+/** A manual value the lift would NOT overwrite (human wins), reported for review. */
+export interface LiftConflict {
+  n: number;
+  field: "unit_role" | "unit_status";
+  existing: string;
+  marker: string;
+}
+
+/** Diagnostics of one `/lift/markers` pass — mirrors marker_lift.LiftReport.to_dict(). */
+export interface LiftMarkersReport {
+  doc_id: number;
+  dry_run: boolean;
+  units_scanned: number;
+  units_affected: number;
+  roles_set: number;
+  statuses_set: number;
+  cleaned: number;
+  roles_created: string[];
+  conflicts: LiftConflict[];
+  changes: LiftChange[];
+  /** Present when the pass wrote (apply): the FTS index of touched units was rebuilt. */
+  fts_stale?: boolean;
+}
+
+/**
+ * Lift inline peritext markers ([T]/[Ch]/[InterT]/[non traduit]/[+]) of a document
+ * into unit_role/unit_status, cleaning text_norm (R4.2). dryRun=true (default) reports
+ * the diff without writing; dryRun=false applies. Idempotent + never clobbers manual
+ * values (see docs/DESIGN_R4_2_marker_lift.md).
+ */
+export async function liftMarkers(
+  conn: Conn,
+  docId: number,
+  dryRun = true,
+): Promise<LiftMarkersReport> {
+  return conn.post("/lift/markers", {
+    doc_id: docId,
+    dry_run: dryRun,
+  }) as Promise<LiftMarkersReport>;
+}
+
 export async function getDocumentPreview(
   conn: Conn,
   doc_id: number,

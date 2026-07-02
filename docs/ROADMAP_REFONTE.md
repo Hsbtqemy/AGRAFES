@@ -61,7 +61,7 @@ But : des liens phrase↔phrase fiables, par-clé **ou** par-algorithme.
 But : axe statut + lift des marqueurs + concordancier qui affiche les rôles.
 
 - **R4.1** `units.unit_status` (`non_traduit`/`ajout`) — **[MOTEUR]** + **[FRONT]**. ✅ *fait* — **migration 023** ; `units_service.set_unit_status`/`bulk` + routes dédiées `/units/set_status` (+bulk, contrat **1.6.37**) ; `unit_status` exposé par GET /units ; **filtre `query`** (FTS + regex + CLI `--unit-status`, contrat **1.6.38**) ; **filtre concordancier** (`#filter-unitstatus-sel` + chip + history). Axe **orthogonal au rôle**, enum validé en service (escape-hatch). Décisions : [`DESIGN_R4_1_unit_status.md`](DESIGN_R4_1_unit_status.md). Découplé de R4.2 (lift) / R4.3 (affichage) ; **pas** d'auto-pont orphelin→statut (populé par R4.2 ou curation).
-- **R4.2** Lift marqueurs `[T]/[Ch]/[InterT]/[non traduit]/[+]` → rôle/statut (passe post-import idempotente) — **[MIXTE]** : `marker_lift.py` (hors `sidecar.py`, growth-gate) + `POST /lift/markers` (dry-run+apply) → **contrat** ; front = bouton + aperçu. 🟢 *décisions figées* → [`DESIGN_R4_2_marker_lift.md`](DESIGN_R4_2_marker_lift.md) (allowlist stricte — les gloses `[…]` mid-texte interdisent le regex glouton ; casse insensible ; déclencheur « marqueur encore dans `text_norm` » → idempotent + ne clobber pas le manuel ; peuple l'axe R4.1).
+- **R4.2** Lift marqueurs `[T]/[Ch]/[InterT]/[non traduit]/[+]` → rôle/statut (passe post-import idempotente) — **[MIXTE]**. ✅ *fait* — **moteur** `marker_lift.py` (hors `sidecar.py`, growth-gate) : `parse_markers` (allowlist stricte, casse insensible, marqueurs *trailing* seulement → gloses `[…]` mid-texte préservées) + `lift_document_markers` (dry-run défaut, remplit rôle/statut **si NULL** → préserve le manuel + signale conflits, nettoie `text_norm`, garde `text_raw`, réindexe FTS ; idempotent via « marqueur encore dans `text_norm` ») ; CLI `lift-markers` ; **`POST /lift/markers`** (dry-run+apply, **contrat 1.6.39**) ; **front** = bouton « Lifter les marqueurs » + **aperçu dry-run** (synthèse + conflits + diff par unité + apply) dans `RolesPane` (donc onglet Rôles **et** TextCanvasView), helpers purs `lib/markerLift.ts` + client `liftMarkers`. Peuple l'axe R4.1 → rend le filtre concordancier démontrable. Décisions : [`DESIGN_R4_2_marker_lift.md`](DESIGN_R4_2_marker_lift.md). Zéro migration.
 - **R4.3** Concordancier affiche rôle + valeur — **[MIXTE]** : `query.py` `LEFT JOIN unit_roles` + champs hits → **contrat** ; `tauri-app` `results.ts` (`appendRoleBadge`, fallback cellule vide).
 
 ### R5 — Couches Curation + Annotation *(front-dominant ; la refonte UI ressentie)*
@@ -89,7 +89,7 @@ But : enrichir les notices et **retirer le legacy** une fois la parité atteinte
 | R1 ✅ | R1.1·R1.3·R1.4 | R1.2 (read) | oui (read-only, 1.6.34) | non | non |
 | R2 ✅ | R2.3 | R2.1·R2.2 | oui (R2.3 : `parent_n` /units, 1.6.35) | non | **oui** |
 | R3 ✅ | éditeur de beads (différé) | R3.1·R3.2·R3.3 ✅ | oui (1.6.36) | **022 (bead_id)** | **oui** |
-| R4 🟡 | R4.1 ✅ · R4.2·R4.3 | R4.1 ✅ · R4.2·R4.3 | oui (R4.1 : 1.6.37/38) | **023 (R4.1)** | oui |
+| R4 🟡 | R4.1 ✅ · R4.2 ✅ · R4.3 | R4.1 ✅ · R4.2 ✅ · R4.3 | oui (R4.1 : 1.6.37/38 · R4.2 : 1.6.39) | **023 (R4.1)** | oui |
 | R5 | R5.1·R5.2 | — | **non** | non | non |
 | R6 | R6.4 | R6.1·R6.2·R6.3 | oui | **R6.1·R6.2** | non |
 

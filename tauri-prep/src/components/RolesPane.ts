@@ -11,7 +11,7 @@
  * document selector): mount() / setDocument() are driven by the host view.
  */
 
-import type { Conn, ConventionRole, UnitRecord } from "../lib/sidecarClient.ts";
+import type { Conn, ConventionRole, UnitRecord, LiftMarkersReport } from "../lib/sidecarClient.ts";
 import { escHtml as esc } from "../lib/diff.ts";
 import {
   listConventions,
@@ -21,7 +21,14 @@ import {
   bulkSetUnitRole,
   setDocumentTextStart,
   listUnits,
+  liftMarkers,
 } from "../lib/sidecarClient.ts";
+import {
+  liftSummaryLine,
+  liftConflictLines,
+  liftPreviewRows,
+  liftHasWork,
+} from "../lib/markerLift.ts";
 import {
   STRUCTURE_DEFAULTS,
   splitRolesByCategory,
@@ -107,6 +114,10 @@ export class RolesPane {
           <input type="search" class="prep-conv-search" id="prep-conv-search"
             placeholder="Rechercher des unit&#233;s candidates (ex. Chapter)&#8230;" autocomplete="off" />
           <span class="prep-conv-search-stats" id="prep-conv-search-stats"></span>
+          <button type="button" class="btn btn-secondary btn-sm prep-conv-lift-btn" id="prep-conv-lift-btn"
+            title="D&#233;tecter les marqueurs inline ([T], [Ch], [non traduit]&#8230;) et les convertir en r&#244;le / statut (aper&#231;u d&#8217;abord)">
+            &#10022; Lifter les marqueurs
+          </button>
         </div>
 
         <div class="prep-conv-assign-hint" id="prep-conv-assign-hint"></div>
@@ -124,6 +135,7 @@ export class RolesPane {
     });
     this._q("#prep-conv-add-struct")?.addEventListener("click", () => this._openRoleDialog(null, "structure"));
     this._q("#prep-conv-add-text")?.addEventListener("click", () => this._openRoleDialog(null, "text"));
+    this._q("#prep-conv-lift-btn")?.addEventListener("click", () => void this._openLiftPreview());
 
     const searchEl = this._q<HTMLInputElement>("#prep-conv-search");
     searchEl?.addEventListener("input", () => {
@@ -507,6 +519,104 @@ export class RolesPane {
       await this._loadUnits();
     } catch (e) {
       this._onError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  // ─── Marker lift (R4.2) ─────────────────────────────────────────────────
+
+  /** Run a dry-run lift on the current document and open the preview overlay. */
+  private async _openLiftPreview(): Promise<void> {
+    const conn = this._getConn();
+    if (!conn || this._docId === null) {
+      this._onError("Sélectionnez un document avant de lifter les marqueurs.");
+      return;
+    }
+    const btn = this._q<HTMLButtonElement>("#prep-conv-lift-btn");
+    if (btn) { btn.disabled = true; btn.textContent = "Analyse…"; }
+    let report: LiftMarkersReport;
+    try {
+      report = await liftMarkers(conn, this._docId, true); // dry-run, writes nothing
+    } catch (e) {
+      this._onError(e instanceof Error ? e.message : String(e));
+      return;
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = "✦ Lifter les marqueurs"; }
+    }
+    this._renderLiftOverlay(report);
+  }
+
+  /** Build the dry-run preview overlay (summary + conflicts + change list + apply). */
+  private _renderLiftOverlay(report: LiftMarkersReport): void {
+    const hasWork = liftHasWork(report);
+    const conflicts = liftConflictLines(report);
+    const rows = liftPreviewRows(report);
+
+    const conflictsHtml = conflicts.length
+      ? `<div class="prep-conv-lift-conflicts">
+           <div class="prep-conv-lift-conflicts-head">&#9888; Valeurs manuelles conserv&#233;es</div>
+           ${conflicts.map((c) => `<div class="prep-conv-lift-conflict">${esc(c)}</div>`).join("")}
+         </div>`
+      : "";
+
+    const rowsHtml = rows.length
+      ? rows.map((r) => {
+          const tags = [
+            r.role ? `<span class="prep-conv-lift-tag prep-conv-lift-tag--role">${esc(r.role)}</span>` : "",
+            r.status ? `<span class="prep-conv-lift-tag prep-conv-lift-tag--status">${esc(r.status)}</span>` : "",
+          ].join("");
+          const before = r.before !== r.after
+            ? `<div class="prep-conv-lift-before">${esc(r.before)}</div>`
+            : "";
+          const after = r.emptied
+            ? `<span class="prep-conv-lift-emptied">(placeholder &#8212; sort de la recherche)</span>`
+            : esc(r.after);
+          return `<div class="prep-conv-lift-row">
+              <span class="prep-conv-lift-n">${r.n}</span>
+              <div class="prep-conv-lift-texts">
+                ${before}
+                <div class="prep-conv-lift-after">${after}</div>
+              </div>
+              <div class="prep-conv-lift-tags">${tags}</div>
+            </div>`;
+        }).join("")
+      : `<div class="prep-conv-empty" style="padding:1rem">Aucun marqueur inline d&#233;tect&#233; dans ce document.</div>`;
+
+    const overlay = document.createElement("div");
+    overlay.className = "prep-conv-overlay";
+    setHtml(overlay, raw(`
+      <div class="prep-conv-dialog prep-conv-dialog--lift">
+        <h3>&#10022; Lifter les marqueurs inline</h3>
+        <p class="prep-conv-lift-summary">${esc(liftSummaryLine(report))}</p>
+        ${conflictsHtml}
+        <div class="prep-conv-lift-list">${rowsHtml}</div>
+        <p class="prep-conv-lift-note">Le texte d&#8217;origine (<code>text_raw</code>) est conserv&#233; ; seul le texte de recherche est nettoy&#233;. La passe est idempotente &#8212; la relancer ne r&#233;&#233;crit pas une correction manuelle.</p>
+        <div class="prep-conv-dialog-actions">
+          <button class="prep-conv-dialog-btn secondary" id="prep-conv-lift-close">Fermer</button>
+          <button class="prep-conv-dialog-btn primary" id="prep-conv-lift-apply"${hasWork ? "" : " disabled"}>Appliquer le lift</button>
+        </div>
+      </div>
+    `));
+    document.body.appendChild(overlay);
+
+    const close = (): void => overlay.remove();
+    overlay.querySelector("#prep-conv-lift-close")!.addEventListener("click", close);
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+    overlay.querySelector("#prep-conv-lift-apply")!.addEventListener("click", () => void this._applyLift(overlay));
+  }
+
+  /** Apply the lift (dry_run=false) then refresh the pane so new roles/status show. */
+  private async _applyLift(overlay: HTMLElement): Promise<void> {
+    const conn = this._getConn();
+    if (!conn || this._docId === null) { overlay.remove(); return; }
+    const applyBtn = overlay.querySelector<HTMLButtonElement>("#prep-conv-lift-apply");
+    if (applyBtn) { applyBtn.disabled = true; applyBtn.textContent = "Application…"; }
+    try {
+      await liftMarkers(conn, this._docId, false); // apply
+      overlay.remove();
+      await this.refresh(); // reload catalogue + units → cleaned text + new badges visible
+    } catch (e) {
+      this._onError(e instanceof Error ? e.message : String(e));
+      if (applyBtn) { applyBtn.disabled = false; applyBtn.textContent = "Appliquer le lift"; }
     }
   }
 

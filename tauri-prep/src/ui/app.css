@@ -6877,6 +6877,83 @@ tr[data-len].prep-seg-row-context .prep-seg-cell-len {
 .prep-conv-dialog-btn.secondary { background: #e9ecef; color: #212529; }
 .prep-conv-dialog-btn.secondary:hover { background: #dee2e6; }
 
+/* -- Marker lift (R4.2) : bouton toolbar + apercu du dry-run -- */
+.prep-conv-lift-btn { margin-left: auto; white-space: nowrap; }
+.prep-conv-dialog--lift { width: 580px; }
+.prep-conv-lift-summary {
+  margin: 0 0 0.75rem;
+  font-size: 0.86rem;
+  color: #212529;
+  font-weight: 500;
+}
+.prep-conv-lift-conflicts {
+  margin-bottom: 0.75rem;
+  padding: 0.5rem 0.65rem;
+  background: #fff8e6;
+  border: 1px solid #f2d98a;
+  border-radius: 6px;
+}
+.prep-conv-lift-conflicts-head { font-size: 0.8rem; font-weight: 600; color: #8a6d00; margin-bottom: 0.3rem; }
+.prep-conv-lift-conflict { font-size: 0.78rem; color: #6b5600; line-height: 1.4; }
+.prep-conv-lift-list {
+  max-height: 46vh;
+  overflow-y: auto;
+  border: 1px solid #e9ecef;
+  border-radius: 6px;
+  background: #fbfcfd;
+}
+.prep-conv-lift-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid #eef1f4;
+  font-size: 0.82rem;
+}
+.prep-conv-lift-row:last-child { border-bottom: none; }
+.prep-conv-lift-n {
+  flex-shrink: 0;
+  min-width: 2.1rem;
+  text-align: right;
+  color: #adb5bd;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.76rem;
+  padding-top: 0.1rem;
+}
+.prep-conv-lift-texts { flex: 1; min-width: 0; }
+.prep-conv-lift-before {
+  color: #b0413e;
+  text-decoration: line-through;
+  opacity: 0.75;
+  word-break: break-word;
+}
+.prep-conv-lift-after { color: #212529; word-break: break-word; }
+.prep-conv-lift-emptied { color: #868e96; font-style: italic; }
+.prep-conv-lift-tags {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  align-items: flex-end;
+}
+.prep-conv-lift-tag {
+  display: inline-block;
+  padding: 0.05rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.prep-conv-lift-tag--role { background: #e7effe; border: 1px solid #b9d0fb; color: #1e40af; }
+.prep-conv-lift-tag--status { background: #fdeae7; border: 1px solid #f6c4bb; color: #9a3412; }
+.prep-conv-lift-note {
+  margin: 0.7rem 0 0;
+  font-size: 0.74rem;
+  color: #868e96;
+  line-height: 1.45;
+}
+.prep-conv-lift-note code { background: #eef1f4; padding: 0 0.2rem; border-radius: 3px; }
+
 /* -- Etats vides / erreur -- */
 .prep-conv-empty {
   padding: 2rem 1rem;
