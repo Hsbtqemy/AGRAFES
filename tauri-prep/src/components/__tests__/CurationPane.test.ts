@@ -88,6 +88,52 @@ describe("CurationPane", () => {
     expect(host.querySelector("#prep-cur-summary")?.textContent).toContain("1 unité modifiée");
   });
 
+  it("reveals a unit's full diff on the per-unit toggle (R5.1c)", async () => {
+    const conn = fakeConn({
+      units: [unit(1), unit(2)],
+      preview: () => ({
+        ok: true, doc_id: 1,
+        stats: { units_total: 2, units_changed: 1, replacements_total: 1 },
+        examples: [{ unit_id: 20, external_id: 2, before: "le chat", after: "le chien" }],
+      }),
+    });
+    const pane = new CurationPane(host, () => conn, () => {});
+    await pane.setDocument(1, null);
+    const cb = host.querySelector<HTMLInputElement>('input[data-preset="spaces"]')!;
+    cb.checked = true; cb.dispatchEvent(new Event("change"));
+    (host.querySelector("#prep-cur-preview-btn") as HTMLButtonElement).click();
+    await flush();
+
+    expect(host.querySelector(".prep-cur-diff-panel")).toBeNull(); // closed by default
+    (host.querySelector(".prep-cur-diff-toggle") as HTMLButtonElement).click();
+    const panel = host.querySelector(".prep-cur-diff-panel");
+    expect(panel).not.toBeNull();
+    expect(panel!.textContent).toContain("chien"); // the "after" word
+  });
+
+  it("global toggle reveals all diffs and flips its label (R5.1c)", async () => {
+    const conn = fakeConn({
+      units: [unit(1), unit(2)],
+      preview: () => ({
+        ok: true, doc_id: 1,
+        stats: { units_total: 2, units_changed: 1, replacements_total: 1 },
+        examples: [{ unit_id: 10, external_id: 1, before: "a", after: "b" }],
+      }),
+    });
+    const pane = new CurationPane(host, () => conn, () => {});
+    await pane.setDocument(1, null);
+    const cb = host.querySelector<HTMLInputElement>('input[data-preset="spaces"]')!;
+    cb.checked = true; cb.dispatchEvent(new Event("change"));
+    (host.querySelector("#prep-cur-preview-btn") as HTMLButtonElement).click();
+    await flush();
+
+    const toggleAll = host.querySelector("#prep-cur-toggle-all") as HTMLButtonElement;
+    expect(host.querySelectorAll(".prep-cur-diff-panel").length).toBe(0);
+    toggleAll.click();
+    expect(host.querySelectorAll(".prep-cur-diff-panel").length).toBe(1);
+    expect(toggleAll.textContent).toContain("Masquer");
+  });
+
   it("clears markers + preview state when the document changes", async () => {
     const conn = fakeConn({
       units: [unit(1), unit(2)],

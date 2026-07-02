@@ -11,7 +11,7 @@
  * Docs: docs/DESIGN_R5_1_curation_layer.md. DOM + wiring only; no business rules.
  */
 import type { Conn, ConventionRole, CurateRule, UnitRecord } from "../lib/sidecarClient.ts";
-import { escHtml as esc } from "../lib/diff.ts";
+import { escHtml as esc, highlightChangesWordLevel } from "../lib/diff.ts";
 import { listConventions, listUnits, curatePreview } from "../lib/sidecarClient.ts";
 import { CURATE_PRESETS } from "../lib/curationPresets.ts";
 import { setHtml, raw } from "../lib/safeHtml.ts";
@@ -45,6 +45,10 @@ export class CurationPane {
   /** unit_id → diff from the last preview; drives the discreet marker (decorateRow). */
   private _changed = new Map<number, CurationChange>();
   private _stats: { units_changed: number; units_total: number } | null = null;
+  /** R5.1c — diff on demand: units whose full diff is revealed inline. */
+  private _expanded = new Set<number>();
+  /** R5.1c — global "show all diffs" toggle for a review pass. */
+  private _showAllDiffs = false;
 
   constructor(root: HTMLElement, getConn: () => Conn | null, onError: (msg: string) => void) {
     this._root = root;
@@ -71,6 +75,8 @@ export class CurationPane {
           <div class="prep-cur-presets">${presetsHtml}</div>
           <button type="button" class="btn btn-secondary btn-sm" id="prep-cur-preview-btn"
             title="Aper&#231;u des unit&#233;s que ces r&#232;gles modifieraient (sans &#233;crire)">Aper&#231;u</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="prep-cur-toggle-all"
+            title="Afficher / masquer le diff complet de toutes les unit&#233;s modifi&#233;es">Afficher tous les diffs</button>
           <span class="prep-cur-summary" id="prep-cur-summary" aria-live="polite"></span>
         </div>
         <div class="prep-conv-units-area prep-cur-units" id="prep-cur-units">
@@ -87,17 +93,18 @@ export class CurationPane {
       });
     });
     this._q("#prep-cur-preview-btn")?.addEventListener("click", () => void this._runPreview());
+    this._q("#prep-cur-toggle-all")?.addEventListener("click", () => {
+      this._showAllDiffs = !this._showAllDiffs;
+      this._renderToggleAll();
+      this._list?.render();
+    });
 
     const area = this._q<HTMLElement>("#prep-cur-units");
     if (area) {
       this._list = new CanvasUnitList(area, {
-        // Light overlay (§9 D2): a discreet marker on the units the rules would change.
-        decorateRow: (u, el) => {
-          if (this._changed.has(u.unit_id)) {
-            el.classList.add("prep-conv-unit-row--curated");
-            el.title = "Modifiée par la curation (aperçu)";
-          }
-        },
+        // Light overlay (§9 D2): a discreet marker on the units the rules would change,
+        // + on-demand full diff (per-unit toggle or the global "show all diffs", R5.1c).
+        decorateRow: (u, el) => this._decorateChanged(u, el),
         onStats: (t) => {
           const s = this._q("#prep-cur-search-stats");
           if (s) s.textContent = t;
@@ -113,10 +120,13 @@ export class CurationPane {
     this.mount();
     this._docId = docId;
     this._textStartN = textStartN;
-    // A new document invalidates any prior preview.
+    // A new document invalidates any prior preview + its revealed diffs.
     this._changed.clear();
     this._stats = null;
+    this._expanded.clear();
+    this._showAllDiffs = false;
     this._renderSummary();
+    this._renderToggleAll();
     this._list?.setData({ docId, textStartN });
     this._list?.clearSelectionQuiet();
     if (!this._loaded) await this._loadRoles();
@@ -128,6 +138,8 @@ export class CurationPane {
     this._units = [];
     this._changed.clear();
     this._stats = null;
+    this._expanded.clear();
+    this._showAllDiffs = false;
     this._list?.reset();
     this._docId = null;
     this._loaded = false;
@@ -206,6 +218,7 @@ export class CurationPane {
       });
       this._changed = new Map(res.examples.map((e) => [e.unit_id, { before: e.before, after: e.after }]));
       this._stats = { units_changed: res.stats.units_changed, units_total: res.stats.units_total };
+      this._expanded.clear(); // a fresh preview clears any per-unit reveals from the last run
       this._renderSummary();
       this._list?.render(); // decorateRow marks the changed rows
     } catch (e) {
@@ -223,6 +236,40 @@ export class CurationPane {
     s.textContent = units_changed === 0
       ? "Aucune unité modifiée par ces règles."
       : `${units_changed} unité${units_changed > 1 ? "s" : ""} modifiée${units_changed > 1 ? "s" : ""} / ${units_total}`;
+  }
+
+  private _renderToggleAll(): void {
+    const b = this._q("#prep-cur-toggle-all");
+    if (b) b.textContent = this._showAllDiffs ? "Masquer les diffs" : "Afficher tous les diffs";
+  }
+
+  /** decorateRow hook (R5.1b marker + R5.1c on-demand diff) for a changed unit. */
+  private _decorateChanged(u: UnitRecord, el: HTMLElement): void {
+    const change = this._changed.get(u.unit_id);
+    if (!change) return;
+    el.classList.add("prep-conv-unit-row--curated");
+    const open = this._showAllDiffs || this._expanded.has(u.unit_id);
+
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "prep-cur-diff-toggle";
+    toggle.textContent = open ? "▾ diff" : "▸ diff";
+    toggle.title = "Afficher / masquer le diff de cette unité";
+    toggle.addEventListener("click", (e) => {
+      e.stopPropagation(); // don't toggle the base row's selection
+      if (this._expanded.has(u.unit_id)) this._expanded.delete(u.unit_id);
+      else this._expanded.add(u.unit_id);
+      this._list?.render();
+    });
+    el.appendChild(toggle);
+
+    if (open) {
+      const panel = document.createElement("div");
+      panel.className = "prep-cur-diff-panel";
+      // highlightChangesWordLevel escapes its inputs and returns <mark>/<del> spans.
+      setHtml(panel, raw(highlightChangesWordLevel(change.before, change.after)));
+      el.insertAdjacentElement("afterend", panel);
+    }
   }
 
   // ─── Utility ────────────────────────────────────────────────────────────

@@ -6789,6 +6789,21 @@ tr[data-len].prep-seg-row-context .prep-seg-cell-len {
 
 .prep-conv-unit-row--curated { border-left-color: #f59e0b; background: #fffaf0; }
 .prep-conv-unit-row--curated:hover { background: #fff3d6; }
+/* R5.1c — diff à la demande : bascule par unité + panneau avant/après */
+.prep-cur-diff-toggle {
+  flex-shrink: 0; margin-left: auto;
+  background: none; border: 1px solid #f0c775; border-radius: 4px;
+  color: #92600a; font-size: 0.7rem; padding: 0 0.35rem; cursor: pointer; white-space: nowrap;
+}
+.prep-cur-diff-toggle:hover { background: #fdf0d5; }
+.prep-cur-diff-panel {
+  margin: 0.1rem 0 0.4rem 1.4rem;
+  padding: 0.35rem 0.55rem;
+  background: #fbfcfd; border: 1px solid #e2e8f0; border-left: 3px solid #f59e0b; border-radius: 5px;
+  font-size: 0.82rem; line-height: 1.5; word-break: break-word;
+}
+.prep-cur-diff-panel .diff-mark { background: #dcfce7; color: #14532d; text-decoration: none; padding: 0 1px; border-radius: 2px; }
+.prep-cur-diff-panel .diff-del { background: #fee2e2; color: #7f1d1d; text-decoration: line-through; padding: 0 1px; border-radius: 2px; }
 
 /* -- Dialog modal (catalogue CRUD) -- */
 .prep-conv-overlay {
