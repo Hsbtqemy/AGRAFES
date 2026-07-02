@@ -16,6 +16,7 @@ import { escHtml as esc } from "../lib/diff.ts";
 import { setHtml, raw } from "../lib/safeHtml.ts";
 import { RolesPane } from "../components/RolesPane.ts";
 import { CurationPane } from "../components/CurationPane.ts";
+import { AnnotationPane } from "../components/AnnotationPane.ts";
 
 export interface TextCanvasCallbacks {
   log: (msg: string, isError?: boolean) => void;
@@ -34,6 +35,7 @@ export class TextCanvasView {
   private _root: HTMLElement | null = null;
   private _rolesPane: RolesPane | null = null;
   private _curationPane: CurationPane | null = null;  // lazy, created on first switch (R5.1b)
+  private _annotationPane: AnnotationPane | null = null;  // lazy, created on first switch (R5.2b)
   private _docId: number | null = null;
   private _stats: DocumentStats | null = null;
   private _mode: CanvasMode = "roles";
@@ -80,12 +82,13 @@ export class TextCanvasView {
         <div class="prep-canvas-modes" role="group" aria-label="Couche active">
           <button type="button" class="prep-canvas-modebtn active" data-mode="roles" aria-pressed="true">R&#244;les</button>
           <button type="button" class="prep-canvas-modebtn" data-mode="curation" title="Couche Curation : marquer les unit&#233;s que des r&#232;gles modifieraient (aper&#231;u)">Curation</button>
-          <button type="button" class="prep-canvas-modebtn" data-mode="annoter" disabled title="à venir (T2)">Annotation</button>
+          <button type="button" class="prep-canvas-modebtn" data-mode="annoter" title="Couche Annotation : prose color&#233;e par cat&#233;gorie grammaticale (POS) quand le document est annot&#233;">Annotation</button>
         </div>
       </div>
       <div class="prep-canvas-body" id="prep-canvas-body">
         <div class="prep-canvas-pane" id="prep-canvas-pane-roles"></div>
         <div class="prep-canvas-pane" id="prep-canvas-pane-curation" style="display:none"></div>
+        <div class="prep-canvas-pane" id="prep-canvas-pane-annoter" style="display:none"></div>
       </div>
     `));
 
@@ -283,6 +286,8 @@ export class TextCanvasView {
     const ts = doc?.text_start_n ?? null;
     if (this._mode === "curation") {
       await this._curationPane?.setDocument(this._docId, ts);
+    } else if (this._mode === "annoter") {
+      await this._annotationPane?.setDocument(this._docId, ts);
     } else {
       await this._rolesPane?.setDocument(this._docId, ts);
     }
@@ -297,12 +302,18 @@ export class TextCanvasView {
     });
     const rolesHost = this._root?.querySelector<HTMLElement>("#prep-canvas-pane-roles");
     const curHost = this._root?.querySelector<HTMLElement>("#prep-canvas-pane-curation");
+    const annotHost = this._root?.querySelector<HTMLElement>("#prep-canvas-pane-annoter");
     if (rolesHost) rolesHost.style.display = mode === "roles" ? "" : "none";
     if (curHost) curHost.style.display = mode === "curation" ? "" : "none";
-    // Lazily build the curation pane on first switch (annoter stays T2).
+    if (annotHost) annotHost.style.display = mode === "annoter" ? "" : "none";
+    // Lazily build each mode pane on first switch to it.
     if (mode === "curation" && !this._curationPane && curHost) {
       this._curationPane = new CurationPane(curHost, this._getConn, (m) => this._cb.toast(m, true));
       this._curationPane.mount();
+    }
+    if (mode === "annoter" && !this._annotationPane && annotHost) {
+      this._annotationPane = new AnnotationPane(annotHost, this._getConn, (m) => this._cb.toast(m, true));
+      this._annotationPane.mount();
     }
     void this._syncActivePane();
   }

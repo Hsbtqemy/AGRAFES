@@ -38,10 +38,40 @@ export interface ProseOptions {
 }
 
 /**
+ * Build the coloured token spans for ONE unit as an inline fragment (no wrapper). The
+ * French spacing rule inserts space text-nodes between tokens, UPOS colours are set,
+ * and clicks are forwarded to `onTokenClick` if provided. Used both by the block prose
+ * renderer below and by the canvas annotation layer, which injects it inline into a
+ * unit row (R5.2b).
+ */
+export function buildProseUnitInline(tokens: ProseToken[], opts: ProseOptions = {}): DocumentFragment {
+  const frag = document.createDocumentFragment();
+  for (let i = 0; i < tokens.length; i++) {
+    const tok = tokens[i];
+    const needsSpace = i > 0 && needsSpaceBefore(tokens[i - 1].word, tok.word);
+    if (needsSpace) frag.appendChild(document.createTextNode(" "));
+    const span = document.createElement("span");
+    span.className = "annot-prose-token";
+    span.textContent = tok.word;
+    span.title = [tok.upos, tok.lemma !== tok.word ? tok.lemma : null].filter(Boolean).join(" · ") || tok.word;
+    span.dataset.tokenId = String(tok.token_id);
+    const color = uposColor(tok.upos);
+    if (color) {
+      span.style.setProperty("--upos-color", color);
+      span.classList.add("annot-prose-token--colored");
+    }
+    if (opts.onTokenClick) {
+      span.addEventListener("click", () => opts.onTokenClick!(tok.token_id, tok));
+    }
+    frag.appendChild(span);
+  }
+  return frag;
+}
+
+/**
  * Build the `.annot-prose` DOM for a document's tokens. `unitsInOrder` is the tokens
  * grouped by unit (in reading order), each unit already flattened across its sentences.
- * Pure DOM: the French spacing rule is applied, UPOS colours are set, and clicks are
- * forwarded to `onTokenClick` if provided.
+ * One `<p class="annot-prose-unit">` per unit, each filled by {@link buildProseUnitInline}.
  */
 export function buildProseColored(unitsInOrder: ProseToken[][], opts: ProseOptions = {}): HTMLElement {
   const prose = document.createElement("div");
@@ -49,25 +79,7 @@ export function buildProseColored(unitsInOrder: ProseToken[][], opts: ProseOptio
   for (const allTokens of unitsInOrder) {
     const para = document.createElement("p");
     para.className = "annot-prose-unit";
-    for (let i = 0; i < allTokens.length; i++) {
-      const tok = allTokens[i];
-      const needsSpace = i > 0 && needsSpaceBefore(allTokens[i - 1].word, tok.word);
-      if (needsSpace) para.appendChild(document.createTextNode(" "));
-      const span = document.createElement("span");
-      span.className = "annot-prose-token";
-      span.textContent = tok.word;
-      span.title = [tok.upos, tok.lemma !== tok.word ? tok.lemma : null].filter(Boolean).join(" · ") || tok.word;
-      span.dataset.tokenId = String(tok.token_id);
-      const color = uposColor(tok.upos);
-      if (color) {
-        span.style.setProperty("--upos-color", color);
-        span.classList.add("annot-prose-token--colored");
-      }
-      if (opts.onTokenClick) {
-        span.addEventListener("click", () => opts.onTokenClick!(tok.token_id, tok));
-      }
-      para.appendChild(span);
-    }
+    para.appendChild(buildProseUnitInline(allTokens, opts));
     prose.appendChild(para);
   }
   return prose;
