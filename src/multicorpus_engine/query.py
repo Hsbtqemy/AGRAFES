@@ -398,6 +398,16 @@ def _fetch_aligned_units(
     return result
 
 
+def _row_get(row: Any, key: str, default: Any = None) -> Any:
+    """Column access tolerant of both sqlite3.Row (raises IndexError on a missing
+    key, has no ``.get``) and plain dict rows — and of rows that predate a column
+    (e.g. hand-built test rows). Returns *default* when the column is absent."""
+    try:
+        return row[key]
+    except (KeyError, IndexError):
+        return default
+
+
 def _build_hits_core(
     conn: sqlite3.Connection,
     rows,
@@ -433,8 +443,8 @@ def _build_hits_core(
         lang = row["language"]
         title = row["title"]
 
-        role = row["unit_role"]
-        status = row["unit_status"]
+        role = _row_get(row, "unit_role")
+        status = _row_get(row, "unit_status")
 
         if mode == "segment":
             hit: dict[str, Any] = {

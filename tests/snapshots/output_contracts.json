@@ -46,7 +46,9 @@
     "left": "Ceci est une",
     "match": "ligne",
     "right": "",
-    "text_norm": "Ceci est une ligne"
+    "text_norm": "Ceci est une ligne",
+    "unit_role": null,
+    "unit_status": null
   },
   "csv_header": "doc_id,unit_id,external_id,language,title,left,match,right,text_norm",
   "tsv_header": "doc_id\tunit_id\texternal_id\tlanguage\ttitle\tleft\tmatch\tright\ttext_norm",

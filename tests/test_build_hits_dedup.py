@@ -23,9 +23,12 @@ def _row(text_norm: str | None = "le chat est beau", **over) -> dict:
     return base
 
 
-_SEG_KEYS = {"doc_id", "unit_id", "external_id", "language", "title", "text", "text_norm"}
+# unit_role / unit_status (R4.3) are always emitted; None when the source row
+# lacks the column (as these hand-built rows do — proves the tolerant default).
+_SEG_KEYS = {"doc_id", "unit_id", "external_id", "language", "title", "text", "text_norm",
+             "unit_role", "unit_status"}
 _KWIC_KEYS = {"doc_id", "unit_id", "external_id", "language", "title",
-              "left", "match", "right", "text_norm"}
+              "left", "match", "right", "text_norm", "unit_role", "unit_status"}
 
 
 def _exact(rows, **kw):
@@ -49,6 +52,7 @@ def test_exact_segment() -> None:
     assert set(hits[0]) == _SEG_KEYS
     assert hits[0]["text_norm"] == "le chat est beau"
     assert hits[0]["doc_id"] == 7 and hits[0]["unit_id"] == 1
+    assert hits[0]["unit_role"] is None and hits[0]["unit_status"] is None  # tolerant default
 
 
 def test_exact_kwic() -> None:
