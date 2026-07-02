@@ -1711,6 +1711,14 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         regex_pattern_raw = body.get("regex_pattern")
         regex_pattern: str | None = str(regex_pattern_raw).strip() if regex_pattern_raw else None
 
+        # LFT-03: validate the unit_status enum here (as the CLI does). An unknown value
+        # would otherwise reach the SQL filter and yield 0 hits silently instead of a 400.
+        unit_status_raw = body.get("unit_status") or None
+        if unit_status_raw is not None and unit_status_raw not in ("non_traduit", "ajout"):
+            raise ValueError(
+                f"invalid unit_status '{unit_status_raw}' (expected 'non_traduit', 'ajout', or null)"
+            )
+
         params = {
             "q": body.get("q", ""),
             "mode": body.get("mode", "segment"),
@@ -1725,7 +1733,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             "doc_date_from": body.get("doc_date_from") or None,
             "doc_date_to": body.get("doc_date_to") or None,
             "source_ext": body.get("source_ext") or None,
-            "unit_status": body.get("unit_status") or None,
+            "unit_status": unit_status_raw,
             "include_aligned": include_aligned_raw,
             "aligned_limit": aligned_limit,
             "all_occurrences": body.get("all_occurrences", False),
@@ -5104,7 +5112,9 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         else:
             with self._lock():
                 report = lift_document_markers(self._conn(), doc_id, dry_run=False)
-        self._send_json(success_payload({"fts_stale": (not dry_run), **report.to_dict()}))
+        # LFT-03: the apply reindexes each touched unit's FTS inline, so the index is
+        # never stale afterwards — reporting True made a front reindex for nothing.
+        self._send_json(success_payload({"fts_stale": False, **report.to_dict()}))
 
     def _handle_units_update_text(self, body: dict) -> None:
         # Thin adapter over the units service (write — owns the lock).

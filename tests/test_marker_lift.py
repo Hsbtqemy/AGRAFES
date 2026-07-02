@@ -128,6 +128,27 @@ def test_lift_preserves_manual_role_and_flags_conflict(db_conn: sqlite3.Connecti
                for c in rep.conflicts)
 
 
+def test_lift_apply_rolls_back_on_failure(db_conn: sqlite3.Connection) -> None:
+    """LFT-01: a failure mid-apply must not leave partial writes on the shared conn.
+
+    A record_action that raises after the UPDATEs triggers the rollback; the unit
+    must be back to its original role/text (RED without the try/except rollback:
+    the uncommitted UPDATE would still be visible on the same connection)."""
+    doc = _doc(db_conn)
+    uid = _unit(db_conn, doc, 1, "Titre [T]")
+
+    def boom(_snapshot: list[dict]) -> int:
+        raise RuntimeError("recorder blew up")
+
+    with pytest.raises(RuntimeError):
+        lift_document_markers(db_conn, doc, dry_run=False, record_action=boom)
+
+    row = db_conn.execute(
+        "SELECT unit_role, text_norm FROM units WHERE unit_id=?", (uid,)
+    ).fetchone()
+    assert row["unit_role"] is None and row["text_norm"] == "Titre [T]"  # rolled back
+
+
 def test_lift_ignores_gloss_unit(db_conn: sqlite3.Connection) -> None:
     doc = _doc(db_conn)
     uid = _unit(db_conn, doc, 1, "Las Vegas [la ville du péché]")  # trailing gloss, not a marker

@@ -34,6 +34,10 @@ def _norm_status(raw: Any) -> Optional[str]:
     Raises BadRequestError on an unknown value (a bad enum is a client error, not a
     missing resource — contrast unit_role which raises NotFoundError on unknown FK).
     """
+    if raw is not None and not isinstance(raw, str):
+        # LFT-03: a non-string input (e.g. a JSON number) would raise AttributeError
+        # on .strip() → 500. A bad type is a client error, so surface it as 400.
+        raise BadRequestError("unit_status must be a string or null")
     status = (raw or "").strip() or None
     if status is not None and status not in _VALID_UNIT_STATUS:
         raise BadRequestError(

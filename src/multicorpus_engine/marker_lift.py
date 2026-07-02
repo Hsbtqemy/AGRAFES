@@ -188,44 +188,49 @@ def lift_document_markers(
                  dry_run, doc_id, report.units_affected, report.units_scanned)
         return report
 
-    # ── apply ──
-    for role_name in sorted(roles_needed):
-        seed = _ROLE_SEED.get(role_name)
-        if seed is None:
-            continue
-        cur = conn.execute(
-            "INSERT OR IGNORE INTO unit_roles (name, label, color, icon, sort_order, category)"
-            " VALUES (?, ?, ?, ?, ?, ?)", seed,
-        )
-        if cur.rowcount > 0:
-            report.roles_created.append(role_name)
+    # ── apply ── (LFT-01: atomic — a mid-loop failure must not leave partial writes
+    # on the shared connection for the next handler's commit to persist).
+    try:
+        for role_name in sorted(roles_needed):
+            seed = _ROLE_SEED.get(role_name)
+            if seed is None:
+                continue
+            cur = conn.execute(
+                "INSERT OR IGNORE INTO unit_roles (name, label, color, icon, sort_order, category)"
+                " VALUES (?, ?, ?, ?, ?, ?)", seed,
+            )
+            if cur.rowcount > 0:
+                report.roles_created.append(role_name)
 
-    for p in pending:
-        sets: list[str] = ["text_norm = ?"]
-        params: list[Any] = [p["text_norm"]]
-        if p["set_role"] is not None:
-            sets.append("unit_role = ?")
-            params.append(p["set_role"])
-        if p["set_status"] is not None:
-            sets.append("unit_status = ?")
-            params.append(p["set_status"])
-        params.append(p["unit_id"])
-        conn.execute(f"UPDATE units SET {', '.join(sets)} WHERE unit_id = ?", params)
-        # Reindex FTS: clear the row, reinsert only if there is still text to index
-        # (a pure placeholder → text_norm="" → stays out of the index, ENG-04).
-        try:
-            conn.execute("DELETE FROM fts_units WHERE rowid = ?", (p["unit_id"],))
-            if p["text_norm"]:
-                conn.execute("INSERT INTO fts_units(rowid, text_norm) VALUES (?, ?)",
-                             (p["unit_id"], p["text_norm"]))
-        except Exception:
-            pass  # FTS update is best-effort (mirrors update_unit_text)
-        before_snapshot.append(p["before"])
+        for p in pending:
+            sets: list[str] = ["text_norm = ?"]
+            params: list[Any] = [p["text_norm"]]
+            if p["set_role"] is not None:
+                sets.append("unit_role = ?")
+                params.append(p["set_role"])
+            if p["set_status"] is not None:
+                sets.append("unit_status = ?")
+                params.append(p["set_status"])
+            params.append(p["unit_id"])
+            conn.execute(f"UPDATE units SET {', '.join(sets)} WHERE unit_id = ?", params)
+            # Reindex FTS: clear the row, reinsert only if there is still text to index
+            # (a pure placeholder → text_norm="" → stays out of the index, ENG-04).
+            try:
+                conn.execute("DELETE FROM fts_units WHERE rowid = ?", (p["unit_id"],))
+                if p["text_norm"]:
+                    conn.execute("INSERT INTO fts_units(rowid, text_norm) VALUES (?, ?)",
+                                 (p["unit_id"], p["text_norm"]))
+            except Exception:
+                pass  # FTS update is best-effort (mirrors update_unit_text)
+            before_snapshot.append(p["before"])
 
-    if record_action is not None and before_snapshot:
-        record_action(before_snapshot)
+        if record_action is not None and before_snapshot:
+            record_action(before_snapshot)
 
-    conn.commit()
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     log.info("lift-markers applied doc_id=%d: %d units changed (%d roles, %d statuses, %d cleaned)",
              doc_id, report.units_affected, report.roles_set, report.statuses_set, report.cleaned)
     return report

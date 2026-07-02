@@ -227,6 +227,13 @@ def test_set_unit_status_bad_enum(db_conn: sqlite3.Connection) -> None:
         set_unit_status(db_conn, {"doc_id": doc_id, "unit_n": 1, "status": "ghost"})
 
 
+def test_set_unit_status_non_string_status(db_conn: sqlite3.Connection) -> None:
+    """LFT-03: a non-string status is a 400 (BadRequestError), not a 500 AttributeError."""
+    doc_id, _ = _mk_doc_units(db_conn, 1)
+    with pytest.raises(BadRequestError):
+        set_unit_status(db_conn, {"doc_id": doc_id, "unit_n": 1, "status": 5})
+
+
 @pytest.mark.parametrize("body", [
     {"unit_n": 1},                       # missing doc_id
     {"doc_id": "x", "unit_n": 1},        # non-int doc_id
