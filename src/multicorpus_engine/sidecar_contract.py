@@ -14,7 +14,7 @@ from typing import Any
 from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
-CONTRACT_VERSION = "1.6.39"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.40"  # semantic versioning for the sidecar API contract
 # SID-08 / OPS-03: the API version IS the contract version — derived, never a
 # second hand-maintained literal, so the two can no longer drift. /health reports
 # the *engine* version under `version` (it predates the sidecar); every other
@@ -130,6 +130,10 @@ API_VERSION = CONTRACT_VERSION
 # 1.6.39: POST /lift/markers (token required) — lift a document's inline peritext markers
 #         ([T]/[Ch]/[InterT]/[non traduit]/[+]) into unit_role/unit_status, stripping them from
 #         text_norm (refonte R4.2). dry_run=true (default) reports without writing. New route.
+# 1.6.40: /query hits (and their aligned units) gain unit_role + unit_status so the
+#         concordancier can display the peritext role and translation status (refonte R4.3).
+#         Additive: the QueryResponse `hits` items schema is intentionally open ({type:object}),
+#         so no schema shape changes — version-only bump for traceability. No new route/param.
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"

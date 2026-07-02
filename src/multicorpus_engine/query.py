@@ -284,6 +284,8 @@ def _fetch_aligned_units(
             al.external_id,
             al.source_changed_at,
             u.text_norm,
+            u.unit_role,
+            u.unit_status,
             u.doc_id,
             d.language,
             d.title
@@ -312,6 +314,8 @@ def _fetch_aligned_units(
                     "title": row["title"],
                     "text": row["text_norm"],
                     "text_norm": row["text_norm"],
+                    "unit_role": row["unit_role"],
+                    "unit_status": row["unit_status"],
                     "source_changed_at": row["source_changed_at"],
                 })
         if aligned_limit is not None:
@@ -338,6 +342,8 @@ def _fetch_aligned_units(
             u.unit_id AS matched_unit_id,
             u.external_id,
             u.text_norm,
+            u.unit_role,
+            u.unit_status,
             u.doc_id,
             d.language,
             d.title,
@@ -351,6 +357,8 @@ def _fetch_aligned_units(
             al.target_unit_id AS matched_unit_id,
             al.external_id,
             u2.text_norm,
+            u2.unit_role,
+            u2.unit_status,
             u2.doc_id,
             d2.language,
             d2.title,
@@ -380,6 +388,8 @@ def _fetch_aligned_units(
                 "title": row["title"],
                 "text": row["text_norm"],
                 "text_norm": row["text_norm"],
+                "unit_role": row["unit_role"],
+                "unit_status": row["unit_status"],
                 "source_changed_at": row["source_changed_at"],
             })
 
@@ -423,6 +433,9 @@ def _build_hits_core(
         lang = row["language"]
         title = row["title"]
 
+        role = row["unit_role"]
+        status = row["unit_status"]
+
         if mode == "segment":
             hit: dict[str, Any] = {
                 "doc_id": d_id,
@@ -432,6 +445,8 @@ def _build_hits_core(
                 "title": title,
                 "text": highlight_segment(text_norm),
                 "text_norm": text_norm,
+                "unit_role": role,
+                "unit_status": status,
             }
             if include_aligned:
                 hit["aligned"] = _fetch_aligned_units(conn, unit_id, aligned_limit=aligned_limit)
@@ -457,6 +472,8 @@ def _build_hits_core(
                     "match": match,
                     "right": right,
                     "text_norm": text_norm,
+                    "unit_role": role,
+                    "unit_status": status,
                 }
                 if include_aligned:
                     occ_hit["aligned"] = _fetch_aligned_units(conn, unit_id, aligned_limit=aligned_limit)
@@ -641,7 +658,7 @@ def _run_regex_page(
     where_clause = " AND ".join(filters)
     sql = f"""
         SELECT u.unit_id, u.doc_id, u.external_id, u.text_norm, u.text_raw,
-               d.language, d.title
+               u.unit_role, u.unit_status, d.language, d.title
         FROM units u
         JOIN documents d ON d.doc_id = u.doc_id
         WHERE {where_clause}
@@ -790,6 +807,8 @@ def run_query_page(
             u.external_id,
             u.text_norm,
             u.text_raw,
+            u.unit_role,
+            u.unit_status,
             d.language,
             d.title
         FROM fts_units f

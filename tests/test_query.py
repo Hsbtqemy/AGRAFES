@@ -214,3 +214,120 @@ def test_query_filters_by_unit_status_regex(db_conn: sqlite3.Connection) -> None
 
     res = run_query_page(db_conn, q="", regex_pattern="mot", unit_status="non_traduit")["hits"]
     assert len(res) == 1 and res[0]["external_id"] == 1
+
+
+# ── R4.3: hits (and aligned units) carry unit_role + unit_status ───────────────
+def _seed_role(db_conn: sqlite3.Connection, name: str = "titre") -> None:
+    """Ensure a structure role exists (unit_role FK → unit_roles(name))."""
+    db_conn.execute(
+        "INSERT OR IGNORE INTO unit_roles (name, label, color, sort_order, category)"
+        " VALUES (?, ?, '#2563eb', 1, 'structure')",
+        (name, name.capitalize()),
+    )
+
+
+def test_query_hits_carry_role_and_status_fts(db_conn: sqlite3.Connection) -> None:
+    """R4.3 — segment/FTS hits expose unit_role + unit_status (null when unset)."""
+    from multicorpus_engine.query import run_query_page
+
+    doc_id = _mk_indexed_status_doc(db_conn)
+    _seed_role(db_conn, "titre")
+    db_conn.execute("UPDATE units SET unit_role='titre', unit_status='non_traduit' WHERE doc_id=? AND n=1", (doc_id,))
+    db_conn.commit()
+
+    by_ext = {h["external_id"]: h for h in run_query_page(db_conn, q="mot")["hits"]}
+    assert by_ext[1]["unit_role"] == "titre" and by_ext[1]["unit_status"] == "non_traduit"
+    assert by_ext[2]["unit_role"] is None and by_ext[2]["unit_status"] is None  # unset → null
+
+
+def test_query_hits_carry_role_and_status_kwic(db_conn: sqlite3.Connection) -> None:
+    """R4.3 — kwic occurrences carry the same fields without losing the kwic shape."""
+    from multicorpus_engine.query import run_query_page
+
+    doc_id = _mk_indexed_status_doc(db_conn)
+    _seed_role(db_conn, "chapeau")
+    db_conn.execute("UPDATE units SET unit_role='chapeau', unit_status='ajout' WHERE doc_id=? AND n=3", (doc_id,))
+    db_conn.commit()
+
+    h3 = next(h for h in run_query_page(db_conn, q="mot", mode="kwic")["hits"] if h["external_id"] == 3)
+    assert h3["unit_role"] == "chapeau" and h3["unit_status"] == "ajout"
+    assert "left" in h3 and "match" in h3  # kwic shape intact
+
+
+def test_query_hits_carry_role_and_status_regex(db_conn: sqlite3.Connection) -> None:
+    """R4.3 — the regex (full-scan) path also exposes role + status."""
+    from multicorpus_engine.query import run_query_page
+
+    doc_id = _mk_indexed_status_doc(db_conn)
+    _seed_role(db_conn, "titre")
+    db_conn.execute("UPDATE units SET unit_role='titre', unit_status='non_traduit' WHERE doc_id=? AND n=1", (doc_id,))
+    db_conn.commit()
+
+    by_ext = {h["external_id"]: h for h in run_query_page(db_conn, q="", regex_pattern="mot")["hits"]}
+    assert by_ext[1]["unit_role"] == "titre" and by_ext[1]["unit_status"] == "non_traduit"
+    assert by_ext[2]["unit_status"] is None
+
+
+def _mk_aligned_pair(db_conn: sqlite3.Connection) -> tuple[int, int]:
+    """A fr pivot ('mot pivot') aligned to an en target ('word target'), indexed.
+
+    Returns (pivot_unit_id, target_unit_id). Pivot status=ajout ; target role=titre,
+    status=non_traduit — so both directions of _fetch_aligned_units can be asserted.
+    """
+    from multicorpus_engine.indexer import build_index
+
+    p = db_conn.execute(
+        "INSERT INTO documents (title, language, doc_role, created_at)"
+        " VALUES ('P', 'fr', 'source', datetime('now'))"
+    ).lastrowid
+    t = db_conn.execute(
+        "INSERT INTO documents (title, language, doc_role, created_at)"
+        " VALUES ('T', 'en', 'translation', datetime('now'))"
+    ).lastrowid
+    pu = db_conn.execute(
+        "INSERT INTO units (doc_id, unit_type, n, external_id, text_raw, text_norm)"
+        " VALUES (?, 'line', 1, 1, 'mot pivot', 'mot pivot')", (p,)
+    ).lastrowid
+    tu = db_conn.execute(
+        "INSERT INTO units (doc_id, unit_type, n, external_id, text_raw, text_norm)"
+        " VALUES (?, 'line', 1, 1, 'word target', 'word target')", (t,)
+    ).lastrowid
+    _seed_role(db_conn, "titre")
+    db_conn.execute("UPDATE units SET unit_status='ajout' WHERE unit_id=?", (pu,))
+    db_conn.execute("UPDATE units SET unit_role='titre', unit_status='non_traduit' WHERE unit_id=?", (tu,))
+    db_conn.execute(
+        "INSERT INTO alignment_links (run_id, pivot_unit_id, target_unit_id, external_id,"
+        " pivot_doc_id, target_doc_id, created_at)"
+        " VALUES ('r', ?, ?, 1, ?, ?, datetime('now'))", (pu, tu, p, t)
+    )
+    db_conn.commit()
+    build_index(db_conn)
+    return pu, tu
+
+
+def test_aligned_units_carry_role_and_status_forward(db_conn: sqlite3.Connection) -> None:
+    """R4.3 — forward aligned lookup (query the pivot) carries target role + status."""
+    from multicorpus_engine.query import run_query_page
+
+    _mk_aligned_pair(db_conn)
+    hits = run_query_page(db_conn, q="pivot", include_aligned=True)["hits"]
+    assert len(hits) == 1
+    aligned = hits[0]["aligned"]
+    assert len(aligned) == 1
+    assert aligned[0]["unit_role"] == "titre" and aligned[0]["unit_status"] == "non_traduit"
+
+
+def test_aligned_units_carry_role_and_status_reverse(db_conn: sqlite3.Connection) -> None:
+    """R4.3 — reverse aligned lookup (query the target) carries the pivot's role + status.
+
+    Exercises the siblings UNION-ALL branch of _fetch_aligned_units, distinct from
+    the forward branch.
+    """
+    from multicorpus_engine.query import run_query_page
+
+    _mk_aligned_pair(db_conn)
+    hits = run_query_page(db_conn, q="word", include_aligned=True)["hits"]
+    assert len(hits) == 1
+    aligned = hits[0]["aligned"]
+    assert len(aligned) == 1  # the pivot (returned via the siblings query)
+    assert aligned[0]["unit_status"] == "ajout" and aligned[0]["unit_role"] is None
