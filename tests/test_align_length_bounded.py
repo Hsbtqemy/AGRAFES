@@ -80,6 +80,39 @@ def test_length_bounded_basic_and_split(db: sqlite3.Connection) -> None:
     assert {r["target_unit_id"] for r in b_links} == {b1, b2}
 
 
+def test_multi_target_bead_ids_unique_across_targets(db: sqlite3.Connection) -> None:
+    """ALN-02: a multi-target run threads the sentence-bead counter so bead_id never
+    collides between targets sharing the run_id. Per-pair reset would give both
+    targets' split beads the same bead_id (RED on the old code)."""
+    from multicorpus_engine.aligner import align_by_length_bounded
+
+    piv = _doc(db, "Pivot", "fr")
+    t1 = _doc(db, "T1", "en")
+    t2 = _doc(db, "T2", "es")
+    # pivot: ¶1 A(20), ¶2 B(30)
+    _sent(db, piv, 1, 20, 1)
+    _sent(db, piv, 2, 30, 2)
+    # each target: ¶1 1-1, ¶2 split into two (1-2) → one non-null bead per target
+    for tgt in (t1, t2):
+        _sent(db, tgt, 1, 20, 1)
+        _sent(db, tgt, 2, 15, 2)
+        _sent(db, tgt, 3, 15, 2)
+
+    reports = align_by_length_bounded(db, piv, [t1, t2], "run-multi")
+    assert len(reports) == 2
+
+    def beads_of(tgt: int) -> set[int]:
+        rows = db.execute(
+            "SELECT bead_id FROM alignment_links WHERE target_doc_id=? AND bead_id IS NOT NULL",
+            (tgt,),
+        ).fetchall()
+        return {r["bead_id"] for r in rows}
+
+    b1, b2 = beads_of(t1), beads_of(t2)
+    assert b1 and b2                 # each target produced a split (non-null) bead
+    assert b1.isdisjoint(b2)         # ALN-02: no bead_id collision across targets
+
+
 def test_length_bounded_warns_when_not_fine_segmented(db: sqlite3.Connection) -> None:
     piv = _doc(db, "P", "fr")
     tgt = _doc(db, "T", "en")

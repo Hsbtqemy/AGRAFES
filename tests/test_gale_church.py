@@ -6,7 +6,25 @@ structural partition invariant that holds regardless of the exact cost tuning.
 """
 from __future__ import annotations
 
-from multicorpus_engine.gale_church import gale_church_beads
+import pytest
+
+from multicorpus_engine.gale_church import _MAX_LENGTHS, gale_church_beads
+
+
+def test_oversized_input_raises_before_allocation() -> None:
+    """ALN-01 — the O(n·m) DP is capped: either sequence over _MAX_LENGTHS raises."""
+    big = [1] * (_MAX_LENGTHS + 1)
+    small = [1, 2, 3]
+    with pytest.raises(ValueError, match="too long"):
+        gale_church_beads(big, small)
+    with pytest.raises(ValueError, match="too long"):
+        gale_church_beads(small, big)
+
+
+def test_at_cap_still_runs() -> None:
+    """Boundary: exactly _MAX_LENGTHS on one side is allowed (no raise)."""
+    beads = gale_church_beads([1] * _MAX_LENGTHS, [1])
+    assert beads  # partitions both inputs; the cap is inclusive
 
 
 def test_perfect_one_to_one() -> None:

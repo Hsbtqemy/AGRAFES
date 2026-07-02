@@ -300,7 +300,7 @@ Three **independent** version fields surface in sidecar responses — do not con
 - `POST /curate/preview`
 - `POST /align`
   - body: `{ pivot_doc_id, target_doc_ids, strategy?, sim_threshold?, debug_align?, replace_existing?, preserve_accepted?, run_id? }`
-  - `strategy` values: `external_id` (default), `position`, `similarity`, `external_id_then_position` (hybrid)
+  - `strategy` values: `external_id` (default), `position`, `similarity`, `external_id_then_position` (hybrid), `length_bounded` (two-tier Gale–Church, R3.2)
   - `sim_threshold` only applies to `similarity` (range `[0.0, 1.0]`)
   - `debug_align` (bool, default false) adds optional `report.debug` diagnostics payload
   - `replace_existing` (bool, default `false`): clear previous links for the same pivot/target scope before running.
@@ -444,7 +444,7 @@ Supported `kind` values and required `params`:
 - `import` — `params.mode` + `params.path` required; optional: `language`, `title`, `doc_role`, `resource_type`, `tei_unit`
   - `mode`: `docx_numbered_lines|txt_numbered_lines|docx_paragraphs|odt_paragraphs|odt_numbered_lines|tei|conllu`
 - `align` — `params.pivot_doc_id` + `params.target_doc_ids` required; optional: `strategy`, `sim_threshold`, `debug_align`, `replace_existing`, `preserve_accepted`, `run_id`
-  - `strategy`: `external_id|position|similarity|external_id_then_position`
+  - `strategy`: `external_id|position|similarity|external_id_then_position|length_bounded`
   - `replace_existing=true` + `preserve_accepted=true` is the recommended "global recalculation" mode for keeping manually accepted links stable
   - job result includes `run_id`; this run can be exported via `export_run_report` with `params.run_id`
 - `export_tei` — `params.out_dir` required; optional: `params.doc_ids`, `params.include_structure` (bool, default false)

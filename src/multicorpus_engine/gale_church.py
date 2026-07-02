@@ -33,6 +33,14 @@ _PENALTY = {steps: -100.0 * math.log(p) for steps, p in _PRIORS.items()}
 # Candidate transitions (steps_a, steps_b); the DP keeps the cheapest reaching each cell.
 _STEPS = ((1, 1), (1, 0), (0, 1), (2, 1), (1, 2), (2, 2))
 
+# Hard size cap on the DP (ALN-01). The forward pass allocates two full (n+1)·(m+1)
+# matrices; a whole-document paragraph tier on two large docs (e.g. 5 000×5 000 ≈ 25M
+# cells) would freeze/OOM *while the sidecar holds its write-lock*. Mirror the similarity
+# aligner's per-dimension guard (_MAX_SIMILARITY_UNITS, M-08): fail fast with a clear
+# error rather than degrade silently. 5 000 segments at one grain is already far beyond
+# any real document's paragraph count.
+_MAX_LENGTHS = 5_000
+
 
 def _norm_cdf(z: float) -> float:
     """Standard normal CDF via ``math.erf`` (stdlib)."""
@@ -63,8 +71,18 @@ def gale_church_beads(lengths_a: list[int], lengths_b: list[int]) -> list[dict]:
     are 0-based indices into ``lengths_a`` / ``lengths_b``. A gap bead has one empty
     side (``a == []`` = insertion, ``b == []`` = deletion). The beads exactly
     partition every index of both inputs, in order. Deterministic; O(len_a · len_b).
+
+    Raises ``ValueError`` when either sequence exceeds ``_MAX_LENGTHS`` (ALN-01): the
+    O(n·m) matrices make an unbounded whole-document run a freeze/OOM risk under the
+    sidecar write-lock.
     """
     n, m = len(lengths_a), len(lengths_b)
+    if n > _MAX_LENGTHS or m > _MAX_LENGTHS:
+        raise ValueError(
+            f"gale_church_beads: sequence too long for the length DP "
+            f"(a={n}, b={m}, max={_MAX_LENGTHS}). The document has an unusually high "
+            "segment count at this grain; use position-based or external-id alignment."
+        )
     inf = float("inf")
     # cost[i][j] = min cost to align lengths_a[:i] with lengths_b[:j]; back = predecessor.
     cost = [[inf] * (m + 1) for _ in range(n + 1)]

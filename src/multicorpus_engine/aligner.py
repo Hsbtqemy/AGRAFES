@@ -55,6 +55,10 @@ class AlignmentReport:
     pivot_line_count: int = 0
     target_line_count: int = 0
     links_created: int = 0
+    # Running sentence-bead counter after this pair (ALN-02): lets a multi-target run
+    # thread the counter across pairs so (run_id, bead_id) stays unique run-wide.
+    # Not part of to_dict() — internal to the orchestration, contract unchanged.
+    sentence_bead_count: int = 0
 
     # Diagnostic sets (external_ids)
     matched: list[int] = field(default_factory=list)
@@ -405,6 +409,7 @@ def align_pair_by_length(
     debug: bool = False,
     protected_pairs: set[tuple[int, int]] | None = None,
     run_logger: Optional[logging.Logger] = None,
+    bead_start: int = 0,
 ) -> AlignmentReport:
     """Align a pair by the two-tier length-bounded (Gale–Church) strategy (R3.2).
 
@@ -414,6 +419,11 @@ def align_pair_by_length(
     sentence gaps (1-0/0-1) stay orphans (no link). ``external_id`` records the pivot
     sentence's position ``n`` (design D3). Degrades to line grain when a doc is not
     fine-segmented. Honours ``protected_pairs`` (accepted links preserved).
+
+    ``bead_start`` seeds the sentence-bead counter (ALN-02): a multi-target run passes
+    the previous pair's final count so ``bead_id`` values never collide across targets
+    of the same ``run_id`` (the invariant documented in migration 022). The final
+    counter is exposed on ``report.sentence_bead_count``.
     """
     log = run_logger or logger
     utcnow = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -457,7 +467,7 @@ def align_pair_by_length(
 
     # ── Sentence tier (within each paragraph bead) ──
     links: list[tuple] = []
-    bead_counter = 0
+    bead_counter = bead_start  # ALN-02: continue the run-wide bead numbering
     protected_skipped = 0
     sample_links: list[dict[str, Any]] = []
     for pb in para_beads:
@@ -519,6 +529,7 @@ def align_pair_by_length(
             "sentence_beads": bead_counter,
             "sample_links": sample_links,
         }
+    report.sentence_bead_count = bead_counter  # ALN-02: hand the counter to the next pair
     log.info(
         "Length alignment complete: %d links created (%.1f%% coverage)",
         report.links_created, report.coverage_pct,
@@ -537,8 +548,11 @@ def align_by_length_bounded(
 ) -> list[AlignmentReport]:
     """Align pivot against one or more targets with the length-bounded strategy."""
     reports: list[AlignmentReport] = []
+    # ALN-02: thread the sentence-bead counter across targets so bead_id stays unique
+    # within the shared run_id (per pair it would reset to 0 and collide across targets).
+    bead_offset = 0
     for target_doc_id in target_doc_ids:
-        reports.append(align_pair_by_length(
+        report = align_pair_by_length(
             conn=conn,
             pivot_doc_id=pivot_doc_id,
             target_doc_id=target_doc_id,
@@ -546,7 +560,10 @@ def align_by_length_bounded(
             debug=debug,
             protected_pairs=(protected_pairs_by_target or {}).get(target_doc_id),
             run_logger=run_logger,
-        ))
+            bead_start=bead_offset,
+        )
+        bead_offset = report.sentence_bead_count
+        reports.append(report)
     return reports
 
 
