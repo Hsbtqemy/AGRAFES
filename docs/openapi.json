@@ -4037,8 +4037,8 @@
   "info": {
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
-    "version": "1.6.42",
-    "x-contract-version": "1.6.42"
+    "version": "1.6.43",
+    "x-contract-version": "1.6.43"
   },
   "openapi": "3.0.3",
   "paths": {
@@ -6856,7 +6856,18 @@
     },
     "/models": {
       "get": {
-        "description": "Catalog of supported spaCy models with install state (filesystem-only, no DB) → dispatched lock-free, never blocks db writes.",
+        "description": "Catalog of supported spaCy models with install state (filesystem-only, no DB) → dispatched lock-free, never blocks db writes. Optional ?language= filters to one base language code.",
+        "parameters": [
+          {
+            "description": "Filter to one base language code (e.g. fr)",
+            "in": "query",
+            "name": "language",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -6869,6 +6880,9 @@
                           "approx_size_mb": {
                             "type": "integer"
                           },
+                          "genre": {
+                            "type": "string"
+                          },
                           "installed": {
                             "type": "boolean"
                           },
@@ -6876,6 +6890,9 @@
                             "type": "string"
                           },
                           "name": {
+                            "type": "string"
+                          },
+                          "size_class": {
                             "type": "string"
                           },
                           "source": {

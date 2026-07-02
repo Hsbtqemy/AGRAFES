@@ -76,13 +76,36 @@ def test_spacy_models_dir_env_override(tmp_path, monkeypatch):
 
 def test_list_models_empty(tmp_path):
     # Inject "nothing bundled" so the result is deterministic regardless of what spaCy
-    # model packages happen to be importable in the test environment.
+    # model packages happen to be importable in the test environment. The catalogue is
+    # the static extended set (sm/md/lg per language), offline — no network.
     models = ms.list_models(tmp_path, is_bundled=lambda _n: False)
-    assert len(models) == len(ms.MODEL_CATALOG) == 9
+    assert len(models) == len(ms._STATIC_CATALOG) > 9
     assert all(m["installed"] is False and m["version"] is None for m in models)
     assert all(m["source"] == "absent" for m in models)
     fr = next(m for m in models if m["name"] == MODEL)
     assert fr["language"] == "fr" and fr["approx_size_mb"] > 0
+
+
+def test_list_models_parses_genre_and_size(tmp_path):
+    models = {m["name"]: m for m in ms.list_models(tmp_path, is_bundled=lambda _n: False)}
+    lg = models["fr_core_news_lg"]
+    assert lg["genre"] == "core" and lg["size_class"] == "lg" and lg["approx_size_mb"] == 500
+    xx = models["xx_ent_wiki_sm"]
+    assert xx["language"] == "xx" and xx["genre"] == "ent" and xx["size_class"] == "sm"
+
+
+def test_list_models_language_filter(tmp_path):
+    fr = ms.list_models(tmp_path, language="fr", is_bundled=lambda _n: False)
+    assert fr and all(m["language"] == "fr" for m in fr)
+    # Filtering never invents models outside the catalogue.
+    assert {m["name"] for m in fr} <= set(ms._STATIC_CATALOG)
+
+
+def test_list_models_includes_downloaded_outside_static_set(tmp_path):
+    # A model installed but not in the static list still shows (source downloaded).
+    (tmp_path / "nl_core_news_sm").mkdir()
+    names = {m["name"]: m for m in ms.list_models(tmp_path, is_bundled=lambda _n: False)}
+    assert names["nl_core_news_sm"]["source"] == "downloaded"
 
 
 def test_list_models_marks_bundled(tmp_path):
@@ -182,10 +205,30 @@ def test_install_is_atomic_overwrite(tmp_path):
 # ─── Security guards ────────────────────────────────────────────────────────
 
 def test_unknown_model_rejected(tmp_path):
+    # "evil_model" fails the name grammar (regex) — rejected before any network.
     with pytest.raises(ValidationError):
         ms.install_model("evil_model", tmp_path, fetch_compat=lambda: {}, open_url=_opener(b""))
     with pytest.raises(BadRequestError):
         ms.install_model("  ", tmp_path)
+
+
+def test_install_allowlist_is_dynamic(tmp_path):
+    # A regex-valid name that is NOT in the compatibility.json catalogue is refused —
+    # the allowlist is the live table, not a hardcoded list. (fr_core_news_md is present.)
+    compat = {"spacy": {"3.8": {"fr_core_news_md": ["3.8.0"]}}}
+    with pytest.raises(ValidationError):
+        ms.resolve_download("zz_core_news_lg", spacy_version="3.8", fetch_compat=lambda: compat)
+    plan = ms.resolve_download("fr_core_news_md", spacy_version="3.8", fetch_compat=lambda: compat)
+    assert plan["version"] == "3.8.0"
+
+
+def test_is_valid_model_name():
+    assert ms.is_valid_model_name("fr_core_news_lg")
+    assert ms.is_valid_model_name("xx_ent_wiki_sm")
+    assert not ms.is_valid_model_name("evil_model")   # 4-letter lead, no early underscore
+    assert not ms.is_valid_model_name("../etc/passwd")
+    assert not ms.is_valid_model_name("")
+    assert not ms.is_valid_model_name(None)
 
 
 def test_zip_slip_rejected(tmp_path):
@@ -219,5 +262,6 @@ def test_cli_models_list(tmp_path, monkeypatch, capsys):
     args.func(args)
     payload = json.loads(capsys.readouterr().out)
     assert payload["status"] == "ok"
-    assert len(payload["models"]) == 9
+    # Static extended catalogue (offline, no network) — more than the former 9.
+    assert len(payload["models"]) == len(ms._STATIC_CATALOG) > 9
     assert all(not m["installed"] for m in payload["models"])

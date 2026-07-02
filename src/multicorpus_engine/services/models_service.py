@@ -16,11 +16,11 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import shutil
 import tempfile
 import urllib.request
 import zipfile
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -30,30 +30,39 @@ from .errors import BadRequestError, NotFoundError, ValidationError
 ProgressCb = Callable[[int, Optional[str]], None]
 
 
-@dataclass(frozen=True)
-class ModelSpec:
-    name: str
-    language: str       # ISO code, or "mul" for the multilingual model
-    approx_size_mb: int  # for UI hints only
+# spaCy model name grammar — the security frontier alongside the compat.json allowlist:
+# ``<lang>_<type>_<source>_<size>``, lowercase letters/digits, underscore-separated.
+_NAME_RE = re.compile(r"^[a-z]{2,3}(_[a-z0-9]+)+$")
 
+# Indicative download sizes (Mo) by size class — compatibility.json carries no sizes.
+_SIZE_MB_BY_CLASS: dict[str, int] = {"sm": 12, "md": 45, "lg": 500, "trf": 450}
 
-# The 9 models the annotator maps languages to (annotator._DEFAULT_MODEL_BY_LANG).
-MODEL_CATALOG: dict[str, ModelSpec] = {
-    "fr_core_news_md": ModelSpec("fr_core_news_md", "fr", 45),
-    "en_core_web_md": ModelSpec("en_core_web_md", "en", 40),
-    "de_core_news_md": ModelSpec("de_core_news_md", "de", 45),
-    "es_core_news_md": ModelSpec("es_core_news_md", "es", 45),
-    "it_core_news_md": ModelSpec("it_core_news_md", "it", 45),
-    "sv_core_news_sm": ModelSpec("sv_core_news_sm", "sv", 13),
-    "ro_core_news_md": ModelSpec("ro_core_news_md", "ro", 45),
-    "el_core_news_sm": ModelSpec("el_core_news_sm", "el", 13),
-    "xx_ent_wiki_sm": ModelSpec("xx_ent_wiki_sm", "mul", 11),
-}
+# The 9 models the annotator maps languages to by default (annotator._DEFAULT_MODEL_BY_LANG).
+_DEFAULT_MODEL_NAMES: tuple[str, ...] = (
+    "fr_core_news_md", "en_core_web_md", "de_core_news_md", "es_core_news_md",
+    "it_core_news_md", "sv_core_news_sm", "ro_core_news_md", "el_core_news_sm",
+    "xx_ent_wiki_sm",
+)
 
-# Offline fallback when the live compatibility table is unreachable. Tracks the
-# spaCy 3.8.x line bundled in the sidecar (`spacy>=3.7`); live compatibility.json
-# overrides this when available.
-_PINNED_MODEL_VERSIONS: dict[str, str] = {name: "3.8.0" for name in MODEL_CATALOG}
+# Static catalogue offered for *listing* (offline, lock-free): the defaults plus common
+# sizes per language, so the picker offers sm/md/lg without a network call. The full
+# compatibility.json catalogue (every language/size) is the *install allowlist*
+# (resolve_download) and is fetched on demand — listing never blocks on the network.
+_STATIC_CATALOG: tuple[str, ...] = (
+    "fr_core_news_sm", "fr_core_news_md", "fr_core_news_lg",
+    "en_core_web_sm", "en_core_web_md", "en_core_web_lg", "en_core_web_trf",
+    "de_core_news_sm", "de_core_news_md", "de_core_news_lg",
+    "es_core_news_sm", "es_core_news_md", "es_core_news_lg",
+    "it_core_news_sm", "it_core_news_md", "it_core_news_lg",
+    "sv_core_news_sm", "sv_core_news_md", "sv_core_news_lg",
+    "ro_core_news_sm", "ro_core_news_md", "ro_core_news_lg",
+    "el_core_news_sm", "el_core_news_md", "el_core_news_lg",
+    "xx_ent_wiki_sm", "xx_sent_ud_sm",
+)
+
+# Offline fallback for the install allowlist + version resolution when compatibility.json
+# is unreachable. Tracks the spaCy 3.8.x line bundled in the sidecar (`spacy>=3.7`).
+_PINNED_MODEL_VERSIONS: dict[str, str] = {name: "3.8.0" for name in _STATIC_CATALOG}
 
 _COMPAT_URL = "https://raw.githubusercontent.com/explosion/spacy-models/master/compatibility.json"
 _RELEASE_URL = (
@@ -65,16 +74,30 @@ _CHUNK = 256 * 1024
 
 # ─── Validation / introspection ─────────────────────────────────────────────
 
-def _validate_name(name: str) -> str:
+def is_valid_model_name(name: object) -> bool:
+    """True if ``name`` matches the spaCy model-name grammar (cheap syntax check, no
+    network). Catalogue membership (compat.json) is checked separately at install."""
+    return isinstance(name, str) and bool(_NAME_RE.match(name.strip()))
+
+
+def _validate_name_syntax(name: str) -> str:
+    """Blank → BadRequestError; wrong shape → ValidationError. No network, no catalogue."""
     if not isinstance(name, str) or not name.strip():
         raise BadRequestError("model name is required")
     resolved = name.strip()
-    if resolved not in MODEL_CATALOG:
-        raise ValidationError(
-            f"unknown model: {resolved!r}",
-            details={"allowed": sorted(MODEL_CATALOG)},
-        )
+    if not _NAME_RE.match(resolved):
+        raise ValidationError(f"invalid model name: {resolved!r}")
     return resolved
+
+
+def _parse_model_name(name: str) -> dict:
+    """Best-effort split of ``<lang>_<type>_<source>_<size>`` for display fields."""
+    parts = name.split("_")
+    lang = parts[0] if parts else name
+    size_class = parts[-1] if len(parts) >= 2 and parts[-1] in _SIZE_MB_BY_CLASS else ""
+    genre = parts[1] if len(parts) >= 2 else ""
+    source = parts[2] if len(parts) >= 4 else ""
+    return {"language": lang, "genre": genre, "source": source, "size_class": size_class}
 
 
 def _meta_path(models_dir: Path, name: str) -> Path:
@@ -107,39 +130,52 @@ def _is_model_bundled(name: str) -> bool:
 def list_models(
     models_dir: Optional[Path] = None,
     *,
+    language: Optional[str] = None,
     is_bundled: Optional[Callable[[str], bool]] = None,
 ) -> list[dict]:
-    """List the known models with availability status.
+    """List the catalogue models with availability status (filesystem-only, no network).
 
-    Each entry carries a tri-state ``source``:
-      - ``"downloaded"`` — present in the user models dir (removable; version known);
-      - ``"bundled"`` — importable in-process (embedded in a frozen sidecar, read-only);
-      - ``"absent"`` — neither, offered for download.
+    Catalogue = the static extended set (sm/md/lg per language) ∪ anything already
+    downloaded (so a model installed outside the static set still shows). Each entry:
+      - ``source`` tri-state: ``downloaded`` (user dir, removable) / ``bundled``
+        (importable in-process, read-only) / ``absent`` (offered for download);
+      - ``genre`` / ``size_class`` / ``approx_size_mb`` parsed from the name;
+      - ``installed`` kept (== downloaded) for backward compatibility.
 
-    ``installed`` is kept (== downloaded to the user dir) for backward compatibility;
-    UI should key off ``source`` so an *embedded* model no longer shows as "Absent".
-    ``is_bundled`` is injectable for offline tests (the real detector imports spaCy
-    packages that are not present in a plain dev env).
+    ``language`` filters to one base code (UI at deploy time). ``is_bundled`` is
+    injectable for offline tests (the real detector imports spaCy packages absent from a
+    plain dev env).
     """
     target = models_dir or spacy_models_dir()
     bundled = is_bundled if is_bundled is not None else _is_model_bundled
+    names = set(_STATIC_CATALOG)
+    if target.is_dir():
+        for child in target.iterdir():
+            if child.is_dir() and _NAME_RE.match(child.name):
+                names.add(child.name)
+    lang = language.strip().lower() if language else None
     out: list[dict] = []
-    for spec in MODEL_CATALOG.values():
-        downloaded = (target / spec.name).is_dir()
+    for name in sorted(names):
+        meta = _parse_model_name(name)
+        if lang is not None and meta["language"] != lang:
+            continue
+        downloaded = (target / name).is_dir()
         if downloaded:
             source = "downloaded"
-        elif bundled(spec.name):
+        elif bundled(name):
             source = "bundled"
         else:
             source = "absent"
         out.append(
             {
-                "name": spec.name,
-                "language": spec.language,
-                "approx_size_mb": spec.approx_size_mb,
+                "name": name,
+                "language": meta["language"],
+                "genre": meta["genre"],
+                "size_class": meta["size_class"],
+                "approx_size_mb": _SIZE_MB_BY_CLASS.get(meta["size_class"], 0),
                 "installed": downloaded,
                 "source": source,
-                "version": _installed_version(target, spec.name) if downloaded else None,
+                "version": _installed_version(target, name) if downloaded else None,
             }
         )
     return out
@@ -187,25 +223,19 @@ def _fetch_compat() -> object:
         return json.loads(resp.read().decode("utf-8"))
 
 
-def _resolve_version(
-    name: str,
-    *,
-    spacy_version: Optional[str] = None,
-    fetch_compat: Optional[Callable[[], object]] = None,
-) -> str:
-    version = spacy_version or _installed_spacy_version()
-    fetcher = fetch_compat if fetch_compat is not None else _fetch_compat
-    try:
-        compat = fetcher()
-    except Exception:
-        compat = None
-    found = _lookup_compat(compat, version, name) if compat is not None else None
-    if found:
-        return found
-    pinned = _PINNED_MODEL_VERSIONS.get(name)
-    if pinned:
-        return pinned
-    raise NotFoundError(f"no compatible version found for {name!r} (spaCy {version!r})")
+def _compat_catalog(compat: object, spacy_version: str) -> Optional[list[str]]:
+    """All model names published for this spaCy version in compatibility.json, filtered
+    by the name grammar. ``None`` if the table is unusable → callers fall back to pinned."""
+    if not isinstance(compat, dict):
+        return None
+    table = compat.get("spacy")
+    if not isinstance(table, dict):
+        return None
+    for key in (spacy_version, _minor_version(spacy_version)):
+        entry = table.get(key)
+        if isinstance(entry, dict):
+            return sorted(n for n in entry if isinstance(n, str) and _NAME_RE.match(n))
+    return None
 
 
 def resolve_download(
@@ -214,10 +244,27 @@ def resolve_download(
     spacy_version: Optional[str] = None,
     fetch_compat: Optional[Callable[[], object]] = None,
 ) -> dict:
-    """Resolve a model name to a concrete {name, version, url} download plan."""
-    name = _validate_name(name)
-    version = _resolve_version(name, spacy_version=spacy_version, fetch_compat=fetch_compat)
-    return {"name": name, "version": version, "url": _RELEASE_URL.format(name=name, ver=version)}
+    """Resolve a model name to a concrete {name, version, url} download plan.
+
+    Allowlist = the name grammar (checked first, no network) **and** membership in the
+    compatibility.json catalogue for the running spaCy version (pinned set as offline
+    fallback). One compat fetch covers both the allowlist and the version resolution.
+    """
+    resolved = _validate_name_syntax(name)  # blank/shape → no network
+    version = spacy_version or _installed_spacy_version()
+    fetcher = fetch_compat if fetch_compat is not None else _fetch_compat
+    try:
+        compat = fetcher()
+    except Exception:
+        compat = None
+    catalog = _compat_catalog(compat, version) or sorted(_PINNED_MODEL_VERSIONS)
+    if resolved not in catalog:
+        raise ValidationError(f"unknown model: {resolved!r}", details={"allowed": catalog})
+    found = _lookup_compat(compat, version, resolved) if compat is not None else None
+    ver = found or _PINNED_MODEL_VERSIONS.get(resolved)
+    if not ver:
+        raise NotFoundError(f"no compatible version found for {resolved!r} (spaCy {version!r})")
+    return {"name": resolved, "version": ver, "url": _RELEASE_URL.format(name=resolved, ver=ver)}
 
 
 # ─── Download + extraction ──────────────────────────────────────────────────
@@ -279,11 +326,11 @@ def install_model(
     open_url: Optional[Callable[[str], object]] = None,
 ) -> dict:
     """Download + install a model into the user models dir (atomic move into place)."""
-    name = _validate_name(name)
     target = models_dir or spacy_models_dir()
     target.mkdir(parents=True, exist_ok=True)
 
-    plan = resolve_download(name, fetch_compat=fetch_compat)
+    plan = resolve_download(name, fetch_compat=fetch_compat)  # validates name + version
+    name = plan["name"]
     if progress_cb:
         progress_cb(5, f"Résolution {name} {plan['version']}")
 
@@ -328,7 +375,7 @@ def remove_model(
     a misleading "not installed". A model that is both bundled *and* downloaded still
     removes its user-dir duplicate (the bundled copy keeps working).
     """
-    name = _validate_name(name)
+    name = _validate_name_syntax(name)
     target = models_dir or spacy_models_dir()
     dest = target / name
     if not dest.is_dir():

@@ -68,9 +68,15 @@ actuel (9 modèles) ; le Fil B enrichit ensuite. On les découpe en §8.
 - **Parsing du nom** `{lang}_{genre}_{source}_{size}` → langue / genre (`core`/`dep`/`ent`) /
   source (`news`/`web`/`wiki`) / taille. **Tailles** : ✅ table statique indicative
   (`sm≈12`, `md≈45`, `lg≈500`, `trf≈450` Mo) ; HEAD `Content-Length` **différé** (décision §9).
-- `list_models(language=None)` : sans filtre = catalogue complet groupé par langue ;
-  `?language=fr` = seulement `fr` (UI au déploiement). Chaque item :
-  `name, language, genre, size_class, approx_size_mb, source, version|None, active`.
+- **Listing vs install (raffinement c-1)** : pour préserver le « filesystem-only,
+  lock-free » de `GET /models`, le **listing** utilise un **catalogue statique étendu**
+  (`_STATIC_CATALOG`, sm/md/lg par langue) ∪ les modèles téléchargés — **hors réseau**.
+  L'allowlist **d'installation** (`resolve_download`), elle, est **dynamique**
+  (`compatibility.json` + regex). Le **listing complet toutes-langues** via compat.json est
+  un **fetch à la demande** (déplié dans l'UI par langue) → **c-3**.
+- `list_models(language=None)` : sans filtre = catalogue statique ; `?language=fr` = seulement
+  `fr` (UI au déploiement). Chaque item : `name, language, genre, size_class, approx_size_mb,
+  source, version|None` (+ `active` en c-2).
 
 ### 3.2 Modèle actif par langue (Lot 4)
 

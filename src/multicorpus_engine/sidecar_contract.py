@@ -14,7 +14,7 @@ from typing import Any
 from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
-CONTRACT_VERSION = "1.6.42"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.43"  # semantic versioning for the sidecar API contract
 # SID-08 / OPS-03: the API version IS the contract version — derived, never a
 # second hand-maintained literal, so the two can no longer drift. /health reports
 # the *engine* version under `version` (it predates the sidecar); every other
@@ -139,6 +139,10 @@ API_VERSION = CONTRACT_VERSION
 # 1.6.42: GET /models items gain `source` (enum bundled/downloaded/absent) so an *embedded*
 #         model is shown as available, not "Absent" (Lot 1 of the dual-dist/selection design).
 #         POST /models/remove now refuses a bundled model (read-only) with 400. Additive field.
+# 1.6.43: GET /models items gain `genre` + `size_class` (parsed from the name); the catalogue
+#         is the static extended set (sm/md/lg per language) and GET /models gains optional
+#         `?language=` filter (R5.2c-1, Lot 3). Install allowlist = compat.json + name regex.
+#         Additive field + additive query param.
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
@@ -2094,12 +2098,18 @@ def openapi_spec() -> dict[str, Any]:
                     "summary": "List known spaCy models with install status",
                     "description": (
                         "Catalog of supported spaCy models with install state (filesystem-only, "
-                        "no DB) → dispatched lock-free, never blocks db writes."
+                        "no DB) → dispatched lock-free, never blocks db writes. Optional "
+                        "?language= filters to one base language code."
                     ),
+                    "parameters": [
+                        {"name": "language", "in": "query", "required": False, "schema": {"type": "string"},
+                         "description": "Filter to one base language code (e.g. fr)"},
+                    ],
                     "responses": {
                         "200": {"description": "Model list", "content": {"application/json": {"schema": {"type": "object", "properties": {
                             "models": {"type": "array", "items": {"type": "object", "properties": {
                                 "name": {"type": "string"}, "language": {"type": "string"},
+                                "genre": {"type": "string"}, "size_class": {"type": "string"},
                                 "approx_size_mb": {"type": "integer"}, "installed": {"type": "boolean"},
                                 "source": {"type": "string", "enum": ["bundled", "downloaded", "absent"]},
                                 "version": {"type": "string", "nullable": True}}}}}}}}},

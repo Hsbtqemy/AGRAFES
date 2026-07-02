@@ -2564,10 +2564,15 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 
     # ── spaCy model management (Phase 2; logic in services/models_service) ─────
     def _handle_models_list(self) -> None:
-        """GET /models — catalog + install status (filesystem-only, lock-free)."""
+        """GET /models — catalog + install status (filesystem-only, lock-free).
+
+        Optional ``?language=`` filters to one base language code (UI at deploy time).
+        """
         from multicorpus_engine.services import models_service as _ms
 
-        self._send_json(success_payload({"models": _ms.list_models()}))
+        qs = parse_qs(urlparse(self.path).query)
+        language = qs.get("language", [None])[0] or None
+        self._send_json(success_payload({"models": _ms.list_models(language=language)}))
 
     def _handle_models_download(self, body: dict) -> None:
         """POST /models/download — download + install a model as an async job.
@@ -2582,12 +2587,11 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             self._send_error("model is required", code=ERR_VALIDATION, http_status=400)
             return
         model = model.strip()
-        if model not in _ms.MODEL_CATALOG:
+        # Cheap syntax gate (no network); full compatibility.json allowlist is enforced
+        # inside install_model on the job worker, surfaced as a job error.
+        if not _ms.is_valid_model_name(model):
             self._send_error(
-                f"unknown model: {model!r}",
-                code=ERR_VALIDATION,
-                http_status=400,
-                details={"allowed": sorted(_ms.MODEL_CATALOG)},
+                f"unknown model: {model!r}", code=ERR_VALIDATION, http_status=400,
             )
             return
 
