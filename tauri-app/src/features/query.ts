@@ -198,6 +198,7 @@ async function _fetchAndApplyFacets(forQuery: string): Promise<void> {
       doc_date_from: state.filterDateFrom || undefined,
       doc_date_to: state.filterDateTo || undefined,
       source_ext: state.filterSourceExt || undefined,
+      unit_status: state.filterUnitStatus || undefined,  // FE-01: counters honour the R4.1 filter
       top_docs_limit: 10,
     });
     // Discard if the query has changed while we were waiting

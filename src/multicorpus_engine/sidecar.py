@@ -2152,6 +2152,14 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             except (TypeError, ValueError) as exc:
                 raise ValueError("doc_ids must be a list of integers") from exc
 
+        # FE-01: honour the unit_status filter (R4.1) on facets/counters too; validate
+        # the enum as /query does (LFT-03) so a bad value is a 400, not silent 0.
+        unit_status_f = body.get("unit_status") or None
+        if unit_status_f is not None and unit_status_f not in ("non_traduit", "ajout"):
+            raise ValueError(
+                f"invalid unit_status '{unit_status_f}' (expected 'non_traduit', 'ajout', or null)"
+            )
+
         params = {
             "q": body.get("q", ""),
             "language": body.get("language"),
@@ -2164,6 +2172,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             "doc_date_from": body.get("doc_date_from") or None,
             "doc_date_to": body.get("doc_date_to") or None,
             "source_ext": body.get("source_ext") or None,
+            "unit_status": unit_status_f,
             "top_docs_limit": top_docs_limit,
         }
         with self._lock():

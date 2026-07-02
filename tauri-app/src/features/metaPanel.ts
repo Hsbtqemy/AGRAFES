@@ -511,6 +511,7 @@ async function _enrichDocCount(hit: QueryHit, row: HTMLElement): Promise<void> {
       language: state.filterLangs.length > 0 ? state.filterLangs : undefined,
       doc_role: state.filterRole || undefined,
       resource_type: state.filterResourceType || undefined,
+      unit_status: state.filterUnitStatus || undefined,  // FE-01: doc count honours the R4.1 filter
       top_docs_limit: 1,
     });
     total = res.total_hits;

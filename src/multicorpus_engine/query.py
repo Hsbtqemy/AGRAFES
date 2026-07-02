@@ -902,6 +902,7 @@ def run_query_facets(
     doc_date_from: Optional[str] = None,
     doc_date_to: Optional[str] = None,
     source_ext: Optional[str] = None,
+    unit_status: Optional[str] = None,
     top_docs_limit: int = 10,
 ) -> dict[str, Any]:
     """Compute lightweight facet summary for a query without fetching hit content.
@@ -937,6 +938,11 @@ def run_query_facets(
         doc_date_from=doc_date_from, doc_date_to=doc_date_to,
         source_ext=source_ext,
     )
+    # FE-01: the unit_status filter (R4.1) must reach the facets/counters too, else
+    # the filtered hit list shows unfiltered totals / top-docs / meta counts.
+    if unit_status:
+        filters.append("u.unit_status = ?")
+        params.append(unit_status)
 
     where_clause = " AND ".join(filters)
     sql = f"""

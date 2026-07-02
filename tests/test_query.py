@@ -226,6 +226,21 @@ def _seed_role(db_conn: sqlite3.Connection, name: str = "titre") -> None:
     )
 
 
+def test_facets_filter_by_unit_status(db_conn: sqlite3.Connection) -> None:
+    """FE-01 — facet counts (total/top-docs) honour the unit_status filter; without it
+    the filtered hit list would show unfiltered totals."""
+    from multicorpus_engine.query import run_query_facets
+
+    doc_id = _mk_indexed_status_doc(db_conn)
+    db_conn.execute("UPDATE units SET unit_status='non_traduit' WHERE doc_id=? AND n=1", (doc_id,))
+    db_conn.commit()
+
+    assert run_query_facets(db_conn, q="mot")["total_hits"] == 3  # unfiltered
+    nt = run_query_facets(db_conn, q="mot", unit_status="non_traduit")
+    assert nt["total_hits"] == 1 and nt["distinct_docs"] == 1
+    assert nt["top_docs"][0]["count"] == 1
+
+
 def test_query_hits_carry_role_and_status_fts(db_conn: sqlite3.Connection) -> None:
     """R4.3 — segment/FTS hits expose unit_role + unit_status (null when unset)."""
     from multicorpus_engine.query import run_query_page

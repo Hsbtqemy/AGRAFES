@@ -4037,8 +4037,8 @@
   "info": {
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
-    "version": "1.6.40",
-    "x-contract-version": "1.6.40"
+    "version": "1.6.41",
+    "x-contract-version": "1.6.41"
   },
   "openapi": "3.0.3",
   "paths": {
@@ -7285,6 +7285,15 @@
                     "maximum": 50,
                     "minimum": 1,
                     "type": "integer"
+                  },
+                  "unit_status": {
+                    "description": "R4.1/FE-01 — restrict facet counts to units of this translation status.",
+                    "enum": [
+                      "non_traduit",
+                      "ajout"
+                    ],
+                    "nullable": true,
+                    "type": "string"
                   }
                 },
                 "type": "object"

@@ -14,7 +14,7 @@ from typing import Any
 from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
-CONTRACT_VERSION = "1.6.40"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.41"  # semantic versioning for the sidecar API contract
 # SID-08 / OPS-03: the API version IS the contract version — derived, never a
 # second hand-maintained literal, so the two can no longer drift. /health reports
 # the *engine* version under `version` (it predates the sidecar); every other
@@ -134,6 +134,8 @@ API_VERSION = CONTRACT_VERSION
 #         concordancier can display the peritext role and translation status (refonte R4.3).
 #         Additive: the QueryResponse `hits` items schema is intentionally open ({type:object}),
 #         so no schema shape changes — version-only bump for traceability. No new route/param.
+# 1.6.41: POST /query/facets gains optional `unit_status` (enum non_traduit/ajout) so the
+#         facet counts/top-docs honour the R4.1 filter (audit FE-01). Additive param.
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
@@ -2256,6 +2258,7 @@ def openapi_spec() -> dict[str, Any]:
                         "q": {"type": "string"}, "language": {"type": "string"}, "doc_id": {"type": "integer"}, "doc_ids": {"type": "array", "items": {"type": "integer"}},
                         "resource_type": {"type": "string"}, "doc_role": {"type": "string"}, "author": {"type": "string"}, "title_search": {"type": "string"},
                         "doc_date_from": {"type": "string"}, "doc_date_to": {"type": "string"}, "source_ext": {"type": "string"},
+                        "unit_status": {"type": "string", "enum": ["non_traduit", "ajout"], "nullable": True, "description": "R4.1/FE-01 — restrict facet counts to units of this translation status."},
                         "top_docs_limit": {"type": "integer", "default": 10, "minimum": 1, "maximum": 50}}}}}},
                     "responses": {
                         "200": {"description": "Facet summary", "content": {"application/json": {"schema": {"type": "object", "properties": {

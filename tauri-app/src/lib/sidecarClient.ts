@@ -282,6 +282,8 @@ export interface QueryFacetsOptions {
   doc_date_from?: string;
   doc_date_to?: string;
   source_ext?: string;
+  /** R4.1/FE-01 — restrict facet counts to units of this translation status. */
+  unit_status?: string;
   /** How many top documents to return (max 50, default 10). */
   top_docs_limit?: number;
 }
@@ -432,6 +434,7 @@ export async function queryFacets(
   if (opts.doc_date_from) payload.doc_date_from = opts.doc_date_from;
   if (opts.doc_date_to) payload.doc_date_to = opts.doc_date_to;
   if (opts.source_ext) payload.source_ext = opts.source_ext;
+  if (opts.unit_status) payload.unit_status = opts.unit_status;
   if (opts.top_docs_limit !== undefined) payload.top_docs_limit = opts.top_docs_limit;
   return conn.post("/query/facets", payload) as Promise<QueryFacetsResponse>;
 }
