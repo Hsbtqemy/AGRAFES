@@ -68,7 +68,7 @@ But : axe statut + lift des marqueurs + concordancier qui affiche les rôles.
 
 But : ramener curation et annotation **dans le canvas**, en surimpression.
 
-- **R5.1** Couche **Curation** surimpression légère (marqueur discret + diff à la demande + toggle global) — **[FRONT]** (réutilise les ~16 `lib/curation*` + endpoints existants ; **contrat inchangé**).
+- **R5.1** Couche **Curation** surimpression légère (marqueur discret + diff à la demande + toggle global) — **[FRONT]**. ✅ *fait* — base partagée `CanvasUnitList` extraite de RolesPane (a) ; mode Curation au canvas : dock presets + `curatePreview` (`limit_examples` exhaustif) → **marqueur discret** (b) ; **diff à la demande** (bascule par unité) + **toggle global** (c) ; **Apply** `/curate` + confirm destructif + gestion « éditions non appliquées » (d). Réutilise les ~16 `lib/curation*` + `/curate/preview` + `/curate` ; **contrat inchangé, zéro migration**. Décisions : [`DESIGN_R5_1_curation_layer.md`](DESIGN_R5_1_curation_layer.md). Différé : garde-fou anti-perte au départ (aperçu recréable, pas d'override manuel encore) ; réindex FTS post-apply reste manuel.
 - **R5.2** Couche **Annotation** tokens (prose colorée par défaut, interlinéaire à la demande) + traiter la friction amont (modèle spaCy non bloquant) — **[FRONT]** (réutilise `AnnotationView` ; endpoints spaCy déjà là).
 
 ### R6 — Métadonnées + finitions UI
@@ -90,7 +90,7 @@ But : enrichir les notices et **retirer le legacy** une fois la parité atteinte
 | R2 ✅ | R2.3 | R2.1·R2.2 | oui (R2.3 : `parent_n` /units, 1.6.35) | non | **oui** |
 | R3 ✅ | éditeur de beads (différé) | R3.1·R3.2·R3.3 ✅ | oui (1.6.36) | **022 (bead_id)** | **oui** |
 | R4 ✅ | R4.1 ✅ · R4.2 ✅ · R4.3 ✅ | R4.1 ✅ · R4.2 ✅ · R4.3 ✅ | oui (R4.1 : 1.6.37/38 · R4.2 : 1.6.39 · R4.3 : 1.6.40) | **023 (R4.1)** | oui |
-| R5 | R5.1·R5.2 | — | **non** | non | non |
+| R5 🟡 | R5.1 ✅ · R5.2 | — | **non** | non | non |
 | R6 | R6.4 | R6.1·R6.2·R6.3 | oui | **R6.1·R6.2** | non |
 
 **Lecture** : R1 et R5 sont **front-dominants** (itération rapide, risque bas) ; R3 et R4 sont **moteur-dominants** (discipline contrat, migration, tests WORKCOPY) ; R2 et R6 sont mixtes.

@@ -12,8 +12,9 @@
  */
 import type { Conn, ConventionRole, CurateRule, UnitRecord } from "../lib/sidecarClient.ts";
 import { escHtml as esc, highlightChangesWordLevel } from "../lib/diff.ts";
-import { listConventions, listUnits, curatePreview } from "../lib/sidecarClient.ts";
+import { listConventions, listUnits, curatePreview, curate } from "../lib/sidecarClient.ts";
 import { CURATE_PRESETS } from "../lib/curationPresets.ts";
+import { modalConfirm } from "../lib/modalConfirm.ts";
 import { setHtml, raw } from "../lib/safeHtml.ts";
 import { CanvasUnitList } from "./CanvasUnitList.ts";
 
@@ -77,6 +78,8 @@ export class CurationPane {
             title="Aper&#231;u des unit&#233;s que ces r&#232;gles modifieraient (sans &#233;crire)">Aper&#231;u</button>
           <button type="button" class="btn btn-ghost btn-sm" id="prep-cur-toggle-all"
             title="Afficher / masquer le diff complet de toutes les unit&#233;s modifi&#233;es">Afficher tous les diffs</button>
+          <button type="button" class="btn prep-btn-warning btn-sm" id="prep-cur-apply-btn" disabled
+            title="Appliquer la curation au document (r&#233;&#233;crit le texte de recherche ; l'original est conserv&#233;)">Appliquer</button>
           <span class="prep-cur-summary" id="prep-cur-summary" aria-live="polite"></span>
         </div>
         <div class="prep-conv-units-area prep-cur-units" id="prep-cur-units">
@@ -98,6 +101,7 @@ export class CurationPane {
       this._renderToggleAll();
       this._list?.render();
     });
+    this._q("#prep-cur-apply-btn")?.addEventListener("click", () => void this._apply());
 
     const area = this._q<HTMLElement>("#prep-cur-units");
     if (area) {
@@ -127,6 +131,7 @@ export class CurationPane {
     this._showAllDiffs = false;
     this._renderSummary();
     this._renderToggleAll();
+    this._renderApplyBtn();
     this._list?.setData({ docId, textStartN });
     this._list?.clearSelectionQuiet();
     if (!this._loaded) await this._loadRoles();
@@ -220,6 +225,7 @@ export class CurationPane {
       this._stats = { units_changed: res.stats.units_changed, units_total: res.stats.units_total };
       this._expanded.clear(); // a fresh preview clears any per-unit reveals from the last run
       this._renderSummary();
+      this._renderApplyBtn(); // enable Apply iff the preview found changes
       this._list?.render(); // decorateRow marks the changed rows
     } catch (e) {
       this._onError(e instanceof Error ? e.message : String(e));
@@ -241,6 +247,56 @@ export class CurationPane {
   private _renderToggleAll(): void {
     const b = this._q("#prep-cur-toggle-all");
     if (b) b.textContent = this._showAllDiffs ? "Masquer les diffs" : "Afficher tous les diffs";
+  }
+
+  /** True when a preview showed changes not yet applied (drives the Apply button; a
+   *  host may also guard leaving on it — R5.1d). */
+  hasPendingEdits(): boolean {
+    return this._stats !== null && this._stats.units_changed > 0;
+  }
+
+  private _renderApplyBtn(): void {
+    const b = this._q<HTMLButtonElement>("#prep-cur-apply-btn");
+    if (b) b.disabled = !this.hasPendingEdits();
+  }
+
+  /** Persist the previewed curation to the document (R5.1d). Destructive (rewrites
+   *  text_norm; text_raw is kept) → confirm first. */
+  private async _apply(): Promise<void> {
+    const conn = this._getConn();
+    if (!conn || this._docId === null || !this.hasPendingEdits()) return;
+    const rules = this._currentRules();
+    if (rules.length === 0) return;
+    const n = this._stats!.units_changed;
+    const ok = await modalConfirm({
+      message: `Appliquer la curation à ${n} unité${n > 1 ? "s" : ""} ? Le texte de recherche sera réécrit (l'original est conservé).`,
+      confirmLabel: "Appliquer",
+      danger: true,
+    });
+    if (!ok) return;
+    const btn = this._q<HTMLButtonElement>("#prep-cur-apply-btn");
+    if (btn) { btn.disabled = true; btn.textContent = "Application…"; }
+    try {
+      const res = await curate(conn, { doc_id: this._docId, rules });
+      // Applied → the preview is consumed; reload the (now-rewritten) units.
+      this._changed.clear();
+      this._expanded.clear();
+      this._showAllDiffs = false;
+      this._stats = null;
+      await this._loadUnits(); // fresh text, markers gone
+      const s = this._q("#prep-cur-summary");
+      if (s) {
+        const m = res.units_modified;
+        s.textContent = `Curation appliquée : ${m} unité${m > 1 ? "s" : ""} modifiée${m > 1 ? "s" : ""}`
+          + (res.fts_stale ? " · réindexez pour la recherche." : ".");
+      }
+      this._renderToggleAll();
+    } catch (e) {
+      this._onError(e instanceof Error ? e.message : String(e));
+    } finally {
+      if (btn) btn.textContent = "Appliquer";
+      this._renderApplyBtn();
+    }
   }
 
   /** decorateRow hook (R5.1b marker + R5.1c on-demand diff) for a changed unit. */

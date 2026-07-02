@@ -16,7 +16,11 @@ function unit(n: number, over: Partial<UnitRecord> = {}): UnitRecord {
   };
 }
 
-function fakeConn(cfg: { units?: UnitRecord[]; preview?: (body: unknown) => unknown }): Conn {
+function fakeConn(cfg: {
+  units?: UnitRecord[];
+  preview?: (body: unknown) => unknown;
+  curate?: (body: unknown) => unknown;
+}): Conn {
   return {
     get: async (path: string) => {
       if (path === "/conventions") return { conventions: [] };
@@ -31,6 +35,9 @@ function fakeConn(cfg: { units?: UnitRecord[]; preview?: (body: unknown) => unkn
         return cfg.preview
           ? cfg.preview(body)
           : { ok: true, doc_id: 1, stats: { units_total: 0, units_changed: 0, replacements_total: 0 }, examples: [] };
+      }
+      if (path === "/curate") {
+        return cfg.curate ? cfg.curate(body) : { ok: true, docs_curated: 1, units_modified: 0, fts_stale: false };
       }
       return {};
     },
@@ -132,6 +139,45 @@ describe("CurationPane", () => {
     toggleAll.click();
     expect(host.querySelectorAll(".prep-cur-diff-panel").length).toBe(1);
     expect(toggleAll.textContent).toContain("Masquer");
+  });
+
+  it("Apply is gated on a preview, then persists via /curate after confirm (R5.1d)", async () => {
+    let curateBody: { doc_id?: number; rules?: unknown[] } | null = null;
+    const conn = fakeConn({
+      units: [unit(1), unit(2)],
+      preview: () => ({
+        ok: true, doc_id: 1,
+        stats: { units_total: 2, units_changed: 1, replacements_total: 1 },
+        examples: [{ unit_id: 10, external_id: 1, before: "a", after: "b" }],
+      }),
+      curate: (body) => { curateBody = body as typeof curateBody; return { ok: true, docs_curated: 1, units_modified: 1, fts_stale: true }; },
+    });
+    const pane = new CurationPane(host, () => conn, () => {});
+    await pane.setDocument(1, null);
+
+    const applyBtn = host.querySelector("#prep-cur-apply-btn") as HTMLButtonElement;
+    expect(applyBtn.disabled).toBe(true);        // nothing previewed yet
+    expect(pane.hasPendingEdits()).toBe(false);
+
+    const cb = host.querySelector<HTMLInputElement>('input[data-preset="spaces"]')!;
+    cb.checked = true; cb.dispatchEvent(new Event("change"));
+    (host.querySelector("#prep-cur-preview-btn") as HTMLButtonElement).click();
+    await flush();
+    expect(applyBtn.disabled).toBe(false);       // preview found a change
+    expect(pane.hasPendingEdits()).toBe(true);
+
+    applyBtn.click();
+    await flush();                               // modalConfirm overlay is up
+    const okBtn = document.querySelector("[data-mc-ok]") as HTMLButtonElement;
+    expect(okBtn).not.toBeNull();
+    okBtn.click();
+    await flush();
+
+    expect(curateBody).toMatchObject({ doc_id: 1 });
+    expect((curateBody!.rules ?? []).length).toBeGreaterThan(0);
+    expect(host.querySelector("#prep-cur-summary")?.textContent).toContain("Curation appliquée");
+    expect(applyBtn.disabled).toBe(true);        // consumed
+    expect(pane.hasPendingEdits()).toBe(false);
   });
 
   it("clears markers + preview state when the document changes", async () => {
