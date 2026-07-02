@@ -18,7 +18,8 @@ import { SidecarError, listModels, downloadModel, getJob } from "../lib/sidecarC
 import { isModelAvailable, modelForLanguage, type ModelInfo } from "../lib/models.ts";
 import { compareDocsByTitle } from "../lib/docSort.ts";
 import { setHtml, raw } from "../lib/safeHtml.ts";
-import { needsSpaceBefore, tokensToPlain } from "../lib/annotationSpacing.ts";
+import { tokensToPlain } from "../lib/annotationSpacing.ts";
+import { UPOS_COLORS, buildProseColored } from "../ui/annotationProse.ts";
 
 // ─── Local types ──────────────────────────────────────────────────────────────
 
@@ -516,50 +517,23 @@ export class AnnotationView {
       bySent.get(tok.sent_id)!.push(tok);
     }
 
-    const UPOS_COLORS: Record<string, string> = {
-      NOUN: "#4e9af1", VERB: "#e07b39", ADJ: "#8e6bbf",
-      ADV: "#3aab6d", PRON: "#c9a227", DET: "#5bb8c4",
-      ADP: "#b0b0b0", CCONJ: "#b0b0b0", SCONJ: "#b0b0b0",
-      PUNCT: "#cccccc", NUM: "#c94040", PROPN: "#2e7dbf",
-      AUX: "#d97ab8", PART: "#b0b0b0", INTJ: "#e04444",
-      SYM: "#999", X: "#bbb",
-    };
-
     // ── Read mode (prose colorée UPOS) ─────────────────────────────────────────
     if (this._annotViewMode === "read") {
-      const prose = document.createElement("div");
-      prose.className = "annot-prose";
-      for (const [, bySent] of Array.from(byUnit.entries()).sort((a, b) => a[0] - b[0])) {
-        const para = document.createElement("p");
-        para.className = "annot-prose-unit";
-        const allTokens = Array.from(bySent.values()).flat();
-        for (let i = 0; i < allTokens.length; i++) {
-          const tok = allTokens[i];
-          const needsSpace = i > 0 && needsSpaceBefore(allTokens[i - 1].word, tok.word);
-          if (needsSpace) para.appendChild(document.createTextNode(" "));
-          const span = document.createElement("span");
-          span.className = "annot-prose-token";
-          span.textContent = tok.word;
-          span.title = [tok.upos, tok.lemma !== tok.word ? tok.lemma : null].filter(Boolean).join(" · ") || tok.word;
-          span.dataset.tokenId = String(tok.token_id);
-          if (tok.upos && UPOS_COLORS[tok.upos]) {
-            span.style.setProperty("--upos-color", UPOS_COLORS[tok.upos]);
-            span.classList.add("annot-prose-token--colored");
+      const unitsInOrder = Array.from(byUnit.entries())
+        .sort((a, b) => a[0] - b[0])
+        .map(([, bySent]) => Array.from(bySent.values()).flat());
+      const prose = buildProseColored(unitsInOrder, {
+        onTokenClick: (tokenId) => {
+          this._annotViewMode = "annotate";
+          const toggleBtn = this._panel?.querySelector<HTMLButtonElement>(".annot-btn-view-toggle");
+          if (toggleBtn) {
+            toggleBtn.textContent = "▤ Lecture";
+            toggleBtn.classList.remove("btn-active");
           }
-          span.addEventListener("click", () => {
-            this._annotViewMode = "annotate";
-            const toggleBtn = this._panel?.querySelector<HTMLButtonElement>(".annot-btn-view-toggle");
-            if (toggleBtn) {
-              toggleBtn.textContent = "\u25a4\u00a0Lecture";
-              toggleBtn.classList.remove("btn-active");
-            }
-            this._annotSelectedTokenId = tok.token_id;
-            this._annotRenderInterlinear(viewer, editor);
-          });
-          para.appendChild(span);
-        }
-        prose.appendChild(para);
-      }
+          this._annotSelectedTokenId = tokenId;
+          this._annotRenderInterlinear(viewer, editor);
+        },
+      });
       viewer.appendChild(prose);
       return;
     }
