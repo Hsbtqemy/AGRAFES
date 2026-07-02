@@ -899,6 +899,43 @@ def cmd_segment(args: argparse.Namespace) -> None:
         _err({"run_id": run_id, "error": str(exc), "created_at": utcnow_iso()})
 
 
+def cmd_lift_markers(args: argparse.Namespace) -> None:
+    """Lift inline peritext markers ([T]/[Ch]/[InterT]/[non traduit]/[+]) of a
+    document into unit_role/unit_status (refonte R4.2). Dry-run by default."""
+    from .db.connection import get_connection
+    from .db.migrations import apply_migrations
+    from .runs import create_run, setup_run_logger, update_run_stats, utcnow_iso
+    from .marker_lift import lift_document_markers
+
+    db_path = Path(args.db).resolve()
+    if not db_path.exists():
+        _err({"error": f"DB not found: {db_path}. Run init-project first.", "created_at": utcnow_iso()})
+
+    conn = get_connection(db_path)
+    apply_migrations(conn)
+
+    dry_run = not getattr(args, "apply", False)
+    params = {"doc_id": args.doc_id, "dry_run": dry_run}
+    run_id = create_run(conn, "lift_markers", params)
+    log, log_path = setup_run_logger(db_path, run_id)
+
+    try:
+        report = lift_document_markers(conn, args.doc_id, dry_run=dry_run, run_logger=log)
+        stats = report.to_dict()
+        update_run_stats(conn, run_id, {"units_affected": report.units_affected, "dry_run": dry_run})
+        _ok({
+            "run_id": run_id,
+            "status": "ok",
+            "fts_stale": (not dry_run),
+            "log": str(log_path),
+            "created_at": utcnow_iso(),
+            **stats,
+        })
+    except Exception as exc:
+        log.error("Lift-markers failed: %s\n%s", exc, traceback.format_exc())
+        _err({"run_id": run_id, "error": str(exc), "created_at": utcnow_iso()})
+
+
 # ---------------------------------------------------------------------------
 # serve
 # ---------------------------------------------------------------------------
@@ -1685,6 +1722,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="Segmentation quality pack: auto|default|fr_strict|en_strict (default: auto)",
     )
     p_segment.set_defaults(func=cmd_segment)
+
+    # lift-markers (R4.2)
+    p_lift = sub.add_parser(
+        "lift-markers",
+        help="Lift inline peritext markers ([T]/[Ch]/[InterT]/[non traduit]/[+]) into unit_role/unit_status",
+    )
+    p_lift.add_argument("--db", required=True)
+    p_lift.add_argument("--doc-id", dest="doc_id", type=int, required=True, help="Document to lift")
+    p_lift.add_argument(
+        "--apply", action="store_true", default=False,
+        help="Apply the changes (default: dry-run — report what would change, write nothing)",
+    )
+    p_lift.set_defaults(func=cmd_lift_markers)
 
     # diagnostics
     p_diag = sub.add_parser(

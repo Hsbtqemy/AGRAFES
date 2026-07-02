@@ -373,6 +373,7 @@ Three **independent** version fields surface in sidecar responses — do not con
 - `POST /units/set_status` (token required) — set the translation status of one unit (R4.1); body: `{ doc_id, unit_n, status }` where `status` ∈ `{non_traduit, ajout}` or null to clear. Orthogonal to `unit_role`.
 - `POST /units/bulk_set_status` (token required) — batch set translation status; body: `{ doc_id, unit_ns, status }` or `{ unit_ids, status }`
 - `POST /units/update_text` (token required) — update text_raw and/or text_norm for one unit; body: `{ unit_id, text_raw?, text_norm? }` (if only text_raw given, text_norm is mirrored; FTS updated automatically)
+- `POST /lift/markers` (token required) — lift a document's inline peritext markers (`[T]`/`[Ch]`/`[InterT]`/`[non traduit]`/`[+]`) into `unit_role`/`unit_status`, stripping them from `text_norm` (R4.2); body: `{ doc_id, dry_run? }` (`dry_run` defaults true → report only). Returns a lift report (units_affected, roles_set, statuses_set, cleaned, conflicts, changes).
 - `GET /conventions` — list convention roles for this corpus
 - `POST /conventions` (token required) — create a role; body: `{ name, label, color?, icon?, sort_order? }`
 - `PUT /conventions/{name}` (token required) — update a role; body: `{ label?, color?, icon?, sort_order? }`

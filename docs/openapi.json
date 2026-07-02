@@ -4037,8 +4037,8 @@
   "info": {
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
-    "version": "1.6.38",
-    "x-contract-version": "1.6.38"
+    "version": "1.6.39",
+    "x-contract-version": "1.6.39"
   },
   "openapi": "3.0.3",
   "paths": {
@@ -6761,6 +6761,97 @@
           }
         ],
         "summary": "Cancel a queued or running job (best-effort; idempotent)"
+      }
+    },
+    "/lift/markers": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "doc_id": {
+                    "type": "integer"
+                  },
+                  "dry_run": {
+                    "default": true,
+                    "description": "Report changes without writing (default true)",
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "doc_id"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "changes": {
+                      "items": {
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "cleaned": {
+                      "type": "integer"
+                    },
+                    "conflicts": {
+                      "items": {
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "doc_id": {
+                      "type": "integer"
+                    },
+                    "dry_run": {
+                      "type": "boolean"
+                    },
+                    "roles_created": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "roles_set": {
+                      "type": "integer"
+                    },
+                    "statuses_set": {
+                      "type": "integer"
+                    },
+                    "units_affected": {
+                      "type": "integer"
+                    },
+                    "units_scanned": {
+                      "type": "integer"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Lift report (dry-run or applied)"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request"
+          }
+        },
+        "summary": "Lift inline peritext markers of a document into unit_role/unit_status (token required)"
       }
     },
     "/models": {

@@ -14,7 +14,7 @@ from typing import Any
 from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
-CONTRACT_VERSION = "1.6.38"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.39"  # semantic versioning for the sidecar API contract
 # SID-08 / OPS-03: the API version IS the contract version — derived, never a
 # second hand-maintained literal, so the two can no longer drift. /health reports
 # the *engine* version under `version` (it predates the sidecar); every other
@@ -127,6 +127,9 @@ API_VERSION = CONTRACT_VERSION
 #         New routes + additive field.
 # 1.6.38: QueryRequest gains optional `unit_status` (enum non_traduit/ajout) — filters hits to
 #         units with that translation status (refonte R4.1). Additive param, no new route.
+# 1.6.39: POST /lift/markers (token required) — lift a document's inline peritext markers
+#         ([T]/[Ch]/[InterT]/[non traduit]/[+]) into unit_role/unit_status, stripping them from
+#         text_norm (refonte R4.2). dry_run=true (default) reports without writing. New route.
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
@@ -911,6 +914,30 @@ def openapi_spec() -> dict[str, Any]:
                     "responses": {
                         "200": {"description": "Statuses set", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OkResponse"}}}},
                         "400": {"description": "Bad request (unknown status value)", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                    },
+                }
+            },
+            "/lift/markers": {
+                "post": {
+                    "summary": "Lift inline peritext markers of a document into unit_role/unit_status (token required)",
+                    "requestBody": {
+                        "required": True,
+                        "content": {"application/json": {"schema": {"type": "object", "properties": {
+                            "doc_id": {"type": "integer"},
+                            "dry_run": {"type": "boolean", "default": True,
+                                        "description": "Report changes without writing (default true)"},
+                        }, "required": ["doc_id"]}}},
+                    },
+                    "responses": {
+                        "200": {"description": "Lift report (dry-run or applied)", "content": {"application/json": {"schema": {"type": "object", "properties": {
+                            "doc_id": {"type": "integer"}, "dry_run": {"type": "boolean"},
+                            "units_scanned": {"type": "integer"}, "units_affected": {"type": "integer"},
+                            "roles_set": {"type": "integer"}, "statuses_set": {"type": "integer"}, "cleaned": {"type": "integer"},
+                            "roles_created": {"type": "array", "items": {"type": "string"}},
+                            "conflicts": {"type": "array", "items": {"type": "object"}},
+                            "changes": {"type": "array", "items": {"type": "object"}},
+                        }}}}},
+                        "400": {"description": "Bad request", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
                     },
                 }
             },

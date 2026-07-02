@@ -493,6 +493,7 @@ _WRITE_PATHS = frozenset({
     "/conventions", "/conventions/delete",
     "/units/set_role", "/units/bulk_set_role",
     "/units/set_status", "/units/bulk_set_status",
+    "/lift/markers",
     "/documents/set_text_start",
     # Async jobs — both /jobs (submit) and /jobs/enqueue start DB-mutating
     # background work (index/curate/segment). /jobs was missing → bypass (SID-02).
@@ -1065,6 +1066,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 self._handle_units_set_status(body)
             elif path == "/units/bulk_set_status":
                 self._handle_units_bulk_set_status(body)
+            elif path == "/lift/markers":
+                self._handle_lift_markers(body)
             elif path == "/units/update_text":
                 self._handle_units_update_text(body)
             elif path == "/documents/set_text_start":
@@ -5086,6 +5089,22 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             self._send_error(exc.message, code=ERR_NOT_FOUND, http_status=exc.http_status)
             return
         self._send_json(success_payload(data))
+
+    def _handle_lift_markers(self, body: dict) -> None:
+        # Thin adapter over the marker-lift pass (R4.2). dry_run=True (default) is a
+        # lock-free read (writes nothing); apply runs under the write lock.
+        from multicorpus_engine.marker_lift import lift_document_markers
+        doc_id = body.get("doc_id")
+        if not isinstance(doc_id, int):
+            self._send_error("doc_id must be an integer", code=ERR_BAD_REQUEST, http_status=400)
+            return
+        dry_run = bool(body.get("dry_run", True))
+        if dry_run:
+            report = lift_document_markers(self._conn(), doc_id, dry_run=True)
+        else:
+            with self._lock():
+                report = lift_document_markers(self._conn(), doc_id, dry_run=False)
+        self._send_json(success_payload({"fts_stale": (not dry_run), **report.to_dict()}))
 
     def _handle_units_update_text(self, body: dict) -> None:
         # Thin adapter over the units service (write — owns the lock).
