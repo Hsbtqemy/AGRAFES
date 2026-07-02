@@ -6766,8 +6766,29 @@ tr[data-len].prep-seg-row-context .prep-seg-cell-len {
 .prep-canvas-modebtn:disabled { opacity: 0.5; cursor: not-allowed; }
 /* Le corps EST le scroll central unique : on relâche le cap interne de RolesPane. */
 .prep-canvas-body { flex: 1; min-height: 0; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 6px; }
-.prep-canvas-body .prep-conv-root { height: 100%; }
+.prep-canvas-pane { height: 100%; }
+.prep-canvas-body .prep-conv-root,
+.prep-canvas-body .prep-cur-root { height: 100%; }
 .prep-canvas-body .prep-conv-units-area { max-height: none; }
+
+/* R5.1b — couche Curation : dock de presets + marqueur discret d'unité modifiée */
+.prep-cur-root { display: flex; flex-direction: column; height: 100%; }
+.prep-cur-toolbar { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.4rem; }
+.prep-cur-dock {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 0.4rem 0.8rem;
+  padding: 0.4rem 0.6rem; margin-bottom: 0.5rem;
+  background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;
+}
+.prep-cur-presets { display: flex; flex-wrap: wrap; gap: 0.35rem 0.85rem; }
+.prep-cur-preset {
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  font-size: 0.8rem; color: #334155; white-space: nowrap; cursor: pointer;
+}
+.prep-cur-summary { font-size: 0.8rem; color: #475569; font-weight: 500; margin-left: auto; }
+.prep-cur-units { flex: 1; min-height: 0; }
+
+.prep-conv-unit-row--curated { border-left-color: #f59e0b; background: #fffaf0; }
+.prep-conv-unit-row--curated:hover { background: #fff3d6; }
 
 /* -- Dialog modal (catalogue CRUD) -- */
 .prep-conv-overlay {
