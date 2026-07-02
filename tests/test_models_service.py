@@ -75,11 +75,28 @@ def test_spacy_models_dir_env_override(tmp_path, monkeypatch):
 # ─── Listing ────────────────────────────────────────────────────────────────
 
 def test_list_models_empty(tmp_path):
-    models = ms.list_models(tmp_path)
+    # Inject "nothing bundled" so the result is deterministic regardless of what spaCy
+    # model packages happen to be importable in the test environment.
+    models = ms.list_models(tmp_path, is_bundled=lambda _n: False)
     assert len(models) == len(ms.MODEL_CATALOG) == 9
     assert all(m["installed"] is False and m["version"] is None for m in models)
+    assert all(m["source"] == "absent" for m in models)
     fr = next(m for m in models if m["name"] == MODEL)
     assert fr["language"] == "fr" and fr["approx_size_mb"] > 0
+
+
+def test_list_models_marks_bundled(tmp_path):
+    # A model importable in-process (embedded in a frozen sidecar) is *available*
+    # even though it was never downloaded to the user dir → source "bundled", not
+    # "absent". This is the incoherence Lot 1 fixes: annotation worked but Paramètres
+    # showed "Absent" + "Télécharger".
+    models = ms.list_models(tmp_path, is_bundled=lambda n: n == MODEL)
+    fr = next(m for m in models if m["name"] == MODEL)
+    assert fr["source"] == "bundled"
+    assert fr["installed"] is False  # not in the user dir
+    assert fr["version"] is None
+    # Every other model is still absent.
+    assert all(m["source"] == "absent" for m in models if m["name"] != MODEL)
 
 
 # ─── Version resolution ─────────────────────────────────────────────────────
@@ -132,8 +149,9 @@ def test_install_then_remove_model(tmp_path):
     assert not (tmp_path / f"{MODEL}-{VERSION}.dist-info").exists()
     assert seen and seen[-1] == 100
 
-    listed = next(m for m in ms.list_models(tmp_path) if m["name"] == MODEL)
+    listed = next(m for m in ms.list_models(tmp_path, is_bundled=lambda _n: False) if m["name"] == MODEL)
     assert listed["installed"] is True and listed["version"] == VERSION
+    assert listed["source"] == "downloaded"
 
     assert ms.remove_model(MODEL, tmp_path) == {"name": MODEL}
     assert not (tmp_path / MODEL).exists()
@@ -181,7 +199,14 @@ def test_zip_slip_rejected(tmp_path):
 
 def test_remove_missing_model_raises(tmp_path):
     with pytest.raises(NotFoundError):
-        ms.remove_model(MODEL, tmp_path)
+        ms.remove_model(MODEL, tmp_path, is_bundled=lambda _n: False)
+
+
+def test_remove_refuses_bundled(tmp_path):
+    # A bundled (embedded) model has no user-dir copy to delete → removal is refused
+    # with BadRequestError (not the misleading NotFoundError of a truly-absent model).
+    with pytest.raises(BadRequestError):
+        ms.remove_model(MODEL, tmp_path, is_bundled=lambda _n: True)
 
 
 # ─── CLI wiring ─────────────────────────────────────────────────────────────

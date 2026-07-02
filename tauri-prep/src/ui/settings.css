@@ -17,3 +17,4 @@
 .prep-models-meta { font-size: 0.75rem; color: var(--color-muted, #888); }
 .prep-models-status { font-size: 0.78rem; color: var(--color-muted, #888); white-space: nowrap; }
 .prep-models-status.is-installed { color: #2e7d32; }
+.prep-models-note { font-size: 0.75rem; color: var(--color-muted, #888); font-style: italic; white-space: nowrap; }

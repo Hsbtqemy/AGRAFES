@@ -14,7 +14,7 @@ from typing import Any
 from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
-CONTRACT_VERSION = "1.6.41"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.42"  # semantic versioning for the sidecar API contract
 # SID-08 / OPS-03: the API version IS the contract version — derived, never a
 # second hand-maintained literal, so the two can no longer drift. /health reports
 # the *engine* version under `version` (it predates the sidecar); every other
@@ -136,6 +136,9 @@ API_VERSION = CONTRACT_VERSION
 #         so no schema shape changes — version-only bump for traceability. No new route/param.
 # 1.6.41: POST /query/facets gains optional `unit_status` (enum non_traduit/ajout) so the
 #         facet counts/top-docs honour the R4.1 filter (audit FE-01). Additive param.
+# 1.6.42: GET /models items gain `source` (enum bundled/downloaded/absent) so an *embedded*
+#         model is shown as available, not "Absent" (Lot 1 of the dual-dist/selection design).
+#         POST /models/remove now refuses a bundled model (read-only) with 400. Additive field.
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
@@ -2098,6 +2101,7 @@ def openapi_spec() -> dict[str, Any]:
                             "models": {"type": "array", "items": {"type": "object", "properties": {
                                 "name": {"type": "string"}, "language": {"type": "string"},
                                 "approx_size_mb": {"type": "integer"}, "installed": {"type": "boolean"},
+                                "source": {"type": "string", "enum": ["bundled", "downloaded", "absent"]},
                                 "version": {"type": "string", "nullable": True}}}}}}}}},
                     },
                 }
@@ -2130,7 +2134,7 @@ def openapi_spec() -> dict[str, Any]:
                         "type": "object", "required": ["model"], "properties": {"model": {"type": "string"}}}}}},
                     "responses": {
                         "200": {"description": "Model removed", "content": {"application/json": {"schema": {"type": "object", "properties": {"name": {"type": "string"}}}}}},
-                        "400": {"description": "Bad request (unknown/blank model)", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                        "400": {"description": "Bad request (unknown/blank model, or a bundled read-only model)", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
                         "404": {"description": "Model not installed", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
                     },
                 }

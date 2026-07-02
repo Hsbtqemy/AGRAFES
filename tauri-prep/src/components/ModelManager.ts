@@ -81,23 +81,33 @@ export class ModelManager {
     info.appendChild(meta);
 
     const status = document.createElement("span");
-    status.className = "prep-models-status" + (model.installed ? " is-installed" : "");
+    const available = model.source !== "absent";
+    status.className = "prep-models-status" + (available ? " is-installed" : "");
     status.textContent = row.statusLabel;
-
-    const action = document.createElement("button");
-    if (model.installed) {
-      action.className = "btn btn-secondary btn-sm";
-      action.textContent = "Supprimer";
-      action.addEventListener("click", () => void this._remove(model.name, action));
-    } else {
-      action.className = "btn btn-primary btn-sm";
-      action.textContent = "↓ Télécharger";
-      action.addEventListener("click", () => void this._download(model.name, el, action));
-    }
 
     el.appendChild(info);
     el.appendChild(status);
-    el.appendChild(action);
+
+    if (model.source === "bundled") {
+      // Embedded in the app binary → read-only: no download (already available) and
+      // no remove (nothing to delete from the user dir). Just a discreet note.
+      const note = document.createElement("span");
+      note.className = "prep-models-note";
+      note.textContent = "Intégré à l'application";
+      el.appendChild(note);
+    } else {
+      const action = document.createElement("button");
+      if (model.source === "downloaded") {
+        action.className = "btn btn-secondary btn-sm";
+        action.textContent = "Supprimer";
+        action.addEventListener("click", () => void this._remove(model.name, action));
+      } else {
+        action.className = "btn btn-primary btn-sm";
+        action.textContent = "↓ Télécharger";
+        action.addEventListener("click", () => void this._download(model.name, el, action));
+      }
+      el.appendChild(action);
+    }
     return el;
   }
 

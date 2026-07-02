@@ -15,7 +15,7 @@ import "../ui/annotation.css";
 import { escHtml as _escHtml } from "../lib/diff.ts";
 import type { Conn } from "../lib/sidecarClient.ts";
 import { SidecarError, listModels, downloadModel, getJob } from "../lib/sidecarClient.ts";
-import { modelForLanguage, type ModelInfo } from "../lib/models.ts";
+import { isModelAvailable, modelForLanguage, type ModelInfo } from "../lib/models.ts";
 import { compareDocsByTitle } from "../lib/docSort.ts";
 import { setHtml, raw } from "../lib/safeHtml.ts";
 import { needsSpaceBefore, tokensToPlain } from "../lib/annotationSpacing.ts";
@@ -811,7 +811,9 @@ export class AnnotationView {
     }
     if (!this._panel) return; // disposed while loading
     const model = modelForLanguage(doc.language, models);
-    if (!model || model.installed) { band.style.display = "none"; return; }
+    // Only offer download when the model is genuinely absent — a bundled (embedded)
+    // model is already usable even though it is not in the user dir (installed === false).
+    if (!model || isModelAvailable(model)) { band.style.display = "none"; return; }
     this._annotRenderModelBand(band, model);
   }
 

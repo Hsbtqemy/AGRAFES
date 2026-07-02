@@ -14,6 +14,7 @@ so the whole flow is testable offline with a synthetic wheel.
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import shutil
 import tempfile
@@ -90,19 +91,55 @@ def _installed_version(models_dir: Path, name: str) -> Optional[str]:
     return None
 
 
-def list_models(models_dir: Optional[Path] = None) -> list[dict]:
-    """List the known models with install status (installed-only knows the version)."""
+def _is_model_bundled(name: str) -> bool:
+    """True if the model package is importable in-process — i.e. embedded in a frozen
+    sidecar (``--collect-all`` at build time). The annotator loads such a model by name
+    (``spacy.load(name)``) without it ever being in the user models dir, so a bundled
+    model is *available* even though it is not *downloaded*.
+    """
+    try:
+        return importlib.util.find_spec(name) is not None
+    except Exception:
+        # find_spec can raise (e.g. a broken/partial parent package) — treat as absent.
+        return False
+
+
+def list_models(
+    models_dir: Optional[Path] = None,
+    *,
+    is_bundled: Optional[Callable[[str], bool]] = None,
+) -> list[dict]:
+    """List the known models with availability status.
+
+    Each entry carries a tri-state ``source``:
+      - ``"downloaded"`` — present in the user models dir (removable; version known);
+      - ``"bundled"`` — importable in-process (embedded in a frozen sidecar, read-only);
+      - ``"absent"`` — neither, offered for download.
+
+    ``installed`` is kept (== downloaded to the user dir) for backward compatibility;
+    UI should key off ``source`` so an *embedded* model no longer shows as "Absent".
+    ``is_bundled`` is injectable for offline tests (the real detector imports spaCy
+    packages that are not present in a plain dev env).
+    """
     target = models_dir or spacy_models_dir()
+    bundled = is_bundled if is_bundled is not None else _is_model_bundled
     out: list[dict] = []
     for spec in MODEL_CATALOG.values():
-        installed = (target / spec.name).is_dir()
+        downloaded = (target / spec.name).is_dir()
+        if downloaded:
+            source = "downloaded"
+        elif bundled(spec.name):
+            source = "bundled"
+        else:
+            source = "absent"
         out.append(
             {
                 "name": spec.name,
                 "language": spec.language,
                 "approx_size_mb": spec.approx_size_mb,
-                "installed": installed,
-                "version": _installed_version(target, spec.name) if installed else None,
+                "installed": downloaded,
+                "source": source,
+                "version": _installed_version(target, spec.name) if downloaded else None,
             }
         )
     return out
@@ -278,12 +315,26 @@ def install_model(
     return {"name": name, "version": plan["version"], "path": str(target / name)}
 
 
-def remove_model(name: str, models_dir: Optional[Path] = None) -> dict:
-    """Remove an installed model and its metadata marker."""
+def remove_model(
+    name: str,
+    models_dir: Optional[Path] = None,
+    *,
+    is_bundled: Optional[Callable[[str], bool]] = None,
+) -> dict:
+    """Remove a *downloaded* model and its metadata marker.
+
+    A model embedded in a frozen sidecar (``source == "bundled"``) is read-only: there
+    is no user-dir copy to delete, so removal is refused with a clear error rather than
+    a misleading "not installed". A model that is both bundled *and* downloaded still
+    removes its user-dir duplicate (the bundled copy keeps working).
+    """
     name = _validate_name(name)
     target = models_dir or spacy_models_dir()
     dest = target / name
     if not dest.is_dir():
+        bundled = is_bundled if is_bundled is not None else _is_model_bundled
+        if bundled(name):
+            raise BadRequestError(f"model is bundled (read-only), cannot remove: {name}")
         raise NotFoundError(f"model not installed: {name}")
     shutil.rmtree(dest)
     meta = _meta_path(target, name)

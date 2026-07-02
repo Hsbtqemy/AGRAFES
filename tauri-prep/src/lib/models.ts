@@ -5,12 +5,26 @@
  * No tauri imports → unit-testable in the default node env.
  */
 
+/**
+ * Availability of a model, mirroring the engine's tri-state:
+ *  - "downloaded" — present in the user models dir (removable; version known);
+ *  - "bundled"    — embedded in a frozen sidecar, loadable by name (read-only);
+ *  - "absent"     — neither, offered for download.
+ */
+export type ModelSource = "bundled" | "downloaded" | "absent";
+
 export interface ModelInfo {
   name: string;
   language: string; // ISO base code, or "mul" for the multilingual model
   approx_size_mb: number;
-  installed: boolean;
+  installed: boolean; // == downloaded to the user dir; prefer `source` for UI decisions
+  source: ModelSource;
   version: string | null;
+}
+
+/** A model is usable for annotation as soon as it is bundled or downloaded. */
+export function isModelAvailable(m: ModelInfo): boolean {
+  return m.source !== "absent";
 }
 
 /**
@@ -35,15 +49,25 @@ export interface ModelRow {
   name: string;
   sizeLabel: string;
   statusLabel: string;
+  source: ModelSource;
   installed: boolean;
 }
 
 /** Display fields for one model row (ModelManager / Paramètres). Pure → unit-tested. */
 export function describeModel(m: ModelInfo): ModelRow {
+  let statusLabel: string;
+  if (m.source === "bundled") {
+    statusLabel = "Intégré";
+  } else if (m.source === "downloaded") {
+    statusLabel = m.version ? `Installé · ${m.version}` : "Installé";
+  } else {
+    statusLabel = "Absent";
+  }
   return {
     name: m.name,
     sizeLabel: `~${m.approx_size_mb} Mo`,
-    statusLabel: m.installed ? (m.version ? `Installé · ${m.version}` : "Installé") : "Absent",
+    statusLabel,
+    source: m.source,
     installed: m.installed,
   };
 }

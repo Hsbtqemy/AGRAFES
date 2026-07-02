@@ -136,9 +136,13 @@ resolve_download / install_model / remove_model
 
 ## 9. Découpage en phases (chacune livrable)
 
-1. **Lot 1 — cohérence (rapide, indépendant)** : `list_models` détecte `bundled` + champ
-   `source` ; UI affiche **« Intégré »** au lieu de « Absent » ; `remove` refuse un
-   bundlé. Bump contrat. *Corrige le bug actuel sans rien d'autre.*
+1. **Lot 1 — cohérence (rapide, indépendant)** — ✅ **fait (2026-07-02, contrat 1.6.42)** :
+   `list_models` détecte `bundled` (via `importlib.util.find_spec`, injectable) + champ
+   tri-valué `source` (`bundled`/`downloaded`/`absent`, `installed` conservé) ; UI
+   (`ModelManager` + bande `AnnotationView`) affiche **« Intégré »** au lieu de « Absent »
+   et n'offre plus « Télécharger » sur un modèle disponible ; `remove_model` refuse un
+   bundlé (`BadRequestError` → 400). Bump contrat + openapi régénéré. *Corrige le bug
+   d'incohérence §0 sans rien d'autre.*
 2. **Lot 2 — double distribution** : flag `--bundle-models`, CI deux variantes, nommage,
    budgets, page Releases.
 3. **Lot 3 — catalogue étendu** : catalogue dérivé de `compatibility.json` (allowlist
