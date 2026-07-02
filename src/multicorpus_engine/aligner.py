@@ -74,7 +74,10 @@ class AlignmentReport:
     def coverage_pct(self) -> float:
         if self.pivot_line_count == 0:
             return 0.0
-        return round(self.links_created / self.pivot_line_count * 100, 2)
+        # ALN-06: links_created counts links, not distinct pivots — an N-M bead makes
+        # several links per pivot line, so the raw ratio can exceed 100%. Clamp to a
+        # sane [0, 100] "fraction of the pivot covered" rather than surface >100%.
+        return round(min(self.links_created / self.pivot_line_count * 100, 100.0), 2)
 
     def to_dict(self) -> dict:
         payload = {

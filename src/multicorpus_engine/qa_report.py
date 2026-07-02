@@ -208,6 +208,8 @@ def _check_anchor_consistency(conn: sqlite3.Connection) -> list[dict]:
     *crosses an anchor*. Links where neither side carries a structural role (the
     common case) are consistent and never flagged; this keeps false positives low
     but only catches drift that touches an anchor (design §5b, assumed limit).
+    Links the human has ``status='rejected'`` are skipped (ALN-03): a drift the
+    reviewer already vetted away must not keep the strict anchor gate red forever.
     Aggregated per pivot→target pair. Robust to older DBs (missing tables → []).
     """
     try:
@@ -222,6 +224,7 @@ def _check_anchor_consistency(conn: sqlite3.Connection) -> list[dict]:
             JOIN units tu ON tu.unit_id = al.target_unit_id
             LEFT JOIN unit_roles pr ON pr.name = pu.unit_role
             LEFT JOIN unit_roles tr ON tr.name = tu.unit_role
+            WHERE al.status IS NULL OR al.status <> 'rejected'
             ORDER BY al.pivot_doc_id, al.target_doc_id, al.link_id
             """,
         ).fetchall()

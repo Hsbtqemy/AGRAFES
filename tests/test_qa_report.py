@@ -313,6 +313,22 @@ def test_anchor_consistency_flags_structural_role_mismatch(db_conn: sqlite3.Conn
     assert inc["target_role"] is None
 
 
+def test_anchor_consistency_skips_rejected_links(db_conn: sqlite3.Connection) -> None:
+    """ALN-03: a mismatch on a human-rejected link is not drift (else strict policy
+    stays blocked on a link the reviewer already vetted away). RED on the old query
+    (no status filter → the rejected link would be flagged)."""
+    from multicorpus_engine.qa_report import _check_anchor_consistency
+
+    _insert_role(db_conn, "intertitre", "structure")
+    d1 = _populate_doc(db_conn, "Pivot", "fr")
+    d2 = _populate_doc(db_conn, "Target", "en")
+    p = _insert_unit_role(db_conn, d1, 1, 1, "intertitre")
+    t = _insert_unit(db_conn, d2, 1, 1)  # no role → would be drift…
+    _insert_align_link(db_conn, d1, d2, p, t, status="rejected")  # …but rejected
+
+    assert _check_anchor_consistency(db_conn) == []  # filtered out entirely
+
+
 def test_anchor_consistency_ignores_matching_and_text_roles(db_conn: sqlite3.Connection) -> None:
     """Matching structural roles are consistent; a *text*-category role mismatch is
     legitimate (not an anchor) and must NOT be flagged."""

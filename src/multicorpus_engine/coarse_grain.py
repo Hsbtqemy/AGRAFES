@@ -95,6 +95,11 @@ def _blocks_anchored(
         if u.get("unit_type") != "line":
             continue  # structure units carry no fine content in the anchored regime
         meta = _parse_meta(u.get("meta_json"))
+        # ALN-04 (documented limit): a unit lacking parent_n falls back to its own n,
+        # which shares the domain of parent_n values — so a unit *inserted after*
+        # resegmentation (no meta) could land in another paragraph's block by n-collision.
+        # Not reachable today (fine-segmentation stamps parent_n on every line); revisit
+        # if a post-resegment insert path is added.
         anchor = meta.get("parent_n", u["n"])
         block = blocks.get(anchor)
         if block is None:
