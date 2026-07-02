@@ -329,6 +329,24 @@ body {
 }
 .result-meta .doc-title { font-weight: 600; color: var(--text); }
 
+/* R4.3 — peritext role + translation status badges on hits / aligned units */
+.hit-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 9px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+  vertical-align: middle;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.hit-badge--role { background: #e7effe; border-color: #b9d0fb; color: #1e40af; }
+.hit-badge--status { background: #eef1f4; border-color: #cfd6de; color: #475569; }
+.hit-badge--nt { background: #fdeae7; border-color: #f6c4bb; color: #9a3412; }
+.hit-badge--add { background: #e6f7ec; border-color: #b5e6c6; color: #15803d; }
+
 .result-text {
   font-size: 14px;
   line-height: 1.6;

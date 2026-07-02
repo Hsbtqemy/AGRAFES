@@ -56,6 +56,9 @@ export interface QueryHit {
   left?: string;
   match?: string;
   right?: string;
+  // peritext role + translation status (R4.3; null/absent = none)
+  unit_role?: string | null;
+  unit_status?: string | null;
   // aligned view
   aligned?: AlignedUnit[];
   // token-query mode (CQL)
@@ -90,6 +93,9 @@ export interface AlignedUnit {
   title: string;
   text?: string;
   text_norm: string;
+  // peritext role + translation status of the aligned unit (R4.3; null = none)
+  unit_role?: string | null;
+  unit_status?: string | null;
 }
 
 export interface QueryOptions {

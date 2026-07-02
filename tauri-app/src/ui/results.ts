@@ -9,6 +9,24 @@ import type { QueryHit, AlignedUnit } from "../lib/sidecarClient";
 import { state } from "../state";
 import { elt, escapeHtml } from "./dom";
 import { setHtml, raw as rawHtml } from "../lib/safeHtml";
+import { unitBadges, statusModifier } from "./roleStatus";
+
+/**
+ * Append peritext-role / translation-status badges (R4.3) for a hit or aligned
+ * unit. No-op when the unit has neither — ordinary units stay badge-free.
+ */
+function appendUnitBadges(
+  container: HTMLElement,
+  u: { unit_role?: string | null; unit_status?: string | null },
+): void {
+  for (const b of unitBadges(u)) {
+    const mod = b.kind === "status" ? statusModifier(b.value) : "";
+    const cls = b.kind === "role"
+      ? "hit-badge hit-badge--role"
+      : `hit-badge hit-badge--status${mod ? ` hit-badge--${mod}` : ""}`;
+    container.appendChild(elt("span", { class: cls, title: b.title }, b.label));
+  }
+}
 
 // ─── Dependency injection (breaks circular: results ↔ metaPanel / query) ─────
 
@@ -249,6 +267,7 @@ export function renderAlignedBlock(hit: QueryHit): HTMLElement {
         row.appendChild(elt("span", { class: "aligned-ref" }, `[${item.external_id}]`));
       }
       appendSourceChangedBadge(row, item);
+      appendUnitBadges(row, item);
       const text = item.text ?? item.text_norm ?? "";
       row.appendChild(elt("span", {}, text));
       details.appendChild(row);
@@ -268,6 +287,7 @@ export function renderParallelHit(hit: QueryHit, mode: "segment" | "kwic"): HTML
   meta.appendChild(titleSpan);
   if (hit.language) meta.appendChild(document.createTextNode(` · ${hit.language}`));
   if (hit.external_id != null) meta.appendChild(document.createTextNode(` · §${hit.external_id}`));
+  appendUnitBadges(meta, hit);
   const pMetaBtn = elt("button", { class: "hit-meta-btn", title: "Métadonnées du document", type: "button" }, "ⓘ");
   pMetaBtn.addEventListener("click", (e) => { e.stopPropagation(); _openMetaFn?.(hit); });
   meta.appendChild(pMetaBtn);
@@ -339,6 +359,7 @@ export function renderParallelHit(hit: QueryHit, mode: "segment" | "kwic"): HTML
         const row = elt("div", { class: "parallel-line" });
         if (item.external_id != null) row.appendChild(elt("span", { class: "parallel-ref" }, `[${item.external_id}]`));
         appendSourceChangedBadge(row, item);
+        appendUnitBadges(row, item);
         row.appendChild(document.createTextNode(" " + (item.text ?? item.text_norm ?? "")));
         grp.appendChild(row);
       }
@@ -351,6 +372,7 @@ export function renderParallelHit(hit: QueryHit, mode: "segment" | "kwic"): HTML
             const row = elt("div", { class: "parallel-line" });
             if (item.external_id != null) row.appendChild(elt("span", { class: "parallel-ref" }, `[${item.external_id}]`));
             appendSourceChangedBadge(row, item);
+            appendUnitBadges(row, item);
             row.appendChild(document.createTextNode(" " + (item.text ?? item.text_norm ?? "")));
             grp.insertBefore(row, moreWrap);
           }
@@ -382,6 +404,7 @@ export function renderHit(hit: QueryHit, mode: "segment" | "kwic", showAligned: 
   meta.appendChild(titleSpan);
   if (hit.language) meta.appendChild(document.createTextNode(` · ${hit.language}`));
   if (hit.external_id != null) meta.appendChild(document.createTextNode(` · §${hit.external_id}`));
+  appendUnitBadges(meta, hit);
   const metaBtn = elt("button", { class: "hit-meta-btn", title: "Métadonnées du document", type: "button" }, "ⓘ");
   metaBtn.addEventListener("click", (e) => { e.stopPropagation(); _openMetaFn?.(hit); });
   meta.appendChild(metaBtn);

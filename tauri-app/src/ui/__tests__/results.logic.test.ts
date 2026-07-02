@@ -18,6 +18,7 @@ import {
   appendSourceChangedBadge,
   buildCitationText,
   renderHit,
+  renderAlignedBlock,
 } from "../results";
 import type { QueryHit, AlignedUnit } from "../../lib/sidecarClient";
 
@@ -123,5 +124,27 @@ describe("renderHit", () => {
     expect(html).toContain("&lt;img");                            // tag neutralised
     expect(html).not.toContain("<img");                           // not a live element
     expect(html).toContain('<span class="highlight">hit</span>'); // sentinel → highlight
+  });
+
+  it("renders role + status badges (R4.3) in the meta row when present", () => {
+    const card = renderHit(hit({ text: "x", unit_role: "titre", unit_status: "non_traduit" }), "segment", false);
+    const badges = [...card.querySelectorAll(".result-meta .hit-badge")].map((b) => b.textContent);
+    expect(badges).toEqual(["Titre", "non traduit"]);
+    expect(card.querySelector(".hit-badge--role")).not.toBeNull();
+    expect(card.querySelector(".hit-badge--nt")).not.toBeNull();
+  });
+
+  it("renders no badge for an ordinary unit (no role/status)", () => {
+    const card = renderHit(hit({ text: "x" }), "segment", false);
+    expect(card.querySelector(".hit-badge")).toBeNull();
+  });
+});
+
+describe("aligned units carry badges (R4.3)", () => {
+  it("shows the status badge on aligned lines", () => {
+    const block = renderAlignedBlock(hit({
+      aligned: [aligned({ text: "trad", unit_status: "non_traduit" })],
+    }));
+    expect(block.querySelector(".aligned-line .hit-badge--nt")?.textContent).toBe("non traduit");
   });
 });
