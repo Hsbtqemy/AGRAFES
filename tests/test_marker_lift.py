@@ -128,6 +128,23 @@ def test_lift_preserves_manual_role_and_flags_conflict(db_conn: sqlite3.Connecti
                for c in rep.conflicts)
 
 
+def test_lift_preserves_manual_status_and_flags_conflict(db_conn: sqlite3.Connection) -> None:
+    """Symmetric to the role conflict, on the unit_status axis: a manual status differing
+    from the marker is preserved (fill-only-if-NULL) and reported as a conflict."""
+    doc = _doc(db_conn)
+    uid = _unit(db_conn, doc, 1, "Un ajout [non traduit]")  # marker dictates non_traduit
+    db_conn.execute("UPDATE units SET unit_status='ajout' WHERE unit_id=?", (uid,))
+    db_conn.commit()
+    rep = lift_document_markers(db_conn, doc, dry_run=False)
+    row = db_conn.execute(
+        "SELECT unit_status, text_norm FROM units WHERE unit_id=?", (uid,)
+    ).fetchone()
+    assert row["unit_status"] == "ajout"      # manual value preserved
+    assert row["text_norm"] == "Un ajout"     # marker stripped either way
+    assert any(c["field"] == "unit_status" and c["existing"] == "ajout" and c["marker"] == "non_traduit"
+               for c in rep.conflicts)
+
+
 def test_lift_apply_rolls_back_on_failure(db_conn: sqlite3.Connection) -> None:
     """LFT-01: a failure mid-apply must not leave partial writes on the shared conn.
 

@@ -171,3 +171,59 @@ def test_length_bounded_preserves_protected(db: sqlite3.Connection) -> None:
     report = align_pair_by_length(db, piv, tgt, "run", protected_pairs={(a, a2)})
     assert report.links_created == 0                       # the only candidate is protected
     assert any("protégé" in w for w in report.warnings)
+
+
+def test_length_bounded_materialises_2_1_bead(db: sqlite3.Connection) -> None:
+    """A 2-1 sentence bead (2 pivot sents ↔ 1 target) → 2 links to the SAME target,
+    sharing a bead_id (positional pairing repeats the short side's last unit)."""
+    piv = _doc(db, "Pivot", "fr")
+    tgt = _doc(db, "Target", "en")
+    # ¶1: pivot has two short sentences (10+10), target one long sentence (20)
+    p1 = _sent(db, piv, 1, 10, 1)
+    p2 = _sent(db, piv, 2, 10, 1)
+    t1 = _sent(db, tgt, 1, 20, 1)
+
+    report = align_pair_by_length(db, piv, tgt, "run-21")
+    assert report.links_created == 2
+    rows = db.execute(
+        "SELECT pivot_unit_id, target_unit_id, bead_id, external_id"
+        " FROM alignment_links ORDER BY external_id"
+    ).fetchall()
+    assert [r["pivot_unit_id"] for r in rows] == [p1, p2]
+    assert all(r["target_unit_id"] == t1 for r in rows)          # both → the single target
+    assert rows[0]["bead_id"] is not None and rows[0]["bead_id"] == rows[1]["bead_id"]
+    assert [r["external_id"] for r in rows] == [1, 2]            # pivot n's
+
+
+def test_length_bounded_materialises_2_2_bead(db: sqlite3.Connection) -> None:
+    """A 2-2 sentence bead → 2 positionally-paired links (p1↔t1, p2↔t2) sharing a bead_id."""
+    piv = _doc(db, "Pivot", "fr")
+    tgt = _doc(db, "Target", "en")
+    # swapped lengths force a 2-2 merge over two mismatched 1-1s (empirically verified)
+    p1 = _sent(db, piv, 1, 10, 1)
+    p2 = _sent(db, piv, 2, 30, 1)
+    t1 = _sent(db, tgt, 1, 30, 1)
+    t2 = _sent(db, tgt, 2, 10, 1)
+
+    report = align_pair_by_length(db, piv, tgt, "run-22")
+    assert report.links_created == 2
+    rows = db.execute(
+        "SELECT pivot_unit_id, target_unit_id, bead_id FROM alignment_links ORDER BY pivot_unit_id"
+    ).fetchall()
+    assert (rows[0]["pivot_unit_id"], rows[0]["target_unit_id"]) == (p1, t1)
+    assert (rows[1]["pivot_unit_id"], rows[1]["target_unit_id"]) == (p2, t2)
+    assert rows[0]["bead_id"] is not None and rows[0]["bead_id"] == rows[1]["bead_id"]
+
+
+def test_length_bounded_warns_on_unpaired_paragraphs(db: sqlite3.Connection) -> None:
+    """D4 (advisory): >15% of paragraphs unpaired → a warning to verify the two docs
+    really are translations. 3 pivot ¶ vs 1 target ¶ → one ¶ left unpaired (33%)."""
+    piv = _doc(db, "Pivot", "fr")
+    tgt = _doc(db, "Target", "en")
+    _sent(db, piv, 1, 100, 1)
+    _sent(db, piv, 2, 100, 2)
+    _sent(db, piv, 3, 100, 3)
+    _sent(db, tgt, 1, 100, 1)
+
+    report = align_pair_by_length(db, piv, tgt, "run-gaps")
+    assert any("unpaired" in w for w in report.warnings)
