@@ -8,6 +8,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { AnnotationPane } from "../AnnotationPane.ts";
 import type { Conn, TokenRecord, UnitRecord } from "../../lib/sidecarClient.ts";
+import type { ModelInfo, ModelSource } from "../../lib/models.ts";
 
 function unit(n: number, over: Partial<UnitRecord> = {}): UnitRecord {
   return {
@@ -24,8 +25,16 @@ function token(unitId: number, unitN: number, position: number, word: string, up
   };
 }
 
+function modelInfo(name: string, language: string, source: ModelSource, over: Partial<ModelInfo> = {}): ModelInfo {
+  return {
+    name, language, genre: "core", size_class: name.split("_").pop() ?? "md",
+    approx_size_mb: 45, installed: source === "downloaded", source, active: false, version: null, ...over,
+  };
+}
+
 function fakeConn(cfg: {
-  units?: UnitRecord[]; tokens?: TokenRecord[]; onEnqueue?: (body: unknown) => void;
+  units?: UnitRecord[]; tokens?: TokenRecord[]; models?: ModelInfo[];
+  onEnqueue?: (body: unknown) => void; onDownload?: (body: unknown) => void;
 }): Conn {
   return {
     get: async (path: string) => {
@@ -41,11 +50,13 @@ function fakeConn(cfg: {
           limit: 500, offset: 0, next_offset: null, has_more: false,
         };
       }
+      if (path.startsWith("/models")) return { models: cfg.models ?? [] };
       if (path.startsWith("/jobs/")) return { job: { status: "queued", progress_pct: 0 } };
       return {};
     },
     post: async (path: string, body: unknown) => {
       if (path === "/jobs/enqueue") { cfg.onEnqueue?.(body); return { job: { job_id: "j1" } }; }
+      if (path === "/models/download") { cfg.onDownload?.(body); return { job: { job_id: "m1" } }; }
       return {};
     },
   } as unknown as Conn;
@@ -164,5 +175,49 @@ describe("AnnotationPane", () => {
     await pane.setDocument(null, null);
     const btn = host.querySelector<HTMLButtonElement>("#prep-annot-run-btn")!;
     expect(btn.disabled).toBe(true);
+  });
+
+  it("model band shows the available model for the language (R5.2c-4c)", async () => {
+    const pane = new AnnotationPane(host, () => fakeConn({
+      units: [unit(1)], tokens: [],
+      models: [modelInfo("fr_core_news_md", "fr", "downloaded"), modelInfo("fr_core_news_lg", "fr", "absent")],
+    }), () => {});
+    await pane.setDocument(1, null, "fr");
+    const band = host.querySelector<HTMLElement>("#prep-annot-model-band")!;
+    expect(band.style.display).not.toBe("none");
+    expect(band.textContent).toContain("fr_core_news_md");
+    expect(band.querySelector("button")).toBeNull(); // available → no download; no manage link wired
+  });
+
+  it("model band marks the active model", async () => {
+    const pane = new AnnotationPane(host, () => fakeConn({
+      units: [unit(1)], tokens: [],
+      models: [
+        modelInfo("fr_core_news_md", "fr", "bundled"),
+        modelInfo("fr_core_news_lg", "fr", "downloaded", { active: true }),
+      ],
+    }), () => {});
+    await pane.setDocument(1, null, "fr");
+    const band = host.querySelector<HTMLElement>("#prep-annot-model-band")!;
+    expect(band.textContent).toContain("fr_core_news_lg");
+    expect(band.textContent).toContain("(actif)");
+  });
+
+  it("model band offers a download when nothing is available, recommending md (R5.2c-4c)", async () => {
+    let dl: unknown = null;
+    const pane = new AnnotationPane(host, () => fakeConn({
+      units: [unit(1)], tokens: [],
+      models: [modelInfo("fr_core_news_md", "fr", "absent"), modelInfo("fr_core_news_sm", "fr", "absent")],
+      onDownload: (b) => { dl = b; },
+    }), () => {});
+    await pane.setDocument(1, null, "fr");
+    const band = host.querySelector<HTMLElement>("#prep-annot-model-band")!;
+    expect(band.textContent).toContain("Aucun modèle");
+    const btn = band.querySelector<HTMLButtonElement>("button")!;
+    expect(btn.textContent).toContain("Télécharger");
+    btn.click();
+    await flush();
+    expect(dl).toEqual({ model: "fr_core_news_md" }); // recommends the md, not the sm
+    pane.dispose();
   });
 });

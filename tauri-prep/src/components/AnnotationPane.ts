@@ -16,7 +16,8 @@
 import "../ui/annotation.css";
 import type { Conn, ConventionRole, TokenRecord, UnitRecord } from "../lib/sidecarClient.ts";
 import { escHtml as esc } from "../lib/diff.ts";
-import { listConventions, listUnits, listTokens } from "../lib/sidecarClient.ts";
+import { listConventions, listUnits, listTokens, listModels, downloadModel } from "../lib/sidecarClient.ts";
+import { languageLabel, type ModelInfo } from "../lib/models.ts";
 import { setHtml, raw } from "../lib/safeHtml.ts";
 import { buildProseUnitInline, type ProseToken } from "../ui/annotationProse.ts";
 import { runJobWithPolling, type JobHandle } from "../lib/jobPolling.ts";
@@ -31,11 +32,14 @@ export class AnnotationPane {
   private readonly _root: HTMLElement;
   private readonly _getConn: () => Conn | null;
   private readonly _onError: (msg: string) => void;
+  /** Optional: navigate to the Paramètres model manager (renders the "Gérer" link). */
+  private readonly _onManageModels?: () => void;
 
   private _roles: ConventionRole[] = [];
   private _units: UnitRecord[] = [];
   private _docId: number | null = null;
   private _textStartN: number | null = null;
+  private _language: string | null = null;
   private _loaded = false;
   private _list: CanvasUnitList | null = null;
 
@@ -43,11 +47,19 @@ export class AnnotationPane {
   private _tokensByUnit = new Map<number, ProseToken[]>();
   /** In-flight annotation job (via the shared runJobWithPolling controller). */
   private _annotHandle: JobHandle | null = null;
+  /** In-flight in-context model download. */
+  private _modelHandle: JobHandle | null = null;
 
-  constructor(root: HTMLElement, getConn: () => Conn | null, onError: (msg: string) => void) {
+  constructor(
+    root: HTMLElement,
+    getConn: () => Conn | null,
+    onError: (msg: string) => void,
+    onManageModels?: () => void,
+  ) {
     this._root = root;
     this._getConn = getConn;
     this._onError = onError;
+    this._onManageModels = onManageModels;
   }
 
   /** Build the static layout once. Idempotent. */
@@ -66,6 +78,7 @@ export class AnnotationPane {
           <span class="prep-annot-summary" id="prep-annot-summary" aria-live="polite"></span>
           <span class="prep-annot-status" id="prep-annot-status" aria-live="polite"></span>
         </div>
+        <div class="prep-annot-model-band" id="prep-annot-model-band" style="display:none" aria-live="polite"></div>
         <div class="prep-conv-units-area prep-annot-units" id="prep-annot-units">
           <div class="prep-conv-empty">S&#233;lectionnez un document.</div>
         </div>
@@ -90,14 +103,17 @@ export class AnnotationPane {
     this._q<HTMLButtonElement>("#prep-annot-run-btn")?.addEventListener("click", () => void this._runAnnotate());
   }
 
-  async setDocument(docId: number | null, textStartN: number | null): Promise<void> {
+  async setDocument(docId: number | null, textStartN: number | null, language: string | null = null): Promise<void> {
     this.mount();
-    // A doc switch abandons any in-flight annotation poll (the job keeps running
-    // server-side; we just stop applying its result to a now-different document).
+    // A doc switch abandons any in-flight annotation / model poll (the job keeps
+    // running server-side; we just stop applying its result to a now-different doc).
     this._annotHandle?.cancel();
     this._annotHandle = null;
+    this._modelHandle?.cancel();
+    this._modelHandle = null;
     this._docId = docId;
     this._textStartN = textStartN;
+    this._language = language;
     this._tokensByUnit = new Map();
     this._resetRunBtn();
     this._setStatus("");
@@ -109,11 +125,14 @@ export class AnnotationPane {
     await this._loadTokens();
     this._list?.render(); // decorateRow now repaints the annotated rows
     this._renderSummary();
+    await this._loadModelBand();
   }
 
   dispose(): void {
     this._annotHandle?.cancel();
     this._annotHandle = null;
+    this._modelHandle?.cancel();
+    this._modelHandle = null;
     this._roles = [];
     this._units = [];
     this._tokensByUnit = new Map();
@@ -239,6 +258,99 @@ export class AnnotationPane {
   private _setStatus(text: string): void {
     const s = this._q("#prep-annot-status");
     if (s) s.textContent = text;
+  }
+
+  // ─── Model band (R5.2c-4c) ───────────────────────────────────────────────
+
+  /** Base language code of the current document (region tags reduce to the base). */
+  private _baseLang(): string {
+    return (this._language ?? "").trim().toLowerCase().split(/[-_]/)[0];
+  }
+
+  /** Refresh the in-context model band for the document's language. */
+  private async _loadModelBand(): Promise<void> {
+    const band = this._q<HTMLElement>("#prep-annot-model-band");
+    if (!band) return;
+    const conn = this._getConn();
+    if (!conn || this._docId === null || !this._baseLang()) {
+      band.replaceChildren();
+      band.style.display = "none";
+      return;
+    }
+    let models: ModelInfo[];
+    try {
+      models = await listModels(conn);
+    } catch {
+      band.replaceChildren();
+      band.style.display = "none";
+      return;
+    }
+    this._renderModelBand(band, models);
+  }
+
+  private _renderModelBand(band: HTMLElement, models: ModelInfo[]): void {
+    const base = this._baseLang();
+    // Models for this language, else the multilingual pool as a fallback.
+    const langModels = models.filter((m) => m.language === base);
+    const pool = langModels.length ? langModels : models.filter((m) => m.language === "xx");
+    band.replaceChildren();
+    if (pool.length === 0) { band.style.display = "none"; return; }
+    band.style.display = "";
+
+    const active = pool.find((m) => m.active && m.source !== "absent");
+    const available = active ?? pool.find((m) => m.source !== "absent");
+    const label = document.createElement("span");
+    label.className = "prep-annot-model-label";
+
+    if (available) {
+      label.textContent = `Modèle ${languageLabel(base)} : ${available.name}${active ? " (actif)" : ""}`;
+      band.appendChild(label);
+    } else {
+      // Nothing loadable for this language → recommend a download (default md, else first).
+      const rec = pool.find((m) => m.size_class === "md")
+        ?? pool.find((m) => m.size_class === "sm") ?? pool[0];
+      label.classList.add("prep-annot-model-label--missing");
+      label.textContent = `⚠ Aucun modèle pour ${languageLabel(base)} — ${rec.name} (~${rec.approx_size_mb} Mo)`;
+      band.appendChild(label);
+      const dl = document.createElement("button");
+      dl.className = "btn btn-primary btn-sm";
+      dl.textContent = "↓ Télécharger";
+      dl.addEventListener("click", () => this._downloadModel(rec.name, dl));
+      band.appendChild(dl);
+    }
+
+    if (this._onManageModels) {
+      const manage = document.createElement("button");
+      manage.type = "button";
+      manage.className = "prep-annot-model-manage";
+      manage.textContent = "Gérer les modèles";
+      manage.addEventListener("click", () => this._onManageModels?.());
+      band.appendChild(manage);
+    }
+  }
+
+  private _downloadModel(name: string, btn: HTMLButtonElement): void {
+    const conn = this._getConn();
+    if (!conn || this._modelHandle !== null) return;
+    btn.disabled = true;
+    btn.textContent = "Téléchargement…";
+    this._modelHandle = runJobWithPolling(conn, {
+      enqueue: async () => {
+        const job = await downloadModel(conn, name);
+        return job.job_id ?? "";
+      },
+      onProgress: (msg) => { btn.textContent = msg; },
+      onDone: async () => {
+        this._modelHandle = null;
+        await this._loadModelBand(); // now available → band updates
+      },
+      onError: (msg) => {
+        this._modelHandle = null;
+        btn.disabled = false;
+        btn.textContent = "↓ Réessayer";
+        this._onError(`Téléchargement échoué : ${msg}`);
+      },
+    });
   }
 
   // ─── Overlay + summary ──────────────────────────────────────────────────

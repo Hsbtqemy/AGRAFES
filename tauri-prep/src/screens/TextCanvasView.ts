@@ -287,7 +287,7 @@ export class TextCanvasView {
     if (this._mode === "curation") {
       await this._curationPane?.setDocument(this._docId, ts);
     } else if (this._mode === "annoter") {
-      await this._annotationPane?.setDocument(this._docId, ts);
+      await this._annotationPane?.setDocument(this._docId, ts, doc?.language ?? null);
     } else {
       await this._rolesPane?.setDocument(this._docId, ts);
     }
