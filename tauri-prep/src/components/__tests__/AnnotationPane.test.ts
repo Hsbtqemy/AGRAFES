@@ -24,7 +24,9 @@ function token(unitId: number, unitN: number, position: number, word: string, up
   };
 }
 
-function fakeConn(cfg: { units?: UnitRecord[]; tokens?: TokenRecord[] }): Conn {
+function fakeConn(cfg: {
+  units?: UnitRecord[]; tokens?: TokenRecord[]; onEnqueue?: (body: unknown) => void;
+}): Conn {
   return {
     get: async (path: string) => {
       if (path === "/conventions") return { conventions: [] };
@@ -39,11 +41,17 @@ function fakeConn(cfg: { units?: UnitRecord[]; tokens?: TokenRecord[] }): Conn {
           limit: 500, offset: 0, next_offset: null, has_more: false,
         };
       }
+      if (path.startsWith("/jobs/")) return { job: { status: "queued", progress_pct: 0 } };
       return {};
     },
-    post: async () => ({}),
+    post: async (path: string, body: unknown) => {
+      if (path === "/jobs/enqueue") { cfg.onEnqueue?.(body); return { job: { job_id: "j1" } }; }
+      return {};
+    },
   } as unknown as Conn;
 }
+
+const flush = () => new Promise((r) => setTimeout(r, 5));
 
 let host: HTMLElement;
 beforeEach(() => {
@@ -131,5 +139,30 @@ describe("AnnotationPane", () => {
 
     await pane.setDocument(2, null);
     expect(host.querySelectorAll(".prep-annot-unit-row--annotated").length).toBe(0);
+  });
+
+  it("launches annotation from the dock: click enqueues an annotate job (R5.2c-4b)", async () => {
+    let enqueued: unknown = null;
+    const pane = new AnnotationPane(
+      host,
+      () => fakeConn({ units: [unit(1)], tokens: [], onEnqueue: (b) => { enqueued = b; } }),
+      () => {},
+    );
+    await pane.setDocument(1, null);
+    const btn = host.querySelector<HTMLButtonElement>("#prep-annot-run-btn")!;
+    expect(btn).not.toBeNull();
+    expect(btn.disabled).toBe(false); // a document is selected
+    btn.click();
+    await flush();
+    expect(enqueued).toEqual({ kind: "annotate", params: { doc_id: 1 } });
+    expect(btn.disabled).toBe(true); // running
+    pane.dispose(); // stop the poll timer
+  });
+
+  it("disables the Annoter button when no document is selected", async () => {
+    const pane = new AnnotationPane(host, () => fakeConn({ units: [] }), () => {});
+    await pane.setDocument(null, null);
+    const btn = host.querySelector<HTMLButtonElement>("#prep-annot-run-btn")!;
+    expect(btn.disabled).toBe(true);
   });
 });

@@ -19,6 +19,7 @@ import { escHtml as esc } from "../lib/diff.ts";
 import { listConventions, listUnits, listTokens } from "../lib/sidecarClient.ts";
 import { setHtml, raw } from "../lib/safeHtml.ts";
 import { buildProseUnitInline, type ProseToken } from "../ui/annotationProse.ts";
+import { runJobWithPolling, type JobHandle } from "../lib/jobPolling.ts";
 import { CanvasUnitList } from "./CanvasUnitList.ts";
 
 const _TOKENS_PAGE = 500;
@@ -40,6 +41,8 @@ export class AnnotationPane {
 
   /** unit_id → its tokens (ordered by sent_id, position); drives the coloured overlay. */
   private _tokensByUnit = new Map<number, ProseToken[]>();
+  /** In-flight annotation job (via the shared runJobWithPolling controller). */
+  private _annotHandle: JobHandle | null = null;
 
   constructor(root: HTMLElement, getConn: () => Conn | null, onError: (msg: string) => void) {
     this._root = root;
@@ -58,7 +61,10 @@ export class AnnotationPane {
           <span class="prep-conv-search-stats" id="prep-annot-search-stats"></span>
         </div>
         <div class="prep-annot-dock" role="group" aria-label="Annotation grammaticale">
+          <button type="button" class="btn btn-primary btn-sm" id="prep-annot-run-btn"
+            title="Lancer l'analyse grammaticale (POS + lemmes) sur ce document">Annoter &#9654;</button>
           <span class="prep-annot-summary" id="prep-annot-summary" aria-live="polite"></span>
+          <span class="prep-annot-status" id="prep-annot-status" aria-live="polite"></span>
         </div>
         <div class="prep-conv-units-area prep-annot-units" id="prep-annot-units">
           <div class="prep-conv-empty">S&#233;lectionnez un document.</div>
@@ -80,13 +86,21 @@ export class AnnotationPane {
 
     const searchEl = this._q<HTMLInputElement>("#prep-annot-search");
     searchEl?.addEventListener("input", () => this._list?.setSearch(searchEl.value));
+
+    this._q<HTMLButtonElement>("#prep-annot-run-btn")?.addEventListener("click", () => void this._runAnnotate());
   }
 
   async setDocument(docId: number | null, textStartN: number | null): Promise<void> {
     this.mount();
+    // A doc switch abandons any in-flight annotation poll (the job keeps running
+    // server-side; we just stop applying its result to a now-different document).
+    this._annotHandle?.cancel();
+    this._annotHandle = null;
     this._docId = docId;
     this._textStartN = textStartN;
     this._tokensByUnit = new Map();
+    this._resetRunBtn();
+    this._setStatus("");
     this._list?.setData({ docId, textStartN });
     this._list?.clearSelectionQuiet();
     this._setSummary(docId === null ? "" : "Analyse de l’annotation…");
@@ -98,6 +112,8 @@ export class AnnotationPane {
   }
 
   dispose(): void {
+    this._annotHandle?.cancel();
+    this._annotHandle = null;
     this._roles = [];
     this._units = [];
     this._tokensByUnit = new Map();
@@ -176,6 +192,55 @@ export class AnnotationPane {
     }
   }
 
+  // ─── Annotation trigger (R5.2c-4b) ───────────────────────────────────────
+
+  /** Launch spaCy annotation on the current document via the shared job controller;
+   *  on completion, reload the tokens and repaint. The engine picks the corpus's active
+   *  model for the language (R5.2c-2) — no model is passed here. */
+  private async _runAnnotate(): Promise<void> {
+    const conn = this._getConn();
+    if (!conn) { this._onError("Non connecté."); return; }
+    if (this._docId === null) { this._onError("Sélectionnez un document."); return; }
+    if (this._annotHandle !== null) return; // already running
+    const docId = this._docId;
+    const btn = this._q<HTMLButtonElement>("#prep-annot-run-btn");
+    if (btn) { btn.disabled = true; btn.textContent = "En cours…"; }
+    this._setStatus("Lancement…");
+    this._annotHandle = runJobWithPolling(conn, {
+      enqueue: async () => {
+        const res = await conn.post("/jobs/enqueue", { kind: "annotate", params: { doc_id: docId } });
+        return (res as { job?: { job_id?: string } }).job?.job_id ?? "";
+      },
+      onProgress: (msg) => this._setStatus(msg),
+      onDone: async () => {
+        this._annotHandle = null;
+        this._resetRunBtn();
+        // Only apply if we are still on the document we annotated.
+        if (this._docId === docId) {
+          await this._loadTokens();
+          this._list?.render();
+          this._renderSummary();
+        }
+        this._setStatus("✓ Annotation terminée.");
+      },
+      onError: (msg) => {
+        this._annotHandle = null;
+        this._resetRunBtn();
+        this._setStatus(`✗ ${msg}`);
+      },
+    });
+  }
+
+  private _resetRunBtn(): void {
+    const btn = this._q<HTMLButtonElement>("#prep-annot-run-btn");
+    if (btn) { btn.disabled = this._docId === null; btn.textContent = "Annoter ▶"; }
+  }
+
+  private _setStatus(text: string): void {
+    const s = this._q("#prep-annot-status");
+    if (s) s.textContent = text;
+  }
+
   // ─── Overlay + summary ──────────────────────────────────────────────────
 
   /** decorateRow hook: repaint an annotated unit's text as UPOS-coloured prose. */
@@ -205,8 +270,8 @@ export class AnnotationPane {
     if (this._docId === null) { s.textContent = ""; s.classList.remove("prep-annot-summary--empty"); return; }
     const n = this._annotatedCount();
     if (n === 0) {
-      s.textContent = "Document non annoté — l’annotation grammaticale se lance depuis l’atelier "
-        + "« Annotation » (relogement au canvas prévu, R5.2c).";
+      s.textContent = "Document non annoté — cliquez « Annoter » pour lancer l’analyse "
+        + "grammaticale (POS + lemmes).";
       s.classList.add("prep-annot-summary--empty");
     } else {
       s.textContent = `${n} unité${n > 1 ? "s" : ""} annotée${n > 1 ? "s" : ""} `

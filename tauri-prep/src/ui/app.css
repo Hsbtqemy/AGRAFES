@@ -6798,6 +6798,7 @@ tr[data-len].prep-seg-row-context .prep-seg-cell-len {
 }
 .prep-annot-summary { font-size: 0.8rem; color: #475569; font-weight: 500; }
 .prep-annot-summary--empty { color: #92600a; font-weight: 400; font-style: italic; }
+.prep-annot-status { font-size: 0.78rem; color: #475569; margin-left: auto; white-space: nowrap; }
 .prep-annot-units { flex: 1; min-height: 0; }
 /* Coloured tokens (ui/annotation.css .annot-prose-token) sit inside the unit text;
    give the row a touch more line-height so the token backgrounds breathe. */
