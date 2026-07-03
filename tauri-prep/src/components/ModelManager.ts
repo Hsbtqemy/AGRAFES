@@ -1,17 +1,19 @@
 /**
- * ModelManager.ts — reusable spaCy model list with per-model download / remove and
- * live progress, talking to the Phase 2 sidecar endpoints. Mounted in the Paramètres
- * screen (Phase 3); the in-context AnnotationView band (Phase 4) shares the same
- * client methods.
+ * ModelManager.ts — reusable spaCy model manager (Paramètres + shared with the canvas
+ * annotation dock). A language selector expands that language's models (sm/md/lg/trf);
+ * each row shows status/size, a download / remove action (hidden for a bundled model),
+ * and an "Actif" radio that sets the per-corpus active model for the language (R5.2c-3).
  */
 
 import type { Conn } from "../lib/sidecarClient.ts";
-import { downloadModel, getJob, listModels, removeModel } from "../lib/sidecarClient.ts";
-import { describeModel, type ModelInfo } from "../lib/models.ts";
+import { downloadModel, getJob, listModels, removeModel, setActiveModel } from "../lib/sidecarClient.ts";
+import { describeModel, languageLabel, type ModelInfo } from "../lib/models.ts";
 
 export class ModelManager {
   private _conn: Conn | null = null;
   private _root: HTMLElement | null = null;
+  private _models: ModelInfo[] = [];
+  private _selectedLang: string | null = null;
   private readonly _polls = new Map<string, ReturnType<typeof setInterval>>();
 
   render(): HTMLElement {
@@ -29,8 +31,7 @@ export class ModelManager {
     } else {
       // Disconnect (incl. App.dispose on shell re-mount) → stop any in-flight polls
       // so a dead instance isn't pinned by a live interval (FE-08 class).
-      for (const id of this._polls.values()) clearInterval(id);
-      this._polls.clear();
+      this._stopAllPolls();
       if (this._root) {
         this._root.replaceChildren();
         this._root.textContent = "Non connecté.";
@@ -39,8 +40,7 @@ export class ModelManager {
   }
 
   dispose(): void {
-    for (const id of this._polls.values()) clearInterval(id);
-    this._polls.clear();
+    this._stopAllPolls();
     this._root = null;
   }
 
@@ -59,8 +59,63 @@ export class ModelManager {
       return;
     }
     if (this._root !== root) return; // disposed / re-rendered while loading
+    this._models = models;
+    this._renderUI();
+  }
+
+  // ─── Rendering ────────────────────────────────────────────────────────────
+
+  private _languages(): string[] {
+    const seen = new Set<string>();
+    for (const m of this._models) seen.add(m.language);
+    return [...seen].sort((a, b) => languageLabel(a).localeCompare(languageLabel(b), "fr"));
+  }
+
+  private _renderUI(): void {
+    const root = this._root;
+    if (!root) return;
     root.replaceChildren();
-    for (const model of models) root.appendChild(this._row(model));
+    const langs = this._languages();
+    if (this._selectedLang === null || !langs.includes(this._selectedLang)) {
+      this._selectedLang = langs[0] ?? null;
+    }
+
+    const bar = document.createElement("div");
+    bar.className = "prep-models-bar";
+    const label = document.createElement("label");
+    label.className = "prep-models-lang-label";
+    label.textContent = "Langue ";
+    const select = document.createElement("select");
+    select.className = "prep-models-lang";
+    for (const code of langs) {
+      const opt = document.createElement("option");
+      opt.value = code;
+      opt.textContent = languageLabel(code);
+      opt.selected = code === this._selectedLang;
+      select.appendChild(opt);
+    }
+    select.addEventListener("change", () => {
+      this._selectedLang = select.value;
+      this._renderList();
+    });
+    label.appendChild(select);
+    bar.appendChild(label);
+    root.appendChild(bar);
+
+    const list = document.createElement("div");
+    list.className = "prep-models-list";
+    list.id = "prep-models-list";
+    root.appendChild(list);
+    this._renderList();
+  }
+
+  private _renderList(): void {
+    const list = this._root?.querySelector<HTMLElement>("#prep-models-list");
+    if (!list) return;
+    list.replaceChildren();
+    for (const model of this._models.filter((m) => m.language === this._selectedLang)) {
+      list.appendChild(this._row(model));
+    }
   }
 
   private _row(model: ModelInfo): HTMLElement {
@@ -76,7 +131,7 @@ export class ModelManager {
     name.textContent = model.name;
     const meta = document.createElement("span");
     meta.className = "prep-models-meta";
-    meta.textContent = `${model.language} · ${row.sizeLabel}`;
+    meta.textContent = `${model.size_class ? model.size_class + " · " : ""}${row.sizeLabel}`;
     info.appendChild(name);
     info.appendChild(meta);
 
@@ -88,9 +143,23 @@ export class ModelManager {
     el.appendChild(info);
     el.appendChild(status);
 
+    // "Actif" radio — only an available model can be the language's active model.
+    if (available) {
+      const activeLabel = document.createElement("label");
+      activeLabel.className = "prep-models-active";
+      const radio = document.createElement("input");
+      radio.type = "radio";
+      radio.name = "prep-models-active";
+      radio.checked = model.active === true;
+      radio.dataset.model = model.name;
+      radio.addEventListener("change", () => void this._setActive(model.language, model.name));
+      activeLabel.appendChild(radio);
+      activeLabel.appendChild(document.createTextNode(" Actif"));
+      el.appendChild(activeLabel);
+    }
+
     if (model.source === "bundled") {
-      // Embedded in the app binary → read-only: no download (already available) and
-      // no remove (nothing to delete from the user dir). Just a discreet note.
+      // Embedded in the app binary → read-only: no download / remove.
       const note = document.createElement("span");
       note.className = "prep-models-note";
       note.textContent = "Intégré à l'application";
@@ -109,6 +178,22 @@ export class ModelManager {
       el.appendChild(action);
     }
     return el;
+  }
+
+  // ─── Actions ──────────────────────────────────────────────────────────────
+
+  private async _setActive(language: string, name: string): Promise<void> {
+    const conn = this._conn;
+    if (!conn) return;
+    try {
+      await setActiveModel(conn, language, name);
+      void this.refresh();
+    } catch (err) {
+      // Re-render to restore the previous radio selection; surface the error inline.
+      this._renderList();
+      const row = this._root?.querySelector<HTMLElement>(`.prep-models-row[data-model="${name}"]`);
+      if (row) this._setRowStatus(row, `✗ ${String(err)}`);
+    }
   }
 
   private async _download(name: string, row: HTMLElement, btn: HTMLButtonElement): Promise<void> {
@@ -169,6 +254,11 @@ export class ModelManager {
       clearInterval(id);
       this._polls.delete(name);
     }
+  }
+
+  private _stopAllPolls(): void {
+    for (const id of this._polls.values()) clearInterval(id);
+    this._polls.clear();
   }
 
   private _setRowStatus(row: HTMLElement, text: string): void {

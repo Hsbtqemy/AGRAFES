@@ -1529,6 +1529,14 @@ export async function removeModel(conn: Conn, model: string): Promise<{ name: st
   return conn.post("/models/remove", { model }) as Promise<{ name: string }>;
 }
 
+export async function setActiveModel(
+  conn: Conn,
+  language: string,
+  model: string,
+): Promise<{ language: string; model: string }> {
+  return conn.post("/models/active", { language, model }) as Promise<{ language: string; model: string }>;
+}
+
 export async function curatePreview(
   conn: Conn,
   opts: CuratePreviewOptions

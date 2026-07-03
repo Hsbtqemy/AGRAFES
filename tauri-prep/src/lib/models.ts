@@ -15,11 +15,24 @@ export type ModelSource = "bundled" | "downloaded" | "absent";
 
 export interface ModelInfo {
   name: string;
-  language: string; // ISO base code, or "mul" for the multilingual model
+  language: string; // ISO base code, or "xx"/"mul" for the multilingual model
+  genre?: string; // core / dep / ent … (parsed from the name)
+  size_class?: string; // sm / md / lg / trf
   approx_size_mb: number;
   installed: boolean; // == downloaded to the user dir; prefer `source` for UI decisions
   source: ModelSource;
+  active?: boolean; // the per-corpus active model for its language (R5.2c-2)
   version: string | null;
+}
+
+const _LANG_LABELS: Record<string, string> = {
+  fr: "Français", en: "English", de: "Deutsch", es: "Español", it: "Italiano",
+  sv: "Svenska", ro: "Română", el: "Ελληνικά", xx: "Multilingue", mul: "Multilingue",
+};
+
+/** Human label for a base language code (falls back to the code itself). */
+export function languageLabel(code: string): string {
+  return _LANG_LABELS[code] ?? code;
 }
 
 /** A model is usable for annotation as soon as it is bundled or downloaded. */
