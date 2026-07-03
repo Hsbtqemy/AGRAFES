@@ -55,14 +55,21 @@ export function runJobWithPolling(conn: Conn, opts: RunJobOptions): JobHandle {
     }
     if (stopped) return;
     const status: string = job.status;
-    if (status === "running") {
-      if (job.progress_message) opts.onProgress?.(job.progress_message, job.progress_pct);
-    } else if (status === "done") {
-      stopTimer();
-      await opts.onDone(job);
-    } else if (status === "error" || status === "canceled" || status === "cancelled") {
-      stopTimer();
-      opts.onError(job.error ?? status);
+    // Guard the callbacks: a throwing onDone/onError must not surface as an unhandled
+    // rejection from the interval (matches the swallow-behaviour of the code this
+    // replaced). For terminal states the timer is already stopped before the callback.
+    try {
+      if (status === "running") {
+        if (job.progress_message) opts.onProgress?.(job.progress_message, job.progress_pct);
+      } else if (status === "done") {
+        stopTimer();
+        await opts.onDone(job);
+      } else if (status === "error" || status === "canceled" || status === "cancelled") {
+        stopTimer();
+        opts.onError(job.error ?? status);
+      }
+    } catch {
+      // A callback threw — swallow (the run is already terminal / progress is best-effort).
     }
   };
 

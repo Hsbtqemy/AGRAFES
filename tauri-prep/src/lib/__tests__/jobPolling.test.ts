@@ -81,4 +81,19 @@ describe("runJobWithPolling", () => {
     await wait(30);
     expect(events).toEqual([]);
   });
+
+  it("swallows a throwing onDone (no unhandled rejection)", async () => {
+    let onErrorCalled = false;
+    runJobWithPolling(conn, {
+      enqueue: async () => "j1",
+      onDone: () => { throw new Error("done handler boom"); },
+      onError: () => { onErrorCalled = true; },
+      intervalMs: 5,
+      getJobFn: async () => makeJob("done"),
+    });
+    await wait(30);
+    // The throw is swallowed (no unhandled rejection fails the test); a done job never
+    // routes to onError.
+    expect(onErrorCalled).toBe(false);
+  });
 });
