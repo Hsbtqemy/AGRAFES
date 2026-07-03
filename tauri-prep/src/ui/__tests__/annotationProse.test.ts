@@ -5,7 +5,7 @@
  * spacing rule, the per-unit paragraph structure, and the click hook.
  */
 import { describe, it, expect } from "vitest";
-import { UPOS_COLORS, uposColor, buildProseColored, type ProseToken } from "../annotationProse.ts";
+import { UPOS_COLORS, uposColor, buildProseColored, buildInterlinearSentence, type ProseToken } from "../annotationProse.ts";
 
 let nextId = 1;
 function tok(word: string, upos: string | null, lemma: string | null = word): ProseToken {
@@ -56,6 +56,46 @@ describe("buildProseColored", () => {
     const t = tok("clique", "VERB");
     const el = buildProseColored([[t]], { onTokenClick: (id) => seen.push(id) });
     el.querySelector<HTMLElement>(".annot-prose-token")!.click();
+    expect(seen).toEqual([t.token_id]);
+  });
+});
+
+describe("buildInterlinearSentence (R5.2e)", () => {
+  it("renders one .annot-sent with a 3-row cell per token", () => {
+    const t0 = tok("le", "DET");
+    const sent = buildInterlinearSentence([t0, tok("chat", "NOUN")]);
+    expect(sent.className).toBe("annot-sent");
+    const cells = sent.querySelectorAll<HTMLElement>(".annot-token");
+    expect(cells.length).toBe(2);
+    expect(cells[0].querySelector(".annot-word")!.textContent).toBe("le");
+    expect(cells[0].querySelector(".annot-upos")!.textContent).toBe("DET");
+    expect(cells[0].dataset.tokenId).toBe(String(t0.token_id));
+  });
+
+  it("colours the UPOS badge for a known tag and leaves it empty when absent", () => {
+    const sent = buildInterlinearSentence([tok("chat", "NOUN"), tok("xyz", null)]);
+    const uposEls = sent.querySelectorAll<HTMLElement>(".annot-upos");
+    expect(uposEls[0].textContent).toBe("NOUN");
+    expect(uposEls[0].style.color).not.toBe("");
+    expect(uposEls[1].textContent).toBe("");
+    expect(uposEls[1].style.background).toBe("transparent");
+  });
+
+  it("shows the lemma only when it differs from the word (case-insensitive)", () => {
+    const sent = buildInterlinearSentence([
+      tok("mangé", "VERB", "manger"), // differs → shown
+      tok("Le", "DET", "le"),         // same word ignoring case → hidden
+    ]);
+    const lemmaEls = sent.querySelectorAll<HTMLElement>(".annot-lemma");
+    expect(lemmaEls[0].textContent).toBe("manger");
+    expect(lemmaEls[1].textContent).toBe("");
+  });
+
+  it("forwards a cell click to onTokenClick with the token id", () => {
+    const seen: number[] = [];
+    const t = tok("clique", "VERB");
+    const sent = buildInterlinearSentence([t], { onTokenClick: (id) => seen.push(id) });
+    sent.querySelector<HTMLElement>(".annot-token")!.click();
     expect(seen).toEqual([t.token_id]);
   });
 });

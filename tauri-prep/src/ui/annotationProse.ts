@@ -1,9 +1,10 @@
 /**
- * annotationProse.ts — shared UPOS colouring + coloured-prose renderer, extracted from
- * AnnotationView (R5.2a) so the canvas annotation layer and the legacy screen render
- * identically. The colour map feeds both the read-mode prose *and* the interlinear grid
- * UPOS badge; `buildProseColored` is the read-mode prose DOM, verbatim, with the token
- * click wired through a caller-supplied hook (the view decides what a click does).
+ * annotationProse.ts — shared UPOS colouring + annotation renderers, extracted from
+ * AnnotationView so the canvas annotation layer and the legacy screen render identically.
+ * The colour map feeds two views: the read-mode coloured prose (`buildProseUnitInline` /
+ * `buildProseColored`, R5.2a) and the "Étendu" interlinear grid (`buildInterlinearSentence`,
+ * R5.2e). Each renderer wires the token click through a caller-supplied hook (the view
+ * decides what a click does); the unit/sentence chrome stays with each caller.
  */
 
 import { needsSpaceBefore } from "../lib/annotationSpacing.ts";
@@ -89,4 +90,59 @@ export function buildProseColored(unitsInOrder: ProseToken[][], opts: ProseOptio
     prose.appendChild(para);
   }
   return prose;
+}
+
+/**
+ * Build the interlinear grid for ONE sentence: a `.annot-sent` row of token cells, each a
+ * `.annot-token` stacking word / UPOS (colour-fed badge) / lemma (shown only when it differs
+ * from the word, case-insensitively). Clicks forward to `onTokenClick` (stopPropagation so a
+ * cell click never bubbles to a row's own selection handler). Extracted from the legacy
+ * AnnotationView (R5.2e) so its interlinear "annotate" view and the canvas "Étendu" mode
+ * render identically. The unit/sentence chrome (headers, sentence number, selection highlight)
+ * stays with each caller.
+ */
+export function buildInterlinearSentence(tokens: ProseToken[], opts: ProseOptions = {}): HTMLElement {
+  const sent = document.createElement("div");
+  sent.className = "annot-sent";
+  for (const tok of tokens) {
+    const cell = document.createElement("div");
+    cell.className = "annot-token";
+    cell.dataset.tokenId = String(tok.token_id);
+
+    const wordEl = document.createElement("div");
+    wordEl.className = "annot-word";
+    wordEl.textContent = tok.word;
+
+    const uposEl = document.createElement("div");
+    uposEl.className = "annot-upos";
+    const col = UPOS_COLORS[tok.upos ?? ""] ?? "#bbb";
+    if (tok.upos) {
+      uposEl.textContent = tok.upos;
+      uposEl.style.background = col + "28";
+      uposEl.style.color = col;
+    } else {
+      uposEl.textContent = "";
+      uposEl.style.background = "transparent";
+    }
+
+    const lemmaEl = document.createElement("div");
+    lemmaEl.className = "annot-lemma";
+    const lemmaVal = tok.lemma ?? "";
+    lemmaEl.textContent = lemmaVal && lemmaVal.toLowerCase() !== tok.word.toLowerCase()
+      ? lemmaVal : "";
+
+    cell.appendChild(wordEl);
+    cell.appendChild(uposEl);
+    cell.appendChild(lemmaEl);
+
+    if (opts.onTokenClick) {
+      cell.addEventListener("click", (e) => {
+        e.stopPropagation();
+        opts.onTokenClick!(tok.token_id, tok);
+      });
+    }
+
+    sent.appendChild(cell);
+  }
+  return sent;
 }

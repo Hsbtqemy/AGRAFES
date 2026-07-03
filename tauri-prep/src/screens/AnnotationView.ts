@@ -20,7 +20,7 @@ import { isModelAvailable, modelForLanguage, type ModelInfo } from "../lib/model
 import { compareDocsByTitle } from "../lib/docSort.ts";
 import { setHtml, raw } from "../lib/safeHtml.ts";
 import { tokensToPlain } from "../lib/annotationSpacing.ts";
-import { UPOS_COLORS, buildProseColored } from "../ui/annotationProse.ts";
+import { buildProseColored, buildInterlinearSentence } from "../ui/annotationProse.ts";
 
 // ─── Local types ──────────────────────────────────────────────────────────────
 
@@ -562,55 +562,24 @@ export class AnnotationView {
         sentLabel.textContent = sentEntries.length > 1 ? String(sentId) : "";
         sentWrapper.appendChild(sentLabel);
 
-        const sentDiv = document.createElement("div");
-        sentDiv.className = "annot-sent";
-
-        for (const tok of tokens) {
-          const cell = document.createElement("div");
-          cell.className = "annot-token" + (tok.token_id === this._annotSelectedTokenId ? " selected" : "");
-          cell.dataset.tokenId = String(tok.token_id);
-
-          const wordEl = document.createElement("div");
-          wordEl.className = "annot-word";
-          wordEl.textContent = tok.word;
-
-          const uposEl = document.createElement("div");
-          uposEl.className = "annot-upos";
-          const col = UPOS_COLORS[tok.upos ?? ""] ?? "#bbb";
-          if (tok.upos) {
-            uposEl.textContent = tok.upos;
-            uposEl.style.background = col + "28";
-            uposEl.style.color = col;
-          } else {
-            uposEl.textContent = "";
-            uposEl.style.background = "transparent";
-          }
-
-          const lemmaEl = document.createElement("div");
-          lemmaEl.className = "annot-lemma";
-          const lemmaVal = tok.lemma ?? "";
-          lemmaEl.textContent = lemmaVal && lemmaVal.toLowerCase() !== tok.word.toLowerCase()
-            ? lemmaVal : "";
-
-          cell.appendChild(wordEl);
-          cell.appendChild(uposEl);
-          cell.appendChild(lemmaEl);
-
-          cell.addEventListener("click", () => {
-            this._annotSelectedTokenId = tok.token_id;
+        sentWrapper.appendChild(buildInterlinearSentence(tokens, {
+          onTokenClick: (tokenId) => {
+            this._annotSelectedTokenId = tokenId;
             viewer.querySelectorAll(".annot-token").forEach(el => el.classList.remove("selected"));
-            cell.classList.add("selected");
-            this._annotRenderEditor(tok, editor);
-          });
-
-          sentDiv.appendChild(cell);
-        }
-
-        sentWrapper.appendChild(sentDiv);
+            viewer.querySelector(`.annot-token[data-token-id="${tokenId}"]`)?.classList.add("selected");
+            const full = this._annotTokens.find(t => t.token_id === tokenId);
+            if (full) this._annotRenderEditor(full, editor);
+          },
+        }));
         unitDiv.appendChild(sentWrapper);
       }
 
       viewer.appendChild(unitDiv);
+    }
+    // Re-apply the current selection (build-time parity with the old inline `.selected` cells).
+    if (this._annotSelectedTokenId != null) {
+      viewer.querySelector(`.annot-token[data-token-id="${this._annotSelectedTokenId}"]`)
+        ?.classList.add("selected");
     }
   }
 
