@@ -14,7 +14,7 @@ from typing import Any
 from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
-CONTRACT_VERSION = "1.6.43"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.44"  # semantic versioning for the sidecar API contract
 # SID-08 / OPS-03: the API version IS the contract version — derived, never a
 # second hand-maintained literal, so the two can no longer drift. /health reports
 # the *engine* version under `version` (it predates the sidecar); every other
@@ -143,6 +143,10 @@ API_VERSION = CONTRACT_VERSION
 #         is the static extended set (sm/md/lg per language) and GET /models gains optional
 #         `?language=` filter (R5.2c-1, Lot 3). Install allowlist = compat.json + name regex.
 #         Additive field + additive query param.
+# 1.6.44: GET /models items gain `active` (bool — the per-corpus active model for that
+#         language); new POST /models/active {language, model} sets it in corpus_info.meta_json
+#         (write, token). Annotation honours the active model (R5.2c-2, Lot 4). Additive field
+#         + 1 new route.
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
@@ -2112,6 +2116,7 @@ def openapi_spec() -> dict[str, Any]:
                                 "genre": {"type": "string"}, "size_class": {"type": "string"},
                                 "approx_size_mb": {"type": "integer"}, "installed": {"type": "boolean"},
                                 "source": {"type": "string", "enum": ["bundled", "downloaded", "absent"]},
+                                "active": {"type": "boolean"},
                                 "version": {"type": "string", "nullable": True}}}}}}}}},
                     },
                 }
@@ -2146,6 +2151,28 @@ def openapi_spec() -> dict[str, Any]:
                         "200": {"description": "Model removed", "content": {"application/json": {"schema": {"type": "object", "properties": {"name": {"type": "string"}}}}}},
                         "400": {"description": "Bad request (unknown/blank model, or a bundled read-only model)", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
                         "404": {"description": "Model not installed", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                    },
+                }
+            },
+            "/models/active": {
+                "post": {
+                    "summary": "Set the active spaCy model for a language in this corpus (token required)",
+                    "description": (
+                        "Persists the active model for a base language in corpus_info.meta_json "
+                        "(active_models). The model must be for that language (or multilingual xx) "
+                        "and available (bundled or downloaded). Annotation uses it unless a model is "
+                        "passed explicitly to /annotate."
+                    ),
+                    "security": [{"token": []}],
+                    "requestBody": {"required": True, "content": {"application/json": {"schema": {
+                        "type": "object", "required": ["language", "model"], "properties": {
+                            "language": {"type": "string", "description": "Base language code, e.g. fr"},
+                            "model": {"type": "string", "description": "Model name, e.g. fr_core_news_lg"}}}}}},
+                    "responses": {
+                        "200": {"description": "Active model set", "content": {"application/json": {"schema": {"type": "object", "properties": {
+                            "language": {"type": "string"}, "model": {"type": "string"}}}}}},
+                        "400": {"description": "Bad request (blank/unknown model, wrong language, or not available)", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                        "401": {"description": "Unauthorized (missing/invalid token)", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
                     },
                 }
             },

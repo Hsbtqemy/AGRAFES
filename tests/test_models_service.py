@@ -231,6 +231,55 @@ def test_is_valid_model_name():
     assert not ms.is_valid_model_name(None)
 
 
+# ─── Active model per language (per corpus) — R5.2c-2 ────────────────────────
+
+def test_active_model_roundtrip(db_conn, tmp_path):
+    assert ms.get_active_models(db_conn) == {}
+    res = ms.set_active_model(db_conn, "fr", "fr_core_news_lg", models_dir=tmp_path, is_bundled=lambda _n: True)
+    assert res == {"language": "fr", "model": "fr_core_news_lg"}
+    assert ms.get_active_models(db_conn) == {"fr": "fr_core_news_lg"}
+    # list_models reflects it: the chosen model is active, the default md is not.
+    models = {m["name"]: m for m in ms.list_models(
+        tmp_path, is_bundled=lambda _n: False, active_models=ms.get_active_models(db_conn))}
+    assert models["fr_core_news_lg"]["active"] is True
+    assert models["fr_core_news_md"]["active"] is False
+
+
+def test_set_active_model_rejects_wrong_language(db_conn, tmp_path):
+    with pytest.raises(ValidationError):
+        ms.set_active_model(db_conn, "fr", "de_core_news_md", models_dir=tmp_path, is_bundled=lambda _n: True)
+
+
+def test_set_active_model_rejects_unavailable(db_conn, tmp_path):
+    # Neither downloaded nor bundled → you cannot activate a model you cannot load.
+    with pytest.raises(ValidationError):
+        ms.set_active_model(db_conn, "fr", "fr_core_news_lg", models_dir=tmp_path, is_bundled=lambda _n: False)
+
+
+def test_set_active_model_allows_multilingual(db_conn, tmp_path):
+    res = ms.set_active_model(db_conn, "el", "xx_ent_wiki_sm", models_dir=tmp_path, is_bundled=lambda _n: True)
+    assert res["model"] == "xx_ent_wiki_sm"
+    assert ms.get_active_models(db_conn)["el"] == "xx_ent_wiki_sm"
+
+
+def test_set_active_model_requires_language(db_conn, tmp_path):
+    with pytest.raises(BadRequestError):
+        ms.set_active_model(db_conn, "  ", "fr_core_news_md", models_dir=tmp_path, is_bundled=lambda _n: True)
+
+
+def test_annotator_model_for_language_honours_active(db_conn, tmp_path, monkeypatch):
+    from multicorpus_engine import annotator
+
+    # Make the availability check pass without a real download (treat as bundled).
+    monkeypatch.setattr(ms, "_is_model_bundled", lambda _n: True)
+    ms.set_active_model(db_conn, "fr", "fr_core_news_lg", models_dir=tmp_path, is_bundled=lambda _n: True)
+    # With the corpus conn, the active model wins — including for a region tag.
+    assert annotator._model_for_language("fr-FR", db_conn) == "fr_core_news_lg"
+    # Without a conn (or for another language), the built-in default applies.
+    assert annotator._model_for_language("fr") == "fr_core_news_md"
+    assert annotator._model_for_language("de", db_conn) == "de_core_news_md"
+
+
 def test_zip_slip_rejected(tmp_path):
     malicious = _wheel_bytes(MODEL, VERSION, extra=[f"{MODEL}/../escaped.txt"])
     with pytest.raises(ValidationError):

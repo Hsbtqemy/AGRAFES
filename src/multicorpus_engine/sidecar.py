@@ -502,8 +502,9 @@ _WRITE_PATHS = frozenset({
     # NB: /webdav/list is read-only (PROPFIND) → NOT here, dispatched lock-free.
     "/import-remote",
     # spaCy model management — download (async job) + remove both mutate the user
-    # models dir. NB: GET /models is read-only → NOT here, dispatched lock-free.
-    "/models/download", "/models/remove",
+    # models dir; /models/active writes corpus_info (the active model per language).
+    # NB: GET /models is read-only → NOT here, dispatched lock-free.
+    "/models/download", "/models/remove", "/models/active",
 })
 
 
@@ -919,6 +920,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 self._handle_import_remote(body)
             elif path == "/annotate":
                 self._handle_annotate(body)
+            elif path == "/models/active":
+                self._handle_models_active(body)
             elif path == "/curate":
                 with self._track_stage("curate", doc_id=body.get("doc_id") if isinstance(body, dict) else None):
                     self._handle_curate(body)
@@ -2572,7 +2575,11 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 
         qs = parse_qs(urlparse(self.path).query)
         language = qs.get("language", [None])[0] or None
-        self._send_json(success_payload({"models": _ms.list_models(language=language)}))
+        # Active-model flag reads corpus_info.meta_json (pure SELECT → stays lock-free).
+        active = _ms.get_active_models(self._conn())
+        self._send_json(success_payload(
+            {"models": _ms.list_models(language=language, active_models=active)}
+        ))
 
     def _handle_models_download(self, body: dict) -> None:
         """POST /models/download — download + install a model as an async job.
@@ -2616,6 +2623,37 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             return
         try:
             result = _ms.remove_model(model.strip())
+        except (ValidationError, BadRequestError) as exc:
+            self._send_error(exc.message, code=ERR_VALIDATION, http_status=exc.http_status)
+            return
+        except NotFoundError as exc:
+            self._send_error(exc.message, code=ERR_NOT_FOUND, http_status=exc.http_status)
+            return
+        self._send_json(success_payload(result))
+
+    def _handle_models_active(self, body: dict) -> None:
+        """POST /models/active — set the active model for a language in this corpus.
+
+        Writes corpus_info.meta_json → dispatched under the write lock (the caller holds
+        it). Token required (_write_paths).
+        """
+        from multicorpus_engine.services import models_service as _ms
+        from multicorpus_engine.services.errors import (
+            BadRequestError,
+            NotFoundError,
+            ValidationError,
+        )
+
+        language = body.get("language")
+        model = body.get("model")
+        if not isinstance(language, str) or not language.strip():
+            self._send_error("language is required", code=ERR_VALIDATION, http_status=400)
+            return
+        if not isinstance(model, str) or not model.strip():
+            self._send_error("model is required", code=ERR_VALIDATION, http_status=400)
+            return
+        try:
+            result = _ms.set_active_model(self._conn(), language.strip(), model.strip())
         except (ValidationError, BadRequestError) as exc:
             self._send_error(exc.message, code=ERR_VALIDATION, http_status=exc.http_status)
             return

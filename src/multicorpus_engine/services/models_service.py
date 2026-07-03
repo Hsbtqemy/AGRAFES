@@ -132,6 +132,7 @@ def list_models(
     *,
     language: Optional[str] = None,
     is_bundled: Optional[Callable[[str], bool]] = None,
+    active_models: Optional[dict] = None,
 ) -> list[dict]:
     """List the catalogue models with availability status (filesystem-only, no network).
 
@@ -166,6 +167,7 @@ def list_models(
             source = "bundled"
         else:
             source = "absent"
+        active = bool(active_models) and active_models.get(meta["language"]) == name
         out.append(
             {
                 "name": name,
@@ -175,6 +177,7 @@ def list_models(
                 "approx_size_mb": _SIZE_MB_BY_CLASS.get(meta["size_class"], 0),
                 "installed": downloaded,
                 "source": source,
+                "active": active,
                 "version": _installed_version(target, name) if downloaded else None,
             }
         )
@@ -399,3 +402,81 @@ def clear_model_cache() -> None:
         _clear()
     except Exception:
         pass
+
+
+# ─── Active model per language (per corpus) — Lot 4 / R5.2c-2 ────────────────
+
+def is_model_available(
+    name: str,
+    models_dir: Optional[Path] = None,
+    *,
+    is_bundled: Optional[Callable[[str], bool]] = None,
+) -> bool:
+    """True if the annotator could load ``name`` right now — downloaded OR bundled."""
+    target = models_dir or spacy_models_dir(create=False)
+    if (target / name).is_dir():
+        return True
+    bundled = is_bundled if is_bundled is not None else _is_model_bundled
+    return bundled(name)
+
+
+def get_active_models(conn) -> dict:
+    """Read the per-corpus ``{base_lang: model_name}`` active-model preference from
+    ``corpus_info.meta_json`` (key ``active_models``). Empty dict if unset/unreadable.
+
+    A pure SELECT (no row-ensure INSERT) so it is safe on the lock-free ``GET /models``
+    read path — it never mutates the DB.
+    """
+    try:
+        row = conn.execute("SELECT meta_json FROM corpus_info WHERE id = 1").fetchone()
+    except Exception:
+        return {}
+    if not row or not row[0]:
+        return {}
+    try:
+        meta = json.loads(row[0])
+    except Exception:
+        return {}
+    active = meta.get("active_models") if isinstance(meta, dict) else None
+    if not isinstance(active, dict):
+        return {}
+    return {k: v for k, v in active.items() if isinstance(k, str) and isinstance(v, str)}
+
+
+def set_active_model(
+    conn,
+    language: str,
+    name: str,
+    *,
+    models_dir: Optional[Path] = None,
+    is_bundled: Optional[Callable[[str], bool]] = None,
+) -> dict:
+    """Set the active model for a language *in the current corpus* (corpus_info.meta_json).
+
+    Validates the name grammar, that the model is *for* that language (or multilingual
+    ``xx``), and that it is **available** (bundled or downloaded — you can only activate a
+    model you can load). Merges into ``meta.active_models`` and clears the model cache.
+    """
+    from ..corpus_info import apply_corpus_info_patch, get_corpus_info
+
+    lang = (language or "").strip().lower()
+    if not lang:
+        raise BadRequestError("language is required")
+    resolved = _validate_name_syntax(name)
+    parsed_lang = _parse_model_name(resolved)["language"]
+    if parsed_lang not in (lang, "xx"):
+        raise ValidationError(f"model {resolved!r} is not for language {lang!r}")
+    if not is_model_available(resolved, models_dir, is_bundled=is_bundled):
+        raise ValidationError(f"model not available (download it first): {resolved!r}")
+
+    meta = get_corpus_info(conn).get("meta")
+    if not isinstance(meta, dict):
+        meta = {}
+    active = meta.get("active_models")
+    if not isinstance(active, dict):
+        active = {}
+    active[lang] = resolved
+    meta["active_models"] = active
+    apply_corpus_info_patch(conn, {"meta": meta})
+    clear_model_cache()
+    return {"language": lang, "model": resolved}

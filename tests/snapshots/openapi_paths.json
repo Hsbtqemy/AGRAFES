@@ -71,6 +71,7 @@
   "POST /jobs/enqueue",
   "POST /jobs/{job_id}/cancel",
   "POST /lift/markers",
+  "POST /models/active",
   "POST /models/download",
   "POST /models/remove",
   "POST /prep/undo",

@@ -26,23 +26,26 @@ _DEFAULT_MODEL_BY_LANG: dict[str, str] = {
 }
 
 
-def _model_for_language(lang: str | None) -> str:
-    if not lang:
-        return _DEFAULT_MODEL_BY_LANG["und"]
-    key = lang.strip().lower()
+def _model_for_language(lang: str | None, conn: "sqlite3.Connection | None" = None) -> str:
+    key = (lang or "").strip().lower()
+    # Region tags reduce to the base code (e.g. "fr-FR" / "fr_FR" -> "fr").
+    base = key.split("-", 1)[0].split("_", 1)[0] if key else ""
+    # Per-corpus active-model preference wins when set *and* available (R5.2c-2).
+    if conn is not None and base:
+        try:
+            from .services.models_service import get_active_models, is_model_available
+
+            chosen = get_active_models(conn).get(base)
+            if chosen and is_model_available(chosen):
+                return chosen
+        except Exception:
+            pass
     if not key:
         return _DEFAULT_MODEL_BY_LANG["und"]
     if key in _DEFAULT_MODEL_BY_LANG:
         return _DEFAULT_MODEL_BY_LANG[key]
-    # Keep region tags deterministic (e.g. "fr-FR" -> "fr").
-    if "-" in key:
-        base = key.split("-", 1)[0]
-        if base in _DEFAULT_MODEL_BY_LANG:
-            return _DEFAULT_MODEL_BY_LANG[base]
-    if "_" in key:
-        base = key.split("_", 1)[0]
-        if base in _DEFAULT_MODEL_BY_LANG:
-            return _DEFAULT_MODEL_BY_LANG[base]
+    if base in _DEFAULT_MODEL_BY_LANG:
+        return _DEFAULT_MODEL_BY_LANG[base]
     return _DEFAULT_MODEL_BY_LANG["und"]
 
 
@@ -135,7 +138,7 @@ def annotate_document(
     resolved_model = (
         model_name.strip()
         if isinstance(model_name, str) and model_name.strip()
-        else _model_for_language(row[1])
+        else _model_for_language(row[1], conn)
     )
 
     # ── Phase 2: spaCy inference (NO lock held) ───────────────────────────────

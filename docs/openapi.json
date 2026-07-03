@@ -4037,8 +4037,8 @@
   "info": {
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
-    "version": "1.6.43",
-    "x-contract-version": "1.6.43"
+    "version": "1.6.44",
+    "x-contract-version": "1.6.44"
   },
   "openapi": "3.0.3",
   "paths": {
@@ -6877,6 +6877,9 @@
                     "models": {
                       "items": {
                         "properties": {
+                          "active": {
+                            "type": "boolean"
+                          },
                           "approx_size_mb": {
                             "type": "integer"
                           },
@@ -6921,6 +6924,81 @@
           }
         },
         "summary": "List known spaCy models with install status"
+      }
+    },
+    "/models/active": {
+      "post": {
+        "description": "Persists the active model for a base language in corpus_info.meta_json (active_models). The model must be for that language (or multilingual xx) and available (bundled or downloaded). Annotation uses it unless a model is passed explicitly to /annotate.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "language": {
+                    "description": "Base language code, e.g. fr",
+                    "type": "string"
+                  },
+                  "model": {
+                    "description": "Model name, e.g. fr_core_news_lg",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "language",
+                  "model"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "language": {
+                      "type": "string"
+                    },
+                    "model": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Active model set"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request (blank/unknown model, wrong language, or not available)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized (missing/invalid token)"
+          }
+        },
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "summary": "Set the active spaCy model for a language in this corpus (token required)"
       }
     },
     "/models/download": {
