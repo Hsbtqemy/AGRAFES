@@ -14,7 +14,8 @@
 import "../ui/annotation.css";
 import { escHtml as _escHtml } from "../lib/diff.ts";
 import type { Conn } from "../lib/sidecarClient.ts";
-import { SidecarError, listModels, downloadModel, getJob } from "../lib/sidecarClient.ts";
+import { SidecarError, listModels, downloadModel } from "../lib/sidecarClient.ts";
+import { runJobWithPolling, type JobHandle } from "../lib/jobPolling.ts";
 import { isModelAvailable, modelForLanguage, type ModelInfo } from "../lib/models.ts";
 import { compareDocsByTitle } from "../lib/docSort.ts";
 import { setHtml, raw } from "../lib/safeHtml.ts";
@@ -60,11 +61,9 @@ export class AnnotationView {
   private _annotDocListSort: "id" | "alpha" = "alpha";
   private _annotTokens: AnnotToken[] = [];
   private _annotSelectedTokenId: number | null = null;
-  private _annotJobPoll: ReturnType<typeof setInterval> | null = null;
-  private _annotJobId: string | null = null;
-  // Phase 4 — in-context spaCy model download (separate poll from the annotate job).
-  private _annotModelPoll: ReturnType<typeof setInterval> | null = null;
-  private _annotModelJobId: string | null = null;
+  // Job controllers (shared runJobWithPolling): annotation + in-context model download.
+  private _annotJobHandle: JobHandle | null = null;
+  private _annotModelHandle: JobHandle | null = null;
   private _annotSearchQuery = "";
   private _annotSearchMatches: number[] = [];
   private _annotSearchCursor = 0;
@@ -700,54 +699,31 @@ export class AnnotationView {
 
   private async _annotRunJob(panel: HTMLElement): Promise<void> {
     const conn = this._getConn();
-    if (!conn) { this._annotSetStatus(panel, "Non connect\u00e9.", true); return; }
+    if (!conn) { this._annotSetStatus(panel, "Non connecté.", true); return; }
     if (this._annotSelectedDocId === null) {
-      this._annotSetStatus(panel, "S\u00e9lectionnez d\u2019abord un document.", true);
+      this._annotSetStatus(panel, "Sélectionnez d’abord un document.", true);
       return;
     }
-    if (this._annotJobPoll !== null) {
-      this._annotSetStatus(panel, "Annotation d\u00e9j\u00e0 en cours\u2026", false);
+    if (this._annotJobHandle !== null) {
+      this._annotSetStatus(panel, "Annotation déjà en cours…", false);
       return;
     }
     const btn = panel.querySelector<HTMLButtonElement>(".annot-btn-run");
-    if (btn) { btn.disabled = true; btn.textContent = "En cours\u2026"; }
-    this._annotSetStatus(panel, "Lancement\u2026", false);
-    try {
-      const params: Record<string, unknown> = { doc_id: this._annotSelectedDocId };
-      if (this._annotModelOverride) params.model = this._annotModelOverride;
-      const res = await conn.post("/jobs/enqueue", { kind: "annotate", params });
-      const enqueued = res as { job?: { job_id?: string } };
-      this._annotJobId = enqueued.job?.job_id ?? null;
-      if (!this._annotJobId) throw new Error("Pas de job_id dans la r\u00e9ponse");
-      this._annotJobPoll = setInterval(() => { void this._annotPoll(panel); }, 1000);
-    } catch (err) {
-      if (btn) { btn.disabled = false; btn.textContent = "Annoter \u25b6"; }
-      this._annotSetStatus(panel, `\u2717 ${err instanceof SidecarError ? err.message : String(err)}`, true);
-    }
-  }
-
-  private async _annotPoll(panel: HTMLElement): Promise<void> {
-    const conn = this._getConn();
-    if (!this._annotJobId || !conn) return;
-    try {
-      const res = await conn.get(`/jobs/${this._annotJobId}`) as {
-        job?: {
-          status: string; error?: string;
-          progress_pct?: number; progress_message?: string;
-        }
-      };
-      const job = res.job;
-      if (!job) { this._annotStopPoll(); return; }
-
-      if (job.status === "running" && job.progress_message) {
-        this._annotSetStatus(panel, job.progress_message, false);
-      }
-
-      if (job.status === "done") {
-        this._annotStopPoll();
-        const btn = panel.querySelector<HTMLButtonElement>(".annot-btn-run");
-        if (btn) { btn.disabled = false; btn.textContent = "Annoter \u25b6"; }
-        this._annotSetStatus(panel, "\u2713 Annotation termin\u00e9e.", false);
+    const resetBtn = (): void => { if (btn) { btn.disabled = false; btn.textContent = "Annoter ▶"; } };
+    if (btn) { btn.disabled = true; btn.textContent = "En cours…"; }
+    this._annotSetStatus(panel, "Lancement…", false);
+    const params: Record<string, unknown> = { doc_id: this._annotSelectedDocId };
+    if (this._annotModelOverride) params.model = this._annotModelOverride;
+    this._annotJobHandle = runJobWithPolling(conn, {
+      enqueue: async () => {
+        const res = await conn.post("/jobs/enqueue", { kind: "annotate", params });
+        return (res as { job?: { job_id?: string } }).job?.job_id ?? "";
+      },
+      onProgress: (msg) => this._annotSetStatus(panel, msg, false),
+      onDone: async () => {
+        this._annotJobHandle = null;
+        resetBtn();
+        this._annotSetStatus(panel, "✓ Annotation terminée.", false);
         const sidebar = panel.querySelector<HTMLElement>(".annot-sidebar");
         const viewer  = panel.querySelector<HTMLElement>(".annot-viewer");
         const editor  = panel.querySelector<HTMLElement>(".annot-editor");
@@ -757,15 +733,13 @@ export class AnnotationView {
             await this._annotSelectDoc(this._annotSelectedDocId, viewer, editor);
           }
         }
-      } else if (job.status === "error" || job.status === "cancelled") {
-        this._annotStopPoll();
-        const btn = panel.querySelector<HTMLButtonElement>(".annot-btn-run");
-        if (btn) { btn.disabled = false; btn.textContent = "Annoter \u25b6"; }
-        this._annotSetStatus(panel, `\u2717 ${job.error ?? job.status}`, true);
-      }
-    } catch {
-      // transient error — keep polling
-    }
+      },
+      onError: (msg) => {
+        this._annotJobHandle = null;
+        resetBtn();
+        this._annotSetStatus(panel, `✗ ${msg}`, true);
+      },
+    });
   }
 
   // ─── In-context model download (Phase 4) ──────────────────────────────────
@@ -809,50 +783,35 @@ export class AnnotationView {
 
   private async _annotDownloadModel(name: string, band: HTMLElement, btn: HTMLButtonElement): Promise<void> {
     const conn = this._getConn();
-    if (!conn || this._annotModelJobId !== null) return;
+    if (!conn || this._annotModelHandle !== null) return;
     btn.disabled = true;
     btn.textContent = "Téléchargement…";
-    try {
-      const job = await downloadModel(conn, name);
-      this._annotModelJobId = job.job_id ?? null;
-      if (!this._annotModelJobId) throw new Error("Pas de job_id dans la réponse");
-      this._annotModelPoll = setInterval(() => { void this._annotPollModel(band, btn); }, 1000);
-    } catch (err) {
-      btn.disabled = false;
-      btn.textContent = "↓ Réessayer";
+    const setMsg = (t: string): void => {
       const m = band.querySelector<HTMLElement>(".annot-model-band-msg");
-      if (m) m.textContent = `✗ ${err instanceof SidecarError ? err.message : String(err)}`;
-    }
-  }
-
-  private async _annotPollModel(band: HTMLElement, btn: HTMLButtonElement): Promise<void> {
-    const conn = this._getConn();
-    if (!conn || !this._annotModelJobId) return;
-    try {
-      const job = await getJob(conn, this._annotModelJobId);
-      if (job.status === "running" && job.progress_message) {
-        btn.textContent = job.progress_message;
-      } else if (job.status === "done") {
-        this._annotStopModelPoll();
+      if (m) m.textContent = t;
+    };
+    this._annotModelHandle = runJobWithPolling(conn, {
+      enqueue: async () => {
+        const job = await downloadModel(conn, name);
+        return job.job_id ?? "";
+      },
+      onProgress: (msg) => { btn.textContent = msg; },
+      onDone: () => {
+        this._annotModelHandle = null;
         band.style.display = "none";
-      } else if (job.status === "error" || job.status === "canceled") {
-        this._annotStopModelPoll();
+      },
+      onError: (msg) => {
+        this._annotModelHandle = null;
         btn.disabled = false;
         btn.textContent = "↓ Réessayer";
-        const m = band.querySelector<HTMLElement>(".annot-model-band-msg");
-        if (m) m.textContent = `✗ ${job.error ?? "Échec du téléchargement"}`;
-      }
-    } catch {
-      // transient — keep polling
-    }
+        setMsg(`✗ ${msg}`);
+      },
+    });
   }
 
   private _annotStopModelPoll(): void {
-    if (this._annotModelPoll !== null) {
-      clearInterval(this._annotModelPoll);
-      this._annotModelPoll = null;
-    }
-    this._annotModelJobId = null;
+    this._annotModelHandle?.cancel();
+    this._annotModelHandle = null;
   }
 
   // ─── Search helpers ───────────────────────────────────────────────────────
@@ -888,11 +847,8 @@ export class AnnotationView {
   // ─── Misc helpers ─────────────────────────────────────────────────────────
 
   private _annotStopPoll(): void {
-    if (this._annotJobPoll !== null) {
-      clearInterval(this._annotJobPoll);
-      this._annotJobPoll = null;
-    }
-    this._annotJobId = null;
+    this._annotJobHandle?.cancel();
+    this._annotJobHandle = null;
   }
 
   private _annotSetStatus(panel: HTMLElement, msg: string, isError: boolean): void {
