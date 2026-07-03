@@ -6810,6 +6810,23 @@ tr[data-len].prep-seg-row-context .prep-seg-cell-len {
   background: none; border: none; padding: 0; margin-left: auto;
   color: #2563eb; font-size: 0.78rem; text-decoration: underline; cursor: pointer;
 }
+/* R5.2d — on-demand token editor (opened by clicking a coloured token). */
+.prep-annot-token-editor {
+  padding: 0.5rem 0.7rem; margin-bottom: 0.5rem;
+  background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+}
+.prep-annot-editor-head { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.4rem; }
+.prep-annot-editor-title { font-family: monospace; font-size: 0.82rem; font-weight: 600; color: #334155; }
+.prep-annot-editor-close {
+  margin-left: auto; background: none; border: none; cursor: pointer;
+  color: #64748b; font-size: 0.78rem; text-decoration: underline;
+}
+.prep-annot-editor-fields { display: flex; flex-wrap: wrap; gap: 0.4rem 0.8rem; }
+.prep-annot-field { display: flex; flex-direction: column; gap: 0.1rem; font-size: 0.72rem; color: #475569; }
+.prep-annot-field input, .prep-annot-field select { font-size: 0.8rem; padding: 2px 4px; min-width: 6rem; }
+.prep-annot-editor-actions { display: flex; align-items: center; gap: 0.6rem; margin-top: 0.5rem; }
+.prep-annot-editor-status { font-size: 0.78rem; color: #475569; }
 .prep-annot-units { flex: 1; min-height: 0; }
 /* Coloured tokens (ui/annotation.css .annot-prose-token) sit inside the unit text;
    give the row a touch more line-height so the token backgrounds breathe. */

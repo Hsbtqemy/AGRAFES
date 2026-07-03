@@ -23,6 +23,9 @@ export function uposColor(upos: string | null | undefined): string | null {
   return upos && UPOS_COLORS[upos] ? UPOS_COLORS[upos] : null;
 }
 
+/** The UPOS tag set (sorted), single source for the token editor's dropdown. */
+export const UPOS_TAGS: readonly string[] = Object.keys(UPOS_COLORS).sort();
+
 /** The token fields the coloured-prose renderer needs (structurally compatible with
  *  the fuller AnnotToken). */
 export interface ProseToken {
@@ -61,7 +64,10 @@ export function buildProseUnitInline(tokens: ProseToken[], opts: ProseOptions = 
       span.classList.add("annot-prose-token--colored");
     }
     if (opts.onTokenClick) {
-      span.addEventListener("click", () => opts.onTokenClick!(tok.token_id, tok));
+      span.addEventListener("click", (e) => {
+        e.stopPropagation(); // a token click opens its editor — don't toggle row selection
+        opts.onTokenClick!(tok.token_id, tok);
+      });
     }
     frag.appendChild(span);
   }

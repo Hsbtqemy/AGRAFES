@@ -35,6 +35,7 @@ function modelInfo(name: string, language: string, source: ModelSource, over: Pa
 function fakeConn(cfg: {
   units?: UnitRecord[]; tokens?: TokenRecord[]; models?: ModelInfo[];
   onEnqueue?: (body: unknown) => void; onDownload?: (body: unknown) => void;
+  onUpdate?: (body: unknown) => void;
 }): Conn {
   return {
     get: async (path: string) => {
@@ -57,6 +58,7 @@ function fakeConn(cfg: {
     post: async (path: string, body: unknown) => {
       if (path === "/jobs/enqueue") { cfg.onEnqueue?.(body); return { job: { job_id: "j1" } }; }
       if (path === "/models/download") { cfg.onDownload?.(body); return { job: { job_id: "m1" } }; }
+      if (path === "/tokens/update") { cfg.onUpdate?.(body); return { updated: 1, token: {} }; }
       return {};
     },
   } as unknown as Conn;
@@ -219,5 +221,50 @@ describe("AnnotationPane", () => {
     await flush();
     expect(dl).toEqual({ model: "fr_core_news_md" }); // recommends the md, not the sm
     pane.dispose();
+  });
+
+  it("clicking a token opens the editor populated with its fields (R5.2d)", async () => {
+    const pane = new AnnotationPane(host, () => fakeConn({
+      units: [unit(1)], tokens: [token(10, 1, 1, "chat", "NOUN")],
+    }), () => {});
+    await pane.setDocument(1, null);
+    const editor = host.querySelector<HTMLElement>("#prep-annot-token-editor")!;
+    expect(editor.style.display).toBe("none"); // closed initially
+    host.querySelector<HTMLElement>(".annot-prose-token")!.click();
+    expect(editor.style.display).not.toBe("none");
+    expect(editor.textContent).toContain("chat");
+    expect(editor.querySelector<HTMLInputElement>('[data-field="word"]')!.value).toBe("chat");
+    expect(editor.querySelector<HTMLSelectElement>('[data-field="upos"]')!.value).toBe("NOUN");
+  });
+
+  it("saving the editor posts /tokens/update and repaints the token (R5.2d)", async () => {
+    let updated: unknown = null;
+    const pane = new AnnotationPane(host, () => fakeConn({
+      units: [unit(1)], tokens: [token(10, 1, 1, "chat", "NOUN")],
+      onUpdate: (b) => { updated = b; },
+    }), () => {});
+    await pane.setDocument(1, null);
+    host.querySelector<HTMLElement>(".annot-prose-token")!.click();
+    const editor = host.querySelector<HTMLElement>("#prep-annot-token-editor")!;
+    editor.querySelector<HTMLInputElement>('[data-field="lemma"]')!.value = "chien";
+    editor.querySelector<HTMLSelectElement>('[data-field="upos"]')!.value = "PROPN";
+    editor.querySelector<HTMLButtonElement>(".prep-annot-editor-save")!.click();
+    await flush();
+    expect(updated).toMatchObject({ token_id: 1001, lemma: "chien", upos: "PROPN", word: "chat" });
+    expect(editor.querySelector(".prep-annot-editor-status")?.textContent).toBe("OK");
+    // Repaint: the fresh span's title reflects the new lemma.
+    expect(host.querySelector<HTMLElement>(".annot-prose-token")!.title).toContain("chien");
+  });
+
+  it("closing the editor hides it (R5.2d)", async () => {
+    const pane = new AnnotationPane(host, () => fakeConn({
+      units: [unit(1)], tokens: [token(10, 1, 1, "x", "NOUN")],
+    }), () => {});
+    await pane.setDocument(1, null);
+    host.querySelector<HTMLElement>(".annot-prose-token")!.click();
+    const editor = host.querySelector<HTMLElement>("#prep-annot-token-editor")!;
+    expect(editor.style.display).not.toBe("none");
+    editor.querySelector<HTMLButtonElement>(".prep-annot-editor-close")!.click();
+    expect(editor.style.display).toBe("none");
   });
 });

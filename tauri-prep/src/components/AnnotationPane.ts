@@ -16,10 +16,10 @@
 import "../ui/annotation.css";
 import type { Conn, ConventionRole, TokenRecord, UnitRecord } from "../lib/sidecarClient.ts";
 import { escHtml as esc } from "../lib/diff.ts";
-import { listConventions, listUnits, listTokens, listModels, downloadModel } from "../lib/sidecarClient.ts";
+import { listConventions, listUnits, listTokens, listModels, downloadModel, updateToken } from "../lib/sidecarClient.ts";
 import { languageLabel, type ModelInfo } from "../lib/models.ts";
 import { setHtml, raw } from "../lib/safeHtml.ts";
-import { buildProseUnitInline, type ProseToken } from "../ui/annotationProse.ts";
+import { buildProseUnitInline, UPOS_TAGS, type ProseToken } from "../ui/annotationProse.ts";
 import { runJobWithPolling, type JobHandle } from "../lib/jobPolling.ts";
 import { CanvasUnitList } from "./CanvasUnitList.ts";
 
@@ -45,6 +45,8 @@ export class AnnotationPane {
 
   /** unit_id → its tokens (ordered by sent_id, position); drives the coloured overlay. */
   private _tokensByUnit = new Map<number, ProseToken[]>();
+  /** token_id → full record; feeds the on-demand token editor (R5.2d). */
+  private _tokenById = new Map<number, TokenRecord>();
   /** In-flight annotation job (via the shared runJobWithPolling controller). */
   private _annotHandle: JobHandle | null = null;
   /** In-flight in-context model download. */
@@ -79,6 +81,7 @@ export class AnnotationPane {
           <span class="prep-annot-status" id="prep-annot-status" aria-live="polite"></span>
         </div>
         <div class="prep-annot-model-band" id="prep-annot-model-band" style="display:none" aria-live="polite"></div>
+        <div class="prep-annot-token-editor" id="prep-annot-token-editor" style="display:none"></div>
         <div class="prep-conv-units-area prep-annot-units" id="prep-annot-units">
           <div class="prep-conv-empty">S&#233;lectionnez un document.</div>
         </div>
@@ -115,6 +118,8 @@ export class AnnotationPane {
     this._textStartN = textStartN;
     this._language = language;
     this._tokensByUnit = new Map();
+    this._tokenById = new Map();
+    this._closeTokenEditor();
     this._resetRunBtn();
     this._setStatus("");
     this._list?.setData({ docId, textStartN });
@@ -133,9 +138,11 @@ export class AnnotationPane {
     this._annotHandle = null;
     this._modelHandle?.cancel();
     this._modelHandle = null;
+    this._closeTokenEditor();
     this._roles = [];
     this._units = [];
     this._tokensByUnit = new Map();
+    this._tokenById = new Map();
     this._list?.reset();
     this._docId = null;
     this._loaded = false;
@@ -183,6 +190,7 @@ export class AnnotationPane {
   /** Page through all of the document's tokens and group them by unit (ordered). */
   private async _loadTokens(): Promise<void> {
     this._tokensByUnit = new Map();
+    this._tokenById = new Map();
     const conn = this._getConn();
     if (this._docId === null || !conn) return;
     const byUnit = new Map<number, TokenRecord[]>();
@@ -208,6 +216,7 @@ export class AnnotationPane {
       this._tokensByUnit.set(uid, toks.map((t) => ({
         token_id: t.token_id, word: t.word ?? "", upos: t.upos, lemma: t.lemma,
       })));
+      for (const t of toks) this._tokenById.set(t.token_id, t);
     }
   }
 
@@ -258,6 +267,86 @@ export class AnnotationPane {
   private _setStatus(text: string): void {
     const s = this._q("#prep-annot-status");
     if (s) s.textContent = text;
+  }
+
+  // Token editor (R5.2d): on-demand token annotation editing.
+
+  /** Open the editor for a token (Mot / Lemme / UPOS / XPOS / Feats / Misc). */
+  private _openTokenEditor(tokenId: number): void {
+    const editor = this._q<HTMLElement>("#prep-annot-token-editor");
+    const tok = this._tokenById.get(tokenId);
+    if (!editor || !tok) return;
+    const cur = (tok.upos ?? "");
+    const uposOpts = ["", ...UPOS_TAGS]
+      .map((u) => `<option value="${esc(u)}"${cur === u ? " selected" : ""}>${u ? esc(u) : "(vide)"}</option>`)
+      .join("");
+    const field = (label: string, name: string, value: string): string =>
+      `<label class="prep-annot-field"><span>${label}</span>`
+      + `<input type="text" data-field="${name}" value="${esc(value)}" /></label>`;
+    setHtml(editor, raw(
+      `<div class="prep-annot-editor-head">`
+      + `<span class="prep-annot-editor-title">Token #${tok.token_id} : ${esc(tok.word ?? "")}</span>`
+      + `<button type="button" class="prep-annot-editor-close">Fermer</button></div>`
+      + `<div class="prep-annot-editor-fields">`
+      + field("Mot", "word", tok.word ?? "")
+      + field("Lemme", "lemma", tok.lemma ?? "")
+      + `<label class="prep-annot-field"><span>UPOS</span>`
+      + `<select data-field="upos">${uposOpts}</select></label>`
+      + field("XPOS", "xpos", tok.xpos ?? "")
+      + field("Feats", "feats", tok.feats ?? "")
+      + field("Misc", "misc", tok.misc ?? "")
+      + `</div>`
+      + `<div class="prep-annot-editor-actions">`
+      + `<button type="button" class="btn btn-primary btn-sm prep-annot-editor-save">Enregistrer</button>`
+      + `<span class="prep-annot-editor-status" aria-live="polite"></span></div>`,
+    ));
+    editor.style.display = "";
+    // Set the select value explicitly (more reliable than the `selected` attribute).
+    const uposEl = editor.querySelector<HTMLSelectElement>('[data-field="upos"]');
+    if (uposEl) uposEl.value = cur;
+    editor.querySelector(".prep-annot-editor-close")?.addEventListener("click", () => this._closeTokenEditor());
+    editor.querySelector(".prep-annot-editor-save")?.addEventListener("click", () => void this._saveToken(tokenId));
+  }
+
+  private _closeTokenEditor(): void {
+    const editor = this._q<HTMLElement>("#prep-annot-token-editor");
+    if (editor) { editor.replaceChildren(); editor.style.display = "none"; }
+  }
+
+  private async _saveToken(tokenId: number): Promise<void> {
+    const conn = this._getConn();
+    const editor = this._q<HTMLElement>("#prep-annot-token-editor");
+    const tok = this._tokenById.get(tokenId);
+    if (!conn || !editor || !tok) return;
+    const get = (name: string): string =>
+      (editor.querySelector<HTMLInputElement | HTMLSelectElement>(`[data-field="${name}"]`)?.value ?? "").trim();
+    const norm = (v: string): string | null => (v ? v : null);
+    const status = editor.querySelector<HTMLElement>(".prep-annot-editor-status");
+    const payload = {
+      token_id: tokenId,
+      word: get("word") || (tok.word ?? ""),
+      lemma: norm(get("lemma")),
+      upos: norm(get("upos")),
+      xpos: norm(get("xpos")),
+      feats: norm(get("feats")),
+      misc: norm(get("misc")),
+    };
+    if (status) status.textContent = "Enregistrement...";
+    try {
+      await updateToken(conn, payload);
+      // Update local caches so the prose (colour/title) and a re-open reflect the edit.
+      const updated: TokenRecord = { ...tok, ...payload };
+      this._tokenById.set(tokenId, updated);
+      const arr = this._tokensByUnit.get(tok.unit_id);
+      if (arr) {
+        const i = arr.findIndex((p) => p.token_id === tokenId);
+        if (i >= 0) arr[i] = { token_id: tokenId, word: updated.word ?? "", upos: updated.upos, lemma: updated.lemma };
+      }
+      this._list?.render();
+      if (status) status.textContent = "OK";
+    } catch (e) {
+      if (status) status.textContent = `Erreur : ${e instanceof Error ? e.message : String(e)}`;
+    }
   }
 
   // ─── Model band (R5.2c-4c) ───────────────────────────────────────────────
@@ -362,9 +451,11 @@ export class AnnotationPane {
     const textEl = el.querySelector<HTMLElement>(".prep-conv-unit-text");
     if (!textEl) return;
     el.classList.add("prep-annot-unit-row--annotated");
-    // Read-only in R5.2b: no onTokenClick (interlinear-on-demand is R5.2d). The token
-    // spans carry a POS · lemma title; the row's own click still toggles selection.
-    textEl.replaceChildren(buildProseUnitInline(toks));
+    // A token click opens its editor (R5.2d); the span handler stopPropagation-s so the
+    // row's own selection is not toggled. The span title still shows POS · lemma.
+    textEl.replaceChildren(buildProseUnitInline(toks, {
+      onTokenClick: (id) => this._openTokenEditor(id),
+    }));
   }
 
   private _annotatedCount(): number {
