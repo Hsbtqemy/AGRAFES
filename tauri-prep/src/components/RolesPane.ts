@@ -63,11 +63,17 @@ export class RolesPane {
   private _loaded = false;
   /** Shared unit-list base (R5.1a): owns the units DOM + selection + search. */
   private _list: CanvasUnitList | null = null;
+  /** Shared canvas action dock; when set, the selection action bar is re-parented here so it
+   *  stays pinned to the viewport bottom during scroll (R5.3). Absent in the legacy screen. */
+  private readonly _dock: HTMLElement | null;
+  /** The selection action bar element. Lives in the dock when one is provided, else in-pane. */
+  private _actionBarEl: HTMLElement | null = null;
 
-  constructor(root: HTMLElement, getConn: () => Conn | null, onError: (msg: string) => void) {
+  constructor(root: HTMLElement, getConn: () => Conn | null, onError: (msg: string) => void, dock?: HTMLElement | null) {
     this._root = root;
     this._getConn = getConn;
     this._onError = onError;
+    this._dock = dock ?? null;
   }
 
   /** Build the static layout once. Idempotent. */
@@ -147,6 +153,11 @@ export class RolesPane {
 
     const searchEl = this._q<HTMLInputElement>("#prep-conv-search");
     searchEl?.addEventListener("input", () => this._list?.setSearch(searchEl.value));
+
+    // Re-parent the selection action bar into the shared canvas dock (sticky bottom) if
+    // provided, so borne/rôle stay reachable without scrolling (R5.3). Else it stays in-pane.
+    this._actionBarEl = this._q<HTMLElement>("#prep-conv-action-bar");
+    if (this._dock && this._actionBarEl) this._dock.appendChild(this._actionBarEl);
   }
 
   /**
@@ -175,6 +186,12 @@ export class RolesPane {
     this._list?.reset();
     this._docId = null;
     this._loaded = false;
+  }
+
+  /** Canvas switched away from the Rôles layer: retract our dock contribution (R5.3). */
+  deactivate(): void {
+    const bar = this._actionBarEl;
+    if (bar) { bar.classList.remove("visible"); bar.innerHTML = ""; }
   }
 
   // ─── Loading ────────────────────────────────────────────────────────────
@@ -306,7 +323,7 @@ export class RolesPane {
   // ─── Action bar ─────────────────────────────────────────────────────────
 
   private _renderActionBar(): void {
-    const bar = this._q("#prep-conv-action-bar");
+    const bar = this._actionBarEl;
     const hint = this._q("#prep-conv-assign-hint");
     if (!bar) return;
     const count = this._list?.getSelection().size ?? 0;

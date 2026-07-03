@@ -267,4 +267,73 @@ describe("AnnotationPane", () => {
     editor.querySelector<HTMLButtonElement>(".prep-annot-editor-close")!.click();
     expect(editor.style.display).toBe("none");
   });
+
+  it("Étendu toggle repaints the annotated unit as an interlinear grid (R5.2e)", async () => {
+    const pane = new AnnotationPane(host, () => fakeConn({
+      units: [unit(1)],
+      tokens: [token(10, 1, 1, "Le", "DET"), token(10, 1, 2, "chat", "NOUN")],
+    }), () => {});
+    await pane.setDocument(1, null);
+    // Prose by default: no grid.
+    expect(row(1).querySelector(".annot-sent")).toBeNull();
+    expect(row(1).querySelectorAll(".annot-prose-token").length).toBe(2);
+
+    const extBtn = host.querySelector<HTMLButtonElement>('.prep-annot-viewmode-btn[data-mode="extended"]')!;
+    extBtn.click();
+    const annotated = row(1);
+    expect(extBtn.classList.contains("active")).toBe(true);
+    expect(annotated.classList.contains("prep-annot-unit-row--extended")).toBe(true);
+    const cells = annotated.querySelectorAll<HTMLElement>(".annot-sent .annot-token");
+    expect(cells.length).toBe(2);
+    expect(cells[1].querySelector(".annot-upos")!.textContent).toBe("NOUN");
+    expect(annotated.querySelectorAll(".annot-prose-token").length).toBe(0); // prose gone
+  });
+
+  it("toggling back from Étendu restores the coloured prose (R5.2e)", async () => {
+    const pane = new AnnotationPane(host, () => fakeConn({
+      units: [unit(1)], tokens: [token(10, 1, 1, "x", "NOUN")],
+    }), () => {});
+    await pane.setDocument(1, null);
+    host.querySelector<HTMLButtonElement>('.prep-annot-viewmode-btn[data-mode="extended"]')!.click();
+    expect(row(1).querySelector(".annot-sent")).not.toBeNull();
+    host.querySelector<HTMLButtonElement>('.prep-annot-viewmode-btn[data-mode="prose"]')!.click();
+    expect(row(1).querySelector(".annot-sent")).toBeNull();
+    expect(row(1).classList.contains("prep-annot-unit-row--extended")).toBe(false);
+    expect(row(1).querySelectorAll(".annot-prose-token").length).toBe(1);
+  });
+
+  it("opens the token editor from an interlinear cell in Étendu mode (R5.2e)", async () => {
+    const pane = new AnnotationPane(host, () => fakeConn({
+      units: [unit(1)], tokens: [token(10, 1, 1, "chat", "NOUN")],
+    }), () => {});
+    await pane.setDocument(1, null);
+    host.querySelector<HTMLButtonElement>('.prep-annot-viewmode-btn[data-mode="extended"]')!.click();
+    const editor = host.querySelector<HTMLElement>("#prep-annot-token-editor")!;
+    expect(editor.style.display).toBe("none");
+    host.querySelector<HTMLElement>(".annot-sent .annot-token")!.click();
+    expect(editor.style.display).not.toBe("none");
+    expect(editor.querySelector<HTMLSelectElement>('[data-field="upos"]')!.value).toBe("NOUN");
+  });
+
+  it("re-parents the token editor into the shared dock; deactivate() retracts it (R5.3-1)", async () => {
+    const dock = document.createElement("div");
+    document.body.appendChild(dock);
+    const pane = new AnnotationPane(host, () => fakeConn({
+      units: [unit(1)], tokens: [token(10, 1, 1, "chat", "NOUN")],
+    }), () => {}, undefined, dock);
+    await pane.setDocument(1, null);
+    // The editor lives in the dock, not the pane host.
+    expect(host.querySelector("#prep-annot-token-editor")).toBeNull();
+    const editor = dock.querySelector<HTMLElement>("#prep-annot-token-editor")!;
+    expect(editor).not.toBeNull();
+    expect(editor.style.display).toBe("none");
+    // Clicking a token (in the pane list) opens the editor (in the dock).
+    host.querySelector<HTMLElement>(".annot-prose-token")!.click();
+    expect(editor.style.display).not.toBe("none");
+    expect(editor.querySelector<HTMLSelectElement>('[data-field="upos"]')!.value).toBe("NOUN");
+    // Switching layer retracts the dock contribution.
+    pane.deactivate();
+    expect(editor.style.display).toBe("none");
+    expect(editor.childElementCount).toBe(0);
+  });
 });

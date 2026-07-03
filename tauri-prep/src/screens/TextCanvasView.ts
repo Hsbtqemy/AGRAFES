@@ -40,6 +40,8 @@ export class TextCanvasView {
   private _stats: DocumentStats | null = null;
   private _mode: CanvasMode = "roles";
   private _menuOpen = false;
+  /** Observes the fixed action sheet to pad the scroll so the last lines clear it (R5.3). */
+  private _sheetRO: ResizeObserver | null = null;
   /** Bound outside-click handler; attached only while the doc menu is open. */
   private readonly _onOutsideClick = (e: MouseEvent): void => {
     const sel = this._root?.querySelector<HTMLElement>("#prep-canvas-doc-select");
@@ -86,16 +88,33 @@ export class TextCanvasView {
         </div>
       </div>
       <div class="prep-canvas-body" id="prep-canvas-body">
-        <div class="prep-canvas-pane" id="prep-canvas-pane-roles"></div>
-        <div class="prep-canvas-pane" id="prep-canvas-pane-curation" style="display:none"></div>
-        <div class="prep-canvas-pane" id="prep-canvas-pane-annoter" style="display:none"></div>
+        <div class="prep-canvas-scroll" id="prep-canvas-scroll">
+          <div class="prep-canvas-pane" id="prep-canvas-pane-roles"></div>
+          <div class="prep-canvas-pane" id="prep-canvas-pane-curation" style="display:none"></div>
+          <div class="prep-canvas-pane" id="prep-canvas-pane-annoter" style="display:none"></div>
+        </div>
+        <div class="prep-canvas-bottomsheet" id="prep-canvas-bottomsheet"></div>
       </div>
     `));
 
     const rolesHost = wrapper.querySelector<HTMLElement>("#prep-canvas-pane-roles");
+    // Toutes les couches rendent leur box dans la feuille d'actions fixée en bas (R5.3).
+    const bottomSheet = wrapper.querySelector<HTMLElement>("#prep-canvas-bottomsheet");
     if (rolesHost) {
-      this._rolesPane = new RolesPane(rolesHost, this._getConn, (msg) => this._cb.toast(msg, true));
+      this._rolesPane = new RolesPane(rolesHost, this._getConn, (msg) => this._cb.toast(msg, true), bottomSheet);
       this._rolesPane.mount();
+    }
+    // Garder les dernières lignes lisibles au-dessus de la feuille : quand elle affiche une
+    // box, on rembourre le bas du scroll de sa hauteur (0 sinon). ResizeObserver = auto à
+    // l'ouverture / fermeture / redimensionnement.
+    const scrollEl = wrapper.querySelector<HTMLElement>("#prep-canvas-scroll");
+    this._sheetRO?.disconnect();
+    if (bottomSheet && scrollEl && typeof ResizeObserver !== "undefined") {
+      this._sheetRO = new ResizeObserver(() => {
+        const h = bottomSheet.offsetHeight;
+        scrollEl.style.paddingBottom = h > 0 ? `${h + 24}px` : "";
+      });
+      this._sheetRO.observe(bottomSheet);
     }
 
     const trigger = wrapper.querySelector<HTMLButtonElement>("#prep-canvas-doc-trigger");
@@ -294,6 +313,7 @@ export class TextCanvasView {
   }
 
   private _setMode(mode: CanvasMode): void {
+    const prev = this._mode;
     this._mode = mode;
     this._root?.querySelectorAll<HTMLButtonElement>(".prep-canvas-modebtn").forEach((b) => {
       const on = b.dataset.mode === mode;
@@ -312,8 +332,16 @@ export class TextCanvasView {
       this._curationPane.mount();
     }
     if (mode === "annoter" && !this._annotationPane && annotHost) {
-      this._annotationPane = new AnnotationPane(annotHost, this._getConn, (m) => this._cb.toast(m, true));
+      const sheet = this._root?.querySelector<HTMLElement>("#prep-canvas-bottomsheet") ?? null;
+      this._annotationPane = new AnnotationPane(
+        annotHost, this._getConn, (m) => this._cb.toast(m, true), undefined, sheet,
+      );
       this._annotationPane.mount();
+    }
+    // Retract the outgoing layer's contextual box on switch (R5.3).
+    if (prev !== mode) {
+      if (prev === "annoter") this._annotationPane?.deactivate();
+      else if (prev === "roles") this._rolesPane?.deactivate();
     }
     void this._syncActivePane();
   }

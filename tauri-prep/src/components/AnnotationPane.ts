@@ -19,7 +19,7 @@ import { escHtml as esc } from "../lib/diff.ts";
 import { listConventions, listUnits, listTokens, listModels, downloadModel, updateToken } from "../lib/sidecarClient.ts";
 import { languageLabel, type ModelInfo } from "../lib/models.ts";
 import { setHtml, raw } from "../lib/safeHtml.ts";
-import { buildProseUnitInline, UPOS_TAGS, type ProseToken } from "../ui/annotationProse.ts";
+import { buildProseUnitInline, buildInterlinearSentence, UPOS_TAGS, type ProseToken } from "../ui/annotationProse.ts";
 import { runJobWithPolling, type JobHandle } from "../lib/jobPolling.ts";
 import { CanvasUnitList } from "./CanvasUnitList.ts";
 
@@ -34,6 +34,9 @@ export class AnnotationPane {
   private readonly _onError: (msg: string) => void;
   /** Optional: navigate to the Paramètres model manager (renders the "Gérer" link). */
   private readonly _onManageModels?: () => void;
+  /** Shared canvas action dock; when set, the token editor is re-parented here so it stays
+   *  pinned to the viewport bottom during scroll instead of scrolling away (R5.3). */
+  private readonly _dock: HTMLElement | null;
 
   private _roles: ConventionRole[] = [];
   private _units: UnitRecord[] = [];
@@ -42,6 +45,12 @@ export class AnnotationPane {
   private _language: string | null = null;
   private _loaded = false;
   private _list: CanvasUnitList | null = null;
+  /** Display mode for annotated units: coloured prose (default) or interlinear grid (R5.2e). */
+  private _viewMode: "prose" | "extended" = "prose";
+  /** The token editor element. Lives in the dock when one is provided, else in-pane. */
+  private _editorEl: HTMLElement | null = null;
+  /** token_id being edited, to keep its highlight across list re-renders (R5.3). */
+  private _editingTokenId: number | null = null;
 
   /** unit_id → its tokens (ordered by sent_id, position); drives the coloured overlay. */
   private _tokensByUnit = new Map<number, ProseToken[]>();
@@ -57,11 +66,13 @@ export class AnnotationPane {
     getConn: () => Conn | null,
     onError: (msg: string) => void,
     onManageModels?: () => void,
+    dock?: HTMLElement | null,
   ) {
     this._root = root;
     this._getConn = getConn;
     this._onError = onError;
     this._onManageModels = onManageModels;
+    this._dock = dock ?? null;
   }
 
   /** Build the static layout once. Idempotent. */
@@ -73,6 +84,12 @@ export class AnnotationPane {
           <input type="search" class="prep-conv-search prep-annot-search" id="prep-annot-search"
             placeholder="Rechercher des unit&#233;s&#8230;" autocomplete="off" />
           <span class="prep-conv-search-stats" id="prep-annot-search-stats"></span>
+          <div class="prep-annot-viewmode" role="group" aria-label="Mode d'affichage de l'annotation">
+            <button type="button" class="prep-annot-viewmode-btn active" data-mode="prose"
+              title="Prose color&#233;e &#8212; nature au survol">Prose</button>
+            <button type="button" class="prep-annot-viewmode-btn" data-mode="extended"
+              title="Grille interlin&#233;aire &#8212; nature et lemme affich&#233;s">&#201;tendu</button>
+          </div>
         </div>
         <div class="prep-annot-dock" role="group" aria-label="Annotation grammaticale">
           <button type="button" class="btn btn-primary btn-sm" id="prep-annot-run-btn"
@@ -103,7 +120,26 @@ export class AnnotationPane {
     const searchEl = this._q<HTMLInputElement>("#prep-annot-search");
     searchEl?.addEventListener("input", () => this._list?.setSearch(searchEl.value));
 
+    this._root.querySelectorAll<HTMLButtonElement>(".prep-annot-viewmode-btn").forEach((b) => {
+      b.addEventListener("click", () => this._setViewMode(b.dataset.mode === "extended" ? "extended" : "prose"));
+    });
+
     this._q<HTMLButtonElement>("#prep-annot-run-btn")?.addEventListener("click", () => void this._runAnnotate());
+
+    // Re-parent the token editor into the shared canvas action sheet (fixed bottom) if
+    // provided, so it stays in view while the unit list scrolls (R5.3); else it stays in-pane.
+    this._editorEl = this._q<HTMLElement>("#prep-annot-token-editor");
+    if (this._dock && this._editorEl) this._dock.appendChild(this._editorEl);
+  }
+
+  /** Switch the annotated-unit display between coloured prose and the interlinear grid. */
+  private _setViewMode(mode: "prose" | "extended"): void {
+    if (this._viewMode === mode) return;
+    this._viewMode = mode;
+    this._root.querySelectorAll<HTMLButtonElement>(".prep-annot-viewmode-btn").forEach((b) => {
+      b.classList.toggle("active", b.dataset.mode === mode);
+    });
+    this._renderList(); // re-run decorateRow with the new mode (keeps the edit highlight)
   }
 
   async setDocument(docId: number | null, textStartN: number | null, language: string | null = null): Promise<void> {
@@ -273,7 +309,7 @@ export class AnnotationPane {
 
   /** Open the editor for a token (Mot / Lemme / UPOS / XPOS / Feats / Misc). */
   private _openTokenEditor(tokenId: number): void {
-    const editor = this._q<HTMLElement>("#prep-annot-token-editor");
+    const editor = this._editorEl;
     const tok = this._tokenById.get(tokenId);
     if (!editor || !tok) return;
     const cur = (tok.upos ?? "");
@@ -306,16 +342,41 @@ export class AnnotationPane {
     if (uposEl) uposEl.value = cur;
     editor.querySelector(".prep-annot-editor-close")?.addEventListener("click", () => this._closeTokenEditor());
     editor.querySelector(".prep-annot-editor-save")?.addEventListener("click", () => void this._saveToken(tokenId));
+    // The box sits in the bottom sheet; keep the visual link by highlighting the token.
+    this._highlightEditingToken(tokenId);
+  }
+
+  /** Mark the token being edited (a liseré) so the link survives the box being in the bottom
+   *  sheet; re-applied after a list re-render. Pass null to clear. */
+  private _highlightEditingToken(tokenId: number | null): void {
+    this._editingTokenId = tokenId;
+    this._root.querySelectorAll(".annot-editing-token")
+      .forEach((el) => el.classList.remove("annot-editing-token"));
+    if (tokenId !== null) {
+      this._root.querySelector(`[data-token-id="${tokenId}"]`)?.classList.add("annot-editing-token");
+    }
+  }
+
+  /** Re-render the unit list and restore the edited-token highlight (lost on rebuild). */
+  private _renderList(): void {
+    this._list?.render();
+    if (this._editingTokenId !== null) this._highlightEditingToken(this._editingTokenId);
   }
 
   private _closeTokenEditor(): void {
-    const editor = this._q<HTMLElement>("#prep-annot-token-editor");
+    const editor = this._editorEl;
     if (editor) { editor.replaceChildren(); editor.style.display = "none"; }
+    this._highlightEditingToken(null);
+  }
+
+  /** Canvas switched away from the Annotation layer: retract our dock contribution. */
+  deactivate(): void {
+    this._closeTokenEditor();
   }
 
   private async _saveToken(tokenId: number): Promise<void> {
     const conn = this._getConn();
-    const editor = this._q<HTMLElement>("#prep-annot-token-editor");
+    const editor = this._editorEl;
     const tok = this._tokenById.get(tokenId);
     if (!conn || !editor || !tok) return;
     const get = (name: string): string =>
@@ -342,7 +403,7 @@ export class AnnotationPane {
         const i = arr.findIndex((p) => p.token_id === tokenId);
         if (i >= 0) arr[i] = { token_id: tokenId, word: updated.word ?? "", upos: updated.upos, lemma: updated.lemma };
       }
-      this._list?.render();
+      this._renderList(); // keeps the editing highlight after the repaint
       if (status) status.textContent = "OK";
     } catch (e) {
       if (status) status.textContent = `Erreur : ${e instanceof Error ? e.message : String(e)}`;
@@ -444,18 +505,24 @@ export class AnnotationPane {
 
   // ─── Overlay + summary ──────────────────────────────────────────────────
 
-  /** decorateRow hook: repaint an annotated unit's text as UPOS-coloured prose. */
+  /** decorateRow hook: repaint an annotated unit's text — coloured prose (default) or the
+   *  interlinear grid (Étendu, R5.2e), per the current view mode. In both modes a token
+   *  click opens its editor (R5.2d); the shared builders stopPropagation so the row's own
+   *  selection is not toggled. */
   private _decorateAnnotated(u: UnitRecord, el: HTMLElement): void {
     const toks = this._tokensByUnit.get(u.unit_id);
     if (!toks || toks.length === 0) return;
     const textEl = el.querySelector<HTMLElement>(".prep-conv-unit-text");
     if (!textEl) return;
     el.classList.add("prep-annot-unit-row--annotated");
-    // A token click opens its editor (R5.2d); the span handler stopPropagation-s so the
-    // row's own selection is not toggled. The span title still shows POS · lemma.
-    textEl.replaceChildren(buildProseUnitInline(toks, {
-      onTokenClick: (id) => this._openTokenEditor(id),
-    }));
+    const opts = { onTokenClick: (id: number) => this._openTokenEditor(id) };
+    if (this._viewMode === "extended") {
+      el.classList.add("prep-annot-unit-row--extended");
+      textEl.replaceChildren(buildInterlinearSentence(toks, opts));
+    } else {
+      el.classList.remove("prep-annot-unit-row--extended");
+      textEl.replaceChildren(buildProseUnitInline(toks, opts));
+    }
   }
 
   private _annotatedCount(): number {
