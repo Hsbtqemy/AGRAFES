@@ -29,13 +29,14 @@ _UPDATABLE = {
     "author_lastname", "author_firstname", "doc_date",
     "translator_lastname", "translator_firstname",
     "work_title", "pub_place", "publisher",
+    "notes",  # R6.1 — document-level free-text memo (≠ doc_relations.note)
 }
 
 _NO_FIELDS_MSG = (
     "No updatable fields provided "
     "(allowed: title, language, doc_role, resource_type, workflow_status, validated_run_id, "
     "author_lastname, author_firstname, doc_date, translator_lastname, translator_firstname, "
-    "work_title, pub_place, publisher)"
+    "work_title, pub_place, publisher, notes)"
 )
 
 _LIST_SQL = """
@@ -48,7 +49,7 @@ _LIST_SQL = """
            d.author_lastname, d.author_firstname, d.doc_date,
            d.text_start_n,
            d.translator_lastname, d.translator_firstname,
-           d.work_title, d.pub_place, d.publisher
+           d.work_title, d.pub_place, d.publisher, d.notes
     FROM documents d
     LEFT JOIN (
         SELECT doc_id, COUNT(*) AS unit_count
@@ -70,7 +71,7 @@ _UPDATED_DOC_SQL = """
            workflow_status, validated_at, validated_run_id,
            author_lastname, author_firstname, doc_date,
            translator_lastname, translator_firstname,
-           work_title, pub_place, publisher
+           work_title, pub_place, publisher, notes
     FROM documents
     WHERE doc_id = ?
 """
@@ -93,7 +94,7 @@ def list_documents(conn: sqlite3.Connection) -> dict[str, Any]:
             "author_lastname": r[13], "author_firstname": r[14], "doc_date": r[15],
             "text_start_n": r[16], "translator_lastname": r[17],
             "translator_firstname": r[18], "work_title": r[19], "pub_place": r[20],
-            "publisher": r[21], "fts_stale": r[0] in stale_ids,
+            "publisher": r[21], "notes": r[22], "fts_stale": r[0] in stale_ids,
         }
         for r in rows
     ]
@@ -205,7 +206,7 @@ def update_document(conn: sqlite3.Connection, body: dict) -> dict[str, Any]:
         "resource_type": row[4], "workflow_status": row[5], "validated_at": row[6],
         "validated_run_id": row[7], "author_lastname": row[8], "author_firstname": row[9],
         "doc_date": row[10], "translator_lastname": row[11], "translator_firstname": row[12],
-        "work_title": row[13], "pub_place": row[14], "publisher": row[15],
+        "work_title": row[13], "pub_place": row[14], "publisher": row[15], "notes": row[16],
     }
     return {"updated": 1, "doc": doc}
 

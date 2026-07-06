@@ -24,6 +24,7 @@ Pure: :func:`derive_coarse_blocks` takes plain unit dicts (no DB, no IO).
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from typing import Any, Iterable
 
@@ -180,3 +181,119 @@ def coarse_blocks_for_doc(
         for r in rows
     ]
     return derive_coarse_blocks(units)
+
+
+# --- R5.4c: ascendant coarse regrouping (non-destructive) -------------------
+#
+# The *ascendant* path (DESIGN_prep_text_canvas §147 "regrouper des phrases déjà
+# là"): set the coarse grain by relabelling parent_n on the *existing* fine units,
+# grouping consecutive lines under a boundary they carry in their own text — no
+# resegmentation, so the fine units, alignment_links and FTS are all untouched
+# (parent_n does not affect text_norm). This sidesteps the "line structure destroyed
+# at import" limit that blocks the *descendant* pattern kind (that stays R5.4c/A).
+
+# Cap custom pattern length to bound catastrophic-backtracking risk on the (locked)
+# sidecar, mirroring the curation/query regex guard (audit QRY-06, _MAX_REGEX_LEN=500).
+_MAX_PATTERN_LEN = 500
+
+# Built-in coarse boundary presets. "tours" = a dialogue turn opens with an em/en
+# dash — a robust in-DB cue (the dash survives normalize(), unlike blank-line ¶).
+# Speaker labels ("NOM :") are too false-positive-prone to hardcode (e.g. "Note :")
+# → supply a custom pattern for those.
+_COARSE_PRESETS: dict[str, str] = {
+    "tours": r"^\s*[—–]",
+}
+
+
+def resolve_coarse_boundary(
+    preset: str | None = None, pattern: str | None = None
+) -> re.Pattern[str]:
+    """Resolve a coarse-grain boundary regex from a built-in ``preset`` name or a custom
+    ``pattern``. A non-empty ``pattern`` wins over ``preset`` (default ``tours``). Raises
+    ``ValueError`` on an unknown preset or an invalid regex."""
+    if pattern is not None and str(pattern).strip():
+        raw = str(pattern)
+        if len(raw) > _MAX_PATTERN_LEN:
+            raise ValueError(
+                f"Boundary pattern too long ({len(raw)} chars, max {_MAX_PATTERN_LEN})."
+            )
+        try:
+            return re.compile(raw)
+        except re.error as exc:
+            raise ValueError(f"Invalid boundary pattern: {exc}") from exc
+    name = (preset or "tours").strip().lower()
+    if name not in _COARSE_PRESETS:
+        raise ValueError(
+            f"Unknown coarse preset: {name!r}. Use one of: {', '.join(sorted(_COARSE_PRESETS))}."
+        )
+    return re.compile(_COARSE_PRESETS[name])
+
+
+def regroup_by_boundary(
+    units: Iterable[dict[str, Any]], boundary: re.Pattern[str]
+) -> dict[int, int]:
+    """Ascendant coarse regrouping (R5.4c): assign each line unit a coarse ``parent_n``.
+
+    A line whose ``text_norm`` matches ``boundary`` *opens* a new coarse block; every
+    line's ``parent_n`` is the ``n`` of its block's first line. The very first line always
+    opens a block (so anything before the first marker forms a leading block). Structure
+    units are ignored. Pure — the caller persists the result. Returns ``{line_n: parent_n}``.
+    """
+    lines = sorted(
+        (u for u in units if u.get("unit_type") == "line"), key=lambda u: u["n"]
+    )
+    assignments: dict[int, int] = {}
+    anchor: int | None = None
+    for i, u in enumerate(lines):
+        text = u.get("text_norm") or ""
+        if i == 0 or anchor is None or boundary.match(text):
+            anchor = u["n"]
+        assignments[u["n"]] = anchor
+    return assignments
+
+
+def regroup_document_coarse(
+    conn: sqlite3.Connection,
+    doc_id: int,
+    *,
+    preset: str | None = None,
+    pattern: str | None = None,
+) -> dict[str, Any]:
+    """Persist an ascendant coarse regrouping onto a document's line units (R5.4c).
+
+    Non-destructive: only ``meta_json.parent_n`` is rewritten (other meta keys are kept);
+    the fine units, their text, ``alignment_links`` and FTS are all untouched (parent_n
+    does not feed text_norm). Idempotent — a line already carrying the target ``parent_n``
+    is skipped, so re-running with the same boundary writes nothing.
+
+    Raises ``ValueError`` (→ 400) on a bad preset/pattern.
+    """
+    boundary = resolve_coarse_boundary(preset, pattern)
+    rows = conn.execute(
+        "SELECT n, text_norm, meta_json FROM units"
+        " WHERE doc_id = ? AND unit_type = 'line' ORDER BY n",
+        (doc_id,),
+    ).fetchall()
+    units = [{"n": r["n"], "unit_type": "line", "text_norm": r["text_norm"]} for r in rows]
+    assignments = regroup_by_boundary(units, boundary)
+    changed = 0
+    for r in rows:
+        parent_n = assignments.get(r["n"])
+        if parent_n is None:
+            continue
+        meta = _parse_meta(r["meta_json"])
+        if meta.get("parent_n") == parent_n:
+            continue  # idempotent — no write when the anchor is unchanged
+        meta["parent_n"] = parent_n
+        conn.execute(
+            "UPDATE units SET meta_json = ? WHERE doc_id = ? AND n = ?",
+            (json.dumps(meta), doc_id, r["n"]),
+        )
+        changed += 1
+    conn.commit()  # every sibling write persists explicitly (the conn is not autocommit)
+    return {
+        "doc_id": doc_id,
+        "blocks": len(set(assignments.values())),
+        "units_grouped": len(assignments),
+        "units_changed": changed,
+    }

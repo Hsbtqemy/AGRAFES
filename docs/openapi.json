@@ -1400,6 +1400,11 @@
           "language": {
             "type": "string"
           },
+          "notes": {
+            "description": "Free-text document-level notes-to-self (R6.1); ≠ doc_relations.note",
+            "nullable": true,
+            "type": "string"
+          },
           "resource_type": {
             "nullable": true,
             "type": "string"
@@ -1468,6 +1473,10 @@
             "type": "string"
           },
           "language": {
+            "type": "string"
+          },
+          "notes": {
+            "nullable": true,
             "type": "string"
           },
           "resource_type": {
@@ -2809,6 +2818,62 @@
           }
         ]
       },
+      "SegmentCoarseRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "doc_id": {
+            "type": "integer"
+          },
+          "pattern": {
+            "description": "R5.4c — custom line-start regex that opens a coarse block (e.g. a speaker label). Overrides `preset`.",
+            "type": "string"
+          },
+          "preset": {
+            "description": "R5.4c — built-in coarse boundary; `tours` opens a block on a leading dialogue dash (— / –). `pattern` wins over `preset`.",
+            "enum": [
+              "tours"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "doc_id"
+        ],
+        "type": "object"
+      },
+      "SegmentCoarseResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BaseResponse"
+          },
+          {
+            "properties": {
+              "blocks": {
+                "description": "distinct coarse blocks after regrouping",
+                "type": "integer"
+              },
+              "doc_id": {
+                "type": "integer"
+              },
+              "units_changed": {
+                "description": "line units whose parent_n actually changed",
+                "type": "integer"
+              },
+              "units_grouped": {
+                "description": "line units assigned a parent_n",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "doc_id",
+              "blocks",
+              "units_grouped",
+              "units_changed"
+            ],
+            "type": "object"
+          }
+        ]
+      },
       "SegmentDetectMarkersRequest": {
         "additionalProperties": false,
         "properties": {
@@ -4099,8 +4164,8 @@
   "info": {
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
-    "version": "1.6.45",
-    "x-contract-version": "1.6.45"
+    "version": "1.6.47",
+    "x-contract-version": "1.6.47"
   },
   "openapi": "3.0.3",
   "paths": {
@@ -7683,6 +7748,43 @@
           }
         },
         "summary": "Write pre-computed propagated segmentation to DB (token required)"
+      }
+    },
+    "/segment/coarse": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SegmentCoarseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SegmentCoarseResponse"
+                }
+              }
+            },
+            "description": "Coarse regrouping report"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request"
+          }
+        },
+        "summary": "Ascendant coarse regrouping (R5.4c) — non-destructive parent_n relabel"
       }
     },
     "/segment/delete_structure_unit": {

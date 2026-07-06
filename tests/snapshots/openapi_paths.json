@@ -80,6 +80,7 @@
   "POST /query/facets",
   "POST /segment",
   "POST /segment/apply_propagated",
+  "POST /segment/coarse",
   "POST /segment/delete_structure_unit",
   "POST /segment/detect_markers",
   "POST /segment/insert_structure_unit",

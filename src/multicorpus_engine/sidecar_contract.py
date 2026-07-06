@@ -14,7 +14,7 @@ from typing import Any
 from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
-CONTRACT_VERSION = "1.6.45"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.47"  # semantic versioning for the sidecar API contract
 # SID-08 / OPS-03: the API version IS the contract version — derived, never a
 # second hand-maintained literal, so the two can no longer drift. /health reports
 # the *engine* version under `version` (it predates the sidecar); every other
@@ -154,6 +154,14 @@ API_VERSION = CONTRACT_VERSION
 #         Absent → byte-identical to the historical sentence/marker split. The async `segment`
 #         job (POST /jobs/enqueue) accepts the same params. Engine logic in segmenter.py
 #         (SegmentSpec / split_unit_text / spec_from_dict); no migration (nothing persisted here).
+# 1.6.46: coarse regrouping (R5.4c/B). New POST /segment/coarse — an *ascendant*, non-destructive
+#         relabel of meta_json.parent_n on a doc's line units by a coarse boundary (`preset`=tours:
+#         a leading dialogue dash — or a custom line-start `pattern`). No resegmentation → the fine
+#         units, alignment_links and FTS are untouched. Logic in coarse_grain.py
+#         (regroup_by_boundary / regroup_document_coarse); no migration (parent_n in meta_json).
+# 1.6.47: document notes (R6.1). documents.notes (migration 024) — free-text notes-to-self at the
+#         document level (≠ doc_relations.note). Additive `notes` on DocumentRecord (GET /documents)
+#         and DocumentUpdateRequest (POST /documents/update, /bulk_update). Not FTS-indexed.
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
@@ -1056,6 +1064,37 @@ def openapi_spec() -> dict[str, Any]:
                         "200": {"description": "text_start_n updated", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OkResponse"}}}},
                         "400": {"description": "Bad request", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
                         "404": {"description": "Document not found", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                    },
+                }
+            },
+            "/segment/coarse": {
+                "post": {
+                    "summary": "Ascendant coarse regrouping (R5.4c) — non-destructive parent_n relabel",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/SegmentCoarseRequest"},
+                            }
+                        },
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Coarse regrouping report",
+                            "content": {
+                                "application/json": {
+                                    "schema": {"$ref": "#/components/schemas/SegmentCoarseResponse"},
+                                }
+                            },
+                        },
+                        "400": {
+                            "description": "Bad request",
+                            "content": {
+                                "application/json": {
+                                    "schema": {"$ref": "#/components/schemas/ErrorResponse"},
+                                }
+                            },
+                        },
                     },
                 }
             },
@@ -3165,6 +3204,23 @@ def openapi_spec() -> dict[str, Any]:
                     },
                     "additionalProperties": False,
                 },
+                "SegmentCoarseRequest": {
+                    "type": "object",
+                    "required": ["doc_id"],
+                    "properties": {
+                        "doc_id": {"type": "integer"},
+                        "preset": {
+                            "type": "string",
+                            "enum": ["tours"],
+                            "description": "R5.4c — built-in coarse boundary; `tours` opens a block on a leading dialogue dash (— / –). `pattern` wins over `preset`.",
+                        },
+                        "pattern": {
+                            "type": "string",
+                            "description": "R5.4c — custom line-start regex that opens a coarse block (e.g. a speaker label). Overrides `preset`.",
+                        },
+                    },
+                    "additionalProperties": False,
+                },
                 "FamilySegmentRequest": {
                     "type": "object",
                     "properties": {
@@ -3324,6 +3380,21 @@ def openapi_spec() -> dict[str, Any]:
                                     "enum": ["default", "fr_strict", "en_strict"],
                                 },
                                 "warnings": {"type": "array", "items": {"type": "string"}},
+                            },
+                        },
+                    ]
+                },
+                "SegmentCoarseResponse": {
+                    "allOf": [
+                        {"$ref": "#/components/schemas/BaseResponse"},
+                        {
+                            "type": "object",
+                            "required": ["doc_id", "blocks", "units_grouped", "units_changed"],
+                            "properties": {
+                                "doc_id": {"type": "integer"},
+                                "blocks": {"type": "integer", "description": "distinct coarse blocks after regrouping"},
+                                "units_grouped": {"type": "integer", "description": "line units assigned a parent_n"},
+                                "units_changed": {"type": "integer", "description": "line units whose parent_n actually changed"},
                             },
                         },
                     ]
@@ -3570,6 +3641,7 @@ def openapi_spec() -> dict[str, Any]:
                         "author_lastname": {"type": "string", "nullable": True},
                         "author_firstname": {"type": "string", "nullable": True},
                         "doc_date": {"type": "string", "nullable": True},
+                        "notes": {"type": "string", "nullable": True, "description": "Free-text document-level notes-to-self (R6.1); ≠ doc_relations.note"},
                         "unit_count": {"type": "integer"},
                         "token_count": {"type": "integer"},
                         "annotation_status": {
@@ -3983,6 +4055,7 @@ def openapi_spec() -> dict[str, Any]:
                         "author_lastname": {"type": "string", "nullable": True},
                         "author_firstname": {"type": "string", "nullable": True},
                         "doc_date": {"type": "string", "nullable": True},
+                        "notes": {"type": "string", "nullable": True},
                     },
                 },
                 "DocumentBulkUpdateRequest": {

@@ -479,6 +479,7 @@ _WRITE_PATHS = frozenset({
     # Other DB-mutating operations (fixed in 1.4.1)
     "/curate",
     "/segment",
+    "/segment/coarse",
     # Curation exceptions — set/delete write the DB (were missing → token bypass, SID-02)
     "/curate/exceptions/set", "/curate/exceptions/delete",
     # Unit structural edits
@@ -994,6 +995,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             elif path == "/segment":
                 with self._track_stage("segment", doc_id=body.get("doc_id") if isinstance(body, dict) else None):
                     self._handle_segment(body)
+            elif path == "/segment/coarse":
+                self._handle_segment_coarse(body)
             elif path.startswith("/families/") and path.endswith("/segment"):
                 parts = path.split("/")  # ['', 'families', '{id}', 'segment']
                 if len(parts) == 4:
@@ -5297,6 +5300,27 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             "doc_id": doc_id,
             "text_start_n": text_start_n,
         }))
+
+    def _handle_segment_coarse(self, body: dict) -> None:
+        # R5.4c — ascendant coarse regrouping (non-destructive): relabel meta_json.parent_n
+        # on the doc's line units by a boundary pattern (Tours). No resegmentation → the fine
+        # units, alignment and FTS are untouched. Logic lives in coarse_grain (growth-gate);
+        # this handler is a thin adapter.
+        from multicorpus_engine.coarse_grain import regroup_document_coarse
+        doc_id = body.get("doc_id")
+        if not isinstance(doc_id, int):
+            self._send_error("doc_id must be an integer", code=ERR_BAD_REQUEST, http_status=400)
+            return
+        try:
+            with self._lock():
+                data = regroup_document_coarse(
+                    self._conn(), doc_id,
+                    preset=body.get("preset"), pattern=body.get("pattern"),
+                )
+        except ValueError as exc:
+            self._send_error(str(exc), code=ERR_BAD_REQUEST, http_status=400)
+            return
+        self._send_json(success_payload(data))
 
     def _handle_segment(self, body: dict) -> None:
         from multicorpus_engine.segmenter import (
