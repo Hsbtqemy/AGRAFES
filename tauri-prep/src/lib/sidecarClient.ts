@@ -74,6 +74,11 @@ export interface DocumentRecord {
   publisher?: string | null;
   /** R6.1 — free-text document-level notes-to-self (≠ doc_relations.note). */
   notes?: string | null;
+  /**
+   * R6.3 — parsed documents.meta_json: importer provenance keys (encoding, import_mode…)
+   * alongside user-entered type-specific / ad-hoc fields under the `fields` key. Null when empty.
+   */
+  meta_json?: Record<string, unknown> | null;
   unit_count: number;
   /** First unit n that belongs to the main text (units with n < text_start_n are paratext). Null = no boundary. */
   text_start_n?: number | null;
@@ -893,6 +898,11 @@ export interface DocumentUpdateOptions {
   publisher?: string | null;
   /** R6.1 — document-level notes-to-self. */
   notes?: string | null;
+  /**
+   * R6.3 — type-specific / ad-hoc metadata fields (flat key→value). Merged server-side
+   * into documents.meta_json under the `fields` key; empty values drop the field.
+   */
+  meta?: Record<string, string>;
 }
 
 export interface DocRelationRecord {

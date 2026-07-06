@@ -58,6 +58,13 @@ import { openExportPairDialog } from "../components/ExportPairDialog.ts";
 import { UnitInspectorPanel } from "../components/UnitInspectorPanel.ts";
 import { familyPanelHtml, segResultRow, alnResultRow, curationStatusHtml } from "../components/familyView.ts";
 import { DOC_ROLES } from "../lib/docRoles.ts";
+import {
+  RESOURCE_TYPE_SUGGESTIONS,
+  templateForType,
+  normalizeType,
+  fieldsOf,
+  partitionFields,
+} from "../lib/metaTemplates.ts";
 import { metadataScreenTemplate } from "../lib/metadataScreenTemplate.ts";
 import { buildMetadataTree } from "../lib/metadataTree.ts";
 import { WORKFLOW_STATUS, type WorkflowStatus, normalizeWorkflowStatus, workflowLabel } from "../lib/workflowStatus.ts";
@@ -749,10 +756,14 @@ export class MetadataScreen {
             ${DOC_ROLES.map(r => `<option value="${r}"${r === (doc.doc_role ?? "unknown") ? " selected" : ""}>${r}</option>`).join("")}
           </select>
         </label>
-        <label>Resource type
-          <input id="edit-restype" type="text" value="${this._esc(doc.resource_type ?? "")}" style="max-width:220px" placeholder="littérature, article, discours…">
+        <label>Type de document
+          <input id="edit-restype" type="text" list="restype-suggestions" value="${this._esc(doc.resource_type ?? "")}" style="max-width:220px" placeholder="roman, article de presse, discours…">
+          <datalist id="restype-suggestions">
+            ${RESOURCE_TYPE_SUGGESTIONS.map(t => `<option value="${this._esc(t)}"></option>`).join("")}
+          </datalist>
         </label>
       </div>
+      <div id="meta-fields-block" class="prep-meta-fields" style="margin:0.1rem 0 0.5rem"></div>
       <div class="prep-form-row">
         <label>Statut workflow
           <select id="edit-workflow-status">
@@ -847,8 +858,14 @@ export class MetadataScreen {
 
     this._renderRelationsList();
     this._renderTagsList();
+    this._renderMetaFieldsBlock();
     this._unitInspector.renderPreviewPanel();
     this._unitInspector.renderTokenEditorPanel();
+
+    // R6.3 — re-render type-specific fields when the document type is committed
+    // (datalist pick or blur) — `change`, not `input`, to avoid mid-typing flicker.
+    this._editPanelEl.querySelector<HTMLInputElement>("#edit-restype")!
+      .addEventListener("change", () => this._onRestypeChange());
 
     this._editPanelEl.querySelector("#save-doc-btn")!.addEventListener("click", () => this._saveDoc());
     this._editPanelEl.querySelector("#mark-review-btn")!.addEventListener("click", () => this._setWorkflowStatus("review"));
@@ -1371,6 +1388,7 @@ export class MetadataScreen {
     const pub_place = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-pub-place")!).value.trim() || null;
     const publisher = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-publisher")!).value.trim() || null;
     const notes = (this._editPanelEl.querySelector<HTMLTextAreaElement>("#edit-notes")!).value.trim() || null;
+    const meta = this._collectMetaFields();  // R6.3 — template + ad-hoc fields → meta_json.fields
 
     const btn = this._editPanelEl.querySelector<HTMLButtonElement>("#save-doc-btn")!;
     btn.disabled = true;
@@ -1394,6 +1412,7 @@ export class MetadataScreen {
         pub_place,
         publisher,
         notes,
+        meta,
       });
       const updated = res.doc;
       this._applyUpdatedDoc(updated);
@@ -1514,6 +1533,162 @@ export class MetadataScreen {
   }
 
   // ── Tags (R6.2 — namespaced labels) ───────────────────────────────────────
+
+  // ── R6.3 — type-specific / ad-hoc metadata fields (meta_json.fields) ──────────
+
+  /**
+   * Render the meta-fields editor shell into #meta-fields-block: a #meta-tpl-fields
+   * sub-container (type-driven inputs, re-rendered on type change) + a stable
+   * #meta-extra-rows editor for ad-hoc key/value pairs. Called once per panel render.
+   */
+  private _renderMetaFieldsBlock(): void {
+    const block = this._editPanelEl.querySelector<HTMLDivElement>("#meta-fields-block");
+    if (!block || !this._selectedDoc) return;
+
+    setHtml(block, raw(`
+      <div id="meta-tpl-fields"></div>
+      <div class="hint" style="margin:0.4rem 0 0.3rem">Champs supplémentaires (libres)</div>
+      <div id="meta-extra-rows"></div>
+      <button id="add-extra-field" type="button" class="btn btn-secondary btn-sm">＋ champ</button>
+    `));
+
+    const stored = fieldsOf(this._selectedDoc.meta_json);
+    const restype = this._editPanelEl.querySelector<HTMLInputElement>("#edit-restype")?.value ?? "";
+    const { extras } = partitionFields(stored, templateForType(restype));
+
+    this._renderTemplateFields(stored);
+    const rowsEl = block.querySelector<HTMLDivElement>("#meta-extra-rows")!;
+    for (const ex of extras) rowsEl.appendChild(this._buildExtraRow(ex.key, ex.value));
+    block.querySelector<HTMLButtonElement>("#add-extra-field")!
+      .addEventListener("click", () => rowsEl.appendChild(this._buildExtraRow("", "")));
+  }
+
+  /** (Re-)render only the type-driven template inputs, seeded from `values`. */
+  private _renderTemplateFields(values: Record<string, string>): void {
+    const host = this._editPanelEl.querySelector<HTMLDivElement>("#meta-tpl-fields");
+    if (!host) return;
+    const restype = this._editPanelEl.querySelector<HTMLInputElement>("#edit-restype")?.value ?? "";
+    const template = templateForType(restype);
+    if (!template.length) { setHtml(host, raw("")); return; }
+    const rows = template.map(f => `
+      <label style="flex:1 1 200px;min-width:180px">${this._esc(f.label)}
+        <input type="text" data-tpl-key="${this._esc(f.key)}" value="${this._esc(values[f.key] ?? "")}"
+               placeholder="${this._esc(f.placeholder ?? "")}">
+      </label>`).join("");
+    setHtml(host, raw(`
+      <div class="hint" style="margin:0.2rem 0 0.3rem;font-weight:600">Champs du type « ${this._esc(normalizeType(restype))} »</div>
+      <div class="prep-form-row" style="flex-wrap:wrap">${rows}</div>
+    `));
+  }
+
+  /** Build one editable ad-hoc field row (key input + value input + delete). */
+  private _buildExtraRow(key: string, value: string): HTMLElement {
+    const row = document.createElement("div");
+    row.className = "prep-form-row prep-meta-extra-row";
+    row.style.cssText = "align-items:flex-end;gap:0.4rem;margin-bottom:0.3rem";
+
+    const keyIn = document.createElement("input");
+    keyIn.type = "text";
+    keyIn.className = "prep-meta-extra-key";
+    keyIn.placeholder = "clé (ex. tirage)";
+    keyIn.value = key;
+    keyIn.style.cssText = "max-width:160px";
+
+    const valIn = document.createElement("input");
+    valIn.type = "text";
+    valIn.className = "prep-meta-extra-val";
+    valIn.placeholder = "valeur";
+    valIn.value = value;
+    valIn.style.cssText = "flex:1";
+
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "btn btn-secondary btn-sm";
+    del.setAttribute("aria-label", "Retirer ce champ");
+    del.title = "Retirer ce champ";
+    del.textContent = "✕";
+    del.addEventListener("click", () => row.remove());
+
+    row.append(keyIn, valIn, del);
+    return row;
+  }
+
+  /**
+   * On a document-type change, re-render only the template inputs — the extras editor
+   * (including half-entered rows) is left untouched. Any template value whose key is no
+   * longer in the new template is moved into the extras editor so it isn't lost.
+   */
+  private _onRestypeChange(): void {
+    if (!this._selectedDoc || !this._editPanelEl) return;
+    const collected = this._collectTemplateFields();
+    const restype = this._editPanelEl.querySelector<HTMLInputElement>("#edit-restype")?.value ?? "";
+    const newKeys = new Set(templateForType(restype).map(f => f.key));
+    const rowsEl = this._editPanelEl.querySelector<HTMLDivElement>("#meta-extra-rows");
+    if (rowsEl) {
+      for (const [k, v] of Object.entries(collected)) {
+        if (newKeys.has(k)) continue; // still a template field — stays in the template inputs
+        // Orphaned template value: the labelled field was authoritative (template wins on
+        // save), so carry its value into extras. If a row with that key already exists,
+        // overwrite its value with the winning one rather than dropping either.
+        const existingVal = this._findExtraValInput(rowsEl, k);
+        if (existingVal) existingVal.value = v;
+        else rowsEl.appendChild(this._buildExtraRow(k, v));
+      }
+    }
+    this._renderTemplateFields(collected);
+  }
+
+  /** Find the value input of the extra row whose key equals `key`, or null. */
+  private _findExtraValInput(rowsEl: HTMLDivElement, key: string): HTMLInputElement | null {
+    for (const rowEl of Array.from(rowsEl.querySelectorAll<HTMLDivElement>(".prep-meta-extra-row"))) {
+      const keyIn = rowEl.querySelector<HTMLInputElement>(".prep-meta-extra-key");
+      if ((keyIn?.value.trim() ?? "") === key) return rowEl.querySelector<HTMLInputElement>(".prep-meta-extra-val");
+    }
+    return null;
+  }
+
+  /** Collect non-empty template inputs from the DOM as a flat map. */
+  private _collectTemplateFields(): Record<string, string> {
+    const out: Record<string, string> = {};
+    if (!this._editPanelEl) return out;
+    this._editPanelEl.querySelectorAll<HTMLInputElement>("#meta-tpl-fields input[data-tpl-key]").forEach(inp => {
+      const k = inp.dataset.tplKey ?? "";
+      const v = inp.value.trim();
+      if (k && v) out[k] = v;
+    });
+    return out;
+  }
+
+  /** Collect all non-empty meta fields (template + extras) from the DOM as a flat map. */
+  private _collectMetaFields(): Record<string, string> {
+    const out: Record<string, string> = {};
+    if (!this._editPanelEl) return out;
+    // Extras first, so a labelled template field wins over a duplicate ad-hoc key.
+    this._editPanelEl.querySelectorAll<HTMLDivElement>("#meta-extra-rows .prep-meta-extra-row").forEach(rowEl => {
+      const k = (rowEl.querySelector<HTMLInputElement>(".prep-meta-extra-key")?.value ?? "").trim();
+      const v = (rowEl.querySelector<HTMLInputElement>(".prep-meta-extra-val")?.value ?? "").trim();
+      if (k && v) out[k] = v;
+    });
+    this._editPanelEl.querySelectorAll<HTMLInputElement>("#meta-fields-block input[data-tpl-key]").forEach(inp => {
+      const k = inp.dataset.tplKey ?? "";
+      const v = inp.value.trim();
+      if (k && v) out[k] = v;
+    });
+    return out;
+  }
+
+  /**
+   * Order-independent canonical form of a meta-fields map (for dirty comparison).
+   * Trims and drops empty values so the comparison is symmetric regardless of source
+   * (`_collectMetaFields` already drops empties; a stored map might not).
+   */
+  private _canonMeta(m: Record<string, string>): string {
+    const norm = Object.entries(m)
+      .map(([k, v]) => [k, v.trim()] as [string, string])
+      .filter(([, v]) => v !== "")
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    return JSON.stringify(norm);
+  }
 
   private _renderTagsList(): void {
     const container = this._editPanelEl.querySelector<HTMLElement>("#tags-list");
@@ -1953,7 +2128,8 @@ export class MetadataScreen {
       workTitle !== baseWorkTitle ||
       pubPlace !== basePubPlace ||
       publisher !== basePublisher ||
-      notesField !== baseNotes
+      notesField !== baseNotes ||
+      this._canonMeta(this._collectMetaFields()) !== this._canonMeta(fieldsOf(this._selectedDoc.meta_json))
     );
   }
 
