@@ -6805,6 +6805,24 @@ tr[data-len].prep-seg-row-context .prep-seg-cell-len {
 .prep-seg-canvas-surfbtn.active { background: #0c4a46; border-color: #0c4a46; color: #fff; }
 .prep-seg-canvas-surfbtn:disabled { opacity: 0.5; cursor: not-allowed; }
 .prep-seg-canvas-hint { font-size: 0.76rem; color: #64748b; }
+/* R5.4b-2 — Personnalisé controls panel (shown only when that tab is active). */
+.prep-seg-canvas-custom {
+  flex-basis: 100%; display: flex; flex-direction: column; gap: 0.35rem;
+  padding: 0.5rem 0.2rem 0.2rem; border-top: 1px dashed #e2e8f0; margin-top: 0.35rem;
+}
+.prep-seg-canvas-custom[hidden] { display: none; }
+.prep-seg-canvas-custom-row { display: flex; align-items: center; flex-wrap: wrap; gap: 0.3rem 0.7rem; }
+.prep-seg-canvas-custom-lbl { font-size: 0.76rem; color: #475569; font-weight: 500; }
+.prep-seg-canvas-radio, .prep-seg-canvas-chk {
+  display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.8rem; color: #334155; cursor: pointer;
+}
+.prep-seg-canvas-abbrev {
+  flex: 1; min-width: 180px; height: 26px; box-sizing: border-box; font-size: 0.8rem;
+  padding: 0 0.5rem; border: 1px solid #cbd5e1; border-radius: 6px; color: #334155;
+}
+.prep-seg-canvas-abbrev:focus { outline: none; border-color: #0c4a46; }
+.prep-seg-canvas-row-dim { opacity: 0.45; }
+.prep-seg-canvas-row-dim label { cursor: not-allowed; }
 .prep-seg-canvas-preview { padding: 0.5rem 0.2rem 0.3rem; }
 .prep-seg-canvas-empty { padding: 1rem; color: #64748b; font-size: 0.85rem; }
 .prep-seg-canvas-error { color: #b91c1c; }

@@ -26,7 +26,10 @@ import {
   segmentSummaryLine,
   needsAlignmentConfirm,
   surfaceHint,
+  defaultAbbreviations,
+  parseAbbreviations,
   type SegSurface,
+  type CustomSpecState,
 } from "../lib/segmentControls.ts";
 
 export class SegmentPane {
@@ -51,6 +54,12 @@ export class SegmentPane {
   private _busy = false;
   /** Guards against a stale async preview overwriting a newer one (doc/surface switch). */
   private _previewToken = 0;
+  /** Personnalisé (R5.4b-2) controls state → a full SegmentSpec via buildSegmentParams. */
+  private _custom: CustomSpecState = {
+    terminators: [".!?"], requireUppercase: false, wordMode: false, abbreviations: [],
+  };
+  /** Doc the abbreviation field was last pre-filled for — so a layer re-entry doesn't wipe edits. */
+  private _prefillDoc: number | null | undefined = undefined;
 
   constructor(
     root: HTMLElement,
@@ -76,9 +85,27 @@ export class SegmentPane {
             <button type="button" class="prep-seg-canvas-surfbtn" data-surface="brut" role="tab" aria-selected="false">Brut</button>
             <button type="button" class="prep-seg-canvas-surfbtn active" data-surface="phrases" role="tab" aria-selected="true">Phrases</button>
             <button type="button" class="prep-seg-canvas-surfbtn" data-surface="balises" role="tab" aria-selected="false">Balises [N]</button>
-            <button type="button" class="prep-seg-canvas-surfbtn" data-surface="custom" role="tab" aria-selected="false" disabled title="Personnalis&#233; &#8212; &#224; venir (R5.4b-2)">Personnalis&#233;</button>
+            <button type="button" class="prep-seg-canvas-surfbtn" data-surface="custom" role="tab" aria-selected="false">Personnalis&#233;</button>
           </div>
           <span class="prep-seg-canvas-hint" id="prep-seg-canvas-hint"></span>
+          <div class="prep-seg-canvas-custom" id="prep-seg-canvas-custom" hidden>
+            <div class="prep-seg-canvas-custom-row">
+              <span class="prep-seg-canvas-custom-lbl">D&#233;coupe :</span>
+              <label class="prep-seg-canvas-radio"><input type="radio" name="prep-seg-kind" value="term" checked /> Terminateurs</label>
+              <label class="prep-seg-canvas-radio"><input type="radio" name="prep-seg-kind" value="words" /> Mots</label>
+            </div>
+            <div class="prep-seg-canvas-custom-row" id="prep-seg-canvas-term-row">
+              <span class="prep-seg-canvas-custom-lbl">Terminateurs :</span>
+              <label class="prep-seg-canvas-chk"><input type="checkbox" data-term=".!?" checked /> . ! ?</label>
+              <label class="prep-seg-canvas-chk"><input type="checkbox" data-term=";:" /> ; :</label>
+              <label class="prep-seg-canvas-chk"><input type="checkbox" data-term="&#8230;" /> &#8230;</label>
+              <label class="prep-seg-canvas-chk"><input type="checkbox" id="prep-seg-uc" /> Majuscule apr&#232;s</label>
+            </div>
+            <div class="prep-seg-canvas-custom-row" id="prep-seg-canvas-abbrev-row">
+              <span class="prep-seg-canvas-custom-lbl" title="Le filet de base (M., p., d&#233;cimales) reste toujours actif">Abr&#233;viations en plus :</span>
+              <input type="text" id="prep-seg-abbrev" class="prep-seg-canvas-abbrev" placeholder="cap, p&#225;g, art&#8230;" autocomplete="off" spellcheck="false" />
+            </div>
+          </div>
         </div>
         <div class="prep-seg-canvas-preview" id="prep-seg-canvas-preview">
           <div class="prep-seg-canvas-empty">S&#233;lectionnez un document.</div>
@@ -91,6 +118,27 @@ export class SegmentPane {
         if (btn.disabled) return;
         this._setSurface(btn.dataset.surface as SegSurface);
       });
+    });
+
+    // Personnalisé (R5.4b-2) controls → _custom, then a debounced live preview.
+    this._root.querySelectorAll<HTMLInputElement>('input[name="prep-seg-kind"]').forEach((r) => {
+      r.addEventListener("change", () => {
+        this._custom.wordMode =
+          this._root.querySelector<HTMLInputElement>('input[name="prep-seg-kind"]:checked')?.value === "words";
+        this._syncCustomEnabled();
+        this._schedulePreview();
+      });
+    });
+    this._root.querySelectorAll<HTMLInputElement>("[data-term]").forEach((cb) => {
+      cb.addEventListener("change", () => { this._readTerminators(); this._schedulePreview(); });
+    });
+    this._root.querySelector<HTMLInputElement>("#prep-seg-uc")?.addEventListener("change", (e) => {
+      this._custom.requireUppercase = (e.target as HTMLInputElement).checked;
+      this._schedulePreview();
+    });
+    this._root.querySelector<HTMLInputElement>("#prep-seg-abbrev")?.addEventListener("input", (e) => {
+      this._custom.abbreviations = parseAbbreviations((e.target as HTMLInputElement).value);
+      this._schedulePreview();
     });
 
     // The summary + Apply live in the shared canvas sheet (sticky bottom, R5.3) if one is
@@ -111,6 +159,14 @@ export class SegmentPane {
     this._lastPreview = null;
     this._units = [];
     this._previewToken++; // invalidate any in-flight preview from the previous document
+    // Pre-fill the Personnalisé abbreviations from the doc's language pack — only on an actual
+    // document change, so switching layers back to Segmentation doesn't wipe the user's edits.
+    if (docId !== this._prefillDoc) {
+      this._prefillDoc = docId;
+      this._custom.abbreviations = defaultAbbreviations(lang);
+      const abbrevInput = this._root.querySelector<HTMLInputElement>("#prep-seg-abbrev");
+      if (abbrevInput) abbrevInput.value = this._custom.abbreviations.join(", ");
+    }
     if (docId === null) {
       this._renderEmpty("Sélectionnez un document.");
       this._renderApplyBar();
@@ -170,6 +226,8 @@ export class SegmentPane {
       b.setAttribute("aria-selected", String(on));
     });
     this._syncHint();
+    const customPanel = this._root.querySelector<HTMLElement>("#prep-seg-canvas-custom");
+    if (customPanel) customPanel.hidden = s !== "custom";
     if (s === "brut") {
       this._previewToken++; // cancel any in-flight preview render
       this._lastPreview = null;
@@ -178,6 +236,26 @@ export class SegmentPane {
     } else {
       this._schedulePreview();
     }
+  }
+
+  /** Read the checked terminator boxes into _custom.terminators (order = DOM order). */
+  private _readTerminators(): void {
+    const chunks: string[] = [];
+    this._root.querySelectorAll<HTMLInputElement>("[data-term]").forEach((cb) => {
+      if (cb.checked && cb.dataset.term) chunks.push(cb.dataset.term);
+    });
+    this._custom.terminators = chunks;
+  }
+
+  /** Grey out the terminator + abbreviation rows when "Mots" is chosen (they don't apply). */
+  private _syncCustomEnabled(): void {
+    const dim = this._custom.wordMode;
+    ["#prep-seg-canvas-term-row", "#prep-seg-canvas-abbrev-row"].forEach((sel) => {
+      const row = this._root.querySelector<HTMLElement>(sel);
+      if (!row) return;
+      row.classList.toggle("prep-seg-canvas-row-dim", dim);
+      row.querySelectorAll<HTMLInputElement>("input").forEach((i) => { i.disabled = dim; });
+    });
   }
 
   /** Brut view: the current units in full. This tab exists precisely to read the raw text,
@@ -218,7 +296,7 @@ export class SegmentPane {
     const token = ++this._previewToken;
     const previewEl = this._root.querySelector<HTMLElement>("#prep-seg-canvas-preview");
     if (previewEl) setHtml(previewEl, raw(`<div class="prep-seg-canvas-empty">Calcul de l&#8217;aper&#231;u&#8230;</div>`));
-    const params = buildSegmentParams(this._surface);
+    const params = buildSegmentParams(this._surface, this._custom);
     try {
       const resp = await segmentPreview(conn, { doc_id: this._docId, lang: this._lang ?? "und", ...params });
       if (token !== this._previewToken) return; // a newer preview superseded this one
@@ -315,7 +393,7 @@ export class SegmentPane {
     this._busy = true;
     const btn = this._applyBarEl?.querySelector<HTMLButtonElement>("#prep-seg-canvas-apply");
     if (btn) { btn.disabled = true; btn.textContent = "Application…"; }
-    const params = buildSegmentParams(this._surface);
+    const params = buildSegmentParams(this._surface, this._custom);
     try {
       const resp = await segment(conn, { doc_id: this._docId, lang: this._lang ?? "und", ...params });
       this._notify(`Segmentation appliquée — ${segmentSummaryLine(resp.units_input, resp.units_output)}.`);

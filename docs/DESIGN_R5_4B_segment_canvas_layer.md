@@ -106,8 +106,12 @@ recouvrent. Concrètement le préréglage `phrases` passe `require_uppercase_aft
   (unités actuelles en entier), **aperçu liste** (Phrases/Balises) débattu, Appliquer (confirm *conditionnel*
   + reload), client `preset?`/`spec?` étendu, chip d'état cliquable. Relogue le cœur sentences/markers du
   legacy. **Moteur associé** : « Phrases » sans condition de majuscule + ponctuation fermante (cf. §2.3).
-- **R5.4b-2** — onglet **Personnalisé** : terminateurs cumulables (cases) + **majuscule-après** (interrupteur,
-  migré de Phrases) + Mots (`kind: whitespace`) → construit un `spec`. (Option abréviations FR/EN ici.)
+- **R5.4b-2** ✅ — onglet **Personnalisé** : point de départ **Terminateurs | Mots** ; cases terminateurs
+  cumulables (`.!?` / `;:` / `…`) ; **majuscule-après** en interrupteur (migré de Phrases) ; champ
+  **« Abréviations en plus »** *libre, pré-rempli du pack de la langue du doc et éditable* (décision
+  2026-07-06) → règle le cas espagnol (`cap`, `pág`), le filet de base restant serveur-side + toujours
+  actif. Construit un `spec` (`buildSegmentParams` / `CustomSpecState`) ; front-pur (le binaire gère déjà
+  `spec`). Le champ ne se re-remplit qu'au *changement de document* (pas au retour sur la couche).
 - **R5.4b-3 — anomalies + édition merge/split (relog du legacy)** : reloger du `SegmentationView` la
   **détection d'anomalies** — « segments courts + voisins » et **« ponctuation orpheline »** (regex
   `^\s*[»)\]}”’…]+`, *langue-aware* : `« ‹ ›` pour DE, cf. `SegmentationView.ts:920-966`) — **plus**

@@ -13,13 +13,38 @@ import type { SegmentPreviewSegment, SegmentSpecInput } from "./sidecarClient.ts
 export type SegSurface = "brut" | "phrases" | "balises" | "custom";
 
 /** State of the "Personnalisé" controls (R5.4b-2). Kept here so buildSegmentParams
- *  is total over every surface even though b-1 only wires phrases/balises. */
+ *  is total over every surface even though b-1 only wired phrases/balises. */
 export interface CustomSpecState {
   /** Selected terminator chunks, e.g. [".!?", ";:"] — joined into the spec's char set. */
   terminators: string[];
   requireUppercase: boolean;
   /** "Mots" quick start → whitespace kind (terminators ignored). */
   wordMode: boolean;
+  /** Extra abbreviations to protect, on top of the always-on base filet (M., p., decimals…). */
+  abbreviations: string[];
+}
+
+/** Language abbreviation packs — mirrors segmenter._PACK_EXTRA_ABBREVIATIONS so the
+ *  Personnalisé field can pre-fill the doc's pack (the base filet is server-side & always on). */
+const PACK_ABBREVIATIONS: Record<string, string[]> = {
+  fr: ["ann", "chap", "env", "etc", "par"],
+  en: ["approx", "dept", "misc", "chap"],
+};
+
+/** Extra abbreviations to pre-fill for a document language (empty for unknown languages). */
+export function defaultAbbreviations(lang: string | null | undefined): string[] {
+  const l = (lang ?? "").toLowerCase();
+  if (l.startsWith("fr")) return [...PACK_ABBREVIATIONS.fr];
+  if (l.startsWith("en")) return [...PACK_ABBREVIATIONS.en];
+  return [];
+}
+
+/** Parse a free-text abbreviation field (comma/space separated) into a clean token list. */
+export function parseAbbreviations(text: string): string[] {
+  return text
+    .split(/[\s,;]+/)
+    .map((s) => s.trim().replace(/\.+$/, "")) // drop a trailing dot the user may type ("cap." → "cap")
+    .filter(Boolean);
 }
 
 export interface SegmentParams {
@@ -36,13 +61,14 @@ export function buildSegmentParams(surface: SegSurface, custom?: CustomSpecState
   if (surface === "brut") return {}; // "Brut" is the current state — no segmentation is requested.
   if (surface === "phrases") return { preset: "phrases" };
   if (surface === "balises") return { preset: "balises" };
-  const c = custom ?? { terminators: [".!?"], requireUppercase: true, wordMode: false };
+  const c = custom ?? { terminators: [".!?"], requireUppercase: false, wordMode: false, abbreviations: [] };
   if (c.wordMode) return { spec: { kind: "whitespace", label: "mots" } };
   return {
     spec: {
       kind: "terminator",
       terminators: c.terminators.join(""),
       require_uppercase_after: c.requireUppercase,
+      protect_abbreviations: c.abbreviations,
       label: "custom",
     },
   };

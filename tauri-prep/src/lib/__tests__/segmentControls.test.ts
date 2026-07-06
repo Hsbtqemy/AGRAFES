@@ -6,6 +6,8 @@ import {
   segmentSummaryLine,
   needsAlignmentConfirm,
   surfaceHint,
+  defaultAbbreviations,
+  parseAbbreviations,
   type CustomSpecState,
 } from "../segmentControls.ts";
 
@@ -19,22 +21,51 @@ describe("buildSegmentParams", () => {
     expect(buildSegmentParams("brut")).toEqual({});
   });
 
-  it("builds a terminator spec from the custom terminator set", () => {
-    const custom: CustomSpecState = { terminators: [".!?", ";:"], requireUppercase: false, wordMode: false };
+  it("builds a terminator spec from the custom terminator set + extra abbreviations", () => {
+    const custom: CustomSpecState = {
+      terminators: [".!?", ";:"], requireUppercase: false, wordMode: false, abbreviations: ["cap", "pág"],
+    };
     expect(buildSegmentParams("custom", custom)).toEqual({
-      spec: { kind: "terminator", terminators: ".!?;:", require_uppercase_after: false, label: "custom" },
+      spec: {
+        kind: "terminator", terminators: ".!?;:", require_uppercase_after: false,
+        protect_abbreviations: ["cap", "pág"], label: "custom",
+      },
     });
   });
 
-  it("custom word mode → whitespace spec (terminators ignored)", () => {
-    const custom: CustomSpecState = { terminators: [".!?"], requireUppercase: true, wordMode: true };
+  it("custom word mode → whitespace spec (terminators + abbreviations ignored)", () => {
+    const custom: CustomSpecState = {
+      terminators: [".!?"], requireUppercase: true, wordMode: true, abbreviations: ["cap"],
+    };
     expect(buildSegmentParams("custom", custom)).toEqual({ spec: { kind: "whitespace", label: "mots" } });
   });
 
-  it("custom with no state falls back to the phrases-like default terminator spec", () => {
+  it("custom with no state falls back to a bare terminator spec (no capital condition)", () => {
     expect(buildSegmentParams("custom")).toEqual({
-      spec: { kind: "terminator", terminators: ".!?", require_uppercase_after: true, label: "custom" },
+      spec: {
+        kind: "terminator", terminators: ".!?", require_uppercase_after: false,
+        protect_abbreviations: [], label: "custom",
+      },
     });
+  });
+});
+
+describe("defaultAbbreviations", () => {
+  it("pre-fills the doc language pack, empty for unknown languages", () => {
+    expect(defaultAbbreviations("fr")).toEqual(["ann", "chap", "env", "etc", "par"]);
+    expect(defaultAbbreviations("en-US")).toEqual(["approx", "dept", "misc", "chap"]);
+    expect(defaultAbbreviations("es")).toEqual([]);
+    expect(defaultAbbreviations(null)).toEqual([]);
+  });
+});
+
+describe("parseAbbreviations", () => {
+  it("splits on commas / spaces / semicolons and strips trailing dots", () => {
+    expect(parseAbbreviations("cap, pág;  art. \n etc.")).toEqual(["cap", "pág", "art", "etc"]);
+  });
+  it("empty / whitespace input → empty list", () => {
+    expect(parseAbbreviations("   ")).toEqual([]);
+    expect(parseAbbreviations("")).toEqual([]);
   });
 });
 
