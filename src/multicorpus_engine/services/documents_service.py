@@ -12,8 +12,9 @@ schema backfill (``_ensure_*`` — they manage schema + take the lock) and the
 
 from __future__ import annotations
 
+import json
 import sqlite3
-from typing import Any
+from typing import Any, Optional
 
 from ..indexer import stale_doc_ids
 from ..runs import utcnow_iso
@@ -21,6 +22,47 @@ from .errors import BadRequestError, NotFoundError, ValidationError
 from .validation import Field, validate
 
 DOC_WORKFLOW_STATUSES = {"draft", "review", "validated"}
+
+# R6.3 — user-entered type-specific / ad-hoc metadata fields live under this key in
+# documents.meta_json, kept apart from importer-written provenance keys (e.g. TXT's
+# "encoding", CoNLL-U's "import_mode"/"sentences") so a metadata save never clobbers them.
+_META_FIELDS_KEY = "fields"
+
+
+def _parse_doc_meta(raw: Any) -> Optional[dict]:
+    """Best-effort parse of a document's ``meta_json`` column into a dict.
+
+    Returns None for NULL/empty/unparseable/non-object values (never raises) so the
+    read path exposes ``meta_json: null`` rather than an empty object in that case.
+    """
+    if not raw:
+        return None
+    if isinstance(raw, dict):
+        return raw
+    try:
+        parsed = json.loads(raw)
+    except (ValueError, TypeError):
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def _clean_meta_fields(meta: dict) -> dict[str, str]:
+    """Normalise a raw ``meta`` dict into the stored ``fields`` map.
+
+    Fields are text-like: only scalar ``str``/``int``/``float`` values are kept (numbers
+    stringified), trimmed, with empty/whitespace dropped. ``None`` (an explicit clear),
+    ``bool`` (a JSON ``false`` must not become the truthy string ``"False"``) and
+    containers (``list``/``dict`` — their Python repr is not valid data) are all dropped
+    rather than stringified. Keys are stringified.
+    """
+    cleaned: dict[str, str] = {}
+    for k, v in meta.items():
+        if isinstance(v, bool) or not isinstance(v, (str, int, float)):
+            continue
+        s = (v if isinstance(v, str) else str(v)).strip()
+        if s:
+            cleaned[str(k)] = s
+    return cleaned
 
 # Columns a client may set via update / bulk_update.
 _UPDATABLE = {
@@ -49,7 +91,7 @@ _LIST_SQL = """
            d.author_lastname, d.author_firstname, d.doc_date,
            d.text_start_n,
            d.translator_lastname, d.translator_firstname,
-           d.work_title, d.pub_place, d.publisher, d.notes
+           d.work_title, d.pub_place, d.publisher, d.notes, d.meta_json
     FROM documents d
     LEFT JOIN (
         SELECT doc_id, COUNT(*) AS unit_count
@@ -71,7 +113,7 @@ _UPDATED_DOC_SQL = """
            workflow_status, validated_at, validated_run_id,
            author_lastname, author_firstname, doc_date,
            translator_lastname, translator_firstname,
-           work_title, pub_place, publisher, notes
+           work_title, pub_place, publisher, notes, meta_json
     FROM documents
     WHERE doc_id = ?
 """
@@ -94,7 +136,8 @@ def list_documents(conn: sqlite3.Connection) -> dict[str, Any]:
             "author_lastname": r[13], "author_firstname": r[14], "doc_date": r[15],
             "text_start_n": r[16], "translator_lastname": r[17],
             "translator_firstname": r[18], "work_title": r[19], "pub_place": r[20],
-            "publisher": r[21], "notes": r[22], "fts_stale": r[0] in stale_ids,
+            "publisher": r[21], "notes": r[22], "meta_json": _parse_doc_meta(r[23]),
+            "fts_stale": r[0] in stale_ids,
         }
         for r in rows
     ]
@@ -183,20 +226,49 @@ _UPDATE_DOC_SCHEMA = (Field("doc_id", required=True, error=BadRequestError),)
 def update_document(conn: sqlite3.Connection, body: dict) -> dict[str, Any]:
     """Update one document's metadata (POST /documents/update).
 
-    Raises BadRequestError (no doc_id / no fields), ValidationError (workflow rules)
-    or NotFoundError (unknown doc_id).
+    Besides the flat ``_UPDATABLE`` columns, accepts an optional ``meta`` object
+    (R6.3) — user-entered type-specific / ad-hoc fields. It is *merged* into
+    ``documents.meta_json`` under the ``fields`` key, replacing that sub-object while
+    preserving sibling provenance keys written by importers (e.g. ``encoding``). Empty
+    values are dropped; an empty result clears the ``fields`` key.
+
+    Raises BadRequestError (no doc_id / no fields / bad meta), ValidationError
+    (workflow rules) or NotFoundError (unknown doc_id).
     """
     doc_id = validate(body, _UPDATE_DOC_SCHEMA)["doc_id"]
     updates = {k: v for k, v in body.items() if k in _UPDATABLE}
-    if not updates:
+
+    meta_in = body.get("meta")
+    if meta_in is not None and not isinstance(meta_in, dict):
+        raise BadRequestError("meta must be an object")
+    if not updates and meta_in is None:
         raise BadRequestError(_NO_FIELDS_MSG)
 
     _coerce_workflow_fields(updates)
 
+    if meta_in is not None:
+        row = conn.execute(
+            "SELECT meta_json FROM documents WHERE doc_id = ?", (doc_id,)
+        ).fetchone()
+        existing = (_parse_doc_meta(row[0]) if row is not None else None) or {}
+        cleaned = _clean_meta_fields(meta_in)
+        if cleaned:
+            existing[_META_FIELDS_KEY] = cleaned
+        else:
+            existing.pop(_META_FIELDS_KEY, None)
+        # Column write goes through the same SET clause as the flat fields below.
+        updates["meta_json"] = json.dumps(existing, ensure_ascii=False) if existing else None
+
     set_clause = ", ".join(f"{k} = ?" for k in updates)
     params = list(updates.values()) + [doc_id]
-    cur = conn.execute(f"UPDATE documents SET {set_clause} WHERE doc_id = ?", params)
-    conn.commit()
+    # Wrap the write so a bad param binding can't leave a dangling transaction on the
+    # shared sidecar connection (audit SID-03 — matches bulk_update/delete discipline).
+    try:
+        cur = conn.execute(f"UPDATE documents SET {set_clause} WHERE doc_id = ?", params)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     if cur.rowcount == 0:
         raise NotFoundError(f"Document doc_id={doc_id} not found")
 
@@ -207,6 +279,7 @@ def update_document(conn: sqlite3.Connection, body: dict) -> dict[str, Any]:
         "validated_run_id": row[7], "author_lastname": row[8], "author_firstname": row[9],
         "doc_date": row[10], "translator_lastname": row[11], "translator_firstname": row[12],
         "work_title": row[13], "pub_place": row[14], "publisher": row[15], "notes": row[16],
+        "meta_json": _parse_doc_meta(row[17]),
     }
     return {"updated": 1, "doc": doc}
 

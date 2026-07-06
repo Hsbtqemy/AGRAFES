@@ -14,7 +14,7 @@ from typing import Any
 from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
-CONTRACT_VERSION = "1.6.48"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.49"  # semantic versioning for the sidecar API contract
 # SID-08 / OPS-03: the API version IS the contract version — derived, never a
 # second hand-maintained literal, so the two can no longer drift. /health reports
 # the *engine* version under `version` (it predates the sidecar); every other
@@ -167,6 +167,11 @@ API_VERSION = CONTRACT_VERSION
 #         corpus (kind,value)), POST /documents/tags/add|remove. Additive `tags` filter on POST /query
 #         + /query/facets (array of {kind,value}; a doc matches ANY pair — OR). token_query/stats not
 #         covered. Logic in services/tags_service.py + query._apply_doc_filters.
+# 1.6.49: type-specific / ad-hoc document metadata (R6.3). No migration (documents.meta_json exists).
+#         POST /documents/update gains an optional `meta` object — merged into documents.meta_json under
+#         the `fields` key, preserving importer provenance keys (TXT encoding, CoNLL-U import stats).
+#         DocumentRecord gains parsed `meta_json` (object|null) on GET /documents + the update response
+#         so the front can round-trip the fields. Logic in services/documents_service.update_document.
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
@@ -3685,6 +3690,7 @@ def openapi_spec() -> dict[str, Any]:
                         "author_firstname": {"type": "string", "nullable": True},
                         "doc_date": {"type": "string", "nullable": True},
                         "notes": {"type": "string", "nullable": True, "description": "Free-text document-level notes-to-self (R6.1); ≠ doc_relations.note"},
+                        "meta_json": {"type": "object", "nullable": True, "description": "Parsed documents.meta_json (R6.3): importer provenance keys alongside user-entered type-specific / ad-hoc fields under the `fields` key", "additionalProperties": True},
                         "unit_count": {"type": "integer"},
                         "token_count": {"type": "integer"},
                         "annotation_status": {
@@ -4099,6 +4105,7 @@ def openapi_spec() -> dict[str, Any]:
                         "author_firstname": {"type": "string", "nullable": True},
                         "doc_date": {"type": "string", "nullable": True},
                         "notes": {"type": "string", "nullable": True},
+                        "meta": {"type": "object", "nullable": True, "description": "R6.3 type-specific / ad-hoc metadata fields; merged into documents.meta_json under the `fields` key (importer provenance keys preserved). Empty values drop the field.", "additionalProperties": True},
                     },
                 },
                 "DocumentBulkUpdateRequest": {

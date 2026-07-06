@@ -1400,6 +1400,12 @@
           "language": {
             "type": "string"
           },
+          "meta_json": {
+            "additionalProperties": true,
+            "description": "Parsed documents.meta_json (R6.3): importer provenance keys alongside user-entered type-specific / ad-hoc fields under the `fields` key",
+            "nullable": true,
+            "type": "object"
+          },
           "notes": {
             "description": "Free-text document-level notes-to-self (R6.1); ≠ doc_relations.note",
             "nullable": true,
@@ -1474,6 +1480,12 @@
           },
           "language": {
             "type": "string"
+          },
+          "meta": {
+            "additionalProperties": true,
+            "description": "R6.3 type-specific / ad-hoc metadata fields; merged into documents.meta_json under the `fields` key (importer provenance keys preserved). Empty values drop the field.",
+            "nullable": true,
+            "type": "object"
           },
           "notes": {
             "nullable": true,
@@ -4183,8 +4195,8 @@
   "info": {
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
-    "version": "1.6.48",
-    "x-contract-version": "1.6.48"
+    "version": "1.6.49",
+    "x-contract-version": "1.6.49"
   },
   "openapi": "3.0.3",
   "paths": {
