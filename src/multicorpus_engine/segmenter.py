@@ -60,15 +60,21 @@ _PACK_EXTRA_ABBREVIATIONS: dict[str, tuple[str, ...]] = {
 }
 
 
-def _compile_abbrev_regex(pack: str) -> re.Pattern:
-    extras = _PACK_EXTRA_ABBREVIATIONS.get(pack)
-    if extras is None:
-        raise ValueError(f"Unknown segmentation pack: {pack!r}")
+def _compile_abbrev_regex_from_list(extras: tuple[str, ...]) -> re.Pattern:
+    """Compile the abbreviation-protection regex: the shared base pattern plus an
+    optional list of extra abbreviations (each protected from a false sentence break)."""
     if not extras:
         return re.compile(_BASE_ABBREV_PATTERN, flags=re.IGNORECASE)
     escaped = "|".join(re.escape(token) for token in extras)
     pattern = f"{_BASE_ABBREV_PATTERN}|\\b(?:{escaped})\\."
     return re.compile(pattern, flags=re.IGNORECASE)
+
+
+def _compile_abbrev_regex(pack: str) -> re.Pattern:
+    extras = _PACK_EXTRA_ABBREVIATIONS.get(pack)
+    if extras is None:
+        raise ValueError(f"Unknown segmentation pack: {pack!r}")
+    return _compile_abbrev_regex_from_list(extras)
 
 
 _ABBREV_RE_BY_PACK: dict[str, re.Pattern] = {
@@ -96,35 +102,91 @@ def resolve_segment_pack(pack: str | None, lang: str = "und") -> str:
 
 
 # ---------------------------------------------------------------------------
-# Public helpers
+# Configurable segmentation spec (R5.4)
 # ---------------------------------------------------------------------------
 
+# The "capital letter / opening quote" class a sentence terminator must be
+# followed by — kept byte-identical to the historical _SPLIT_RE follow-set so the
+# "phrases" preset reproduces today's splitter exactly.
+_UPPER_FOLLOW = "A-ZÀ-Ÿ\"‘’“”("
 
-def segment_text(text: str, lang: str = "und", pack: str | None = None) -> list[str]:
-    """Split *text* into sentence strings using rule-based regex.
 
-    Strategy:
-    1. Replace known abbreviations with null-byte placeholders so their
-       terminal periods are invisible to the sentence-split regex.
-    2. Split on `(?<=[.!?])\\s+(?=[A-ZÀ-Ÿ…])` — end-punct then whitespace
-       then a capital letter (handles FR and EN text well).
-    3. Restore placeholders.
+@dataclass(frozen=True)
+class SegmentSpec:
+    """A configurable segmentation boundary (R5.4).
 
-    Returns a non-empty list of stripped sentence strings. If no split is
-    found the original text is returned as a single-element list.
+    ``kind``:
+      - ``"terminator"`` — split *after* any char in ``terminators`` at the
+        following whitespace. ``require_uppercase_after`` gates on a capital/quote
+        following (robust for sentences; **turn OFF** for clause ``;:`` or word
+        splitting, which are followed by lowercase). ``protect_abbreviations``
+        shields listed abbreviations (``M.``, ``etc.``…) from false breaks.
+      - ``"whitespace"`` — split on whitespace runs (each token a segment) → words.
+      - ``"markers"`` — split on embedded ``[N]`` markers (external_id semantics).
 
-    Args:
-        text: Text to segment (already normalized, e.g. text_norm).
-        lang: ISO language code.
-        pack: Optional quality pack ("auto", "default", "fr_strict", "en_strict").
+    (``"pattern"`` — line-anchored boundaries for verse / speech turns — is R5.4c;
+    it needs the original line structure, not the normalized ``text_norm``.)
     """
+
+    kind: str = "terminator"
+    terminators: str = ".!?"
+    require_uppercase_after: bool = True
+    protect_abbreviations: tuple[str, ...] = ()
+    label: str = "phrases"
+
+
+_MARKERS_SPEC = SegmentSpec(kind="markers", label="markers")
+
+
+def resolve_preset(name: str | None, lang: str = "und", pack: str | None = None) -> SegmentSpec:
+    """Resolve a built-in preset name to a :class:`SegmentSpec`.
+
+    ``"phrases"`` reproduces the historical sentence splitter (terminators ``.!?``
+    + capital-follows + the language's abbreviation pack) so the no-spec path stays
+    byte-identical. ``"mots"`` = whitespace (words) ; ``"balises"`` = ``[N]`` markers.
+    """
+    key = (name or "phrases").strip().lower()
+    if key == "phrases":
+        resolved_pack = resolve_segment_pack(pack, lang)
+        return SegmentSpec(
+            kind="terminator",
+            terminators=".!?",
+            require_uppercase_after=True,
+            protect_abbreviations=_PACK_EXTRA_ABBREVIATIONS[resolved_pack],
+            label=resolved_pack,
+        )
+    if key in ("mots", "words"):
+        return SegmentSpec(kind="whitespace", label="mots")
+    if key in ("balises", "markers"):
+        return _MARKERS_SPEC
+    raise ValueError(
+        f"Unknown segmentation preset: {name!r}. Use one of: phrases, mots, balises."
+    )
+
+
+def _compile_terminator_re(spec: SegmentSpec) -> re.Pattern:
+    """Split regex for a terminator spec: split at the whitespace *after* any
+    terminator char, optionally requiring a capital/quote to follow."""
+    cls = "".join(re.escape(c) for c in spec.terminators)
+    if spec.require_uppercase_after:
+        return re.compile(rf"(?<=[{cls}])\s+(?=[{_UPPER_FOLLOW}])")
+    return re.compile(rf"(?<=[{cls}])\s+")
+
+
+def _split_terminator(text: str, spec: SegmentSpec) -> list[str]:
+    """Terminator-based split — generalises the historical ``segment_text`` body:
+    protect abbreviations → split on the boundary regex → restore. Byte-identical
+    to the old code when ``spec`` is the ``phrases`` preset."""
     if not text or not text.strip():
         return [text] if text else []
+    if not spec.terminators:
+        # No boundary characters → single segment (guards against an invalid empty
+        # `[]` regex class when a custom spec supplies no terminators).
+        return [text.strip()]
 
-    resolved_pack = resolve_segment_pack(pack, lang)
-    abbrev_re = _ABBREV_RE_BY_PACK[resolved_pack]
+    abbrev_re = _compile_abbrev_regex_from_list(spec.protect_abbreviations)
+    split_re = _compile_terminator_re(spec)
 
-    # Step 1: protect abbreviations
     counter = 0
     placeholders: dict[str, str] = {}
 
@@ -136,11 +198,8 @@ def segment_text(text: str, lang: str = "und", pack: str | None = None) -> list[
         return ph
 
     protected = abbrev_re.sub(_protect, text)
+    raw_sentences = split_re.split(protected)
 
-    # Step 2: split on sentence boundaries
-    raw_sentences = _SPLIT_RE.split(protected)
-
-    # Step 3: restore abbreviations in each fragment
     result: list[str] = []
     for fragment in raw_sentences:
         restored = fragment
@@ -149,8 +208,40 @@ def segment_text(text: str, lang: str = "und", pack: str | None = None) -> list[
         stripped = restored.strip()
         if stripped:
             result.append(stripped)
-
     return result if result else [text.strip()]
+
+
+def split_unit_text(text: str, spec: SegmentSpec) -> list[tuple[int | None, str]]:
+    """The single split primitive shared by both resegmentation paths (R5.4).
+
+    Returns ``(external_id | None, segment)`` tuples — ``external_id`` is only set
+    by the ``markers`` kind (from ``[N]``); ``None`` for terminator/whitespace.
+    """
+    if spec.kind == "markers":
+        return segment_text_markers(text)
+    if spec.kind == "whitespace":
+        return [(None, tok) for tok in re.split(r"\s+", (text or "").strip()) if tok]
+    return [(None, seg) for seg in _split_terminator(text, spec)]
+
+
+# ---------------------------------------------------------------------------
+# Public helpers
+# ---------------------------------------------------------------------------
+
+
+def segment_text(text: str, lang: str = "und", pack: str | None = None) -> list[str]:
+    """Split *text* into sentence strings (rule-based).
+
+    Thin wrapper over the ``phrases`` preset (R5.4) — protect abbreviations, split
+    on ``(?<=[.!?])\\s+(?=[A-ZÀ-Ÿ…])``, restore. Kept for the many existing callers;
+    byte-identical to the historical splitter.
+
+    Args:
+        text: Text to segment (already normalized, e.g. text_norm).
+        lang: ISO language code.
+        pack: Optional quality pack ("auto", "default", "fr_strict", "en_strict").
+    """
+    return _split_terminator(text, resolve_preset("phrases", lang, pack))
 
 
 # ---------------------------------------------------------------------------
@@ -326,7 +417,7 @@ def resegment_document_markers(
         # (all share one parent) when splitting a single blob — a better coarse grain
         # from ¤/blank-line cues comes with R2.2.
         parent_meta = json.dumps({"parent_n": row["n"]})
-        segments = segment_text_markers(text_norm)
+        segments = split_unit_text(text_norm, _MARKERS_SPEC)  # == segment_text_markers (R5.4)
         first_seg_n[row["n"]] = global_n
         for ext_id, seg_text in segments:
             if ext_id is None:
@@ -454,8 +545,13 @@ def resegment_document(
     pack: str | None = None,
     run_logger: Optional[logging.Logger] = None,
     record_action: Optional[ResegmentActionRecorder] = None,
+    spec: Optional[SegmentSpec] = None,
 ) -> SegmentationReport:
-    """Replace line units in *doc_id* with sentence-segmented units.
+    """Replace line units in *doc_id* with segments per a :class:`SegmentSpec`.
+
+    ``spec=None`` reproduces the historical sentence segmentation (``phrases``
+    preset from ``lang``/``pack``) **byte-identically**; a caller may pass any
+    terminator/whitespace spec (markers go through ``resegment_document_markers``).
 
     Steps:
     1. Load all line units (text_norm) ordered by n.
@@ -472,6 +568,16 @@ def resegment_document(
     """
     log = run_logger or logger
     resolved_pack = resolve_segment_pack(pack, lang)
+    # R5.4 — resolve the boundary spec. spec=None → the historical "phrases" preset
+    # (byte-identical). report_pack labels the output in the report/undo payload.
+    seg_spec = spec if spec is not None else resolve_preset("phrases", lang, pack)
+    report_pack = resolved_pack if spec is None else (seg_spec.label or "custom")
+    if seg_spec.kind == "markers":
+        # Markers carry external_id semantics + their own warnings/no-undo path.
+        raise ValueError(
+            "resegment_document handles terminator/whitespace specs only; "
+            "route markers specs through resegment_document_markers."
+        )
 
     # Respect paratextual boundary: units with n < text_start_n are kept as-is.
     # We grab full unit fields here so the Mode A undo recorder can rebuild
@@ -503,7 +609,7 @@ def resegment_document(
             doc_id=doc_id,
             units_input=0,
             units_output=0,
-            segment_pack=resolved_pack,
+            segment_pack=report_pack,
             warnings=[f"No text units found for doc_id={doc_id} (paratextual boundary: n≥{text_start_n})"],
         )
 
@@ -542,10 +648,10 @@ def resegment_document(
         # grouping + the bounded aligner (R3) without a migration. Undo is unaffected:
         # the snapshot restores the pre-resegment units with their original meta_json.
         parent_meta = json.dumps({"parent_n": row["n"]})
-        sentences = segment_text(text_norm, lang=lang, pack=resolved_pack)
+        segs = split_unit_text(text_norm, seg_spec)
         first_seg_n[row["n"]] = global_n
-        for sent in sentences:
-            new_units.append((doc_id, "line", global_n, None, sent, sent, parent_meta, src))
+        for ext_id, sent in segs:
+            new_units.append((doc_id, "line", global_n, ext_id, sent, sent, parent_meta, src))
             global_n += 1
 
     # Delete stale alignment_links
@@ -624,7 +730,7 @@ def resegment_document(
         ]
         action_id = record_action({
             "doc_id":            doc_id,
-            "pack":              resolved_pack,
+            "pack":              report_pack,
             "lang":              lang,
             "text_start_n":      text_start_n,
             "units_before":      units_before_payload,
@@ -648,7 +754,7 @@ def resegment_document(
         doc_id=doc_id,
         units_input=len(rows),
         units_output=len(new_units),
-        segment_pack=resolved_pack,
+        segment_pack=report_pack,
         warnings=[warn] if deleted_links > 0 else [],
         roles_reapplied=roles_reapplied,
         action_id=action_id,

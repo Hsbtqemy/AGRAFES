@@ -112,10 +112,14 @@ et aux endpoints `/segment(/preview)` :
 
 ## 6. Tranches (esquisse, à ordonnancer au ticket)
 
-- **R5.4a — Moteur : `SegmentSpec` (grain fin, terminateur + motif).** Généraliser
-  `segment_text`/`resegment_document` + params d'endpoint ; comportement actuel = préréglage
-  « Phrases ». Préréglages Phrases/Balises (+ Mots/Vers en points de départ). Tests moteur (le
-  destructif se teste sur une base jetable, mais l'outil ne l'impose pas à l'utilisateur).
+- **R5.4a — Moteur : `SegmentSpec`.** 🟡 *cœur livré (endpoints/contrat à suivre)* —
+  `SegmentSpec` (kinds `terminator` / `whitespace` / `markers`) + `split_unit_text` unifiant les
+  deux resegmentations ; préréglages **phrases / mots / balises** ; `segment_text` /
+  `resegment_document` généralisés **byte-identiques** (spec=None → phrases). Terminateurs =
+  ensemble cumulable + `require_uppercase_after`. **Vers/Tours (motif de ligne) → R5.4c** (besoin
+  de la structure de ligne d'origine, pas de `text_norm`). *Reste R5.4a* : endpoints
+  `/segment(/preview)` additifs + contrat. (Le destructif se teste sur une base jetable, sans
+  l'imposer à l'utilisateur.)
 - **R5.4b — Front : couche Segmentation au canvas** (`SegmentPane` sur le modèle Roles/Curation/
   Annotation) : surface **`Phrases | Balises | Personnalisé`**, **aperçu en contexte**, resegmenter
   (confirm *conditionnel* + reload). 4ᵉ bouton de mode `TextCanvasView`.
