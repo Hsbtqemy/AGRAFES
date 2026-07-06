@@ -14,7 +14,7 @@ from typing import Any
 from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
-CONTRACT_VERSION = "1.6.44"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.45"  # semantic versioning for the sidecar API contract
 # SID-08 / OPS-03: the API version IS the contract version — derived, never a
 # second hand-maintained literal, so the two can no longer drift. /health reports
 # the *engine* version under `version` (it predates the sidecar); every other
@@ -147,6 +147,13 @@ API_VERSION = CONTRACT_VERSION
 #         language); new POST /models/active {language, model} sets it in corpus_info.meta_json
 #         (write, token). Annotation honours the active model (R5.2c-2, Lot 4). Additive field
 #         + 1 new route.
+# 1.6.45: configurable segmentation (R5.4a). POST /segment and POST /segment/preview gain two
+#         optional, additive knobs that override the legacy mode/lang/pack path:
+#         `preset` (phrases|mots|balises) and `spec` (SegmentSpecInput: kind terminator/
+#         whitespace/markers + terminators + require_uppercase_after + protect_abbreviations).
+#         Absent → byte-identical to the historical sentence/marker split. The async `segment`
+#         job (POST /jobs/enqueue) accepts the same params. Engine logic in segmenter.py
+#         (SegmentSpec / split_unit_text / spec_from_dict); no migration (nothing persisted here).
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
@@ -2944,6 +2951,44 @@ def openapi_spec() -> dict[str, Any]:
                         },
                     ]
                 },
+                "SegmentSpecInput": {
+                    "type": "object",
+                    "description": (
+                        "R5.4a configurable segmentation boundary. When present on "
+                        "/segment(/preview), overrides the legacy mode/lang/pack path."
+                    ),
+                    "properties": {
+                        "kind": {
+                            "type": "string",
+                            "default": "terminator",
+                            "enum": ["terminator", "whitespace", "markers"],
+                            "description": (
+                                "terminator = split after any `terminators` char; "
+                                "whitespace = split into words; markers = split on [N] markers."
+                            ),
+                        },
+                        "terminators": {
+                            "type": "string",
+                            "default": ".!?",
+                            "description": "Cumulable set of boundary characters (terminator kind).",
+                        },
+                        "require_uppercase_after": {
+                            "type": "boolean",
+                            "default": True,
+                            "description": (
+                                "Require a capital/quote after the boundary (terminator kind). "
+                                "Turn OFF for clause `;:` or word splitting."
+                            ),
+                        },
+                        "protect_abbreviations": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Abbreviations shielded from false breaks (terminator kind).",
+                        },
+                        "label": {"type": "string", "description": "Free label echoed back as segment_pack."},
+                    },
+                    "additionalProperties": False,
+                },
                 "SegmentPreviewRequest": {
                     "type": "object",
                     "required": ["doc_id"],
@@ -2955,6 +3000,12 @@ def openapi_spec() -> dict[str, Any]:
                             "enum": ["sentences", "markers"],
                             "description": "'sentences' = rule-based split; 'markers' = split on [N] markers",
                         },
+                        "preset": {
+                            "type": "string",
+                            "enum": ["phrases", "mots", "balises"],
+                            "description": "R5.4a — resolve a built-in preset (overrides mode/lang/pack); `spec` wins over `preset`.",
+                        },
+                        "spec": {"$ref": "#/components/schemas/SegmentSpecInput"},
                         "lang": {"type": "string", "default": "und"},
                         "pack": {
                             "type": "string",
@@ -3094,6 +3145,12 @@ def openapi_spec() -> dict[str, Any]:
                     "required": ["doc_id"],
                     "properties": {
                         "doc_id": {"type": "integer"},
+                        "preset": {
+                            "type": "string",
+                            "enum": ["phrases", "mots", "balises"],
+                            "description": "R5.4a — resolve a built-in preset (overrides lang/pack); `spec` wins over `preset`.",
+                        },
+                        "spec": {"$ref": "#/components/schemas/SegmentSpecInput"},
                         "lang": {"type": "string", "default": "und"},
                         "pack": {
                             "type": "string",

@@ -15,6 +15,7 @@ from multicorpus_engine.segmenter import (
     resegment_document,
     resolve_preset,
     segment_text,
+    spec_from_dict,
     split_unit_text,
 )
 
@@ -112,3 +113,47 @@ def test_resegment_document_rejects_markers_spec() -> None:
     # Le garde-fou se déclenche avant de toucher la connexion (conn=None ici).
     with pytest.raises(ValueError):
         resegment_document(None, 1, spec=_MARKERS_SPEC)
+
+
+# --- spec_from_dict : porte d'entrée des endpoints ---------------------------
+
+
+def test_spec_from_dict_full_terminator() -> None:
+    spec = spec_from_dict({
+        "kind": "terminator",
+        "terminators": ".!?;:",
+        "require_uppercase_after": False,
+        "protect_abbreviations": ["cf", "etc"],
+        "label": "clauses",
+    })
+    assert spec == SegmentSpec(
+        kind="terminator",
+        terminators=".!?;:",
+        require_uppercase_after=False,
+        protect_abbreviations=("cf", "etc"),
+        label="clauses",
+    )
+
+
+def test_spec_from_dict_defaults_and_coercion() -> None:
+    # Minimal payload → the SegmentSpec defaults; abbrevs coerced to a str tuple.
+    spec = spec_from_dict({"kind": "whitespace"})
+    assert spec.kind == "whitespace"
+    assert spec.terminators == ".!?" and spec.require_uppercase_after is True
+    assert spec.protect_abbreviations == () and spec.label == "custom"
+
+
+def test_spec_from_dict_null_terminators_falls_back_not_stringified() -> None:
+    # Explicit null → default (NOT the literal "None"); explicit "" is preserved.
+    assert spec_from_dict({"kind": "terminator", "terminators": None}).terminators == ".!?"
+    assert spec_from_dict({"kind": "terminator", "require_uppercase_after": None}).require_uppercase_after is True
+    assert spec_from_dict({"kind": "terminator", "terminators": ""}).terminators == ""
+
+
+def test_spec_from_dict_rejects_bad_kind_and_shape() -> None:
+    with pytest.raises(ValueError):
+        spec_from_dict({"kind": "verlan"})
+    with pytest.raises(ValueError):
+        spec_from_dict({"protect_abbreviations": "cf"})  # must be a list
+    with pytest.raises(ValueError):
+        spec_from_dict("nope")  # must be an object

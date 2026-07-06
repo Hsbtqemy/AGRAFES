@@ -4517,6 +4517,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         """
         from multicorpus_engine.segmenter import (
             segment_text, resolve_segment_pack, segment_text_markers,
+            resolve_preset, spec_from_dict, split_unit_text,
         )
 
         doc_id = body.get("doc_id")
@@ -4556,6 +4557,22 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         # Upper cap: aligned with /curate/preview limit_examples for consistency.
         limit = max(1, min(limit, 5000))
 
+        # R5.4a — additive: a `spec` object (full SegmentSpec) or a `preset` name
+        # overrides the legacy mode/lang/pack path. Absent → byte-identical behaviour.
+        seg_spec = None
+        if body.get("spec") is not None:
+            try:
+                seg_spec = spec_from_dict(body.get("spec"))
+            except ValueError as exc:
+                self._send_error(str(exc), code=ERR_BAD_REQUEST, http_status=400)
+                return
+        elif body.get("preset") is not None:
+            try:
+                seg_spec = resolve_preset(str(body.get("preset")), lang, pack)
+            except ValueError as exc:
+                self._send_error(str(exc), code=ERR_BAD_REQUEST, http_status=400)
+                return
+
         conn = self._conn()
         # Distinguish "doc not found" from "doc exists but has no segmentable lines"
         # — the second case typically means a partially-failed import where the
@@ -4594,7 +4611,32 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         warnings: list[str] = []
         seg_n = 1
 
-        if mode == "markers":
+        if seg_spec is not None:
+            # R5.4a — configurable spec: the single split primitive handles all
+            # kinds (terminator/whitespace/markers); external_id flows through.
+            resolved_pack = seg_spec.label or "custom"
+            for unit_n, text_norm in units:
+                if not text_norm or not text_norm.strip():
+                    continue
+                try:
+                    parts = split_unit_text(text_norm, seg_spec)
+                except Exception as exc:  # noqa: BLE001
+                    warnings.append(f"unit {unit_n}: {exc}")
+                    parts = [(None, text_norm)]
+                for ext_id, text in parts:
+                    if seg_n > limit:
+                        warnings.append(f"Preview truncated at {limit} segments (document has more).")
+                        break
+                    segments.append({
+                        "n": seg_n,
+                        "text": text,
+                        "source_unit_n": int(unit_n),
+                        "external_id": ext_id,
+                    })
+                    seg_n += 1
+                if seg_n > limit:
+                    break
+        elif mode == "markers":
             units_with_marker = 0
             for unit_n, text_norm in units:
                 if not text_norm or not text_norm.strip():
@@ -4659,9 +4701,15 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                         f"Vérifier la stratégie de segmentation ou le document source."
                     )
 
+        # Response `mode` stays within the {sentences, markers} contract enum; a
+        # spec maps to markers only for its markers kind, else sentences.
+        resp_mode = mode
+        if seg_spec is not None:
+            resp_mode = "markers" if seg_spec.kind == "markers" else "sentences"
+
         payload = {
             "doc_id": doc_id,
-            "mode": mode,
+            "mode": resp_mode,
             "units_input": len(units),
             "units_output": len(segments),
             "segment_pack": resolved_pack,
@@ -5251,7 +5299,10 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         }))
 
     def _handle_segment(self, body: dict) -> None:
-        from multicorpus_engine.segmenter import resegment_document
+        from multicorpus_engine.segmenter import (
+            resegment_document, resegment_document_markers,
+            resolve_preset, spec_from_dict,
+        )
         from multicorpus_engine.action_history import (
             ACTION_RESEGMENT,
             insert_unit_snapshots,
@@ -5284,6 +5335,22 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 calibrate_to = int(calibrate_to_raw)
             except (TypeError, ValueError):
                 self._send_error("calibrate_to must be an integer", code=ERR_BAD_REQUEST, http_status=400)
+                return
+
+        # R5.4a — additive: a `spec` object or `preset` name overrides the legacy
+        # lang/pack path. Absent → byte-identical (undo-recording) behaviour.
+        seg_spec = None
+        if body.get("spec") is not None:
+            try:
+                seg_spec = spec_from_dict(body.get("spec"))
+            except ValueError as exc:
+                self._send_error(str(exc), code=ERR_BAD_REQUEST, http_status=400)
+                return
+        elif body.get("preset") is not None:
+            try:
+                seg_spec = resolve_preset(str(body.get("preset")), lang or "und", pack)
+            except ValueError as exc:
+                self._send_error(str(exc), code=ERR_BAD_REQUEST, http_status=400)
                 return
 
         with self._lock():
@@ -5355,13 +5422,19 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 )
                 return action_id
 
-            report = resegment_document(
-                conn,
-                doc_id=doc_id,
-                lang=lang or "und",
-                pack=pack,
-                record_action=_resegment_recorder,
-            )
+            if seg_spec is not None and seg_spec.kind == "markers":
+                # Markers resegmentation carries its own external_id/no-undo path
+                # (same as the async segment job's markers branch).
+                report = resegment_document_markers(conn, doc_id=doc_id)
+            else:
+                report = resegment_document(
+                    conn,
+                    doc_id=doc_id,
+                    lang=lang or "und",
+                    pack=pack,
+                    spec=seg_spec,
+                    record_action=_resegment_recorder,
+                )
             # Ratio check against reference document
             calibrate_ratio_pct: int | None = None
             calibrate_warning: str | None = None
@@ -8671,16 +8744,38 @@ class CorpusServer:
             }
 
         if kind == "segment":
-            from multicorpus_engine.segmenter import resegment_document, resegment_document_markers
+            from multicorpus_engine.segmenter import (
+                resegment_document, resegment_document_markers,
+                resolve_preset, spec_from_dict,
+            )
 
             if "doc_id" not in params:
                 raise ValueError("segment job expects params.doc_id")
             doc_id = int(params["doc_id"])
             seg_mode = str(params.get("mode") or "sentences").strip().lower()
 
+            # R5.4a — additive: a `spec` object or `preset` name overrides the
+            # legacy mode/lang/pack path. Absent → byte-identical behaviour.
+            # (A markers-kind spec routes to the marker resegmenter; a ValueError
+            # from spec_from_dict / resolve_preset surfaces as a job failure.)
+            seg_spec = None
+            if params.get("spec") is not None:
+                seg_spec = spec_from_dict(params.get("spec"))
+            elif params.get("preset") is not None:
+                seg_spec = resolve_preset(
+                    str(params.get("preset")),
+                    str(params.get("lang", "und")),
+                    params.get("pack", "auto"),
+                )
+
             progress_cb(10, "Resegmenting document")
             with lock:
-                if seg_mode == "markers":
+                if seg_spec is not None:
+                    if seg_spec.kind == "markers":
+                        report = resegment_document_markers(conn, doc_id=doc_id)
+                    else:
+                        report = resegment_document(conn, doc_id=doc_id, spec=seg_spec)
+                elif seg_mode == "markers":
                     report = resegment_document_markers(conn, doc_id=doc_id)
                 else:
                     lang = str(params.get("lang", "und"))

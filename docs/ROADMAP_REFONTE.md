@@ -92,7 +92,7 @@ But : enrichir les notices et **retirer le legacy** une fois la parité atteinte
 | R2 ✅ | R2.3 | R2.1·R2.2 | oui (R2.3 : `parent_n` /units, 1.6.35) | non | **oui** |
 | R3 ✅ | éditeur de beads (différé) | R3.1·R3.2·R3.3 ✅ | oui (1.6.36) | **022 (bead_id)** | **oui** |
 | R4 ✅ | R4.1 ✅ · R4.2 ✅ · R4.3 ✅ | R4.1 ✅ · R4.2 ✅ · R4.3 ✅ | oui (R4.1 : 1.6.37/38 · R4.2 : 1.6.39 · R4.3 : 1.6.40) | **023 (R4.1)** | oui |
-| R5 🟡 | R5.1·R5.2·R5.3 ✅ · **R5.4** (planifié) | R5.2 modèles · **R5.4 `SegmentSpec`** | oui (1.6.44 ; R5.4 additif) | non (`meta_json`) | non |
+| R5 🟡 | R5.1·R5.2·R5.3 ✅ · **R5.4b** (front, à venir) | R5.2 modèles · **R5.4a `SegmentSpec` ✅** | oui (**1.6.45** ; R5.4a additif) | non (`meta_json`) | non |
 | R6 | R6.4 | R6.1·R6.2·R6.3 | oui | **R6.1·R6.2** | non |
 
 **Lecture** : R1 et R5 sont **front-dominants** (itération rapide, risque bas) ; R3 et R4 sont **moteur-dominants** (discipline contrat, migration, tests WORKCOPY) ; R2 et R6 sont mixtes.

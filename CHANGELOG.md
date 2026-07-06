@@ -7,6 +7,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **moteur — segmentation configurable (`SegmentSpec`, R5.4a)** : le découpage codé en dur (`_SPLIT_RE`, « pack/langue ») devient un **`SegmentSpec`** paramétrable — fondation de la future couche Segmentation au canvas ([`docs/DESIGN_R5_4_segmentation_layer.md`](docs/DESIGN_R5_4_segmentation_layer.md)). Trois natures (`kind`) : **terminator** (coupe *après* un caractère de fin — `.!?` par défaut, **ensemble cumulable** `;:…`, `require_uppercase_after` gouvernant l'accumulation), **whitespace** (mots), **markers** (`[N]`, external_id). Préréglages **phrases / mots / balises** via `resolve_preset` (« phrases » reprend le pack d'abréviations de la langue → **back-compat byte-identique**). Une primitive de découpe unique `split_unit_text` unifie les deux resegmentations ; `segment_text` / `resegment_document` généralisés (`spec=None` → phrases, byte-identique). **Endpoints** `POST /segment` et `POST /segment/preview` (+ job asynchrone `segment`) gagnent deux paramètres **additifs optionnels** — `preset` (`phrases`|`mots`|`balises`) et `spec` (`SegmentSpecInput`) — qui priment sur le chemin `mode/lang/pack` ; absents → identique à l'historique. Logique côté moteur (`segmenter.py` : `SegmentSpec` / `split_unit_text` / `spec_from_dict`), handlers fins (garde-fou de croissance de `sidecar.py`). Contrat **`1.6.44 → 1.6.45`** (OpenAPI + snapshot + `SIDECAR_API_CONTRACT.md` régénérés) ; **aucune migration** (rien de persisté à ce stade). Vers/Tours (motif de ligne) → **R5.4c** ; persistance du spec en `meta_json` + couche front → **R5.4b**. Passe adverse : garde contre terminateurs vides (pas de classe regex `[]`) + rejet d'un spec `markers` par `resegment_document` (route dédiée). Tests : back-compat + présets + mots/marqueurs + les 3 cas canoniques terminateurs × majuscule + `spec_from_dict` (validation) + resegment-avec-spec (DB, mots/clauses).
+
 ## [0.3.3] - 2026-06-30
 
 ### Fixed

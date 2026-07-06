@@ -164,6 +164,36 @@ def resolve_preset(name: str | None, lang: str = "und", pack: str | None = None)
     )
 
 
+_SPEC_KINDS = ("terminator", "whitespace", "markers")
+
+
+def spec_from_dict(d: dict) -> SegmentSpec:
+    """Build a validated :class:`SegmentSpec` from a request payload (the ``spec``
+    object of ``/segment(/preview)``). Keeps spec parsing/validation in the engine
+    so the sidecar handler stays a thin adapter (growth-gate). Raises ``ValueError``
+    on a bad shape — the handler maps it to the endpoint's 400."""
+    if not isinstance(d, dict):
+        raise ValueError("spec must be an object.")
+    kind = str(d.get("kind") or "terminator").strip().lower()
+    if kind not in _SPEC_KINDS:
+        raise ValueError(f"Unknown spec kind: {kind!r}. Use one of: {', '.join(_SPEC_KINDS)}.")
+    abbrevs = d.get("protect_abbreviations") or ()
+    if not isinstance(abbrevs, (list, tuple)):
+        raise ValueError("protect_abbreviations must be a list of strings.")
+    # Explicit JSON null → the documented default (NOT str(None)=="None", which
+    # would become a bogus [None] char class). An explicit "" is preserved (the
+    # intentional "no boundary → single segment" case).
+    terminators = d.get("terminators")
+    require_uc = d.get("require_uppercase_after")
+    return SegmentSpec(
+        kind=kind,
+        terminators=".!?" if terminators is None else str(terminators),
+        require_uppercase_after=True if require_uc is None else bool(require_uc),
+        protect_abbreviations=tuple(str(a) for a in abbrevs),
+        label=str(d.get("label") or "custom"),
+    )
+
+
 def _compile_terminator_re(spec: SegmentSpec) -> re.Pattern:
     """Split regex for a terminator spec: split at the whitespace *after* any
     terminator char, optionally requiring a capital/quote to follow."""

@@ -112,14 +112,18 @@ et aux endpoints `/segment(/preview)` :
 
 ## 6. Tranches (esquisse, à ordonnancer au ticket)
 
-- **R5.4a — Moteur : `SegmentSpec`.** 🟡 *cœur livré (endpoints/contrat à suivre)* —
+- **R5.4a — Moteur : `SegmentSpec`.** ✅ *livré (cœur + endpoints + contrat)* —
   `SegmentSpec` (kinds `terminator` / `whitespace` / `markers`) + `split_unit_text` unifiant les
   deux resegmentations ; préréglages **phrases / mots / balises** ; `segment_text` /
   `resegment_document` généralisés **byte-identiques** (spec=None → phrases). Terminateurs =
-  ensemble cumulable + `require_uppercase_after`. **Vers/Tours (motif de ligne) → R5.4c** (besoin
-  de la structure de ligne d'origine, pas de `text_norm`). *Reste R5.4a* : endpoints
-  `/segment(/preview)` additifs + contrat. (Le destructif se teste sur une base jetable, sans
-  l'imposer à l'utilisateur.)
+  ensemble cumulable + `require_uppercase_after`. Endpoints `/segment` + `/segment/preview` (+ job)
+  gagnent `preset` / `spec` **additifs** (`spec_from_dict` côté moteur, handler fin) — contrat
+  **1.6.45**, sans migration. **Vers/Tours (motif de ligne) → R5.4c** (besoin de la structure de
+  ligne d'origine, pas de `text_norm`). **Persistance du spec en `meta_json` → R5.4b** : différée
+  jusqu'à ce que le front en fixe la sémantique de *rappel* (dernier spec pré-rempli) et son
+  interaction avec l'undo — YAGNI d'écrire une donnée que rien ne lit encore (l'emplacement est
+  tranché : `documents.meta_json`, zéro migration). (Le destructif se teste sur une base jetable,
+  sans l'imposer à l'utilisateur.)
 - **R5.4b — Front : couche Segmentation au canvas** (`SegmentPane` sur le modèle Roles/Curation/
   Annotation) : surface **`Phrases | Balises | Personnalisé`**, **aperçu en contexte**, resegmenter
   (confirm *conditionnel* + reload). 4ᵉ bouton de mode `TextCanvasView`.

@@ -362,9 +362,10 @@ Three **independent** version fields surface in sidecar responses — do not con
     - `duplicate_titles` — list of `{ title, doc_ids }` grouping documents with the same title (case-insensitive)
 - `POST /validate-meta`
 - `POST /segment`
-  - body: `{ doc_id, lang?, pack? }`
+  - body: `{ doc_id, lang?, pack?, preset?, spec? }`
   - `pack` values: `auto` (default), `default`, `fr_strict`, `en_strict`
-  - response includes `segment_pack` (resolved pack actually used)
+  - **R5.4a — configurable segmentation** (additive, optional): `preset` ∈ `{phrases, mots, balises}` or `spec` (a `SegmentSpecInput` — `{ kind: terminator|whitespace|markers, terminators?, require_uppercase_after?, protect_abbreviations?, label? }`) override the legacy `lang`/`pack` path. `spec` wins over `preset`; absent → byte-identical historical sentence split. A `markers`-kind spec resegments on `[N]` markers (no undo, as the marker path elsewhere). Engine: `segmenter.SegmentSpec` / `split_unit_text` / `spec_from_dict`. No persistence/migration.
+  - response includes `segment_pack` (resolved pack, or the spec's `label`, actually used)
 - `POST /units/merge` — merge two adjacent units into one; body: `{ doc_id, n1, n2 }` (n2 must be n1+1)
 - `POST /units/split` — split one unit into two; body: `{ doc_id, unit_n, text_a, text_b }`
 - `POST /prep/undo/eligibility` (read-only, no token) — return the latest undo-able action for a doc; body: `{ doc_id }`. Response: `{ eligible, reason?, action_id?, action_type?, description?, performed_at?, warnings? }`. `action_type` ∈ `{curation_apply, merge_units, split_unit, resegment}`. `reason` ∈ `{no_action, no_snapshots, structural_dependency, unit_diverged, latest_already_reverted}`.
@@ -381,8 +382,9 @@ Three **independent** version fields surface in sidecar responses — do not con
 - `POST /conventions/delete` (token required) — delete a role; body: `{ name }` (assigned units become NULL)
 - `POST /documents/set_text_start` (token required) — set paratextual boundary; body: `{ doc_id, text_start_n }` (null to clear)
 - `POST /segment/preview` — in-memory segmentation preview, no DB writes
-  - body: `{ doc_id, mode?, lang?, pack?, limit?, calibrate_to? }`
+  - body: `{ doc_id, mode?, lang?, pack?, limit?, calibrate_to?, preset?, spec? }`
   - `mode` values: `sentences` (default), `markers` ([N] marker-based split)
+  - **R5.4a** (additive, optional): `preset` ∈ `{phrases, mots, balises}` or `spec` (`SegmentSpecInput`, see `POST /segment`) override `mode`/`lang`/`pack`; `spec` wins over `preset`; absent → byte-identical. The response `mode` stays `sentences|markers` (a spec maps to `markers` only for its `markers` kind), and `segment_pack` echoes the spec's `label`.
   - `calibrate_to` (optionnel, mode `sentences`) : `doc_id` de référence pour calculer l’écart de volume
   - response includes segments list with `external_id` field when mode=markers
   - response may include `calibrate_to` + `calibrate_ratio_pct` (écart en % vs document de référence)

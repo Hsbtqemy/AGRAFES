@@ -2907,6 +2907,18 @@
               "en_strict"
             ],
             "type": "string"
+          },
+          "preset": {
+            "description": "R5.4a — resolve a built-in preset (overrides mode/lang/pack); `spec` wins over `preset`.",
+            "enum": [
+              "phrases",
+              "mots",
+              "balises"
+            ],
+            "type": "string"
+          },
+          "spec": {
+            "$ref": "#/components/schemas/SegmentSpecInput"
           }
         },
         "required": [
@@ -3022,6 +3034,18 @@
               "en_strict"
             ],
             "type": "string"
+          },
+          "preset": {
+            "description": "R5.4a — resolve a built-in preset (overrides lang/pack); `spec` wins over `preset`.",
+            "enum": [
+              "phrases",
+              "mots",
+              "balises"
+            ],
+            "type": "string"
+          },
+          "spec": {
+            "$ref": "#/components/schemas/SegmentSpecInput"
           }
         },
         "required": [
@@ -3074,6 +3098,44 @@
             "type": "object"
           }
         ]
+      },
+      "SegmentSpecInput": {
+        "additionalProperties": false,
+        "description": "R5.4a configurable segmentation boundary. When present on /segment(/preview), overrides the legacy mode/lang/pack path.",
+        "properties": {
+          "kind": {
+            "default": "terminator",
+            "description": "terminator = split after any `terminators` char; whitespace = split into words; markers = split on [N] markers.",
+            "enum": [
+              "terminator",
+              "whitespace",
+              "markers"
+            ],
+            "type": "string"
+          },
+          "label": {
+            "description": "Free label echoed back as segment_pack.",
+            "type": "string"
+          },
+          "protect_abbreviations": {
+            "description": "Abbreviations shielded from false breaks (terminator kind).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "require_uppercase_after": {
+            "default": true,
+            "description": "Require a capital/quote after the boundary (terminator kind). Turn OFF for clause `;:` or word splitting.",
+            "type": "boolean"
+          },
+          "terminators": {
+            "default": ".!?",
+            "description": "Cumulable set of boundary characters (terminator kind).",
+            "type": "string"
+          }
+        },
+        "type": "object"
       },
       "ShutdownResponse": {
         "allOf": [
@@ -4037,8 +4099,8 @@
   "info": {
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
-    "version": "1.6.44",
-    "x-contract-version": "1.6.44"
+    "version": "1.6.45",
+    "x-contract-version": "1.6.45"
   },
   "openapi": "3.0.3",
   "paths": {
