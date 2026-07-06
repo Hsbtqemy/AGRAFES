@@ -9,7 +9,7 @@ import { elt, injectStyles } from "./dom";
 import { showToast } from "./status";
 import { renderResults } from "../features/query";
 import { doSearch } from "../features/query";
-import { renderChips, clearDocSelector, loadFamiliesForFilter, populateLangCheckboxes } from "../features/filters";
+import { renderChips, clearDocSelector, loadFamiliesForFilter, populateLangCheckboxes, addSelectedTag } from "../features/filters";
 import { updateFtsPreview, buildFtsQuery } from "../features/search";
 import { renderHistPanel, saveToHistory } from "../features/history";
 import { showImportModal, hideImportModal, doImport } from "../features/importFlow";
@@ -308,6 +308,14 @@ export function buildUI(container: HTMLElement): () => void {
   restypeSel.innerHTML = `<option value="">Tous</option>`;
   fg2b.appendChild(restypeSel);
 
+  // R6.2 — label filter: pick an existing (kind:value) tag to add it to the filter.
+  const fgTags = elt("div", { class: "filter-group" });
+  fgTags.appendChild(elt("label", {}, "Étiquette"));
+  const tagSel = elt("select", { class: "filter-select", id: "filter-tag-sel" }) as HTMLSelectElement;
+  tagSel.innerHTML = `<option value="">— étiquette —</option>`;
+  tagSel.addEventListener("change", () => addSelectedTag());
+  fgTags.appendChild(tagSel);
+
   // R4.1 — translation-status filter (fixed enum, not derived from docs).
   const fg2c = elt("div", { class: "filter-group" });
   fg2c.appendChild(elt("label", {}, "Statut trad."));
@@ -399,6 +407,7 @@ export function buildUI(container: HTMLElement): () => void {
   filterDrawer.appendChild(fg1);
   filterDrawer.appendChild(fg2);
   filterDrawer.appendChild(fg2b);
+  filterDrawer.appendChild(fgTags);
   filterDrawer.appendChild(fg2c);
   filterDrawer.appendChild(fgFam);
   filterDrawer.appendChild(fgAuthor);
@@ -795,6 +804,7 @@ export function buildUI(container: HTMLElement): () => void {
 
   document.getElementById("filter-clear")!.addEventListener("click", () => {
     state.filterLangs = [];
+    state.filterTags = [];
     state.filterRole = "";
     state.filterResourceType = "";
     state.filterUnitStatus = "";
@@ -900,6 +910,7 @@ export function buildUI(container: HTMLElement): () => void {
     state.nextOffset = null;
     state.expandedAlignedUnitIds.clear();
     state.filterLangs = [];
+    state.filterTags = [];
     state.filterRole = "";
     state.filterResourceType = "";
     state.filterUnitStatus = "";

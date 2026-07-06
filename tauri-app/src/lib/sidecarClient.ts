@@ -98,6 +98,8 @@ export interface AlignedUnit {
   unit_status?: string | null;
 }
 
+export interface DocTag { kind: string; value: string; }
+
 export interface QueryOptions {
   q: string;
   mode?: "segment" | "kwic";
@@ -136,6 +138,8 @@ export interface QueryOptions {
   doc_date_to?: string;
   /** Filter by source file extension, e.g. ".docx", ".txt", ".tei". */
   source_ext?: string;
+  /** R6.2 — filter by namespaced labels; a doc matches ANY (kind,value) pair (OR). */
+  tags?: DocTag[];
 }
 
 export interface QueryResponse {
@@ -282,6 +286,8 @@ export interface QueryFacetsOptions {
   doc_date_from?: string;
   doc_date_to?: string;
   source_ext?: string;
+  /** R6.2 — filter by namespaced labels (OR over (kind,value)). */
+  tags?: DocTag[];
   /** R4.1/FE-01 — restrict facet counts to units of this translation status. */
   unit_status?: string;
   /** How many top documents to return (max 50, default 10). */
@@ -381,6 +387,7 @@ export async function query(
   if (opts.doc_date_from) payload.doc_date_from = opts.doc_date_from;
   if (opts.doc_date_to) payload.doc_date_to = opts.doc_date_to;
   if (opts.source_ext) payload.source_ext = opts.source_ext;
+  if (opts.tags?.length) payload.tags = opts.tags;
 
   return conn.post("/query", payload) as Promise<QueryResponse>;
 }
@@ -435,8 +442,16 @@ export async function queryFacets(
   if (opts.doc_date_to) payload.doc_date_to = opts.doc_date_to;
   if (opts.source_ext) payload.source_ext = opts.source_ext;
   if (opts.unit_status) payload.unit_status = opts.unit_status;
+  if (opts.tags?.length) payload.tags = opts.tags;
   if (opts.top_docs_limit !== undefined) payload.top_docs_limit = opts.top_docs_limit;
   return conn.post("/query/facets", payload) as Promise<QueryFacetsResponse>;
+}
+
+/** R6.2 — list document tags; with doc_id → that doc's, else distinct (kind,value) in the corpus. */
+export async function listTags(conn: Conn, doc_id?: number): Promise<DocTag[]> {
+  const path = doc_id != null ? `/tags?doc_id=${doc_id}` : "/tags";
+  const res = (await conn.get(path)) as { tags: DocTag[] };
+  return res.tags;
 }
 
 export async function importFile(conn: Conn, opts: ImportOptions): Promise<ImportResponse> {

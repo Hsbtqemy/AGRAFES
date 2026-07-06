@@ -123,6 +123,7 @@ export function hasActiveFilters(): boolean {
   return !!(
     state.filterLangs.length > 0 || state.filterRole || state.filterDocIds !== null ||
     state.filterResourceType || state.filterUnitStatus || state.filterFamilyId !== null ||
+    state.filterTags.length > 0 ||
     state.filterAuthor || state.filterTitleSearch ||
     state.filterDateFrom || state.filterDateTo || state.filterSourceExt ||
     _isFederationActive()
@@ -148,6 +149,7 @@ export function activeFiltersSummary(): string {
   if (state.filterLangs.length > 0) parts.push(`Langue : ${state.filterLangs.join(", ")}`);
   if (state.filterRole) parts.push(`Rôle : ${state.filterRole}`);
   if (state.filterResourceType) parts.push(`Type : ${state.filterResourceType}`);
+  if (state.filterTags.length > 0) parts.push(`Étiquettes : ${state.filterTags.map(t => `${t.kind}:${t.value}`).join(", ")}`);
   if (state.filterUnitStatus) parts.push(`Statut : ${unitStatusLabel(state.filterUnitStatus)}`);
   if (state.filterFamilyId !== null) {
     const fam = state.families.find(f => f.family_id === state.filterFamilyId);
@@ -198,6 +200,7 @@ async function _fetchAndApplyFacets(forQuery: string): Promise<void> {
       doc_date_from: state.filterDateFrom || undefined,
       doc_date_to: state.filterDateTo || undefined,
       source_ext: state.filterSourceExt || undefined,
+      tags: state.filterTags.length ? state.filterTags : undefined,
       unit_status: state.filterUnitStatus || undefined,  // FE-01: counters honour the R4.1 filter
       top_docs_limit: 10,
     });
@@ -703,6 +706,7 @@ export async function fetchQueryPage(append: boolean): Promise<void> {
           doc_date_from: state.filterDateFrom || undefined,
           doc_date_to: state.filterDateTo || undefined,
           source_ext: state.filterSourceExt || undefined,
+          tags: state.filterTags.length ? state.filterTags : undefined,
           dbPaths: federatedDbPaths,
           // Family filter takes precedence over manual doc_ids
           doc_ids: inFamilyMode ? undefined : (state.filterDocIds ?? undefined),

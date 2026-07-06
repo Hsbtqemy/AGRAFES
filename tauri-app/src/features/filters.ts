@@ -2,8 +2,8 @@
  * features/filters.ts — Document filter dropdowns, chips bar, and doc lookup map.
  */
 
-import type { DocumentRecord, FamilyRecord } from "../lib/sidecarClient";
-import { listDocuments, listFamilies } from "../lib/sidecarClient";
+import type { DocumentRecord, FamilyRecord, DocTag } from "../lib/sidecarClient";
+import { listDocuments, listFamilies, listTags } from "../lib/sidecarClient";
 import { state } from "../state";
 import { elt } from "../ui/dom";
 import {
@@ -96,6 +96,38 @@ export function populateFilterDropdowns(): void {
   // unit_status has fixed options (built in buildUI) — just restore the value.
   const statusSel = document.getElementById("filter-unitstatus-sel") as HTMLSelectElement | null;
   if (statusSel) statusSel.value = state.filterUnitStatus;
+  void populateTagOptions();
+}
+
+/** Fetch the corpus's distinct tags (R6.2) and fill the tag filter dropdown. */
+export async function populateTagOptions(): Promise<void> {
+  const sel = document.getElementById("filter-tag-sel") as HTMLSelectElement | null;
+  if (!sel || !state.conn) return;
+  try {
+    state.availableTags = await listTags(state.conn);
+  } catch {
+    state.availableTags = [];
+  }
+  sel.innerHTML = `<option value="">— étiquette —</option>`;
+  state.availableTags.forEach((t: DocTag, i: number) => {
+    const opt = document.createElement("option");
+    opt.value = String(i);
+    opt.textContent = `${t.kind}: ${t.value}`;
+    sel.appendChild(opt);
+  });
+}
+
+/** Add the tag currently selected in the dropdown to the active filter (R6.2). */
+export function addSelectedTag(): void {
+  const sel = document.getElementById("filter-tag-sel") as HTMLSelectElement | null;
+  if (!sel || !sel.value) return;
+  const t = state.availableTags[parseInt(sel.value, 10)];
+  sel.value = "";
+  if (!t) return;
+  if (!state.filterTags.some(x => x.kind === t.kind && x.value === t.value)) {
+    state.filterTags = [...state.filterTags, t];
+    renderChips();
+  }
 }
 
 /** Human label for a unit_status value (R4.1). */
@@ -195,6 +227,12 @@ export function renderChips(): void {
     const s = document.getElementById("filter-restype-sel") as HTMLSelectElement | null;
     if (s) s.value = "";
   });
+
+  for (const tag of state.filterTags) {
+    add("Étiquette", `${tag.kind}: ${tag.value}`, () => {
+      state.filterTags = state.filterTags.filter(t => !(t.kind === tag.kind && t.value === tag.value));
+    });
+  }
 
   // Family filter chip
   if (state.filterFamilyId !== null) {

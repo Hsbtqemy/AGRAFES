@@ -3,7 +3,7 @@
  * All modules import { state } from here; mutation is intentional (no framework).
  */
 
-import type { Conn, QueryHit, DocumentRecord, QueryFacetsResponse, FamilyRecord } from "./lib/sidecarClient";
+import type { Conn, QueryHit, DocumentRecord, QueryFacetsResponse, FamilyRecord, DocTag } from "./lib/sidecarClient";
 
 export type Status = "idle" | "starting" | "ready" | "error";
 
@@ -29,6 +29,10 @@ export interface AppState {
   /** null = all documents (no filter); number[] = restrict to these doc_ids. */
   filterDocIds: number[] | null;
   filterResourceType: string;
+  /** R6.2 — selected label filters (kind,value); empty = no filter. */
+  filterTags: DocTag[];
+  /** R6.2 — distinct corpus tags for the filter dropdown (fetched from GET /tags). */
+  availableTags: DocTag[];
   /** null = no family filter; number = restrict to this family_id for cross-family concordancer. */
   filterFamilyId: number | null;
   /** Restrict family search to pivot document only (original). */
@@ -99,6 +103,8 @@ export const state: AppState = {
   filterUnitStatus: "",
   filterDocIds: null,
   filterResourceType: "",
+  filterTags: [],
+  availableTags: [],
   filterFamilyId: null,
   filterFamilyPivotOnly: false,
   families: [],
