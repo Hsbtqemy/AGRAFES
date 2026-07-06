@@ -17,6 +17,7 @@ import { setHtml, raw } from "../lib/safeHtml.ts";
 import { RolesPane } from "../components/RolesPane.ts";
 import { CurationPane } from "../components/CurationPane.ts";
 import { AnnotationPane } from "../components/AnnotationPane.ts";
+import { SegmentPane } from "../components/SegmentPane.ts";
 
 export interface TextCanvasCallbacks {
   log: (msg: string, isError?: boolean) => void;
@@ -25,7 +26,7 @@ export interface TextCanvasCallbacks {
   onReloadDocs?: () => void | Promise<void>;
 }
 
-type CanvasMode = "roles" | "curation" | "annoter";
+type CanvasMode = "roles" | "curation" | "annoter" | "segment";
 
 export class TextCanvasView {
   private readonly _getConn: () => Conn | null;
@@ -36,6 +37,7 @@ export class TextCanvasView {
   private _rolesPane: RolesPane | null = null;
   private _curationPane: CurationPane | null = null;  // lazy, created on first switch (R5.1b)
   private _annotationPane: AnnotationPane | null = null;  // lazy, created on first switch (R5.2b)
+  private _segmentPane: SegmentPane | null = null;  // lazy, created on first switch (R5.4b)
   private _docId: number | null = null;
   private _stats: DocumentStats | null = null;
   private _mode: CanvasMode = "roles";
@@ -82,6 +84,7 @@ export class TextCanvasView {
                   title="Recharger la liste des documents depuis la base">&#8635; Actualiser</button>
         </div>
         <div class="prep-canvas-modes" role="group" aria-label="Couche active">
+          <button type="button" class="prep-canvas-modebtn" data-mode="segment" title="Couche Segmentation : d&#233;couper le texte en phrases / balises (aper&#231;u puis appliquer)">Segmentation</button>
           <button type="button" class="prep-canvas-modebtn active" data-mode="roles" aria-pressed="true">R&#244;les</button>
           <button type="button" class="prep-canvas-modebtn" data-mode="curation" title="Couche Curation : marquer les unit&#233;s que des r&#232;gles modifieraient (aper&#231;u)">Curation</button>
           <button type="button" class="prep-canvas-modebtn" data-mode="annoter" title="Couche Annotation : prose color&#233;e par cat&#233;gorie grammaticale (POS) quand le document est annot&#233;">Annotation</button>
@@ -89,6 +92,7 @@ export class TextCanvasView {
       </div>
       <div class="prep-canvas-body" id="prep-canvas-body">
         <div class="prep-canvas-scroll" id="prep-canvas-scroll">
+          <div class="prep-canvas-pane" id="prep-canvas-pane-segment" style="display:none"></div>
           <div class="prep-canvas-pane" id="prep-canvas-pane-roles"></div>
           <div class="prep-canvas-pane" id="prep-canvas-pane-curation" style="display:none"></div>
           <div class="prep-canvas-pane" id="prep-canvas-pane-annoter" style="display:none"></div>
@@ -132,13 +136,9 @@ export class TextCanvasView {
 
     const reloadBtn = wrapper.querySelector<HTMLButtonElement>("#prep-canvas-reload");
     reloadBtn?.addEventListener("click", async () => {
-      if (!this._cb.onReloadDocs) return;
       reloadBtn.disabled = true;
       try {
-        await this._cb.onReloadDocs(); // host re-fetches + calls back refreshDocs()
-        // Re-focus the current doc so its stats + units reflect any change
-        // (e.g. a resegmentation that populated parent_n) rather than stale caches.
-        if (this._docId !== null) await this._focusDoc(this._docId);
+        await this._reloadAfterMutation();
       } finally {
         reloadBtn.disabled = false;
       }
@@ -298,12 +298,22 @@ export class TextCanvasView {
     await this._syncActivePane();
   }
 
+  /** Re-fetch the docs list then re-focus the current doc so stats + units reflect a
+   *  mutation (resegmentation, etc.) rather than stale caches. Shared by the Actualiser
+   *  button and the segment-layer apply callback (R5.4b). */
+  private async _reloadAfterMutation(): Promise<void> {
+    if (this._cb.onReloadDocs) await this._cb.onReloadDocs(); // host re-fetches + refreshDocs()
+    if (this._docId !== null) await this._focusDoc(this._docId);
+  }
+
   /** Load the current document into whichever mode-pane is active (R5.1b). Panes are
    *  re-synced on mode switch, so the inactive pane may lag until it is shown. */
   private async _syncActivePane(): Promise<void> {
     const doc = this._getDocs().find((d) => d.doc_id === this._docId) ?? null;
     const ts = doc?.text_start_n ?? null;
-    if (this._mode === "curation") {
+    if (this._mode === "segment") {
+      await this._segmentPane?.setDocument(this._docId, doc?.language ?? null);
+    } else if (this._mode === "curation") {
       await this._curationPane?.setDocument(this._docId, ts);
     } else if (this._mode === "annoter") {
       await this._annotationPane?.setDocument(this._docId, ts, doc?.language ?? null);
@@ -320,13 +330,23 @@ export class TextCanvasView {
       b.classList.toggle("active", on);
       b.setAttribute("aria-pressed", String(on));
     });
+    const segHost = this._root?.querySelector<HTMLElement>("#prep-canvas-pane-segment");
     const rolesHost = this._root?.querySelector<HTMLElement>("#prep-canvas-pane-roles");
     const curHost = this._root?.querySelector<HTMLElement>("#prep-canvas-pane-curation");
     const annotHost = this._root?.querySelector<HTMLElement>("#prep-canvas-pane-annoter");
+    if (segHost) segHost.style.display = mode === "segment" ? "" : "none";
     if (rolesHost) rolesHost.style.display = mode === "roles" ? "" : "none";
     if (curHost) curHost.style.display = mode === "curation" ? "" : "none";
     if (annotHost) annotHost.style.display = mode === "annoter" ? "" : "none";
     // Lazily build each mode pane on first switch to it.
+    if (mode === "segment" && !this._segmentPane && segHost) {
+      const sheet = this._root?.querySelector<HTMLElement>("#prep-canvas-bottomsheet") ?? null;
+      this._segmentPane = new SegmentPane(
+        segHost, this._getConn, (m, e) => this._cb.toast(m, e), sheet,
+        () => this._reloadAfterMutation(),
+      );
+      this._segmentPane.mount();
+    }
     if (mode === "curation" && !this._curationPane && curHost) {
       this._curationPane = new CurationPane(curHost, this._getConn, (m) => this._cb.toast(m, true));
       this._curationPane.mount();
@@ -342,6 +362,7 @@ export class TextCanvasView {
     if (prev !== mode) {
       if (prev === "annoter") this._annotationPane?.deactivate();
       else if (prev === "roles") this._rolesPane?.deactivate();
+      else if (prev === "segment") this._segmentPane?.deactivate();
     }
     void this._syncActivePane();
   }
@@ -372,7 +393,9 @@ export class TextCanvasView {
     if (lineCount === null) {
       chips.push(chip("draft", "Stade : ?"));
     } else if (lineCount <= 1) {
-      chips.push(chip("warn", "Brut (non segmenté)"));
+      // Actionable: jump straight to the Segmentation layer to cut this raw text.
+      chips.push(`<button type="button" class="prep-canvas-chip prep-canvas-chip--warn prep-canvas-chip--action"
+                   id="prep-canvas-goto-segment" title="Ouvrir la couche Segmentation">Brut (non segmenté) &#8594;</button>`);
     } else {
       const grain = st ? (st.avg_text_len > 240 ? "unités ¶" : "phrases") : "unités";
       chips.push(chip("ok", `Segmenté · ${lineCount} ${grain}`));
@@ -391,5 +414,7 @@ export class TextCanvasView {
     chips.push(chip(stale ? "warn" : "ok", `Index ${stale ? "⚠ périmé" : "à jour"}`));
     chips.push(chip("", ts != null ? `Borne : unité ${ts}` : "Borne : non posée"));
     setHtml(el, raw(chips.join("")));
+    el.querySelector<HTMLButtonElement>("#prep-canvas-goto-segment")
+      ?.addEventListener("click", () => this._setMode("segment"));
   }
 }

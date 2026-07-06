@@ -301,6 +301,22 @@ export interface SegmentPreviewResponse {
   calibrate_ratio_pct?: number | null;
 }
 
+/**
+ * A configurable segmentation boundary (R5.4a, contract 1.6.45). When present on
+ * /segment(/preview), it overrides the legacy mode/lang/pack path.
+ *   - terminator : split after any `terminators` char (cumulable set); `require_uppercase_after`
+ *                  gates on a capital following (turn OFF for clause `;:` / word splitting).
+ *   - whitespace : split into words.
+ *   - markers    : split on embedded [N] markers (external_id).
+ */
+export interface SegmentSpecInput {
+  kind?: "terminator" | "whitespace" | "markers";
+  terminators?: string;
+  require_uppercase_after?: boolean;
+  protect_abbreviations?: string[];
+  label?: string;
+}
+
 export async function segmentPreview(
   conn: Conn,
   opts: {
@@ -310,6 +326,10 @@ export async function segmentPreview(
     pack?: string;
     limit?: number;
     calibrate_to?: number;
+    /** R5.4a additive: a built-in preset name (overrides mode/lang/pack; `spec` wins over `preset`). */
+    preset?: "phrases" | "mots" | "balises";
+    /** R5.4a additive: a full configurable spec (overrides mode/lang/pack and `preset`). */
+    spec?: SegmentSpecInput;
   },
 ): Promise<SegmentPreviewResponse> {
   return conn.post("/segment/preview", opts) as Promise<SegmentPreviewResponse>;
@@ -608,6 +628,10 @@ export interface SegmentOptions {
   doc_id: number;
   lang?: string;
   pack?: "auto" | "default" | "fr_strict" | "en_strict";
+  /** R5.4a additive: a built-in preset name (overrides lang/pack; `spec` wins over `preset`). */
+  preset?: "phrases" | "mots" | "balises";
+  /** R5.4a additive: a full configurable spec (overrides lang/pack and `preset`). */
+  spec?: SegmentSpecInput;
 }
 
 export interface SegmentResponse {
