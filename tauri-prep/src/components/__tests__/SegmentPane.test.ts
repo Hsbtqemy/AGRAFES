@@ -49,6 +49,7 @@ function fakeConn(cfg: {
         return { undo_action_id: 1, reverted_action_id: 1, reverted_action_type: "merge_units",
           units_restored: 2, alignments_reflagged: 0, fts_stale: true };
       }
+      if (path === "/segment/coarse") return { ok: true, doc_id: 1, blocks: 2, units_grouped: 3, units_changed: 3 };
       return {};
     },
   } as unknown as Conn;
@@ -194,5 +195,69 @@ describe("SegmentPane — Brut view (R5.4b-3)", () => {
   it("disables the undo button when nothing is eligible", async () => {
     await mountBrut(fakeConn({ units: [unit(1)], elig: { eligible: false, reason: "no_action" } }));
     expect(host.querySelector<HTMLButtonElement>("#prep-seg-canvas-undo")!.disabled).toBe(true);
+  });
+});
+
+describe("SegmentPane — Tours surface (R5.4c)", () => {
+  it("previews coarse blocks and applies a non-destructive regroup", async () => {
+    const calls: Call[] = [];
+    let reseg = 0;
+    const conn = fakeConn({ units: [
+      unit(1, { text_norm: "— Bonjour." }),
+      unit(2, { text_norm: "Comment ça va ?" }),
+      unit(3, { text_norm: "— Bien." }),
+    ], calls });
+    const pane = new SegmentPane(host, () => conn, () => {}, null, () => { reseg++; });
+    await pane.setDocument(1, "fr");
+    (host.querySelector('[data-surface="tours"]') as HTMLButtonElement).click();
+    await flush();
+    // tour boundaries at n=1 and n=3 → two coarse blocks
+    expect(host.querySelectorAll("#prep-seg-canvas-tours-blocks .prep-seg-canvas-group").length).toBe(2);
+    const applyBtn = host.querySelector("#prep-seg-canvas-tours-apply") as HTMLButtonElement;
+    expect(applyBtn).not.toBeNull();
+    applyBtn.click();
+    await flush();
+    const call = calls.find((c) => c.path === "/segment/coarse");
+    expect(call?.body).toMatchObject({ doc_id: 1, preset: "tours" });
+    expect(reseg).toBe(1);
+  });
+
+  it("a custom pattern overrides the preset and re-groups (debounced)", async () => {
+    const calls: Call[] = [];
+    const conn = fakeConn({ units: [
+      unit(1, { text_norm: "BOB : salut" }),
+      unit(2, { text_norm: "suite du propos" }),
+      unit(3, { text_norm: "ANNA : bonjour" }),
+    ], calls });
+    const pane = new SegmentPane(host, () => conn, () => {}, null, () => {});
+    await pane.setDocument(1, "fr");
+    (host.querySelector('[data-surface="tours"]') as HTMLButtonElement).click();
+    await flush();
+    // default tours (dialogue dash) → no dashes → a single block
+    expect(host.querySelectorAll("#prep-seg-canvas-tours-blocks .prep-seg-canvas-group").length).toBe(1);
+    const inp = host.querySelector<HTMLInputElement>("#prep-seg-canvas-tours-pat")!;
+    inp.value = "^[A-Z]+ :";
+    inp.dispatchEvent(new Event("input"));
+    await new Promise((r) => setTimeout(r, 220)); // past the 180 ms debounce
+    expect(host.querySelectorAll("#prep-seg-canvas-tours-blocks .prep-seg-canvas-group").length).toBe(2);
+    (host.querySelector("#prep-seg-canvas-tours-apply") as HTMLButtonElement).click();
+    await flush();
+    expect(calls.find((c) => c.path === "/segment/coarse")?.body).toMatchObject({ doc_id: 1, pattern: "^[A-Z]+ :" });
+  });
+
+  it("sends the pattern raw (untrimmed) so apply matches the preview", async () => {
+    const calls: Call[] = [];
+    const conn = fakeConn({ units: [unit(1, { text_norm: "— A" }), unit(2, { text_norm: "— B" })], calls });
+    const pane = new SegmentPane(host, () => conn, () => {}, null, () => {});
+    await pane.setDocument(1, "fr");
+    (host.querySelector('[data-surface="tours"]') as HTMLButtonElement).click();
+    await flush();
+    const inp = host.querySelector<HTMLInputElement>("#prep-seg-canvas-tours-pat")!;
+    inp.value = "^— "; // the trailing space is significant and must not be trimmed away
+    inp.dispatchEvent(new Event("input"));
+    await new Promise((r) => setTimeout(r, 220));
+    (host.querySelector("#prep-seg-canvas-tours-apply") as HTMLButtonElement).click();
+    await flush();
+    expect(calls.find((c) => c.path === "/segment/coarse")?.body).toMatchObject({ pattern: "^— " });
   });
 });

@@ -752,6 +752,11 @@ export class MetadataScreen {
           <input id="edit-validated-run-id" type="text" value="${this._esc(doc.validated_run_id ?? "")}" placeholder="run_...">
         </label>
       </div>
+      <div class="prep-form-row">
+        <label style="flex:1">Notes (mémo interne)
+          <textarea id="edit-notes" rows="2" placeholder="Notes libres sur ce document — non exportées, non indexées">${this._esc(doc.notes ?? "")}</textarea>
+        </label>
+      </div>
       <div class="prep-form-row" style="margin-top:-0.2rem">
         <div class="hint" style="margin:0">
           ${doc.validated_at ? `Dernière validation: ${this._esc(new Date(doc.validated_at).toLocaleString())}` : "Dernière validation: —"}
@@ -788,7 +793,7 @@ export class MetadataScreen {
               .join("")}
           </select>
         </label>
-        <label>Note
+        <label>Note sur la relation
           <input id="rel-note" type="text" placeholder="optionnel" style="max-width:130px">
         </label>
         <button id="add-rel-btn" class="btn btn-secondary btn-sm" style="align-self:flex-end">＋ Ajouter</button>
@@ -1335,6 +1340,7 @@ export class MetadataScreen {
     const work_title = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-work-title")!).value.trim() || null;
     const pub_place = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-pub-place")!).value.trim() || null;
     const publisher = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-publisher")!).value.trim() || null;
+    const notes = (this._editPanelEl.querySelector<HTMLTextAreaElement>("#edit-notes")!).value.trim() || null;
 
     const btn = this._editPanelEl.querySelector<HTMLButtonElement>("#save-doc-btn")!;
     btn.disabled = true;
@@ -1357,6 +1363,7 @@ export class MetadataScreen {
         work_title,
         pub_place,
         publisher,
+        notes,
       });
       const updated = res.doc;
       this._applyUpdatedDoc(updated);
@@ -1820,6 +1827,7 @@ export class MetadataScreen {
     const workTitle            = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-work-title")?.value ?? "").trim();
     const pubPlace             = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-pub-place")?.value ?? "").trim();
     const publisher            = (this._editPanelEl.querySelector<HTMLInputElement>("#edit-publisher")?.value ?? "").trim();
+    const notesField           = (this._editPanelEl.querySelector<HTMLTextAreaElement>("#edit-notes")?.value ?? "").trim();
 
     const baseTitle               = (this._selectedDoc.title ?? "").trim();
     const baseLanguage            = (this._selectedDoc.language ?? "").trim();
@@ -1838,6 +1846,7 @@ export class MetadataScreen {
     const baseWorkTitle           = (this._selectedDoc.work_title ?? "").trim();
     const basePubPlace            = (this._selectedDoc.pub_place ?? "").trim();
     const basePublisher           = (this._selectedDoc.publisher ?? "").trim();
+    const baseNotes               = (this._selectedDoc.notes ?? "").trim();
 
     return (
       title !== baseTitle ||
@@ -1853,7 +1862,8 @@ export class MetadataScreen {
       translatorFirstname !== baseTranslatorFirstname ||
       workTitle !== baseWorkTitle ||
       pubPlace !== basePubPlace ||
-      publisher !== basePublisher
+      publisher !== basePublisher ||
+      notesField !== baseNotes
     );
   }
 

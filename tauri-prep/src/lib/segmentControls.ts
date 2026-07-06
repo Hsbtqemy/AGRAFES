@@ -10,7 +10,7 @@
 
 import type { SegmentPreviewSegment, SegmentSpecInput } from "./sidecarClient.ts";
 
-export type SegSurface = "brut" | "phrases" | "balises" | "custom";
+export type SegSurface = "brut" | "phrases" | "balises" | "custom" | "tours";
 
 /** State of the "Personnalisé" controls (R5.4b-2). Kept here so buildSegmentParams
  *  is total over every surface even though b-1 only wired phrases/balises. */
@@ -58,7 +58,9 @@ export interface SegmentParams {
  * `spec`. The caller merges in `doc_id` + `lang`.
  */
 export function buildSegmentParams(surface: SegSurface, custom?: CustomSpecState): SegmentParams {
-  if (surface === "brut") return {}; // "Brut" is the current state — no segmentation is requested.
+  // "Brut" is the current state and "Tours" is a coarse regroup (its own endpoint) — neither
+  // requests a fine split.
+  if (surface === "brut" || surface === "tours") return {};
   if (surface === "phrases") return { preset: "phrases" };
   if (surface === "balises") return { preset: "balises" };
   const c = custom ?? { terminators: [".!?"], requireUppercase: false, wordMode: false, abbreviations: [] };
@@ -114,6 +116,7 @@ export function surfaceHint(surface: SegSurface): string {
   if (surface === "brut") return "Le texte actuel, tel qu'il est découpé aujourd'hui (avant transformation).";
   if (surface === "phrases") return "Découpe en phrases (. ! ?), abréviations protégées.";
   if (surface === "balises") return "Découpe sur les marqueurs [N] présents dans le texte.";
+  if (surface === "tours") return "Regroupe les unités en tours de parole (tiret de dialogue) — grain grossier, sans re-découper.";
   return "Terminateurs et mots au choix.";
 }
 

@@ -18,7 +18,7 @@
 import type { Conn, SegmentPreviewResponse, PrepUndoEligibilityResponse } from "../lib/sidecarClient.ts";
 import {
   segmentPreview, segment, getDocumentStats, listUnits,
-  mergeUnits, splitUnit, prepUndo, prepUndoEligibility,
+  mergeUnits, splitUnit, prepUndo, prepUndoEligibility, regroupCoarse,
 } from "../lib/sidecarClient.ts";
 import { escHtml as esc } from "../lib/diff.ts";
 import { setHtml, raw } from "../lib/safeHtml.ts";
@@ -37,6 +37,7 @@ import {
 } from "../lib/segmentControls.ts";
 import { computeAnomalyView, type AnomalyView } from "../lib/segmentAnomalies.ts";
 import { formatUndoActionLabel, formatUndoTooltip, isUndoDisabled } from "../lib/prepUndo.ts";
+import { resolveCoarseBoundary, regroupByBoundary } from "../lib/coarseRegroup.ts";
 
 export class SegmentPane {
   private readonly _root: HTMLElement;
@@ -78,6 +79,9 @@ export class SegmentPane {
   private _pendingFocusN: number | null = null;
   /** Last Mode A undo eligibility for this doc — drives the Brut "↶ Annuler" button. */
   private _undoElig: PrepUndoEligibilityResponse | null = null;
+  /** Custom coarse boundary pattern for the Tours surface (empty → the built-in `tours` preset). */
+  private _toursPattern = "";
+  private _toursTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     root: HTMLElement,
@@ -104,6 +108,7 @@ export class SegmentPane {
             <button type="button" class="prep-seg-canvas-surfbtn active" data-surface="phrases" role="tab" aria-selected="true">Phrases</button>
             <button type="button" class="prep-seg-canvas-surfbtn" data-surface="balises" role="tab" aria-selected="false">Balises [N]</button>
             <button type="button" class="prep-seg-canvas-surfbtn" data-surface="custom" role="tab" aria-selected="false">Personnalis&#233;</button>
+            <button type="button" class="prep-seg-canvas-surfbtn" data-surface="tours" role="tab" aria-selected="false" title="Grain grossier : regrouper en tours de parole (parent_n), sans re-d&#233;couper">Tours</button>
           </div>
           <span class="prep-seg-canvas-hint" id="prep-seg-canvas-hint"></span>
           <div class="prep-seg-canvas-custom" id="prep-seg-canvas-custom" hidden>
@@ -178,6 +183,7 @@ export class SegmentPane {
     this._units = [];
     this._splitEditingN = null; // a stale inline split editor must not survive a reload/doc switch
     this._splitDraft = null;
+    if (this._toursTimer) { clearTimeout(this._toursTimer); this._toursTimer = null; }
     this._previewToken++; // invalidate any in-flight preview from the previous document
     if (this._previewTimer) { clearTimeout(this._previewTimer); this._previewTimer = null; } // and any scheduled one
     // Pre-fill the Personnalisé abbreviations from the doc's language pack — only on an actual
@@ -222,6 +228,11 @@ export class SegmentPane {
       await this._renderBrutView();
       return;
     }
+    if (this._surface === "tours") {
+      this._lastPreview = null;
+      this._renderTours();
+      return;
+    }
     await this._runPreview();
   }
 
@@ -233,6 +244,7 @@ export class SegmentPane {
 
   dispose(): void {
     if (this._previewTimer) { clearTimeout(this._previewTimer); this._previewTimer = null; }
+    if (this._toursTimer) { clearTimeout(this._toursTimer); this._toursTimer = null; }
     this._docId = null;
     this._lastPreview = null;
   }
@@ -257,6 +269,10 @@ export class SegmentPane {
       this._previewToken++; // cancel any in-flight preview render
       this._lastPreview = null;
       void this._renderBrutView();
+    } else if (s === "tours") {
+      this._previewToken++;
+      this._lastPreview = null;
+      this._renderTours();
     } else {
       this._schedulePreview();
     }
@@ -515,7 +531,7 @@ export class SegmentPane {
 
   private async _runPreview(): Promise<void> {
     const conn = this._getConn();
-    if (!conn || this._docId === null || this._surface === "brut") return; // Brut has its own render path
+    if (!conn || this._docId === null || this._surface === "brut" || this._surface === "tours") return; // these have their own render path
     const token = ++this._previewToken;
     const previewEl = this._root.querySelector<HTMLElement>("#prep-seg-canvas-preview");
     if (previewEl) setHtml(previewEl, raw(`<div class="prep-seg-canvas-empty">Calcul de l&#8217;aper&#231;u&#8230;</div>`));
@@ -626,6 +642,118 @@ export class SegmentPane {
     } catch (e) {
       this._notify(e instanceof Error ? e.message : String(e), true);
       if (btn) { btn.disabled = false; btn.textContent = "Appliquer la segmentation"; }
+    } finally {
+      this._busy = false;
+    }
+  }
+
+  // ─── Tours: coarse regrouping (non-destructive parent_n relabel, R5.4c) ──────
+
+  /** Build the Tours surface: a boundary control (default = dialogue dash) above a grouped
+   *  preview of how the current units would form coarse blocks. Apply is non-destructive. */
+  private _renderTours(): void {
+    const el = this._root.querySelector<HTMLElement>("#prep-seg-canvas-preview");
+    if (!el) return;
+    setHtml(el, raw(`${this._toursCtrlHtml()}<div class="prep-seg-canvas-units" id="prep-seg-canvas-tours-blocks"></div>`));
+    this._wireToursCtrl(el);
+    this._refreshToursBlocks();
+  }
+
+  private _toursCtrlHtml(): string {
+    return `<div class="prep-seg-canvas-tours-ctrl">
+      <label class="prep-seg-canvas-tours-lbl">Motif de tour (optionnel)
+        <input type="text" id="prep-seg-canvas-tours-pat" class="prep-seg-canvas-abbrev" value="${esc(this._toursPattern)}" placeholder="d&#233;faut : tiret de dialogue — ; ex. ^[A-Z]+ :" autocomplete="off" spellcheck="false" />
+      </label>
+    </div>`;
+  }
+
+  /** Re-render only the grouped blocks + the apply bar (so a keystroke in the pattern input
+   *  keeps focus — the control itself is not rebuilt). */
+  private _refreshToursBlocks(): void {
+    const host = this._root.querySelector<HTMLElement>("#prep-seg-canvas-tours-blocks");
+    if (!host) return;
+    if (!this._units.length) {
+      setHtml(host, raw(`<div class="prep-seg-canvas-empty">Aucune unité de texte dans ce document.</div>`));
+      this._renderToursApplyBar(null);
+      return;
+    }
+    let blocks;
+    try {
+      const boundary = resolveCoarseBoundary("tours", this._toursPattern || null);
+      blocks = regroupByBoundary(
+        this._units.map((u) => ({ n: u.n, text: u.text, isLine: u.isLine })),
+        boundary,
+      );
+    } catch (e) {
+      setHtml(host, raw(`<div class="prep-seg-canvas-empty prep-seg-canvas-error">${esc(e instanceof Error ? e.message : String(e))}</div>`));
+      this._renderToursApplyBar(null);
+      return;
+    }
+    const byN = new Map(this._units.map((u) => [u.n, u.text]));
+    const groups = blocks
+      .map((b) => {
+        const segs = b.memberNs
+          .map((n) => `<div class="prep-seg-canvas-seg"><span class="prep-seg-canvas-seg-text">${esc(byN.get(n) ?? "")}</span></div>`)
+          .join("");
+        const c = b.memberNs.length;
+        return `<div class="prep-seg-canvas-group">
+            <div class="prep-seg-canvas-group-head">tour &#183; ${c} unit&#233;${c > 1 ? "s" : ""}</div>${segs}
+          </div>`;
+      })
+      .join("");
+    setHtml(host, raw(groups));
+    this._renderToursApplyBar(blocks.length);
+  }
+
+  private _wireToursCtrl(el: HTMLElement): void {
+    const inp = el.querySelector<HTMLInputElement>("#prep-seg-canvas-tours-pat");
+    inp?.addEventListener("input", () => {
+      this._toursPattern = inp.value;
+      if (this._toursTimer) clearTimeout(this._toursTimer);
+      this._toursTimer = setTimeout(() => this._refreshToursBlocks(), 180);
+    });
+  }
+
+  private _renderToursApplyBar(blockCount: number | null): void {
+    const bar = this._applyBarEl;
+    if (!bar) return;
+    if (blockCount === null || this._docId === null) {
+      bar.classList.remove("visible");
+      bar.innerHTML = "";
+      return;
+    }
+    bar.classList.add("visible");
+    setHtml(bar, raw(`
+      <span class="prep-seg-canvas-summary">${blockCount} tour${blockCount > 1 ? "s" : ""}</span>
+      <button type="button" class="btn btn-primary btn-sm" id="prep-seg-canvas-tours-apply">Regrouper en tours</button>
+    `));
+    bar.querySelector("#prep-seg-canvas-tours-apply")?.addEventListener("click", () => void this._applyTours());
+  }
+
+  /** Persist the coarse regrouping. Non-destructive (alignment kept) → no confirm; the host
+   *  reload refreshes the ¶ grouping in the other layers + the state strip. */
+  private async _applyTours(): Promise<void> {
+    const conn = this._getConn();
+    if (!conn || this._docId === null || this._busy) return;
+    this._busy = true;
+    const btn = this._applyBarEl?.querySelector<HTMLButtonElement>("#prep-seg-canvas-tours-apply");
+    if (btn) { btn.disabled = true; btn.textContent = "Regroupement…"; }
+    // Decide preset-vs-pattern by emptiness, but send the pattern RAW — the preview and the
+    // engine both compile it untrimmed, so trimming here would apply a different grouping.
+    const hasPattern = this._toursPattern.trim().length > 0;
+    try {
+      const resp = await regroupCoarse(
+        conn,
+        hasPattern
+          ? { doc_id: this._docId, pattern: this._toursPattern }
+          : { doc_id: this._docId, preset: "tours" },
+      );
+      const nn = resp.units_changed;
+      this._notify(`Regroupé en ${resp.blocks} tour${resp.blocks > 1 ? "s" : ""} — ${nn} unité${nn > 1 ? "s" : ""} modifiée${nn > 1 ? "s" : ""}.`);
+      await this._onResegmented?.();
+    } catch (e) {
+      this._notify(e instanceof Error ? e.message : String(e), true);
+      if (btn) { btn.disabled = false; btn.textContent = "Regrouper en tours"; }
     } finally {
       this._busy = false;
     }

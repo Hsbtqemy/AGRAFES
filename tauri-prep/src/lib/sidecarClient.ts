@@ -72,6 +72,8 @@ export interface DocumentRecord {
   pub_place?: string | null;
   /** Éditeur / édition (ex. "Gallimard"). */
   publisher?: string | null;
+  /** R6.1 — free-text document-level notes-to-self (≠ doc_relations.note). */
+  notes?: string | null;
   unit_count: number;
   /** First unit n that belongs to the main text (units with n < text_start_n are paratext). Null = no boundary. */
   text_start_n?: number | null;
@@ -889,6 +891,8 @@ export interface DocumentUpdateOptions {
   pub_place?: string | null;
   /** Éditeur / édition (ex. "Gallimard"). */
   publisher?: string | null;
+  /** R6.1 — document-level notes-to-self. */
+  notes?: string | null;
 }
 
 export interface DocRelationRecord {
@@ -1511,6 +1515,24 @@ export async function prepUndo(
 
 export async function segment(conn: Conn, opts: SegmentOptions): Promise<SegmentResponse> {
   return conn.post("/segment", opts) as Promise<SegmentResponse>;
+}
+
+// ---------------------------------------------------------------------------
+// Coarse regrouping (R5.4c/B) — non-destructive parent_n relabel by a boundary
+// ---------------------------------------------------------------------------
+export interface RegroupCoarseResponse {
+  ok: boolean;
+  doc_id: number;
+  blocks: number;
+  units_grouped: number;
+  units_changed: number;
+}
+
+export async function regroupCoarse(
+  conn: Conn,
+  opts: { doc_id: number; preset?: string; pattern?: string },
+): Promise<RegroupCoarseResponse> {
+  return conn.post("/segment/coarse", opts) as Promise<RegroupCoarseResponse>;
 }
 
 export async function align(conn: Conn, opts: AlignOptions): Promise<AlignResponse> {

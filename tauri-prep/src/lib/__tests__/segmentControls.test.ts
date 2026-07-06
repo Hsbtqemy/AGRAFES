@@ -18,8 +18,9 @@ describe("buildSegmentParams", () => {
     expect(buildSegmentParams("balises")).toEqual({ preset: "balises" });
   });
 
-  it("Brut requests no segmentation params (it is the current state)", () => {
+  it("Brut and Tours request no fine segmentation params", () => {
     expect(buildSegmentParams("brut")).toEqual({});
+    expect(buildSegmentParams("tours")).toEqual({}); // Tours is a coarse regroup, own endpoint
   });
 
   it("builds a terminator spec from the custom terminator set + extra abbreviations", () => {
@@ -112,8 +113,10 @@ describe("needsAlignmentConfirm", () => {
 
 describe("surfaceHint", () => {
   it("returns a distinct hint per surface", () => {
-    const hints = new Set([surfaceHint("phrases"), surfaceHint("balises"), surfaceHint("custom")]);
-    expect(hints.size).toBe(3);
+    const hints = new Set([
+      surfaceHint("phrases"), surfaceHint("balises"), surfaceHint("custom"), surfaceHint("tours"),
+    ]);
+    expect(hints.size).toBe(4);
   });
 });
 

@@ -6918,6 +6918,15 @@ tr[data-len].prep-seg-row-context .prep-seg-cell-len {
 .prep-seg-canvas-split-ta:focus { outline: none; border-color: #0c4a46; }
 .prep-seg-canvas-split-actions { display: flex; gap: 0.4rem; }
 
+/* R5.4c — Tours surface: the coarse boundary control above the grouped preview. */
+.prep-seg-canvas-tours-ctrl {
+  padding: 0.35rem 0.2rem 0.5rem; margin-bottom: 0.45rem; border-bottom: 1px solid #e2e8f0;
+}
+.prep-seg-canvas-tours-lbl {
+  display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.78rem; color: #475569;
+}
+.prep-seg-canvas-tours-lbl .prep-seg-canvas-abbrev { max-width: 26rem; }
+
 /* R5.1b — couche Curation : dock de presets + marqueur discret d'unité modifiée */
 .prep-cur-root { display: flex; flex-direction: column; height: 100%; }
 .prep-cur-toolbar { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.4rem; }
