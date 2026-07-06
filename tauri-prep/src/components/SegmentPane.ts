@@ -110,6 +110,7 @@ export class SegmentPane {
     this._lang = lang;
     this._lastPreview = null;
     this._units = [];
+    this._previewToken++; // invalidate any in-flight preview from the previous document
     if (docId === null) {
       this._renderEmpty("Sélectionnez un document.");
       this._renderApplyBar();
@@ -123,12 +124,14 @@ export class SegmentPane {
    *  so this is per-document, not per-preview. */
   private async _loadUnits(): Promise<void> {
     const conn = this._getConn();
-    if (!conn || this._docId === null) return;
+    const docId = this._docId;
+    if (!conn || docId === null) return;
     try {
-      const units = await listUnits(conn, this._docId);
+      const units = await listUnits(conn, docId);
+      if (docId !== this._docId) return; // document switched during the await — drop stale units
       this._units = units.map((u) => ({ n: u.n, text: u.text_norm ?? u.text_raw ?? "" }));
     } catch {
-      this._units = [];
+      if (docId === this._docId) this._units = [];
     }
   }
 
