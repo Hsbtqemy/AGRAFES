@@ -45,7 +45,7 @@ Une **frontière** de segment se définit par l'une de **deux natures** (le poin
 
 | Nature | Coupe… | Exemples de préréglages |
 |---|---|---|
-| **Terminateur en flux** | *après* un caractère/motif dans le texte | **Phrases** (`.!?` + majuscule + abréviations), **Mots** (espace) |
+| **Terminateur en flux** | *après* un caractère/motif dans le texte | **Phrases** (`.!?` + ponctuation fermante `.»`/`.)`, abréviations protégées, **sans condition de majuscule** — R5.4b), **Mots** (espace) |
 | **Motif de ligne/bloc** | *avant* une ligne correspondant à un motif | **Tours** (`—`/`NOM :`), **Vers** (saut de ligne), **Paragraphes** (ligne vide), **Balises `[N]`** |
 
 - **Surface UI = `Phrases | Balises [N] | Personnalisé`** : **Phrases** et **Balises** restent

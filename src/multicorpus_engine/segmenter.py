@@ -105,10 +105,16 @@ def resolve_segment_pack(pack: str | None, lang: str = "und") -> str:
 # Configurable segmentation spec (R5.4)
 # ---------------------------------------------------------------------------
 
-# The "capital letter / opening quote" class a sentence terminator must be
-# followed by — kept byte-identical to the historical _SPLIT_RE follow-set so the
-# "phrases" preset reproduces today's splitter exactly.
+# The "capital letter / opening quote" class a terminator must be followed by *when*
+# ``require_uppercase_after`` is on. The "phrases" preset no longer requires it (R5.4b) —
+# this set now serves the Personnalisé "majuscule après" refinement.
 _UPPER_FOLLOW = "A-ZÀ-Ÿ\"‘’“”("
+
+# Closing punctuation that may sit *between* a sentence terminator and the whitespace,
+# e.g. « … pasado.» Eso → the '.' is hidden behind the closing guillemet, but the sentence
+# still ends there. We let one such mark precede the split. stdlib re requires fixed-width
+# lookbehind, so _compile_terminator_re alternates a bare branch and a +1-closer branch.
+_CLOSE_PUNCT = "\"')]}»›’”"
 
 
 @dataclass(frozen=True)
@@ -141,9 +147,11 @@ _MARKERS_SPEC = SegmentSpec(kind="markers", label="markers")
 def resolve_preset(name: str | None, lang: str = "und", pack: str | None = None) -> SegmentSpec:
     """Resolve a built-in preset name to a :class:`SegmentSpec`.
 
-    ``"phrases"`` reproduces the historical sentence splitter (terminators ``.!?``
-    + capital-follows + the language's abbreviation pack) so the no-spec path stays
-    byte-identical. ``"mots"`` = whitespace (words) ; ``"balises"`` = ``[N]`` markers.
+    ``"phrases"`` = terminators ``.!?`` (+ a closing quote/bracket) with the language's
+    abbreviation pack, but **without** a capital-after condition (R5.4b: a terminator ends
+    a segment regardless of the following case — so Phrases also cuts before a ``[N]`` marker
+    or a lowercase word; the capital-after refinement lives in Personnalisé). ``"mots"`` =
+    whitespace (words) ; ``"balises"`` = ``[N]`` markers.
     """
     key = (name or "phrases").strip().lower()
     if key == "phrases":
@@ -151,7 +159,7 @@ def resolve_preset(name: str | None, lang: str = "und", pack: str | None = None)
         return SegmentSpec(
             kind="terminator",
             terminators=".!?",
-            require_uppercase_after=True,
+            require_uppercase_after=False,
             protect_abbreviations=_PACK_EXTRA_ABBREVIATIONS[resolved_pack],
             label=resolved_pack,
         )
@@ -196,11 +204,17 @@ def spec_from_dict(d: dict) -> SegmentSpec:
 
 def _compile_terminator_re(spec: SegmentSpec) -> re.Pattern:
     """Split regex for a terminator spec: split at the whitespace *after* any
-    terminator char, optionally requiring a capital/quote to follow."""
+    terminator char (optionally wrapped by one closing quote/bracket, e.g. ``.»``),
+    optionally requiring a capital/quote to follow."""
     cls = "".join(re.escape(c) for c in spec.terminators)
+    close = "".join(re.escape(c) for c in _CLOSE_PUNCT)
+    # A closing mark may sit between the terminator and the space. stdlib re needs a
+    # fixed-width lookbehind, so alternate a bare-terminator branch (width 1) and a
+    # terminator+closer branch (width 2).
+    behind = rf"(?:(?<=[{cls}])|(?<=[{cls}][{close}]))"
     if spec.require_uppercase_after:
-        return re.compile(rf"(?<=[{cls}])\s+(?=[{_UPPER_FOLLOW}])")
-    return re.compile(rf"(?<=[{cls}])\s+")
+        return re.compile(rf"{behind}\s+(?=[{_UPPER_FOLLOW}])")
+    return re.compile(rf"{behind}\s+")
 
 
 def _split_terminator(text: str, spec: SegmentSpec) -> list[str]:

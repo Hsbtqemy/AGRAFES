@@ -43,6 +43,7 @@ def test_segment_text_backcompat_abbrev_and_decimal() -> None:
 def test_resolve_preset_phrases_carries_lang_abbreviations() -> None:
     fr = resolve_preset("phrases", "fr")
     assert fr.kind == "terminator"
+    assert fr.require_uppercase_after is False  # R5.4b — no capital-after condition
     assert "chap" in fr.protect_abbreviations
     assert fr.label == "fr_strict"
     de = resolve_preset("phrases", "de")
@@ -80,7 +81,7 @@ _CLAUSE = "Il pleut ; il fait froid : rentrons. La suite."
 
 
 def test_accumulation_case1_phrases_default() -> None:
-    # (1) .!? + majuscule exigée = comportement actuel — ne coupe pas sur ; ni :
+    # (1) .!? + majuscule exigée (option Personnalisé) — ne coupe pas sur ; ni :
     spec = SegmentSpec(kind="terminator", terminators=".!?", require_uppercase_after=True)
     segs = [s for _, s in split_unit_text(_CLAUSE, spec)]
     assert segs == ["Il pleut ; il fait froid : rentrons.", "La suite."]
@@ -101,6 +102,66 @@ def test_accumulation_case3_clauses_suppressed_by_uppercase() -> None:
 
 
 # --- Robustesse (passe adverse) ----------------------------------------------
+
+
+def test_terminator_splits_after_closing_guillemet() -> None:
+    # The user's case: a sentence ends with `.»` — the terminator is hidden behind the
+    # closing guillemet, but the sentence still ends there (next word is a capital).
+    spec = resolve_preset("phrases", "es")
+    text = "«Algo te ha pasado.» Eso fue lo que dijo Rita. Fin."
+    segs = [s for _, s in split_unit_text(text, spec)]
+    assert segs == ["«Algo te ha pasado.»", "Eso fue lo que dijo Rita.", "Fin."]
+
+
+def test_terminator_splits_after_closing_paren_and_quote() -> None:
+    spec = resolve_preset("phrases", "fr")
+    assert [s for _, s in split_unit_text("Voir la note (c'est court.) La suite.", spec)] == [
+        "Voir la note (c'est court.)",
+        "La suite.",
+    ]
+    assert [s for _, s in split_unit_text('Il a dit "oui." Puis rien.', spec)] == [
+        'Il a dit "oui."',
+        "Puis rien.",
+    ]
+
+
+def test_closing_punct_does_not_oversplit() -> None:
+    spec = resolve_preset("phrases", "fr")
+    # A closer with no terminator before it must NOT trigger a split ("(Bonjour) Le" → no cut).
+    assert [s for _, s in split_unit_text("(Bonjour) Le monde continue.", spec)] == [
+        "(Bonjour) Le monde continue.",
+    ]
+
+
+def test_capital_after_refinement_keeps_lowercase_continuation() -> None:
+    # The capital-after option (a Personnalisé refinement) keeps a lowercase continuation
+    # attached — contrast with Phrases below, which cuts regardless of the following case.
+    uc = SegmentSpec(kind="terminator", terminators=".!?", require_uppercase_after=True)
+    assert [s for _, s in split_unit_text("Il a dit «oui.» puis se tut.", uc)] == [
+        "Il a dit «oui.» puis se tut.",
+    ]
+
+
+def test_phrases_splits_without_capital_condition() -> None:
+    # R5.4b — Phrases cuts on . ? ! whatever the following case, even before a [N] marker,
+    # while still protecting known abbreviations (the "filet").
+    spec = resolve_preset("phrases", "fr")
+    assert spec.require_uppercase_after is False
+    # lowercase after the period → still splits
+    assert [s for _, s in split_unit_text("Il pleut. il fait froid.", spec)] == [
+        "Il pleut.",
+        "il fait froid.",
+    ]
+    # cuts before a marker (the real period ends the sentence; "[" no longer blocks it)
+    assert [s for _, s in split_unit_text("existía. [11] Podría no.", spec)] == [
+        "existía.",
+        "[11] Podría no.",
+    ]
+    # abbreviations + non-decimal numbers stay protected
+    assert [s for _, s in split_unit_text("Voir chap. 1 (p. 9-49). il pleut.", spec)] == [
+        "Voir chap. 1 (p. 9-49).",
+        "il pleut.",
+    ]
 
 
 def test_terminator_empty_is_single_segment_no_crash() -> None:
