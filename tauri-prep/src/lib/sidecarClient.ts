@@ -529,6 +529,10 @@ export interface UnitsMergeResponse {
   merged_n: number;
   deleted_n: number;
   text: string;
+  /** Merge rewrote the kept unit's text_norm → FTS must be reindexed. */
+  fts_stale?: boolean;
+  /** prep_action_history id for Mode A undo. */
+  action_id?: number;
 }
 
 export async function mergeUnits(
@@ -545,6 +549,10 @@ export interface UnitsSplitResponse {
   new_unit_n: number;
   text_a: string;
   text_b: string;
+  /** Split rewrote/created unit text_norm → FTS must be reindexed. */
+  fts_stale?: boolean;
+  /** prep_action_history id for Mode A undo. */
+  action_id?: number;
 }
 
 export async function splitUnit(

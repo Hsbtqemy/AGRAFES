@@ -116,3 +116,15 @@ export function surfaceHint(surface: SegSurface): string {
   if (surface === "balises") return "Découpe sur les marqueurs [N] présents dans le texte.";
   return "Terminateurs et mots au choix.";
 }
+
+/**
+ * Auto-split point for the inline split editor (R5.4b-3): cut near the middle, snapping
+ * back to the last space before the midpoint so a word isn't broken (mirrors the legacy
+ * SegmentationView heuristic). Both halves are trimmed; the user can still edit them.
+ */
+export function autoSplitText(text: string): { a: string; b: string } {
+  const midPoint = Math.ceil(text.length / 2);
+  const lastSpace = text.lastIndexOf(" ", midPoint);
+  const splitAt = lastSpace > 0 ? lastSpace : midPoint;
+  return { a: text.slice(0, splitAt).trim(), b: text.slice(splitAt).trim() };
+}

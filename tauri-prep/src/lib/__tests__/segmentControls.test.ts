@@ -8,6 +8,7 @@ import {
   surfaceHint,
   defaultAbbreviations,
   parseAbbreviations,
+  autoSplitText,
   type CustomSpecState,
 } from "../segmentControls.ts";
 
@@ -113,6 +114,24 @@ describe("surfaceHint", () => {
   it("returns a distinct hint per surface", () => {
     const hints = new Set([surfaceHint("phrases"), surfaceHint("balises"), surfaceHint("custom")]);
     expect(hints.size).toBe(3);
+  });
+});
+
+describe("autoSplitText", () => {
+  it("splits at the last space before the midpoint, trimming both halves", () => {
+    // len 11, midpoint = ceil(11/2) = 6; last space before index 6 is index 5.
+    expect(autoSplitText("hello world")).toEqual({ a: "hello", b: "world" });
+  });
+
+  it("falls back to the raw midpoint when there is no space before it", () => {
+    // "abcdefgh" len 8, midpoint 4, no space → cut at 4.
+    expect(autoSplitText("abcdefgh")).toEqual({ a: "abcd", b: "efgh" });
+  });
+
+  it("keeps the whole text in the first half when a leading space is the only one", () => {
+    // lastIndexOf(" ", mid) === 0 is not > 0 → falls back to midpoint.
+    const { a, b } = autoSplitText(" trailing");
+    expect(a + b).toContain("trailing");
   });
 });
 
