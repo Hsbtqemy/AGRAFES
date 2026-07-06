@@ -14,7 +14,7 @@ from typing import Any
 from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
-CONTRACT_VERSION = "1.6.47"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.48"  # semantic versioning for the sidecar API contract
 # SID-08 / OPS-03: the API version IS the contract version — derived, never a
 # second hand-maintained literal, so the two can no longer drift. /health reports
 # the *engine* version under `version` (it predates the sidecar); every other
@@ -162,6 +162,11 @@ API_VERSION = CONTRACT_VERSION
 # 1.6.47: document notes (R6.1). documents.notes (migration 024) — free-text notes-to-self at the
 #         document level (≠ doc_relations.note). Additive `notes` on DocumentRecord (GET /documents)
 #         and DocumentUpdateRequest (POST /documents/update, /bulk_update). Not FTS-indexed.
+# 1.6.48: filterable document labels (R6.2). New table document_tags (migration 025, namespaced N-N:
+#         doc_id, kind, value — both free-text). New GET /tags (?doc_id → a doc's tags, else distinct
+#         corpus (kind,value)), POST /documents/tags/add|remove. Additive `tags` filter on POST /query
+#         + /query/facets (array of {kind,value}; a doc matches ANY pair — OR). token_query/stats not
+#         covered. Logic in services/tags_service.py + query._apply_doc_filters.
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
@@ -990,6 +995,38 @@ def openapi_spec() -> dict[str, Any]:
                         "404": {"description": "Unit not found", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
                     },
                 }
+            },
+            "/tags": {
+                "get": {
+                    "summary": "List document tags (R6.2); ?doc_id=N → that document's tags, else distinct (kind,value) across the corpus",
+                    "responses": {"200": {"description": "Tags",
+                        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OkResponse"}}}}},
+                },
+            },
+            "/documents/tags/add": {
+                "post": {
+                    "summary": "Attach a (kind,value) tag to a document (token required, idempotent)",
+                    "requestBody": {"required": True, "content": {"application/json": {"schema": {"type": "object",
+                        "properties": {"doc_id": {"type": "integer"}, "kind": {"type": "string"}, "value": {"type": "string"}},
+                        "required": ["doc_id", "kind", "value"]}}}},
+                    "responses": {
+                        "200": {"description": "Tag added", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OkResponse"}}}},
+                        "400": {"description": "Bad request", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                        "404": {"description": "Document not found", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                    },
+                },
+            },
+            "/documents/tags/remove": {
+                "post": {
+                    "summary": "Remove a (kind,value) tag from a document (token required)",
+                    "requestBody": {"required": True, "content": {"application/json": {"schema": {"type": "object",
+                        "properties": {"doc_id": {"type": "integer"}, "kind": {"type": "string"}, "value": {"type": "string"}},
+                        "required": ["doc_id", "kind", "value"]}}}},
+                    "responses": {
+                        "200": {"description": "Tag removed", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OkResponse"}}}},
+                        "400": {"description": "Bad request", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                    },
+                },
             },
             "/conventions": {
                 "get": {
@@ -2345,6 +2382,7 @@ def openapi_spec() -> dict[str, Any]:
                         "q": {"type": "string"}, "language": {"type": "string"}, "doc_id": {"type": "integer"}, "doc_ids": {"type": "array", "items": {"type": "integer"}},
                         "resource_type": {"type": "string"}, "doc_role": {"type": "string"}, "author": {"type": "string"}, "title_search": {"type": "string"},
                         "doc_date_from": {"type": "string"}, "doc_date_to": {"type": "string"}, "source_ext": {"type": "string"},
+                        "tags": {"type": "array", "items": {"type": "object", "properties": {"kind": {"type": "string"}, "value": {"type": "string"}}, "required": ["kind", "value"]}, "description": "R6.2 — filter by labels (OR over (kind,value))."},
                         "unit_status": {"type": "string", "enum": ["non_traduit", "ajout"], "nullable": True, "description": "R4.1/FE-01 — restrict facet counts to units of this translation status."},
                         "top_docs_limit": {"type": "integer", "default": 10, "minimum": 1, "maximum": 50}}}}}},
                     "responses": {
@@ -2539,6 +2577,11 @@ def openapi_spec() -> dict[str, Any]:
                         "doc_ids": {"type": "array", "items": {"type": "integer"}},
                         "resource_type": {"type": "string"},
                         "doc_role": {"type": "string"},
+                        "tags": {
+                            "type": "array",
+                            "description": "R6.2 — filter by namespaced labels; a doc matches ANY (kind,value) pair (OR).",
+                            "items": {"type": "object", "properties": {"kind": {"type": "string"}, "value": {"type": "string"}}, "required": ["kind", "value"]},
+                        },
                         "db_paths": {
                             "type": "array",
                             "items": {"type": "string"},

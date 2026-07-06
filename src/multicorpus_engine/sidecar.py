@@ -457,6 +457,7 @@ _WRITE_PATHS = frozenset({
     "/corpus/info",
     # Document / relation writes
     "/documents/update", "/documents/bulk_update", "/documents/delete",
+    "/documents/tags/add", "/documents/tags/remove",
     "/doc_relations/set", "/doc_relations/delete",
     # Exports (write to disk)
     "/export/tei", "/export/align_csv", "/export/run_report",
@@ -814,6 +815,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             self._handle_corpus_audit(qs)
         elif path == "/conventions":
             self._handle_conventions_list()
+        elif path == "/tags":
+            self._handle_tags_list()
         elif path == "/units":
             qs = parse_qs(urlparse(self.path).query)
             self._handle_units_list(qs)
@@ -1064,6 +1067,10 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 self._handle_conventions_create(body)
             elif path == "/conventions/delete":
                 self._handle_conventions_delete(body)
+            elif path == "/documents/tags/add":
+                self._handle_document_tags_add(body)
+            elif path == "/documents/tags/remove":
+                self._handle_document_tags_remove(body)
             elif path == "/units/set_role":
                 self._handle_units_set_role(body)
             elif path == "/units/bulk_set_role":
@@ -1739,6 +1746,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             "doc_date_from": body.get("doc_date_from") or None,
             "doc_date_to": body.get("doc_date_to") or None,
             "source_ext": body.get("source_ext") or None,
+            "tags": body.get("tags"),
             "unit_status": unit_status_raw,
             "include_aligned": include_aligned_raw,
             "aligned_limit": aligned_limit,
@@ -1765,6 +1773,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             "doc_date_from": params["doc_date_from"],
             "doc_date_to": params["doc_date_to"],
             "source_ext": params["source_ext"],
+            "tags": params["tags"],
             "unit_status": params["unit_status"],
             "include_aligned": params["include_aligned"],
             "aligned_limit": params["aligned_limit"],
@@ -2178,6 +2187,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             "doc_date_from": body.get("doc_date_from") or None,
             "doc_date_to": body.get("doc_date_to") or None,
             "source_ext": body.get("source_ext") or None,
+            "tags": body.get("tags"),
             "unit_status": unit_status_f,
             "top_docs_limit": top_docs_limit,
         }
@@ -5081,6 +5091,48 @@ class _CorpusHandler(BaseHTTPRequestHandler):
     # ------------------------------------------------------------------
 
     # Names auto-assigned to 'structure' when category column is missing (pre-migration DBs).
+    def _handle_tags_list(self) -> None:
+        # R6.2 — GET /tags. ?doc_id=X → that doc's (kind,value) tags (Prep picker); no doc_id
+        # → distinct (kind,value) across the corpus (filter autocomplete). Lock-free read.
+        from urllib.parse import parse_qs, urlparse
+        from multicorpus_engine.services.tags_service import list_tags
+        from multicorpus_engine.services.errors import ValidationError
+        qs = parse_qs(urlparse(self.path).query)
+        doc_id_raw = (qs.get("doc_id") or [None])[0]
+        try:
+            tags = list_tags(self._conn(), doc_id_raw)
+        except ValidationError as exc:
+            self._send_error(exc.message, code=ERR_BAD_REQUEST, http_status=exc.http_status)
+            return
+        self._send_json(success_payload({"tags": tags, "count": len(tags)}))
+
+    def _handle_document_tags_add(self, body: dict) -> None:
+        # R6.2 — thin adapter over tags_service.add_tag (idempotent INSERT OR IGNORE).
+        from multicorpus_engine.services.tags_service import add_tag
+        from multicorpus_engine.services.errors import NotFoundError, ValidationError
+        try:
+            with self._lock():
+                data = add_tag(self._conn(), body)
+        except ValidationError as exc:
+            self._send_error(exc.message, code=ERR_BAD_REQUEST, http_status=exc.http_status)
+            return
+        except NotFoundError as exc:
+            self._send_error(exc.message, code=ERR_NOT_FOUND, http_status=exc.http_status)
+            return
+        self._send_json(success_payload(data))
+
+    def _handle_document_tags_remove(self, body: dict) -> None:
+        # R6.2 — thin adapter over tags_service.remove_tag (absent tag → deleted=0).
+        from multicorpus_engine.services.tags_service import remove_tag
+        from multicorpus_engine.services.errors import ValidationError
+        try:
+            with self._lock():
+                data = remove_tag(self._conn(), body)
+        except ValidationError as exc:
+            self._send_error(exc.message, code=ERR_BAD_REQUEST, http_status=exc.http_status)
+            return
+        self._send_json(success_payload(data))
+
     def _handle_conventions_list(self) -> None:
         # Thin adapter over the conventions service (audit P0-1 / A-01).
         from multicorpus_engine.services.conventions_service import list_conventions

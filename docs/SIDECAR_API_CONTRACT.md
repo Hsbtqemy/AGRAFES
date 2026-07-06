@@ -381,6 +381,9 @@ Three **independent** version fields surface in sidecar responses — do not con
 - `POST /conventions` (token required) — create a role; body: `{ name, label, color?, icon?, sort_order? }`
 - `PUT /conventions/{name}` (token required) — update a role; body: `{ label?, color?, icon?, sort_order? }`
 - `POST /conventions/delete` (token required) — delete a role; body: `{ name }` (assigned units become NULL)
+- `GET /tags` — **R6.2** list document tags (namespaced N-N labels); `?doc_id=N` → that document's `{kind,value}` tags (Prep picker); without → distinct `{kind,value}` across the corpus (filter autocomplete). Read-only.
+- `POST /documents/tags/add` (token required) — **R6.2** attach a label to a document; body: `{ doc_id, kind, value }` (idempotent, `INSERT OR IGNORE`).
+- `POST /documents/tags/remove` (token required) — **R6.2** remove a label; body: `{ doc_id, kind, value }`; returns `{ deleted }` (absent → 0). Also: `POST /query` + `POST /query/facets` gain an additive `tags` filter (`[{kind,value}]`; a doc matches ANY pair — OR).
 - `POST /documents/set_text_start` (token required) — set paratextual boundary; body: `{ doc_id, text_start_n }` (null to clear)
 - `POST /segment/preview` — in-memory segmentation preview, no DB writes
   - body: `{ doc_id, mode?, lang?, pack?, limit?, calibrate_to?, preset?, spec? }`

@@ -566,6 +566,7 @@ def _apply_doc_filters(
     doc_date_from: Optional[str],
     doc_date_to: Optional[str],
     source_ext: Optional[str],
+    tags: Optional[list] = None,
 ) -> None:
     """Append document-level WHERE clauses to ``filters``/``params`` in-place."""
     if language:
@@ -614,6 +615,22 @@ def _apply_doc_filters(
         escaped_ext = ext.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         filters.append("d.source_path LIKE ? ESCAPE '\\'")
         params.append(f"%{escaped_ext}")
+    if tags:
+        # R6.2 — namespaced labels. A doc matches if it carries ANY of the (kind, value)
+        # pairs (OR). SQLite has no tuple IN (ADR-041), so OR-expand the pairs inside a
+        # correlated subquery — keeps this a WHERE-only append like every filter above.
+        pair_clauses: list[str] = []
+        for t in tags:
+            kind = (t.get("kind") if isinstance(t, dict) else None) or None
+            value = (t.get("value") if isinstance(t, dict) else None) or None
+            if kind and value:
+                pair_clauses.append("(dt.kind = ? AND dt.value = ?)")
+                params.extend([kind, value])
+        if pair_clauses:
+            filters.append(
+                "d.doc_id IN (SELECT dt.doc_id FROM document_tags dt WHERE "
+                + " OR ".join(pair_clauses) + ")"
+            )
 
 
 def _run_regex_page(
@@ -638,6 +655,7 @@ def _run_regex_page(
     offset: int,
     case_sensitive: bool,
     unit_status: Optional[str] = None,
+    tags: Optional[list] = None,
 ) -> dict[str, Any]:
     """Full-table-scan regex query.  Bypasses FTS; applies Python regex
     post-filter.  Returns an exact ``total``."""
@@ -659,6 +677,7 @@ def _run_regex_page(
         author=author, title_search=title_search,
         doc_date_from=doc_date_from, doc_date_to=doc_date_to,
         source_ext=source_ext,
+        tags=tags,
     )
     # R4.1 — unit-level translation-status filter (non_traduit/ajout).
     if unit_status:
@@ -731,6 +750,7 @@ def run_query_page(
     case_sensitive: bool = False,
     regex_pattern: Optional[str] = None,
     unit_status: Optional[str] = None,
+    tags: Optional[list] = None,
 ) -> dict[str, Any]:
     """Run an FTS or regex query and return a paginated payload.
 
@@ -780,6 +800,7 @@ def run_query_page(
             offset=offset,
             case_sensitive=case_sensitive,
             unit_status=unit_status,
+            tags=tags,
         )
 
     # ── FTS path ──────────────────────────────────────────────────────────────
@@ -803,6 +824,7 @@ def run_query_page(
         author=author, title_search=title_search,
         doc_date_from=doc_date_from, doc_date_to=doc_date_to,
         source_ext=source_ext,
+        tags=tags,
     )
     # R4.1 — unit-level translation-status filter (non_traduit/ajout).
     if unit_status:
@@ -904,6 +926,7 @@ def run_query_facets(
     source_ext: Optional[str] = None,
     unit_status: Optional[str] = None,
     top_docs_limit: int = 10,
+    tags: Optional[list] = None,
 ) -> dict[str, Any]:
     """Compute lightweight facet summary for a query without fetching hit content.
 
@@ -937,6 +960,7 @@ def run_query_facets(
         author=author, title_search=title_search,
         doc_date_from=doc_date_from, doc_date_to=doc_date_to,
         source_ext=source_ext,
+        tags=tags,
     )
     # FE-01: the unit_status filter (R4.1) must reach the facets/counters too, else
     # the filtered hit list shows unfiltered totals / top-docs / meta counts.

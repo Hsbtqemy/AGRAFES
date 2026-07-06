@@ -2580,6 +2580,25 @@
           "resource_type": {
             "type": "string"
           },
+          "tags": {
+            "description": "R6.2 — filter by namespaced labels; a doc matches ANY (kind,value) pair (OR).",
+            "items": {
+              "properties": {
+                "kind": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "value"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
           "unit_status": {
             "description": "R4.1 — restrict hits to units with this translation status; omit for all.",
             "enum": [
@@ -4164,8 +4183,8 @@
   "info": {
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
-    "version": "1.6.47",
-    "x-contract-version": "1.6.47"
+    "version": "1.6.48",
+    "x-contract-version": "1.6.48"
   },
   "openapi": "3.0.3",
   "paths": {
@@ -6044,6 +6063,122 @@
         "summary": "Per-document stage stats for the canvas state strip"
       }
     },
+    "/documents/tags/add": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "doc_id": {
+                    "type": "integer"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "value": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "doc_id",
+                  "kind",
+                  "value"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                }
+              }
+            },
+            "description": "Tag added"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Document not found"
+          }
+        },
+        "summary": "Attach a (kind,value) tag to a document (token required, idempotent)"
+      }
+    },
+    "/documents/tags/remove": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "doc_id": {
+                    "type": "integer"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "value": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "doc_id",
+                  "kind",
+                  "value"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                }
+              }
+            },
+            "description": "Tag removed"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request"
+          }
+        },
+        "summary": "Remove a (kind,value) tag from a document (token required)"
+      }
+    },
     "/documents/update": {
       "post": {
         "requestBody": {
@@ -7507,6 +7642,25 @@
                   "source_ext": {
                     "type": "string"
                   },
+                  "tags": {
+                    "description": "R6.2 — filter by labels (OR over (kind,value)).",
+                    "items": {
+                      "properties": {
+                        "kind": {
+                          "type": "string"
+                        },
+                        "value": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "value"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
                   "title_search": {
                     "type": "string"
                   },
@@ -8354,6 +8508,23 @@
           }
         },
         "summary": "Lexical frequency stats for one slot (filter set)"
+      }
+    },
+    "/tags": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                }
+              }
+            },
+            "description": "Tags"
+          }
+        },
+        "summary": "List document tags (R6.2); ?doc_id=N → that document's tags, else distinct (kind,value) across the corpus"
       }
     },
     "/telemetry": {
