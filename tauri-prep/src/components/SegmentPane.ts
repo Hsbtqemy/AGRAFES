@@ -159,6 +159,7 @@ export class SegmentPane {
     this._lastPreview = null;
     this._units = [];
     this._previewToken++; // invalidate any in-flight preview from the previous document
+    if (this._previewTimer) { clearTimeout(this._previewTimer); this._previewTimer = null; } // and any scheduled one
     // Pre-fill the Personnalisé abbreviations from the doc's language pack — only on an actual
     // document change, so switching layers back to Segmentation doesn't wipe the user's edits.
     if (docId !== this._prefillDoc) {
@@ -220,6 +221,9 @@ export class SegmentPane {
   private _setSurface(s: SegSurface): void {
     if (s === this._surface) return;
     this._surface = s;
+    // Cancel a debounced preview scheduled by the previous surface — otherwise a pending
+    // Personnalisé preview could fire after switching to Brut and overwrite its view.
+    if (this._previewTimer) { clearTimeout(this._previewTimer); this._previewTimer = null; }
     this._root.querySelectorAll<HTMLButtonElement>(".prep-seg-canvas-surfbtn").forEach((b) => {
       const on = b.dataset.surface === s;
       b.classList.toggle("active", on);
@@ -292,7 +296,7 @@ export class SegmentPane {
 
   private async _runPreview(): Promise<void> {
     const conn = this._getConn();
-    if (!conn || this._docId === null) return;
+    if (!conn || this._docId === null || this._surface === "brut") return; // Brut has its own render path
     const token = ++this._previewToken;
     const previewEl = this._root.querySelector<HTMLElement>("#prep-seg-canvas-preview");
     if (previewEl) setHtml(previewEl, raw(`<div class="prep-seg-canvas-empty">Calcul de l&#8217;aper&#231;u&#8230;</div>`));
