@@ -27,6 +27,10 @@ import {
   alignFamily,
   setDocRelation,
   deleteDocRelation,
+  listTags,
+  addDocumentTag,
+  removeDocumentTag,
+  type DocTag,
   backupDatabase,
   validateMeta,
   annotate,
@@ -69,6 +73,8 @@ export class MetadataScreen {
   private _selectedDoc: DocumentRecord | null = null;
   private _selectedDocIds: Set<number> = new Set();
   private _relations: DocRelationRecord[] = [];
+  /** R6.2 — the selected document's tags (namespaced labels). */
+  private _tags: DocTag[] = [];
 
   // Hierarchy view
   private _hierarchyView = false;
@@ -624,6 +630,7 @@ export class MetadataScreen {
     // _isSelectedDocDirty would see _selectedDoc.language="fr" but #edit-lang=""
     // (edit panel still empty) and incorrectly flag unsaved changes.
     this._relations = [];
+    this._tags = [];
     this._renderEditPanel();
     this._renderDocList();
     // Load relations and refresh the relations section once ready.
@@ -635,6 +642,12 @@ export class MetadataScreen {
         this._relations = [];
       }
       this._renderRelationsList();
+      try {
+        this._tags = await listTags(this._conn, doc.doc_id);
+      } catch {
+        this._tags = [];
+      }
+      this._renderTagsList();
     }
     void this._unitInspector.loadDocPreview(doc.doc_id);
   }
@@ -800,6 +813,21 @@ export class MetadataScreen {
       </div>
       <div id="relations-list" style="margin-top:0.4rem"></div>
 
+      <h4 style="font-size:0.88rem;font-weight:600;margin:0.7rem 0 0.3rem">&#201;tiquettes</h4>
+      <p style="font-size:0.78rem;color:var(--color-muted);margin:0 0 0.5rem">
+        Labels par axe libre (genre, th&#232;me&#8230;), filtrables dans le concordancier.
+      </p>
+      <div class="prep-form-row" style="align-items:flex-end">
+        <label>Axe
+          <input id="tag-kind" type="text" placeholder="genre" style="max-width:120px">
+        </label>
+        <label>Valeur
+          <input id="tag-value" type="text" placeholder="roman" style="max-width:150px">
+        </label>
+        <button id="add-tag-btn" class="btn btn-secondary btn-sm" style="align-self:flex-end">&#65291; Ajouter</button>
+      </div>
+      <div id="tags-list" style="margin-top:0.4rem"></div>
+
       <div class="prep-meta-preview">
         <div class="prep-meta-preview-head">
           <h4 style="font-size:0.88rem;font-weight:600;margin:0">Aperçu rapide du contenu</h4>
@@ -818,6 +846,7 @@ export class MetadataScreen {
     `));
 
     this._renderRelationsList();
+    this._renderTagsList();
     this._unitInspector.renderPreviewPanel();
     this._unitInspector.renderTokenEditorPanel();
 
@@ -826,6 +855,7 @@ export class MetadataScreen {
     this._editPanelEl.querySelector("#mark-validated-btn")!.addEventListener("click", () => this._setWorkflowStatus("validated"));
     this._editPanelEl.querySelector("#annotate-doc-btn")!.addEventListener("click", () => void this._runAnnotateDoc());
     this._editPanelEl.querySelector("#add-rel-btn")!.addEventListener("click", () => this._addRelation());
+    this._editPanelEl.querySelector("#add-tag-btn")!.addEventListener("click", () => this._addTag());
 
     this._editPanelEl.querySelector<HTMLButtonElement>("#inherit-author-btn")
       ?.addEventListener("click", () => this._inheritAuthorFromParent());
@@ -1480,6 +1510,66 @@ export class MetadataScreen {
       this._log(`✓ Relation #${id} supprimée.`);
     } catch (err) {
       this._log(`Erreur suppression: ${err instanceof SidecarError ? err.message : String(err)}`, true);
+    }
+  }
+
+  // ── Tags (R6.2 — namespaced labels) ───────────────────────────────────────
+
+  private _renderTagsList(): void {
+    const container = this._editPanelEl.querySelector<HTMLElement>("#tags-list");
+    if (!container) return;
+    if (this._tags.length === 0) {
+      container.innerHTML = `<p class="empty-hint" style="margin-top:0.5rem;font-size:0.82rem">Aucune étiquette.</p>`;
+      return;
+    }
+    container.innerHTML = "";
+    for (const tag of this._tags) {
+      const chip = document.createElement("span");
+      chip.style.cssText = [
+        "display:inline-flex;align-items:center;gap:0.35rem;font-size:0.8rem",
+        "padding:0.15rem 0.5rem;border-radius:999px;background:#eef2ff",
+        "border:1px solid #c7d2fe;margin:0 0.3rem 0.3rem 0",
+      ].join(";");
+      setHtml(chip, raw(`
+        <span style="font-weight:600;color:#4a6fa5">${this._esc(tag.kind)}</span>
+        <span style="color:var(--color-muted)">:</span>
+        <span>${this._esc(tag.value)}</span>
+        <button class="btn btn-danger btn-sm del-tag-btn" aria-label="Retirer cette étiquette" title="Retirer cette étiquette" style="padding:0 0.35rem">✕</button>
+      `));
+      chip.querySelector(".del-tag-btn")!.addEventListener("click", () => this._deleteTag(tag.kind, tag.value));
+      container.appendChild(chip);
+    }
+  }
+
+  private async _addTag(): Promise<void> {
+    if (!this._conn || !this._selectedDoc) return;
+    const kind = (this._editPanelEl.querySelector<HTMLInputElement>("#tag-kind")!).value.trim();
+    const value = (this._editPanelEl.querySelector<HTMLInputElement>("#tag-value")!).value.trim();
+    if (!kind || !value) {
+      this._log("Renseignez l'axe et la valeur de l'étiquette.", true);
+      return;
+    }
+    try {
+      await addDocumentTag(this._conn, { doc_id: this._selectedDoc.doc_id, kind, value });
+      this._tags = await listTags(this._conn, this._selectedDoc.doc_id);
+      this._renderTagsList();
+      (this._editPanelEl.querySelector<HTMLInputElement>("#tag-kind")!).value = "";
+      (this._editPanelEl.querySelector<HTMLInputElement>("#tag-value")!).value = "";
+      this._log(`✓ Étiquette ${kind}: ${value} ajoutée.`);
+    } catch (err) {
+      this._log(`Erreur ajout étiquette: ${err instanceof SidecarError ? err.message : String(err)}`, true);
+    }
+  }
+
+  private async _deleteTag(kind: string, value: string): Promise<void> {
+    if (!this._conn || !this._selectedDoc) return;
+    try {
+      await removeDocumentTag(this._conn, { doc_id: this._selectedDoc.doc_id, kind, value });
+      this._tags = this._tags.filter(t => !(t.kind === kind && t.value === value));
+      this._renderTagsList();
+      this._log(`✓ Étiquette ${kind}: ${value} retirée.`);
+    } catch (err) {
+      this._log(`Erreur suppression étiquette: ${err instanceof SidecarError ? err.message : String(err)}`, true);
     }
   }
 

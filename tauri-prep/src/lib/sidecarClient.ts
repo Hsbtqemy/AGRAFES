@@ -1838,6 +1838,30 @@ export async function deleteDocRelation(conn: Conn, id: number): Promise<{ delet
   return conn.post("/doc_relations/delete", { id }) as Promise<{ deleted: number }>;
 }
 
+// ---------------------------------------------------------------------------
+// Document tags (R6.2) — namespaced N-N labels
+// ---------------------------------------------------------------------------
+export interface DocTag { kind: string; value: string; }
+
+/** List a document's tags (with doc_id) or every distinct (kind,value) in the corpus. */
+export async function listTags(conn: Conn, doc_id?: number): Promise<DocTag[]> {
+  const path = doc_id != null ? `/tags?doc_id=${doc_id}` : "/tags";
+  const res = (await conn.get(path)) as { tags: DocTag[] };
+  return res.tags;
+}
+
+export async function addDocumentTag(
+  conn: Conn, opts: { doc_id: number; kind: string; value: string },
+): Promise<{ added: number }> {
+  return conn.post("/documents/tags/add", opts) as Promise<{ added: number }>;
+}
+
+export async function removeDocumentTag(
+  conn: Conn, opts: { doc_id: number; kind: string; value: string },
+): Promise<{ deleted: number }> {
+  return conn.post("/documents/tags/remove", opts) as Promise<{ deleted: number }>;
+}
+
 export async function backupDatabase(conn: Conn, opts: DbBackupOptions = {}): Promise<DbBackupResponse> {
   return conn.post("/db/backup", opts) as Promise<DbBackupResponse>;
 }
