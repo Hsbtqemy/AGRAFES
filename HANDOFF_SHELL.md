@@ -1,5 +1,7 @@
 # AGRAFES Shell — Briefing complet pour Claude Code Web
 
+> ⚠️ **Recadrage d'état (2026-07-06).** Ce briefing décrit l'instantané d'**avril 2026** (lignée `development`, labels « Shell 0.1.40 · Engine 0.8.4 » = jalons, **≠ version pyproject**). **État courant** : branche active **`refonte`** (= `dev` + 67 commits), engine **0.3.3** (pyproject, sur `dev` ET `refonte` ; `main` = 0.2.8), Shell **0.3.3**, contrat sidecar **1.6.45**, migrations **001–023**, dernier commit **R5.4b-2** (Refonte R1→R6 — voir [`docs/ROADMAP_REFONTE.md`](docs/ROADMAP_REFONTE.md)). Architecture, principes et conventions ci-dessous restent **valides** ; **numéros de version et statuts « en cours » sont périmés** — le code fait foi.
+
 Compte-rendu de cadrage de **AGRAFES Shell**, l'application desktop unifiée. Détaille Shell ET ses composants embarqués (Prep, Explorer/Concordancier, moteur Python sidecar). À lire avant toute intervention.
 
 État : **Shell 0.1.40 · Engine 0.8.4** · branche `development` (avril 2026).

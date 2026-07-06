@@ -1,5 +1,7 @@
 # Status: AGRAFES Shell (tauri-shell/)
 
+> ⚠️ **Périmé — instantané d'avril 2026** (`v0.1.33`, 2026-04-21). État courant : branche **`refonte`**, Shell/engine **0.3.3**, contrat sidecar **1.6.45**, migrations **001–023**, dernier commit **R5.4b-2** (Refonte R1→R6, [`ROADMAP_REFONTE.md`](ROADMAP_REFONTE.md)). Log de sprint conservé pour l'historique ; ne pas s'y fier pour l'état présent.
+
 **Current version:** v0.1.33 (2026-04-21)
 
 ## What it is

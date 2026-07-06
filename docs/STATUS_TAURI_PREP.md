@@ -1,5 +1,7 @@
 # Status — Concordancier Prep (tauri-prep) V0
 
+> ⚠️ **Périmé — instantané d'avril 2026** (2026-04-20). État courant : branche **`refonte`**, tauri-prep **0.1.28** (Shell/engine 0.3.3), contrat **1.6.45**, migrations **001–023**, dernier commit **R5.4b-2** ([`ROADMAP_REFONTE.md`](ROADMAP_REFONTE.md)). Log de sprint historique ; l'état vivant de la prep est dans la Refonte (couches du canvas).
+
 **Last updated:** 2026-04-20 (hub hiérarchie ActionsScreen, About dialog contract_version, audit sécurité 33 findings)
 
 Current contract/runtime reference:

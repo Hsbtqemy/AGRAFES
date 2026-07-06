@@ -1,5 +1,7 @@
 # AGRAFES Prep — Handoff philosophique et opérationnel
 
+> ⚠️ **Recadrage d'état (2026-07-06).** Handoff écrit pour la lignée **`development` / avril 2026** (labels « 0.8.x » = jalons, ≠ pyproject). **État courant** : branche **`refonte`**, engine/Shell **0.3.3**, contrat **1.6.45**, migrations **001–023**, dernier commit **R5.4b-2** ([`docs/ROADMAP_REFONTE.md`](docs/ROADMAP_REFONTE.md)). Le fond (philosophie, frictions, conventions) reste **valide** ; versions et statuts sont périmés — vérifier le code.
+
 Document compagnon de [HANDOFF_SHELL.md](HANDOFF_SHELL.md) (qui couvre l'orchestration globale). Ici, on parle **du sous-domaine prep** — ce qu'il fait, pourquoi il le fait comme ça, et où il bute. Destiné à comprendre la prep pour l'améliorer, pas à la cartographier.
 
 État au moment de la rédaction : tauri-prep package.json `0.1.28` (interne), Shell qui l'embarque `0.1.40` (post-tag, branche `development` à `fa70312`).
