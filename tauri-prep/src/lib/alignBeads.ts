@@ -82,3 +82,39 @@ function _finalize(links: AlignLinkRecord[]): BeadGroup {
   }
   return { links, pivots, targets, sharedSide };
 }
+
+// ─── Source-anchored cut ("couper", R3.3 §D9) ────────────────────────────────
+
+/**
+ * Slice a string by CODE POINTS. The server stores cut offsets as code-point
+ * indices (SQLite `length()` counts code points, matching Python `len()`); JS
+ * `String.slice` counts UTF-16 code units, which differ only for non-BMP characters
+ * (emoji, rare CJK) — so we go through `Array.from` to stay correct there too.
+ */
+export function codePointSlice(text: string, start: number, end: number): string {
+  return Array.from(text).slice(start, end).join("");
+}
+
+/**
+ * The target text to display for a link: the source-anchored **cut slice** of the
+ * verbatim `target_text_raw` when the link carries a sub-span, otherwise the normal
+ * (normalised) `target_text`. Backward-compatible: an uncut link renders exactly as
+ * before.
+ */
+export function linkTargetDisplay(lk: AlignLinkRecord): string {
+  const s = lk.target_char_start;
+  const e = lk.target_char_end;
+  if (s != null && e != null && lk.target_text_raw != null) {
+    return codePointSlice(lk.target_text_raw, s, e);
+  }
+  return lk.target_text ?? "";
+}
+
+/**
+ * True once a bead has been *resolved by cutting* — at least one link carries a
+ * target sub-span. A cut bead renders as independent sliced 1-1 rows (each source
+ * keeps its own slice of the target), not a shared-side block.
+ */
+export function beadIsCut(g: BeadGroup): boolean {
+  return g.links.some((l) => l.target_char_start != null && l.target_char_end != null);
+}

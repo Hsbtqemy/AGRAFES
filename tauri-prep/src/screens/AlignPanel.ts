@@ -43,7 +43,7 @@ import { computeNextSteps, type PrepNavTarget } from "../lib/prepNextStep.ts";
 import { NextStepBanner } from "../components/NextStepBanner.ts";
 import { AlignCollisionPanel } from "../components/AlignCollisionPanel.ts";
 import { buildPickerRowHtml } from "../lib/alignPickerRow.ts";
-import { groupLinksIntoBeads, isMultiBead } from "../lib/alignBeads.ts";
+import { groupLinksIntoBeads, isMultiBead, beadIsCut, linkTargetDisplay } from "../lib/alignBeads.ts";
 import { setHtml, raw } from "../lib/safeHtml.ts";
 import { alignPanelTemplate } from "../lib/alignPanelTemplate.ts";
 
@@ -1201,6 +1201,9 @@ export class AlignPanel {
     // the text — cf. docs/DESIGN_source_anchored_alignment.md §8.
     for (const group of groupLinksIntoBeads(visible)) {
       const multi = isMultiBead(group);
+      // A cut bead (its links carry target sub-spans, §D9) is resolved into 1-1 slices:
+      // no shared-side hoisting — each row shows its own slice of the target.
+      const cut = beadIsCut(group);
       group.links.forEach((lk, idx) => {
         const first = idx === 0;
         const checked = this._selectedLinkIds.has(lk.link_id);
@@ -1210,22 +1213,25 @@ export class AlignPanel {
         // every bead row so the group reads as one block.
         const isBeadLink = lk.bead_id != null;
         const beadCls = isBeadLink ? " prep-align-row--bead" : "";
-        // First row of a real bead → numeric badge "N→M"; a lone visible bead link (its
-        // siblings filtered out) → the plain 🔗 chip fallback.
+        // First row of a real bead → a badge: "✂ coupé" once resolved by cutting, else
+        // the numeric "N→M". A lone visible bead link → the plain 🔗 chip fallback.
         const anchorMark = multi && first
-          ? `<span class="prep-align-bead-badge" title="Regroupement ${group.pivots}&#8594;${group.targets} — une correspondance N-M, pas une collision">${group.pivots}&#8594;${group.targets}</span> `
+          ? (cut
+            ? `<span class="prep-align-bead-badge prep-align-bead-badge--cut" title="Bead coupé — chaque source garde sa tranche de la cible">&#9986; coup&#233;</span> `
+            : `<span class="prep-align-bead-badge" title="Regroupement ${group.pivots}&#8594;${group.targets} — une correspondance N-M, pas une collision">${group.pivots}&#8594;${group.targets}</span> `)
           : (isBeadLink && !multi
             ? `<span class="prep-align-bead-chip" title="Lien d'un bead (regroupement 1-2/2-1)">&#128279;</span> ` : "");
-        // The side repeated across the bead is hoisted to the first row; the others
-        // show a continuation marker instead of the duplicated text.
-        const spanPivot = group.sharedSide === "pivot" && !first;
-        const spanTarget = group.sharedSide === "target" && !first;
+        // The repeated side is hoisted to the first row — but NOT for a cut bead, where
+        // each row shows its own slice (linkTargetDisplay handles cut vs whole).
+        const effSharedSide = cut ? null : group.sharedSide;
+        const spanPivot = effSharedSide === "pivot" && !first;
+        const spanTarget = effSharedSide === "target" && !first;
         const pivotInner = spanPivot
           ? `<span class="prep-align-bead-cont" aria-label="même source que ci-dessus">&#8627; m&#234;me source</span>`
           : `${anchorMark}${extId}${_esc(lk.pivot_text ?? "")}`;
         const targetInner = spanTarget
           ? `<span class="prep-align-bead-cont" aria-label="même cible que ci-dessus">&#8627; m&#234;me cible</span>`
-          : _esc(lk.target_text ?? "");
+          : _esc(linkTargetDisplay(lk));
         const isRetargetOpen = this._retargetActive?.linkId === lk.link_id && this._retargetActive.mode === "retarget";
         const isAddOpen = this._retargetActive?.pivotUnitId === lk.pivot_unit_id && this._retargetActive.mode === "add";
         rows.push(`<div class="prep-align-row ${statusCls(lk.status)}${beadCls}" data-link-id="${lk.link_id}" role="row">

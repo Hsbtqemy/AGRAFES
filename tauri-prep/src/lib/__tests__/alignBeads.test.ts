@@ -1,6 +1,12 @@
 import { describe, it, expect } from "vitest";
 import type { AlignLinkRecord } from "../sidecarClient.ts";
-import { groupLinksIntoBeads, isMultiBead } from "../alignBeads.ts";
+import {
+  groupLinksIntoBeads,
+  isMultiBead,
+  codePointSlice,
+  linkTargetDisplay,
+  beadIsCut,
+} from "../alignBeads.ts";
 
 /** Minimal link builder — only the fields the grouping reads. */
 const lk = (
@@ -75,5 +81,43 @@ describe("groupLinksIntoBeads", () => {
 
   it("empty input → empty grouping", () => {
     expect(groupLinksIntoBeads([])).toEqual([]);
+  });
+});
+
+describe("codePointSlice", () => {
+  it("slices ASCII by index", () => {
+    expect(codePointSlice("abcdef", 0, 3)).toBe("abc");
+    expect(codePointSlice("abcdef", 3, 6)).toBe("def");
+  });
+
+  it("slices by code points, not UTF-16 units (non-BMP safe)", () => {
+    // "a😀b": the emoji is ONE code point but TWO UTF-16 units — String.slice(0,2)
+    // would split it; codePointSlice keeps it whole.
+    expect(codePointSlice("a😀b", 0, 2)).toBe("a😀");
+    expect(codePointSlice("a😀b", 2, 3)).toBe("b");
+  });
+});
+
+describe("linkTargetDisplay", () => {
+  const withSpan = (raw: string, s: number | null, e: number | null) =>
+    ({ ...lk(1, 9, 17, 2), target_text: "NORMALISED", target_text_raw: raw, target_char_start: s, target_char_end: e });
+
+  it("returns the cut slice of text_raw when offsets are set", () => {
+    expect(linkTargetDisplay(withSpan("I can hear it: the sound.", 0, 13))).toBe("I can hear it");
+    expect(linkTargetDisplay(withSpan("I can hear it: the sound.", 13, 25))).toBe(": the sound.");
+  });
+
+  it("falls back to the normalised target_text when uncut (unchanged behaviour)", () => {
+    expect(linkTargetDisplay(withSpan("verbatim", null, null))).toBe("NORMALISED");
+  });
+});
+
+describe("beadIsCut", () => {
+  const seg = (link_id: number, s: number | null = null, e: number | null = null) =>
+    ({ ...lk(link_id, link_id, 17, 2), target_text_raw: "I can hear it: the sound.", target_char_start: s, target_char_end: e });
+
+  it("is false for an uncut bead, true once a link carries a target span", () => {
+    expect(beadIsCut(groupLinksIntoBeads([seg(9), seg(10)])[0])).toBe(false);
+    expect(beadIsCut(groupLinksIntoBeads([seg(9, 0, 13), seg(10, 13, 25)])[0])).toBe(true);
   });
 });

@@ -2255,6 +2255,10 @@ tr[data-unit-n].prep-seg-row-highlight td {
   padding: 2px 5px; border-radius: 999px; vertical-align: baseline;
   background: color-mix(in srgb, #7c3aed 14%, transparent); color: #7c3aed;
 }
+/* A bead resolved by cutting (§D9) — teal, distinct from the violet "N→M". */
+.prep-align-bead-badge--cut {
+  background: color-mix(in srgb, #0f766e 14%, transparent); color: #0f766e;
+}
 .prep-align-bead-cont {
   font-size: 0.8rem; font-style: italic; opacity: 0.7;
   color: var(--color-muted, #6c757d);
