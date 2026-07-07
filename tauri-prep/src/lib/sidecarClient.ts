@@ -871,6 +871,11 @@ export interface AlignLinkRecord {
   status: "accepted" | "rejected" | null;
   /** Groups the 1-1 links of one N-M bead (length_bounded strategy, R3.2); null for plain 1-1. */
   bead_id?: number | null;
+  /** Verbatim target text (units.text_raw) — the string the source-anchored cut offsets index. */
+  target_text_raw?: string;
+  /** Source-anchored cut (R3.3, D9): sub-span of target_text_raw; null/absent = whole target unit. */
+  target_char_start?: number | null;
+  target_char_end?: number | null;
   /** Present when include_explain=true */
   explain?: AlignExplain;
 }

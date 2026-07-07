@@ -3258,7 +3258,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             f"""
             SELECT al.link_id, al.external_id, al.pivot_unit_id, al.target_unit_id,
                    pu.text_norm AS pivot_text, tu.text_norm AS target_text,
-                   al.status, al.run_id, al.bead_id
+                   al.status, al.run_id, al.bead_id,
+                   tu.text_raw AS target_text_raw, al.target_char_start, al.target_char_end
             FROM alignment_links al
             JOIN units pu ON pu.unit_id = al.pivot_unit_id
             JOIN units tu ON tu.unit_id = al.target_unit_id
@@ -3331,6 +3332,11 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 "target_text": r[5],
                 "status": r[6],
                 "bead_id": r[8],
+                # Source-anchored "couper" (D9): verbatim target + its optional sub-span,
+                # so the front can render a cut without re-fetching text_raw.
+                "target_text_raw": r[9],
+                "target_char_start": r[10],
+                "target_char_end": r[11],
             }
             explain = _make_explain(r[7], r[1])
             if explain is not None:

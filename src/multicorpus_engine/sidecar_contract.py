@@ -14,7 +14,7 @@ from typing import Any
 from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
-CONTRACT_VERSION = "1.6.50"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.51"  # semantic versioning for the sidecar API contract
 # SID-08 / OPS-03: the API version IS the contract version — derived, never a
 # second hand-maintained literal, so the two can no longer drift. /health reports
 # the *engine* version under `version` (it predates the sidecar); every other
@@ -177,6 +177,9 @@ API_VERSION = CONTRACT_VERSION
 #         unit — a non-destructive cut) and clear_target_span (reset to the whole unit). Migration
 #         027 (alignment_links.target_char_start/end, nullable). No new route → snapshot/.md
 #         unchanged. Logic in services/align_links_service.
+# 1.6.51: GET /align/audit link items gain target_text_raw (verbatim target — the string the cut
+#         offsets index) + target_char_start / target_char_end (the link's cut, null = whole unit),
+#         so the front can render a source-anchored cut without re-fetching. Additive; no new route.
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
@@ -4049,6 +4052,9 @@ def openapi_spec() -> dict[str, Any]:
                         "target_text": {"type": "string"},
                         "status": {"type": "string", "nullable": True, "enum": ["accepted", "rejected"]},
                         "bead_id": {"type": "integer", "nullable": True, "description": "Groups the 1-1 links of one N-M bead (length_bounded strategy, R3.2); null for plain 1-1 / legacy / manual links."},
+                        "target_text_raw": {"type": "string", "description": "Verbatim target text (units.text_raw) — the string the source-anchored cut offsets index."},
+                        "target_char_start": {"type": "integer", "nullable": True, "description": "Source-anchored cut (R3.3): start offset into target_text_raw; null = whole unit."},
+                        "target_char_end": {"type": "integer", "nullable": True, "description": "Source-anchored cut (R3.3): end offset (exclusive) into target_text_raw; null = whole unit."},
                         "explain": {
                             "type": "object",
                             "nullable": True,

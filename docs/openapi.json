@@ -259,7 +259,21 @@
             "nullable": true,
             "type": "string"
           },
+          "target_char_end": {
+            "description": "Source-anchored cut (R3.3): end offset (exclusive) into target_text_raw; null = whole unit.",
+            "nullable": true,
+            "type": "integer"
+          },
+          "target_char_start": {
+            "description": "Source-anchored cut (R3.3): start offset into target_text_raw; null = whole unit.",
+            "nullable": true,
+            "type": "integer"
+          },
           "target_text": {
+            "type": "string"
+          },
+          "target_text_raw": {
+            "description": "Verbatim target text (units.text_raw) — the string the source-anchored cut offsets index.",
             "type": "string"
           },
           "target_unit_id": {
@@ -4205,8 +4219,8 @@
   "info": {
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
-    "version": "1.6.50",
-    "x-contract-version": "1.6.50"
+    "version": "1.6.51",
+    "x-contract-version": "1.6.51"
   },
   "openapi": "3.0.3",
   "paths": {
