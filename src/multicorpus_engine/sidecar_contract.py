@@ -14,7 +14,7 @@ from typing import Any
 from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
-CONTRACT_VERSION = "1.6.49"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.50"  # semantic versioning for the sidecar API contract
 # SID-08 / OPS-03: the API version IS the contract version — derived, never a
 # second hand-maintained literal, so the two can no longer drift. /health reports
 # the *engine* version under `version` (it predates the sidecar); every other
@@ -172,6 +172,11 @@ API_VERSION = CONTRACT_VERSION
 #         the `fields` key, preserving importer provenance keys (TXT encoding, CoNLL-U import stats).
 #         DocumentRecord gains parsed `meta_json` (object|null) on GET /documents + the update response
 #         so the front can round-trip the fields. Logic in services/documents_service.update_document.
+# 1.6.50: source-anchored "couper" (R3.3). AlignBatchAction gains two additive actions —
+#         set_target_span (char_start/char_end: record a text_raw sub-span of the link's target
+#         unit — a non-destructive cut) and clear_target_span (reset to the whole unit). Migration
+#         027 (alignment_links.target_char_start/end, nullable). No new route → snapshot/.md
+#         unchanged. Logic in services/align_links_service.
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
@@ -4385,9 +4390,11 @@ def openapi_spec() -> dict[str, Any]:
                     "type": "object",
                     "required": ["action", "link_id"],
                     "properties": {
-                        "action": {"type": "string", "enum": ["set_status", "delete"]},
+                        "action": {"type": "string", "enum": ["set_status", "delete", "set_target_span", "clear_target_span"]},
                         "link_id": {"type": "integer"},
                         "status": {"type": "string", "enum": ["accepted", "rejected"], "nullable": True},
+                        "char_start": {"type": "integer", "description": "set_target_span: start offset into the target unit's text_raw (0-based)."},
+                        "char_end": {"type": "integer", "description": "set_target_span: end offset (exclusive) into text_raw; 0 <= char_start <= char_end <= len(text_raw)."},
                     },
                 },
                 "AlignLinksBatchUpdateRequest": {

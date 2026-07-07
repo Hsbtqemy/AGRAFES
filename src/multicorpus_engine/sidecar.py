@@ -8054,7 +8054,11 @@ class _CorpusHandler(BaseHTTPRequestHandler):
     # ------------------------------------------------------------------
 
     def _handle_align_links_batch_update(self, body: dict) -> None:
-        """Apply a batch of set_status / delete operations on alignment_links (token required)."""
+        """Apply a batch of set_status / delete / set_target_span / clear_target_span
+        operations on alignment_links (token required)."""
+        from multicorpus_engine.services import align_links_service
+        from multicorpus_engine.services.errors import NotFoundError, ValidationError
+
         actions = body.get("actions")
         if not isinstance(actions, list) or len(actions) == 0:
             self._send_error(
@@ -8064,7 +8068,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             )
             return
 
-        valid_action_types = {"set_status", "delete"}
+        valid_action_types = {"set_status", "delete", "set_target_span", "clear_target_span"}
         valid_statuses = {None, "accepted", "rejected"}
 
         applied = 0
@@ -8104,6 +8108,24 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                         (link_id,),
                     )
                     deleted += cur.rowcount
+
+                elif action_type == "set_target_span":
+                    # Source-anchored "couper" (D9): slice the link's target unit
+                    # (non-destructive — the document is untouched, only the link).
+                    try:
+                        align_links_service.set_target_span(
+                            conn, link_id, act.get("char_start"), act.get("char_end")
+                        )
+                        applied += 1
+                    except (ValidationError, NotFoundError) as exc:
+                        errors.append({"index": i, "link_id": link_id, "error": exc.message})
+
+                elif action_type == "clear_target_span":
+                    try:
+                        align_links_service.clear_target_span(conn, link_id)
+                        applied += 1
+                    except NotFoundError as exc:
+                        errors.append({"index": i, "link_id": link_id, "error": exc.message})
 
             conn.commit()
 

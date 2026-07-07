@@ -59,9 +59,9 @@ def test_026_backfills_bead_uid_byte_compatible(tmp_path: Path) -> None:
     )
     conn.commit()
 
-    # 3. Apply the remaining migration(s) — only 026 is pending.
+    # 3. Apply the remaining migration(s) — 026 (this test's subject) + any later ones.
     applied = apply_migrations(conn, migrations_dir=_MIGRATIONS_DIR)
-    assert applied == 1
+    assert applied >= 1
 
     rows = conn.execute(
         "SELECT bead_id, bead_uid FROM alignment_links ORDER BY external_id"

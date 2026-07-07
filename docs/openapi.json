@@ -122,9 +122,19 @@
           "action": {
             "enum": [
               "set_status",
-              "delete"
+              "delete",
+              "set_target_span",
+              "clear_target_span"
             ],
             "type": "string"
+          },
+          "char_end": {
+            "description": "set_target_span: end offset (exclusive) into text_raw; 0 <= char_start <= char_end <= len(text_raw).",
+            "type": "integer"
+          },
+          "char_start": {
+            "description": "set_target_span: start offset into the target unit's text_raw (0-based).",
+            "type": "integer"
           },
           "link_id": {
             "type": "integer"
@@ -4195,8 +4205,8 @@
   "info": {
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
-    "version": "1.6.49",
-    "x-contract-version": "1.6.49"
+    "version": "1.6.50",
+    "x-contract-version": "1.6.50"
   },
   "openapi": "3.0.3",
   "paths": {
