@@ -1,6 +1,11 @@
 # Note de design — R3.3 (queue) : éditeur de beads manuel (fusion / scission / ré-attribution)
 
 > Statut : **intention de design — décisions à figer avant ticket**. Date : 2026-07-01.
+> ⚠️ **Élargi et repriorisé (2026-07-07)** par [`DESIGN_alignment_curation_model.md`](DESIGN_alignment_curation_model.md) :
+> l'éditeur de beads n'est qu'**un** verbe d'un modèle plus large, et un **cas réel** (`LeCléziotest.db`)
+> renverse la réserve « besoin non démontré » du §0 ci-dessous. Le point dur §4 (fusion inter-runs) y est
+> tranché par l'option **K3** (identité de bead indépendante du `run_id`). Lire la note-modèle en premier ;
+> le présent §2 (état du sous-système) et §5 (décisions) restent la référence tactique du seul verbe bead.
 > Queue différée de R3.3 ([`ROADMAP_REFONTE.md`](ROADMAP_REFONTE.md) §R3.3 · [`DESIGN_R3_sentence_alignment.md`](DESIGN_R3_sentence_alignment.md) **D2**/§6).
 > Dépend du modèle `bead_id` (R3.2, **migration 022** livrée) et réutilise la mutation de liens existante (`/align/links/batch_update`, retarget, create/delete).
 
