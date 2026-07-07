@@ -12,6 +12,7 @@
 > - **Éditeur inline de curation** (override manuel du texte curé) — présent dans `CurationView` legacy (`_enterInlineEdit`/`_saveManualOverride`/`_revertManualOverride`), **absent du canvas** `CurationPane` (🔴 #9 de la note parité ; queue R5.3). Mécanisme moteur déjà là → **à reloger en priorité**.
 > - **Éditeur de beads manuel** (R3.3) — **absent partout** (AlignPanel n'affiche que le chip 🔗, aucun endpoint moteur de mutation de `bead_id`). Le besoin réel lève la réserve « besoin non démontré » de [`DESIGN_R3_3_bead_editor.md`](DESIGN_R3_3_bead_editor.md) §0 → **ticket à ouvrir** (MVP = fusion intra-`run_id`, §4 ; nécessite un nouvel endpoint).
 > **Correction :** le **merge/cut** de resegmentation **existe déjà au canvas** (SegmentPane, vue Brut, ⇧⇩✂ — R5.4b-3) ; seules les **ops de structure** (insert/delete/zone/propagate) + le **matcher inter-doc** restent legacy (R5.4d différé, garde l'écran Segmentation en vie).
+> **À vérifier / auditer (ajouté 2026-07-07) — modes d'import & reconnaissance des types de document.** Passer en revue les **importeurs** (`importers/` : DOCX lignes/¶, TXT, TEI, ODT lignes/¶, CoNLL-U ; dispatch unique `dispatch.py`) et la **détection partagée** (`importDetect` = format + langue, source unique import local **et** ShareDocs ; `familyDetect` = lien source↔traduction) pour confirmer leur robustesse et couvrir les cas limites. Évaluer l'**auto-détection du `resource_type`** (R6.3, aujourd'hui saisi à la main) à l'import. **[MIXTE : moteur + front].**
 
 ## 1. Principe directeur
 
