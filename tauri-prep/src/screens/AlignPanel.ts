@@ -43,6 +43,7 @@ import { computeNextSteps, type PrepNavTarget } from "../lib/prepNextStep.ts";
 import { NextStepBanner } from "../components/NextStepBanner.ts";
 import { AlignCollisionPanel } from "../components/AlignCollisionPanel.ts";
 import { buildPickerRowHtml } from "../lib/alignPickerRow.ts";
+import { groupLinksIntoBeads, isMultiBead } from "../lib/alignBeads.ts";
 import { setHtml, raw } from "../lib/safeHtml.ts";
 import { alignPanelTemplate } from "../lib/alignPanelTemplate.ts";
 
@@ -1195,39 +1196,60 @@ export class AlignPanel {
 
     const rows: string[] = [];
     const addPickerRendered = new Set<number>(); // pivotUnitIds whose "add" picker is already in DOM
-    for (const lk of visible) {
-      const checked = this._selectedLinkIds.has(lk.link_id);
-      const extId = lk.external_id != null
-        ? `<span class="prep-align-row-extid">[§${_esc(String(lk.external_id))}]</span> ` : "";
-      // R3.2 — a link belonging to an N-M bead (1-2/2-1) carries a bead_id; mark it so
-      // a translation split/merge reads as an intentional group, not a collision.
-      const isBead = lk.bead_id != null;
-      const beadCls = isBead ? " prep-align-row--bead" : "";
-      const beadChip = isBead
-        ? `<span class="prep-align-bead-chip" title="Lien d'un bead (regroupement 1-2/2-1)">&#128279;</span> ` : "";
-      const isRetargetOpen = this._retargetActive?.linkId === lk.link_id && this._retargetActive.mode === "retarget";
-      const isAddOpen = this._retargetActive?.pivotUnitId === lk.pivot_unit_id && this._retargetActive.mode === "add";
-      rows.push(`<div class="prep-align-row ${statusCls(lk.status)}${beadCls}" data-link-id="${lk.link_id}" role="row">
-        <div class="prep-align-row-check" role="cell">
-          <input type="checkbox" class="prep-align-row-cb" data-link-id="${lk.link_id}"${checked ? " checked" : ""} aria-label="Sélectionner lien ${lk.link_id}">
-        </div>
-        <div class="prep-align-row-pivot" role="cell">${beadChip}${extId}${_esc(lk.pivot_text ?? "")}</div>
-        <div class="prep-align-row-target" role="cell">${_esc(lk.target_text ?? "")}</div>
-        <div class="prep-align-row-actions" role="cell">
-          <button class="prep-align-act-btn prep-align-act-accept${lk.status === "accepted" ? " active" : ""}" data-link-id="${lk.link_id}" title="Accepter">✓</button>
-          <button class="prep-align-act-btn prep-align-act-reject${lk.status === "rejected" ? " active" : ""}" data-link-id="${lk.link_id}" title="Rejeter">✗</button>
-          <button class="prep-align-act-btn prep-align-act-unreview${lk.status === null ? " active" : ""}" data-link-id="${lk.link_id}" title="Non révisé">?</button>
-          <button class="prep-align-act-btn prep-align-act-delete" data-link-id="${lk.link_id}" title="Supprimer ce lien">🗑</button>
-          <button class="prep-align-act-btn prep-align-act-retarget${isRetargetOpen ? " active" : ""}" data-link-id="${lk.link_id}" data-pivot-uid="${lk.pivot_unit_id}" title="Changer la cible de ce lien">✎</button>
-          <button class="prep-align-act-btn prep-align-act-addtarget${isAddOpen ? " active" : ""}" data-link-id="${lk.link_id}" data-pivot-uid="${lk.pivot_unit_id}" title="Ajouter une deuxième cible à ce segment VO">➕</button>
-        </div>
-      </div>`);
-      if (isRetargetOpen) {
-        rows.push(this._pickerRowHtml(lk.pivot_unit_id, lk.link_id, lk.pivot_text ?? "", true));
-      } else if (isAddOpen && !addPickerRendered.has(lk.pivot_unit_id)) {
-        rows.push(this._pickerRowHtml(lk.pivot_unit_id, null, lk.pivot_text ?? "", true));
-        addPickerRendered.add(lk.pivot_unit_id);
-      }
+    // Group links into beads so an N-M correspondence shows its shared side ONCE
+    // (badge "N→M" on the first row, "↳ même …" on the rest) instead of duplicating
+    // the text — cf. docs/DESIGN_source_anchored_alignment.md §8.
+    for (const group of groupLinksIntoBeads(visible)) {
+      const multi = isMultiBead(group);
+      group.links.forEach((lk, idx) => {
+        const first = idx === 0;
+        const checked = this._selectedLinkIds.has(lk.link_id);
+        const extId = lk.external_id != null
+          ? `<span class="prep-align-row-extid">[§${_esc(String(lk.external_id))}]</span> ` : "";
+        // R3.2/K3 — a link in an N-M bead carries a bead_id; keep the violet accent on
+        // every bead row so the group reads as one block.
+        const isBeadLink = lk.bead_id != null;
+        const beadCls = isBeadLink ? " prep-align-row--bead" : "";
+        // First row of a real bead → numeric badge "N→M"; a lone visible bead link (its
+        // siblings filtered out) → the plain 🔗 chip fallback.
+        const anchorMark = multi && first
+          ? `<span class="prep-align-bead-badge" title="Regroupement ${group.pivots}&#8594;${group.targets} — une correspondance N-M, pas une collision">${group.pivots}&#8594;${group.targets}</span> `
+          : (isBeadLink && !multi
+            ? `<span class="prep-align-bead-chip" title="Lien d'un bead (regroupement 1-2/2-1)">&#128279;</span> ` : "");
+        // The side repeated across the bead is hoisted to the first row; the others
+        // show a continuation marker instead of the duplicated text.
+        const spanPivot = group.sharedSide === "pivot" && !first;
+        const spanTarget = group.sharedSide === "target" && !first;
+        const pivotInner = spanPivot
+          ? `<span class="prep-align-bead-cont" aria-label="même source que ci-dessus">&#8627; m&#234;me source</span>`
+          : `${anchorMark}${extId}${_esc(lk.pivot_text ?? "")}`;
+        const targetInner = spanTarget
+          ? `<span class="prep-align-bead-cont" aria-label="même cible que ci-dessus">&#8627; m&#234;me cible</span>`
+          : _esc(lk.target_text ?? "");
+        const isRetargetOpen = this._retargetActive?.linkId === lk.link_id && this._retargetActive.mode === "retarget";
+        const isAddOpen = this._retargetActive?.pivotUnitId === lk.pivot_unit_id && this._retargetActive.mode === "add";
+        rows.push(`<div class="prep-align-row ${statusCls(lk.status)}${beadCls}" data-link-id="${lk.link_id}" role="row">
+          <div class="prep-align-row-check" role="cell">
+            <input type="checkbox" class="prep-align-row-cb" data-link-id="${lk.link_id}"${checked ? " checked" : ""} aria-label="Sélectionner lien ${lk.link_id}">
+          </div>
+          <div class="prep-align-row-pivot" role="cell">${pivotInner}</div>
+          <div class="prep-align-row-target" role="cell">${targetInner}</div>
+          <div class="prep-align-row-actions" role="cell">
+            <button class="prep-align-act-btn prep-align-act-accept${lk.status === "accepted" ? " active" : ""}" data-link-id="${lk.link_id}" title="Accepter">✓</button>
+            <button class="prep-align-act-btn prep-align-act-reject${lk.status === "rejected" ? " active" : ""}" data-link-id="${lk.link_id}" title="Rejeter">✗</button>
+            <button class="prep-align-act-btn prep-align-act-unreview${lk.status === null ? " active" : ""}" data-link-id="${lk.link_id}" title="Non révisé">?</button>
+            <button class="prep-align-act-btn prep-align-act-delete" data-link-id="${lk.link_id}" title="Supprimer ce lien">🗑</button>
+            <button class="prep-align-act-btn prep-align-act-retarget${isRetargetOpen ? " active" : ""}" data-link-id="${lk.link_id}" data-pivot-uid="${lk.pivot_unit_id}" title="Changer la cible de ce lien">✎</button>
+            <button class="prep-align-act-btn prep-align-act-addtarget${isAddOpen ? " active" : ""}" data-link-id="${lk.link_id}" data-pivot-uid="${lk.pivot_unit_id}" title="Ajouter une deuxième cible à ce segment VO">➕</button>
+          </div>
+        </div>`);
+        if (isRetargetOpen) {
+          rows.push(this._pickerRowHtml(lk.pivot_unit_id, lk.link_id, lk.pivot_text ?? "", true));
+        } else if (isAddOpen && !addPickerRendered.has(lk.pivot_unit_id)) {
+          rows.push(this._pickerRowHtml(lk.pivot_unit_id, null, lk.pivot_text ?? "", true));
+          addPickerRendered.add(lk.pivot_unit_id);
+        }
+      });
     }
     setHtml(body, raw(rows.join("")));
 

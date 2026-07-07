@@ -2247,6 +2247,18 @@ tr[data-unit-n].prep-seg-row-highlight td {
    border-left) marks it as an intentional 1-2/2-1 group, not a collision. */
 .prep-align-row--bead { box-shadow: inset 2px 0 0 #7c3aed; }
 .prep-align-bead-chip { font-size: 0.7rem; opacity: 0.7; vertical-align: baseline; }
+/* R3.3 — a multi-link bead rendered *en bloc* (DESIGN_source_anchored_alignment §8):
+   the shared side is shown once with an "N→M" badge; the continuation rows carry a
+   muted "↳ même …" marker instead of the duplicated text. */
+.prep-align-bead-badge {
+  display: inline-block; font-size: 0.68rem; font-weight: 600; line-height: 1;
+  padding: 2px 5px; border-radius: 999px; vertical-align: baseline;
+  background: color-mix(in srgb, #7c3aed 14%, transparent); color: #7c3aed;
+}
+.prep-align-bead-cont {
+  font-size: 0.8rem; font-style: italic; opacity: 0.7;
+  color: var(--color-muted, #6c757d);
+}
 /* R3.3 — advisory aligner warnings surfaced in the run summary (D4/D7). */
 .prep-align-summary-warn { color: #b45309; font-style: italic; font-size: 0.82rem; }
 .prep-align-row--highlight { animation: flash-row 1.2s ease; }
