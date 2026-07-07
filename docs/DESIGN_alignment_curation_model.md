@@ -1,6 +1,11 @@
 # Note de design — Modèle de curation d'alignement (verbes de liens & beads)
 
 > Statut : **intention de design — décisions à figer avant ticket**. Date : 2026-07-07.
+> ⬆️ **Coiffée par** [`DESIGN_source_anchored_alignment.md`](DESIGN_source_anchored_alignment.md)
+> (2026-07-07) : le *pourquoi* amont (moyeu source-anchored, deux formes du corpus, matrice multilingue).
+> Cette note-ci tient les **mécaniques wire/bead** (verbes, clé de collision, K3) ; la note-modèle y
+> **ajoute** les gestes **couper/fusionner** de segment côté traduction. Lire la note-modèle en premier.
+
 > Élargit et **consolide la partie tactique de** [`DESIGN_R3_3_bead_editor.md`](DESIGN_R3_3_bead_editor.md) :
 > l'« éditeur de beads » n'y était qu'**un** verbe ; cette note pose le **modèle complet** des
 > gestes de curation d'alignement et tranche la décision structurante (identité de bead vs `run_id`)
