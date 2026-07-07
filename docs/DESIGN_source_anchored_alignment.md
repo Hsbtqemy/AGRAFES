@@ -194,7 +194,9 @@ D10/D11 (statut par cellule = `unit_status`, omission = `[non traduit]`).
      validation, actions additives `set_target_span`/`clear_target_span`, contrat 1.6.50 (`8f2bc1f`) ;
    - ✅ **audit expose `target_text_raw` + offsets** — contrat 1.6.51 (`f80348e`) ;
    - ✅ **rendu d'un bead coupé** en tranches 1-1 (front, badge « ✂ coupé », slicing code-point) ;
-   - 🔲 **cut-picker** — poser la coupe (sélection du point → `set_target_span` ×2, offsets code-point) ;
-   - 🔲 **fusionner / grouper** — action `set_bead`/`clear_bead`, réutilise le socle K3.
+   - ✅ **cut-picker** — « ✂ Couper » sur un bead 2-1 → picker inline (cible verbatim, clic entre mots
+     = offset code-point) → `set_target_span` ×2 + update optimiste ; « ↺ » pour annuler ;
+   - 🔲 **fusionner / grouper** — action `set_bead`/`clear_bead`, réutilise le socle K3 ;
+   - 🔲 **cut-picker N-1** (>2 sources : plusieurs points de coupe) + coupe dans la **vue famille**.
 3. **Export matrice multilingue** *(moteur + front)* — 🔲 le livrable (D7), à rebours du CSV.
 4. **Statuts/ajouts** *(D8/D10/D11)* — 🔲 une fois la mécanique en place.
