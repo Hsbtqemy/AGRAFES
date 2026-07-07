@@ -18,7 +18,7 @@
  * identical unit; at worst the N→M badge count is off. The robust fix is to group by
  * the run-scoped `bead_uid` once the audit response exposes it (tranche 2).
  */
-import type { AlignLinkRecord } from "./sidecarClient.ts";
+import type { AlignLinkRecord, AlignBatchAction } from "./sidecarClient.ts";
 
 export interface BeadGroup {
   /** The bead's links, in display order. A singleton (bead_id null) → exactly 1 link. */
@@ -117,4 +117,45 @@ export function linkTargetDisplay(lk: AlignLinkRecord): string {
  */
 export function beadIsCut(g: BeadGroup): boolean {
   return g.links.some((l) => l.target_char_start != null && l.target_char_end != null);
+}
+
+/** Number of CODE POINTS in a string (matches the server's offset unit). */
+export function codePointLength(text: string): number {
+  return Array.from(text).length;
+}
+
+/**
+ * Code-point offsets where a cut may be placed in the verbatim target: at the start
+ * of each word after the first (a whitespace → non-whitespace boundary). A cut at
+ * offset X splits the text into `[0:X]` and `[X:]`. 0 and the length are excluded
+ * (they would make an empty slice).
+ */
+export function cutOffsets(text: string): number[] {
+  const cps = Array.from(text);
+  const offsets: number[] = [];
+  for (let i = 1; i < cps.length; i++) {
+    if (/\s/.test(cps[i - 1]) && !/\s/.test(cps[i])) offsets.push(i);
+  }
+  return offsets;
+}
+
+/**
+ * Actions to cut a target-shared **2-1** bead at code-point `cutOffset`: the first
+ * source keeps `[0, cutOffset]`, the second `[cutOffset, textLen]` (positional — the
+ * source order matches the target order, the source-anchored assumption). Returns []
+ * for a non-2-1 bead (B2 scope) so the caller keeps the affordance off.
+ */
+export function buildCutActions(
+  links: readonly AlignLinkRecord[], cutOffset: number, textLen: number,
+): AlignBatchAction[] {
+  if (links.length !== 2) return [];
+  return [
+    { action: "set_target_span", link_id: links[0].link_id, char_start: 0, char_end: cutOffset },
+    { action: "set_target_span", link_id: links[1].link_id, char_start: cutOffset, char_end: textLen },
+  ];
+}
+
+/** Actions to undo a cut — clear the sub-span on every link of the bead (whole unit again). */
+export function buildClearCutActions(links: readonly AlignLinkRecord[]): AlignBatchAction[] {
+  return links.map((l) => ({ action: "clear_target_span" as const, link_id: l.link_id }));
 }

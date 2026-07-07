@@ -2263,6 +2263,32 @@ tr[data-unit-n].prep-seg-row-highlight td {
   font-size: 0.8rem; font-style: italic; opacity: 0.7;
   color: var(--color-muted, #6c757d);
 }
+/* R3.3 B2 — the "couper" affordance + inline cut picker (§D9). */
+.prep-align-bead-cut-btn, .prep-align-bead-uncut-btn {
+  font-size: 0.68rem; font-weight: 600; line-height: 1; cursor: pointer;
+  padding: 2px 6px; border-radius: 999px; vertical-align: baseline;
+  border: 1px solid color-mix(in srgb, #0f766e 40%, transparent);
+  background: transparent; color: #0f766e;
+}
+.prep-align-bead-cut-btn:hover, .prep-align-bead-uncut-btn:hover,
+.prep-align-bead-cut-btn.active { background: color-mix(in srgb, #0f766e 12%, transparent); }
+.prep-align-cut-picker {
+  grid-column: 1 / -1; padding: 8px 12px;
+  background: color-mix(in srgb, #0f766e 6%, transparent);
+  border-left: 2px solid #0f766e;
+}
+.prep-align-cut-picker-inner { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.prep-align-cut-hint { font-size: 0.78rem; color: var(--color-muted, #6c757d); }
+.prep-align-cut-text { font-size: 0.9rem; line-height: 1.8; }
+.prep-align-cut-gap {
+  cursor: pointer; border: none; background: color-mix(in srgb, #0f766e 16%, transparent);
+  color: #0f766e; border-radius: 4px; padding: 0 2px; margin: 0 1px; font-size: 0.8rem;
+}
+.prep-align-cut-gap:hover { background: #0f766e; color: #fff; }
+.prep-align-cut-cancel {
+  font-size: 0.75rem; cursor: pointer; border: none; background: transparent;
+  color: var(--color-muted, #6c757d); text-decoration: underline;
+}
 /* R3.3 — advisory aligner warnings surfaced in the run summary (D4/D7). */
 .prep-align-summary-warn { color: #b45309; font-style: italic; font-size: 0.82rem; }
 .prep-align-row--highlight { animation: flash-row 1.2s ease; }

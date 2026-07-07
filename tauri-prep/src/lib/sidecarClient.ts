@@ -1979,10 +1979,14 @@ export async function listRuns(
 // ─── V1.3 — Batch align link operations ──────────────────────────────────────
 
 export interface AlignBatchAction {
-  action: "set_status" | "delete";
+  action: "set_status" | "delete" | "set_target_span" | "clear_target_span";
   link_id: number;
   /** Required for set_status; null resets to unreviewed */
   status?: "accepted" | "rejected" | null;
+  /** set_target_span (source-anchored "couper", R3.3 §D9): code-point sub-span of the
+   *  link's target unit text_raw. `0 <= char_start <= char_end <= len`. */
+  char_start?: number;
+  char_end?: number;
 }
 
 export interface AlignBatchUpdateResponse {

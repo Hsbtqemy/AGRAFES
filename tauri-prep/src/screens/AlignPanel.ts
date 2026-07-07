@@ -43,7 +43,11 @@ import { computeNextSteps, type PrepNavTarget } from "../lib/prepNextStep.ts";
 import { NextStepBanner } from "../components/NextStepBanner.ts";
 import { AlignCollisionPanel } from "../components/AlignCollisionPanel.ts";
 import { buildPickerRowHtml } from "../lib/alignPickerRow.ts";
-import { groupLinksIntoBeads, isMultiBead, beadIsCut, linkTargetDisplay } from "../lib/alignBeads.ts";
+import {
+  groupLinksIntoBeads, isMultiBead, beadIsCut, linkTargetDisplay,
+  cutOffsets, buildCutActions, buildClearCutActions, codePointLength,
+} from "../lib/alignBeads.ts";
+import { buildCutPickerHtml } from "../lib/alignCutPicker.ts";
 import { setHtml, raw } from "../lib/safeHtml.ts";
 import { alignPanelTemplate } from "../lib/alignPanelTemplate.ts";
 
@@ -99,6 +103,8 @@ export class AlignPanel {
 
   // Retarget / create-link picker state
   private _retargetActive: { pivotUnitId: number; linkId: number | null; mode: "retarget" | "create" | "add" } | null = null;
+  /** B2 — the bead (identified by its first link_id) whose "couper" picker is open, or null. */
+  private _cutActive: number | null = null;
   private _retargetCandidates: RetargetCandidate[] | null = null; // null = loading
 
   // Orphan pivot state
@@ -1204,6 +1210,11 @@ export class AlignPanel {
       // A cut bead (its links carry target sub-spans, §D9) is resolved into 1-1 slices:
       // no shared-side hoisting — each row shows its own slice of the target.
       const cut = beadIsCut(group);
+      // B2 — a 2-1 target-shared bead with word boundaries is a "couper" candidate.
+      const cutTargetRaw = group.links[0]?.target_text_raw ?? null;
+      const cuttable = !cut && group.sharedSide === "target" && group.links.length === 2
+        && cutTargetRaw != null && cutOffsets(cutTargetRaw).length > 0;
+      const pickerOpen = this._cutActive === group.links[0]?.link_id;
       group.links.forEach((lk, idx) => {
         const first = idx === 0;
         const checked = this._selectedLinkIds.has(lk.link_id);
@@ -1221,6 +1232,15 @@ export class AlignPanel {
             : `<span class="prep-align-bead-badge" title="Regroupement ${group.pivots}&#8594;${group.targets} — une correspondance N-M, pas une collision">${group.pivots}&#8594;${group.targets}</span> `)
           : (isBeadLink && !multi
             ? `<span class="prep-align-bead-chip" title="Lien d'un bead (regroupement 1-2/2-1)">&#128279;</span> ` : "");
+        // B2 — bead-level cut affordance on the first row: "✂ Couper" (candidate) or "↺"
+        // to undo a cut.
+        const beadAction = multi && first
+          ? (cuttable
+            ? `<button type="button" class="prep-align-bead-cut-btn${pickerOpen ? " active" : ""}" data-cut-bead="${group.links[0].link_id}" title="Couper la cible pour aligner chaque source en 1-1">&#9986; Couper</button> `
+            : (cut
+              ? `<button type="button" class="prep-align-bead-uncut-btn" data-uncut-bead="${group.links[0].link_id}" title="Annuler la coupe">&#8635;</button> `
+              : ""))
+          : "";
         // The repeated side is hoisted to the first row — but NOT for a cut bead, where
         // each row shows its own slice (linkTargetDisplay handles cut vs whole).
         const effSharedSide = cut ? null : group.sharedSide;
@@ -1228,7 +1248,7 @@ export class AlignPanel {
         const spanTarget = effSharedSide === "target" && !first;
         const pivotInner = spanPivot
           ? `<span class="prep-align-bead-cont" aria-label="même source que ci-dessus">&#8627; m&#234;me source</span>`
-          : `${anchorMark}${extId}${_esc(lk.pivot_text ?? "")}`;
+          : `${anchorMark}${beadAction}${extId}${_esc(lk.pivot_text ?? "")}`;
         const targetInner = spanTarget
           ? `<span class="prep-align-bead-cont" aria-label="même cible que ci-dessus">&#8627; m&#234;me cible</span>`
           : _esc(linkTargetDisplay(lk));
@@ -1256,6 +1276,17 @@ export class AlignPanel {
           addPickerRendered.add(lk.pivot_unit_id);
         }
       });
+      // B2 — the inline "couper" picker for this bead (tokenised verbatim target + gaps).
+      if (pickerOpen && cuttable && cutTargetRaw != null) {
+        const l = group.links;
+        rows.push(`<div class="prep-align-cut-picker" role="row">
+          <div class="prep-align-cut-picker-inner" role="cell">
+            <span class="prep-align-cut-hint">Cliquez &#9986; o&#249; couper la cible &#8212; [§${_esc(String(l[0].external_id ?? "?"))}] puis [§${_esc(String(l[1].external_id ?? "?"))}] :</span>
+            ${buildCutPickerHtml(cutTargetRaw)}
+            <button type="button" class="prep-align-cut-cancel" data-cut-cancel="1">Annuler</button>
+          </div>
+        </div>`);
+      }
     }
     setHtml(body, raw(rows.join("")));
 
@@ -1302,6 +1333,22 @@ export class AlignPanel {
         }
       }));
 
+    // B2 — cut picker events (re-bind after each render).
+    body.querySelectorAll<HTMLButtonElement>(".prep-align-bead-cut-btn").forEach(btn =>
+      btn.addEventListener("click", () => {
+        const id = parseInt(btn.dataset.cutBead!);
+        this._cutActive = this._cutActive === id ? null : id;
+        this._renderBitextBody(el);
+      }));
+    body.querySelectorAll<HTMLButtonElement>(".prep-align-cut-cancel").forEach(btn =>
+      btn.addEventListener("click", () => { this._cutActive = null; this._renderBitextBody(el); }));
+    body.querySelectorAll<HTMLButtonElement>(".prep-align-cut-gap").forEach(btn =>
+      btn.addEventListener("click", () => {
+        if (this._cutActive != null) void this._performCut(el, this._cutActive, parseInt(btn.dataset.cutOffset!));
+      }));
+    body.querySelectorAll<HTMLButtonElement>(".prep-align-bead-uncut-btn").forEach(btn =>
+      btn.addEventListener("click", () => void this._performUncut(el, parseInt(btn.dataset.uncutBead!))));
+
     // Picker events (re-bind after each render)
     this._bindPickerEvents(el, body);
 
@@ -1315,6 +1362,51 @@ export class AlignPanel {
     });
 
     this._updateBatchBar(el);
+  }
+
+  // ─── B2 — couper (set / clear target sub-span on a 2-1 bead) ──────────────────
+
+  private _findBeadByFirstLink(firstLinkId: number) {
+    return groupLinksIntoBeads(this._visibleLinks()).find(g => g.links[0]?.link_id === firstLinkId);
+  }
+
+  private async _performCut(el: HTMLElement, beadFirstLinkId: number, offset: number): Promise<void> {
+    const conn = this._conn();
+    if (!conn) return;
+    const group = this._findBeadByFirstLink(beadFirstLinkId);
+    if (!group || group.links.length !== 2) return;
+    const raw = group.links[0].target_text_raw ?? "";
+    const textLen = codePointLength(raw);
+    const actions = buildCutActions(group.links, offset, textLen);
+    if (actions.length === 0) return;
+    try {
+      const res = await batchUpdateAlignLinks(conn, actions);
+      if (res.errors.length) { this._cb.log(`✗ Coupe refusée : ${res.errors[0].error}`, true); return; }
+      // Optimistic local update — the same link objects live in _auditLinks.
+      group.links[0].target_char_start = 0; group.links[0].target_char_end = offset;
+      group.links[1].target_char_start = offset; group.links[1].target_char_end = textLen;
+      this._cutActive = null;
+      this._renderBitextBody(el);
+      this._cb.toast("✓ Cible coupée");
+    } catch (err) {
+      this._cb.log(`✗ Coupe : ${err instanceof Error ? err.message : String(err)}`, true);
+    }
+  }
+
+  private async _performUncut(el: HTMLElement, beadFirstLinkId: number): Promise<void> {
+    const conn = this._conn();
+    if (!conn) return;
+    const group = this._findBeadByFirstLink(beadFirstLinkId);
+    if (!group) return;
+    try {
+      const res = await batchUpdateAlignLinks(conn, buildClearCutActions(group.links));
+      if (res.errors.length) { this._cb.log(`✗ Annulation refusée : ${res.errors[0].error}`, true); return; }
+      group.links.forEach(l => { l.target_char_start = null; l.target_char_end = null; });
+      this._renderBitextBody(el);
+      this._cb.toast("✓ Coupe annulée");
+    } catch (err) {
+      this._cb.log(`✗ Annulation : ${err instanceof Error ? err.message : String(err)}`, true);
+    }
   }
 
   private async _setLinkStatus(el: HTMLElement, linkId: number, status: "accepted" | "rejected" | null): Promise<void> {

@@ -4,8 +4,12 @@ import {
   groupLinksIntoBeads,
   isMultiBead,
   codePointSlice,
+  codePointLength,
   linkTargetDisplay,
   beadIsCut,
+  cutOffsets,
+  buildCutActions,
+  buildClearCutActions,
 } from "../alignBeads.ts";
 
 /** Minimal link builder — only the fields the grouping reads. */
@@ -119,5 +123,51 @@ describe("beadIsCut", () => {
   it("is false for an uncut bead, true once a link carries a target span", () => {
     expect(beadIsCut(groupLinksIntoBeads([seg(9), seg(10)])[0])).toBe(false);
     expect(beadIsCut(groupLinksIntoBeads([seg(9, 0, 13), seg(10, 13, 25)])[0])).toBe(true);
+  });
+});
+
+describe("codePointLength", () => {
+  it("counts code points, not UTF-16 units", () => {
+    expect(codePointLength("abc")).toBe(3);
+    expect(codePointLength("a😀b")).toBe(3); // emoji = 1 code point (2 UTF-16 units)
+  });
+});
+
+describe("cutOffsets", () => {
+  it("offers a cut at the start of each word after the first", () => {
+    expect(cutOffsets("a b c")).toEqual([2, 4]);       // "a "|"b "|"c"
+    expect(cutOffsets("hello world")).toEqual([6]);    // "hello "|"world"
+  });
+  it("no cut for a single word or empty text", () => {
+    expect(cutOffsets("single")).toEqual([]);
+    expect(cutOffsets("")).toEqual([]);
+  });
+  it("collapses runs of whitespace to one boundary (at the next word)", () => {
+    expect(cutOffsets("a   b")).toEqual([4]); // one cut, at 'b'
+  });
+});
+
+describe("buildCutActions", () => {
+  const p = (link_id: number, pivot: number) => lk(link_id, pivot, 17, 2);
+
+  it("cuts a 2-1 into complementary set_target_span actions", () => {
+    expect(buildCutActions([p(101, 9), p(102, 10)], 13, 25)).toEqual([
+      { action: "set_target_span", link_id: 101, char_start: 0, char_end: 13 },
+      { action: "set_target_span", link_id: 102, char_start: 13, char_end: 25 },
+    ]);
+  });
+
+  it("returns [] for a non-2-1 bead (B2 scope)", () => {
+    expect(buildCutActions([p(101, 9)], 5, 10)).toEqual([]);
+    expect(buildCutActions([p(101, 9), p(102, 10), p(103, 11)], 5, 30)).toEqual([]);
+  });
+});
+
+describe("buildClearCutActions", () => {
+  it("clears the span on every link of the bead", () => {
+    expect(buildClearCutActions([lk(101, 9, 17, 2), lk(102, 10, 17, 2)])).toEqual([
+      { action: "clear_target_span", link_id: 101 },
+      { action: "clear_target_span", link_id: 102 },
+    ]);
   });
 });
