@@ -186,9 +186,15 @@ D10/D11 (statut par cellule = `unit_status`, omission = `[non traduit]`).
   bloc** (cible une seule fois, pivots accolés, badge « 2→1 ») corrige au passage le rendu illisible
   actuel (une ligne par lien qui duplique le texte cible).
 
-## 9. Ordre pressenti (après D8/D9 tranchés)
+## 9. Ordre — état (2026-07-07)
 
-1. **Affichage bead en bloc** *(front pur)* — corrige la lisibilité immédiate, zéro moteur.
-2. **Couper / fusionner chirurgicaux** *(moteur + front)* — le cœur (D6/D9).
-3. **Export matrice multilingue** *(moteur + front)* — le livrable (D7), à rebours du CSV.
-4. **Statuts/ajouts** *(D8/D10/D11)* — une fois la mécanique en place.
+1. **Affichage bead en bloc** *(front pur)* — ✅ **livré** (`05cb44b`, CI verte).
+2. **Couper / fusionner chirurgicaux** *(moteur + front)* — **en cours** :
+   - ✅ **socle « couper »** — offsets cible `target_char_start/end` (migration 027), service +
+     validation, actions additives `set_target_span`/`clear_target_span`, contrat 1.6.50 (`8f2bc1f`) ;
+   - ✅ **audit expose `target_text_raw` + offsets** — contrat 1.6.51 (`f80348e`) ;
+   - ✅ **rendu d'un bead coupé** en tranches 1-1 (front, badge « ✂ coupé », slicing code-point) ;
+   - 🔲 **cut-picker** — poser la coupe (sélection du point → `set_target_span` ×2, offsets code-point) ;
+   - 🔲 **fusionner / grouper** — action `set_bead`/`clear_bead`, réutilise le socle K3.
+3. **Export matrice multilingue** *(moteur + front)* — 🔲 le livrable (D7), à rebours du CSV.
+4. **Statuts/ajouts** *(D8/D10/D11)* — 🔲 une fois la mécanique en place.
