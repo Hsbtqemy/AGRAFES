@@ -1,6 +1,6 @@
 # Note de design — Alignement ancré-source : le moyeu, les deux formes du corpus, la matrice multilingue
 
-> Statut : **intention de design — modèle figé, quelques décisions ouvertes**. Date : 2026-07-07.
+> Statut : **intention de design — modèle et décisions figés (2026-07-07), ticket-ready**. Date : 2026-07-07.
 > Modèle conceptuel qui **coiffe** [`DESIGN_alignment_curation_model.md`](DESIGN_alignment_curation_model.md)
 > (dont il généralise les verbes) et précise le *pourquoi* en amont des mécaniques wire/bead.
 > Dépendances / à confronter : [`DESIGN_R3_sentence_alignment.md`](DESIGN_R3_sentence_alignment.md)
@@ -119,7 +119,7 @@ Le **format est le facteur décisif** pour les résidus N-M et les bords :
 | Découpe 1→2 (trad sur-découpe) | **fusionner** dans la cellule (trivial, séparateur `¶`) | multi-lignes dans la cellule |
 | Fusion 2→1 sans coupe nette | texte + `[fusion]`, cellule partenaire vide marquée | **cellule fusionnée** sur les lignes-source |
 | Omission | token `[non traduit]` | idem + style |
-| Ajout | *(le vrai trou — §6)* | idem |
+| Ajout | ligne d'ajout `[ajout]` en flux (D8) | idem, ou section à part (option export) |
 
 - **D7 — Export cible = matrice multilingue ancrée-source**, une ligne par segment-moyeu, une colonne
   par langue. Le CSV prototype est le **schéma de référence**. **Figé.**
@@ -133,30 +133,40 @@ Le **format est le facteur décisif** pour les résidus N-M et les bords :
 **statut porté par la cellule** (par couple *ligne × langue*, pas par ligne — EN peut omettre, DE non).
 En CSV plat, l'encoder **dans la cellule** (token) garde la matrice plate et N-langues.
 
-- **D10 — Omission = token `[non traduit]`** (pas cellule vide, ambiguë avec « pas encore fait »).
-  **Reco.**
-- **D11 — Statut/rôle = couche par cellule**, matérialisée en token intra-cellule (CSV) /
-  couleur-commentaire (Excel) / marqueur (Word). Conçue une fois, pas par format. **Reco.**
+**Déjà bâti au moteur** : cet axe existe — **`units.unit_status ∈ {non_traduit, ajout}`** (R4.1,
+migration 023, filtrable en recherche/facettes), **orthogonal à `unit_role`**, alimenté par le marker-lift
+(`[non traduit]`/`[+]`) ou à la main. La note péritexte le tenait déjà : une **omission** = une unité
+placeholder (`text_norm` vide → hors FTS) `unit_status=non_traduit` qui **garde la position** ; un **ajout**
+= une unité `unit_status=ajout` (un 0-1). → la matrice **lit `unit_status`**, elle n'invente rien.
+
+- **D10 — Omission = token `[non traduit]`** (pas cellule vide, ambiguë avec « pas encore fait »), issu de
+  `unit_status=non_traduit`. **Figé.**
+- **D11 — Statut par cellule = `unit_status` sur l'unité** (une *tranche* de coupe n'a pas de statut propre :
+  elle est traduite par définition), matérialisée en token intra-cellule (CSV) / couleur-commentaire
+  (Excel) / marqueur (Word). Conçue une fois, pas par format. **Figé.**
 
 ## 7. Décisions
 
-**Figées** (cette session) : D2 (moyeu original/parent surchargeable) · D3 (Ontologie 1, couche additive) ·
-D4 (forme alignée projetée, jamais matérialisée) · D5 (index documentaire / projection alignée) ·
-D6 (couper/fusionner = gestes d'alignement chirurgicaux) · D7 (matrice multilingue = export cible).
+**Figées** (session 2026-07-07) : D2 (moyeu original/parent surchargeable) · D3 (Ontologie 1, couche
+additive) · D4 (forme alignée projetée, jamais matérialisée) · D5 (index documentaire / projection alignée) ·
+D6 (couper/fusionner = gestes d'alignement chirurgicaux) · D7 (matrice multilingue = export cible) ·
+D10/D11 (statut par cellule = `unit_status`, omission = `[non traduit]`).
 
-**Recommandées** : D10 (token `[non traduit]`) · D11 (statut par cellule en token).
-
-**Ouvertes — à trancher avant ticket :**
-
-- **D8 — Les ajouts** (texte cible sans source). Trois voies : (a) **ligne d'ajout** (`segment` vide,
-  cellule marquée `[ajout]`) ; (b) **rattachement au voisin** (fond dans la cellule adjacente + marqueur) ;
-  (c) **section « ajouts » à part** (matrice principale 100 % 1-1, ajouts exportés séparément avec ancrage).
-  *L'utilisateur veut en discuter plus profondément (lien avec rôles/conventions + exploitation export).*
-- **D9 — Stockage des coupes** (comment la couche d'alignement porte « couper EN17 au `:` » sans muter le
-  doc EN, Ontologie 1). Deux pistes : (i) **sous-portions à offsets** sur le lien (l'EN reste 7 phrases,
-  le lien référence `EN17[0:X]` / `EN17[X:]`) ; (ii) **sous-unités alignées-seules** (un grain « segment
-  d'alignement » distinct des phrases documentaires). (i) est plus fidèle à Ontologie 1 ; (ii) plus simple
-  à requêter. **À trancher au ticket** (implémentation).
+- **D8 — Les ajouts (tranché).** Donnée = `unit_status=ajout` (déjà bâti). **Projection (a) par défaut** :
+  une **ligne d'ajout en flux**, à sa position, cellule-moyeu `[ajout]`, le texte dans sa colonne-langue —
+  honnête, fidèle au flux, cohérent avec le modèle positionnel. **(c) « section ajouts à part » = option
+  d'export** (matrice principale 100 % 1-1 + liste des ajouts ancrés) pour une comparaison pure. Comme la
+  matrice est une *projection* (D4), les deux vues dérivent des mêmes unités `ajout` — pas de choix rigide.
+  **(b) rattachement au voisin écarté** (dilue l'ajout, casse « 1 ligne = 1 segment-moyeu »). **Figé.**
+- **D9 — Stockage des coupes (tranché) = (i) offsets sur le lien, côté cible.** Deux colonnes `nullable`
+  `target_char_start` / `target_char_end` sur `alignment_links` (null = unité entière), **offsets dans
+  `text_raw`** (verbatim, immuable → stables). Couper EN17 = poser des offsets complémentaires sur les deux
+  liens du bead (`EN17[0:X]` / `EN17[X:]`) — **non-destructif** (EN reste 7 phrases, FTS intacte). Les liens
+  coupés **gardent `bead_id`/`bead_uid`** (couper *raffine* le bead : provenance + undo/re-fusion ; sans
+  effet collision — le détecteur groupe par pivot, or ce sont deux pivots distincts). **On ne coupe jamais
+  le moyeu** → pas d'offsets côté pivot. **Fusionner (1→M) ne touche pas au schéma** (déjà un bead 1-M dont
+  la matrice concatène les cibles). (ii) sous-grain écarté : la matrice étant une projection, des segments
+  d'alignement persistants sont inutiles. **Figé.**
 - **D-annexe (footgun aligneur)** — indépendant mais réel : rendre « Recalcul global » (remise à plat) le
   défaut sur une paire déjà alignée, **ou** avertir quand un run droppe des liens (`links_skipped`/
   `deleted_before` existent déjà dans le rapport ; il suffit de les surfacer + confirmer). Petit,
@@ -164,9 +174,10 @@ D6 (couper/fusionner = gestes d'alignement chirurgicaux) · D7 (matrice multilin
 
 ## 8. Implications (haut niveau, à préciser au ticket)
 
-- **Moteur** : la couche d'alignement doit porter des **coupes / sous-segments** (D9), pas seulement des
-  liens d'unités entières → extension du modèle `alignment_links` (offsets ou sous-grain). Le socle **K3
-  `bead_uid`** (livré) prépare le groupement inter-runs ; couper/fusionner sont les gestes neufs.
+- **Moteur** : migration additive = 2 colonnes `nullable` `target_char_start/end` sur `alignment_links`
+  (D9) ; le geste **couper** pose des offsets, **fusionner** réutilise le bead 1-M (rien de neuf) ; ajouts/
+  omissions réutilisent **`unit_status`** (déjà bâti, R4.1). Le socle **K3 `bead_uid`** (livré) porte le
+  groupement inter-runs. Aucune logique lourde.
 - **Contrat** : nouveaux gestes (couper/fusionner) + endpoint d'export **matrice multilingue** (l'export
   bilingue par paire existe déjà ; la matrice N-langues est un **produit neuf**). Additif.
 - **Non-destructif / pas de staleness** : la forme alignée reste **dérivée** (D4) — l'export la projette,
