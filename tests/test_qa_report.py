@@ -51,15 +51,22 @@ def _insert_align_link(
     status: str | None = None,
     run_id: str = "run-test",
     bead_id: int | None = None,
+    bead_uid: str | None = None,
 ) -> None:
     global _link_ext_id_seq
     _link_ext_id_seq += 1
+    # K3 (DESIGN_alignment_curation_model): a beaded row always carries bead_uid; by
+    # default it mirrors what the aligner and migration 026 backfill produce
+    # (run_id||'#'||bead_id). Pass an explicit bead_uid to model a cross-run manual
+    # group (a shared uid across differing run_id).
+    if bead_uid is None and bead_id is not None:
+        bead_uid = f"{run_id}#{bead_id}"
     conn.execute(
         """INSERT INTO alignment_links
            (pivot_doc_id, target_doc_id, pivot_unit_id, target_unit_id,
-            run_id, external_id, created_at, status, bead_id)
-           VALUES (?,?,?,?,?,?,datetime('now'),?,?)""",
-        (pivot_doc, target_doc, pivot_unit, target_unit, run_id, _link_ext_id_seq, status, bead_id),
+            run_id, external_id, created_at, status, bead_id, bead_uid)
+           VALUES (?,?,?,?,?,?,datetime('now'),?,?,?)""",
+        (pivot_doc, target_doc, pivot_unit, target_unit, run_id, _link_ext_id_seq, status, bead_id, bead_uid),
     )
     conn.commit()
 
@@ -162,6 +169,41 @@ def test_alignment_qa_bead_is_not_a_collision(db_conn: sqlite3.Connection) -> No
     from multicorpus_engine.qa_report import _check_alignment_pairs
     pairs = _check_alignment_pairs(db_conn)
     assert pairs[0]["collisions"] == 0
+
+
+def test_alignment_qa_cross_run_bead_is_not_a_collision(db_conn: sqlite3.Connection) -> None:
+    """K3 (DESIGN_alignment_curation_model): a pivot whose two links come from DIFFERENT
+    runs but share an explicit bead_uid (a manual cross-run group) collapse to one bead
+    → not a collision. This was impossible under the old (run_id, bead_id) key, which
+    kept a manual orphan (run_id='manual') and an auto bead (run_id=<uuid>) distinct."""
+    d1 = _populate_doc(db_conn, "Pivot", "fr")
+    d2 = _populate_doc(db_conn, "Target", "en")
+    p = _insert_unit(db_conn, d1, 1, 1)
+    t1 = _insert_unit(db_conn, d2, 1, 1)
+    t2 = _insert_unit(db_conn, d2, 2, 2)
+    _insert_align_link(db_conn, d1, d2, p, t1, run_id="auto-run", bead_uid="g-1")
+    _insert_align_link(db_conn, d1, d2, p, t2, run_id="manual", bead_uid="g-1")  # cross-run group
+
+    from multicorpus_engine.qa_report import _check_alignment_pairs
+    pairs = _check_alignment_pairs(db_conn)
+    assert pairs[0]["collisions"] == 0
+
+
+def test_alignment_qa_same_bead_id_across_runs_still_collides(db_conn: sqlite3.Connection) -> None:
+    """Guard: two links on one pivot from different runs that merely share a bead_id
+    NUMBER are not one bead — bead_uid encodes the run (r1#5 ≠ r2#5) → still a collision.
+    Grouping across runs requires an explicit shared bead_uid, not a coincidental id."""
+    d1 = _populate_doc(db_conn, "Pivot", "fr")
+    d2 = _populate_doc(db_conn, "Target", "en")
+    p = _insert_unit(db_conn, d1, 1, 1)
+    t1 = _insert_unit(db_conn, d2, 1, 1)
+    t2 = _insert_unit(db_conn, d2, 2, 2)
+    _insert_align_link(db_conn, d1, d2, p, t1, run_id="r1", bead_id=5)  # bead_uid r1#5
+    _insert_align_link(db_conn, d1, d2, p, t2, run_id="r2", bead_id=5)  # bead_uid r2#5
+
+    from multicorpus_engine.qa_report import _check_alignment_pairs
+    pairs = _check_alignment_pairs(db_conn)
+    assert pairs[0]["collisions"] == 1
 
 
 # ── Test 6: metadata readiness — missing title → blocking ─────────────────────

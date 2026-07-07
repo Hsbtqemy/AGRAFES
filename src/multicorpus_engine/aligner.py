@@ -486,6 +486,9 @@ def align_pair_by_length(
             bead_counter += 1
             multi = len(p_units) > 1 or len(t_units) > 1
             bid = bead_counter if multi else None
+            # K3 (DESIGN_alignment_curation_model): provenance-independent bead identity,
+            # byte-compatible with the (run_id, bead_id) collision key it replaces.
+            buid = f"{run_id}#{bid}" if bid is not None else None
             npu, ntu = len(p_units), len(t_units)
             # Materialise an N-M bead as 1-1 links: pair positionally, repeating the
             # shorter side's last unit (1-2 → p↔t1,p↔t2 ; 2-1 → p1↔t,p2↔t ; 2-2 → p1↔t1,p2↔t2).
@@ -496,7 +499,7 @@ def align_pair_by_length(
                     protected_skipped += 1
                     continue
                 links.append(
-                    (run_id, pu_id, tu_id, pu_n, pivot_doc_id, target_doc_id, utcnow, bid)
+                    (run_id, pu_id, tu_id, pu_n, pivot_doc_id, target_doc_id, utcnow, bid, buid)
                 )
                 if debug and len(sample_links) < 20:
                     sample_links.append({
@@ -509,8 +512,8 @@ def align_pair_by_length(
             """
             INSERT OR IGNORE INTO alignment_links
                 (run_id, pivot_unit_id, target_unit_id, external_id,
-                 pivot_doc_id, target_doc_id, created_at, bead_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                 pivot_doc_id, target_doc_id, created_at, bead_id, bead_uid)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             links,
         )

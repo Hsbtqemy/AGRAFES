@@ -3409,7 +3409,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 
         # ── Collision count: pivot with >1 *distinct bead* where not all accepted ──
         # All-accepted multi-links are intentional (user validated each one) and are
-        # not collisions; links sharing a bead_id (an N-M sentence bead, R3.2) also
+        # not collisions; links sharing a bead_uid (an N-M sentence bead, R3.2/K3) also
         # count as one, so a 1-2 split is never a collision.
         collision_row = conn.execute(
             f"""
@@ -3418,7 +3418,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 FROM alignment_links al
                 WHERE {link_where}
                 GROUP BY pivot_unit_id
-                HAVING COUNT(DISTINCT COALESCE(run_id || '#' || bead_id, 'L' || link_id)) > 1
+                HAVING COUNT(DISTINCT COALESCE(bead_uid, 'L' || link_id)) > 1
                   AND COUNT(CASE WHEN status = 'accepted' THEN 1 END) < COUNT(*)
             )
             """,
@@ -8241,10 +8241,10 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 
         # A collision = pivot with >1 *distinct bead* where NOT all are accepted.
         # All-accepted multi-links are intentional (user validated each) → not collisions;
-        # links sharing a bead_id (an N-M sentence bead, R3.2) also count as one bead, so
+        # links sharing a bead_uid (an N-M sentence bead, R3.2/K3) also count as one bead, so
         # a 1-2 split is never flagged.
         _coll_having = (
-            "HAVING COUNT(DISTINCT COALESCE(run_id || '#' || bead_id, 'L' || link_id)) > 1"
+            "HAVING COUNT(DISTINCT COALESCE(bead_uid, 'L' || link_id)) > 1"
             " AND COUNT(CASE WHEN status = 'accepted' THEN 1 END) < COUNT(*)"
         )
 

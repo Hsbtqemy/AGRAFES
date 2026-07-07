@@ -215,6 +215,33 @@ def test_length_bounded_materialises_2_2_bead(db: sqlite3.Connection) -> None:
     assert rows[0]["bead_id"] is not None and rows[0]["bead_id"] == rows[1]["bead_id"]
 
 
+def test_length_bounded_sets_bead_uid_byte_compatible(db: sqlite3.Connection) -> None:
+    """K3 (DESIGN_alignment_curation_model): the aligner stamps a provenance-independent
+    bead_uid = run_id||'#'||bead_id on multi-links (byte-compatible with the old
+    (run_id, bead_id) collision key); singleton 1-1 links keep bead_uid NULL."""
+    piv = _doc(db, "Pivot", "fr")
+    tgt = _doc(db, "Target", "en")
+    a = _sent(db, piv, 1, 20, 1)
+    b = _sent(db, piv, 2, 30, 2)
+    _a2 = _sent(db, tgt, 1, 20, 1)
+    _b1 = _sent(db, tgt, 2, 15, 2)
+    _b2 = _sent(db, tgt, 3, 15, 2)
+
+    align_pair_by_length(db, piv, tgt, "run-uid")
+    rows = db.execute(
+        "SELECT pivot_unit_id, bead_id, bead_uid FROM alignment_links"
+    ).fetchall()
+    # plain 1-1 → both bead_id and bead_uid NULL
+    a_link = next(r for r in rows if r["pivot_unit_id"] == a)
+    assert a_link["bead_id"] is None and a_link["bead_uid"] is None
+    # 1-2 split → 2 links sharing bead_uid == "run#bead_id" (byte-compatible)
+    b_links = [r for r in rows if r["pivot_unit_id"] == b]
+    assert len(b_links) == 2
+    for r in b_links:
+        assert r["bead_uid"] == f"run-uid#{r['bead_id']}"
+    assert b_links[0]["bead_uid"] == b_links[1]["bead_uid"]  # one shared bead
+
+
 def test_length_bounded_warns_on_unpaired_paragraphs(db: sqlite3.Connection) -> None:
     """D4 (advisory): >15% of paragraphs unpaired → a warning to verify the two docs
     really are translations. 3 pivot ¶ vs 1 target ¶ → one ¶ left unpaired (33%)."""
