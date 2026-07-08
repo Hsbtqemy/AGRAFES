@@ -947,6 +947,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 self._handle_curate_apply_history_export(body)
             elif path == "/align/audit":
                 self._handle_align_audit(body)
+            elif path == "/align/matrix":
+                self._handle_align_matrix(body)
             elif path == "/align/quality":
                 self._handle_align_quality(body)
             elif path == "/align/link/create":
@@ -7391,6 +7393,27 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             for r in rows:
                 w.writerow(list(r))
         self._send_json(success_payload({"out_path": str(out), "rows_written": len(rows)}))
+
+    def _handle_align_matrix(self, body: dict) -> None:
+        """POST /align/matrix — the source-anchored multilingual matrix as JSON (read-only).
+
+        Same projection as the CSV export (services/matrix_export_service.build_alignment_matrix)
+        but **returned in the response** for the alignment grid to render, instead of written to
+        disk. Body: { family_root_id }. Returns { headers, rows, languages, hub_doc_id }.
+        """
+        from multicorpus_engine.services.errors import NotFoundError
+        from multicorpus_engine.services.matrix_export_service import build_alignment_matrix
+
+        family_root_id = body.get("family_root_id")
+        if not isinstance(family_root_id, int) or isinstance(family_root_id, bool):
+            self._send_error("family_root_id must be an integer", code=ERR_BAD_REQUEST, http_status=400)
+            return
+        try:
+            matrix = build_alignment_matrix(self._conn(), family_root_id)
+        except NotFoundError as exc:
+            self._send_error(exc.message, code=ERR_NOT_FOUND, http_status=404)
+            return
+        self._send_json(success_payload(matrix))
 
     def _handle_export_matrix(self, body: dict) -> None:
         """POST /export/matrix — source-anchored multilingual matrix (R3.3 §D7).

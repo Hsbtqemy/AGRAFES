@@ -339,6 +339,18 @@
         ],
         "type": "object"
       },
+      "AlignMatrixRequest": {
+        "properties": {
+          "family_root_id": {
+            "description": "The hub (parent/original) doc — rows = its segments, columns = it + its translations.",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "family_root_id"
+        ],
+        "type": "object"
+      },
       "AlignQualityRequest": {
         "additionalProperties": false,
         "properties": {
@@ -4239,8 +4251,8 @@
   "info": {
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
-    "version": "1.6.52",
-    "x-contract-version": "1.6.52"
+    "version": "1.6.53",
+    "x-contract-version": "1.6.53"
   },
   "openapi": "3.0.3",
   "paths": {
@@ -4588,6 +4600,46 @@
           }
         ],
         "summary": "Apply a batch of set_status/delete operations on alignment links"
+      }
+    },
+    "/align/matrix": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlignMatrixRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Matrix (headers, rows, languages, hub_doc_id)"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Family root not found"
+          }
+        },
+        "summary": "Source-anchored multilingual alignment matrix as JSON (read-only projection)"
       }
     },
     "/align/quality": {

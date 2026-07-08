@@ -311,6 +311,7 @@ Three **independent** version fields surface in sidecar responses — do not con
   - each report includes `links_created` and `links_skipped`
   - align responses are persisted in `runs` (`kind=align`, stats include `strategy`, `pairs`, debug payload when enabled)
 - `POST /align/audit`
+- `POST /align/matrix` — matrice multilingue ancrée-source **en JSON** (même projection que `/export/matrix` mais renvoyée dans la réponse — `{ headers, rows, languages, hub_doc_id }` — pour l'affichage de la grille d'alignement, au lieu d'écrire un CSV). Read-only, no token. (contrat 1.6.53)
 - `POST /align/quality`
 - `GET /align/source_changed_summary` — résumé global des liens dont la source pivot a changé depuis l'alignement (`source_changed_at` non nul). Réponse : `{ total, docs: [{target_doc_id, target_title, count}] }`. Read-only, no token. Alimente la bannière d'accueil d'AlignPanel.
 - `POST /align/link/create`

@@ -32,6 +32,7 @@
   "POST /align/link/retarget",
   "POST /align/link/update_status",
   "POST /align/links/batch_update",
+  "POST /align/matrix",
   "POST /align/quality",
   "POST /align/retarget_candidates",
   "POST /annotate",
