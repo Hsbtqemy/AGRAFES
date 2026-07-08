@@ -1248,10 +1248,12 @@ export class AlignPanel {
         const spanTarget = effSharedSide === "target" && !first;
         const pivotInner = spanPivot
           ? `<span class="prep-align-bead-cont" aria-label="même source que ci-dessus">&#8627; m&#234;me source</span>`
-          : `${anchorMark}${beadAction}${extId}${_esc(lk.pivot_text ?? "")}`;
+          : `${anchorMark}${extId}${_esc(lk.pivot_text ?? "")}`;
+        // The cut acts on the *target* (translation) side — so "✂ Couper" / "↺" render in
+        // the target cell next to the text they slice, not on the pivot/source side.
         const targetInner = spanTarget
           ? `<span class="prep-align-bead-cont" aria-label="même cible que ci-dessus">&#8627; m&#234;me cible</span>`
-          : _esc(linkTargetDisplay(lk));
+          : `${beadAction}${_esc(linkTargetDisplay(lk))}`;
         const isRetargetOpen = this._retargetActive?.linkId === lk.link_id && this._retargetActive.mode === "retarget";
         const isAddOpen = this._retargetActive?.pivotUnitId === lk.pivot_unit_id && this._retargetActive.mode === "add";
         rows.push(`<div class="prep-align-row ${statusCls(lk.status)}${beadCls}" data-link-id="${lk.link_id}" role="row">
