@@ -8211,74 +8211,16 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             self._send_error("limit and window must be positive integers", code=ERR_BAD_REQUEST, http_status=400)
             return
 
-        conn = self._conn()
-
-        # Get pivot unit info
-        pivot_row = conn.execute(
-            "SELECT unit_id, external_id, text_norm FROM units WHERE unit_id = ?",
-            (pivot_unit_id,),
-        ).fetchone()
-        if pivot_row is None:
-            self._send_error(
-                f"pivot_unit_id={pivot_unit_id} not found",
-                code=ERR_NOT_FOUND,
-                http_status=404,
+        from multicorpus_engine.services.align_links_service import build_retarget_candidates
+        from multicorpus_engine.services.errors import NotFoundError
+        try:
+            result = build_retarget_candidates(
+                self._conn(), pivot_unit_id, target_doc_id, limit, window
             )
+        except NotFoundError as exc:
+            self._send_error(exc.message, code=ERR_NOT_FOUND, http_status=404)
             return
-
-        pivot_ext_id: int | None = pivot_row[1]
-
-        # Find existing link to use as anchor in target doc
-        current_link = conn.execute(
-            "SELECT al.target_unit_id, u.external_id "
-            "FROM alignment_links al JOIN units u ON u.unit_id = al.target_unit_id "
-            "WHERE al.pivot_unit_id = ? AND al.target_doc_id = ? LIMIT 1",
-            (pivot_unit_id, target_doc_id),
-        ).fetchone()
-        anchor_ext_id: int | None = current_link[1] if current_link else pivot_ext_id
-
-        # All target units ordered by external_id (or unit_id fallback)
-        target_units = conn.execute(
-            "SELECT unit_id, external_id, text_norm FROM units "
-            "WHERE doc_id = ? ORDER BY COALESCE(external_id, unit_id)",
-            (target_doc_id,),
-        ).fetchall()
-
-        candidates: list[dict] = []
-        for u in target_units:
-            u_uid, u_ext, u_text = u
-            score: float | None = None
-            reason: str = ""
-
-            if u_ext is not None and pivot_ext_id is not None and u_ext == pivot_ext_id:
-                score = 1.0
-                reason = "external_id_match"
-            elif anchor_ext_id is not None and u_ext is not None:
-                dist = abs(u_ext - anchor_ext_id)
-                if dist <= window:
-                    score = round(1.0 / (1 + dist), 4)
-                    reason = f"neighbor (\u0394{dist})"
-
-            if score is not None:
-                candidates.append({
-                    "target_unit_id": u_uid,
-                    "external_id": u_ext,
-                    "target_text": u_text or "",
-                    "score": score,
-                    "reason": reason,
-                })
-
-        candidates.sort(key=lambda c: (-c["score"], c["target_unit_id"]))
-        candidates = candidates[:limit]
-
-        self._send_json(success_payload({
-            "pivot": {
-                "unit_id": pivot_unit_id,
-                "external_id": pivot_ext_id,
-                "text": pivot_row[2] or "",
-            },
-            "candidates": candidates,
-        }))
+        self._send_json(success_payload(result))
 
     # ------------------------------------------------------------------
     # V1.5 — Collision resolver (read + write)

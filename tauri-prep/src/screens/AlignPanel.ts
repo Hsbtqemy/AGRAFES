@@ -1517,7 +1517,7 @@ export class AlignPanel {
           .map(l => l.target_unit_id)
       );
       if (candidates.length === 0) {
-        candsEl.innerHTML = `<span class="prep-align-picker-empty">Aucun candidat trouv\u00e9.</span>`;
+        candsEl.innerHTML = `<span class="prep-align-picker-empty">Aucun segment dans le document cible.</span>`;
       } else {
         setHtml(candsEl, raw(candidates.map(c => {
           const conflict = alreadyLinked.has(c.target_unit_id);

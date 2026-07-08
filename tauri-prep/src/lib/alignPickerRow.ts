@@ -29,7 +29,7 @@ export function buildPickerRowHtml(opts: PickerRowOptions): string {
     if (candidates === null) {
       content = `<span class="prep-align-picker-loading">&#8230; chargement des candidats</span>`;
     } else if (candidates.length === 0) {
-      content = `<span class="prep-align-picker-empty">Aucun candidat trouv&#233;.</span>`;
+      content = `<span class="prep-align-picker-empty">Aucun segment dans le document cible.</span>`;
     } else {
       content = candidates.map(c => {
         const conflict = alreadyLinked.has(c.target_unit_id);
@@ -47,7 +47,7 @@ export function buildPickerRowHtml(opts: PickerRowOptions): string {
     const cellRole = asTableRow ? ' role="cell"' : "";
     return `<div class="prep-align-picker-row" data-picker-for="${pivotUnitId}"${rowRole}>
       <div class="prep-align-picker-header"${cellRole}>
-        <span>&#9997; Recibler : <em>${_esc(pivotText.slice(0, 60))}</em></span>
+        <span>&#9997; Choisir une nouvelle cible pour : <em>${_esc(pivotText.slice(0, 60))}</em></span>
         <button class="btn btn-ghost btn-sm prep-align-picker-cancel" data-pivot-uid="${pivotUnitId}" title="Annuler">&#10005;</button>
       </div>
       <div class="prep-align-picker-candidates" id="picker-cands-${pivotUnitId}"${cellRole}>${content}</div>
