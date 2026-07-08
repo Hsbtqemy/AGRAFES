@@ -198,5 +198,7 @@ D10/D11 (statut par cellule = `unit_status`, omission = `[non traduit]`).
      = offset code-point) → `set_target_span` ×2 + update optimiste ; « ↺ » pour annuler ;
    - 🔲 **fusionner / grouper** — action `set_bead`/`clear_bead`, réutilise le socle K3 ;
    - 🔲 **cut-picker N-1** (>2 sources : plusieurs points de coupe) + coupe dans la **vue famille**.
-3. **Export matrice multilingue** *(moteur + front)* — 🔲 le livrable (D7), à rebours du CSV.
+3. **Export matrice multilingue** *(moteur + front)* — **moteur ✅** : `POST /export/matrix`
+   (service `matrix_export_service` — projection coupes `text_raw[cs:ce]` + concat beads + omission,
+   *dérivée jamais stockée* D4 ; contrat 1.6.52) ; 🔲 **C2 front** — déclencheur d'export en 1 clic.
 4. **Statuts/ajouts** *(D8/D10/D11)* — 🔲 une fois la mécanique en place.
