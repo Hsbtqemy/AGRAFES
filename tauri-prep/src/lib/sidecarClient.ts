@@ -1620,6 +1620,21 @@ export async function alignAudit(
   return conn.post("/align/audit", opts) as Promise<AlignAuditResponse>;
 }
 
+/** Source-anchored multilingual matrix (read-only projection) — R3.3 tranche 2. */
+export interface AlignMatrix {
+  /** ["paragraphe", "segment", hubLang, ...translationLangs] */
+  headers: string[];
+  /** One row per hub segment: [paragraphN, segIdx, hubText, ...translationCells]. */
+  rows: Array<Array<string | number>>;
+  /** [hubLang, ...translationLangs] */
+  languages: string[];
+  hub_doc_id: number;
+}
+
+export async function getAlignMatrix(conn: Conn, familyRootId: number): Promise<AlignMatrix> {
+  return conn.post("/align/matrix", { family_root_id: familyRootId }) as Promise<AlignMatrix>;
+}
+
 // ─── V0.4A — Metadata API ────────────────────────────────────────────────────
 
 export async function updateDocument(conn: Conn, opts: DocumentUpdateOptions): Promise<{ updated: number; doc: DocumentRecord }> {
