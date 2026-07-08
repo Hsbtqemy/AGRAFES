@@ -341,6 +341,7 @@ Three **independent** version fields surface in sidecar responses — do not con
 - `POST /export/ske`
   - body: `{ out_path, doc_ids?: int[] }` (token required)
 - `POST /export/align_csv`
+- `POST /export/matrix` — matrice multilingue ancrée-source (une ligne par segment hub, une colonne par langue ; coupes + concat des beads appliqués) (token required)
 - `POST /export/run_report`
 - `POST /db/backup`
   - body: `{ out_dir?: string, out_path?: string }` — `out_dir` and `out_path` are mutually exclusive

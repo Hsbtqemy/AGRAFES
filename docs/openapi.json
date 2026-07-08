@@ -1683,6 +1683,26 @@
         ],
         "type": "object"
       },
+      "ExportMatrixRequest": {
+        "properties": {
+          "delimiter": {
+            "default": ",",
+            "type": "string"
+          },
+          "family_root_id": {
+            "description": "The hub (parent/original) doc — rows = its segments, columns = it + its translations.",
+            "type": "integer"
+          },
+          "out_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "family_root_id",
+          "out_path"
+        ],
+        "type": "object"
+      },
       "ExportRunReportRequest": {
         "properties": {
           "format": {
@@ -4219,8 +4239,8 @@
   "info": {
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
-    "version": "1.6.51",
-    "x-contract-version": "1.6.51"
+    "version": "1.6.52",
+    "x-contract-version": "1.6.52"
   },
   "openapi": "3.0.3",
   "paths": {
@@ -6332,6 +6352,40 @@
           }
         ],
         "summary": "Export token annotations as CoNLL-U"
+      }
+    },
+    "/export/matrix": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportMatrixRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Matrix written"
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Family root not found"
+          }
+        },
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "summary": "Export the source-anchored multilingual alignment matrix (CSV)"
       }
     },
     "/export/run_report": {

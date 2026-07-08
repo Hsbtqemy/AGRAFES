@@ -14,7 +14,7 @@ from typing import Any
 from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
-CONTRACT_VERSION = "1.6.51"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.52"  # semantic versioning for the sidecar API contract
 # SID-08 / OPS-03: the API version IS the contract version — derived, never a
 # second hand-maintained literal, so the two can no longer drift. /health reports
 # the *engine* version under `version` (it predates the sidecar); every other
@@ -180,6 +180,10 @@ API_VERSION = CONTRACT_VERSION
 # 1.6.51: GET /align/audit link items gain target_text_raw (verbatim target — the string the cut
 #         offsets index) + target_char_start / target_char_end (the link's cut, null = whole unit),
 #         so the front can render a source-anchored cut without re-fetching. Additive; no new route.
+# 1.6.52: source-anchored matrix export (R3.3 §D7). New POST /export/matrix — the multilingual
+#         alignment matrix (one row per hub/parent segment, one column per language; source-anchored
+#         cut slices + N-M bead concatenation applied). NEW route → openapi + snapshot + .md all move.
+#         Logic in services/matrix_export_service (projection is derived, never stored — D4).
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
@@ -2011,6 +2015,14 @@ def openapi_spec() -> dict[str, Any]:
                     "security": [{"token": []}],
                     "requestBody": {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ExportAlignCsvRequest"}}}},
                     "responses": {"200": {"description": "File written"}, "400": {"description": "Bad request"}, "401": {"description": "Unauthorized"}},
+                }
+            },
+            "/export/matrix": {
+                "post": {
+                    "summary": "Export the source-anchored multilingual alignment matrix (CSV)",
+                    "security": [{"token": []}],
+                    "requestBody": {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ExportMatrixRequest"}}}},
+                    "responses": {"200": {"description": "Matrix written"}, "400": {"description": "Bad request"}, "401": {"description": "Unauthorized"}, "404": {"description": "Family root not found"}},
                 }
             },
             "/export/run_report": {
@@ -4206,6 +4218,15 @@ def openapi_spec() -> dict[str, Any]:
                     "properties": {
                         "pivot_doc_id": {"type": "integer", "nullable": True},
                         "target_doc_id": {"type": "integer", "nullable": True},
+                        "out_path": {"type": "string"},
+                        "delimiter": {"type": "string", "default": ","},
+                    },
+                },
+                "ExportMatrixRequest": {
+                    "type": "object",
+                    "required": ["family_root_id", "out_path"],
+                    "properties": {
+                        "family_root_id": {"type": "integer", "description": "The hub (parent/original) doc — rows = its segments, columns = it + its translations."},
                         "out_path": {"type": "string"},
                         "delimiter": {"type": "string", "default": ","},
                     },

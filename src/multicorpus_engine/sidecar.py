@@ -460,7 +460,7 @@ _WRITE_PATHS = frozenset({
     "/documents/tags/add", "/documents/tags/remove",
     "/doc_relations/set", "/doc_relations/delete",
     # Exports (write to disk)
-    "/export/tei", "/export/align_csv", "/export/run_report",
+    "/export/tei", "/export/align_csv", "/export/matrix", "/export/run_report",
     "/export/conllu",
     "/export/token_query_csv",
     "/export/ske",
@@ -1051,6 +1051,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                     "/export/tmx": self._handle_export_tmx,
                     "/export/bilingual": self._handle_export_bilingual,
                     "/export/align_csv": self._handle_export_align_csv,
+                    "/export/matrix": self._handle_export_matrix,
                     "/export/run_report": self._handle_export_run_report,
                 }
                 _handler = _export_handlers.get(path)
@@ -7390,6 +7391,47 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             for r in rows:
                 w.writerow(list(r))
         self._send_json(success_payload({"out_path": str(out), "rows_written": len(rows)}))
+
+    def _handle_export_matrix(self, body: dict) -> None:
+        """POST /export/matrix — source-anchored multilingual matrix (R3.3 §D7).
+
+        Body: { family_root_id, out_path, delimiter? }. One row per hub (parent) segment,
+        one column per language; translation cells apply source-anchored cut slices and
+        concatenate N-M bead targets (services/matrix_export_service).
+        """
+        import csv as _csv
+
+        from multicorpus_engine.services.errors import NotFoundError
+        from multicorpus_engine.services.matrix_export_service import build_alignment_matrix
+
+        out_path = body.get("out_path")
+        family_root_id = body.get("family_root_id")
+        if not out_path:
+            self._send_error("out_path is required", code=ERR_BAD_REQUEST, http_status=400)
+            return
+        if not isinstance(family_root_id, int) or isinstance(family_root_id, bool):
+            self._send_error("family_root_id must be an integer", code=ERR_BAD_REQUEST, http_status=400)
+            return
+        delimiter = body.get("delimiter", ",")
+        if delimiter not in (",", ";", "\t"):
+            delimiter = ","
+        try:
+            matrix = build_alignment_matrix(self._conn(), family_root_id)
+        except NotFoundError as exc:
+            self._send_error(exc.message, code=ERR_NOT_FOUND, http_status=404)
+            return
+        out = self._resolve_export_path(out_path)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        with open(out, "w", encoding="utf-8", newline="") as f:
+            w = _csv.writer(f, delimiter=delimiter)
+            w.writerow(matrix["headers"])
+            for row in matrix["rows"]:
+                w.writerow(row)
+        self._send_json(success_payload({
+            "out_path": str(out),
+            "rows_written": len(matrix["rows"]),
+            "languages": matrix["languages"],
+        }))
 
     def _handle_export_run_report(self, body: dict) -> None:
         import json as _json

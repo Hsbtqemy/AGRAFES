@@ -59,6 +59,7 @@
   "POST /export/align_csv",
   "POST /export/bilingual",
   "POST /export/conllu",
+  "POST /export/matrix",
   "POST /export/run_report",
   "POST /export/ske",
   "POST /export/tei",
