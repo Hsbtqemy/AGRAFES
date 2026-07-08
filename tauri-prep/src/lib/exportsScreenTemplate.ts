@@ -219,6 +219,29 @@ export function exportsScreenTemplate(): string {
         </div>
       </div>
 
+      <!-- Matrice multilingue (align&eacute;e ancr&eacute;e-source) -->
+      <div class="card exp-matrix-card">
+        <h3>Matrice multilingue <span class="prep-badge-preview">CSV/TSV</span></h3>
+        <p class="hint">Exporte la <strong>forme align&eacute;e</strong> d&apos;une famille : une ligne par segment de l&apos;original (moyeu), une colonne par langue. Les coupes et regroupements de beads sont appliqu&eacute;s ; les segments non traduits laissent une cellule vide.</p>
+        <div class="prep-form-row">
+          <label>Famille (original moyeu)
+            <select id="matrix-family-sel" style="min-width:240px">
+              <option value="">— choisir une famille —</option>
+            </select>
+          </label>
+          <label>Format
+            <select id="matrix-fmt">
+              <option value=";">CSV (point-virgule, Excel FR)</option>
+              <option value=",">CSV (virgule)</option>
+              <option value="&#9;">TSV (tabulation)</option>
+            </select>
+          </label>
+          <div style="align-self:flex-end">
+            <button type="button" id="matrix-export-btn" class="btn btn-primary btn-sm" disabled>Choisir fichier et exporter&hellip;</button>
+          </div>
+        </div>
+      </div>
+
       <div class="card export-legacy-toggle-card">
         <div class="exp-legacy-toggle-row">
           <div>

@@ -81,6 +81,11 @@ export class ExportsScreen {
   private _bilRunBtn!: HTMLButtonElement;
   private _bilPreviewBtn!: HTMLButtonElement;
 
+  // Matrice multilingue (ancré-source) card
+  private _matrixFamilySelEl!: HTMLSelectElement;
+  private _matrixFmtEl!: HTMLSelectElement;
+  private _matrixRunBtn!: HTMLButtonElement;
+
   setJobCenter(jc: JobCenter, showToast: (msg: string, isError?: boolean) => void): void {
     this._jobCenter = jc;
     this._showToast = showToast;
@@ -123,6 +128,9 @@ export class ExportsScreen {
     this._bilFmtEl = root.querySelector<HTMLSelectElement>("#bil-fmt")!;
     this._bilRunBtn = root.querySelector<HTMLButtonElement>("#bil-run-btn")!;
     this._bilPreviewBtn = root.querySelector<HTMLButtonElement>("#bil-preview-btn")!;
+    this._matrixFamilySelEl = root.querySelector<HTMLSelectElement>("#matrix-family-sel")!;
+    this._matrixFmtEl = root.querySelector<HTMLSelectElement>("#matrix-fmt")!;
+    this._matrixRunBtn = root.querySelector<HTMLButtonElement>("#matrix-export-btn")!;
 
     // EXP-1: head card — run pill + back button
     const runPill = root.querySelector<HTMLElement>("#exp-run-pill");
@@ -155,6 +163,9 @@ export class ExportsScreen {
     this._bilFmtEl.addEventListener("change", () => this._syncBilBtn());
     this._bilPreviewBtn.addEventListener("click", () => void this._runBilPreview());
     this._bilRunBtn.addEventListener("click", () => void this._runExportBilTmx());
+    this._matrixFamilySelEl.addEventListener("change", () => this._syncMatrixBtn());
+    this._matrixFmtEl.addEventListener("change", () => this._syncMatrixBtn());
+    this._matrixRunBtn.addEventListener("click", () => void this._runMatrixExport());
 
     // Show/hide strict notice when TEI profile changes
     root.querySelector("#pkg-tei-profile")?.addEventListener("change", (e) => {
@@ -274,6 +285,7 @@ export class ExportsScreen {
     const teiBtns = this._root.querySelectorAll<HTMLButtonElement>("#v2-run-btn, #tei-export-btn, #pkg-export-btn, #align-csv-btn, #report-export-btn, #qa-report-btn");
     if (!this._conn) {
       teiBtns.forEach(b => b.disabled = true);
+      this._syncMatrixBtn();
       this._refreshRuntimeState();
       return;
     }
@@ -382,6 +394,17 @@ export class ExportsScreen {
       opt.textContent = `#${f.family_id} ${f.parent.title} (${f.stats.total_docs} docs)`;
       this._bilFamilySelEl.appendChild(opt);
     }
+
+    // Matrice multilingue: family selector (family_id === hub/parent doc_id === family_root_id)
+    this._matrixFamilySelEl.innerHTML = '<option value="">— choisir une famille —</option>';
+    for (const f of this._families) {
+      if (!f.parent) continue;
+      const opt = document.createElement("option");
+      opt.value = String(f.family_id);
+      opt.textContent = `#${f.family_id} ${f.parent.title} (${f.stats.total_docs} docs)`;
+      this._matrixFamilySelEl.appendChild(opt);
+    }
+    this._syncMatrixBtn();
 
     // Bilingue/TMX: pivot + target from all docs
     const chooseOpt = (): HTMLOptionElement => {
@@ -1246,6 +1269,48 @@ export class ExportsScreen {
       this._showToast?.("✗ Erreur export bilingue/TMX", true);
     } finally {
       this._syncBilBtn();
+    }
+  }
+
+  // ── Matrice multilingue (ancré-source) ───────────────────────────────────────
+
+  private _syncMatrixBtn(): void {
+    if (!this._matrixRunBtn) return;
+    this._matrixRunBtn.disabled = !this._conn || !this._matrixFamilySelEl.value;
+  }
+
+  private async _runMatrixExport(): Promise<void> {
+    if (!this._conn) return;
+    const familyRootId = this._matrixFamilySelEl.value ? Number(this._matrixFamilySelEl.value) : null;
+    if (familyRootId === null) {
+      this._showToast?.("Sélectionnez une famille.", true);
+      return;
+    }
+    const delimiter = this._matrixFmtEl.value; // ";" | "," | "\t"
+    const ext = delimiter === "\t" ? "tsv" : "csv";
+
+    const outPath = await save({
+      title: "Enregistrer la matrice multilingue",
+      defaultPath: `matrice_famille_${familyRootId}.${ext}`,
+      filters: [{ name: ext.toUpperCase(), extensions: [ext] }],
+    });
+    if (!outPath) return;
+
+    this._matrixRunBtn.disabled = true;
+    this._log(`Export matrice multilingue (famille #${familyRootId}) → ${outPath}…`);
+    try {
+      const res = await this._conn.post("/export/matrix", {
+        family_root_id: familyRootId,
+        out_path: outPath,
+        delimiter,
+      }) as { out_path: string; rows_written: number; languages: string[] };
+      this._log(`✓ ${res.rows_written} ligne(s) · ${res.languages.join(" · ")} → ${res.out_path}`);
+      this._showToast?.(`✓ Matrice (${res.rows_written} ligne(s))`);
+    } catch (err) {
+      this._log(`Erreur export matrice : ${err instanceof SidecarError ? err.message : String(err)}`, true);
+      this._showToast?.("✗ Erreur export matrice", true);
+    } finally {
+      this._syncMatrixBtn();
     }
   }
 
