@@ -1224,14 +1224,18 @@ export class AlignPanel {
         // every bead row so the group reads as one block.
         const isBeadLink = lk.bead_id != null;
         const beadCls = isBeadLink ? " prep-align-row--bead" : "";
-        // First row of a real bead → a badge: "✂ coupé" once resolved by cutting, else
-        // the numeric "N→M". A lone visible bead link → the plain 🔗 chip fallback.
-        const anchorMark = multi && first
-          ? (cut
-            ? `<span class="prep-align-bead-badge prep-align-bead-badge--cut" title="Bead coupé — chaque source garde sa tranche de la cible">&#9986; coup&#233;</span> `
-            : `<span class="prep-align-bead-badge" title="Regroupement ${group.pivots}&#8594;${group.targets} — une correspondance N-M, pas une collision">${group.pivots}&#8594;${group.targets}</span> `)
+        // Structural correspondence badge — the numeric "N→M" — stays on the SOURCE side
+        // (reads left→right: N pivots → M targets), or the lone-bead 🔗 chip fallback.
+        // The cut STATE badge ("✂ coupé") is NOT here: it moves to the target cell with the
+        // undo control, since the cut lives on the translation.
+        const pivotBadge = multi && first && !cut
+          ? `<span class="prep-align-bead-badge" title="Regroupement ${group.pivots}&#8594;${group.targets} — une correspondance N-M, pas une collision">${group.pivots}&#8594;${group.targets}</span> `
           : (isBeadLink && !multi
             ? `<span class="prep-align-bead-chip" title="Lien d'un bead (regroupement 1-2/2-1)">&#128279;</span> ` : "");
+        // Cut state badge "✂ coupé" — on the TARGET side (the translation that was sliced).
+        const targetBadge = multi && first && cut
+          ? `<span class="prep-align-bead-badge prep-align-bead-badge--cut" title="Bead coupé — chaque source garde sa tranche de la cible">&#9986; coup&#233;</span> `
+          : "";
         // B2 — bead-level cut affordance on the first row: "✂ Couper" (candidate) or "↺"
         // to undo a cut.
         const beadAction = multi && first
@@ -1248,12 +1252,12 @@ export class AlignPanel {
         const spanTarget = effSharedSide === "target" && !first;
         const pivotInner = spanPivot
           ? `<span class="prep-align-bead-cont" aria-label="même source que ci-dessus">&#8627; m&#234;me source</span>`
-          : `${anchorMark}${extId}${_esc(lk.pivot_text ?? "")}`;
-        // The cut acts on the *target* (translation) side — so "✂ Couper" / "↺" render in
-        // the target cell next to the text they slice, not on the pivot/source side.
+          : `${pivotBadge}${extId}${_esc(lk.pivot_text ?? "")}`;
+        // All cut chrome — the "✂ coupé" state badge and the "✂ Couper"/"↺" controls — sits
+        // on the TARGET (translation) cell, the side the cut actually slices.
         const targetInner = spanTarget
           ? `<span class="prep-align-bead-cont" aria-label="même cible que ci-dessus">&#8627; m&#234;me cible</span>`
-          : `${beadAction}${_esc(linkTargetDisplay(lk))}`;
+          : `${targetBadge}${beadAction}${_esc(linkTargetDisplay(lk))}`;
         const isRetargetOpen = this._retargetActive?.linkId === lk.link_id && this._retargetActive.mode === "retarget";
         const isAddOpen = this._retargetActive?.pivotUnitId === lk.pivot_unit_id && this._retargetActive.mode === "add";
         rows.push(`<div class="prep-align-row ${statusCls(lk.status)}${beadCls}" data-link-id="${lk.link_id}" role="row">
