@@ -36,6 +36,15 @@ describe("buildMatrixGridHtml", () => {
     expect(html).toContain("prep-matrix-row--para-start");
   });
 
+  it("puts a « ✂ Couper » button on fused cells only, with its cell coordinates (3b)", () => {
+    const html = buildMatrixGridHtml(buildMatrixView(SAMPLE));
+    // Exactly one fused cell: row index 3 (the repeat of "SHARED"), translation column 0.
+    const matches = html.match(/prep-matrix-cut-btn/g) ?? [];
+    expect(matches).toHaveLength(1);
+    expect(html).toContain('data-cut-row="3"');
+    expect(html).toContain('data-cut-col="0"');
+  });
+
   it("escapes corpus text (imported docs are untrusted)", () => {
     const evil: AlignMatrix = {
       headers: ["paragraphe", "segment", "fr", "en"],
