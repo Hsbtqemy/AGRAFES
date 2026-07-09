@@ -22,6 +22,7 @@ import { escHtml as _escHtml } from "../lib/diff.ts";
 import { actionsHubTemplate } from "../lib/actionsHubTemplate.ts";
 import { buildMetadataTree } from "../lib/metadataTree.ts";
 import { AlignPanel } from "./AlignPanel.ts";
+import { AlignMatrixView } from "./AlignMatrixView.ts";
 import { AnnotationView } from "./AnnotationView.ts";
 import { SegmentationView } from "./SegmentationView.ts";
 import { CurationView } from "./CurationView.ts";
@@ -58,7 +59,7 @@ interface ActionsExportPrefill {
 
 // ─── Sub-view type ────────────────────────────────────────────────
 
-type SubView = "hub" | "texte" | "curation" | "segmentation" | "alignement" | "annoter";
+type SubView = "hub" | "texte" | "curation" | "segmentation" | "alignement" | "matrice" | "annoter";
 
 // ─── ActionsScreen ────────────────────────────────────────────────────────────
 
@@ -74,6 +75,8 @@ export class ActionsScreen {
   private _alignRunId: string | null = null;
   // AlignPanel (new refactored alignment UI)
   private _alignPanel: AlignPanel | null = null;
+  // Matrice (grille ancrée-source, lecture — tranche 2c)
+  private _matrixView: AlignMatrixView | null = null;
   // AnnotationView (extracted)
   private _annotationView: AnnotationView | null = null;
   // SegmentationView (extracted)
@@ -145,6 +148,10 @@ export class ActionsScreen {
     alignPanel.dataset.panel = "alignement";
     alignPanel.style.display = this._activeSubView === "alignement" ? "" : "none";
 
+    const matricePanel = this._renderMatricePanel(root);
+    matricePanel.dataset.panel = "matrice";
+    matricePanel.style.display = this._activeSubView === "matrice" ? "" : "none";
+
     const annoterPanel = this._renderAnnoterPanel(root);
     annoterPanel.dataset.panel = "annoter";
     annoterPanel.style.display = this._activeSubView === "annoter" ? "" : "none";
@@ -157,6 +164,7 @@ export class ActionsScreen {
     panelSlot.appendChild(curationPanel);
     panelSlot.appendChild(segPanel);
     panelSlot.appendChild(alignPanel);
+    panelSlot.appendChild(matricePanel);
     panelSlot.appendChild(annoterPanel);
     panelSlot.appendChild(textePanel);
 
@@ -219,7 +227,7 @@ export class ActionsScreen {
   private _loadSubViewPref(): void {
     try {
       const saved = localStorage.getItem(ActionsScreen.LS_ACTIVE_SUB) as SubView | null;
-      if (saved === "hub" || saved === "texte" || saved === "curation" || saved === "segmentation" || saved === "alignement" || saved === "annoter") {
+      if (saved === "hub" || saved === "texte" || saved === "curation" || saved === "segmentation" || saved === "alignement" || saved === "matrice" || saved === "annoter") {
         this._activeSubView = saved;
       }
     } catch { /* ignore */ }
@@ -246,6 +254,7 @@ export class ActionsScreen {
     // Notifier la sous-vue Alignement pour rafraîchir sa bannière
     // « source modifiée » (DOM persistant → render() ne se rejoue pas).
     if (view === "alignement") this._alignPanel?.onActivated();
+    if (view === "matrice") this._matrixView?.onActivated();
     // Restore focus to the hub card button that launched this sub-view
     if (view === "hub" && this._lastFocusedBtn) {
       const btn = this._lastFocusedBtn;
@@ -255,7 +264,7 @@ export class ActionsScreen {
   }
 
   private _setSubViewClass(root: HTMLElement, view: SubView): void {
-    root.classList.remove("actions-sub-hub", "actions-sub-curation", "actions-sub-segmentation", "actions-sub-alignement", "actions-sub-annoter");
+    root.classList.remove("actions-sub-hub", "actions-sub-curation", "actions-sub-segmentation", "actions-sub-alignement", "actions-sub-matrice", "actions-sub-annoter");
     root.classList.add(`actions-sub-${view}`);
     const content = root.closest<HTMLElement>(".content");
     if (content) content.classList.toggle("prep-curation-wide", view === "curation");
@@ -450,6 +459,27 @@ export class ActionsScreen {
     return wrapper;
   }
 
+  private _renderMatricePanel(root: HTMLElement): HTMLElement {
+    const wrapper = document.createElement("div");
+    wrapper.className = "prep-acts-panel prep-acts-matrice-panel";
+
+    const headSection = document.createElement("section");
+    headSection.className = "prep-acts-seg-head-card";
+    headSection.innerHTML = `
+      <div class="prep-acts-hub-head-left">
+        <h1>Matrice</h1>
+        <p>La forme align&#233;e du corpus&#160;: une ligne par segment de l'original (moyeu), une colonne par langue. Lecture seule.</p>
+      </div>`;
+    wrapper.appendChild(headSection);
+
+    this._matrixView = new AlignMatrixView(
+      () => this._conn,
+      { toast: (msg, isError) => this._showToast?.(msg, isError) },
+    );
+    wrapper.appendChild(this._matrixView.render());
+    return wrapper;
+  }
+
   // ── Curation preview scroll sync (#act-preview-raw ↔ #act-diff-list) ───────────────
 
   setConn(conn: Conn | null): void {
@@ -473,6 +503,7 @@ export class ActionsScreen {
     if (this._wfRoot) {
       this._segmentationView?.refreshDocs();
       this._textCanvasView?.refreshDocs();
+      this._matrixView?.refreshDocs();
     }
     this._refreshRuntimeState();
     // Refresh annotation panel if it was rendered before conn was available.
@@ -617,6 +648,7 @@ export class ActionsScreen {
       this._setButtonsEnabled(true);
       this._curationView?.onDocsLoaded();
       this._alignPanel?.refreshDocs();
+      this._matrixView?.refreshDocs();
       this._segmentationView?.refreshDocs();
       this._annotationView?.refreshIfConnected();
       this._textCanvasView?.refreshDocs();
@@ -882,6 +914,8 @@ export class ActionsScreen {
     // Dispose sub-panels
     this._alignPanel?.dispose();
     this._alignPanel = null;
+    this._matrixView?.dispose();
+    this._matrixView = null;
     // Drop DOM references
     this._root = null;
     this._wfRoot = null;

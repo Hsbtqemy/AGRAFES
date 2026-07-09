@@ -1,0 +1,52 @@
+import { describe, it, expect } from "vitest";
+import { buildMatrixGridHtml } from "../alignMatrixGrid.ts";
+import { buildMatrixView } from "../alignMatrix.ts";
+import type { AlignMatrix } from "../sidecarClient.ts";
+
+const SAMPLE: AlignMatrix = {
+  headers: ["paragraphe", "segment", "fr", "en"],
+  languages: ["fr", "en"],
+  hub_doc_id: 2,
+  rows: [
+    ["1", 1, "FR1", "EN1"],
+    ["1", 2, "FR2", ""],
+    ["1", 3, "FR3", "SHARED"],
+    ["1", 4, "FR4", "SHARED"],
+  ],
+};
+
+describe("buildMatrixGridHtml", () => {
+  it("renders a header with hub + translation languages", () => {
+    const html = buildMatrixGridHtml(buildMatrixView(SAMPLE));
+    expect(html).toContain("prep-matrix-th--hub");
+    expect(html).toMatch(/<th[^>]*>fr<\/th>/);
+    expect(html).toMatch(/<th[^>]*>en<\/th>/);
+  });
+
+  it("tags cells by status (ok / empty / fused)", () => {
+    const html = buildMatrixGridHtml(buildMatrixView(SAMPLE));
+    expect(html).toContain("prep-matrix-cell--ok");
+    expect(html).toContain("prep-matrix-cell--empty");
+    expect(html).toContain("prep-matrix-cell--fused");
+  });
+
+  it("marks rows with warnings and paragraph starts", () => {
+    const html = buildMatrixGridHtml(buildMatrixView(SAMPLE));
+    expect(html).toContain("prep-matrix-row--warn");
+    expect(html).toContain("prep-matrix-row--para-start");
+  });
+
+  it("escapes corpus text (imported docs are untrusted)", () => {
+    const evil: AlignMatrix = {
+      headers: ["paragraphe", "segment", "fr", "en"],
+      languages: ["fr", "en"],
+      hub_doc_id: 2,
+      rows: [["1", 1, "<img src=x onerror=alert(1)>", "<script>bad()</script>"]],
+    };
+    const html = buildMatrixGridHtml(buildMatrixView(evil));
+    expect(html).not.toContain("<img src=x");
+    expect(html).not.toContain("<script>bad");
+    expect(html).toContain("&lt;img");
+    expect(html).toContain("&lt;script&gt;");
+  });
+});

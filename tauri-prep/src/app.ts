@@ -351,6 +351,7 @@ export class App {
           ["Segmentation", "segmentation","⌥"],
           ["Curation",     "curation",    "◇"],
           ["Alignement",   "alignement",  "⇄"],
+          ["Matrice",      "matrice",     "▦"],
           ["Annotation",   "annoter",     "◎"],
         ];
         for (const [label, navKey, icon] of treeItems) {
@@ -368,7 +369,7 @@ export class App {
           link.appendChild(treeLabel);
           link.addEventListener("click", () => {
             this._switchTab("actions");
-            this._actions.setSubView(navKey as "curation" | "segmentation" | "alignement" | "annoter");
+            this._actions.setSubView(navKey as "curation" | "segmentation" | "alignement" | "matrice" | "annoter");
           });
           treeBody.appendChild(link);
         }
