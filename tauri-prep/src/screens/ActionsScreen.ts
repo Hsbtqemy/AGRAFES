@@ -468,7 +468,7 @@ export class ActionsScreen {
     headSection.innerHTML = `
       <div class="prep-acts-hub-head-left">
         <h1>Matrice</h1>
-        <p>La forme align&#233;e du corpus&#160;: une ligne par segment de l'original (moyeu), une colonne par langue. Lecture seule.</p>
+        <p>La forme align&#233;e du corpus&#160;: une ligne par segment de l'original (moyeu), une colonne par langue. Les cellules &#9888; se r&#233;parent sur place (&#9986;&#160;Couper).</p>
       </div>`;
     wrapper.appendChild(headSection);
 

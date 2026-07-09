@@ -17,6 +17,22 @@ import type { AlignLinkRecord } from "./sidecarClient.ts";
 import { cutOffsets, codePointLength, codePointSlice } from "./alignBeads.ts";
 import { escHtml as _esc } from "./diff.ts";
 
+// ─── Viable cut points (F7) ──────────────────────────────────────────────────────
+
+/**
+ * Word boundaries where BOTH slices keep visible text. `cutOffsets` alone admits a
+ * degenerate cut when text_raw carries leading/trailing whitespace (offset 1 on
+ * " Hello world" → a whitespace-only head slice, projected as an empty cell ∅ —
+ * the very slice §3.2 forbids). Every consumer (resolver, suggestion, panels)
+ * goes through this filter.
+ */
+export function viableCutOffsets(text: string): number[] {
+  const len = codePointLength(text);
+  return cutOffsets(text).filter(
+    (o) => codePointSlice(text, 0, o).trim() !== "" && codePointSlice(text, o, len).trim() !== "",
+  );
+}
+
 // ─── Resolution : fused cell → the 2 links of its 2-1 bead ──────────────────────
 
 export type CellCutResolution =
@@ -65,7 +81,7 @@ export function resolveFusedCellLinks(
     return { error: "Cette traduction est déjà coupée — annuler d'abord la coupe (↺, Révision fine)." };
   }
   const rawText = la.target_text_raw;
-  if (rawText == null || cutOffsets(rawText).length === 0) {
+  if (rawText == null || viableCutOffsets(rawText).length === 0) {
     return { error: "Traduction d'un seul mot — aucun point de coupe possible." };
   }
   return { links: [la, lb] };
@@ -83,7 +99,7 @@ export function suggestCutOffset(
   hubTextAbove: string,
   hubTextRow: string,
 ): number | null {
-  const offs = cutOffsets(targetRaw);
+  const offs = viableCutOffsets(targetRaw);
   if (offs.length === 0) return null;
   const a = codePointLength(hubTextAbove);
   const b = codePointLength(hubTextRow);
@@ -120,10 +136,12 @@ export function buildCutPanelsHtml(
 ): string {
   const starts = [0, ...cutOffsets(targetRaw)];
   const len = codePointLength(targetRaw);
+  // Only boundaries that keep both slices non-blank are clickable (F7).
+  const viable = new Set(viableCutOffsets(targetRaw));
 
   const word = (i: number, newOffset: number | null): string => {
     const text = codePointSlice(targetRaw, starts[i], starts[i + 1] ?? len).trim();
-    if (newOffset === null) {
+    if (newOffset === null || !viable.has(newOffset)) {
       return `<span class="prep-matrix-cut-word prep-matrix-cut-word--fixed">${_esc(text)}</span>`;
     }
     return `<button type="button" class="prep-matrix-cut-word" data-cut-offset="${newOffset}"`

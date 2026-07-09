@@ -45,7 +45,9 @@ const FAMILY = {
   stats: { total_docs: 2 },
 };
 
-function makeConn(calls: Array<{ path: string; body: unknown }>): Conn {
+interface ConnOpts { batchResponse?: unknown }
+
+function makeConn(calls: Array<{ path: string; body: unknown }>, opts: ConnOpts = {}): Conn {
   return {
     baseUrl: "http://test", token: null,
     get: async (path: string) => {
@@ -64,7 +66,7 @@ function makeConn(calls: Array<{ path: string; body: unknown }>): Conn {
         };
       }
       if (path === "/align/links/batch_update") {
-        return { ok: true, applied: 2, deleted: 0, errors: [] };
+        return opts.batchResponse ?? { ok: true, applied: 2, deleted: 0, errors: [] };
       }
       throw new Error(`unexpected POST ${path}`);
     },
@@ -72,10 +74,11 @@ function makeConn(calls: Array<{ path: string; body: unknown }>): Conn {
   } as Conn;
 }
 
-async function mountWithMatrix(calls: Array<{ path: string; body: unknown }>) {
-  const conn = makeConn(calls);
+async function mountWithMatrix(calls: Array<{ path: string; body: unknown }>, opts: ConnOpts = {}) {
+  // Mutable holder so tests can swap the connection identity (corpus switch, F1).
+  const holder = { conn: makeConn(calls, opts) };
   const toasts: string[] = [];
-  const view = new AlignMatrixView(() => conn, { toast: (m) => toasts.push(m) });
+  const view = new AlignMatrixView(() => holder.conn, { toast: (m) => toasts.push(m) });
   const el = view.render();
   document.body.appendChild(el);
   view.onActivated();
@@ -89,7 +92,7 @@ async function mountWithMatrix(calls: Array<{ path: string; body: unknown }>) {
   await vi.waitFor(() => {
     expect(el.querySelector(".prep-matrix-cut-btn")).not.toBeNull();
   });
-  return { view, el, toasts };
+  return { view, el, toasts, holder };
 }
 
 afterEach(() => {
@@ -175,5 +178,91 @@ describe("AlignMatrixView — « ✂ Couper » from a fused cell (3b)", () => {
     document.querySelector<HTMLButtonElement>("[data-cut-cancel]")!.click();
     expect(document.querySelector(".prep-matrix-cut-overlay")).toBeNull();
     expect(calls.some((c) => c.path === "/align/links/batch_update")).toBe(false);
+  });
+
+  it("ignores a second ✂ click while the gesture is in flight (F5)", async () => {
+    const calls: Array<{ path: string; body: unknown }> = [];
+    await mountWithMatrix(calls);
+
+    const btn = document.querySelector<HTMLButtonElement>(".prep-matrix-cut-btn")!;
+    btn.click();
+    btn.click();
+    await vi.waitFor(() => {
+      expect(document.querySelector(".prep-matrix-cut-dialog")).not.toBeNull();
+    });
+    expect(document.querySelectorAll(".prep-matrix-cut-dialog")).toHaveLength(1);
+    expect(calls.filter((c) => c.path === "/align/audit")).toHaveLength(1);
+  });
+
+  it("refuses the gesture and resets the grid when the connection changed (F1)", async () => {
+    const calls: Array<{ path: string; body: unknown }> = [];
+    const { el, toasts, holder } = await mountWithMatrix(calls);
+
+    holder.conn = makeConn(calls); // new identity = another DB behind the same screen
+    document.querySelector<HTMLButtonElement>(".prep-matrix-cut-btn")!.click();
+    await vi.waitFor(() => {
+      expect(toasts.some((t) => t.includes("Connexion changée"))).toBe(true);
+    });
+    // No audit fired against the new DB with the old matrix's ids, grid is reset.
+    expect(calls.filter((c) => c.path === "/align/audit")).toHaveLength(0);
+    expect(el.querySelector(".prep-matrix-cut-btn")).toBeNull();
+    expect(document.querySelector(".prep-matrix-cut-overlay")).toBeNull();
+  });
+
+  it("a partially applied batch closes the modal and resyncs instead of claiming refusal (F2)", async () => {
+    const calls: Array<{ path: string; body: unknown }> = [];
+    const { toasts } = await mountWithMatrix(calls, {
+      batchResponse: {
+        ok: false, applied: 1, deleted: 0,
+        errors: [{ index: 1, link_id: 12, error: "link_id=12 not found" }],
+      },
+    });
+
+    document.querySelector<HTMLButtonElement>(".prep-matrix-cut-btn")!.click();
+    await vi.waitFor(() => {
+      expect(document.querySelector("[data-cut-ok]")).not.toBeNull();
+    });
+    document.querySelector<HTMLButtonElement>("[data-cut-ok]")!.click();
+    await vi.waitFor(() => {
+      // The half-commit is durable server-side → the grid MUST re-project.
+      expect(calls.filter((c) => c.path === "/align/matrix")).toHaveLength(2);
+    });
+    expect(document.querySelector(".prep-matrix-cut-overlay")).toBeNull();
+    expect(toasts.some((t) => t.includes("Coupe partielle"))).toBe(true);
+    expect(toasts.some((t) => t.includes("Coupe refusée"))).toBe(false);
+  });
+
+  it("a fully refused batch (nothing applied) keeps the modal open for retry", async () => {
+    const calls: Array<{ path: string; body: unknown }> = [];
+    const { toasts } = await mountWithMatrix(calls, {
+      batchResponse: {
+        ok: false, applied: 0, deleted: 0,
+        errors: [{ index: 0, link_id: 11, error: "link_id=11 not found" }],
+      },
+    });
+
+    document.querySelector<HTMLButtonElement>(".prep-matrix-cut-btn")!.click();
+    await vi.waitFor(() => {
+      expect(document.querySelector("[data-cut-ok]")).not.toBeNull();
+    });
+    document.querySelector<HTMLButtonElement>("[data-cut-ok]")!.click();
+    await vi.waitFor(() => {
+      expect(toasts.some((t) => t.includes("Coupe refusée"))).toBe(true);
+    });
+    expect(document.querySelector(".prep-matrix-cut-overlay")).not.toBeNull();
+    expect(calls.filter((c) => c.path === "/align/matrix")).toHaveLength(1); // no resync needed
+    expect(document.querySelector<HTMLButtonElement>("[data-cut-ok]")!.disabled).toBe(false);
+  });
+
+  it("dispose() force-closes an open cut modal (F4)", async () => {
+    const calls: Array<{ path: string; body: unknown }> = [];
+    const { view } = await mountWithMatrix(calls);
+
+    document.querySelector<HTMLButtonElement>(".prep-matrix-cut-btn")!.click();
+    await vi.waitFor(() => {
+      expect(document.querySelector(".prep-matrix-cut-overlay")).not.toBeNull();
+    });
+    view.dispose();
+    expect(document.querySelector(".prep-matrix-cut-overlay")).toBeNull();
   });
 });

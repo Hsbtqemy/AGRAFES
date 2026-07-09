@@ -161,6 +161,13 @@ describe("buildCutActions", () => {
     expect(buildCutActions([p(101, 9)], 5, 10)).toEqual([]);
     expect(buildCutActions([p(101, 9), p(102, 10), p(103, 11)], 5, 30)).toEqual([]);
   });
+
+  it("refuses a degenerate offset — an empty slice is not a cut (§3.2 conservation)", () => {
+    expect(buildCutActions([p(101, 9), p(102, 10)], 0, 25)).toEqual([]);
+    expect(buildCutActions([p(101, 9), p(102, 10)], 25, 25)).toEqual([]);
+    expect(buildCutActions([p(101, 9), p(102, 10)], -3, 25)).toEqual([]);
+    expect(buildCutActions([p(101, 9), p(102, 10)], 30, 25)).toEqual([]);
+  });
 });
 
 describe("buildClearCutActions", () => {

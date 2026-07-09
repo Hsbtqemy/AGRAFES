@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resolveFusedCellLinks, suggestCutOffset, buildCutPanelsHtml } from "../alignCellCut.ts";
+import { resolveFusedCellLinks, suggestCutOffset, buildCutPanelsHtml, viableCutOffsets } from "../alignCellCut.ts";
 import { codePointSlice, codePointLength, cutOffsets } from "../alignBeads.ts";
 import type { AlignLinkRecord } from "../sidecarClient.ts";
 
@@ -61,9 +61,34 @@ describe("resolveFusedCellLinks", () => {
     expect(resolveFusedCellLinks(links, A, B).error).toMatch(/seul mot/);
   });
 
+  it("rejects a single word behind leading whitespace — cutOffsets alone would let it through (F7)", () => {
+    const links = [
+      link({ link_id: 1, pivot_unit_id: A, target_unit_id: T, target_text_raw: " Hello" }),
+      link({ link_id: 2, pivot_unit_id: B, target_unit_id: T, target_text_raw: " Hello" }),
+    ];
+    expect(resolveFusedCellLinks(links, A, B).error).toMatch(/seul mot/);
+  });
+
   it("rejects when a row has no link at all", () => {
     const links = [link({ link_id: 1, pivot_unit_id: A, target_unit_id: T })];
     expect(resolveFusedCellLinks(links, A, B).error).toMatch(/introuvables/);
+  });
+});
+
+describe("viableCutOffsets (F7 — no blank slice)", () => {
+  it("drops boundaries that leave a whitespace-only slice", () => {
+    // cutOffsets(' Hello world') = [1, 7]; offset 1 would cut a blank head slice.
+    expect(cutOffsets(" Hello world")).toEqual([1, 7]);
+    expect(viableCutOffsets(" Hello world")).toEqual([7]);
+  });
+
+  it("a single word behind leading whitespace has NO viable cut", () => {
+    expect(cutOffsets(" Hello")).toEqual([1]);
+    expect(viableCutOffsets(" Hello")).toEqual([]);
+  });
+
+  it("keeps all boundaries of a clean multi-word text", () => {
+    expect(viableCutOffsets("aa bb cc")).toEqual([3, 6]);
   });
 });
 
@@ -81,6 +106,12 @@ describe("suggestCutOffset", () => {
 
   it("returns null for a single word", () => {
     expect(suggestCutOffset("Indivisible", "a", "b")).toBeNull();
+  });
+
+  it("never pre-selects a blank-slice offset, even when it is the nearest (F7)", () => {
+    // Tiny upper hub → ideal cut near 0 → nearest RAW offset would be 1 (blank head).
+    expect(suggestCutOffset(" Hello world", "x", "xxxxxxxxxxxxxxxxxxxx")).toBe(7);
+    expect(suggestCutOffset(" Hello", "x", "xxxxxxxxxx")).toBeNull();
   });
 
   it("conservation guard — the two slices always rebuild the original (code points)", () => {
@@ -128,5 +159,14 @@ describe("buildCutPanelsHtml", () => {
     expect(html).not.toContain("<img src=x");
     expect(html).toContain("&lt;script&gt;");
     expect(html).toContain("&lt;img");
+  });
+
+  it("does not offer a blank-slice boundary as clickable (F7)", () => {
+    // ' Hello world' at the only viable offset (7): the raw boundary 1 (before
+    // 'Hello', blank head slice) must render as fixed, not as a cut target.
+    const html = buildCutPanelsHtml(" Hello world", 7, labels);
+    expect(html).not.toContain('data-cut-offset="1"');
+    expect(html).toContain("Hello");
+    expect(html).toContain("world");
   });
 });

@@ -149,6 +149,9 @@ export function buildCutActions(
   links: readonly AlignLinkRecord[], cutOffset: number, textLen: number,
 ): AlignBatchAction[] {
   if (links.length !== 2) return [];
+  // Conservation guard (§3.2) : a degenerate offset would store an empty slice —
+  // the server accepts [0,0]/[len,len], so the refusal must live here.
+  if (cutOffset <= 0 || cutOffset >= textLen) return [];
   return [
     { action: "set_target_span", link_id: links[0].link_id, char_start: 0, char_end: cutOffset },
     { action: "set_target_span", link_id: links[1].link_id, char_start: cutOffset, char_end: textLen },
