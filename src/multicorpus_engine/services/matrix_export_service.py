@@ -47,7 +47,14 @@ def build_alignment_matrix(conn: sqlite3.Connection, family_root_id: int) -> dic
     """Project the family's aligned form into a hub-anchored multilingual matrix.
 
     Returns ``{"headers": [...], "rows": [[...], ...], "languages": [...],
-    "hub_doc_id": int}``. Raises :class:`NotFoundError` when the hub doc is missing.
+    "hub_doc_id": int, "hub_unit_ids": [...], "language_doc_ids": [...]}``.
+
+    ``rows`` / ``headers`` are the flat text projection (also fed verbatim to the CSV
+    export). ``hub_unit_ids`` (parallel to ``rows``) and ``language_doc_ids`` (parallel to
+    ``languages``) are additive identifiers (R3.3 tranche 3a) that let the grid map a cell
+    → its hub unit and target doc, so the editable gestures (couper/ré-ancrer…) can resolve
+    the underlying ``alignment_links`` (e.g. via ``/align/audit``). Raises
+    :class:`NotFoundError` when the hub doc is missing.
     """
     hub = conn.execute(
         "SELECT doc_id, language FROM documents WHERE doc_id=?", (family_root_id,)
@@ -100,4 +107,9 @@ def build_alignment_matrix(conn: sqlite3.Connection, family_root_id: int) -> dic
         "rows": rows,
         "languages": [hub_lang, *[lang for _t, lang in translations]],
         "hub_doc_id": int(family_root_id),
+        # Tranche 3a — identifiers for editable grid gestures. Parallel arrays:
+        # hub_unit_ids[i] is the hub unit behind rows[i]; language_doc_ids[j] is the
+        # doc_id behind languages[j] (index 0 = hub, then translations).
+        "hub_unit_ids": [int(u[0]) for u in hub_units],
+        "language_doc_ids": [int(family_root_id), *[tdoc for tdoc, _lang in translations]],
     }

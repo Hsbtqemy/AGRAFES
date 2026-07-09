@@ -51,6 +51,9 @@ def test_matrix_projection_cut_concat_and_omission(db_conn: sqlite3.Connection) 
     assert m["rows"][0] == [1, 1, "Le matin.", "morning", "buna ziua"]
     # row 2: FR u2 → EN cut slice "evening" ; RO omission = empty cell
     assert m["rows"][1] == [1, 2, "Le soir.", "evening", ""]
+    # tranche 3a — identifiers for grid gestures: hub unit per row, doc per language column
+    assert m["hub_unit_ids"] == [1, 2]
+    assert m["language_doc_ids"] == [1, 2, 3]  # hub(1) + EN(2) + RO(3)
 
 
 def test_matrix_hub_not_found(db_conn: sqlite3.Connection) -> None:

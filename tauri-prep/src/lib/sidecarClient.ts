@@ -1629,6 +1629,10 @@ export interface AlignMatrix {
   /** [hubLang, ...translationLangs] */
   languages: string[];
   hub_doc_id: number;
+  /** Parallel to `rows`: the hub unit_id behind each row (R3.3 tranche 3a — for gestures). */
+  hub_unit_ids?: number[];
+  /** Parallel to `languages`: the doc_id behind each column (index 0 = hub). */
+  language_doc_ids?: number[];
 }
 
 export async function getAlignMatrix(conn: Conn, familyRootId: number): Promise<AlignMatrix> {
