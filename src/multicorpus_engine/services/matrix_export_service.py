@@ -7,6 +7,10 @@ source-anchored **cut slices** applied (`text_raw[cs:ce]`, code-point native in 
 N-M **bead** targets concatenated, empty on omission. The matrix is a *projection*
 (never stored, cf. D4): it is recomputed from documents + alignment_links on each call.
 
+Rejected links are **excluded** from the projection (revue 3b F8) — coherent with the
+QA report's notion of a dead link (ALN-03) and with the grid's cell→links resolution,
+which must see exactly what the cell displays.
+
 Pure w.r.t. transport: takes a ``sqlite3.Connection``, returns plain data, raises
 ``ServiceError`` subclasses. v1 scope — defers additions (translation text with no hub
 source) and the ``[non traduit]`` omission token (empty cell for now).
@@ -31,13 +35,14 @@ def _parent_n(meta_json: Optional[str]) -> Any:
         return ""
 
 
-def _cell(links: list[tuple[str, Optional[int], Optional[int]]]) -> str:
+def _cell(links: list[dict[str, Any]]) -> str:
     """One translation cell: cut slices applied, bead targets concatenated, trimmed."""
     if not links:
         return ""
     parts: list[str] = []
-    for raw, cs, ce in links:
-        raw = raw or ""
+    for lk in links:
+        raw = lk["target_text_raw"] or ""
+        cs, ce = lk["char_start"], lk["char_end"]
         # cs/ce are code-point offsets (the cut); Python str slicing is code-point native.
         parts.append(raw[cs:ce] if cs is not None and ce is not None else raw)
     return " ".join(p.strip() for p in parts if p.strip()).strip()
@@ -47,14 +52,22 @@ def build_alignment_matrix(conn: sqlite3.Connection, family_root_id: int) -> dic
     """Project the family's aligned form into a hub-anchored multilingual matrix.
 
     Returns ``{"headers": [...], "rows": [[...], ...], "languages": [...],
-    "hub_doc_id": int, "hub_unit_ids": [...], "language_doc_ids": [...]}``.
+    "hub_doc_id": int, "hub_unit_ids": [...], "language_doc_ids": [...],
+    "cell_links": [...]}``.
 
     ``rows`` / ``headers`` are the flat text projection (also fed verbatim to the CSV
-    export). ``hub_unit_ids`` (parallel to ``rows``) and ``language_doc_ids`` (parallel to
-    ``languages``) are additive identifiers (R3.3 tranche 3a) that let the grid map a cell
-    → its hub unit and target doc, so the editable gestures (couper/ré-ancrer…) can resolve
-    the underlying ``alignment_links`` (e.g. via ``/align/audit``). Raises
-    :class:`NotFoundError` when the hub doc is missing.
+    export). The additive identifier fields let the grid map cells → links for the
+    editable gestures without any extra round-trip:
+
+    - ``hub_unit_ids`` (∥ ``rows``) / ``language_doc_ids`` (∥ ``languages``) — tranche 3a.
+    - ``cell_links`` (A2, revue 3b) — ``cell_links[i][j]`` is the list of links behind
+      row ``i`` × translation column ``j`` (``languages[j+1]``), in the cell's
+      concatenation order; each link is ``{"link_id", "target_unit_id", "char_start",
+      "char_end", "target_text_raw"}`` (offsets null = whole unit; ``target_text_raw``
+      is the verbatim string the cut offsets index). Built from the same query as the
+      cells, so it can never diverge from what the cell displays.
+
+    Raises :class:`NotFoundError` when the hub doc is missing.
     """
     hub = conn.execute(
         "SELECT doc_id, language FROM documents WHERE doc_id=?", (family_root_id,)
@@ -80,27 +93,41 @@ def build_alignment_matrix(conn: sqlite3.Connection, family_root_id: int) -> dic
         (family_root_id,),
     ).fetchall()
 
-    # Per-translation: hub_unit_id -> ordered list of (target text_raw, cut_start, cut_end).
-    links_by_t: dict[int, dict[int, list[tuple[str, Optional[int], Optional[int]]]]] = {}
+    # Per-translation: hub_unit_id -> ordered list of link dicts (id, target, cut, raw).
+    # Rejected links are dead (ALN-03) — excluded from projection AND cell_links (F8).
+    links_by_t: dict[int, dict[int, list[dict[str, Any]]]] = {}
     for tdoc, _lang in translations:
-        by_hub: dict[int, list[tuple[str, Optional[int], Optional[int]]]] = {}
-        for pivot_id, cs, ce, traw in conn.execute(
-            "SELECT al.pivot_unit_id, al.target_char_start, al.target_char_end, tu.text_raw"
+        by_hub: dict[int, list[dict[str, Any]]] = {}
+        for link_id, tuid, pivot_id, cs, ce, traw in conn.execute(
+            "SELECT al.link_id, al.target_unit_id, al.pivot_unit_id,"
+            "       al.target_char_start, al.target_char_end, tu.text_raw"
             " FROM alignment_links al JOIN units tu ON tu.unit_id = al.target_unit_id"
             " WHERE al.pivot_doc_id=? AND al.target_doc_id=?"
+            "   AND (al.status IS NULL OR al.status <> 'rejected')"
             " ORDER BY al.pivot_unit_id, al.external_id, al.link_id",
             (family_root_id, tdoc),
         ):
-            by_hub.setdefault(int(pivot_id), []).append((traw, cs, ce))
+            by_hub.setdefault(int(pivot_id), []).append({
+                "link_id": int(link_id),
+                "target_unit_id": int(tuid),
+                "char_start": cs,
+                "char_end": ce,
+                "target_text_raw": traw,
+            })
         links_by_t[tdoc] = by_hub
 
     headers = ["paragraphe", "segment", hub_lang, *[lang for _t, lang in translations]]
     rows: list[list[Any]] = []
+    cell_links: list[list[list[dict[str, Any]]]] = []
     for idx, (uid, text_raw, meta_json) in enumerate(hub_units, start=1):
         row: list[Any] = [_parent_n(meta_json), idx, (text_raw or "").strip()]
+        row_links: list[list[dict[str, Any]]] = []
         for tdoc, _lang in translations:
-            row.append(_cell(links_by_t[tdoc].get(int(uid), [])))
+            links = links_by_t[tdoc].get(int(uid), [])
+            row.append(_cell(links))
+            row_links.append(links)
         rows.append(row)
+        cell_links.append(row_links)
 
     return {
         "headers": headers,
@@ -112,4 +139,6 @@ def build_alignment_matrix(conn: sqlite3.Connection, family_root_id: int) -> dic
         # doc_id behind languages[j] (index 0 = hub, then translations).
         "hub_unit_ids": [int(u[0]) for u in hub_units],
         "language_doc_ids": [int(family_root_id), *[tdoc for tdoc, _lang in translations]],
+        # A2 (revue 3b) — cell_links[i][j]: links behind rows[i] × translation j.
+        "cell_links": cell_links,
     }

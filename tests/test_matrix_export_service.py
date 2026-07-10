@@ -56,6 +56,38 @@ def test_matrix_projection_cut_concat_and_omission(db_conn: sqlite3.Connection) 
     assert m["language_doc_ids"] == [1, 2, 3]  # hub(1) + EN(2) + RO(3)
 
 
+def test_matrix_cell_links_identifiers(db_conn: sqlite3.Connection) -> None:
+    """A2 (revue 3b) — cell_links[i][j] maps each cell to its links, ∥ rows × translations."""
+    _setup_family(db_conn)
+    m = build_alignment_matrix(db_conn, 1)
+
+    assert len(m["cell_links"]) == len(m["rows"]) == 2
+    assert all(len(row) == 2 for row in m["cell_links"])  # EN, RO columns
+    # EN row 1: the cut link (u1→unit 3, slice [0:8]) with its verbatim raw.
+    en_r1 = m["cell_links"][0][0]
+    assert [lk["link_id"] for lk in en_r1] == [1]
+    assert en_r1[0]["target_unit_id"] == 3
+    assert (en_r1[0]["char_start"], en_r1[0]["char_end"]) == (0, 8)
+    assert en_r1[0]["target_text_raw"] == "morning evening"
+    # RO row 1: the 1-2 bead, in the cell's concatenation order; RO row 2: omission = [].
+    assert [lk["link_id"] for lk in m["cell_links"][0][1]] == [3, 4]
+    assert m["cell_links"][1][1] == []
+
+
+def test_matrix_excludes_rejected_links(db_conn: sqlite3.Connection) -> None:
+    """F8 (revue 3b) — rejected links are dead (ALN-03): out of the projection AND cell_links."""
+    _setup_family(db_conn)
+    db_conn.execute("UPDATE alignment_links SET status='rejected' WHERE link_id=4")  # RO 'ziua'
+    db_conn.execute("UPDATE alignment_links SET status='accepted' WHERE link_id=3")  # RO 'buna'
+    db_conn.commit()
+    m = build_alignment_matrix(db_conn, 1)
+
+    # The cell shows only the live links ('ziua' gone, accepted 'buna' stays)…
+    assert m["rows"][0][4] == "buna"
+    # …and cell_links matches exactly what the cell displays.
+    assert [lk["link_id"] for lk in m["cell_links"][0][1]] == [3]
+
+
 def test_matrix_hub_not_found(db_conn: sqlite3.Connection) -> None:
     with pytest.raises(NotFoundError):
         build_alignment_matrix(db_conn, 999)
