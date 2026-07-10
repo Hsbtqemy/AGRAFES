@@ -1,9 +1,12 @@
 /**
- * alignMatrixGrid.ts — pure HTML builder for the matrix grid (R3.3 tranches 2c/3b).
+ * alignMatrixGrid.ts — pure HTML builder for the matrix grid (R3.3 tranches 2c/3b/D-W12).
  * Turns a `MatrixView` (lib/alignMatrix) into an escaped `<table>`: hub column + one column
  * per translation, each cell tagged by status (ok / empty ∅ / fused ⚠). A fused cell carries
- * a « ✂ Couper » button (`data-cut-row`/`data-cut-col`) that the view wires to the cell-cut
- * picker (lib/alignCellCut). All corpus text is escaped (imported documents are untrusted).
+ * a « ✂ Couper » button; every other non-empty cell carries the on-demand « ✂ » (D-W12 —
+ * the ⚠ prioritizes attention, it does not gate the gestures; hover-revealed by CSS).
+ * Both buttons address their cell via `data-cut-row`/`data-cut-col` (indices into the
+ * SAME view that renders — resolution goes through the view-model, never through parallel
+ * raw arrays). All corpus text is escaped (imported documents are untrusted).
  * Injected via the safe `setHtml(raw(...))` sink.
  */
 
@@ -31,9 +34,15 @@ export function buildMatrixGridHtml(view: MatrixView): string {
           ? ` <button type="button" class="prep-matrix-cut-btn" data-cut-row="${rowIdx}" data-cut-col="${colIdx}"`
             + ` title="Couper cette traduction fusionnée entre ce segment et le précédent">&#9986; Couper</button>`
           : "";
-        inner = `<span class="prep-matrix-warn" title="Même texte que la ligne du dessus — traduction fusionnée (à couper)">&#9888;</span> ${_esc(c.text)}${cutBtn}`;
+        inner = `<span class="prep-matrix-warn" title="Traduction fusionnée avec la ligne du dessus (à couper)">&#9888;</span> ${_esc(c.text)}${cutBtn}`;
       } else {
-        inner = _esc(c.text);
+        // D-W12 — on-demand straddle cut on any aligned cell (hover-revealed). Only
+        // when the payload carries cell_links: the gesture cannot resolve without.
+        const anyBtn = view.hasCellLinks && c.links.length > 0
+          ? ` <button type="button" class="prep-matrix-cut-any-btn" data-cut-row="${rowIdx}" data-cut-col="${colIdx}"`
+            + ` title="Couper à cheval — une partie de cette traduction appartient au segment voisin">&#9986;</button>`
+          : "";
+        inner = `${_esc(c.text)}${anyBtn}`;
       }
       return `<td class="prep-matrix-cell prep-matrix-cell--${c.status}">${inner}</td>`;
     }).join("");

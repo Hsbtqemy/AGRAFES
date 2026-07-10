@@ -1,42 +1,55 @@
 // @vitest-environment happy-dom
 /**
- * Integration test for the matrix-cell « ✂ Couper » gesture (R3.3 tranche 3b).
+ * Integration tests for the matrix-cell cut gestures (R3.3 tranche 3b + D-W12).
  *
  * Mounts the real AlignMatrixView against a fake Conn (no sidecar) and drives the
- * whole flow: load matrix → fused cell shows the ✂ button → the two-panel picker
- * opens (§3.2) → confirming posts the complementary `set_target_span` pair and
- * re-projects the matrix. The pure pieces (resolution, suggestion, panels HTML)
- * are covered in lib/__tests__/alignCellCut.test.ts — this exercises the wiring.
+ * flows end-to-end on the A2 payload (cell_links): fused ✂ → two-panel picker →
+ * atomic set_target_span pair → re-projection; and the on-demand « couper à
+ * cheval » → create link + atomic pair (compensated by delete on refusal). The
+ * pure pieces (resolvers, suggestion, panels HTML) are covered in
+ * lib/__tests__/alignCellCut.test.ts — this exercises the wiring.
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { AlignMatrixView } from "../AlignMatrixView.ts";
-import type { Conn } from "../../lib/sidecarClient.ts";
+import type { AlignMatrix, Conn, MatrixCellLink } from "../../lib/sidecarClient.ts";
 
-const MATRIX = {
+function lk(link_id: number, target: number, raw: string): MatrixCellLink {
+  return { link_id, target_unit_id: target, char_start: null, char_end: null, target_text_raw: raw };
+}
+
+/** Two hub rows sharing one uncut EN target (the fused 2-1 of tranche 3b). */
+const MATRIX_FUSED: AlignMatrix = {
   headers: ["paragraphe", "segment", "fr", "en"],
   languages: ["fr", "en"],
   hub_doc_id: 2,
-  // Row 2 repeats row 1's translation → one fused cell (the uncut 2-1).
   rows: [
     ["1", 1, "FR un", "Hello there world"],
     ["1", 2, "FR deux", "Hello there world"],
   ],
   hub_unit_ids: [101, 102],
   language_doc_ids: [2, 3],
+  cell_links: [
+    [[lk(11, 900, "Hello there world")]],
+    [[lk(12, 900, "Hello there world")]],
+  ],
 };
 
-const LINKS = [
-  {
-    link_id: 11, external_id: null, pivot_unit_id: 101, target_unit_id: 900,
-    pivot_text: "FR un", target_text: "hello there world",
-    target_text_raw: "Hello there world", status: null,
-  },
-  {
-    link_id: 12, external_id: null, pivot_unit_id: 102, target_unit_id: 900,
-    pivot_text: "FR deux", target_text: "hello there world",
-    target_text_raw: "Hello there world", status: null,
-  },
-];
+/** Two clean 1-1 rows — the Le Clézio straddle shape (EN1 spills over FR deux). */
+const MATRIX_STRADDLE: AlignMatrix = {
+  headers: ["paragraphe", "segment", "fr", "en"],
+  languages: ["fr", "en"],
+  hub_doc_id: 2,
+  rows: [
+    ["1", 1, "FR un", "As far back"],
+    ["1", 2, "FR deux", "It is the sound"],
+  ],
+  hub_unit_ids: [101, 102],
+  language_doc_ids: [2, 3],
+  cell_links: [
+    [[lk(13, 900, "As far back")]],
+    [[lk(14, 901, "It is the sound")]],
+  ],
+};
 
 const FAMILY = {
   family_id: 2,
@@ -45,7 +58,7 @@ const FAMILY = {
   stats: { total_docs: 2 },
 };
 
-interface ConnOpts { batchResponse?: unknown }
+interface ConnOpts { batchResponse?: unknown; matrix?: AlignMatrix }
 
 function makeConn(calls: Array<{ path: string; body: unknown }>, opts: ConnOpts = {}): Conn {
   return {
@@ -57,16 +70,19 @@ function makeConn(calls: Array<{ path: string; body: unknown }>, opts: ConnOpts 
     },
     post: async (path: string, body: unknown) => {
       calls.push({ path, body });
-      if (path === "/align/matrix") return MATRIX;
-      if (path === "/align/audit") {
+      if (path === "/align/matrix") return opts.matrix ?? MATRIX_FUSED;
+      if (path === "/align/links/batch_update") {
+        return opts.batchResponse ?? { ok: true, applied: 2, deleted: 0, errors: [], rolled_back: false };
+      }
+      if (path === "/align/link/create") {
+        const b = body as { pivot_unit_id: number; target_unit_id: number };
         return {
-          ok: true, pivot_doc_id: 2, target_doc_id: 3, limit: 200, offset: 0,
-          has_more: false, next_offset: null,
-          stats: { links_returned: LINKS.length }, links: LINKS,
+          link_id: 77, pivot_unit_id: b.pivot_unit_id, target_unit_id: b.target_unit_id,
+          pivot_doc_id: 2, target_doc_id: 3, status: null, created: 1,
         };
       }
-      if (path === "/align/links/batch_update") {
-        return opts.batchResponse ?? { ok: true, applied: 2, deleted: 0, errors: [] };
+      if (path === "/align/link/delete") {
+        return { link_id: (body as { link_id: number }).link_id, deleted: 1 };
       }
       throw new Error(`unexpected POST ${path}`);
     },
@@ -90,7 +106,7 @@ async function mountWithMatrix(calls: Array<{ path: string; body: unknown }>, op
   sel.dispatchEvent(new Event("change"));
   el.querySelector<HTMLButtonElement>("#matrix-load")!.click();
   await vi.waitFor(() => {
-    expect(el.querySelector(".prep-matrix-cut-btn")).not.toBeNull();
+    expect(el.querySelector(".prep-matrix-grid")).not.toBeNull();
   });
   return { view, el, toasts, holder };
 }
@@ -99,8 +115,8 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-describe("AlignMatrixView — « ✂ Couper » from a fused cell (3b)", () => {
-  it("opens the two-panel picker on the fused cell, pre-filled with a suggestion", async () => {
+describe("AlignMatrixView — « ✂ Couper » on a fused cell (3b, via cell_links)", () => {
+  it("opens the two-panel picker synchronously, pre-filled — no audit round-trip", async () => {
     const calls: Array<{ path: string; body: unknown }> = [];
     const { el } = await mountWithMatrix(calls);
 
@@ -108,11 +124,7 @@ describe("AlignMatrixView — « ✂ Couper » from a fused cell (3b)", () => {
     await vi.waitFor(() => {
       expect(document.querySelector(".prep-matrix-cut-dialog")).not.toBeNull();
     });
-    // Resolution went through the audit of the hub↔EN pair (3a identifiers).
-    const audit = calls.find((c) => c.path === "/align/audit");
-    expect(audit?.body).toMatchObject({ pivot_doc_id: 2, target_doc_id: 3 });
-    // Two panels labelled with the hub segments, suggestion applied (offset 6 →
-    // "Hello" up, "there world" down: proportional to "FR un" vs "FR deux").
+    expect(calls.some((c) => c.path === "/align/audit")).toBe(false);
     const panels = document.querySelectorAll(".prep-matrix-cut-panel");
     expect(panels).toHaveLength(2);
     expect(panels[0].textContent).toContain("seg 1");
@@ -121,7 +133,7 @@ describe("AlignMatrixView — « ✂ Couper » from a fused cell (3b)", () => {
     expect(panels[1].textContent).toContain("world");
   });
 
-  it("confirming posts the complementary set_target_span pair and re-projects", async () => {
+  it("confirming posts the complementary pair as an ATOMIC batch and re-projects", async () => {
     const calls: Array<{ path: string; body: unknown }> = [];
     const { toasts } = await mountWithMatrix(calls);
 
@@ -139,6 +151,7 @@ describe("AlignMatrixView — « ✂ Couper » from a fused cell (3b)", () => {
         { action: "set_target_span", link_id: 11, char_start: 0, char_end: 6 },
         { action: "set_target_span", link_id: 12, char_start: 6, char_end: 17 },
       ],
+      atomic: true,
     });
     expect(document.querySelector(".prep-matrix-cut-overlay")).toBeNull();
     expect(toasts).toContain("✓ Traduction coupée");
@@ -152,14 +165,13 @@ describe("AlignMatrixView — « ✂ Couper » from a fused cell (3b)", () => {
     await vi.waitFor(() => {
       expect(document.querySelector(".prep-matrix-cut-word[data-cut-offset='12']")).not.toBeNull();
     });
-    // "there" (bottom panel) → boundary moves after it (offset 12).
     document.querySelector<HTMLButtonElement>(".prep-matrix-cut-word[data-cut-offset='12']")!.click();
     document.querySelector<HTMLButtonElement>("[data-cut-ok]")!.click();
     await vi.waitFor(() => {
       expect(calls.some((c) => c.path === "/align/links/batch_update")).toBe(true);
     });
     const batch = calls.find((c) => c.path === "/align/links/batch_update");
-    expect(batch?.body).toEqual({
+    expect(batch?.body).toMatchObject({
       actions: [
         { action: "set_target_span", link_id: 11, char_start: 0, char_end: 12 },
         { action: "set_target_span", link_id: 12, char_start: 12, char_end: 17 },
@@ -191,7 +203,6 @@ describe("AlignMatrixView — « ✂ Couper » from a fused cell (3b)", () => {
       expect(document.querySelector(".prep-matrix-cut-dialog")).not.toBeNull();
     });
     expect(document.querySelectorAll(".prep-matrix-cut-dialog")).toHaveLength(1);
-    expect(calls.filter((c) => c.path === "/align/audit")).toHaveLength(1);
   });
 
   it("refuses the gesture and resets the grid when the connection changed (F1)", async () => {
@@ -203,13 +214,12 @@ describe("AlignMatrixView — « ✂ Couper » from a fused cell (3b)", () => {
     await vi.waitFor(() => {
       expect(toasts.some((t) => t.includes("Connexion changée"))).toBe(true);
     });
-    // No audit fired against the new DB with the old matrix's ids, grid is reset.
-    expect(calls.filter((c) => c.path === "/align/audit")).toHaveLength(0);
+    expect(calls.some((c) => c.path === "/align/links/batch_update")).toBe(false);
     expect(el.querySelector(".prep-matrix-cut-btn")).toBeNull();
     expect(document.querySelector(".prep-matrix-cut-overlay")).toBeNull();
   });
 
-  it("a partially applied batch closes the modal and resyncs instead of claiming refusal (F2)", async () => {
+  it("a partially applied batch (old sidecar) closes the modal and resyncs (F2 fallback)", async () => {
     const calls: Array<{ path: string; body: unknown }> = [];
     const { toasts } = await mountWithMatrix(calls, {
       batchResponse: {
@@ -224,19 +234,17 @@ describe("AlignMatrixView — « ✂ Couper » from a fused cell (3b)", () => {
     });
     document.querySelector<HTMLButtonElement>("[data-cut-ok]")!.click();
     await vi.waitFor(() => {
-      // The half-commit is durable server-side → the grid MUST re-project.
       expect(calls.filter((c) => c.path === "/align/matrix")).toHaveLength(2);
     });
     expect(document.querySelector(".prep-matrix-cut-overlay")).toBeNull();
     expect(toasts.some((t) => t.includes("Coupe partielle"))).toBe(true);
-    expect(toasts.some((t) => t.includes("Coupe refusée"))).toBe(false);
   });
 
-  it("a fully refused batch (nothing applied) keeps the modal open for retry", async () => {
+  it("an atomically rolled-back batch keeps the modal open for retry", async () => {
     const calls: Array<{ path: string; body: unknown }> = [];
     const { toasts } = await mountWithMatrix(calls, {
       batchResponse: {
-        ok: false, applied: 0, deleted: 0,
+        ok: false, applied: 0, deleted: 0, rolled_back: true,
         errors: [{ index: 0, link_id: 11, error: "link_id=11 not found" }],
       },
     });
@@ -264,5 +272,67 @@ describe("AlignMatrixView — « ✂ Couper » from a fused cell (3b)", () => {
     });
     view.dispose();
     expect(document.querySelector(".prep-matrix-cut-overlay")).toBeNull();
+  });
+});
+
+describe("AlignMatrixView — « ✂ couper à cheval » (D-W12)", () => {
+  it("cut down: creates the missing link then posts the atomic pair, head to the cell", async () => {
+    const calls: Array<{ path: string; body: unknown }> = [];
+    const { toasts } = await mountWithMatrix(calls, { matrix: MATRIX_STRADDLE });
+
+    // Row 0's cell — its translation spills over FR deux (the Le Clézio case).
+    document.querySelector<HTMLButtonElement>('.prep-matrix-cut-any-btn[data-cut-row="0"]')!.click();
+    await vi.waitFor(() => {
+      expect(document.querySelector(".prep-matrix-cut-dialog")).not.toBeNull();
+    });
+    // No row above → "up" disabled, "down" pre-selected.
+    const up = document.querySelector<HTMLInputElement>('input[name="prep-matrix-cut-dir"][value="up"]')!;
+    const down = document.querySelector<HTMLInputElement>('input[name="prep-matrix-cut-dir"][value="down"]')!;
+    expect(up.disabled).toBe(true);
+    expect(down.checked).toBe(true);
+
+    document.querySelector<HTMLButtonElement>("[data-cut-ok]")!.click();
+    await vi.waitFor(() => {
+      expect(calls.filter((c) => c.path === "/align/matrix")).toHaveLength(2); // re-projected
+    });
+    // The missing link goes to the NEIGHBOUR hub unit (FR deux = 102), same target.
+    const create = calls.find((c) => c.path === "/align/link/create");
+    expect(create?.body).toEqual({ pivot_unit_id: 102, target_unit_id: 900 });
+    // "down": the cell keeps the head, the created link takes the tail — atomically.
+    // Suggested boundary on "As far back" (hubs "FR un"/"FR deux") = 3.
+    const batch = calls.find((c) => c.path === "/align/links/batch_update");
+    expect(batch?.body).toEqual({
+      actions: [
+        { action: "set_target_span", link_id: 13, char_start: 0, char_end: 3 },
+        { action: "set_target_span", link_id: 77, char_start: 3, char_end: 11 },
+      ],
+      atomic: true,
+    });
+    expect(toasts).toContain("✓ Traduction coupée à cheval");
+    expect(document.querySelector(".prep-matrix-cut-overlay")).toBeNull();
+  });
+
+  it("a refused batch deletes the created link in compensation and keeps the modal open", async () => {
+    const calls: Array<{ path: string; body: unknown }> = [];
+    const { toasts } = await mountWithMatrix(calls, {
+      matrix: MATRIX_STRADDLE,
+      batchResponse: {
+        ok: false, applied: 0, deleted: 0, rolled_back: true,
+        errors: [{ index: 0, link_id: 13, error: "conflit" }],
+      },
+    });
+
+    document.querySelector<HTMLButtonElement>('.prep-matrix-cut-any-btn[data-cut-row="0"]')!.click();
+    await vi.waitFor(() => {
+      expect(document.querySelector("[data-cut-ok]")).not.toBeNull();
+    });
+    document.querySelector<HTMLButtonElement>("[data-cut-ok]")!.click();
+    await vi.waitFor(() => {
+      expect(toasts.some((t) => t.includes("Coupe à cheval refusée"))).toBe(true);
+    });
+    const del = calls.find((c) => c.path === "/align/link/delete");
+    expect(del?.body).toEqual({ link_id: 77 });
+    expect(document.querySelector(".prep-matrix-cut-overlay")).not.toBeNull();
+    expect(calls.filter((c) => c.path === "/align/matrix")).toHaveLength(1); // nothing changed
   });
 });

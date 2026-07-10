@@ -143,10 +143,11 @@ export function cutOffsets(text: string): number[] {
  * Actions to cut a target-shared **2-1** bead at code-point `cutOffset`: the first
  * source keeps `[0, cutOffset]`, the second `[cutOffset, textLen]` (positional — the
  * source order matches the target order, the source-anchored assumption). Returns []
- * for a non-2-1 bead (B2 scope) so the caller keeps the affordance off.
+ * for a non-2-1 bead (B2 scope) so the caller keeps the affordance off. Accepts any
+ * link-shaped object (audit records, matrix cell_links) — only `link_id` is used.
  */
 export function buildCutActions(
-  links: readonly AlignLinkRecord[], cutOffset: number, textLen: number,
+  links: ReadonlyArray<Pick<AlignLinkRecord, "link_id">>, cutOffset: number, textLen: number,
 ): AlignBatchAction[] {
   if (links.length !== 2) return [];
   // Conservation guard (§3.2) : a degenerate offset would store an empty slice —

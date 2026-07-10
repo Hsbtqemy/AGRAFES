@@ -1620,6 +1620,17 @@ export async function alignAudit(
   return conn.post("/align/audit", opts) as Promise<AlignAuditResponse>;
 }
 
+/** One link behind a matrix cell (A2, 1.6.54) — rejected links are excluded server-side. */
+export interface MatrixCellLink {
+  link_id: number;
+  target_unit_id: number;
+  /** Source-anchored cut (code points into target_text_raw); null = whole unit. */
+  char_start: number | null;
+  char_end: number | null;
+  /** Verbatim target text — the string the cut offsets index. */
+  target_text_raw: string;
+}
+
 /** Source-anchored multilingual matrix (read-only projection) — R3.3 tranche 2. */
 export interface AlignMatrix {
   /** ["paragraphe", "segment", hubLang, ...translationLangs] */
@@ -1633,6 +1644,9 @@ export interface AlignMatrix {
   hub_unit_ids?: number[];
   /** Parallel to `languages`: the doc_id behind each column (index 0 = hub). */
   language_doc_ids?: number[];
+  /** A2 (1.6.54): cell_links[i][j] = links behind rows[i] × translation column j
+   *  (languages[j+1]), in the cell's concatenation order. */
+  cell_links?: MatrixCellLink[][][];
 }
 
 export async function getAlignMatrix(conn: Conn, familyRootId: number): Promise<AlignMatrix> {
@@ -1936,9 +1950,13 @@ export async function retargetAlignLink(conn: Conn, opts: AlignLinkRetargetOptio
 
 export async function batchUpdateAlignLinks(
   conn: Conn,
-  actions: AlignBatchAction[]
+  actions: AlignBatchAction[],
+  opts: { atomic?: boolean } = {}
 ): Promise<AlignBatchUpdateResponse> {
-  return conn.post("/align/links/batch_update", { actions }) as Promise<AlignBatchUpdateResponse>;
+  // atomic (1.6.54): all-or-nothing — required for compound gestures (D-W12).
+  // Older sidecars ignore the field (historical partial semantics).
+  const body = opts.atomic ? { actions, atomic: true } : { actions };
+  return conn.post("/align/links/batch_update", body) as Promise<AlignBatchUpdateResponse>;
 }
 
 // ─── V0.5 — Job enqueue / cancel / list ──────────────────────────────────────
@@ -2013,6 +2031,8 @@ export interface AlignBatchUpdateResponse {
   applied: number;
   deleted: number;
   errors: Array<{ index: number; link_id: number | null; error: string }>;
+  /** 1.6.54: true when `atomic` was set and an error rolled the whole batch back. */
+  rolled_back?: boolean;
 }
 
 // ─── V1.1 — Align quality ─────────────────────────────────────────────────────

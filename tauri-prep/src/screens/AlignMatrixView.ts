@@ -1,20 +1,32 @@
 /**
- * AlignMatrixView.ts — source-anchored matrix grid (R3.3 tranches 2c/3b,
- * docs/DESIGN_alignment_workspace §6). A family selector + a grid that projects the
- * aligned form (`/align/matrix` → `buildMatrixView` → `buildMatrixGridHtml`) with ⚠
- * markers on cells à réparer and a completeness strip. First inline gesture (3b):
- * « ✂ Couper » on a fused cell — resolve its 2-1 bead via the tranche-3a identifiers
- * + `/align/audit`, pick the cut point in the two-panel move-only picker (§3.2),
- * apply `set_target_span` ×2, re-project. Sub-view of ActionsScreen.
+ * AlignMatrixView.ts — source-anchored matrix grid (R3.3 tranches 2c/3b/D-W12,
+ * docs/DESIGN_alignment_workspace §3.2/§3.4/§6). A family selector + a grid that
+ * projects the aligned form (`/align/matrix` → `buildMatrixView` → `buildMatrixGridHtml`)
+ * with ⚠ markers and a completeness strip. Gestures resolve through the payload's own
+ * `cell_links` (A2, sidecar ≥ 1.6.54) — synchronous, no audit round-trip:
+ *
+ * - « ✂ Couper » on a fused ⚠ cell (3b): slice the shared target between the two rows
+ *   (`set_target_span` ×2, atomic batch).
+ * - « ✂ couper à cheval » on ANY aligned cell (D-W12 — on demand, the ⚠ only
+ *   prioritizes): the translation spills over the neighbouring hub segment — create
+ *   the missing link toward the neighbour, then slice (atomic batch; the created link
+ *   is deleted in compensation if the batch fails).
+ *
+ * Both use the two-panel move-only picker (§3.2). Sub-view of ActionsScreen.
  */
 
-import type { Conn, FamilyRecord, AlignLinkRecord } from "../lib/sidecarClient.ts";
-import { getFamilies, getAlignMatrix, alignAudit, batchUpdateAlignLinks } from "../lib/sidecarClient.ts";
+import type { Conn, FamilyRecord, MatrixCellLink } from "../lib/sidecarClient.ts";
+import {
+  getFamilies, getAlignMatrix, batchUpdateAlignLinks, createAlignLink, deleteAlignLink,
+} from "../lib/sidecarClient.ts";
 import type { AlignMatrix } from "../lib/sidecarClient.ts";
-import type { MatrixView } from "../lib/alignMatrix.ts";
+import type { MatrixView, MatrixRowView } from "../lib/alignMatrix.ts";
 import { buildMatrixView, matrixSummaryLine } from "../lib/alignMatrix.ts";
 import { buildMatrixGridHtml } from "../lib/alignMatrixGrid.ts";
-import { resolveFusedCellLinks, suggestCutOffset, buildCutPanelsHtml } from "../lib/alignCellCut.ts";
+import type { CellLinkColumn, StraddleDirection } from "../lib/alignCellCut.ts";
+import {
+  resolveFusedCellLinks, resolveStraddleCut, suggestCutOffset, buildCutPanelsHtml,
+} from "../lib/alignCellCut.ts";
 import { buildCutActions, codePointLength } from "../lib/alignBeads.ts";
 import { setHtml, raw, safeHtml } from "../lib/safeHtml.ts";
 import { escHtml as _esc } from "../lib/diff.ts";
@@ -23,21 +35,17 @@ export interface AlignMatrixCallbacks {
   toast?: (msg: string, isError?: boolean) => void;
 }
 
-/** Audit paging bounds for cell→links resolution (server max limit = 200). */
-const AUDIT_PAGE = 200;
-const AUDIT_MAX_PAGES = 30;
-
 export class AlignMatrixView {
   private _root: HTMLElement | null = null;
   private _families: FamilyRecord[] = [];
   private _selectedFamilyId: number | null = null;
   private _loading = false;
-  /** Last loaded matrix + view-model — the cut gesture maps cells through them (3a ids). */
+  /** Last loaded matrix + view-model — the gestures map cells through the view. */
   private _matrix: AlignMatrix | null = null;
   private _view: MatrixView | null = null;
   /** Connection the matrix was loaded on — its ids are meaningless on any other DB (F1). */
   private _loadedConn: Conn | null = null;
-  /** A cut gesture is in flight (audit fetch or open modal) — blocks reentrancy (F5). */
+  /** A cut gesture is in flight (open modal) — blocks reentrancy (F5). */
   private _cutBusy = false;
   /** Teardown of the open cut modal, so dispose()/reset can force-close it (F4). */
   private _closeCutModal: (() => void) | null = null;
@@ -71,11 +79,17 @@ export class AlignMatrixView {
       loadBtn.disabled = this._selectedFamilyId === null;
     });
     loadBtn.addEventListener("click", () => void this._loadMatrix());
-    // Cut buttons are delegated once here — bindings survive every grid re-render.
+    // Gesture buttons are delegated once here — bindings survive every grid re-render.
     const area = root.querySelector<HTMLElement>("#matrix-grid-area")!;
     area.addEventListener("click", (e) => {
-      const btn = (e.target as HTMLElement).closest<HTMLButtonElement>(".prep-matrix-cut-btn");
-      if (btn) void this._openCellCut(Number(btn.dataset.cutRow), Number(btn.dataset.cutCol));
+      const t = e.target as HTMLElement;
+      const fusedBtn = t.closest<HTMLButtonElement>(".prep-matrix-cut-btn");
+      if (fusedBtn) {
+        this._openFusedCut(Number(fusedBtn.dataset.cutRow), Number(fusedBtn.dataset.cutCol));
+        return;
+      }
+      const anyBtn = t.closest<HTMLButtonElement>(".prep-matrix-cut-any-btn");
+      if (anyBtn) this._openStraddleCut(Number(anyBtn.dataset.cutRow), Number(anyBtn.dataset.cutCol));
     });
     return root;
   }
@@ -160,87 +174,40 @@ export class AlignMatrixView {
     }
   }
 
-  // ─── Tranche 3b — « ✂ Couper » from a fused cell ──────────────────────────────
+  // ─── Gestures — shared preconditions & picker shell ───────────────────────────
 
-  /** All audit links of the hub↔target pair (paged; the pair is small vs the corpus). */
-  private async _fetchAllAuditLinks(
-    conn: Conn, pivotDocId: number, targetDocId: number,
-  ): Promise<AlignLinkRecord[]> {
-    const links: AlignLinkRecord[] = [];
-    for (let page = 0; page < AUDIT_MAX_PAGES; page++) {
-      const res = await alignAudit(conn, {
-        pivot_doc_id: pivotDocId,
-        target_doc_id: targetDocId,
-        limit: AUDIT_PAGE,
-        offset: page * AUDIT_PAGE,
-      });
-      links.push(...(res.links ?? []));
-      if (!res.has_more) return links;
-    }
-    // The 3-1 guard in resolveFusedCellLinks needs the full link set to be sound.
-    throw new Error(`plus de ${AUDIT_MAX_PAGES * AUDIT_PAGE} liens — couper via la Révision fine`);
-  }
-
-  private async _openCellCut(row: number, col: number): Promise<void> {
+  /**
+   * Common gesture guard (F1/F5 + cell_links availability). Returns the view and the
+   * translation column's per-row links, or null after having toasted the reason.
+   * Everything here is synchronous — resolution happens on the already-loaded payload,
+   * so no staleness window can open between the click and the modal (ex-F3).
+   */
+  private _cellGestureCtx(col: number): { view: MatrixView; column: CellLinkColumn } | null {
     const conn = this._getConn();
-    const matrix = this._matrix;
     const view = this._view;
-    if (!conn || !matrix || !view || row < 1 || this._cutBusy) return;
+    if (!conn || !view || this._cutBusy) return null;
     if (conn !== this._loadedConn) {
-      // Conn changed under a still-rendered grid: its ids belong to another DB (F1).
       this._cb.toast?.("✗ Connexion changée — recharger la matrice avant de couper", true);
       this._resetMatrix();
-      return;
+      return null;
     }
-    const hubIds = matrix.hub_unit_ids;
-    const docIds = matrix.language_doc_ids;
-    if (!hubIds || !docIds) {
+    if (!view.hasCellLinks) {
       this._cb.toast?.("✗ Sidecar trop ancien — identifiants de cellule absents (recompiler le sidecar)", true);
-      return;
+      return null;
     }
-    this._cutBusy = true; // released on early exit below, else when the modal closes
-    let opened = false;
-    try {
-      let links: AlignLinkRecord[];
-      try {
-        links = await this._fetchAllAuditLinks(conn, matrix.hub_doc_id, docIds[col + 1]);
-      } catch (err) {
-        this._cb.toast?.(`✗ Audit : ${err instanceof Error ? err.message : String(err)}`, true);
-        return;
-      }
-      if (this._matrix !== matrix) {
-        // The matrix was reloaded during the audit round-trips — row/col no longer
-        // point at the same cells (F3).
-        this._cb.toast?.("✗ Matrice rechargée pendant la résolution — geste annulé", true);
-        return;
-      }
-      const res = resolveFusedCellLinks(links, hubIds[row - 1], hubIds[row]);
-      if (res.error !== undefined) {
-        this._cb.toast?.(`✗ ${res.error}`, true);
-        return;
-      }
-      this._openCutModal(res.links, row, col, view);
-      opened = true;
-    } finally {
-      if (!opened) this._cutBusy = false;
-    }
+    return { view, column: view.rows.map((r) => r.cells[col]?.links ?? []) };
   }
 
   /**
-   * The §3.2 two-panel move-only picker, as a centered modal (modalConfirm pattern).
-   * `view` is the view-model captured BEFORE the audit round-trip — never re-read
-   * from `this` here, a concurrent reload would mislabel the panels (F3).
+   * Overlay + dialog shell shared by the two cut modals, carrying the lifecycle
+   * hardening: tracked close (F4), busy flag released on close (F5), backdrop
+   * dismiss decided on the MOUSEDOWN target so a text-selection drag never
+   * discards the adjusted cut point (F10), Escape on document.
    */
-  private _openCutModal(
-    links: [AlignLinkRecord, AlignLinkRecord], row: number, col: number, view: MatrixView,
-  ): void {
-    const targetRaw = links[0].target_text_raw ?? "";
-    const rowAbove = view.rows[row - 1];
-    const rowCur = view.rows[row];
-    const suggested = suggestCutOffset(targetRaw, rowAbove.hubText, rowCur.hubText);
-    if (suggested === null) { this._cutBusy = false; return; } // resolver guarantees a boundary
-    let cur: number = suggested;
-
+  private _openPickerShell(title: string, hint: string, extraHtml: string): {
+    dialog: HTMLElement; panelsHost: HTMLElement; okBtn: HTMLButtonElement; close: () => void;
+  } {
+    this._cutBusy = true;
     const overlay = document.createElement("div");
     overlay.className = "prep-matrix-cut-overlay";
     const dialog = document.createElement("div");
@@ -248,10 +215,9 @@ export class AlignMatrixView {
     dialog.setAttribute("role", "dialog");
     dialog.setAttribute("aria-modal", "true");
     setHtml(dialog, safeHtml`
-      <div class="prep-matrix-cut-title">&#9986; Couper la traduction (${view.translationLangs[col] ?? "?"})</div>
-      <p class="prep-matrix-cut-hint">Panneau haut = ce qui restera align&#233; au segment ${String(rowAbove.segment)},
-        panneau bas = au segment ${String(rowCur.segment)}. Cliquez un mot pour le d&#233;placer
-        d'un panneau &#224; l'autre (coupe en un point, texte conserv&#233; verbatim &#8212; rien &#224; retaper).</p>
+      <div class="prep-matrix-cut-title">${title}</div>
+      <p class="prep-matrix-cut-hint">${hint}</p>
+      ${raw(extraHtml)}
       <div class="prep-matrix-cut-panels"></div>
       <div class="prep-matrix-cut-actions">
         <button type="button" class="btn btn-ghost btn-sm" data-cut-cancel>Annuler</button>
@@ -261,14 +227,6 @@ export class AlignMatrixView {
     overlay.appendChild(dialog);
     document.body.appendChild(overlay);
 
-    const panelsHost = dialog.querySelector<HTMLElement>(".prep-matrix-cut-panels")!;
-    const labels = {
-      topSeg: rowAbove.segment, topHub: rowAbove.hubText,
-      bottomSeg: rowCur.segment, bottomHub: rowCur.hubText,
-    };
-    const renderPanels = () => setHtml(panelsHost, raw(buildCutPanelsHtml(targetRaw, cur, labels)));
-    renderPanels();
-
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
     const close = () => {
       document.removeEventListener("keydown", onKey);
@@ -277,28 +235,63 @@ export class AlignMatrixView {
       this._cutBusy = false;
     };
     this._closeCutModal = close;
-    // Backdrop dismiss decides on the MOUSEDOWN target: a text-selection drag that
-    // starts in the dialog and releases on the backdrop must not discard the
-    // adjusted cut point (the click lands on the common ancestor = overlay, F10).
     let downOnBackdrop = false;
     overlay.addEventListener("mousedown", (e) => { downOnBackdrop = e.target === overlay; });
     overlay.addEventListener("click", (e) => { if (downOnBackdrop && e.target === overlay) close(); });
     document.addEventListener("keydown", onKey);
-    // Word clicks re-render the panels — delegate so bindings survive re-renders.
+    dialog.querySelector<HTMLButtonElement>("[data-cut-cancel]")!.addEventListener("click", close);
+
+    return {
+      dialog,
+      panelsHost: dialog.querySelector<HTMLElement>(".prep-matrix-cut-panels")!,
+      okBtn: dialog.querySelector<HTMLButtonElement>("[data-cut-ok]")!,
+      close,
+    };
+  }
+
+  // ─── « ✂ Couper » on a fused cell (3b) ────────────────────────────────────────
+
+  private _openFusedCut(row: number, col: number): void {
+    const ctx = this._cellGestureCtx(col);
+    if (!ctx || row < 1) return;
+    const res = resolveFusedCellLinks(ctx.column, row);
+    if (res.error !== undefined) {
+      this._cb.toast?.(`✗ ${res.error}`, true);
+      return;
+    }
+    const targetRaw = res.links[0].target_text_raw ?? "";
+    const rowAbove = ctx.view.rows[row - 1];
+    const rowCur = ctx.view.rows[row];
+    const suggested = suggestCutOffset(targetRaw, rowAbove.hubText, rowCur.hubText);
+    if (suggested === null) return; // resolver guarantees a viable boundary
+    let cur: number = suggested;
+
+    const lang = ctx.view.translationLangs[col] ?? "?";
+    const { panelsHost, okBtn } = this._openPickerShell(
+      `✂ Couper la traduction (${lang})`,
+      `Panneau haut = ce qui restera aligné au segment ${rowAbove.segment}, panneau bas = au segment `
+      + `${rowCur.segment}. Cliquez un mot pour le déplacer d'un panneau à l'autre (coupe en un point, `
+      + `texte conservé verbatim — rien à retaper).`,
+      "",
+    );
+    const labels = {
+      topSeg: rowAbove.segment, topHub: rowAbove.hubText,
+      bottomSeg: rowCur.segment, bottomHub: rowCur.hubText,
+    };
+    const renderPanels = () => setHtml(panelsHost, raw(buildCutPanelsHtml(targetRaw, cur, labels)));
+    renderPanels();
     panelsHost.addEventListener("click", (e) => {
       const btn = (e.target as HTMLElement).closest<HTMLButtonElement>(".prep-matrix-cut-word[data-cut-offset]");
       if (!btn) return;
       cur = Number(btn.dataset.cutOffset);
       renderPanels();
     });
-    dialog.querySelector<HTMLButtonElement>("[data-cut-cancel]")!
-      .addEventListener("click", close);
-    const okBtn = dialog.querySelector<HTMLButtonElement>("[data-cut-ok]")!;
-    okBtn.addEventListener("click", () => void this._performCellCut(links, targetRaw, cur, close, okBtn));
+    okBtn.addEventListener("click", () =>
+      void this._performFusedCut(res.links, targetRaw, cur, this._closeCutModal!, okBtn));
   }
 
-  private async _performCellCut(
-    links: [AlignLinkRecord, AlignLinkRecord],
+  private async _performFusedCut(
+    links: [MatrixCellLink, MatrixCellLink],
     targetRaw: string,
     offset: number,
     close: () => void,
@@ -310,12 +303,11 @@ export class AlignMatrixView {
     if (actions.length === 0) return;
     okBtn.disabled = true; // one flight max — a double-click must not double-post (F5)
     try {
-      const res = await batchUpdateAlignLinks(conn, actions);
+      const res = await batchUpdateAlignLinks(conn, actions, { atomic: true });
       if (res.errors.length) {
         if (res.applied > 0) {
-          // The batch is NOT transactional server-side: the applied half is durably
-          // committed. Pretending nothing happened would desync the UI (F2) —
-          // close and re-project so the grid shows the real state.
+          // Old sidecar without atomic support: the applied half is durably committed.
+          // Pretending nothing happened would desync the UI (F2) — resync.
           close();
           this._cb.toast?.(
             `✗ Coupe partielle (${res.applied}/${actions.length} appliquée) : ${res.errors[0].error} — matrice resynchronisée`,
@@ -323,7 +315,7 @@ export class AlignMatrixView {
           );
           await this._reloadPreservingScroll();
         } else {
-          this._cb.toast?.(`✗ Coupe refusée : ${res.errors[0].error}`, true);
+          this._cb.toast?.(`✗ Coupe refusée : ${res.errors[0].error} (rien n'a été appliqué)`, true);
           okBtn.disabled = false;
         }
         return;
@@ -336,6 +328,164 @@ export class AlignMatrixView {
       this._cb.toast?.(`✗ Coupe : ${err instanceof Error ? err.message : String(err)}`, true);
     }
   }
+
+  // ─── « ✂ couper à cheval » on any cell (D-W12 §3.4) ───────────────────────────
+
+  private _openStraddleCut(row: number, col: number): void {
+    const ctx = this._cellGestureCtx(col);
+    if (!ctx) return;
+    const resUp = resolveStraddleCut(ctx.column, row, "up");
+    const resDown = resolveStraddleCut(ctx.column, row, "down");
+    if (resUp.error !== undefined && resDown.error !== undefined) {
+      this._cb.toast?.(`✗ ${resUp.error}`, true);
+      return;
+    }
+    const view = ctx.view;
+    const rowCur = view.rows[row];
+    // The cell has a single uncut link — identical for both directions.
+    const link = (resUp.error === undefined ? resUp.link : resDown.link!);
+    const targetRaw = link.target_text_raw ?? "";
+    let dir: StraddleDirection = resUp.error === undefined ? "up" : "down";
+
+    const dirCtx = (d: StraddleDirection): { top: MatrixRowView; bottom: MatrixRowView; neighbor: MatrixRowView } | null => {
+      const r = d === "up" ? resUp : resDown;
+      if (r.error !== undefined) return null;
+      const neighbor = view.rows[r.neighborRow];
+      return d === "up"
+        ? { top: neighbor, bottom: rowCur, neighbor }
+        : { top: rowCur, bottom: neighbor, neighbor };
+    };
+
+    const radio = (d: StraddleDirection, label: string): string => {
+      const r = d === "up" ? resUp : resDown;
+      const disabled = r.error !== undefined;
+      return `<label class="prep-matrix-cut-dir-opt${disabled ? " prep-matrix-cut-dir-opt--off" : ""}"`
+        + (disabled ? ` title="${_esc(r.error!)}"` : "")
+        + `><input type="radio" name="prep-matrix-cut-dir" value="${d}"`
+        + `${d === dir ? " checked" : ""}${disabled ? " disabled" : ""}> ${label}</label>`;
+    };
+    const segUp = row > 0 ? view.rows[row - 1]?.segment : null;
+    const segDown = view.rows[row + 1]?.segment ?? null;
+    const extra = `<div class="prep-matrix-cut-dir" role="radiogroup" aria-label="Sens de la coupe">`
+      + radio("up", `Le <b>début</b> appartient au segment précédent${segUp != null ? ` (${segUp})` : ""}`)
+      + radio("down", `La <b>fin</b> appartient au segment suivant${segDown != null ? ` (${segDown})` : ""}`)
+      + `</div>`;
+
+    const lang = view.translationLangs[col] ?? "?";
+    const { dialog, panelsHost, okBtn } = this._openPickerShell(
+      `✂ Couper à cheval (${lang}, segment ${rowCur.segment})`,
+      `Cette traduction déborde sur un segment voisin : le lien manquant sera créé puis la coupe posée `
+      + `(réversible). Cliquez un mot pour déplacer la frontière.`,
+      extra,
+    );
+
+    let cur = 0;
+    const renderPanels = () => {
+      const c = dirCtx(dir)!;
+      setHtml(panelsHost, raw(buildCutPanelsHtml(targetRaw, cur, {
+        topSeg: c.top.segment, topHub: c.top.hubText,
+        bottomSeg: c.bottom.segment, bottomHub: c.bottom.hubText,
+      })));
+    };
+    const resuggest = () => {
+      const c = dirCtx(dir)!;
+      cur = suggestCutOffset(targetRaw, c.top.hubText, c.bottom.hubText) ?? 0;
+    };
+    resuggest();
+    renderPanels();
+
+    dialog.querySelectorAll<HTMLInputElement>('input[name="prep-matrix-cut-dir"]').forEach((r) =>
+      r.addEventListener("change", () => {
+        dir = r.value as StraddleDirection;
+        resuggest();
+        renderPanels();
+      }));
+    panelsHost.addEventListener("click", (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLButtonElement>(".prep-matrix-cut-word[data-cut-offset]");
+      if (!btn) return;
+      cur = Number(btn.dataset.cutOffset);
+      renderPanels();
+    });
+    okBtn.addEventListener("click", () => {
+      const c = dirCtx(dir);
+      if (!c || c.neighbor.hubUnitId == null) return;
+      void this._performStraddleCut(link, c.neighbor.hubUnitId, dir, targetRaw, cur, this._closeCutModal!, okBtn);
+    });
+  }
+
+  /**
+   * The compound gesture (§3.4): create the missing link toward the neighbour, then
+   * slice both links in ONE atomic batch. If the batch fails, the created link is
+   * deleted in compensation — never leave an orphan whole-unit link behind (it would
+   * project the full text twice). If even the compensation fails, resync so the grid
+   * shows the real state.
+   */
+  private async _performStraddleCut(
+    existing: MatrixCellLink,
+    neighborHubUnitId: number,
+    direction: StraddleDirection,
+    targetRaw: string,
+    offset: number,
+    close: () => void,
+    okBtn: HTMLButtonElement,
+  ): Promise<void> {
+    const conn = this._getConn();
+    if (!conn) return;
+    okBtn.disabled = true;
+    let createdId: number | null = null;
+    try {
+      const created = await createAlignLink(conn, {
+        pivot_unit_id: neighborHubUnitId,
+        target_unit_id: existing.target_unit_id,
+      });
+      createdId = created.link_id;
+      // "up": the neighbour above gets the head slice; "down": it gets the tail.
+      const pair = direction === "up"
+        ? [{ link_id: createdId }, { link_id: existing.link_id }]
+        : [{ link_id: existing.link_id }, { link_id: createdId }];
+      const actions = buildCutActions(pair, offset, codePointLength(targetRaw));
+      if (actions.length === 0) throw new Error("point de coupe invalide");
+      const res = await batchUpdateAlignLinks(conn, actions, { atomic: true });
+      if (res.errors.length) {
+        if (res.applied > 0) {
+          // Old sidecar without atomic: partially committed — resync, keep the link
+          // (deleting it now could orphan an applied slice).
+          close();
+          this._cb.toast?.(
+            `✗ Coupe à cheval partielle : ${res.errors[0].error} — matrice resynchronisée`, true);
+          await this._reloadPreservingScroll();
+          return;
+        }
+        await deleteAlignLink(conn, { link_id: createdId });
+        createdId = null;
+        this._cb.toast?.(`✗ Coupe à cheval refusée : ${res.errors[0].error} (rien n'a été appliqué)`, true);
+        okBtn.disabled = false;
+        return;
+      }
+      close();
+      this._cb.toast?.("✓ Traduction coupée à cheval");
+      await this._reloadPreservingScroll();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (createdId != null) {
+        try {
+          await deleteAlignLink(conn, { link_id: createdId });
+          okBtn.disabled = false;
+          this._cb.toast?.(`✗ Coupe à cheval : ${msg}`, true);
+        } catch {
+          // Compensation failed: an uncut extra link remains → show the real state.
+          close();
+          this._cb.toast?.(`✗ Coupe à cheval : ${msg} — matrice resynchronisée`, true);
+          await this._reloadPreservingScroll();
+        }
+        return;
+      }
+      okBtn.disabled = false;
+      this._cb.toast?.(`✗ Coupe à cheval : ${msg}`, true);
+    }
+  }
+
+  // ─── Reload & lifecycle ───────────────────────────────────────────────────────
 
   /** Re-project the matrix without losing the reading position (§4.1 invariant). */
   private async _reloadPreservingScroll(): Promise<void> {

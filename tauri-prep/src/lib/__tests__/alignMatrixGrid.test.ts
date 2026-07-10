@@ -45,6 +45,28 @@ describe("buildMatrixGridHtml", () => {
     expect(html).toContain('data-cut-col="0"');
   });
 
+  it("D-W12: on-demand ✂ on aligned cells only when cell_links are present", () => {
+    const withLinks: AlignMatrix = {
+      headers: ["paragraphe", "segment", "fr", "en"],
+      languages: ["fr", "en"],
+      hub_doc_id: 2,
+      hub_unit_ids: [11, 12],
+      language_doc_ids: [2, 3],
+      rows: [["1", 1, "FR1", "EN1"], ["1", 2, "FR2", ""]],
+      cell_links: [
+        [[{ link_id: 1, target_unit_id: 91, char_start: null, char_end: null, target_text_raw: "EN1" }]],
+        [[]],
+      ],
+    };
+    const html = buildMatrixGridHtml(buildMatrixView(withLinks));
+    // Only the aligned (ok) cell gets the straddle affordance — not the empty one.
+    expect(html.match(/prep-matrix-cut-any-btn/g) ?? []).toHaveLength(1);
+    expect(html).toContain('data-cut-row="0"');
+    // Old sidecar (no cell_links): the gesture cannot resolve → no affordance at all.
+    const html2 = buildMatrixGridHtml(buildMatrixView(SAMPLE));
+    expect(html2).not.toContain("prep-matrix-cut-any-btn");
+  });
+
   it("escapes corpus text (imported docs are untrusted)", () => {
     const evil: AlignMatrix = {
       headers: ["paragraphe", "segment", "fr", "en"],

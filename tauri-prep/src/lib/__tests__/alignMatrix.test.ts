@@ -1,6 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { buildMatrixView, matrixSummaryLine } from "../alignMatrix.ts";
-import type { AlignMatrix } from "../sidecarClient.ts";
+import type { AlignMatrix, MatrixCellLink } from "../sidecarClient.ts";
+
+function lk(link_id: number, target: number, over: Partial<MatrixCellLink> = {}): MatrixCellLink {
+  return { link_id, target_unit_id: target, char_start: null, char_end: null, target_text_raw: "t", ...over };
+}
 
 // Mirror of the Le Clézio shape: FR hub + EN + RO, with an empty EN cell and an uncut
 // 2-1 fusion (EN_shared repeated on seg 3 & 4).
@@ -82,6 +86,70 @@ describe("buildMatrixView", () => {
     expect(v.stats.totalCells).toBe(0);
     expect(v.stats.completionPct).toBe(100);
     expect(v.translationLangs).toEqual([]);
+  });
+});
+
+describe("buildMatrixView — topological statuses (cell_links, A2)", () => {
+  const base = {
+    headers: ["paragraphe", "segment", "fr", "en"],
+    languages: ["fr", "en"],
+    hub_doc_id: 1,
+    hub_unit_ids: [11, 12],
+    language_doc_ids: [1, 2],
+  };
+
+  it("flags a shared UNCUT target as fused even when the projected texts differ", () => {
+    // The Le Clézio under-detection (revue 3b A2): row 1 reads "T1 T2", row 2 "T2" —
+    // texts differ, but target 92 is shared uncut → fused, invisible to the heuristic.
+    const v = buildMatrixView({
+      ...base,
+      rows: [["1", 1, "FR1", "T1 T2"], ["1", 2, "FR2", "T2"]],
+      cell_links: [[[lk(1, 91), lk(2, 92)]], [[lk(3, 92)]]],
+    } as AlignMatrix);
+    expect(v.hasCellLinks).toBe(true);
+    expect(v.rows[1].cells[0].status).toBe("fused");
+  });
+
+  it("does NOT flag identical texts on distinct target units (refrain false positive)", () => {
+    const v = buildMatrixView({
+      ...base,
+      rows: [["1", 1, "FR1", "— Oui."], ["1", 2, "FR2", "— Oui."]],
+      cell_links: [[[lk(1, 91)]], [[lk(2, 92)]]],
+    } as AlignMatrix);
+    expect(v.rows[1].cells[0].status).toBe("ok");
+    expect(v.stats.warningCells).toBe(0);
+  });
+
+  it("a CUT pair reads ok — the fusion is resolved", () => {
+    const v = buildMatrixView({
+      ...base,
+      rows: [["1", 1, "FR1", "head"], ["1", 2, "FR2", "tail"]],
+      cell_links: [
+        [[lk(1, 91, { char_start: 0, char_end: 5 })]],
+        [[lk(2, 91, { char_start: 5, char_end: 9 })]],
+      ],
+    } as AlignMatrix);
+    expect(v.rows[1].cells[0].status).toBe("ok");
+  });
+
+  it("carries the identities: hubUnitId per row, links per cell, translationDocIds", () => {
+    const v = buildMatrixView({
+      ...base,
+      rows: [["1", 1, "FR1", "EN1"], ["1", 2, "FR2", "EN2"]],
+      cell_links: [[[lk(1, 91)]], [[lk(2, 92)]]],
+    } as AlignMatrix);
+    expect(v.rows.map((r) => r.hubUnitId)).toEqual([11, 12]);
+    expect(v.rows[0].cells[0].links.map((l) => l.link_id)).toEqual([1]);
+    expect(v.translationDocIds).toEqual([2]);
+  });
+
+  it("without cell_links the text heuristic still applies (old sidecar fallback)", () => {
+    const v = buildMatrixView({
+      ...base,
+      rows: [["1", 1, "FR1", "SAME"], ["1", 2, "FR2", "SAME"]],
+    } as AlignMatrix);
+    expect(v.hasCellLinks).toBe(false);
+    expect(v.rows[1].cells[0].status).toBe("fused");
   });
 });
 
