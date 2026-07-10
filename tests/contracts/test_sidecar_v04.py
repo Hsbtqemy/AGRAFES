@@ -1017,6 +1017,43 @@ def test_align_link_create_with_status(v04_sidecar) -> None:
     assert payload["status"] == "accepted"
 
 
+def test_align_link_create_inherits_explicit_external_id(v04_sidecar) -> None:
+    """1.6.55 (D-W13): an explicit external_id is stored so audit views sort the
+    gesture-created link next to its sibling instead of a stray [§0]."""
+    base_url = v04_sidecar["base_url"]
+    token = v04_sidecar["token"]
+    pivot_uid, target_uid = _get_unlinked_unit_ids(v04_sidecar)
+
+    code, payload = _post(f"{base_url}/align/link/create", {
+        "pivot_unit_id": pivot_uid,
+        "target_unit_id": target_uid,
+        "external_id": 42,
+    }, token=token)
+    assert code == 200, payload
+    # The audit reflects the inherited pair number.
+    _, audit = _post(f"{base_url}/align/audit", {
+        "pivot_doc_id": v04_sidecar["pivot_doc_id"],
+        "target_doc_id": v04_sidecar["target_doc_id"],
+        "limit": 200,
+    })
+    created = next(lnk for lnk in audit["links"] if lnk["link_id"] == payload["link_id"])
+    assert created["external_id"] == 42
+
+
+def test_align_link_create_invalid_external_id_is_400(v04_sidecar) -> None:
+    base_url = v04_sidecar["base_url"]
+    token = v04_sidecar["token"]
+    pivot_uid, target_uid = _get_unlinked_unit_ids(v04_sidecar)
+
+    code, payload = _post(f"{base_url}/align/link/create", {
+        "pivot_unit_id": pivot_uid,
+        "target_unit_id": target_uid,
+        "external_id": -3,
+    }, token=token)
+    assert code == 400
+    assert payload["ok"] is False
+
+
 def test_align_link_create_conflict_is_409(v04_sidecar) -> None:
     from multicorpus_engine.sidecar_contract import ERR_CONFLICT
     base_url = v04_sidecar["base_url"]

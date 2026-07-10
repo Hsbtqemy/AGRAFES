@@ -69,6 +69,9 @@ def test_matrix_cell_links_identifiers(db_conn: sqlite3.Connection) -> None:
     assert en_r1[0]["target_unit_id"] == 3
     assert (en_r1[0]["char_start"], en_r1[0]["char_end"]) == (0, 8)
     assert en_r1[0]["target_text_raw"] == "morning evening"
+    # D-W13: pair number + manual marker travel with each link (run 'r' ≠ manual).
+    assert en_r1[0]["external_id"] == 1
+    assert en_r1[0]["manual"] is False
     # RO row 1: the 1-2 bead, in the cell's concatenation order; RO row 2: omission = [].
     assert [lk["link_id"] for lk in m["cell_links"][0][1]] == [3, 4]
     assert m["cell_links"][1][1] == []
@@ -104,6 +107,8 @@ def test_matrix_cell_concat_follows_reading_order(db_conn: sqlite3.Connection) -
     # FR u2 × RO reads "na ziua" (unit 4's slice first), despite 'ziua' having the older link.
     assert m["rows"][1][4] == "na ziua"
     assert [lk["target_unit_id"] for lk in m["cell_links"][1][1]] == [4, 5]
+    # The gesture-created link is flagged manual (run_id='manual') — the cell ↺ deletes it.
+    assert [lk["manual"] for lk in m["cell_links"][1][1]] == [True, False]
 
 
 def test_matrix_hub_not_found(db_conn: sqlite3.Connection) -> None:

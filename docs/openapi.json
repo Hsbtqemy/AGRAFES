@@ -182,6 +182,11 @@
       },
       "AlignLinkCreateRequest": {
         "properties": {
+          "external_id": {
+            "description": "1.6.55 (D-W13): pair number to inherit (a gesture-created link passes its sibling's, so audit views sort it next to its family). Default: the pivot unit's external_id, else 0.",
+            "minimum": 0,
+            "type": "integer"
+          },
           "pivot_unit_id": {
             "type": "integer"
           },
@@ -4256,8 +4261,8 @@
   "info": {
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
-    "version": "1.6.54",
-    "x-contract-version": "1.6.54"
+    "version": "1.6.55",
+    "x-contract-version": "1.6.55"
   },
   "openapi": "3.0.3",
   "paths": {

@@ -592,7 +592,7 @@ Workflow status semantics:
 ### V0.4C — Alignment link editing (token required)
 
 - `POST /align/link/create` — manually create an alignment link between two units
-  - body: `{ pivot_unit_id, target_unit_id, status? }`; validates: both units must exist; status ∈ {accepted, rejected, null}
+  - body: `{ pivot_unit_id, target_unit_id, status?, external_id? }`; validates: both units must exist; status ∈ {accepted, rejected, null}; external_id (1.6.55, optional) = non-negative pair number to inherit (a gesture-created link passes its sibling's so audit views sort it next to its family; default = the pivot unit's external_id, else 0)
   - returns: `{ link_id, pivot_unit_id, target_unit_id, pivot_doc_id, target_doc_id, status, created: 1 }`
   - 404 if either unit does not exist; 409 if a link between those units already exists
 - `POST /align/link/update_status` — set link status (`"accepted"`, `"rejected"`, or `null`)

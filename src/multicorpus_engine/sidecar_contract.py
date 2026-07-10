@@ -14,7 +14,7 @@ from typing import Any
 from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
-CONTRACT_VERSION = "1.6.54"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.55"  # semantic versioning for the sidecar API contract
 # SID-08 / OPS-03: the API version IS the contract version — derived, never a
 # second hand-maintained literal, so the two can no longer drift. /health reports
 # the *engine* version under `version` (it predates the sidecar); every other
@@ -195,6 +195,11 @@ API_VERSION = CONTRACT_VERSION
 #         target_text_raw}) and now EXCLUDES rejected links from the projection (coherent
 #         with ALN-03, revue F8). No new route → snapshot/.md unchanged; openapi moves
 #         (schema field). Logic in services/matrix_export_service + the batch handler.
+# 1.6.55: D-W13 (coupe itérative + ↺ cellule). AlignLinkCreateRequest gains optional
+#         `external_id` (inherit the sibling link's pair number — fixes the stray [§0]
+#         row in the audit view). /align/matrix cell_links items (non-schematized) gain
+#         `external_id` + `manual` (run_id='manual') so the grid's ↺ can delete the
+#         gesture-created links. No new route → snapshot/.md unchanged; openapi moves.
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
@@ -2560,6 +2565,11 @@ def openapi_spec() -> dict[str, Any]:
                         "pivot_unit_id": {"type": "integer"},
                         "target_unit_id": {"type": "integer"},
                         "status": {"type": "string", "enum": ["accepted", "rejected"], "nullable": True},
+                        "external_id": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "description": "1.6.55 (D-W13): pair number to inherit (a gesture-created link passes its sibling's, so audit views sort it next to its family). Default: the pivot unit's external_id, else 0.",
+                        },
                     },
                 },
                 "BaseResponse": {

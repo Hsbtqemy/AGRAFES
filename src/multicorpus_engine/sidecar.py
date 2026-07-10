@@ -7842,7 +7842,15 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             return
         pivot_doc_id = pivot_unit["doc_id"]
         target_doc_id = target_unit["doc_id"]
-        external_id = pivot_unit["external_id"] if pivot_unit["external_id"] is not None else 0
+        # 1.6.55 (D-W13): an explicit external_id lets a gesture-created link inherit
+        # its sibling's pair number (so the Révision fine sorts it next to its family
+        # instead of a stray [§0]). Fallback: the pivot unit's external_id, else 0.
+        external_id = body.get("external_id")
+        if external_id is not None and (not isinstance(external_id, int) or isinstance(external_id, bool) or external_id < 0):
+            self._send_error("external_id must be a non-negative integer", code=ERR_VALIDATION, http_status=400)
+            return
+        if external_id is None:
+            external_id = pivot_unit["external_id"] if pivot_unit["external_id"] is not None else 0
         created_at = dt.datetime.now(dt.timezone.utc).isoformat()
         try:
             with self._lock():

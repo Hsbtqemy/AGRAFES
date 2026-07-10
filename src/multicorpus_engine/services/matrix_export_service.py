@@ -101,9 +101,10 @@ def build_alignment_matrix(conn: sqlite3.Connection, family_root_id: int) -> dic
         # Cell concatenation order = READING order of the target document (unit n,
         # then cut offset within the unit) — not link creation order, so a link
         # added later by a gesture (D-W12 straddle cut) still lands where it reads.
-        for link_id, tuid, pivot_id, cs, ce, traw in conn.execute(
+        for link_id, tuid, pivot_id, cs, ce, traw, ext_id, run_id in conn.execute(
             "SELECT al.link_id, al.target_unit_id, al.pivot_unit_id,"
-            "       al.target_char_start, al.target_char_end, tu.text_raw"
+            "       al.target_char_start, al.target_char_end, tu.text_raw,"
+            "       al.external_id, al.run_id"
             " FROM alignment_links al JOIN units tu ON tu.unit_id = al.target_unit_id"
             " WHERE al.pivot_doc_id=? AND al.target_doc_id=?"
             "   AND (al.status IS NULL OR al.status <> 'rejected')"
@@ -116,6 +117,10 @@ def build_alignment_matrix(conn: sqlite3.Connection, family_root_id: int) -> dic
                 "char_start": cs,
                 "char_end": ce,
                 "target_text_raw": traw,
+                # D-W13 : the gestures need to place (external_id inheritance) and
+                # undo (manual links are deleted by the cell ↺) what they created.
+                "external_id": ext_id,
+                "manual": run_id == "manual",
             })
         links_by_t[tdoc] = by_hub
 
