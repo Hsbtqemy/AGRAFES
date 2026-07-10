@@ -88,6 +88,24 @@ def test_matrix_excludes_rejected_links(db_conn: sqlite3.Connection) -> None:
     assert [lk["link_id"] for lk in m["cell_links"][0][1]] == [3]
 
 
+def test_matrix_cell_concat_follows_reading_order(db_conn: sqlite3.Connection) -> None:
+    """A late-created link (D-W12 straddle) lands where it READS (target n, cut offset),
+    not where it was created (link_id)."""
+    _setup_family(db_conn)
+    # Straddle shape on RO: FR u2's cell gains the TAIL of RO unit 4 ('buna' [2:4]='na'),
+    # created AFTER its existing link to RO unit 5 ('ziua'). Reading order: unit 4 < unit 5.
+    db_conn.execute(
+        "INSERT INTO alignment_links (run_id,pivot_unit_id,target_unit_id,external_id,pivot_doc_id,target_doc_id,created_at) VALUES ('r',2,5,0,1,3,datetime('now'))")
+    db_conn.execute(
+        "INSERT INTO alignment_links (run_id,pivot_unit_id,target_unit_id,external_id,pivot_doc_id,target_doc_id,created_at,target_char_start,target_char_end) VALUES ('manual',2,4,0,1,3,datetime('now'),2,4)")
+    db_conn.commit()
+    m = build_alignment_matrix(db_conn, 1)
+
+    # FR u2 × RO reads "na ziua" (unit 4's slice first), despite 'ziua' having the older link.
+    assert m["rows"][1][4] == "na ziua"
+    assert [lk["target_unit_id"] for lk in m["cell_links"][1][1]] == [4, 5]
+
+
 def test_matrix_hub_not_found(db_conn: sqlite3.Connection) -> None:
     with pytest.raises(NotFoundError):
         build_alignment_matrix(db_conn, 999)

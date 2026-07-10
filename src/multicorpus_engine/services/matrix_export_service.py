@@ -98,13 +98,16 @@ def build_alignment_matrix(conn: sqlite3.Connection, family_root_id: int) -> dic
     links_by_t: dict[int, dict[int, list[dict[str, Any]]]] = {}
     for tdoc, _lang in translations:
         by_hub: dict[int, list[dict[str, Any]]] = {}
+        # Cell concatenation order = READING order of the target document (unit n,
+        # then cut offset within the unit) — not link creation order, so a link
+        # added later by a gesture (D-W12 straddle cut) still lands where it reads.
         for link_id, tuid, pivot_id, cs, ce, traw in conn.execute(
             "SELECT al.link_id, al.target_unit_id, al.pivot_unit_id,"
             "       al.target_char_start, al.target_char_end, tu.text_raw"
             " FROM alignment_links al JOIN units tu ON tu.unit_id = al.target_unit_id"
             " WHERE al.pivot_doc_id=? AND al.target_doc_id=?"
             "   AND (al.status IS NULL OR al.status <> 'rejected')"
-            " ORDER BY al.pivot_unit_id, al.external_id, al.link_id",
+            " ORDER BY al.pivot_unit_id, tu.n, COALESCE(al.target_char_start, -1), al.link_id",
             (family_root_id, tdoc),
         ):
             by_hub.setdefault(int(pivot_id), []).append({
