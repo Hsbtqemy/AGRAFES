@@ -476,6 +476,7 @@ _WRITE_PATHS = frozenset({
     "/align/link/update_status", "/align/link/delete", "/align/link/retarget",
     "/align/link/acknowledge_source_change",
     "/align/links/batch_update",
+    "/align/cell_status",
     "/align/collisions/resolve",
     # Other DB-mutating operations (fixed in 1.4.1)
     "/curate",
@@ -963,6 +964,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 self._handle_align_link_acknowledge_source_change(body)
             elif path == "/align/links/batch_update":
                 self._handle_align_links_batch_update(body)
+            elif path == "/align/cell_status":
+                self._handle_align_cell_status(body)
             elif path == "/align/retarget_candidates":
                 self._handle_align_retarget_candidates(body)
             elif path == "/align/collisions":
@@ -8234,6 +8237,30 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             "errors": errors,
             "rolled_back": rolled_back,
         }))
+
+    def _handle_align_cell_status(self, body: dict) -> None:
+        # Thin adapter over the per-cell status service (R3.3, D-W8 résolu):
+        # « ∅ non traduit » on a matrix cell = (pivot unit × target doc) pair,
+        # status null clears. Contract 1.6.56.
+        from multicorpus_engine.services.align_cell_status_service import set_cell_status
+        from multicorpus_engine.services.errors import (
+            ConflictError,
+            NotFoundError,
+            ValidationError,
+        )
+        try:
+            with self._lock():
+                data = set_cell_status(self._conn(), body)
+        except ValidationError as exc:
+            self._send_error(exc.message, code=ERR_VALIDATION, http_status=exc.http_status)
+            return
+        except NotFoundError as exc:
+            self._send_error(exc.message, code=ERR_NOT_FOUND, http_status=exc.http_status)
+            return
+        except ConflictError as exc:
+            self._send_error(exc.message, code=ERR_CONFLICT, http_status=exc.http_status)
+            return
+        self._send_json(success_payload(data))
 
     # ------------------------------------------------------------------
     # V1.4 — Retarget candidates (read-only, no token)

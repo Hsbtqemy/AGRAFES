@@ -173,8 +173,8 @@ Chaque geste agit **sur la cellule/traduction**, jamais sur le moyeu (cf. modèl
 | **✂ Couper** | une cellule couvre 2 lignes moyeu (traduction a fusionné) | `set_target_span` ×N (sous-spans) | ✅ existe | **livré** (B1/B2) |
 | **⭙ Fusionner** | 2 cellules = éclats d'une même traduction (traduction trop fine) | `set_bead`/`clear_bead` (socle K3 `bead_uid`) | 🔲 socle prêt | à faire |
 | **⇲ Ré-ancrer** | une cellule est sur la mauvaise ligne moyeu | retarget du lien, **candidats positionnels** | 🔲 fallback à ajouter | à faire (voir §3.1) |
-| **∅ Non traduit** | ligne moyeu sans traduction (voulu) | `unit_status='non_traduit'` (R4.1, mig 023) | ✅ existe | à câbler |
-| **＋ Ajout** | traduction sans ligne moyeu (ajout du traducteur) | `unit_status='ajout'` → ligne en flux `[ajout]` (D8) | ✅ axe existe | à câbler |
+| **∅ Non traduit** | cellule sans traduction (voulu) | statut **par cellule** `alignment_cell_statuses` (mig 028, D-W8 résolu) | 🔲 table + setter | en cours (§3.3) |
+| **＋ Ajout** | traduction sans ligne moyeu (ajout du traducteur) | `unit_status='ajout'` → ligne en flux `[ajout]` (D8) | ✅ axe existe | en cours (§3.3) |
 
 > L'audit **accepter/rejeter/statut par lien** ne disparaît pas : il devient un **mode secondaire**
 > (« Révision fine ») pour qui veut valider paire par paire, pas la surface primaire.
@@ -229,10 +229,24 @@ Deux formes d'asymétrie, toutes deux portées par l'axe `unit_status` (mig 023 
 `curate --unit-status`. Dans le nouvel espace : un **geste sur la cellule/ligne** (« ∅ Non traduit » / « ＋
 Ajout ») qui pose le statut — réutilise l'axe existant, juste un petit **setter**.
 
-**Nuance à trancher (D-W8) : `non_traduit` est *global* sur l'unité moyeu**, pas par langue. Or dans une matrice
-N-langues, un segment peut être traduit en EN mais **pas** en DE. Un « non traduit » **par cellule** (moyeu ×
-langue) demande un marqueur sur la paire `(unité_moyeu, doc_cible)` — un **lien-sentinelle** ou une petite table
-— au-delà du `unit_status` global. À décider.
+**D-W8 résolu (2026-07-10) : par cellule, direct — l'étalement « global d'abord » est abandonné.** Les familles
+réelles sont N-langues (FR + EN + RO) : « EN omet, RO non » est le cas normal, un geste qui marquerait toute la
+ligne serait un piège, et les écritures globales intermédiaires resteraient ambiguës après coup. Mécanique :
+une petite table **`alignment_cell_statuses (pivot_unit_id, target_doc_id, status)`** (mig 028 ; enum validé au
+service comme mig 023, v1 = `non_traduit` seul) + un setter **`POST /align/cell_status`** (`status: null` =
+effacer ; **garde** : refus si la cellule a des liens actifs — marquer « non traduit » une cellule traduite est
+contradictoire). Le `unit_status` **global** existant (marker-lift, unité moyeu) n'est **pas** réécrit : la
+projection lit **les deux axes** — global ⇒ toute la ligne `[non traduit]`, par-cellule ⇒ la cellule seule.
+Dans les deux cas la cellule affiche le **token `[non traduit]`** (D10, jamais vide) et **compte comme faite**
+(D-W5).
+
+**Les unités non couvertes deviennent visibles (D-W14, tranché 2026-07-10).** Une unité de traduction sans
+lien n'apparaît aujourd'hui **nulle part** dans la matrice : impossible d'invoquer « ＋ Ajout » sur de
+l'invisible, et la complétude ment tant que ces unités restent cachées. La projection expose donc, **par
+colonne de traduction**, la liste des unités `line` sans lien actif et sans statut (`uncovered`, champ additif) ;
+la grille affiche un **compteur par en-tête de colonne** qui ouvre un **panneau** listant ces unités — c'est de
+là qu'on invoque « ＋ Ajout » (pose `unit_status='ajout'` via `/units/bulk_set_status`, la ligne `[ajout]`
+apparaît en flux, ↺ sur la ligne pour l'effacer). Une unité marquée `ajout` ou `non_traduit` sort du compteur.
 
 ## 3.4 Gestes **à la demande** sur toute cellule + « couper à cheval » (tranché 2026-07-10, QA 3b — **livré** le jour même : A2 `cell_links`/statut topologique + batch `atomic` 1.6.54 + geste à cheval, commits `4d8de0c`→`c946b08`)
 
@@ -385,12 +399,13 @@ Toutes validées ; la note est **ticket-ready**. (Rationale : voir les § réfé
 - **D-W5 → Complétude = cellules non-⚠ / total** ; un `non_traduit` *voulu* compté **comme fait** (pas un trou). « Fini » = plus de ⚠.
 - **D-W6 → Alignement reste une vue à part** (cross-lingue, pas mono-doc ; hors canvas texte).
 - **D-W7 → Défaut = overview *santé*** (pictogrammes + synthèse, insensible à N) ; **édition = détail empilé** (segment × N) ; **sélecteur de langues première classe** ; la paire reste un focus (§2.1).
-- **D-W8 → « Non traduit » par cellule** (moyeu × doc cible), via un marqueur sur la paire. *Étalement permis :* `unit_status` **global d'abord**, par-cellule ensuite (§3.3).
+- **D-W8 → « Non traduit » par cellule** (moyeu × doc cible), via un marqueur sur la paire. *Résolu 2026-07-10 :* **par-cellule direct** (table `alignment_cell_statuses`, mig 028 + `POST /align/cell_status`), l'étalement « global d'abord » est abandonné ; la projection lit les deux axes (§3.3).
 - **D-W9 → Coupe contiguë en v1** (un point, modèle offset actuel) ; non-contiguë = extension différée si un cas réel l'exige (§3.2).
 - **D-W10 → Round-trip en overlay/tiroir** (garde l'alignement visible) ; après re-segmentation, **marquer les lignes « à ré-aligner »** (pas de re-align silencieux) (§4.1).
 - **D-W11 → Structure en scaffolding lecture seule en v1** ; **structure matcher folded-in en tranche ultérieure** — mais sa maison est **actée ici** (pas Segmentation) (§2.2).
 - **D-W12 → Gestes à la demande sur toute cellule** (tranché 2026-07-10, QA 3b) : le ⚠ priorise, il ne conditionne pas l'accès — la couche d'alignement est une surcouche réversible, la main est donnée partout ; + geste « ✂ couper à cheval » sur le segment voisin. Précondition A2 (link_ids par cellule) et batch tout-ou-rien (F2-fond). Cascade de corrections assumée (§3.4).
 - **D-W13 → Coupe itérative fenêtrée + ↺ cellule** (tranché 2026-07-10, QA D-W12) : couper opère dans la fenêtre courante du lien (itérable, N-1 par partitions successives, ⚠ = fenêtres identiques) ; ↺ cellule = la cible redevient entière (tranches effacées + liens `manual` supprimés, atomique) ; le lien créé hérite de l'`external_id` du lien coupé (§3.5).
+- **D-W14 → Unités non couvertes visibles** (tranché 2026-07-10) : la projection expose par colonne les unités cible sans lien actif ni statut (`uncovered`) ; compteur en en-tête de colonne → panneau → geste « ＋ Ajout ». Sans cette surface, ＋ est ininvocable et la complétude ment (§3.3).
 
 **Prochain :** cf. §6. **Tranche 1 = D-W3 (ré-ancrer positionnel)** — autonome, endpoint de *lecture*, sans contrat ni migration.
 

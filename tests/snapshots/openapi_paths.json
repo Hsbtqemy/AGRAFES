@@ -24,6 +24,7 @@
   "GET /units",
   "POST /align",
   "POST /align/audit",
+  "POST /align/cell_status",
   "POST /align/collisions",
   "POST /align/collisions/resolve",
   "POST /align/link/acknowledge_source_change",

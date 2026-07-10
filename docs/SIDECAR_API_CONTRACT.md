@@ -311,7 +311,7 @@ Three **independent** version fields surface in sidecar responses — do not con
   - each report includes `links_created` and `links_skipped`
   - align responses are persisted in `runs` (`kind=align`, stats include `strategy`, `pairs`, debug payload when enabled)
 - `POST /align/audit`
-- `POST /align/matrix` — matrice multilingue ancrée-source **en JSON** (même projection que `/export/matrix` mais renvoyée dans la réponse — `{ headers, rows, languages, hub_doc_id }` — pour l'affichage de la grille d'alignement, au lieu d'écrire un CSV). Read-only, no token. (contrat 1.6.53)
+- `POST /align/matrix` — matrice multilingue ancrée-source **en JSON** (même projection que `/export/matrix` mais renvoyée dans la réponse — `{ headers, rows, languages, hub_doc_id }` — pour l'affichage de la grille d'alignement, au lieu d'écrire un CSV). Read-only, no token. (contrat 1.6.53) Champs additifs non schématisés : `hub_unit_ids`/`language_doc_ids` (3a), `cell_links` (1.6.54, liens rejetés exclus), puis (1.6.56, D-W8/D8/D-W14) `hub_unit_statuses` + `cell_statuses` (les deux axes de statut ; cellule omise = token `[non traduit]`), `addition_rows` (unités `unit_status='ajout'` tissées en lignes de flux — aussi dans le CSV `/export/matrix`) et `uncovered` (par colonne, unités cible sans lien actif ni statut — le panneau « ＋ Ajout »).
 - `POST /align/quality`
 - `GET /align/source_changed_summary` — résumé global des liens dont la source pivot a changé depuis l'alignement (`source_changed_at` non nul). Réponse : `{ total, docs: [{target_doc_id, target_title, count}] }`. Read-only, no token. Alimente la bannière d'accueil d'AlignPanel.
 - `POST /align/link/create`
@@ -320,6 +320,7 @@ Three **independent** version fields surface in sidecar responses — do not con
 - `POST /align/link/retarget`
 - `POST /align/link/acknowledge_source_change`
 - `POST /align/links/batch_update`
+- `POST /align/cell_status` — statut par cellule « non traduit » sur la paire (unité moyeu × doc cible) (1.6.56, D-W8 ; token requis, détail ci-dessous)
 - `POST /align/retarget_candidates`
 - `POST /align/collisions`
 - `POST /align/collisions/resolve`
@@ -728,6 +729,31 @@ Response:
 - `deleted` — number of `delete` operations that succeeded
 - `errors` — array of `{ index, link_id, error }` for individual failures (not found, invalid action, etc.)
 - `rolled_back` — `true` when `atomic` was set and an error rolled the whole batch back
+
+### POST /align/cell_status (1.6.56 — token required)
+
+Set or clear the per-cell « non traduit » status on a (hub unit × target document) pair
+(matrix gesture « ∅ Non traduit », D-W8 résolu — table `alignment_cell_statuses`, migration 028).
+Distinct from the **global** `units.unit_status` axis (marker-lift, whole row): the matrix
+projection reads both; a marked cell displays the `[non traduit]` token (D10) and counts as
+done (D-W5).
+
+Request:
+```json
+{ "pivot_unit_id": 3, "target_doc_id": 2, "status": "non_traduit" }
+```
+- `pivot_unit_id`: hub (matrix row) **line** unit — a `structure` unit is a 400
+- `target_doc_id`: must be a `translation_of`/`excerpt_of` of the pivot's document (else 400)
+- `status`: `"non_traduit"` to mark; `null`/`""`/absent to clear (clearing an unmarked cell is a no-op)
+
+Response:
+```json
+{ "ok": true, "status": "ok", "pivot_unit_id": 3, "target_doc_id": 2, "cell_status": "non_traduit" }
+```
+- `cell_status` (not `status` — taken by the response envelope): the stored value, `null` after a clear
+- 404 if the pivot unit or target document does not exist
+- 409 (`CONFLICT`) when marking a cell that still has **active** (non-rejected) links —
+  « non traduit » on a translated cell is contradictory; un-align first (↺ cellule)
 
 ### POST /align/retarget_candidates (V1.4 — read-only, no token)
 

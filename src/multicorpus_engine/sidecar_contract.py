@@ -14,7 +14,7 @@ from typing import Any
 from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
-CONTRACT_VERSION = "1.6.55"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.56"  # semantic versioning for the sidecar API contract
 # SID-08 / OPS-03: the API version IS the contract version — derived, never a
 # second hand-maintained literal, so the two can no longer drift. /health reports
 # the *engine* version under `version` (it predates the sidecar); every other
@@ -200,6 +200,15 @@ API_VERSION = CONTRACT_VERSION
 #         row in the audit view). /align/matrix cell_links items (non-schematized) gain
 #         `external_id` + `manual` (run_id='manual') so the grid's ↺ can delete the
 #         gesture-created links. No new route → snapshot/.md unchanged; openapi moves.
+# 1.6.56: statuts matrice (D-W8 résolu / D8 / D-W14). New POST /align/cell_status —
+#         per-cell « non traduit » on the (hub unit × target doc) pair (table
+#         alignment_cell_statuses, mig 028; status null clears; 409 when the cell has
+#         active links). NEW route → openapi + snapshot + .md all move. /align/matrix
+#         response (non-schematized) gains hub_unit_statuses / cell_statuses (both
+#         status axes), addition_rows (unit_status='ajout' woven as flux rows — also
+#         in the CSV export) and uncovered (per-column unlinked units, the « ＋ Ajout »
+#         panel), and omitted cells now show the [non traduit] token (D10). Logic in
+#         services/align_cell_status_service + matrix_export_service.
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
@@ -2158,6 +2167,27 @@ def openapi_spec() -> dict[str, Any]:
                     },
                 }
             },
+            # ── 1.6.56 — Per-cell status (matrix « ∅ non traduit », D-W8) ─────
+            "/align/cell_status": {
+                "post": {
+                    "summary": "Set or clear the per-cell « non traduit » status on a (hub unit × target doc) pair",
+                    "description": (
+                        "Matrix gesture « ∅ Non traduit » (D-W8 résolu): marks the pair as "
+                        "deliberately untranslated in THAT language (table alignment_cell_statuses, "
+                        "mig 028). status null clears. Distinct from the global units.unit_status "
+                        "axis (marker-lift, whole row) — the matrix projection reads both."
+                    ),
+                    "security": [{"token": []}],
+                    "requestBody": {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AlignCellStatusRequest"}}}},
+                    "responses": {
+                        "200": {"description": "Cell status set/cleared"},
+                        "400": {"description": "Validation error"},
+                        "401": {"description": "Unauthorized"},
+                        "404": {"description": "Pivot unit or target doc not found"},
+                        "409": {"description": "Conflict — the cell has active links (un-align first)"},
+                    },
+                }
+            },
             # ── V1.4 — Retarget candidates (read-only) ───────────────────────
             "/align/retarget_candidates": {
                 "post": {
@@ -2557,6 +2587,20 @@ def openapi_spec() -> dict[str, Any]:
                 "OkResponse": {
                     "allOf": [{"$ref": "#/components/schemas/BaseResponse"}],
                     "description": "Generic success envelope (ok + api_version + version + status, plus endpoint-specific data).",
+                },
+                "AlignCellStatusRequest": {
+                    "type": "object",
+                    "required": ["pivot_unit_id", "target_doc_id"],
+                    "properties": {
+                        "pivot_unit_id": {"type": "integer", "description": "Hub (matrix row) line unit."},
+                        "target_doc_id": {"type": "integer", "description": "Translation document (matrix column); must be a translation/excerpt of the pivot's document."},
+                        "status": {
+                            "type": "string",
+                            "enum": ["non_traduit"],
+                            "nullable": True,
+                            "description": "1.6.56 (D-W8): 'non_traduit' marks the cell (token [non traduit], counts as done); null/absent clears the mark.",
+                        },
+                    },
                 },
                 "AlignLinkCreateRequest": {
                     "type": "object",

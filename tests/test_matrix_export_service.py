@@ -114,3 +114,98 @@ def test_matrix_cell_concat_follows_reading_order(db_conn: sqlite3.Connection) -
 def test_matrix_hub_not_found(db_conn: sqlite3.Connection) -> None:
     with pytest.raises(NotFoundError):
         build_alignment_matrix(db_conn, 999)
+
+
+def test_matrix_status_fields_default_empty(db_conn: sqlite3.Connection) -> None:
+    """The status fields (D-W8/D8/D-W14) are present and empty on a status-free family."""
+    _setup_family(db_conn)
+    m = build_alignment_matrix(db_conn, 1)
+
+    assert m["hub_unit_statuses"] == [None, None]
+    assert m["cell_statuses"] == [[None, None], [None, None]]
+    assert m["addition_rows"] == []
+    assert m["uncovered"] == [[], []]
+
+
+def test_matrix_non_traduit_token_both_axes(db_conn: sqlite3.Connection) -> None:
+    """D10 token from BOTH axes: per-cell (D-W8, mig 028) marks one cell; the global
+    unit_status (marker-lift) marks the whole row — but never over real aligned text."""
+    _setup_family(db_conn)
+    # Per-cell: FR u2 × RO (the empty cell of the base fixture).
+    db_conn.execute(
+        "INSERT INTO alignment_cell_statuses (pivot_unit_id, target_doc_id, status, created_at)"
+        " VALUES (2, 3, 'non_traduit', datetime('now'))"
+    )
+    db_conn.commit()
+    m = build_alignment_matrix(db_conn, 1)
+    assert m["rows"][1][4] == "[non traduit]"
+    assert m["cell_statuses"] == [[None, None], [None, "non_traduit"]]
+    assert m["hub_unit_statuses"] == [None, None]
+
+    # Global axis: FR u2 non_traduit everywhere. Its EN cell HAS a link (cut slice
+    # "evening") — real text wins over the contradictory status; RO keeps the token.
+    db_conn.execute("DELETE FROM alignment_cell_statuses")
+    db_conn.execute("UPDATE units SET unit_status='non_traduit' WHERE unit_id=2")
+    db_conn.commit()
+    m = build_alignment_matrix(db_conn, 1)
+    assert m["rows"][1][3] == "evening"
+    assert m["rows"][1][4] == "[non traduit]"
+    assert m["hub_unit_statuses"] == [None, "non_traduit"]
+    assert m["cell_statuses"] == [[None, None], [None, None]]
+
+
+def test_matrix_addition_rows_woven_in_flux(db_conn: sqlite3.Connection) -> None:
+    """D8 projection (a): an ajout unit becomes a flux row at its reading position —
+    after the hub row of the nearest covered target unit before it; before the first
+    row when nothing precedes it. Parallel arrays stay aligned (None hub ids)."""
+    _setup_family(db_conn)
+    # RO unit n=3 'extra' — nearest covered RO unit is n=2 ('ziua', shown on hub row 0).
+    db_conn.execute(
+        "INSERT INTO units (doc_id,unit_type,n,text_raw,text_norm,unit_status)"
+        " VALUES (3,'line',3,'extra','extra','ajout')"
+    )
+    # EN unit n=0 'intro' — precedes every covered EN unit → woven before the first row.
+    db_conn.execute(
+        "INSERT INTO units (doc_id,unit_type,n,text_raw,text_norm,unit_status)"
+        " VALUES (2,'line',0,'intro','intro','ajout')"
+    )
+    db_conn.commit()
+    m = build_alignment_matrix(db_conn, 1)
+
+    assert [r[2] for r in m["rows"]] == ["[ajout]", "Le matin.", "[ajout]", "Le soir."]
+    assert m["rows"][0] == ["", "", "[ajout]", "intro", ""]
+    assert m["rows"][2] == ["", "", "[ajout]", "", "extra"]
+    assert m["hub_unit_ids"] == [None, 1, None, 2]
+    assert m["hub_unit_statuses"] == [None, None, None, None]
+    assert m["cell_links"][0] == [[], []] and m["cell_links"][2] == [[], []]
+    assert m["addition_rows"] == [
+        {"row": 0, "doc_id": 2, "unit_id": 7, "n": 0},
+        {"row": 2, "doc_id": 3, "unit_id": 6, "n": 3},
+    ]
+    # An ajout unit is accounted for — it is NOT uncovered (D-W14).
+    assert m["uncovered"] == [[], []]
+
+
+def test_matrix_uncovered_units_per_column(db_conn: sqlite3.Connection) -> None:
+    """D-W14: a target unit with no active link in this family and no status is
+    invisible in the grid — surfaced per column so « ＋ Ajout » can act on it.
+    A rejected link does not cover; a status (ajout/non_traduit) removes it."""
+    _setup_family(db_conn)
+    db_conn.execute(
+        "INSERT INTO units (doc_id,unit_type,n,text_raw,text_norm)"
+        " VALUES (3,'line',3,'orphan','orphan')"
+    )
+    db_conn.execute("UPDATE alignment_links SET status='rejected' WHERE link_id=4")  # RO 'ziua'
+    db_conn.commit()
+    m = build_alignment_matrix(db_conn, 1)
+
+    assert m["uncovered"][0] == []  # EN fully covered
+    assert m["uncovered"][1] == [
+        {"unit_id": 5, "n": 2, "text_raw": "ziua"},
+        {"unit_id": 6, "n": 3, "text_raw": "orphan"},
+    ]
+
+    db_conn.execute("UPDATE units SET unit_status='ajout' WHERE unit_id=6")
+    db_conn.commit()
+    m = build_alignment_matrix(db_conn, 1)
+    assert [u["unit_id"] for u in m["uncovered"][1]] == [5]

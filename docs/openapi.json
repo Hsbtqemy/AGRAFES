@@ -154,6 +154,31 @@
         ],
         "type": "object"
       },
+      "AlignCellStatusRequest": {
+        "properties": {
+          "pivot_unit_id": {
+            "description": "Hub (matrix row) line unit.",
+            "type": "integer"
+          },
+          "status": {
+            "description": "1.6.56 (D-W8): 'non_traduit' marks the cell (token [non traduit], counts as done); null/absent clears the mark.",
+            "enum": [
+              "non_traduit"
+            ],
+            "nullable": true,
+            "type": "string"
+          },
+          "target_doc_id": {
+            "description": "Translation document (matrix column); must be a translation/excerpt of the pivot's document.",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "pivot_unit_id",
+          "target_doc_id"
+        ],
+        "type": "object"
+      },
       "AlignCollisionsRequest": {
         "properties": {
           "limit": {
@@ -4261,8 +4286,8 @@
   "info": {
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
-    "version": "1.6.55",
-    "x-contract-version": "1.6.55"
+    "version": "1.6.56",
+    "x-contract-version": "1.6.56"
   },
   "openapi": "3.0.3",
   "paths": {
@@ -4358,6 +4383,44 @@
           }
         },
         "summary": "Paginated read-only audit of alignment links for a pivot/target pair"
+      }
+    },
+    "/align/cell_status": {
+      "post": {
+        "description": "Matrix gesture « ∅ Non traduit » (D-W8 résolu): marks the pair as deliberately untranslated in THAT language (table alignment_cell_statuses, mig 028). status null clears. Distinct from the global units.unit_status axis (marker-lift, whole row) — the matrix projection reads both.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlignCellStatusRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Cell status set/cleared"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Pivot unit or target doc not found"
+          },
+          "409": {
+            "description": "Conflict — the cell has active links (un-align first)"
+          }
+        },
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "summary": "Set or clear the per-cell « non traduit » status on a (hub unit × target doc) pair"
       }
     },
     "/align/collisions": {
