@@ -234,6 +234,46 @@ N-langues, un segment peut être traduit en EN mais **pas** en DE. Un « non tra
 langue) demande un marqueur sur la paire `(unité_moyeu, doc_cible)` — un **lien-sentinelle** ou une petite table
 — au-delà du `unit_status` global. À décider.
 
+## 3.4 Gestes **à la demande** sur toute cellule + « couper à cheval » (tranché 2026-07-10, QA 3b)
+
+**Constat déclencheur (Le Clézio, QA tranche 3b).** L'aligneur produit un bead 2→2 positionnel
+FR§1↔EN1, FR§2↔EN2 alors que la bonne correspondance est FR§1 ↔ *début* d'EN1, FR§2 ↔ *fin* d'EN1 + EN2.
+Les deux cellules EN ont des textes différents : **ni l'heuristique texte actuelle, ni la future détection
+topologique** (les deux liens sont un plausible 1-1 + 1-1) ne signaleront jamais ce décalage — seul l'humain
+qui *lit* la matrice le voit. Attendre le ⚠ pour agir = être pris au dépourvu.
+
+**Décision (D-W12) : les gestes sont invocables à la demande sur n'importe quelle cellule.** Le ⚠ *priorise
+l'attention*, il ne *conditionne pas l'accès*. Rationale : la couche d'alignement est une **surcouche non
+destructive et réversible** (liens + offsets, projection D4 — l'unité n'est jamais re-segmentée) → le coût
+d'une erreur de geste est faible (↺ / `clear_target_span` / delete) → restreindre l'accès à la détection
+n'apporte rien et bloque le cas réel. La **segmentation destructive** (`/units/split|merge`), elle, reste
+derrière son garde-fou (D-W10). Corollaire sur la complétude (précise D-W5) : « plus de ⚠ » reste le signal
+« fini », mais s'affiche comme une *aide*, pas un verdict — un 100 % n'est pas une preuve d'alignement juste.
+
+**Cascade assumée.** Corriger une cellule fait émerger les décalages d'aval qui « semblaient bons » par
+appariement positionnel (le décalage se propage jusqu'à ce que la traduction re-synchronise ses frontières).
+Le flux de travail à supporter est donc **descendre le texte de proche en proche** : après chaque geste,
+re-projection immédiate + curseur conservé (§4.1), la cellule suivante est à un geste de distance. C'est un
+argument de plus pour des gestes bon marché et locaux, pas des assistants globaux.
+
+**Nouveau geste : « ✂ Couper à cheval »** (extension du Couper §3.2) — une cellule *non ⚠* contient du
+contenu appartenant au segment moyeu voisin (au-dessus ou en-dessous) :
+
+- **Mapping primitives (existantes)** : (1) créer le lien manquant `moyeu_voisin → cible` (create/retarget
+  selon l'état), (2) `set_target_span` ×2 sur les deux liens vers cette cible — tête au segment du haut,
+  queue au segment du bas. Une éventuelle autre cible du segment d'arrivée reste en place (sa cellule devient
+  « queue + autre cible » concaténées — la projection sait déjà rendre ça).
+- **Présentation** : le même picker 2 panneaux §3.2, ouvert depuis n'importe quelle cellule via
+  « ✂ Couper vers le segment précédent / suivant » ; mêmes contraintes (frontières de mots viables,
+  coupe contiguë D-W9, verbatim, réversible).
+- **Précondition moteur : A2 (link_ids par cellule dans `/align/matrix`)** — sans quoi le front ne peut pas
+  résoudre les liens d'une cellule non signalée de façon fiable (la résolution actuelle dépend de la
+  détection). Ordre : **A2 → D-W12**.
+- **Atomicité** : le geste composé (création de lien + 2 spans) **exige un batch tout-ou-rien** — le commit
+  partiel actuel de `/align/links/batch_update` (finding F2 de la revue 3b) devient inacceptable ici ;
+  trancher F2-fond (transaction moteur) *avant* ou *avec* ce geste, et l'undo doit défaire les deux
+  opérations ensemble.
+
 ## 4. Les quatre douleurs → réponses
 
 | Douleur | Réponse dans cet espace |
@@ -311,6 +351,7 @@ Toutes validées ; la note est **ticket-ready**. (Rationale : voir les § réfé
 - **D-W9 → Coupe contiguë en v1** (un point, modèle offset actuel) ; non-contiguë = extension différée si un cas réel l'exige (§3.2).
 - **D-W10 → Round-trip en overlay/tiroir** (garde l'alignement visible) ; après re-segmentation, **marquer les lignes « à ré-aligner »** (pas de re-align silencieux) (§4.1).
 - **D-W11 → Structure en scaffolding lecture seule en v1** ; **structure matcher folded-in en tranche ultérieure** — mais sa maison est **actée ici** (pas Segmentation) (§2.2).
+- **D-W12 → Gestes à la demande sur toute cellule** (tranché 2026-07-10, QA 3b) : le ⚠ priorise, il ne conditionne pas l'accès — la couche d'alignement est une surcouche réversible, la main est donnée partout ; + geste « ✂ couper à cheval » sur le segment voisin. Précondition A2 (link_ids par cellule) et batch tout-ou-rien (F2-fond). Cascade de corrections assumée (§3.4).
 
 **Prochain :** cf. §6. **Tranche 1 = D-W3 (ré-ancrer positionnel)** — autonome, endpoint de *lecture*, sans contrat ni migration.
 
