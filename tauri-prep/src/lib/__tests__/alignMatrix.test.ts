@@ -132,6 +132,21 @@ describe("buildMatrixView — topological statuses (cell_links, A2)", () => {
     expect(v.rows[1].cells[0].status).toBe("ok");
   });
 
+  it("a partly-partitioned N-1 keeps its ⚠ on the still-fused tail (identical windows, D-W13)", () => {
+    const v = buildMatrixView({
+      ...base,
+      hub_unit_ids: [11, 12, 13],
+      rows: [["1", 1, "FR1", "head"], ["1", 2, "FR2", "tail"], ["1", 3, "FR3", "tail"]],
+      cell_links: [
+        [[lk(1, 91, { char_start: 0, char_end: 5 })]],
+        [[lk(2, 91, { char_start: 5, char_end: 9 })]],
+        [[lk(3, 91, { char_start: 5, char_end: 9 })]],
+      ],
+    } as AlignMatrix);
+    expect(v.rows[1].cells[0].status).toBe("ok");    // boundary resolved
+    expect(v.rows[2].cells[0].status).toBe("fused"); // tail pair still fused
+  });
+
   it("carries the identities: hubUnitId per row, links per cell, translationDocIds", () => {
     const v = buildMatrixView({
       ...base,

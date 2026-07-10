@@ -7,11 +7,12 @@
  *
  * Cell statuses:
  *   - **empty** : the translation cell is blank → omission / not-yet-aligned (∅).
- *   - **fused** : one target unit is shared, uncut, between this row and the row above
- *     (the 2-1 case). With `cell_links` (A2, sidecar ≥ 1.6.54) this is decided on the
- *     link TOPOLOGY — exact; without it we fall back to the v1 text-equality heuristic
- *     (same non-empty text as the row above), which under- and over-detects (revue 3b
- *     A2) and is kept only for older sidecars.
+ *   - **fused** : one target unit is shared between this row and the row above with
+ *     IDENTICAL windows (uncut = [0,len]; a partly-partitioned N-1 keeps its ⚠ on the
+ *     still-fused tail — D-W13). With `cell_links` (A2, sidecar ≥ 1.6.54) this is
+ *     decided on the link TOPOLOGY — exact; without it we fall back to the v1
+ *     text-equality heuristic (same non-empty text as the row above), which under-
+ *     and over-detects (revue 3b A2) and is kept only for older sidecars.
  * A `non_traduit` *voulu* is not distinguishable from a plain omission yet (D-W8),
  * so both read as `empty` for now. D-W12: the ⚠ statuses prioritize attention, they
  * do NOT gate the gestures — the view offers gestures on any cell.
@@ -21,6 +22,7 @@
  */
 
 import type { AlignMatrix, MatrixCellLink } from "./sidecarClient.ts";
+import { cellsShareFusedTarget } from "./alignCellCut.ts";
 
 export type CellStatus = "ok" | "empty" | "fused";
 
@@ -71,13 +73,6 @@ function _cellText(value: string | number | undefined): string {
   return value == null ? "" : String(value);
 }
 
-/** True when the two cells share an UNCUT target unit — the exact (topological) fused test. */
-function _sharesUncutTarget(cur: MatrixCellLink[], above: MatrixCellLink[]): boolean {
-  return cur.some((l) =>
-    l.char_start == null
-    && above.some((a) => a.target_unit_id === l.target_unit_id && a.char_start == null));
-}
-
 /** Build the grid view-model from a raw `/align/matrix` payload. Pure. */
 export function buildMatrixView(data: AlignMatrix): MatrixView {
   const languages = data.languages ?? [];
@@ -108,8 +103,10 @@ export function buildMatrixView(data: AlignMatrix): MatrixView {
       if (text.trim() === "") {
         status = "empty";
       } else if (hasCellLinks) {
+        // D-W13: fused = shared target with IDENTICAL windows (uncut being [0,len]) —
+        // a partly-partitioned N-1 keeps its ⚠ on the still-fused tail.
         const aboveLinks = rowIdx > 0 ? (cellLinks?.[rowIdx - 1]?.[i] ?? []) : [];
-        status = _sharesUncutTarget(links, aboveLinks) ? "fused" : "ok";
+        status = cellsShareFusedTarget(links, aboveLinks) ? "fused" : "ok";
       } else {
         // Fallback heuristic (pre-A2 sidecar): repeats the row above's non-empty text.
         status = text === prevByLang[i] ? "fused" : "ok";

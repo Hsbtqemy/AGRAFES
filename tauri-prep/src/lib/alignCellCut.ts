@@ -1,110 +1,151 @@
 /**
- * alignCellCut.ts — pure logic + HTML for the matrix-cell « ✂ Couper » gestures
- * (R3.3 tranches 3b + D-W12, docs/DESIGN_alignment_workspace §3.2/§3.4).
+ * alignCellCut.ts — pure logic + HTML for the matrix-cell cut gestures
+ * (R3.3 tranches 3b + D-W12/D-W13, docs/DESIGN_alignment_workspace §3.2/§3.4/§3.5).
  *
- * Resolution works on the matrix's own `cell_links` (A2, sidecar ≥ 1.6.54): a column
- * is the per-row list of links behind one translation — exactly what the cells
- * display (rejected excluded server-side), no audit round-trip, no parallel-array
- * indexing. Two gestures resolve here:
+ * D-W13 : every cut operates inside the link's current WINDOW
+ * (`[char_start, char_end]`, the whole text being just `[0, len]`) — cuts iterate,
+ * a 3-piece sentence is 2 gestures. Resolution works on the matrix's own
+ * `cell_links` (A2): a column is the per-row list of links behind one translation.
  *
- * - **Fused cut** (3b): a ⚠ cell shares an uncut target with the row above (2-1) —
- *   find the two links to slice.
- * - **Straddle cut** (D-W12 « couper à cheval ») : any cell whose translation spills
- *   over the neighbouring hub segment — the missing link is CREATED toward the
- *   neighbour, then both links get complementary slices. On-demand: no ⚠ needed,
- *   the human reading the matrix is the detector.
+ * - **Fused cut** : a ⚠ cell shares a target with IDENTICAL windows with the row
+ *   above — cutting partitions the whole same-window group between the rows above
+ *   the clicked cell (head) and the clicked cell + below (tail); the tail part
+ *   stays fused among itself and is re-cut by the next gesture (N-1 = N-1 gestures).
+ * - **Straddle cut** (« couper à cheval ») : any single-link cell — cut or not —
+ *   spills part of its window over the neighbouring hub segment; the missing link
+ *   is created (inheriting the sibling's external_id) then both get complementary
+ *   sub-windows.
+ * - **Cell ↺** : the target becomes whole again — clear every cut on that target
+ *   across the column, deleting the gesture-created (`manual`) links, never the
+ *   aligner's. The exact inverse of any cut sequence, in one atomic batch.
  *
- * The two-panel move-only picker (§3.2, D-W9 one contiguous point) renders both:
- * top panel = the slice for the upper segment, bottom = the lower one; clicking a
- * word moves the boundary — never typed, so `top + bottom == original` holds by
- * construction. No DOM, no sidecar here.
+ * The two-panel move-only picker (§3.2, D-W9 one contiguous point) renders the
+ * window's words only; `top + bottom == window` holds by construction. No DOM,
+ * no sidecar here.
  */
 
 import type { MatrixCellLink } from "./sidecarClient.ts";
+import type { AlignBatchAction } from "./sidecarClient.ts";
 import { cutOffsets, codePointLength, codePointSlice } from "./alignBeads.ts";
 import { escHtml as _esc } from "./diff.ts";
 
 /** One translation column of the matrix: cell_links[row][col] for a fixed col. */
 export type CellLinkColumn = ReadonlyArray<readonly MatrixCellLink[]>;
 
-// ─── Viable cut points (F7) ──────────────────────────────────────────────────────
+// ─── Windows (D-W13) ─────────────────────────────────────────────────────────────
+
+/** The link's current slice of its target, numeric ([0, len] when uncut). */
+export function linkWindow(l: MatrixCellLink): [number, number] {
+  const len = codePointLength(l.target_text_raw ?? "");
+  return [l.char_start ?? 0, l.char_end ?? len];
+}
+
+function _sameWindow(a: MatrixCellLink, b: MatrixCellLink): boolean {
+  const [as, ae] = linkWindow(a);
+  const [bs, be] = linkWindow(b);
+  return as === bs && ae === be;
+}
+
+/** True when the two cells share a target unit with IDENTICAL windows (⚠ fused). */
+export function cellsShareFusedTarget(
+  cur: readonly MatrixCellLink[], above: readonly MatrixCellLink[],
+): boolean {
+  return cur.some((l) =>
+    above.some((a) => a.target_unit_id === l.target_unit_id && _sameWindow(a, l)));
+}
+
+// ─── Viable cut points (F7, windowed) ────────────────────────────────────────────
 
 /**
- * Word boundaries where BOTH slices keep visible text. `cutOffsets` alone admits a
- * degenerate cut when text_raw carries leading/trailing whitespace (offset 1 on
- * " Hello world" → a whitespace-only head slice, projected as an empty cell ∅ —
- * the very slice §3.2 forbids). Every consumer (resolvers, suggestion, panels)
- * goes through this filter.
+ * Word boundaries strictly inside `(ws, we)` where BOTH sub-slices keep visible
+ * text (a whitespace-only slice would project as an empty cell ∅ — forbidden by
+ * §3.2). Every consumer (resolvers, suggestion, panels) goes through this filter.
  */
-export function viableCutOffsets(text: string): number[] {
-  const len = codePointLength(text);
+export function viableCutOffsetsIn(text: string, ws: number, we: number): number[] {
   return cutOffsets(text).filter(
-    (o) => codePointSlice(text, 0, o).trim() !== "" && codePointSlice(text, o, len).trim() !== "",
+    (o) => o > ws && o < we
+      && codePointSlice(text, ws, o).trim() !== ""
+      && codePointSlice(text, o, we).trim() !== "",
   );
 }
 
-// ─── Resolution : fused cell → the 2 links of its 2-1 bead (3b) ──────────────────
+/** Whole-text variant (window = [0, len]). */
+export function viableCutOffsets(text: string): number[] {
+  return viableCutOffsetsIn(text, 0, codePointLength(text));
+}
 
-export type CellCutResolution =
-  | { links: [MatrixCellLink, MatrixCellLink]; error?: undefined }
-  | { links?: undefined; error: string };
+// ─── Resolution : fused ⚠ cell → partition of its same-window group ─────────────
+
+export type FusedCutResolution =
+  | {
+      /** Same-window group members strictly above the clicked row — take the head. */
+      above: MatrixCellLink[];
+      /** The clicked row's member and those below — take the tail (stay fused together). */
+      below: MatrixCellLink[];
+      window: [number, number];
+      targetRaw: string;
+      error?: undefined;
+    }
+  | { above?: undefined; below?: undefined; window?: undefined; targetRaw?: undefined; error: string };
 
 /**
- * From one translation column, find the two links behind the fused cell at `row`:
- * the single uncut target unit shared with the row above. Returns them ordered
- * [above, row] — the order `buildCutActions` expects (first link keeps the head
- * slice). Errors are user-facing French messages (v1 scope: exactly one shared
- * target, 2-1 only, not already cut, at least one viable boundary).
+ * Resolve the fused cut at `row`: the boundary lands BETWEEN this row and the
+ * previous one — every same-window holder above keeps `[ws, x]`, the clicked row
+ * and every holder below keep `[x, we]`. A plain 2-1 is the group of two.
  */
-export function resolveFusedCellLinks(column: CellLinkColumn, row: number): CellCutResolution {
+export function resolveFusedCellLinks(column: CellLinkColumn, row: number): FusedCutResolution {
   if (row < 1 || row >= column.length) return { error: "Cellule hors de la matrice." };
-  const above = column[row - 1] ?? [];
+  const aboveCell = column[row - 1] ?? [];
   const cur = column[row] ?? [];
-  if (above.length === 0 || cur.length === 0) {
+  if (aboveCell.length === 0 || cur.length === 0) {
     return { error: "Liens d'alignement introuvables pour cette cellule." };
   }
-  const aboveTargets = new Set(above.map((l) => l.target_unit_id));
-  const shared = [...new Set(cur.map((l) => l.target_unit_id))].filter((t) => aboveTargets.has(t));
+  const shared = [...new Set(
+    cur.filter((l) => aboveCell.some((a) => a.target_unit_id === l.target_unit_id && _sameWindow(a, l)))
+      .map((l) => l.target_unit_id),
+  )];
   if (shared.length === 0) {
     return { error: "Les deux lignes pointent vers des traductions distinctes — rien à couper ici." };
   }
   if (shared.length > 1) {
     return { error: "Appariement ambigu (plusieurs traductions partagées) — passer par la Révision fine." };
   }
-  const holders = column.reduce(
-    (n, links) => n + links.filter((l) => l.target_unit_id === shared[0]).length, 0);
-  if (holders > 2) {
-    return {
-      error: `Cette traduction couvre ${holders} segments du moyeu — la coupe ne gère que le cas 2-1 pour l'instant.`,
-    };
+  const ref = cur.find((l) => l.target_unit_id === shared[0])!;
+  const [ws, we] = linkWindow(ref);
+  // The partition group: every link on this target with the SAME window, row by row.
+  const above: MatrixCellLink[] = [];
+  const below: MatrixCellLink[] = [];
+  column.forEach((links, i) => {
+    for (const l of links) {
+      if (l.target_unit_id === shared[0] && _sameWindow(l, ref)) {
+        (i < row ? above : below).push(l);
+      }
+    }
+  });
+  if (above.length === 0 || below.length === 0) {
+    return { error: "Liens d'alignement introuvables pour cette cellule." };
   }
-  const la = above.find((l) => l.target_unit_id === shared[0])!;
-  const lb = cur.find((l) => l.target_unit_id === shared[0])!;
-  if (la.char_start != null || lb.char_start != null) {
-    return { error: "Cette traduction est déjà coupée — annuler d'abord la coupe (↺, Révision fine)." };
+  const raw = ref.target_text_raw ?? "";
+  if (viableCutOffsetsIn(raw, ws, we).length === 0) {
+    return { error: "Aucun point de coupe possible dans cette tranche (un seul mot)." };
   }
-  if (viableCutOffsets(la.target_text_raw ?? "").length === 0) {
-    return { error: "Traduction d'un seul mot — aucun point de coupe possible." };
-  }
-  return { links: [la, lb] };
+  return { above, below, window: [ws, we], targetRaw: raw };
 }
 
-// ─── Resolution : straddle cut toward a neighbour (D-W12 « couper à cheval ») ─────
+// ─── Resolution : straddle cut toward a neighbour (D-W12/13 « couper à cheval ») ──
 
 export type StraddleDirection = "up" | "down";
 
 export type StraddleResolution =
-  | { link: MatrixCellLink; neighborRow: number; error?: undefined }
-  | { link?: undefined; neighborRow?: undefined; error: string };
+  | { link: MatrixCellLink; neighborRow: number; window: [number, number]; error?: undefined }
+  | { link?: undefined; neighborRow?: undefined; window?: undefined; error: string };
 
 /**
- * Resolve « couper à cheval » on the cell at `row`: its (single, uncut) translation
- * spills over the neighbouring hub segment (`up` = the HEAD belongs to row-1,
- * `down` = the TAIL belongs to row+1). The gesture then creates the missing link
- * toward the neighbour and slices both — this resolver only vets the preconditions:
- * one uncut link, an existing neighbour row, the neighbour not already holding this
- * target (that shape is the fused case → « ✂ Couper » classique), and a viable
- * boundary.
+ * Resolve « couper à cheval » on the cell at `row`: part of its (single) link's
+ * window spills over the neighbouring hub segment (`up` = the HEAD belongs to
+ * row-1, `down` = the TAIL belongs to row+1). The gesture creates the missing
+ * link toward the neighbour and partitions the window. Iterative (D-W13): the
+ * link may already carry a cut — the gesture splits its current slice.
  */
 export function resolveStraddleCut(
   column: CellLinkColumn, row: number, direction: StraddleDirection,
@@ -120,37 +161,97 @@ export function resolveStraddleCut(
     return { error: "Cellule à plusieurs traductions (bead) — passer par la Révision fine pour ce cas." };
   }
   const link = cur[0];
-  if (link.char_start != null) {
-    return { error: "Cette traduction est déjà coupée — annuler d'abord la coupe (↺, Révision fine)." };
-  }
   const neighbor = column[neighborRow] ?? [];
   if (neighbor.some((l) => l.target_unit_id === link.target_unit_id)) {
-    return { error: "Le segment voisin partage déjà cette traduction — utiliser « ✂ Couper » sur la cellule ⚠." };
+    return cellsShareFusedTarget(cur, neighbor)
+      ? { error: "Le segment voisin partage déjà cette traduction — utiliser « ✂ Couper » sur la cellule ⚠." }
+      : { error: "Le segment voisin porte déjà une part de cette traduction — annuler la coupe (↺) puis recouper." };
   }
-  if (viableCutOffsets(link.target_text_raw ?? "").length === 0) {
-    return { error: "Traduction d'un seul mot — aucun point de coupe possible." };
+  const [ws, we] = linkWindow(link);
+  if (viableCutOffsetsIn(link.target_text_raw ?? "", ws, we).length === 0) {
+    return { error: "Aucun point de coupe possible dans cette tranche (un seul mot)." };
   }
-  return { link, neighborRow };
+  return { link, neighborRow, window: [ws, we] };
+}
+
+// ─── Resolution : cell ↺ → the target becomes whole again (D-W13) ────────────────
+
+export type UncutResolution =
+  | { clears: MatrixCellLink[]; deletes: MatrixCellLink[]; error?: undefined }
+  | { clears?: undefined; deletes?: undefined; error: string };
+
+/**
+ * Resolve the cell ↺ at `row`: pick the cell's (single) cut target, gather every
+ * link on it across the column — the whole cut sequence — and split them into
+ * `clears` (aligner links: clear_target_span) and `deletes` (gesture-created
+ * `manual` links carrying a cut). If ONLY manual links hold the target (hand-built
+ * alignment), nothing is deleted — everything is cleared, so the target is never
+ * orphaned.
+ */
+export function resolveCellUncut(column: CellLinkColumn, row: number): UncutResolution {
+  const cur = column[row] ?? [];
+  const cutTargets = [...new Set(cur.filter((l) => l.char_start != null).map((l) => l.target_unit_id))];
+  if (cutTargets.length === 0) return { error: "Aucune coupe à annuler sur cette cellule." };
+  if (cutTargets.length > 1) {
+    return { error: "Plusieurs traductions coupées sur cette cellule — passer par la Révision fine." };
+  }
+  const group = column.flatMap((links) => links.filter((l) => l.target_unit_id === cutTargets[0]));
+  const cutLinks = group.filter((l) => l.char_start != null);
+  const hasAlignerLink = group.some((l) => l.manual !== true);
+  const deletes = hasAlignerLink ? cutLinks.filter((l) => l.manual === true) : [];
+  const clears = cutLinks.filter((l) => !deletes.includes(l));
+  return { clears, deletes };
+}
+
+/** Atomic batch for the ↺: clear the aligner links' cuts, delete the manual ones. */
+export function buildUncutActions(res: { clears: MatrixCellLink[]; deletes: MatrixCellLink[] }): AlignBatchAction[] {
+  return [
+    ...res.clears.map((l) => ({ action: "clear_target_span" as const, link_id: l.link_id })),
+    ...res.deletes.map((l) => ({ action: "delete" as const, link_id: l.link_id })),
+  ];
+}
+
+// ─── Partition actions (D-W13 — the write behind both cut gestures) ─────────────
+
+/**
+ * Actions partitioning the window `[ws, we]` at `cutOffset`: every `above` link
+ * gets `[ws, cutOffset]`, every `below` link `[cutOffset, we]`. Returns [] on a
+ * degenerate offset (an empty slice is not a cut — §3.2 conservation) or an empty
+ * side.
+ */
+export function buildPartitionActions(
+  above: ReadonlyArray<Pick<MatrixCellLink, "link_id">>,
+  below: ReadonlyArray<Pick<MatrixCellLink, "link_id">>,
+  cutOffset: number, ws: number, we: number,
+): AlignBatchAction[] {
+  if (above.length === 0 || below.length === 0) return [];
+  if (cutOffset <= ws || cutOffset >= we) return [];
+  return [
+    ...above.map((l) => ({ action: "set_target_span" as const, link_id: l.link_id, char_start: ws, char_end: cutOffset })),
+    ...below.map((l) => ({ action: "set_target_span" as const, link_id: l.link_id, char_start: cutOffset, char_end: we })),
+  ];
 }
 
 // ─── Suggestion : pre-filled cut point (§3.2 « suggestion qu'on ajuste ») ────────
 
 /**
- * Suggested cut offset: split the target proportionally to the two hub segments'
- * lengths, snapped to the nearest viable word boundary. `null` when the target has
- * no viable boundary (single word).
+ * Suggested cut offset inside the window: split proportionally to the two hub
+ * sides' lengths, snapped to the nearest viable boundary. `null` when the window
+ * has no viable boundary.
  */
 export function suggestCutOffset(
   targetRaw: string,
   hubTextAbove: string,
   hubTextRow: string,
+  window?: [number, number],
 ): number | null {
-  const offs = viableCutOffsets(targetRaw);
+  const [ws, we] = window ?? [0, codePointLength(targetRaw)];
+  const offs = viableCutOffsetsIn(targetRaw, ws, we);
   if (offs.length === 0) return null;
   const a = codePointLength(hubTextAbove);
   const b = codePointLength(hubTextRow);
   const ratio = a + b > 0 ? a / (a + b) : 0.5;
-  const ideal = codePointLength(targetRaw) * ratio;
+  const ideal = ws + (we - ws) * ratio;
   let best = offs[0];
   for (const o of offs) {
     if (Math.abs(o - ideal) < Math.abs(best - ideal)) best = o;
@@ -158,7 +259,7 @@ export function suggestCutOffset(
   return best;
 }
 
-// ─── Two-panel picker HTML (§3.2, move-only) ─────────────────────────────────────
+// ─── Two-panel picker HTML (§3.2, move-only, windowed) ───────────────────────────
 
 export interface CutPanelsLabels {
   /** 1-based hub segment numbers, for the panel headers. */
@@ -169,24 +270,24 @@ export interface CutPanelsLabels {
 }
 
 /**
- * The two panels at cut `offset`: each word is a button carrying in
- * `data-cut-offset` the boundary that *moves it to the other panel* (click a top
- * word → it and the following words go down; click a bottom word → it and the
- * preceding words come up). Only boundaries keeping both slices non-blank are
- * clickable (F7); the first and last words are fixed (an empty slice is not a
- * cut). All corpus text is escaped; inject via `setHtml(raw(...))`.
+ * The window's words split at cut `offset`: each word is a button carrying in
+ * `data-cut-offset` the boundary that *moves it to the other panel*. Only
+ * boundaries keeping both slices non-blank are clickable (F7); the window's edge
+ * words are fixed (an empty slice is not a cut). All corpus text is escaped;
+ * inject via `setHtml(raw(...))`.
  */
 export function buildCutPanelsHtml(
   targetRaw: string,
   offset: number,
   labels: CutPanelsLabels,
+  window?: [number, number],
 ): string {
-  const starts = [0, ...cutOffsets(targetRaw)];
-  const len = codePointLength(targetRaw);
-  const viable = new Set(viableCutOffsets(targetRaw));
+  const [ws, we] = window ?? [0, codePointLength(targetRaw)];
+  const starts = [ws, ...cutOffsets(targetRaw).filter((o) => o > ws && o < we)];
+  const viable = new Set(viableCutOffsetsIn(targetRaw, ws, we));
 
   const word = (i: number, newOffset: number | null): string => {
-    const text = codePointSlice(targetRaw, starts[i], starts[i + 1] ?? len).trim();
+    const text = codePointSlice(targetRaw, starts[i], starts[i + 1] ?? we).trim();
     if (newOffset === null || !viable.has(newOffset)) {
       return `<span class="prep-matrix-cut-word prep-matrix-cut-word--fixed">${_esc(text)}</span>`;
     }
@@ -198,10 +299,10 @@ export function buildCutPanelsHtml(
   const bottom: string[] = [];
   for (let i = 0; i < starts.length; i++) {
     if (starts[i] < offset) {
-      // Clicking a top word moves the boundary *before* it (word 0 excluded).
+      // Clicking a top word moves the boundary *before* it (the window's first word excluded).
       top.push(word(i, i === 0 ? null : starts[i]));
     } else {
-      // Clicking a bottom word moves the boundary *after* it (last word excluded).
+      // Clicking a bottom word moves the boundary *after* it (the window's last word excluded).
       bottom.push(word(i, i === starts.length - 1 ? null : starts[i + 1]));
     }
   }

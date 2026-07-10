@@ -13,8 +13,8 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { AlignMatrixView } from "../AlignMatrixView.ts";
 import type { AlignMatrix, Conn, MatrixCellLink } from "../../lib/sidecarClient.ts";
 
-function lk(link_id: number, target: number, raw: string): MatrixCellLink {
-  return { link_id, target_unit_id: target, char_start: null, char_end: null, target_text_raw: raw };
+function lk(link_id: number, target: number, raw: string, over: Partial<MatrixCellLink> = {}): MatrixCellLink {
+  return { link_id, target_unit_id: target, char_start: null, char_end: null, target_text_raw: raw, ...over };
 }
 
 /** Two hub rows sharing one uncut EN target (the fused 2-1 of tranche 3b). */
@@ -46,8 +46,25 @@ const MATRIX_STRADDLE: AlignMatrix = {
   hub_unit_ids: [101, 102],
   language_doc_ids: [2, 3],
   cell_links: [
-    [[lk(13, 900, "As far back")]],
-    [[lk(14, 901, "It is the sound")]],
+    [[lk(13, 900, "As far back", { external_id: 1 })]],
+    [[lk(14, 901, "It is the sound", { external_id: 2 })]],
+  ],
+};
+
+/** A resolved straddle cut: aligner head + manual tail — the ↺ shape (D-W13). */
+const MATRIX_CUT: AlignMatrix = {
+  headers: ["paragraphe", "segment", "fr", "en"],
+  languages: ["fr", "en"],
+  hub_doc_id: 2,
+  rows: [
+    ["1", 1, "FR un", "As far"],
+    ["1", 2, "FR deux", "back"],
+  ],
+  hub_unit_ids: [101, 102],
+  language_doc_ids: [2, 3],
+  cell_links: [
+    [[lk(13, 900, "As far back", { char_start: 0, char_end: 6 })]],
+    [[lk(77, 900, "As far back", { char_start: 6, char_end: 11, manual: true })]],
   ],
 };
 
@@ -295,9 +312,10 @@ describe("AlignMatrixView — « ✂ couper à cheval » (D-W12)", () => {
     await vi.waitFor(() => {
       expect(calls.filter((c) => c.path === "/align/matrix")).toHaveLength(2); // re-projected
     });
-    // The missing link goes to the NEIGHBOUR hub unit (FR deux = 102), same target.
+    // The missing link goes to the NEIGHBOUR hub unit (FR deux = 102), same target,
+    // and inherits the sibling's pair number (D-W13, 1.6.55).
     const create = calls.find((c) => c.path === "/align/link/create");
-    expect(create?.body).toEqual({ pivot_unit_id: 102, target_unit_id: 900 });
+    expect(create?.body).toEqual({ pivot_unit_id: 102, target_unit_id: 900, external_id: 1 });
     // "down": the cell keeps the head, the created link takes the tail — atomically.
     // Suggested boundary on "As far back" (hubs "FR un"/"FR deux") = 3.
     const batch = calls.find((c) => c.path === "/align/links/batch_update");
@@ -334,5 +352,26 @@ describe("AlignMatrixView — « ✂ couper à cheval » (D-W12)", () => {
     expect(del?.body).toEqual({ link_id: 77 });
     expect(document.querySelector(".prep-matrix-cut-overlay")).not.toBeNull();
     expect(calls.filter((c) => c.path === "/align/matrix")).toHaveLength(1); // nothing changed
+  });
+});
+
+describe("AlignMatrixView — « ↺ » cellule (D-W13)", () => {
+  it("clears the aligner link, deletes the manual one — atomically — then re-projects", async () => {
+    const calls: Array<{ path: string; body: unknown }> = [];
+    const { toasts } = await mountWithMatrix(calls, { matrix: MATRIX_CUT });
+
+    document.querySelector<HTMLButtonElement>('.prep-matrix-uncut-btn[data-cut-row="0"]')!.click();
+    await vi.waitFor(() => {
+      expect(calls.filter((c) => c.path === "/align/matrix")).toHaveLength(2); // re-projected
+    });
+    const batch = calls.find((c) => c.path === "/align/links/batch_update");
+    expect(batch?.body).toEqual({
+      actions: [
+        { action: "clear_target_span", link_id: 13 },
+        { action: "delete", link_id: 77 },
+      ],
+      atomic: true,
+    });
+    expect(toasts.some((t) => t.includes("✓ Coupe annulée"))).toBe(true);
   });
 });

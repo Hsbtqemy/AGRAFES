@@ -67,6 +67,26 @@ describe("buildMatrixGridHtml", () => {
     expect(html2).not.toContain("prep-matrix-cut-any-btn");
   });
 
+  it("D-W13: ↺ on cells whose links carry a cut", () => {
+    const withCut: AlignMatrix = {
+      headers: ["paragraphe", "segment", "fr", "en"],
+      languages: ["fr", "en"],
+      hub_doc_id: 2,
+      hub_unit_ids: [11, 12],
+      language_doc_ids: [2, 3],
+      rows: [["1", 1, "FR1", "head"], ["1", 2, "FR2", "tail"]],
+      cell_links: [
+        [[{ link_id: 1, target_unit_id: 91, char_start: 0, char_end: 5, target_text_raw: "head tail" }]],
+        [[{ link_id: 7, target_unit_id: 91, char_start: 5, char_end: 9, target_text_raw: "head tail", manual: true }]],
+      ],
+    };
+    const html = buildMatrixGridHtml(buildMatrixView(withCut));
+    expect(html.match(/prep-matrix-uncut-btn/g) ?? []).toHaveLength(2); // both cut cells
+    // No ↺ without a cut.
+    const html2 = buildMatrixGridHtml(buildMatrixView(SAMPLE));
+    expect(html2).not.toContain("prep-matrix-uncut-btn");
+  });
+
   it("escapes corpus text (imported docs are untrusted)", () => {
     const evil: AlignMatrix = {
       headers: ["paragraphe", "segment", "fr", "en"],

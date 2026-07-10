@@ -996,6 +996,8 @@ export interface AlignLinkCreateOptions {
   pivot_unit_id: number;
   target_unit_id: number;
   status?: "accepted" | "rejected" | null;
+  /** 1.6.55 (D-W13): pair number to inherit (sorts next to its sibling in audit views). */
+  external_id?: number;
 }
 
 export interface AlignLinkCreateResponse {
@@ -1629,6 +1631,10 @@ export interface MatrixCellLink {
   char_end: number | null;
   /** Verbatim target text — the string the cut offsets index. */
   target_text_raw: string;
+  /** 1.6.55 (D-W13): pair number — a gesture-created link inherits its sibling's. */
+  external_id?: number | null;
+  /** 1.6.55 (D-W13): run_id='manual' — the cell ↺ deletes these, never aligner links. */
+  manual?: boolean;
 }
 
 /** Source-anchored multilingual matrix (read-only projection) — R3.3 tranche 2. */

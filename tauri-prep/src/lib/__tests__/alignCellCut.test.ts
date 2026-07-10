@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
-  resolveFusedCellLinks, resolveStraddleCut, suggestCutOffset, buildCutPanelsHtml, viableCutOffsets,
+  resolveFusedCellLinks, resolveStraddleCut, resolveCellUncut,
+  buildPartitionActions, buildUncutActions, suggestCutOffset, buildCutPanelsHtml,
+  viableCutOffsets, viableCutOffsetsIn, linkWindow, cellsShareFusedTarget,
 } from "../alignCellCut.ts";
 import type { CellLinkColumn } from "../alignCellCut.ts";
 import { codePointSlice, codePointLength, cutOffsets } from "../alignBeads.ts";
@@ -20,55 +22,82 @@ function lk(
   };
 }
 
-describe("resolveFusedCellLinks (via cell_links)", () => {
+describe("linkWindow / cellsShareFusedTarget (D-W13)", () => {
+  it("an uncut link's window is [0, len]; identical windows read fused", () => {
+    expect(linkWindow(lk(1, 90, { target_text_raw: "ab cd" }))).toEqual([0, 5]);
+    expect(cellsShareFusedTarget([lk(1, 90)], [lk(2, 90)])).toBe(true);
+  });
+
+  it("same target with DIFFERENT windows (a resolved cut) is not fused", () => {
+    const head = lk(1, 90, { char_start: 0, char_end: 6 });
+    const tail = lk(2, 90, { char_start: 6, char_end: 11 });
+    expect(cellsShareFusedTarget([tail], [head])).toBe(false);
+  });
+
+  it("a partly-partitioned N-1 keeps its fused tail (identical sub-windows)", () => {
+    const t1 = lk(2, 90, { char_start: 6, char_end: 11 });
+    const t2 = lk(3, 90, { char_start: 6, char_end: 11 });
+    expect(cellsShareFusedTarget([t2], [t1])).toBe(true);
+  });
+});
+
+describe("resolveFusedCellLinks (partition of the same-window group)", () => {
   const T = 90;
 
-  it("resolves a 2-1 pair ordered [above, row]", () => {
+  it("resolves a 2-1 pair: above/below sides + whole-text window", () => {
     const column: CellLinkColumn = [[lk(1, T)], [lk(2, T)]];
     const res = resolveFusedCellLinks(column, 1);
     expect(res.error).toBeUndefined();
-    expect(res.links!.map((l) => l.link_id)).toEqual([1, 2]);
+    expect(res.above!.map((l) => l.link_id)).toEqual([1]);
+    expect(res.below!.map((l) => l.link_id)).toEqual([2]);
+    expect(res.window).toEqual([0, 11]); // "shared text"
   });
 
-  it("rejects when the rows point to distinct target units", () => {
-    const column: CellLinkColumn = [[lk(1, 90)], [lk(2, 91)]];
-    expect(resolveFusedCellLinks(column, 1).error).toMatch(/distinctes/);
-  });
-
-  it("rejects a 3-1 fusion counted across the whole column (v1 = 2-1 only)", () => {
+  it("a 3-1 partitions instead of refusing (D-W13): boundary lands before the clicked row", () => {
     const column: CellLinkColumn = [[lk(1, T)], [lk(2, T)], [lk(3, T)]];
-    expect(resolveFusedCellLinks(column, 2).error).toMatch(/3 segments/);
+    const at1 = resolveFusedCellLinks(column, 1);
+    expect(at1.above!.map((l) => l.link_id)).toEqual([1]);
+    expect(at1.below!.map((l) => l.link_id)).toEqual([2, 3]);
+    const at2 = resolveFusedCellLinks(column, 2);
+    expect(at2.above!.map((l) => l.link_id)).toEqual([1, 2]);
+    expect(at2.below!.map((l) => l.link_id)).toEqual([3]);
   });
 
-  it("rejects an already-cut pair", () => {
+  it("re-cuts the still-fused tail of a partial partition, inside ITS window", () => {
+    const raw = "one two three four";
     const column: CellLinkColumn = [
-      [lk(1, T, { char_start: 0, char_end: 6 })],
-      [lk(2, T, { char_start: 6, char_end: 11 })],
+      [lk(1, T, { target_text_raw: raw, char_start: 0, char_end: 4 })],
+      [lk(2, T, { target_text_raw: raw, char_start: 4, char_end: 18 })],
+      [lk(3, T, { target_text_raw: raw, char_start: 4, char_end: 18 })],
     ];
-    expect(resolveFusedCellLinks(column, 1).error).toMatch(/déjà coupée/);
+    const res = resolveFusedCellLinks(column, 2);
+    expect(res.error).toBeUndefined();
+    // Only the same-window tail pair is partitioned — the head link is untouched.
+    expect(res.above!.map((l) => l.link_id)).toEqual([2]);
+    expect(res.below!.map((l) => l.link_id)).toEqual([3]);
+    expect(res.window).toEqual([4, 18]);
   });
 
-  it("rejects a single-word target — including behind leading whitespace (F7)", () => {
-    const one: CellLinkColumn = [
+  it("rejects distinct targets, ambiguity, and windowless single words", () => {
+    expect(resolveFusedCellLinks([[lk(1, 90)], [lk(2, 91)]], 1).error).toMatch(/distinctes/);
+    const ambiguous: CellLinkColumn = [
+      [lk(1, 90), lk(2, 91)],
+      [lk(3, 90), lk(4, 91)],
+    ];
+    expect(resolveFusedCellLinks(ambiguous, 1).error).toMatch(/ambigu/);
+    const single: CellLinkColumn = [
       [lk(1, T, { target_text_raw: "Indivisible" })], [lk(2, T, { target_text_raw: "Indivisible" })],
     ];
-    expect(resolveFusedCellLinks(one, 1).error).toMatch(/seul mot/);
-    const padded: CellLinkColumn = [
-      [lk(1, T, { target_text_raw: " Hello" })], [lk(2, T, { target_text_raw: " Hello" })],
-    ];
-    expect(resolveFusedCellLinks(padded, 1).error).toMatch(/seul mot/);
-  });
-
-  it("rejects a cell without links, and row 0", () => {
+    expect(resolveFusedCellLinks(single, 1).error).toMatch(/un seul mot/);
     expect(resolveFusedCellLinks([[], [lk(1, T)]], 1).error).toMatch(/introuvables/);
     expect(resolveFusedCellLinks([[lk(1, T)], [lk(2, T)]], 0).error).toMatch(/hors/);
   });
 });
 
-describe("resolveStraddleCut (D-W12 « couper à cheval »)", () => {
+describe("resolveStraddleCut (D-W12/13 « couper à cheval », fenêtré)", () => {
   const RAW = "As far back as I can remember";
 
-  it("resolves down: the tail belongs to the next segment", () => {
+  it("resolves down with the whole-text window on an uncut link", () => {
     const column: CellLinkColumn = [
       [lk(1, 90, { target_text_raw: RAW })],
       [lk(2, 91, { target_text_raw: "It is the sound" })],
@@ -77,17 +106,17 @@ describe("resolveStraddleCut (D-W12 « couper à cheval »)", () => {
     expect(res.error).toBeUndefined();
     expect(res.link!.link_id).toBe(1);
     expect(res.neighborRow).toBe(1);
+    expect(res.window).toEqual([0, codePointLength(RAW)]);
   });
 
-  it("resolves up symmetrically", () => {
+  it("iterates: a CUT link re-cuts inside its current slice (D-W13)", () => {
     const column: CellLinkColumn = [
-      [lk(1, 90, { target_text_raw: "It is the sound" })],
-      [lk(2, 91, { target_text_raw: RAW })],
+      [lk(1, 90, { target_text_raw: RAW, char_start: 12, char_end: 30 })],
+      [lk(2, 91, { target_text_raw: "It is the sound" })],
     ];
-    const res = resolveStraddleCut(column, 1, "up");
+    const res = resolveStraddleCut(column, 0, "down");
     expect(res.error).toBeUndefined();
-    expect(res.link!.link_id).toBe(2);
-    expect(res.neighborRow).toBe(0);
+    expect(res.window).toEqual([12, 30]);
   });
 
   it("rejects when there is no neighbour in that direction", () => {
@@ -96,59 +125,127 @@ describe("resolveStraddleCut (D-W12 « couper à cheval »)", () => {
     expect(resolveStraddleCut(column, 0, "down").error).toMatch(/en dessous/);
   });
 
-  it("redirects to the fused gesture when the neighbour already shares the target", () => {
-    const column: CellLinkColumn = [
+  it("redirects when the neighbour already holds the target", () => {
+    // Same window → the fused ✂ gesture; different window → undo-then-recut.
+    const fused: CellLinkColumn = [
       [lk(1, 90, { target_text_raw: RAW })],
       [lk(2, 90, { target_text_raw: RAW })],
     ];
-    expect(resolveStraddleCut(column, 1, "up").error).toMatch(/partage déjà/);
+    expect(resolveStraddleCut(fused, 1, "up").error).toMatch(/cellule ⚠/);
+    const boundary: CellLinkColumn = [
+      [lk(1, 90, { target_text_raw: RAW, char_start: 0, char_end: 12 })],
+      [lk(2, 90, { target_text_raw: RAW, char_start: 12, char_end: 30 })],
+    ];
+    expect(resolveStraddleCut(boundary, 1, "up").error).toMatch(/déjà une part/);
   });
 
-  it("rejects multi-link cells, cut links, empty cells and single words", () => {
+  it("rejects multi-link cells, empty cells and windowless single words", () => {
     const two: CellLinkColumn = [[lk(1, 90), lk(2, 91)], [lk(3, 92)]];
     expect(resolveStraddleCut(two, 0, "down").error).toMatch(/plusieurs traductions/);
-    const cut: CellLinkColumn = [
-      [lk(1, 90, { char_start: 0, char_end: 6 })], [lk(2, 91)],
-    ];
-    expect(resolveStraddleCut(cut, 0, "down").error).toMatch(/déjà coupée/);
     expect(resolveStraddleCut([[], [lk(1, 90)]], 0, "down").error).toMatch(/sans traduction/);
     const single: CellLinkColumn = [
       [lk(1, 90, { target_text_raw: "Indivisible" })], [lk(2, 91)],
     ];
-    expect(resolveStraddleCut(single, 0, "down").error).toMatch(/seul mot/);
+    expect(resolveStraddleCut(single, 0, "down").error).toMatch(/un seul mot/);
   });
 });
 
-describe("viableCutOffsets (F7 — no blank slice)", () => {
+describe("resolveCellUncut / buildUncutActions (D-W13 ↺)", () => {
+  const RAW = "As far back as I can remember";
+
+  it("clears the aligner links and deletes the gesture-created manual ones", () => {
+    const column: CellLinkColumn = [
+      [lk(1, 90, { target_text_raw: RAW, char_start: 0, char_end: 12 })],
+      [lk(7, 90, { target_text_raw: RAW, char_start: 12, char_end: 30, manual: true }),
+        lk(2, 91, { target_text_raw: "It is the sound" })],
+    ];
+    const res = resolveCellUncut(column, 1);
+    expect(res.error).toBeUndefined();
+    expect(res.clears!.map((l) => l.link_id)).toEqual([1]);
+    expect(res.deletes!.map((l) => l.link_id)).toEqual([7]);
+    expect(buildUncutActions({ clears: res.clears!, deletes: res.deletes! })).toEqual([
+      { action: "clear_target_span", link_id: 1 },
+      { action: "delete", link_id: 7 },
+    ]);
+  });
+
+  it("works from ANY cell of the cut sequence (here the head cell)", () => {
+    const column: CellLinkColumn = [
+      [lk(1, 90, { char_start: 0, char_end: 6 })],
+      [lk(7, 90, { char_start: 6, char_end: 11, manual: true })],
+    ];
+    const res = resolveCellUncut(column, 0);
+    expect(res.clears!.map((l) => l.link_id)).toEqual([1]);
+    expect(res.deletes!.map((l) => l.link_id)).toEqual([7]);
+  });
+
+  it("never orphans a hand-built target: all-manual groups are cleared, not deleted", () => {
+    const column: CellLinkColumn = [
+      [lk(5, 90, { char_start: 0, char_end: 6, manual: true })],
+      [lk(6, 90, { char_start: 6, char_end: 11, manual: true })],
+    ];
+    const res = resolveCellUncut(column, 1);
+    expect(res.deletes).toEqual([]);
+    expect(res.clears!.map((l) => l.link_id)).toEqual([5, 6]);
+  });
+
+  it("rejects cells without a cut, or with several cut targets", () => {
+    expect(resolveCellUncut([[lk(1, 90)]], 0).error).toMatch(/Aucune coupe/);
+    const two: CellLinkColumn = [[
+      lk(1, 90, { char_start: 0, char_end: 6 }),
+      lk(2, 91, { char_start: 0, char_end: 6 }),
+    ]];
+    expect(resolveCellUncut(two, 0).error).toMatch(/Plusieurs traductions/);
+  });
+});
+
+describe("buildPartitionActions (D-W13)", () => {
+  it("assigns [ws,x] to every above link and [x,we] to every below link", () => {
+    expect(buildPartitionActions([{ link_id: 1 }], [{ link_id: 2 }, { link_id: 3 }], 6, 0, 18)).toEqual([
+      { action: "set_target_span", link_id: 1, char_start: 0, char_end: 6 },
+      { action: "set_target_span", link_id: 2, char_start: 6, char_end: 18 },
+      { action: "set_target_span", link_id: 3, char_start: 6, char_end: 18 },
+    ]);
+  });
+
+  it("refuses degenerate offsets (empty slice) and empty sides", () => {
+    expect(buildPartitionActions([{ link_id: 1 }], [{ link_id: 2 }], 0, 0, 10)).toEqual([]);
+    expect(buildPartitionActions([{ link_id: 1 }], [{ link_id: 2 }], 10, 0, 10)).toEqual([]);
+    expect(buildPartitionActions([{ link_id: 1 }], [{ link_id: 2 }], 3, 4, 10)).toEqual([]);
+    expect(buildPartitionActions([], [{ link_id: 2 }], 5, 0, 10)).toEqual([]);
+  });
+});
+
+describe("viableCutOffsets / viableCutOffsetsIn (F7, fenêtré)", () => {
   it("drops boundaries that leave a whitespace-only slice", () => {
     expect(cutOffsets(" Hello world")).toEqual([1, 7]);
     expect(viableCutOffsets(" Hello world")).toEqual([7]);
-  });
-
-  it("a single word behind leading whitespace has NO viable cut", () => {
     expect(viableCutOffsets(" Hello")).toEqual([]);
   });
 
-  it("keeps all boundaries of a clean multi-word text", () => {
-    expect(viableCutOffsets("aa bb cc")).toEqual([3, 6]);
+  it("windows restrict the candidates to the slice", () => {
+    const raw = "one two three four"; // word starts: 4, 8, 14
+    expect(viableCutOffsetsIn(raw, 0, 18)).toEqual([4, 8, 14]);
+    expect(viableCutOffsetsIn(raw, 4, 18)).toEqual([8, 14]);
+    expect(viableCutOffsetsIn(raw, 4, 14)).toEqual([8]);
+    expect(viableCutOffsetsIn(raw, 4, 8)).toEqual([]);
   });
 });
 
-describe("suggestCutOffset", () => {
+describe("suggestCutOffset (fenêtré)", () => {
   it("splits proportionally to the hub texts, snapped to a word boundary", () => {
-    // Hub above ≈ 3× hub row → ideal cut around 3/4 of the target.
     expect(suggestCutOffset("aa bb cc dd", "xxxxxxxxx", "xxx")).toBe(9);
-  });
-
-  it("falls back to the middle when hub lengths are equal", () => {
     expect(suggestCutOffset("aa bb cc dd", "xxx", "xxx")).toBe(6);
-  });
-
-  it("returns null for a single word", () => {
     expect(suggestCutOffset("Indivisible", "a", "b")).toBeNull();
   });
 
-  it("never pre-selects a blank-slice offset, even when it is the nearest (F7)", () => {
+  it("suggests inside the window on a re-cut", () => {
+    const raw = "one two three four";
+    // Window = the tail [4, 18]; equal hubs → ideal 11 → nearest of {8, 14} = 8... |8-11|=3, |14-11|=3 → first wins (8).
+    expect(suggestCutOffset(raw, "xxx", "xxx", [4, 18])).toBe(8);
+  });
+
+  it("never pre-selects a blank-slice offset (F7)", () => {
     expect(suggestCutOffset(" Hello world", "x", "xxxxxxxxxxxxxxxxxxxx")).toBe(7);
     expect(suggestCutOffset(" Hello", "x", "xxxxxxxxxx")).toBeNull();
   });
@@ -162,7 +259,7 @@ describe("suggestCutOffset", () => {
   });
 });
 
-describe("buildCutPanelsHtml", () => {
+describe("buildCutPanelsHtml (fenêtré)", () => {
   const labels = { topSeg: 3, topHub: "Moyeu 3", bottomSeg: 4, bottomHub: "Moyeu 4" };
 
   it("renders the two panels split at the offset, with the hub labels", () => {
@@ -175,13 +272,17 @@ describe("buildCutPanelsHtml", () => {
     expect(html.indexOf("three")).toBeGreaterThan(html.indexOf('data-panel="bottom"'));
   });
 
-  it("carries move offsets: a top word moves the boundary before it, a bottom word after it", () => {
-    const html = buildCutPanelsHtml("one two three four", 8, labels); // top = "one two"
-    expect(html).toContain('data-cut-offset="4"');
+  it("renders only the window's words on a re-cut", () => {
+    const html = buildCutPanelsHtml("one two three four", 8, labels, [4, 18]);
+    expect(html).not.toContain("one"); // outside the window
+    expect(html).toContain("two");
+    expect(html).toContain("four");
+    // Clickable boundaries: 8 belongs to the current split, 14 moves it.
     expect(html).toContain('data-cut-offset="14"');
+    expect(html).not.toContain('data-cut-offset="4"'); // window edge — empty slice
   });
 
-  it("keeps the first and last words fixed (an empty slice is not a cut)", () => {
+  it("keeps the window's first and last words fixed (an empty slice is not a cut)", () => {
     const html = buildCutPanelsHtml("one two", 4, labels);
     expect(html).not.toContain("data-cut-offset");
     expect(html).toContain("prep-matrix-cut-word--fixed");

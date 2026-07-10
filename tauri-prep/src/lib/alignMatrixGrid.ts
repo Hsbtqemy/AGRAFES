@@ -24,6 +24,12 @@ export function buildMatrixGridHtml(view: MatrixView): string {
 
   const body = view.rows.map((r, rowIdx) => {
     const cells = r.cells.map((c, colIdx) => {
+      // D-W13 — cell ↺ on any cell whose links carry a cut (hover-revealed):
+      // « cette traduction redevient entière » (clears + deletes the manual links).
+      const uncutBtn = view.hasCellLinks && c.links.some((l) => l.char_start != null)
+        ? ` <button type="button" class="prep-matrix-uncut-btn" data-cut-row="${rowIdx}" data-cut-col="${colIdx}"`
+          + ` title="Annuler la coupe — cette traduction redevient entière">&#8635;</button>`
+        : "";
       let inner: string;
       if (c.status === "empty") {
         inner = `<span class="prep-matrix-empty" title="Aucune traduction alignée">&#8709;</span>`;
@@ -34,7 +40,7 @@ export function buildMatrixGridHtml(view: MatrixView): string {
           ? ` <button type="button" class="prep-matrix-cut-btn" data-cut-row="${rowIdx}" data-cut-col="${colIdx}"`
             + ` title="Couper cette traduction fusionnée entre ce segment et le précédent">&#9986; Couper</button>`
           : "";
-        inner = `<span class="prep-matrix-warn" title="Traduction fusionnée avec la ligne du dessus (à couper)">&#9888;</span> ${_esc(c.text)}${cutBtn}`;
+        inner = `<span class="prep-matrix-warn" title="Traduction fusionnée avec la ligne du dessus (à couper)">&#9888;</span> ${_esc(c.text)}${cutBtn}${uncutBtn}`;
       } else {
         // D-W12 — on-demand straddle cut on any aligned cell (hover-revealed). Only
         // when the payload carries cell_links: the gesture cannot resolve without.
@@ -42,7 +48,7 @@ export function buildMatrixGridHtml(view: MatrixView): string {
           ? ` <button type="button" class="prep-matrix-cut-any-btn" data-cut-row="${rowIdx}" data-cut-col="${colIdx}"`
             + ` title="Couper à cheval — une partie de cette traduction appartient au segment voisin">&#9986;</button>`
           : "";
-        inner = `${_esc(c.text)}${anyBtn}`;
+        inner = `${_esc(c.text)}${anyBtn}${uncutBtn}`;
       }
       return `<td class="prep-matrix-cell prep-matrix-cell--${c.status}">${inner}</td>`;
     }).join("");

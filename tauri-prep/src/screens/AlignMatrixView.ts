@@ -25,9 +25,9 @@ import { buildMatrixView, matrixSummaryLine } from "../lib/alignMatrix.ts";
 import { buildMatrixGridHtml } from "../lib/alignMatrixGrid.ts";
 import type { CellLinkColumn, StraddleDirection } from "../lib/alignCellCut.ts";
 import {
-  resolveFusedCellLinks, resolveStraddleCut, suggestCutOffset, buildCutPanelsHtml,
+  resolveFusedCellLinks, resolveStraddleCut, resolveCellUncut,
+  buildPartitionActions, buildUncutActions, suggestCutOffset, buildCutPanelsHtml,
 } from "../lib/alignCellCut.ts";
-import { buildCutActions, codePointLength } from "../lib/alignBeads.ts";
 import { setHtml, raw, safeHtml } from "../lib/safeHtml.ts";
 import { escHtml as _esc } from "../lib/diff.ts";
 
@@ -89,7 +89,12 @@ export class AlignMatrixView {
         return;
       }
       const anyBtn = t.closest<HTMLButtonElement>(".prep-matrix-cut-any-btn");
-      if (anyBtn) this._openStraddleCut(Number(anyBtn.dataset.cutRow), Number(anyBtn.dataset.cutCol));
+      if (anyBtn) {
+        this._openStraddleCut(Number(anyBtn.dataset.cutRow), Number(anyBtn.dataset.cutCol));
+        return;
+      }
+      const uncutBtn = t.closest<HTMLButtonElement>(".prep-matrix-uncut-btn");
+      if (uncutBtn) void this._performCellUncut(Number(uncutBtn.dataset.cutRow), Number(uncutBtn.dataset.cutCol));
     });
     return root;
   }
@@ -259,26 +264,36 @@ export class AlignMatrixView {
       this._cb.toast?.(`✗ ${res.error}`, true);
       return;
     }
-    const targetRaw = res.links[0].target_text_raw ?? "";
+    // Hub texts of the group's two sides drive the proportional suggestion — for an
+    // N-1 partition (D-W13) each side may span several rows.
+    const rowsOf = (links: MatrixCellLink[]): MatrixRowView[] =>
+      ctx.view.rows.filter((r) => r.cells[col]?.links.some((l) => links.includes(l)));
+    const aboveRows = rowsOf(res.above);
+    const belowRows = rowsOf(res.below);
+    const hubAbove = aboveRows.map((r) => r.hubText).join(" ");
+    const hubBelow = belowRows.map((r) => r.hubText).join(" ");
     const rowAbove = ctx.view.rows[row - 1];
     const rowCur = ctx.view.rows[row];
-    const suggested = suggestCutOffset(targetRaw, rowAbove.hubText, rowCur.hubText);
+    const suggested = suggestCutOffset(res.targetRaw, hubAbove, hubBelow, res.window);
     if (suggested === null) return; // resolver guarantees a viable boundary
     let cur: number = suggested;
 
     const lang = ctx.view.translationLangs[col] ?? "?";
+    const segsAbove = aboveRows.map((r) => r.segment).join("+");
+    const segsBelow = belowRows.map((r) => r.segment).join("+");
     const { panelsHost, okBtn } = this._openPickerShell(
       `✂ Couper la traduction (${lang})`,
-      `Panneau haut = ce qui restera aligné au segment ${rowAbove.segment}, panneau bas = au segment `
-      + `${rowCur.segment}. Cliquez un mot pour le déplacer d'un panneau à l'autre (coupe en un point, `
+      `Panneau haut = ce qui restera aligné au segment ${segsAbove}, panneau bas = au segment `
+      + `${segsBelow}. Cliquez un mot pour le déplacer d'un panneau à l'autre (coupe en un point, `
       + `texte conservé verbatim — rien à retaper).`,
       "",
     );
     const labels = {
-      topSeg: rowAbove.segment, topHub: rowAbove.hubText,
-      bottomSeg: rowCur.segment, bottomHub: rowCur.hubText,
+      topSeg: rowAbove.segment, topHub: hubAbove,
+      bottomSeg: rowCur.segment, bottomHub: hubBelow,
     };
-    const renderPanels = () => setHtml(panelsHost, raw(buildCutPanelsHtml(targetRaw, cur, labels)));
+    const renderPanels = () =>
+      setHtml(panelsHost, raw(buildCutPanelsHtml(res.targetRaw, cur, labels, res.window)));
     renderPanels();
     panelsHost.addEventListener("click", (e) => {
       const btn = (e.target as HTMLElement).closest<HTMLButtonElement>(".prep-matrix-cut-word[data-cut-offset]");
@@ -287,19 +302,20 @@ export class AlignMatrixView {
       renderPanels();
     });
     okBtn.addEventListener("click", () =>
-      void this._performFusedCut(res.links, targetRaw, cur, this._closeCutModal!, okBtn));
+      void this._performFusedCut(res.above, res.below, res.window, cur, this._closeCutModal!, okBtn));
   }
 
   private async _performFusedCut(
-    links: [MatrixCellLink, MatrixCellLink],
-    targetRaw: string,
+    above: MatrixCellLink[],
+    below: MatrixCellLink[],
+    window: [number, number],
     offset: number,
     close: () => void,
     okBtn: HTMLButtonElement,
   ): Promise<void> {
     const conn = this._getConn();
     if (!conn) return;
-    const actions = buildCutActions(links, offset, codePointLength(targetRaw));
+    const actions = buildPartitionActions(above, below, offset, window[0], window[1]);
     if (actions.length === 0) return;
     okBtn.disabled = true; // one flight max — a double-click must not double-post (F5)
     try {
@@ -342,8 +358,10 @@ export class AlignMatrixView {
     }
     const view = ctx.view;
     const rowCur = view.rows[row];
-    // The cell has a single uncut link — identical for both directions.
-    const link = (resUp.error === undefined ? resUp.link : resDown.link!);
+    // The cell has a single link — identical (window included) for both directions.
+    const ok = resUp.error === undefined ? resUp : (resDown.error === undefined ? resDown : null)!;
+    const link = ok.link!;
+    const window = ok.window!;
     const targetRaw = link.target_text_raw ?? "";
     let dir: StraddleDirection = resUp.error === undefined ? "up" : "down";
 
@@ -385,11 +403,11 @@ export class AlignMatrixView {
       setHtml(panelsHost, raw(buildCutPanelsHtml(targetRaw, cur, {
         topSeg: c.top.segment, topHub: c.top.hubText,
         bottomSeg: c.bottom.segment, bottomHub: c.bottom.hubText,
-      })));
+      }, window)));
     };
     const resuggest = () => {
       const c = dirCtx(dir)!;
-      cur = suggestCutOffset(targetRaw, c.top.hubText, c.bottom.hubText) ?? 0;
+      cur = suggestCutOffset(targetRaw, c.top.hubText, c.bottom.hubText, window) ?? 0;
     };
     resuggest();
     renderPanels();
@@ -409,7 +427,7 @@ export class AlignMatrixView {
     okBtn.addEventListener("click", () => {
       const c = dirCtx(dir);
       if (!c || c.neighbor.hubUnitId == null) return;
-      void this._performStraddleCut(link, c.neighbor.hubUnitId, dir, targetRaw, cur, this._closeCutModal!, okBtn);
+      void this._performStraddleCut(link, c.neighbor.hubUnitId, dir, window, cur, this._closeCutModal!, okBtn);
     });
   }
 
@@ -424,7 +442,7 @@ export class AlignMatrixView {
     existing: MatrixCellLink,
     neighborHubUnitId: number,
     direction: StraddleDirection,
-    targetRaw: string,
+    window: [number, number],
     offset: number,
     close: () => void,
     okBtn: HTMLButtonElement,
@@ -437,13 +455,16 @@ export class AlignMatrixView {
       const created = await createAlignLink(conn, {
         pivot_unit_id: neighborHubUnitId,
         target_unit_id: existing.target_unit_id,
+        // Inherit the sibling's pair number so audit views sort the new link next
+        // to its family instead of a stray [§0] (D-W13, 1.6.55).
+        ...(typeof existing.external_id === "number" ? { external_id: existing.external_id } : {}),
       });
       createdId = created.link_id;
-      // "up": the neighbour above gets the head slice; "down": it gets the tail.
-      const pair = direction === "up"
-        ? [{ link_id: createdId }, { link_id: existing.link_id }]
-        : [{ link_id: existing.link_id }, { link_id: createdId }];
-      const actions = buildCutActions(pair, offset, codePointLength(targetRaw));
+      // "up": the neighbour above gets the head of the window; "down": the tail.
+      const [aboveSide, belowSide] = direction === "up"
+        ? [[{ link_id: createdId }], [{ link_id: existing.link_id }]]
+        : [[{ link_id: existing.link_id }], [{ link_id: createdId }]];
+      const actions = buildPartitionActions(aboveSide, belowSide, offset, window[0], window[1]);
       if (actions.length === 0) throw new Error("point de coupe invalide");
       const res = await batchUpdateAlignLinks(conn, actions, { atomic: true });
       if (res.errors.length) {
@@ -482,6 +503,46 @@ export class AlignMatrixView {
       }
       okBtn.disabled = false;
       this._cb.toast?.(`✗ Coupe à cheval : ${msg}`, true);
+    }
+  }
+
+  // ─── « ↺ » on a cut cell — the target becomes whole again (D-W13 §3.5) ────────
+
+  private async _performCellUncut(row: number, col: number): Promise<void> {
+    const ctx = this._cellGestureCtx(col);
+    if (!ctx) return;
+    const res = resolveCellUncut(ctx.column, row);
+    if (res.error !== undefined) {
+      this._cb.toast?.(`✗ ${res.error}`, true);
+      return;
+    }
+    const conn = this._getConn();
+    if (!conn) return;
+    const actions = buildUncutActions(res);
+    if (actions.length === 0) return;
+    this._cutBusy = true; // no modal here — the flag guards the whole round-trip (F5)
+    try {
+      const resp = await batchUpdateAlignLinks(conn, actions, { atomic: true });
+      if (resp.errors.length) {
+        if (resp.applied > 0 || resp.deleted > 0) {
+          // Old sidecar without atomic: partially committed — resync.
+          this._cb.toast?.(
+            `✗ Annulation partielle : ${resp.errors[0].error} — matrice resynchronisée`, true);
+          await this._reloadPreservingScroll();
+        } else {
+          this._cb.toast?.(`✗ Annulation refusée : ${resp.errors[0].error} (rien n'a été appliqué)`, true);
+        }
+        return;
+      }
+      this._cb.toast?.(
+        res.deletes.length > 0
+          ? `✓ Coupe annulée (${res.deletes.length} lien${res.deletes.length > 1 ? "s" : ""} de geste supprimé${res.deletes.length > 1 ? "s" : ""})`
+          : "✓ Coupe annulée");
+      await this._reloadPreservingScroll();
+    } catch (err) {
+      this._cb.toast?.(`✗ Annulation : ${err instanceof Error ? err.message : String(err)}`, true);
+    } finally {
+      this._cutBusy = false;
     }
   }
 
