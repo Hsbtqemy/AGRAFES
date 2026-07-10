@@ -698,7 +698,10 @@ Fields:
 ### POST /align/links/batch_update (V1.3 — token required)
 
 Apply a batch of `set_status` or `delete` operations on alignment links in a single request.
-Partial errors are tolerated — valid actions are applied and errors are reported in the response.
+By default, partial errors are tolerated — valid actions are applied and errors are reported in
+the response. With `"atomic": true` (1.6.54) the batch is all-or-nothing: on any action error the
+whole batch is rolled back (`applied`/`deleted` = 0, `rolled_back` = true). Compound gestures
+(e.g. two complementary `set_target_span`) should pass `atomic`.
 
 Request:
 ```json
@@ -708,20 +711,23 @@ Request:
     { "action": "set_status", "link_id": 11, "status": "rejected" },
     { "action": "set_status", "link_id": 12, "status": null },
     { "action": "delete", "link_id": 13 }
-  ]
+  ],
+  "atomic": false
 }
 ```
 - `action`: `"set_status"` or `"delete"`
 - `link_id`: integer (required for all actions)
 - `status`: `"accepted"`, `"rejected"`, or `null` (unreviewed) — required for `set_status`
+- `atomic`: optional boolean (default `false`) — all-or-nothing semantics (see above)
 
 Response:
 ```json
-{ "ok": true, "status": "ok", "applied": 3, "deleted": 1, "errors": [] }
+{ "ok": true, "status": "ok", "applied": 3, "deleted": 1, "errors": [], "rolled_back": false }
 ```
 - `applied` — number of `set_status` operations that succeeded
 - `deleted` — number of `delete` operations that succeeded
 - `errors` — array of `{ index, link_id, error }` for individual failures (not found, invalid action, etc.)
+- `rolled_back` — `true` when `atomic` was set and an error rolled the whole batch back
 
 ### POST /align/retarget_candidates (V1.4 — read-only, no token)
 

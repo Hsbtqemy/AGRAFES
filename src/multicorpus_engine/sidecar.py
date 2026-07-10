@@ -7399,7 +7399,9 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 
         Same projection as the CSV export (services/matrix_export_service.build_alignment_matrix)
         but **returned in the response** for the alignment grid to render, instead of written to
-        disk. Body: { family_root_id }. Returns { headers, rows, languages, hub_doc_id }.
+        disk. Body: { family_root_id }. Returns { headers, rows, languages, hub_doc_id } plus the
+        additive identifier fields for grid gestures: hub_unit_ids / language_doc_ids (3a) and
+        cell_links (A2 — per-cell link_id/target/cut/raw, rejected links excluded).
         """
         from multicorpus_engine.services.errors import NotFoundError
         from multicorpus_engine.services.matrix_export_service import build_alignment_matrix
@@ -8126,7 +8128,15 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 
     def _handle_align_links_batch_update(self, body: dict) -> None:
         """Apply a batch of set_status / delete / set_target_span / clear_target_span
-        operations on alignment_links (token required)."""
+        operations on alignment_links (token required).
+
+        ``atomic: true`` (1.6.54, revue 3b F2) makes the batch all-or-nothing: on ANY
+        action error the whole batch is rolled back (``applied``/``deleted`` = 0,
+        ``rolled_back`` = true). Default (false) keeps the historical semantics —
+        actions apply independently and successes are committed alongside the errors
+        list. Compound gestures (e.g. the D-W12 straddling cut: 2 complementary
+        set_target_span) MUST pass atomic — a half-applied cut is worse than none.
+        """
         from multicorpus_engine.services import align_links_service
         from multicorpus_engine.services.errors import NotFoundError, ValidationError
 
@@ -8138,6 +8148,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 http_status=400,
             )
             return
+        atomic = bool(body.get("atomic", False))
 
         valid_action_types = {"set_status", "delete", "set_target_span", "clear_target_span"}
         valid_statuses = {None, "accepted", "rejected"}
@@ -8198,12 +8209,22 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                     except NotFoundError as exc:
                         errors.append({"index": i, "link_id": link_id, "error": exc.message})
 
-            conn.commit()
+            rolled_back = False
+            if atomic and errors:
+                # All-or-nothing: undo every action of this batch (the connection is
+                # in implicit-transaction mode, nothing was committed yet).
+                conn.rollback()
+                applied = 0
+                deleted = 0
+                rolled_back = True
+            else:
+                conn.commit()
 
         self._send_json(success_payload({
             "applied": applied,
             "deleted": deleted,
             "errors": errors,
+            "rolled_back": rolled_back,
         }))
 
     # ------------------------------------------------------------------

@@ -234,3 +234,65 @@ class TestBatchDelete:
         code, spec = _get(f"{base}/openapi.json")
         assert code == 200
         assert "/align/links/batch_update" in spec["paths"]
+
+
+class TestBatchAtomic:
+    """atomic=true (1.6.54, revue 3b F2) — all-or-nothing semantics."""
+
+    def test_atomic_rolls_back_on_any_error(self, v13_sidecar):
+        base, token, _ = v13_sidecar
+        link_ids = _get_link_ids(base, token)
+        actions = [
+            {"action": "set_status", "link_id": link_ids[0], "status": "accepted"},
+            {"action": "set_status", "link_id": 99999, "status": "accepted"},  # fails
+        ]
+        code, body = _post(f"{base}/align/links/batch_update", {"actions": actions, "atomic": True}, token)
+        assert code == 200
+        assert body["applied"] == 0
+        assert body["deleted"] == 0
+        assert body["rolled_back"] is True
+        assert len(body["errors"]) == 1
+        # The successful first action was rolled back too: link 0 is still unreviewed.
+        _code, audit = _post(f"{base}/align/audit", {"pivot_doc_id": 1, "target_doc_id": 2}, token)
+        statuses = {lnk["link_id"]: lnk["status"] for lnk in audit["links"]}
+        assert statuses[link_ids[0]] is None
+
+    def test_atomic_delete_rolled_back(self, v13_sidecar):
+        base, token, _ = v13_sidecar
+        link_ids = _get_link_ids(base, token)
+        actions = [
+            {"action": "delete", "link_id": link_ids[0]},
+            {"action": "set_status", "link_id": 99999, "status": "accepted"},  # fails
+        ]
+        code, body = _post(f"{base}/align/links/batch_update", {"actions": actions, "atomic": True}, token)
+        assert code == 200
+        assert body["deleted"] == 0
+        assert body["rolled_back"] is True
+        # The deleted link is back (rollback) — all 5 links still present.
+        _code, audit = _post(f"{base}/align/audit", {"pivot_doc_id": 1, "target_doc_id": 2}, token)
+        assert len(audit["links"]) == 5
+
+    def test_atomic_success_commits_all(self, v13_sidecar):
+        base, token, _ = v13_sidecar
+        link_ids = _get_link_ids(base, token)
+        actions = [
+            {"action": "set_status", "link_id": link_ids[0], "status": "accepted"},
+            {"action": "set_target_span", "link_id": link_ids[1], "char_start": 0, "char_end": 2},
+        ]
+        code, body = _post(f"{base}/align/links/batch_update", {"actions": actions, "atomic": True}, token)
+        assert code == 200
+        assert body["applied"] == 2
+        assert body["rolled_back"] is False
+        assert body["errors"] == []
+
+    def test_default_semantics_stay_partial(self, v13_sidecar):
+        base, token, _ = v13_sidecar
+        link_ids = _get_link_ids(base, token)
+        actions = [
+            {"action": "set_status", "link_id": link_ids[0], "status": "accepted"},
+            {"action": "set_status", "link_id": 99999, "status": "accepted"},
+        ]
+        code, body = _post(f"{base}/align/links/batch_update", {"actions": actions}, token)
+        assert code == 200
+        assert body["applied"] == 1
+        assert body["rolled_back"] is False

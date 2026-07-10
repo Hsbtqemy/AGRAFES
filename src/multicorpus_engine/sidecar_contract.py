@@ -14,7 +14,7 @@ from typing import Any
 from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
-CONTRACT_VERSION = "1.6.53"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.54"  # semantic versioning for the sidecar API contract
 # SID-08 / OPS-03: the API version IS the contract version — derived, never a
 # second hand-maintained literal, so the two can no longer drift. /health reports
 # the *engine* version under `version` (it predates the sidecar); every other
@@ -188,6 +188,13 @@ API_VERSION = CONTRACT_VERSION
 #         read-only POST /align/matrix — same projection as /export/matrix but returned in the
 #         response (headers / rows / languages / hub_doc_id) for the alignment grid to render,
 #         instead of writing a CSV to disk. NEW route → openapi + snapshot + .md all move.
+# 1.6.54: revue 3b (F2/A2/F8). AlignLinksBatchUpdateRequest gains optional `atomic` (default
+#         false): all-or-nothing batch — on any action error the whole batch rolls back
+#         (response gains `rolled_back`). /align/matrix response (non-schematized) gains
+#         `cell_links` (per-cell {link_id, target_unit_id, char_start, char_end,
+#         target_text_raw}) and now EXCLUDES rejected links from the projection (coherent
+#         with ALN-03, revue F8). No new route → snapshot/.md unchanged; openapi moves
+#         (schema field). Logic in services/matrix_export_service + the batch handler.
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
@@ -4454,6 +4461,11 @@ def openapi_spec() -> dict[str, Any]:
                             "type": "array",
                             "minItems": 1,
                             "items": {"$ref": "#/components/schemas/AlignBatchAction"},
+                        },
+                        "atomic": {
+                            "type": "boolean",
+                            "default": False,
+                            "description": "All-or-nothing (1.6.54): on any action error the whole batch is rolled back (applied/deleted=0, rolled_back=true). Default false = historical independent-actions semantics.",
                         },
                     },
                 },

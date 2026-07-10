@@ -332,6 +332,11 @@
             },
             "minItems": 1,
             "type": "array"
+          },
+          "atomic": {
+            "default": false,
+            "description": "All-or-nothing (1.6.54): on any action error the whole batch is rolled back (applied/deleted=0, rolled_back=true). Default false = historical independent-actions semantics.",
+            "type": "boolean"
           }
         },
         "required": [
@@ -4251,8 +4256,8 @@
   "info": {
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
-    "version": "1.6.53",
-    "x-contract-version": "1.6.53"
+    "version": "1.6.54",
+    "x-contract-version": "1.6.54"
   },
   "openapi": "3.0.3",
   "paths": {
