@@ -302,6 +302,11 @@ de lecture, comme si le geste n'avait pas été intégré.
 - **Le lien créé hérite de l'`external_id` du lien qu'on coupe** (paramètre optionnel additif sur
   `/align/link/create`) → il se range à côté de son frère dans la Révision fine. Le *regroupement*
   visuel « tranches d'une même cible » dans le panneau est différé à la refonte Révision fine (tranche 6).
+- **Cellule à plusieurs traductions : le sens désigne le lien de bord** (amendé 2026-07-10, QA D-W13 —
+  la forme mixte « queue + phrase propre » est la norme, pas l'exception). « Vers le suivant » coupe le
+  **dernier** lien de la cellule (ordre de lecture), « vers le précédent » le **premier** — seul un lien
+  au bord peut déborder la frontière. Pousser un lien *par-dessus* un autre = réordonnancement
+  (non-contigu, D-W9) → hors v1, Révision fine.
 - **Moteur, additif** : `cell_links` expose en plus `external_id` et `manual` (bool, `run_id='manual'`) ;
   contrat **1.6.55** (champ de schéma sur AlignLinkCreateRequest). Le reste est front.
 

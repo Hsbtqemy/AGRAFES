@@ -139,9 +139,26 @@ describe("resolveStraddleCut (D-W12/13 « couper à cheval », fenêtré)", () =
     expect(resolveStraddleCut(boundary, 1, "up").error).toMatch(/déjà une part/);
   });
 
-  it("rejects multi-link cells, empty cells and windowless single words", () => {
-    const two: CellLinkColumn = [[lk(1, 90), lk(2, 91)], [lk(3, 92)]];
-    expect(resolveStraddleCut(two, 0, "down").error).toMatch(/plusieurs traductions/);
+  it("multi-link cell: the direction picks the EDGE link (§3.5) — the Le Clézio mixed shape", () => {
+    // Row 1 = [tail of EN1 (cut, target 90), own EN2 (target 91)] between two neighbours.
+    const column: CellLinkColumn = [
+      [lk(1, 90, { target_text_raw: RAW, char_start: 0, char_end: 12 })],
+      [
+        lk(7, 90, { target_text_raw: RAW, char_start: 12, char_end: 30, manual: true }),
+        lk(2, 91, { target_text_raw: "It is the sound" }),
+      ],
+      [lk(3, 92, { target_text_raw: "the tireless sound" })],
+    ];
+    // Down → the LAST link (own EN2) toward the row below.
+    const down = resolveStraddleCut(column, 1, "down");
+    expect(down.error).toBeUndefined();
+    expect(down.link!.link_id).toBe(2);
+    // Up → the FIRST link (the tail) — but the row above already holds its head:
+    // boundary adjustment, not a straddle.
+    expect(resolveStraddleCut(column, 1, "up").error).toMatch(/déjà une part/);
+  });
+
+  it("rejects empty cells and windowless single words", () => {
     expect(resolveStraddleCut([[], [lk(1, 90)]], 0, "down").error).toMatch(/sans traduction/);
     const single: CellLinkColumn = [
       [lk(1, 90, { target_text_raw: "Indivisible" })], [lk(2, 91)],

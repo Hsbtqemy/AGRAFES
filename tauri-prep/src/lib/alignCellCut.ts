@@ -141,11 +141,14 @@ export type StraddleResolution =
   | { link?: undefined; neighborRow?: undefined; window?: undefined; error: string };
 
 /**
- * Resolve « couper à cheval » on the cell at `row`: part of its (single) link's
- * window spills over the neighbouring hub segment (`up` = the HEAD belongs to
- * row-1, `down` = the TAIL belongs to row+1). The gesture creates the missing
- * link toward the neighbour and partitions the window. Iterative (D-W13): the
- * link may already carry a cut — the gesture splits its current slice.
+ * Resolve « couper à cheval » on the cell at `row`: part of a link's window spills
+ * over the neighbouring hub segment (`up` = the HEAD belongs to row-1, `down` = the
+ * TAIL belongs to row+1). The gesture creates the missing link toward the neighbour
+ * and partitions the window. Iterative (D-W13): the link may already carry a cut —
+ * the gesture splits its current slice. On a multi-link cell the DIRECTION picks the
+ * edge link (§3.5): « down » cuts the LAST link in reading order, « up » the FIRST —
+ * only an edge link can spill across that boundary (pushing a link OVER another one
+ * would be a reordering, out of the contiguous model — D-W9).
  */
 export function resolveStraddleCut(
   column: CellLinkColumn, row: number, direction: StraddleDirection,
@@ -157,10 +160,7 @@ export function resolveStraddleCut(
   }
   const cur = column[row] ?? [];
   if (cur.length === 0) return { error: "Cellule sans traduction alignée — rien à couper." };
-  if (cur.length > 1) {
-    return { error: "Cellule à plusieurs traductions (bead) — passer par la Révision fine pour ce cas." };
-  }
-  const link = cur[0];
+  const link = direction === "up" ? cur[0] : cur[cur.length - 1];
   const neighbor = column[neighborRow] ?? [];
   if (neighbor.some((l) => l.target_unit_id === link.target_unit_id)) {
     return cellsShareFusedTarget(cur, neighbor)

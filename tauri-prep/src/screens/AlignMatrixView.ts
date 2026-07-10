@@ -358,20 +358,23 @@ export class AlignMatrixView {
     }
     const view = ctx.view;
     const rowCur = view.rows[row];
-    // The cell has a single link — identical (window included) for both directions.
-    const ok = resUp.error === undefined ? resUp : (resDown.error === undefined ? resDown : null)!;
-    const link = ok.link!;
-    const window = ok.window!;
-    const targetRaw = link.target_text_raw ?? "";
     let dir: StraddleDirection = resUp.error === undefined ? "up" : "down";
 
-    const dirCtx = (d: StraddleDirection): { top: MatrixRowView; bottom: MatrixRowView; neighbor: MatrixRowView } | null => {
+    // On a multi-link cell the direction picks the EDGE link (§3.5) — link, window
+    // and raw text are therefore per-direction.
+    const dirCtx = (d: StraddleDirection): {
+      link: MatrixCellLink; window: [number, number]; targetRaw: string;
+      top: MatrixRowView; bottom: MatrixRowView; neighbor: MatrixRowView;
+    } | null => {
       const r = d === "up" ? resUp : resDown;
       if (r.error !== undefined) return null;
       const neighbor = view.rows[r.neighborRow];
-      return d === "up"
-        ? { top: neighbor, bottom: rowCur, neighbor }
-        : { top: rowCur, bottom: neighbor, neighbor };
+      return {
+        link: r.link, window: r.window, targetRaw: r.link.target_text_raw ?? "",
+        ...(d === "up"
+          ? { top: neighbor, bottom: rowCur, neighbor }
+          : { top: rowCur, bottom: neighbor, neighbor }),
+      };
     };
 
     const radio = (d: StraddleDirection, label: string): string => {
@@ -400,14 +403,14 @@ export class AlignMatrixView {
     let cur = 0;
     const renderPanels = () => {
       const c = dirCtx(dir)!;
-      setHtml(panelsHost, raw(buildCutPanelsHtml(targetRaw, cur, {
+      setHtml(panelsHost, raw(buildCutPanelsHtml(c.targetRaw, cur, {
         topSeg: c.top.segment, topHub: c.top.hubText,
         bottomSeg: c.bottom.segment, bottomHub: c.bottom.hubText,
-      }, window)));
+      }, c.window)));
     };
     const resuggest = () => {
       const c = dirCtx(dir)!;
-      cur = suggestCutOffset(targetRaw, c.top.hubText, c.bottom.hubText, window) ?? 0;
+      cur = suggestCutOffset(c.targetRaw, c.top.hubText, c.bottom.hubText, c.window) ?? 0;
     };
     resuggest();
     renderPanels();
@@ -427,7 +430,7 @@ export class AlignMatrixView {
     okBtn.addEventListener("click", () => {
       const c = dirCtx(dir);
       if (!c || c.neighbor.hubUnitId == null) return;
-      void this._performStraddleCut(link, c.neighbor.hubUnitId, dir, window, cur, this._closeCutModal!, okBtn);
+      void this._performStraddleCut(c.link, c.neighbor.hubUnitId, dir, c.window, cur, this._closeCutModal!, okBtn);
     });
   }
 
