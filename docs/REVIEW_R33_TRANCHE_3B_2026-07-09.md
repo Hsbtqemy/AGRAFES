@@ -5,7 +5,7 @@
 
 **Statut (mis à jour après le lot écran+lib, même journée) :**
 - **Corrigés** : F1, F3, F4, F5, F7, F9, F10, plus A3 (garde dans `buildCutActions`), N3, N4, N5. F2 a reçu la **mitigation front** (coupe partielle → fermeture + resync + message honnête) ; le fond (transactionnalité ou compensation) reste au lot moteur.
-- **Restants (lot moteur, session à froid)** : **A2 en premier** (link_ids par cellule dans `/align/matrix` — absorbe F6, A1 et la moitié de F8), puis **F2-fond** (batch tout-ou-rien — promu : c'est une *précondition* du geste composé D-W12), puis F8 (exclusion cohérente des `rejected`, décision produit), puis **D-W12** (gestes à la demande sur toute cellule + « couper à cheval », tranché 2026-07-10 — voir `DESIGN_alignment_workspace.md` §3.4). N1/N2/N6 en passe qualité opportuniste.
+- **Lot moteur LIVRÉ (2026-07-10)** : **A2** (`cell_links` par cellule dans `/align/matrix`, `4d8de0c` — absorbe F6, A1 et la moitié de F8 ; + ordre de lecture des concaténations `c07b7fe`), **F2-fond** (batch `atomic` tout-ou-rien, contrat 1.6.54, `429ca7f`), **F8** (exclusion des `rejected` de la projection ET de la résolution, `4d8de0c`), **D-W12** (statut topologique + gestes à la demande + « ✂ couper à cheval » avec création de lien + batch atomique + compensation, `c946b08`). Restent : N1/N2/N6 en passe qualité opportuniste.
 - Recoupement utilisateur du 2026-07-09 : tous les findings confirmés tenus, nuances de précision intégrées ci-dessous (F1 : écriture conditionnelle, défaut inconditionnel = boutons vivants ; F2 : réponse serveur honnête, « refus total » était une lecture front ; A1 : filtre `external_id` existant = mitigation partielle ; N1 : `-actions` diffère d'un `margin-top`).
 
 ---

@@ -234,7 +234,7 @@ N-langues, un segment peut être traduit en EN mais **pas** en DE. Un « non tra
 langue) demande un marqueur sur la paire `(unité_moyeu, doc_cible)` — un **lien-sentinelle** ou une petite table
 — au-delà du `unit_status` global. À décider.
 
-## 3.4 Gestes **à la demande** sur toute cellule + « couper à cheval » (tranché 2026-07-10, QA 3b)
+## 3.4 Gestes **à la demande** sur toute cellule + « couper à cheval » (tranché 2026-07-10, QA 3b — **livré** le jour même : A2 `cell_links`/statut topologique + batch `atomic` 1.6.54 + geste à cheval, commits `4d8de0c`→`c946b08`)
 
 **Constat déclencheur (Le Clézio, QA tranche 3b).** L'aligneur produit un bead 2→2 positionnel
 FR§1↔EN1, FR§2↔EN2 alors que la bonne correspondance est FR§1 ↔ *début* d'EN1, FR§2 ↔ *fin* d'EN1 + EN2.

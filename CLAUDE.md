@@ -25,7 +25,7 @@ ruff check src tests             # lint — must cover BOTH src and tests (CI sc
 ```
 
 - `pythonpath=["src"]` is set in `pyproject.toml`, so plain `pytest` works without `PYTHONPATH=src`.
-- **Do not run the full `tests/` suite locally.** The `test_sidecar_*` tests spawn a real sidecar subprocess that does not start reliably outside CI and appears to hang. Target with `-k`/explicit paths locally; let CI run the full suite.
+- **Set `NO_PROXY=127.0.0.1,localhost` before any pytest run that talks to a local sidecar** (the `test_sidecar_*` files, `scripts/smoke_sidecar.py`). The historical "full suite hangs locally" was the university HTTP proxy intercepting urllib's loopback requests (root-caused 2026-07-09) — with `NO_PROXY` set, the FULL `tests/` suite passes locally (verified 2026-07-10: 1412 passed in ~7 min).
 - **Replicate the CI gate before committing**: `ruff check src tests` (not just `src`) + the relevant pytest scope. A narrower scope has missed CI failures before.
 
 ### Front-ends (per package: `tauri-prep`, `tauri-app`, `tauri-shell`, `tauri-fixture`)
