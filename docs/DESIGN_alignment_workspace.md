@@ -274,6 +274,37 @@ contenu appartenant au segment moyeu voisin (au-dessus ou en-dessous) :
   trancher F2-fond (transaction moteur) *avant* ou *avec* ce geste, et l'undo doit défaire les deux
   opérations ensemble.
 
+## 3.5 D-W13 — Coupe **itérative** (fenêtrée) + ↺ depuis la cellule (tranché 2026-07-10, QA D-W12)
+
+**Constat déclencheur.** (a) Une phrase cible couvrant 3+ segments moyeu est inexprimable par gestes : le
+garde « déjà coupée » interdit de re-couper une tranche, et la fusion N-1 est refusée (« 2-1 seulement »).
+(b) L'annulation d'une coupe à cheval réussie n'a pas de geste : le ↺ de la Révision fine ne défait que les
+tranches du bead d'origine et **ignore le lien manuel créé** (état incohérent si on l'utilise seul). (c) Le
+lien créé arrive avec `external_id=0` → il s'affiche « [§0] » en tête de la Révision fine, hors de l'ordre
+de lecture, comme si le geste n'avait pas été intégré.
+
+**Décisions :**
+
+- **Couper opère toujours dans la FENÊTRE courante du lien** (`[target_char_start, target_char_end]`,
+  le texte entier n'étant que le cas `[0, len]`). Le garde « déjà coupée » disparaît ; les coupes
+  s'itèrent (une phrase en 3 morceaux = 2 gestes). Offsets viables et picker sont fenêtrés (les mots de
+  la tranche seulement, offsets absolus).
+- **Fusion N-1 par partitions successives.** ⚠ *fused* devient : cible partagée à fenêtres **identiques**
+  (le non-coupé `[null,null]` en est un cas). Couper depuis une cellule ⚠ = poser la frontière **entre
+  cette ligne et la précédente** : les lignes du groupe au-dessus prennent `[ws,x]`, la ligne cliquée et
+  celles d'en dessous `[x,we]` — le bas reste fusionné (fenêtres identiques) et se re-coupe au geste
+  suivant. Le geste par paire reste le seul primitif ; N-1 = N-1 gestes.
+- **↺ depuis la cellule = « cette traduction redevient entière »** : sur toute cellule dont les liens
+  portent une tranche, un ↺ efface les tranches de **tous** les liens de cette cible (toute la colonne)
+  et **supprime ceux créés par geste** (`run_id='manual'`) — l'inverse exact de la séquence de coupes,
+  en un batch atomique (`clear_target_span` ×N + `delete` ×M). Sémantique volontairement globale à la
+  cible : pas de « défaire juste la dernière frontière » en v1.
+- **Le lien créé hérite de l'`external_id` du lien qu'on coupe** (paramètre optionnel additif sur
+  `/align/link/create`) → il se range à côté de son frère dans la Révision fine. Le *regroupement*
+  visuel « tranches d'une même cible » dans le panneau est différé à la refonte Révision fine (tranche 6).
+- **Moteur, additif** : `cell_links` expose en plus `external_id` et `manual` (bool, `run_id='manual'`) ;
+  contrat **1.6.55** (champ de schéma sur AlignLinkCreateRequest). Le reste est front.
+
 ## 4. Les quatre douleurs → réponses
 
 | Douleur | Réponse dans cet espace |
@@ -352,6 +383,7 @@ Toutes validées ; la note est **ticket-ready**. (Rationale : voir les § réfé
 - **D-W10 → Round-trip en overlay/tiroir** (garde l'alignement visible) ; après re-segmentation, **marquer les lignes « à ré-aligner »** (pas de re-align silencieux) (§4.1).
 - **D-W11 → Structure en scaffolding lecture seule en v1** ; **structure matcher folded-in en tranche ultérieure** — mais sa maison est **actée ici** (pas Segmentation) (§2.2).
 - **D-W12 → Gestes à la demande sur toute cellule** (tranché 2026-07-10, QA 3b) : le ⚠ priorise, il ne conditionne pas l'accès — la couche d'alignement est une surcouche réversible, la main est donnée partout ; + geste « ✂ couper à cheval » sur le segment voisin. Précondition A2 (link_ids par cellule) et batch tout-ou-rien (F2-fond). Cascade de corrections assumée (§3.4).
+- **D-W13 → Coupe itérative fenêtrée + ↺ cellule** (tranché 2026-07-10, QA D-W12) : couper opère dans la fenêtre courante du lien (itérable, N-1 par partitions successives, ⚠ = fenêtres identiques) ; ↺ cellule = la cible redevient entière (tranches effacées + liens `manual` supprimés, atomique) ; le lien créé hérite de l'`external_id` du lien coupé (§3.5).
 
 **Prochain :** cf. §6. **Tranche 1 = D-W3 (ré-ancrer positionnel)** — autonome, endpoint de *lecture*, sans contrat ni migration.
 
