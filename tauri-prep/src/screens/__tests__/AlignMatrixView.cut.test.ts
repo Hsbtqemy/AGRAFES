@@ -355,7 +355,53 @@ describe("AlignMatrixView — « ✂ couper à cheval » (D-W12)", () => {
   });
 });
 
+/** A MIXED cell carrying two cut sequences (inherited tail + own cut head). */
+const MATRIX_MIXED: AlignMatrix = {
+  headers: ["paragraphe", "segment", "fr", "en"],
+  languages: ["fr", "en"],
+  hub_doc_id: 2,
+  rows: [
+    ["1", 1, "FR un", "As far"],
+    ["1", 2, "FR deux", "back It is"],
+    ["1", 3, "FR trois", "the sound"],
+  ],
+  hub_unit_ids: [101, 102, 103],
+  language_doc_ids: [2, 3],
+  cell_links: [
+    [[lk(13, 900, "As far back", { char_start: 0, char_end: 6 })]],
+    [
+      [lk(77, 900, "As far back", { char_start: 6, char_end: 11, manual: true }),
+        lk(14, 901, "It is the sound", { char_start: 0, char_end: 5 })],
+    ],
+    [[lk(78, 901, "It is the sound", { char_start: 5, char_end: 15, manual: true })]],
+  ],
+};
+
 describe("AlignMatrixView — « ↺ » cellule (D-W13)", () => {
+  it("a multi-cut cell opens the chooser; the pick scopes the undo to one sequence (§3.5)", async () => {
+    const calls: Array<{ path: string; body: unknown }> = [];
+    await mountWithMatrix(calls, { matrix: MATRIX_MIXED });
+
+    document.querySelector<HTMLButtonElement>('.prep-matrix-uncut-btn[data-cut-row="1"]')!.click();
+    await vi.waitFor(() => {
+      expect(document.querySelectorAll(".prep-matrix-uncut-choice")).toHaveLength(2);
+    });
+    // Pick the first sequence (target 900 — the inherited tail).
+    document.querySelector<HTMLButtonElement>('.prep-matrix-uncut-choice[data-uncut-target="900"]')!.click();
+    await vi.waitFor(() => {
+      expect(calls.filter((c) => c.path === "/align/matrix")).toHaveLength(2);
+    });
+    const batch = calls.find((c) => c.path === "/align/links/batch_update");
+    expect(batch?.body).toEqual({
+      actions: [
+        { action: "clear_target_span", link_id: 13 },
+        { action: "delete", link_id: 77 },
+      ],
+      atomic: true,
+    });
+    expect(document.querySelector(".prep-matrix-cut-overlay")).toBeNull();
+  });
+
   it("clears the aligner link, deletes the manual one — atomically — then re-projects", async () => {
     const calls: Array<{ path: string; body: unknown }> = [];
     const { toasts } = await mountWithMatrix(calls, { matrix: MATRIX_CUT });

@@ -298,7 +298,9 @@ de lecture, comme si le geste n'avait pas été intégré.
   portent une tranche, un ↺ efface les tranches de **tous** les liens de cette cible (toute la colonne)
   et **supprime ceux créés par geste** (`run_id='manual'`) — l'inverse exact de la séquence de coupes,
   en un batch atomique (`clear_target_span` ×N + `delete` ×M). Sémantique volontairement globale à la
-  cible : pas de « défaire juste la dernière frontière » en v1.
+  cible : pas de « défaire juste la dernière frontière » en v1. **Cellule à plusieurs coupes** (amendé
+  2026-07-10, QA : forme mixte queue+tête) : un **mini-choix** sur place liste les traductions coupées
+  de la cellule (extrait de tranche) et l'utilisateur désigne laquelle annuler — pas de devinette.
 - **Le lien créé hérite de l'`external_id` du lien qu'on coupe** (paramètre optionnel additif sur
   `/align/link/create`) → il se range à côté de son frère dans la Révision fine. Le *regroupement*
   visuel « tranches d'une même cible » dans le panneau est différé à la refonte Révision fine (tranche 6).

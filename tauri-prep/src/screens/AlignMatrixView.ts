@@ -25,7 +25,7 @@ import { buildMatrixView, matrixSummaryLine } from "../lib/alignMatrix.ts";
 import { buildMatrixGridHtml } from "../lib/alignMatrixGrid.ts";
 import type { CellLinkColumn, StraddleDirection } from "../lib/alignCellCut.ts";
 import {
-  resolveFusedCellLinks, resolveStraddleCut, resolveCellUncut,
+  resolveFusedCellLinks, resolveStraddleCut, resolveCellUncut, cellCutTargets,
   buildPartitionActions, buildUncutActions, suggestCutOffset, buildCutPanelsHtml,
 } from "../lib/alignCellCut.ts";
 import { setHtml, raw, safeHtml } from "../lib/safeHtml.ts";
@@ -94,7 +94,7 @@ export class AlignMatrixView {
         return;
       }
       const uncutBtn = t.closest<HTMLButtonElement>(".prep-matrix-uncut-btn");
-      if (uncutBtn) void this._performCellUncut(Number(uncutBtn.dataset.cutRow), Number(uncutBtn.dataset.cutCol));
+      if (uncutBtn) this._onUncutClick(Number(uncutBtn.dataset.cutRow), Number(uncutBtn.dataset.cutCol));
     });
     return root;
   }
@@ -511,10 +511,72 @@ export class AlignMatrixView {
 
   // ─── « ↺ » on a cut cell — the target becomes whole again (D-W13 §3.5) ────────
 
-  private async _performCellUncut(row: number, col: number): Promise<void> {
+  private _onUncutClick(row: number, col: number): void {
     const ctx = this._cellGestureCtx(col);
     if (!ctx) return;
-    const res = resolveCellUncut(ctx.column, row);
+    const targets = cellCutTargets(ctx.column[row] ?? []);
+    if (targets.length > 1) {
+      // Mixed cell (e.g. inherited tail + own cut head): no guessing — the user
+      // picks which translation becomes whole again (§3.5).
+      this._openUncutChooser(row, col, targets);
+      return;
+    }
+    void this._performCellUncut(row, col);
+  }
+
+  /** Mini-chooser for a multi-cut cell: one button per cut translation (its slice). */
+  private _openUncutChooser(
+    row: number, col: number,
+    targets: Array<{ target_unit_id: number; slice: string }>,
+  ): void {
+    this._cutBusy = true;
+    const overlay = document.createElement("div");
+    overlay.className = "prep-matrix-cut-overlay";
+    const dialog = document.createElement("div");
+    dialog.className = "prep-matrix-cut-dialog";
+    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("aria-modal", "true");
+    const shorten = (s: string) => (s.length > 90 ? `${s.slice(0, 90)}…` : s);
+    const options = targets.map((t) =>
+      `<button type="button" class="prep-matrix-uncut-choice" data-uncut-target="${t.target_unit_id}">`
+      + `&#8635; ${_esc(shorten(t.slice))}</button>`).join("");
+    setHtml(dialog, safeHtml`
+      <div class="prep-matrix-cut-title">↺ Annuler quelle coupe ?</div>
+      <p class="prep-matrix-cut-hint">Cette cellule porte plusieurs traductions coupées —
+        choisissez celle qui doit redevenir entière.</p>
+      <div class="prep-matrix-uncut-choices">${raw(options)}</div>
+      <div class="prep-matrix-cut-actions">
+        <button type="button" class="btn btn-ghost btn-sm" data-cut-cancel>Annuler</button>
+      </div>
+    `);
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
+    const close = () => {
+      document.removeEventListener("keydown", onKey);
+      overlay.remove();
+      this._closeCutModal = null;
+      this._cutBusy = false;
+    };
+    this._closeCutModal = close;
+    let downOnBackdrop = false;
+    overlay.addEventListener("mousedown", (e) => { downOnBackdrop = e.target === overlay; });
+    overlay.addEventListener("click", (e) => { if (downOnBackdrop && e.target === overlay) close(); });
+    document.addEventListener("keydown", onKey);
+    dialog.querySelector<HTMLButtonElement>("[data-cut-cancel]")!.addEventListener("click", close);
+    dialog.querySelectorAll<HTMLButtonElement>(".prep-matrix-uncut-choice").forEach((btn) =>
+      btn.addEventListener("click", () => {
+        const target = Number(btn.dataset.uncutTarget);
+        close();
+        void this._performCellUncut(row, col, target);
+      }));
+  }
+
+  private async _performCellUncut(row: number, col: number, targetUnitId?: number): Promise<void> {
+    const ctx = this._cellGestureCtx(col);
+    if (!ctx) return;
+    const res = resolveCellUncut(ctx.column, row, targetUnitId);
     if (res.error !== undefined) {
       this._cb.toast?.(`✗ ${res.error}`, true);
       return;

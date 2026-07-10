@@ -181,19 +181,40 @@ export type UncutResolution =
   | { clears?: undefined; deletes?: undefined; error: string };
 
 /**
- * Resolve the cell ↺ at `row`: pick the cell's (single) cut target, gather every
- * link on it across the column — the whole cut sequence — and split them into
- * `clears` (aligner links: clear_target_span) and `deletes` (gesture-created
- * `manual` links carrying a cut). If ONLY manual links hold the target (hand-built
- * alignment), nothing is deleted — everything is cleared, so the target is never
- * orphaned.
+ * The cell's cut translations, one entry per distinct target, each with the slice
+ * the cell displays for it — feeds the ↺ chooser on a multi-cut cell (§3.5).
  */
-export function resolveCellUncut(column: CellLinkColumn, row: number): UncutResolution {
+export function cellCutTargets(
+  cell: readonly MatrixCellLink[],
+): Array<{ target_unit_id: number; slice: string }> {
+  const seen = new Set<number>();
+  const out: Array<{ target_unit_id: number; slice: string }> = [];
+  for (const l of cell) {
+    if (l.char_start == null || seen.has(l.target_unit_id)) continue;
+    seen.add(l.target_unit_id);
+    const [ws, we] = linkWindow(l);
+    out.push({ target_unit_id: l.target_unit_id, slice: codePointSlice(l.target_text_raw ?? "", ws, we).trim() });
+  }
+  return out;
+}
+
+/**
+ * Resolve the cell ↺ at `row`: pick the cell's cut target (`targetUnitId` when the
+ * cell carries several — the chooser's pick), gather every link on it across the
+ * column — the whole cut sequence — and split them into `clears` (aligner links:
+ * clear_target_span) and `deletes` (gesture-created `manual` links carrying a cut).
+ * If ONLY manual links hold the target (hand-built alignment), nothing is deleted —
+ * everything is cleared, so the target is never orphaned.
+ */
+export function resolveCellUncut(
+  column: CellLinkColumn, row: number, targetUnitId?: number,
+): UncutResolution {
   const cur = column[row] ?? [];
-  const cutTargets = [...new Set(cur.filter((l) => l.char_start != null).map((l) => l.target_unit_id))];
+  let cutTargets = [...new Set(cur.filter((l) => l.char_start != null).map((l) => l.target_unit_id))];
+  if (targetUnitId !== undefined) cutTargets = cutTargets.filter((t) => t === targetUnitId);
   if (cutTargets.length === 0) return { error: "Aucune coupe à annuler sur cette cellule." };
   if (cutTargets.length > 1) {
-    return { error: "Plusieurs traductions coupées sur cette cellule — passer par la Révision fine." };
+    return { error: "Plusieurs traductions coupées sur cette cellule — préciser laquelle." };
   }
   const group = column.flatMap((links) => links.filter((l) => l.target_unit_id === cutTargets[0]));
   const cutLinks = group.filter((l) => l.char_start != null);

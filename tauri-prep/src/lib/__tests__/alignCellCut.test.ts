@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  resolveFusedCellLinks, resolveStraddleCut, resolveCellUncut,
+  resolveFusedCellLinks, resolveStraddleCut, resolveCellUncut, cellCutTargets,
   buildPartitionActions, buildUncutActions, suggestCutOffset, buildCutPanelsHtml,
   viableCutOffsets, viableCutOffsetsIn, linkWindow, cellsShareFusedTarget,
 } from "../alignCellCut.ts";
@@ -206,13 +206,36 @@ describe("resolveCellUncut / buildUncutActions (D-W13 ↺)", () => {
     expect(res.clears!.map((l) => l.link_id)).toEqual([5, 6]);
   });
 
-  it("rejects cells without a cut, or with several cut targets", () => {
+  it("rejects cells without a cut; a multi-cut cell needs the target specified", () => {
     expect(resolveCellUncut([[lk(1, 90)]], 0).error).toMatch(/Aucune coupe/);
     const two: CellLinkColumn = [[
       lk(1, 90, { char_start: 0, char_end: 6 }),
       lk(2, 91, { char_start: 0, char_end: 6 }),
     ]];
-    expect(resolveCellUncut(two, 0).error).toMatch(/Plusieurs traductions/);
+    expect(resolveCellUncut(two, 0).error).toMatch(/préciser laquelle/);
+  });
+
+  it("multi-cut cell: cellCutTargets lists the slices, an explicit target scopes the undo (§3.5)", () => {
+    const RAWB = "It is the sound";
+    const column: CellLinkColumn = [
+      [lk(1, 90, { target_text_raw: RAW, char_start: 0, char_end: 12 })],
+      [
+        lk(7, 90, { target_text_raw: RAW, char_start: 12, char_end: 29, manual: true }),
+        lk(2, 91, { target_text_raw: RAWB, char_start: 0, char_end: 5 }),
+      ],
+      [lk(8, 91, { target_text_raw: RAWB, char_start: 5, char_end: 15, manual: true })],
+    ];
+    const targets = cellCutTargets(column[1]);
+    expect(targets.map((t) => t.target_unit_id)).toEqual([90, 91]);
+    expect(targets[0].slice).toBe("as I can remember");
+    expect(targets[1].slice).toBe("It is");
+    // Undo scoped to one sequence leaves the other untouched.
+    const r90 = resolveCellUncut(column, 1, 90);
+    expect(r90.clears!.map((l) => l.link_id)).toEqual([1]);
+    expect(r90.deletes!.map((l) => l.link_id)).toEqual([7]);
+    const r91 = resolveCellUncut(column, 1, 91);
+    expect(r91.clears!.map((l) => l.link_id)).toEqual([2]);
+    expect(r91.deletes!.map((l) => l.link_id)).toEqual([8]);
   });
 });
 
