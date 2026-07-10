@@ -1646,17 +1646,70 @@ export interface AlignMatrix {
   /** [hubLang, ...translationLangs] */
   languages: string[];
   hub_doc_id: number;
-  /** Parallel to `rows`: the hub unit_id behind each row (R3.3 tranche 3a — for gestures). */
-  hub_unit_ids?: number[];
+  /** Parallel to `rows`: the hub unit_id behind each row (R3.3 tranche 3a — for
+   *  gestures). Null on a flux addition row (1.6.56, D8 — no hub unit). */
+  hub_unit_ids?: Array<number | null>;
   /** Parallel to `languages`: the doc_id behind each column (index 0 = hub). */
   language_doc_ids?: number[];
   /** A2 (1.6.54): cell_links[i][j] = links behind rows[i] × translation column j
    *  (languages[j+1]), in the cell's concatenation order. */
   cell_links?: MatrixCellLink[][][];
+  /** 1.6.56 (D-W8): parallel to `rows` — the hub unit's GLOBAL unit_status
+   *  (marker-lift axis; 'non_traduit' = the whole row shows the token). Null on
+   *  addition rows. */
+  hub_unit_statuses?: Array<string | null>;
+  /** 1.6.56 (D-W8): cell_statuses[i][j] — the PER-CELL axis (alignment_cell_statuses):
+   *  'non_traduit' or null. */
+  cell_statuses?: Array<Array<string | null>>;
+  /** 1.6.56 (D8): flux addition rows woven into `rows` (hub column = "[ajout]",
+   *  hub_unit_ids[i] = null). */
+  addition_rows?: MatrixAdditionRow[];
+  /** 1.6.56 (D-W14): parallel to translation columns — units with no active link in
+   *  this family and no status (invisible in the grid; the « ＋ Ajout » panel). */
+  uncovered?: MatrixUncoveredUnit[][];
+}
+
+/** 1.6.56 (D8) — descriptor of one flux addition row woven into `rows`. */
+export interface MatrixAdditionRow {
+  /** Index into `rows`. */
+  row: number;
+  doc_id: number;
+  unit_id: number;
+  n: number;
+}
+
+/** 1.6.56 (D-W14) — one uncovered (unlinked, status-free) translation unit. */
+export interface MatrixUncoveredUnit {
+  unit_id: number;
+  n: number;
+  text_raw: string;
 }
 
 export async function getAlignMatrix(conn: Conn, familyRootId: number): Promise<AlignMatrix> {
   return conn.post("/align/matrix", { family_root_id: familyRootId }) as Promise<AlignMatrix>;
+}
+
+/** 1.6.56 (D-W8) — per-cell « non traduit » on the (hub unit × target doc) pair;
+ *  status null clears. 409 when the cell still has active links (un-align first). */
+export async function setAlignCellStatus(
+  conn: Conn,
+  opts: { pivot_unit_id: number; target_doc_id: number; status: "non_traduit" | null },
+): Promise<{ pivot_unit_id: number; target_doc_id: number; cell_status: string | null }> {
+  return conn.post("/align/cell_status", opts) as Promise<{
+    pivot_unit_id: number;
+    target_doc_id: number;
+    cell_status: string | null;
+  }>;
+}
+
+/** R4.1 — set (or clear, status null) the translation-status axis on units by id.
+ *  The matrix « ＋ Ajout » gesture posts status 'ajout'; ↺ on the addition row clears. */
+export async function bulkSetUnitStatus(
+  conn: Conn,
+  unitIds: number[],
+  status: "non_traduit" | "ajout" | null,
+): Promise<{ updated: number }> {
+  return conn.post("/units/bulk_set_status", { unit_ids: unitIds, status }) as Promise<{ updated: number }>;
 }
 
 // ─── V0.4A — Metadata API ────────────────────────────────────────────────────

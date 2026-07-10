@@ -1,12 +1,16 @@
 /**
- * alignMatrixGrid.ts — pure HTML builder for the matrix grid (R3.3 tranches 2c/3b/D-W12).
- * Turns a `MatrixView` (lib/alignMatrix) into an escaped `<table>`: hub column + one column
- * per translation, each cell tagged by status (ok / empty ∅ / fused ⚠). A fused cell carries
- * a « ✂ Couper » button; every other non-empty cell carries the on-demand « ✂ » (D-W12 —
- * the ⚠ prioritizes attention, it does not gate the gestures; hover-revealed by CSS).
- * Both buttons address their cell via `data-cut-row`/`data-cut-col` (indices into the
- * SAME view that renders — resolution goes through the view-model, never through parallel
- * raw arrays). All corpus text is escaped (imported documents are untrusted).
+ * alignMatrixGrid.ts — pure HTML builder for the matrix grid (R3.3 tranches 2c/3b/D-W12/
+ * D-W8·D8·D-W14). Turns a `MatrixView` (lib/alignMatrix) into an escaped `<table>`: hub
+ * column + one column per translation, each cell tagged by status (ok / empty ∅ / fused ⚠ /
+ * non_traduit). A fused cell carries a « ✂ Couper » button; every other non-empty cell
+ * carries the on-demand « ✂ » (D-W12 — the ⚠ prioritizes attention, it does not gate the
+ * gestures; hover-revealed by CSS). With the status axes (sidecar ≥ 1.6.56): an empty cell
+ * offers « ∅ » (mark non traduit), a per-cell mark offers its undo, a flux addition row
+ * (D8) renders `[ajout]` with its « ↺ », and each column header carries the « N hors
+ * matrice » badge opening the uncovered-units panel (D-W14).
+ * Buttons address their cell via `data-cut-row`/`data-cut-col` (indices into the SAME view
+ * that renders — resolution goes through the view-model, never through parallel raw
+ * arrays). All corpus text is escaped (imported documents are untrusted).
  * Injected via the safe `setHtml(raw(...))` sink.
  */
 
@@ -14,15 +18,43 @@ import { escHtml as _esc } from "./diff.ts";
 import type { MatrixView } from "./alignMatrix.ts";
 
 export function buildMatrixGridHtml(view: MatrixView): string {
+  const transTh = view.translationLangs.map((l, i) => {
+    const orphans = view.uncovered[i]?.length ?? 0;
+    // D-W14 — the only surface where an unlinked unit is visible/actionable.
+    const badge = view.hasStatuses && orphans > 0
+      ? ` <button type="button" class="prep-matrix-uncovered-btn" data-uncovered-col="${i}"`
+        + ` title="${orphans} unité(s) de cette traduction ne sont couvertes par aucun lien — ouvrir la liste">`
+        + `${orphans} hors matrice</button>`
+      : "";
+    return `<th class="prep-matrix-th">${_esc(l)}${badge}</th>`;
+  }).join("");
   const thead =
     `<thead><tr>`
     + `<th class="prep-matrix-th prep-matrix-th--meta">&#182;</th>`
     + `<th class="prep-matrix-th prep-matrix-th--meta">seg</th>`
     + `<th class="prep-matrix-th prep-matrix-th--hub">${_esc(view.hubLang)}</th>`
-    + view.translationLangs.map((l) => `<th class="prep-matrix-th">${_esc(l)}</th>`).join("")
+    + transTh
     + `</tr></thead>`;
 
   const body = view.rows.map((r, rowIdx) => {
+    if (r.addition) {
+      // Flux addition row (D8): translator-added unit, no hub segment. Only its
+      // own-language cell carries text; the ↺ clears the ajout status.
+      const cells = r.cells.map((c) => {
+        if (c.text.trim() === "") return `<td class="prep-matrix-cell prep-matrix-cell--blank"></td>`;
+        const undoBtn =
+          ` <button type="button" class="prep-matrix-unadd-btn" data-add-row="${rowIdx}"`
+          + ` title="Retirer la marque d&#39;ajout — l&#39;unité redevient non couverte">&#8635;</button>`;
+        return `<td class="prep-matrix-cell prep-matrix-cell--addition">${_esc(c.text)}${undoBtn}</td>`;
+      }).join("");
+      return `<tr class="prep-matrix-row prep-matrix-row--addition">`
+        + `<td class="prep-matrix-meta"></td>`
+        + `<td class="prep-matrix-meta">&#65291;</td>`
+        + `<td class="prep-matrix-hub"><span class="prep-matrix-ajout" title="Ajout du traducteur — pas de segment source (D8)">[ajout]</span></td>`
+        + cells
+        + `</tr>`;
+    }
+
     const cells = r.cells.map((c, colIdx) => {
       // D-W13 — cell ↺ on any cell whose links carry a cut (hover-revealed):
       // « cette traduction redevient entière » (clears + deletes the manual links).
@@ -31,8 +63,27 @@ export function buildMatrixGridHtml(view: MatrixView): string {
           + ` title="Annuler la coupe — cette traduction redevient entière">&#8635;</button>`
         : "";
       let inner: string;
-      if (c.status === "empty") {
-        inner = `<span class="prep-matrix-empty" title="Aucune traduction alignée">&#8709;</span>`;
+      let statusCls: string = c.status;
+      if (c.status === "non_traduit") {
+        // D10 — the deliberate omission token; per-cell marks (D-W8) undo from the
+        // cell, a hub-global mark (marker-lift) is managed source-side.
+        const clearBtn = c.nonTraduitAxis === "cell"
+          ? ` <button type="button" class="prep-matrix-nt-btn" data-nt-action="clear" data-cut-row="${rowIdx}" data-cut-col="${colIdx}"`
+            + ` title="Retirer la marque « non traduit » de cette cellule">&#8635;</button>`
+          : "";
+        const axisTitle = c.nonTraduitAxis === "hub"
+          ? "Non traduit (voulu) — posé globalement sur le segment source (marqueurs)"
+          : "Non traduit (voulu) — posé sur cette cellule";
+        inner = `<span class="prep-matrix-nt" title="${axisTitle}">[non traduit]</span>${clearBtn}`;
+        statusCls = "non-traduit";
+      } else if (c.status === "empty") {
+        // ∅ gesture (D-W8): mark this pair as deliberately untranslated — only when
+        // the sidecar carries the status axes and the row resolves to a hub unit.
+        const ntBtn = view.hasStatuses && r.hubUnitId != null
+          ? ` <button type="button" class="prep-matrix-nt-btn" data-nt-action="set" data-cut-row="${rowIdx}" data-cut-col="${colIdx}"`
+            + ` title="Marquer « non traduit » (voulu) — la cellule compte comme faite">&#8709; non traduit</button>`
+          : "";
+        inner = `<span class="prep-matrix-empty" title="Aucune traduction alignée">&#8709;</span>${ntBtn}`;
       } else if (c.status === "fused") {
         // Tranche 3b — the cut gesture lives on the fused (repeating) cell; its bead
         // pairs this row with the one above, so row 0 (defensive) gets no button.
@@ -50,7 +101,7 @@ export function buildMatrixGridHtml(view: MatrixView): string {
           : "";
         inner = `${_esc(c.text)}${anyBtn}${uncutBtn}`;
       }
-      return `<td class="prep-matrix-cell prep-matrix-cell--${c.status}">${inner}</td>`;
+      return `<td class="prep-matrix-cell prep-matrix-cell--${statusCls}">${inner}</td>`;
     }).join("");
 
     const rowCls =

@@ -87,6 +87,87 @@ describe("buildMatrixGridHtml", () => {
     expect(html2).not.toContain("prep-matrix-uncut-btn");
   });
 
+  it("D-W8: [non traduit] cell — token, ∅ set button on empty cells, clear on per-cell marks", () => {
+    const withStatuses: AlignMatrix = {
+      headers: ["paragraphe", "segment", "fr", "en"],
+      languages: ["fr", "en"],
+      hub_doc_id: 2,
+      hub_unit_ids: [11, 12, 13],
+      language_doc_ids: [2, 3],
+      rows: [
+        ["1", 1, "FR1", ""],
+        ["1", 2, "FR2", "[non traduit]"],
+        ["1", 3, "FR3", "[non traduit]"],
+      ],
+      cell_links: [[[]], [[]], [[]]],
+      hub_unit_statuses: [null, null, "non_traduit"],
+      cell_statuses: [[null], ["non_traduit"], [null]],
+      addition_rows: [],
+      uncovered: [[]],
+    };
+    const html = buildMatrixGridHtml(buildMatrixView(withStatuses));
+    expect(html).toContain("prep-matrix-cell--non-traduit");
+    // Empty cell (row 0) offers the SET gesture; the per-cell mark (row 1) its CLEAR;
+    // the hub-global mark (row 2) is managed source-side → no button.
+    expect(html).toContain('data-nt-action="set" data-cut-row="0"');
+    expect(html).toContain('data-nt-action="clear" data-cut-row="1"');
+    expect(html).not.toContain('data-nt-action="clear" data-cut-row="2"');
+    expect((html.match(/prep-matrix-nt-btn/g) ?? [])).toHaveLength(2);
+    // Old sidecar (no status axes): no ∅ affordance on empty cells.
+    const html2 = buildMatrixGridHtml(buildMatrixView(SAMPLE));
+    expect(html2).not.toContain("prep-matrix-nt-btn");
+  });
+
+  it("D8: a flux addition row renders [ajout] with its ↺ and blank sibling cells", () => {
+    const withAddition: AlignMatrix = {
+      headers: ["paragraphe", "segment", "fr", "en", "ro"],
+      languages: ["fr", "en", "ro"],
+      hub_doc_id: 2,
+      hub_unit_ids: [11, null],
+      language_doc_ids: [2, 3, 4],
+      rows: [
+        ["1", 1, "FR1", "EN1", "RO1"],
+        ["", "", "[ajout]", "added text", ""],
+      ],
+      cell_links: [[[{ link_id: 1, target_unit_id: 91, char_start: null, char_end: null, target_text_raw: "EN1" }], []], [[], []]],
+      hub_unit_statuses: [null, null],
+      cell_statuses: [[null, null], [null, null]],
+      addition_rows: [{ row: 1, doc_id: 3, unit_id: 95, n: 5 }],
+      uncovered: [[], []],
+    };
+    const html = buildMatrixGridHtml(buildMatrixView(withAddition));
+    expect(html).toContain("prep-matrix-row--addition");
+    expect(html).toContain("[ajout]");
+    expect(html).toContain("added text");
+    expect(html).toContain('data-add-row="1"');
+    expect((html.match(/prep-matrix-unadd-btn/g) ?? [])).toHaveLength(1);
+    // The RO cell of the addition row is a blank, not an ∅ hole.
+    expect(html).toContain("prep-matrix-cell--blank");
+  });
+
+  it("D-W14: column header carries the « N hors matrice » badge when units are uncovered", () => {
+    const withOrphans: AlignMatrix = {
+      headers: ["paragraphe", "segment", "fr", "en"],
+      languages: ["fr", "en"],
+      hub_doc_id: 2,
+      hub_unit_ids: [11],
+      language_doc_ids: [2, 3],
+      rows: [["1", 1, "FR1", "EN1"]],
+      cell_links: [[[{ link_id: 1, target_unit_id: 91, char_start: null, char_end: null, target_text_raw: "EN1" }]]],
+      hub_unit_statuses: [null],
+      cell_statuses: [[null]],
+      addition_rows: [],
+      uncovered: [[{ unit_id: 97, n: 7, text_raw: "orphan" }]],
+    };
+    const html = buildMatrixGridHtml(buildMatrixView(withOrphans));
+    expect(html).toContain("prep-matrix-uncovered-btn");
+    expect(html).toContain('data-uncovered-col="0"');
+    expect(html).toContain("1 hors matrice");
+    // No badge when everything is covered.
+    const covered = { ...withOrphans, uncovered: [[]] };
+    expect(buildMatrixGridHtml(buildMatrixView(covered))).not.toContain("prep-matrix-uncovered-btn");
+  });
+
   it("escapes corpus text (imported docs are untrusted)", () => {
     const evil: AlignMatrix = {
       headers: ["paragraphe", "segment", "fr", "en"],

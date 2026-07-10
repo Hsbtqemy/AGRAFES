@@ -11,13 +11,18 @@
  *   prioritizes): the translation spills over the neighbouring hub segment — create
  *   the missing link toward the neighbour, then slice (atomic batch; the created link
  *   is deleted in compensation if the batch fails).
+ * - « ∅ non traduit » on an empty cell (D-W8, sidecar ≥ 1.6.56): per-cell mark via
+ *   `/align/cell_status` (its ↺ clears; a hub-global mark is managed source-side).
+ * - « N hors matrice » column badge (D-W14): panel of the uncovered units, from which
+ *   « ＋ Ajout » poses unit_status='ajout' → the flux [ajout] row appears (its ↺ clears).
  *
- * Both use the two-panel move-only picker (§3.2). Sub-view of ActionsScreen.
+ * Both cuts use the two-panel move-only picker (§3.2). Sub-view of ActionsScreen.
  */
 
 import type { Conn, FamilyRecord, MatrixCellLink } from "../lib/sidecarClient.ts";
 import {
   getFamilies, getAlignMatrix, batchUpdateAlignLinks, createAlignLink, deleteAlignLink,
+  setAlignCellStatus, bulkSetUnitStatus,
 } from "../lib/sidecarClient.ts";
 import type { AlignMatrix } from "../lib/sidecarClient.ts";
 import type { MatrixView, MatrixRowView } from "../lib/alignMatrix.ts";
@@ -94,7 +99,24 @@ export class AlignMatrixView {
         return;
       }
       const uncutBtn = t.closest<HTMLButtonElement>(".prep-matrix-uncut-btn");
-      if (uncutBtn) this._onUncutClick(Number(uncutBtn.dataset.cutRow), Number(uncutBtn.dataset.cutCol));
+      if (uncutBtn) {
+        this._onUncutClick(Number(uncutBtn.dataset.cutRow), Number(uncutBtn.dataset.cutCol));
+        return;
+      }
+      const ntBtn = t.closest<HTMLButtonElement>(".prep-matrix-nt-btn");
+      if (ntBtn) {
+        void this._onNonTraduitClick(
+          Number(ntBtn.dataset.cutRow), Number(ntBtn.dataset.cutCol),
+          ntBtn.dataset.ntAction === "set" ? "set" : "clear");
+        return;
+      }
+      const unaddBtn = t.closest<HTMLButtonElement>(".prep-matrix-unadd-btn");
+      if (unaddBtn) {
+        void this._onUnaddClick(Number(unaddBtn.dataset.addRow));
+        return;
+      }
+      const uncoveredBtn = t.closest<HTMLButtonElement>(".prep-matrix-uncovered-btn");
+      if (uncoveredBtn) this._openUncoveredPanel(Number(uncoveredBtn.dataset.uncoveredCol));
     });
     return root;
   }
@@ -606,6 +628,153 @@ export class AlignMatrixView {
       await this._reloadPreservingScroll();
     } catch (err) {
       this._cb.toast?.(`✗ Annulation : ${err instanceof Error ? err.message : String(err)}`, true);
+    } finally {
+      this._cutBusy = false;
+    }
+  }
+
+  // ─── Statuts « lignes blanches » — ∅ non traduit / ＋ ajout (D-W8/D8/D-W14) ────
+
+  /**
+   * Guard for the status gestures — same conn-identity / busy discipline as
+   * `_cellGestureCtx`, gated on the status axes (sidecar ≥ 1.6.56) instead of
+   * cell_links.
+   */
+  private _statusGestureCtx(): MatrixView | null {
+    const conn = this._getConn();
+    const view = this._view;
+    if (!conn || !view || this._cutBusy) return null;
+    if (conn !== this._loadedConn) {
+      this._cb.toast?.("✗ Connexion changée — recharger la matrice avant d'agir", true);
+      this._resetMatrix();
+      return null;
+    }
+    if (!view.hasStatuses) {
+      this._cb.toast?.("✗ Sidecar trop ancien — statuts de cellule absents (recompiler le sidecar)", true);
+      return null;
+    }
+    return view;
+  }
+
+  /** « ∅ non traduit » on an empty cell — set; its ↺ on a per-cell mark — clear. */
+  private async _onNonTraduitClick(row: number, col: number, action: "set" | "clear"): Promise<void> {
+    const view = this._statusGestureCtx();
+    if (!view) return;
+    const hubUnitId = view.rows[row]?.hubUnitId;
+    const targetDocId = view.translationDocIds[col];
+    if (hubUnitId == null || targetDocId == null) return;
+    const conn = this._getConn();
+    if (!conn) return;
+    this._cutBusy = true; // no modal — the flag guards the whole round-trip (F5)
+    try {
+      await setAlignCellStatus(conn, {
+        pivot_unit_id: hubUnitId,
+        target_doc_id: targetDocId,
+        status: action === "set" ? "non_traduit" : null,
+      });
+      this._cb.toast?.(action === "set"
+        ? "✓ Cellule marquée « non traduit » (comptée comme faite)"
+        : "✓ Marque « non traduit » retirée");
+      await this._reloadPreservingScroll();
+    } catch (err) {
+      // Typically the 409 guard: the cell has active links (un-align first).
+      this._cb.toast?.(`✗ Non traduit : ${err instanceof Error ? err.message : String(err)}`, true);
+    } finally {
+      this._cutBusy = false;
+    }
+  }
+
+  /** « ↺ » on a flux [ajout] row — clear the ajout mark (the unit becomes uncovered again). */
+  private async _onUnaddClick(row: number): Promise<void> {
+    const view = this._statusGestureCtx();
+    if (!view) return;
+    const addition = view.rows[row]?.addition;
+    if (!addition) return;
+    const conn = this._getConn();
+    if (!conn) return;
+    this._cutBusy = true;
+    try {
+      await bulkSetUnitStatus(conn, [addition.unitId], null);
+      this._cb.toast?.("✓ Marque d'ajout retirée — l'unité repasse « hors matrice »");
+      await this._reloadPreservingScroll();
+    } catch (err) {
+      this._cb.toast?.(`✗ Ajout : ${err instanceof Error ? err.message : String(err)}`, true);
+    } finally {
+      this._cutBusy = false;
+    }
+  }
+
+  /**
+   * « N hors matrice » header badge (D-W14): panel of the column's uncovered units —
+   * the only surface where an unlinked translation unit is visible. « ＋ Ajout »
+   * poses unit_status='ajout' and the flux [ajout] row appears at its position.
+   */
+  private _openUncoveredPanel(col: number): void {
+    const view = this._statusGestureCtx();
+    if (!view) return;
+    const units = view.uncovered[col] ?? [];
+    const lang = view.translationLangs[col] ?? "?";
+    if (units.length === 0) return;
+
+    this._cutBusy = true;
+    const overlay = document.createElement("div");
+    overlay.className = "prep-matrix-cut-overlay";
+    const dialog = document.createElement("div");
+    dialog.className = "prep-matrix-cut-dialog";
+    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("aria-modal", "true");
+    const shorten = (s: string) => (s.length > 120 ? `${s.slice(0, 120)}…` : s);
+    const items = units.map((u) =>
+      `<li class="prep-matrix-orphan">`
+      + `<span class="prep-matrix-orphan-n">[${u.n}]</span> `
+      + `<span class="prep-matrix-orphan-text">${_esc(shorten(u.text_raw))}</span>`
+      + `<button type="button" class="prep-matrix-add-choice" data-add-unit="${u.unit_id}"`
+      + ` title="Marquer comme ajout du traducteur — une ligne [ajout] appara&#238;t dans la matrice">&#65291; Ajout</button>`
+      + `</li>`).join("");
+    setHtml(dialog, safeHtml`
+      <div class="prep-matrix-cut-title">Unités hors matrice (${lang})</div>
+      <p class="prep-matrix-cut-hint">Ces unités de la traduction ne sont couvertes par aucun
+        lien : invisibles dans la grille. Un ajout du traducteur (sans segment source) se marque
+        ici — sinon, l'alignement les rattrapera.</p>
+      <ul class="prep-matrix-orphans">${raw(items)}</ul>
+      <div class="prep-matrix-cut-actions">
+        <button type="button" class="btn btn-ghost btn-sm" data-cut-cancel>Fermer</button>
+      </div>
+    `);
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
+    const close = () => {
+      document.removeEventListener("keydown", onKey);
+      overlay.remove();
+      this._closeCutModal = null;
+      this._cutBusy = false;
+    };
+    this._closeCutModal = close;
+    let downOnBackdrop = false;
+    overlay.addEventListener("mousedown", (e) => { downOnBackdrop = e.target === overlay; });
+    overlay.addEventListener("click", (e) => { if (downOnBackdrop && e.target === overlay) close(); });
+    document.addEventListener("keydown", onKey);
+    dialog.querySelector<HTMLButtonElement>("[data-cut-cancel]")!.addEventListener("click", close);
+    dialog.querySelectorAll<HTMLButtonElement>(".prep-matrix-add-choice").forEach((btn) =>
+      btn.addEventListener("click", () => {
+        const unitId = Number(btn.dataset.addUnit);
+        close();
+        void this._performMarkAddition(unitId);
+      }));
+  }
+
+  private async _performMarkAddition(unitId: number): Promise<void> {
+    const conn = this._getConn();
+    if (!conn) return;
+    this._cutBusy = true;
+    try {
+      await bulkSetUnitStatus(conn, [unitId], "ajout");
+      this._cb.toast?.("✓ Ligne [ajout] créée — visible dans la matrice à sa position");
+      await this._reloadPreservingScroll();
+    } catch (err) {
+      this._cb.toast?.(`✗ Ajout : ${err instanceof Error ? err.message : String(err)}`, true);
     } finally {
       this._cutBusy = false;
     }

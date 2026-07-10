@@ -168,11 +168,139 @@ describe("buildMatrixView — topological statuses (cell_links, A2)", () => {
   });
 });
 
+describe("buildMatrixView — statuts D-W8/D8/D-W14 (1.6.56)", () => {
+  const base = {
+    headers: ["paragraphe", "segment", "fr", "en"],
+    languages: ["fr", "en"],
+    hub_doc_id: 1,
+    hub_unit_ids: [11, 12],
+    language_doc_ids: [1, 2],
+  };
+
+  it("a per-cell mark reads non_traduit (axis cell) and counts as DONE", () => {
+    const v = buildMatrixView({
+      ...base,
+      rows: [["1", 1, "FR1", "EN1"], ["1", 2, "FR2", "[non traduit]"]],
+      cell_links: [[[lk(1, 91)]], [[]]],
+      hub_unit_statuses: [null, null],
+      cell_statuses: [[null], ["non_traduit"]],
+      addition_rows: [],
+      uncovered: [[]],
+    } as AlignMatrix);
+    expect(v.hasStatuses).toBe(true);
+    const cell = v.rows[1].cells[0];
+    expect(cell.status).toBe("non_traduit");
+    expect(cell.nonTraduitAxis).toBe("cell");
+    expect(v.rows[1].hasWarning).toBe(false);
+    // D-W5: 2 cells, 0 warnings → 100 %.
+    expect(v.stats.warningCells).toBe(0);
+    expect(v.stats.completionPct).toBe(100);
+  });
+
+  it("a hub-global mark reads non_traduit (axis hub) on the linkless cell", () => {
+    const v = buildMatrixView({
+      ...base,
+      rows: [["1", 1, "FR1", "EN1"], ["1", 2, "FR2", "[non traduit]"]],
+      cell_links: [[[lk(1, 91)]], [[]]],
+      hub_unit_statuses: [null, "non_traduit"],
+      cell_statuses: [[null], [null]],
+      addition_rows: [],
+      uncovered: [[]],
+    } as AlignMatrix);
+    expect(v.rows[1].cells[0].status).toBe("non_traduit");
+    expect(v.rows[1].cells[0].nonTraduitAxis).toBe("hub");
+  });
+
+  it("real aligned text wins over a contradictory status (axis null)", () => {
+    const v = buildMatrixView({
+      ...base,
+      rows: [["1", 1, "FR1", "EN1"], ["1", 2, "FR2", "EN2"]],
+      cell_links: [[[lk(1, 91)]], [[lk(2, 92)]]],
+      hub_unit_statuses: [null, "non_traduit"],
+      cell_statuses: [[null], [null]],
+      addition_rows: [],
+      uncovered: [[]],
+    } as AlignMatrix);
+    expect(v.rows[1].cells[0].status).toBe("ok");
+    expect(v.rows[1].cells[0].nonTraduitAxis).toBe(null);
+  });
+
+  it("carries flux addition rows (D8) and EXCLUDES them from the stats", () => {
+    const v = buildMatrixView({
+      ...base,
+      hub_unit_ids: [11, null, 12],
+      rows: [
+        ["1", 1, "FR1", "EN1"],
+        ["", "", "[ajout]", "added by translator"],
+        ["1", 2, "FR2", "EN2"],
+      ],
+      cell_links: [[[lk(1, 91)]], [[]], [[lk(2, 92)]]],
+      hub_unit_statuses: [null, null, null],
+      cell_statuses: [[null], [null], [null]],
+      addition_rows: [{ row: 1, doc_id: 2, unit_id: 95, n: 5 }],
+      uncovered: [[]],
+    } as AlignMatrix);
+    const add = v.rows[1];
+    expect(add.addition).toEqual({ docId: 2, unitId: 95, n: 5 });
+    expect(add.hubUnitId).toBe(null);
+    expect(add.hasWarning).toBe(false);
+    expect(add.paragraphStart).toBe(false);
+    // Stats count HUB rows only: 2 × 1 lang, no warnings.
+    expect(v.stats.totalCells).toBe(2);
+    expect(v.stats.warningCells).toBe(0);
+  });
+
+  it("fused detection compares against the previous HUB row across an addition row", () => {
+    const v = buildMatrixView({
+      ...base,
+      hub_unit_ids: [11, null, 12],
+      rows: [
+        ["1", 1, "FR1", "SHARED"],
+        ["", "", "[ajout]", "added"],
+        ["1", 2, "FR2", "SHARED"],
+      ],
+      cell_links: [[[lk(1, 91)]], [[]], [[lk(2, 91)]]],
+      hub_unit_statuses: [null, null, null],
+      cell_statuses: [[null], [null], [null]],
+      addition_rows: [{ row: 1, doc_id: 2, unit_id: 95, n: 5 }],
+      uncovered: [[]],
+    } as AlignMatrix);
+    expect(v.rows[2].cells[0].status).toBe("fused");
+  });
+
+  it("surfaces uncovered units (D-W14) in stats and the summary line", () => {
+    const v = buildMatrixView({
+      ...base,
+      rows: [["1", 1, "FR1", "EN1"], ["1", 2, "FR2", "EN2"]],
+      cell_links: [[[lk(1, 91)]], [[lk(2, 92)]]],
+      hub_unit_statuses: [null, null],
+      cell_statuses: [[null], [null]],
+      addition_rows: [],
+      uncovered: [[{ unit_id: 97, n: 7, text_raw: "orphan" }, { unit_id: 98, n: 8, text_raw: "o2" }]],
+    } as AlignMatrix);
+    expect(v.uncovered[0].map((u) => u.unit_id)).toEqual([97, 98]);
+    expect(v.stats.uncoveredUnits).toBe(2);
+    expect(matrixSummaryLine(v)).toContain("2 hors matrice");
+  });
+
+  it("without the status axes (old sidecar) hasStatuses is false and nothing changes", () => {
+    const v = buildMatrixView({
+      ...base,
+      rows: [["1", 1, "FR1", ""], ["1", 2, "FR2", "EN2"]],
+      cell_links: [[[]], [[lk(2, 92)]]],
+    } as AlignMatrix);
+    expect(v.hasStatuses).toBe(false);
+    expect(v.rows[0].cells[0].status).toBe("empty");
+    expect(v.stats.uncoveredUnits).toBe(0);
+  });
+});
+
 describe("matrixSummaryLine", () => {
   it("renders the completeness strip", () => {
     const line = matrixSummaryLine(buildMatrixView(SAMPLE));
     expect(line).toContain("8/10");
     expect(line).toContain("2 à réparer");
     expect(line).toContain("80%");
+    expect(line).not.toContain("hors matrice");
   });
 });
