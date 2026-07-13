@@ -78,6 +78,55 @@ def clear_target_span(conn: sqlite3.Connection, link_id: int) -> None:
         raise NotFoundError(f"link_id={link_id} not found")
 
 
+def cell_bead_uid(pivot_unit_id: int, target_doc_id: int) -> str:
+    """The bead identity of a hand-curated cell = the cell itself (D-W16).
+
+    A matrix cell is (hub unit × target document); when it holds several links it is
+    ONE bead (1 hub segment ↔ N target sentences), not a collision. Deriving the uid
+    from the pair — instead of letting the client invent one — makes the grouping
+    idempotent, keeps identifiers out of the wire, and can never merge two distinct
+    cells. Namespaced ``cell#`` so it cannot clash with the aligner's backfilled
+    ``<run_id>#<bead_id>`` (migration 026).
+    """
+    return f"cell#{pivot_unit_id}#{target_doc_id}"
+
+
+def set_bead(conn: sqlite3.Connection, link_id: int) -> None:
+    """Group ``link_id`` into its cell's bead (D-W16, socle K3 ``bead_uid``).
+
+    The uid is derived from the link's own (pivot_unit_id, target_doc_id) — every link
+    of the cell therefore lands in the same bead, so the collision detector
+    (``COUNT(DISTINCT COALESCE(bead_uid, 'L'||link_id)) > 1``) reads the cell as one
+    bead instead of flagging the gesture-created links as a collision.
+
+    Raises:
+        NotFoundError: the link does not exist.
+    """
+    row = conn.execute(
+        "SELECT pivot_unit_id, target_doc_id FROM alignment_links WHERE link_id = ?",
+        (link_id,),
+    ).fetchone()
+    if row is None:
+        raise NotFoundError(f"link_id={link_id} not found")
+    conn.execute(
+        "UPDATE alignment_links SET bead_uid = ? WHERE link_id = ?",
+        (cell_bead_uid(int(row[0]), int(row[1])), link_id),
+    )
+
+
+def clear_bead(conn: sqlite3.Connection, link_id: int) -> None:
+    """Ungroup ``link_id`` (bead_uid NULL → its own singleton bead again).
+
+    Raises:
+        NotFoundError: the link does not exist.
+    """
+    cur = conn.execute(
+        "UPDATE alignment_links SET bead_uid = NULL WHERE link_id = ?", (link_id,)
+    )
+    if cur.rowcount == 0:
+        raise NotFoundError(f"link_id={link_id} not found")
+
+
 def build_retarget_candidates(
     conn: sqlite3.Connection,
     pivot_unit_id: int,

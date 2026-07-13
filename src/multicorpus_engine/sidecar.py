@@ -8168,7 +8168,13 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             return
         atomic = bool(body.get("atomic", False))
 
-        valid_action_types = {"set_status", "delete", "set_target_span", "clear_target_span"}
+        valid_action_types = {
+            "set_status", "delete", "set_target_span", "clear_target_span",
+            # D-W16 (1.6.57): group / ungroup a link into its CELL's bead. The uid is
+            # derived server-side from the link's (pivot, target_doc) — the client
+            # never invents an identifier.
+            "set_bead", "clear_bead",
+        }
         valid_statuses = {None, "accepted", "rejected"}
 
         applied = 0
@@ -8223,6 +8229,22 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 elif action_type == "clear_target_span":
                     try:
                         align_links_service.clear_target_span(conn, link_id)
+                        applied += 1
+                    except NotFoundError as exc:
+                        errors.append({"index": i, "link_id": link_id, "error": exc.message})
+
+                elif action_type == "set_bead":
+                    # D-W16: a cell holding several links is ONE bead (1 hub ↔ N
+                    # targets), not a collision — the gestures group what they leave.
+                    try:
+                        align_links_service.set_bead(conn, link_id)
+                        applied += 1
+                    except NotFoundError as exc:
+                        errors.append({"index": i, "link_id": link_id, "error": exc.message})
+
+                elif action_type == "clear_bead":
+                    try:
+                        align_links_service.clear_bead(conn, link_id)
                         applied += 1
                     except NotFoundError as exc:
                         errors.append({"index": i, "link_id": link_id, "error": exc.message})

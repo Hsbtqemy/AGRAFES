@@ -717,9 +717,11 @@ Request:
   "atomic": false
 }
 ```
-- `action`: `"set_status"` or `"delete"`
+- `action`: `"set_status"`, `"delete"`, `"set_target_span"`, `"clear_target_span"`, `"set_bead"` ou `"clear_bead"`
 - `link_id`: integer (required for all actions)
 - `status`: `"accepted"`, `"rejected"`, or `null` (unreviewed) — required for `set_status`
+- `char_start` / `char_end`: required for `set_target_span` (coupe ancrée-source, offsets en points de code dans le `text_raw` de la cible ; `clear_target_span` remet le lien sur l'unité entière)
+- `set_bead` / `clear_bead` (**1.6.57**, D-W16) : regroupe (ou dégroupe) le lien dans le bead de **sa cellule**. Le `bead_uid` est **dérivé au serveur** de la paire (`pivot_unit_id`, `target_doc_id`) du lien — aucun identifiant n'est fourni par le client. Une cellule qui porte plusieurs liens est **un** bead (1 segment moyeu ↔ N phrases cibles), et non une collision : c'est ce qui empêche les gestes (coupe à cheval, ⭙ Fusionner) de faire apparaître de fausses collisions dans Qualité / Révision fine. `clear_bead` remet `bead_uid` à `NULL` (bead singleton).
 - `atomic`: optional boolean (default `false`) — all-or-nothing semantics (see above)
 
 Response:

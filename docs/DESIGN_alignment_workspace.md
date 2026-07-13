@@ -341,6 +341,45 @@ de lecture, comme si le geste n'avait pas été intégré.
 - **Moteur, additif** : `cell_links` expose en plus `external_id` et `manual` (bool, `run_id='manual'`) ;
   contrat **1.6.55** (champ de schéma sur AlignLinkCreateRequest). Le reste est front.
 
+## 3.6 D-W16 — **⭙ Fusionner = absorber la phrase voisine** + le bead de cellule (tranché 2026-07-13)
+
+**Constat déclencheur (deux, découverts en préparant la tranche 4).**
+
+1. **« Fusionner » n'a pas de sens visible dans le modèle ancré-source.** Une cellule **concatène déjà**
+   tous ses liens (`_cell()` joint les cibles du bead) : « regrouper les cibles d'une cellule » ne change
+   donc **rien à l'écran**. La lecture littérale de la tranche 4 (« `set_bead` sur les liens de la
+   cellule ») livrerait un bouton qui ne fait rien de perceptible.
+2. **Nos propres gestes sèment de fausses collisions.** Le détecteur (`sidecar.py`, `qa_report.py`)
+   compte les **beads distincts** par pivot × doc cible : `COUNT(DISTINCT COALESCE(bead_uid, 'L'||link_id)) > 1`.
+   Or la « coupe à cheval » (D-W12) ajoute sur la cellule voisine un lien `manual` **sans `bead_uid`**, à
+   côté du lien de l'aligneur qui en a un → **2 beads → collision signalée** dans Qualité / Révision fine
+   (reproduit). Chaque coupe à cheval déjà faite a semé une alerte fantôme.
+
+**Décisions.**
+
+- **⭙ Fusionner = faire ENTRER la phrase voisine dans la cellule** — l'inverse exact de ✂ Couper. Couper
+  éclate une cible entre deux lignes moyeu ; Fusionner rassemble deux cibles sur **une** ligne moyeu. C'est
+  le cas réel quand la traduction est **plus finement segmentée** que l'original (1 segment FR ↔ 2 phrases
+  EN). Effet immédiat et visible : le texte se déplace dans la cellule ; la cellule voisine se vide (elle
+  devient ∅ — un trou à traiter, cascade assumée D-W12).
+- **Deux sources d'absorption**, même geste : (a) le lien de la **cellule voisine** (haut/bas, le sens est
+  choisi comme pour la coupe à cheval) → *delete* du lien voisin + *create* vers ce moyeu ; (b) une unité
+  **« hors matrice »** (non couverte, D-W14) adjacente en ordre de lecture → simple *create*. Le geste est
+  atomique et compensé en cas d'échec (même protocole que D-W12).
+- **Sur cellule voisine à plusieurs liens : le lien de bord** (règle §3.5 — absorber « vers le bas » prend
+  le **premier** lien du voisin, « vers le haut » son **dernier**) : seul un lien de bord jouxte la frontière.
+- **Refus si le lien voisin porte une coupe** (`char_start` non nul) : absorber une *tranche* d'une cible
+  partagée mélangerait les deux mécaniques. → ↺ d'abord, puis fusionner. Message explicite, pas de devinette.
+- **Le bead d'une cellule EST son identité.** `bead_uid` est **dérivé au serveur** de la paire
+  (`pivot_unit_id`, `target_doc_id`) — le front n'invente aucun identifiant. Deux liens de la même cellule
+  partagent donc le même bead : la cellule est **un** bead (1 moyeu ↔ N cibles), pas une collision. Le geste
+  Fusionner **et** les gestes de coupe posent ce bead sur les cellules qu'ils laissent à ≥ 2 liens ; une
+  **migration de rattrapage** (030) le pose sur les cellules déjà produites par les gestes (signature :
+  ≥ 2 liens actifs dont un `manual` **coupé**), sans jamais toucher aux collisions **légitimes** de
+  l'aligneur (qui restent des ambiguïtés à arbitrer par l'humain).
+- **Moteur, additif** : deux actions de `/align/links/batch_update` — `set_bead` (uid dérivé) et
+  `clear_bead` (NULL) — contrat **1.6.57**. Aucune route nouvelle.
+
 ## 4. Les quatre douleurs → réponses
 
 | Douleur | Réponse dans cet espace |
@@ -421,6 +460,7 @@ Toutes validées ; la note est **ticket-ready**. (Rationale : voir les § réfé
 - **D-W12 → Gestes à la demande sur toute cellule** (tranché 2026-07-10, QA 3b) : le ⚠ priorise, il ne conditionne pas l'accès — la couche d'alignement est une surcouche réversible, la main est donnée partout ; + geste « ✂ couper à cheval » sur le segment voisin. Précondition A2 (link_ids par cellule) et batch tout-ou-rien (F2-fond). Cascade de corrections assumée (§3.4).
 - **D-W13 → Coupe itérative fenêtrée + ↺ cellule** (tranché 2026-07-10, QA D-W12) : couper opère dans la fenêtre courante du lien (itérable, N-1 par partitions successives, ⚠ = fenêtres identiques) ; ↺ cellule = la cible redevient entière (tranches effacées + liens `manual` supprimés, atomique) ; le lien créé hérite de l'`external_id` du lien coupé (§3.5).
 - **D-W14 → Unités non couvertes visibles** (tranché 2026-07-10) : la projection expose par colonne les unités cible sans lien actif ni statut (`uncovered`) ; compteur en en-tête de colonne → panneau → geste « ＋ Ajout ». Sans cette surface, ＋ est ininvocable et la complétude ment (§3.3).
+- **D-W16 → ⭙ Fusionner = absorber la phrase voisine** (tranché 2026-07-13) : l'inverse de ✂ Couper (la traduction est plus fine que l'original) — le lien du voisin (ou une unité « hors matrice ») passe sur CE segment moyeu, la cellule voisine se vide. Le `bead_uid` est **dérivé de la cellule** au serveur (1 moyeu ↔ N cibles = **un** bead, pas une collision) ; les gestes le posent, une migration rattrape les cellules déjà produites. Actions `set_bead`/`clear_bead`, contrat 1.6.57 (§3.6).
 - **D-W15 → Une ligne `[ajout]` n'est pas un segment** (revue 2026-07-13, R3) : les lignes de flux D8 sont tissées **dans** `rows` mais n'ont ni unité moyeu ni liens. Toute résolution de geste (couper, à cheval, ↺) travaille donc sur la **colonne des seules lignes moyeu**, l'indice de la grille étant remappé — une ligne d'ajout ne doit jamais pouvoir être lue comme « le segment au-dessus/en dessous ».
 
 **Prochain :** cf. §6. **Tranche 1 = D-W3 (ré-ancrer positionnel)** — autonome, endpoint de *lecture*, sans contrat ni migration.

@@ -14,7 +14,7 @@ from typing import Any
 from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
-CONTRACT_VERSION = "1.6.56"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.57"  # semantic versioning for the sidecar API contract
 # SID-08 / OPS-03: the API version IS the contract version — derived, never a
 # second hand-maintained literal, so the two can no longer drift. /health reports
 # the *engine* version under `version` (it predates the sidecar); every other
@@ -209,6 +209,14 @@ API_VERSION = CONTRACT_VERSION
 #         in the CSV export) and uncovered (per-column unlinked units, the « ＋ Ajout »
 #         panel), and omitted cells now show the [non traduit] token (D10). Logic in
 #         services/align_cell_status_service + matrix_export_service.
+# 1.6.57: ⭙ Fusionner + bead de cellule (D-W16). AlignBatchAction.action gains `set_bead`
+#         and `clear_bead`: a matrix cell holding several links is ONE bead (1 hub segment ↔
+#         N target sentences), not a collision — the bead_uid is DERIVED server-side from the
+#         link's (pivot_unit_id, target_doc_id) (services/align_links_service.cell_bead_uid),
+#         so the client never invents an identifier. Fixes the phantom collisions the D-W12
+#         straddle cut seeded (its manual link had no bead_uid next to the aligner's; migration
+#         030 backfills the cells already produced). No new route → snapshot unchanged; openapi
+#         moves (enum value) + .md documents the two actions.
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
@@ -4500,11 +4508,16 @@ def openapi_spec() -> dict[str, Any]:
                     "type": "object",
                     "required": ["action", "link_id"],
                     "properties": {
-                        "action": {"type": "string", "enum": ["set_status", "delete", "set_target_span", "clear_target_span"]},
+                        "action": {"type": "string", "enum": ["set_status", "delete", "set_target_span", "clear_target_span", "set_bead", "clear_bead"]},
                         "link_id": {"type": "integer"},
                         "status": {"type": "string", "enum": ["accepted", "rejected"], "nullable": True},
                         "char_start": {"type": "integer", "description": "set_target_span: start offset into the target unit's text_raw (0-based)."},
                         "char_end": {"type": "integer", "description": "set_target_span: end offset (exclusive) into text_raw; 0 <= char_start <= char_end <= len(text_raw)."},
+                        # 1.6.57 (D-W16): set_bead / clear_bead take no extra field — the
+                        # bead_uid is DERIVED server-side from the link's own (pivot_unit_id,
+                        # target_doc_id), so a cell holding several links is one bead (1 hub ↔
+                        # N targets) instead of a phantom collision. clear_bead sets it back to
+                        # NULL (singleton).
                     },
                 },
                 "AlignLinksBatchUpdateRequest": {

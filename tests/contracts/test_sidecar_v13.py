@@ -296,3 +296,57 @@ class TestBatchAtomic:
         assert code == 200
         assert body["applied"] == 1
         assert body["rolled_back"] is False
+
+
+class TestBeadActions:
+    """set_bead / clear_bead (1.6.57, D-W16) — the cell IS the bead."""
+
+    def test_set_bead_groups_the_cell_then_clear_ungroups(self, v13_sidecar):
+        base, token, _ = v13_sidecar
+        link_ids = _get_link_ids(base, token)
+        # Two links on the SAME hub cell (pivot 1 × EN): the shape a straddle cut leaves.
+        code, created = _post(
+            f"{base}/align/link/create", {"pivot_unit_id": 1, "target_unit_id": 8}, token
+        )
+        assert code == 200
+        pair = [link_ids[0], created["link_id"]]
+
+        code, body = _post(
+            f"{base}/align/links/batch_update",
+            {"actions": [{"action": "set_bead", "link_id": lid} for lid in pair], "atomic": True},
+            token,
+        )
+        assert code == 200
+        assert body["applied"] == 2
+        assert body["errors"] == []
+
+        # The collisions endpoint no longer flags the cell (one derived bead, not two).
+        code, coll = _post(
+            f"{base}/align/collisions", {"pivot_doc_id": 1, "target_doc_id": 2}, token
+        )
+        assert code == 200
+        assert all(g["pivot_unit_id"] != 1 for g in coll["collisions"])
+
+        # clear_bead puts the singleton beads back → the cell is a collision again.
+        code, body = _post(
+            f"{base}/align/links/batch_update",
+            {"actions": [{"action": "clear_bead", "link_id": lid} for lid in pair], "atomic": True},
+            token,
+        )
+        assert code == 200
+        assert body["applied"] == 2
+        code, coll = _post(
+            f"{base}/align/collisions", {"pivot_doc_id": 1, "target_doc_id": 2}, token
+        )
+        assert any(g["pivot_unit_id"] == 1 for g in coll["collisions"])
+
+    def test_set_bead_unknown_link_reports_not_found(self, v13_sidecar):
+        base, token, _ = v13_sidecar
+        code, body = _post(
+            f"{base}/align/links/batch_update",
+            {"actions": [{"action": "set_bead", "link_id": 99999}]},
+            token,
+        )
+        assert code == 200
+        assert body["applied"] == 0
+        assert len(body["errors"]) == 1

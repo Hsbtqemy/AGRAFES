@@ -124,7 +124,9 @@
               "set_status",
               "delete",
               "set_target_span",
-              "clear_target_span"
+              "clear_target_span",
+              "set_bead",
+              "clear_bead"
             ],
             "type": "string"
           },
@@ -4286,8 +4288,8 @@
   "info": {
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
-    "version": "1.6.56",
-    "x-contract-version": "1.6.56"
+    "version": "1.6.57",
+    "x-contract-version": "1.6.57"
   },
   "openapi": "3.0.3",
   "paths": {
