@@ -240,6 +240,21 @@ projection lit **les deux axes** — global ⇒ toute la ligne `[non traduit]`, 
 Dans les deux cas la cellule affiche le **token `[non traduit]`** (D10, jamais vide) et **compte comme faite**
 (D-W5).
 
+**Invariants tenus (revue adverse du 2026-07-13, `docs/REVIEW_R33_STATUTS_MATRICE_2026-07-13.md`).**
+Trois règles, sans lesquelles les deux axes se contredisent :
+- **Aligner une cellule, c'est affirmer qu'elle est traduite.** La garde 409 (refus de marquer une
+  cellule qui porte des liens actifs) ne suffit pas : un run d'aligneur ou un lien créé après coup
+  recouvrait la marque, qui restait invisible puis **ressuscitait** à la désalignement. Les écrivains
+  de liens (les 5 `align_pair_*` + `/align/link/create`) **purgent** donc les marques contredites, et
+  la projection n'expose jamais une marque sous des liens actifs.
+- **Un `ajout` est un 0-1** (contenu **sans** source moyeu) : une unité `unit_status='ajout'` qui porte
+  un lien actif est projetée par sa cellule et **n'est pas** tissée en ligne de flux — sinon la même
+  phrase sortait deux fois, CSV compris.
+- **Le cycle de vie suit les unités.** `alignment_cell_statuses` est en `ON DELETE CASCADE` (mig 029) :
+  sans ça, une seule marque faisait échouer `/documents/delete`, `/segment`, `/units/merge` et
+  `/prep/undo` — ces trois derniers **en pleine transaction**, après avoir supprimé les liens de la
+  famille et sans rollback.
+
 **Les unités non couvertes deviennent visibles (D-W14, tranché 2026-07-10).** Une unité de traduction sans
 lien n'apparaît aujourd'hui **nulle part** dans la matrice : impossible d'invoquer « ＋ Ajout » sur de
 l'invisible, et la complétude ment tant que ces unités restent cachées. La projection expose donc, **par
@@ -406,6 +421,7 @@ Toutes validées ; la note est **ticket-ready**. (Rationale : voir les § réfé
 - **D-W12 → Gestes à la demande sur toute cellule** (tranché 2026-07-10, QA 3b) : le ⚠ priorise, il ne conditionne pas l'accès — la couche d'alignement est une surcouche réversible, la main est donnée partout ; + geste « ✂ couper à cheval » sur le segment voisin. Précondition A2 (link_ids par cellule) et batch tout-ou-rien (F2-fond). Cascade de corrections assumée (§3.4).
 - **D-W13 → Coupe itérative fenêtrée + ↺ cellule** (tranché 2026-07-10, QA D-W12) : couper opère dans la fenêtre courante du lien (itérable, N-1 par partitions successives, ⚠ = fenêtres identiques) ; ↺ cellule = la cible redevient entière (tranches effacées + liens `manual` supprimés, atomique) ; le lien créé hérite de l'`external_id` du lien coupé (§3.5).
 - **D-W14 → Unités non couvertes visibles** (tranché 2026-07-10) : la projection expose par colonne les unités cible sans lien actif ni statut (`uncovered`) ; compteur en en-tête de colonne → panneau → geste « ＋ Ajout ». Sans cette surface, ＋ est ininvocable et la complétude ment (§3.3).
+- **D-W15 → Une ligne `[ajout]` n'est pas un segment** (revue 2026-07-13, R3) : les lignes de flux D8 sont tissées **dans** `rows` mais n'ont ni unité moyeu ni liens. Toute résolution de geste (couper, à cheval, ↺) travaille donc sur la **colonne des seules lignes moyeu**, l'indice de la grille étant remappé — une ligne d'ajout ne doit jamais pouvoir être lue comme « le segment au-dessus/en dessous ».
 
 **Prochain :** cf. §6. **Tranche 1 = D-W3 (ré-ancrer positionnel)** — autonome, endpoint de *lecture*, sans contrat ni migration.
 
