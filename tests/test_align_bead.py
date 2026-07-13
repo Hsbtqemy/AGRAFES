@@ -25,6 +25,7 @@ from multicorpus_engine.services.errors import NotFoundError
 _COLLISION_SQL = """
     SELECT pivot_unit_id FROM alignment_links
      WHERE pivot_doc_id=1 AND target_doc_id=2
+       AND (status IS NULL OR status <> 'rejected')
      GROUP BY pivot_unit_id
     HAVING COUNT(DISTINCT COALESCE(bead_uid, 'L' || link_id)) > 1
        AND COUNT(CASE WHEN status = 'accepted' THEN 1 END) < COUNT(*)
@@ -152,6 +153,108 @@ def test_backfill_030_groups_gesture_cells_only(db_conn: sqlite3.Connection) -> 
         "SELECT bead_uid FROM alignment_links WHERE pivot_unit_id=2")} == {"cell#2#2"}
     assert {r[0] for r in db_conn.execute(
         "SELECT bead_uid FROM alignment_links WHERE pivot_unit_id=1")} == {None}
+
+
+def test_rejected_links_do_not_collide(db_conn: sqlite3.Connection) -> None:
+    """A rejected link is dead (ALN-03) — it must not keep a collision standing.
+
+    Two consequences, both reproduced before the fix:
+      - « rejeter », the resolution the Collisions panel itself offers, did NOT clear the
+        collision it resolved (the dead link still counted as a distinct bead);
+      - a cell grouped into one bead by a gesture (D-W16) kept being flagged because of a
+        leftover rejected link, defeating the phantom-collision fix.
+    The predicate here mirrors /align/collisions, /align/quality and qa_report.
+    """
+    _setup_family(db_conn)
+    # A plain aligner collision: two bead-less links on the same pivot.
+    db_conn.execute(
+        "INSERT INTO alignment_links (run_id,pivot_unit_id,target_unit_id,external_id,"
+        "pivot_doc_id,target_doc_id,created_at) VALUES ('run1',1,3,0,1,2,datetime('now'))"
+    )
+    db_conn.execute(
+        "INSERT INTO alignment_links (run_id,pivot_unit_id,target_unit_id,external_id,"
+        "pivot_doc_id,target_doc_id,created_at) VALUES ('run1',1,4,0,1,2,datetime('now'))"
+    )
+    db_conn.commit()
+    assert _collisions(db_conn) == [1]
+
+    # Resolving it by REJECTING one of the two links must clear it.
+    db_conn.execute("UPDATE alignment_links SET status='rejected' WHERE link_id=1")
+    db_conn.commit()
+    assert _collisions(db_conn) == []
+
+    # And a gesture-grouped cell stays clean even with a dead link left on it: the two
+    # active links are grouped by the gesture, a third (rejected) one lingers.
+    db_conn.execute("UPDATE alignment_links SET status=NULL WHERE link_id=1")
+    db_conn.execute(
+        "INSERT INTO units (doc_id,unit_type,n,text_raw,text_norm) VALUES (2,'line',3,'EN3','en3')"
+    )
+    db_conn.execute(
+        "INSERT INTO alignment_links (run_id,pivot_unit_id,target_unit_id,external_id,"
+        "pivot_doc_id,target_doc_id,created_at,status)"
+        " VALUES ('run1',1,5,0,1,2,datetime('now'),'rejected')"
+    )
+    for (link_id,) in db_conn.execute(
+        "SELECT link_id FROM alignment_links WHERE pivot_unit_id=1"
+        " AND (status IS NULL OR status <> 'rejected')"
+    ).fetchall():
+        set_bead(db_conn, link_id)
+    db_conn.commit()
+    assert _collisions(db_conn) == []
+
+
+def test_031_repairs_over_grouped_cells_and_keeps_legitimate_ones(db_conn: sqlite3.Connection) -> None:
+    """T1 (revue 2026-07-13) — 030 grouped EVERY active link of a gesture cell, so a cell
+    where a genuine aligner collision coexisted with an old gesture link lost its alert.
+    031 restores the original bead identity (run_id#bead_id — never destroyed) on exactly
+    those cells, and leaves the legitimately grouped ones alone.
+
+    db_conn has run every migration, so both files are replayed here on data inserted
+    afterwards — what happens on a QA database at startup.
+    """
+    from pathlib import Path
+
+    _setup_family(db_conn)
+    # Hub unit 1 = OVER-GROUPED cell: two aligner links (a genuine collision to arbitrate)
+    # + one old gesture link (manual + cut) — the shape 030 wrongly merged.
+    db_conn.execute(
+        "INSERT INTO alignment_links (run_id,pivot_unit_id,target_unit_id,external_id,"
+        "pivot_doc_id,target_doc_id,created_at,bead_id,bead_uid)"
+        " VALUES ('run1',1,3,0,1,2,datetime('now'),3,'run1#3')"
+    )
+    db_conn.execute(
+        "INSERT INTO alignment_links (run_id,pivot_unit_id,target_unit_id,external_id,"
+        "pivot_doc_id,target_doc_id,created_at) VALUES ('run1',1,4,0,1,2,datetime('now'))"
+    )
+    db_conn.execute(
+        "INSERT INTO units (doc_id,unit_type,n,text_raw,text_norm) VALUES (2,'line',3,'EN3','en3')"
+    )
+    db_conn.execute(
+        "INSERT INTO alignment_links (run_id,pivot_unit_id,target_unit_id,external_id,"
+        "pivot_doc_id,target_doc_id,created_at,target_char_start,target_char_end)"
+        " VALUES ('manual',1,5,0,1,2,datetime('now'),0,3)"
+    )
+    # Hub unit 2 = LEGITIMATE gesture cell (one aligner link + one manual cut link).
+    _straddle_shape(db_conn)
+    db_conn.commit()
+
+    mig = Path(__file__).resolve().parent.parent / "migrations"
+    db_conn.executescript((mig / "030_alignment_gesture_bead_backfill.sql").read_text(encoding="utf-8"))
+    db_conn.commit()
+    # 030 alone silences BOTH cells — including the genuine ambiguity on hub unit 1.
+    assert _collisions(db_conn) == []
+
+    db_conn.executescript((mig / "031_alignment_bead_backfill_repair.sql").read_text(encoding="utf-8"))
+    db_conn.commit()
+
+    # The genuine collision is back, with the aligner's original bead identity restored…
+    assert _collisions(db_conn) == [1]
+    assert [r[0] for r in db_conn.execute(
+        "SELECT bead_uid FROM alignment_links WHERE pivot_unit_id=1 ORDER BY link_id"
+    )] == ["run1#3", None, None]
+    # …and the legitimately grouped cell keeps its cell bead (no phantom collision).
+    assert {r[0] for r in db_conn.execute(
+        "SELECT bead_uid FROM alignment_links WHERE pivot_unit_id=2")} == {"cell#2#2"}
 
 
 def test_backfill_030_ignores_a_lone_gesture_link(db_conn: sqlite3.Connection) -> None:

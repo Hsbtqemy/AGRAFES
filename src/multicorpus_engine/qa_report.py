@@ -161,12 +161,15 @@ def _check_alignment_pairs(conn: sqlite3.Connection) -> list[dict]:
         # Collision count: pivot units linked to >1 *distinct bead*. Links sharing a
         # bead_uid (an intentional N-M sentence bead, R3.2/K3) count as one — a 1-2 split
         # is not a collision. bead key = COALESCE(bead_uid, per-link) so null-bead
-        # (legacy/manual/plain-1-1) rows each count individually.
+        # (legacy/manual/plain-1-1) rows each count individually. REJECTED links are dead
+        # (ALN-03) and are excluded, like everywhere else (F8) — the same predicate as the
+        # /align/collisions endpoint, so the report and the panel never disagree.
         try:
             collisions = conn.execute(
                 """SELECT COUNT(*) FROM (
                     SELECT pivot_unit_id FROM alignment_links
                     WHERE pivot_doc_id=? AND target_doc_id=?
+                      AND (status IS NULL OR status <> 'rejected')
                     GROUP BY pivot_unit_id
                     HAVING COUNT(DISTINCT COALESCE(bead_uid, 'L' || link_id)) > 1)""",
                 (piv_id, tgt_id),

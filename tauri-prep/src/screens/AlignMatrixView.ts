@@ -533,11 +533,6 @@ export class AlignMatrixView {
         : [[{ link_id: existing.link_id }], [{ link_id: createdId }]];
       const actions = buildPartitionActions(aboveSide, belowSide, offset, window[0], window[1]);
       if (actions.length === 0) throw new Error("point de coupe invalide");
-      // The neighbour's cell now holds its own link(s) + the one we just created: it is
-      // ONE bead (1 hub ↔ N targets). Without this the bead-less manual link sat next to
-      // the aligner's beaded one and Qualité / Révision fine flagged a phantom collision
-      // (D-W16). Same atomic batch as the slices — the grouping is part of the gesture.
-      actions.push(...buildCellBeadActions([...neighborLinks, { link_id: createdId }]));
       const res = await batchUpdateAlignLinks(conn, actions, { atomic: true });
       if (res.errors.length) {
         if (res.applied > 0) {
@@ -555,6 +550,13 @@ export class AlignMatrixView {
         okBtn.disabled = false;
         return;
       }
+      // The neighbour's cell now holds its own link(s) + the one we just created: it is
+      // ONE bead (1 hub ↔ N targets), not a collision (D-W16). Best-effort, in its OWN
+      // non-atomic batch: it is hygiene, not the gesture — an older sidecar (< 1.6.57)
+      // would reject the unknown action and, inside the atomic batch, roll the whole cut
+      // back (revue T5). The cut has already committed; a failed grouping only leaves the
+      // pre-1.6.57 behaviour (a phantom collision), never a broken cut.
+      await this._groupCellBead(conn, [...neighborLinks, { link_id: createdId, manual: true }]);
       close();
       this._cb.toast?.("✓ Traduction coupée à cheval");
       await this._reloadPreservingScroll();
@@ -592,21 +594,35 @@ export class AlignMatrixView {
     const resUp = resolveCellMerge(ctx.column, row, "up");
     const resDown = resolveCellMerge(ctx.column, row, "down");
     if (resUp.error !== undefined && resDown.error !== undefined) {
-      this._cb.toast?.(`✗ ${resDown.error}`, true);
+      // Prefer the ACTIONABLE reason over the structural one (« pas de segment en
+      // dessous ») — on the last row the structural error would hide it (T8).
+      const structural = /Pas de segment/;
+      const actionable = [resDown.error, resUp.error].find((e) => !structural.test(e));
+      this._cb.toast?.(`✗ ${actionable ?? resDown.error}`, true);
       return;
     }
     let dir: StraddleDirection = resDown.error === undefined ? "down" : "up";
     const rowCur = ctx.hubRows[row];
     const lang = ctx.view.translationLangs[col] ?? "?";
+    /** Links the neighbour keeps: only its EDGE link is absorbed (T6). */
+    const remainingOf = (d: StraddleDirection): number => {
+      const r = d === "up" ? resUp : resDown;
+      if (r.error !== undefined) return 0;
+      return Math.max(0, (ctx.column[r.neighborRow]?.length ?? 1) - 1);
+    };
 
     const preview = (d: StraddleDirection): string => {
       const r = d === "up" ? resUp : resDown;
       if (r.error !== undefined) return "";
       const neighbor = ctx.hubRows[r.neighborRow];
       const text = r.link.target_text_raw ?? "";
+      const left = remainingOf(d);
+      const fate = left === 0
+        ? `Le segment ${neighbor.segment} perdra cette traduction (il deviendra ∅).`
+        : `Le segment ${neighbor.segment} gardera ses ${left} autre${left > 1 ? "s" : ""} traduction${left > 1 ? "s" : ""}.`;
       return `<p class="prep-matrix-merge-preview">Le segment ${rowCur.segment} absorbera&nbsp;:`
         + ` <span class="prep-matrix-merge-text">${_esc(shortenCp(text, 160))}</span>`
-        + `<br><small>Le segment ${neighbor.segment} perdra cette traduction (il deviendra ∅).</small></p>`;
+        + `<br><small>${fate}</small></p>`;
     };
     const radio = (d: StraddleDirection, label: string): string => {
       const r = d === "up" ? resUp : resDown;
@@ -629,7 +645,7 @@ export class AlignMatrixView {
       + `à ce segment. Elle sera rattachée ici (réversible — ⭙ dans l'autre sens).`,
       extra,
     );
-    okBtn.innerHTML = "&#8857; Fusionner";
+    okBtn.textContent = "⭙ Fusionner";
     const host = dialog.querySelector<HTMLElement>(".prep-matrix-merge-host")!;
     const renderPreview = () => setHtml(host, raw(preview(dir)));
     renderPreview();
@@ -645,21 +661,45 @@ export class AlignMatrixView {
         return;
       }
       void this._performCellMerge(
-        r.link, rowCur.hubUnitId, ctx.column[row] ?? [], this._closeCutModal!, okBtn);
+        r.link, rowCur.hubUnitId, ctx.column[row] ?? [], remainingOf(dir),
+        this._closeCutModal!, okBtn);
     });
   }
 
   /**
+   * Group a cell into one bead — **best effort, out of band** (revue T5). The grouping is
+   * hygiene (it silences the phantom collision the gesture would otherwise seed), not the
+   * gesture itself: putting it in the gesture's atomic batch would make an older sidecar
+   * (< 1.6.57, which does not know `set_bead`) roll the whole cut/merge back. Here a
+   * failure only means the pre-1.6.57 behaviour, never a broken write.
+   *
+   * `buildCellBeadActions` refuses to group a cell that already carried ≥ 2 aligner links
+   * (a genuine collision to arbitrate — T1); the caller says so to the user.
+   */
+  private async _groupCellBead(
+    conn: Conn, cellLinks: ReadonlyArray<Pick<MatrixCellLink, "link_id" | "manual">>,
+  ): Promise<{ grouped: boolean }> {
+    const actions = buildCellBeadActions(cellLinks);
+    if (actions.length === 0) return { grouped: false };
+    try {
+      await batchUpdateAlignLinks(conn, actions);
+      return { grouped: true };
+    } catch {
+      return { grouped: false };
+    }
+  }
+
+  /**
    * Move the neighbour's link onto this hub segment: create it here (inheriting the
-   * pair number), then delete the neighbour's — in ONE atomic batch with the cell's
-   * bead (D-W16: the cell becomes 1 hub ↔ N targets = one bead, never a collision).
-   * The created link is deleted in compensation if the batch is refused, so a failed
-   * merge can never leave the sentence attached to BOTH segments.
+   * pair number), then delete the neighbour's — atomically. The created link is deleted
+   * in compensation if the batch is refused, so a failed merge can never leave the
+   * sentence attached to BOTH segments. The cell's bead follows, best-effort.
    */
   private async _performCellMerge(
     neighborLink: MatrixCellLink,
     hubUnitId: number,
     cellLinks: readonly MatrixCellLink[],
+    neighborRemaining: number,
     close: () => void,
     okBtn: HTMLButtonElement,
   ): Promise<void> {
@@ -675,10 +715,7 @@ export class AlignMatrixView {
           ? { external_id: neighborLink.external_id } : {}),
       });
       createdId = created.link_id;
-      const actions = [
-        { action: "delete" as const, link_id: neighborLink.link_id },
-        ...buildCellBeadActions([...cellLinks, { link_id: createdId }]),
-      ];
+      const actions = [{ action: "delete" as const, link_id: neighborLink.link_id }];
       const res = await batchUpdateAlignLinks(conn, actions, { atomic: true });
       if (res.errors.length) {
         if (res.applied > 0 || res.deleted > 0) {
@@ -694,11 +731,27 @@ export class AlignMatrixView {
         okBtn.disabled = false;
         return;
       }
+      const { grouped } = await this._groupCellBead(
+        conn, [...cellLinks, { link_id: createdId, manual: true }]);
       close();
-      this._cb.toast?.("✓ Phrase absorbée — le segment voisin est à traiter");
+      // Say what actually happened: only the EDGE link moves, so the neighbour keeps its
+      // other links (T6); and a cell that already carried several aligner links is a real
+      // ambiguity we refuse to silence (T1) — the user must arbitrate it in Révision fine.
+      const tail = neighborRemaining > 0
+        ? ` — le segment voisin garde ${neighborRemaining} traduction${neighborRemaining > 1 ? "s" : ""}`
+        : " — le segment voisin est à traiter";
+      const warn = !grouped && cellLinks.filter((l) => l.manual !== true).length > 1
+        ? " (cette cellule porte une ambiguïté d'alignement — à arbitrer en Révision fine)"
+        : "";
+      this._cb.toast?.(`✓ Phrase absorbée${tail}${warn}`);
       await this._reloadPreservingScroll();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const raw = err instanceof Error ? err.message : String(err);
+      // A REJECTED link (P,T) still occupies the unique index (mig 008) but is invisible
+      // in the matrix, so the resolver cannot see it and create returns a bare 409 (T7).
+      const msg = /already exists|CONFLICT|409/i.test(raw)
+        ? "un lien (rejeté ?) existe déjà entre ce segment et cette phrase — le réactiver ou le supprimer en Révision fine"
+        : raw;
       if (createdId != null) {
         try {
           await deleteAlignLink(conn, { link_id: createdId });

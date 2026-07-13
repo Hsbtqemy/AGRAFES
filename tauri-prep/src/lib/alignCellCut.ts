@@ -224,27 +224,44 @@ export function resolveCellUncut(
   return { clears, deletes };
 }
 
-/** Atomic batch for the ↺: clear the aligner links' cuts, delete the manual ones. */
+/**
+ * Atomic batch for the ↺: clear the aligner links' cuts, delete the manual ones — and
+ * **ungroup** what the cut had grouped (revue T4: the bead was write-only, so ↺ left the
+ * cell beaded forever and was not the exact inverse of the cut it undid). A link the ↺
+ * leaves behind is alone on its cell again → its own bead.
+ */
 export function buildUncutActions(res: { clears: MatrixCellLink[]; deletes: MatrixCellLink[] }): AlignBatchAction[] {
   return [
     ...res.clears.map((l) => ({ action: "clear_target_span" as const, link_id: l.link_id })),
     ...res.deletes.map((l) => ({ action: "delete" as const, link_id: l.link_id })),
+    ...res.clears.map((l) => ({ action: "clear_bead" as const, link_id: l.link_id })),
   ];
 }
 
 // ─── Cell bead (D-W16) ───────────────────────────────────────────────────────────
 
 /**
- * `set_bead` for every link a gesture leaves on ONE cell — a cell holding several
- * links is one bead (1 hub segment ↔ N target sentences), not a collision. Without
- * this the gesture-created (`manual`, bead-less) link sat next to the aligner's beaded
- * one and the detector flagged a phantom collision in Qualité / Révision fine.
+ * `set_bead` for the links a gesture leaves on ONE cell — a cell holding several links
+ * is one bead (1 hub segment ↔ N target sentences), not a collision. Without this the
+ * gesture-created (`manual`, bead-less) link sat next to the aligner's beaded one and
+ * the detector flagged a phantom collision in Qualité / Révision fine.
  *
- * `[]` for a cell that ends with a single link: it is already its own bead, and the
- * server would only rewrite the row for nothing.
+ * **We only group what the gesture is responsible for** (revue 2026-07-13, T1). A cell
+ * that ALREADY carried ≥ 2 non-gesture (aligner) links is a *genuine* collision — an
+ * ambiguity the human must arbitrate. Beading it would erase that alert for good (no UI
+ * path calls `clear_bead`), and the user would never even have seen it: a straddle cut
+ * beads the cell NEXT DOOR, which they were not looking at. So: don't group, leave the
+ * cell flagged, tell the truth.
+ *
+ * `[]` therefore when the cell ends with a single link (already its own bead) or when
+ * it holds more than one pre-existing aligner link.
  */
-export function buildCellBeadActions(cellLinks: ReadonlyArray<Pick<MatrixCellLink, "link_id">>): AlignBatchAction[] {
+export function buildCellBeadActions(
+  cellLinks: ReadonlyArray<Pick<MatrixCellLink, "link_id" | "manual">>,
+): AlignBatchAction[] {
   if (cellLinks.length < 2) return [];
+  const alignerLinks = cellLinks.filter((l) => l.manual !== true);
+  if (alignerLinks.length > 1) return [];
   return cellLinks.map((l) => ({ action: "set_bead" as const, link_id: l.link_id }));
 }
 
@@ -295,6 +312,17 @@ export function resolveCellMerge(
   const cur = column[row] ?? [];
   if (cur.some((l) => l.target_unit_id === link.target_unit_id)) {
     return { error: "Cette traduction est déjà rattachée à ce segment." };
+  }
+  // The edge link's target must belong to the neighbour ALONE (revue T1/T2). If another
+  // hub row still holds it (an unresolved ⚠ fusion), absorbing it would duplicate the
+  // sentence on two NON-ADJACENT rows and destroy the ⚠ that revealed the fusion (the
+  // view-model only compares a cell with the previous hub row).
+  const heldElsewhere = column.some((links, i) =>
+    i !== neighborRow && links.some((l) => l.target_unit_id === link.target_unit_id));
+  if (heldElsewhere) {
+    return {
+      error: "Cette traduction est partagée avec un autre segment (fusion ⚠) — la couper (✂) avant de fusionner.",
+    };
   }
   return { link, neighborRow };
 }

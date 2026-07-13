@@ -380,6 +380,29 @@ de lecture, comme si le geste n'avait pas été intégré.
 - **Moteur, additif** : deux actions de `/align/links/batch_update` — `set_bead` (uid dérivé) et
   `clear_bead` (NULL) — contrat **1.6.57**. Aucune route nouvelle.
 
+**Amendements (revue adverse du 2026-07-13, `docs/REVIEW_R33_TRANCHE4_BEAD_2026-07-13.md`).** La
+première version du geste posait le bug **inverse** de celui qu'elle corrigeait :
+
+- **On ne groupe QUE ce que le geste a produit.** Une cellule qui portait déjà **≥ 2 liens
+  d'aligneur** est une **vraie collision** — une ambiguïté à arbitrer. La grouper l'effaçait pour
+  toujours (aucun chemin d'UI n'appelle `clear_bead`), et l'utilisateur ne l'avait même pas vue : une
+  coupe à cheval beade la cellule **d'à côté**. Le geste refuse donc de grouper une telle cellule (et
+  le dit) ; la migration **031** rend leur identité d'origine (`run_id#bead_id`, jamais détruite) aux
+  cellules que 030 avait sur-groupées.
+- **Le ↺ dégroupe** ce que la coupe avait groupé — le bead était en écriture seule, le ↺ n'était donc
+  pas l'inverse exact de la coupe.
+- **Le regroupement part dans son propre batch, non atomique et best-effort** : c'est de l'hygiène,
+  pas le geste. Dans le batch atomique, un sidecar antérieur à 1.6.57 (qui ignore `set_bead`) faisait
+  **rouler toute la coupe en arrière**.
+- **Fusionner refuse une cible partagée** avec une autre ligne moyeu (fusion ⚠ non résolue) :
+  l'absorber dupliquerait la phrase sur deux lignes **non adjacentes** et détruirait le ⚠ qui la
+  révélait. → ✂ Couper d'abord.
+- **Le ⭙ existe aussi sur une cellule vide** : sans lui, la cellule que la fusion vient de vider n'a
+  plus aucun bouton et la réversibilité promise est fausse.
+- **Un lien rejeté ne collisionne plus** (prédicat des trois sites) : il est mort (ALN-03), et sans
+  ça « rejeter » — l'action de résolution que le panneau Collisions propose lui-même — ne faisait
+  jamais disparaître la collision qu'elle résout.
+
 ## 4. Les quatre douleurs → réponses
 
 | Douleur | Réponse dans cet espace |

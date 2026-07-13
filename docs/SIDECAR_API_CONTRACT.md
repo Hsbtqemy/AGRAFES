@@ -728,7 +728,7 @@ Response:
 ```json
 { "ok": true, "status": "ok", "applied": 3, "deleted": 1, "errors": [], "rolled_back": false }
 ```
-- `applied` — number of `set_status` operations that succeeded
+- `applied` — number of NON-delete operations that succeeded (`set_status`, `set_target_span`, `clear_target_span` depuis 1.6.54, `set_bead`/`clear_bead` depuis 1.6.57)
 - `deleted` — number of `delete` operations that succeeded
 - `errors` — array of `{ index, link_id, error }` for individual failures (not found, invalid action, etc.)
 - `rolled_back` — `true` when `atomic` was set and an error rolled the whole batch back

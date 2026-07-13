@@ -181,9 +181,11 @@ describe("resolveCellUncut / buildUncutActions (D-W13 ↺)", () => {
     expect(res.error).toBeUndefined();
     expect(res.clears!.map((l) => l.link_id)).toEqual([1]);
     expect(res.deletes!.map((l) => l.link_id)).toEqual([7]);
+    // The ↺ also UNGROUPS what the cut had grouped (revue T4) — it is the exact inverse.
     expect(buildUncutActions({ clears: res.clears!, deletes: res.deletes! })).toEqual([
       { action: "clear_target_span", link_id: 1 },
       { action: "delete", link_id: 7 },
+      { action: "clear_bead", link_id: 1 },
     ]);
   });
 
@@ -389,8 +391,10 @@ describe("resolveCellMerge — ⭙ Fusionner (D-W16)", () => {
 });
 
 describe("buildCellBeadActions — le bead de cellule (D-W16)", () => {
-  it("groups every link of a multi-link cell (else the detector sees a collision)", () => {
-    expect(buildCellBeadActions([lk(4, 91), lk(7, 92)])).toEqual([
+  it("groups the cell a gesture produced (aligner link + the link it created)", () => {
+    // The gesture's own link is `manual` — a cell whose OTHER links are a single aligner
+    // link is exactly the 1 hub ↔ N targets shape the bead exists for.
+    expect(buildCellBeadActions([lk(4, 91), lk(7, 92, { manual: true })])).toEqual([
       { action: "set_bead", link_id: 4 },
       { action: "set_bead", link_id: 7 },
     ]);
@@ -399,5 +403,44 @@ describe("buildCellBeadActions — le bead de cellule (D-W16)", () => {
   it("leaves a single-link cell alone — it is already its own bead", () => {
     expect(buildCellBeadActions([lk(4, 91)])).toEqual([]);
     expect(buildCellBeadActions([])).toEqual([]);
+  });
+});
+
+describe("revue 2026-07-13 — le bead ne doit pas étouffer une vraie collision (T1/T2/T4)", () => {
+  it("T1: ne groupe PAS une cellule qui portait déjà 2 liens d'aligneur (collision réelle)", () => {
+    // Two aligner links (manual falsy) + the link our gesture just created: the cell was
+    // ALREADY a genuine collision → grouping it would erase the alert for good.
+    const cell = [lk(1, 91), lk(2, 92), lk(3, 93, { manual: true })];
+    expect(buildCellBeadActions(cell)).toEqual([]);
+  });
+
+  it("T1: groupe bien la cellule que le geste a produite (1 lien aligneur + les nôtres)", () => {
+    const cell = [lk(1, 91), lk(7, 92, { manual: true }), lk(8, 93, { manual: true })];
+    expect(buildCellBeadActions(cell).map((a) => a.link_id)).toEqual([1, 7, 8]);
+  });
+
+  it("T2: refuse d'absorber une cible partagée avec une autre ligne (fusion ⚠)", () => {
+    // Rows 0 and 1 share target 90 (unresolved fusion); row 2 tries to absorb it upwards.
+    const column: CellLinkColumn = [[lk(1, 90)], [lk(2, 90)], [lk(3, 92)]];
+    const res = resolveCellMerge(column, 2, "up");
+    expect(res.error).toContain("partagée");
+    expect(res.link).toBeUndefined();
+  });
+
+  it("T3: une cellule VIDE peut absorber la phrase du voisin (la fusion reste réversible)", () => {
+    const column: CellLinkColumn = [[], [lk(2, 92)]];
+    const res = resolveCellMerge(column, 0, "down");
+    expect(res.error).toBeUndefined();
+    expect(res.link!.link_id).toBe(2);
+  });
+
+  it("T4: le ↺ dégroupe les liens qu'il laisse en place (le bead n'est plus en écriture seule)", () => {
+    const kept = lk(1, 90, { char_start: 0, char_end: 5 });
+    const gesture = lk(7, 90, { char_start: 5, char_end: 11, manual: true });
+    expect(buildUncutActions({ clears: [kept], deletes: [gesture] })).toEqual([
+      { action: "clear_target_span", link_id: 1 },
+      { action: "delete", link_id: 7 },
+      { action: "clear_bead", link_id: 1 },
+    ]);
   });
 });

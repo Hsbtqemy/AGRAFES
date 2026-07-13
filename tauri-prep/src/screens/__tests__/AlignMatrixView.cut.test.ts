@@ -154,18 +154,80 @@ describe("AlignMatrixView — « ⭙ Fusionner » (D-W16)", () => {
     // The link is re-created on THIS hub unit, inheriting the pair number…
     const create = calls.find((c) => c.path === "/align/link/create");
     expect(create?.body).toEqual({ pivot_unit_id: 101, target_unit_id: 901, external_id: 2 });
-    // …the neighbour's link is deleted and the cell (its existing link + the new one)
-    // becomes ONE bead — else the collision detector would flag a phantom collision.
-    const batch = calls.find((c) => c.path === "/align/links/batch_update");
-    expect(batch?.body).toEqual({
+    // …the neighbour's link is deleted ATOMICALLY (the gesture itself)…
+    const batches = calls.filter((c) => c.path === "/align/links/batch_update");
+    expect(batches[0].body).toEqual({
+      actions: [{ action: "delete", link_id: 14 }],
+      atomic: true,
+    });
+    // …and the cell's bead follows in its OWN, non-atomic batch (revue T5): grouping is
+    // hygiene — inside the atomic batch, an older sidecar that ignores set_bead would roll
+    // the whole merge back.
+    expect(batches[1].body).toEqual({
       actions: [
-        { action: "delete", link_id: 14 },
         { action: "set_bead", link_id: 13 },
         { action: "set_bead", link_id: 77 },
       ],
-      atomic: true,
     });
     expect(toasts).toContain("✓ Phrase absorbée — le segment voisin est à traiter");
+  });
+
+  it("T1: does NOT bead a cell that already carried a genuine aligner collision", async () => {
+    const calls: Array<{ path: string; body: unknown }> = [];
+    // Row 0's cell holds TWO aligner links (a real ambiguity flagged in Qualité) — a merge
+    // must not fold them into one bead and erase the alert the user has never arbitrated.
+    const collidingCell: AlignMatrix = {
+      ...MATRIX_STRADDLE,
+      rows: [["1", 1, "FR un", "A. B."], ["1", 2, "FR deux", "It is the sound"]],
+      cell_links: [
+        [[lk(13, 900, "A.", { external_id: 1 }), lk(15, 902, "B.", { external_id: 1 })]],
+        [[lk(14, 901, "It is the sound", { external_id: 2 })]],
+      ],
+    };
+    const { el, toasts } = await mountWithMatrix(calls, { matrix: collidingCell });
+
+    el.querySelectorAll<HTMLButtonElement>(".prep-matrix-merge-btn")[0].click();
+    await vi.waitFor(() => {
+      expect(document.querySelector(".prep-matrix-merge-preview")).not.toBeNull();
+    });
+    document.querySelector<HTMLButtonElement>("[data-cut-ok]")!.click();
+    await vi.waitFor(() => {
+      expect(calls.filter((c) => c.path === "/align/matrix")).toHaveLength(2);
+    });
+
+    // The merge itself happens (delete of the neighbour's link)…
+    const batches = calls.filter((c) => c.path === "/align/links/batch_update");
+    expect(batches).toHaveLength(1);
+    expect(batches[0].body).toEqual({ actions: [{ action: "delete", link_id: 14 }], atomic: true });
+    // …but NO set_bead is posted, and the user is told the cell needs arbitration.
+    expect(JSON.stringify(batches[0].body)).not.toContain("set_bead");
+    expect(toasts.some((t) => t.includes("ambiguïté d'alignement"))).toBe(true);
+  });
+
+  it("T3: an EMPTY cell keeps the ⭙ — the merge stays reversible", async () => {
+    const calls: Array<{ path: string; body: unknown }> = [];
+    // The shape a merge leaves behind: row 1's cell is empty.
+    const emptied: AlignMatrix = {
+      ...MATRIX_STRADDLE,
+      rows: [["1", 1, "FR un", "As far back It is the sound"], ["1", 2, "FR deux", ""]],
+      cell_links: [
+        [[lk(13, 900, "As far back", { external_id: 1 }), lk(78, 901, "It is the sound", { external_id: 1, manual: true })]],
+        [[]],
+      ],
+    };
+    const { el } = await mountWithMatrix(calls, { matrix: emptied });
+
+    const mergeBtns = el.querySelectorAll<HTMLButtonElement>(".prep-matrix-merge-btn");
+    const onEmptyRow = Array.from(mergeBtns).find((b) => b.dataset.cutRow === "1");
+    expect(onEmptyRow).toBeDefined();  // before the fix the empty cell had no ⭙ at all
+
+    onEmptyRow!.click();
+    await vi.waitFor(() => {
+      expect(document.querySelector(".prep-matrix-merge-preview")).not.toBeNull();
+    });
+    // It can absorb the sentence back from the row above (direction « up »).
+    const up = document.querySelector<HTMLInputElement>('input[name="prep-matrix-merge-dir"][value="up"]')!;
+    expect(up.disabled).toBe(false);
   });
 
   it("refuses to absorb a CUT neighbour (the two mechanics must not mix)", async () => {
@@ -367,17 +429,22 @@ describe("AlignMatrixView — « ✂ couper à cheval » (D-W12)", () => {
     expect(create?.body).toEqual({ pivot_unit_id: 102, target_unit_id: 900, external_id: 1 });
     // "down": the cell keeps the head, the created link takes the tail — atomically.
     // Suggested boundary on "As far back" (hubs "FR un"/"FR deux") = 3.
-    // The neighbour's cell (its own link 14 + the created 77) is grouped into ONE bead
-    // in the same batch (D-W16) — without it the detector flagged a phantom collision.
-    const batch = calls.find((c) => c.path === "/align/links/batch_update");
-    expect(batch?.body).toEqual({
+    const batches = calls.filter((c) => c.path === "/align/links/batch_update");
+    expect(batches[0].body).toEqual({
       actions: [
         { action: "set_target_span", link_id: 13, char_start: 0, char_end: 3 },
         { action: "set_target_span", link_id: 77, char_start: 3, char_end: 11 },
+      ],
+      atomic: true,
+    });
+    // The neighbour's cell (its own link 14 + the created 77) is grouped into ONE bead in
+    // a SEPARATE, best-effort batch (revue T5): hygiene must not be able to roll the cut
+    // back on a sidecar that predates set_bead.
+    expect(batches[1].body).toEqual({
+      actions: [
         { action: "set_bead", link_id: 14 },
         { action: "set_bead", link_id: 77 },
       ],
-      atomic: true,
     });
     expect(toasts).toContain("✓ Traduction coupée à cheval");
     expect(document.querySelector(".prep-matrix-cut-overlay")).toBeNull();
@@ -449,6 +516,8 @@ describe("AlignMatrixView — « ↺ » cellule (D-W13)", () => {
       actions: [
         { action: "clear_target_span", link_id: 13 },
         { action: "delete", link_id: 77 },
+        // The ↺ also ungroups what the cut grouped (revue T4) — the exact inverse.
+        { action: "clear_bead", link_id: 13 },
       ],
       atomic: true,
     });
@@ -468,6 +537,7 @@ describe("AlignMatrixView — « ↺ » cellule (D-W13)", () => {
       actions: [
         { action: "clear_target_span", link_id: 13 },
         { action: "delete", link_id: 77 },
+        { action: "clear_bead", link_id: 13 },
       ],
       atomic: true,
     });

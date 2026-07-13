@@ -88,7 +88,14 @@ export function buildMatrixGridHtml(view: MatrixView): string {
           ? ` <button type="button" class="prep-matrix-nt-btn" data-nt-action="set" data-cut-row="${rowIdx}" data-cut-col="${colIdx}"`
             + ` title="Marquer « non traduit » (voulu) — la cellule compte comme faite">&#8709; non traduit</button>`
           : "";
-        inner = `<span class="prep-matrix-empty" title="Aucune traduction alignée">&#8709;</span>${ntBtn}`;
+        // An EMPTY cell must keep the ⭙ too (revue T3): a merge empties the neighbour,
+        // and « réversible — ⭙ dans l'autre sens » is only true if the emptied cell can
+        // absorb the sentence back. resolveCellMerge already tolerates an empty cell.
+        const mergeBackBtn = view.hasCellLinks && r.hubUnitId != null
+          ? ` <button type="button" class="prep-matrix-merge-btn" data-cut-row="${rowIdx}" data-cut-col="${colIdx}"`
+            + ` title="Fusionner — reprendre la phrase du segment voisin dans CE segment">&#8857;</button>`
+          : "";
+        inner = `<span class="prep-matrix-empty" title="Aucune traduction alignée">&#8709;</span>${ntBtn}${mergeBackBtn}`;
       } else if (c.status === "fused") {
         // Tranche 3b — the cut gesture lives on the fused (repeating) cell; its bead
         // pairs this row with the one above, so row 0 (defensive) gets no button.

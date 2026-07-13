@@ -3423,12 +3423,16 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         # All-accepted multi-links are intentional (user validated each one) and are
         # not collisions; links sharing a bead_uid (an N-M sentence bead, R3.2/K3) also
         # count as one, so a 1-2 split is never a collision.
+        # REJECTED links are dead (ALN-03): they are excluded from the projection (F8)
+        # and must not collide with anything — otherwise « rejeter » (the resolution the
+        # Collisions panel itself offers) would never clear the collision it resolves.
         collision_row = conn.execute(
             f"""
             SELECT COUNT(*) FROM (
                 SELECT pivot_unit_id
                 FROM alignment_links al
                 WHERE {link_where}
+                  AND (al.status IS NULL OR al.status <> 'rejected')
                 GROUP BY pivot_unit_id
                 HAVING COUNT(DISTINCT COALESCE(bead_uid, 'L' || link_id)) > 1
                   AND COUNT(CASE WHEN status = 'accepted' THEN 1 END) < COUNT(*)
@@ -8363,6 +8367,11 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         # All-accepted multi-links are intentional (user validated each) → not collisions;
         # links sharing a bead_uid (an N-M sentence bead, R3.2/K3) also count as one bead, so
         # a 1-2 split is never flagged.
+        # REJECTED links are dead (ALN-03) — excluded, like everywhere else (F8): a rejected
+        # link must not collide, otherwise « rejeter » (this very panel's resolution action)
+        # would leave the collision standing, and a cell grouped into one bead by a gesture
+        # (D-W16) would keep being flagged because of a leftover dead link.
+        _coll_live = " AND (status IS NULL OR status <> 'rejected')"
         _coll_having = (
             "HAVING COUNT(DISTINCT COALESCE(bead_uid, 'L' || link_id)) > 1"
             " AND COUNT(CASE WHEN status = 'accepted' THEN 1 END) < COUNT(*)"
@@ -8374,7 +8383,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             SELECT COUNT(*) FROM (
                 SELECT pivot_unit_id
                 FROM alignment_links
-                WHERE pivot_doc_id = ? AND target_doc_id = ?
+                WHERE pivot_doc_id = ? AND target_doc_id = ?{_coll_live}
                 GROUP BY pivot_unit_id
                 {_coll_having}
             )
@@ -8388,7 +8397,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             f"""
             SELECT pivot_unit_id
             FROM alignment_links
-            WHERE pivot_doc_id = ? AND target_doc_id = ?
+            WHERE pivot_doc_id = ? AND target_doc_id = ?{_coll_live}
             GROUP BY pivot_unit_id
             {_coll_having}
             ORDER BY pivot_unit_id
