@@ -2075,7 +2075,10 @@ export async function listRuns(
 // ─── V1.3 — Batch align link operations ──────────────────────────────────────
 
 export interface AlignBatchAction {
-  action: "set_status" | "delete" | "set_target_span" | "clear_target_span";
+  /** 1.6.57 (D-W16): set_bead / clear_bead group (or ungroup) a link into its CELL's
+   *  bead — the bead_uid is derived server-side from the link's (pivot, target_doc),
+   *  so a cell holding several links is one bead, not a phantom collision. */
+  action: "set_status" | "delete" | "set_target_span" | "clear_target_span" | "set_bead" | "clear_bead";
   link_id: number;
   /** Required for set_status; null resets to unreviewed */
   status?: "accepted" | "rejected" | null;

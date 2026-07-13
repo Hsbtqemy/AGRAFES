@@ -132,6 +132,55 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
+describe("AlignMatrixView — « ⭙ Fusionner » (D-W16)", () => {
+  it("absorbs the neighbour's sentence: create here + delete there + cell bead, atomic", async () => {
+    const calls: Array<{ path: string; body: unknown }> = [];
+    // Two clean 1-1 rows: EN2 (row 1) really belongs to FR un (row 0).
+    const { el, toasts } = await mountWithMatrix(calls, { matrix: MATRIX_STRADDLE });
+
+    el.querySelectorAll<HTMLButtonElement>(".prep-matrix-merge-btn")[0].click();
+    await vi.waitFor(() => {
+      expect(document.querySelector(".prep-matrix-merge-preview")).not.toBeNull();
+    });
+    // The preview names what moves and what empties.
+    expect(document.querySelector(".prep-matrix-merge-preview")!.textContent)
+      .toContain("It is the sound");
+
+    document.querySelector<HTMLButtonElement>("[data-cut-ok]")!.click();
+    await vi.waitFor(() => {
+      expect(calls.filter((c) => c.path === "/align/matrix")).toHaveLength(2);
+    });
+
+    // The link is re-created on THIS hub unit, inheriting the pair number…
+    const create = calls.find((c) => c.path === "/align/link/create");
+    expect(create?.body).toEqual({ pivot_unit_id: 101, target_unit_id: 901, external_id: 2 });
+    // …the neighbour's link is deleted and the cell (its existing link + the new one)
+    // becomes ONE bead — else the collision detector would flag a phantom collision.
+    const batch = calls.find((c) => c.path === "/align/links/batch_update");
+    expect(batch?.body).toEqual({
+      actions: [
+        { action: "delete", link_id: 14 },
+        { action: "set_bead", link_id: 13 },
+        { action: "set_bead", link_id: 77 },
+      ],
+      atomic: true,
+    });
+    expect(toasts).toContain("✓ Phrase absorbée — le segment voisin est à traiter");
+  });
+
+  it("refuses to absorb a CUT neighbour (the two mechanics must not mix)", async () => {
+    const calls: Array<{ path: string; body: unknown }> = [];
+    const { el, toasts } = await mountWithMatrix(calls, { matrix: MATRIX_CUT });
+
+    el.querySelectorAll<HTMLButtonElement>(".prep-matrix-merge-btn")[0].click();
+    await vi.waitFor(() => {
+      expect(toasts.some((t) => t.includes("coupée"))).toBe(true);
+    });
+    expect(document.querySelector(".prep-matrix-cut-dialog")).toBeNull();
+    expect(calls.some((c) => c.path === "/align/link/create")).toBe(false);
+  });
+});
+
 describe("AlignMatrixView — « ✂ Couper » on a fused cell (3b, via cell_links)", () => {
   it("opens the two-panel picker synchronously, pre-filled — no audit round-trip", async () => {
     const calls: Array<{ path: string; body: unknown }> = [];
@@ -318,11 +367,15 @@ describe("AlignMatrixView — « ✂ couper à cheval » (D-W12)", () => {
     expect(create?.body).toEqual({ pivot_unit_id: 102, target_unit_id: 900, external_id: 1 });
     // "down": the cell keeps the head, the created link takes the tail — atomically.
     // Suggested boundary on "As far back" (hubs "FR un"/"FR deux") = 3.
+    // The neighbour's cell (its own link 14 + the created 77) is grouped into ONE bead
+    // in the same batch (D-W16) — without it the detector flagged a phantom collision.
     const batch = calls.find((c) => c.path === "/align/links/batch_update");
     expect(batch?.body).toEqual({
       actions: [
         { action: "set_target_span", link_id: 13, char_start: 0, char_end: 3 },
         { action: "set_target_span", link_id: 77, char_start: 3, char_end: 11 },
+        { action: "set_bead", link_id: 14 },
+        { action: "set_bead", link_id: 77 },
       ],
       atomic: true,
     });

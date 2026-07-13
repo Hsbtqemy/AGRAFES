@@ -30,8 +30,9 @@ import { buildMatrixView, matrixSummaryLine } from "../lib/alignMatrix.ts";
 import { buildMatrixGridHtml } from "../lib/alignMatrixGrid.ts";
 import type { CellLinkColumn, StraddleDirection } from "../lib/alignCellCut.ts";
 import {
-  resolveFusedCellLinks, resolveStraddleCut, resolveCellUncut, cellCutTargets,
-  buildPartitionActions, buildUncutActions, suggestCutOffset, buildCutPanelsHtml,
+  resolveFusedCellLinks, resolveStraddleCut, resolveCellUncut, resolveCellMerge,
+  cellCutTargets, buildPartitionActions, buildUncutActions, buildCellBeadActions,
+  suggestCutOffset, buildCutPanelsHtml,
 } from "../lib/alignCellCut.ts";
 import { setHtml, raw, safeHtml } from "../lib/safeHtml.ts";
 import { escHtml as _esc } from "../lib/diff.ts";
@@ -103,6 +104,11 @@ export class AlignMatrixView {
       const anyBtn = t.closest<HTMLButtonElement>(".prep-matrix-cut-any-btn");
       if (anyBtn) {
         this._openStraddleCut(Number(anyBtn.dataset.cutRow), Number(anyBtn.dataset.cutCol));
+        return;
+      }
+      const mergeBtn = t.closest<HTMLButtonElement>(".prep-matrix-merge-btn");
+      if (mergeBtn) {
+        this._openCellMerge(Number(mergeBtn.dataset.cutRow), Number(mergeBtn.dataset.cutCol));
         return;
       }
       const uncutBtn = t.closest<HTMLButtonElement>(".prep-matrix-uncut-btn");
@@ -410,12 +416,16 @@ export class AlignMatrixView {
     const dirCtx = (d: StraddleDirection): {
       link: MatrixCellLink; window: [number, number]; targetRaw: string;
       top: MatrixRowView; bottom: MatrixRowView; neighbor: MatrixRowView;
+      neighborLinks: readonly MatrixCellLink[];
     } | null => {
       const r = d === "up" ? resUp : resDown;
       if (r.error !== undefined) return null;
       const neighbor = ctx.hubRows[r.neighborRow];
       return {
         link: r.link, window: r.window, targetRaw: r.link.target_text_raw ?? "",
+        // The created link lands on the NEIGHBOUR's cell — it is that cell whose links
+        // must end up in one bead (D-W16), or the detector reads a phantom collision.
+        neighborLinks: ctx.column[r.neighborRow] ?? [],
         ...(d === "up"
           ? { top: neighbor, bottom: rowCur, neighbor }
           : { top: rowCur, bottom: neighbor, neighbor }),
@@ -481,7 +491,9 @@ export class AlignMatrixView {
         this._cb.toast?.("✗ Segment voisin introuvable — recharger la matrice", true);
         return;
       }
-      void this._performStraddleCut(c.link, c.neighbor.hubUnitId, dir, c.window, cur, this._closeCutModal!, okBtn);
+      void this._performStraddleCut(
+        c.link, c.neighbor.hubUnitId, dir, c.window, cur, c.neighborLinks,
+        this._closeCutModal!, okBtn);
     });
   }
 
@@ -498,6 +510,7 @@ export class AlignMatrixView {
     direction: StraddleDirection,
     window: [number, number],
     offset: number,
+    neighborLinks: readonly MatrixCellLink[],
     close: () => void,
     okBtn: HTMLButtonElement,
   ): Promise<void> {
@@ -520,6 +533,11 @@ export class AlignMatrixView {
         : [[{ link_id: existing.link_id }], [{ link_id: createdId }]];
       const actions = buildPartitionActions(aboveSide, belowSide, offset, window[0], window[1]);
       if (actions.length === 0) throw new Error("point de coupe invalide");
+      // The neighbour's cell now holds its own link(s) + the one we just created: it is
+      // ONE bead (1 hub ↔ N targets). Without this the bead-less manual link sat next to
+      // the aligner's beaded one and Qualité / Révision fine flagged a phantom collision
+      // (D-W16). Same atomic batch as the slices — the grouping is part of the gesture.
+      actions.push(...buildCellBeadActions([...neighborLinks, { link_id: createdId }]));
       const res = await batchUpdateAlignLinks(conn, actions, { atomic: true });
       if (res.errors.length) {
         if (res.applied > 0) {
@@ -557,6 +575,144 @@ export class AlignMatrixView {
       }
       okBtn.disabled = false;
       this._cb.toast?.(`✗ Coupe à cheval : ${msg}`, true);
+    }
+  }
+
+  // ─── « ⭙ Fusionner » — absorb the neighbouring sentence (D-W16 §3.6) ──────────
+
+  /**
+   * The inverse of ✂ Couper: the neighbour's sentence belongs to THIS hub segment
+   * (the translation is segmented more finely than the source). A confirm strip, not
+   * a picker — there is no cut point to choose, only a direction.
+   */
+  private _openCellMerge(viewRow: number, col: number): void {
+    const ctx = this._cellGestureCtx(col, viewRow);
+    if (!ctx) return;
+    const row = ctx.row;
+    const resUp = resolveCellMerge(ctx.column, row, "up");
+    const resDown = resolveCellMerge(ctx.column, row, "down");
+    if (resUp.error !== undefined && resDown.error !== undefined) {
+      this._cb.toast?.(`✗ ${resDown.error}`, true);
+      return;
+    }
+    let dir: StraddleDirection = resDown.error === undefined ? "down" : "up";
+    const rowCur = ctx.hubRows[row];
+    const lang = ctx.view.translationLangs[col] ?? "?";
+
+    const preview = (d: StraddleDirection): string => {
+      const r = d === "up" ? resUp : resDown;
+      if (r.error !== undefined) return "";
+      const neighbor = ctx.hubRows[r.neighborRow];
+      const text = r.link.target_text_raw ?? "";
+      return `<p class="prep-matrix-merge-preview">Le segment ${rowCur.segment} absorbera&nbsp;:`
+        + ` <span class="prep-matrix-merge-text">${_esc(shortenCp(text, 160))}</span>`
+        + `<br><small>Le segment ${neighbor.segment} perdra cette traduction (il deviendra ∅).</small></p>`;
+    };
+    const radio = (d: StraddleDirection, label: string): string => {
+      const r = d === "up" ? resUp : resDown;
+      const off = r.error !== undefined;
+      return `<label class="prep-matrix-cut-dir-opt${off ? " prep-matrix-cut-dir-opt--off" : ""}"`
+        + (off ? ` title="${_esc(r.error!)}"` : "")
+        + `><input type="radio" name="prep-matrix-merge-dir" value="${d}"`
+        + `${d === dir ? " checked" : ""}${off ? " disabled" : ""}> ${label}</label>`;
+    };
+    const segUp = row > 0 ? ctx.hubRows[row - 1]?.segment : null;
+    const segDown = ctx.hubRows[row + 1]?.segment ?? null;
+    const extra = `<div class="prep-matrix-cut-dir" role="radiogroup" aria-label="Sens de la fusion">`
+      + radio("down", `Absorber la phrase du segment <b>suivant</b>${segDown != null ? ` (${segDown})` : ""}`)
+      + radio("up", `Absorber la phrase du segment <b>précédent</b>${segUp != null ? ` (${segUp})` : ""}`)
+      + `</div><div class="prep-matrix-merge-host"></div>`;
+
+    const { dialog, okBtn } = this._openPickerShell(
+      `⭙ Fusionner (${lang}, segment ${rowCur.segment})`,
+      `La traduction est découpée plus finement que l'original : la phrase voisine appartient `
+      + `à ce segment. Elle sera rattachée ici (réversible — ⭙ dans l'autre sens).`,
+      extra,
+    );
+    okBtn.innerHTML = "&#8857; Fusionner";
+    const host = dialog.querySelector<HTMLElement>(".prep-matrix-merge-host")!;
+    const renderPreview = () => setHtml(host, raw(preview(dir)));
+    renderPreview();
+    dialog.querySelectorAll<HTMLInputElement>('input[name="prep-matrix-merge-dir"]').forEach((r) =>
+      r.addEventListener("change", () => {
+        dir = r.value as StraddleDirection;
+        renderPreview();
+      }));
+    okBtn.addEventListener("click", () => {
+      const r = dir === "up" ? resUp : resDown;
+      if (r.error !== undefined || rowCur.hubUnitId == null) {
+        this._cb.toast?.("✗ Fusion impossible — recharger la matrice", true);
+        return;
+      }
+      void this._performCellMerge(
+        r.link, rowCur.hubUnitId, ctx.column[row] ?? [], this._closeCutModal!, okBtn);
+    });
+  }
+
+  /**
+   * Move the neighbour's link onto this hub segment: create it here (inheriting the
+   * pair number), then delete the neighbour's — in ONE atomic batch with the cell's
+   * bead (D-W16: the cell becomes 1 hub ↔ N targets = one bead, never a collision).
+   * The created link is deleted in compensation if the batch is refused, so a failed
+   * merge can never leave the sentence attached to BOTH segments.
+   */
+  private async _performCellMerge(
+    neighborLink: MatrixCellLink,
+    hubUnitId: number,
+    cellLinks: readonly MatrixCellLink[],
+    close: () => void,
+    okBtn: HTMLButtonElement,
+  ): Promise<void> {
+    const conn = this._getConn();
+    if (!conn) return;
+    okBtn.disabled = true;
+    let createdId: number | null = null;
+    try {
+      const created = await createAlignLink(conn, {
+        pivot_unit_id: hubUnitId,
+        target_unit_id: neighborLink.target_unit_id,
+        ...(typeof neighborLink.external_id === "number"
+          ? { external_id: neighborLink.external_id } : {}),
+      });
+      createdId = created.link_id;
+      const actions = [
+        { action: "delete" as const, link_id: neighborLink.link_id },
+        ...buildCellBeadActions([...cellLinks, { link_id: createdId }]),
+      ];
+      const res = await batchUpdateAlignLinks(conn, actions, { atomic: true });
+      if (res.errors.length) {
+        if (res.applied > 0 || res.deleted > 0) {
+          close();
+          this._cb.toast?.(
+            `✗ Fusion partielle : ${res.errors[0].error} — matrice resynchronisée`, true);
+          await this._reloadPreservingScroll();
+          return;
+        }
+        await deleteAlignLink(conn, { link_id: createdId });
+        createdId = null;
+        this._cb.toast?.(`✗ Fusion refusée : ${res.errors[0].error} (rien n'a été appliqué)`, true);
+        okBtn.disabled = false;
+        return;
+      }
+      close();
+      this._cb.toast?.("✓ Phrase absorbée — le segment voisin est à traiter");
+      await this._reloadPreservingScroll();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (createdId != null) {
+        try {
+          await deleteAlignLink(conn, { link_id: createdId });
+          okBtn.disabled = false;
+          this._cb.toast?.(`✗ Fusion : ${msg}`, true);
+        } catch {
+          close();
+          this._cb.toast?.(`✗ Fusion : ${msg} — matrice resynchronisée`, true);
+          await this._reloadPreservingScroll();
+        }
+        return;
+      }
+      okBtn.disabled = false;
+      this._cb.toast?.(`✗ Fusion : ${msg}`, true);
     }
   }
 

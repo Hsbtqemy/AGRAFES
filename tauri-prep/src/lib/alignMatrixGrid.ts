@@ -104,7 +104,13 @@ export function buildMatrixGridHtml(view: MatrixView): string {
           ? ` <button type="button" class="prep-matrix-cut-any-btn" data-cut-row="${rowIdx}" data-cut-col="${colIdx}"`
             + ` title="Couper à cheval — une partie de cette traduction appartient au segment voisin">&#9986;</button>`
           : "";
-        inner = `${_esc(c.text)}${anyBtn}${uncutBtn}`;
+        // D-W16 — ⭙ Fusionner: pull the neighbour's sentence into this cell (the
+        // inverse of ✂, for a translation segmented more finely than the source).
+        const mergeBtn = view.hasCellLinks && c.links.length > 0
+          ? ` <button type="button" class="prep-matrix-merge-btn" data-cut-row="${rowIdx}" data-cut-col="${colIdx}"`
+            + ` title="Fusionner — la phrase du segment voisin appartient à CE segment">&#8857;</button>`
+          : "";
+        inner = `${_esc(c.text)}${anyBtn}${mergeBtn}${uncutBtn}`;
       }
       return `<td class="prep-matrix-cell prep-matrix-cell--${statusCls}">${inner}</td>`;
     }).join("");

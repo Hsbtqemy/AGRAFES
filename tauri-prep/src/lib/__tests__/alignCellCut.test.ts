@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
-  resolveFusedCellLinks, resolveStraddleCut, resolveCellUncut, cellCutTargets,
-  buildPartitionActions, buildUncutActions, suggestCutOffset, buildCutPanelsHtml,
+  resolveFusedCellLinks, resolveStraddleCut, resolveCellUncut, resolveCellMerge,
+  cellCutTargets, buildPartitionActions, buildUncutActions, buildCellBeadActions,
+  suggestCutOffset, buildCutPanelsHtml,
   viableCutOffsets, viableCutOffsetsIn, linkWindow, cellsShareFusedTarget,
 } from "../alignCellCut.ts";
 import type { CellLinkColumn } from "../alignCellCut.ts";
@@ -343,5 +344,60 @@ describe("buildCutPanelsHtml (fenêtré)", () => {
     expect(html).not.toContain('data-cut-offset="1"');
     expect(html).toContain("Hello");
     expect(html).toContain("world");
+  });
+});
+
+describe("resolveCellMerge — ⭙ Fusionner (D-W16)", () => {
+  it("absorbs the NEXT row's edge link (translation segmented finer than the source)", () => {
+    // FR1 ↔ EN1 ; FR2 ↔ EN2 — but EN2 really belongs to FR1: merge « down » on row 0.
+    const column: CellLinkColumn = [[lk(1, 91)], [lk(2, 92), lk(3, 93)]];
+    const res = resolveCellMerge(column, 0, "down");
+    expect(res.error).toBeUndefined();
+    // The EDGE link (§3.5): absorbing downwards takes the neighbour's FIRST link.
+    expect(res.link!.link_id).toBe(2);
+    expect(res.neighborRow).toBe(1);
+  });
+
+  it("absorbs the PREVIOUS row's LAST link when merging up", () => {
+    const column: CellLinkColumn = [[lk(1, 91), lk(2, 92)], [lk(3, 93)]];
+    const res = resolveCellMerge(column, 1, "up");
+    expect(res.link!.link_id).toBe(2);
+    expect(res.neighborRow).toBe(0);
+  });
+
+  it("refuses to absorb a CUT link — the two mechanics must not mix", () => {
+    const column: CellLinkColumn = [
+      [lk(1, 91, { char_start: 0, char_end: 5 })],
+      [lk(2, 91, { char_start: 5, char_end: 11 })],
+    ];
+    const res = resolveCellMerge(column, 0, "down");
+    expect(res.error).toContain("coupée");
+    expect(res.link).toBeUndefined();
+  });
+
+  it("refuses an empty neighbour and the matrix edges", () => {
+    const column: CellLinkColumn = [[lk(1, 91)], []];
+    expect(resolveCellMerge(column, 0, "down").error).toContain("aucune traduction");
+    expect(resolveCellMerge(column, 0, "up").error).toContain("Pas de segment au-dessus");
+    expect(resolveCellMerge(column, 1, "down").error).toContain("Pas de segment en dessous");
+  });
+
+  it("refuses a target already attached to this cell", () => {
+    const column: CellLinkColumn = [[lk(1, 91)], [lk(2, 91)]];
+    expect(resolveCellMerge(column, 0, "down").error).toContain("déjà rattachée");
+  });
+});
+
+describe("buildCellBeadActions — le bead de cellule (D-W16)", () => {
+  it("groups every link of a multi-link cell (else the detector sees a collision)", () => {
+    expect(buildCellBeadActions([lk(4, 91), lk(7, 92)])).toEqual([
+      { action: "set_bead", link_id: 4 },
+      { action: "set_bead", link_id: 7 },
+    ]);
+  });
+
+  it("leaves a single-link cell alone — it is already its own bead", () => {
+    expect(buildCellBeadActions([lk(4, 91)])).toEqual([]);
+    expect(buildCellBeadActions([])).toEqual([]);
   });
 });

@@ -232,6 +232,73 @@ export function buildUncutActions(res: { clears: MatrixCellLink[]; deletes: Matr
   ];
 }
 
+// ─── Cell bead (D-W16) ───────────────────────────────────────────────────────────
+
+/**
+ * `set_bead` for every link a gesture leaves on ONE cell — a cell holding several
+ * links is one bead (1 hub segment ↔ N target sentences), not a collision. Without
+ * this the gesture-created (`manual`, bead-less) link sat next to the aligner's beaded
+ * one and the detector flagged a phantom collision in Qualité / Révision fine.
+ *
+ * `[]` for a cell that ends with a single link: it is already its own bead, and the
+ * server would only rewrite the row for nothing.
+ */
+export function buildCellBeadActions(cellLinks: ReadonlyArray<Pick<MatrixCellLink, "link_id">>): AlignBatchAction[] {
+  if (cellLinks.length < 2) return [];
+  return cellLinks.map((l) => ({ action: "set_bead" as const, link_id: l.link_id }));
+}
+
+// ─── Resolution : ⭙ Fusionner — absorb the neighbouring sentence (D-W16) ─────────
+
+export type MergeResolution =
+  | {
+      /** The link to move onto THIS hub row (delete it, re-create it on this pivot). */
+      link: MatrixCellLink;
+      /** Row it currently lives on — the cell that will be emptied. */
+      neighborRow: number;
+      error?: undefined;
+    }
+  | { link?: undefined; neighborRow?: undefined; error: string };
+
+/**
+ * « ⭙ Fusionner » — the exact inverse of ✂ Couper: instead of splitting one target
+ * across two hub rows, PULL the neighbour's target sentence into this row (the real
+ * case when the translation is more finely segmented than the source: 1 FR segment ↔
+ * 2 EN sentences).
+ *
+ * Direction picks the EDGE link of the neighbour cell (§3.5 rule): absorbing the row
+ * BELOW takes its first link (reading order), the row ABOVE its last — only an edge
+ * link touches the boundary.
+ *
+ * Refused when the neighbour's link carries a cut: absorbing a *slice* of a shared
+ * target would mix the two mechanics — ↺ first, then merge.
+ */
+export function resolveCellMerge(
+  column: CellLinkColumn, row: number, direction: StraddleDirection,
+): MergeResolution {
+  if (row < 0 || row >= column.length) return { error: "Cellule hors de la matrice." };
+  const neighborRow = direction === "up" ? row - 1 : row + 1;
+  if (neighborRow < 0 || neighborRow >= column.length) {
+    return { error: direction === "up" ? "Pas de segment au-dessus." : "Pas de segment en dessous." };
+  }
+  const neighbor = column[neighborRow] ?? [];
+  if (neighbor.length === 0) {
+    return { error: "Le segment voisin n'a aucune traduction à absorber." };
+  }
+  // Edge link: the one that touches the boundary between the two rows.
+  const link = direction === "up" ? neighbor[neighbor.length - 1] : neighbor[0];
+  if (link.char_start != null) {
+    return {
+      error: "La traduction voisine est coupée — annuler la coupe (↺) avant de fusionner.",
+    };
+  }
+  const cur = column[row] ?? [];
+  if (cur.some((l) => l.target_unit_id === link.target_unit_id)) {
+    return { error: "Cette traduction est déjà rattachée à ce segment." };
+  }
+  return { link, neighborRow };
+}
+
 // ─── Partition actions (D-W13 — the write behind both cut gestures) ─────────────
 
 /**

@@ -2395,6 +2395,24 @@ button.prep-matrix-cut-word:hover {
 }
 .prep-matrix-cut-dir-opt { display: flex; align-items: center; gap: 6px; cursor: pointer; }
 .prep-matrix-cut-dir-opt--off { color: var(--color-muted, #adb5bd); cursor: not-allowed; }
+/* D-W16 — « ⭙ Fusionner » : absorber la phrase voisine (révélé au survol, comme le ✂). */
+.prep-matrix-merge-btn {
+  margin-left: 4px; padding: 0 5px; font-size: 0.75rem; cursor: pointer;
+  border: 1px solid transparent; border-radius: 4px; background: transparent;
+  color: color-mix(in srgb, #6d28d9 70%, transparent); opacity: 0; transition: opacity 0.12s;
+}
+.prep-matrix-cell:hover .prep-matrix-merge-btn,
+.prep-matrix-merge-btn:focus-visible { opacity: 1; }
+.prep-matrix-merge-btn:hover {
+  border-color: color-mix(in srgb, #6d28d9 45%, transparent);
+  background: color-mix(in srgb, #6d28d9 10%, transparent);
+}
+.prep-matrix-merge-preview {
+  margin: 8px 0 4px; padding: 8px 10px; font-size: 0.85rem; line-height: 1.45;
+  border: 1px solid var(--color-border, #dee2e6); border-radius: 6px;
+  background: color-mix(in srgb, #6d28d9 4%, var(--color-surface, #fff));
+}
+.prep-matrix-merge-text { font-style: italic; }
 /* D-W8/D8/D-W14 — lignes blanches : ∅ non traduit, lignes [ajout], hors matrice. */
 .prep-matrix-cell--non-traduit { background: color-mix(in srgb, #94a3b8 8%, transparent); }
 .prep-matrix-nt { color: var(--color-muted, #94a3b8); font-style: italic; }
