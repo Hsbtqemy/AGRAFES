@@ -40,6 +40,13 @@ export interface AlignMatrixCallbacks {
   toast?: (msg: string, isError?: boolean) => void;
 }
 
+/** Truncate for display on CODE POINTS: slicing UTF-16 units splits a surrogate pair
+ *  (emoji, CJK ext.) and leaves a lone half that renders as « � » (revue R6c). */
+function shortenCp(s: string, max: number): string {
+  const cps = Array.from(s);
+  return cps.length > max ? `${cps.slice(0, max).join("")}…` : s;
+}
+
 export class AlignMatrixView {
   private _root: HTMLElement | null = null;
   private _families: FamilyRecord[] = [];
@@ -204,12 +211,23 @@ export class AlignMatrixView {
   // ─── Gestures — shared preconditions & picker shell ───────────────────────────
 
   /**
-   * Common gesture guard (F1/F5 + cell_links availability). Returns the view and the
-   * translation column's per-row links, or null after having toasted the reason.
-   * Everything here is synchronous — resolution happens on the already-loaded payload,
-   * so no staleness window can open between the click and the modal (ex-F3).
+   * Common gesture guard (F1/F5 + cell_links availability). Returns the view, the
+   * **hub rows** and the clicked cell's coordinates within them, or null after having
+   * toasted the reason. Everything here is synchronous — resolution happens on the
+   * already-loaded payload, so no staleness window can open between the click and the
+   * modal (ex-F3).
+   *
+   * The cut resolvers walk a column row by row (`column[row-1]` is « the segment
+   * above »), so the column MUST be built from hub rows only: a flux [ajout] row
+   * (D8) woven between two hub rows is not a segment — it has no hub unit and no
+   * links. Feeding it to them made a legitimately fused ⚠ cell answer « liens
+   * introuvables » and let a straddle cut target a null hub unit (revue 2026-07-13,
+   * R3). `viewRow` (the grid's index, addition rows included) is therefore remapped
+   * to its hub index here, once, for every gesture.
    */
-  private _cellGestureCtx(col: number): { view: MatrixView; column: CellLinkColumn } | null {
+  private _cellGestureCtx(col: number, viewRow: number): {
+    view: MatrixView; hubRows: MatrixRowView[]; column: CellLinkColumn; row: number;
+  } | null {
     const conn = this._getConn();
     const view = this._view;
     if (!conn || !view || this._cutBusy) return null;
@@ -222,7 +240,10 @@ export class AlignMatrixView {
       this._cb.toast?.("✗ Sidecar trop ancien — identifiants de cellule absents (recompiler le sidecar)", true);
       return null;
     }
-    return { view, column: view.rows.map((r) => r.cells[col]?.links ?? []) };
+    const hubRows = view.rows.filter((r) => !r.addition);
+    const row = hubRows.indexOf(view.rows[viewRow]);
+    if (row < 0) return null; // an addition row carries no cut gesture (defensive)
+    return { view, hubRows, column: hubRows.map((r) => r.cells[col]?.links ?? []), row };
   }
 
   /**
@@ -278,9 +299,10 @@ export class AlignMatrixView {
 
   // ─── « ✂ Couper » on a fused cell (3b) ────────────────────────────────────────
 
-  private _openFusedCut(row: number, col: number): void {
-    const ctx = this._cellGestureCtx(col);
-    if (!ctx || row < 1) return;
+  private _openFusedCut(viewRow: number, col: number): void {
+    const ctx = this._cellGestureCtx(col, viewRow);
+    if (!ctx || ctx.row < 1) return;
+    const row = ctx.row;
     const res = resolveFusedCellLinks(ctx.column, row);
     if (res.error !== undefined) {
       this._cb.toast?.(`✗ ${res.error}`, true);
@@ -289,13 +311,13 @@ export class AlignMatrixView {
     // Hub texts of the group's two sides drive the proportional suggestion — for an
     // N-1 partition (D-W13) each side may span several rows.
     const rowsOf = (links: MatrixCellLink[]): MatrixRowView[] =>
-      ctx.view.rows.filter((r) => r.cells[col]?.links.some((l) => links.includes(l)));
+      ctx.hubRows.filter((r) => r.cells[col]?.links.some((l) => links.includes(l)));
     const aboveRows = rowsOf(res.above);
     const belowRows = rowsOf(res.below);
     const hubAbove = aboveRows.map((r) => r.hubText).join(" ");
     const hubBelow = belowRows.map((r) => r.hubText).join(" ");
-    const rowAbove = ctx.view.rows[row - 1];
-    const rowCur = ctx.view.rows[row];
+    const rowAbove = ctx.hubRows[row - 1];
+    const rowCur = ctx.hubRows[row];
     const suggested = suggestCutOffset(res.targetRaw, hubAbove, hubBelow, res.window);
     if (suggested === null) return; // resolver guarantees a viable boundary
     let cur: number = suggested;
@@ -369,9 +391,10 @@ export class AlignMatrixView {
 
   // ─── « ✂ couper à cheval » on any cell (D-W12 §3.4) ───────────────────────────
 
-  private _openStraddleCut(row: number, col: number): void {
-    const ctx = this._cellGestureCtx(col);
+  private _openStraddleCut(viewRow: number, col: number): void {
+    const ctx = this._cellGestureCtx(col, viewRow);
     if (!ctx) return;
+    const row = ctx.row;
     const resUp = resolveStraddleCut(ctx.column, row, "up");
     const resDown = resolveStraddleCut(ctx.column, row, "down");
     if (resUp.error !== undefined && resDown.error !== undefined) {
@@ -379,7 +402,7 @@ export class AlignMatrixView {
       return;
     }
     const view = ctx.view;
-    const rowCur = view.rows[row];
+    const rowCur = ctx.hubRows[row];
     let dir: StraddleDirection = resUp.error === undefined ? "up" : "down";
 
     // On a multi-link cell the direction picks the EDGE link (§3.5) — link, window
@@ -390,7 +413,7 @@ export class AlignMatrixView {
     } | null => {
       const r = d === "up" ? resUp : resDown;
       if (r.error !== undefined) return null;
-      const neighbor = view.rows[r.neighborRow];
+      const neighbor = ctx.hubRows[r.neighborRow];
       return {
         link: r.link, window: r.window, targetRaw: r.link.target_text_raw ?? "",
         ...(d === "up"
@@ -407,8 +430,8 @@ export class AlignMatrixView {
         + `><input type="radio" name="prep-matrix-cut-dir" value="${d}"`
         + `${d === dir ? " checked" : ""}${disabled ? " disabled" : ""}> ${label}</label>`;
     };
-    const segUp = row > 0 ? view.rows[row - 1]?.segment : null;
-    const segDown = view.rows[row + 1]?.segment ?? null;
+    const segUp = row > 0 ? ctx.hubRows[row - 1]?.segment : null;
+    const segDown = ctx.hubRows[row + 1]?.segment ?? null;
     const extra = `<div class="prep-matrix-cut-dir" role="radiogroup" aria-label="Sens de la coupe">`
       + radio("up", `Le <b>début</b> appartient au segment précédent${segUp != null ? ` (${segUp})` : ""}`)
       + radio("down", `La <b>fin</b> appartient au segment suivant${segDown != null ? ` (${segDown})` : ""}`)
@@ -451,7 +474,13 @@ export class AlignMatrixView {
     });
     okBtn.addEventListener("click", () => {
       const c = dirCtx(dir);
-      if (!c || c.neighbor.hubUnitId == null) return;
+      if (!c || c.neighbor.hubUnitId == null) {
+        // Unreachable now that the column is hub-only (R3) — but a confirm click must
+        // never be a silent no-op: say so rather than leave the user pressing a dead
+        // button.
+        this._cb.toast?.("✗ Segment voisin introuvable — recharger la matrice", true);
+        return;
+      }
       void this._performStraddleCut(c.link, c.neighbor.hubUnitId, dir, c.window, cur, this._closeCutModal!, okBtn);
     });
   }
@@ -533,17 +562,17 @@ export class AlignMatrixView {
 
   // ─── « ↺ » on a cut cell — the target becomes whole again (D-W13 §3.5) ────────
 
-  private _onUncutClick(row: number, col: number): void {
-    const ctx = this._cellGestureCtx(col);
+  private _onUncutClick(viewRow: number, col: number): void {
+    const ctx = this._cellGestureCtx(col, viewRow);
     if (!ctx) return;
-    const targets = cellCutTargets(ctx.column[row] ?? []);
+    const targets = cellCutTargets(ctx.column[ctx.row] ?? []);
     if (targets.length > 1) {
       // Mixed cell (e.g. inherited tail + own cut head): no guessing — the user
       // picks which translation becomes whole again (§3.5).
-      this._openUncutChooser(row, col, targets);
+      this._openUncutChooser(viewRow, col, targets);
       return;
     }
-    void this._performCellUncut(row, col);
+    void this._performCellUncut(viewRow, col);
   }
 
   /** Mini-chooser for a multi-cut cell: one button per cut translation (its slice). */
@@ -558,10 +587,9 @@ export class AlignMatrixView {
     dialog.className = "prep-matrix-cut-dialog";
     dialog.setAttribute("role", "dialog");
     dialog.setAttribute("aria-modal", "true");
-    const shorten = (s: string) => (s.length > 90 ? `${s.slice(0, 90)}…` : s);
     const options = targets.map((t) =>
       `<button type="button" class="prep-matrix-uncut-choice" data-uncut-target="${t.target_unit_id}">`
-      + `&#8635; ${_esc(shorten(t.slice))}</button>`).join("");
+      + `&#8635; ${_esc(shortenCp(t.slice, 90))}</button>`).join("");
     setHtml(dialog, safeHtml`
       <div class="prep-matrix-cut-title">↺ Annuler quelle coupe ?</div>
       <p class="prep-matrix-cut-hint">Cette cellule porte plusieurs traductions coupées —
@@ -595,10 +623,10 @@ export class AlignMatrixView {
       }));
   }
 
-  private async _performCellUncut(row: number, col: number, targetUnitId?: number): Promise<void> {
-    const ctx = this._cellGestureCtx(col);
+  private async _performCellUncut(viewRow: number, col: number, targetUnitId?: number): Promise<void> {
+    const ctx = this._cellGestureCtx(col, viewRow);
     if (!ctx) return;
-    const res = resolveCellUncut(ctx.column, row, targetUnitId);
+    const res = resolveCellUncut(ctx.column, ctx.row, targetUnitId);
     if (res.error !== undefined) {
       this._cb.toast?.(`✗ ${res.error}`, true);
       return;
@@ -677,8 +705,16 @@ export class AlignMatrixView {
         : "✓ Marque « non traduit » retirée");
       await this._reloadPreservingScroll();
     } catch (err) {
-      // Typically the 409 guard: the cell has active links (un-align first).
-      this._cb.toast?.(`✗ Non traduit : ${err instanceof Error ? err.message : String(err)}`, true);
+      // The 409 guard (the cell has active links) can ONLY fire on a stale grid — the
+      // ∅ button is offered on cells the grid shows as unlinked. Toasting alone would
+      // leave the user staring at an empty cell with no ↺ to click and a button that
+      // re-409s forever: resync so the real state (the aligned text) becomes visible
+      // (R6e — the « matrice resynchronisée » convention of the cut gestures).
+      this._cb.toast?.(
+        `✗ Non traduit : ${err instanceof Error ? err.message : String(err)} — matrice resynchronisée`,
+        true,
+      );
+      await this._reloadPreservingScroll();
     } finally {
       this._cutBusy = false;
     }
@@ -694,8 +730,15 @@ export class AlignMatrixView {
     if (!conn) return;
     this._cutBusy = true;
     try {
-      await bulkSetUnitStatus(conn, [addition.unitId], null);
-      this._cb.toast?.("✓ Marque d'ajout retirée — l'unité repasse « hors matrice »");
+      const res = await bulkSetUnitStatus(conn, [addition.unitId], null);
+      // bulk_set_status is a blind UPDATE: a vanished unit (re-segmented elsewhere)
+      // answers {updated: 0}. Claiming success would be a lie (R6d).
+      this._cb.toast?.(
+        res.updated > 0
+          ? "✓ Marque d'ajout retirée — l'unité repasse « hors matrice »"
+          : "✗ Unité introuvable (matrice périmée) — matrice resynchronisée",
+        res.updated === 0,
+      );
       await this._reloadPreservingScroll();
     } catch (err) {
       this._cb.toast?.(`✗ Ajout : ${err instanceof Error ? err.message : String(err)}`, true);
@@ -723,11 +766,10 @@ export class AlignMatrixView {
     dialog.className = "prep-matrix-cut-dialog";
     dialog.setAttribute("role", "dialog");
     dialog.setAttribute("aria-modal", "true");
-    const shorten = (s: string) => (s.length > 120 ? `${s.slice(0, 120)}…` : s);
     const items = units.map((u) =>
       `<li class="prep-matrix-orphan">`
       + `<span class="prep-matrix-orphan-n">[${u.n}]</span> `
-      + `<span class="prep-matrix-orphan-text">${_esc(shorten(u.text_raw))}</span>`
+      + `<span class="prep-matrix-orphan-text">${_esc(shortenCp(u.text_raw, 120))}</span>`
       + `<button type="button" class="prep-matrix-add-choice" data-add-unit="${u.unit_id}"`
       + ` title="Marquer comme ajout du traducteur — une ligne [ajout] appara&#238;t dans la matrice">&#65291; Ajout</button>`
       + `</li>`).join("");
@@ -768,11 +810,31 @@ export class AlignMatrixView {
   private async _performMarkAddition(unitId: number): Promise<void> {
     const conn = this._getConn();
     if (!conn) return;
+    if (conn !== this._loadedConn) {
+      // The panel closed before this ran — the corpus may have changed under it (F1).
+      this._cb.toast?.("✗ Connexion changée — recharger la matrice", true);
+      this._resetMatrix();
+      return;
+    }
     this._cutBusy = true;
     try {
-      await bulkSetUnitStatus(conn, [unitId], "ajout");
-      this._cb.toast?.("✓ Ligne [ajout] créée — visible dans la matrice à sa position");
+      const res = await bulkSetUnitStatus(conn, [unitId], "ajout");
+      if (res.updated === 0) {
+        // Blind UPDATE: the unit vanished (re-segmented elsewhere) — do not claim a row
+        // was created (R6d).
+        this._cb.toast?.("✗ Unité introuvable (matrice périmée) — matrice resynchronisée", true);
+        await this._reloadPreservingScroll();
+        return;
+      }
       await this._reloadPreservingScroll();
+      // The panel could be stale: if the unit got aligned meanwhile, the engine projects
+      // it through its cell and weaves NO flux row (R2). Say what actually happened.
+      const woven = this._view?.rows.some((r) => r.addition?.unitId === unitId) ?? false;
+      this._cb.toast?.(
+        woven
+          ? "✓ Ligne [ajout] créée — visible dans la matrice à sa position"
+          : "✓ Marque posée — l'unité est alignée, elle reste projetée par sa cellule",
+      );
     } catch (err) {
       this._cb.toast?.(`✗ Ajout : ${err instanceof Error ? err.message : String(err)}`, true);
     } finally {

@@ -66,9 +66,16 @@ const FAMILY = {
   stats: { total_docs: 2 },
 };
 
-interface ConnOpts { matrix?: AlignMatrix; cellStatusError?: string }
+interface ConnOpts {
+  matrix?: AlignMatrix;
+  cellStatusError?: string;
+  /** Projection served AFTER a /units/bulk_set_status — the server weaves the row. */
+  matrixAfterStatus?: AlignMatrix;
+  updated?: number;
+}
 
 function makeConn(calls: Array<{ path: string; body: unknown }>, opts: ConnOpts = {}): Conn {
+  let statusPosted = false;
   return {
     baseUrl: "http://test", token: null,
     get: async (path: string) => {
@@ -78,13 +85,28 @@ function makeConn(calls: Array<{ path: string; body: unknown }>, opts: ConnOpts 
     },
     post: async (path: string, body: unknown) => {
       calls.push({ path, body });
-      if (path === "/align/matrix") return opts.matrix ?? MATRIX_STATUSES;
+      if (path === "/align/matrix") {
+        return (statusPosted && opts.matrixAfterStatus) || opts.matrix || MATRIX_STATUSES;
+      }
       if (path === "/align/cell_status") {
         if (opts.cellStatusError) throw new Error(opts.cellStatusError);
         const b = body as { pivot_unit_id: number; target_doc_id: number; status: string | null };
         return { pivot_unit_id: b.pivot_unit_id, target_doc_id: b.target_doc_id, cell_status: b.status };
       }
-      if (path === "/units/bulk_set_status") return { updated: 1 };
+      if (path === "/units/bulk_set_status") {
+        statusPosted = true;
+        return { updated: opts.updated ?? 1 };
+      }
+      if (path === "/align/links/batch_update") {
+        return { ok: true, applied: 2, deleted: 0, errors: [], rolled_back: false };
+      }
+      if (path === "/align/link/create") {
+        const b = body as { pivot_unit_id: number; target_unit_id: number };
+        return {
+          link_id: 77, pivot_unit_id: b.pivot_unit_id, target_unit_id: b.target_unit_id,
+          pivot_doc_id: 2, target_doc_id: 3, status: null, created: 1,
+        };
+      }
       throw new Error(`unexpected POST ${path}`);
     },
     put: async () => ({}),
@@ -141,24 +163,116 @@ describe("AlignMatrixView — « ∅ non traduit » per cell (D-W8)", () => {
     expect(post?.body).toEqual({ pivot_unit_id: 102, target_doc_id: 3, status: null });
   });
 
-  it("surfaces the server guard (409 active links) as a toast, no re-projection", async () => {
+  it("resyncs the grid on the server guard (409 active links) — R6e", async () => {
     const calls: Array<{ path: string; body: unknown }> = [];
     const { el, toasts } = await mountWithMatrix(calls, {
       cellStatusError: "cell has 1 active link(s) — un-align it (↺) before marking non_traduit",
     });
 
     el.querySelector<HTMLButtonElement>('.prep-matrix-nt-btn[data-nt-action="set"]')!.click();
+    // A 409 can only mean the grid is stale (the ∅ button is offered on cells the grid
+    // shows as unlinked): re-project, or the user faces a button that re-409s forever
+    // and no ↺ to click.
     await vi.waitFor(() => {
-      expect(toasts.some((t) => t.startsWith("✗ Non traduit"))).toBe(true);
+      expect(calls.filter((c) => c.path === "/align/matrix")).toHaveLength(2);
     });
-    expect(calls.filter((c) => c.path === "/align/matrix")).toHaveLength(1);
+    expect(toasts.some((t) => t.startsWith("✗ Non traduit") && t.includes("resynchronisée"))).toBe(true);
+  });
+});
+
+/** Two fused hub rows (shared uncut target) with a flux [ajout] row woven BETWEEN them —
+ *  the shape that made the cut gestures resolve against the addition row (revue R3). */
+const MATRIX_FUSED_WITH_ADDITION: AlignMatrix = {
+  headers: ["paragraphe", "segment", "fr", "en"],
+  languages: ["fr", "en"],
+  hub_doc_id: 2,
+  rows: [
+    ["1", 1, "FR un", "Hello there world"],
+    ["", "", "[ajout]", "An addition"],
+    ["1", 2, "FR deux", "Hello there world"],
+  ],
+  hub_unit_ids: [101, null, 102],
+  language_doc_ids: [2, 3],
+  cell_links: [
+    [[lk(11, 900, "Hello there world")]],
+    [[]],
+    [[lk(12, 900, "Hello there world")]],
+  ],
+  hub_unit_statuses: [null, null, null],
+  cell_statuses: [[null], [null], [null]],
+  addition_rows: [{ row: 1, doc_id: 3, unit_id: 905, n: 2 }],
+  uncovered: [[]],
+};
+
+describe("AlignMatrixView — les lignes [ajout] ne cassent pas les gestes de coupe (R3)", () => {
+  it("✂ Couper resolves across a woven addition row (hub-only column)", async () => {
+    const calls: Array<{ path: string; body: unknown }> = [];
+    const { el, toasts } = await mountWithMatrix(calls, { matrix: MATRIX_FUSED_WITH_ADDITION });
+
+    // The fused ⚠ is on the LAST view row (index 2) — one addition row above it.
+    const cutBtn = el.querySelector<HTMLButtonElement>(".prep-matrix-cut-btn")!;
+    expect(cutBtn.dataset.cutRow).toBe("2");
+    cutBtn.click();
+
+    // Before R3 the resolver read the addition row as « the segment above » and toasted
+    // « Liens d'alignement introuvables » instead of opening the picker.
+    await vi.waitFor(() => {
+      expect(document.querySelector(".prep-matrix-cut-dialog")).not.toBeNull();
+    });
+    expect(toasts.filter((t) => t.startsWith("✗"))).toEqual([]);
+    const panels = document.querySelectorAll(".prep-matrix-cut-panel");
+    expect(panels[0].textContent).toContain("seg 1");   // the real hub above, not [ajout]
+    expect(panels[1].textContent).toContain("seg 2");
+
+    document.querySelector<HTMLButtonElement>("[data-cut-ok]")!.click();
+    await vi.waitFor(() => {
+      expect(calls.some((c) => c.path === "/align/links/batch_update")).toBe(true);
+    });
+    const batch = calls.find((c) => c.path === "/align/links/batch_update");
+    expect(batch?.body).toMatchObject({
+      actions: [
+        { action: "set_target_span", link_id: 11 },
+        { action: "set_target_span", link_id: 12 },
+      ],
+      atomic: true,
+    });
+  });
+
+  it("« couper à cheval » never targets an addition row as a neighbour", async () => {
+    const calls: Array<{ path: string; body: unknown }> = [];
+    // Hub row 0 aligned, addition row woven after it: 'down' must NOT see the addition
+    // row (which has no hub unit → the confirm used to be a silent no-op).
+    const { el } = await mountWithMatrix(calls, {
+      matrix: {
+        ...MATRIX_FUSED_WITH_ADDITION,
+        rows: [
+          ["1", 1, "FR un", "As far back"],
+          ["", "", "[ajout]", "An addition"],
+          ["1", 2, "FR deux", "It is the sound"],
+        ],
+        cell_links: [[[lk(13, 900, "As far back")]], [[]], [[lk(14, 901, "It is the sound")]]],
+      },
+    });
+
+    el.querySelectorAll<HTMLButtonElement>(".prep-matrix-cut-any-btn")[0].click();
+    await vi.waitFor(() => {
+      expect(document.querySelector(".prep-matrix-cut-dialog")).not.toBeNull();
+    });
+    // The « fin → segment suivant » radio must name the real hub segment (2), not the
+    // addition row's « 0 ».
+    const dirs = document.querySelector(".prep-matrix-cut-dir")!;
+    expect(dirs.textContent).toContain("(2)");
+    expect(dirs.textContent).not.toContain("(0)");
+    const panels = document.querySelectorAll(".prep-matrix-cut-panel");
+    expect(Array.from(panels).map((p) => p.textContent).join(" ")).not.toContain("[ajout]");
   });
 });
 
 describe("AlignMatrixView — « hors matrice » panel → ＋ Ajout (D-W14/D8)", () => {
   it("the header badge opens the panel; ＋ Ajout posts unit_status='ajout' and re-projects", async () => {
     const calls: Array<{ path: string; body: unknown }> = [];
-    const { el, toasts } = await mountWithMatrix(calls);
+    // Faithful server: after the status is posted, the projection weaves the flux row.
+    const { el, toasts } = await mountWithMatrix(calls, { matrixAfterStatus: MATRIX_ADDITION });
 
     el.querySelector<HTMLButtonElement>(".prep-matrix-uncovered-btn")!.click();
     await vi.waitFor(() => {
@@ -188,5 +302,20 @@ describe("AlignMatrixView — « hors matrice » panel → ＋ Ajout (D-W14/D8)"
     const post = calls.find((c) => c.path === "/units/bulk_set_status");
     expect(post?.body).toEqual({ unit_ids: [905], status: null });
     expect(toasts.some((t) => t.startsWith("✓ Marque d'ajout retirée"))).toBe(true);
+  });
+
+  it("a vanished unit ({updated: 0}) is reported as an error, not a success — R6d", async () => {
+    const calls: Array<{ path: string; body: unknown }> = [];
+    const { el, toasts } = await mountWithMatrix(calls, { updated: 0 });
+
+    el.querySelector<HTMLButtonElement>(".prep-matrix-uncovered-btn")!.click();
+    await vi.waitFor(() => {
+      expect(document.querySelector(".prep-matrix-add-choice")).not.toBeNull();
+    });
+    document.querySelector<HTMLButtonElement>(".prep-matrix-add-choice")!.click();
+    await vi.waitFor(() => {
+      expect(toasts.some((t) => t.startsWith("✗ Unité introuvable"))).toBe(true);
+    });
+    expect(toasts.some((t) => t.startsWith("✓"))).toBe(false);
   });
 });

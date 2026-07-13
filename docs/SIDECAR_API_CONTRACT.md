@@ -344,6 +344,7 @@ Three **independent** version fields surface in sidecar responses — do not con
   - body: `{ out_path, doc_ids?: int[] }` (token required)
 - `POST /export/align_csv`
 - `POST /export/matrix` — matrice multilingue ancrée-source (une ligne par segment hub, une colonne par langue ; coupes + concat des beads appliqués) (token required)
+  - **1.6.56** : le CSV écrit `rows` verbatim et hérite donc de la projection — une cellule omise volontairement porte le token `[non traduit]` (D10, au lieu d'une cellule vide), et une unité de traduction `unit_status='ajout'` **non liée** ajoute une **ligne de flux** à sa position de lecture (colonnes `paragraphe`/`segment` vides, `[ajout]` dans la colonne moyeu, son texte dans sa colonne de langue — D8). Une ligne du CSV n'est donc plus forcément un segment moyeu, et la colonne `segment` n'est plus toujours un entier.
 - `POST /export/run_report`
 - `POST /db/backup`
   - body: `{ out_dir?: string, out_path?: string }` — `out_dir` and `out_path` are mutually exclusive

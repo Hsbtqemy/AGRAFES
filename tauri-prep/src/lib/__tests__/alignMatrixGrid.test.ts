@@ -168,6 +168,53 @@ describe("buildMatrixGridHtml", () => {
     expect(buildMatrixGridHtml(buildMatrixView(covered))).not.toContain("prep-matrix-uncovered-btn");
   });
 
+  it("R6a: no ∅ button on an « empty » cell that still HOLDS links (the server would 409)", () => {
+    const linkedButEmpty: AlignMatrix = {
+      headers: ["paragraphe", "segment", "fr", "en"],
+      languages: ["fr", "en"],
+      hub_doc_id: 2,
+      hub_unit_ids: [11, 12],
+      language_doc_ids: [2, 3],
+      // Row 1's cell has a link whose cut window slices to nothing → projected text "".
+      rows: [["1", 1, "FR1", "EN1"], ["1", 2, "FR2", ""]],
+      cell_links: [
+        [[{ link_id: 1, target_unit_id: 91, char_start: null, char_end: null, target_text_raw: "EN1" }]],
+        [[{ link_id: 2, target_unit_id: 92, char_start: 3, char_end: 3, target_text_raw: "EN2" }]],
+      ],
+      hub_unit_statuses: [null, null],
+      cell_statuses: [[null], [null]],
+      addition_rows: [],
+      uncovered: [[]],
+    };
+    const html = buildMatrixGridHtml(buildMatrixView(linkedButEmpty));
+    expect(html).toContain("prep-matrix-cell--empty");
+    expect(html).not.toContain("prep-matrix-nt-btn");
+  });
+
+  it("R6b: the [ajout] row's ↺ sits in the addition's OWN column, even when its text is empty", () => {
+    const emptyAddition: AlignMatrix = {
+      headers: ["paragraphe", "segment", "fr", "en", "ro"],
+      languages: ["fr", "en", "ro"],
+      hub_doc_id: 2,
+      hub_unit_ids: [11, null],
+      language_doc_ids: [2, 3, 4],
+      rows: [
+        ["1", 1, "FR1", "EN1", "RO1"],
+        ["", "", "[ajout]", "", ""],   // ajout unit whose text_raw is empty
+      ],
+      cell_links: [[[], []], [[], []]],
+      hub_unit_statuses: [null, null],
+      cell_statuses: [[null, null], [null, null]],
+      addition_rows: [{ row: 1, doc_id: 4, unit_id: 95, n: 5 }],  // RO column
+      uncovered: [[], []],
+    };
+    const html = buildMatrixGridHtml(buildMatrixView(emptyAddition));
+    // Exactly one ↺, and it must exist even though every cell of the row is textless —
+    // otherwise the gesture would be irreversible from the grid.
+    expect((html.match(/prep-matrix-unadd-btn/g) ?? [])).toHaveLength(1);
+    expect(html).toContain('data-add-row="1"');
+  });
+
   it("escapes corpus text (imported docs are untrusted)", () => {
     const evil: AlignMatrix = {
       headers: ["paragraphe", "segment", "fr", "en"],

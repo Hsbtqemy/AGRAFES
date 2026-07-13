@@ -38,10 +38,13 @@ export function buildMatrixGridHtml(view: MatrixView): string {
 
   const body = view.rows.map((r, rowIdx) => {
     if (r.addition) {
-      // Flux addition row (D8): translator-added unit, no hub segment. Only its
-      // own-language cell carries text; the ↺ clears the ajout status.
-      const cells = r.cells.map((c) => {
-        if (c.text.trim() === "") return `<td class="prep-matrix-cell prep-matrix-cell--blank"></td>`;
+      // Flux addition row (D8): translator-added unit, no hub segment. The ↺ lives in
+      // the addition's OWN column, resolved by doc_id — never by "the cell that has
+      // text": an ajout unit whose text is empty would then render a row with no undo
+      // at all, making the gesture irreversible from the grid (revue R6b).
+      const addCol = view.translationDocIds.indexOf(r.addition.docId);
+      const cells = r.cells.map((c, colIdx) => {
+        if (colIdx !== addCol) return `<td class="prep-matrix-cell prep-matrix-cell--blank"></td>`;
         const undoBtn =
           ` <button type="button" class="prep-matrix-unadd-btn" data-add-row="${rowIdx}"`
           + ` title="Retirer la marque d&#39;ajout — l&#39;unité redevient non couverte">&#8635;</button>`;
@@ -79,7 +82,9 @@ export function buildMatrixGridHtml(view: MatrixView): string {
       } else if (c.status === "empty") {
         // ∅ gesture (D-W8): mark this pair as deliberately untranslated — only when
         // the sidecar carries the status axes and the row resolves to a hub unit.
-        const ntBtn = view.hasStatuses && r.hubUnitId != null
+        // A cell can read « empty » while HOLDING links (a cut window that slices to
+        // nothing): the server 409s such a mark, so do not offer it (revue R6a).
+        const ntBtn = view.hasStatuses && r.hubUnitId != null && c.links.length === 0
           ? ` <button type="button" class="prep-matrix-nt-btn" data-nt-action="set" data-cut-row="${rowIdx}" data-cut-col="${colIdx}"`
             + ` title="Marquer « non traduit » (voulu) — la cellule compte comme faite">&#8709; non traduit</button>`
           : "";
