@@ -461,7 +461,17 @@ Front-pur et bas risque d'abord, additif ensuite ; jamais sur le corpus réel (W
 3. **Gestes inline sur la grille** *(front, moteur déjà là)* — Couper (déjà livré) branché **depuis la cellule** ;
    Non traduit / Ajout câblés sur `unit_status`.
 4. **Fusionner** *(moteur `set_bead` + front)* — le geste manquant du modèle.
-5. **Barre Aligner à défaut assumé + mode « Avancé »** *(front)* — sortir le mode des Paramètres.
+5. **Barre Aligner à défaut assumé + mode « Avancé »** *(front)* — sortir le mode des Paramètres. ✅ **livré**
+   (2026-07-13) : bouton « ⇄ Aligner » dans la barre de la Matrice, **défaut assumé** = longueurs ¶
+   (Gale–Church : aucun marqueur requis — un corpus sans `[N]` n'a aucun `external_id` sur quoi
+   s'aligner), liens validés conservés ; le mode devient un repli **« Avancé… »** replié par défaut
+   (5 stratégies, chacune avec sa phrase d'emploi ; le seuil n'apparaît que pour *similarité*).
+   La grille se **re-projette** aussitôt — c'est tout l'intérêt d'aligner depuis là.
+   **Le footgun de l'aligneur (D-annexe) cesse d'être silencieux** : sur une famille **déjà alignée**,
+   un run sans `replace_existing` **n'ajoute rien** (les liens existants sont conservés) et se
+   rapportait en « ✓ aligné » creux. La barre pose désormais la question — **Compléter** (n'ajoute que
+   les liens manquants) ou **Recalcul global** (remise à plat) — et un run qui n'a rien ajouté **le
+   dit** au lieu de mentir. *(`lib/alignRunBar.ts` — 7 tests purs + 5 d'intégration.)*
 6. **Mode « Révision fine » secondaire** *(front)* — reléguer l'audit par lien actuel.
 
 ## 7. Décisions tranchées (2026-07-08)

@@ -1,0 +1,91 @@
+/**
+ * alignRunBar.ts — the « Aligner » bar of the matrix (R3.3 tranche 5,
+ * docs/DESIGN_alignment_workspace §4 + §6-5). Pure HTML + pure summary text.
+ *
+ * The first pain of the QA that started this refonte: **the alignment mode was hidden
+ * in the Settings and opaque** — you had to choose a strategy before you could do
+ * anything, without knowing what the choice meant. Here the button runs on an
+ * **assumed default** (lengths / DP — the 90 % case: a corpus with no `[N]` markers has
+ * no `external_id` to align on), and the mode becomes a **fold-away « Avancé »**, not a
+ * prerequisite.
+ *
+ * The other thing this bar exists to stop being silent about: **re-running the aligner on
+ * an already-aligned family does nothing** (existing pairs are kept, new links are only
+ * added where none exist). The engine reports it in `links_skipped` / `deleted_before`,
+ * but nothing surfaced it — so the user saw « ✓ aligné » and no change. The bar therefore
+ * asks, in so many words: *compléter* (leave what exists) or *recalculer* (remise à plat).
+ */
+
+import type { FamilyAlignOptions, FamilyAlignResponse } from "./sidecarClient.ts";
+
+export type AlignStrategy = NonNullable<FamilyAlignOptions["strategy"]>;
+
+/** The assumed default (§4): what runs when the user just presses « Aligner ». */
+export const ALIGN_DEFAULTS: Readonly<FamilyAlignOptions> = Object.freeze({
+  strategy: "length_bounded" as AlignStrategy,
+  preserve_accepted: true,
+  replace_existing: false,
+  skip_unready: true,
+});
+
+export const STRATEGY_LABELS: ReadonlyArray<{ value: AlignStrategy; label: string; hint: string }> = [
+  { value: "length_bounded", label: "longueurs ¶ (Gale–Church)", hint: "Défaut — aucun marqueur requis, s'appuie sur la longueur des segments." },
+  { value: "external_id_then_position", label: "external_id → position", hint: "Le corpus porte des marqueurs [N] ; repli positionnel là où ils manquent." },
+  { value: "external_id", label: "external_id", hint: "Le corpus porte des marqueurs [N] partout." },
+  { value: "position", label: "position", hint: "Le n-ième segment de la source ↔ le n-ième de la traduction." },
+  { value: "similarity", label: "similarité", hint: "Compare les textes ; utile entre langues proches." },
+];
+
+/** The « Avancé » disclosure — the mode is a fold-away, never a prerequisite. */
+export function buildAlignAdvancedHtml(): string {
+  const opts = STRATEGY_LABELS.map((s) =>
+    `<option value="${s.value}"${s.value === ALIGN_DEFAULTS.strategy ? " selected" : ""}>${s.label}</option>`,
+  ).join("");
+  return `<div id="matrix-align-adv" class="prep-matrix-align-adv" hidden>`
+    + `<label class="prep-matrix-align-field">Mode`
+    + `<select id="matrix-align-strategy" class="prep-matrix-align-select">${opts}</select>`
+    + `</label>`
+    + `<p id="matrix-align-hint" class="prep-matrix-align-hint">${STRATEGY_LABELS[0].hint}</p>`
+    + `<label class="prep-matrix-align-field" id="matrix-align-sim-field" hidden>Seuil`
+    + `<input id="matrix-align-sim" type="number" min="0" max="1" step="0.05" value="0.8"`
+    + ` class="prep-matrix-align-num">`
+    + `</label>`
+    + `<label class="prep-matrix-align-check">`
+    + `<input id="matrix-align-preserve" type="checkbox" checked> Conserver les liens validés`
+    + `</label>`
+    + `</div>`;
+}
+
+/**
+ * Inline confirm (never a native dialog) shown when the family ALREADY has links: the
+ * choice the engine makes silently today. « Compléter » adds nothing where a link
+ * already exists — say so rather than report a hollow success.
+ */
+export function buildAlignRerunConfirmHtml(linkCount: number): string {
+  return `<div class="prep-matrix-align-confirm" role="group" aria-label="Famille déjà alignée">`
+    + `<span>Cette famille porte déjà <strong>${linkCount}</strong> lien${linkCount > 1 ? "s" : ""}.</span>`
+    + `<button type="button" id="matrix-align-complete" class="btn btn-secondary btn-sm">`
+    + `Compléter <small>(n'ajoute que les liens manquants)</small></button>`
+    + `<button type="button" id="matrix-align-recalc" class="btn btn-danger btn-sm">`
+    + `Recalcul global <small>(remise à plat)</small></button>`
+    + `<button type="button" id="matrix-align-cancel" class="btn btn-ghost btn-sm">Annuler</button>`
+    + `</div>`;
+}
+
+/**
+ * One honest line about what the run did — including what it did NOT do. A run that
+ * created 0 links on an already-aligned family is the norm without `replace_existing`,
+ * and used to read as a plain success.
+ */
+export function alignRunSummary(res: FamilyAlignResponse, opts: FamilyAlignOptions): string {
+  const s = res.summary;
+  const created = s.total_links_created;
+  const parts = [`${created} lien${created > 1 ? "s" : ""} créé${created > 1 ? "s" : ""}`];
+  parts.push(`${s.aligned}/${s.total_pairs} paire${s.total_pairs > 1 ? "s" : ""}`);
+  if (s.skipped > 0) parts.push(`${s.skipped} ignorée${s.skipped > 1 ? "s" : ""} (non segmentée)`);
+  if (s.errors > 0) parts.push(`${s.errors} en erreur`);
+  const head = created === 0 && !opts.replace_existing
+    ? "Aucun lien ajouté — les segments déjà liés ne sont pas retouchés (utiliser « Recalcul global » pour repartir de zéro)"
+    : parts.join(" · ");
+  return created === 0 && !opts.replace_existing ? head : `✓ ${head}`;
+}

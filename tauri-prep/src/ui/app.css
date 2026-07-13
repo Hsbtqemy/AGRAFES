@@ -2395,6 +2395,30 @@ button.prep-matrix-cut-word:hover {
 }
 .prep-matrix-cut-dir-opt { display: flex; align-items: center; gap: 6px; cursor: pointer; }
 .prep-matrix-cut-dir-opt--off { color: var(--color-muted, #adb5bd); cursor: not-allowed; }
+/* Tranche 5 — barre « Aligner » à défaut assumé + repli « Avancé ». */
+.prep-matrix-align-adv {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 12px;
+  margin: 0 0 8px; padding: 8px 10px; font-size: 0.85rem;
+  border: 1px solid var(--color-border, #dee2e6); border-radius: 6px;
+  background: color-mix(in srgb, #64748b 4%, var(--color-surface, #fff));
+}
+.prep-matrix-align-field { display: flex; align-items: center; gap: 6px; }
+.prep-matrix-align-select, .prep-matrix-align-num {
+  padding: 3px 6px; font-size: 0.85rem;
+  border: 1px solid var(--color-border, #dee2e6); border-radius: 4px;
+}
+.prep-matrix-align-num { width: 5rem; }
+.prep-matrix-align-check { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.prep-matrix-align-hint {
+  flex: 1 1 100%; margin: 0; font-size: 0.8rem; color: var(--color-muted, #6b7280);
+}
+.prep-matrix-align-strip:not(:empty) {
+  margin: 0 0 8px; padding: 8px 10px; font-size: 0.85rem;
+  border: 1px solid var(--color-border, #dee2e6); border-radius: 6px;
+  background: color-mix(in srgb, #0369a1 4%, var(--color-surface, #fff));
+}
+.prep-matrix-align-confirm { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.prep-matrix-align-confirm small { font-weight: 400; opacity: 0.85; }
 /* D-W16 — « ⭙ Fusionner » : absorber la phrase voisine (révélé au survol, comme le ✂). */
 .prep-matrix-merge-btn {
   margin-left: 4px; padding: 0 5px; font-size: 0.75rem; cursor: pointer;

@@ -19,11 +19,16 @@
  * Both cuts use the two-panel move-only picker (§3.2). Sub-view of ActionsScreen.
  */
 
-import type { Conn, FamilyRecord, MatrixCellLink } from "../lib/sidecarClient.ts";
+import type { Conn, FamilyRecord, MatrixCellLink, FamilyAlignOptions } from "../lib/sidecarClient.ts";
 import {
   getFamilies, getAlignMatrix, batchUpdateAlignLinks, createAlignLink, deleteAlignLink,
-  setAlignCellStatus, bulkSetUnitStatus,
+  setAlignCellStatus, bulkSetUnitStatus, alignFamily,
 } from "../lib/sidecarClient.ts";
+import type { AlignStrategy } from "../lib/alignRunBar.ts";
+import {
+  ALIGN_DEFAULTS, STRATEGY_LABELS, buildAlignAdvancedHtml, buildAlignRerunConfirmHtml,
+  alignRunSummary,
+} from "../lib/alignRunBar.ts";
 import type { AlignMatrix } from "../lib/sidecarClient.ts";
 import type { MatrixView, MatrixRowView } from "../lib/alignMatrix.ts";
 import { buildMatrixView, matrixSummaryLine } from "../lib/alignMatrix.ts";
@@ -60,6 +65,8 @@ export class AlignMatrixView {
   private _loadedConn: Conn | null = null;
   /** A cut gesture is in flight (open modal) — blocks reentrancy (F5). */
   private _cutBusy = false;
+  /** An alignment run is in flight — the button must not fire twice (tranche 5). */
+  private _aligning = false;
   /** Teardown of the open cut modal, so dispose()/reset can force-close it (F4). */
   private _closeCutModal: (() => void) | null = null;
 
@@ -78,8 +85,16 @@ export class AlignMatrixView {
       + `<select id="matrix-family" class="prep-matrix-family"><option value="">&#8212; choisir &#8212;</option></select>`
       + `</label>`
       + `<button type="button" id="matrix-load" class="btn btn-primary btn-sm" disabled>Charger la matrice</button>`
+      // Tranche 5 (§4) — « Aligner » runs on an ASSUMED DEFAULT; the mode is a fold-away,
+      // not a prerequisite (it used to be buried in the Settings, and opaque).
+      + `<button type="button" id="matrix-align" class="btn btn-secondary btn-sm" disabled`
+      + ` title="Aligner cette famille (longueurs ¶ — le mode se change dans « Avancé »)">&#8646; Aligner</button>`
+      + `<button type="button" id="matrix-align-adv-toggle" class="btn btn-ghost btn-sm" disabled`
+      + ` aria-expanded="false" aria-controls="matrix-align-adv">Avanc&#233;&#8230;</button>`
       + `<span id="matrix-summary" class="prep-matrix-summary" aria-live="polite"></span>`
       + `</div>`
+      + buildAlignAdvancedHtml()
+      + `<div id="matrix-align-strip" class="prep-matrix-align-strip" aria-live="polite"></div>`
       + `<div id="matrix-grid-area" class="prep-matrix-grid-area">`
       + `<p class="prep-matrix-hint">Choisis une famille puis &laquo;&nbsp;Charger la matrice&nbsp;&raquo; pour visualiser l'alignement.</p>`
       + `</div>`,
@@ -87,11 +102,31 @@ export class AlignMatrixView {
 
     const sel = root.querySelector<HTMLSelectElement>("#matrix-family")!;
     const loadBtn = root.querySelector<HTMLButtonElement>("#matrix-load")!;
+    const alignBtn = root.querySelector<HTMLButtonElement>("#matrix-align")!;
+    const advBtn = root.querySelector<HTMLButtonElement>("#matrix-align-adv-toggle")!;
     sel.addEventListener("change", () => {
       this._selectedFamilyId = sel.value ? Number(sel.value) : null;
-      loadBtn.disabled = this._selectedFamilyId === null;
+      const none = this._selectedFamilyId === null;
+      loadBtn.disabled = none;
+      alignBtn.disabled = none;
+      advBtn.disabled = none;
     });
     loadBtn.addEventListener("click", () => void this._loadMatrix());
+    alignBtn.addEventListener("click", () => this._onAlignClick());
+    advBtn.addEventListener("click", () => {
+      const adv = root.querySelector<HTMLElement>("#matrix-align-adv")!;
+      const open = adv.hasAttribute("hidden");
+      adv.toggleAttribute("hidden", !open);
+      advBtn.setAttribute("aria-expanded", String(open));
+    });
+    const strategySel = root.querySelector<HTMLSelectElement>("#matrix-align-strategy")!;
+    strategySel.addEventListener("change", () => {
+      const s = STRATEGY_LABELS.find((x) => x.value === strategySel.value);
+      const hint = root.querySelector<HTMLElement>("#matrix-align-hint")!;
+      hint.textContent = s?.hint ?? "";
+      root.querySelector<HTMLElement>("#matrix-align-sim-field")!
+        .toggleAttribute("hidden", strategySel.value !== "similarity");
+    });
     // Gesture buttons are delegated once here — bindings survive every grid re-render.
     const area = root.querySelector<HTMLElement>("#matrix-grid-area")!;
     area.addEventListener("click", (e) => {
@@ -211,6 +246,84 @@ export class AlignMatrixView {
       this._cb.toast?.("✗ Erreur chargement matrice", true);
     } finally {
       this._loading = false;
+    }
+  }
+
+  // ─── « ⇄ Aligner » — assumed default + « Avancé » (tranche 5, §4) ─────────────
+
+  /** The options behind the button: the assumed default, overridden by « Avancé ». */
+  private _alignOptions(): FamilyAlignOptions {
+    const root = this._root;
+    const strategy = (root?.querySelector<HTMLSelectElement>("#matrix-align-strategy")?.value
+      ?? ALIGN_DEFAULTS.strategy) as AlignStrategy;
+    const preserve = root?.querySelector<HTMLInputElement>("#matrix-align-preserve")?.checked ?? true;
+    const opts: FamilyAlignOptions = {
+      ...ALIGN_DEFAULTS, strategy, preserve_accepted: preserve,
+    };
+    if (strategy === "similarity") {
+      opts.sim_threshold =
+        parseFloat(root?.querySelector<HTMLInputElement>("#matrix-align-sim")?.value ?? "0.8") || 0.8;
+    }
+    return opts;
+  }
+
+  /** Links currently projected for the loaded family (0 when nothing is loaded). */
+  private _loadedLinkCount(): number {
+    return (this._view?.rows ?? []).reduce(
+      (n, r) => n + r.cells.reduce((m, c) => m + c.links.length, 0), 0);
+  }
+
+  private _onAlignClick(): void {
+    if (this._selectedFamilyId === null || this._aligning) return;
+    // The footgun the engine has always had (D-annexe): re-running the aligner on an
+    // already-aligned family adds NOTHING — existing links are kept, and the run reports
+    // a hollow success. Make the choice explicit instead of hiding it.
+    const existing = this._loadedLinkCount();
+    if (existing > 0) {
+      this._showRerunConfirm(existing);
+      return;
+    }
+    void this._runAlign(this._alignOptions());
+  }
+
+  private _showRerunConfirm(linkCount: number): void {
+    const strip = this._root?.querySelector<HTMLElement>("#matrix-align-strip");
+    if (!strip) return;
+    setHtml(strip, raw(buildAlignRerunConfirmHtml(linkCount)));
+    const close = () => setHtml(strip, raw(""));
+    strip.querySelector<HTMLButtonElement>("#matrix-align-cancel")?.addEventListener("click", close);
+    strip.querySelector<HTMLButtonElement>("#matrix-align-complete")?.addEventListener("click", () => {
+      close();
+      void this._runAlign({ ...this._alignOptions(), replace_existing: false });
+    });
+    strip.querySelector<HTMLButtonElement>("#matrix-align-recalc")?.addEventListener("click", () => {
+      close();
+      void this._runAlign({ ...this._alignOptions(), replace_existing: true });
+    });
+  }
+
+  private async _runAlign(opts: FamilyAlignOptions): Promise<void> {
+    const conn = this._getConn();
+    const familyId = this._selectedFamilyId;
+    if (!conn || familyId === null || this._aligning) return;
+    const alignBtn = this._root?.querySelector<HTMLButtonElement>("#matrix-align");
+    const strip = this._root?.querySelector<HTMLElement>("#matrix-align-strip");
+    this._aligning = true;
+    if (alignBtn) alignBtn.disabled = true;
+    if (strip) strip.textContent = "Alignement en cours…";
+    try {
+      const res = await alignFamily(conn, familyId, opts);
+      if (strip) strip.textContent = alignRunSummary(res, opts);
+      this._cb.toast?.(alignRunSummary(res, opts), res.summary.errors > 0);
+      // The whole point of aligning from here: see the result in the grid at once.
+      await this._loadMatrix();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (strip) strip.textContent = `✗ Alignement : ${msg}`;
+      this._cb.toast?.(`✗ Alignement : ${msg}`, true);
+    } finally {
+      this._aligning = false;
+      if (alignBtn) alignBtn.disabled = this._selectedFamilyId === null;
     }
   }
 
