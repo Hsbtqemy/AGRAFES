@@ -12,7 +12,10 @@ import sqlite3
 
 import pytest
 
-from multicorpus_engine.services.align_cell_status_service import set_cell_status
+from multicorpus_engine.services.align_cell_status_service import (
+    purge_contradicted_cell_statuses,
+    set_cell_status,
+)
 from multicorpus_engine.services.errors import (
     ConflictError,
     NotFoundError,
@@ -104,3 +107,80 @@ def test_validation_and_not_found(db_conn: sqlite3.Connection) -> None:
         set_cell_status(db_conn, {"pivot_unit_id": 1, "target_doc_id": 2, "status": 7})
     with pytest.raises(ValidationError):
         set_cell_status(db_conn, {"target_doc_id": 2, "status": "non_traduit"})
+
+
+def test_cascade_on_unit_and_document_delete(db_conn: sqlite3.Connection) -> None:
+    """R1 (revue 2026-07-13) — the FKs cascade (migration 029).
+
+    Without it, PRAGMA foreign_keys=ON turned a single mark into an IntegrityError on
+    every pre-existing delete path (/documents/delete, /segment, /units/merge,
+    /prep/undo) — and those delete the family's alignment_links BEFORE the units, with
+    no rollback, so the pending deletion got committed by the next write.
+    """
+    _setup_family(db_conn)
+    set_cell_status(db_conn, {"pivot_unit_id": 1, "target_doc_id": 2, "status": "non_traduit"})
+    set_cell_status(db_conn, {"pivot_unit_id": 2, "target_doc_id": 2, "status": "non_traduit"})
+    assert len(_cell_rows(db_conn)) == 2
+
+    # Deleting the marked hub unit (segment/merge/undo do exactly this) drops its mark.
+    db_conn.execute("DELETE FROM units WHERE unit_id=1")
+    db_conn.commit()
+    assert _cell_rows(db_conn) == [(2, 2, "non_traduit")]
+
+    # Deleting the target document (documents/delete, whose cascade order is links →
+    # units → doc_relations → documents) drops the remaining ones. Re-mark first: the
+    # unit delete above already took unit 1's.
+    set_cell_status(db_conn, {"pivot_unit_id": 2, "target_doc_id": 2, "status": "non_traduit"})
+    db_conn.execute("DELETE FROM units WHERE doc_id=2")
+    db_conn.execute("DELETE FROM doc_relations WHERE doc_id=2 OR target_doc_id=2")
+    db_conn.execute("DELETE FROM documents WHERE doc_id=2")
+    db_conn.commit()
+    assert _cell_rows(db_conn) == []
+
+
+def test_purge_contradicted_marks(db_conn: sqlite3.Connection) -> None:
+    """R4 — a link created over a marked cell supersedes the mark (never resurrects).
+
+    The link writers (aligner.align_pair_*, /align/link/create) call the purge; a
+    REJECTED link is dead (ALN-03) and must NOT purge anything.
+    """
+    _setup_family(db_conn)
+    set_cell_status(db_conn, {"pivot_unit_id": 1, "target_doc_id": 2, "status": "non_traduit"})
+    set_cell_status(db_conn, {"pivot_unit_id": 2, "target_doc_id": 2, "status": "non_traduit"})
+
+    # A rejected link does not contradict anything → nothing purged.
+    db_conn.execute(
+        "INSERT INTO alignment_links (run_id,pivot_unit_id,target_unit_id,external_id,"
+        "pivot_doc_id,target_doc_id,created_at,status)"
+        " VALUES ('r',2,3,0,1,2,datetime('now'),'rejected')"
+    )
+    assert purge_contradicted_cell_statuses(db_conn) == 0
+    assert len(_cell_rows(db_conn)) == 2
+
+    # An active link on unit 1's cell purges that mark only.
+    db_conn.execute(
+        "INSERT INTO alignment_links (run_id,pivot_unit_id,target_unit_id,external_id,"
+        "pivot_doc_id,target_doc_id,created_at) VALUES ('r',1,3,0,1,2,datetime('now'))"
+    )
+    assert purge_contradicted_cell_statuses(db_conn) == 1
+    db_conn.commit()
+    assert _cell_rows(db_conn) == [(2, 2, "non_traduit")]
+
+
+def test_aligner_run_purges_contradicted_marks(db_conn: sqlite3.Connection) -> None:
+    """R4, end-to-end: an align run over a marked cell clears the mark (no resurrection)."""
+    from multicorpus_engine.aligner import align_pair_by_position
+
+    _setup_family(db_conn)
+    # Give the translation a second line so position alignment has something to match.
+    db_conn.execute("INSERT INTO units (doc_id,unit_type,n,text_raw,text_norm) VALUES (2,'line',2,'b.','b.')")
+    set_cell_status(db_conn, {"pivot_unit_id": 1, "target_doc_id": 2, "status": "non_traduit"})
+    db_conn.commit()
+
+    align_pair_by_position(db_conn, pivot_doc_id=1, target_doc_id=2, run_id="test-run")
+
+    # The aligner linked hub unit 1 → its mark is gone (it would otherwise resurface
+    # as [non traduit], counted as done, the day the link is removed).
+    assert db_conn.execute(
+        "SELECT COUNT(*) FROM alignment_cell_statuses WHERE pivot_unit_id=1"
+    ).fetchone()[0] == 0

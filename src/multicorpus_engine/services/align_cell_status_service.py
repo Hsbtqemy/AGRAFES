@@ -45,6 +45,31 @@ def _norm_status(raw: Any) -> Optional[str]:
     return status
 
 
+def purge_contradicted_cell_statuses(conn: sqlite3.Connection) -> int:
+    """Drop every « non traduit » mark that an active link now contradicts.
+
+    The setter refuses to mark a cell that has active links (409), but the guard is
+    only one-directional: an aligner run or a manual link creation can cover a cell
+    that was marked earlier. Left alone, the mark is invisible while the link lives
+    (the grid shows the text) and **resurrects** when the link dies — the cell would
+    silently read « non traduit » and count as done (D-W5) instead of returning to
+    the to-do state (revue 2026-07-13, R4).
+
+    Aligning a cell IS the statement « this cell is translated », so it supersedes an
+    earlier « non traduit »: we clear, we never refuse the link. Called by the link
+    writers (the five ``aligner.align_pair_*`` and ``/align/link/create``) inside their
+    own transaction — this does not commit. Returns the number of marks dropped.
+    """
+    cur = conn.execute(
+        "DELETE FROM alignment_cell_statuses WHERE EXISTS ("
+        "  SELECT 1 FROM alignment_links al"
+        "  WHERE al.pivot_unit_id = alignment_cell_statuses.pivot_unit_id"
+        "    AND al.target_doc_id = alignment_cell_statuses.target_doc_id"
+        "    AND (al.status IS NULL OR al.status <> 'rejected'))"
+    )
+    return int(cur.rowcount or 0)
+
+
 def set_cell_status(conn: sqlite3.Connection, body: dict) -> dict[str, Any]:
     """Set (or clear, with ``status: null``) the per-cell status (POST /align/cell_status).
 

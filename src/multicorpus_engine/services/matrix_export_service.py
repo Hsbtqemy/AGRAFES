@@ -90,8 +90,9 @@ def build_alignment_matrix(conn: sqlite3.Connection, family_root_id: int) -> dic
       (``alignment_cell_statuses``, D-W8): ``'non_traduit'`` or ``None``.
     - ``addition_rows`` — ``[{"row", "doc_id", "unit_id", "n"}]`` descriptors of the
       flux rows woven into ``rows`` (D8): hub column = ``[ajout]``, the unit's text in
-      its own language column, anchored after the hub row of the last covered target
-      unit that precedes it in reading order.
+      its own language column, anchored after the last hub row displaying a covered
+      target unit at or before it in reading order. Only **unlinked** ajout units are
+      woven — one that carries an active link is already projected by its cell.
     - ``uncovered`` (∥ translations, D-W14) — per column, the ``line`` units with no
       active link in this family and no ``unit_status``: invisible in the grid, the
       « ＋ Ajout » panel lists them. ``[{"unit_id", "n", "text_raw"}]``.
@@ -178,19 +179,31 @@ def build_alignment_matrix(conn: sqlite3.Connection, family_root_id: int) -> dic
         anchor_by_n_t[tdoc] = anchor_by_n
 
     # Flux addition rows (D8) + uncovered units (D-W14), per translation column.
-    # An ajout at position n_a anchors after the hub row showing the nearest covered
+    # An ajout at position n_a anchors after the LAST hub row that displays a covered
     # target unit with n <= n_a (reading order), before the first row when none.
     additions_pending: list[tuple[int, int, int, int, int, str]] = []
     uncovered: list[list[dict[str, Any]]] = []
     for j, (tdoc, _lang) in enumerate(translations):
         anchor_by_n = anchor_by_n_t[tdoc]
         for uid_a, n_a, text_a in conn.execute(
-            "SELECT unit_id, n, text_raw FROM units"
-            " WHERE doc_id=? AND unit_type='line' AND unit_status='ajout' ORDER BY n",
-            (tdoc,),
+            # An ajout is a 0-1 (D8): content with NO hub source. A unit that carries
+            # an active link in this family is projected by its cell — weaving it as a
+            # flux row too would print the same sentence twice (grid AND CSV export).
+            # Same NOT EXISTS as the `uncovered` query below (revue 2026-07-13, R2).
+            "SELECT u.unit_id, u.n, u.text_raw FROM units u"
+            " WHERE u.doc_id=? AND u.unit_type='line' AND u.unit_status='ajout'"
+            "   AND NOT EXISTS (SELECT 1 FROM alignment_links al"
+            "                   WHERE al.target_unit_id = u.unit_id"
+            "                     AND al.pivot_doc_id = ?"
+            "                     AND (al.status IS NULL OR al.status <> 'rejected'))"
+            " ORDER BY u.n",
+            (tdoc, family_root_id),
         ):
-            prev_ns = [n for n in anchor_by_n if n_a is None or n <= n_a]
-            anchor_row = anchor_by_n[max(prev_ns)] if prev_ns else -1
+            # Anchor on the last ROW showing a covered unit at or before n_a — not on
+            # the row of the largest such n: a re-anchored (⇲) target makes the two
+            # differ, and only the row order is the matrix's reading order (R5).
+            prev_rows = [row for n, row in anchor_by_n.items() if n_a is None or n <= n_a]
+            anchor_row = max(prev_rows) if prev_rows else -1
             additions_pending.append(
                 (anchor_row, j, int(n_a or 0), int(uid_a), tdoc, (text_a or "").strip())
             )
@@ -243,11 +256,14 @@ def build_alignment_matrix(conn: sqlite3.Connection, family_root_id: int) -> dic
         row_statuses: list[Any] = []
         for tdoc, _lang in translations:
             links = links_by_t[tdoc].get(int(uid), [])
-            per_cell = cell_status_map.get((int(uid), tdoc))
+            # A mark contradicted by active links is not reported: link writers purge
+            # such marks (R4), so this only shields the projection from a legacy row
+            # (or a third-party writer) — rows and cell_statuses can never disagree.
+            per_cell = None if links else cell_status_map.get((int(uid), tdoc))
             row_statuses.append(per_cell)
             if links:
-                # Contradictory data (status under an aligned cell) never wins over
-                # real text; the setter guards against creating it.
+                # Real text always wins over a contradictory status (the hub-global
+                # axis can legitimately carry one: untranslated in DE, not in EN).
                 row.append(_cell(links))
             elif per_cell == "non_traduit" or hub_status == "non_traduit":
                 row.append(NON_TRADUIT_TOKEN)

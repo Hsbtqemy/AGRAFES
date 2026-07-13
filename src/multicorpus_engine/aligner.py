@@ -17,6 +17,7 @@ from typing import Any, Optional
 
 from .coarse_grain import derive_coarse_blocks
 from .gale_church import gale_church_beads
+from .services.align_cell_status_service import purge_contradicted_cell_statuses
 
 logger = logging.getLogger(__name__)
 
@@ -301,6 +302,9 @@ def align_pair(
             """,
             links,
         )
+        # An aligned cell IS translated: drop any « non traduit » mark this run
+        # contradicts, so it cannot resurrect when the link later dies (R4).
+        purge_contradicted_cell_statuses(conn)
         conn.commit()
     except Exception:
         conn.rollback()
@@ -517,6 +521,9 @@ def align_pair_by_length(
             """,
             links,
         )
+        # An aligned cell IS translated: drop any « non traduit » mark this run
+        # contradicts, so it cannot resurrect when the link later dies (R4).
+        purge_contradicted_cell_statuses(conn)
         conn.commit()
     except Exception:
         conn.rollback()
@@ -726,6 +733,9 @@ def align_pair_external_id_then_position(
                 """,
                 links,
             )
+            # An aligned cell IS translated: drop any « non traduit » mark this
+            # run contradicts, so it cannot resurrect when the link dies (R4).
+            purge_contradicted_cell_statuses(conn)
             conn.commit()
         except Exception:
             conn.rollback()
@@ -904,6 +914,9 @@ def align_pair_by_position(
             """,
             links,
         )
+        # An aligned cell IS translated: drop any « non traduit » mark this run
+        # contradicts, so it cannot resurrect when the link later dies (R4).
+        purge_contradicted_cell_statuses(conn)
         conn.commit()
     except Exception:
         conn.rollback()
@@ -1113,6 +1126,9 @@ def align_pair_by_similarity(
                 """,
                 links,
             )
+            # An aligned cell IS translated: drop any « non traduit » mark this
+            # run contradicts, so it cannot resurrect when the link dies (R4).
+            purge_contradicted_cell_statuses(conn)
             conn.commit()
         except Exception:
             conn.rollback()

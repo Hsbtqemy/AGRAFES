@@ -186,6 +186,54 @@ def test_matrix_addition_rows_woven_in_flux(db_conn: sqlite3.Connection) -> None
     assert m["uncovered"] == [[], []]
 
 
+def test_matrix_linked_ajout_unit_is_not_woven_twice(db_conn: sqlite3.Connection) -> None:
+    """R2 (revue 2026-07-13) — an ajout unit carrying an ACTIVE link is projected by its
+    cell; weaving it as a flux row too would print the same sentence twice (grid AND the
+    CSV export, which writes `rows` verbatim). A rejected link does not cover it."""
+    _setup_family(db_conn)
+    # RO unit 5 ('ziua') is actively linked to FR u1 (the 1-2 bead of the fixture).
+    db_conn.execute("UPDATE units SET unit_status='ajout' WHERE unit_id=5")
+    db_conn.commit()
+    m = build_alignment_matrix(db_conn, 1)
+
+    assert m["addition_rows"] == []
+    assert [r[2] for r in m["rows"]] == ["Le matin.", "Le soir."]
+    assert m["rows"][0][4] == "buna ziua"  # projected once, by its cell
+    # Kill the link: the unit is no longer covered → it becomes a legitimate flux row.
+    db_conn.execute("UPDATE alignment_links SET status='rejected' WHERE target_unit_id=5")
+    db_conn.commit()
+    m = build_alignment_matrix(db_conn, 1)
+    assert [a["unit_id"] for a in m["addition_rows"]] == [5]
+    assert m["rows"][0][4] == "buna"
+
+
+def test_matrix_addition_anchor_follows_row_order_not_max_n(db_conn: sqlite3.Connection) -> None:
+    """R5 — anchor on the last ROW displaying a covered unit at or before n_a, not on the
+    row of the largest such n: a re-anchored (⇲) target makes the two differ, and only the
+    row order is the matrix's reading order."""
+    _setup_family(db_conn)
+    # Non-monotone RO: unit 4 (n=1) is re-anchored to FR u2 (row 1), unit 5 (n=2) to FR
+    # u1 (row 0). max(n)=2 → row 0 (wrong: row 1 also shows RO content ≤ n=2).
+    db_conn.execute("DELETE FROM alignment_links WHERE target_doc_id=3")
+    db_conn.execute(
+        "INSERT INTO alignment_links (run_id,pivot_unit_id,target_unit_id,external_id,"
+        "pivot_doc_id,target_doc_id,created_at) VALUES ('r',2,4,0,1,3,datetime('now'))")
+    db_conn.execute(
+        "INSERT INTO alignment_links (run_id,pivot_unit_id,target_unit_id,external_id,"
+        "pivot_doc_id,target_doc_id,created_at) VALUES ('r',1,5,0,1,3,datetime('now'))")
+    db_conn.execute(
+        "INSERT INTO units (doc_id,unit_type,n,text_raw,text_norm,unit_status)"
+        " VALUES (3,'line',3,'extra','extra','ajout')")
+    db_conn.commit()
+    m = build_alignment_matrix(db_conn, 1)
+
+    # The ajout (n=3) follows both covered units in reading order → it must land AFTER
+    # the last row showing any of them (row 1), i.e. last. Anchoring on max(n)=2's row
+    # (row 0) would insert it between the two hub rows.
+    assert [r[2] for r in m["rows"]] == ["Le matin.", "Le soir.", "[ajout]"]
+    assert m["addition_rows"] == [{"row": 2, "doc_id": 3, "unit_id": 6, "n": 3}]
+
+
 def test_matrix_uncovered_units_per_column(db_conn: sqlite3.Connection) -> None:
     """D-W14: a target unit with no active link in this family and no status is
     invisible in the grid — surfaced per column so « ＋ Ajout » can act on it.

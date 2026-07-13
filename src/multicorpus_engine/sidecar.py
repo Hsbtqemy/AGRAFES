@@ -7855,6 +7855,9 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         if external_id is None:
             external_id = pivot_unit["external_id"] if pivot_unit["external_id"] is not None else 0
         created_at = dt.datetime.now(dt.timezone.utc).isoformat()
+        from multicorpus_engine.services.align_cell_status_service import (
+            purge_contradicted_cell_statuses,
+        )
         try:
             with self._lock():
                 cur = conn.execute(
@@ -7865,6 +7868,10 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                     (pivot_unit_id, target_unit_id, external_id,
                      pivot_doc_id, target_doc_id, created_at, status),
                 )
+                # Aligning a cell IS the statement « this cell is translated »: it
+                # supersedes an earlier « non traduit » mark, which would otherwise
+                # stay hidden under the link and resurrect when it dies (R4).
+                purge_contradicted_cell_statuses(conn)
                 conn.commit()
                 link_id = cur.lastrowid
         except Exception as exc:
