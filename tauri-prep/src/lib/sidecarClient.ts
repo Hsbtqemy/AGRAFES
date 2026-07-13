@@ -1667,6 +1667,11 @@ export interface AlignMatrix {
   /** 1.6.56 (D-W14): parallel to translation columns — units with no active link in
    *  this family and no status (invisible in the grid; the « ＋ Ajout » panel). */
   uncovered?: MatrixUncoveredUnit[][];
+  /** 1.6.58: EVERY link of the family, **rejected ones included** — the projection hides
+   *  them (F8) but the aligner's unique index does not, so a family whose links were all
+   *  rejected re-aligns to nothing. The « déjà aligné ? » gate must use THIS, never the
+   *  links the grid displays. */
+  link_count?: number;
 }
 
 /** 1.6.56 (D8) — descriptor of one flux addition row woven into `rows`. */

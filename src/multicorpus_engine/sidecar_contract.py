@@ -14,7 +14,7 @@ from typing import Any
 from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
-CONTRACT_VERSION = "1.6.57"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.58"  # semantic versioning for the sidecar API contract
 # SID-08 / OPS-03: the API version IS the contract version — derived, never a
 # second hand-maintained literal, so the two can no longer drift. /health reports
 # the *engine* version under `version` (it predates the sidecar); every other
@@ -217,6 +217,13 @@ API_VERSION = CONTRACT_VERSION
 #         straddle cut seeded (its manual link had no bead_uid next to the aligner's; migration
 #         030 backfills the cells already produced). No new route → snapshot unchanged; openapi
 #         moves (enum value) + .md documents the two actions.
+# 1.6.58: barre « Aligner » (tranche 5, revue). /align/matrix response (non-schematized) gains
+#         `link_count` — EVERY link of the family, rejected ones INCLUDED. The projection excludes
+#         rejected links (F8), but the aligner does not: INSERT OR IGNORE dedupes on the unique
+#         (pivot_unit_id, target_unit_id) index, which a rejected row still occupies. A family whose
+#         links were all rejected therefore re-aligns to NOTHING, and the UI's « déjà aligné ? » gate
+#         must be based on this count, not on what the grid displays. Additive field → snapshot/.md
+#         unchanged; openapi moves (version).
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"

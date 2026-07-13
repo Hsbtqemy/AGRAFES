@@ -58,16 +58,23 @@ export function buildAlignAdvancedHtml(): string {
 
 /**
  * Inline confirm (never a native dialog) shown when the family ALREADY has links: the
- * choice the engine makes silently today. « Compléter » adds nothing where a link
- * already exists — say so rather than report a hollow success.
+ * choice the engine makes silently today.
+ *
+ * The wording is deliberately literal about what the engine does (revue tranche 5): with
+ * `replace_existing:false` the aligner **re-runs the whole strategy** and only dedupes on
+ * the exact `(pivot_unit_id, target_unit_id)` unique index — it protects nothing else. So
+ * a re-run with a DIFFERENT strategy does not « only add what is missing »: it can pile
+ * new links on top of the old ones (and create collisions). Saying « n'ajoute que les
+ * liens manquants » was simply false.
  */
 export function buildAlignRerunConfirmHtml(linkCount: number): string {
   return `<div class="prep-matrix-align-confirm" role="group" aria-label="Famille déjà alignée">`
-    + `<span>Cette famille porte déjà <strong>${linkCount}</strong> lien${linkCount > 1 ? "s" : ""}.</span>`
+    + `<span>Cette famille porte déjà <strong>${linkCount}</strong> lien${linkCount > 1 ? "s" : ""}`
+    + ` (liens rejetés compris).</span>`
     + `<button type="button" id="matrix-align-complete" class="btn btn-secondary btn-sm">`
-    + `Compléter <small>(n'ajoute que les liens manquants)</small></button>`
+    + `Compléter <small>(garde les liens existants ; une autre stratégie peut en ajouter par-dessus)</small></button>`
     + `<button type="button" id="matrix-align-recalc" class="btn btn-danger btn-sm">`
-    + `Recalcul global <small>(remise à plat)</small></button>`
+    + `Recalcul global <small>(supprime les liens puis réaligne)</small></button>`
     + `<button type="button" id="matrix-align-cancel" class="btn btn-ghost btn-sm">Annuler</button>`
     + `</div>`;
 }
@@ -77,15 +84,36 @@ export function buildAlignRerunConfirmHtml(linkCount: number): string {
  * created 0 links on an already-aligned family is the norm without `replace_existing`,
  * and used to read as a plain success.
  */
-export function alignRunSummary(res: FamilyAlignResponse, opts: FamilyAlignOptions): string {
+export function alignRunSummary(
+  res: FamilyAlignResponse, opts: FamilyAlignOptions, existingLinks = 0,
+): string {
   const s = res.summary;
   const created = s.total_links_created;
-  const parts = [`${created} lien${created > 1 ? "s" : ""} créé${created > 1 ? "s" : ""}`];
-  parts.push(`${s.aligned}/${s.total_pairs} paire${s.total_pairs > 1 ? "s" : ""}`);
-  if (s.skipped > 0) parts.push(`${s.skipped} ignorée${s.skipped > 1 ? "s" : ""} (non segmentée)`);
-  if (s.errors > 0) parts.push(`${s.errors} en erreur`);
-  const head = created === 0 && !opts.replace_existing
-    ? "Aucun lien ajouté — les segments déjà liés ne sont pas retouchés (utiliser « Recalcul global » pour repartir de zéro)"
-    : parts.join(" · ");
-  return created === 0 && !opts.replace_existing ? head : `✓ ${head}`;
+  const aside: string[] = [];
+  if (s.skipped > 0) aside.push(`${s.skipped} paire${s.skipped > 1 ? "s" : ""} ignorée${s.skipped > 1 ? "s" : ""} (non segmentée)`);
+  if (s.errors > 0) aside.push(`${s.errors} en erreur`);
+  const tail = aside.length > 0 ? ` · ${aside.join(" · ")}` : "";
+
+  // Why did a run add nothing? Three different stories — and telling the wrong one is
+  // worse than the hollow « ✓ aligné » this bar replaced (revue tranche 5):
+  //   (a) no pair could even run (children not segmented / errors);
+  //   (b) the pairs ran, but the family was ALREADY linked → the footgun;
+  //   (c) the pairs ran on a family with NO link, and the strategy matched nothing
+  //       (external_id on a corpus without [N], similarity above the threshold…).
+  // The engine cannot tell (b) from (c): it reports a pair as « aligned » as soon as it
+  // ran without raising. Only the caller knows how many links the family had BEFORE.
+  if (created === 0 && s.aligned === 0) {
+    return `Aucune paire alignée${tail || " — rien à aligner dans cette famille"}`;
+  }
+  if (created === 0 && !opts.replace_existing && existingLinks > 0) {
+    return "Aucun lien ajouté — les liens existants ne sont pas recréés"
+      + " (utiliser « Recalcul global » pour repartir de zéro)" + tail;
+  }
+  if (created === 0) {
+    const mode = STRATEGY_LABELS.find((x) => x.value === opts.strategy)?.label ?? opts.strategy;
+    return `Aucun lien : le mode « ${mode} » n'a apparié aucun segment${tail}`;
+  }
+  const head = `${created} lien${created > 1 ? "s" : ""} créé${created > 1 ? "s" : ""}`
+    + ` · ${s.aligned}/${s.total_pairs} paire${s.total_pairs > 1 ? "s" : ""}`;
+  return `✓ ${head}${tail}`;
 }

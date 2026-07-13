@@ -63,6 +63,8 @@ export class AlignMatrixView {
   private _view: MatrixView | null = null;
   /** Connection the matrix was loaded on — its ids are meaningless on any other DB (F1). */
   private _loadedConn: Conn | null = null;
+  /** Family the loaded view belongs to — a switch leaves the view behind (tranche 5). */
+  private _loadedFamilyId: number | null = null;
   /** A cut gesture is in flight (open modal) — blocks reentrancy (F5). */
   private _cutBusy = false;
   /** An alignment run is in flight — the button must not fire twice (tranche 5). */
@@ -112,7 +114,7 @@ export class AlignMatrixView {
       advBtn.disabled = none;
     });
     loadBtn.addEventListener("click", () => void this._loadMatrix());
-    alignBtn.addEventListener("click", () => this._onAlignClick());
+    alignBtn.addEventListener("click", () => void this._onAlignClick());
     advBtn.addEventListener("click", () => {
       const adv = root.querySelector<HTMLElement>("#matrix-align-adv")!;
       const open = adv.hasAttribute("hidden");
@@ -181,12 +183,16 @@ export class AlignMatrixView {
     void this._loadFamilies();
   }
 
-  /** Drop the loaded matrix (and any open cut modal) — e.g. after a conn change. */
+  /** Drop the loaded matrix (and any open cut modal / armed confirm) — e.g. conn change. */
   private _resetMatrix(): void {
     this._closeCutModal?.();
+    // The re-run confirm strip must not survive a corpus switch: its « Recalcul global »
+    // would rewrite a family of the OLD database (revue tranche 5, critique).
+    this._closeAlignStrip();
     this._matrix = null;
     this._view = null;
     this._loadedConn = null;
+    this._loadedFamilyId = null;
     const area = this._root?.querySelector<HTMLElement>("#matrix-grid-area");
     if (area) setHtml(area, raw('<p class="prep-matrix-hint">Connexion chang&#233;e &#8212; recharger la matrice.</p>'));
     const summary = this._root?.querySelector<HTMLElement>("#matrix-summary");
@@ -216,8 +222,15 @@ export class AlignMatrixView {
     } else {
       this._selectedFamilyId = null;
     }
-    const loadBtn = this._root.querySelector<HTMLButtonElement>("#matrix-load");
-    if (loadBtn) loadBtn.disabled = this._selectedFamilyId === null;
+    // Re-sync EVERY button of the bar, not just « Charger » — a family that vanished from
+    // the list (corpus switch, deletion) would otherwise leave « Aligner » armed on an id
+    // that no longer exists (revue tranche 5).
+    const none = this._selectedFamilyId === null;
+    for (const id of ["#matrix-load", "#matrix-align", "#matrix-align-adv-toggle"]) {
+      const btn = this._root.querySelector<HTMLButtonElement>(id);
+      if (btn) btn.disabled = none;
+    }
+    if (none) this._closeAlignStrip();
   }
 
   private async _loadMatrix(): Promise<void> {
@@ -234,6 +247,7 @@ export class AlignMatrixView {
       this._matrix = matrix;
       this._view = view;
       this._loadedConn = conn;
+      this._loadedFamilyId = this._selectedFamilyId;
       if (view.rows.length === 0) {
         setHtml(area, raw('<p class="prep-matrix-hint">Aucun segment dans le moyeu de cette famille.</p>'));
       } else {
@@ -242,6 +256,12 @@ export class AlignMatrixView {
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      // A failed load must INVALIDATE the view: leaving the previous family's one in
+      // place made every downstream check (the re-run gate, the gestures) answer for the
+      // wrong family (revue tranche 5, critique).
+      this._matrix = null;
+      this._view = null;
+      this._loadedFamilyId = null;
       setHtml(area, raw(`<p class="prep-matrix-error">Erreur&nbsp;: ${_esc(msg)}</p>`));
       this._cb.toast?.("✗ Erreur chargement matrice", true);
     } finally {
@@ -267,55 +287,118 @@ export class AlignMatrixView {
     return opts;
   }
 
-  /** Links currently projected for the loaded family (0 when nothing is loaded). */
+  /**
+   * The links the ALIGNER sees on the loaded family — rejected ones included (1.6.58).
+   * NOT the links the grid shows: the projection hides rejected links (F8), but the
+   * unique (pivot, target) index still holds their rows, so a family whose links were all
+   * rejected re-aligns to NOTHING. Gating on what is displayed would let exactly that
+   * no-op run through (revue tranche 5). Falls back to the projection on an older sidecar.
+   */
   private _loadedLinkCount(): number {
-    return (this._view?.rows ?? []).reduce(
-      (n, r) => n + r.cells.reduce((m, c) => m + c.links.length, 0), 0);
+    const view = this._view;
+    if (!view) return 0;
+    if (view.linkCount !== null) return view.linkCount;
+    return view.rows.reduce((n, r) => n + r.cells.reduce((m, c) => m + c.links.length, 0), 0);
   }
 
-  private _onAlignClick(): void {
-    if (this._selectedFamilyId === null || this._aligning) return;
-    // The footgun the engine has always had (D-annexe): re-running the aligner on an
-    // already-aligned family adds NOTHING — existing links are kept, and the run reports
-    // a hollow success. Make the choice explicit instead of hiding it.
+  /** True when the loaded view really describes the family we are about to align. */
+  private _viewMatchesSelection(conn: Conn): boolean {
+    return this._view !== null
+      && this._loadedFamilyId === this._selectedFamilyId
+      && this._loadedConn === conn;
+  }
+
+  private async _onAlignClick(): Promise<void> {
+    const conn = this._getConn();
+    if (!conn || this._selectedFamilyId === null || this._aligning || this._cutBusy) return;
+    // The confirm hinges on whether the family ALREADY has links — so it must look at the
+    // family we are about to align, not at whatever is on screen: the button is live as
+    // soon as a family is picked (no « Charger » needed), and a family switch leaves the
+    // PREVIOUS family's view behind. Reading a stale/absent view would skip the confirm
+    // and fire the very run that does nothing (revue tranche 5).
+    if (!this._viewMatchesSelection(conn)) {
+      await this._loadMatrix();
+      if (!this._viewMatchesSelection(this._getConn() ?? conn)) return;  // load failed / moved on
+    }
     const existing = this._loadedLinkCount();
     if (existing > 0) {
       this._showRerunConfirm(existing);
       return;
     }
-    void this._runAlign(this._alignOptions());
+    await this._runAlign(this._alignOptions(), this._selectedFamilyId, 0);
+  }
+
+  /** Tear down the open confirm strip (a corpus/family switch must not leave it armed). */
+  private _closeAlignStrip(): void {
+    const strip = this._root?.querySelector<HTMLElement>("#matrix-align-strip");
+    if (strip) setHtml(strip, raw(""));
   }
 
   private _showRerunConfirm(linkCount: number): void {
     const strip = this._root?.querySelector<HTMLElement>("#matrix-align-strip");
     if (!strip) return;
+    // Capture WHAT the strip is about: its buttons must never rewrite a family the user
+    // has meanwhile moved away from, nor a different corpus (revue tranche 5, critique).
+    const familyId = this._selectedFamilyId;
+    const conn = this._getConn();
     setHtml(strip, raw(buildAlignRerunConfirmHtml(linkCount)));
     const close = () => setHtml(strip, raw(""));
+    const run = (replace: boolean) => {
+      close();
+      if (familyId === null) return;
+      if (this._getConn() !== conn || this._selectedFamilyId !== familyId) {
+        this._cb.toast?.("✗ La sélection a changé — relancer « Aligner »", true);
+        return;
+      }
+      void this._runAlign({ ...this._alignOptions(), replace_existing: replace }, familyId, linkCount);
+    };
     strip.querySelector<HTMLButtonElement>("#matrix-align-cancel")?.addEventListener("click", close);
-    strip.querySelector<HTMLButtonElement>("#matrix-align-complete")?.addEventListener("click", () => {
-      close();
-      void this._runAlign({ ...this._alignOptions(), replace_existing: false });
-    });
-    strip.querySelector<HTMLButtonElement>("#matrix-align-recalc")?.addEventListener("click", () => {
-      close();
-      void this._runAlign({ ...this._alignOptions(), replace_existing: true });
-    });
+    strip.querySelector<HTMLButtonElement>("#matrix-align-complete")?.addEventListener("click", () => run(false));
+    strip.querySelector<HTMLButtonElement>("#matrix-align-recalc")?.addEventListener("click", () => run(true));
   }
 
-  private async _runAlign(opts: FamilyAlignOptions): Promise<void> {
+  /**
+   * @param familyId      the family the run was decided FOR — the re-projection must use
+   *                      it, not `_selectedFamilyId`, which the user can change mid-run.
+   * @param existingLinks links the family had BEFORE the run — `alignRunSummary` needs it
+   *                      to tell « nothing added because it was already aligned » apart
+   *                      from « nothing added because the strategy matched nothing ».
+   */
+  private async _runAlign(
+    opts: FamilyAlignOptions, familyId: number, existingLinks: number,
+  ): Promise<void> {
     const conn = this._getConn();
-    const familyId = this._selectedFamilyId;
-    if (!conn || familyId === null || this._aligning) return;
-    const alignBtn = this._root?.querySelector<HTMLButtonElement>("#matrix-align");
-    const strip = this._root?.querySelector<HTMLElement>("#matrix-align-strip");
+    if (!conn || this._aligning) return;
+    // Same F1 discipline as every other mutation of this screen: ids belong to the DB
+    // they were read from.
+    if (this._loadedConn !== null && conn !== this._loadedConn) {
+      this._cb.toast?.("✗ Connexion changée — recharger la matrice avant d'aligner", true);
+      this._resetMatrix();
+      return;
+    }
+    const root = this._root;
+    const alignBtn = root?.querySelector<HTMLButtonElement>("#matrix-align");
+    const loadBtn = root?.querySelector<HTMLButtonElement>("#matrix-load");
+    const famSel = root?.querySelector<HTMLSelectElement>("#matrix-family");
+    const strip = root?.querySelector<HTMLElement>("#matrix-align-strip");
     this._aligning = true;
+    // A run REWRITES the links the grid's gestures resolve through — freeze the gestures
+    // and the selectors while it flies (F5), or a ✂ would post link_ids that no longer
+    // exist (revue tranche 5).
+    this._cutBusy = true;
     if (alignBtn) alignBtn.disabled = true;
+    if (loadBtn) loadBtn.disabled = true;
+    if (famSel) famSel.disabled = true;
     if (strip) strip.textContent = "Alignement en cours…";
     try {
       const res = await alignFamily(conn, familyId, opts);
-      if (strip) strip.textContent = alignRunSummary(res, opts);
-      this._cb.toast?.(alignRunSummary(res, opts), res.summary.errors > 0);
-      // The whole point of aligning from here: see the result in the grid at once.
+      const line = alignRunSummary(res, opts, existingLinks);
+      if (strip) strip.textContent = line;
+      this._cb.toast?.(line, res.summary.errors > 0 || !line.startsWith("✓"));
+      // The whole point of aligning from here: see the result in the grid at once — for
+      // THE family that was aligned.
+      this._selectedFamilyId = familyId;
+      if (famSel) famSel.value = String(familyId);
       await this._loadMatrix();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -323,7 +406,11 @@ export class AlignMatrixView {
       this._cb.toast?.(`✗ Alignement : ${msg}`, true);
     } finally {
       this._aligning = false;
-      if (alignBtn) alignBtn.disabled = this._selectedFamilyId === null;
+      this._cutBusy = false;
+      const none = this._selectedFamilyId === null;
+      if (alignBtn) alignBtn.disabled = none;
+      if (loadBtn) loadBtn.disabled = none;
+      if (famSel) famSel.disabled = false;
     }
   }
 
@@ -1199,6 +1286,7 @@ export class AlignMatrixView {
     this._matrix = null;
     this._view = null;
     this._loadedConn = null;
+    this._loadedFamilyId = null;
     this._cutBusy = false;
   }
 }

@@ -278,11 +278,22 @@ def build_alignment_matrix(conn: sqlite3.Connection, family_root_id: int) -> dic
         for add in additions_by_anchor.get(i, []):
             _append_addition(add)
 
+    # Every link of the family, REJECTED ONES INCLUDED (1.6.58). The projection excludes
+    # them (F8) — but the aligner does not: its INSERT OR IGNORE dedupes on the unique
+    # (pivot_unit_id, target_unit_id) index, which a rejected row still occupies. So a
+    # family whose links were all rejected would re-align to NOTHING, and a « links > 0 »
+    # test based on the projection would miss it (revue tranche 5). This is the count the
+    # « Aligner » bar must gate its re-run confirm on.
+    link_count = conn.execute(
+        "SELECT COUNT(*) FROM alignment_links WHERE pivot_doc_id=?", (family_root_id,)
+    ).fetchone()[0]
+
     return {
         "headers": headers,
         "rows": rows,
         "languages": [hub_lang, *[lang for _t, lang in translations]],
         "hub_doc_id": int(family_root_id),
+        "link_count": int(link_count or 0),
         # Tranche 3a — identifiers for editable grid gestures. Parallel arrays:
         # hub_unit_ids[i] is the hub unit behind rows[i] (None on an addition row);
         # language_doc_ids[j] is the doc_id behind languages[j] (0 = hub).

@@ -185,6 +185,103 @@ describe("AlignMatrixView — barre « Aligner » (tranche 5)", () => {
     });
   });
 
+  it("the confirm fires even when the matrix was NEVER loaded (revue tranche 5)", async () => {
+    const calls: Array<{ path: string; body: unknown }> = [];
+    // The button is live as soon as a family is picked — no « Charger » needed. Reading a
+    // missing view would report 0 links, skip the confirm, and fire the run that does
+    // nothing: exactly the footgun this bar exists to kill.
+    const { el } = await mount(calls);  // NOT mountLoaded — nothing is on screen
+
+    el.querySelector<HTMLButtonElement>("#matrix-align")!.click();
+    await vi.waitFor(() => {
+      expect(el.querySelector("#matrix-align-complete")).not.toBeNull();
+    });
+    // It fetched the family's real state first, and did NOT align behind the user's back.
+    expect(calls.some((c) => c.path === "/align/matrix")).toBe(true);
+    expect(calls.some((c) => c.path === "/families/2/align")).toBe(false);
+  });
+
+  it("CRITIQUE: the armed confirm strip cannot rewrite a family the user moved away from", async () => {
+    const calls: Array<{ path: string; body: unknown }> = [];
+    const { el, toasts } = await mountLoaded(calls);  // family 2, already aligned
+
+    el.querySelector<HTMLButtonElement>("#matrix-align")!.click();
+    await vi.waitFor(() => {
+      expect(el.querySelector("#matrix-align-recalc")).not.toBeNull();
+    });
+    // The user changes their mind and picks another family — the strip is still on screen.
+    const sel = el.querySelector<HTMLSelectElement>("#matrix-family")!;
+    sel.value = "";
+    sel.dispatchEvent(new Event("change"));
+
+    el.querySelector<HTMLButtonElement>("#matrix-align-recalc")!.click();
+    await vi.waitFor(() => {
+      expect(toasts.some((t) => t.includes("sélection a changé"))).toBe(true);
+    });
+    // « Recalcul global » (a DESTRUCTIVE run) never fired.
+    expect(calls.some((c) => c.path === "/families/2/align")).toBe(false);
+  });
+
+  it("CRITIQUE: a family whose links were all REJECTED still trips the gate", async () => {
+    const calls: Array<{ path: string; body: unknown }> = [];
+    // The projection hides rejected links (F8) — but the aligner's unique index does not,
+    // so a plain re-run would create nothing. link_count (1.6.58) sees them.
+    const allRejected: AlignMatrix = {
+      ...MATRIX_EMPTY,          // nothing projected…
+      link_count: 4,            // …but four links are there
+    };
+    const { el } = await mountLoaded(calls, { matrix: allRejected });
+
+    el.querySelector<HTMLButtonElement>("#matrix-align")!.click();
+    await vi.waitFor(() => {
+      expect(el.querySelector("#matrix-align-complete")).not.toBeNull();
+    });
+    expect(el.querySelector(".prep-matrix-align-confirm")!.textContent).toContain("4");
+    expect(calls.some((c) => c.path === "/families/2/align")).toBe(false);
+  });
+
+  it("freezes the grid's gestures and the selectors while a run rewrites the links", async () => {
+    const calls: Array<{ path: string; body: unknown }> = [];
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const conn = makeConn(calls, { matrix: MATRIX_EMPTY });
+    const slow = {
+      ...conn,
+      post: async (path: string, body: unknown) => {
+        if (path === "/families/2/align") await gate;
+        return conn.post(path, body);
+      },
+    } as Conn;
+    const toasts: string[] = [];
+    const view = new AlignMatrixView(() => slow, { toast: (m) => toasts.push(m) });
+    const el = view.render();
+    document.body.appendChild(el);
+    view.onActivated();
+    await vi.waitFor(() => {
+      expect(el.querySelector<HTMLOptionElement>('#matrix-family option[value="2"]')).not.toBeNull();
+    });
+    const sel = el.querySelector<HTMLSelectElement>("#matrix-family")!;
+    sel.value = "2";
+    sel.dispatchEvent(new Event("change"));
+
+    el.querySelector<HTMLButtonElement>("#matrix-align")!.click();
+    await vi.waitFor(() => {
+      expect(el.querySelector<HTMLButtonElement>("#matrix-align")!.disabled).toBe(true);
+    });
+    // A run REWRITES the link ids the gestures resolve through — the family selector and
+    // « Charger » are frozen too, and a second click cannot double-post.
+    expect(sel.disabled).toBe(true);
+    expect(el.querySelector<HTMLButtonElement>("#matrix-load")!.disabled).toBe(true);
+    el.querySelector<HTMLButtonElement>("#matrix-align")!.click();
+
+    release();
+    await vi.waitFor(() => {
+      expect(el.querySelector<HTMLButtonElement>("#matrix-align")!.disabled).toBe(false);
+    });
+    expect(calls.filter((c) => c.path === "/families/2/align")).toHaveLength(1);
+    expect(sel.disabled).toBe(false);
+  });
+
   it("a run that adds nothing says so instead of reporting a hollow success", async () => {
     const calls: Array<{ path: string; body: unknown }> = [];
     const { el, toasts } = await mountLoaded(calls, { linksCreated: 0 });

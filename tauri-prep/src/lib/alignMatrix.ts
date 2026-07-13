@@ -81,6 +81,9 @@ export interface MatrixView {
   hasStatuses: boolean;
   /** Parallel to translationLangs (D-W14): uncovered units per column ([] when absent). */
   uncovered: MatrixUncoveredUnit[][];
+  /** 1.6.58 — every link of the family, REJECTED INCLUDED (what the aligner's unique
+   *  index sees). null on an older sidecar. Never confuse with the links the grid shows. */
+  linkCount: number | null;
   rows: MatrixRowView[];
   stats: MatrixStats;
 }
@@ -201,6 +204,7 @@ export function buildMatrixView(data: AlignMatrix): MatrixView {
     hasCellLinks,
     hasStatuses,
     uncovered,
+    linkCount: data.link_count ?? null,
     rows,
     stats: { totalCells, warningCells, completionPct, uncoveredUnits },
   };

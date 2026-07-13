@@ -111,6 +111,27 @@ def test_matrix_cell_concat_follows_reading_order(db_conn: sqlite3.Connection) -
     assert [lk["manual"] for lk in m["cell_links"][1][1]] == [True, False]
 
 
+def test_matrix_link_count_includes_rejected(db_conn: sqlite3.Connection) -> None:
+    """1.6.58 — `link_count` counts EVERY link of the family, rejected ones included.
+
+    The projection excludes rejected links (F8), but the aligner does not: its
+    INSERT OR IGNORE dedupes on the unique (pivot_unit_id, target_unit_id) index, which a
+    rejected row still occupies. A family whose links were all rejected therefore
+    re-aligns to NOTHING — the « déjà aligné ? » gate of the Aligner bar must see them.
+    """
+    _setup_family(db_conn)
+    m = build_alignment_matrix(db_conn, 1)
+    assert m["link_count"] == 4  # 2 EN (cut pair) + 2 RO (bead)
+
+    db_conn.execute("UPDATE alignment_links SET status='rejected'")
+    db_conn.commit()
+    m = build_alignment_matrix(db_conn, 1)
+    # Nothing is projected any more…
+    assert all(cell == "" for row in m["rows"] for cell in row[3:])
+    # …but the links are still there, and still block a plain re-align.
+    assert m["link_count"] == 4
+
+
 def test_matrix_hub_not_found(db_conn: sqlite3.Connection) -> None:
     with pytest.raises(NotFoundError):
         build_alignment_matrix(db_conn, 999)
