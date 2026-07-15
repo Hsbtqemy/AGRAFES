@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   resolveFusedCellLinks, resolveStraddleCut, resolveCellUncut, resolveCellMerge,
   cellCutTargets, buildPartitionActions, buildUncutActions, buildCellBeadActions,
-  suggestCutOffset, buildCutPanelsHtml,
+  suggestCutOffset, buildCutPanelsHtml, buildCellSplitPanelsHtml, resolveCellSplit,
   viableCutOffsets, viableCutOffsetsIn, linkWindow, cellsShareFusedTarget,
 } from "../alignCellCut.ts";
 import type { CellLinkColumn } from "../alignCellCut.ts";
@@ -165,6 +165,114 @@ describe("resolveStraddleCut (D-W12/13 « couper à cheval », fenêtré)", () =
       [lk(1, 90, { target_text_raw: "Indivisible" })], [lk(2, 91)],
     ];
     expect(resolveStraddleCut(single, 0, "down").error).toMatch(/un seul mot/);
+  });
+});
+
+describe("resolveCellSplit — coupe généralisée à toute la cellule (D-W17)", () => {
+  // seg 69 (row 1) = two whole EN sentences; neighbours are translated (the Beigbeder shape).
+  const A = "one two three", B = "alpha beta"; // word starts: A→4,8 ; B→6
+  const col = (): CellLinkColumn => [
+    [lk(10, 68, { target_text_raw: "x y" })],
+    [lk(11, 71, { target_text_raw: A }), lk(12, 72, { target_text_raw: B })],
+    [lk(13, 73, { target_text_raw: "p q" })],
+  ];
+
+  it("« couper après le point » = a UNIT-boundary cut MOVES the whole sentence, no split", () => {
+    // Cut at the boundary before link B (offset 0 of B) — the canonical Beigbeder fix.
+    const r = resolveCellSplit(col(), 1, "down", 1, 0);
+    expect(r.error).toBeUndefined();
+    expect(r.split).toBeNull();
+    expect(r.moves!.map((l) => l.link_id)).toEqual([12]);
+    expect(r.neighborRow).toBe(2);
+    // Same result reached from the boundary AFTER link A (offset = len(A)).
+    const r2 = resolveCellSplit(col(), 1, "down", 0, A.length);
+    expect(r2.split).toBeNull();
+    expect(r2.moves!.map((l) => l.link_id)).toEqual([12]);
+  });
+
+  it("a cut INSIDE a link splits it and moves every whole link beyond (down)", () => {
+    const r = resolveCellSplit(col(), 1, "down", 0, 4); // inside A, at "one|two three"
+    expect(r.split!.link.link_id).toBe(11);
+    expect(r.split!.at).toBe(4);
+    expect(r.moves!.map((l) => l.link_id)).toEqual([12]); // B moves whole too
+  });
+
+  it("a cut inside the LAST link is the plain straddle split (nothing else moves)", () => {
+    const r = resolveCellSplit(col(), 1, "down", 1, 6); // inside B, "alpha|beta"
+    expect(r.split!.link.link_id).toBe(12);
+    expect(r.moves).toEqual([]);
+  });
+
+  it("« up » sends the HEAD upward: boundary and in-link cases", () => {
+    // Boundary before B / after A → move A up whole.
+    expect(resolveCellSplit(col(), 1, "up", 1, 0).moves!.map((l) => l.link_id)).toEqual([11]);
+    expect(resolveCellSplit(col(), 1, "up", 0, A.length).moves!.map((l) => l.link_id)).toEqual([11]);
+    // Inside B → split B (tail stays, head goes), A moves up too.
+    const r = resolveCellSplit(col(), 1, "up", 1, 6);
+    expect(r.split!.link.link_id).toBe(12);
+    expect(r.moves!.map((l) => l.link_id)).toEqual([11]);
+  });
+
+  it("refuses to empty the cell (moving everything is not a cut)", () => {
+    expect(resolveCellSplit(col(), 1, "down", 0, 0).error).toMatch(/Tout partirait/);
+    expect(resolveCellSplit(col(), 1, "up", 1, B.length).error).toMatch(/Tout partirait/);
+  });
+
+  it("refuses moving nothing, an invalid split offset, the matrix edges", () => {
+    expect(resolveCellSplit(col(), 1, "down", 1, B.length).error).toMatch(/Rien à déplacer/);
+    expect(resolveCellSplit(col(), 1, "down", 0, 5).error).toMatch(/invalide/); // 5 is mid-word
+    expect(resolveCellSplit(col(), 0, "up", 0, 0).error).toMatch(/au-dessus/);
+    expect(resolveCellSplit(col(), 2, "down", 0, 0).error).toMatch(/en dessous/);
+  });
+
+  it("refuses when the neighbour already holds a target being moved (unique index)", () => {
+    const clash: CellLinkColumn = [
+      [lk(10, 68, { target_text_raw: "x y" })],
+      [lk(11, 71, { target_text_raw: A }), lk(12, 72, { target_text_raw: B })],
+      [lk(13, 72, { target_text_raw: B })], // seg 70 already holds target 72
+    ];
+    expect(resolveCellSplit(clash, 1, "down", 1, 0).error).toMatch(/déjà cette traduction/);
+  });
+});
+
+describe("buildCellSplitPanelsHtml — picker plein-cellule (D-W17)", () => {
+  const labels = { topSeg: 69, topHub: "seg 69 FR", bottomSeg: 70, bottomHub: "seg 70 FR" };
+  // Two whole EN sentences on one cell (the Beigbeder shape), cut at the unit boundary.
+  const cell = [
+    lk(11, 71, { target_text_raw: "The terrorist cult." }),
+    lk(12, 72, { target_text_raw: "Ask any surfer :" }),
+  ];
+
+  it("lays out the words of EVERY link, with a unit-boundary marker between them", () => {
+    // Cut at the boundary before link 1 (offset 0 of link 1): link 0 stays on top.
+    const html = buildCellSplitPanelsHtml(cell, 1, 0, labels);
+    expect(html).toContain("The");
+    expect(html).toContain("Ask");
+    expect(html).toContain("prep-matrix-cut-unitsep"); // the ‧ between the two units
+    // Everything from link 0 is in the top panel, link 1 in the bottom.
+    expect(html.indexOf("terrorist")).toBeLessThan(html.indexOf('data-panel="bottom"'));
+    expect(html.indexOf("Ask")).toBeGreaterThan(html.indexOf('data-panel="bottom"'));
+  });
+
+  it("a bottom word carries (data-cut-link, data-cut-offset) of its OWN link", () => {
+    const html = buildCellSplitPanelsHtml(cell, 1, 0, labels);
+    // « surfer » is inside link 1 — clicking it moves the cut after it, in link 1.
+    expect(html).toMatch(/data-cut-link="1" data-cut-offset="\d+"[^>]*>surfer/);
+  });
+
+  it("fixes the cell's very first and very last words (an empty side is not a cut)", () => {
+    const html = buildCellSplitPanelsHtml(cell, 1, 0, labels);
+    // "The" (global first) and ":" (global last) are non-clickable spans.
+    expect(html).toMatch(/prep-matrix-cut-word--fixed">The/);
+    expect(html).toMatch(/prep-matrix-cut-word--fixed">:/);
+  });
+
+  it("escapes corpus text and hub labels (imported docs are untrusted)", () => {
+    const evil = [lk(1, 90, { target_text_raw: "<script>x</script> ok" })];
+    const html = buildCellSplitPanelsHtml(evil, 0, 0, { ...labels, topHub: "<img onerror=1>" });
+    expect(html).not.toContain("<script>x");
+    expect(html).not.toContain("<img onerror");
+    expect(html).toContain("&lt;script&gt;");
   });
 });
 

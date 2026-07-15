@@ -403,6 +403,52 @@ première version du geste posait le bug **inverse** de celui qu'elle corrigeait
   ça « rejeter » — l'action de résolution que le panneau Collisions propose lui-même — ne faisait
   jamais disparaître la collision qu'elle résout.
 
+## 3.7 D-W17 — « ✂ Couper à cheval » **généralisé à toute la cellule** (tranché 2026-07-15, QA D-W16)
+
+**Le cas qui a forcé la décision (famille Beigbeder, FR 416 ↔ EN 364).** L'aligneur de longueurs
+(`length_bounded`, le défaut) a mis **deux phrases EN entières** sur le seul seg 69 (bead #66 : « The
+terrorist cult…space. » + « Ask any surfer : »), décalant seg 70 d'un cran. **Vérifié en base**, et le
+**réalignement reproduit la dérive à l'identique** (déterministe) : côté EN sans `external_id`, positions
+`n` décalées, `similarity` = distance caractère inutile cross-lingue. **Aucune stratégie ne répare à la
+source** — la seule prévention de fond serait un EN importé avec les `[N]` (ancré) ou un deux-grains. Avec
+les données réelles, **ce cas ne se corrige qu'à la main**, et il **se répète** sur toute paire sans `[N]`
+dès qu'un fragment court (deux-points) fait dériver Gale–Church.
+
+**Pourquoi « couper à cheval » (D-W12) ne le fait pas.** Ce geste n'opère que sur le **lien de bord** et
+n'affiche que **son** texte : la frontière que l'utilisateur vise (« couper après le point ») est une
+**frontière d'unité**, dans *l'autre* lien. Il ne peut donc que *scinder* « Ask any surfer : » en deux, ce
+qui dégrade. La bonne opération — **déplacer la phrase entière** au segment voisin — n'existait que sous
+⭙ Fusionner, **depuis la cellule voisine** : même opération, nom pris du mauvais côté.
+
+**Décision (D-W17).** Le geste opère sur le **texte projeté complet de la cellule** (tous ses liens, joints
+comme la projection : `" ".join(slice.strip())` — §matrix_export `_cell`). L'utilisateur pose **un** point
+de coupe, exprimé en **(lien k, offset local o)** pour éviter l'arithmétique sur la chaîne trimée+jointe :
+
+- **Coupe sur une frontière d'unité** (`o` au bord de la fenêtre du lien) → la/les phrase(s) entière(s) du
+  côté « part » **se déplacent** au voisin (re-pivot ; aucun caractère coupé). « Couper après le point »
+  marche **littéralement**.
+- **Coupe *dans* une unité** (`ws < o < we`) → ce lien est **scindé** (comportement D-W12 actuel : créer
+  le lien manquant + partitionner la fenêtre), et tout lien entier **au-delà** part aussi.
+- **Sens** : « bas » = la queue (du point à la fin) appartient au segment suivant ; « haut » = la tête.
+- **Garde-fous** : les deux côtés restent non vides (on ne vide pas la cellule, on ne déplace pas rien) ;
+  refus si le voisin porte **déjà** la cible qu'on déplace (index unique `(pivot, cible)`) ; **cascade
+  assumée** — déplacer sur un voisin déjà traduit le rend multi-lien (un bead, à re-couper si besoin), et
+  on le **dit**. Une ligne `[ajout]` n'est jamais un voisin (D-W15).
+- **Le bead de cellule** (D-W16) suit : la cellule qui reçoit ≥ 2 liens du fait du geste est **un** bead,
+  posé hors-bande best-effort (jamais dans le batch atomique — sidecar < 1.6.57).
+
+**Frontière moteur / livraison en tranches.**
+
+- **A1 (front pur, sans contrat)** — le picker généralisé à la cellule ; une coupe-frontière **route vers
+  la mécanique ⭙ Fusionner** (create voisin + delete, atomique-compensé), une coupe-dans-unité vers la
+  mécanique « à cheval ». Couvre le cas Beigbeder immédiatement, HMR au shell, zéro migration.
+- **A2 (moteur, différé si un cas réel l'exige)** — action de batch **`repivot`** (`UPDATE pivot_unit_id`)
+  pour rendre un déplacement **multi-liens** atomique en **un** batch (pas de create/delete/compensation).
+  Contrat = un cran (enum `AlignBatchAction`), **aucune route ni migration**. Non requis pour A1.
+
+Ce geste **remplace** le bandeau d'alerte « → utilisez ⭙ Fusionner » esquissé pendant la QA : A subsume
+son intention (l'utilisateur coupe au bon point au lieu d'être renvoyé ailleurs).
+
 ## 4. Les quatre douleurs → réponses
 
 | Douleur | Réponse dans cet espace |
@@ -495,6 +541,7 @@ Toutes validées ; la note est **ticket-ready**. (Rationale : voir les § réfé
 - **D-W14 → Unités non couvertes visibles** (tranché 2026-07-10) : la projection expose par colonne les unités cible sans lien actif ni statut (`uncovered`) ; compteur en en-tête de colonne → panneau → geste « ＋ Ajout ». Sans cette surface, ＋ est ininvocable et la complétude ment (§3.3).
 - **D-W16 → ⭙ Fusionner = absorber la phrase voisine** (tranché 2026-07-13) : l'inverse de ✂ Couper (la traduction est plus fine que l'original) — le lien du voisin (ou une unité « hors matrice ») passe sur CE segment moyeu, la cellule voisine se vide. Le `bead_uid` est **dérivé de la cellule** au serveur (1 moyeu ↔ N cibles = **un** bead, pas une collision) ; les gestes le posent, une migration rattrape les cellules déjà produites. Actions `set_bead`/`clear_bead`, contrat 1.6.57 (§3.6).
 - **D-W15 → Une ligne `[ajout]` n'est pas un segment** (revue 2026-07-13, R3) : les lignes de flux D8 sont tissées **dans** `rows` mais n'ont ni unité moyeu ni liens. Toute résolution de geste (couper, à cheval, ↺) travaille donc sur la **colonne des seules lignes moyeu**, l'indice de la grille étant remappé — une ligne d'ajout ne doit jamais pouvoir être lue comme « le segment au-dessus/en dessous ».
+- **D-W17 → « ✂ Couper à cheval » généralisé à toute la cellule** (tranché 2026-07-15, QA D-W16) : le geste opère sur le **texte projeté complet** ; une coupe sur une **frontière d'unité** déplace la phrase entière au voisin (« couper après le point » littéral), une coupe **dans** une unité la scinde (D-W12). Motivé par un cas réel (Beigbeder) où l'aligneur sur-groupe de façon **déterministe** et **qu'aucun réalignement ne répare** (EN sans `[N]`, positions décalées, similarité cross-lingue inutile) — la seule prévention de fond est en amont (import EN avec `[N]`, ou deux-grains). Livraison **A1 front pur** (route frontière→Fusionner, dans-unité→à cheval) ; **A2 moteur `repivot`** (déplacement multi-liens atomique) différé. **Remplace** le bandeau « → utilisez ⭙ Fusionner » de la QA (§3.7).
 
 **Prochain :** cf. §6. **Tranche 1 = D-W3 (ré-ancrer positionnel)** — autonome, endpoint de *lecture*, sans contrat ni migration.
 

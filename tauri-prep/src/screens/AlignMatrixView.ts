@@ -19,7 +19,7 @@
  * Both cuts use the two-panel move-only picker (§3.2). Sub-view of ActionsScreen.
  */
 
-import type { Conn, FamilyRecord, MatrixCellLink, FamilyAlignOptions } from "../lib/sidecarClient.ts";
+import type { Conn, FamilyRecord, MatrixCellLink, FamilyAlignOptions, AlignBatchAction } from "../lib/sidecarClient.ts";
 import {
   getFamilies, getAlignMatrix, batchUpdateAlignLinks, createAlignLink, deleteAlignLink,
   setAlignCellStatus, bulkSetUnitStatus, alignFamily,
@@ -33,11 +33,11 @@ import type { AlignMatrix } from "../lib/sidecarClient.ts";
 import type { MatrixView, MatrixRowView } from "../lib/alignMatrix.ts";
 import { buildMatrixView, matrixSummaryLine } from "../lib/alignMatrix.ts";
 import { buildMatrixGridHtml } from "../lib/alignMatrixGrid.ts";
-import type { CellLinkColumn, StraddleDirection } from "../lib/alignCellCut.ts";
+import type { CellLinkColumn, StraddleDirection, CellSplitPlan, CutPanelsLabels } from "../lib/alignCellCut.ts";
 import {
-  resolveFusedCellLinks, resolveStraddleCut, resolveCellUncut, resolveCellMerge,
+  resolveFusedCellLinks, resolveCellUncut, resolveCellMerge, resolveCellSplit,
   cellCutTargets, buildPartitionActions, buildUncutActions, buildCellBeadActions,
-  suggestCutOffset, buildCutPanelsHtml,
+  suggestCutOffset, buildCutPanelsHtml, buildCellSplitPanelsHtml, linkWindow,
 } from "../lib/alignCellCut.ts";
 import { setHtml, raw, safeHtml } from "../lib/safeHtml.ts";
 import { escHtml as _esc } from "../lib/diff.ts";
@@ -601,115 +601,115 @@ export class AlignMatrixView {
     const ctx = this._cellGestureCtx(col, viewRow);
     if (!ctx) return;
     const row = ctx.row;
-    const resUp = resolveStraddleCut(ctx.column, row, "up");
-    const resDown = resolveStraddleCut(ctx.column, row, "down");
-    if (resUp.error !== undefined && resDown.error !== undefined) {
-      this._cb.toast?.(`✗ ${resUp.error}`, true);
+    const cell = ctx.column[row] ?? [];
+    if (cell.length === 0) {
+      this._cb.toast?.("✗ Cellule sans traduction alignée — rien à couper.", true);
+      return;
+    }
+    const canUp = row > 0;
+    const canDown = row < ctx.column.length - 1;
+    if (!canUp && !canDown) {
+      this._cb.toast?.("✗ Segment voisin introuvable — recharger la matrice", true);
       return;
     }
     const view = ctx.view;
     const rowCur = ctx.hubRows[row];
-    let dir: StraddleDirection = resUp.error === undefined ? "up" : "down";
+    let dir: StraddleDirection = canDown ? "down" : "up";
 
-    // On a multi-link cell the direction picks the EDGE link (§3.5) — link, window
-    // and raw text are therefore per-direction.
-    const dirCtx = (d: StraddleDirection): {
-      link: MatrixCellLink; window: [number, number]; targetRaw: string;
-      top: MatrixRowView; bottom: MatrixRowView; neighbor: MatrixRowView;
-      neighborLinks: readonly MatrixCellLink[];
-    } | null => {
-      const r = d === "up" ? resUp : resDown;
-      if (r.error !== undefined) return null;
-      const neighbor = ctx.hubRows[r.neighborRow];
-      return {
-        link: r.link, window: r.window, targetRaw: r.link.target_text_raw ?? "",
-        // The created link lands on the NEIGHBOUR's cell — it is that cell whose links
-        // must end up in one bead (D-W16), or the detector reads a phantom collision.
-        neighborLinks: ctx.column[r.neighborRow] ?? [],
-        ...(d === "up"
-          ? { top: neighbor, bottom: rowCur, neighbor }
-          : { top: rowCur, bottom: neighbor, neighbor }),
-      };
+    // Default cut (D-W17): a multi-link cell defaults to the UNIT boundary that moves the
+    // edge sentence toward the neighbour (« couper après le point ») ; a single-link cell
+    // to a proportional in-unit split, as before.
+    const defaultCut = (d: StraddleDirection): { link: number; offset: number } => {
+      if (cell.length > 1) {
+        return d === "down"
+          ? { link: cell.length - 1, offset: linkWindow(cell[cell.length - 1])[0] }
+          : { link: 0, offset: linkWindow(cell[0])[1] };
+      }
+      const [ws, we] = linkWindow(cell[0]);
+      const neighbor = ctx.hubRows[d === "up" ? row - 1 : row + 1];
+      const off = suggestCutOffset(
+        cell[0].target_text_raw ?? "",
+        d === "up" ? (neighbor?.hubText ?? "") : rowCur.hubText,
+        d === "up" ? rowCur.hubText : (neighbor?.hubText ?? ""),
+        [ws, we],
+      );
+      return { link: 0, offset: off ?? ws };
+    };
+    let cut = defaultCut(dir);
+
+    // Top panel = the earlier segment, bottom = the later — the cut's head is on top.
+    const labelsFor = (d: StraddleDirection): CutPanelsLabels => {
+      const neighbor = ctx.hubRows[d === "up" ? row - 1 : row + 1];
+      return d === "down"
+        ? { topSeg: rowCur.segment, topHub: rowCur.hubText, bottomSeg: neighbor.segment, bottomHub: neighbor.hubText }
+        : { topSeg: neighbor.segment, topHub: neighbor.hubText, bottomSeg: rowCur.segment, bottomHub: rowCur.hubText };
     };
 
-    const radio = (d: StraddleDirection, label: string): string => {
-      const r = d === "up" ? resUp : resDown;
-      const disabled = r.error !== undefined;
-      return `<label class="prep-matrix-cut-dir-opt${disabled ? " prep-matrix-cut-dir-opt--off" : ""}"`
-        + (disabled ? ` title="${_esc(r.error!)}"` : "")
-        + `><input type="radio" name="prep-matrix-cut-dir" value="${d}"`
-        + `${d === dir ? " checked" : ""}${disabled ? " disabled" : ""}> ${label}</label>`;
-    };
+    const radio = (d: StraddleDirection, label: string, ok: boolean): string =>
+      `<label class="prep-matrix-cut-dir-opt${ok ? "" : " prep-matrix-cut-dir-opt--off"}"`
+      + (ok ? "" : ` title="Pas de segment dans ce sens"`)
+      + `><input type="radio" name="prep-matrix-cut-dir" value="${d}"`
+      + `${d === dir ? " checked" : ""}${ok ? "" : " disabled"}> ${label}</label>`;
     const segUp = row > 0 ? ctx.hubRows[row - 1]?.segment : null;
     const segDown = ctx.hubRows[row + 1]?.segment ?? null;
     const extra = `<div class="prep-matrix-cut-dir" role="radiogroup" aria-label="Sens de la coupe">`
-      + radio("up", `Le <b>début</b> appartient au segment précédent${segUp != null ? ` (${segUp})` : ""}`)
-      + radio("down", `La <b>fin</b> appartient au segment suivant${segDown != null ? ` (${segDown})` : ""}`)
+      + radio("down", `La <b>fin</b> (après la coupe) va au segment suivant${segDown != null ? ` (${segDown})` : ""}`, canDown)
+      + radio("up", `Le <b>début</b> va au segment précédent${segUp != null ? ` (${segUp})` : ""}`, canUp)
       + `</div>`;
 
     const lang = view.translationLangs[col] ?? "?";
     const { dialog, panelsHost, okBtn } = this._openPickerShell(
       `✂ Couper à cheval (${lang}, segment ${rowCur.segment})`,
-      `Cette traduction déborde sur un segment voisin : le lien manquant sera créé puis la coupe posée `
-      + `(réversible). Cliquez un mot pour déplacer la frontière.`,
+      `Coupez le texte de la cellule où vous voulez : sur une frontière de phrase (‧) la phrase entière `
+      + `passe au segment voisin, à l'intérieur d'une phrase elle est scindée. Réversible (↺).`,
       extra,
     );
 
-    let cur = 0;
-    const renderPanels = () => {
-      const c = dirCtx(dir)!;
-      setHtml(panelsHost, raw(buildCutPanelsHtml(c.targetRaw, cur, {
-        topSeg: c.top.segment, topHub: c.top.hubText,
-        bottomSeg: c.bottom.segment, bottomHub: c.bottom.hubText,
-      }, c.window)));
-    };
-    const resuggest = () => {
-      const c = dirCtx(dir)!;
-      cur = suggestCutOffset(c.targetRaw, c.top.hubText, c.bottom.hubText, c.window) ?? 0;
-    };
-    resuggest();
+    const renderPanels = () =>
+      setHtml(panelsHost, raw(buildCellSplitPanelsHtml(cell, cut.link, cut.offset, labelsFor(dir))));
     renderPanels();
 
     dialog.querySelectorAll<HTMLInputElement>('input[name="prep-matrix-cut-dir"]').forEach((r) =>
       r.addEventListener("change", () => {
         dir = r.value as StraddleDirection;
-        resuggest();
+        cut = defaultCut(dir);
         renderPanels();
       }));
     panelsHost.addEventListener("click", (e) => {
       const btn = (e.target as HTMLElement).closest<HTMLButtonElement>(".prep-matrix-cut-word[data-cut-offset]");
-      if (!btn) return;
-      cur = Number(btn.dataset.cutOffset);
+      if (!btn || btn.dataset.cutLink == null) return;
+      cut = { link: Number(btn.dataset.cutLink), offset: Number(btn.dataset.cutOffset) };
       renderPanels();
     });
     okBtn.addEventListener("click", () => {
-      const c = dirCtx(dir);
-      if (!c || c.neighbor.hubUnitId == null) {
-        // Unreachable now that the column is hub-only (R3) — but a confirm click must
-        // never be a silent no-op: say so rather than leave the user pressing a dead
-        // button.
+      const plan = resolveCellSplit(ctx.column, row, dir, cut.link, cut.offset);
+      if (plan.error !== undefined) {
+        this._cb.toast?.(`✗ ${plan.error}`, true);
+        return;
+      }
+      const neighbor = ctx.hubRows[plan.neighborRow];
+      if (neighbor?.hubUnitId == null) {
         this._cb.toast?.("✗ Segment voisin introuvable — recharger la matrice", true);
         return;
       }
-      void this._performStraddleCut(
-        c.link, c.neighbor.hubUnitId, dir, c.window, cur, c.neighborLinks,
+      void this._performCellSplit(
+        plan, dir, neighbor.hubUnitId, ctx.column[plan.neighborRow] ?? [],
         this._closeCutModal!, okBtn);
     });
   }
 
   /**
-   * The compound gesture (§3.4): create the missing link toward the neighbour, then
-   * slice both links in ONE atomic batch. If the batch fails, the created link is
-   * deleted in compensation — never leave an orphan whole-unit link behind (it would
-   * project the full text twice). If even the compensation fails, resync so the grid
-   * shows the real state.
+   * The generalized cut (D-W17): create the going piece of the split (if any) plus one
+   * link per whole-unit MOVE — all on the neighbour pivot — then, in ONE atomic batch,
+   * partition the split, window any pre-cut move, and delete the moved originals. On
+   * failure every created link is deleted in compensation (never leave an orphan whole-unit
+   * link that would project text twice); if even that fails, resync to the real state. The
+   * neighbour's cell is then beaded best-effort (D-W16), out of band (revue T5).
    */
-  private async _performStraddleCut(
-    existing: MatrixCellLink,
-    neighborHubUnitId: number,
+  private async _performCellSplit(
+    plan: CellSplitPlan,
     direction: StraddleDirection,
-    window: [number, number],
-    offset: number,
+    neighborHubUnitId: number,
     neighborLinks: readonly MatrixCellLink[],
     close: () => void,
     okBtn: HTMLButtonElement,
@@ -717,66 +717,101 @@ export class AlignMatrixView {
     const conn = this._getConn();
     if (!conn) return;
     okBtn.disabled = true;
-    let createdId: number | null = null;
+    const createdIds: number[] = [];
+    // Inherit the sibling's pair number so audit views sort the new link with its family.
+    const inherit = (l: MatrixCellLink) =>
+      typeof l.external_id === "number" ? { external_id: l.external_id } : {};
     try {
-      const created = await createAlignLink(conn, {
-        pivot_unit_id: neighborHubUnitId,
-        target_unit_id: existing.target_unit_id,
-        // Inherit the sibling's pair number so audit views sort the new link next
-        // to its family instead of a stray [§0] (D-W13, 1.6.55).
-        ...(typeof existing.external_id === "number" ? { external_id: existing.external_id } : {}),
+      let splitCreatedId: number | null = null;
+      if (plan.split) {
+        const c = await createAlignLink(conn, {
+          pivot_unit_id: neighborHubUnitId, target_unit_id: plan.split.link.target_unit_id,
+          ...inherit(plan.split.link),
+        });
+        splitCreatedId = c.link_id;
+        createdIds.push(c.link_id);
+      }
+      const moveCreatedIds: number[] = [];
+      for (const m of plan.moves) {
+        const c = await createAlignLink(conn, {
+          pivot_unit_id: neighborHubUnitId, target_unit_id: m.target_unit_id, ...inherit(m),
+        });
+        moveCreatedIds.push(c.link_id);
+        createdIds.push(c.link_id);
+      }
+
+      const actions: AlignBatchAction[] = [];
+      if (plan.split && splitCreatedId != null) {
+        const [ws, we] = linkWindow(plan.split.link);
+        const at = plan.split.at;
+        // "down": the cell keeps the head [ws, at], the neighbour gets the tail [at, we].
+        // "up": the cell keeps the tail, the neighbour (above) gets the head.
+        const staying = direction === "down" ? { s: ws, e: at } : { s: at, e: we };
+        const going = direction === "down" ? { s: at, e: we } : { s: ws, e: at };
+        actions.push({ action: "set_target_span", link_id: plan.split.link.link_id, char_start: staying.s, char_end: staying.e });
+        actions.push({ action: "set_target_span", link_id: splitCreatedId, char_start: going.s, char_end: going.e });
+      }
+      plan.moves.forEach((m, idx) => {
+        // A whole-unit move needs no window; preserve one that was itself a slice.
+        if (m.char_start != null && m.char_end != null) {
+          actions.push({ action: "set_target_span", link_id: moveCreatedIds[idx], char_start: m.char_start, char_end: m.char_end });
+        }
+        actions.push({ action: "delete", link_id: m.link_id });
       });
-      createdId = created.link_id;
-      // "up": the neighbour above gets the head of the window; "down": the tail.
-      const [aboveSide, belowSide] = direction === "up"
-        ? [[{ link_id: createdId }], [{ link_id: existing.link_id }]]
-        : [[{ link_id: existing.link_id }], [{ link_id: createdId }]];
-      const actions = buildPartitionActions(aboveSide, belowSide, offset, window[0], window[1]);
-      if (actions.length === 0) throw new Error("point de coupe invalide");
+      if (actions.length === 0) throw new Error("aucune action à appliquer");
+
       const res = await batchUpdateAlignLinks(conn, actions, { atomic: true });
       if (res.errors.length) {
         if (res.applied > 0) {
-          // Old sidecar without atomic: partially committed — resync, keep the link
-          // (deleting it now could orphan an applied slice).
+          // Old sidecar without atomic: partially committed — resync, keep what applied.
           close();
-          this._cb.toast?.(
-            `✗ Coupe à cheval partielle : ${res.errors[0].error} — matrice resynchronisée`, true);
+          this._cb.toast?.(`✗ Coupe partielle : ${res.errors[0].error} — matrice resynchronisée`, true);
           await this._reloadPreservingScroll();
           return;
         }
-        await deleteAlignLink(conn, { link_id: createdId });
-        createdId = null;
-        this._cb.toast?.(`✗ Coupe à cheval refusée : ${res.errors[0].error} (rien n'a été appliqué)`, true);
+        for (const id of createdIds) {
+          try { await deleteAlignLink(conn, { link_id: id }); } catch { /* leave for resync */ }
+        }
+        this._cb.toast?.(`✗ Coupe refusée : ${res.errors[0].error} (rien n'a été appliqué)`, true);
         okBtn.disabled = false;
         return;
       }
-      // The neighbour's cell now holds its own link(s) + the one we just created: it is
-      // ONE bead (1 hub ↔ N targets), not a collision (D-W16). Best-effort, in its OWN
-      // non-atomic batch: it is hygiene, not the gesture — an older sidecar (< 1.6.57)
-      // would reject the unknown action and, inside the atomic batch, roll the whole cut
-      // back (revue T5). The cut has already committed; a failed grouping only leaves the
-      // pre-1.6.57 behaviour (a phantom collision), never a broken cut.
-      await this._groupCellBead(conn, [...neighborLinks, { link_id: createdId, manual: true }]);
+      // The neighbour's cell now holds its own link(s) + the ones we created: ONE bead
+      // (1 hub ↔ N targets, D-W16). Best-effort in its own non-atomic batch — hygiene, not
+      // the gesture: inside the atomic batch a sidecar < 1.6.57 (no set_bead) would roll the
+      // whole cut back (revue T5).
+      await this._groupCellBead(conn, [
+        ...neighborLinks, ...createdIds.map((id) => ({ link_id: id, manual: true as const })),
+      ]);
       close();
-      this._cb.toast?.("✓ Traduction coupée à cheval");
+      // A whole-unit MOVE onto an ALREADY-translated neighbour continues the drift: the
+      // neighbour is now multi-phrase, likely still shifted (the Beigbeder cascade). Say so —
+      // an in-unit split, or a move onto an empty cell, needs no such caution.
+      const cascade = plan.moves.length > 0 && neighborLinks.length > 0;
+      const base = plan.split ? "✓ Traduction coupée à cheval" : "✓ Phrase déplacée au segment voisin";
+      this._cb.toast?.(cascade
+        ? `${base} — le segment voisin porte maintenant plusieurs phrases (à vérifier)`
+        : base);
       await this._reloadPreservingScroll();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (createdId != null) {
-        try {
-          await deleteAlignLink(conn, { link_id: createdId });
+      if (createdIds.length) {
+        let compensated = true;
+        for (const id of createdIds) {
+          try { await deleteAlignLink(conn, { link_id: id }); } catch { compensated = false; }
+        }
+        if (compensated) {
           okBtn.disabled = false;
-          this._cb.toast?.(`✗ Coupe à cheval : ${msg}`, true);
-        } catch {
-          // Compensation failed: an uncut extra link remains → show the real state.
+          this._cb.toast?.(`✗ Coupe : ${msg}`, true);
+        } else {
           close();
-          this._cb.toast?.(`✗ Coupe à cheval : ${msg} — matrice resynchronisée`, true);
+          this._cb.toast?.(`✗ Coupe : ${msg} — matrice resynchronisée`, true);
           await this._reloadPreservingScroll();
         }
         return;
       }
       okBtn.disabled = false;
-      this._cb.toast?.(`✗ Coupe à cheval : ${msg}`, true);
+      this._cb.toast?.(`✗ Coupe : ${msg}`, true);
     }
   }
 

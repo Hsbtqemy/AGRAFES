@@ -174,6 +174,94 @@ export function resolveStraddleCut(
   return { link, neighborRow, window: [ws, we] };
 }
 
+// ─── Resolution : generalized cut over the WHOLE cell (D-W17) ────────────────────
+
+export interface CellSplitPlan {
+  neighborRow: number;
+  /** The one link straddling the cut — character-split (head/tail); `null` on a pure move. */
+  split: { link: MatrixCellLink; at: number } | null;
+  /** Whole links (units) that move entirely to the neighbour, in reading order. */
+  moves: MatrixCellLink[];
+  error?: undefined;
+}
+export type CellSplitResult =
+  | CellSplitPlan
+  | { neighborRow?: undefined; split?: undefined; moves?: undefined; error: string };
+
+/**
+ * Resolve « couper à cheval » generalized to the whole cell (D-W17). The cut is a point
+ * in the cell's projected text, expressed as `(linkIndex k, offset o)` — `o` a code-point
+ * offset in link k's own `target_text_raw`, at a viable boundary or on a window edge.
+ *
+ * - `down`: the TAIL (cut → end of cell) belongs to the segment BELOW.
+ * - `up`: the HEAD (start of cell → cut) belongs to the segment ABOVE.
+ *
+ * A cut on a **unit boundary** (o at a window edge) moves whole links; a cut **inside**
+ * link k splits it (head stays / tail goes for `down`; tail stays / head goes for `up`)
+ * and every whole link beyond it moves too. Both sides must stay non-empty (no emptying
+ * the cell, no moving nothing), the neighbour must not already hold a target being moved
+ * (unique index), and a viable split offset keeps both sub-slices non-blank.
+ */
+export function resolveCellSplit(
+  column: CellLinkColumn, row: number, direction: StraddleDirection,
+  linkIndex: number, offset: number,
+): CellSplitResult {
+  if (row < 0 || row >= column.length) return { error: "Cellule hors de la matrice." };
+  const neighborRow = direction === "up" ? row - 1 : row + 1;
+  if (neighborRow < 0 || neighborRow >= column.length) {
+    return { error: direction === "up" ? "Pas de segment au-dessus." : "Pas de segment en dessous." };
+  }
+  const cur = column[row] ?? [];
+  if (cur.length === 0) return { error: "Cellule sans traduction alignée — rien à couper." };
+  if (linkIndex < 0 || linkIndex >= cur.length) return { error: "Point de coupe hors de la cellule." };
+  const link = cur[linkIndex];
+  const [ws, we] = linkWindow(link);
+
+  let split: { link: MatrixCellLink; at: number } | null = null;
+  let moves: MatrixCellLink[];
+  if (direction === "down") {
+    if (offset <= ws) {
+      moves = cur.slice(linkIndex);              // boundary before k → move k..end
+    } else if (offset >= we) {
+      moves = cur.slice(linkIndex + 1);          // boundary after k → move k+1..end
+    } else {
+      split = { link, at: offset };              // inside k → split, move k+1..end
+      moves = cur.slice(linkIndex + 1);
+    }
+    // Non-empty guards: stays = links before k (+ head of k if split).
+    const staysEmpty = linkIndex === 0 && split === null && offset <= ws;
+    if (staysEmpty) return { error: "Tout partirait — c'est un déplacement de toute la cellule, pas une coupe." };
+    if (moves.length === 0 && split === null) return { error: "Rien à déplacer vers le segment suivant." };
+  } else {
+    if (offset >= we) {
+      moves = cur.slice(0, linkIndex + 1);       // boundary after k → move 0..k
+    } else if (offset <= ws) {
+      moves = cur.slice(0, linkIndex);           // boundary before k → move 0..k-1
+    } else {
+      split = { link, at: offset };              // inside k → split, move 0..k-1
+      moves = cur.slice(0, linkIndex);
+    }
+    const staysEmpty = linkIndex === cur.length - 1 && split === null && offset >= we;
+    if (staysEmpty) return { error: "Tout partirait — c'est un déplacement de toute la cellule, pas une coupe." };
+    if (moves.length === 0 && split === null) return { error: "Rien à déplacer vers le segment précédent." };
+  }
+
+  if (split) {
+    if (viableCutOffsetsIn(link.target_text_raw ?? "", ws, we).indexOf(offset) === -1) {
+      return { error: "Point de coupe invalide (tranche vide)." };
+    }
+  }
+  // The neighbour must not already hold a target we are moving/splitting (unique index).
+  const neighbor = column[neighborRow] ?? [];
+  const incoming = new Set<number>(moves.map((l) => l.target_unit_id));
+  if (split) incoming.add(split.link.target_unit_id);
+  const clash = neighbor.find((l) => incoming.has(l.target_unit_id));
+  if (clash) {
+    return { error: "Le segment voisin porte déjà cette traduction — annuler la coupe (↺) puis recouper." };
+  }
+  return { neighborRow, split, moves };
+}
+
 // ─── Resolution : cell ↺ → the target becomes whole again (D-W13) ────────────────
 
 export type UncutResolution =
@@ -428,6 +516,83 @@ export function buildCutPanelsHtml(
     + `<div class="prep-matrix-cut-panel-head" title="${_esc(hub)}">`
     + `<span class="prep-matrix-cut-panel-seg">seg ${seg}</span> ${_esc(hub)}</div>`
     + `<div class="prep-matrix-cut-panel-body">${words.join(" ")}</div>`
+    + `</div>`;
+
+  return panel("top", labels.topSeg, labels.topHub, top)
+    + `<div class="prep-matrix-cut-sep" aria-hidden="true">&#9986;</div>`
+    + panel("bottom", labels.bottomSeg, labels.bottomHub, bottom);
+}
+
+// ─── Whole-cell picker HTML (D-W17 — words of every link + unit boundaries) ──────
+
+/**
+ * The WHOLE cell's words split at the cut `(cutLink, cutOffset)` (D-W17). Words from
+ * every link are laid out in reading order with a ‧ marker at each UNIT boundary;
+ * clicking a word carries in `data-cut-link` / `data-cut-offset` the boundary that flips
+ * it to the other panel. A cut on a unit boundary MOVES a whole sentence (no character
+ * split), a cut inside a link splits it. The cell's first/last words are fixed (an empty
+ * side is not a cut). Corpus text is escaped; inject via `setHtml(raw(...))`.
+ */
+export function buildCellSplitPanelsHtml(
+  cell: readonly MatrixCellLink[],
+  cutLink: number,
+  cutOffset: number,
+  labels: CutPanelsLabels,
+): string {
+  interface W { i: number; start: number; end: number; text: string; boundaryBefore: boolean }
+  const words: W[] = [];
+  const viableByLink: Set<number>[] = [];
+  cell.forEach((lk, i) => {
+    const raw = lk.target_text_raw ?? "";
+    const [ws, we] = linkWindow(lk);
+    viableByLink[i] = new Set(viableCutOffsetsIn(raw, ws, we));
+    const starts = [ws, ...cutOffsets(raw).filter((o) => o > ws && o < we)];
+    starts.forEach((a, j) => {
+      const b = starts[j + 1] ?? we;
+      const text = codePointSlice(raw, a, b).trim();
+      if (text === "") return; // a whitespace-only token is not a word
+      words.push({ i, start: a, end: b, text, boundaryBefore: j === 0 && i > 0 });
+    });
+  });
+
+  const isBefore = (w: W): boolean =>
+    w.i < cutLink || (w.i === cutLink && w.end <= cutOffset);
+  const isUnitEdge = (i: number, off: number): boolean => {
+    const [ws, we] = linkWindow(cell[i]);
+    return off === ws || off === we;
+  };
+  const clickable = (i: number, off: number): boolean =>
+    isUnitEdge(i, off) || viableByLink[i].has(off);
+
+  const wordHtml = (w: W, target: { i: number; off: number } | null): string => {
+    const sep = w.boundaryBefore
+      ? `<span class="prep-matrix-cut-unitsep" aria-hidden="true">&#8231;</span> ` : "";
+    if (target === null) {
+      return `${sep}<span class="prep-matrix-cut-word prep-matrix-cut-word--fixed">${_esc(w.text)}</span>`;
+    }
+    return `${sep}<button type="button" class="prep-matrix-cut-word" data-cut-link="${target.i}"`
+      + ` data-cut-offset="${target.off}" title="D&#233;placer la fronti&#232;re ici">${_esc(w.text)}</button>`;
+  };
+
+  const top: string[] = [];
+  const bottom: string[] = [];
+  words.forEach((w, p) => {
+    if (isBefore(w)) {
+      // Clicking a top word moves the cut *before* it (the cell's first word excluded).
+      const target = p > 0 && clickable(w.i, w.start) ? { i: w.i, off: w.start } : null;
+      top.push(wordHtml(w, target));
+    } else {
+      // Clicking a bottom word moves the cut *after* it (the cell's last word excluded).
+      const target = p < words.length - 1 && clickable(w.i, w.end) ? { i: w.i, off: w.end } : null;
+      bottom.push(wordHtml(w, target));
+    }
+  });
+
+  const panel = (kind: "top" | "bottom", seg: number, hub: string, ws: string[]): string =>
+    `<div class="prep-matrix-cut-panel" data-panel="${kind}">`
+    + `<div class="prep-matrix-cut-panel-head" title="${_esc(hub)}">`
+    + `<span class="prep-matrix-cut-panel-seg">seg ${seg}</span> ${_esc(hub)}</div>`
+    + `<div class="prep-matrix-cut-panel-body">${ws.join(" ")}</div>`
     + `</div>`;
 
   return panel("top", labels.topSeg, labels.topHub, top)

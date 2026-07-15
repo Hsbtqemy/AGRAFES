@@ -450,6 +450,89 @@ describe("AlignMatrixView — « ✂ couper à cheval » (D-W12)", () => {
     expect(document.querySelector(".prep-matrix-cut-overlay")).toBeNull();
   });
 
+  it("D-W17: « couper après le point » on a multi-link cell MOVES the whole sentence (no split)", async () => {
+    // The Beigbeder over-grouping: seg 69 (view row 1) carries TWO whole EN sentences; the
+    // aligner shifted seg 70 onto seg 71's line. The user cuts at the unit boundary — the
+    // whole « Ask any surfer : » must MOVE to seg 70, not be sliced in half.
+    const overGrouped: AlignMatrix = {
+      ...MATRIX_STRADDLE,
+      rows: [
+        ["1", 1, "Je vous empêche de penser.", "I stop you thinking."],
+        ["1", 2, "Le terrorisme de la nouveauté…", "The terrorist cult of the new helps me to sell empty space. Ask any surfer :"],
+        ["1", 3, "Demandez à n'importe quel surfeur :", "to stay on the surface."],
+      ],
+      hub_unit_ids: [101, 102, 103],
+      cell_links: [
+        [[lk(10, 900, "I stop you thinking.", { external_id: 1 })]],
+        [[lk(11, 901, "The terrorist cult of the new helps me to sell empty space.", { external_id: 2 }),
+          lk(12, 902, "Ask any surfer :", { external_id: 2 })]],
+        [[lk(13, 903, "to stay on the surface.", { external_id: 3 })]],
+      ],
+    };
+    const calls: Array<{ path: string; body: unknown }> = [];
+    const { toasts } = await mountWithMatrix(calls, { matrix: overGrouped });
+
+    document.querySelector<HTMLButtonElement>('.prep-matrix-cut-any-btn[data-cut-row="1"]')!.click();
+    await vi.waitFor(() => {
+      expect(document.querySelector(".prep-matrix-cut-dialog")).not.toBeNull();
+    });
+    // The picker shows BOTH sentences with the unit boundary marked — the default cut sits
+    // on that boundary, so a plain confirm moves the last sentence whole.
+    const dialog = document.querySelector(".prep-matrix-cut-dialog")!;
+    expect(dialog.textContent).toContain("terrorist");
+    expect(dialog.textContent).toContain("Ask");
+    expect(dialog.querySelector(".prep-matrix-cut-unitsep")).not.toBeNull();
+
+    document.querySelector<HTMLButtonElement>("[data-cut-ok]")!.click();
+    await vi.waitFor(() => {
+      expect(calls.filter((c) => c.path === "/align/matrix")).toHaveLength(2);
+    });
+    // The whole sentence is re-created on the NEXT hub unit (seg 70 = 103), pair inherited…
+    const create = calls.find((c) => c.path === "/align/link/create");
+    expect(create?.body).toEqual({ pivot_unit_id: 103, target_unit_id: 902, external_id: 2 });
+    const batches = calls.filter((c) => c.path === "/align/links/batch_update");
+    // …the original link is DELETED atomically — NO set_target_span: nothing is sliced.
+    expect(batches[0].body).toEqual({ actions: [{ action: "delete", link_id: 12 }], atomic: true });
+    expect(JSON.stringify(batches[0].body)).not.toContain("set_target_span");
+    // …and seg 70's cell (its own link 13 + the moved 77) becomes one bead, out of band.
+    expect(batches[1].body).toEqual({
+      actions: [{ action: "set_bead", link_id: 13 }, { action: "set_bead", link_id: 77 }],
+    });
+    // seg 70 was already translated → the toast flags the continuing cascade.
+    expect(toasts.some((t) => t.includes("Phrase déplacée") && t.includes("plusieurs phrases"))).toBe(true);
+  });
+
+  it("D-W17: a move onto an EMPTY neighbour gets the plain toast (no cascade caution)", async () => {
+    // seg 69 holds two EN sentences; seg 70's cell is empty — moving the 2nd sentence there
+    // is a clean fix, no « plusieurs phrases » caution.
+    const emptyNeighbour: AlignMatrix = {
+      ...MATRIX_STRADDLE,
+      rows: [
+        ["1", 1, "seg 68", "I stop you thinking."],
+        ["1", 2, "seg 69", "The terrorist cult. Ask any surfer :"],
+        ["1", 3, "seg 70", ""],
+      ],
+      hub_unit_ids: [101, 102, 103],
+      cell_links: [
+        [[lk(10, 900, "I stop you thinking.", { external_id: 1 })]],
+        [[lk(11, 901, "The terrorist cult.", { external_id: 2 }),
+          lk(12, 902, "Ask any surfer :", { external_id: 2 })]],
+        [[]],
+      ],
+    };
+    const calls: Array<{ path: string; body: unknown }> = [];
+    const { toasts } = await mountWithMatrix(calls, { matrix: emptyNeighbour });
+
+    document.querySelector<HTMLButtonElement>('.prep-matrix-cut-any-btn[data-cut-row="1"]')!.click();
+    await vi.waitFor(() => { expect(document.querySelector("[data-cut-ok]")).not.toBeNull(); });
+    document.querySelector<HTMLButtonElement>("[data-cut-ok]")!.click();
+    await vi.waitFor(() => {
+      expect(calls.filter((c) => c.path === "/align/matrix")).toHaveLength(2);
+    });
+    expect(toasts).toContain("✓ Phrase déplacée au segment voisin");
+    expect(toasts.some((t) => t.includes("plusieurs phrases"))).toBe(false);
+  });
+
   it("a refused batch deletes the created link in compensation and keeps the modal open", async () => {
     const calls: Array<{ path: string; body: unknown }> = [];
     const { toasts } = await mountWithMatrix(calls, {
@@ -466,7 +549,7 @@ describe("AlignMatrixView — « ✂ couper à cheval » (D-W12)", () => {
     });
     document.querySelector<HTMLButtonElement>("[data-cut-ok]")!.click();
     await vi.waitFor(() => {
-      expect(toasts.some((t) => t.includes("Coupe à cheval refusée"))).toBe(true);
+      expect(toasts.some((t) => t.includes("Coupe refusée"))).toBe(true);
     });
     const del = calls.find((c) => c.path === "/align/link/delete");
     expect(del?.body).toEqual({ link_id: 77 });

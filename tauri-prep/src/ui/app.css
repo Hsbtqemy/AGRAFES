@@ -2395,6 +2395,12 @@ button.prep-matrix-cut-word:hover {
 }
 .prep-matrix-cut-dir-opt { display: flex; align-items: center; gap: 6px; cursor: pointer; }
 .prep-matrix-cut-dir-opt--off { color: var(--color-muted, #adb5bd); cursor: not-allowed; }
+/* D-W17 — le picker plein-cellule marque chaque frontière de phrase (‧) : couper là déplace
+   la phrase entière au voisin, couper dans un mot la scinde. */
+.prep-matrix-cut-unitsep {
+  color: color-mix(in srgb, #6d28d9 70%, transparent); font-weight: 700;
+  padding: 0 2px; user-select: none;
+}
 /* Tranche 5 — barre « Aligner » à défaut assumé + repli « Avancé ». */
 .prep-matrix-align-adv {
   display: flex; align-items: center; flex-wrap: wrap; gap: 12px;
