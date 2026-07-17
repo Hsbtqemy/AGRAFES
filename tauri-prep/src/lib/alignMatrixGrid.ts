@@ -65,6 +65,21 @@ export function buildMatrixGridHtml(view: MatrixView): string {
         ? ` <button type="button" class="prep-matrix-uncut-btn" data-cut-row="${rowIdx}" data-cut-col="${colIdx}"`
           + ` title="Annuler la coupe — cette traduction redevient entière">&#8635;</button>`
         : "";
+      // D-W18 — ✕ retirer une traduction parasite de la cellule (rejet réversible), le
+      // primitif qu'aucun autre geste ne couvre (partage ⚠ faux, lien en trop).
+      const removeBtn = view.hasCellLinks && c.links.length > 0
+        ? ` <button type="button" class="prep-matrix-remove-btn" data-cut-row="${rowIdx}" data-cut-col="${colIdx}"`
+          + ` title="Retirer une traduction de cette cellule (rejet réversible)">&#10005;</button>`
+        : "";
+      // D-W19 — ＝ rattacher / re-cibler : le geste CONSTRUCTIF (inverse de ✕). Sur une
+      // cellule vide → créer un lien ; sur un lien unique ENTIER → le re-cibler. Un lien COUPÉ
+      // est exclu (revue G4 : le retarget garderait la fenêtre périmée → mauvaise tranche ; ↺
+      // d'abord) ; une cellule à ≥ 2 liens aussi (la machinerie retarget suppose un lien).
+      const attachBtn = view.hasCellLinks && r.hubUnitId != null
+        && c.links.length <= 1 && c.links.every((l) => l.char_start == null)
+        ? ` <button type="button" class="prep-matrix-attach-btn" data-cut-row="${rowIdx}" data-cut-col="${colIdx}"`
+          + ` title="Rattacher / re-cibler — poser la bonne traduction pour ce segment">&#61;</button>`
+        : "";
       let inner: string;
       let statusCls: string = c.status;
       if (c.status === "non_traduit") {
@@ -95,7 +110,10 @@ export function buildMatrixGridHtml(view: MatrixView): string {
           ? ` <button type="button" class="prep-matrix-merge-btn" data-cut-row="${rowIdx}" data-cut-col="${colIdx}"`
             + ` title="Fusionner — reprendre la phrase du segment voisin dans CE segment">&#8857;</button>`
           : "";
-        inner = `<span class="prep-matrix-empty" title="Aucune traduction alignée">&#8709;</span>${ntBtn}${mergeBackBtn}`;
+        // Revue G5 — une cellule « empty » peut PORTER un lien (fenêtre coupée qui tranche à
+        // vide) : sans ↺/✕ ici, ce lien serait inannulable et irretirable (uncutBtn/removeBtn
+        // se gardent seuls sur les liens, donc no-op sur une cellule réellement vide).
+        inner = `<span class="prep-matrix-empty" title="Aucune traduction alignée">&#8709;</span>${ntBtn}${mergeBackBtn}${attachBtn}${uncutBtn}${removeBtn}`;
       } else if (c.status === "fused") {
         // Tranche 3b — the cut gesture lives on the fused (repeating) cell; its bead
         // pairs this row with the one above, so row 0 (defensive) gets no button.
@@ -103,7 +121,7 @@ export function buildMatrixGridHtml(view: MatrixView): string {
           ? ` <button type="button" class="prep-matrix-cut-btn" data-cut-row="${rowIdx}" data-cut-col="${colIdx}"`
             + ` title="Couper cette traduction fusionnée entre ce segment et le précédent">&#9986; Couper</button>`
           : "";
-        inner = `<span class="prep-matrix-warn" title="Traduction fusionnée avec la ligne du dessus (à couper)">&#9888;</span> ${_esc(c.text)}${cutBtn}${uncutBtn}`;
+        inner = `<span class="prep-matrix-warn" title="Traduction fusionnée avec la ligne du dessus (à couper)">&#9888;</span> ${_esc(c.text)}${cutBtn}${uncutBtn}${removeBtn}`;
       } else {
         // D-W12 — on-demand straddle cut on any aligned cell (hover-revealed). Only
         // when the payload carries cell_links: the gesture cannot resolve without.
@@ -113,11 +131,11 @@ export function buildMatrixGridHtml(view: MatrixView): string {
           : "";
         // D-W16 — ⭙ Fusionner: pull the neighbour's sentence into this cell (the
         // inverse of ✂, for a translation segmented more finely than the source).
-        const mergeBtn = view.hasCellLinks && c.links.length > 0
+        const mergeBtn = view.hasCellLinks && r.hubUnitId != null && c.links.length > 0
           ? ` <button type="button" class="prep-matrix-merge-btn" data-cut-row="${rowIdx}" data-cut-col="${colIdx}"`
             + ` title="Fusionner — la phrase du segment voisin appartient à CE segment">&#8857;</button>`
           : "";
-        inner = `${_esc(c.text)}${anyBtn}${mergeBtn}${uncutBtn}`;
+        inner = `${_esc(c.text)}${anyBtn}${mergeBtn}${uncutBtn}${removeBtn}${attachBtn}`;
       }
       return `<td class="prep-matrix-cell prep-matrix-cell--${statusCls}">${inner}</td>`;
     }).join("");

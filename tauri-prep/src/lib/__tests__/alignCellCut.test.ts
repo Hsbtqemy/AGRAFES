@@ -3,6 +3,7 @@ import {
   resolveFusedCellLinks, resolveStraddleCut, resolveCellUncut, resolveCellMerge,
   cellCutTargets, buildPartitionActions, buildUncutActions, buildCellBeadActions,
   suggestCutOffset, buildCutPanelsHtml, buildCellSplitPanelsHtml, resolveCellSplit,
+  cellRemovableTranslations,
   viableCutOffsets, viableCutOffsetsIn, linkWindow, cellsShareFusedTarget,
 } from "../alignCellCut.ts";
 import type { CellLinkColumn } from "../alignCellCut.ts";
@@ -273,6 +274,26 @@ describe("buildCellSplitPanelsHtml — picker plein-cellule (D-W17)", () => {
     expect(html).not.toContain("<script>x");
     expect(html).not.toContain("<img onerror");
     expect(html).toContain("&lt;script&gt;");
+  });
+});
+
+describe("cellRemovableTranslations — ✕ retirer (D-W18)", () => {
+  it("lists each translation of the cell, whole links removable, cut ones blocked", () => {
+    const cell = [
+      lk(11, 90, { target_text_raw: "to stay on the surface." }),                 // whole → removable
+      lk(12, 91, { target_text_raw: "Surfing is just sliding." }),                // whole → removable
+      lk(13, 92, { target_text_raw: "I decree. I cast.", char_start: 0, char_end: 9 }), // cut → blocked
+    ];
+    const out = cellRemovableTranslations(cell);
+    expect(out.map((t) => t.link_id)).toEqual([11, 12, 13]);
+    expect(out.map((t) => t.removable)).toEqual([true, true, false]);
+    expect(out[0].text).toBe("to stay on the surface.");
+    expect(out[2].text).toBe("I decree."); // the slice, trimmed
+    expect(out[2].target_unit_id).toBe(92);
+  });
+
+  it("an empty cell yields no candidates", () => {
+    expect(cellRemovableTranslations([])).toEqual([]);
   });
 });
 

@@ -2389,6 +2389,30 @@ button.prep-matrix-cut-word:hover {
   border-color: color-mix(in srgb, #0f766e 45%, transparent);
   background: color-mix(in srgb, #0f766e 10%, transparent);
 }
+/* D-W18 — ✕ retirer une traduction parasite (rejet réversible), révélé au survol. */
+.prep-matrix-remove-btn {
+  margin-left: 4px; padding: 0 5px; font-size: 0.75rem; cursor: pointer;
+  border: 1px solid transparent; border-radius: 4px; background: transparent;
+  color: color-mix(in srgb, #dc2626 70%, transparent); opacity: 0; transition: opacity 0.12s;
+}
+.prep-matrix-cell:hover .prep-matrix-remove-btn,
+.prep-matrix-remove-btn:focus-visible { opacity: 1; }
+.prep-matrix-remove-btn:hover {
+  border-color: color-mix(in srgb, #dc2626 45%, transparent);
+  background: color-mix(in srgb, #dc2626 10%, transparent);
+}
+/* D-W19 — ＝ rattacher / re-cibler (constructif), révélé au survol ; teinte bleue. */
+.prep-matrix-attach-btn {
+  margin-left: 4px; padding: 0 6px; font-size: 0.8rem; font-weight: 700; cursor: pointer;
+  border: 1px solid transparent; border-radius: 4px; background: transparent;
+  color: color-mix(in srgb, #2563eb 75%, transparent); opacity: 0; transition: opacity 0.12s;
+}
+.prep-matrix-cell:hover .prep-matrix-attach-btn,
+.prep-matrix-attach-btn:focus-visible { opacity: 1; }
+.prep-matrix-attach-btn:hover {
+  border-color: color-mix(in srgb, #2563eb 45%, transparent);
+  background: color-mix(in srgb, #2563eb 10%, transparent);
+}
 .prep-matrix-cut-dir {
   display: flex; flex-direction: column; gap: 4px; margin: 0 0 10px;
   font-size: 0.82rem;
@@ -2506,6 +2530,20 @@ button.prep-matrix-cut-word:hover {
 .prep-matrix-uncut-choice:hover {
   border-color: color-mix(in srgb, #0f766e 45%, transparent);
   background: color-mix(in srgb, #0f766e 10%, transparent);
+}
+.prep-matrix-remove-choices { display: flex; flex-direction: column; gap: 6px; }
+.prep-matrix-remove-choice {
+  text-align: left; padding: 7px 10px; font-size: 0.85rem; cursor: pointer;
+  border: 1px solid var(--color-border, #dee2e6); border-radius: 6px;
+  background: color-mix(in srgb, #dc2626 3%, var(--color-surface, #fff));
+}
+button.prep-matrix-remove-choice:hover {
+  border-color: color-mix(in srgb, #dc2626 45%, transparent);
+  background: color-mix(in srgb, #dc2626 10%, transparent);
+}
+.prep-matrix-remove-choice--off {
+  color: var(--color-muted, #adb5bd); cursor: not-allowed;
+  background: transparent; font-style: italic;
 }
 @keyframes flash-row {
   0%, 100% { background: inherit; }

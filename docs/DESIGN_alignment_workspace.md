@@ -449,6 +449,64 @@ de coupe, exprimé en **(lien k, offset local o)** pour éviter l'arithmétique 
 Ce geste **remplace** le bandeau d'alerte « → utilisez ⭙ Fusionner » esquissé pendant la QA : A subsume
 son intention (l'utilisateur coupe au bon point au lieu d'être renvoyé ailleurs).
 
+## 3.8 D-W18 — « ✕ Retirer une traduction de la cellule » (tranché 2026-07-15, QA D-W17)
+
+**Le cas (Beigbeder, seg 72).** Après une cascade de corrections, une cellule ⚠ **partage à
+tort** une phrase entière avec sa voisine (« to stay on the surface… » posée sur seg 71 *et*
+seg 72, alors qu'elle est à seg 71 seule). Aucun geste ne l'enlève : le **✂ fusionné** ne sait
+que *scinder* (jamais tout donner à un côté), **D-W17** refuse (« le voisin porte déjà la
+cible »), **↺** ne défait que des coupes. Le **primitif manquant** est « retirer *un* lien
+parasite d'une cellule » — le troisième du trio **✂ scinder · ⭙ absorber · ✕ retirer**.
+
+**Décision (D-W18, amendée par la revue G1 2026-07-17 : suppression, pas rejet).** La v1 rejetait
+le lien (`status='rejected'`) au nom du « non destructif ». La **revue adverse a réfuté ce
+raisonnement** : un lien rejeté occupe toujours l'index unique `(pivot, cible)` (mig 008) mais est
+**invisible** (F8) → (a) ＝ Rattacher ne peut pas re-poser la même cible (**409**), donc ✕ et ＝ ne
+sont **pas** des inverses ; (b) un lien rejeté **seul** n'apparaît dans **aucune collision** → il
+n'est **pas récupérable** en Révision fine (la « réversibilité » promise était fausse). ✕ **supprime**
+donc le lien :
+- **Suppression** — `POST /align/collisions/resolve` `{action:"delete"}`. L'**unité cible reste**
+  dans le corpus ; seul le lien pivot↔cible part → ✕ et ＝ deviennent des **inverses propres** (l'undo
+  d'un ✕ = ＝ Rattacher, qui re-crée librement). **Front pur.**
+- **Défense** : `_performCellSplit`/`_performAttach` **traduisent** le 409 d'un lien rejeté venu
+  d'ailleurs (Révision fine) en message actionnable FR, au lieu de la chaîne brute anglaise.
+- **Chooser** — une cellule concatène N traductions : le geste liste les traductions de la
+  cellule, l'utilisateur choisit laquelle retirer (même patron que le chooser ↺ multi-coupes).
+- **Garde-fou : on ne retire qu'un lien ENTIER** (`char_start` nul). Un lien **coupé** (tranche
+  d'une cible partagée) est bloqué → « annuler la coupe (↺) d'abord » : rejeter une seule
+  tranche laisserait les autres orphelines (ne pas mélanger les mécaniques, cf. Fusionner/coupe).
+- Gardes d'écran repris (F1 identité de connexion, F5 non-réentrance, F4 teardown) — un geste
+  greffé sur l'écran à état reprend ses gardes (leçon tranche 5).
+
+## 3.9 D-W19 — « ＝ Rattacher / re-cibler » : le geste **constructif** (tranché 2026-07-15, QA D-W18)
+
+**Le trou.** Tous les gestes (✂ ⭙ ✕) **restructurent des liens existants** ; aucun ne **crée**
+un lien correct de zéro dans la matrice (⭙ ne tire que l'adjacent), et le ré-ancrage
+(« Choisir une nouvelle cible ») vit en **Révision fine** (`alignPickerRow`/`AlignPanel`), pas
+dans la matrice. Pour que la matrice soit *la surface d'édition primaire* (D-W1), on doit
+pouvoir y **construire** un alignement. ＝ est l'**inverse constructif de ✕** — le quatuor
+devient **✂ scinder · ⭙ absorber · ✕ retirer · ＝ rattacher**.
+
+**Décision (D-W19), front pur — réutilise tout l'existant, aucun contrat, aucune migration :**
+- **Entrée = la cellule** (bouton ＝ au survol). Raison **structurelle**, pas un compromis :
+  `build_retarget_candidates` est **ancré sur le pivot** — il faut le segment. Le panneau « N
+  hors matrice » partirait de l'orphelin et demanderait « quels segments ? » = la machinerie
+  **inverse, inexistante**. Un « Aligner depuis le panneau » serait un suivi.
+- **Picker = `retargetCandidates(pivot, target_doc)`** (candidats **positionnels élargis**,
+  choix QA) — round-trip, gère déjà **l'orphelin** (cellule vide → candidats autour de la
+  position du segment). Rendu par `buildPickerRowHtml` (conflits déjà marqués). **Modal
+  asynchrone** (nouveau pour la matrice : état « chargement » puis liste).
+- **Application selon l'état de la cellule** :
+  - **∅ vide** (pivot orphelin) → `createAlignLink(pivot, cible)`.
+  - **1 lien** → `retargetAlignLink(link_id, cible)` — **re-cibler sans ✕**.
+  - **≥ 2 liens** → **bloqué** (« retirez-en (✕) ou restructurez (✂/⭙) d'abord ») : la
+    machinerie retarget suppose un lien ; le multi-lien se nettoie par ✕ puis ＝ sur les
+    cellules **vides** en aval. v1 ; un chooser « quel lien re-cibler ? » = suivi possible.
+- **Pas de bead** à gérer (le compte reste ≤ 1). **Réversible** : un ＝ se défait au ✕ (D-W18)
+  ou se re-＝. **Gardes** F1 (ré-vérifiée **après le fetch**) / F5 / F4 reprises.
+- **Portée** : ＝ + ✕ donnent le ré-ancrage complet **partout, y compris non adjacent** (libérer
+  ✕ ici, rattacher ＝ là) — la matrice devient autosuffisante **sans A2**.
+
 ## 4. Les quatre douleurs → réponses
 
 | Douleur | Réponse dans cet espace |
@@ -541,6 +599,8 @@ Toutes validées ; la note est **ticket-ready**. (Rationale : voir les § réfé
 - **D-W14 → Unités non couvertes visibles** (tranché 2026-07-10) : la projection expose par colonne les unités cible sans lien actif ni statut (`uncovered`) ; compteur en en-tête de colonne → panneau → geste « ＋ Ajout ». Sans cette surface, ＋ est ininvocable et la complétude ment (§3.3).
 - **D-W16 → ⭙ Fusionner = absorber la phrase voisine** (tranché 2026-07-13) : l'inverse de ✂ Couper (la traduction est plus fine que l'original) — le lien du voisin (ou une unité « hors matrice ») passe sur CE segment moyeu, la cellule voisine se vide. Le `bead_uid` est **dérivé de la cellule** au serveur (1 moyeu ↔ N cibles = **un** bead, pas une collision) ; les gestes le posent, une migration rattrape les cellules déjà produites. Actions `set_bead`/`clear_bead`, contrat 1.6.57 (§3.6).
 - **D-W15 → Une ligne `[ajout]` n'est pas un segment** (revue 2026-07-13, R3) : les lignes de flux D8 sont tissées **dans** `rows` mais n'ont ni unité moyeu ni liens. Toute résolution de geste (couper, à cheval, ↺) travaille donc sur la **colonne des seules lignes moyeu**, l'indice de la grille étant remappé — une ligne d'ajout ne doit jamais pouvoir être lue comme « le segment au-dessus/en dessous ».
+- **D-W19 → « ＝ Rattacher / re-cibler »** (tranché 2026-07-15, QA D-W18) : le geste **constructif** manquant (quatuor ✂ scinder · ⭙ absorber · ✕ retirer · ＝ rattacher), inverse de ✕. Entrée **cellule** (la machinerie de candidats est ancrée-pivot). Picker = `retargetCandidates` (positionnel, gère l'orphelin) rendu par `buildPickerRowHtml`, **modal asynchrone**. Application : **vide→create**, **1 lien→retarget** (re-cibler sans ✕), **≥2→bloqué**. Front pur (réutilise endpoints + picker existants). ＝+✕ = ré-ancrage complet, non adjacent compris → autosuffisance sans A2 (§3.9).
+- **D-W18 → « ✕ Retirer une traduction de la cellule »** (tranché 2026-07-15, QA D-W17) : le primitif manquant (trio ✂ scinder · ⭙ absorber · ✕ retirer) pour enlever un lien **parasite** qu'aucun autre geste n'ôte (partage ⚠ faux, lien en trop). **Suppression** (`{action:"delete"}` ; amendé revue G1 : le rejet gardait le lien sur l'index unique, invisible, bloquant ＝ + non récupérable) — l'unité cible reste, l'undo = ＝ Rattacher ; front pur, aucun contrat. Chooser des traductions de la cellule ; on ne retire qu'un lien **entier** (coupé → ↺ d'abord) (§3.8).
 - **D-W17 → « ✂ Couper à cheval » généralisé à toute la cellule** (tranché 2026-07-15, QA D-W16) : le geste opère sur le **texte projeté complet** ; une coupe sur une **frontière d'unité** déplace la phrase entière au voisin (« couper après le point » littéral), une coupe **dans** une unité la scinde (D-W12). Motivé par un cas réel (Beigbeder) où l'aligneur sur-groupe de façon **déterministe** et **qu'aucun réalignement ne répare** (EN sans `[N]`, positions décalées, similarité cross-lingue inutile) — la seule prévention de fond est en amont (import EN avec `[N]`, ou deux-grains). Livraison **A1 front pur** (route frontière→Fusionner, dans-unité→à cheval) ; **A2 moteur `repivot`** (déplacement multi-liens atomique) différé. **Remplace** le bandeau « → utilisez ⭙ Fusionner » de la QA (§3.7).
 
 **Prochain :** cf. §6. **Tranche 1 = D-W3 (ré-ancrer positionnel)** — autonome, endpoint de *lecture*, sans contrat ni migration.

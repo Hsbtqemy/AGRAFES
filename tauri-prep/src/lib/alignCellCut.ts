@@ -262,6 +262,37 @@ export function resolveCellSplit(
   return { neighborRow, split, moves };
 }
 
+// ─── Resolution : ✕ remove a spurious translation from a cell (D-W18) ────────────
+
+export interface RemovableTranslation {
+  link_id: number;
+  target_unit_id: number;
+  /** The slice this link projects in the cell — the chooser label. */
+  text: string;
+  /** False when the link carries a cut: rejecting one slice would orphan the others (↺ first). */
+  removable: boolean;
+}
+
+/**
+ * The cell's translations as removal candidates (D-W18). Each link is one candidate; a
+ * WHOLE (uncut) link is removable (rejected → excluded from the projection, reversible),
+ * a CUT slice is blocked (↺ first — rejecting one slice of a shared target leaves the
+ * others orphaned). Purely descriptive; the reject itself reuses `/align/collisions/resolve`.
+ */
+export function cellRemovableTranslations(
+  cell: readonly MatrixCellLink[],
+): RemovableTranslation[] {
+  return cell.map((l) => {
+    const [ws, we] = linkWindow(l);
+    return {
+      link_id: l.link_id,
+      target_unit_id: l.target_unit_id,
+      text: codePointSlice(l.target_text_raw ?? "", ws, we).trim(),
+      removable: l.char_start == null,
+    };
+  });
+}
+
 // ─── Resolution : cell ↺ → the target becomes whole again (D-W13) ────────────────
 
 export type UncutResolution =
@@ -547,11 +578,15 @@ export function buildCellSplitPanelsHtml(
     const [ws, we] = linkWindow(lk);
     viableByLink[i] = new Set(viableCutOffsetsIn(raw, ws, we));
     const starts = [ws, ...cutOffsets(raw).filter((o) => o > ws && o < we)];
+    let firstOfLink = true;
     starts.forEach((a, j) => {
       const b = starts[j + 1] ?? we;
       const text = codePointSlice(raw, a, b).trim();
       if (text === "") return; // a whitespace-only token is not a word
-      words.push({ i, start: a, end: b, text, boundaryBefore: j === 0 && i > 0 });
+      // Revue G-min : la frontière d'unité ‧ se pose sur le PREMIER mot RENDU du lien i>0 —
+      // pas sur j===0, qui peut être une espace de tête sautée (marqueur alors perdu).
+      words.push({ i, start: a, end: b, text, boundaryBefore: firstOfLink && i > 0 });
+      firstOfLink = false;
     });
   });
 

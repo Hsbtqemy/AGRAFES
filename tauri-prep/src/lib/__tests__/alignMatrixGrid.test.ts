@@ -191,6 +191,39 @@ describe("buildMatrixGridHtml", () => {
     expect(html).not.toContain("prep-matrix-nt-btn");
   });
 
+  it("G5: an « empty » cell that HOLDS a link keeps ↺ and ✕ (else the link is a dead-end)", () => {
+    const linkedButEmpty: AlignMatrix = {
+      headers: ["paragraphe", "segment", "fr", "en"], languages: ["fr", "en"],
+      hub_doc_id: 2, hub_unit_ids: [11, 12], language_doc_ids: [2, 3],
+      rows: [["1", 1, "FR1", "EN1"], ["1", 2, "FR2", ""]],
+      cell_links: [
+        [[{ link_id: 1, target_unit_id: 91, char_start: null, char_end: null, target_text_raw: "EN1" }]],
+        [[{ link_id: 2, target_unit_id: 92, char_start: 3, char_end: 3, target_text_raw: "EN2" }]],
+      ],
+      hub_unit_statuses: [null, null], cell_statuses: [[null], [null]], addition_rows: [], uncovered: [[]],
+    };
+    const html = buildMatrixGridHtml(buildMatrixView(linkedButEmpty));
+    // The cut-to-nothing link on row 1 must be undoable (↺) and removable (✕) from the grid.
+    expect(html).toContain('prep-matrix-uncut-btn" data-cut-row="1"');
+    expect(html).toContain('prep-matrix-remove-btn" data-cut-row="1"');
+  });
+
+  it("G4: ＝ Rattacher is offered on a whole-link cell but NOT on a cut-link cell", () => {
+    const m: AlignMatrix = {
+      headers: ["paragraphe", "segment", "fr", "en"], languages: ["fr", "en"],
+      hub_doc_id: 2, hub_unit_ids: [11, 12], language_doc_ids: [2, 3],
+      rows: [["1", 1, "FR1", "As far"], ["1", 2, "FR2", "back"]],
+      cell_links: [
+        [[{ link_id: 1, target_unit_id: 90, char_start: 0, char_end: 6, target_text_raw: "As far back" }]], // CUT
+        [[{ link_id: 2, target_unit_id: 91, char_start: null, char_end: null, target_text_raw: "back" }]],   // whole
+      ],
+      hub_unit_statuses: [null, null], cell_statuses: [[null], [null]], addition_rows: [], uncovered: [[]],
+    };
+    const html = buildMatrixGridHtml(buildMatrixView(m));
+    expect(html).toContain('prep-matrix-attach-btn" data-cut-row="1"');       // whole link → ＝
+    expect(html).not.toContain('prep-matrix-attach-btn" data-cut-row="0"');   // cut link → no ＝ (↺ first)
+  });
+
   it("R6b: the [ajout] row's ↺ sits in the addition's OWN column, even when its text is empty", () => {
     const emptyAddition: AlignMatrix = {
       headers: ["paragraphe", "segment", "fr", "en", "ro"],

@@ -101,6 +101,22 @@ function makeConn(calls: Array<{ path: string; body: unknown }>, opts: ConnOpts 
       if (path === "/align/link/delete") {
         return { link_id: (body as { link_id: number }).link_id, deleted: 1 };
       }
+      if (path === "/align/collisions/resolve") {
+        return { ok: true, applied: 1, deleted: 0, errors: [] };
+      }
+      if (path === "/align/retarget_candidates") {
+        return {
+          pivot: { unit_id: 101, external_id: 1, text: "seg A" },
+          candidates: [
+            { target_unit_id: 950, external_id: 5, target_text: "EN right", score: 0.9, reason: "position n=5" },
+            { target_unit_id: 951, external_id: 6, target_text: "EN other", score: 0.6, reason: "position n=6" },
+          ],
+        };
+      }
+      if (path === "/align/link/retarget") {
+        const b = body as { link_id: number; new_target_unit_id: number };
+        return { link_id: b.link_id, new_target_unit_id: b.new_target_unit_id, updated: 1 };
+      }
       throw new Error(`unexpected POST ${path}`);
     },
     put: async () => ({}),
@@ -533,6 +549,36 @@ describe("AlignMatrixView — « ✂ couper à cheval » (D-W12)", () => {
     expect(toasts.some((t) => t.includes("plusieurs phrases"))).toBe(false);
   });
 
+  it("G3: a partial commit reporting only `deleted` RESYNCS — the created link is not compensated", async () => {
+    // Whole-unit MOVE (seg A's 2nd sentence → seg B): batch = [delete 12]. An old non-atomic
+    // sidecar that applied the delete reports {applied:0, deleted:1, errors:[…]}. The guard must
+    // read `deleted>0` (not just `applied`) → RESYNC, never compensate (deleting the created 77
+    // would orphan the target: gone from BOTH cells).
+    const moveMatrix: AlignMatrix = {
+      ...MATRIX_STRADDLE,
+      rows: [["1", 1, "seg A", "EN un. EN deux."], ["1", 2, "seg B", "EN trois."]],
+      hub_unit_ids: [101, 102],
+      cell_links: [
+        [[lk(11, 901, "EN un.", { external_id: 1 }), lk(12, 902, "EN deux.", { external_id: 1 })]],
+        [[lk(13, 903, "EN trois.", { external_id: 2 })]],
+      ],
+    };
+    const calls: Array<{ path: string; body: unknown }> = [];
+    const { toasts } = await mountWithMatrix(calls, {
+      matrix: moveMatrix,
+      batchResponse: { ok: false, applied: 0, deleted: 1, errors: [{ index: 0, link_id: 12, error: "boom" }] },
+    });
+
+    document.querySelector<HTMLButtonElement>('.prep-matrix-cut-any-btn[data-cut-row="0"]')!.click();
+    await vi.waitFor(() => { expect(document.querySelector("[data-cut-ok]")).not.toBeNull(); });
+    document.querySelector<HTMLButtonElement>("[data-cut-ok]")!.click();
+    await vi.waitFor(() => {
+      expect(calls.filter((c) => c.path === "/align/matrix")).toHaveLength(2); // resynced, not swallowed
+    });
+    expect(calls.some((c) => c.path === "/align/link/delete")).toBe(false); // created link NOT compensated
+    expect(toasts.some((t) => t.includes("partielle"))).toBe(true);
+  });
+
   it("a refused batch deletes the created link in compensation and keeps the modal open", async () => {
     const calls: Array<{ path: string; body: unknown }> = [];
     const { toasts } = await mountWithMatrix(calls, {
@@ -555,6 +601,139 @@ describe("AlignMatrixView — « ✂ couper à cheval » (D-W12)", () => {
     expect(del?.body).toEqual({ link_id: 77 });
     expect(document.querySelector(".prep-matrix-cut-overlay")).not.toBeNull();
     expect(calls.filter((c) => c.path === "/align/matrix")).toHaveLength(1); // nothing changed
+  });
+});
+
+/** A cell holding three translations: two whole (removable) + one cut (blocked). */
+const MATRIX_REMOVE: AlignMatrix = {
+  headers: ["paragraphe", "segment", "fr", "en"],
+  languages: ["fr", "en"],
+  hub_doc_id: 2,
+  rows: [["1", 1, "seg A", "EN un. EN deux. EN trois"]],
+  hub_unit_ids: [101],
+  language_doc_ids: [2, 3],
+  cell_links: [
+    [[lk(11, 900, "EN un."), lk(12, 901, "EN deux."),
+      lk(13, 902, "EN trois cut", { char_start: 0, char_end: 8 })]],
+  ],
+};
+
+describe("AlignMatrixView — « ✕ Retirer une traduction » (D-W18)", () => {
+  it("opens a chooser of the cell's translations; whole removable, cut blocked", async () => {
+    const calls: Array<{ path: string; body: unknown }> = [];
+    const { el } = await mountWithMatrix(calls, { matrix: MATRIX_REMOVE });
+
+    el.querySelector<HTMLButtonElement>('.prep-matrix-remove-btn[data-cut-row="0"]')!.click();
+    await vi.waitFor(() => {
+      expect(document.querySelector(".prep-matrix-remove-choices")).not.toBeNull();
+    });
+    const choices = document.querySelectorAll(".prep-matrix-remove-choice");
+    expect(choices).toHaveLength(3);
+    // Two whole links are clickable buttons; the cut one is a disabled span.
+    const removable = document.querySelectorAll(".prep-matrix-remove-choice[data-remove-link]");
+    expect(removable).toHaveLength(2);
+    expect(document.querySelector(".prep-matrix-remove-choice--off")).not.toBeNull();
+  });
+
+  it("removing a translation posts action:delete with its link_id and re-projects (revue G1)", async () => {
+    const calls: Array<{ path: string; body: unknown }> = [];
+    const { el, toasts } = await mountWithMatrix(calls, { matrix: MATRIX_REMOVE });
+
+    el.querySelector<HTMLButtonElement>('.prep-matrix-remove-btn[data-cut-row="0"]')!.click();
+    await vi.waitFor(() => {
+      expect(document.querySelector('.prep-matrix-remove-choice[data-remove-link="12"]')).not.toBeNull();
+    });
+    document.querySelector<HTMLButtonElement>('.prep-matrix-remove-choice[data-remove-link="12"]')!.click();
+    await vi.waitFor(() => {
+      expect(calls.filter((c) => c.path === "/align/matrix")).toHaveLength(2); // re-projected
+    });
+    // Revue G1 : suppression (pas rejet) — sinon ✕ et ＝ ne sont pas des inverses (409).
+    const resolve = calls.find((c) => c.path === "/align/collisions/resolve");
+    expect(resolve?.body).toEqual({ actions: [{ action: "delete", link_id: 12 }] });
+    expect(document.querySelector(".prep-matrix-cut-overlay")).toBeNull();
+    expect(toasts.some((t) => t.includes("retirée"))).toBe(true);
+  });
+
+  it("refuses the gesture when the connection changed, without opening (F1)", async () => {
+    const calls: Array<{ path: string; body: unknown }> = [];
+    const { el, toasts, holder } = await mountWithMatrix(calls, { matrix: MATRIX_REMOVE });
+
+    holder.conn = makeConn(calls); // new identity behind the same screen
+    el.querySelector<HTMLButtonElement>('.prep-matrix-remove-btn[data-cut-row="0"]')!.click();
+    await vi.waitFor(() => {
+      expect(toasts.some((t) => t.includes("Connexion changée"))).toBe(true);
+    });
+    expect(document.querySelector(".prep-matrix-remove-choices")).toBeNull();
+    expect(calls.some((c) => c.path === "/align/collisions/resolve")).toBe(false);
+  });
+});
+
+describe("AlignMatrixView — « ＝ Rattacher / re-cibler » (D-W19)", () => {
+  const base = { headers: ["paragraphe", "segment", "fr", "en"], languages: ["fr", "en"], hub_doc_id: 2, language_doc_ids: [2, 3] };
+  const EMPTY: AlignMatrix = { ...base, rows: [["1", 1, "seg A", ""]], hub_unit_ids: [101], cell_links: [[[]]] };
+  const ONE: AlignMatrix = { ...base, rows: [["1", 1, "seg A", "EN wrong"]], hub_unit_ids: [101], cell_links: [[[lk(11, 900, "EN wrong")]]] };
+  const TWO: AlignMatrix = {
+    ...base, rows: [["1", 1, "seg A", "EN a. EN b."]], hub_unit_ids: [101],
+    cell_links: [[[lk(11, 900, "EN a."), lk(12, 901, "EN b.")]]],
+  };
+
+  it("on an EMPTY cell: fetches candidates, then CREATES a link to the pick", async () => {
+    const calls: Array<{ path: string; body: unknown }> = [];
+    const { el, toasts } = await mountWithMatrix(calls, { matrix: EMPTY });
+
+    el.querySelector<HTMLButtonElement>('.prep-matrix-attach-btn[data-cut-row="0"]')!.click();
+    await vi.waitFor(() => {
+      expect(document.querySelector('.prep-align-picker-cand[data-uid="950"]')).not.toBeNull();
+    });
+    // Candidates were requested for the segment's pivot + the column's target doc.
+    const cand = calls.find((c) => c.path === "/align/retarget_candidates");
+    expect(cand?.body).toMatchObject({ pivot_unit_id: 101, target_doc_id: 3 });
+
+    document.querySelector<HTMLButtonElement>('.prep-align-picker-cand[data-uid="950"]')!.click();
+    await vi.waitFor(() => {
+      expect(calls.filter((c) => c.path === "/align/matrix")).toHaveLength(2); // re-projected
+    });
+    const create = calls.find((c) => c.path === "/align/link/create");
+    expect(create?.body).toEqual({ pivot_unit_id: 101, target_unit_id: 950 });
+    expect(calls.some((c) => c.path === "/align/link/retarget")).toBe(false);
+    expect(toasts.some((t) => t.includes("rattachée"))).toBe(true);
+  });
+
+  it("on a SINGLE-link cell: RETARGETS the existing link to the pick (no ✕)", async () => {
+    const calls: Array<{ path: string; body: unknown }> = [];
+    const { el, toasts } = await mountWithMatrix(calls, { matrix: ONE });
+
+    el.querySelector<HTMLButtonElement>('.prep-matrix-attach-btn[data-cut-row="0"]')!.click();
+    await vi.waitFor(() => {
+      expect(document.querySelector('.prep-align-picker-cand[data-uid="950"]')).not.toBeNull();
+    });
+    document.querySelector<HTMLButtonElement>('.prep-align-picker-cand[data-uid="950"]')!.click();
+    await vi.waitFor(() => {
+      expect(calls.filter((c) => c.path === "/align/matrix")).toHaveLength(2);
+    });
+    const retarget = calls.find((c) => c.path === "/align/link/retarget");
+    expect(retarget?.body).toEqual({ link_id: 11, new_target_unit_id: 950 });
+    expect(calls.some((c) => c.path === "/align/link/create")).toBe(false);
+    expect(toasts.some((t) => t.includes("re-ciblée"))).toBe(true);
+  });
+
+  it("a cell with ≥ 2 translations carries NO ＝ button (retarget assumes one link)", async () => {
+    const calls: Array<{ path: string; body: unknown }> = [];
+    const { el } = await mountWithMatrix(calls, { matrix: TWO });
+    expect(el.querySelector('.prep-matrix-attach-btn[data-cut-row="0"]')).toBeNull();
+  });
+
+  it("refuses when the connection changed after the fetch (F1)", async () => {
+    const calls: Array<{ path: string; body: unknown }> = [];
+    const { el, toasts, holder } = await mountWithMatrix(calls, { matrix: EMPTY });
+
+    el.querySelector<HTMLButtonElement>('.prep-matrix-attach-btn[data-cut-row="0"]')!.click();
+    // Swap the connection while the candidates fetch is in flight.
+    holder.conn = makeConn(calls);
+    await vi.waitFor(() => {
+      expect(toasts.some((t) => t.includes("Connexion changée"))).toBe(true);
+    });
+    expect(calls.some((c) => c.path === "/align/link/create")).toBe(false);
   });
 });
 

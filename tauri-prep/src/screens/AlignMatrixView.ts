@@ -22,8 +22,10 @@
 import type { Conn, FamilyRecord, MatrixCellLink, FamilyAlignOptions, AlignBatchAction } from "../lib/sidecarClient.ts";
 import {
   getFamilies, getAlignMatrix, batchUpdateAlignLinks, createAlignLink, deleteAlignLink,
-  setAlignCellStatus, bulkSetUnitStatus, alignFamily,
+  setAlignCellStatus, bulkSetUnitStatus, alignFamily, resolveCollisions,
+  retargetCandidates, retargetAlignLink,
 } from "../lib/sidecarClient.ts";
+import { buildPickerRowHtml } from "../lib/alignPickerRow.ts";
 import type { AlignStrategy } from "../lib/alignRunBar.ts";
 import {
   ALIGN_DEFAULTS, STRATEGY_LABELS, buildAlignAdvancedHtml, buildAlignRerunConfirmHtml,
@@ -38,6 +40,7 @@ import {
   resolveFusedCellLinks, resolveCellUncut, resolveCellMerge, resolveCellSplit,
   cellCutTargets, buildPartitionActions, buildUncutActions, buildCellBeadActions,
   suggestCutOffset, buildCutPanelsHtml, buildCellSplitPanelsHtml, linkWindow,
+  cellRemovableTranslations, viableCutOffsetsIn,
 } from "../lib/alignCellCut.ts";
 import { setHtml, raw, safeHtml } from "../lib/safeHtml.ts";
 import { escHtml as _esc } from "../lib/diff.ts";
@@ -151,6 +154,16 @@ export class AlignMatrixView {
       const uncutBtn = t.closest<HTMLButtonElement>(".prep-matrix-uncut-btn");
       if (uncutBtn) {
         this._onUncutClick(Number(uncutBtn.dataset.cutRow), Number(uncutBtn.dataset.cutCol));
+        return;
+      }
+      const removeBtn = t.closest<HTMLButtonElement>(".prep-matrix-remove-btn");
+      if (removeBtn) {
+        this._openRemoveChooser(Number(removeBtn.dataset.cutRow), Number(removeBtn.dataset.cutCol));
+        return;
+      }
+      const attachBtn = t.closest<HTMLButtonElement>(".prep-matrix-attach-btn");
+      if (attachBtn) {
+        this._openAttachPicker(Number(attachBtn.dataset.cutRow), Number(attachBtn.dataset.cutCol));
         return;
       }
       const ntBtn = t.closest<HTMLButtonElement>(".prep-matrix-nt-btn");
@@ -483,6 +496,9 @@ export class AlignMatrixView {
 
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
     const close = () => {
+      // Ownership (revue G2) : un close() capturé et rappelé APRÈS un await ne doit pas
+      // écraser l'état d'un modal rouvert entretemps — no-op s'il n'est plus le propriétaire.
+      if (this._closeCutModal !== close) return;
       document.removeEventListener("keydown", onKey);
       overlay.remove();
       this._closeCutModal = null;
@@ -611,6 +627,16 @@ export class AlignMatrixView {
     if (!canUp && !canDown) {
       this._cb.toast?.("✗ Segment voisin introuvable — recharger la matrice", true);
       return;
+    }
+    // Revue G-min : une cellule d'UN lien sans frontière de mot interne (« Yes. ») n'a ni
+    // scission ni déplacement possible — la garde « un seul mot » de l'ancien resolveStraddleCut,
+    // perdue en D-W17 (une cellule multi-liens a toujours une frontière d'unité, elle).
+    if (cell.length === 1) {
+      const [ws0, we0] = linkWindow(cell[0]);
+      if (viableCutOffsetsIn(cell[0].target_text_raw ?? "", ws0, we0).length === 0) {
+        this._cb.toast?.("✗ Un seul mot — rien à couper.", true);
+        return;
+      }
     }
     const view = ctx.view;
     const rowCur = ctx.hubRows[row];
@@ -762,15 +788,26 @@ export class AlignMatrixView {
 
       const res = await batchUpdateAlignLinks(conn, actions, { atomic: true });
       if (res.errors.length) {
-        if (res.applied > 0) {
-          // Old sidecar without atomic: partially committed — resync, keep what applied.
+        if (res.applied > 0 || res.deleted > 0) {
+          // Old sidecar without atomic: partially committed — resync (revue G3 : un
+          // déplacement est un batch delete-only, donc `deleted>0` EST le signal de partiel,
+          // pas `applied` — sinon on tombait en compensation et on perdait le lien).
           close();
           this._cb.toast?.(`✗ Coupe partielle : ${res.errors[0].error} — matrice resynchronisée`, true);
           await this._reloadPreservingScroll();
           return;
         }
+        // Rien de committé : compenser les liens créés. Si une compensation ÉCHOUE, un orphelin
+        // survit → resync pour montrer l'état réel (revue G3 : c'était avalé sans resync).
+        let compensated = true;
         for (const id of createdIds) {
-          try { await deleteAlignLink(conn, { link_id: id }); } catch { /* leave for resync */ }
+          try { await deleteAlignLink(conn, { link_id: id }); } catch { compensated = false; }
+        }
+        if (!compensated) {
+          close();
+          this._cb.toast?.(`✗ Coupe refusée : ${res.errors[0].error} — matrice resynchronisée`, true);
+          await this._reloadPreservingScroll();
+          return;
         }
         this._cb.toast?.(`✗ Coupe refusée : ${res.errors[0].error} (rien n'a été appliqué)`, true);
         okBtn.disabled = false;
@@ -794,7 +831,12 @@ export class AlignMatrixView {
         : base);
       await this._reloadPreservingScroll();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const raw = err instanceof Error ? err.message : String(err);
+      // Revue G1 : le voisin peut porter un lien REJETÉ (invisible dans cell_links) sur la cible
+      // déplacée → l'index unique (pivot,cible) le refuse en 409. Message actionnable.
+      const msg = /already exists|conflict|409/i.test(raw)
+        ? "un lien existe déjà pour cette cible chez le voisin (peut-être rejeté en Révision fine)"
+        : raw;
       if (createdIds.length) {
         let compensated = true;
         for (const id of createdIds) {
@@ -1048,6 +1090,9 @@ export class AlignMatrixView {
 
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
     const close = () => {
+      // Ownership (revue G2) : un close() capturé et rappelé APRÈS un await ne doit pas
+      // écraser l'état d'un modal rouvert entretemps — no-op s'il n'est plus le propriétaire.
+      if (this._closeCutModal !== close) return;
       document.removeEventListener("keydown", onKey);
       overlay.remove();
       this._closeCutModal = null;
@@ -1100,6 +1145,251 @@ export class AlignMatrixView {
       await this._reloadPreservingScroll();
     } catch (err) {
       this._cb.toast?.(`✗ Annulation : ${err instanceof Error ? err.message : String(err)}`, true);
+    } finally {
+      this._cutBusy = false;
+    }
+  }
+
+  // ─── « ✕ » Retirer une traduction parasite de la cellule (D-W18 §3.8) ─────────
+
+  /**
+   * Chooser for the ✕ gesture: one button per translation of the cell. A WHOLE link is
+   * removable (rejected → excluded from the projection, reversible) ; a CUT slice is shown
+   * disabled (« ↺ d'abord »). Same lifecycle hardening as the ↺ chooser (F4/F5/F10/Escape).
+   */
+  private _openRemoveChooser(viewRow: number, col: number): void {
+    const ctx = this._cellGestureCtx(col, viewRow); // F1 / F5 guard
+    if (!ctx) return;
+    const cell = ctx.column[ctx.row] ?? [];
+    const candidates = cellRemovableTranslations(cell);
+    if (candidates.length === 0) {
+      this._cb.toast?.("✗ Cellule sans traduction — rien à retirer.", true);
+      return;
+    }
+    if (!candidates.some((t) => t.removable)) {
+      this._cb.toast?.("✗ Traduction(s) coupée(s) — annuler la coupe (↺) avant de retirer.", true);
+      return;
+    }
+    const rowCur = ctx.hubRows[ctx.row];
+    const lang = ctx.view.translationLangs[col] ?? "?";
+    this._cutBusy = true;
+    const overlay = document.createElement("div");
+    overlay.className = "prep-matrix-cut-overlay";
+    const dialog = document.createElement("div");
+    dialog.className = "prep-matrix-cut-dialog";
+    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("aria-modal", "true");
+    const options = candidates.map((t) => t.removable
+      ? `<button type="button" class="prep-matrix-remove-choice" data-remove-link="${t.link_id}">`
+        + `&#10005; ${_esc(shortenCp(t.text, 90))}</button>`
+      : `<span class="prep-matrix-remove-choice prep-matrix-remove-choice--off"`
+        + ` title="Traduction coupée — annuler (↺) d'abord">${_esc(shortenCp(t.text, 90))}</span>`,
+    ).join("");
+    setHtml(dialog, safeHtml`
+      <div class="prep-matrix-cut-title">&#10005; Retirer une traduction (${lang}, segment ${rowCur.segment})</div>
+      <p class="prep-matrix-cut-hint">La traduction choisie est <b>retirée</b> de la cellule ;
+        l'unité cible reste dans le corpus. Pour la remettre : <b>＝ Rattacher</b>.</p>
+      <div class="prep-matrix-remove-choices">${raw(options)}</div>
+      <div class="prep-matrix-cut-actions">
+        <button type="button" class="btn btn-ghost btn-sm" data-cut-cancel>Annuler</button>
+      </div>
+    `);
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
+    const close = () => {
+      // Ownership (revue G2) : un close() capturé et rappelé APRÈS un await ne doit pas
+      // écraser l'état d'un modal rouvert entretemps — no-op s'il n'est plus le propriétaire.
+      if (this._closeCutModal !== close) return;
+      document.removeEventListener("keydown", onKey);
+      overlay.remove();
+      this._closeCutModal = null;
+      this._cutBusy = false;
+    };
+    this._closeCutModal = close;
+    let downOnBackdrop = false;
+    overlay.addEventListener("mousedown", (e) => { downOnBackdrop = e.target === overlay; });
+    overlay.addEventListener("click", (e) => { if (downOnBackdrop && e.target === overlay) close(); });
+    document.addEventListener("keydown", onKey);
+    dialog.querySelector<HTMLButtonElement>("[data-cut-cancel]")!.addEventListener("click", close);
+    dialog.querySelectorAll<HTMLButtonElement>(".prep-matrix-remove-choice[data-remove-link]").forEach((btn) =>
+      btn.addEventListener("click", () => {
+        const linkId = Number(btn.dataset.removeLink);
+        close();
+        void this._performCellRemove(linkId);
+      }));
+  }
+
+  /**
+   * Remove one link (D-W18 ; revue G1 : **delete**, plus reject). Reuse
+   * `/align/collisions/resolve` `{action:"delete"}`. Le rejet gardait le lien sur l'index
+   * unique `(pivot,target)` — invisible (F8) mais bloquant : ＝ ne pouvait pas re-poser la
+   * même cible (409) et un lien rejeté seul n'apparaît dans aucune collision (« réversible »
+   * était faux). La suppression fait de ✕/＝ des inverses propres ; l'undo = ＝ Rattacher.
+   * F1 vérifiée avant l'écriture (le delete part sur la connexion capturée).
+   */
+  private async _performCellRemove(linkId: number): Promise<void> {
+    const conn = this._getConn();
+    if (!conn) return;
+    if (conn !== this._loadedConn) {
+      this._cb.toast?.("✗ Connexion changée — recharger la matrice avant d'agir", true);
+      this._resetMatrix();
+      return;
+    }
+    this._cutBusy = true; // guards the round-trip (F5) — no modal is open here
+    try {
+      const res = await resolveCollisions(conn, [{ action: "delete", link_id: linkId }]);
+      if (res.errors.length) {
+        this._cb.toast?.(`✗ Retrait refusé : ${res.errors[0].error}`, true);
+        return;
+      }
+      this._cb.toast?.("✓ Traduction retirée");
+      await this._reloadPreservingScroll();
+    } catch (err) {
+      this._cb.toast?.(`✗ Retrait : ${err instanceof Error ? err.message : String(err)}`, true);
+    } finally {
+      this._cutBusy = false;
+    }
+  }
+
+  // ─── « ＝ » Rattacher / re-cibler — le geste constructif (D-W19 §3.9) ──────────
+
+  /**
+   * ＝ Rattacher: an ASYNC picker (candidates come from `retargetCandidates`, pivot-anchored
+   * — it handles the orphan pivot of an empty cell). Empty cell → create ; single-link cell
+   * → retarget that link ; ≥ 2 links → refused (the retarget machinery assumes one link).
+   * F1 re-checked after the fetch (the async gap could span a conn change).
+   */
+  private _openAttachPicker(viewRow: number, col: number): void {
+    const ctx = this._cellGestureCtx(col, viewRow); // F1 / F5 guard
+    if (!ctx) return;
+    const cell = ctx.column[ctx.row] ?? [];
+    if (cell.length > 1) {
+      this._cb.toast?.(
+        "✗ Cellule à plusieurs traductions — retirez-en (✕) ou restructurez (✂/⭙) avant de rattacher.", true);
+      return;
+    }
+    // Revue G4 : re-cibler un lien COUPÉ garderait sa fenêtre périmée sur la nouvelle cible.
+    if (cell.length === 1 && cell[0].char_start != null) {
+      this._cb.toast?.("✗ Traduction coupée — annuler la coupe (↺) avant de re-cibler.", true);
+      return;
+    }
+    const rowCur = ctx.hubRows[ctx.row];
+    const pivotUnitId = rowCur.hubUnitId;
+    if (pivotUnitId == null) {
+      this._cb.toast?.("✗ Segment source introuvable — recharger la matrice", true);
+      return;
+    }
+    const targetDocId = ctx.view.translationDocIds[col];
+    const existingLinkId = cell.length === 1 ? cell[0].link_id : null;
+    const lang = ctx.view.translationLangs[col] ?? "?";
+    const conn = this._getConn();
+    if (!conn) return;
+
+    this._cutBusy = true;
+    const overlay = document.createElement("div");
+    overlay.className = "prep-matrix-cut-overlay";
+    const dialog = document.createElement("div");
+    dialog.className = "prep-matrix-cut-dialog";
+    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("aria-modal", "true");
+    setHtml(dialog, safeHtml`
+      <div class="prep-matrix-cut-title">&#61; Rattacher une traduction (${lang}, segment ${rowCur.segment})</div>
+      <p class="prep-matrix-cut-hint">${existingLinkId != null
+        ? "Choisir la BONNE cible — le lien de cette cellule est re-ciblé (réversible au ✕)."
+        : "Choisir la traduction de ce segment — un lien est créé (réversible au ✕)."}</p>
+      <div class="prep-matrix-attach-host">${raw(buildPickerRowHtml({
+        pivotUnitId, pivotText: rowCur.hubText, asTableRow: false, candidates: null, alreadyLinked: new Set(),
+      }))}</div>
+      <div class="prep-matrix-cut-actions">
+        <button type="button" class="btn btn-ghost btn-sm" data-cut-cancel>Annuler</button>
+      </div>
+    `);
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
+    const close = () => {
+      // Ownership (revue G2) : un close() capturé et rappelé APRÈS un await ne doit pas
+      // écraser l'état d'un modal rouvert entretemps — no-op s'il n'est plus le propriétaire.
+      if (this._closeCutModal !== close) return;
+      document.removeEventListener("keydown", onKey);
+      overlay.remove();
+      this._closeCutModal = null;
+      this._cutBusy = false;
+    };
+    this._closeCutModal = close;
+    let downOnBackdrop = false;
+    overlay.addEventListener("mousedown", (e) => { downOnBackdrop = e.target === overlay; });
+    overlay.addEventListener("click", (e) => { if (downOnBackdrop && e.target === overlay) close(); });
+    document.addEventListener("keydown", onKey);
+    dialog.querySelector<HTMLButtonElement>("[data-cut-cancel]")!.addEventListener("click", close);
+
+    const host = dialog.querySelector<HTMLElement>(".prep-matrix-attach-host")!;
+    void (async () => {
+      let res;
+      try {
+        res = await retargetCandidates(conn, { pivot_unit_id: pivotUnitId, target_doc_id: targetDocId });
+      } catch (err) {
+        close();
+        this._cb.toast?.(`✗ Candidats : ${err instanceof Error ? err.message : String(err)}`, true);
+        return;
+      }
+      if (this._closeCutModal !== close) return; // the modal was closed while the fetch was in flight
+      if (this._getConn() !== this._loadedConn) {
+        close();
+        this._cb.toast?.("✗ Connexion changée — recharger la matrice avant d'agir", true);
+        this._resetMatrix();
+        return;
+      }
+      const alreadyLinked = new Set(cell.map((l) => l.target_unit_id));
+      setHtml(host, raw(buildPickerRowHtml({
+        pivotUnitId, pivotText: rowCur.hubText, asTableRow: false, candidates: res.candidates, alreadyLinked,
+      })));
+      host.querySelector<HTMLButtonElement>(".prep-align-picker-cancel")?.addEventListener("click", close);
+      // Revue G-min : les candidats EN CONFLIT (déjà liés à ce pivot) ne sont pas câblés — les
+      // choisir serait un no-op annoncé « ✓ re-ciblée » (ou un 409). Ils restent visibles, grisés.
+      host.querySelectorAll<HTMLButtonElement>(".prep-align-picker-cand[data-uid]:not([data-conflict])").forEach((btn) =>
+        btn.addEventListener("click", () => {
+          const targetUnitId = Number(btn.dataset.uid);
+          close();
+          void this._performAttach(pivotUnitId, targetUnitId, existingLinkId);
+        }));
+    })();
+  }
+
+  /**
+   * Apply the ＝: create a link (orphan pivot) or retarget the cell's single link. Reversible
+   * via ✕ (D-W18). F1 re-checked across the async gap.
+   */
+  private async _performAttach(
+    pivotUnitId: number, targetUnitId: number, existingLinkId: number | null,
+  ): Promise<void> {
+    const conn = this._getConn();
+    if (!conn) return;
+    if (conn !== this._loadedConn) {
+      this._cb.toast?.("✗ Connexion changée — recharger la matrice avant d'agir", true);
+      this._resetMatrix();
+      return;
+    }
+    this._cutBusy = true; // guards the round-trip (F5)
+    try {
+      if (existingLinkId != null) {
+        await retargetAlignLink(conn, { link_id: existingLinkId, new_target_unit_id: targetUnitId });
+        this._cb.toast?.("✓ Traduction re-ciblée");
+      } else {
+        await createAlignLink(conn, { pivot_unit_id: pivotUnitId, target_unit_id: targetUnitId });
+        this._cb.toast?.("✓ Traduction rattachée");
+      }
+      await this._reloadPreservingScroll();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // Revue G1 : un lien (peut-être rejeté par la Révision fine, donc invisible) occupe déjà
+      // l'index unique (pivot,cible) → 409. Message actionnable plutôt que la chaîne brute.
+      this._cb.toast?.(/already exists|conflict|409/i.test(msg)
+        ? "✗ Un lien existe déjà pour cette cible (peut-être rejeté en Révision fine) — l'y réactiver ou le supprimer."
+        : `✗ Rattacher : ${msg}`, true);
     } finally {
       this._cutBusy = false;
     }
@@ -1232,6 +1522,9 @@ export class AlignMatrixView {
 
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
     const close = () => {
+      // Ownership (revue G2) : un close() capturé et rappelé APRÈS un await ne doit pas
+      // écraser l'état d'un modal rouvert entretemps — no-op s'il n'est plus le propriétaire.
+      if (this._closeCutModal !== close) return;
       document.removeEventListener("keydown", onKey);
       overlay.remove();
       this._closeCutModal = null;
