@@ -106,3 +106,14 @@ Le bandeau de validation **choisit** parmi 1-4 d'après `has_external_id`, le r�
 - **Réfuté :** KeyError `_external_id_anchor` — `n` toujours fourni par le SELECT, inatteignable.
 
 **Reste ouvert (hors chantier 1).** Le filet ne *câble* pas encore les remèdes en un clic (il les nomme + pointe la couche). Chantiers 2 (blob R2.3) et 3 (round-trip TEI) inchangés.
+
+**Angle mort du blob à l'alignement (QA 2026-07-18) — versé au chantier 2.** Sur corpus réel
+(`corpus_agrafes`), plusieurs docx sont importés en **une seule unité-blob** (~100k car., `[N]` et
+`¤` *inline*, non découpés) portant un `external_id` incident : `anchor_status` les classe alors
+`{anchored:true, kind:'value'}` — un **faux positif**, le filet reste muet là où il faudrait dire
+« blob à découper ». Décision : **ne PAS ajouter de garde blob (`line_count == 1`) au chantier 1.**
+Raison : l'alignement présuppose des unités ; un blob non segmenté à l'étape Aligner traduit une prep
+non faite (segmentation/curation en amont), cas **hors nominal**. Le filet vise le texte *segmenté
+mais non ancré* (ex. réel : une trad de 996 lignes sans `[N]` ni `parent_n` → correctement
+`unanchored`). La détection blob (granularité + longueur, seuils §9 Q2) appartient au **chantier 2**
+(R2.3), qui produit et découpe le blob — c'est là que la garde `line_count == 1` doit vivre.
