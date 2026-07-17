@@ -31,6 +31,7 @@ import json as _json
 import sqlite3
 from typing import Any, Optional
 
+from ..anchoring import anchor_status_for_doc
 from .errors import NotFoundError
 
 #: D10 — the omission token; a deliberately untranslated cell is never empty
@@ -96,6 +97,11 @@ def build_alignment_matrix(conn: sqlite3.Connection, family_root_id: int) -> dic
     - ``uncovered`` (∥ translations, D-W14) — per column, the ``line`` units with no
       active link in this family and no ``unit_status``: invisible in the grid, the
       « ＋ Ajout » panel lists them. ``[{"unit_id", "n", "text_raw"}]``.
+    - ``anchor_status`` (∥ ``languages``, 1.6.59 — DESIGN_upstream_anchoring §4) — per
+      language ``{"anchored": bool, "kind": "value"|"paragraph"|"position"|None,
+      "line_count": int}``: whether that document carries an alignment anchor. Index 0 is
+      the hub; an unanchored text (``kind=None``) makes the aligner drift, so the barre
+      « Aligner » warns before running. Read-only, derived (``anchoring.anchor_status_for_doc``).
 
     Raises :class:`NotFoundError` when the hub doc is missing.
     """
@@ -288,6 +294,15 @@ def build_alignment_matrix(conn: sqlite3.Connection, family_root_id: int) -> dic
         "SELECT COUNT(*) FROM alignment_links WHERE pivot_doc_id=?", (family_root_id,)
     ).fetchone()[0]
 
+    # Upstream anchoring (1.6.59, DESIGN_upstream_anchoring §4) — per-language anchor status,
+    # PARALLEL to `languages` (index 0 = hub). The barre « Aligner » warns before firing a run
+    # that would drift because a text carries no anchor (Beigbeder EN). Read-only, derived on
+    # the fly (like coarse_blocks_for_doc); the field is additive to this non-schematized payload.
+    anchor_status = [
+        anchor_status_for_doc(conn, family_root_id),
+        *[anchor_status_for_doc(conn, tdoc) for tdoc, _lang in translations],
+    ]
+
     return {
         "headers": headers,
         "rows": rows,
@@ -306,4 +321,6 @@ def build_alignment_matrix(conn: sqlite3.Connection, family_root_id: int) -> dic
         "cell_statuses": cell_statuses,
         "addition_rows": addition_rows,
         "uncovered": uncovered,
+        # 1.6.59 — {anchored, kind: value|paragraph|position|null, line_count} ∥ languages.
+        "anchor_status": anchor_status,
     }

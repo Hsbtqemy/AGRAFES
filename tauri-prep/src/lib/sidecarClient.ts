@@ -1672,6 +1672,21 @@ export interface AlignMatrix {
    *  rejected re-aligns to nothing. The « déjà aligné ? » gate must use THIS, never the
    *  links the grid displays. */
   link_count?: number;
+  /** 1.6.59 (DESIGN_upstream_anchoring §4): parallel to `languages` (index 0 = hub) —
+   *  whether each document carries an alignment anchor. A `kind: null` text makes the
+   *  length-bounded aligner drift, so the barre « Aligner » warns before running. */
+  anchor_status?: AnchorStatus[];
+}
+
+/** 1.6.59 — how a document is anchored for alignment (DESIGN_upstream_anchoring §2).
+ *  `kind`: "value" ([N] markers, strong) › "paragraph" (parent_n) › "position"
+ *  (external_id == n) › null (no anchor → drift). `line_count` distinguishes a blob (1)
+ *  from an unanchored multi-line text, to orient the remedy (§5). */
+export type AnchorKind = "value" | "paragraph" | "position" | null;
+export interface AnchorStatus {
+  anchored: boolean;
+  kind: AnchorKind;
+  line_count: number;
 }
 
 /** 1.6.56 (D8) — descriptor of one flux addition row woven into `rows`. */

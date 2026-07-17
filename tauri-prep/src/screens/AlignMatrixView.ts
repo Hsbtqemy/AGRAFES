@@ -35,6 +35,8 @@ import type { AlignMatrix } from "../lib/sidecarClient.ts";
 import type { MatrixView, MatrixRowView } from "../lib/alignMatrix.ts";
 import { buildMatrixView, matrixSummaryLine } from "../lib/alignMatrix.ts";
 import { buildMatrixGridHtml } from "../lib/alignMatrixGrid.ts";
+import type { AnchorWarning } from "../lib/anchorWarn.ts";
+import { anchorWarnings, buildAnchorNoticeHtml, buildAnchorGateHtml } from "../lib/anchorWarn.ts";
 import type { CellLinkColumn, StraddleDirection, CellSplitPlan, CutPanelsLabels } from "../lib/alignCellCut.ts";
 import {
   resolveFusedCellLinks, resolveCellUncut, resolveCellMerge, resolveCellSplit,
@@ -74,6 +76,9 @@ export class AlignMatrixView {
   private _aligning = false;
   /** Teardown of the open cut modal, so dispose()/reset can force-close it (F4). */
   private _closeCutModal: (() => void) | null = null;
+  /** Family for which the upstream-anchoring warning was acknowledged — the « Aligner »
+   *  gate warns once per family (DESIGN_upstream_anchoring §4), not on every click. */
+  private _anchorAckFamilyId: number | null = null;
 
   constructor(
     private _getConn: () => Conn | null,
@@ -206,6 +211,9 @@ export class AlignMatrixView {
     this._view = null;
     this._loadedConn = null;
     this._loadedFamilyId = null;
+    // The anchoring ack is keyed by family_id, but a conn change invalidates ALL ids: the
+    // same family_id on the new DB is a different family — it must be re-warned.
+    this._anchorAckFamilyId = null;
     const area = this._root?.querySelector<HTMLElement>("#matrix-grid-area");
     if (area) setHtml(area, raw('<p class="prep-matrix-hint">Connexion chang&#233;e &#8212; recharger la matrice.</p>'));
     const summary = this._root?.querySelector<HTMLElement>("#matrix-summary");
@@ -264,7 +272,11 @@ export class AlignMatrixView {
       if (view.rows.length === 0) {
         setHtml(area, raw('<p class="prep-matrix-hint">Aucun segment dans le moyeu de cette famille.</p>'));
       } else {
-        setHtml(area, raw(buildMatrixGridHtml(view)));
+        // Upstream-anchoring notice (DESIGN_upstream_anchoring §4): a passive banner above
+        // the grid whenever a document of this family carries no anchor — so a « Charger »
+        // (no align yet) already surfaces the drift risk and its remedy.
+        const notice = buildAnchorNoticeHtml(anchorWarnings(matrix));
+        setHtml(area, raw(notice + buildMatrixGridHtml(view)));
         summary.textContent = matrixSummaryLine(view);
       }
     } catch (err) {
@@ -333,6 +345,17 @@ export class AlignMatrixView {
       await this._loadMatrix();
       if (!this._viewMatchesSelection(this._getConn() ?? conn)) return;  // load failed / moved on
     }
+    // Upstream-anchoring gate (DESIGN_upstream_anchoring §4): if a text of this family carries
+    // no anchor the length-bounded aligner will drift — warn ONCE per family before firing, so
+    // the user anchors first instead of hand-repairing the matrix. Non-blocking (D-U1): the
+    // gate's « Aligner quand même » sets the ack and re-enters, flowing on to the normal run.
+    if (this._matrix && this._anchorAckFamilyId !== this._selectedFamilyId) {
+      const warnings = anchorWarnings(this._matrix);
+      if (warnings.length > 0) {
+        this._showAnchorGate(warnings, this._selectedFamilyId);
+        return;
+      }
+    }
     const existing = this._loadedLinkCount();
     if (existing > 0) {
       this._showRerunConfirm(existing);
@@ -368,6 +391,30 @@ export class AlignMatrixView {
     strip.querySelector<HTMLButtonElement>("#matrix-align-cancel")?.addEventListener("click", close);
     strip.querySelector<HTMLButtonElement>("#matrix-align-complete")?.addEventListener("click", () => run(false));
     strip.querySelector<HTMLButtonElement>("#matrix-align-recalc")?.addEventListener("click", () => run(true));
+  }
+
+  /**
+   * The « ce texte dérivera » gate (DESIGN_upstream_anchoring §4). Advisory (D-U1): it does
+   * not block — « Aligner quand même » acks the family and re-enters `_onAlignClick`, which
+   * (now past the gate) flows on to the rerun confirm / the run. Captures what the gate is
+   * about so its button never fires a run for a family/corpus the user moved away from.
+   */
+  private _showAnchorGate(warnings: AnchorWarning[], familyId: number): void {
+    const strip = this._root?.querySelector<HTMLElement>("#matrix-align-strip");
+    if (!strip) return;
+    const conn = this._getConn();
+    setHtml(strip, raw(buildAnchorGateHtml(warnings)));
+    const close = () => setHtml(strip, raw(""));
+    strip.querySelector<HTMLButtonElement>("#matrix-anchor-cancel")?.addEventListener("click", close);
+    strip.querySelector<HTMLButtonElement>("#matrix-anchor-proceed")?.addEventListener("click", () => {
+      close();
+      if (this._getConn() !== conn || this._selectedFamilyId !== familyId) {
+        this._cb.toast?.("✗ La sélection a changé — relancer « Aligner »", true);
+        return;
+      }
+      this._anchorAckFamilyId = familyId;  // ack — do not warn again for this family
+      void this._onAlignClick();
+    });
   }
 
   /**

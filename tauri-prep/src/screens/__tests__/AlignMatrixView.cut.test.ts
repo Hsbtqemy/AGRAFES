@@ -68,6 +68,25 @@ const MATRIX_CUT: AlignMatrix = {
   ],
 };
 
+/** A family whose EN translation carries no anchor (1.6.59) — the aligner would drift. */
+const MATRIX_UNANCHORED: AlignMatrix = {
+  headers: ["paragraphe", "segment", "fr", "en"],
+  languages: ["fr", "en"],
+  hub_doc_id: 2,
+  rows: [
+    ["1", 1, "FR un", ""],
+    ["1", 2, "FR deux", ""],
+  ],
+  hub_unit_ids: [101, 102],
+  language_doc_ids: [2, 3],
+  cell_links: [[[]], [[]]],
+  link_count: 0,
+  anchor_status: [
+    { anchored: true, kind: "paragraph", line_count: 2 },
+    { anchored: false, kind: null, line_count: 1270 },
+  ],
+};
+
 const FAMILY = {
   family_id: 2,
   parent: { doc_id: 2, title: "Le Livre" },
@@ -116,6 +135,9 @@ function makeConn(calls: Array<{ path: string; body: unknown }>, opts: ConnOpts 
       if (path === "/align/link/retarget") {
         const b = body as { link_id: number; new_target_unit_id: number };
         return { link_id: b.link_id, new_target_unit_id: b.new_target_unit_id, updated: 1 };
+      }
+      if (path.startsWith("/families/") && path.endsWith("/align")) {
+        return { summary: { total_links_created: 0, aligned: 0, skipped: 0, errors: 0, total_pairs: 0 } };
       }
       throw new Error(`unexpected POST ${path}`);
     },
@@ -804,5 +826,48 @@ describe("AlignMatrixView — « ↺ » cellule (D-W13)", () => {
       atomic: true,
     });
     expect(toasts.some((t) => t.includes("✓ Coupe annulée"))).toBe(true);
+  });
+});
+
+describe("AlignMatrixView — anchoring gate (DESIGN_upstream_anchoring §4)", () => {
+  it("warns before aligning an unanchored family; « Aligner quand même » proceeds", async () => {
+    const calls: Array<{ path: string; body: unknown }> = [];
+    const { el } = await mountWithMatrix(calls, { matrix: MATRIX_UNANCHORED });
+
+    // The passive notice is already above the grid after « Charger » (before any run).
+    expect(el.querySelector(".prep-matrix-anchor-notice")).not.toBeNull();
+
+    // « Aligner » → the gate appears and NO align call fires yet (RED on the pre-1.6.59
+    // behaviour, which fired /families/2/align immediately).
+    el.querySelector<HTMLButtonElement>("#matrix-align")!.click();
+    await vi.waitFor(() => {
+      expect(document.querySelector("#matrix-anchor-proceed")).not.toBeNull();
+    });
+    expect(calls.some((c) => c.path === "/families/2/align")).toBe(false);
+
+    // « Aligner quand même » acks the family and lets the run proceed.
+    document.querySelector<HTMLButtonElement>("#matrix-anchor-proceed")!.click();
+    await vi.waitFor(() => {
+      expect(calls.some((c) => c.path === "/families/2/align")).toBe(true);
+    });
+  });
+
+  it("does NOT warn (nor gate) when every text is anchored", async () => {
+    const anchored: AlignMatrix = {
+      ...MATRIX_UNANCHORED,
+      anchor_status: [
+        { anchored: true, kind: "paragraph", line_count: 2 },
+        { anchored: true, kind: "value", line_count: 3 },
+      ],
+    };
+    const calls: Array<{ path: string; body: unknown }> = [];
+    const { el } = await mountWithMatrix(calls, { matrix: anchored });
+
+    expect(el.querySelector(".prep-matrix-anchor-notice")).toBeNull();
+    el.querySelector<HTMLButtonElement>("#matrix-align")!.click();
+    await vi.waitFor(() => {
+      expect(calls.some((c) => c.path === "/families/2/align")).toBe(true);
+    });
+    expect(document.querySelector("#matrix-anchor-proceed")).toBeNull();
   });
 });

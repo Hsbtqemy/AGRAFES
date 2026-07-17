@@ -278,3 +278,16 @@ def test_matrix_uncovered_units_per_column(db_conn: sqlite3.Connection) -> None:
     db_conn.commit()
     m = build_alignment_matrix(db_conn, 1)
     assert [u["unit_id"] for u in m["uncovered"][1]] == [5]
+
+
+def test_matrix_anchor_status_parallel_to_languages(db_conn: sqlite3.Connection) -> None:
+    """1.6.59 (DESIGN_upstream_anchoring §4) — anchor_status ∥ languages (index 0 = hub).
+    RED on the pre-1.6.59 payload (no anchor_status key)."""
+    _setup_family(db_conn)
+    m = build_alignment_matrix(db_conn, 1)
+    assert len(m["anchor_status"]) == len(m["languages"]) == 3
+    # hub FR: both units carry parent_n=1 → paragraph anchor.
+    assert m["anchor_status"][0]["kind"] == "paragraph"
+    # EN, RO: no external_id, no parent_n → unanchored (the aligner would drift).
+    assert m["anchor_status"][1] == {"anchored": False, "kind": None, "line_count": 1}
+    assert m["anchor_status"][2] == {"anchored": False, "kind": None, "line_count": 2}

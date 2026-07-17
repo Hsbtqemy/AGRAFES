@@ -14,7 +14,7 @@ from typing import Any
 from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
-CONTRACT_VERSION = "1.6.58"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.59"  # semantic versioning for the sidecar API contract
 # SID-08 / OPS-03: the API version IS the contract version — derived, never a
 # second hand-maintained literal, so the two can no longer drift. /health reports
 # the *engine* version under `version` (it predates the sidecar); every other
@@ -224,6 +224,14 @@ API_VERSION = CONTRACT_VERSION
 #         links were all rejected therefore re-aligns to NOTHING, and the UI's « déjà aligné ? » gate
 #         must be based on this count, not on what the grid displays. Additive field → snapshot/.md
 #         unchanged; openapi moves (version).
+# 1.6.59: ancrage amont (chantier 1, DESIGN_upstream_anchoring §4). /align/matrix response
+#         (non-schematized) gains `anchor_status` — PARALLEL to `languages` (index 0 = hub),
+#         each {anchored: bool, kind: "value"|"paragraph"|"position"|null, line_count: int}.
+#         A text with no anchor (kind=null) makes the length-bounded aligner drift; the barre
+#         « Aligner » warns before running so the user anchors first (re-import numbered /
+#         regroup by boundary / extract a blob) instead of hand-repairing the matrix downstream.
+#         Read-only, derived (services matrix_export_service + anchoring.anchor_status_for_doc).
+#         Additive field → snapshot/.md unchanged; openapi moves (version).
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"

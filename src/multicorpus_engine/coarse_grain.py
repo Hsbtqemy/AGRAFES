@@ -49,6 +49,24 @@ def _parse_meta(meta_json: Any) -> dict:
         return {}
 
 
+def is_anchored_regime(units: Iterable[dict[str, Any]]) -> bool:
+    """True iff the two-grain **anchored** regime applies to ``units``: at least one
+    *line* unit carries a **non-null** ``meta_json.parent_n``.
+
+    FE-02: value-based (not key-presence), mirroring ``coarseGrain.ts`` — an explicit
+    ``{"parent_n": null}`` is *not* anchored (the TS side, saner, makes it a derived
+    singleton; key-presence would fold every such line into one None-keyed mega-block).
+    Single source of truth for the anchored predicate, shared by
+    :func:`derive_coarse_blocks` (grouping) and :func:`multicorpus_engine.anchoring.anchor_status`
+    (the ¶ anchor of the upstream anchoring check, DESIGN_upstream_anchoring §2/§4).
+    """
+    return any(
+        _parse_meta(u.get("meta_json")).get("parent_n") is not None
+        for u in units
+        if u.get("unit_type") == "line"
+    )
+
+
 def derive_coarse_blocks(
     units: Iterable[dict[str, Any]],
     *,
@@ -78,14 +96,10 @@ def derive_coarse_blocks(
       ``kind='composite'`` with ``fine_count = sep_count + 1``.
     """
     rows = sorted(units, key=lambda u: u["n"])
-    lines = [u for u in rows if u.get("unit_type") == "line"]
-    # FE-02: detect the anchored regime by a *non-null* parent_n (value-based), mirroring
-    # coarseGrain.ts. Key-presence would treat an explicit {"parent_n": null} as anchored
-    # and fold every such line into one None-keyed mega-block — the TS side (saner) makes
-    # it a derived singleton. Keep the two implementations byte-for-byte equivalent.
-    anchored = any(_parse_meta(u.get("meta_json")).get("parent_n") is not None for u in lines)
-
-    if anchored:
+    # FE-02: the anchored regime is a *non-null* parent_n on any line (value-based, mirroring
+    # coarseGrain.ts) — extracted to is_anchored_regime so the upstream anchoring check reuses
+    # the exact same predicate. Keep the two implementations byte-for-byte equivalent.
+    if is_anchored_regime(rows):
         return _blocks_anchored(rows, structural_roles)
     return _blocks_derived(rows, structural_roles)
 

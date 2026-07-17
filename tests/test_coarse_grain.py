@@ -16,6 +16,7 @@ import pytest
 from multicorpus_engine.coarse_grain import (
     coarse_blocks_for_doc,
     derive_coarse_blocks,
+    is_anchored_regime,
 )
 
 _MIGRATIONS_DIR = Path(__file__).parent.parent / "migrations"
@@ -52,6 +53,20 @@ def test_mixed_null_parent_n_falls_back_to_own_n() -> None:
     ])
     assert [b["anchor_n"] for b in blocks] == [1, 3]
     assert next(b for b in blocks if b["anchor_n"] == 1)["member_ns"] == [1, 2]
+
+
+# --- is_anchored_regime: the shared predicate (upstream anchoring reuses it) -----
+
+def test_is_anchored_regime_matches_derive_detection() -> None:
+    """The extracted predicate is the exact detection derive_coarse_blocks uses: a
+    non-null parent_n on any line ⇒ anchored; only structure/null ⇒ derived."""
+    assert is_anchored_regime([_line(1, meta={"parent_n": 1}), _line(2)]) is True
+    assert is_anchored_regime([_line(1), _line(2)]) is False
+    assert is_anchored_regime([_line(1, meta={"parent_n": None})]) is False  # FE-02 value-based
+    # a structure unit carrying parent_n does not anchor (only line units count)
+    structure = {"n": 1, "unit_type": "structure", "unit_role": None,
+                 "meta_json": json.dumps({"parent_n": 1}), "text_raw": "x"}
+    assert is_anchored_regime([structure]) is False
 
 
 # --- derived regime (no parent_n) ------------------------------------------------
