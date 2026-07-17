@@ -201,24 +201,23 @@ describe("AlignMatrixView — barre « Aligner » (tranche 5)", () => {
     expect(calls.some((c) => c.path === "/families/2/align")).toBe(false);
   });
 
-  it("CRITIQUE: the armed confirm strip cannot rewrite a family the user moved away from", async () => {
+  it("CRITIQUE: changing family tears down the armed confirm strip (no destructive run survives)", async () => {
     const calls: Array<{ path: string; body: unknown }> = [];
-    const { el, toasts } = await mountLoaded(calls);  // family 2, already aligned
+    const { el } = await mountLoaded(calls);  // family 2, already aligned
 
     el.querySelector<HTMLButtonElement>("#matrix-align")!.click();
     await vi.waitFor(() => {
       expect(el.querySelector("#matrix-align-recalc")).not.toBeNull();
     });
-    // The user changes their mind and picks another family — the strip is still on screen.
+    // The user changes their mind and picks another family. Revue m1 — the armed strip must
+    // not survive the switch (a phantom « Recalcul global » attributed to the wrong family);
+    // closing it on change also removes the DESTRUCTIVE button before it can be clicked.
     const sel = el.querySelector<HTMLSelectElement>("#matrix-family")!;
     sel.value = "";
     sel.dispatchEvent(new Event("change"));
 
-    el.querySelector<HTMLButtonElement>("#matrix-align-recalc")!.click();
-    await vi.waitFor(() => {
-      expect(toasts.some((t) => t.includes("sélection a changé"))).toBe(true);
-    });
-    // « Recalcul global » (a DESTRUCTIVE run) never fired.
+    // RED on the pre-m1 code, where the strip (and its « Recalcul global ») survived.
+    expect(el.querySelector("#matrix-align-recalc")).toBeNull();
     expect(calls.some((c) => c.path === "/families/2/align")).toBe(false);
   });
 

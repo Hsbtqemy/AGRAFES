@@ -1,6 +1,6 @@
 # Note de design — Ancrage amont : empêcher la dérive d'alignement à la source (tous types de brut)
 
-> Statut : **intention de design — carte figée (2026-07-17), décisions D-U* à confirmer avant ticket**. Date : 2026-07-17.
+> Statut : **chantier 1 (validation d'ancrage) BÂTI + revu (2026-07-18) — voir §10** ; chantiers 2-3 restent une intention de design. Carte figée 2026-07-17.
 > **Pendant *prévention*** de [`DESIGN_alignment_workspace.md`](DESIGN_alignment_workspace.md) (la *réparation* aval : ✂·⭙·✕·＝, gestes D-W*).
 > S'appuie sur le modèle [`DESIGN_source_anchored_alignment.md`](DESIGN_source_anchored_alignment.md) (le moyeu) et le modèle deux-grains (¶ ⊃ phrase).
 > Consolide et cadre trois chantiers existants : [`DESIGN_R2_3_blob_two_grain.md`](DESIGN_R2_3_blob_two_grain.md) (blob → 2-grain), la resegmentation ascendante R5.4c ([`coarse_grain.py`](../src/multicorpus_engine/coarse_grain.py) `regroup_document_coarse`), et l'import TEI ([`tei_importer.py`](../src/multicorpus_engine/importers/tei_importer.py)).
@@ -28,6 +28,8 @@ De la plus forte (recale exactement) à la plus faible (recale si parallèle), a
 | 3 | **position** | `units.external_id = position` (ADR-012) | `docx_paragraphs`, `odt_paragraphs` | **Bonne si parallèle** — ¶ n° k ↔ ¶ n° k ; casse si un côté a un ¶ de plus/de moins. |
 | — | **aucune** | — | blob mono-unité ; texte multi-lignes sans `[N]` ni `parent_n` (Beigbeder EN) | **Dérive déterministe.** |
 
+> **⚠ La force d'une ancre est *relative à la stratégie* (revue M1, §10).** L'aligneur **par défaut** (`length_bounded`, et `similarity`) ne se recale que sur `parent_n` — il **n'exploite jamais `external_id`**. Donc `[N]`/position (rangs 1 et 3) ne protègent **que** les stratégies *identité* (`external_id`, `external_id_then_position`, `position`) ; sous la stratégie par défaut, **seul `parent_n` (rang 2) borne la dérive**. Un texte `[N]`/position-ancré est « protégé » ou « à découvert » **selon la stratégie choisie**, pas dans l'absolu.
+
 Le **classifieur existe déjà** : `coarse_grain.derive_coarse_blocks` distingue le régime **`anchored`** (au moins une ligne porte un `parent_n` non-nul) du régime **`derived`** (aucun → 1 ligne = 1 bloc). C'est la **primitive de validation** (§4) — pas de code neuf pour *détecter* l'ancre ¶. Pour l'ancre `[N]`/position il suffit d'un `has_external_id` (présence d'`external_id` non-nul sur les lignes).
 
 ## 3. Par régime de brut — ce qui est bâti, l'ancre obtenue, le trou
@@ -39,7 +41,7 @@ Le **classifieur existe déjà** : `coarse_grain.derive_coarse_blocks` distingue
 | **copié-collé hétérogène** | selon le collage (souvent blob, parfois lignes vides survivantes) | **imprévisible** | idem blob ; **couvert par le filet de validation** (§4) qui refuse d'aligner un texte non-ancré. |
 | **TEI / XML balisé** | `tei_importer` : `<p>` **ou** `<s>` → lignes plates, `xml:id`→external_id | **`[N]`/position** (external_id), mais **plat** (pas de `parent_n`) | pour un **aller-retour** export→TEI→réimport qui **retient le 2-grain** : `<p> ⊃ <s>` imbriqué + `parent_n` (cf. §7 chantier 3). |
 
-**Lecture :** le brut *à paragraphes* (docx/odt) est **déjà** couvert — l'ancre position est posée à l'import, l'ancre ¶ par une resegmentation. Le seul brut *réellement à découvert* est le **blob / copié-collé sans structure survivante**. Le TEI est ancré à l'import (external_id) mais **plat** : suffisant pour aligner, insuffisant pour un round-trip 2-grain.
+**Lecture (corrigée par la revue M1, §10) :** le brut *à paragraphes* (docx/odt) n'est couvert **sous la stratégie par défaut (`length_bounded`) que s'il est resegmenté** (`parent_n`). L'ancre *position* seule (external_id=pos) **ne protège pas** un run de longueur — deux docx de 10 vs 12 ¶ non resegmentés dérivent en silence, exactement comme Beigbeder. La position ne protège que sous une stratégie *identité* (`position`/`external_id`). Le seul brut *réellement à découvert quelle que soit la stratégie* est le **blob / copié-collé sans structure**. Le TEI est ancré à l'import (external_id) mais **plat** : alignable sous une stratégie identité, à découvert sous longueur tant qu'il n'est pas resegmenté ; insuffisant pour un round-trip 2-grain.
 
 ## 4. Le levier unificateur — valider l'ancrage (le filet)
 
@@ -90,4 +92,17 @@ Le bandeau de validation **choisit** parmi 1-4 d'après `has_external_id`, le r�
 
 1. **Surface exacte de D-U3** — champ ajouté à la charge matrice déjà servie (le moins de contrat) *vs* GET dédiée `/documents/{id}/anchor_status` (réutilisable ailleurs) ? Reco : commencer par le **champ dans la charge existante**, extraire une route si un 2ᵉ appelant apparaît.
 2. **Seuils blob (D1 R2.3)** — `line_count ≤ ?` / `max_text_len ≥ ?` pour classer « mono-unité » — à caler sur le corpus réel (partagé avec R2.3 §7.2).
-3. **`external_id` position vs valeur** — distinguer dans `anchor_kind` l'ancre *position* (docx_paragraphs, faible) de l'ancre *valeur* `[N]` (forte) demande de savoir *comment* l'external_id a été posé. Marquer la provenance à l'import (un flag `anchor_kind` sur le run/document), ou l'inférer (external_id == position séquentielle ⇒ position) ? Reco : **inférer** au début (pas de nouveau champ), marquer si l'inférence s'avère ambiguë.
+3. **`external_id` position vs valeur** — distinguer dans `anchor_kind` l'ancre *position* (docx_paragraphs, faible) de l'ancre *valeur* `[N]` (forte) demande de savoir *comment* l'external_id a été posé. Marquer la provenance à l'import (un flag `anchor_kind` sur le run/document), ou l'inférer (external_id == position séquentielle ⇒ position) ? Reco : **inférer** au début (pas de nouveau champ), marquer si l'inférence s'avère ambiguë. → **Tranché : inféré** (`external_id == n` ⇒ position, sinon valeur), cf. `anchoring._external_id_anchor` (§10).
+
+## 10. Chantier 1 — bâti + revue adverse (2026-07-18)
+
+**Livré.** Moteur : `anchoring.py` (`anchor_status(units)` pur — `value`/`paragraph`/`position`/`null` + `line_count` ; `anchor_status_for_doc(conn, id)` thin wrapper ; réutilise `coarse_grain.is_anchored_regime` **extrait**) ; `matrix_export_service` expose `anchor_status` ∥ `languages` (contrat **1.6.59**, additif read-only — D-U3/D-U6 respectés). Front : `anchorWarn.ts` (pur) + bandeau passif (au chargement) et **garde** avant « Aligner » (non bloquante — D-U1) dans `AlignMatrixView`.
+
+**Revue adverse (6 finders → 2 réfutateurs/finding).** 1 majeur + 4 mineurs corrigés ; 1 nit acté acceptable ; 1 réfuté. Détail dans [`REVIEW_upstream_anchoring_2026-07-18.md`](REVIEW_upstream_anchoring_2026-07-18.md).
+
+- **M1 (majeur) — filet rendu conscient de la stratégie.** Le trou : classer l'ancrage *par document* faisait taire l'alerte pour `value`/`position` alors que la stratégie **par défaut** (`length_bounded`) ne les consomme pas → dérive silencieuse (contredisait la « Lecture » d'origine de §3, corrigée ci-dessus). Correctif : `anchorWarnings(matrix, strategy)` sépare **camp longueur** (`length_bounded`/`similarity` : protégé ssi les deux ¶-ancrés, ou comptes de segments égaux = parallèle) du **camp identité** (`external_id*`/`position` : `[N]`/position protègent). Nouveau motif d'alerte `unused-anchor` (« ancré par [N]/position mais la stratégie « longueur » ne l'exploite pas → bascule external_id, ou regroupe en paragraphes »).
+- **Mineurs corrigés :** `anchorRemedy(0)` (doc 100 % structure ≠ blob) ; remède blob purgé de « extraire ses paragraphes » (R2.3 non construit) ; bandeau garde/rerun-confirm fermé au changement de famille (plus de bandeau fantôme) ; acquittement de la garde ré-armé à chaque `_loadMatrix` (lié au **contenu chargé**, plus à la famille pour toujours).
+- **Nit acté :** `anchor_status` = N+1 lectures `units` par chargement matrice — borné, indexé, motif identique à `coarse_blocks_for_doc` ; **pas de correctif**.
+- **Réfuté :** KeyError `_external_id_anchor` — `n` toujours fourni par le SELECT, inatteignable.
+
+**Reste ouvert (hors chantier 1).** Le filet ne *câble* pas encore les remèdes en un clic (il les nomme + pointe la couche). Chantiers 2 (blob R2.3) et 3 (round-trip TEI) inchangés.

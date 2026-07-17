@@ -76,8 +76,11 @@ export class AlignMatrixView {
   private _aligning = false;
   /** Teardown of the open cut modal, so dispose()/reset can force-close it (F4). */
   private _closeCutModal: (() => void) | null = null;
-  /** Family for which the upstream-anchoring warning was acknowledged — the « Aligner »
-   *  gate warns once per family (DESIGN_upstream_anchoring §4), not on every click. */
+  /** Family whose upstream-anchoring warning was acknowledged for the LOADED matrix — the
+   *  « Aligner » gate warns once per loaded matrix (DESIGN_upstream_anchoring §4), not on
+   *  every click. Reset on every `_loadMatrix` so the consent is tied to the loaded CONTENT,
+   *  not to the family forever (revue m4/n2): a re-import that re-breaks the anchoring, or a
+   *  switch to another family, re-arms the gate. */
   private _anchorAckFamilyId: number | null = null;
 
   constructor(
@@ -120,6 +123,9 @@ export class AlignMatrixView {
       loadBtn.disabled = none;
       alignBtn.disabled = none;
       advBtn.disabled = none;
+      // revue m1 — a rerun-confirm or an anchoring gate armed for the PREVIOUS family must
+      // not survive the switch (it would describe the wrong entity above the new grid).
+      this._closeAlignStrip();
     });
     loadBtn.addEventListener("click", () => void this._loadMatrix());
     alignBtn.addEventListener("click", () => void this._onAlignClick());
@@ -269,13 +275,17 @@ export class AlignMatrixView {
       this._view = view;
       this._loadedConn = conn;
       this._loadedFamilyId = this._selectedFamilyId;
+      // revue m4/n2 — a fresh matrix is fresh content: any prior anchoring acknowledgement is
+      // void, so the gate re-arms (a re-import that re-broke the anchoring must warn again).
+      this._anchorAckFamilyId = null;
       if (view.rows.length === 0) {
         setHtml(area, raw('<p class="prep-matrix-hint">Aucun segment dans le moyeu de cette famille.</p>'));
       } else {
         // Upstream-anchoring notice (DESIGN_upstream_anchoring §4): a passive banner above
-        // the grid whenever a document of this family carries no anchor — so a « Charger »
+        // the grid whenever a document of this family is not protected FOR THE CHOSEN
+        // STRATEGY (m1 — length/similarity bound drift only via parent_n) — so a « Charger »
         // (no align yet) already surfaces the drift risk and its remedy.
-        const notice = buildAnchorNoticeHtml(anchorWarnings(matrix));
+        const notice = buildAnchorNoticeHtml(anchorWarnings(matrix, this._alignStrategy()));
         setHtml(area, raw(notice + buildMatrixGridHtml(view)));
         summary.textContent = matrixSummaryLine(view);
       }
@@ -296,11 +306,17 @@ export class AlignMatrixView {
 
   // ─── « ⇄ Aligner » — assumed default + « Avancé » (tranche 5, §4) ─────────────
 
+  /** The strategy that « Aligner » will run — the fold-away « Avancé » select, else the
+   *  assumed default. Concrete (never undefined) so the anchoring filet (m1) can key on it. */
+  private _alignStrategy(): AlignStrategy {
+    return (this._root?.querySelector<HTMLSelectElement>("#matrix-align-strategy")?.value
+      ?? ALIGN_DEFAULTS.strategy) as AlignStrategy;
+  }
+
   /** The options behind the button: the assumed default, overridden by « Avancé ». */
   private _alignOptions(): FamilyAlignOptions {
     const root = this._root;
-    const strategy = (root?.querySelector<HTMLSelectElement>("#matrix-align-strategy")?.value
-      ?? ALIGN_DEFAULTS.strategy) as AlignStrategy;
+    const strategy = this._alignStrategy();
     const preserve = root?.querySelector<HTMLInputElement>("#matrix-align-preserve")?.checked ?? true;
     const opts: FamilyAlignOptions = {
       ...ALIGN_DEFAULTS, strategy, preserve_accepted: preserve,
@@ -350,7 +366,9 @@ export class AlignMatrixView {
     // the user anchors first instead of hand-repairing the matrix. Non-blocking (D-U1): the
     // gate's « Aligner quand même » sets the ack and re-enters, flowing on to the normal run.
     if (this._matrix && this._anchorAckFamilyId !== this._selectedFamilyId) {
-      const warnings = anchorWarnings(this._matrix);
+      // m1 — evaluate against the strategy about to run: the gate must reflect what THIS run
+      // will do (the fold-away « Avancé » may have switched to external_id, which is safe).
+      const warnings = anchorWarnings(this._matrix, this._alignStrategy());
       if (warnings.length > 0) {
         this._showAnchorGate(warnings, this._selectedFamilyId);
         return;

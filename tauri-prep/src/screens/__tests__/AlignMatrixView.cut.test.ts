@@ -852,12 +852,14 @@ describe("AlignMatrixView — anchoring gate (DESIGN_upstream_anchoring §4)", (
     });
   });
 
-  it("does NOT warn (nor gate) when every text is anchored", async () => {
+  it("does NOT warn (nor gate) when both texts are ¶-anchored (length-safe)", async () => {
+    // M1 — under the default length strategy only a ¶ pairing (or parallel counts) is safe;
+    // a value/[N] anchor would now warn, so the silent case must be genuinely protected.
     const anchored: AlignMatrix = {
       ...MATRIX_UNANCHORED,
       anchor_status: [
         { anchored: true, kind: "paragraph", line_count: 2 },
-        { anchored: true, kind: "value", line_count: 3 },
+        { anchored: true, kind: "paragraph", line_count: 2 },
       ],
     };
     const calls: Array<{ path: string; body: unknown }> = [];
