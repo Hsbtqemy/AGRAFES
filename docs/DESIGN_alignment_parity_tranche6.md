@@ -301,5 +301,5 @@ travail envisagé** (T6.2b/validation-dans-la-matrice) au profit d'**un seul ges
 - **T6.2b / T6.3 / T6.4** restent valides mais **descendent en priorité** : la validation n'étant plus une
   étape requise, le retrait du redondant (T6.3) n'est plus bloqué par un handoff post-run critique.
 - **Suivi (D-P9)** sort de pause **reformulé en tableau dérivé** (post-D-P7), hors résurrection de
-  `workflow_status`.
+  `workflow_status` — cadrage dédié : [`DESIGN_corpus_progress_rollup.md`](DESIGN_corpus_progress_rollup.md).
 - **D-P12 (Parcolab)** reste ouvert jusqu'à l'info aval ; sans effet sur D-P7.
