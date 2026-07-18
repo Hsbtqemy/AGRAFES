@@ -111,8 +111,11 @@ C'est ce qui distingue D-P9 d'un badge mort : il *fait entrer* dans le bon écra
 
 ## 6. Découpage en tranches
 
-1. **D-P9-1 [MOTEUR]** — agrégat `status_counts` + `collision_count` par famille dans `/families`, en
-   **réutilisant le gabarit `qa_report._check_alignment_pairs`** re-groupé au grain famille (+ test).
+1. **D-P9-1 [MOTEUR] ✅ (fait)** — agrégat `status_counts` + `collision_count` par famille dans `/families`,
+   prédicats de `qa_report._check_alignment_pairs`, **attribués par PAIRE normalisée `(min,max)`
+   (sens-agnostique)** et non par `pivot_doc_id` seul : sinon un lien pivot=enfant (crédité en couverture)
+   serait ignoré en vérification, et un lien racine→hors-famille sur-compterait (revue adverse D-P9-1).
+   Type client `FamilyStats` étendu (champs optionnels). 4 tests (dont orientation inverse + hors-famille).
 2. **D-P9-2 [FRONT]** — `familyView` = tableau de bord famille (couverture / vérification / collisions /
    cohérence) + **deep-links** : Révision fine via `scopeTo` (existant) **+ nouvelle méthode publique de
    pré-sélection famille sur `AlignMatrixView`** (à construire) pour « couverture → matrice ».
@@ -125,10 +128,17 @@ C'est ce qui distingue D-P9 d'un badge mort : il *fait entrer* dans le bon écra
 - **Risque faible** : additif, non-destructif, réutilise `scopeTo` (T6.2) + la nav sous-vues. Le seul vrai
   risque — **refaire un badge mort** — est conjuré par les deep-links (D-P9e) : la conséquence *est* la feature.
 - **Zéro migration, zéro contrat-freeze** (réponse `/families` non schématisée).
-- **Revue adverse (2026-07-18)** : prémisse **saine** (gap réel, freeze nul, `scopeTo` réutilisable). 3
-  corrections intégrées : (1) antériorité `qa_report._check_alignment_pairs` citée comme source de
-  réutilisation ; (2) direction de la collision corrigée (par **pivot**, pas par cible) ; (3) asymétrie
-  des deep-links explicitée (matrice = pré-sélection à construire, ≠ `scopeTo`).
+- **Revue adverse de la NOTE (2026-07-18)** : prémisse **saine** (gap réel, freeze nul, `scopeTo`
+  réutilisable). 3 corrections intégrées : (1) antériorité `qa_report._check_alignment_pairs` citée comme
+  source de réutilisation ; (2) direction de la collision corrigée (par **pivot**, pas par cible) ; (3)
+  asymétrie des deep-links explicitée (matrice = pré-sélection à construire, ≠ `scopeTo`).
+- **Revue adverse de l'IMPLÉMENTATION D-P9-1 (2026-07-18)** : 2 bugs corrigés — l'agrégat filtrait
+  `pivot_doc_id = racine` seul ⇒ (Q1) liens **pivot=enfant** ignorés en vérification mais crédités en
+  couverture (contradiction inter-axes), (Q3) liens **racine→hors-famille** sur-comptés. Fix = attribution
+  par **paire normalisée** (comme `aligned_pairs`). Collision/edge/clés confirmés corrects. Tests étendus.
+- **Caveat pré-existant (à gérer en D-P9-2)** : `aligned_pairs`/`completion_pct` ne filtrent pas le statut
+  ⇒ une famille dont **tous** les liens sont rejetés compte comme « alignée ». Le front ne doit pas lire
+  `completion_pct` seul comme « prêt » — croiser avec `status_counts` (accepté vs rejeté).
 - **Notes liées** : périmètre = [`DESIGN_alignment_parity_tranche6.md`](DESIGN_alignment_parity_tranche6.md)
   §8 (D-P9 dérivé, D-P11 « accepté » vivant) ; handoff réutilisé = T6.2 (`AlignPanel.scopeTo`) ; diagnostic
   `workflow_status` = §8.1 + `DECISIONS.md:724`.

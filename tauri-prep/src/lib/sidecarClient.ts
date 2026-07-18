@@ -1780,6 +1780,12 @@ export interface FamilyStats {
   validated_docs: number;
   completion_pct: number;
   ratio_warnings: FamilyRatioWarning[];
+  /** D-P9 — axe VÉRIFICATION agrégé (distinct de completion_pct = couverture) : statut des
+   *  liens de la famille. Absent sur un sidecar antérieur à D-P9-1. */
+  status_counts?: { accepted: number; rejected: number; unreviewed: number };
+  /** D-P9 — collisions agrégées (segment pivot lié à > 1 bead sur une cible, rejetés exclus).
+   *  Absent sur un sidecar antérieur à D-P9-1. */
+  collision_count?: number;
 }
 
 export interface FamilyRecord {

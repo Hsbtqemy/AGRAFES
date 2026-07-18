@@ -6636,6 +6636,45 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             (min(r[0], r[1]), max(r[0], r[1])) for r in align_rows
         }
 
+        # ── 4b. D-P9 — vérification + collisions agrégées par famille ────────
+        # Attribuer chaque lien à SA famille par sa paire {pivot_doc, target_doc} NORMALISÉE
+        # (min,max) — exactement comme `aligned_pairs`, donc SENS-AGNOSTIQUE. Filtrer sur le
+        # seul `pivot_doc_id = racine` serait faux (revue adverse D-P9-1) : un lien pivot=enfant
+        # (aligné B→A puis B déclaré enfant de A) est crédité en couverture mais serait ignoré
+        # en vérification (Q1) ; un lien racine→doc hors-famille sur-compterait (Q3). La map
+        # paire→racine ne retient QUE les vraies paires parent↔enfant. Prédicats (buckets de
+        # statut ; collision = pivot lié à > 1 bead distinct sur une cible, rejetés exclus F8)
+        # repris de qa_report._check_alignment_pairs (DESIGN_corpus_progress_rollup §4).
+        pair_to_root: dict[tuple[int, int], int] = {}
+        for _pid in all_parent_ids:
+            for _c in children_of[_pid]:
+                _cid = _c["doc_id"]
+                pair_to_root[(min(_pid, _cid), max(_pid, _cid))] = _pid
+
+        status_by_root: dict[int, list[int]] = defaultdict(lambda: [0, 0, 0])  # acc, rej, unrev
+        for pv, tg, st in conn.execute(
+            f"SELECT pivot_doc_id, target_doc_id, status FROM alignment_links"
+            f" WHERE pivot_doc_id IN ({ph}) OR target_doc_id IN ({ph})",
+            list(all_doc_ids) * 2,
+        ).fetchall():
+            root = pair_to_root.get((min(pv, tg), max(pv, tg)))
+            if root is None:
+                continue
+            status_by_root[root][0 if st == "accepted" else 1 if st == "rejected" else 2] += 1
+
+        collisions_by_root: dict[int, int] = defaultdict(int)
+        for pv, tg in conn.execute(
+            f"SELECT pivot_doc_id, target_doc_id FROM alignment_links"
+            f" WHERE (pivot_doc_id IN ({ph}) OR target_doc_id IN ({ph}))"
+            f"   AND (status IS NULL OR status <> 'rejected')"
+            f" GROUP BY pivot_doc_id, pivot_unit_id, target_doc_id"
+            f" HAVING COUNT(DISTINCT COALESCE(bead_uid, 'L' || link_id)) > 1",
+            list(all_doc_ids) * 2,
+        ).fetchall():
+            root = pair_to_root.get((min(pv, tg), max(pv, tg)))
+            if root is not None:
+                collisions_by_root[root] += 1
+
         # ── 5. Build family objects ──────────────────────────────────────────
         families = []
         for parent_id in sorted(all_parent_ids):
@@ -6649,6 +6688,9 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 1 for mid in family_member_ids
                 if doc_map.get(mid, {}).get("workflow_status") == "validated"
             )
+            # D-P9 — vérification (statut des liens) + collisions, agrégées au grain famille.
+            n_accepted, n_rejected, n_unreviewed = status_by_root.get(parent_id, (0, 0, 0))
+            collision_count = collisions_by_root.get(parent_id, 0)
 
             # Pairs: parent ↔ each child
             pairs = [(parent_id, c["doc_id"]) for c in children]
@@ -6706,6 +6748,13 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                     "validated_docs": validated_docs,
                     "completion_pct": completion_pct,
                     "ratio_warnings": ratio_warnings,
+                    # D-P9 — axe vérification (distinct de completion_pct = couverture) + collisions.
+                    "status_counts": {
+                        "accepted": n_accepted,
+                        "rejected": n_rejected,
+                        "unreviewed": n_unreviewed,
+                    },
+                    "collision_count": collision_count,
                 },
             })
 
