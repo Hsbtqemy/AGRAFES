@@ -222,6 +222,44 @@ export class AlignPanel {
     return true;
   }
 
+  /**
+   * Point d'entrée public (D-P9-2b) — ouvre la « Révision fine » directement en mode
+   * « Réviser famille » sur `familyId` (deep-link depuis le panneau famille de « Documents » :
+   * « N à réviser » / collisions). **Famille-scopé** (tous les liens des paires parent↔enfants),
+   * à la différence de {@link scopeTo} qui est paire-scopé. L'appelant (`ActionsScreen`) a déjà
+   * rendu la sous-vue « alignement » visible. Recharge la liste des familles pour garantir la
+   * présence de l'option, fixe le `<select>`, puis délègue à `_enterFamilyReview`. Renvoie false
+   * si la famille reste introuvable (base changée / doc filtré) — la sous-vue est déjà basculée,
+   * le toast suffit.
+   */
+  async reviewFamily(familyId: number): Promise<boolean> {
+    const el = this._el;
+    if (!el) return false;
+    if (!this._conn()) {
+      this._cb.toast("✗ Aucune connexion au moteur — Révision fine indisponible.", true);
+      return false;
+    }
+    if (this._familyMode) this._exitFamilyReview(el);
+    await this._loadFamilies(el); // garantit this._families + le <select> à jour
+    const sel = el.querySelector<HTMLSelectElement>("#align-family-sel");
+    if (!sel) return false;
+    sel.value = String(familyId);
+    // Option absente → value reste "" (HTMLSelectElement) : le détecter plutôt que d'entrer
+    // dans une revue famille vide sans explication.
+    if (sel.value !== String(familyId)) {
+      this._cb.toast("✗ Famille introuvable dans la Révision fine — actualiser les documents.", true);
+      return false;
+    }
+    this._onFamilyChange(el); // MAJ bandeau stats + réarme le bouton « Réviser »
+    // Note (passe adverse) : le mode revue famille s'appuie sur le garde `_familyLoading` existant,
+    // pas sur un jeton de séquence comme scopeTo (T6.2). Le deep-link vient d'UN panneau famille
+    // (une racine ouverte) : un double-clic re-cible la MÊME famille (idempotent) ; un enchaînement
+    // sur deux familles différentes suppose de repasser par « Documents » (≫ latence d'un audit
+    // loopback) — pratiquement inatteignable, à la différence des clics de cellules de la matrice.
+    await this._enterFamilyReview(el);
+    return true;
+  }
+
   /** Remet les filtres d'audit à « tout » (chip statut + recherche texte) — garantit qu'un
    *  lien ciblé par le handoff scopé (T6.2) n'est pas masqué par un filtre laissé actif. */
   private _resetAuditFilters(el: HTMLElement): void {

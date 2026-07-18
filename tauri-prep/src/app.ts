@@ -142,6 +142,13 @@ export class App {
     this._metadata.setJobCenter(this._jobCenter, showToast);
     this._actions.setOnOpenDocuments(() => this._switchTab("documents"));
     this._actions.setOnOpenExporter((prefill) => this._openExporterWithPrefill(prefill));
+    // D-P9-2b — deep-link « panneau famille (Documents) → espace Alignement ». App orchestre
+    // la nav inter-écrans (les écrans ne se référencent pas) : même forme que les deep-links
+    // existants (switchTab puis méthode publique de l'écran cible, cf. app.ts:159/376).
+    this._metadata.setOnOpenAlignment((familyId, mode) => {
+      this._switchTab("actions");
+      this._actions.openAlignmentOnFamily(familyId, mode);
+    });
     this._exports.setJobCenter(this._jobCenter, showToast);
 
     void this._refreshTopbarDbLabel();

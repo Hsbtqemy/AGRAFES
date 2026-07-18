@@ -224,6 +224,25 @@ export class ActionsScreen {
     await seg.focusRolesTab();
   }
 
+  /**
+   * Deep-link D-P9-2b (depuis le panneau famille de « Documents ») : ouvre l'espace
+   * Alignement sur `familyId`. `mode === "matrix"` → la matrice (trou de couverture) ;
+   * `mode === "review"` → la Révision fine en mode famille (« à réviser » / collisions).
+   * Même chemin de nav guardé (`_wfRoot`, racine courante) que le callback `onOpenRevisionFine`
+   * (T6.1/T6.2), pas `_root` (périmable après re-render). Délègue à la méthode publique de
+   * pré-sélection famille de l'écran cible.
+   */
+  openAlignmentOnFamily(familyId: number, mode: "matrix" | "review"): void {
+    if (!this._wfRoot) return;
+    if (mode === "matrix") {
+      this._switchSubViewDOM(this._wfRoot, "matrice");
+      void this._matrixView?.selectAndLoadFamily(familyId);
+    } else {
+      this._switchSubViewDOM(this._wfRoot, "alignement");
+      void this._alignPanel?.reviewFamily(familyId);
+    }
+  }
+
   private _loadSubViewPref(): void {
     try {
       const saved = localStorage.getItem(ActionsScreen.LS_ACTIVE_SUB) as SubView | null;

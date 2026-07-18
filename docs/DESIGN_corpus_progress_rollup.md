@@ -116,9 +116,17 @@ C'est ce qui distingue D-P9 d'un badge mort : il *fait entrer* dans le bon écra
    (sens-agnostique)** et non par `pivot_doc_id` seul : sinon un lien pivot=enfant (crédité en couverture)
    serait ignoré en vérification, et un lien racine→hors-famille sur-compterait (revue adverse D-P9-1).
    Type client `FamilyStats` étendu (champs optionnels). 4 tests (dont orientation inverse + hors-famille).
-2. **D-P9-2 [FRONT]** — `familyView` = tableau de bord famille (couverture / vérification / collisions /
-   cohérence) + **deep-links** : Révision fine via `scopeTo` (existant) **+ nouvelle méthode publique de
-   pré-sélection famille sur `AlignMatrixView`** (à construire) pour « couverture → matrice ».
+2. **D-P9-2 [FRONT] ✅ (fait)** — deux parties :
+   - **2a — affichage** (`82e0c3b`) : `familyView` montre les signaux dérivés (« ✓ N révisé(s) · M à
+     réviser · K rejeté(s) » + « ⨯ C collision(s) »), remplaçant « N validé(s) » (D-P9d), repli sur
+     `validated_docs` si sidecar ancien.
+   - **2b — deep-links FAMILLE-scopés** : chaque signal ACTIONNABLE est un bouton `.prep-fam-deeplink`
+     menant à l'exact travail restant. Chaîne de nav en 5 maillons : `MetadataScreen.setOnOpenAlignment`
+     (délégué sur les boutons) → wiring `app.ts` (App orchestre) → `ActionsScreen.openAlignmentOnFamily`
+     (bascule sous-vue via `_wfRoot`) → **`AlignMatrixView.selectAndLoadFamily`** (couverture < 100 % →
+     matrice, méthode publique construite ici — pas d'équivalent `scopeTo` côté matrice, note §3) **ou**
+     **`AlignPanel.reviewFamily`** (« à réviser » / collisions → Révision fine mode famille, famille-scopé
+     ≠ `scopeTo` paire-scopé). 4 fichiers de tests (17 cas).
 3. **D-P9-3 [FRONT]** — résumé compact enrichi dans la vue hiérarchie + lever l'ambiguïté `validated_docs`.
 
 **Ordre : moteur d'abord** (le front en dépend).
@@ -132,6 +140,15 @@ C'est ce qui distingue D-P9 d'un badge mort : il *fait entrer* dans le bon écra
   réutilisable). 3 corrections intégrées : (1) antériorité `qa_report._check_alignment_pairs` citée comme
   source de réutilisation ; (2) direction de la collision corrigée (par **pivot**, pas par cible) ; (3)
   asymétrie des deep-links explicitée (matrice = pré-sélection à construire, ≠ `scopeTo`).
+- **Revue adverse de l'IMPLÉMENTATION D-P9-2b (2026-07-18)** : câblage inter-écrans (classe du bug
+  race T6.2). 3 points traités — (1) **chargement concurrent matrice** : `onActivated` lance un
+  `_loadFamilies` non attendu que `selectAndLoadFamily` télescope ; converge sans divergence car
+  `_loadFamilies` lit `prev` APRÈS son `await` (test dédié) ; (2) **faux succès sans connexion** :
+  `selectAndLoadFamily`/`reviewFamily` renvoyaient un `true` silencieux (no-op) → garde conn explicite
+  + toast (2 tests) ; (3) **ré-entrance revue famille** : s'appuie sur `_familyLoading` (pas de jeton de
+  séquence) — atteignable seulement en repassant par « Documents » (≫ latence audit loopback), double-clic
+  idempotent → accepté et documenté. La délégation clic→`onOpenAlignment` est testée sur le VRAI
+  `_renderEditPanel` (le maillon dont une faute reproduirait un « badge mort »).
 - **Revue adverse de l'IMPLÉMENTATION D-P9-1 (2026-07-18)** : 2 bugs corrigés — l'agrégat filtrait
   `pivot_doc_id = racine` seul ⇒ (Q1) liens **pivot=enfant** ignorés en vérification mais crédités en
   couverture (contradiction inter-axes), (Q3) liens **racine→hors-famille** sur-comptés. Fix = attribution

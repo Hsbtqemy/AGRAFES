@@ -1405,8 +1405,20 @@ summary:focus-visible,
   border-radius: 4px; padding: 3px 8px; margin: 4px 0;
 }
 
-/* D-P9 — signaux dérivés dans la ligne de stats : « à réviser » et collisions sont les
-   signaux ACTIONNABLES (ce qui reste à faire), donc mis en avant. */
+/* D-P9 — signaux dérivés dans la ligne de stats : « à réviser », collisions et couverture
+   incomplète sont les signaux ACTIONNABLES (ce qui reste à faire), donc mis en avant.
+   D-P9-2b : ces signaux sont des deep-links = des BOUTONS vers le travail restant (matrice /
+   Révision fine famille). Chrome de bouton neutralisé pour rester des chips inline dans la
+   ligne de stats ; l'affordance de clic = soulignement + curseur au survol. Le reset est
+   placé AVANT les règles de couleur pour qu'elles gagnent par ordre-source (même spécificité). */
+.prep-fam-deeplink {
+  appearance: none; -webkit-appearance: none;
+  border: none; background: transparent; padding: 0; margin: 0;
+  font: inherit; color: inherit; cursor: pointer; border-radius: 3px;
+}
+.prep-fam-deeplink:hover { text-decoration: underline; }
+.prep-fam-deeplink:focus-visible { outline: 2px solid #2563eb; outline-offset: 1px; }
+.prep-fam-coverage { color: #2563eb; }
 .prep-fam-verif .prep-fam-toreview { color: #b45309; font-weight: 700; }
 .prep-fam-collisions {
   color: #b91c1c; font-weight: 600;

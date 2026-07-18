@@ -214,6 +214,36 @@ export class AlignMatrixView {
     void this._loadFamilies();
   }
 
+  /**
+   * Point d'entrée public (D-P9-2b) — pré-sélectionne `familyId` dans le sélecteur de la
+   * matrice et charge sa matrice (deep-link « couverture → matrice » depuis le panneau
+   * famille de « Documents »). La note §3 acte l'asymétrie : la matrice n'a pas d'équivalent
+   * public de `AlignPanel.scopeTo`, on reproduit ici l'effet du handler `change` + clic
+   * « Charger ». On fixe `_selectedFamilyId` AVANT `_loadFamilies` : celui-ci lit `prev` APRÈS
+   * son `await`, donc l'appel `onActivated` concurrent (lui aussi `_loadFamilies`) converge
+   * sur la même famille (double fetch bénin, pas de divergence). Renvoie false si la famille
+   * reste introuvable (la sous-vue est déjà basculée, le toast suffit).
+   */
+  async selectAndLoadFamily(familyId: number): Promise<boolean> {
+    if (!this._root) return false;
+    // Sans connexion, _loadFamilies et _loadMatrix sont des no-op : sans ce garde on renverrait
+    // true en n'ayant rien chargé (faux succès). Échouer explicitement (passe adverse D-P9-2b).
+    if (!this._getConn()) {
+      this._cb.toast?.("✗ Aucune connexion au moteur — matrice indisponible.", true);
+      return false;
+    }
+    this._selectedFamilyId = familyId; // cible de re-sélection de _loadFamilies (lit prev après await)
+    await this._loadFamilies();
+    // _loadFamilies remet _selectedFamilyId à null si la famille n'est pas dans la liste.
+    if (this._selectedFamilyId !== familyId) {
+      this._cb.toast?.("✗ Famille introuvable dans la matrice — actualiser les documents.", true);
+      return false;
+    }
+    this._closeAlignStrip();
+    await this._loadMatrix();
+    return true;
+  }
+
   refreshDocs(): void {
     // A connection change invalidates the loaded matrix: its doc/unit ids belong to
     // the OLD database — a still-visible ✂ would write into the new one (F1).

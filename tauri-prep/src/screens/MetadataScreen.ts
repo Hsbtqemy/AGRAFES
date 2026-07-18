@@ -110,6 +110,10 @@ export class MetadataScreen {
   private _sortDir: "asc" | "desc" = "asc";
   private _jobCenter: JobCenter | null = null;
   private _showToast: ((msg: string, isError?: boolean) => void) | null = null;
+  // D-P9-2b — deep-link « signal → travail restant » : le panneau famille ouvre l'espace
+  // Alignement (matrice pour un trou de couverture ; Révision fine pour « à réviser »/collisions).
+  // Injecté par app.ts (App orchestre la nav inter-écrans ; MetadataScreen ne connaît pas Actions).
+  private _onOpenAlignment: ((familyId: number, mode: "matrix" | "review") => void) | null = null;
 
   // Preview + token editor + inline unit edit (extracted U-02). Owns its own
   // 12 state fields + conventions cache; constructed once so state survives
@@ -146,6 +150,11 @@ export class MetadataScreen {
   setJobCenter(jc: JobCenter, showToast: (msg: string, isError?: boolean) => void): void {
     this._jobCenter = jc;
     this._showToast = showToast;
+  }
+
+  /** D-P9-2b — injecte le deep-link « panneau famille → espace Alignement » (voir champ). */
+  setOnOpenAlignment(cb: ((familyId: number, mode: "matrix" | "review") => void) | null): void {
+    this._onOpenAlignment = cb;
   }
 
   hasPendingChanges(): boolean {
@@ -924,6 +933,18 @@ export class MetadataScreen {
         void this._curationFamilyFlow(familyId, btn);
       });
 
+    // D-P9-2b — deep-links des signaux dérivés (familyView) : « couverture → matrice »,
+    // « à réviser » / collisions → Révision fine famille. « La conséquence EST la feature »
+    // (note §0) : chaque signal actionnable mène à l'exact travail restant.
+    this._editPanelEl.querySelectorAll<HTMLButtonElement>(".prep-fam-deeplink")
+      .forEach(btn => {
+        btn.addEventListener("click", () => {
+          const familyId = Number(btn.dataset.familyId);
+          if (!Number.isFinite(familyId)) return;
+          const mode = btn.dataset.deeplink === "matrix" ? "matrix" : "review";
+          this._onOpenAlignment?.(familyId, mode);
+        });
+      });
   }
 
   private _inheritAuthorFromParent(): void {

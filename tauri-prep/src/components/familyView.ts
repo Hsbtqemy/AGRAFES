@@ -63,17 +63,41 @@ export function familyPanelHtml(doc: DocumentRecord, families: FamilyRecord[]): 
   // D-P9 — axe VÉRIFICATION (statut des liens) distinct de la couverture (paires alignées),
   // + collisions. Remplace « N validé(s) » (= workflow_status, axe segmentation ambigu — D-P9d) ;
   // repli sur validated_docs si le sidecar est antérieur à D-P9-1 (champs absents).
+  // D-P9-2b — chaque signal ACTIONNABLE est un deep-link (bouton .prep-fam-deeplink,
+  // délégué dans MetadataScreen) : « à réviser » / collisions → Révision fine famille ;
+  // couverture incomplète → matrice. « La conséquence EST la feature » (note §0) : sans
+  // ces liens, ce ne serait qu'un badge mort de plus.
+  const famId = family.family_id;
   const sc = stats.status_counts;
-  const verifBadge = sc
-    ? `<span class="prep-fam-verif" title="Liens d'alignement : révisés (acceptés) vs à réviser (non-révisés)">`
-      + `✓ ${sc.accepted} révisé(s)`
-      + (sc.unreviewed > 0 ? ` · <strong class="prep-fam-toreview">${sc.unreviewed} à réviser</strong>` : "")
-      + (sc.rejected > 0 ? ` · ${sc.rejected} rejeté(s)` : "")
-      + `</span>`
-    : `<span>${stats.validated_docs} validé(s)</span>`;
+  let verifBadge: string;
+  if (!sc) {
+    verifBadge = `<span>${stats.validated_docs} validé(s)</span>`;
+  } else {
+    const reviewed = `✓ ${sc.accepted} révisé(s)`;
+    const rejected = sc.rejected > 0 ? ` · ${sc.rejected} rejeté(s)` : "";
+    verifBadge = sc.unreviewed > 0
+      // Reste-à-réviser → bouton vers la Révision fine famille.
+      ? `<button type="button" class="prep-fam-deeplink prep-fam-verif"`
+        + ` data-deeplink="review" data-family-id="${famId}"`
+        + ` title="Réviser les ${sc.unreviewed} lien(s) non-révisé(s) de cette famille">`
+        + reviewed + ` · <strong class="prep-fam-toreview">${sc.unreviewed} à réviser</strong>` + rejected
+        + `</button>`
+      : `<span class="prep-fam-verif" title="Liens d'alignement révisés (acceptés)">`
+        + reviewed + rejected + `</span>`;
+  }
   const collBadge = (stats.collision_count ?? 0) > 0
-    ? `<span class="prep-fam-collisions" title="Collisions à résoudre (un segment lié à plusieurs cibles)">⨯ ${stats.collision_count} collision(s)</span>`
+    ? `<button type="button" class="prep-fam-deeplink prep-fam-collisions"`
+      + ` data-deeplink="review" data-family-id="${famId}"`
+      + ` title="Résoudre ${stats.collision_count} collision(s) — un segment lié à plusieurs cibles">`
+      + `⨯ ${stats.collision_count} collision(s)</button>`
     : "";
+  // Couverture : deep-link vers la matrice seulement s'il reste des paires à aligner.
+  const coverageBadge = stats.aligned_pairs < stats.total_pairs
+    ? `<button type="button" class="prep-fam-deeplink prep-fam-coverage"`
+      + ` data-deeplink="matrix" data-family-id="${famId}"`
+      + ` title="Ouvrir la matrice sur cette famille pour aligner les paires manquantes">`
+      + `${stats.aligned_pairs}/${stats.total_pairs} paires alignées ↗</button>`
+    : `<span>${stats.aligned_pairs}/${stats.total_pairs} paires alignées</span>`;
 
   return `
       <div class="prep-family-panel">
@@ -84,7 +108,7 @@ export function familyPanelHtml(doc: DocumentRecord, families: FamilyRecord[]): 
         <div class="prep-fam-stats-row">
           <span>${stats.total_docs} doc(s)</span>
           <span>${stats.segmented_docs}/${stats.total_docs} segmentés</span>
-          <span>${stats.aligned_pairs}/${stats.total_pairs} paires alignées</span>
+          ${coverageBadge}
           ${verifBadge}
           ${collBadge}
         </div>
