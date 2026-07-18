@@ -212,7 +212,7 @@ export class AlignPanel {
     // le détecter plutôt que charger un audit vide sans explication.
     if (pivSel.value !== String(scope.pivotDocId) || tgtSel.value !== String(scope.targetDocId)) {
       this._updateRunBtnState(el);
-      this._cb.toast("✗ Paire introuvable dans la Révision fine — actualiser les documents.", true);
+      this._cb.toast("✗ Paire introuvable dans le Contrôle — actualiser les documents.", true);
       return false;
     }
     this._resetAuditFilters(el);
@@ -236,7 +236,7 @@ export class AlignPanel {
     const el = this._el;
     if (!el) return false;
     if (!this._conn()) {
-      this._cb.toast("✗ Aucune connexion au moteur — Révision fine indisponible.", true);
+      this._cb.toast("✗ Aucune connexion au moteur — Contrôle indisponible.", true);
       return false;
     }
     if (this._familyMode) this._exitFamilyReview(el);
@@ -247,7 +247,7 @@ export class AlignPanel {
     // Option absente → value reste "" (HTMLSelectElement) : le détecter plutôt que d'entrer
     // dans une revue famille vide sans explication.
     if (sel.value !== String(familyId)) {
-      this._cb.toast("✗ Famille introuvable dans la Révision fine — actualiser les documents.", true);
+      this._cb.toast("✗ Famille introuvable dans le Contrôle — actualiser les documents.", true);
       return false;
     }
     this._onFamilyChange(el); // MAJ bandeau stats + réarme le bouton « Réviser »

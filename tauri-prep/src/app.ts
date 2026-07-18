@@ -361,7 +361,7 @@ export class App {
           ["Segmentation",  "segmentation","⌥"],
           ["Curation",      "curation",    "◇"],
           ["Alignement",    "matrice",     "⇄"],
-          ["Révision fine", "alignement",  "✎"],
+          ["Contrôle",      "alignement",  "✎"],
           ["Annotation",    "annoter",     "◎"],
         ];
         for (const [label, navKey, icon] of treeItems) {

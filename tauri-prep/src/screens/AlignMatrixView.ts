@@ -113,7 +113,7 @@ export class AlignMatrixView {
       + `<span id="matrix-summary" class="prep-matrix-summary" aria-live="polite"></span>`
       // T6.1 — accès au mode secondaire « Révision fine » (revue statut/collisions/qualité par lien).
       + `<button type="button" id="matrix-revision-fine" class="btn btn-ghost btn-sm prep-matrix-revfine-btn"`
-      + ` title="Révision fine — revue statut / collisions / qualité, lien par lien">&#9998; R&#233;vision fine</button>`
+      + ` title="Contrôle — revue statut / collisions / qualité, lien par lien">&#9998; Contrôle</button>`
       + `</div>`
       + buildAlignAdvancedHtml()
       + `<div id="matrix-align-strip" class="prep-matrix-align-strip" aria-live="polite"></div>`
@@ -944,7 +944,7 @@ export class AlignMatrixView {
       // Revue G1 : le voisin peut porter un lien REJETÉ (invisible dans cell_links) sur la cible
       // déplacée → l'index unique (pivot,cible) le refuse en 409. Message actionnable.
       const msg = /already exists|conflict|409/i.test(raw)
-        ? "un lien existe déjà pour cette cible chez le voisin (peut-être rejeté en Révision fine)"
+        ? "un lien existe déjà pour cette cible chez le voisin (peut-être rejeté au Contrôle)"
         : raw;
       if (createdIds.length) {
         let compensated = true;
@@ -1127,7 +1127,7 @@ export class AlignMatrixView {
         ? ` — le segment voisin garde ${neighborRemaining} traduction${neighborRemaining > 1 ? "s" : ""}`
         : " — le segment voisin est à traiter";
       const warn = !grouped && cellLinks.filter((l) => l.manual !== true).length > 1
-        ? " (cette cellule porte une ambiguïté d'alignement — à arbitrer en Révision fine)"
+        ? " (cette cellule porte une ambiguïté d'alignement — à arbitrer au Contrôle)"
         : "";
       this._cb.toast?.(`✓ Phrase absorbée${tail}${warn}`);
       await this._reloadPreservingScroll();
@@ -1136,7 +1136,7 @@ export class AlignMatrixView {
       // A REJECTED link (P,T) still occupies the unique index (mig 008) but is invisible
       // in the matrix, so the resolver cannot see it and create returns a bare 409 (T7).
       const msg = /already exists|CONFLICT|409/i.test(raw)
-        ? "un lien (rejeté ?) existe déjà entre ce segment et cette phrase — le réactiver ou le supprimer en Révision fine"
+        ? "un lien (rejeté ?) existe déjà entre ce segment et cette phrase — le réactiver ou le supprimer au Contrôle"
         : raw;
       if (createdId != null) {
         try {
@@ -1497,7 +1497,7 @@ export class AlignMatrixView {
       // Revue G1 : un lien (peut-être rejeté par la Révision fine, donc invisible) occupe déjà
       // l'index unique (pivot,cible) → 409. Message actionnable plutôt que la chaîne brute.
       this._cb.toast?.(/already exists|conflict|409/i.test(msg)
-        ? "✗ Un lien existe déjà pour cette cible (peut-être rejeté en Révision fine) — l'y réactiver ou le supprimer."
+        ? "✗ Un lien existe déjà pour cette cible (peut-être rejeté au Contrôle) — l'y réactiver ou le supprimer."
         : `✗ Rattacher : ${msg}`, true);
     } finally {
       this._cutBusy = false;

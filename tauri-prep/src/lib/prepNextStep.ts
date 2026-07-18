@@ -59,7 +59,7 @@ const BUTTON_LABELS: Record<PrepNavTarget, string> = {
   curation: "Aller à la Curation →",
   // T6.1 — « Alignement » désigne la matrice (surface primaire) ; l'ancien AlignPanel est « Révision fine ».
   matrice: "Aller à l'Alignement →",
-  alignement: "Aller à la Révision fine →",
+  alignement: "Aller au Contrôle →",
   annoter: "Aller à l'Annotation →",
   reindex: "Mettre à jour l'index FTS",
   export: "Aller à l'Export →",

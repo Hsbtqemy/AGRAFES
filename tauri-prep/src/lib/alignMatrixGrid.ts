@@ -79,7 +79,7 @@ export function buildMatrixGridHtml(view: MatrixView): string {
       // lien devient CLIQUABLE — la revue statut/collisions/qualité vit là-bas, pas ici.
       const reviewBtn = view.hasCellLinks && c.links.length > 0
         ? ` <button type="button" class="prep-matrix-review-btn" data-cut-row="${rowIdx}" data-cut-col="${colIdx}"`
-          + ` title="Réviser ce lien dans la Révision fine (statut, collisions, qualité)">&#128269;</button>`
+          + ` title="Réviser ce lien dans le Contrôle (statut, collisions, qualité)">&#128269;</button>`
         : "";
       // D-W19 — ＝ rattacher / re-cibler : le geste CONSTRUCTIF (inverse de ✕). Sur une
       // cellule vide → créer un lien ; sur un lien unique ENTIER → le re-cibler. Un lien COUPÉ

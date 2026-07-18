@@ -15,8 +15,8 @@ describe("actionsHubTemplate — carte Alignement (T6.1)", () => {
     expect(html).toMatch(/data-target="matrice"[^>]*>Ouvrir/);
   });
 
-  it("offre « Révision fine » en accès secondaire (data-target=alignement)", () => {
+  it("offre « Contrôle » en accès secondaire (data-target=alignement)", () => {
     expect(html).toContain('prep-acts-hub-wf-btn--secondary');
-    expect(html).toMatch(/data-target="alignement"[^>]*>R&eacute;vision fine/);
+    expect(html).toMatch(/data-target="alignement"[^>]*>Contr&ocirc;le/);
   });
 });

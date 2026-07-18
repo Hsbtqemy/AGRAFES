@@ -276,10 +276,14 @@ travail envisagé** (T6.2b/validation-dans-la-matrice) au profit d'**un seul ges
   (`aligned_count`/`total_pairs`/`segmented_docs`, `sidecar.py:6656`) ; il « manque » l'agrégat *vérifiés*
   + la surface. Corollaire : la stat `validated_docs` agrège le **mauvais axe** (`workflow_status` de
   segmentation) → à réagréger. **Sort de pause, séquencé APRÈS D-P7.**
-- **D-P10 — « Révision fine » → microscope optionnel.** Une fois D-P7 en place, elle ne retient **aucune
-  étape obligatoire** : accept/reject fin *pour le spécialiste* + collisions + qualité + orphelins +
-  source-modifiée. **Reléguer devient enfin cohérent.** Renommage (« Contrôle / Audit ») différé avec le
-  reste de l'endgame.
+- **D-P10 — « Révision fine » → microscope optionnel. ✅ (fait, 2026-07-19).** Une fois D-P7 en place, elle
+  ne retient **aucune étape obligatoire** : accept/reject fin *pour le spécialiste* + collisions + qualité +
+  orphelins + source-modifiée. **Reléguer** était déjà acquis (T6.1 : classe `--secondary` dé-emphasée +
+  sous-titre qui cadre les rôles). Restait le **renommage** : tranché **« Contrôle »** (mot unique, sobre,
+  QC) et appliqué à toutes les chaînes user-facing (label arbre de nav, `<h1>`, bouton matrice `→ Contrôle`,
+  CTA « Aller au Contrôle », carte hub, tooltips 🔎, toasts « au Contrôle »). Identifiants internes
+  (`RevisionFineScope`, id de sous-vue `"alignement"`, clés LS, commentaires T6.1/T6.2) **inchangés** — churn
+  risqué sans valeur. Front pur, zéro contrat/migration.
 - **D-P11 — Garder « accepté » *(point B tranché)*.** Ce n'est **pas** un statut mort : il est *load-bearing*
   via `preserve_accepted` (protège du recalcul, §8.1). Post-D-P7 son identité se recentre sur **« épinglé /
   vérifié / survit au ré-alignement »** (+ provenance + marqueur de progression), **plus** « valider-pour-

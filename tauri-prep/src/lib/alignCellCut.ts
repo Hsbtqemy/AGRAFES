@@ -108,7 +108,7 @@ export function resolveFusedCellLinks(column: CellLinkColumn, row: number): Fuse
     return { error: "Les deux lignes pointent vers des traductions distinctes — rien à couper ici." };
   }
   if (shared.length > 1) {
-    return { error: "Appariement ambigu (plusieurs traductions partagées) — passer par la Révision fine." };
+    return { error: "Appariement ambigu (plusieurs traductions partagées) — passer par le Contrôle." };
   }
   const ref = cur.find((l) => l.target_unit_id === shared[0])!;
   const [ws, we] = linkWindow(ref);

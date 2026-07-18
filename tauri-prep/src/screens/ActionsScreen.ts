@@ -436,7 +436,7 @@ export class ActionsScreen {
     // T6.1 — mode secondaire : l'ancien écran d'alignement devient « Révision fine ».
     headSection.innerHTML = `
       <div class="prep-acts-hub-head-left">
-        <h1>Révision fine
+        <h1>Contrôle
           <button type="button" id="act-align-reload-docs-btn" class="btn btn-secondary btn-sm"
                   title="Re-charger la liste des documents depuis la base"
                   style="margin-left:0.5rem;vertical-align:middle">&#8635; Actualiser</button>
