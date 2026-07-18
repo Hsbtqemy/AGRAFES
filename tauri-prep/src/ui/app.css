@@ -1404,6 +1404,13 @@ summary:focus-visible,
   font-size: 0.75rem; color: #92400e; background: #fef3c7;
   border-radius: 4px; padding: 3px 8px; margin: 4px 0;
 }
+
+/* D-P9 — signaux dérivés dans la ligne de stats : « à réviser » et collisions sont les
+   signaux ACTIONNABLES (ce qui reste à faire), donc mis en avant. */
+.prep-fam-verif .prep-fam-toreview { color: #b45309; font-weight: 700; }
+.prep-fam-collisions {
+  color: #b91c1c; font-weight: 600;
+}
 .prep-fam-actions { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
 
 /* ── Sprint 2: family segmentation inline result ──────────────────────────── */
