@@ -23,7 +23,7 @@ import type { JobCenter } from "../components/JobCenter.ts";
 import { initCardAccordions } from "../lib/uiAccordions.ts";
 import { setHtml, raw } from "../lib/safeHtml.ts";
 import { exportsScreenTemplate } from "../lib/exportsScreenTemplate.ts";
-import { productsForStage, formatsForProduct } from "../lib/exportV2Options.ts";
+import { productsForStage, formatsForProduct, linkStatusFilter } from "../lib/exportV2Options.ts";
 import { buildExportDocTableRows } from "../lib/exportDocTable.ts";
 
 
@@ -733,11 +733,16 @@ export class ExportsScreen {
         const includeStructure = (this._root.querySelector<HTMLInputElement>("#v2-pkg-include-structure")?.checked) ?? false;
         const includeAlignment = (this._root.querySelector<HTMLInputElement>("#v2-pkg-include-alignment")?.checked) ?? false;
         const teiProfile = (this._root.querySelector<HTMLSelectElement>("#v2-pkg-tei-profile")?.value) ?? "generic";
+        // D-P7 (forme 3) — le sélecteur rend le filtre visible : « tous sauf rejetés » (défaut,
+        // = accepted + unreviewed) vs « seulement validés » (accepted). Le rejet exclut toujours.
+        const linkStatus = (this._root.querySelector<HTMLSelectElement>("#v2-pkg-link-status")?.value) ?? "not_rejected";
+        const statusFilter = linkStatusFilter(linkStatus);
         const params: Record<string, unknown> = {
           out_path: outPath,
           include_structure: includeStructure,
           include_alignment: includeAlignment,
           tei_profile: teiProfile,
+          status_filter: statusFilter,
         };
         if (doc_ids) params.doc_ids = doc_ids;
 

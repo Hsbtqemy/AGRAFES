@@ -235,7 +235,9 @@ def test_tei_export_with_alignment_linkgrp(db_conn: sqlite3.Connection, tmp_path
 
 
 def test_tei_export_alignment_status_filter(db_conn: sqlite3.Connection, tmp_path: Path) -> None:
-    """status_filter controls which alignment links are included."""
+    """status_filter controls which alignment links are included ; le DÉFAUT est « non
+    rejeté » (accepted + unreviewed), pas « accepted » seul (D-P7,
+    DESIGN_alignment_parity_tranche6 §8) — sinon une famille non validée exporte du vide."""
     from multicorpus_engine.importers.txt import import_txt_numbered_lines
     from multicorpus_engine.exporters.tei import export_tei
     from multicorpus_engine.runs import create_run
@@ -244,9 +246,9 @@ def test_tei_export_alignment_status_filter(db_conn: sqlite3.Connection, tmp_pat
     import uuid
 
     pivot_txt = tmp_path / "pv2.txt"
-    pivot_txt.write_text("[1] Un.\n[2] Deux.\n", encoding="utf-8")
+    pivot_txt.write_text("[1] Un.\n[2] Deux.\n[3] Trois.\n", encoding="utf-8")
     target_txt = tmp_path / "tg2.txt"
-    target_txt.write_text("[1] One.\n[2] Two.\n", encoding="utf-8")
+    target_txt.write_text("[1] One.\n[2] Two.\n[3] Three.\n", encoding="utf-8")
 
     rp = import_txt_numbered_lines(db_conn, pivot_txt, language="fr", title="Pv2")
     rt = import_txt_numbered_lines(db_conn, target_txt, language="en", title="Tg2")
@@ -262,34 +264,40 @@ def test_tei_export_alignment_status_filter(db_conn: sqlite3.Connection, tmp_pat
     now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     create_run(db_conn, "align", {}, run_id=run_id)
 
-    # link 1: accepted, link 2: unreviewed (NULL)
-    db_conn.execute(
-        "INSERT INTO alignment_links (run_id,pivot_unit_id,target_unit_id,external_id,pivot_doc_id,target_doc_id,created_at,status) VALUES (?,?,?,?,?,?,?,'accepted')",
-        (run_id, pivot_units[1], target_units[1], 1, rp.doc_id, rt.doc_id, now),
-    )
-    db_conn.execute(
-        "INSERT INTO alignment_links (run_id,pivot_unit_id,target_unit_id,external_id,pivot_doc_id,target_doc_id,created_at,status) VALUES (?,?,?,?,?,?,?,NULL)",
-        (run_id, pivot_units[2], target_units[2], 2, rp.doc_id, rt.doc_id, now),
-    )
+    # link 1: accepted, link 2: unreviewed (NULL), link 3: rejected
+    for n, status in ((1, "'accepted'"), (2, "NULL"), (3, "'rejected'")):
+        db_conn.execute(
+            f"INSERT INTO alignment_links (run_id,pivot_unit_id,target_unit_id,external_id,"
+            f"pivot_doc_id,target_doc_id,created_at,status) VALUES (?,?,?,?,?,?,?,{status})",
+            (run_id, pivot_units[n], target_units[n], n, rp.doc_id, rt.doc_id, now),
+        )
     db_conn.commit()
 
-    # accepted only (default)
-    out_acc = tmp_path / "acc.tei.xml"
-    export_tei(db_conn, doc_id=rp.doc_id, output_path=out_acc, include_alignment=True, target_doc_id=rt.doc_id)
-    linkgrp_acc = _load_tei(out_acc).find(f".//{_ns('linkGrp')}")
-    assert linkgrp_acc is not None
-    assert len(linkgrp_acc.findall(_ns("link"))) == 1, "Only accepted link expected"
+    def _links(out_path: Path) -> list:
+        grp = _load_tei(out_path).find(f".//{_ns('linkGrp')}")
+        assert grp is not None
+        return grp.findall(_ns("link"))
 
-    # accepted + unreviewed
+    # DÉFAUT (D-P7) = « non rejeté » : accepted + unreviewed inclus, rejected EXCLU.
+    out_def = tmp_path / "def.tei.xml"
+    export_tei(db_conn, doc_id=rp.doc_id, output_path=out_def, include_alignment=True, target_doc_id=rt.doc_id)
+    assert len(_links(out_def)) == 2, "Défaut D-P7 : accepted + unreviewed (rejected exclu)"
+
+    # Option « seulement validés » : accepted seul.
+    out_acc = tmp_path / "acc.tei.xml"
+    export_tei(
+        db_conn, doc_id=rp.doc_id, output_path=out_acc,
+        include_alignment=True, target_doc_id=rt.doc_id, status_filter=["accepted"],
+    )
+    assert len(_links(out_acc)) == 1, "status_filter=['accepted'] → seul l'accepté"
+
+    # ["all"] = aucun filtre → les 3 (rejected compris).
     out_all = tmp_path / "all.tei.xml"
     export_tei(
         db_conn, doc_id=rp.doc_id, output_path=out_all,
-        include_alignment=True, target_doc_id=rt.doc_id,
-        status_filter=["accepted", "unreviewed"],
+        include_alignment=True, target_doc_id=rt.doc_id, status_filter=["all"],
     )
-    linkgrp_all = _load_tei(out_all).find(f".//{_ns('linkGrp')}")
-    assert linkgrp_all is not None
-    assert len(linkgrp_all.findall(_ns("link"))) == 2, "Both links expected"
+    assert len(_links(out_all)) == 3, "['all'] → tous les liens, rejected inclus"
 
 
 # ──────────────────────────────────────────────────────────────────────────────

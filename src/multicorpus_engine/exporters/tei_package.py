@@ -88,7 +88,11 @@ def export_tei_package(
         ]
 
     if status_filter is None:
-        status_filter = ["accepted"]
+        # D-P7 (DESIGN_alignment_parity_tranche6 §8) — défaut « non rejeté » : l'aligneur crée
+        # ses liens en NULL=non-révisé, donc un défaut « accepted » seul exportait une section
+        # alignement vide sur une famille non validée. « accepted » + « unreviewed » = tout sauf
+        # rejeté ; le rejet (matrice ✕ / Révision fine) reste le seul acte qui exclut.
+        status_filter = ["accepted", "unreviewed"]
 
     created_at = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     all_warnings: list[dict] = []

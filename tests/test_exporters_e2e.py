@@ -346,3 +346,47 @@ def test_build_tmx_strips_control_chars() -> None:
     ET.fromstring(tmx)  # raises if the document is malformed
     assert chr(0x00) not in tmx and chr(0x07) not in tmx
     assert "<seg>ab</seg>" in tmx and "<seg>cd</seg>" in tmx
+
+
+def test_fetch_aligned_pairs_excludes_rejected(db_conn: sqlite3.Connection, tmp_path: Path) -> None:
+    """D-P7/D-P8 (DESIGN_alignment_parity_tranche6 §8) — « le rejet est le seul acte qui
+    exclut » doit valoir pour TOUS les formats : un lien rejeté ne ressort pas via
+    _fetch_aligned_pairs (TMX/bilingue), mais le non-révisé reste inclus (sortie aligneur)."""
+    import datetime
+    import uuid
+
+    from multicorpus_engine.importers.txt import import_txt_numbered_lines
+    from multicorpus_engine.runs import create_run
+    from multicorpus_engine.sidecar import _CorpusHandler
+
+    pv = tmp_path / "pv.txt"
+    pv.write_text("[1] Un.\n[2] Deux.\n[3] Trois.\n", encoding="utf-8")
+    tg = tmp_path / "tg.txt"
+    tg.write_text("[1] One.\n[2] Two.\n[3] Three.\n", encoding="utf-8")
+    rp = import_txt_numbered_lines(db_conn, pv, language="fr", title="PV")
+    rt = import_txt_numbered_lines(db_conn, tg, language="en", title="TG")
+
+    pu = {r[0]: r[1] for r in db_conn.execute(
+        "SELECT external_id, unit_id FROM units WHERE doc_id=? AND unit_type='line'", (rp.doc_id,))}
+    tu = {r[0]: r[1] for r in db_conn.execute(
+        "SELECT external_id, unit_id FROM units WHERE doc_id=? AND unit_type='line'", (rt.doc_id,))}
+
+    run_id = str(uuid.uuid4())
+    now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    create_run(db_conn, "align", {}, run_id=run_id)
+    # n1 accepted, n2 unreviewed (NULL), n3 rejected
+    for n, status in ((1, "'accepted'"), (2, "NULL"), (3, "'rejected'")):
+        db_conn.execute(
+            f"INSERT INTO alignment_links (run_id,pivot_unit_id,target_unit_id,external_id,"
+            f"pivot_doc_id,target_doc_id,created_at,status) VALUES (?,?,?,?,?,?,?,{status})",
+            (run_id, pu[n], tu[n], n, rp.doc_id, rt.doc_id, now),
+        )
+    db_conn.commit()
+
+    handler = _CorpusHandler.__new__(_CorpusHandler)
+    handler._conn = lambda: db_conn  # bind the connection without the HTTP stack
+    pairs = handler._fetch_aligned_pairs(rp.doc_id, rt.doc_id)
+
+    assert len(pairs) == 2, "accepté + non-révisé inclus, rejeté exclu"
+    rej_norm = db_conn.execute("SELECT text_norm FROM units WHERE unit_id=?", (pu[3],)).fetchone()[0]
+    assert all(rej_norm != p[0] for p in pairs), "le pivot rejeté (n=3) est absent de l'export"

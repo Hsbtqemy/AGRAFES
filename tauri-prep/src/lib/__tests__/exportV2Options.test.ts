@@ -4,6 +4,7 @@ import {
   FORMAT_BY_PRODUCT,
   productsForStage,
   formatsForProduct,
+  linkStatusFilter,
 } from "../exportV2Options.ts";
 
 describe("exportV2Options", () => {
@@ -38,5 +39,17 @@ describe("exportV2Options", () => {
       for (const o of opts) expect(o.label.length).toBeGreaterThan(0);
     for (const opts of Object.values(FORMAT_BY_PRODUCT))
       for (const o of opts) expect(o.label.length).toBeGreaterThan(0);
+  });
+
+  // D-P7 — le sélecteur « Liens » → status_filter moteur.
+  it("linkStatusFilter: « seulement validés » = accepted seul", () => {
+    expect(linkStatusFilter("accepted")).toEqual(["accepted"]);
+  });
+
+  it("linkStatusFilter: défaut « tous sauf rejetés » = accepted + unreviewed (rejeté toujours exclu)", () => {
+    expect(linkStatusFilter("not_rejected")).toEqual(["accepted", "unreviewed"]);
+    // tout choix inconnu retombe sur « non rejeté » — jamais « rejected » ni « all » par accident.
+    expect(linkStatusFilter("")).toEqual(["accepted", "unreviewed"]);
+    expect(linkStatusFilter("bogus")).toEqual(["accepted", "unreviewed"]);
   });
 });

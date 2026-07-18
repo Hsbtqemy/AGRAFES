@@ -7102,7 +7102,13 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         pivot_doc_id: int,
         target_doc_id: int,
     ) -> list[tuple[str, str]]:
-        """Return list of (pivot_text, target_text) for aligned pairs, ordered by link."""
+        """Return list of (pivot_text, target_text) for aligned pairs, ordered by link.
+
+        D-P7/D-P8 (DESIGN_alignment_parity_tranche6 §8) — « le rejet est le seul acte qui
+        exclut », et il doit valoir pour TOUS les formats : un lien qu'un humain a rejeté
+        (« vérifié, c'est faux ») ne doit pas ressortir en TMX/bilingue. On garde le non-révisé
+        (sortie brute de l'aligneur), cohérent avec le défaut « non rejeté » de l'export TEI.
+        """
         rows = self._conn().execute(
             """
             SELECT pu.text_norm, tu.text_norm
@@ -7110,6 +7116,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             JOIN units pu ON pu.unit_id = al.pivot_unit_id
             JOIN units tu ON tu.unit_id = al.target_unit_id
             WHERE al.pivot_doc_id = ? AND al.target_doc_id = ?
+              AND (al.status IS NULL OR al.status != 'rejected')
             ORDER BY al.external_id, al.link_id
             """,
             (pivot_doc_id, target_doc_id),
@@ -9351,7 +9358,10 @@ class CorpusServer:
             doc_ids_pkg = params.get("doc_ids")
             include_structure_pkg: bool = bool(params.get("include_structure", False))
             include_alignment_pkg: bool = bool(params.get("include_alignment", False))
-            status_filter_pkg = params.get("status_filter") or ["accepted"]
+            # D-P7 — défaut « non rejeté » (accepted + unreviewed) : l'UI passe son propre
+            # status_filter (« tous sauf rejetés » / « seulement validés »), et à défaut on
+            # exporte tout sauf rejeté plutôt que la seule poignée d'« accepted » (souvent vide).
+            status_filter_pkg = params.get("status_filter") or ["accepted", "unreviewed"]
             tei_profile_pkg: str = params.get("tei_profile", "generic")
 
             progress_cb(5, "Building TEI publication package")

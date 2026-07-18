@@ -8,8 +8,8 @@ Supported options:
 - include_structure: bool (default False) — emit <head> for structure units
 - include_alignment: bool (default False) — emit <linkGrp> with alignment links
 - target_doc_id: int | None — restrict alignment links to this target doc
-- status_filter: list[str] (default ["accepted"]) — which link statuses to include
-  ("accepted", "unreviewed", "rejected", "all")
+- status_filter: list[str] (default ["accepted", "unreviewed"] = non rejeté, D-P7) — which link
+  statuses to include ("accepted", "unreviewed", "rejected", "all")
 - enrich_header: bool (default False) — add textClass (doc_role, resource_type)
   and listRelation from doc_relations table
 
@@ -390,7 +390,7 @@ def export_tei(
         include_alignment: If True, emit <linkGrp> with alignment links.
         target_doc_id: If given, restrict alignment links to this target doc.
         status_filter: List of statuses to include in alignment export.
-                       Default ["accepted"]. Use ["all"] for no filter.
+                       Default ["accepted", "unreviewed"] (= non rejeté, D-P7). Use ["all"] for no filter.
         enrich_header: If True, add textClass (doc_role, resource_type) and
                        listRelation from doc_relations.
         tei_profile: Export profile: "generic" (default) or "parcolab_like".
@@ -402,7 +402,8 @@ def export_tei(
         warnings_list contains dicts like {"type": "tei_missing_field", "field": ..., "doc_id": ...}.
     """
     if status_filter is None:
-        status_filter = ["accepted"]
+        # D-P7 — défaut « non rejeté » (accepted + unreviewed), cf. tei_package.export_tei_package.
+        status_filter = ["accepted", "unreviewed"]
     relation_filter: str | None
     if relation_type is None:
         relation_filter = None

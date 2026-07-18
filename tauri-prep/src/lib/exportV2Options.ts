@@ -72,3 +72,13 @@ export function productsForStage(stage: string): ExportOption[] {
 export function formatsForProduct(product: string): ExportOption[] {
   return FORMAT_BY_PRODUCT[product] ?? [];
 }
+
+/**
+ * D-P7 (DESIGN_alignment_parity_tranche6 §8) — le sélecteur « Liens » de l'export package
+ * → le `status_filter` moteur. « seulement validés » = `["accepted"]` ; défaut « tous sauf
+ * rejetés » (tout autre choix, y compris inconnu) = `["accepted", "unreviewed"]`. Le rejet
+ * exclut TOUJOURS : l'aligneur crée du non-révisé, donc « accepted » seul exporterait du vide.
+ */
+export function linkStatusFilter(choice: string): string[] {
+  return choice === "accepted" ? ["accepted"] : ["accepted", "unreviewed"];
+}

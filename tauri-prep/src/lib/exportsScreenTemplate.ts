@@ -149,7 +149,14 @@ export function exportsScreenTemplate(): string {
               </label>
               <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.84rem;cursor:pointer;align-self:flex-end">
                 <input id="v2-pkg-include-alignment" type="checkbox" />
-                Inclure alignements acceptés
+                Inclure l'alignement
+              </label>
+              <label>Liens
+                <select id="v2-pkg-link-status" style="min-width:170px"
+                        title="Quels liens exporter — le rejet exclut, les non-révisés sont inclus par défaut (D-P7)">
+                  <option value="not_rejected">Tous sauf rejetés</option>
+                  <option value="accepted">Seulement validés</option>
+                </select>
               </label>
               <label>Profil TEI
                 <select id="v2-pkg-tei-profile" style="min-width:210px">
@@ -304,7 +311,7 @@ export function exportsScreenTemplate(): string {
             </label>
             <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.84rem;cursor:pointer">
               <input id="pkg-include-alignment" type="checkbox" />
-              Inclure alignements acceptés (<code>&lt;linkGrp&gt;</code>)
+              Inclure l'alignement (<code>&lt;linkGrp&gt;</code>, tous sauf rejetés)
             </label>
           </div>
         </div>
