@@ -188,3 +188,26 @@ Passe adverse sur cette note (vérification des affirmations contre le code rée
 
 Effet net : le plan reste sain, mais **T6.2b (handoff post-run) devient prérequis au retrait (T6.3)**, et
 D-P4 n'est plus « safe » inconditionnel.
+
+## 7. Journal de livraison
+
+- **T6.1 — Bascule + relégation — LIVRÉ (commit `9f1aaf0`).** La matrice devient la surface primaire
+  « Alignement » ; l'ancien `AlignPanel` passe en secondaire « Révision fine » (bascule de barre +
+  nav dé-emphasée). Fix de routage (revue adverse) : les flux « aller à l'alignement » (dont la CTA
+  primaire étape-suivante) routaient encore vers l'ex-`AlignPanel` — corrigés vers la matrice.
+- **T6.2 — Handoff scopé — LIVRÉ (non committé au moment de l'écriture).** Bouton `🔎` par cellule liée
+  (`prep-matrix-review-btn`, branches `ok`/`fused`) → `AlignMatrixView._onReviewClick` résout la cellule
+  en `RevisionFineScope {pivotDocId = moyeu = family_id, targetDocId = doc-colonne, linkId}` (nouveau
+  `lib/revisionFineScope.ts`, pur) → `ActionsScreen` bascule la sous-vue puis appelle la **nouvelle API
+  publique** `AlignPanel.scopeTo` (fixe les 2 selects, remet les filtres à « tout », `_loadAuditPage`,
+  scroll + surbrillance du lien). Garde F1 (connexion changée) sur le handoff. Tests : grille
+  (`prep-matrix-review-btn`), résolution matrice (happy + F1), `scopeTo` (paire/filtres/paire-introuvable/
+  lien-hors-page/**course**). **Revue adverse (2 vérificateurs)** : résolution cellule→scope **correcte**
+  (preuve moteur `family_id == pivot_doc_id`) ; câblage inter-écrans **sain** ; **1 finding corrigé** —
+  `_loadAuditPage` sans garde de réentrance → jeton de séquence `_auditSeq` (deux handoffs `🔎` rapides
+  sur des paires différentes, résolus hors-ordre, laissaient grille/offset désynchronisés des selects ;
+  test RED-sur-ancien). vitest 1071 · tsc · eslint.
+  - *Reste connu (mineur, non bloquant)* : une cellule `empty` PORTANT un lien (coupe à vide, cas G5)
+    n'offre pas `🔎` (choix : réviser où une traduction s'affiche) ; un lien au-delà de la 1re page
+    d'audit (50) n'est pas scrollé mais signalé ; le regroupement visuel « tranches d'un même bead »
+    reste différé (§4.6).

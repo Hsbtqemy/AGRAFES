@@ -2413,6 +2413,19 @@ button.prep-matrix-cut-word:hover {
   border-color: color-mix(in srgb, #2563eb 45%, transparent);
   background: color-mix(in srgb, #2563eb 10%, transparent);
 }
+/* T6.2 (D-P2) — 🔎 renvoyer ce lien en Révision fine ; navigation (pas une mutation),
+   teinte ardoise neutre, révélée au survol comme les autres gestes de cellule. */
+.prep-matrix-review-btn {
+  margin-left: 4px; padding: 0 5px; font-size: 0.75rem; cursor: pointer;
+  border: 1px solid transparent; border-radius: 4px; background: transparent;
+  color: color-mix(in srgb, #475569 75%, transparent); opacity: 0; transition: opacity 0.12s;
+}
+.prep-matrix-cell:hover .prep-matrix-review-btn,
+.prep-matrix-review-btn:focus-visible { opacity: 1; }
+.prep-matrix-review-btn:hover {
+  border-color: color-mix(in srgb, #475569 45%, transparent);
+  background: color-mix(in srgb, #475569 12%, transparent);
+}
 .prep-matrix-cut-dir {
   display: flex; flex-direction: column; gap: 4px; margin: 0 0 10px;
   font-size: 0.82rem;

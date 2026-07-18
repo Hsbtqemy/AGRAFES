@@ -890,3 +890,60 @@ describe("AlignMatrixView — T6.1 accès « Révision fine »", () => {
     expect(opened).toBe(1);
   });
 });
+
+describe("AlignMatrixView — T6.2 handoff scopé (Révision fine)", () => {
+  it("une cellule liée résout la paire moyeu ↔ colonne + le lien et appelle onOpenRevisionFine", async () => {
+    const calls: Array<{ path: string; body: unknown }> = [];
+    const holder = { conn: makeConn(calls, { matrix: MATRIX_STRADDLE }) };
+    const scopes: Array<{ pivotDocId: number; targetDocId: number; linkId?: number | null }> = [];
+    const view = new AlignMatrixView(() => holder.conn, {
+      toast: () => {},
+      onOpenRevisionFine: (scope) => { if (scope) scopes.push(scope); },
+    });
+    const el = view.render();
+    document.body.appendChild(el);
+    view.onActivated();
+    await vi.waitFor(() =>
+      expect(el.querySelector<HTMLOptionElement>('#matrix-family option[value="2"]')).not.toBeNull());
+    const sel = el.querySelector<HTMLSelectElement>("#matrix-family")!;
+    sel.value = "2";
+    sel.dispatchEvent(new Event("change"));
+    el.querySelector<HTMLButtonElement>("#matrix-load")!.click();
+    await vi.waitFor(() => expect(el.querySelector(".prep-matrix-grid")).not.toBeNull());
+
+    // RED sur l'ancien code : ni le bouton .prep-matrix-review-btn ni sa résolution n'existaient.
+    const reviewBtn = el.querySelector<HTMLButtonElement>(".prep-matrix-review-btn");
+    expect(reviewBtn).not.toBeNull();
+    reviewBtn!.click();
+
+    // moyeu = family_id (2) ; colonne 0 = language_doc_ids[1] (3) ; lien = 1er de la cellule (13).
+    expect(scopes).toEqual([{ pivotDocId: 2, targetDocId: 3, linkId: 13 }]);
+  });
+
+  it("après un changement de connexion, le handoff ne fire pas (garde F1)", async () => {
+    const calls: Array<{ path: string; body: unknown }> = [];
+    const holder = { conn: makeConn(calls, { matrix: MATRIX_STRADDLE }) };
+    const scopes: unknown[] = [];
+    const toasts: string[] = [];
+    const view = new AlignMatrixView(() => holder.conn, {
+      toast: (m) => toasts.push(m),
+      onOpenRevisionFine: (scope) => { if (scope) scopes.push(scope); },
+    });
+    const el = view.render();
+    document.body.appendChild(el);
+    view.onActivated();
+    await vi.waitFor(() =>
+      expect(el.querySelector<HTMLOptionElement>('#matrix-family option[value="2"]')).not.toBeNull());
+    const sel = el.querySelector<HTMLSelectElement>("#matrix-family")!;
+    sel.value = "2";
+    sel.dispatchEvent(new Event("change"));
+    el.querySelector<HTMLButtonElement>("#matrix-load")!.click();
+    await vi.waitFor(() => expect(el.querySelector(".prep-matrix-grid")).not.toBeNull());
+
+    holder.conn = makeConn(calls, { matrix: MATRIX_STRADDLE }); // nouvelle identité = autre base
+    el.querySelector<HTMLButtonElement>(".prep-matrix-review-btn")!.click();
+
+    expect(scopes).toEqual([]); // les ids de la matrice périmée ne partent PAS vers la Révision fine
+    expect(toasts.some((t) => t.includes("Connexion changée"))).toBe(true);
+  });
+});

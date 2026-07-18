@@ -7,7 +7,9 @@
  * gestures; hover-revealed by CSS). With the status axes (sidecar ≥ 1.6.56): an empty cell
  * offers « ∅ » (mark non traduit), a per-cell mark offers its undo, a flux addition row
  * (D8) renders `[ajout]` with its « ↺ », and each column header carries the « N hors
- * matrice » badge opening the uncovered-units panel (D-W14).
+ * matrice » badge opening the uncovered-units panel (D-W14). T6.2 (D-P2) — every linked
+ * cell also carries a « 🔎 » that hands its link off to the « Révision fine » (pair-scoped
+ * status/collision/quality review), pre-loaded on hub ↔ column and scrolled to the link.
  * Buttons address their cell via `data-cut-row`/`data-cut-col` (indices into the SAME view
  * that renders — resolution goes through the view-model, never through parallel raw
  * arrays). All corpus text is escaped (imported documents are untrusted).
@@ -71,6 +73,14 @@ export function buildMatrixGridHtml(view: MatrixView): string {
         ? ` <button type="button" class="prep-matrix-remove-btn" data-cut-row="${rowIdx}" data-cut-col="${colIdx}"`
           + ` title="Retirer une traduction de cette cellule (rejet réversible)">&#10005;</button>`
         : "";
+      // T6.2 (D-P2) — « → Révision fine » : renvoyer le lien de cette cellule vers l'ancien
+      // AlignPanel (mode secondaire), pré-chargé sur la paire moyeu ↔ doc-colonne et scrollé
+      // sur ce lien. La matrice délègue déjà par MESSAGE (collision ≥ 2, rejet, 409) ; ici le
+      // lien devient CLIQUABLE — la revue statut/collisions/qualité vit là-bas, pas ici.
+      const reviewBtn = view.hasCellLinks && c.links.length > 0
+        ? ` <button type="button" class="prep-matrix-review-btn" data-cut-row="${rowIdx}" data-cut-col="${colIdx}"`
+          + ` title="Réviser ce lien dans la Révision fine (statut, collisions, qualité)">&#128269;</button>`
+        : "";
       // D-W19 — ＝ rattacher / re-cibler : le geste CONSTRUCTIF (inverse de ✕). Sur une
       // cellule vide → créer un lien ; sur un lien unique ENTIER → le re-cibler. Un lien COUPÉ
       // est exclu (revue G4 : le retarget garderait la fenêtre périmée → mauvaise tranche ; ↺
@@ -121,7 +131,7 @@ export function buildMatrixGridHtml(view: MatrixView): string {
           ? ` <button type="button" class="prep-matrix-cut-btn" data-cut-row="${rowIdx}" data-cut-col="${colIdx}"`
             + ` title="Couper cette traduction fusionnée entre ce segment et le précédent">&#9986; Couper</button>`
           : "";
-        inner = `<span class="prep-matrix-warn" title="Traduction fusionnée avec la ligne du dessus (à couper)">&#9888;</span> ${_esc(c.text)}${cutBtn}${uncutBtn}${removeBtn}`;
+        inner = `<span class="prep-matrix-warn" title="Traduction fusionnée avec la ligne du dessus (à couper)">&#9888;</span> ${_esc(c.text)}${cutBtn}${uncutBtn}${removeBtn}${reviewBtn}`;
       } else {
         // D-W12 — on-demand straddle cut on any aligned cell (hover-revealed). Only
         // when the payload carries cell_links: the gesture cannot resolve without.
@@ -135,7 +145,7 @@ export function buildMatrixGridHtml(view: MatrixView): string {
           ? ` <button type="button" class="prep-matrix-merge-btn" data-cut-row="${rowIdx}" data-cut-col="${colIdx}"`
             + ` title="Fusionner — la phrase du segment voisin appartient à CE segment">&#8857;</button>`
           : "";
-        inner = `${_esc(c.text)}${anyBtn}${mergeBtn}${uncutBtn}${removeBtn}${attachBtn}`;
+        inner = `${_esc(c.text)}${anyBtn}${mergeBtn}${uncutBtn}${removeBtn}${attachBtn}${reviewBtn}`;
       }
       return `<td class="prep-matrix-cell prep-matrix-cell--${statusCls}">${inner}</td>`;
     }).join("");

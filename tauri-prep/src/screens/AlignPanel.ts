@@ -50,6 +50,7 @@ import {
 import { buildCutPickerHtml } from "../lib/alignCutPicker.ts";
 import { setHtml, raw } from "../lib/safeHtml.ts";
 import { alignPanelTemplate } from "../lib/alignPanelTemplate.ts";
+import type { RevisionFineScope } from "../lib/revisionFineScope.ts";
 
 // ─── Types locaux ─────────────────────────────────────────────────────────────
 
@@ -92,6 +93,10 @@ export class AlignPanel {
   private _auditLinks: AlignLinkRecord[] = [];
   private _auditOffset = 0;
   private _auditHasMore = false;
+  /** Jeton de séquence des chargements d'audit (T6.2, revue adverse) : seul le DERNIER
+   *  `_loadAuditPage` en vol applique son résultat — sinon deux handoffs 🔎 rapides sur des
+   *  paires différentes, résolus hors-ordre, laisseraient grille/offset désynchronisés des selects. */
+  private _auditSeq = 0;
   private _auditQuickFilter: "all" | "accepted" | "rejected" | "unreviewed" = "all";
   private _auditTextFilter = "";
   private _selectedLinkIds = new Set<number>();
@@ -181,6 +186,71 @@ export class AlignPanel {
    */
   onActivated(): void {
     void this._refreshSourceChangedBanner();
+  }
+
+  /**
+   * T6.2 (D-P2) — handoff scopé depuis la matrice : pré-charger la Révision fine sur la
+   * paire `pivotDoc ↔ targetDoc` et scroller (+ surligner) le lien ciblé. `AlignPanel` est
+   * paire-scopé (deux selects + audit) ; la matrice (famille-scopée) lui passe une cellule
+   * résolue en paire. L'appelant (`ActionsScreen`) a déjà rendu la sous-vue visible.
+   *
+   * Sort d'un éventuel mode « Réviser famille » (le scope est paire-scopé), fixe les deux
+   * selects, remet les filtres à « tout » (sinon le lien ciblé pourrait rester masqué), puis
+   * charge l'audit de la paire. Renvoie false si la paire est introuvable dans les selects
+   * (doc filtré / base changée) — la sous-vue est déjà basculée, le toast suffit.
+   */
+  async scopeTo(scope: RevisionFineScope): Promise<boolean> {
+    const el = this._el;
+    if (!el) return false;
+    if (this._familyMode) this._exitFamilyReview(el);
+    const pivSel = el.querySelector<HTMLSelectElement>("#align-pivot-sel");
+    const tgtSel = el.querySelector<HTMLSelectElement>("#align-target-sel");
+    if (!pivSel || !tgtSel) return false;
+    pivSel.value = String(scope.pivotDocId);
+    tgtSel.value = String(scope.targetDocId);
+    // Une option absente laisse SILENCIEUSEMENT value="" (HTMLSelectElement) → paire invalide :
+    // le détecter plutôt que charger un audit vide sans explication.
+    if (pivSel.value !== String(scope.pivotDocId) || tgtSel.value !== String(scope.targetDocId)) {
+      this._updateRunBtnState(el);
+      this._cb.toast("✗ Paire introuvable dans la Révision fine — actualiser les documents.", true);
+      return false;
+    }
+    this._resetAuditFilters(el);
+    this._updateRunBtnState(el);
+    await this._loadAuditPage(el, false);
+    this._focusLink(el, scope.linkId ?? null);
+    return true;
+  }
+
+  /** Remet les filtres d'audit à « tout » (chip statut + recherche texte) — garantit qu'un
+   *  lien ciblé par le handoff scopé (T6.2) n'est pas masqué par un filtre laissé actif. */
+  private _resetAuditFilters(el: HTMLElement): void {
+    this._auditQuickFilter = "all";
+    this._auditTextFilter = "";
+    el.querySelectorAll<HTMLElement>("[data-qf]").forEach((b) =>
+      b.classList.toggle("active", (b.dataset.qf ?? "all") === "all"));
+    const textFilter = el.querySelector<HTMLInputElement>("#align-text-filter");
+    if (textFilter) textFilter.value = "";
+  }
+
+  /** Scroll (+ surbrillance transitoire) vers le lien `linkId` dans l'audit chargé ; à défaut
+   *  (aucun ciblé) scroll en tête du bitext. T6.2. Si le lien existe mais n'est pas sur la
+   *  première page (50 liens) il n'est pas dans le DOM → on le signale plutôt que de laisser
+   *  croire à un handoff cassé. */
+  private _focusLink(el: HTMLElement, linkId: number | null): void {
+    const body = el.querySelector<HTMLElement>("#align-bitext-body");
+    if (!body) return;
+    const row = linkId != null
+      ? body.querySelector<HTMLElement>(`.prep-align-row[data-link-id="${linkId}"]`)
+      : null;
+    const target = row ?? body.querySelector<HTMLElement>(".prep-align-row") ?? body;
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (row) {
+      row.classList.add("prep-align-row--highlight");
+      setTimeout(() => row.classList.remove("prep-align-row--highlight"), 1600);
+    } else if (linkId != null) {
+      this._cb.toast("Lien hors de la première page — utiliser « Charger plus » ou la recherche.");
+    }
   }
 
   /**
@@ -1108,6 +1178,9 @@ export class AlignPanel {
       if (body) body.innerHTML = `<p class="empty-hint">Choisissez un pivot et une cible, puis cliquez sur Charger.</p>`;
       return;
     }
+    // Revue adverse T6.2 — claim un jeton pour CE chargement ; un chargement plus récent
+    // (autre paire) l'invalidera après l'await, avant d'écraser l'état avec un résultat périmé.
+    const seq = ++this._auditSeq;
     if (!append) {
       this._auditOffset = 0;
       this._lastCollisionCount = 0;
@@ -1126,6 +1199,9 @@ export class AlignPanel {
         limit: 50,
         offset: this._auditOffset,
       });
+      // Un chargement plus récent a pris la main pendant l'await → abandonner ce résultat
+      // périmé (ne pas toucher _auditLinks/_auditOffset/entêtes, que le vainqueur possède).
+      if (seq !== this._auditSeq) return;
       const links = res.links ?? [];
       if (append) this._auditLinks = [...this._auditLinks, ...links];
       else this._auditLinks = links;

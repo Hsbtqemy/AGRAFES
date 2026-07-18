@@ -46,12 +46,15 @@ import {
 } from "../lib/alignCellCut.ts";
 import { setHtml, raw, safeHtml } from "../lib/safeHtml.ts";
 import { escHtml as _esc } from "../lib/diff.ts";
+import type { RevisionFineScope } from "../lib/revisionFineScope.ts";
 
 export interface AlignMatrixCallbacks {
   toast?: (msg: string, isError?: boolean) => void;
-  /** Tranche 6 (T6.1) — ouvrir la « Révision fine » (l'ancien AlignPanel, mode secondaire :
-   *  revue statut / collisions / qualité lien par lien) depuis la barre de la matrice. */
-  onOpenRevisionFine?: () => void;
+  /** Tranche 6 — ouvrir la « Révision fine » (l'ancien AlignPanel, mode secondaire : revue
+   *  statut / collisions / qualité lien par lien). Sans `scope` (T6.1) = bascule de barre.
+   *  Avec `scope` (T6.2, D-P2) = handoff scopé depuis une cellule : Révision fine pré-chargée
+   *  sur la paire moyeu ↔ doc-colonne et scrollée sur le lien de la cellule. */
+  onOpenRevisionFine?: (scope?: RevisionFineScope) => void;
 }
 
 /** Truncate for display on CODE POINTS: slicing UTF-16 units splits a surrogate pair
@@ -198,7 +201,10 @@ export class AlignMatrixView {
         return;
       }
       const uncoveredBtn = t.closest<HTMLButtonElement>(".prep-matrix-uncovered-btn");
-      if (uncoveredBtn) this._openUncoveredPanel(Number(uncoveredBtn.dataset.uncoveredCol));
+      if (uncoveredBtn) { this._openUncoveredPanel(Number(uncoveredBtn.dataset.uncoveredCol)); return; }
+      // T6.2 (D-P2) — « → Révision fine » sur une cellule liée.
+      const reviewBtn = t.closest<HTMLButtonElement>(".prep-matrix-review-btn");
+      if (reviewBtn) this._onReviewClick(Number(reviewBtn.dataset.cutRow), Number(reviewBtn.dataset.cutCol));
     });
     return root;
   }
@@ -1559,6 +1565,33 @@ export class AlignMatrixView {
    * the only surface where an unlinked translation unit is visible. « ＋ Ajout »
    * poses unit_status='ajout' and the flux [ajout] row appears at its position.
    */
+  /**
+   * T6.2 (D-P2) — handoff scopé : renvoyer le lien de la cellule (row, col) vers la
+   * « Révision fine », paire moyeu ↔ doc-colonne pré-chargée et scrollée sur ce lien.
+   * La matrice est famille-scopée : le pivot est le moyeu (`_loadedFamilyId` = family_id),
+   * la cible le doc de la colonne (`translationDocIds[col]`), le lien le premier de la cellule.
+   */
+  private _onReviewClick(row: number, col: number): void {
+    const conn = this._getConn();
+    const view = this._view;
+    if (!conn || !view) return;
+    // Même garde F1 que les gestes : une matrice chargée sur une AUTRE base porte des ids
+    // qui ne veulent rien dire ici — la Révision fine ouvrirait la mauvaise paire.
+    if (conn !== this._loadedConn) {
+      this._cb.toast?.("✗ Connexion changée — recharger la matrice avant d'agir", true);
+      this._resetMatrix();
+      return;
+    }
+    const pivotDocId = this._loadedFamilyId;
+    const targetDocId = view.translationDocIds[col];
+    if (pivotDocId == null || targetDocId == null) {
+      this._cb.toast?.("✗ Colonne sans document cible — recharger la matrice", true);
+      return;
+    }
+    const linkId = view.rows[row]?.cells[col]?.links[0]?.link_id ?? null;
+    this._cb.onOpenRevisionFine?.({ pivotDocId, targetDocId, linkId });
+  }
+
   private _openUncoveredPanel(col: number): void {
     const view = this._statusGestureCtx();
     if (!view) return;

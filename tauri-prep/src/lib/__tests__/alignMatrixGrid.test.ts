@@ -67,6 +67,28 @@ describe("buildMatrixGridHtml", () => {
     expect(html2).not.toContain("prep-matrix-cut-any-btn");
   });
 
+  it("T6.2: 🔎 « Révision fine » on linked cells only, with their cell coordinates", () => {
+    const withLinks: AlignMatrix = {
+      headers: ["paragraphe", "segment", "fr", "en"],
+      languages: ["fr", "en"],
+      hub_doc_id: 2,
+      hub_unit_ids: [11, 12],
+      language_doc_ids: [2, 3],
+      rows: [["1", 1, "FR1", "EN1"], ["1", 2, "FR2", ""]],
+      cell_links: [
+        [[{ link_id: 1, target_unit_id: 91, char_start: null, char_end: null, target_text_raw: "EN1" }]],
+        [[]],
+      ],
+    };
+    const html = buildMatrixGridHtml(buildMatrixView(withLinks));
+    // Only the linked (ok) cell offers the handoff — not the empty one.
+    expect(html.match(/prep-matrix-review-btn/g) ?? []).toHaveLength(1);
+    expect(html).toContain('class="prep-matrix-review-btn" data-cut-row="0" data-cut-col="0"');
+    // Old sidecar (no cell_links): no link to review → no button.
+    const html2 = buildMatrixGridHtml(buildMatrixView(SAMPLE));
+    expect(html2).not.toContain("prep-matrix-review-btn");
+  });
+
   it("D-W13: ↺ on cells whose links carry a cut", () => {
     const withCut: AlignMatrix = {
       headers: ["paragraphe", "segment", "fr", "en"],

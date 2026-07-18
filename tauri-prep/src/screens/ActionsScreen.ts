@@ -481,7 +481,13 @@ export class ActionsScreen {
         // T6.1 — la barre de la matrice ouvre le mode secondaire « Révision fine » (AlignPanel).
         // Via _wfRoot (racine courante, guardée) comme les autres callbacks de nav, pas le
         // `root` capturé (qui pourrait être périmé après un re-render).
-        onOpenRevisionFine: () => { if (this._wfRoot) this._switchSubViewDOM(this._wfRoot, "alignement"); },
+        // T6.2 (D-P2) — avec un `scope` (handoff depuis une cellule), on bascule PUIS on
+        // pré-charge la paire moyeu ↔ colonne dans l'AlignPanel, scrollée sur le lien.
+        onOpenRevisionFine: (scope) => {
+          if (!this._wfRoot) return;
+          this._switchSubViewDOM(this._wfRoot, "alignement");
+          if (scope) void this._alignPanel?.scopeTo(scope);
+        },
       },
     );
     wrapper.appendChild(this._matrixView.render());
