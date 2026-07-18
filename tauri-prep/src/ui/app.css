@@ -1429,6 +1429,13 @@ summary:focus-visible,
    badge %). Seuls les signaux actionnables (⚠ à réviser · ⨯ collisions) sont visibles ; détail
    complet dans l'infobulle. Non cliquables ici — ouvrir la racine mène au panneau famille qui
    porte les deep-links (D-P9-2b). */
+/* D-P9-3 — la cellule titre tronque à la largeur de colonne (col-title: max-width:0 + ellipsis).
+   Sans ce flex, les badges (%, ⚠/⨯) appendés APRÈS le titre étaient rognés (⨯ collision perdu,
+   QA 2026-07-18). On tronque le TITRE (span interne min-width:0) et on garde les badges (no-shrink). */
+.prep-tree-title-wrap { display: flex; align-items: center; min-width: 0; }
+.prep-tree-title-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1 1 auto; }
+.prep-tree-title-wrap > .prep-family-pct-badge,
+.prep-tree-title-wrap > .prep-hier-signals { flex: 0 0 auto; }
 .prep-hier-signals { margin-left: 6px; font-size: 0.72rem; white-space: nowrap; }
 .prep-hier-signals .prep-hier-toreview { color: #b45309; font-weight: 700; }
 .prep-hier-signals .prep-hier-collisions { color: #b91c1c; font-weight: 700; margin-left: 4px; }

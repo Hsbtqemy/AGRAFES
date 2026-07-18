@@ -529,7 +529,9 @@ export class MetadataScreen {
         </td>
         <td class="col-id">${_rowNum}</td>
         <td class="col-title tree-title-cell" title="${this._esc(doc.title)}" style="padding-left:${0.5 + depth * 1.4}rem">
-          ${indent}${relBadge}${this._esc(truncateMid(doc.title))}${pctBadge}${signalsBadge}
+          <span class="prep-tree-title-wrap">
+            <span class="prep-tree-title-text">${indent}${relBadge}${this._esc(truncateMid(doc.title))}</span>${pctBadge}${signalsBadge}
+          </span>
         </td>
         <td class="col-lang">${this._esc(doc.language)}</td>
         <td class="col-role">${this._esc(doc.doc_role ?? "—")}</td>
