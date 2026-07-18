@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { familyPanelHtml } from "../familyView.ts";
+import { familyPanelHtml, hierFamilySignalsHtml } from "../familyView.ts";
 import type { DocumentRecord, FamilyRecord, FamilyStats } from "../../lib/sidecarClient.ts";
 
 const DOC = { doc_id: 2, title: "Le Livre", language: "fr" } as DocumentRecord;
@@ -74,5 +74,43 @@ describe("familyPanelHtml — deep-links D-P9-2b (la conséquence EST la feature
     expect(html).not.toContain("prep-fam-deeplink");
     expect(html).toContain("2/2 paires alignées");
     expect(html).toContain("✓ 5 révisé(s)");
+  });
+});
+
+function stats(over: Partial<FamilyStats> = {}): FamilyStats {
+  return {
+    total_docs: 2, segmented_docs: 2, parent_seg_count: 10,
+    aligned_pairs: 1, total_pairs: 1, validated_docs: 0, completion_pct: 100,
+    ratio_warnings: [], ...over,
+  };
+}
+
+describe("hierFamilySignalsHtml — résumé compact hiérarchie D-P9-3", () => {
+  it("rend les signaux actionnables (⚠ à réviser · ⨯ collisions) avec le détail en infobulle", () => {
+    const html = hierFamilySignalsHtml(stats({
+      status_counts: { accepted: 5, rejected: 1, unreviewed: 3 }, collision_count: 2,
+    }));
+    expect(html).toContain('class="prep-hier-toreview">⚠ 3');
+    expect(html).toContain('class="prep-hier-collisions">⨯ 2');
+    // Détail complet (dont révisés / rejetés) dans le title, pas inline.
+    expect(html).toMatch(/title="✓ 5 révisé\(s\) · 3 à réviser · 1 rejeté\(s\) · 2 collision\(s\)"/);
+  });
+
+  it("n'affiche que les signaux > 0 (à réviser seul, sans collision)", () => {
+    const html = hierFamilySignalsHtml(stats({
+      status_counts: { accepted: 2, rejected: 0, unreviewed: 4 }, collision_count: 0,
+    }));
+    expect(html).toContain("⚠ 4");
+    expect(html).not.toContain("prep-hier-collisions");
+  });
+
+  it("vide quand rien n'est actionnable (tout révisé, sans collision)", () => {
+    expect(hierFamilySignalsHtml(stats({
+      status_counts: { accepted: 6, rejected: 0, unreviewed: 0 }, collision_count: 0,
+    }))).toBe("");
+  });
+
+  it("vide si le sidecar est antérieur à D-P9-1 (status_counts absent)", () => {
+    expect(hierFamilySignalsHtml(stats())).toBe("");
   });
 });

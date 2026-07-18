@@ -41,6 +41,7 @@ import {
   type DocumentRecord,
   type DocRelationRecord,
   type FamilyRecord,
+  type FamilyStats,
   SidecarError,
 } from "../lib/sidecarClient.ts";
 import { setHtml, raw } from "../lib/safeHtml.ts";
@@ -56,7 +57,7 @@ import type { JobCenter } from "../components/JobCenter.ts";
 import { CorpusAuditPanel } from "../components/CorpusAuditPanel.ts";
 import { openExportPairDialog } from "../components/ExportPairDialog.ts";
 import { UnitInspectorPanel } from "../components/UnitInspectorPanel.ts";
-import { familyPanelHtml, segResultRow, alnResultRow, curationStatusHtml } from "../components/familyView.ts";
+import { familyPanelHtml, hierFamilySignalsHtml, segResultRow, alnResultRow, curationStatusHtml } from "../components/familyView.ts";
 import { DOC_ROLES } from "../lib/docRoles.ts";
 import {
   RESOURCE_TYPE_SUGGESTIONS,
@@ -496,7 +497,8 @@ export class MetadataScreen {
     }
 
     let _rowNum = 0;
-    const appendRow = (doc: DocumentRecord, depth = 0, relationLabel?: string, completionPct?: number) => {
+    const appendRow = (doc: DocumentRecord, depth = 0, relationLabel?: string, famStats?: FamilyStats) => {
+      const completionPct = famStats?.completion_pct;
       _rowNum++;
       const tr = document.createElement("tr");
       tr.className = "prep-meta-doc-row";
@@ -518,6 +520,8 @@ export class MetadataScreen {
         ? `<span class="prep-family-pct-badge family-pct-${completionTier(completionPct)}"
               title="Famille : ${completionPct} % traité">${completionPct} %</span>`
         : "";
+      // D-P9-3 — résumé compact des signaux dérivés (⚠ à réviser · ⨯ collisions) par racine.
+      const signalsBadge = famStats ? hierFamilySignalsHtml(famStats) : "";
       setHtml(tr, raw(`
         <td class="col-check">
           <input class="meta-row-check" type="checkbox" data-id="${doc.doc_id}"
@@ -525,7 +529,7 @@ export class MetadataScreen {
         </td>
         <td class="col-id">${_rowNum}</td>
         <td class="col-title tree-title-cell" title="${this._esc(doc.title)}" style="padding-left:${0.5 + depth * 1.4}rem">
-          ${indent}${relBadge}${this._esc(truncateMid(doc.title))}${pctBadge}
+          ${indent}${relBadge}${this._esc(truncateMid(doc.title))}${pctBadge}${signalsBadge}
         </td>
         <td class="col-lang">${this._esc(doc.language)}</td>
         <td class="col-role">${this._esc(doc.doc_role ?? "—")}</td>
@@ -559,14 +563,13 @@ export class MetadataScreen {
       this._docListEl.appendChild(tr);
     };
 
-    // Build a quick lookup: family_id → completion_pct
-    const familyPct = new Map(this._families.map(f => [f.family_id, f.stats.completion_pct]));
+    // Build a quick lookup: family_id → stats (completion_pct + D-P9 derived signals).
+    const familyStats = new Map(this._families.map(f => [f.family_id, f.stats]));
 
     // Groups with parent→children
     if (roots.length > 0) {
       for (const node of roots) {
-        const pct = familyPct.get(node.doc.doc_id);
-        appendRow(node.doc, 0, undefined, pct);
+        appendRow(node.doc, 0, undefined, familyStats.get(node.doc.doc_id));
         for (const child of node.children) {
           appendRow(child.doc, 1, child.relationLabel);
         }

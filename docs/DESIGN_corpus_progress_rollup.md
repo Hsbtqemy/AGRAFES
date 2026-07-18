@@ -1,6 +1,6 @@
 # Tranche 6 — D-P9 : tableau de progression dérivé (« où j'en suis ? »)
 
-> Statut : **cadrage figé + vérifié au code (2026-07-18) — ticket-ready.** Dérive de
+> Statut : **LIVRÉ (2026-07-18) — D-P9-1/2a/2b/3 mergés sur `refonte`, passes adverses incluses.** Dérive de
 > [`DESIGN_alignment_parity_tranche6.md`](DESIGN_alignment_parity_tranche6.md) §8 (D-P9, D-P11) et de
 > `ROADMAP_REFONTE.md` R3.4. **Front-dominant + moteur léger** (agrégat `/families` **additif**),
 > **zéro migration, zéro contrat-freeze** (réponse `/families` non schématisée — vérifié `sidecar_contract.py:1928`).
@@ -127,7 +127,15 @@ C'est ce qui distingue D-P9 d'un badge mort : il *fait entrer* dans le bon écra
      matrice, méthode publique construite ici — pas d'équivalent `scopeTo` côté matrice, note §3) **ou**
      **`AlignPanel.reviewFamily`** (« à réviser » / collisions → Révision fine mode famille, famille-scopé
      ≠ `scopeTo` paire-scopé). 4 fichiers de tests (17 cas).
-3. **D-P9-3 [FRONT]** — résumé compact enrichi dans la vue hiérarchie + lever l'ambiguïté `validated_docs`.
+3. **D-P9-3 [FRONT] ✅ (fait)** — la vue hiérarchie porte, par racine, un **cluster compact des signaux
+   dérivés** à côté du badge `completion_pct` (`hierFamilySignalsHtml` + `_renderHierarchyList`). Choix de
+   compacité (ligne de table dense) : seuls les signaux **actionnables** sont visibles inline — **⚠ N** (à
+   réviser) et **⨯ C** (collisions) ; le détail complet (✓ Z révisés · N à réviser · K rejetés · C
+   collisions) est dans l'**infobulle**. Non cliquable ici (ouvrir la racine mène au panneau famille qui
+   porte les deep-links D-P9-2b). **`validated_docs` (D-P9d) : ambiguïté levée par le vocabulaire** — la
+   progression d'alignement parle de « **révisé** » (statut des liens) partout ; « **validé** » reste
+   réservé au `workflow_status` du document (KPI « N validés » **inchangé**, axe segmentation « ailleurs »).
+   3 tests hiérarchie + 4 tests `hierFamilySignalsHtml`.
 
 **Ordre : moteur d'abord** (le front en dépend).
 

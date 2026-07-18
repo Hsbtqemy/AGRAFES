@@ -13,6 +13,7 @@
 import type {
   DocumentRecord,
   FamilyRecord,
+  FamilyStats,
   FamilySegmentDocResult,
   FamilyAlignPairResult,
   CurationChildStatus,
@@ -23,6 +24,30 @@ import { completionTier } from "../lib/completionTier.ts";
 
 
 
+
+/**
+ * D-P9-3 — cluster compact des signaux dérivés ACTIONNABLES pour le badge par racine de la
+ * vue hiérarchie (vue d'ensemble multi-familles, là où le panneau ne montre qu'une famille à
+ * la fois). Seuls « à réviser » (⚠) et collisions (⨯) sont rendus inline — ce sont les signaux
+ * que `completion_pct` (couverture) NE capture PAS (une famille 100 % couverte peut être 0 %
+ * révisée). Le détail complet (révisés / à réviser / rejetés / collisions) est dans l'infobulle.
+ * Vide si rien n'est actionnable ou si le sidecar est antérieur à D-P9-1 (status_counts absent).
+ * Vocabulaire « révisé » (liens d'alignement) distinct de « validé » (workflow_status du doc,
+ * KPI inchangé) — lève l'ambiguïté D-P9d.
+ */
+export function hierFamilySignalsHtml(stats: FamilyStats): string {
+  const sc = stats.status_counts;
+  if (!sc) return "";
+  const collisions = stats.collision_count ?? 0;
+  const parts: string[] = [];
+  if (sc.unreviewed > 0) parts.push(`<span class="prep-hier-toreview">⚠ ${sc.unreviewed}</span>`);
+  if (collisions > 0) parts.push(`<span class="prep-hier-collisions">⨯ ${collisions}</span>`);
+  if (parts.length === 0) return "";
+  const title = `✓ ${sc.accepted} révisé(s) · ${sc.unreviewed} à réviser`
+    + (sc.rejected > 0 ? ` · ${sc.rejected} rejeté(s)` : "")
+    + (collisions > 0 ? ` · ${collisions} collision(s)` : "");
+  return `<span class="prep-hier-signals" title="${title}">${parts.join(" ")}</span>`;
+}
 
 /** The family panel embedded in the edit panel for a doc that roots a family. */
 export function familyPanelHtml(doc: DocumentRecord, families: FamilyRecord[]): string {

@@ -1425,6 +1425,14 @@ summary:focus-visible,
 }
 .prep-fam-actions { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
 
+/* D-P9-3 — cluster compact des signaux dérivés par racine dans la vue hiérarchie (à côté du
+   badge %). Seuls les signaux actionnables (⚠ à réviser · ⨯ collisions) sont visibles ; détail
+   complet dans l'infobulle. Non cliquables ici — ouvrir la racine mène au panneau famille qui
+   porte les deep-links (D-P9-2b). */
+.prep-hier-signals { margin-left: 6px; font-size: 0.72rem; white-space: nowrap; }
+.prep-hier-signals .prep-hier-toreview { color: #b45309; font-weight: 700; }
+.prep-hier-signals .prep-hier-collisions { color: #b91c1c; font-weight: 700; margin-left: 4px; }
+
 /* ── Sprint 2: family segmentation inline result ──────────────────────────── */
 .prep-seg-family-confirm {
   background: #fff8e1; border: 1px solid #f5c842; border-radius: 6px;
