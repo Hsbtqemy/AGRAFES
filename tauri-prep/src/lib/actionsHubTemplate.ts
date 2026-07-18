@@ -57,9 +57,10 @@ export function actionsHubTemplate(): string {
             <span class="prep-acts-hub-wf-step">&Eacute;tape 3</span>
           </div>
           <h3 class="prep-acts-hub-wf-title">Alignement</h3>
-          <p class="prep-acts-hub-wf-desc">Cr&eacute;ation et r&eacute;vision des liens pivot &harr; cible entre documents align&eacute;s. Inspection, retarget et r&eacute;solution de collisions.</p>
+          <p class="prep-acts-hub-wf-desc">La forme align&eacute;e du corpus en matrice&#160;: une ligne par segment de l'original (moyeu), une colonne par langue. R&eacute;paration sur place &mdash; couper, fusionner, rattacher.</p>
           <div class="prep-acts-hub-wf-actions">
-            <button class="prep-acts-hub-wf-btn" data-target="alignement">Ouvrir &rarr;</button>
+            <button class="prep-acts-hub-wf-btn" data-target="matrice">Ouvrir &rarr;</button>
+            <button class="prep-acts-hub-wf-btn prep-acts-hub-wf-btn--secondary" data-target="alignement" title="Revue statut / collisions / qualit&eacute; lien par lien">R&eacute;vision fine</button>
           </div>
         </div>
         <div class="card prep-acts-hub-wf-card">

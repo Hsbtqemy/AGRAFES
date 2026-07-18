@@ -18,7 +18,8 @@
 export type PrepNavTarget =
   | "segmentation"
   | "curation"
-  | "alignement"
+  | "matrice"      // T6.1 — la surface d'alignement PRIMAIRE (matrice)
+  | "alignement"   // T6.1 — l'ancien AlignPanel, désormais « Révision fine » (secondaire)
   | "annoter"
   | "reindex"
   | "export";
@@ -56,7 +57,9 @@ export interface NextStepResult {
 const BUTTON_LABELS: Record<PrepNavTarget, string> = {
   segmentation: "Aller à la Segmentation →",
   curation: "Aller à la Curation →",
-  alignement: "Aller à l'Alignement →",
+  // T6.1 — « Alignement » désigne la matrice (surface primaire) ; l'ancien AlignPanel est « Révision fine ».
+  matrice: "Aller à l'Alignement →",
+  alignement: "Aller à la Révision fine →",
   annoter: "Aller à l'Annotation →",
   reindex: "Mettre à jour l'index FTS",
   export: "Aller à l'Export →",
@@ -90,11 +93,12 @@ export function computeNextSteps(input: NextStepInput): NextStepResult {
 
   if (input.completed === "curation_apply") {
     if (input.ftsStale) suggestions.push(step("reindex", false));
-    if (input.hasRelations) suggestions.push(step("alignement", false));
+    // T6.1 — « Alignement » = la matrice (surface primaire), plus l'ancien AlignPanel (Révision fine).
+    if (input.hasRelations) suggestions.push(step("matrice", false));
     else suggestions.push(step("export", false));
   } else if (input.completed === "segment_validate") {
     suggestions.push(step("curation", false));
-    if (input.hasRelations) suggestions.push(step("alignement", false));
+    if (input.hasRelations) suggestions.push(step("matrice", false));
   } else {
     // align_run
     suggestions.push(step("export", false));

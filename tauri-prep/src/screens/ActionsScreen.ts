@@ -414,14 +414,15 @@ export class ActionsScreen {
     // ── En-tête ──
     const headSection = document.createElement("section");
     headSection.className = "prep-acts-seg-head-card";
+    // T6.1 — mode secondaire : l'ancien écran d'alignement devient « Révision fine ».
     headSection.innerHTML = `
       <div class="prep-acts-hub-head-left">
-        <h1>Alignement
+        <h1>Révision fine
           <button type="button" id="act-align-reload-docs-btn" class="btn btn-secondary btn-sm"
                   title="Re-charger la liste des documents depuis la base"
                   style="margin-left:0.5rem;vertical-align:middle">&#8635; Actualiser</button>
         </h1>
-        <p>L'alignement crée des correspondances segment à segment entre un document pivot et ses traductions.</p>
+        <p>Revue de l'alignement lien par lien&#160;: accepter / rejeter / statut, collisions, qualité, audit paginé. La réparation structurelle (couper, fusionner, rattacher) se fait dans la matrice « Alignement ».</p>
       </div>
       <div class="prep-acts-hub-head-tools">
         <button class="prep-acts-hub-head-link" id="act-align-open-export-btn">Exporter cette étape…</button>
@@ -459,22 +460,29 @@ export class ActionsScreen {
     return wrapper;
   }
 
-  private _renderMatricePanel(root: HTMLElement): HTMLElement {
+  private _renderMatricePanel(_root: HTMLElement): HTMLElement {
     const wrapper = document.createElement("div");
     wrapper.className = "prep-acts-panel prep-acts-matrice-panel";
 
     const headSection = document.createElement("section");
     headSection.className = "prep-acts-seg-head-card";
+    // T6.1 — la matrice est la surface d'alignement PRIMAIRE : le titre porte « Alignement ».
     headSection.innerHTML = `
       <div class="prep-acts-hub-head-left">
-        <h1>Matrice</h1>
-        <p>La forme align&#233;e du corpus&#160;: une ligne par segment de l'original (moyeu), une colonne par langue. Les cellules &#9888; se r&#233;parent sur place (&#9986;&#160;Couper).</p>
+        <h1>Alignement</h1>
+        <p>La forme align&#233;e du corpus&#160;: une ligne par segment de l'original (moyeu), une colonne par langue. Les cellules &#9888; se r&#233;parent sur place (&#9986;&#160;Couper). Pour la revue statut / collisions lien par lien&#160;: &#9998;&#160;R&#233;vision fine.</p>
       </div>`;
     wrapper.appendChild(headSection);
 
     this._matrixView = new AlignMatrixView(
       () => this._conn,
-      { toast: (msg, isError) => this._showToast?.(msg, isError) },
+      {
+        toast: (msg, isError) => this._showToast?.(msg, isError),
+        // T6.1 — la barre de la matrice ouvre le mode secondaire « Révision fine » (AlignPanel).
+        // Via _wfRoot (racine courante, guardée) comme les autres callbacks de nav, pas le
+        // `root` capturé (qui pourrait être périmé après un re-render).
+        onOpenRevisionFine: () => { if (this._wfRoot) this._switchSubViewDOM(this._wfRoot, "alignement"); },
+      },
     );
     wrapper.appendChild(this._matrixView.render());
     return wrapper;

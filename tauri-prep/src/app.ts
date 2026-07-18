@@ -347,16 +347,21 @@ export class App {
         // (L'ordre historique « curation d'abord » venait des pratiques
         //  pre-app sur du brut OCR ; sur du texte généralement déjà nettoyé,
         //  segmenter d'abord rend la curation locale plus lisible.)
+        // Tranche 6 (T6.1) — la matrice EST la surface d'alignement primaire (« Alignement ») ;
+        // l'ancien AlignPanel devient « Révision fine » (revue statut/collisions/qualité par lien),
+        // secondaire. Les navKey internes ("matrice"/"alignement") restent inchangés.
         const treeItems: Array<[string, string, string]> = [
-          ["Segmentation", "segmentation","⌥"],
-          ["Curation",     "curation",    "◇"],
-          ["Alignement",   "alignement",  "⇄"],
-          ["Matrice",      "matrice",     "▦"],
-          ["Annotation",   "annoter",     "◎"],
+          ["Segmentation",  "segmentation","⌥"],
+          ["Curation",      "curation",    "◇"],
+          ["Alignement",    "matrice",     "⇄"],
+          ["Révision fine", "alignement",  "✎"],
+          ["Annotation",    "annoter",     "◎"],
         ];
         for (const [label, navKey, icon] of treeItems) {
           const link = document.createElement("button");
           link.className = "prep-nav-tree-link";
+          // « Révision fine » (ancien AlignPanel) est un mode secondaire, dé-emphasé.
+          if (navKey === "alignement") link.classList.add("prep-nav-tree-link--secondary");
           link.dataset.nav = navKey;
           link.title = label;
           const treeIcon = document.createElement("span");

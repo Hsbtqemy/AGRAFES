@@ -49,6 +49,9 @@ import { escHtml as _esc } from "../lib/diff.ts";
 
 export interface AlignMatrixCallbacks {
   toast?: (msg: string, isError?: boolean) => void;
+  /** Tranche 6 (T6.1) — ouvrir la « Révision fine » (l'ancien AlignPanel, mode secondaire :
+   *  revue statut / collisions / qualité lien par lien) depuis la barre de la matrice. */
+  onOpenRevisionFine?: () => void;
 }
 
 /** Truncate for display on CODE POINTS: slicing UTF-16 units splits a surrogate pair
@@ -105,6 +108,9 @@ export class AlignMatrixView {
       + `<button type="button" id="matrix-align-adv-toggle" class="btn btn-ghost btn-sm" disabled`
       + ` aria-expanded="false" aria-controls="matrix-align-adv">Avanc&#233;&#8230;</button>`
       + `<span id="matrix-summary" class="prep-matrix-summary" aria-live="polite"></span>`
+      // T6.1 — accès au mode secondaire « Révision fine » (revue statut/collisions/qualité par lien).
+      + `<button type="button" id="matrix-revision-fine" class="btn btn-ghost btn-sm prep-matrix-revfine-btn"`
+      + ` title="Révision fine — revue statut / collisions / qualité, lien par lien">&#9998; R&#233;vision fine</button>`
       + `</div>`
       + buildAlignAdvancedHtml()
       + `<div id="matrix-align-strip" class="prep-matrix-align-strip" aria-live="polite"></div>`
@@ -129,6 +135,8 @@ export class AlignMatrixView {
     });
     loadBtn.addEventListener("click", () => void this._loadMatrix());
     alignBtn.addEventListener("click", () => void this._onAlignClick());
+    root.querySelector<HTMLButtonElement>("#matrix-revision-fine")
+      ?.addEventListener("click", () => this._cb.onOpenRevisionFine?.());
     advBtn.addEventListener("click", () => {
       const adv = root.querySelector<HTMLElement>("#matrix-align-adv")!;
       const open = adv.hasAttribute("hidden");

@@ -873,3 +873,20 @@ describe("AlignMatrixView — anchoring gate (DESIGN_upstream_anchoring §4)", (
     expect(document.querySelector("#matrix-anchor-proceed")).toBeNull();
   });
 });
+
+describe("AlignMatrixView — T6.1 accès « Révision fine »", () => {
+  it("le bouton « Révision fine » de la barre déclenche onOpenRevisionFine", () => {
+    let opened = 0;
+    const view = new AlignMatrixView(() => null, {
+      toast: () => {},
+      onOpenRevisionFine: () => { opened += 1; },
+    });
+    const el = view.render();
+    document.body.appendChild(el);
+    // RED sur l'ancien code : le bouton #matrix-revision-fine n'existait pas.
+    const btn = el.querySelector<HTMLButtonElement>("#matrix-revision-fine");
+    expect(btn).not.toBeNull();
+    btn!.click();
+    expect(opened).toBe(1);
+  });
+});

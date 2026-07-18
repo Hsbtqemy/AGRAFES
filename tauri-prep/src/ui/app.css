@@ -4284,6 +4284,19 @@ button.prep-matrix-remove-choice:hover {
 }
 .prep-acts-hub-wf-btn:hover { background: var(--prep-accent-dark, #0c4a46); }
 .prep-acts-hub-wf-btn:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outline-offset: 2px; }
+/* Tranche 6 (T6.1) — le geste secondaire « Révision fine » du hub : dé-emphasé (contour, pas plein). */
+.prep-acts-hub-wf-btn--secondary {
+  background: transparent;
+  color: var(--prep-accent, #0f766e);
+  border: 1px solid color-mix(in srgb, var(--prep-accent, #0f766e) 40%, transparent);
+  margin-left: 8px;
+}
+.prep-acts-hub-wf-btn--secondary:hover { background: color-mix(in srgb, var(--prep-accent, #0f766e) 10%, transparent); }
+/* T6.1 — le lien de nav « Révision fine » est secondaire : plus discret que les étapes primaires. */
+.prep-nav-tree-link--secondary { opacity: 0.72; }
+.prep-nav-tree-link--secondary .nav-label { font-style: italic; }
+/* T6.1 — bouton « Révision fine » de la barre matrice : poussé à droite, discret. */
+.prep-matrix-revfine-btn { margin-left: auto; }
 
 /* Secondary link button (Grand texte ↗) */
 .prep-acts-hub-wf-link {

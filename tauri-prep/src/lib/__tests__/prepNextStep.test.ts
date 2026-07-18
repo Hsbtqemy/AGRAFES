@@ -23,16 +23,18 @@ describe("computeNextSteps", () => {
     expect(r.suggestions[0].primary).toBe(true);
   });
 
-  // curation_apply — index périmé + traductions → reindex puis alignement.
-  it("curation_apply + ftsStale + hasRelations → [reindex, alignement]", () => {
+  // curation_apply — index périmé + traductions → reindex puis Alignement (= matrice, T6.1).
+  it("curation_apply + ftsStale + hasRelations → [reindex, matrice]", () => {
     const r = computeNextSteps({ completed: "curation_apply", ftsStale: true, hasRelations: true });
-    expect(r.suggestions.map(s => s.target)).toEqual(["reindex", "alignement"]);
+    expect(r.suggestions.map(s => s.target)).toEqual(["reindex", "matrice"]);
   });
 
-  // curation_apply — doc avec traductions, index à jour → alignement seul.
-  it("curation_apply + hasRelations (index OK) → alignement seul", () => {
+  // curation_apply — doc avec traductions, index à jour → Alignement (matrice, surface primaire) seul.
+  it("curation_apply + hasRelations (index OK) → matrice (Alignement) seul", () => {
     const r = computeNextSteps({ completed: "curation_apply", hasRelations: true });
-    expect(r.suggestions.map(s => s.target)).toEqual(["alignement"]);
+    // T6.1 — « Aller à l'Alignement » route vers la matrice, pas l'ex-AlignPanel (Révision fine).
+    expect(r.suggestions.map(s => s.target)).toEqual(["matrice"]);
+    expect(r.suggestions[0].buttonLabel).toContain("Alignement");
   });
 
   // curation_apply — doc isolé, index à jour → export (chaîne finie).
@@ -53,9 +55,9 @@ describe("computeNextSteps", () => {
     expect(r.suggestions[0].target).toBe("curation");
   });
 
-  it("segment_validate + hasRelations → [curation, alignement]", () => {
+  it("segment_validate + hasRelations → [curation, matrice]", () => {
     const r = computeNextSteps({ completed: "segment_validate", hasRelations: true });
-    expect(r.suggestions.map(s => s.target)).toEqual(["curation", "alignement"]);
+    expect(r.suggestions.map(s => s.target)).toEqual(["curation", "matrice"]);
   });
 
   // align_run → export.

@@ -1807,7 +1807,8 @@ export class CurationView {
       case "export": this._cb.onOpenExporter?.(); break;
       case "segmentation":
       case "curation":
-      case "alignement":
+      case "matrice":      // T6.1 — surface d'alignement primaire (matrice)
+      case "alignement":   // T6.1 — Révision fine (secondaire)
       case "annoter":
         this._cb.onNavigate?.(target, { docId: this._currentCurateDocId() });
         break;

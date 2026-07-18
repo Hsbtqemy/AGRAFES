@@ -139,7 +139,9 @@ export class ExportsScreen {
       if (runId) runPill.textContent = `run\u00a0: ${runId}`;
     }
     root.querySelector<HTMLButtonElement>(".exp-back-btn")?.addEventListener("click", () => {
-      document.querySelector<HTMLElement>('.prep-nav-tree-link[data-nav="alignement"]')?.click();
+      // T6.1 — « ← Alignement » revient à la surface d'alignement PRIMAIRE (la matrice),
+      // pas à « Révision fine » (l'ex-onglet Alignement, data-nav="alignement").
+      document.querySelector<HTMLElement>('.prep-nav-tree-link[data-nav="matrice"]')?.click();
     });
     root.querySelector<HTMLButtonElement>("#exp-refresh-btn")?.addEventListener("click", () => {
       void this._refreshDocs();
