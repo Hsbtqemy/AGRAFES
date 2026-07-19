@@ -1392,6 +1392,25 @@ export class AlignMatrixView {
     }
     const targetDocId = ctx.view.translationDocIds[col];
     const existingLinkId = cell.length === 1 ? cell[0].link_id : null;
+    // RA-D1 (re-anchor): on an EMPTY cell, a candidate target already anchored on
+    // EXACTLY ONE other hub row (and not cut) may be MOVED here (set_pivot) instead of
+    // duplicated. Ambiguous (multi-row) or cut targets fall back to the plain create path.
+    const linkedElsewhere = new Map<number, { linkId: number; segment: string }>();
+    if (existingLinkId == null) {
+      const occ = new Map<number, { linkId: number; segment: string; count: number }>();
+      ctx.column.forEach((c, r) => {
+        if (r === ctx.row) return;
+        for (const l of (c ?? [])) {
+          if (l.char_start != null) continue; // cut link — leave out (span/pivot edge case)
+          const e = occ.get(l.target_unit_id);
+          if (e) { e.count++; }
+          else occ.set(l.target_unit_id, {
+            linkId: l.link_id, segment: String(ctx.hubRows[r]?.segment ?? "?"), count: 1,
+          });
+        }
+      });
+      for (const [t, e] of occ) if (e.count === 1) linkedElsewhere.set(t, { linkId: e.linkId, segment: e.segment });
+    }
     const lang = ctx.view.translationLangs[col] ?? "?";
     const conn = this._getConn();
     if (!conn) return;
@@ -1455,6 +1474,7 @@ export class AlignMatrixView {
       const alreadyLinked = new Set(cell.map((l) => l.target_unit_id));
       setHtml(host, raw(buildPickerRowHtml({
         pivotUnitId, pivotText: rowCur.hubText, asTableRow: false, candidates: res.candidates, alreadyLinked,
+        linkedElsewhere: new Map([...linkedElsewhere].map(([t, v]) => [t, v.segment])),
       })));
       host.querySelector<HTMLButtonElement>(".prep-align-picker-cancel")?.addEventListener("click", close);
       // Revue G-min : les candidats EN CONFLIT (déjà liés à ce pivot) ne sont pas câblés — les
@@ -1462,8 +1482,18 @@ export class AlignMatrixView {
       host.querySelectorAll<HTMLButtonElement>(".prep-align-picker-cand[data-uid]:not([data-conflict])").forEach((btn) =>
         btn.addEventListener("click", () => {
           const targetUnitId = Number(btn.dataset.uid);
-          close();
-          void this._performAttach(pivotUnitId, targetUnitId, existingLinkId);
+          const elsewhere = linkedElsewhere.get(targetUnitId);
+          if (elsewhere && existingLinkId == null) {
+            // RA-D1: the target already lives on another hub row → two legitimate readings:
+            // déplacer (ré-ancrer the mislinked link) OR ajouter aussi (a legit 1-M bead).
+            this._showReanchorChoice(host, close, {
+              pivotUnitId, targetUnitId, fromLinkId: elsewhere.linkId, fromSegment: elsewhere.segment,
+              targetText: btn.querySelector<HTMLElement>(".prep-align-picker-cand-text")?.textContent ?? "",
+            });
+          } else {
+            close();
+            void this._performAttach(pivotUnitId, targetUnitId, existingLinkId);
+          }
         }));
     })();
   }
@@ -1499,6 +1529,69 @@ export class AlignMatrixView {
       this._cb.toast?.(/already exists|conflict|409/i.test(msg)
         ? "✗ Un lien existe déjà pour cette cible (peut-être rejeté au Contrôle) — l'y réactiver ou le supprimer."
         : `✗ Rattacher : ${msg}`, true);
+    } finally {
+      this._cutBusy = false;
+    }
+  }
+
+  /**
+   * RA-D1: the picked target already lives on another hub row → offer the two
+   * legitimate readings in place of the candidate list — **déplacer** (re-anchor the
+   * mislinked link here, set_pivot) or **ajouter aussi** (create a second link, a legit
+   * 1-M bead like EN1 ↔ FR1+FR2). The modal's own Annuler / Esc still dismisses.
+   */
+  private _showReanchorChoice(
+    host: HTMLElement,
+    close: () => void,
+    p: { pivotUnitId: number; targetUnitId: number; fromLinkId: number; fromSegment: string; targetText: string },
+  ): void {
+    setHtml(host, safeHtml`
+      <div class="prep-matrix-reanchor-choice">
+        <p class="prep-matrix-cut-hint">« ${p.targetText.slice(0, 80)} » est déjà la traduction du segment source ${p.fromSegment}. Que faire&#8239;?</p>
+        <div class="prep-matrix-cut-actions">
+          <button type="button" class="btn btn-sm prep-matrix-reanchor-move" data-reanchor-move>&#61; Déplacer ici (ré-ancrer)</button>
+          <button type="button" class="btn btn-ghost btn-sm" data-reanchor-add>&#43; Ajouter aussi (garder les deux)</button>
+        </div>
+      </div>
+    `);
+    host.querySelector<HTMLButtonElement>("[data-reanchor-move]")?.addEventListener("click", () => {
+      close();
+      void this._performReanchor(p.fromLinkId, p.pivotUnitId);
+    });
+    host.querySelector<HTMLButtonElement>("[data-reanchor-add]")?.addEventListener("click", () => {
+      close();
+      void this._performAttach(p.pivotUnitId, p.targetUnitId, null);
+    });
+  }
+
+  /**
+   * Apply the re-anchor (RA-D1): move `fromLinkId` onto `newPivotUnitId` via set_pivot.
+   * Only pivot_unit_id changes (status / target / cut span kept, stale bead_uid cleared
+   * server-side). F1 re-checked across the async gap, like `_performAttach`.
+   */
+  private async _performReanchor(fromLinkId: number, newPivotUnitId: number): Promise<void> {
+    const conn = this._getConn();
+    if (!conn) return;
+    if (conn !== this._loadedConn) {
+      this._cb.toast?.("✗ Connexion changée — recharger la matrice avant d'agir", true);
+      this._resetMatrix();
+      return;
+    }
+    this._cutBusy = true;
+    try {
+      const res = await batchUpdateAlignLinks(
+        conn,
+        [{ action: "set_pivot", link_id: fromLinkId, new_pivot_unit_id: newPivotUnitId }],
+        { atomic: true },
+      );
+      if (res.errors.length > 0) {
+        this._cb.toast?.(`✗ Ré-ancrer : ${res.errors[0].error}`, true);
+      } else {
+        this._cb.toast?.("✓ Traduction ré-ancrée");
+      }
+      await this._reloadPreservingScroll();
+    } catch (err) {
+      this._cb.toast?.(`✗ Ré-ancrer : ${err instanceof Error ? err.message : String(err)}`, true);
     } finally {
       this._cutBusy = false;
     }

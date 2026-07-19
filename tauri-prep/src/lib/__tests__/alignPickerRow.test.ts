@@ -53,4 +53,26 @@ describe("buildPickerRowHtml", () => {
     expect(html).toContain("&lt;x&gt;");
     expect(html).not.toContain("<b>p</b>");
   });
+
+  it("offers re-anchor (elsewhere) for a candidate anchored on another hub row", () => {
+    const html = buildPickerRowHtml({
+      pivotUnitId: 1, pivotText: "p", asTableRow: false, candidates: [cand(7)],
+      alreadyLinked: new Set(), linkedElsewhere: new Map([[7, "3"]]),
+    });
+    expect(html).toContain("prep-align-picker-cand--elsewhere");
+    expect(html).toContain('data-linked-elsewhere="3"');
+    expect(html).toContain("§3");                    // the "＝ §3" move badge
+    expect(html).not.toContain('data-conflict="1"');  // clickable — not a conflict
+    expect(html).not.toContain("%");                 // percentage replaced by the move badge
+  });
+
+  it("conflict on the pivot takes precedence over linked-elsewhere", () => {
+    const html = buildPickerRowHtml({
+      pivotUnitId: 1, pivotText: "p", asTableRow: false, candidates: [cand(7)],
+      alreadyLinked: new Set([7]), linkedElsewhere: new Map([[7, "3"]]),
+    });
+    expect(html).toContain("prep-align-picker-cand--conflict");
+    expect(html).not.toContain("prep-align-picker-cand--elsewhere");
+    expect(html).not.toContain("data-linked-elsewhere");
+  });
 });

@@ -21,10 +21,15 @@ export interface PickerRowOptions {
   candidates: RetargetCandidate[] | null;
   /** target_unit_ids already linked to this pivot (conflict set). */
   alreadyLinked: Set<number>;
+  /** RA-D1 (re-anchor): target_unit_id → the source-segment label it is already
+   *  anchored on (a DIFFERENT hub row). Such a candidate offers "déplacer ici
+   *  (ré-ancrer)" vs "ajouter aussi" instead of a plain create. Optional / defaults
+   *  to none, so the AlignPanel caller is unchanged. */
+  linkedElsewhere?: Map<number, string>;
 }
 
 export function buildPickerRowHtml(opts: PickerRowOptions): string {
-  const { pivotUnitId, pivotText, asTableRow, candidates, alreadyLinked } = opts;
+  const { pivotUnitId, pivotText, asTableRow, candidates, alreadyLinked, linkedElsewhere } = opts;
     let content: string;
     if (candidates === null) {
       content = `<span class="prep-align-picker-loading">&#8230; chargement des candidats</span>`;
@@ -33,13 +38,25 @@ export function buildPickerRowHtml(opts: PickerRowOptions): string {
     } else {
       content = candidates.map(c => {
         const conflict = alreadyLinked.has(c.target_unit_id);
-        return `<button class="prep-align-picker-cand${conflict ? " prep-align-picker-cand--conflict" : ""}"
+        const fromSeg = conflict ? undefined : linkedElsewhere?.get(c.target_unit_id);
+        const cls = conflict
+          ? " prep-align-picker-cand--conflict"
+          : fromSeg != null ? " prep-align-picker-cand--elsewhere" : "";
+        const title = conflict
+          ? "Déjà lié à ce pivot — sélectionner supprimera le lien existant"
+          : fromSeg != null
+            ? `Déjà la traduction du segment ${_esc(fromSeg)} — le choisir propose de déplacer (ré-ancrer) ou d'ajouter aussi`
+            : `score ${c.score.toFixed(2)} — ${_esc(c.reason)}`;
+        const badge = conflict
+          ? "⚠ déjà lié"
+          : fromSeg != null ? `&#61; §${_esc(fromSeg)}` : `${(c.score * 100).toFixed(0)}%`;
+        return `<button class="prep-align-picker-cand${cls}"
           data-uid="${c.target_unit_id}"
-          title="${conflict ? "Déjà lié à ce pivot — sélectionner supprimera le lien existant" : `score ${c.score.toFixed(2)} — ${_esc(c.reason)}`}"
-          ${conflict ? 'data-conflict="1"' : ""}>
+          title="${title}"
+          ${conflict ? 'data-conflict="1"' : ""}${fromSeg != null ? ` data-linked-elsewhere="${_esc(fromSeg)}"` : ""}>
           <span class="prep-align-picker-cand-ext">[§${_esc(String(c.external_id ?? "?"))}]</span>
           <span class="prep-align-picker-cand-text">${_esc(c.target_text.slice(0, 120))}</span>
-          <span class="prep-align-picker-cand-score">${conflict ? "⚠ déjà lié" : `${(c.score * 100).toFixed(0)}%`}</span>
+          <span class="prep-align-picker-cand-score">${badge}</span>
         </button>`;
       }).join("");
     }

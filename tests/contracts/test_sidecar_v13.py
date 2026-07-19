@@ -350,3 +350,46 @@ class TestBeadActions:
         assert code == 200
         assert body["applied"] == 0
         assert len(body["errors"]) == 1
+
+
+class TestSetPivotReanchor:
+    """set_pivot (1.6.60, RA-D1) — re-anchor a link onto another hub segment."""
+
+    def test_set_pivot_moves_the_link_to_another_hub_row(self, v13_sidecar):
+        base, token, _ = v13_sidecar
+        link_ids = _get_link_ids(base, token)
+        # link_ids[0] = FR1↔EN1 (pivot unit 1). Sanity: pivot 2 is a clean 1-1 first.
+        code, coll = _post(
+            f"{base}/align/collisions", {"pivot_doc_id": 1, "target_doc_id": 2}, token
+        )
+        assert code == 200
+        assert all(g["pivot_unit_id"] != 2 for g in coll["collisions"])
+
+        # Re-anchor FR1↔EN1 onto pivot unit 2 (which already links EN2) → the landing
+        # cell now holds two distinct targets → a genuine collision (RA-D5). This proves
+        # the action is dispatched end-to-end (valid_action_types + service).
+        code, body = _post(
+            f"{base}/align/links/batch_update",
+            {"actions": [{"action": "set_pivot", "link_id": link_ids[0], "new_pivot_unit_id": 2}]},
+            token,
+        )
+        assert code == 200
+        assert body["applied"] == 1 and body["errors"] == []
+
+        code, coll = _post(
+            f"{base}/align/collisions", {"pivot_doc_id": 1, "target_doc_id": 2}, token
+        )
+        assert any(g["pivot_unit_id"] == 2 for g in coll["collisions"])
+
+    def test_set_pivot_foreign_doc_reports_validation_error(self, v13_sidecar):
+        base, token, _ = v13_sidecar
+        link_ids = _get_link_ids(base, token)
+        # unit 6 is a TARGET unit (doc 2), not a valid hub pivot (RA-D4) → error, no apply.
+        code, body = _post(
+            f"{base}/align/links/batch_update",
+            {"actions": [{"action": "set_pivot", "link_id": link_ids[0], "new_pivot_unit_id": 6}]},
+            token,
+        )
+        assert code == 200
+        assert body["applied"] == 0
+        assert len(body["errors"]) == 1

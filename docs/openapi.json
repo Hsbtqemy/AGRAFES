@@ -126,7 +126,8 @@
               "set_target_span",
               "clear_target_span",
               "set_bead",
-              "clear_bead"
+              "clear_bead",
+              "set_pivot"
             ],
             "type": "string"
           },
@@ -139,6 +140,10 @@
             "type": "integer"
           },
           "link_id": {
+            "type": "integer"
+          },
+          "new_pivot_unit_id": {
+            "description": "set_pivot: the hub/pivot unit to re-anchor the link onto; must be a line unit of the link's own hub document.",
             "type": "integer"
           },
           "status": {
@@ -4288,8 +4293,8 @@
   "info": {
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
-    "version": "1.6.59",
-    "x-contract-version": "1.6.59"
+    "version": "1.6.60",
+    "x-contract-version": "1.6.60"
   },
   "openapi": "3.0.3",
   "paths": {

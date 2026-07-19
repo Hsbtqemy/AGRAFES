@@ -14,7 +14,7 @@ from typing import Any
 from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
-CONTRACT_VERSION = "1.6.59"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.60"  # semantic versioning for the sidecar API contract
 # SID-08 / OPS-03: the API version IS the contract version — derived, never a
 # second hand-maintained literal, so the two can no longer drift. /health reports
 # the *engine* version under `version` (it predates the sidecar); every other
@@ -232,6 +232,14 @@ API_VERSION = CONTRACT_VERSION
 #         regroup by boundary / extract a blob) instead of hand-repairing the matrix downstream.
 #         Read-only, derived (services matrix_export_service + anchoring.anchor_status_for_doc).
 #         Additive field → snapshot/.md unchanged; openapi moves (version).
+# 1.6.60: re-anchor (5th verb, RA-D1). AlignBatchAction.action gains `set_pivot` +
+#         field `new_pivot_unit_id`: move a link onto a different hub/pivot segment
+#         (symmetric to retarget's target move). Only pivot_unit_id changes — status,
+#         target and cut span preserved; the derived bead_uid is cleared (RA-D2). New
+#         pivot must exist, be a line unit, and belong to the link's hub doc; a
+#         duplicate (pivot,target) link is refused. Logic in
+#         services/align_links_service.set_pivot. Additive enum+field → no new route →
+#         snapshot unchanged; openapi moves (version); .md action list updated.
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
@@ -4523,7 +4531,7 @@ def openapi_spec() -> dict[str, Any]:
                     "type": "object",
                     "required": ["action", "link_id"],
                     "properties": {
-                        "action": {"type": "string", "enum": ["set_status", "delete", "set_target_span", "clear_target_span", "set_bead", "clear_bead"]},
+                        "action": {"type": "string", "enum": ["set_status", "delete", "set_target_span", "clear_target_span", "set_bead", "clear_bead", "set_pivot"]},
                         "link_id": {"type": "integer"},
                         "status": {"type": "string", "enum": ["accepted", "rejected"], "nullable": True},
                         "char_start": {"type": "integer", "description": "set_target_span: start offset into the target unit's text_raw (0-based)."},
@@ -4533,6 +4541,10 @@ def openapi_spec() -> dict[str, Any]:
                         # target_doc_id), so a cell holding several links is one bead (1 hub ↔
                         # N targets) instead of a phantom collision. clear_bead sets it back to
                         # NULL (singleton).
+                        # 1.6.60 (RA-D1): set_pivot re-anchors the link onto a different
+                        # hub/pivot segment — symmetric to retarget's target move. Only
+                        # pivot_unit_id changes (status/target/span preserved, bead_uid cleared).
+                        "new_pivot_unit_id": {"type": "integer", "description": "set_pivot: the hub/pivot unit to re-anchor the link onto; must be a line unit of the link's own hub document."},
                     },
                 },
                 "AlignLinksBatchUpdateRequest": {

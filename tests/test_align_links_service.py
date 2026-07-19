@@ -11,7 +11,11 @@ import sqlite3
 import pytest
 
 from multicorpus_engine.services import align_links_service
-from multicorpus_engine.services.errors import NotFoundError, ValidationError
+from multicorpus_engine.services.errors import (
+    ConflictError,
+    NotFoundError,
+    ValidationError,
+)
 
 
 def _setup_link(
@@ -112,6 +116,112 @@ def test_set_target_span_is_non_destructive(db_conn: sqlite3.Connection) -> None
     assert tuple(after) == tuple(before)  # the target unit (text + position) untouched
     # no split happened — the target doc still has exactly one unit
     assert db_conn.execute("SELECT COUNT(*) FROM units WHERE doc_id=2").fetchone()[0] == 1
+
+
+# ── set_pivot (re-anchor — the 5th verb, RA-D1) ──────────────────────────────────
+
+def _add_pivot(conn: sqlite3.Connection, n: int, unit_type: str = "line") -> int:
+    """Add a second unit to the hub doc (id 1) → its unit_id, for re-anchoring."""
+    cur = conn.execute(
+        "INSERT INTO units (doc_id, unit_type, n, text_raw, text_norm)"
+        " VALUES (1, ?, ?, 'Autre.', 'autre')",
+        (unit_type, n),
+    )
+    conn.commit()
+    return int(cur.lastrowid)
+
+
+def test_set_pivot_moves_anchor_and_preserves_state(db_conn: sqlite3.Connection) -> None:
+    # A curated link: accepted, cut to a target sub-span, grouped into its cell's bead.
+    link_id, tgt = _setup_link(db_conn)
+    old_pivot = db_conn.execute(
+        "SELECT pivot_unit_id FROM alignment_links WHERE link_id=?", (link_id,)
+    ).fetchone()[0]
+    align_links_service.set_target_span(db_conn, link_id, 0, 5)
+    align_links_service.set_bead(db_conn, link_id)
+    db_conn.execute(
+        "UPDATE alignment_links SET status='accepted' WHERE link_id=?", (link_id,)
+    )
+    db_conn.commit()
+    new_pivot = _add_pivot(db_conn, n=2)
+
+    align_links_service.set_pivot(db_conn, link_id, new_pivot)
+    db_conn.commit()
+
+    row = db_conn.execute(
+        "SELECT pivot_unit_id, target_unit_id, status, target_char_start,"
+        " target_char_end, bead_uid FROM alignment_links WHERE link_id=?",
+        (link_id,),
+    ).fetchone()
+    assert row[0] == new_pivot and new_pivot != old_pivot  # pivot moved (RA-D1)
+    assert row[1] == tgt                                    # target preserved (RA-D3)
+    assert row[2] == "accepted"                             # status preserved (RA-D3)
+    assert (row[3], row[4]) == (0, 5)                       # cut span preserved (RA-D3)
+    assert row[5] is None                                   # stale bead_uid cleared (RA-D2)
+
+
+def test_set_pivot_same_pivot_is_noop(db_conn: sqlite3.Connection) -> None:
+    # No-op when the new pivot equals the current one — and it must NOT touch the bead
+    # (the early return precedes the bead-clear).
+    link_id, _ = _setup_link(db_conn)
+    cur_pivot = db_conn.execute(
+        "SELECT pivot_unit_id FROM alignment_links WHERE link_id=?", (link_id,)
+    ).fetchone()[0]
+    align_links_service.set_bead(db_conn, link_id)
+    db_conn.commit()
+    align_links_service.set_pivot(db_conn, link_id, cur_pivot)  # no raise
+    row = db_conn.execute(
+        "SELECT pivot_unit_id, bead_uid FROM alignment_links WHERE link_id=?", (link_id,)
+    ).fetchone()
+    assert row[0] == cur_pivot and row[1] is not None  # unchanged, bead intact
+
+
+def test_set_pivot_rejects_structure_unit(db_conn: sqlite3.Connection) -> None:
+    link_id, _ = _setup_link(db_conn)
+    structure = _add_pivot(db_conn, n=2, unit_type="structure")
+    with pytest.raises(ValidationError):
+        align_links_service.set_pivot(db_conn, link_id, structure)
+
+
+def test_set_pivot_rejects_foreign_doc(db_conn: sqlite3.Connection) -> None:
+    # The target unit lives in the translation doc (id 2) → not a valid hub pivot (RA-D4).
+    link_id, tgt = _setup_link(db_conn)
+    with pytest.raises(ValidationError):
+        align_links_service.set_pivot(db_conn, link_id, tgt)
+
+
+def test_set_pivot_rejects_nonexistent_pivot(db_conn: sqlite3.Connection) -> None:
+    link_id, _ = _setup_link(db_conn)
+    with pytest.raises(ValidationError):
+        align_links_service.set_pivot(db_conn, link_id, 999999)
+
+
+def test_set_pivot_rejects_non_int(db_conn: sqlite3.Connection) -> None:
+    link_id, _ = _setup_link(db_conn)
+    with pytest.raises(ValidationError):
+        align_links_service.set_pivot(db_conn, link_id, True)  # bool is not an id
+    with pytest.raises(ValidationError):
+        align_links_service.set_pivot(db_conn, link_id, "2")  # str is not an id
+
+
+def test_set_pivot_link_not_found(db_conn: sqlite3.Connection) -> None:
+    with pytest.raises(NotFoundError):
+        align_links_service.set_pivot(db_conn, 999, 1)
+
+
+def test_set_pivot_duplicate_rejected(db_conn: sqlite3.Connection) -> None:
+    # A second link already anchors the SAME target on the pivot we want to move onto →
+    # re-anchoring there would duplicate the cell entry (RA-D4 → ConflictError).
+    link_id, tgt = _setup_link(db_conn)
+    new_pivot = _add_pivot(db_conn, n=2)
+    db_conn.execute(
+        "INSERT INTO alignment_links (run_id, pivot_unit_id, target_unit_id, external_id,"
+        " pivot_doc_id, target_doc_id, created_at) VALUES ('r', ?, ?, 1, 1, 2, datetime('now'))",
+        (new_pivot, tgt),
+    )
+    db_conn.commit()
+    with pytest.raises(ConflictError):
+        align_links_service.set_pivot(db_conn, link_id, new_pivot)
 
 
 # ── build_retarget_candidates (ré-ancrer — R3.3 tranche 1) ───────────────────────

@@ -19,7 +19,7 @@ from __future__ import annotations
 import sqlite3
 from typing import Any
 
-from .errors import NotFoundError, ValidationError
+from .errors import ConflictError, NotFoundError, ValidationError
 
 
 def _coerce_offset(name: str, value: Any) -> int:
@@ -125,6 +125,69 @@ def clear_bead(conn: sqlite3.Connection, link_id: int) -> None:
     )
     if cur.rowcount == 0:
         raise NotFoundError(f"link_id={link_id} not found")
+
+
+def set_pivot(
+    conn: sqlite3.Connection, link_id: int, new_pivot_unit_id: Any
+) -> None:
+    """Re-anchor ``link_id`` onto a different hub/pivot segment — the 5th verb.
+
+    ``retarget`` moves a link's *target*; ``set_pivot`` moves its *pivot* (the
+    hub/moyeu anchor) — the symmetric gesture the source-anchored model was missing
+    (docs/DESIGN_alignment_curation_model.md §10, RA-D1). Only ``pivot_unit_id``
+    changes; ``status``, ``target_unit_id`` and the cut span
+    (``target_char_start``/``target_char_end``) are **preserved** (RA-D3). The
+    derived ``bead_uid`` (``cell#<pivot>#<doc>``) is cleared to NULL in the SAME
+    UPDATE (RA-D2) — the old cell's bead no longer owns this link, so it becomes a
+    singleton on its new row (regroup with ``set_bead`` if wanted).
+
+    The new pivot must (a) **exist**, (b) be a ``line`` unit, and (c) belong to the
+    link's own ``pivot_doc_id`` — re-anchoring stays *inside the hub document*
+    (RA-D4). Re-anchoring onto a pivot that already links the same target unit is
+    rejected — that would duplicate the cell entry (RA-D4).
+
+    Raises:
+        ValidationError: ``new_pivot_unit_id`` is not an int, is missing, is not a
+            line unit, or belongs to a different hub document.
+        NotFoundError:   the link does not exist.
+        ConflictError:   an identical (new pivot, target unit) link already exists.
+    """
+    if isinstance(new_pivot_unit_id, bool) or not isinstance(new_pivot_unit_id, int):
+        raise ValidationError("new_pivot_unit_id must be an integer")
+    link = conn.execute(
+        "SELECT pivot_doc_id, target_unit_id, pivot_unit_id"
+        " FROM alignment_links WHERE link_id = ?",
+        (link_id,),
+    ).fetchone()
+    if link is None:
+        raise NotFoundError(f"link_id={link_id} not found")
+    pivot_doc_id, target_unit_id, cur_pivot = int(link[0]), int(link[1]), int(link[2])
+    if new_pivot_unit_id == cur_pivot:
+        return  # no-op (RA-D4): the front never offers this, but stay idempotent.
+    new_pivot = conn.execute(
+        "SELECT doc_id, unit_type FROM units WHERE unit_id = ?",
+        (new_pivot_unit_id,),
+    ).fetchone()
+    if new_pivot is None:
+        raise ValidationError(f"new_pivot_unit_id={new_pivot_unit_id} not found")
+    if new_pivot[1] != "line":
+        raise ValidationError("new pivot must be a line unit")
+    if int(new_pivot[0]) != pivot_doc_id:
+        raise ValidationError("new pivot must belong to the link's hub document")
+    dup = conn.execute(
+        "SELECT 1 FROM alignment_links"
+        " WHERE pivot_unit_id = ? AND target_unit_id = ? AND link_id <> ?",
+        (new_pivot_unit_id, target_unit_id, link_id),
+    ).fetchone()
+    if dup is not None:
+        raise ConflictError(
+            f"a link from pivot {new_pivot_unit_id} to target {target_unit_id}"
+            " already exists"
+        )
+    conn.execute(
+        "UPDATE alignment_links SET pivot_unit_id = ?, bead_uid = NULL WHERE link_id = ?",
+        (new_pivot_unit_id, link_id),
+    )
 
 
 def build_retarget_candidates(

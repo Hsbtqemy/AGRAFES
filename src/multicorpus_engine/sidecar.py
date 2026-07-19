@@ -8216,7 +8216,11 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         set_target_span) MUST pass atomic — a half-applied cut is worse than none.
         """
         from multicorpus_engine.services import align_links_service
-        from multicorpus_engine.services.errors import NotFoundError, ValidationError
+        from multicorpus_engine.services.errors import (
+            ConflictError,
+            NotFoundError,
+            ValidationError,
+        )
 
         actions = body.get("actions")
         if not isinstance(actions, list) or len(actions) == 0:
@@ -8234,6 +8238,10 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             # derived server-side from the link's (pivot, target_doc) — the client
             # never invents an identifier.
             "set_bead", "clear_bead",
+            # RA-D1 (1.6.60): re-anchor a link onto a different hub/pivot segment (the
+            # 5th verb — symmetric to retarget's target move). Preserves status/span,
+            # clears the now-stale derived bead_uid.
+            "set_pivot",
         }
         valid_statuses = {None, "accepted", "rejected"}
 
@@ -8307,6 +8315,17 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                         align_links_service.clear_bead(conn, link_id)
                         applied += 1
                     except NotFoundError as exc:
+                        errors.append({"index": i, "link_id": link_id, "error": exc.message})
+
+                elif action_type == "set_pivot":
+                    # RA-D1: re-anchor the link onto another hub segment (5th verb).
+                    # Only pivot_unit_id moves; status/target/span kept, bead_uid cleared.
+                    try:
+                        align_links_service.set_pivot(
+                            conn, link_id, act.get("new_pivot_unit_id")
+                        )
+                        applied += 1
+                    except (ValidationError, NotFoundError, ConflictError) as exc:
                         errors.append({"index": i, "link_id": link_id, "error": exc.message})
 
             rolled_back = False

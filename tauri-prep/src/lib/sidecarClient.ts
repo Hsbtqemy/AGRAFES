@@ -2107,8 +2107,9 @@ export async function listRuns(
 export interface AlignBatchAction {
   /** 1.6.57 (D-W16): set_bead / clear_bead group (or ungroup) a link into its CELL's
    *  bead — the bead_uid is derived server-side from the link's (pivot, target_doc),
-   *  so a cell holding several links is one bead, not a phantom collision. */
-  action: "set_status" | "delete" | "set_target_span" | "clear_target_span" | "set_bead" | "clear_bead";
+   *  so a cell holding several links is one bead, not a phantom collision.
+   *  1.6.60 (RA-D1): set_pivot re-anchors a link onto a different hub/pivot segment. */
+  action: "set_status" | "delete" | "set_target_span" | "clear_target_span" | "set_bead" | "clear_bead" | "set_pivot";
   link_id: number;
   /** Required for set_status; null resets to unreviewed */
   status?: "accepted" | "rejected" | null;
@@ -2116,6 +2117,10 @@ export interface AlignBatchAction {
    *  link's target unit text_raw. `0 <= char_start <= char_end <= len`. */
   char_start?: number;
   char_end?: number;
+  /** set_pivot (re-anchor, RA-D1): the hub/pivot unit to move the link onto; must be a
+   *  line unit of the link's own hub document. Only pivot_unit_id changes (status,
+   *  target and cut span preserved; the stale derived bead_uid is cleared server-side). */
+  new_pivot_unit_id?: number;
 }
 
 export interface AlignBatchUpdateResponse {

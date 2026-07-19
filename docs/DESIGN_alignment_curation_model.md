@@ -223,3 +223,80 @@ de ce segment ») plutôt que dupliquer le geste — trancher au moment de la su
 3. **D4** — `add-target` groupe-t-il automatiquement, ou laisse-t-on l'utilisateur grouper ensuite ?
 4. **D6** — le renvoi contextuel Segmentation↔Alignement (tranche 4) est-il dans le périmètre, ou différé
    jusqu'à preuve d'usage ?
+
+## 10. Re-anchor (5ᵉ verbe) — réconciliation + décisions figées (2026-07-19)
+
+> **Mise à jour.** Cette note (2026-07-07) précède la livraison du socle K3 et des beads. **État réel
+> vérifié au code (2026-07-19)** — les §1/§2 ci-dessus sont désormais **partiellement périmés** :
+> - **D1/K3 = LIVRÉ** — `bead_uid` (mig **026**), clé de collision basculée `COALESCE(bead_uid,'L'||link_id)`
+>   sur les 3 sites, aligneur pose `bead_uid`. Backfills byte-identiques (mig **030/031** = réparations de
+>   sur/sous-groupement des gestes).
+> - **B (group/ungroup) = LIVRÉ dans la matrice** — `set_bead`/`clear_bead` (D-W16, contrat 1.6.57),
+>   `bead_uid` **dérivé** `cell#<pivot>#<doc>` (`align_links_service.cell_bead_uid`), garde
+>   `buildCellBeadActions` (≥ 2 liens aligneur ⇒ vraie collision préservée). **Le trou B est comblé** — plus
+>   de collision fantôme *dans la matrice*.
+> - **Résidu** : le ➕ *add-target* legacy (`AlignPanel.ts`) n'émet toujours pas `set_bead` → fabrique encore
+>   une collision fantôme *dans le panneau Contrôle* (§2-B reste vrai **pour cet écran seulement**). Hors lot
+>   (RA-D7).
+>
+> **Reste = le seul verbe non bâti : re-anchor (D2).** → **✅ LIVRÉ (2026-07-19)** : action `set_pivot`
+> (contrat **1.6.60**), service `align_links_service.set_pivot`, surface matrice (RA-D6 option b). Décisions
+> figées ci-dessous. Suite éventuelle : RA-D7 (résidu add-target legacy).
+
+**Vérif de prémisse (2026-07-19).** Le cas motivant `LeCléziotest` (EN3 accroché à FR4, FR3 orphelin) est
+**déjà réparable dans la matrice** en 2 gestes existants — `✕ retirer` (FR4, EN) puis `＝ rattacher`
+(FR3, EN) → EN3 — **sans perte** (lien auto frais). Re-anchor n'est donc **pas un déblocage** : sa valeur =
+(1) **préserver l'état accumulé** d'un lien qu'on déplace (`status` / coupe `target_char_start/end`) et
+(2) **économiser un clic**. On le bâtit comme *complétion propre du jeu de verbes*, en assumant cette valeur
+modeste.
+
+**Décisions figées :**
+
+- **RA-D1 — Wire = action `set_pivot` sur `/align/links/batch_update`** (≠ note §6-3 qui proposait la route
+  standalone `/align/link/reanchor`). Raison : le monde a changé — la **matrice est la surface primaire** et
+  route ses gestes par `batch_update` (atomic, write-lock). Une **action additive** évite une route neuve →
+  contrat **additif** (enum dans `openapi.json` + `sidecar_contract.py`, **snapshot & `.md` inchangés**,
+  comme `set_bead`) et reste growth-gate-friendly (dispatch réutilisé). Service
+  `align_links_service.set_pivot(conn, link_id, new_pivot_unit_id)`, **symétrique de `set_target_span`**.
+- **RA-D2 — Hygiène de bead = `bead_uid → NULL` dans le même UPDATE.** `bead_uid` étant **dérivé de la
+  cellule** (`cell#<pivot>#<doc>`), déplacer le pivot rend l'ancien uid périmé. Le service pose
+  `SET pivot_unit_id=?, bead_uid=NULL` en **une** écriture → le lien redevient singleton sur sa nouvelle
+  ligne (l'utilisateur regroupe si besoin). Atomicité intrinsèque à l'action, pas de compound.
+  **`bead_id` (legacy, mig 022) laissé tel quel** — exactement comme `clear_bead` (qui ne touche que
+  `bead_uid`) : la clé de collision est `COALESCE(bead_uid, 'L'||link_id)` sur les 3 sites → `bead_id` n'y
+  entre plus (mig 026), et `MatrixCellLink` ne le porte pas → **zéro impact sur la matrice** (surface
+  primaire). *Résidu cosmétique connu, pré-existant et cohérent avec `clear_bead`* : `AlignPanel` (Contrôle,
+  legacy) dessine encore l'accent de bead sur `bead_id != null` → un lien ré-ancré (ou dégroupé) y garde un
+  accent fantôme. Rattaché au nettoyage du panneau legacy (RA-D7), pas à ce lot.
+- **RA-D3 — Préservation.** `set_pivot` **préserve** `status`, `target_unit_id`, `target_char_start/end` (la
+  coupe porte sur la CIBLE, inchangée) et `external_id`. Seuls `pivot_unit_id` et `bead_uid` bougent.
+  *Caveat assumé* : `external_id` conservé = clé de l'**ancien** pivot ; sans impact tant qu'on ne ré-aligne
+  pas — à revoir si un futur ré-alignement re-matche sur `external_id` (hors MVP).
+- **RA-D4 — Validation (typed errors).** `new_pivot_unit_id` doit (a) **exister**, (b) être
+  `unit_type='line'`, (c) appartenir au **même `pivot_doc_id`** que le lien (on ré-ancre *dans le moyeu*, pas
+  à travers les docs) → sinon `ValidationError`. Un lien identique déjà présent sur la cellule cible (même
+  `target_unit_id`) → `ConflictError` (pas de doublon). `new_pivot == pivot` courant → no-op accepté (le
+  front ne l'offre pas).
+- **RA-D5 — Collision à l'atterrissage : aucun traitement spécial.** Atterrir sur un pivot déjà porteur d'un
+  lien aligneur crée une **vraie collision** (2 liens), surfacée par la matrice / `/align/collisions` —
+  cohérent avec le modèle (arbitrage humain). Le cas réel (FR3 orphelin) atterrit propre.
+- **RA-D6 — Surface : (b) plier dans `＝ rattacher` d'une cellule VIDE ✅ LIVRÉ.** Sur la cellule vide
+  (FR3, EN), `＝ rattacher` liste les cibles ; une cible **déjà ancrée sur exactement un autre segment
+  moyeu** (non coupée — sinon repli sur le create simple) est signalée (badge `＝ §X`, indigo) et, au clic,
+  propose **deux lectures légitimes** : « **déplacer ici (ré-ancrer)** » → `set_pivot` du lien fautif ; ou
+  « **ajouter aussi (garder les deux)** » → `create` d'un second lien = un **bead 1-M légitime**
+  (EN1 ↔ FR1+FR2), *pas* un doublon fautif. (À l'implémentation : le « dupliquer » de la 1ʳᵉ formulation
+  s'est révélé être ce cas-bead légitime — le `create` de l'existant.) Réutilise
+  `_openAttachPicker`/`_performAttach`, **zéro bouton neuf** (la matrice porte déjà ~11 gestes). Cibles
+  ancrées sur **plusieurs** autres lignes (ambiguës) ou **coupées** : laissées au `create` simple (MVP).
+  **Alternative (a) écartée** : geste dédié `⇕ ré-ancrer` sur la cellule pleine (plus découvrable, +1 bouton).
+- **RA-D7 — Résidu legacy add-target : hors périmètre.** Le ➕ de `AlignPanel` reste à corriger (émettre
+  `set_bead`) ou à retirer ; tracé comme suite, pas bloquant (le panneau Contrôle est le microscope
+  secondaire).
+- **RA-D8 — Réversibilité.** Comme `batch_update` : mutation de lien non-destructive (aucun alignement
+  supprimé), pas d'undo dédié. Identique à l'existant (cf. D9).
+
+**Coût.** Moteur : 1 service + 1 branche d'action + validation ; **contrat additif, zéro migration**. Front :
+mode « déplacer » dans le picker d'attache + type `AlignBatchAction` (déjà porteur des actions). Tests :
+service (validation ×3 + préservation + bead-clear) + RED-sur-ancien (déplacement infaisable avant). Risque :
+faible (action isolée, pas de bascule de clé de collision).
