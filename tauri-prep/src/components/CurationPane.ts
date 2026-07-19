@@ -100,6 +100,10 @@ export class CurationPane {
         const key = cb.dataset.preset!;
         if (cb.checked) this._selectedPresets.add(key);
         else this._selectedPresets.delete(key);
+        // Changing the rule set makes the last preview stale (its marks/count no longer
+        // reflect the selected rules). Invalidate it so the summary, the Apply gate and the
+        // Apply confirm-count stay truthful (revue adverse Lot 1). Staged overrides survive.
+        this._invalidatePreview();
       });
     });
     this._q("#prep-cur-preview-btn")?.addEventListener("click", () => void this._runPreview());
@@ -244,6 +248,20 @@ export class CurationPane {
     } finally {
       if (btn) { btn.disabled = false; btn.textContent = "Aperçu"; }
     }
+  }
+
+  /** Drop a now-stale preview (marks + stats + revealed diffs) after the rule set changed.
+   *  Keeps staged overrides (preview-independent). No-op if there is no preview. */
+  private _invalidatePreview(): void {
+    if (this._stats === null && this._changed.size === 0) return;
+    this._changed.clear();
+    this._stats = null;
+    this._expanded.clear();
+    this._showAllDiffs = false;
+    this._renderToggleAll();
+    this._renderSummary();
+    this._renderApplyBtn();
+    this._list?.render();
   }
 
   private _renderSummary(): void {

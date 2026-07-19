@@ -287,6 +287,29 @@ describe("CurationPane — édition inline / override (Lot 1, parité gap #9)", 
     expect(host.querySelector(".prep-conv-unit-row--overridden")).toBeNull();
   });
 
+  it("changer de preset après un aperçu invalide l'aperçu périmé (marks + gate)", async () => {
+    const conn = fakeConn({
+      units: [unit(1), unit(2)],
+      preview: () => ({
+        ok: true, doc_id: 1, stats: { units_total: 2, units_changed: 1, replacements_total: 1 },
+        examples: [{ unit_id: 10, external_id: 1, before: "a", after: "b" }],
+      }),
+    });
+    const pane = new CurationPane(host, () => conn, () => {});
+    await pane.setDocument(1, null);
+    const cb = host.querySelector<HTMLInputElement>('input[data-preset="spaces"]')!;
+    cb.checked = true; cb.dispatchEvent(new Event("change"));
+    (host.querySelector("#prep-cur-preview-btn") as HTMLButtonElement).click();
+    await flush();
+    expect(host.querySelectorAll(".prep-conv-unit-row--curated").length).toBe(1);
+    expect(pane.hasPendingEdits()).toBe(true);
+    // Décocher le preset rend l'aperçu périmé → marks + gate tombent (aucun override en jeu).
+    cb.checked = false; cb.dispatchEvent(new Event("change"));
+    expect(host.querySelectorAll(".prep-conv-unit-row--curated").length).toBe(0);
+    expect(pane.hasPendingEdits()).toBe(false);
+    expect((host.querySelector("#prep-cur-apply-btn") as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it("l'override survit à un nouvel aperçu (§6 preview-independent)", async () => {
     const conn = fakeConn({
       units: [unit(1, { text_norm: "a" }), unit(2)],
