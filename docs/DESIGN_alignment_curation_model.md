@@ -290,9 +290,14 @@ modeste.
   `_openAttachPicker`/`_performAttach`, **zéro bouton neuf** (la matrice porte déjà ~11 gestes). Cibles
   ancrées sur **plusieurs** autres lignes (ambiguës) ou **coupées** : laissées au `create` simple (MVP).
   **Alternative (a) écartée** : geste dédié `⇕ ré-ancrer` sur la cellule pleine (plus découvrable, +1 bouton).
-- **RA-D7 — Résidu legacy add-target : hors périmètre.** Le ➕ de `AlignPanel` reste à corriger (émettre
-  `set_bead`) ou à retirer ; tracé comme suite, pas bloquant (le panneau Contrôle est le microscope
-  secondaire).
+- **RA-D7 — Résidu legacy add-target ✅ LIVRÉ (2026-07-19, option a).** Le ➕ « ajouter une 2ᵉ cible » de
+  `AlignPanel` (`_doPickerSelect` mode `add`) émet désormais `set_bead` sur les liens de la cellule après le
+  `create` → le 1-M qu'il construit n'est plus re-signalé en **collision fantôme** (fix du §2-B pour cet
+  écran). `create` + `set_bead` étant 2 appels, le toast n'annonce le groupement que s'il a réussi. Choix
+  (a) *émettre set_bead* plutôt que (b) *retirer le bouton* : chirurgical, non-régressif, aligné sur la reco
+  D4. *Reste hors périmètre* : l'accent de bead des lignes `AlignPanel` est encore `bead_id`-based (cf.
+  RA-D2) → il ne s'affiche pas pour un bead posé via `bead_uid` ; gap d'affichage legacy séparé, non
+  bloquant (la détection de collision, elle, est correcte).
 - **RA-D8 — Réversibilité.** Comme `batch_update` : mutation de lien non-destructive (aucun alignement
   supprimé), pas d'undo dédié. Identique à l'existant (cf. D9).
 

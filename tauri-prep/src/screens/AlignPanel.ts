@@ -1700,8 +1700,36 @@ export class AlignPanel {
             this._orphanPivots = this._orphanPivots.filter(u => u.unit_id !== pivotUnitId);
           }
         }
-        const hint = mode === "add" ? " — acceptez les deux liens pour valider l'alignement multiple" : "";
-        this._cb.toast(`✓ Lien créé${hint}`);
+        if (mode === "add") {
+          // RA-D7: « ajouter une 2ᵉ cible » construit un 1-M VOULU → grouper la cellule en
+          // bead pour qu'elle ne soit PAS re-signalée en collision fantôme. La clé de collision
+          // est par bead_uid, dérivé server-side de (pivot, target_doc) : set_bead sur tous les
+          // liens de la cellule leur donne le même uid. Sans ça, l'outil laissait bâtir un N-M
+          // manuel puis le dénonçait comme une erreur (docs/DESIGN_alignment_curation_model §2-B).
+          const cellLinks = (this._familyMode && this._retargetTargetDocId !== null)
+            ? (this._familyAudits.get(this._retargetTargetDocId) ?? [])
+            : this._auditLinks;
+          const beadIds = cellLinks.filter(l => l.pivot_unit_id === pivotUnitId).map(l => l.link_id);
+          // create + set_bead sont deux appels séparés : si le groupement échoue, le lien est
+          // créé mais la cellule reste une collision → le toast ne doit PAS prétendre l'avoir
+          // groupée (l'utilisateur ré-essaiera ; un autre geste de cellule la beadera aussi).
+          let beaded = false;
+          if (beadIds.length >= 2) {
+            try {
+              await batchUpdateAlignLinks(
+                conn, beadIds.map(id => ({ action: "set_bead", link_id: id })), { atomic: true },
+              );
+              beaded = true;
+            } catch (err) {
+              this._cb.log(`✗ Groupement bead : ${err instanceof Error ? err.message : String(err)}`, true);
+            }
+          }
+          this._cb.toast(beaded
+            ? "✓ 2ᵉ cible ajoutée et groupée en bead (alignement multiple)"
+            : "✓ 2ᵉ cible ajoutée");
+        } else {
+          this._cb.toast("✓ Lien créé");
+        }
       }
     } catch (err) {
       this._cb.log(`✗ ${mode === "retarget" ? "Reciblage" : "Création lien"} : ${err instanceof Error ? err.message : String(err)}`, true);
