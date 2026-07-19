@@ -25,8 +25,12 @@ let _outerContainer: HTMLElement | null = null;
 // ─── CSS ───────────────────────────────────────────────────────────────────────
 
 const CONSTITUER_CSS = `
-/* Le wrapper direct (#con-prep-wrapper) prend la hauteur naturelle de son
-   contenu ; le scroll se fait au niveau de .con-subcontent. */
+/* Le wrapper direct (#con-prep-wrapper = #app de prep) est une colonne flex bornée
+   en hauteur, comme en autonome (index.html #app{height:100%;display:flex}). Ainsi la
+   chaîne de hauteur de prep se résout : .prep-shell{flex:1} borne, .prep-main scrolle
+   EN INTERNE, et le rail de nav (.prep-nav) reste un side-rail permanent (« sticky »
+   par architecture) au lieu de défiler avec la page. .con-subcontent garde overflow:auto
+   en filet (si un écran déborde), mais le scroll normal se fait dans .prep-main. */
 .con-subcontent {
   flex: 1;
   min-height: 0;
@@ -35,7 +39,10 @@ const CONSTITUER_CSS = `
   position: relative;
 }
 .con-subcontent > .con-prep-wrapper {
-  min-height: 100%;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 /* Dans le contexte shell, 44px sont consommés hors de .con-subcontent par le
    header shell fixe (la barre de sous-onglets de 38px ayant été supprimée).

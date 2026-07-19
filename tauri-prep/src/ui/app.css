@@ -32,7 +32,7 @@ body { margin: 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Se
 
 /* Topbar */
 .prep-topbar { background: linear-gradient(135deg, #0c4a46, var(--color-primary)); color: #fff; padding: 0 1rem;
-  display: flex; align-items: center; height: 52px; gap: 0.75rem; border-bottom: 1px solid #0c4a46; }
+  display: flex; align-items: center; height: 52px; flex-shrink: 0; gap: 0.75rem; border-bottom: 1px solid #0c4a46; }
 .prep-topbar-title { font-size: 1rem; font-weight: 600; flex: 1; }
 .prep-topbar-dbpath { font-size: 11px; opacity: 0.75; max-width: min(420px, 42vw);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -852,12 +852,13 @@ summary:focus-visible,
   padding-bottom: calc(var(--prep-import-footer-h, 56px) + var(--prep-import-footer-pad-scroll, 12px));
 }
 
-/* Footer bar — fixé au bas de la fenêtre (viewport), colonne principale uniquement */
+/* Footer bar — fixé au bas de la fenêtre (viewport), colonne principale uniquement.
+   Décalé de la largeur RÉELLE du rail (48px collapsed), pas du token périmé 230px. */
 .prep-import-screen .imp-footer-bar {
   position: fixed;
   bottom: 0;
   right: 0;
-  left: var(--prep-nav-w, 230px);
+  left: var(--prep-nav-collapsed, 48px);
   z-index: 100;
   background: #fff;
   border-top: 1px solid var(--color-border, #e2e8f0);

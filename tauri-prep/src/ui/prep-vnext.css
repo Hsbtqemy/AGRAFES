@@ -58,7 +58,10 @@
   z-index: 100;
   flex-shrink: 0;
   width: var(--prep-nav-collapsed);
-  min-height: 100vh;
+  /* Le rail s'étire à la hauteur (bornée) de .prep-shell via align-items:stretch —
+     PAS de 100vh (qui débordait le conteneur borné sous le shell : 44px header +
+     52px topbar) et laissait la page défiler avec le rail. */
+  min-height: 0;
   transition: width 0.22s cubic-bezier(0.4, 0, 0.2, 1),
               box-shadow 0.22s ease;
   background: var(--prep-nav-bg);
@@ -216,13 +219,13 @@
   overflow-y: auto; /* scroll body des vues standards (import, docs, export) */
 }
 
-.prep-main:has(.import-screen.active) {
+.prep-main:has(.prep-import-screen.active) {
   display: flex;
   flex-direction: column;
   min-height: 0;
 }
 
-.prep-main:has(.import-screen.active) > .content {
+.prep-main:has(.prep-import-screen.active) > .content {
   flex: 1;
   min-height: 0;
   display: flex;
@@ -586,14 +589,9 @@ details[open] > .prep-curate-bottom-details-summary::before { transform: rotate(
 }
 
 @media (max-width: 1050px) {
-  .prep-shell {
-    flex-direction: column;
-  }
-
-  .prep-nav {
-    border-right: 0;
-    border-bottom: 1px solid var(--prep-line, #dde1e8);
-  }
+  /* Ne PAS empiler le rail sur le contenu à cette largeur (app desktop, le rail
+     collapsed ne fait que 48px) : le flip flex-direction:column produisait le
+     « bloc navy de 48px de large collé en haut ». Le rail reste un side-rail. */
 
   .curate-workspace {
     grid-template-columns: 1fr;
