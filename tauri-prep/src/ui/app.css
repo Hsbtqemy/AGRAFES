@@ -7395,6 +7395,42 @@ tr[data-len].prep-seg-row-context .prep-seg-cell-len {
 .prep-cur-diff-panel .diff-mark { background: #dcfce7; color: #14532d; text-decoration: none; padding: 0 1px; border-radius: 2px; }
 .prep-cur-diff-panel .diff-del { background: #fee2e2; color: #7f1d1d; text-decoration: line-through; padding: 0 1px; border-radius: 2px; }
 
+/* Lot 1 (parité gap #9) — édition inline / override (couche manuelle, indigo pour la
+   distinguer de l'ambre des règles). Bouton d'édition discret (révélé au survol de la ligne). */
+.prep-cur-edit-btn {
+  flex-shrink: 0; margin-left: auto;
+  background: none; border: 1px solid #c7d2fe; border-radius: 4px;
+  color: #4338ca; font-size: 0.7rem; padding: 0 0.35rem; cursor: pointer; white-space: nowrap;
+  opacity: 0.35; transition: opacity 0.12s;
+}
+.prep-conv-unit-row:hover .prep-cur-edit-btn,
+.prep-cur-edit-btn:focus-visible { opacity: 1; }
+.prep-cur-edit-btn:hover { background: #eef2ff; opacity: 1; }
+.prep-conv-unit-row--overridden { border-left-color: #6366f1; background: #f5f5ff; }
+.prep-conv-unit-row--overridden:hover { background: #ececff; }
+.prep-conv-unit-row--overridden .prep-cur-edit-btn { opacity: 1; }
+.prep-cur-override-note {
+  margin: 0.1rem 0 0.4rem 1.4rem; padding: 0.3rem 0.55rem;
+  background: #f5f5ff; border: 1px solid #e0e0fb; border-left: 3px solid #6366f1; border-radius: 5px;
+  font-size: 0.82rem; line-height: 1.45; display: flex; gap: 0.6rem; align-items: baseline;
+}
+.prep-cur-override-text { flex: 1 1 auto; word-break: break-word; color: #312e81; }
+.prep-cur-override-revert {
+  flex-shrink: 0; background: none; border: 1px solid #c7d2fe; border-radius: 4px;
+  color: #4338ca; font-size: 0.7rem; padding: 0 0.4rem; cursor: pointer; white-space: nowrap;
+}
+.prep-cur-override-revert:hover { background: #eef2ff; }
+.prep-cur-editor-panel {
+  margin: 0.1rem 0 0.5rem 1.4rem; padding: 0.4rem 0.55rem;
+  background: #fbfbff; border: 1px solid #e0e0fb; border-left: 3px solid #6366f1; border-radius: 5px;
+}
+.prep-cur-editor-textarea {
+  width: 100%; box-sizing: border-box; resize: vertical; font: inherit; font-size: 0.85rem;
+  line-height: 1.5; padding: 0.35rem 0.45rem; border: 1px solid #c7d2fe; border-radius: 4px;
+}
+.prep-cur-editor-textarea:focus { outline: 2px solid #6366f1; outline-offset: 1px; border-color: #6366f1; }
+.prep-cur-editor-actions { display: flex; gap: 0.4rem; margin-top: 0.35rem; }
+
 /* -- Dialog modal (catalogue CRUD) -- */
 .prep-conv-overlay {
   position: fixed; inset: 0;

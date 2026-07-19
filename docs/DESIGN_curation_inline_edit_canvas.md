@@ -1,6 +1,6 @@
 # Édition inline / override de curation au canvas (R5.3-3 · parité gap #9)
 
-> Statut : **cadrage figé + vérifié au code + passe adverse (2026-07-19) — ticket-ready.** Reloge au canvas
+> Statut : **Lot 1 LIVRÉ (2026-07-19)** — cadrage figé + vérifié au code + passe adverse, puis implémenté. Reloge au canvas
 > (`CurationPane`) l'édition inline présente dans le legacy `CurationView`. Dérive de
 > [`DESIGN_R5_1_curation_layer.md`](DESIGN_R5_1_curation_layer.md) (hors-scope R5.1),
 > [`DESIGN_R5_3_contextual_action_dock.md`](DESIGN_R5_3_contextual_action_dock.md) §3 (« R5.3-3 Curation à
@@ -99,10 +99,13 @@ signale bien ses traductions « à revoir ». Bonus : l'écriture passe par `rec
 
 ## 5. Découpage
 
-1. **Lot 1 [FRONT]** — éditeur inline par-ligne dans `CurationPane` (override d'une suggestion **et** édition
-   directe d'une unité non-suggérée, uniformément) + staging `manual_overrides` + marqueur « édité » + revert ;
-   Apply les embarque via `/curate`. Réutilise `lib/curationApplyInputs` + `lib/curationContextDetail`
-   existants. **Solde les deux flags legacy (gap #9 + « édition directe du texte » R5.3).**
+1. **Lot 1 [FRONT] ✅ (fait, 2026-07-19).** Éditeur inline par-ligne dans `CurationPane` : bouton `✎` sur chaque
+   ligne (révélé au survol) → textarea seedée (override staged › « après » de règle › `text_norm`) +
+   Enregistrer / Annuler / **Revenir** (Ctrl+Entrée / Échap). Override staged en `_overrides` (Map unit_id→texte),
+   marqueur indigo `--overridden` + note visible, embarqué à l'Apply comme `manual_overrides` (α). **Empty-rules
+   relâché** : un override s'applique même sans preset (vérifié sidecar.py:3595). `CurateOptions.manual_overrides`
+   ajouté au client. Gardes : F1 (setDocument) + teardown (dispose) + preview-independent + Apply/summary
+   reflètent les overrides. **8 tests** (`CurationPane.test.ts`). Solde gap #9 + « édition directe du texte » R5.3.
 2. *(optionnel, seulement si l'immédiateté est exigée)* **Lot β [petit MOTEUR + FRONT]** — édition qui atterrit
    **sans** run curate, via `/units/update_text`, **conditionnée** à l'ajout du flag `source_changed_at` côté
    moteur (D4). À n'ouvrir que si « éditer sans lancer un run » devient un besoin réel — α couvre déjà la

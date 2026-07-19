@@ -33,7 +33,7 @@ Légende verdict : 🔴 vraie perte à porter · 🟠 cible du tiroir Avancé T3
 | 6 | Export rapport JSON/CSV | [`_runExportReviewReport:2227`](../tauri-prep/src/screens/CurationView.ts#L2227) | 🟠 |
 | 7 | Exceptions persistées (panneau admin) | [`CurateExceptionsAdminPanel:896`](../tauri-prep/src/screens/CurationView.ts#L896) | 🟠 |
 | 8 | Apply-history (panneau) | [`CurateApplyHistoryPanel:915`](../tauri-prep/src/screens/CurationView.ts#L915) | 🟠 |
-| 9 | Overrides manuels + revert | [`_saveManualOverride:2780`](../tauri-prep/src/screens/CurationView.ts#L2780) | 🔴 |
+| 9 | Overrides manuels + revert | [`_saveManualOverride:2780`](../tauri-prep/src/screens/CurationView.ts#L2780) | ✅ (relogé 2026-07-19, éditeur inline `CurationPane` — [note](DESIGN_curation_inline_edit_canvas.md)) |
 | 10 | Exceptions par unité (ignore/override/delete) | [`_setExceptionIgnore:2875`](../tauri-prep/src/screens/CurationView.ts#L2875) | 🔴 |
 | 11 | Gestion conventions/rôles + role bar + apply-role | [`_renderConventionsList:2042`](../tauri-prep/src/screens/CurationView.ts#L2042) | 🟢 déjà sur canvas (RolesPane/SegmentPane) |
 | 12 | Réglage borne début-de-texte | [`_setTextStart:2714`](../tauri-prep/src/screens/CurationView.ts#L2714) | 🟢 affiché (state strip) ; réglé en Seg |

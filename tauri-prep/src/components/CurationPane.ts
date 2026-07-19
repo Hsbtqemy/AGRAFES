@@ -50,6 +50,13 @@ export class CurationPane {
   private _expanded = new Set<number>();
   /** R5.1c — global "show all diffs" toggle for a review pass. */
   private _showAllDiffs = false;
+  /** Lot 1 (parité gap #9) — staged manual overrides: unit_id → replacement text.
+   *  Applied VERBATIM via manual_overrides→/curate (α). Preview-independent: survives a
+   *  re-preview (a manual edit must persist), flushed at Apply. Covers both overriding a
+   *  rule suggestion and directly editing an un-suggested unit. */
+  private _overrides = new Map<number, string>();
+  /** The unit whose inline editor is currently open (single editor at a time), or null. */
+  private _editing: number | null = null;
 
   constructor(root: HTMLElement, getConn: () => Conn | null, onError: (msg: string) => void) {
     this._root = root;
@@ -108,7 +115,7 @@ export class CurationPane {
       this._list = new CanvasUnitList(area, {
         // Light overlay (§9 D2): a discreet marker on the units the rules would change,
         // + on-demand full diff (per-unit toggle or the global "show all diffs", R5.1c).
-        decorateRow: (u, el) => this._decorateChanged(u, el),
+        decorateRow: (u, el) => this._decorateRow(u, el),
         onStats: (t) => {
           const s = this._q("#prep-cur-search-stats");
           if (s) s.textContent = t;
@@ -124,11 +131,13 @@ export class CurationPane {
     this.mount();
     this._docId = docId;
     this._textStartN = textStartN;
-    // A new document invalidates any prior preview + its revealed diffs.
+    // A new document invalidates any prior preview + its revealed diffs + staged edits (F1).
     this._changed.clear();
     this._stats = null;
     this._expanded.clear();
     this._showAllDiffs = false;
+    this._overrides.clear();
+    this._editing = null;
     this._renderSummary();
     this._renderToggleAll();
     this._renderApplyBtn();
@@ -145,6 +154,8 @@ export class CurationPane {
     this._stats = null;
     this._expanded.clear();
     this._showAllDiffs = false;
+    this._overrides.clear();
+    this._editing = null;
     this._list?.reset();
     this._docId = null;
     this._loaded = false;
@@ -224,6 +235,7 @@ export class CurationPane {
       this._changed = new Map(res.examples.map((e) => [e.unit_id, { before: e.before, after: e.after }]));
       this._stats = { units_changed: res.stats.units_changed, units_total: res.stats.units_total };
       this._expanded.clear(); // a fresh preview clears any per-unit reveals from the last run
+      this._editing = null;   // …and closes any open editor (overrides survive — §6 preview-independent)
       this._renderSummary();
       this._renderApplyBtn(); // enable Apply iff the preview found changes
       this._list?.render(); // decorateRow marks the changed rows
@@ -237,11 +249,22 @@ export class CurationPane {
   private _renderSummary(): void {
     const s = this._q("#prep-cur-summary");
     if (!s) return;
-    if (!this._stats) { s.textContent = ""; return; }
+    if (!this._stats) {
+      // No preview yet — but staged manual edits are still pending work to surface.
+      s.textContent = this._overrides.size === 0 ? "" : this._overridesSuffix().replace(/^ · /, "");
+      return;
+    }
     const { units_changed, units_total } = this._stats;
-    s.textContent = units_changed === 0
+    const base = units_changed === 0
       ? "Aucune unité modifiée par ces règles."
       : `${units_changed} unité${units_changed > 1 ? "s" : ""} modifiée${units_changed > 1 ? "s" : ""} / ${units_total}`;
+    s.textContent = base + this._overridesSuffix();
+  }
+
+  /** Staged manual edits are pending work that must stay visible (§6). */
+  private _overridesSuffix(): string {
+    const n = this._overrides.size;
+    return n === 0 ? "" : ` · ${n} correction${n > 1 ? "s" : ""} manuelle${n > 1 ? "s" : ""}`;
   }
 
   private _renderToggleAll(): void {
@@ -249,10 +272,10 @@ export class CurationPane {
     if (b) b.textContent = this._showAllDiffs ? "Masquer les diffs" : "Afficher tous les diffs";
   }
 
-  /** True when a preview showed changes not yet applied (drives the Apply button; a
-   *  host may also guard leaving on it — R5.1d). */
+  /** True when there is unsaved work — a preview with rule changes, OR staged manual
+   *  overrides (Lot 1). Drives the Apply button; a host may guard leaving on it (R5.1d). */
   hasPendingEdits(): boolean {
-    return this._stats !== null && this._stats.units_changed > 0;
+    return (this._stats !== null && this._stats.units_changed > 0) || this._overrides.size > 0;
   }
 
   private _renderApplyBtn(): void {
@@ -266,23 +289,32 @@ export class CurationPane {
     const conn = this._getConn();
     if (!conn || this._docId === null || !this.hasPendingEdits()) return;
     const rules = this._currentRules();
-    if (rules.length === 0) return;
-    const n = this._stats!.units_changed;
-    const ok = await modalConfirm({
-      message: `Appliquer la curation à ${n} unité${n > 1 ? "s" : ""} ? Le texte de recherche sera réécrit (l'original est conservé).`,
-      confirmLabel: "Appliquer",
-      danger: true,
-    });
+    const overrides = this._buildOverrides();
+    // α accepts rules=[] + manual_overrides=[…] (verified sidecar.py:3595) → a pure manual
+    // edit applies with no presets selected. Only bail if there is genuinely nothing to do.
+    if (rules.length === 0 && overrides.length === 0) return;
+    const ruleN = this._stats?.units_changed ?? 0;
+    const affected = new Set<number>([...this._changed.keys(), ...this._overrides.keys()]).size;
+    const msg = overrides.length === 0
+      ? `Appliquer la curation à ${ruleN} unité${ruleN > 1 ? "s" : ""} ? Le texte de recherche sera réécrit (l'original est conservé).`
+      : `Appliquer la curation (${affected} unité${affected > 1 ? "s" : ""}, dont ${overrides.length} correction${overrides.length > 1 ? "s" : ""} manuelle${overrides.length > 1 ? "s" : ""}) ? Le texte de recherche sera réécrit (l'original est conservé).`;
+    const ok = await modalConfirm({ message: msg, confirmLabel: "Appliquer", danger: true });
     if (!ok) return;
     const btn = this._q<HTMLButtonElement>("#prep-cur-apply-btn");
     if (btn) { btn.disabled = true; btn.textContent = "Application…"; }
     try {
-      const res = await curate(conn, { doc_id: this._docId, rules });
-      // Applied → the preview is consumed; reload the (now-rewritten) units.
+      const res = await curate(conn, {
+        doc_id: this._docId,
+        rules,
+        ...(overrides.length > 0 ? { manual_overrides: overrides } : {}),
+      });
+      // Applied → the preview + staged edits are consumed; reload the (now-rewritten) units.
       this._changed.clear();
       this._expanded.clear();
       this._showAllDiffs = false;
       this._stats = null;
+      this._overrides.clear();
+      this._editing = null;
       await this._loadUnits(); // fresh text, markers gone
       const s = this._q("#prep-cur-summary");
       if (s) {
@@ -299,33 +331,142 @@ export class CurationPane {
     }
   }
 
-  /** decorateRow hook (R5.1b marker + R5.1c on-demand diff) for a changed unit. */
-  private _decorateChanged(u: UnitRecord, el: HTMLElement): void {
+  /** decorateRow hook — R5.1b marker + R5.1c on-demand diff (changed units) + Lot 1 inline
+   *  edit affordance (every unit) + the open editor / override note. */
+  private _decorateRow(u: UnitRecord, el: HTMLElement): void {
     const change = this._changed.get(u.unit_id);
-    if (!change) return;
-    el.classList.add("prep-conv-unit-row--curated");
-    const open = this._showAllDiffs || this._expanded.has(u.unit_id);
+    const override = this._overrides.get(u.unit_id);
+    if (change) el.classList.add("prep-conv-unit-row--curated");
+    if (override !== undefined) el.classList.add("prep-conv-unit-row--overridden");
 
-    const toggle = document.createElement("button");
-    toggle.type = "button";
-    toggle.className = "prep-cur-diff-toggle";
-    toggle.textContent = open ? "▾ diff" : "▸ diff";
-    toggle.title = "Afficher / masquer le diff de cette unité";
-    toggle.addEventListener("click", (e) => {
-      e.stopPropagation(); // don't toggle the base row's selection
-      if (this._expanded.has(u.unit_id)) this._expanded.delete(u.unit_id);
-      else this._expanded.add(u.unit_id);
-      this._list?.render();
-    });
-    el.appendChild(toggle);
-
-    if (open) {
-      const panel = document.createElement("div");
-      panel.className = "prep-cur-diff-panel";
-      // highlightChangesWordLevel escapes its inputs and returns <mark>/<del> spans.
-      setHtml(panel, raw(highlightChangesWordLevel(change.before, change.after)));
-      el.insertAdjacentElement("afterend", panel);
+    // The row being edited shows only its editor panel (no buttons, no diff).
+    if (this._editing === u.unit_id) {
+      el.insertAdjacentElement("afterend", this._buildEditor(u, change, override));
+      return;
     }
+
+    // Inline edit affordance — on EVERY row (override a suggestion OR edit an un-suggested unit).
+    const editBtn = document.createElement("button");
+    editBtn.type = "button";
+    editBtn.className = "prep-cur-edit-btn";
+    editBtn.textContent = override !== undefined ? "✎ édité" : "✎";
+    editBtn.title = "Éditer le texte curé de cette unité";
+    editBtn.addEventListener("click", (e) => { e.stopPropagation(); this._openEditor(u.unit_id); });
+    el.appendChild(editBtn);
+
+    // R5.1c diff toggle — changed units not (yet) manually overridden.
+    if (change && override === undefined) {
+      const open = this._showAllDiffs || this._expanded.has(u.unit_id);
+      const toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.className = "prep-cur-diff-toggle";
+      toggle.textContent = open ? "▾ diff" : "▸ diff";
+      toggle.title = "Afficher / masquer le diff de cette unité";
+      toggle.addEventListener("click", (e) => {
+        e.stopPropagation(); // don't toggle the base row's selection
+        if (this._expanded.has(u.unit_id)) this._expanded.delete(u.unit_id);
+        else this._expanded.add(u.unit_id);
+        this._list?.render();
+      });
+      el.appendChild(toggle);
+      if (open) {
+        const panel = document.createElement("div");
+        panel.className = "prep-cur-diff-panel";
+        // highlightChangesWordLevel escapes its inputs and returns <mark>/<del> spans.
+        setHtml(panel, raw(highlightChangesWordLevel(change.before, change.after)));
+        el.insertAdjacentElement("afterend", panel);
+      }
+    }
+
+    // Staged override note — the manual edit stays visible until Apply (§6), with revert.
+    if (override !== undefined) {
+      const note = document.createElement("div");
+      note.className = "prep-cur-override-note";
+      const label = document.createElement("span");
+      label.className = "prep-cur-override-text";
+      label.textContent = `✎ ${override}`;
+      const revert = document.createElement("button");
+      revert.type = "button";
+      revert.className = "prep-cur-override-revert";
+      revert.textContent = "Revenir";
+      revert.title = "Annuler cette correction manuelle";
+      revert.addEventListener("click", (e) => { e.stopPropagation(); this._revertOverride(u.unit_id); });
+      note.append(label, revert);
+      el.insertAdjacentElement("afterend", note);
+    }
+  }
+
+  // ─── Inline editor (Lot 1 — override / direct edit, staged as manual_overrides) ──────────
+
+  private _openEditor(unitId: number): void {
+    this._editing = unitId;
+    this._list?.render();
+    this._q<HTMLTextAreaElement>(".prep-cur-editor-textarea")?.focus();
+  }
+
+  private _cancelEdit(): void {
+    this._editing = null;
+    this._list?.render();
+  }
+
+  /** Stage `text` as this unit's override (or clear it if it equals the baseline). */
+  private _saveEdit(u: UnitRecord, text: string): void {
+    const baseline = this._changed.get(u.unit_id)?.after ?? (u.text_norm ?? "");
+    if (text === baseline) this._overrides.delete(u.unit_id); // no real change → not an override
+    else this._overrides.set(u.unit_id, text);
+    this._editing = null;
+    this._afterEdit();
+  }
+
+  private _revertOverride(unitId: number): void {
+    this._overrides.delete(unitId);
+    if (this._editing === unitId) this._editing = null;
+    this._afterEdit();
+  }
+
+  private _afterEdit(): void {
+    this._renderSummary();
+    this._renderApplyBtn();
+    this._list?.render();
+  }
+
+  /** Build the inline editor panel for the row being edited. */
+  private _buildEditor(u: UnitRecord, change: CurationChange | undefined, override: string | undefined): HTMLElement {
+    const panel = document.createElement("div");
+    panel.className = "prep-cur-editor-panel";
+    const ta = document.createElement("textarea");
+    ta.className = "prep-cur-editor-textarea";
+    ta.rows = 3;
+    // Seed: the staged override if any, else the rule's proposed result (override a suggestion),
+    // else the unit's current text_norm (direct edit of an un-suggested unit).
+    ta.value = override ?? change?.after ?? (u.text_norm ?? "");
+    const actions = document.createElement("div");
+    actions.className = "prep-cur-editor-actions";
+    const save = document.createElement("button");
+    save.type = "button"; save.className = "btn btn-primary btn-xs"; save.textContent = "Enregistrer";
+    save.addEventListener("click", (e) => { e.stopPropagation(); this._saveEdit(u, ta.value); });
+    const cancel = document.createElement("button");
+    cancel.type = "button"; cancel.className = "btn btn-ghost btn-xs"; cancel.textContent = "Annuler";
+    cancel.addEventListener("click", (e) => { e.stopPropagation(); this._cancelEdit(); });
+    actions.append(save, cancel);
+    if (override !== undefined) {
+      const revert = document.createElement("button");
+      revert.type = "button"; revert.className = "btn btn-ghost btn-xs prep-cur-override-revert";
+      revert.textContent = "Revenir";
+      revert.addEventListener("click", (e) => { e.stopPropagation(); this._revertOverride(u.unit_id); });
+      actions.append(revert);
+    }
+    ta.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); this._saveEdit(u, ta.value); }
+      else if (e.key === "Escape") { e.preventDefault(); this._cancelEdit(); }
+    });
+    panel.append(ta, actions);
+    return panel;
+  }
+
+  /** Staged overrides as the {unit_id, text} array the /curate manual_overrides field expects. */
+  private _buildOverrides(): Array<{ unit_id: number; text: string }> {
+    return [...this._overrides.entries()].map(([unit_id, text]) => ({ unit_id, text }));
   }
 
   // ─── Utility ────────────────────────────────────────────────────────────

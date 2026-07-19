@@ -630,6 +630,10 @@ export interface CurateRule {
 export interface CurateOptions {
   rules: CurateRule[];
   doc_id?: number;
+  /** Per-unit manual overrides applied VERBATIM (bypass rules) — {unit_id, text}.
+   *  The engine writes them as text_norm and flags source_changed_at like any curation
+   *  change (curation.py Priority 2). Works even with rules=[] (pure manual edit). */
+  manual_overrides?: Array<{ unit_id: number; text: string }>;
 }
 
 export interface CurateResponse {

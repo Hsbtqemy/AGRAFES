@@ -202,3 +202,124 @@ describe("CurationPane", () => {
     expect(host.querySelector("#prep-cur-summary")?.textContent).toBe("");
   });
 });
+
+describe("CurationPane — édition inline / override (Lot 1, parité gap #9)", () => {
+  const editBtn = () => host.querySelector<HTMLButtonElement>(".prep-cur-edit-btn")!;
+  const saveBtn = () => host.querySelector<HTMLButtonElement>(".prep-cur-editor-actions .btn-primary")!;
+  const textarea = () => host.querySelector<HTMLTextAreaElement>(".prep-cur-editor-textarea")!;
+
+  it("expose un bouton d'édition sur CHAQUE ligne (atteint aussi les unités non-suggérées)", async () => {
+    const pane = new CurationPane(host, () => fakeConn({ units: [unit(1), unit(2)] }), () => {});
+    await pane.setDocument(1, null);
+    expect(host.querySelectorAll(".prep-cur-edit-btn").length).toBe(2);
+  });
+
+  it("édition directe (unité non-suggérée) : seed = text_norm, save → override staged + marqué", async () => {
+    const pane = new CurationPane(host, () => fakeConn({ units: [unit(1, { text_norm: "avant" })] }), () => {});
+    await pane.setDocument(1, null);
+    expect(pane.hasPendingEdits()).toBe(false);
+    editBtn().click();
+    expect(textarea().value).toBe("avant"); // seeded from the unit's current text_norm
+    textarea().value = "corrigé";
+    saveBtn().click();
+    expect(pane.hasPendingEdits()).toBe(true);
+    expect(host.querySelector(".prep-conv-unit-row--overridden")).not.toBeNull();
+    expect(host.querySelector("#prep-cur-summary")?.textContent).toContain("correction manuelle");
+  });
+
+  it("override d'une suggestion : seed = le « après » proposé par la règle", async () => {
+    const conn = fakeConn({
+      units: [unit(1)],
+      preview: () => ({
+        ok: true, doc_id: 1, stats: { units_total: 1, units_changed: 1, replacements_total: 1 },
+        examples: [{ unit_id: 10, external_id: 1, before: "a", after: "APRES" }],
+      }),
+    });
+    const pane = new CurationPane(host, () => conn, () => {});
+    await pane.setDocument(1, null);
+    const cb = host.querySelector<HTMLInputElement>('input[data-preset="spaces"]')!;
+    cb.checked = true; cb.dispatchEvent(new Event("change"));
+    (host.querySelector("#prep-cur-preview-btn") as HTMLButtonElement).click();
+    await flush();
+    host.querySelector<HTMLButtonElement>(".prep-conv-unit-row--curated .prep-cur-edit-btn")!.click();
+    expect(textarea().value).toBe("APRES");
+  });
+
+  it("Apply embarque manual_overrides — même SANS preset (rules=[]) via α", async () => {
+    let body: { rules?: unknown[]; manual_overrides?: Array<{ unit_id: number; text: string }> } | null = null;
+    const conn = fakeConn({
+      units: [unit(1, { text_norm: "x" })],
+      curate: (b) => { body = b as typeof body; return { ok: true, docs_curated: 1, units_modified: 1, fts_stale: false }; },
+    });
+    const pane = new CurationPane(host, () => conn, () => {});
+    await pane.setDocument(1, null);
+    editBtn().click();
+    textarea().value = "y";
+    saveBtn().click();
+    // Aucun preset coché → rules vides, mais l'override staged active Apply.
+    expect((host.querySelector("#prep-cur-apply-btn") as HTMLButtonElement).disabled).toBe(false);
+    (host.querySelector("#prep-cur-apply-btn") as HTMLButtonElement).click();
+    await flush();
+    (document.querySelector("[data-mc-ok]") as HTMLButtonElement).click();
+    await flush();
+    expect(body!.rules).toEqual([]);
+    expect(body!.manual_overrides).toEqual([{ unit_id: 10, text: "y" }]);
+  });
+
+  it("revert retire l'override (bouton du note)", async () => {
+    const pane = new CurationPane(host, () => fakeConn({ units: [unit(1, { text_norm: "a" })] }), () => {});
+    await pane.setDocument(1, null);
+    editBtn().click();
+    textarea().value = "b";
+    saveBtn().click();
+    expect(pane.hasPendingEdits()).toBe(true);
+    host.querySelector<HTMLButtonElement>(".prep-cur-override-note .prep-cur-override-revert")!.click();
+    expect(pane.hasPendingEdits()).toBe(false);
+    expect(host.querySelector(".prep-conv-unit-row--overridden")).toBeNull();
+  });
+
+  it("enregistrer un texte identique au baseline ne crée pas d'override", async () => {
+    const pane = new CurationPane(host, () => fakeConn({ units: [unit(1, { text_norm: "same" })] }), () => {});
+    await pane.setDocument(1, null);
+    editBtn().click();
+    saveBtn().click(); // sauvegarde sans rien changer
+    expect(pane.hasPendingEdits()).toBe(false);
+    expect(host.querySelector(".prep-conv-unit-row--overridden")).toBeNull();
+  });
+
+  it("l'override survit à un nouvel aperçu (§6 preview-independent)", async () => {
+    const conn = fakeConn({
+      units: [unit(1, { text_norm: "a" }), unit(2)],
+      preview: () => ({
+        ok: true, doc_id: 1, stats: { units_total: 2, units_changed: 1, replacements_total: 1 },
+        examples: [{ unit_id: 20, external_id: 2, before: "u2", after: "U2" }],
+      }),
+    });
+    const pane = new CurationPane(host, () => conn, () => {});
+    await pane.setDocument(1, null);
+    // Override sur l'unité 10 (non-suggérée) AVANT tout aperçu.
+    host.querySelector<HTMLButtonElement>('.prep-conv-unit-row[data-uid="10"] .prep-cur-edit-btn')!.click();
+    textarea().value = "A!";
+    saveBtn().click();
+    expect(pane.hasPendingEdits()).toBe(true);
+    // Un aperçu (qui change l'unité 20, pas la 10) NE doit PAS effacer l'override.
+    const cb = host.querySelector<HTMLInputElement>('input[data-preset="spaces"]')!;
+    cb.checked = true; cb.dispatchEvent(new Event("change"));
+    (host.querySelector("#prep-cur-preview-btn") as HTMLButtonElement).click();
+    await flush();
+    expect(host.querySelector('.prep-conv-unit-row--overridden[data-uid="10"]')).not.toBeNull();
+    expect(pane.hasPendingEdits()).toBe(true);
+  });
+
+  it("F1 — changer de document efface les overrides staged", async () => {
+    const pane = new CurationPane(host, () => fakeConn({ units: [unit(1, { text_norm: "a" })] }), () => {});
+    await pane.setDocument(1, null);
+    editBtn().click();
+    textarea().value = "b";
+    saveBtn().click();
+    expect(pane.hasPendingEdits()).toBe(true);
+    await pane.setDocument(2, null);
+    expect(pane.hasPendingEdits()).toBe(false);
+    expect(host.querySelector(".prep-conv-unit-row--overridden")).toBeNull();
+  });
+});
