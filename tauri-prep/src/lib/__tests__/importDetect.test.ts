@@ -31,22 +31,24 @@ describe("modeOptionsForExt", () => {
     expect(opts.map(o => o.value)).toContain("odt_numbered_lines");
   });
 
-  it(".txt → 1 option TXT lignes numérotées", () => {
+  it(".txt → défaut TXT + échappatoire CoNLL-U/TEI (IMP-09)", () => {
+    // Un CoNLL-U ou TEI mal nommé .txt doit pouvoir être re-routé dans le menu.
     const opts = modeOptionsForExt("txt");
-    expect(opts).toHaveLength(1);
-    expect(opts[0].value).toBe("txt_numbered_lines");
+    expect(opts[0].value).toBe("txt_numbered_lines"); // défaut détecté en premier
+    expect(opts.map(o => o.value)).toContain("conllu");
+    expect(opts.map(o => o.value)).toContain("tei");
   });
 
-  it(".conllu → 1 option CoNLL-U", () => {
+  it(".conllu → défaut CoNLL-U + échappatoire TXT (IMP-09)", () => {
     const opts = modeOptionsForExt("conllu");
-    expect(opts).toHaveLength(1);
     expect(opts[0].value).toBe("conllu");
+    expect(opts.map(o => o.value)).toContain("txt_numbered_lines");
   });
 
-  it(".conll → 1 option CoNLL-U (alias)", () => {
+  it(".conll → défaut CoNLL-U (alias) + échappatoire TXT", () => {
     const opts = modeOptionsForExt("conll");
-    expect(opts).toHaveLength(1);
     expect(opts[0].value).toBe("conllu");
+    expect(opts.map(o => o.value)).toContain("txt_numbered_lines");
   });
 
   it(".xml → 1 option TEI", () => {

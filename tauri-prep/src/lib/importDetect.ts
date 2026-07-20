@@ -48,8 +48,20 @@ export function modeOptionsForExt(ext: string): Array<{ value: string; label: st
       { value: "odt_numbered_lines", label: "Lignes numérotées [n]" },
     ];
   }
-  if (e === "txt") return [{ value: "txt_numbered_lines", label: "TXT lignes numérotées [n]" }];
-  if (e === "conllu" || e === "conll") return [{ value: "conllu", label: "CoNLL-U annoté" }];
+  // Extensions TEXTE : le mode détecté en premier (défaut pré-sélectionné), puis les autres
+  // modes texte en ÉCHAPPATOIRE (IMP-09) — un CoNLL-U ou TEI mal nommé `.txt` (ou du texte
+  // brut mal nommé `.conllu`) peut être re-routé dans le menu par-fichier au lieu d'être
+  // importé en charabia sans recours. Les formats BINAIRES (.docx/.odt = zip) restent
+  // spécifiques : leur contenu est non ambigu, aucune échappatoire n'est offerte.
+  if (e === "txt") return [
+    { value: "txt_numbered_lines", label: "TXT lignes numérotées [n]" },
+    { value: "conllu", label: "CoNLL-U annoté" },
+    { value: "tei", label: "TEI XML" },
+  ];
+  if (e === "conllu" || e === "conll") return [
+    { value: "conllu", label: "CoNLL-U annoté" },
+    { value: "txt_numbered_lines", label: "TXT lignes numérotées [n]" },
+  ];
   if (e === "xml" || e === "tei") return [{ value: "tei", label: "TEI XML" }];
   return IMPORT_MODE_OPTIONS.slice();
 }

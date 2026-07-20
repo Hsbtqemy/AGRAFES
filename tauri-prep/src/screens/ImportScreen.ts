@@ -398,7 +398,7 @@ export class ImportScreen {
           <span class="chip${chipCls ? " " + chipCls : ""}">${_escHtml(importStatusLabel(f))}</span>
         </div>
         <div class="imp-file-controls">
-          <select class="imp-mode-sel" data-i="${i}" title="Mode d'import (filtré selon l'extension)">
+          <select class="imp-mode-sel" data-i="${i}" title="Mode d'import — ajustable si l'extension ne reflète pas le format (ex. un CoNLL-U ou TEI nommé .txt)">
             ${modeOpts
               .map((opt) => `<option value="${opt.value}"${f.mode === opt.value ? " selected" : ""}>${opt.label}</option>`)
               .join("")}
