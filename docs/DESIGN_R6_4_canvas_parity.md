@@ -91,3 +91,40 @@ Si/quand la parité est atteinte, retirer les deux écrans touche (source : cart
 2. Parmi les 🟡 confort : lesquels sont *abandonnés* (pas reportés) au canvas ? (ex. minimap, carte contexte-détail, résumé de session.)
 3. Les 🟢 (#11, 12, 16, 21) sont-ils *actés* comme choix de design (à documenter, pas à porter) ?
 4. Le retrait (T4b) reste-t-il dans R6.4, ou devient-il **R6.5** (tranche dédiée post-parité) ?
+
+## 7. Décisions figées (2026-07-20) — vérifiées au code
+
+> Cadrage tranché après **re-vérification au code** (branche `refonte`, 2026-07-20). Le §2 datait du 07/07 ; #9 a été relogé depuis, la vérif confirme que les 5 autres 🔴 sont bien **ouverts** (aucun secrètement soldé) et recense leur **couplage réel** — que la liste à plat masquait.
+
+### 7.1 Reframing vérifié — les 5 🔴 = **4 chantiers**, tous **front-only**
+
+| Chantier | Gaps | Couplage | Backend |
+|---|---|---|---|
+| **Revue de curation** | #2 statut par item **+ #4** résumé **+ #14** filtre par règle | **indivisibles** — tout est bâti sur `_curateExamples[].status` + `_activeStatusFilter`/`_activeRuleFilter`/`_curateRuleLabels` ; `_setItemStatus` (`CurationView.ts:1185`) appelle résumé+persistance à chaque mutation | **front pur** (in-memory) |
+| **Règles avancées** | #1 Find/Replace+Regex (`_parseAdvancedCurateRules:1004`) | autonome | parsing front → `/curate/preview`+`/curate` **déjà live** |
+| **Exceptions par unité** | #10 ignore/override/delete (`_setExceptionIgnore:2876`) | même sous-système + `_curateExceptions` (Map) | `/curate/exceptions`, `/set`, `/delete` **déjà live** |
+| **Recherche token** | #22 (`AnnotationView.ts:201`) | autonome | **front pur** (opère sur `_annotTokens` en mémoire) |
+
+**Constat structurant : aucun port ne requiert de contrat ni de migration.** #10 et #1 réutilisent des endpoints déjà en service ; #2/#3/#4/#22 sont front pur (in-memory + localStorage optionnel `agrafes.prep.curate.review.*` pour #3). → **Le chantier de parité est entièrement front — la discipline contrat n'est pas déclenchée.** #3 (persistance) est une **feuille localStorage** *stubbable* : on peut porter #2 sans elle. #13 (queue) est **séparable** (navigation doc-niveau, ne touche pas `_curateExamples`).
+
+### 7.2 Réponses aux 4 décisions du §6
+
+1. **Voie de cadrage** = **§5 option 3 (parité puis retrait), mais séquencée incrémentale et front-only** — *pas* big-bang. Annotation retirée d'abord (petit écran, 1 seul 🔴 → prouve le playbook de retrait), Curation ensuite.
+2. **🟡 abandonnés** (documentés comme choix, non portés) : **#13** queue (le dropdown de doc du canvas navigue), **#15** minimap (le canvas marque chaque unité changée inline, R5.1b), **#17** bannière d'échantillon (**sans objet** : l'aperçu canvas est exhaustif, il ne tronque pas), **#18** carte contexte-détail (conteneur seul — #9 est déjà inline, #10 est porté en R6.5-B), **#19** **télémétrie soak seule** (`_emitUndoTransition`), **#24** sidebar par doc annotation (la nav doc du canvas la couvre ; perte = le badge « annoté ✓ », petit ajout futur si manqué). **Portés** (indivisibles de #2) : #4 résumé, #14 filtre.
+   > **⚠️ Exception #19 (correction 2026-07-20).** Le doc conflait deux choses sous « transitions undo ». `_emitUndoTransition:3011` = télémétrie → **abandon**. Mais le **bouton « ↶ Annuler » de curation** (`_refreshUndoButton`, `#act-curate-undo-btn`) est une **vraie capacité** (annule un Apply via `prep_action_history`, mig 019) que `CurationPane` **n'a pas**. La capacité `prepUndo(conn, docId)` est **générique** et **déjà câblée au canvas** (`SegmentPane.ts:504`, `#prep-seg-canvas-undo`) — juste pas surfacée côté curation. → **NON abandonné** : surfacer un bouton undo dans `CurationPane` est **rattaché à R6.5-B** (parité de l'Apply — sinon on livre un Apply destructif sans annulation visible à côté).
+3. **🟢 actés comme design** (documentés, jamais portés) : #11 (rôles déjà au canvas), #12 (borne affichée au state strip), #16 (diff **inline** remplace sciemment le côte-à-côte), #21 (modèle actif auto).
+4. **Retrait = R6.5** (tranche dédiée post-parité). **R6.4** se limite au **responsive T4a** (sûr) + relogement **T3** (tiroir « Avancé »).
+
+### 7.3 Séquence figée (front-only, retrait incrémental)
+
+- **R6.4 · T4a — Responsive** *(sûr, immédiat, indépendant de la parité)*. Écrire les règles `@container` sur les panes du canvas (`container-type` déjà déclaré `app.css:6699`, **0** règle aujourd'hui ; modèle = `AlignPanel` `app.css:2396`). Zéro régression.
+- **R6.5-A — Retrait Annotation** *(le petit ; prouve le playbook)*. Port **#22** (recherche token + nav d'occurrences) dans `AnnotationPane` → reloger **#23** (`annotFocusDoc` route vers le canvas) → **#24** abandonné (7.2) → **retrait** : sous-vue `annoter`, `_annotationView`, `_renderAnnoterPanel`, carte hub (`lib/actionsHubTemplate.ts`), `dispose`, lien sidebar (`app.ts:365`), token-nav RG→Prep (`app.ts:167-168`).
+- **R6.5-B — Parité Curation** *(les 3 chantiers + undo Apply + tiroir Avancé)*. Chantier **Revue** (#2+#4+#14) → chantier **Règles** (#1) → chantier **Exceptions** (#10) → **bouton undo Apply** dans `CurationPane` (surface le `prepUndo` générique déjà câblé, cf. `SegmentPane.ts:504` — petit ajout, *pas* un abandon, cf. §7.2 exception #19) → **tiroir « Avancé » (T3)** : reloger les 🟠 autonomes #5 (diag), #6 (export rapport), #7 (`CurateExceptionsAdminPanel`), #8 (`CurateApplyHistoryPanel`), #20 (bouton réindex). **#3 persistance** = optionnel (localStorage seul, portable si un cas réel le réclame).
+- **R6.5-C — Retrait Curation**. Retrait : sous-vue `curation`, `_curationView`, `_renderCurationPanel`, carte hub, renvois pendants, branches `hasPendingChanges`, `dispose`, lien sidebar (`app.ts:362`), `_syncCurationWideClass` ; **~18 tests orphelins** (`curation*`) ; **garder** `curationPresets.ts` + `diff.ts` (partagés avec le canvas).
+
+### 7.4 Blast radius — dérive constatée (allège le retrait vs §4 du 07/07)
+
+- **`curationFocusDoc`** (`ActionsScreen.ts:552`) est **déjà mort** (0 appelant au grep) → suppression sèche, hors chantier.
+- **`agrafes:prep-curation-doc`** (`app.ts:180`) n'appartient **plus** à la curation : c'est un alias `sessionStorage` legacy qui route vers **Segmentation→Rôles** (`segFocusDocRoles`) → **hors périmètre** du retrait curation.
+- Cartes hub **extraites** dans `lib/actionsHubTemplate.ts` (retirer les 2 blocs `data-target="curation"/"annoter"`).
+- Refs externes **propres** (`tauri-shell/src`, Python `src/` = 0) → **blast radius confiné à `tauri-prep`**.
