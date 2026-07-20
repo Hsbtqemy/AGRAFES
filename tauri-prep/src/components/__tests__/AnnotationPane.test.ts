@@ -336,4 +336,129 @@ describe("AnnotationPane", () => {
     expect(editor.style.display).toBe("none");
     expect(editor.childElementCount).toBe(0);
   });
+
+  // ─── R6.5-A token search (#22, recadré « chercher pour éditer ») ─────────────
+
+  it("token search highlights matching occurrences and reports the count (#22)", async () => {
+    const conn = fakeConn({
+      units: [unit(1), unit(2)],
+      tokens: [
+        token(10, 1, 1, "le", "DET"), token(10, 1, 2, "chat", "NOUN"),
+        token(20, 2, 1, "un", "DET"), token(20, 2, 2, "chat", "NOUN"),
+      ],
+    });
+    const pane = new AnnotationPane(host, () => conn, () => {});
+    await pane.setDocument(1, null);
+    const input = host.querySelector<HTMLInputElement>("#prep-annot-search")!;
+    input.value = "chat";
+    input.dispatchEvent(new Event("input"));
+    expect(host.querySelectorAll(".prep-annot-tok-match").length).toBe(2);
+    expect(host.querySelectorAll(".prep-annot-tok-match--current").length).toBe(1);
+    expect(host.querySelector("#prep-annot-search-count")?.textContent).toBe("1 / 2");
+    expect(host.querySelector<HTMLButtonElement>("#prep-annot-search-next")!.disabled).toBe(false);
+  });
+
+  it("token search matches on UPOS, case-insensitively (#22)", async () => {
+    const conn = fakeConn({
+      units: [unit(1)],
+      tokens: [token(10, 1, 1, "le", "DET"), token(10, 1, 2, "chat", "NOUN")],
+    });
+    const pane = new AnnotationPane(host, () => conn, () => {});
+    await pane.setDocument(1, null);
+    const input = host.querySelector<HTMLInputElement>("#prep-annot-search")!;
+    input.value = "noun";
+    input.dispatchEvent(new Event("input"));
+    expect(host.querySelectorAll(".prep-annot-tok-match").length).toBe(1);
+    expect(host.querySelector<HTMLElement>(".prep-annot-tok-match")!.dataset.tokenId).toBe("1002");
+  });
+
+  it("token search matches on lemma distinctly from the surface word (#22)", async () => {
+    const conn = fakeConn({
+      units: [unit(1)],
+      tokens: [{ ...token(10, 1, 1, "mange", "VERB"), lemma: "manger" }],
+    });
+    const pane = new AnnotationPane(host, () => conn, () => {});
+    await pane.setDocument(1, null);
+    const input = host.querySelector<HTMLInputElement>("#prep-annot-search")!;
+    input.value = "manger"; // matches the lemma, not the surface "mange"
+    input.dispatchEvent(new Event("input"));
+    expect(host.querySelectorAll(".prep-annot-tok-match").length).toBe(1);
+  });
+
+  it("◄► steps through occurrences and wraps (#22)", async () => {
+    const conn = fakeConn({
+      units: [unit(1)],
+      tokens: [token(10, 1, 1, "a", "X"), token(10, 1, 2, "a", "X")],
+    });
+    const pane = new AnnotationPane(host, () => conn, () => {});
+    await pane.setDocument(1, null);
+    const input = host.querySelector<HTMLInputElement>("#prep-annot-search")!;
+    input.value = "a";
+    input.dispatchEvent(new Event("input"));
+    const count = host.querySelector("#prep-annot-search-count")!;
+    expect(count.textContent).toBe("1 / 2");
+    host.querySelector<HTMLButtonElement>("#prep-annot-search-next")!.click();
+    expect(count.textContent).toBe("2 / 2");
+    host.querySelector<HTMLButtonElement>("#prep-annot-search-next")!.click();
+    expect(count.textContent).toBe("1 / 2"); // wrapped forward
+    host.querySelector<HTMLButtonElement>("#prep-annot-search-prev")!.click();
+    expect(count.textContent).toBe("2 / 2"); // wrapped backward
+  });
+
+  it("clears matches on an empty query and on document switch (#22)", async () => {
+    const conn = {
+      get: async (path: string) => {
+        if (path === "/conventions") return { conventions: [] };
+        if (path.startsWith("/units")) return { units: [unit(1)], count: 1, doc_id: 1 };
+        if (path.startsWith("/tokens")) {
+          const docId = new URLSearchParams(path.split("?")[1]).get("doc_id");
+          const tokens = docId === "1" ? [token(10, 1, 1, "chat", "NOUN")] : [];
+          return { ok: true, doc_id: Number(docId), tokens, count: tokens.length, total: tokens.length,
+            limit: 500, offset: 0, next_offset: null, has_more: false };
+        }
+        return {};
+      },
+      post: async () => ({}),
+    } as unknown as Conn;
+    const pane = new AnnotationPane(host, () => conn, () => {});
+    await pane.setDocument(1, null);
+    const input = host.querySelector<HTMLInputElement>("#prep-annot-search")!;
+    input.value = "chat";
+    input.dispatchEvent(new Event("input"));
+    expect(host.querySelectorAll(".prep-annot-tok-match").length).toBe(1);
+    // Empty query clears highlights + count.
+    input.value = "";
+    input.dispatchEvent(new Event("input"));
+    expect(host.querySelectorAll(".prep-annot-tok-match").length).toBe(0);
+    expect(host.querySelector("#prep-annot-search-count")?.textContent).toBe("");
+    // Re-search, then switch doc → reset (input cleared, no matches).
+    input.value = "chat";
+    input.dispatchEvent(new Event("input"));
+    await pane.setDocument(2, null);
+    expect(host.querySelector<HTMLInputElement>("#prep-annot-search")!.value).toBe("");
+    expect(host.querySelectorAll(".prep-annot-tok-match").length).toBe(0);
+  });
+
+  it("editing a token's UPOS refreshes the match set in place, no re-type (find-to-edit, #22)", async () => {
+    const conn = fakeConn({
+      units: [unit(1)],
+      tokens: [token(10, 1, 1, "chat", "NOUN"), token(10, 1, 2, "chien", "NOUN")],
+    });
+    const pane = new AnnotationPane(host, () => conn, () => {});
+    await pane.setDocument(1, null);
+    const input = host.querySelector<HTMLInputElement>("#prep-annot-search")!;
+    input.value = "noun";
+    input.dispatchEvent(new Event("input"));
+    expect(host.querySelectorAll(".prep-annot-tok-match").length).toBe(2);
+    expect(host.querySelector("#prep-annot-search-count")?.textContent).toBe("1 / 2");
+    // Fix the first token's UPOS away from NOUN → it must drop out of the match set,
+    // without a fresh re-type (the core "chercher pour éditer" loop).
+    host.querySelectorAll<HTMLElement>(".annot-prose-token")[0].click();
+    const editor = host.querySelector<HTMLElement>("#prep-annot-token-editor")!;
+    editor.querySelector<HTMLSelectElement>('[data-field="upos"]')!.value = "PROPN";
+    editor.querySelector<HTMLButtonElement>(".prep-annot-editor-save")!.click();
+    await flush();
+    expect(host.querySelectorAll(".prep-annot-tok-match").length).toBe(1);
+    expect(host.querySelector("#prep-annot-search-count")?.textContent).toBe("1 / 1");
+  });
 });

@@ -51,6 +51,10 @@ export class AnnotationPane {
   private _editorEl: HTMLElement | null = null;
   /** token_id being edited, to keep its highlight across list re-renders (R5.3). */
   private _editingTokenId: number | null = null;
+  /** R6.5-A token search (word/lemma/UPOS) — matched token_ids in reading order + cursor. */
+  private _tokSearchQuery = "";
+  private _tokSearchMatches: number[] = [];
+  private _tokSearchCursor = 0;
 
   /** unit_id → its tokens (ordered by sent_id, position); drives the coloured overlay. */
   private _tokensByUnit = new Map<number, ProseToken[]>();
@@ -82,8 +86,13 @@ export class AnnotationPane {
       <div class="prep-annot-root">
         <div class="prep-annot-toolbar">
           <input type="search" class="prep-conv-search prep-annot-search" id="prep-annot-search"
-            placeholder="Rechercher des unit&#233;s&#8230;" autocomplete="off" />
-          <span class="prep-conv-search-stats" id="prep-annot-search-stats"></span>
+            placeholder="Chercher mot, lemme, UPOS&#8230;" autocomplete="off"
+            aria-label="Rechercher un token (mot, lemme, UPOS)" />
+          <button type="button" class="btn btn-sm btn-ghost prep-annot-search-nav" id="prep-annot-search-prev"
+            title="Occurrence pr&#233;c&#233;dente" disabled>&#9668;</button>
+          <button type="button" class="btn btn-sm btn-ghost prep-annot-search-nav" id="prep-annot-search-next"
+            title="Occurrence suivante" disabled>&#9658;</button>
+          <span class="prep-annot-search-count" id="prep-annot-search-count" aria-live="polite"></span>
           <div class="prep-annot-viewmode" role="group" aria-label="Mode d'affichage de l'annotation">
             <button type="button" class="prep-annot-viewmode-btn active" data-mode="prose"
               title="Prose color&#233;e &#8212; nature au survol">Prose</button>
@@ -110,15 +119,22 @@ export class AnnotationPane {
       this._list = new CanvasUnitList(area, {
         // Grammatical overlay: repaint an annotated unit's text as coloured prose.
         decorateRow: (u, el) => this._decorateAnnotated(u, el),
-        onStats: (t) => {
-          const s = this._q("#prep-annot-search-stats");
-          if (s) s.textContent = t;
-        },
       });
     }
 
+    // R6.5-A — la recherche de la couche Annotation est une recherche de TOKEN (mot/lemme/UPOS)
+    // « pour éditer » : surligne + navigue les occurrences ; un clic sur un token ouvre déjà
+    // l'éditeur (R5.2d). La recherche « scientifique » (cross-corpus, KWIC) reste au
+    // concordancier (CQL) — cf. DESIGN_R6_4_canvas_parity.md §7.5. Remplace, dans cette pane
+    // seule, le filtre d'unités générique du CanvasUnitList.
     const searchEl = this._q<HTMLInputElement>("#prep-annot-search");
-    searchEl?.addEventListener("input", () => this._list?.setSearch(searchEl.value));
+    searchEl?.addEventListener("input", () => this._updateTokenSearch());
+    searchEl?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); this._navTokenSearch(e.shiftKey ? -1 : 1); }
+      else if (e.key === "Escape") { searchEl.value = ""; this._updateTokenSearch(); }
+    });
+    this._q<HTMLButtonElement>("#prep-annot-search-prev")?.addEventListener("click", () => this._navTokenSearch(-1));
+    this._q<HTMLButtonElement>("#prep-annot-search-next")?.addEventListener("click", () => this._navTokenSearch(1));
 
     this._root.querySelectorAll<HTMLButtonElement>(".prep-annot-viewmode-btn").forEach((b) => {
       b.addEventListener("click", () => this._setViewMode(b.dataset.mode === "extended" ? "extended" : "prose"));
@@ -155,6 +171,7 @@ export class AnnotationPane {
     this._language = language;
     this._tokensByUnit = new Map();
     this._tokenById = new Map();
+    this._resetTokenSearch();
     this._closeTokenEditor();
     this._resetRunBtn();
     this._setStatus("");
@@ -179,6 +196,7 @@ export class AnnotationPane {
     this._units = [];
     this._tokensByUnit = new Map();
     this._tokenById = new Map();
+    this._resetTokenSearch();
     this._list?.reset();
     this._docId = null;
     this._loaded = false;
@@ -284,6 +302,7 @@ export class AnnotationPane {
           await this._loadTokens();
           this._list?.render();
           this._renderSummary();
+          if (this._tokSearchQuery) this._updateTokenSearch(); // recompute against new tokens
         }
         this._setStatus("✓ Annotation terminée.");
       },
@@ -357,10 +376,127 @@ export class AnnotationPane {
     }
   }
 
+  // ─── R6.5-A token search (word/lemma/UPOS) — find-to-edit within the doc ──────
+
+  /** Flat token list in reading order (units in list order, tokens ordered within). */
+  private _tokensInReadingOrder(): ProseToken[] {
+    const out: ProseToken[] = [];
+    for (const u of this._units) {
+      const toks = this._tokensByUnit.get(u.unit_id);
+      if (toks) out.push(...toks);
+    }
+    return out;
+  }
+
+  /** token_ids (reading order) whose word/lemma/UPOS contains the lowercased query. */
+  private _computeMatches(q: string): number[] {
+    return this._tokensInReadingOrder()
+      .filter((t) =>
+        t.word.toLowerCase().includes(q) ||
+        (t.lemma?.toLowerCase().includes(q) ?? false) ||
+        (t.upos?.toLowerCase().includes(q) ?? false))
+      .map((t) => t.token_id);
+  }
+
+  /** Recompute matches for the current query text; refresh nav buttons, count, highlights. */
+  private _updateTokenSearch(): void {
+    const input = this._q<HTMLInputElement>("#prep-annot-search");
+    const prev = this._q<HTMLButtonElement>("#prep-annot-search-prev");
+    const next = this._q<HTMLButtonElement>("#prep-annot-search-next");
+    const count = this._q("#prep-annot-search-count");
+    const q = (input?.value ?? "").trim().toLowerCase();
+    this._tokSearchQuery = q;
+    this._tokSearchCursor = 0;
+    if (!q) {
+      this._tokSearchMatches = [];
+      if (count) count.textContent = "";
+      if (prev) prev.disabled = true;
+      if (next) next.disabled = true;
+      this._clearTokenSearchHighlights();
+      return;
+    }
+    this._tokSearchMatches = this._computeMatches(q);
+    const n = this._tokSearchMatches.length;
+    if (prev) prev.disabled = n === 0;
+    if (next) next.disabled = n === 0;
+    if (count) count.textContent = n === 0 ? "0 résultat" : `1 / ${n}`;
+    this._applyTokenSearchHighlights();
+    if (n > 0) this._scrollToMatch(0);
+  }
+
+  /** Step to the previous/next occurrence (wraps); update count + highlight + scroll. */
+  private _navTokenSearch(dir: 1 | -1): void {
+    const n = this._tokSearchMatches.length;
+    if (n === 0) return;
+    this._tokSearchCursor = (this._tokSearchCursor + dir + n) % n;
+    const count = this._q("#prep-annot-search-count");
+    if (count) count.textContent = `${this._tokSearchCursor + 1} / ${n}`;
+    this._applyTokenSearchHighlights();
+    this._scrollToMatch(this._tokSearchCursor);
+  }
+
+  /** After a token edit changed its fields, refresh the match set in place — an edit can
+   *  add or drop a match (e.g. fixing a UPOS while searching "NOUN"). Keeps the user's place
+   *  (cursor clamped, no scroll) so a fix-pass isn't yanked back to the first occurrence. */
+  private _refreshTokenSearchAfterEdit(): void {
+    if (!this._tokSearchQuery) return;
+    this._tokSearchMatches = this._computeMatches(this._tokSearchQuery);
+    const n = this._tokSearchMatches.length;
+    if (this._tokSearchCursor >= n) this._tokSearchCursor = Math.max(0, n - 1);
+    const count = this._q("#prep-annot-search-count");
+    const prev = this._q<HTMLButtonElement>("#prep-annot-search-prev");
+    const next = this._q<HTMLButtonElement>("#prep-annot-search-next");
+    if (count) count.textContent = n === 0 ? "0 résultat" : `${this._tokSearchCursor + 1} / ${n}`;
+    if (prev) prev.disabled = n === 0;
+    if (next) next.disabled = n === 0;
+    this._applyTokenSearchHighlights();
+  }
+
+  /** Paint match classes on the token elements; the cursor's match is distinguished. */
+  private _applyTokenSearchHighlights(): void {
+    this._clearTokenSearchHighlights();
+    const cur = this._tokSearchMatches[this._tokSearchCursor];
+    for (const id of this._tokSearchMatches) {
+      const el = this._root.querySelector(`[data-token-id="${id}"]`);
+      if (!el) continue;
+      el.classList.add("prep-annot-tok-match");
+      if (id === cur) el.classList.add("prep-annot-tok-match--current");
+    }
+  }
+
+  private _clearTokenSearchHighlights(): void {
+    this._root.querySelectorAll(".prep-annot-tok-match, .prep-annot-tok-match--current")
+      .forEach((el) => el.classList.remove("prep-annot-tok-match", "prep-annot-tok-match--current"));
+  }
+
+  private _scrollToMatch(idx: number): void {
+    const id = this._tokSearchMatches[idx];
+    if (id === undefined) return;
+    const el = this._root.querySelector<HTMLElement>(`[data-token-id="${id}"]`);
+    el?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+  }
+
+  /** Clear the token-search state + UI (doc switch / dispose). */
+  private _resetTokenSearch(): void {
+    this._tokSearchQuery = "";
+    this._tokSearchMatches = [];
+    this._tokSearchCursor = 0;
+    const input = this._q<HTMLInputElement>("#prep-annot-search");
+    if (input) input.value = "";
+    const count = this._q("#prep-annot-search-count");
+    if (count) count.textContent = "";
+    const prev = this._q<HTMLButtonElement>("#prep-annot-search-prev");
+    if (prev) prev.disabled = true;
+    const next = this._q<HTMLButtonElement>("#prep-annot-search-next");
+    if (next) next.disabled = true;
+    this._clearTokenSearchHighlights();
+  }
+
   /** Re-render the unit list and restore the edited-token highlight (lost on rebuild). */
   private _renderList(): void {
     this._list?.render();
     if (this._editingTokenId !== null) this._highlightEditingToken(this._editingTokenId);
+    if (this._tokSearchQuery) this._applyTokenSearchHighlights(); // survive the repaint
   }
 
   private _closeTokenEditor(): void {
@@ -404,6 +540,7 @@ export class AnnotationPane {
         if (i >= 0) arr[i] = { token_id: tokenId, word: updated.word ?? "", upos: updated.upos, lemma: updated.lemma };
       }
       this._renderList(); // keeps the editing highlight after the repaint
+      if (this._tokSearchQuery) this._refreshTokenSearchAfterEdit(); // edit may add/drop a match
       if (status) status.textContent = "OK";
     } catch (e) {
       if (status) status.textContent = `Erreur : ${e instanceof Error ? e.message : String(e)}`;

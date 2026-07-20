@@ -7369,6 +7369,13 @@ tr[data-len].prep-seg-row-context .prep-seg-cell-len {
 .prep-annot-editor-actions { display: flex; align-items: center; gap: 0.6rem; margin-top: 0.5rem; }
 .prep-annot-editor-status { font-size: 0.78rem; color: #475569; }
 .prep-annot-units { flex: 1; min-height: 0; }
+/* R6.5-A — recherche token « pour éditer » : compteur/nav + surlignage des occurrences
+   (mot/lemme/UPOS) sur la prose ET l'interlinéaire (les deux portent data-token-id). Le
+   box-shadow sert d'anneau sans toucher la mise en page ; la courante est plus marquée. */
+.prep-annot-search-count { font-size: 0.78rem; color: #475569; white-space: nowrap; }
+.prep-annot-search-nav { padding: 0.1rem 0.4rem; line-height: 1; }
+.prep-annot-tok-match { background: #fef08a; border-radius: 3px; box-shadow: 0 0 0 1px #fde047; }
+.prep-annot-tok-match--current { background: #fbbf24; box-shadow: 0 0 0 2px #d97706; }
 /* Coloured tokens (ui/annotation.css .annot-prose-token) sit inside the unit text;
    give the row a touch more line-height so the token backgrounds breathe. */
 .prep-annot-unit-row--annotated .prep-conv-unit-text { line-height: 1.7; }
