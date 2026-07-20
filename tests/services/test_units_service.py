@@ -201,6 +201,74 @@ def test_update_text_unknown_unit(db_conn: sqlite3.Connection) -> None:
         update_unit_text(db_conn, {"unit_id": 99999, "text_raw": "x"})
 
 
+# --- update_unit_text: stylo side effects (DESIGN_inline_text_correction.md) -----
+def _mk_link(conn: sqlite3.Connection, pivot: int, target: int, doc_id: int) -> None:
+    conn.execute(
+        "INSERT INTO alignment_links"
+        " (run_id, pivot_unit_id, target_unit_id, external_id, pivot_doc_id,"
+        "  target_doc_id, created_at)"
+        " VALUES ('r', ?, ?, 1, ?, ?, datetime('now'))",
+        (pivot, target, doc_id, doc_id),
+    )
+    conn.commit()
+
+
+def test_update_text_flags_source_changed_at(db_conn: sqlite3.Connection) -> None:
+    """D-C2 — an edit flags source_changed_at on links whose *pivot* (source) is
+    the edited unit; links pivoting elsewhere (even if it's their target) stay clean."""
+    doc_id, unit_ids = _mk_doc_units(db_conn, 2)
+    u1, u2 = unit_ids
+    _mk_link(db_conn, pivot=u1, target=u2, doc_id=doc_id)  # A: pivots on the edited unit
+    _mk_link(db_conn, pivot=u2, target=u1, doc_id=doc_id)  # B: u1 is only its target
+
+    update_unit_text(db_conn, {"unit_id": u1, "text_norm": "corrigé"})
+
+    flagged = db_conn.execute(
+        "SELECT source_changed_at FROM alignment_links WHERE pivot_unit_id=?", (u1,)
+    ).fetchone()[0]
+    untouched = db_conn.execute(
+        "SELECT source_changed_at FROM alignment_links WHERE pivot_unit_id=?", (u2,)
+    ).fetchone()[0]
+    assert flagged is not None      # A flagged (pivot edited)
+    assert untouched is None        # B untouched (pivot-only, not target)
+
+
+def test_update_text_records_undoable_action(db_conn: sqlite3.Connection) -> None:
+    """D-C7 — the edit records an undoable update_text action + before-snapshot."""
+    doc_id, unit_ids = _mk_doc_units(db_conn, 1)
+    update_unit_text(db_conn, {"unit_id": unit_ids[0], "text_norm": "corrigé"})
+    row = db_conn.execute(
+        "SELECT action_id, action_type FROM prep_action_history"
+        " WHERE doc_id=? ORDER BY action_id DESC LIMIT 1", (doc_id,)
+    ).fetchone()
+    assert row is not None and row[1] == "update_text"
+    snap = db_conn.execute(
+        "SELECT text_norm_before FROM prep_action_unit_snapshots WHERE action_id=?",
+        (row[0],),
+    ).fetchone()
+    assert snap is not None and snap[0] == "t1"  # verbatim original
+
+
+def test_update_text_undo_restores(db_conn: sqlite3.Connection) -> None:
+    """D-C7 — execute_undo restores the verbatim text_raw + text_norm."""
+    from multicorpus_engine.undo import execute_undo
+
+    doc_id, unit_ids = _mk_doc_units(db_conn, 1)
+    uid = unit_ids[0]
+    update_unit_text(db_conn, {"unit_id": uid, "text_raw": "R2", "text_norm": "n2"})
+    assert tuple(db_conn.execute(
+        "SELECT text_raw, text_norm FROM units WHERE unit_id=?", (uid,)
+    ).fetchone()) == ("R2", "n2")
+
+    payload = execute_undo(db_conn, doc_id)
+    db_conn.commit()
+    assert payload["reverted_action_type"] == "update_text"
+    assert payload["units_restored"] == 1
+    assert tuple(db_conn.execute(
+        "SELECT text_raw, text_norm FROM units WHERE unit_id=?", (uid,)
+    ).fetchone()) == ("t1", "t1")  # original restored
+
+
 # --- unit_status (R4.1) ---------------------------------------------------------
 def test_list_units_exposes_unit_status(db_conn: sqlite3.Connection) -> None:
     """R4.1 — list_units emits the translation-status axis (null by default)."""

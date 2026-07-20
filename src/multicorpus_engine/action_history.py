@@ -18,6 +18,7 @@ ACTION_CURATION_APPLY = "curation_apply"
 ACTION_MERGE_UNITS    = "merge_units"
 ACTION_SPLIT_UNIT     = "split_unit"
 ACTION_RESEGMENT      = "resegment"
+ACTION_UPDATE_TEXT    = "update_text"
 ACTION_UNDO           = "undo"
 
 ALLOWED_ACTION_TYPES = frozenset({
@@ -25,6 +26,7 @@ ALLOWED_ACTION_TYPES = frozenset({
     ACTION_MERGE_UNITS,
     ACTION_SPLIT_UNIT,
     ACTION_RESEGMENT,
+    ACTION_UPDATE_TEXT,
     ACTION_UNDO,
 })
 

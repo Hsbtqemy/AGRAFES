@@ -29,6 +29,7 @@ from multicorpus_engine.action_history import (
     ACTION_RESEGMENT,
     ACTION_SPLIT_UNIT,
     ACTION_UNDO,
+    ACTION_UPDATE_TEXT,
     record_prep_action,
 )
 
@@ -152,6 +153,28 @@ def _undo_curation_apply(
         conn.execute(
             "UPDATE units SET text_norm = ? WHERE unit_id = ?",
             (s["text_norm_before"], s["unit_id"]),
+        )
+    unit_ids = [s["unit_id"] for s in snapshots]
+    reflagged = _reflag_alignment_links(conn, unit_ids)
+    return {
+        "units_restored":       len(snapshots),
+        "alignments_reflagged": reflagged,
+        "fts_stale":            len(snapshots) > 0,
+    }
+
+
+def _undo_update_text(
+    conn: sqlite3.Connection, snapshots: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """Revert a "stylo" text edit (ACTION_UPDATE_TEXT): restore the verbatim
+    text_raw + text_norm from snapshot and re-flag aligned translations. Unlike
+    curation_apply (text_norm only), the endpoint may have touched text_raw too,
+    so both are restored.
+    """
+    for s in snapshots:
+        conn.execute(
+            "UPDATE units SET text_raw = ?, text_norm = ? WHERE unit_id = ?",
+            (s["text_raw_before"], s["text_norm_before"], s["unit_id"]),
         )
     unit_ids = [s["unit_id"] for s in snapshots]
     reflagged = _reflag_alignment_links(conn, unit_ids)
@@ -396,6 +419,8 @@ def execute_undo(
 
     if action_type == ACTION_CURATION_APPLY:
         outcome = _undo_curation_apply(conn, snapshots)
+    elif action_type == ACTION_UPDATE_TEXT:
+        outcome = _undo_update_text(conn, snapshots)
     elif action_type == ACTION_MERGE_UNITS:
         outcome = _undo_merge_units(conn, snapshots, context, doc_id)
     elif action_type == ACTION_SPLIT_UNIT:

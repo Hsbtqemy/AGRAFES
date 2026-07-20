@@ -15,6 +15,11 @@ from __future__ import annotations
 import sqlite3
 from typing import Any, Optional
 
+from ..action_history import (
+    ACTION_UPDATE_TEXT,
+    insert_unit_snapshots,
+    record_prep_action,
+)
 from .errors import BadRequestError, NotFoundError
 from .validation import Field, validate
 
@@ -273,6 +278,12 @@ def update_unit_text(conn: sqlite3.Connection, body: dict) -> dict[str, Any]:
     At least one of text_raw / text_norm is required; if only text_raw is given it
     is mirrored to text_norm. Reindexes FTS (best-effort). Raises BadRequestError
     or NotFoundError (unknown unit_id).
+
+    Side effects (the "stylo" correction, DESIGN_inline_text_correction.md):
+      - flags ``alignment_links.source_changed_at`` for links pivoting on this unit
+        (D-C2 — a source edit marks its translations stale; mirrors curation.py);
+      - records an undoable ``update_text`` action with a before-snapshot (D-C7),
+        atomically with the mutation (single commit below).
     """
     unit_id = validate(body, _UPDATE_TEXT_SCHEMA)["unit_id"]
 
@@ -287,6 +298,16 @@ def update_unit_text(conn: sqlite3.Connection, body: dict) -> dict[str, Any]:
     if text_raw is not None and text_norm is None:
         text_norm = text_raw  # mirror
 
+    # Snapshot the before-state (doc_id + verbatim text) up front: it both resolves
+    # the unit (unknown -> NotFoundError, same wire message as before) and feeds the
+    # undo snapshot recorded below.
+    before = conn.execute(
+        "SELECT doc_id, text_raw, text_norm FROM units WHERE unit_id = ?", (unit_id,)
+    ).fetchone()
+    if before is None:
+        raise NotFoundError(f"Unknown unit_id: {unit_id}")
+    doc_id, text_raw_before, text_norm_before = before[0], before[1], before[2]
+
     updates: dict[str, str] = {}
     if text_raw is not None:
         updates["text_raw"] = text_raw
@@ -295,9 +316,7 @@ def update_unit_text(conn: sqlite3.Connection, body: dict) -> dict[str, Any]:
 
     set_clause = ", ".join(f"{k} = ?" for k in updates)
     params = [*updates.values(), unit_id]
-    cur = conn.execute(f"UPDATE units SET {set_clause} WHERE unit_id = ?", params)
-    if cur.rowcount == 0:
-        raise NotFoundError(f"Unknown unit_id: {unit_id}")
+    conn.execute(f"UPDATE units SET {set_clause} WHERE unit_id = ?", params)
     # Invalidate / refresh FTS entry for this unit (best-effort). Only ``line``
     # units are indexed: never (re)insert a ``structure`` unit into FTS (ENG-04).
     # The DELETE runs unconditionally so any stale/orphan row is still cleared.
@@ -314,6 +333,30 @@ def update_unit_text(conn: sqlite3.Connection, body: dict) -> dict[str, Any]:
                 )
     except Exception:
         pass  # FTS update is best-effort
+    # D-C2 — propagate the change signal to aligned translations (mirrors
+    # curation.py:344): links whose *pivot* (source) is this unit are now stale.
+    conn.execute(
+        "UPDATE alignment_links SET source_changed_at = datetime('now')"
+        " WHERE pivot_unit_id = ?",
+        (unit_id,),
+    )
+    # D-C7 — make the edit undoable: record the action + before-snapshot in the
+    # same tx as the mutation (both land or both roll back at the commit below).
+    action_id = record_prep_action(
+        conn,
+        doc_id=int(doc_id),
+        action_type=ACTION_UPDATE_TEXT,
+        description=f"Édition du texte (unité {unit_id})",
+    )
+    insert_unit_snapshots(
+        conn,
+        action_id,
+        [{
+            "unit_id": unit_id,
+            "text_raw_before": text_raw_before,
+            "text_norm_before": text_norm_before,
+        }],
+    )
     conn.commit()
     row = conn.execute(
         "SELECT unit_id, doc_id, n, external_id, text_raw, text_norm FROM units WHERE unit_id = ?",
