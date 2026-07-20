@@ -253,3 +253,26 @@ def test_import_conllu_rejects_duplicate(
     import_conllu(conn=db_conn, path=conllu, language="en")
     with pytest.raises(ValueError, match="déjà présent|source_hash"):
         import_conllu(conn=db_conn, path=conllu, language="en")
+
+
+def test_preview_conllu_flags_non_utf8(tmp_path: Path) -> None:
+    """IMP-03: the (lenient) preview SIGNALS a non-UTF-8 file that the strict import will
+    reject — no more « aperçu OK puis échec à l'import »."""
+    from multicorpus_engine.importers.conllu import preview_conllu
+
+    p = tmp_path / "latin1.conllu"
+    # 0xE9 (é en latin-1) est invalide en UTF-8 → l'aperçu retombe sur latin-1 et le signale.
+    p.write_bytes(b"# text = caf\xe9\n1\tcaf\xe9\tcafe\tNOUN\t_\t_\t0\troot\t_\t_\n\n")
+    stats = preview_conllu(p, limit=10)
+    assert stats["not_utf8"] is True
+
+
+def test_preview_conllu_utf8_not_flagged(tmp_path: Path) -> None:
+    from multicorpus_engine.importers.conllu import preview_conllu
+
+    p = _write_conllu(
+        tmp_path / "ok.conllu",
+        "1\tcafe\tcafe\tNOUN\t_\t_\t0\troot\t_\t_\n\n",
+    )
+    stats = preview_conllu(p, limit=10)
+    assert stats["not_utf8"] is False

@@ -159,6 +159,34 @@ def test_import_empty_txt_raises_and_leaves_no_ghost_doc(
     assert db_conn.execute("SELECT COUNT(*) FROM documents").fetchone()[0] == 0
 
 
+def test_detect_encoding_survives_charset_normalizer_crash(monkeypatch) -> None:
+    """IMP-04b: a runtime error inside charset-normalizer must not crash the import — it
+    falls through to the deterministic cp1252/latin-1 fallback (was `except ImportError` only)."""
+    pytest.importorskip("charset_normalizer")
+    from multicorpus_engine.importers.txt import _detect_encoding
+
+    def _boom(_data):
+        raise RuntimeError("charset-normalizer internal error")
+
+    monkeypatch.setattr("charset_normalizer.from_bytes", _boom)
+    encoding, method = _detect_encoding(b"[1] plain ascii text")  # no BOM → hits from_bytes
+    assert method in ("cp1252-fallback", "latin-1-fallback")
+    assert encoding in ("cp1252", "latin-1")
+
+
+def test_import_txt_flags_undecodable_bytes(
+    db_conn: sqlite3.Connection, tmp_path: Path
+) -> None:
+    """IMP-04a: errors='replace' mojibake (U+FFFD) is surfaced as a warning, not silent —
+    even on the BOM path that the enc_method fallback warning misses."""
+    from multicorpus_engine.importers.txt import import_txt_numbered_lines
+    p = tmp_path / "bad.txt"
+    # UTF-8 BOM → detected utf-8-sig; a lone 0xE9 is invalid UTF-8 → decoded as U+FFFD.
+    p.write_bytes(b"\xef\xbb\xbf[1] cafe\xe9 x\n[2] ok\n")
+    report = import_txt_numbered_lines(conn=db_conn, path=p, language="fr")
+    assert any("U+FFFD" in str(w) for w in report.warnings)
+
+
 def test_import_detects_duplicates(
     db_conn: sqlite3.Connection,
     docx_with_duplicates: Path,

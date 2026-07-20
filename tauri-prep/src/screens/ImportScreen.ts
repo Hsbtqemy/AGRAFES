@@ -566,6 +566,7 @@ export class ImportScreen {
       let sentences: number, tokensTotal: number, skippedRanges: number,
         skippedEmptyNodes: number, malformedLines: number,
         rows: Array<{ sent: number; id: string; form: string; lemma: string; upos: string }>;
+      let notUtf8 = false; // IMP-03 : l'import CoNLL-U est strict UTF-8
 
       if (this._conn) {
         const res = await previewImport(this._conn, { path: file.path, mode: "conllu", limit: 60 });
@@ -577,6 +578,7 @@ export class ImportScreen {
         skippedEmptyNodes = s.skipped_empty_nodes;
         malformedLines = s.malformed_lines;
         rows = s.sample_rows;
+        notUtf8 = s.not_utf8 ?? false; // IMP-03
       } else {
         const content = await readTextFile(file.path);
         if (reqId !== this._conlluPreviewReq) return;
@@ -598,6 +600,8 @@ export class ImportScreen {
       if (skippedRanges > 0) metaParts.push(`${skippedRanges} plage(s) multi-mots ignorée(s)`);
       if (skippedEmptyNodes > 0) metaParts.push(`${skippedEmptyNodes} nœud(s) vide(s) ignoré(s)`);
       if (malformedLines > 0) metaParts.push(`${malformedLines} ligne(s) mal formée(s)`);
+      // IMP-03 : l'aperçu tolère le non-UTF-8 mais l'import le rejette → prévenir ici.
+      if (notUtf8) metaParts.push("⚠ non-UTF-8 — l'import rejettera ce fichier (ré-enregistrez en UTF-8)");
       this._conlluSummaryEl.textContent = metaParts.join(" • ");
 
       this._conlluRowsEl.innerHTML = "";

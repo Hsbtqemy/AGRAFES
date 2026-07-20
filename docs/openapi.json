@@ -4293,8 +4293,8 @@
   "info": {
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
-    "version": "1.6.60",
-    "x-contract-version": "1.6.60"
+    "version": "1.6.61",
+    "x-contract-version": "1.6.61"
   },
   "openapi": "3.0.3",
   "paths": {
@@ -6938,6 +6938,10 @@
                       "properties": {
                         "malformed_lines": {
                           "type": "integer"
+                        },
+                        "not_utf8": {
+                          "description": "IMP-03: file is not UTF-8 (lenient preview decoded it as latin-1); the strict import will reject it.",
+                          "type": "boolean"
                         },
                         "sample_rows": {
                           "items": {

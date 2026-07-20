@@ -1461,6 +1461,8 @@ export interface ConlluStats {
   skipped_empty_nodes: number;
   malformed_lines: number;
   sample_rows: ConlluPreviewRow[];
+  /** IMP-03 : le fichier n'est pas UTF-8 (aperçu tolérant latin-1) → l'import strict le rejettera. */
+  not_utf8?: boolean;
 }
 
 export interface ImportPreviewUnit {

@@ -127,8 +127,13 @@ def preview_conllu(path: str | Path, limit: int) -> dict:
     raw_bytes = path.read_bytes()
     try:
         text = raw_bytes.decode("utf-8-sig")
+        not_utf8 = False
     except UnicodeDecodeError:
+        # IMP-03 : l'aperçu reste tolérant (latin-1) pour montrer QUELQUE chose, mais l'import
+        # est strict UTF-8 et REJETTERA ce fichier → signaler pour éviter « aperçu OK puis
+        # échec à l'import ».
         text = raw_bytes.decode("latin-1")
+        not_utf8 = True
 
     tokens_total = 0
     skipped_ranges = 0
@@ -203,6 +208,7 @@ def preview_conllu(path: str | Path, limit: int) -> dict:
         "skipped_empty_nodes": skipped_empty_nodes,
         "malformed_lines": malformed_lines,
         "sample_rows": sample_rows,
+        "not_utf8": not_utf8,  # IMP-03 : l'import strict UTF-8 rejettera ce fichier
     }
 
 

@@ -14,7 +14,7 @@ from typing import Any
 from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
-CONTRACT_VERSION = "1.6.60"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.61"  # semantic versioning for the sidecar API contract
 # SID-08 / OPS-03: the API version IS the contract version — derived, never a
 # second hand-maintained literal, so the two can no longer drift. /health reports
 # the *engine* version under `version` (it predates the sidecar); every other
@@ -232,6 +232,11 @@ API_VERSION = CONTRACT_VERSION
 #         regroup by boundary / extract a blob) instead of hand-repairing the matrix downstream.
 #         Read-only, derived (services matrix_export_service + anchoring.anchor_status_for_doc).
 #         Additive field → snapshot/.md unchanged; openapi moves (version).
+# 1.6.61: IMP-03 (audit import). POST /import/preview → conllu_stats gains `not_utf8`
+#         (boolean): the lenient preview decoded a non-UTF-8 file as latin-1, but the strict
+#         CoNLL-U import rejects non-UTF-8 → the field lets the UI warn before the user
+#         commits (« aperçu OK puis échec à l'import »). Additive field → snapshot/.md
+#         unchanged; openapi moves (version). Logic in importers/conllu.preview_conllu.
 # 1.6.60: re-anchor (5th verb, RA-D1). AlignBatchAction.action gains `set_pivot` +
 #         field `new_pivot_unit_id`: move a link onto a different hub/pivot segment
 #         (symmetric to retarget's target move). Only pivot_unit_id changes — status,
@@ -599,6 +604,7 @@ def openapi_spec() -> dict[str, Any]:
                                                     "skipped_empty_nodes": {"type": "integer"},
                                                     "malformed_lines": {"type": "integer"},
                                                     "sample_rows": {"type": "array", "items": {"type": "object"}},
+                                                    "not_utf8": {"type": "boolean", "description": "IMP-03: file is not UTF-8 (lenient preview decoded it as latin-1); the strict import will reject it."},
                                                 },
                                             },
                                         },

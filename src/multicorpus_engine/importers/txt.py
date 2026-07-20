@@ -51,7 +51,10 @@ def _detect_encoding(data: bytes) -> tuple[str, str]:
         best = result.best()
         if best is not None:
             return (str(best.encoding), "charset-normalizer")
-    except ImportError:
+    except Exception:
+        # IMP-04 : charset-normalizer absent (ImportError) OU en échec sur des octets
+        # pathologiques ne doit PAS crasher l'import — on retombe sur le fallback
+        # cp1252/latin-1 déterministe ci-dessous.
         pass
 
     # Fallback: cp1252 first, then latin-1
@@ -89,6 +92,10 @@ def parse_txt_numbered_lines(
         run_logger.warning("Encoding detection fell back to %s for %s", encoding, path.name)
 
     text = raw_bytes.decode(encoding, errors="replace")
+    # IMP-04 : errors="replace" masque une mauvaise devinette d'encodage en U+FFFD (le warning
+    # enc_method ne couvre que cp1252/latin-1, pas BOM/charset-normalizer). Compter les
+    # remplacements pour que l'importeur le signale plutôt que de rendre du mojibake en silence.
+    decode_replacements = text.count(chr(0xFFFD))
 
     units: list[ParsedUnit] = []
     n = 0
@@ -115,7 +122,10 @@ def parse_txt_numbered_lines(
 
     return ParsedDoc(
         units=units,
-        doc_meta={"encoding": encoding, "enc_method": enc_method},
+        doc_meta={
+            "encoding": encoding, "enc_method": enc_method,
+            "decode_replacements": decode_replacements,
+        },
         source_hash=source_hash,
     )
 
@@ -212,6 +222,17 @@ def import_txt_numbered_lines(
         report.warnings.append(
             {"type": "encoding_fallback", "path": str(path), "chosen": encoding}
         )
+
+    # IMP-04 : surfacer un décodage douteux (U+FFFD) que errors="replace" a masqué — couvre
+    # aussi les chemins BOM/charset-normalizer que le warning enc_method ci-dessus ignore.
+    replacements = parsed.doc_meta.get("decode_replacements", 0)
+    if replacements > 0:
+        msg = (
+            f"{replacements} caractère(s) non décodé(s) (U+FFFD) — l'encodage détecté "
+            f"({encoding}) est peut-être erroné."
+        )
+        report.warnings.append(msg)
+        log.warning(msg)
 
     if duplicates:
         msg = f"Duplicate external_id(s) found: {duplicates}"
