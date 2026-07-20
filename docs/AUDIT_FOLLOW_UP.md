@@ -52,12 +52,15 @@ le §6 de l'audit 2026-06-12 ; « — » = non priorisé explicitement.
 
 Audit ciblé « modes d'import & reconnaissance des types » (ROADMAP_REFONTE §3 front ③).
 2 agents (importeurs moteur ; détection front) + **re-vérif manuelle** des têtes d'affiche
-(« ✔ »). Tous **⬜ ouverts** au dépôt de l'audit (lecture seule). Priorités = §6 du fichier
-d'audit. Détail + preuve `fichier:ligne` dans `AUDIT_IMPORT_2026-07-20.md`.
+(« ✔ »). Priorités = §6 du fichier d'audit. Détail + preuve `fichier:ligne` dans
+`AUDIT_IMPORT_2026-07-20.md`.
+
+> **P0 corrigé le 2026-07-20** (même commit que ce recalage) : **IMP-01** → ✅ (fix + 3
+> tests + RED prouvé). Tous les autres findings restent ⬜ / 🔵 au dépôt de l'audit.
 
 | ID | Sév | Prio | Statut | Constat (résumé) |
 |----|-----|------|--------|------------------|
-| IMP-01 ✔ | 🔴 | P0 | ⬜ ouvert | `_analyze_external_ids` hang→OOM : `range(min,max)` + `set()` reconstruit/itération, ∝ écart. Un `[900000000]`/`xml:id=p99999999`/`sent_id=999999999` gèle le sidecar (sous `_lock`, hang≠raise). `docx_numbered_lines.py:169`, appelée par tous les numérotés. |
+| IMP-01 ✔ | 🔴 | P0 | ✅ corrigé | `_analyze_external_ids` hang→OOM : `range(min,max)` + `set()` reconstruit/itération, ∝ écart ; un `[900000000]`/`xml:id=p99999999`/`sent_id=999999999` gelait le sidecar (sous `_lock`, hang≠raise). **Fix** : `set` construit **une fois** + borne `_MAX_HOLES=1000` (early-break) → temps & mémoire bornés (referme aussi le bloat `report.warnings`). 3 tests `test_import.py::test_analyze_external_ids_*` (RED prouvé sur écart 5000 : 4998≠1000). `docx_numbered_lines.py:169`. |
 | IMP-02 | 🟡 | P1 | ⬜ ouvert | Import **vide silencieux** hors CoNLL-U : `tei_importer.py:245`/`txt.py:193`/`docx_paragraphs.py:128`/`odt_*`/`docx_numbered_lines.py:381` → `units_total=0` sans erreur = doc fantôme. Seul CoNLL-U garde (`conllu.py:247`). |
 | IMP-09 ✔ | 🟠 | P1 | ⬜ ouvert | Mauvaise extension → import charabia sans échappatoire : CoNLL-U/TEI en `.txt` → `txt_numbered_lines`, aucun autre mode au menu (`importDetect.ts:51/65`). Détection par nom seul. |
 | IMP-10 ✔ | 🟠 | P1 | ⬜ ouvert | Famille mal liée : `baseName` jette le dossier (cross-dossier fusionne) + mots-outils `de/la/en` whitelistés → fausse famille source↔trad. `familyDetect.ts:29/51`. |

@@ -148,8 +148,22 @@ def _is_vmerge_continuation(cell) -> bool:
         return False
 
 
+#: Hard cap on the number of holes collected. A pathological external_id span — a single
+#: fat-fingered ``[900000000]``, an ``xml:id="p99999999"`` or a ``# sent_id = 999999999`` —
+#: would otherwise make ``range(min, max)`` hang and the holes list OOM (it freezes the whole
+#: sidecar, which runs the import under a lock). Past this many gaps the numbering is broken
+#: enough that a (truncated) non-empty list is signal enough; enumerating more is useless and
+#: bloats ``report.warnings``. See IMP-01 / docs/AUDIT_IMPORT_2026-07-20.md.
+_MAX_HOLES = 1000
+
+
 def _analyze_external_ids(external_ids: list[int]) -> tuple[list[int], list[int], list[int]]:
-    """Return (duplicates, holes, non_monotonic) from a sequence of external_ids."""
+    """Return (duplicates, holes, non_monotonic) from a sequence of external_ids.
+
+    ``holes`` is **capped at** :data:`_MAX_HOLES`: a wildly non-contiguous sequence (a data
+    error, e.g. ``[1, 900000000]``) is signalled by a non-empty *truncated* list rather than
+    enumerated in full — which would hang the loop and OOM the list (IMP-01).
+    """
     seen: dict[int, int] = {}
     duplicates: list[int] = []
     non_monotonic: list[int] = []
@@ -162,13 +176,18 @@ def _analyze_external_ids(external_ids: list[int]) -> tuple[list[int], list[int]
         if i > 0 and eid <= external_ids[i - 1]:
             non_monotonic.append(eid)
 
-    # Holes: integers between min and max not present in the set
-    unique = sorted(set(external_ids))
+    # Holes: integers between min and max not present. Build the membership set ONCE (it was
+    # rebuilt on every iteration) and stop at _MAX_HOLES so a pathological span can neither
+    # hang the loop nor OOM the list (IMP-01).
+    present = set(external_ids)
+    unique = sorted(present)
     holes: list[int] = []
     if unique:
         for expected in range(unique[0], unique[-1] + 1):
-            if expected not in set(external_ids):
+            if expected not in present:
                 holes.append(expected)
+                if len(holes) >= _MAX_HOLES:
+                    break
 
     return duplicates, holes, non_monotonic
 

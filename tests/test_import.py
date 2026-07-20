@@ -108,6 +108,38 @@ def test_import_detects_holes(
     assert any("Holes" in w for w in report.warnings)
 
 
+def test_analyze_external_ids_caps_holes_on_wide_span() -> None:
+    """IMP-01: a wide external_id gap yields a TRUNCATED (non-empty) holes list, never the
+    full range — which would hang the loop and OOM the list on a big span."""
+    from multicorpus_engine.importers.docx_numbered_lines import (
+        _MAX_HOLES,
+        _analyze_external_ids,
+    )
+    _, holes, _ = _analyze_external_ids([1, 5000])  # 4998 gaps if uncapped
+    assert len(holes) == _MAX_HOLES  # capped, not 4998
+    assert holes[0] == 2  # still a real signal — starts at the first gap
+
+
+def test_analyze_external_ids_pathological_span_is_bounded() -> None:
+    """IMP-01: the actual DoS trigger ([1, 1e9]) completes instantly instead of
+    hanging/OOMing (this test would never return on the pre-fix code)."""
+    from multicorpus_engine.importers.docx_numbered_lines import (
+        _MAX_HOLES,
+        _analyze_external_ids,
+    )
+    dups, holes, non_mono = _analyze_external_ids([1, 10**9])
+    assert len(holes) == _MAX_HOLES  # bounded — no billion-int list
+    assert dups == [] and non_mono == []
+
+
+def test_analyze_external_ids_small_gaps_unchanged() -> None:
+    """Regression: ordinary small gaps are still enumerated exactly (not truncated)."""
+    from multicorpus_engine.importers.docx_numbered_lines import _analyze_external_ids
+    dups, holes, non_mono = _analyze_external_ids([1, 2, 5, 6])
+    assert holes == [3, 4]
+    assert dups == [] and non_mono == []
+
+
 def test_import_detects_duplicates(
     db_conn: sqlite3.Connection,
     docx_with_duplicates: Path,
