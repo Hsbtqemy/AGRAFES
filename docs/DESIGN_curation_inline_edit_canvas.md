@@ -142,3 +142,30 @@ signale bien ses traductions « à revoir ». Bonus : l'écriture passe par `rec
 - **Exception durable (C)** — hors scope (concept distinct : rule-exception via `/curate/exceptions/set`).
 - **`UnitInspectorPanel` édite déjà** un `text_norm` via β (`updateUnitText`) dans le panneau métadonnées —
   utile à savoir, mais c'est un autre écran (pas la couche Curation) et il **ne flague pas la source** (β).
+
+## 8. Pivot (2026-07-20) — l'édition directe sort de la curation
+
+> **Recadrage acté après revue de l'implémentation du Lot 1 sur un texte non segmenté-fin.**
+
+Le Lot 1 a livré l'édition inline **en α** (staged, appliquée au run `/curate`) et **fusionnée** avec
+l'override (décision D1). Deux angles morts vérifiés au code :
+
+1. **Grain.** Une « unité » non segmentée-fin est un **pavé** (importers `*_paragraphs`, modèle
+   deux-grains R2 où le ¶ *est* une unité) — état **normal**, pas une pathologie. L'éditeur
+   figé `rows=3` déverse le pavé dans une boîte de 3 lignes (le legacy A auto-dimensionnait :
+   `Math.max(2, ceil(len/80))` — **régression**).
+2. **Intention.** Le besoin réel exprimé n'est pas « porter l'éditeur de la curation » mais **pouvoir
+   corriger une faute/coquille à n'importe quelle étape, immédiatement** — une capacité **transversale**,
+   **décorrélée de la curation**, et **immédiate** (aucun job condition). Donc **β, pas α**.
+
+**Conséquence :**
+- L'**édition directe du texte** quitte cette note → elle est **superSédée** par
+  [`DESIGN_inline_text_correction.md`](DESIGN_inline_text_correction.md) (le « stylo » transversal,
+  β immédiat, flag `source_changed_at`, annulabilité à trancher).
+- Ce qui **reste** ici = l'**override d'une règle** (gap #9 / B) : besoin étroit, sensé *uniquement*
+  dans la revue d'un preview curation. **Recadré secondaire et différé.** Il ne bloque plus rien.
+- Le `✅ « solde le gap #9 »` (roadmap R5.1 + commit `ab8eb97`) est **prématuré** → gap #9 repasse en
+  **🟡 parité partielle** tant que le stylo n'est pas livré.
+
+Décisions D1/D2/D3 du Lot 1 (fusion A+B, chemin α, greffe par-ligne) : **caduques pour l'édition
+directe** ; valides seulement si un jour on revient sur l'override staged (non prioritaire).

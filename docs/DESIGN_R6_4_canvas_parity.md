@@ -33,7 +33,7 @@ Légende verdict : 🔴 vraie perte à porter · 🟠 cible du tiroir Avancé T3
 | 6 | Export rapport JSON/CSV | [`_runExportReviewReport:2227`](../tauri-prep/src/screens/CurationView.ts#L2227) | 🟠 |
 | 7 | Exceptions persistées (panneau admin) | [`CurateExceptionsAdminPanel:896`](../tauri-prep/src/screens/CurationView.ts#L896) | 🟠 |
 | 8 | Apply-history (panneau) | [`CurateApplyHistoryPanel:915`](../tauri-prep/src/screens/CurationView.ts#L915) | 🟠 |
-| 9 | Overrides manuels + revert | [`_saveManualOverride:2780`](../tauri-prep/src/screens/CurationView.ts#L2780) | ✅ (relogé 2026-07-19, éditeur inline `CurationPane` — [note](DESIGN_curation_inline_edit_canvas.md)) |
+| 9 | Overrides manuels + revert | [`_saveManualOverride:2780`](../tauri-prep/src/screens/CurationView.ts#L2780) | 🟡 **dissous 2026-07-20** — édition directe → **stylo transversal** (prérequis R6.5-C) ; override → **R6.5-B Revue**. Voir **§7.7**. *(Le ✅ du 19/07 était prématuré : α staged + `rows=3` = régression vs legacy.)* |
 | 10 | Exceptions par unité (ignore/override/delete) | [`_setExceptionIgnore:2875`](../tauri-prep/src/screens/CurationView.ts#L2875) | 🔴 |
 | 11 | Gestion conventions/rôles + role bar + apply-role | [`_renderConventionsList:2042`](../tauri-prep/src/screens/CurationView.ts#L2042) | 🟢 déjà sur canvas (RolesPane/SegmentPane) |
 | 12 | Réglage borne début-de-texte | [`_setTextStart:2714`](../tauri-prep/src/screens/CurationView.ts#L2714) | 🟢 affiché (state strip) ; réglé en Seg |
@@ -153,3 +153,33 @@ Le retrait de l'écran legacy s'est révélé plus intriqué que « supprimer le
 **Suivi différé (2026-07-20, réserves de la revue adverse — non bloquantes)** :
 1. **État actif sidebar ↔ mode du canvas** *(retenu pour plus tard)*. Le lien sidebar « Annotation » garde `data-nav="annoter"` mais la couche s'ouvre sous la sous-vue `texte` → `_switchSubViewDOM` (match `data-nav === view`) ne le surligne plus. À terme : coupler l'état actif sidebar au **mode** du canvas (pas seulement la sous-vue), pour que « Annotation » (et les autres couches) se surlignent selon la couche active.
 2. **CSS legacy `annot-*` mort** dans `annotation.css` (fichier **partagé** avec le canvas via `annot-token`/`annot-sent`/`annot-prose-token`) : les classes purement legacy (`annot-panel`, `annot-sidebar`, `annot-viewer`, `annot-doc-*`, `annot-search-*`…) sont inertes mais à nettoyer par audit classe-par-classe.
+
+### 7.7 Recadrage #9 (2026-07-20) — l'édition inline se dissout dans le stylo transversal
+
+**Prémisse corrigée** (revue de l'implémentation Lot 1 sur un texte **non segmenté-fin**). Le §7.2 (et
+la ligne #9 du §2.1) tenaient #9 pour ✅ « déjà inline ». **Faux** : le Lot 1
+(`CurationPane._buildEditor`/`_overrides`, commit `ab8eb97`) a livré l'édition **en α staged**
+(appliquée au run `/curate`) + textarea **figée `rows=3`** → sur une unité-**pavé** (état *normal* :
+importers `*_paragraphs`, ¶-unité R2) elle **déverse le pavé dans 3 lignes**, là où le legacy A
+(`_enterInlineEdit`) **auto-dimensionnait** (`Math.max(2,ceil(len/80))`). C'est une **régression**, pas
+une parité.
+
+**#9 n'était pas une chose mais deux — elles partent chacune de leur côté :**
+- **Édition directe** → capacité **transversale neuve** : le **« stylo »** (note
+  [`DESIGN_inline_text_correction.md`](DESIGN_inline_text_correction.md)) — **β immédiat** (aucun job
+  condition), **édition en place** (port legacy A) dans **`CanvasUnitList`** (donc *toutes* les
+  couches), **annulable** (`action_type UPDATE_TEXT`), flag `source_changed_at`. **Prérequis
+  non-régressif de R6.5-C** : retirer le legacy Curation supprime le seul foyer visible d'édition
+  directe ; sans le stylo, le retrait régresserait (l'inspecteur édite en β mais **enfoui + sans flag +
+  non annulable**).
+- **Override d'une règle** (`_saveManualOverride` met `status=accepted`, couplé à
+  `_saveCurateReviewState`) → **soudé à la machinerie de revue** → se replie dans le chantier
+  **Revue de R6.5-B** (#2/#3/#4), **pas** un item autonome.
+
+**Impact séquence :** R6.5-B absorbe l'override (chantier Revue) ; **R6.5-C gagne un prérequis** =
+livrer le stylo (moteur **~45 l.** flag+undo **+ migration 032** — le CHECK `action_type` refusait un
+nouveau type, le « zéro migration » supposé était faux ; contrat inchangé ; front = porter
+`_enterInlineEdit` dans `CanvasUnitList`, retirer le panneau détaché `CurationPane`). Le stylo étant
+**transversal**, il dé-risque le retrait **au-delà** de la seule Curation. **#9 sort de la liste des
+ports** : ni ✅, ni « port » — une **capacité neuve** (stylo) + un **repli** (Revue). Le §7.1 comptait
+déjà 5 🔴 (hors #9) ; ce compte reste bon, le stylo s'y **ajoute comme prérequis**, pas comme rouge.
