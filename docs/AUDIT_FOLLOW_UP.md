@@ -48,6 +48,34 @@ le §6 de l'audit 2026-06-12 ; « — » = non priorisé explicitement.
 
 ---
 
+## Audit import 2026-07-20 (front ③, branche `refonte`) — `AUDIT_IMPORT_2026-07-20.md`
+
+Audit ciblé « modes d'import & reconnaissance des types » (ROADMAP_REFONTE §3 front ③).
+2 agents (importeurs moteur ; détection front) + **re-vérif manuelle** des têtes d'affiche
+(« ✔ »). Tous **⬜ ouverts** au dépôt de l'audit (lecture seule). Priorités = §6 du fichier
+d'audit. Détail + preuve `fichier:ligne` dans `AUDIT_IMPORT_2026-07-20.md`.
+
+| ID | Sév | Prio | Statut | Constat (résumé) |
+|----|-----|------|--------|------------------|
+| IMP-01 ✔ | 🔴 | P0 | ⬜ ouvert | `_analyze_external_ids` hang→OOM : `range(min,max)` + `set()` reconstruit/itération, ∝ écart. Un `[900000000]`/`xml:id=p99999999`/`sent_id=999999999` gèle le sidecar (sous `_lock`, hang≠raise). `docx_numbered_lines.py:169`, appelée par tous les numérotés. |
+| IMP-02 | 🟡 | P1 | ⬜ ouvert | Import **vide silencieux** hors CoNLL-U : `tei_importer.py:245`/`txt.py:193`/`docx_paragraphs.py:128`/`odt_*`/`docx_numbered_lines.py:381` → `units_total=0` sans erreur = doc fantôme. Seul CoNLL-U garde (`conllu.py:247`). |
+| IMP-09 ✔ | 🟠 | P1 | ⬜ ouvert | Mauvaise extension → import charabia sans échappatoire : CoNLL-U/TEI en `.txt` → `txt_numbered_lines`, aucun autre mode au menu (`importDetect.ts:51/65`). Détection par nom seul. |
+| IMP-10 ✔ | 🟠 | P1 | ⬜ ouvert | Famille mal liée : `baseName` jette le dossier (cross-dossier fusionne) + mots-outils `de/la/en` whitelistés → fausse famille source↔trad. `familyDetect.ts:29/51`. |
+| IMP-13 | 🟡 | P1 | ⬜ ouvert | Famille **sans check langues distinctes** (`familyDetect.ts:66` ne teste que `>=2`) alors que la docstring le promet → 2 membres même langue câblés source/trad. Fix 1 ligne, referme une part d'IMP-10. |
+| IMP-03 | 🟡 | P2 | ⬜ ouvert | CoNLL-U : aperçu tolère Latin-1 (`conllu.py:128`), import le rejette (`:241`). Contradiction UX, pas de corruption. |
+| IMP-04 | 🟡 | P2 | ⬜ ouvert | TXT `errors="replace"` → mojibake silencieux si `charset-normalizer` se trompe, sans warning (`txt.py:88/91`). Test encodage **mocke** `_detect_encoding`. |
+| IMP-11 ✔ | 🟠 | P2 | ⬜ ouvert | Langue devinée `fr` en silence (fallback dur, `ImportScreen.ts:164`) : corpus DE/EN à noms neutres importé français. Non-TEI ne renvoie jamais `undefined`. |
+| IMP-12 | 🟡 | P2 | ⬜ ouvert | Famille rate l'original non-marqué (`book.docx`+`book_en.docx` → 1 membre tokené, `familyDetect.ts:49`). Testé comme *correct*. |
+| IMP-15 | 🟡 | P2 | ⬜ ouvert | Drop local sans filtre d'extension (divergence ShareDocs) : `.doc`/`.pdf`/sans-ext acceptés avec mode bidon `wp_numbered` (`ImportScreen.ts:158`, `importDetect.ts:79`). |
+| IMP-05 | 🟢 | — | 🔵 dette | Bombe de décompression ODT/DOCX : cap 512 Mio sur le compressé, `content.xml` chargé entier (`odt_common.py:89`). Fichier forgé, outil local. |
+| IMP-06 | 🟢 | — | 🔵 dette | Récursion illimitée walk ODT/rich_text (`odt_common.py:28`, `rich_text.py:228`) → `RecursionError` opaque. |
+| IMP-07 | 🟢 | — | 🔵 dette | `source_hash` sans index UNIQUE (`mig 001`) → dédup TOCTOU sur 2 imports CLI concurrents (sidecar sérialisé, donc CLI-only). |
+| IMP-08 | 🟢 | — | 🔵 dette | TEI `teiCorpus` multi-`<text>` → seul le 1er importé sans warning (`tei_importer.py:72`) ; `_get_title` non restreint au `teiHeader`. |
+| IMP-14 | 🟡 | — | 🔵 dette | `LANG_RE` = dernier token seul : `roman_fr_v2`/`pt-BR`/préfixe `fr_roman` manqués → fallback silencieux (`importDetect.ts:106`). |
+| IMP-RT | — | — | 📝 décidé | Auto-détection `resource_type` **non faisable** (signal nul : nom/format/dossier/teiHeader/contenu). Garder manuel (R6.3). Au mieux pré-remplissage éditable si l'importeur TEI lit `<text type>` — pas maintenant. |
+
+---
+
 ## Audit 2026-06-28 (post-v0.2.7, base `docs/smoke-u02-progress`) — `AUDIT_2026-06-28.md`
 
 Findings **neufs** de la passe du 2026-06-28. Tous **⬜ ouverts** (aucun correctif appliqué
