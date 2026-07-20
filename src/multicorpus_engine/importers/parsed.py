@@ -58,7 +58,20 @@ def insert_units(conn: sqlite3.Connection, doc_id: int, units: list[ParsedUnit])
 
     ``text_source`` (ADR-043) is set to ``text_raw`` here — the verbatim import text,
     captured once and never overwritten by curate/resegment/merge/split.
+
+    Raises ``ValueError`` when *units* is empty (IMP-02): the 6 importers that share this
+    write path used to insert the ``documents`` row then return ``units_total=0`` as a
+    *success* — a ghost document (empty file, a mode that matches nothing such as a TEI
+    ``unit_element='s'`` on a ``<p>``-only doc, or a wrong column index). Rejecting it here
+    lets the caller's ``try/except: rollback`` undo the ghost row. CoNLL-U already guarded
+    at parse time; this aligns the rest.
     """
+    if not units:
+        raise ValueError(
+            "No units to import — the file is empty, or the import mode/parameters do not "
+            "match its content (e.g. a wrong column index, a TEI unit element with no match, "
+            "or a blank document)."
+        )
     conn.executemany(
         "INSERT INTO units"
         " (doc_id, unit_type, n, external_id, text_raw, text_norm, meta_json, unit_role, text_source)"

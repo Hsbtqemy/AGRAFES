@@ -140,6 +140,25 @@ def test_analyze_external_ids_small_gaps_unchanged() -> None:
     assert dups == [] and non_mono == []
 
 
+def test_insert_units_rejects_empty(db_conn: sqlite3.Connection) -> None:
+    """IMP-02: the shared write path refuses 0 units (was a silent success → ghost doc)."""
+    from multicorpus_engine.importers.parsed import insert_units
+    with pytest.raises(ValueError):
+        insert_units(db_conn, doc_id=1, units=[])
+
+
+def test_import_empty_txt_raises_and_leaves_no_ghost_doc(
+    db_conn: sqlite3.Connection, tmp_path: Path
+) -> None:
+    """IMP-02: an empty file is rejected AND the document row is rolled back (no ghost doc)."""
+    from multicorpus_engine.importers.txt import import_txt_numbered_lines
+    empty = tmp_path / "empty.txt"
+    empty.write_text("", encoding="utf-8")
+    with pytest.raises(ValueError):
+        import_txt_numbered_lines(conn=db_conn, path=empty, language="fr")
+    assert db_conn.execute("SELECT COUNT(*) FROM documents").fetchone()[0] == 0
+
+
 def test_import_detects_duplicates(
     db_conn: sqlite3.Connection,
     docx_with_duplicates: Path,

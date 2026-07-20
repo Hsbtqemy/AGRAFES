@@ -148,7 +148,10 @@ def test_extract_column_2_from_2col_table(db, tmp_path):
 # ─── Case 2: column_index out of range (table too narrow) ───────────────────
 
 
-def test_column_index_2_on_1col_table_warns_and_extracts_zero(db, tmp_path):
+def test_column_index_2_on_1col_table_raises_no_units(db, tmp_path):
+    """IMP-02 (décision 2026-07-20 : rejeter les imports vides) : demander une colonne qui
+    n'extrait aucune unité REJETTE désormais l'import (auparavant : avertissement + doc vide
+    fantôme). Rollback → aucun document laissé derrière."""
     from multicorpus_engine.importers.docx_numbered_lines import (
         import_docx_numbered_lines,
     )
@@ -156,13 +159,9 @@ def test_column_index_2_on_1col_table_warns_and_extracts_zero(db, tmp_path):
     doc = _new_doc()
     _add_table_1col(doc, ["[1] Solo", "[2] Solo encore"])
     path = _save(doc, tmp_path / "narrow.docx")
-    report = import_docx_numbered_lines(db, path, language="fr", column_index=2)
-
-    assert report.units_line == 0
-    assert report.tables_processed == 1
-    assert report.rows_skipped_short == 2
-    # The "0 line units" warning must be present so the user knows.
-    assert any("0 unité ligne" in w for w in report.warnings)
+    with pytest.raises(ValueError):
+        import_docx_numbered_lines(db, path, language="fr", column_index=2)
+    assert db.execute("SELECT COUNT(*) FROM documents").fetchone()[0] == 0
 
 
 # ─── Case 3: horizontally merged cell (col 1 spans into col 2) ──────────────

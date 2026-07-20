@@ -55,13 +55,14 @@ Audit ciblé « modes d'import & reconnaissance des types » (ROADMAP_REFONTE §
 (« ✔ »). Priorités = §6 du fichier d'audit. Détail + preuve `fichier:ligne` dans
 `AUDIT_IMPORT_2026-07-20.md`.
 
-> **P0 corrigé le 2026-07-20** (même commit que ce recalage) : **IMP-01** → ✅ (fix + 3
-> tests + RED prouvé). Tous les autres findings restent ⬜ / 🔵 au dépôt de l'audit.
+> **P0 corrigé le 2026-07-20** : **IMP-01** → ✅ (fix + 3 tests + RED + revue adverse gate QA).
+> **Lot P1 (2026-07-20)** : **IMP-02** → ✅ (rejet des imports vides ; prémisse affinée à la
+> vérif — cf. ligne). Autres findings ⬜ / 🔵.
 
 | ID | Sév | Prio | Statut | Constat (résumé) |
 |----|-----|------|--------|------------------|
 | IMP-01 ✔ | 🔴 | P0 | ✅ corrigé | `_analyze_external_ids` hang→OOM : `range(min,max)` + `set()` reconstruit/itération, ∝ écart ; un `[900000000]`/`xml:id=p99999999`/`sent_id=999999999` gelait le sidecar (sous `_lock`, hang≠raise). **Fix** : `set` construit **une fois** + borne `_MAX_HOLES=1000` (early-break) → temps & mémoire bornés (referme aussi le bloat `report.warnings`). 3 tests `test_import.py::test_analyze_external_ids_*` (RED prouvé sur écart 5000 : 4998≠1000). `docx_numbered_lines.py:169`. **Revue adverse** : la troncature désarmait le gate QA « >20% trous → error » (`qa_report.py:55`, qui lisait `len(holes)` capé — un doc de 6001 ids/1999 trous ressortait « ok ») → gate recalculé sur le compte **exact** O(1) (`span − |distincts|`) ; test `test_qa_report.py::test_import_integrity_hole_gate_survives_cap` (RED prouvé). |
-| IMP-02 | 🟡 | P1 | ⬜ ouvert | Import **vide silencieux** hors CoNLL-U : `tei_importer.py:245`/`txt.py:193`/`docx_paragraphs.py:128`/`odt_*`/`docx_numbered_lines.py:381` → `units_total=0` sans erreur = doc fantôme. Seul CoNLL-U garde (`conllu.py:247`). |
+| IMP-02 | 🟡 | P1 | ✅ corrigé | Import **vide** hors CoNLL-U → `units_total=0` sans erreur = doc fantôme. **Fix** : garde `if not units: raise` dans `insert_units` (point unique des 6 importeurs → rollback, aucun fantôme). *Prémisse affinée à la vérif* : le cas docx « mauvaise colonne » produisait 0 unité **délibérément** (warn+doc vide, test dédié) → décision utilisateur (2026-07-20) : **rejeter** les imports vides (cohérent CoNLL-U), test docx mis à jour (`…_raises_no_units`). 2 tests `test_import.py` (RED prouvé). `parsed.py`. |
 | IMP-09 ✔ | 🟠 | P1 | ⬜ ouvert | Mauvaise extension → import charabia sans échappatoire : CoNLL-U/TEI en `.txt` → `txt_numbered_lines`, aucun autre mode au menu (`importDetect.ts:51/65`). Détection par nom seul. |
 | IMP-10 ✔ | 🟠 | P1 | ⬜ ouvert | Famille mal liée : `baseName` jette le dossier (cross-dossier fusionne) + mots-outils `de/la/en` whitelistés → fausse famille source↔trad. `familyDetect.ts:29/51`. |
 | IMP-13 | 🟡 | P1 | ⬜ ouvert | Famille **sans check langues distinctes** (`familyDetect.ts:66` ne teste que `>=2`) alors que la docstring le promet → 2 membres même langue câblés source/trad. Fix 1 ligne, referme une part d'IMP-10. |
