@@ -85,6 +85,28 @@ def test_import_integrity_detects_holes(db_conn: sqlite3.Connection) -> None:
     assert 3 in result["external_id_holes"], f"Expected hole at 3, got {result['external_id_holes']}"
 
 
+def test_import_integrity_hole_gate_survives_cap(db_conn: sqlite3.Connection) -> None:
+    """IMP-01 revue adverse : le gate « >20% de trous → error » compte les trous EXACTEMENT
+    (arithmétique), pas via la liste tronquée à _MAX_HOLES. Un grand doc (>5000 ids) avec
+    >1000 trous réels doit rester « error » malgré la troncature de la liste affichée."""
+    from multicorpus_engine.importers.docx_numbered_lines import _MAX_HOLES
+    from multicorpus_engine.qa_report import _check_import_integrity
+
+    doc_id = _populate_doc(db_conn)
+    # 6001 unités : ext_ids 1..5000 puis 7000..8000 → 1999 vrais trous (>20% de 6001,
+    # seuil 1200) alors que la liste `external_id_holes` sature à _MAX_HOLES (1000).
+    ext_ids = list(range(1, 5001)) + list(range(7000, 8001))
+    db_conn.executemany(
+        "INSERT INTO units (doc_id, n, unit_type, external_id, text_raw, text_norm) VALUES (?,?,?,?,?,?)",
+        [(doc_id, i + 1, "line", e, "x", "x") for i, e in enumerate(ext_ids)],
+    )
+    db_conn.commit()
+
+    result = _check_import_integrity(db_conn, doc_id)
+    assert len(result["external_id_holes"]) <= _MAX_HOLES  # liste d'affichage tronquée…
+    assert result["severity"] == "error"                    # …mais le gate compte juste
+
+
 # ── Test 2: external_id duplicates detected ────────────────────────────────────
 
 def test_import_integrity_detects_duplicates(db_conn: sqlite3.Connection) -> None:

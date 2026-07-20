@@ -44,6 +44,10 @@ def _check_import_integrity(conn: sqlite3.Connection, doc_id: int) -> dict:
 
     external_ids = [r[0] for r in rows if r[0] is not None]
     duplicates, holes, non_monotonic = _analyze_external_ids(external_ids) if external_ids else ([], [], [])
+    # `holes` is CAPPED at _MAX_HOLES (IMP-01) → count the gaps EXACTLY in O(1) from the span
+    # so the >20% error gate still trips on a large, badly-numbered doc (>1000 gaps) instead of
+    # silently downgrading to 'warning' once the list saturates.
+    hole_count = (max(external_ids) - min(external_ids) + 1 - len(set(external_ids))) if external_ids else 0
 
     empty_units = [r[0] for r in rows if not (r[1] or "").strip()]
     long_units = [r[0] for r in rows if len(r[1] or "") > LONG_LINE_THRESHOLD]
@@ -52,7 +56,7 @@ def _check_import_integrity(conn: sqlite3.Connection, doc_id: int) -> dict:
     severity = "ok"
     if duplicates or empty_units:
         severity = "warning"
-    if len(holes) > len(external_ids) * 0.2 and holes:  # >20% holes → error
+    if hole_count > len(external_ids) * 0.2 and hole_count:  # >20% holes → error
         severity = "error"
 
     return {
